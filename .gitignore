@@ -7,3 +7,6 @@ node_modules
 apps/*/dist
 apps/*/dist-electron
 packages/*/dist
+.env
+.env.local
+build/

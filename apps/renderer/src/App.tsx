@@ -1,4 +1,10 @@
-import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
+import {
+  type FormEvent,
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
 
 import type { Todo } from "@acme/contracts";
 
@@ -7,7 +13,7 @@ function formatCreatedAt(isoDate: string): string {
     month: "short",
     day: "numeric",
     hour: "numeric",
-    minute: "2-digit"
+    minute: "2-digit",
   }).format(new Date(isoDate));
 }
 
@@ -38,7 +44,9 @@ export default function App() {
       setTodos(nextTodos);
     } catch (loadError) {
       const message =
-        loadError instanceof Error ? loadError.message : "Could not fetch todos.";
+        loadError instanceof Error
+          ? loadError.message
+          : "Could not fetch todos.";
       setError(message);
     } finally {
       setIsLoading(false);
@@ -86,7 +94,9 @@ export default function App() {
       setTodos(nextTodos);
     } catch (toggleError) {
       const message =
-        toggleError instanceof Error ? toggleError.message : "Could not toggle todo.";
+        toggleError instanceof Error
+          ? toggleError.message
+          : "Could not toggle todo.";
       setError(message);
     }
   };
@@ -103,7 +113,9 @@ export default function App() {
       setTodos(nextTodos);
     } catch (removeError) {
       const message =
-        removeError instanceof Error ? removeError.message : "Could not remove todo.";
+        removeError instanceof Error
+          ? removeError.message
+          : "Could not remove todo.";
       setError(message);
     }
   };
@@ -124,9 +136,12 @@ export default function App() {
   return (
     <main className="mx-auto flex min-h-screen w-full max-w-3xl flex-col px-6 py-12 text-slate-900 sm:px-10">
       <header className="rounded-3xl border border-slate-200/80 bg-white/80 p-7 shadow-soft backdrop-blur">
-        <h1 className="text-3xl font-semibold tracking-tight">Long-Horizon TODOs</h1>
+        <h1 className="text-3xl font-semibold tracking-tight">
+          Long-Horizon TODOs
+        </h1>
         <p className="mt-2 text-sm text-slate-600">
-          Renderer is isolated. All native access is routed through a typed preload API.
+          Renderer is isolated. All native access is routed through a typed
+          preload API.
         </p>
 
         <form className="mt-6 flex gap-3" onSubmit={onSubmit}>
@@ -181,19 +196,23 @@ export default function App() {
                     "mt-0.5 inline-block h-5 w-5 rounded-full border transition",
                     todo.completed
                       ? "border-emerald-600 bg-emerald-500"
-                      : "border-slate-300 bg-white"
+                      : "border-slate-300 bg-white",
                   ].join(" ")}
                 />
                 <span>
                   <p
                     className={[
                       "text-sm font-medium",
-                      todo.completed ? "text-slate-400 line-through" : "text-slate-800"
+                      todo.completed
+                        ? "text-slate-400 line-through"
+                        : "text-slate-800",
                     ].join(" ")}
                   >
                     {todo.title}
                   </p>
-                  <p className="text-xs text-slate-500">Created {formatCreatedAt(todo.createdAt)}</p>
+                  <p className="text-xs text-slate-500">
+                    Created {formatCreatedAt(todo.createdAt)}
+                  </p>
                 </span>
               </button>
 

@@ -13,14 +13,13 @@
       "require": "./dist/index.cjs"
     }
   },
-  "files": [
-    "dist"
-  ],
+  "files": ["dist"],
   "scripts": {
     "dev": "tsup src/index.ts --format esm,cjs --dts --watch --clean",
     "build": "tsup src/index.ts --format esm,cjs --dts --clean",
     "typecheck": "tsc --noEmit",
-    "lint": "tsc --noEmit"
+    "lint": "biome check src/",
+    "test": "vitest run"
   },
   "dependencies": {
     "zod": "^3.24.1"

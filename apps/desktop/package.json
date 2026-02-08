@@ -5,18 +5,22 @@
   "main": "dist-electron/main.js",
   "scripts": {
     "dev": "concurrently -k -n BUNDLE,ELECTRON \"bun run dev:bundle\" \"bun run dev:electron\"",
-    "dev:bundle": "tsup src/main.ts src/preload.ts --format cjs --out-dir dist-electron --sourcemap --watch --clean",
+    "dev:bundle": "tsup --watch",
     "dev:electron": "bun run scripts/dev-electron.mjs",
-    "build": "tsup src/main.ts src/preload.ts --format cjs --out-dir dist-electron --sourcemap --clean",
+    "build": "tsup",
     "start": "electron dist-electron/main.js",
+    "postinstall": "electron-rebuild",
     "typecheck": "tsc --noEmit",
-    "lint": "tsc --noEmit"
+    "lint": "biome check src/",
+    "test": "vitest run"
   },
   "dependencies": {
     "@acme/contracts": "workspace:*",
-    "electron": "^33.3.0"
+    "electron": "33.4.11",
+    "node-pty": "^1.0.0"
   },
   "devDependencies": {
+    "@electron/rebuild": "^3.7.0",
     "@types/node": "^22.10.2",
     "concurrently": "^9.1.2",
     "electronmon": "^2.0.2",

@@ -7,5 +7,3 @@ declare global {
     nativeApi?: NativeApi;
   }
 }
-
-export {};

@@ -3,11 +3,11 @@ import { promises as fs } from "node:fs";
 import path from "node:path";
 
 import {
+  type NewTodoInput,
+  type Todo,
   newTodoInputSchema,
   todoIdSchema,
   todoListSchema,
-  type NewTodoInput,
-  type Todo
 } from "@acme/contracts";
 
 export class TodoStore {
@@ -50,7 +50,7 @@ export class TodoStore {
         id: randomUUID(),
         title,
         completed: false,
-        createdAt: new Date().toISOString()
+        createdAt: new Date().toISOString(),
       };
 
       this.todos = [todo, ...this.todos];
@@ -63,7 +63,7 @@ export class TodoStore {
     return this.runExclusive(async () => {
       const parsedId = todoIdSchema.parse(id);
       this.todos = this.todos.map((todo) =>
-        todo.id === parsedId ? { ...todo, completed: !todo.completed } : todo
+        todo.id === parsedId ? { ...todo, completed: !todo.completed } : todo,
       );
 
       await this.persist();
@@ -82,14 +82,18 @@ export class TodoStore {
   }
 
   private async persist(): Promise<void> {
-    await fs.writeFile(this.filePath, JSON.stringify(this.todos, null, 2), "utf8");
+    await fs.writeFile(
+      this.filePath,
+      JSON.stringify(this.todos, null, 2),
+      "utf8",
+    );
   }
 
   private async runExclusive<T>(operation: () => Promise<T>): Promise<T> {
     const next = this.queue.then(operation, operation);
     this.queue = next.then(
       () => undefined,
-      () => undefined
+      () => undefined,
     );
 
     return next;
