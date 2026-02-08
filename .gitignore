@@ -1,0 +1,9 @@
+node_modules
+.bun
+.turbo
+.DS_Store
+*.log
+*.tsbuildinfo
+apps/*/dist
+apps/*/dist-electron
+packages/*/dist
