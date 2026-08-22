@@ -11,3 +11,9 @@
 - VS Code 与 OpenAI Codex 仅作为本地参考源码，用于研究信息架构、交互与可访问性；其源码和品牌资产不进入本项目的产品代码或构建产物。
 
 详细的参考来源记录见 `docs/reference-provenance.md`。
+
+<!-- contributors-start -->
+<table><tr>
+<td><a href="https://github.com/Sakana-yuyu/code-work"><img src="https://secure.gravatar.com/avatar/e91e20e8d5f83234900a3878086e1fe7?d=identicon&s=80" width="48" height="48" alt="呆呆可达鸭鸭" title="呆呆可达鸭鸭 (1 次提交)"/></a></td>
+</tr></table>
+<!-- contributors-end -->
