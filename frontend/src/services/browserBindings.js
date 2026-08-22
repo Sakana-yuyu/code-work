@@ -1,0 +1,1431 @@
+import { browserPreviewMockMetrics, browserPreviewMockProxyState } from "@/services/runtimeAdapter";
+
+const previewConfig = {
+  modelAdapters: [
+    {
+      id: "preview-demo-openai",
+      displayName: "Demo GPT",
+      groupName: "浏览器预览示例",
+      type: "openai",
+      baseURL: "https://api.openai.com/v1",
+      apiKey: "browser-preview-demo-key",
+      tooltipData: "浏览器预览示例模型",
+      modelID: "gpt-4.1-mini",
+      reasoningEffort: "medium",
+      openAIEndpoint: "/v1/responses",
+      openAIExtraParamsEnabled: false,
+      openAIExtraParamsJSON: "{\n}",
+      customHeadersEnabled: false,
+      customHeadersJSON: "{\n}",
+      anthropicExtraParamsEnabled: false,
+      anthropicExtraParamsJSON: "{\n}",
+      contextWindowTokens: 0,
+      maxCompletionTokens: 0,
+      anthropicMaxTokens: 0,
+      anthropicThinkingEffort: "xhigh",
+      thinkingBudgetTokens: 0,
+      pricing: null,
+      fastMode: false,
+      openAIServiceTier: "",
+    },
+    {
+      id: "preview-demo-gemini",
+      displayName: "Demo Gemini",
+      groupName: "浏览器预览示例",
+      type: "gemini",
+      supplierID: "gemini",
+      protocolMode: "auto",
+      protocolGroup: "gemini_native",
+      baseURL: "https://generativelanguage.googleapis.com/v1beta",
+      apiKey: "browser-preview-gemini-key",
+      tooltipData: "浏览器预览 Gemini 示例模型",
+      modelID: "gemini-2.5-pro",
+      reasoningEffort: "medium",
+      openAIEndpoint: "",
+      openAIExtraParamsEnabled: false,
+      openAIExtraParamsJSON: "",
+      customHeadersEnabled: false,
+      customHeadersJSON: "{\n}",
+      anthropicExtraParamsEnabled: false,
+      anthropicExtraParamsJSON: "",
+      contextWindowTokens: 1048576,
+      maxCompletionTokens: 0,
+      anthropicMaxTokens: 0,
+      anthropicThinkingEffort: "",
+      thinkingBudgetTokens: 0,
+      pricing: null,
+      fastMode: false,
+      openAIServiceTier: "",
+    },
+  ],
+  backendListenAddr: "127.0.0.1:8787",
+  proxyListenAddr: "127.0.0.1:8788",
+  routing: { mode: "local" },
+  homeMetrics: { includeCacheWriteInHitRate: false },
+  billingQuery: { enabled: true },
+  mirrorCapture: {
+    enabled: false,
+    protocolFidelity: false,
+    hosts: [
+      "api.openai.com",
+      "api.anthropic.com",
+      "generativelanguage.googleapis.com",
+    ],
+  },
+  delegation: {
+    enabled: true,
+    maxConcurrency: 4,
+    groups: [],
+    supervision: {
+      enabled: false,
+      supervisorModelID: "",
+      reviewerModelID: "",
+      workerGroupID: "",
+      maxCorrections: 2,
+      maxRetries: 1,
+      maxRounds: 8,
+      allowReassign: false,
+      allowEscalate: false,
+      strictUnavailable: false,
+    },
+    visionDelegation: {
+      enabled: false,
+      visionModelID: "",
+      mode: "auto",
+    },
+  },
+};
+
+const PREVIEW_CONFIG_STORAGE_KEY = "code-work.browser-preview.config";
+let previewDelegationExecutors = [];
+let previewDefenderExclusionState = {
+  supported: false,
+  defenderActive: false,
+  alreadyExcluded: false,
+  offered: false,
+  path: "",
+};
+// E2E 测试控制：测试通过 addInitScript 预置该 localStorage 键，mock 据此注入
+// 确定性的余额/测试结果/保存失败响应，避免测试依赖默认随机状态。
+const PREVIEW_TEST_PLAN_KEY = "code-work.browser-preview.test-plan";
+
+function readPreviewTestPlan() {
+  try {
+    const raw = localStorage.getItem(PREVIEW_TEST_PLAN_KEY);
+    const parsed = raw ? JSON.parse(raw) : null;
+    return parsed && typeof parsed === "object" ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+const previewTestPlan = readPreviewTestPlan();
+previewDelegationExecutors = Array.isArray(previewTestPlan?.delegationExecutors)
+  ? clone(previewTestPlan.delegationExecutors)
+  : [];
+const PREVIEW_CALLS_STORAGE_KEY = "code-work.browser-preview.calls";
+
+function recordPreviewCall(name, args = []) {
+  if (!previewTestPlan?.recordCalls) return;
+  try {
+    const raw = localStorage.getItem(PREVIEW_CALLS_STORAGE_KEY);
+    const calls = raw ? JSON.parse(raw) : [];
+    calls.push({ name, args });
+    localStorage.setItem(PREVIEW_CALLS_STORAGE_KEY, JSON.stringify(calls));
+  } catch {
+    // Call recording is test-only observability and must not affect preview behavior.
+  }
+}
+
+function previewTestBalance(adapter) {
+  const override = readPreviewTestPlan()?.balance;
+  if (override == null) return null;
+  const value = typeof override === "function" ? override(adapter) : override;
+  return value && typeof value === "object" ? value : null;
+}
+
+function previewTestResult(adapter) {
+  const override = readPreviewTestPlan()?.testResult;
+  if (override == null) return null;
+  const value = typeof override === "function" ? override(adapter) : override;
+  return value && typeof value === "object" ? value : null;
+}
+
+function previewTestFailSaveConfig() {
+  return Boolean(readPreviewTestPlan()?.saveConfigFailure);
+}
+
+function previewTestFailDelegationSave() {
+  return Boolean(readPreviewTestPlan()?.delegationSaveFailure);
+}
+
+function previewAdapterForStorage(adapter) {
+  if (!adapter || typeof adapter !== "object") {
+    return {};
+  }
+  const safeAdapter = { ...adapter };
+  delete safeAdapter.apiKey;
+  delete safeAdapter.balanceAccessToken;
+  delete safeAdapter.customHeadersJSON;
+  delete safeAdapter.balanceQueryHeadersJSON;
+  delete safeAdapter.balanceQueryHeaders;
+  return safeAdapter;
+}
+
+function previewConfigForStorage() {
+  return {
+    ...previewConfig,
+    modelAdapters: Array.isArray(previewConfig.modelAdapters)
+      ? previewConfig.modelAdapters.map((adapter) => previewAdapterForStorage(adapter))
+      : [],
+  };
+}
+
+try {
+  const storedPreviewConfig = JSON.parse(localStorage.getItem(PREVIEW_CONFIG_STORAGE_KEY) || "null");
+  if (storedPreviewConfig && typeof storedPreviewConfig === "object") {
+    Object.assign(previewConfig, storedPreviewConfig);
+    previewConfig.delegation = {
+      ...previewConfig.delegation,
+      ...(storedPreviewConfig.delegation && typeof storedPreviewConfig.delegation === "object"
+        ? storedPreviewConfig.delegation
+        : {}),
+    };
+    // Migrate older preview entries that may have stored demo credentials.
+    persistPreviewConfig();
+  }
+} catch {
+  // Browser preview remains usable when storage is disabled.
+}
+
+function persistPreviewConfig() {
+  try {
+    localStorage.setItem(PREVIEW_CONFIG_STORAGE_KEY, JSON.stringify(previewConfigForStorage()));
+  } catch {
+    // In-memory preview fallback is still valid without localStorage.
+  }
+}
+let editorContext = { index: -1, adapterJSON: "{}" };
+// E2E 测试可通过测试计划预置编辑器上下文（编辑既有模型 / 快速添加两种形态）。
+if (previewTestPlan?.editorContext && typeof previewTestPlan.editorContext === "object") {
+  const seeded = previewTestPlan.editorContext;
+  editorContext = {
+    index: Number.isInteger(seeded.index) ? seeded.index : -1,
+    adapterJSON: typeof seeded.adapterJSON === "string" ? seeded.adapterJSON : "{}",
+  };
+}
+let previewDelegationTasks = Array.isArray(previewTestPlan?.delegationTasks) ? clone(previewTestPlan.delegationTasks) : [
+  {
+    id: "preview-task-running",
+    aggregateId: "preview-aggregate",
+    description: "Review the active workspace changes",
+    modelId: "preview-demo-openai",
+    modelName: "Demo GPT",
+    modelGroupId: "preview-group",
+    executionMode: "local",
+    status: "running",
+    toolCallCount: 2,
+    eventId: "delegation-event-2",
+    sequence: 2,
+    eventType: "running",
+    parentRequestId: "preview-request",
+    parentExecId: "preview-aggregate",
+    groupId: "preview-aggregate",
+    queuedAtUnixMs: Date.now() - 14000,
+    startedAtUnixMs: Date.now() - 12000,
+    finishedAtUnixMs: 0,
+    updatedAtUnixMs: Date.now() - 12000,
+    durationMs: 12000,
+    cancelable: true,
+    workerRole: "generalPurpose",
+    supervisionPhase: "reviewing",
+    reviewPending: true,
+    supervisionRound: 2,
+    correctionCount: 1,
+    retryCount: 0,
+    reassignCount: 0,
+    escalateCount: 0,
+    issueCategory: "missing_evidence",
+    progressSummary: "Collected the changed files and summarized the main edits, pending the final evidence pass.",
+  },
+  {
+    id: "preview-vision-running",
+    aggregateId: "preview-vision-agg",
+    description: "视觉委派：识别截图中的报错信息",
+    modelId: "preview-demo-gemini",
+    modelName: "Demo Gemini",
+    modelGroupId: "preview-group",
+    executionMode: "vision",
+    status: "running",
+    toolCallCount: 0,
+    eventId: "vision-event-1",
+    sequence: 4,
+    eventType: "running",
+    parentRequestId: "preview-vision-req",
+    parentExecId: "preview-vision-agg",
+    groupId: "preview-vision-agg",
+    queuedAtUnixMs: Date.now() - 9000,
+    startedAtUnixMs: Date.now() - 8000,
+    finishedAtUnixMs: 0,
+    updatedAtUnixMs: Date.now() - 3000,
+    durationMs: 8000,
+    cancelable: false,
+    workerRole: "vision",
+    supervisionPhase: "",
+    reviewPending: false,
+    supervisionRound: 0,
+    correctionCount: 0,
+    retryCount: 0,
+    reassignCount: 0,
+    escalateCount: 0,
+    issueCategory: "",
+    progressSummary: "识图中 2/3",
+  },
+  {
+    id: "preview-vision-completed",
+    aggregateId: "preview-vision-done",
+    description: "视觉委派：检查配置页面截图布局",
+    modelId: "preview-demo-gemini",
+    modelName: "Demo Gemini",
+    modelGroupId: "preview-group",
+    executionMode: "vision",
+    status: "completed",
+    toolCallCount: 0,
+    eventId: "vision-event-2",
+    sequence: 5,
+    eventType: "completed",
+    parentRequestId: "preview-vision-done-req",
+    parentExecId: "preview-vision-done",
+    groupId: "preview-vision-done",
+    queuedAtUnixMs: Date.now() - 60000,
+    startedAtUnixMs: Date.now() - 58000,
+    finishedAtUnixMs: Date.now() - 30000,
+    updatedAtUnixMs: Date.now() - 30000,
+    durationMs: 28000,
+    cancelable: false,
+    workerRole: "vision",
+    supervisionPhase: "",
+    reviewPending: false,
+    supervisionRound: 0,
+    correctionCount: 0,
+    retryCount: 0,
+    reassignCount: 0,
+    escalateCount: 0,
+    issueCategory: "",
+    progressSummary: "识图完成 2/2",
+  },
+  {
+    id: "preview-task-completed",
+    aggregateId: "preview-aggregate",
+    description: "Summarize implementation notes",
+    modelId: "preview-demo-gemini",
+    modelName: "Demo Gemini",
+    modelGroupId: "preview-group",
+    executionMode: "cursor",
+    status: "completed",
+    toolCallCount: 1,
+    eventId: "delegation-event-3",
+    sequence: 3,
+    eventType: "completed",
+    parentRequestId: "preview-request",
+    parentExecId: "preview-aggregate",
+    groupId: "preview-aggregate",
+    queuedAtUnixMs: Date.now() - 30000,
+    startedAtUnixMs: Date.now() - 28000,
+    finishedAtUnixMs: Date.now() - 8000,
+    updatedAtUnixMs: Date.now() - 8000,
+    durationMs: 20000,
+    cancelable: false,
+    workerRole: "generalPurpose",
+    supervisionPhase: "completed",
+    reviewPending: false,
+    supervisionRound: 1,
+    correctionCount: 0,
+    retryCount: 0,
+    reassignCount: 0,
+    escalateCount: 0,
+    issueCategory: "",
+    progressSummary: "Completed the implementation note summary and returned a concise result.",
+  },
+];
+let previewSkills = [
+  {
+    name: "superpowers-systematic-debugging",
+    source: "workspace",
+    description: "在遇到任何 bug、测试失败或意外行为时使用，先建立证据再提出修复方案。",
+    fullPath: "E:\\MyProject\\cursor-byok\\.agents\\skills\\superpowers-systematic-debugging\\SKILL.md",
+  },
+  {
+    name: "superpowers-test-driven-development",
+    source: "workspace",
+    description: "在实现任何功能或修复之前，先编写测试并观察其失败。",
+    fullPath: "E:\\MyProject\\cursor-byok\\.agents\\skills\\superpowers-test-driven-development\\SKILL.md",
+  },
+  {
+    name: "cursor-client-e2e-debugging",
+    source: "workspace",
+    description: "排查 Cursor 客户端本地模式、工具调用、后端存储与 provider 回放故障。",
+    fullPath: "E:\\MyProject\\cursor-byok\\.agents\\skills\\cursor-client-e2e-debugging\\SKILL.md",
+  },
+  {
+    name: "uploadcursor",
+    source: "user",
+    description: "发布 cursor-byok 新版本：更新版本号、推送 tag 触发 GitHub Action 自动构建。",
+    fullPath: "C:\\Users\\Administrator\\.cursor\\skills\\uploadcursor\\SKILL.md",
+  },
+  {
+    name: "frontend-design",
+    source: "user",
+    description: "创建或修改网页、桌面界面、组件和交互时使用，关注信息架构与视觉层级。",
+    fullPath: "C:\\Users\\Administrator\\.cursor\\skills\\frontend-design\\SKILL.md",
+  },
+];
+let previewMCPServers = Array.isArray(previewTestPlan?.mcpServers) ? clone(previewTestPlan.mcpServers) : [
+  {
+    name: "Preview filesystem",
+    identifier: "preview:filesystem",
+    transport: "stdio",
+    source: "cursor",
+    sourceLabel: "Cursor",
+    configuredEnabled: true,
+    enabled: true,
+    hasTools: true,
+    toolCount: 12,
+    status: "connected",
+    lastError: "",
+  },
+  {
+    name: "PostgreSQL",
+    identifier: "preview:postgres",
+    transport: "sse",
+    source: "cursor",
+    sourceLabel: "Cursor",
+    configuredEnabled: true,
+    enabled: true,
+    hasTools: false,
+    toolCount: 0,
+    status: "disconnected",
+    lastError: "",
+  },
+  {
+    name: "Playwright",
+    identifier: "preview:playwright",
+    transport: "stdio",
+    source: "project",
+    sourceLabel: "项目",
+    configuredEnabled: true,
+    enabled: false,
+    hasTools: false,
+    toolCount: 0,
+    status: "disconnected",
+    lastError: "",
+  },
+  {
+    name: "GitHub",
+    identifier: "preview:github",
+    transport: "http",
+    source: "user",
+    sourceLabel: "用户",
+    configuredEnabled: true,
+    enabled: true,
+    hasTools: false,
+    toolCount: 0,
+    status: "disconnected",
+    lastError: "Failed to connect: EADDRINUSE 127.0.0.1:38837",
+  },
+];
+let previewConnectTrustRequiredRemaining = previewTestPlan?.connectMcpTrustRequiredOnce ? 1 : 0;
+
+function clone(value) {
+  return JSON.parse(JSON.stringify(value));
+}
+
+function nextID() {
+  return `preview-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+export const IsWindows = () => Promise.resolve(false);
+export const GetState = () => Promise.resolve(previewProxyState());
+export const GetMirrorCaptureStatus = () => {
+  recordPreviewCall("GetMirrorCaptureStatus");
+  const state = previewProxyState();
+  const enabled = Boolean(previewConfig.mirrorCapture?.enabled);
+  const status = {
+    enabled,
+    routingMode: String(previewConfig.routing?.mode || "local"),
+    backendRunning: Boolean(state.backendRunning),
+    proxyRunning: Boolean(state.proxyRunning),
+    cursorSettingsApplied: Boolean(state.cursorSettingsApplied),
+    ready: enabled && previewConfig.routing?.mode === "upstream" && Boolean(state.backendRunning) && Boolean(state.proxyRunning) && Boolean(state.cursorSettingsApplied),
+    recordPath: "history/_debug/mirror/official.raw.jsonl",
+    fileExists: false,
+    sizeBytes: 0,
+    modifiedAtUnixMs: 0,
+  };
+  const override = readPreviewTestPlan()?.mirrorCaptureStatus;
+  return Promise.resolve(override && typeof override === "object" ? { ...status, ...clone(override) } : status);
+};
+export const LoadUserConfig = () => Promise.resolve(clone(previewConfig));
+export const GetDelegationConfig = () => Promise.resolve(clone(previewConfig.delegation));
+export const SaveDelegationConfig = (value) => {
+  if (previewTestFailDelegationSave()) {
+    return Promise.reject(new Error("E2E 注入：委派配置保存失败"));
+  }
+  previewConfig.delegation = clone(value || {});
+  persistPreviewConfig();
+  return Promise.resolve(clone(previewConfig.delegation));
+};
+export const GetDelegationExecutorSnapshots = () => Promise.resolve(clone(previewDelegationExecutors));
+export const RefreshDelegationExecutorProbes = () => {
+  recordPreviewCall("RefreshDelegationExecutorProbes");
+  const refreshed = readPreviewTestPlan()?.refreshedDelegationExecutors;
+  if (Array.isArray(refreshed)) previewDelegationExecutors = clone(refreshed);
+  return Promise.resolve(clone(previewDelegationExecutors));
+};
+export const InstallDelegationExecutor = (id) => {
+  recordPreviewCall("InstallDelegationExecutor", [id]);
+  const installed = readPreviewTestPlan()?.installedDelegationExecutors;
+  if (Array.isArray(installed)) previewDelegationExecutors = clone(installed);
+  const snapshot = previewDelegationExecutors.find((item) => item?.id === id);
+  return Promise.resolve(clone(snapshot || {}));
+};
+export const SaveUserConfig = (value) => {
+  if (previewTestFailSaveConfig()) {
+    return Promise.reject(new Error("E2E 注入：配置保存失败"));
+  }
+  const next = value && typeof value === "object" ? clone(value) : {};
+  previewConfig.modelAdapters = Array.isArray(next.modelAdapters)
+    ? next.modelAdapters.map((adapter) => ({ ...adapter, id: adapter.id || nextID() }))
+    : [];
+  Object.assign(previewConfig, next, { modelAdapters: previewConfig.modelAdapters });
+  persistPreviewConfig();
+  return Promise.resolve(clone(previewConfig));
+};
+export const AutoMatchContextWindows = (force = false) => {
+  const total = previewConfig.modelAdapters.length;
+  void force;
+  return Promise.resolve({
+    enabled: true,
+    switchEnabled: true,
+    changed: false,
+    total,
+    fromCatalog: 0,
+    fromProbe: 0,
+    unchanged: total,
+    details: [],
+  });
+};
+export const DiagnoseModelAdapters = () => Promise.resolve({ total: previewConfig.modelAdapters.length, issues: [] });
+export const ApplyDiagnosticFixes = () => Promise.resolve({ total: previewConfig.modelAdapters.length, issues: [] });
+// previewProxyRunning 让预览模式的启停真的改变状态。此前 StartProxy/StopProxy
+// 都返回同一份「未运行」快照，界面点了启动却始终显示未运行，看起来像启动失败。
+let previewProxyRunning = false;
+let previewCursorSettingsApplied = false;
+
+function previewProxyState() {
+  const state = browserPreviewMockProxyState();
+  return {
+    ...state,
+    serviceRunning: previewProxyRunning,
+    backendRunning: previewProxyRunning,
+    proxyRunning: previewProxyRunning,
+    cursorSettingsApplied: previewCursorSettingsApplied,
+  };
+}
+
+export const StartProxy = () => {
+  previewProxyRunning = true;
+  previewCursorSettingsApplied = true;
+  return Promise.resolve(previewProxyState());
+};
+export const StopProxy = () => {
+  previewProxyRunning = false;
+  return Promise.resolve(previewProxyState());
+};
+export const RepairProxySettings = () => {
+  previewCursorSettingsApplied = true;
+  return Promise.resolve({ settingsApplied: true, settingsPath: "", proxyURL: "http://127.0.0.1:18080", cursorRunning: false, needsCursorRestart: false, details: ["浏览器预览模式：模拟修复成功"] });
+};
+export const GetDefenderExclusionState = () => Promise.resolve(clone(previewDefenderExclusionState));
+export const OfferDefenderExclusion = () => {
+  recordPreviewCall("OfferDefenderExclusion");
+  previewDefenderExclusionState = {
+    ...previewDefenderExclusionState,
+    alreadyExcluded: true,
+    offered: true,
+  };
+  return Promise.resolve({ added: true, alreadyExcluded: false, cancelled: false, error: "" });
+};
+export const DismissDefenderExclusion = () => {
+  recordPreviewCall("DismissDefenderExclusion");
+  previewDefenderExclusionState = { ...previewDefenderExclusionState, offered: true };
+  return Promise.resolve();
+};
+export const GetTerminalEnvironmentStatus = () => Promise.resolve({ platform: "browser-preview", shellPath: "/bin/zsh", shellName: "zsh", shellVersion: "", pythonPath: "/usr/bin/python3", pythonVersion: "Python 3", upgradeRecommended: false, upgradeMessage: "", configurationNotice: "浏览器预览模式：使用模拟环境。" });
+export const ApplyTerminalEnvironment = GetTerminalEnvironmentStatus;
+// 浏览器预览没有 winget；安装为无操作（真实进度走事件，预览模式无事件通道）。
+export const InstallTerminalDependency = () => Promise.resolve();
+export const GetAdRuntime = () => Promise.resolve({ available: false, slots: [], window: {} });
+export const OpenExternalURL = () => Promise.resolve();
+export const GetHomeMetricsSummary = () => Promise.resolve(browserPreviewMockMetrics());
+export const CheckForUpdates = () => Promise.resolve();
+export const GetAppVersion = () => Promise.resolve("Browser Preview");
+export const GetFooterAuthorInfo = () => Promise.resolve(null);
+export const InstallReadyUpdate = () => Promise.resolve();
+export const GetModelEditorContext = () => Promise.resolve(clone(editorContext));
+export const OpenConfigWindow = () => Promise.resolve();
+export const OpenFooterAuthorHome = () => Promise.resolve();
+export const OpenHistoryWindow = () => Promise.resolve();
+export const OpenMirrorCaptureDirectory = () => {
+  recordPreviewCall("OpenMirrorCaptureDirectory");
+  return Promise.resolve();
+};
+// 浏览器预览没有本地文件系统，无法真的打包日志。返回空路径会被上层当成
+// 「导出成功但路径为空」，这里显式失败，界面才会给出可理解的提示。
+export const ExportLogs = () => Promise.reject(new Error("浏览器预览模式不支持导出日志 ZIP，请在桌面客户端中使用"));
+export const OpenModelConfigWindow = () => Promise.resolve();
+export const OpenMetricsDetailWindow = () => Promise.resolve();
+export const OpenRequestMetricsWindow = () => Promise.resolve();
+export const OpenStatsOverlayWindow = () => Promise.resolve();
+export const UpdateStatsOverlayWindow = (_style, _alwaysOnTop) => Promise.resolve();
+export const SetStatsOverlayAlwaysOnTop = (_alwaysOnTop) => Promise.resolve();
+export const CloseStatsOverlayWindow = () => Promise.resolve();
+export const SetMainWindowCloseAction = () => Promise.resolve();
+export const CloseApplication = () => Promise.resolve();
+export const DetectCursorPath = (manualPath = "") => Promise.resolve(manualPath || "C:\\Program Files\\Cursor\\Cursor.exe");
+export const LaunchCursor = () => Promise.resolve();
+export const RestartCursor = () => Promise.resolve({ wasRunning: false, killed: false, relaunched: true, cursorPath: "C:\\Program Files\\Cursor\\Cursor.exe", details: ["浏览器预览模式：模拟重启"] });
+export const IsCursorRunning = () => Promise.resolve(false);
+export const OpenModelEditorWindow = (index, adapterJSON) => {
+  editorContext = { index: Number.isInteger(index) ? index : -1, adapterJSON: String(adapterJSON || "{}") };
+  return Promise.resolve();
+};
+export const EnableReaderMCP = (_url, _apiKey, _model) =>
+  Promise.resolve({ identifier: "vision-reader", scriptPath: "", wasAdded: true });
+export const RepairCACorruption = () =>
+  Promise.resolve({ repaired: true, backupPath: "", detail: "浏览器预览模式：模拟修复" });
+export const GetCARepairStatus = () =>
+  Promise.resolve({ repaired: false, repairedAt: "", detail: "" });
+export const TestModelAdapter = (adapter) => {
+  const override = previewTestResult(adapter);
+  if (override) return Promise.resolve(clone(override));
+  return Promise.resolve({ status: "success", adapterID: adapter?.id || "preview", summaryText: "浏览器预览模式：未发起请求" });
+};
+export const GetModelAdapterTestResults = () => Promise.resolve([]);
+export const FetchModelCatalog = (request) => {
+  const type = String(request?.type || "").toLowerCase();
+  if (type === "gemini") {
+    return Promise.resolve({
+      models: [
+        { id: "gemini-2.5-pro", contextWindowTokens: 1048576 },
+        { id: "gemini-2.5-flash", contextWindowTokens: 1048576 },
+      ],
+    });
+  }
+  if (type === "anthropic") {
+    return Promise.resolve({
+      models: [
+        { id: "claude-sonnet-4-5", contextWindowTokens: 200000 },
+        { id: "claude-haiku-4-5", contextWindowTokens: 200000 },
+      ],
+    });
+  }
+  return Promise.resolve({
+    models: [
+      { id: "gpt-4.1-mini", contextWindowTokens: 1047576 },
+      { id: "gpt-5-mini", contextWindowTokens: 400000 },
+    ],
+  });
+};
+export const GetRecentRequestMetrics = () => Promise.resolve([]);
+export const GetProviderEvents = () => Promise.resolve([]);
+export const GetRecentRequestMetricsCount = () => Promise.resolve(0);
+export const GetRecentRequestMetricsAbnormalCount = () => Promise.resolve(0);
+export const GetRecentRequestMetricsDegradedCount = () => Promise.resolve(0);
+export const ResetUsageMetrics = () => Promise.resolve();
+export const GetMetricsRangeSummary = () => Promise.resolve({
+  requestCount: 0,
+  inputTokens: 0,
+  outputTokens: 0,
+  cacheReadTokens: 0,
+  cacheWriteTokens: 0,
+  totalTokens: 0,
+  cacheRate: null,
+});
+export const GetMetricsTokenBuckets = () => Promise.resolve([]);
+export const GetProviderSpendSummary = () => Promise.resolve([
+  { station: "https://api.openai.com", provider: "gpt-4.1-mini", providerCalls: 128, inputTokens: 8421300, outputTokens: 512300, cacheReadTokens: 3210000, cacheWriteTokens: 890000, totalTokens: 13033400, estimatedCostUsd: 12.8412, currency: "USD", pricingSource: "official" },
+  { station: "https://generativelanguage.googleapis.com", provider: "gemini-2.5-pro", providerCalls: 64, inputTokens: 3510000, outputTokens: 288400, cacheReadTokens: 1200000, cacheWriteTokens: 420000, totalTokens: 5418400, estimatedCostUsd: 6.23, currency: "USD", pricingSource: "catalog" },
+  { station: "https://api.deepseek.com", provider: "deepseek-chat", providerCalls: 210, inputTokens: 15320000, outputTokens: 2100000, cacheReadTokens: 8900000, cacheWriteTokens: 1500000, totalTokens: 27820000, estimatedCostUsd: 5.871, currency: "USD", pricingSource: "official" },
+  { station: "https://api.moonshot.cn", provider: "kimi-k2.5", providerCalls: 86, inputTokens: 5120000, outputTokens: 624000, cacheReadTokens: 2100000, cacheWriteTokens: 640000, totalTokens: 8484000, estimatedCostUsd: 3.42, currency: "USD", pricingSource: "configured" },
+  { station: "https://api.minimax.io", provider: "MiniMax-M3", providerCalls: 45, inputTokens: 1980000, outputTokens: 312000, cacheReadTokens: 660000, cacheWriteTokens: 210000, totalTokens: 3162000, estimatedCostUsd: 1.86, currency: "USD", pricingSource: "average" },
+  { station: "https://api.anthropic.com", provider: "claude-sonnet-4-5", providerCalls: 22, inputTokens: 864000, outputTokens: 142000, cacheReadTokens: 420000, cacheWriteTokens: 96000, totalTokens: 1522000, estimatedCostUsd: 2.94, currency: "USD", pricingSource: "official" },
+  { station: "https://api.zhipuai.cn", provider: "glm-4.6", providerCalls: 150, inputTokens: 9800000, outputTokens: 1240000, cacheReadTokens: 4300000, cacheWriteTokens: 900000, totalTokens: 16240000, estimatedCostUsd: null, currency: "", pricingSource: "" },
+  { station: "https://api.volces.com", provider: "doubao-seed-1.6", providerCalls: 38, inputTokens: 1450000, outputTokens: 218000, cacheReadTokens: 420000, cacheWriteTokens: 110000, totalTokens: 2198000, estimatedCostUsd: 0.74, currency: "USD", pricingSource: "catalog" },
+]);
+export const GetLocalCacheStats = () => Promise.resolve({ hits: 0, misses: 0, savedInputTokens: 0, savedOutputTokens: 0 });
+export const QueryProviderBalance = (adapter) => {
+  const override = previewTestBalance(adapter);
+  if (override) return Promise.resolve(clone(override));
+  return Promise.resolve({ supported: false, source: "", currency: "USD", total: null, used: null, remaining: null, message: "浏览器预览模式：未查询余额", transient: false });
+};
+export const GetProviderDiagnostics = () => {
+  recordPreviewCall("GetProviderDiagnostics");
+  const plan = readPreviewTestPlan();
+  if (plan?.providerDiagnosticsError) return Promise.reject(new Error("provider diagnostics unavailable"));
+  const override = plan?.providerDiagnostics;
+  if (override && typeof override === "object") return Promise.resolve(clone(override));
+  const now = Date.now();
+  return Promise.resolve({
+    generatedAtUnixMs: now,
+    state: "ready",
+    routerAvailable: true,
+    channels: [
+      { channelId: "preview-demo-openai", displayName: "Demo GPT", groupName: "OpenAI 官方", provider: "openai", protocolMode: "auto", protocolGroup: "responses", modelId: "gpt-4.1-mini", endpointScheme: "https", endpointHost: "api.openai.com", contextWindowTokens: 1047576, maxCompletionTokens: 32768, credentialConfigured: true, customHeadersConfigured: false, healthState: "ready" },
+      { channelId: "preview-demo-gemini", displayName: "Demo Gemini", groupName: "Gemini 官方", provider: "gemini", protocolMode: "auto", protocolGroup: "generate_content", modelId: "gemini-2.5-pro", endpointScheme: "https", endpointHost: "generativelanguage.googleapis.com", contextWindowTokens: 1048576, maxCompletionTokens: 65536, credentialConfigured: true, customHeadersConfigured: false, healthState: "cooldown", cooldownUntilUnixMs: now + 180000 },
+    ],
+    modelCatalogCache: { entryCount: 2, ttlSeconds: 300, oldestStoredAtUnixMs: now - 60000, nextExpiryAtUnixMs: now + 240000 },
+  });
+};
+export const QueryAllProviderBalances = () => {
+  const override = readPreviewTestPlan()?.allBalances;
+  if (Array.isArray(override)) return Promise.resolve(clone(override));
+  return Promise.resolve([
+  {
+    adapterId: "preview-demo-openai",
+    displayName: "Demo GPT",
+    groupName: "OpenAI 官方",
+    baseURL: "https://api.openai.com/v1",
+    modelID: "gpt-4.1-mini",
+    balance: { supported: true, source: "newapi", currency: "CNY", total: 100, used: 23.5, remaining: 76.5, planName: "", message: "" },
+  },
+  {
+    adapterId: "preview-demo-gemini",
+    displayName: "Demo Gemini",
+    groupName: "Gemini 官方",
+    baseURL: "https://generativelanguage.googleapis.com/v1beta",
+    modelID: "gemini-2.5-pro",
+    balance: previewStructuredQuotaBalance(),
+  },
+  {
+    adapterId: "preview-demo-claude",
+    displayName: "Demo Claude",
+    groupName: "Anthropic 官方",
+    baseURL: "https://api.anthropic.com",
+    modelID: "claude-sonnet-4-5",
+    balance: { supported: true, source: "openai_billing", currency: "USD", total: 20, used: null, remaining: 20, planName: "", message: "" },
+  },
+  {
+    adapterId: "preview-demo-deepseek",
+    displayName: "Demo DeepSeek",
+    groupName: "DeepSeek 官方",
+    baseURL: "https://api.deepseek.com",
+    modelID: "deepseek-chat",
+    balance: { supported: true, source: "token_plan", currency: "%", total: null, used: null, remaining: null, unlimited: true, planName: "不限额度套餐", message: "" },
+  },
+  {
+    adapterId: "preview-demo-minimax",
+    displayName: "Demo MiniMax",
+    groupName: "MiniMax 官方",
+    baseURL: "https://api.minimax.io",
+    modelID: "MiniMax-M3",
+    balance: { supported: false, source: "", currency: "USD", total: null, used: null, remaining: null, message: "鉴权失败：Invalid API key", transient: false },
+  },
+  {
+    adapterId: "preview-demo-kimi",
+    displayName: "Demo Kimi",
+    groupName: "Moonshot 官方",
+    baseURL: "https://api.moonshot.cn",
+    modelID: "kimi-k2.5",
+    balance: { supported: true, source: "newapi", currency: "CNY", total: 50, used: null, remaining: null, planName: "", message: "" },
+  },
+  ]);
+};
+export const SyncProviderBalancesAfterAccountChange = () => {
+  recordPreviewCall("SyncProviderBalancesAfterAccountChange");
+  return Promise.resolve(6);
+};
+export const ProbeModelAdapter = (adapter) => Promise.resolve({ id: adapter?.id || "", modelID: adapter?.modelID || "", ok: true, status: 200, message: "", rawResponse: "" });
+export const GetPromptInjectionSettings = () => Promise.resolve({});
+export const SavePromptInjectionSettings = (value) => Promise.resolve(value);
+export const RefreshPromptInjection = () => Promise.resolve();
+export const RefreshPromptInjectionCatalog = () => Promise.resolve();
+let previewScanConfig = {
+  enabled: true,
+  enabledSkills: {},
+  disabledMcpServers: { "preview:playwright": true },
+  skillSummaries: {
+    "superpowers-systematic-debugging": "遇到 bug、测试失败或意外行为时，先建立证据链再提出修复方案，避免盲改代码。",
+    "uploadcursor": "负责发布 cursor-byok 新版本：更新版本号、推送 tag 触发 GitHub Action 自动构建。",
+  },
+  mcpSummaries: {
+    "preview:filesystem": "基于文件系统的 MCP 服务，提供 12 个文件读写与目录操作工具。",
+  },
+};
+export const GetRecentWorkspaceRoot = () => {
+  recordPreviewCall("GetRecentWorkspaceRoot");
+  return Promise.resolve(String(previewTestPlan?.recentWorkspaceRoot || ""));
+};
+export const GetSkillsMCPScanSnapshot = (workspaceRoot = "") => {
+  recordPreviewCall("GetSkillsMCPScanSnapshot", [workspaceRoot]);
+  return Promise.resolve({
+    skills: clone(previewSkills),
+    mcpServers: clone(previewMCPServers),
+    config: clone(previewScanConfig),
+  });
+};
+export const RefreshSkillsMCPScan = (workspaceRoot = "") => {
+  recordPreviewCall("RefreshSkillsMCPScan", [workspaceRoot]);
+  return GetSkillsMCPScanSnapshot(workspaceRoot);
+};
+export const SaveSkillsMCPScanConfig = (config) => {
+  previewScanConfig = { ...previewScanConfig, ...(config || {}) };
+  return Promise.resolve();
+};
+export const ReadSkillFile = (_workspaceRoot, name) => {
+  const skill = previewSkills.find((item) => String(item.name).toLowerCase() === String(name || "").toLowerCase());
+  if (!skill) return Promise.reject(new Error(`未找到技能 ${name}`));
+  return Promise.resolve({
+    name: skill.name,
+    fullPath: skill.fullPath,
+    content: `---\nname: ${skill.name}\ndescription: ${skill.description}\n---\n\n# ${skill.name}\n\n${skill.description}\n\n## 使用场景\n\n- 调试与排查\n- 编写测试\n- 回归验证\n`,
+  });
+};
+export const SaveSkillFile = () => Promise.resolve(true);
+export const GenerateSkillSummary = (_workspaceRoot, kind, key) => {
+  const normalizedKey = String(key || "").toLowerCase();
+  if (kind === "skill") {
+    const skill = previewSkills.find((item) => String(item.name).toLowerCase() === normalizedKey);
+    if (!skill) return Promise.reject(new Error(`未找到技能 ${key}`));
+    const summary = `「${skill.name}」在${skill.source === "workspace" ? "项目" : "用户"}技能库中提供${skill.description}`;
+    previewScanConfig.skillSummaries = { ...(previewScanConfig.skillSummaries || {}), [normalizedKey]: summary };
+    return Promise.resolve(summary);
+  }
+  if (kind === "mcp") {
+    const server = previewMCPServers.find((item) => String(item.identifier).toLowerCase() === normalizedKey);
+    if (!server) return Promise.reject(new Error(`未找到 MCP server ${key}`));
+    const summary = `「${server.name}」基于 ${server.transport} 传输接入${server.toolCount > 0 ? `，提供 ${server.toolCount} 个工具` : ""}${server.status === "connected" ? "，当前已连接" : "，当前未连接"}。`;
+    previewScanConfig.mcpSummaries = { ...(previewScanConfig.mcpSummaries || {}), [normalizedKey]: summary };
+    return Promise.resolve(summary);
+  }
+  return Promise.reject(new Error(`未知的生成目标类型 ${kind}`));
+};
+export const GetDelegationTaskSnapshots = () => {
+  recordPreviewCall("GetDelegationTaskSnapshots");
+  const now = Date.now();
+  return Promise.resolve(clone(previewDelegationTasks.map((item) => ({
+    ...item,
+    durationMs: item.status === "running" ? Math.max(0, now - item.startedAtUnixMs) : item.durationMs,
+  }))));
+};
+// previewHistorySessions 是可变的预览数据。此前删除/清理都返回成功但数据不变，
+// 占用统计还是写死的常量，界面上「清理成功」之后占用一点没少，等于假成功。
+const seededPreviewHistorySessions = Array.isArray(previewTestPlan?.historySessions)
+  ? clone(previewTestPlan.historySessions)
+  : null;
+const previewHistorySessions = seededPreviewHistorySessions || [
+  {
+    id: "preview-session-2026-07-31-001",
+    title: "优化站点消耗卡片布局",
+    createdAtUnixMs: Date.UTC(2026, 6, 31, 9, 12, 0),
+    updatedAtUnixMs: Date.UTC(2026, 6, 31, 9, 40, 0),
+    sizeBytes: 128 * 1024,
+    debugSizeBytes: 0,
+    subagentType: "",
+    mode: "agent",
+    hasDebug: false,
+    status: "completed",
+    requestId: "",
+  },
+  {
+    id: "preview-session-2026-07-31-002",
+    title: "调试视觉委派任务条轮换逻辑",
+    createdAtUnixMs: Date.UTC(2026, 6, 31, 14, 5, 0),
+    updatedAtUnixMs: Date.UTC(2026, 6, 31, 15, 2, 0),
+    sizeBytes: 356 * 1024,
+    debugSizeBytes: 52 * 1024 * 1024,
+    subagentType: "debug",
+    mode: "debug",
+    hasDebug: true,
+    status: "provider_error",
+    requestId: "a1b2c3d4-5678-90ab-cdef-1234567890ab",
+  },
+  {
+    id: "preview-session-2026-07-30-001",
+    title: "浮窗外观配置与持久化",
+    createdAtUnixMs: Date.UTC(2026, 6, 30, 10, 30, 0),
+    updatedAtUnixMs: Date.UTC(2026, 6, 30, 11, 15, 0),
+    sizeBytes: 96 * 1024,
+    debugSizeBytes: 0,
+    subagentType: "",
+    mode: "agent",
+    hasDebug: false,
+    status: "completed",
+    requestId: "",
+  },
+  {
+    id: "preview-session-2026-07-30-002",
+    title: "排查 5173 端口连接失败",
+    createdAtUnixMs: Date.UTC(2026, 6, 30, 16, 20, 0),
+    updatedAtUnixMs: Date.UTC(2026, 6, 30, 16, 55, 0),
+    sizeBytes: 210 * 1024,
+    debugSizeBytes: 18 * 1024 * 1024,
+    subagentType: "generalPurpose",
+    mode: "agent",
+    hasDebug: true,
+    status: "failed",
+    requestId: "b2c3d4e5-6789-01ab-cdef-234567890abc",
+  },
+  {
+    id: "preview-session-2026-07-29-001",
+    title: "模型适配器测试被用户取消",
+    createdAtUnixMs: Date.UTC(2026, 6, 29, 11, 0, 0),
+    updatedAtUnixMs: Date.UTC(2026, 6, 29, 11, 20, 0),
+    sizeBytes: 64 * 1024,
+    debugSizeBytes: 0,
+    subagentType: "",
+    mode: "agent",
+    hasDebug: false,
+    status: "canceled",
+    requestId: "",
+  },
+  {
+    id: "preview-session-2026-06-15-001",
+    title: "供应商分组模式重构",
+    createdAtUnixMs: Date.UTC(2026, 5, 15, 9, 0, 0),
+    updatedAtUnixMs: Date.UTC(2026, 5, 15, 12, 45, 0),
+    sizeBytes: 812 * 1024,
+    debugSizeBytes: 0,
+    subagentType: "generalPurpose",
+    mode: "multitask",
+    hasDebug: false,
+    status: "completed",
+    requestId: "",
+  },
+  {
+    id: "preview-session-2026-06-15-002",
+    title: "多模型配置与余额查询",
+    createdAtUnixMs: Date.UTC(2026, 5, 15, 14, 30, 0),
+    updatedAtUnixMs: Date.UTC(2026, 5, 15, 16, 10, 0),
+    sizeBytes: 460 * 1024,
+    debugSizeBytes: 0,
+    subagentType: "",
+    mode: "agent",
+    hasDebug: false,
+    status: "completed",
+    requestId: "",
+  },
+  {
+    id: "preview-session-2025-12-03-001",
+    title: "响应缓存磁盘持久化调研",
+    createdAtUnixMs: Date.UTC(2025, 11, 3, 10, 0, 0),
+    updatedAtUnixMs: Date.UTC(2025, 11, 3, 10, 50, 0),
+    sizeBytes: 1_024 * 1024,
+    debugSizeBytes: 0,
+    subagentType: "generalPurpose",
+    mode: "ask",
+    hasDebug: false,
+    status: "completed",
+    requestId: "",
+  },
+];
+
+// previewOrphanDebugBytes 模拟无会话归属的孤儿调试日志，只有「清理全部」才会释放它，
+// 这样预览模式也能体现出后端统一遍历与逐会话清理的差异。
+let previewOrphanDebugBytes = 24 * 1024 * 1024;
+
+function clearPreviewSessionDebug(session) {
+  const freed = Number(session.debugSizeBytes || 0);
+  session.debugSizeBytes = 0;
+  session.hasDebug = false;
+  return freed;
+}
+
+export const GetHistorySessions = () => Promise.resolve(clone(previewHistorySessions));
+const seededPreviewCursorProtocolSessions = Array.isArray(previewTestPlan?.cursorProtocolSessions)
+  ? clone(previewTestPlan.cursorProtocolSessions)
+  : [];
+export const GetCursorProtocolSessions = () => Promise.resolve(clone(seededPreviewCursorProtocolSessions));
+export const DeleteHistorySessions = (sessionIDs) => {
+  const ids = new Set(Array.isArray(sessionIDs) ? sessionIDs : []);
+  for (let index = previewHistorySessions.length - 1; index >= 0; index -= 1) {
+    if (ids.has(previewHistorySessions[index].id)) previewHistorySessions.splice(index, 1);
+  }
+  return Promise.resolve();
+};
+export const ClearHistory = () => {
+  const removed = previewHistorySessions.length;
+  previewHistorySessions.length = 0;
+  previewOrphanDebugBytes = 0;
+  return Promise.resolve(removed);
+};
+export const DeleteHistoryDebugLogs = (sessionIDs) => {
+  const ids = new Set(Array.isArray(sessionIDs) ? sessionIDs : []);
+  let freed = 0;
+  for (const session of previewHistorySessions) {
+    if (ids.has(session.id)) freed += clearPreviewSessionDebug(session);
+  }
+  return Promise.resolve(freed);
+};
+export const PurgeAllHistoryDebugLogs = () => {
+  let freed = previewOrphanDebugBytes;
+  previewOrphanDebugBytes = 0;
+  for (const session of previewHistorySessions) freed += clearPreviewSessionDebug(session);
+  return Promise.resolve(freed);
+};
+export const GetHistoryDebugUsage = () => Promise.resolve(
+  previewHistorySessions.reduce((total, session) => total + Number(session.debugSizeBytes || 0), previewOrphanDebugBytes),
+);
+
+// previewSessionDebugFiles 为带调试日志的预览会话提供可读的 debug 文件清单与尾部内容，
+// 让诊断页在浏览器预览模式下也能演示「列出文件 -> 查看尾部 -> 导出证据包」的完整链路。
+// 文件内容内嵌示例 requestID，便于演示按 requestID 过滤。
+const previewDebugFileTail = {
+  "bidi.raw.jsonl": '{"request_id":"a1b2c3d4-5678-90ab-cdef-1234567890ab","dir":"recv","ts":"2026-07-31T15:01:42Z"}\n{"request_id":"a1b2c3d4-5678-90ab-cdef-1234567890ab","dir":"send","ts":"2026-07-31T15:01:43Z","status":500}\n',
+  "bidi.decoded.jsonl": '{"request_id":"a1b2c3d4-5678-90ab-cdef-1234567890ab","role":"assistant","delta":"模型返回异常状态 404"}\n',
+  "runtime.jsonl": '{"request_id":"a1b2c3d4-5678-90ab-cdef-1234567890ab","event":"provider_error","message":"upstream returned 404"}\n',
+  "runsse.jsonl": '{"request_id":"a1b2c3d4-5678-90ab-cdef-1234567890ab","chunk":"data: {\\\"error\\\":\\\"model not found\\\"}\\n\\n"}\n',
+  "provider.jsonl": '{"request_id":"a1b2c3d4-5678-90ab-cdef-1234567890ab","ok":false,"status":404,"body":"model not found"}\n',
+};
+
+function previewSessionDebugFiles(sessionID) {
+  const session = previewHistorySessions.find((item) => item.id === sessionID && item.hasDebug);
+  if (!session) return [];
+  const baseTime = session.updatedAtUnixMs || Date.now();
+  const names = ["bidi.raw.jsonl", "bidi.decoded.jsonl", "runtime.jsonl", "runsse.jsonl", "provider.jsonl"];
+  return names.map((name, index) => ({
+    name,
+    sizeBytes: 256 + index * 128,
+    modTimeUnixMs: baseTime - index * 1000,
+  }));
+}
+
+export const ListSessionDebugFiles = (sessionID) => Promise.resolve(clone(previewSessionDebugFiles(sessionID)));
+export const ReadSessionDebugTail = (sessionID, filename) => {
+  const session = previewHistorySessions.find((item) => item.id === sessionID && item.hasDebug);
+  if (!session) return Promise.reject(new Error(`会话 ${sessionID} 没有调试日志`));
+  const tail = previewDebugFileTail[filename];
+  if (!tail) return Promise.reject(new Error(`debug 文件 ${filename} 不在白名单内`));
+  return Promise.resolve(tail);
+};
+// 浏览器预览没有本地文件系统，无法真的打包证据包。诚实失败，避免空路径被当成成功。
+export const ExportSessionDebugBundle = (sessionID) => {
+  const session = previewHistorySessions.find((item) => item.id === sessionID);
+  if (!session) return Promise.reject(new Error(`未找到会话 ${sessionID}`));
+  if (!session.hasDebug) return Promise.reject(new Error(`会话 ${sessionID} 没有调试日志，无法导出证据包`));
+  return Promise.reject(new Error("浏览器预览模式不支持导出证据包 ZIP，请在桌面客户端中使用"));
+};
+export const CancelDelegationTask = (taskID) => {
+  recordPreviewCall("CancelDelegationTask", [taskID]);
+  const task = previewDelegationTasks.find((item) => item.id === taskID && item.cancelable);
+  if (!task) return Promise.resolve(false);
+  const sequence = previewDelegationTasks.reduce((highest, item) => Math.max(highest, Number(item.sequence) || 0), 0) + 1;
+  task.status = "canceled";
+  task.sequence = sequence;
+  task.eventId = `delegation-event-${sequence}`;
+  task.eventType = "canceled";
+  task.cancelable = false;
+  task.finishedAtUnixMs = Date.now();
+  task.updatedAtUnixMs = task.finishedAtUnixMs;
+  task.durationMs = Math.max(0, task.finishedAtUnixMs - task.startedAtUnixMs);
+  return Promise.resolve(true);
+};
+export const ConnectMCPServer = (_workspaceRoot, identifier) => {
+  recordPreviewCall("ConnectMCPServer", [_workspaceRoot, identifier]);
+  const server = previewMCPServers.find((item) => item.identifier === identifier);
+  if (!server) return Promise.reject(new Error("MCP server not found"));
+  if (previewConnectTrustRequiredRemaining > 0) {
+    previewConnectTrustRequiredRemaining -= 1;
+    if (previewTestPlan?.connectMcpTrustRequiredServer) {
+      Object.assign(server, clone(previewTestPlan.connectMcpTrustRequiredServer));
+    }
+    return Promise.reject(new Error(
+      "mcp_workspace_trust_required: workspace MCP server requires explicit trust",
+    ));
+  }
+  Object.assign(server, { status: "connected", hasTools: true, toolCount: 3, lastError: "" });
+  return Promise.resolve(clone(server));
+};
+export const GrantMCPServerTrust = (workspaceRoot, identifier) => {
+  recordPreviewCall("GrantMCPServerTrust", [workspaceRoot, identifier]);
+  const server = previewMCPServers.find((item) => item.identifier === identifier);
+  if (!server) return Promise.reject(new Error("MCP server not found"));
+  Object.assign(server, { trusted: true, trustRequired: false });
+  return Promise.resolve(clone(server));
+};
+export const RevokeMCPServerTrust = (workspaceRoot, identifier) => {
+  recordPreviewCall("RevokeMCPServerTrust", [workspaceRoot, identifier]);
+  const server = previewMCPServers.find((item) => item.identifier === identifier);
+  if (!server) return Promise.reject(new Error("MCP server not found"));
+  Object.assign(server, { trusted: false, trustRequired: Boolean(server.isWorkspace), status: "disconnected", hasTools: false, toolCount: 0 });
+  return Promise.resolve(clone(server));
+};
+export const DisconnectMCPServer = (_workspaceRoot, identifier) => {
+  recordPreviewCall("DisconnectMCPServer", [_workspaceRoot, identifier]);
+  const server = previewMCPServers.find((item) => item.identifier === identifier);
+  if (!server) return Promise.reject(new Error("MCP server not found"));
+  Object.assign(server, { status: "disconnected", hasTools: false, toolCount: 0, lastError: "" });
+  return Promise.resolve(clone(server));
+};
+export const CancelMCPServerConnection = (_identifier, _attemptID) => Promise.resolve(true);
+export const GetCursorAccountStatus = () =>
+  Promise.resolve({ state: "signed_out", authId: "", email: "", error: "" });
+export const StartCursorAccountLogin = () =>
+  Promise.resolve({ state: "waiting", authId: "", email: "", error: "浏览器预览模式：模拟登录中" });
+export const DisconnectCursorAccount = () =>
+  Promise.resolve({ state: "signed_out", authId: "", email: "", error: "" });
+
+function cloneAccounts(items) {
+  return Array.isArray(items) ? items.map((item) => ({
+    id: String(item?.id || ""),
+    email: String(item?.email || ""),
+    authIdHint: String(item?.authIdHint || "").slice(0, 12),
+    tags: Array.isArray(item?.tags) ? item.tags.map((tag) => String(tag)) : [],
+    isCurrent: Boolean(item?.isCurrent),
+    lastUsedAtUnixMs: Number(item?.lastUsedAtUnixMs || 0),
+  })) : [];
+}
+
+let previewCursorAccounts = cloneAccounts(previewTestPlan?.cursorAccounts);
+let previewLoginSession = null;
+let previewPendingSwitch = null;
+let previewPendingExport = null;
+let previewRoutingPolicy = {
+  enabled: false,
+  strategy: "manual",
+  sessionAffinity: false,
+  maxFailoverAttempts: 0,
+  latencyWeight: 25,
+  costWeight: 25,
+  reliabilityWeight: 25,
+  balanceWeight: 25,
+};
+let previewAgentRuns = [];
+let previewConfigProfiles = [];
+let previewComparison = null;
+const previewOfficialSources = [
+  { ref: { kind: "official_mirror", id: "off-preview-1" }, timestampUnixMs: Date.now(), model: "gpt-test", provider: "official", protocol: "POST", status: "200", shapeAvailable: true },
+];
+const previewLocalSources = [
+  { ref: { kind: "local_provider", id: "loc-preview-1" }, timestampUnixMs: Date.now(), model: "gpt-test", provider: "local", protocol: "provider", status: "ok", shapeAvailable: true },
+];
+
+function upsertPreviewAccount(account) {
+  const next = {
+    id: String(account.id || `preview-${previewCursorAccounts.length + 1}`),
+    email: String(account.email || ""),
+    authIdHint: String(account.authIdHint || "").slice(0, 12),
+    tags: Array.isArray(account.tags) ? account.tags.map((tag) => String(tag)) : [],
+    isCurrent: Boolean(account.isCurrent),
+    lastUsedAtUnixMs: Number(account.lastUsedAtUnixMs || Date.now()),
+  };
+  const index = previewCursorAccounts.findIndex((item) => item.id === next.id);
+  if (next.isCurrent) {
+    previewCursorAccounts = previewCursorAccounts.map((item) => ({ ...item, isCurrent: false }));
+  }
+  if (index >= 0) previewCursorAccounts[index] = { ...previewCursorAccounts[index], ...next };
+  else previewCursorAccounts.push(next);
+  return { ...next };
+}
+
+export const GetControlCenterOverview = () => {
+  recordPreviewCall("GetControlCenterOverview");
+  return Promise.resolve({
+    accounts: { state: previewCursorAccounts.length > 0 ? "ready" : "empty", count: previewCursorAccounts.length },
+    requestLab: { state: "ready", count: 2 },
+    routing: { state: previewRoutingPolicy.enabled ? "ready" : "empty" },
+    agents: { state: previewAgentRuns.length > 0 ? "ready" : "empty", count: previewAgentRuns.length },
+    profiles: { state: previewConfigProfiles.length > 0 ? "ready" : "empty", count: previewConfigProfiles.length },
+  });
+};
+export const ListCursorAccounts = () => {
+  recordPreviewCall("ListCursorAccounts");
+  return Promise.resolve(cloneAccounts(previewCursorAccounts));
+};
+export const ImportCursorAccount = (request) => {
+  recordPreviewCall("ImportCursorAccount", [{ mode: request?.mode }]);
+  const mode = String(request?.mode || "");
+  if (mode === "local_cursor") {
+    return Promise.resolve(upsertPreviewAccount({ id: "preview-local", email: "local@preview.test", authIdHint: "local", isCurrent: previewCursorAccounts.every((item) => !item.isCurrent) }));
+  }
+  if (mode === "token") {
+    if (!String(request?.token || "").trim()) return Promise.reject(new Error("浏览器预览模式：未提供 Token"));
+    return Promise.resolve(upsertPreviewAccount({ id: "preview-token", email: "token@preview.test", authIdHint: "token", isCurrent: previewCursorAccounts.every((item) => !item.isCurrent) }));
+  }
+  if (mode === "recovery_json") {
+    if (!String(request?.jsonContent || "").trim()) return Promise.reject(new Error("浏览器预览模式：未提供恢复包"));
+    return Promise.resolve(upsertPreviewAccount({ id: "preview-json", email: "json@preview.test", authIdHint: "json", isCurrent: previewCursorAccounts.every((item) => !item.isCurrent) }));
+  }
+  return Promise.reject(new Error("浏览器预览模式：不支持的导入方式"));
+};
+export const PrepareCursorAccountRecoveryExport = (request) => {
+  recordPreviewCall("PrepareCursorAccountRecoveryExport", [{ count: request?.accountIds?.length ?? 0 }]);
+  previewPendingExport = {
+    operationId: "preview-export",
+    confirmationToken: "preview-export-token",
+    expiresAtUnixMs: Date.now() + 60_000,
+    impactCodes: ["credential_file_created"],
+    rollbackAvailable: false,
+    count: Array.isArray(request?.accountIds) ? request.accountIds.length : 0,
+  };
+  return Promise.resolve({
+    operationId: previewPendingExport.operationId,
+    confirmationToken: previewPendingExport.confirmationToken,
+    expiresAtUnixMs: previewPendingExport.expiresAtUnixMs,
+    impactCodes: previewPendingExport.impactCodes,
+    rollbackAvailable: false,
+  });
+};
+export const ExecuteCursorAccountRecoveryExport = (confirmationToken) => {
+  recordPreviewCall("ExecuteCursorAccountRecoveryExport");
+  if (!previewPendingExport || confirmationToken !== previewPendingExport.confirmationToken) {
+    return Promise.reject(new Error("确认令牌无效或已过期"));
+  }
+  const count = previewPendingExport.count;
+  previewPendingExport = null;
+  return Promise.resolve({
+    operationId: "preview-export",
+    state: "succeeded",
+    exportedCount: count,
+    finishedAtUnixMs: Date.now(),
+  });
+};
+export const SetCurrentCursorAccount = (accountID) => {
+  recordPreviewCall("SetCurrentCursorAccount", [accountID]);
+  const account = previewCursorAccounts.find((item) => item.id === accountID);
+  if (!account) return Promise.reject(new Error("账号不存在"));
+  previewCursorAccounts = previewCursorAccounts.map((item) => ({ ...item, isCurrent: item.id === accountID }));
+  return Promise.resolve({ ...account, isCurrent: true });
+};
+export const UpdateCursorAccountTags = (accountID, tags) => {
+  recordPreviewCall("UpdateCursorAccountTags", [accountID]);
+  const account = previewCursorAccounts.find((item) => item.id === accountID);
+  if (!account) return Promise.reject(new Error("账号不存在"));
+  account.tags = Array.isArray(tags) ? tags.map((tag) => String(tag)) : [];
+  return Promise.resolve({ ...account });
+};
+export const DeleteCursorAccounts = (request) => {
+  recordPreviewCall("DeleteCursorAccounts", [{ count: request?.accountIds?.length ?? 0, clearCurrent: Boolean(request?.clearCurrent) }]);
+  const ids = new Set((request?.accountIds || []).map((id) => String(id)));
+  previewCursorAccounts = previewCursorAccounts.filter((item) => !ids.has(item.id));
+  if (request?.replacementId) {
+    previewCursorAccounts = previewCursorAccounts.map((item) => ({ ...item, isCurrent: item.id === request.replacementId }));
+  } else if (request?.clearCurrent) {
+    previewCursorAccounts = previewCursorAccounts.map((item) => ({ ...item, isCurrent: false }));
+  }
+  return Promise.resolve();
+};
+export const PrepareCursorClientAccountSwitch = (accountID) => {
+  recordPreviewCall("PrepareCursorClientAccountSwitch", [accountID]);
+  const account = previewCursorAccounts.find((item) => item.id === accountID);
+  if (!account) return Promise.reject(new Error("账号不存在"));
+  previewPendingSwitch = {
+    operationId: "preview-switch",
+    confirmationToken: "preview-switch-token",
+    expiresAtUnixMs: Date.now() + 60_000,
+    account,
+  };
+  return Promise.resolve({
+    operationId: previewPendingSwitch.operationId,
+    confirmationToken: previewPendingSwitch.confirmationToken,
+    expiresAtUnixMs: previewPendingSwitch.expiresAtUnixMs,
+    impactCodes: ["cursor_restart_required", "cursor_state_auth_overwrite"],
+    rollbackAvailable: true,
+    account: { ...account },
+    cursorRunning: true,
+    requiresRestart: true,
+    backupFileCount: 1,
+  });
+};
+export const ExecuteCursorClientAccountSwitch = (confirmationToken) => {
+  recordPreviewCall("ExecuteCursorClientAccountSwitch");
+  if (!previewPendingSwitch || confirmationToken !== previewPendingSwitch.confirmationToken) {
+    return Promise.reject(new Error("确认令牌无效或已过期"));
+  }
+  const account = previewPendingSwitch.account;
+  previewPendingSwitch = null;
+  previewCursorAccounts = previewCursorAccounts.map((item) => ({ ...item, isCurrent: item.id === account.id }));
+  return Promise.resolve({
+    operationId: "preview-switch",
+    state: "succeeded",
+    account: { ...account, isCurrent: true },
+    cursorRestarted: true,
+    finishedAtUnixMs: Date.now(),
+  });
+};
+export const BeginCursorAccountLogin = () => {
+  recordPreviewCall("BeginCursorAccountLogin");
+  previewLoginSession = { sessionId: "preview-login", state: "waiting", expiresAtUnixMs: Date.now() + 60_000 };
+  return Promise.resolve({ ...previewLoginSession });
+};
+export const GetCursorAccountLoginStatus = (sessionID) => {
+  recordPreviewCall("GetCursorAccountLoginStatus");
+  if (!previewLoginSession || previewLoginSession.sessionId !== sessionID) {
+    return Promise.reject(new Error("登录会话无效"));
+  }
+  upsertPreviewAccount({
+    id: "preview-oauth",
+    email: "oauth@preview.test",
+    authIdHint: "oauth",
+    isCurrent: previewCursorAccounts.every((item) => !item.isCurrent),
+  });
+  previewLoginSession = { ...previewLoginSession, state: "signed_in" };
+  return Promise.resolve({ sessionId: sessionID, state: "signed_in" });
+};
+export const CancelCursorAccountLogin = (sessionID) => {
+  recordPreviewCall("CancelCursorAccountLogin");
+  if (!previewLoginSession || previewLoginSession.sessionId !== sessionID) {
+    return Promise.reject(new Error("登录会话无效"));
+  }
+  previewLoginSession = null;
+  return Promise.resolve({ operationId: sessionID, state: "succeeded", finishedAtUnixMs: Date.now() });
+};
+
+export const ListRequestSources = (query) => {
+  recordPreviewCall("ListRequestSources", [{ kind: query?.kind }]);
+  const items = query?.kind === "local_provider" ? previewLocalSources : previewOfficialSources;
+  return Promise.resolve({ items, nextCursor: "" });
+};
+export const BuildRequestComparison = (request) => {
+  recordPreviewCall("BuildRequestComparison");
+  previewComparison = {
+    id: "cmp-preview-1",
+    left: previewOfficialSources[0],
+    right: previewLocalSources[0],
+    matchLevel: "explicit",
+    matchReasons: ["user_selected"],
+    sections: [{ name: "messages", diffs: [{ path: "/messages/count", kind: "count", leftSummary: "count=2", rightSummary: "count=1" }] }],
+  };
+  return Promise.resolve(previewComparison);
+};
+export const ExportSanitizedRequestComparison = (comparisonID) => {
+  recordPreviewCall("ExportSanitizedRequestComparison");
+  if (!previewComparison || previewComparison.id !== comparisonID) return Promise.reject(new Error("对比不存在"));
+  return Promise.resolve({ path: "comparison-preview.json", sha256: "abc" });
+};
+export const GetRoutingPolicy = () => {
+  recordPreviewCall("GetRoutingPolicy");
+  return Promise.resolve({ ...previewRoutingPolicy });
+};
+export const SaveRoutingPolicy = (policy) => {
+  recordPreviewCall("SaveRoutingPolicy", [{ strategy: policy?.strategy }]);
+  previewRoutingPolicy = { ...previewRoutingPolicy, ...policy };
+  return Promise.resolve({ ...previewRoutingPolicy });
+};
+export const PreviewRoutingDecision = (request) => {
+  recordPreviewCall("PreviewRoutingDecision", [{ modelId: request?.modelId }]);
+  if (!String(request?.modelId || "").trim()) return Promise.reject(new Error("模型 ID 无效"));
+  return Promise.resolve({
+    decisionId: "dec-preview",
+    strategy: previewRoutingPolicy.strategy,
+    candidates: [{ channelId: "preview-demo-openai", eligible: true, score: 100, reasonCodes: ["manual_order"], pricingKnown: false }],
+  });
+};
+export const GetRoutingDecisionHistory = () => {
+  recordPreviewCall("GetRoutingDecisionHistory");
+  return Promise.resolve({ items: [] });
+};
+export const GetAgentRuns = () => {
+  recordPreviewCall("GetAgentRuns");
+  return Promise.resolve({ items: previewAgentRuns });
+};
+export const GetAgentRun = (runID) => {
+  recordPreviewCall("GetAgentRun");
+  const summary = previewAgentRuns.find((item) => item.runId === runID);
+  if (!summary) return Promise.reject(new Error("运行不存在"));
+  return Promise.resolve({ summary, attempts: [], children: [] });
+};
+export const CancelAgentRun = (runID) => {
+  recordPreviewCall("CancelAgentRun");
+  return Promise.resolve({ operationId: runID, state: "succeeded", finishedAtUnixMs: Date.now() });
+};
+export const PrepareAgentRunRetry = (runID) => {
+  recordPreviewCall("PrepareAgentRunRetry");
+  return Promise.resolve({
+    operationId: `retry-${runID}`,
+    confirmationToken: "preview-retry",
+    expiresAtUnixMs: Date.now() + 60_000,
+    impactCodes: ["agent_retry"],
+    rollbackAvailable: false,
+    run: { runId: runID, status: "failed", retryable: true, sideEffectObserved: false },
+    originalInputAlive: false,
+    retrySafe: true,
+  });
+};
+export const ExecuteAgentRunRetry = () => {
+  recordPreviewCall("ExecuteAgentRunRetry");
+  return Promise.reject(new Error("原始输入不在当前进程中"));
+};
+export const ExportSanitizedAgentRunReport = (runID) => {
+  recordPreviewCall("ExportSanitizedAgentRunReport");
+  return Promise.resolve({ path: `agent-run-${runID}.json`, sha256: "abc" });
+};
+export const ListConfigProfiles = () => {
+  recordPreviewCall("ListConfigProfiles");
+  return Promise.resolve(previewConfigProfiles.map((item) => ({ ...item })));
+};
+export const SaveCurrentConfigProfile = (request) => {
+  recordPreviewCall("SaveCurrentConfigProfile", [{ name: request?.name }]);
+  const profile = {
+    id: `profile-${previewConfigProfiles.length + 1}`,
+    name: String(request?.name || "档案"),
+    domains: Array.isArray(request?.domains) ? request.domains : ["models"],
+    createdAtUnixMs: Date.now(),
+    updatedAtUnixMs: Date.now(),
+  };
+  previewConfigProfiles = [...previewConfigProfiles, profile];
+  return Promise.resolve(profile);
+};
+export const DeleteConfigProfile = (profileID) => {
+  recordPreviewCall("DeleteConfigProfile");
+  previewConfigProfiles = previewConfigProfiles.filter((item) => item.id !== profileID);
+  return Promise.resolve({ operationId: profileID, state: "succeeded", finishedAtUnixMs: Date.now() });
+};
+export const PreviewConfigProfile = (profileID) => {
+  recordPreviewCall("PreviewConfigProfile");
+  const profile = previewConfigProfiles.find((item) => item.id === profileID);
+  if (!profile) return Promise.reject(new Error("档案不存在"));
+  return Promise.resolve({ profile, changes: [{ path: "/routing", changeKind: "update", sensitive: false }], bindings: [], canApply: true });
+};
+export const PrepareConfigProfileApply = (profileID) => {
+  recordPreviewCall("PrepareConfigProfileApply");
+  return Promise.resolve({
+    operationId: `apply-${profileID}`,
+    confirmationToken: "preview-apply",
+    expiresAtUnixMs: Date.now() + 60_000,
+    impactCodes: ["config_rewrite"],
+    rollbackAvailable: true,
+    preview: { profile: { id: profileID, name: "档案", domains: ["routing"] }, changes: [], bindings: [], canApply: true },
+  });
+};
+export const ExecuteConfigProfileApply = (confirmationToken) => {
+  recordPreviewCall("ExecuteConfigProfileApply");
+  if (confirmationToken !== "preview-apply") return Promise.reject(new Error("确认令牌无效或已过期"));
+  return Promise.resolve({ operationId: "apply-preview", state: "succeeded", finishedAtUnixMs: Date.now() });
+};
+export const ExportConfigProfile = (profileID) => {
+  recordPreviewCall("ExportConfigProfile");
+  return Promise.resolve({ path: `profile-${profileID}.json`, sha256: "abc" });
+};
+export const ImportConfigProfile = (content) => {
+  recordPreviewCall("ImportConfigProfile");
+  if (!String(content || "").trim()) return Promise.reject(new Error("导入内容为空"));
+  return Promise.resolve({ profile: { id: "imported", name: "导入档案", domains: ["routing"] }, changes: [{ path: "routing.policy.strategy", changeKind: "update", sensitive: false }], bindings: [{ adapterId: "preview-demo-openai", state: "resolved" }], canApply: true });
+};
+
+function previewStructuredQuotaBalance() {
+  return {
+    supported: true,
+    source: "token_plan",
+    currency: "%",
+    total: 100,
+    used: 32,
+    remaining: 68,
+    planName: "Gemini 使用套餐",
+    fetchedAt: "2026-08-20T08:00:00Z",
+    windows: [
+      { id: "5h", label: "5小时", unit: "%", used: 32, limit: 100, remaining: 68, usedFraction: 0.32, remainingFraction: 0.68, resetsAt: "2026-08-20T12:00:00Z", status: "ok" },
+      { id: "7d", label: "周限额", unit: "%", used: 84, limit: 100, remaining: 16, usedFraction: 0.84, remainingFraction: 0.16, resetsAt: "2026-08-24T00:00:00Z", status: "warning" },
+    ],
+    message: "",
+  };
+}

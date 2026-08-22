@@ -1,0 +1,52 @@
+{
+  "name": "frontend",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "dev:browser": "vite --mode browser-preview --host 0.0.0.0",
+    "build:dev": "node ./scripts/run-vite-build.mjs --scan --minify false --mode development",
+    "build": "node ./scripts/run-vite-build.mjs --scan --mode production && node ./scripts/assert-build-output.mjs",
+    "preview": "vite preview",
+    "test:unit": "node --test src/utils/*.test.js src/services/*.test.js src/composables/*.test.js",
+    "test:e2e": "playwright test",
+    "test:e2e:headed": "playwright test --headed",
+    "lint": "eslint src scripts plugins",
+    "i18n:scan": "node --input-type=module -e \"import { syncCatalogFiles } from './plugins/static-i18n-plugin.js'; import path from 'path'; syncCatalogFiles(path.resolve('.')); console.log('i18n catalog synced');\""
+  },
+  "dependencies": {
+    "@floating-ui/dom": "^1.7.4",
+    "@iconify/json": "^2.2.447",
+    "@wailsio/runtime": "latest",
+    "chart.js": "^4.5.1",
+    "copy-text-to-clipboard": "^3.2.2",
+    "dayjs": "^1.11.20",
+    "echarts": "^6.1.0",
+    "marked": "15.0.12",
+    "md-editor-v3": "^6.5.5",
+    "resize-observer-polyfill": "^1.5.1",
+    "vue": "^3.5.22",
+    "vue-chartjs": "^5.3.3",
+    "vue-router": "^4.6.3"
+  },
+  "devDependencies": {
+    "@iconify/tailwind": "^1.2.0",
+    "@playwright/test": "^1.62.1",
+    "@vitejs/plugin-vue": "^6.0.1",
+    "@vitejs/plugin-vue-jsx": "^5.1.1",
+    "autoprefixer": "^10.5.0",
+    "code-inspector-plugin": "^1.4.3",
+    "eslint": "^10.8.0",
+    "eslint-plugin-vue": "^10.10.0",
+    "globals": "^17.9.0",
+    "postcss": "^8.5.14",
+    "tailwindcss": "^3.4.17",
+    "vite": "^7.1.11",
+    "vite-plugin-top-level-await": "^1.6.0",
+    "vue-eslint-parser": "^10.4.1"
+  },
+  "browserslist": [
+    "Safari >= 13"
+  ]
+}

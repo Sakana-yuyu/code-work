@@ -1,0 +1,57 @@
+:root {
+  color-scheme: dark;
+  --cw-surface-workbench: #111317;
+  --cw-surface-titlebar: #171a1f;
+  --cw-surface-sidebar: #15181d;
+  --cw-surface-raised: #1c2027;
+  --cw-surface-hover: #252b34;
+  --cw-surface-active: #2b3a52;
+  --cw-surface-overlay: #20252d;
+  --cw-border-subtle: #2b3038;
+  --cw-border-strong: #414957;
+  --cw-text-primary: #f1f4f8;
+  --cw-text-secondary: #b7c0cc;
+  --cw-text-muted: #7f8a99;
+  --cw-accent: #78a9ff;
+  --cw-accent-hover: #a3c4ff;
+  --cw-accent-ink: #0a1a33;
+  --cw-success: #67d4a8;
+  --cw-warning: #f6c56b;
+  --cw-danger: #fb8c98;
+  --cw-focus-ring: #8cb8ff;
+  --cw-titlebar-height: 38px;
+  --cw-statusbar-height: 24px;
+  --cw-activity-width: 48px;
+  --cw-sidebar-width: 258px;
+  --cw-task-width: 344px;
+  --cw-radius-sm: 4px;
+  --cw-radius-md: 7px;
+  --cw-shadow-overlay: 0 18px 50px rgba(0, 0, 0, 0.42);
+  --cw-font-ui: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei", sans-serif;
+  --cw-font-mono: "Cascadia Code", "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+button,
+input {
+  font: inherit;
+}
+
+:focus-visible {
+  outline: 2px solid var(--cw-focus-ring);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    transition-duration: 1ms !important;
+    animation-duration: 1ms !important;
+    animation-iteration-count: 1 !important;
+  }
+}

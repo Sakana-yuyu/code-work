@@ -1,0 +1,1255 @@
+package mitm
+
+import (
+	"context"
+	"crypto/sha256"
+	"crypto/tls"
+	"crypto/x509"
+	"encoding/hex"
+	"errors"
+	"fmt"
+	"io"
+	stdlog "log"
+	"net"
+	"net/http"
+	"net/url"
+	"strconv"
+	"strings"
+	"sync"
+	"time"
+
+	"cursor/internal/certs"
+	"cursor/internal/logger"
+	"cursor/internal/netproxy"
+	"cursor/internal/safego"
+
+	"github.com/elazarl/goproxy"
+)
+
+const (
+	// HeaderServerUpstreamURL 表示转发给 backend server 时携带的原始上游地址。
+	HeaderServerUpstreamURL = "X-Server-Upstream-URL"
+)
+
+// ProxyServer 定义了当前模块中的 ProxyServer 类型。
+type ProxyServer struct {
+	// addr 表示当前声明中的 addr。
+	addr string
+	// baseURL 表示当前声明中的 baseURL。
+	baseURL string
+	// certManager 表示当前声明中的 certManager。
+	certManager *certs.Manager
+	// baseEndpoint 表示当前声明中的 baseEndpoint。
+	baseEndpoint *url.URL
+	// baseMu 表示当前声明中的 baseMu。
+	baseMu sync.RWMutex
+
+	// upstreamClient 表示当前声明中的 upstreamClient。
+	upstreamClient *http.Client
+
+	// proxy 表示当前声明中的 proxy。
+	proxy *goproxy.ProxyHttpServer
+
+	// runMu 表示当前声明中的 runMu。
+	runMu sync.RWMutex
+	// httpServer 表示当前声明中的 httpServer。
+	httpServer *http.Server
+	// serveErrCh 表示当前声明中的 serveErrCh。
+	serveErrCh chan error
+
+	// mirrorConfig 提供镜像记录配置；nil 表示不启用。
+	mirrorConfig MirrorCaptureConfig
+	// mirrorRec 负责把镜像请求/响应写入 official.raw.jsonl；nil 表示不可用。
+	mirrorRec *mirrorRecorder
+	// mirrorMu 保护 mirrorConfig/mirrorRec 的并发替换。
+	mirrorMu sync.RWMutex
+}
+
+// Snapshot 定义了当前模块中的 Snapshot 类型。
+type Snapshot struct {
+	// ListenAddr 表示当前声明中的 ListenAddr。
+	ListenAddr string `json:"listenAddr"`
+	// BaseURL 表示当前声明中的 BaseURL。
+	BaseURL string `json:"baseUrl"`
+	// Running 表示当前声明中的 Running。
+	Running bool `json:"running"`
+}
+
+// hopByHopHeaders 表示当前模块中的 hopByHopHeaders 状态值。
+var hopByHopHeaders = map[string]struct{}{
+	"Connection":          {},
+	"Proxy-Connection":    {},
+	"Keep-Alive":          {},
+	"Proxy-Authenticate":  {},
+	"Proxy-Authorization": {},
+	"Te":                  {},
+	"Trailer":             {},
+	"Transfer-Encoding":   {},
+	"Upgrade":             {},
+}
+
+const (
+	proxyLogRateLimitWindow  = 30 * time.Second
+	proxyLogRateLimitTTL     = 5 * time.Minute
+	proxyLogRateLimitMaxKeys = 1024
+)
+
+var proxyLogLimiter = newLogLimiter(proxyLogRateLimitWindow)
+
+type logLimiter struct {
+	mu      sync.Mutex
+	window  time.Duration
+	entries map[string]*logLimitEntry
+}
+
+type logLimitEntry struct {
+	nextAllowed time.Time
+	lastSeen    time.Time
+	suppressed  int
+}
+
+func newLogLimiter(window time.Duration) *logLimiter {
+	if window <= 0 {
+		window = 30 * time.Second
+	}
+	return &logLimiter{
+		window:  window,
+		entries: make(map[string]*logLimitEntry),
+	}
+}
+
+func (limiter *logLimiter) ShouldLog(key string) (suppressed int, ok bool) {
+	if limiter == nil {
+		return 0, true
+	}
+	key = strings.TrimSpace(key)
+	if key == "" {
+		return 0, true
+	}
+
+	now := time.Now()
+	limiter.mu.Lock()
+	defer limiter.mu.Unlock()
+	limiter.pruneLocked(now)
+
+	entry := limiter.entries[key]
+	if entry == nil {
+		limiter.entries[key] = &logLimitEntry{nextAllowed: now.Add(limiter.window), lastSeen: now}
+		return 0, true
+	}
+	entry.lastSeen = now
+	if now.Before(entry.nextAllowed) {
+		entry.suppressed++
+		return 0, false
+	}
+
+	suppressed = entry.suppressed
+	entry.suppressed = 0
+	entry.nextAllowed = now.Add(limiter.window)
+	return suppressed, true
+}
+
+func (limiter *logLimiter) pruneLocked(now time.Time) {
+	if len(limiter.entries) == 0 {
+		return
+	}
+	cutoff := now.Add(-proxyLogRateLimitTTL)
+	for key, entry := range limiter.entries {
+		if entry == nil || entry.lastSeen.Before(cutoff) {
+			delete(limiter.entries, key)
+		}
+	}
+	for len(limiter.entries) >= proxyLogRateLimitMaxKeys {
+		oldestKey := ""
+		var oldestSeen time.Time
+		for key, entry := range limiter.entries {
+			if entry == nil {
+				oldestKey = key
+				break
+			}
+			if oldestKey == "" || entry.lastSeen.Before(oldestSeen) {
+				oldestKey = key
+				oldestSeen = entry.lastSeen
+			}
+		}
+		if oldestKey == "" {
+			return
+		}
+		delete(limiter.entries, oldestKey)
+	}
+}
+
+func logSuppressedProxyMessages(prefix string, suppressed int) {
+	if suppressed <= 0 {
+		return
+	}
+	logger.Infof("%s: suppressed %d repeated messages in last %s", prefix, suppressed, proxyLogRateLimitWindow)
+}
+
+// NewProxyServer 用于处理与 NewProxyServer 相关的逻辑。
+// 保真记录跟随配置的 mirrorCapture.protocolFidelity（默认关闭）实时生效；
+// 配置实现方未提供该开关时保持关闭。
+func NewProxyServer(addr, baseURL, historyRoot string, mirror MirrorCaptureConfig, certManager *certs.Manager) (*ProxyServer, error) {
+	return newProxyServer(addr, baseURL, historyRoot, mirror, certManager, mirrorProtocolFidelityFunc(mirror))
+}
+
+// NewIsolatedMirrorCaptureProxyServer 仅供隔离 E2E 启动器调用，无条件保真记录原始 body bytes，
+// 不受 mirrorCapture.protocolFidelity 配置影响。
+func NewIsolatedMirrorCaptureProxyServer(addr, baseURL, historyRoot string, mirror MirrorCaptureConfig, certManager *certs.Manager) (*ProxyServer, error) {
+	return newProxyServer(addr, baseURL, historyRoot, mirror, certManager, func() bool { return true })
+}
+
+func newProxyServer(addr, baseURL, historyRoot string, mirror MirrorCaptureConfig, certManager *certs.Manager, protocolFidelity func() bool) (*ProxyServer, error) {
+	u, normalizedBaseURL, err := parseBaseURL(baseURL)
+	if err != nil {
+		return nil, err
+	}
+
+	s := &ProxyServer{
+		addr:         addr,
+		baseURL:      normalizedBaseURL,
+		certManager:  certManager,
+		baseEndpoint: u,
+		upstreamClient: &http.Client{
+			Transport: &http.Transport{
+				DialContext:           (&net.Dialer{Timeout: 10 * time.Second, KeepAlive: 30 * time.Second}).DialContext,
+				ForceAttemptHTTP2:     true,
+				MaxIdleConns:          200,
+				IdleConnTimeout:       90 * time.Second,
+				TLSHandshakeTimeout:   10 * time.Second,
+				ExpectContinueTimeout: 1 * time.Second,
+				ResponseHeaderTimeout: 5 * time.Minute,
+			},
+		},
+		mirrorConfig: mirror,
+	}
+	if historyRoot != "" {
+		s.mirrorRec = newConfiguredMirrorRecorder(historyRoot, protocolFidelity)
+	}
+	s.proxy = s.newGoproxyHandler()
+	return s, nil
+}
+
+// parseBaseURL 用于处理与 parseBaseURL 相关的逻辑。
+func parseBaseURL(baseURL string) (*url.URL, string, error) {
+	baseURL = strings.TrimSpace(baseURL)
+	if baseURL == "" {
+		return nil, "", errors.New("base URL is empty")
+	}
+	u, err := url.Parse(baseURL)
+	if err != nil {
+		return nil, "", fmt.Errorf("parse base URL: %w", err)
+	}
+	if u.Scheme != "http" && u.Scheme != "https" {
+		return nil, "", fmt.Errorf("unsupported base URL scheme %q", u.Scheme)
+	}
+	if strings.TrimSpace(u.Host) == "" {
+		return nil, "", errors.New("base URL host is empty")
+	}
+
+	base := *u
+	base.Path = ""
+	base.RawPath = ""
+	base.RawQuery = ""
+	base.Fragment = ""
+	base.RawFragment = ""
+	normalizedBaseURL := strings.TrimRight(base.String(), "/")
+	if normalizedBaseURL == "" {
+		return nil, "", errors.New("base URL is empty")
+	}
+	return &base, normalizedBaseURL, nil
+}
+
+// UpdateBaseURL 用于处理与 UpdateBaseURL 相关的逻辑。
+func (s *ProxyServer) UpdateBaseURL(baseURL string) error {
+	u, normalizedBaseURL, err := parseBaseURL(baseURL)
+	if err != nil {
+		return err
+	}
+	s.baseMu.Lock()
+	s.baseURL = normalizedBaseURL
+	s.baseEndpoint = u
+	s.baseMu.Unlock()
+	return nil
+}
+
+// Start 用于处理与 Start 相关的逻辑。
+func (s *ProxyServer) Start() error {
+	s.runMu.Lock()
+	defer s.runMu.Unlock()
+	if s.httpServer != nil {
+		return errors.New("proxy is already running")
+	}
+
+	httpServer := &http.Server{
+		Addr:     s.addr,
+		Handler:  s.proxy,
+		ErrorLog: stdlog.New(&httpErrorFilterWriter{}, "", stdlog.LstdFlags),
+	}
+
+	ln, err := net.Listen("tcp", s.addr)
+	if err != nil {
+		return err
+	}
+
+	// 端口为 0 时由系统分配空闲端口；对外暴露实际地址，供隔离验证等调用方
+	// 写入正确的客户端代理设置，避免误写不可连接的 :0。
+	s.addr = ln.Addr().String()
+	s.httpServer = httpServer
+	s.serveErrCh = make(chan error, 1)
+
+	safego.Go("mitm:http-serve", func() {
+		var serveErr error
+		err := httpServer.Serve(ln)
+		if err != nil && !errors.Is(err, http.ErrServerClosed) {
+			serveErr = err
+		}
+
+		s.runMu.Lock()
+		if s.serveErrCh != nil {
+			s.serveErrCh <- serveErr
+			close(s.serveErrCh)
+			s.serveErrCh = nil
+		}
+		if s.httpServer == httpServer {
+			s.httpServer = nil
+		}
+		s.runMu.Unlock()
+		// 异常退出（非正常 Shutdown）：服务已不可用，及时关闭镜像记录器释放文件句柄。
+		// 正常 Stop 路径由 Stop 在 Shutdown 后调用 closeMirrorRecorder（幂等，重复调用安全）。
+		if serveErr != nil {
+			s.closeMirrorRecorder()
+		}
+	})
+
+	return nil
+}
+
+// Stop 用于处理与 Stop 相关的逻辑。
+func (s *ProxyServer) Stop(ctx context.Context) error {
+	s.runMu.Lock()
+	httpServer := s.httpServer
+	if httpServer == nil {
+		s.runMu.Unlock()
+		return nil
+	}
+	s.httpServer = nil
+	s.runMu.Unlock()
+	err := httpServer.Shutdown(ctx)
+	// 排空活跃请求后关闭镜像记录器，释放文件句柄。
+	s.closeMirrorRecorder()
+	return err
+}
+
+// IsRunning 用于处理与 IsRunning 相关的逻辑。
+func (s *ProxyServer) IsRunning() bool {
+	s.runMu.RLock()
+	running := s.httpServer != nil
+	s.runMu.RUnlock()
+	return running
+}
+
+// Snapshot 用于处理与 Snapshot 相关的逻辑。
+func (s *ProxyServer) Snapshot() Snapshot {
+	baseURL := s.currentBaseURL()
+	return Snapshot{
+		ListenAddr: s.addr,
+		BaseURL:    baseURL,
+		Running:    s.IsRunning(),
+	}
+}
+
+// currentBaseURL 用于处理与 currentBaseURL 相关的逻辑。
+func (s *ProxyServer) currentBaseURL() string {
+	s.baseMu.RLock()
+	baseURL := s.baseURL
+	s.baseMu.RUnlock()
+	return baseURL
+}
+
+// currentBaseEndpoint 用于处理与 currentBaseEndpoint 相关的逻辑。
+func (s *ProxyServer) currentBaseEndpoint() *url.URL {
+	s.baseMu.RLock()
+	endpoint := s.baseEndpoint
+	s.baseMu.RUnlock()
+	if endpoint == nil {
+		return nil
+	}
+	clone := *endpoint
+	return &clone
+}
+
+// newGoproxyHandler 用于处理与 newGoproxyHandler 相关的逻辑。
+func (s *ProxyServer) newGoproxyHandler() *goproxy.ProxyHttpServer {
+	proxy := goproxy.NewProxyHttpServer()
+	proxy.Verbose = false
+	proxy.AllowHTTP2 = true
+	proxy.Logger = &goproxyLogAdapter{}
+	proxy.CertStore = newMITMCertStore()
+	transport := &http.Transport{
+		DialContext:           (&net.Dialer{Timeout: 10 * time.Second, KeepAlive: 30 * time.Second}).DialContext,
+		ForceAttemptHTTP2:     true,
+		MaxIdleConns:          200,
+		IdleConnTimeout:       90 * time.Second,
+		TLSHandshakeTimeout:   10 * time.Second,
+		ExpectContinueTimeout: 1 * time.Second,
+		ResponseHeaderTimeout: 60 * time.Second,
+	}
+	if s.mirrorRec.fidelityEnabled() {
+		// 保真抓包使用独立上游连接，避免失效 keep-alive 触发带 body 的 Connect 请求回卷失败。
+		// transport 无法安全地并发改写，因此只按构造时的开关取值；运行中打开保真开关时
+		// keep-alive 行为与普通镜像记录一致，不构成相对既有镜像模式的回退。
+		transport.DisableKeepAlives = true
+	}
+	proxy.Tr = netproxy.NewTransport(transport)
+	proxy.ConnectionErrHandler = func(conn io.Writer, ctx *goproxy.ProxyCtx, err error) {
+		host := requestHost(ctx)
+		remoteAddr := requestRemoteAddr(ctx)
+		ua := trimForLog(requestUserAgent(ctx), 160)
+		msg := fmt.Sprintf("proxy connect error: host=%s remote=%s ua=%q err=%v", host, remoteAddr, ua, err)
+		key := "proxy-connect-error|" + strings.ToLower(strings.TrimSpace(host)) + "|" + errorRateLimitKey(err)
+		if suppressed, ok := proxyLogLimiter.ShouldLog(key); ok {
+			logSuppressedProxyMessages("proxy connect error", suppressed)
+			logger.Errorf("%s", msg)
+		}
+	}
+
+	var mitmAction *goproxy.ConnectAction
+	if s.certManager != nil {
+		caCert, err := s.certManager.CATLSCertificate()
+		if err != nil {
+			logger.Errorf("MITM disabled: invalid CA config err=%v", err)
+		} else {
+			logMITMCAInfo(caCert)
+			baseTLSConfigFromCA := goproxy.TLSConfigFromCA(caCert)
+			mitmAction = &goproxy.ConnectAction{
+				Action: goproxy.ConnectMitm,
+				TLSConfig: func(host string, ctx *goproxy.ProxyCtx) (*tls.Config, error) {
+					cfg, err := baseTLSConfigFromCA(host, ctx)
+					connectHost := normalizeConnectHost(host)
+					remoteAddr := requestRemoteAddr(ctx)
+					ua := trimForLog(requestUserAgent(ctx), 160)
+					if err != nil {
+						logger.Errorf(
+							"MITM tls config failed: connect_host=%s remote=%s ua=%q err=%v",
+							connectHost,
+							remoteAddr,
+							ua,
+							err,
+						)
+						return nil, err
+					}
+
+					return cfg, nil
+				},
+			}
+		}
+	}
+	proxy.OnRequest().HandleConnect(goproxy.FuncHttpsHandler(func(host string, ctx *goproxy.ProxyCtx) (*goproxy.ConnectAction, string) {
+		if mitmAction == nil {
+			return goproxy.OkConnect, host
+		}
+		if isWhitelistedRelayHost(host) || s.isMirrorHost(host) {
+			return mitmAction, host
+		}
+		return goproxy.OkConnect, host
+	}))
+
+	// MITM 解密后：本地服务模式把 Cursor relay 域名转发到 backend；
+	// 官方上游模式让 goproxy 保持原始目标直通，镜像域名仍可旁路记录。
+	proxy.OnRequest().DoFunc(func(req *http.Request, ctx *goproxy.ProxyCtx) (*http.Request, *http.Response) {
+		req.Header.Del(HeaderServerUpstreamURL)
+
+		host := hostFromHTTPRequest(req)
+		if isWhitelistedRelayHost(host) && s.routesCursorRelayLocally() {
+			if shouldHandleLocalCORSPreflight(req) {
+				return req, buildLocalCORSPreflightResponse(req)
+			}
+			raw := requestURL(req)
+			if parsedRaw, rawErr := rawURLForRelay(req); rawErr == nil {
+				raw = parsedRaw
+			}
+
+			resp, err := s.forwardToServer(req)
+			if err != nil {
+				logger.Errorf("转发失败： %s %s %v", req.Method, raw, err)
+				return req, goproxy.NewResponse(req, goproxy.ContentTypeText, http.StatusBadGateway, "bad gateway")
+			}
+
+			return req, resp
+		}
+
+		if s.mirrorEnabledForHost(host) {
+			// 镜像记录：解密后记录明文，直通官方（不转发 backend）。
+			exchange := newMirrorExchange(ctx)
+			ctx.UserData = exchange
+			s.recordMirrorRequest(exchange, req)
+		}
+		return req, nil
+	})
+
+	// 镜像记录响应流：SSE 逐 chunk tee 一份到记录器，客户端流不受影响。
+	proxy.OnResponse().DoFunc(func(resp *http.Response, ctx *goproxy.ProxyCtx) *http.Response {
+		if resp == nil || resp.Body == nil {
+			return resp
+		}
+		exchange, ok := mirrorExchangeFromProxyCtx(ctx)
+		if !ok {
+			return resp
+		}
+		host := ""
+		if resp.Request != nil {
+			host = hostFromHTTPRequest(resp.Request)
+		}
+		if !s.mirrorEnabledForHost(host) {
+			return resp
+		}
+		resp.Body = s.wrapMirrorExchangeResponse(host, exchange, resp)
+		return resp
+	})
+	return proxy
+}
+
+// forwardToServer 用于处理与 forwardToServer 相关的逻辑。
+func (s *ProxyServer) forwardToServer(incoming *http.Request) (*http.Response, error) {
+	if incoming == nil {
+		return nil, errors.New("nil request")
+	}
+
+	rawURL, err := rawURLForRelay(incoming)
+	if err != nil {
+		return nil, err
+	}
+	endpoint := s.currentBaseEndpoint()
+	if endpoint == nil {
+		return nil, errors.New("server endpoint is not configured")
+	}
+	forwardURL := *endpoint
+	if incoming.URL != nil {
+		forwardURL.Path = incoming.URL.Path
+		forwardURL.RawPath = incoming.URL.RawPath
+		forwardURL.RawQuery = incoming.URL.RawQuery
+	}
+	serverReq, err := http.NewRequestWithContext(incoming.Context(), incoming.Method, forwardURL.String(), incoming.Body)
+	if err != nil {
+		return nil, err
+	}
+	serverReq.ContentLength = incoming.ContentLength
+	copyHeaders(serverReq.Header, incoming.Header)
+	serverReq.Header.Set(HeaderServerUpstreamURL, rawURL)
+	removeHopByHop(serverReq.Header)
+
+	resp, err := s.upstreamClient.Do(serverReq)
+	if err != nil {
+		return nil, fmt.Errorf("forward to backend server: %w", err)
+	}
+	removeHopByHop(resp.Header)
+	preserveResponseTrailers(resp)
+	return resp, nil
+}
+
+// isUnaryRPCNeedStreamingForward 判断路径是否需要 streaming forward。
+//
+// 这些 unary RPC 在 backend 内部需要等 BYOK 模型同步返回完整结果，
+// 而 Cursor 客户端对这类请求有较短的等待超时（约 10 秒）。
+// streaming forward 立即返回 HTTP 响应头，让 Cursor 不触发超时，
+// body 通过 io.Pipe 异步回传。
+func isUnaryRPCNeedStreamingForward(path string) bool {
+	if path == "" {
+		return false
+	}
+	// commit message 生成：需要等模型出完整文本，容易超时
+	if strings.HasSuffix(path, "/WriteGitCommitMessage") {
+		return true
+	}
+	return false
+}
+
+// forwardToServerStreaming 对耗时的 unary RPC 做"先返回响应头、body 异步填充"的转发。
+//
+// Cursor 对 WriteGitCommitMessage 这类 unary RPC 有客户端侧短超时（约 10 秒）。
+// 同步转发模式下，如果 backend 在 10 秒内没有返回响应头，Cursor 就会断连。
+// 这里通过 io.Pipe 构造一个"即时响应头 + 延迟 body"的 response：
+//   - response header 立即返回给 Cursor（200 OK + Content-Type）
+//   - goroutine 异步等待 backend 结果，通过 pipe 把 body 流式回传
+//
+// 注意：如果 backend 最终返回错误（非 200），status code 已经发给 Cursor 无法更改，
+// 但 Connect 的错误信息编码在 body trailer 中，Cursor 仍能从 body 解析出错误。
+func (s *ProxyServer) forwardToServerStreaming(incoming *http.Request) (*http.Response, error) {
+	if incoming == nil {
+		return nil, errors.New("nil request")
+	}
+
+	// 先读取并缓存请求 body，goroutine 中原始 body 可能已关闭
+	bodyBytes, err := io.ReadAll(incoming.Body)
+	if err != nil {
+		return nil, fmt.Errorf("read request body: %w", err)
+	}
+	incoming.Body.Close()
+	incoming.Body = io.NopCloser(strings.NewReader(string(bodyBytes)))
+	incoming.ContentLength = int64(len(bodyBytes))
+
+	rawURL, err := rawURLForRelay(incoming)
+	if err != nil {
+		return nil, err
+	}
+	endpoint := s.currentBaseEndpoint()
+	if endpoint == nil {
+		return nil, errors.New("server endpoint is not configured")
+	}
+
+	// 从请求的 Content-Type 推断响应的 Content-Type
+	respContentType := "application/proto"
+	reqContentType := strings.TrimSpace(strings.ToLower(incoming.Header.Get("Content-Type")))
+	if strings.HasPrefix(reqContentType, "application/json") {
+		respContentType = "application/json"
+	}
+
+	pr, pw := io.Pipe()
+
+	// 立即构造 response：header 部分确定，body 从 pipe 读取
+	// Request 和 Status 必须设置：goproxy MITM TLS 路径在写入 response 时
+	// 会访问 resp.Request.Method（https.go:393），nil 会触发 panic 导致连接被
+	// defer rawClientTls.Close() 关闭，客户端表现为 [aborted] socket hang up。
+	resp := &http.Response{
+		StatusCode:    http.StatusOK,
+		Status:        "200 OK",
+		ProtoMajor:    1,
+		ProtoMinor:    1,
+		Header:        http.Header{},
+		Body:          pr,
+		ContentLength: -1, // chunked transfer encoding
+		Request:       incoming,
+	}
+	resp.Header.Set("Content-Type", respContentType)
+
+	// 异步转发到 backend，body 结果写入 pipe
+	safego.Go("mitm:stream-forward", func() {
+		defer pr.Close()
+
+		forwardURL := *endpoint
+		if incoming.URL != nil {
+			forwardURL.Path = incoming.URL.Path
+			forwardURL.RawPath = incoming.URL.RawPath
+			forwardURL.RawQuery = incoming.URL.RawQuery
+		}
+
+		// 上游请求派生自客户端请求上下文：客户端断开时立即停止拉取 backend 流，
+		// 避免 goroutine 与上游连接悬挂到超时才释放。
+		forwardCtx := incoming.Context()
+		if forwardCtx == nil {
+			forwardCtx = context.Background()
+		}
+		serverReq, err := http.NewRequestWithContext(forwardCtx, incoming.Method, forwardURL.String(), strings.NewReader(string(bodyBytes)))
+		if err != nil {
+			pw.CloseWithError(fmt.Errorf("build forward request: %w", err))
+			return
+		}
+		serverReq.ContentLength = int64(len(bodyBytes))
+		copyHeaders(serverReq.Header, incoming.Header)
+		serverReq.Header.Set(HeaderServerUpstreamURL, rawURL)
+		removeHopByHop(serverReq.Header)
+
+		backendResp, err := s.upstreamClient.Do(serverReq)
+		if err != nil {
+			logger.Errorf("streaming forward backend error: path=%s error=%v", incoming.URL.Path, err)
+			pw.CloseWithError(err)
+			return
+		}
+		defer backendResp.Body.Close()
+
+		removeHopByHop(backendResp.Header)
+		preserveResponseTrailers(backendResp)
+
+		if _, err := io.Copy(pw, backendResp.Body); err != nil {
+			pw.CloseWithError(err)
+			return
+		}
+		pw.Close()
+	})
+
+	return resp, nil
+}
+
+// MITM 转发会先移除 hop-by-hop 头。对普通请求这没问题，但 Connect 流的
+// 结构化错误和结束状态可能通过 trailers 传递；如果这里丢掉 Trailer 头，
+// Cursor 只能看到一个不完整的长连接关闭，并显示为 Network disconnected。
+func preserveResponseTrailers(resp *http.Response) {
+	if resp == nil || len(resp.Trailer) == 0 {
+		return
+	}
+	keys := make([]string, 0, len(resp.Trailer))
+	for key := range resp.Trailer {
+		canonical := http.CanonicalHeaderKey(strings.TrimSpace(key))
+		if canonical == "" {
+			continue
+		}
+		keys = append(keys, canonical)
+	}
+	if len(keys) == 0 {
+		return
+	}
+	resp.Header.Set("Trailer", strings.Join(keys, ", "))
+}
+
+// requestHost 用于处理与 requestHost 相关的逻辑。
+func requestHost(ctx *goproxy.ProxyCtx) string {
+	if ctx == nil || ctx.Req == nil {
+		return ""
+	}
+	if strings.TrimSpace(ctx.Req.Host) != "" {
+		return ctx.Req.Host
+	}
+	if ctx.Req.URL != nil {
+		return ctx.Req.URL.Host
+	}
+	return ""
+}
+
+// requestRemoteAddr 用于处理与 requestRemoteAddr 相关的逻辑。
+func requestRemoteAddr(ctx *goproxy.ProxyCtx) string {
+	if ctx == nil || ctx.Req == nil {
+		return "-"
+	}
+	remoteAddr := strings.TrimSpace(ctx.Req.RemoteAddr)
+	if remoteAddr == "" {
+		return "-"
+	}
+	return remoteAddr
+}
+
+// requestUserAgent 用于处理与 requestUserAgent 相关的逻辑。
+func requestUserAgent(ctx *goproxy.ProxyCtx) string {
+	if ctx == nil || ctx.Req == nil {
+		return "-"
+	}
+	ua := strings.TrimSpace(ctx.Req.UserAgent())
+	if ua == "" {
+		return "-"
+	}
+	return ua
+}
+
+// requestURL 用于处理与 requestURL 相关的逻辑。
+func requestURL(req *http.Request) string {
+	if req == nil || req.URL == nil {
+		return ""
+	}
+	u := req.URL.String()
+	if strings.TrimSpace(u) == "" {
+		return "/"
+	}
+	return u
+}
+
+// rawURLForRelay 用于处理与 rawURLForRelay 相关的逻辑。
+func rawURLForRelay(r *http.Request) (string, error) {
+	if r == nil {
+		return "", errors.New("nil request")
+	}
+	if r.URL != nil && r.URL.IsAbs() {
+		return r.URL.String(), nil
+	}
+
+	host := strings.TrimSpace(r.Host)
+	if host == "" && r.URL != nil {
+		host = strings.TrimSpace(r.URL.Host)
+	}
+	if host == "" {
+		return "", errors.New("missing host")
+	}
+
+	scheme := "https"
+	if r.TLS == nil {
+		scheme = "http"
+	}
+	path := "/"
+	if r.URL != nil {
+		if strings.TrimSpace(r.URL.RequestURI()) != "" {
+			path = r.URL.RequestURI()
+		}
+	}
+	return scheme + "://" + host + path, nil
+}
+
+// copyHeaders 用于处理与 copyHeaders 相关的逻辑。
+func copyHeaders(dst, src http.Header) {
+	removeHopByHop(src)
+	for k, vv := range src {
+		for _, v := range vv {
+			dst.Add(k, v)
+		}
+	}
+}
+
+// removeHopByHop 用于处理与 removeHopByHop 相关的逻辑。
+func removeHopByHop(h http.Header) {
+	if h == nil {
+		return
+	}
+	connectionVals := h.Values("Connection")
+	for _, line := range connectionVals {
+		for _, token := range strings.Split(line, ",") {
+			name := http.CanonicalHeaderKey(strings.TrimSpace(token))
+			if name != "" {
+				h.Del(name)
+			}
+		}
+	}
+	for k := range hopByHopHeaders {
+		h.Del(k)
+	}
+}
+
+// trimForLog 用于处理与 trimForLog 相关的逻辑。
+func trimForLog(text string, limit int) string {
+	text = strings.TrimSpace(text)
+	if limit <= 0 {
+		limit = 160
+	}
+	runes := []rune(text)
+	if len(runes) <= limit {
+		return text
+	}
+	return string(runes[:limit]) + "..."
+}
+
+// normalizeConnectHost 用于处理与 normalizeConnectHost 相关的逻辑。
+func normalizeConnectHost(host string) string {
+	host = strings.TrimSpace(host)
+	if host == "" {
+		return "-"
+	}
+	return host
+}
+
+// hostFromHTTPRequest 用于处理与 hostFromHTTPRequest 相关的逻辑。
+func hostFromHTTPRequest(req *http.Request) string {
+	if req == nil {
+		return ""
+	}
+	if strings.TrimSpace(req.Host) != "" {
+		return req.Host
+	}
+	if req.URL != nil {
+		return req.URL.Host
+	}
+	return ""
+}
+
+// isWhitelistedRelayHost 用于处理与 isWhitelistedRelayHost 相关的逻辑。
+func isWhitelistedRelayHost(host string) bool {
+	host = strings.TrimSpace(strings.ToLower(host))
+	if host == "" {
+		return false
+	}
+	if strings.HasPrefix(host, "[") {
+		host = strings.TrimPrefix(host, "[")
+		host = strings.TrimSuffix(host, "]")
+	}
+	if h, _, err := net.SplitHostPort(host); err == nil {
+		host = strings.ToLower(strings.TrimSpace(h))
+	} else if strings.Count(host, ":") > 1 {
+		// IPv6 without port
+		host = strings.Trim(host, "[]")
+	}
+	if host == "api2.cursor.sh" || host == "api3.cursor.sh" {
+		return true
+	}
+	if strings.HasSuffix(host, ".cursor.sh") {
+		return true
+	}
+	return false
+}
+
+// isMirrorHost 判断 host（可含端口）是否命中镜像记录域名列表。
+func (s *ProxyServer) isMirrorHost(host string) bool {
+	host = strings.ToLower(strings.TrimSpace(host))
+	if i := strings.IndexByte(host, ':'); i >= 0 {
+		host = host[:i]
+	}
+	for _, h := range s.mirrorHosts() {
+		if h == host {
+			return true
+		}
+	}
+	return false
+}
+
+// mirrorHosts 返回当前镜像记录域名列表。
+func (s *ProxyServer) mirrorHosts() []string {
+	s.mirrorMu.RLock()
+	defer s.mirrorMu.RUnlock()
+	if s.mirrorConfig == nil {
+		return nil
+	}
+	return s.mirrorConfig.MirrorCaptureHosts()
+}
+
+type routingModeProvider interface {
+	RoutingMode(ctx context.Context) string
+}
+
+// routesCursorRelayLocally 只在配置明确为 upstream 时跳过本地 backend。
+// 不支持路由查询的旧配置实现维持本地服务模式，避免升级时意外改为官方直通。
+func (s *ProxyServer) routesCursorRelayLocally() bool {
+	s.mirrorMu.RLock()
+	config := s.mirrorConfig
+	s.mirrorMu.RUnlock()
+	provider, ok := config.(routingModeProvider)
+	if !ok || provider == nil {
+		return true
+	}
+	return strings.TrimSpace(strings.ToLower(provider.RoutingMode(context.Background()))) != "upstream"
+}
+
+// mirrorEnabledForHost 判定镜像记录是否对该 host 生效（开关+列表+记录器三者齐备）。
+func (s *ProxyServer) mirrorEnabledForHost(host string) bool {
+	if s.mirrorConfig == nil || s.mirrorRec == nil {
+		return false
+	}
+	if !s.mirrorConfig.MirrorCaptureEnabled(context.Background()) {
+		return false
+	}
+	return s.isMirrorHost(host)
+}
+
+// recordMirrorRequest 记录一次镜像请求（内部重建 req.Body 供直通）。
+func (s *ProxyServer) recordMirrorRequest(exchange *mirrorExchange, req *http.Request) {
+	s.mirrorMu.RLock()
+	defer s.mirrorMu.RUnlock()
+	if s.mirrorRec == nil {
+		return
+	}
+	s.mirrorRec.recordExchangeRequest(hostFromHTTPRequest(req), exchange, req)
+}
+
+// wrapMirrorResponse 保留无关联调用入口，供已有调用方和测试使用。
+func (s *ProxyServer) wrapMirrorResponse(host string, resp *http.Response) io.ReadCloser {
+	return s.wrapMirrorExchangeResponse(host, nil, resp)
+}
+
+// wrapMirrorExchangeResponse 记录带本地交换关联信息的响应起始与流式片段。
+func (s *ProxyServer) wrapMirrorExchangeResponse(host string, exchange *mirrorExchange, resp *http.Response) io.ReadCloser {
+	s.mirrorMu.RLock()
+	defer s.mirrorMu.RUnlock()
+	if s.mirrorRec == nil || resp == nil {
+		if resp == nil {
+			return nil
+		}
+		return resp.Body
+	}
+	s.mirrorRec.recordExchangeResponseStart(host, exchange, resp)
+	if resp.Body == nil {
+		return nil
+	}
+	tee := &mirrorTeeReadCloser{r: resp.Body, rec: s.mirrorRec, host: host, exchange: exchange}
+	if s.mirrorRec.fidelityEnabled() {
+		tee.frameDecoder = newMirrorRunSSEFrameDecoder(resp, func(frame mirrorProtocolFrame) {
+			s.mirrorRec.recordExchangeResponseProtocolFrame(host, exchange, frame)
+		})
+	}
+	return tee
+}
+
+// mirrorTeeReadCloser 读取时逐 chunk 记录；累计记录字节数超过 mirrorResponseMaxBytes
+// 后停止记录（数据仍正常透传给客户端），并写一条 truncated 收尾标记。
+type mirrorTeeReadCloser struct {
+	r            io.ReadCloser
+	rec          *mirrorRecorder
+	host         string
+	exchange     *mirrorExchange
+	recorded     int
+	truncated    bool
+	frameDecoder *mirrorRunSSEFrameDecoder
+	finished     bool
+}
+
+func (m *mirrorTeeReadCloser) Read(p []byte) (int, error) {
+	n, err := m.r.Read(p)
+	if n > 0 {
+		m.recordChunk(p[:n])
+	}
+	if err == io.EOF {
+		m.finish()
+	}
+	return n, err
+}
+
+// recordChunk 在记录端限流：累计未超上限时记录当前 chunk，超限后写 truncated 收尾标记并停止。
+// 数据透传不受影响（限流只作用于记录写入）。
+func (m *mirrorTeeReadCloser) recordChunk(chunk []byte) {
+	if m.truncated || m.rec == nil {
+		return
+	}
+	if m.recorded+len(chunk) > mirrorResponseMaxBytes {
+		m.rec.recordExchangeResponseTruncated(m.host, m.exchange)
+		m.truncated = true
+		return
+	}
+	if m.frameDecoder != nil {
+		m.frameDecoder.Write(chunk)
+	} else {
+		m.rec.recordExchangeResponseChunk(m.host, m.exchange, chunk)
+	}
+	m.recorded += len(chunk)
+}
+
+func (m *mirrorTeeReadCloser) finish() {
+	if m == nil || m.finished {
+		return
+	}
+	m.finished = true
+	if m.frameDecoder != nil {
+		m.frameDecoder.Close()
+	}
+}
+
+func (m *mirrorTeeReadCloser) Close() error {
+	m.finish()
+	return m.r.Close()
+}
+
+func newMirrorExchange(ctx *goproxy.ProxyCtx) *mirrorExchange {
+	if ctx == nil {
+		return nil
+	}
+	return &mirrorExchange{id: "mirror-" + strconv.FormatInt(ctx.Session, 10)}
+}
+
+func mirrorExchangeFromProxyCtx(ctx *goproxy.ProxyCtx) (*mirrorExchange, bool) {
+	if ctx == nil {
+		return nil, false
+	}
+	exchange, ok := ctx.UserData.(*mirrorExchange)
+	return exchange, ok && exchange != nil && exchange.id != ""
+}
+
+// closeMirrorRecorder 关闭镜像记录器文件句柄并释放文件描述符；幂等，可多次调用。
+// 在服务停止路径（Stop）调用：Shutdown 排空活跃请求后，记录器不再有新写入。
+func (s *ProxyServer) closeMirrorRecorder() {
+	s.mirrorMu.Lock()
+	defer s.mirrorMu.Unlock()
+	if s.mirrorRec == nil {
+		return
+	}
+	if err := s.mirrorRec.Close(); err != nil {
+		logger.Errorf("mirror recorder close failed: %v", err)
+	}
+}
+
+// mitmCertStore 缓存 goproxy 为站点动态签发的证书，避免同一 host 重复执行 RSA/x509 签发。
+type mitmCertStore struct {
+	mu    sync.Mutex
+	certs map[string]*tls.Certificate
+}
+
+func newMITMCertStore() *mitmCertStore {
+	return &mitmCertStore{certs: make(map[string]*tls.Certificate)}
+}
+
+func (store *mitmCertStore) Fetch(hostname string, gen func() (*tls.Certificate, error)) (*tls.Certificate, error) {
+	hostname = strings.TrimSpace(strings.ToLower(hostname))
+	if hostname == "" {
+		return gen()
+	}
+
+	store.mu.Lock()
+	defer store.mu.Unlock()
+
+	if cert, ok := store.certs[hostname]; ok {
+		return cert, nil
+	}
+	cert, err := gen()
+	if err != nil {
+		return nil, err
+	}
+	store.certs[hostname] = cert
+	return cert, nil
+}
+
+// shouldHandleLocalCORSPreflight 用于处理与 shouldHandleLocalCORSPreflight 相关的逻辑。
+func shouldHandleLocalCORSPreflight(req *http.Request) bool {
+	if req == nil {
+		return false
+	}
+	if !strings.EqualFold(strings.TrimSpace(req.Method), http.MethodOptions) {
+		return false
+	}
+	if strings.TrimSpace(req.Header.Get("Origin")) == "" {
+		return false
+	}
+	if strings.TrimSpace(req.Header.Get("Access-Control-Request-Method")) == "" {
+		return false
+	}
+	return true
+}
+
+// buildLocalCORSPreflightResponse 用于处理与 buildLocalCORSPreflightResponse 相关的逻辑。
+func buildLocalCORSPreflightResponse(req *http.Request) *http.Response {
+	allowOrigin := "*"
+	if req != nil {
+		origin := strings.TrimSpace(req.Header.Get("Origin"))
+		if origin != "" {
+			allowOrigin = origin
+		}
+	}
+
+	headers := make(http.Header)
+	headers.Set("Access-Control-Allow-Origin", allowOrigin)
+	headers.Set("Access-Control-Allow-Methods", "GET,POST,PUT,PATCH,DELETE,OPTIONS")
+	headers.Set("Access-Control-Allow-Headers", "*")
+	headers.Set("Access-Control-Allow-Credentials", "true")
+	headers.Set("Access-Control-Max-Age", "86400")
+	if allowOrigin != "*" {
+		headers.Set("Vary", "Origin")
+	}
+
+	body := io.NopCloser(strings.NewReader(""))
+	return &http.Response{
+		StatusCode: http.StatusNoContent,
+		Status:     "204 No Content",
+		Header:     headers,
+		Body:       body,
+		Request:    req,
+	}
+}
+
+// httpErrorFilterWriter 定义了当前模块中的 httpErrorFilterWriter 类型。
+type httpErrorFilterWriter struct{}
+
+// Write 用于处理与 Write 相关的逻辑。
+func (w *httpErrorFilterWriter) Write(p []byte) (int, error) {
+	msg := strings.TrimSpace(string(p))
+	if msg == "" {
+		return len(p), nil
+	}
+
+	lower := strings.ToLower(msg)
+	if strings.Contains(lower, "tls: first record does not look like a tls handshake") {
+		logger.Infof("proxy ignore handshake mismatch: %s", msg)
+		return len(p), nil
+	}
+	if strings.Contains(lower, "tls handshake error") {
+		logger.Errorf("proxy tls handshake error: %s", msg)
+		return len(p), nil
+	}
+
+	logger.Infof("proxy http server: %s", msg)
+	return len(p), nil
+}
+
+// goproxyLogAdapter 定义了当前模块中的 goproxyLogAdapter 类型。
+type goproxyLogAdapter struct{}
+
+// Printf 用于处理与 Printf 相关的逻辑。
+func (l *goproxyLogAdapter) Printf(format string, args ...interface{}) {
+	msg := strings.TrimSpace(fmt.Sprintf(format, args...))
+	if msg == "" {
+		return
+	}
+	lower := strings.ToLower(msg)
+	if strings.Contains(lower, "tls: first record does not look like a tls handshake") {
+		// logger.Infof("goproxy ignore handshake mismatch: %s", msg)
+		return
+	}
+	if strings.Contains(lower, "broken pipe") || strings.Contains(lower, "connection reset by peer") {
+		// logger.Infof("goproxy transient network error: %s", msg)
+		return
+	}
+	// Windows wsarecv: connection forcibly closed — 等价于 TCP RST，属于正常的 keep-alive 连接回收
+	if strings.Contains(lower, "forcibly closed by the remote host") || strings.Contains(lower, "connection was forcibly closed") {
+		return
+	}
+	// Cursor/客户端在 MITM 解密后主动关闭 TLS 连接（超时、重试、keep-alive 到期）
+	if strings.Contains(lower, "cannot read tls request from mitm'd client") || strings.Contains(lower, "cannot write tls response") {
+		return
+	}
+	// MITM 客户端 TLS 握手被拒：Cursor 的后台/遥测子组件（如 metrics.cursor.sh、
+	// api2/api3 的非 agent 请求）走 MITM 路径，但其 HTTP 客户端未配置信任本应用 CA，
+	// 握手阶段即以 'tls: unknown certificate' 拒绝。这是 Cursor 自身边路流量的预期行为，
+	// 不影响 relay（agent 流量经独立端点、已正确信任 CA）。历史上这类警告在每个
+	// 去重窗口都会刷屏（实测 15 分钟内 420+ 条、抑制 309 批），属于纯噪音，直接静默。
+	if strings.Contains(lower, "cannot handshake client") && strings.Contains(lower, "unknown certificate") {
+		return
+	}
+	if suppressed, ok := proxyLogLimiter.ShouldLog("goproxy|" + goproxyMessageRateLimitKey(msg)); ok {
+		logSuppressedProxyMessages("goproxy", suppressed)
+		logger.Infof("goproxy: %s", msg)
+	}
+}
+
+func errorRateLimitKey(err error) string {
+	if err == nil {
+		return ""
+	}
+	return normalizeRateLimitKey(err.Error())
+}
+
+func goproxyMessageRateLimitKey(msg string) string {
+	return normalizeRateLimitKey(msg)
+}
+
+func normalizeRateLimitKey(value string) string {
+	value = strings.ToLower(strings.TrimSpace(value))
+	if value == "" {
+		return ""
+	}
+	value = normalizeAddrPortsForLogKey(value)
+	value = normalizeGoproxyRequestIDForLogKey(value)
+	return value
+}
+
+func normalizeAddrPortsForLogKey(value string) string {
+	parts := strings.Fields(value)
+	for index, part := range parts {
+		parts[index] = normalizeAddrPortToken(part)
+	}
+	return strings.Join(parts, " ")
+}
+
+func normalizeAddrPortToken(token string) string {
+	trimmedRight := strings.TrimRight(token, ",;)]}")
+	suffix := strings.TrimPrefix(token[len(trimmedRight):], "")
+	host, port, err := net.SplitHostPort(trimmedRight)
+	if err != nil || host == "" || port == "" {
+		return token
+	}
+	return net.JoinHostPort(host, "*") + suffix
+}
+
+func normalizeGoproxyRequestIDForLogKey(value string) string {
+	start := strings.Index(value, "[")
+	end := strings.Index(value, "]")
+	if start < 0 || end <= start {
+		return value
+	}
+	prefix := strings.TrimSpace(value[:start])
+	if prefix != "" {
+		return value
+	}
+	return "[*]" + value[end+1:]
+}
+
+// logMITMCAInfo 用于处理与 logMITMCAInfo 相关的逻辑。
+func logMITMCAInfo(caTLS *tls.Certificate) {
+	if caTLS == nil || len(caTLS.Certificate) == 0 {
+		logger.Errorf("MITM CA info unavailable: empty certificate chain")
+		return
+	}
+
+	leaf, err := x509.ParseCertificate(caTLS.Certificate[0])
+	if err != nil {
+		logger.Errorf("MITM CA parse failed: %v", err)
+		return
+	}
+
+	sum := sha256.Sum256(leaf.Raw)
+	logger.Infof(
+		"MITM enabled: sha256=%s subject=%s valid=%s~%s",
+		strings.ToUpper(hex.EncodeToString(sum[:])),
+		leaf.Subject.String(),
+		leaf.NotBefore.Format(time.RFC3339),
+		leaf.NotAfter.Format(time.RFC3339),
+	)
+}

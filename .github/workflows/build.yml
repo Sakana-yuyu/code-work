@@ -1,0 +1,582 @@
+name: Build desktop artifacts
+
+on:
+  push:
+    branches:
+      - '**'
+    tags:
+      - 'v*'
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  resolve-matrix:
+    name: Resolve build matrix
+    runs-on: ubuntu-24.04
+    outputs:
+      matrix: ${{ steps.resolve.outputs.matrix }}
+    steps:
+      - id: resolve
+        shell: bash
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            MATRIX='{"include":[{"name":"Windows x64 (64位)","runner":"windows-latest","target":"windows","artifact":"windows-x64","protoc_asset":"protoc-29.3-win64.zip"}]}'
+          else
+            MATRIX='{"include":[{"name":"Windows x64 (64位)","runner":"windows-latest","target":"windows","artifact":"windows-x64","protoc_asset":"protoc-29.3-win64.zip"},{"name":"Windows ARM64","runner":"windows-latest","target":"windows-arm64","artifact":"windows-arm64","protoc_asset":"protoc-29.3-win64.zip"},{"name":"Windows x32 (32位)","runner":"windows-latest","target":"windows-386","artifact":"windows-x32","protoc_asset":"protoc-29.3-win64.zip"},{"name":"Linux x64","runner":"ubuntu-24.04","target":"linux","artifact":"linux-x64","protoc_asset":"protoc-29.3-linux-x86_64.zip"},{"name":"macOS x64 (Intel)","runner":"macos-15-intel","target":"darwin-amd64","artifact":"macos-x64","protoc_asset":"protoc-29.3-osx-x86_64.zip"},{"name":"macOS ARM64 (Apple Silicon)","runner":"macos-15","target":"darwin-arm64","artifact":"macos-arm64","protoc_asset":"protoc-29.3-osx-aarch_64.zip"}]}'
+          fi
+          echo "matrix=$MATRIX" >> "$GITHUB_OUTPUT"
+
+  verify:
+    name: Verify (reuse test workflow)
+    uses: ./.github/workflows/test.yml
+
+  build:
+    name: ${{ matrix.name }}
+    needs: [resolve-matrix, verify]
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.resolve-matrix.outputs.matrix) }}
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: yarn
+          cache-dependency-path: frontend/yarn.lock
+
+      - name: Enable Yarn classic and reset registry
+        shell: bash
+        run: |
+          # CI 环境使用官方 npm registry，避免 npmmirror 镜像缓存损坏。
+          # 降低 Yarn 并发，规避 Windows runner 上大包缓存解压的偶发 ENOENT/ENOTEMPTY。
+          printf 'registry "https://registry.npmjs.org/"\nnetwork-timeout 300000\nnetwork-concurrency 1\nchild-concurrency 1\n' > frontend/.yarnrc
+          # yarn.lock 中残留的 npmmirror resolved URL 会绕过 registry 配置，统一改写
+          if [ -f frontend/yarn.lock ]; then
+            sed -i.bak 's|registry.npmmirror.com|registry.npmjs.org|g' frontend/yarn.lock || true
+            rm -f frontend/yarn.lock.bak
+          fi
+          # Yarn 缓存可能已存损坏 tarball，指向当前 runner 的临时目录强制重新下载。
+          if [ "${RUNNER_OS:-}" != "Windows" ]; then
+            echo "YARN_CACHE_FOLDER=${RUNNER_TEMP:-$HOME}/yarn-cache-fresh" >> "$GITHUB_ENV"
+          fi
+          npm install -g yarn@1.22.22
+          NPM_BIN="$(npm config get prefix)"
+          if [ -d "$NPM_BIN/bin" ]; then NPM_BIN="$NPM_BIN/bin"; fi
+          if [ "${RUNNER_OS:-}" = "Windows" ] && command -v cygpath >/dev/null 2>&1; then
+            NPM_BIN="$(cygpath -w "$NPM_BIN")"
+          fi
+          echo "$NPM_BIN" >> "$GITHUB_PATH"
+          yarn --version
+          yarn config get registry
+
+      - name: Configure Windows Yarn cache
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $cacheDirectory = Join-Path $env:RUNNER_TEMP 'yarn-cache-fresh'
+          Remove-Item -Recurse -Force -ErrorAction SilentlyContinue $cacheDirectory
+          New-Item -ItemType Directory -Force -Path $cacheDirectory | Out-Null
+          "YARN_CACHE_FOLDER=$cacheDirectory" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          yarn config set cache-folder $cacheDirectory
+          yarn config get cache-folder
+
+      - name: Install Linux build dependencies
+        if: runner.os == 'Linux'
+        run: |
+          # wails3 CLI 的 go install 需要 cgo 链接 GTK/WebKit，系统库必须先于 wails3 安装
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            pkg-config gcc libgtk-3-dev libwebkit2gtk-4.1-dev build-essential
+
+      - name: Install protoc (prebuilt, with well-known types)
+        shell: bash
+        run: |
+          set -e
+          PROTOC_VERSION="29.3"
+          ASSET="${{ matrix.protoc_asset }}"
+          INSTALL_DIR="$HOME/protoc"
+          mkdir -p "$INSTALL_DIR"
+          URL="https://github.com/protocolbuffers/protobuf/releases/download/v${PROTOC_VERSION}/${ASSET}"
+          echo "Downloading $URL"
+          curl -fsSL --retry 5 --retry-delay 3 --retry-all-errors -o "$INSTALL_DIR/protoc.zip" "$URL"
+          if command -v unzip >/dev/null 2>&1; then
+            (cd "$INSTALL_DIR" && unzip -o protoc.zip >/dev/null)
+          else
+            powershell -NoProfile -Command "Expand-Archive -LiteralPath '$INSTALL_DIR/protoc.zip' -DestinationPath '$INSTALL_DIR' -Force"
+          fi
+          # macOS Gatekeeper 会阻止 curl 下载并解压出的二进制（com.apple.quarantine）
+          # 即使二进制本身签名正常，属性存在时执行会被拒绝。统一递归清除。
+          if [ "${RUNNER_OS:-}" = "macOS" ] && command -v xattr >/dev/null 2>&1; then
+            xattr -dr com.apple.quarantine "$INSTALL_DIR" 2>/dev/null || true
+            echo "cleared com.apple.quarantine on $INSTALL_DIR"
+          fi
+          PROTOC_PATH="$INSTALL_DIR/bin"
+          if [ "${RUNNER_OS:-}" = "Windows" ] && command -v cygpath >/dev/null 2>&1; then
+            PROTOC_PATH="$(cygpath -w "$PROTOC_PATH")"
+          fi
+          echo "$PROTOC_PATH" >> "$GITHUB_PATH"
+          # 验证 well-known types 可被发现（protoc 相对 bin/../include 自动搜索）
+          if [ -f "$INSTALL_DIR/include/google/protobuf/struct.proto" ]; then
+            echo "well-known types OK: struct.proto present"
+          else
+            echo "::error::well-known types missing in prebuilt protoc"
+            exit 1
+          fi
+          PROTOC_BIN="$INSTALL_DIR/bin/protoc"
+          if [ -f "$INSTALL_DIR/bin/protoc.exe" ]; then PROTOC_BIN="$INSTALL_DIR/bin/protoc.exe"; fi
+          "$PROTOC_BIN" --version
+
+      - name: Install protoc Go plugins
+        shell: bash
+        run: |
+          go install google.golang.org/protobuf/cmd/protoc-gen-go@latest
+          go install connectrpc.com/connect/cmd/protoc-gen-connect-go@latest
+
+      - name: Install Task and Wails
+        shell: bash
+        run: |
+          go install github.com/go-task/task/v3/cmd/task@v3.44.1
+          go install github.com/wailsapp/wails/v3/cmd/wails3@v3.0.0-alpha.74
+          task --version
+          wails3 version
+
+      - name: Install Windows NSIS
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $candidatePaths = @(
+            (Join-Path ${env:ProgramFiles(x86)} 'NSIS\makensis.exe'),
+            (Join-Path $env:ProgramFiles 'NSIS\makensis.exe')
+          )
+          $makensis = $candidatePaths | Where-Object { Test-Path -LiteralPath $_ } | Select-Object -First 1
+
+          if (-not $makensis) {
+            choco install nsis -y --no-progress
+            $makensis = $candidatePaths | Where-Object { Test-Path -LiteralPath $_ } | Select-Object -First 1
+          }
+
+          if (-not $makensis) {
+            throw 'NSIS installation completed but makensis.exe was not found'
+          }
+
+          $nsisDirectory = Split-Path -Parent $makensis
+          $nsisDirectory | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+          & $makensis /VERSION
+
+      - name: Verify Windows build toolchain
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          protoc --version
+          protoc-gen-go --version
+          protoc-gen-connect-go --version
+          yarn --version
+          task --version
+          wails3 version
+          where.exe protoc
+          where.exe yarn
+
+      - name: Install Windows frontend dependencies
+        if: startsWith(matrix.target, 'windows')
+        shell: pwsh
+        working-directory: frontend
+        run: |
+          yarn install --frozen-lockfile --network-concurrency 1 --mutex file
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Build Windows x64 packages
+        if: matrix.target == 'windows'
+        shell: pwsh
+        run: |
+          task build:windows:amd64
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          task build:windows:installer
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $archive = Get-Item 'bin/windows-x64.zip' -ErrorAction SilentlyContinue
+          if (-not $archive -or $archive.Length -le 0) { throw 'Windows x64 ZIP was not produced or is empty' }
+          $installer = Get-Item 'bin/cursor-byok-windows-x64-installer.exe' -ErrorAction SilentlyContinue
+          if (-not $installer -or $installer.Length -le 0) { throw 'Windows x64 NSIS installer was not produced or is empty' }
+          Write-Host "Produced $($installer.FullName)"
+
+      - name: Build Windows arm64 package
+        if: matrix.target == 'windows-arm64'
+        shell: pwsh
+        run: |
+          task build:windows:arm64
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $archiveArm64 = Get-Item 'bin/windows-arm64.zip' -ErrorAction SilentlyContinue
+          if (-not $archiveArm64 -or $archiveArm64.Length -le 0) { throw 'Windows arm64 ZIP was not produced or is empty' }
+          Write-Host "Produced bin/windows-arm64.zip"
+          task build:windows:installer:arm64
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $installerArm64 = Get-Item 'bin/cursor-byok-windows-arm64-installer.exe' -ErrorAction SilentlyContinue
+          if (-not $installerArm64 -or $installerArm64.Length -le 0) { throw 'Windows arm64 NSIS installer was not produced or is empty' }
+          Write-Host "Produced $($installerArm64.FullName)"
+
+      - name: Build Windows x32 (32位) package
+        if: matrix.target == 'windows-386'
+        shell: pwsh
+        run: |
+          task build:windows:386
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $archive386 = Get-Item 'bin/windows-x32.zip' -ErrorAction SilentlyContinue
+          if (-not $archive386 -or $archive386.Length -le 0) { throw 'Windows x32 ZIP was not produced or is empty' }
+          Write-Host "Produced bin/windows-x32.zip"
+          task build:windows:installer:386
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $installer386 = Get-Item 'bin/cursor-byok-windows-x32-installer.exe' -ErrorAction SilentlyContinue
+          if (-not $installer386 -or $installer386.Length -le 0) { throw 'Windows x32 NSIS installer was not produced or is empty' }
+          Write-Host "Produced $($installer386.FullName)"
+
+      - name: Self-sign Windows binaries
+        if: matrix.target == 'windows'
+        shell: pwsh
+        run: |
+          # 生成自签名代码签名证书（无 CA 根，不能消除 SmartScreen，但能减少部分 AV 误报）
+          $subject = "CN=Sakana, O=Sakana, C=CN"
+          $cert = New-SelfSignedCertificate `
+            -Type CodeSigningCert `
+            -Subject $subject `
+            -KeyAlgorithm RSA -KeyLength 2048 `
+            -HashAlgorithm SHA256 `
+            -NotAfter (Get-Date).AddYears(1) `
+            -CertStoreLocation "Cert:\CurrentUser\My"
+
+          # 导出 PFX 并导入到根 CA（让本地系统信任此签名）
+          $pfxPath = Join-Path $env:RUNNER_TEMP "codesign.pfx"
+          $pwd = ConvertTo-SecureString -String "temp-signing-key" -Force -AsPlainText
+          Export-PfxCertificate -Cert $cert -FilePath $pfxPath -Password $pwd | Out-Null
+          Import-PfxCertificate -FilePath $pfxPath -CertStoreLocation "Cert:\LocalMachine\Root" -Password $pwd | Out-Null
+
+          # 动态查找 signtool（Windows SDK 不在 PATH 中）
+          $signtoolExe = Get-ChildItem "C:\Program Files (x86)\Windows Kits\10\bin\*\x64\signtool.exe" -ErrorAction SilentlyContinue |
+            Sort-Object FullName -Descending | Select-Object -First 1
+          if (-not $signtoolExe) {
+            $signtoolExe = Get-ChildItem "C:\Program Files (x86)\Windows Kits\10\bin\x64\signtool.exe" -ErrorAction SilentlyContinue
+          }
+          if (-not $signtoolExe) {
+            Write-Host "::warning::signtool not found in Windows SDK, skipping code signing"
+          } else {
+            Write-Host "Using signtool: $($signtoolExe.FullName)"
+            $st = $signtoolExe.FullName
+
+            # 签名主 exe
+            $exe = Resolve-Path "bin/cursor-byok-windows-x64.exe"
+            & $st sign /fd SHA256 /a /f $pfxPath /p "temp-signing-key" $exe.Path
+            if ($LASTEXITCODE -ne 0) { throw "signtool failed to sign exe" }
+            Write-Host "Signed $($exe.Path)"
+
+            # 签名 installer
+            $installer = Get-Item 'bin/cursor-byok-windows-x64-installer.exe' -ErrorAction SilentlyContinue
+            if ($installer) {
+              & $st sign /fd SHA256 /a /f $pfxPath /p "temp-signing-key" $installer.FullName
+              if ($LASTEXITCODE -ne 0) { throw "signtool failed to sign installer" }
+              Write-Host "Signed $($installer.FullName)"
+            }
+          }
+
+          # 清理证书
+          Remove-Item $pfxPath -Force -ErrorAction SilentlyContinue
+          Remove-Item "Cert:\CurrentUser\My\$($cert.Thumbprint)" -Force -ErrorAction SilentlyContinue
+
+      - name: Build Linux x64 package
+        if: matrix.target == 'linux'
+        shell: bash
+        run: |
+          task build:linux:amd64
+          test -s bin/linux-x64.tar.gz
+
+      - name: Build macOS package
+        if: startsWith(matrix.target, 'darwin-')
+        shell: bash
+        run: |
+          # 关闭 set -e：失败时仍要打印诊断信息再退出。
+          set -uo pipefail
+
+          ARCH_NAME="${{ endsWith(matrix.target, 'arm64') && 'arm64' || 'amd64' }}"
+          # 产物名使用面向用户的平台命名：amd64 -> x64（macos-x64 / macos-arm64）
+          PLATFORM_NAME="macos-${ARCH_NAME/amd64/x64}"
+          LOG_PREFIX="${RUNNER_TEMP:-/tmp}/cursor-byok-${ARCH_NAME}"
+
+          run_logged() {
+            local label="$1"
+            shift
+            local safe_label="${label//[^a-zA-Z0-9_.-]/_}"
+            local log_path="${LOG_PREFIX}-${safe_label}.log"
+            echo "--- ${label} (log: ${log_path}) ---"
+            "$@" 2>&1 | tee "${log_path}"
+            local status="${PIPESTATUS[0]}"
+            echo "==> ${label} exit=${status}"
+            if [ "${status}" -ne 0 ]; then
+              echo "!!! ${label} failed; last 200 log lines:"
+              tail -n 200 "${log_path}" || true
+            fi
+            return "${status}"
+          }
+
+          diagnose_failure() {
+            local status="$1"
+            if [ "${status}" -eq 0 ]; then
+              return 0
+            fi
+            echo "=== macOS build diagnostics (status=${status}) ==="
+            echo "--- workspace ---"
+            pwd
+            ls -la bin/ 2>/dev/null || true
+            find bin/release -print -exec ls -ld {} \; 2>/dev/null || true
+            echo "--- disk ---"
+            df -h . || true
+            echo "--- mounted volumes ---"
+            if command -v hdiutil >/dev/null 2>&1; then
+              hdiutil info || true
+            fi
+            echo "--- process snapshot ---"
+            ps aux | grep -E '[h]diutil|[c]reate-dmg|[c]odesign|[t]ask|[g]o build|[y]arn' || true
+            echo "--- captured logs ---"
+            find "${RUNNER_TEMP:-/tmp}" -type f -name "cursor-byok-${ARCH_NAME}-*.log" -print -exec tail -n 80 {} \; 2>/dev/null || true
+            return "${status}"
+          }
+          trap 'status=$?; diagnose_failure "${status}"; exit "${status}"' EXIT
+
+          echo "==> target=${{ matrix.target }} ARCH_NAME=${ARCH_NAME} RUNNER_OS=${RUNNER_OS:-}"
+
+          echo "--- toolchain ---"
+          go version
+          go env GOOS GOARCH CGO_ENABLED
+          task --version
+          wails3 version
+          command -v protoc && protoc --version
+          command -v protoc-gen-go && protoc-gen-go --version
+          command -v protoc-gen-connect-go && protoc-gen-connect-go --version
+          command -v yarn && yarn --version
+
+          VERSION="$(go run ./scripts/release version -config ./build/config.yml)"
+          echo "==> VERSION=${VERSION}"
+          if [ -z "${VERSION}" ]; then
+            echo "!!! failed to resolve VERSION from build/config.yml"
+            exit 1
+          fi
+
+          echo "--- build:darwin:${ARCH_NAME} ---"
+          run_logged "build:darwin:${ARCH_NAME}" task "build:darwin:${ARCH_NAME}"
+          BUILD_STATUS=$?
+          echo "==> task build:darwin:${ARCH_NAME} exit=${BUILD_STATUS}"
+          ls -la bin/ || true
+          if [ "${BUILD_STATUS}" -ne 0 ]; then
+            echo "!!! task build:darwin:${ARCH_NAME} failed with exit code ${BUILD_STATUS}"
+            exit "${BUILD_STATUS}"
+          fi
+
+          DMG_PATH="bin/${PLATFORM_NAME}.dmg"
+          if [ ! -s "${DMG_PATH}" ]; then
+            echo "!!! expected DMG not found or empty: ${DMG_PATH}"
+            ls -la bin/
+            exit 1
+          fi
+          echo "==> produced ${DMG_PATH}"
+
+          echo "--- release:build:macos:${ARCH_NAME} ---"
+          run_logged "release:build:macos:${ARCH_NAME}" task "release:build:macos:${ARCH_NAME}"
+          RELEASE_STATUS=$?
+          echo "==> task release:build:macos:${ARCH_NAME} exit=${RELEASE_STATUS}"
+          ls -la "bin/release/${VERSION}/" || true
+          if [ "${RELEASE_STATUS}" -ne 0 ]; then
+            echo "!!! task release:build:macos:${ARCH_NAME} failed with exit code ${RELEASE_STATUS}"
+            exit "${RELEASE_STATUS}"
+          fi
+
+          ARCHIVE_PATH="bin/release/${VERSION}/cursor-byok-${VERSION}-${PLATFORM_NAME}.tar.gz"
+          if [ ! -s "${ARCHIVE_PATH}" ]; then
+            echo "!!! expected archive not found or empty: ${ARCHIVE_PATH}"
+            ls -la "bin/release/${VERSION}/"
+            exit 1
+          fi
+          echo "==> produced ${ARCHIVE_PATH}"
+
+      - name: Upload Windows artifacts
+        if: matrix.target == 'windows'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          if-no-files-found: error
+          path: |
+            bin/windows-x64.zip
+            bin/cursor-byok-windows-x64-installer.exe
+
+      - name: Upload Windows arm64 artifact
+        if: matrix.target == 'windows-arm64'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          if-no-files-found: error
+          path: |
+            bin/windows-arm64.zip
+            bin/cursor-byok-windows-arm64-installer.exe
+
+      - name: Upload Windows x32 (32位) artifact
+        if: matrix.target == 'windows-386'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          if-no-files-found: error
+          path: |
+            bin/windows-x32.zip
+            bin/cursor-byok-windows-x32-installer.exe
+
+      - name: Upload Linux artifact
+        if: matrix.target == 'linux'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          if-no-files-found: error
+          path: bin/linux-x64.tar.gz
+
+      - name: Upload macOS artifact
+        if: startsWith(matrix.target, 'darwin-')
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          if-no-files-found: error
+          path: |
+            bin/macos-*.dmg
+            bin/release/**/*
+
+      - name: Upload macOS build diagnostics
+        if: always() && startsWith(matrix.target, 'darwin-')
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}-diagnostics
+          if-no-files-found: ignore
+          path: ${{ runner.temp }}/cursor-byok-*.log
+
+  release:
+    name: Publish GitHub Release
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: build
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Verify release tag version
+        id: release-version
+        env:
+          TAG: ${{ github.ref_name }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          CONFIG_VERSION="$(go run ./scripts/release version -config ./build/config.yml)"
+          EXPECTED_TAG="v${CONFIG_VERSION}"
+          if [ "$TAG" != "$EXPECTED_TAG" ]; then
+            echo "::error::release tag ${TAG} does not match build/config.yml version ${CONFIG_VERSION}"
+            exit 1
+          fi
+          echo "version=${CONFIG_VERSION}" >> "$GITHUB_OUTPUT"
+
+      - name: Download build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: release-assets
+          merge-multiple: true
+
+      - name: Prepare release assets and update manifest
+        env:
+          REPOSITORY: ${{ github.repository }}
+          VERSION: ${{ steps.release-version.outputs.version }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p publish
+
+          copy_asset() {
+            local source_name="$1"
+            local target_name="$2"
+            local matches=()
+            mapfile -t matches < <(find release-assets -type f -name "$source_name" -print)
+            if [ "${#matches[@]}" -ne 1 ]; then
+              echo "::error::expected exactly one build asset named ${source_name}, found ${#matches[@]}"
+              printf '  %s\n' "${matches[@]}"
+              exit 1
+            fi
+            if [ ! -s "${matches[0]}" ]; then
+              echo "::error::build asset is empty: ${matches[0]}"
+              exit 1
+            fi
+            cp "${matches[0]}" "publish/${target_name}"
+            if [ ! -s "publish/${target_name}" ]; then
+              echo "::error::published asset is empty: publish/${target_name}"
+              exit 1
+            fi
+          }
+
+          copy_asset "windows-x64.zip" "cursor-byok-${VERSION}-windows-x64.zip"
+          copy_asset "cursor-byok-windows-x64-installer.exe" "cursor-byok-${VERSION}-windows-x64-installer.exe"
+          copy_asset "windows-arm64.zip" "cursor-byok-${VERSION}-windows-arm64.zip"
+          copy_asset "cursor-byok-windows-arm64-installer.exe" "cursor-byok-${VERSION}-windows-arm64-installer.exe"
+          copy_asset "windows-x32.zip" "cursor-byok-${VERSION}-windows-x32.zip"
+          copy_asset "cursor-byok-windows-x32-installer.exe" "cursor-byok-${VERSION}-windows-x32-installer.exe"
+          copy_asset "linux-x64.tar.gz" "cursor-byok-${VERSION}-linux-x64.tar.gz"
+          copy_asset "cursor-byok-${VERSION}-macos-arm64.tar.gz" "cursor-byok-${VERSION}-macos-arm64.tar.gz"
+          copy_asset "cursor-byok-${VERSION}-macos-x64.tar.gz" "cursor-byok-${VERSION}-macos-x64.tar.gz"
+          copy_asset "macos-arm64.dmg" "cursor-byok-${VERSION}-macos-arm64.dmg"
+          copy_asset "macos-x64.dmg" "cursor-byok-${VERSION}-macos-x64.dmg"
+
+          go run ./scripts/release manifest \
+            -config ./build/config.yml \
+            -assets-dir publish \
+            -out publish/update.json \
+            -repo "$REPOSITORY" \
+            -base-name cursor-byok \
+            -notes release-notes.md
+
+          jq -e --arg version "$VERSION" '
+            .version == $version and
+            (.platforms | keys | sort) == [
+              "linux-amd64",
+              "linux-x64",
+              "macos-amd64",
+              "macos-arm64",
+              "macos-x64",
+              "windows-386",
+              "windows-amd64",
+              "windows-arm64",
+              "windows-x32",
+              "windows-x64"
+            ] and
+            all(.platforms[]; .size > 0) and
+            ([.platforms[].url | endswith(".dmg")] | any | not)
+          ' publish/update.json >/dev/null
+
+      - name: Create or update GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" --title "$TAG" --notes-file release-notes.md
+          else
+            gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --title "$TAG" --notes-file release-notes.md
+          fi
+          gh release upload "$TAG" publish/* --repo "$GITHUB_REPOSITORY" --clobber

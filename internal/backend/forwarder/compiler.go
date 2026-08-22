@@ -1,0 +1,340 @@
+// compiler.go 负责把固定 prompt、自然历史和 tool catalog 编译成 provider 请求。
+package forwarder
+
+import (
+	"fmt"
+	"strings"
+
+	"cursor/gen/agentv1"
+	modeladapter "cursor/internal/backend/agent/model"
+	"cursor/internal/promptinject"
+	promptassets "cursor/prompt"
+	"google.golang.org/protobuf/encoding/protojson"
+)
+
+type PromptCompiler interface {
+	Compile(conversation *ConversationFile, mode agentv1.AgentMode, latestUserText string, modelName string, customSystemPrompt string, goalMode bool) (CompiledConversation, error)
+	DerivePromptContexts(conversation *ConversationFile, mode agentv1.AgentMode, latestUserText string) ([]PromptContextMessage, error)
+}
+
+type DefaultPromptCompiler struct {
+	projector *HistoryProjector
+	catalog   ToolCatalog
+	reminders ReminderInjector
+	rules     *UserRuleStore
+	skills    *SkillStore
+	// injection is the single optional Codex-X-compatible system prompt decision point.
+	// A nil manager preserves the historical prompt byte-for-byte.
+	injection *promptinject.Manager
+}
+
+// NewPromptCompiler 创建默认 prompt 编译器。可选注入 manager 保持旧调用兼容。
+func NewPromptCompiler(projector *HistoryProjector, catalog ToolCatalog, reminders ReminderInjector, rules *UserRuleStore, skills *SkillStore, injection ...*promptinject.Manager) *DefaultPromptCompiler {
+	var manager *promptinject.Manager
+	if len(injection) > 0 {
+		manager = injection[0]
+	}
+	return &DefaultPromptCompiler{
+		projector: projector,
+		catalog:   catalog,
+		reminders: reminders,
+		rules:     rules,
+		skills:    skills,
+		injection: manager,
+	}
+}
+
+// Compile 生成当前 turn 应发送给 provider 的消息和工具集合。
+// customSystemPrompt 是客户端 run_request 附带的额外系统提示词（已过护栏），
+// 追加在共享规则/技能之后，避免影响无自定义提示词时的前缀稳定性。
+// goalMode 为 true 时，强制注入 goal-loop 技能（如果扫描可见且未被禁用），
+// 保证 /goal 命令剥离前缀后仍能稳定命中 Goal 工作流约束。
+func (compiler *DefaultPromptCompiler) Compile(conversation *ConversationFile, mode agentv1.AgentMode, latestUserText string, modelName string, customSystemPrompt string, goalMode bool) (CompiledConversation, error) {
+	if compiler == nil || compiler.projector == nil || compiler.catalog == nil {
+		return CompiledConversation{}, fmt.Errorf("prompt compiler dependencies are not initialized")
+	}
+	normalizedMode, err := validateSupportedActiveMode(mode)
+	if err != nil {
+		return CompiledConversation{}, err
+	}
+	subagentTypeName := ""
+	if conversation != nil {
+		subagentTypeName = conversation.SubagentTypeName
+	}
+	assetMode, err := promptAssetModeForConversation(normalizedMode, subagentTypeName)
+	if err != nil {
+		return CompiledConversation{}, err
+	}
+	systemPrompt, err := promptassets.ReadPrompt(assetMode)
+	if err != nil {
+		return CompiledConversation{}, err
+	}
+	tools, _, err := compiler.catalog.Load(normalizedMode, subagentTypeName)
+	if err != nil {
+		return CompiledConversation{}, err
+	}
+	tools, mcpToolCount, err := appendConversationMCPTools(tools, conversation)
+	if err != nil {
+		return CompiledConversation{}, err
+	}
+	replayMessages, err := compiler.projector.ProjectPromptReplay(conversation)
+	if err != nil {
+		return CompiledConversation{}, err
+	}
+	sharedRulesPrompt := ""
+	sharedRuleCount := 0
+	sharedRuleTotal := 0
+	if compiler.rules != nil && normalizedMode != agentv1.AgentMode_AGENT_MODE_DEBUG {
+		sharedRulesPrompt, sharedRuleTotal, sharedRuleCount, err = compiler.rules.BuildSystemPromptSection()
+		if err != nil {
+			return CompiledConversation{}, err
+		}
+	}
+	globalSkillsPrompt := ""
+	globalSkillsCount := 0
+	if compiler.skills != nil && normalizedMode != agentv1.AgentMode_AGENT_MODE_DEBUG {
+		// 内置技能走「调用链稀疏激活」：按当前请求文本相关性只注入 Top-K 技能，
+		// 不再全量注入。详见 docs/superpowers/specs/2026-07-29-skill-sparse-activation-design.md。
+		workspaceRoot, explicitSkillPaths, workspaceErr := skillActivationContextFromConversation(conversation)
+		if workspaceErr != nil {
+			return CompiledConversation{}, workspaceErr
+		}
+		globalSkillsPrompt, globalSkillsCount, err = compiler.skills.buildActivatedSkillsPromptSectionForWorkspaceExcluding(workspaceRoot, latestUserText, conversation, explicitSkillPaths, goalMode)
+		if err != nil {
+			return CompiledConversation{}, err
+		}
+	}
+	messages := make([]modeladapter.Message, 0, len(replayMessages)+1)
+	systemParts := []string{sanitizePromptAsset(systemPrompt, modelName)}
+	if strings.TrimSpace(sharedRulesPrompt) != "" {
+		systemParts = append(systemParts, sharedRulesPrompt)
+	}
+	if strings.TrimSpace(globalSkillsPrompt) != "" {
+		systemParts = append(systemParts, globalSkillsPrompt)
+	}
+	if strings.TrimSpace(customSystemPrompt) != "" {
+		systemParts = append(systemParts, strings.TrimSpace(customSystemPrompt))
+	}
+	systemText := strings.TrimSpace(strings.Join(filterNonEmpty(systemParts), "\n\n"))
+	if compiler.injection != nil {
+		// Apply only after the normal system prompt and shared rules are assembled.
+		// Commit-message generation uses its own path and never reaches this compiler.
+		systemText = compiler.injection.Apply(systemText)
+	}
+	if systemText != "" {
+		messages = append(messages, modeladapter.Message{
+			Role:    "system",
+			Content: systemText,
+		})
+	}
+	stableReplayCount, err := compiler.stableReplayMessageCount(conversation, replayMessages)
+	if err != nil {
+		return CompiledConversation{}, err
+	}
+	messages = append(messages, replayMessages...)
+	return CompiledConversation{
+		Mode:               normalizedMode,
+		Messages:           messages,
+		StableMessageCount: stableReplayCount,
+		Tools:              tools,
+		CompileSummary:     fmt.Sprintf("mode=%s asset_mode=%s child=%t messages=%d tools=%d mcp_tools=%d shared_rules_total=%d shared_rules_deduped=%d activated_skills=%d", normalizedMode.String(), string(assetMode), isChildConversationSubagentTypeName(subagentTypeName), len(messages), len(tools), mcpToolCount, sharedRuleTotal, sharedRuleCount, globalSkillsCount),
+	}, nil
+}
+
+func workspaceRootFromConversation(conversation *ConversationFile) (string, error) {
+	workspaceRoot, _, err := skillActivationContextFromConversation(conversation)
+	return workspaceRoot, err
+}
+
+func skillActivationContextFromConversation(conversation *ConversationFile) (string, map[string]struct{}, error) {
+	if conversation == nil {
+		return "", nil, nil
+	}
+	explicitSkillPaths := make(map[string]struct{})
+	workspaceRoot := ""
+	foundLatestRequestContext := false
+	for i := len(conversation.Entries) - 1; i >= 0; i-- {
+		entry := conversation.Entries[i]
+		if strings.TrimSpace(entry.Kind) != "request_context" || len(entry.Payload) == 0 {
+			continue
+		}
+		requestContext := &agentv1.RequestContext{}
+		if err := protojson.Unmarshal(entry.Payload, requestContext); err != nil {
+			return "", nil, fmt.Errorf("decode request context skill activation: %w", err)
+		}
+		if !foundLatestRequestContext {
+			workspaceRoot = resolveWorkspaceRootFromRequestContext(requestContext)
+			foundLatestRequestContext = true
+		}
+		for _, descriptor := range collectSkillDescriptors(requestContext) {
+			if descriptor == nil {
+				continue
+			}
+			if key := skillPathKey(descriptor.GetReadmeFilePath()); key != "" {
+				explicitSkillPaths[key] = struct{}{}
+			}
+		}
+	}
+	if len(explicitSkillPaths) == 0 {
+		explicitSkillPaths = nil
+	}
+	return workspaceRoot, explicitSkillPaths, nil
+}
+
+func (compiler *DefaultPromptCompiler) DerivePromptContexts(conversation *ConversationFile, mode agentv1.AgentMode, latestUserText string) ([]PromptContextMessage, error) {
+	if compiler == nil || compiler.projector == nil || compiler.catalog == nil || compiler.reminders == nil {
+		return nil, fmt.Errorf("prompt compiler dependencies are not initialized")
+	}
+	normalizedMode, err := validateSupportedActiveMode(mode)
+	if err != nil {
+		return nil, err
+	}
+	subagentTypeName := ""
+	if conversation != nil {
+		subagentTypeName = conversation.SubagentTypeName
+	}
+	_, toolNames, err := compiler.catalog.Load(normalizedMode, subagentTypeName)
+	if err != nil {
+		return nil, err
+	}
+	replayMessages, err := compiler.projector.ProjectPromptReplay(conversation)
+	if err != nil {
+		return nil, err
+	}
+	structuredStatePromptContexts, structuredStateTailMessages, err := buildStructuredStatePromptContexts(conversation)
+	if err != nil {
+		return nil, err
+	}
+	promptReminders := compiler.reminders.Inject(normalizedMode, conversation, replayMessages, latestUserText, toolNames)
+	candidates := make([]PromptContextMessage, 0, len(structuredStatePromptContexts)+len(structuredStateTailMessages)+len(promptReminders.PromptContexts)+len(promptReminders.TailMessages))
+	candidates = append(candidates, structuredStatePromptContexts...)
+	for _, message := range structuredStateTailMessages {
+		candidates = append(candidates, newPromptContextMessage(promptContextSourceStructuredTodoReminder, message, true))
+	}
+	candidates = append(candidates, promptReminders.PromptContexts...)
+	for index, message := range promptReminders.TailMessages {
+		candidates = append(candidates, newPromptContextMessage(fmt.Sprintf("tail_reminder/%d", index), message, true))
+	}
+	for index := range candidates {
+		candidates[index].Persist = true
+	}
+	return filterCurrentTurnPromptContexts(conversation, candidates), nil
+}
+
+func (compiler *DefaultPromptCompiler) stableReplayMessageCount(conversation *ConversationFile, replayMessages []modeladapter.Message) (int, error) {
+	if compiler == nil || compiler.projector == nil || conversation == nil || len(replayMessages) == 0 {
+		return 0, nil
+	}
+	currentTurnSeq := conversation.CurrentTurnSeq
+	if currentTurnSeq <= 0 {
+		currentTurnSeq = conversation.NextTurnSeq - 1
+	}
+	stableCount := 0
+	if currentTurnSeq > 0 {
+		stableConversation := cloneConversationFile(conversation)
+		stableConversation.Entries = stableReplayEntriesBeforeTurn(conversation.Entries, currentTurnSeq)
+		stableMessages, err := compiler.projector.ProjectPromptReplay(stableConversation)
+		if err != nil {
+			return 0, err
+		}
+		stableCount = len(stableMessages)
+	}
+	if requestPrefixReplayCount := replayMessageCountFromRequestPrefix(conversation); requestPrefixReplayCount > stableCount {
+		stableCount = requestPrefixReplayCount
+	}
+	if stableCount > len(replayMessages) {
+		return len(replayMessages), nil
+	}
+	return stableCount, nil
+}
+
+func replayMessageCountFromRequestPrefix(conversation *ConversationFile) int {
+	if conversation == nil || conversation.LatestRequestPrefix == nil {
+		return 0
+	}
+	requestID := strings.TrimSpace(conversation.CurrentRequestID)
+	if requestID == "" || strings.TrimSpace(conversation.LatestRequestPrefix.RequestID) != requestID {
+		return 0
+	}
+	return conversation.LatestRequestPrefix.ReplayMessageCount
+}
+
+func stableReplayEntriesBeforeTurn(entries []HistoryEntry, currentTurnSeq int64) []HistoryEntry {
+	if len(entries) == 0 || currentTurnSeq <= 0 {
+		return nil
+	}
+	filtered := make([]HistoryEntry, 0, len(entries))
+	for _, entry := range entries {
+		if entry.TurnSeq > 0 && entry.TurnSeq >= currentTurnSeq {
+			continue
+		}
+		filtered = append(filtered, entry)
+	}
+	return filtered
+}
+
+// filterNonEmpty 过滤掉空白字符串，便于安全拼接 system prompt 片段。
+func filterNonEmpty(items []string) []string {
+	filtered := make([]string, 0, len(items))
+	for _, item := range items {
+		if strings.TrimSpace(item) != "" {
+			filtered = append(filtered, strings.TrimSpace(item))
+		}
+	}
+	return filtered
+}
+
+func mergeAdjacentPlainUserMessages(messages []modeladapter.Message) []modeladapter.Message {
+	if len(messages) == 0 {
+		return nil
+	}
+	merged := make([]modeladapter.Message, 0, len(messages))
+	for _, message := range messages {
+		text, ok := plainUserMessageText(message)
+		if !ok {
+			merged = append(merged, message)
+			continue
+		}
+		if len(merged) == 0 {
+			message.Role = "user"
+			message.Content = text
+			merged = append(merged, message)
+			continue
+		}
+		last := &merged[len(merged)-1]
+		if lastText, ok := plainUserMessageText(*last); ok {
+			last.Role = "user"
+			last.Content = lastText + "\n\n" + text
+			continue
+		}
+		message.Role = "user"
+		message.Content = text
+		merged = append(merged, message)
+	}
+	return merged
+}
+
+func plainUserMessageText(message modeladapter.Message) (string, bool) {
+	if strings.TrimSpace(message.Role) != "user" {
+		return "", false
+	}
+	if len(message.ContentParts) > 0 || len(message.ToolCalls) > 0 {
+		return "", false
+	}
+	if strings.TrimSpace(message.ToolCallID) != "" || strings.TrimSpace(message.Name) != "" {
+		return "", false
+	}
+	if strings.TrimSpace(message.ReasoningContent) != "" ||
+		strings.TrimSpace(message.ReasoningSignature) != "" ||
+		strings.TrimSpace(message.ReasoningSignatureSource) != "" ||
+		strings.TrimSpace(message.OpenAIResponsesReasoningID) != "" ||
+		strings.TrimSpace(message.OpenAIResponsesReasoningStatus) != "" ||
+		len(message.OpenAIResponsesReasoningSummary) > 0 {
+		return "", false
+	}
+	text := strings.TrimSpace(message.Content)
+	if text == "" {
+		return "", false
+	}
+	return text, true
+}

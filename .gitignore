@@ -1,0 +1,85 @@
+# Reference-only repositories and local analysis
+.analysis-tmp/
+.reference/
+.worktrees/
+
+# JavaScript dependencies and generated frontend output
+node_modules/
+frontend/node_modules/
+frontend/bindings/
+frontend/dist/
+frontend/test-results/
+frontend/playwright-report/
+frontend/.playwright-cli/
+test-results/
+playwright-report/
+
+# Native and release output
+bin/
+dist/
+gen/
+.task/
+*.exe
+*.zip
+*.dmg
+*.tar.gz
+*.msi
+*.nupkg
+*.syso
+
+# Local application data, certificates, logs, and diagnostics
+.code-work/
+.cursor-local-assistant/
+.cursor-local-assistant-v2/
+logs/
+output/
+*.log
+*.tmp
+*.sqlite
+*.db
+internal/certs/ca.key
+internal/certs/ca.crt
+
+# Local environment and credentials
+.env.local
+state.vscdb*
+**/state.vscdb*
+**/cursor-accounts/accounts/
+**/cursor-accounts/backups/
+**/cursor-accounts/operations/
+**/cursor-accounts/index.json
+**/cursor-accounts/current.json
+**/cursor-accounts.tmp/
+**/legacy/cursor-account.json.bak
+**/cursor-account.json
+**/*cursor-account-recovery*.json
+**/*cursor-accounts-recovery*.json
+
+# Export and profile artifacts
+**/request-lab/exports/
+**/agent-ops/exports/
+**/profiles/backups/
+**/profiles/operations/
+**/profiles/exports/
+
+# Temporary local work
+.tmp/
+.tmp-skill-scan/
+.zcode/
+.superpowers/
+.reasonix/
+reasonix.toml
+scripts/_tmp_*
+prompt/native/
+
+# Python cache
+__pycache__/
+*.pyc
+
+# OS and editor files
+.vscode/
+.idea/
+*.suo
+*.user
+Thumbs.db
+.DS_Store

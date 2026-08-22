@@ -1,0 +1,44 @@
+version: "3"
+
+# 构建元信息（修改后可执行：wails3 task common:update:build-assets）
+info:
+  companyName: "Sakana"
+  productName: "Code Work"
+  productIdentifier: "com.sakana.code-work"
+  description: "Code Work"
+  copyright: "© 2026, Sakana"
+  comments: "Code Work"
+  version: "0.0.98"
+
+dev_mode:
+  root_path: .
+  log_level: warn
+  debounce: 1000
+  ignore:
+    dir:
+      - .git
+      - node_modules
+      - frontend
+      - bin
+    file:
+      - .DS_Store
+      - .gitignore
+      - .gitkeep
+    watched_extension:
+      - "*.go"
+      - "*.js"
+      - "*.ts"
+    git_ignore: true
+  executes:
+    - cmd: wails3 build DEV=true
+      type: blocking
+    - cmd: wails3 task common:dev:frontend
+      type: background
+    - cmd: wails3 task run
+      type: primary
+
+fileAssociations:
+
+other:
+  - name: 其他数据
+
