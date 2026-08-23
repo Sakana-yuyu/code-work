@@ -1,4 +1,10 @@
 import { reactive } from "vue";
+import { WORKBENCH_LAUNCH_PATH } from "../utils/workbenchRoutes.js";
+
+function workbenchTabId(path) {
+  const raw = String(path || "");
+  return !raw || raw === "/" ? WORKBENCH_LAUNCH_PATH : raw;
+}
 
 const STORAGE_KEY = "code-work.workbench.layout.v1";
 const DEFAULT_LAYOUT = Object.freeze({
@@ -81,7 +87,7 @@ export function resetWorkbenchLayout() {
 }
 
 export function syncWorkbenchTab(route) {
-  const id = String(route.path || "/");
+  const id = workbenchTabId(route.path);
   const label = String(route.meta?.workbenchLabel || route.meta?.title || "工作台").split(/[｜|]/)[0].trim() || "工作台";
   const icon = String(route.meta?.workbenchIcon || "workbench");
   const existing = workbenchState.tabs.find((tab) => tab.id === id);
@@ -90,18 +96,18 @@ export function syncWorkbenchTab(route) {
     existing.icon = icon;
     return;
   }
-  workbenchState.tabs.push({ id, label, icon, closable: id !== "/" });
+  workbenchState.tabs.push({ id, label, icon, closable: id !== WORKBENCH_LAUNCH_PATH });
 }
 
 export function removeWorkbenchTab(id) {
   const index = workbenchState.tabs.findIndex((tab) => tab.id === id);
-  if (index < 0) return "/";
+  if (index < 0) return WORKBENCH_LAUNCH_PATH;
   const [removed] = workbenchState.tabs.splice(index, 1);
   if (!removed.closable || workbenchState.tabs.length === 0) {
-    if (!workbenchState.tabs.some((tab) => tab.id === "/")) {
-      workbenchState.tabs.unshift({ id: "/", label: "开始", icon: "workbench", closable: false });
+    if (!workbenchState.tabs.some((tab) => tab.id === WORKBENCH_LAUNCH_PATH)) {
+      workbenchState.tabs.unshift({ id: WORKBENCH_LAUNCH_PATH, label: "工作区", icon: "folder", closable: false });
     }
-    return "/";
+    return WORKBENCH_LAUNCH_PATH;
   }
-  return workbenchState.tabs[Math.max(0, index - 1)]?.id || "/";
+  return workbenchState.tabs[Math.max(0, index - 1)]?.id || WORKBENCH_LAUNCH_PATH;
 }
