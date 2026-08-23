@@ -48,6 +48,7 @@ function defaultWorkspaces() {
 let workspaces = defaultWorkspaces();
 let files = clone(PREVIEW_FILES);
 let approvals = [];
+const executorWriteGrants = new Set();
 let sshKeys = defaultSSHKeys();
 let knownHosts = defaultKnownHosts();
 
@@ -102,8 +103,11 @@ export function resetIDEWorkspacePreview() {
   workspaces = defaultWorkspaces();
   files = clone(PREVIEW_FILES);
   approvals = [];
+  executorWriteGrants.clear();
   sshKeys = defaultSSHKeys();
   knownHosts = defaultKnownHosts();
+  terminals = [];
+  agentRuns = [];
 }
 
 function normalizeRelativePath(value, allowRoot) {
@@ -510,6 +514,381 @@ export function commitIDEKnownHost(workspaceID, approvalID, host, port, publicKe
     knownHosts = [...next, result.presented];
     approvals = approvals.map((item, itemIndex) => (itemIndex === index ? { ...item, state: "consumed" } : item));
     return result.presented;
+  });
+}
+
+const GIT_OPERATION_TITLES = {
+  git_clone: "克隆仓库",
+  git_stage: "暂存文件",
+  git_commit: "创建提交",
+  git_fetch: "获取远程",
+  git_pull: "拉取远程",
+  git_push: "推送到远程",
+};
+
+function normalizeGitOperation(operation) {
+  const kind = String(operation?.kind || "");
+  if (!GIT_OPERATION_TITLES[kind]) throw new Error("Git 操作不合法");
+  const remoteUrl = String(operation?.remoteUrl || "").trim();
+  if (remoteUrl) {
+    if (/[;&|<>$`]/.test(remoteUrl) || /:\/\//.test(remoteUrl) && /\/\/[^/]*:[^/]*@/.test(remoteUrl) || remoteUrl.toLowerCase().startsWith("file:") || /^[A-Za-z]:[\\/]/.test(remoteUrl)) {
+      throw new Error("Git 操作不合法");
+    }
+    if (!remoteUrl.startsWith("https://") && !remoteUrl.startsWith("ssh://") && !/^[A-Za-z0-9._-]+@[A-Za-z0-9.-]+:/.test(remoteUrl)) {
+      throw new Error("Git 操作不合法");
+    }
+  }
+  const directory = String(operation?.directory || "").trim().replaceAll("\\", "/");
+  if (directory && (directory.includes("..") || directory.startsWith("/") || /^[A-Za-z]:/.test(directory))) {
+    throw new Error("Git 操作不合法");
+  }
+  const paths = Array.isArray(operation?.paths) ? operation.paths.map((item) => String(item || "").replaceAll("\\", "/")) : [];
+  if (paths.some((item) => !item || item.includes("..") || item.startsWith("/") || /^[A-Za-z]:/.test(item))) {
+    throw new Error("Git 操作不合法");
+  }
+  const message = String(operation?.message || "").trim();
+  const remote = String(operation?.remote || "origin").trim() || "origin";
+  const stageAll = Boolean(operation?.stageAll);
+  if (kind === "git_clone" && !remoteUrl) throw new Error("Git 操作不合法");
+  if (kind === "git_stage" && !stageAll && paths.length === 0) throw new Error("Git 操作不合法");
+  if (kind === "git_commit" && !message) throw new Error("Git 操作不合法");
+  return {
+    kind,
+    remoteUrl,
+    remote,
+    directory: directory || (kind === "git_clone" ? "." : ""),
+    paths,
+    message,
+    stageAll,
+    argv: [],
+  };
+}
+
+export function previewIDEGitOperation(workspaceID, operation) {
+  return Promise.resolve().then(() => {
+    requireWorkspace(workspaceID);
+    const normalized = normalizeGitOperation(operation);
+    const now = "2026-08-23T00:05:00.000Z";
+    const record = {
+      id: globalThis.crypto?.randomUUID?.() || `77777777-7777-4777-8777-${String(approvals.length + 1).padStart(12, "0")}`,
+      workspaceId: workspaceID,
+      kind: normalized.kind,
+      summary: { title: GIT_OPERATION_TITLES[normalized.kind], impactCodes: [normalized.kind] },
+      state: "pending",
+      createdAt: now,
+      expiresAt: "2026-08-23T00:10:00.000Z",
+      stateChangedAt: now,
+      operation: normalized,
+    };
+    approvals = [...approvals, record];
+    return {
+      approval: publicApproval(record),
+      operation: {
+        kind: normalized.kind,
+        argv: ["git", normalized.kind.replace("git_", "")],
+        remoteUrl: normalized.remoteUrl,
+        remote: normalized.remote,
+        directory: normalized.directory,
+        paths: normalized.paths,
+        message: normalized.message,
+        stageAll: normalized.stageAll,
+      },
+    };
+  });
+}
+
+export function commitIDEGitOperation(workspaceID, approvalID, operation) {
+  return Promise.resolve().then(() => {
+    requireWorkspace(workspaceID);
+    const normalized = normalizeGitOperation(operation);
+    const index = approvals.findIndex((record) => record.id === approvalID && record.workspaceId === workspaceID);
+    if (index < 0) throw new Error("审批不存在");
+    const record = approvals[index];
+    if (record.state !== "approved") throw new Error("审批状态无效");
+    if (record.kind !== normalized.kind) throw new Error("审批与操作不匹配");
+    approvals = approvals.map((item, itemIndex) => (itemIndex === index ? { ...item, state: "consumed" } : item));
+    return {
+      kind: normalized.kind,
+      title: GIT_OPERATION_TITLES[normalized.kind],
+    };
+  });
+}
+
+let terminals = [];
+let agentRuns = [];
+
+const TERMINAL_PROFILES = [
+  { id: "powershell", name: "PowerShell" },
+  { id: "cmd", name: "命令提示符" },
+];
+
+function publicTerminal(session) {
+  return {
+    id: session.id,
+    workspaceId: session.workspaceId,
+    profileId: session.profileId,
+    profileName: session.profileName,
+    cols: session.cols,
+    rows: session.rows,
+    state: session.state,
+  };
+}
+
+function requireTerminal(sessionID) {
+  const session = terminals.find((item) => item.id === sessionID);
+  if (!session || session.state === "exited") throw new Error("终端会话不存在");
+  return session;
+}
+
+export function listIDETerminalProfiles() {
+  return Promise.resolve(TERMINAL_PROFILES.map((item) => ({ ...item })));
+}
+
+export function openIDETerminalSession(workspaceID, profileID, cols, rows) {
+  return Promise.resolve().then(() => {
+    requireWorkspace(workspaceID);
+    const profile = TERMINAL_PROFILES.find((item) => item.id === profileID);
+    if (!profile) throw new Error("终端配置不合法");
+    const session = {
+      id: globalThis.crypto?.randomUUID?.() || `term-${terminals.length + 1}`,
+      workspaceId: workspaceID,
+      profileId: profile.id,
+      profileName: profile.name,
+      cols: Number(cols) || 80,
+      rows: Number(rows) || 24,
+      state: "running",
+      output: "预览终端已连接\r\n",
+    };
+    terminals = [...terminals, session];
+    return publicTerminal(session);
+  });
+}
+
+export function writeIDETerminalSession(sessionID, data) {
+  return Promise.resolve().then(() => {
+    const session = requireTerminal(sessionID);
+    session.output += String(data || "");
+  });
+}
+
+export function resizeIDETerminalSession(sessionID, cols, rows) {
+  return Promise.resolve().then(() => {
+    const session = requireTerminal(sessionID);
+    session.cols = Number(cols) || session.cols;
+    session.rows = Number(rows) || session.rows;
+  });
+}
+
+export function interruptIDETerminalSession(sessionID) {
+  return Promise.resolve().then(() => {
+    const session = requireTerminal(sessionID);
+    session.output += "^C\r\n";
+  });
+}
+
+export function closeIDETerminalSession(sessionID) {
+  return Promise.resolve().then(() => {
+    const session = requireTerminal(sessionID);
+    session.state = "exited";
+  });
+}
+
+export function getIDETerminalOutput(sessionID) {
+  return Promise.resolve().then(() => {
+    const session = terminals.find((item) => item.id === sessionID);
+    if (!session) throw new Error("终端会话不存在");
+    return {
+      sessionId: session.id,
+      data: session.output,
+      seq: session.output.length,
+      exited: session.state === "exited",
+    };
+  });
+}
+
+function publicAgentRun(run) {
+  return {
+    id: run.id,
+    workspaceId: run.workspaceId,
+    modelId: run.modelId,
+    prompt: run.prompt,
+    status: run.status,
+    createdAtUnixMs: run.createdAtUnixMs,
+    updatedAtUnixMs: run.updatedAtUnixMs,
+  };
+}
+
+export function startIDEAgentRun(workspaceID, modelID, prompt) {
+  return Promise.resolve().then(() => {
+    requireWorkspace(workspaceID);
+    const text = String(prompt || "").trim();
+    if (!text) throw new Error("Agent 请求不合法");
+    const now = Date.now();
+    const run = {
+      id: globalThis.crypto?.randomUUID?.() || `agent-${agentRuns.length + 1}`,
+      workspaceId: workspaceID,
+      modelId: String(modelID || "preview-demo-openai"),
+      prompt: text,
+      status: "completed",
+      createdAtUnixMs: now,
+      updatedAtUnixMs: now,
+      events: [
+        { runId: "", seq: 1, kind: "started", text, replaySafe: true, atUnixMs: now },
+        { runId: "", seq: 2, kind: "delta", text: `预览回复：${text}`, replaySafe: true, atUnixMs: now },
+        { runId: "", seq: 3, kind: "finished", text: "", replaySafe: true, atUnixMs: now },
+      ],
+    };
+    run.events = run.events.map((event) => ({ ...event, runId: run.id }));
+    agentRuns = [...agentRuns, run];
+    return publicAgentRun(run);
+  });
+}
+
+export function cancelIDEAgentRun(runID) {
+  return Promise.resolve().then(() => {
+    const run = agentRuns.find((item) => item.id === runID);
+    if (!run) throw new Error("Agent 运行不存在");
+    run.status = "canceled";
+    return publicAgentRun(run);
+  });
+}
+
+export function getIDEAgentRun(runID) {
+  return Promise.resolve().then(() => {
+    const run = agentRuns.find((item) => item.id === runID);
+    if (!run) throw new Error("Agent 运行不存在");
+    return publicAgentRun(run);
+  });
+}
+
+export function listIDEAgentRuns(workspaceID) {
+  return Promise.resolve().then(() => {
+    requireWorkspace(workspaceID);
+    return agentRuns.filter((item) => item.workspaceId === workspaceID).map(publicAgentRun);
+  });
+}
+
+export function getIDEAgentRunEvents(runID) {
+  return Promise.resolve().then(() => {
+    const run = agentRuns.find((item) => item.id === runID);
+    if (!run) throw new Error("Agent 运行不存在");
+    return clone(run.events);
+  });
+}
+
+export function replayIDEAgentRun(runID) {
+  return getIDEAgentRunEvents(runID).then((events) => events.filter((event) => event.replaySafe));
+}
+
+export function previewIDEAgentEffect(runID, effect) {
+  return Promise.resolve().then(() => {
+    const run = agentRuns.find((item) => item.id === runID);
+    if (!run) throw new Error("Agent 运行不存在");
+    const path = normalizeRelativePath(effect?.path, false);
+    const node = requireFile(path);
+    const now = "2026-08-23T00:10:00.000Z";
+    const record = {
+      id: globalThis.crypto?.randomUUID?.() || `77777777-7777-4777-8777-${String(approvals.length + 1).padStart(12, "0")}`,
+      workspaceId: run.workspaceId,
+      runId: run.id,
+      kind: "agent_effect",
+      summary: { title: `写入 ${path}`, impactCodes: ["workspace_write"] },
+      state: "pending",
+      createdAt: now,
+      expiresAt: "2026-08-23T00:15:00.000Z",
+      stateChangedAt: now,
+      path,
+      text: String(effect?.text ?? ""),
+      expectedVersion: node.version,
+      effectId: globalThis.crypto?.randomUUID?.() || `effect-${approvals.length + 1}`,
+    };
+    approvals = [...approvals, record];
+    run.events = [...run.events, {
+      runId: run.id,
+      seq: run.events.length + 1,
+      kind: "effect_proposed",
+      text: record.summary.title,
+      replaySafe: false,
+      effect: { id: record.effectId, kind: "workspace_write", path, text: record.text, expectedVersion: record.expectedVersion, summary: record.summary.title },
+      atUnixMs: Date.now(),
+    }];
+    return {
+      approval: publicApproval(record),
+      effect: { id: record.effectId, kind: "workspace_write", path, text: record.text, expectedVersion: record.expectedVersion, summary: record.summary.title },
+    };
+  });
+}
+
+export function commitIDEAgentEffect(runID, approvalID, effect) {
+  return Promise.resolve().then(() => {
+    const run = agentRuns.find((item) => item.id === runID);
+    if (!run) throw new Error("Agent 运行不存在");
+    const path = normalizeRelativePath(effect?.path, false);
+    const node = requireFile(path);
+    const index = approvals.findIndex((record) => record.id === approvalID && record.workspaceId === run.workspaceId);
+    if (index < 0) throw new Error("审批不存在");
+    const record = approvals[index];
+    if (record.state !== "approved") throw new Error("审批状态无效");
+    if (record.kind !== "agent_effect" || record.path !== path || record.text !== String(effect?.text ?? "")) {
+      throw new Error("审批与操作不匹配");
+    }
+    if (node.version !== record.expectedVersion) throw new Error("版本冲突");
+    files = { ...files, [path]: { ...node, text: record.text, version: `${node.version}-agent` } };
+    approvals = approvals.map((item, itemIndex) => (itemIndex === index ? { ...item, state: "consumed" } : item));
+  });
+}
+
+export function previewIDEExecutorWriteCapability(workspaceID, executorID) {
+  return Promise.resolve().then(() => {
+    requireWorkspace(workspaceID);
+    const now = "2026-08-23T00:12:00.000Z";
+    const record = {
+      id: globalThis.crypto?.randomUUID?.() || `88888888-8888-4888-8888-${String(approvals.length + 1).padStart(12, "0")}`,
+      workspaceId: workspaceID,
+      kind: "executor_write",
+      summary: { title: "允许执行器写入工作区", impactCodes: ["executor_write"] },
+      state: "pending",
+      createdAt: now,
+      expiresAt: "2026-08-23T00:17:00.000Z",
+      stateChangedAt: now,
+      executorId: String(executorID || ""),
+    };
+    approvals = [...approvals, record];
+    return {
+      approval: publicApproval(record),
+      executorId: record.executorId,
+      authKind: String(executorID || "").includes("byok") ? "byok_model" : "cli_login",
+    };
+  });
+}
+
+export function commitIDEExecutorWriteCapability(workspaceID, approvalID, executorID) {
+  return Promise.resolve().then(() => {
+    requireWorkspace(workspaceID);
+    const index = approvals.findIndex((record) => record.id === approvalID && record.workspaceId === workspaceID);
+    if (index < 0) throw new Error("审批不存在");
+    const record = approvals[index];
+    if (record.state !== "approved") throw new Error("审批状态无效");
+    if (record.kind !== "executor_write" || record.executorId !== String(executorID || "")) {
+      throw new Error("审批与操作不匹配");
+    }
+    executorWriteGrants.add(String(executorID || ""));
+    approvals = approvals.map((item, itemIndex) => (itemIndex === index ? { ...item, state: "consumed" } : item));
+  });
+}
+
+export function applyExecutorPreviewPolicy(items) {
+  return clone(items || []).map((item) => {
+    const id = String(item?.id || "");
+    const granted = executorWriteGrants.has(id);
+    const capabilities = (Array.isArray(item?.capabilities) ? item.capabilities : []).filter(
+      (capability) => capability !== "write_workspace" || granted,
+    );
+    return {
+      ...item,
+      capabilities,
+      authKind: id.includes("byok") ? "byok_model" : "cli_login",
+    };
   });
 }
 

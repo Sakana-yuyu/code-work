@@ -89,6 +89,25 @@ test("IDE workspace APIs are wrapped for desktop and browser preview", async () 
     "ProbeIDEHostKey",
     "PreviewIDEKnownHost",
     "CommitIDEKnownHost",
+    "PreviewIDEGitOperation",
+    "CommitIDEGitOperation",
+    "ListIDETerminalProfiles",
+    "OpenIDETerminalSession",
+    "WriteIDETerminalSession",
+    "ResizeIDETerminalSession",
+    "InterruptIDETerminalSession",
+    "CloseIDETerminalSession",
+    "GetIDETerminalOutput",
+    "StartIDEAgentRun",
+    "CancelIDEAgentRun",
+    "GetIDEAgentRun",
+    "ListIDEAgentRuns",
+    "GetIDEAgentRunEvents",
+    "ReplayIDEAgentRun",
+    "PreviewIDEAgentEffect",
+    "CommitIDEAgentEffect",
+    "PreviewIDEExecutorWriteCapability",
+    "CommitIDEExecutorWriteCapability",
   ]) {
     assert.match(source, new RegExp(`export function ${name[0].toLowerCase()}${name.slice(1)}`));
     assert.match(bindingsSource, new RegExp(`export const ${name} =`));
@@ -97,6 +116,8 @@ test("IDE workspace APIs are wrapped for desktop and browser preview", async () 
   assert.doesNotMatch(bindingsSource, /export const RegisterIDEWorkspace/);
   assert.doesNotMatch(source, /export function getIDESSHPrivateKey/);
   assert.doesNotMatch(bindingsSource, /export const GetIDESSHPrivateKey/);
-  assert.doesNotMatch(source, /export function appendIDEKnownHost/);
-  assert.doesNotMatch(bindingsSource, /export const AppendIDEKnownHost/);
+  assert.doesNotMatch(source, /export function runIDEGit/);
+  assert.doesNotMatch(bindingsSource, /export const RunIDEGit/);
+  assert.doesNotMatch(source, /export function startIDETerminalCommand/);
+  assert.doesNotMatch(bindingsSource, /export const StartIDETerminalCommand/);
 });

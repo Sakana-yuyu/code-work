@@ -5,10 +5,13 @@ import (
 	"errors"
 	"fmt"
 
+	"cursor/internal/ide/agentrun"
 	"cursor/internal/ide/approval"
+	"cursor/internal/ide/gitops"
 	"cursor/internal/ide/gitstatus"
 	"cursor/internal/ide/knownhosts"
 	"cursor/internal/ide/sshvault"
+	"cursor/internal/ide/termsession"
 	"cursor/internal/ide/workspace"
 )
 
@@ -50,6 +53,9 @@ func (s *ProxyService) ListIDEWorkspaces() ([]workspace.Summary, error) {
 func (s *ProxyService) RemoveIDEWorkspace(workspaceID string) error {
 	if s == nil || s.ideWorkspaces == nil {
 		return fmt.Errorf("工作区服务未初始化")
+	}
+	if s.ideTerminal != nil {
+		s.ideTerminal.CloseWorkspace(workspaceID)
 	}
 	return mapIDEWorkspaceError(s.ideWorkspaces.Remove(context.Background(), workspaceID))
 }
@@ -115,6 +121,32 @@ func mapIDEWorkspaceError(err error) error {
 		return fmt.Errorf("Git 不可用: %w", err)
 	case errors.Is(err, gitstatus.ErrInvalidGitArgs):
 		return fmt.Errorf("Git 参数不合法: %w", err)
+	case errors.Is(err, gitops.ErrInvalidOperation):
+		return fmt.Errorf("Git 操作不合法: %w", err)
+	case errors.Is(err, gitops.ErrGitUnavailable):
+		return fmt.Errorf("Git 不可用: %w", err)
+	case errors.Is(err, termsession.ErrInvalidProfile):
+		return fmt.Errorf("终端配置不合法: %w", err)
+	case errors.Is(err, termsession.ErrSessionNotFound):
+		return fmt.Errorf("终端会话不存在: %w", err)
+	case errors.Is(err, termsession.ErrTerminalUnavailable):
+		return fmt.Errorf("终端不可用: %w", err)
+	case errors.Is(err, termsession.ErrSessionCapacity):
+		return fmt.Errorf("终端会话数量已满: %w", err)
+	case errors.Is(err, agentrun.ErrInvalidRequest):
+		return fmt.Errorf("Agent 请求不合法: %w", err)
+	case errors.Is(err, agentrun.ErrRunNotFound):
+		return fmt.Errorf("Agent 运行不存在: %w", err)
+	case errors.Is(err, agentrun.ErrStoreInvalid):
+		return fmt.Errorf("Agent 运行存储损坏: %w", err)
+	case errors.Is(err, agentrun.ErrEffectInvalid):
+		return fmt.Errorf("Agent 副作用不合法: %w", err)
+	case errors.Is(err, agentrun.ErrEffectNotFound):
+		return fmt.Errorf("Agent 副作用不存在: %w", err)
+	case errors.Is(err, agentrun.ErrCapacity):
+		return fmt.Errorf("Agent 运行数量已满: %w", err)
+	case errors.Is(err, agentrun.ErrStreamerMissing):
+		return fmt.Errorf("模型路由不可用: %w", err)
 	case errors.Is(err, sshvault.ErrInvalidName):
 		return fmt.Errorf("SSH 密钥名称不合法: %w", err)
 	case errors.Is(err, sshvault.ErrInvalidKey):

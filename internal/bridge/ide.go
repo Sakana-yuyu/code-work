@@ -5,6 +5,7 @@ import (
 
 	"cursor/internal/client"
 	"cursor/internal/ide/approval"
+	"cursor/internal/ide/gitops"
 	"cursor/internal/ide/gitstatus"
 	"cursor/internal/ide/knownhosts"
 	"cursor/internal/ide/sshvault"
@@ -25,6 +26,11 @@ type IDEGitRemote = gitstatus.Remote
 type IDESSHKeySummary = sshvault.KeySummary
 type IDEKnownHost = knownhosts.Entry
 type IDEKnownHostPreview = client.IDEKnownHostPreview
+type IDEGitPreview = client.IDEGitPreview
+type IDEGitOperation = gitops.Operation
+type IDETerminalProfile = client.IDETerminalProfile
+type IDETerminalSession = client.IDETerminalSession
+type IDETerminalOutput = client.IDETerminalOutput
 
 func (s *ProxyService) SelectAndRegisterIDEWorkspace() (IDEWorkspaceSummary, error) {
 	if s == nil || s.core == nil {
@@ -164,6 +170,145 @@ func (s *ProxyService) CommitIDEKnownHost(workspaceID, approvalID, host string, 
 		return IDEKnownHost{}, fmt.Errorf("工作区服务未初始化")
 	}
 	return s.core.CommitIDEKnownHost(workspaceID, approvalID, host, port, publicKey)
+}
+
+func (s *ProxyService) PreviewIDEGitOperation(workspaceID string, operation IDEGitOperation) (IDEGitPreview, error) {
+	if s == nil || s.core == nil {
+		return IDEGitPreview{}, fmt.Errorf("工作区服务未初始化")
+	}
+	return s.core.PreviewIDEGitOperation(workspaceID, operation)
+}
+
+func (s *ProxyService) CommitIDEGitOperation(workspaceID, approvalID string, operation IDEGitOperation) error {
+	if s == nil || s.core == nil {
+		return fmt.Errorf("工作区服务未初始化")
+	}
+	return s.core.CommitIDEGitOperation(workspaceID, approvalID, operation)
+}
+
+func (s *ProxyService) ListIDETerminalProfiles() []IDETerminalProfile {
+	if s == nil || s.core == nil {
+		return nil
+	}
+	return s.core.ListIDETerminalProfiles()
+}
+
+func (s *ProxyService) OpenIDETerminalSession(workspaceID, profileID string, cols, rows int) (IDETerminalSession, error) {
+	if s == nil || s.core == nil {
+		return IDETerminalSession{}, fmt.Errorf("工作区服务未初始化")
+	}
+	return s.core.OpenIDETerminalSession(workspaceID, profileID, cols, rows)
+}
+
+func (s *ProxyService) WriteIDETerminalSession(sessionID, data string) error {
+	if s == nil || s.core == nil {
+		return fmt.Errorf("工作区服务未初始化")
+	}
+	return s.core.WriteIDETerminalSession(sessionID, data)
+}
+
+func (s *ProxyService) ResizeIDETerminalSession(sessionID string, cols, rows int) error {
+	if s == nil || s.core == nil {
+		return fmt.Errorf("工作区服务未初始化")
+	}
+	return s.core.ResizeIDETerminalSession(sessionID, cols, rows)
+}
+
+func (s *ProxyService) InterruptIDETerminalSession(sessionID string) error {
+	if s == nil || s.core == nil {
+		return fmt.Errorf("工作区服务未初始化")
+	}
+	return s.core.InterruptIDETerminalSession(sessionID)
+}
+
+func (s *ProxyService) CloseIDETerminalSession(sessionID string) error {
+	if s == nil || s.core == nil {
+		return fmt.Errorf("工作区服务未初始化")
+	}
+	return s.core.CloseIDETerminalSession(sessionID)
+}
+
+func (s *ProxyService) GetIDETerminalOutput(sessionID string) (IDETerminalOutput, error) {
+	if s == nil || s.core == nil {
+		return IDETerminalOutput{}, fmt.Errorf("工作区服务未初始化")
+	}
+	return s.core.GetIDETerminalOutput(sessionID)
+}
+
+type IDEAgentRun = client.IDEAgentRun
+type IDEAgentEvent = client.IDEAgentEvent
+type IDEAgentEffect = client.IDEAgentEffect
+type IDEAgentEffectPreview = client.IDEAgentEffectPreview
+type IDEExecutorWritePreview = client.IDEExecutorWritePreview
+
+func (s *ProxyService) StartIDEAgentRun(workspaceID, modelID, prompt string) (IDEAgentRun, error) {
+	if s == nil || s.core == nil {
+		return IDEAgentRun{}, fmt.Errorf("工作区服务未初始化")
+	}
+	return s.core.StartIDEAgentRun(workspaceID, modelID, prompt)
+}
+
+func (s *ProxyService) CancelIDEAgentRun(runID string) (IDEAgentRun, error) {
+	if s == nil || s.core == nil {
+		return IDEAgentRun{}, fmt.Errorf("工作区服务未初始化")
+	}
+	return s.core.CancelIDEAgentRun(runID)
+}
+
+func (s *ProxyService) GetIDEAgentRun(runID string) (IDEAgentRun, error) {
+	if s == nil || s.core == nil {
+		return IDEAgentRun{}, fmt.Errorf("工作区服务未初始化")
+	}
+	return s.core.GetIDEAgentRun(runID)
+}
+
+func (s *ProxyService) ListIDEAgentRuns(workspaceID string) ([]IDEAgentRun, error) {
+	if s == nil || s.core == nil {
+		return nil, fmt.Errorf("工作区服务未初始化")
+	}
+	return s.core.ListIDEAgentRuns(workspaceID)
+}
+
+func (s *ProxyService) GetIDEAgentRunEvents(runID string) ([]IDEAgentEvent, error) {
+	if s == nil || s.core == nil {
+		return nil, fmt.Errorf("工作区服务未初始化")
+	}
+	return s.core.GetIDEAgentRunEvents(runID)
+}
+
+func (s *ProxyService) ReplayIDEAgentRun(runID string) ([]IDEAgentEvent, error) {
+	if s == nil || s.core == nil {
+		return nil, fmt.Errorf("工作区服务未初始化")
+	}
+	return s.core.ReplayIDEAgentRun(runID)
+}
+
+func (s *ProxyService) PreviewIDEAgentEffect(runID string, effect IDEAgentEffect) (IDEAgentEffectPreview, error) {
+	if s == nil || s.core == nil {
+		return IDEAgentEffectPreview{}, fmt.Errorf("工作区服务未初始化")
+	}
+	return s.core.PreviewIDEAgentEffect(runID, effect)
+}
+
+func (s *ProxyService) CommitIDEAgentEffect(runID, approvalID string, effect IDEAgentEffect) error {
+	if s == nil || s.core == nil {
+		return fmt.Errorf("工作区服务未初始化")
+	}
+	return s.core.CommitIDEAgentEffect(runID, approvalID, effect)
+}
+
+func (s *ProxyService) PreviewIDEExecutorWriteCapability(workspaceID, executorID string) (IDEExecutorWritePreview, error) {
+	if s == nil || s.core == nil {
+		return IDEExecutorWritePreview{}, fmt.Errorf("工作区服务未初始化")
+	}
+	return s.core.PreviewIDEExecutorWriteCapability(workspaceID, executorID)
+}
+
+func (s *ProxyService) CommitIDEExecutorWriteCapability(workspaceID, approvalID, executorID string) error {
+	if s == nil || s.core == nil {
+		return fmt.Errorf("工作区服务未初始化")
+	}
+	return s.core.CommitIDEExecutorWriteCapability(workspaceID, approvalID, executorID)
 }
 
 func (s *WindowService) selectWorkspaceDirectory() (string, error) {

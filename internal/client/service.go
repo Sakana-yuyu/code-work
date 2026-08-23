@@ -18,10 +18,13 @@ import (
 	"cursor/internal/configprofile"
 	"cursor/internal/cursoraccount"
 	"cursor/internal/historymetrics"
+	"cursor/internal/ide/agentrun"
 	"cursor/internal/ide/approval"
+	"cursor/internal/ide/gitops"
 	"cursor/internal/ide/gitstatus"
 	"cursor/internal/ide/knownhosts"
 	"cursor/internal/ide/sshvault"
+	"cursor/internal/ide/termsession"
 	"cursor/internal/ide/workspace"
 	"cursor/internal/logger"
 	"cursor/internal/mitm"
@@ -59,8 +62,12 @@ type ProxyService struct {
 	ideWorkspaces      *workspace.Store
 	ideApprovals       *approval.Store
 	ideGit             *gitstatus.Store
+	ideGitOps          *gitops.Store
 	ideSSH             *sshvault.Store
 	ideKnownHosts      *knownhosts.Store
+	ideTerminal        *termsession.Manager
+	ideAgent           *agentrun.Manager
+	ideExecutorGrants  *executorGrantStore
 	selectIDEDirectory func() (string, error)
 
 	// lifecycleMu serializes start/stop transitions so a Cursor launch cannot
@@ -243,8 +250,14 @@ func NewProxyService(proxy *mitm.ProxyServer, certManager *certs.Manager, caCert
 	service.ideWorkspaces = workspace.New(appdata.IDEWorkspaceRootPath())
 	service.ideApprovals = approval.New(appdata.IDEApprovalRootPath())
 	service.ideGit = gitstatus.New(service.ideWorkspaces.AuthorizedRoot, gitstatus.NewSystemRunner())
+	service.ideGitOps = gitops.New(service.ideWorkspaces.AuthorizedRoot, gitops.NewSystemRunner())
 	service.ideSSH = sshvault.New(appdata.IDESSHVaultRootPath(), sshvault.NewDPAPIProtector())
 	service.ideKnownHosts = knownhosts.New(appdata.IDESSHKnownHostsRootPath())
+	service.ideTerminal = termsession.New(service.ideWorkspaces.AuthorizedRoot, termsession.NewSystemHost())
+	service.ideTerminal.SetEmitter(emitIDETerminalOutput)
+	service.ideAgent = agentrun.New(appdata.IDEAgentRunRootPath(), service.streamIDEAgent)
+	service.ideAgent.SetEmitter(emitIDEAgentEvent)
+	service.ideExecutorGrants = newExecutorGrantStore(appdata.IDEExecutorGrantRootPath())
 	service.agentOps = agentops.New(
 		filepath.Join(appdata.DataRootPath(), "agent-ops", "exports"),
 		func() []forwarder.DelegationTaskSnapshot {

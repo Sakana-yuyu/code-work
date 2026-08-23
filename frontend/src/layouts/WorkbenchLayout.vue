@@ -40,7 +40,7 @@ const commands = computed(() => [
   { id: "open-control-center", label: "打开控制中心", detail: "路由、实验与 Agent 运行台", shortcut: "" },
   { id: "open-settings", label: "打开设置", detail: "调整应用与集成偏好", shortcut: "" },
   { id: "toggle-sidebar", label: "切换主侧栏", detail: "显示或隐藏左侧功能入口", shortcut: "Ctrl+B" },
-  { id: "toggle-task", label: "切换任务面板", detail: "显示或隐藏 Shell 演示任务", shortcut: "Ctrl+J" },
+  { id: "toggle-task", label: "切换任务面板", detail: "显示或隐藏委派活动面板", shortcut: "Ctrl+J" },
   { id: "focus-explorer", label: "聚焦资源管理器", detail: "选择工作区导航", shortcut: "" },
   { id: "open-welcome", label: "打开开始页面", detail: "返回 Workbench 欢迎页", shortcut: "" },
   { id: "reset-layout", label: "重置 Workbench 布局", detail: "恢复默认侧栏和任务面板", shortcut: "" },

@@ -31,6 +31,11 @@ import {
   GetIDEGitSnapshot,
   ListIDESSHKeys, ImportIDESSHKey, GenerateIDESSHKey, RemoveIDESSHKey,
   ListIDEKnownHosts, ProbeIDEHostKey, PreviewIDEKnownHost, CommitIDEKnownHost,
+  PreviewIDEGitOperation, CommitIDEGitOperation,
+  ListIDETerminalProfiles, OpenIDETerminalSession, WriteIDETerminalSession, ResizeIDETerminalSession,
+  InterruptIDETerminalSession, CloseIDETerminalSession, GetIDETerminalOutput,
+  StartIDEAgentRun, CancelIDEAgentRun, GetIDEAgentRun, ListIDEAgentRuns, GetIDEAgentRunEvents, ReplayIDEAgentRun,
+  PreviewIDEAgentEffect, CommitIDEAgentEffect, PreviewIDEExecutorWriteCapability, CommitIDEExecutorWriteCapability,
 } from "@bindings/cursor/internal/bridge/proxyservice.js";
 import { GetAdRuntime, OpenExternalURL } from "@bindings/cursor/internal/bridge/adservice.js";
 import {
@@ -101,6 +106,7 @@ const desktopMethods = {
   GetIDEGitSnapshot,
   ListIDESSHKeys, ImportIDESSHKey, GenerateIDESSHKey, RemoveIDESSHKey,
   ListIDEKnownHosts, ProbeIDEHostKey, PreviewIDEKnownHost, CommitIDEKnownHost,
+  PreviewIDEGitOperation, CommitIDEGitOperation,
 };
 
 const API_LOG_PREFIX = "[clientApi]";
@@ -758,6 +764,82 @@ export function previewIDEKnownHost(workspaceID, host, port, publicKey) {
 
 export function commitIDEKnownHost(workspaceID, approvalID, host, port, publicKey) {
   return withApiLogging("CommitIDEKnownHost", { workspaceID, approvalID, host, port }, () => desktopOrMockRaw(() => CommitIDEKnownHost(workspaceID, approvalID, host, port, publicKey), "@bindings/cursor/internal/bridge/proxyservice.js", "CommitIDEKnownHost", [workspaceID, approvalID, host, port, publicKey]));
+}
+
+export function previewIDEGitOperation(workspaceID, operation) {
+  return withApiLogging("PreviewIDEGitOperation", { workspaceID, kind: operation?.kind }, () => desktopOrMockRaw(() => PreviewIDEGitOperation(workspaceID, operation), "@bindings/cursor/internal/bridge/proxyservice.js", "PreviewIDEGitOperation", [workspaceID, operation]));
+}
+
+export function commitIDEGitOperation(workspaceID, approvalID, operation) {
+  return withApiLogging("CommitIDEGitOperation", { workspaceID, approvalID, kind: operation?.kind }, () => desktopOrMockRaw(() => CommitIDEGitOperation(workspaceID, approvalID, operation), "@bindings/cursor/internal/bridge/proxyservice.js", "CommitIDEGitOperation", [workspaceID, approvalID, operation]));
+}
+
+export function listIDETerminalProfiles() {
+  return withApiLogging("ListIDETerminalProfiles", undefined, () => desktopOrMockRaw(() => ListIDETerminalProfiles(), "@bindings/cursor/internal/bridge/proxyservice.js", "ListIDETerminalProfiles"));
+}
+
+export function openIDETerminalSession(workspaceID, profileID, cols, rows) {
+  return withApiLogging("OpenIDETerminalSession", { workspaceID, profileID }, () => desktopOrMockRaw(() => OpenIDETerminalSession(workspaceID, profileID, cols, rows), "@bindings/cursor/internal/bridge/proxyservice.js", "OpenIDETerminalSession", [workspaceID, profileID, cols, rows]));
+}
+
+export function writeIDETerminalSession(sessionID, data) {
+  return withApiLogging("WriteIDETerminalSession", { sessionID }, () => desktopOrMockRaw(() => WriteIDETerminalSession(sessionID, data), "@bindings/cursor/internal/bridge/proxyservice.js", "WriteIDETerminalSession", [sessionID, data]));
+}
+
+export function resizeIDETerminalSession(sessionID, cols, rows) {
+  return withApiLogging("ResizeIDETerminalSession", { sessionID, cols, rows }, () => desktopOrMockRaw(() => ResizeIDETerminalSession(sessionID, cols, rows), "@bindings/cursor/internal/bridge/proxyservice.js", "ResizeIDETerminalSession", [sessionID, cols, rows]));
+}
+
+export function interruptIDETerminalSession(sessionID) {
+  return withApiLogging("InterruptIDETerminalSession", { sessionID }, () => desktopOrMockRaw(() => InterruptIDETerminalSession(sessionID), "@bindings/cursor/internal/bridge/proxyservice.js", "InterruptIDETerminalSession", [sessionID]));
+}
+
+export function closeIDETerminalSession(sessionID) {
+  return withApiLogging("CloseIDETerminalSession", { sessionID }, () => desktopOrMockRaw(() => CloseIDETerminalSession(sessionID), "@bindings/cursor/internal/bridge/proxyservice.js", "CloseIDETerminalSession", [sessionID]));
+}
+
+export function getIDETerminalOutput(sessionID) {
+  return withApiLogging("GetIDETerminalOutput", { sessionID }, () => desktopOrMockRaw(() => GetIDETerminalOutput(sessionID), "@bindings/cursor/internal/bridge/proxyservice.js", "GetIDETerminalOutput", [sessionID]));
+}
+
+export function startIDEAgentRun(workspaceID, modelID, prompt) {
+  return withApiLogging("StartIDEAgentRun", { workspaceID, modelID }, () => desktopOrMockRaw(() => StartIDEAgentRun(workspaceID, modelID, prompt), "@bindings/cursor/internal/bridge/proxyservice.js", "StartIDEAgentRun", [workspaceID, modelID, prompt]));
+}
+
+export function cancelIDEAgentRun(runID) {
+  return withApiLogging("CancelIDEAgentRun", { runID }, () => desktopOrMockRaw(() => CancelIDEAgentRun(runID), "@bindings/cursor/internal/bridge/proxyservice.js", "CancelIDEAgentRun", [runID]));
+}
+
+export function getIDEAgentRun(runID) {
+  return withApiLogging("GetIDEAgentRun", { runID }, () => desktopOrMockRaw(() => GetIDEAgentRun(runID), "@bindings/cursor/internal/bridge/proxyservice.js", "GetIDEAgentRun", [runID]));
+}
+
+export function listIDEAgentRuns(workspaceID) {
+  return withApiLogging("ListIDEAgentRuns", { workspaceID }, () => desktopOrMockRaw(() => ListIDEAgentRuns(workspaceID), "@bindings/cursor/internal/bridge/proxyservice.js", "ListIDEAgentRuns", [workspaceID]));
+}
+
+export function getIDEAgentRunEvents(runID) {
+  return withApiLogging("GetIDEAgentRunEvents", { runID }, () => desktopOrMockRaw(() => GetIDEAgentRunEvents(runID), "@bindings/cursor/internal/bridge/proxyservice.js", "GetIDEAgentRunEvents", [runID]));
+}
+
+export function replayIDEAgentRun(runID) {
+  return withApiLogging("ReplayIDEAgentRun", { runID }, () => desktopOrMockRaw(() => ReplayIDEAgentRun(runID), "@bindings/cursor/internal/bridge/proxyservice.js", "ReplayIDEAgentRun", [runID]));
+}
+
+export function previewIDEAgentEffect(runID, effect) {
+  return withApiLogging("PreviewIDEAgentEffect", { runID, kind: effect?.kind }, () => desktopOrMockRaw(() => PreviewIDEAgentEffect(runID, effect), "@bindings/cursor/internal/bridge/proxyservice.js", "PreviewIDEAgentEffect", [runID, effect]));
+}
+
+export function commitIDEAgentEffect(runID, approvalID, effect) {
+  return withApiLogging("CommitIDEAgentEffect", { runID, approvalID, kind: effect?.kind }, () => desktopOrMockRaw(() => CommitIDEAgentEffect(runID, approvalID, effect), "@bindings/cursor/internal/bridge/proxyservice.js", "CommitIDEAgentEffect", [runID, approvalID, effect]));
+}
+
+export function previewIDEExecutorWriteCapability(workspaceID, executorID) {
+  return withApiLogging("PreviewIDEExecutorWriteCapability", { workspaceID, executorID }, () => desktopOrMockRaw(() => PreviewIDEExecutorWriteCapability(workspaceID, executorID), "@bindings/cursor/internal/bridge/proxyservice.js", "PreviewIDEExecutorWriteCapability", [workspaceID, executorID]));
+}
+
+export function commitIDEExecutorWriteCapability(workspaceID, approvalID, executorID) {
+  return withApiLogging("CommitIDEExecutorWriteCapability", { workspaceID, approvalID, executorID }, () => desktopOrMockRaw(() => CommitIDEExecutorWriteCapability(workspaceID, approvalID, executorID), "@bindings/cursor/internal/bridge/proxyservice.js", "CommitIDEExecutorWriteCapability", [workspaceID, approvalID, executorID]));
 }
 
 export function saveDelegationConfig(config) {

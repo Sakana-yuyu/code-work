@@ -40,3 +40,12 @@ func TestIDESSHKnownHostsRootPathUsesDataRoot(t *testing.T) {
 		t.Fatalf("IDESSHKnownHostsRootPath() = %q, want %q", got, want)
 	}
 }
+
+func TestIDEAgentRunRootPathUsesDataRoot(t *testing.T) {
+	override := t.TempDir()
+	t.Setenv(RootDirEnvVar, override)
+	want := filepath.Join(override, appDirName, "data", "ide-agent-runs")
+	if got := IDEAgentRunRootPath(); got != want {
+		t.Fatalf("IDEAgentRunRootPath() = %q, want %q", got, want)
+	}
+}

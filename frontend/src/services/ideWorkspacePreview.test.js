@@ -120,6 +120,48 @@ test("preview IDE workspace fixture never uses the host filesystem", async () =>
   assert.equal(JSON.stringify(hostPreview).includes("BEGIN "), false);
   assert.equal(JSON.stringify(listedHosts).includes("ide-ssh-known-hosts"), false);
 
+  await assert.rejects(
+    () => api.previewIDEGitOperation(workspaces[0].id, {
+      kind: "git_clone",
+      remoteUrl: "https://user:ghp_secret@github.com/org/demo.git",
+      directory: "demo",
+    }),
+    /Git 操作不合法/,
+  );
+  const gitPreview = await api.previewIDEGitOperation(workspaces[0].id, {
+    kind: "git_clone",
+    remoteUrl: "https://github.com/org/demo.git",
+    directory: "demo",
+  });
+  assert.equal(gitPreview.operation.kind, "git_clone");
+  assert.equal(gitPreview.approval.state, "pending");
+  await assert.rejects(
+    () => api.commitIDEGitOperation(workspaces[0].id, gitPreview.approval.id, gitPreview.operation),
+    /审批状态无效/,
+  );
+  await api.approveIDEApproval(workspaces[0].id, gitPreview.approval.id);
+  const gitResult = await api.commitIDEGitOperation(workspaces[0].id, gitPreview.approval.id, gitPreview.operation);
+  assert.equal(gitResult.title, "克隆仓库");
+  assert.equal(JSON.stringify(gitPreview).includes("ghp_"), false);
+
+  const profiles = await api.listIDETerminalProfiles();
+  assert.equal(profiles[0].id, "powershell");
+  await assert.rejects(
+    () => api.openIDETerminalSession(workspaces[0].id, "bash -c calc", 80, 24),
+    /终端配置不合法/,
+  );
+  const session = await api.openIDETerminalSession(workspaces[0].id, "cmd", 80, 24);
+  assert.equal(session.profileId, "cmd");
+  assert.equal(session.state, "running");
+  await api.writeIDETerminalSession(session.id, "echo hello\r");
+  const output = await api.getIDETerminalOutput(session.id);
+  assert.match(output.data, /预览终端已连接/);
+  assert.match(output.data, /echo hello/);
+  await api.interruptIDETerminalSession(session.id);
+  await api.closeIDETerminalSession(session.id);
+  assert.equal(JSON.stringify(session).includes("C:"), false);
+  assert.equal(JSON.stringify(output).includes("C:"), false);
+
   const selected = await api.selectAndRegisterIDEWorkspace();
   assert.equal(selected.name, "preview-selected");
   const listed = await api.listIDEWorkspaces();

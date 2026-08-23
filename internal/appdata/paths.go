@@ -124,3 +124,13 @@ func IDESSHVaultRootPath() string {
 func IDESSHKnownHostsRootPath() string {
 	return filepath.Join(DataRootPath(), "ide-ssh-known-hosts")
 }
+
+// IDEAgentRunRootPath returns the private store for IDE BYOK agent runs and events.
+func IDEAgentRunRootPath() string {
+	return filepath.Join(DataRootPath(), "ide-agent-runs")
+}
+
+// IDEExecutorGrantRootPath returns the private store for executor write-capability grants.
+func IDEExecutorGrantRootPath() string {
+	return filepath.Join(DataRootPath(), "ide-executor-grants")
+}

@@ -35,17 +35,20 @@ test("活动栏和命令面板驱动同一组 Workbench 操作", async ({ page }
   await expect(page.getByRole("complementary", { name: "工作台侧栏" })).toBeVisible();
 });
 
-test("任务面板明确只运行 shell 演示", async ({ page }) => {
+test("任务面板展示真实委派快照、attempts、取消和 MCP 状态", async ({ page }) => {
   await openWorkbench(page);
 
   const taskPanel = page.getByRole("complementary", { name: "任务面板" });
-  await expect(taskPanel).toContainText("不读取工作区、不运行 Agent，也不会调用远程模型");
-  await expect(taskPanel.getByRole("button", { name: "添加演示任务" })).toBeDisabled();
+  await expect(taskPanel).toContainText("不会创建演示任务");
+  await expect(taskPanel.getByRole("button", { name: "添加演示任务" })).toHaveCount(0);
+  await expect(taskPanel).toContainText("Review the active workspace changes");
+  await expect(taskPanel).toContainText("运行中");
+  await expect(taskPanel).toContainText("本地 BYOK #1 · 运行中");
+  await expect(taskPanel.getByRole("region", { name: "MCP 状态" })).toContainText("Preview filesystem");
+  await expect(taskPanel.getByRole("region", { name: "MCP 状态" })).toContainText("已连接");
 
-  await taskPanel.getByLabel("新建演示任务").fill("整理下一步工作");
-  await taskPanel.getByRole("button", { name: "添加演示任务" }).click();
-  await expect(taskPanel).toContainText("整理下一步工作");
-  await expect(taskPanel).toContainText("已完成演示流程；未执行外部操作。");
+  await taskPanel.getByRole("button", { name: "取消" }).first().click();
+  await expect(taskPanel).toContainText("已取消");
 });
 
 test("窄屏布局不产生横向页面溢出", async ({ browser }) => {

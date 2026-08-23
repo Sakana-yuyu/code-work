@@ -1,5 +1,5 @@
 <script setup>
-import { computed, onMounted, reactive, ref } from "vue";
+import { computed, onMounted, onUnmounted, reactive, ref } from "vue";
 import TabStrip from "@/components/workbench/TabStrip.vue";
 import ReadonlyCodeEditor from "@/components/ide/ReadonlyCodeEditor.vue";
 import {
@@ -14,13 +14,29 @@ import {
   listIDESSHKeys,
   listIDEWorkspaces,
   previewIDEKnownHost,
+  previewIDEGitOperation,
   previewIDEWorkspaceWrite,
   probeIDEHostKey,
+  commitIDEGitOperation,
   readIDEWorkspaceText,
   rejectIDEApproval,
   removeIDESSHKey,
   searchIDEWorkspace,
   selectAndRegisterIDEWorkspace,
+  listIDETerminalProfiles,
+  openIDETerminalSession,
+  writeIDETerminalSession,
+  interruptIDETerminalSession,
+  closeIDETerminalSession,
+  getIDETerminalOutput,
+  startIDEAgentRun,
+  cancelIDEAgentRun,
+  getIDEAgentRunEvents,
+  previewIDEAgentEffect,
+  commitIDEAgentEffect,
+  getDelegationExecutorSnapshots,
+  previewIDEExecutorWriteCapability,
+  commitIDEExecutorWriteCapability,
 } from "@/services/clientApi";
 import {
   activateDocumentTab,
@@ -69,6 +85,26 @@ const knownHostName = ref("");
 const knownHostPort = ref("22");
 const knownHostPublicKey = ref("");
 const knownHostPreview = ref(null);
+const gitCloneURL = ref("");
+const gitCloneDirectory = ref("repo");
+const gitCommitMessage = ref("");
+const gitPreview = ref(null);
+const gitLastAction = ref("");
+const terminalProfiles = ref([]);
+const terminalProfileID = ref("powershell");
+const terminalSession = ref(null);
+const terminalOutput = ref("");
+const terminalInput = ref("");
+const terminalError = ref("");
+const agentPrompt = ref("总结当前工作区");
+const agentModelID = ref("preview-demo-openai");
+const agentRun = ref(null);
+const agentEvents = ref([]);
+const agentError = ref("");
+const agentEffectPreview = ref(null);
+const executors = ref([]);
+const executorWritePreview = ref(null);
+let terminalPoll = 0;
 
 const activeWorkspace = computed(() => workspaces.value.find((item) => item.id === activeWorkspaceID.value) || null);
 const explorerRows = computed(() => {
@@ -112,12 +148,24 @@ async function refreshWorkspaces(preferredID) {
     : (workspaces.value[0]?.id || "");
   activeWorkspaceID.value = nextID;
   gitError.value = "";
+  if (terminalSession.value) {
+    stopTerminalPoll();
+    try {
+      await closeIDETerminalSession(terminalSession.value.id);
+    } catch {
+      /* workspace switch still continues */
+    }
+    terminalSession.value = null;
+    terminalOutput.value = "";
+  }
   if (nextID) {
     await loadRootTree();
     await loadGitSnapshot(nextID);
+    await loadExecutors();
   } else {
     applyRootTree(explorer, { entries: [], truncated: false });
     gitSnapshot.value = normalizeGitSnapshot(EMPTY_IDE_GIT_SNAPSHOT);
+    executors.value = [];
   }
 }
 
@@ -243,6 +291,273 @@ function knownHostStatusLabel(status) {
   return "尚未信任";
 }
 
+async function previewGitOp(operation) {
+  if (!activeWorkspaceID.value) return;
+  gitLastAction.value = "";
+  await run(async () => {
+    gitPreview.value = await previewIDEGitOperation(activeWorkspaceID.value, operation);
+  });
+}
+
+async function previewClone() {
+  const remoteUrl = gitCloneURL.value.trim();
+  const directory = gitCloneDirectory.value.trim() || ".";
+  if (!remoteUrl) return;
+  await previewGitOp({ kind: "git_clone", remoteUrl, directory });
+}
+
+async function previewStageAll() {
+  await previewGitOp({ kind: "git_stage", stageAll: true });
+}
+
+async function previewCommit() {
+  const message = gitCommitMessage.value.trim();
+  if (!message) return;
+  await previewGitOp({ kind: "git_commit", message });
+}
+
+async function previewFetch() {
+  await previewGitOp({ kind: "git_fetch", remote: "origin" });
+}
+
+async function previewPull() {
+  await previewGitOp({ kind: "git_pull", remote: "origin" });
+}
+
+async function previewPush() {
+  await previewGitOp({ kind: "git_push", remote: "origin" });
+}
+
+async function rejectGitOp() {
+  const preview = gitPreview.value;
+  if (!preview?.approval?.id) {
+    gitPreview.value = null;
+    return;
+  }
+  await run(async () => {
+    await rejectIDEApproval(activeWorkspaceID.value, preview.approval.id);
+    gitPreview.value = null;
+  });
+}
+
+async function approveGitOp() {
+  const preview = gitPreview.value;
+  if (!preview?.approval?.id) return;
+  await run(async () => {
+    await approveIDEApproval(activeWorkspaceID.value, preview.approval.id);
+    const result = await commitIDEGitOperation(activeWorkspaceID.value, preview.approval.id, {
+      kind: preview.operation.kind,
+      remoteUrl: preview.operation.remoteUrl,
+      remote: preview.operation.remote,
+      directory: preview.operation.directory,
+      paths: preview.operation.paths,
+      message: preview.operation.message,
+      stageAll: preview.operation.stageAll,
+    });
+    gitLastAction.value = `已执行${result?.title || preview.approval.summary?.title || "Git 操作"}`;
+    gitPreview.value = null;
+    if (preview.operation.kind === "git_clone") gitCloneURL.value = "";
+    if (preview.operation.kind === "git_commit") gitCommitMessage.value = "";
+    await loadGitSnapshot(activeWorkspaceID.value);
+  });
+}
+
+async function loadTerminalProfiles() {
+  terminalProfiles.value = await listIDETerminalProfiles();
+  if (!terminalProfiles.value.some((item) => item.id === terminalProfileID.value)) {
+    terminalProfileID.value = terminalProfiles.value[0]?.id || "powershell";
+  }
+}
+
+function stopTerminalPoll() {
+  if (terminalPoll) {
+    window.clearInterval(terminalPoll);
+    terminalPoll = 0;
+  }
+}
+
+async function refreshTerminalOutput() {
+  const session = terminalSession.value;
+  if (!session?.id) return;
+  const snapshot = await getIDETerminalOutput(session.id);
+  terminalOutput.value = snapshot?.data || "";
+  if (snapshot?.exited) {
+    stopTerminalPoll();
+    terminalSession.value = { ...session, state: "exited" };
+  }
+}
+
+async function openTerminal() {
+  if (!activeWorkspaceID.value) return;
+  terminalError.value = "";
+  await run(async () => {
+    if (terminalSession.value?.id && terminalSession.value.state === "running") {
+      await closeIDETerminalSession(terminalSession.value.id);
+    }
+    const session = await openIDETerminalSession(activeWorkspaceID.value, terminalProfileID.value, 80, 24);
+    terminalSession.value = session;
+    terminalOutput.value = "";
+    stopTerminalPoll();
+    terminalPoll = window.setInterval(() => {
+      void refreshTerminalOutput().catch(() => {});
+    }, 250);
+    await refreshTerminalOutput();
+  });
+}
+
+async function sendTerminalInput() {
+  const session = terminalSession.value;
+  const data = terminalInput.value;
+  if (!session?.id || session.state !== "running") return;
+  await run(async () => {
+    await writeIDETerminalSession(session.id, `${data}\r`);
+    terminalInput.value = "";
+    await refreshTerminalOutput();
+  });
+}
+
+async function interruptTerminal() {
+  const session = terminalSession.value;
+  if (!session?.id) return;
+  await run(async () => {
+    await interruptIDETerminalSession(session.id);
+    await refreshTerminalOutput();
+  });
+}
+
+async function closeTerminal() {
+  const session = terminalSession.value;
+  if (!session?.id) return;
+  await run(async () => {
+    stopTerminalPoll();
+    await closeIDETerminalSession(session.id);
+    terminalSession.value = null;
+    terminalOutput.value = "";
+  });
+}
+
+const agentTranscript = computed(() => agentEvents.value.map((event) => event.text).filter(Boolean).join(""));
+
+async function refreshAgentEvents() {
+  if (!agentRun.value?.id) return;
+  agentEvents.value = await getIDEAgentRunEvents(agentRun.value.id);
+}
+
+async function startAgent() {
+  if (!activeWorkspaceID.value) return;
+  await run(async () => {
+    agentError.value = "";
+    agentEffectPreview.value = null;
+    agentRun.value = await startIDEAgentRun(activeWorkspaceID.value, agentModelID.value, agentPrompt.value);
+    await refreshAgentEvents();
+  });
+}
+
+async function cancelAgent() {
+  if (!agentRun.value?.id) return;
+  await run(async () => {
+    agentRun.value = await cancelIDEAgentRun(agentRun.value.id);
+    await refreshAgentEvents();
+  });
+}
+
+async function previewAgentWrite() {
+  const tab = activeDocument.value;
+  if (!agentRun.value?.id || !tab?.path) {
+    agentError.value = "请先打开文本文件并启动 Agent。";
+    return;
+  }
+  await run(async () => {
+    agentEffectPreview.value = await previewIDEAgentEffect(agentRun.value.id, {
+      kind: "workspace_write",
+      path: tab.path,
+      text: `${tab.draft || tab.text || ""}// agent\n`,
+      expectedVersion: tab.version,
+    });
+  });
+}
+
+async function approveAgentEffect() {
+  const preview = agentEffectPreview.value;
+  if (!preview?.approval?.id || !activeWorkspaceID.value) return;
+  await run(async () => {
+    await approveIDEApproval(activeWorkspaceID.value, preview.approval.id);
+    await commitIDEAgentEffect(agentRun.value.id, preview.approval.id, preview.effect);
+    agentEffectPreview.value = null;
+    await refreshAgentEvents();
+    const tab = activeDocument.value;
+    if (tab?.path) {
+      const file = await readIDEWorkspaceText(activeWorkspaceID.value, tab.path);
+      openDocumentTab(documents, {
+        workspaceID: activeWorkspaceID.value,
+        path: file.path,
+        text: file.text,
+        version: file.version,
+        binary: file.binary,
+        truncated: file.truncated,
+        restricted: false,
+      });
+    }
+  });
+}
+
+async function rejectAgentEffect() {
+  const preview = agentEffectPreview.value;
+  if (!preview?.approval?.id || !activeWorkspaceID.value) return;
+  await run(async () => {
+    await rejectIDEApproval(activeWorkspaceID.value, preview.approval.id);
+    agentEffectPreview.value = null;
+  });
+}
+
+function executorAuthLabel(kind) {
+  return kind === "byok_model" ? "BYOK 模型" : "CLI 登录";
+}
+
+function executorWriteLabel(executor) {
+  return (executor?.capabilities || []).includes("write_workspace") ? "允许写入" : "只读";
+}
+
+function executorHasWrite(executor) {
+  return (executor?.capabilities || []).includes("write_workspace");
+}
+
+async function loadExecutors() {
+  try {
+    const items = await getDelegationExecutorSnapshots();
+    executors.value = Array.isArray(items) ? items : [];
+  } catch {
+    executors.value = [];
+  }
+}
+
+async function previewExecutorWrite(executorID) {
+  if (!activeWorkspaceID.value) return;
+  await run(async () => {
+    executorWritePreview.value = await previewIDEExecutorWriteCapability(activeWorkspaceID.value, executorID);
+  });
+}
+
+async function approveExecutorWrite() {
+  const preview = executorWritePreview.value;
+  if (!preview?.approval?.id || !activeWorkspaceID.value) return;
+  await run(async () => {
+    await approveIDEApproval(activeWorkspaceID.value, preview.approval.id);
+    await commitIDEExecutorWriteCapability(activeWorkspaceID.value, preview.approval.id, preview.executorId);
+    executorWritePreview.value = null;
+    await loadExecutors();
+  });
+}
+
+async function rejectExecutorWrite() {
+  const preview = executorWritePreview.value;
+  if (!preview?.approval?.id || !activeWorkspaceID.value) return;
+  await run(async () => {
+    await rejectIDEApproval(activeWorkspaceID.value, preview.approval.id);
+    executorWritePreview.value = null;
+  });
+}
+
 async function loadRootTree() {
   if (!activeWorkspaceID.value) return;
   const result = await getIDEWorkspaceTree(activeWorkspaceID.value, "");
@@ -350,7 +665,16 @@ onMounted(() => {
     await refreshWorkspaces();
     await loadSSHKeys();
     await loadKnownHosts();
+    await loadTerminalProfiles();
   });
+});
+
+onUnmounted(() => {
+  stopTerminalPoll();
+  const session = terminalSession.value;
+  if (session?.id && session.state === "running") {
+    void closeIDETerminalSession(session.id);
+  }
 });
 </script>
 
@@ -446,6 +770,114 @@ onMounted(() => {
           <pre class="preview-body git-diff">{{ gitSnapshot.diff || "没有可显示的差异。" }}</pre>
         </template>
         <p v-else class="status-muted">当前工作区不是 Git 仓库，或系统 Git 不可用。</p>
+
+        <section aria-label="Git 操作">
+          <h3>Git 操作</h3>
+          <p class="path-meta">克隆、暂存、提交、获取、拉取和推送都要先审批。不会执行任意 Git 命令。</p>
+          <p v-if="gitLastAction" class="path-meta">{{ gitLastAction }}</p>
+          <form class="ssh-form" @submit.prevent="previewClone">
+            <label class="sr-only" for="git-clone-url">远程地址</label>
+            <input id="git-clone-url" v-model="gitCloneURL" type="text" placeholder="远程地址" autocomplete="off" />
+            <label class="sr-only" for="git-clone-dir">目录</label>
+            <input id="git-clone-dir" v-model="gitCloneDirectory" type="text" placeholder="目录" autocomplete="off" />
+            <button type="submit" class="primary-action" :disabled="loading || !gitCloneURL.trim()">预览克隆</button>
+          </form>
+          <form class="ssh-form" @submit.prevent="previewCommit">
+            <label class="sr-only" for="git-commit-message">提交说明</label>
+            <input id="git-commit-message" v-model="gitCommitMessage" type="text" placeholder="提交说明" autocomplete="off" />
+            <div class="search-row">
+              <button type="button" class="secondary-action" :disabled="loading" @click="previewStageAll">预览全部暂存</button>
+              <button type="submit" class="secondary-action" :disabled="loading || !gitCommitMessage.trim()">预览提交</button>
+            </div>
+            <div class="search-row">
+              <button type="button" class="secondary-action" :disabled="loading" @click="previewFetch">预览获取</button>
+              <button type="button" class="secondary-action" :disabled="loading" @click="previewPull">预览拉取</button>
+              <button type="button" class="secondary-action" :disabled="loading" @click="previewPush">预览推送</button>
+            </div>
+          </form>
+          <section v-if="gitPreview" class="write-preview" aria-label="Git 操作预览">
+            <p class="path-meta">{{ gitPreview.approval?.summary?.title || "Git 操作" }} 需要审批。</p>
+            <p v-if="gitPreview.operation?.remoteUrl" class="path-meta">{{ gitPreview.operation.remoteUrl }}</p>
+            <div class="search-row">
+              <button type="button" class="primary-action" :disabled="loading" @click="approveGitOp">批准执行</button>
+              <button type="button" class="secondary-action" :disabled="loading" @click="rejectGitOp">拒绝</button>
+            </div>
+          </section>
+        </section>
+
+        <section aria-label="终端">
+          <h3>终端</h3>
+          <p class="path-meta">使用预定义 PowerShell 或命令提示符。关闭会话会结束子进程。</p>
+          <p v-if="terminalError" class="status-error" role="alert">{{ terminalError }}</p>
+          <form class="ssh-form" @submit.prevent="openTerminal">
+            <label class="sr-only" for="terminal-profile">Shell 配置</label>
+            <select id="terminal-profile" v-model="terminalProfileID" :disabled="loading">
+              <option v-for="profile in terminalProfiles" :key="profile.id" :value="profile.id">{{ profile.name }}</option>
+            </select>
+            <div class="search-row">
+              <button type="submit" class="primary-action" :disabled="loading || !activeWorkspaceID">打开终端</button>
+              <button type="button" class="secondary-action" :disabled="loading || !terminalSession" @click="interruptTerminal">中断</button>
+              <button type="button" class="secondary-action" :disabled="loading || !terminalSession" @click="closeTerminal">关闭终端</button>
+            </div>
+          </form>
+          <pre class="preview-body git-diff" aria-label="终端输出">{{ terminalOutput || "尚未打开终端。" }}</pre>
+          <form class="ssh-form" @submit.prevent="sendTerminalInput">
+            <label class="sr-only" for="terminal-input">终端输入</label>
+            <input id="terminal-input" v-model="terminalInput" type="text" placeholder="终端输入" autocomplete="off" :disabled="!terminalSession || terminalSession.state !== 'running'" />
+            <button type="submit" class="secondary-action" :disabled="loading || !terminalSession || terminalSession.state !== 'running'">发送</button>
+          </form>
+        </section>
+
+        <section aria-label="BYOK Agent">
+          <h3>BYOK Agent</h3>
+          <p class="path-meta">使用已配置的模型路由，不经过 Cursor exec bridge。写入、Git、终端和 MCP 副作用都要审批。</p>
+          <p v-if="agentError" class="status-error" role="alert">{{ agentError }}</p>
+          <form class="ssh-form" @submit.prevent="startAgent">
+            <label class="sr-only" for="agent-model">模型 ID</label>
+            <input id="agent-model" v-model="agentModelID" type="text" placeholder="模型 ID" autocomplete="off" />
+            <label class="sr-only" for="agent-prompt">Agent 提示</label>
+            <textarea id="agent-prompt" v-model="agentPrompt" rows="3" placeholder="询问工作区"></textarea>
+            <div class="search-row">
+              <button type="submit" class="primary-action" :disabled="loading || !activeWorkspaceID">开始运行</button>
+              <button type="button" class="secondary-action" :disabled="loading || !agentRun" @click="cancelAgent">取消</button>
+              <button type="button" class="secondary-action" :disabled="loading || !agentRun" @click="previewAgentWrite">预览写入</button>
+            </div>
+          </form>
+          <p v-if="agentRun" class="path-meta">运行 {{ agentRun.status }}</p>
+          <pre class="preview-body git-diff" aria-label="Agent 输出">{{ agentTranscript || "尚未运行 Agent。" }}</pre>
+          <section v-if="agentEffectPreview" class="write-preview" aria-label="Agent 副作用预览">
+            <p class="path-meta">{{ agentEffectPreview.approval?.summary?.title || "Agent 副作用" }} 需要审批。</p>
+            <div class="search-row">
+              <button type="button" class="primary-action" :disabled="loading" @click="approveAgentEffect">批准执行</button>
+              <button type="button" class="secondary-action" :disabled="loading" @click="rejectAgentEffect">拒绝</button>
+            </div>
+          </section>
+        </section>
+
+        <section aria-label="执行器写入权限">
+          <h3>执行器写入权限</h3>
+          <p class="path-meta">默认只读。写入工作区需要单独审批。CLI 登录与 BYOK 模型会分开标记。</p>
+          <div v-for="executor in executors" :key="executor.id" class="tree-item ssh-key">
+            <span>
+              <strong>{{ executor.displayName || executor.id }}</strong>
+              <small>{{ executorAuthLabel(executor.authKind) }} · {{ executorWriteLabel(executor) }}</small>
+            </span>
+            <button
+              v-if="!executorHasWrite(executor)"
+              type="button"
+              class="text-action"
+              @click="previewExecutorWrite(executor.id)"
+            >预览写入授权</button>
+          </div>
+          <p v-if="executors.length === 0" class="status-muted">还没有执行器。</p>
+          <section v-if="executorWritePreview" class="write-preview" aria-label="执行器写入预览">
+            <p class="path-meta">{{ executorWritePreview.approval?.summary?.title || "允许执行器写入工作区" }} 需要审批。</p>
+            <div class="search-row">
+              <button type="button" class="primary-action" :disabled="loading" @click="approveExecutorWrite">批准授权</button>
+              <button type="button" class="secondary-action" :disabled="loading" @click="rejectExecutorWrite">拒绝</button>
+            </div>
+          </section>
+        </section>
 
         <section aria-label="SSH 密钥">
           <h3>SSH 密钥</h3>

@@ -37,6 +37,25 @@ func TestIDEWorkspaceBridgeDoesNotAcceptHostPaths(t *testing.T) {
 		"ProbeIDEHostKey",
 		"PreviewIDEKnownHost",
 		"CommitIDEKnownHost",
+		"PreviewIDEGitOperation",
+		"CommitIDEGitOperation",
+		"ListIDETerminalProfiles",
+		"OpenIDETerminalSession",
+		"WriteIDETerminalSession",
+		"ResizeIDETerminalSession",
+		"InterruptIDETerminalSession",
+		"CloseIDETerminalSession",
+		"GetIDETerminalOutput",
+		"StartIDEAgentRun",
+		"CancelIDEAgentRun",
+		"GetIDEAgentRun",
+		"ListIDEAgentRuns",
+		"GetIDEAgentRunEvents",
+		"ReplayIDEAgentRun",
+		"PreviewIDEAgentEffect",
+		"CommitIDEAgentEffect",
+		"PreviewIDEExecutorWriteCapability",
+		"CommitIDEExecutorWriteCapability",
 	} {
 		if _, exists := serviceType.MethodByName(name); !exists {
 			t.Fatalf("%s is missing", name)
@@ -51,8 +70,11 @@ func TestIDEWorkspaceBridgeDoesNotAcceptHostPaths(t *testing.T) {
 	if _, exists := serviceType.MethodByName("FilePath"); exists {
 		t.Fatal("FilePath must not be a Wails method")
 	}
-	if _, exists := serviceType.MethodByName("AppendIDEKnownHost"); exists {
-		t.Fatal("AppendIDEKnownHost must not be a Wails method")
+	if _, exists := serviceType.MethodByName("RunIDEGit"); exists {
+		t.Fatal("RunIDEGit must not be a Wails method")
+	}
+	if _, exists := serviceType.MethodByName("StartIDETerminalCommand"); exists {
+		t.Fatal("StartIDETerminalCommand must not be a Wails method")
 	}
 }
 

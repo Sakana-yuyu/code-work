@@ -102,6 +102,52 @@ test("浏览器预览用内存工作区浏览、读取和搜索，不暴露主�
   await expect(hostPanel.getByText("ci.example:22")).toBeVisible();
   await expect(hostPanel.getByLabel("主机公钥")).toHaveValue("");
 
+  const gitOps = page.getByLabel("Git 操作");
+  await gitOps.getByLabel("远程地址").fill("https://github.com/org/demo.git");
+  await gitOps.getByLabel("目录").fill("demo");
+  await gitOps.getByRole("button", { name: "预览克隆" }).click();
+  await expect(gitOps.getByText("克隆仓库 需要审批。")).toBeVisible();
+  await gitOps.getByRole("button", { name: "批准执行" }).click();
+  await expect(gitOps.getByText("已执行克隆仓库")).toBeVisible();
+
+  const terminal = page.getByLabel("终端", { exact: true });
+  await expect(terminal.getByRole("heading", { name: "终端" })).toBeVisible();
+  await terminal.getByRole("button", { name: "打开终端" }).click();
+  await expect(terminal.getByLabel("终端输出")).toContainText("预览终端已连接");
+  await terminal.getByLabel("终端输入").fill("echo hello");
+  await terminal.getByRole("button", { name: "发送" }).click();
+  await expect(terminal.getByLabel("终端输出")).toContainText("echo hello");
+  await terminal.getByRole("button", { name: "关闭终端" }).click();
+  await expect(terminal.getByLabel("终端输出")).toHaveText("尚未打开终端。");
+
+  const mainFile = explorer(page).getByRole("button", { name: "src/main.go", exact: true });
+  if (!(await mainFile.isVisible())) {
+    await explorer(page).getByRole("button", { name: "src", exact: true }).click();
+  }
+  await mainFile.click();
+  const agent = page.getByLabel("BYOK Agent");
+  await expect(agent.getByRole("heading", { name: "BYOK Agent" })).toBeVisible();
+  await agent.getByPlaceholder("询问工作区").fill("总结当前文件");
+  await agent.getByRole("button", { name: "开始运行" }).click();
+  await expect(agent.getByLabel("Agent 输出")).toContainText("预览回复：总结当前文件");
+  await agent.getByRole("button", { name: "预览写入" }).click();
+  await expect(agent.getByText("需要审批")).toBeVisible();
+  await agent.getByRole("button", { name: "批准执行" }).click();
+  await expect(agent.getByLabel("Agent 副作用预览")).toHaveCount(0);
+
+  const executors = page.getByLabel("执行器写入权限");
+  await expect(executors.getByRole("heading", { name: "执行器写入权限" })).toBeVisible();
+  await expect(executors.getByText("Claude Code")).toBeVisible();
+  await expect(executors.getByText("本地 BYOK")).toBeVisible();
+  await expect(executors.getByText("CLI 登录 · 只读")).toHaveCount(2);
+  await expect(executors.getByText("BYOK 模型 · 只读")).toBeVisible();
+  await executors.getByRole("button", { name: "预览写入授权" }).first().click();
+  await expect(executors.getByText("需要审批")).toBeVisible();
+  await executors.getByRole("button", { name: "批准授权" }).click();
+  await expect(executors.getByText("CLI 登录 · 允许写入")).toBeVisible();
+  await expect(executors.getByText("CLI 登录 · 只读")).toHaveCount(1);
+  await expect(executors.getByText("BYOK 模型 · 只读")).toBeVisible();
+
   const body = await page.locator("body").innerText();
   expect(body).not.toMatch(/[A-Za-z]:\\/);
   expect(body).not.toContain("/Users/");
