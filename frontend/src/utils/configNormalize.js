@@ -1,4 +1,5 @@
 import { asArray, asBoolean, asPositiveInteger, asString } from "@/utils/valueCast";
+import { normalizeGoal } from "./goalNormalize.js";
 import { dedupeModelAdapters } from "@/utils/modelAdapter";
 import { normalizeDelegationExecutorPolicy } from "./delegationExecutorConfig.js";
 
@@ -58,19 +59,7 @@ export function normalizeMirrorCapture(source) {
 }
 
 // normalizeGoal 归一化 goal 循环执行配置（与后端 GoalConfig 字段对齐）。
-export function normalizeGoal(source) {
-  const raw = source && typeof source === "object" ? source : {};
-  return {
-    enabled: asBoolean(raw.enabled),
-    maxProviderPasses: asPositiveInteger(raw.maxProviderPasses),
-    maxDurationSeconds: asPositiveInteger(raw.maxDurationSeconds),
-    maxCostUsd: typeof raw.maxCostUsd === "number" && Number.isFinite(raw.maxCostUsd) ? raw.maxCostUsd : 0,
-    selfCheckPasses: asPositiveInteger(raw.selfCheckPasses),
-    verifyMaxRetries: asPositiveInteger(raw.verifyMaxRetries),
-    errorMaxRetries: asPositiveInteger(raw.errorMaxRetries),
-    progressInterval: asPositiveInteger(raw.progressInterval),
-  };
-}
+export { normalizeGoal } from "./goalNormalize.js";
 
 export function normalizeDelegation(source) {
   const raw = source && typeof source === "object" ? source : {};

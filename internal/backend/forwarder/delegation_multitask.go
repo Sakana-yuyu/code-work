@@ -163,7 +163,10 @@ func (service *Service) tryStartDelegatedTask(stream *ActiveStream, invocation r
 		StreamState:              "opened",
 		OpenedAt:                 now,
 	}
-	base := buildDelegatedCursorTaskRequest(stream, pending, invocation, delegation.ExecutionModeAuto, "", service.multitaskDelegation.runtimeConfig().SubagentProfiles)
+	base, capabilityErr := buildDelegatedCursorTaskRequest(stream, pending, invocation, delegation.ExecutionModeAuto, "", service.multitaskDelegation.runtimeConfig().SubagentProfiles)
+	if capabilityErr != nil {
+		return false, capabilityErr
+	}
 	base.ID = pending.ExecID
 	base.Mode = agentv1.AgentMode_AGENT_MODE_AGENT
 	base.ModelName = modelName
@@ -1208,6 +1211,18 @@ func (coordinator *multitaskDelegationCoordinator) CancelAggregate(aggregateID s
 	if coordinator.supervisor != nil {
 		coordinator.supervisor.Cancel(aggregateID)
 	}
+}
+
+func (coordinator *multitaskDelegationCoordinator) schedulerSnapshot() *delegation.Scheduler {
+	if coordinator == nil {
+		return nil
+	}
+	coordinator.mu.RLock()
+	defer coordinator.mu.RUnlock()
+	if coordinator.closed {
+		return nil
+	}
+	return coordinator.scheduler
 }
 
 func (coordinator *multitaskDelegationCoordinator) CancelStream(stream *ActiveStream) {

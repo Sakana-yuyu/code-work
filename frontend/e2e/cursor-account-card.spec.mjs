@@ -8,7 +8,7 @@ const previewAccounts = [
 
 test("账户面板可选择账户并在确认后请求切换", async ({ page }) => {
   await seedPreviewTestPlan(page, { cursorAccounts: previewAccounts }, basePreviewConfig());
-  await page.goto("/");
+  await page.goto("/console");
   await expect(page.getByText("a@example.test")).toBeVisible();
   await page.getByRole("button", { name: "切换到 Cursor" }).nth(1).click();
   const dialog = page.getByRole("dialog", { name: "切换 Cursor 账号" });

@@ -568,6 +568,7 @@ func (service *Service) failActiveStreamWithDetails(stream *ActiveStream, conver
 	status := stream.Status
 	stream.mu.Unlock()
 	logger.Infof("forwarder fail_active_stream request_id=%s conversation_id=%s model_call_id=%s terminal_code=%s phase=%s status=%s pending_execs=%d message=%q", strings.TrimSpace(requestID), strings.TrimSpace(conversationID), strings.TrimSpace(modelCallID), strings.TrimSpace(terminalCode), phase, status, activePending, strings.TrimSpace(terminalMessage))
+	service.cancelOwnedGoalVerifier(stream)
 	service.clearAllProvider400Recovery(requestID, stream.TurnSeq)
 	clearPendingProviderCompletion(stream)
 	stream.mu.Lock()

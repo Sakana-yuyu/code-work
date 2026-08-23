@@ -165,16 +165,23 @@ func firstSubagentOverrides(values ...map[string]runtimecore.SubagentModelOverri
 	return nil
 }
 
-func buildDelegatedCursorTaskRequest(stream *ActiveStream, pending runtimecore.PendingExec, invocation runtimecore.ToolInvocation, executionMode string, modelGroupID string, subagentProfiles map[string]string) delegation.TaskRequest {
+func buildDelegatedCursorTaskRequest(stream *ActiveStream, pending runtimecore.PendingExec, invocation runtimecore.ToolInvocation, executionMode string, modelGroupID string, subagentProfiles map[string]string) (delegation.TaskRequest, error) {
 	openContext := buildExecOpenContextForStream(stream, nil)
-	args, _ := runtimecore.DecodeArgsMap(invocation.ArgsJSON)
+	args, err := runtimecore.DecodeArgsMap(invocation.ArgsJSON)
+	if err != nil {
+		return delegation.TaskRequest{}, err
+	}
+	capability, err := runtimecore.ResolveTaskSubagentCapabilityFromArgs(args)
+	if err != nil {
+		return delegation.TaskRequest{}, err
+	}
 	parentModel := ""
 	if stream != nil {
 		stream.mu.Lock()
 		parentModel = firstNonEmpty(stream.ModelName, stream.ModelID)
 		stream.mu.Unlock()
 	}
-	subagentType := delegatedTaskSubagentType(invocation.ArgsJSON)
+	subagentType := capability.Type
 	// C1 子代理注册表：按 subagent_type 注入角色片段（配置覆盖 > 内置；缺省类型原样透传）。
 	prompt := runtimecore.ApplySubagentPromptFragment(subagentType, runtimecore.ReadStringArg(args, "prompt"), subagentProfiles)
 	// SubagentProfile.ToolWhitelist 注入：由 filterDelegatedTools 在 worker 侧强制。
@@ -195,7 +202,7 @@ func buildDelegatedCursorTaskRequest(stream *ActiveStream, pending runtimecore.P
 		SubagentType:                 subagentType,
 		Prompt:                       strings.TrimSpace(prompt),
 		Description:                  strings.TrimSpace(runtimecore.ReadStringArg(args, "description")),
-		Readonly:                     runtimecore.ReadBoolArg(args, "readonly", "readOnly"),
+		Readonly:                     capability.Readonly,
 		RunInBackground:              runtimecore.ReadBoolArg(args, "run_in_background", "runInBackground"),
 		ModelID:                      firstNonEmpty(runtimecore.ReadStringArg(args, "model", "model_id", "modelId"), openContext.ModelID),
 		ModelName:                    parentModel,
@@ -207,7 +214,7 @@ func buildDelegatedCursorTaskRequest(stream *ActiveStream, pending runtimecore.P
 		WorkspaceHint:                openContext.WorkspaceHint,
 		ToolWhitelist:                toolWhitelist,
 		MaxSteps:                     maxSteps,
-	}
+	}, nil
 }
 
 func workspaceHintFromStreamLocked(stream *ActiveStream) string {

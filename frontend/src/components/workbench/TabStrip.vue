@@ -4,13 +4,14 @@ import WorkbenchGlyph from "./WorkbenchGlyph.vue";
 defineProps({
   tabs: { type: Array, required: true },
   activeId: { type: String, required: true },
+  ariaLabel: { type: String, default: "打开的工作区页面" },
 });
 
 const emit = defineEmits(["select", "close"]);
 </script>
 
 <template>
-  <div class="tab-strip" role="tablist" aria-label="打开的工作区页面">
+  <div class="tab-strip" role="tablist" :aria-label="ariaLabel">
     <div
       v-for="tab in tabs"
       :key="tab.id"

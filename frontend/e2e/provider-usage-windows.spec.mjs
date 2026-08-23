@@ -40,7 +40,7 @@ test("首页站点余额展示结构化配额窗口和用量进度", async ({ pa
     localStorage.setItem("code-work.showStationBalance", "1");
     localStorage.setItem("code-work.supplierGroupMode", "name");
   });
-  await page.goto("/");
+  await page.goto("/console");
 
   await expect(page.getByText(/2 个模型/)).toBeVisible();
   const windows = page.getByTestId("provider-usage-windows");

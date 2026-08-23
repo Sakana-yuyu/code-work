@@ -334,7 +334,7 @@ func contextProjectionEntryRangeBoundaryReason(conversation *ConversationFile, s
 	}
 	validStarts := make(map[int64]struct{}, len(turns)+1)
 	validEnds := make(map[int64]struct{}, len(turns)+1)
-	for _, entry := range replayablePromptProjectionEntries(conversation.Entries) {
+	for _, entry := range replayablePromptProjectionEntries(filterExpiredGoalContinuationPromptContexts(conversation)) {
 		if !isCompactionSummaryKind(entry.Kind) {
 			continue
 		}
@@ -601,7 +601,7 @@ func contextProjectionCanonicalSummary(conversation *ConversationFile) (HistoryE
 	if conversation == nil {
 		return HistoryEntry{}, "", false
 	}
-	entries := replayablePromptProjectionEntries(conversation.Entries)
+	entries := replayablePromptProjectionEntries(filterExpiredGoalContinuationPromptContexts(conversation))
 	for index := len(entries) - 1; index >= 0; index-- {
 		if !isCompactionSummaryKind(entries[index].Kind) {
 			continue
@@ -617,7 +617,7 @@ func contextProjectionTurns(conversation *ConversationFile) ([]contextProjection
 	if conversation == nil {
 		return nil, nil
 	}
-	entries := replayablePromptProjectionEntries(conversation.Entries)
+	entries := replayablePromptProjectionEntries(filterExpiredGoalContinuationPromptContexts(conversation))
 	turns := make([]contextProjectionTurn, 0)
 	imported, err := contextProjectionImportedPrehistory(entries)
 	if err != nil {

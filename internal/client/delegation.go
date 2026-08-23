@@ -25,6 +25,7 @@ type DelegationExecutorSnapshot struct {
 	EditorAvailable         bool       `json:"editorAvailable"`
 	AgentExecutionAvailable bool       `json:"agentExecutionAvailable"`
 	AuthState               string     `json:"authState"`
+	AuthKind                string     `json:"authKind,omitempty"`
 	DiagnosticCode          string     `json:"diagnosticCode,omitempty"`
 	DiagnosticText          string     `json:"diagnosticText,omitempty"`
 	ProbedAt                *time.Time `json:"probedAt,omitempty"`
@@ -88,7 +89,7 @@ func (s *ProxyService) GetDelegationExecutorSnapshots() []DelegationExecutorSnap
 	if s == nil || s.backendHost == nil {
 		return nil
 	}
-	return publicDelegationExecutorSnapshots(s.backendHost.DelegationExecutorSnapshots())
+	return s.applyExecutorPolicy(publicDelegationExecutorSnapshots(s.backendHost.DelegationExecutorSnapshots()))
 }
 
 func (s *ProxyService) RefreshDelegationExecutorProbes() ([]DelegationExecutorSnapshot, error) {
@@ -100,7 +101,7 @@ func (s *ProxyService) RefreshDelegationExecutorProbes() ([]DelegationExecutorSn
 		ctx = app.Context()
 	}
 	items, err := s.backendHost.RefreshDelegationExecutorProbes(ctx)
-	return publicDelegationExecutorSnapshots(items), err
+	return s.applyExecutorPolicy(publicDelegationExecutorSnapshots(items)), err
 }
 
 // InstallDelegationExecutor 仅安装后端白名单中的 CLI，并在安装完成后返回强制复检结果。
@@ -116,7 +117,7 @@ func (s *ProxyService) InstallDelegationExecutor(id string) (DelegationExecutorS
 	if err != nil {
 		return DelegationExecutorSnapshot{}, err
 	}
-	items := publicDelegationExecutorSnapshots([]delegation.ExecutorSnapshot{snapshot})
+	items := s.applyExecutorPolicy(publicDelegationExecutorSnapshots([]delegation.ExecutorSnapshot{snapshot}))
 	if len(items) == 0 {
 		return DelegationExecutorSnapshot{}, nil
 	}

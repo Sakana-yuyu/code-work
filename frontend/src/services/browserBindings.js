@@ -1,4 +1,47 @@
 import { browserPreviewMockMetrics, browserPreviewMockProxyState } from "@/services/runtimeAdapter";
+import {
+  getIDEWorkspaceTree as previewGetIDEWorkspaceTree,
+  listIDEWorkspaces as previewListIDEWorkspaces,
+  previewIDEWorkspaceWrite as previewPreviewIDEWorkspaceWrite,
+  approveIDEApproval as previewApproveIDEApproval,
+  rejectIDEApproval as previewRejectIDEApproval,
+  cancelIDEWorkspaceApprovals as previewCancelIDEWorkspaceApprovals,
+  commitIDEWorkspaceWrite as previewCommitIDEWorkspaceWrite,
+  getIDEGitSnapshot as previewGetIDEGitSnapshot,
+  listIDESSHKeys as previewListIDESSHKeys,
+  importIDESSHKey as previewImportIDESSHKey,
+  generateIDESSHKey as previewGenerateIDESSHKey,
+  removeIDESSHKey as previewRemoveIDESSHKey,
+  listIDEKnownHosts as previewListIDEKnownHosts,
+  probeIDEHostKey as previewProbeIDEHostKey,
+  previewIDEKnownHost as previewPreviewIDEKnownHost,
+  commitIDEKnownHost as previewCommitIDEKnownHost,
+  previewIDEGitOperation as previewPreviewIDEGitOperation,
+  commitIDEGitOperation as previewCommitIDEGitOperation,
+  listIDETerminalProfiles as previewListIDETerminalProfiles,
+  openIDETerminalSession as previewOpenIDETerminalSession,
+  writeIDETerminalSession as previewWriteIDETerminalSession,
+  resizeIDETerminalSession as previewResizeIDETerminalSession,
+  interruptIDETerminalSession as previewInterruptIDETerminalSession,
+  closeIDETerminalSession as previewCloseIDETerminalSession,
+  getIDETerminalOutput as previewGetIDETerminalOutput,
+  startIDEAgentRun as previewStartIDEAgentRun,
+  cancelIDEAgentRun as previewCancelIDEAgentRun,
+  getIDEAgentRun as previewGetIDEAgentRun,
+  listIDEAgentRuns as previewListIDEAgentRuns,
+  getIDEAgentRunEvents as previewGetIDEAgentRunEvents,
+  replayIDEAgentRun as previewReplayIDEAgentRun,
+  previewIDEAgentEffect as previewPreviewIDEAgentEffect,
+  commitIDEAgentEffect as previewCommitIDEAgentEffect,
+  previewIDEExecutorWriteCapability as previewPreviewIDEExecutorWriteCapability,
+  commitIDEExecutorWriteCapability as previewCommitIDEExecutorWriteCapability,
+  applyExecutorPreviewPolicy,
+  readIDEWorkspaceText as previewReadIDEWorkspaceText,
+  removeIDEWorkspace as previewRemoveIDEWorkspace,
+  resetIDEWorkspacePreview,
+  searchIDEWorkspace as previewSearchIDEWorkspace,
+  selectAndRegisterIDEWorkspace as previewSelectAndRegisterIDEWorkspace,
+} from "@/services/ideWorkspacePreview";
 
 const previewConfig = {
   modelAdapters: [
@@ -119,9 +162,44 @@ function readPreviewTestPlan() {
   }
 }
 const previewTestPlan = readPreviewTestPlan();
+const DEFAULT_PREVIEW_EXECUTORS = [
+  {
+    id: "claude-code",
+    displayName: "Claude Code",
+    capabilities: ["read_workspace", "write_workspace"],
+    state: "ready",
+    installed: true,
+    enabled: true,
+    priority: 10,
+    authState: "ready",
+    version: "2.1.226",
+  },
+  {
+    id: "codex-cli",
+    displayName: "Codex CLI",
+    capabilities: ["read_workspace", "write_workspace"],
+    state: "ready",
+    installed: true,
+    enabled: true,
+    priority: 20,
+    authState: "ready",
+    version: "0.147.0",
+  },
+  {
+    id: "local-byok",
+    displayName: "本地 BYOK",
+    capabilities: ["read_workspace", "write_workspace"],
+    state: "ready",
+    installed: true,
+    enabled: true,
+    priority: 25,
+    authState: "ready",
+    version: "preview",
+  },
+];
 previewDelegationExecutors = Array.isArray(previewTestPlan?.delegationExecutors)
   ? clone(previewTestPlan.delegationExecutors)
-  : [];
+  : clone(DEFAULT_PREVIEW_EXECUTORS);
 const PREVIEW_CALLS_STORAGE_KEY = "code-work.browser-preview.calls";
 
 function recordPreviewCall(name, args = []) {
@@ -236,6 +314,14 @@ let previewDelegationTasks = Array.isArray(previewTestPlan?.delegationTasks) ? c
     updatedAtUnixMs: Date.now() - 12000,
     durationMs: 12000,
     cancelable: true,
+    attempts: [
+      {
+        executorId: "local-byok",
+        attempt: 1,
+        status: "running",
+        retrySafe: true,
+      },
+    ],
     workerRole: "generalPurpose",
     supervisionPhase: "reviewing",
     reviewPending: true,
@@ -474,18 +560,18 @@ export const SaveDelegationConfig = (value) => {
   persistPreviewConfig();
   return Promise.resolve(clone(previewConfig.delegation));
 };
-export const GetDelegationExecutorSnapshots = () => Promise.resolve(clone(previewDelegationExecutors));
+export const GetDelegationExecutorSnapshots = () => Promise.resolve(applyExecutorPreviewPolicy(previewDelegationExecutors));
 export const RefreshDelegationExecutorProbes = () => {
   recordPreviewCall("RefreshDelegationExecutorProbes");
   const refreshed = readPreviewTestPlan()?.refreshedDelegationExecutors;
   if (Array.isArray(refreshed)) previewDelegationExecutors = clone(refreshed);
-  return Promise.resolve(clone(previewDelegationExecutors));
+  return Promise.resolve(applyExecutorPreviewPolicy(previewDelegationExecutors));
 };
 export const InstallDelegationExecutor = (id) => {
   recordPreviewCall("InstallDelegationExecutor", [id]);
   const installed = readPreviewTestPlan()?.installedDelegationExecutors;
   if (Array.isArray(installed)) previewDelegationExecutors = clone(installed);
-  const snapshot = previewDelegationExecutors.find((item) => item?.id === id);
+  const snapshot = applyExecutorPreviewPolicy(previewDelegationExecutors).find((item) => item?.id === id);
   return Promise.resolve(clone(snapshot || {}));
 };
 export const SaveUserConfig = (value) => {
@@ -1410,6 +1496,164 @@ export const ImportConfigProfile = (content) => {
   recordPreviewCall("ImportConfigProfile");
   if (!String(content || "").trim()) return Promise.reject(new Error("导入内容为空"));
   return Promise.resolve({ profile: { id: "imported", name: "导入档案", domains: ["routing"] }, changes: [{ path: "routing.policy.strategy", changeKind: "update", sensitive: false }], bindings: [{ adapterId: "preview-demo-openai", state: "resolved" }], canApply: true });
+};
+
+resetIDEWorkspacePreview();
+export const ListIDEWorkspaces = () => {
+  recordPreviewCall("ListIDEWorkspaces");
+  return previewListIDEWorkspaces();
+};
+export const SelectAndRegisterIDEWorkspace = () => {
+  recordPreviewCall("SelectAndRegisterIDEWorkspace");
+  return previewSelectAndRegisterIDEWorkspace();
+};
+export const RemoveIDEWorkspace = (workspaceID) => {
+  recordPreviewCall("RemoveIDEWorkspace", [workspaceID]);
+  return previewRemoveIDEWorkspace(workspaceID);
+};
+export const GetIDEWorkspaceTree = (workspaceID, relativeDirectory) => {
+  recordPreviewCall("GetIDEWorkspaceTree", [workspaceID, relativeDirectory]);
+  return previewGetIDEWorkspaceTree(workspaceID, relativeDirectory);
+};
+export const ReadIDEWorkspaceText = (workspaceID, relativeFile) => {
+  recordPreviewCall("ReadIDEWorkspaceText", [workspaceID, relativeFile]);
+  return previewReadIDEWorkspaceText(workspaceID, relativeFile);
+};
+export const SearchIDEWorkspace = (workspaceID, relativePath, query) => {
+  recordPreviewCall("SearchIDEWorkspace", [workspaceID, relativePath, query]);
+  return previewSearchIDEWorkspace(workspaceID, relativePath, query);
+};
+export const PreviewIDEWorkspaceWrite = (workspaceID, relativeFile, text, expectedVersion) => {
+  recordPreviewCall("PreviewIDEWorkspaceWrite", [workspaceID, relativeFile, expectedVersion]);
+  return previewPreviewIDEWorkspaceWrite(workspaceID, relativeFile, text, expectedVersion);
+};
+export const ApproveIDEApproval = (workspaceID, approvalID) => {
+  recordPreviewCall("ApproveIDEApproval", [workspaceID, approvalID]);
+  return previewApproveIDEApproval(workspaceID, approvalID);
+};
+export const RejectIDEApproval = (workspaceID, approvalID) => {
+  recordPreviewCall("RejectIDEApproval", [workspaceID, approvalID]);
+  return previewRejectIDEApproval(workspaceID, approvalID);
+};
+export const CancelIDEWorkspaceApprovals = (workspaceID) => {
+  recordPreviewCall("CancelIDEWorkspaceApprovals", [workspaceID]);
+  return previewCancelIDEWorkspaceApprovals(workspaceID);
+};
+export const CommitIDEWorkspaceWrite = (workspaceID, approvalID, relativeFile, text, expectedVersion) => {
+  recordPreviewCall("CommitIDEWorkspaceWrite", [workspaceID, approvalID, relativeFile, expectedVersion]);
+  return previewCommitIDEWorkspaceWrite(workspaceID, approvalID, relativeFile, text, expectedVersion);
+};
+export const GetIDEGitSnapshot = (workspaceID) => {
+  recordPreviewCall("GetIDEGitSnapshot", [workspaceID]);
+  return previewGetIDEGitSnapshot(workspaceID);
+};
+export const ListIDESSHKeys = () => {
+  recordPreviewCall("ListIDESSHKeys");
+  return previewListIDESSHKeys();
+};
+export const ImportIDESSHKey = (name, privateKey, passphrase) => {
+  recordPreviewCall("ImportIDESSHKey", [name]);
+  return previewImportIDESSHKey(name, privateKey, passphrase);
+};
+export const GenerateIDESSHKey = (name) => {
+  recordPreviewCall("GenerateIDESSHKey", [name]);
+  return previewGenerateIDESSHKey(name);
+};
+export const RemoveIDESSHKey = (keyID) => {
+  recordPreviewCall("RemoveIDESSHKey", [keyID]);
+  return previewRemoveIDESSHKey(keyID);
+};
+export const ListIDEKnownHosts = () => {
+  recordPreviewCall("ListIDEKnownHosts");
+  return previewListIDEKnownHosts();
+};
+export const ProbeIDEHostKey = (host, port) => {
+  recordPreviewCall("ProbeIDEHostKey", [host, port]);
+  return previewProbeIDEHostKey(host, port);
+};
+export const PreviewIDEKnownHost = (workspaceID, host, port, publicKey) => {
+  recordPreviewCall("PreviewIDEKnownHost", [workspaceID, host, port]);
+  return previewPreviewIDEKnownHost(workspaceID, host, port, publicKey);
+};
+export const CommitIDEKnownHost = (workspaceID, approvalID, host, port, publicKey) => {
+  recordPreviewCall("CommitIDEKnownHost", [workspaceID, approvalID, host, port]);
+  return previewCommitIDEKnownHost(workspaceID, approvalID, host, port, publicKey);
+};
+export const PreviewIDEGitOperation = (workspaceID, operation) => {
+  recordPreviewCall("PreviewIDEGitOperation", [workspaceID, operation?.kind]);
+  return previewPreviewIDEGitOperation(workspaceID, operation);
+};
+export const CommitIDEGitOperation = (workspaceID, approvalID, operation) => {
+  recordPreviewCall("CommitIDEGitOperation", [workspaceID, approvalID, operation?.kind]);
+  return previewCommitIDEGitOperation(workspaceID, approvalID, operation);
+};
+export const ListIDETerminalProfiles = () => {
+  recordPreviewCall("ListIDETerminalProfiles");
+  return previewListIDETerminalProfiles();
+};
+export const OpenIDETerminalSession = (workspaceID, profileID, cols, rows) => {
+  recordPreviewCall("OpenIDETerminalSession", [workspaceID, profileID]);
+  return previewOpenIDETerminalSession(workspaceID, profileID, cols, rows);
+};
+export const WriteIDETerminalSession = (sessionID, data) => {
+  recordPreviewCall("WriteIDETerminalSession", [sessionID]);
+  return previewWriteIDETerminalSession(sessionID, data);
+};
+export const ResizeIDETerminalSession = (sessionID, cols, rows) => {
+  recordPreviewCall("ResizeIDETerminalSession", [sessionID, cols, rows]);
+  return previewResizeIDETerminalSession(sessionID, cols, rows);
+};
+export const InterruptIDETerminalSession = (sessionID) => {
+  recordPreviewCall("InterruptIDETerminalSession", [sessionID]);
+  return previewInterruptIDETerminalSession(sessionID);
+};
+export const CloseIDETerminalSession = (sessionID) => {
+  recordPreviewCall("CloseIDETerminalSession", [sessionID]);
+  return previewCloseIDETerminalSession(sessionID);
+};
+export const GetIDETerminalOutput = (sessionID) => {
+  recordPreviewCall("GetIDETerminalOutput", [sessionID]);
+  return previewGetIDETerminalOutput(sessionID);
+};
+export const StartIDEAgentRun = (workspaceID, modelID, prompt) => {
+  recordPreviewCall("StartIDEAgentRun", [workspaceID, modelID]);
+  return previewStartIDEAgentRun(workspaceID, modelID, prompt);
+};
+export const CancelIDEAgentRun = (runID) => {
+  recordPreviewCall("CancelIDEAgentRun", [runID]);
+  return previewCancelIDEAgentRun(runID);
+};
+export const GetIDEAgentRun = (runID) => {
+  recordPreviewCall("GetIDEAgentRun", [runID]);
+  return previewGetIDEAgentRun(runID);
+};
+export const ListIDEAgentRuns = (workspaceID) => {
+  recordPreviewCall("ListIDEAgentRuns", [workspaceID]);
+  return previewListIDEAgentRuns(workspaceID);
+};
+export const GetIDEAgentRunEvents = (runID) => {
+  recordPreviewCall("GetIDEAgentRunEvents", [runID]);
+  return previewGetIDEAgentRunEvents(runID);
+};
+export const ReplayIDEAgentRun = (runID) => {
+  recordPreviewCall("ReplayIDEAgentRun", [runID]);
+  return previewReplayIDEAgentRun(runID);
+};
+export const PreviewIDEAgentEffect = (runID, effect) => {
+  recordPreviewCall("PreviewIDEAgentEffect", [runID, effect?.kind]);
+  return previewPreviewIDEAgentEffect(runID, effect);
+};
+export const CommitIDEAgentEffect = (runID, approvalID, effect) => {
+  recordPreviewCall("CommitIDEAgentEffect", [runID, approvalID, effect?.kind]);
+  return previewCommitIDEAgentEffect(runID, approvalID, effect);
+};
+export const PreviewIDEExecutorWriteCapability = (workspaceID, executorID) => {
+  recordPreviewCall("PreviewIDEExecutorWriteCapability", [workspaceID, executorID]);
+  return previewPreviewIDEExecutorWriteCapability(workspaceID, executorID);
+};
+export const CommitIDEExecutorWriteCapability = (workspaceID, approvalID, executorID) => {
+  recordPreviewCall("CommitIDEExecutorWriteCapability", [workspaceID, approvalID, executorID]);
+  return previewCommitIDEExecutorWriteCapability(workspaceID, approvalID, executorID);
 };
 
 function previewStructuredQuotaBalance() {

@@ -48,23 +48,73 @@ func NewPriceLookup(rates []PriceRate) *PriceLookup {
 // Cost 计算一次请求的美元成本。
 // 返回 (成本指针, 价格是否已知, 币种)。价格未知时成本为 nil。
 func (lookup *PriceLookup) Cost(model, provider, baseURL string, input, output, cacheRead, cacheWrite int64) (*float64, bool, string, string) {
+	return lookup.CostForCandidates([]string{model}, provider, baseURL, input, output, cacheRead, cacheWrite)
+}
+
+// CostForCandidates 按渠道特异性优先、模型候选次优先解析费用。
+// 这让实际 provider model 优先于 UI 显示名称，同时避免宽松别名价格遮蔽精确渠道价格。
+func (lookup *PriceLookup) CostForCandidates(candidates []string, provider, baseURL string, input, output, cacheRead, cacheWrite int64) (*float64, bool, string, string) {
 	if lookup == nil {
 		return nil, false, "", ""
 	}
-	for _, key := range priceKeys(model, provider, baseURL) {
-		rate, ok := lookup.byKey[key]
-		if !ok {
-			continue
+	models := normalizedPriceModelCandidates(candidates)
+	provider = strings.ToLower(strings.TrimSpace(provider))
+	baseURL = strings.ToLower(strings.TrimSpace(baseURL))
+	for _, keys := range [][]string{
+		priceCandidateKeys(models, provider, baseURL, true, true),
+		priceCandidateKeys(models, provider, "", true, false),
+		priceCandidateKeys(models, "", "", false, false),
+	} {
+		for _, key := range keys {
+			rate, ok := lookup.byKey[key]
+			if !ok {
+				continue
+			}
+			var total float64
+			total += ratePart(rate.Input, input)
+			total += ratePart(rate.Output, output)
+			total += ratePart(rate.CacheRead, cacheRead)
+			total += ratePart(rate.CacheWrite, cacheWrite)
+			cost := total / 1_000_000
+			return &cost, rate.Known, strings.TrimSpace(rate.Currency), strings.TrimSpace(rate.Source)
 		}
-		var total float64
-		total += ratePart(rate.Input, input)
-		total += ratePart(rate.Output, output)
-		total += ratePart(rate.CacheRead, cacheRead)
-		total += ratePart(rate.CacheWrite, cacheWrite)
-		cost := total / 1_000_000
-		return &cost, rate.Known, strings.TrimSpace(rate.Currency), strings.TrimSpace(rate.Source)
 	}
 	return nil, false, "", ""
+}
+
+func normalizedPriceModelCandidates(candidates []string) []string {
+	models := make([]string, 0, len(candidates))
+	seen := make(map[string]struct{}, len(candidates))
+	for _, candidate := range candidates {
+		model := strings.ToLower(strings.TrimSpace(candidate))
+		if model == "" {
+			continue
+		}
+		if _, exists := seen[model]; exists {
+			continue
+		}
+		seen[model] = struct{}{}
+		models = append(models, model)
+	}
+	return models
+}
+
+func priceCandidateKeys(models []string, provider, baseURL string, requireProvider, requireBaseURL bool) []string {
+	if len(models) == 0 || (requireProvider && provider == "") || (requireBaseURL && baseURL == "") {
+		return nil
+	}
+	keys := make([]string, 0, len(models))
+	for _, model := range models {
+		switch {
+		case requireBaseURL:
+			keys = append(keys, model+"|"+provider+"|"+baseURL)
+		case requireProvider:
+			keys = append(keys, model+"|"+provider+"|")
+		default:
+			keys = append(keys, model+"||")
+		}
+	}
+	return keys
 }
 
 func ratePart(rate *float64, tokens int64) float64 {

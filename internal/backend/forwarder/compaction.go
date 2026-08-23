@@ -322,7 +322,7 @@ func (service *Service) buildLegacyCompactionPlan(base *compactionPlan, conversa
 	if conversation == nil || base == nil {
 		return nil, nil
 	}
-	candidates := buildContextCompactionCandidates(checkpointProjectionEntries(conversation.Entries), base.CurrentTurnSeq, base.CurrentRequestID)
+	candidates := buildContextCompactionCandidates(checkpointProjectionEntries(filterExpiredGoalContinuationPromptContexts(conversation)), base.CurrentTurnSeq, base.CurrentRequestID)
 	if len(candidates) == 0 {
 		return nil, nil
 	}

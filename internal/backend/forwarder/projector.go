@@ -75,7 +75,7 @@ func (projector *HistoryProjector) ProjectPromptReplay(conversation *Conversatio
 	if conversation == nil {
 		return nil, nil
 	}
-	entries := replayablePromptProjectionEntries(conversation.Entries)
+	entries := replayablePromptProjectionEntries(filterExpiredGoalContinuationPromptContexts(conversation))
 	messages := make([]modeladapter.Message, 0, len(entries)*2)
 	seenToolCalls := make(map[string]struct{})
 	openToolCalls := make(map[string]struct{})

@@ -103,3 +103,34 @@ func CACertFilePath() string {
 func CAKeyFilePath() string {
 	return filepath.Join(DataRootPath(), "ca.key")
 }
+
+// IDEWorkspaceRootPath returns the private registry root for IDE-authorized workspaces.
+// It creates nothing; callers create it only when registering or revoking a workspace.
+func IDEWorkspaceRootPath() string {
+	return filepath.Join(DataRootPath(), "ide-workspaces")
+}
+
+// IDEApprovalRootPath returns the private registry root for IDE approval receipts.
+func IDEApprovalRootPath() string {
+	return filepath.Join(DataRootPath(), "ide-approvals")
+}
+
+// IDESSHVaultRootPath returns the private DPAPI-backed SSH key vault root.
+func IDESSHVaultRootPath() string {
+	return filepath.Join(DataRootPath(), "ide-ssh-vault")
+}
+
+// IDESSHKnownHostsRootPath returns the managed SSH known_hosts directory.
+func IDESSHKnownHostsRootPath() string {
+	return filepath.Join(DataRootPath(), "ide-ssh-known-hosts")
+}
+
+// IDEAgentRunRootPath returns the private store for IDE BYOK agent runs and events.
+func IDEAgentRunRootPath() string {
+	return filepath.Join(DataRootPath(), "ide-agent-runs")
+}
+
+// IDEExecutorGrantRootPath returns the private store for executor write-capability grants.
+func IDEExecutorGrantRootPath() string {
+	return filepath.Join(DataRootPath(), "ide-executor-grants")
+}

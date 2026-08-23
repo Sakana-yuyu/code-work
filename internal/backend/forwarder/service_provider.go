@@ -55,8 +55,9 @@ func (service *Service) driveProvider(stream *ActiveStream) error {
 		stream.mu.Unlock()
 		return nil
 	}
-	// 非 goal 回合的安全预算兜底：防止模型陷入工具调用死循环无限空转。
-	if stream.Goal == nil {
+	goal := stream.Goal
+	if goal == nil {
+		// 非 goal 回合的安全预算兜底：防止模型陷入工具调用死循环无限空转。
 		if stream.ProviderPassCount >= parentAgentProviderPassSafetyLimit {
 			stream.mu.Unlock()
 			return service.closeStreamWithTurnBudgetExceeded(stream, fmt.Sprintf("达到单回合 provider 调用上限 %d，疑似死循环，已安全停止", parentAgentProviderPassSafetyLimit))
@@ -65,9 +66,17 @@ func (service *Service) driveProvider(stream *ActiveStream) error {
 			stream.mu.Unlock()
 			return service.closeStreamWithTurnBudgetExceeded(stream, fmt.Sprintf("达到单回合时长上限 %s，已安全停止", parentAgentProviderTurnDurationLimit))
 		}
+	} else if exceeded, reason := goalProviderAdmissionExceeded(goal, service.currentGoalConfig(), stream.ProviderPassCount); exceeded {
+		stream.PendingProviderAction = providerActionNone
+		stream.mu.Unlock()
+		return service.stopGoalForBudget(stream, goal, reason)
 	}
 	stream.ProviderPassCount++
 	currentPass := stream.ProviderPassCount
+	if goal != nil {
+		goal.ProviderPasses = currentPass
+		goal.UpdatedAt = time.Now().UTC()
+	}
 	stream.Status = StreamStatusStreaming
 	stream.PendingProviderAction = providerActionNone
 	stream.CurrentModelCallID = uuid.NewString()
@@ -98,7 +107,7 @@ func (service *Service) driveProvider(stream *ActiveStream) error {
 	maxMode := stream.MaxMode
 	mode := stream.Mode
 	latestUserText := stream.LatestUserText
-	goal := stream.Goal
+	goal = stream.Goal
 	customSystemPrompt := stream.CustomSystemPrompt
 	thinkingCompletedPublished := stream.ProviderSyntheticThinkingPublished
 	thinkingDeltaCount := stream.ProviderThinkingDeltaCount

@@ -36,7 +36,7 @@
       "refs": [
         {
           "file": "src/services/browserBindings.js",
-          "line": 253,
+          "line": 339,
           "column": 18
         }
       ]
@@ -176,6 +176,38 @@
         }
       ]
     },
+    "016d6c79b4aec5bb": {
+      "source": "审批与操作不匹配",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/services/ideWorkspacePreview.js",
+          "line": 301,
+          "column": 23
+        },
+        {
+          "file": "src/services/ideWorkspacePreview.js",
+          "line": 509,
+          "column": 23
+        },
+        {
+          "file": "src/services/ideWorkspacePreview.js",
+          "line": 608,
+          "column": 58
+        },
+        {
+          "file": "src/services/ideWorkspacePreview.js",
+          "line": 833,
+          "column": 23
+        },
+        {
+          "file": "src/services/ideWorkspacePreview.js",
+          "line": 873,
+          "column": 23
+        }
+      ]
+    },
     "01aaebc96af187a9": {
       "source": "导入失败",
       "kind": "text",
@@ -292,7 +324,7 @@
       "refs": [
         {
           "file": "src/services/browserBindings.js",
-          "line": 314,
+          "line": 400,
           "column": 22
         }
       ]
@@ -636,7 +668,7 @@
       "refs": [
         {
           "file": "src/services/browserBindings.js",
-          "line": 1411,
+          "line": 1497,
           "column": 70
         }
       ]
@@ -736,6 +768,28 @@
         }
       ]
     },
+    "05cc68bdf7ae71e6": {
+      "source": "打开工作区",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/layouts/WorkbenchLayout.vue",
+          "line": 43,
+          "column": 28
+        },
+        {
+          "file": "src/views/WorkbenchWelcome.vue",
+          "line": 8,
+          "column": 12
+        },
+        {
+          "file": "src/views/WorkbenchWelcome.vue",
+          "line": 27,
+          "column": 119
+        }
+      ]
+    },
     "05e54c05656fe790": {
       "source": "例如：114514",
       "kind": "text",
@@ -813,7 +867,7 @@
       "refs": [
         {
           "file": "src/services/browserBindings.js",
-          "line": 757,
+          "line": 843,
           "column": 41
         }
       ]
@@ -892,6 +946,11 @@
           "file": "src/components/settings/categories/HistorySettings.vue",
           "line": 459,
           "column": 21
+        },
+        {
+          "file": "src/utils/ideGitSnapshot.js",
+          "line": 21,
+          "column": 14
         }
       ]
     },
@@ -967,7 +1026,7 @@
       "refs": [
         {
           "file": "src/services/browserBindings.js",
-          "line": 893,
+          "line": 979,
           "column": 12
         }
       ]
@@ -1020,7 +1079,7 @@
       "refs": [
         {
           "file": "src/services/browserBindings.js",
-          "line": 758,
+          "line": 844,
           "column": 21
         }
       ]
@@ -1044,7 +1103,7 @@
       "refs": [
         {
           "file": "src/services/browserBindings.js",
-          "line": 1158,
+          "line": 1244,
           "column": 35
         }
       ]
@@ -1126,6 +1185,18 @@
         }
       ]
     },
+    "0a13f75cec6c2a76": {
+      "source": "终端配置不合法",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/services/ideWorkspacePreview.js",
+          "line": 651,
+          "column": 35
+        }
+      ]
+    },
     "0a341110af88ea12": {
       "source": "OpenAI o 系列",
       "kind": "text",
@@ -1200,6 +1271,18 @@
           "file": "src/views/ModelEditor.vue",
           "line": 669,
           "column": 48
+        }
+      ]
+    },
+    "0b353721f568e2c9": {
+      "source": "询问工作区",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/components/workbench/AgentChatPanel.vue",
+          "line": 191,
+          "column": 70
         }
       ]
     },
@@ -1280,6 +1363,11 @@
           "file": "src/components/settings/categories/SkillsMcpSettings.vue",
           "line": 57,
           "column": 28
+        },
+        {
+          "file": "src/components/workbench/TaskPanel.vue",
+          "line": 41,
+          "column": 10
         },
         {
           "file": "src/views/RequestMetrics.vue",
@@ -1436,6 +1524,18 @@
         }
       ]
     },
+    "0ca14f798c40a403": {
+      "source": "Agent 写入后刷新文档失败，请重新打开文件后再保存。",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/views/IdeWorkspace.vue",
+          "line": 245,
+          "column": 68
+        }
+      ]
+    },
     "0cb99689e3307e76": {
       "source": "个问题。",
       "kind": "text",
@@ -1467,12 +1567,12 @@
       "refs": [
         {
           "file": "src/services/browserBindings.js",
-          "line": 427,
+          "line": 513,
           "column": 18
         },
         {
           "file": "src/services/browserBindings.js",
-          "line": 799,
+          "line": 885,
           "column": 78
         }
       ]
@@ -1484,7 +1584,7 @@
       "refs": [
         {
           "file": "src/layouts/WorkbenchLayout.vue",
-          "line": 41,
+          "line": 48,
           "column": 51
         }
       ]
@@ -1597,7 +1697,7 @@
       "refs": [
         {
           "file": "src/layouts/WorkbenchLayout.vue",
-          "line": 186,
+          "line": 209,
           "column": 41
         }
       ]
@@ -1712,6 +1812,18 @@
           "file": "src/views/ControlCenter.vue",
           "line": 18,
           "column": 49
+        }
+      ]
+    },
+    "0f8d9ef9e6f9d7e8": {
+      "source": "此路径不可访问。",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/views/IdeWorkspace.vue",
+          "line": 365,
+          "column": 70
         }
       ]
     },
@@ -2006,6 +2118,23 @@
         }
       ]
     },
+    "136de7a8c46fc803": {
+      "source": "拒绝",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/components/workbench/AgentChatPanel.vue",
+          "line": 204,
+          "column": 107
+        },
+        {
+          "file": "src/views/IdeWorkspace.vue",
+          "line": 362,
+          "column": 102
+        }
+      ]
+    },
     "137c443b3ec39d5b": {
       "source": "Cursor 与服务",
       "kind": "text",
@@ -2114,7 +2243,7 @@
       "refs": [
         {
           "file": "src/components/workbench/PrimarySidebar.vue",
-          "line": 62,
+          "line": 56,
           "column": 16
         }
       ]
@@ -2126,12 +2255,12 @@
       "refs": [
         {
           "file": "src/services/browserBindings.js",
-          "line": 8,
+          "line": 51,
           "column": 18
         },
         {
           "file": "src/services/browserBindings.js",
-          "line": 34,
+          "line": 77,
           "column": 18
         }
       ]
@@ -2316,7 +2445,7 @@
       "refs": [
         {
           "file": "src/services/browserBindings.js",
-          "line": 1302,
+          "line": 1388,
           "column": 100
         }
       ]
@@ -2359,6 +2488,18 @@
           "file": "src/views/MetricsDetail.vue",
           "line": 444,
           "column": 46
+        }
+      ]
+    },
+    "16ccb1f6902be065": {
+      "source": "Agent 请求不合法",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/services/ideWorkspacePreview.js",
+          "line": 725,
+          "column": 32
         }
       ]
     },
@@ -2407,6 +2548,11 @@
           "file": "src/components/workbench/PrimarySidebar.vue",
           "line": 15,
           "column": 12
+        },
+        {
+          "file": "src/views/IdeWorkspace.vue",
+          "line": 299,
+          "column": 45
         }
       ]
     },
@@ -2458,7 +2604,7 @@
       "refs": [
         {
           "file": "src/services/browserBindings.js",
-          "line": 806,
+          "line": 892,
           "column": 90
         }
       ]
@@ -2470,7 +2616,7 @@
       "refs": [
         {
           "file": "src/layouts/WorkbenchLayout.vue",
-          "line": 43,
+          "line": 50,
           "column": 53
         }
       ]
@@ -2556,6 +2702,18 @@
           "file": "src/state/serviceViewState.js",
           "line": 34,
           "column": 41
+        }
+      ]
+    },
+    "18db457f3846208b": {
+      "source": "暂存文件",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/services/ideWorkspacePreview.js",
+          "line": 522,
+          "column": 14
         }
       ]
     },
@@ -2738,7 +2896,7 @@
       "refs": [
         {
           "file": "src/utils/configNormalize.js",
-          "line": 35,
+          "line": 36,
           "column": 12
         }
       ]
@@ -2856,6 +3014,18 @@
         }
       ]
     },
+    "1bcd31e0174af90e": {
+      "source": "已新增",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/utils/ideGitSnapshot.js",
+          "line": 19,
+          "column": 14
+        }
+      ]
+    },
     "1bd91a7d0c53c936": {
       "source": "已保存",
       "kind": "text",
@@ -2901,6 +3071,23 @@
           "file": "src/components/settings/delegation/DelegationExecutorsPanel.vue",
           "line": 120,
           "column": 85
+        }
+      ]
+    },
+    "1c4f2ca96b6b8873": {
+      "source": "隐藏 AI 栏",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/components/workbench/AgentChatPanel.vue",
+          "line": 172,
+          "column": 29
+        },
+        {
+          "file": "src/components/workbench/AgentChatPanel.vue",
+          "line": 172,
+          "column": 50
         }
       ]
     },
@@ -3034,6 +3221,23 @@
         }
       ]
     },
+    "1d645cee46232e9d": {
+      "source": "文件不可写入",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/services/ideWorkspacePreview.js",
+          "line": 237,
+          "column": 56
+        },
+        {
+          "file": "src/services/ideWorkspacePreview.js",
+          "line": 294,
+          "column": 56
+        }
+      ]
+    },
     "1d7b3062a866bf83": {
       "source": "（浏览器自动化）——配置后覆盖内置。",
       "kind": "text",
@@ -3106,12 +3310,12 @@
       "refs": [
         {
           "file": "src/services/browserBindings.js",
-          "line": 605,
+          "line": 691,
           "column": 61
         },
         {
           "file": "src/services/clientApi.js",
-          "line": 642,
+          "line": 660,
           "column": 66
         }
       ]
@@ -3198,12 +3402,12 @@
       "refs": [
         {
           "file": "src/components/workbench/PrimarySidebar.vue",
-          "line": 49,
+          "line": 44,
           "column": 16
         },
         {
           "file": "src/router/index.js",
-          "line": 55,
+          "line": 61,
           "column": 39
         },
         {
@@ -3244,7 +3448,7 @@
       "refs": [
         {
           "file": "src/services/browserBindings.js",
-          "line": 720,
+          "line": 806,
           "column": 16
         }
       ]
@@ -3297,6 +3501,16 @@
           "file": "src/components/DelegationTaskStrip.vue",
           "line": 190,
           "column": 30
+        },
+        {
+          "file": "src/components/workbench/TaskPanel.vue",
+          "line": 29,
+          "column": 12
+        },
+        {
+          "file": "src/components/workbench/TaskPanel.vue",
+          "line": 54,
+          "column": 12
         }
       ]
     },
@@ -3307,7 +3521,7 @@
       "refs": [
         {
           "file": "src/services/browserBindings.js",
-          "line": 880,
+          "line": 966,
           "column": 12
         }
       ]
@@ -3496,7 +3710,7 @@
         },
         {
           "file": "src/layouts/WorkbenchLayout.vue",
-          "line": 39,
+          "line": 46,
           "column": 39
         }
       ]
@@ -3520,7 +3734,7 @@
       "refs": [
         {
           "file": "src/layouts/WorkbenchLayout.vue",
-          "line": 45,
+          "line": 52,
           "column": 32
         }
       ]
@@ -3659,6 +3873,18 @@
           "file": "src/components/workbench/ActivityRail.vue",
           "line": 34,
           "column": 30
+        }
+      ]
+    },
+    "23d07b8fb4878174": {
+      "source": "当前没有 MCP 服务器。",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/components/workbench/TaskPanel.vue",
+          "line": 190,
+          "column": 58
         }
       ]
     },
@@ -4014,6 +4240,11 @@
           "file": "src/components/DelegationTaskStrip.vue",
           "line": 45,
           "column": 11
+        },
+        {
+          "file": "src/components/workbench/TaskPanel.vue",
+          "line": 28,
+          "column": 11
         }
       ]
     },
@@ -4048,8 +4279,20 @@
       "refs": [
         {
           "file": "src/services/browserBindings.js",
-          "line": 1423,
+          "line": 1667,
           "column": 15
+        }
+      ]
+    },
+    "27586f180db1c812": {
+      "source": "已重命名",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/utils/ideGitSnapshot.js",
+          "line": 23,
+          "column": 14
         }
       ]
     },
@@ -4062,6 +4305,18 @@
           "file": "src/components/settings/categories/PromptSettings.vue",
           "line": 613,
           "column": 13
+        }
+      ]
+    },
+    "2769e7199035a5e0": {
+      "source": "批准执行",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/components/workbench/AgentChatPanel.vue",
+          "line": 203,
+          "column": 106
         }
       ]
     },
@@ -4168,6 +4423,16 @@
           "column": 16
         },
         {
+          "file": "src/components/workbench/TaskPanel.vue",
+          "line": 31,
+          "column": 11
+        },
+        {
+          "file": "src/components/workbench/TaskPanel.vue",
+          "line": 56,
+          "column": 11
+        },
+        {
           "file": "src/views/SupplierDetail.vue",
           "line": 127,
           "column": 27
@@ -4222,7 +4487,7 @@
       "refs": [
         {
           "file": "src/services/browserBindings.js",
-          "line": 854,
+          "line": 940,
           "column": 12
         }
       ]
@@ -4417,7 +4682,7 @@
       "refs": [
         {
           "file": "src/services/browserBindings.js",
-          "line": 1005,
+          "line": 1091,
           "column": 49
         }
       ]
@@ -4530,28 +4795,6 @@
         }
       ]
     },
-    "2c61ed8d50022bd4": {
-      "source": "服务控制台",
-      "kind": "text",
-      "placeholders": 0,
-      "refs": [
-        {
-          "file": "src/components/workbench/PrimarySidebar.vue",
-          "line": 19,
-          "column": 16
-        },
-        {
-          "file": "src/components/workbench/PrimarySidebar.vue",
-          "line": 39,
-          "column": 16
-        },
-        {
-          "file": "src/router/index.js",
-          "line": 26,
-          "column": 39
-        }
-      ]
-    },
     "2cbced881b2df35a": {
       "source": "修改日期",
       "kind": "text",
@@ -4645,9 +4888,14 @@
           "column": 40
         },
         {
+          "file": "src/components/workbench/AgentChatPanel.vue",
+          "line": 194,
+          "column": 114
+        },
+        {
           "file": "src/components/workbench/TaskPanel.vue",
-          "line": 78,
-          "column": 123
+          "line": 173,
+          "column": 16
         },
         {
           "file": "src/composables/useModal.js",
@@ -4831,6 +5079,18 @@
           "file": "src/views/SupplierDetail.vue",
           "line": 1064,
           "column": 54
+        }
+      ]
+    },
+    "2dd9e0f5e8e3f642": {
+      "source": "预览终端已连接\r\n",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/services/ideWorkspacePreview.js",
+          "line": 660,
+          "column": 15
         }
       ]
     },
@@ -5192,8 +5452,20 @@
       "refs": [
         {
           "file": "src/layouts/WorkbenchLayout.vue",
-          "line": 44,
+          "line": 51,
           "column": 32
+        }
+      ]
+    },
+    "31ab1870573a1ab8": {
+      "source": "请先打开文本文件并启动 Agent。",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/components/workbench/AgentChatPanel.vue",
+          "line": 115,
+          "column": 24
         }
       ]
     },
@@ -5315,7 +5587,7 @@
       "refs": [
         {
           "file": "src/components/workbench/PrimarySidebar.vue",
-          "line": 108,
+          "line": 102,
           "column": 64
         }
       ]
@@ -5327,7 +5599,7 @@
       "refs": [
         {
           "file": "src/state/workbenchState.js",
-          "line": 14,
+          "line": 20,
           "column": 30
         }
       ]
@@ -5435,12 +5707,12 @@
       "refs": [
         {
           "file": "src/services/browserBindings.js",
-          "line": 611,
+          "line": 697,
           "column": 97
         },
         {
           "file": "src/services/clientApi.js",
-          "line": 477,
+          "line": 495,
           "column": 99
         }
       ]
@@ -5490,6 +5762,18 @@
           "file": "src/components/HomeMetricsCard.vue",
           "line": 584,
           "column": 23
+        }
+      ]
+    },
+    "34b9f7b3837370a2": {
+      "source": "预览回复：{0}",
+      "kind": "template",
+      "placeholders": 1,
+      "refs": [
+        {
+          "file": "src/services/ideWorkspacePreview.js",
+          "line": 737,
+          "column": 51
         }
       ]
     },
@@ -5582,7 +5866,7 @@
       "refs": [
         {
           "file": "src/components/workbench/TabStrip.vue",
-          "line": 35,
+          "line": 36,
           "column": 22
         }
       ]
@@ -5623,6 +5907,18 @@
         }
       ]
     },
+    "362649c551f42dd9": {
+      "source": "主机密钥已变更",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/services/ideWorkspacePreview.js",
+          "line": 481,
+          "column": 56
+        }
+      ]
+    },
     "364a4dfc2d470245": {
       "source": "一月",
       "kind": "text",
@@ -5642,7 +5938,7 @@
       "refs": [
         {
           "file": "src/services/browserBindings.js",
-          "line": 596,
+          "line": 682,
           "column": 169
         }
       ]
@@ -5801,15 +6097,52 @@
         }
       ]
     },
+    "3759738d7e6f875e": {
+      "source": "Agent 操作失败",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/components/workbench/AgentChatPanel.vue",
+          "line": 62,
+          "column": 80
+        }
+      ]
+    },
     "37979829426b0cdb": {
       "source": "工作区",
       "kind": "text",
       "placeholders": 0,
       "refs": [
         {
+          "file": "src/components/workbench/PrimarySidebar.vue",
+          "line": 18,
+          "column": 16
+        },
+        {
+          "file": "src/router/index.js",
+          "line": 102,
+          "column": 39
+        },
+        {
+          "file": "src/router/index.js",
+          "line": 102,
+          "column": 62
+        },
+        {
           "file": "src/state/workbenchState.js",
-          "line": 11,
+          "line": 17,
           "column": 28
+        },
+        {
+          "file": "src/state/workbenchState.js",
+          "line": 108,
+          "column": 71
+        },
+        {
+          "file": "src/views/IdeWorkspace.vue",
+          "line": 262,
+          "column": 30
         }
       ]
     },
@@ -5835,7 +6168,7 @@
         },
         {
           "file": "src/layouts/WorkbenchLayout.vue",
-          "line": 40,
+          "line": 47,
           "column": 33
         }
       ]
@@ -5985,6 +6318,18 @@
         }
       ]
     },
+    "39932f24fe11a6ba": {
+      "source": "文件",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/views/IdeWorkspace.vue",
+          "line": 81,
+          "column": 10
+        }
+      ]
+    },
     "3995561a1c7d3d52": {
       "source": "所选账号",
       "kind": "text",
@@ -5994,6 +6339,43 @@
           "file": "src/components/CursorAccountCard.vue",
           "line": 188,
           "column": 52
+        }
+      ]
+    },
+    "39c85f4dd77b211c": {
+      "source": "审批状态无效",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/services/ideWorkspacePreview.js",
+          "line": 299,
+          "column": 54
+        },
+        {
+          "file": "src/services/ideWorkspacePreview.js",
+          "line": 506,
+          "column": 54
+        },
+        {
+          "file": "src/services/ideWorkspacePreview.js",
+          "line": 607,
+          "column": 54
+        },
+        {
+          "file": "src/services/ideWorkspacePreview.js",
+          "line": 831,
+          "column": 54
+        },
+        {
+          "file": "src/services/ideWorkspacePreview.js",
+          "line": 871,
+          "column": 54
+        },
+        {
+          "file": "src/services/ideWorkspacePreview.js",
+          "line": 899,
+          "column": 61
         }
       ]
     },
@@ -6255,7 +6637,7 @@
       "refs": [
         {
           "file": "src/services/browserBindings.js",
-          "line": 1386,
+          "line": 1472,
           "column": 49
         }
       ]
@@ -6281,6 +6663,35 @@
           "file": "src/components/settings/categories/SkillsMcpSettings.vue",
           "line": 1020,
           "column": 22
+        }
+      ]
+    },
+    "3c4a4cf3b3983674": {
+      "source": "SSH 主机公钥无效",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/services/ideWorkspacePreview.js",
+          "line": 407,
+          "column": 77
+        }
+      ]
+    },
+    "3c6d9e5bf0b71440": {
+      "source": "终端会话不存在",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/services/ideWorkspacePreview.js",
+          "line": 639,
+          "column": 63
+        },
+        {
+          "file": "src/services/ideWorkspacePreview.js",
+          "line": 699,
+          "column": 35
         }
       ]
     },
@@ -6323,6 +6734,18 @@
         }
       ]
     },
+    "3d14204c278ace58": {
+      "source": "无法加载模型配置",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/components/workbench/AgentChatPanel.vue",
+          "line": 80,
+          "column": 64
+        }
+      ]
+    },
     "3d179ca3a83529ae": {
       "source": "提示词已更新",
       "kind": "text",
@@ -6349,6 +6772,11 @@
           "file": "src/components/settings/categories/SkillsMcpSettings.vue",
           "line": 526,
           "column": 10
+        },
+        {
+          "file": "src/components/workbench/TaskPanel.vue",
+          "line": 37,
+          "column": 17
         }
       ]
     },
@@ -6373,6 +6801,18 @@
           "file": "src/views/ModelCatalog.vue",
           "line": 66,
           "column": 42
+        }
+      ]
+    },
+    "3d73daf8b7f7146d": {
+      "source": "拉取远程",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/services/ideWorkspacePreview.js",
+          "line": 525,
+          "column": 13
         }
       ]
     },
@@ -6540,6 +6980,18 @@
         }
       ]
     },
+    "3f54038766bc4ac8": {
+      "source": "SSH 密钥名称不合法",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/services/ideWorkspacePreview.js",
+          "line": 362,
+          "column": 95
+        }
+      ]
+    },
     "3f61b25785f12efb": {
       "source": "在个人安全设置里生成",
       "kind": "text",
@@ -6674,7 +7126,7 @@
       "refs": [
         {
           "file": "src/services/browserBindings.js",
-          "line": 806,
+          "line": 892,
           "column": 21
         }
       ]
@@ -6709,13 +7161,8 @@
       "placeholders": 0,
       "refs": [
         {
-          "file": "src/components/workbench/PrimarySidebar.vue",
-          "line": 42,
-          "column": 16
-        },
-        {
           "file": "src/router/index.js",
-          "line": 81,
+          "line": 87,
           "column": 39
         },
         {
@@ -6833,6 +7280,18 @@
           "file": "src/views/SupplierDetail.vue",
           "line": 246,
           "column": 35
+        }
+      ]
+    },
+    "42f1494e2b3b88e6": {
+      "source": "注册根目录并安全浏览文件",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/views/WorkbenchWelcome.vue",
+          "line": 8,
+          "column": 29
         }
       ]
     },
@@ -7000,8 +7459,13 @@
       "refs": [
         {
           "file": "src/views/WorkbenchWelcome.vue",
-          "line": 11,
+          "line": 9,
           "column": 12
+        },
+        {
+          "file": "src/views/WorkbenchWelcome.vue",
+          "line": 28,
+          "column": 83
         }
       ]
     },
@@ -7012,13 +7476,18 @@
       "refs": [
         {
           "file": "src/components/workbench/PrimarySidebar.vue",
-          "line": 26,
+          "line": 24,
           "column": 12
         },
         {
           "file": "src/state/workbenchState.js",
-          "line": 12,
+          "line": 18,
           "column": 26
+        },
+        {
+          "file": "src/views/IdeWorkspace.vue",
+          "line": 337,
+          "column": 101
         }
       ]
     },
@@ -7087,6 +7556,18 @@
           "file": "src/components/control-center/RoutingPanel.vue",
           "line": 190,
           "column": 49
+        }
+      ]
+    },
+    "45fb956103636ea6": {
+      "source": "冲突",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/utils/ideGitSnapshot.js",
+          "line": 27,
+          "column": 14
         }
       ]
     },
@@ -7237,6 +7718,18 @@
         }
       ]
     },
+    "470c8e022b28cf49": {
+      "source": "Agent 副作用预览",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/components/workbench/AgentChatPanel.vue",
+          "line": 200,
+          "column": 66
+        }
+      ]
+    },
     "472642d58d3d5a6d": {
       "source": "公式：{0}",
       "kind": "template",
@@ -7246,6 +7739,55 @@
           "file": "src/components/HomeMetricsCard.vue",
           "line": 314,
           "column": 5
+        }
+      ]
+    },
+    "47336e9272f1b7eb": {
+      "source": "还没有已授权的工作区。",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/views/IdeWorkspace.vue",
+          "line": 278,
+          "column": 31
+        }
+      ]
+    },
+    "4738de38fa32f78d": {
+      "source": "审批不存在",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/services/ideWorkspacePreview.js",
+          "line": 297,
+          "column": 36
+        },
+        {
+          "file": "src/services/ideWorkspacePreview.js",
+          "line": 504,
+          "column": 36
+        },
+        {
+          "file": "src/services/ideWorkspacePreview.js",
+          "line": 605,
+          "column": 36
+        },
+        {
+          "file": "src/services/ideWorkspacePreview.js",
+          "line": 829,
+          "column": 36
+        },
+        {
+          "file": "src/services/ideWorkspacePreview.js",
+          "line": 869,
+          "column": 36
+        },
+        {
+          "file": "src/services/ideWorkspacePreview.js",
+          "line": 898,
+          "column": 34
         }
       ]
     },
@@ -7275,18 +7817,6 @@
           "file": "src/components/settings/categories/HistorySettings.vue",
           "line": 692,
           "column": 220
-        }
-      ]
-    },
-    "47ab3ea9285f46f7": {
-      "source": "切换任务面板 (Ctrl+J)",
-      "kind": "text",
-      "placeholders": 0,
-      "refs": [
-        {
-          "file": "src/components/workbench/StatusBar.vue",
-          "line": 21,
-          "column": 62
         }
       ]
     },
@@ -7321,7 +7851,7 @@
       "refs": [
         {
           "file": "src/components/workbench/PrimarySidebar.vue",
-          "line": 50,
+          "line": 45,
           "column": 16
         }
       ]
@@ -7355,18 +7885,6 @@
         }
       ]
     },
-    "48931bb0aa35a496": {
-      "source": "显示或隐藏 Shell 演示任务",
-      "kind": "text",
-      "placeholders": 0,
-      "refs": [
-        {
-          "file": "src/layouts/WorkbenchLayout.vue",
-          "line": 42,
-          "column": 49
-        }
-      ]
-    },
     "48c2104fae3631ac": {
       "source": "已关闭镜像记录（即时生效）",
       "kind": "text",
@@ -7376,6 +7894,18 @@
           "file": "src/components/settings/categories/AdvancedSettings.vue",
           "line": 313,
           "column": 53
+        }
+      ]
+    },
+    "491df712540eee1f": {
+      "source": "委派活动",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/components/workbench/TaskPanel.vue",
+          "line": 147,
+          "column": 15
         }
       ]
     },
@@ -7430,6 +7960,18 @@
         }
       ]
     },
+    "49b75016a328cab8": {
+      "source": "切换 AI 栏 (Ctrl+L)",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/components/workbench/StatusBar.vue",
+          "line": 21,
+          "column": 62
+        }
+      ]
+    },
     "49cc6edf9354359c": {
       "source": "基于文件系统的 MCP 服务，提供 12 个文件读写与目录操作工具。",
       "kind": "text",
@@ -7437,7 +7979,7 @@
       "refs": [
         {
           "file": "src/services/browserBindings.js",
-          "line": 761,
+          "line": 847,
           "column": 27
         }
       ]
@@ -7577,6 +8119,23 @@
         }
       ]
     },
+    "4b19509d75136594": {
+      "source": "已授权工作区",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/views/IdeWorkspace.vue",
+          "line": 283,
+          "column": 28
+        },
+        {
+          "file": "src/views/IdeWorkspace.vue",
+          "line": 284,
+          "column": 13
+        }
+      ]
+    },
     "4b47dbae97ba938a": {
       "source": "提示词",
       "kind": "text",
@@ -7690,7 +8249,7 @@
       "refs": [
         {
           "file": "src/services/browserBindings.js",
-          "line": 378,
+          "line": 464,
           "column": 18
         }
       ]
@@ -7726,7 +8285,7 @@
       "refs": [
         {
           "file": "src/views/WorkbenchWelcome.vue",
-          "line": 10,
+          "line": 11,
           "column": 30
         }
       ]
@@ -7805,9 +8364,31 @@
           "column": 86
         },
         {
+          "file": "src/components/workbench/TaskPanel.vue",
+          "line": 194,
+          "column": 21
+        },
+        {
           "file": "src/utils/valueCast.js",
           "line": 69,
           "column": 12
+        },
+        {
+          "file": "src/views/IdeWorkspace.vue",
+          "line": 75,
+          "column": 44
+        }
+      ]
+    },
+    "4d8dc23ed6e1e690": {
+      "source": "保存文件",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/services/ideWorkspacePreview.js",
+          "line": 244,
+          "column": 25
         }
       ]
     },
@@ -7884,7 +8465,7 @@
       "refs": [
         {
           "file": "src/components/workbench/PrimarySidebar.vue",
-          "line": 52,
+          "line": 47,
           "column": 16
         },
         {
@@ -8059,12 +8640,12 @@
       "refs": [
         {
           "file": "src/services/browserBindings.js",
-          "line": 563,
+          "line": 649,
           "column": 284
         },
         {
           "file": "src/services/clientApi.js",
-          "line": 375,
+          "line": 393,
           "column": 24
         }
       ]
@@ -8076,7 +8657,7 @@
       "refs": [
         {
           "file": "src/layouts/WorkbenchLayout.vue",
-          "line": 38,
+          "line": 45,
           "column": 55
         }
       ]
@@ -8105,6 +8686,18 @@
         }
       ]
     },
+    "4fb9aa6ebc50859f": {
+      "source": "已截断",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/utils/ideDocumentTabs.js",
+          "line": 81,
+          "column": 29
+        }
+      ]
+    },
     "4fbb4458eb2a4c82": {
       "source": "退出多选",
       "kind": "text",
@@ -8124,7 +8717,7 @@
       "refs": [
         {
           "file": "src/layouts/WorkbenchLayout.vue",
-          "line": 39,
+          "line": 46,
           "column": 57
         }
       ]
@@ -8263,16 +8856,6 @@
       "placeholders": 0,
       "refs": [
         {
-          "file": "src/components/workbench/PrimarySidebar.vue",
-          "line": 20,
-          "column": 16
-        },
-        {
-          "file": "src/components/workbench/PrimarySidebar.vue",
-          "line": 60,
-          "column": 16
-        },
-        {
           "file": "src/layouts/MainLayout.vue",
           "line": 254,
           "column": 11
@@ -8284,7 +8867,7 @@
         },
         {
           "file": "src/router/index.js",
-          "line": 91,
+          "line": 97,
           "column": 39
         },
         {
@@ -8353,13 +8936,8 @@
       "placeholders": 0,
       "refs": [
         {
-          "file": "src/components/workbench/StatusBar.vue",
-          "line": 21,
-          "column": 169
-        },
-        {
           "file": "src/components/workbench/TaskPanel.vue",
-          "line": 56,
+          "line": 146,
           "column": 12
         }
       ]
@@ -8436,12 +9014,12 @@
       "refs": [
         {
           "file": "src/services/browserBindings.js",
-          "line": 669,
+          "line": 755,
           "column": 126
         },
         {
           "file": "src/services/clientApi.js",
-          "line": 573,
+          "line": 591,
           "column": 128
         }
       ]
@@ -8451,6 +9029,11 @@
       "kind": "text",
       "placeholders": 0,
       "refs": [
+        {
+          "file": "src/views/IdeWorkspace.vue",
+          "line": 80,
+          "column": 42
+        },
         {
           "file": "src/views/SupplierDetail.vue",
           "line": 911,
@@ -8613,12 +9196,12 @@
       "refs": [
         {
           "file": "src/components/workbench/PrimarySidebar.vue",
-          "line": 31,
+          "line": 29,
           "column": 16
         },
         {
           "file": "src/components/workbench/PrimarySidebar.vue",
-          "line": 61,
+          "line": 55,
           "column": 16
         }
       ]
@@ -8630,12 +9213,12 @@
       "refs": [
         {
           "file": "src/services/browserBindings.js",
-          "line": 1263,
+          "line": 1349,
           "column": 37
         },
         {
           "file": "src/services/browserBindings.js",
-          "line": 1277,
+          "line": 1363,
           "column": 37
         }
       ]
@@ -8796,7 +9379,7 @@
       "refs": [
         {
           "file": "src/layouts/WorkbenchLayout.vue",
-          "line": 43,
+          "line": 50,
           "column": 34
         }
       ]
@@ -9432,6 +10015,11 @@
           "file": "src/components/settings/categories/SkillsMcpSettings.vue",
           "line": 518,
           "column": 12
+        },
+        {
+          "file": "src/components/workbench/TaskPanel.vue",
+          "line": 39,
+          "column": 14
         }
       ]
     },
@@ -9548,8 +10136,13 @@
       "placeholders": 0,
       "refs": [
         {
+          "file": "src/components/workbench/PrimarySidebar.vue",
+          "line": 34,
+          "column": 12
+        },
+        {
           "file": "src/state/workbenchState.js",
-          "line": 13,
+          "line": 19,
           "column": 34
         }
       ]
@@ -9587,18 +10180,6 @@
           "file": "src/components/control-center/RoutingPanel.vue",
           "line": 177,
           "column": 145
-        }
-      ]
-    },
-    "5dc4216e779f5619": {
-      "source": "已完成演示流程；未执行外部操作。",
-      "kind": "text",
-      "placeholders": 0,
-      "refs": [
-        {
-          "file": "src/components/workbench/TaskPanel.vue",
-          "line": 81,
-          "column": 51
         }
       ]
     },
@@ -9647,18 +10228,6 @@
           "file": "src/components/HomeMetricsCard.vue",
           "line": 502,
           "column": 21
-        }
-      ]
-    },
-    "5f1586f8cd726bb5": {
-      "source": "演示任务列表",
-      "kind": "text",
-      "placeholders": 0,
-      "refs": [
-        {
-          "file": "src/components/workbench/TaskPanel.vue",
-          "line": 73,
-          "column": 47
         }
       ]
     },
@@ -9715,7 +10284,7 @@
       "refs": [
         {
           "file": "src/router/index.js",
-          "line": 76,
+          "line": 82,
           "column": 39
         }
       ]
@@ -9739,7 +10308,7 @@
       "refs": [
         {
           "file": "src/layouts/WorkbenchLayout.vue",
-          "line": 45,
+          "line": 52,
           "column": 59
         }
       ]
@@ -9855,6 +10424,18 @@
         }
       ]
     },
+    "606a4e58169edb7f": {
+      "source": "源代码",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/views/IdeWorkspace.vue",
+          "line": 341,
+          "column": 53
+        }
+      ]
+    },
     "6078a681a306930d": {
       "source": "缓存写入",
       "kind": "text",
@@ -9923,7 +10504,7 @@
       "refs": [
         {
           "file": "src/services/browserBindings.js",
-          "line": 806,
+          "line": 892,
           "column": 159
         }
       ]
@@ -9971,7 +10552,7 @@
       "refs": [
         {
           "file": "src/services/browserBindings.js",
-          "line": 354,
+          "line": 440,
           "column": 18
         }
       ]
@@ -10163,6 +10744,18 @@
           "file": "src/views/Home.vue",
           "line": 49,
           "column": 69
+        }
+      ]
+    },
+    "62e57a6d048c058b": {
+      "source": "打开的文档",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/views/IdeWorkspace.vue",
+          "line": 329,
+          "column": 11
         }
       ]
     },
@@ -10423,7 +11016,7 @@
         },
         {
           "file": "src/router/index.js",
-          "line": 50,
+          "line": 56,
           "column": 39
         },
         {
@@ -10467,18 +11060,6 @@
         }
       ]
     },
-    "65162fea270d250a": {
-      "source": "演示中",
-      "kind": "text",
-      "placeholders": 0,
-      "refs": [
-        {
-          "file": "src/components/workbench/TaskPanel.vue",
-          "line": 44,
-          "column": 36
-        }
-      ]
-    },
     "652f274e2d54d28c": {
       "source": "委派模型组 {0}",
       "kind": "template",
@@ -10501,7 +11082,7 @@
         },
         {
           "file": "src/utils/configNormalize.js",
-          "line": 84,
+          "line": 73,
           "column": 44
         }
       ]
@@ -10740,6 +11321,30 @@
         }
       ]
     },
+    "682d211b7142758a": {
+      "source": "已修改",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/utils/ideGitSnapshot.js",
+          "line": 17,
+          "column": 14
+        }
+      ]
+    },
+    "684315fd4065ce0b": {
+      "source": "分支 {0} · 领先 {1} · 落后 {2}",
+      "kind": "template",
+      "placeholders": 3,
+      "refs": [
+        {
+          "file": "src/views/IdeWorkspace.vue",
+          "line": 75,
+          "column": 10
+        }
+      ]
+    },
     "6853c78e98dcbff8": {
       "source": "主窗口关闭行为",
       "kind": "text",
@@ -10754,6 +11359,18 @@
           "file": "src/components/settings/categories/GeneralSettings.vue",
           "line": 140,
           "column": 13
+        }
+      ]
+    },
+    "68698da93367775e": {
+      "source": "选择并注册工作区",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/views/IdeWorkspace.vue",
+          "line": 271,
+          "column": 8
         }
       ]
     },
@@ -10776,7 +11393,7 @@
       "refs": [
         {
           "file": "src/components/workbench/PrimarySidebar.vue",
-          "line": 32,
+          "line": 30,
           "column": 16
         }
       ]
@@ -10827,7 +11444,7 @@
       "refs": [
         {
           "file": "src/components/workbench/PrimarySidebar.vue",
-          "line": 27,
+          "line": 25,
           "column": 15
         }
       ]
@@ -10865,6 +11482,18 @@
           "file": "src/utils/providerDiagnostics.js",
           "line": 72,
           "column": 33
+        }
+      ]
+    },
+    "69825479a95e6330": {
+      "source": "AI 对话",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/components/workbench/AgentChatPanel.vue",
+          "line": 166,
+          "column": 46
         }
       ]
     },
@@ -11076,12 +11705,12 @@
       "refs": [
         {
           "file": "src/services/browserBindings.js",
-          "line": 683,
+          "line": 769,
           "column": 79
         },
         {
           "file": "src/services/browserBindings.js",
-          "line": 696,
+          "line": 782,
           "column": 16
         }
       ]
@@ -11122,6 +11751,18 @@
         }
       ]
     },
+    "6bc245e4aa3bb3e9": {
+      "source": "保存预览",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/views/IdeWorkspace.vue",
+          "line": 354,
+          "column": 62
+        }
+      ]
+    },
     "6be905771366d854": {
       "source": "登录 Cursor 失败",
       "kind": "text",
@@ -11131,6 +11772,18 @@
           "file": "src/components/CursorAccountCard.vue",
           "line": 101,
           "column": 27
+        }
+      ]
+    },
+    "6bf6d3f3d6261b75": {
+      "source": "对话",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/components/workbench/AgentChatPanel.vue",
+          "line": 170,
+          "column": 15
         }
       ]
     },
@@ -11158,6 +11811,30 @@
         }
       ]
     },
+    "6c2b1c2f45e83919": {
+      "source": "预览写入",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/components/workbench/AgentChatPanel.vue",
+          "line": 195,
+          "column": 120
+        }
+      ]
+    },
+    "6c5c5e531cd46103": {
+      "source": "开始运行",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/components/workbench/AgentChatPanel.vue",
+          "line": 193,
+          "column": 111
+        }
+      ]
+    },
     "6c9f0c2097646673": {
       "source": "余额 不限额",
       "kind": "text",
@@ -11175,18 +11852,6 @@
         }
       ]
     },
-    "6cba4c3e9ef1d061": {
-      "source": "Shell 演示",
-      "kind": "text",
-      "placeholders": 0,
-      "refs": [
-        {
-          "file": "src/components/workbench/TaskPanel.vue",
-          "line": 57,
-          "column": 15
-        }
-      ]
-    },
     "6cd09500d84b4b2d": {
       "source": "浏览器预览 Gemini 示例模型",
       "kind": "text",
@@ -11194,7 +11859,7 @@
       "refs": [
         {
           "file": "src/services/browserBindings.js",
-          "line": 41,
+          "line": 84,
           "column": 20
         }
       ]
@@ -11244,6 +11909,18 @@
           "file": "src/views/RequestMetrics.vue",
           "line": 400,
           "column": 47
+        }
+      ]
+    },
+    "6dac690af6cb55a5": {
+      "source": "Git 状态不可用",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/views/IdeWorkspace.vue",
+          "line": 119,
+          "column": 62
         }
       ]
     },
@@ -11411,7 +12088,7 @@
       "refs": [
         {
           "file": "src/services/browserBindings.js",
-          "line": 366,
+          "line": 452,
           "column": 18
         }
       ]
@@ -11522,6 +12199,18 @@
         }
       ]
     },
+    "6fa65d5fa788b19d": {
+      "source": "需要审批。当前版本",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/views/IdeWorkspace.vue",
+          "line": 355,
+          "column": 61
+        }
+      ]
+    },
     "6fc1c7b963980b18": {
       "source": "开启后 /goal 与 /goal --strict 由系统识别并进入 Goal 执行；关闭时当作普通对话。",
       "kind": "text",
@@ -11565,7 +12254,7 @@
       "refs": [
         {
           "file": "src/services/browserBindings.js",
-          "line": 12,
+          "line": 55,
           "column": 20
         }
       ]
@@ -11611,6 +12300,18 @@
         }
       ]
     },
+    "71103f43979a30a1": {
+      "source": "显示或隐藏委派活动面板",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/layouts/WorkbenchLayout.vue",
+          "line": 49,
+          "column": 50
+        }
+      ]
+    },
     "711deaa09addb07d": {
       "source": "编辑供应商及其全部模型的连接配置",
       "kind": "text",
@@ -11630,7 +12331,7 @@
       "refs": [
         {
           "file": "src/components/workbench/PrimarySidebar.vue",
-          "line": 18,
+          "line": 19,
           "column": 16
         }
       ]
@@ -11736,7 +12437,7 @@
       "refs": [
         {
           "file": "src/services/browserBindings.js",
-          "line": 1014,
+          "line": 1100,
           "column": 58
         }
       ]
@@ -11873,6 +12574,18 @@
         }
       ]
     },
+    "749a95d25d23d96f": {
+      "source": "只读 Git 状态",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/components/workbench/PrimarySidebar.vue",
+          "line": 35,
+          "column": 15
+        }
+      ]
+    },
     "749b094129bbd49e": {
       "source": "代理与路由",
       "kind": "text",
@@ -11880,7 +12593,7 @@
       "refs": [
         {
           "file": "src/components/workbench/PrimarySidebar.vue",
-          "line": 51,
+          "line": 46,
           "column": 16
         }
       ]
@@ -11933,6 +12646,30 @@
         }
       ]
     },
+    "75b269496f698fae": {
+      "source": "运行",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/components/workbench/AgentChatPanel.vue",
+          "line": 198,
+          "column": 46
+        }
+      ]
+    },
+    "75dfaf262f476b6c": {
+      "source": "取消中",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/components/workbench/TaskPanel.vue",
+          "line": 173,
+          "column": 16
+        }
+      ]
+    },
     "75e1160956354ed2": {
       "source": "\n……等共 {0} 个问题",
       "kind": "template",
@@ -11942,18 +12679,6 @@
           "file": "src/views/ModelConfig.vue",
           "line": 357,
           "column": 48
-        }
-      ]
-    },
-    "75fa313c009544c8": {
-      "source": "尚无演示任务。",
-      "kind": "text",
-      "placeholders": 0,
-      "refs": [
-        {
-          "file": "src/components/workbench/TaskPanel.vue",
-          "line": 74,
-          "column": 46
         }
       ]
     },
@@ -12041,7 +12766,7 @@
       "refs": [
         {
           "file": "src/services/browserBindings.js",
-          "line": 712,
+          "line": 798,
           "column": 16
         }
       ]
@@ -12231,6 +12956,11 @@
           "file": "src/components/DelegationRuntimePanel.vue",
           "line": 60,
           "column": 13
+        },
+        {
+          "file": "src/components/workbench/TaskPanel.vue",
+          "line": 40,
+          "column": 13
         }
       ]
     },
@@ -12274,13 +13004,8 @@
           "column": 13
         },
         {
-          "file": "src/components/workbench/PrimarySidebar.vue",
-          "line": 40,
-          "column": 16
-        },
-        {
           "file": "src/router/index.js",
-          "line": 65,
+          "line": 71,
           "column": 39
         }
       ]
@@ -12386,12 +13111,12 @@
       "refs": [
         {
           "file": "src/services/browserBindings.js",
-          "line": 414,
+          "line": 500,
           "column": 18
         },
         {
           "file": "src/services/browserBindings.js",
-          "line": 799,
+          "line": 885,
           "column": 71
         }
       ]
@@ -12580,6 +13305,18 @@
         }
       ]
     },
+    "7bd2249c0cf2f4e7": {
+      "source": "符号链接不可访问",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/views/IdeWorkspace.vue",
+          "line": 146,
+          "column": 26
+        }
+      ]
+    },
     "7c3714574b8fe0d5": {
       "source": "允许改派",
       "kind": "text",
@@ -12599,7 +13336,7 @@
       "refs": [
         {
           "file": "src/services/browserBindings.js",
-          "line": 828,
+          "line": 914,
           "column": 12
         }
       ]
@@ -12832,6 +13569,18 @@
         }
       ]
     },
+    "7e668a2570c790b6": {
+      "source": "写入 {0}",
+      "kind": "template",
+      "placeholders": 1,
+      "refs": [
+        {
+          "file": "src/services/ideWorkspacePreview.js",
+          "line": 795,
+          "column": 25
+        }
+      ]
+    },
     "7e9e334aeb0bdc07": {
       "source": "服务操作失败",
       "kind": "text",
@@ -12878,6 +13627,18 @@
         }
       ]
     },
+    "7eba0f5dd4b50976": {
+      "source": "二进制文件不可预览。",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/views/IdeWorkspace.vue",
+          "line": 366,
+          "column": 71
+        }
+      ]
+    },
     "7ecf1cde648680d2": {
       "source": "已选",
       "kind": "text",
@@ -12919,7 +13680,7 @@
       "refs": [
         {
           "file": "src/components/workbench/PrimarySidebar.vue",
-          "line": 29,
+          "line": 27,
           "column": 16
         }
       ]
@@ -13037,7 +13798,7 @@
       "refs": [
         {
           "file": "src/services/browserBindings.js",
-          "line": 471,
+          "line": 557,
           "column": 37
         }
       ]
@@ -13107,6 +13868,18 @@
           "file": "src/views/RequestMetrics.vue",
           "line": 239,
           "column": 50
+        }
+      ]
+    },
+    "80dc1d3d8281f9a4": {
+      "source": "Agent 输出",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/components/workbench/AgentChatPanel.vue",
+          "line": 199,
+          "column": 35
         }
       ]
     },
@@ -13339,6 +14112,18 @@
         }
       ]
     },
+    "833cfc17130b6b67": {
+      "source": "工作区 Git",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/components/workbench/PrimarySidebar.vue",
+          "line": 37,
+          "column": 16
+        }
+      ]
+    },
     "835b700e028c9b20": {
       "source": "通用",
       "kind": "text",
@@ -13399,7 +14184,7 @@
       "refs": [
         {
           "file": "src/layouts/WorkbenchLayout.vue",
-          "line": 40,
+          "line": 47,
           "column": 49
         }
       ]
@@ -13428,7 +14213,7 @@
       "refs": [
         {
           "file": "src/services/browserBindings.js",
-          "line": 372,
+          "line": 458,
           "column": 18
         }
       ]
@@ -13739,6 +14524,23 @@
         }
       ]
     },
+    "878363589f7117a1": {
+      "source": "受限",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/utils/ideDocumentTabs.js",
+          "line": 79,
+          "column": 30
+        },
+        {
+          "file": "src/views/IdeWorkspace.vue",
+          "line": 79,
+          "column": 60
+        }
+      ]
+    },
     "878fcffeaebda7e6": {
       "source": "首字延迟 {0}",
       "kind": "template",
@@ -13765,6 +14567,18 @@
           "file": "src/components/settings/categories/CursorServiceSettings.vue",
           "line": 553,
           "column": 13
+        }
+      ]
+    },
+    "881ccc45dd288dc5": {
+      "source": "先打开文件夹",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/components/workbench/AgentChatPanel.vue",
+          "line": 176,
+          "column": 50
         }
       ]
     },
@@ -13857,6 +14671,18 @@
         }
       ]
     },
+    "88de316ae8ef9b88": {
+      "source": "代码编辑器",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/components/ide/ReadonlyCodeEditor.vue",
+          "line": 71,
+          "column": 64
+        }
+      ]
+    },
     "88f2d02425d8c712": {
       "source": "直接退出应用",
       "kind": "text",
@@ -13900,7 +14726,7 @@
       "refs": [
         {
           "file": "src/services/browserBindings.js",
-          "line": 1356,
+          "line": 1442,
           "column": 35
         }
       ]
@@ -14052,6 +14878,18 @@
         }
       ]
     },
+    "8ae96d747e59609e": {
+      "source": "无描述",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/components/workbench/TaskPanel.vue",
+          "line": 176,
+          "column": 15
+        }
+      ]
+    },
     "8b4753f91171eb35": {
       "source": "按中转站汇总全量历史用量与花费 · 仅计入已配置价格的请求",
       "kind": "text",
@@ -14176,7 +15014,7 @@
       "refs": [
         {
           "file": "src/services/browserBindings.js",
-          "line": 360,
+          "line": 446,
           "column": 18
         }
       ]
@@ -14221,18 +15059,13 @@
           "column": 9
         },
         {
-          "file": "src/components/workbench/PrimarySidebar.vue",
-          "line": 21,
-          "column": 16
-        },
-        {
           "file": "src/router/index.js",
-          "line": 40,
+          "line": 46,
           "column": 39
         },
         {
           "file": "src/router/index.js",
-          "line": 45,
+          "line": 51,
           "column": 39
         },
         {
@@ -14338,7 +15171,7 @@
       "refs": [
         {
           "file": "src/components/workbench/PrimarySidebar.vue",
-          "line": 113,
+          "line": 107,
           "column": 13
         }
       ]
@@ -14456,6 +15289,30 @@
         }
       ]
     },
+    "8ea7723d4e1b526b": {
+      "source": "委派任务列表",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/components/workbench/TaskPanel.vue",
+          "line": 159,
+          "column": 47
+        }
+      ]
+    },
+    "8ee1e8090bf1beb1": {
+      "source": "· 未保存",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/views/IdeWorkspace.vue",
+          "line": 345,
+          "column": 181
+        }
+      ]
+    },
     "8eeb33e0b07fa9ad": {
       "source": "先填写连接信息，再从模型目录批量导入可用模型。",
       "kind": "text",
@@ -14489,6 +15346,11 @@
           "file": "src/components/ui/Tooltip.vue",
           "line": 145,
           "column": 22
+        },
+        {
+          "file": "src/utils/ideGitSnapshot.js",
+          "line": 25,
+          "column": 14
         }
       ]
     },
@@ -14503,9 +15365,26 @@
           "column": 11
         },
         {
+          "file": "src/components/workbench/AgentChatPanel.vue",
+          "line": 180,
+          "column": 79
+        },
+        {
           "file": "src/layouts/WorkbenchLayout.vue",
-          "line": 38,
+          "line": 45,
           "column": 37
+        }
+      ]
+    },
+    "902fdaf5044f922f": {
+      "source": "允许执行器写入工作区",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/services/ideWorkspacePreview.js",
+          "line": 849,
+          "column": 25
         }
       ]
     },
@@ -14571,6 +15450,16 @@
           "file": "src/components/DelegationRuntimePanel.vue",
           "line": 78,
           "column": 17
+        },
+        {
+          "file": "src/components/workbench/TaskPanel.vue",
+          "line": 50,
+          "column": 17
+        },
+        {
+          "file": "src/services/browserBindings.js",
+          "line": 190,
+          "column": 18
         }
       ]
     },
@@ -14644,7 +15533,7 @@
       "refs": [
         {
           "file": "src/services/browserBindings.js",
-          "line": 790,
+          "line": 876,
           "column": 14
         }
       ]
@@ -14709,6 +15598,18 @@
           "file": "src/utils/errorContract.js",
           "line": 11,
           "column": 94
+        }
+      ]
+    },
+    "91cb9daad8b1740e": {
+      "source": "注册并浏览已授权工作区",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/layouts/WorkbenchLayout.vue",
+          "line": 43,
+          "column": 45
         }
       ]
     },
@@ -14839,7 +15740,7 @@
       "refs": [
         {
           "file": "src/services/clientApi.js",
-          "line": 187,
+          "line": 205,
           "column": 37
         }
       ]
@@ -14880,7 +15781,7 @@
       "refs": [
         {
           "file": "src/services/browserBindings.js",
-          "line": 810,
+          "line": 896,
           "column": 35
         }
       ]
@@ -14892,7 +15793,7 @@
       "refs": [
         {
           "file": "src/components/workbench/TaskPanel.vue",
-          "line": 53,
+          "line": 143,
           "column": 29
         }
       ]
@@ -14948,6 +15849,18 @@
           "file": "src/components/settings/categories/OverlaySettings.vue",
           "line": 25,
           "column": 29
+        }
+      ]
+    },
+    "93de122d399b1165": {
+      "source": "去设置 → Cursor 与服务 / 模型配置",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/components/workbench/AgentChatPanel.vue",
+          "line": 179,
+          "column": 12
         }
       ]
     },
@@ -15088,7 +16001,7 @@
       "refs": [
         {
           "file": "src/services/browserBindings.js",
-          "line": 906,
+          "line": 992,
           "column": 12
         }
       ]
@@ -15559,6 +16472,18 @@
         }
       ]
     },
+    "9881a7e3cc231cf8": {
+      "source": "尚未运行 Agent。",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/components/workbench/AgentChatPanel.vue",
+          "line": 199,
+          "column": 60
+        }
+      ]
+    },
     "988259840f59f3ae": {
       "source": "关闭提示词预览",
       "kind": "text",
@@ -15672,18 +16597,6 @@
         }
       ]
     },
-    "997b5251fb714f0e": {
-      "source": "已配置 {0} 个模型适配器",
-      "kind": "template",
-      "placeholders": 1,
-      "refs": [
-        {
-          "file": "src/components/settings/categories/CursorServiceSettings.vue",
-          "line": 594,
-          "column": 23
-        }
-      ]
-    },
     "99da00c33db90d7d": {
       "source": "\n\n是否一键修正为原生协议？",
       "kind": "text",
@@ -15703,8 +16616,20 @@
       "refs": [
         {
           "file": "src/services/browserBindings.js",
-          "line": 1334,
+          "line": 1420,
           "column": 49
+        }
+      ]
+    },
+    "9a0951673bccfa3c": {
+      "source": "已配置 {0} 个模型适配器。在设置中管理服务；模型列表使用模型配置",
+      "kind": "template",
+      "placeholders": 1,
+      "refs": [
+        {
+          "file": "src/components/settings/categories/CursorServiceSettings.vue",
+          "line": 594,
+          "column": 23
         }
       ]
     },
@@ -15715,7 +16640,7 @@
       "refs": [
         {
           "file": "src/views/WorkbenchWelcome.vue",
-          "line": 9,
+          "line": 10,
           "column": 28
         }
       ]
@@ -15775,7 +16700,7 @@
       "refs": [
         {
           "file": "src/services/browserBindings.js",
-          "line": 1151,
+          "line": 1237,
           "column": 79
         }
       ]
@@ -15852,6 +16777,18 @@
         }
       ]
     },
+    "9b041cb431fc6e54": {
+      "source": "文件树",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/views/IdeWorkspace.vue",
+          "line": 301,
+          "column": 18
+        }
+      ]
+    },
     "9b17fa889b307f7f": {
       "source": "有效轮次：{0}",
       "kind": "template",
@@ -15907,7 +16844,7 @@
       "refs": [
         {
           "file": "src/services/browserBindings.js",
-          "line": 1412,
+          "line": 1498,
           "column": 61
         }
       ]
@@ -15936,7 +16873,7 @@
       "refs": [
         {
           "file": "src/components/workbench/PrimarySidebar.vue",
-          "line": 80,
+          "line": 74,
           "column": 34
         }
       ]
@@ -15972,7 +16909,7 @@
       "refs": [
         {
           "file": "src/services/browserBindings.js",
-          "line": 728,
+          "line": 814,
           "column": 16
         }
       ]
@@ -16107,7 +17044,7 @@
       "refs": [
         {
           "file": "src/services/browserBindings.js",
-          "line": 984,
+          "line": 1070,
           "column": 25
         }
       ]
@@ -16242,7 +17179,7 @@
       "refs": [
         {
           "file": "src/views/WorkbenchWelcome.vue",
-          "line": 10,
+          "line": 11,
           "column": 12
         }
       ]
@@ -16387,6 +17324,18 @@
         }
       ]
     },
+    "a1448b0f0a59a686": {
+      "source": "SSH 私钥无效",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/services/ideWorkspacePreview.js",
+          "line": 363,
+          "column": 59
+        }
+      ]
+    },
     "a1a038dfa16c3ede": {
       "source": "当前已是最新版本（v{0}）。",
       "kind": "text",
@@ -16509,31 +17458,19 @@
           "column": 38
         },
         {
+          "file": "src/views/IdeWorkspace.vue",
+          "line": 352,
+          "column": 14
+        },
+        {
+          "file": "src/views/IdeWorkspace.vue",
+          "line": 355,
+          "column": 34
+        },
+        {
           "file": "src/views/ModelEditor.vue",
           "line": 821,
           "column": 16
-        }
-      ]
-    },
-    "a30ce3e97c621bad": {
-      "source": "打开服务控制台",
-      "kind": "text",
-      "placeholders": 0,
-      "refs": [
-        {
-          "file": "src/layouts/WorkbenchLayout.vue",
-          "line": 37,
-          "column": 32
-        },
-        {
-          "file": "src/views/WorkbenchWelcome.vue",
-          "line": 8,
-          "column": 12
-        },
-        {
-          "file": "src/views/WorkbenchWelcome.vue",
-          "line": 27,
-          "column": 124
         }
       ]
     },
@@ -16556,7 +17493,7 @@
       "refs": [
         {
           "file": "src/views/WorkbenchWelcome.vue",
-          "line": 11,
+          "line": 9,
           "column": 28
         }
       ]
@@ -16603,8 +17540,13 @@
         },
         {
           "file": "src/components/workbench/TaskPanel.vue",
-          "line": 44,
-          "column": 72
+          "line": 32,
+          "column": 13
+        },
+        {
+          "file": "src/components/workbench/TaskPanel.vue",
+          "line": 57,
+          "column": 13
         },
         {
           "file": "src/utils/errorContract.js",
@@ -16630,7 +17572,7 @@
       "refs": [
         {
           "file": "src/services/browserBindings.js",
-          "line": 1316,
+          "line": 1402,
           "column": 79
         }
       ]
@@ -16666,8 +17608,20 @@
       "refs": [
         {
           "file": "src/components/workbench/PrimarySidebar.vue",
-          "line": 92,
+          "line": 86,
           "column": 63
+        }
+      ]
+    },
+    "a47996e5865cab0f": {
+      "source": "目录条目已截断",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/views/IdeWorkspace.vue",
+          "line": 304,
+          "column": 61
         }
       ]
     },
@@ -16695,7 +17649,7 @@
       "refs": [
         {
           "file": "src/layouts/WorkbenchLayout.vue",
-          "line": 44,
+          "line": 51,
           "column": 50
         }
       ]
@@ -16707,7 +17661,7 @@
       "refs": [
         {
           "file": "src/services/browserBindings.js",
-          "line": 919,
+          "line": 1005,
           "column": 12
         }
       ]
@@ -16755,12 +17709,12 @@
       "refs": [
         {
           "file": "src/services/browserBindings.js",
-          "line": 786,
+          "line": 872,
           "column": 47
         },
         {
           "file": "src/services/browserBindings.js",
-          "line": 798,
+          "line": 884,
           "column": 49
         }
       ]
@@ -16978,6 +17932,33 @@
         }
       ]
     },
+    "a68763166d2a24a2": {
+      "source": "路径不合法",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/services/ideWorkspacePreview.js",
+          "line": 117,
+          "column": 21
+        },
+        {
+          "file": "src/services/ideWorkspacePreview.js",
+          "line": 120,
+          "column": 21
+        },
+        {
+          "file": "src/services/ideWorkspacePreview.js",
+          "line": 124,
+          "column": 21
+        },
+        {
+          "file": "src/services/ideWorkspacePreview.js",
+          "line": 214,
+          "column": 34
+        }
+      ]
+    },
     "a693d69af48bfe48": {
       "source": "保存并测试",
       "kind": "text",
@@ -17091,6 +18072,18 @@
         }
       ]
     },
+    "a734c95fbf0a2000": {
+      "source": "执行尝试",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/components/workbench/TaskPanel.vue",
+          "line": 179,
+          "column": 67
+        }
+      ]
+    },
     "a74ce7c7257d73d8": {
       "source": "导出脱敏报告",
       "kind": "text",
@@ -17100,18 +18093,6 @@
           "file": "src/components/control-center/RequestLabPanel.vue",
           "line": 134,
           "column": 63
-        }
-      ]
-    },
-    "a74d7f1c757ecf38": {
-      "source": "此面板仅演示 Workbench 交互，不读取工作区、不运行 Agent，也不会调用远程模型。",
-      "kind": "text",
-      "placeholders": 0,
-      "refs": [
-        {
-          "file": "src/components/workbench/TaskPanel.vue",
-          "line": 64,
-          "column": 10
         }
       ]
     },
@@ -17226,6 +18207,38 @@
         }
       ]
     },
+    "a8566942f2483ea2": {
+      "source": "Agent 运行不存在",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/services/ideWorkspacePreview.js",
+          "line": 750,
+          "column": 31
+        },
+        {
+          "file": "src/services/ideWorkspacePreview.js",
+          "line": 759,
+          "column": 31
+        },
+        {
+          "file": "src/services/ideWorkspacePreview.js",
+          "line": 774,
+          "column": 31
+        },
+        {
+          "file": "src/services/ideWorkspacePreview.js",
+          "line": 786,
+          "column": 31
+        },
+        {
+          "file": "src/services/ideWorkspacePreview.js",
+          "line": 825,
+          "column": 31
+        }
+      ]
+    },
     "a866625ca9762bf2": {
       "source": "提交信息生成来源",
       "kind": "text",
@@ -17252,6 +18265,11 @@
           "file": "src/components/settings/categories/SkillsMcpSettings.vue",
           "line": 521,
           "column": 12
+        },
+        {
+          "file": "src/components/workbench/TaskPanel.vue",
+          "line": 38,
+          "column": 15
         }
       ]
     },
@@ -17333,12 +18351,12 @@
       "refs": [
         {
           "file": "src/services/browserBindings.js",
-          "line": 684,
+          "line": 770,
           "column": 82
         },
         {
           "file": "src/services/browserBindings.js",
-          "line": 704,
+          "line": 790,
           "column": 16
         }
       ]
@@ -17456,6 +18474,18 @@
         }
       ]
     },
+    "aa38c9546d77ef90": {
+      "source": "不可访问",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/utils/ideDocumentTabs.js",
+          "line": 87,
+          "column": 30
+        }
+      ]
+    },
     "aa7b237b080d72fa": {
       "source": "已清理调试日志，释放 {0}",
       "kind": "template",
@@ -17523,6 +18553,18 @@
           "file": "src/layouts/MainLayout.vue",
           "line": 300,
           "column": 11
+        }
+      ]
+    },
+    "ac2d7571143da4e3": {
+      "source": "没有匹配的文本。",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/views/IdeWorkspace.vue",
+          "line": 382,
+          "column": 77
         }
       ]
     },
@@ -17798,17 +18840,17 @@
       "refs": [
         {
           "file": "src/services/browserBindings.js",
-          "line": 1195,
+          "line": 1281,
           "column": 49
         },
         {
           "file": "src/services/browserBindings.js",
-          "line": 1202,
+          "line": 1288,
           "column": 49
         },
         {
           "file": "src/services/browserBindings.js",
-          "line": 1220,
+          "line": 1306,
           "column": 49
         }
       ]
@@ -17883,12 +18925,12 @@
       "refs": [
         {
           "file": "src/services/browserBindings.js",
-          "line": 1370,
+          "line": 1456,
           "column": 35
         },
         {
           "file": "src/services/browserBindings.js",
-          "line": 1397,
+          "line": 1483,
           "column": 48
         }
       ]
@@ -17900,7 +18942,7 @@
       "refs": [
         {
           "file": "src/services/browserBindings.js",
-          "line": 731,
+          "line": 817,
           "column": 114
         }
       ]
@@ -17936,7 +18978,7 @@
       "refs": [
         {
           "file": "src/services/browserBindings.js",
-          "line": 1013,
+          "line": 1099,
           "column": 49
         }
       ]
@@ -17994,6 +19036,18 @@
         }
       ]
     },
+    "b1fffc99b397b711": {
+      "source": "搜索工作区",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/views/IdeWorkspace.vue",
+          "line": 335,
+          "column": 51
+        }
+      ]
+    },
     "b20106e02db2ea6b": {
       "source": "协议与高级设置",
       "kind": "text",
@@ -18037,7 +19091,7 @@
       "refs": [
         {
           "file": "src/services/browserBindings.js",
-          "line": 867,
+          "line": 953,
           "column": 12
         }
       ]
@@ -18406,18 +19460,6 @@
         }
       ]
     },
-    "b6fe31f05d046635": {
-      "source": "完整内核仍然可用",
-      "kind": "text",
-      "placeholders": 0,
-      "refs": [
-        {
-          "file": "src/components/workbench/PrimarySidebar.vue",
-          "line": 37,
-          "column": 15
-        }
-      ]
-    },
     "b710b015c8a64ebf": {
       "source": "，使用当前 API Key 读取 balance/remaining。",
       "kind": "text",
@@ -18427,18 +19469,6 @@
           "file": "src/views/ModelEditor.vue",
           "line": 1344,
           "column": 52
-        }
-      ]
-    },
-    "b72fbb9d77ac9b88": {
-      "source": "查看设置",
-      "kind": "text",
-      "placeholders": 0,
-      "refs": [
-        {
-          "file": "src/views/WorkbenchWelcome.vue",
-          "line": 28,
-          "column": 83
         }
       ]
     },
@@ -18509,7 +19539,7 @@
       "refs": [
         {
           "file": "src/services/browserBindings.js",
-          "line": 286,
+          "line": 372,
           "column": 18
         }
       ]
@@ -18535,6 +19565,18 @@
           "file": "src/views/ModelEditor.vue",
           "line": 1236,
           "column": 21
+        }
+      ]
+    },
+    "b874ba6ead9ddf36": {
+      "source": "获取远程",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/services/ideWorkspacePreview.js",
+          "line": 524,
+          "column": 14
         }
       ]
     },
@@ -18639,18 +19681,6 @@
           "file": "src/components/control-center/RoutingPanel.vue",
           "line": 50,
           "column": 37
-        }
-      ]
-    },
-    "b89d9cb020cc0c31": {
-      "source": "例如：整理下一步工作",
-      "kind": "text",
-      "placeholders": 0,
-      "refs": [
-        {
-          "file": "src/components/workbench/TaskPanel.vue",
-          "line": 69,
-          "column": 64
         }
       ]
     },
@@ -18808,6 +19838,18 @@
         }
       ]
     },
+    "bacf05d433a8a9c4": {
+      "source": "搜索文本",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/views/IdeWorkspace.vue",
+          "line": 336,
+          "column": 70
+        }
+      ]
+    },
     "bb074b86a98f6911": {
       "source": "上下文窗口",
       "kind": "text",
@@ -18863,7 +19905,7 @@
       "refs": [
         {
           "file": "src/components/workbench/PrimarySidebar.vue",
-          "line": 56,
+          "line": 51,
           "column": 12
         }
       ]
@@ -18976,7 +20018,7 @@
       "refs": [
         {
           "file": "src/services/browserBindings.js",
-          "line": 493,
+          "line": 579,
           "column": 37
         }
       ]
@@ -19058,6 +20100,23 @@
         }
       ]
     },
+    "bd52399cf6da5984": {
+      "source": "文档编辑器",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/views/IdeWorkspace.vue",
+          "line": 277,
+          "column": 74
+        },
+        {
+          "file": "src/views/IdeWorkspace.vue",
+          "line": 325,
+          "column": 44
+        }
+      ]
+    },
     "bd6134cf6f49fe50": {
       "source": "Cursor 未接入",
       "kind": "text",
@@ -19091,6 +20150,18 @@
           "file": "src/components/settings/delegation/DelegationGroupEditor.vue",
           "line": 134,
           "column": 17
+        }
+      ]
+    },
+    "bdb4cc876afc1e8d": {
+      "source": "信任 SSH 主机",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/services/ideWorkspacePreview.js",
+          "line": 481,
+          "column": 68
         }
       ]
     },
@@ -19299,6 +20370,28 @@
         }
       ]
     },
+    "bf58d79d832ce25d": {
+      "source": "版本冲突",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/services/ideWorkspacePreview.js",
+          "line": 238,
+          "column": 59
+        },
+        {
+          "file": "src/services/ideWorkspacePreview.js",
+          "line": 295,
+          "column": 59
+        },
+        {
+          "file": "src/services/ideWorkspacePreview.js",
+          "line": 835,
+          "column": 66
+        }
+      ]
+    },
     "bf8b101ef5d229a2": {
       "source": "正在拉取模型列表...",
       "kind": "text",
@@ -19412,6 +20505,18 @@
         }
       ]
     },
+    "c0f2eb412cbabf34": {
+      "source": "需要审批。",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/components/workbench/AgentChatPanel.vue",
+          "line": 201,
+          "column": 97
+        }
+      ]
+    },
     "c10aa47377b8fc58": {
       "source": "任务已结束或不存在",
       "kind": "text",
@@ -19425,6 +20530,11 @@
         {
           "file": "src/components/DelegationTaskStrip.vue",
           "line": 161,
+          "column": 36
+        },
+        {
+          "file": "src/components/workbench/TaskPanel.vue",
+          "line": 119,
           "column": 36
         }
       ]
@@ -19500,6 +20610,18 @@
         }
       ]
     },
+    "c22bf2273a8d1c41": {
+      "source": "选择一个文件查看内容。二进制、截断和受限路径会保留状态，而不是静默打开。",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/views/IdeWorkspace.vue",
+          "line": 375,
+          "column": 40
+        }
+      ]
+    },
     "c25c5a7acee62401": {
       "source": "删除该供应商",
       "kind": "text",
@@ -19560,6 +20682,18 @@
         }
       ]
     },
+    "c2f9d2d89a1e0141": {
+      "source": "未跟踪",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/utils/ideGitSnapshot.js",
+          "line": 15,
+          "column": 14
+        }
+      ]
+    },
     "c3173e04c6d8158a": {
       "source": "按已验证的 Cursor 模型标识填写",
       "kind": "text",
@@ -19615,7 +20749,7 @@
       "refs": [
         {
           "file": "src/components/workbench/PrimarySidebar.vue",
-          "line": 46,
+          "line": 41,
           "column": 12
         }
       ]
@@ -19646,6 +20780,18 @@
           "file": "src/components/control-center/ConfigProfilesPanel.vue",
           "line": 76,
           "column": 21
+        }
+      ]
+    },
+    "c3751a12084c25ee": {
+      "source": "已变更",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/utils/ideGitSnapshot.js",
+          "line": 29,
+          "column": 14
         }
       ]
     },
@@ -19935,7 +21081,7 @@
       "refs": [
         {
           "file": "src/services/browserBindings.js",
-          "line": 281,
+          "line": 367,
           "column": 22
         }
       ]
@@ -19961,6 +21107,18 @@
           "file": "src/components/settings/categories/SkillsMcpSettings.vue",
           "line": 586,
           "column": 21
+        }
+      ]
+    },
+    "c7c5dc33eb56f4e5": {
+      "source": "选择并注册根目录后，只能用工作区 ID 和相对路径浏览、读取和搜索。",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/views/IdeWorkspace.vue",
+          "line": 263,
+          "column": 12
         }
       ]
     },
@@ -20022,17 +21180,17 @@
       "refs": [
         {
           "file": "src/services/browserBindings.js",
-          "line": 1181,
+          "line": 1267,
           "column": 37
         },
         {
           "file": "src/services/browserBindings.js",
-          "line": 1242,
+          "line": 1328,
           "column": 37
         },
         {
           "file": "src/services/browserBindings.js",
-          "line": 1402,
+          "line": 1488,
           "column": 78
         }
       ]
@@ -20051,6 +21209,18 @@
           "file": "src/views/ModelEditor.vue",
           "line": 988,
           "column": 52
+        }
+      ]
+    },
+    "c8a8b2dee37e2c27": {
+      "source": "命令提示符",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/services/ideWorkspacePreview.js",
+          "line": 622,
+          "column": 22
         }
       ]
     },
@@ -20140,6 +21310,11 @@
           "column": 46
         },
         {
+          "file": "src/components/workbench/AgentChatPanel.vue",
+          "line": 186,
+          "column": 52
+        },
+        {
           "file": "src/utils/displayName.js",
           "line": 8,
           "column": 28
@@ -20220,6 +21395,23 @@
           "file": "src/components/settings/categories/PromptSettings.vue",
           "line": 452,
           "column": 7
+        }
+      ]
+    },
+    "c9faeca897ae00a2": {
+      "source": "不是普通文件",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/services/ideWorkspacePreview.js",
+          "line": 96,
+          "column": 54
+        },
+        {
+          "file": "src/services/ideWorkspacePreview.js",
+          "line": 197,
+          "column": 56
         }
       ]
     },
@@ -20382,8 +21574,25 @@
       "refs": [
         {
           "file": "src/services/browserBindings.js",
-          "line": 1073,
+          "line": 1159,
           "column": 69
+        }
+      ]
+    },
+    "cbb9f9dccad42ce6": {
+      "source": "SSH 主机不合法",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/services/ideWorkspacePreview.js",
+          "line": 394,
+          "column": 21
+        },
+        {
+          "file": "src/services/ideWorkspacePreview.js",
+          "line": 401,
+          "column": 76
         }
       ]
     },
@@ -20394,7 +21603,7 @@
       "refs": [
         {
           "file": "src/components/workbench/PrimarySidebar.vue",
-          "line": 90,
+          "line": 84,
           "column": 29
         }
       ]
@@ -20406,7 +21615,7 @@
       "refs": [
         {
           "file": "src/components/workbench/PrimarySidebar.vue",
-          "line": 112,
+          "line": 106,
           "column": 57
         }
       ]
@@ -20471,7 +21680,7 @@
       "refs": [
         {
           "file": "src/services/browserBindings.js",
-          "line": 736,
+          "line": 822,
           "column": 16
         }
       ]
@@ -20587,6 +21796,18 @@
         }
       ]
     },
+    "ce0744e60649afa6": {
+      "source": "版本 {0}",
+      "kind": "template",
+      "placeholders": 1,
+      "refs": [
+        {
+          "file": "src/utils/ideDocumentTabs.js",
+          "line": 88,
+          "column": 27
+        }
+      ]
+    },
     "ce1d67c2703c6d43": {
       "source": "收起侧边栏",
       "kind": "text",
@@ -20611,7 +21832,7 @@
       "refs": [
         {
           "file": "src/components/workbench/PrimarySidebar.vue",
-          "line": 57,
+          "line": 52,
           "column": 15
         }
       ]
@@ -20748,7 +21969,7 @@
       "refs": [
         {
           "file": "src/components/workbench/PrimarySidebar.vue",
-          "line": 47,
+          "line": 42,
           "column": 15
         }
       ]
@@ -20828,6 +22049,18 @@
         }
       ]
     },
+    "d13a00cca2f636bc": {
+      "source": "Agent 提示",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/components/workbench/AgentChatPanel.vue",
+          "line": 190,
+          "column": 53
+        }
+      ]
+    },
     "d14312d4ed0e5b99": {
       "source": "开启后，实时请求会按评分重排通道并在失败时尝试故障切换。",
       "kind": "text",
@@ -20837,18 +22070,6 @@
           "file": "src/components/control-center/RoutingPanel.vue",
           "line": 104,
           "column": 11
-        }
-      ]
-    },
-    "d154559c53aac284": {
-      "source": "新建演示任务",
-      "kind": "text",
-      "placeholders": 0,
-      "refs": [
-        {
-          "file": "src/components/workbench/TaskPanel.vue",
-          "line": 68,
-          "column": 37
         }
       ]
     },
@@ -20878,6 +22099,18 @@
           "file": "src/components/HomeMetricsCard.vue",
           "line": 389,
           "column": 5
+        }
+      ]
+    },
+    "d172470f3dcec079": {
+      "source": "SSH 密钥不存在",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/services/ideWorkspacePreview.js",
+          "line": 386,
+          "column": 57
         }
       ]
     },
@@ -20914,6 +22147,18 @@
           "file": "src/views/Home.vue",
           "line": 324,
           "column": 6022
+        }
+      ]
+    },
+    "d1cfaa188d3229e7": {
+      "source": "工作区不存在",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/services/ideWorkspacePreview.js",
+          "line": 138,
+          "column": 35
         }
       ]
     },
@@ -21047,13 +22292,8 @@
       "refs": [
         {
           "file": "src/router/index.js",
-          "line": 31,
+          "line": 32,
           "column": 68
-        },
-        {
-          "file": "src/state/workbenchState.js",
-          "line": 102,
-          "column": 53
         }
       ]
     },
@@ -21175,7 +22415,7 @@
       "refs": [
         {
           "file": "src/services/browserBindings.js",
-          "line": 805,
+          "line": 891,
           "column": 50
         }
       ]
@@ -21325,6 +22565,18 @@
         }
       ]
     },
+    "d5444a59e52e307a": {
+      "source": "Agent 副作用",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/components/workbench/AgentChatPanel.vue",
+          "line": 201,
+          "column": 35
+        }
+      ]
+    },
     "d55e12430327acdb": {
       "source": "Anthropic 鉴权模式",
       "kind": "text",
@@ -21454,18 +22706,6 @@
           "file": "src/components/settings/settingsCategories.js",
           "line": 94,
           "column": 12
-        }
-      ]
-    },
-    "d6f766f2adf53227": {
-      "source": "排队中",
-      "kind": "text",
-      "placeholders": 0,
-      "refs": [
-        {
-          "file": "src/components/workbench/TaskPanel.vue",
-          "line": 44,
-          "column": 20
         }
       ]
     },
@@ -21659,18 +22899,6 @@
         }
       ]
     },
-    "d88507346e366076": {
-      "source": "管理本地服务、账号和运行状态",
-      "kind": "text",
-      "placeholders": 0,
-      "refs": [
-        {
-          "file": "src/views/WorkbenchWelcome.vue",
-          "line": 8,
-          "column": 31
-        }
-      ]
-    },
     "d8c429ae6ff9cfab": {
       "source": "{0} 等 {1} 个",
       "kind": "template",
@@ -21736,6 +22964,18 @@
         }
       ]
     },
+    "d975d79d8cda23ff": {
+      "source": "创建提交",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/services/ideWorkspacePreview.js",
+          "line": 523,
+          "column": 15
+        }
+      ]
+    },
     "d97dc7fff739239c": {
       "source": "多渠道可轮询",
       "kind": "text",
@@ -21757,6 +22997,18 @@
           "file": "src/views/ModelCatalog.vue",
           "line": 436,
           "column": 16
+        }
+      ]
+    },
+    "d9b89d61399269fe": {
+      "source": "二进制",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/utils/ideDocumentTabs.js",
+          "line": 80,
+          "column": 26
         }
       ]
     },
@@ -21915,8 +23167,8 @@
       "refs": [
         {
           "file": "src/layouts/WorkbenchLayout.vue",
-          "line": 37,
-          "column": 51
+          "line": 44,
+          "column": 50
         }
       ]
     },
@@ -21990,7 +23242,7 @@
       "refs": [
         {
           "file": "src/views/WorkbenchWelcome.vue",
-          "line": 9,
+          "line": 10,
           "column": 12
         }
       ]
@@ -22169,6 +23421,18 @@
         }
       ]
     },
+    "dd81861811e57bf7": {
+      "source": "文本",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/utils/ideDocumentTabs.js",
+          "line": 82,
+          "column": 10
+        }
+      ]
+    },
     "dd9fd5ce6780b09a": {
       "source": "最大并发数",
       "kind": "text",
@@ -22310,6 +23574,18 @@
         }
       ]
     },
+    "de7828a03d9b77a9": {
+      "source": "未知执行器",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/components/workbench/TaskPanel.vue",
+          "line": 69,
+          "column": 39
+        }
+      ]
+    },
     "de8184da1ef88d03": {
       "source": "已配置",
       "kind": "text",
@@ -22334,12 +23610,12 @@
       "refs": [
         {
           "file": "src/components/workbench/PrimarySidebar.vue",
-          "line": 22,
+          "line": 20,
           "column": 16
         },
         {
           "file": "src/components/workbench/PrimarySidebar.vue",
-          "line": 59,
+          "line": 54,
           "column": 16
         },
         {
@@ -22359,12 +23635,12 @@
         },
         {
           "file": "src/router/index.js",
-          "line": 86,
+          "line": 92,
           "column": 39
         },
         {
           "file": "src/state/workbenchState.js",
-          "line": 15,
+          "line": 21,
           "column": 28
         }
       ]
@@ -22560,6 +23836,18 @@
         }
       ]
     },
+    "e02138b63b64b285": {
+      "source": "此面板展示真实委派快照、attempts 与 MCP 状态，不会创建演示任务。",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/components/workbench/TaskPanel.vue",
+          "line": 154,
+          "column": 10
+        }
+      ]
+    },
     "e05233d2e8e0346f": {
       "source": "本地会话",
       "kind": "text",
@@ -22651,12 +23939,12 @@
       "refs": [
         {
           "file": "src/components/workbench/PrimarySidebar.vue",
-          "line": 86,
+          "line": 80,
           "column": 51
         },
         {
           "file": "src/components/workbench/PrimarySidebar.vue",
-          "line": 86,
+          "line": 80,
           "column": 69
         }
       ]
@@ -22692,17 +23980,12 @@
       "refs": [
         {
           "file": "src/components/workbench/PrimarySidebar.vue",
-          "line": 30,
-          "column": 16
-        },
-        {
-          "file": "src/components/workbench/PrimarySidebar.vue",
-          "line": 41,
+          "line": 28,
           "column": 16
         },
         {
           "file": "src/router/index.js",
-          "line": 70,
+          "line": 76,
           "column": 39
         },
         {
@@ -22753,8 +24036,20 @@
       "refs": [
         {
           "file": "src/components/workbench/TabStrip.vue",
-          "line": 13,
-          "column": 41
+          "line": 7,
+          "column": 39
+        }
+      ]
+    },
+    "e26f56d28350202c": {
+      "source": "工作区操作失败",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/views/IdeWorkspace.vue",
+          "line": 90,
+          "column": 82
         }
       ]
     },
@@ -22770,6 +24065,18 @@
         }
       ]
     },
+    "e29a6f5971954be4": {
+      "source": "这个目录没有可显示的条目。",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/views/IdeWorkspace.vue",
+          "line": 322,
+          "column": 66
+        }
+      ]
+    },
     "e2df822958c64393": {
       "source": "5小时",
       "kind": "text",
@@ -22777,7 +24084,7 @@
       "refs": [
         {
           "file": "src/services/browserBindings.js",
-          "line": 1426,
+          "line": 1670,
           "column": 26
         }
       ]
@@ -22873,7 +24180,7 @@
       "refs": [
         {
           "file": "src/layouts/WorkbenchLayout.vue",
-          "line": 41,
+          "line": 48,
           "column": 34
         }
       ]
@@ -22899,18 +24206,6 @@
           "file": "src/views/StatsOverlay.vue",
           "line": 571,
           "column": 66
-        }
-      ]
-    },
-    "e46b0272bd641090": {
-      "source": "运行状态",
-      "kind": "text",
-      "placeholders": 0,
-      "refs": [
-        {
-          "file": "src/components/workbench/PrimarySidebar.vue",
-          "line": 36,
-          "column": 12
         }
       ]
     },
@@ -22944,6 +24239,16 @@
         {
           "file": "src/components/DelegationTaskStrip.vue",
           "line": 50,
+          "column": 14
+        },
+        {
+          "file": "src/components/workbench/TaskPanel.vue",
+          "line": 33,
+          "column": 14
+        },
+        {
+          "file": "src/components/workbench/TaskPanel.vue",
+          "line": 58,
           "column": 14
         },
         {
@@ -23043,6 +24348,18 @@
         }
       ]
     },
+    "e5540d034c31ba71": {
+      "source": "切换 AI 栏",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/layouts/WorkbenchLayout.vue",
+          "line": 49,
+          "column": 31
+        }
+      ]
+    },
     "e5c84c9aa7826566": {
       "source": "未就绪",
       "kind": "text",
@@ -23062,8 +24379,32 @@
       "refs": [
         {
           "file": "src/services/browserBindings.js",
-          "line": 1015,
+          "line": 1101,
           "column": 35
+        }
+      ]
+    },
+    "e646c697a081e536": {
+      "source": "正在加载工作区…",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/views/IdeWorkspace.vue",
+          "line": 275,
+          "column": 49
+        }
+      ]
+    },
+    "e678e4f97fea48f2": {
+      "source": "克隆仓库",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/services/ideWorkspacePreview.js",
+          "line": 521,
+          "column": 14
         }
       ]
     },
@@ -23245,7 +24586,7 @@
       "refs": [
         {
           "file": "src/services/browserBindings.js",
-          "line": 806,
+          "line": 892,
           "column": 170
         }
       ]
@@ -23336,6 +24677,53 @@
           "file": "src/components/control-center/RoutingPanel.vue",
           "line": 176,
           "column": 31
+        }
+      ]
+    },
+    "e926e6c82aebc47a": {
+      "source": "Git 操作不合法",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/services/ideWorkspacePreview.js",
+          "line": 531,
+          "column": 52
+        },
+        {
+          "file": "src/services/ideWorkspacePreview.js",
+          "line": 535,
+          "column": 23
+        },
+        {
+          "file": "src/services/ideWorkspacePreview.js",
+          "line": 538,
+          "column": 23
+        },
+        {
+          "file": "src/services/ideWorkspacePreview.js",
+          "line": 543,
+          "column": 21
+        },
+        {
+          "file": "src/services/ideWorkspacePreview.js",
+          "line": 547,
+          "column": 21
+        },
+        {
+          "file": "src/services/ideWorkspacePreview.js",
+          "line": 552,
+          "column": 59
+        },
+        {
+          "file": "src/services/ideWorkspacePreview.js",
+          "line": 553,
+          "column": 80
+        },
+        {
+          "file": "src/services/ideWorkspacePreview.js",
+          "line": 554,
+          "column": 58
         }
       ]
     },
@@ -23539,8 +24927,13 @@
       "refs": [
         {
           "file": "src/router/index.js",
-          "line": 26,
-          "column": 64
+          "line": 41,
+          "column": 39
+        },
+        {
+          "file": "src/router/index.js",
+          "line": 41,
+          "column": 61
         }
       ]
     },
@@ -23652,6 +25045,18 @@
           "file": "src/components/diagnostics/ProviderDiagnosticsPanel.vue",
           "line": 83,
           "column": 11
+        }
+      ]
+    },
+    "edac4707f969f465": {
+      "source": "推送到远程",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/services/ideWorkspacePreview.js",
+          "line": 526,
+          "column": 13
         }
       ]
     },
@@ -23768,7 +25173,7 @@
       "refs": [
         {
           "file": "src/services/browserBindings.js",
-          "line": 1427,
+          "line": 1671,
           "column": 26
         },
         {
@@ -23925,7 +25330,7 @@
       "refs": [
         {
           "file": "src/services/browserBindings.js",
-          "line": 799,
+          "line": 885,
           "column": 21
         }
       ]
@@ -23954,8 +25359,20 @@
       "refs": [
         {
           "file": "src/services/browserBindings.js",
-          "line": 546,
+          "line": 632,
           "column": 164
+        }
+      ]
+    },
+    "f107aeac2c3386b7": {
+      "source": "使用已配置的模型路由，不经过 Cursor exec bridge。写入、Git、终端和 MCP 副作用都要审批。",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/components/workbench/AgentChatPanel.vue",
+          "line": 183,
+          "column": 30
         }
       ]
     },
@@ -24082,8 +25499,13 @@
         },
         {
           "file": "src/components/workbench/TaskPanel.vue",
-          "line": 44,
-          "column": 54
+          "line": 30,
+          "column": 14
+        },
+        {
+          "file": "src/components/workbench/TaskPanel.vue",
+          "line": 55,
+          "column": 14
         },
         {
           "file": "src/views/RequestMetrics.vue",
@@ -24094,6 +25516,18 @@
           "file": "src/views/RequestMetrics.vue",
           "line": 217,
           "column": 45
+        }
+      ]
+    },
+    "f2aa014cbd1d2aae": {
+      "source": "总结当前工作区",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/components/workbench/AgentChatPanel.vue",
+          "line": 33,
+          "column": 25
         }
       ]
     },
@@ -24116,7 +25550,7 @@
       "refs": [
         {
           "file": "src/services/browserBindings.js",
-          "line": 841,
+          "line": 927,
           "column": 12
         }
       ]
@@ -24294,7 +25728,7 @@
       "refs": [
         {
           "file": "src/services/browserBindings.js",
-          "line": 723,
+          "line": 809,
           "column": 139
         }
       ]
@@ -24505,6 +25939,18 @@
         }
       ]
     },
+    "f6552978b0e09817": {
+      "source": "打开服务设置",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/layouts/WorkbenchLayout.vue",
+          "line": 44,
+          "column": 32
+        }
+      ]
+    },
     "f691833aa74a0483": {
       "source": "本地提示词已缓存 · {0}",
       "kind": "template",
@@ -24572,7 +26018,7 @@
       "refs": [
         {
           "file": "src/services/browserBindings.js",
-          "line": 584,
+          "line": 670,
           "column": 58
         }
       ]
@@ -24733,12 +26179,12 @@
       "refs": [
         {
           "file": "src/components/workbench/TaskPanel.vue",
-          "line": 59,
+          "line": 149,
           "column": 29
         },
         {
           "file": "src/components/workbench/TaskPanel.vue",
-          "line": 59,
+          "line": 149,
           "column": 49
         }
       ]
@@ -24764,6 +26210,18 @@
           "file": "src/utils/modelEditorMeta.js",
           "line": 49,
           "column": 17
+        }
+      ]
+    },
+    "f80deab5c08a981d": {
+      "source": "批准保存",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/views/IdeWorkspace.vue",
+          "line": 361,
+          "column": 101
         }
       ]
     },
@@ -24885,6 +26343,18 @@
         }
       ]
     },
+    "f99c01f982acbfe9": {
+      "source": "当前没有委派任务。",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/components/workbench/TaskPanel.vue",
+          "line": 160,
+          "column": 65
+        }
+      ]
+    },
     "f9c56630d29af6ca": {
       "source": "提示词 Ref",
       "kind": "text",
@@ -24904,12 +26374,12 @@
       "refs": [
         {
           "file": "src/state/workbenchState.js",
-          "line": 85,
+          "line": 91,
           "column": 75
         },
         {
           "file": "src/state/workbenchState.js",
-          "line": 85,
+          "line": 91,
           "column": 109
         }
       ]
@@ -24945,7 +26415,7 @@
       "refs": [
         {
           "file": "src/router/index.js",
-          "line": 60,
+          "line": 66,
           "column": 39
         }
       ]
@@ -24959,6 +26429,18 @@
           "file": "src/views/ModelConfig.vue",
           "line": 377,
           "column": 27
+        }
+      ]
+    },
+    "faabf97172b7b152": {
+      "source": "只读编辑器",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/components/ide/ReadonlyCodeEditor.vue",
+          "line": 71,
+          "column": 64
         }
       ]
     },
@@ -24981,7 +26463,7 @@
       "refs": [
         {
           "file": "src/services/browserBindings.js",
-          "line": 1155,
+          "line": 1241,
           "column": 85
         }
       ]
@@ -25187,7 +26669,7 @@
       "refs": [
         {
           "file": "src/services/browserBindings.js",
-          "line": 1007,
+          "line": 1093,
           "column": 46
         }
       ]
@@ -25213,18 +26695,6 @@
           "file": "src/views/ModelEditor.vue",
           "line": 1398,
           "column": 51
-        }
-      ]
-    },
-    "fc686db6d5a18c2b": {
-      "source": "切换任务面板",
-      "kind": "text",
-      "placeholders": 0,
-      "refs": [
-        {
-          "file": "src/layouts/WorkbenchLayout.vue",
-          "line": 42,
-          "column": 31
         }
       ]
     },
@@ -25276,6 +26746,35 @@
         }
       ]
     },
+    "fcf8b4bff0df782d": {
+      "source": "打开文件夹",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/views/IdeWorkspace.vue",
+          "line": 279,
+          "column": 99
+        }
+      ]
+    },
+    "fd130b81b26efba6": {
+      "source": "MCP 状态",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/components/workbench/TaskPanel.vue",
+          "line": 187,
+          "column": 34
+        },
+        {
+          "file": "src/components/workbench/TaskPanel.vue",
+          "line": 188,
+          "column": 11
+        }
+      ]
+    },
     "fd309a83a111abe6": {
       "source": "重启 Cursor",
       "kind": "text",
@@ -25322,18 +26821,6 @@
         }
       ]
     },
-    "fd7240b63781fb48": {
-      "source": "添加演示任务",
-      "kind": "text",
-      "placeholders": 0,
-      "refs": [
-        {
-          "file": "src/components/workbench/TaskPanel.vue",
-          "line": 70,
-          "column": 97
-        }
-      ]
-    },
     "fd828bff71af5512": {
       "source": "修复失败",
       "kind": "text",
@@ -25348,6 +26835,28 @@
           "file": "src/views/Home.vue",
           "line": 275,
           "column": 29
+        }
+      ]
+    },
+    "fd8eb83ae5a1fb9d": {
+      "source": "敏感路径不可访问",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/services/ideWorkspacePreview.js",
+          "line": 195,
+          "column": 48
+        },
+        {
+          "file": "src/services/ideWorkspacePreview.js",
+          "line": 235,
+          "column": 48
+        },
+        {
+          "file": "src/services/ideWorkspacePreview.js",
+          "line": 292,
+          "column": 48
         }
       ]
     },

@@ -687,6 +687,7 @@ func (service *Service) Shutdown(ctx context.Context) error {
 		if !ok || stream == nil {
 			continue
 		}
+		service.cancelOwnedGoalVerifier(stream)
 		// 单个流取消不能无限占用关闭预算：actor 可能卡在 compile/provider 准备阶段。
 		cancelCtx, cancel := context.WithTimeout(ctx, 1500*time.Millisecond)
 		errCh := make(chan error, 1)

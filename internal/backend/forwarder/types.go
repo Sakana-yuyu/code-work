@@ -155,6 +155,8 @@ type ActiveStream struct {
 
 	// Goal 挂载 goal 会话状态；nil = 非 goal 会话（全路径旁路）。
 	Goal                         *GoalState
+	CurrentGoalVerifyToken       uint64
+	PendingGoalVerification      *pendingGoalVerification
 	RequestID                    string
 	ConversationID               string
 	TurnSeq                      int64
@@ -272,27 +274,27 @@ type ActiveStream struct {
 	lastDoomLoopSignature string
 	pendingDoomLoopNotice string
 
-	Backlog                     []StreamEvent
-	BacklogStartCursor          int
-	Subscribers                 map[string]*StreamSubscriber
-	CheckpointConversation      *ConversationFile
-	CheckpointPersistTimer      *time.Timer
+	Backlog                         []StreamEvent
+	BacklogStartCursor              int
+	Subscribers                     map[string]*StreamSubscriber
+	CheckpointConversation          *ConversationFile
+	CheckpointPersistTimer          *time.Timer
 	CheckpointLastPersistedEntrySeq int64
-	PendingExecs                map[string]runtimecore.PendingExec
-	PendingInteractions         map[string]runtimecore.PendingInteraction
-	PartialToolCallIDs          map[string]struct{}
-	PatchEditQueues             map[string][]queuedPatchEditOperation
-	MCPToolServers              map[string]string
-	MCPToolNames                map[string]string
-	WorkspacePaths              []string
-	TerminalsFolder             string
-	RequestFileContents         map[string]string
-	RecentCompletedExecs        map[uint32]time.Time
-	RecentCompletedInteractions map[string]time.Time
-	BackgroundShells            map[string]*BackgroundShellState
-	BackgroundShellsByMessageID map[uint32]string
-	BackgroundShellsByExecID    map[string]string
-	BackgroundShellActions      map[string]time.Time
+	PendingExecs                    map[string]runtimecore.PendingExec
+	PendingInteractions             map[string]runtimecore.PendingInteraction
+	PartialToolCallIDs              map[string]struct{}
+	PatchEditQueues                 map[string][]queuedPatchEditOperation
+	MCPToolServers                  map[string]string
+	MCPToolNames                    map[string]string
+	WorkspacePaths                  []string
+	TerminalsFolder                 string
+	RequestFileContents             map[string]string
+	RecentCompletedExecs            map[uint32]time.Time
+	RecentCompletedInteractions     map[string]time.Time
+	BackgroundShells                map[string]*BackgroundShellState
+	BackgroundShellsByMessageID     map[uint32]string
+	BackgroundShellsByExecID        map[string]string
+	BackgroundShellActions          map[string]time.Time
 	// ExecCompletionSignals 为每个非流式 exec 提供事件驱动完成信号。
 	// key = exec_id。当终端结果到达时 closed；wait goroutine 通过 select
 	// 信号/超时/取消来避免盲等固定时间窗口。

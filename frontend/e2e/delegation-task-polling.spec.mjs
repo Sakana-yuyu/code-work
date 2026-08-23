@@ -10,7 +10,7 @@ function taskSnapshotCalls(page) {
 
 test("首页空闲时在旧轮询周期内不重复查询委派任务快照", async ({ page }) => {
   await seedPreviewTestPlan(page, { recordCalls: true, delegationTasks: [] }, basePreviewConfig());
-  await page.goto("/");
+  await page.goto("/console");
 
   await expect.poll(() => taskSnapshotCalls(page)).toHaveLength(1);
   await page.waitForTimeout(2200);

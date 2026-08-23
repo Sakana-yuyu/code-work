@@ -18,6 +18,14 @@ import (
 	"cursor/internal/configprofile"
 	"cursor/internal/cursoraccount"
 	"cursor/internal/historymetrics"
+	"cursor/internal/ide/agentrun"
+	"cursor/internal/ide/approval"
+	"cursor/internal/ide/gitops"
+	"cursor/internal/ide/gitstatus"
+	"cursor/internal/ide/knownhosts"
+	"cursor/internal/ide/sshvault"
+	"cursor/internal/ide/termsession"
+	"cursor/internal/ide/workspace"
 	"cursor/internal/logger"
 	"cursor/internal/mitm"
 	"cursor/internal/netproxy"
@@ -45,12 +53,22 @@ type ProxyService struct {
 	// backendHost 表示当前嵌入式 backend 服务。
 	backendHost *backend.Host
 	// cursorAccount 持有仅供插件、Skills 和 MCP 控制面使用的真实 Cursor 身份。
-	cursorAccount  *cursoraccount.Manager
-	requestLab     *requestlab.Lab
-	routingHist    *routing.History
-	routingMetrics *routing.MetricsSnapshot
-	agentOps       *agentops.Console
-	profiles       *configprofile.Store
+	cursorAccount      *cursoraccount.Manager
+	requestLab         *requestlab.Lab
+	routingHist        *routing.History
+	routingMetrics     *routing.MetricsSnapshot
+	agentOps           *agentops.Console
+	profiles           *configprofile.Store
+	ideWorkspaces      *workspace.Store
+	ideApprovals       *approval.Store
+	ideGit             *gitstatus.Store
+	ideGitOps          *gitops.Store
+	ideSSH             *sshvault.Store
+	ideKnownHosts      *knownhosts.Store
+	ideTerminal        *termsession.Manager
+	ideAgent           *agentrun.Manager
+	ideExecutorGrants  *executorGrantStore
+	selectIDEDirectory func() (string, error)
 
 	// lifecycleMu serializes start/stop transitions so a Cursor launch cannot
 	// observe a partially started proxy while the automatic startup is running.
@@ -229,6 +247,17 @@ func NewProxyService(proxy *mitm.ProxyServer, certManager *certs.Manager, caCert
 	service.routingHist = &routing.History{}
 	service.routingMetrics = routing.NewMetricsSnapshot()
 	service.profiles = configprofile.New(filepath.Join(appdata.DataRootPath(), "profiles"))
+	service.ideWorkspaces = workspace.New(appdata.IDEWorkspaceRootPath())
+	service.ideApprovals = approval.New(appdata.IDEApprovalRootPath())
+	service.ideGit = gitstatus.New(service.ideWorkspaces.AuthorizedRoot, gitstatus.NewSystemRunner())
+	service.ideGitOps = gitops.New(service.ideWorkspaces.AuthorizedRoot, gitops.NewSystemRunner())
+	service.ideSSH = sshvault.New(appdata.IDESSHVaultRootPath(), sshvault.NewDPAPIProtector())
+	service.ideKnownHosts = knownhosts.New(appdata.IDESSHKnownHostsRootPath())
+	service.ideTerminal = termsession.New(service.ideWorkspaces.AuthorizedRoot, termsession.NewSystemHost())
+	service.ideTerminal.SetEmitter(emitIDETerminalOutput)
+	service.ideAgent = agentrun.New(appdata.IDEAgentRunRootPath(), service.streamIDEAgent)
+	service.ideAgent.SetEmitter(emitIDEAgentEvent)
+	service.ideExecutorGrants = newExecutorGrantStore(appdata.IDEExecutorGrantRootPath())
 	service.agentOps = agentops.New(
 		filepath.Join(appdata.DataRootPath(), "agent-ops", "exports"),
 		func() []forwarder.DelegationTaskSnapshot {

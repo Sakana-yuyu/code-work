@@ -62,3 +62,62 @@ test("browser preview exposes Defender exclusion bindings", async () => {
   assert.ok(bindingsSource.includes("alreadyExcluded: true"));
   assert.ok(bindingsSource.includes("offered: true"));
 });
+
+test("IDE workspace APIs are wrapped for desktop and browser preview", async () => {
+  const [source, bindingsSource] = await Promise.all([
+    readFile(sourceURL, "utf8"),
+    readFile(browserBindingsURL, "utf8"),
+  ]);
+  for (const name of [
+    "ListIDEWorkspaces",
+    "SelectAndRegisterIDEWorkspace",
+    "RemoveIDEWorkspace",
+    "GetIDEWorkspaceTree",
+    "ReadIDEWorkspaceText",
+    "SearchIDEWorkspace",
+    "PreviewIDEWorkspaceWrite",
+    "ApproveIDEApproval",
+    "RejectIDEApproval",
+    "CancelIDEWorkspaceApprovals",
+    "CommitIDEWorkspaceWrite",
+    "GetIDEGitSnapshot",
+    "ListIDESSHKeys",
+    "ImportIDESSHKey",
+    "GenerateIDESSHKey",
+    "RemoveIDESSHKey",
+    "ListIDEKnownHosts",
+    "ProbeIDEHostKey",
+    "PreviewIDEKnownHost",
+    "CommitIDEKnownHost",
+    "PreviewIDEGitOperation",
+    "CommitIDEGitOperation",
+    "ListIDETerminalProfiles",
+    "OpenIDETerminalSession",
+    "WriteIDETerminalSession",
+    "ResizeIDETerminalSession",
+    "InterruptIDETerminalSession",
+    "CloseIDETerminalSession",
+    "GetIDETerminalOutput",
+    "StartIDEAgentRun",
+    "CancelIDEAgentRun",
+    "GetIDEAgentRun",
+    "ListIDEAgentRuns",
+    "GetIDEAgentRunEvents",
+    "ReplayIDEAgentRun",
+    "PreviewIDEAgentEffect",
+    "CommitIDEAgentEffect",
+    "PreviewIDEExecutorWriteCapability",
+    "CommitIDEExecutorWriteCapability",
+  ]) {
+    assert.match(source, new RegExp(`export function ${name[0].toLowerCase()}${name.slice(1)}`));
+    assert.match(bindingsSource, new RegExp(`export const ${name} =`));
+  }
+  assert.doesNotMatch(source, /export function registerIDEWorkspace/);
+  assert.doesNotMatch(bindingsSource, /export const RegisterIDEWorkspace/);
+  assert.doesNotMatch(source, /export function getIDESSHPrivateKey/);
+  assert.doesNotMatch(bindingsSource, /export const GetIDESSHPrivateKey/);
+  assert.doesNotMatch(source, /export function runIDEGit/);
+  assert.doesNotMatch(bindingsSource, /export const RunIDEGit/);
+  assert.doesNotMatch(source, /export function startIDETerminalCommand/);
+  assert.doesNotMatch(bindingsSource, /export const StartIDETerminalCommand/);
+});

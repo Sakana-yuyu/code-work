@@ -12,20 +12,21 @@ import (
 )
 
 type turnUsageSnapshot struct {
-	Provider          string
-	Model             string
-	Role              string
-	ParentModel       string
-	LogicalModel      string
-	ProviderModel     string
-	ModelGroupID      string
-	TaskID            string
-	ExecutionMode     string
-	SupervisorModel   string
-	ReviewerModel     string
-	BaseURL           string
-	GroupName         string
-	ErrorCode         string
+	Provider        string
+	Model           string
+	Role            string
+	ParentModel     string
+	LogicalModel    string
+	ProviderModel   string
+	BillingModel    string
+	ModelGroupID    string
+	TaskID          string
+	ExecutionMode   string
+	SupervisorModel string
+	ReviewerModel   string
+	BaseURL         string
+	GroupName       string
+	ErrorCode       string
 	// Degraded 标记「能返回但体验降级」的请求原因（移植自 cursor2api 的 degraded 诊断）。
 	// 空串表示正常；取值见 degradedReason* 常量。
 	Degraded          string
@@ -81,7 +82,6 @@ func (snapshot turnUsageSnapshot) promptTokensTotal() int64 {
 func (snapshot turnUsageSnapshot) requestTokensTotal() int64 {
 	return snapshot.promptTokensTotal() + nonNegativeInt64(snapshot.OutputTokens)
 }
-
 
 func (service *Service) updateConversationTokenState(stream *ActiveStream, conversationID string, usage turnUsageSnapshot, modelCallID string, finalizeAutoCompaction bool) error {
 	if service == nil || !usage.hasAny() {

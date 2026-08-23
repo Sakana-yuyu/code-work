@@ -8,8 +8,8 @@ package forwarder
 
 import (
 	"cursor/gen/agentv1"
-	modeladapter "cursor/internal/backend/agent/model"
 	runtimecore "cursor/internal/backend/agent/core"
+	modeladapter "cursor/internal/backend/agent/model"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -19,34 +19,35 @@ import (
 // modelEventJSON 是 ModelEvent 的磁盘形态。
 // 刻意排除 Err 字段：error 接口无法从 JSON 恢复，而缓存的流全部是成功收口流（Err 恒为 nil）。
 type modelEventJSON struct {
-	Kind                     modeladapter.ModelEventKind `json:"kind"`
-	OccurredAt               time.Time                   `json:"occurredAt"`
-	Provider                 string                      `json:"provider"`
-	Model                    string                      `json:"model"`
-	BaseURL                  string                      `json:"baseURL"`
-	GroupName                string                      `json:"groupName"`
-	Text                     string                      `json:"text"`
-	ThinkingStyle            agentv1.ThinkingStyle       `json:"thinkingStyle"`
-	ThinkingDurationMS       int32                       `json:"thinkingDurationMs"`
-	ThinkingSignature        string                      `json:"thinkingSignature"`
-	ThinkingSignatureSource  string                      `json:"thinkingSignatureSource"`
-	ProviderItemID           string                      `json:"providerItemId"`
-	ProviderStatus           string                      `json:"providerStatus"`
-	ProviderSummary          json.RawMessage             `json:"providerSummary,omitempty"`
-	ProviderCallID           string                      `json:"providerCallId"`
-	ToolCallID               string                      `json:"toolCallId"`
-	ToolCall                 *agentv1.ToolCall           `json:"toolCall,omitempty"`
-	ToolCallDelta            *agentv1.ToolCallDelta      `json:"toolCallDelta,omitempty"`
-	ArgsTextDelta            string                      `json:"argsTextDelta"`
-	InputTokens              int64                       `json:"inputTokens"`
-	OutputTokens             int64                       `json:"outputTokens"`
-	CacheReadTokens          int64                       `json:"cacheReadTokens"`
-	CacheWriteTokens         int64                       `json:"cacheWriteTokens"`
-	UsagePresent             bool                        `json:"usagePresent"`
-	CacheReadPresent         bool                        `json:"cacheReadPresent"`
-	CacheWritePresent        bool                        `json:"cacheWritePresent"`
-	ToolInvocation           *runtimecore.ToolInvocation `json:"toolInvocation,omitempty"`
-	FinishReason             string                      `json:"finishReason"`
+	Kind                    modeladapter.ModelEventKind `json:"kind"`
+	OccurredAt              time.Time                   `json:"occurredAt"`
+	Provider                string                      `json:"provider"`
+	Model                   string                      `json:"model"`
+	BillingModel            string                      `json:"billingModel"`
+	BaseURL                 string                      `json:"baseURL"`
+	GroupName               string                      `json:"groupName"`
+	Text                    string                      `json:"text"`
+	ThinkingStyle           agentv1.ThinkingStyle       `json:"thinkingStyle"`
+	ThinkingDurationMS      int32                       `json:"thinkingDurationMs"`
+	ThinkingSignature       string                      `json:"thinkingSignature"`
+	ThinkingSignatureSource string                      `json:"thinkingSignatureSource"`
+	ProviderItemID          string                      `json:"providerItemId"`
+	ProviderStatus          string                      `json:"providerStatus"`
+	ProviderSummary         json.RawMessage             `json:"providerSummary,omitempty"`
+	ProviderCallID          string                      `json:"providerCallId"`
+	ToolCallID              string                      `json:"toolCallId"`
+	ToolCall                *agentv1.ToolCall           `json:"toolCall,omitempty"`
+	ToolCallDelta           *agentv1.ToolCallDelta      `json:"toolCallDelta,omitempty"`
+	ArgsTextDelta           string                      `json:"argsTextDelta"`
+	InputTokens             int64                       `json:"inputTokens"`
+	OutputTokens            int64                       `json:"outputTokens"`
+	CacheReadTokens         int64                       `json:"cacheReadTokens"`
+	CacheWriteTokens        int64                       `json:"cacheWriteTokens"`
+	UsagePresent            bool                        `json:"usagePresent"`
+	CacheReadPresent        bool                        `json:"cacheReadPresent"`
+	CacheWritePresent       bool                        `json:"cacheWritePresent"`
+	ToolInvocation          *runtimecore.ToolInvocation `json:"toolInvocation,omitempty"`
+	FinishReason            string                      `json:"finishReason"`
 }
 
 func modelEventToJSON(event modeladapter.ModelEvent) modelEventJSON {
@@ -55,6 +56,7 @@ func modelEventToJSON(event modeladapter.ModelEvent) modelEventJSON {
 		OccurredAt:              event.OccurredAt,
 		Provider:                event.Provider,
 		Model:                   event.Model,
+		BillingModel:            event.BillingModel,
 		BaseURL:                 event.BaseURL,
 		GroupName:               event.GroupName,
 		Text:                    event.Text,
@@ -88,6 +90,7 @@ func modelEventFromJSON(entry modelEventJSON) modeladapter.ModelEvent {
 		OccurredAt:              entry.OccurredAt,
 		Provider:                entry.Provider,
 		Model:                   entry.Model,
+		BillingModel:            entry.BillingModel,
 		BaseURL:                 entry.BaseURL,
 		GroupName:               entry.GroupName,
 		Text:                    entry.Text,
@@ -116,16 +119,16 @@ func modelEventFromJSON(entry modelEventJSON) modeladapter.ModelEvent {
 }
 
 // responseCacheDiskFileVersion 是磁盘缓存文件格式版本；结构变更时递增并迁移/丢弃旧文件。
-const responseCacheDiskFileVersion = 1
+const responseCacheDiskFileVersion = 2
 
 // saveDebounceDelay 控制磁盘写入的节流间隔：多条写入合并为一次落盘。
 const saveDebounceDelay = 2 * time.Second
 
 // responseCacheDiskFile 是磁盘缓存文件的整体结构。
 type responseCacheDiskFile struct {
-	Version int                                 `json:"version"`
-	SavedAt time.Time                           `json:"savedAt"`
-	Entries map[string]responseCacheDiskEntry   `json:"entries"`
+	Version int                               `json:"version"`
+	SavedAt time.Time                         `json:"savedAt"`
+	Entries map[string]responseCacheDiskEntry `json:"entries"`
 }
 
 // responseCacheDiskEntry 是单条缓存的磁盘形态（与内存形态一一对应）。

@@ -92,6 +92,30 @@ func collectCurrentTurnPromptContextKeys(conversation *ConversationFile) map[str
 	return keys
 }
 
+func filterExpiredGoalContinuationPromptContexts(conversation *ConversationFile) []HistoryEntry {
+	if conversation == nil || len(conversation.Entries) == 0 {
+		return nil
+	}
+	currentTurnSeq := conversation.CurrentTurnSeq
+	if currentTurnSeq <= 0 {
+		currentTurnSeq = conversation.NextTurnSeq - 1
+	}
+	if currentTurnSeq <= 0 {
+		return conversation.Entries
+	}
+	filtered := make([]HistoryEntry, 0, len(conversation.Entries))
+	for _, entry := range conversation.Entries {
+		if entry.TurnSeq != currentTurnSeq && strings.TrimSpace(entry.Kind) == "prompt_context" {
+			var payload promptContextEntryPayload
+			if err := json.Unmarshal(entry.Payload, &payload); err == nil && isGoalContinuationPromptContextSource(strings.TrimSpace(payload.Source)) {
+				continue
+			}
+		}
+		filtered = append(filtered, entry)
+	}
+	return filtered
+}
+
 func promptContextKey(context PromptContextMessage) string {
 	context = normalizePromptContextMessage(context)
 	return context.Source + "\x00" + context.ContentHash

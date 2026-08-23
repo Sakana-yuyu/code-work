@@ -3,6 +3,7 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue"
 import { useRoute, useRouter } from "vue-router";
 import { appState } from "@/state/appState";
 import {
+  readLayout,
   removeWorkbenchTab,
   resetWorkbenchLayout,
   selectWorkbenchActivity,
@@ -12,12 +13,14 @@ import {
   workbenchActivities,
   workbenchState,
 } from "@/state/workbenchState";
+import { isWorkbenchSurfacePath } from "@/utils/workbenchRoutes.js";
+import { ideWorkspaceSession } from "@/utils/ideWorkspaceSession.js";
 import ActivityRail from "@/components/workbench/ActivityRail.vue";
+import AgentChatPanel from "@/components/workbench/AgentChatPanel.vue";
 import CommandPalette from "@/components/workbench/CommandPalette.vue";
 import PrimarySidebar from "@/components/workbench/PrimarySidebar.vue";
 import StatusBar from "@/components/workbench/StatusBar.vue";
 import TabStrip from "@/components/workbench/TabStrip.vue";
-import TaskPanel from "@/components/workbench/TaskPanel.vue";
 import TitleBar from "@/components/workbench/TitleBar.vue";
 
 const route = useRoute();
@@ -26,42 +29,50 @@ const commandPaletteVisible = ref(false);
 const compactLayout = ref(false);
 let paletteOpener = null;
 
+const onWorkbenchSurface = computed(() => isWorkbenchSurfacePath(route.path));
+const sidebarOnSurface = computed(() => onWorkbenchSurface.value && workbenchState.sidebarVisible);
+const taskPanelOnSurface = computed(() => onWorkbenchSurface.value && workbenchState.taskPanelVisible);
 const workbenchStyle = computed(() => ({
-  "--cw-sidebar-current": workbenchState.sidebarVisible ? "var(--cw-sidebar-width)" : "0px",
-  "--cw-task-current": workbenchState.taskPanelVisible ? "var(--cw-task-width)" : "0px",
+  "--cw-sidebar-current": sidebarOnSurface.value ? "var(--cw-sidebar-width)" : "0px",
+  "--cw-task-current": taskPanelOnSurface.value ? "var(--cw-task-width)" : "0px",
 }));
 const currentTitle = computed(() => String(route.meta?.workbenchLabel || route.meta?.title || "Code Work").split(/[｜|]/)[0].trim() || "Code Work");
 const serviceRunning = computed(() => Boolean(appState.serviceRunning));
 
 const commands = computed(() => [
-  { id: "open-service", label: "打开服务控制台", detail: "管理本地服务与运行状态", shortcut: "" },
+  { id: "open-ide", label: "打开工作区", detail: "注册并浏览已授权工作区", shortcut: "" },
+  { id: "open-service", label: "打开服务设置", detail: "管理本地服务与运行状态", shortcut: "" },
   { id: "open-model-config", label: "打开模型配置", detail: "管理模型与供应商", shortcut: "" },
   { id: "open-control-center", label: "打开控制中心", detail: "路由、实验与 Agent 运行台", shortcut: "" },
   { id: "open-settings", label: "打开设置", detail: "调整应用与集成偏好", shortcut: "" },
   { id: "toggle-sidebar", label: "切换主侧栏", detail: "显示或隐藏左侧功能入口", shortcut: "Ctrl+B" },
-  { id: "toggle-task", label: "切换任务面板", detail: "显示或隐藏 Shell 演示任务", shortcut: "Ctrl+J" },
+  { id: "toggle-task", label: "切换 AI 栏", detail: "显示或隐藏委派活动面板", shortcut: "Ctrl+J" },
   { id: "focus-explorer", label: "聚焦资源管理器", detail: "选择工作区导航", shortcut: "" },
   { id: "open-welcome", label: "打开开始页面", detail: "返回 Workbench 欢迎页", shortcut: "" },
   { id: "reset-layout", label: "重置 Workbench 布局", detail: "恢复默认侧栏和任务面板", shortcut: "" },
 ]);
 
-function isWelcomeRoute() {
-  if (route.path === "/workbench") return true;
-  if (typeof window === "undefined") return false;
-  return window.location.pathname.endsWith("/workbench") || window.location.hash === "#/workbench";
-}
-
 watch(
   () => route.fullPath,
   () => {
     syncWorkbenchTab(route);
-    if (!isWelcomeRoute()) {
-      workbenchState.sidebarVisible = false;
-      workbenchState.taskPanelVisible = false;
-    }
+    if (!isWorkbenchSurfacePath(route.path) || compactLayout.value) return;
+    const layout = readLayout();
+    if (!workbenchState.sidebarVisible) workbenchState.sidebarVisible = layout.sidebarVisible;
+    if (!workbenchState.taskPanelVisible) workbenchState.taskPanelVisible = layout.taskPanelVisible;
   },
   { immediate: true },
 );
+
+function toggleSidebar() {
+  if (!onWorkbenchSurface.value) return;
+  toggleWorkbenchSidebar();
+}
+
+function toggleTaskPanel() {
+  if (!onWorkbenchSurface.value) return;
+  toggleWorkbenchTaskPanel();
+}
 
 function navigate(path) {
   if (compactLayout.value) {
@@ -69,6 +80,11 @@ function navigate(path) {
     workbenchState.taskPanelVisible = false;
   }
   void router.push(path);
+}
+
+function onSelectActivity(activityID) {
+  selectWorkbenchActivity(activityID);
+  if (activityID === "source-control") navigate("/ide");
 }
 
 function updateCompactLayout() {
@@ -95,8 +111,11 @@ function runCommand(command) {
     case "open-command":
       openCommandPalette();
       return;
+    case "open-ide":
+      navigate("/ide");
+      break;
     case "open-service":
-      navigate("/");
+      navigate("/settings?category=cursor-service");
       break;
     case "open-model-config":
       navigate("/model-config");
@@ -108,13 +127,14 @@ function runCommand(command) {
       navigate("/settings");
       break;
     case "toggle-sidebar":
-      toggleWorkbenchSidebar();
+      toggleSidebar();
       break;
     case "toggle-task":
-      toggleWorkbenchTaskPanel();
+      toggleTaskPanel();
       break;
     case "focus-explorer":
       selectWorkbenchActivity("explorer");
+      navigate("/ide");
       break;
     case "open-welcome":
       navigate("/workbench");
@@ -149,10 +169,13 @@ function handleGlobalKeydown(event) {
   const key = event.key.toLowerCase();
   if (key === "b") {
     event.preventDefault();
-    toggleWorkbenchSidebar();
+    toggleSidebar();
   } else if (key === "j") {
     event.preventDefault();
-    toggleWorkbenchTaskPanel();
+    toggleTaskPanel();
+  } else if (key === "l" && !event.shiftKey) {
+    event.preventDefault();
+    toggleTaskPanel();
   } else if (key === "p" && event.shiftKey) {
     event.preventDefault();
     openCommandPalette();
@@ -171,17 +194,17 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div class="workbench-shell" :style="workbenchStyle" :class="{ 'sidebar-hidden': !workbenchState.sidebarVisible, 'task-hidden': !workbenchState.taskPanelVisible }">
+  <div class="workbench-shell" :style="workbenchStyle" :class="{ 'sidebar-hidden': !sidebarOnSurface, 'task-hidden': !taskPanelOnSurface }">
     <TitleBar :title="currentTitle" @command="runCommand" />
     <div class="workbench-body">
-      <ActivityRail :activities="workbenchActivities" :active-activity="workbenchState.activeActivity" @select="selectWorkbenchActivity" />
+      <ActivityRail :activities="workbenchActivities" :active-activity="workbenchState.activeActivity" @select="onSelectActivity" />
       <div class="workbench-main-row">
         <PrimarySidebar
-          v-if="workbenchState.sidebarVisible"
+          v-if="sidebarOnSurface"
           :active-activity="workbenchState.activeActivity"
           :current-path="route.path"
           @navigate="navigate"
-          @close="toggleWorkbenchSidebar"
+          @close="toggleSidebar"
         />
         <main class="workbench-content" aria-label="Code Work 主工作区">
           <TabStrip :tabs="workbenchState.tabs" :active-id="route.path" @select="navigate" @close="closeTab" />
@@ -189,15 +212,19 @@ onBeforeUnmount(() => {
             <router-view />
           </div>
         </main>
-        <TaskPanel v-if="workbenchState.taskPanelVisible" @close="toggleWorkbenchTaskPanel" />
+        <AgentChatPanel
+          v-if="taskPanelOnSurface"
+          :workspace-id="route.path === '/ide' ? ideWorkspaceSession.workspaceID : ''"
+          @close="toggleTaskPanel"
+        />
       </div>
     </div>
     <StatusBar
       :service-running="serviceRunning"
-      :sidebar-visible="workbenchState.sidebarVisible"
-      :task-panel-visible="workbenchState.taskPanelVisible"
-      @toggle-sidebar="toggleWorkbenchSidebar"
-      @toggle-task="toggleWorkbenchTaskPanel"
+      :sidebar-visible="sidebarOnSurface"
+      :task-panel-visible="taskPanelOnSurface"
+      @toggle-sidebar="toggleSidebar"
+      @toggle-task="toggleTaskPanel"
       @open-command="openCommandPalette"
     />
     <CommandPalette :visible="commandPaletteVisible" :commands="commands" @close="closeCommandPalette" @run="runCommand" />

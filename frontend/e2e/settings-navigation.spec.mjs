@@ -73,7 +73,7 @@ test("分类选择在侧栏、内容、URL、存储和浏览器历史间保持�
   await expect.poll(() => page.evaluate(() => localStorage.getItem("code-work.settings.category"))).toBe("skills-mcp");
 });
 
-test("设置页返回始终进入主页，不受进入设置前的历史页面影响", async ({ page }) => {
+test("设置页返回始终进入工作台，不受进入设置前的历史页面影响", async ({ page }) => {
   await page.addInitScript(() => {
     localStorage.setItem(
       "code-work.browser-preview.test-plan",
@@ -87,7 +87,7 @@ test("设置页返回始终进入主页，不受进入设置前的历史页面�
 
   await page.getByRole("button", { name: "返回" }).click();
 
-  await expect(page).toHaveURL(/\/$/);
+  await expect(page).toHaveURL(/\/ide/);
 });
 
 test("常规设置子项间距大于更多设置子项间距", async ({ page }) => {

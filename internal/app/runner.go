@@ -58,6 +58,7 @@ func init() {
 	application.RegisterEvent[bridge.UserConfig]("user-config:changed")
 	application.RegisterEvent[bridge.ModelAdapterTestResultsPayload]("model-adapter-test:updated")
 	application.RegisterEvent[client.ProviderBalancesSyncedPayload]("provider-balances-synced")
+	application.RegisterEvent[client.IDETerminalOutputEvent]("ide:terminal-output")
 	application.RegisterEvent[bridge.AdRuntime](ads.EventUpdated)
 	application.RegisterEvent[updater.StatePayload](updater.EventState)
 	application.RegisterEvent[updater.ProgressPayload](updater.EventProgress)

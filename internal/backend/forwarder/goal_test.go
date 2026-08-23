@@ -1,11 +1,15 @@
 package forwarder
 
 import (
+	"context"
 	"strings"
 	"testing"
 	"time"
 
 	agentv1 "cursor/gen/agentv1"
+	modeladapter "cursor/internal/backend/agent/model"
+	"cursor/internal/backend/delegation"
+	"cursor/internal/historymetrics"
 )
 
 func TestNewGoalState(t *testing.T) {
@@ -59,6 +63,12 @@ func TestParseGoalCommand(t *testing.T) {
 		{"no prefix", "修复登录 bug", "", false, false},
 		{"prefix in middle", "请 /goal 修复", "", false, false},
 		{"goal colon", "goal: 整理依赖", "整理依赖", false, true},
+		{"goal colon without whitespace", "goal:整理依赖", "整理依赖", false, true},
+		{"plural is ordinary text", "/goals investigate", "", false, false},
+		{"suffix is ordinary text", "#goalpost investigate", "", false, false},
+		{"strict prefix collision stays goal text", "/goal --strictly investigate", "--strictly investigate", false, true},
+		{"strict token delimiter", "/goal\t--STRICT\tinvestigate", "investigate", true, true},
+		{"goal prefix requires delimiter", "/goal--strict investigate", "", false, false},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -95,7 +105,7 @@ func TestApplyGoalCommandIfEnabled(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			intent := &InboundIntent{
-				GoalMode: tc.alreadyGoal,
+				GoalMode:    tc.alreadyGoal,
 				UserMessage: &agentv1.UserMessage{Text: tc.text},
 			}
 			applyGoalCommandIfEnabled(intent, tc.enabled)
@@ -112,6 +122,24 @@ func TestApplyGoalCommandIfEnabled(t *testing.T) {
 				t.Fatalf("UserMessage = %q, want %q", gotMsg, tc.wantMsg)
 			}
 		})
+	}
+}
+
+func TestHasStandaloneGoalCompletionMarker(t *testing.T) {
+	for _, tc := range []struct {
+		text string
+		want bool
+	}{
+		{"[goal:complete]", true},
+		{"progress\n [GOAL:COMPLETE] \nreport", true},
+		{"I have not reached [goal:complete] yet.", false},
+		{"`[goal:complete]`", false},
+		{"[goal:completed]", false},
+		{"[goal:complete] report", false},
+	} {
+		if got := hasStandaloneGoalCompletionMarker(tc.text); got != tc.want {
+			t.Fatalf("hasStandaloneGoalCompletionMarker(%q) = %v, want %v", tc.text, got, tc.want)
+		}
 	}
 }
 
@@ -164,6 +192,31 @@ func TestGoalBudgetExceeded(t *testing.T) {
 	old := &GoalState{StartedAt: time.Now().UTC().Add(-2 * time.Minute), ProviderPasses: 1}
 	if exceeded, _ := goalBudgetExceeded(old, durCfg); !exceeded {
 		t.Fatal("started 2m ago with 1m budget must exceed")
+	}
+}
+
+func TestGoalProviderAdmissionRespectsPassDurationAndCostBudgets(t *testing.T) {
+	goal := newGoalState("conversation", "test", false)
+	cfg := defaultGoalRuntimeConfig()
+	cfg.MaxProviderPasses = 1
+	if exceeded, _ := goalProviderAdmissionExceeded(goal, cfg, 0); exceeded {
+		t.Fatal("first provider pass must be admitted")
+	}
+	if exceeded, _ := goalProviderAdmissionExceeded(goal, cfg, 1); !exceeded {
+		t.Fatal("second provider pass must be denied at a one-pass budget")
+	}
+	cfg.MaxProviderPasses = 0
+	cfg.MaxDuration = time.Minute
+	goal.StartedAt = time.Now().Add(-2 * time.Minute)
+	if exceeded, _ := goalProviderAdmissionExceeded(goal, cfg, 0); !exceeded {
+		t.Fatal("expired Goal duration must deny a new provider pass")
+	}
+	cfg.MaxDuration = 0
+	cfg.MaxCostUSD = 1
+	goal.StartedAt = time.Now()
+	goal.addProviderCostOnce("request", 1, "call", 1)
+	if exceeded, _ := goalProviderAdmissionExceeded(goal, cfg, 0); !exceeded {
+		t.Fatal("reached Goal cost budget must deny a new provider pass")
 	}
 }
 
@@ -237,6 +290,319 @@ func TestTruncateText(t *testing.T) {
 	}
 	if got := truncateText("", 5); got != "" {
 		t.Fatalf("truncateText empty = %q", got)
+	}
+}
+
+func TestGoalCostLedgerAndProviderModelPricing(t *testing.T) {
+	inputRate, outputRate := 1.0, 2.0
+	estimator := &defaultUsageCostEstimator{lookup: historymetrics.NewPriceLookup([]historymetrics.PriceRate{{
+		Model:    "provider-model",
+		Provider: "priced",
+		BaseURL:  "https://priced.example/v1",
+		Input:    &inputRate,
+		Output:   &outputRate,
+		Currency: "USD",
+		Known:    true,
+	}})}
+	usage := turnUsageSnapshot{
+		Role:         "parent",
+		UsagePresent: true,
+		BillingModel: "provider-model",
+		LogicalModel: "Display Name",
+		Provider:     "priced",
+		BaseURL:      "https://priced.example/v1",
+		InputTokens:  1_000_000,
+		OutputTokens: 1_000_000,
+	}
+	cost, ok := estimator.Cost(usage)
+	if !ok || cost != 3 {
+		t.Fatalf("estimator cost = %v, %v; want 3, true", cost, ok)
+	}
+	goal := newGoalState("conversation", "test", false)
+	if total, added := goal.addProviderCostOnce("request", 1, "call-1", cost); !added || total != 3 {
+		t.Fatalf("first cost ledger update = %v, %v; want 3, true", total, added)
+	}
+	if total, added := goal.addProviderCostOnce("request", 1, "call-1", cost); added || total != 3 {
+		t.Fatalf("duplicate cost ledger update = %v, %v; want 3, false", total, added)
+	}
+	if total, added := goal.addProviderCostOnce("request", 1, "call-2", cost); !added || total != 6 {
+		t.Fatalf("second cost ledger update = %v, %v; want 6, true", total, added)
+	}
+}
+
+type goalConfigStub struct {
+	cfg GoalRuntimeConfig
+}
+
+func (stub goalConfigStub) GoalRuntimeConfig() GoalRuntimeConfig {
+	return stub.cfg
+}
+
+func TestHandleProviderDoneAccountsGoalUsageBeforeStreamReset(t *testing.T) {
+	store := NewConversationFileStore(t.TempDir())
+	conversation := testConversation([]HistoryEntry{
+		testUserMessageEntry(t, 1, "request-goal-cost", "完成测试"),
+	})
+	persisted, err := store.SaveConversationWithEntries(conversation.ConversationID, conversation, conversation.Entries)
+	if err != nil {
+		t.Fatalf("SaveConversationWithEntries() error = %v", err)
+	}
+	broker := NewStreamBroker()
+	service := newServiceWithDependencies(store, NewHistoryProjector(), nil, nil, broker)
+	inputRate := 1.0
+	service.usageCostEstimator = &defaultUsageCostEstimator{lookup: historymetrics.NewPriceLookup([]historymetrics.PriceRate{{
+		Model: "priced-model", Provider: "priced", Input: &inputRate, Currency: "USD", Known: true,
+	}})}
+	cfg := defaultGoalRuntimeConfig()
+	cfg.MaxCostUSD = 0.0005
+	service.goalConfig = goalConfigStub{cfg: cfg}
+	stream, err := broker.OpenStream("request-goal-cost", persisted.ConversationID, 1, "model-a", "display-name", agentv1.AgentMode_AGENT_MODE_AGENT, "完成测试")
+	if err != nil {
+		t.Fatalf("OpenStream() error = %v", err)
+	}
+	stream.CheckpointConversation = cloneConversationFile(persisted)
+	stream.CurrentModelCallID = "goal-cost-call"
+	stream.ProviderPassCount = 1
+	stream.Status = StreamStatusStreaming
+	stream.Goal = newGoalState(persisted.ConversationID, "完成测试", false)
+	if err := service.applyProviderModelEvent(stream, modeladapter.ModelEvent{
+		Kind:         modeladapter.ModelEventKindTurnFinished,
+		FinishReason: "stop",
+		Provider:     "priced",
+		Model:        "priced-model",
+		BillingModel: "priced-model",
+		InputTokens:  1_000,
+		UsagePresent: true,
+	}); err != nil {
+		t.Fatalf("apply turn finished: %v", err)
+	}
+	if err := service.handleProviderDoneEvent(stream, &streamProviderEvent{}); err != nil {
+		t.Fatalf("handleProviderDoneEvent() error = %v", err)
+	}
+	if got := stream.Goal.costEstimateUSD(); got != 0.001 {
+		t.Fatalf("Goal CostEstimateUSD = %v, want 0.001", got)
+	}
+	if stream.Goal.Status != GoalStatusBudgetExceeded {
+		t.Fatalf("Goal status = %q, want %q", stream.Goal.Status, GoalStatusBudgetExceeded)
+	}
+}
+
+func TestForcedTurnClearsPriorGoalState(t *testing.T) {
+	store := NewConversationFileStore(t.TempDir())
+	broker := NewStreamBroker()
+	service := newServiceWithDependencies(store, NewHistoryProjector(), nil, nil, broker)
+	stream, err := broker.OpenStream("request-reset", "conversation-reset", 1, "model-a", "model-a", agentv1.AgentMode_AGENT_MODE_AGENT, "old goal")
+	if err != nil {
+		t.Fatalf("OpenStream() error = %v", err)
+	}
+	stream.Goal = newGoalState("conversation-reset", "old goal", true)
+	if err := service.prepareStreamForForcedTurn(InboundIntent{RequestID: "request-reset", ForceNewTurn: true}); err != nil {
+		t.Fatalf("prepareStreamForForcedTurn() error = %v", err)
+	}
+	stream.mu.Lock()
+	defer stream.mu.Unlock()
+	if stream.Goal != nil {
+		t.Fatalf("forced ordinary turn retained Goal state: %+v", stream.Goal)
+	}
+	if stream.Status != StreamStatusCreated || stream.Phase != TurnPhaseIdle {
+		t.Fatalf("forced turn state = status=%q phase=%q", stream.Status, stream.Phase)
+	}
+}
+
+func TestGoalCanCompleteOnFinalAdmittedPass(t *testing.T) {
+	store := NewConversationFileStore(t.TempDir())
+	conversation := testConversation([]HistoryEntry{
+		testUserMessageEntry(t, 1, "request-final-pass", "finish"),
+	})
+	persisted, err := store.SaveConversationWithEntries(conversation.ConversationID, conversation, conversation.Entries)
+	if err != nil {
+		t.Fatalf("SaveConversationWithEntries() error = %v", err)
+	}
+	broker := NewStreamBroker()
+	service := newServiceWithDependencies(store, NewHistoryProjector(), nil, nil, broker)
+	cfg := defaultGoalRuntimeConfig()
+	cfg.MaxProviderPasses = 1
+	service.goalConfig = goalConfigStub{cfg: cfg}
+	stream, err := broker.OpenStream("request-final-pass", persisted.ConversationID, 1, "model-a", "model-a", agentv1.AgentMode_AGENT_MODE_AGENT, "finish")
+	if err != nil {
+		t.Fatalf("OpenStream() error = %v", err)
+	}
+	stream.CheckpointConversation = cloneConversationFile(persisted)
+	stream.Status = StreamStatusStreaming
+	stream.Goal = newGoalState(persisted.ConversationID, "finish", false)
+	handled, err := service.handleGoalPassFinished(stream, persisted.ConversationID, 1, stream.RequestID, "final-pass-call", 1, "stop", "[goal:complete]\nfinished", false, turnUsageSnapshot{Role: "parent"})
+	if err != nil || !handled {
+		t.Fatalf("handleGoalPassFinished() = (%v, %v)", handled, err)
+	}
+	if stream.Goal.Status != GoalStatusCompleted {
+		t.Fatalf("Goal status = %q, want %q", stream.Goal.Status, GoalStatusCompleted)
+	}
+}
+
+func TestDriveProviderStopsGoalBeforeExceedingPassBudget(t *testing.T) {
+	store := NewConversationFileStore(t.TempDir())
+	conversation := testConversation([]HistoryEntry{
+		testUserMessageEntry(t, 1, "request-budget", "continue"),
+	})
+	persisted, err := store.SaveConversationWithEntries(conversation.ConversationID, conversation, conversation.Entries)
+	if err != nil {
+		t.Fatalf("SaveConversationWithEntries() error = %v", err)
+	}
+	provider := &contextProjectionRequestProvider{requests: make(chan ProviderRequest, 1)}
+	broker := NewStreamBroker()
+	service := newServiceWithDependencies(store, NewHistoryProjector(), contextProjectionLifecycleCompiler{}, provider, broker)
+	cfg := defaultGoalRuntimeConfig()
+	cfg.MaxProviderPasses = 1
+	service.goalConfig = goalConfigStub{cfg: cfg}
+	stream, err := broker.OpenStream("request-budget", persisted.ConversationID, 1, "model-a", "model-a", agentv1.AgentMode_AGENT_MODE_AGENT, "continue")
+	if err != nil {
+		t.Fatalf("OpenStream() error = %v", err)
+	}
+	stream.CheckpointConversation = cloneConversationFile(persisted)
+	stream.ProviderPassCount = 1
+	stream.Goal = newGoalState(persisted.ConversationID, "continue", false)
+	if err := service.driveProvider(stream); err != nil {
+		t.Fatalf("driveProvider() error = %v", err)
+	}
+	if stream.Goal.Status != GoalStatusBudgetExceeded {
+		t.Fatalf("Goal status = %q, want %q", stream.Goal.Status, GoalStatusBudgetExceeded)
+	}
+	select {
+	case <-provider.requests:
+		t.Fatal("provider received a forbidden pass after Goal budget exhaustion")
+	default:
+	}
+}
+
+func TestGoalVerificationSchedulesAndCancelsWithoutBlocking(t *testing.T) {
+	store := NewConversationFileStore(t.TempDir())
+	broker := NewStreamBroker()
+	service := newServiceWithDependencies(store, NewHistoryProjector(), nil, nil, broker)
+	started := make(chan struct{}, 1)
+	blockingScheduler := delegation.NewScheduler(delegation.Config{MaxConcurrency: 1}, func(ctx context.Context, _ delegation.TaskRequest) delegation.TaskResult {
+		started <- struct{}{}
+		<-ctx.Done()
+		return delegation.TaskResult{Error: ctx.Err()}
+	})
+	defer blockingScheduler.Close()
+	coordinator := service.multitaskDelegation
+	coordinator.mu.Lock()
+	originalScheduler := coordinator.scheduler
+	coordinator.scheduler = blockingScheduler
+	coordinator.mu.Unlock()
+	defer originalScheduler.Close()
+	stream, err := broker.OpenStream("request-async-verify", "conversation-async-verify", 1, "model-a", "model-a", agentv1.AgentMode_AGENT_MODE_AGENT, "verify")
+	if err != nil {
+		t.Fatalf("OpenStream() error = %v", err)
+	}
+	stream.WorkspacePaths = []string{t.TempDir()}
+	goal := newGoalState("conversation-async-verify", "verify", true)
+	stream.Goal = goal
+	completion := pendingTurnCompletion{ConversationID: stream.ConversationID, RequestID: stream.RequestID, TurnSeq: stream.TurnSeq, ModelCallID: "verify-call", ProviderPass: 1}
+	scheduled, _, _, err := service.beginGoalVerification(stream, goal, completion)
+	if err != nil || !scheduled {
+		t.Fatalf("beginGoalVerification() = (%v, %v)", scheduled, err)
+	}
+	select {
+	case <-started:
+	case <-time.After(time.Second):
+		t.Fatal("verification executor did not start")
+	}
+	stream.mu.Lock()
+	lease := stream.PendingGoalVerification
+	taskID := lease.TaskID
+	stream.mu.Unlock()
+	if !service.cancelOwnedGoalVerifier(stream) {
+		t.Fatal("cancelOwnedGoalVerifier() did not own the scheduled task")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	if err := blockingScheduler.WaitForTerminal(ctx, []string{taskID}); err != nil {
+		t.Fatalf("WaitForTerminal() error = %v", err)
+	}
+	snapshot, ok := blockingScheduler.Snapshot(taskID)
+	if !ok || snapshot.Status != delegation.TaskCanceled {
+		t.Fatalf("canceled verifier snapshot = %+v", snapshot)
+	}
+	stream.mu.Lock()
+	if stream.PendingGoalVerification != nil {
+		stream.mu.Unlock()
+		t.Fatal("canceled verifier remained attached to stream")
+	}
+	stream.mu.Unlock()
+	if err := service.handleGoalVerifyResult(stream, &streamGoalVerifyResult{
+		Token: lease.Token, TaskID: lease.TaskID, RequestID: lease.RequestID, ConversationID: lease.ConversationID,
+		TurnSeq: lease.TurnSeq, ProviderPass: lease.ProviderPass, ModelCallID: lease.ModelCallID, Verified: true, Report: "late result",
+	}); err != nil {
+		t.Fatalf("handleGoalVerifyResult() error = %v", err)
+	}
+	if goal.Status != GoalStatusRunning {
+		t.Fatalf("late verifier result changed Goal status to %q", goal.Status)
+	}
+}
+
+func TestGoalVerifierRequiresWorkspaceBeforeScheduling(t *testing.T) {
+	store := NewConversationFileStore(t.TempDir())
+	broker := NewStreamBroker()
+	service := newServiceWithDependencies(store, NewHistoryProjector(), nil, nil, broker)
+	stream, err := broker.OpenStream("request-verify", "conversation-verify", 1, "model-a", "model-a", agentv1.AgentMode_AGENT_MODE_AGENT, "verify")
+	if err != nil {
+		t.Fatalf("OpenStream() error = %v", err)
+	}
+	completion := pendingTurnCompletion{ConversationID: "conversation-verify", RequestID: "request-verify", TurnSeq: 1, ModelCallID: "verify-call", ProviderPass: 1}
+	nonStrictScheduled, nonStrictVerified, nonStrictReport, err := service.beginGoalVerification(stream, newGoalState("conversation-verify", "verify", false), completion)
+	if err != nil || nonStrictScheduled || !nonStrictVerified || !strings.Contains(nonStrictReport, "未提供可验证的工作区") {
+		t.Fatalf("non-strict workspace fallback = (%v, %v, %q, %v)", nonStrictScheduled, nonStrictVerified, nonStrictReport, err)
+	}
+	strictScheduled, strictVerified, strictReport, err := service.beginGoalVerification(stream, newGoalState("conversation-verify", "verify", true), completion)
+	if err != nil || strictScheduled || strictVerified || !strings.Contains(strictReport, "未提供可验证的工作区") {
+		t.Fatalf("strict workspace fallback = (%v, %v, %q, %v)", strictScheduled, strictVerified, strictReport, err)
+	}
+}
+
+func TestGoalContinuationSourcesArePassScoped(t *testing.T) {
+	first := goalContinuationSource(promptContextSourceGoalIdle, 1)
+	if first != goalContinuationSource(promptContextSourceGoalIdle, 1) {
+		t.Fatal("same continuation pass must be idempotent")
+	}
+	if first == goalContinuationSource(promptContextSourceGoalIdle, 2) {
+		t.Fatal("different continuation passes must have different sources")
+	}
+	if !isGoalContinuationPromptContextSource(first) || !isGoalContinuationPromptContextSource(promptContextSourceGoalVerifyFeedback) {
+		t.Fatal("recognized Goal continuation sources must be classified")
+	}
+	if isGoalContinuationPromptContextSource("goal_custom/pass/1") {
+		t.Fatal("unknown goal-shaped source must not be classified as a continuation")
+	}
+}
+
+func TestGoalContinuationContextsExpireOutsideOwningTurn(t *testing.T) {
+	conversation := &ConversationFile{
+		CurrentTurnSeq: 2,
+		NextTurnSeq:    3,
+		Entries: []HistoryEntry{
+			newPromptContextEntry(1, "request-1", PromptContextMessage{Source: goalContinuationSource(promptContextSourceGoalIdle, 1), Message: modeladapter.Message{Role: "user", Content: "expired goal control"}}),
+			newPromptContextEntry(1, "request-1", PromptContextMessage{Source: "ordinary_context", Message: modeladapter.Message{Role: "user", Content: "ordinary history remains"}}),
+			newPromptContextEntry(2, "request-2", PromptContextMessage{Source: goalContinuationSource(promptContextSourceGoalIdle, 2), Message: modeladapter.Message{Role: "user", Content: "current goal control"}}),
+		},
+	}
+	messages, err := NewHistoryProjector().ProjectPromptReplay(conversation)
+	if err != nil {
+		t.Fatalf("ProjectPromptReplay() error = %v", err)
+	}
+	contents := make([]string, 0, len(messages))
+	for _, message := range messages {
+		contents = append(contents, message.Content)
+	}
+	joined := strings.Join(contents, "\n")
+	if strings.Contains(joined, "expired goal control") {
+		t.Fatalf("expired Goal continuation leaked into replay: %q", joined)
+	}
+	if !strings.Contains(joined, "ordinary history remains") || !strings.Contains(joined, "current goal control") {
+		t.Fatalf("replay dropped active or ordinary contexts: %q", joined)
+	}
+	if len(conversation.Entries) != 3 {
+		t.Fatal("projection must not delete Goal continuation history")
 	}
 }
 

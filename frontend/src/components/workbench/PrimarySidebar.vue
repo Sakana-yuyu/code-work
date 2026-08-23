@@ -15,10 +15,8 @@ const panels = {
     title: "资源管理器",
     subtitle: "CODE WORK",
     items: [
+      { label: "工作区", path: "/ide", icon: "folder" },
       { label: "开始使用", path: "/workbench", icon: "workbench" },
-      { label: "服务控制台", path: "/", icon: "service" },
-      { label: "控制中心", path: "/control-center", icon: "panel" },
-      { label: "模型配置", path: "/model-config", icon: "folder" },
       { label: "设置", path: "/settings", icon: "settings" },
     ],
   },
@@ -33,13 +31,10 @@ const panels = {
     ],
   },
   "source-control": {
-    title: "运行状态",
-    subtitle: "完整内核仍然可用",
+    title: "源代码管理",
+    subtitle: "只读 Git 状态",
     items: [
-      { label: "服务控制台", path: "/service", icon: "service" },
-      { label: "会话分析", path: "/metrics-detail", icon: "chart" },
-      { label: "请求明细", path: "/request-metrics", icon: "chart" },
-      { label: "诊断", path: "/diagnostics", icon: "shield" },
+      { label: "工作区 Git", path: "/ide", icon: "source-control" },
     ],
   },
   extensions: {
@@ -57,7 +52,6 @@ const panels = {
     subtitle: "偏好与诊断",
     items: [
       { label: "设置", path: "/settings", icon: "settings" },
-      { label: "控制中心", path: "/control-center", icon: "panel" },
       { label: "运行诊断", path: "/diagnostics", icon: "shield" },
       { label: "关于 Code Work", path: "/settings?category=about", icon: "workbench" },
     ],

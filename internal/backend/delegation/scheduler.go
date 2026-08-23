@@ -336,22 +336,52 @@ func (s *Scheduler) run(state *taskState) {
 	executorStarted = true
 	go s.watchEffectiveProgress(state)
 	executorTaskID := state.snapshot.ID
-	safego.Go("delegation:executor", func() {
-		result := s.executor(executionCtx, request)
-		s.mu.Lock()
-		delete(s.activeExecutions, executorTaskID)
-		s.mu.Unlock()
-		resultChannel <- result
+	var executorCompletion sync.Once
+	finishExecutor := func(result TaskResult) {
+		executorCompletion.Do(func() {
+			s.mu.Lock()
+			delete(s.activeExecutions, executorTaskID)
+			s.mu.Unlock()
+			resultChannel <- result
+		})
+	}
+	safego.GoWithPanicHandler("delegation:executor", func() {
+		finishExecutor(s.executor(executionCtx, request))
+	}, func(panicErr error) {
+		finishExecutor(TaskResult{Error: panicErr})
 	})
 	var result TaskResult
+	var logicalTerminalErr error
 	select {
 	case result = <-resultChannel:
 	case <-executionCtx.Done():
-		result.Error = executionCtx.Err()
+		// The task is logically terminal immediately, but the execution slot remains
+		// occupied until the executor goroutine actually returns. This keeps the
+		// configured concurrency limit true for context-ignoring external processes.
+		logicalTerminalErr = executionCtx.Err()
+		finished := time.Now().UTC()
+		s.mu.Lock()
+		if !isTerminalStatus(state.snapshot.Status) {
+			state.snapshot.FinishedAt = finished
+			if logicalTerminalErr == context.DeadlineExceeded {
+				state.snapshot.Status = TaskTimedOut
+				state.snapshot.Error = logicalTerminalErr.Error()
+			} else {
+				state.snapshot.Status = TaskCanceled
+			}
+			if state.contract != nil {
+				state.snapshot.SupervisionStatus = supervisionStatusForTaskStatus(state.snapshot.Status)
+			}
+			s.publishLocked(&state.snapshot)
+		}
+		s.mu.Unlock()
+		result = <-resultChannel
+		result.Error = logicalTerminalErr
 	}
 	finished := time.Now().UTC()
 	s.mu.Lock()
 	if isTerminalStatus(state.snapshot.Status) {
+		state.result = cloneTaskResult(result)
 		s.mu.Unlock()
 		return
 	}
