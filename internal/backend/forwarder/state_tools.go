@@ -12,8 +12,8 @@ import (
 	"google.golang.org/protobuf/proto"
 
 	"cursor/gen/agentv1"
-	modeladapter "cursor/internal/backend/agent/model"
 	runtimecore "cursor/internal/backend/agent/core"
+	modeladapter "cursor/internal/backend/agent/model"
 )
 
 const todoSectionReminderMessage = "<system_reminder>\nYou are currently under the todo section, be sure to track tasks and do not forget to update.\n</system_reminder>"
@@ -39,7 +39,7 @@ func projectConversationStructuredState(conversation *ConversationFile) (structu
 	if conversation == nil {
 		return state, nil
 	}
-	for _, entry := range checkpointProjectionEntries(conversation.Entries) {
+	for _, entry := range checkpointProjectionEntries(filterExpiredGoalContinuationPromptContexts(conversation)) {
 		switch strings.TrimSpace(entry.Kind) {
 		case "runtime_state":
 			var payload runtimeStateEntryPayload

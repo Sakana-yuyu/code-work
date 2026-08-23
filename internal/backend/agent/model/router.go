@@ -655,6 +655,9 @@ func (router *Router) streamChannel(ctx context.Context, req StreamRequest, chan
 		if event.GroupName == "" {
 			event.GroupName = channelGroupName
 		}
+		if event.BillingModel == "" {
+			event.BillingModel = strings.TrimSpace(resolved.ProviderModelID)
+		}
 		return sink(event)
 	}
 	streamErr = router.dispatchByProvider(ctx, resolved, identitySink)
@@ -797,9 +800,9 @@ func downgradeAnthropicBackToOpenAI(resolved *StreamRequest, channel *legacyrunt
 //  2. 已知瞬时白名单：部分中转网关（如 daoxe.com）对合法请求偶发返回
 //     400 "Invalid request for the selected model"，压过 Classify 对 400 的
 //     Blocked 处置，允许退避后重试；
-//  2.5. 已知 pre-output 瞬时哨兵：上游静默卡死（空闲看门狗超时）发生在任何内容
-//       转发给客户端之前，重发不会重复输出，属可重试瞬时失败；该错误无结构化
-//       状态码，Classify 会误落 Internal/Fatal，须显式放行。
+//     2.5. 已知 pre-output 瞬时哨兵：上游静默卡死（空闲看门狗超时）发生在任何内容
+//     转发给客户端之前，重发不会重复输出，属可重试瞬时失败；该错误无结构化
+//     状态码，Classify 会误落 Internal/Fatal，须显式放行。
 //  3. apperror.Classify 的结构化处置为权威基线：仅 DispositionRetryable 视为非永久，
 //     其余（Blocked/Fatal/Canceled/Degraded）一律视为永久。对只携带历史
 //     "status=<code>" 文本、无结构化状态码的错误，Classify 会落到 Internal/Fatal，

@@ -222,6 +222,9 @@ type ModelEvent struct {
 	Provider string
 	// Model 表示当前事件所属模型标识。
 	Model string
+	// BillingModel 表示本次实际命中的配置渠道模型标识。适配器可用 Model 报告上游别名，
+	// 但计费必须优先使用这个稳定的渠道身份。
+	BillingModel string
 	// BaseURL 表示本次请求实际命中的中转站基础地址。
 	BaseURL string
 	// GroupName 表示本次请求实际命中的中转站分组名。

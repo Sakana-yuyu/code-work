@@ -5,6 +5,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -29,6 +30,51 @@ func TestStoreLoadBackfillsGoalDefaultsForLegacyConfig(t *testing.T) {
 	}
 	if !yamlHasKey(persisted, "goal") {
 		t.Fatal("migrated config does not persist goal defaults")
+	}
+}
+
+func TestStoreLoadNormalizesSparseAndNegativeGoalBudgets(t *testing.T) {
+	for _, tc := range []struct {
+		name               string
+		goalYAML           string
+		wantPasses         int
+		wantDuration       int
+		wantCost           float64
+		wantPersistedValue string
+	}{
+		{"sparse enabled", "goal:\n  enabled: true\n", 30, 0, 0, "max_provider_passes: 30"},
+		{"sparse disabled", "goal:\n  enabled: false\n", 30, 0, 0, "max_provider_passes: 30"},
+		{"explicit unlimited", "goal:\n  enabled: true\n  max_provider_passes: 0\n", 0, 0, 0, "max_provider_passes: 0"},
+		{"negative budgets", "goal:\n  enabled: true\n  max_duration_seconds: -1\n  max_cost_usd: -2\n", 30, 0, 0, "max_cost_usd: 0"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "config.yaml")
+			raw := "backendListenAddr: 127.0.0.1:18090\nproxyListenAddr: 127.0.0.1:18080\n" + tc.goalYAML
+			if err := os.WriteFile(path, []byte(raw), 0o600); err != nil {
+				t.Fatalf("write config: %v", err)
+			}
+			got, err := NewStore(path, "").Load(context.Background())
+			if err != nil {
+				t.Fatalf("Load() error = %v", err)
+			}
+			if got.Goal.MaxProviderPasses != tc.wantPasses || got.Goal.MaxDurationSeconds != tc.wantDuration || got.Goal.MaxCostUSD != tc.wantCost {
+				t.Fatalf("Goal = %+v, want passes=%d duration=%d cost=%v", got.Goal, tc.wantPasses, tc.wantDuration, tc.wantCost)
+			}
+			persisted, err := os.ReadFile(path)
+			if err != nil {
+				t.Fatalf("read persisted config: %v", err)
+			}
+			if !strings.Contains(string(persisted), tc.wantPersistedValue) {
+				t.Fatalf("persisted config missing %q:\n%s", tc.wantPersistedValue, persisted)
+			}
+		})
+	}
+}
+
+func TestNormalizeGoalConfigPreservesUnlimitedAndNormalizesNegativeBudgets(t *testing.T) {
+	got := normalizeGoalConfig(GoalConfig{MaxProviderPasses: 0, MaxDurationSeconds: -1, MaxCostUSD: -1})
+	if got.MaxProviderPasses != 0 || got.MaxDurationSeconds != 0 || got.MaxCostUSD != 0 {
+		t.Fatalf("normalized Goal = %+v, want explicit unlimited values", got)
 	}
 }
 

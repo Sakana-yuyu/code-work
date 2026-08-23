@@ -3,6 +3,7 @@ package config
 import (
 	"encoding/json"
 	"fmt"
+	"math"
 	"net"
 	"path/filepath"
 	"runtime"
@@ -447,6 +448,12 @@ func DefaultGoalConfig() GoalConfig {
 func normalizeGoalConfig(c GoalConfig) GoalConfig {
 	if c.MaxProviderPasses < 0 {
 		c.MaxProviderPasses = 30
+	}
+	if c.MaxDurationSeconds < 0 {
+		c.MaxDurationSeconds = 0
+	}
+	if c.MaxCostUSD < 0 || math.IsNaN(c.MaxCostUSD) || math.IsInf(c.MaxCostUSD, 0) {
+		c.MaxCostUSD = 0
 	}
 	if c.SelfCheckPasses < 1 {
 		c.SelfCheckPasses = 2

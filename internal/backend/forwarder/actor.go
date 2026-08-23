@@ -28,6 +28,7 @@ const (
 	TurnPhaseAwaitingUser    TurnPhase = "awaiting_user"
 	TurnPhaseCompacting      TurnPhase = "compacting"
 	TurnPhaseCheckpointing   TurnPhase = "checkpointing"
+	TurnPhaseVerifyingGoal   TurnPhase = "verifying_goal"
 	TurnPhaseCompleted       TurnPhase = "completed"
 	TurnPhaseFailed          TurnPhase = "failed"
 	TurnPhaseCanceled        TurnPhase = "canceled"
@@ -63,6 +64,7 @@ const (
 	streamCommandCompactionEvent   streamCommandKind = "compaction_event"
 	streamCommandDelegationResult  streamCommandKind = "delegation_result"
 	streamCommandMaybeOrphaned     streamCommandKind = "maybe_orphaned"
+	streamCommandGoalVerifyResult  streamCommandKind = "goal_verify_result"
 )
 
 type streamTimerKind string
@@ -110,6 +112,20 @@ type streamCompactionEvent struct {
 	Err         error
 }
 
+type streamGoalVerifyResult struct {
+	Token          uint64
+	TaskID         string
+	RequestID      string
+	ConversationID string
+	TurnSeq        int64
+	ProviderPass   int
+	ModelCallID    string
+	Verified       bool
+	Report         string
+	Unavailable    bool
+	Err            error
+}
+
 type streamCommand struct {
 	Kind       streamCommandKind
 	Intent     InboundIntent
@@ -117,6 +133,7 @@ type streamCommand struct {
 	Timer      *streamTimerEvent
 	Compaction *streamCompactionEvent
 	Delegation *streamDelegationResult
+	GoalVerify *streamGoalVerifyResult
 	Reason     string
 }
 
@@ -283,6 +300,7 @@ func (service *Service) reopenTerminalStreamForNewTurn(stream *ActiveStream) err
 	if !terminal {
 		return nil
 	}
+	service.cancelOwnedGoalVerifier(stream)
 	if actorDone != nil {
 		select {
 		case <-actorDone:
@@ -308,6 +326,7 @@ func (service *Service) reopenTerminalStreamForNewTurn(stream *ActiveStream) err
 	stream.PendingCompaction = nil
 	stream.ProviderToolQuarantine = nil
 	stream.ProviderPassToolNames = nil
+	stream.Goal = nil
 	stream.Status = StreamStatusCreated
 	stream.Phase = TurnPhaseIdle
 	stream.ActorMailbox = nil
@@ -326,6 +345,7 @@ func (service *Service) prepareStreamForForcedTurn(intent InboundIntent) error {
 	if !ok || stream == nil {
 		return nil
 	}
+	service.cancelOwnedGoalVerifier(stream)
 	if service.multitaskDelegation != nil {
 		service.multitaskDelegation.CancelStream(stream)
 	}
@@ -346,6 +366,7 @@ func (service *Service) prepareStreamForForcedTurn(intent InboundIntent) error {
 	stream.PartialToolCallIDs = make(map[string]struct{})
 	stream.ProviderToolQuarantine = nil
 	stream.ProviderPassToolNames = nil
+	stream.Goal = nil
 	stream.PatchEditQueues = make(map[string][]queuedPatchEditOperation)
 	stream.Status = StreamStatusCreated
 	stream.Phase = TurnPhaseIdle
@@ -579,6 +600,8 @@ func (service *Service) handleStreamCommand(stream *ActiveStream, command stream
 		return service.handleCompactionEvent(stream, command.Compaction)
 	case streamCommandDelegationResult:
 		return service.handleDelegationResult(stream, command.Delegation)
+	case streamCommandGoalVerifyResult:
+		return service.handleGoalVerifyResult(stream, command.GoalVerify)
 	case streamCommandMaybeOrphaned:
 		if stream == nil {
 			return nil
@@ -631,11 +654,16 @@ func (service *Service) reconcileStream(stream *ActiveStream) error {
 	pendingExecCount := len(stream.PendingExecs)
 	pendingInteractionCount := len(stream.PendingInteractions)
 	hasPendingCompaction := stream.PendingCompaction != nil
+	hasPendingGoalVerification := stream.PendingGoalVerification != nil
 	action := stream.PendingProviderAction
 	completion := stream.PendingProviderCompletion
 	stream.mu.Unlock()
 
 	if providerActive {
+		return nil
+	}
+	if hasPendingGoalVerification {
+		service.setTurnPhase(stream, TurnPhaseVerifyingGoal)
 		return nil
 	}
 	if pendingExecCount+pendingInteractionCount > 0 {
@@ -704,7 +732,7 @@ func providerTokenMatches(stream *ActiveStream, token uint64) bool {
 	}
 	stream.mu.Lock()
 	defer stream.mu.Unlock()
-	return stream.CurrentProviderToken == token
+	return stream.ProviderActive && stream.CurrentProviderToken == token
 }
 
 func (service *Service) applyProviderModelEvent(stream *ActiveStream, event modeladapter.ModelEvent) error {
@@ -913,6 +941,7 @@ func (service *Service) applyProviderModelEvent(stream *ActiveStream, event mode
 			ParentModel:       "",
 			LogicalModel:      stream.ModelName,
 			ProviderModel:     event.Model,
+			BillingModel:      event.BillingModel,
 			ExecutionMode:     "parent",
 			BaseURL:           event.BaseURL,
 			GroupName:         event.GroupName,
@@ -1125,6 +1154,10 @@ func (service *Service) handleProviderDoneEvent(stream *ActiveStream, payload *s
 	if err := service.recordTurnUsageSnapshot(stream, conversationID, turnSeq, requestID, modelCallID, "completed", usage, "", false); err != nil {
 		return service.failStreamIfNonTerminal(stream, "usage_persistence_error", err)
 	}
+	stream.mu.Lock()
+	goal := stream.Goal
+	stream.mu.Unlock()
+	service.updateGoalCostEstimate(goal, requestID, turnSeq, modelCallID, usage)
 	if err := service.updateConversationTokenState(stream, conversationID, usage, modelCallID, true); err != nil {
 		return service.failStreamIfNonTerminal(stream, "unknown", err)
 	}
@@ -1196,7 +1229,7 @@ func (service *Service) handleProviderDoneEvent(stream *ActiveStream, payload *s
 
 	// goal 模式：无工具调用不直接收口，先做目标自检 / 预算判定 / 校验。
 	if stream.Goal != nil {
-		handled, err := service.handleGoalPassFinished(stream, conversationID, turnSeq, requestID, modelCallID, providerPass, finishReason, accumulatedText, hadToolInvocation)
+		handled, err := service.handleGoalPassFinished(stream, conversationID, turnSeq, requestID, modelCallID, providerPass, finishReason, accumulatedText, hadToolInvocation, usage)
 		if err != nil {
 			return service.failStreamIfNonTerminal(stream, "unknown", err)
 		}

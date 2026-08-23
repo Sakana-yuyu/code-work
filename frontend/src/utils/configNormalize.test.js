@@ -1,7 +1,28 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
+import { normalizeGoal } from "./goalNormalize.js";
 import { normalizeDelegationExecutorPolicy } from "./delegationExecutorConfig.js";
+
+test("Goal normalization preserves explicit unlimited and repairs invalid budgets", () => {
+  assert.deepEqual(normalizeGoal({ enabled: true }), {
+    enabled: true,
+    maxProviderPasses: 30,
+    maxDurationSeconds: 0,
+    maxCostUsd: 0,
+    selfCheckPasses: 0,
+    verifyMaxRetries: 0,
+    errorMaxRetries: 0,
+    progressInterval: 0,
+  });
+  assert.equal(normalizeGoal({ enabled: false }).maxProviderPasses, 30);
+  const explicitUnlimited = normalizeGoal({ enabled: true, maxProviderPasses: 0, maxDurationSeconds: -1, maxCostUsd: -1.25 });
+  assert.equal(explicitUnlimited.maxProviderPasses, 0);
+  assert.equal(normalizeGoal({ enabled: true, maxProviderPasses: -1 }).maxProviderPasses, 30);
+  assert.equal(explicitUnlimited.maxDurationSeconds, 0);
+  assert.equal(explicitUnlimited.maxCostUsd, 0);
+  assert.equal(normalizeGoal({ maxCostUsd: 1.25 }).maxCostUsd, 1.25);
+});
 
 test("delegation normalization preserves executor policy without secret values", () => {
   const source = {

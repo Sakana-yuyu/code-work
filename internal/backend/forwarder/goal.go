@@ -2,15 +2,21 @@ package forwarder
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"math"
+	"strconv"
 	"strings"
+	"sync"
 	"time"
+	"unicode"
+	"unicode/utf8"
 
 	agentv1 "cursor/gen/agentv1"
 	modeladapter "cursor/internal/backend/agent/model"
 	"cursor/internal/backend/delegation"
 	"cursor/internal/historymetrics"
-	"cursor/internal/logger"
+	"cursor/internal/safego"
 	"github.com/google/uuid"
 	"google.golang.org/protobuf/proto"
 )
@@ -27,6 +33,22 @@ const (
 )
 
 // GoalState 挂在 ActiveStream.Goal 上（nil = 非 goal 会话）。
+const goalVerifierTimeout = 3 * time.Minute
+
+type pendingGoalVerification struct {
+	Token          uint64
+	TaskID         string
+	RequestID      string
+	ConversationID string
+	TurnSeq        int64
+	ProviderPass   int
+	ModelCallID    string
+	Goal           *GoalState
+	Scheduler      *delegation.Scheduler
+	WaitCancel     context.CancelFunc
+	Completion     pendingTurnCompletion
+}
+
 type GoalState struct {
 	ConversationID  string
 	GoalText        string
@@ -45,19 +67,22 @@ type GoalState struct {
 	CompletionText  string
 	StopReason      string
 
-	consecutiveIdle   int  // 连续无工具调用 pass 计数
-	CompletionClaimed bool // 模型已输出 [goal:complete] 声明
+	consecutiveIdle     int  // 连续无工具调用 pass 计数
+	CompletionClaimed   bool // 模型已输出 [goal:complete] 声明
+	costMu              sync.Mutex
+	accountedModelCalls map[string]struct{}
 }
 
 func newGoalState(conversationID, goalText string, strict bool) *GoalState {
 	now := time.Now().UTC()
 	return &GoalState{
-		ConversationID: conversationID,
-		GoalText:       strings.TrimSpace(goalText),
-		Status:         GoalStatusRunning,
-		Strict:         strict,
-		StartedAt:      now,
-		UpdatedAt:      now,
+		ConversationID:      conversationID,
+		GoalText:            strings.TrimSpace(goalText),
+		Status:              GoalStatusRunning,
+		Strict:              strict,
+		StartedAt:           now,
+		UpdatedAt:           now,
+		accountedModelCalls: make(map[string]struct{}),
 	}
 }
 
@@ -95,21 +120,29 @@ func parseGoalCommand(text string) (goalText string, strict bool, isGoal bool) {
 	trimmed := strings.TrimSpace(text)
 	lower := strings.ToLower(trimmed)
 	for _, prefix := range goalCommandPrefixes {
-		if strings.HasPrefix(lower, prefix) {
-			rest := strings.TrimSpace(trimmed[len(prefix):])
-			if rest == "" {
-				return "", false, false
-			}
-			restLower := strings.ToLower(rest)
-			if strings.HasPrefix(restLower, "--strict") {
-				rest = strings.TrimSpace(rest[len("--strict"):])
-				if rest == "" {
-					return "", true, false
-				}
-				return rest, true, true
-			}
-			return rest, false, true
+		if !strings.HasPrefix(lower, prefix) {
+			continue
 		}
+		rest := trimmed[len(prefix):]
+		if prefix != "goal:" && rest != "" {
+			first, _ := utf8.DecodeRuneInString(rest)
+			if !unicode.IsSpace(first) {
+				continue
+			}
+		}
+		rest = strings.TrimSpace(rest)
+		if rest == "" {
+			return "", false, false
+		}
+		fields := strings.Fields(rest)
+		if len(fields) > 0 && strings.EqualFold(fields[0], "--strict") {
+			rest = strings.TrimSpace(rest[len(fields[0]):])
+			if rest == "" {
+				return "", true, false
+			}
+			return rest, true, true
+		}
+		return rest, false, true
 	}
 	return "", false, false
 }
@@ -187,19 +220,51 @@ func goalBudgetExceeded(goal *GoalState, cfg GoalRuntimeConfig) (bool, string) {
 	if goal == nil {
 		return false, ""
 	}
-	if cfg.MaxProviderPasses > 0 && goal.ProviderPasses >= cfg.MaxProviderPasses {
+	return goalProviderAdmissionExceeded(goal, cfg, goal.ProviderPasses)
+}
+
+func goalProviderAdmissionExceeded(goal *GoalState, cfg GoalRuntimeConfig, dispatchedPasses int) (bool, string) {
+	if goal == nil {
+		return false, ""
+	}
+	if cfg.MaxProviderPasses > 0 && dispatchedPasses >= cfg.MaxProviderPasses {
 		return true, fmt.Sprintf("达到 provider pass 上限 %d", cfg.MaxProviderPasses)
 	}
 	if cfg.MaxDuration > 0 && !goal.StartedAt.IsZero() && time.Since(goal.StartedAt) >= cfg.MaxDuration {
 		return true, fmt.Sprintf("达到时长上限 %s", cfg.MaxDuration)
 	}
+	if cfg.MaxCostUSD > 0 && goal.costEstimateUSD() >= cfg.MaxCostUSD {
+		return true, fmt.Sprintf("达到费用上限 $%.4f", cfg.MaxCostUSD)
+	}
 	return false, ""
+}
+
+func (service *Service) stopGoalForBudget(stream *ActiveStream, goal *GoalState, reason string) error {
+	if goal == nil {
+		return service.closeStreamWithTurnBudgetExceeded(stream, reason)
+	}
+	goal.Status = GoalStatusBudgetExceeded
+	goal.StopReason = reason
+	goal.CompletionText = "goal 因预算上限停止：" + reason
+	if err := service.emitGoalCompletion(stream, goal, "budget"); err != nil {
+		return err
+	}
+	return service.closeStreamWithTurnBudgetExceeded(stream, reason)
 }
 
 // goalCompletionMarker 是模型声明"目标已完成"的显式标记。借鉴 Reasonix 的
 // [goal:complete] 完成声明拦截：后端不轻信"无工具调用"，只认显式声明；
 // 声明后仍需校验子代理证据审计才放行（非 strict 且无校验能力时退化为自检）。
 const goalCompletionMarker = "[goal:complete]"
+
+func hasStandaloneGoalCompletionMarker(text string) bool {
+	for _, line := range strings.Split(text, "\n") {
+		if strings.EqualFold(strings.TrimSpace(line), goalCompletionMarker) {
+			return true
+		}
+	}
+	return false
+}
 
 // goalStalePivotThreshold 是校验连续未通过 / 连续停顿达到该次数后，提示结构性
 // 换策略的阈值。借鉴 Reasonix AutoResearch 的 stale_count pivot：换入口点、
@@ -210,6 +275,32 @@ const promptContextSourceGoalIdle = "goal_idle"
 const promptContextSourceGoalVerifyFeedback = "goal_verify_feedback"
 const promptContextSourceGoalErrorRetry = "goal_error_retry"
 const promptContextSourceGoalBudget = "goal_budget"
+
+func goalContinuationSource(source string, providerPass int) string {
+	if providerPass <= 0 {
+		return source
+	}
+	return source + "/pass/" + strconv.Itoa(providerPass)
+}
+
+func isGoalContinuationPromptContextSource(source string) bool {
+	for _, base := range []string{
+		promptContextSourceGoalIdle,
+		promptContextSourceGoalVerifyFeedback,
+		promptContextSourceGoalErrorRetry,
+	} {
+		if source == base {
+			return true
+		}
+		prefix := base + "/pass/"
+		if !strings.HasPrefix(source, prefix) {
+			continue
+		}
+		pass, err := strconv.ParseInt(strings.TrimPrefix(source, prefix), 10, 64)
+		return err == nil && pass > 0
+	}
+	return false
+}
 
 // goalIdleReminder 是停顿提醒：无工具调用且未声明完成时，要求模型继续推进
 // 或说明卡点；连续多轮停顿则要求改变策略（文案随 idleCount 升级）。
@@ -256,22 +347,53 @@ func (service *Service) appendGoalPromptContext(stream *ActiveStream, conversati
 	return true, nil
 }
 
-// updateGoalCostEstimate 用本 pass 的 token 用量估算费用并累加。
-// 没有 pricing provider 时保持 0（费用检查自然跳过）。
-func (service *Service) updateGoalCostEstimate(stream *ActiveStream, goal *GoalState) {
-	if service == nil || stream == nil || goal == nil || service.usageCostEstimator == nil {
+// updateGoalCostEstimate 用已捕获的本 pass usage 快照估算费用并累加。
+// ProviderUsage 在完成处理时会被清空，因此这里不能读取 ActiveStream 的可变字段。
+func (service *Service) updateGoalCostEstimate(goal *GoalState, requestID string, turnSeq int64, modelCallID string, usage turnUsageSnapshot) {
+	if service == nil || goal == nil || service.usageCostEstimator == nil || strings.TrimSpace(usage.Role) != "parent" {
 		return
 	}
-	cost, ok := service.usageCostEstimator.Cost(stream, stream.ProviderUsage)
-	if ok {
-		goal.CostEstimateUSD += cost
+	cost, ok := service.usageCostEstimator.Cost(usage)
+	if !ok {
+		return
 	}
+	goal.addProviderCostOnce(requestID, turnSeq, modelCallID, cost)
+}
+
+func (goal *GoalState) addProviderCostOnce(requestID string, turnSeq int64, modelCallID string, costUSD float64) (float64, bool) {
+	if goal == nil || strings.TrimSpace(modelCallID) == "" || math.IsNaN(costUSD) || math.IsInf(costUSD, 0) || costUSD < 0 {
+		return 0, false
+	}
+	key := strings.TrimSpace(requestID) + "\x00" + strconv.FormatInt(turnSeq, 10) + "\x00" + strings.TrimSpace(modelCallID)
+	goal.costMu.Lock()
+	defer goal.costMu.Unlock()
+	if goal.accountedModelCalls == nil {
+		goal.accountedModelCalls = make(map[string]struct{})
+	}
+	if _, exists := goal.accountedModelCalls[key]; exists {
+		return goal.CostEstimateUSD, false
+	}
+	if math.IsInf(goal.CostEstimateUSD+costUSD, 0) {
+		return goal.CostEstimateUSD, false
+	}
+	goal.accountedModelCalls[key] = struct{}{}
+	goal.CostEstimateUSD += costUSD
+	return goal.CostEstimateUSD, true
+}
+
+func (goal *GoalState) costEstimateUSD() float64 {
+	if goal == nil {
+		return 0
+	}
+	goal.costMu.Lock()
+	defer goal.costMu.Unlock()
+	return goal.CostEstimateUSD
 }
 
 // goalUsageCostEstimator 估算单个 provider pass 的美元费用；返回 ok=false 表示
 // 无定价来源（费用检查跳过）。
 type goalUsageCostEstimator interface {
-	Cost(stream *ActiveStream, usage turnUsageSnapshot) (float64, bool)
+	Cost(usage turnUsageSnapshot) (float64, bool)
 }
 
 // goalVerifyPrompt 构造校验子代理的任务提示：只读检查目标是否真正达成，
@@ -314,51 +436,195 @@ func parseVerifyDecision(output string) (verified bool, report string) {
 	return verified, report
 }
 
-// goalVerifyCompletion 同步跑一个只读校验子代理确认 goal 是否达成。
-// service.multitaskDelegation 不可用时退化为"模型自检通过"（返回 verified=true），
-// 并在日志中说明——保证 goal 在无委派配置时仍能收口而不是卡死。
-func (service *Service) goalVerifyCompletion(stream *ActiveStream, goal *GoalState) (bool, string, error) {
+func goalVerificationFallback(goal *GoalState, reason string) (bool, string) {
+	if goal != nil && goal.Strict {
+		return false, "（strict 模式要求真实只读校验子代理：" + reason + "）"
+	}
+	return true, "（" + reason + "，采用模型自检结论）"
+}
+
+func (service *Service) beginGoalVerification(stream *ActiveStream, goal *GoalState, completion pendingTurnCompletion) (scheduled bool, verified bool, report string, err error) {
 	if service == nil || stream == nil || goal == nil {
-		return false, "", nil
+		return false, false, "", nil
 	}
-	if service.multitaskDelegation == nil || service.multitaskDelegation.scheduler == nil {
-		// strict 模式不兜底：没有真实校验子代理就按"未通过"处理（借鉴 Reasonix
-		// Strict 模式不允许覆盖拦截）；普通模式退化为模型自检通过，保证可收口。
-		if goal.Strict {
-			return false, "（strict 模式要求真实校验子代理，但委派不可用）", nil
-		}
-		logger.Infof("forwarder goal verify skipped (delegation unavailable) request_id=%s", strings.TrimSpace(stream.RequestID))
-		return true, "（无校验子代理可用，采用模型自检结论）", nil
+	if service.multitaskDelegation == nil {
+		verified, report = goalVerificationFallback(goal, "委派不可用")
+		return false, verified, report, nil
 	}
-	taskID := "goal-verify-" + uuid.NewString()
-	_, err := service.multitaskDelegation.scheduler.Submit(delegation.TaskRequest{
-		ID:             taskID,
-		ParentRequest:  stream.RequestID,
+	scheduler := service.multitaskDelegation.schedulerSnapshot()
+	if scheduler == nil {
+		verified, report = goalVerificationFallback(goal, "委派不可用")
+		return false, verified, report, nil
+	}
+	if service.delegationConfig != nil && !delegation.NormalizeRuntimeConfig(service.delegationConfig.DelegationRuntimeConfig()).Enabled {
+		verified, report = goalVerificationFallback(goal, "委派已禁用")
+		return false, verified, report, nil
+	}
+	openContext := buildExecOpenContextForStream(stream, nil)
+	if strings.TrimSpace(openContext.WorkspaceHint) == "" {
+		verified, report = goalVerificationFallback(goal, "未提供可验证的工作区")
+		return false, verified, report, nil
+	}
+	stream.mu.Lock()
+	if stream.Goal != goal || goal.Status != GoalStatusRunning || isTerminalStreamStatus(stream.Status) || stream.PendingGoalVerification != nil {
+		stream.mu.Unlock()
+		return false, false, "", errProviderLoopInterrupted
+	}
+	stream.CurrentGoalVerifyToken++
+	waitCtx, waitCancel := context.WithTimeout(context.Background(), goalVerifierTimeout)
+	lease := &pendingGoalVerification{
+		Token:          stream.CurrentGoalVerifyToken,
+		TaskID:         "goal-verify-" + uuid.NewString(),
+		RequestID:      stream.RequestID,
 		ConversationID: stream.ConversationID,
-		SubagentType:   "generalPurpose",
-		Readonly:       true,
-		Prompt:         goalVerifyPrompt(goal),
-		Description:    "goal 完成校验",
-		Mode:           agentv1.AgentMode_AGENT_MODE_AGENT,
-		Timeout:        3 * time.Minute,
-		Contract: &delegation.SupervisionTaskContract{
-			DoneCriteria: []string{"输出 VERIFIED 或 NOT_VERIFIED 结论与理由"},
-		},
+		TurnSeq:        stream.TurnSeq,
+		ProviderPass:   completion.ProviderPass,
+		ModelCallID:    completion.ModelCallID,
+		Goal:           goal,
+		Scheduler:      scheduler,
+		WaitCancel:     waitCancel,
+		Completion:     completion,
+	}
+	parentModelName := firstNonEmpty(strings.TrimSpace(stream.ModelName), strings.TrimSpace(stream.ModelID))
+	mode := stream.Mode
+	stream.PendingGoalVerification = lease
+	stream.PendingProviderAction = providerActionNone
+	stream.Phase = TurnPhaseVerifyingGoal
+	stream.UpdatedAt = time.Now().UTC()
+	stream.mu.Unlock()
+	_, submitErr := scheduler.Submit(delegation.TaskRequest{
+		ID:                           lease.TaskID,
+		ParentRequest:                lease.RequestID,
+		ConversationID:               openContext.ConversationID,
+		RootConversationID:           openContext.RootConversationID,
+		SubagentType:                 "generalPurpose",
+		Readonly:                     true,
+		Prompt:                       goalVerifyPrompt(goal),
+		Description:                  "goal 完成校验",
+		ModelID:                      openContext.ModelID,
+		ModelName:                    parentModelName,
+		Mode:                         mode,
+		ExecutionMode:                "local",
+		WorkspaceHint:                openContext.WorkspaceHint,
+		SubagentModelOverrides:       cloneSubagentModelOverrides(openContext.SubagentModelOverrides),
+		SelectedSubagentModels:       cloneSelectedSubagentModels(openContext.SelectedSubagentModels),
+		SelectedSubagentModelDetails: cloneSelectedSubagentModelDetails(openContext.SelectedSubagentModelDetails),
+		ToolWhitelist:                []string{"Read", "Glob", "Grep", "Ls", "ReadLints"},
+		QueueTimeout:                 goalVerifierTimeout,
+		Timeout:                      goalVerifierTimeout,
+		Contract:                     &delegation.SupervisionTaskContract{DoneCriteria: []string{"输出 VERIFIED 或 NOT_VERIFIED 结论与理由"}},
 	})
-	if err != nil {
-		return false, "", err
+	if submitErr != nil {
+		service.releaseGoalVerifier(stream, lease)
+		verified, report = goalVerificationFallback(goal, "校验子代理无法启动")
+		return false, verified, report, nil
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
-	defer cancel()
-	if err := service.multitaskDelegation.scheduler.WaitForTerminal(ctx, []string{taskID}); err != nil {
-		return false, "", err
+	if !service.ownsGoalVerifier(stream, lease) {
+		waitCancel()
+		scheduler.CancelIfActive(lease.TaskID)
+		return false, false, "", errProviderLoopInterrupted
 	}
-	result, ok := service.multitaskDelegation.scheduler.Result(taskID)
-	if !ok {
-		return false, "", fmt.Errorf("goal verify task %s has no result", taskID)
+	goal.SelfChecks++
+	if err := service.emitGoalProgress(stream, goal); err != nil {
+		service.cancelOwnedGoalVerifier(stream)
+		return false, false, "", err
 	}
-	verified, report := parseVerifyDecision(result.Output)
-	return verified, report, nil
+	safego.Go("forwarder:goal-verifier", func() {
+		service.waitForGoalVerifier(stream, lease, waitCtx)
+	})
+	return true, false, "", nil
+}
+
+func (service *Service) ownsGoalVerifier(stream *ActiveStream, lease *pendingGoalVerification) bool {
+	if stream == nil || lease == nil {
+		return false
+	}
+	stream.mu.Lock()
+	defer stream.mu.Unlock()
+	return stream.PendingGoalVerification == lease && stream.CurrentGoalVerifyToken == lease.Token && stream.Goal == lease.Goal && !isTerminalStreamStatus(stream.Status)
+}
+
+func (service *Service) releaseGoalVerifier(stream *ActiveStream, lease *pendingGoalVerification) {
+	if stream == nil || lease == nil {
+		return
+	}
+	stream.mu.Lock()
+	if stream.PendingGoalVerification == lease && stream.CurrentGoalVerifyToken == lease.Token {
+		stream.PendingGoalVerification = nil
+		stream.UpdatedAt = time.Now().UTC()
+	}
+	stream.mu.Unlock()
+	lease.WaitCancel()
+}
+
+func (service *Service) cancelOwnedGoalVerifier(stream *ActiveStream) bool {
+	if stream == nil {
+		return false
+	}
+	stream.mu.Lock()
+	lease := stream.PendingGoalVerification
+	stream.PendingGoalVerification = nil
+	stream.CurrentGoalVerifyToken++
+	stream.mu.Unlock()
+	if lease == nil {
+		return false
+	}
+	lease.WaitCancel()
+	lease.Scheduler.CancelIfActive(lease.TaskID)
+	return true
+}
+
+func (service *Service) waitForGoalVerifier(stream *ActiveStream, lease *pendingGoalVerification, waitCtx context.Context) {
+	defer lease.Scheduler.CancelIfActive(lease.TaskID)
+	err := lease.Scheduler.WaitForTerminal(waitCtx, []string{lease.TaskID})
+	if waitCtx.Err() != nil && !errors.Is(waitCtx.Err(), context.DeadlineExceeded) {
+		service.releaseGoalVerifier(stream, lease)
+		return
+	}
+	payload := &streamGoalVerifyResult{
+		Token: lease.Token, TaskID: lease.TaskID, RequestID: lease.RequestID, ConversationID: lease.ConversationID,
+		TurnSeq: lease.TurnSeq, ProviderPass: lease.ProviderPass, ModelCallID: lease.ModelCallID,
+	}
+	if errors.Is(waitCtx.Err(), context.DeadlineExceeded) {
+		payload.Unavailable = true
+		payload.Report = "校验子代理超时"
+	} else if err != nil {
+		payload.Err = err
+	} else if snapshot, ok := lease.Scheduler.Snapshot(lease.TaskID); !ok {
+		payload.Err = fmt.Errorf("goal verify task %s has no snapshot", lease.TaskID)
+	} else if snapshot.Status != delegation.TaskCompleted {
+		payload.Unavailable = true
+		payload.Report = firstNonEmpty(strings.TrimSpace(snapshot.Error), "校验子代理未完成")
+	} else {
+		payload.Verified, payload.Report = parseVerifyDecision(snapshot.Output)
+	}
+	if err := service.postStreamCommandAsync(stream, streamCommand{Kind: streamCommandGoalVerifyResult, GoalVerify: payload}); err != nil {
+		service.releaseGoalVerifier(stream, lease)
+	}
+}
+
+func (service *Service) handleGoalVerifyResult(stream *ActiveStream, payload *streamGoalVerifyResult) error {
+	if stream == nil || payload == nil {
+		return nil
+	}
+	stream.mu.Lock()
+	lease := stream.PendingGoalVerification
+	if lease == nil || payload.Token != stream.CurrentGoalVerifyToken || payload.Token != lease.Token || payload.TaskID != lease.TaskID || payload.RequestID != stream.RequestID || payload.RequestID != lease.RequestID || payload.ConversationID != stream.ConversationID || payload.ConversationID != lease.ConversationID || payload.TurnSeq != stream.TurnSeq || payload.TurnSeq != lease.TurnSeq || payload.ProviderPass != lease.ProviderPass || payload.ModelCallID != lease.ModelCallID || stream.Goal != lease.Goal || lease.Goal.Status != GoalStatusRunning || stream.Phase != TurnPhaseVerifyingGoal || isTerminalStreamStatus(stream.Status) {
+		stream.mu.Unlock()
+		return nil
+	}
+	stream.PendingGoalVerification = nil
+	stream.mu.Unlock()
+	lease.WaitCancel()
+	if payload.Err != nil {
+		return payload.Err
+	}
+	verified, report := payload.Verified, payload.Report
+	if payload.Unavailable {
+		verified, report = goalVerificationFallback(lease.Goal, firstNonEmpty(report, "校验子代理执行失败"))
+	}
+	_, err := service.finishGoalVerification(stream, lease.Goal, lease.Completion, verified, report)
+	return err
 }
 
 // defaultUsageCostEstimator 用 historymetrics 定价表估算；无表时返回 ok=false。
@@ -367,12 +633,20 @@ type defaultUsageCostEstimator struct {
 	lookup *historymetrics.PriceLookup
 }
 
-func (e *defaultUsageCostEstimator) Cost(stream *ActiveStream, usage turnUsageSnapshot) (float64, bool) {
-	if e == nil || e.lookup == nil || stream == nil || !usage.UsagePresent {
+func (e *defaultUsageCostEstimator) Cost(usage turnUsageSnapshot) (float64, bool) {
+	if e == nil || e.lookup == nil || !usage.UsagePresent {
 		return 0, false
 	}
-	cost, ok, _, _ := e.lookup.Cost(stream.ModelName, usage.Provider, usage.BaseURL, usage.InputTokens, usage.OutputTokens, usage.CacheReadTokens, usage.CacheWriteTokens)
-	if !ok || cost == nil {
+	cost, ok, currency, _ := e.lookup.CostForCandidates(
+		[]string{usage.BillingModel, usage.ProviderModel, usage.Model, usage.LogicalModel},
+		usage.Provider,
+		usage.BaseURL,
+		usage.InputTokens,
+		usage.OutputTokens,
+		usage.CacheReadTokens,
+		usage.CacheWriteTokens,
+	)
+	if !ok || cost == nil || (currency != "" && !strings.EqualFold(currency, "USD")) {
 		return 0, false
 	}
 	return *cost, true
@@ -409,7 +683,7 @@ func truncateText(text string, maxRunes int) string {
 // handleGoalPassFinished 在 provider pass 无工具调用收尾点接管 goal 循环：
 // 返回 (true, nil) 表示已挂起继续（调用方 return）；(false, nil) 表示走正常收口
 // （完成 / 预算超限 / 失败）；(false, err) 表示循环级错误。
-func (service *Service) handleGoalPassFinished(stream *ActiveStream, conversationID string, turnSeq int64, requestID, modelCallID string, providerPass int, finishReason, accumulatedText string, hadToolInvocation bool) (bool, error) {
+func (service *Service) handleGoalPassFinished(stream *ActiveStream, conversationID string, turnSeq int64, requestID, modelCallID string, providerPass int, finishReason, accumulatedText string, hadToolInvocation bool, usage turnUsageSnapshot) (bool, error) {
 	goal := stream.Goal
 	if goal == nil {
 		return false, nil
@@ -419,23 +693,6 @@ func (service *Service) handleGoalPassFinished(stream *ActiveStream, conversatio
 	goal.UpdatedAt = time.Now().UTC()
 
 	cfg := service.currentGoalConfig()
-
-	// 预算检查（含费用估算：本 pass 的 token 用量计入累计费用后检查 MaxCostUSD）。
-	service.updateGoalCostEstimate(stream, goal)
-	if exceeded, reason := goalBudgetExceeded(goal, cfg); exceeded {
-		goal.Status = GoalStatusBudgetExceeded
-		goal.StopReason = reason
-		goal.CompletionText = fmt.Sprintf("goal 因预算上限停止：%s", reason)
-		service.emitGoalCompletion(stream, goal, "budget")
-		return false, nil
-	}
-	if cfg.MaxCostUSD > 0 && goal.CostEstimateUSD >= cfg.MaxCostUSD {
-		goal.Status = GoalStatusBudgetExceeded
-		goal.StopReason = fmt.Sprintf("达到费用上限 $%.4f", cfg.MaxCostUSD)
-		goal.CompletionText = goal.StopReason
-		service.emitGoalCompletion(stream, goal, "budget")
-		return false, nil
-	}
 
 	// 有工具调用：现有循环逻辑（actor.go）继续 resume，这里让行。
 	if hadToolInvocation || shouldResumeAfterToolResults(finishReason) {
@@ -447,53 +704,34 @@ func (service *Service) handleGoalPassFinished(stream *ActiveStream, conversatio
 	// 停顿则注入 idle 提醒（连续多轮升级为换策略提示）。
 	goal.consecutiveIdle++
 	goal.LastProgress = truncateText(accumulatedText, 120)
-	completionClaimed := strings.Contains(strings.ToLower(accumulatedText), goalCompletionMarker)
+	completionClaimed := hasStandaloneGoalCompletionMarker(accumulatedText)
 
 	if completionClaimed {
 		goal.CompletionClaimed = true
-		verified, report, err := service.goalVerifyCompletion(stream, goal)
+		completion := pendingTurnCompletion{
+			ConversationID: conversationID,
+			RequestID:      requestID,
+			TurnSeq:        turnSeq,
+			ModelCallID:    modelCallID,
+			ProviderPass:   providerPass,
+			Usage:          usage,
+		}
+		scheduled, verified, report, err := service.beginGoalVerification(stream, goal, completion)
 		if err != nil {
 			return false, err
 		}
-		if verified {
-			goal.Status = GoalStatusCompleted
-			goal.CompletionText = truncateText(report, 2000)
-			goal.StopReason = ""
-			service.emitGoalCompletion(stream, goal, "completed")
-			return false, nil
+		if scheduled {
+			return true, service.publishCheckpoint(requestID, conversationID)
 		}
-		if goal.RetryCount >= cfg.VerifyMaxRetries {
-			goal.Status = GoalStatusFailed
-			goal.StopReason = fmt.Sprintf("校验子代理连续 %d 次判定目标未达成", goal.RetryCount)
-			goal.CompletionText = truncateText(report, 2000)
-			service.emitGoalCompletion(stream, goal, "failed")
-			return false, nil
-		}
-		goal.RetryCount++
-		goal.consecutiveIdle = 0
-		feedback := report
-		if goal.RetryCount >= goalStalePivotThreshold {
-			goal.StaleCount++
-			feedback = fmt.Sprintf("%s\n\n已连续 %d 次未通过校验：请结构性换策略（改变入口点、任务分解或验证方式），不要重复同一做法。", feedback, goal.StaleCount)
-		}
-		appended, err := service.appendGoalPromptContext(stream, conversationID, turnSeq, requestID, promptContextSourceGoalVerifyFeedback, goalVerifyFeedbackReminder(goal, feedback).Message.Content)
-		if err != nil {
-			return false, err
-		}
-		if !appended {
-			return false, nil // 已注入过，避免死循环，走收口
-		}
-		service.emitGoalProgress(stream, goal)
-		if err := service.syncSummaryCarryForward(conversationID, requestID, modelCallID); err != nil {
-			return true, err
-		}
-		if err := service.publishCheckpoint(requestID, conversationID); err != nil {
-			return true, err
-		}
-		return true, service.requestProviderAction(stream, providerActionResume)
+		return service.finishGoalVerification(stream, goal, completion, verified, report)
+	}
+	// The last admitted pass is allowed to prove completion. Budget limits block
+	// subsequent provider dispatches; they do not discard an already-produced result.
+	if exceeded, reason := goalBudgetExceeded(goal, cfg); exceeded {
+		return true, service.stopGoalForBudget(stream, goal, reason)
 	}
 
-	appended, err := service.appendGoalPromptContext(stream, conversationID, turnSeq, requestID, promptContextSourceGoalIdle, goalIdleReminder(goal, goal.consecutiveIdle).Message.Content)
+	appended, err := service.appendGoalPromptContext(stream, conversationID, turnSeq, requestID, goalContinuationSource(promptContextSourceGoalIdle, providerPass), goalIdleReminder(goal, goal.consecutiveIdle).Message.Content)
 	if err != nil {
 		return false, err
 	}
@@ -508,6 +746,61 @@ func (service *Service) handleGoalPassFinished(stream *ActiveStream, conversatio
 		return true, err
 	}
 	if err := service.publishCheckpoint(requestID, conversationID); err != nil {
+		return true, err
+	}
+	return true, service.requestProviderAction(stream, providerActionResume)
+}
+
+func (service *Service) finishGoalVerification(stream *ActiveStream, goal *GoalState, completion pendingTurnCompletion, verified bool, report string) (bool, error) {
+	if goal == nil {
+		return false, nil
+	}
+	if verified {
+		goal.Status = GoalStatusCompleted
+		goal.CompletionText = truncateText(report, 2000)
+		goal.StopReason = ""
+		if err := service.emitGoalCompletion(stream, goal, "completed"); err != nil {
+			return true, err
+		}
+		return true, service.completeSuccessfulTurn(stream, completion)
+	}
+	cfg := service.currentGoalConfig()
+	if goal.RetryCount >= cfg.VerifyMaxRetries {
+		goal.Status = GoalStatusFailed
+		goal.StopReason = fmt.Sprintf("校验子代理连续 %d 次判定目标未达成", goal.RetryCount)
+		goal.CompletionText = truncateText(report, 2000)
+		if err := service.emitGoalCompletion(stream, goal, "failed"); err != nil {
+			return true, err
+		}
+		return true, service.completeSuccessfulTurn(stream, completion)
+	}
+	goal.RetryCount++
+	goal.consecutiveIdle = 0
+	feedback := report
+	if goal.RetryCount >= goalStalePivotThreshold {
+		goal.StaleCount++
+		feedback = fmt.Sprintf("%s\n\n已连续 %d 次未通过校验：请结构性换策略（改变入口点、任务分解或验证方式），不要重复同一做法。", feedback, goal.StaleCount)
+	}
+	appended, err := service.appendGoalPromptContext(stream, completion.ConversationID, completion.TurnSeq, completion.RequestID, goalContinuationSource(promptContextSourceGoalVerifyFeedback, completion.ProviderPass), goalVerifyFeedbackReminder(goal, feedback).Message.Content)
+	if err != nil {
+		return true, err
+	}
+	if !appended {
+		goal.Status = GoalStatusFailed
+		goal.StopReason = "无法持久化新的校验恢复上下文"
+		goal.CompletionText = truncateText(report, 2000)
+		if err := service.emitGoalCompletion(stream, goal, "failed"); err != nil {
+			return true, err
+		}
+		return true, service.completeSuccessfulTurn(stream, completion)
+	}
+	if err := service.emitGoalProgress(stream, goal); err != nil {
+		return true, err
+	}
+	if err := service.syncSummaryCarryForward(completion.ConversationID, completion.RequestID, completion.ModelCallID); err != nil {
+		return true, err
+	}
+	if err := service.publishCheckpoint(completion.RequestID, completion.ConversationID); err != nil {
 		return true, err
 	}
 	return true, service.requestProviderAction(stream, providerActionResume)
@@ -587,7 +880,7 @@ func (service *Service) handleGoalProviderError(stream *ActiveStream, conversati
 	goal.ErrorRetries++
 	goal.ProviderPasses = providerPass
 	goal.UpdatedAt = time.Now().UTC()
-	appended, appendErr := service.appendGoalPromptContext(stream, conversationID, turnSeq, requestID, promptContextSourceGoalErrorRetry, goalErrorRetryReminder(errTextOf(err)).Message.Content)
+	appended, appendErr := service.appendGoalPromptContext(stream, conversationID, turnSeq, requestID, goalContinuationSource(promptContextSourceGoalErrorRetry, providerPass), goalErrorRetryReminder(errTextOf(err)).Message.Content)
 	if appendErr != nil {
 		return false, appendErr
 	}

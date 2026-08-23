@@ -45,7 +45,7 @@ func TestResponseCacheStorePersistenceRoundTrip(t *testing.T) {
 	now := time.Now()
 
 	events := []modeladapter.ModelEvent{
-		{Kind: modeladapter.ModelEventKindTextDelta, Text: "你好", OccurredAt: now, Provider: "demo", Model: "m1"},
+		{Kind: modeladapter.ModelEventKindTextDelta, Text: "你好", OccurredAt: now, Provider: "demo", Model: "m1", BillingModel: "configured-m1"},
 		{Kind: modeladapter.ModelEventKindTurnFinished, FinishReason: "end_turn", OccurredAt: now.Add(time.Second)},
 	}
 	store.put("key1", &responseCacheEntry{
@@ -66,7 +66,7 @@ func TestResponseCacheStorePersistenceRoundTrip(t *testing.T) {
 	if len(entry.events) != 2 {
 		t.Fatalf("事件数不符: got %d want 2", len(entry.events))
 	}
-	if entry.events[0].Text != "你好" || entry.events[0].Kind != modeladapter.ModelEventKindTextDelta {
+	if entry.events[0].Text != "你好" || entry.events[0].Kind != modeladapter.ModelEventKindTextDelta || entry.events[0].BillingModel != "configured-m1" {
 		t.Fatalf("事件往返损坏: %+v", entry.events[0])
 	}
 	if entry.savedInputTokens != 100 || entry.savedOutputTokens != 50 {
@@ -138,13 +138,13 @@ func TestProviderCacheKeyNormalizationStability(t *testing.T) {
 	variant.Messages = make([]modeladapter.Message, len(base.Messages))
 	copy(variant.Messages, base.Messages)
 	variant.Messages[1] = modeladapter.Message{
-		Role:                        base.Messages[1].Role,
-		ReasoningContent:            base.Messages[1].ReasoningContent,
-		Content:                     base.Messages[1].Content,
-		ReasoningSignature:          "sig-abc-123", // provider 每次签发不同
-		ReasoningSignatureSource:    "anthropic",
-		OpenAIResponsesReasoningID:  "resp_xyz",
-		OpenAIResponsesReasoningStatus: "completed",
+		Role:                            base.Messages[1].Role,
+		ReasoningContent:                base.Messages[1].ReasoningContent,
+		Content:                         base.Messages[1].Content,
+		ReasoningSignature:              "sig-abc-123", // provider 每次签发不同
+		ReasoningSignatureSource:        "anthropic",
+		OpenAIResponsesReasoningID:      "resp_xyz",
+		OpenAIResponsesReasoningStatus:  "completed",
 		OpenAIResponsesReasoningSummary: json.RawMessage(`["summary"]`),
 		ToolCalls: []modeladapter.ToolCallDescriptor{{
 			Index:                 0,

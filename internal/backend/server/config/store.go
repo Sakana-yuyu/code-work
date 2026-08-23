@@ -97,8 +97,14 @@ func (store *Store) Load(_ context.Context) (Config, error) {
 	if hasDelegationEnabled && !yamlHasNestedKey(data, "delegation", "maxConcurrency") {
 		current.Delegation.MaxConcurrency = DefaultDelegationMaxConcurrency
 	}
-	if !yamlHasKey(data, "goal") {
+	hasGoal := yamlHasKey(data, "goal")
+	hasGoalMaxProviderPasses := yamlHasNestedKey(data, "goal", "max_provider_passes")
+	if !hasGoal {
 		current.Goal = DefaultGoalConfig()
+	} else if !hasGoalMaxProviderPasses {
+		// Preserve an explicit zero as unlimited, but migrate an omitted pass cap
+		// to the safe default before a later enablement can make it unbounded.
+		current.Goal.MaxProviderPasses = DefaultGoalConfig().MaxProviderPasses
 	}
 	// billingQuery 默认开启：旧配置文件未出现该键（或未写 enabled 子键）时按默认值处理，
 	// 避免 Go 零值 false 把存量用户的计费查询静默关闭。
@@ -215,7 +221,10 @@ func shouldPersistNormalizedConfig(raw []byte, current Config, normalized Config
 	if !reflect.DeepEqual(current.MCPTrustGrants, normalized.MCPTrustGrants) {
 		return true
 	}
-	if !yamlHasKey(raw, "goal") {
+	if !yamlHasKey(raw, "goal") || !yamlHasNestedKey(raw, "goal", "max_provider_passes") {
+		return true
+	}
+	if !reflect.DeepEqual(current.Goal, normalized.Goal) {
 		return true
 	}
 	if !yamlHasKey(raw, "billingQuery") || !yamlHasNestedKey(raw, "billingQuery", "enabled") {

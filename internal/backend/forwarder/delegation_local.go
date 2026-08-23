@@ -100,7 +100,7 @@ func (adapter *localDelegatedAgentAdapter) Execute(ctx context.Context, request 
 		delegation.PublishTaskCheckpoint(ctx, request, delegation.SupervisionStatusFailed, 1, nil, nil, "delegated worker MCP discovery failed", delegation.SanitizeSupervisorText(err.Error(), request.WorkspaceHint))
 		return delegation.TaskResult{Error: err, Metadata: identity.metadata(0)}
 	}
-	compiled.Tools, err = filterDelegatedTools(compiled.Tools, request.ToolPermission, mcpToolNames, request.ToolWhitelist)
+	compiled.Tools, err = filterDelegatedTools(compiled.Tools, request.ToolPermission, mcpToolNames, request.ToolWhitelist, request.Readonly)
 	if err != nil {
 		delegation.PublishTaskCheckpoint(ctx, request, delegation.SupervisionStatusFailed, 1, nil, nil, "delegated worker tool filtering failed", delegation.SanitizeSupervisorText(err.Error(), request.WorkspaceHint))
 		return delegation.TaskResult{Error: err, Metadata: identity.metadata(0)}
@@ -563,6 +563,12 @@ func localDelegationVisibleProgress(text, workspaceHint string) string {
 
 func (adapter *localDelegatedAgentAdapter) executeTool(ctx context.Context, request delegation.TaskRequest, conversation *ConversationFile, invocation runtimecore.ToolInvocation) string {
 	originalToolName := strings.TrimSpace(invocation.ToolName)
+	if !delegatedToolWhitelisted(request.ToolWhitelist, originalToolName) {
+		return "工具不可用：该委派任务不允许调用此工具。"
+	}
+	if request.Readonly && !delegatedReadonlyToolAllowed(originalToolName) {
+		return "工具不可用：只读校验任务只能调用 Read、Glob、Grep、Ls 或 ReadLints。"
+	}
 	// 委派 worker 不应嵌套调用 Task：该工具会经 cursor bridge 转发给 Cursor 客户端
 	// 创建 subagent bubble，本地委派场景下客户端无法创建，返回 bubble 超时错误并最终
 	// 触发 user_stopped_generation 取消。防御性拦截，与 filterDelegatedTools 保持一致。
@@ -595,7 +601,7 @@ func (adapter *localDelegatedAgentAdapter) executeTool(ctx context.Context, requ
 	return limitProjectedToolResultReplay(invocation.ToolName, strings.TrimSpace(output), strings.TrimSpace(output), false, false)
 }
 
-func filterDelegatedTools(tools []json.RawMessage, permissions map[string]bool, mcpToolNames map[string]struct{}, toolWhitelist []string) ([]json.RawMessage, error) {
+func filterDelegatedTools(tools []json.RawMessage, permissions map[string]bool, mcpToolNames map[string]struct{}, toolWhitelist []string, readonly bool) ([]json.RawMessage, error) {
 	if len(tools) == 0 {
 		return nil, nil
 	}
@@ -606,6 +612,9 @@ func filterDelegatedTools(tools []json.RawMessage, permissions map[string]bool, 
 			return nil, err
 		}
 		trimmedName := strings.TrimSpace(name)
+		if readonly && !delegatedReadonlyToolAllowed(trimmedName) {
+			continue
+		}
 		// SubagentProfile.ToolWhitelist 白名单强制：非空时只保留白名单中的工具
 		//（白名单与 Task/Shell 拦截是叠加关系，两项都不满足即过滤）。
 		if len(toolWhitelist) > 0 {
@@ -650,6 +659,27 @@ func filterDelegatedTools(tools []json.RawMessage, permissions map[string]bool, 
 // delegatedToolNeedsCursorInteraction 判断工具是否需要 Cursor 客户端的交互执行
 // （终端、流式输出、编辑确认等）。委派 worker 在 byok 内运行，这些工具经 cursor
 // bridge 转发后无法可靠闭环，会卡住 worker。
+func delegatedToolWhitelisted(toolWhitelist []string, toolName string) bool {
+	if len(toolWhitelist) == 0 {
+		return true
+	}
+	for _, allowed := range toolWhitelist {
+		if strings.TrimSpace(allowed) == strings.TrimSpace(toolName) {
+			return true
+		}
+	}
+	return false
+}
+
+func delegatedReadonlyToolAllowed(toolName string) bool {
+	switch strings.TrimSpace(toolName) {
+	case "Read", "Glob", "Grep", "Ls", "ReadLints":
+		return true
+	default:
+		return false
+	}
+}
+
 func delegatedToolNeedsCursorInteraction(toolName string) bool {
 	switch strings.TrimSpace(toolName) {
 	case "Shell", "AwaitShell", "WriteShellStdin", "ForceBackgroundShell", "ForceBackgroundSubagent",

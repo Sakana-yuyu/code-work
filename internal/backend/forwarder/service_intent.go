@@ -297,9 +297,9 @@ func (service *Service) handleRunIntent(intent InboundIntent) error {
 	if stream == nil {
 		return fmt.Errorf("open stream failed")
 	}
+	var goalState *GoalState
 	if intent.GoalMode {
-		goalState := newGoalState(intent.ConversationID, intent.GoalText, intent.GoalStrict)
-		stream.Goal = goalState
+		goalState = newGoalState(intent.ConversationID, intent.GoalText, intent.GoalStrict)
 		if service.debug != nil {
 			service.debug.LogRuntime(context.Background(), intent.RequestID, intent.ConversationID, "goal_started", map[string]any{
 				"goal_text": intent.GoalText,
@@ -313,6 +313,7 @@ func (service *Service) handleRunIntent(intent InboundIntent) error {
 	service.updateStreamMCPToolServers(stream, intent.RequestContext)
 	clearPendingProviderCompletion(stream)
 	stream.mu.Lock()
+	stream.Goal = goalState
 	stream.ThinkingEffort = strings.TrimSpace(intent.ThinkingEffort)
 	stream.CustomSystemPrompt = strings.TrimSpace(intent.CustomSystemPrompt)
 	stream.MaxMode = intent.MaxMode
@@ -410,6 +411,11 @@ func (service *Service) handleCancelIntent(intent InboundIntent) error {
 		return fmt.Errorf("request is not active: %s", intent.RequestID)
 	}
 	stream.mu.Lock()
+	if stream.Goal != nil && stream.Goal.Status == GoalStatusRunning {
+		stream.Goal.Status = GoalStatusStopped
+		stream.Goal.StopReason = firstNonEmpty(intent.CancelReason, "user aborted")
+		stream.Goal.UpdatedAt = time.Now().UTC()
+	}
 	turnSeq := stream.TurnSeq
 	conversationID := strings.TrimSpace(stream.ConversationID)
 	phase := stream.Phase
@@ -441,6 +447,7 @@ func (service *Service) handleCancelIntent(intent InboundIntent) error {
 	})
 	service.clearProvider400Recovery(provider400RecoveryContentExists, intent.RequestID, turnSeq)
 	service.clearProvider400Recovery(provider400RecoveryToolSchema, intent.RequestID, turnSeq)
+	service.cancelOwnedGoalVerifier(stream)
 	// 先切断当前 provider 请求，再做 history、工具 abort 和委派清理。
 	// 断线取消不能因为后续持久化或广播变慢而继续消耗上游额度。
 	forceCancelStreamProvider(stream)
