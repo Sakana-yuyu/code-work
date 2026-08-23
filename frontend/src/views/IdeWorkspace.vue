@@ -1,37 +1,18 @@
 <script setup>
-import { computed, onMounted, onUnmounted, reactive, ref, watch } from "vue";
+import { computed, onMounted, reactive, ref, watch } from "vue";
 import TabStrip from "@/components/workbench/TabStrip.vue";
 import ReadonlyCodeEditor from "@/components/ide/ReadonlyCodeEditor.vue";
 import {
   approveIDEApproval,
-  commitIDEKnownHost,
   commitIDEWorkspaceWrite,
-  generateIDESSHKey,
   getIDEGitSnapshot,
   getIDEWorkspaceTree,
-  importIDESSHKey,
-  listIDEKnownHosts,
-  listIDESSHKeys,
   listIDEWorkspaces,
-  previewIDEKnownHost,
-  previewIDEGitOperation,
   previewIDEWorkspaceWrite,
-  probeIDEHostKey,
-  commitIDEGitOperation,
   readIDEWorkspaceText,
   rejectIDEApproval,
-  removeIDESSHKey,
   searchIDEWorkspace,
   selectAndRegisterIDEWorkspace,
-  listIDETerminalProfiles,
-  openIDETerminalSession,
-  writeIDETerminalSession,
-  interruptIDETerminalSession,
-  closeIDETerminalSession,
-  getIDETerminalOutput,
-  getDelegationExecutorSnapshots,
-  previewIDEExecutorWriteCapability,
-  commitIDEExecutorWriteCapability,
 } from "@/services/clientApi";
 import {
   activateDocumentTab,
@@ -54,7 +35,6 @@ import {
 } from "@/utils/ideExplorerTree";
 import {
   EMPTY_IDE_GIT_SNAPSHOT,
-  gitChangeStatusLabel,
   normalizeGitSnapshot,
 } from "@/utils/ideGitSnapshot";
 import {
@@ -74,31 +54,6 @@ const documents = reactive(createDocumentTabStore());
 const writePreview = ref(null);
 const gitSnapshot = ref(normalizeGitSnapshot(EMPTY_IDE_GIT_SNAPSHOT));
 const gitError = ref("");
-const sshKeys = ref([]);
-const sshError = ref("");
-const sshName = ref("");
-const sshPrivateKey = ref("");
-const sshPassphrase = ref("");
-const knownHosts = ref([]);
-const knownHostError = ref("");
-const knownHostName = ref("");
-const knownHostPort = ref("22");
-const knownHostPublicKey = ref("");
-const knownHostPreview = ref(null);
-const gitCloneURL = ref("");
-const gitCloneDirectory = ref("repo");
-const gitCommitMessage = ref("");
-const gitPreview = ref(null);
-const gitLastAction = ref("");
-const terminalProfiles = ref([]);
-const terminalProfileID = ref("powershell");
-const terminalSession = ref(null);
-const terminalOutput = ref("");
-const terminalInput = ref("");
-const terminalError = ref("");
-const executors = ref([]);
-const executorWritePreview = ref(null);
-let terminalPoll = 0;
 
 const activeWorkspace = computed(() => workspaces.value.find((item) => item.id === activeWorkspaceID.value) || null);
 const explorerRows = computed(() => {
@@ -114,6 +69,10 @@ const editorKey = computed(() => {
   const tab = activeDocument.value;
   if (!tab) return "";
   return `${tab.id}:${tab.version}:${tab.truncated}:${tab.restricted}`;
+});
+const gitSummary = computed(() => {
+  if (!gitSnapshot.value.available) return "";
+  return `分支 ${gitSnapshot.value.branch || "未知"} · 领先 ${gitSnapshot.value.ahead} · 落后 ${gitSnapshot.value.behind}`;
 });
 
 function statusForEntry(entry) {
@@ -142,24 +101,12 @@ async function refreshWorkspaces(preferredID) {
     : (workspaces.value[0]?.id || "");
   activeWorkspaceID.value = nextID;
   gitError.value = "";
-  if (terminalSession.value) {
-    stopTerminalPoll();
-    try {
-      await closeIDETerminalSession(terminalSession.value.id);
-    } catch {
-      /* workspace switch still continues */
-    }
-    terminalSession.value = null;
-    terminalOutput.value = "";
-  }
   if (nextID) {
     await loadRootTree();
     await loadGitSnapshot(nextID);
-    await loadExecutors();
   } else {
     applyRootTree(explorer, { entries: [], truncated: false });
     gitSnapshot.value = normalizeGitSnapshot(EMPTY_IDE_GIT_SNAPSHOT);
-    executors.value = [];
   }
 }
 
@@ -171,311 +118,6 @@ async function loadGitSnapshot(workspaceID) {
     gitSnapshot.value = normalizeGitSnapshot(EMPTY_IDE_GIT_SNAPSHOT);
     gitError.value = error?.userMessage || error?.message || "Git 状态不可用";
   }
-}
-
-async function loadSSHKeys() {
-  try {
-    sshKeys.value = await listIDESSHKeys();
-    sshError.value = "";
-  } catch (error) {
-    sshKeys.value = [];
-    sshError.value = error?.userMessage || error?.message || "SSH 保险库不可用";
-  }
-}
-
-async function importSSHKey() {
-  const name = sshName.value.trim();
-  const privateKey = sshPrivateKey.value;
-  const passphrase = sshPassphrase.value;
-  sshPrivateKey.value = "";
-  sshPassphrase.value = "";
-  if (!name) return;
-  await run(async () => {
-    await importIDESSHKey(name, privateKey, passphrase);
-    sshName.value = "";
-    await loadSSHKeys();
-  });
-}
-
-async function generateSSHKey() {
-  const name = sshName.value.trim();
-  sshPrivateKey.value = "";
-  sshPassphrase.value = "";
-  if (!name) return;
-  await run(async () => {
-    await generateIDESSHKey(name);
-    sshName.value = "";
-    await loadSSHKeys();
-  });
-}
-
-async function removeSSHKey(keyID) {
-  await run(async () => {
-    await removeIDESSHKey(keyID);
-    await loadSSHKeys();
-  });
-}
-
-async function loadKnownHosts() {
-  try {
-    knownHosts.value = await listIDEKnownHosts();
-    knownHostError.value = "";
-  } catch (error) {
-    knownHosts.value = [];
-    knownHostError.value = error?.userMessage || error?.message || "SSH 已知主机不可用";
-  }
-}
-
-async function probeKnownHost() {
-  const host = knownHostName.value.trim();
-  const port = Number(knownHostPort.value) || 22;
-  knownHostPreview.value = null;
-  if (!host) return;
-  await run(async () => {
-    const presented = await probeIDEHostKey(host, port);
-    knownHostName.value = presented.host || host;
-    knownHostPort.value = String(presented.port || port);
-    knownHostPublicKey.value = presented.publicKey || "";
-  });
-}
-
-async function previewKnownHost() {
-  const host = knownHostName.value.trim();
-  const port = Number(knownHostPort.value) || 22;
-  const publicKey = knownHostPublicKey.value;
-  if (!host || !publicKey.trim() || !activeWorkspaceID.value) return;
-  await run(async () => {
-    knownHostPreview.value = await previewIDEKnownHost(activeWorkspaceID.value, host, port, publicKey);
-  });
-}
-
-async function rejectKnownHost() {
-  const preview = knownHostPreview.value;
-  if (!preview?.approval?.id) {
-    knownHostPreview.value = null;
-    return;
-  }
-  await run(async () => {
-    await rejectIDEApproval(activeWorkspaceID.value, preview.approval.id);
-    knownHostPreview.value = null;
-  });
-}
-
-async function approveKnownHost() {
-  const preview = knownHostPreview.value;
-  if (!preview?.approval?.id) return;
-  await run(async () => {
-    await approveIDEApproval(activeWorkspaceID.value, preview.approval.id);
-    await commitIDEKnownHost(
-      activeWorkspaceID.value,
-      preview.approval.id,
-      preview.host,
-      preview.port,
-      preview.publicKey,
-    );
-    knownHostPreview.value = null;
-    knownHostPublicKey.value = "";
-    await loadKnownHosts();
-  });
-}
-
-function knownHostStatusLabel(status) {
-  if (status === "matched") return "已信任";
-  if (status === "mismatch") return "主机密钥已变更";
-  return "尚未信任";
-}
-
-async function previewGitOp(operation) {
-  if (!activeWorkspaceID.value) return;
-  gitLastAction.value = "";
-  await run(async () => {
-    gitPreview.value = await previewIDEGitOperation(activeWorkspaceID.value, operation);
-  });
-}
-
-async function previewClone() {
-  const remoteUrl = gitCloneURL.value.trim();
-  const directory = gitCloneDirectory.value.trim() || ".";
-  if (!remoteUrl) return;
-  await previewGitOp({ kind: "git_clone", remoteUrl, directory });
-}
-
-async function previewStageAll() {
-  await previewGitOp({ kind: "git_stage", stageAll: true });
-}
-
-async function previewCommit() {
-  const message = gitCommitMessage.value.trim();
-  if (!message) return;
-  await previewGitOp({ kind: "git_commit", message });
-}
-
-async function previewFetch() {
-  await previewGitOp({ kind: "git_fetch", remote: "origin" });
-}
-
-async function previewPull() {
-  await previewGitOp({ kind: "git_pull", remote: "origin" });
-}
-
-async function previewPush() {
-  await previewGitOp({ kind: "git_push", remote: "origin" });
-}
-
-async function rejectGitOp() {
-  const preview = gitPreview.value;
-  if (!preview?.approval?.id) {
-    gitPreview.value = null;
-    return;
-  }
-  await run(async () => {
-    await rejectIDEApproval(activeWorkspaceID.value, preview.approval.id);
-    gitPreview.value = null;
-  });
-}
-
-async function approveGitOp() {
-  const preview = gitPreview.value;
-  if (!preview?.approval?.id) return;
-  await run(async () => {
-    await approveIDEApproval(activeWorkspaceID.value, preview.approval.id);
-    const result = await commitIDEGitOperation(activeWorkspaceID.value, preview.approval.id, {
-      kind: preview.operation.kind,
-      remoteUrl: preview.operation.remoteUrl,
-      remote: preview.operation.remote,
-      directory: preview.operation.directory,
-      paths: preview.operation.paths,
-      message: preview.operation.message,
-      stageAll: preview.operation.stageAll,
-    });
-    gitLastAction.value = `已执行${result?.title || preview.approval.summary?.title || "Git 操作"}`;
-    gitPreview.value = null;
-    if (preview.operation.kind === "git_clone") gitCloneURL.value = "";
-    if (preview.operation.kind === "git_commit") gitCommitMessage.value = "";
-    await loadGitSnapshot(activeWorkspaceID.value);
-  });
-}
-
-async function loadTerminalProfiles() {
-  terminalProfiles.value = await listIDETerminalProfiles();
-  if (!terminalProfiles.value.some((item) => item.id === terminalProfileID.value)) {
-    terminalProfileID.value = terminalProfiles.value[0]?.id || "powershell";
-  }
-}
-
-function stopTerminalPoll() {
-  if (terminalPoll) {
-    window.clearInterval(terminalPoll);
-    terminalPoll = 0;
-  }
-}
-
-async function refreshTerminalOutput() {
-  const session = terminalSession.value;
-  if (!session?.id) return;
-  const snapshot = await getIDETerminalOutput(session.id);
-  terminalOutput.value = snapshot?.data || "";
-  if (snapshot?.exited) {
-    stopTerminalPoll();
-    terminalSession.value = { ...session, state: "exited" };
-  }
-}
-
-async function openTerminal() {
-  if (!activeWorkspaceID.value) return;
-  terminalError.value = "";
-  await run(async () => {
-    if (terminalSession.value?.id && terminalSession.value.state === "running") {
-      await closeIDETerminalSession(terminalSession.value.id);
-    }
-    const session = await openIDETerminalSession(activeWorkspaceID.value, terminalProfileID.value, 80, 24);
-    terminalSession.value = session;
-    terminalOutput.value = "";
-    stopTerminalPoll();
-    terminalPoll = window.setInterval(() => {
-      void refreshTerminalOutput().catch(() => {});
-    }, 250);
-    await refreshTerminalOutput();
-  });
-}
-
-async function sendTerminalInput() {
-  const session = terminalSession.value;
-  const data = terminalInput.value;
-  if (!session?.id || session.state !== "running") return;
-  await run(async () => {
-    await writeIDETerminalSession(session.id, `${data}\r`);
-    terminalInput.value = "";
-    await refreshTerminalOutput();
-  });
-}
-
-async function interruptTerminal() {
-  const session = terminalSession.value;
-  if (!session?.id) return;
-  await run(async () => {
-    await interruptIDETerminalSession(session.id);
-    await refreshTerminalOutput();
-  });
-}
-
-async function closeTerminal() {
-  const session = terminalSession.value;
-  if (!session?.id) return;
-  await run(async () => {
-    stopTerminalPoll();
-    await closeIDETerminalSession(session.id);
-    terminalSession.value = null;
-    terminalOutput.value = "";
-  });
-}
-
-function executorAuthLabel(kind) {
-  return kind === "byok_model" ? "BYOK 模型" : "CLI 登录";
-}
-
-function executorWriteLabel(executor) {
-  return (executor?.capabilities || []).includes("write_workspace") ? "允许写入" : "只读";
-}
-
-function executorHasWrite(executor) {
-  return (executor?.capabilities || []).includes("write_workspace");
-}
-
-async function loadExecutors() {
-  try {
-    const items = await getDelegationExecutorSnapshots();
-    executors.value = Array.isArray(items) ? items : [];
-  } catch {
-    executors.value = [];
-  }
-}
-
-async function previewExecutorWrite(executorID) {
-  if (!activeWorkspaceID.value) return;
-  await run(async () => {
-    executorWritePreview.value = await previewIDEExecutorWriteCapability(activeWorkspaceID.value, executorID);
-  });
-}
-
-async function approveExecutorWrite() {
-  const preview = executorWritePreview.value;
-  if (!preview?.approval?.id || !activeWorkspaceID.value) return;
-  await run(async () => {
-    await approveIDEApproval(activeWorkspaceID.value, preview.approval.id);
-    await commitIDEExecutorWriteCapability(activeWorkspaceID.value, preview.approval.id, preview.executorId);
-    executorWritePreview.value = null;
-    await loadExecutors();
-  });
-}
-
-async function rejectExecutorWrite() {
-  const preview = executorWritePreview.value;
-  if (!preview?.approval?.id || !activeWorkspaceID.value) return;
-  await run(async () => {
-    await rejectIDEApproval(activeWorkspaceID.value, preview.approval.id);
-    executorWritePreview.value = null;
-  });
 }
 
 async function loadRootTree() {
@@ -608,18 +250,7 @@ watch(
 onMounted(() => {
   void run(async () => {
     await refreshWorkspaces();
-    await loadSSHKeys();
-    await loadKnownHosts();
-    await loadTerminalProfiles();
   });
-});
-
-onUnmounted(() => {
-  stopTerminalPoll();
-  const session = terminalSession.value;
-  if (session?.id && session.state === "running") {
-    void closeIDETerminalSession(session.id);
-  }
 });
 </script>
 
@@ -629,16 +260,26 @@ onUnmounted(() => {
       <div>
         <p class="eyebrow">CODE WORK · WORKSPACE</p>
         <h1 id="ide-heading">工作区</h1>
-        <p>选择并注册根目录后，只能用工作区 ID 和相对路径浏览、读取和搜索。只读 Git 状态使用系统 Git 的固定参数，远程地址会去掉凭据。SSH 私钥保存在应用保险库中，界面只显示名称和指纹。主机密钥不会自动接受，只有审批后才会写入应用管理的已知主机。</p>
+        <p>选择并注册根目录后，只能用工作区 ID 和相对路径浏览、读取和搜索。</p>
       </div>
-      <button type="button" class="primary-action" :disabled="loading" @click="registerWorkspace">选择并注册工作区</button>
+      <button
+        v-if="workspaces.length > 0"
+        type="button"
+        class="primary-action"
+        :disabled="loading"
+        @click="registerWorkspace"
+      >选择并注册工作区</button>
     </header>
 
     <p v-if="errorMessage" class="status-error" role="alert">{{ errorMessage }}</p>
     <p v-else-if="loading" class="status-muted">正在加载工作区…</p>
-    <p v-else-if="workspaces.length === 0" class="status-muted">还没有已授权的工作区。请先选择一个根目录。</p>
 
-    <div v-if="workspaces.length > 0" class="ide-grid">
+    <div v-if="workspaces.length === 0 && !loading" class="editor-empty" aria-label="文档编辑器">
+      <p class="status-muted">还没有已授权的工作区。</p>
+      <button type="button" class="primary-action" :disabled="loading" @click="registerWorkspace">打开文件夹</button>
+    </div>
+
+    <div v-else-if="workspaces.length > 0" class="ide-grid">
       <aside class="panel" aria-label="已授权工作区">
         <h2>已授权工作区</h2>
         <button
@@ -681,192 +322,6 @@ onUnmounted(() => {
         <p v-if="explorerRows.length === 0" class="status-muted">这个目录没有可显示的条目。</p>
       </section>
 
-      <section class="panel git-panel" aria-label="源代码">
-        <div class="panel-toolbar">
-          <h2>源代码</h2>
-          <button
-            type="button"
-            class="secondary-action"
-            :disabled="loading || !activeWorkspaceID"
-            @click="run(() => loadGitSnapshot(activeWorkspaceID))"
-          >刷新</button>
-        </div>
-        <p v-if="gitError" class="status-error" role="alert">{{ gitError }}</p>
-        <template v-else-if="gitSnapshot.available">
-          <p class="path-meta">分支 {{ gitSnapshot.branch || "未知" }} · 领先 {{ gitSnapshot.ahead }} · 落后 {{ gitSnapshot.behind }}</p>
-          <h3>远程</h3>
-          <p v-if="gitSnapshot.remotes.length === 0" class="status-muted">没有远程仓库。</p>
-          <p v-for="remote in gitSnapshot.remotes" :key="`${remote.name}:${remote.url}`" class="path-meta">{{ remote.name }} · {{ remote.url }}</p>
-          <h3>变更</h3>
-          <button
-            v-for="change in gitSnapshot.changes"
-            :key="change.path"
-            type="button"
-            class="tree-item"
-            :aria-label="`${change.path} ${gitChangeStatusLabel(change.status)}`"
-            @click="openExplorerRow({ path: change.path, kind: 'file' })"
-          >
-            <span>{{ change.path }}</span>
-            <small>{{ gitChangeStatusLabel(change.status) }}</small>
-          </button>
-          <p v-if="gitSnapshot.changes.length === 0" class="status-muted">没有工作区变更。</p>
-          <h3>差异</h3>
-          <p v-if="gitSnapshot.diffTruncated" class="status-warning">差异已截断</p>
-          <pre class="preview-body git-diff">{{ gitSnapshot.diff || "没有可显示的差异。" }}</pre>
-        </template>
-        <p v-else class="status-muted">当前工作区不是 Git 仓库，或系统 Git 不可用。</p>
-
-        <section aria-label="Git 操作">
-          <h3>Git 操作</h3>
-          <p class="path-meta">克隆、暂存、提交、获取、拉取和推送都要先审批。不会执行任意 Git 命令。</p>
-          <p v-if="gitLastAction" class="path-meta">{{ gitLastAction }}</p>
-          <form class="ssh-form" @submit.prevent="previewClone">
-            <label class="sr-only" for="git-clone-url">远程地址</label>
-            <input id="git-clone-url" v-model="gitCloneURL" type="text" placeholder="远程地址" autocomplete="off" />
-            <label class="sr-only" for="git-clone-dir">目录</label>
-            <input id="git-clone-dir" v-model="gitCloneDirectory" type="text" placeholder="目录" autocomplete="off" />
-            <button type="submit" class="primary-action" :disabled="loading || !gitCloneURL.trim()">预览克隆</button>
-          </form>
-          <form class="ssh-form" @submit.prevent="previewCommit">
-            <label class="sr-only" for="git-commit-message">提交说明</label>
-            <input id="git-commit-message" v-model="gitCommitMessage" type="text" placeholder="提交说明" autocomplete="off" />
-            <div class="search-row">
-              <button type="button" class="secondary-action" :disabled="loading" @click="previewStageAll">预览全部暂存</button>
-              <button type="submit" class="secondary-action" :disabled="loading || !gitCommitMessage.trim()">预览提交</button>
-            </div>
-            <div class="search-row">
-              <button type="button" class="secondary-action" :disabled="loading" @click="previewFetch">预览获取</button>
-              <button type="button" class="secondary-action" :disabled="loading" @click="previewPull">预览拉取</button>
-              <button type="button" class="secondary-action" :disabled="loading" @click="previewPush">预览推送</button>
-            </div>
-          </form>
-          <section v-if="gitPreview" class="write-preview" aria-label="Git 操作预览">
-            <p class="path-meta">{{ gitPreview.approval?.summary?.title || "Git 操作" }} 需要审批。</p>
-            <p v-if="gitPreview.operation?.remoteUrl" class="path-meta">{{ gitPreview.operation.remoteUrl }}</p>
-            <div class="search-row">
-              <button type="button" class="primary-action" :disabled="loading" @click="approveGitOp">批准执行</button>
-              <button type="button" class="secondary-action" :disabled="loading" @click="rejectGitOp">拒绝</button>
-            </div>
-          </section>
-        </section>
-
-        <section aria-label="终端">
-          <h3>终端</h3>
-          <p class="path-meta">使用预定义 PowerShell 或命令提示符。关闭会话会结束子进程。</p>
-          <p v-if="terminalError" class="status-error" role="alert">{{ terminalError }}</p>
-          <form class="ssh-form" @submit.prevent="openTerminal">
-            <label class="sr-only" for="terminal-profile">Shell 配置</label>
-            <select id="terminal-profile" v-model="terminalProfileID" :disabled="loading">
-              <option v-for="profile in terminalProfiles" :key="profile.id" :value="profile.id">{{ profile.name }}</option>
-            </select>
-            <div class="search-row">
-              <button type="submit" class="primary-action" :disabled="loading || !activeWorkspaceID">打开终端</button>
-              <button type="button" class="secondary-action" :disabled="loading || !terminalSession" @click="interruptTerminal">中断</button>
-              <button type="button" class="secondary-action" :disabled="loading || !terminalSession" @click="closeTerminal">关闭终端</button>
-            </div>
-          </form>
-          <pre class="preview-body git-diff" aria-label="终端输出">{{ terminalOutput || "尚未打开终端。" }}</pre>
-          <form class="ssh-form" @submit.prevent="sendTerminalInput">
-            <label class="sr-only" for="terminal-input">终端输入</label>
-            <input id="terminal-input" v-model="terminalInput" type="text" placeholder="终端输入" autocomplete="off" :disabled="!terminalSession || terminalSession.state !== 'running'" />
-            <button type="submit" class="secondary-action" :disabled="loading || !terminalSession || terminalSession.state !== 'running'">发送</button>
-          </form>
-        </section>
-
-        <section aria-label="执行器写入权限">
-          <h3>执行器写入权限</h3>
-          <p class="path-meta">默认只读。写入工作区需要单独审批。CLI 登录与 BYOK 模型会分开标记。</p>
-          <div v-for="executor in executors" :key="executor.id" class="tree-item ssh-key">
-            <span>
-              <strong>{{ executor.displayName || executor.id }}</strong>
-              <small>{{ executorAuthLabel(executor.authKind) }} · {{ executorWriteLabel(executor) }}</small>
-            </span>
-            <button
-              v-if="!executorHasWrite(executor)"
-              type="button"
-              class="text-action"
-              @click="previewExecutorWrite(executor.id)"
-            >预览写入授权</button>
-          </div>
-          <p v-if="executors.length === 0" class="status-muted">还没有执行器。</p>
-          <section v-if="executorWritePreview" class="write-preview" aria-label="执行器写入预览">
-            <p class="path-meta">{{ executorWritePreview.approval?.summary?.title || "允许执行器写入工作区" }} 需要审批。</p>
-            <div class="search-row">
-              <button type="button" class="primary-action" :disabled="loading" @click="approveExecutorWrite">批准授权</button>
-              <button type="button" class="secondary-action" :disabled="loading" @click="rejectExecutorWrite">拒绝</button>
-            </div>
-          </section>
-        </section>
-
-        <section aria-label="SSH 密钥">
-          <h3>SSH 密钥</h3>
-          <p class="path-meta">私钥用系统 DPAPI 加密保存。导入或生成后，界面不会回显私钥或口令。</p>
-          <p v-if="sshError" class="status-error" role="alert">{{ sshError }}</p>
-          <form class="ssh-form" @submit.prevent="importSSHKey">
-            <label class="sr-only" for="ssh-name">密钥名称</label>
-            <input id="ssh-name" v-model="sshName" type="text" placeholder="密钥名称" autocomplete="off" />
-            <label class="sr-only" for="ssh-private">私钥</label>
-            <textarea id="ssh-private" v-model="sshPrivateKey" rows="3" placeholder="粘贴私钥" autocomplete="off" spellcheck="false"></textarea>
-            <label class="sr-only" for="ssh-pass">口令</label>
-            <input id="ssh-pass" v-model="sshPassphrase" type="password" placeholder="口令（可选）" autocomplete="new-password" />
-            <div class="search-row">
-              <button type="submit" class="primary-action" :disabled="loading || !sshName.trim()">导入密钥</button>
-              <button type="button" class="secondary-action" :disabled="loading || !sshName.trim()" @click="generateSSHKey">生成密钥</button>
-            </div>
-          </form>
-          <div
-            v-for="key in sshKeys"
-            :key="key.id"
-            class="tree-item ssh-key"
-          >
-            <span>
-              <strong>{{ key.name }}</strong>
-              <small>{{ key.algorithm }} · {{ key.fingerprint }}</small>
-            </span>
-            <button type="button" class="text-action" :aria-label="`删除 ${key.name}`" @click="removeSSHKey(key.id)">删除</button>
-          </div>
-          <p v-if="sshKeys.length === 0" class="status-muted">还没有 SSH 密钥。</p>
-        </section>
-
-        <section aria-label="已知主机">
-          <h3>已知主机</h3>
-          <p class="path-meta">探测只读取指纹，不会写入。只有审批通过后才会保存到应用管理的已知主机。</p>
-          <p v-if="knownHostError" class="status-error" role="alert">{{ knownHostError }}</p>
-          <form class="ssh-form" @submit.prevent="previewKnownHost">
-            <label class="sr-only" for="known-host-name">主机</label>
-            <input id="known-host-name" v-model="knownHostName" type="text" placeholder="主机" autocomplete="off" />
-            <label class="sr-only" for="known-host-port">端口</label>
-            <input id="known-host-port" v-model="knownHostPort" type="number" min="1" max="65535" placeholder="端口" />
-            <label class="sr-only" for="known-host-key">主机公钥</label>
-            <textarea id="known-host-key" v-model="knownHostPublicKey" rows="3" placeholder="粘贴主机公钥" autocomplete="off" spellcheck="false"></textarea>
-            <div class="search-row">
-              <button type="button" class="secondary-action" :disabled="loading || !knownHostName.trim()" @click="probeKnownHost">探测主机</button>
-              <button type="submit" class="primary-action" :disabled="loading || !knownHostName.trim() || !knownHostPublicKey.trim()">预览信任</button>
-            </div>
-          </form>
-          <section v-if="knownHostPreview" class="write-preview" aria-label="主机密钥预览">
-            <p class="path-meta">{{ knownHostPreview.host }}:{{ knownHostPreview.port }} · {{ knownHostStatusLabel(knownHostPreview.status) }} · {{ knownHostPreview.fingerprint }}</p>
-            <p v-if="knownHostPreview.status === 'mismatch'" class="status-warning">已记录的指纹是 {{ knownHostPreview.knownFingerprint }}。批准后会替换旧密钥。</p>
-            <p v-else-if="knownHostPreview.approval?.id" class="path-meta">{{ knownHostPreview.approval.summary?.title || "信任 SSH 主机" }} 需要审批。</p>
-            <div v-if="knownHostPreview.approval?.id" class="search-row">
-              <button type="button" class="primary-action" :disabled="loading" @click="approveKnownHost">批准写入</button>
-              <button type="button" class="secondary-action" :disabled="loading" @click="rejectKnownHost">拒绝</button>
-            </div>
-          </section>
-          <div
-            v-for="item in knownHosts"
-            :key="`${item.host}:${item.port}`"
-            class="tree-item ssh-key"
-          >
-            <span>
-              <strong>{{ item.host }}:{{ item.port }}</strong>
-              <small>{{ item.algorithm }} · {{ item.fingerprint }}</small>
-            </span>
-          </div>
-          <p v-if="knownHosts.length === 0" class="status-muted">还没有已知主机。</p>
-        </section>
-      </section>
-
       <section class="panel preview-panel" aria-label="文档编辑器">
         <TabStrip
           :tabs="documents.tabs"
@@ -881,6 +336,9 @@ onUnmounted(() => {
           <input id="ide-search" v-model="searchQuery" type="search" placeholder="搜索文本" autocomplete="off" />
           <button type="submit" class="secondary-action" :disabled="!searchQuery.trim() || loading">搜索</button>
         </form>
+
+        <p v-if="gitError" class="status-error" role="alert">{{ gitError }}</p>
+        <p v-else-if="gitSummary" class="path-meta" aria-label="源代码">{{ gitSummary }}</p>
 
         <div v-if="activeDocument" class="preview">
           <div class="panel-toolbar">
@@ -935,7 +393,6 @@ onUnmounted(() => {
 h1 { margin: 0; color: var(--cw-text-primary); font-size: 28px; letter-spacing: -.04em; }
 .ide-header p { max-width: 720px; margin: 8px 0 0; color: var(--cw-text-secondary); font-size: 13px; line-height: 1.6; }
 h2 { margin: 0; color: var(--cw-text-primary); font-size: 13px; }
-h3 { margin: 8px 0 0; color: var(--cw-text-secondary); font-size: 11px; font-weight: 650; }
 .primary-action, .secondary-action, .text-action { min-height: 32px; border-radius: var(--cw-radius-sm); cursor: pointer; font-size: 12px; font-weight: 650; }
 .primary-action { padding: 0 12px; border: 0; background: var(--cw-accent); color: var(--cw-accent-ink); }
 .primary-action:disabled, .secondary-action:disabled { opacity: .55; cursor: not-allowed; }
@@ -945,9 +402,10 @@ h3 { margin: 8px 0 0; color: var(--cw-text-secondary); font-size: 11px; font-wei
 .status-error { color: #f0a8a8; }
 .status-warning { color: #e6c07b; }
 .status-muted { color: var(--cw-text-muted); }
-.ide-grid { display: grid; grid-template-columns: minmax(160px, 200px) minmax(200px, 1fr) minmax(220px, 280px) minmax(280px, 1.3fr); min-height: 0; flex: 1; gap: 10px; }
+.ide-grid { display: grid; grid-template-columns: minmax(160px, 200px) minmax(200px, 1fr) minmax(280px, 1.6fr); min-height: 0; flex: 1; gap: 10px; }
 .panel { display: flex; min-width: 0; min-height: 0; flex-direction: column; gap: 8px; overflow: auto; padding: 12px; border: 1px solid var(--cw-border-subtle); border-radius: var(--cw-radius-md); background: color-mix(in srgb, var(--cw-surface-raised) 78%, transparent); }
 .preview-panel { padding-top: 0; }
+.editor-empty { display: flex; min-height: 280px; flex: 1; flex-direction: column; align-items: center; justify-content: center; gap: 12px; border: 1px solid var(--cw-border-subtle); border-radius: var(--cw-radius-md); background: color-mix(in srgb, var(--cw-surface-raised) 78%, transparent); }
 .panel-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .path-meta { margin: 0; color: var(--cw-text-muted); font-size: 11px; }
 .workspace-item, .tree-item { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2px 8px; width: 100%; min-height: 36px; padding: 7px 8px; border: 0; border-radius: var(--cw-radius-sm); background: transparent; color: var(--cw-text-secondary); text-align: left; cursor: pointer; }
@@ -964,12 +422,6 @@ h3 { margin: 8px 0 0; color: var(--cw-text-secondary); font-size: 11px; font-wei
 .write-preview { display: grid; gap: 8px; padding-top: 8px; border-top: 1px solid var(--cw-border-subtle); }
 .search-hits { display: grid; gap: 8px; margin: 0; padding: 0; list-style: none; }
 .search-hits code { display: block; color: var(--cw-text-muted); font-size: 11px; }
-.git-diff { min-height: 120px; max-height: 220px; }
-.ssh-form { display: grid; gap: 8px; }
-.ssh-form input, .ssh-form textarea { width: 100%; padding: 8px; border: 1px solid var(--cw-border-subtle); border-radius: var(--cw-radius-sm); background: var(--cw-surface-workbench); color: var(--cw-text-primary); font-size: 12px; }
-.ssh-form textarea { min-height: 64px; resize: vertical; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
-.ssh-key { cursor: default; }
-.ssh-key small { display: block; }
 .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
 @media (max-width: 1100px) { .ide-grid { grid-template-columns: 1fr; } .ide-header { flex-direction: column; } .diff-grid { grid-template-columns: 1fr; } }
 </style>
