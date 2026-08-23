@@ -34,13 +34,10 @@ const panels = {
     ],
   },
   "source-control": {
-    title: "运行状态",
-    subtitle: "完整内核仍然可用",
+    title: "源代码管理",
+    subtitle: "只读 Git 状态",
     items: [
-      { label: "服务控制台", path: "/service", icon: "service" },
-      { label: "会话分析", path: "/metrics-detail", icon: "chart" },
-      { label: "请求明细", path: "/request-metrics", icon: "chart" },
-      { label: "诊断", path: "/diagnostics", icon: "shield" },
+      { label: "工作区 Git", path: "/ide", icon: "source-control" },
     ],
   },
   extensions: {

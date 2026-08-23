@@ -114,3 +114,8 @@ func IDEWorkspaceRootPath() string {
 func IDEApprovalRootPath() string {
 	return filepath.Join(DataRootPath(), "ide-approvals")
 }
+
+// IDESSHVaultRootPath returns the private DPAPI-backed SSH key vault root.
+func IDESSHVaultRootPath() string {
+	return filepath.Join(DataRootPath(), "ide-ssh-vault")
+}

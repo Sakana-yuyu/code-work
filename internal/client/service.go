@@ -18,6 +18,9 @@ import (
 	"cursor/internal/configprofile"
 	"cursor/internal/cursoraccount"
 	"cursor/internal/historymetrics"
+	"cursor/internal/ide/approval"
+	"cursor/internal/ide/gitstatus"
+	"cursor/internal/ide/sshvault"
 	"cursor/internal/ide/workspace"
 	"cursor/internal/logger"
 	"cursor/internal/mitm"
@@ -53,6 +56,9 @@ type ProxyService struct {
 	agentOps           *agentops.Console
 	profiles           *configprofile.Store
 	ideWorkspaces      *workspace.Store
+	ideApprovals       *approval.Store
+	ideGit             *gitstatus.Store
+	ideSSH             *sshvault.Store
 	selectIDEDirectory func() (string, error)
 
 	// lifecycleMu serializes start/stop transitions so a Cursor launch cannot
@@ -233,6 +239,9 @@ func NewProxyService(proxy *mitm.ProxyServer, certManager *certs.Manager, caCert
 	service.routingMetrics = routing.NewMetricsSnapshot()
 	service.profiles = configprofile.New(filepath.Join(appdata.DataRootPath(), "profiles"))
 	service.ideWorkspaces = workspace.New(appdata.IDEWorkspaceRootPath())
+	service.ideApprovals = approval.New(appdata.IDEApprovalRootPath())
+	service.ideGit = gitstatus.New(service.ideWorkspaces.AuthorizedRoot, gitstatus.NewSystemRunner())
+	service.ideSSH = sshvault.New(appdata.IDESSHVaultRootPath(), sshvault.NewDPAPIProtector())
 	service.agentOps = agentops.New(
 		filepath.Join(appdata.DataRootPath(), "agent-ops", "exports"),
 		func() []forwarder.DelegationTaskSnapshot {

@@ -29,6 +29,8 @@ var (
 	ErrSensitivePath        = errors.New("sensitive path is not accessible")
 	ErrSymlinkNotAllowed    = errors.New("symbolic links are not accessible")
 	ErrNotRegularFile       = errors.New("not a regular file")
+	ErrVersionConflict      = errors.New("workspace file version conflict")
+	ErrWriteNotAllowed      = errors.New("workspace file cannot be written")
 	ErrRegistryInvalid      = errors.New("workspace registry is invalid")
 )
 
@@ -186,6 +188,10 @@ func (store *Store) saveLocked(records []workspaceRecord) error {
 		return err
 	}
 	return writeRegistryAtomically(store.registryPath, document)
+}
+
+func (store *Store) AuthorizedRoot(ctx context.Context, workspaceID string) (string, error) {
+	return store.canonicalRootForID(ctx, workspaceID)
 }
 
 func (store *Store) canonicalRootForID(ctx context.Context, workspaceID string) (string, error) {

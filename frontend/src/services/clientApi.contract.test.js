@@ -75,10 +75,22 @@ test("IDE workspace APIs are wrapped for desktop and browser preview", async () 
     "GetIDEWorkspaceTree",
     "ReadIDEWorkspaceText",
     "SearchIDEWorkspace",
+    "PreviewIDEWorkspaceWrite",
+    "ApproveIDEApproval",
+    "RejectIDEApproval",
+    "CancelIDEWorkspaceApprovals",
+    "CommitIDEWorkspaceWrite",
+    "GetIDEGitSnapshot",
+    "ListIDESSHKeys",
+    "ImportIDESSHKey",
+    "GenerateIDESSHKey",
+    "RemoveIDESSHKey",
   ]) {
     assert.match(source, new RegExp(`export function ${name[0].toLowerCase()}${name.slice(1)}`));
     assert.match(bindingsSource, new RegExp(`export const ${name} =`));
   }
   assert.doesNotMatch(source, /export function registerIDEWorkspace/);
   assert.doesNotMatch(bindingsSource, /export const RegisterIDEWorkspace/);
+  assert.doesNotMatch(source, /export function getIDESSHPrivateKey/);
+  assert.doesNotMatch(bindingsSource, /export const GetIDESSHPrivateKey/);
 });

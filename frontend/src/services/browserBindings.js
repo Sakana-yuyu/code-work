@@ -2,6 +2,16 @@ import { browserPreviewMockMetrics, browserPreviewMockProxyState } from "@/servi
 import {
   getIDEWorkspaceTree as previewGetIDEWorkspaceTree,
   listIDEWorkspaces as previewListIDEWorkspaces,
+  previewIDEWorkspaceWrite as previewPreviewIDEWorkspaceWrite,
+  approveIDEApproval as previewApproveIDEApproval,
+  rejectIDEApproval as previewRejectIDEApproval,
+  cancelIDEWorkspaceApprovals as previewCancelIDEWorkspaceApprovals,
+  commitIDEWorkspaceWrite as previewCommitIDEWorkspaceWrite,
+  getIDEGitSnapshot as previewGetIDEGitSnapshot,
+  listIDESSHKeys as previewListIDESSHKeys,
+  importIDESSHKey as previewImportIDESSHKey,
+  generateIDESSHKey as previewGenerateIDESSHKey,
+  removeIDESSHKey as previewRemoveIDESSHKey,
   readIDEWorkspaceText as previewReadIDEWorkspaceText,
   removeIDEWorkspace as previewRemoveIDEWorkspace,
   resetIDEWorkspacePreview,
@@ -1445,6 +1455,46 @@ export const ReadIDEWorkspaceText = (workspaceID, relativeFile) => {
 export const SearchIDEWorkspace = (workspaceID, relativePath, query) => {
   recordPreviewCall("SearchIDEWorkspace", [workspaceID, relativePath, query]);
   return previewSearchIDEWorkspace(workspaceID, relativePath, query);
+};
+export const PreviewIDEWorkspaceWrite = (workspaceID, relativeFile, text, expectedVersion) => {
+  recordPreviewCall("PreviewIDEWorkspaceWrite", [workspaceID, relativeFile, expectedVersion]);
+  return previewPreviewIDEWorkspaceWrite(workspaceID, relativeFile, text, expectedVersion);
+};
+export const ApproveIDEApproval = (workspaceID, approvalID) => {
+  recordPreviewCall("ApproveIDEApproval", [workspaceID, approvalID]);
+  return previewApproveIDEApproval(workspaceID, approvalID);
+};
+export const RejectIDEApproval = (workspaceID, approvalID) => {
+  recordPreviewCall("RejectIDEApproval", [workspaceID, approvalID]);
+  return previewRejectIDEApproval(workspaceID, approvalID);
+};
+export const CancelIDEWorkspaceApprovals = (workspaceID) => {
+  recordPreviewCall("CancelIDEWorkspaceApprovals", [workspaceID]);
+  return previewCancelIDEWorkspaceApprovals(workspaceID);
+};
+export const CommitIDEWorkspaceWrite = (workspaceID, approvalID, relativeFile, text, expectedVersion) => {
+  recordPreviewCall("CommitIDEWorkspaceWrite", [workspaceID, approvalID, relativeFile, expectedVersion]);
+  return previewCommitIDEWorkspaceWrite(workspaceID, approvalID, relativeFile, text, expectedVersion);
+};
+export const GetIDEGitSnapshot = (workspaceID) => {
+  recordPreviewCall("GetIDEGitSnapshot", [workspaceID]);
+  return previewGetIDEGitSnapshot(workspaceID);
+};
+export const ListIDESSHKeys = () => {
+  recordPreviewCall("ListIDESSHKeys");
+  return previewListIDESSHKeys();
+};
+export const ImportIDESSHKey = (name, privateKey, passphrase) => {
+  recordPreviewCall("ImportIDESSHKey", [name]);
+  return previewImportIDESSHKey(name, privateKey, passphrase);
+};
+export const GenerateIDESSHKey = (name) => {
+  recordPreviewCall("GenerateIDESSHKey", [name]);
+  return previewGenerateIDESSHKey(name);
+};
+export const RemoveIDESSHKey = (keyID) => {
+  recordPreviewCall("RemoveIDESSHKey", [keyID]);
+  return previewRemoveIDESSHKey(keyID);
 };
 
 function previewStructuredQuotaBalance() {

@@ -3,20 +3,32 @@ import { computed, onMounted, reactive, ref } from "vue";
 import TabStrip from "@/components/workbench/TabStrip.vue";
 import ReadonlyCodeEditor from "@/components/ide/ReadonlyCodeEditor.vue";
 import {
+  approveIDEApproval,
+  commitIDEWorkspaceWrite,
+  generateIDESSHKey,
+  getIDEGitSnapshot,
   getIDEWorkspaceTree,
+  importIDESSHKey,
+  listIDESSHKeys,
   listIDEWorkspaces,
+  previewIDEWorkspaceWrite,
   readIDEWorkspaceText,
+  rejectIDEApproval,
+  removeIDESSHKey,
   searchIDEWorkspace,
   selectAndRegisterIDEWorkspace,
 } from "@/services/clientApi";
 import {
   activateDocumentTab,
   activeDocumentTab,
+  applySavedDocument,
   closeDocumentTab,
   createDocumentTabStore,
+  documentCanSave,
   documentStatusLabel,
   documentStatusMeta,
   openDocumentTab,
+  updateDocumentDraft,
 } from "@/utils/ideDocumentTabs";
 import {
   applyChildTree,
@@ -25,6 +37,11 @@ import {
   toggleDirectory,
   visibleExplorerRows,
 } from "@/utils/ideExplorerTree";
+import {
+  EMPTY_IDE_GIT_SNAPSHOT,
+  gitChangeStatusLabel,
+  normalizeGitSnapshot,
+} from "@/utils/ideGitSnapshot";
 
 const workspaces = ref([]);
 const activeWorkspaceID = ref("");
@@ -34,6 +51,14 @@ const loading = ref(false);
 const errorMessage = ref("");
 const explorer = reactive(createExplorerTree());
 const documents = reactive(createDocumentTabStore());
+const writePreview = ref(null);
+const gitSnapshot = ref(normalizeGitSnapshot(EMPTY_IDE_GIT_SNAPSHOT));
+const gitError = ref("");
+const sshKeys = ref([]);
+const sshError = ref("");
+const sshName = ref("");
+const sshPrivateKey = ref("");
+const sshPassphrase = ref("");
 
 const activeWorkspace = computed(() => workspaces.value.find((item) => item.id === activeWorkspaceID.value) || null);
 const explorerRows = computed(() => {
@@ -41,6 +66,15 @@ const explorerRows = computed(() => {
   return visibleExplorerRows(explorer);
 });
 const activeDocument = computed(() => activeDocumentTab(documents));
+const editorReadOnly = computed(() => {
+  const tab = activeDocument.value;
+  return !tab || tab.restricted || tab.binary || tab.truncated;
+});
+const editorKey = computed(() => {
+  const tab = activeDocument.value;
+  if (!tab) return "";
+  return `${tab.id}:${tab.version}:${tab.truncated}:${tab.restricted}`;
+});
 
 function statusForEntry(entry) {
   if (entry.restricted || entry.kind === "symlink") return "受限";
@@ -67,8 +101,67 @@ async function refreshWorkspaces(preferredID) {
     ? preferredID
     : (workspaces.value[0]?.id || "");
   activeWorkspaceID.value = nextID;
-  if (nextID) await loadRootTree();
-  else applyRootTree(explorer, { entries: [], truncated: false });
+  gitError.value = "";
+  if (nextID) {
+    await loadRootTree();
+    await loadGitSnapshot(nextID);
+  } else {
+    applyRootTree(explorer, { entries: [], truncated: false });
+    gitSnapshot.value = normalizeGitSnapshot(EMPTY_IDE_GIT_SNAPSHOT);
+  }
+}
+
+async function loadGitSnapshot(workspaceID) {
+  try {
+    gitSnapshot.value = normalizeGitSnapshot(await getIDEGitSnapshot(workspaceID));
+    gitError.value = "";
+  } catch (error) {
+    gitSnapshot.value = normalizeGitSnapshot(EMPTY_IDE_GIT_SNAPSHOT);
+    gitError.value = error?.userMessage || error?.message || "Git 状态不可用";
+  }
+}
+
+async function loadSSHKeys() {
+  try {
+    sshKeys.value = await listIDESSHKeys();
+    sshError.value = "";
+  } catch (error) {
+    sshKeys.value = [];
+    sshError.value = error?.userMessage || error?.message || "SSH 保险库不可用";
+  }
+}
+
+async function importSSHKey() {
+  const name = sshName.value.trim();
+  const privateKey = sshPrivateKey.value;
+  const passphrase = sshPassphrase.value;
+  sshPrivateKey.value = "";
+  sshPassphrase.value = "";
+  if (!name) return;
+  await run(async () => {
+    await importIDESSHKey(name, privateKey, passphrase);
+    sshName.value = "";
+    await loadSSHKeys();
+  });
+}
+
+async function generateSSHKey() {
+  const name = sshName.value.trim();
+  sshPrivateKey.value = "";
+  sshPassphrase.value = "";
+  if (!name) return;
+  await run(async () => {
+    await generateIDESSHKey(name);
+    sshName.value = "";
+    await loadSSHKeys();
+  });
+}
+
+async function removeSSHKey(keyID) {
+  await run(async () => {
+    await removeIDESSHKey(keyID);
+    await loadSSHKeys();
+  });
 }
 
 async function loadRootTree() {
@@ -135,8 +228,49 @@ async function runSearch() {
   });
 }
 
+function onEditorText(text) {
+  if (!documents.activeId) return;
+  updateDocumentDraft(documents, documents.activeId, text);
+}
+
+async function prepareSave() {
+  const tab = activeDocument.value;
+  if (!documentCanSave(tab)) return;
+  await run(async () => {
+    writePreview.value = await previewIDEWorkspaceWrite(tab.workspaceID, tab.path, tab.draft, tab.version);
+  });
+}
+
+async function rejectSave() {
+  const preview = writePreview.value;
+  if (!preview?.approval?.id) {
+    writePreview.value = null;
+    return;
+  }
+  await run(async () => {
+    await rejectIDEApproval(preview.approval.workspaceId || preview.approval.workspaceID || activeWorkspaceID.value, preview.approval.id);
+    writePreview.value = null;
+  });
+}
+
+async function approveSave() {
+  const preview = writePreview.value;
+  const tab = activeDocument.value;
+  if (!preview?.approval?.id || !tab) return;
+  const workspaceID = preview.approval.workspaceId || preview.approval.workspaceID || tab.workspaceID;
+  await run(async () => {
+    await approveIDEApproval(workspaceID, preview.approval.id);
+    const saved = await commitIDEWorkspaceWrite(workspaceID, preview.approval.id, preview.path, preview.after, preview.expectedVersion);
+    applySavedDocument(documents, tab.id, saved);
+    writePreview.value = null;
+  });
+}
+
 onMounted(() => {
-  void run(() => refreshWorkspaces());
+  void run(async () => {
+    await refreshWorkspaces();
+    await loadSSHKeys();
+  });
 });
 </script>
 
@@ -146,7 +280,7 @@ onMounted(() => {
       <div>
         <p class="eyebrow">CODE WORK · WORKSPACE</p>
         <h1 id="ide-heading">工作区</h1>
-        <p>选择并注册根目录后，只能用工作区 ID 和相对路径浏览、读取和搜索。敏感文件、符号链接、二进制和大文件会显示明确状态。</p>
+        <p>选择并注册根目录后，只能用工作区 ID 和相对路径浏览、读取和搜索。只读 Git 状态使用系统 Git 的固定参数，远程地址会去掉凭据。SSH 私钥保存在应用保险库中，界面只显示名称和指纹。</p>
       </div>
       <button type="button" class="primary-action" :disabled="loading" @click="registerWorkspace">选择并注册工作区</button>
     </header>
@@ -198,6 +332,72 @@ onMounted(() => {
         <p v-if="explorerRows.length === 0" class="status-muted">这个目录没有可显示的条目。</p>
       </section>
 
+      <section class="panel git-panel" aria-label="源代码">
+        <div class="panel-toolbar">
+          <h2>源代码</h2>
+          <button
+            type="button"
+            class="secondary-action"
+            :disabled="loading || !activeWorkspaceID"
+            @click="run(() => loadGitSnapshot(activeWorkspaceID))"
+          >刷新</button>
+        </div>
+        <p v-if="gitError" class="status-error" role="alert">{{ gitError }}</p>
+        <template v-else-if="gitSnapshot.available">
+          <p class="path-meta">分支 {{ gitSnapshot.branch || "未知" }} · 领先 {{ gitSnapshot.ahead }} · 落后 {{ gitSnapshot.behind }}</p>
+          <h3>远程</h3>
+          <p v-if="gitSnapshot.remotes.length === 0" class="status-muted">没有远程仓库。</p>
+          <p v-for="remote in gitSnapshot.remotes" :key="`${remote.name}:${remote.url}`" class="path-meta">{{ remote.name }} · {{ remote.url }}</p>
+          <h3>变更</h3>
+          <button
+            v-for="change in gitSnapshot.changes"
+            :key="change.path"
+            type="button"
+            class="tree-item"
+            :aria-label="`${change.path} ${gitChangeStatusLabel(change.status)}`"
+            @click="openExplorerRow({ path: change.path, kind: 'file' })"
+          >
+            <span>{{ change.path }}</span>
+            <small>{{ gitChangeStatusLabel(change.status) }}</small>
+          </button>
+          <p v-if="gitSnapshot.changes.length === 0" class="status-muted">没有工作区变更。</p>
+          <h3>差异</h3>
+          <p v-if="gitSnapshot.diffTruncated" class="status-warning">差异已截断</p>
+          <pre class="preview-body git-diff">{{ gitSnapshot.diff || "没有可显示的差异。" }}</pre>
+        </template>
+        <p v-else class="status-muted">当前工作区不是 Git 仓库，或系统 Git 不可用。</p>
+
+        <section aria-label="SSH 密钥">
+          <h3>SSH 密钥</h3>
+          <p class="path-meta">私钥用系统 DPAPI 加密保存。导入或生成后，界面不会回显私钥或口令。</p>
+          <p v-if="sshError" class="status-error" role="alert">{{ sshError }}</p>
+          <form class="ssh-form" @submit.prevent="importSSHKey">
+            <label class="sr-only" for="ssh-name">密钥名称</label>
+            <input id="ssh-name" v-model="sshName" type="text" placeholder="密钥名称" autocomplete="off" />
+            <label class="sr-only" for="ssh-private">私钥</label>
+            <textarea id="ssh-private" v-model="sshPrivateKey" rows="3" placeholder="粘贴私钥" autocomplete="off" spellcheck="false"></textarea>
+            <label class="sr-only" for="ssh-pass">口令</label>
+            <input id="ssh-pass" v-model="sshPassphrase" type="password" placeholder="口令（可选）" autocomplete="new-password" />
+            <div class="search-row">
+              <button type="submit" class="primary-action" :disabled="loading || !sshName.trim()">导入密钥</button>
+              <button type="button" class="secondary-action" :disabled="loading || !sshName.trim()" @click="generateSSHKey">生成密钥</button>
+            </div>
+          </form>
+          <div
+            v-for="key in sshKeys"
+            :key="key.id"
+            class="tree-item ssh-key"
+          >
+            <span>
+              <strong>{{ key.name }}</strong>
+              <small>{{ key.algorithm }} · {{ key.fingerprint }}</small>
+            </span>
+            <button type="button" class="text-action" :aria-label="`删除 ${key.name}`" @click="removeSSHKey(key.id)">删除</button>
+          </div>
+          <p v-if="sshKeys.length === 0" class="status-muted">还没有 SSH 密钥。</p>
+        </section>
+      </section>
+
       <section class="panel preview-panel" aria-label="文档编辑器">
         <TabStrip
           :tabs="documents.tabs"
@@ -214,10 +414,36 @@ onMounted(() => {
         </form>
 
         <div v-if="activeDocument" class="preview">
-          <p class="path-meta">{{ activeDocument.path }} · {{ documentStatusLabel(activeDocument) }} · {{ documentStatusMeta(activeDocument) }}</p>
+          <div class="panel-toolbar">
+            <p class="path-meta">{{ activeDocument.path }} · {{ documentStatusLabel(activeDocument) }} · {{ documentStatusMeta(activeDocument) }}<span v-if="activeDocument.dirty"> · 未保存</span></p>
+            <button
+              v-if="documentCanSave(activeDocument)"
+              type="button"
+              class="secondary-action"
+              :disabled="loading"
+              @click="prepareSave"
+            >保存</button>
+          </div>
+          <section v-if="writePreview" class="write-preview" aria-label="保存预览">
+            <p class="path-meta">保存 {{ writePreview.path }} 需要审批。当前版本 {{ writePreview.currentVersion }}。</p>
+            <div class="diff-grid">
+              <pre class="preview-body">{{ writePreview.before }}</pre>
+              <pre class="preview-body">{{ writePreview.after }}</pre>
+            </div>
+            <div class="search-row">
+              <button type="button" class="primary-action" :disabled="loading" @click="approveSave">批准保存</button>
+              <button type="button" class="secondary-action" :disabled="loading" @click="rejectSave">拒绝</button>
+            </div>
+          </section>
           <pre v-if="activeDocument.restricted" class="preview-body">此路径不可访问。</pre>
           <pre v-else-if="activeDocument.binary" class="preview-body">二进制文件不可预览。</pre>
-          <ReadonlyCodeEditor v-else :text="activeDocument.text" />
+          <ReadonlyCodeEditor
+            v-else
+            :text="activeDocument.draft"
+            :read-only="editorReadOnly"
+            :file-key="editorKey"
+            @update:text="onEditorText"
+          />
         </div>
         <p v-else class="status-muted">选择一个文件查看内容。二进制、截断和受限路径会保留状态，而不是静默打开。</p>
 
@@ -240,6 +466,7 @@ onMounted(() => {
 h1 { margin: 0; color: var(--cw-text-primary); font-size: 28px; letter-spacing: -.04em; }
 .ide-header p { max-width: 720px; margin: 8px 0 0; color: var(--cw-text-secondary); font-size: 13px; line-height: 1.6; }
 h2 { margin: 0; color: var(--cw-text-primary); font-size: 13px; }
+h3 { margin: 8px 0 0; color: var(--cw-text-secondary); font-size: 11px; font-weight: 650; }
 .primary-action, .secondary-action, .text-action { min-height: 32px; border-radius: var(--cw-radius-sm); cursor: pointer; font-size: 12px; font-weight: 650; }
 .primary-action { padding: 0 12px; border: 0; background: var(--cw-accent); color: var(--cw-accent-ink); }
 .primary-action:disabled, .secondary-action:disabled { opacity: .55; cursor: not-allowed; }
@@ -249,7 +476,7 @@ h2 { margin: 0; color: var(--cw-text-primary); font-size: 13px; }
 .status-error { color: #f0a8a8; }
 .status-warning { color: #e6c07b; }
 .status-muted { color: var(--cw-text-muted); }
-.ide-grid { display: grid; grid-template-columns: minmax(180px, 220px) minmax(220px, 1fr) minmax(280px, 1.2fr); min-height: 0; flex: 1; gap: 10px; }
+.ide-grid { display: grid; grid-template-columns: minmax(160px, 200px) minmax(200px, 1fr) minmax(220px, 280px) minmax(280px, 1.3fr); min-height: 0; flex: 1; gap: 10px; }
 .panel { display: flex; min-width: 0; min-height: 0; flex-direction: column; gap: 8px; overflow: auto; padding: 12px; border: 1px solid var(--cw-border-subtle); border-radius: var(--cw-radius-md); background: color-mix(in srgb, var(--cw-surface-raised) 78%, transparent); }
 .preview-panel { padding-top: 0; }
 .panel-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
@@ -262,9 +489,17 @@ h2 { margin: 0; color: var(--cw-text-primary); font-size: 13px; }
 .tree-twist { width: 10px; color: var(--cw-text-muted); font-size: 9px; }
 .search-row { display: flex; gap: 8px; }
 .search-row input { min-width: 0; flex: 1; height: 32px; padding: 0 8px; border: 1px solid var(--cw-border-subtle); border-radius: var(--cw-radius-sm); background: var(--cw-surface-workbench); color: var(--cw-text-primary); }
-.preview { display: flex; min-height: 0; flex: 1; flex-direction: column; gap: 8px; }
+.preview { display: flex; min-height: 0; flex: 1; flex-direction: column; gap: 8px; overflow: auto; }
 .preview-body { min-height: 180px; margin: 0; overflow: auto; padding: 10px; border: 1px solid var(--cw-border-subtle); border-radius: var(--cw-radius-sm); background: var(--cw-surface-workbench); color: var(--cw-text-secondary); font-size: 12px; white-space: pre-wrap; }
+.diff-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.write-preview { display: grid; gap: 8px; padding-top: 8px; border-top: 1px solid var(--cw-border-subtle); }
 .search-hits { display: grid; gap: 8px; margin: 0; padding: 0; list-style: none; }
 .search-hits code { display: block; color: var(--cw-text-muted); font-size: 11px; }
-@media (max-width: 980px) { .ide-grid { grid-template-columns: 1fr; } .ide-header { flex-direction: column; } }
+.git-diff { min-height: 120px; max-height: 220px; }
+.ssh-form { display: grid; gap: 8px; }
+.ssh-form input, .ssh-form textarea { width: 100%; padding: 8px; border: 1px solid var(--cw-border-subtle); border-radius: var(--cw-radius-sm); background: var(--cw-surface-workbench); color: var(--cw-text-primary); font-size: 12px; }
+.ssh-form textarea { min-height: 64px; resize: vertical; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+.ssh-key { cursor: default; }
+.ssh-key small { display: block; }
+@media (max-width: 1100px) { .ide-grid { grid-template-columns: 1fr; } .ide-header { flex-direction: column; } .diff-grid { grid-template-columns: 1fr; } }
 </style>

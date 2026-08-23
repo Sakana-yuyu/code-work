@@ -1,14 +1,23 @@
 package client
 
 import (
+	"context"
+	"crypto/ed25519"
+	"crypto/rand"
 	"encoding/json"
+	"encoding/pem"
 	"errors"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
+	"cursor/internal/ide/approval"
+	"cursor/internal/ide/gitstatus"
+	"cursor/internal/ide/sshvault"
 	"cursor/internal/ide/workspace"
+
+	"golang.org/x/crypto/ssh"
 )
 
 func TestSelectAndRegisterIDEWorkspaceReturnsOpaqueSummary(t *testing.T) {
@@ -77,11 +86,186 @@ func TestIDEWorkspaceOperationsUseWorkspaceIDAndRejectHostPaths(t *testing.T) {
 	}
 }
 
+func TestIDEWorkspaceWriteRequiresApprovalAndRejectsStaleVersion(t *testing.T) {
+	service, workspaceRoot := newTestIDEService(t)
+	writeFile(t, filepath.Join(workspaceRoot, "src", "main.go"), "package main\n")
+	summary, err := service.SelectAndRegisterIDEWorkspace()
+	if err != nil {
+		t.Fatalf("SelectAndRegisterIDEWorkspace() error = %v", err)
+	}
+	current, err := service.ReadIDEWorkspaceText(summary.ID, "src/main.go")
+	if err != nil {
+		t.Fatalf("ReadIDEWorkspaceText() error = %v", err)
+	}
+	if _, err := service.CommitIDEWorkspaceWrite(summary.ID, "00000000-0000-4000-8000-000000000000", "src/main.go", "package saved\n", current.Version); err == nil {
+		t.Fatal("CommitIDEWorkspaceWrite() succeeded without approval")
+	}
+	preview, err := service.PreviewIDEWorkspaceWrite(summary.ID, "src/main.go", "package saved\n", current.Version)
+	if err != nil || preview.Approval.ID == "" || preview.Approval.State != "pending" || preview.Path != "src/main.go" || preview.After != "package saved\n" {
+		t.Fatalf("PreviewIDEWorkspaceWrite() = (%+v, %v)", preview, err)
+	}
+	if strings.Contains(fmtJSON(t, preview), workspaceRoot) {
+		t.Fatalf("preview leaked host path: %+v", preview)
+	}
+	if _, err := service.CommitIDEWorkspaceWrite(summary.ID, preview.Approval.ID, "src/main.go", "package saved\n", current.Version); err == nil {
+		t.Fatal("CommitIDEWorkspaceWrite() succeeded before approve")
+	}
+	approved, err := service.ApproveIDEApproval(summary.ID, preview.Approval.ID)
+	if err != nil || approved.State != "approved" {
+		t.Fatalf("ApproveIDEApproval() = (%+v, %v)", approved, err)
+	}
+	writeFile(t, filepath.Join(workspaceRoot, "src", "main.go"), "package changed\n")
+	if _, err := service.CommitIDEWorkspaceWrite(summary.ID, preview.Approval.ID, "src/main.go", "package saved\n", current.Version); !isMappedIDEError(err, "版本冲突") && !errors.Is(err, workspace.ErrVersionConflict) {
+		t.Fatalf("conflict CommitIDEWorkspaceWrite() error = %v", err)
+	}
+	disk, err := os.ReadFile(filepath.Join(workspaceRoot, "src", "main.go"))
+	if err != nil || string(disk) != "package changed\n" {
+		t.Fatalf("conflict mutated disk = %q err=%v", disk, err)
+	}
+	fresh, err := service.ReadIDEWorkspaceText(summary.ID, "src/main.go")
+	if err != nil {
+		t.Fatalf("ReadIDEWorkspaceText() after conflict error = %v", err)
+	}
+	preview, err = service.PreviewIDEWorkspaceWrite(summary.ID, "src/main.go", "package saved\n", fresh.Version)
+	if err != nil {
+		t.Fatalf("PreviewIDEWorkspaceWrite() retry error = %v", err)
+	}
+	if _, err := service.ApproveIDEApproval(summary.ID, preview.Approval.ID); err != nil {
+		t.Fatalf("ApproveIDEApproval() retry error = %v", err)
+	}
+	written, err := service.CommitIDEWorkspaceWrite(summary.ID, preview.Approval.ID, "src/main.go", "package saved\n", fresh.Version)
+	if err != nil || written.Text != "package saved\n" || written.Version == fresh.Version {
+		t.Fatalf("CommitIDEWorkspaceWrite() = (%+v, %v)", written, err)
+	}
+	if _, err := service.CommitIDEWorkspaceWrite(summary.ID, preview.Approval.ID, "src/main.go", "package saved\n", written.Version); err == nil {
+		t.Fatal("second CommitIDEWorkspaceWrite() reused consumed approval")
+	}
+	assertJSONHasNoHostPath(t, workspaceRoot, preview, written)
+}
+
+func TestGetIDEGitSnapshotSanitizesRemotesAndOmitsHostPaths(t *testing.T) {
+	service, workspaceRoot := newTestIDEService(t)
+	summary, err := service.SelectAndRegisterIDEWorkspace()
+	if err != nil {
+		t.Fatalf("SelectAndRegisterIDEWorkspace() error = %v", err)
+	}
+	service.ideGit = gitstatus.New(service.ideWorkspaces.AuthorizedRoot, &stubGitRunner{outputs: map[string]string{
+		"rev-parse --is-inside-work-tree":                "true\n",
+		"rev-parse --abbrev-ref HEAD":                    "main\n",
+		"status --porcelain=v1 -b --untracked-files=all": "## main...origin/main [ahead 1, behind 2]\n M src/main.go\n?? notes.md\n",
+		"diff --no-ext-diff --no-color -U3 HEAD":         "diff --git a/src/main.go b/src/main.go\n+needle\n",
+		"remote -v":                                      "origin\thttps://user:ghp_secret@github.com/org/repo.git (fetch)\norigin\thttps://user:ghp_secret@github.com/org/repo.git (push)\n",
+	}})
+	snapshot, err := service.GetIDEGitSnapshot(summary.ID)
+	if err != nil {
+		t.Fatalf("GetIDEGitSnapshot() error = %v", err)
+	}
+	if !snapshot.Available || snapshot.Branch != "main" || snapshot.Ahead != 1 || snapshot.Behind != 2 {
+		t.Fatalf("snapshot = %+v", snapshot)
+	}
+	if len(snapshot.Remotes) != 1 || snapshot.Remotes[0].URL != "https://github.com/org/repo.git" {
+		t.Fatalf("remotes = %+v", snapshot.Remotes)
+	}
+	encoded := strings.ToLower(fmtJSON(t, snapshot))
+	if strings.Contains(encoded, "ghp_secret") {
+		t.Fatalf("snapshot leaked secret: %s", encoded)
+	}
+	assertJSONHasNoHostPath(t, workspaceRoot, snapshot)
+	if _, err := service.GetIDEGitSnapshot("00000000-0000-4000-8000-000000000000"); !isMappedIDEError(err, "工作区不存在") && !errors.Is(err, workspace.ErrWorkspaceNotFound) {
+		t.Fatalf("missing workspace GetIDEGitSnapshot() error = %v", err)
+	}
+}
+
+func TestIDESSHVaultOmitsPrivateKeyAndPassphrase(t *testing.T) {
+	service, _ := newTestIDEService(t)
+	privatePEM, _, _ := mustClientSSHKey(t)
+	passphrase := "super-secret-passphrase"
+	imported, err := service.ImportIDESSHKey("github", privatePEM, passphrase)
+	if err != nil || imported.Name != "github" || imported.Fingerprint == "" || imported.PublicKey == "" {
+		t.Fatalf("ImportIDESSHKey() = (%+v, %v)", imported, err)
+	}
+	generated, err := service.GenerateIDESSHKey("local")
+	if err != nil || generated.Fingerprint == "" {
+		t.Fatalf("GenerateIDESSHKey() = (%+v, %v)", generated, err)
+	}
+	items, err := service.ListIDESSHKeys()
+	if err != nil || len(items) != 2 {
+		t.Fatalf("ListIDESSHKeys() = (%+v, %v)", items, err)
+	}
+	encoded := strings.ToLower(fmtJSON(t, imported) + fmtJSON(t, generated) + fmtJSON(t, items))
+	if strings.Contains(encoded, "begin ") || strings.Contains(encoded, strings.ToLower(passphrase)) || strings.Contains(encoded, "privatekey") {
+		t.Fatalf("SSH DTO leaked secret: %s", encoded)
+	}
+	if err := service.RemoveIDESSHKey(imported.ID); err != nil {
+		t.Fatalf("RemoveIDESSHKey() error = %v", err)
+	}
+}
+
+func mustClientSSHKey(t *testing.T) (privatePEM, publicKey, fingerprint string) {
+	t.Helper()
+	_, private, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatalf("GenerateKey() error = %v", err)
+	}
+	block, err := ssh.MarshalPrivateKey(private, "")
+	if err != nil {
+		t.Fatalf("MarshalPrivateKey() error = %v", err)
+	}
+	signer, err := ssh.NewSignerFromKey(private)
+	if err != nil {
+		t.Fatalf("NewSignerFromKey() error = %v", err)
+	}
+	return string(pem.EncodeToMemory(block)), strings.TrimSpace(string(ssh.MarshalAuthorizedKey(signer.PublicKey()))), ssh.FingerprintSHA256(signer.PublicKey())
+}
+
+type stubSSHProtector struct{}
+
+func (stubSSHProtector) Protect(plaintext []byte) ([]byte, error) {
+	out := make([]byte, len(plaintext)+1)
+	out[0] = 'S'
+	for index, value := range plaintext {
+		out[index+1] = value ^ 0x5A
+	}
+	return out, nil
+}
+
+func (stubSSHProtector) Unprotect(ciphertext []byte) ([]byte, error) {
+	out := make([]byte, len(ciphertext)-1)
+	for index, value := range ciphertext[1:] {
+		out[index] = value ^ 0x5A
+	}
+	return out, nil
+}
+
+type stubGitRunner struct {
+	outputs map[string]string
+}
+
+func (runner *stubGitRunner) Run(_ context.Context, _ string, args ...string) (string, error) {
+	if output, ok := runner.outputs[strings.Join(args, " ")]; ok {
+		return output, nil
+	}
+	return "", gitstatus.ErrGitUnavailable
+}
+
+func fmtJSON(t *testing.T, value any) string {
+	t.Helper()
+	raw, err := json.Marshal(value)
+	if err != nil {
+		t.Fatalf("Marshal() error = %v", err)
+	}
+	return string(raw)
+}
+
 func newTestIDEService(t *testing.T) (*ProxyService, string) {
 	t.Helper()
 	workspaceRoot := t.TempDir()
+	workspaces := workspace.New(t.TempDir())
 	service := &ProxyService{
-		ideWorkspaces: workspace.New(t.TempDir()),
+		ideWorkspaces: workspaces,
+		ideApprovals:  approval.New(t.TempDir()),
+		ideGit:        gitstatus.New(workspaces.AuthorizedRoot, gitstatus.NewSystemRunner()),
+		ideSSH:        sshvault.New(t.TempDir(), stubSSHProtector{}),
 		selectIDEDirectory: func() (string, error) {
 			return workspaceRoot, nil
 		},

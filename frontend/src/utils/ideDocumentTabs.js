@@ -19,6 +19,8 @@ export function openDocumentTab(store, file) {
     path: file.path,
     label: entryBasename(file.path),
     text: file.restricted || file.binary ? "" : String(file.text || ""),
+    draft: file.restricted || file.binary ? "" : String(file.text || ""),
+    dirty: false,
     version: String(file.version || ""),
     binary: Boolean(file.binary),
     truncated: Boolean(file.truncated),
@@ -48,6 +50,28 @@ export function closeDocumentTab(store, id) {
 
 export function activeDocumentTab(store) {
   return store.tabs.find((tab) => tab.id === store.activeId) || null;
+}
+
+export function updateDocumentDraft(store, id, draft) {
+  const tab = store.tabs.find((item) => item.id === id);
+  if (!tab || tab.restricted || tab.binary || tab.truncated) return;
+  tab.draft = String(draft ?? "");
+  tab.dirty = tab.draft !== tab.text;
+}
+
+export function documentCanSave(tab) {
+  return Boolean(tab && tab.dirty && !tab.restricted && !tab.binary && !tab.truncated && tab.version);
+}
+
+export function applySavedDocument(store, id, file) {
+  const tab = store.tabs.find((item) => item.id === id);
+  if (!tab || !file) return;
+  tab.text = String(file.text || "");
+  tab.draft = tab.text;
+  tab.version = String(file.version || "");
+  tab.binary = Boolean(file.binary);
+  tab.truncated = Boolean(file.truncated);
+  tab.dirty = false;
 }
 
 export function documentStatusLabel(tab) {

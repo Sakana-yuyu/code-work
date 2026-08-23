@@ -42,6 +42,12 @@ type TextFile struct {
 	Truncated bool   `json:"truncated"`
 }
 
+type WriteRequest struct {
+	Path            string
+	Text            string
+	ExpectedVersion string
+}
+
 type SearchRequest struct {
 	Path  string `json:"path,omitempty"`
 	Query string `json:"query"`
@@ -159,6 +165,56 @@ func (store *Store) ReadText(ctx context.Context, workspaceID string, relativeFi
 		result.Text = string(data)
 	}
 	return result, nil
+}
+
+func (store *Store) WriteText(ctx context.Context, workspaceID string, request WriteRequest) (TextFile, error) {
+	if err := contextErr(ctx); err != nil {
+		return TextFile{}, err
+	}
+	if strings.TrimSpace(request.ExpectedVersion) == "" {
+		return TextFile{}, fmt.Errorf("%w: expected version", ErrVersionConflict)
+	}
+	if len(request.Text) > maxReadTextBytes || !utf8.ValidString(request.Text) || strings.IndexByte(request.Text, 0) >= 0 {
+		return TextFile{}, fmt.Errorf("%w: payload", ErrWriteNotAllowed)
+	}
+	root, relative, err := store.openRoot(ctx, workspaceID, request.Path, false)
+	if err != nil {
+		return TextFile{}, err
+	}
+	defer root.Close()
+	if err := ensureNoSymlinkComponents(root, relative); err != nil {
+		return TextFile{}, err
+	}
+	info, err := root.Lstat(relative)
+	if err != nil {
+		return TextFile{}, fmt.Errorf("%w: file unavailable", ErrWorkspaceUnavailable)
+	}
+	if !info.Mode().IsRegular() {
+		return TextFile{}, fmt.Errorf("%w: requested path", ErrNotRegularFile)
+	}
+	if info.Size() > maxReadTextBytes {
+		return TextFile{}, fmt.Errorf("%w: truncated file", ErrWriteNotAllowed)
+	}
+	existing, err := root.ReadFile(relative)
+	if err != nil {
+		return TextFile{}, fmt.Errorf("%w: read file", ErrWorkspaceUnavailable)
+	}
+	if bytesAppearBinary(existing) {
+		return TextFile{}, fmt.Errorf("%w: binary file", ErrWriteNotAllowed)
+	}
+	if fileVersion(info) != request.ExpectedVersion {
+		return TextFile{}, fmt.Errorf("%w: expected version", ErrVersionConflict)
+	}
+	temporary := relative + ".cw-write.tmp"
+	_ = root.Remove(temporary)
+	if err := root.WriteFile(temporary, []byte(request.Text), info.Mode().Perm()); err != nil {
+		return TextFile{}, fmt.Errorf("%w: write file", ErrWorkspaceUnavailable)
+	}
+	if err := root.Rename(temporary, relative); err != nil {
+		_ = root.Remove(temporary)
+		return TextFile{}, fmt.Errorf("%w: replace file", ErrWorkspaceUnavailable)
+	}
+	return store.ReadText(ctx, workspaceID, request.Path)
 }
 
 func (store *Store) Search(ctx context.Context, workspaceID string, request SearchRequest) (SearchResult, error) {

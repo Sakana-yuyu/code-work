@@ -27,6 +27,9 @@ import {
   GetTerminalEnvironmentStatus, ApplyTerminalEnvironment, InstallTerminalDependency,
   ListIDEWorkspaces, SelectAndRegisterIDEWorkspace, RemoveIDEWorkspace,
   GetIDEWorkspaceTree, ReadIDEWorkspaceText, SearchIDEWorkspace,
+  PreviewIDEWorkspaceWrite, ApproveIDEApproval, RejectIDEApproval, CancelIDEWorkspaceApprovals, CommitIDEWorkspaceWrite,
+  GetIDEGitSnapshot,
+  ListIDESSHKeys, ImportIDESSHKey, GenerateIDESSHKey, RemoveIDESSHKey,
 } from "@bindings/cursor/internal/bridge/proxyservice.js";
 import { GetAdRuntime, OpenExternalURL } from "@bindings/cursor/internal/bridge/adservice.js";
 import {
@@ -93,6 +96,9 @@ const desktopMethods = {
   GetTerminalEnvironmentStatus, ApplyTerminalEnvironment, InstallTerminalDependency,
   ListIDEWorkspaces, SelectAndRegisterIDEWorkspace, RemoveIDEWorkspace,
   GetIDEWorkspaceTree, ReadIDEWorkspaceText, SearchIDEWorkspace,
+  PreviewIDEWorkspaceWrite, ApproveIDEApproval, RejectIDEApproval, CancelIDEWorkspaceApprovals, CommitIDEWorkspaceWrite,
+  GetIDEGitSnapshot,
+  ListIDESSHKeys, ImportIDESSHKey, GenerateIDESSHKey, RemoveIDESSHKey,
 };
 
 const API_LOG_PREFIX = "[clientApi]";
@@ -694,6 +700,46 @@ export function readIDEWorkspaceText(workspaceID, relativeFile) {
 
 export function searchIDEWorkspace(workspaceID, relativePath, query) {
   return withApiLogging("SearchIDEWorkspace", { workspaceID, relativePath, query }, () => desktopOrMockRaw(() => SearchIDEWorkspace(workspaceID, relativePath, query), "@bindings/cursor/internal/bridge/proxyservice.js", "SearchIDEWorkspace", [workspaceID, relativePath, query]));
+}
+
+export function previewIDEWorkspaceWrite(workspaceID, relativeFile, text, expectedVersion) {
+  return withApiLogging("PreviewIDEWorkspaceWrite", { workspaceID, relativeFile, expectedVersion }, () => desktopOrMockRaw(() => PreviewIDEWorkspaceWrite(workspaceID, relativeFile, text, expectedVersion), "@bindings/cursor/internal/bridge/proxyservice.js", "PreviewIDEWorkspaceWrite", [workspaceID, relativeFile, text, expectedVersion]));
+}
+
+export function approveIDEApproval(workspaceID, approvalID) {
+  return withApiLogging("ApproveIDEApproval", { workspaceID, approvalID }, () => desktopOrMockRaw(() => ApproveIDEApproval(workspaceID, approvalID), "@bindings/cursor/internal/bridge/proxyservice.js", "ApproveIDEApproval", [workspaceID, approvalID]));
+}
+
+export function rejectIDEApproval(workspaceID, approvalID) {
+  return withApiLogging("RejectIDEApproval", { workspaceID, approvalID }, () => desktopOrMockRaw(() => RejectIDEApproval(workspaceID, approvalID), "@bindings/cursor/internal/bridge/proxyservice.js", "RejectIDEApproval", [workspaceID, approvalID]));
+}
+
+export function cancelIDEWorkspaceApprovals(workspaceID) {
+  return withApiLogging("CancelIDEWorkspaceApprovals", { workspaceID }, () => desktopOrMockRaw(() => CancelIDEWorkspaceApprovals(workspaceID), "@bindings/cursor/internal/bridge/proxyservice.js", "CancelIDEWorkspaceApprovals", [workspaceID]));
+}
+
+export function commitIDEWorkspaceWrite(workspaceID, approvalID, relativeFile, text, expectedVersion) {
+  return withApiLogging("CommitIDEWorkspaceWrite", { workspaceID, approvalID, relativeFile, expectedVersion }, () => desktopOrMockRaw(() => CommitIDEWorkspaceWrite(workspaceID, approvalID, relativeFile, text, expectedVersion), "@bindings/cursor/internal/bridge/proxyservice.js", "CommitIDEWorkspaceWrite", [workspaceID, approvalID, relativeFile, text, expectedVersion]));
+}
+
+export function getIDEGitSnapshot(workspaceID) {
+  return withApiLogging("GetIDEGitSnapshot", { workspaceID }, () => desktopOrMockRaw(() => GetIDEGitSnapshot(workspaceID), "@bindings/cursor/internal/bridge/proxyservice.js", "GetIDEGitSnapshot", [workspaceID]));
+}
+
+export function listIDESSHKeys() {
+  return withApiLogging("ListIDESSHKeys", undefined, () => desktopOrMockRaw(() => ListIDESSHKeys(), "@bindings/cursor/internal/bridge/proxyservice.js", "ListIDESSHKeys"));
+}
+
+export function importIDESSHKey(name, privateKey, passphrase) {
+  return withApiLogging("ImportIDESSHKey", { name }, () => desktopOrMockRaw(() => ImportIDESSHKey(name, privateKey, passphrase), "@bindings/cursor/internal/bridge/proxyservice.js", "ImportIDESSHKey", [name, privateKey, passphrase]));
+}
+
+export function generateIDESSHKey(name) {
+  return withApiLogging("GenerateIDESSHKey", { name }, () => desktopOrMockRaw(() => GenerateIDESSHKey(name), "@bindings/cursor/internal/bridge/proxyservice.js", "GenerateIDESSHKey", [name]));
+}
+
+export function removeIDESSHKey(keyID) {
+  return withApiLogging("RemoveIDESSHKey", { keyID }, () => desktopOrMockRaw(() => RemoveIDESSHKey(keyID), "@bindings/cursor/internal/bridge/proxyservice.js", "RemoveIDESSHKey", [keyID]));
 }
 
 export function saveDelegationConfig(config) {

@@ -23,10 +23,26 @@ func TestIDEWorkspaceBridgeDoesNotAcceptHostPaths(t *testing.T) {
 		"GetIDEWorkspaceTree",
 		"ReadIDEWorkspaceText",
 		"SearchIDEWorkspace",
+		"PreviewIDEWorkspaceWrite",
+		"ApproveIDEApproval",
+		"RejectIDEApproval",
+		"CancelIDEWorkspaceApprovals",
+		"CommitIDEWorkspaceWrite",
+		"GetIDEGitSnapshot",
+		"ListIDESSHKeys",
+		"ImportIDESSHKey",
+		"GenerateIDESSHKey",
+		"RemoveIDESSHKey",
 	} {
 		if _, exists := serviceType.MethodByName(name); !exists {
 			t.Fatalf("%s is missing", name)
 		}
+	}
+	if _, exists := serviceType.MethodByName("GetIDESSHPrivateKey"); exists {
+		t.Fatal("GetIDESSHPrivateKey must not be a Wails method")
+	}
+	if _, exists := serviceType.MethodByName("PrivateMaterial"); exists {
+		t.Fatal("PrivateMaterial must not be a Wails method")
 	}
 }
 

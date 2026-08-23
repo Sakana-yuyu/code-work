@@ -75,6 +75,11 @@ function navigate(path) {
   void router.push(path);
 }
 
+function onSelectActivity(activityID) {
+  selectWorkbenchActivity(activityID);
+  if (activityID === "source-control") navigate("/ide");
+}
+
 function updateCompactLayout() {
   const nextCompact = window.innerWidth <= 800;
   if (nextCompact && !compactLayout.value) {
@@ -182,7 +187,7 @@ onBeforeUnmount(() => {
   <div class="workbench-shell" :style="workbenchStyle" :class="{ 'sidebar-hidden': !workbenchState.sidebarVisible, 'task-hidden': !workbenchState.taskPanelVisible }">
     <TitleBar :title="currentTitle" @command="runCommand" />
     <div class="workbench-body">
-      <ActivityRail :activities="workbenchActivities" :active-activity="workbenchState.activeActivity" @select="selectWorkbenchActivity" />
+      <ActivityRail :activities="workbenchActivities" :active-activity="workbenchState.activeActivity" @select="onSelectActivity" />
       <div class="workbench-main-row">
         <PrimarySidebar
           v-if="workbenchState.sidebarVisible"

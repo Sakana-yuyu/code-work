@@ -36,7 +36,7 @@
       "refs": [
         {
           "file": "src/services/browserBindings.js",
-          "line": 262,
+          "line": 272,
           "column": 18
         }
       ]
@@ -176,6 +176,18 @@
         }
       ]
     },
+    "016d6c79b4aec5bb": {
+      "source": "审批与操作不匹配",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/services/ideWorkspacePreview.js",
+          "line": 283,
+          "column": 23
+        }
+      ]
+    },
     "01aaebc96af187a9": {
       "source": "导入失败",
       "kind": "text",
@@ -292,7 +304,7 @@
       "refs": [
         {
           "file": "src/services/browserBindings.js",
-          "line": 323,
+          "line": 333,
           "column": 22
         }
       ]
@@ -636,7 +648,7 @@
       "refs": [
         {
           "file": "src/services/browserBindings.js",
-          "line": 1420,
+          "line": 1430,
           "column": 70
         }
       ]
@@ -835,7 +847,7 @@
       "refs": [
         {
           "file": "src/services/browserBindings.js",
-          "line": 766,
+          "line": 776,
           "column": 41
         }
       ]
@@ -914,6 +926,11 @@
           "file": "src/components/settings/categories/HistorySettings.vue",
           "line": 459,
           "column": 21
+        },
+        {
+          "file": "src/utils/ideGitSnapshot.js",
+          "line": 21,
+          "column": 14
         }
       ]
     },
@@ -989,7 +1006,7 @@
       "refs": [
         {
           "file": "src/services/browserBindings.js",
-          "line": 902,
+          "line": 912,
           "column": 12
         }
       ]
@@ -1042,7 +1059,7 @@
       "refs": [
         {
           "file": "src/services/browserBindings.js",
-          "line": 767,
+          "line": 777,
           "column": 21
         }
       ]
@@ -1066,7 +1083,7 @@
       "refs": [
         {
           "file": "src/services/browserBindings.js",
-          "line": 1167,
+          "line": 1177,
           "column": 35
         }
       ]
@@ -1489,12 +1506,12 @@
       "refs": [
         {
           "file": "src/services/browserBindings.js",
-          "line": 436,
+          "line": 446,
           "column": 18
         },
         {
           "file": "src/services/browserBindings.js",
-          "line": 808,
+          "line": 818,
           "column": 78
         }
       ]
@@ -1619,7 +1636,7 @@
       "refs": [
         {
           "file": "src/layouts/WorkbenchLayout.vue",
-          "line": 194,
+          "line": 199,
           "column": 41
         }
       ]
@@ -1645,6 +1662,18 @@
           "file": "src/components/settings/categories/AdvancedSettings.vue",
           "line": 711,
           "column": 11
+        }
+      ]
+    },
+    "0eed209eea91278e": {
+      "source": "还没有 SSH 密钥。",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/views/IdeWorkspace.vue",
+          "line": 321,
+          "column": 59
         }
       ]
     },
@@ -1744,7 +1773,7 @@
       "refs": [
         {
           "file": "src/views/IdeWorkspace.vue",
-          "line": 218,
+          "line": 429,
           "column": 70
         }
       ]
@@ -2040,6 +2069,18 @@
         }
       ]
     },
+    "136de7a8c46fc803": {
+      "source": "拒绝",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/views/IdeWorkspace.vue",
+          "line": 449,
+          "column": 100
+        }
+      ]
+    },
     "137c443b3ec39d5b": {
       "source": "Cursor 与服务",
       "kind": "text",
@@ -2148,7 +2189,7 @@
       "refs": [
         {
           "file": "src/components/workbench/PrimarySidebar.vue",
-          "line": 63,
+          "line": 60,
           "column": 16
         }
       ]
@@ -2160,12 +2201,12 @@
       "refs": [
         {
           "file": "src/services/browserBindings.js",
-          "line": 17,
+          "line": 27,
           "column": 18
         },
         {
           "file": "src/services/browserBindings.js",
-          "line": 43,
+          "line": 53,
           "column": 18
         }
       ]
@@ -2350,7 +2391,7 @@
       "refs": [
         {
           "file": "src/services/browserBindings.js",
-          "line": 1311,
+          "line": 1321,
           "column": 100
         }
       ]
@@ -2444,7 +2485,7 @@
         },
         {
           "file": "src/views/IdeWorkspace.vue",
-          "line": 175,
+          "line": 341,
           "column": 45
         }
       ]
@@ -2497,7 +2538,7 @@
       "refs": [
         {
           "file": "src/services/browserBindings.js",
-          "line": 815,
+          "line": 825,
           "column": 90
         }
       ]
@@ -2895,6 +2936,18 @@
         }
       ]
     },
+    "1bcd31e0174af90e": {
+      "source": "已新增",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/utils/ideGitSnapshot.js",
+          "line": 19,
+          "column": 14
+        }
+      ]
+    },
     "1bd91a7d0c53c936": {
       "source": "已保存",
       "kind": "text",
@@ -2996,6 +3049,18 @@
         }
       ]
     },
+    "1cd84a67ad5c4473": {
+      "source": "粘贴私钥",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/views/IdeWorkspace.vue",
+          "line": 302,
+          "column": 69
+        }
+      ]
+    },
     "1ce6b1d7c95ce2ee": {
       "source": "排序方式",
       "kind": "text",
@@ -3073,6 +3138,35 @@
         }
       ]
     },
+    "1d645cee46232e9d": {
+      "source": "文件不可写入",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/services/ideWorkspacePreview.js",
+          "line": 219,
+          "column": 56
+        },
+        {
+          "file": "src/services/ideWorkspacePreview.js",
+          "line": 276,
+          "column": 56
+        }
+      ]
+    },
+    "1d6bfe97071fde75": {
+      "source": "选择并注册根目录后，只能用工作区 ID 和相对路径浏览、读取和搜索。只读 Git 状态使用系统 Git 的固定参数，远程地址会去掉凭据。SSH 私钥保存在应用保险库中，界面只显示名称和指纹。",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/views/IdeWorkspace.vue",
+          "line": 283,
+          "column": 12
+        }
+      ]
+    },
     "1d7b3062a866bf83": {
       "source": "（浏览器自动化）——配置后覆盖内置。",
       "kind": "text",
@@ -3145,12 +3239,12 @@
       "refs": [
         {
           "file": "src/services/browserBindings.js",
-          "line": 614,
+          "line": 624,
           "column": 61
         },
         {
           "file": "src/services/clientApi.js",
-          "line": 646,
+          "line": 652,
           "column": 66
         }
       ]
@@ -3237,7 +3331,7 @@
       "refs": [
         {
           "file": "src/components/workbench/PrimarySidebar.vue",
-          "line": 50,
+          "line": 47,
           "column": 16
         },
         {
@@ -3283,7 +3377,7 @@
       "refs": [
         {
           "file": "src/services/browserBindings.js",
-          "line": 729,
+          "line": 739,
           "column": 16
         }
       ]
@@ -3339,6 +3433,18 @@
         }
       ]
     },
+    "1f8a975c624b4320": {
+      "source": "没有远程仓库。",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/views/IdeWorkspace.vue",
+          "line": 381,
+          "column": 75
+        }
+      ]
+    },
     "1f8f97b7f1d614a3": {
       "source": "模型适配器测试被用户取消",
       "kind": "text",
@@ -3346,7 +3452,7 @@
       "refs": [
         {
           "file": "src/services/browserBindings.js",
-          "line": 889,
+          "line": 899,
           "column": 12
         }
       ]
@@ -4087,8 +4193,20 @@
       "refs": [
         {
           "file": "src/services/browserBindings.js",
-          "line": 1458,
+          "line": 1508,
           "column": 15
+        }
+      ]
+    },
+    "27586f180db1c812": {
+      "source": "已重命名",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/utils/ideGitSnapshot.js",
+          "line": 23,
+          "column": 14
         }
       ]
     },
@@ -4261,7 +4379,7 @@
       "refs": [
         {
           "file": "src/services/browserBindings.js",
-          "line": 863,
+          "line": 873,
           "column": 12
         }
       ]
@@ -4425,6 +4543,18 @@
         }
       ]
     },
+    "2a85d80840329f8c": {
+      "source": "私钥用系统 DPAPI 加密保存。导入或生成后，界面不会回显私钥或口令。",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/views/IdeWorkspace.vue",
+          "line": 296,
+          "column": 28
+        }
+      ]
+    },
     "2b3f42b30a0af94e": {
       "source": "{0}已用 {1}%",
       "kind": "template",
@@ -4456,7 +4586,7 @@
       "refs": [
         {
           "file": "src/services/browserBindings.js",
-          "line": 1014,
+          "line": 1024,
           "column": 49
         }
       ]
@@ -4577,11 +4707,6 @@
         {
           "file": "src/components/workbench/PrimarySidebar.vue",
           "line": 20,
-          "column": 16
-        },
-        {
-          "file": "src/components/workbench/PrimarySidebar.vue",
-          "line": 40,
           "column": 16
         },
         {
@@ -5037,6 +5162,11 @@
           "column": 75
         },
         {
+          "file": "src/views/IdeWorkspace.vue",
+          "line": 319,
+          "column": 112
+        },
+        {
           "file": "src/views/ModelConfig.vue",
           "line": 394,
           "column": 18
@@ -5354,7 +5484,7 @@
       "refs": [
         {
           "file": "src/components/workbench/PrimarySidebar.vue",
-          "line": 109,
+          "line": 106,
           "column": 64
         }
       ]
@@ -5443,6 +5573,18 @@
         }
       ]
     },
+    "33c36ff6fc1d1d01": {
+      "source": "没有工作区变更。",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/views/IdeWorkspace.vue",
+          "line": 395,
+          "column": 75
+        }
+      ]
+    },
     "33d2d273e2bd5f88": {
       "source": "打开使用教程失败",
       "kind": "text",
@@ -5474,12 +5616,12 @@
       "refs": [
         {
           "file": "src/services/browserBindings.js",
-          "line": 620,
+          "line": 630,
           "column": 97
         },
         {
           "file": "src/services/clientApi.js",
-          "line": 481,
+          "line": 487,
           "column": 99
         }
       ]
@@ -5681,7 +5823,7 @@
       "refs": [
         {
           "file": "src/services/browserBindings.js",
-          "line": 605,
+          "line": 615,
           "column": 169
         }
       ]
@@ -5867,7 +6009,7 @@
         },
         {
           "file": "src/views/IdeWorkspace.vue",
-          "line": 148,
+          "line": 282,
           "column": 30
         }
       ]
@@ -6051,7 +6193,7 @@
       "refs": [
         {
           "file": "src/views/IdeWorkspace.vue",
-          "line": 48,
+          "line": 82,
           "column": 10
         }
       ]
@@ -6065,6 +6207,23 @@
           "file": "src/components/CursorAccountCard.vue",
           "line": 188,
           "column": 52
+        }
+      ]
+    },
+    "39c85f4dd77b211c": {
+      "source": "审批状态无效",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/services/ideWorkspacePreview.js",
+          "line": 281,
+          "column": 54
+        },
+        {
+          "file": "src/services/ideWorkspacePreview.js",
+          "line": 377,
+          "column": 61
         }
       ]
     },
@@ -6326,7 +6485,7 @@
       "refs": [
         {
           "file": "src/services/browserBindings.js",
-          "line": 1395,
+          "line": 1405,
           "column": 49
         }
       ]
@@ -6611,6 +6770,18 @@
         }
       ]
     },
+    "3f54038766bc4ac8": {
+      "source": "SSH 密钥名称不合法",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/services/ideWorkspacePreview.js",
+          "line": 344,
+          "column": 95
+        }
+      ]
+    },
     "3f61b25785f12efb": {
       "source": "在个人安全设置里生成",
       "kind": "text",
@@ -6726,6 +6897,18 @@
         }
       ]
     },
+    "3ffe935f9d0ff77e": {
+      "source": "私钥",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/views/IdeWorkspace.vue",
+          "line": 301,
+          "column": 50
+        }
+      ]
+    },
     "40667f056eb16e37": {
       "source": "委派任务详情",
       "kind": "text",
@@ -6745,7 +6928,7 @@
       "refs": [
         {
           "file": "src/services/browserBindings.js",
-          "line": 815,
+          "line": 825,
           "column": 21
         }
       ]
@@ -6779,11 +6962,6 @@
       "kind": "text",
       "placeholders": 0,
       "refs": [
-        {
-          "file": "src/components/workbench/PrimarySidebar.vue",
-          "line": 43,
-          "column": 16
-        },
         {
           "file": "src/router/index.js",
           "line": 82,
@@ -7105,7 +7283,7 @@
         },
         {
           "file": "src/views/IdeWorkspace.vue",
-          "line": 213,
+          "line": 415,
           "column": 101
         }
       ]
@@ -7175,6 +7353,18 @@
           "file": "src/components/control-center/RoutingPanel.vue",
           "line": 190,
           "column": 49
+        }
+      ]
+    },
+    "45fb956103636ea6": {
+      "source": "冲突",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/utils/ideGitSnapshot.js",
+          "line": 27,
+          "column": 14
         }
       ]
     },
@@ -7337,6 +7527,23 @@
         }
       ]
     },
+    "4738de38fa32f78d": {
+      "source": "审批不存在",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/services/ideWorkspacePreview.js",
+          "line": 279,
+          "column": 36
+        },
+        {
+          "file": "src/services/ideWorkspacePreview.js",
+          "line": 376,
+          "column": 34
+        }
+      ]
+    },
     "474f63797f2ee9a8": {
       "source": "视觉委派",
       "kind": "text",
@@ -7409,7 +7616,7 @@
       "refs": [
         {
           "file": "src/components/workbench/PrimarySidebar.vue",
-          "line": 51,
+          "line": 48,
           "column": 16
         }
       ]
@@ -7525,7 +7732,7 @@
       "refs": [
         {
           "file": "src/services/browserBindings.js",
-          "line": 770,
+          "line": 780,
           "column": 27
         }
       ]
@@ -7672,12 +7879,12 @@
       "refs": [
         {
           "file": "src/views/IdeWorkspace.vue",
-          "line": 159,
+          "line": 325,
           "column": 28
         },
         {
           "file": "src/views/IdeWorkspace.vue",
-          "line": 160,
+          "line": 326,
           "column": 13
         }
       ]
@@ -7795,7 +8002,7 @@
       "refs": [
         {
           "file": "src/services/browserBindings.js",
-          "line": 387,
+          "line": 397,
           "column": 18
         }
       ]
@@ -7913,6 +8120,23 @@
           "file": "src/utils/valueCast.js",
           "line": 69,
           "column": 12
+        },
+        {
+          "file": "src/views/IdeWorkspace.vue",
+          "line": 379,
+          "column": 38
+        }
+      ]
+    },
+    "4d8dc23ed6e1e690": {
+      "source": "保存文件",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/services/ideWorkspacePreview.js",
+          "line": 226,
+          "column": 25
         }
       ]
     },
@@ -7989,7 +8213,7 @@
       "refs": [
         {
           "file": "src/components/workbench/PrimarySidebar.vue",
-          "line": 53,
+          "line": 50,
           "column": 16
         },
         {
@@ -8164,12 +8388,12 @@
       "refs": [
         {
           "file": "src/services/browserBindings.js",
-          "line": 572,
+          "line": 582,
           "column": 284
         },
         {
           "file": "src/services/clientApi.js",
-          "line": 379,
+          "line": 385,
           "column": 24
         }
       ]
@@ -8217,7 +8441,7 @@
       "refs": [
         {
           "file": "src/utils/ideDocumentTabs.js",
-          "line": 57,
+          "line": 81,
           "column": 29
         }
       ]
@@ -8386,7 +8610,7 @@
         },
         {
           "file": "src/components/workbench/PrimarySidebar.vue",
-          "line": 61,
+          "line": 58,
           "column": 16
         },
         {
@@ -8553,12 +8777,12 @@
       "refs": [
         {
           "file": "src/services/browserBindings.js",
-          "line": 678,
+          "line": 688,
           "column": 126
         },
         {
           "file": "src/services/clientApi.js",
-          "line": 577,
+          "line": 583,
           "column": 128
         }
       ]
@@ -8570,7 +8794,7 @@
       "refs": [
         {
           "file": "src/views/IdeWorkspace.vue",
-          "line": 47,
+          "line": 81,
           "column": 42
         },
         {
@@ -8740,7 +8964,7 @@
         },
         {
           "file": "src/components/workbench/PrimarySidebar.vue",
-          "line": 62,
+          "line": 59,
           "column": 16
         }
       ]
@@ -8752,12 +8976,12 @@
       "refs": [
         {
           "file": "src/services/browserBindings.js",
-          "line": 1272,
+          "line": 1282,
           "column": 37
         },
         {
           "file": "src/services/browserBindings.js",
-          "line": 1286,
+          "line": 1296,
           "column": 37
         }
       ]
@@ -9670,6 +9894,11 @@
       "placeholders": 0,
       "refs": [
         {
+          "file": "src/components/workbench/PrimarySidebar.vue",
+          "line": 37,
+          "column": 12
+        },
+        {
           "file": "src/state/workbenchState.js",
           "line": 13,
           "column": 34
@@ -9721,6 +9950,18 @@
           "file": "src/components/workbench/TaskPanel.vue",
           "line": 81,
           "column": 51
+        }
+      ]
+    },
+    "5de4c33d1fadb057": {
+      "source": "SSH 保险库不可用",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/views/IdeWorkspace.vue",
+          "line": 130,
+          "column": 62
         }
       ]
     },
@@ -9977,6 +10218,23 @@
         }
       ]
     },
+    "606a4e58169edb7f": {
+      "source": "源代码",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/views/IdeWorkspace.vue",
+          "line": 367,
+          "column": 40
+        },
+        {
+          "file": "src/views/IdeWorkspace.vue",
+          "line": 369,
+          "column": 15
+        }
+      ]
+    },
     "6078a681a306930d": {
       "source": "缓存写入",
       "kind": "text",
@@ -10045,7 +10303,7 @@
       "refs": [
         {
           "file": "src/services/browserBindings.js",
-          "line": 815,
+          "line": 825,
           "column": 159
         }
       ]
@@ -10093,7 +10351,7 @@
       "refs": [
         {
           "file": "src/services/browserBindings.js",
-          "line": 363,
+          "line": 373,
           "column": 18
         }
       ]
@@ -10295,7 +10553,7 @@
       "refs": [
         {
           "file": "src/views/IdeWorkspace.vue",
-          "line": 205,
+          "line": 407,
           "column": 11
         }
       ]
@@ -10874,6 +11132,18 @@
         }
       ]
     },
+    "682d211b7142758a": {
+      "source": "已修改",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/utils/ideGitSnapshot.js",
+          "line": 17,
+          "column": 14
+        }
+      ]
+    },
     "6853c78e98dcbff8": {
       "source": "主窗口关闭行为",
       "kind": "text",
@@ -10898,7 +11168,7 @@
       "refs": [
         {
           "file": "src/views/IdeWorkspace.vue",
-          "line": 151,
+          "line": 285,
           "column": 99
         }
       ]
@@ -11222,12 +11492,12 @@
       "refs": [
         {
           "file": "src/services/browserBindings.js",
-          "line": 692,
+          "line": 702,
           "column": 79
         },
         {
           "file": "src/services/browserBindings.js",
-          "line": 705,
+          "line": 715,
           "column": 16
         }
       ]
@@ -11265,6 +11535,18 @@
           "file": "src/components/CursorAccountCard.vue",
           "line": 404,
           "column": 76
+        }
+      ]
+    },
+    "6bc245e4aa3bb3e9": {
+      "source": "保存预览",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/views/IdeWorkspace.vue",
+          "line": 441,
+          "column": 60
         }
       ]
     },
@@ -11340,7 +11622,7 @@
       "refs": [
         {
           "file": "src/services/browserBindings.js",
-          "line": 50,
+          "line": 60,
           "column": 20
         }
       ]
@@ -11390,6 +11672,18 @@
           "file": "src/views/RequestMetrics.vue",
           "line": 400,
           "column": 47
+        }
+      ]
+    },
+    "6dac690af6cb55a5": {
+      "source": "Git 状态不可用",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/views/IdeWorkspace.vue",
+          "line": 120,
+          "column": 62
         }
       ]
     },
@@ -11557,7 +11851,7 @@
       "refs": [
         {
           "file": "src/services/browserBindings.js",
-          "line": 375,
+          "line": 385,
           "column": 18
         }
       ]
@@ -11668,6 +11962,18 @@
         }
       ]
     },
+    "6fa65d5fa788b19d": {
+      "source": "需要审批。当前版本",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/views/IdeWorkspace.vue",
+          "line": 442,
+          "column": 59
+        }
+      ]
+    },
     "6fc1c7b963980b18": {
       "source": "开启后 /goal 与 /goal --strict 由系统识别并进入 Goal 执行；关闭时当作普通对话。",
       "kind": "text",
@@ -11711,7 +12017,7 @@
       "refs": [
         {
           "file": "src/services/browserBindings.js",
-          "line": 21,
+          "line": 31,
           "column": 20
         }
       ]
@@ -11882,7 +12188,7 @@
       "refs": [
         {
           "file": "src/services/browserBindings.js",
-          "line": 1023,
+          "line": 1033,
           "column": 58
         }
       ]
@@ -11932,6 +12238,18 @@
           "file": "src/components/control-center/RoutingPanel.vue",
           "line": 39,
           "column": 9
+        }
+      ]
+    },
+    "7366f0e34e922f64": {
+      "source": "· 落后",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/views/IdeWorkspace.vue",
+          "line": 379,
+          "column": 97
         }
       ]
     },
@@ -12019,6 +12337,18 @@
         }
       ]
     },
+    "749a95d25d23d96f": {
+      "source": "只读 Git 状态",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/components/workbench/PrimarySidebar.vue",
+          "line": 38,
+          "column": 15
+        }
+      ]
+    },
     "749b094129bbd49e": {
       "source": "代理与路由",
       "kind": "text",
@@ -12026,7 +12356,7 @@
       "refs": [
         {
           "file": "src/components/workbench/PrimarySidebar.vue",
-          "line": 52,
+          "line": 49,
           "column": 16
         }
       ]
@@ -12187,7 +12517,7 @@
       "refs": [
         {
           "file": "src/services/browserBindings.js",
-          "line": 721,
+          "line": 731,
           "column": 16
         }
       ]
@@ -12420,11 +12750,6 @@
           "column": 13
         },
         {
-          "file": "src/components/workbench/PrimarySidebar.vue",
-          "line": 41,
-          "column": 16
-        },
-        {
           "file": "src/router/index.js",
           "line": 66,
           "column": 39
@@ -12532,12 +12857,12 @@
       "refs": [
         {
           "file": "src/services/browserBindings.js",
-          "line": 423,
+          "line": 433,
           "column": 18
         },
         {
           "file": "src/services/browserBindings.js",
-          "line": 808,
+          "line": 818,
           "column": 71
         }
       ]
@@ -12702,6 +13027,18 @@
         }
       ]
     },
+    "7ba00927dde9122f": {
+      "source": "远程",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/views/IdeWorkspace.vue",
+          "line": 380,
+          "column": 15
+        }
+      ]
+    },
     "7bad1047e9e4017c": {
       "source": "委派任务与运行审计",
       "kind": "text",
@@ -12733,7 +13070,7 @@
       "refs": [
         {
           "file": "src/views/IdeWorkspace.vue",
-          "line": 97,
+          "line": 190,
           "column": 26
         }
       ]
@@ -12757,7 +13094,7 @@
       "refs": [
         {
           "file": "src/services/browserBindings.js",
-          "line": 837,
+          "line": 847,
           "column": 12
         }
       ]
@@ -13043,7 +13380,7 @@
       "refs": [
         {
           "file": "src/views/IdeWorkspace.vue",
-          "line": 219,
+          "line": 430,
           "column": 71
         }
       ]
@@ -13207,7 +13544,7 @@
       "refs": [
         {
           "file": "src/services/browserBindings.js",
-          "line": 480,
+          "line": 490,
           "column": 37
         }
       ]
@@ -13509,6 +13846,18 @@
         }
       ]
     },
+    "833cfc17130b6b67": {
+      "source": "工作区 Git",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/components/workbench/PrimarySidebar.vue",
+          "line": 40,
+          "column": 16
+        }
+      ]
+    },
     "835b700e028c9b20": {
       "source": "通用",
       "kind": "text",
@@ -13598,7 +13947,7 @@
       "refs": [
         {
           "file": "src/services/browserBindings.js",
-          "line": 381,
+          "line": 391,
           "column": 18
         }
       ]
@@ -13916,12 +14265,12 @@
       "refs": [
         {
           "file": "src/utils/ideDocumentTabs.js",
-          "line": 55,
+          "line": 79,
           "column": 30
         },
         {
           "file": "src/views/IdeWorkspace.vue",
-          "line": 46,
+          "line": 80,
           "column": 60
         }
       ]
@@ -14044,6 +14393,18 @@
         }
       ]
     },
+    "88de316ae8ef9b88": {
+      "source": "代码编辑器",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/components/ide/ReadonlyCodeEditor.vue",
+          "line": 71,
+          "column": 64
+        }
+      ]
+    },
     "88f2d02425d8c712": {
       "source": "直接退出应用",
       "kind": "text",
@@ -14087,7 +14448,7 @@
       "refs": [
         {
           "file": "src/services/browserBindings.js",
-          "line": 1365,
+          "line": 1375,
           "column": 35
         }
       ]
@@ -14239,6 +14600,23 @@
         }
       ]
     },
+    "8b217f4aa19df27f": {
+      "source": "密钥名称",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/views/IdeWorkspace.vue",
+          "line": 299,
+          "column": 47
+        },
+        {
+          "file": "src/views/IdeWorkspace.vue",
+          "line": 300,
+          "column": 60
+        }
+      ]
+    },
     "8b4753f91171eb35": {
       "source": "按中转站汇总全量历史用量与花费 · 仅计入已配置价格的请求",
       "kind": "text",
@@ -14363,7 +14741,7 @@
       "refs": [
         {
           "file": "src/services/browserBindings.js",
-          "line": 369,
+          "line": 379,
           "column": 18
         }
       ]
@@ -14525,7 +14903,7 @@
       "refs": [
         {
           "file": "src/components/workbench/PrimarySidebar.vue",
-          "line": 114,
+          "line": 111,
           "column": 13
         }
       ]
@@ -14595,6 +14973,18 @@
         }
       ]
     },
+    "8e8768749e5d0332": {
+      "source": "口令（可选）",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/views/IdeWorkspace.vue",
+          "line": 304,
+          "column": 70
+        }
+      ]
+    },
     "8e8dfda02f6f22c4": {
       "source": "提示词清单已更新",
       "kind": "text",
@@ -14643,6 +15033,18 @@
         }
       ]
     },
+    "8ee1e8090bf1beb1": {
+      "source": "· 未保存",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/views/IdeWorkspace.vue",
+          "line": 420,
+          "column": 181
+        }
+      ]
+    },
     "8eeb33e0b07fa9ad": {
       "source": "先填写连接信息，再从模型目录批量导入可用模型。",
       "kind": "text",
@@ -14676,6 +15078,11 @@
           "file": "src/components/ui/Tooltip.vue",
           "line": 145,
           "column": 22
+        },
+        {
+          "file": "src/utils/ideGitSnapshot.js",
+          "line": 25,
+          "column": 14
         }
       ]
     },
@@ -14693,6 +15100,18 @@
           "file": "src/layouts/WorkbenchLayout.vue",
           "line": 39,
           "column": 37
+        }
+      ]
+    },
+    "9032c3c2b7e69008": {
+      "source": "差异",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/views/IdeWorkspace.vue",
+          "line": 396,
+          "column": 15
         }
       ]
     },
@@ -14831,7 +15250,7 @@
       "refs": [
         {
           "file": "src/services/browserBindings.js",
-          "line": 799,
+          "line": 809,
           "column": 14
         }
       ]
@@ -15038,7 +15457,7 @@
       "refs": [
         {
           "file": "src/services/clientApi.js",
-          "line": 191,
+          "line": 197,
           "column": 37
         }
       ]
@@ -15079,7 +15498,7 @@
       "refs": [
         {
           "file": "src/services/browserBindings.js",
-          "line": 819,
+          "line": 829,
           "column": 35
         }
       ]
@@ -15287,7 +15706,7 @@
       "refs": [
         {
           "file": "src/services/browserBindings.js",
-          "line": 915,
+          "line": 925,
           "column": 12
         }
       ]
@@ -15301,6 +15720,11 @@
           "file": "src/components/settings/delegation/DelegationGroupEditor.vue",
           "line": 172,
           "column": 19
+        },
+        {
+          "file": "src/views/IdeWorkspace.vue",
+          "line": 319,
+          "column": 64
         }
       ]
     },
@@ -15652,6 +16076,18 @@
         }
       ]
     },
+    "97fb183d5d2e3508": {
+      "source": "变更",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/views/IdeWorkspace.vue",
+          "line": 383,
+          "column": 15
+        }
+      ]
+    },
     "98004dd0f372d9e3": {
       "source": "安装 {0}",
       "kind": "template",
@@ -15902,7 +16338,7 @@
       "refs": [
         {
           "file": "src/services/browserBindings.js",
-          "line": 1343,
+          "line": 1353,
           "column": 49
         }
       ]
@@ -15974,7 +16410,7 @@
       "refs": [
         {
           "file": "src/services/browserBindings.js",
-          "line": 1160,
+          "line": 1170,
           "column": 79
         }
       ]
@@ -16058,7 +16494,7 @@
       "refs": [
         {
           "file": "src/views/IdeWorkspace.vue",
-          "line": 177,
+          "line": 343,
           "column": 18
         }
       ]
@@ -16118,7 +16554,7 @@
       "refs": [
         {
           "file": "src/services/browserBindings.js",
-          "line": 1421,
+          "line": 1431,
           "column": 61
         }
       ]
@@ -16147,7 +16583,7 @@
       "refs": [
         {
           "file": "src/components/workbench/PrimarySidebar.vue",
-          "line": 81,
+          "line": 78,
           "column": 34
         }
       ]
@@ -16183,7 +16619,7 @@
       "refs": [
         {
           "file": "src/services/browserBindings.js",
-          "line": 737,
+          "line": 747,
           "column": 16
         }
       ]
@@ -16318,7 +16754,7 @@
       "refs": [
         {
           "file": "src/services/browserBindings.js",
-          "line": 993,
+          "line": 1003,
           "column": 25
         }
       ]
@@ -16598,6 +17034,18 @@
         }
       ]
     },
+    "a1448b0f0a59a686": {
+      "source": "SSH 私钥无效",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/services/ideWorkspacePreview.js",
+          "line": 345,
+          "column": 59
+        }
+      ]
+    },
     "a1a038dfa16c3ede": {
       "source": "当前已是最新版本（v{0}）。",
       "kind": "text",
@@ -16636,6 +17084,18 @@
           "file": "src/components/settings/categories/SkillsMcpSettings.vue",
           "line": 789,
           "column": 25
+        }
+      ]
+    },
+    "a251448a845f061b": {
+      "source": "分支",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/views/IdeWorkspace.vue",
+          "line": 379,
+          "column": 32
         }
       ]
     },
@@ -16718,6 +17178,16 @@
           "file": "src/components/ui/MarkdownEditorModal.vue",
           "line": 12,
           "column": 38
+        },
+        {
+          "file": "src/views/IdeWorkspace.vue",
+          "line": 427,
+          "column": 14
+        },
+        {
+          "file": "src/views/IdeWorkspace.vue",
+          "line": 442,
+          "column": 32
         },
         {
           "file": "src/views/ModelEditor.vue",
@@ -16841,7 +17311,7 @@
       "refs": [
         {
           "file": "src/services/browserBindings.js",
-          "line": 1325,
+          "line": 1335,
           "column": 79
         }
       ]
@@ -16877,7 +17347,7 @@
       "refs": [
         {
           "file": "src/components/workbench/PrimarySidebar.vue",
-          "line": 93,
+          "line": 90,
           "column": 63
         }
       ]
@@ -16889,7 +17359,7 @@
       "refs": [
         {
           "file": "src/views/IdeWorkspace.vue",
-          "line": 180,
+          "line": 346,
           "column": 61
         }
       ]
@@ -16930,7 +17400,7 @@
       "refs": [
         {
           "file": "src/services/browserBindings.js",
-          "line": 928,
+          "line": 938,
           "column": 12
         }
       ]
@@ -16978,12 +17448,12 @@
       "refs": [
         {
           "file": "src/services/browserBindings.js",
-          "line": 795,
+          "line": 805,
           "column": 47
         },
         {
           "file": "src/services/browserBindings.js",
-          "line": 807,
+          "line": 817,
           "column": 49
         }
       ]
@@ -17208,22 +17678,22 @@
       "refs": [
         {
           "file": "src/services/ideWorkspacePreview.js",
-          "line": 54,
+          "line": 99,
           "column": 21
         },
         {
           "file": "src/services/ideWorkspacePreview.js",
-          "line": 57,
+          "line": 102,
           "column": 21
         },
         {
           "file": "src/services/ideWorkspacePreview.js",
-          "line": 61,
+          "line": 106,
           "column": 21
         },
         {
           "file": "src/services/ideWorkspacePreview.js",
-          "line": 157,
+          "line": 196,
           "column": 34
         }
       ]
@@ -17583,12 +18053,12 @@
       "refs": [
         {
           "file": "src/services/browserBindings.js",
-          "line": 693,
+          "line": 703,
           "column": 82
         },
         {
           "file": "src/services/browserBindings.js",
-          "line": 713,
+          "line": 723,
           "column": 16
         }
       ]
@@ -17713,7 +18183,7 @@
       "refs": [
         {
           "file": "src/utils/ideDocumentTabs.js",
-          "line": 63,
+          "line": 87,
           "column": 30
         }
       ]
@@ -17795,7 +18265,7 @@
       "refs": [
         {
           "file": "src/views/IdeWorkspace.vue",
-          "line": 229,
+          "line": 458,
           "column": 77
         }
       ]
@@ -17942,6 +18412,18 @@
         }
       ]
     },
+    "adf666cf8f66622b": {
+      "source": "导入密钥",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/views/IdeWorkspace.vue",
+          "line": 306,
+          "column": 95
+        }
+      ]
+    },
     "ae060e4ccdf99780": {
       "source": "来自 Cursor 官方链路的脱敏请求快照。",
       "kind": "text",
@@ -18026,6 +18508,11 @@
           "file": "src/components/settings/categories/HistorySettings.vue",
           "line": 560,
           "column": 16
+        },
+        {
+          "file": "src/views/IdeWorkspace.vue",
+          "line": 375,
+          "column": 12
         }
       ]
     },
@@ -18072,17 +18559,17 @@
       "refs": [
         {
           "file": "src/services/browserBindings.js",
-          "line": 1204,
+          "line": 1214,
           "column": 49
         },
         {
           "file": "src/services/browserBindings.js",
-          "line": 1211,
+          "line": 1221,
           "column": 49
         },
         {
           "file": "src/services/browserBindings.js",
-          "line": 1229,
+          "line": 1239,
           "column": 49
         }
       ]
@@ -18157,12 +18644,12 @@
       "refs": [
         {
           "file": "src/services/browserBindings.js",
-          "line": 1379,
+          "line": 1389,
           "column": 35
         },
         {
           "file": "src/services/browserBindings.js",
-          "line": 1406,
+          "line": 1416,
           "column": 48
         }
       ]
@@ -18174,7 +18661,7 @@
       "refs": [
         {
           "file": "src/services/browserBindings.js",
-          "line": 740,
+          "line": 750,
           "column": 114
         }
       ]
@@ -18210,7 +18697,7 @@
       "refs": [
         {
           "file": "src/services/browserBindings.js",
-          "line": 1022,
+          "line": 1032,
           "column": 49
         }
       ]
@@ -18275,7 +18762,7 @@
       "refs": [
         {
           "file": "src/views/IdeWorkspace.vue",
-          "line": 211,
+          "line": 413,
           "column": 51
         }
       ]
@@ -18323,7 +18810,7 @@
       "refs": [
         {
           "file": "src/services/browserBindings.js",
-          "line": 876,
+          "line": 886,
           "column": 12
         }
       ]
@@ -18692,18 +19179,6 @@
         }
       ]
     },
-    "b6fe31f05d046635": {
-      "source": "完整内核仍然可用",
-      "kind": "text",
-      "placeholders": 0,
-      "refs": [
-        {
-          "file": "src/components/workbench/PrimarySidebar.vue",
-          "line": 38,
-          "column": 15
-        }
-      ]
-    },
     "b710b015c8a64ebf": {
       "source": "，使用当前 API Key 读取 balance/remaining。",
       "kind": "text",
@@ -18783,7 +19258,7 @@
       "refs": [
         {
           "file": "src/services/browserBindings.js",
-          "line": 295,
+          "line": 305,
           "column": 18
         }
       ]
@@ -19089,7 +19564,7 @@
       "refs": [
         {
           "file": "src/views/IdeWorkspace.vue",
-          "line": 212,
+          "line": 414,
           "column": 70
         }
       ]
@@ -19149,7 +19624,7 @@
       "refs": [
         {
           "file": "src/components/workbench/PrimarySidebar.vue",
-          "line": 57,
+          "line": 54,
           "column": 12
         }
       ]
@@ -19262,7 +19737,7 @@
       "refs": [
         {
           "file": "src/services/browserBindings.js",
-          "line": 502,
+          "line": 512,
           "column": 37
         }
       ]
@@ -19351,7 +19826,7 @@
       "refs": [
         {
           "file": "src/views/IdeWorkspace.vue",
-          "line": 201,
+          "line": 403,
           "column": 44
         }
       ]
@@ -19544,6 +20019,23 @@
         }
       ]
     },
+    "bf18658907fb9c66": {
+      "source": "SSH 密钥",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/views/IdeWorkspace.vue",
+          "line": 292,
+          "column": 38
+        },
+        {
+          "file": "src/views/IdeWorkspace.vue",
+          "line": 294,
+          "column": 13
+        }
+      ]
+    },
     "bf2887cccf58bf2f": {
       "source": "输入自定义注入内容，留空则不注入...",
       "kind": "text",
@@ -19594,6 +20086,23 @@
           "file": "src/state/serviceViewState.js",
           "line": 18,
           "column": 46
+        }
+      ]
+    },
+    "bf58d79d832ce25d": {
+      "source": "版本冲突",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/services/ideWorkspacePreview.js",
+          "line": 220,
+          "column": 59
+        },
+        {
+          "file": "src/services/ideWorkspacePreview.js",
+          "line": 277,
+          "column": 59
         }
       ]
     },
@@ -19805,7 +20314,7 @@
       "refs": [
         {
           "file": "src/views/IdeWorkspace.vue",
-          "line": 222,
+          "line": 439,
           "column": 40
         }
       ]
@@ -19870,6 +20379,18 @@
         }
       ]
     },
+    "c2f9d2d89a1e0141": {
+      "source": "未跟踪",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/utils/ideGitSnapshot.js",
+          "line": 15,
+          "column": 14
+        }
+      ]
+    },
     "c3173e04c6d8158a": {
       "source": "按已验证的 Cursor 模型标识填写",
       "kind": "text",
@@ -19925,7 +20446,7 @@
       "refs": [
         {
           "file": "src/components/workbench/PrimarySidebar.vue",
-          "line": 47,
+          "line": 44,
           "column": 12
         }
       ]
@@ -19956,6 +20477,18 @@
           "file": "src/components/control-center/ConfigProfilesPanel.vue",
           "line": 76,
           "column": 21
+        }
+      ]
+    },
+    "c3751a12084c25ee": {
+      "source": "已变更",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/utils/ideGitSnapshot.js",
+          "line": 29,
+          "column": 14
         }
       ]
     },
@@ -20014,6 +20547,18 @@
           "file": "src/components/HomeMetricsCard.vue",
           "line": 352,
           "column": 9
+        }
+      ]
+    },
+    "c4277ea4490bf450": {
+      "source": "· 领先",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/views/IdeWorkspace.vue",
+          "line": 379,
+          "column": 68
         }
       ]
     },
@@ -20245,7 +20790,7 @@
       "refs": [
         {
           "file": "src/services/browserBindings.js",
-          "line": 290,
+          "line": 300,
           "column": 22
         }
       ]
@@ -20332,17 +20877,17 @@
       "refs": [
         {
           "file": "src/services/browserBindings.js",
-          "line": 1190,
+          "line": 1200,
           "column": 37
         },
         {
           "file": "src/services/browserBindings.js",
-          "line": 1251,
+          "line": 1261,
           "column": 37
         },
         {
           "file": "src/services/browserBindings.js",
-          "line": 1411,
+          "line": 1421,
           "column": 78
         }
       ]
@@ -20540,7 +21085,12 @@
       "refs": [
         {
           "file": "src/services/ideWorkspacePreview.js",
-          "line": 140,
+          "line": 82,
+          "column": 54
+        },
+        {
+          "file": "src/services/ideWorkspacePreview.js",
+          "line": 179,
           "column": 56
         }
       ]
@@ -20704,7 +21254,7 @@
       "refs": [
         {
           "file": "src/services/browserBindings.js",
-          "line": 1082,
+          "line": 1092,
           "column": 69
         }
       ]
@@ -20716,7 +21266,7 @@
       "refs": [
         {
           "file": "src/components/workbench/PrimarySidebar.vue",
-          "line": 91,
+          "line": 88,
           "column": 29
         }
       ]
@@ -20728,7 +21278,7 @@
       "refs": [
         {
           "file": "src/components/workbench/PrimarySidebar.vue",
-          "line": 113,
+          "line": 110,
           "column": 57
         }
       ]
@@ -20793,7 +21343,7 @@
       "refs": [
         {
           "file": "src/services/browserBindings.js",
-          "line": 745,
+          "line": 755,
           "column": 16
         }
       ]
@@ -20916,7 +21466,7 @@
       "refs": [
         {
           "file": "src/utils/ideDocumentTabs.js",
-          "line": 64,
+          "line": 88,
           "column": 27
         }
       ]
@@ -20945,7 +21495,7 @@
       "refs": [
         {
           "file": "src/components/workbench/PrimarySidebar.vue",
-          "line": 58,
+          "line": 55,
           "column": 15
         }
       ]
@@ -21082,7 +21632,7 @@
       "refs": [
         {
           "file": "src/components/workbench/PrimarySidebar.vue",
-          "line": 48,
+          "line": 45,
           "column": 15
         }
       ]
@@ -21215,6 +21765,18 @@
         }
       ]
     },
+    "d172470f3dcec079": {
+      "source": "SSH 密钥不存在",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/services/ideWorkspacePreview.js",
+          "line": 368,
+          "column": 57
+        }
+      ]
+    },
     "d181668ba89e5f73": {
       "source": "搜索命令、页面与功能",
       "kind": "text",
@@ -21258,7 +21820,7 @@
       "refs": [
         {
           "file": "src/services/ideWorkspacePreview.js",
-          "line": 75,
+          "line": 120,
           "column": 35
         }
       ]
@@ -21521,7 +22083,7 @@
       "refs": [
         {
           "file": "src/services/browserBindings.js",
-          "line": 814,
+          "line": 824,
           "column": 50
         }
       ]
@@ -22113,7 +22675,7 @@
       "refs": [
         {
           "file": "src/utils/ideDocumentTabs.js",
-          "line": 56,
+          "line": 80,
           "column": 26
         }
       ]
@@ -22534,7 +23096,7 @@
       "refs": [
         {
           "file": "src/utils/ideDocumentTabs.js",
-          "line": 58,
+          "line": 82,
           "column": 10
         }
       ]
@@ -22709,7 +23271,7 @@
         },
         {
           "file": "src/components/workbench/PrimarySidebar.vue",
-          "line": 60,
+          "line": 57,
           "column": 16
         },
         {
@@ -22954,6 +23516,18 @@
         }
       ]
     },
+    "e05f17eb5d84e30a": {
+      "source": "当前工作区不是 Git 仓库，或系统 Git 不可用。",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/views/IdeWorkspace.vue",
+          "line": 400,
+          "column": 40
+        }
+      ]
+    },
     "e07e561cf3c412f2": {
       "source": "委派执行模式",
       "kind": "text",
@@ -23021,12 +23595,12 @@
       "refs": [
         {
           "file": "src/components/workbench/PrimarySidebar.vue",
-          "line": 87,
+          "line": 84,
           "column": 51
         },
         {
           "file": "src/components/workbench/PrimarySidebar.vue",
-          "line": 87,
+          "line": 84,
           "column": 69
         }
       ]
@@ -23063,11 +23637,6 @@
         {
           "file": "src/components/workbench/PrimarySidebar.vue",
           "line": 31,
-          "column": 16
-        },
-        {
-          "file": "src/components/workbench/PrimarySidebar.vue",
-          "line": 42,
           "column": 16
         },
         {
@@ -23135,7 +23704,7 @@
       "refs": [
         {
           "file": "src/views/IdeWorkspace.vue",
-          "line": 57,
+          "line": 91,
           "column": 82
         }
       ]
@@ -23159,7 +23728,7 @@
       "refs": [
         {
           "file": "src/views/IdeWorkspace.vue",
-          "line": 198,
+          "line": 364,
           "column": 66
         }
       ]
@@ -23171,7 +23740,7 @@
       "refs": [
         {
           "file": "src/services/browserBindings.js",
-          "line": 1461,
+          "line": 1511,
           "column": 26
         }
       ]
@@ -23296,18 +23865,6 @@
         }
       ]
     },
-    "e46b0272bd641090": {
-      "source": "运行状态",
-      "kind": "text",
-      "placeholders": 0,
-      "refs": [
-        {
-          "file": "src/components/workbench/PrimarySidebar.vue",
-          "line": 37,
-          "column": 12
-        }
-      ]
-    },
     "e46e1f61ff7d7c47": {
       "source": "本地缓存：已启用（等待命中）",
       "kind": "text",
@@ -23420,6 +23977,18 @@
         }
       ]
     },
+    "e53e5b856be1010d": {
+      "source": "生成密钥",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/views/IdeWorkspace.vue",
+          "line": 307,
+          "column": 121
+        }
+      ]
+    },
     "e552c2accdbf5178": {
       "source": "新增模型",
       "kind": "text",
@@ -23456,7 +24025,7 @@
       "refs": [
         {
           "file": "src/services/browserBindings.js",
-          "line": 1024,
+          "line": 1034,
           "column": 35
         }
       ]
@@ -23468,7 +24037,7 @@
       "refs": [
         {
           "file": "src/views/IdeWorkspace.vue",
-          "line": 155,
+          "line": 289,
           "column": 49
         }
       ]
@@ -23651,7 +24220,7 @@
       "refs": [
         {
           "file": "src/services/browserBindings.js",
-          "line": 815,
+          "line": 825,
           "column": 170
         }
       ]
@@ -24068,7 +24637,7 @@
       "refs": [
         {
           "file": "src/views/IdeWorkspace.vue",
-          "line": 156,
+          "line": 290,
           "column": 65
         }
       ]
@@ -24186,7 +24755,7 @@
       "refs": [
         {
           "file": "src/services/browserBindings.js",
-          "line": 1462,
+          "line": 1512,
           "column": 26
         },
         {
@@ -24300,18 +24869,6 @@
         }
       ]
     },
-    "f00dfc2db0888a68": {
-      "source": "选择并注册根目录后，只能用工作区 ID 和相对路径浏览、读取和搜索。敏感文件、符号链接、二进制和大文件会显示明确状态。",
-      "kind": "text",
-      "placeholders": 0,
-      "refs": [
-        {
-          "file": "src/views/IdeWorkspace.vue",
-          "line": 149,
-          "column": 12
-        }
-      ]
-    },
     "f020e4630a54d322": {
       "source": "正在加载",
       "kind": "text",
@@ -24355,7 +24912,7 @@
       "refs": [
         {
           "file": "src/services/browserBindings.js",
-          "line": 808,
+          "line": 818,
           "column": 21
         }
       ]
@@ -24384,7 +24941,7 @@
       "refs": [
         {
           "file": "src/services/browserBindings.js",
-          "line": 555,
+          "line": 565,
           "column": 164
         }
       ]
@@ -24473,6 +25030,18 @@
         }
       ]
     },
+    "f265a7b34089884e": {
+      "source": "口令",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/views/IdeWorkspace.vue",
+          "line": 303,
+          "column": 47
+        }
+      ]
+    },
     "f26ced314c3315c0": {
       "source": "个任务未显示",
       "kind": "text",
@@ -24546,7 +25115,7 @@
       "refs": [
         {
           "file": "src/services/browserBindings.js",
-          "line": 850,
+          "line": 860,
           "column": 12
         }
       ]
@@ -24724,7 +25293,7 @@
       "refs": [
         {
           "file": "src/services/browserBindings.js",
-          "line": 732,
+          "line": 742,
           "column": 139
         }
       ]
@@ -25002,7 +25571,7 @@
       "refs": [
         {
           "file": "src/services/browserBindings.js",
-          "line": 593,
+          "line": 603,
           "column": 58
         }
       ]
@@ -25194,6 +25763,18 @@
           "file": "src/utils/modelEditorMeta.js",
           "line": 49,
           "column": 17
+        }
+      ]
+    },
+    "f80deab5c08a981d": {
+      "source": "批准保存",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/views/IdeWorkspace.vue",
+          "line": 448,
+          "column": 99
         }
       ]
     },
@@ -25399,8 +25980,8 @@
       "refs": [
         {
           "file": "src/components/ide/ReadonlyCodeEditor.vue",
-          "line": 69,
-          "column": 51
+          "line": 71,
+          "column": 64
         }
       ]
     },
@@ -25423,7 +26004,7 @@
       "refs": [
         {
           "file": "src/services/browserBindings.js",
-          "line": 1164,
+          "line": 1174,
           "column": 85
         }
       ]
@@ -25629,7 +26210,7 @@
       "refs": [
         {
           "file": "src/services/browserBindings.js",
-          "line": 1016,
+          "line": 1026,
           "column": 46
         }
       ]
@@ -25800,7 +26381,17 @@
       "refs": [
         {
           "file": "src/services/ideWorkspacePreview.js",
-          "line": 138,
+          "line": 177,
+          "column": 48
+        },
+        {
+          "file": "src/services/ideWorkspacePreview.js",
+          "line": 217,
+          "column": 48
+        },
+        {
+          "file": "src/services/ideWorkspacePreview.js",
+          "line": 274,
           "column": 48
         }
       ]
@@ -25913,6 +26504,18 @@
         }
       ]
     },
+    "ff4bf7eca2985b6a": {
+      "source": "差异已截断",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/views/IdeWorkspace.vue",
+          "line": 397,
+          "column": 70
+        }
+      ]
+    },
     "ff509c9ba052a21c": {
       "source": "保存中…",
       "kind": "text",
@@ -25951,6 +26554,18 @@
           "file": "src/components/workbench/StatusBar.vue",
           "line": 22,
           "column": 29
+        }
+      ]
+    },
+    "ffba9b86119ea662": {
+      "source": "没有可显示的差异。",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/views/IdeWorkspace.vue",
+          "line": 398,
+          "column": 49
         }
       ]
     },

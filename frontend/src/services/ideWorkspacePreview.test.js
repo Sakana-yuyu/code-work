@@ -38,6 +38,40 @@ test("preview IDE workspace fixture never uses the host filesystem", async () =>
   assert.equal(search.matches.length, 1);
   assert.equal(search.matches[0].path, "src/main.go");
 
+  const preview = await api.previewIDEWorkspaceWrite(workspaces[0].id, "src/main.go", "package saved\n", text.version);
+  assert.equal(preview.path, "src/main.go");
+  assert.equal(preview.approval.state, "pending");
+  await assert.rejects(() => api.commitIDEWorkspaceWrite(workspaces[0].id, preview.approval.id, "src/main.go", "package saved\n", text.version), /审批状态无效/);
+  await api.approveIDEApproval(workspaces[0].id, preview.approval.id);
+  const saved = await api.commitIDEWorkspaceWrite(workspaces[0].id, preview.approval.id, "src/main.go", "package saved\n", text.version);
+  assert.equal(saved.text, "package saved\n");
+  assert.notEqual(saved.version, text.version);
+  await assert.rejects(() => api.commitIDEWorkspaceWrite(workspaces[0].id, preview.approval.id, "src/main.go", "package saved\n", saved.version), /审批/);
+  await assert.rejects(() => api.previewIDEWorkspaceWrite(workspaces[0].id, "notes/large.txt", "nope", "preview-large"), /文件不可写入/);
+
+  const git = await api.getIDEGitSnapshot(workspaces[0].id);
+  assert.equal(git.available, true);
+  assert.equal(git.branch, "main");
+  assert.equal(git.ahead, 1);
+  assert.equal(git.behind, 2);
+  assert.equal(git.remotes[0].url, "https://github.com/org/repo.git");
+  assert.match(git.diff, /needle/);
+  assert.equal(JSON.stringify(git).includes("ghp_"), false);
+  assert.equal(JSON.stringify(git).includes("C:"), false);
+  assert.equal(JSON.stringify(git).includes("/Users/"), false);
+
+  const listedKeys = await api.listIDESSHKeys();
+  assert.equal(listedKeys[0].name, "preview-key");
+  assert.equal("privateKey" in listedKeys[0], false);
+  const imported = await api.importIDESSHKey("ci-key", "-----BEGIN OPENSSH PRIVATE KEY-----\npreview-secret-material\n-----END OPENSSH PRIVATE KEY-----", "preview-passphrase");
+  assert.equal(imported.name, "ci-key");
+  assert.equal(JSON.stringify(imported).includes("preview-secret-material"), false);
+  assert.equal(JSON.stringify(imported).includes("preview-passphrase"), false);
+  assert.equal(JSON.stringify(imported).includes("BEGIN "), false);
+  const afterImport = await api.listIDESSHKeys();
+  assert.equal(JSON.stringify(afterImport).includes("preview-secret-material"), false);
+  await api.removeIDESSHKey(imported.id);
+
   const selected = await api.selectAndRegisterIDEWorkspace();
   assert.equal(selected.name, "preview-selected");
   const listed = await api.listIDEWorkspaces();

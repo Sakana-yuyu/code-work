@@ -159,6 +159,58 @@ func TestReadTextReturnsOpaqueVersionWithoutHostPath(t *testing.T) {
 	assertNoHostPathLeak(t, workspaceRoot, first, second, changed)
 }
 
+func TestWriteTextRejectsStaleVersionAndDoesNotOverwrite(t *testing.T) {
+	registryRoot := t.TempDir()
+	workspaceRoot := t.TempDir()
+	path := filepath.Join(workspaceRoot, "readme.txt")
+	writeWorkspaceFile(t, path, "hello")
+	writeWorkspaceFile(t, filepath.Join(workspaceRoot, "notes.bin"), "ok\x00secret")
+	store := New(registryRoot)
+	workspace, err := store.Register(context.Background(), workspaceRoot)
+	if err != nil {
+		t.Fatalf("Register() error = %v", err)
+	}
+	current, err := store.ReadText(context.Background(), workspace.ID, "readme.txt")
+	if err != nil {
+		t.Fatalf("ReadText() error = %v", err)
+	}
+	written, err := store.WriteText(context.Background(), workspace.ID, WriteRequest{
+		Path:            "readme.txt",
+		Text:            "hello saved",
+		ExpectedVersion: current.Version,
+	})
+	if err != nil || written.Text != "hello saved" || written.Version == "" || written.Version == current.Version {
+		t.Fatalf("WriteText() = (%+v, %v)", written, err)
+	}
+	data, err := os.ReadFile(path)
+	if err != nil || string(data) != "hello saved" {
+		t.Fatalf("disk content = %q err=%v", data, err)
+	}
+	if _, err := store.WriteText(context.Background(), workspace.ID, WriteRequest{
+		Path:            "readme.txt",
+		Text:            "stale overwrite",
+		ExpectedVersion: current.Version,
+	}); !errors.Is(err, ErrVersionConflict) {
+		t.Fatalf("stale WriteText() error = %v, want ErrVersionConflict", err)
+	}
+	data, err = os.ReadFile(path)
+	if err != nil || string(data) != "hello saved" {
+		t.Fatalf("stale write mutated disk = %q err=%v", data, err)
+	}
+	binary, err := store.ReadText(context.Background(), workspace.ID, "notes.bin")
+	if err != nil {
+		t.Fatalf("binary ReadText() error = %v", err)
+	}
+	if _, err := store.WriteText(context.Background(), workspace.ID, WriteRequest{
+		Path:            "notes.bin",
+		Text:            "nope",
+		ExpectedVersion: binary.Version,
+	}); !errors.Is(err, ErrWriteNotAllowed) {
+		t.Fatalf("binary WriteText() error = %v, want ErrWriteNotAllowed", err)
+	}
+	assertNoHostPathLeak(t, workspaceRoot, written)
+}
+
 func TestSearchSkipsBinarySensitiveAndOversizedFiles(t *testing.T) {
 	registryRoot := t.TempDir()
 	workspaceRoot := t.TempDir()
@@ -242,6 +294,23 @@ func writeWorkspaceFile(t *testing.T, path string, content string) {
 	}
 	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
 		t.Fatalf("WriteFile(%q) error = %v", path, err)
+	}
+}
+
+func TestAuthorizedRootResolvesRegisteredWorkspace(t *testing.T) {
+	registryRoot := t.TempDir()
+	workspaceRoot := t.TempDir()
+	store := New(registryRoot)
+	registered, err := store.Register(context.Background(), workspaceRoot)
+	if err != nil {
+		t.Fatalf("Register() error = %v", err)
+	}
+	root, err := store.AuthorizedRoot(context.Background(), registered.ID)
+	if err != nil || !samePath(root, workspaceRoot) {
+		t.Fatalf("AuthorizedRoot() = (%q, %v)", root, err)
+	}
+	if _, err := store.AuthorizedRoot(context.Background(), ""); !errors.Is(err, ErrWorkspaceNotFound) {
+		t.Fatalf("empty AuthorizedRoot() error = %v", err)
 	}
 }
 

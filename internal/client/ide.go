@@ -5,6 +5,9 @@ import (
 	"errors"
 	"fmt"
 
+	"cursor/internal/ide/approval"
+	"cursor/internal/ide/gitstatus"
+	"cursor/internal/ide/sshvault"
 	"cursor/internal/ide/workspace"
 )
 
@@ -95,6 +98,34 @@ func mapIDEWorkspaceError(err error) error {
 		return fmt.Errorf("不是普通文件: %w", err)
 	case errors.Is(err, workspace.ErrRegistryInvalid):
 		return fmt.Errorf("工作区登记失败: %w", err)
+	case errors.Is(err, workspace.ErrVersionConflict):
+		return fmt.Errorf("版本冲突: %w", err)
+	case errors.Is(err, workspace.ErrWriteNotAllowed):
+		return fmt.Errorf("文件不可写入: %w", err)
+	case errors.Is(err, approval.ErrInvalidTransition):
+		return fmt.Errorf("审批状态无效: %w", err)
+	case errors.Is(err, approval.ErrApprovalNotFound):
+		return fmt.Errorf("审批不存在: %w", err)
+	case errors.Is(err, approval.ErrFingerprintMismatch):
+		return fmt.Errorf("审批与操作不匹配: %w", err)
+	case errors.Is(err, approval.ErrApprovalCapacity):
+		return fmt.Errorf("审批数量已满: %w", err)
+	case errors.Is(err, gitstatus.ErrGitUnavailable):
+		return fmt.Errorf("Git 不可用: %w", err)
+	case errors.Is(err, gitstatus.ErrInvalidGitArgs):
+		return fmt.Errorf("Git 参数不合法: %w", err)
+	case errors.Is(err, sshvault.ErrInvalidName):
+		return fmt.Errorf("SSH 密钥名称不合法: %w", err)
+	case errors.Is(err, sshvault.ErrInvalidKey):
+		return fmt.Errorf("SSH 私钥无效: %w", err)
+	case errors.Is(err, sshvault.ErrKeyNotFound):
+		return fmt.Errorf("SSH 密钥不存在: %w", err)
+	case errors.Is(err, sshvault.ErrProtectorUnavailable):
+		return fmt.Errorf("SSH 保险库不可用: %w", err)
+	case errors.Is(err, sshvault.ErrVaultInvalid):
+		return fmt.Errorf("SSH 保险库损坏: %w", err)
+	case errors.Is(err, sshvault.ErrVaultCapacity):
+		return fmt.Errorf("SSH 密钥数量已满: %w", err)
 	default:
 		return err
 	}
