@@ -50,6 +50,7 @@ const readyAdapters = computed(() => {
 });
 
 const hasModel = computed(() => readyAdapters.value.length > 0);
+const modelsLoaded = ref(false);
 const agentTranscript = computed(() => agentEvents.value.map((event) => event.text).filter(Boolean).join(""));
 
 async function run(action) {
@@ -77,6 +78,8 @@ async function loadModels() {
   } catch (error) {
     userConfig.value = { modelAdapters: [] };
     agentError.value = error?.userMessage || error?.message || "无法加载模型配置";
+  } finally {
+    modelsLoaded.value = true;
   }
 }
 
@@ -171,6 +174,7 @@ onMounted(() => {
 
     <div class="agent-body">
       <p v-if="!workspaceID" class="empty-state">先打开文件夹</p>
+      <div v-else-if="!modelsLoaded" class="empty-state" aria-busy="true"></div>
       <div v-else-if="!hasModel" class="empty-state model-guide">
         <p>去设置 → Cursor 与服务 / 模型配置</p>
         <button type="button" class="primary-action" @click="openModelConfig">打开模型配置</button>

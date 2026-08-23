@@ -241,8 +241,8 @@ watch(
         truncated: file.truncated,
         restricted: false,
       });
-    } catch {
-      /* Agent 写入后的文档刷新失败时，保留当前编辑器内容 */
+    } catch (error) {
+      errorMessage.value = error?.userMessage || error?.message || "Agent 写入后刷新文档失败，请重新打开文件后再保存。";
     }
   },
 );

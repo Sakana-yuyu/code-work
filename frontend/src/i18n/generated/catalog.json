@@ -1281,7 +1281,7 @@
       "refs": [
         {
           "file": "src/components/workbench/AgentChatPanel.vue",
-          "line": 187,
+          "line": 191,
           "column": 70
         }
       ]
@@ -1524,6 +1524,18 @@
         }
       ]
     },
+    "0ca14f798c40a403": {
+      "source": "Agent 写入后刷新文档失败，请重新打开文件后再保存。",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/views/IdeWorkspace.vue",
+          "line": 245,
+          "column": 68
+        }
+      ]
+    },
     "0cb99689e3307e76": {
       "source": "个问题。",
       "kind": "text",
@@ -1685,7 +1697,7 @@
       "refs": [
         {
           "file": "src/layouts/WorkbenchLayout.vue",
-          "line": 199,
+          "line": 209,
           "column": 41
         }
       ]
@@ -2113,7 +2125,7 @@
       "refs": [
         {
           "file": "src/components/workbench/AgentChatPanel.vue",
-          "line": 200,
+          "line": 204,
           "column": 107
         },
         {
@@ -3069,12 +3081,12 @@
       "refs": [
         {
           "file": "src/components/workbench/AgentChatPanel.vue",
-          "line": 169,
+          "line": 172,
           "column": 29
         },
         {
           "file": "src/components/workbench/AgentChatPanel.vue",
-          "line": 169,
+          "line": 172,
           "column": 50
         }
       ]
@@ -4303,7 +4315,7 @@
       "refs": [
         {
           "file": "src/components/workbench/AgentChatPanel.vue",
-          "line": 199,
+          "line": 203,
           "column": 106
         }
       ]
@@ -4877,7 +4889,7 @@
         },
         {
           "file": "src/components/workbench/AgentChatPanel.vue",
-          "line": 190,
+          "line": 194,
           "column": 114
         },
         {
@@ -5452,7 +5464,7 @@
       "refs": [
         {
           "file": "src/components/workbench/AgentChatPanel.vue",
-          "line": 112,
+          "line": 115,
           "column": 24
         }
       ]
@@ -6092,7 +6104,7 @@
       "refs": [
         {
           "file": "src/components/workbench/AgentChatPanel.vue",
-          "line": 61,
+          "line": 62,
           "column": 80
         }
       ]
@@ -6729,7 +6741,7 @@
       "refs": [
         {
           "file": "src/components/workbench/AgentChatPanel.vue",
-          "line": 79,
+          "line": 80,
           "column": 64
         }
       ]
@@ -7713,7 +7725,7 @@
       "refs": [
         {
           "file": "src/components/workbench/AgentChatPanel.vue",
-          "line": 196,
+          "line": 200,
           "column": 66
         }
       ]
@@ -11480,7 +11492,7 @@
       "refs": [
         {
           "file": "src/components/workbench/AgentChatPanel.vue",
-          "line": 163,
+          "line": 166,
           "column": 46
         }
       ]
@@ -11770,7 +11782,7 @@
       "refs": [
         {
           "file": "src/components/workbench/AgentChatPanel.vue",
-          "line": 167,
+          "line": 170,
           "column": 15
         }
       ]
@@ -11806,7 +11818,7 @@
       "refs": [
         {
           "file": "src/components/workbench/AgentChatPanel.vue",
-          "line": 191,
+          "line": 195,
           "column": 120
         }
       ]
@@ -11818,7 +11830,7 @@
       "refs": [
         {
           "file": "src/components/workbench/AgentChatPanel.vue",
-          "line": 189,
+          "line": 193,
           "column": 111
         }
       ]
@@ -12296,7 +12308,7 @@
         {
           "file": "src/layouts/WorkbenchLayout.vue",
           "line": 49,
-          "column": 49
+          "column": 50
         }
       ]
     },
@@ -12641,7 +12653,7 @@
       "refs": [
         {
           "file": "src/components/workbench/AgentChatPanel.vue",
-          "line": 194,
+          "line": 198,
           "column": 46
         }
       ]
@@ -13866,7 +13878,7 @@
       "refs": [
         {
           "file": "src/components/workbench/AgentChatPanel.vue",
-          "line": 195,
+          "line": 199,
           "column": 35
         }
       ]
@@ -14565,7 +14577,7 @@
       "refs": [
         {
           "file": "src/components/workbench/AgentChatPanel.vue",
-          "line": 173,
+          "line": 176,
           "column": 50
         }
       ]
@@ -15354,7 +15366,7 @@
         },
         {
           "file": "src/components/workbench/AgentChatPanel.vue",
-          "line": 176,
+          "line": 180,
           "column": 79
         },
         {
@@ -15847,7 +15859,7 @@
       "refs": [
         {
           "file": "src/components/workbench/AgentChatPanel.vue",
-          "line": 175,
+          "line": 179,
           "column": 12
         }
       ]
@@ -16467,7 +16479,7 @@
       "refs": [
         {
           "file": "src/components/workbench/AgentChatPanel.vue",
-          "line": 195,
+          "line": 199,
           "column": 60
         }
       ]
@@ -17459,18 +17471,6 @@
           "file": "src/views/ModelEditor.vue",
           "line": 821,
           "column": 16
-        }
-      ]
-    },
-    "a30ce3e97c621bad": {
-      "source": "打开服务控制台",
-      "kind": "text",
-      "placeholders": 0,
-      "refs": [
-        {
-          "file": "src/layouts/WorkbenchLayout.vue",
-          "line": 44,
-          "column": 32
         }
       ]
     },
@@ -20512,7 +20512,7 @@
       "refs": [
         {
           "file": "src/components/workbench/AgentChatPanel.vue",
-          "line": 197,
+          "line": 201,
           "column": 97
         }
       ]
@@ -21311,7 +21311,7 @@
         },
         {
           "file": "src/components/workbench/AgentChatPanel.vue",
-          "line": 182,
+          "line": 186,
           "column": 52
         },
         {
@@ -22056,7 +22056,7 @@
       "refs": [
         {
           "file": "src/components/workbench/AgentChatPanel.vue",
-          "line": 186,
+          "line": 190,
           "column": 53
         }
       ]
@@ -22572,7 +22572,7 @@
       "refs": [
         {
           "file": "src/components/workbench/AgentChatPanel.vue",
-          "line": 197,
+          "line": 201,
           "column": 35
         }
       ]
@@ -23168,7 +23168,7 @@
         {
           "file": "src/layouts/WorkbenchLayout.vue",
           "line": 44,
-          "column": 51
+          "column": 50
         }
       ]
     },
@@ -24348,6 +24348,18 @@
         }
       ]
     },
+    "e5540d034c31ba71": {
+      "source": "切换 AI 栏",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/layouts/WorkbenchLayout.vue",
+          "line": 49,
+          "column": 31
+        }
+      ]
+    },
     "e5c84c9aa7826566": {
       "source": "未就绪",
       "kind": "text",
@@ -25359,7 +25371,7 @@
       "refs": [
         {
           "file": "src/components/workbench/AgentChatPanel.vue",
-          "line": 179,
+          "line": 183,
           "column": 30
         }
       ]
@@ -25924,6 +25936,18 @@
           "file": "src/components/CursorAccountCard.vue",
           "line": 209,
           "column": 14
+        }
+      ]
+    },
+    "f6552978b0e09817": {
+      "source": "打开服务设置",
+      "kind": "text",
+      "placeholders": 0,
+      "refs": [
+        {
+          "file": "src/layouts/WorkbenchLayout.vue",
+          "line": 44,
+          "column": 32
         }
       ]
     },
@@ -26671,18 +26695,6 @@
           "file": "src/views/ModelEditor.vue",
           "line": 1398,
           "column": 51
-        }
-      ]
-    },
-    "fc686db6d5a18c2b": {
-      "source": "切换任务面板",
-      "kind": "text",
-      "placeholders": 0,
-      "refs": [
-        {
-          "file": "src/layouts/WorkbenchLayout.vue",
-          "line": 49,
-          "column": 31
         }
       ]
     },

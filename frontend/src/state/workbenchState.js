@@ -1,5 +1,5 @@
 import { reactive } from "vue";
-import { WORKBENCH_LAUNCH_PATH } from "../utils/workbenchRoutes.js";
+import { isCurrentWorkbenchSurface, WORKBENCH_LAUNCH_PATH } from "../utils/workbenchRoutes.js";
 
 function workbenchTabId(path) {
   const raw = String(path || "");
@@ -70,12 +70,12 @@ export function selectWorkbenchActivity(activityID) {
 
 export function toggleWorkbenchSidebar() {
   workbenchState.sidebarVisible = !workbenchState.sidebarVisible;
-  persistLayout();
+  if (isCurrentWorkbenchSurface()) persistLayout();
 }
 
 export function toggleWorkbenchTaskPanel() {
   workbenchState.taskPanelVisible = !workbenchState.taskPanelVisible;
-  persistLayout();
+  if (isCurrentWorkbenchSurface()) persistLayout();
 }
 
 export function resetWorkbenchLayout() {

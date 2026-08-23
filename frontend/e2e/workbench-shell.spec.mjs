@@ -23,7 +23,7 @@ test("活动栏和命令面板驱动同一组 Workbench 操作", async ({ page }
   await page.keyboard.press("Control+Shift+P");
   const palette = page.getByRole("dialog", { name: "命令面板" });
   await expect(palette).toBeVisible();
-  await palette.getByRole("option", { name: /切换任务面板/ }).click();
+  await palette.getByRole("option", { name: /切换 AI 栏/ }).click();
   await expect(page.getByRole("complementary", { name: "AI 对话" })).toHaveCount(0);
 
   await page.keyboard.press("Control+J");
@@ -94,13 +94,45 @@ test("开始页面主路径只保留工作区与设置", async ({ page }) => {
   await expect(page.getByRole("button", { name: "打开服务控制台" })).toHaveCount(0);
 });
 
-test("打开服务控制台命令进入服务设置而不是控制台首页", async ({ page }) => {
+test("打开服务设置命令进入服务设置而不是控制台首页", async ({ page }) => {
   await openWorkbench(page);
   await page.keyboard.press("Control+Shift+P");
   const palette = page.getByRole("dialog", { name: "命令面板" });
   await expect(palette).toBeVisible();
-  await palette.getByRole("option", { name: /打开服务控制台/ }).click();
+  await palette.getByRole("option", { name: /打开服务设置/ }).click();
   await expect(page).toHaveURL(/\/settings\?category=cursor-service/);
+  await expect(page.getByRole("heading", { name: "服务控制台" })).toHaveCount(0);
+});
+
+test("设置页切换侧栏不会把工作台栏持久化为隐藏", async ({ page }) => {
+  await openWorkbench(page);
+  await page.goto("/settings");
+  await expect(page.getByRole("heading", { name: "通用" })).toBeVisible();
+  await page.keyboard.press("Control+B");
+  await page.goto("/ide");
+  await expect(page.getByRole("heading", { level: 1, name: "工作区" })).toBeVisible();
+  await expect(page.getByRole("complementary", { name: "工作台侧栏" })).toBeVisible();
+});
+
+test("无模型时引导去模型配置，而不是服务控制台", async ({ page }) => {
+  await page.addInitScript(() => {
+    localStorage.setItem("code-work.workbench.layout.v1", JSON.stringify({
+      activeActivity: "explorer",
+      sidebarVisible: true,
+      taskPanelVisible: true,
+    }));
+  });
+  await seedPreviewTestPlan(page, {}, { ...basePreviewConfig(), modelAdapters: [] });
+  await page.goto("/ide");
+  await expect(page.getByRole("heading", { level: 1, name: "工作区" })).toBeVisible();
+
+  const agent = page.getByRole("complementary", { name: "AI 对话" });
+  await expect(agent).toBeVisible();
+  await expect(agent.getByText("去设置 → Cursor 与服务 / 模型配置")).toBeVisible();
+  await expect(agent.getByText("服务控制台")).toHaveCount(0);
+  await agent.getByRole("button", { name: "打开模型配置" }).click();
+  await expect(page).toHaveURL(/\/model-config/);
+  await expect(page).not.toHaveURL(/\/$/);
   await expect(page.getByRole("heading", { name: "服务控制台" })).toHaveCount(0);
 });
 
