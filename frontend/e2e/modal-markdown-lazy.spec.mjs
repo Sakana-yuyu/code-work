@@ -8,7 +8,7 @@ test("更新说明 Markdown 解析器仅在弹窗打开后加载", async ({ page
     }
   });
 
-  await page.goto("/");
+  await page.goto("/console");
   await expect(page.getByRole("main")).toBeVisible();
   expect(markdownParserRequests).toEqual([]);
 

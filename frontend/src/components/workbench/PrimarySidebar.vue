@@ -17,9 +17,6 @@ const panels = {
     items: [
       { label: "工作区", path: "/ide", icon: "folder" },
       { label: "开始使用", path: "/workbench", icon: "workbench" },
-      { label: "服务控制台", path: "/", icon: "service" },
-      { label: "控制中心", path: "/control-center", icon: "panel" },
-      { label: "模型配置", path: "/model-config", icon: "folder" },
       { label: "设置", path: "/settings", icon: "settings" },
     ],
   },
@@ -55,7 +52,6 @@ const panels = {
     subtitle: "偏好与诊断",
     items: [
       { label: "设置", path: "/settings", icon: "settings" },
-      { label: "控制中心", path: "/control-center", icon: "panel" },
       { label: "运行诊断", path: "/diagnostics", icon: "shield" },
       { label: "关于 Code Work", path: "/settings?category=about", icon: "workbench" },
     ],

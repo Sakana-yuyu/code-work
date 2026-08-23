@@ -51,6 +51,64 @@ test("任务面板展示真实委派快照、attempts、取消和 MCP 状态", a
   await expect(taskPanel).toContainText("已取消");
 });
 
+test("齿轮打开设置后返回工作台而不是服务控制台", async ({ page }) => {
+  await page.addInitScript(() => {
+    localStorage.setItem("code-work.workbench.layout.v1", JSON.stringify({
+      activeActivity: "explorer",
+      sidebarVisible: true,
+      taskPanelVisible: true,
+    }));
+  });
+  await seedPreviewTestPlan(page, {}, basePreviewConfig());
+  await page.goto("/ide");
+  await page.getByRole("button", { name: "打开设置" }).click();
+  await expect(page.getByRole("heading", { name: "通用" })).toBeVisible();
+  await page.getByRole("button", { name: "返回" }).click();
+  await expect(page).toHaveURL(/\/ide/);
+  await expect(page.getByRole("heading", { name: "服务控制台" })).toHaveCount(0);
+});
+
+test("资源管理器一级入口是工作区、开始使用和设置", async ({ page }) => {
+  await page.addInitScript(() => {
+    localStorage.setItem("code-work.workbench.layout.v1", JSON.stringify({
+      activeActivity: "explorer",
+      sidebarVisible: true,
+      taskPanelVisible: true,
+    }));
+  });
+  await seedPreviewTestPlan(page, {}, basePreviewConfig());
+  await page.goto("/ide");
+
+  const sidebar = page.getByRole("complementary", { name: "工作台侧栏" });
+  const explorerNav = sidebar.getByRole("navigation", { name: "资源管理器" });
+  await expect(explorerNav.getByRole("button", { name: "工作区" })).toBeVisible();
+  await expect(explorerNav.getByRole("button", { name: "开始使用" })).toBeVisible();
+  await expect(explorerNav.getByRole("button", { name: "设置" })).toBeVisible();
+  await expect(explorerNav.getByRole("button", { name: "服务控制台" })).toHaveCount(0);
+  await expect(explorerNav.getByRole("button", { name: "控制中心" })).toHaveCount(0);
+  await expect(explorerNav.getByRole("button", { name: "模型配置" })).toHaveCount(0);
+
+  await page.getByRole("navigation", { name: "工作台主导航" }).getByRole("button", { name: "搜索" }).click();
+  await expect(sidebar.getByRole("button", { name: "模型与供应商" })).toBeVisible();
+});
+
+test("开始页面主路径只保留工作区与设置", async ({ page }) => {
+  await openWorkbench(page);
+  await expect(page.getByRole("button", { name: "打开工作区" }).first()).toBeVisible();
+  await expect(page.getByRole("button", { name: "调整设置" }).first()).toBeVisible();
+  await expect(page.getByRole("button", { name: "打开服务控制台" })).toHaveCount(0);
+});
+
+test("打开服务控制台命令进入服务设置而不是控制台首页", async ({ page }) => {
+  await openWorkbench(page);
+  await page.keyboard.press("Control+Shift+P");
+  const palette = page.getByRole("dialog", { name: "命令面板" });
+  await expect(palette).toBeVisible();
+  await palette.getByRole("option", { name: /打开服务控制台/ }).click();
+  await expect(page).toHaveURL(/\/settings\?category=cursor-service/);
+  await expect(page.getByRole("heading", { name: "服务控制台" })).toHaveCount(0);
+});
+
 test("窄屏布局不产生横向页面溢出", async ({ browser }) => {
   const context = await browser.newContext({ viewport: { width: 375, height: 812 } });
   const page = await context.newPage();

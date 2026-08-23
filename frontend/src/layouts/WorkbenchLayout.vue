@@ -13,7 +13,7 @@ import {
   workbenchActivities,
   workbenchState,
 } from "@/state/workbenchState";
-import { isWorkbenchSurfacePath, SERVICE_CONSOLE_PATH } from "@/utils/workbenchRoutes.js";
+import { isWorkbenchSurfacePath } from "@/utils/workbenchRoutes.js";
 import ActivityRail from "@/components/workbench/ActivityRail.vue";
 import CommandPalette from "@/components/workbench/CommandPalette.vue";
 import PrimarySidebar from "@/components/workbench/PrimarySidebar.vue";
@@ -104,7 +104,7 @@ function runCommand(command) {
       navigate("/ide");
       break;
     case "open-service":
-      navigate(SERVICE_CONSOLE_PATH);
+      navigate("/settings?category=cursor-service");
       break;
     case "open-model-config":
       navigate("/model-config");

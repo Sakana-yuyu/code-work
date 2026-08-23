@@ -3,7 +3,7 @@ import { basePreviewConfig, seedPreviewTestPlan } from "./helpers.mjs";
 
 test("助手不提供 Goal 执行面板但保留 Cursor Goal 设置", async ({ page }) => {
   await seedPreviewTestPlan(page, {}, basePreviewConfig());
-  await page.goto("/");
+  await page.goto("/console");
   await expect(page.getByRole("button", { name: "目标执行", exact: true })).toHaveCount(0);
 
   await page.goto("/goal");

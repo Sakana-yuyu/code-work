@@ -6,10 +6,9 @@ const router = useRouter();
 
 const quickActions = [
   { label: "打开工作区", detail: "注册根目录并安全浏览文件", icon: "folder", path: "/ide" },
-  { label: "打开服务控制台", detail: "管理本地服务、账号和运行状态", icon: "service", path: "/" },
+  { label: "调整设置", detail: "配置代理、历史、技能与系统选项", icon: "settings", path: "/settings" },
   { label: "配置模型", detail: "保留现有模型与供应商能力", icon: "folder", path: "/model-config" },
   { label: "进入控制中心", detail: "查看路由、请求实验与 Agent 运行台", icon: "panel", path: "/control-center" },
-  { label: "调整设置", detail: "配置代理、历史、技能与系统选项", icon: "settings", path: "/settings" },
 ];
 
 function open(path) {
@@ -26,7 +25,7 @@ function open(path) {
       <p>Code Work 以独立配置目录运行，保留本地服务、模型、路由和诊断能力；当前正在将这些能力逐步迁入新的工作台外壳。</p>
       <div class="hero-actions">
         <button type="button" class="primary-action" @click="open('/ide')"><WorkbenchGlyph name="folder" :size="16" />打开工作区</button>
-        <button type="button" class="secondary-action" @click="open('/service')">打开服务控制台</button>
+        <button type="button" class="secondary-action" @click="open('/settings')">调整设置</button>
       </div>
     </div>
 

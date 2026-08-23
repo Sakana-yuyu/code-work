@@ -11,6 +11,7 @@ import {
   writeStoredSettingsCategory,
   writeStoredSidebarCollapsed,
 } from "@/components/settings/settingsCategories";
+import { settingsReturnPath } from "@/utils/workbenchRoutes.js";
 import { computed, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 
@@ -77,7 +78,7 @@ const activeCategoryComponent = computed(() =>
 );
 
 function handleBack() {
-  void router.replace("/");
+  void router.replace(settingsReturnPath());
 }
 </script>
 

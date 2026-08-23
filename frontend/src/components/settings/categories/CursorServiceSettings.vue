@@ -591,7 +591,7 @@ onUnmounted(() => {
 
       <SettingsRow
         label="模型配置"
-        :description="`已配置 ${configuredAdapterCount} 个模型适配器`"
+        :description="`已配置 ${configuredAdapterCount} 个模型适配器。在设置中管理服务；模型列表使用模型配置`"
         :busy="modelConfigState.busy"
         :error="modelConfigState.error"
         @retry="retryState(modelConfigState)"
