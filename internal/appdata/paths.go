@@ -119,3 +119,8 @@ func IDEApprovalRootPath() string {
 func IDESSHVaultRootPath() string {
 	return filepath.Join(DataRootPath(), "ide-ssh-vault")
 }
+
+// IDESSHKnownHostsRootPath returns the managed SSH known_hosts directory.
+func IDESSHKnownHostsRootPath() string {
+	return filepath.Join(DataRootPath(), "ide-ssh-known-hosts")
+}

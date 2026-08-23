@@ -6,6 +6,7 @@ import (
 	"cursor/internal/client"
 	"cursor/internal/ide/approval"
 	"cursor/internal/ide/gitstatus"
+	"cursor/internal/ide/knownhosts"
 	"cursor/internal/ide/sshvault"
 	"cursor/internal/ide/workspace"
 )
@@ -22,6 +23,8 @@ type IDEGitSnapshot = gitstatus.Snapshot
 type IDEGitChange = gitstatus.FileChange
 type IDEGitRemote = gitstatus.Remote
 type IDESSHKeySummary = sshvault.KeySummary
+type IDEKnownHost = knownhosts.Entry
+type IDEKnownHostPreview = client.IDEKnownHostPreview
 
 func (s *ProxyService) SelectAndRegisterIDEWorkspace() (IDEWorkspaceSummary, error) {
 	if s == nil || s.core == nil {
@@ -133,6 +136,34 @@ func (s *ProxyService) RemoveIDESSHKey(keyID string) error {
 		return fmt.Errorf("工作区服务未初始化")
 	}
 	return s.core.RemoveIDESSHKey(keyID)
+}
+
+func (s *ProxyService) ListIDEKnownHosts() ([]IDEKnownHost, error) {
+	if s == nil || s.core == nil {
+		return nil, fmt.Errorf("工作区服务未初始化")
+	}
+	return s.core.ListIDEKnownHosts()
+}
+
+func (s *ProxyService) ProbeIDEHostKey(host string, port int) (IDEKnownHost, error) {
+	if s == nil || s.core == nil {
+		return IDEKnownHost{}, fmt.Errorf("工作区服务未初始化")
+	}
+	return s.core.ProbeIDEHostKey(host, port)
+}
+
+func (s *ProxyService) PreviewIDEKnownHost(workspaceID, host string, port int, publicKey string) (IDEKnownHostPreview, error) {
+	if s == nil || s.core == nil {
+		return IDEKnownHostPreview{}, fmt.Errorf("工作区服务未初始化")
+	}
+	return s.core.PreviewIDEKnownHost(workspaceID, host, port, publicKey)
+}
+
+func (s *ProxyService) CommitIDEKnownHost(workspaceID, approvalID, host string, port int, publicKey string) (IDEKnownHost, error) {
+	if s == nil || s.core == nil {
+		return IDEKnownHost{}, fmt.Errorf("工作区服务未初始化")
+	}
+	return s.core.CommitIDEKnownHost(workspaceID, approvalID, host, port, publicKey)
 }
 
 func (s *WindowService) selectWorkspaceDirectory() (string, error) {

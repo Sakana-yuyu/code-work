@@ -88,6 +88,20 @@ test("浏览器预览用内存工作区浏览、读取和搜索，不暴露主�
   await expect(sshPanel.getByLabel("私钥")).toHaveValue("");
   await expect(sshPanel.getByLabel("口令")).toHaveValue("");
 
+  const hostPanel = page.getByLabel("已知主机");
+  await expect(hostPanel.getByRole("heading", { name: "已知主机" })).toBeVisible();
+  await expect(hostPanel.getByText("github.com:22")).toBeVisible();
+  await expect(hostPanel.getByText(/SHA256:previewhostfingerprint/)).toBeVisible();
+  await hostPanel.getByLabel("主机", { exact: true }).fill("ci.example");
+  await hostPanel.getByLabel("端口").fill("22");
+  await hostPanel.getByLabel("主机公钥").fill("ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIPreviewHost ci.example");
+  await hostPanel.getByRole("button", { name: "预览信任" }).click();
+  await expect(hostPanel.getByText(/尚未信任/)).toBeVisible();
+  await expect(hostPanel.getByText("信任 SSH 主机 需要审批。")).toBeVisible();
+  await hostPanel.getByRole("button", { name: "批准写入" }).click();
+  await expect(hostPanel.getByText("ci.example:22")).toBeVisible();
+  await expect(hostPanel.getByLabel("主机公钥")).toHaveValue("");
+
   const body = await page.locator("body").innerText();
   expect(body).not.toMatch(/[A-Za-z]:\\/);
   expect(body).not.toContain("/Users/");
@@ -96,6 +110,7 @@ test("浏览器预览用内存工作区浏览、读取和搜索，不暴露主�
   expect(body).not.toContain("preview-secret-material");
   expect(body).not.toContain("preview-passphrase");
   expect(body).not.toContain("BEGIN OPENSSH PRIVATE KEY");
+  expect(body).not.toContain("ide-ssh-known-hosts");
 });
 
 test("选择工作区只增加内存 fixture，不访问真实文件系统", async ({ page }) => {

@@ -7,6 +7,7 @@ import (
 
 	"cursor/internal/ide/approval"
 	"cursor/internal/ide/gitstatus"
+	"cursor/internal/ide/knownhosts"
 	"cursor/internal/ide/sshvault"
 	"cursor/internal/ide/workspace"
 )
@@ -126,6 +127,18 @@ func mapIDEWorkspaceError(err error) error {
 		return fmt.Errorf("SSH 保险库损坏: %w", err)
 	case errors.Is(err, sshvault.ErrVaultCapacity):
 		return fmt.Errorf("SSH 密钥数量已满: %w", err)
+	case errors.Is(err, knownhosts.ErrInvalidHost):
+		return fmt.Errorf("SSH 主机不合法: %w", err)
+	case errors.Is(err, knownhosts.ErrInvalidKey):
+		return fmt.Errorf("SSH 主机公钥无效: %w", err)
+	case errors.Is(err, knownhosts.ErrHostKeyChanged):
+		return fmt.Errorf("SSH 主机密钥已变更: %w", err)
+	case errors.Is(err, knownhosts.ErrProbeFailed):
+		return fmt.Errorf("SSH 主机探测失败: %w", err)
+	case errors.Is(err, knownhosts.ErrCapacity):
+		return fmt.Errorf("SSH 已知主机数量已满: %w", err)
+	case errors.Is(err, knownhosts.ErrStoreInvalid):
+		return fmt.Errorf("SSH 已知主机存储损坏: %w", err)
 	default:
 		return err
 	}

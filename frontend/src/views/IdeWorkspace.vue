@@ -4,14 +4,18 @@ import TabStrip from "@/components/workbench/TabStrip.vue";
 import ReadonlyCodeEditor from "@/components/ide/ReadonlyCodeEditor.vue";
 import {
   approveIDEApproval,
+  commitIDEKnownHost,
   commitIDEWorkspaceWrite,
   generateIDESSHKey,
   getIDEGitSnapshot,
   getIDEWorkspaceTree,
   importIDESSHKey,
+  listIDEKnownHosts,
   listIDESSHKeys,
   listIDEWorkspaces,
+  previewIDEKnownHost,
   previewIDEWorkspaceWrite,
+  probeIDEHostKey,
   readIDEWorkspaceText,
   rejectIDEApproval,
   removeIDESSHKey,
@@ -59,6 +63,12 @@ const sshError = ref("");
 const sshName = ref("");
 const sshPrivateKey = ref("");
 const sshPassphrase = ref("");
+const knownHosts = ref([]);
+const knownHostError = ref("");
+const knownHostName = ref("");
+const knownHostPort = ref("22");
+const knownHostPublicKey = ref("");
+const knownHostPreview = ref(null);
 
 const activeWorkspace = computed(() => workspaces.value.find((item) => item.id === activeWorkspaceID.value) || null);
 const explorerRows = computed(() => {
@@ -162,6 +172,75 @@ async function removeSSHKey(keyID) {
     await removeIDESSHKey(keyID);
     await loadSSHKeys();
   });
+}
+
+async function loadKnownHosts() {
+  try {
+    knownHosts.value = await listIDEKnownHosts();
+    knownHostError.value = "";
+  } catch (error) {
+    knownHosts.value = [];
+    knownHostError.value = error?.userMessage || error?.message || "SSH 已知主机不可用";
+  }
+}
+
+async function probeKnownHost() {
+  const host = knownHostName.value.trim();
+  const port = Number(knownHostPort.value) || 22;
+  knownHostPreview.value = null;
+  if (!host) return;
+  await run(async () => {
+    const presented = await probeIDEHostKey(host, port);
+    knownHostName.value = presented.host || host;
+    knownHostPort.value = String(presented.port || port);
+    knownHostPublicKey.value = presented.publicKey || "";
+  });
+}
+
+async function previewKnownHost() {
+  const host = knownHostName.value.trim();
+  const port = Number(knownHostPort.value) || 22;
+  const publicKey = knownHostPublicKey.value;
+  if (!host || !publicKey.trim() || !activeWorkspaceID.value) return;
+  await run(async () => {
+    knownHostPreview.value = await previewIDEKnownHost(activeWorkspaceID.value, host, port, publicKey);
+  });
+}
+
+async function rejectKnownHost() {
+  const preview = knownHostPreview.value;
+  if (!preview?.approval?.id) {
+    knownHostPreview.value = null;
+    return;
+  }
+  await run(async () => {
+    await rejectIDEApproval(activeWorkspaceID.value, preview.approval.id);
+    knownHostPreview.value = null;
+  });
+}
+
+async function approveKnownHost() {
+  const preview = knownHostPreview.value;
+  if (!preview?.approval?.id) return;
+  await run(async () => {
+    await approveIDEApproval(activeWorkspaceID.value, preview.approval.id);
+    await commitIDEKnownHost(
+      activeWorkspaceID.value,
+      preview.approval.id,
+      preview.host,
+      preview.port,
+      preview.publicKey,
+    );
+    knownHostPreview.value = null;
+    knownHostPublicKey.value = "";
+    await loadKnownHosts();
+  });
+}
+
+function knownHostStatusLabel(status) {
+  if (status === "matched") return "已信任";
+  if (status === "mismatch") return "主机密钥已变更";
+  return "尚未信任";
 }
 
 async function loadRootTree() {
@@ -270,6 +349,7 @@ onMounted(() => {
   void run(async () => {
     await refreshWorkspaces();
     await loadSSHKeys();
+    await loadKnownHosts();
   });
 });
 </script>
@@ -280,7 +360,7 @@ onMounted(() => {
       <div>
         <p class="eyebrow">CODE WORK · WORKSPACE</p>
         <h1 id="ide-heading">工作区</h1>
-        <p>选择并注册根目录后，只能用工作区 ID 和相对路径浏览、读取和搜索。只读 Git 状态使用系统 Git 的固定参数，远程地址会去掉凭据。SSH 私钥保存在应用保险库中，界面只显示名称和指纹。</p>
+        <p>选择并注册根目录后，只能用工作区 ID 和相对路径浏览、读取和搜索。只读 Git 状态使用系统 Git 的固定参数，远程地址会去掉凭据。SSH 私钥保存在应用保险库中，界面只显示名称和指纹。主机密钥不会自动接受，只有审批后才会写入应用管理的已知主机。</p>
       </div>
       <button type="button" class="primary-action" :disabled="loading" @click="registerWorkspace">选择并注册工作区</button>
     </header>
@@ -396,6 +476,44 @@ onMounted(() => {
           </div>
           <p v-if="sshKeys.length === 0" class="status-muted">还没有 SSH 密钥。</p>
         </section>
+
+        <section aria-label="已知主机">
+          <h3>已知主机</h3>
+          <p class="path-meta">探测只读取指纹，不会写入。只有审批通过后才会保存到应用管理的已知主机。</p>
+          <p v-if="knownHostError" class="status-error" role="alert">{{ knownHostError }}</p>
+          <form class="ssh-form" @submit.prevent="previewKnownHost">
+            <label class="sr-only" for="known-host-name">主机</label>
+            <input id="known-host-name" v-model="knownHostName" type="text" placeholder="主机" autocomplete="off" />
+            <label class="sr-only" for="known-host-port">端口</label>
+            <input id="known-host-port" v-model="knownHostPort" type="number" min="1" max="65535" placeholder="端口" />
+            <label class="sr-only" for="known-host-key">主机公钥</label>
+            <textarea id="known-host-key" v-model="knownHostPublicKey" rows="3" placeholder="粘贴主机公钥" autocomplete="off" spellcheck="false"></textarea>
+            <div class="search-row">
+              <button type="button" class="secondary-action" :disabled="loading || !knownHostName.trim()" @click="probeKnownHost">探测主机</button>
+              <button type="submit" class="primary-action" :disabled="loading || !knownHostName.trim() || !knownHostPublicKey.trim()">预览信任</button>
+            </div>
+          </form>
+          <section v-if="knownHostPreview" class="write-preview" aria-label="主机密钥预览">
+            <p class="path-meta">{{ knownHostPreview.host }}:{{ knownHostPreview.port }} · {{ knownHostStatusLabel(knownHostPreview.status) }} · {{ knownHostPreview.fingerprint }}</p>
+            <p v-if="knownHostPreview.status === 'mismatch'" class="status-warning">已记录的指纹是 {{ knownHostPreview.knownFingerprint }}。批准后会替换旧密钥。</p>
+            <p v-else-if="knownHostPreview.approval?.id" class="path-meta">{{ knownHostPreview.approval.summary?.title || "信任 SSH 主机" }} 需要审批。</p>
+            <div v-if="knownHostPreview.approval?.id" class="search-row">
+              <button type="button" class="primary-action" :disabled="loading" @click="approveKnownHost">批准写入</button>
+              <button type="button" class="secondary-action" :disabled="loading" @click="rejectKnownHost">拒绝</button>
+            </div>
+          </section>
+          <div
+            v-for="item in knownHosts"
+            :key="`${item.host}:${item.port}`"
+            class="tree-item ssh-key"
+          >
+            <span>
+              <strong>{{ item.host }}:{{ item.port }}</strong>
+              <small>{{ item.algorithm }} · {{ item.fingerprint }}</small>
+            </span>
+          </div>
+          <p v-if="knownHosts.length === 0" class="status-muted">还没有已知主机。</p>
+        </section>
       </section>
 
       <section class="panel preview-panel" aria-label="文档编辑器">
@@ -501,5 +619,6 @@ h3 { margin: 8px 0 0; color: var(--cw-text-secondary); font-size: 11px; font-wei
 .ssh-form textarea { min-height: 64px; resize: vertical; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
 .ssh-key { cursor: default; }
 .ssh-key small { display: block; }
+.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
 @media (max-width: 1100px) { .ide-grid { grid-template-columns: 1fr; } .ide-header { flex-direction: column; } .diff-grid { grid-template-columns: 1fr; } }
 </style>

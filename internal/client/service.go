@@ -20,6 +20,7 @@ import (
 	"cursor/internal/historymetrics"
 	"cursor/internal/ide/approval"
 	"cursor/internal/ide/gitstatus"
+	"cursor/internal/ide/knownhosts"
 	"cursor/internal/ide/sshvault"
 	"cursor/internal/ide/workspace"
 	"cursor/internal/logger"
@@ -59,6 +60,7 @@ type ProxyService struct {
 	ideApprovals       *approval.Store
 	ideGit             *gitstatus.Store
 	ideSSH             *sshvault.Store
+	ideKnownHosts      *knownhosts.Store
 	selectIDEDirectory func() (string, error)
 
 	// lifecycleMu serializes start/stop transitions so a Cursor launch cannot
@@ -242,6 +244,7 @@ func NewProxyService(proxy *mitm.ProxyServer, certManager *certs.Manager, caCert
 	service.ideApprovals = approval.New(appdata.IDEApprovalRootPath())
 	service.ideGit = gitstatus.New(service.ideWorkspaces.AuthorizedRoot, gitstatus.NewSystemRunner())
 	service.ideSSH = sshvault.New(appdata.IDESSHVaultRootPath(), sshvault.NewDPAPIProtector())
+	service.ideKnownHosts = knownhosts.New(appdata.IDESSHKnownHostsRootPath())
 	service.agentOps = agentops.New(
 		filepath.Join(appdata.DataRootPath(), "agent-ops", "exports"),
 		func() []forwarder.DelegationTaskSnapshot {

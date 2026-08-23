@@ -12,6 +12,10 @@ import {
   importIDESSHKey as previewImportIDESSHKey,
   generateIDESSHKey as previewGenerateIDESSHKey,
   removeIDESSHKey as previewRemoveIDESSHKey,
+  listIDEKnownHosts as previewListIDEKnownHosts,
+  probeIDEHostKey as previewProbeIDEHostKey,
+  previewIDEKnownHost as previewPreviewIDEKnownHost,
+  commitIDEKnownHost as previewCommitIDEKnownHost,
   readIDEWorkspaceText as previewReadIDEWorkspaceText,
   removeIDEWorkspace as previewRemoveIDEWorkspace,
   resetIDEWorkspacePreview,
@@ -1495,6 +1499,22 @@ export const GenerateIDESSHKey = (name) => {
 export const RemoveIDESSHKey = (keyID) => {
   recordPreviewCall("RemoveIDESSHKey", [keyID]);
   return previewRemoveIDESSHKey(keyID);
+};
+export const ListIDEKnownHosts = () => {
+  recordPreviewCall("ListIDEKnownHosts");
+  return previewListIDEKnownHosts();
+};
+export const ProbeIDEHostKey = (host, port) => {
+  recordPreviewCall("ProbeIDEHostKey", [host, port]);
+  return previewProbeIDEHostKey(host, port);
+};
+export const PreviewIDEKnownHost = (workspaceID, host, port, publicKey) => {
+  recordPreviewCall("PreviewIDEKnownHost", [workspaceID, host, port]);
+  return previewPreviewIDEKnownHost(workspaceID, host, port, publicKey);
+};
+export const CommitIDEKnownHost = (workspaceID, approvalID, host, port, publicKey) => {
+  recordPreviewCall("CommitIDEKnownHost", [workspaceID, approvalID, host, port]);
+  return previewCommitIDEKnownHost(workspaceID, approvalID, host, port, publicKey);
 };
 
 function previewStructuredQuotaBalance() {

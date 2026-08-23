@@ -10,7 +10,7 @@
 | --- | --- | --- | --- | --- | --- |
 | SAFE-001 | 已完成 | 固化 Goal/调度器加固改动 | 无 | 预算、完成判定、验证取消、只读工具和 scheduler 生命周期有回归测试；改动独立提交 | 已独立提交：Goal 预算/完成判定/验证取消、只读工具约束、scheduler 生命周期与并发/panic 回归测试 |
 | SAFE-002 | 已完成 | 建立 IDE workspace 授权与敏感文件策略 | SAFE-001 | 前端不能提交原始主机路径；所有操作仅接受 workspace ID + 相对路径；路径逃逸、符号链接逃逸和敏感文件均被拒绝 | `internal/ide/workspace` 与 `internal/client`/`internal/bridge` 定向测试通过；Wails 只暴露 `SelectAndRegisterIDEWorkspace`（无路径参数），后续操作仅接受 workspace ID + 相对路径 |
-| SAFE-003 | 进行中 | 建立 IDE 审批状态机 | SAFE-002 | 写文件、clone、Git mutation、Agent effect 和外部 executor write 都要求单次、过期、可取消审批 | `internal/ide/approval` 已由 `Preview/Approve/CommitIDEWorkspaceWrite` 消费；workspace_write 为单次、过期、可取消。clone/Git/Agent/executor write 尚未接入 |
+| SAFE-003 | 进行中 | 建立 IDE 审批状态机 | SAFE-002 | 写文件、clone、Git mutation、Agent effect 和外部 executor write 都要求单次、过期、可取消审批 | `internal/ide/approval` 已由 workspace_write 与 `ssh_known_host`/`ssh_host_key_changed` 消费；均为单次、过期、可取消。clone/Git mutation/Agent/executor write 尚未接入 |
 
 ## IDE 基础切片
 
@@ -27,7 +27,7 @@
 | --- | --- | --- | --- | --- | --- |
 | GIT-001 | 已完成 | 只读 Git 状态、分支、diff 与 remote 摘要 | IDE-001 | 使用系统 Git typed argv；不执行 raw shell；remote URL 不泄密 | `gitstatus` 用 allowlist argv + `exec.CommandContext`，不经 shell；`SanitizeRemoteURL` 去掉 userinfo 并遮蔽本地路径；`GetIDEGitSnapshot(workspaceID)` 摘要不含主机路径/凭据；`go test ./internal/ide/gitstatus ./internal/client ./internal/bridge` 与 `npx playwright test e2e/ide-workspace.spec.mjs` 通过 |
 | SSH-001 | 已完成 | 应用管理 SSH 私钥 vault | SAFE-003 | 私钥 DPAPI 加密，普通 DTO/日志/前端绝不含私钥或口令 | `internal/ide/sshvault` 用 Windows DPAPI（测试注入 protector）加密；`List/Import/Generate/RemoveIDESSHKey` 只返回名称/指纹/公钥；Wails 不暴露 PrivateMaterial；`go test ./internal/ide/sshvault ./internal/client ./internal/bridge` 与 `npx playwright test e2e/ide-workspace.spec.mjs` 通过 |
-| SSH-002 | 未开始 | SSH host 指纹与 known_hosts 审批 | SSH-001 | 不自动接受 host key；仅审批后写入 managed known_hosts | — |
+| SSH-002 | 已完成 | SSH host 指纹与 known_hosts 审批 | SSH-001 | 不自动接受 host key；仅审批后写入 managed known_hosts | `internal/ide/knownhosts` 探测只采集指纹并返回 `ErrUntrustedHostKey`，不写文件；Lookup unknown/mismatch 不写入；`PreviewIDEKnownHost`→`Approve`→`CommitIDEKnownHost` 后才 Append/Replace；Wails 不暴露 FilePath/Append；`go test ./internal/ide/knownhosts ./internal/client ./internal/bridge` 与 `npx playwright test e2e/ide-workspace.spec.mjs` 通过 |
 | GIT-002 | 未开始 | Clone 与 Git mutation 审批 | GIT-001, SSH-001, SSH-002 | clone/stage/commit/fetch/pull/push 都是 typed operation + approval | — |
 
 ## 终端与 Agent

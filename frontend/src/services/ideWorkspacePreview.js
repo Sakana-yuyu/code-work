@@ -49,6 +49,7 @@ let workspaces = defaultWorkspaces();
 let files = clone(PREVIEW_FILES);
 let approvals = [];
 let sshKeys = defaultSSHKeys();
+let knownHosts = defaultKnownHosts();
 
 function defaultSSHKeys() {
   return [
@@ -59,6 +60,18 @@ function defaultSSHKeys() {
       fingerprint: "SHA256:previewfingerprint",
       publicKey: "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIPreviewKey preview",
       createdAt: "2026-08-23T00:00:00.000Z",
+    },
+  ];
+}
+
+function defaultKnownHosts() {
+  return [
+    {
+      host: "github.com",
+      port: 22,
+      algorithm: "ssh-ed25519",
+      fingerprint: "SHA256:previewhostfingerprint",
+      publicKey: "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIPreviewHost github.com",
     },
   ];
 }
@@ -90,6 +103,7 @@ export function resetIDEWorkspacePreview() {
   files = clone(PREVIEW_FILES);
   approvals = [];
   sshKeys = defaultSSHKeys();
+  knownHosts = defaultKnownHosts();
 }
 
 function normalizeRelativePath(value, allowRoot) {
@@ -367,6 +381,135 @@ export function removeIDESSHKey(keyID) {
     const next = sshKeys.filter((item) => item.id !== keyID);
     if (next.length === sshKeys.length) throw new Error("SSH 密钥不存在");
     sshKeys = next;
+  });
+}
+
+function normalizeSSHHost(value) {
+  const host = String(value || "").trim();
+  if (!host || host.includes("..") || /[/\\@]/.test(host) || /^[A-Za-z]:/.test(host)) {
+    throw new Error("SSH 主机不合法");
+  }
+  return host;
+}
+
+function normalizeSSHPort(value) {
+  const port = Number(value) || 22;
+  if (!Number.isInteger(port) || port < 1 || port > 65535) throw new Error("SSH 主机不合法");
+  return port;
+}
+
+function normalizeHostPublicKey(value) {
+  const publicKey = String(value || "").trim();
+  if (!publicKey || /begin .+private key/i.test(publicKey)) throw new Error("SSH 主机公钥无效");
+  return publicKey;
+}
+
+function publicKnownHost(entry) {
+  return {
+    host: entry.host,
+    port: entry.port,
+    algorithm: entry.algorithm,
+    fingerprint: entry.fingerprint,
+    publicKey: entry.publicKey,
+  };
+}
+
+function presentedKnownHost(host, port, publicKey) {
+  const known = knownHosts.find((item) => item.host === host && item.port === port);
+  if (known && known.publicKey === publicKey) return publicKnownHost(known);
+  return {
+    host,
+    port,
+    algorithm: "ssh-ed25519",
+    fingerprint: `SHA256:preview-${host}-${port}`,
+    publicKey,
+  };
+}
+
+function lookupKnownHost(host, port, publicKey) {
+  const presented = presentedKnownHost(host, port, publicKey);
+  const known = knownHosts.find((item) => item.host === host && item.port === port);
+  if (!known) return { status: "unknown", presented };
+  if (known.publicKey === publicKey) return { status: "matched", presented, known: publicKnownHost(known) };
+  return { status: "mismatch", presented, known: publicKnownHost(known) };
+}
+
+export function listIDEKnownHosts() {
+  return Promise.resolve().then(() => knownHosts.map(publicKnownHost));
+}
+
+export function probeIDEHostKey(host, port) {
+  return Promise.resolve().then(() => {
+    const normalizedHost = normalizeSSHHost(host);
+    const normalizedPort = normalizeSSHPort(port);
+    return presentedKnownHost(
+      normalizedHost,
+      normalizedPort,
+      `ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIPreviewProbe ${normalizedHost}`,
+    );
+  });
+}
+
+export function previewIDEKnownHost(workspaceID, host, port, publicKey) {
+  return Promise.resolve().then(() => {
+    requireWorkspace(workspaceID);
+    const presentedHost = normalizeSSHHost(host);
+    const presentedPort = normalizeSSHPort(port);
+    const presentedKey = normalizeHostPublicKey(publicKey);
+    const result = lookupKnownHost(presentedHost, presentedPort, presentedKey);
+    const preview = {
+      approval: { id: "", workspaceId: workspaceID, runId: "", kind: "", summary: { title: "", impactCodes: [] }, state: "", createdAt: "", expiresAt: "", stateChangedAt: "" },
+      status: result.status,
+      host: result.presented.host,
+      port: result.presented.port,
+      algorithm: result.presented.algorithm,
+      fingerprint: result.presented.fingerprint,
+      publicKey: result.presented.publicKey,
+      knownFingerprint: result.known?.fingerprint || "",
+    };
+    if (result.status === "matched") return preview;
+    const kind = result.status === "mismatch" ? "ssh_host_key_changed" : "ssh_known_host";
+    const now = "2026-08-23T00:04:00.000Z";
+    const record = {
+      id: globalThis.crypto?.randomUUID?.() || `66666666-6666-4666-8666-${String(approvals.length + 1).padStart(12, "0")}`,
+      workspaceId: workspaceID,
+      kind,
+      summary: { title: result.status === "mismatch" ? "主机密钥已变更" : "信任 SSH 主机", impactCodes: [kind] },
+      state: "pending",
+      createdAt: now,
+      expiresAt: "2026-08-23T00:09:00.000Z",
+      stateChangedAt: now,
+      host: presentedHost,
+      port: presentedPort,
+      publicKey: presentedKey,
+    };
+    approvals = [...approvals, record];
+    return { ...preview, approval: publicApproval(record) };
+  });
+}
+
+export function commitIDEKnownHost(workspaceID, approvalID, host, port, publicKey) {
+  return Promise.resolve().then(() => {
+    requireWorkspace(workspaceID);
+    const presentedHost = normalizeSSHHost(host);
+    const presentedPort = normalizeSSHPort(port);
+    const presentedKey = normalizeHostPublicKey(publicKey);
+    const result = lookupKnownHost(presentedHost, presentedPort, presentedKey);
+    if (result.status === "matched") return result.presented;
+    const index = approvals.findIndex((record) => record.id === approvalID && record.workspaceId === workspaceID);
+    if (index < 0) throw new Error("审批不存在");
+    const record = approvals[index];
+    if (record.state !== "approved") throw new Error("审批状态无效");
+    const expectedKind = result.status === "mismatch" ? "ssh_host_key_changed" : "ssh_known_host";
+    if (record.kind !== expectedKind || record.host !== presentedHost || record.port !== presentedPort || record.publicKey !== presentedKey) {
+      throw new Error("审批与操作不匹配");
+    }
+    const next = result.status === "mismatch"
+      ? knownHosts.filter((item) => !(item.host === presentedHost && item.port === presentedPort))
+      : knownHosts;
+    knownHosts = [...next, result.presented];
+    approvals = approvals.map((item, itemIndex) => (itemIndex === index ? { ...item, state: "consumed" } : item));
+    return result.presented;
   });
 }
 

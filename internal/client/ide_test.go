@@ -14,6 +14,7 @@ import (
 
 	"cursor/internal/ide/approval"
 	"cursor/internal/ide/gitstatus"
+	"cursor/internal/ide/knownhosts"
 	"cursor/internal/ide/sshvault"
 	"cursor/internal/ide/workspace"
 
@@ -201,6 +202,77 @@ func TestIDESSHVaultOmitsPrivateKeyAndPassphrase(t *testing.T) {
 	}
 }
 
+func TestIDEKnownHostRequiresApprovalAndDoesNotAutoAccept(t *testing.T) {
+	service, _ := newTestIDEService(t)
+	summary, err := service.SelectAndRegisterIDEWorkspace()
+	if err != nil {
+		t.Fatalf("SelectAndRegisterIDEWorkspace() error = %v", err)
+	}
+	_, public, fingerprint := mustClientSSHKey(t)
+	if items, err := service.ListIDEKnownHosts(); err != nil || len(items) != 0 {
+		t.Fatalf("ListIDEKnownHosts() = (%+v, %v)", items, err)
+	}
+	preview, err := service.PreviewIDEKnownHost(summary.ID, "github.com", 22, public)
+	if err != nil || preview.Status != knownhosts.StatusUnknown || preview.Approval.State != approval.StatePending {
+		t.Fatalf("PreviewIDEKnownHost() = (%+v, %v)", preview, err)
+	}
+	if preview.Fingerprint != fingerprint || preview.Host != "github.com" {
+		t.Fatalf("preview identity = %+v", preview)
+	}
+	if _, err := os.Stat(service.ideKnownHosts.FilePath()); !os.IsNotExist(err) {
+		t.Fatalf("preview wrote known_hosts: %v", err)
+	}
+	if _, err := service.CommitIDEKnownHost(summary.ID, preview.Approval.ID, "github.com", 22, public); err == nil {
+		t.Fatal("CommitIDEKnownHost before approve = nil")
+	}
+	if _, err := os.Stat(service.ideKnownHosts.FilePath()); !os.IsNotExist(err) {
+		t.Fatalf("unapproved commit wrote known_hosts: %v", err)
+	}
+	if _, err := service.ApproveIDEApproval(summary.ID, preview.Approval.ID); err != nil {
+		t.Fatalf("ApproveIDEApproval() error = %v", err)
+	}
+	committed, err := service.CommitIDEKnownHost(summary.ID, preview.Approval.ID, "github.com", 22, public)
+	if err != nil || committed.Fingerprint != fingerprint {
+		t.Fatalf("CommitIDEKnownHost() = (%+v, %v)", committed, err)
+	}
+	items, err := service.ListIDEKnownHosts()
+	if err != nil || len(items) != 1 || items[0].Host != "github.com" {
+		t.Fatalf("ListIDEKnownHosts() after commit = (%+v, %v)", items, err)
+	}
+	_, otherPublic, _ := mustClientSSHKey(t)
+	changed, err := service.PreviewIDEKnownHost(summary.ID, "github.com", 22, otherPublic)
+	if err != nil || changed.Status != knownhosts.StatusMismatch {
+		t.Fatalf("PreviewIDEKnownHost(changed) = (%+v, %v)", changed, err)
+	}
+	if _, err := service.ApproveIDEApproval(summary.ID, changed.Approval.ID); err != nil {
+		t.Fatalf("ApproveIDEApproval(changed) error = %v", err)
+	}
+	if _, err := service.CommitIDEKnownHost(summary.ID, preview.Approval.ID, "github.com", 22, otherPublic); err == nil {
+		t.Fatal("CommitIDEKnownHost reused unknown-host approval = nil")
+	}
+	replaced, err := service.CommitIDEKnownHost(summary.ID, changed.Approval.ID, "github.com", 22, otherPublic)
+	if err != nil || replaced.PublicKey != strings.TrimSpace(otherPublic) {
+		t.Fatalf("CommitIDEKnownHost(changed) = (%+v, %v)", replaced, err)
+	}
+	encoded := strings.ToLower(fmtJSON(t, preview) + fmtJSON(t, committed) + fmtJSON(t, items) + fmtJSON(t, replaced))
+	if strings.Contains(encoded, "privatekey") || strings.Contains(encoded, "begin ") || strings.Contains(encoded, "known_hosts") {
+		t.Fatalf("known host DTO leaked secret or path: %s", encoded)
+	}
+}
+
+func TestIDEHostKeyProbeDoesNotWriteKnownHosts(t *testing.T) {
+	service, _ := newTestIDEService(t)
+	if _, err := service.ProbeIDEHostKey(`C:\windows`, 22); err == nil {
+		t.Fatal("ProbeIDEHostKey(host path) = nil")
+	}
+	if _, err := service.ProbeIDEHostKey("127.0.0.1", 1); err == nil {
+		t.Fatal("ProbeIDEHostKey(closed port) = nil")
+	}
+	if _, err := os.Stat(service.ideKnownHosts.FilePath()); !os.IsNotExist(err) {
+		t.Fatalf("ProbeIDEHostKey wrote known_hosts: %v", err)
+	}
+}
+
 func mustClientSSHKey(t *testing.T) (privatePEM, publicKey, fingerprint string) {
 	t.Helper()
 	_, private, err := ed25519.GenerateKey(rand.Reader)
@@ -266,6 +338,7 @@ func newTestIDEService(t *testing.T) (*ProxyService, string) {
 		ideApprovals:  approval.New(t.TempDir()),
 		ideGit:        gitstatus.New(workspaces.AuthorizedRoot, gitstatus.NewSystemRunner()),
 		ideSSH:        sshvault.New(t.TempDir(), stubSSHProtector{}),
+		ideKnownHosts: knownhosts.New(t.TempDir()),
 		selectIDEDirectory: func() (string, error) {
 			return workspaceRoot, nil
 		},

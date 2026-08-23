@@ -85,6 +85,10 @@ test("IDE workspace APIs are wrapped for desktop and browser preview", async () 
     "ImportIDESSHKey",
     "GenerateIDESSHKey",
     "RemoveIDESSHKey",
+    "ListIDEKnownHosts",
+    "ProbeIDEHostKey",
+    "PreviewIDEKnownHost",
+    "CommitIDEKnownHost",
   ]) {
     assert.match(source, new RegExp(`export function ${name[0].toLowerCase()}${name.slice(1)}`));
     assert.match(bindingsSource, new RegExp(`export const ${name} =`));
@@ -93,4 +97,6 @@ test("IDE workspace APIs are wrapped for desktop and browser preview", async () 
   assert.doesNotMatch(bindingsSource, /export const RegisterIDEWorkspace/);
   assert.doesNotMatch(source, /export function getIDESSHPrivateKey/);
   assert.doesNotMatch(bindingsSource, /export const GetIDESSHPrivateKey/);
+  assert.doesNotMatch(source, /export function appendIDEKnownHost/);
+  assert.doesNotMatch(bindingsSource, /export const AppendIDEKnownHost/);
 });

@@ -30,6 +30,7 @@ import {
   PreviewIDEWorkspaceWrite, ApproveIDEApproval, RejectIDEApproval, CancelIDEWorkspaceApprovals, CommitIDEWorkspaceWrite,
   GetIDEGitSnapshot,
   ListIDESSHKeys, ImportIDESSHKey, GenerateIDESSHKey, RemoveIDESSHKey,
+  ListIDEKnownHosts, ProbeIDEHostKey, PreviewIDEKnownHost, CommitIDEKnownHost,
 } from "@bindings/cursor/internal/bridge/proxyservice.js";
 import { GetAdRuntime, OpenExternalURL } from "@bindings/cursor/internal/bridge/adservice.js";
 import {
@@ -99,6 +100,7 @@ const desktopMethods = {
   PreviewIDEWorkspaceWrite, ApproveIDEApproval, RejectIDEApproval, CancelIDEWorkspaceApprovals, CommitIDEWorkspaceWrite,
   GetIDEGitSnapshot,
   ListIDESSHKeys, ImportIDESSHKey, GenerateIDESSHKey, RemoveIDESSHKey,
+  ListIDEKnownHosts, ProbeIDEHostKey, PreviewIDEKnownHost, CommitIDEKnownHost,
 };
 
 const API_LOG_PREFIX = "[clientApi]";
@@ -740,6 +742,22 @@ export function generateIDESSHKey(name) {
 
 export function removeIDESSHKey(keyID) {
   return withApiLogging("RemoveIDESSHKey", { keyID }, () => desktopOrMockRaw(() => RemoveIDESSHKey(keyID), "@bindings/cursor/internal/bridge/proxyservice.js", "RemoveIDESSHKey", [keyID]));
+}
+
+export function listIDEKnownHosts() {
+  return withApiLogging("ListIDEKnownHosts", undefined, () => desktopOrMockRaw(() => ListIDEKnownHosts(), "@bindings/cursor/internal/bridge/proxyservice.js", "ListIDEKnownHosts"));
+}
+
+export function probeIDEHostKey(host, port) {
+  return withApiLogging("ProbeIDEHostKey", { host, port }, () => desktopOrMockRaw(() => ProbeIDEHostKey(host, port), "@bindings/cursor/internal/bridge/proxyservice.js", "ProbeIDEHostKey", [host, port]));
+}
+
+export function previewIDEKnownHost(workspaceID, host, port, publicKey) {
+  return withApiLogging("PreviewIDEKnownHost", { workspaceID, host, port }, () => desktopOrMockRaw(() => PreviewIDEKnownHost(workspaceID, host, port, publicKey), "@bindings/cursor/internal/bridge/proxyservice.js", "PreviewIDEKnownHost", [workspaceID, host, port, publicKey]));
+}
+
+export function commitIDEKnownHost(workspaceID, approvalID, host, port, publicKey) {
+  return withApiLogging("CommitIDEKnownHost", { workspaceID, approvalID, host, port }, () => desktopOrMockRaw(() => CommitIDEKnownHost(workspaceID, approvalID, host, port, publicKey), "@bindings/cursor/internal/bridge/proxyservice.js", "CommitIDEKnownHost", [workspaceID, approvalID, host, port, publicKey]));
 }
 
 export function saveDelegationConfig(config) {

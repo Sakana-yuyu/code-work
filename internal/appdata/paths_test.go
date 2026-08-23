@@ -31,3 +31,12 @@ func TestIDESSHVaultRootPathUsesDataRoot(t *testing.T) {
 		t.Fatalf("IDESSHVaultRootPath() = %q, want %q", got, want)
 	}
 }
+
+func TestIDESSHKnownHostsRootPathUsesDataRoot(t *testing.T) {
+	override := t.TempDir()
+	t.Setenv(RootDirEnvVar, override)
+	want := filepath.Join(override, appDirName, "data", "ide-ssh-known-hosts")
+	if got := IDESSHKnownHostsRootPath(); got != want {
+		t.Fatalf("IDESSHKnownHostsRootPath() = %q, want %q", got, want)
+	}
+}

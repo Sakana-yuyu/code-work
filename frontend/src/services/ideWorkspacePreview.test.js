@@ -72,6 +72,54 @@ test("preview IDE workspace fixture never uses the host filesystem", async () =>
   assert.equal(JSON.stringify(afterImport).includes("preview-secret-material"), false);
   await api.removeIDESSHKey(imported.id);
 
+  const listedHosts = await api.listIDEKnownHosts();
+  assert.equal(listedHosts[0].host, "github.com");
+  assert.equal(listedHosts[0].fingerprint, "SHA256:previewhostfingerprint");
+  assert.equal("filePath" in listedHosts[0], false);
+  const beforeProbe = listedHosts.length;
+  const probed = await api.probeIDEHostKey("ci.example", 22);
+  assert.equal(probed.host, "ci.example");
+  assert.match(probed.publicKey, /^ssh-ed25519 /);
+  assert.equal((await api.listIDEKnownHosts()).length, beforeProbe);
+  await assert.rejects(() => api.probeIDEHostKey("C:\\\\windows", 22), /SSH 主机不合法/);
+  await assert.rejects(
+    () => api.previewIDEKnownHost(workspaces[0].id, "ci.example", 22, "-----BEGIN OPENSSH PRIVATE KEY-----\nsecret\n-----END OPENSSH PRIVATE KEY-----"),
+    /SSH 主机公钥无效/,
+  );
+  const hostPreview = await api.previewIDEKnownHost(
+    workspaces[0].id,
+    "ci.example",
+    22,
+    "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIPreviewHost ci.example",
+  );
+  assert.equal(hostPreview.status, "unknown");
+  assert.equal(hostPreview.approval.state, "pending");
+  await assert.rejects(
+    () => api.commitIDEKnownHost(workspaces[0].id, hostPreview.approval.id, "ci.example", 22, hostPreview.publicKey),
+    /审批状态无效/,
+  );
+  assert.equal((await api.listIDEKnownHosts()).length, beforeProbe);
+  await api.approveIDEApproval(workspaces[0].id, hostPreview.approval.id);
+  const committedHost = await api.commitIDEKnownHost(
+    workspaces[0].id,
+    hostPreview.approval.id,
+    "ci.example",
+    22,
+    hostPreview.publicKey,
+  );
+  assert.equal(committedHost.host, "ci.example");
+  assert.equal((await api.listIDEKnownHosts()).some((item) => item.host === "ci.example"), true);
+  const changed = await api.previewIDEKnownHost(
+    workspaces[0].id,
+    "github.com",
+    22,
+    "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIPreviewHost other",
+  );
+  assert.equal(changed.status, "mismatch");
+  assert.match(JSON.stringify(hostPreview) + JSON.stringify(committedHost), /SHA256:/);
+  assert.equal(JSON.stringify(hostPreview).includes("BEGIN "), false);
+  assert.equal(JSON.stringify(listedHosts).includes("ide-ssh-known-hosts"), false);
+
   const selected = await api.selectAndRegisterIDEWorkspace();
   assert.equal(selected.name, "preview-selected");
   const listed = await api.listIDEWorkspaces();
