@@ -3,6 +3,7 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue"
 import { useRoute, useRouter } from "vue-router";
 import { appState } from "@/state/appState";
 import {
+  readLayout,
   removeWorkbenchTab,
   resetWorkbenchLayout,
   selectWorkbenchActivity,
@@ -12,6 +13,7 @@ import {
   workbenchActivities,
   workbenchState,
 } from "@/state/workbenchState";
+import { isWorkbenchSurfacePath, SERVICE_CONSOLE_PATH } from "@/utils/workbenchRoutes.js";
 import ActivityRail from "@/components/workbench/ActivityRail.vue";
 import CommandPalette from "@/components/workbench/CommandPalette.vue";
 import PrimarySidebar from "@/components/workbench/PrimarySidebar.vue";
@@ -26,9 +28,12 @@ const commandPaletteVisible = ref(false);
 const compactLayout = ref(false);
 let paletteOpener = null;
 
+const onWorkbenchSurface = computed(() => isWorkbenchSurfacePath(route.path));
+const sidebarOnSurface = computed(() => onWorkbenchSurface.value && workbenchState.sidebarVisible);
+const taskPanelOnSurface = computed(() => onWorkbenchSurface.value && workbenchState.taskPanelVisible);
 const workbenchStyle = computed(() => ({
-  "--cw-sidebar-current": workbenchState.sidebarVisible ? "var(--cw-sidebar-width)" : "0px",
-  "--cw-task-current": workbenchState.taskPanelVisible ? "var(--cw-task-width)" : "0px",
+  "--cw-sidebar-current": sidebarOnSurface.value ? "var(--cw-sidebar-width)" : "0px",
+  "--cw-task-current": taskPanelOnSurface.value ? "var(--cw-task-width)" : "0px",
 }));
 const currentTitle = computed(() => String(route.meta?.workbenchLabel || route.meta?.title || "Code Work").split(/[｜|]/)[0].trim() || "Code Work");
 const serviceRunning = computed(() => Boolean(appState.serviceRunning));
@@ -46,23 +51,14 @@ const commands = computed(() => [
   { id: "reset-layout", label: "重置 Workbench 布局", detail: "恢复默认侧栏和任务面板", shortcut: "" },
 ]);
 
-function isWorkbenchSurfaceRoute() {
-  if (route.path === "/workbench" || route.path === "/ide") return true;
-  if (typeof window === "undefined") return false;
-  return window.location.pathname.endsWith("/workbench")
-    || window.location.pathname.endsWith("/ide")
-    || window.location.hash === "#/workbench"
-    || window.location.hash === "#/ide";
-}
-
 watch(
   () => route.fullPath,
   () => {
     syncWorkbenchTab(route);
-    if (!isWorkbenchSurfaceRoute()) {
-      workbenchState.sidebarVisible = false;
-      workbenchState.taskPanelVisible = false;
-    }
+    if (!isWorkbenchSurfacePath(route.path) || compactLayout.value) return;
+    const layout = readLayout();
+    if (!workbenchState.sidebarVisible) workbenchState.sidebarVisible = layout.sidebarVisible;
+    if (!workbenchState.taskPanelVisible) workbenchState.taskPanelVisible = layout.taskPanelVisible;
   },
   { immediate: true },
 );
@@ -108,7 +104,7 @@ function runCommand(command) {
       navigate("/ide");
       break;
     case "open-service":
-      navigate("/");
+      navigate(SERVICE_CONSOLE_PATH);
       break;
     case "open-model-config":
       navigate("/model-config");
@@ -184,13 +180,13 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div class="workbench-shell" :style="workbenchStyle" :class="{ 'sidebar-hidden': !workbenchState.sidebarVisible, 'task-hidden': !workbenchState.taskPanelVisible }">
+  <div class="workbench-shell" :style="workbenchStyle" :class="{ 'sidebar-hidden': !sidebarOnSurface, 'task-hidden': !taskPanelOnSurface }">
     <TitleBar :title="currentTitle" @command="runCommand" />
     <div class="workbench-body">
       <ActivityRail :activities="workbenchActivities" :active-activity="workbenchState.activeActivity" @select="onSelectActivity" />
       <div class="workbench-main-row">
         <PrimarySidebar
-          v-if="workbenchState.sidebarVisible"
+          v-if="sidebarOnSurface"
           :active-activity="workbenchState.activeActivity"
           :current-path="route.path"
           @navigate="navigate"
@@ -202,7 +198,7 @@ onBeforeUnmount(() => {
             <router-view />
           </div>
         </main>
-        <TaskPanel v-if="workbenchState.taskPanelVisible" @close="toggleWorkbenchTaskPanel" />
+        <TaskPanel v-if="taskPanelOnSurface" @close="toggleWorkbenchTaskPanel" />
       </div>
     </div>
     <StatusBar

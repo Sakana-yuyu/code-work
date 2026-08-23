@@ -1,5 +1,6 @@
 import { createRouter, createWebHashHistory, createWebHistory } from "vue-router";
 import { isBrowserPreview } from "@/services/runtimeAdapter";
+import { SERVICE_CONSOLE_PATH, WORKBENCH_LAUNCH_PATH } from "@/utils/workbenchRoutes.js";
 
 // Keep feature views lazy: the Workbench chrome remains fast while legacy operational
 // modules load only when the user opens their corresponding tab.
@@ -23,8 +24,7 @@ const router = createRouter({
   routes: [
     {
       path: "/",
-      component: LegacyHome,
-      meta: { showIcon: false, title: "服务控制台", workbenchLabel: "服务", workbenchIcon: "service", directlyClose: false },
+      redirect: WORKBENCH_LAUNCH_PATH,
     },
     {
       path: "/workbench",
@@ -33,7 +33,12 @@ const router = createRouter({
     },
     {
       path: "/service",
-      redirect: "/",
+      redirect: SERVICE_CONSOLE_PATH,
+    },
+    {
+      path: SERVICE_CONSOLE_PATH,
+      component: LegacyHome,
+      meta: { showIcon: false, title: "服务", workbenchLabel: "服务", workbenchIcon: "service", directlyClose: false },
     },
     {
       path: "/model-config",

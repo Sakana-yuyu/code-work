@@ -15,7 +15,7 @@ export const workbenchActivities = Object.freeze([
   { id: "settings", label: "设置", shortcut: "" },
 ]);
 
-function readLayout() {
+export function readLayout() {
   if (typeof window === "undefined") return { ...DEFAULT_LAYOUT };
   try {
     const stored = JSON.parse(window.localStorage.getItem(STORAGE_KEY) || "{}");
