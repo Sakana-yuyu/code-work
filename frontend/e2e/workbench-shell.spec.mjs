@@ -24,10 +24,10 @@ test("活动栏和命令面板驱动同一组 Workbench 操作", async ({ page }
   const palette = page.getByRole("dialog", { name: "命令面板" });
   await expect(palette).toBeVisible();
   await palette.getByRole("option", { name: /切换任务面板/ }).click();
-  await expect(page.getByRole("complementary", { name: "任务面板" })).toHaveCount(0);
+  await expect(page.getByRole("complementary", { name: "AI 对话" })).toHaveCount(0);
 
   await page.keyboard.press("Control+J");
-  await expect(page.getByRole("complementary", { name: "任务面板" })).toBeVisible();
+  await expect(page.getByRole("complementary", { name: "AI 对话" })).toBeVisible();
 
   await page.keyboard.press("Control+B");
   await expect(page.getByRole("complementary", { name: "工作台侧栏" })).toHaveCount(0);
@@ -35,20 +35,15 @@ test("活动栏和命令面板驱动同一组 Workbench 操作", async ({ page }
   await expect(page.getByRole("complementary", { name: "工作台侧栏" })).toBeVisible();
 });
 
-test("任务面板展示真实委派快照、attempts、取消和 MCP 状态", async ({ page }) => {
+test("AI 对话栏在无工作区时引导打开文件夹，而不是演示任务", async ({ page }) => {
   await openWorkbench(page);
 
-  const taskPanel = page.getByRole("complementary", { name: "任务面板" });
-  await expect(taskPanel).toContainText("不会创建演示任务");
-  await expect(taskPanel.getByRole("button", { name: "添加演示任务" })).toHaveCount(0);
-  await expect(taskPanel).toContainText("Review the active workspace changes");
-  await expect(taskPanel).toContainText("运行中");
-  await expect(taskPanel).toContainText("本地 BYOK #1 · 运行中");
-  await expect(taskPanel.getByRole("region", { name: "MCP 状态" })).toContainText("Preview filesystem");
-  await expect(taskPanel.getByRole("region", { name: "MCP 状态" })).toContainText("已连接");
-
-  await taskPanel.getByRole("button", { name: "取消" }).first().click();
-  await expect(taskPanel).toContainText("已取消");
+  const agent = page.getByRole("complementary", { name: "AI 对话" });
+  await expect(agent).toBeVisible();
+  await expect(agent.getByRole("button", { name: "添加演示任务" })).toHaveCount(0);
+  await expect(agent).toContainText("先打开文件夹");
+  await expect(agent).not.toContainText("不会创建演示任务");
+  await expect(agent).not.toContainText("Review the active workspace changes");
 });
 
 test("齿轮打开设置后返回工作台而不是服务控制台", async ({ page }) => {

@@ -18,7 +18,7 @@ const emit = defineEmits(["toggle-sidebar", "toggle-task", "open-command"]);
     </div>
     <div class="status-actions">
       <button type="button" :aria-pressed="sidebarVisible" title="切换主侧栏 (Ctrl+B)" @click="emit('toggle-sidebar')"><WorkbenchGlyph name="panel" :size="14" /><span>侧栏</span></button>
-      <button type="button" :aria-pressed="taskPanelVisible" title="切换任务面板 (Ctrl+J)" @click="emit('toggle-task')"><WorkbenchGlyph name="panel-right" :size="14" /><span>任务</span></button>
+      <button type="button" :aria-pressed="taskPanelVisible" title="切换 AI 栏 (Ctrl+L)" @click="emit('toggle-task')"><WorkbenchGlyph name="panel-right" :size="14" /><span>AI</span></button>
       <button type="button" title="打开命令面板 (Ctrl+Shift+P)" @click="emit('open-command')"><WorkbenchGlyph name="command" :size="14" /></button>
     </div>
   </footer>

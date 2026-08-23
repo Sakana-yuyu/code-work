@@ -6,7 +6,7 @@ async function openIde(page) {
     localStorage.setItem("code-work.workbench.layout.v1", JSON.stringify({
       activeActivity: "explorer",
       sidebarVisible: true,
-      taskPanelVisible: false,
+      taskPanelVisible: true,
     }));
   });
   await seedPreviewTestPlan(page, {}, basePreviewConfig());
@@ -125,8 +125,8 @@ test("浏览器预览用内存工作区浏览、读取和搜索，不暴露主�
     await explorer(page).getByRole("button", { name: "src", exact: true }).click();
   }
   await mainFile.click();
-  const agent = page.getByLabel("BYOK Agent");
-  await expect(agent.getByRole("heading", { name: "BYOK Agent" })).toBeVisible();
+  const agent = page.getByLabel("AI 对话");
+  await expect(agent).toBeVisible();
   await agent.getByPlaceholder("询问工作区").fill("总结当前文件");
   await agent.getByRole("button", { name: "开始运行" }).click();
   await expect(agent.getByLabel("Agent 输出")).toContainText("预览回复：总结当前文件");

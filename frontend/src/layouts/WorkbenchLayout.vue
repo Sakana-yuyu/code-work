@@ -14,12 +14,13 @@ import {
   workbenchState,
 } from "@/state/workbenchState";
 import { isWorkbenchSurfacePath } from "@/utils/workbenchRoutes.js";
+import { ideWorkspaceSession } from "@/utils/ideWorkspaceSession.js";
 import ActivityRail from "@/components/workbench/ActivityRail.vue";
+import AgentChatPanel from "@/components/workbench/AgentChatPanel.vue";
 import CommandPalette from "@/components/workbench/CommandPalette.vue";
 import PrimarySidebar from "@/components/workbench/PrimarySidebar.vue";
 import StatusBar from "@/components/workbench/StatusBar.vue";
 import TabStrip from "@/components/workbench/TabStrip.vue";
-import TaskPanel from "@/components/workbench/TaskPanel.vue";
 import TitleBar from "@/components/workbench/TitleBar.vue";
 
 const route = useRoute();
@@ -162,6 +163,9 @@ function handleGlobalKeydown(event) {
   } else if (key === "j") {
     event.preventDefault();
     toggleWorkbenchTaskPanel();
+  } else if (key === "l" && !event.shiftKey) {
+    event.preventDefault();
+    toggleWorkbenchTaskPanel();
   } else if (key === "p" && event.shiftKey) {
     event.preventDefault();
     openCommandPalette();
@@ -198,7 +202,11 @@ onBeforeUnmount(() => {
             <router-view />
           </div>
         </main>
-        <TaskPanel v-if="taskPanelOnSurface" @close="toggleWorkbenchTaskPanel" />
+        <AgentChatPanel
+          v-if="taskPanelOnSurface"
+          :workspace-id="route.path === '/ide' ? ideWorkspaceSession.workspaceID : ''"
+          @close="toggleWorkbenchTaskPanel"
+        />
       </div>
     </div>
     <StatusBar

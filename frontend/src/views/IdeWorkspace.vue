@@ -1,5 +1,5 @@
 <script setup>
-import { computed, onMounted, onUnmounted, reactive, ref } from "vue";
+import { computed, onMounted, onUnmounted, reactive, ref, watch } from "vue";
 import TabStrip from "@/components/workbench/TabStrip.vue";
 import ReadonlyCodeEditor from "@/components/ide/ReadonlyCodeEditor.vue";
 import {
@@ -29,11 +29,6 @@ import {
   interruptIDETerminalSession,
   closeIDETerminalSession,
   getIDETerminalOutput,
-  startIDEAgentRun,
-  cancelIDEAgentRun,
-  getIDEAgentRunEvents,
-  previewIDEAgentEffect,
-  commitIDEAgentEffect,
   getDelegationExecutorSnapshots,
   previewIDEExecutorWriteCapability,
   commitIDEExecutorWriteCapability,
@@ -62,6 +57,11 @@ import {
   gitChangeStatusLabel,
   normalizeGitSnapshot,
 } from "@/utils/ideGitSnapshot";
+import {
+  ideWorkspaceSession,
+  writeActiveDocument,
+  writeActiveWorkspaceID,
+} from "@/utils/ideWorkspaceSession.js";
 
 const workspaces = ref([]);
 const activeWorkspaceID = ref("");
@@ -96,12 +96,6 @@ const terminalSession = ref(null);
 const terminalOutput = ref("");
 const terminalInput = ref("");
 const terminalError = ref("");
-const agentPrompt = ref("总结当前工作区");
-const agentModelID = ref("preview-demo-openai");
-const agentRun = ref(null);
-const agentEvents = ref([]);
-const agentError = ref("");
-const agentEffectPreview = ref(null);
 const executors = ref([]);
 const executorWritePreview = ref(null);
 let terminalPoll = 0;
@@ -436,80 +430,6 @@ async function closeTerminal() {
   });
 }
 
-const agentTranscript = computed(() => agentEvents.value.map((event) => event.text).filter(Boolean).join(""));
-
-async function refreshAgentEvents() {
-  if (!agentRun.value?.id) return;
-  agentEvents.value = await getIDEAgentRunEvents(agentRun.value.id);
-}
-
-async function startAgent() {
-  if (!activeWorkspaceID.value) return;
-  await run(async () => {
-    agentError.value = "";
-    agentEffectPreview.value = null;
-    agentRun.value = await startIDEAgentRun(activeWorkspaceID.value, agentModelID.value, agentPrompt.value);
-    await refreshAgentEvents();
-  });
-}
-
-async function cancelAgent() {
-  if (!agentRun.value?.id) return;
-  await run(async () => {
-    agentRun.value = await cancelIDEAgentRun(agentRun.value.id);
-    await refreshAgentEvents();
-  });
-}
-
-async function previewAgentWrite() {
-  const tab = activeDocument.value;
-  if (!agentRun.value?.id || !tab?.path) {
-    agentError.value = "请先打开文本文件并启动 Agent。";
-    return;
-  }
-  await run(async () => {
-    agentEffectPreview.value = await previewIDEAgentEffect(agentRun.value.id, {
-      kind: "workspace_write",
-      path: tab.path,
-      text: `${tab.draft || tab.text || ""}// agent\n`,
-      expectedVersion: tab.version,
-    });
-  });
-}
-
-async function approveAgentEffect() {
-  const preview = agentEffectPreview.value;
-  if (!preview?.approval?.id || !activeWorkspaceID.value) return;
-  await run(async () => {
-    await approveIDEApproval(activeWorkspaceID.value, preview.approval.id);
-    await commitIDEAgentEffect(agentRun.value.id, preview.approval.id, preview.effect);
-    agentEffectPreview.value = null;
-    await refreshAgentEvents();
-    const tab = activeDocument.value;
-    if (tab?.path) {
-      const file = await readIDEWorkspaceText(activeWorkspaceID.value, tab.path);
-      openDocumentTab(documents, {
-        workspaceID: activeWorkspaceID.value,
-        path: file.path,
-        text: file.text,
-        version: file.version,
-        binary: file.binary,
-        truncated: file.truncated,
-        restricted: false,
-      });
-    }
-  });
-}
-
-async function rejectAgentEffect() {
-  const preview = agentEffectPreview.value;
-  if (!preview?.approval?.id || !activeWorkspaceID.value) return;
-  await run(async () => {
-    await rejectIDEApproval(activeWorkspaceID.value, preview.approval.id);
-    agentEffectPreview.value = null;
-  });
-}
-
 function executorAuthLabel(kind) {
   return kind === "byok_model" ? "BYOK 模型" : "CLI 登录";
 }
@@ -659,6 +579,31 @@ async function approveSave() {
     writePreview.value = null;
   });
 }
+
+watch(activeWorkspaceID, (id) => writeActiveWorkspaceID(id), { immediate: true });
+watch(activeDocument, (tab) => writeActiveDocument(tab), { immediate: true, deep: true });
+watch(
+  () => ideWorkspaceSession.documentEpoch,
+  async (epoch) => {
+    if (!epoch) return;
+    const tab = activeDocument.value;
+    if (!tab?.path || !activeWorkspaceID.value) return;
+    try {
+      const file = await readIDEWorkspaceText(activeWorkspaceID.value, tab.path);
+      openDocumentTab(documents, {
+        workspaceID: activeWorkspaceID.value,
+        path: file.path,
+        text: file.text,
+        version: file.version,
+        binary: file.binary,
+        truncated: file.truncated,
+        restricted: false,
+      });
+    } catch {
+      /* Agent 写入后的文档刷新失败时，保留当前编辑器内容 */
+    }
+  },
+);
 
 onMounted(() => {
   void run(async () => {
@@ -826,32 +771,6 @@ onUnmounted(() => {
             <input id="terminal-input" v-model="terminalInput" type="text" placeholder="终端输入" autocomplete="off" :disabled="!terminalSession || terminalSession.state !== 'running'" />
             <button type="submit" class="secondary-action" :disabled="loading || !terminalSession || terminalSession.state !== 'running'">发送</button>
           </form>
-        </section>
-
-        <section aria-label="BYOK Agent">
-          <h3>BYOK Agent</h3>
-          <p class="path-meta">使用已配置的模型路由，不经过 Cursor exec bridge。写入、Git、终端和 MCP 副作用都要审批。</p>
-          <p v-if="agentError" class="status-error" role="alert">{{ agentError }}</p>
-          <form class="ssh-form" @submit.prevent="startAgent">
-            <label class="sr-only" for="agent-model">模型 ID</label>
-            <input id="agent-model" v-model="agentModelID" type="text" placeholder="模型 ID" autocomplete="off" />
-            <label class="sr-only" for="agent-prompt">Agent 提示</label>
-            <textarea id="agent-prompt" v-model="agentPrompt" rows="3" placeholder="询问工作区"></textarea>
-            <div class="search-row">
-              <button type="submit" class="primary-action" :disabled="loading || !activeWorkspaceID">开始运行</button>
-              <button type="button" class="secondary-action" :disabled="loading || !agentRun" @click="cancelAgent">取消</button>
-              <button type="button" class="secondary-action" :disabled="loading || !agentRun" @click="previewAgentWrite">预览写入</button>
-            </div>
-          </form>
-          <p v-if="agentRun" class="path-meta">运行 {{ agentRun.status }}</p>
-          <pre class="preview-body git-diff" aria-label="Agent 输出">{{ agentTranscript || "尚未运行 Agent。" }}</pre>
-          <section v-if="agentEffectPreview" class="write-preview" aria-label="Agent 副作用预览">
-            <p class="path-meta">{{ agentEffectPreview.approval?.summary?.title || "Agent 副作用" }} 需要审批。</p>
-            <div class="search-row">
-              <button type="button" class="primary-action" :disabled="loading" @click="approveAgentEffect">批准执行</button>
-              <button type="button" class="secondary-action" :disabled="loading" @click="rejectAgentEffect">拒绝</button>
-            </div>
-          </section>
         </section>
 
         <section aria-label="执行器写入权限">
