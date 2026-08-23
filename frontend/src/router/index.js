@@ -16,6 +16,7 @@ const StatsOverlay = () => import("@/views/StatsOverlay.vue");
 const Diagnostics = () => import("@/views/Diagnostics.vue");
 const Settings = () => import("@/views/Settings.vue");
 const ControlCenter = () => import("@/views/ControlCenter.vue");
+const IdeWorkspace = () => import("@/views/IdeWorkspace.vue");
 
 const router = createRouter({
   history: isBrowserPreview ? createWebHistory() : createWebHashHistory(),
@@ -89,6 +90,11 @@ const router = createRouter({
       path: "/control-center",
       component: ControlCenter,
       meta: { showIcon: false, title: "控制中心", workbenchIcon: "panel", directlyClose: false },
+    },
+    {
+      path: "/ide",
+      component: IdeWorkspace,
+      meta: { showIcon: false, title: "工作区", workbenchLabel: "工作区", workbenchIcon: "folder", directlyClose: false },
     },
   ],
 });

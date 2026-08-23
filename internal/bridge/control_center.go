@@ -47,6 +47,7 @@ func WireCursorRuntime(service *ProxyService, windows *WindowService) {
 		return
 	}
 	service.core.AttachCursorRuntime(newCursorProcessRuntime(windows))
+	service.core.SetIDEDirectorySelector(windows.selectWorkspaceDirectory)
 }
 
 func (s *ProxyService) GetControlCenterOverview() (ControlCenterOverview, error) {

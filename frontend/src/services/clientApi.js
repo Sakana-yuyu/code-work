@@ -25,6 +25,8 @@ import {
   RepairCACorruption, GetCARepairStatus,
   OfferDefenderExclusion, GetDefenderExclusionState, DismissDefenderExclusion,
   GetTerminalEnvironmentStatus, ApplyTerminalEnvironment, InstallTerminalDependency,
+  ListIDEWorkspaces, SelectAndRegisterIDEWorkspace, RemoveIDEWorkspace,
+  GetIDEWorkspaceTree, ReadIDEWorkspaceText, SearchIDEWorkspace,
 } from "@bindings/cursor/internal/bridge/proxyservice.js";
 import { GetAdRuntime, OpenExternalURL } from "@bindings/cursor/internal/bridge/adservice.js";
 import {
@@ -89,6 +91,8 @@ const desktopMethods = {
   RepairCACorruption, GetCARepairStatus,
   OfferDefenderExclusion, GetDefenderExclusionState, DismissDefenderExclusion,
   GetTerminalEnvironmentStatus, ApplyTerminalEnvironment, InstallTerminalDependency,
+  ListIDEWorkspaces, SelectAndRegisterIDEWorkspace, RemoveIDEWorkspace,
+  GetIDEWorkspaceTree, ReadIDEWorkspaceText, SearchIDEWorkspace,
 };
 
 const API_LOG_PREFIX = "[clientApi]";
@@ -666,6 +670,30 @@ export function getDelegationConfig() {
 }
 export function getRecentWorkspaceRoot() {
   return desktopOrMock(() => GetRecentWorkspaceRoot(), "@bindings/cursor/internal/bridge/proxyservice.js", "GetRecentWorkspaceRoot");
+}
+
+export function listIDEWorkspaces() {
+  return withApiLogging("ListIDEWorkspaces", undefined, () => desktopOrMockRaw(() => ListIDEWorkspaces(), "@bindings/cursor/internal/bridge/proxyservice.js", "ListIDEWorkspaces"));
+}
+
+export function selectAndRegisterIDEWorkspace() {
+  return withApiLogging("SelectAndRegisterIDEWorkspace", undefined, () => desktopOrMockRaw(() => SelectAndRegisterIDEWorkspace(), "@bindings/cursor/internal/bridge/proxyservice.js", "SelectAndRegisterIDEWorkspace"));
+}
+
+export function removeIDEWorkspace(workspaceID) {
+  return withApiLogging("RemoveIDEWorkspace", { workspaceID }, () => desktopOrMockRaw(() => RemoveIDEWorkspace(workspaceID), "@bindings/cursor/internal/bridge/proxyservice.js", "RemoveIDEWorkspace", [workspaceID]));
+}
+
+export function getIDEWorkspaceTree(workspaceID, relativeDirectory = "") {
+  return withApiLogging("GetIDEWorkspaceTree", { workspaceID, relativeDirectory }, () => desktopOrMockRaw(() => GetIDEWorkspaceTree(workspaceID, relativeDirectory), "@bindings/cursor/internal/bridge/proxyservice.js", "GetIDEWorkspaceTree", [workspaceID, relativeDirectory]));
+}
+
+export function readIDEWorkspaceText(workspaceID, relativeFile) {
+  return withApiLogging("ReadIDEWorkspaceText", { workspaceID, relativeFile }, () => desktopOrMockRaw(() => ReadIDEWorkspaceText(workspaceID, relativeFile), "@bindings/cursor/internal/bridge/proxyservice.js", "ReadIDEWorkspaceText", [workspaceID, relativeFile]));
+}
+
+export function searchIDEWorkspace(workspaceID, relativePath, query) {
+  return withApiLogging("SearchIDEWorkspace", { workspaceID, relativePath, query }, () => desktopOrMockRaw(() => SearchIDEWorkspace(workspaceID, relativePath, query), "@bindings/cursor/internal/bridge/proxyservice.js", "SearchIDEWorkspace", [workspaceID, relativePath, query]));
 }
 
 export function saveDelegationConfig(config) {

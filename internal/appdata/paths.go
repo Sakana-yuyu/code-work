@@ -103,3 +103,14 @@ func CACertFilePath() string {
 func CAKeyFilePath() string {
 	return filepath.Join(DataRootPath(), "ca.key")
 }
+
+// IDEWorkspaceRootPath returns the private registry root for IDE-authorized workspaces.
+// It creates nothing; callers create it only when registering or revoking a workspace.
+func IDEWorkspaceRootPath() string {
+	return filepath.Join(DataRootPath(), "ide-workspaces")
+}
+
+// IDEApprovalRootPath returns the private registry root for IDE approval receipts.
+func IDEApprovalRootPath() string {
+	return filepath.Join(DataRootPath(), "ide-approvals")
+}

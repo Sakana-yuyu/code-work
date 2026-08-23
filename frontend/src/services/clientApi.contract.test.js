@@ -62,3 +62,23 @@ test("browser preview exposes Defender exclusion bindings", async () => {
   assert.ok(bindingsSource.includes("alreadyExcluded: true"));
   assert.ok(bindingsSource.includes("offered: true"));
 });
+
+test("IDE workspace APIs are wrapped for desktop and browser preview", async () => {
+  const [source, bindingsSource] = await Promise.all([
+    readFile(sourceURL, "utf8"),
+    readFile(browserBindingsURL, "utf8"),
+  ]);
+  for (const name of [
+    "ListIDEWorkspaces",
+    "SelectAndRegisterIDEWorkspace",
+    "RemoveIDEWorkspace",
+    "GetIDEWorkspaceTree",
+    "ReadIDEWorkspaceText",
+    "SearchIDEWorkspace",
+  ]) {
+    assert.match(source, new RegExp(`export function ${name[0].toLowerCase()}${name.slice(1)}`));
+    assert.match(bindingsSource, new RegExp(`export const ${name} =`));
+  }
+  assert.doesNotMatch(source, /export function registerIDEWorkspace/);
+  assert.doesNotMatch(bindingsSource, /export const RegisterIDEWorkspace/);
+});

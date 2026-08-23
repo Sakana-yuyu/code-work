@@ -16,6 +16,8 @@
     "i18n:scan": "node --input-type=module -e \"import { syncCatalogFiles } from './plugins/static-i18n-plugin.js'; import path from 'path'; syncCatalogFiles(path.resolve('.')); console.log('i18n catalog synced');\""
   },
   "dependencies": {
+    "@codemirror/state": "^6.7.1",
+    "@codemirror/view": "^6.43.9",
     "@floating-ui/dom": "^1.7.4",
     "@iconify/json": "^2.2.447",
     "@wailsio/runtime": "latest",

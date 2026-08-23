@@ -34,6 +34,7 @@ const currentTitle = computed(() => String(route.meta?.workbenchLabel || route.m
 const serviceRunning = computed(() => Boolean(appState.serviceRunning));
 
 const commands = computed(() => [
+  { id: "open-ide", label: "打开工作区", detail: "注册并浏览已授权工作区", shortcut: "" },
   { id: "open-service", label: "打开服务控制台", detail: "管理本地服务与运行状态", shortcut: "" },
   { id: "open-model-config", label: "打开模型配置", detail: "管理模型与供应商", shortcut: "" },
   { id: "open-control-center", label: "打开控制中心", detail: "路由、实验与 Agent 运行台", shortcut: "" },
@@ -45,17 +46,20 @@ const commands = computed(() => [
   { id: "reset-layout", label: "重置 Workbench 布局", detail: "恢复默认侧栏和任务面板", shortcut: "" },
 ]);
 
-function isWelcomeRoute() {
-  if (route.path === "/workbench") return true;
+function isWorkbenchSurfaceRoute() {
+  if (route.path === "/workbench" || route.path === "/ide") return true;
   if (typeof window === "undefined") return false;
-  return window.location.pathname.endsWith("/workbench") || window.location.hash === "#/workbench";
+  return window.location.pathname.endsWith("/workbench")
+    || window.location.pathname.endsWith("/ide")
+    || window.location.hash === "#/workbench"
+    || window.location.hash === "#/ide";
 }
 
 watch(
   () => route.fullPath,
   () => {
     syncWorkbenchTab(route);
-    if (!isWelcomeRoute()) {
+    if (!isWorkbenchSurfaceRoute()) {
       workbenchState.sidebarVisible = false;
       workbenchState.taskPanelVisible = false;
     }
@@ -95,6 +99,9 @@ function runCommand(command) {
     case "open-command":
       openCommandPalette();
       return;
+    case "open-ide":
+      navigate("/ide");
+      break;
     case "open-service":
       navigate("/");
       break;
@@ -115,6 +122,7 @@ function runCommand(command) {
       break;
     case "focus-explorer":
       selectWorkbenchActivity("explorer");
+      navigate("/ide");
       break;
     case "open-welcome":
       navigate("/workbench");

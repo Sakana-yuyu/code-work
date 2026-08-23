@@ -15,6 +15,7 @@ const panels = {
     title: "资源管理器",
     subtitle: "CODE WORK",
     items: [
+      { label: "工作区", path: "/ide", icon: "folder" },
       { label: "开始使用", path: "/workbench", icon: "workbench" },
       { label: "服务控制台", path: "/", icon: "service" },
       { label: "控制中心", path: "/control-center", icon: "panel" },

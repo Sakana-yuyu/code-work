@@ -1,4 +1,13 @@
 import { browserPreviewMockMetrics, browserPreviewMockProxyState } from "@/services/runtimeAdapter";
+import {
+  getIDEWorkspaceTree as previewGetIDEWorkspaceTree,
+  listIDEWorkspaces as previewListIDEWorkspaces,
+  readIDEWorkspaceText as previewReadIDEWorkspaceText,
+  removeIDEWorkspace as previewRemoveIDEWorkspace,
+  resetIDEWorkspacePreview,
+  searchIDEWorkspace as previewSearchIDEWorkspace,
+  selectAndRegisterIDEWorkspace as previewSelectAndRegisterIDEWorkspace,
+} from "@/services/ideWorkspacePreview";
 
 const previewConfig = {
   modelAdapters: [
@@ -1410,6 +1419,32 @@ export const ImportConfigProfile = (content) => {
   recordPreviewCall("ImportConfigProfile");
   if (!String(content || "").trim()) return Promise.reject(new Error("导入内容为空"));
   return Promise.resolve({ profile: { id: "imported", name: "导入档案", domains: ["routing"] }, changes: [{ path: "routing.policy.strategy", changeKind: "update", sensitive: false }], bindings: [{ adapterId: "preview-demo-openai", state: "resolved" }], canApply: true });
+};
+
+resetIDEWorkspacePreview();
+export const ListIDEWorkspaces = () => {
+  recordPreviewCall("ListIDEWorkspaces");
+  return previewListIDEWorkspaces();
+};
+export const SelectAndRegisterIDEWorkspace = () => {
+  recordPreviewCall("SelectAndRegisterIDEWorkspace");
+  return previewSelectAndRegisterIDEWorkspace();
+};
+export const RemoveIDEWorkspace = (workspaceID) => {
+  recordPreviewCall("RemoveIDEWorkspace", [workspaceID]);
+  return previewRemoveIDEWorkspace(workspaceID);
+};
+export const GetIDEWorkspaceTree = (workspaceID, relativeDirectory) => {
+  recordPreviewCall("GetIDEWorkspaceTree", [workspaceID, relativeDirectory]);
+  return previewGetIDEWorkspaceTree(workspaceID, relativeDirectory);
+};
+export const ReadIDEWorkspaceText = (workspaceID, relativeFile) => {
+  recordPreviewCall("ReadIDEWorkspaceText", [workspaceID, relativeFile]);
+  return previewReadIDEWorkspaceText(workspaceID, relativeFile);
+};
+export const SearchIDEWorkspace = (workspaceID, relativePath, query) => {
+  recordPreviewCall("SearchIDEWorkspace", [workspaceID, relativePath, query]);
+  return previewSearchIDEWorkspace(workspaceID, relativePath, query);
 };
 
 function previewStructuredQuotaBalance() {

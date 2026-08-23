@@ -18,6 +18,7 @@ import (
 	"cursor/internal/configprofile"
 	"cursor/internal/cursoraccount"
 	"cursor/internal/historymetrics"
+	"cursor/internal/ide/workspace"
 	"cursor/internal/logger"
 	"cursor/internal/mitm"
 	"cursor/internal/netproxy"
@@ -45,12 +46,14 @@ type ProxyService struct {
 	// backendHost 表示当前嵌入式 backend 服务。
 	backendHost *backend.Host
 	// cursorAccount 持有仅供插件、Skills 和 MCP 控制面使用的真实 Cursor 身份。
-	cursorAccount  *cursoraccount.Manager
-	requestLab     *requestlab.Lab
-	routingHist    *routing.History
-	routingMetrics *routing.MetricsSnapshot
-	agentOps       *agentops.Console
-	profiles       *configprofile.Store
+	cursorAccount      *cursoraccount.Manager
+	requestLab         *requestlab.Lab
+	routingHist        *routing.History
+	routingMetrics     *routing.MetricsSnapshot
+	agentOps           *agentops.Console
+	profiles           *configprofile.Store
+	ideWorkspaces      *workspace.Store
+	selectIDEDirectory func() (string, error)
 
 	// lifecycleMu serializes start/stop transitions so a Cursor launch cannot
 	// observe a partially started proxy while the automatic startup is running.
@@ -229,6 +232,7 @@ func NewProxyService(proxy *mitm.ProxyServer, certManager *certs.Manager, caCert
 	service.routingHist = &routing.History{}
 	service.routingMetrics = routing.NewMetricsSnapshot()
 	service.profiles = configprofile.New(filepath.Join(appdata.DataRootPath(), "profiles"))
+	service.ideWorkspaces = workspace.New(appdata.IDEWorkspaceRootPath())
 	service.agentOps = agentops.New(
 		filepath.Join(appdata.DataRootPath(), "agent-ops", "exports"),
 		func() []forwarder.DelegationTaskSnapshot {
