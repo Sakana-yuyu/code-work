@@ -14,6 +14,7 @@ import (
 	"testing"
 	"time"
 
+	"cursor/internal/agentcontract"
 	"cursor/internal/ide/agentrun"
 	"cursor/internal/ide/approval"
 	"cursor/internal/ide/gitops"
@@ -609,6 +610,75 @@ func TestIDEAgentRunStreamsAndGatesEffectsBehindApproval(t *testing.T) {
 	}
 	if err := service.CommitIDEAgentEffect(run.ID, mcpPreview.Approval.ID, mcpPreview.Effect); err != nil {
 		t.Fatalf("CommitIDEAgentEffect(mcp) error = %v", err)
+	}
+}
+
+func TestAgentContractAdapterPreservesRunEventsAndClaimApproval(t *testing.T) {
+	service, workspaceRoot := newTestIDEService(t)
+	writeFile(t, filepath.Join(workspaceRoot, "src", "main.go"), "package main\n")
+	summary, err := service.SelectAndRegisterIDEWorkspace()
+	if err != nil {
+		t.Fatalf("SelectAndRegisterIDEWorkspace() error = %v", err)
+	}
+	run, err := service.StartAgentContractRun(agentcontract.StartRequest{
+		SessionID:   "session_contract",
+		ParentRunID: "run_parent",
+		WorkspaceID: summary.ID,
+		ModelID:     "preview-demo-openai",
+		Mode:        agentcontract.ModePlan,
+		Prompt:      "检查当前文件",
+	})
+	if err != nil {
+		t.Fatalf("StartAgentContractRun() error = %v", err)
+	}
+	if run.ContractVersion != agentcontract.ContractVersion || run.SessionID != "session_contract" || run.Mode != agentcontract.ModePlan {
+		t.Fatalf("contract run = %+v", run)
+	}
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		current, getErr := service.GetAgentContractRun(run.ID)
+		if getErr == nil && current.Status == agentcontract.StatusCompleted {
+			run = current
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	if run.Status != agentcontract.StatusCompleted {
+		t.Fatalf("run status = %s", run.Status)
+	}
+	events, err := service.GetAgentContractRunEvents(run.ID)
+	if err != nil || len(events) < 3 {
+		t.Fatalf("GetAgentContractRunEvents() = (%+v, %v)", events, err)
+	}
+	for index, event := range events {
+		if event.ContractVersion != agentcontract.ContractVersion || event.Sequence != int64(index+1) || event.SessionID != "session_contract" {
+			t.Fatalf("event[%d] = %+v", index, event)
+		}
+	}
+	current, err := service.ReadIDEWorkspaceText(summary.ID, "src/main.go")
+	if err != nil {
+		t.Fatalf("ReadIDEWorkspaceText() error = %v", err)
+	}
+	preview, err := service.PreviewAgentClaim(run.ID, agentrun.Effect{
+		Kind:            agentrun.EffectWrite,
+		Path:            "src/main.go",
+		Text:            "package saved\n",
+		ExpectedVersion: current.Version,
+	})
+	if err != nil {
+		t.Fatalf("PreviewAgentClaim() error = %v", err)
+	}
+	if preview.Claim.ContractVersion != agentcontract.ContractVersion || preview.Claim.Status != agentcontract.StatusProposed || preview.Claim.ID == "" {
+		t.Fatalf("claim = %+v", preview.Claim)
+	}
+	if err := service.CommitAgentClaim(run.ID, preview.Approval.ID, preview.Effect); err == nil {
+		t.Fatal("CommitAgentClaim() succeeded before approval")
+	}
+	if _, err := service.ApproveIDEApproval(summary.ID, preview.Approval.ID); err != nil {
+		t.Fatalf("ApproveIDEApproval() error = %v", err)
+	}
+	if err := service.CommitAgentClaim(run.ID, preview.Approval.ID, preview.Effect); err != nil {
+		t.Fatalf("CommitAgentClaim() error = %v", err)
 	}
 }
 

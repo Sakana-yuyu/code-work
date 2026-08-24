@@ -3,6 +3,7 @@ package bridge
 import (
 	"fmt"
 
+	"cursor/internal/agentcontract"
 	"cursor/internal/client"
 	"cursor/internal/ide/approval"
 	"cursor/internal/ide/gitops"
@@ -240,6 +241,13 @@ type IDEAgentEvent = client.IDEAgentEvent
 type IDEAgentEffect = client.IDEAgentEffect
 type IDEAgentEffectPreview = client.IDEAgentEffectPreview
 type IDEExecutorWritePreview = client.IDEExecutorWritePreview
+type AgentContractStartRequest = agentcontract.StartRequest
+type AgentContractSession = agentcontract.Session
+type AgentContractRun = agentcontract.Run
+type AgentContractEvent = agentcontract.Event
+type AgentContractClaim = agentcontract.Claim
+type AgentContractModel = agentcontract.ModelSummary
+type AgentClaimPreview = client.AgentClaimPreview
 
 func (s *ProxyService) StartIDEAgentRun(workspaceID, modelID, prompt string) (IDEAgentRun, error) {
 	if s == nil || s.core == nil {
@@ -295,6 +303,76 @@ func (s *ProxyService) CommitIDEAgentEffect(runID, approvalID string, effect IDE
 		return fmt.Errorf("工作区服务未初始化")
 	}
 	return s.core.CommitIDEAgentEffect(runID, approvalID, effect)
+}
+
+func (s *ProxyService) StartAgentContractRun(request AgentContractStartRequest) (AgentContractRun, error) {
+	if s == nil || s.core == nil {
+		return AgentContractRun{}, fmt.Errorf("工作区服务未初始化")
+	}
+	return s.core.StartAgentContractRun(request)
+}
+
+func (s *ProxyService) ListAgentContractModels() ([]AgentContractModel, error) {
+	if s == nil || s.core == nil {
+		return nil, fmt.Errorf("工作区服务未初始化")
+	}
+	return s.core.ListAgentContractModels()
+}
+
+func (s *ProxyService) CancelAgentContractRun(runID string) (AgentContractRun, error) {
+	if s == nil || s.core == nil {
+		return AgentContractRun{}, fmt.Errorf("工作区服务未初始化")
+	}
+	return s.core.CancelAgentContractRun(runID)
+}
+
+func (s *ProxyService) GetAgentContractSession(runID string) (AgentContractSession, error) {
+	if s == nil || s.core == nil {
+		return AgentContractSession{}, fmt.Errorf("工作区服务未初始化")
+	}
+	return s.core.GetAgentContractSession(runID)
+}
+
+func (s *ProxyService) GetAgentContractRun(runID string) (AgentContractRun, error) {
+	if s == nil || s.core == nil {
+		return AgentContractRun{}, fmt.Errorf("工作区服务未初始化")
+	}
+	return s.core.GetAgentContractRun(runID)
+}
+
+func (s *ProxyService) ListAgentContractRuns(workspaceID string) ([]AgentContractRun, error) {
+	if s == nil || s.core == nil {
+		return nil, fmt.Errorf("工作区服务未初始化")
+	}
+	return s.core.ListAgentContractRuns(workspaceID)
+}
+
+func (s *ProxyService) GetAgentContractRunEvents(runID string) ([]AgentContractEvent, error) {
+	if s == nil || s.core == nil {
+		return nil, fmt.Errorf("工作区服务未初始化")
+	}
+	return s.core.GetAgentContractRunEvents(runID)
+}
+
+func (s *ProxyService) ReplayAgentContractRun(runID string) ([]AgentContractEvent, error) {
+	if s == nil || s.core == nil {
+		return nil, fmt.Errorf("工作区服务未初始化")
+	}
+	return s.core.ReplayAgentContractRun(runID)
+}
+
+func (s *ProxyService) PreviewAgentClaim(runID string, effect IDEAgentEffect) (AgentClaimPreview, error) {
+	if s == nil || s.core == nil {
+		return AgentClaimPreview{}, fmt.Errorf("工作区服务未初始化")
+	}
+	return s.core.PreviewAgentClaim(runID, effect)
+}
+
+func (s *ProxyService) CommitAgentClaim(runID, approvalID string, effect IDEAgentEffect) error {
+	if s == nil || s.core == nil {
+		return fmt.Errorf("工作区服务未初始化")
+	}
+	return s.core.CommitAgentClaim(runID, approvalID, effect)
 }
 
 func (s *ProxyService) PreviewIDEExecutorWriteCapability(workspaceID, executorID string) (IDEExecutorWritePreview, error) {

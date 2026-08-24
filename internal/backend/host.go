@@ -52,6 +52,8 @@ type Host struct {
 	httpServer *http.Server
 	// agentModule 持有当前已挂载的 forwarder 服务，关闭时需要先主动收口活动流。
 	agentModule *forwarder.Module
+	// agentBridge 是供外部 VS Code Agent 扩展调用的本地协议子树。
+	agentBridge http.Handler
 
 	lastRunErr error
 
@@ -442,6 +444,20 @@ func (host *Host) IsRunning() bool {
 	return host.httpServer != nil
 }
 
+// SetAgentBridge 挂载外部 Agent Bridge。必须在 Backend 启动前调用，避免运行中替换路由树。
+func (host *Host) SetAgentBridge(handler http.Handler) error {
+	if host == nil {
+		return fmt.Errorf("backend host is nil")
+	}
+	host.runMu.Lock()
+	defer host.runMu.Unlock()
+	if host.httpServer != nil {
+		return fmt.Errorf("backend is already running")
+	}
+	host.agentBridge = handler
+	return host.rebuildLocked(host.configs.Current())
+}
+
 func (host *Host) LastRunError() error {
 	if host == nil {
 		return nil
@@ -626,6 +642,7 @@ func (host *Host) rebuildLocked(cfg serverconfig.Config) error {
 			server.ErrorEncoder(),
 		),
 		server.Mount(ads.RoutePrefix, ads.NewHTTPHandler(appdata.AdsRootPath())),
+		server.Mount("/agent/v1", host.agentBridge),
 		server.GET(healthPath,
 			server.Name("healthz"),
 			server.HTTP(),

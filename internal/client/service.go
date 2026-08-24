@@ -9,6 +9,7 @@ import (
 	"sync"
 	"time"
 
+	"cursor/internal/agentbridge"
 	"cursor/internal/agentops"
 	"cursor/internal/appdata"
 	backend "cursor/internal/backend"
@@ -287,6 +288,9 @@ func NewProxyService(proxy *mitm.ProxyServer, certManager *certs.Manager, caCert
 		logger.Errorf("init backend host failed: %v", err)
 	} else {
 		service.backendHost = host
+		if err := host.SetAgentBridge(agentbridge.NewMountedHandler(service)); err != nil {
+			logger.Errorf("挂载 Agent Bridge 失败: %v", err)
+		}
 		host.SetRoutingMetricsSnapshot(service.routingMetrics)
 	}
 	return service

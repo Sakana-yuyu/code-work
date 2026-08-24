@@ -42,6 +42,10 @@ internal/certs/ca.crt
 
 # Local environment and credentials
 .env.local
+.env
+.env.*
+!.env.example
+!.env.*.example
 state.vscdb*
 **/state.vscdb*
 **/cursor-accounts/accounts/
@@ -71,6 +75,24 @@ state.vscdb*
 reasonix.toml
 scripts/_tmp_*
 prompt/native/
+
+# Local tool settings and generated test artifacts
+.claude/settings.local.json
+coverage/
+frontend/coverage/
+frontend/.vite/
+.vite/
+.eslintcache
+frontend/.eslintcache
+*.tsbuildinfo
+*.test
+*.prof
+
+# Temporary editor and patch files
+*.orig
+*.rej
+*.swp
+*.swo
 
 # Python cache
 __pycache__/

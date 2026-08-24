@@ -21,18 +21,23 @@ const (
 	StatusFailed    = "failed"
 	StatusCanceled  = "canceled"
 
-	KindStarted          = "started"
-	KindDelta            = "delta"
-	KindFinished         = "finished"
-	KindCanceled         = "canceled"
-	KindError            = "error"
-	KindEffectProposed   = "effect_proposed"
-	KindEffectCommitted  = "effect_committed"
+	KindStarted         = "started"
+	KindDelta           = "delta"
+	KindFinished        = "finished"
+	KindCanceled        = "canceled"
+	KindError           = "error"
+	KindEffectProposed  = "effect_proposed"
+	KindEffectCommitted = "effect_committed"
 
 	EffectWrite = "workspace_write"
 	EffectGit   = "git"
 	EffectShell = "shell"
 	EffectMCP   = "mcp"
+
+	ModeChat   = "chat"
+	ModeAsk    = "ask"
+	ModePlan   = "plan"
+	ModeReview = "review"
 
 	maxPromptRunes = 32_000
 	maxRuns        = 64
@@ -54,15 +59,21 @@ type Streamer func(ctx context.Context, request StreamRequest, emit func(Event) 
 
 type StreamRequest struct {
 	RunID       string
+	SessionID   string
+	ParentRunID string
 	WorkspaceID string
 	ModelID     string
+	Mode        string
 	Prompt      string
 }
 
 type Run struct {
 	ID          string `json:"id"`
+	SessionID   string `json:"sessionId,omitempty"`
+	ParentRunID string `json:"parentRunId,omitempty"`
 	WorkspaceID string `json:"workspaceId"`
 	ModelID     string `json:"modelId"`
+	Mode        string `json:"mode,omitempty"`
 	Prompt      string `json:"prompt"`
 	Status      string `json:"status"`
 	Error       string `json:"error,omitempty"`
@@ -71,13 +82,18 @@ type Run struct {
 }
 
 type Event struct {
-	RunID      string  `json:"runId"`
-	Seq        int64   `json:"seq"`
-	Kind       string  `json:"kind"`
-	Text       string  `json:"text,omitempty"`
-	ReplaySafe bool    `json:"replaySafe"`
-	Effect     *Effect `json:"effect,omitempty"`
-	AtUnixMS   int64   `json:"atUnixMs"`
+	RunID       string  `json:"runId"`
+	SessionID   string  `json:"sessionId,omitempty"`
+	ParentRunID string  `json:"parentRunId,omitempty"`
+	Seq         int64   `json:"seq"`
+	Kind        string  `json:"kind"`
+	Mode        string  `json:"mode,omitempty"`
+	ToolName    string  `json:"toolName,omitempty"`
+	ClaimID     string  `json:"claimId,omitempty"`
+	Text        string  `json:"text,omitempty"`
+	ReplaySafe  bool    `json:"replaySafe"`
+	Effect      *Effect `json:"effect,omitempty"`
+	AtUnixMS    int64   `json:"atUnixMs"`
 }
 
 type Effect struct {
@@ -113,6 +129,15 @@ type liveRun struct {
 	done   chan struct{}
 }
 
+type StartRequest struct {
+	SessionID   string
+	ParentRunID string
+	WorkspaceID string
+	ModelID     string
+	Mode        string
+	Prompt      string
+}
+
 func New(root string, stream Streamer) *Manager {
 	return &Manager{
 		root:   strings.TrimSpace(root),
@@ -133,6 +158,15 @@ func (manager *Manager) SetEmitter(emit func(Event)) {
 }
 
 func (manager *Manager) Start(ctx context.Context, workspaceID, modelID, prompt string) (Run, error) {
+	return manager.StartRequest(ctx, StartRequest{
+		WorkspaceID: workspaceID,
+		ModelID:     modelID,
+		Mode:        ModeChat,
+		Prompt:      prompt,
+	})
+}
+
+func (manager *Manager) StartRequest(ctx context.Context, request StartRequest) (Run, error) {
 	if manager == nil || manager.root == "" {
 		return Run{}, ErrStoreInvalid
 	}
@@ -142,21 +176,30 @@ func (manager *Manager) Start(ctx context.Context, workspaceID, modelID, prompt 
 	if err := requireContext(ctx); err != nil {
 		return Run{}, err
 	}
-	workspaceID = strings.TrimSpace(workspaceID)
-	modelID = strings.TrimSpace(modelID)
-	prompt = strings.TrimSpace(prompt)
-	if workspaceID == "" || modelID == "" || prompt == "" {
+	request.SessionID = strings.TrimSpace(request.SessionID)
+	request.ParentRunID = strings.TrimSpace(request.ParentRunID)
+	request.WorkspaceID = strings.TrimSpace(request.WorkspaceID)
+	request.ModelID = strings.TrimSpace(request.ModelID)
+	request.Mode = normalizeMode(request.Mode)
+	request.Prompt = strings.TrimSpace(request.Prompt)
+	if request.SessionID == "" {
+		request.SessionID = newPrefixedID("session")
+	}
+	if request.WorkspaceID == "" || request.ModelID == "" || request.Prompt == "" {
 		return Run{}, fmt.Errorf("%w: workspace, model, or prompt", ErrInvalidRequest)
 	}
-	if utf8.RuneCountInString(prompt) > maxPromptRunes {
+	if utf8.RuneCountInString(request.Prompt) > maxPromptRunes {
 		return Run{}, fmt.Errorf("%w: prompt too long", ErrInvalidRequest)
 	}
 	now := time.Now().UTC().UnixMilli()
 	run := Run{
 		ID:          newPrefixedID("run"),
-		WorkspaceID: workspaceID,
-		ModelID:     modelID,
-		Prompt:      prompt,
+		SessionID:   request.SessionID,
+		ParentRunID: request.ParentRunID,
+		WorkspaceID: request.WorkspaceID,
+		ModelID:     request.ModelID,
+		Mode:        request.Mode,
+		Prompt:      request.Prompt,
 		Status:      StatusRunning,
 		CreatedAtMS: now,
 		UpdatedAtMS: now,
@@ -180,7 +223,7 @@ func (manager *Manager) Start(ctx context.Context, workspaceID, modelID, prompt 
 		return Run{}, err
 	}
 	manager.runs[run.ID] = live
-	started := manager.appendLocked(live, Event{Kind: KindStarted, Text: prompt, ReplaySafe: true})
+	started := manager.appendLocked(live, Event{Kind: KindStarted, Text: request.Prompt, ReplaySafe: true})
 	manager.mu.Unlock()
 	manager.emit(started)
 	go manager.execute(streamCtx, live)
@@ -355,8 +398,11 @@ func (manager *Manager) execute(ctx context.Context, live *liveRun) {
 	defer close(live.done)
 	err := manager.stream(ctx, StreamRequest{
 		RunID:       live.meta.ID,
+		SessionID:   live.meta.SessionID,
+		ParentRunID: live.meta.ParentRunID,
 		WorkspaceID: live.meta.WorkspaceID,
 		ModelID:     live.meta.ModelID,
+		Mode:        live.meta.Mode,
 		Prompt:      live.meta.Prompt,
 	}, func(event Event) error {
 		if err := ctx.Err(); err != nil {
@@ -396,6 +442,9 @@ func (manager *Manager) execute(ctx context.Context, live *liveRun) {
 
 func (manager *Manager) appendLocked(live *liveRun, event Event) Event {
 	event.RunID = live.meta.ID
+	event.SessionID = live.meta.SessionID
+	event.ParentRunID = live.meta.ParentRunID
+	event.Mode = live.meta.Mode
 	event.Seq = int64(len(live.events) + 1)
 	if event.AtUnixMS == 0 {
 		event.AtUnixMS = time.Now().UTC().UnixMilli()
@@ -463,14 +512,54 @@ func (manager *Manager) loadLocked() error {
 		if json.Unmarshal(raw, &meta) != nil || strings.TrimSpace(meta.ID) == "" {
 			continue
 		}
+		meta = normalizeRun(meta)
 		live := &liveRun{meta: meta, done: make(chan struct{})}
 		close(live.done)
 		if events, err := readEvents(filepath.Join(manager.root, entry.Name(), eventsFileName)); err == nil {
-			live.events = events
+			live.events = make([]Event, len(events))
+			for index, event := range events {
+				live.events[index] = normalizeEvent(event, meta)
+			}
 		}
 		manager.runs[meta.ID] = live
 	}
 	return nil
+}
+
+func normalizeRun(run Run) Run {
+	if strings.TrimSpace(run.SessionID) == "" {
+		run.SessionID = "session_" + strings.TrimSpace(run.ID)
+	}
+	run.Mode = normalizeMode(run.Mode)
+	return run
+}
+
+func normalizeEvent(event Event, run Run) Event {
+	if strings.TrimSpace(event.RunID) == "" {
+		event.RunID = run.ID
+	}
+	if strings.TrimSpace(event.SessionID) == "" {
+		event.SessionID = run.SessionID
+	}
+	if strings.TrimSpace(event.ParentRunID) == "" {
+		event.ParentRunID = run.ParentRunID
+	}
+	mode := strings.TrimSpace(event.Mode)
+	if mode == "" {
+		event.Mode = run.Mode
+	} else {
+		event.Mode = normalizeMode(mode)
+	}
+	return event
+}
+
+func normalizeMode(mode string) string {
+	switch strings.ToLower(strings.TrimSpace(mode)) {
+	case ModeAsk, ModePlan, ModeReview:
+		return strings.ToLower(strings.TrimSpace(mode))
+	default:
+		return ModeChat
+	}
 }
 
 func readEvents(path string) ([]Event, error) {
