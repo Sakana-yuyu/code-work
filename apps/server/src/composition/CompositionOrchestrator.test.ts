@@ -60,6 +60,7 @@ layer("CompositionOrchestrator", (it) => {
     Effect.gen(function* () {
       const store = yield* CompositionTaskStore;
       const captured: string[][] = [];
+      const revoked: string[] = [];
       const driverRegistry = makeCompositionAgentDriverRegistry();
       yield* driverRegistry.register({
         agentId: "agent-grant",
@@ -83,6 +84,7 @@ layer("CompositionOrchestrator", (it) => {
       ];
       const orchestrator = makeCompositionOrchestrator(store, driverRegistry, {
         issue: () => Effect.succeed(grants),
+        revoke: ({ grantId }) => Effect.sync(() => revoked.push(grantId)),
       });
 
       const result = yield* orchestrator.dispatchTask({
@@ -102,6 +104,13 @@ layer("CompositionOrchestrator", (it) => {
       const savedRun = yield* store.getRun("run-grant");
       assert.isTrue(Option.isSome(savedRun));
       if (Option.isSome(savedRun)) assert.deepEqual(savedRun.value.capabilityGrantIds, ["grant-1"]);
+      const cancelled = yield* orchestrator.cancelTask({
+        taskId: "task-grant",
+        runId: "run-grant",
+        reason: "用户取消",
+      });
+      assert.equal(cancelled.status, "cancelled");
+      assert.deepEqual(revoked, ["grant-1"]);
     }),
   );
 
@@ -186,6 +195,17 @@ layer("CompositionOrchestrator", (it) => {
     Effect.gen(function* () {
       const store = yield* CompositionTaskStore;
       const driverRegistry = makeCompositionAgentDriverRegistry();
+      const revoked: string[] = [];
+      const grants: CompositionCapabilityGrant[] = [
+        {
+          grantId: "grant-cancel-requested",
+          taskId: "task-cancel-requested",
+          agentId: "agent-cancel-requested",
+          capabilityId: "workspace.read",
+          issuedAtUnixMs: 1,
+          expiresAtUnixMs: 900_001,
+        },
+      ];
       yield* driverRegistry.register({
         agentId: "agent-cancel-requested",
         runtimeId: "runtime-cancel-requested",
@@ -193,8 +213,12 @@ layer("CompositionOrchestrator", (it) => {
         cancelTask: () => Effect.succeed({ status: "cancel_requested" as const }),
       });
       const orchestrator = makeCompositionOrchestrator(store, driverRegistry);
+      const orchestratorWithGrants = makeCompositionOrchestrator(store, driverRegistry, {
+        issue: () => Effect.succeed(grants),
+        revoke: ({ grantId }) => Effect.sync(() => revoked.push(grantId)),
+      });
 
-      yield* orchestrator.dispatchTask({
+      yield* orchestratorWithGrants.dispatchTask({
         taskId: "task-cancel-requested",
         runId: "run-cancel-requested",
         projectId: "project-1",
@@ -202,11 +226,11 @@ layer("CompositionOrchestrator", (it) => {
         assigneeId: "agent-cancel-requested",
         mode: "serial",
         promptDigest: "sha256:cancel-requested",
-        capabilityIds: [],
+        capabilityIds: ["workspace.read"],
         dependsOnTaskIds: [],
       });
 
-      const result = yield* orchestrator.cancelTask({
+      const result = yield* orchestratorWithGrants.cancelTask({
         taskId: "task-cancel-requested",
         runId: "run-cancel-requested",
         reason: "用户取消",
@@ -214,6 +238,7 @@ layer("CompositionOrchestrator", (it) => {
       assert.equal(result.status, "cancel_requested");
       assert.equal(result.task.status, "running");
       assert.equal(result.run.status, "running");
+      assert.deepEqual(revoked, []);
       assert.equal(
         (yield* store.listEvents("task-cancel-requested", "run-cancel-requested")).at(-1)
           ?.eventType,

@@ -14,6 +14,8 @@ import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 
 import { makeCompositionAgentDriverRegistry } from "./CompositionAgentDriverRegistry.ts";
+import { makeCapabilityGrantRegistry } from "./CapabilityGrantRegistry.ts";
+import { makeCompositionCapabilityRegistry } from "./CapabilityRegistry.ts";
 import { projectCompositionRuntimeEvent } from "./CompositionTaskRuntimeProjector.ts";
 import { CompositionTaskStore } from "../persistence/Services/CompositionTaskStore.ts";
 import { CompositionTaskStoreLive } from "../persistence/Layers/CompositionTaskStore.ts";
@@ -138,6 +140,57 @@ layer("CompositionTaskRuntimeProjector", (it) => {
           ["blocker", "waiting_input"],
         ],
       );
+    }),
+  );
+
+  it.effect("首次进入 Runtime 终态时撤销 Run grant，重复事件不改变撤销语义", () =>
+    Effect.gen(function* () {
+      const store = yield* CompositionTaskStore;
+      const registry = makeCompositionAgentDriverRegistry();
+      const taskWithGrant = { ...task, taskId: "task-runtime-grant" };
+      const grantRegistry = makeCapabilityGrantRegistry({
+        capabilityRegistry: makeCompositionCapabilityRegistry(),
+        now: () => 1000,
+      });
+      const [grant] = yield* grantRegistry.issue({
+        taskId: taskWithGrant.taskId,
+        agentId: taskWithGrant.assigneeId,
+        capabilityIds: ["t3.workspace.read_file"],
+      });
+      if (grant === undefined) throw new Error("测试预期已签发 grant。");
+      const runWithGrant = {
+        ...run,
+        taskId: taskWithGrant.taskId,
+        runId: "run-runtime-grant",
+        capabilityGrantIds: [grant.grantId],
+      };
+      yield* registry.register({
+        agentId: taskWithGrant.assigneeId,
+        runtimeId: runWithGrant.runtimeId,
+        startTask: () => Effect.succeed({ runtimeTaskId }),
+        cancelTask: () => Effect.succeed({ status: "cancelled" as const }),
+        resolveRuntimeEvent: () => ({
+          taskId: taskWithGrant.taskId,
+          runId: runWithGrant.runId,
+        }),
+      });
+      yield* store.upsertTask(taskWithGrant);
+      yield* store.upsertRun(runWithGrant);
+
+      const event = completionEvent("provider-event-grant");
+      yield* projectCompositionRuntimeEvent(store, registry, event, grantRegistry);
+      yield* projectCompositionRuntimeEvent(store, registry, event, grantRegistry);
+
+      const revoked = yield* Effect.flip(
+        grantRegistry.validate({
+          grantId: grant.grantId,
+          taskId: taskWithGrant.taskId,
+          agentId: taskWithGrant.assigneeId,
+          capabilityId: "t3.workspace.read_file",
+        }),
+      );
+      assert.equal(revoked._tag, "CapabilityGrantRevokedError");
+      assert.equal((yield* store.listEvents(taskWithGrant.taskId, runWithGrant.runId)).length, 1);
     }),
   );
 });

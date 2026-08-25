@@ -178,6 +178,7 @@ export interface CompositionOrchestrator {
     | CompositionTaskDependencyCycleError
     | CompositionTaskAlreadyExistsError
     | CapabilityGrantRegistry.CapabilityGrantInvalidError
+    | CapabilityGrantRegistry.CapabilityGrantPersistenceError
     | CapabilityRegistry.CapabilityScopeNotFoundError
     | CapabilityRegistry.CapabilityRegistryUnavailableError
   >;
@@ -187,15 +188,28 @@ export interface CompositionOrchestrator {
     readonly reason: string;
   }) => Effect.Effect<
     CompositionCancelResult,
-    CompositionTaskStoreError | CompositionTaskNotFoundError | CompositionAgentDriverFailure
+    | CompositionTaskStoreError
+    | CompositionTaskNotFoundError
+    | CompositionAgentDriverFailure
+    | CapabilityGrantRegistry.CapabilityGrantPersistenceError
   >;
 }
 
 const makeOrchestrator = (
   store: CompositionTaskStoreShape,
   driverRegistry: CompositionAgentDriverRegistry,
-  grantRegistry?: Pick<CapabilityGrantRegistry.CapabilityGrantRegistryShape, "issue">,
+  grantRegistry?: Pick<CapabilityGrantRegistry.CapabilityGrantRegistryShape, "issue"> &
+    Partial<Pick<CapabilityGrantRegistry.CapabilityGrantRegistryShape, "revoke">>,
 ): CompositionOrchestrator => {
+  const revokeRunGrants = (run: CompositionTaskRun) =>
+    grantRegistry?.revoke === undefined
+      ? Effect.void
+      : Effect.forEach(run.capabilityGrantIds ?? [], (grantId) =>
+          grantRegistry.revoke!({ grantId }).pipe(
+            Effect.catchTag("CapabilityGrantNotFoundError", () => Effect.void),
+          ),
+        ).pipe(Effect.asVoid);
+
   const validateDependencies = (
     taskId: string,
     dependencyIds: ReadonlyArray<string>,
@@ -349,6 +363,7 @@ const makeOrchestrator = (
           failureCode: "agent_driver_unavailable",
           resultSummary: "未找到可用的 Agent Driver",
         };
+        yield* revokeRunGrants(failedRun);
         yield* store.upsertTask(failedTask);
         yield* store.upsertRun(failedRun);
         yield* store.appendEvent(
@@ -392,6 +407,7 @@ const makeOrchestrator = (
           failureCode: startResult.failure.code,
           resultSummary: startResult.failure.detail,
         };
+        yield* revokeRunGrants(failedRun);
         yield* store.upsertTask(failedTask);
         yield* store.upsertRun(failedRun);
         yield* store.appendEvent(
@@ -485,6 +501,7 @@ const makeOrchestrator = (
         finishedAtUnixMs: now,
         resultSummary: input.reason,
       };
+      yield* revokeRunGrants(cancelledRun);
       yield* store.upsertTask(cancelledTask);
       yield* store.upsertRun(cancelledRun);
       const priorEvents = yield* store.listEvents(input.taskId, input.runId);
@@ -507,5 +524,6 @@ const makeOrchestrator = (
 export const makeCompositionOrchestrator = (
   store: CompositionTaskStoreShape,
   driverRegistry: CompositionAgentDriverRegistry,
-  grantRegistry?: Pick<CapabilityGrantRegistry.CapabilityGrantRegistryShape, "issue">,
+  grantRegistry?: Pick<CapabilityGrantRegistry.CapabilityGrantRegistryShape, "issue"> &
+    Partial<Pick<CapabilityGrantRegistry.CapabilityGrantRegistryShape, "revoke">>,
 ): CompositionOrchestrator => makeOrchestrator(store, driverRegistry, grantRegistry);

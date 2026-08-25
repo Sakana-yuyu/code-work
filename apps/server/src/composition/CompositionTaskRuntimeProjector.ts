@@ -12,6 +12,7 @@ import * as Option from "effect/Option";
 import type { PersistenceSqlError } from "../persistence/Errors.ts";
 import type { CompositionTaskStoreShape } from "../persistence/Services/CompositionTaskStore.ts";
 import type { CompositionAgentDriverRegistry } from "./CompositionAgentDriverRegistry.ts";
+import type * as CapabilityGrantRegistry from "./CapabilityGrantRegistry.ts";
 
 const terminalStatuses: ReadonlySet<CompositionTaskStatus> = new Set([
   "completed",
@@ -176,7 +177,11 @@ export const projectCompositionRuntimeEvent = (
   store: CompositionTaskStoreShape,
   driverRegistry: CompositionAgentDriverRegistry,
   event: ProviderRuntimeEvent,
-): Effect.Effect<void, PersistenceSqlError> =>
+  grantRegistry?: Pick<CapabilityGrantRegistry.CapabilityGrantRegistryShape, "revoke">,
+): Effect.Effect<
+  void,
+  PersistenceSqlError | CapabilityGrantRegistry.CapabilityGrantPersistenceError
+> =>
   Effect.gen(function* () {
     const binding = yield* driverRegistry.resolveRuntimeEvent(event);
     if (binding === undefined) return;
@@ -193,6 +198,14 @@ export const projectCompositionRuntimeEvent = (
 
     const now = yield* Clock.currentTimeMillis;
     const isTerminal = terminalStatuses.has(projection.status);
+    const becameTerminal = !terminalStatuses.has(task.status) && isTerminal;
+    if (becameTerminal && grantRegistry !== undefined) {
+      yield* Effect.forEach(run.capabilityGrantIds ?? [], (grantId) =>
+        grantRegistry
+          .revoke({ grantId })
+          .pipe(Effect.catchTag("CapabilityGrantNotFoundError", () => Effect.void)),
+      );
+    }
     const nextTask: CompositionTask = {
       ...task,
       status: projection.status,

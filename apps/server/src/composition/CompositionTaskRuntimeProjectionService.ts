@@ -11,11 +11,15 @@ import { ProviderService } from "../provider/Services/ProviderService.ts";
 import { CompositionAgentDriverRegistryService } from "./CompositionAgentDriverRegistry.ts";
 import { projectCompositionRuntimeEvent } from "./CompositionTaskRuntimeProjector.ts";
 import { CompositionRuntimeAdapterRegistryService } from "./CompositionRuntimeAdapterRegistry.ts";
+import * as CapabilityGrantRegistry from "./CapabilityGrantRegistry.ts";
 
 export interface CompositionTaskRuntimeProjectionServiceShape {
   readonly projectRuntimeEvent: (
     event: ProviderRuntimeEvent,
-  ) => Effect.Effect<void, PersistenceSqlError>;
+  ) => Effect.Effect<
+    void,
+    PersistenceSqlError | CapabilityGrantRegistry.CapabilityGrantPersistenceError
+  >;
 }
 
 export class CompositionTaskRuntimeProjectionService extends Context.Service<
@@ -27,9 +31,10 @@ const live = Effect.gen(function* () {
   const store = yield* CompositionTaskStore;
   const provider = yield* ProviderService;
   const driverRegistry = yield* CompositionAgentDriverRegistryService;
+  const grantRegistry = yield* CapabilityGrantRegistry.CapabilityGrantRegistry;
   const runtimeAdapters = yield* CompositionRuntimeAdapterRegistryService;
   const projectRuntimeEvent = (event: Parameters<typeof projectCompositionRuntimeEvent>[2]) =>
-    projectCompositionRuntimeEvent(store, driverRegistry, event);
+    projectCompositionRuntimeEvent(store, driverRegistry, event, grantRegistry);
 
   const projectRuntimeEventWithLogging = (event: ProviderRuntimeEvent) =>
     projectRuntimeEvent(event).pipe(
