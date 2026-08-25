@@ -93,6 +93,7 @@ describe("CompositionAgentService", () => {
 
   it("启动 Agent Loop 时把 capability ID 签发为 task-scoped grant", async () => {
     const capturedGrantIds: string[][] = [];
+    const revokedGrantIds: string[] = [];
     let turn = 0;
     const loopModel: ByokAgentModelDriver = {
       complete: () => {
@@ -125,7 +126,14 @@ describe("CompositionAgentService", () => {
       cancel: () => Effect.void,
     };
     const capabilityRegistry = makeCompositionCapabilityRegistry();
-    const grantRegistry = makeCapabilityGrantRegistry({ capabilityRegistry, now: () => 1000 });
+    const baseGrantRegistry = makeCapabilityGrantRegistry({ capabilityRegistry, now: () => 1000 });
+    const grantRegistry = {
+      ...baseGrantRegistry,
+      revoke: (revokeInput: { readonly grantId: string }) =>
+        baseGrantRegistry
+          .revoke(revokeInput)
+          .pipe(Effect.tap(() => Effect.sync(() => revokedGrantIds.push(revokeInput.grantId)))),
+    };
     const service = makeCompositionAgentService({
       broker,
       grantRegistry,
@@ -139,5 +147,6 @@ describe("CompositionAgentService", () => {
       }),
     );
     expect(capturedGrantIds[0]?.[0]).toMatch(/^grant-/);
+    expect(revokedGrantIds).toEqual(capturedGrantIds[0]);
   });
 });

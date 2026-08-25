@@ -160,6 +160,7 @@ Task 事件映射：
 - 未完成 runtime/IDE handshake 时只允许 probe、list 和只读状态查询。
 - 未知 IDE profile 直接拒绝高权限操作，不通过“兼容模式”绕过。
 - task-scoped grant 绑定 `taskId`、`runId`、`workspaceRootDigest` 和过期时间；外部 runtime 不可复用其他 Task 的 grant。
+- BYOK Agent Loop 为兼容旧 capability ID 临时签发的 grant 只在本次 Loop 内使用，Loop 成功、失败或超限退出时都必须撤销；调用方预先传入的 `grant-*` 不由该服务代为撤销。
 - Provider Driver 已支持 handshake 合同；当前投影的 ProviderService 适配器尚未提供握手实现，因此带 grant 的 Provider 任务会拒绝，待 Provider 原生工具或 canonical ToolBroker 桥接完成后再开放。
 - Multica Adapter 已暴露稳定的 unsupported 握手结果；官方 quick-create 请求不携带 grant，真实 daemon 也尚未校验 T3 grant，因此带 grant 的 Multica 任务会拒绝。
 - Adapter 日志只记录 ID、状态、版本和去敏后的错误，不记录完整 prompt、API key、用户凭据或敏感文件内容。

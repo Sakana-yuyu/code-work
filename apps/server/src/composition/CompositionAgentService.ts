@@ -48,7 +48,10 @@ export class CompositionAgentService extends Context.Service<
 
 export interface CompositionAgentServiceOptions {
   readonly broker: ToolBroker.ToolBroker["Service"];
-  readonly grantRegistry?: Pick<CapabilityGrantRegistry.CapabilityGrantRegistryShape, "issue">;
+  readonly grantRegistry?: Pick<
+    CapabilityGrantRegistry.CapabilityGrantRegistryShape,
+    "issue" | "revoke"
+  >;
   readonly resolveModelDriver: (input: {
     readonly providerInstanceId: string;
     readonly modelId: string;
@@ -105,6 +108,22 @@ const make = (options: CompositionAgentServiceOptions): CompositionAgentServiceS
         model,
         options.broker,
       ).pipe(
+        Effect.ensuring(
+          options.grantRegistry?.revoke === undefined || issuedGrantIds.length === 0
+            ? Effect.void
+            : Effect.forEach(issuedGrantIds, (grantId) =>
+                options.grantRegistry!.revoke!({ grantId }).pipe(
+                  Effect.catchTags({
+                    CapabilityGrantNotFoundError: () => Effect.void,
+                    CapabilityGrantPersistenceError: (error) =>
+                      Effect.logError("Composition Agent 临时 capability grant 撤销失败", {
+                        grantId,
+                        error,
+                      }),
+                  }),
+                ),
+              ).pipe(Effect.asVoid),
+        ),
         Effect.mapError(
           (error) =>
             new CompositionAgentServiceError({
@@ -123,7 +142,7 @@ export const makeCompositionAgentService = (
 export const makeCompositionAgentServiceFromRegistry = (
   registry: ProviderInstanceRegistry["Service"],
   broker: ToolBroker.ToolBroker["Service"],
-  grantRegistry?: Pick<CapabilityGrantRegistry.CapabilityGrantRegistryShape, "issue">,
+  grantRegistry?: Pick<CapabilityGrantRegistry.CapabilityGrantRegistryShape, "issue" | "revoke">,
 ): CompositionAgentServiceShape =>
   make({
     broker,
