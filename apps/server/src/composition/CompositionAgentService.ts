@@ -7,6 +7,7 @@ import * as Schema from "effect/Schema";
 import type { ByokAgentModelDriver, ByokAgentTool, ByokAgentLoopResult } from "./ByokAgentLoop.ts";
 import { runByokAgentLoop } from "./ByokAgentLoop.ts";
 import * as ToolBroker from "./ToolBroker.ts";
+import * as CapabilityGrantRegistry from "./CapabilityGrantRegistry.ts";
 import { ProviderInstanceRegistry } from "../provider/Services/ProviderInstanceRegistry.ts";
 
 export type CompositionAgentServiceInput = {
@@ -47,6 +48,7 @@ export class CompositionAgentService extends Context.Service<
 
 export interface CompositionAgentServiceOptions {
   readonly broker: ToolBroker.ToolBroker["Service"];
+  readonly grantRegistry?: Pick<CapabilityGrantRegistry.CapabilityGrantRegistryShape, "issue">;
   readonly resolveModelDriver: (input: {
     readonly providerInstanceId: string;
     readonly modelId: string;
@@ -60,6 +62,35 @@ const make = (options: CompositionAgentServiceOptions): CompositionAgentServiceS
         providerInstanceId: input.providerInstanceId,
         modelId: input.modelId,
       });
+      const legacyCapabilityIds = input.capabilityGrantIds.filter(
+        (grantId) => !grantId.startsWith("grant-"),
+      );
+      const issuedGrantIds =
+        options.grantRegistry === undefined || legacyCapabilityIds.length === 0
+          ? []
+          : yield* options.grantRegistry
+              .issue({
+                taskId: input.taskId,
+                agentId: input.agentId,
+                capabilityIds: legacyCapabilityIds,
+              })
+              .pipe(
+                Effect.mapError(
+                  (error) =>
+                    new CompositionAgentServiceError({
+                      code: "capability_grant_issue_failed",
+                      detail: error.message,
+                    }),
+                ),
+                Effect.map((grants) => grants.map((grant) => grant.grantId)),
+              );
+      const capabilityGrantIds =
+        issuedGrantIds.length === 0
+          ? input.capabilityGrantIds
+          : [
+              ...input.capabilityGrantIds.filter((grantId) => grantId.startsWith("grant-")),
+              ...issuedGrantIds,
+            ];
       return yield* runByokAgentLoop(
         {
           taskId: input.taskId,
@@ -67,7 +98,7 @@ const make = (options: CompositionAgentServiceOptions): CompositionAgentServiceS
           agentId: input.agentId,
           workspaceRoot: input.workspaceRoot,
           prompt: input.prompt,
-          capabilityGrantIds: input.capabilityGrantIds,
+          capabilityGrantIds,
           tools: input.tools,
           ...(input.maxRounds === undefined ? {} : { maxRounds: input.maxRounds }),
         },
@@ -92,9 +123,11 @@ export const makeCompositionAgentService = (
 export const makeCompositionAgentServiceFromRegistry = (
   registry: ProviderInstanceRegistry["Service"],
   broker: ToolBroker.ToolBroker["Service"],
+  grantRegistry?: Pick<CapabilityGrantRegistry.CapabilityGrantRegistryShape, "issue">,
 ): CompositionAgentServiceShape =>
   make({
     broker,
+    ...(grantRegistry === undefined ? {} : { grantRegistry }),
     resolveModelDriver: (input) =>
       registry.getInstance(input.providerInstanceId as ProviderInstanceId).pipe(
         Effect.flatMap((instance) => {
@@ -114,7 +147,14 @@ export const makeCompositionAgentServiceFromRegistry = (
 const live = Effect.gen(function* () {
   const registry = yield* ProviderInstanceRegistry;
   const broker = yield* ToolBroker.ToolBroker;
-  return makeCompositionAgentServiceFromRegistry(registry, broker);
+  const grantRegistry = yield* Effect.serviceOption(
+    CapabilityGrantRegistry.CapabilityGrantRegistry,
+  );
+  return makeCompositionAgentServiceFromRegistry(
+    registry,
+    broker,
+    grantRegistry._tag === "Some" ? grantRegistry.value : undefined,
+  );
 });
 
 export const layer = Layer.effect(CompositionAgentService, live);

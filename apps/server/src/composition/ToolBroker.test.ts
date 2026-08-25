@@ -13,6 +13,7 @@ import * as WorkspaceFileSystem from "../workspace/WorkspaceFileSystem.ts";
 import * as WorkspacePaths from "../workspace/WorkspacePaths.ts";
 import * as CapabilityPolicy from "./CapabilityPolicy.ts";
 import * as CapabilityRegistry from "./CapabilityRegistry.ts";
+import * as CapabilityGrantRegistry from "./CapabilityGrantRegistry.ts";
 import * as ToolBroker from "./ToolBroker.ts";
 
 const WorkspaceFileLayer = WorkspaceFileSystem.layer.pipe(
@@ -21,14 +22,19 @@ const WorkspaceFileLayer = WorkspaceFileSystem.layer.pipe(
 );
 
 const CapabilityPolicyLayer = CapabilityPolicy.layer.pipe(Layer.provide(CapabilityRegistry.layer));
+const CapabilityGrantLayer = CapabilityGrantRegistry.layer.pipe(
+  Layer.provide(CapabilityRegistry.layer),
+);
 
 const TestLayer = Layer.mergeAll(
   ToolBroker.layer.pipe(
-    Layer.provide(CapabilityPolicyLayer),
+    Layer.provide(CapabilityPolicyLayer.pipe(Layer.provideMerge(CapabilityGrantLayer))),
+    Layer.provideMerge(CapabilityGrantLayer),
     Layer.provide(CapabilityRegistry.layer),
     Layer.provide(WorkspaceFileLayer),
   ),
   CapabilityPolicyLayer,
+  CapabilityGrantLayer,
   CapabilityRegistry.layer,
   WorkspaceFileLayer,
   WorkspaceEntries.layer.pipe(Layer.provide(WorkspacePaths.layer)),
@@ -201,6 +207,42 @@ it.layer(TestLayer, { excludeTestServices: true })("ToolBrokerLive", (it) => {
           status: "cancelled",
           errorCode: "tool_cancelled",
         });
+      }),
+    );
+
+    it.effect("validates task-scoped grants and audits revoked calls", () =>
+      Effect.gen(function* () {
+        const broker = yield* ToolBroker.ToolBroker;
+        const grantRegistry = yield* CapabilityGrantRegistry.CapabilityGrantRegistry;
+        const cwd = yield* makeTempDir;
+        yield* writeTextFile(cwd, "README.md", "stable\n");
+        const [grant] = yield* grantRegistry.issue({
+          taskId: "task-1",
+          agentId: "agent-1",
+          capabilityIds: ["t3.workspace.read_file"],
+        });
+
+        const allowed = yield* broker.invoke({
+          ...baseInput(cwd),
+          idempotencyKey: "grant-invocation-1",
+          capabilityGrantIds: [grant!.grantId],
+        });
+        expect(allowed.status).toBe("succeeded");
+
+        yield* grantRegistry.revoke({ grantId: grant!.grantId });
+        const denied = yield* broker.invoke({
+          ...baseInput(cwd),
+          idempotencyKey: "grant-invocation-2",
+          capabilityGrantIds: [grant!.grantId],
+        });
+        expect(denied).toMatchObject({ status: "denied", errorCode: "capability_not_granted" });
+
+        const audit = yield* grantRegistry.listAudit({ taskId: "task-1" });
+        const grantAudit = audit.filter((event) => event.grantId === grant!.grantId);
+        expect(grantAudit.map((event) => event.outcome)).toEqual(["allowed", "denied"]);
+        expect(grantAudit.every((event) => !(event as Record<string, unknown>).arguments)).toBe(
+          true,
+        );
       }),
     );
   });

@@ -10,6 +10,8 @@ import type { ByokAgentModelDriver } from "./ByokAgentLoop.ts";
 import type * as ToolBroker from "./ToolBroker.ts";
 import type * as ProviderInstanceRegistry from "../provider/Services/ProviderInstanceRegistry.ts";
 import { makeCompositionAgentServiceFromRegistry } from "./CompositionAgentService.ts";
+import { makeCompositionCapabilityRegistry } from "./CapabilityRegistry.ts";
+import { makeCapabilityGrantRegistry } from "./CapabilityGrantRegistry.ts";
 
 const makeBroker = (): ToolBroker.ToolBroker["Service"] => ({
   invoke: () =>
@@ -87,5 +89,55 @@ describe("CompositionAgentService", () => {
     await expect(Effect.runPromise(service.run(input))).rejects.toMatchObject({
       code: "provider_composition_unavailable",
     });
+  });
+
+  it("启动 Agent Loop 时把 capability ID 签发为 task-scoped grant", async () => {
+    const capturedGrantIds: string[][] = [];
+    let turn = 0;
+    const loopModel: ByokAgentModelDriver = {
+      complete: () => {
+        turn += 1;
+        return turn === 1
+          ? Stream.succeed({
+              type: "tool_call" as const,
+              toolCallId: "call-1",
+              canonicalToolName: "workspace.read_file",
+              arguments: { cwd: "C:/workspace", relativePath: "README.md" },
+            }).pipe(Stream.concat(Stream.succeed({ type: "model_completed" as const })))
+          : Stream.succeed({ type: "text_delta" as const, text: "完成" }).pipe(
+              Stream.concat(Stream.succeed({ type: "model_completed" as const })),
+            );
+      },
+    };
+    const broker: ToolBroker.ToolBroker["Service"] = {
+      invoke: (brokerInput) => {
+        capturedGrantIds.push([...brokerInput.capabilityGrantIds]);
+        return Effect.succeed({
+          invocationId: "invocation-1",
+          taskId: brokerInput.taskId,
+          runId: brokerInput.runId,
+          toolCallId: brokerInput.toolCallId,
+          canonicalToolName: brokerInput.canonicalToolName,
+          status: "succeeded" as const,
+          result: { contents: "ok" },
+        });
+      },
+      cancel: () => Effect.void,
+    };
+    const capabilityRegistry = makeCompositionCapabilityRegistry();
+    const grantRegistry = makeCapabilityGrantRegistry({ capabilityRegistry, now: () => 1000 });
+    const service = makeCompositionAgentService({
+      broker,
+      grantRegistry,
+      resolveModelDriver: () => Effect.succeed(loopModel),
+    });
+
+    await Effect.runPromise(
+      service.run({
+        ...input,
+        capabilityGrantIds: ["t3.workspace.read_file"],
+      }),
+    );
+    expect(capturedGrantIds[0]?.[0]).toMatch(/^grant-/);
   });
 });

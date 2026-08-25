@@ -50,6 +50,7 @@ import * as McpHttpServer from "./mcp/McpHttpServer.ts";
 import * as McpSessionRegistry from "./mcp/McpSessionRegistry.ts";
 import * as PreviewAutomationBroker from "./mcp/PreviewAutomationBroker.ts";
 import * as CompositionCapabilityRegistry from "./composition/CapabilityRegistry.ts";
+import * as CompositionCapabilityGrantRegistry from "./composition/CapabilityGrantRegistry.ts";
 import * as CompositionCapabilityPolicy from "./composition/CapabilityPolicy.ts";
 import * as CompositionToolBroker from "./composition/ToolBroker.ts";
 import * as CompositionAgentDriverRegistry from "./composition/CompositionAgentDriverRegistry.ts";
@@ -357,12 +358,18 @@ const WorkspaceLayerLive = Layer.mergeAll(
   WorkspaceFileSystemLayerLive,
 );
 
-const CompositionCapabilityPolicyLayerLive = CompositionCapabilityPolicy.layer.pipe(
+const CompositionCapabilityGrantLayerLive = CompositionCapabilityGrantRegistry.layer.pipe(
   Layer.provide(CompositionCapabilityRegistry.layer),
+);
+
+const CompositionCapabilityPolicyLayerLive = CompositionCapabilityPolicy.layer.pipe(
+  Layer.provideMerge(CompositionCapabilityGrantLayerLive),
+  Layer.provideMerge(CompositionCapabilityRegistry.layer),
 );
 
 const CompositionToolBrokerLayerLive = CompositionToolBroker.layer.pipe(
   Layer.provideMerge(CompositionCapabilityPolicyLayerLive),
+  Layer.provideMerge(CompositionCapabilityGrantLayerLive),
   Layer.provideMerge(CompositionCapabilityRegistry.layer),
   Layer.provideMerge(WorkspaceFileSystemLayerLive),
 );

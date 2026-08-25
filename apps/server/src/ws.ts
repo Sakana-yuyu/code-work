@@ -96,6 +96,7 @@ import * as ByokAdaptersImport from "./provider/byok/ByokAdaptersImport.ts";
 import * as CompositionAgentService from "./composition/CompositionAgentService.ts";
 import * as CompositionOrchestratorService from "./composition/CompositionOrchestratorService.ts";
 import * as CompositionToolBroker from "./composition/ToolBroker.ts";
+import * as CompositionCapabilityGrantRegistry from "./composition/CapabilityGrantRegistry.ts";
 import * as ProviderMaintenanceRunner from "./provider/providerMaintenanceRunner.ts";
 import * as ServerSelfUpdate from "./cloud/selfUpdate.ts";
 import * as ServerLifecycleEvents from "./serverLifecycleEvents.ts";
@@ -460,6 +461,9 @@ const makeWsRpcLayer = (
           ProviderInstanceRegistry.ProviderInstanceRegistry,
         );
         const broker = yield* Effect.serviceOption(CompositionToolBroker.ToolBroker);
+        const grantRegistry = yield* Effect.serviceOption(
+          CompositionCapabilityGrantRegistry.CapabilityGrantRegistry,
+        );
         if (Option.isNone(registry) || Option.isNone(broker)) {
           return Option.none<CompositionAgentService.CompositionAgentServiceShape>();
         }
@@ -467,6 +471,7 @@ const makeWsRpcLayer = (
           CompositionAgentService.makeCompositionAgentServiceFromRegistry(
             registry.value,
             broker.value,
+            Option.isSome(grantRegistry) ? grantRegistry.value : undefined,
           ),
         );
       });

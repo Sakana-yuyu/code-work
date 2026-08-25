@@ -6,9 +6,11 @@ import { ApprovalRequestId } from "@t3tools/contracts";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
+import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 
 import * as CapabilityRegistry from "./CapabilityRegistry.ts";
+import * as CapabilityGrantRegistry from "./CapabilityGrantRegistry.ts";
 
 export const CapabilityPolicyInput = Schema.Struct({
   taskId: Schema.String,
@@ -47,6 +49,11 @@ export class ApprovalRequestNotFoundError extends Schema.TaggedErrorClass<Approv
   }
 }
 
+export type CompositionCapabilityPolicyOptions = {
+  readonly capabilityRegistry: Pick<CapabilityRegistry.CapabilityRegistry["Service"], "list">;
+  readonly grantRegistry?: Pick<CapabilityGrantRegistry.CapabilityGrantRegistryShape, "validate">;
+};
+
 type ApprovalState = {
   readonly taskId: string;
   readonly agentId: string;
@@ -74,8 +81,10 @@ export class CapabilityPolicy extends Context.Service<
   }
 >()("t3/composition/CapabilityPolicy") {}
 
-const make = Effect.gen(function* () {
-  const registry = yield* CapabilityRegistry.CapabilityRegistry;
+export const makeCompositionCapabilityPolicy = (
+  options: CompositionCapabilityPolicyOptions,
+): CapabilityPolicy["Service"] => {
+  const registry = options.capabilityRegistry;
   const approvals = new Map<string, ApprovalState>();
   const cancelled = new Set<string>();
   let approvalSequence = 0;
@@ -92,10 +101,6 @@ const make = Effect.gen(function* () {
           reason: "task_or_agent_identity_missing",
         });
       }
-      if (!input.capabilityGrantIds.includes(input.capabilityId)) {
-        return yield* new CapabilityNotGrantedError({ capabilityId: input.capabilityId });
-      }
-
       const descriptors = yield* registry.list({ scope: "task", scopeId: input.taskId });
       const capability = findCapability(descriptors, input.capabilityId);
       if (!capability || capability.status === "unavailable") {
@@ -105,8 +110,36 @@ const make = Effect.gen(function* () {
         return yield* new CapabilityNotGrantedError({ capabilityId: input.capabilityId });
       }
 
+      const legacyGrant = input.capabilityGrantIds.includes(input.capabilityId);
+      let validGrantExpiresAtUnixMs: number | undefined;
+      if (!legacyGrant && options.grantRegistry !== undefined) {
+        for (const grantId of input.capabilityGrantIds) {
+          const grant = yield* options.grantRegistry
+            .validate({
+              grantId,
+              taskId: input.taskId,
+              agentId: input.agentId,
+              capabilityId: input.capabilityId,
+            })
+            .pipe(Effect.catch(() => Effect.succeed(undefined)));
+          if (grant !== undefined) {
+            validGrantExpiresAtUnixMs = grant.expiresAtUnixMs;
+            break;
+          }
+        }
+      }
+      if (!legacyGrant && validGrantExpiresAtUnixMs === undefined) {
+        return yield* new CapabilityNotGrantedError({ capabilityId: input.capabilityId });
+      }
+
       if (capability.approval === "never") {
-        return { decision: "allow", reasonCode: "capability_granted" };
+        return {
+          decision: "allow",
+          reasonCode: legacyGrant ? "legacy_capability_grant" : "capability_granted",
+          ...(validGrantExpiresAtUnixMs === undefined
+            ? {}
+            : { expiresAtUnixMs: validGrantExpiresAtUnixMs }),
+        };
       }
 
       if (input.approvalRequestId) {
@@ -145,6 +178,9 @@ const make = Effect.gen(function* () {
         decision: "approval_required",
         reasonCode: "destructive_capability_requires_approval",
         approvalRequestId,
+        ...(validGrantExpiresAtUnixMs === undefined
+          ? {}
+          : { expiresAtUnixMs: validGrantExpiresAtUnixMs }),
       };
     },
   );
@@ -170,6 +206,17 @@ const make = Effect.gen(function* () {
     approve,
     cancel,
     isCancelled: (idempotencyKey) => cancelled.has(idempotencyKey),
+  });
+};
+
+const make = Effect.gen(function* () {
+  const registry = yield* CapabilityRegistry.CapabilityRegistry;
+  const grantRegistry = yield* Effect.serviceOption(
+    CapabilityGrantRegistry.CapabilityGrantRegistry,
+  );
+  return makeCompositionCapabilityPolicy({
+    capabilityRegistry: registry,
+    ...(Option.isSome(grantRegistry) ? { grantRegistry: grantRegistry.value } : {}),
   });
 });
 

@@ -7,10 +7,12 @@ import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
+import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 
 import * as CapabilityPolicy from "./CapabilityPolicy.ts";
 import * as CapabilityRegistry from "./CapabilityRegistry.ts";
+import * as CapabilityGrantRegistry from "./CapabilityGrantRegistry.ts";
 import * as WorkspaceFileSystem from "../workspace/WorkspaceFileSystem.ts";
 
 const WorkspaceReadArguments = Schema.Struct({
@@ -93,6 +95,9 @@ export class ToolBroker extends Context.Service<
 const make = Effect.gen(function* () {
   const policy = yield* CapabilityPolicy.CapabilityPolicy;
   const registry = yield* CapabilityRegistry.CapabilityRegistry;
+  const grantRegistry = yield* Effect.serviceOption(
+    CapabilityGrantRegistry.CapabilityGrantRegistry,
+  );
   const workspaceFileSystem = yield* WorkspaceFileSystem.WorkspaceFileSystem;
   const completed = new Set<string>();
 
@@ -218,16 +223,45 @@ const make = Effect.gen(function* () {
   });
 
   const invoke: ToolBroker["Service"]["invoke"] = (input) =>
-    invokeInternal(input).pipe(
-      Effect.catch(() =>
-        Effect.map(Clock.currentTimeMillis, (finishedAtUnixMs) => ({
-          ...resultBase(input, finishedAtUnixMs),
-          status: "failed" as const,
-          errorCode: "tool_execution_failed",
-          finishedAtUnixMs,
-        })),
-      ),
-    );
+    Effect.gen(function* () {
+      const result = yield* invokeInternal(input).pipe(
+        Effect.catch(() =>
+          Effect.map(Clock.currentTimeMillis, (finishedAtUnixMs) => ({
+            ...resultBase(input, finishedAtUnixMs),
+            status: "failed" as const,
+            errorCode: "tool_execution_failed",
+            finishedAtUnixMs,
+          })),
+        ),
+      );
+      if (Option.isNone(grantRegistry)) return result;
+      const operation = input.canonicalToolName === "workspace.write_file" ? "mutate" : "read";
+      const errorCode = "errorCode" in result ? result.errorCode : undefined;
+      const outcome =
+        result.status === "succeeded"
+          ? "allowed"
+          : result.status === "cancelled"
+            ? "cancelled"
+            : result.status === "failed"
+              ? "failed"
+              : errorCode === "tool_approval_required"
+                ? "approval_required"
+                : "denied";
+      const grantId = input.capabilityGrantIds[0] ?? `legacy:${input.canonicalToolName}`;
+      yield* grantRegistry.value
+        .recordAudit({
+          grantId,
+          taskId: input.taskId,
+          runId: input.runId,
+          agentId: input.agentId,
+          capabilityId: `t3.${input.canonicalToolName}`,
+          operation,
+          outcome,
+          ...(errorCode === undefined ? {} : { errorCode }),
+        })
+        .pipe(Effect.catch(() => Effect.void));
+      return result;
+    });
 
   const cancel: ToolBroker["Service"]["cancel"] = Effect.fn("ToolBroker.cancel")(function* (input) {
     yield* policy.cancel(input);
