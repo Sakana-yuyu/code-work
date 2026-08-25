@@ -294,6 +294,13 @@ export function makeByokAdapter(byokSettings: ByokSettings, options?: ByokAdapte
       const outcome = yield* Effect.exit(
         runChatEvents(stream, (event) =>
           Effect.gen(function* () {
+            if (event.type === "tool_call") {
+              return yield* new ProviderAdapterRequestError({
+                provider: PROVIDER,
+                method: "sendTurn",
+                detail: "BYOK 旧文本会话不支持结构化工具调用，请使用 composition agent loop 入口。",
+              });
+            }
             if (event.text.length === 0) {
               return;
             }

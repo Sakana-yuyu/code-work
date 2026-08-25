@@ -7,6 +7,7 @@ import {
   collectChatText,
   streamChat,
   type ByokChatEvent,
+  type ByokToolDescriptor,
   type ByokStreamChatInput,
 } from "./byokChatClient.ts";
 
@@ -232,5 +233,145 @@ describe("byokChatClient existing protocols", () => {
       messages: [{ role: "user", content: "hi" }],
     });
     expect(events).toEqual([{ type: "text", text: "yo" }]);
+  });
+});
+
+describe("byokChatClient OpenAI tool calls", () => {
+  it("advertises canonical tools and joins streamed tool-call argument fragments", async () => {
+    const { client, captured } = makeClient(
+      [
+        'data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call-1","function":{"name":"workspace.read_file","arguments":"{\\"cwd\\":\\"C:/workspace\\",\\"relativePath\\":\\"READ"}}]}}]}',
+        "",
+        'data: {"choices":[{"delta":{"tool_calls":[{"index":0,"function":{"arguments":"ME.md\\"}"}}]},"finish_reason":"tool_calls"}]}',
+        "",
+        "data: [DONE]",
+        "",
+      ].join("\n"),
+    );
+    const tools: ReadonlyArray<ByokToolDescriptor> = [
+      {
+        canonicalToolName: "workspace.read_file",
+        description: "Read a text file",
+        parameters: { type: "object", properties: { cwd: { type: "string" } } },
+      },
+    ];
+
+    const events = await runEvents(client, {
+      protocol: "openai",
+      baseURL: "https://api.openai.com/v1",
+      apiKey: "k",
+      modelId: "gpt",
+      messages: [{ role: "user", content: "read README" }],
+      tools,
+      agentLoop: true,
+    });
+
+    expect(events).toEqual([
+      {
+        type: "tool_call",
+        toolCallId: "call-1",
+        canonicalToolName: "workspace.read_file",
+        arguments: { cwd: "C:/workspace", relativePath: "README.md" },
+      },
+    ]);
+    expect(captured[0]?.body).toMatchObject({
+      tools: [
+        {
+          type: "function",
+          function: {
+            name: "workspace.read_file",
+            description: "Read a text file",
+            parameters: { type: "object", properties: { cwd: { type: "string" } } },
+          },
+        },
+      ],
+      stream: true,
+    });
+  });
+
+  it("replays assistant tool calls and tool results using the OpenAI message shape", async () => {
+    const { client, captured } = makeClient(
+      'data: {"choices":[{"delta":{"content":"done"}}]}\n\ndata: [DONE]\n',
+    );
+
+    await runEvents(client, {
+      protocol: "openai",
+      baseURL: "https://api.openai.com/v1",
+      apiKey: "k",
+      modelId: "gpt",
+      messages: [
+        { role: "user", content: "read README" },
+        {
+          role: "assistant",
+          content: "",
+          toolCalls: [
+            {
+              toolCallId: "call-1",
+              canonicalToolName: "workspace.read_file",
+              arguments: { cwd: "C:/workspace", relativePath: "README.md" },
+            },
+          ],
+        },
+        { role: "tool", toolCallId: "call-1", content: '{"status":"succeeded"}' },
+      ],
+    });
+
+    expect(captured[0]?.body).toMatchObject({
+      messages: [
+        { role: "user", content: "read README" },
+        {
+          role: "assistant",
+          content: "",
+          tool_calls: [
+            {
+              id: "call-1",
+              type: "function",
+              function: {
+                name: "workspace.read_file",
+                arguments: '{"cwd":"C:/workspace","relativePath":"README.md"}',
+              },
+            },
+          ],
+        },
+        { role: "tool", tool_call_id: "call-1", content: '{"status":"succeeded"}' },
+      ],
+    });
+  });
+
+  it("returns an engine error for malformed tool-call arguments", async () => {
+    const malformedPayload = JSON.stringify({
+      choices: [
+        {
+          delta: {
+            tool_calls: [
+              {
+                index: 0,
+                id: "call-1",
+                function: { name: "workspace.read_file", arguments: "not-json" },
+              },
+            ],
+          },
+        },
+      ],
+    });
+    const { client } = makeClient(`data: ${malformedPayload}\n\ndata: [DONE]\n`);
+
+    await expect(
+      runEvents(client, {
+        protocol: "openai",
+        baseURL: "https://api.openai.com/v1",
+        apiKey: "k",
+        modelId: "gpt",
+        messages: [{ role: "user", content: "read README" }],
+        tools: [
+          {
+            canonicalToolName: "workspace.read_file",
+            description: "Read a text file",
+            parameters: { type: "object" },
+          },
+        ],
+        agentLoop: true,
+      }),
+    ).rejects.toThrow("tool call arguments are not valid JSON");
   });
 });

@@ -7,8 +7,9 @@
  * whose server-sent events are parsed into a flat `ByokChatEvent` stream.
  *
  *   - `openai` protocol: `POST ${baseURL}/chat/completions` with
- *     `stream: true`; `choices[0].delta.content` is text and
- *     `choices[0].delta.reasoning_content` (DeepSeek style) is reasoning.
+ *     `stream: true`; `choices[0].delta.content` is text,
+ *     `choices[0].delta.reasoning_content` (DeepSeek style) is reasoning, and
+ *     `choices[0].delta.tool_calls` is accumulated before being decoded.
  *     `data: [DONE]` terminates the stream.
  *   - `anthropic` protocol: `POST ${baseURL}/v1/messages` with `x-api-key` +
  *     `anthropic-version: 2023-06-01` and `stream: true`;
@@ -24,6 +25,7 @@
  * @module provider/Layers/byokChatClient
  */
 import * as Effect from "effect/Effect";
+import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
 import { type HttpClient, HttpClientRequest, HttpClientResponse } from "effect/unstable/http";
@@ -64,7 +66,20 @@ export const byokAdapterForModel = (
 /** One streaming chat chunk emitted by a BYOK model adapter. */
 export type ByokChatEvent =
   | { readonly type: "text"; readonly text: string }
-  | { readonly type: "reasoning"; readonly text: string };
+  | { readonly type: "reasoning"; readonly text: string }
+  | {
+      readonly type: "tool_call";
+      readonly toolCallId: string;
+      readonly canonicalToolName: string;
+      readonly arguments: unknown;
+    };
+
+/** 提供给 OpenAI-compatible 模型的规范工具元数据。 */
+export interface ByokToolDescriptor {
+  readonly canonicalToolName: string;
+  readonly description: string;
+  readonly parameters: unknown;
+}
 
 /** One failed BYOK engine request (transport, non-2xx, or malformed SSE). */
 export class ByokEngineError extends Schema.TaggedErrorClass<ByokEngineError>()("ByokEngineError", {
@@ -86,9 +101,15 @@ export interface ByokImagePart {
 export type ByokContentPart = { readonly type: "text"; readonly text: string } | ByokImagePart;
 
 export interface ByokChatMessage {
-  readonly role: "user" | "assistant";
+  readonly role: "user" | "assistant" | "tool";
   /** Plain text, or multimodal parts when the turn carried image attachments. */
   readonly content: string | ReadonlyArray<ByokContentPart>;
+  readonly toolCallId?: string;
+  readonly toolCalls?: ReadonlyArray<{
+    readonly toolCallId: string;
+    readonly canonicalToolName: string;
+    readonly arguments: unknown;
+  }>;
 }
 
 export interface ByokStreamChatInput {
@@ -97,6 +118,10 @@ export interface ByokStreamChatInput {
   readonly apiKey: string;
   readonly modelId: string;
   readonly messages: ReadonlyArray<ByokChatMessage>;
+  /** 向 agent loop 模型声明的规范工具。 */
+  readonly tools?: ReadonlyArray<ByokToolDescriptor>;
+  /** 标记显式 agent loop 请求；旧文本调用保持未设置。 */
+  readonly agentLoop?: boolean;
   /**
    * Rendered prompt-template text. Sent as a leading system message on the
    * openai protocol and as the top-level `system` field on anthropic.
@@ -181,6 +206,115 @@ const isRecord = (value: unknown): value is Record<string, unknown> =>
 
 const asString = (value: unknown): string | undefined =>
   typeof value === "string" && value.length > 0 ? value : undefined;
+
+const encodeUnknownJson = Schema.encodeUnknownSync(Schema.fromJsonString(Schema.Unknown));
+
+const openaiMessage = (message: ByokChatMessage): Record<string, unknown> => {
+  if (message.role === "tool") {
+    return {
+      role: "tool",
+      tool_call_id: message.toolCallId,
+      content: message.content,
+    };
+  }
+
+  if (
+    message.role === "assistant" &&
+    message.toolCalls !== undefined &&
+    message.toolCalls.length > 0
+  ) {
+    return {
+      role: "assistant",
+      content: message.content,
+      tool_calls: message.toolCalls.map((toolCall) => ({
+        id: toolCall.toolCallId,
+        type: "function",
+        function: {
+          name: toolCall.canonicalToolName,
+          arguments: encodeUnknownJson(toolCall.arguments),
+        },
+      })),
+    };
+  }
+
+  return {
+    role: message.role,
+    content: openaiMessageContent(message.content),
+  };
+};
+
+type OpenAiToolCallState = {
+  readonly toolCallId: string | undefined;
+  readonly canonicalToolName: string | undefined;
+  readonly argumentsText: string;
+};
+
+type OpenAiToolCallAccumulator = ReadonlyMap<number, OpenAiToolCallState>;
+
+type OpenAiToolCallFragment = {
+  readonly index: number;
+  readonly id: string | undefined;
+  readonly name: string | undefined;
+  readonly arguments: string | undefined;
+};
+
+type OpenAiToolCallJsonEvent = {
+  readonly type: "tool_call_json";
+  readonly toolCallId: string | undefined;
+  readonly canonicalToolName: string | undefined;
+  readonly argumentsText: string;
+};
+
+type OpenAiStreamEvent = ByokChatEvent | OpenAiToolCallJsonEvent;
+
+const openaiToolCallFragments = (
+  payload: Record<string, unknown>,
+): ReadonlyArray<OpenAiToolCallFragment> => {
+  const choices = payload.choices;
+  if (!Array.isArray(choices) || choices.length === 0 || !isRecord(choices[0])) {
+    return [];
+  }
+  const delta = choices[0].delta;
+  if (!isRecord(delta) || !Array.isArray(delta.tool_calls)) {
+    return [];
+  }
+
+  return delta.tool_calls.flatMap((candidate) => {
+    if (
+      !isRecord(candidate) ||
+      typeof candidate.index !== "number" ||
+      !Number.isInteger(candidate.index)
+    ) {
+      return [];
+    }
+    const functionValue = isRecord(candidate.function) ? candidate.function : undefined;
+    const id = asString(candidate.id);
+    const name = functionValue === undefined ? undefined : asString(functionValue.name);
+    return [
+      {
+        index: candidate.index,
+        id,
+        name,
+        arguments:
+          functionValue !== undefined && typeof functionValue.arguments === "string"
+            ? functionValue.arguments
+            : undefined,
+      },
+    ];
+  });
+};
+
+const openaiToolCallJsonEvents = (
+  state: OpenAiToolCallAccumulator,
+): ReadonlyArray<OpenAiToolCallJsonEvent> =>
+  [...state.entries()]
+    .sort(([left], [right]) => left - right)
+    .map(([, toolCall]) => ({
+      type: "tool_call_json" as const,
+      toolCallId: toolCall.toolCallId,
+      canonicalToolName: toolCall.canonicalToolName,
+      argumentsText: toolCall.argumentsText,
+    }));
 
 /** Translate one SSE `data:` payload into zero or more chat events. */
 const eventsFromSsePayload = (
@@ -275,11 +409,20 @@ export const streamChat = (
             model: input.modelId,
             messages: [
               ...(systemPrompt.length > 0 ? [{ role: "system", content: systemPrompt }] : []),
-              ...input.messages.map((message) => ({
-                role: message.role,
-                content: openaiMessageContent(message.content),
-              })),
+              ...input.messages.map(openaiMessage),
             ],
+            ...(input.tools !== undefined && input.tools.length > 0
+              ? {
+                  tools: input.tools.map((tool) => ({
+                    type: "function",
+                    function: {
+                      name: tool.canonicalToolName,
+                      description: tool.description,
+                      parameters: tool.parameters,
+                    },
+                  })),
+                }
+              : {}),
             stream: true,
           }),
         )
@@ -312,7 +455,10 @@ export const streamChat = (
             }),
           );
 
-  const events = HttpClientResponse.stream(
+  const payloads: Stream.Stream<
+    Record<string, unknown>,
+    ByokEngineError
+  > = HttpClientResponse.stream(
     Effect.flatMap(requestEffect, (prepared) => httpClient.execute(prepared)).pipe(
       Effect.flatMap(HttpClientResponse.filterStatusOk),
       Effect.mapError(toEngineError),
@@ -331,10 +477,60 @@ export const streamChat = (
       }
       return !isTerminalSsePayload(input.protocol, payload);
     }),
-    Stream.flatMap((payload) => Stream.fromIterable(eventsFromSsePayload(input.protocol, payload))),
   );
 
-  return events;
+  if (input.protocol !== "openai") {
+    return payloads.pipe(
+      Stream.flatMap((payload) =>
+        Stream.fromIterable(eventsFromSsePayload(input.protocol, payload)),
+      ),
+    );
+  }
+
+  const openaiEvents: Stream.Stream<OpenAiStreamEvent, ByokEngineError> = Stream.mapAccum(
+    payloads,
+    () => new Map<number, OpenAiToolCallState>(),
+    (
+      state,
+      payload,
+    ): readonly [Map<number, OpenAiToolCallState>, ReadonlyArray<OpenAiStreamEvent>] => {
+      const nextState = new Map(state);
+      for (const fragment of openaiToolCallFragments(payload)) {
+        const previous = nextState.get(fragment.index);
+        nextState.set(fragment.index, {
+          toolCallId: fragment.id ?? previous?.toolCallId,
+          canonicalToolName: fragment.name ?? previous?.canonicalToolName,
+          argumentsText: `${previous?.argumentsText ?? ""}${fragment.arguments ?? ""}`,
+        });
+      }
+      return [nextState, eventsFromSsePayload("openai", payload)];
+    },
+    { onHalt: openaiToolCallJsonEvents },
+  );
+
+  return openaiEvents.pipe(
+    Stream.mapEffect((event: OpenAiStreamEvent) => {
+      if (event.type !== "tool_call_json") {
+        return Effect.succeed(event);
+      }
+      if (event.toolCallId === undefined || event.canonicalToolName === undefined) {
+        return Effect.fail(
+          toEngineError(new Error("OpenAI tool call ended without an id or function name.")),
+        );
+      }
+      const decoded = Schema.decodeUnknownOption(Schema.fromJsonString(Schema.Unknown))(
+        event.argumentsText,
+      );
+      return Option.isNone(decoded)
+        ? Effect.fail(toEngineError(new Error("OpenAI tool call arguments are not valid JSON.")))
+        : Effect.succeed({
+            type: "tool_call" as const,
+            toolCallId: event.toolCallId,
+            canonicalToolName: event.canonicalToolName,
+            arguments: decoded.value,
+          });
+    }),
+  );
 };
 
 /** Effect that completes when the abort signal fires. */
