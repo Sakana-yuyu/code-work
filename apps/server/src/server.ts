@@ -359,6 +359,7 @@ const WorkspaceLayerLive = Layer.mergeAll(
 );
 
 const CompositionCapabilityGrantLayerLive = CompositionCapabilityGrantRegistry.layer.pipe(
+  Layer.provideMerge(PersistenceLayerLive),
   Layer.provide(CompositionCapabilityRegistry.layer),
 );
 
@@ -397,6 +398,7 @@ const CompositionRuntimeLayerLive = Layer.mergeAll(
   CompositionOrchestratorService.layer,
   CompositionTaskRuntimeProjectionService.layer,
 ).pipe(
+  Layer.provideMerge(CompositionCapabilityGrantLayerLive),
   Layer.provideMerge(CompositionAgentDriverProjectionLayerLive),
   Layer.provideMerge(CompositionTaskStoreLive.pipe(Layer.provideMerge(PersistenceLayerLive))),
 );

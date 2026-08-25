@@ -21,21 +21,33 @@ const WorkspaceFileLayer = WorkspaceFileSystem.layer.pipe(
   Layer.provide(WorkspaceEntries.layer.pipe(Layer.provide(WorkspacePaths.layer))),
 );
 
-const CapabilityPolicyLayer = CapabilityPolicy.layer.pipe(Layer.provide(CapabilityRegistry.layer));
-const CapabilityGrantLayer = CapabilityGrantRegistry.layer.pipe(
-  Layer.provide(CapabilityRegistry.layer),
+const testCapabilityRegistry = CapabilityRegistry.makeCompositionCapabilityRegistry();
+const CapabilityRegistryLayer = Layer.succeed(
+  CapabilityRegistry.CapabilityRegistry,
+  testCapabilityRegistry,
+);
+const testCapabilityGrantRegistry = CapabilityGrantRegistry.makeCapabilityGrantRegistry({
+  capabilityRegistry: testCapabilityRegistry,
+});
+const CapabilityGrantLayer = Layer.succeed(
+  CapabilityGrantRegistry.CapabilityGrantRegistry,
+  testCapabilityGrantRegistry,
+);
+const CapabilityPolicyLayer = CapabilityPolicy.layer.pipe(
+  Layer.provideMerge(CapabilityGrantLayer),
+  Layer.provide(CapabilityRegistryLayer),
 );
 
 const TestLayer = Layer.mergeAll(
   ToolBroker.layer.pipe(
     Layer.provide(CapabilityPolicyLayer.pipe(Layer.provideMerge(CapabilityGrantLayer))),
     Layer.provideMerge(CapabilityGrantLayer),
-    Layer.provide(CapabilityRegistry.layer),
+    Layer.provide(CapabilityRegistryLayer),
     Layer.provide(WorkspaceFileLayer),
   ),
   CapabilityPolicyLayer,
   CapabilityGrantLayer,
-  CapabilityRegistry.layer,
+  CapabilityRegistryLayer,
   WorkspaceFileLayer,
   WorkspaceEntries.layer.pipe(Layer.provide(WorkspacePaths.layer)),
   WorkspacePaths.layer,

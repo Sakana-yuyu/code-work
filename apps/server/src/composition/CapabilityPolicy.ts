@@ -72,6 +72,7 @@ export class CapabilityPolicy extends Context.Service<
       | CapabilityPolicyInvalidError
       | CapabilityRegistry.CapabilityScopeNotFoundError
       | CapabilityRegistry.CapabilityRegistryUnavailableError
+      | CapabilityGrantRegistry.CapabilityGrantPersistenceError
     >;
     readonly approve: (input: {
       readonly approvalRequestId: string;
@@ -121,7 +122,14 @@ export const makeCompositionCapabilityPolicy = (
               agentId: input.agentId,
               capabilityId: input.capabilityId,
             })
-            .pipe(Effect.catch(() => Effect.succeed(undefined)));
+            .pipe(
+              Effect.catchTags({
+                CapabilityGrantNotFoundError: () => Effect.succeed(undefined),
+                CapabilityGrantScopeMismatchError: () => Effect.succeed(undefined),
+                CapabilityGrantExpiredError: () => Effect.succeed(undefined),
+                CapabilityGrantRevokedError: () => Effect.succeed(undefined),
+              }),
+            );
           if (grant !== undefined) {
             validGrantExpiresAtUnixMs = grant.expiresAtUnixMs;
             break;

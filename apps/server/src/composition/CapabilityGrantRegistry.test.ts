@@ -1,8 +1,13 @@
 import { describe, expect, it } from "vite-plus/test";
 import * as Effect from "effect/Effect";
+import * as SqlClient from "effect/unstable/sql/SqlClient";
 
-import { makeCapabilityGrantRegistry } from "./CapabilityGrantRegistry.ts";
+import {
+  makeCapabilityGrantRegistry,
+  makeSqliteCapabilityGrantRegistry,
+} from "./CapabilityGrantRegistry.ts";
 import { makeCompositionCapabilityRegistry } from "./CapabilityRegistry.ts";
+import { SqlitePersistenceMemory } from "../persistence/Layers/Sqlite.ts";
 
 describe("CapabilityGrantRegistry", () => {
   it("为 task/agent 签发幂等短期 grant，并校验作用域", async () => {
@@ -110,5 +115,73 @@ describe("CapabilityGrantRegistry", () => {
     const events = await Effect.runPromise(registry.listAudit({ taskId: "task-1" }));
     expect(events).toHaveLength(1);
     expect((events[0] as Record<string, unknown>).arguments).toBeUndefined();
+  });
+
+  it("SQLite Registry 在新实例中恢复 grant、撤销状态和审计记录", async () => {
+    const result = await Effect.runPromise(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        const capabilityRegistry = makeCompositionCapabilityRegistry();
+        let sequence = 0;
+        const options = {
+          capabilityRegistry,
+          sql,
+          now: () => 1000,
+          randomUUID: () => `test-${++sequence}`,
+        };
+        const first = makeSqliteCapabilityGrantRegistry(options);
+        const [grant] = yield* first.issue({
+          taskId: "task-sqlite",
+          agentId: "agent-sqlite",
+          capabilityIds: ["t3.workspace.read_file"],
+          ttlMs: 5000,
+        });
+        if (grant === undefined) throw new Error("测试预期已签发 grant。");
+
+        const restarted = makeSqliteCapabilityGrantRegistry(options);
+        const duplicate = yield* restarted.issue({
+          taskId: "task-sqlite",
+          agentId: "agent-sqlite",
+          capabilityIds: ["t3.workspace.read_file"],
+          ttlMs: 5000,
+        });
+        if (duplicate[0] === undefined) throw new Error("测试预期重复 issue 返回原 grant。");
+        if (duplicate[0].grantId !== grant.grantId) {
+          throw new Error("重复 issue 未复用现有未过期 grant。");
+        }
+        const restored = yield* restarted.validate({
+          grantId: grant.grantId,
+          taskId: grant.taskId,
+          agentId: grant.agentId,
+          capabilityId: grant.capabilityId,
+        });
+        yield* restarted.recordAudit({
+          grantId: restored.grantId,
+          taskId: restored.taskId,
+          runId: "run-sqlite",
+          agentId: restored.agentId,
+          capabilityId: restored.capabilityId,
+          operation: "read",
+          outcome: "allowed",
+        });
+        const audit = yield* first.listAudit({ taskId: "task-sqlite" });
+        yield* restarted.revoke({ grantId: restored.grantId });
+        const afterRevoke = makeSqliteCapabilityGrantRegistry(options);
+        const revoked = yield* Effect.flip(
+          afterRevoke.validate({
+            grantId: restored.grantId,
+            taskId: restored.taskId,
+            agentId: restored.agentId,
+            capabilityId: restored.capabilityId,
+          }),
+        );
+        return { restored, audit, revoked };
+      }).pipe(Effect.provide(SqlitePersistenceMemory)),
+    );
+
+    expect(result.restored.grantId).toBe("grant-test-1");
+    expect(result.audit).toHaveLength(1);
+    expect(result.audit[0]?.runId).toBe("run-sqlite");
+    expect(result.revoked._tag).toBe("CapabilityGrantRevokedError");
   });
 });
