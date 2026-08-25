@@ -30,6 +30,7 @@ layer("CompositionTaskStore", (it) => {
         taskId: "task-1",
         agentId: "agent-1",
         runtimeId: "runtime-1",
+        capabilityHandshakeId: "handshake-1",
         status: "running" as const,
         attempt: 1,
         capabilityGrantIds: [],
@@ -97,6 +98,7 @@ layer("CompositionTaskStore", (it) => {
       );
       assert.ok(Option.isSome(loadedRun));
       assert.equal(Option.getOrThrow(loadedRun).attempt, 1);
+      assert.equal(Option.getOrThrow(loadedRun).capabilityHandshakeId, "handshake-1");
       assert.deepEqual(
         events.map((event) => event.sequence),
         [0, 1],

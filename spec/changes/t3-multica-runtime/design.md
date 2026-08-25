@@ -92,6 +92,7 @@ interface CompositionRuntimeAdapter {
 - `streamEvents` 的每个事件必须有稳定 `eventId`；投影器按 `(taskId, runId, sourceEventId)` 去重。
 - Adapter 不获得 T3 工具的隐式权限；文件、终端、Git、MCP、浏览器和 IDE 操作仍通过 Capability Registry/Tool Broker 授权。
 - `capabilityGrantIds` 是 T3 内部的 task-scoped 授权引用，不等于外部 runtime 已完成授权握手。Adapter 只有在外部协议明确支持并完成校验后，才可以声称 grant 已注入；否则必须保留明确的未支持边界。
+- 带 grant 的 Runtime dispatch 必须先完成 `CompositionRuntimeCapabilityHandshake`，并把返回的 `handshakeId` 带入派发；握手状态为 `unsupported` 或 `rejected` 时不得创建外部任务。
 
 ### MulticaAdapter
 
@@ -146,11 +147,11 @@ Task 事件映射：
 ## 生命周期与幂等
 
 1. T3 派发 Task，Orchestrator 创建 Task/Run，并调用 Driver。
-2. Driver 将完整 prompt、workspaceRoot 和 capability grant 引用作为一次性输入交给 Adapter；持久化表只保存 digest 和引用。Provider 原生 Session/Turn 当前不接收 grant；Multica 窄协议也不发送未定义的 grant 字段。
-3. Adapter 返回 `runtimeTaskId` 后，T3 保存 Run 关联。
-4. Adapter 心跳和事件流持续回传；Projection Service 做状态机校验、事件去重和终态收口。
-5. 取消先调用 Adapter；只有 Adapter 明确接受或已终态时，T3 才写入对应状态。网络错误保留 `cancel_requested` 语义，交由后续心跳/事件收口。
-6. 进程重启后，Adapter 通过持久化的 `runtimeTaskId` 和 Run 记录恢复订阅；不能依赖进程内 Map 作为唯一事实源。
+2. Driver 先向 Runtime/Provider 请求 capability handshake；只有收到 accepted 的 `handshakeId`，才将完整 prompt、workspaceRoot、grant 引用和 handshake ID 交给 Adapter。Provider 原生协议和 Multica 窄协议尚未支持时，带 grant 的任务会稳定拒绝，不会静默降级到 full-access。
+3. Adapter 返回 `runtimeTaskId` 和可选 `capabilityHandshakeId` 后，T3 保存 Run 关联；握手 ID 通过 046 迁移持久化。
+4. Adapter 心跳和事件流持续回传；Projection Service 做状态机校验、事件去重和终态收口，并在首次进入终态时调用 Driver 撤销 handshake 与 grant。
+5. 取消先调用 Adapter；只有 Adapter 明确接受或已终态时，T3 才写入对应状态。取消落地时同样撤销握手与 grant；网络错误保留 `cancel_requested` 语义，交由后续心跳/事件收口。
+6. 进程重启后，Adapter 通过持久化的 `runtimeTaskId`、`capabilityHandshakeId` 和 Run 记录恢复订阅或执行清理；不能依赖进程内 Map 作为唯一事实源。
 
 对于 Multica quick-create，步骤 2 的 `runtimeTaskId` 是远端返回的队列 `task_id`。由于当前 quick-create 接口缺少服务端幂等键，T3 必须把 HTTP 成功后的关联持久化视为恢复边界；transport timeout 不能自动重试创建请求，只能进入未知结果并等待人工/服务端查询确认。
 
@@ -159,8 +160,8 @@ Task 事件映射：
 - 未完成 runtime/IDE handshake 时只允许 probe、list 和只读状态查询。
 - 未知 IDE profile 直接拒绝高权限操作，不通过“兼容模式”绕过。
 - task-scoped grant 绑定 `taskId`、`runId`、`workspaceRootDigest` 和过期时间；外部 runtime 不可复用其他 Task 的 grant。
-- Provider Driver 当前只保证 T3 ProviderService 的 Session/Turn 生命周期，不声称 Provider 原生工具已经通过 T3 grant 校验；需要后续 Provider handshake 或 canonical ToolBroker 执行链才能闭环。
-- Multica Adapter 当前只在 T3 内部保存、审计和撤销 grant；官方 quick-create 请求不携带 grant，真实 daemon 也尚未校验 T3 grant。
+- Provider Driver 已支持 handshake 合同；当前投影的 ProviderService 适配器尚未提供握手实现，因此带 grant 的 Provider 任务会拒绝，待 Provider 原生工具或 canonical ToolBroker 桥接完成后再开放。
+- Multica Adapter 已暴露稳定的 unsupported 握手结果；官方 quick-create 请求不携带 grant，真实 daemon 也尚未校验 T3 grant，因此带 grant 的 Multica 任务会拒绝。
 - Adapter 日志只记录 ID、状态、版本和去敏后的错误，不记录完整 prompt、API key、用户凭据或敏感文件内容。
 - 所有跨进程事件使用 sourceEventId；重复、乱序和断线重放必须是无害的。
 

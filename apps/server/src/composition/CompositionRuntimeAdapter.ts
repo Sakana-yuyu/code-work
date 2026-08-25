@@ -1,4 +1,6 @@
 import type {
+  CompositionRuntimeCapabilityHandshakeRequest,
+  CompositionRuntimeCapabilityHandshakeResult,
   CompositionRuntimeDriverKind,
   CompositionRuntimeProbeResult,
   ProviderRuntimeEvent,
@@ -48,6 +50,8 @@ export type CompositionRuntimeTaskInput = {
   readonly promptDigest?: string;
   readonly model?: string;
   readonly capabilityGrantIds?: ReadonlyArray<string>;
+  /** 带 grant 的 dispatch 必须引用同一次 accepted handshake。 */
+  readonly capabilityHandshakeId?: string;
   /** 同一 run 的重试必须复用这个幂等键。 */
   readonly idempotencyKey: string;
 };
@@ -89,6 +93,12 @@ export interface CompositionRuntimeAdapter {
     CompositionRuntimeHeartbeat,
     CompositionRuntimeAdapterFailure
   >;
+  readonly handshakeCapabilities?: (
+    input: CompositionRuntimeCapabilityHandshakeRequest,
+  ) => Effect.Effect<CompositionRuntimeCapabilityHandshakeResult, CompositionRuntimeAdapterFailure>;
+  readonly revokeCapabilityHandshake?: (input: {
+    readonly handshakeId: string;
+  }) => Effect.Effect<void, CompositionRuntimeAdapterFailure>;
   readonly dispatchTask: (
     input: CompositionRuntimeTaskInput,
   ) => Effect.Effect<CompositionRuntimeTaskResult, CompositionRuntimeAdapterFailure>;
@@ -187,6 +197,7 @@ export const makeInMemoryCompositionRuntimeAdapter = (
   const now = options.now ?? Date.now;
   const events = Effect.runSync(PubSub.unbounded<ProviderRuntimeEvent>());
   const tasks = new Map<string, InMemoryRuntimeTask>();
+  const capabilityHandshakes = new Map<string, CompositionRuntimeCapabilityHandshakeRequest>();
   let probeStatus: CompositionRuntimeProbeResult["status"] = "online";
   const agents = [
     ...(options.agents ?? [
@@ -229,12 +240,84 @@ export const makeInMemoryCompositionRuntimeAdapter = (
       activeTaskCount: [...tasks.values()].filter((task) => task.status === "running").length,
     });
 
+  const handshakeCapabilities: NonNullable<CompositionRuntimeAdapter["handshakeCapabilities"]> = (
+    input,
+  ) =>
+    Effect.gen(function* () {
+      const taskId = yield* requireId(input.taskId, "taskId");
+      const runId = yield* requireId(input.runId, "runId");
+      const agentId = yield* requireId(input.agentId, "agentId");
+      const grantIds = [
+        ...new Set(input.capabilityGrantIds.map((grantId) => grantId.trim())),
+      ].filter(Boolean);
+      if (grantIds.length === 0) {
+        return yield* error(runtimeId, "invalid_input", "capabilityGrantIds 不能为空。");
+      }
+      const handshakeId = `handshake:${runtimeId}:${taskId}:${runId}:${grantIds.join(",")}`;
+      const request = {
+        runtimeId,
+        taskId,
+        runId,
+        agentId,
+        capabilityGrantIds: grantIds,
+      } satisfies CompositionRuntimeCapabilityHandshakeRequest;
+      capabilityHandshakes.set(handshakeId, request);
+      return {
+        ...request,
+        status: "accepted" as const,
+        handshakeId,
+        acceptedGrantIds: grantIds,
+      } satisfies CompositionRuntimeCapabilityHandshakeResult;
+    });
+
+  const verifyCapabilityHandshake = (input: CompositionRuntimeTaskInput) => {
+    const grantIds = [
+      ...new Set((input.capabilityGrantIds ?? []).map((grantId) => grantId.trim())),
+    ].filter(Boolean);
+    if (grantIds.length === 0) return Effect.void;
+    if (input.capabilityHandshakeId === undefined) {
+      return Effect.fail(
+        error(
+          runtimeId,
+          "capability_handshake_required",
+          "带 capability grant 的派发必须先完成握手。",
+        ),
+      );
+    }
+    const handshake = capabilityHandshakes.get(input.capabilityHandshakeId);
+    if (
+      handshake === undefined ||
+      handshake.taskId !== input.taskId ||
+      handshake.runId !== input.runId ||
+      handshake.agentId !== input.agentId ||
+      handshake.capabilityGrantIds.join("\u0000") !== grantIds.join("\u0000")
+    ) {
+      return Effect.fail(
+        error(
+          runtimeId,
+          "capability_handshake_mismatch",
+          "派发引用的 capability handshake 与 task/run 不匹配。",
+        ),
+      );
+    }
+    return Effect.void;
+  };
+
+  const revokeCapabilityHandshake: NonNullable<
+    CompositionRuntimeAdapter["revokeCapabilityHandshake"]
+  > = (input) =>
+    Effect.gen(function* () {
+      const handshakeId = yield* requireId(input.handshakeId, "handshakeId");
+      capabilityHandshakes.delete(handshakeId);
+    });
+
   const dispatchTask: CompositionRuntimeAdapter["dispatchTask"] = (input) =>
     Effect.gen(function* () {
       const taskId = yield* requireId(input.taskId, "taskId");
       const runId = yield* requireId(input.runId, "runId");
       yield* requireId(input.agentId, "agentId");
       yield* requireId(input.idempotencyKey, "idempotencyKey");
+      yield* verifyCapabilityHandshake(input);
       if (probeStatus === "offline") {
         return yield* error(runtimeId, "runtime_offline", "Runtime 当前离线。");
       }
@@ -316,6 +399,8 @@ export const makeInMemoryCompositionRuntimeAdapter = (
     probe,
     listAgents,
     heartbeat,
+    handshakeCapabilities,
+    revokeCapabilityHandshake,
     dispatchTask,
     cancelTask,
     resumeTask,

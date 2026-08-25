@@ -1,6 +1,8 @@
 import { createHash } from "node:crypto";
 
 import type {
+  CompositionRuntimeCapabilityHandshakeRequest,
+  CompositionRuntimeCapabilityHandshakeResult,
   CompositionMulticaProbeResult,
   CompositionRuntimeProbeResult,
   ProviderRuntimeEvent,
@@ -320,6 +322,19 @@ export const makeMulticaDaemonRuntimeAdapter = (
       Effect.mapError((failure) => mapProtocolFailure(runtimeId, failure)),
     );
 
+  const handshakeCapabilities = (
+    input: CompositionRuntimeCapabilityHandshakeRequest,
+  ): Effect.Effect<CompositionRuntimeCapabilityHandshakeResult> =>
+    Effect.succeed({
+      runtimeId,
+      taskId: input.taskId,
+      runId: input.runId,
+      agentId: input.agentId,
+      status: "unsupported",
+      acceptedGrantIds: [],
+      reasonCode: "multica_capability_handshake_unsupported",
+    });
+
   const probe = () =>
     options.protocol.heartbeat(daemonRuntimeId).pipe(
       Effect.map((response) => {
@@ -396,6 +411,13 @@ export const makeMulticaDaemonRuntimeAdapter = (
       nonEmpty(input.runId, "runId");
       const agentId = nonEmpty(input.agentId, "agentId");
       const idempotencyKey = nonEmpty(input.idempotencyKey, "idempotencyKey");
+      if ((input.capabilityGrantIds ?? []).length > 0) {
+        return yield* adapterFailure(
+          runtimeId,
+          "capability_handshake_unsupported",
+          "Multica 官方窄协议尚未提供 T3 capability handshake，拒绝带 grant 的派发。",
+        );
+      }
       const prompt = input.prompt === undefined ? undefined : input.prompt.trim();
       if (prompt === undefined || prompt.length === 0) {
         return yield* adapterFailure(
@@ -516,6 +538,7 @@ export const makeMulticaDaemonRuntimeAdapter = (
     probe,
     listAgents,
     heartbeat,
+    handshakeCapabilities,
     dispatchTask,
     cancelTask,
     resumeTask,

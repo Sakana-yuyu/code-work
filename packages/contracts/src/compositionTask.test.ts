@@ -41,6 +41,7 @@ describe("composition task contracts", () => {
       taskId: "task-1",
       agentId: "agent-1",
       runtimeId: "runtime-1",
+      capabilityHandshakeId: "handshake-1",
       status: "failed",
       attempt: 2,
       capabilityGrantIds: [],
@@ -50,6 +51,7 @@ describe("composition task contracts", () => {
 
     expect(run.attempt).toBe(2);
     expect(run.failureCode).toBe("runtime_offline");
+    expect(run.capabilityHandshakeId).toBe("handshake-1");
   });
 
   it("does not allow dependency conditions outside the explicit set", () => {

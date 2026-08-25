@@ -1,4 +1,7 @@
-import type { ProviderRuntimeEvent } from "@t3tools/contracts";
+import type {
+  CompositionRuntimeCapabilityHandshakeRequest,
+  ProviderRuntimeEvent,
+} from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
 
 import {
@@ -19,6 +22,7 @@ type ActiveRun = {
   readonly taskId: string;
   readonly runId: string;
   readonly runtimeTaskId: string;
+  readonly capabilityHandshakeId?: string;
 };
 
 const errorDetail = (error: unknown): string =>
@@ -45,34 +49,107 @@ export const makeCompositionRuntimeAgentDriver = (
   const activeRuns = new Map<string, ActiveRun>();
 
   const startTask: CompositionAgentDriver["startTask"] = (input) => {
-    const runtimeInput: CompositionRuntimeTaskInput = {
-      taskId: input.task.taskId,
-      runId: input.run.runId,
-      agentId: options.agentId,
-      idempotencyKey: input.run.runId,
-      ...(input.workspaceRootDigest === undefined
-        ? {}
-        : { workspaceRootDigest: input.workspaceRootDigest }),
-      ...(input.workspaceRoot === undefined ? {} : { workspaceRoot: input.workspaceRoot }),
-      ...(input.prompt === undefined ? {} : { prompt: input.prompt }),
-      ...(input.model === undefined ? {} : { model: input.model }),
-      capabilityGrantIds: input.run.capabilityGrantIds ?? [],
-      promptDigest: input.task.promptDigest,
-    };
+    const capabilityGrantIds = [...(input.run.capabilityGrantIds ?? [])];
 
-    return options.adapter.dispatchTask(runtimeInput).pipe(
-      Effect.mapError((failure) => makeFailure(failure.code, failure)),
-      Effect.tap((result) =>
-        Effect.sync(() => {
-          activeRuns.set(input.run.runId, {
-            taskId: input.task.taskId,
-            runId: input.run.runId,
-            runtimeTaskId: result.runtimeTaskId,
+    return Effect.gen(function* () {
+      let capabilityHandshakeId: string | undefined;
+      if (capabilityGrantIds.length > 0) {
+        const handshake = options.adapter.handshakeCapabilities;
+        if (handshake === undefined) {
+          return yield* new CompositionAgentDriverFailure({
+            code: "runtime_capability_handshake_unsupported",
+            detail: "Runtime 没有提供 capability handshake，拒绝派发带 grant 的任务。",
           });
+        }
+        const request: CompositionRuntimeCapabilityHandshakeRequest = {
+          runtimeId: options.adapter.runtimeId,
+          taskId: input.task.taskId,
+          runId: input.run.runId,
+          agentId: options.agentId,
+          capabilityGrantIds,
+        };
+        const result = yield* handshake(request).pipe(
+          Effect.mapError((failure) => makeFailure("runtime_capability_handshake_failed", failure)),
+        );
+        const missingGrantIds = capabilityGrantIds.filter(
+          (grantId) => !result.acceptedGrantIds.includes(grantId),
+        );
+        if (
+          result.status !== "accepted" ||
+          result.handshakeId === undefined ||
+          missingGrantIds.length > 0
+        ) {
+          return yield* new CompositionAgentDriverFailure({
+            code: result.reasonCode ?? "runtime_capability_handshake_rejected",
+            detail: `Runtime 未接受全部 capability grant${
+              missingGrantIds.length === 0 ? "。" : `：${missingGrantIds.join(",")}`
+            }`,
+          });
+        }
+        capabilityHandshakeId = result.handshakeId;
+      }
+
+      const runtimeInput: CompositionRuntimeTaskInput = {
+        taskId: input.task.taskId,
+        runId: input.run.runId,
+        agentId: options.agentId,
+        idempotencyKey: input.run.runId,
+        ...(input.workspaceRootDigest === undefined
+          ? {}
+          : { workspaceRootDigest: input.workspaceRootDigest }),
+        ...(input.workspaceRoot === undefined ? {} : { workspaceRoot: input.workspaceRoot }),
+        ...(input.prompt === undefined ? {} : { prompt: input.prompt }),
+        ...(input.model === undefined ? {} : { model: input.model }),
+        capabilityGrantIds,
+        ...(capabilityHandshakeId === undefined ? {} : { capabilityHandshakeId }),
+        promptDigest: input.task.promptDigest,
+      };
+
+      return yield* options.adapter.dispatchTask(runtimeInput).pipe(
+        Effect.mapError((failure) => makeFailure(failure.code, failure)),
+        Effect.tapError(() =>
+          capabilityHandshakeId === undefined ||
+          options.adapter.revokeCapabilityHandshake === undefined
+            ? Effect.void
+            : options.adapter
+                .revokeCapabilityHandshake({ handshakeId: capabilityHandshakeId })
+                .pipe(Effect.ignore),
+        ),
+        Effect.tap((result) =>
+          Effect.sync(() => {
+            activeRuns.set(input.run.runId, {
+              taskId: input.task.taskId,
+              runId: input.run.runId,
+              runtimeTaskId: result.runtimeTaskId,
+              ...(capabilityHandshakeId === undefined ? {} : { capabilityHandshakeId }),
+            });
+          }),
+        ),
+        Effect.map((result) => ({
+          runtimeTaskId: result.runtimeTaskId,
+          ...(capabilityHandshakeId === undefined ? {} : { capabilityHandshakeId }),
+        })),
+      );
+    });
+  };
+
+  const revokeCapabilityHandshake: CompositionAgentDriver["revokeCapabilityHandshake"] = ({
+    run,
+  }) => {
+    if (run.capabilityHandshakeId === undefined) return Effect.void;
+    if (options.adapter.revokeCapabilityHandshake === undefined) {
+      return Effect.fail(
+        new CompositionAgentDriverFailure({
+          code: "runtime_capability_handshake_revoke_unsupported",
+          detail: "Runtime 没有提供 capability handshake 撤销接口。",
         }),
-      ),
-      Effect.map((result) => ({ runtimeTaskId: result.runtimeTaskId })),
-    );
+      );
+    }
+    return options.adapter
+      .revokeCapabilityHandshake({
+        handshakeId: run.capabilityHandshakeId,
+      })
+      .pipe(Effect.mapError((failure) => makeFailure(failure.code, failure)));
   };
 
   const cancelTask: CompositionAgentDriver["cancelTask"] = (input) =>
@@ -98,6 +175,7 @@ export const makeCompositionRuntimeAgentDriver = (
     agentId: options.agentId,
     runtimeId: options.adapter.runtimeId,
     startTask,
+    revokeCapabilityHandshake,
     cancelTask,
     resolveRuntimeEvent: (event) => {
       const runtimeTaskId = runtimeTaskIdFromEvent(event);

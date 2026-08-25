@@ -254,6 +254,8 @@ export const CompositionTaskRun = Schema.Struct({
   agentId: TrimmedNonEmptyString,
   runtimeId: TrimmedNonEmptyString,
   runtimeTaskId: Schema.optional(TrimmedNonEmptyString),
+  /** Runtime 接受本次 Run capability grant 后返回的握手 ID。 */
+  capabilityHandshakeId: Schema.optional(TrimmedNonEmptyString),
   status: CompositionTaskStatus,
   attempt: NonNegativeInt,
   /** 本次 Run 已由服务端签发的短期 capability grant；不保存用户原始请求。 */

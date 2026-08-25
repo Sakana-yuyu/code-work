@@ -6,6 +6,8 @@ import {
   CompositionIdeResolveResult,
   CompositionMulticaRuntimeConfig,
   CompositionMulticaProbeResult,
+  CompositionRuntimeCapabilityHandshakeRequest,
+  CompositionRuntimeCapabilityHandshakeResult,
   CompositionRuntimeProbeResult,
 } from "./compositionRuntime.ts";
 
@@ -13,6 +15,12 @@ const decodeEnvelope = Schema.decodeUnknownSync(CompositionEventEnvelope);
 const decodeRuntimeProbe = Schema.decodeUnknownSync(CompositionRuntimeProbeResult);
 const decodeIdeResult = Schema.decodeUnknownSync(CompositionIdeResolveResult);
 const decodeMulticaProbe = Schema.decodeUnknownSync(CompositionMulticaProbeResult);
+const decodeCapabilityHandshakeRequest = Schema.decodeUnknownSync(
+  CompositionRuntimeCapabilityHandshakeRequest,
+);
+const decodeCapabilityHandshakeResult = Schema.decodeUnknownSync(
+  CompositionRuntimeCapabilityHandshakeResult,
+);
 const decodeMulticaConfig = Schema.decodeUnknownSync(CompositionMulticaRuntimeConfig);
 
 describe("composition runtime contracts", () => {
@@ -59,6 +67,33 @@ describe("composition runtime contracts", () => {
         supportsMcp: true,
       }),
     ).not.toThrow();
+  });
+
+  it("requires an accepted capability handshake to carry a traceable handshake ID", () => {
+    const request = decodeCapabilityHandshakeRequest({
+      runtimeId: "runtime-1",
+      taskId: "task-1",
+      runId: "run-1",
+      agentId: "agent-1",
+      capabilityGrantIds: ["grant-1"],
+    });
+    expect(request.capabilityGrantIds).toEqual(["grant-1"]);
+
+    const accepted = decodeCapabilityHandshakeResult({
+      ...request,
+      status: "accepted",
+      handshakeId: "handshake-1",
+      acceptedGrantIds: ["grant-1"],
+    });
+    expect(accepted.handshakeId).toBe("handshake-1");
+    expect(
+      decodeCapabilityHandshakeResult({
+        ...request,
+        status: "unsupported",
+        acceptedGrantIds: [],
+        reasonCode: "runtime_capability_handshake_unsupported",
+      }).handshakeId,
+    ).toBeUndefined();
   });
 
   it("represents an unknown IDE profile as unavailable instead of guessing", () => {

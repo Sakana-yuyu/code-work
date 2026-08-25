@@ -107,16 +107,16 @@ T3 当前不能通过“接入一个 API”自动获得 Cursor 客户端的全�
 
 ### 5. Skills、MCP、Workspace、Terminal、Git、Browser、IDE
 
-| 能力                                           | T3 当前状态                | 证据                                                                        | 缺口                                                                                                                                         |
-| ---------------------------------------------- | -------------------------- | --------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
-| Workspace 文件、Terminal、Git/Worktree         | 已有等价                   | T3 Workspace File System、Terminal Manager、VCS/Worktree 服务               | 外部 Runtime 必须通过 grant 使用，不能直接取得宿主机权限。                                                                                   |
-| Browser/Preview 自动化                         | 已有等价                   | T3 Preview、Browser Automation、Browser trace collector                     | 需要把 task-scoped grant 和审计事件接入外部 Runtime。                                                                                        |
-| MCP HTTP Server、Session Registry、Preview MCP | 已有等价                   | T3 MCP 服务与 `ToolBroker`                                                  | 需要补齐跨 Runtime 的 capability handshake 和撤销。                                                                                          |
-| Skills 搜索、加载、运行时注入                  | 部分迁移                   | T3 Skills 搜索、加载和运行时注入服务                                        | `cursor-byok` 的编辑器、扫描、导入、启停与 sparse activation 规则尚未完全对齐。                                                              |
-| Sparse Skill Activation                        | 未迁移                     | `cursor-byok` 对应设计/实现；T3 当前非完全等价                              | 可复用 `skill-sparse-activation` 的设计，但应以 T3 的 Skill Registry 和 prompt 编译边界实现。                                                |
-| Cursor 原生工具能力                            | 不直接迁移                 | 依赖 Cursor `ExecServerMessage` 和客户端回注                                | 仅迁移语义到 T3 canonical tool，不迁移私有 wire format。                                                                                     |
-| Cursor/VSCode IDE Adapter handshake            | 只有底层零件               | `CompositionIdeProfile`、`CompositionProbeRegistry`                         | 当前主要是合同和探测；真实 Extension/IPC/API 接入、能力验证、断线恢复均未完成。                                                              |
-| 各 Agent 共享 T3 能力                          | 架构可达，运行时未完全闭环 | `CapabilityRegistry`、`CapabilityPolicy`、`ToolBroker`、Composition Drivers | BYOK Agent Loop 已通过 ToolBroker 校验；Provider 原生 Session/Turn 和 Multica 窄协议目前只保存 T3 grant 引用，仍缺握手、外部校验和撤销回执。 |
+| 能力                                           | T3 当前状态                    | 证据                                                                                                                    | 缺口                                                                                                                                                                                                               |
+| ---------------------------------------------- | ------------------------------ | ----------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Workspace 文件、Terminal、Git/Worktree         | 已有等价                       | T3 Workspace File System、Terminal Manager、VCS/Worktree 服务                                                           | 外部 Runtime 必须通过 grant 使用，不能直接取得宿主机权限。                                                                                                                                                         |
+| Browser/Preview 自动化                         | 已有等价                       | T3 Preview、Browser Automation、Browser trace collector                                                                 | 需要把 task-scoped grant 和审计事件接入外部 Runtime。                                                                                                                                                              |
+| MCP HTTP Server、Session Registry、Preview MCP | 已有等价                       | T3 MCP 服务与 `ToolBroker`                                                                                              | 需要补齐跨 Runtime 的 capability handshake 和撤销。                                                                                                                                                                |
+| Skills 搜索、加载、运行时注入                  | 部分迁移                       | T3 Skills 搜索、加载和运行时注入服务                                                                                    | `cursor-byok` 的编辑器、扫描、导入、启停与 sparse activation 规则尚未完全对齐。                                                                                                                                    |
+| Sparse Skill Activation                        | 未迁移                         | `cursor-byok` 对应设计/实现；T3 当前非完全等价                                                                          | 可复用 `skill-sparse-activation` 的设计，但应以 T3 的 Skill Registry 和 prompt 编译边界实现。                                                                                                                      |
+| Cursor 原生工具能力                            | 不直接迁移                     | 依赖 Cursor `ExecServerMessage` 和客户端回注                                                                            | 仅迁移语义到 T3 canonical tool，不迁移私有 wire format。                                                                                                                                                           |
+| Cursor/VSCode IDE Adapter handshake            | 只有底层零件                   | `CompositionIdeProfile`、`CompositionProbeRegistry`                                                                     | 当前主要是合同和探测；真实 Extension/IPC/API 接入、能力验证、断线恢复均未完成。                                                                                                                                    |
+| 各 Agent 共享 T3 能力                          | 已有握手骨架，运行时未完全闭环 | `CapabilityRegistry`、`CapabilityPolicy`、`ToolBroker`、Composition Drivers、`CompositionTaskRun.capabilityHandshakeId` | BYOK Agent Loop 已通过 ToolBroker 校验；Runtime Driver 已要求 accepted handshake，并把 ID 持久化到 Run，在取消/终态尝试撤销；Provider 投影和 Multica 窄协议当前会拒绝带 grant 的任务，仍缺真实外部校验和撤销回执。 |
 
 ### 6. 多账号、多端与控制中心
 
@@ -135,7 +135,7 @@ T3 当前不能通过“接入一个 API”自动获得 Cursor 客户端的全�
 1. 完整 Supplier/Profile/Account 控制中心：模型分组、权重路由、自动匹配、余额/价格/健康聚合、多账号切换与回滚。
 2. Goal Loop 完整闭环：严格完成标记、pass/时长/费用预算、自动重试、idle/stale pivot、校验子代理、跨重启持久化和 UI。
 3. Multica 真正 Squad/Leader/Task Graph：T3 目前有合同、probe、Adapter 和 quick-create 接线，但没有完整运行时监督、子任务派发、依赖图执行和结果合并。
-4. 外部 Runtime 的 task-scoped capability grant 实际注入：BYOK Agent Loop 已有 T3 ToolBroker 闭环；Provider 原生 Session/Turn、Multica 窄协议和 IDE Adapter 仍需要逐个完成握手、授权、撤销、过期和审计闭环。
+4. 外部 Runtime 的 task-scoped capability grant 实际注入：T3 已有统一 handshake 合同和 InMemory 验证闭环；Provider 原生 Session/Turn、Multica 窄协议和 IDE Adapter 仍需要真实协议授权、撤销、过期和审计回执。
 5. IDE Runtime 的真实接入：`cursor_ide`、`vscode_ide` 目前主要是 profile/探测层，未完成真实 Extension/IPC/API handshake。
 6. Request Lab 与通用请求镜像：T3 有诊断和 Provider Event，但没有等价的结构化重放/协议分析界面。
 7. Skills/MCP Control Center 的完整管理体验，以及与 `cursor-byok` 一致的 sparse activation 语义。
@@ -183,7 +183,7 @@ Composition Task / Run / Event Store
 - quick-create 的远端 API 当前没有与 T3 `runId` 等价的服务端幂等键；本轮只做进程内幂等映射。进程在 HTTP 成功但响应丢失后重启，仍存在重复创建风险，必须在后续通过 Multica 服务端幂等能力、持久化 outbox 或人工冲突校验补齐。
 - T3 当前没有默认配置真实 Multica Adapter 来源，也不会扫描或启动用户的 `~/.t3/userdata`、Multica daemon 或真实 IDE。
 - Multica 外部取消和恢复没有被当前窄协议完整暴露；Adapter 会返回稳定错误，不能把本地取消写成外部任务已取消。
-- Provider 原生 Session/Turn 不接收 T3 grant；Multica quick-create 不携带 T3 grant。两者当前均不能宣称外部工具操作已受 T3 task-scoped grant 保护。
+- Provider 原生 Session/Turn 只有在 accepted handshake 后接收 `capabilityHandshakeId`；当前生产投影没有 handshake 实现，会拒绝带 grant 的任务。Multica quick-create 不携带 T3 grant，带 grant 的任务会被 Adapter 拒绝。握手 ID 已进入 Run 持久化，但真实外部 Runtime 的撤销回执仍需单独验证。
 - 真实 IDE、真实 Multica daemon、Web/Desktop/Mobile 多端刷新和真实 API 凭据链路仍需单独 E2E。
 
 ## 推荐迁移顺序

@@ -147,6 +147,7 @@ layer("CompositionTaskRuntimeProjector", (it) => {
     Effect.gen(function* () {
       const store = yield* CompositionTaskStore;
       const registry = makeCompositionAgentDriverRegistry();
+      const revokedHandshakes: string[] = [];
       const taskWithGrant = { ...task, taskId: "task-runtime-grant" };
       const grantRegistry = makeCapabilityGrantRegistry({
         capabilityRegistry: makeCompositionCapabilityRegistry(),
@@ -163,11 +164,18 @@ layer("CompositionTaskRuntimeProjector", (it) => {
         taskId: taskWithGrant.taskId,
         runId: "run-runtime-grant",
         capabilityGrantIds: [grant.grantId],
+        capabilityHandshakeId: "handshake-runtime-grant",
       };
       yield* registry.register({
         agentId: taskWithGrant.assigneeId,
         runtimeId: runWithGrant.runtimeId,
         startTask: () => Effect.succeed({ runtimeTaskId }),
+        revokeCapabilityHandshake: ({ run }) =>
+          Effect.sync(() => {
+            if (run.capabilityHandshakeId !== undefined) {
+              revokedHandshakes.push(run.capabilityHandshakeId);
+            }
+          }),
         cancelTask: () => Effect.succeed({ status: "cancelled" as const }),
         resolveRuntimeEvent: () => ({
           taskId: taskWithGrant.taskId,
@@ -190,6 +198,7 @@ layer("CompositionTaskRuntimeProjector", (it) => {
         }),
       );
       assert.equal(revoked._tag, "CapabilityGrantRevokedError");
+      assert.deepEqual(revokedHandshakes, ["handshake-runtime-grant"]);
       assert.equal((yield* store.listEvents(taskWithGrant.taskId, runWithGrant.runId)).length, 1);
     }),
   );

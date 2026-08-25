@@ -90,7 +90,18 @@ export interface CompositionAgentDriver {
     readonly prompt?: string;
     readonly model?: string;
     readonly capabilityGrantIds?: ReadonlyArray<string>;
-  }) => Effect.Effect<{ readonly runtimeTaskId?: string }, CompositionAgentDriverFailure>;
+  }) => Effect.Effect<
+    {
+      readonly runtimeTaskId?: string;
+      readonly capabilityHandshakeId?: string;
+    },
+    CompositionAgentDriverFailure
+  >;
+  /** 终态或取消后撤销 Runtime 已接受的 capability handshake。 */
+  readonly revokeCapabilityHandshake?: (input: {
+    readonly task: CompositionTask;
+    readonly run: CompositionTaskRun;
+  }) => Effect.Effect<void, CompositionAgentDriverFailure>;
   readonly cancelTask: (input: {
     readonly task: CompositionTask;
     readonly run: CompositionTaskRun;
@@ -177,6 +188,7 @@ export interface CompositionOrchestrator {
     | CompositionTaskDependencyMissingError
     | CompositionTaskDependencyCycleError
     | CompositionTaskAlreadyExistsError
+    | CompositionAgentDriverFailure
     | CapabilityGrantRegistry.CapabilityGrantInvalidError
     | CapabilityGrantRegistry.CapabilityGrantPersistenceError
     | CapabilityRegistry.CapabilityScopeNotFoundError
@@ -201,14 +213,26 @@ const makeOrchestrator = (
   grantRegistry?: Pick<CapabilityGrantRegistry.CapabilityGrantRegistryShape, "issue"> &
     Partial<Pick<CapabilityGrantRegistry.CapabilityGrantRegistryShape, "revoke">>,
 ): CompositionOrchestrator => {
-  const revokeRunGrants = (run: CompositionTaskRun) =>
-    grantRegistry?.revoke === undefined
-      ? Effect.void
-      : Effect.forEach(run.capabilityGrantIds ?? [], (grantId) =>
+  const revokeRunCapabilities = (
+    driver: CompositionAgentDriver | undefined,
+    task: CompositionTask,
+    run: CompositionTaskRun,
+  ) =>
+    Effect.gen(function* () {
+      if (
+        run.capabilityHandshakeId !== undefined &&
+        driver?.revokeCapabilityHandshake !== undefined
+      ) {
+        yield* driver.revokeCapabilityHandshake({ task, run });
+      }
+      if (grantRegistry?.revoke !== undefined) {
+        yield* Effect.forEach(run.capabilityGrantIds ?? [], (grantId) =>
           grantRegistry.revoke!({ grantId }).pipe(
             Effect.catchTag("CapabilityGrantNotFoundError", () => Effect.void),
           ),
-        ).pipe(Effect.asVoid);
+        );
+      }
+    });
 
   const validateDependencies = (
     taskId: string,
@@ -363,7 +387,7 @@ const makeOrchestrator = (
           failureCode: "agent_driver_unavailable",
           resultSummary: "未找到可用的 Agent Driver",
         };
-        yield* revokeRunGrants(failedRun);
+        yield* revokeRunCapabilities(driver, failedTask, failedRun);
         yield* store.upsertTask(failedTask);
         yield* store.upsertRun(failedRun);
         yield* store.appendEvent(
@@ -407,7 +431,7 @@ const makeOrchestrator = (
           failureCode: startResult.failure.code,
           resultSummary: startResult.failure.detail,
         };
-        yield* revokeRunGrants(failedRun);
+        yield* revokeRunCapabilities(driver, failedTask, failedRun);
         yield* store.upsertTask(failedTask);
         yield* store.upsertRun(failedRun);
         yield* store.appendEvent(
@@ -433,6 +457,9 @@ const makeOrchestrator = (
         ...run,
         runtimeId: driver.runtimeId,
         runtimeTaskId: startResult.success.runtimeTaskId,
+        ...(startResult.success.capabilityHandshakeId === undefined
+          ? {}
+          : { capabilityHandshakeId: startResult.success.capabilityHandshakeId }),
         status: "running",
         startedAtUnixMs: startedAt,
       };
@@ -501,7 +528,7 @@ const makeOrchestrator = (
         finishedAtUnixMs: now,
         resultSummary: input.reason,
       };
-      yield* revokeRunGrants(cancelledRun);
+      yield* revokeRunCapabilities(driver, cancelledTask, cancelledRun);
       yield* store.upsertTask(cancelledTask);
       yield* store.upsertRun(cancelledRun);
       const priorEvents = yield* store.listEvents(input.taskId, input.runId);

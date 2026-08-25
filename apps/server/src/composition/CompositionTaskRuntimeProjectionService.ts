@@ -11,6 +11,7 @@ import { ProviderService } from "../provider/Services/ProviderService.ts";
 import { CompositionAgentDriverRegistryService } from "./CompositionAgentDriverRegistry.ts";
 import { projectCompositionRuntimeEvent } from "./CompositionTaskRuntimeProjector.ts";
 import { CompositionRuntimeAdapterRegistryService } from "./CompositionRuntimeAdapterRegistry.ts";
+import type { CompositionAgentDriverFailure } from "./CompositionOrchestrator.ts";
 import * as CapabilityGrantRegistry from "./CapabilityGrantRegistry.ts";
 
 export interface CompositionTaskRuntimeProjectionServiceShape {
@@ -18,7 +19,9 @@ export interface CompositionTaskRuntimeProjectionServiceShape {
     event: ProviderRuntimeEvent,
   ) => Effect.Effect<
     void,
-    PersistenceSqlError | CapabilityGrantRegistry.CapabilityGrantPersistenceError
+    | PersistenceSqlError
+    | CapabilityGrantRegistry.CapabilityGrantPersistenceError
+    | CompositionAgentDriverFailure
   >;
 }
 

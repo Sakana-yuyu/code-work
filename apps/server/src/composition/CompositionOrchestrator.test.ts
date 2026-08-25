@@ -68,8 +68,13 @@ layer("CompositionOrchestrator", (it) => {
         startTask: (input) =>
           Effect.sync(() => {
             captured.push([...(input.capabilityGrantIds ?? [])]);
-            return { runtimeTaskId: "runtime-task-grant" };
+            return {
+              runtimeTaskId: "runtime-task-grant",
+              capabilityHandshakeId: "handshake-grant",
+            };
           }),
+        revokeCapabilityHandshake: ({ run }) =>
+          Effect.sync(() => revoked.push(`handshake:${run.capabilityHandshakeId}`)),
         cancelTask: () => Effect.succeed({ status: "cancelled" as const }),
       });
       const grants: CompositionCapabilityGrant[] = [
@@ -100,6 +105,7 @@ layer("CompositionOrchestrator", (it) => {
       });
 
       assert.deepEqual(result.run.capabilityGrantIds, ["grant-1"]);
+      assert.equal(result.run.capabilityHandshakeId, "handshake-grant");
       assert.deepEqual(captured, [["grant-1"]]);
       const savedRun = yield* store.getRun("run-grant");
       assert.isTrue(Option.isSome(savedRun));
@@ -110,7 +116,7 @@ layer("CompositionOrchestrator", (it) => {
         reason: "用户取消",
       });
       assert.equal(cancelled.status, "cancelled");
-      assert.deepEqual(revoked, ["grant-1"]);
+      assert.deepEqual(revoked, ["handshake:handshake-grant", "grant-1"]);
     }),
   );
 

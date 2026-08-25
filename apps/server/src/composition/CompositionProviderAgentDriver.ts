@@ -1,5 +1,7 @@
 import { ThreadId } from "@t3tools/contracts";
 import type {
+  CompositionRuntimeCapabilityHandshakeRequest,
+  CompositionRuntimeCapabilityHandshakeResult,
   ModelSelection,
   ProviderInstanceId,
   ProviderSendTurnInput,
@@ -19,6 +21,12 @@ import {
 } from "./CompositionOrchestrator.ts";
 
 export interface CompositionProviderSessionAdapter {
+  readonly handshakeCapabilities?: (
+    input: CompositionRuntimeCapabilityHandshakeRequest,
+  ) => Effect.Effect<CompositionRuntimeCapabilityHandshakeResult, ProviderServiceError>;
+  readonly revokeCapabilityHandshake?: (input: {
+    readonly handshakeId: string;
+  }) => Effect.Effect<void, ProviderServiceError>;
   readonly startSession: (
     input: ProviderSessionStartInput,
   ) => Effect.Effect<ProviderSession, ProviderServiceError>;
@@ -78,18 +86,57 @@ export const makeCompositionProviderAgentDriver = (
       const model = input.model ?? options.model;
       const modelSelection: ModelSelection | undefined =
         model === undefined ? undefined : { instanceId: options.providerInstanceId, model };
-      // Provider 原生 Session/Turn 当前没有 T3 capability handshake；grant 只在
-      // BYOK Agent Loop -> ToolBroker 闭环中生效，不能把持久化引用当成外部已授权。
+      const capabilityGrantIds = [...(input.run.capabilityGrantIds ?? [])];
+      let capabilityHandshakeId: string | undefined;
+      if (capabilityGrantIds.length > 0) {
+        const handshake = options.adapter.handshakeCapabilities;
+        if (handshake === undefined) {
+          return yield* new CompositionAgentDriverFailure({
+            code: "provider_capability_handshake_unsupported",
+            detail: "Provider 没有提供 capability handshake，拒绝派发带 grant 的任务。",
+          });
+        }
+        const handshakeInput: CompositionRuntimeCapabilityHandshakeRequest = {
+          runtimeId: options.runtimeId,
+          taskId: input.task.taskId,
+          runId: input.run.runId,
+          agentId: input.run.agentId,
+          capabilityGrantIds,
+        };
+        const result = yield* handshake(handshakeInput).pipe(
+          Effect.mapError((error) => makeFailure("provider_capability_handshake_failed", error)),
+        );
+        if (
+          result.status !== "accepted" ||
+          result.handshakeId === undefined ||
+          capabilityGrantIds.some((grantId) => !result.acceptedGrantIds.includes(grantId))
+        ) {
+          return yield* new CompositionAgentDriverFailure({
+            code: result.reasonCode ?? "provider_capability_handshake_rejected",
+            detail: "Provider 未接受全部 capability grant。",
+          });
+        }
+        capabilityHandshakeId = result.handshakeId;
+      }
       const sessionInput: ProviderSessionStartInput = {
         threadId,
         providerInstanceId: options.providerInstanceId,
         ...(input.workspaceRoot === undefined ? {} : { cwd: input.workspaceRoot }),
         ...(modelSelection === undefined ? {} : { modelSelection }),
         runtimeMode,
+        ...(capabilityHandshakeId === undefined ? {} : { capabilityHandshakeId }),
       };
-      yield* options.adapter
-        .startSession(sessionInput)
-        .pipe(Effect.mapError((error) => makeFailure("provider_session_start_failed", error)));
+      yield* options.adapter.startSession(sessionInput).pipe(
+        Effect.mapError((error) => makeFailure("provider_session_start_failed", error)),
+        Effect.tapError(() =>
+          capabilityHandshakeId === undefined ||
+          options.adapter.revokeCapabilityHandshake === undefined
+            ? Effect.void
+            : options.adapter
+                .revokeCapabilityHandshake({ handshakeId: capabilityHandshakeId })
+                .pipe(Effect.ignore),
+        ),
+      );
       const turnInput: ProviderSendTurnInput = {
         threadId,
         input: prompt,
@@ -97,7 +144,17 @@ export const makeCompositionProviderAgentDriver = (
       };
       const turn = yield* options.adapter.sendTurn(turnInput).pipe(
         Effect.mapError((error) => makeFailure("provider_turn_start_failed", error)),
-        Effect.tapError(() => options.adapter.stopSession(threadId).pipe(Effect.ignore)),
+        Effect.tapError(() =>
+          Effect.all([
+            options.adapter.stopSession(threadId).pipe(Effect.ignore),
+            capabilityHandshakeId === undefined ||
+            options.adapter.revokeCapabilityHandshake === undefined
+              ? Effect.void
+              : options.adapter
+                  .revokeCapabilityHandshake({ handshakeId: capabilityHandshakeId })
+                  .pipe(Effect.ignore),
+          ]).pipe(Effect.asVoid),
+        ),
       );
       const runtimeTaskId = `${options.runtimeId}:${threadId}:${turn.turnId}`;
       activeRuns.set(input.run.runId, {
@@ -107,8 +164,32 @@ export const makeCompositionProviderAgentDriver = (
         turnId: turn.turnId,
         runtimeTaskId,
       });
-      return { runtimeTaskId };
+      return {
+        runtimeTaskId,
+        ...(capabilityHandshakeId === undefined ? {} : { capabilityHandshakeId }),
+      };
     });
+
+  const revokeCapabilityHandshake: CompositionAgentDriver["revokeCapabilityHandshake"] = ({
+    run,
+  }) => {
+    if (run.capabilityHandshakeId === undefined) return Effect.void;
+    if (options.adapter.revokeCapabilityHandshake === undefined) {
+      return Effect.fail(
+        new CompositionAgentDriverFailure({
+          code: "provider_capability_handshake_revoke_unsupported",
+          detail: "Provider 没有提供 capability handshake 撤销接口。",
+        }),
+      );
+    }
+    return options.adapter
+      .revokeCapabilityHandshake({ handshakeId: run.capabilityHandshakeId })
+      .pipe(
+        Effect.mapError((error) =>
+          makeFailure("provider_capability_handshake_revoke_failed", error),
+        ),
+      );
+  };
 
   const cancelTask: CompositionAgentDriver["cancelTask"] = (input) =>
     Effect.gen(function* () {
@@ -127,6 +208,7 @@ export const makeCompositionProviderAgentDriver = (
     agentId: options.agentId,
     runtimeId: options.runtimeId,
     startTask,
+    revokeCapabilityHandshake,
     cancelTask,
     resolveRuntimeEvent: (event: ProviderRuntimeEvent) => {
       if (

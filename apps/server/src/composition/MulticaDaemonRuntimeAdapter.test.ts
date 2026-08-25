@@ -154,7 +154,6 @@ describe("MulticaDaemonRuntimeAdapter", () => {
           agentId: "agent-1",
           prompt: "执行任务",
           idempotencyKey: "run-1",
-          capabilityGrantIds: ["grant-1"],
         }),
       ),
     ).resolves.toEqual({ runtimeTaskId: "created-task-1", status: "accepted" });
@@ -163,7 +162,6 @@ describe("MulticaDaemonRuntimeAdapter", () => {
       agentId: "agent-1",
       prompt: "执行任务",
     });
-    expect(quickCreateInput).not.toHaveProperty("capabilityGrantIds");
     await expect(
       Effect.runPromise(
         adapter.dispatchTask({
@@ -273,5 +271,38 @@ describe("MulticaDaemonRuntimeAdapter", () => {
     await expect(Effect.runPromise(adapter.heartbeat())).resolves.toMatchObject({
       activeTaskCount: 1,
     });
+  });
+
+  it("Multica 窄协议不支持 capability handshake 时拒绝带 grant 的派发", async () => {
+    const adapter = makeMulticaDaemonRuntimeAdapter(makeOptions());
+
+    await expect(
+      Effect.runPromise(
+        adapter.handshakeCapabilities!({
+          runtimeId,
+          taskId: "task-grant",
+          runId: "run-grant",
+          agentId: "agent-1",
+          capabilityGrantIds: ["grant-1"],
+        }),
+      ),
+    ).resolves.toMatchObject({
+      status: "unsupported",
+      reasonCode: "multica_capability_handshake_unsupported",
+      acceptedGrantIds: [],
+    });
+
+    await expect(
+      Effect.runPromise(
+        adapter.dispatchTask({
+          taskId: "t3-task-grant",
+          runId: "run-grant",
+          agentId: "agent-1",
+          prompt: "执行任务",
+          idempotencyKey: "run-grant",
+          capabilityGrantIds: ["grant-1"],
+        }),
+      ),
+    ).rejects.toMatchObject({ code: "capability_handshake_unsupported" });
   });
 });

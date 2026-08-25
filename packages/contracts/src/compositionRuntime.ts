@@ -55,6 +55,40 @@ export const CompositionRuntimeProbeResult = Schema.Struct({
 });
 export type CompositionRuntimeProbeResult = typeof CompositionRuntimeProbeResult.Type;
 
+const CompositionRuntimeCapabilityHandshakeStatus = Schema.Literals([
+  "accepted",
+  "rejected",
+  "unsupported",
+]);
+export type CompositionRuntimeCapabilityHandshakeStatus =
+  typeof CompositionRuntimeCapabilityHandshakeStatus.Type;
+
+/** Runtime 在接收 task-scoped grant 前必须确认的授权握手请求。 */
+export const CompositionRuntimeCapabilityHandshakeRequest = Schema.Struct({
+  runtimeId: TrimmedNonEmptyString,
+  taskId: TrimmedNonEmptyString,
+  runId: TrimmedNonEmptyString,
+  agentId: TrimmedNonEmptyString,
+  capabilityGrantIds: Schema.Array(TrimmedNonEmptyString),
+});
+export type CompositionRuntimeCapabilityHandshakeRequest =
+  typeof CompositionRuntimeCapabilityHandshakeRequest.Type;
+
+/** 外部 Runtime 对 grant 的可验证接收结果；accepted 必须带 handshakeId。 */
+export const CompositionRuntimeCapabilityHandshakeResult = Schema.Struct({
+  runtimeId: TrimmedNonEmptyString,
+  taskId: TrimmedNonEmptyString,
+  runId: TrimmedNonEmptyString,
+  agentId: TrimmedNonEmptyString,
+  status: CompositionRuntimeCapabilityHandshakeStatus,
+  handshakeId: Schema.optional(TrimmedNonEmptyString),
+  acceptedGrantIds: Schema.Array(TrimmedNonEmptyString),
+  expiresAtUnixMs: Schema.optional(NonNegativeInt),
+  reasonCode: Schema.optional(TrimmedNonEmptyString),
+});
+export type CompositionRuntimeCapabilityHandshakeResult =
+  typeof CompositionRuntimeCapabilityHandshakeResult.Type;
+
 const CompositionIdeProfile = Schema.Literals([
   "cursor_ide",
   "vscode_ide",

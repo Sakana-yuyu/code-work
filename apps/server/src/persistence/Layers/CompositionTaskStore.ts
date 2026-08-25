@@ -46,6 +46,7 @@ const RunRowSchema = Schema.Struct({
   agentId: Schema.String,
   runtimeId: Schema.String,
   runtimeTaskId: Schema.NullOr(Schema.String),
+  capabilityHandshakeId: Schema.NullOr(Schema.String),
   status: Schema.String,
   attempt: Schema.Number,
   capabilityGrantIds: StringArrayJson,
@@ -131,6 +132,9 @@ const toRun = (row: Schema.Schema.Type<typeof RunRowSchema>): CompositionTaskRun
   agentId: row.agentId,
   runtimeId: row.runtimeId,
   ...(row.runtimeTaskId === null ? {} : { runtimeTaskId: row.runtimeTaskId }),
+  ...(row.capabilityHandshakeId === null
+    ? {}
+    : { capabilityHandshakeId: row.capabilityHandshakeId }),
   status: row.status as CompositionTaskRun["status"],
   attempt: row.attempt,
   capabilityGrantIds: row.capabilityGrantIds,
@@ -271,18 +275,21 @@ const makeStore = Effect.gen(function* () {
     }),
     execute: (run) => sql`
       INSERT INTO composition_task_runs (
-        run_id, task_id, agent_id, runtime_id, runtime_task_id, status, attempt,
+        run_id, task_id, agent_id, runtime_id, runtime_task_id, capability_handshake_id, status, attempt,
         capability_grant_ids_json, lease_id, started_at_unix_ms, finished_at_unix_ms,
         failure_code, result_summary
       ) VALUES (
         ${run.runId}, ${run.taskId}, ${run.agentId}, ${run.runtimeId}, ${run.runtimeTaskId},
+        ${run.capabilityHandshakeId},
         ${run.status}, ${run.attempt}, ${encodeStringArray(run.capabilityGrantIds)},
         ${run.leaseId}, ${run.startedAtUnixMs}, ${run.finishedAtUnixMs},
         ${run.failureCode}, ${run.resultSummary}
       )
       ON CONFLICT (run_id) DO UPDATE SET
         task_id = excluded.task_id, agent_id = excluded.agent_id, runtime_id = excluded.runtime_id,
-        runtime_task_id = excluded.runtime_task_id, status = excluded.status, attempt = excluded.attempt,
+        runtime_task_id = excluded.runtime_task_id,
+        capability_handshake_id = excluded.capability_handshake_id,
+        status = excluded.status, attempt = excluded.attempt,
         capability_grant_ids_json = excluded.capability_grant_ids_json,
         lease_id = excluded.lease_id, started_at_unix_ms = excluded.started_at_unix_ms,
         finished_at_unix_ms = excluded.finished_at_unix_ms, failure_code = excluded.failure_code,
@@ -296,7 +303,8 @@ const makeStore = Effect.gen(function* () {
     execute: ({ id }) => sql`
       SELECT
         run_id AS "runId", task_id AS "taskId", agent_id AS "agentId", runtime_id AS "runtimeId",
-        runtime_task_id AS "runtimeTaskId", status, attempt,
+        runtime_task_id AS "runtimeTaskId", capability_handshake_id AS "capabilityHandshakeId",
+        status, attempt,
         capability_grant_ids_json AS "capabilityGrantIds", lease_id AS "leaseId",
         started_at_unix_ms AS "startedAtUnixMs", finished_at_unix_ms AS "finishedAtUnixMs",
         failure_code AS "failureCode", result_summary AS "resultSummary"
@@ -471,6 +479,7 @@ const makeStore = Effect.gen(function* () {
         upsertRunRow({
           ...runValue,
           runtimeTaskId: runValue.runtimeTaskId ?? null,
+          capabilityHandshakeId: runValue.capabilityHandshakeId ?? null,
           capabilityGrantIds: [...(runValue.capabilityGrantIds ?? [])],
           leaseId: runValue.leaseId ?? null,
           startedAtUnixMs: runValue.startedAtUnixMs ?? null,

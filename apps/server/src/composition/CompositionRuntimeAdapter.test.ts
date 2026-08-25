@@ -62,6 +62,43 @@ describe("CompositionRuntimeAdapter", () => {
     });
   });
 
+  it("先完成 capability handshake，再允许带 grant 的派发", async () => {
+    const adapter = makeInMemoryCompositionRuntimeAdapter({ runtimeId: "runtime-grant" });
+    const request = {
+      runtimeId: adapter.runtimeId,
+      taskId: "task-grant",
+      runId: "run-grant",
+      agentId: "runtime-grant:agent",
+      capabilityGrantIds: ["grant-1"],
+    } as const;
+
+    await expect(
+      Effect.runPromise(
+        adapter.dispatchTask({
+          ...taskInput,
+          ...request,
+          idempotencyKey: request.runId,
+        }),
+      ),
+    ).rejects.toMatchObject({ code: "capability_handshake_required" });
+
+    const handshake = await Effect.runPromise(adapter.handshakeCapabilities!(request));
+    expect(handshake).toMatchObject({ status: "accepted", acceptedGrantIds: ["grant-1"] });
+
+    await expect(
+      Effect.runPromise(
+        adapter.dispatchTask({
+          ...taskInput,
+          ...request,
+          idempotencyKey: request.runId,
+          ...(handshake.handshakeId === undefined
+            ? {}
+            : { capabilityHandshakeId: handshake.handshakeId }),
+        }),
+      ),
+    ).resolves.toMatchObject({ status: "accepted" });
+  });
+
   it("区分取消终态和恢复能力，并拒绝未知 Runtime Task", async () => {
     const adapter = makeInMemoryCompositionRuntimeAdapter({
       runtimeId: "runtime-1",

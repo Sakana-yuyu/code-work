@@ -121,7 +121,7 @@ describe("CompositionProviderAgentDriver", () => {
     });
   });
 
-  it("保留 Provider 原生运行时边界，不把 T3 grant 伪装成已完成握手", async () => {
+  it("Provider 没有 capability handshake 时拒绝带 grant 的任务", async () => {
     const fake = makeAdapter();
     const driver = makeCompositionProviderAgentDriver({
       agentId: "agent-codex",
@@ -130,35 +130,87 @@ describe("CompositionProviderAgentDriver", () => {
       adapter: fake.adapter,
     });
 
-    await Effect.runPromise(
+    await expect(
+      Effect.runPromise(
+        driver.startTask({
+          task: {
+            taskId: "task-grant",
+            projectId: "project-1",
+            assigneeKind: "agent",
+            assigneeId: "agent-codex",
+            mode: "serial",
+            status: "queued",
+            promptDigest: "sha256:grant",
+            dependsOnTaskIds: [],
+            createdAtUnixMs: 1,
+            updatedAtUnixMs: 1,
+          },
+          run: {
+            runId: "run-grant",
+            taskId: "task-grant",
+            agentId: "agent-codex",
+            runtimeId: "codex-local",
+            status: "queued",
+            attempt: 1,
+            capabilityGrantIds: ["grant-1"],
+          },
+          prompt: "检查工作区",
+        }),
+      ),
+    ).rejects.toMatchObject({ code: "provider_capability_handshake_unsupported" });
+    expect(fake.sessionInputs).toHaveLength(0);
+  });
+
+  it("把已接受的 Provider capability handshake ID 传入 Session", async () => {
+    const fake = makeAdapter();
+    const driver = makeCompositionProviderAgentDriver({
+      agentId: "agent-codex",
+      runtimeId: "codex-local",
+      providerInstanceId: ProviderInstanceId.make("codex-local"),
+      adapter: {
+        ...fake.adapter,
+        handshakeCapabilities: (input) =>
+          Effect.succeed({
+            ...input,
+            status: "accepted" as const,
+            handshakeId: "provider-handshake-1",
+            acceptedGrantIds: [...input.capabilityGrantIds],
+          }),
+      },
+    });
+
+    const started = await Effect.runPromise(
       driver.startTask({
         task: {
-          taskId: "task-grant",
+          taskId: "task-provider-grant",
           projectId: "project-1",
           assigneeKind: "agent",
           assigneeId: "agent-codex",
           mode: "serial",
           status: "queued",
-          promptDigest: "sha256:grant",
+          promptDigest: "sha256:provider-grant",
           dependsOnTaskIds: [],
           createdAtUnixMs: 1,
           updatedAtUnixMs: 1,
         },
         run: {
-          runId: "run-grant",
-          taskId: "task-grant",
+          runId: "run-provider-grant",
+          taskId: "task-provider-grant",
           agentId: "agent-codex",
           runtimeId: "codex-local",
           status: "queued",
           attempt: 1,
-          capabilityGrantIds: ["grant-1"],
+          capabilityGrantIds: ["grant-provider-1"],
         },
         prompt: "检查工作区",
       }),
     );
 
-    expect(fake.sessionInputs[0]).toMatchObject({ runtimeMode: "full-access" });
-    expect(fake.sessionInputs[0]).not.toHaveProperty("capabilityGrantIds");
+    expect(started.capabilityHandshakeId).toBe("provider-handshake-1");
+    expect(fake.sessionInputs[0]).toMatchObject({
+      runtimeMode: "full-access",
+      capabilityHandshakeId: "provider-handshake-1",
+    });
   });
 
   it("interrupts the provider turn when the composition task is cancelled", async () => {

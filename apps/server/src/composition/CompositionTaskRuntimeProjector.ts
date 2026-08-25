@@ -12,6 +12,7 @@ import * as Option from "effect/Option";
 import type { PersistenceSqlError } from "../persistence/Errors.ts";
 import type { CompositionTaskStoreShape } from "../persistence/Services/CompositionTaskStore.ts";
 import type { CompositionAgentDriverRegistry } from "./CompositionAgentDriverRegistry.ts";
+import type { CompositionAgentDriverFailure } from "./CompositionOrchestrator.ts";
 import type * as CapabilityGrantRegistry from "./CapabilityGrantRegistry.ts";
 
 const terminalStatuses: ReadonlySet<CompositionTaskStatus> = new Set([
@@ -180,7 +181,9 @@ export const projectCompositionRuntimeEvent = (
   grantRegistry?: Pick<CapabilityGrantRegistry.CapabilityGrantRegistryShape, "revoke">,
 ): Effect.Effect<
   void,
-  PersistenceSqlError | CapabilityGrantRegistry.CapabilityGrantPersistenceError
+  | PersistenceSqlError
+  | CapabilityGrantRegistry.CapabilityGrantPersistenceError
+  | CompositionAgentDriverFailure
 > =>
   Effect.gen(function* () {
     const binding = yield* driverRegistry.resolveRuntimeEvent(event);
@@ -199,6 +202,14 @@ export const projectCompositionRuntimeEvent = (
     const now = yield* Clock.currentTimeMillis;
     const isTerminal = terminalStatuses.has(projection.status);
     const becameTerminal = !terminalStatuses.has(task.status) && isTerminal;
+    const bindingDriver = yield* driverRegistry.get(run.agentId);
+    if (
+      becameTerminal &&
+      run.capabilityHandshakeId !== undefined &&
+      bindingDriver?.revokeCapabilityHandshake !== undefined
+    ) {
+      yield* bindingDriver.revokeCapabilityHandshake({ task, run });
+    }
     if (becameTerminal && grantRegistry !== undefined) {
       yield* Effect.forEach(run.capabilityGrantIds ?? [], (grantId) =>
         grantRegistry
