@@ -34,6 +34,7 @@ import { PullRequestMarkdown } from "./PullRequestMarkdown";
 import { PullRequestMarkdownEditor } from "./PullRequestMarkdownEditor";
 import { PullRequestReactionBar } from "./PullRequestReactions";
 import type { PendingReviewComment } from "./pullRequestReviewStore";
+import { t } from "~/i18n";
 
 const CARD_CLASS =
   "mx-3 my-2 rounded-xl border border-border/70 bg-background p-3 text-sm shadow-sm";
@@ -78,7 +79,7 @@ export function PendingReviewCommentCard({
           size="icon-xs"
           variant="ghost"
           className="ml-auto"
-          aria-label="Discard this comment"
+          aria-label={t("discardThisComment")}
           onClick={onRemove}
         >
           <Trash2Icon className="size-3.5" />
@@ -273,7 +274,7 @@ export function ReviewThreadCard({
                     className="mt-1"
                     value={comment.body}
                     cwd={workspaceRoot}
-                    label="Edit comment"
+                    label={t("editComment")}
                     saving={savingEdit}
                     onSave={(body) => void saveEdit(comment.id, body)}
                     onCancel={() => setEditingId(null)}
@@ -290,7 +291,7 @@ export function ReviewThreadCard({
                         size="icon-xs"
                         variant="ghost"
                         className="shrink-0 text-muted-foreground opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100 focus-visible:opacity-100"
-                        aria-label="Edit comment"
+                        aria-label={t("editComment")}
                         onClick={() => setEditingId(comment.id)}
                       >
                         <PencilIcon className="size-3" />
@@ -331,8 +332,8 @@ export function ReviewThreadCard({
                   autoFocus
                   size="sm"
                   value={reply}
-                  placeholder="Reply"
-                  aria-label="Reply to this conversation"
+                  placeholder={t("reply")}
+                  aria-label={t("replyToThisConversation")}
                   onChange={(event) => setReply(event.target.value)}
                   onKeyDown={submitKeys({
                     value: reply,

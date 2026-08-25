@@ -10,6 +10,7 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Path from "effect/Path";
+import { PRODUCT_IDENTITY, resolveProductDisplayName } from "@t3tools/shared/productIdentity";
 
 import * as DesktopAppSettings from "../settings/DesktopAppSettings.ts";
 import * as DesktopConfig from "./DesktopConfig.ts";
@@ -78,6 +79,7 @@ export class DesktopEnvironment extends Context.Service<
     readonly appImagePath: Option.Option<string>;
     readonly userDataDirName: string;
     readonly legacyUserDataDirName: string;
+    readonly legacyUserDataDirNames: readonly string[];
     readonly defaultDesktopSettings: DesktopAppSettings.DesktopSettings;
     readonly runtimeInfo: DesktopRuntimeInfo;
     readonly resolvePickFolderDefaultPath: (rawOptions: unknown) => Option.Option<string>;
@@ -85,7 +87,7 @@ export class DesktopEnvironment extends Context.Service<
   }
 >()("@t3tools/desktop/app/DesktopEnvironment") {}
 
-const APP_BASE_NAME = "T3 Code";
+const APP_BASE_NAME = PRODUCT_IDENTITY.baseName;
 
 function resolveDesktopAppStageLabel(input: {
   readonly isDevelopment: boolean;
@@ -106,7 +108,12 @@ function resolveDesktopAppBranding(input: {
   return {
     baseName: APP_BASE_NAME,
     stageLabel,
-    displayName: `${APP_BASE_NAME} (${stageLabel})`,
+    displayName:
+      stageLabel === "Dev"
+        ? resolveProductDisplayName("development")
+        : stageLabel === "Nightly"
+          ? resolveProductDisplayName("nightly")
+          : resolveProductDisplayName("production"),
   };
 }
 
@@ -178,8 +185,15 @@ const make = Effect.fn("desktop.environment.make")(function* (
     joinPath: path.join,
     t3Home: config.t3Home,
   });
-  const userDataDirName = isDevelopment ? "t3code-dev" : "t3code";
-  const legacyUserDataDirName = isDevelopment ? "T3 Code (Dev)" : "T3 Code (Alpha)";
+  const userDataDirName = isDevelopment
+    ? PRODUCT_IDENTITY.dataDirectories.development
+    : PRODUCT_IDENTITY.dataDirectories.production;
+  const legacyUserDataDirName = isDevelopment
+    ? PRODUCT_IDENTITY.legacyDataDirectories.development
+    : PRODUCT_IDENTITY.legacyDataDirectories.production;
+  const legacyUserDataDirNames = isDevelopment
+    ? [legacyUserDataDirName, "T3 Code (Dev)"]
+    : [legacyUserDataDirName, "T3 Code (Alpha)"];
   const linuxApplicationsDir = path.join(
     Option.getOrElse(config.xdgDataHome, () => path.join(homeDirectory, ".local", "share")),
     "applications",
@@ -224,14 +238,15 @@ const make = Effect.fn("desktop.environment.make")(function* (
     branding,
     displayName,
     appUserModelId: Option.getOrElse(config.appUserModelIdOverride, () =>
-      isDevelopment ? "com.t3tools.t3code.dev" : "com.t3tools.t3code",
+      isDevelopment ? "com.codework.desktop.dev" : "com.codework.desktop",
     ),
-    linuxDesktopEntryName: isDevelopment ? "t3code-dev.desktop" : "t3code.desktop",
-    linuxWmClass: isDevelopment ? "t3code-dev" : "t3code",
+    linuxDesktopEntryName: isDevelopment ? "code-work-dev.desktop" : "code-work.desktop",
+    linuxWmClass: isDevelopment ? "code-work-dev" : "code-work",
     linuxApplicationsDir,
     appImagePath: config.appImagePath,
     userDataDirName,
     legacyUserDataDirName,
+    legacyUserDataDirNames,
     defaultDesktopSettings: DesktopAppSettings.resolveDefaultDesktopSettings(input.appVersion),
     runtimeInfo: resolveDesktopRuntimeInfo({
       platform: input.platform,

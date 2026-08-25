@@ -16,6 +16,8 @@ import { useState, type ReactNode } from "react";
 import {
   isProviderDriverKind,
   resolveProviderInstanceEnabled,
+  type ByokDelegationConfig,
+  type ByokPromptTemplateConfig,
   type ProviderInstanceConfig,
   type ProviderInstanceEnvironmentVariable,
   type ProviderInstanceId,
@@ -41,6 +43,12 @@ import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import type { DriverOption } from "./providerDriverMeta";
 import { ProviderSettingsForm } from "./ProviderSettingsForm";
 import { ProviderModelsSection } from "./ProviderModelsSection";
+import {
+  ByokModelAdaptersSection,
+  readByokModelAdapters,
+  type ByokModelAdapter,
+} from "./ByokModelAdaptersSection";
+import { ByokFeaturesSection } from "./ByokFeaturesSection";
 import { ProviderInstanceIcon } from "../chat/ProviderInstanceIcon";
 import { ProviderAccentColorPicker } from "./ProviderAccentColorPicker";
 import { RedactedSensitiveText } from "./RedactedSensitiveText";
@@ -51,6 +59,7 @@ import {
   getProviderVersionLabel,
   type ProviderStatusKey,
 } from "./providerStatus";
+import { t } from "~/i18n";
 
 const ENVIRONMENT_VARIABLE_NAME_PATTERN = /^[a-zA-Z_][a-zA-Z0-9_]*$/;
 
@@ -108,6 +117,22 @@ function nextConfigBlobWithValue(
     config !== null && typeof config === "object" ? { ...(config as Record<string, unknown>) } : {};
   base[key] = value;
   return base;
+}
+
+/**
+ * Read a structured (object) value off the opaque byok config blob, falling
+ * back to the empty object for absent or malformed entries.
+ */
+function readByokFeatureConfig(
+  config: unknown,
+  key: "promptTemplate" | "delegation",
+): ByokPromptTemplateConfig | ByokDelegationConfig {
+  if (config === null || typeof config !== "object") return {} as ByokPromptTemplateConfig;
+  const value = (config as Record<string, unknown>)[key];
+  if (value === null || typeof value !== "object" || Array.isArray(value)) {
+    return {} as ByokPromptTemplateConfig;
+  }
+  return value as ByokPromptTemplateConfig;
 }
 
 export function deriveProviderModelsForDisplay(input: {
@@ -206,7 +231,7 @@ function ProviderEnvironmentSection(props: {
   return (
     <div className="grid gap-2">
       <div className="flex items-center justify-between gap-3">
-        <span className="text-xs font-medium text-foreground">Environment variables</span>
+        <span className="text-xs font-medium text-foreground">{t("environmentVariables")}</span>
         <Button
           type="button"
           size="sm"
@@ -225,23 +250,23 @@ function ProviderEnvironmentSection(props: {
           }
         >
           <PlusIcon className="size-3" />
-          Add
+          {t("add")}
         </Button>
       </div>
       {rows.length === 0 ? (
         <p className="text-xs text-muted-foreground">
-          Add variables to pass API keys, base URLs, or other per-instance CLI settings.
+          {t("providerEnvironmentVariablesDescription")}
         </p>
       ) : (
         <div className="overflow-hidden rounded-md border border-border/70">
           <Table>
             <TableHeader className="bg-muted/25 text-[11px] text-muted-foreground">
               <TableRow className="hover:bg-transparent">
-                <TableHead>Variable</TableHead>
-                <TableHead>Value</TableHead>
-                <TableHead className="w-20">Sensitive</TableHead>
+                <TableHead>{t("variable")}</TableHead>
+                <TableHead>{t("value")}</TableHead>
+                <TableHead className="w-20">{t("sensitive")}</TableHead>
                 <TableHead className="w-12 text-right">
-                  <span className="sr-only">Options</span>
+                  <span className="sr-only">{t("options")}</span>
                 </TableHead>
               </TableRow>
             </TableHeader>
@@ -255,7 +280,7 @@ function ProviderEnvironmentSection(props: {
                     <DraftInput
                       value={variable.name}
                       onCommit={(name) => updateVariable(variable.id, { name: name.trim() })}
-                      placeholder="VARIABLE_NAME"
+                      placeholder={t("variableName")}
                       spellCheck={false}
                       aria-label={`Environment variable name ${index + 1}`}
                     />
@@ -313,13 +338,14 @@ function ProviderEnvironmentSection(props: {
         </div>
       )}
       <span className="text-xs text-muted-foreground">
-        Sensitive values are stored separately and are not returned to the app after saving.
+        {t("providerSensitiveValuesDescription")}
       </span>
     </div>
   );
 }
 
 interface ProviderInstanceCardProps {
+  readonly environmentId: string;
   readonly instanceId: ProviderInstanceId;
   readonly instance: ProviderInstanceConfig;
   readonly driverOption: DriverOption | undefined;
@@ -375,6 +401,7 @@ interface ProviderInstanceCardProps {
  *     false wins, then envelope, then config, then the driver default).
  */
 export function ProviderInstanceCard({
+  environmentId,
   instanceId,
   instance,
   driverOption,
@@ -420,7 +447,7 @@ export function ProviderInstanceCard({
       toastManager.add({
         type: "success",
         title: `${providerName} update command copied`,
-        description: "Run it in a terminal when you are ready to update.",
+        description: t("runItInATerminalWhenYouAreReadyToUpdate"),
       });
     },
     onError: (error, { providerName }) => {
@@ -482,6 +509,25 @@ export function ProviderInstanceCard({
         ? ({ ...rest, config: nextConfig } as ProviderInstanceConfig)
         : (rest as ProviderInstanceConfig),
     );
+  };
+
+  const byokAdapters =
+    driverKind !== null && String(driverKind) === "byok"
+      ? readByokModelAdapters(instance.config)
+      : null;
+
+  const updateByokAdapters = (next: ReadonlyArray<ByokModelAdapter>) => {
+    if (byokAdapters === null) return;
+    const nextConfig = nextConfigBlobWithValue(instance.config, "adapters", [...next]);
+    const { config: _omit, ...rest } = instance;
+    onUpdate({ ...rest, config: nextConfig } as ProviderInstanceConfig);
+  };
+
+  const updateByokFeatureConfig = (key: "promptTemplate" | "delegation", value: unknown) => {
+    if (byokAdapters === null) return;
+    const nextConfig = nextConfigBlobWithValue(instance.config, key, value);
+    const { config: _omit, ...rest } = instance;
+    onUpdate({ ...rest, config: nextConfig } as ProviderInstanceConfig);
   };
 
   const updateCustomModels = (next: ReadonlyArray<string>) => {
@@ -569,7 +615,7 @@ export function ProviderInstanceCard({
                 </Button>
               }
             />
-            <TooltipPopup side="top">Delete instance</TooltipPopup>
+            <TooltipPopup side="top">{t("deleteInstance")}</TooltipPopup>
           </Tooltip>
         </span>
       ) : null}
@@ -580,7 +626,7 @@ export function ProviderInstanceCard({
     <p className="flex min-w-0 flex-wrap items-center gap-x-1 text-[13px] leading-[1.45] text-muted-foreground/80">
       {hasAuthenticatedEmail ? (
         <>
-          <span>Authenticated as</span>
+          <span>{t("authenticatedAs")}</span>
           <ProviderAuthEmail email={authEmail} />
           {authenticatedDetail ? <span>· {authenticatedDetail}</span> : null}
         </>
@@ -693,7 +739,7 @@ export function ProviderInstanceCard({
                                 </Button>
                               }
                             />
-                            <TooltipPopup side="top">Copy command</TooltipPopup>
+                            <TooltipPopup side="top">{t("copyCommand")}</TooltipPopup>
                           </Tooltip>
                         </div>
                       ) : null}
@@ -710,7 +756,7 @@ export function ProviderInstanceCard({
               size="compact"
               variant="ghost-muted"
               onClick={() => onExpandedChange(!isExpanded)}
-              aria-label={`Toggle ${displayName} details`}
+              aria-label={t("toggleProviderDetails", { name: displayName })}
             >
               <ChevronDownIcon
                 className={cn("size-3.5 transition-transform", isExpanded && "rotate-180")}
@@ -719,7 +765,7 @@ export function ProviderInstanceCard({
             <Switch
               checked={enabled}
               onCheckedChange={(checked) => updateEnabled(Boolean(checked))}
-              aria-label={`Enable ${displayName}`}
+              aria-label={t("enableProvider", { name: displayName })}
             />
           </div>
         </div>
@@ -730,17 +776,17 @@ export function ProviderInstanceCard({
           <div className="space-y-5 px-3 pb-4 pt-2 sm:px-4">
             <div>
               <label htmlFor={`provider-instance-${instanceId}-display-name`} className="block">
-                <span className="text-xs font-medium text-foreground">Display name</span>
+                <span className="text-xs font-medium text-foreground">{t("displayName")}</span>
                 <DraftInput
                   id={`provider-instance-${instanceId}-display-name`}
                   className="mt-1.5"
                   value={instance.displayName ?? ""}
                   onCommit={updateDisplayName}
-                  placeholder={driverOption?.label ?? "Instance label"}
+                  placeholder={driverOption?.label ?? t("providerInstanceLabel")}
                   spellCheck={false}
                 />
                 <span className="mt-1 block text-xs text-muted-foreground">
-                  Optional label shown in the provider list.
+                  {t("providerInstanceLabelDescription")}
                 </span>
               </label>
             </div>
@@ -751,7 +797,7 @@ export function ProviderInstanceCard({
                 value={accentColor}
                 onCommit={updateAccentColor}
                 commitDelayMs={120}
-                description="Used to distinguish this instance in picker rails and model lists."
+                description={t("usedToDistinguishThisInstanceInPickerRailsAndModelLists")}
               />
             </div>
 
@@ -769,6 +815,34 @@ export function ProviderInstanceCard({
                 idPrefix={`provider-instance-${instanceId}`}
                 variant="card"
                 onChange={updateConfig}
+              />
+            ) : null}
+
+            {byokAdapters !== null ? (
+              <ByokModelAdaptersSection
+                environmentId={String(environmentId)}
+                instanceId={String(instanceId)}
+                adapters={byokAdapters}
+                onChange={updateByokAdapters}
+              />
+            ) : null}
+
+            {byokAdapters !== null ? (
+              <ByokFeaturesSection
+                environmentId={String(environmentId)}
+                instanceId={String(instanceId)}
+                adapters={byokAdapters}
+                promptTemplate={
+                  readByokFeatureConfig(
+                    instance.config,
+                    "promptTemplate",
+                  ) as ByokPromptTemplateConfig
+                }
+                delegation={
+                  readByokFeatureConfig(instance.config, "delegation") as ByokDelegationConfig
+                }
+                onPromptTemplateChange={(next) => updateByokFeatureConfig("promptTemplate", next)}
+                onDelegationChange={(next) => updateByokFeatureConfig("delegation", next)}
               />
             ) : null}
 

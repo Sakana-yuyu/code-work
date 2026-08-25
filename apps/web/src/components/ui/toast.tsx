@@ -26,6 +26,7 @@ import {
 } from "lucide-react";
 
 import { cn } from "~/lib/utils";
+import { t } from "~/i18n";
 import { Button, buttonVariants } from "~/components/ui/button";
 import { useComposerDraftStore } from "~/composerDraftStore";
 import { useCopyToClipboard } from "~/hooks/useCopyToClipboard";
@@ -662,7 +663,7 @@ function Toasts({ position }: { position: ToastPosition }) {
               />
               <div className={toastCornerDismissClass}>
                 <button
-                  aria-label="Dismiss notification"
+                  aria-label={t("dismissNotification")}
                   className={toastCornerOrbClass}
                   data-slot="toast-close"
                   onClick={() =>

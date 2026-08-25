@@ -86,6 +86,7 @@ vi.mock("../../state/session", () => ({
 }));
 
 import { EnvironmentProviderSettings } from "./ProviderSettingsPanel";
+import { t } from "~/i18n";
 
 const environmentId = EnvironmentId.make("remote-device");
 const codexId = ProviderInstanceId.make("codex");
@@ -187,7 +188,10 @@ describe("EnvironmentProviderSettings routing", () => {
     const providerCard = visitElements(panel, (element) => element.props.instanceId === codexId);
     expect(providerCard).not.toBeNull();
 
-    const notice = visitElements(panel, (element) => element.props.title === "Limited permissions");
+    const notice = visitElements(
+      panel,
+      (element) => element.props.title === t("limitedPermissions"),
+    );
     expect(notice).not.toBeNull();
 
     expect(

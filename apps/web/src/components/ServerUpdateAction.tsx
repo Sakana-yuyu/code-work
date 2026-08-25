@@ -1,3 +1,4 @@
+import { t } from "~/i18n";
 import type { EnvironmentId, ServerSelfUpdateCapability } from "@t3tools/contracts";
 import type { ServerUpdateStage, ServerUpdateState } from "@t3tools/client-runtime/state/server";
 import {
@@ -76,7 +77,7 @@ export function ServerUpdateAction({
   serverLabel,
   selfUpdate,
   targetVersion,
-  label = "Update",
+  label = t("update"),
 }: {
   readonly environmentId: EnvironmentId;
   readonly serverLabel: string;
@@ -92,14 +93,14 @@ export function ServerUpdateAction({
     onCopy: ({ command }) => {
       toastManager.add({
         type: "success",
-        title: "Update command copied",
-        description: `Run \`${command}\` on ${serverLabel} to update it.`,
+        title: t("updateCommandCopied"),
+        description: `${t("run")} \`${command}\` ${t("on")} ${serverLabel} ${t("toUpdateIt")}`,
       });
     },
     onError: (error) => {
       toastManager.add({
         type: "error",
-        title: "Could not copy update command",
+        title: t("couldNotCopyUpdateCommand"),
         description: error.message,
       });
     },

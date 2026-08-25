@@ -1,3 +1,4 @@
+import { t } from "~/i18n";
 import type { DesktopUpdateActionResult, DesktopUpdateState } from "@t3tools/contracts";
 
 export type DesktopUpdateButtonAction = "download" | "install" | "none";
@@ -62,17 +63,17 @@ export function isDesktopUpdateButtonDisabled(state: DesktopUpdateState | null):
 
 export function getArm64IntelBuildWarningDescription(state: DesktopUpdateState): string {
   if (!shouldShowArm64IntelBuildWarning(state)) {
-    return "This install is using the correct architecture.";
+    return t("thisInstallIsUsingTheCorrectArchitecture");
   }
 
   const action = resolveDesktopUpdateButtonAction(state);
   if (action === "download") {
-    return "This Mac has Apple Silicon, but T3 Code is still running the Intel build under Rosetta. Download the available update to switch to the native Apple Silicon build.";
+    return t("thisMacHasAppleSiliconButT3CodeIsStillRunningTheIntelBuildUn");
   }
   if (action === "install") {
-    return "This Mac has Apple Silicon, but T3 Code is still running the Intel build under Rosetta. Restart to install the downloaded Apple Silicon build.";
+    return t("thisMacHasAppleSiliconButT3CodeIsStillRunningTheIntelBuildUn2");
   }
-  return "This Mac has Apple Silicon, but T3 Code is still running the Intel build under Rosetta. The next app update will replace it with the native Apple Silicon build.";
+  return t("thisMacHasAppleSiliconButT3CodeIsStillRunningTheIntelBuildUn23");
 }
 
 export function getDesktopUpdateButtonTooltip(state: DesktopUpdateState): string {
@@ -97,9 +98,9 @@ export function getDesktopUpdateButtonTooltip(state: DesktopUpdateState): string
     if (state.downloadedVersion) {
       return `Update ${state.downloadedVersion} downloaded. Click to restart and install.`;
     }
-    return state.message ?? "Update failed";
+    return state.message ?? t("updateFailed");
   }
-  return "Up to date";
+  return t("upToDate");
 }
 
 export function getDesktopUpdateInstallConfirmationMessage(

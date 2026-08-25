@@ -1,4 +1,12 @@
+export const SAKANA_YUYU_ICON_SOURCE = {
+  relativePath: "assets/source/sakana-yuyu-agent-icon-256.png",
+  sha256: "42f8ec01736d92a769fbfcabc3c6b632e412a954f0b7f9a075c3841fe72df57c",
+  width: 256,
+  height: 256,
+} as const;
+
 export const BRAND_ASSET_PATHS = {
+  sakanaYuyuSource: SAKANA_YUYU_ICON_SOURCE.relativePath,
   developmentIconComposerProject: "assets/dev/app-icon.icon",
   developmentIosIconPng: "assets/dev/blueprint-ios-1024.png",
   developmentUniversalIconPng: "assets/dev/blueprint-universal-1024.png",

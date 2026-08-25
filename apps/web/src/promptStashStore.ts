@@ -3,15 +3,17 @@ import { create } from "zustand";
 
 import { PersistedComposerImageAttachment } from "./composerDraftStore";
 import { createMemoryStorage, type StateStorage } from "./lib/storage";
+import { canonicalStorageKey, createCanonicalFirstStorage } from "./persistenceStorage";
 
-export const PROMPT_STASH_STORAGE_KEY = "t3code:prompt-stash:v2";
+export const LEGACY_PROMPT_STASH_STORAGE_KEY = "t3code:prompt-stash:v2";
+export const PROMPT_STASH_STORAGE_KEY = canonicalStorageKey(LEGACY_PROMPT_STASH_STORAGE_KEY);
 /**
  * v1 bucketed entries into per-provider-instance queues and stored a model
  * selection with each prompt. The stash is provider-agnostic now, so the old
  * payload is deleted at startup rather than migrated — left behind it would
  * silently hold megabytes of the origin's ~5MB localStorage quota forever.
  */
-const LEGACY_PROMPT_STASH_STORAGE_KEY = "t3code:prompt-stash:v1";
+const LEGACY_PROMPT_STASH_V1_STORAGE_KEY = "t3code:prompt-stash:v1";
 const PROMPT_STASH_STORAGE_VERSION = 2;
 
 export const MAX_STASH_ENTRIES = 20;
@@ -139,7 +141,20 @@ function resolveBaseStorage(): { storage: StateStorage; durable: boolean } {
   return { storage: createMemoryStorage(), durable: false };
 }
 
-const { storage: baseStashStorage, durable: storageIsDurable } = resolveBaseStorage();
+const { storage: resolvedBaseStashStorage, durable: storageIsDurable } = resolveBaseStorage();
+const baseStashStorage = createCanonicalFirstStorage({
+  storage: resolvedBaseStashStorage as Storage,
+  canonicalKey: PROMPT_STASH_STORAGE_KEY,
+  legacyKey: LEGACY_PROMPT_STASH_STORAGE_KEY,
+  validate: (raw) => {
+    try {
+      JSON.parse(raw);
+      return true;
+    } catch {
+      return false;
+    }
+  },
+});
 
 /**
  * Persists the queue, immediately rather than debounced. Stashing is a
@@ -271,7 +286,7 @@ export const usePromptStashStore = create<PromptStashStoreState>()((set, get) =>
 // last-write-wins: no cross-tab merging or storage-event syncing.
 {
   try {
-    baseStashStorage.removeItem(LEGACY_PROMPT_STASH_STORAGE_KEY);
+    baseStashStorage.removeItem(LEGACY_PROMPT_STASH_V1_STORAGE_KEY);
   } catch {
     // Purging the v1 payload is best-effort; a storage policy that rejects
     // the delete must not take down module init.

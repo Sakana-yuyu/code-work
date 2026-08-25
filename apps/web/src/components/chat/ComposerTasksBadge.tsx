@@ -4,6 +4,7 @@ import { memo } from "react";
 import { formatDuration } from "../../session-logic";
 import { cn } from "~/lib/utils";
 import { Button } from "../ui/button";
+import { t } from "~/i18n";
 
 export interface ComposerTasksProgress {
   readonly step: string;
@@ -88,7 +89,7 @@ export const ComposerTasksBadge = memo(function ComposerTasksBadge({
           onPointerDown={(event) => event.preventDefault()}
         >
           <ListTodoIcon aria-hidden className="size-3 shrink-0" />
-          <span>Tasks</span>
+          <span>{t("chat.tasks")}</span>
           <TaskSegments steps={steps} />
           <span
             className={cn(
@@ -102,7 +103,7 @@ export const ComposerTasksBadge = memo(function ComposerTasksBadge({
         <Button
           size="icon-micro"
           variant="ghost-muted"
-          aria-label="Dismiss tasks for this turn"
+          aria-label={t("dismissTasksForThisTurn")}
           className="shrink-0"
           onClick={onDismiss}
           onPointerDown={(event) => event.preventDefault()}
@@ -131,7 +132,7 @@ export const ComposerTasksBadge = memo(function ComposerTasksBadge({
         onPointerDown={(event) => event.preventDefault()}
       >
         <ListTodoIcon aria-hidden className="size-3.5 shrink-0" />
-        <span className="shrink-0">Tasks</span>
+        <span className="shrink-0">{t("chat.tasks")}</span>
         <span
           className="min-w-0 flex-1 truncate text-left font-medium text-foreground/80"
           data-composer-task-current="true"
@@ -151,7 +152,7 @@ export const ComposerTasksBadge = memo(function ComposerTasksBadge({
       <Button
         size="icon-micro"
         variant="ghost-muted"
-        aria-label="Dismiss tasks for this turn"
+        aria-label={t("dismissTasksForThisTurn")}
         className="shrink-0"
         onClick={onDismiss}
         onPointerDown={(event) => event.preventDefault()}
@@ -184,7 +185,7 @@ export const ComposerTasksDrawer = memo(function ComposerTasksDrawer({
           onPointerDown={(event) => event.preventDefault()}
         >
           <ListTodoIcon aria-hidden className="size-3.5 shrink-0" />
-          <span className="font-medium text-foreground">Tasks</span>
+          <span className="font-medium text-foreground">{t("chat.tasks")}</span>
           <span className="tabular-nums">
             {progress.completedSteps}/{progress.totalSteps}
           </span>
@@ -192,7 +193,7 @@ export const ComposerTasksDrawer = memo(function ComposerTasksDrawer({
         <Button
           size="icon-micro"
           variant="ghost-muted"
-          aria-label="Dismiss tasks for this turn"
+          aria-label={t("dismissTasksForThisTurn")}
           className="shrink-0"
           onClick={onDismiss}
           onPointerDown={(event) => event.preventDefault()}

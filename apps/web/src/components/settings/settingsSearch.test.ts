@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vite-plus/test";
 
+import { t } from "~/i18n";
 import {
   searchableSetting,
   searchSettings,
@@ -71,8 +72,8 @@ describe("searchSettings", () => {
   });
 
   it("serves anchor props to panels from the catalog", () => {
-    expect(searchableSetting("word-wrap")).toEqual({ id: "word-wrap", title: "Word wrap" });
-    expect(searchableSetting("archive")).toEqual({ id: "archive", title: "Archived threads" });
+    expect(searchableSetting("word-wrap")).toEqual({ id: "word-wrap", title: t("wordWrap") });
+    expect(searchableSetting("archive")).toEqual({ id: "archive", title: t("archivedThreads") });
   });
 
   it("routes appearance settings to their current section", () => {

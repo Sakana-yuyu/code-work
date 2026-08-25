@@ -117,6 +117,7 @@ import {
 } from "./userMessageTerminalContexts";
 import { SkillInlineText } from "./SkillInlineText";
 import { formatWorkspaceRelativePath } from "../../filePathDisplay";
+import { t } from "~/i18n";
 import {
   buildReviewCommentRenderablePatch,
   formatReviewCommentFence,
@@ -1103,7 +1104,7 @@ function RevertUserMessageButton({ messageId }: { messageId: MessageId }) {
             variant="ghost"
             disabled={activity.isRevertingCheckpoint || activity.isWorking}
             onClick={() => ctx.onRevertUserMessage(messageId)}
-            aria-label="Revert to this message"
+            aria-label={t("revertToThisMessage")}
           />
         }
       >
@@ -1449,7 +1450,7 @@ function LiveActivityRow({
 }
 
 function ThinkingActivityRow() {
-  return <LiveActivityRow label="Thinking" />;
+  return <LiveActivityRow label={t("thinking")} />;
 }
 
 function LiveActivityContent({

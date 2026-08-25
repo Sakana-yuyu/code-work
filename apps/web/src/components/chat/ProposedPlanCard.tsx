@@ -1,4 +1,5 @@
 import { memo, useState, useId } from "react";
+import { t } from "~/i18n";
 import {
   isAtomCommandInterrupted,
   squashAtomCommandFailure,
@@ -89,7 +90,7 @@ export const ProposedPlanCard = memo(function ProposedPlanCard({
       toastManager.add(
         stackedThreadToast({
           type: "error",
-          title: "Workspace path is unavailable",
+          title: t("chat.workspacePathUnavailable"),
           description: "This thread does not have a workspace path to save into.",
         }),
       );
@@ -154,7 +155,7 @@ export const ProposedPlanCard = memo(function ProposedPlanCard({
         </div>
         <Menu>
           <MenuTrigger
-            render={<Button aria-label="Plan actions" size="icon-xs" variant="outline" />}
+            render={<Button aria-label={t("chat.planActions")} size="icon-xs" variant="outline" />}
           >
             <EllipsisIcon aria-hidden="true" className="size-4" />
           </MenuTrigger>
@@ -221,7 +222,7 @@ export const ProposedPlanCard = memo(function ProposedPlanCard({
           </DialogHeader>
           <DialogPanel className="space-y-3">
             <label htmlFor={savePathInputId} className="grid gap-1.5">
-              <span className="text-xs font-medium text-foreground">Workspace path</span>
+              <span className="text-xs font-medium text-foreground">{t("chat.workspacePath")}</span>
               <Input
                 id={savePathInputId}
                 value={savePath}

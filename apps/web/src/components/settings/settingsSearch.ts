@@ -1,4 +1,5 @@
 import { isElectron } from "~/env";
+import { CATALOGS, t } from "~/i18n";
 
 export type SettingsPath =
   | "/settings/general"
@@ -25,14 +26,14 @@ export interface SettingsSearchItem {
  * subtitles both render from this record, so each label exists once.
  */
 export const SETTINGS_SECTION_LABELS: Readonly<Record<SettingsPath, string>> = {
-  "/settings/general": "General",
-  "/settings/appearance": "Appearance",
-  "/settings/keybindings": "Keybindings",
-  "/settings/providers": "Providers",
-  "/settings/integrations": "Integrations",
-  "/settings/source-control": "Source Control",
-  "/settings/connections": "Connections",
-  "/settings/archived": "Archive",
+  "/settings/general": "general",
+  "/settings/appearance": "appearance",
+  "/settings/keybindings": "settings.keybindings",
+  "/settings/providers": "settings.providers",
+  "/settings/integrations": "settings.integrations",
+  "/settings/source-control": "settings.sourceControl",
+  "/settings/connections": "settings.connections",
+  "/settings/archived": "settings.archive",
 };
 
 /**
@@ -44,14 +45,14 @@ export const SETTINGS_SECTION_LABELS: Readonly<Record<SettingsPath, string>> = {
 export const SETTINGS_SEARCH_ITEMS = [
   {
     id: "color-scheme",
-    title: "Color scheme",
+    title: "settings.colorScheme",
     to: "/settings/appearance",
     // The scheme tiles sit at the top of the Appearance section.
     targetId: "appearance",
   },
   {
     id: "theme",
-    title: "Themes",
+    title: "themes",
     to: "/settings/appearance",
     // Theme cards live directly under the scheme tiles; the section is the
     // stable scroll destination for both.
@@ -60,197 +61,197 @@ export const SETTINGS_SEARCH_ITEMS = [
   {
     // Prefixed because the slider control already owns the `appearance-contrast` id.
     id: "setting-appearance-contrast",
-    title: "Contrast",
+    title: "settings.contrast",
     to: "/settings/appearance",
   },
   {
     // Prefixed because the slider control already owns the `glass-opacity` id.
     id: "setting-glass-opacity",
-    title: "Glass opacity",
+    title: "settings.glassOpacity",
     to: "/settings/appearance",
   },
   {
     id: "environment-identification",
-    title: "Environment identification",
+    title: "settings.environmentIdentification",
     to: "/settings/appearance",
     // The setting is stage-dependent, so its parent section is the stable destination.
     targetId: "appearance",
   },
   {
     id: "interface-font",
-    title: "Interface font",
+    title: "settings.interfaceFont",
     to: "/settings/appearance",
   },
   {
     id: "prompt-font",
-    title: "Prompt font",
+    title: "settings.promptFont",
     to: "/settings/appearance",
   },
   {
     id: "code-font",
-    title: "Code font",
+    title: "settings.codeFont",
     to: "/settings/appearance",
   },
   {
     id: "terminal-font",
-    title: "Terminal font",
+    title: "settings.terminalFont",
     to: "/settings/appearance",
   },
   {
     id: "font-smoothing",
-    title: "Font smoothing",
+    title: "settings.fontSmoothing",
     to: "/settings/appearance",
   },
   {
     id: "word-wrap",
-    title: "Word wrap",
+    title: "wordWrap",
     to: "/settings/appearance",
   },
   {
     id: "project-grouping",
-    title: "Project grouping",
+    title: "projectGrouping",
     to: "/settings/general",
   },
   {
     id: "auto-settle-inactive-threads",
-    title: "Auto-settle inactive threads",
+    title: "settings.autoSettleInactiveThreads",
     to: "/settings/general",
   },
   {
     id: "auto-settle-merged-threads",
-    title: "Auto-settle merged threads",
+    title: "settings.autoSettleMergedThreads",
     to: "/settings/general",
   },
   {
     id: "time-format",
-    title: "Time format",
+    title: "settings.timeFormat",
     to: "/settings/general",
   },
   {
     id: "hide-whitespace-changes",
-    title: "Hide whitespace changes",
+    title: "settings.hideWhitespaceChanges",
     to: "/settings/general",
   },
   {
     id: "skills-in-slash-menu",
-    title: "Show skills in slash menu",
+    title: "settings.showSkillsInSlashMenu",
     to: "/settings/general",
   },
   {
     id: "provider-update-checks",
-    title: "Provider update checks",
+    title: "settings.providerUpdateChecks",
     to: "/settings/general",
   },
   {
     id: "new-threads",
-    title: "New threads",
+    title: "settings.newThreads",
     to: "/settings/general",
   },
   {
     id: "start-from-origin",
-    title: "Start from origin",
+    title: "settings.startFromOrigin",
     to: "/settings/general",
     targetId: "new-threads",
   },
   {
     id: "add-project-starts-in",
-    title: "Add project starts in",
+    title: "settings.addProjectStartsIn",
     to: "/settings/general",
   },
   {
     id: "archive-confirmation",
-    title: "Archive confirmation",
+    title: "settings.archiveConfirmation",
     to: "/settings/general",
   },
   {
     id: "delete-confirmation",
-    title: "Delete confirmation",
+    title: "settings.deleteConfirmation",
     to: "/settings/general",
   },
   {
     id: "quit-confirmation",
-    title: "Hold to quit",
+    title: "settings.holdToQuit",
     to: "/settings/general",
     desktopOnly: true,
   },
   {
     id: "text-generation-model",
-    title: "Text generation model",
+    title: "settings.textGenerationModel",
     to: "/settings/general",
   },
   {
     id: "diagnostics",
-    title: "Diagnostics",
+    title: "settings.diagnostics",
     to: "/settings/general",
   },
   {
     id: "legacy-plan-mode",
-    title: "Plan mode (legacy)",
+    title: "settings.planModeLegacy",
     to: "/settings/general",
   },
   {
     id: "legacy-token-streaming",
-    title: "Stream token by token (legacy)",
+    title: "settings.streamTokenByTokenLegacy",
     to: "/settings/general",
   },
   {
     id: "legacy-sidebar",
-    title: "Sidebar (legacy)",
+    title: "settings.sidebarLegacy",
     to: "/settings/general",
   },
   {
     id: "keybindings",
-    title: "Keybindings",
+    title: "settings.keybindings",
     to: "/settings/keybindings",
   },
   {
     id: "providers",
-    title: "Providers",
+    title: "settings.providers",
     to: "/settings/providers",
   },
   {
     id: "agent-browser-access",
-    title: "Agent browser access",
+    title: "settings.agentBrowserAccess",
     to: "/settings/integrations",
     targetId: "browser",
   },
   {
     id: "browser-default-viewport",
-    title: "Default browser viewport",
+    title: "settings.defaultBrowserViewport",
     to: "/settings/integrations",
     targetId: "browser",
   },
   {
     id: "browser-default-zoom",
-    title: "Default browser zoom",
+    title: "settings.defaultBrowserZoom",
     to: "/settings/integrations",
     targetId: "browser",
   },
   {
     id: "browser-default-appearance",
-    title: "Default browser appearance",
+    title: "settings.defaultBrowserAppearance",
     to: "/settings/integrations",
     targetId: "browser",
   },
   {
     id: "browser-auto-show-floating-preview",
-    title: "Auto-show floating preview",
+    title: "settings.autoShowFloatingPreview",
     to: "/settings/integrations",
     targetId: "browser",
   },
   {
     id: "source-control",
-    title: "Source control",
+    title: "settings.sourceControlSetting",
     to: "/settings/source-control",
   },
   {
     id: "remote-environments",
-    title: "Remote environments",
+    title: "settings.remoteEnvironments",
     to: "/settings/connections",
   },
   {
     id: "archive",
-    title: "Archived threads",
+    title: "archivedThreads",
     to: "/settings/archived",
   },
 ] as const satisfies ReadonlyArray<SettingsSearchItem>;
@@ -271,7 +272,7 @@ export function searchableSetting(id: SettingsSearchItemId): {
   readonly title: string;
 } {
   const { id: anchorId, title } = SEARCH_ITEMS_BY_ID[id];
-  return { id: anchorId, title };
+  return { id: anchorId, title: t(title) };
 }
 
 function normalizeSearchText(value: string): string {
@@ -290,9 +291,14 @@ export function searchSettings(
   const normalizedQuery = normalizeSearchText(query);
   if (normalizedQuery.length === 0) return [];
 
-  return items.filter(
-    (item) =>
-      (isElectron || item.desktopOnly !== true) &&
-      normalizeSearchText(item.title).includes(normalizedQuery),
-  );
+  return items
+    .filter(
+      (item) =>
+        (isElectron || item.desktopOnly !== true) &&
+        // Match the English source as well as the translated title, so an
+        // English query still finds a setting under a translated locale.
+        (normalizeSearchText(CATALOGS.en[item.title] ?? item.title).includes(normalizedQuery) ||
+          normalizeSearchText(t(item.title)).includes(normalizedQuery)),
+    )
+    .map((item) => ({ ...item, title: t(item.title) }));
 }

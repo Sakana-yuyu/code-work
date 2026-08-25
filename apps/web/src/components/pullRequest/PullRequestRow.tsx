@@ -8,6 +8,7 @@ import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { PullRequestChecksPopover } from "./PullRequestChecksPopover";
 import type { EnvironmentPullRequestEntry } from "./pullRequestList.logic";
 import { openOnHostLabel, showPullRequestLinkContextMenu } from "./pullRequestLinkContextMenu";
+import { t } from "../../i18n";
 import {
   PullRequestActorLabel,
   PullRequestDiffStat,
@@ -103,7 +104,7 @@ function PullRequestRowImpl({
                   : "text-amber-600/90 dark:text-amber-400/80",
               )}
             >
-              {entry.reviewDecision === "approved" ? "Approved" : "Changes requested"}
+              {entry.reviewDecision === "approved" ? t("approved") : t("changesRequested")}
             </span>
           ) : null}
           {entry.checksState === undefined ? null : (

@@ -4,6 +4,7 @@ import { createRef, type ReactNode, type Ref } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { beforeAll, describe, expect, it, vi } from "vite-plus/test";
 import type { LegendListRef } from "@legendapp/list/react";
+import { t } from "~/i18n";
 
 vi.mock("@legendapp/list/react", async () => {
   const legendListTestId = "legend-list";
@@ -398,9 +399,9 @@ describe("MessagesTimeline", () => {
     expect(markup).toContain("whitespace-nowrap");
     expect(markup).toContain("!size-[22px]");
     expect(markup).toContain("size-3");
-    expect(markup).toContain('aria-label="Collapse all folders"');
-    expect(markup).toContain('aria-label="Open diff"');
-    expect(markup).toContain("1 changed file");
+    expect(markup).toContain(`aria-label="${t("collapseAllFolders")}"`);
+    expect(markup).toContain(`aria-label="${t("openDiff")}"`);
+    expect(markup).toContain(`1 ${t("changedFile")}`);
   });
 
   it("treats only the strict list end as the live edge", async () => {
@@ -879,7 +880,7 @@ describe("MessagesTimeline", () => {
       />,
     );
 
-    expect(markup).toContain('aria-label="Copy link"');
+    expect(markup).toContain(`aria-label="${t("copyLink")}"`);
     expect(markup).toContain('data-user-message-collapsed="true"');
     expect(markup).toContain('data-user-message-footer="true"');
   });
@@ -1168,7 +1169,7 @@ describe("MessagesTimeline", () => {
     );
 
     expect(markup).toContain("Working for");
-    expect(markup).toContain("Thinking");
+    expect(markup).toContain(t("thinking"));
     expect(markup).toContain("gap-1.5 py-0.5 px-1");
   });
 

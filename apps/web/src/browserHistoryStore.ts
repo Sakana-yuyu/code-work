@@ -2,6 +2,12 @@ import { scopedThreadKey } from "@t3tools/client-runtime/environment";
 import type { ScopedThreadRef } from "@t3tools/contracts";
 import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
+
+import {
+  canonicalStorageKey,
+  createCanonicalFirstStorage,
+  type SynchronousStateStorage,
+} from "./persistenceStorage";
 import { useShallow } from "zustand/react/shallow";
 
 import { normalizePreviewUrl } from "@t3tools/shared/preview";
@@ -138,7 +144,8 @@ export function migratePersistedBrowserHistoryState(persistedState: unknown): {
   return { byProjectKey: evictExcessProjects(byProjectKey) };
 }
 
-const BROWSER_HISTORY_STORAGE_KEY = "t3code:browser-history:v1";
+const LEGACY_BROWSER_HISTORY_STORAGE_KEY = "t3code:browser-history:v1";
+const BROWSER_HISTORY_STORAGE_KEY = canonicalStorageKey(LEGACY_BROWSER_HISTORY_STORAGE_KEY);
 
 const PENDING_MAX_PER_THREAD = 10;
 const PENDING_MAX_THREADS = 20;
@@ -280,7 +287,21 @@ export const useBrowserHistoryStore = create<BrowserHistoryStoreState>()(
       name: BROWSER_HISTORY_STORAGE_KEY,
       version: 1,
       storage: createJSONStorage(() =>
-        resolveStorage(typeof window !== "undefined" ? window.localStorage : undefined),
+        createCanonicalFirstStorage({
+          storage: resolveStorage(
+            typeof window !== "undefined" ? window.localStorage : undefined,
+          ) as SynchronousStateStorage,
+          canonicalKey: BROWSER_HISTORY_STORAGE_KEY,
+          legacyKey: LEGACY_BROWSER_HISTORY_STORAGE_KEY,
+          validate: (raw) => {
+            try {
+              JSON.parse(raw);
+              return true;
+            } catch {
+              return false;
+            }
+          },
+        }),
       ),
       partialize: (state) => ({
         byProjectKey: state.byProjectKey,

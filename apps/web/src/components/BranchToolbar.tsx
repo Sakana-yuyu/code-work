@@ -25,6 +25,7 @@ import {
   resolvePreviousWorktreeSeed,
   shouldShowEnvironmentIndicator,
 } from "./BranchToolbar.logic";
+import { t } from "~/i18n";
 import { BranchToolbarBranchSelector } from "./BranchToolbarBranchSelector";
 import { BranchToolbarEnvironmentSelector } from "./BranchToolbarEnvironmentSelector";
 import { BranchToolbarEnvModeSelector } from "./BranchToolbarEnvModeSelector";
@@ -119,7 +120,9 @@ const MobileRunContextSelector = memo(function MobileRunContextSelector({
     <>
       {icon}
       <span className="min-w-0 truncate">
-        {showEnvironmentIndicator ? (activeEnvironment?.label ?? "Run on") : workspaceLabel}
+        {showEnvironmentIndicator
+          ? (activeEnvironment?.label ?? t("workspace.runOn"))
+          : workspaceLabel}
       </span>
     </>
   );
@@ -145,7 +148,7 @@ const MobileRunContextSelector = memo(function MobileRunContextSelector({
         {showEnvironmentPicker && availableEnvironments && onEnvironmentChange ? (
           <>
             <MenuGroup>
-              <MenuGroupLabel>Run on</MenuGroupLabel>
+              <MenuGroupLabel>{t("workspace.runOn")}</MenuGroupLabel>
               <MenuRadioGroup
                 value={environmentId}
                 onValueChange={(value) => onEnvironmentChange(value as EnvironmentId)}
@@ -171,7 +174,7 @@ const MobileRunContextSelector = memo(function MobileRunContextSelector({
           </>
         ) : null}
         <MenuGroup>
-          <MenuGroupLabel>Workspace</MenuGroupLabel>
+          <MenuGroupLabel>{t("workspace.label")}</MenuGroupLabel>
           <MenuRadioGroup
             value={effectiveEnvMode}
             onValueChange={(value) => {

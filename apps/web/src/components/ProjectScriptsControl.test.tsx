@@ -3,6 +3,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vite-plus/test";
 
 import ProjectScriptsControl from "./ProjectScriptsControl";
+import { t } from "~/i18n";
 
 const EMPTY_KEYBINDINGS: ResolvedKeybindingsConfig = [];
 const PRIMARY_SCRIPT: ProjectScript = {
@@ -48,7 +49,7 @@ describe("ProjectScriptsControl compact controls", () => {
   it("keeps the primary Run control compact and expands it with its label", () => {
     const html = renderControl([PRIMARY_SCRIPT]);
 
-    expectResponsiveXsControl(buttonTag(html, "Run Dev"));
+    expectResponsiveXsControl(buttonTag(html, t("runScriptName", { name: "Dev" })));
     expect(html).toContain(
       'class="sr-only @3xl/header-actions:not-sr-only @3xl/header-actions:ml-0.5"',
     );
@@ -57,7 +58,7 @@ describe("ProjectScriptsControl compact controls", () => {
   it("keeps the standalone Add control compact and expands it with its label", () => {
     const html = renderControl([]);
 
-    expectResponsiveXsControl(buttonTag(html, "Add action"));
+    expectResponsiveXsControl(buttonTag(html, t("addAction")));
     expect(html).toContain(
       'class="sr-only @3xl/header-actions:not-sr-only @3xl/header-actions:ml-0.5"',
     );

@@ -24,6 +24,7 @@ import { MAX_CUSTOM_MODEL_LENGTH } from "../../modelSelection";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
+import { t } from "~/i18n";
 
 /**
  * Placeholder text for the "add a custom model" input, keyed by driver
@@ -186,9 +187,9 @@ export function ProviderModelsSection({
 
   return (
     <div>
-      <div className="text-xs font-medium text-foreground">Models</div>
+      <div className="text-xs font-medium text-foreground">{t("models")}</div>
       <div className="mt-1 text-xs text-muted-foreground">
-        {models.length} model{models.length === 1 ? "" : "s"} available.
+        {t("providerModelsAvailable", { count: models.length })}
       </div>
       <div ref={listRef} className="mt-2 max-h-40 overflow-y-auto pb-1">
         {orderedModels.map((model, index) => {
@@ -271,10 +272,10 @@ export function ProviderModelsSection({
                   </Tooltip>
                 ) : null}
                 {isHidden ? (
-                  <span className="text-[10px] text-muted-foreground">hidden</span>
+                  <span className="text-[10px] text-muted-foreground">{t("hidden")}</span>
                 ) : null}
                 {model.isCustom ? (
-                  <span className="text-[10px] text-muted-foreground">custom</span>
+                  <span className="text-[10px] text-muted-foreground">{t("custom")}</span>
                 ) : null}
               </div>
               <div className="flex shrink-0 items-center gap-0.5">
@@ -312,7 +313,7 @@ export function ProviderModelsSection({
                   >
                     <ArrowUpIcon className="size-3" />
                   </TooltipTrigger>
-                  <TooltipPopup side="top">Move up</TooltipPopup>
+                  <TooltipPopup side="top">{t("moveUp")}</TooltipPopup>
                 </Tooltip>
                 <Tooltip>
                   <TooltipTrigger
@@ -328,7 +329,7 @@ export function ProviderModelsSection({
                   >
                     <ArrowDownIcon className="size-3" />
                   </TooltipTrigger>
-                  <TooltipPopup side="top">Move down</TooltipPopup>
+                  <TooltipPopup side="top">{t("moveDown")}</TooltipPopup>
                 </Tooltip>
                 {!model.isCustom ? (
                   <Tooltip>
@@ -367,7 +368,7 @@ export function ProviderModelsSection({
                     >
                       <XIcon className="size-3" />
                     </TooltipTrigger>
-                    <TooltipPopup side="top">Remove custom model</TooltipPopup>
+                    <TooltipPopup side="top">{t("removeCustomModel")}</TooltipPopup>
                   </Tooltip>
                 ) : null}
               </div>

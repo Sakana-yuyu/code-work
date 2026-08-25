@@ -9,6 +9,11 @@ import { parseScopedThreadKey, scopedThreadKey } from "@t3tools/client-runtime/e
 import { type ScopedThreadRef } from "@t3tools/contracts";
 import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
+import {
+  canonicalStorageKey,
+  createCanonicalFirstStorage,
+  type SynchronousStateStorage,
+} from "./persistenceStorage";
 import { resolveStorage } from "./lib/storage";
 import {
   DEFAULT_THREAD_TERMINAL_HEIGHT,
@@ -26,8 +31,8 @@ interface ThreadTerminalUiState {
   activeTerminalGroupId: string;
 }
 
-// Keep the old storage key so existing drawer layout preferences migrate.
-const TERMINAL_UI_STATE_STORAGE_KEY = "t3code:terminal-state:v1";
+const LEGACY_TERMINAL_UI_STATE_STORAGE_KEY = "t3code:terminal-state:v1";
+const TERMINAL_UI_STATE_STORAGE_KEY = canonicalStorageKey(LEGACY_TERMINAL_UI_STATE_STORAGE_KEY);
 
 interface PersistedTerminalUiStateStoreState {
   terminalUiStateByThreadKey?: Record<string, ThreadTerminalUiState>;
@@ -55,7 +60,20 @@ export function migratePersistedTerminalUiStateStoreState(
 }
 
 function createTerminalUiStateStorage() {
-  return resolveStorage(typeof window !== "undefined" ? window.localStorage : undefined);
+  const storage = resolveStorage(typeof window !== "undefined" ? window.localStorage : undefined);
+  return createCanonicalFirstStorage({
+    storage: storage as SynchronousStateStorage,
+    canonicalKey: TERMINAL_UI_STATE_STORAGE_KEY,
+    legacyKey: LEGACY_TERMINAL_UI_STATE_STORAGE_KEY,
+    validate: (raw) => {
+      try {
+        JSON.parse(raw);
+        return true;
+      } catch {
+        return false;
+      }
+    },
+  });
 }
 
 function normalizeTerminalIds(terminalIds: string[]): string[] {

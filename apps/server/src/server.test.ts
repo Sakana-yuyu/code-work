@@ -3424,6 +3424,84 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
     }).pipe(Effect.provide(NodeHttpServer.layerTest)),
   );
 
+  it.effect("serves the public BYOK supplier catalog without credentials", () =>
+    Effect.gen(function* () {
+      yield* buildAppUnderTest();
+
+      const wsUrl = yield* getWsServerUrl("/ws");
+      const catalog = yield* Effect.scoped(
+        withWsRpcClient(wsUrl, (client) => client[WS_METHODS.serverGetByokSupplierCatalog]({})),
+      );
+
+      assert.isTrue(catalog.length > 0);
+      for (const entry of catalog) {
+        assert.isFalse("apiKey" in entry);
+        assert.isFalse("balance" in entry);
+        assert.isFalse("usage" in entry);
+        assert.isFalse("authorization" in entry);
+        assert.isFalse("cookie" in entry);
+        for (const model of entry.models) {
+          assert.isFalse(model.modelId.startsWith("sk-"));
+        }
+      }
+    }).pipe(Effect.provide(NodeHttpServer.layerTest)),
+  );
+
+  it.effect("requires orchestration read scope for BYOK catalog and discovery", () =>
+    Effect.gen(function* () {
+      yield* buildAppUnderTest();
+
+      const { response: exchangeResponse, body: tokenBody } = yield* exchangeAccessToken(
+        defaultDesktopBootstrapToken,
+        { scope: "access:write" },
+      );
+      assert.equal(exchangeResponse.status, 200);
+      assert.isDefined(tokenBody.access_token);
+
+      const pairingResponse = yield* HttpClient.post("/api/auth/pairing-token", {
+        headers: {
+          authorization: `Bearer ${tokenBody.access_token ?? ""}`,
+        },
+        body: yield* HttpBody.json({ scopes: ["access:write"] }),
+      });
+      assert.equal(pairingResponse.status, 200);
+
+      const wsTicketResponse = yield* HttpClient.post("/api/auth/websocket-ticket", {
+        headers: {
+          authorization: `Bearer ${tokenBody.access_token ?? ""}`,
+        },
+      });
+      const wsTicketBody = (yield* wsTicketResponse.json) as { readonly ticket: string };
+      assert.equal(wsTicketResponse.status, 200);
+
+      const wsUrl = `${yield* getWsServerUrl("/ws", { authenticated: false })}?wsTicket=${encodeURIComponent(wsTicketBody.ticket)}`;
+      const catalogError = yield* Effect.flip(
+        Effect.scoped(
+          withWsRpcClient(wsUrl, (client) => client[WS_METHODS.serverGetByokSupplierCatalog]({})),
+        ),
+      );
+      assert.equal(catalogError._tag, "EnvironmentAuthorizationError");
+      if (catalogError._tag === "EnvironmentAuthorizationError") {
+        assert.equal(catalogError.requiredScope, "orchestration:read");
+      }
+
+      const discoveryError = yield* Effect.flip(
+        Effect.scoped(
+          withWsRpcClient(wsUrl, (client) =>
+            client[WS_METHODS.serverDiscoverByokModels]({
+              instanceId: "byok",
+              adapterId: "adapter",
+            }),
+          ),
+        ),
+      );
+      assert.equal(discoveryError._tag, "EnvironmentAuthorizationError");
+      if (discoveryError._tag === "EnvironmentAuthorizationError") {
+        assert.equal(discoveryError.requiredScope, "orchestration:read");
+      }
+    }).pipe(Effect.provide(NodeHttpServer.layerTest)),
+  );
+
   it.effect("includes CORS headers on remote auth success responses", () =>
     Effect.gen(function* () {
       yield* buildAppUnderTest();

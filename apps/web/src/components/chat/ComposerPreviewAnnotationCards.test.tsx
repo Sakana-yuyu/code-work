@@ -3,6 +3,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vite-plus/test";
 
 import { ComposerPreviewAnnotationCards } from "./ComposerPreviewAnnotationCards";
+import { t } from "~/i18n";
 
 const annotation: PreviewAnnotationPayload = {
   id: "annotation_1",
@@ -55,7 +56,7 @@ describe("ComposerPreviewAnnotationCards", () => {
       />,
     );
 
-    expect(markup).toContain('aria-label="Remove preview annotation"');
+    expect(markup).toContain(`aria-label="${t("removePreviewAnnotation")}"`);
     expect(markup).toContain('data-slot="button"');
   });
 

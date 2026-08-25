@@ -120,6 +120,10 @@ export const TerminalFontSize = Schema.Int.check(
 export type TerminalFontSize = typeof TerminalFontSize.Type;
 export const DEFAULT_TERMINAL_FONT_SIZE: TerminalFontSize = 12;
 
+export const LanguagePreference = Schema.Literals(["system", "zh-CN", "en"]);
+export type LanguagePreference = typeof LanguagePreference.Type;
+export const DEFAULT_LANGUAGE_PREFERENCE: LanguagePreference = "zh-CN";
+
 export const EnvironmentIdentificationMode = Schema.Literals(["artwork", "pill", "none"]);
 export type EnvironmentIdentificationMode = typeof EnvironmentIdentificationMode.Type;
 export const DEFAULT_ENVIRONMENT_IDENTIFICATION_MODE: EnvironmentIdentificationMode = "artwork";
@@ -173,6 +177,9 @@ export const ClientSettingsSchema = Schema.Struct({
   diffIgnoreWhitespace: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
   environmentIdentificationMode: EnvironmentIdentificationMode.pipe(
     Schema.withDecodingDefault(Effect.succeed(DEFAULT_ENVIRONMENT_IDENTIFICATION_MODE)),
+  ),
+  language: LanguagePreference.pipe(
+    Schema.withDecodingDefault(Effect.succeed(DEFAULT_LANGUAGE_PREFERENCE)),
   ),
   glassOpacity: GlassOpacity.pipe(
     Schema.withDecodingDefault(Effect.succeed(DEFAULT_GLASS_OPACITY)),
@@ -531,6 +538,109 @@ export const OpenCodeSettings = makeProviderSettingsSchema(
 );
 export type OpenCodeSettings = typeof OpenCodeSettings.Type;
 
+export const ByokModelAdapter = Schema.Struct({
+  id: Schema.String,
+  displayName: TrimmedString,
+  protocol: Schema.Literals(["openai", "anthropic"]),
+  baseURL: TrimmedString,
+  apiKey: Schema.String.pipe(Schema.withDecodingDefault(Effect.succeed(""))),
+  apiKeyRedacted: Schema.optional(Schema.Boolean),
+  // Non-secret link used when a discovered model reuses another adapter's stored key.
+  apiKeySourceAdapterId: Schema.optional(TrimmedString),
+  modelId: TrimmedString,
+  contextWindowTokens: Schema.Number.pipe(Schema.withDecodingDefault(Effect.succeed(128000))),
+  // Optional non-secret catalog metadata used by the built-in BYOK discovery layer.
+  supplierID: Schema.optional(TrimmedString),
+  modelCatalogURL: Schema.optional(TrimmedString),
+  modelCatalogURLs: Schema.optional(Schema.Array(TrimmedString)),
+  modelCatalogStatus: Schema.optional(
+    Schema.Literals(["openai_models", "gemini_models", "custom_url", "manual_only"]),
+  ),
+  appendModelCatalogCandidates: Schema.optional(Schema.Boolean),
+  // Optional non-secret balance query strategy: "auto" | "general" | "newapi" | "none".
+  // Balance credentials other than the stored API key are intentionally not
+  // persisted here; profiles needing them report a deterministic error.
+  balanceProfile: Schema.optional(Schema.Literals(["auto", "general", "newapi", "none"])),
+});
+export type ByokModelAdapter = typeof ByokModelAdapter.Type;
+
+/**
+ * Prompt-template injection config. All fields are non-secret prompt text.
+ * Remote repository templates are untrusted content: `sourceUrl` is stored
+ * for reference but nothing is fetched or enabled without explicit user
+ * selection — `selectedTemplate`/`customContent` only activate when the user
+ * saves them from the settings UI.
+ */
+export const ByokPromptTemplateConfig = Schema.Struct({
+  enabled: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
+  softwareChineseEnabled: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
+  mode: Schema.Literals(["replace", "append"]).pipe(
+    Schema.withDecodingDefault(Effect.succeed("append" as const)),
+  ),
+  selectedTemplate: Schema.String.pipe(Schema.withDecodingDefault(Effect.succeed(""))),
+  customEnabled: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
+  customContent: Schema.String.pipe(Schema.withDecodingDefault(Effect.succeed(""))),
+  sourceUrl: TrimmedString.pipe(Schema.withDecodingDefault(Effect.succeed(""))),
+});
+export type ByokPromptTemplateConfig = typeof ByokPromptTemplateConfig.Type;
+
+/**
+ * Names only — a delegation executor may reference environment variables by
+ * name, but secret values are never persisted in settings.
+ */
+export const ByokDelegationEnvVarName = TrimmedString.check(
+  Schema.isPattern(/^[A-Za-z_][A-Za-z0-9_]*$/),
+);
+
+export const ByokDelegationModelGroup = Schema.Struct({
+  id: Schema.String,
+  name: TrimmedString,
+  enabled: Schema.Boolean,
+  // References into the adapter list; no connection info or keys are duplicated.
+  modelIds: Schema.Array(TrimmedString).pipe(Schema.withDecodingDefault(Effect.succeed([]))),
+  defaultModelId: Schema.optional(TrimmedString),
+});
+export type ByokDelegationModelGroup = typeof ByokDelegationModelGroup.Type;
+
+export const ByokDelegationConfig = Schema.Struct({
+  enabled: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
+  maxConcurrency: Schema.Number.pipe(Schema.withDecodingDefault(Effect.succeed(4))),
+  queueTimeoutMs: Schema.Number.pipe(Schema.withDecodingDefault(Effect.succeed(30_000))),
+  executionTimeoutMs: Schema.Number.pipe(Schema.withDecodingDefault(Effect.succeed(120_000))),
+  modelGroups: Schema.Array(ByokDelegationModelGroup).pipe(
+    Schema.withDecodingDefault(Effect.succeed([])),
+  ),
+  executorCommand: TrimmedString.pipe(Schema.withDecodingDefault(Effect.succeed(""))),
+  executorEnvironmentVariables: Schema.Array(ByokDelegationEnvVarName).pipe(
+    Schema.withDecodingDefault(Effect.succeed([])),
+  ),
+});
+export type ByokDelegationConfig = typeof ByokDelegationConfig.Type;
+
+export const ByokSettings = makeProviderSettingsSchema({
+  // Off by default: BYOK calls external model APIs with user-supplied keys.
+  // Users opt in from Settings and add model adapters there.
+  enabled: Schema.Boolean.pipe(
+    Schema.withDecodingDefault(Effect.succeed(false)),
+    Schema.annotateKey({ providerSettingsForm: { hidden: true } }),
+  ),
+  // Rendered by the dedicated BYOK model-adapter editor in the web UI, not by
+  // the generic settings form.
+  adapters: Schema.Array(ByokModelAdapter).pipe(
+    Schema.withDecodingDefault(Effect.succeed([])),
+    Schema.annotateKey({ providerSettingsForm: { hidden: true } }),
+  ),
+  promptTemplate: ByokPromptTemplateConfig.pipe(
+    Schema.withDecodingDefault(Effect.succeed({})),
+    Schema.annotateKey({ providerSettingsForm: { hidden: true } }),
+  ),
+  delegation: ByokDelegationConfig.pipe(
+    Schema.withDecodingDefault(Effect.succeed({})),
+    Schema.annotateKey({ providerSettingsForm: { hidden: true } }),
+  ),
+});
+export type ByokSettings = typeof ByokSettings.Type;
+
 export const ObservabilitySettings = Schema.Struct({
   otlpTracesUrl: TrimmedString.pipe(Schema.withDecodingDefault(Effect.succeed(""))),
   otlpMetricsUrl: TrimmedString.pipe(Schema.withDecodingDefault(Effect.succeed(""))),
@@ -673,6 +783,7 @@ export const ServerSettings = Schema.Struct({
     cursor: CursorSettings.pipe(Schema.withDecodingDefault(Effect.succeed({}))),
     grok: GrokSettings.pipe(Schema.withDecodingDefault(Effect.succeed({}))),
     opencode: OpenCodeSettings.pipe(Schema.withDecodingDefault(Effect.succeed({}))),
+    byok: ByokSettings.pipe(Schema.withDecodingDefault(Effect.succeed({}))),
   }).pipe(Schema.withDecodingDefault(Effect.succeed({}))),
   // New driver-agnostic instance map. Keyed by `ProviderInstanceId`; values
   // are `ProviderInstanceConfig` envelopes. The driver-specific config blob
@@ -820,6 +931,13 @@ const OpenCodeSettingsPatch = Schema.Struct({
   customModels: Schema.optionalKey(Schema.Array(Schema.String)),
 });
 
+const ByokSettingsPatch = Schema.Struct({
+  enabled: Schema.optionalKey(Schema.Boolean),
+  adapters: Schema.optionalKey(Schema.Array(ByokModelAdapter)),
+  promptTemplate: Schema.optionalKey(ByokPromptTemplateConfig),
+  delegation: Schema.optionalKey(ByokDelegationConfig),
+});
+
 export const ServerSettingsPatch = Schema.Struct({
   // Server settings
   enableLegacyTokenStreaming: Schema.optionalKey(Schema.Boolean),
@@ -861,6 +979,7 @@ export const ServerSettingsPatch = Schema.Struct({
       cursor: Schema.optionalKey(CursorSettingsPatch),
       grok: Schema.optionalKey(GrokSettingsPatch),
       opencode: Schema.optionalKey(OpenCodeSettingsPatch),
+      byok: Schema.optionalKey(ByokSettingsPatch),
     }),
   ),
   // Whole-map replacement for the new instance config. Patching individual
@@ -882,6 +1001,7 @@ export const ClientSettingsPatch = Schema.Struct({
   confirmThreadDelete: Schema.optionalKey(Schema.Boolean),
   diffIgnoreWhitespace: Schema.optionalKey(Schema.Boolean),
   environmentIdentificationMode: Schema.optionalKey(EnvironmentIdentificationMode),
+  language: Schema.optionalKey(LanguagePreference),
   glassOpacity: Schema.optionalKey(GlassOpacity),
   fontSizeInterface: Schema.optionalKey(InterfaceFontSize),
   fontSizePrompt: Schema.optionalKey(PromptFontSize),

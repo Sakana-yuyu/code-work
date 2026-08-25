@@ -6,6 +6,7 @@ import { cn } from "~/lib/utils";
 import { type PromptStashEntry } from "../../promptStashStore";
 import { Command, CommandGroup, CommandItem, CommandList } from "../ui/command";
 import { Button } from "../ui/button";
+import { t } from "~/i18n";
 
 const SNIPPET_MAX_CHARS = 90;
 
@@ -117,7 +118,7 @@ export const ComposerStashMenu = memo(function ComposerStashMenu(props: {
           <Button
             variant="ghost-muted"
             size="icon-micro"
-            aria-label="Close stash"
+            aria-label={t("closeStash")}
             onPointerDown={(event) => event.preventDefault()}
             onClick={onClose}
           >
@@ -183,7 +184,7 @@ export const ComposerStashMenu = memo(function ComposerStashMenu(props: {
                     variant="ghost"
                     size="icon-xs"
                     className="pointer-events-none shrink-0 [--control-icon-color:currentColor] opacity-0 shadow-none! transition-opacity pointer-coarse:pointer-events-auto pointer-coarse:opacity-100 group-hover/stash:pointer-events-auto group-hover/stash:opacity-100 group-focus-within/stash:pointer-events-auto group-focus-within/stash:opacity-100 focus-visible:pointer-events-auto focus-visible:opacity-100"
-                    aria-label="Delete stashed prompt"
+                    aria-label={t("deleteStashedPrompt")}
                     onClick={(event) => {
                       event.stopPropagation();
                       onDelete(entry);

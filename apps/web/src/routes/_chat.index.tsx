@@ -18,6 +18,7 @@ import {
 import { useEnvironments } from "../state/environments";
 import { APP_DISPLAY_NAME } from "~/branding";
 import { hasCloudPublicConfig } from "~/cloud/publicConfig";
+import { t } from "~/i18n";
 
 function ChatIndexRouteView() {
   const { authGateState } = Route.useRouteContext();
@@ -87,14 +88,14 @@ function DraftStartError({ onRetry }: { readonly onRetry: () => void }) {
     <SidebarInset className="h-dvh min-h-0 overflow-hidden overscroll-y-none bg-background text-foreground">
       <Empty className="flex-1">
         <EmptyHeader className="max-w-md">
-          <EmptyTitle className="text-foreground text-xl">Couldn’t start a new thread</EmptyTitle>
+          <EmptyTitle className="text-foreground text-xl">{t("couldnTStartANewThread")}</EmptyTitle>
           <EmptyDescription className="mt-2 text-sm text-muted-foreground/78">
-            The project is still available. Try opening the draft again.
+            {t("theProjectIsStillAvailableTryOpeningTheDraftAgain")}
           </EmptyDescription>
           <div className="mt-5 flex justify-center">
             <Button size="sm" onClick={onRetry}>
               <RotateCcwIcon className="size-4" />
-              Try again
+              {t("tryAgain2")}
             </Button>
           </div>
         </EmptyHeader>
@@ -113,15 +114,15 @@ function NoProjectsHero() {
           <div className="w-full max-w-lg px-8 py-12">
             <EmptyHeader className="max-w-none">
               <EmptyTitle className="text-foreground text-2xl sm:text-3xl">
-                What should we work on?
+                {t("whatShouldWeWorkOn")}
               </EmptyTitle>
               <EmptyDescription className="mt-2 text-sm text-muted-foreground/78">
-                Add a project to start your first thread.
+                {t("addAProjectToStartYourFirstThread")}
               </EmptyDescription>
               <div className="mt-6 flex justify-center">
                 <Button size="sm" onClick={openAddProject}>
                   <PlusIcon className="size-4" />
-                  Add project
+                  {t("addProject")}
                 </Button>
               </div>
             </EmptyHeader>
@@ -157,17 +158,19 @@ function HostedStaticOnboardingState() {
                 <LinkIcon className="size-5" />
               </div>
               <EmptyTitle className="text-foreground text-xl">
-                Connect an environment to get started
+                {t("connectAnEnvironmentToGetStarted")}
               </EmptyTitle>
               <EmptyDescription className="mt-2 text-sm leading-relaxed text-muted-foreground/78">
                 {cloudEnabled
-                  ? "Sign in to T3 Connect to connect a linked environment through its managed tunnel, or add a reachable backend manually."
-                  : "Add a reachable backend manually to start working from this browser."}
+                  ? t(
+                      "Sign in to T3 Connect to connect a linked environment through its managed tunnel, or add a reachable backend manually.",
+                    )
+                  : t("addAReachableBackendManuallyToStartWorkingFromThisBrowser")}
               </EmptyDescription>
               <div className="mt-6 flex justify-center">
                 <Button render={<Link to="/settings/connections" />} size="sm">
                   <PlusIcon className="size-4" />
-                  {cloudEnabled ? "Open Connections" : "Add environment"}
+                  {cloudEnabled ? t("openConnections") : t("addEnvironment")}
                 </Button>
               </div>
             </EmptyHeader>

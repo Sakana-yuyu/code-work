@@ -12,6 +12,7 @@ import {
 } from "@t3tools/shared/keybindings";
 
 import { isMacPlatform } from "../../lib/utils";
+import { t } from "~/i18n";
 
 export type KeybindingSource = "Default" | "Custom" | "Project";
 
@@ -83,7 +84,7 @@ export function parseWhenExpressionDraft(
   if (!ast) {
     return {
       ok: false,
-      message: "Use variables with !, &&, ||, and parentheses.",
+      message: t("useVariablesWithAndParentheses"),
     };
   }
 
@@ -148,7 +149,7 @@ export function keybindingConflictLabels(
       candidate.key === input.key &&
       conflictsWithWhen(candidate.when, input.when)
     ) {
-      conflicts.push(commandLabel(candidate.command));
+      conflicts.push(localizedCommandLabel(candidate.command));
     }
   }
   return [...new Set(conflicts)].toSorted();
@@ -271,6 +272,23 @@ export function commandLabel(command: KeybindingCommand): string {
     return `Run Script: ${titleCaseCommandSegment(raw.slice("script.".length, -".run".length))}`;
   }
   return raw.split(".").map(titleCaseCommandSegment).join(": ");
+}
+
+const STATIC_COMMANDS = new Set<string>(STATIC_KEYBINDING_COMMANDS);
+
+/**
+ * Locale-aware command label for display. Static commands resolve to
+ * `keybindings.command.*` catalog entries; script commands and anything the
+ * catalog does not cover fall back to the generated English label.
+ */
+export function localizedCommandLabel(command: KeybindingCommand): string {
+  const raw = String(command);
+  if (raw.startsWith("script.") && raw.endsWith(".run")) {
+    return t("keybindings.command.scriptRun", {
+      name: titleCaseCommandSegment(raw.slice("script.".length, -".run".length)),
+    });
+  }
+  return STATIC_COMMANDS.has(raw) ? t(`keybindings.command.${raw}`) : commandLabel(command);
 }
 
 function titleCaseCommandSegment(segment: string): string {

@@ -271,29 +271,30 @@ import {
 import { searchProviderSkills } from "../../providerSkillSearch";
 import { useMediaQuery } from "../../hooks/useMediaQuery";
 import type { ReviewCommentContext } from "../../reviewCommentContext";
+import { t } from "~/i18n";
 
 const runtimeModeConfig: Record<
   RuntimeMode,
-  { label: string; description: string; icon: LucideIcon }
+  { labelKey: string; descriptionKey: string; icon: LucideIcon }
 > = {
   "approval-required": {
-    label: "Supervised",
-    description: "Ask before commands and file changes.",
+    labelKey: "chat.supervised",
+    descriptionKey: "chat.supervisedDescription",
     icon: LockIcon,
   },
   "auto-accept-edits": {
-    label: "Auto-accept edits",
-    description: "Auto-approve edits, ask before other actions.",
+    labelKey: "chat.autoAcceptEdits",
+    descriptionKey: "chat.autoAcceptEditsDescription",
     icon: PenLineIcon,
   },
   auto: {
-    label: "Auto",
-    description: "Supported providers approve routine actions; others still ask.",
+    labelKey: "chat.auto",
+    descriptionKey: "chat.autoDescription",
     icon: SparklesIcon,
   },
   "full-access": {
-    label: "Full access",
-    description: "Allow commands and edits without prompts.",
+    labelKey: "chat.fullAccess",
+    descriptionKey: "chat.fullAccessDescription",
     icon: LockOpenIcon,
   },
 };
@@ -397,10 +398,12 @@ const ComposerFooterModeControls = memo(function ComposerFooterModeControls(prop
           onValueChange={(value) => props.onRuntimeModeChange(value!)}
         >
           <TooltipTrigger
-            render={<ComposerSelectControl className="font-medium" aria-label="Runtime mode" />}
+            render={
+              <ComposerSelectControl className="font-medium" aria-label={t("chat.runtimeMode")} />
+            }
           >
             <ComposerControlIcon icon={RuntimeModeIcon} />
-            <SelectValue>{runtimeModeOption.label}</SelectValue>
+            <SelectValue>{t(runtimeModeOption.labelKey)}</SelectValue>
           </TooltipTrigger>
           <SelectPopup alignItemWithTrigger={false}>
             {runtimeModeOptions.map((mode) => {
@@ -412,10 +415,10 @@ const ComposerFooterModeControls = memo(function ComposerFooterModeControls(prop
                     <div className="grid min-w-0 flex-1 gap-0.5">
                       <span className="inline-flex items-center gap-1.5 font-medium text-foreground">
                         <OptionIcon className="size-3.5 shrink-0 text-muted-foreground" />
-                        {option.label}
+                        {t(option.labelKey)}
                       </span>
                       <span className="text-muted-foreground text-xs leading-4">
-                        {option.description}
+                        {t(option.descriptionKey)}
                       </span>
                     </div>
                   </div>
@@ -424,7 +427,7 @@ const ComposerFooterModeControls = memo(function ComposerFooterModeControls(prop
             })}
           </SelectPopup>
         </Select>
-        <TooltipPopup side="top">{runtimeModeOption.description}</TooltipPopup>
+        <TooltipPopup side="top">{t(runtimeModeOption.descriptionKey)}</TooltipPopup>
       </Tooltip>
 
       {interactionModeToggle}
@@ -3334,19 +3337,18 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                   onPaste={onComposerPaste}
                   placeholder={
                     isComposerApprovalState
-                      ? (activePendingApproval?.detail ??
-                        "Resolve this approval request to continue")
+                      ? (activePendingApproval?.detail ?? t("resolveThisApprovalRequestToContinue"))
                       : activePendingProgress
-                        ? "Type your own answer, or leave this blank to use the selected option"
+                        ? t("typeYourOwnAnswerOrLeaveThisBlankToUseTheSelectedOption")
                         : showPlanFollowUpPrompt && activeProposedPlan
-                          ? "Add feedback to refine the plan, or leave this blank to implement it"
+                          ? t("addFeedbackToRefineThePlanOrLeaveThisBlankToImplementIt")
                           : projectSelectionRequired
-                            ? "Choose a project above to start a thread"
+                            ? t("chooseAProjectAboveToStartAThread")
                             : noProviderAvailable
-                              ? "Enable a provider in Settings to send a message"
+                              ? t("enableAProviderInSettingsToSendAMessage")
                               : phase === "disconnected"
-                                ? DISCONNECTED_COMPOSER_PLACEHOLDER
-                                : "Ask anything, @tag files/folders, $use skills, or / for commands"
+                                ? DISCONNECTED_COMPOSER_PLACEHOLDER()
+                                : t("askAnythingTagFilesFoldersUseSkillsOrForCommands")
                   }
                   disabled={isConnecting || isComposerApprovalState || projectSelectionRequired}
                 />

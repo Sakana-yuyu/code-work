@@ -2,6 +2,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vite-plus/test";
 
 import { ComposerStashMenu } from "./ComposerStashMenu";
+import { t } from "~/i18n";
 
 describe("ComposerStashMenu", () => {
   it("renders saved prompts as an attached composer drawer", () => {
@@ -17,7 +18,7 @@ describe("ComposerStashMenu", () => {
     expect(markup).toContain('data-composer-stash-drawer="true"');
     expect(markup).toContain("chat-composer-drawer-surface");
     expect(markup).toContain("chat-composer-drawer-attached");
-    expect(markup).toContain('aria-label="Close stash"');
+    expect(markup).toContain(`aria-label="${t("closeStash")}"`);
     expect(markup).not.toContain("dropdown-glass");
     expect(markup).not.toContain("Stashed prompts");
   });

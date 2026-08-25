@@ -3,6 +3,11 @@ import type { ScopedThreadRef, TurnId } from "@t3tools/contracts";
 import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
 
+import {
+  canonicalStorageKey,
+  createCanonicalFirstStorage,
+  type SynchronousStateStorage,
+} from "./persistenceStorage";
 import { resolveStorage } from "./lib/storage";
 
 export type DiffPanelSelection =
@@ -30,6 +35,26 @@ interface DiffPanelStoreState {
 function normalizeBaseRef(baseRef: string | null): string | null {
   const normalized = baseRef?.trim();
   return normalized ? normalized : null;
+}
+
+const LEGACY_DIFF_PANEL_STORAGE_KEY = "t3code:diff-panel-state:v1";
+const DIFF_PANEL_STORAGE_KEY = canonicalStorageKey(LEGACY_DIFF_PANEL_STORAGE_KEY);
+
+function createDiffPanelStorage() {
+  const storage = resolveStorage(typeof window !== "undefined" ? window.localStorage : undefined);
+  return createCanonicalFirstStorage({
+    storage: storage as SynchronousStateStorage,
+    canonicalKey: DIFF_PANEL_STORAGE_KEY,
+    legacyKey: LEGACY_DIFF_PANEL_STORAGE_KEY,
+    validate: (raw) => {
+      try {
+        JSON.parse(raw);
+        return true;
+      } catch {
+        return false;
+      }
+    },
+  });
 }
 
 export const useDiffPanelStore = create<DiffPanelStoreState>()(
@@ -124,11 +149,9 @@ export const useDiffPanelStore = create<DiffPanelStoreState>()(
         }),
     }),
     {
-      name: "t3code:diff-panel-state:v1",
+      name: DIFF_PANEL_STORAGE_KEY,
       version: 1,
-      storage: createJSONStorage(() =>
-        resolveStorage(typeof window !== "undefined" ? window.localStorage : undefined),
-      ),
+      storage: createJSONStorage(createDiffPanelStorage),
       partialize: (state) => ({
         byThreadKey: state.byThreadKey,
         branchBaseRefByThreadKey: state.branchBaseRefByThreadKey,

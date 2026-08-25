@@ -17,6 +17,7 @@ import {
   AlertDialogTitle,
 } from "./ui/alert-dialog";
 import { Button } from "./ui/button";
+import { t } from "~/i18n";
 
 type ConfirmationCopy = {
   readonly title: string;
@@ -46,8 +47,8 @@ export function resolveConfirmDialogCopy(message: string): ConfirmationCopy {
   }
 
   return {
-    title: "Confirm action",
-    description: normalizedMessage || "This action requires your confirmation.",
+    title: t("confirmAction"),
+    description: normalizedMessage || t("thisActionRequiresYourConfirmation"),
   };
 }
 
@@ -85,9 +86,9 @@ export function ConfirmDialogHost() {
           ) : null}
         </AlertDialogHeader>
         <AlertDialogFooter>
-          <AlertDialogClose render={<Button variant="outline" />}>Cancel</AlertDialogClose>
+          <AlertDialogClose render={<Button variant="outline" />}>{t("cancel")}</AlertDialogClose>
           <Button variant={confirmVariant} onClick={onConfirm}>
-            Confirm
+            {t("confirm")}
           </Button>
         </AlertDialogFooter>
       </AlertDialogPopup>

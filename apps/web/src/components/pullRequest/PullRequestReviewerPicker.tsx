@@ -26,6 +26,7 @@ import { toastManager } from "../ui/toast";
 import { PullRequestPeopleGhost } from "./PullRequestGhosts";
 import { PullRequestActorLabel } from "./pullRequestPresentation";
 import { readableFailure } from "./pullRequestDetail.logic";
+import { t } from "~/i18n";
 
 /** Long lists are common — an organisation repository lists everyone — so what arrived can be
  * narrowed here. It narrows only what arrived: the host is asked once, when the menu opens. */
@@ -109,7 +110,7 @@ export function PullRequestReviewerPicker({
       <Tooltip>
         <TooltipTrigger
           render={
-            <Button size="icon-xs" variant="ghost" disabled aria-label="Request a review">
+            <Button size="icon-xs" variant="ghost" disabled aria-label={t("requestAReview")}>
               <UserPlusIcon className="size-3.5" />
             </Button>
           }
@@ -125,7 +126,7 @@ export function PullRequestReviewerPicker({
     <Menu open={open} onOpenChange={setOpen}>
       <MenuTrigger
         render={
-          <Button size="icon-xs" variant="ghost" aria-label="Request a review">
+          <Button size="icon-xs" variant="ghost" aria-label={t("requestAReview")}>
             <UserPlusIcon className="size-3.5" />
           </Button>
         }
@@ -136,8 +137,8 @@ export function PullRequestReviewerPicker({
             autoFocus
             value={query}
             onChange={(event) => setQuery(event.currentTarget.value)}
-            placeholder="Search people with access"
-            aria-label="Search people with access"
+            placeholder={t("searchPeopleWithAccess")}
+            aria-label={t("searchPeopleWithAccess")}
             size="compact"
           />
         </div>
@@ -168,7 +169,7 @@ export function PullRequestReviewerPicker({
                   <span className="shrink-0 text-muted-foreground">team</span>
                 ) : null}
                 {candidate.isRequested ? (
-                  <CheckIcon aria-label="Already asked" className="size-3.5 shrink-0" />
+                  <CheckIcon aria-label={t("alreadyAsked")} className="size-3.5 shrink-0" />
                 ) : null}
               </button>
             ))

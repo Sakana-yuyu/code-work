@@ -7,9 +7,9 @@ tag="${RELEASE_TAG:?RELEASE_TAG is required}"
 pkgrel="${PKGREL:-1}"
 
 if [[ "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-  pkgname='t3code-bin'
+  pkgname='code-work-bin'
 elif [[ "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+-nightly\.[0-9]{8}\.[0-9]+$ ]]; then
-  pkgname='t3code-nightly-bin'
+  pkgname='code-work-nightly-bin'
 else
   echo "Release $tag does not publish an AUR package."
   exit 0
@@ -17,7 +17,7 @@ fi
 
 version="${tag#v}"
 pkgver="${version//-/_}"
-asset_name="T3-Code-${version}-x86_64.AppImage"
+asset_name="Code-Work-${version}-x86_64.AppImage"
 release_json="$(gh api "repos/$repo/releases/tags/$tag")"
 asset_digest="$(jq -r --arg name "$asset_name" \
   '.assets[] | select(.name == $name) | .digest' <<<"$release_json")"
@@ -77,9 +77,9 @@ export GIT_SSH_COMMAND="ssh -i $key_file -o IdentitiesOnly=yes -o UserKnownHosts
 git clone "ssh://aur@aur.archlinux.org/$pkgname.git" "$aur_dir"
 cp PKGBUILD .SRCINFO "$aur_dir/"
 cd "$aur_dir"
-git rm --ignore-unmatch LICENSE .upstream-commit t3code-icon.png
-git config user.name 't3code-ci'
-git config user.email 't3code-ci@users.noreply.github.com'
+  git rm --ignore-unmatch LICENSE .upstream-commit t3code-icon.png code-work-icon.png
+  git config user.name 'code-work-ci'
+  git config user.email 'code-work-ci@users.noreply.github.com'
 git add -A
 
 if git diff --cached --quiet; then

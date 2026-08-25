@@ -9,6 +9,7 @@ import * as Arr from "effect/Array";
 import * as Result from "effect/Result";
 import { type ReactNode } from "react";
 import { sortThreads } from "../lib/threadSort";
+import { t } from "../i18n";
 import { formatRelativeTimeLabel } from "../timestampFormat";
 import { type Project, type SidebarThreadSummary, type Thread } from "../types";
 
@@ -216,7 +217,7 @@ export function buildThreadActionItems<TThread extends BuildThreadActionItemsThr
       descriptionParts.push(`#${thread.branch}`);
     }
     if (thread.id === input.activeThreadId) {
-      descriptionParts.push("Current thread");
+      descriptionParts.push(t("commandPalette.currentThread"));
     }
 
     const leadingContent = input.renderLeadingContent?.(thread);
@@ -318,14 +319,14 @@ export function filterCommandPaletteGroups(input: {
     if (input.projectSearchItems.length > 0) {
       searchableGroups.push({
         value: "projects-search",
-        label: "Projects",
+        label: t("commandPalette.projects"),
         items: input.projectSearchItems,
       });
     }
     if (input.threadSearchItems.length > 0) {
       searchableGroups.push({
         value: "threads-search",
-        label: "Threads",
+        label: t("commandPalette.threads"),
         items: input.threadSearchItems,
       });
     }
@@ -394,7 +395,7 @@ export function buildBrowseGroups(input: {
     });
   }
 
-  return [{ value: "directories", label: "Directories", items }];
+  return [{ value: "directories", label: t("commandPalette.directories"), items }];
 }
 
 export function filterPinnedBrowseEntries(input: {
@@ -432,12 +433,16 @@ export function buildRootGroups(input: {
 }): CommandPaletteGroup[] {
   const groups: CommandPaletteGroup[] = [];
   if (input.actionItems.length > 0) {
-    groups.push({ value: "actions", label: "Actions", items: input.actionItems });
+    groups.push({
+      value: "actions",
+      label: t("commandPalette.actions"),
+      items: input.actionItems,
+    });
   }
   if (input.recentThreadItems.length > 0) {
     groups.push({
       value: "recent-threads",
-      label: "Recent Threads",
+      label: t("commandPalette.recentThreads"),
       items: input.recentThreadItems,
     });
   }
@@ -447,12 +452,12 @@ export function buildRootGroups(input: {
 export function getCommandPaletteInputPlaceholder(mode: CommandPaletteMode): string {
   switch (mode) {
     case "root":
-      return "Search commands, projects, and threads...";
+      return t("commandPalette.placeholderSearchAll");
     case "root-browse":
-      return "Enter project path (e.g. ~/projects/my-app)";
+      return t("commandPalette.placeholderRootBrowse");
     case "submenu":
-      return "Search...";
+      return t("commandPalette.placeholderSearch");
     case "submenu-browse":
-      return "Enter path (e.g. ~/projects/my-app)";
+      return t("commandPalette.placeholderSubmenuBrowse");
   }
 }

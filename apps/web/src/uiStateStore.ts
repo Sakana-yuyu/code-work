@@ -1,8 +1,10 @@
 import { Debouncer } from "@tanstack/react-pacer";
 import { create } from "zustand";
 import { normalizeProjectPathForComparison } from "./lib/projectPaths";
+import { canonicalStorageKey, migrateRawStorageValue } from "./persistenceStorage";
 
-export const PERSISTED_STATE_KEY = "t3code:ui-state:v1";
+export const LEGACY_PERSISTED_STATE_KEY = "t3code:ui-state:v1";
+export const PERSISTED_STATE_KEY = canonicalStorageKey(LEGACY_PERSISTED_STATE_KEY);
 const THREAD_CHANGED_FILES_EXPANSION_VERSION = 1;
 const LEGACY_PERSISTED_STATE_KEYS = [
   "t3code:renderer-state:v8",
@@ -143,18 +145,35 @@ function readPersistedState(): UiState {
     return initialState;
   }
   try {
-    const raw = window.localStorage.getItem(PERSISTED_STATE_KEY);
-    if (!raw) {
-      for (const legacyKey of LEGACY_PERSISTED_STATE_KEYS) {
-        const legacyRaw = window.localStorage.getItem(legacyKey);
-        if (!legacyRaw) {
-          continue;
-        }
+    const isValid = (raw: string) => {
+      try {
+        JSON.parse(raw);
+        return true;
+      } catch {
+        return false;
+      }
+    };
+    const raw = migrateRawStorageValue({
+      storage: window.localStorage,
+      canonicalKey: PERSISTED_STATE_KEY,
+      legacyKey: LEGACY_PERSISTED_STATE_KEY,
+      validate: isValid,
+    });
+    if (raw !== null) {
+      return parsePersistedState(JSON.parse(raw) as PersistedUiState);
+    }
+    for (const legacyKey of LEGACY_PERSISTED_STATE_KEYS) {
+      const legacyRaw = migrateRawStorageValue({
+        storage: window.localStorage,
+        canonicalKey: PERSISTED_STATE_KEY,
+        legacyKey,
+        validate: isValid,
+      });
+      if (legacyRaw !== null) {
         return parsePersistedState(JSON.parse(legacyRaw) as PersistedUiState);
       }
-      return initialState;
     }
-    return parsePersistedState(JSON.parse(raw) as PersistedUiState);
+    return initialState;
   } catch {
     return initialState;
   }

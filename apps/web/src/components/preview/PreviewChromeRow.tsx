@@ -20,6 +20,7 @@ import { Button } from "~/components/ui/button";
 import { InputGroup, InputGroupAddon, InputGroupInput } from "~/components/ui/input-group";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "~/components/ui/tooltip";
 import { cn } from "~/lib/utils";
+import { t } from "~/i18n";
 
 interface Props {
   url: string;
@@ -112,7 +113,7 @@ export function PreviewChromeRow({
         className="flex h-10 min-h-10 shrink-0 items-center gap-1 border-b border-border/60 bg-background px-2 in-data-[preview-panel-mode=inline]:mb-3 in-data-[preview-panel-mode=inline]:h-7 in-data-[preview-panel-mode=inline]:min-h-7 in-data-[preview-panel-mode=inline]:border-b-transparent"
         data-surface-subheader
       >
-        <div className="flex items-center gap-0.5" role="group" aria-label="Navigation">
+        <div className="flex items-center gap-0.5" role="group" aria-label={t("navigation")}>
           <Tooltip>
             <TooltipTrigger
               render={
@@ -121,7 +122,7 @@ export function PreviewChromeRow({
                   size="icon-xs"
                   onClick={canGoBack ? onBack : NOOP}
                   disabled={!canGoBack}
-                  aria-label="Back"
+                  aria-label={t("back")}
                   type="button"
                 />
               }
@@ -138,7 +139,7 @@ export function PreviewChromeRow({
                   size="icon-xs"
                   onClick={canGoForward ? onForward : NOOP}
                   disabled={!canGoForward}
-                  aria-label="Forward"
+                  aria-label={t("forward")}
                   type="button"
                 />
               }
@@ -195,7 +196,7 @@ export function PreviewChromeRow({
                       inputRef.current?.blur();
                     }
                   }}
-                  placeholder="Search or enter URL"
+                  placeholder={t("searchOrEnterUrl")}
                   spellCheck={false}
                   disabled={inputDisabled}
                   data-preview-url-input
@@ -216,7 +217,7 @@ export function PreviewChromeRow({
                       variant="ghost"
                       size="icon-xs"
                       onClick={onOpenInBrowser}
-                      aria-label="Open in system browser"
+                      aria-label={t("openInSystemBrowser")}
                       type="button"
                     />
                   }

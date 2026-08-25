@@ -10,6 +10,14 @@ import * as Layer from "effect/Layer";
 import * as Schema from "effect/Schema";
 import { importJWK, SignJWT, type JWK } from "jose";
 
+import {
+  createNativeIndexedDbMigrationDatabase,
+  indexedDbDatabaseExists,
+  migrateIndexedDbStores,
+  type IndexedDbMigrationDatabase,
+  type IndexedDbMigrationReport,
+} from "../persistenceIndexedDb";
+
 export interface BrowserDpopKey {
   readonly privateKey: CryptoKey;
   readonly publicJwk: DpopPublicJwk;
@@ -21,7 +29,8 @@ export class BrowserDpopError extends Data.TaggedError("BrowserDpopError")<{
   readonly cause?: unknown;
 }> {}
 
-const DPOP_DATABASE_NAME = "t3code:cloud-auth";
+export const DPOP_DATABASE_NAME = "codework:cloud-auth";
+export const LEGACY_DPOP_DATABASE_NAME = "t3code:cloud-auth";
 const DPOP_DATABASE_VERSION = 1;
 const DPOP_KEY_STORE_NAME = "keys";
 const DPOP_KEY_ID = "relay-dpop-proof-key";
@@ -44,9 +53,9 @@ function dpopError(message: string, cause?: unknown) {
   return new BrowserDpopError({ message, ...(cause === undefined ? {} : { cause }) });
 }
 
-function openDpopDatabase(): Effect.Effect<IDBDatabase, BrowserDpopError> {
+function openNamedDpopDatabase(databaseName: string): Effect.Effect<IDBDatabase, BrowserDpopError> {
   return Effect.callback<IDBDatabase, BrowserDpopError>((resume) => {
-    const request = indexedDB.open(DPOP_DATABASE_NAME, DPOP_DATABASE_VERSION);
+    const request = indexedDB.open(databaseName, DPOP_DATABASE_VERSION);
     request.addEventListener("error", () =>
       resume(
         Effect.fail(dpopError("Could not open DPoP key storage.", request.error ?? undefined)),
@@ -58,6 +67,57 @@ function openDpopDatabase(): Effect.Effect<IDBDatabase, BrowserDpopError> {
       }
     });
     request.addEventListener("success", () => resume(Effect.succeed(request.result)));
+  });
+}
+
+const openDpopDatabase = Effect.fn("web.dpop.openDpopDatabase")(function* () {
+  const canonical = yield* openNamedDpopDatabase(DPOP_DATABASE_NAME);
+  const legacyExists = yield* Effect.tryPromise({
+    try: () => indexedDbDatabaseExists(LEGACY_DPOP_DATABASE_NAME),
+    catch: (cause) => dpopError("Could not inspect legacy DPoP key storage.", cause),
+  }).pipe(Effect.catch(() => Effect.succeed(false)));
+  if (legacyExists === true) {
+    yield* Effect.acquireUseRelease(
+      openNamedDpopDatabase(LEGACY_DPOP_DATABASE_NAME),
+      (legacy) =>
+        Effect.tryPromise({
+          try: () =>
+            migrateDpopDatabase({
+              legacy: createNativeIndexedDbMigrationDatabase(legacy),
+              canonical: createNativeIndexedDbMigrationDatabase(canonical),
+            }),
+          catch: (cause) => dpopError("Could not migrate legacy DPoP key storage.", cause),
+        }).pipe(
+          Effect.catch(() => Effect.void),
+          Effect.asVoid,
+        ),
+      (legacy) => Effect.sync(() => legacy.close()),
+    );
+  }
+  return canonical;
+});
+
+export async function migrateDpopDatabase(input: {
+  readonly legacy: IndexedDbMigrationDatabase;
+  readonly canonical: IndexedDbMigrationDatabase;
+}): Promise<IndexedDbMigrationReport> {
+  return migrateIndexedDbStores({
+    source: input.legacy,
+    target: input.canonical,
+    stores: [
+      {
+        storeName: DPOP_KEY_STORE_NAME,
+        validate: (value) => {
+          if (typeof value !== "object" || value === null) return false;
+          const candidate = value as Partial<BrowserDpopKey>;
+          return (
+            candidate.privateKey instanceof CryptoKey &&
+            typeof candidate.thumbprint === "string" &&
+            candidate.publicJwk !== undefined
+          );
+        },
+      },
+    ],
   });
 }
 

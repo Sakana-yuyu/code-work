@@ -32,13 +32,14 @@ import {
 import { WorkspacePageContainer } from "../WorkspacePageContainer";
 import { WorkspacePageHeader } from "../WorkspacePageHeader";
 import { UsageProviderChart, type UsageChartMetric } from "./UsageProviderChart";
+import { t } from "../../i18n";
 import { PROVIDER_ORDER, PROVIDER_PRESENTATION, providersWithUsage } from "./usageProviders";
 
 const WINDOW_OPTIONS = [
-  { days: 1, label: "Past 24h" },
-  { days: 7, label: "7 days" },
-  { days: 30, label: "30 days" },
-  { days: 90, label: "90 days" },
+  { days: 1, label: "usage.past24h" },
+  { days: 7, label: "usage.past7Days" },
+  { days: 30, label: "usage.past30Days" },
+  { days: 90, label: "usage.past90Days" },
 ] as const;
 
 export function UsagePage() {
@@ -104,7 +105,7 @@ export function UsagePage() {
     <div className="flex w-full min-w-0 items-center gap-3">
       <WorkspaceBreadcrumb ariaLabel="Usage breadcrumb" className="min-w-0">
         <WorkspaceBreadcrumbItem current>
-          <h1>Usage</h1>
+          <h1>{t("usage")}</h1>
         </WorkspaceBreadcrumbItem>
         <WorkspaceBreadcrumbSeparator className="hidden md:flex" />
         <WorkspaceBreadcrumbItem className="hidden min-w-0 shrink md:flex">
@@ -113,7 +114,7 @@ export function UsagePage() {
       </WorkspaceBreadcrumb>
       <div className="ms-auto hidden min-w-0 items-center justify-end gap-2 lg:flex">
         <ToggleGroup
-          aria-label="Usage metric"
+          aria-label={t("usageMetric")}
           variant="segmented"
           value={[metric]}
           onValueChange={(next) => {
@@ -123,12 +124,12 @@ export function UsagePage() {
         >
           {(["cost", "tokens"] as const).map((option) => (
             <Toggle key={option} value={option}>
-              {option === "cost" ? "Cost" : "Tokens"}
+              {option === "cost" ? t("cost") : t("tokens")}
             </Toggle>
           ))}
         </ToggleGroup>
         <ToggleGroup
-          aria-label="Usage period"
+          aria-label={t("usagePeriod")}
           variant="segmented"
           value={[String(windowDays)]}
           onValueChange={(next) => {
@@ -138,11 +139,16 @@ export function UsagePage() {
         >
           {WINDOW_OPTIONS.map((option) => (
             <Toggle key={option.days} value={String(option.days)}>
-              {option.label}
+              {t(option.label)}
             </Toggle>
           ))}
         </ToggleGroup>
-        <Button onClick={refreshWindow} aria-label="Refresh usage" size="icon-sm" variant="ghost">
+        <Button
+          onClick={refreshWindow}
+          aria-label={t("refreshUsage")}
+          size="icon-sm"
+          variant="ghost"
+        >
           <RefreshCwIcon className="size-3.5" />
         </Button>
       </div>
@@ -154,38 +160,43 @@ export function UsagePage() {
           }}
         >
           <SelectTrigger
-            aria-label="Usage metric"
+            aria-label={t("usageMetric")}
             size="compact"
             variant="ghost"
             className="w-auto min-w-0"
           >
-            <SelectValue>{metric === "cost" ? "Cost" : "Tokens"}</SelectValue>
+            <SelectValue>{metric === "cost" ? t("cost") : t("tokens")}</SelectValue>
           </SelectTrigger>
           <SelectPopup align="end" alignItemWithTrigger={false}>
-            <SelectItem value="cost">Cost</SelectItem>
-            <SelectItem value="tokens">Tokens</SelectItem>
+            <SelectItem value="cost">{t("cost")}</SelectItem>
+            <SelectItem value="tokens">{t("tokens")}</SelectItem>
           </SelectPopup>
         </Select>
         <Select value={String(windowDays)} onValueChange={(value) => selectWindow(Number(value))}>
           <SelectTrigger
-            aria-label="Usage period"
+            aria-label={t("usagePeriod")}
             size="compact"
             variant="ghost"
             className="w-auto min-w-0"
           >
             <SelectValue>
-              {WINDOW_OPTIONS.find((option) => option.days === windowDays)?.label}
+              {t(WINDOW_OPTIONS.find((option) => option.days === windowDays)?.label ?? "")}
             </SelectValue>
           </SelectTrigger>
           <SelectPopup align="end" alignItemWithTrigger={false}>
             {WINDOW_OPTIONS.map((option) => (
               <SelectItem key={option.days} value={String(option.days)}>
-                {option.label}
+                {t(option.label)}
               </SelectItem>
             ))}
           </SelectPopup>
         </Select>
-        <Button onClick={refreshWindow} aria-label="Refresh usage" size="icon-sm" variant="ghost">
+        <Button
+          onClick={refreshWindow}
+          aria-label={t("refreshUsage")}
+          size="icon-sm"
+          variant="ghost"
+        >
           <RefreshCwIcon className="size-3.5" />
         </Button>
       </div>
@@ -274,8 +285,8 @@ export function UsagePage() {
 
                   <div className="flex min-w-0 flex-col gap-3">
                     <h2 className="text-sm font-medium text-foreground">
-                      {isPast24Hours ? "Hourly" : "Daily"}{" "}
-                      {metric === "tokens" ? "processed tokens" : "cost"}
+                      {isPast24Hours ? t("hourly") : t("daily")}{" "}
+                      {metric === "tokens" ? t("processedTokens") : t("cost2")}
                     </h2>
                     <UsageProviderChart
                       providers={activeProviders}
@@ -292,17 +303,17 @@ export function UsagePage() {
                 </section>
 
                 <section className="flex flex-col gap-2">
-                  <h2 className="text-sm font-medium text-foreground">Totals</h2>
+                  <h2 className="text-sm font-medium text-foreground">{t("totals")}</h2>
                   <div className="grid grid-cols-2 gap-x-6 gap-y-4 py-1 md:grid-cols-5">
-                    <Metric label="Processed tokens" value={formatTokens(merged.totalTokens)} />
-                    <Metric label="Cached input" value={formatTokens(merged.cachedInputTokens)} />
+                    <Metric labelKey="processedTokens2" value={formatTokens(merged.totalTokens)} />
+                    <Metric labelKey="cachedInput" value={formatTokens(merged.cachedInputTokens)} />
                     <Metric
-                      label="Uncached input"
+                      labelKey="uncachedInput"
                       value={formatTokens(merged.uncachedInputTokens)}
                     />
-                    <Metric label="Output" value={formatTokens(merged.outputTokens)} />
+                    <Metric labelKey="output" value={formatTokens(merged.outputTokens)} />
                     <Metric
-                      label="Cache savings"
+                      labelKey="cacheSavings"
                       value={formatUsd(merged.costQuality.cacheSavingsUsd)}
                     />
                   </div>
@@ -310,9 +321,9 @@ export function UsagePage() {
 
                 <section className="flex flex-col gap-3">
                   <div className="flex items-center justify-between gap-3">
-                    <h2 className="text-sm font-medium text-foreground">Breakdown</h2>
+                    <h2 className="text-sm font-medium text-foreground">{t("breakdown")}</h2>
                     <ToggleGroup
-                      aria-label="Usage breakdown"
+                      aria-label={t("usageBreakdown")}
                       variant="segmented"
                       value={[breakdown]}
                       onValueChange={(next) => {
@@ -320,14 +331,9 @@ export function UsagePage() {
                         if (value === "model" || value === "time") setBreakdown(value);
                       }}
                     >
-                      {(
-                        [
-                          { value: "model", label: "Model" },
-                          { value: "time", label: isPast24Hours ? "Hour" : "Day" },
-                        ] as const
-                      ).map((option) => (
-                        <Toggle key={option.value} value={option.value}>
-                          {option.label}
+                      {(["model", "time"] as const).map((option) => (
+                        <Toggle key={option} value={option}>
+                          {option === "model" ? t("model") : isPast24Hours ? t("hour") : t("day")}
                         </Toggle>
                       ))}
                     </ToggleGroup>
@@ -467,10 +473,10 @@ function ProviderMark({
   return <Mark className={cn("shrink-0", className)} aria-hidden />;
 }
 
-function Metric({ label, value }: { readonly label: string; readonly value: string }) {
+function Metric({ labelKey, value }: { readonly labelKey: string; readonly value: string }) {
   return (
     <div className="flex min-w-0 flex-col gap-0.5">
-      <span className="text-xs text-muted-foreground">{label}</span>
+      <span className="text-xs text-muted-foreground">{t(labelKey)}</span>
       <span className="text-base font-medium text-foreground tabular-nums">{value}</span>
     </div>
   );
@@ -617,12 +623,12 @@ function UsageSkeleton() {
       </section>
 
       <section className="flex flex-col gap-2">
-        <h2 className="text-sm font-medium text-foreground">Totals</h2>
+        <h2 className="text-sm font-medium text-foreground">{t("totals")}</h2>
         <div className="grid grid-cols-2 gap-x-6 gap-y-4 py-1 md:grid-cols-5">
-          {["Processed tokens", "Cached input", "Uncached input", "Output", "Cache savings"].map(
-            (label) => (
-              <div key={label} className="flex flex-col gap-0.5">
-                <span className="text-xs text-muted-foreground">{label}</span>
+          {["processedTokens2", "cachedInput", "uncachedInput", "output", "cacheSavings"].map(
+            (labelKey) => (
+              <div key={labelKey} className="flex flex-col gap-0.5">
+                <span className="text-xs text-muted-foreground">{t(labelKey)}</span>
                 <div className="my-0.5 h-4 w-16 rounded-sm bg-muted" />
               </div>
             ),

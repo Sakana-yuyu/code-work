@@ -44,6 +44,68 @@ import { followStreamInEnvironment } from "./runtime.ts";
 
 export type ServerUpdateStage = "downloading" | "installing" | "resuming";
 
+export function createByokEnvironmentAtoms<R, E>(
+  runtime: Atom.AtomRuntime<EnvironmentRegistry | R, E>,
+) {
+  const discoveryScheduler = createAtomCommandScheduler();
+  const balanceScheduler = createAtomCommandScheduler();
+  return {
+    supplierCatalog: createEnvironmentRpcQueryAtomFamily(runtime, {
+      label: "environment-data:byok:supplier-catalog",
+      tag: WS_METHODS.serverGetByokSupplierCatalog,
+      staleTimeMs: 300_000,
+      idleTtlMs: 300_000,
+    }),
+    discoverModels: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:byok:discover-models",
+      tag: WS_METHODS.serverDiscoverByokModels,
+      scheduler: discoveryScheduler,
+      concurrency: {
+        mode: "singleFlight",
+        key: ({ environmentId, input }) =>
+          JSON.stringify([
+            environmentId,
+            input.instanceId,
+            input.adapterId,
+            input.forceRefresh === true,
+          ]),
+      },
+    }),
+    balance: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:byok:balance",
+      tag: WS_METHODS.serverGetByokBalance,
+      scheduler: balanceScheduler,
+      concurrency: {
+        mode: "singleFlight",
+        key: ({ environmentId, input }) =>
+          JSON.stringify([
+            environmentId,
+            input.instanceId,
+            input.adapterId,
+            input.forceRefresh === true,
+          ]),
+      },
+    }),
+    submitDelegation: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:byok:submit-delegation",
+      tag: WS_METHODS.serverSubmitByokDelegation,
+      scheduler: balanceScheduler,
+    }),
+    listDelegations: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:byok:list-delegations",
+      tag: WS_METHODS.serverListByokDelegations,
+      scheduler: balanceScheduler,
+    }),
+    importAdapters: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:byok:import-adapters",
+      tag: WS_METHODS.serverImportByokAdapters,
+      scheduler: balanceScheduler,
+    }),
+  };
+}
+
+export type ByokEnvironmentAtoms<R, E> = ReturnType<typeof createByokEnvironmentAtoms<R, E>>;
+
 export type ServerUpdateState =
   | { readonly status: "idle" }
   | {

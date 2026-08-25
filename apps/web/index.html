@@ -14,10 +14,34 @@
       (() => {
         const LIGHT_BACKGROUND = "#ffffff";
         const DARK_BACKGROUND = "#0a0a0a";
-        const CUSTOM_THEMES_STORAGE_KEY = "t3code:themes:v1";
-        const THEME_FOLLOW_SYSTEM_STORAGE_KEY = "t3code:theme-follow-system";
-        const THEME_APPEARANCE_MODE_STORAGE_KEY = "t3code:theme-appearance-mode";
-        const THEME_HALVES_STORAGE_KEY = "t3code:theme-halves:v1";
+        const LEGACY_CUSTOM_THEMES_STORAGE_KEY = "t3code:themes:v1";
+        const LEGACY_THEME_FOLLOW_SYSTEM_STORAGE_KEY = "t3code:theme-follow-system";
+        const LEGACY_THEME_APPEARANCE_MODE_STORAGE_KEY = "t3code:theme-appearance-mode";
+        const LEGACY_THEME_HALVES_STORAGE_KEY = "t3code:theme-halves:v1";
+        const LEGACY_THEME_STORAGE_KEY = "t3code:theme";
+        const canonicalStorageKey = (legacyKey) => `codework:${legacyKey.slice("t3code:".length)}`;
+        const CUSTOM_THEMES_STORAGE_KEY = canonicalStorageKey(LEGACY_CUSTOM_THEMES_STORAGE_KEY);
+        const THEME_FOLLOW_SYSTEM_STORAGE_KEY = canonicalStorageKey(
+          LEGACY_THEME_FOLLOW_SYSTEM_STORAGE_KEY,
+        );
+        const THEME_APPEARANCE_MODE_STORAGE_KEY = canonicalStorageKey(
+          LEGACY_THEME_APPEARANCE_MODE_STORAGE_KEY,
+        );
+        const THEME_HALVES_STORAGE_KEY = canonicalStorageKey(LEGACY_THEME_HALVES_STORAGE_KEY);
+        const THEME_STORAGE_KEY = canonicalStorageKey(LEGACY_THEME_STORAGE_KEY);
+        const readCanonicalFirst = (canonicalKey, legacyKey) => {
+          const canonical = window.localStorage.getItem(canonicalKey);
+          if (canonical !== null) return canonical;
+          const legacy = window.localStorage.getItem(legacyKey);
+          if (legacy === null) return null;
+          try {
+            window.localStorage.setItem(canonicalKey, legacy);
+            window.localStorage.removeItem(legacyKey);
+          } catch {
+            // Keep the legacy value if storage migration is unavailable.
+          }
+          return legacy;
+        };
         const SPLASH_COLORS = {
           light: {
             background: "#ffffff",
@@ -205,7 +229,8 @@
           if (RESERVED_THEME_IDS.includes(themeId)) return null;
           try {
             const parsed = JSON.parse(
-              window.localStorage.getItem(CUSTOM_THEMES_STORAGE_KEY) ?? "null",
+              readCanonicalFirst(CUSTOM_THEMES_STORAGE_KEY, LEGACY_CUSTOM_THEMES_STORAGE_KEY) ??
+                "null",
             );
             if (!Array.isArray(parsed)) return null;
             return (
@@ -217,7 +242,7 @@
         };
 
         try {
-          const storedTheme = window.localStorage.getItem("t3code:theme");
+          const storedTheme = readCanonicalFirst(THEME_STORAGE_KEY, LEGACY_THEME_STORAGE_KEY);
           const prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
           // Older builds stored the dark T3 Chat palette as its own theme id
           // and every maintainer theme under a t3- prefix; keep those
@@ -252,10 +277,14 @@
           const isThemed = isKnownTheme && themeModes !== null;
           const baseAppearance = customTheme ? customTheme.appearance : "light";
           const systemMode = prefersDark ? "dark" : "light";
-          const storedAppearanceMode = window.localStorage.getItem(
+          const storedAppearanceMode = readCanonicalFirst(
             THEME_APPEARANCE_MODE_STORAGE_KEY,
+            LEGACY_THEME_APPEARANCE_MODE_STORAGE_KEY,
           );
-          const storedFollowSystem = window.localStorage.getItem(THEME_FOLLOW_SYSTEM_STORAGE_KEY);
+          const storedFollowSystem = readCanonicalFirst(
+            THEME_FOLLOW_SYSTEM_STORAGE_KEY,
+            LEGACY_THEME_FOLLOW_SYSTEM_STORAGE_KEY,
+          );
           // Mirrors the runtime's getThemePreferenceMode fallback: a bare
           // "light"/"dark" preference names its own mode.
           const preferenceMode =
@@ -277,7 +306,8 @@
           let halfCustomTheme = null;
           try {
             const halvesRaw = JSON.parse(
-              window.localStorage.getItem(THEME_HALVES_STORAGE_KEY) ?? "null",
+              readCanonicalFirst(THEME_HALVES_STORAGE_KEY, LEGACY_THEME_HALVES_STORAGE_KEY) ??
+                "null",
             );
             const candidate = isRecord(halvesRaw) ? halvesRaw[wantedMode] : null;
             if (typeof candidate === "string") {
@@ -453,13 +483,13 @@
         object-fit: contain;
       }
     </style>
-    <title>T3 Code (Alpha)</title>
+    <title>Code Work</title>
   </head>
   <body>
     <div id="root">
       <div id="boot-shell">
-        <div id="boot-shell-card" aria-label="T3 Code splash screen">
-          <img id="boot-shell-logo" src="/apple-touch-icon.png" alt="T3 Code" />
+        <div id="boot-shell-card" aria-label="Code Work splash screen">
+          <img id="boot-shell-logo" src="/apple-touch-icon.png" alt="Code Work" />
         </div>
       </div>
     </div>

@@ -15,6 +15,7 @@ import {
   PROJECT_FILE_PICKER_RESULT_LIMIT,
 } from "./ProjectFilePicker.logic";
 import { useProjectFilePickerQuery } from "./projectFilesQueryState";
+import { t } from "~/i18n";
 
 interface ProjectFilePickerProps {
   readonly setOpen: (open: boolean) => void;
@@ -53,10 +54,10 @@ function getEmptyStateMessage(query: string, error: string | null, isPending: bo
 function EmptyProjectFilePicker() {
   return (
     <CommandPaletteContent
-      aria-label="File picker"
-      escapeLabel="Back"
-      footerActionLabel="Open file"
-      inputProps={{ disabled: true, placeholder: "Search files…" }}
+      aria-label={t("filePicker")}
+      escapeLabel={t("back")}
+      footerActionLabel={t("commandPalette.openFile")}
+      inputProps={{ disabled: true, placeholder: t("commandPalette.searchFiles") }}
       mode="none"
       testId="project-file-picker"
       value=""
@@ -117,11 +118,11 @@ function OpenProjectFilePicker(props: ProjectFilePickerProps & { target: ActiveP
 
   return (
     <CommandPaletteContent
-      aria-label="File picker"
+      aria-label={t("filePicker")}
       autoHighlight="always"
-      escapeLabel="Back"
-      footerActionLabel="Open file"
-      inputProps={{ placeholder: "Search files…" }}
+      escapeLabel={t("back")}
+      footerActionLabel={t("commandPalette.openFile")}
+      inputProps={{ placeholder: t("commandPalette.searchFiles") }}
       mode="none"
       onItemHighlighted={(value) => {
         setHighlightedItemValue(typeof value === "string" ? value : null);

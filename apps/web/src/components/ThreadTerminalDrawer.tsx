@@ -73,6 +73,7 @@ import { preventTerminalCloseShortcut } from "../lib/terminalCloseShortcut";
 import {
   resolveTerminalFontPreference,
   resolveTerminalFontSizePreference,
+  LEGACY_TYPOGRAPHY_ADVANCED_STORAGE_KEY,
   TYPOGRAPHY_ADVANCED_STORAGE_KEY,
 } from "../appearanceFonts";
 
@@ -1079,6 +1080,7 @@ export default function ThreadTerminalDrawer({
     TYPOGRAPHY_ADVANCED_STORAGE_KEY,
     false,
     Schema.Boolean,
+    { legacyKey: LEGACY_TYPOGRAPHY_ADVANCED_STORAGE_KEY },
   );
   const controlledDrawerHeight = clampDrawerHeight(height);
   const [drawerHeightState, setDrawerHeightState] = useState(() => ({

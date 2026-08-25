@@ -22,6 +22,7 @@ const clientSettings: ClientSettings = {
   confirmThreadArchive: true,
   confirmThreadDelete: false,
   dismissedProviderUpdateNotificationKeys: [],
+  language: "zh-CN",
   diffIgnoreWhitespace: true,
   environmentIdentificationMode: "artwork",
   favorites: [],

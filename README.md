@@ -29,7 +29,7 @@ The easiest way to test T3 Code is to run the server in your terminal (requires 
 npx t3@latest
 ```
 
-This will launch T3 Code's backend on your machine as well as the local web app to control your agents.
+This will launch Code Work's backend on your machine as well as the local web app to control your agents.
 
 Tip: Use `npx t3@latest --help` for the full CLI reference.
 
@@ -54,13 +54,13 @@ brew install --cask t3-code
 Stable:
 
 ```bash
-yay -S t3code-bin
+yay -S code-work-bin
 ```
 
 Nightly:
 
 ```bash
-yay -S t3code-nightly-bin
+yay -S code-work-nightly-bin
 ```
 
 The AUR packaging is maintained in this repository under [`packaging/aur`](./packaging/aur).

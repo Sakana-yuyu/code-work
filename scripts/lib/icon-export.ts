@@ -1,3 +1,5 @@
+import { PNG } from "pngjs";
+
 const PNG_SIGNATURE = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
 
 export const WINDOWS_ICON_SIZES = [16, 24, 32, 48, 64, 128, 256] as const;
@@ -5,6 +7,32 @@ export const WINDOWS_ICON_SIZES = [16, 24, 32, 48, 64, 128, 256] as const;
 export interface PngIconImage {
   readonly size: number;
   readonly contents: Buffer;
+}
+
+export function resizePng(contents: Buffer, size: number): Buffer {
+  if (!Number.isInteger(size) || size < 1) {
+    throw new Error(`PNG output size must be a positive integer, got ${size}.`);
+  }
+
+  const source = PNG.sync.read(contents);
+  const target = new PNG({ width: size, height: size });
+  const xScale = source.width / size;
+  const yScale = source.height / size;
+
+  for (let y = 0; y < size; y += 1) {
+    for (let x = 0; x < size; x += 1) {
+      const sourceX = Math.min(source.width - 1, Math.floor((x + 0.5) * xScale));
+      const sourceY = Math.min(source.height - 1, Math.floor((y + 0.5) * yScale));
+      const sourceIndex = (sourceY * source.width + sourceX) * 4;
+      const targetIndex = (y * size + x) * 4;
+      target.data[targetIndex] = source.data[sourceIndex] ?? 0;
+      target.data[targetIndex + 1] = source.data[sourceIndex + 1] ?? 0;
+      target.data[targetIndex + 2] = source.data[sourceIndex + 2] ?? 0;
+      target.data[targetIndex + 3] = source.data[sourceIndex + 3] ?? 0;
+    }
+  }
+
+  return PNG.sync.write(target);
 }
 
 export function readPngDimensions(contents: Buffer): {

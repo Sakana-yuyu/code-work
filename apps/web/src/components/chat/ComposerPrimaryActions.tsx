@@ -6,6 +6,7 @@ import { StageBackdropButtonArt, useSidebarStageBackdropVariant } from "../Sideb
 import { Button } from "../ui/button";
 import { Menu, MenuItem, MenuPopup, MenuTrigger } from "../ui/menu";
 import { Spinner } from "../ui/spinner";
+import { t } from "~/i18n";
 
 interface PendingActionState {
   questionIndex: number;
@@ -43,15 +44,15 @@ export const formatPendingPrimaryActionLabel = (input: {
   questionIndex: number;
 }) => {
   if (input.isResponding) {
-    return "Submitting...";
+    return t("submitting");
   }
   if (input.compact) {
-    return input.isLastQuestion ? "Submit" : "Next";
+    return input.isLastQuestion ? t("submit") : t("next");
   }
   if (!input.isLastQuestion) {
-    return "Next question";
+    return t("nextQuestion");
   }
-  return input.questionIndex > 0 ? "Submit answers" : "Submit answer";
+  return input.questionIndex > 0 ? t("submitAnswers") : t("submitAnswer");
 };
 
 const preventPointerFocus: PointerEventHandler<HTMLElement> = (event) => {
@@ -98,7 +99,7 @@ export const ComposerPrimaryActions = memo(function ComposerPrimaryActions({
       )}
       {...pointerFocusProps}
       onClick={onInterrupt}
-      aria-label="Stop generation"
+      aria-label={t("stopGeneration")}
     >
       <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor" aria-hidden="true">
         <rect x="2" y="2" width="8" height="8" rx="1.5" />
@@ -119,7 +120,7 @@ export const ComposerPrimaryActions = memo(function ComposerPrimaryActions({
               {...pointerFocusProps}
               onClick={onPreviousPendingQuestion}
               disabled={pendingAction.isResponding}
-              aria-label="Previous question"
+              aria-label={t("previousQuestion")}
             >
               <ChevronLeftIcon className="size-3.5" />
             </Button>
@@ -174,7 +175,7 @@ export const ComposerPrimaryActions = memo(function ComposerPrimaryActions({
           {...pointerFocusProps}
           disabled={isSendBusy || isSendDisabled || isConnecting || isEnvironmentUnavailable}
         >
-          {isConnecting || isSendBusy ? "Sending..." : "Refine"}
+          {isConnecting || isSendBusy ? t("sending") : t("refine")}
         </Button>
       );
     }
@@ -188,7 +189,7 @@ export const ComposerPrimaryActions = memo(function ComposerPrimaryActions({
           {...pointerFocusProps}
           disabled={isSendBusy || isSendDisabled || isConnecting || isEnvironmentUnavailable}
         >
-          {isConnecting || isSendBusy ? "Sending..." : "Implement"}
+          {isConnecting || isSendBusy ? t("sending") : t("implement")}
         </Button>
         <Menu>
           <MenuTrigger
@@ -197,7 +198,7 @@ export const ComposerPrimaryActions = memo(function ComposerPrimaryActions({
                 size="sm"
                 variant="default"
                 className="h-9 rounded-l-none rounded-r-full border-l-message-action-foreground/20 bg-message-action px-2 text-message-action-foreground hover:bg-message-action-hover sm:h-8"
-                aria-label="Implementation actions"
+                aria-label={t("implementationActions")}
                 {...pointerFocusProps}
                 disabled={isSendBusy || isSendDisabled || isConnecting || isEnvironmentUnavailable}
               />
@@ -237,16 +238,16 @@ export const ComposerPrimaryActions = memo(function ComposerPrimaryActions({
       }
       aria-label={
         isEnvironmentUnavailable
-          ? "Environment disconnected"
+          ? t("environmentDisconnected")
           : sendDisabledReason
             ? sendDisabledReason
             : isConnecting
-              ? "Connecting"
+              ? t("connecting")
               : isPreparingWorktree
-                ? "Preparing worktree"
+                ? t("preparingWorktree")
                 : isSendBusy
-                  ? "Sending"
-                  : "Send message"
+                  ? t("sending2")
+                  : t("sendMessage")
       }
     >
       {stageBackdropVariant ? (

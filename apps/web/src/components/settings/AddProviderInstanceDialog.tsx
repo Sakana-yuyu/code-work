@@ -36,6 +36,7 @@ import {
   type WizardNavigation,
 } from "./AddProviderInstanceDialog.logic";
 import { AddProviderInstanceWizardSteps } from "./AddProviderInstanceWizardSteps";
+import { t } from "~/i18n";
 
 const PROVIDER_ACCENT_SWATCHES = [
   "#2563eb",
@@ -80,22 +81,22 @@ interface ComingSoonDriverOption {
 const COMING_SOON_DRIVER_OPTIONS: readonly ComingSoonDriverOption[] = [
   {
     value: ProviderDriverKind.make("githubCopilot"),
-    label: "Github Copilot",
+    label: t("githubCopilot"),
     icon: GithubCopilotIcon,
   },
   {
     value: ProviderDriverKind.make("gemini"),
-    label: "Gemini",
+    label: t("gemini"),
     icon: Gemini,
   },
   {
     value: ProviderDriverKind.make("acpRegistry"),
-    label: "ACP Registry",
+    label: t("acpRegistry"),
     icon: ACPRegistryIcon,
   },
   {
     value: ProviderDriverKind.make("piAgent"),
-    label: "Pi Agent",
+    label: t("piAgent"),
     icon: PiAgentIcon,
   },
 ];
@@ -215,14 +216,14 @@ export function AddProviderInstanceDialog({
       updateSettings({ providerInstances: nextMap });
       toastManager.add({
         type: "success",
-        title: "Provider instance added",
+        title: t("providerInstanceAdded"),
         description: `${driverOption.label} instance '${instanceId}' was added.`,
       });
       onOpenChange(false);
     } catch (error) {
       toastManager.add({
         type: "error",
-        title: "Could not add provider instance",
+        title: t("couldNotAddProviderInstance"),
         description: error instanceof Error ? error.message : "Update failed.",
       });
     }
@@ -233,10 +234,9 @@ export function AddProviderInstanceDialog({
       <DialogPopup className="max-w-xl overflow-hidden">
         <div className="flex min-h-0 flex-col overflow-hidden">
           <DialogHeader>
-            <DialogTitle>Add provider instance</DialogTitle>
+            <DialogTitle>{t("addProviderInstance")}</DialogTitle>
             <DialogDescription>
-              Configure an additional provider instance on {environmentLabel} — for example, a
-              second Codex install pointed at a different workspace.
+              {t("configureAdditionalProviderInstance", { environment: environmentLabel })}
             </DialogDescription>
             <AddProviderInstanceWizardSteps
               currentStep={wizardStep}
@@ -315,10 +315,10 @@ export function AddProviderInstanceDialog({
               </div>
 
               <label className={cn("grid gap-2", wizardStep !== 1 && "hidden")}>
-                <span className="text-xs font-medium text-foreground">Label</span>
+                <span className="text-xs font-medium text-foreground">{t("label")}</span>
                 <Input
                   className="bg-background"
-                  placeholder="e.g. Work"
+                  placeholder={t("eGWork")}
                   value={label}
                   onChange={(event) => setLabel(event.target.value)}
                 />
@@ -328,7 +328,7 @@ export function AddProviderInstanceDialog({
               </label>
 
               <label className={cn("grid gap-2", wizardStep !== 1 && "hidden")}>
-                <span className="text-xs font-medium text-foreground">Instance ID</span>
+                <span className="text-xs font-medium text-foreground">{t("instanceId")}</span>
                 <Input
                   className="bg-background"
                   placeholder={`${driver}_work`}
@@ -348,7 +348,7 @@ export function AddProviderInstanceDialog({
               </label>
 
               <div className={cn("grid gap-2", wizardStep !== 1 && "hidden")}>
-                <span className="text-xs font-medium text-foreground">Accent color</span>
+                <span className="text-xs font-medium text-foreground">{t("accentColor")}</span>
                 <div className="flex min-w-0 flex-wrap items-center gap-2">
                   <input
                     type="color"

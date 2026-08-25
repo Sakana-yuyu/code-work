@@ -41,6 +41,7 @@ import { canEditPullRequestComment } from "./pullRequestEditing.logic";
 import { PullRequestMarkdown } from "./PullRequestMarkdown";
 import { PullRequestMarkdownEditor } from "./PullRequestMarkdownEditor";
 import { PullRequestReactionBar } from "./PullRequestReactions";
+import { t } from "~/i18n";
 import {
   PullRequestActorAvatar,
   PullRequestDiffStat,
@@ -150,7 +151,7 @@ function OpenOnHostButton({ url, onOpen }: { url: string | null; onOpen: (url: s
       size="icon-xs"
       variant="ghost"
       className="-mr-1 -mt-1 shrink-0 text-muted-foreground"
-      aria-label="Open activity on host"
+      aria-label={t("openActivityOnHost")}
       onClick={() => onOpen(url)}
     >
       <ExternalLinkIcon className="size-3" />
@@ -221,7 +222,7 @@ function ConversationCard({
               size="icon-xs"
               variant="ghost"
               className="-mt-1 shrink-0 text-muted-foreground opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100 focus-visible:opacity-100"
-              aria-label="Edit comment"
+              aria-label={t("editComment")}
               onClick={() => setEditing(true)}
             >
               <PencilIcon className="size-3" />
@@ -235,7 +236,7 @@ function ConversationCard({
           <PullRequestMarkdownEditor
             value={editable.body}
             cwd={cwd}
-            label="Edit comment"
+            label={t("editComment")}
             saving={saving}
             onSave={(body) => void save(body)}
             onCancel={() => setEditing(false)}

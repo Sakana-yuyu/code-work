@@ -33,7 +33,15 @@ import * as Ref from "effect/Ref";
 import * as Schema from "effect/Schema";
 import * as Semaphore from "effect/Semaphore";
 
-const DATABASE_NAME = "t3code:connection-runtime";
+import {
+  createNativeIndexedDbMigrationDatabase,
+  indexedDbDatabaseExists,
+  migrateIndexedDbStores,
+  type IndexedDbMigrationReport,
+} from "../persistenceIndexedDb";
+
+export const CONNECTION_RUNTIME_DATABASE_NAME = "codework:connection-runtime";
+export const LEGACY_CONNECTION_RUNTIME_DATABASE_NAME = "t3code:connection-runtime";
 const DATABASE_VERSION = 4;
 const CATALOG_STORE_NAME = "catalog";
 const SHELL_STORE_NAME = "shell";
@@ -119,15 +127,15 @@ function persistenceError(
   });
 }
 
-const openDatabase = Effect.fn("web.connectionStorage.openDatabase")(function* () {
-  return yield* Effect.callback<IDBDatabase, ConnectionTransientError>((resume) => {
+const openNamedDatabase = (databaseName: string) =>
+  Effect.callback<IDBDatabase, ConnectionTransientError>((resume) => {
     if (typeof indexedDB === "undefined") {
       resume(
         Effect.fail(catalogError("open", "IndexedDB is unavailable in this browser context.")),
       );
       return;
     }
-    const request = indexedDB.open(DATABASE_NAME, DATABASE_VERSION);
+    const request = indexedDB.open(databaseName, DATABASE_VERSION);
     request.addEventListener("upgradeneeded", () => {
       if (!request.result.objectStoreNames.contains(CATALOG_STORE_NAME)) {
         request.result.createObjectStore(CATALOG_STORE_NAME);
@@ -152,6 +160,103 @@ const openDatabase = Effect.fn("web.connectionStorage.openDatabase")(function* (
       resume(Effect.succeed(request.result));
     });
   });
+
+export const migrateConnectionRuntimeDatabase = async (input: {
+  readonly legacy: import("../persistenceIndexedDb").IndexedDbMigrationDatabase;
+  readonly canonical: import("../persistenceIndexedDb").IndexedDbMigrationDatabase;
+}): Promise<IndexedDbMigrationReport> =>
+  migrateIndexedDbStores({
+    source: input.legacy,
+    target: input.canonical,
+    stores: [
+      {
+        storeName: CATALOG_STORE_NAME,
+        validate: (value) => {
+          if (typeof value !== "string") return false;
+          try {
+            Schema.decodeUnknownSync(ConnectionCatalogDocumentJson)(value);
+            return true;
+          } catch {
+            return false;
+          }
+        },
+      },
+      {
+        storeName: SHELL_STORE_NAME,
+        validate: (value) => {
+          if (typeof value !== "string") return false;
+          try {
+            Schema.decodeUnknownSync(StoredShellSnapshotJson)(value);
+            return true;
+          } catch {
+            return false;
+          }
+        },
+      },
+      {
+        storeName: THREAD_STORE_NAME,
+        validate: (value) => {
+          if (typeof value !== "string") return false;
+          try {
+            Schema.decodeUnknownSync(StoredThreadSnapshotJson)(value);
+            return true;
+          } catch {
+            return false;
+          }
+        },
+      },
+      {
+        storeName: SERVER_CONFIG_STORE_NAME,
+        validate: (value) => {
+          if (typeof value !== "string") return false;
+          try {
+            Schema.decodeUnknownSync(StoredServerConfigJson)(value);
+            return true;
+          } catch {
+            return false;
+          }
+        },
+      },
+      {
+        storeName: VCS_REFS_STORE_NAME,
+        validate: (value) => {
+          if (typeof value !== "string") return false;
+          try {
+            Schema.decodeUnknownSync(StoredVcsRefsJson)(value);
+            return true;
+          } catch {
+            return false;
+          }
+        },
+      },
+    ],
+  });
+
+const openDatabase = Effect.fn("web.connectionStorage.openDatabase")(function* () {
+  const canonical = yield* openNamedDatabase(CONNECTION_RUNTIME_DATABASE_NAME);
+  const legacyExists = yield* Effect.tryPromise({
+    try: () => indexedDbDatabaseExists(LEGACY_CONNECTION_RUNTIME_DATABASE_NAME),
+    catch: () => null,
+  });
+  if (legacyExists === true) {
+    yield* Effect.acquireUseRelease(
+      openNamedDatabase(LEGACY_CONNECTION_RUNTIME_DATABASE_NAME),
+      (legacy) =>
+        Effect.tryPromise({
+          try: () =>
+            migrateConnectionRuntimeDatabase({
+              legacy: createNativeIndexedDbMigrationDatabase(legacy),
+              canonical: createNativeIndexedDbMigrationDatabase(canonical),
+            }),
+          catch: (cause) => catalogError("migrate", cause),
+        }).pipe(
+          Effect.catch(() => Effect.void),
+          Effect.asVoid,
+        ),
+      (legacy) => Effect.sync(() => legacy.close()),
+    );
+  }
+  return canonical;
 });
 
 function readDatabaseValue(database: IDBDatabase, storeName: string, key: IDBValidKey) {

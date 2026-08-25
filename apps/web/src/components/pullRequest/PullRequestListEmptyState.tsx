@@ -13,6 +13,8 @@
  */
 import { PlusIcon, RefreshCwIcon, SearchIcon } from "lucide-react";
 
+import { t } from "../../i18n";
+
 import { openCommandPalette } from "../../commandPaletteBus";
 import { Button } from "../ui/button";
 import { PullRequestListGhost } from "./PullRequestGhosts";
@@ -102,15 +104,15 @@ export function PullRequestListEmptyState({
       <Empty className="py-16">
         <BranchMark joined={false} />
         <EmptyHeader>
-          <EmptyTitle>No projects in this workspace</EmptyTitle>
+          <EmptyTitle>{t("noProjectsInThisWorkspace")}</EmptyTitle>
           <EmptyDescription>
-            Add a project, and the pull requests from its repository appear here.
+            {t("addAProjectAndThePullRequestsFromItsRepositoryAppearHere")}
           </EmptyDescription>
         </EmptyHeader>
         <EmptyContent>
           <Button size="sm" onClick={() => openCommandPalette({ open: "add-project" })}>
             <PlusIcon className="size-3.5" />
-            Add project
+            {t("addProject")}
           </Button>
         </EmptyContent>
       </Empty>
@@ -123,7 +125,7 @@ export function PullRequestListEmptyState({
     return (
       <PullRequestListGhost
         rows={5}
-        caption={`Searching every host for “${query.length > 48 ? `${query.slice(0, 48)}…` : query}”`}
+        caption={`${t("searchingEveryHostFor")} “${query.length > 48 ? `${query.slice(0, 48)}…` : query}”`}
       />
     );
   }
@@ -135,22 +137,22 @@ export function PullRequestListEmptyState({
         <EmptyHeader>
           {/* A pasted paragraph is still a search, but it is not a title. */}
           <EmptyTitle>
-            Nothing matches “{query.length > 48 ? `${query.slice(0, 48)}…` : query}”
+            {t("nothingMatches")} “{query.length > 48 ? `${query.slice(0, 48)}…` : query}”
           </EmptyTitle>
           <EmptyDescription>
-            The hosts were searched for it. Try fewer words, or search by number, author or branch.
+            {t("theHostsWereSearchedForItTryFewerWordsOrSearchByNumberAuthor")}
           </EmptyDescription>
         </EmptyHeader>
         <EmptyContent className="flex-row flex-wrap justify-center gap-2">
           <Button size="sm" variant="outline" onClick={onClearQuery}>
             <SearchIcon className="size-3.5" />
-            Clear search
+            {t("clearSearch")}
           </Button>
           {/* The hosts answered this query once; a pull request opened since then would answer
               differently, and nothing on screen says which of the two the reader is looking at. */}
           <Button size="sm" variant="outline" disabled={refreshing} onClick={onRefresh}>
             <RefreshCwIcon className="size-3.5" />
-            {refreshing ? "Checking..." : "Check again"}
+            {refreshing ? t("checking") : t("checkAgain")}
           </Button>
         </EmptyContent>
       </Empty>
@@ -161,22 +163,22 @@ export function PullRequestListEmptyState({
     <Empty className="py-16">
       <BranchMark joined={false} />
       <EmptyHeader>
-        <EmptyTitle>{filtered ? "Nothing under these filters" : "No pull requests"}</EmptyTitle>
+        <EmptyTitle>{filtered ? t("nothingUnderTheseFilters") : t("noPullRequests")}</EmptyTitle>
         <EmptyDescription>
           {filtered
-            ? "Widen the state, involvement or project filter to see more."
-            : "Pull requests from every project in this workspace appear here."}
+            ? t("widenTheStateInvolvementOrProjectFilterToSeeMore")
+            : t("pullRequestsFromEveryProjectInThisWorkspaceAppearHere")}
         </EmptyDescription>
       </EmptyHeader>
       <EmptyContent className="flex-row flex-wrap justify-center gap-2">
         {canLoadMore ? (
           <Button size="sm" variant="outline" disabled={loadingMore} onClick={onLoadMore}>
-            {loadingMore ? "Loading..." : "Load more pull requests"}
+            {loadingMore ? t("loading") : t("loadMorePullRequests")}
           </Button>
         ) : null}
         <Button size="sm" variant="outline" disabled={refreshing} onClick={onRefresh}>
           <RefreshCwIcon className="size-3.5" />
-          {refreshing ? "Checking..." : "Check again"}
+          {refreshing ? t("checking") : t("checkAgain")}
         </Button>
       </EmptyContent>
     </Empty>

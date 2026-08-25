@@ -5,6 +5,7 @@ import { useCallback, useEffect, useMemo, useRef } from "react";
 import { type ProviderDriverKind, type ProviderInstanceId } from "@t3tools/contracts";
 
 import { primaryServerProvidersAtom, serverEnvironment } from "../state/server";
+import { t } from "~/i18n";
 import { usePrimaryEnvironment } from "../state/environments";
 import { useDismissedProviderUpdateNotificationKeys } from "../providerUpdateDismissal";
 import { PROVIDER_ICON_BY_PROVIDER } from "./chat/providerIconUtils";
@@ -84,7 +85,7 @@ function addProviderUpdateToast(input: {
       description: input.view.description,
       timeout: 0,
       actionProps: {
-        children: "Settings",
+        children: t("settings"),
         onClick: () => input.openSettings(toastId),
       },
       actionVariant: "outline",
@@ -274,11 +275,11 @@ export function ProviderUpdatePrimaryNotification() {
         actionProps:
           oneClickProviders.length > 0
             ? {
-                children: "Update",
+                children: t("update"),
                 onClick: runUpdates,
               }
             : {
-                children: "Settings",
+                children: t("settings"),
                 onClick: openSettings,
               },
         actionVariant: oneClickProviders.length > 0 ? "default" : "outline",
@@ -292,7 +293,7 @@ export function ProviderUpdatePrimaryNotification() {
           ...(oneClickProviders.length > 0
             ? {
                 secondaryActionProps: {
-                  children: "Settings",
+                  children: t("settings"),
                   onClick: openSettings,
                 },
                 secondaryActionVariant: "outline" as const,

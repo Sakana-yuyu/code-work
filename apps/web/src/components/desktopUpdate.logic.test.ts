@@ -1,3 +1,4 @@
+import { t } from "~/i18n";
 import { describe, expect, it } from "vite-plus/test";
 import type { DesktopUpdateActionResult, DesktopUpdateState } from "@t3tools/contracts";
 
@@ -236,7 +237,7 @@ describe("desktop update UI helpers", () => {
 
     expect(shouldShowArm64IntelBuildWarning(state)).toBe(true);
     expect(getArm64IntelBuildWarningDescription(state)).toContain("Apple Silicon");
-    expect(getArm64IntelBuildWarningDescription(state)).toContain("Intel build");
+    expect(getArm64IntelBuildWarningDescription(state)).toContain("Intel");
   });
 
   it("changes the warning copy when a native build update is ready to download", () => {
@@ -249,7 +250,9 @@ describe("desktop update UI helpers", () => {
       availableVersion: "1.1.0",
     };
 
-    expect(getArm64IntelBuildWarningDescription(state)).toContain("Download the available update");
+    expect(getArm64IntelBuildWarningDescription(state)).toContain(
+      t("thisMacHasAppleSiliconButT3CodeIsStillRunningTheIntelBuildUn"),
+    );
   });
 
   it("includes the downloaded version in the install confirmation copy", () => {
@@ -340,9 +343,9 @@ describe("canCheckForUpdate", () => {
 
 describe("getDesktopUpdateButtonTooltip", () => {
   it("returns 'Up to date' for non-actionable states", () => {
-    expect(getDesktopUpdateButtonTooltip({ ...baseState, status: "idle" })).toBe("Up to date");
+    expect(getDesktopUpdateButtonTooltip({ ...baseState, status: "idle" })).toBe(t("upToDate"));
     expect(getDesktopUpdateButtonTooltip({ ...baseState, status: "up-to-date" })).toBe(
-      "Up to date",
+      t("upToDate"),
     );
   });
 });

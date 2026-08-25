@@ -1,5 +1,10 @@
 import type { ExpoConfig } from "expo/config";
 
+import {
+  PRODUCT_IDENTITY,
+  resolveProductSchemes,
+  type ProductStage,
+} from "../../packages/shared/src/productIdentity.ts";
 import { BRAND_ASSET_PATHS } from "../../scripts/lib/brand-assets.ts";
 import { loadRepoEnv } from "../../scripts/lib/public-config.ts";
 
@@ -9,9 +14,12 @@ const repoEnv = loadRepoEnv();
 Object.assign(process.env, repoEnv);
 
 const APP_VARIANT = resolveAppVariant(repoEnv.APP_VARIANT);
-const isIosPersonalTeamBuild = repoEnv.T3CODE_IOS_PERSONAL_TEAM === "1";
+const isIosPersonalTeamBuild =
+  (repoEnv.CODEWORK_IOS_PERSONAL_TEAM ?? repoEnv.T3CODE_IOS_PERSONAL_TEAM) === "1";
 
-const personalTeamBundleIdentifier = repoEnv.T3CODE_IOS_PERSONAL_TEAM_BUNDLE_ID?.trim();
+const personalTeamBundleIdentifier = (
+  repoEnv.CODEWORK_IOS_PERSONAL_TEAM_BUNDLE_ID ?? repoEnv.T3CODE_IOS_PERSONAL_TEAM_BUNDLE_ID
+)?.trim();
 const IOS_BUNDLE_IDENTIFIER_PATTERN = /^[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+$/;
 
 const fromRepoRoot = (relativePath: string) => `../../${relativePath}`;
@@ -22,65 +30,71 @@ if (
     !IOS_BUNDLE_IDENTIFIER_PATTERN.test(personalTeamBundleIdentifier))
 ) {
   throw new Error(
-    "T3CODE_IOS_PERSONAL_TEAM_BUNDLE_ID must be a reverse-DNS identifier such as com.example.t3code when T3CODE_IOS_PERSONAL_TEAM=1.",
+    "CODEWORK_IOS_PERSONAL_TEAM_BUNDLE_ID (or legacy T3CODE_IOS_PERSONAL_TEAM_BUNDLE_ID) must be a reverse-DNS identifier when personal-team builds are enabled.",
   );
 }
 
 const DEVELOPMENT_ASSETS = {
   appIcon: fromRepoRoot(BRAND_ASSET_PATHS.developmentIosIconPng),
-  iosIcon: fromRepoRoot(BRAND_ASSET_PATHS.developmentIconComposerProject),
+  iosIcon: fromRepoRoot(BRAND_ASSET_PATHS.developmentIosIconPng),
   splashIcon: fromRepoRoot(BRAND_ASSET_PATHS.developmentIosIconPng),
   androidAdaptiveForeground: fromRepoRoot(BRAND_ASSET_PATHS.developmentUniversalIconPng),
   androidAdaptiveBackgroundColor: "#00639B",
-  androidMonochromeIcon: "./assets/android-icon-mark.png",
-  androidNotificationIcon: "./assets/android-notification-icon.png",
+  androidMonochromeIcon: fromRepoRoot(BRAND_ASSET_PATHS.developmentUniversalIconPng),
+  androidNotificationIcon: fromRepoRoot("apps/mobile/assets/android-notification-icon.png"),
   androidNotificationColor: "#00639B",
 } as const;
 
 const PREVIEW_ASSETS = {
   appIcon: fromRepoRoot(BRAND_ASSET_PATHS.nightlyIosIconPng),
-  iosIcon: fromRepoRoot(BRAND_ASSET_PATHS.nightlyIconComposerProject),
+  iosIcon: fromRepoRoot(BRAND_ASSET_PATHS.nightlyIosIconPng),
   splashIcon: fromRepoRoot(BRAND_ASSET_PATHS.nightlyIosIconPng),
   androidAdaptiveForeground: fromRepoRoot(BRAND_ASSET_PATHS.nightlyLinuxIconPng),
   androidAdaptiveBackgroundColor: "#111533",
-  androidMonochromeIcon: "./assets/android-icon-mark.png",
-  androidNotificationIcon: "./assets/android-notification-icon.png",
+  androidMonochromeIcon: fromRepoRoot(BRAND_ASSET_PATHS.nightlyLinuxIconPng),
+  androidNotificationIcon: fromRepoRoot("apps/mobile/assets/android-notification-icon.png"),
   androidNotificationColor: "#7565C7",
 } as const;
 
 const RELEASE_ASSETS = {
   appIcon: fromRepoRoot(BRAND_ASSET_PATHS.productionIosIconPng),
-  iosIcon: fromRepoRoot(BRAND_ASSET_PATHS.productionIconComposerProject),
+  iosIcon: fromRepoRoot(BRAND_ASSET_PATHS.productionIosIconPng),
   splashIcon: fromRepoRoot(BRAND_ASSET_PATHS.productionIosIconPng),
-  androidAdaptiveForeground: "./assets/android-icon-mark.png",
+  androidAdaptiveForeground: fromRepoRoot(BRAND_ASSET_PATHS.productionUniversalIconPng),
   androidAdaptiveBackgroundColor: "#000000",
-  androidMonochromeIcon: "./assets/android-icon-mark.png",
-  androidNotificationIcon: "./assets/android-notification-icon.png",
+  androidMonochromeIcon: fromRepoRoot(BRAND_ASSET_PATHS.productionUniversalIconPng),
+  androidNotificationIcon: fromRepoRoot("apps/mobile/assets/android-notification-icon.png"),
   androidNotificationColor: "#FFFFFF",
 } as const;
 
 const VARIANT_CONFIG = {
   development: {
-    appName: "T3 Code Dev",
-    scheme: "t3code-dev",
-    iosBundleIdentifier: "com.t3tools.t3code.dev",
-    androidPackage: "com.t3tools.t3code.dev",
+    appName: `${PRODUCT_IDENTITY.baseName} (${PRODUCT_IDENTITY.stages.development})`,
+    identityStage: "development" as const satisfies ProductStage,
+    scheme: PRODUCT_IDENTITY.schemes.development,
+    legacySchemes: ["t3code-dev"] as const,
+    iosBundleIdentifier: "com.codework.mobile.dev",
+    androidPackage: "com.codework.mobile.dev",
     relyingParty: "clerk.t3.codes",
     assets: DEVELOPMENT_ASSETS,
   },
   preview: {
-    appName: "T3 Code Preview",
-    scheme: "t3code-preview",
-    iosBundleIdentifier: "com.t3tools.t3code.preview",
-    androidPackage: "com.t3tools.t3code.preview",
+    appName: `${PRODUCT_IDENTITY.baseName} (${PRODUCT_IDENTITY.stages.preview})`,
+    identityStage: "preview" as const satisfies ProductStage,
+    scheme: PRODUCT_IDENTITY.schemes.preview,
+    legacySchemes: ["t3code-preview"] as const,
+    iosBundleIdentifier: "com.codework.mobile.preview",
+    androidPackage: "com.codework.mobile.preview",
     relyingParty: "clerk.t3.codes",
     assets: PREVIEW_ASSETS,
   },
   production: {
-    appName: "T3 Code",
-    scheme: "t3code",
-    iosBundleIdentifier: "com.t3tools.t3code",
-    androidPackage: "com.t3tools.t3code",
+    appName: PRODUCT_IDENTITY.baseName,
+    identityStage: "production" as const satisfies ProductStage,
+    scheme: PRODUCT_IDENTITY.schemes.production,
+    legacySchemes: ["t3code"] as const,
+    iosBundleIdentifier: "com.codework.mobile",
+    androidPackage: "com.codework.mobile",
     relyingParty: "clerk.t3.codes",
     assets: RELEASE_ASSETS,
   },
@@ -98,6 +112,7 @@ function resolveAppVariant(value: string | undefined): AppVariant {
 }
 
 const variant = VARIANT_CONFIG[APP_VARIANT];
+const mobileSchemes = resolveProductSchemes(variant.identityStage);
 const iosBundleIdentifier = isIosPersonalTeamBuild
   ? personalTeamBundleIdentifier!
   : variant.iosBundleIdentifier;
@@ -121,7 +136,7 @@ const widgetsPlugin: NonNullable<ExpoConfig["plugins"]>[number] = [
       {
         name: "AgentActivity",
         displayName: "Agent Activity",
-        description: "Shows the current state of active T3 Code agents.",
+        description: `Shows the current state of active ${PRODUCT_IDENTITY.baseName} agents.`,
         supportedFamilies: ["systemSmall", "systemMedium", "accessoryRectangular"],
       },
     ],
@@ -194,11 +209,15 @@ const config: ExpoConfig = {
       `webcredentials:${variant.relyingParty}`,
     ],
     infoPlist: {
+      CFBundleURLTypes: [
+        {
+          CFBundleURLSchemes: mobileSchemes,
+        },
+      ],
       NSAppTransportSecurity: {
         NSAllowsArbitraryLoads: true,
       },
-      NSLocalNetworkUsageDescription:
-        "Allow T3 Code to connect to T3 Code servers on your local network or tailnet.",
+      NSLocalNetworkUsageDescription: `Allow ${PRODUCT_IDENTITY.baseName} to connect to ${PRODUCT_IDENTITY.baseName} servers on your local network or tailnet.`,
       ITSAppUsesNonExemptEncryption: false,
       // The App Store screenshot harness rotates the iPad interface from
       // inside the app (CI denies osascript the Accessibility access that
@@ -220,6 +239,13 @@ const config: ExpoConfig = {
   android: {
     icon: variant.assets.appIcon,
     package: variant.androidPackage,
+    intentFilters: [
+      ...mobileSchemes.map((scheme) => ({
+        action: "VIEW" as const,
+        category: ["BROWSABLE", "DEFAULT"],
+        data: [{ scheme }],
+      })),
+    ],
     adaptiveIcon: {
       backgroundColor: variant.assets.androidAdaptiveBackgroundColor,
       foregroundImage: variant.assets.androidAdaptiveForeground,
@@ -292,7 +318,7 @@ const config: ExpoConfig = {
     [
       "expo-camera",
       {
-        cameraPermission: "Allow T3 Code to access your camera so you can scan pairing QR codes.",
+        cameraPermission: `Allow ${PRODUCT_IDENTITY.baseName} to access your camera so you can scan pairing QR codes.`,
         microphonePermission: false,
         barcodeScannerEnabled: true,
         recordAudioAndroid: false,

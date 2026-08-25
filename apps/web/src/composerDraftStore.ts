@@ -50,6 +50,7 @@ import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
 import { useShallow } from "zustand/react/shallow";
 import { createDebouncedStorage, createMemoryStorage } from "./lib/storage";
+import { canonicalStorageKey, createCanonicalFirstStorage } from "./persistenceStorage";
 import { getDefaultServerModel } from "./providerModels";
 import { UnifiedSettings } from "@t3tools/contracts/settings";
 import { ReviewCommentContextSchema, type ReviewCommentContext } from "./reviewCommentContext";
@@ -57,7 +58,8 @@ const isRuntimeMode = Schema.is(RuntimeMode);
 const isProviderDriverKind = Schema.is(ProviderDriverKind);
 const isReviewCommentContext = Schema.is(ReviewCommentContextSchema);
 
-export const COMPOSER_DRAFT_STORAGE_KEY = "t3code:composer-drafts:v1";
+export const LEGACY_COMPOSER_DRAFT_STORAGE_KEY = "t3code:composer-drafts:v1";
+export const COMPOSER_DRAFT_STORAGE_KEY = canonicalStorageKey(LEGACY_COMPOSER_DRAFT_STORAGE_KEY);
 const COMPOSER_DRAFT_STORAGE_VERSION = 8;
 const DraftThreadEnvModeSchema = Schema.Literals(["local", "worktree"]);
 export type DraftThreadEnvMode = typeof DraftThreadEnvModeSchema.Type;
@@ -68,7 +70,21 @@ export type DraftId = typeof DraftId.Type;
 const COMPOSER_PERSIST_DEBOUNCE_MS = 300;
 
 const composerDebouncedStorage = createDebouncedStorage(
-  typeof localStorage !== "undefined" ? localStorage : createMemoryStorage(),
+  createCanonicalFirstStorage({
+    storage: (typeof localStorage !== "undefined"
+      ? localStorage
+      : createMemoryStorage()) as Storage,
+    canonicalKey: COMPOSER_DRAFT_STORAGE_KEY,
+    legacyKey: LEGACY_COMPOSER_DRAFT_STORAGE_KEY,
+    validate: (raw) => {
+      try {
+        JSON.parse(raw);
+        return true;
+      } catch {
+        return false;
+      }
+    },
+  }),
   COMPOSER_PERSIST_DEBOUNCE_MS,
 );
 

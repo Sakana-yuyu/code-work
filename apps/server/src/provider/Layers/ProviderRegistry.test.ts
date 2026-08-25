@@ -1741,6 +1741,7 @@ it.layer(Layer.mergeAll(NodeServices.layer, ServerSettingsModule.layerTest(), Te
               );
 
               assert.deepStrictEqual(providers.map((provider) => provider.instanceId).toSorted(), [
+                "byok",
                 "claudeAgent",
                 "codex",
                 "cursor",

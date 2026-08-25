@@ -49,6 +49,7 @@ import {
   type ThemeMode,
 } from "./ThemePreviewCircles";
 import { ThemeWireframe } from "./ThemeWireframe";
+import { t } from "~/i18n";
 
 const MAINTAINER_THEMES: ReadonlyArray<ThemeDefinition> = [
   T3_CHAT_THEME,
@@ -329,7 +330,7 @@ function ThemeLibraryCard({
                           </Button>
                         }
                       />
-                      <TooltipPopup>Duplicate theme</TooltipPopup>
+                      <TooltipPopup>{t("duplicateTheme")}</TooltipPopup>
                     </Tooltip>
                   ) : null}
                   {onEdit ? (
@@ -349,7 +350,7 @@ function ThemeLibraryCard({
                           </Button>
                         }
                       />
-                      <TooltipPopup>Edit theme</TooltipPopup>
+                      <TooltipPopup>{t("editTheme")}</TooltipPopup>
                     </Tooltip>
                   ) : null}
                   {onDownload ? (
@@ -369,7 +370,7 @@ function ThemeLibraryCard({
                           </Button>
                         }
                       />
-                      <TooltipPopup>Export theme file</TooltipPopup>
+                      <TooltipPopup>{t("exportThemeFile")}</TooltipPopup>
                     </Tooltip>
                   ) : null}
                   {onRemove ? (
@@ -542,8 +543,8 @@ export function ThemeLibrary({
     toastManager.add(
       stackedThreadToast({
         type: "error",
-        title: "Couldn’t save theme selection",
-        description: "Try again.",
+        title: t("couldnTSaveThemeSelection"),
+        description: t("tryAgain"),
       }),
     );
   }, []);
@@ -552,8 +553,8 @@ export function ThemeLibrary({
     toastManager.add(
       stackedThreadToast({
         type: "error",
-        title: "Couldn’t remove theme",
-        description: "Try again.",
+        title: t("couldnTRemoveTheme"),
+        description: t("tryAgain"),
       }),
     );
   }, []);
@@ -849,14 +850,14 @@ export function ThemeLibrary({
   return (
     <div className="space-y-3">
       <p className="px-3 text-[13px] leading-[1.45] text-muted-foreground/80 sm:px-4">
-        Choose how T3 Code looks. Use a built-in theme or make your own.
+        {t("themeAppearanceDescription")}
       </p>
       <h3 className="px-3 text-sm font-medium tracking-[-0.005em] text-foreground sm:px-4">
-        Color scheme
+        {t("colorScheme")}
       </h3>
       {renderModeTiles()}
       <div className="flex min-h-8 flex-wrap items-center justify-between gap-3 px-3 pt-2 sm:px-4">
-        <h3 className="text-sm font-medium tracking-[-0.005em] text-foreground">Themes</h3>
+        <h3 className="text-sm font-medium tracking-[-0.005em] text-foreground">{t("themes")}</h3>
         <div className="flex flex-wrap items-center justify-end gap-2">
           <Button
             size="xs"
@@ -871,11 +872,11 @@ export function ThemeLibrary({
             }
           >
             <PaintbrushIcon />
-            Create theme
+            {t("createTheme")}
           </Button>
           <Button size="xs" variant="outline" onClick={() => onImportOpenChange(true)}>
             <PlusIcon />
-            Add theme
+            {t("addTheme")}
           </Button>
         </div>
       </div>
@@ -917,7 +918,7 @@ export function ThemeLibrary({
             stackedThreadToast({
               type: "success",
               title: `${importedTheme.label} added`,
-              description: "It’s now active.",
+              description: t("itSNowActive"),
             }),
           );
           return true;
@@ -990,7 +991,7 @@ export function ThemeLibrary({
             </div>
           ) : null}
           <AlertDialogFooter>
-            <AlertDialogClose render={<Button variant="outline" />}>Cancel</AlertDialogClose>
+            <AlertDialogClose render={<Button variant="outline" />}>{t("cancel")}</AlertDialogClose>
             <Button
               disabled={themeIdsToRemove.length === 0}
               variant="destructive"

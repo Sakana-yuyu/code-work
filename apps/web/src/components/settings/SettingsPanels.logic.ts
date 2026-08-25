@@ -18,6 +18,7 @@ import {
 } from "@t3tools/shared/backgroundActivitySettings";
 import * as Duration from "effect/Duration";
 import * as Equal from "effect/Equal";
+import { canonicalStorageKey } from "../../persistenceStorage";
 
 export function isProjectGroupingEnabled(mode: SidebarProjectGroupingMode): boolean {
   return mode !== "separate";
@@ -31,13 +32,24 @@ export function projectGroupingModeFromToggle(
   return lastEnabledMode === "repository_path" ? "repository_path" : "repository";
 }
 
-const LAST_ENABLED_PROJECT_GROUPING_MODE_KEY = "t3code:last-enabled-project-grouping-mode";
+const LEGACY_LAST_ENABLED_PROJECT_GROUPING_MODE_KEY = "t3code:last-enabled-project-grouping-mode";
+const LAST_ENABLED_PROJECT_GROUPING_MODE_KEY = canonicalStorageKey(
+  LEGACY_LAST_ENABLED_PROJECT_GROUPING_MODE_KEY,
+);
 
 export function readLastEnabledProjectGroupingMode(): SidebarProjectGroupingMode {
   try {
-    return localStorage.getItem(LAST_ENABLED_PROJECT_GROUPING_MODE_KEY) === "repository_path"
-      ? "repository_path"
-      : "repository";
+    const canonical = localStorage.getItem(LAST_ENABLED_PROJECT_GROUPING_MODE_KEY);
+    const legacy =
+      canonical === null
+        ? localStorage.getItem(LEGACY_LAST_ENABLED_PROJECT_GROUPING_MODE_KEY)
+        : null;
+    const value = canonical ?? legacy;
+    if (canonical === null && legacy !== null) {
+      localStorage.setItem(LAST_ENABLED_PROJECT_GROUPING_MODE_KEY, legacy);
+      localStorage.removeItem(LEGACY_LAST_ENABLED_PROJECT_GROUPING_MODE_KEY);
+    }
+    return value === "repository_path" ? "repository_path" : "repository";
   } catch {
     return "repository";
   }
@@ -92,19 +104,19 @@ export function getChangedTypographySettingLabels(settings: TypographySettings):
   return [
     ...(settings.fontFamilySans !== DEFAULT_UNIFIED_SETTINGS.fontFamilySans ||
     settings.fontSizeInterface !== DEFAULT_UNIFIED_SETTINGS.fontSizeInterface
-      ? ["Interface font"]
+      ? ["settings.interfaceFont"]
       : []),
     ...(settings.fontFamilyComposer !== DEFAULT_UNIFIED_SETTINGS.fontFamilyComposer ||
     settings.fontSizePrompt !== DEFAULT_UNIFIED_SETTINGS.fontSizePrompt
-      ? ["Prompt font"]
+      ? ["settings.promptFont"]
       : []),
     ...(settings.fontFamilyCode !== DEFAULT_UNIFIED_SETTINGS.fontFamilyCode ||
     settings.fontSizeCode !== DEFAULT_UNIFIED_SETTINGS.fontSizeCode
-      ? ["Code font"]
+      ? ["settings.codeFont"]
       : []),
     ...(settings.fontFamilyTerminal !== DEFAULT_UNIFIED_SETTINGS.fontFamilyTerminal ||
     settings.fontSizeTerminal !== DEFAULT_UNIFIED_SETTINGS.fontSizeTerminal
-      ? ["Terminal font"]
+      ? ["settings.terminalFont"]
       : []),
   ];
 }
@@ -144,16 +156,16 @@ export function getChangedBrowserSettingLabels(settings: BrowserDefaultSettings)
       DEFAULT_UNIFIED_SETTINGS.browserDefaultViewport,
     )
       ? []
-      : ["Browser viewport"]),
+      : ["settings.defaultBrowserViewport"]),
     ...(settings.browserDefaultZoomFactor !== DEFAULT_UNIFIED_SETTINGS.browserDefaultZoomFactor
-      ? ["Browser zoom"]
+      ? ["settings.defaultBrowserZoom"]
       : []),
     ...(settings.browserDefaultAppearance !== DEFAULT_UNIFIED_SETTINGS.browserDefaultAppearance
-      ? ["Browser appearance"]
+      ? ["settings.defaultBrowserAppearance"]
       : []),
     ...(settings.browserAutoShowFloatingPreview !==
     DEFAULT_UNIFIED_SETTINGS.browserAutoShowFloatingPreview
-      ? ["Floating preview"]
+      ? ["settings.autoShowFloatingPreview"]
       : []),
   ];
 }
@@ -213,33 +225,54 @@ function collapseOtelSignalsUrl(input: {
   return `${tracesBase}/{traces,metrics}`;
 }
 
+export type DiagnosticsDescriptionParts = {
+  readonly localTracingEnabled: boolean;
+  readonly otel:
+    | { readonly kind: "collapsed"; readonly url: string }
+    | { readonly kind: "both"; readonly tracesUrl: string; readonly metricsUrl: string }
+    | { readonly kind: "traces"; readonly url: string }
+    | { readonly kind: "metrics"; readonly url: string }
+    | { readonly kind: "none" };
+};
+
 export function formatDiagnosticsDescription(input: {
   readonly localTracingEnabled: boolean;
   readonly otlpTracesEnabled: boolean;
   readonly otlpTracesUrl?: string | undefined;
   readonly otlpMetricsEnabled: boolean;
   readonly otlpMetricsUrl?: string | undefined;
-}): string {
-  const mode = input.localTracingEnabled ? "Local trace file" : "Terminal logs only";
+}): DiagnosticsDescriptionParts {
   const tracesUrl = input.otlpTracesEnabled ? input.otlpTracesUrl : undefined;
   const metricsUrl = input.otlpMetricsEnabled ? input.otlpMetricsUrl : undefined;
 
   if (tracesUrl && metricsUrl) {
     const collapsedUrl = collapseOtelSignalsUrl({ tracesUrl, metricsUrl });
     return collapsedUrl
-      ? `${mode}. Exporting OTEL to ${collapsedUrl}.`
-      : `${mode}. Exporting OTEL traces to ${tracesUrl} and metrics to ${metricsUrl}.`;
+      ? {
+          localTracingEnabled: input.localTracingEnabled,
+          otel: { kind: "collapsed", url: collapsedUrl },
+        }
+      : {
+          localTracingEnabled: input.localTracingEnabled,
+          otel: { kind: "both", tracesUrl, metricsUrl },
+        };
   }
 
   if (tracesUrl) {
-    return `${mode}. Exporting OTEL traces to ${tracesUrl}.`;
+    return {
+      localTracingEnabled: input.localTracingEnabled,
+      otel: { kind: "traces", url: tracesUrl },
+    };
   }
 
   if (metricsUrl) {
-    return `${mode}. Exporting OTEL metrics to ${metricsUrl}.`;
+    return {
+      localTracingEnabled: input.localTracingEnabled,
+      otel: { kind: "metrics", url: metricsUrl },
+    };
   }
 
-  return `${mode}.`;
+  return { localTracingEnabled: input.localTracingEnabled, otel: { kind: "none" } };
 }
 
 export function buildProviderInstanceUpdatePatch(input: {

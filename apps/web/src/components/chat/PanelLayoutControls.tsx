@@ -3,6 +3,7 @@ import { memo } from "react";
 
 import { Toggle } from "../ui/toggle";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
+import { t } from "~/i18n";
 
 interface PanelLayoutControlsProps {
   showTerminalControl?: boolean;
@@ -44,7 +45,7 @@ export const PanelLayoutControls = memo(function PanelLayoutControls({
               className="shrink-0 [-webkit-app-region:no-drag]"
               pressed={terminalOpen}
               onPressedChange={onToggleTerminal}
-              aria-label="Toggle terminal drawer"
+              aria-label={t("toggleTerminalDrawer")}
               variant="ghost"
               size="sm"
               disabled={!terminalAvailable}
@@ -67,8 +68,8 @@ export const PanelLayoutControls = memo(function PanelLayoutControls({
             onPressedChange={onToggleRightPanel}
             aria-label={
               liveAgentCount > 0
-                ? `Toggle right panel, ${liveAgentCount} ${liveAgentCount === 1 ? "agent" : "agents"} working`
-                : "Toggle right panel"
+                ? t("toggleRightPanelAgentsWorking", { count: liveAgentCount })
+                : t("toggleRightPanel")
             }
             variant="ghost"
             size="sm"
@@ -87,10 +88,8 @@ export const PanelLayoutControls = memo(function PanelLayoutControls({
         </TooltipTrigger>
         <TooltipPopup side="bottom">
           {rightPanelAvailable
-            ? `Toggle right panel${rightPanelShortcutLabel ? ` (${rightPanelShortcutLabel})` : ""}${
-                liveAgentCount > 0
-                  ? ` · ${liveAgentCount} ${liveAgentCount === 1 ? "agent" : "agents"} working`
-                  : ""
+            ? `${t("toggleRightPanel")}${rightPanelShortcutLabel ? ` (${rightPanelShortcutLabel})` : ""}${
+                liveAgentCount > 0 ? ` · ${t("agentsWorking", { count: liveAgentCount })}` : ""
               }`
             : rightPanelUnavailableLabel}
         </TooltipPopup>
@@ -106,7 +105,7 @@ export const RightPanelMaximizeControl = memo(function RightPanelMaximizeControl
   maximized: boolean;
   onToggle: () => void;
 }) {
-  const label = maximized ? "Restore panel size" : "Maximize panel";
+  const label = maximized ? t("restorePanelSize") : t("maximizePanel");
   return (
     <Tooltip>
       <TooltipTrigger

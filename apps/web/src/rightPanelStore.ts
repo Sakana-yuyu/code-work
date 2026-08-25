@@ -12,7 +12,29 @@ import type { ScopedThreadRef } from "@t3tools/contracts";
 import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
 
+import {
+  canonicalStorageKey,
+  createCanonicalFirstStorage,
+  type SynchronousStateStorage,
+} from "./persistenceStorage";
 import { resolveStorage } from "./lib/storage";
+
+function createRightPanelStorage() {
+  const storage = resolveStorage(typeof window !== "undefined" ? window.localStorage : undefined);
+  return createCanonicalFirstStorage({
+    storage: storage as SynchronousStateStorage,
+    canonicalKey: RIGHT_PANEL_STORAGE_KEY,
+    legacyKey: LEGACY_RIGHT_PANEL_STORAGE_KEY,
+    validate: (raw) => {
+      try {
+        JSON.parse(raw);
+        return true;
+      } catch {
+        return false;
+      }
+    },
+  });
+}
 
 export const RIGHT_PANEL_KINDS = [
   "diff",
@@ -64,7 +86,8 @@ export type RightPanelSurface =
     }
   | { id: "agents"; kind: "agents" };
 
-const RIGHT_PANEL_STORAGE_KEY = "t3code:right-panel-state:v2";
+const LEGACY_RIGHT_PANEL_STORAGE_KEY = "t3code:right-panel-state:v2";
+const RIGHT_PANEL_STORAGE_KEY = canonicalStorageKey(LEGACY_RIGHT_PANEL_STORAGE_KEY);
 // v9 removed the "plan" surface kind (plans render inline in the transcript).
 // v10 keys pull-request surfaces by reference instead of a singleton tab.
 // v11 stops persisting the pull-request list's shared panel, so a restart opens the page fresh.
@@ -655,9 +678,7 @@ export const useRightPanelStore = create<RightPanelStoreState>()(
     {
       name: RIGHT_PANEL_STORAGE_KEY,
       version: RIGHT_PANEL_STORAGE_VERSION,
-      storage: createJSONStorage(() =>
-        resolveStorage(typeof window !== "undefined" ? window.localStorage : undefined),
-      ),
+      storage: createJSONStorage(createRightPanelStorage),
       partialize: (state) => ({
         byThreadKey: Object.fromEntries(
           Object.entries(state.byThreadKey).filter(

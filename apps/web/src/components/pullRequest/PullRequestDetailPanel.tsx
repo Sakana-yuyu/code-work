@@ -125,6 +125,7 @@ import {
   type PickableEnvironment,
 } from "./pullRequestProjectAssignment.logic";
 import { PullRequestChecksPopover } from "./PullRequestChecksPopover";
+import { t } from "~/i18n";
 import {
   PullRequestActorAvatar,
   PullRequestActorLabel,
@@ -1312,7 +1313,7 @@ export function PullRequestDetailPanel({
                 <MenuTrigger
                   render={
                     <Button
-                      aria-label="More pull request actions"
+                      aria-label={t("morePullRequestActions")}
                       className="size-6"
                       size="icon-xs"
                       variant="ghost-muted"
@@ -1481,7 +1482,7 @@ export function PullRequestDetailPanel({
             <Button
               size="icon-xs"
               variant="ghost"
-              aria-label="Collapse pull request panel"
+              aria-label={t("collapsePullRequestPanel")}
               onClick={onClose}
             >
               <PanelRightIcon className="size-3.5" />
@@ -1534,7 +1535,7 @@ export function PullRequestDetailPanel({
                           <span className="inline-flex min-w-0 max-w-[40%] shrink-0 items-center gap-1">
                             {isStackedPullRequest ? (
                               <LayersIcon
-                                aria-label="Stacked pull request"
+                                aria-label={t("stackedPullRequest")}
                                 className="size-3 shrink-0"
                               />
                             ) : null}
@@ -1624,7 +1625,7 @@ export function PullRequestDetailPanel({
                         size="icon-xs"
                         variant="ghost"
                         className="shrink-0 text-muted-foreground opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100 focus-visible:opacity-100"
-                        aria-label="Edit title"
+                        aria-label={t("editTitle")}
                         onClick={() => setTitleScope({ pullRequestKey, text: detail.title })}
                       >
                         <PencilIcon className="size-3" />
@@ -1640,7 +1641,7 @@ export function PullRequestDetailPanel({
                       size="sm"
                       disabled={titleSaving}
                       value={titleDraft}
-                      aria-label="Pull request title"
+                      aria-label={t("pullRequestTitle")}
                       onChange={(event) =>
                         setTitleScope({ pullRequestKey, text: event.target.value })
                       }
@@ -1687,7 +1688,7 @@ export function PullRequestDetailPanel({
                           <span className="inline-flex min-w-0 max-w-[40%] shrink-0 items-center gap-1">
                             {isStackedPullRequest ? (
                               <LayersIcon
-                                aria-label="Stacked pull request"
+                                aria-label={t("stackedPullRequest")}
                                 className="size-3 shrink-0"
                               />
                             ) : null}
@@ -1770,7 +1771,7 @@ export function PullRequestDetailPanel({
         {detail ? (
           <nav
             className="col-span-2 flex min-w-0 items-center gap-1 overflow-x-auto border-t border-border/60 px-4 py-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
-            aria-label="Pull request tabs"
+            aria-label={t("pullRequestTabs")}
           >
             <ToggleGroup
               size="segmented"
@@ -1948,7 +1949,7 @@ export function PullRequestDetailPanel({
             ) : null}
             {mountedTabs.has("code") ? (
               <div className={cn("absolute inset-0", tab !== "code" && "invisible")}>
-                <Suspense fallback={<DiffPanelLoadingState label="Loading pull request diff..." />}>
+                <Suspense fallback={<DiffPanelLoadingState label={t("loadingPullRequestDiff")} />}>
                   <PullRequestCodeTab
                     {...(attachTarget ? { onAddToAgentSelection: addSelectionToAgent } : {})}
                     environmentId={environmentId}

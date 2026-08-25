@@ -42,7 +42,10 @@ describe("resolveSnoozePresets", () => {
     const tomorrow = presets.find((preset) => preset.id === "tomorrow");
     expect(tomorrow!.whenLabel).toMatch(/9/);
     const nextWeek = presets.find((preset) => preset.id === "next-week");
-    expect(nextWeek!.whenLabel).toMatch(/Mon/);
+    // Locale-agnostic: the weekday comes from the runtime locale.
+    expect(nextWeek!.whenLabel).toContain(
+      new Date(2026, 3, 13, 9).toLocaleDateString(undefined, { weekday: "short" }),
+    );
   });
 
   it("drops the evening preset once evening is near or past", () => {
@@ -65,7 +68,9 @@ describe("resolveSnoozePresets", () => {
     const twelveHour = resolveSnoozePresets(localDate(2026, 4, 8, 10), "12-hour");
     const twentyFourHour = resolveSnoozePresets(localDate(2026, 4, 8, 10), "24-hour");
 
-    expect(twelveHour.find((preset) => preset.id === "evening")!.whenLabel).toMatch(/PM/i);
+    // Locale-agnostic: any 12-hour locale renders the hour as 6, not 18.
+    expect(twelveHour.find((preset) => preset.id === "evening")!.whenLabel).toMatch(/6/);
+    expect(twelveHour.find((preset) => preset.id === "evening")!.whenLabel).not.toContain("18");
     expect(twentyFourHour.find((preset) => preset.id === "evening")!.whenLabel).toBe("18:00");
   });
 });
@@ -80,14 +85,14 @@ describe("snoozeWakeDescription", () => {
     expect(snoozeWakeDescription(localDate(2026, 4, 9, 9).toISOString(), now, "locale")).toContain(
       "tomorrow",
     );
-    expect(snoozeWakeDescription(localDate(2026, 4, 13, 9).toISOString(), now, "locale")).toMatch(
-      /Mon/,
+    expect(snoozeWakeDescription(localDate(2026, 4, 13, 9).toISOString(), now, "locale")).toContain(
+      new Date(2026, 3, 13, 9).toLocaleDateString(undefined, { weekday: "short" }),
     );
   });
 
   it("formats wake descriptions with the selected clock preference", () => {
     expect(snoozeWakeDescription(localDate(2026, 4, 8, 18).toISOString(), now, "12-hour")).toMatch(
-      /PM/i,
+      /6/,
     );
     expect(snoozeWakeDescription(localDate(2026, 4, 8, 18).toISOString(), now, "24-hour")).toBe(
       "18:00",

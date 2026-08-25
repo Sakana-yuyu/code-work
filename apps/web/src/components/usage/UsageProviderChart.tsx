@@ -10,6 +10,7 @@ import {
   formatUsd,
 } from "@t3tools/shared/usageFormat";
 import { PROVIDER_ORDER, PROVIDER_PRESENTATION } from "./usageProviders";
+import { t } from "../../i18n";
 
 const VIEW_WIDTH = 960;
 const VIEW_HEIGHT = 260;
@@ -362,7 +363,7 @@ export function UsageProviderChart({
             viewBox={`0 0 ${VIEW_WIDTH} ${VIEW_HEIGHT}`}
             preserveAspectRatio="none"
             role="img"
-            aria-label={`${resolution === "hour" ? "Hourly" : "Daily"} ${metric === "tokens" ? "processed tokens" : "cost"} by provider`}
+            aria-label={`${resolution === "hour" ? t("hourly") : t("daily")} ${metric === "tokens" ? t("processedTokens") : t("cost2")} ${t("byProvider")}`}
           >
             {ticks.map((tick) => {
               const y = toY(tick);

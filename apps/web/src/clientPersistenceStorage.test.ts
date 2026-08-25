@@ -39,8 +39,8 @@ afterEach(() => {
 
 describe("clientPersistenceStorage", () => {
   it("persists client settings in browser storage", async () => {
-    getTestWindow();
-    const { readBrowserClientSettings, writeBrowserClientSettings } =
+    const testWindow = getTestWindow();
+    const { CLIENT_SETTINGS_STORAGE_KEY, readBrowserClientSettings, writeBrowserClientSettings } =
       await import("./clientPersistenceStorage");
     const settings = {
       ...DEFAULT_CLIENT_SETTINGS,
@@ -50,6 +50,23 @@ describe("clientPersistenceStorage", () => {
     writeBrowserClientSettings(settings);
 
     expect(readBrowserClientSettings()).toEqual(settings);
+    expect(testWindow.localStorage.getItem(CLIENT_SETTINGS_STORAGE_KEY)).toBeTruthy();
+  });
+
+  it("migrates valid legacy settings to the canonical key", async () => {
+    const testWindow = getTestWindow();
+    testWindow.localStorage.setItem(
+      "t3code:client-settings:v1",
+      JSON.stringify({ ...DEFAULT_CLIENT_SETTINGS, timestampFormat: "24-hour" }),
+    );
+    const { CLIENT_SETTINGS_STORAGE_KEY, readBrowserClientSettings } =
+      await import("./clientPersistenceStorage");
+
+    expect(readBrowserClientSettings()).toEqual(
+      expect.objectContaining({ timestampFormat: "24-hour" }),
+    );
+    expect(testWindow.localStorage.getItem(CLIENT_SETTINGS_STORAGE_KEY)).toBeTruthy();
+    expect(testWindow.localStorage.getItem("t3code:client-settings:v1")).toBeNull();
   });
 
   it("reports structured decode failures while preserving the fallback", async () => {

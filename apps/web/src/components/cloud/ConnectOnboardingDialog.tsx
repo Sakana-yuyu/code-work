@@ -5,6 +5,7 @@ import { useEffect, useRef, useState } from "react";
 
 import {
   CONNECT_ONBOARDING_OPT_OUT_STORAGE_KEY,
+  LEGACY_CONNECT_ONBOARDING_OPT_OUT_STORAGE_KEY,
   ConnectOnboardingOptOutSchema,
   EMPTY_CONNECT_ONBOARDING_OPT_OUT_STATE,
 } from "~/cloud/connectOnboarding";
@@ -54,6 +55,7 @@ function ConfiguredConnectOnboardingDialog() {
     CONNECT_ONBOARDING_OPT_OUT_STORAGE_KEY,
     EMPTY_CONNECT_ONBOARDING_OPT_OUT_STATE,
     ConnectOnboardingOptOutSchema,
+    { legacyKey: LEGACY_CONNECT_ONBOARDING_OPT_OUT_STORAGE_KEY },
   );
 
   const desktopBridge = window.desktopBridge;

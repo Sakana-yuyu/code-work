@@ -3,6 +3,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vite-plus/test";
 
 import { ChangedFilesCard, ChangedFilesTree } from "./ChangedFilesTree";
+import { t } from "~/i18n";
 
 describe("ChangedFilesCard", () => {
   it("keeps its compact header sticky while preserving singular labels", () => {
@@ -33,10 +34,10 @@ describe("ChangedFilesCard", () => {
     expect(markup).toContain('class="flex shrink-0 items-center gap-1.5 pr-1"');
     expect(markup).toContain("!size-[22px]");
     expect(markup).toContain("size-3");
-    expect(markup).toContain('aria-label="Collapse all folders"');
-    expect(markup).toContain('aria-label="Open diff"');
+    expect(markup).toContain(`aria-label="${t("collapseAllFolders")}"`);
+    expect(markup).toContain(`aria-label="${t("openDiff")}"`);
     expect(markup).toContain('role="group" aria-label="2 additions, 1 deletions"');
-    expect(markup).toContain("1 changed file");
+    expect(markup).toContain(`1 ${t("changedFile")}`);
     expect(markup).not.toContain("1 changed files");
   });
 
@@ -94,7 +95,7 @@ describe("ChangedFilesCard", () => {
     );
 
     expect(markup).toContain('data-changed-files-state="collapsed"');
-    expect(markup).toContain("1 changed file");
+    expect(markup).toContain(`1 ${t("changedFile")}`);
     expect(markup).not.toContain("Show all");
     expect(markup).not.toContain("App.tsx");
   });

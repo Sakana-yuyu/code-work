@@ -36,6 +36,7 @@ import { PanelTabCloseButton } from "~/components/ui/panel-tab-close-button";
 import { faviconUrlForOrigin } from "~/lib/favicon";
 import { useTheme } from "~/hooks/useTheme";
 import { COLLAPSED_SIDEBAR_TITLEBAR_INSET_CLASS } from "~/workspaceTitlebar";
+import { t } from "~/i18n";
 
 import { PreviewPanelShell, type PreviewPanelMode } from "./preview/PreviewPanelShell";
 import { FaviconImage } from "./preview/PreviewFaviconIcon";
@@ -47,6 +48,7 @@ interface RightPanelTabsProps {
   maximized?: boolean;
   /** Forwarded to PreviewPanelShell so this surface persists its own width. */
   widthStorageKey?: string;
+  legacyWidthStorageKey?: string;
   /** Forwarded to PreviewPanelShell as the initial width before a user resize. */
   defaultWidth?: number;
   layoutControls?: ReactNode;
@@ -95,12 +97,12 @@ export interface PullRequestTabStatus {
 }
 
 const SURFACE_DISABLED_REASONS = {
-  browser: "Browser previews are only available in the T3 Code desktop app.",
-  terminal: "Terminal surfaces are only available from a project thread.",
-  files: "Files are only available when a project is open.",
-  diff: "Diff is only available for server threads in Git repositories.",
-  pullRequest: "This thread's branch has no pull request yet.",
-  agents: "Agents are only available from a thread.",
+  browser: "surface.browserDesktopOnly",
+  terminal: "surface.terminalThreadOnly",
+  files: "surface.filesProjectOnly",
+  diff: "surface.diffGitServerOnly",
+  pullRequest: "surface.pullRequestUnavailable",
+  agents: "surface.agentsThreadOnly",
 } as const;
 
 /** Overlays that must win over the launcher's letter shortcuts. */
@@ -117,12 +119,12 @@ const LAUNCHER_SHORTCUT_BLOCKING_LAYERS = [
 
 /** One-line unavailability hints for the empty-state cards. */
 const SURFACE_UNAVAILABLE_HINTS = {
-  browser: "Only available in the desktop app.",
-  terminal: "Available when a project is open.",
-  files: "Available when a project is open.",
-  diff: "Available for Git repositories.",
-  pullRequest: "No pull request on this branch yet.",
-  agents: "Available from a thread.",
+  browser: "surface.browserDesktopOnlyShort",
+  terminal: "surface.projectOnlyShort",
+  files: "surface.projectOnlyShort",
+  diff: "surface.gitRepositoryOnlyShort",
+  pullRequest: "surface.noPullRequestShort",
+  agents: "surface.threadOnlyShort",
 } as const;
 
 type TabContextMenuAction =
@@ -265,62 +267,62 @@ function RightPanelEmptyState(props: {
 
   const actions = [
     {
-      label: "Browser",
-      description: "Open a local app or URL.",
+      label: t("surface.browser"),
+      description: t("surface.browserDescription"),
       icon: Globe2,
       shortcut: "B",
       available: props.browserAvailable,
-      disabledReason: SURFACE_UNAVAILABLE_HINTS.browser,
+      disabledReason: t(SURFACE_UNAVAILABLE_HINTS.browser),
       onClick: props.onAddBrowser,
       badgeCount: 0,
     },
     {
-      label: "Terminal",
-      description: "Start a shell in this workspace.",
+      label: t("surface.terminal"),
+      description: t("surface.terminalDescription"),
       icon: TerminalSquare,
       shortcut: "T",
       available: props.terminalAvailable,
-      disabledReason: SURFACE_UNAVAILABLE_HINTS.terminal,
+      disabledReason: t(SURFACE_UNAVAILABLE_HINTS.terminal),
       onClick: props.onAddTerminal,
       badgeCount: 0,
     },
     {
-      label: "Files",
-      description: "Browse and read workspace files.",
+      label: t("surface.files"),
+      description: t("surface.filesDescription"),
       icon: Files,
       shortcut: "F",
       available: props.filesAvailable,
-      disabledReason: SURFACE_UNAVAILABLE_HINTS.files,
+      disabledReason: t(SURFACE_UNAVAILABLE_HINTS.files),
       onClick: props.onAddFiles,
       badgeCount: 0,
     },
     {
-      label: "Diff",
-      description: "Review changes in this thread.",
+      label: t("surface.diff"),
+      description: t("surface.diffDescription"),
       icon: FileDiff,
       shortcut: "D",
       available: props.diffAvailable,
-      disabledReason: SURFACE_UNAVAILABLE_HINTS.diff,
+      disabledReason: t(SURFACE_UNAVAILABLE_HINTS.diff),
       onClick: props.onAddDiff,
       badgeCount: 0,
     },
     {
-      label: "Pull request",
-      description: "Open this branch's pull request.",
+      label: t("surface.pullRequest"),
+      description: t("surface.pullRequestDescription"),
       icon: GitPullRequest,
       shortcut: "P",
       available: props.pullRequestAvailable,
-      disabledReason: SURFACE_UNAVAILABLE_HINTS.pullRequest,
+      disabledReason: t(SURFACE_UNAVAILABLE_HINTS.pullRequest),
       onClick: props.onAddPullRequest,
       badgeCount: 0,
     },
     {
-      label: "Agents",
-      description: "Follow subagents and workflows.",
+      label: t("surface.agents"),
+      description: t("surface.agentsDescription"),
       icon: Bot,
       shortcut: "A",
       available: props.agentsAvailable,
-      disabledReason: SURFACE_UNAVAILABLE_HINTS.agents,
+      disabledReason: t(SURFACE_UNAVAILABLE_HINTS.agents),
       onClick: props.onAddAgents,
       badgeCount: props.liveAgentCount,
     },
@@ -418,7 +420,7 @@ function RightPanelEmptyState(props: {
       ref={focusOnMount}
       tabIndex={0}
       onKeyDown={handleKeyDown}
-      aria-label="Open a surface"
+      aria-label={t("surface.openSurface")}
       data-surface-launcher-keys={availableActions.map((action) => action.shortcut).join("")}
       className={cn(
         "flex min-h-0 flex-1 items-center justify-center overflow-y-auto px-6 pt-6 outline-none",
@@ -429,10 +431,8 @@ function RightPanelEmptyState(props: {
     >
       <div className="relative w-full max-w-lg">
         <div className="absolute inset-x-0 bottom-full mb-5 text-center">
-          <h3 className="font-medium text-foreground text-sm">Open a surface</h3>
-          <p className="mt-1 text-muted-foreground text-xs">
-            Choose what to show in the right panel.
-          </p>
+          <h3 className="font-medium text-foreground text-sm">{t("surface.openSurface")}</h3>
+          <p className="mt-1 text-muted-foreground text-xs">{t("surface.chooseRightPanel")}</p>
         </div>
         <div className="grid grid-cols-2 gap-2">
           {actions.map((action) =>
@@ -604,7 +604,7 @@ export function RightPanelTabs(props: RightPanelTabsProps) {
 
   const addSurfaceActions = [
     {
-      label: "Browser",
+      label: t("surface.browser"),
       icon: Globe2,
       shortcut: "B",
       available: props.browserAvailable,
@@ -612,7 +612,7 @@ export function RightPanelTabs(props: RightPanelTabsProps) {
       onClick: props.onAddBrowser,
     },
     {
-      label: "Terminal",
+      label: t("surface.terminal"),
       icon: TerminalSquare,
       shortcut: "T",
       available: props.terminalAvailable,
@@ -620,7 +620,7 @@ export function RightPanelTabs(props: RightPanelTabsProps) {
       onClick: props.onAddTerminal,
     },
     {
-      label: "Files",
+      label: t("surface.files"),
       icon: Files,
       shortcut: "F",
       available: props.filesAvailable,
@@ -628,7 +628,7 @@ export function RightPanelTabs(props: RightPanelTabsProps) {
       onClick: props.onAddFiles,
     },
     {
-      label: "Diff",
+      label: t("surface.diff"),
       icon: FileDiff,
       shortcut: "D",
       available: props.diffAvailable,
@@ -636,7 +636,7 @@ export function RightPanelTabs(props: RightPanelTabsProps) {
       onClick: props.onAddDiff,
     },
     {
-      label: "Pull request",
+      label: t("surface.pullRequest"),
       icon: GitPullRequest,
       shortcut: "P",
       available: props.pullRequestAvailable,
@@ -644,7 +644,7 @@ export function RightPanelTabs(props: RightPanelTabsProps) {
       onClick: props.onAddPullRequest,
     },
     {
-      label: "Agents",
+      label: t("surface.agents"),
       icon: Bot,
       shortcut: "A",
       available: props.agentsAvailable,
@@ -774,6 +774,9 @@ export function RightPanelTabs(props: RightPanelTabsProps) {
       mode={props.mode}
       {...(props.maximized !== undefined ? { maximized: props.maximized } : {})}
       {...(props.widthStorageKey !== undefined ? { widthStorageKey: props.widthStorageKey } : {})}
+      {...(props.legacyWidthStorageKey !== undefined
+        ? { legacyWidthStorageKey: props.legacyWidthStorageKey }
+        : {})}
       {...(props.defaultWidth !== undefined ? { defaultWidth: props.defaultWidth } : {})}
     >
       <div

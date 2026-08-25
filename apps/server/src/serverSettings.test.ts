@@ -688,6 +688,144 @@ it.layer(NodeServices.layer)("server settings", (it) => {
     }).pipe(Effect.provide(makeServerSettingsLayer())),
   );
 
+  it.effect("stores BYOK API keys outside settings.json and redacts client settings", () =>
+    Effect.gen(function* () {
+      const serverSettings = yield* ServerSettingsModule.ServerSettingsService;
+      const serverConfig = yield* ServerConfig.ServerConfig;
+      const fileSystem = yield* FileSystem.FileSystem;
+      const instanceId = ProviderInstanceId.make("byok_personal");
+
+      const next = yield* serverSettings.updateSettings({
+        providerInstances: {
+          [instanceId]: {
+            driver: ProviderDriverKind.make("byok"),
+            config: {
+              adapters: [
+                {
+                  id: "deepseek-chat",
+                  displayName: "DeepSeek Chat",
+                  protocol: "openai",
+                  baseURL: "https://api.deepseek.com/v1",
+                  apiKey: "sk-deepseek-secret",
+                  modelId: "deepseek-chat",
+                  contextWindowTokens: 128000,
+                },
+              ],
+            },
+          },
+        },
+      });
+
+      const materializedAdapter = (
+        next.providerInstances[instanceId]?.config as { adapters: Array<Record<string, unknown>> }
+      ).adapters[0];
+      assert.equal(materializedAdapter?.apiKey, "sk-deepseek-secret");
+      assert.equal(materializedAdapter?.apiKeyRedacted, true);
+
+      const clientSettings = ServerSettingsModule.redactServerSettingsForClient(next);
+      const clientAdapter = (
+        clientSettings.providerInstances[instanceId]?.config as {
+          adapters: Array<Record<string, unknown>>;
+        }
+      ).adapters[0];
+      assert.equal(clientAdapter?.apiKey, "");
+      assert.equal(clientAdapter?.apiKeyRedacted, true);
+
+      const raw = yield* fileSystem.readFileString(serverConfig.settingsPath);
+      assert.notInclude(raw, "sk-deepseek-secret");
+      // @effect-diagnostics-next-line preferSchemaOverJson:off
+      const persistedAdapter = JSON.parse(raw).providerInstances.byok_personal.config.adapters[0];
+      assert.equal(persistedAdapter.apiKey, "");
+      assert.equal(persistedAdapter.apiKeyRedacted, true);
+
+      const roundTripped = yield* serverSettings.updateSettings({
+        providerInstances: {
+          [instanceId]: {
+            driver: ProviderDriverKind.make("byok"),
+            displayName: "Personal BYOK",
+            config: {
+              adapters: [{ ...persistedAdapter, apiKey: "", apiKeyRedacted: true }],
+            },
+          },
+        },
+      });
+      const roundTrippedAdapter = (
+        roundTripped.providerInstances[instanceId]?.config as {
+          adapters: Array<Record<string, unknown>>;
+        }
+      ).adapters[0];
+      assert.equal(roundTrippedAdapter?.apiKey, "sk-deepseek-secret");
+    }).pipe(Effect.provide(makeServerSettingsLayer())),
+  );
+
+  it.effect("reuses a stored BYOK key for discovered adapters without persisting the key", () =>
+    Effect.gen(function* () {
+      const serverSettings = yield* ServerSettingsModule.ServerSettingsService;
+      const serverConfig = yield* ServerConfig.ServerConfig;
+      const fileSystem = yield* FileSystem.FileSystem;
+      const instanceId = ProviderInstanceId.make("byok_discovery");
+
+      const sourceAdapter = {
+        id: "source-model",
+        displayName: "Source model",
+        protocol: "openai" as const,
+        baseURL: "https://api.example.com/v1",
+        apiKey: "sk-source-secret",
+        modelId: "source-model",
+        contextWindowTokens: 128000,
+      };
+      const first = yield* serverSettings.updateSettings({
+        providerInstances: {
+          [instanceId]: {
+            driver: ProviderDriverKind.make("byok"),
+            config: { adapters: [sourceAdapter] },
+          },
+        },
+      });
+      const persistedSource = (
+        first.providerInstances[instanceId]?.config as { adapters: Array<Record<string, unknown>> }
+      ).adapters[0];
+
+      const next = yield* serverSettings.updateSettings({
+        providerInstances: {
+          [instanceId]: {
+            driver: ProviderDriverKind.make("byok"),
+            config: {
+              adapters: [
+                persistedSource,
+                {
+                  id: "discovered-model",
+                  displayName: "Discovered model",
+                  protocol: "openai" as const,
+                  baseURL: sourceAdapter.baseURL,
+                  apiKey: "",
+                  apiKeyRedacted: true,
+                  apiKeySourceAdapterId: sourceAdapter.id,
+                  modelId: "discovered-model",
+                  contextWindowTokens: 128000,
+                },
+              ],
+            },
+          },
+        },
+      });
+
+      const materialized = (
+        next.providerInstances[instanceId]?.config as { adapters: Array<Record<string, unknown>> }
+      ).adapters;
+      assert.equal(materialized[1]?.apiKey, "sk-source-secret");
+      assert.equal(materialized[1]?.apiKeySourceAdapterId, sourceAdapter.id);
+
+      const raw = yield* fileSystem.readFileString(serverConfig.settingsPath);
+      assert.notInclude(raw, "sk-source-secret");
+      // @effect-diagnostics-next-line preferSchemaOverJson:off
+      const persisted = JSON.parse(raw).providerInstances.byok_discovery.config.adapters;
+      assert.equal(persisted[1].apiKey, "");
+      assert.equal(persisted[1].apiKeyRedacted, true);
+      assert.equal(persisted[1].apiKeySourceAdapterId, sourceAdapter.id);
+    }).pipe(Effect.provide(makeServerSettingsLayer())),
+  );
+
   it.effect("stores sensitive provider instance environment values outside settings.json", () =>
     Effect.gen(function* () {
       const serverSettings = yield* ServerSettingsModule.ServerSettingsService;

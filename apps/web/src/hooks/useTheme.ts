@@ -20,7 +20,11 @@ import {
   type ThemeAppearance,
   type ThemeHalves,
   type ThemePreferenceMode,
+  LEGACY_THEME_APPEARANCE_MODE_STORAGE_KEY,
+  LEGACY_THEME_FOLLOW_SYSTEM_STORAGE_KEY,
+  LEGACY_THEME_HALVES_STORAGE_KEY,
 } from "../themePalette";
+import { canonicalStorageKey, createCanonicalFirstStorage } from "../persistenceStorage";
 
 type Theme = ThemePreference;
 type ThemeSnapshot = {
@@ -33,7 +37,8 @@ type ThemeSnapshot = {
 
 type DesktopThemeBridge = Pick<DesktopBridge, "setTheme">;
 
-const STORAGE_KEY = "t3code:theme";
+const LEGACY_STORAGE_KEY = "t3code:theme";
+const STORAGE_KEY = canonicalStorageKey(LEGACY_STORAGE_KEY);
 const MEDIA_QUERY = "(prefers-color-scheme: dark)";
 const DEFAULT_THEME_SNAPSHOT: ThemeSnapshot = {
   theme: "system",
@@ -52,7 +57,12 @@ export function readThemeHalves(): ThemeHalves | null {
 function readStoredThemeHalves(): ThemeHalves | null {
   if (typeof window === "undefined") return null;
   try {
-    return parseThemeHalves(window.localStorage.getItem(THEME_HALVES_STORAGE_KEY));
+    const storage = createCanonicalFirstStorage({
+      storage: window.localStorage,
+      canonicalKey: THEME_HALVES_STORAGE_KEY,
+      legacyKey: LEGACY_THEME_HALVES_STORAGE_KEY,
+    });
+    return parseThemeHalves(storage.getItem(THEME_HALVES_STORAGE_KEY));
   } catch {
     return null;
   }
@@ -118,7 +128,11 @@ function readStoredFollowSystem(theme: Theme): boolean {
   if (typeof window === "undefined") return theme === "system";
 
   try {
-    const raw = window.localStorage.getItem(THEME_FOLLOW_SYSTEM_STORAGE_KEY);
+    const raw = createCanonicalFirstStorage({
+      storage: window.localStorage,
+      canonicalKey: THEME_FOLLOW_SYSTEM_STORAGE_KEY,
+      legacyKey: LEGACY_THEME_FOLLOW_SYSTEM_STORAGE_KEY,
+    }).getItem(THEME_FOLLOW_SYSTEM_STORAGE_KEY);
     if (raw === "true") return true;
     if (raw === "false") return false;
   } catch {
@@ -135,7 +149,12 @@ function isThemePreferenceMode(value: string | null): value is ThemePreferenceMo
 export function readAppearanceModePreference(theme: Theme): ThemePreferenceMode {
   if (typeof window !== "undefined") {
     try {
-      const raw = window.localStorage.getItem(THEME_APPEARANCE_MODE_STORAGE_KEY);
+      const raw = createCanonicalFirstStorage({
+        storage: window.localStorage,
+        canonicalKey: THEME_APPEARANCE_MODE_STORAGE_KEY,
+        legacyKey: LEGACY_THEME_APPEARANCE_MODE_STORAGE_KEY,
+        validate: (value) => isThemePreferenceMode(value),
+      }).getItem(THEME_APPEARANCE_MODE_STORAGE_KEY);
       if (isThemePreferenceMode(raw)) return raw;
     } catch {
       // Fall back to the legacy preference below when storage is unavailable.
@@ -165,7 +184,13 @@ export function readThemePreference(): Theme {
   if (typeof window === "undefined") return DEFAULT_THEME_SNAPSHOT.theme;
   let raw: string | null;
   try {
-    raw = window.localStorage.getItem(STORAGE_KEY);
+    const storage = createCanonicalFirstStorage({
+      storage: window.localStorage,
+      canonicalKey: STORAGE_KEY,
+      legacyKey: LEGACY_STORAGE_KEY,
+      validate: isKnownThemePreference,
+    });
+    raw = storage.getItem(STORAGE_KEY);
   } catch (cause) {
     throw new ThemeStorageError({
       operation: "read",
@@ -412,17 +437,29 @@ function handleSystemAppearanceChange() {
 }
 
 function handleStorageChange(e: StorageEvent) {
-  if (e.key === STORAGE_KEY) {
+  if (e.key === STORAGE_KEY || e.key === LEGACY_STORAGE_KEY) {
     themeStorageReadFailure = null;
     applyTheme(getStored(), true);
     emitChange();
-  } else if (e.key === THEME_FOLLOW_SYSTEM_STORAGE_KEY) {
+  } else if (
+    e.key === THEME_FOLLOW_SYSTEM_STORAGE_KEY ||
+    e.key === LEGACY_THEME_FOLLOW_SYSTEM_STORAGE_KEY
+  ) {
     applyTheme(getStored(), true);
     emitChange();
-  } else if (e.key === THEME_APPEARANCE_MODE_STORAGE_KEY || e.key === THEME_HALVES_STORAGE_KEY) {
+  } else if (
+    e.key === THEME_APPEARANCE_MODE_STORAGE_KEY ||
+    e.key === LEGACY_THEME_APPEARANCE_MODE_STORAGE_KEY ||
+    e.key === THEME_HALVES_STORAGE_KEY ||
+    e.key === LEGACY_THEME_HALVES_STORAGE_KEY
+  ) {
     applyTheme(getStored(), true);
     emitChange();
-  } else if (e.key === CUSTOM_THEMES_STORAGE_KEY || e.key === null) {
+  } else if (
+    e.key === CUSTOM_THEMES_STORAGE_KEY ||
+    e.key === "t3code:themes:v1" ||
+    e.key === null
+  ) {
     if (e.key === null) themeStorageReadFailure = null;
     invalidateCustomThemes();
     lastAppliedTheme = null;

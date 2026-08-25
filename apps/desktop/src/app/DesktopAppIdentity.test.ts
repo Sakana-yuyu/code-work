@@ -108,6 +108,7 @@ const withIdentity = <A, E, R>(
   input: {
     readonly calls?: ElectronAppCalls;
     readonly environment?: TestEnvironmentInput;
+    readonly canonicalPathExists?: boolean;
     readonly legacyPathExists?: boolean;
     readonly legacyPathProbeError?: PlatformError.PlatformError;
     readonly packageJson?: string;
@@ -129,7 +130,9 @@ const withIdentity = <A, E, R>(
               input.legacyPathProbeError
                 ? Effect.fail(input.legacyPathProbeError)
                 : Effect.succeed(
-                    input.legacyPathExists === true && path.includes("T3 Code (Alpha)"),
+                    (input.canonicalPathExists === true && path.includes("code-work")) ||
+                      (input.legacyPathExists === true &&
+                        (path.includes("t3code") || path.includes("T3 Code (Alpha)"))),
                   ),
             readFileString: () =>
               Effect.succeed(input.packageJson ?? '{"t3codeCommitHash":"abcdef1234567890"}'),
@@ -144,26 +147,44 @@ const withIdentity = <A, E, R>(
 };
 
 describe("DesktopAppIdentity", () => {
-  it.effect("keeps using the legacy userData path when it already exists", () =>
+  it.effect("uses the legacy userData path when the canonical path is absent", () =>
     withIdentity(
       Effect.gen(function* () {
         const identity = yield* DesktopAppIdentity.DesktopAppIdentity;
         const userDataPath = yield* identity.resolveUserDataPath;
 
-        assert.equal(userDataPath, "/Users/alice/Library/Application Support/T3 Code (Alpha)");
+        assert.equal(
+          userDataPath.replaceAll("\\", "/"),
+          "/Users/alice/Library/Application Support/t3code",
+        );
       }),
       { legacyPathExists: true },
     ),
   );
 
-  it.effect("preserves failures while inspecting the legacy userData path", () => {
-    const legacyPath = "/Users/alice/Library/Application Support/T3 Code (Alpha)";
+  it.effect("prefers the canonical userData path when both paths exist", () =>
+    withIdentity(
+      Effect.gen(function* () {
+        const identity = yield* DesktopAppIdentity.DesktopAppIdentity;
+        const userDataPath = yield* identity.resolveUserDataPath;
+
+        assert.equal(
+          userDataPath.replaceAll("\\", "/"),
+          "/Users/alice/Library/Application Support/code-work",
+        );
+      }),
+      { canonicalPathExists: true, legacyPathExists: true },
+    ),
+  );
+
+  it.effect("preserves failures while inspecting the canonical userData path", () => {
+    const canonicalPath = "/Users/alice/Library/Application Support/code-work";
     const cause = PlatformError.systemError({
       _tag: "PermissionDenied",
       module: "FileSystem",
       method: "exists",
       description: "permission denied",
-      pathOrDescriptor: legacyPath,
+      pathOrDescriptor: canonicalPath,
     });
 
     return withIdentity(
@@ -172,11 +193,11 @@ describe("DesktopAppIdentity", () => {
         const error = yield* identity.resolveUserDataPath.pipe(Effect.flip);
 
         assert.instanceOf(error, DesktopAppIdentity.DesktopUserDataPathResolutionError);
-        assert.equal(error.legacyPath, legacyPath);
+        assert.equal(error.legacyPath.replaceAll("\\", "/"), canonicalPath);
         assert.strictEqual(error.cause, cause);
         assert.equal(
-          error.message,
-          `Failed to inspect legacy desktop user-data path at "${legacyPath}".`,
+          error.message.replaceAll("\\", "/"),
+          `Failed to inspect legacy desktop user-data path at "${canonicalPath}".`,
         );
       }),
       { legacyPathProbeError: cause },
@@ -195,8 +216,8 @@ describe("DesktopAppIdentity", () => {
         const identity = yield* DesktopAppIdentity.DesktopAppIdentity;
         yield* identity.configure;
 
-        assert.deepEqual(calls.setName, ["T3 Code (Alpha)"]);
-        assert.equal(calls.setAboutPanelOptions[0]?.applicationName, "T3 Code (Alpha)");
+        assert.deepEqual(calls.setName, ["Code Work (Alpha)"]);
+        assert.equal(calls.setAboutPanelOptions[0]?.applicationName, "Code Work (Alpha)");
         assert.equal(calls.setAboutPanelOptions[0]?.applicationVersion, "1.2.3");
         assert.equal(calls.setAboutPanelOptions[0]?.version, "0123456789ab");
         // Packaged: the bundle's own icon stands, so a custom one the user

@@ -21,20 +21,21 @@ import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from "../
 import { Switch } from "../ui/switch";
 import { Textarea } from "../ui/textarea";
 import { SettingResetButton, SettingsRow, SettingsSection } from "./settingsLayout";
+import { t } from "~/i18n";
 
 const MODE_OPTIONS: Record<SourceControlWritingStyleMode, { label: string; description: string }> =
   {
     repo_conventions: {
-      label: "Repository conventions",
-      description: "In each project, matches recent change descriptions and change request titles.",
+      label: t("repositoryConventions"),
+      description: t("inEachProjectMatchesRecentChangeDescriptionsAndChangeRequest"),
     },
     conventional_commits: {
-      label: "Conventional Commits",
+      label: t("conventionalCommits"),
       description:
         "Uses Conventional Commit prefixes for change descriptions; change request titles and descriptions stay concise.",
     },
     custom: {
-      label: "Custom instructions",
+      label: t("customInstructions"),
       description:
         "Applies your instructions to change descriptions and change request titles and descriptions in every project.",
     },
@@ -71,14 +72,14 @@ export function SourceControlWritingSettingsSection() {
   );
 
   return (
-    <SettingsSection title="Text generation">
+    <SettingsSection title={t("textGeneration")}>
       <SettingsRow
-        title="Source control writing style"
+        title={t("sourceControlWritingStyle")}
         description={MODE_OPTIONS[style.mode].description}
         resetAction={
           isSourceControlWritingStyleDirty ? (
             <SettingResetButton
-              label="source control writing style"
+              label={t("sourceControlWritingStyle2")}
               onClick={() =>
                 updateSettings({
                   sourceControlWritingStyle: {
@@ -129,7 +130,7 @@ export function SourceControlWritingSettingsSection() {
                 }
               }}
               rows={4}
-              placeholder="Keep titles concise. Use short bullet points in descriptions."
+              placeholder={t("keepTitlesConciseUseShortBulletPointsInDescriptions")}
               aria-label="Custom source control writing instructions"
             />
           </div>
@@ -137,12 +138,14 @@ export function SourceControlWritingSettingsSection() {
       </SettingsRow>
 
       <SettingsRow
-        title="Follow change request templates"
-        description="Structures change request descriptions using the current repository's template when one is available."
+        title={t("followChangeRequestTemplates")}
+        description={t(
+          "Structures change request descriptions using the current repository's template when one is available.",
+        )}
         resetAction={
           style.followChangeRequestTemplates !== defaults.followChangeRequestTemplates ? (
             <SettingResetButton
-              label="change request templates"
+              label={t("changeRequestTemplates")}
               onClick={() =>
                 updateSettings({
                   sourceControlWritingStyle: {
@@ -169,8 +172,8 @@ export function SourceControlWritingSettingsSection() {
       />
 
       <SettingsRow
-        title="Source control writer model"
-        description="Optional model override for change descriptions, change request titles and descriptions, and branch or bookmark names. Off uses the global text generation model."
+        title={t("sourceControlWriterModel")}
+        description={t("optionalModelOverrideForChangeDescriptionsChangeRequestTitle")}
         control={
           <div className="flex flex-wrap items-center justify-end gap-2">
             {usesDedicatedModel ? (

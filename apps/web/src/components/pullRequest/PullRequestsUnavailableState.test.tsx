@@ -2,6 +2,7 @@ import { isValidElement, type ReactElement, type ReactNode } from "react";
 import { describe, expect, it } from "vite-plus/test";
 
 import { PullRequestsUnavailableState } from "./PullRequestsUnavailableState";
+import { t } from "~/i18n";
 
 function textOf(node: ReactNode): string {
   if (typeof node === "string" || typeof node === "number") return String(node);
@@ -21,12 +22,12 @@ describe("PullRequestsUnavailableState", () => {
 
     expect(text).toContain("Pull requests unavailable");
     expect(text).toContain("Update this environment's T3 Code server");
-    expect(text).not.toContain("Retry");
+    expect(text).not.toContain(t("retry"));
   });
 
   it("retains the retry for transient load failures", () => {
     expect(
       textOf(PullRequestsUnavailableState({ error: "GitHub did not answer.", onRetry: () => {} })),
-    ).toContain("Retry");
+    ).toContain(t("retry"));
   });
 });

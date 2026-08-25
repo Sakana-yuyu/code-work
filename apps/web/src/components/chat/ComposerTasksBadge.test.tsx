@@ -2,6 +2,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vite-plus/test";
 
 import { ComposerTasksBadge, ComposerTasksDrawer } from "./ComposerTasksBadge";
+import { t } from "~/i18n";
 
 const progress = {
   step: "Attach task progress",
@@ -43,7 +44,7 @@ describe("ComposerTasksBadge", () => {
     expect(markup).toContain("1/3");
     expect(markup).toContain("Current task: Attach task progress");
     expect(markup).toContain("lucide-list-todo");
-    expect(markup).toContain('aria-label="Dismiss tasks for this turn"');
+    expect(markup).toContain(`aria-label="${t("dismissTasksForThisTurn")}"`);
     expect(markup).toContain("lucide-x");
     expect(markup).not.toContain("lucide-chevron");
     expect(markup).toContain("bg-success");
@@ -107,7 +108,7 @@ describe("ComposerTasksBadge", () => {
     expect(markup).toContain("Attach task progress");
     expect(markup).toContain("Verify the result");
     expect(markup).toContain("lucide-list-todo");
-    expect(markup).toContain('aria-label="Dismiss tasks for this turn"');
+    expect(markup).toContain(`aria-label="${t("dismissTasksForThisTurn")}"`);
     expect(markup).not.toContain("lucide-chevron");
     expect(markup).not.toContain("bg-success");
     expect(markup).not.toContain("bg-primary");

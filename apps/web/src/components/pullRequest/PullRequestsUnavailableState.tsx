@@ -1,5 +1,7 @@
 import { GitPullRequestIcon, RefreshCwIcon } from "lucide-react";
 
+import { t } from "../../i18n";
+
 import { Button } from "../ui/button";
 import {
   Empty,
@@ -11,7 +13,7 @@ import {
 } from "../ui/empty";
 
 export function PullRequestsUnavailableState({
-  title = "Could not load pull requests",
+  title = t("couldNotLoadPullRequests"),
   error,
   onRetry,
 }: {
@@ -34,7 +36,7 @@ export function PullRequestsUnavailableState({
         <EmptyContent>
           <Button size="sm" variant="outline" onClick={onRetry}>
             <RefreshCwIcon className="size-3.5" />
-            Retry
+            {t("retry")}
           </Button>
         </EmptyContent>
       ) : null}

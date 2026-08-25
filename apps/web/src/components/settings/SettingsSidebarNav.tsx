@@ -42,6 +42,7 @@ import {
   type SettingsPath,
   type SettingsSearchItem,
 } from "./settingsSearch";
+import { t } from "~/i18n";
 
 const SETTINGS_SECTION_ICONS: Readonly<
   Record<SettingsPath, ComponentType<{ className?: string }>>
@@ -194,8 +195,8 @@ export function SettingsSidebarNav({ pathname }: { pathname: string }) {
                 setActiveResultIndex(0);
               }}
               onKeyDown={handleSearchKeyDown}
-              placeholder="Search"
-              aria-label="Search settings"
+              placeholder={t("search")}
+              aria-label={t("searchSettings")}
               role="combobox"
               aria-autocomplete="list"
               aria-expanded={isSearching && hasResults}
@@ -213,7 +214,7 @@ export function SettingsSidebarNav({ pathname }: { pathname: string }) {
                 size="icon-micro"
                 variant="ghost"
                 className="shrink-0 text-sidebar-muted-foreground hover:bg-sidebar-control-surface hover:text-sidebar-foreground"
-                aria-label="Clear settings search"
+                aria-label={t("clearSettingsSearch")}
                 onClick={() => {
                   clearSearch();
                   searchInputRef.current?.focus();
@@ -230,7 +231,7 @@ export function SettingsSidebarNav({ pathname }: { pathname: string }) {
               role="status"
               className="px-2 py-6 text-center text-xs text-sidebar-muted-foreground"
             >
-              No settings found
+              {t("noSettingsFound")}
             </p>
           ) : null}
           <SidebarMenu
@@ -256,10 +257,10 @@ export function SettingsSidebarNav({ pathname }: { pathname: string }) {
                       <SettingsSectionIcon to={item.to} />
                       <span className="min-w-0 flex-1">
                         <span className="block truncate text-sm font-medium text-sidebar-foreground">
-                          {item.title}
+                          {t(item.title)}
                         </span>
                         <span className="block truncate text-[11px] text-sidebar-muted-foreground/75">
-                          {SETTINGS_SECTION_LABELS[item.to]}
+                          {t(SETTINGS_SECTION_LABELS[item.to])}
                         </span>
                       </span>
                     </SidebarMenuButton>
@@ -275,7 +276,7 @@ export function SettingsSidebarNav({ pathname }: { pathname: string }) {
                         onClick={() => handleSectionClick(item.to)}
                       >
                         <Icon />
-                        <span className="truncate">{item.label}</span>
+                        <span className="truncate">{t(item.label)}</span>
                       </SidebarMenuButton>
                     </SidebarMenuItem>
                   );

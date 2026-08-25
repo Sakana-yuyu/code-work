@@ -7,6 +7,7 @@ import { isValidElement, type ReactElement, type ReactNode } from "react";
 import { describe, expect, it } from "vite-plus/test";
 
 import { PullRequestListEmptyState } from "./PullRequestListEmptyState";
+import { t } from "~/i18n";
 
 function textOf(node: ReactNode): string {
   if (typeof node === "string" || typeof node === "number") return String(node);
@@ -35,20 +36,20 @@ function render(props: Partial<typeof baseProps>): string {
 describe("PullRequestListEmptyState", () => {
   it("asks for a project ahead of anything a search or a filter could say", () => {
     const text = render({ hasProjects: false, searching: true, query: "fix", filtered: true });
-    expect(text).toContain("No projects in this workspace");
-    expect(text).toContain("Add project");
+    expect(text).toContain(t("noProjectsInThisWorkspace"));
+    expect(text).toContain(t("addProject"));
   });
 
   it("leaves the retry off the states where asking again could not change the answer", () => {
-    expect(render({ hasProjects: false })).not.toContain("Check again");
-    expect(render({ searching: true, query: "fix" })).not.toContain("Check again");
+    expect(render({ hasProjects: false })).not.toContain(t("checkAgain"));
+    expect(render({ searching: true, query: "fix" })).not.toContain(t("checkAgain"));
   });
 
   it("offers the retry once the hosts have answered", () => {
-    expect(render({})).toContain("Check again");
-    expect(render({ filtered: true })).toContain("Check again");
-    expect(render({ query: "fix" })).toContain("Check again");
-    expect(render({ canLoadMore: true })).toContain("Load more pull requests");
-    expect(render({ refreshing: true })).toContain("Checking...");
+    expect(render({})).toContain(t("checkAgain"));
+    expect(render({ filtered: true })).toContain(t("checkAgain"));
+    expect(render({ query: "fix" })).toContain(t("checkAgain"));
+    expect(render({ canLoadMore: true })).toContain(t("loadMorePullRequests"));
+    expect(render({ refreshing: true })).toContain(t("checking"));
   });
 });

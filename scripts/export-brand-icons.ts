@@ -1,5 +1,7 @@
 #!/usr/bin/env node
 
+import * as NodeCrypto from "node:crypto";
+
 import * as NodeRuntime from "@effect/platform-node/NodeRuntime";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { HostProcessEnvironment } from "@t3tools/shared/hostProcess";
@@ -13,8 +15,17 @@ import * as Stream from "effect/Stream";
 import { Command, Flag } from "effect/unstable/cli";
 import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process";
 
-import { BRAND_ASSET_PATHS, DEVELOPMENT_PUBLIC_ICON_OVERRIDES } from "./lib/brand-assets.ts";
-import { encodePngIco, readPngDimensions, WINDOWS_ICON_SIZES } from "./lib/icon-export.ts";
+import {
+  BRAND_ASSET_PATHS,
+  DEVELOPMENT_PUBLIC_ICON_OVERRIDES,
+  SAKANA_YUYU_ICON_SOURCE,
+} from "./lib/brand-assets.ts";
+import {
+  encodePngIco,
+  readPngDimensions,
+  resizePng,
+  WINDOWS_ICON_SIZES,
+} from "./lib/icon-export.ts";
 
 const DESIGN_GENERATION = 26;
 const ICON_COMPOSER_EXECUTABLE_PARTS = [
@@ -205,7 +216,7 @@ export class IconExportAssetsStaleError extends Schema.TaggedErrorClass<IconExpo
 const ICON_VARIANTS = [
   {
     label: "development",
-    source: BRAND_ASSET_PATHS.developmentIconComposerProject,
+    source: SAKANA_YUYU_ICON_SOURCE.relativePath,
     outputs: {
       ios: BRAND_ASSET_PATHS.developmentIosIconPng,
       macos: BRAND_ASSET_PATHS.developmentDesktopIconPng,
@@ -219,7 +230,7 @@ const ICON_VARIANTS = [
   },
   {
     label: "preview",
-    source: BRAND_ASSET_PATHS.nightlyIconComposerProject,
+    source: SAKANA_YUYU_ICON_SOURCE.relativePath,
     outputs: {
       ios: BRAND_ASSET_PATHS.nightlyIosIconPng,
       macos: BRAND_ASSET_PATHS.nightlyMacIconPng,
@@ -233,7 +244,7 @@ const ICON_VARIANTS = [
   },
   {
     label: "production",
-    source: BRAND_ASSET_PATHS.productionIconComposerProject,
+    source: SAKANA_YUYU_ICON_SOURCE.relativePath,
     outputs: {
       ios: BRAND_ASSET_PATHS.productionIosIconPng,
       macos: BRAND_ASSET_PATHS.productionMacIconPng,
@@ -248,11 +259,9 @@ const ICON_VARIANTS = [
 ] as const satisfies ReadonlyArray<IconVariant>;
 
 const MACOS_EXPORT_CODEX_PROMPT = [
-  "Use [@Computer](plugin://computer-use@openai-bundled) and the Icon Composer app to export the three macOS app icons in this repository.",
-  "For each project below, use Platform: macOS pre-Tahoe, Appearance: Default, Size: 1024pt, and Scale: 1×, then save the PNG to the exact destination:",
-  ...ICON_VARIANTS.map((variant) => `- ${variant.source} -> ${variant.outputs.macos}`),
-  "Do not resize, composite, or otherwise post-process the exported PNGs.",
-  "Verify every result is 1024×1024 and has the classic macOS safe area: an 824×824 opaque body inset 100px on every side, with only Icon Composer's native shadow extending beyond it.",
+  "The canonical Code Work icon source is the pinned sakana-yuyu PNG; the raster exporter now generates the macOS PNGs deterministically.",
+  `Source: ${SAKANA_YUYU_ICON_SOURCE.relativePath}`,
+  "If native macOS safe-area artwork is later required, use the source above rather than the legacy Icon Composer projects.",
 ];
 
 const RepositoryRoot = Effect.service(Path.Path).pipe(
@@ -548,9 +557,7 @@ const renderIcon = Effect.fn("iconExport.renderIcon")(function* (
 });
 
 const renderVariant = Effect.fn("iconExport.renderVariant")(function* (
-  toolPath: string,
   repositoryRoot: string,
-  temporaryDirectory: string,
   variant: IconVariant,
 ) {
   const fs = yield* FileSystem.FileSystem;
@@ -570,25 +577,61 @@ const renderVariant = Effect.fn("iconExport.renderVariant")(function* (
     return yield* new IconExportSourceMissingError({ sourcePath: variant.source });
   }
 
-  const renditionCache = new Map<string, Buffer>();
-  const render = Effect.fn("iconExport.renderVariant.rendition")(function* (
-    platform: IconPlatform,
-    size: number,
-  ) {
-    const cacheKey = `${platform}-${size}`;
-    const cached = renditionCache.get(cacheKey);
-    if (cached) return cached;
-
-    const outputPath = path.join(temporaryDirectory, `${variant.label}-${platform}-${size}.png`);
-    const contents = yield* renderIcon(toolPath, sourcePath, outputPath, platform, size);
-    renditionCache.set(cacheKey, contents);
-    return contents;
+  const sourceContents = yield* fs.readFile(sourcePath).pipe(
+    Effect.mapError(
+      (cause) =>
+        new IconExportFileSystemError({
+          operation: "read-file",
+          path: sourcePath,
+          cause,
+        }),
+    ),
+  );
+  const source = Buffer.from(sourceContents);
+  const sourceHash = NodeCrypto.createHash("sha256").update(source).digest("hex");
+  if (sourceHash !== SAKANA_YUYU_ICON_SOURCE.sha256) {
+    return yield* Effect.die(
+      new Error(`Pinned sakana-yuyu icon source hash mismatch: ${sourceHash}`),
+    );
+  }
+  const dimensions = yield* Effect.try({
+    try: () => readPngDimensions(source),
+    catch: (cause) =>
+      new IconExportRenditionError({
+        sourcePath: variant.source,
+        outputPath: variant.source,
+        expectedSize: SAKANA_YUYU_ICON_SOURCE.width,
+        cause,
+      }),
   });
+  if (
+    dimensions.width !== SAKANA_YUYU_ICON_SOURCE.width ||
+    dimensions.height !== SAKANA_YUYU_ICON_SOURCE.height
+  ) {
+    return yield* new IconExportRenditionError({
+      sourcePath: variant.source,
+      outputPath: variant.source,
+      expectedSize: SAKANA_YUYU_ICON_SOURCE.width,
+      actualWidth: dimensions.width,
+      actualHeight: dimensions.height,
+    });
+  }
 
-  const ios = yield* render("iOS", 1024);
+  const render = (size: number) =>
+    Effect.try({
+      try: () => resizePng(source, size),
+      catch: (cause) =>
+        new IconExportRenditionError({
+          sourcePath: variant.source,
+          outputPath: `${variant.label}-${size}x${size}.png`,
+          expectedSize: size,
+          cause,
+        }),
+    });
+  const ios = yield* render(1024);
   const icoRenditions = yield* Effect.forEach(
     WINDOWS_ICON_SIZES,
-    (size) => render("iOS", size).pipe(Effect.map((contents) => ({ size, contents }))),
+    (size) => render(size).pipe(Effect.map((contents) => ({ size, contents }))),
     { concurrency: 1 },
   );
   const ico = yield* Effect.try({
@@ -598,10 +641,11 @@ const renderVariant = Effect.fn("iconExport.renderVariant")(function* (
 
   return new Map<string, Buffer>([
     [variant.outputs.ios, ios],
+    [variant.outputs.macos, ios],
     [variant.outputs.universal, ios],
-    [variant.outputs.appleTouch, yield* render("iOS", 180)],
-    [variant.outputs.favicon16, yield* render("iOS", 16)],
-    [variant.outputs.favicon32, yield* render("iOS", 32)],
+    [variant.outputs.appleTouch, yield* render(180)],
+    [variant.outputs.favicon16, yield* render(16)],
+    [variant.outputs.favicon32, yield* render(32)],
     [variant.outputs.faviconIco, ico],
     [variant.outputs.windowsIco, ico],
   ]);
@@ -717,39 +761,28 @@ const isCurrent = Effect.fn("iconExport.isCurrent")(function* (
 
 export const exportBrandIcons = Effect.fn("exportBrandIcons")(function* (checkOnly: boolean) {
   const fs = yield* FileSystem.FileSystem;
+  const path = yield* Path.Path;
   const repositoryRoot = yield* RepositoryRoot;
-  const tool = yield* resolveIconComposerTool();
-  const temporaryDirectory = yield* fs
-    .makeTempDirectoryScoped({
-      prefix: "t3-icon-export-",
-    })
-    .pipe(
-      Effect.mapError(
-        (cause) =>
-          new IconExportFileSystemError({
-            operation: "make-temp-directory",
-            path: "system temporary directory",
-            cause,
-          }),
-      ),
-    );
   yield* Console.log(
-    `Exporting icons with Icon Composer ${tool.version}, design generation ${DESIGN_GENERATION}.`,
+    `Exporting pinned sakana-yuyu icon source ${SAKANA_YUYU_ICON_SOURCE.relativePath}.`,
   );
 
   const generated = new Map<string, Buffer>();
+  const sourceForMobile = yield* fs.readFile(
+    path.join(repositoryRoot, SAKANA_YUYU_ICON_SOURCE.relativePath),
+  );
+  const mobileIcon = resizePng(Buffer.from(sourceForMobile), 432);
+  const mobileNotificationIcon = resizePng(Buffer.from(sourceForMobile), 96);
   for (const variant of ICON_VARIANTS) {
     yield* Console.log(`Rendering ${variant.label} from ${variant.source}...`);
-    const variantAssets = yield* renderVariant(
-      tool.path,
-      repositoryRoot,
-      temporaryDirectory,
-      variant,
-    );
+    const variantAssets = yield* renderVariant(repositoryRoot, variant);
     for (const [relativePath, contents] of variantAssets) {
       generated.set(relativePath, contents);
     }
   }
+
+  generated.set("apps/mobile/assets/android-icon-mark.png", mobileIcon);
+  generated.set("apps/mobile/assets/android-notification-icon.png", mobileNotificationIcon);
 
   for (const override of DEVELOPMENT_PUBLIC_ICON_OVERRIDES) {
     const sourceContents = generated.get(override.sourceRelativePath);

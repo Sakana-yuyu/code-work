@@ -21,6 +21,7 @@ import {
   shouldShowComposerContextStrip,
   shouldShowEnvironmentIndicator,
 } from "./BranchToolbar.logic";
+import { t } from "~/i18n";
 
 const localEnvironmentId = EnvironmentId.make("environment-local");
 const remoteEnvironmentId = EnvironmentId.make("environment-remote");
@@ -102,10 +103,10 @@ describe("resolvePreviousWorktreeSeed", () => {
 describe("resolvePreviousWorktreeLabel", () => {
   it("includes the branch when known", () => {
     expect(resolvePreviousWorktreeLabel({ branch: "t3/fix-thing", worktreePath: "/wt" })).toBe(
-      "Previous worktree (t3/fix-thing)",
+      t("workspace.previousWorktreeBranch", { branch: "t3/fix-thing" }),
     );
     expect(resolvePreviousWorktreeLabel({ branch: null, worktreePath: "/wt" })).toBe(
-      "Previous worktree",
+      t("workspace.previousWorktree"),
     );
   });
 });
@@ -479,28 +480,32 @@ describe("resolveEffectiveEnvMode", () => {
 
 describe("resolveEnvModeLabel", () => {
   it("uses explicit workspace labels", () => {
-    expect(resolveEnvModeLabel("local")).toBe("Current checkout");
-    expect(resolveEnvModeLabel("worktree")).toBe("New worktree");
+    expect(resolveEnvModeLabel("local")).toBe(t("workspace.currentCheckout"));
+    expect(resolveEnvModeLabel("worktree")).toBe(t("threadModeNewWorktree"));
   });
 });
 
 describe("resolveCurrentWorkspaceLabel", () => {
   it("describes the main repo checkout when no worktree path is active", () => {
-    expect(resolveCurrentWorkspaceLabel(null)).toBe("Current checkout");
+    expect(resolveCurrentWorkspaceLabel(null)).toBe(t("workspace.currentCheckout"));
   });
 
   it("describes the active checkout as a worktree when one is attached", () => {
-    expect(resolveCurrentWorkspaceLabel("/repo/.t3/worktrees/feature-a")).toBe("Current worktree");
+    expect(resolveCurrentWorkspaceLabel("/repo/.t3/worktrees/feature-a")).toBe(
+      t("workspace.currentWorktree"),
+    );
   });
 });
 
 describe("resolveLockedWorkspaceLabel", () => {
   it("uses a shorter label for the main repo checkout", () => {
-    expect(resolveLockedWorkspaceLabel(null)).toBe("Local checkout");
+    expect(resolveLockedWorkspaceLabel(null)).toBe(t("workspace.localCheckout"));
   });
 
   it("uses a shorter label for an attached worktree", () => {
-    expect(resolveLockedWorkspaceLabel("/repo/.t3/worktrees/feature-a")).toBe("Worktree");
+    expect(resolveLockedWorkspaceLabel("/repo/.t3/worktrees/feature-a")).toBe(
+      t("workspace.worktree"),
+    );
   });
 });
 

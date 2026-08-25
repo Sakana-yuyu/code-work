@@ -15,11 +15,13 @@ const repoRoot = NodePath.resolve(desktopDir, "..", "..");
 const devBundleIdSuffix = NodePath.basename(repoRoot)
   .toLowerCase()
   .replaceAll(/[^a-z0-9]+/g, "");
-export const APP_DISPLAY_NAME = isDevelopment ? "T3 Code (Dev)" : "T3 Code (Alpha)";
+export const APP_DISPLAY_NAME = isDevelopment ? "Code Work (Dev)" : "Code Work (Alpha)";
 export const APP_BUNDLE_ID = isDevelopment
-  ? `com.t3tools.t3code.dev.${devBundleIdSuffix || "local"}`
-  : "com.t3tools.t3code";
-const APP_PROTOCOL_SCHEMES = isDevelopment ? ["t3code-dev"] : ["t3code"];
+  ? `com.codework.desktop.dev.${devBundleIdSuffix || "local"}`
+  : "com.codework.desktop";
+const APP_PROTOCOL_SCHEMES = isDevelopment
+  ? ["codework-dev", "t3code-dev"]
+  : ["codework", "t3code"];
 const LAUNCHER_VERSION = 15;
 const developmentMacIconPngPath = NodePath.join(
   repoRoot,
@@ -108,11 +110,29 @@ export function makeDevelopmentLauncherScript({
 }) {
   const envEntries = [
     ["VITE_DEV_SERVER_URL", environment.VITE_DEV_SERVER_URL],
-    ["T3CODE_PORT", environment.T3CODE_PORT],
-    ["T3CODE_HOME", environment.T3CODE_HOME],
-    ["T3CODE_COMMIT_HASH", environment.T3CODE_COMMIT_HASH],
-    ["T3CODE_OTLP_TRACES_URL", environment.T3CODE_OTLP_TRACES_URL],
-    ["T3CODE_OTLP_EXPORT_INTERVAL_MS", environment.T3CODE_OTLP_EXPORT_INTERVAL_MS],
+    ["CODEWORK_PORT", environment.CODEWORK_PORT ?? environment.T3CODE_PORT],
+    ["T3CODE_PORT", environment.T3CODE_PORT ?? environment.CODEWORK_PORT],
+    ["CODEWORK_HOME", environment.CODEWORK_HOME ?? environment.T3CODE_HOME],
+    ["T3CODE_HOME", environment.T3CODE_HOME ?? environment.CODEWORK_HOME],
+    ["CODEWORK_COMMIT_HASH", environment.CODEWORK_COMMIT_HASH ?? environment.T3CODE_COMMIT_HASH],
+    ["T3CODE_COMMIT_HASH", environment.T3CODE_COMMIT_HASH ?? environment.CODEWORK_COMMIT_HASH],
+    [
+      "CODEWORK_OTLP_TRACES_URL",
+      environment.CODEWORK_OTLP_TRACES_URL ?? environment.T3CODE_OTLP_TRACES_URL,
+    ],
+    [
+      "T3CODE_OTLP_TRACES_URL",
+      environment.T3CODE_OTLP_TRACES_URL ?? environment.CODEWORK_OTLP_TRACES_URL,
+    ],
+    [
+      "CODEWORK_OTLP_EXPORT_INTERVAL_MS",
+      environment.CODEWORK_OTLP_EXPORT_INTERVAL_MS ?? environment.T3CODE_OTLP_EXPORT_INTERVAL_MS,
+    ],
+    [
+      "T3CODE_OTLP_EXPORT_INTERVAL_MS",
+      environment.T3CODE_OTLP_EXPORT_INTERVAL_MS ?? environment.CODEWORK_OTLP_EXPORT_INTERVAL_MS,
+    ],
+    ["CODEWORK_DESKTOP_APP_USER_MODEL_ID", APP_BUNDLE_ID],
     ["T3CODE_DESKTOP_APP_USER_MODEL_ID", APP_BUNDLE_ID],
   ].filter((entry) => typeof entry[1] === "string" && entry[1].trim().length > 0);
   return [
@@ -121,7 +141,7 @@ export function makeDevelopmentLauncherScript({
       ([name, value]) =>
         `if [ -z "\${${name}:-}" ]; then export ${name}=${shellSingleQuote(value)}; fi`,
     ),
-    `exec ${shellSingleQuote(electronBinaryPath)} --t3code-dev-root=${shellSingleQuote(desktopRoot)} ${shellSingleQuote(mainEntryPath)} "$@"`,
+    `exec ${shellSingleQuote(electronBinaryPath)} --codework-dev-root=${shellSingleQuote(desktopRoot)} ${shellSingleQuote(mainEntryPath)} "$@"`,
     "",
   ].join("\n");
 }

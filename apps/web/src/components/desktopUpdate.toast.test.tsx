@@ -1,3 +1,4 @@
+import { t } from "~/i18n";
 import { isValidElement, type ReactElement, type ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import type { DesktopUpdateState } from "@t3tools/contracts";
@@ -114,7 +115,7 @@ describe("showDesktopUpdateDownloadedToast", () => {
     await vi.waitFor(() => {
       expect(testState.addToast).toHaveBeenLastCalledWith({
         type: "error",
-        title: "Unable to open release notes",
+        title: t("unableToOpenReleaseNotes"),
       });
     });
   });

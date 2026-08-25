@@ -1,6 +1,7 @@
+import { PNG } from "pngjs";
 import { assert, describe, it } from "@effect/vitest";
 
-import { encodePngIco, readPngDimensions } from "./icon-export.ts";
+import { encodePngIco, readPngDimensions, resizePng } from "./icon-export.ts";
 
 const pngHeader = (width: number, height: number) => {
   const contents = Buffer.alloc(24);
@@ -14,6 +15,15 @@ const pngHeader = (width: number, height: number) => {
 describe("icon export", () => {
   it("reads dimensions from a PNG IHDR chunk", () => {
     assert.deepEqual(readPngDimensions(pngHeader(1024, 512)), { width: 1024, height: 512 });
+  });
+
+  it("resizes a PNG deterministically", () => {
+    const png = new PNG({ width: 4, height: 4 });
+    png.data.fill(255);
+    const source = PNG.sync.write(png);
+    const resized = resizePng(source, 2);
+    assert.deepEqual(readPngDimensions(resized), { width: 2, height: 2 });
+    assert.deepEqual(resizePng(source, 2), resized);
   });
 
   it("encodes PNG renditions into an ICO directory", () => {

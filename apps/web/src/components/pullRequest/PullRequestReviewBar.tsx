@@ -14,6 +14,7 @@ import { useAtomCommand } from "~/state/use-atom-command";
 import { Button } from "../ui/button";
 import { Textarea } from "../ui/textarea";
 import { toastManager } from "../ui/toast";
+import { t } from "~/i18n";
 import {
   pullRequestReviewKey,
   usePendingReviewComments,
@@ -128,8 +129,8 @@ export function PullRequestReviewBar({
         size="sm"
         className="mt-2"
         value={body}
-        placeholder="Summarize your review (optional)"
-        aria-label="Review summary"
+        placeholder={t("summarizeYourReviewOptional")}
+        aria-label={t("reviewSummary")}
         onChange={(event) => setSummary(reviewKey, event.target.value)}
       />
       <div className="mt-2 flex flex-wrap justify-end gap-2">

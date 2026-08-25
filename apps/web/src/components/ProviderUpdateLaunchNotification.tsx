@@ -3,6 +3,7 @@ import { DownloadIcon } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { useEnvironments } from "~/state/environments";
+import { t } from "~/i18n";
 import { isDesktopLocalConnectionTarget } from "~/connection/desktopLocal";
 import { useDismissedProviderUpdateNotificationKeys } from "../providerUpdateDismissal";
 import { ProviderUpdateEnvironmentRows } from "./ProviderUpdateEnvironmentRows";
@@ -173,7 +174,7 @@ function ProviderUpdateEnvironmentsNotification() {
         ),
         timeout: 0,
         actionProps: {
-          children: "Settings",
+          children: t("settings"),
           onClick: openProviderSettings,
         },
         actionVariant: "outline",

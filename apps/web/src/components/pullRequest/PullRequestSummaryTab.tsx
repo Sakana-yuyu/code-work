@@ -58,6 +58,7 @@ import { PullRequestMarkdownEditor } from "./PullRequestMarkdownEditor";
 import { PullRequestReactionBar } from "./PullRequestReactions";
 import { PullRequestConversationGhost } from "./PullRequestGhosts";
 import { sectionCollapseAnchorScrollTop } from "./pullRequestSummaryScroll.logic";
+import { t } from "~/i18n";
 
 /** One reviewer, however a host happens to have cased their login this time. */
 function reviewerKey(login: string): string {
@@ -120,7 +121,7 @@ function CommentBody({
         className={className}
         value={comment.body}
         cwd={editing.cwd}
-        label="Edit comment"
+        label={t("editComment")}
         saving={editing.saving}
         onSave={(body) => editing.onSave(comment, body)}
         onCancel={() => editing.onEdit(null)}
@@ -135,7 +136,7 @@ function CommentBody({
           size="icon-xs"
           variant="ghost"
           className="shrink-0 text-muted-foreground opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100 focus-visible:opacity-100"
-          aria-label="Edit comment"
+          aria-label={t("editComment")}
           onClick={() => editing.onEdit(comment)}
         >
           <PencilIcon className="size-3" />
@@ -346,8 +347,8 @@ function CommentComposer({
         disabled={posting}
         value={body}
         rows={3}
-        placeholder="Leave a comment"
-        aria-label="Comment on this pull request"
+        placeholder={t("leaveAComment")}
+        aria-label={t("commentOnThisPullRequest")}
         onChange={(event) => setBody(event.target.value)}
       />
       <div className="flex justify-end">
@@ -517,7 +518,7 @@ export function PullRequestSummaryTab({
     <div className="h-full overflow-y-auto" data-pull-request-summary-scroll>
       <section className="px-4 py-3">
         <div>
-          <MetaRow icon={<UsersIcon className="size-3.5" />} label="Reviewers">
+          <MetaRow icon={<UsersIcon className="size-3.5" />} label={t("reviewers")}>
             <span className="flex min-w-0 flex-wrap items-center gap-1.5">
               {reviewerEntries.length === 0 ? (
                 <span className="text-muted-foreground">None</span>
@@ -608,7 +609,7 @@ export function PullRequestSummaryTab({
             </span>
           </MetaRow>
           {detail.labels.length > 0 ? (
-            <MetaRow icon={<TagIcon className="size-3.5" />} label="Labels">
+            <MetaRow icon={<TagIcon className="size-3.5" />} label={t("labels")}>
               <span className="flex min-w-0 flex-wrap items-center gap-1">
                 {detail.labels.map((label) => {
                   const dot = labelDotColor(label.color);
@@ -629,7 +630,7 @@ export function PullRequestSummaryTab({
               </span>
             </MetaRow>
           ) : null}
-          <MetaRow icon={<MessageSquareIcon className="size-3.5" />} label="Comments">
+          <MetaRow icon={<MessageSquareIcon className="size-3.5" />} label={t("comments")}>
             {activityPending
               ? "Loading conversation…"
               : activityError
@@ -641,7 +642,7 @@ export function PullRequestSummaryTab({
         </div>
       </section>
 
-      <Section title="Description">
+      <Section title={t("description")}>
         <div className="group">
           {bodyScope === detail.url ? (
             <PullRequestMarkdownEditor
@@ -649,8 +650,8 @@ export function PullRequestSummaryTab({
               allowEmpty
               value={detail.body}
               cwd={detail.workspaceRoot}
-              label="Pull request description"
-              placeholder="Describe this pull request"
+              label={t("pullRequestDescription")}
+              placeholder={t("describeThisPullRequest")}
               saving={bodySaving}
               onSave={(body) => void saveBody(body)}
               onCancel={() => setBodyScope(null)}
@@ -667,7 +668,7 @@ export function PullRequestSummaryTab({
                   size="icon-xs"
                   variant="ghost"
                   className="shrink-0 text-muted-foreground opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100 focus-visible:opacity-100"
-                  aria-label="Edit description"
+                  aria-label={t("editDescription")}
                   onClick={() => setBodyScope(detail.url)}
                 >
                   <PencilIcon className="size-3" />
@@ -686,7 +687,7 @@ export function PullRequestSummaryTab({
         </div>
       </Section>
 
-      <Section title="Checks" count={detail.checks.length}>
+      <Section title={t("checks")} count={detail.checks.length}>
         {detail.checks.length === 0 ? (
           <p className="text-xs text-muted-foreground">No checks reported.</p>
         ) : (
@@ -740,7 +741,7 @@ export function PullRequestSummaryTab({
       </Section>
 
       <Section
-        title="Comments"
+        title={t("comments")}
         {...(activityPending || activityError ? {} : { count: detail.commentCount })}
         actions={
           !activityPending && !activityError && detail.comments.length > 0 ? (

@@ -1,4 +1,5 @@
 import {
+  ByokSettings,
   ClaudeSettings,
   CodexSettings,
   CursorSettings,
@@ -8,6 +9,7 @@ import {
 } from "@t3tools/contracts";
 import type * as Schema from "effect/Schema";
 import { ClaudeAI, CursorIcon, GrokIcon, type Icon, OpenAI, OpenCodeIcon } from "../Icons";
+import { t } from "~/i18n";
 
 type ProviderSettingsSchema = {
   readonly fields: Readonly<Record<string, Schema.Top>>;
@@ -37,35 +39,44 @@ export interface ProviderClientDefinition {
 export const PROVIDER_CLIENT_DEFINITIONS: readonly ProviderClientDefinition[] = [
   {
     value: ProviderDriverKind.make("codex"),
-    label: "Codex",
+    label: t("codex"),
     icon: OpenAI,
     settingsSchema: CodexSettings,
   },
   {
     value: ProviderDriverKind.make("claudeAgent"),
-    label: "Claude",
+    label: t("claude"),
     icon: ClaudeAI,
     settingsSchema: ClaudeSettings,
   },
   {
     value: ProviderDriverKind.make("cursor"),
-    label: "Cursor",
+    label: t("cursor"),
     icon: CursorIcon,
     badgeLabel: "Early Access",
     settingsSchema: CursorSettings,
   },
   {
     value: ProviderDriverKind.make("grok"),
-    label: "Grok",
+    label: t("grok"),
     icon: GrokIcon,
     badgeLabel: "Early Access",
     settingsSchema: GrokSettings,
   },
   {
     value: ProviderDriverKind.make("opencode"),
-    label: "OpenCode",
+    label: t("opencode"),
     icon: OpenCodeIcon,
     settingsSchema: OpenCodeSettings,
+  },
+  {
+    value: ProviderDriverKind.make("byok"),
+    label: t("cursorByok"),
+    // No dedicated icon yet — reuse the Cursor mark since the built-in BYOK
+    // engine fronts the local Cursor agent.
+    icon: CursorIcon,
+    badgeLabel: "Early Access",
+    settingsSchema: ByokSettings,
   },
 ];
 

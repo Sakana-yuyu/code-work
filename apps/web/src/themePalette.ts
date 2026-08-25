@@ -1,4 +1,5 @@
 import * as Schema from "effect/Schema";
+import { canonicalStorageKey, createCanonicalFirstStorage } from "./persistenceStorage";
 import "culori/css";
 import { converter, parse } from "culori/fn";
 import {
@@ -30,10 +31,18 @@ export const EMBER_THEME_LABEL = "Ember";
 export const IRIS_THEME_ID = "iris" as const;
 export const IRIS_THEME_LABEL = "Iris";
 export const THEME_FILE_VERSION = 1 as const;
-export const CUSTOM_THEMES_STORAGE_KEY = "t3code:themes:v1";
-export const THEME_FOLLOW_SYSTEM_STORAGE_KEY = "t3code:theme-follow-system";
-export const THEME_APPEARANCE_MODE_STORAGE_KEY = "t3code:theme-appearance-mode";
-export const THEME_HALVES_STORAGE_KEY = "t3code:theme-halves:v1";
+export const LEGACY_CUSTOM_THEMES_STORAGE_KEY = "t3code:themes:v1";
+export const LEGACY_THEME_FOLLOW_SYSTEM_STORAGE_KEY = "t3code:theme-follow-system";
+export const LEGACY_THEME_APPEARANCE_MODE_STORAGE_KEY = "t3code:theme-appearance-mode";
+export const LEGACY_THEME_HALVES_STORAGE_KEY = "t3code:theme-halves:v1";
+export const CUSTOM_THEMES_STORAGE_KEY = canonicalStorageKey(LEGACY_CUSTOM_THEMES_STORAGE_KEY);
+export const THEME_FOLLOW_SYSTEM_STORAGE_KEY = canonicalStorageKey(
+  LEGACY_THEME_FOLLOW_SYSTEM_STORAGE_KEY,
+);
+export const THEME_APPEARANCE_MODE_STORAGE_KEY = canonicalStorageKey(
+  LEGACY_THEME_APPEARANCE_MODE_STORAGE_KEY,
+);
+export const THEME_HALVES_STORAGE_KEY = canonicalStorageKey(LEGACY_THEME_HALVES_STORAGE_KEY);
 
 const LEGACY_T3_CHAT_DARK_THEME_ID = "t3-chat-dark";
 
@@ -206,7 +215,19 @@ function readCustomThemeLibrarySnapshot(): CustomThemeLibrarySnapshot {
 
   let raw: string | null;
   try {
-    raw = window.localStorage.getItem(CUSTOM_THEMES_STORAGE_KEY);
+    const storage = createCanonicalFirstStorage({
+      storage: window.localStorage,
+      canonicalKey: CUSTOM_THEMES_STORAGE_KEY,
+      legacyKey: LEGACY_CUSTOM_THEMES_STORAGE_KEY,
+      validate: (value) => {
+        try {
+          return Array.isArray(JSON.parse(value));
+        } catch {
+          return false;
+        }
+      },
+    });
+    raw = storage.getItem(CUSTOM_THEMES_STORAGE_KEY);
   } catch (cause) {
     return { status: "unavailable", reason: "storage-unavailable", cause };
   }
@@ -1491,6 +1512,11 @@ function saveCustomThemes(
   if (typeof window === "undefined") return;
   try {
     window.localStorage.setItem(CUSTOM_THEMES_STORAGE_KEY, JSON.stringify(storedThemes));
+    try {
+      window.localStorage.removeItem(LEGACY_CUSTOM_THEMES_STORAGE_KEY);
+    } catch {
+      // Legacy cleanup is best-effort after the canonical write succeeds.
+    }
     customThemeLibrarySnapshot = { status: "ready", storedThemes, themes };
   } catch (cause) {
     throw new ThemeLibraryStorageError({

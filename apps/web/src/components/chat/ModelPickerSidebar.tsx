@@ -4,6 +4,7 @@ import { SparklesIcon, StarIcon } from "lucide-react";
 import { ProviderInstanceIcon } from "./ProviderInstanceIcon";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { cn } from "~/lib/utils";
+import { t } from "~/i18n";
 import {
   isProviderInstancePickerReady,
   shouldShowInstanceBadge,
@@ -111,7 +112,7 @@ export const ModelPickerSidebar = memo(function ModelPickerSidebar(props: {
                         )}
                         onClick={() => handleSelect("favorites")}
                         type="button"
-                        aria-label="Favorites"
+                        aria-label={t("favorites")}
                       >
                         <StarIcon className="size-5 fill-current shrink-0" aria-hidden />
                       </button>

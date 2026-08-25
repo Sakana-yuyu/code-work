@@ -1,6 +1,7 @@
 import type { EnvironmentId, VcsRef, ProjectId } from "@t3tools/contracts";
 import * as Schema from "effect/Schema";
 import { toSortableTimestamp } from "../lib/threadSort";
+import { t } from "~/i18n";
 export {
   dedupeRemoteBranchesWithLocalMatches,
   deriveLocalBranchNameFromRemoteRef,
@@ -63,15 +64,15 @@ export function shouldShowComposerContextStrip(input: {
 }
 
 export function resolveEnvModeLabel(mode: EnvMode): string {
-  return mode === "worktree" ? "New worktree" : "Current checkout";
+  return mode === "worktree" ? t("threadModeNewWorktree") : t("workspace.currentCheckout");
 }
 
 export function resolveCurrentWorkspaceLabel(activeWorktreePath: string | null): string {
-  return activeWorktreePath ? "Current worktree" : resolveEnvModeLabel("local");
+  return activeWorktreePath ? t("workspace.currentWorktree") : resolveEnvModeLabel("local");
 }
 
 export function resolveLockedWorkspaceLabel(activeWorktreePath: string | null): string {
-  return activeWorktreePath ? "Worktree" : "Local checkout";
+  return activeWorktreePath ? t("workspace.worktree") : t("workspace.localCheckout");
 }
 
 export interface PreviousWorktreeSeed {
@@ -118,7 +119,9 @@ export function resolvePreviousWorktreeSeed(input: {
 }
 
 export function resolvePreviousWorktreeLabel(seed: PreviousWorktreeSeed): string {
-  return seed.branch ? `Previous worktree (${seed.branch})` : "Previous worktree";
+  return seed.branch
+    ? t("workspace.previousWorktreeBranch", { branch: seed.branch })
+    : t("workspace.previousWorktree");
 }
 
 export function resolveEffectiveEnvMode(input: {

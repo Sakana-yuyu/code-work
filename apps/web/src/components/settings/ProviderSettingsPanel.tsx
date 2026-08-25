@@ -1,5 +1,5 @@
 import { useAtomValue } from "@effect/atom-react";
-import { connectionStatusText } from "@t3tools/client-runtime/connection";
+import { localizedConnectionStatusText } from "~/lib/localizedConnectionStatus";
 import { safeErrorLogAttributes } from "@t3tools/client-runtime/errors";
 import {
   isAtomCommandInterrupted,
@@ -99,6 +99,7 @@ import {
   resolveRemoteOperateAccess,
   resolveSelectedProviderEnvironmentId,
 } from "./ProviderSettingsPanel.logic";
+import { t } from "~/i18n";
 
 function withoutProviderInstanceKey<V>(
   record: Readonly<Record<ProviderInstanceId, V>> | undefined,
@@ -129,19 +130,15 @@ function ProviderLastChecked({ lastCheckedAt }: { lastCheckedAt: string | null }
   }
 
   if (lastCheckedRelative.status === "invalid") {
-    return <span className="text-[11px] text-muted-foreground/50">Checked unavailable</span>;
+    return <span className="text-[11px] text-muted-foreground/50">{t("checkedUnavailable")}</span>;
   }
 
   return (
     <span className="text-[11px] text-muted-foreground/60">
-      {lastCheckedRelative.suffix ? (
-        <>
-          Checked <span className="font-mono tabular-nums">{lastCheckedRelative.value}</span>{" "}
-          {lastCheckedRelative.suffix}
-        </>
-      ) : (
-        <>Checked {lastCheckedRelative.value}</>
-      )}
+      {t("providerCheckedAt", {
+        value: lastCheckedRelative.value,
+        suffix: lastCheckedRelative.suffix ? ` ${lastCheckedRelative.suffix}` : "",
+      })}
     </span>
   );
 }
@@ -179,11 +176,11 @@ function EnvironmentUnavailableRow({
     ? access.reason === "permissions"
       ? "Checking what this session is allowed to change."
       : `Waiting for ${environment.label}'s configuration.`
-    : connectionStatusText(environment.connection);
+    : localizedConnectionStatusText(environment.connection);
   // No spinner: this state can persist indefinitely for a wedged device, and a
   // continuously repainting animation would run the whole time.
   return (
-    <SettingsSection title="Providers">
+    <SettingsSection title={t("providers2")}>
       <SettingsRow title={title} description={description} />
     </SettingsSection>
   );
@@ -215,7 +212,7 @@ export function ProviderSettingsPanel() {
   return (
     <SettingsPageContainer>
       {!onlyPrimaryDevice ? (
-        <SettingsSection title="Devices">
+        <SettingsSection title={t("devices")}>
           {options.length === 0 ? (
             // The catalog hydrates asynchronously, so an empty list before it is
             // ready means "not loaded yet", not "nothing is connected".
@@ -232,7 +229,7 @@ export function ProviderSettingsPanel() {
               {options.map((environment) => {
                 const Icon = providerEnvironmentIcon(environment);
                 const selected = environment.environmentId === effectiveEnvironmentId;
-                const statusText = connectionStatusText(environment.connection);
+                const statusText = localizedConnectionStatusText(environment.connection);
                 return (
                   <button
                     key={environment.environmentId}
@@ -682,13 +679,13 @@ export function EnvironmentProviderSettings({
                         size="icon-micro"
                         variant="ghost-muted"
                         onClick={() => setIsAddInstanceDialogOpen(true)}
-                        aria-label="Add provider instance"
+                        aria-label={t("addProviderInstance")}
                       >
                         <PlusIcon className="size-3" />
                       </Button>
                     }
                   />
-                  <TooltipPopup side="top">Add provider instance</TooltipPopup>
+                  <TooltipPopup side="top">{t("addProviderInstance")}</TooltipPopup>
                 </Tooltip>
                 <Tooltip>
                   <TooltipTrigger
@@ -708,7 +705,7 @@ export function EnvironmentProviderSettings({
                       </Button>
                     }
                   />
-                  <TooltipPopup side="top">Refresh provider status</TooltipPopup>
+                  <TooltipPopup side="top">{t("refreshProviderStatus")}</TooltipPopup>
                 </Tooltip>
               </>
             ) : null}
@@ -717,7 +714,7 @@ export function EnvironmentProviderSettings({
       >
         {readOnly ? (
           <SettingsRow
-            title="Limited permissions"
+            title={t("limitedPermissions")}
             description={`This session can view ${environmentLabel}'s providers, but its credential does not allow changing their configuration.`}
           />
         ) : null}
@@ -732,7 +729,7 @@ export function EnvironmentProviderSettings({
           <SettingsRow
             title={
               <span className="inline-flex items-center gap-1.5">
-                Health check interval
+                {t("providerHealthCheckIntervalTitle")}
                 <PolicyTooltip>
                   This interval is configured here, then the shared Background activity policy
                   decides whether provider probes may run when the timer fires. Custom intervals
@@ -740,12 +737,12 @@ export function EnvironmentProviderSettings({
                 </PolicyTooltip>
               </span>
             }
-            description="Refresh provider availability, versions, auth state, and model metadata in the background. Set this to 0 seconds to rely on manual refreshes."
+            description={t("refreshProviderAvailabilityVersionsAuthStateAndModelMetadata")}
             resetAction={
               providerHealthRefreshIntervalSeconds !==
               defaultProviderHealthRefreshIntervalSeconds ? (
                 <SettingResetButton
-                  label="provider health check interval"
+                  label={t("providerHealthCheckInterval")}
                   onClick={() =>
                     updateSettings(
                       backgroundActivityOverrideSettings(
@@ -788,7 +785,7 @@ export function EnvironmentProviderSettings({
                     <NumberFieldIncrement aria-label="Increase provider health check interval" />
                   </NumberFieldGroup>
                 </NumberField>
-                <span className="text-xs text-muted-foreground">seconds</span>
+                <span className="text-xs text-muted-foreground">{t("seconds")}</span>
               </div>
             }
           />
@@ -835,11 +832,12 @@ export function EnvironmentProviderSettings({
             return (
               <ProviderInstanceCard
                 key={row.instanceId}
+                environmentId={String(environmentId)}
                 instanceId={row.instanceId}
                 instance={row.instance}
                 driverOption={driverOption}
                 liveProvider={liveProvider}
-                isExpanded={openInstanceDetails[row.instanceId] ?? false}
+                isExpanded={openInstanceDetails[row.instanceId] ?? row.driver === "byok"}
                 onExpandedChange={(open) =>
                   setOpenInstanceDetails((existing) => ({
                     ...existing,

@@ -86,6 +86,10 @@ import {
 } from "./observability/RpcInstrumentation.ts";
 import * as ProviderRegistry from "./provider/Services/ProviderRegistry.ts";
 import * as ProviderService from "./provider/Services/ProviderService.ts";
+import * as ByokModelDiscovery from "./provider/byok/ByokModelDiscoveryService.ts";
+import * as ByokBalance from "./provider/byok/ByokBalanceService.ts";
+import * as ByokDelegation from "./provider/byok/ByokDelegationService.ts";
+import * as ByokAdaptersImport from "./provider/byok/ByokAdaptersImport.ts";
 import * as ProviderMaintenanceRunner from "./provider/providerMaintenanceRunner.ts";
 import * as ServerSelfUpdate from "./cloud/selfUpdate.ts";
 import * as ServerLifecycleEvents from "./serverLifecycleEvents.ts";
@@ -440,6 +444,10 @@ const makeWsRpcLayer = (
       const providerRegistry = yield* ProviderRegistry.ProviderRegistry;
       const providerService = yield* ProviderService.ProviderService;
       const providerMaintenanceRunner = yield* ProviderMaintenanceRunner.ProviderMaintenanceRunner;
+      const byokModelDiscovery = yield* ByokModelDiscovery.make;
+      const byokBalance = yield* ByokBalance.make;
+      const byokDelegation = yield* ByokDelegation.make;
+      const byokAdaptersImport = yield* ByokAdaptersImport.make;
       const serverSelfUpdate = yield* ServerSelfUpdate.ServerSelfUpdate;
       const config = yield* ServerConfig.ServerConfig;
       const lifecycleEvents = yield* ServerLifecycleEvents.ServerLifecycleEvents;
@@ -1633,6 +1641,40 @@ const makeWsRpcLayer = (
             {
               "rpc.aggregate": "server",
             },
+          ),
+        [WS_METHODS.serverGetByokSupplierCatalog]: (_input) =>
+          observeRpcEffect(
+            WS_METHODS.serverGetByokSupplierCatalog,
+            Effect.succeed(byokModelDiscovery.catalog),
+            { "rpc.aggregate": "server" },
+          ),
+        [WS_METHODS.serverDiscoverByokModels]: (input) =>
+          observeRpcEffect(
+            WS_METHODS.serverDiscoverByokModels,
+            byokModelDiscovery.discover(input),
+            { "rpc.aggregate": "server" },
+          ),
+        [WS_METHODS.serverGetByokBalance]: (input) =>
+          observeRpcEffect(WS_METHODS.serverGetByokBalance, byokBalance.balance(input), {
+            "rpc.aggregate": "server",
+          }),
+        [WS_METHODS.serverSubmitByokDelegation]: (input) =>
+          observeRpcEffect(WS_METHODS.serverSubmitByokDelegation, byokDelegation.submit(input), {
+            "rpc.aggregate": "server",
+          }),
+        [WS_METHODS.serverListByokDelegations]: (input) =>
+          observeRpcEffect(
+            WS_METHODS.serverListByokDelegations,
+            byokDelegation
+              .list(input.instanceId)
+              .pipe(Effect.map((delegations) => ({ delegations }))),
+            { "rpc.aggregate": "server" },
+          ),
+        [WS_METHODS.serverImportByokAdapters]: (input) =>
+          observeRpcEffect(
+            WS_METHODS.serverImportByokAdapters,
+            byokAdaptersImport.importAdapters(input),
+            { "rpc.aggregate": "server" },
           ),
         [WS_METHODS.serverDiscoverSourceControl]: (_input) =>
           observeRpcEffect(

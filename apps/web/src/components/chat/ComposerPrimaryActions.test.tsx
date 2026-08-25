@@ -16,6 +16,7 @@ vi.mock("../SidebarStageBackdrop", () => ({
 }));
 
 import { ComposerPrimaryActions, formatPendingPrimaryActionLabel } from "./ComposerPrimaryActions";
+import { t } from "~/i18n";
 
 function renderPendingActions(isRunning: boolean) {
   return renderToStaticMarkup(
@@ -122,7 +123,7 @@ describe("formatPendingPrimaryActionLabel", () => {
         isResponding: true,
         questionIndex: 0,
       }),
-    ).toBe("Submitting...");
+    ).toBe(t("submitting"));
   });
 
   it("returns 'Submitting...' while responding regardless of other flags", () => {
@@ -133,7 +134,7 @@ describe("formatPendingPrimaryActionLabel", () => {
         isResponding: true,
         questionIndex: 3,
       }),
-    ).toBe("Submitting...");
+    ).toBe(t("submitting"));
   });
 
   it("returns 'Submit' in compact mode on the last question", () => {
@@ -144,7 +145,7 @@ describe("formatPendingPrimaryActionLabel", () => {
         isResponding: false,
         questionIndex: 0,
       }),
-    ).toBe("Submit");
+    ).toBe(t("submit"));
   });
 
   it("returns 'Next' in compact mode when not the last question", () => {
@@ -155,7 +156,7 @@ describe("formatPendingPrimaryActionLabel", () => {
         isResponding: false,
         questionIndex: 1,
       }),
-    ).toBe("Next");
+    ).toBe(t("next"));
   });
 
   it("returns 'Next question' when not the last question", () => {
@@ -166,7 +167,7 @@ describe("formatPendingPrimaryActionLabel", () => {
         isResponding: false,
         questionIndex: 0,
       }),
-    ).toBe("Next question");
+    ).toBe(t("nextQuestion"));
   });
 
   it("returns singular 'Submit answer' on the last question when it is the only question", () => {
@@ -177,7 +178,7 @@ describe("formatPendingPrimaryActionLabel", () => {
         isResponding: false,
         questionIndex: 0,
       }),
-    ).toBe("Submit answer");
+    ).toBe(t("submitAnswer"));
   });
 
   it("returns plural 'Submit answers' on the last question when there are multiple questions", () => {
@@ -188,7 +189,7 @@ describe("formatPendingPrimaryActionLabel", () => {
         isResponding: false,
         questionIndex: 1,
       }),
-    ).toBe("Submit answers");
+    ).toBe(t("submitAnswers"));
   });
 
   it("returns plural 'Submit answers' for higher question indices", () => {
@@ -199,7 +200,7 @@ describe("formatPendingPrimaryActionLabel", () => {
         isResponding: false,
         questionIndex: 5,
       }),
-    ).toBe("Submit answers");
+    ).toBe(t("submitAnswers"));
   });
 });
 
@@ -212,11 +213,11 @@ describe("ComposerPrimaryActions", () => {
   });
 
   it("offers Stop generation while a running turn is waiting for user input", () => {
-    expect(renderPendingActions(true)).toContain('aria-label="Stop generation"');
+    expect(renderPendingActions(true)).toContain(`aria-label="${t("stopGeneration")}"`);
   });
 
   it("does not offer Stop generation for a pending request without a running turn", () => {
-    expect(renderPendingActions(false)).not.toContain('aria-label="Stop generation"');
+    expect(renderPendingActions(false)).not.toContain(`aria-label="${t("stopGeneration")}"`);
   });
 
   it("matches the small pending action size without changing the standalone size", () => {
@@ -248,15 +249,15 @@ describe("ComposerPrimaryActions", () => {
   it("only renders stop while running when Enter-to-send is available", () => {
     const markup = renderRunningActions(false, true);
 
-    expect(markup).toContain('aria-label="Stop generation"');
-    expect(markup).not.toContain('aria-label="Send message"');
+    expect(markup).toContain(`aria-label="${t("stopGeneration")}"`);
+    expect(markup).not.toContain(`aria-label="${t("sendMessage")}"`);
   });
 
   it("renders send alongside stop while running when Enter-to-send is unavailable", () => {
     const markup = renderRunningActions(true, true);
 
-    expect(markup).toContain('aria-label="Stop generation"');
-    expect(markup).toContain('aria-label="Send message"');
+    expect(markup).toContain(`aria-label="${t("stopGeneration")}"`);
+    expect(markup).toContain(`aria-label="${t("sendMessage")}"`);
     expect(markup).toContain('type="submit"');
     expect(markup).toContain("size-9 sm:size-8");
   });
@@ -264,7 +265,7 @@ describe("ComposerPrimaryActions", () => {
   it("keeps stop as the only action while running with an empty composer", () => {
     const markup = renderRunningActions(true, false);
 
-    expect(markup).toContain('aria-label="Stop generation"');
-    expect(markup).not.toContain('aria-label="Send message"');
+    expect(markup).toContain(`aria-label="${t("stopGeneration")}"`);
+    expect(markup).not.toContain(`aria-label="${t("sendMessage")}"`);
   });
 });

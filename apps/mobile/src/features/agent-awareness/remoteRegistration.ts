@@ -4,6 +4,7 @@ import * as Notifications from "expo-notifications";
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
 import { AppState, Platform } from "react-native";
+import { PRODUCT_IDENTITY } from "@t3tools/shared/productIdentity";
 import type { EnvironmentId } from "@t3tools/contracts";
 import {
   type RelayDeviceRegistrationRequest,
@@ -502,7 +503,7 @@ function armAgentAwarenessLiveActivityForLocalWorkNow(input: {
     }
     const nowIso = new Date(Date.now()).toISOString();
     const activity = AgentActivity.start({
-      title: "T3 Code",
+      title: PRODUCT_IDENTITY.baseName,
       subtitle: "Agent work in progress",
       activeCount: 1,
       updatedAt: nowIso,

@@ -195,6 +195,19 @@ import {
 import { UsageReadError, UsageSummary, UsageSummaryInput } from "./usage.ts";
 import { ServerSettings, ServerSettingsError, ServerSettingsPatch } from "./settings.ts";
 import {
+  ByokModelDiscoveryRequest,
+  ByokModelDiscoveryResult,
+  ByokSupplierCatalogEntry,
+} from "./byokDiscovery.ts";
+import { ByokBalanceRequest, ByokBalanceResult } from "./byokBalance.ts";
+import {
+  ByokAdaptersImportRequest,
+  ByokAdaptersImportResult,
+  ByokDelegationListRequest,
+  ByokDelegationSnapshot,
+  ByokDelegationSubmitRequest,
+} from "./byokDelegation.ts";
+import {
   SourceControlCloneRepositoryInput,
   SourceControlCloneRepositoryResult,
   SourceControlDiscoveryResult,
@@ -280,6 +293,12 @@ export const WS_METHODS = {
   serverRemoveKeybinding: "server.removeKeybinding",
   serverGetSettings: "server.getSettings",
   serverUpdateSettings: "server.updateSettings",
+  serverGetByokSupplierCatalog: "server.getByokSupplierCatalog",
+  serverDiscoverByokModels: "server.discoverByokModels",
+  serverGetByokBalance: "server.getByokBalance",
+  serverSubmitByokDelegation: "server.submitByokDelegation",
+  serverListByokDelegations: "server.listByokDelegations",
+  serverImportByokAdapters: "server.importByokAdapters",
   serverDiscoverSourceControl: "server.discoverSourceControl",
   serverGetTraceDiagnostics: "server.getTraceDiagnostics",
   serverGetProcessDiagnostics: "server.getProcessDiagnostics",
@@ -403,6 +422,44 @@ export const WsServerUpdateSettingsRpc = Rpc.make(WS_METHODS.serverUpdateSetting
   payload: Schema.Struct({ patch: ServerSettingsPatch }),
   success: ServerSettings,
   error: Schema.Union([ServerSettingsError, EnvironmentAuthorizationError]),
+});
+
+export const WsServerGetByokSupplierCatalogRpc = Rpc.make(WS_METHODS.serverGetByokSupplierCatalog, {
+  payload: Schema.Struct({}),
+  success: Schema.Array(ByokSupplierCatalogEntry),
+  error: EnvironmentAuthorizationError,
+});
+
+export const WsServerDiscoverByokModelsRpc = Rpc.make(WS_METHODS.serverDiscoverByokModels, {
+  payload: ByokModelDiscoveryRequest,
+  success: ByokModelDiscoveryResult,
+  error: EnvironmentAuthorizationError,
+});
+
+export const WsServerGetByokBalanceRpc = Rpc.make(WS_METHODS.serverGetByokBalance, {
+  payload: ByokBalanceRequest,
+  success: ByokBalanceResult,
+  error: EnvironmentAuthorizationError,
+});
+
+export const WsServerSubmitByokDelegationRpc = Rpc.make(WS_METHODS.serverSubmitByokDelegation, {
+  payload: ByokDelegationSubmitRequest,
+  success: ByokDelegationSnapshot,
+  error: EnvironmentAuthorizationError,
+});
+
+export const WsServerListByokDelegationsRpc = Rpc.make(WS_METHODS.serverListByokDelegations, {
+  payload: ByokDelegationListRequest,
+  success: Schema.Struct({
+    delegations: Schema.Array(ByokDelegationSnapshot),
+  }),
+  error: EnvironmentAuthorizationError,
+});
+
+export const WsServerImportByokAdaptersRpc = Rpc.make(WS_METHODS.serverImportByokAdapters, {
+  payload: ByokAdaptersImportRequest,
+  success: ByokAdaptersImportResult,
+  error: EnvironmentAuthorizationError,
 });
 
 export const WsServerDiscoverSourceControlRpc = Rpc.make(WS_METHODS.serverDiscoverSourceControl, {
@@ -1028,6 +1085,12 @@ export const WsRpcGroup = RpcGroup.make(
   WsServerRemoveKeybindingRpc,
   WsServerGetSettingsRpc,
   WsServerUpdateSettingsRpc,
+  WsServerGetByokSupplierCatalogRpc,
+  WsServerDiscoverByokModelsRpc,
+  WsServerGetByokBalanceRpc,
+  WsServerSubmitByokDelegationRpc,
+  WsServerListByokDelegationsRpc,
+  WsServerImportByokAdaptersRpc,
   WsServerDiscoverSourceControlRpc,
   WsServerGetTraceDiagnosticsRpc,
   WsServerGetProcessDiagnosticsRpc,

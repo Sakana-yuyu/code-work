@@ -48,22 +48,40 @@ const normalizeCommitHash = (value: string): Option.Option<string> => {
 export const resolveUserDataPath = Effect.gen(function* () {
   const environment = yield* DesktopEnvironment.DesktopEnvironment;
   const fileSystem = yield* FileSystem.FileSystem;
-  const legacyPath = environment.path.join(
+  const canonicalPath = environment.path.join(
     environment.appDataDirectory,
-    environment.legacyUserDataDirName,
+    environment.userDataDirName,
   );
-  const legacyPathExists = yield* fileSystem.exists(legacyPath).pipe(
+  const canonicalPathExists = yield* fileSystem.exists(canonicalPath).pipe(
     Effect.mapError(
       (cause) =>
         new DesktopUserDataPathResolutionError({
-          legacyPath,
+          legacyPath: canonicalPath,
           cause,
         }),
     ),
   );
-  return legacyPathExists
-    ? legacyPath
-    : environment.path.join(environment.appDataDirectory, environment.userDataDirName);
+  if (canonicalPathExists) {
+    return canonicalPath;
+  }
+
+  for (const legacyName of environment.legacyUserDataDirNames) {
+    const legacyPath = environment.path.join(environment.appDataDirectory, legacyName);
+    const legacyPathExists = yield* fileSystem.exists(legacyPath).pipe(
+      Effect.mapError(
+        (cause) =>
+          new DesktopUserDataPathResolutionError({
+            legacyPath,
+            cause,
+          }),
+      ),
+    );
+    if (legacyPathExists) {
+      return legacyPath;
+    }
+  }
+
+  return canonicalPath;
 }).pipe(Effect.withSpan("desktop.appIdentity.resolveUserDataPath"));
 
 export const make = Effect.gen(function* () {

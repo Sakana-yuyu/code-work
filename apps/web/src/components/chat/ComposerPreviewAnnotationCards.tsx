@@ -11,6 +11,7 @@ import {
 import { cn } from "~/lib/utils";
 import { Button } from "../ui/button";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
+import { t } from "~/i18n";
 
 interface ComposerPreviewAnnotationCardsProps {
   annotations: ReadonlyArray<PreviewAnnotationPayload>;
@@ -169,7 +170,7 @@ export function ComposerPreviewAnnotationCards({
             <Button
               size="icon-micro"
               variant="ghost-muted"
-              aria-label="Remove preview annotation"
+              aria-label={t("removePreviewAnnotation")}
               className="absolute right-1.5 top-1.5 [--control-icon-color:currentColor] rounded text-icon-muted hover:bg-muted"
               onClick={() => onRemove(annotation.id)}
             >

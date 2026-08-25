@@ -14,6 +14,7 @@ import { ScrollArea } from "../ui/scroll-area";
 import { Toggle } from "../ui/toggle";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { HighlightedSearchLine } from "./HighlightedSearchLine";
+import { t } from "~/i18n";
 
 interface ProjectContentSearchDialogProps {
   readonly onOpenChange: (open: boolean) => void;
@@ -83,10 +84,13 @@ function SearchOptionButton(props: {
 function EmptyContentSearchDialog() {
   return (
     <CommandPaletteContent
-      aria-label="Search project contents"
-      escapeLabel="Back"
-      footerActionLabel="Open file"
-      inputProps={{ disabled: true, placeholder: "Search project contents…" }}
+      aria-label={t("searchProjectContents")}
+      escapeLabel={t("back")}
+      footerActionLabel={t("commandPalette.openFile")}
+      inputProps={{
+        disabled: true,
+        placeholder: t("commandPalette.searchProjectContentsPlaceholder"),
+      }}
       mode="none"
       panelClassName="flex min-h-0 flex-1 items-center justify-center px-6 text-center text-sm text-muted-foreground"
       testId="project-content-search"
@@ -161,28 +165,28 @@ function OpenContentSearchDialog(props: {
 
   return (
     <CommandPaletteContent
-      aria-label={`Search file contents in ${target.projectName}`}
-      escapeLabel="Back"
-      footerActionLabel="Open file"
+      aria-label={t("commandPalette.searchFileContentsIn", { name: target.projectName })}
+      escapeLabel={t("back")}
+      footerActionLabel={t("commandPalette.openFile")}
       inputAccessory={
         <div className="absolute inset-e-2.5 top-1/2 flex shrink-0 -translate-y-1/2 items-center gap-0.5 rounded-md border bg-muted/30 p-0.5">
           <SearchOptionButton
             active={caseSensitive}
-            label="Match case"
+            label={t("matchCase")}
             onClick={() => setCaseSensitive((current) => !current)}
           >
             Aa
           </SearchOptionButton>
           <SearchOptionButton
             active={wholeWord}
-            label="Match whole word"
+            label={t("matchWholeWord")}
             onClick={() => setWholeWord((current) => !current)}
           >
             <span className="underline decoration-2 underline-offset-2">ab</span>
           </SearchOptionButton>
           <SearchOptionButton
             active={useRegex}
-            label="Use regular expression"
+            label={t("useRegularExpression")}
             onClick={() => setUseRegex((current) => !current)}
           >
             .*
@@ -191,7 +195,7 @@ function OpenContentSearchDialog(props: {
       }
       inputProps={{
         className: "pe-30",
-        placeholder: `Search in ${target.projectName}`,
+        placeholder: t("commandPalette.searchIn", { name: target.projectName }),
         onKeyDown: (event) => {
           if (event.key === "ArrowDown" && matches.length > 0) {
             event.preventDefault();

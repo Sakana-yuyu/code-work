@@ -33,7 +33,10 @@ const watchedDirectories = [
 const forcedShutdownTimeoutMs = 1_500;
 const restartDebounceMs = 120;
 const childTreeGracePeriodMs = 1_200;
-const remoteDebuggingPort = process.env.T3CODE_DESKTOP_REMOTE_DEBUGGING_PORT?.trim();
+const remoteDebuggingPort = (
+  process.env.CODEWORK_DESKTOP_REMOTE_DEBUGGING_PORT ??
+  process.env.T3CODE_DESKTOP_REMOTE_DEBUGGING_PORT
+)?.trim();
 // oxlint-disable-next-line t3code/no-global-process-runtime -- Standalone dev script has no Effect runtime.
 const hostPlatform = NodeOS.platform();
 
@@ -48,6 +51,7 @@ const childEnv = { ...process.env };
 delete childEnv.ELECTRON_RUN_AS_NODE;
 const devProtocolClient = resolveDevProtocolClient();
 if (devProtocolClient) {
+  childEnv.CODEWORK_DESKTOP_APP_USER_MODEL_ID = devProtocolClient.appBundleId;
   childEnv.T3CODE_DESKTOP_APP_USER_MODEL_ID = devProtocolClient.appBundleId;
   childEnv.T3CODE_DESKTOP_PROTOCOL_REGISTRATION_MANAGED = "1";
 }
@@ -72,9 +76,11 @@ function cleanupStaleDevApps() {
     return;
   }
 
-  NodeChildProcess.spawnSync("pkill", ["-f", "--", `--t3code-dev-root=${desktopDir}`], {
-    stdio: "ignore",
-  });
+  for (const rootFlag of ["--codework-dev-root", "--t3code-dev-root"]) {
+    NodeChildProcess.spawnSync("pkill", ["-f", "--", `${rootFlag}=${desktopDir}`], {
+      stdio: "ignore",
+    });
+  }
 }
 
 function startApp() {
@@ -87,7 +93,7 @@ function startApp() {
     : [];
   const launchArgs = devProtocolClient
     ? electronArgs
-    : [...electronArgs, `--t3code-dev-root=${desktopDir}`, "dist-electron/main.cjs"];
+    : [...electronArgs, `--codework-dev-root=${desktopDir}`, "dist-electron/main.cjs"];
   const electronCommand = resolveElectronLaunchCommand(launchArgs);
   const app = NodeChildProcess.spawn(electronCommand.electronPath, electronCommand.args, {
     cwd: desktopDir,

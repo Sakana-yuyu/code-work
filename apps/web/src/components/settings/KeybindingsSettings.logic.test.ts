@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vite-plus/test";
 import type { ResolvedKeybindingsConfig } from "@t3tools/contracts";
 
+import { t } from "~/i18n";
 import {
   buildKeybindingRows,
   buildKeybindingCommandOptions,
@@ -8,6 +9,7 @@ import {
   commandLabel,
   keybindingConflictLabels,
   keybindingFromKeyboardEvent,
+  localizedCommandLabel,
   parseWhenExpressionDraft,
   shortcutToKeybindingInput,
   unknownWhenVariables,
@@ -104,7 +106,7 @@ describe("KeybindingsSettings.logic", () => {
     });
     expect(parseWhenExpressionDraft("editorFocus &&")).toEqual({
       ok: false,
-      message: "Use variables with !, &&, ||, and parentheses.",
+      message: t("useVariablesWithAndParentheses"),
     });
 
     expect(parseWhenExpressionDraft("!(terminalFocus || modelPickerOpen)")).toEqual({
@@ -124,6 +126,15 @@ describe("KeybindingsSettings.logic", () => {
     expect(commandLabel("commandPalette.toggle")).toBe("Command Palette: Toggle");
     expect(commandLabel("themeEditor.toggle")).toBe("Theme Editor: Toggle");
     expect(commandLabel("script.setup-db.run")).toBe("Run Script: Setup Db");
+  });
+
+  it("localizes static and project script command labels", () => {
+    expect(localizedCommandLabel("commandPalette.toggle")).toBe(
+      t("keybindings.command.commandPalette.toggle"),
+    );
+    expect(localizedCommandLabel("script.setup-db.run")).toBe(
+      t("keybindings.command.scriptRun", { name: "Setup Db" }),
+    );
   });
 
   it("builds known when variable options from defaults without frontend labels", () => {
@@ -239,13 +250,13 @@ describe("KeybindingsSettings.logic", () => {
       "",
     );
 
-    expect(rows[0]?.conflicts).toEqual(["Chat: New Local"]);
+    expect(rows[0]?.conflicts).toEqual([localizedCommandLabel("chat.newLocal")]);
     expect(
       keybindingConflictLabels(rows, {
         rowId: rows[0]?.id ?? "",
         key: "mod+n",
         when: "",
       }),
-    ).toEqual(["Chat: New Local"]);
+    ).toEqual([localizedCommandLabel("chat.newLocal")]);
   });
 });

@@ -15,6 +15,7 @@ import {
   CommandShortcut,
 } from "./ui/command";
 import { cn } from "~/lib/utils";
+import { t } from "~/i18n";
 
 function foldAsciiCase(value: string): string {
   return value.replace(/[A-Z]/g, (character) => character.toLowerCase());
@@ -72,7 +73,7 @@ function ThreadContentMatch(props: {
   return (
     <span className="truncate text-xs text-muted-foreground/85">
       <span className={isUser ? "text-blue-400" : "text-emerald-400"}>
-        {isUser ? "You:" : "Agent:"}
+        {isUser ? t("commandPalette.youPrefix") : t("commandPalette.agentPrefix")}
       </span>{" "}
       <HighlightedSearchText text={props.match.snippet} query={props.match.query} />
     </span>
@@ -94,8 +95,8 @@ export function CommandPaletteResults(props: CommandPaletteResultsProps) {
       <div className="py-10 text-center text-sm text-muted-foreground">
         {props.emptyStateMessage ??
           (props.isActionsOnly
-            ? "No matching actions."
-            : "No matching commands, projects, or threads.")}
+            ? t("commandPalette.noMatchingActions")
+            : t("commandPalette.noMatchingResults"))}
       </div>
     );
   }

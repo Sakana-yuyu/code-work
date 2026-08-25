@@ -114,6 +114,9 @@ describe("loadRepoEnv", () => {
         repoRoot: makeTemporaryDirectory(),
       }),
     ).toEqual({
+      CODEWORK_RELAY_CLIENT_OTLP_TRACES_URL: "https://api.axiom.co/v1/traces",
+      CODEWORK_RELAY_CLIENT_OTLP_TRACES_DATASET: "relay-client-traces",
+      CODEWORK_RELAY_CLIENT_OTLP_TRACES_TOKEN: "relay-client-token",
       T3CODE_RELAY_CLIENT_OTLP_TRACES_URL: "https://api.axiom.co/v1/traces",
       T3CODE_RELAY_CLIENT_OTLP_TRACES_DATASET: "relay-client-traces",
       T3CODE_RELAY_CLIENT_OTLP_TRACES_TOKEN: "relay-client-token",
@@ -135,6 +138,10 @@ describe("loadRepoEnv", () => {
         repoRoot: makeTemporaryDirectory(),
       }),
     ).toEqual({
+      CODEWORK_RELAY_URL: "https://relay.example.test",
+      CODEWORK_MOBILE_OTLP_TRACES_URL: "https://api.axiom.co/v1/traces",
+      CODEWORK_MOBILE_OTLP_TRACES_DATASET: "mobile-traces",
+      CODEWORK_MOBILE_OTLP_TRACES_TOKEN: "mobile-token",
       T3CODE_RELAY_URL: "https://relay.example.test",
       VITE_T3CODE_RELAY_URL: "https://relay.example.test",
       T3CODE_MOBILE_OTLP_TRACES_URL: "https://api.axiom.co/v1/traces",

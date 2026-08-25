@@ -19,6 +19,7 @@ import { DiffStatLabel, hasNonZeroStat } from "./DiffStatLabel";
 import { PierreEntryIcon } from "./PierreEntryIcon";
 import { Button } from "../ui/button";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
+import { t } from "~/i18n";
 import {
   changedFileName,
   selectChangedFilePreview,
@@ -86,7 +87,7 @@ export const ChangedFilesCard = memo(function ChangedFilesCard(props: {
             />
             <span className="flex shrink-0 items-center gap-1 whitespace-nowrap font-medium text-foreground text-xs leading-4">
               <span>
-                {files.length} changed file{files.length === 1 ? "" : "s"}
+                {files.length} {files.length === 1 ? t("changedFile") : t("changedFiles")}
               </span>
               {hasNonZeroStat(summaryStat) && (
                 <DiffStatLabel
@@ -98,7 +99,7 @@ export const ChangedFilesCard = memo(function ChangedFilesCard(props: {
               )}
             </span>
             <span className="ml-1 hidden min-w-0 flex-1 truncate text-[11px] text-muted-foreground group-hover:text-foreground/80 @[24rem]/changed-files:inline">
-              {expanded ? "Hide files" : "Show files"}
+              {expanded ? t("hideFiles") : t("showFiles")}
             </span>
           </span>
         </button>
@@ -113,7 +114,7 @@ export const ChangedFilesCard = memo(function ChangedFilesCard(props: {
                     variant="outline"
                     className="!size-[22px]"
                     aria-label={
-                      allDirectoriesExpanded ? "Collapse all folders" : "Expand all folders"
+                      allDirectoriesExpanded ? t("collapseAllFolders") : t("expandAllFolders")
                     }
                     data-scroll-anchor-ignore
                     onClick={onToggleAllDirectories}
@@ -127,7 +128,7 @@ export const ChangedFilesCard = memo(function ChangedFilesCard(props: {
                 )}
               </TooltipTrigger>
               <TooltipPopup side="top">
-                {allDirectoriesExpanded ? "Collapse all folders" : "Expand all folders"}
+                {allDirectoriesExpanded ? t("collapseAllFolders") : t("expandAllFolders")}
               </TooltipPopup>
             </Tooltip>
           ) : null}
@@ -138,13 +139,13 @@ export const ChangedFilesCard = memo(function ChangedFilesCard(props: {
                   type="button"
                   size="xs"
                   variant="outline"
-                  aria-label="Open diff"
+                  aria-label={t("openDiff")}
                   onClick={() => onOpenTurnDiff(turnId, files[0]?.path)}
                 />
               }
             >
               <FileDiffIcon className="size-3" />
-              <span className="hidden @[24rem]/changed-files:inline">Open diff</span>
+              <span className="hidden @[24rem]/changed-files:inline">{t("openDiff")}</span>
             </TooltipTrigger>
             <TooltipPopup side="top">Open the full diff</TooltipPopup>
           </Tooltip>

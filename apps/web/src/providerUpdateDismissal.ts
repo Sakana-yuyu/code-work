@@ -1,9 +1,17 @@
 import { useCallback, useMemo } from "react";
 import * as Schema from "effect/Schema";
 
-import { getLocalStorageItem, setLocalStorageItem, useLocalStorage } from "./hooks/useLocalStorage";
+import {
+  getCanonicalFirstLocalStorageItem,
+  setLocalStorageItem,
+  useLocalStorage,
+} from "./hooks/useLocalStorage";
+import { canonicalStorageKey } from "./persistenceStorage";
 
-export const PROVIDER_UPDATE_DISMISSALS_STORAGE_KEY = "t3code:provider-update-dismissals:v1";
+export const LEGACY_PROVIDER_UPDATE_DISMISSALS_STORAGE_KEY = "t3code:provider-update-dismissals:v1";
+export const PROVIDER_UPDATE_DISMISSALS_STORAGE_KEY = canonicalStorageKey(
+  LEGACY_PROVIDER_UPDATE_DISMISSALS_STORAGE_KEY,
+);
 
 const ProviderUpdateDismissalsSchema = Schema.Struct({
   keys: Schema.Array(Schema.String),
@@ -14,8 +22,9 @@ type ProviderUpdateDismissals = typeof ProviderUpdateDismissalsSchema.Type;
 function readProviderUpdateDismissals(): ProviderUpdateDismissals {
   try {
     return (
-      getLocalStorageItem(
+      getCanonicalFirstLocalStorageItem(
         PROVIDER_UPDATE_DISMISSALS_STORAGE_KEY,
+        LEGACY_PROVIDER_UPDATE_DISMISSALS_STORAGE_KEY,
         ProviderUpdateDismissalsSchema,
       ) ?? {
         keys: [],
@@ -67,6 +76,7 @@ export function useDismissedProviderUpdateNotificationKeys() {
     PROVIDER_UPDATE_DISMISSALS_STORAGE_KEY,
     { keys: [] },
     ProviderUpdateDismissalsSchema,
+    { legacyKey: LEGACY_PROVIDER_UPDATE_DISMISSALS_STORAGE_KEY },
   );
   const dismissedKeys = dismissals.keys;
 

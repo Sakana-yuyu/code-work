@@ -7,7 +7,10 @@ import {
   type ServerProvider,
   type ServerSettings,
 } from "@t3tools/contracts";
-import { createServerEnvironmentAtoms } from "@t3tools/client-runtime/state/server";
+import {
+  createByokEnvironmentAtoms,
+  createServerEnvironmentAtoms,
+} from "@t3tools/client-runtime/state/server";
 import { createEnvironmentServerConfigsAtom } from "@t3tools/client-runtime/state/shell";
 import { DEFAULT_RESOLVED_KEYBINDINGS } from "@t3tools/shared/keybindings";
 import * as Option from "effect/Option";
@@ -21,6 +24,7 @@ import { environmentSession } from "./session";
 export const serverEnvironment = createServerEnvironmentAtoms(connectionAtomRuntime, {
   initialConfigValueAtom: environmentSession.initialConfigValueAtom,
 });
+export const byokEnvironment = createByokEnvironmentAtoms(connectionAtomRuntime);
 export const environmentServerConfigsAtom = createEnvironmentServerConfigsAtom({
   catalogValueAtom: environmentCatalog.catalogValueAtom,
   serverConfigValueAtom: serverEnvironment.configValueAtom,

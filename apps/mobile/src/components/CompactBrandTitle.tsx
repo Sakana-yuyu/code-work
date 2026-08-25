@@ -1,4 +1,5 @@
 import Constants from "expo-constants";
+import { PRODUCT_IDENTITY } from "@t3tools/shared/productIdentity";
 import type {
   NativeStackHeaderItem,
   NativeStackNavigationOptions,
@@ -46,7 +47,7 @@ export function CompactBrandTitle(
   return (
     <View
       aria-level={1}
-      accessibilityLabel="T3 Code, Threads"
+      accessibilityLabel={`${PRODUCT_IDENTITY.baseName}, Threads`}
       accessible
       role="heading"
       style={{

@@ -63,9 +63,11 @@ function readInstanceCustomModels(
   if (instanceId !== defaultInstanceId) {
     return [];
   }
-  const legacyProviders = settings.providers as Record<
+  // byok no longer carries `customModels` (its models come from `adapters`),
+  // so the record value must be optional-per-field rather than required.
+  const legacyProviders = settings.providers as unknown as Record<
     string,
-    { readonly customModels: ReadonlyArray<string> } | undefined
+    { readonly customModels?: ReadonlyArray<string> } | undefined
   >;
   return legacyProviders[driverKind]?.customModels ?? [];
 }

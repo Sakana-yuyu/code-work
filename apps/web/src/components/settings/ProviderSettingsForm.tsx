@@ -15,6 +15,7 @@ import { Input } from "../ui/input";
 import { Switch } from "../ui/switch";
 import { Textarea } from "../ui/textarea";
 import type { ProviderClientDefinition } from "./providerDriverMeta";
+import { t } from "~/i18n";
 
 export interface ProviderSettingsFieldModel {
   readonly key: string;
@@ -192,9 +193,9 @@ function ProviderSettingsFieldRow({
     variant === "card"
       ? "mt-1 block text-xs text-muted-foreground"
       : "text-[11px] text-muted-foreground";
-  const label = <span className="text-xs font-medium text-foreground">{field.label}</span>;
+  const label = <span className="text-xs font-medium text-foreground">{t(field.label)}</span>;
   const description = field.description ? (
-    <span className={descriptionClassName}>{field.description}</span>
+    <span className={descriptionClassName}>{t(field.description)}</span>
   ) : null;
 
   if (field.control === "switch") {
@@ -210,7 +211,7 @@ function ProviderSettingsFieldRow({
             onCheckedChange={(checked) =>
               onChange(nextProviderConfigWithFieldValue(value, field, Boolean(checked)))
             }
-            aria-label={field.label}
+            aria-label={t(field.label)}
           />
         </div>
       </FieldFrame>
@@ -229,7 +230,7 @@ function ProviderSettingsFieldRow({
             onChange={(event) =>
               onChange(nextProviderConfigWithFieldValue(value, field, event.target.value))
             }
-            placeholder={field.placeholder}
+            placeholder={field.placeholder ? t(field.placeholder) : undefined}
             spellCheck={false}
           />
           {description}
@@ -251,7 +252,7 @@ function ProviderSettingsFieldRow({
             autoComplete={field.control === "password" ? "off" : undefined}
             value={readProviderConfigString(value, field.key)}
             onCommit={(next) => onChange(nextProviderConfigWithFieldValue(value, field, next))}
-            placeholder={field.placeholder}
+            placeholder={field.placeholder ? t(field.placeholder) : undefined}
             spellCheck={false}
           />
         ) : (
@@ -264,7 +265,7 @@ function ProviderSettingsFieldRow({
             onChange={(event) =>
               onChange(nextProviderConfigWithFieldValue(value, field, event.target.value))
             }
-            placeholder={field.placeholder}
+            placeholder={field.placeholder ? t(field.placeholder) : undefined}
             spellCheck={false}
           />
         )}

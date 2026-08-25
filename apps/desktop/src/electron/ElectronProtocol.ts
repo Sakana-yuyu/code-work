@@ -7,13 +7,38 @@ import * as Schema from "effect/Schema";
 import * as Scope from "effect/Scope";
 
 import * as Electron from "electron";
+import { resolveProductSchemes } from "@t3tools/shared/productIdentity";
 
 export const DESKTOP_HOST = "app";
-export const DESKTOP_PRODUCTION_SCHEME = "t3code";
-export const DESKTOP_DEVELOPMENT_SCHEME = "t3code-dev";
+export const DESKTOP_PRODUCTION_SCHEME = "codework";
+export const DESKTOP_DEVELOPMENT_SCHEME = "codework-dev";
+export const DESKTOP_PREVIEW_SCHEME = "codework-preview";
+export const DESKTOP_LEGACY_PRODUCTION_SCHEME = "t3code";
+export const DESKTOP_LEGACY_DEVELOPMENT_SCHEME = "t3code-dev";
+export const DESKTOP_LEGACY_PREVIEW_SCHEME = "t3code-preview";
 
 export function getDesktopScheme(isDevelopment: boolean): string {
   return isDevelopment ? DESKTOP_DEVELOPMENT_SCHEME : DESKTOP_PRODUCTION_SCHEME;
+}
+
+export function getDesktopSchemes(isDevelopment: boolean): readonly string[] {
+  return resolveProductSchemes(isDevelopment ? "development" : "production");
+}
+
+function getProtocolAliases(scheme: string): readonly string[] {
+  switch (scheme) {
+    case DESKTOP_DEVELOPMENT_SCHEME:
+    case DESKTOP_LEGACY_DEVELOPMENT_SCHEME:
+      return [DESKTOP_DEVELOPMENT_SCHEME, DESKTOP_LEGACY_DEVELOPMENT_SCHEME];
+    case DESKTOP_PREVIEW_SCHEME:
+    case DESKTOP_LEGACY_PREVIEW_SCHEME:
+      return [DESKTOP_PREVIEW_SCHEME, DESKTOP_LEGACY_PREVIEW_SCHEME];
+    case DESKTOP_PRODUCTION_SCHEME:
+    case DESKTOP_LEGACY_PRODUCTION_SCHEME:
+      return [DESKTOP_PRODUCTION_SCHEME, DESKTOP_LEGACY_PRODUCTION_SCHEME];
+    default:
+      return [scheme];
+  }
 }
 
 export function getDesktopOrigin(isDevelopment: boolean): string {
@@ -86,9 +111,13 @@ export function makeDesktopContentSecurityPolicy(input: DesktopProtocolRegistrat
     "default-src 'self'",
     `script-src ${scriptSources.join(" ")}`,
     `connect-src ${connectSources.join(" ")}`,
-    `img-src 'self' ${input.scheme}: blob: data: http: https:`,
+    `img-src 'self' ${getProtocolAliases(input.scheme)
+      .map((scheme) => `${scheme}:`)
+      .join(" ")} blob: data: http: https:`,
     "style-src 'self' 'unsafe-inline'",
-    `font-src 'self' ${input.scheme}: data:`,
+    `font-src 'self' ${getProtocolAliases(input.scheme)
+      .map((scheme) => `${scheme}:`)
+      .join(" ")} data:`,
     "worker-src 'self' blob:",
     "frame-src 'self' https://challenges.cloudflare.com",
     "form-action 'self'",
@@ -109,26 +138,24 @@ function withContentSecurityPolicy(response: Response, policy: string): Response
  * Must run synchronously during process bootstrap, before Electron emits `ready`.
  */
 export function registerDesktopSchemePrivilegesSync(): void {
-  Electron.protocol.registerSchemesAsPrivileged([
-    {
-      scheme: DESKTOP_PRODUCTION_SCHEME,
+  Electron.protocol.registerSchemesAsPrivileged(
+    [
+      DESKTOP_PRODUCTION_SCHEME,
+      DESKTOP_DEVELOPMENT_SCHEME,
+      DESKTOP_PREVIEW_SCHEME,
+      DESKTOP_LEGACY_PRODUCTION_SCHEME,
+      DESKTOP_LEGACY_DEVELOPMENT_SCHEME,
+      DESKTOP_LEGACY_PREVIEW_SCHEME,
+    ].map((scheme) => ({
+      scheme,
       privileges: {
         standard: true,
         secure: true,
         supportFetchAPI: true,
         corsEnabled: true,
       },
-    },
-    {
-      scheme: DESKTOP_DEVELOPMENT_SCHEME,
-      privileges: {
-        standard: true,
-        secure: true,
-        supportFetchAPI: true,
-        corsEnabled: true,
-      },
-    },
-  ]);
+    })),
+  );
 }
 
 const registerDesktopSchemePrivileges = Effect.sync(registerDesktopSchemePrivilegesSync).pipe(
@@ -203,32 +230,54 @@ async function fetchWithTransientRetry(url: string, init: RequestInit): Promise<
 }
 
 export const make = Effect.gen(function* () {
-  const registered = yield* Ref.make(false);
+  const registered = yield* Ref.make<readonly string[]>([]);
 
   const registerDesktopProtocol = Effect.fn("desktop.electron.protocol.registerDesktopProtocol")(
     function* (input: DesktopProtocolRegistrationInput) {
-      if (yield* Ref.get(registered)) return;
+      if ((yield* Ref.get(registered)).length > 0) return;
 
       const contentSecurityPolicy = makeDesktopContentSecurityPolicy(input);
+      const schemes = getProtocolAliases(input.scheme);
+      const handler = (request: Request) =>
+        proxyRequest(request, input.targetOrigin, contentSecurityPolicy);
 
       yield* Effect.acquireRelease(
         Effect.try({
           try: () => {
-            Electron.protocol.handle(input.scheme, (request) =>
-              proxyRequest(request, input.targetOrigin, contentSecurityPolicy),
-            );
+            const handled: string[] = [];
+            try {
+              for (const scheme of schemes) {
+                Electron.protocol.handle(scheme, handler);
+                handled.push(scheme);
+              }
+            } catch (cause) {
+              for (const scheme of handled) {
+                try {
+                  Electron.protocol.unhandle(scheme);
+                } catch {
+                  // Preserve the registration failure; cleanup is best effort.
+                }
+              }
+              throw cause;
+            }
           },
           catch: (cause) => new ElectronProtocolRegistrationError({ scheme: input.scheme, cause }),
-        }).pipe(Effect.andThen(Ref.set(registered, true))),
+        }).pipe(Effect.andThen(Ref.set(registered, schemes))),
         () =>
-          Effect.try({
-            try: () => Electron.protocol.unhandle(input.scheme),
-            catch: (cause) =>
-              new ElectronProtocolUnregistrationError({
-                scheme: input.scheme,
-                cause,
-              }),
-          }).pipe(Effect.andThen(Ref.set(registered, false)), Effect.orDie),
+          Effect.gen(function* () {
+            const registeredSchemes = yield* Ref.get(registered);
+            for (const scheme of registeredSchemes) {
+              yield* Effect.try({
+                try: () => Electron.protocol.unhandle(scheme),
+                catch: (cause) =>
+                  new ElectronProtocolUnregistrationError({
+                    scheme,
+                    cause,
+                  }),
+              });
+            }
+            yield* Ref.set(registered, []);
+          }).pipe(Effect.orDie),
       );
     },
   );

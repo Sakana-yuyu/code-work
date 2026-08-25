@@ -30,7 +30,7 @@ describe("typography settings restore", () => {
         fontSizeInterface: 18,
         fontFamilyCode: "Fira Code",
       }),
-    ).toEqual(["Interface font", "Code font"]);
+    ).toEqual(["settings.interfaceFont", "settings.codeFont"]);
   });
 });
 
@@ -162,7 +162,10 @@ describe("formatDiagnosticsDescription", () => {
         otlpMetricsEnabled: true,
         otlpMetricsUrl: "http://localhost:4318/v1/metrics",
       }),
-    ).toBe("Local trace file. Exporting OTEL to http://localhost:4318/v1/{traces,metrics}.");
+    ).toEqual({
+      localTracingEnabled: true,
+      otel: { kind: "collapsed", url: "http://localhost:4318/v1/{traces,metrics}" },
+    });
   });
 
   it("keeps separate trace and metric URLs when their base paths differ", () => {
@@ -174,9 +177,14 @@ describe("formatDiagnosticsDescription", () => {
         otlpMetricsEnabled: true,
         otlpMetricsUrl: "http://localhost:9000/v1/metrics",
       }),
-    ).toBe(
-      "Local trace file. Exporting OTEL traces to http://localhost:4318/v1/traces and metrics to http://localhost:9000/v1/metrics.",
-    );
+    ).toEqual({
+      localTracingEnabled: true,
+      otel: {
+        kind: "both",
+        tracesUrl: "http://localhost:4318/v1/traces",
+        metricsUrl: "http://localhost:9000/v1/metrics",
+      },
+    });
   });
 
   it("omits OTEL text when no exporter is enabled", () => {
@@ -186,7 +194,7 @@ describe("formatDiagnosticsDescription", () => {
         otlpTracesEnabled: false,
         otlpMetricsEnabled: false,
       }),
-    ).toBe("Local trace file.");
+    ).toEqual({ localTracingEnabled: true, otel: { kind: "none" } });
   });
 });
 
@@ -270,7 +278,12 @@ describe("getChangedBrowserSettingLabels", () => {
         browserDefaultAppearance: "dark",
         browserAutoShowFloatingPreview: !DEFAULT_UNIFIED_SETTINGS.browserAutoShowFloatingPreview,
       }),
-    ).toEqual(["Browser viewport", "Browser zoom", "Browser appearance", "Floating preview"]);
+    ).toEqual([
+      "settings.defaultBrowserViewport",
+      "settings.defaultBrowserZoom",
+      "settings.defaultBrowserAppearance",
+      "settings.autoShowFloatingPreview",
+    ]);
   });
 });
 

@@ -1,13 +1,14 @@
 import * as Schema from "effect/Schema";
 import { type PointerEvent as ReactPointerEvent, useCallback, useRef, useState } from "react";
 
-import { getLocalStorageItem, setLocalStorageItem } from "./useLocalStorage";
+import { getCanonicalFirstLocalStorageItem, setLocalStorageItem } from "./useLocalStorage";
 
 const WidthSchema = Schema.Finite;
 
 export interface UseResizableWidthOptions {
   /** localStorage key the persisted width is stored under. */
   readonly storageKey: string;
+  readonly legacyStorageKey: string | undefined;
   readonly defaultWidth: number;
   readonly minWidth: number;
   readonly maxWidth: number;
@@ -39,7 +40,7 @@ export function useResizableWidth(options: UseResizableWidthOptions): {
   readonly width: number;
   readonly handlers: ResizableWidthHandlers;
 } {
-  const { storageKey, defaultWidth, minWidth, maxWidth, edge } = options;
+  const { storageKey, legacyStorageKey, defaultWidth, minWidth, maxWidth, edge } = options;
 
   const clamp = useCallback(
     (value: number): number => {
@@ -53,7 +54,10 @@ export function useResizableWidth(options: UseResizableWidthOptions): {
   const [width, setWidth] = useState<number>(() => {
     if (typeof window === "undefined") return defaultWidth;
     try {
-      const stored = getLocalStorageItem(storageKey, WidthSchema);
+      const stored =
+        legacyStorageKey === undefined
+          ? getCanonicalFirstLocalStorageItem(storageKey, storageKey, WidthSchema)
+          : getCanonicalFirstLocalStorageItem(storageKey, legacyStorageKey, WidthSchema);
       return clamp(stored ?? defaultWidth);
     } catch (error) {
       console.error("Could not read persisted panel width.", error);

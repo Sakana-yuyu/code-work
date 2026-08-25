@@ -25,8 +25,14 @@ import {
   migratePersistedBrowserFaviconState,
 } from "./browserFaviconLogic";
 import { createMemoryStorage, type StateStorage } from "./lib/storage";
+import {
+  canonicalStorageKey,
+  createCanonicalFirstStorage,
+  type SynchronousStateStorage,
+} from "./persistenceStorage";
 
-const BROWSER_FAVICON_STORAGE_KEY = "t3code:browser-favicons:v1";
+const LEGACY_BROWSER_FAVICON_STORAGE_KEY = "t3code:browser-favicons:v1";
+const BROWSER_FAVICON_STORAGE_KEY = canonicalStorageKey(LEGACY_BROWSER_FAVICON_STORAGE_KEY);
 const MAX_PENDING_ORIGINS_PER_THREAD = 10;
 const MAX_PENDING_THREADS = 20;
 const MAX_REGISTERED_THREADS = 100;
@@ -157,7 +163,21 @@ export const useBrowserFaviconStore = create<BrowserFaviconStoreState>()(
     {
       name: BROWSER_FAVICON_STORAGE_KEY,
       version: 1,
-      storage: createJSONStorage(resolveBrowserFaviconStorage),
+      storage: createJSONStorage(() =>
+        createCanonicalFirstStorage({
+          storage: resolveBrowserFaviconStorage() as SynchronousStateStorage,
+          canonicalKey: BROWSER_FAVICON_STORAGE_KEY,
+          legacyKey: LEGACY_BROWSER_FAVICON_STORAGE_KEY,
+          validate: (raw) => {
+            try {
+              JSON.parse(raw);
+              return true;
+            } catch {
+              return false;
+            }
+          },
+        }),
+      ),
       partialize: (state) => ({ byKey: state.byKey }),
       migrate: migratePersistedBrowserFaviconState,
       merge: mergeBrowserFaviconState,

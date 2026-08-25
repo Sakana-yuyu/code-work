@@ -132,6 +132,34 @@ function providerEnvironmentSecretName(input: {
   return `provider-env-${Buffer.from(input.instanceId, "utf8").toString("base64url")}-${Buffer.from(input.name, "utf8").toString("base64url")}`;
 }
 
+function byokApiKeySecretName(input: {
+  readonly instanceId: string;
+  readonly adapterId: string;
+}): string {
+  return `provider-byok-${Buffer.from(input.instanceId, "utf8").toString("base64url")}-${Buffer.from(input.adapterId, "utf8").toString("base64url")}-api-key`;
+}
+
+function redactByokConfig(config: unknown): unknown {
+  if (config === null || typeof config !== "object" || Array.isArray(config)) return config;
+  const record = config as Record<string, unknown>;
+  if (!Array.isArray(record["adapters"])) return config;
+  return {
+    ...record,
+    adapters: record["adapters"].map((entry) => {
+      if (entry === null || typeof entry !== "object" || Array.isArray(entry)) return entry;
+      const adapter = entry as Record<string, unknown>;
+      const apiKey = typeof adapter["apiKey"] === "string" ? adapter["apiKey"] : "";
+      return {
+        ...adapter,
+        apiKey: "",
+        ...(apiKey.length > 0 || adapter["apiKeyRedacted"] === true
+          ? { apiKeyRedacted: true }
+          : {}),
+      };
+    }),
+  };
+}
+
 function redactProviderEnvironmentVariable(
   variable: ProviderInstanceEnvironmentVariable,
 ): ProviderInstanceEnvironmentVariable {
@@ -150,12 +178,13 @@ export function redactServerSettingsForClient(settings: ServerSettings): ServerS
   const providerInstances = Object.fromEntries(
     Object.entries(settings.providerInstances).map(([instanceId, instance]) => [
       instanceId,
-      instance.environment
-        ? {
-            ...instance,
-            environment: instance.environment.map(redactProviderEnvironmentVariable),
-          }
-        : instance,
+      {
+        ...instance,
+        ...(instance.driver === "byok" ? { config: redactByokConfig(instance.config) } : {}),
+        ...(instance.environment
+          ? { environment: instance.environment.map(redactProviderEnvironmentVariable) }
+          : {}),
+      },
     ]),
   );
   return { ...settings, providerInstances };
@@ -362,6 +391,95 @@ const make = Effect.gen(function* () {
 
   const getSettingsFromCache = Cache.get(settingsCache, cacheKey);
 
+  const materializeByokSecrets = (
+    settings: ServerSettings,
+  ): Effect.Effect<ServerSettings, ServerSettingsError> =>
+    Effect.gen(function* () {
+      const providerInstances: Record<string, ProviderInstanceConfig> = {
+        ...settings.providerInstances,
+      };
+      for (const [instanceId, instance] of Object.entries(settings.providerInstances)) {
+        if (instance.driver !== "byok") continue;
+        const config = instance.config;
+        if (config === null || typeof config !== "object" || Array.isArray(config)) continue;
+        const record = config as Record<string, unknown>;
+        if (!Array.isArray(record["adapters"])) continue;
+        const adapters: unknown[] = [];
+        const adapterIDs = new Set(
+          record["adapters"].flatMap((entry) => {
+            if (entry === null || typeof entry !== "object" || Array.isArray(entry)) return [];
+            const adapterId = (entry as Record<string, unknown>)["id"];
+            return typeof adapterId === "string" && adapterId.length > 0 ? [adapterId] : [];
+          }),
+        );
+        for (const entry of record["adapters"]) {
+          if (entry === null || typeof entry !== "object" || Array.isArray(entry)) {
+            adapters.push(entry);
+            continue;
+          }
+          const adapter = entry as Record<string, unknown>;
+          const adapterId = typeof adapter["id"] === "string" ? adapter["id"] : "";
+          if (!adapterId || adapter["apiKeyRedacted"] !== true) {
+            adapters.push(entry);
+            continue;
+          }
+          const secret = yield* secretStore
+            .get(byokApiKeySecretName({ instanceId, adapterId }))
+            .pipe(
+              Effect.mapError(
+                (cause) =>
+                  new ServerSettingsError({
+                    settingsPath,
+                    operation: "read-secret",
+                    providerInstanceId: instanceId,
+                    environmentVariable: `byok:${adapterId}:apiKey`,
+                    cause,
+                  }),
+              ),
+            );
+          let resolvedSecret = secret;
+          if (Option.isNone(resolvedSecret)) {
+            const sourceAdapterId =
+              typeof adapter["apiKeySourceAdapterId"] === "string"
+                ? adapter["apiKeySourceAdapterId"]
+                : "";
+            if (
+              sourceAdapterId &&
+              sourceAdapterId !== adapterId &&
+              adapterIDs.has(sourceAdapterId)
+            ) {
+              resolvedSecret = yield* secretStore
+                .get(byokApiKeySecretName({ instanceId, adapterId: sourceAdapterId }))
+                .pipe(
+                  Effect.mapError(
+                    (cause) =>
+                      new ServerSettingsError({
+                        settingsPath,
+                        operation: "read-secret",
+                        providerInstanceId: instanceId,
+                        environmentVariable: `byok:${adapterId}:apiKey`,
+                        cause,
+                      }),
+                  ),
+                );
+            }
+          }
+          adapters.push({
+            ...adapter,
+            apiKey: Option.isSome(resolvedSecret) ? textDecoder.decode(resolvedSecret.value) : "",
+          });
+        }
+        providerInstances[instanceId] = {
+          ...instance,
+          config: { ...record, adapters },
+        } satisfies ProviderInstanceConfig;
+      }
+      return {
+        ...settings,
+        providerInstances: providerInstances as ServerSettings["providerInstances"],
+      };
+    });
+
   const materializeProviderEnvironmentSecrets = (
     settings: ServerSettings,
   ): Effect.Effect<ServerSettings, ServerSettingsError> =>
@@ -411,6 +529,7 @@ const make = Effect.gen(function* () {
     changes.pipe(
       Stream.mapEffect((settings) =>
         materializeProviderEnvironmentSecrets(settings).pipe(
+          Effect.flatMap(materializeByokSecrets),
           Effect.catch((error: ServerSettingsError) =>
             Effect.logWarning("failed to materialize provider environment secrets", {
               operation: error.operation,
@@ -423,6 +542,173 @@ const make = Effect.gen(function* () {
       ),
       Stream.map(resolveTextGenerationProvider),
     );
+
+  const persistByokSecrets = (
+    current: ServerSettings,
+    next: ServerSettings,
+  ): Effect.Effect<ServerSettings, ServerSettingsError> =>
+    Effect.gen(function* () {
+      const providerInstances: Record<string, ProviderInstanceConfig> = {
+        ...next.providerInstances,
+      };
+      const nextSecretNames = new Set<string>();
+
+      for (const [instanceId, instance] of Object.entries(next.providerInstances)) {
+        if (instance.driver !== "byok") continue;
+        const config = instance.config;
+        if (config === null || typeof config !== "object" || Array.isArray(config)) continue;
+        const record = config as Record<string, unknown>;
+        if (!Array.isArray(record["adapters"])) continue;
+        const adapters: unknown[] = [];
+        const adapterIDs = new Set(
+          record["adapters"].flatMap((entry) => {
+            if (entry === null || typeof entry !== "object" || Array.isArray(entry)) return [];
+            const adapterId = (entry as Record<string, unknown>)["id"];
+            return typeof adapterId === "string" && adapterId.length > 0 ? [adapterId] : [];
+          }),
+        );
+        for (const entry of record["adapters"]) {
+          if (entry === null || typeof entry !== "object" || Array.isArray(entry)) {
+            adapters.push(entry);
+            continue;
+          }
+          const adapter = entry as Record<string, unknown>;
+          const adapterId = typeof adapter["id"] === "string" ? adapter["id"] : "";
+          if (!adapterId) {
+            adapters.push(entry);
+            continue;
+          }
+          const secretName = byokApiKeySecretName({ instanceId, adapterId });
+          nextSecretNames.add(secretName);
+          const apiKey = typeof adapter["apiKey"] === "string" ? adapter["apiKey"] : "";
+          if (adapter["apiKeyRedacted"] === true && apiKey.length === 0) {
+            const sourceAdapterId =
+              typeof adapter["apiKeySourceAdapterId"] === "string"
+                ? adapter["apiKeySourceAdapterId"]
+                : "";
+            if (
+              sourceAdapterId &&
+              sourceAdapterId !== adapterId &&
+              adapterIDs.has(sourceAdapterId)
+            ) {
+              const ownSecret = yield* secretStore.get(secretName).pipe(
+                Effect.mapError(
+                  (cause) =>
+                    new ServerSettingsError({
+                      settingsPath,
+                      operation: "read-secret",
+                      providerInstanceId: instanceId,
+                      environmentVariable: `byok:${adapterId}:apiKey`,
+                      cause,
+                    }),
+                ),
+              );
+              if (Option.isNone(ownSecret)) {
+                const sourceSecret = yield* secretStore
+                  .get(byokApiKeySecretName({ instanceId, adapterId: sourceAdapterId }))
+                  .pipe(
+                    Effect.mapError(
+                      (cause) =>
+                        new ServerSettingsError({
+                          settingsPath,
+                          operation: "read-secret",
+                          providerInstanceId: instanceId,
+                          environmentVariable: `byok:${sourceAdapterId}:apiKey`,
+                          cause,
+                        }),
+                    ),
+                  );
+                if (Option.isSome(sourceSecret)) {
+                  yield* secretStore.set(secretName, sourceSecret.value).pipe(
+                    Effect.mapError(
+                      (cause) =>
+                        new ServerSettingsError({
+                          settingsPath,
+                          operation: "write-secret",
+                          providerInstanceId: instanceId,
+                          environmentVariable: `byok:${adapterId}:apiKey`,
+                          cause,
+                        }),
+                    ),
+                  );
+                }
+              }
+            }
+          }
+          if (adapter["apiKeyRedacted"] !== true) {
+            if (apiKey.length > 0) {
+              yield* secretStore.set(secretName, textEncoder.encode(apiKey)).pipe(
+                Effect.mapError(
+                  (cause) =>
+                    new ServerSettingsError({
+                      settingsPath,
+                      operation: "write-secret",
+                      providerInstanceId: instanceId,
+                      environmentVariable: `byok:${adapterId}:apiKey`,
+                      cause,
+                    }),
+                ),
+              );
+              adapters.push({ ...adapter, apiKey: "", apiKeyRedacted: true });
+            } else {
+              yield* secretStore.remove(secretName).pipe(
+                Effect.mapError(
+                  (cause) =>
+                    new ServerSettingsError({
+                      settingsPath,
+                      operation: "remove-secret",
+                      providerInstanceId: instanceId,
+                      environmentVariable: `byok:${adapterId}:apiKey`,
+                      cause,
+                    }),
+                ),
+              );
+              const { apiKeyRedacted: _omit, ...rest } = adapter;
+              adapters.push(rest);
+            }
+          } else {
+            const redacted = redactByokConfig({ adapters: [adapter] }) as { adapters: unknown[] };
+            adapters.push(redacted.adapters[0]);
+          }
+        }
+        providerInstances[instanceId] = {
+          ...instance,
+          config: { ...record, adapters },
+        } satisfies ProviderInstanceConfig;
+      }
+
+      for (const [instanceId, instance] of Object.entries(current.providerInstances)) {
+        if (instance.driver !== "byok") continue;
+        const config = instance.config;
+        if (config === null || typeof config !== "object" || Array.isArray(config)) continue;
+        const adapters = (config as Record<string, unknown>)["adapters"];
+        if (!Array.isArray(adapters)) continue;
+        for (const entry of adapters) {
+          if (entry === null || typeof entry !== "object" || Array.isArray(entry)) continue;
+          const adapterId = (entry as Record<string, unknown>)["id"];
+          if (typeof adapterId !== "string" || adapterId.length === 0) continue;
+          const secretName = byokApiKeySecretName({ instanceId, adapterId });
+          if (nextSecretNames.has(secretName)) continue;
+          yield* secretStore.remove(secretName).pipe(
+            Effect.mapError(
+              (cause) =>
+                new ServerSettingsError({
+                  settingsPath,
+                  operation: "remove-stale-secret",
+                  providerInstanceId: instanceId,
+                  environmentVariable: `byok:${adapterId}:apiKey`,
+                  cause,
+                }),
+            ),
+          );
+        }
+      }
+
+      return {
+        ...next,
+        providerInstances: providerInstances as ServerSettings["providerInstances"],
+      };
+    });
 
   const persistProviderEnvironmentSecrets = (
     current: ServerSettings,
@@ -622,21 +908,24 @@ const make = Effect.gen(function* () {
     ready: Deferred.await(startedDeferred),
     getSettings: getSettingsFromCache.pipe(
       Effect.flatMap(materializeProviderEnvironmentSecrets),
+      Effect.flatMap(materializeByokSecrets),
       Effect.map(resolveTextGenerationProvider),
     ),
     updateSettings: (patch) =>
       writeSemaphore.withPermits(1)(
         Effect.gen(function* () {
           const current = yield* getSettingsFromCache;
-          const nextPersisted = yield* persistProviderEnvironmentSecrets(
+          const nextWithEnvironmentSecrets = yield* persistProviderEnvironmentSecrets(
             current,
             applyServerSettingsPatch(current, patch),
           );
+          const nextPersisted = yield* persistByokSecrets(current, nextWithEnvironmentSecrets);
           const next = yield* normalizeServerSettings(nextPersisted);
           yield* writeSettingsAtomically(next);
           yield* Cache.set(settingsCache, cacheKey, next);
           yield* emitChange(next);
-          const materialized = yield* materializeProviderEnvironmentSecrets(next);
+          const materializedEnvironment = yield* materializeProviderEnvironmentSecrets(next);
+          const materialized = yield* materializeByokSecrets(materializedEnvironment);
           return resolveTextGenerationProvider(materialized);
         }),
       ),

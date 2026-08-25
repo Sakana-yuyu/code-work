@@ -28,6 +28,7 @@ import {
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 
+import { canonicalStorageKey } from "../persistenceStorage";
 import {
   filterPullRequestsByInvolvement,
   findScopedProject,
@@ -77,6 +78,7 @@ import {
 import { WorkspacePageContainer } from "../components/WorkspacePageContainer";
 import { WorkspacePageHeader } from "../components/WorkspacePageHeader";
 import { isElectron } from "../env";
+import { t } from "../i18n";
 import { PanelLayoutControls } from "../components/chat/PanelLayoutControls";
 import { Button } from "../components/ui/button";
 import { Menu, MenuPopup, MenuRadioGroup, MenuRadioItem, MenuTrigger } from "../components/ui/menu";
@@ -140,16 +142,16 @@ export interface PullRequestsSearch {
 
 // The state filters wear the same glyphs the rows do, so the two read as one vocabulary.
 const INVOLVEMENT_TABS = [
-  { value: "all", label: "All", Icon: LayersIcon },
-  { value: "reviewing", label: "Reviewing", Icon: EyeIcon },
-  { value: "authored", label: "Authored", Icon: PenLineIcon },
+  { value: "all", label: "pullRequests.all", Icon: LayersIcon },
+  { value: "reviewing", label: "pullRequests.reviewing", Icon: EyeIcon },
+  { value: "authored", label: "pullRequests.authored", Icon: PenLineIcon },
 ] as const satisfies ReadonlyArray<PullRequestFilterOption<PullRequestInvolvement>>;
 
 const STATE_TABS = [
-  { value: "all", label: "All", Icon: LayersIcon },
-  { value: "open", label: "Open", Icon: GitPullRequestIcon },
-  { value: "closed", label: "Closed", Icon: GitPullRequestClosedIcon },
-  { value: "merged", label: "Merged", Icon: GitMergeIcon },
+  { value: "all", label: "pullRequests.all", Icon: LayersIcon },
+  { value: "open", label: "open", Icon: GitPullRequestIcon },
+  { value: "closed", label: "pullRequests.closed", Icon: GitPullRequestClosedIcon },
+  { value: "merged", label: "pullRequests.merged", Icon: GitMergeIcon },
 ] as const satisfies ReadonlyArray<PullRequestFilterOption<PullRequestListState>>;
 
 /** Long enough that a keystroke does not become a request, short enough to feel answered. */
@@ -1300,7 +1302,7 @@ function PullRequestsRouteView() {
       rightPanelAvailable={rightPanelAvailable}
       rightPanelOpen={rightPanelState.isOpen}
       rightPanelShortcutLabel={null}
-      rightPanelUnavailableLabel="Select a pull request first"
+      rightPanelUnavailableLabel={t("selectAPullRequestFirst")}
       liveAgentCount={0}
       onToggleTerminal={() => undefined}
       onToggleRightPanel={toggleRightPanel}
@@ -1331,8 +1333,8 @@ function PullRequestsRouteView() {
         <PullRequestListGhost rows={7} />
       ) : !pullRequestsSupported ? (
         <PullRequestsUnavailableState
-          title="Pull requests unavailable"
-          error="Update your T3 Code servers to browse pull requests."
+          title={t("pullRequestsUnavailable")}
+          error={t("updateYourT3CodeServersToBrowsePullRequests")}
         />
       ) : firstLoad ? (
         <PullRequestListGhost rows={7} />
@@ -1401,9 +1403,9 @@ function PullRequestsRouteView() {
 
       {listQuery.error && listData !== null ? (
         <div className="flex items-center justify-between gap-3 rounded-lg border border-amber-500/30 bg-amber-500/5 px-3 py-2 text-xs">
-          <span>The latest request failed. Showing the last pull requests loaded.</span>
+          <span>{t("theLatestRequestFailedShowingTheLastPullRequestsLoaded")}</span>
           <Button size="xs" variant="outline" onClick={() => listQuery.refresh()}>
-            Retry
+            {t("retry")}
           </Button>
         </div>
       ) : null}
@@ -1412,7 +1414,7 @@ function PullRequestsRouteView() {
           {loadingMore ? (
             <span className="flex items-center gap-2">
               <LoaderIcon aria-hidden className="size-3.5 animate-spin" />
-              Loading more
+              {t("loadingMore")}
             </span>
           ) : null}
         </div>
@@ -1424,7 +1426,7 @@ function PullRequestsRouteView() {
   // kind force the hostname to tell them apart.
   const hostEntries = hosts.length > 0 ? hosts : expectedHosts;
   const hostMenuOptions: ReadonlyArray<PullRequestFilterOption<string>> = [
-    { value: "", label: "All hosts", Icon: LayersIcon },
+    { value: "", label: t("allHosts"), Icon: LayersIcon },
     ...hostEntries.map((entry) => {
       // `expectedHosts` stands in before the server has answered, and nothing is known to be
       // unreadable yet; once the summaries arrive they carry whether each one could be read.
@@ -1435,14 +1437,14 @@ function PullRequestsRouteView() {
         Icon: getSourceControlPresentationForKind(entry.kind).Icon,
         ...(summary === undefined || summary.configured
           ? {}
-          : { unavailable: summary.detail ?? "This host could not be read." }),
+          : { unavailable: summary.detail ?? t("thisHostCouldNotBeRead") }),
       };
     }),
   ];
   // The same shape the host pills take, so the two groups read as one control. A local
   // connection wears the screen it is on; every other server wears a server.
   const serverMenuOptions: ReadonlyArray<PullRequestFilterOption<string>> = [
-    { value: "", label: "All servers", Icon: LayersIcon },
+    { value: "", label: t("allServers"), Icon: LayersIcon },
     ...capableEnvironments.map((environment) => ({
       value: environment.environmentId,
       label: environment.label,
@@ -1556,7 +1558,8 @@ function PullRequestsRouteView() {
         {rightPanelState.isOpen && activePullRequestSurface && panelEnvironmentId !== null ? (
           <RightPanelTabs
             mode="inline"
-            widthStorageKey="t3code:pull-request-panel-width"
+            widthStorageKey={canonicalStorageKey("t3code:pull-request-panel-width")}
+            legacyWidthStorageKey="t3code:pull-request-panel-width"
             // Default to roughly half the viewport: the PR list needs more
             // room than a chat, so the 540px chat-preview default squashes
             // it. SSR has no window, so fall back to a reasonable width.
@@ -1642,7 +1645,7 @@ function CompactFilterMenu<Value extends string>({
         aria-label={label}
         className="inline-flex h-7 shrink-0 items-center gap-1 rounded-md px-1.5 text-sm font-medium text-muted-foreground hover:bg-accent hover:text-foreground"
       >
-        {current.label}
+        {t(current.label)}
         <ChevronDownIcon aria-hidden className="size-3 text-muted-foreground/70" />
       </MenuTrigger>
       <MenuPopup align="start" side="bottom" className="min-w-40">
@@ -1657,7 +1660,7 @@ function CompactFilterMenu<Value extends string>({
               >
                 <span className="flex min-w-0 items-center gap-2">
                   <option.Icon aria-hidden className="size-3.5" />
-                  {option.label}
+                  {t(option.label)}
                 </span>
               </MenuRadioItem>
             );
@@ -1736,7 +1739,7 @@ function ExpandableSearch({
     <Button
       size="icon-sm"
       variant="ghost"
-      aria-label="Search pull requests"
+      aria-label={t("searchPullRequests")}
       onClick={() => onOpenChange(true)}
     >
       <SearchIcon className="size-4" />
@@ -1860,30 +1863,30 @@ function PullRequestsColumn({
       >
         {titlebarControls}
         {condensed ? (
-          <WorkspaceBreadcrumb ariaLabel="Pull request scope">
+          <WorkspaceBreadcrumb ariaLabel={t("pullRequestScope")}>
             {/* The page name remains the foreground anchor in both states; the live filters are
                 its compact scope, grouped as the second crumb rather than pretending each menu
                 is a separate page in the hierarchy. */}
             <WorkspaceBreadcrumbItem current>
-              <h1 className="truncate">Pull Requests</h1>
+              <h1 className="truncate">{t("pullRequests")}</h1>
             </WorkspaceBreadcrumbItem>
             <WorkspaceBreadcrumbSeparator />
             <WorkspaceBreadcrumbItem className="gap-1.5 overflow-hidden">
               <CompactFilterMenu
-                label="Filter by state"
+                label={t("filterByState")}
                 value={state}
                 options={STATE_TABS}
                 onChange={onState}
               />
               <CompactFilterMenu
-                label="Filter by involvement"
+                label={t("filterByInvolvement")}
                 value={involvement}
                 options={INVOLVEMENT_TABS}
                 onChange={onInvolvement}
               />
               {hostMenuOptions.length > 2 ? (
                 <CompactFilterMenu
-                  label="Filter by host"
+                  label={t("filterByHost")}
                   value={host ?? ""}
                   options={hostMenuOptions}
                   onChange={(next) => onHost(next === "" ? undefined : next)}
@@ -1892,9 +1895,9 @@ function PullRequestsColumn({
             </WorkspaceBreadcrumbItem>
           </WorkspaceBreadcrumb>
         ) : (
-          <WorkspaceBreadcrumb ariaLabel="Pull requests breadcrumb">
+          <WorkspaceBreadcrumb ariaLabel={t("pullRequestsBreadcrumb")}>
             <WorkspaceBreadcrumbItem current>
-              <h1 className="truncate">Pull Requests</h1>
+              <h1 className="truncate">{t("pullRequests")}</h1>
             </WorkspaceBreadcrumbItem>
           </WorkspaceBreadcrumb>
         )}
@@ -1957,7 +1960,7 @@ function PullRequestRefreshControl({
     <Button
       size={compact ? "icon-sm" : "icon"}
       variant={compact ? "ghost" : "outline"}
-      aria-label="Refresh pull requests"
+      aria-label={t("refreshPullRequests")}
       onClick={onRefresh}
       disabled={refreshing}
     >

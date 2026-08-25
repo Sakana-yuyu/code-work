@@ -76,6 +76,7 @@ import {
   type DiffFoldOverride,
 } from "./pullRequestDiff.logic";
 import { PullRequestDiffStat, PullRequestMetaLine } from "./pullRequestPresentation";
+import { t } from "~/i18n";
 import {
   nextPendingReviewCommentId,
   pullRequestReviewKey,
@@ -941,7 +942,7 @@ export function PullRequestCodeTab({
               type="button"
               size="icon-sm"
               variant="ghost"
-              aria-label="Close review"
+              aria-label={t("closeReview")}
               className="absolute right-2 top-2"
               onClick={() => setReviewOpen(false)}
             >
@@ -1062,7 +1063,7 @@ export function PullRequestCodeTab({
             <Tooltip>
               <TooltipTrigger render={<span className="flex shrink-0 items-center" />}>
                 <TriangleAlertIcon
-                  aria-label="Some of this diff was not shown"
+                  aria-label={t("someOfThisDiffWasNotShown")}
                   className="size-3.5 text-amber-600 dark:text-amber-500"
                 />
               </TooltipTrigger>
@@ -1076,7 +1077,7 @@ export function PullRequestCodeTab({
             <Tooltip>
               <TooltipTrigger render={<span className="flex shrink-0 items-center" />}>
                 <MessageSquareOffIcon
-                  aria-label="Line comments are written from the whole change"
+                  aria-label={t("lineCommentsAreWrittenFromTheWholeChange")}
                   className="size-3.5"
                 />
               </TooltipTrigger>
@@ -1128,10 +1129,10 @@ export function PullRequestCodeTab({
             }
           }}
         >
-          <Toggle aria-label="Stacked diff view" value="stacked" variant="ghost">
+          <Toggle aria-label={t("stackedDiffView")} value="stacked" variant="ghost">
             <Rows3Icon className="size-3.5" />
           </Toggle>
-          <Toggle aria-label="Split diff view" value="split" variant="ghost">
+          <Toggle aria-label={t("splitDiffView")} value="split" variant="ghost">
             <Columns2Icon className="size-3.5" />
           </Toggle>
         </ToggleGroup>
@@ -1176,7 +1177,7 @@ export function PullRequestCodeTab({
   // Under the toolbar rather than in place of it, so choosing a commit does not take the
   // dropdown that was just used off the screen while its diff loads.
   if (diffQuery.isPending && loadedSlices.length === 0) {
-    return withReviewBar(<DiffPanelLoadingState label="Loading pull request diff..." />);
+    return withReviewBar(<DiffPanelLoadingState label={t("loadingPullRequestDiff")} />);
   }
 
   // A slice that fails once there are files on screen is reported at the end of them instead:

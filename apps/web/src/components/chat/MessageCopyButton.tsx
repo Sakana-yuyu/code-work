@@ -5,6 +5,7 @@ import { useCopyToClipboard } from "~/hooks/useCopyToClipboard";
 import { cn } from "~/lib/utils";
 import { anchoredToastManager } from "../ui/toast";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
+import { t } from "~/i18n";
 
 const ANCHORED_TOAST_TIMEOUT_MS = 1000;
 const onCopy = (ref: React.RefObject<HTMLButtonElement | null>) => {
@@ -61,7 +62,7 @@ export const MessageCopyButton = memo(function MessageCopyButton({
       <TooltipTrigger
         render={
           <Button
-            aria-label="Copy link"
+            aria-label={t("copyLink")}
             disabled={isCopied}
             onClick={() => copyToClipboard(text)}
             ref={ref}

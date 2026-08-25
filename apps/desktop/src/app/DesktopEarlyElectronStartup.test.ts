@@ -68,6 +68,7 @@ describe("DesktopEarlyElectronStartup", () => {
   it("resolves the early linux Electron switches", () => {
     const options = resolveEarlyLinuxElectronOptions({
       env: {
+        CODEWORK_HOME: "/home/user/.code-work-test",
         T3CODE_HOME: "/home/user/.t3-test",
         XDG_CURRENT_DESKTOP: "niri",
         VITE_DEV_SERVER_URL: "http://127.0.0.1:5173",
@@ -75,13 +76,13 @@ describe("DesktopEarlyElectronStartup", () => {
       homeDirectory: "/home/user",
       joinPath,
       readFileString: (path) => {
-        assert.equal(path, "/home/user/.t3-test/userdata/desktop-settings.json");
+        assert.equal(path, "/home/user/.code-work-test/userdata/desktop-settings.json");
         return JSON.stringify({ linuxPasswordStore: "auto" });
       },
     });
 
     assert.deepEqual(options, {
-      linuxWmClass: "t3code-dev",
+      linuxWmClass: "code-work-dev",
       passwordStore: "gnome-libsecret",
     });
   });

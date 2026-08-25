@@ -40,6 +40,22 @@ const read = (key: string) => {
   }
 };
 
+const writeRaw = (key: string, value: string) => {
+  try {
+    isomorphicLocalStorage.setItem(key, value);
+  } catch (cause) {
+    throw new LocalStorageOperationError({ operation: "write", storageKey: key, cause });
+  }
+};
+
+const removeRawBestEffort = (key: string) => {
+  try {
+    isomorphicLocalStorage.removeItem(key);
+  } catch {
+    // Legacy cleanup must not invalidate a successful canonical write.
+  }
+};
+
 const decode = <T, E>(key: string, schema: Schema.Codec<T, E>, value: string) => {
   try {
     return Schema.decodeSync(Schema.fromJsonString(schema))(value);
@@ -61,13 +77,46 @@ export const getLocalStorageItem = <T, E>(key: string, schema: Schema.Codec<T, E
   return item ? decode(key, schema, item) : null;
 };
 
+export const getCanonicalFirstLocalStorageItem = <T, E>(
+  key: string,
+  legacyKey: string,
+  schema: Schema.Codec<T, E>,
+): T | null => {
+  const canonicalRaw = read(key);
+  if (canonicalRaw !== null) return decode(key, schema, canonicalRaw);
+
+  const legacyRaw = read(legacyKey);
+  if (legacyRaw === null) return null;
+  const legacyValue = decode(legacyKey, schema, legacyRaw);
+  const encoded = encode(key, schema, legacyValue);
+  writeRaw(key, encoded);
+  removeRawBestEffort(legacyKey);
+  return legacyValue;
+};
+
+function readCanonicalFirstSerialized<T, E>(
+  key: string,
+  legacyKey: string,
+  schema: Schema.Codec<T, E>,
+): string | null {
+  const canonicalRaw = read(key);
+  if (canonicalRaw !== null) {
+    decode(key, schema, canonicalRaw);
+    return canonicalRaw;
+  }
+
+  const legacyRaw = read(legacyKey);
+  if (legacyRaw === null) return null;
+  const legacyValue = decode(legacyKey, schema, legacyRaw);
+  const encoded = encode(key, schema, legacyValue);
+  writeRaw(key, encoded);
+  removeRawBestEffort(legacyKey);
+  return encoded;
+}
+
 export const setLocalStorageItem = <T, E>(key: string, value: T, schema: Schema.Codec<T, E>) => {
   const valueToSet = encode(key, schema, value);
-  try {
-    isomorphicLocalStorage.setItem(key, valueToSet);
-  } catch (cause) {
-    throw new LocalStorageOperationError({ operation: "write", storageKey: key, cause });
-  }
+  writeRaw(key, valueToSet);
 };
 
 export const removeLocalStorageItem = (key: string) => {
@@ -101,25 +150,30 @@ export function useLocalStorage<T, E>(
   key: string,
   initialValue: T,
   schema: Schema.Codec<T, E>,
+  options?: { readonly legacyKey?: string },
 ): [T, (value: T | ((val: T) => T)) => void] {
+  const legacyKey = options?.legacyKey;
+  const readKey = legacyKey === undefined ? key : `${key}\u0000${legacyKey}`;
   const getSnapshot = useCallback(() => {
     try {
-      return read(key);
+      return legacyKey === undefined
+        ? read(key)
+        : readCanonicalFirstSerialized(key, legacyKey, schema);
     } catch (error) {
       console.error("[LOCALSTORAGE] Could not read stored value.", error);
       return null;
     }
-  }, [key]);
+  }, [key, legacyKey, schema]);
 
   const subscribe = useCallback(
     (onStoreChange: () => void) => {
       const handleStorageChange = (event: StorageEvent) => {
-        if (event.key === key) {
+        if (event.key === key || event.key === legacyKey) {
           onStoreChange();
         }
       };
       const handleLocalChange = (event: CustomEvent<LocalStorageChangeDetail>) => {
-        if (event.detail.key === key) {
+        if (event.detail.key === key || event.detail.key === legacyKey) {
           onStoreChange();
         }
       };
@@ -131,7 +185,7 @@ export function useLocalStorage<T, E>(
         window.removeEventListener(LOCAL_STORAGE_CHANGE_EVENT, handleLocalChange as EventListener);
       };
     },
-    [key],
+    [key, legacyKey],
   );
 
   const serializedValue = useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
@@ -150,7 +204,10 @@ export function useLocalStorage<T, E>(
   const setValue = useCallback(
     (value: T | ((val: T) => T)) => {
       try {
-        const currentValue = getLocalStorageItem(key, schema) ?? initialValue;
+        const currentValue =
+          (legacyKey === undefined
+            ? getLocalStorageItem(key, schema)
+            : getCanonicalFirstLocalStorageItem(key, legacyKey, schema)) ?? initialValue;
         let valueToStore: T;
         if (typeof value === "function") {
           try {
@@ -175,7 +232,7 @@ export function useLocalStorage<T, E>(
         console.error("[LOCALSTORAGE] Could not update stored value.", error);
       }
     },
-    [initialValue, key, schema],
+    [initialValue, key, legacyKey, schema],
   );
 
   return [storedValue, setValue];

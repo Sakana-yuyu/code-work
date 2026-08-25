@@ -44,7 +44,7 @@ export function PromptFontPreview() {
         terminalContexts={EMPTY_TERMINAL_CONTEXTS}
         skills={EMPTY_SKILLS}
         disabled={false}
-        placeholder={DISCONNECTED_COMPOSER_PLACEHOLDER}
+        placeholder={DISCONNECTED_COMPOSER_PLACEHOLDER()}
         className="max-h-40 min-h-12"
         onRemoveTerminalContext={noop}
         onChange={onChange}

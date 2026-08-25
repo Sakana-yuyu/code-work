@@ -2,6 +2,7 @@ import { describe, expect, it } from "vite-plus/test";
 
 import {
   BRAND_ASSET_PATHS,
+  SAKANA_YUYU_ICON_SOURCE,
   DEVELOPMENT_ICON_OVERRIDES,
   DEVELOPMENT_PUBLIC_ICON_OVERRIDES,
   resolveWebAssetBrandForChannel,
@@ -10,6 +11,16 @@ import {
 } from "./brand-assets.ts";
 
 describe("brand-assets", () => {
+  it("pins the verified sakana-yuyu source asset", () => {
+    expect(SAKANA_YUYU_ICON_SOURCE).toEqual({
+      relativePath: "assets/source/sakana-yuyu-agent-icon-256.png",
+      sha256: "42f8ec01736d92a769fbfcabc3c6b632e412a954f0b7f9a075c3841fe72df57c",
+      width: 256,
+      height: 256,
+    });
+    expect(BRAND_ASSET_PATHS.sakanaYuyuSource).toBe(SAKANA_YUYU_ICON_SOURCE.relativePath);
+  });
+
   it("maps production web assets into the server package", () => {
     expect(resolveWebIconOverrides("production", "dist/client")).toEqual([
       {
@@ -93,8 +104,8 @@ describe("brand-assets", () => {
       "assets/nightly/app-icon.icon",
       "assets/prod/app-icon.icon",
     ]);
-    expect(BRAND_ASSET_PATHS.developmentDesktopIconPng).toMatch(/^assets\/dev\/blueprint-/);
-    expect(BRAND_ASSET_PATHS.nightlyMacIconPng).toMatch(/^assets\/nightly\/nightly-/);
-    expect(BRAND_ASSET_PATHS.productionMacIconPng).toMatch(/^assets\/prod\/black-/);
+    expect(BRAND_ASSET_PATHS.developmentDesktopIconPng).toBe("assets/dev/blueprint-macos-1024.png");
+    expect(BRAND_ASSET_PATHS.nightlyMacIconPng).toBe("assets/nightly/nightly-macos-1024.png");
+    expect(BRAND_ASSET_PATHS.productionMacIconPng).toBe("assets/prod/black-macos-1024.png");
   });
 });

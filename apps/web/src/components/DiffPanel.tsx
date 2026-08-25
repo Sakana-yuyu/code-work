@@ -75,6 +75,7 @@ import { reviewEnvironment } from "../state/review";
 import { vcsEnvironment } from "../state/vcs";
 import { buildBaseRefChoices, filterBaseRefChoices } from "../lib/baseRefChoices";
 import { createGitDiffFileContentsLoader } from "../lib/diffFileContents";
+import { t } from "~/i18n";
 
 type DiffThemeType = "light" | "dark";
 const AUTOMATIC_BASE_REF = "__automatic_base_ref__";
@@ -628,7 +629,7 @@ export default function DiffPanel({
                     <ComboboxInput
                       className="[&_input]:h-6.5 [&_input]:ps-5 [&_input]:font-sans [&_input]:leading-6.5"
                       inputClassName="rounded-none bg-transparent text-sm"
-                      placeholder="Search refs..."
+                      placeholder={t("searchRefs")}
                       showTrigger={false}
                       size="sm"
                       unstyled
@@ -691,7 +692,7 @@ export default function DiffPanel({
                                   <span className="flex justify-end text-muted-foreground">
                                     <CheckIcon
                                       role="img"
-                                      aria-label="Remote only"
+                                      aria-label={t("remoteOnly")}
                                       className="size-3"
                                     />
                                   </span>
@@ -776,10 +777,10 @@ export default function DiffPanel({
             }
           }}
         >
-          <Toggle aria-label="Stacked diff view" value="stacked" variant="ghost">
+          <Toggle aria-label={t("stackedDiffView")} value="stacked" variant="ghost">
             <Rows3Icon className="size-3.5" />
           </Toggle>
-          <Toggle aria-label="Split diff view" value="split" variant="ghost">
+          <Toggle aria-label={t("splitDiffView")} value="split" variant="ghost">
             <Columns2Icon className="size-3.5" />
           </Toggle>
         </ToggleGroup>

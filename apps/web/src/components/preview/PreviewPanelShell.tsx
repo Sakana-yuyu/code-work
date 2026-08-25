@@ -10,12 +10,14 @@ import {
 import { isElectron } from "~/env";
 import { useResizableWidth } from "~/hooks/useResizableWidth";
 import { cn } from "~/lib/utils";
+import { canonicalStorageKey } from "~/persistenceStorage";
 
 import { RightPanelResizeHandle } from "./RightPanelResizeHandle";
 
 export type PreviewPanelMode = "inline" | "sheet" | "sidebar" | "embedded";
 
-const PREVIEW_PANEL_WIDTH_STORAGE_KEY = "t3code:preview-panel-width";
+const LEGACY_PREVIEW_PANEL_WIDTH_STORAGE_KEY = "t3code:preview-panel-width";
+const PREVIEW_PANEL_WIDTH_STORAGE_KEY = canonicalStorageKey(LEGACY_PREVIEW_PANEL_WIDTH_STORAGE_KEY);
 const PREVIEW_PANEL_MIN_WIDTH = 360;
 /**
  * Upper bound as a fraction of the viewport; only binds on wide screens.
@@ -59,6 +61,7 @@ export function PreviewPanelShell(props: {
    * the other's remembered width.
    */
   widthStorageKey?: string;
+  legacyWidthStorageKey?: string;
   /** Overrides the initial width (px) before the user has resized the panel. */
   defaultWidth?: number;
   children: ReactNode;
@@ -69,8 +72,13 @@ export function PreviewPanelShell(props: {
   // Only inline non-maximized mode applies `width`/`maxWidth`; skip the
   // container measurement (and its re-renders) everywhere else.
   const maxWidth = useClampedMaxWidth(hostRef, isInline && !props.maximized);
+  const resolvedWidthStorageKey = props.widthStorageKey ?? PREVIEW_PANEL_WIDTH_STORAGE_KEY;
+  const legacyWidthStorageKey =
+    props.legacyWidthStorageKey ??
+    (props.widthStorageKey === undefined ? LEGACY_PREVIEW_PANEL_WIDTH_STORAGE_KEY : undefined);
   const { width, handlers } = useResizableWidth({
-    storageKey: props.widthStorageKey ?? PREVIEW_PANEL_WIDTH_STORAGE_KEY,
+    storageKey: resolvedWidthStorageKey,
+    legacyStorageKey: legacyWidthStorageKey,
     defaultWidth: props.defaultWidth ?? PREVIEW_PANEL_DEFAULT_WIDTH,
     minWidth: PREVIEW_PANEL_MIN_WIDTH,
     maxWidth,

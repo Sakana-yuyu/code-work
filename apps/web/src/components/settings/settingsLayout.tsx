@@ -15,6 +15,7 @@ import { cn } from "../../lib/utils";
 import { WorkspacePageContainer, type WorkspacePageWidth } from "../WorkspacePageContainer";
 import { Button } from "../ui/button";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
+import { t } from "~/i18n";
 
 interface SettingsSearchTargetContextValue {
   readonly targetId: string | null;
@@ -91,7 +92,7 @@ export function PolicyTooltip({ children }: { readonly children: string }) {
       <TooltipTrigger
         delay={200}
         render={
-          <Button size="icon-micro" variant="ghost-muted" aria-label="Background policy details">
+          <Button size="icon-micro" variant="ghost-muted" aria-label={t("backgroundPolicyDetails")}>
             <InfoIcon className="size-3.5" />
           </Button>
         }
@@ -215,7 +216,7 @@ export function SettingResetButton({
           <Button
             size="icon-micro"
             variant="ghost-muted"
-            aria-label={`Reset ${label} to default`}
+            aria-label={t("resetSettingToDefault", { label })}
             disabled={disabled}
             onClick={(event) => {
               event.stopPropagation();
@@ -226,7 +227,7 @@ export function SettingResetButton({
           </Button>
         }
       />
-      <TooltipPopup side="top">Reset to default</TooltipPopup>
+      <TooltipPopup side="top">{t("resetToDefault")}</TooltipPopup>
     </Tooltip>
   );
 }

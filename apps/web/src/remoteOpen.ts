@@ -17,6 +17,7 @@ import {
 } from "@t3tools/contracts";
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
+import { canonicalStorageKey } from "./persistenceStorage";
 import { useEffect, useMemo, useState } from "react";
 
 import { isDesktopLocalConnectionTarget } from "~/connection/desktopLocal";
@@ -181,9 +182,12 @@ export async function openRemoteEditorUrl(url: string): Promise<boolean> {
  * until the first remote open fires (we cannot observe SSH success from here,
  * so first click is the dismiss signal).
  */
-const REMOTE_OPEN_HINT_KEY = "t3code:remote-open-hint-seen";
+const LEGACY_REMOTE_OPEN_HINT_KEY = "t3code:remote-open-hint-seen";
+const REMOTE_OPEN_HINT_KEY = canonicalStorageKey(LEGACY_REMOTE_OPEN_HINT_KEY);
 
 export function useRemoteOpenHint(): readonly [seen: boolean, markSeen: () => void] {
-  const [seen, setSeen] = useLocalStorage(REMOTE_OPEN_HINT_KEY, false, Schema.Boolean);
+  const [seen, setSeen] = useLocalStorage(REMOTE_OPEN_HINT_KEY, false, Schema.Boolean, {
+    legacyKey: LEGACY_REMOTE_OPEN_HINT_KEY,
+  });
   return [seen, () => setSeen(true)] as const;
 }
