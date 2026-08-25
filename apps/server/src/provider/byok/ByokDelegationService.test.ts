@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { __testables, resolveScheduler } from "./ByokDelegationService.ts";
+import { __testables, resolveDelegationModel, resolveScheduler } from "./ByokDelegationService.ts";
 
 const { parseExecutorCommand, buildChildEnv, preview } = __testables;
 
@@ -47,6 +47,39 @@ describe("ByokDelegationService helpers", () => {
   it("truncates previews with an ellipsis", () => {
     expect(preview("abcdef", 3)).toBe("abc…");
     expect(preview("abc", 3)).toBe("abc");
+  });
+
+  it("routes delegation to the enabled group's model", () => {
+    expect(
+      resolveDelegationModel(
+        config({
+          modelGroups: [
+            {
+              id: "g1",
+              name: "Disabled",
+              enabled: false,
+              modelIds: ["m-a"],
+              defaultModelId: "m-a",
+            },
+            {
+              id: "g2",
+              name: "Primary",
+              enabled: true,
+              modelIds: ["m-b", "m-c"],
+              defaultModelId: "m-c",
+            },
+          ],
+        }),
+      ),
+    ).toBe("m-c");
+    expect(
+      resolveDelegationModel(
+        config({
+          modelGroups: [{ id: "g1", name: "Fallback", enabled: true, modelIds: ["m-only"] }],
+        }),
+      ),
+    ).toBe("m-only");
+    expect(resolveDelegationModel(config())).toBeUndefined();
   });
 });
 

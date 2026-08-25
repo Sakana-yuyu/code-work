@@ -541,7 +541,7 @@ export type OpenCodeSettings = typeof OpenCodeSettings.Type;
 export const ByokModelAdapter = Schema.Struct({
   id: Schema.String,
   displayName: TrimmedString,
-  protocol: Schema.Literals(["openai", "anthropic"]),
+  protocol: Schema.Literals(["openai", "anthropic", "gemini"]),
   baseURL: TrimmedString,
   apiKey: Schema.String.pipe(Schema.withDecodingDefault(Effect.succeed(""))),
   apiKeyRedacted: Schema.optional(Schema.Boolean),
@@ -561,6 +561,12 @@ export const ByokModelAdapter = Schema.Struct({
   // Balance credentials other than the stored API key are intentionally not
   // persisted here; profiles needing them report a deterministic error.
   balanceProfile: Schema.optional(Schema.Literals(["auto", "general", "newapi", "none"])),
+  // NewAPI-style balance credentials. The access token is a secret stored in
+  // the server secret store (redacted here like `apiKey`); the user id is a
+  // non-secret identifier.
+  balanceAccessToken: Schema.String.pipe(Schema.withDecodingDefault(Effect.succeed(""))),
+  balanceAccessTokenRedacted: Schema.optional(Schema.Boolean),
+  balanceUserID: Schema.optional(TrimmedString),
 });
 export type ByokModelAdapter = typeof ByokModelAdapter.Type;
 

@@ -73,6 +73,11 @@ function balanceSummary(result: ByokBalanceResult | undefined): string {
  * server-side credentials; this component only ever sees normalized numbers.
  */
 export function ByokFeaturesSection(props: ByokFeaturesSectionProps) {
+  // Stored byok configs may predate a feature (or arrive as a bare `{}` from
+  // `readByokFeatureConfig`), so normalize against the contract defaults
+  // before any field access.
+  const promptTemplate = { ...DEFAULT_PROMPT_TEMPLATE, ...props.promptTemplate };
+  const delegation = { ...DEFAULT_DELEGATION, ...props.delegation };
   const balanceCommand = useAtomCommand(byokEnvironment.balance, { reportFailure: false });
   const [balance, setBalance] = useState<Record<string, ByokBalanceResult | undefined>>({});
   const [queryingAdapterId, setQueryingAdapterId] = useState<string | null>(null);
@@ -147,20 +152,20 @@ export function ByokFeaturesSection(props: ByokFeaturesSectionProps) {
   };
 
   const patchPromptTemplate = (patch: Partial<ByokPromptTemplateConfig>) =>
-    props.onPromptTemplateChange({ ...DEFAULT_PROMPT_TEMPLATE, ...props.promptTemplate, ...patch });
+    props.onPromptTemplateChange({ ...promptTemplate, ...patch });
 
   const patchDelegation = (patch: Partial<ByokDelegationConfig>) =>
-    props.onDelegationChange({ ...DEFAULT_DELEGATION, ...props.delegation, ...patch });
+    props.onDelegationChange({ ...delegation, ...patch });
 
   const addExecutorEnvVar = () => {
     const name = executorEnvInput.trim();
     if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(name)) return;
-    if (props.delegation.executorEnvironmentVariables.includes(name)) {
+    if (delegation.executorEnvironmentVariables.includes(name)) {
       setExecutorEnvInput("");
       return;
     }
     patchDelegation({
-      executorEnvironmentVariables: [...props.delegation.executorEnvironmentVariables, name],
+      executorEnvironmentVariables: [...delegation.executorEnvironmentVariables, name],
     });
     setExecutorEnvInput("");
   };
@@ -215,7 +220,7 @@ export function ByokFeaturesSection(props: ByokFeaturesSectionProps) {
           <label className="flex items-center gap-2 text-xs">
             <input
               type="checkbox"
-              checked={props.promptTemplate.softwareChineseEnabled}
+              checked={promptTemplate.softwareChineseEnabled}
               onChange={(event) =>
                 patchPromptTemplate({ softwareChineseEnabled: event.target.checked })
               }
@@ -225,16 +230,16 @@ export function ByokFeaturesSection(props: ByokFeaturesSectionProps) {
           <label className="flex items-center gap-2 text-xs">
             <input
               type="checkbox"
-              checked={props.promptTemplate.customEnabled}
+              checked={promptTemplate.customEnabled}
               onChange={(event) => patchPromptTemplate({ customEnabled: event.target.checked })}
             />
             {t("byokFeatures.promptTemplateCustom")}
           </label>
-          {props.promptTemplate.customEnabled ? (
+          {promptTemplate.customEnabled ? (
             <textarea
               className="border-input bg-background min-h-24 w-full rounded-md border px-3 py-2 text-xs"
               placeholder={t("byokFeatures.promptTemplateCustomPlaceholder")}
-              value={props.promptTemplate.customContent}
+              value={promptTemplate.customContent}
               onChange={(event) => patchPromptTemplate({ customContent: event.target.value })}
             />
           ) : null}
@@ -253,7 +258,7 @@ export function ByokFeaturesSection(props: ByokFeaturesSectionProps) {
               type="number"
               min={1}
               max={16}
-              value={props.delegation.maxConcurrency}
+              value={delegation.maxConcurrency}
               onChange={(event) =>
                 patchDelegation({
                   maxConcurrency: Math.max(1, Math.min(16, Number(event.target.value) || 4)),
@@ -266,10 +271,46 @@ export function ByokFeaturesSection(props: ByokFeaturesSectionProps) {
               {t("byokFeatures.delegationExecutorCommand")}
             </span>
             <Input
-              value={props.delegation.executorCommand}
+              value={delegation.executorCommand}
               placeholder="claude"
               onChange={(event) => patchDelegation({ executorCommand: event.target.value })}
             />
+          </label>
+          <label className="text-xs">
+            <span className="text-muted-foreground mb-1 block">
+              {t("byokFeatures.delegationDefaultModel")}
+            </span>
+            <select
+              className="border-input bg-background h-8 w-full rounded-md border px-2 text-xs"
+              value={
+                delegation.modelGroups.find((group) => group.enabled)?.defaultModelId ??
+                delegation.modelGroups.find((group) => group.enabled)?.modelIds[0] ??
+                ""
+              }
+              onChange={(event) => {
+                const modelId = event.target.value;
+                patchDelegation({
+                  modelGroups: modelId
+                    ? [
+                        {
+                          id: "default",
+                          name: "Default",
+                          enabled: true,
+                          modelIds: props.adapters.map((adapter) => adapter.id),
+                          defaultModelId: modelId,
+                        },
+                      ]
+                    : [],
+                });
+              }}
+            >
+              <option value="">{t("byokFeatures.delegationNoModelRouting")}</option>
+              {props.adapters.map((adapter) => (
+                <option key={adapter.id} value={adapter.id}>
+                  {adapter.displayName}
+                </option>
+              ))}
+            </select>
           </label>
         </div>
         <div className="space-y-2">
@@ -292,9 +333,9 @@ export function ByokFeaturesSection(props: ByokFeaturesSectionProps) {
               {t("byokFeatures.delegationAddEnvVar")}
             </Button>
           </div>
-          {props.delegation.executorEnvironmentVariables.length > 0 ? (
+          {delegation.executorEnvironmentVariables.length > 0 ? (
             <div className="flex flex-wrap gap-1">
-              {props.delegation.executorEnvironmentVariables.map((name) => (
+              {delegation.executorEnvironmentVariables.map((name) => (
                 <button
                   key={name}
                   type="button"
@@ -302,10 +343,9 @@ export function ByokFeaturesSection(props: ByokFeaturesSectionProps) {
                   title={t("byokFeatures.delegationRemoveEnvVar")}
                   onClick={() =>
                     patchDelegation({
-                      executorEnvironmentVariables:
-                        props.delegation.executorEnvironmentVariables.filter(
-                          (candidate) => candidate !== name,
-                        ),
+                      executorEnvironmentVariables: delegation.executorEnvironmentVariables.filter(
+                        (candidate) => candidate !== name,
+                      ),
                     })
                   }
                 >
@@ -315,7 +355,7 @@ export function ByokFeaturesSection(props: ByokFeaturesSectionProps) {
             </div>
           ) : null}
         </div>
-        {props.delegation.enabled && props.delegation.executorCommand.trim().length > 0 ? (
+        {delegation.enabled && delegation.executorCommand.trim().length > 0 ? (
           <div className="space-y-2 border-t border-border/60 pt-3">
             <span className="text-muted-foreground text-xs">
               {t("byokFeatures.delegationRunTask")}

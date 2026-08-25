@@ -34,7 +34,46 @@ describe("readByokModelAdapters", () => {
         baseURL: "https://api.deepseek.com/v1",
         apiKey: "",
         apiKeyRedacted: true,
+        balanceAccessToken: "",
         modelId: "deepseek-chat",
+        contextWindowTokens: 128_000,
+      },
+    ]);
+  });
+
+  it("preserves NewAPI balance credentials and the redacted token marker", () => {
+    expect(
+      readByokModelAdapters({
+        adapters: [
+          {
+            id: "adapter-2",
+            displayName: "NewAPI Model",
+            protocol: "openai",
+            baseURL: "https://newapi.example.com/v1",
+            apiKey: "",
+            apiKeyRedacted: true,
+            balanceProfile: "newapi",
+            balanceAccessToken: "",
+            balanceAccessTokenRedacted: true,
+            balanceUserID: "42",
+            modelId: "newapi-model",
+            contextWindowTokens: 128_000,
+          },
+        ],
+      }),
+    ).toEqual([
+      {
+        id: "adapter-2",
+        displayName: "NewAPI Model",
+        protocol: "openai",
+        baseURL: "https://newapi.example.com/v1",
+        apiKey: "",
+        apiKeyRedacted: true,
+        balanceProfile: "newapi",
+        balanceAccessToken: "",
+        balanceAccessTokenRedacted: true,
+        balanceUserID: "42",
+        modelId: "newapi-model",
         contextWindowTokens: 128_000,
       },
     ]);

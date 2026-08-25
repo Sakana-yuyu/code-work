@@ -163,7 +163,12 @@ export const make = Effect.gen(function* () {
         }
       }
       const candidates = buildModelCatalogCandidates({
-        type: adapter.protocol === "anthropic" ? "anthropic" : template.type,
+        type:
+          adapter.protocol === "gemini"
+            ? "gemini"
+            : adapter.protocol === "anthropic"
+              ? "anthropic"
+              : template.type,
         baseURL: adapter.baseURL,
         ...(adapter.modelCatalogURL ? { modelCatalogURL: adapter.modelCatalogURL } : {}),
         modelCatalogURLs: [...(adapter.modelCatalogURLs ?? []), ...template.modelCatalog.urls],
@@ -179,7 +184,9 @@ export const make = Effect.gen(function* () {
             headers:
               adapter.protocol === "anthropic"
                 ? { "x-api-key": adapter.apiKey, "anthropic-version": "2023-06-01" }
-                : { authorization: `Bearer ${adapter.apiKey}` },
+                : adapter.protocol === "gemini"
+                  ? { "x-goog-api-key": adapter.apiKey }
+                  : { authorization: `Bearer ${adapter.apiKey}` },
           }),
         );
         if (response._tag === "Failure") {

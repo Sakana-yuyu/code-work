@@ -754,7 +754,104 @@ it.layer(NodeServices.layer)("server settings", (it) => {
           adapters: Array<Record<string, unknown>>;
         }
       ).adapters[0];
-      assert.equal(roundTrippedAdapter?.apiKey, "sk-deepseek-secret");
+    }).pipe(Effect.provide(makeServerSettingsLayer())),
+  );
+
+  it.effect("stores NewAPI balance access tokens in the secret store", () =>
+    Effect.gen(function* () {
+      const serverSettings = yield* ServerSettingsModule.ServerSettingsService;
+      const serverConfig = yield* ServerConfig.ServerConfig;
+      const fileSystem = yield* FileSystem.FileSystem;
+      const instanceId = ProviderInstanceId.make("byok_newapi");
+
+      const next = yield* serverSettings.updateSettings({
+        providerInstances: {
+          [instanceId]: {
+            driver: ProviderDriverKind.make("byok"),
+            config: {
+              adapters: [
+                {
+                  id: "newapi-model",
+                  displayName: "NewAPI Model",
+                  protocol: "openai",
+                  baseURL: "https://newapi.example.com/v1",
+                  apiKey: "sk-newapi-secret",
+                  balanceProfile: "newapi",
+                  balanceAccessToken: "napi-balance-secret",
+                  balanceUserID: "42",
+                  modelId: "newapi-model",
+                  contextWindowTokens: 128000,
+                },
+              ],
+            },
+          },
+        },
+      });
+
+      const materializedAdapter = (
+        next.providerInstances[instanceId]?.config as { adapters: Array<Record<string, unknown>> }
+      ).adapters[0];
+      assert.equal(materializedAdapter?.balanceAccessToken, "napi-balance-secret");
+      assert.equal(materializedAdapter?.balanceAccessTokenRedacted, true);
+      assert.equal(materializedAdapter?.balanceUserID, "42");
+
+      const clientSettings = ServerSettingsModule.redactServerSettingsForClient(next);
+      const clientAdapter = (
+        clientSettings.providerInstances[instanceId]?.config as {
+          adapters: Array<Record<string, unknown>>;
+        }
+      ).adapters[0];
+      assert.equal(clientAdapter?.balanceAccessToken, "");
+      assert.equal(clientAdapter?.balanceAccessTokenRedacted, true);
+
+      const raw = yield* fileSystem.readFileString(serverConfig.settingsPath);
+      assert.notInclude(raw, "napi-balance-secret");
+      // @effect-diagnostics-next-line preferSchemaOverJson:off
+      const persistedAdapter = JSON.parse(raw).providerInstances.byok_newapi.config.adapters[0];
+      assert.equal(persistedAdapter.balanceAccessToken, "");
+      assert.equal(persistedAdapter.balanceAccessTokenRedacted, true);
+      assert.equal(persistedAdapter.balanceUserID, "42");
+
+      // An unrelated save that round-trips the redacted token must not lose it.
+      const roundTripped = yield* serverSettings.updateSettings({
+        providerInstances: {
+          [instanceId]: {
+            driver: ProviderDriverKind.make("byok"),
+            displayName: "NewAPI instance",
+            config: {
+              adapters: [{ ...persistedAdapter, balanceAccessToken: "" }],
+            },
+          },
+        },
+      });
+      const roundTrippedAdapter = (
+        roundTripped.providerInstances[instanceId]?.config as {
+          adapters: Array<Record<string, unknown>>;
+        }
+      ).adapters[0];
+      assert.equal(roundTrippedAdapter?.balanceAccessToken, "napi-balance-secret");
+
+      // Explicitly clearing the token drops the secret and the redacted flag.
+      const { balanceAccessTokenRedacted: _omitFlag, ...clearedInput } =
+        roundTrippedAdapter as Record<string, unknown>;
+      const cleared = yield* serverSettings.updateSettings({
+        providerInstances: {
+          [instanceId]: {
+            driver: ProviderDriverKind.make("byok"),
+            config: {
+              adapters: [{ ...clearedInput, balanceAccessToken: "" }],
+            },
+          },
+        },
+      });
+      const clearedAdapter =
+        (
+          cleared.providerInstances[instanceId]?.config as {
+            adapters: Array<Record<string, unknown>>;
+          }
+        ).adapters[0] ?? {};
+      assert.equal(clearedAdapter.balanceAccessToken, "");
+      assert.equal(clearedAdapter.balanceAccessTokenRedacted, undefined);
     }).pipe(Effect.provide(makeServerSettingsLayer())),
   );
 

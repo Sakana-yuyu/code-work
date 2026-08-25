@@ -15,13 +15,15 @@ const asFetch = (
 type Adapter = {
   readonly id: string;
   readonly displayName: string;
-  readonly protocol: "openai" | "anthropic";
+  readonly protocol: "openai" | "anthropic" | "gemini";
   readonly baseURL: string;
   readonly apiKey: string;
   readonly modelId: string;
   readonly contextWindowTokens: number;
   readonly supplierID?: string;
   readonly balanceProfile?: "auto" | "general" | "newapi" | "none";
+  readonly balanceAccessToken?: string;
+  readonly balanceUserID?: string;
 };
 
 const makeSettings = (instanceId: string, adapters: ReadonlyArray<Adapter>) =>
@@ -107,16 +109,26 @@ describe("ByokBalanceService", () => {
   });
 
   it("normalizes a NewAPI quota payload", async () => {
+    let seenAuthorization = "";
+    let seenUserID = "";
     const result = await runBalance(
       makeSettings("instance-2", [
-        adapter({ balanceProfile: "newapi", baseURL: "https://newapi.test" }),
+        adapter({
+          balanceProfile: "newapi",
+          baseURL: "https://newapi.test",
+          balanceAccessToken: "napi-token",
+          balanceUserID: "42",
+        }),
       ]),
-      asFetch(async () =>
-        jsonResponse({
+      asFetch(async (input, init) => {
+        const headers = new Headers(init?.headers);
+        seenAuthorization = headers.get("authorization") ?? "";
+        seenUserID = headers.get("new-api-user") ?? "";
+        return jsonResponse({
           success: true,
           data: { quota: 25_000_000, used_quota: 12_500_000, group: "default" },
-        }),
-      ),
+        });
+      }),
       { instanceId: "instance-2", adapterId: "adapter-balance" },
     );
 
@@ -124,6 +136,27 @@ describe("ByokBalanceService", () => {
     expect(result.source).toBe("newapi");
     expect(result.remaining).toBeCloseTo(50, 5);
     expect(result.planName).toBe("default");
+    // The balance query prefers the dedicated balance token over the API key.
+    expect(seenAuthorization).toBe("Bearer napi-token");
+    expect(seenUserID).toBe("42");
+  });
+
+  it("reports native gemini adapters as unsupported without any request", async () => {
+    const result = await runBalance(
+      makeSettings("instance-3", [
+        adapter({
+          protocol: "gemini",
+          baseURL: "https://generativelanguage.googleapis.com/v1beta",
+        }),
+      ]),
+      asFetch(async () => {
+        throw new Error("gemini balance must not issue requests");
+      }),
+      { instanceId: "instance-3", adapterId: "adapter-balance" },
+    );
+
+    expect(result.supported).toBe(false);
+    expect(result.error?.code).toBe("unsupported_profile");
   });
 
   it("reports missing credentials without leaking anything", async () => {

@@ -66,7 +66,7 @@ export const ByokAdaptersImportResult = Schema.Struct({
     Schema.Struct({
       id: Schema.String,
       displayName: Schema.String,
-      protocol: Schema.Literals(["openai", "anthropic"]),
+      protocol: Schema.Literals(["openai", "anthropic", "gemini"]),
       baseURL: Schema.String,
       modelId: Schema.String,
     }),

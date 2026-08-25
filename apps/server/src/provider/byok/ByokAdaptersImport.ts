@@ -14,7 +14,7 @@ const DEFAULT_CONTEXT_WINDOW_TOKENS = 128_000;
 
 interface CandidateAdapter {
   readonly displayName: string;
-  readonly protocol: "openai" | "anthropic";
+  readonly protocol: "openai" | "anthropic" | "gemini";
   readonly baseURL: string;
   readonly apiKey: string;
   readonly modelId: string;
@@ -38,9 +38,8 @@ const parseProtocol = (type: unknown): "openai" | "anthropic" | "gemini" | null 
 
 /**
  * Parse a cursor-byok YAML export (`modelAdapters:` root key, or a bare list)
- * into candidate adapters. Malformed entries are skipped with a reason; the
- * native Gemini protocol has no Code Work transport yet, so those entries are
- * reported as skipped instead of silently degraded.
+ * into candidate adapters. Malformed entries are skipped with a reason.
+ * Gemini entries map to the native `gemini` protocol transport.
  */
 export function parseAdaptersYaml(yamlText: string): {
   readonly candidates: readonly CandidateAdapter[];
@@ -77,12 +76,10 @@ export function parseAdaptersYaml(yamlText: string): {
       );
       continue;
     }
-    if (protocol === "gemini") {
-      skippedReasons.push("skipped_gemini_not_supported");
-      continue;
-    }
     const displayName = cleanString(entry["displayName"] ?? entry["name"]);
-    const baseURL = cleanString(entry["baseURL"]);
+    const baseURL =
+      cleanString(entry["baseURL"]) ||
+      (protocol === "gemini" ? "https://generativelanguage.googleapis.com/v1beta" : "");
     const modelId = cleanString(entry["modelID"] ?? entry["modelId"] ?? entry["model"]);
     if (!displayName || !baseURL || !modelId) {
       skippedReasons.push("skipped_missing_fields");
@@ -157,6 +154,7 @@ export const make = Effect.gen(function* () {
           baseURL: candidate.baseURL,
           apiKey: candidate.apiKey,
           ...(candidate.apiKey.length > 0 ? { apiKeyRedacted: true } : {}),
+          balanceAccessToken: "",
           modelId: candidate.modelId,
           contextWindowTokens: candidate.contextWindowTokens,
           ...(candidate.supplierID ? { supplierID: candidate.supplierID } : {}),

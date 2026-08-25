@@ -109,6 +109,10 @@ const fingerprintFor = (adapter: ByokModelAdapter): string =>
     adapter.baseURL,
     adapter.supplierID ?? "",
     adapter.balanceProfile ?? "",
+    adapter.balanceUserID ?? "",
+    // Token length only: rotates the cache when the stored secret changes
+    // without embedding the secret itself in the fingerprint.
+    adapter.balanceAccessToken?.length ?? 0,
   ]);
 
 const billingOrigin = (baseURL: string): string | null => {
@@ -155,7 +159,11 @@ const attemptsFor = (
     return [
       {
         endpoint: `${origin}/api/user/self`,
-        headers: { authorization: `Bearer ${adapter.apiKey}`, accept: "application/json" },
+        headers: {
+          authorization: `Bearer ${adapter.balanceAccessToken || adapter.apiKey}`,
+          ...(adapter.balanceUserID ? { "new-api-user": adapter.balanceUserID } : {}),
+          accept: "application/json",
+        },
         parse: parseNewAPIQuota,
       },
     ];
@@ -242,6 +250,11 @@ export const make = Effect.gen(function* () {
         }
       }
       if (profile !== "general" && profile !== "newapi" && profile !== "auto") {
+        return failure(input, "manual", "unsupported_profile");
+      }
+      // Native Gemini has no public balance endpoint; auto mode would only
+      // burn two doomed requests against the Google origin.
+      if (adapter.protocol === "gemini" && profile === "auto") {
         return failure(input, "manual", "unsupported_profile");
       }
       const profiles: readonly ("general" | "newapi")[] =

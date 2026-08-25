@@ -1,8 +1,8 @@
 /**
  * byokChatClient — unified streaming chat client for BYOK model adapters.
  *
- * Talks directly to OpenAI-compatible and Anthropic-compatible chat
- * completions APIs using the credentials stored in `ByokSettings.adapters`.
+ * Talks directly to OpenAI-compatible, Anthropic-compatible, and native
+ * Gemini chat APIs using the credentials stored in `ByokSettings.adapters`.
  * There is no intermediate gateway: each call is one streaming HTTP request
  * whose server-sent events are parsed into a flat `ByokChatEvent` stream.
  *
@@ -14,6 +14,12 @@
  *     `anthropic-version: 2023-06-01` and `stream: true`;
  *     `content_block_delta.delta.text` is text and `delta.thinking` is
  *     reasoning. `message_stop` terminates the stream.
+ *   - `gemini` protocol: `POST
+ *     ${baseURL}/v1beta/models/{model}:streamGenerateContent?alt=sse` with
+ *     `x-goog-api-key`; roles map user→`user`, assistant→`model`, and the
+ *     system prompt becomes top-level `systemInstruction`. Each SSE payload
+ *     carries `candidates[0].content.parts[]`; parts flagged `thought: true`
+ *     are reasoning. The stream ends without a terminator chunk.
  *
  * @module provider/Layers/byokChatClient
  */
@@ -70,9 +76,19 @@ export class ByokEngineError extends Schema.TaggedErrorClass<ByokEngineError>()(
   }
 }
 
+/** One image part carried inline as base64 (multimodal user input). */
+export interface ByokImagePart {
+  readonly type: "image";
+  readonly mimeType: string;
+  readonly dataBase64: string;
+}
+
+export type ByokContentPart = { readonly type: "text"; readonly text: string } | ByokImagePart;
+
 export interface ByokChatMessage {
   readonly role: "user" | "assistant";
-  readonly content: string;
+  /** Plain text, or multimodal parts when the turn carried image attachments. */
+  readonly content: string | ReadonlyArray<ByokContentPart>;
 }
 
 export interface ByokStreamChatInput {
@@ -100,8 +116,54 @@ const byokErrorDetail = (cause: unknown): string => {
 /** Normalize a base URL into a bare origin-ish prefix (no trailing slash). */
 const trimBaseURL = (baseURL: string): string => baseURL.trim().replace(/\/+$/u, "");
 
+const openaiMessageContent = (
+  content: ByokChatMessage["content"],
+): string | ReadonlyArray<Record<string, unknown>> =>
+  typeof content === "string"
+    ? content
+    : content.map((part) =>
+        part.type === "text"
+          ? { type: "text", text: part.text }
+          : {
+              type: "image_url",
+              image_url: { url: `data:${part.mimeType};base64,${part.dataBase64}` },
+            },
+      );
+
+const anthropicMessageContent = (
+  content: ByokChatMessage["content"],
+): string | ReadonlyArray<Record<string, unknown>> =>
+  typeof content === "string"
+    ? content
+    : content.map((part) =>
+        part.type === "text"
+          ? { type: "text", text: part.text }
+          : {
+              type: "image",
+              source: { type: "base64", media_type: part.mimeType, data: part.dataBase64 },
+            },
+      );
+
+const geminiMessageParts = (
+  content: ByokChatMessage["content"],
+): ReadonlyArray<Record<string, unknown>> =>
+  (typeof content === "string" ? [{ text: content }] : [...content]).map((part) =>
+    "text" in part
+      ? { text: part.text }
+      : { inlineData: { mimeType: part.mimeType, data: part.dataBase64 } },
+  );
+
 const openaiUrl = (baseURL: string): string => `${trimBaseURL(baseURL)}/chat/completions`;
 const anthropicUrl = (baseURL: string): string => `${trimBaseURL(baseURL)}/v1/messages`;
+/**
+ * Gemini streaming URL. A version segment (`/v1beta`, `/v1`, `/v1alpha`) is
+ * appended only when the configured base URL does not already end in one.
+ */
+const geminiUrl = (baseURL: string, modelId: string): string => {
+  const base = trimBaseURL(baseURL);
+  const versioned = /\/v1(?:beta|alpha)?$/iu.test(base) ? base : `${base}/v1beta`;
+  return `${versioned}/models/${encodeURIComponent(modelId.trim())}:streamGenerateContent?alt=sse`;
+};
 
 const parseJsonLine = (line: string): Record<string, unknown> | undefined => {
   try {
@@ -142,6 +204,24 @@ const eventsFromSsePayload = (
     ];
   }
 
+  if (protocol === "gemini") {
+    const candidates = payload.candidates;
+    if (!Array.isArray(candidates) || candidates.length === 0) {
+      return [];
+    }
+    const content = isRecord(candidates[0]) ? candidates[0].content : undefined;
+    const parts = isRecord(content) && Array.isArray(content.parts) ? content.parts : [];
+    const events: ByokChatEvent[] = [];
+    for (const part of parts) {
+      if (!isRecord(part)) continue;
+      const text = asString(part.text);
+      if (text === undefined) continue;
+      // Gemini 2.5 thinking summaries arrive as parts flagged `thought: true`.
+      events.push(part.thought === true ? { type: "reasoning", text } : { type: "text", text });
+    }
+    return events;
+  }
+
   // anthropic
   if (payload.type !== "content_block_delta") {
     return [];
@@ -154,7 +234,7 @@ const eventsFromSsePayload = (
   const text = asString(delta.text);
   return [
     ...(thinking ? [{ type: "reasoning", text: thinking } as const] : []),
-    ...(text ? [{ type: "text", text: text } as const] : []),
+    ...(text ? [{ type: "text", text } as const] : []),
   ];
 };
 
@@ -174,9 +254,15 @@ export const streamChat = (
   httpClient: HttpClient.HttpClient,
   input: ByokStreamChatInput,
 ): Stream.Stream<ByokChatEvent, ByokEngineError> => {
+  const requestUrl =
+    input.protocol === "openai"
+      ? openaiUrl(input.baseURL)
+      : input.protocol === "gemini"
+        ? geminiUrl(input.baseURL, input.modelId)
+        : anthropicUrl(input.baseURL);
   const toEngineError = (cause: unknown) =>
     new ByokEngineError({
-      url: input.protocol === "openai" ? openaiUrl(input.baseURL) : anthropicUrl(input.baseURL),
+      url: requestUrl,
       detail: byokErrorDetail(cause),
     });
 
@@ -187,24 +273,44 @@ export const streamChat = (
           HttpClientRequest.setHeader("authorization", `Bearer ${input.apiKey}`),
           HttpClientRequest.bodyJson({
             model: input.modelId,
-            messages:
-              systemPrompt.length > 0
-                ? [{ role: "system", content: systemPrompt }, ...input.messages]
-                : input.messages,
+            messages: [
+              ...(systemPrompt.length > 0 ? [{ role: "system", content: systemPrompt }] : []),
+              ...input.messages.map((message) => ({
+                role: message.role,
+                content: openaiMessageContent(message.content),
+              })),
+            ],
             stream: true,
           }),
         )
-      : HttpClientRequest.post(anthropicUrl(input.baseURL)).pipe(
-          HttpClientRequest.setHeader("x-api-key", input.apiKey),
-          HttpClientRequest.setHeader("anthropic-version", "2023-06-01"),
-          HttpClientRequest.bodyJson({
-            model: input.modelId,
-            messages: input.messages,
-            ...(systemPrompt.length > 0 ? { system: systemPrompt } : {}),
-            max_tokens: 8192,
-            stream: true,
-          }),
-        );
+      : input.protocol === "gemini"
+        ? HttpClientRequest.post(requestUrl).pipe(
+            HttpClientRequest.setHeader("x-goog-api-key", input.apiKey),
+            HttpClientRequest.setHeader("content-type", "application/json"),
+            HttpClientRequest.bodyJson({
+              contents: input.messages.map((message) => ({
+                role: message.role === "assistant" ? "model" : "user",
+                parts: geminiMessageParts(message.content),
+              })),
+              ...(systemPrompt.length > 0
+                ? { systemInstruction: { parts: [{ text: systemPrompt }] } }
+                : {}),
+            }),
+          )
+        : HttpClientRequest.post(anthropicUrl(input.baseURL)).pipe(
+            HttpClientRequest.setHeader("x-api-key", input.apiKey),
+            HttpClientRequest.setHeader("anthropic-version", "2023-06-01"),
+            HttpClientRequest.bodyJson({
+              model: input.modelId,
+              messages: input.messages.map((message) => ({
+                role: message.role,
+                content: anthropicMessageContent(message.content),
+              })),
+              ...(systemPrompt.length > 0 ? { system: systemPrompt } : {}),
+              max_tokens: 8192,
+              stream: true,
+            }),
+          );
 
   const events = HttpClientResponse.stream(
     Effect.flatMap(requestEffect, (prepared) => httpClient.execute(prepared)).pipe(

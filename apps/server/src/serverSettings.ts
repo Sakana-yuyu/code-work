@@ -139,6 +139,13 @@ function byokApiKeySecretName(input: {
   return `provider-byok-${Buffer.from(input.instanceId, "utf8").toString("base64url")}-${Buffer.from(input.adapterId, "utf8").toString("base64url")}-api-key`;
 }
 
+function byokBalanceTokenSecretName(input: {
+  readonly instanceId: string;
+  readonly adapterId: string;
+}): string {
+  return `provider-byok-${Buffer.from(input.instanceId, "utf8").toString("base64url")}-${Buffer.from(input.adapterId, "utf8").toString("base64url")}-balance-token`;
+}
+
 function redactByokConfig(config: unknown): unknown {
   if (config === null || typeof config !== "object" || Array.isArray(config)) return config;
   const record = config as Record<string, unknown>;
@@ -149,11 +156,21 @@ function redactByokConfig(config: unknown): unknown {
       if (entry === null || typeof entry !== "object" || Array.isArray(entry)) return entry;
       const adapter = entry as Record<string, unknown>;
       const apiKey = typeof adapter["apiKey"] === "string" ? adapter["apiKey"] : "";
+      const balanceToken =
+        typeof adapter["balanceAccessToken"] === "string" ? adapter["balanceAccessToken"] : "";
       return {
         ...adapter,
         apiKey: "",
         ...(apiKey.length > 0 || adapter["apiKeyRedacted"] === true
           ? { apiKeyRedacted: true }
+          : {}),
+        ...(Object.prototype.hasOwnProperty.call(adapter, "balanceAccessToken")
+          ? {
+              balanceAccessToken: "",
+              ...(balanceToken.length > 0 || adapter["balanceAccessTokenRedacted"] === true
+                ? { balanceAccessTokenRedacted: true }
+                : {}),
+            }
           : {}),
       };
     }),
@@ -419,55 +436,79 @@ const make = Effect.gen(function* () {
           }
           const adapter = entry as Record<string, unknown>;
           const adapterId = typeof adapter["id"] === "string" ? adapter["id"] : "";
-          if (!adapterId || adapter["apiKeyRedacted"] !== true) {
-            adapters.push(entry);
-            continue;
-          }
-          const secret = yield* secretStore
-            .get(byokApiKeySecretName({ instanceId, adapterId }))
-            .pipe(
-              Effect.mapError(
-                (cause) =>
-                  new ServerSettingsError({
-                    settingsPath,
-                    operation: "read-secret",
-                    providerInstanceId: instanceId,
-                    environmentVariable: `byok:${adapterId}:apiKey`,
-                    cause,
-                  }),
-              ),
-            );
-          let resolvedSecret = secret;
-          if (Option.isNone(resolvedSecret)) {
-            const sourceAdapterId =
-              typeof adapter["apiKeySourceAdapterId"] === "string"
-                ? adapter["apiKeySourceAdapterId"]
-                : "";
-            if (
-              sourceAdapterId &&
-              sourceAdapterId !== adapterId &&
-              adapterIDs.has(sourceAdapterId)
-            ) {
-              resolvedSecret = yield* secretStore
-                .get(byokApiKeySecretName({ instanceId, adapterId: sourceAdapterId }))
-                .pipe(
-                  Effect.mapError(
-                    (cause) =>
-                      new ServerSettingsError({
-                        settingsPath,
-                        operation: "read-secret",
-                        providerInstanceId: instanceId,
-                        environmentVariable: `byok:${adapterId}:apiKey`,
-                        cause,
-                      }),
-                  ),
-                );
+          let materialized: Record<string, unknown> = adapter;
+          if (adapterId !== "" && adapter["apiKeyRedacted"] === true) {
+            const secret = yield* secretStore
+              .get(byokApiKeySecretName({ instanceId, adapterId }))
+              .pipe(
+                Effect.mapError(
+                  (cause) =>
+                    new ServerSettingsError({
+                      settingsPath,
+                      operation: "read-secret",
+                      providerInstanceId: instanceId,
+                      environmentVariable: `byok:${adapterId}:apiKey`,
+                      cause,
+                    }),
+                ),
+              );
+            let resolvedSecret = secret;
+            if (Option.isNone(resolvedSecret)) {
+              const sourceAdapterId =
+                typeof adapter["apiKeySourceAdapterId"] === "string"
+                  ? adapter["apiKeySourceAdapterId"]
+                  : "";
+              if (
+                sourceAdapterId &&
+                sourceAdapterId !== adapterId &&
+                adapterIDs.has(sourceAdapterId)
+              ) {
+                resolvedSecret = yield* secretStore
+                  .get(byokApiKeySecretName({ instanceId, adapterId: sourceAdapterId }))
+                  .pipe(
+                    Effect.mapError(
+                      (cause) =>
+                        new ServerSettingsError({
+                          settingsPath,
+                          operation: "read-secret",
+                          providerInstanceId: instanceId,
+                          environmentVariable: `byok:${adapterId}:apiKey`,
+                          cause,
+                        }),
+                    ),
+                  );
+              }
             }
+            materialized = {
+              ...materialized,
+              apiKey: Option.isSome(resolvedSecret) ? textDecoder.decode(resolvedSecret.value) : "",
+            };
           }
-          adapters.push({
-            ...adapter,
-            apiKey: Option.isSome(resolvedSecret) ? textDecoder.decode(resolvedSecret.value) : "",
-          });
+          // Balance access tokens follow the same redaction contract as the API
+          // key but live in their own secret slot.
+          if (adapterId !== "" && adapter["balanceAccessTokenRedacted"] === true) {
+            const balanceSecret = yield* secretStore
+              .get(byokBalanceTokenSecretName({ instanceId, adapterId }))
+              .pipe(
+                Effect.mapError(
+                  (cause) =>
+                    new ServerSettingsError({
+                      settingsPath,
+                      operation: "read-secret",
+                      providerInstanceId: instanceId,
+                      environmentVariable: `byok:${adapterId}:balanceAccessToken`,
+                      cause,
+                    }),
+                ),
+              );
+            materialized = {
+              ...materialized,
+              balanceAccessToken: Option.isSome(balanceSecret)
+                ? textDecoder.decode(balanceSecret.value)
+                : "",
+            };
+          }
+          adapters.push(materialized);
         }
         providerInstances[instanceId] = {
           ...instance,
@@ -670,11 +711,80 @@ const make = Effect.gen(function* () {
             const redacted = redactByokConfig({ adapters: [adapter] }) as { adapters: unknown[] };
             adapters.push(redacted.adapters[0]);
           }
+          // Store a freshly entered balance access token, or drop the secret
+          // when it was cleared; already-redacted tokens pass through.
+          const balanceTokenName = byokBalanceTokenSecretName({ instanceId, adapterId });
+          nextSecretNames.add(balanceTokenName);
+          const balanceToken =
+            typeof adapter["balanceAccessToken"] === "string" ? adapter["balanceAccessToken"] : "";
+          if (adapter["balanceAccessTokenRedacted"] !== true && balanceToken.length > 0) {
+            yield* secretStore.set(balanceTokenName, textEncoder.encode(balanceToken)).pipe(
+              Effect.mapError(
+                (cause) =>
+                  new ServerSettingsError({
+                    settingsPath,
+                    operation: "write-secret",
+                    providerInstanceId: instanceId,
+                    environmentVariable: `byok:${adapterId}:balanceAccessToken`,
+                    cause,
+                  }),
+              ),
+            );
+            const stored = adapters.pop() as Record<string, unknown>;
+            adapters.push({ ...stored, balanceAccessToken: "", balanceAccessTokenRedacted: true });
+          } else if (
+            adapter["balanceAccessTokenRedacted"] !== true &&
+            balanceToken.length === 0 &&
+            Object.prototype.hasOwnProperty.call(adapter, "balanceAccessToken")
+          ) {
+            yield* secretStore.remove(balanceTokenName).pipe(
+              Effect.mapError(
+                (cause) =>
+                  new ServerSettingsError({
+                    settingsPath,
+                    operation: "remove-secret",
+                    providerInstanceId: instanceId,
+                    environmentVariable: `byok:${adapterId}:balanceAccessToken`,
+                    cause,
+                  }),
+              ),
+            );
+            const stored = adapters.pop() as Record<string, unknown>;
+            const { balanceAccessTokenRedacted: _omitBalance, ...restBalance } = stored;
+            adapters.push(restBalance);
+          }
         }
         providerInstances[instanceId] = {
           ...instance,
           config: { ...record, adapters },
         } satisfies ProviderInstanceConfig;
+      }
+
+      for (const [instanceId, instance] of Object.entries(current.providerInstances)) {
+        if (instance.driver !== "byok") continue;
+        const config = instance.config;
+        if (config === null || typeof config !== "object" || Array.isArray(config)) continue;
+        const adapters = (config as Record<string, unknown>)["adapters"];
+        if (!Array.isArray(adapters)) continue;
+        for (const entry of adapters) {
+          if (entry === null || typeof entry !== "object" || Array.isArray(entry)) continue;
+          const adapterId = (entry as Record<string, unknown>)["id"];
+          if (typeof adapterId !== "string" || adapterId.length === 0) continue;
+          const balanceTokenName = byokBalanceTokenSecretName({ instanceId, adapterId });
+          if (nextSecretNames.has(balanceTokenName)) continue;
+          yield* secretStore.remove(balanceTokenName).pipe(
+            Effect.mapError(
+              (cause) =>
+                new ServerSettingsError({
+                  settingsPath,
+                  operation: "remove-stale-secret",
+                  providerInstanceId: instanceId,
+                  environmentVariable: `byok:${adapterId}:balanceAccessToken`,
+                  cause,
+                }),
+            ),
+          );
+        }
       }
 
       for (const [instanceId, instance] of Object.entries(current.providerInstances)) {

@@ -8,7 +8,8 @@
  *
  *   - `startSession` creates a local session context and emits
  *     session/thread started events.
- *   - `sendTurn` appends the user prompt to the in-memory history, resolves
+ *   - `sendTurn` appends the user prompt (plus inline image attachments read
+ *     from the server attachment store) to the in-memory history, resolves
  *     the model adapter for the selected model slug (falling back to the
  *     first adapter), and forks a fiber that streams chat events as
  *     `content.delta` runtime events until the turn completes.
@@ -16,7 +17,8 @@
  *     `turn.aborted`.
  *
  * There is no structured tool input/output or permission flow in the engine,
- * so those adapter methods surface "unsupported" errors. Rollback is local:
+ * so those adapter methods surface "unsupported" errors; agentic tool use
+ * goes through the BYOK delegation executor instead. Rollback is local:
  * the history is truncated by N turns.
  *
  * @module provider/Layers/ByokAdapter
@@ -38,6 +40,7 @@ import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
 import * as Fiber from "effect/Fiber";
+import * as FileSystem from "effect/FileSystem";
 import * as Option from "effect/Option";
 import * as Queue from "effect/Queue";
 import * as Scope from "effect/Scope";
@@ -45,6 +48,7 @@ import * as Stream from "effect/Stream";
 import { HttpClient } from "effect/unstable/http";
 
 import { ServerConfig } from "../../config.ts";
+import { resolveAttachmentPath } from "../../attachmentStore.ts";
 import {
   ProviderAdapterRequestError,
   ProviderAdapterSessionNotFoundError,
@@ -54,6 +58,7 @@ import { type ByokAdapterShape } from "../Services/ByokAdapter.ts";
 import {
   byokAdapterForModel,
   type ByokChatMessage,
+  type ByokContentPart,
   runChatEvents,
   streamChat,
 } from "./byokChatClient.ts";
@@ -65,6 +70,17 @@ const nowIso = Effect.map(DateTime.now, DateTime.formatIso);
 
 /** Rough chars-per-token estimate used to bound the replayed history. */
 const BYOK_HISTORY_CHARS_PER_TOKEN = 4;
+
+/** Rough replay cost of one inline image (≈1k tokens) for history fitting. */
+const BYOK_IMAGE_CHARS_ESTIMATE = 4_000;
+
+/** Image mime types all three BYOK transports accept inline. */
+const BYOK_SUPPORTED_IMAGE_MIME_TYPES: ReadonlySet<string> = new Set([
+  "image/png",
+  "image/jpeg",
+  "image/gif",
+  "image/webp",
+]);
 
 interface ByokTurnSnapshot {
   readonly id: TurnId;
@@ -84,20 +100,29 @@ export interface ByokAdapterLiveOptions {
   readonly instanceId?: ProviderInstanceId;
 }
 
+/** Rough char cost of a message, estimating inline images at a fixed budget. */
+const messageHistoryChars = (message: ByokChatMessage): number =>
+  typeof message.content === "string"
+    ? message.content.length
+    : message.content.reduce(
+        (sum, part) => sum + (part.type === "text" ? part.text.length : BYOK_IMAGE_CHARS_ESTIMATE),
+        0,
+      );
+
 /** Drop oldest history turns until the transcript fits the model context window. */
 const fitHistory = (
   history: ReadonlyArray<ByokChatMessage>,
   contextWindowTokens: number,
 ): Array<ByokChatMessage> => {
   const maxChars = contextWindowTokens * BYOK_HISTORY_CHARS_PER_TOKEN;
-  let total = history.reduce((sum, message) => sum + message.content.length, 0);
+  let total = history.reduce((sum, message) => sum + messageHistoryChars(message), 0);
   const next = [...history];
   while (next.length > 0 && total > maxChars) {
     const dropped = next.shift();
     if (dropped === undefined) {
       break;
     }
-    total -= dropped.content.length;
+    total -= messageHistoryChars(dropped);
   }
   return next;
 };
@@ -108,6 +133,7 @@ export function makeByokAdapter(byokSettings: ByokSettings, options?: ByokAdapte
     const serverConfig = yield* ServerConfig;
     const crypto = yield* Crypto.Crypto;
     const httpClient = yield* HttpClient.HttpClient;
+    const fileSystem = yield* FileSystem.FileSystem;
 
     // Fibers forked into this scope are interrupted when the adapter layer
     // shuts down, so a streaming turn can never outlive its instance.
@@ -350,12 +376,13 @@ export function makeByokAdapter(byokSettings: ByokSettings, options?: ByokAdapte
 
     const sendTurn: ByokAdapterShape["sendTurn"] = Effect.fn("byokSendTurn")(function* (input) {
       const ctx = yield* requireSession(input.threadId);
-      const text = input.input?.trim();
-      if (!text) {
+      const text = input.input?.trim() ?? "";
+      const attachments = input.attachments ?? [];
+      if (!text && attachments.length === 0) {
         return yield* new ProviderAdapterValidationError({
           provider: PROVIDER,
           operation: "sendTurn",
-          issue: "BYOK turns require non-empty text input.",
+          issue: "BYOK turns require text or image-attachment input.",
         });
       }
       const modelSelection = input.modelSelection;
@@ -395,8 +422,60 @@ export function makeByokAdapter(byokSettings: ByokSettings, options?: ByokAdapte
         turnId,
         payload: { model: model ?? adapter.id },
       });
-      appendTurnItem(ctx, turnId, { type: "user", text });
-      ctx.history.push({ role: "user", content: text });
+      // Resolve image attachments to inline base64 parts from the server-side
+      // attachment store; nothing client-supplied is trusted beyond its id.
+      const contentParts: ByokContentPart[] = [];
+      if (text.length > 0) {
+        contentParts.push({ type: "text", text });
+      }
+      for (const attachment of attachments) {
+        if (attachment.type !== "image") continue;
+        if (!BYOK_SUPPORTED_IMAGE_MIME_TYPES.has(attachment.mimeType)) {
+          return yield* new ProviderAdapterRequestError({
+            provider: PROVIDER,
+            method: "turn/start",
+            detail: `Unsupported BYOK image attachment type '${attachment.mimeType}'.`,
+          });
+        }
+        const attachmentPath = resolveAttachmentPath({
+          attachmentsDir: serverConfig.attachmentsDir,
+          attachment,
+        });
+        if (!attachmentPath) {
+          return yield* new ProviderAdapterRequestError({
+            provider: PROVIDER,
+            method: "turn/start",
+            detail: `Invalid attachment id '${attachment.id}'.`,
+          });
+        }
+        const bytes = yield* fileSystem.readFile(attachmentPath).pipe(
+          Effect.mapError(
+            (cause) =>
+              new ProviderAdapterRequestError({
+                provider: PROVIDER,
+                method: "turn/start",
+                detail: "Failed to read attachment file.",
+                cause,
+              }),
+          ),
+        );
+        contentParts.push({
+          type: "image",
+          mimeType: attachment.mimeType,
+          dataBase64: Buffer.from(bytes).toString("base64"),
+        });
+      }
+      appendTurnItem(ctx, turnId, {
+        type: "user",
+        text: text.length > 0 ? text : `[${contentParts.length} image attachment(s)]`,
+      });
+      ctx.history.push({
+        role: "user",
+        content:
+          contentParts.length === 1 && contentParts[0]?.type === "text"
+            ? contentParts[0].text
+            : contentParts,
+      });
       const messages = fitHistory(ctx.history, adapter.contextWindowTokens);
       // Prompt-template injection: user-selected template/custom text plus the
       // optional software-Chinese policy, rendered against the active model.

@@ -97,6 +97,17 @@ const buildChildEnv = (names: readonly string[]): NodeJS.ProcessEnv => {
   return env;
 };
 
+/**
+ * Resolve the model an enabled delegation group routes to: the group's
+ * defaultModelId when set, else its first modelId. Model ids reference
+ * configured adapters and are not secret.
+ */
+export function resolveDelegationModel(config: ByokDelegationConfig): string | undefined {
+  const group = config.modelGroups.find((candidate) => candidate.enabled);
+  if (group === undefined) return undefined;
+  return group.defaultModelId ?? group.modelIds[0];
+}
+
 const runExecutor = (
   request: DelegationRequest<string>,
   context: DelegationExecutionContext,
@@ -108,8 +119,13 @@ const runExecutor = (
       reject(new Error("No executor command is configured."));
       return;
     }
+    const childEnv = buildChildEnv(config.executorEnvironmentVariables);
+    const delegationModel = resolveDelegationModel(config);
+    if (delegationModel !== undefined) {
+      childEnv["BYOK_DELEGATION_MODEL"] = delegationModel;
+    }
     const child = spawn(tokens[0]!, tokens.slice(1), {
-      env: buildChildEnv(config.executorEnvironmentVariables),
+      env: childEnv,
       stdio: ["pipe", "pipe", "pipe"],
       windowsHide: true,
     });

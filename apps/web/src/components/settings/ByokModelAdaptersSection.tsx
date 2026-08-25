@@ -71,11 +71,22 @@ export const BYOK_SUPPLIER_TEMPLATES: ReadonlyArray<ByokSupplierTemplate> = [
 const PROTOCOL_BASE_URL_PLACEHOLDERS: Readonly<Record<ByokModelAdapter["protocol"], string>> = {
   openai: "https://api.openai.com/v1",
   anthropic: "https://api.anthropic.com",
+  gemini: "https://generativelanguage.googleapis.com/v1beta",
 };
 
 const PROTOCOL_LABEL_KEYS: Readonly<Record<ByokModelAdapter["protocol"], string>> = {
   openai: "byokAdapters.protocolOpenai",
   anthropic: "byokAdapters.protocolAnthropic",
+  gemini: "byokAdapters.protocolGemini",
+};
+
+type BalanceProfile = NonNullable<ByokModelAdapter["balanceProfile"]>;
+
+const BALANCE_PROFILE_LABEL_KEYS: Readonly<Record<BalanceProfile, string>> = {
+  auto: "byokAdapters.balanceProfileAuto",
+  general: "byokAdapters.balanceProfileGeneral",
+  newapi: "byokAdapters.balanceProfileNewapi",
+  none: "byokAdapters.balanceProfileNone",
 };
 
 /**
@@ -93,7 +104,9 @@ export function readByokModelAdapters(config: unknown): ReadonlyArray<ByokModelA
     const record = entry as Record<string, unknown>;
     if (
       typeof record["id"] !== "string" ||
-      (record["protocol"] !== "openai" && record["protocol"] !== "anthropic")
+      (record["protocol"] !== "openai" &&
+        record["protocol"] !== "anthropic" &&
+        record["protocol"] !== "gemini")
     ) {
       continue;
     }
@@ -107,6 +120,20 @@ export function readByokModelAdapters(config: unknown): ReadonlyArray<ByokModelA
       ...(typeof record["apiKeySourceAdapterId"] === "string" &&
       record["apiKeySourceAdapterId"].trim().length > 0
         ? { apiKeySourceAdapterId: record["apiKeySourceAdapterId"].trim() }
+        : {}),
+      ...(record["balanceProfile"] === "auto" ||
+      record["balanceProfile"] === "general" ||
+      record["balanceProfile"] === "newapi" ||
+      record["balanceProfile"] === "none"
+        ? { balanceProfile: record["balanceProfile"] }
+        : {}),
+      balanceAccessToken:
+        typeof record["balanceAccessToken"] === "string" ? record["balanceAccessToken"] : "",
+      ...(record["balanceAccessTokenRedacted"] === true
+        ? { balanceAccessTokenRedacted: true }
+        : {}),
+      ...(typeof record["balanceUserID"] === "string"
+        ? { balanceUserID: record["balanceUserID"] }
         : {}),
       modelId: typeof record["modelId"] === "string" ? record["modelId"] : "",
       contextWindowTokens:
@@ -133,6 +160,9 @@ type AdapterFormState = {
   readonly apiKey: string;
   readonly modelId: string;
   readonly contextWindowTokens: string;
+  readonly balanceProfile: BalanceProfile;
+  readonly balanceAccessToken: string;
+  readonly balanceUserID: string;
 };
 
 const emptyFormState = (): AdapterFormState => ({
@@ -143,6 +173,9 @@ const emptyFormState = (): AdapterFormState => ({
   apiKey: "",
   modelId: "",
   contextWindowTokens: String(DEFAULT_CONTEXT_WINDOW_TOKENS),
+  balanceProfile: "auto",
+  balanceAccessToken: "",
+  balanceUserID: "",
 });
 
 const formStateFromAdapter = (adapter: ByokModelAdapter): AdapterFormState => ({
@@ -153,6 +186,9 @@ const formStateFromAdapter = (adapter: ByokModelAdapter): AdapterFormState => ({
   apiKey: adapter.apiKey,
   modelId: adapter.modelId,
   contextWindowTokens: String(adapter.contextWindowTokens),
+  balanceProfile: adapter.balanceProfile ?? "auto",
+  balanceAccessToken: "",
+  balanceUserID: adapter.balanceUserID ?? "",
 });
 
 interface ByokModelAdaptersSectionProps {
@@ -198,9 +234,7 @@ export function ByokModelAdaptersSection({
       ...catalog.map((entry: ByokSupplierCatalogEntry) => ({
         id: entry.id,
         label: entry.label,
-        protocol: (entry.protocol === "anthropic"
-          ? "anthropic"
-          : "openai") as ByokModelAdapter["protocol"],
+        protocol: entry.protocol,
         baseURL: entry.defaultBaseURL,
         modelId: entry.models[0]?.modelId ?? "",
         displayName: entry.models[0]?.displayName ?? entry.models[0]?.modelId ?? "",
@@ -271,6 +305,10 @@ export function ByokModelAdaptersSection({
       setError(t("byokAdapters.apiKeyRequired"));
       return;
     }
+    const balanceAccessToken = form.balanceAccessToken.trim();
+    const retainsStoredBalanceToken =
+      balanceAccessToken.length === 0 && existingAdapter?.balanceAccessTokenRedacted === true;
+    const balanceUserID = form.balanceUserID.trim();
     const modelId = form.modelId.trim();
     if (!modelId) {
       setError(t("byokAdapters.modelIdRequired"));
@@ -289,6 +327,10 @@ export function ByokModelAdaptersSection({
       baseURL,
       apiKey,
       ...(retainsStoredApiKey ? { apiKeyRedacted: true } : {}),
+      ...(form.balanceProfile !== "auto" ? { balanceProfile: form.balanceProfile } : {}),
+      balanceAccessToken,
+      ...(retainsStoredBalanceToken ? { balanceAccessTokenRedacted: true } : {}),
+      ...(balanceUserID ? { balanceUserID } : {}),
       modelId,
       contextWindowTokens,
       ...(form.supplier !== "custom" ? { supplierID: form.supplier } : {}),
@@ -356,6 +398,9 @@ export function ByokModelAdaptersSection({
         apiKey: "",
         ...(adapter.apiKeyRedacted ? { apiKeyRedacted: true } : {}),
         ...(adapter.apiKeyRedacted ? { apiKeySourceAdapterId: adapter.id } : {}),
+        // Balance credentials are per-adapter secrets and never copied.
+        balanceAccessToken: "",
+        ...(adapter.balanceAccessTokenRedacted ? { balanceAccessTokenRedacted: true } : {}),
       });
       return all;
     }, []);
@@ -423,7 +468,7 @@ export function ByokModelAdaptersSection({
           <Select
             value={form.protocol}
             onValueChange={(value) => {
-              if (value === "openai" || value === "anthropic") {
+              if (value === "openai" || value === "anthropic" || value === "gemini") {
                 patchForm({ protocol: value });
               }
             }}
@@ -437,6 +482,9 @@ export function ByokModelAdaptersSection({
               </SelectItem>
               <SelectItem hideIndicator value="anthropic">
                 {t("byokAdapters.protocolAnthropic")}
+              </SelectItem>
+              <SelectItem hideIndicator value="gemini">
+                {t("byokAdapters.protocolGemini")}
               </SelectItem>
             </SelectPopup>
           </Select>
@@ -497,6 +545,77 @@ export function ByokModelAdaptersSection({
             step={1000}
             value={form.contextWindowTokens}
             onChange={(event) => patchForm({ contextWindowTokens: event.target.value })}
+          />
+        </label>
+        <label htmlFor={`${formId}-balance-profile`} className="block">
+          <span className="text-xs font-medium text-foreground">
+            {t("byokAdapters.balanceProfile")}
+          </span>
+          <Select
+            value={form.balanceProfile}
+            onValueChange={(value) => {
+              if (
+                value === "auto" ||
+                value === "general" ||
+                value === "newapi" ||
+                value === "none"
+              ) {
+                patchForm({ balanceProfile: value });
+              }
+            }}
+          >
+            <SelectTrigger id={`${formId}-balance-profile`} className="mt-1 w-full" size="sm">
+              <SelectValue>{t(BALANCE_PROFILE_LABEL_KEYS[form.balanceProfile])}</SelectValue>
+            </SelectTrigger>
+            <SelectPopup align="start" alignItemWithTrigger={false}>
+              {(["auto", "general", "newapi", "none"] as const).map((profile) => (
+                <SelectItem key={profile} hideIndicator value={profile}>
+                  {t(BALANCE_PROFILE_LABEL_KEYS[profile])}
+                </SelectItem>
+              ))}
+            </SelectPopup>
+          </Select>
+          <span className="mt-1 block text-xs text-muted-foreground">
+            {t("byokAdapters.balanceProfileDescription")}
+          </span>
+        </label>
+        <label htmlFor={`${formId}-balance-token`} className="block">
+          <span className="text-xs font-medium text-foreground">
+            {t("byokAdapters.balanceAccessToken")}
+          </span>
+          <Input
+            id={`${formId}-balance-token`}
+            className="mt-1"
+            type="password"
+            autoComplete="off"
+            value={form.balanceAccessToken}
+            onChange={(event) => patchForm({ balanceAccessToken: event.target.value })}
+            placeholder={
+              isEdit &&
+              adapters.find((adapter) => adapter.id === editing)?.balanceAccessTokenRedacted
+                ? t("byokAdapters.apiKeyReplacementPlaceholder")
+                : undefined
+            }
+            spellCheck={false}
+          />
+          {isEdit &&
+          adapters.find((adapter) => adapter.id === editing)?.balanceAccessTokenRedacted ? (
+            <span className="mt-1 block text-xs text-muted-foreground">
+              {t("byokAdapters.balanceTokenStored")}
+            </span>
+          ) : null}
+        </label>
+        <label htmlFor={`${formId}-balance-user-id`} className="block">
+          <span className="text-xs font-medium text-foreground">
+            {t("byokAdapters.balanceUserID")}
+          </span>
+          <Input
+            id={`${formId}-balance-user-id`}
+            className="mt-1"
+            value={form.balanceUserID}
+            onChange={(event) => patchForm({ balanceUserID: event.target.value })}
+            placeholder="1"
+            spellCheck={false}
           />
         </label>
       </div>

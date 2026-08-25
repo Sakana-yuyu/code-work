@@ -56,13 +56,36 @@ describe("parseAdaptersYaml", () => {
     expect(parseAdaptersYaml(adaptersRoot).candidates).toHaveLength(1);
   });
 
-  it("skips gemini and unknown protocols with explicit reasons", () => {
+  it("imports native gemini adapters and defaults their base URL", () => {
     const yaml = [
       "modelAdapters:",
       "  - displayName: Gemini",
       "    type: gemini",
-      "    baseURL: https://generativelanguage.googleapis.com",
-      "    modelID: gemini-pro",
+      "    modelID: gemini-2.5-pro",
+      "  - displayName: Gemini Custom",
+      "    type: google",
+      "    baseURL: https://gemini-relay.test/v1beta",
+      "    modelID: gemini-2.5-flash",
+    ].join("\n");
+
+    const { candidates, skippedReasons } = parseAdaptersYaml(yaml);
+
+    expect(candidates).toHaveLength(2);
+    expect(skippedReasons).toEqual([]);
+    expect(candidates[0]).toMatchObject({
+      protocol: "gemini",
+      modelId: "gemini-2.5-pro",
+      baseURL: "https://generativelanguage.googleapis.com/v1beta",
+    });
+    expect(candidates[1]).toMatchObject({
+      protocol: "gemini",
+      baseURL: "https://gemini-relay.test/v1beta",
+    });
+  });
+
+  it("skips unknown protocols with explicit reasons", () => {
+    const yaml = [
+      "modelAdapters:",
       "  - displayName: Mystery",
       "    type: carrier-pigeon",
       "    baseURL: https://m.test",
@@ -72,7 +95,6 @@ describe("parseAdaptersYaml", () => {
     const { candidates, skippedReasons } = parseAdaptersYaml(yaml);
 
     expect(candidates).toHaveLength(0);
-    expect(skippedReasons).toContain("skipped_gemini_not_supported");
     expect(
       skippedReasons.some((reason) => reason.startsWith("skipped_unsupported_protocol:")),
     ).toBe(true);
