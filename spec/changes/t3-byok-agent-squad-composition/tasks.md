@@ -2,16 +2,16 @@
 
 > deps omitted = sequential; owner marks the primary implementation surface.
 
-- [ ] 1. Shared composition contracts
-  - [ ] 1.1 Add capability, model tool call, ToolBroker, AgentDriver, IDE descriptor, Task/Run/Event schemas and stable error codes. 
-  - [ ] 1.2 Add contract tests for valid payloads, missing identity, invalid capability grants, event ordering and terminal states.
-  - [ ] 1.3 Run focused contracts tests and document the wire compatibility rule. 
+- [x] 1. Shared composition contracts
+  - [x] 1.1 Add capability, model tool call, ToolBroker, AgentDriver, IDE descriptor, Task/Run/Event schemas and stable error codes. 
+  - [x] 1.2 Add contract tests for valid payloads, missing identity, invalid capability grants, event ordering and terminal states.
+  - [x] 1.3 Run focused contracts tests and document the wire compatibility rule. 
 
-- [ ] 2. Capability registry and Tool Broker
-  - [ ] 2.1 Implement capability discovery from T3-owned Workspace, MCP and provider runtime sources. owner: backend deps: 1.1
-  - [ ] 2.2 Implement policy evaluation for Workspace, Agent and Task scope, approval-required states, cancellation and idempotency. owner: backend deps: 1.1
-  - [ ] 2.3 Connect one real read-only Workspace/MCP tool path and one approval-gated mutation path for `agent_loop`; keep existing direct Workspace/MCP calls on their current authorization path. owner: backend deps: 2.1, 2.2
-  - [ ] 2.4 Add denial, duplicate invocation, approval and cancellation tests. owner: backend deps: 2.3
+- [x] 2. Capability registry and Tool Broker
+  - [x] 2.1 Implement capability discovery from T3-owned Workspace, MCP and provider runtime sources. owner: backend deps: 1.1
+  - [x] 2.2 Implement policy evaluation for Workspace, Agent and Task scope, approval-required states, cancellation and idempotency. owner: backend deps: 1.1
+  - [x] 2.3 Connect one real read-only Workspace/MCP tool path and one approval-gated mutation path for `agent_loop`; keep existing direct Workspace/MCP calls on their current authorization path. owner: backend deps: 2.1, 2.2
+  - [x] 2.4 Add denial, duplicate invocation, approval and cancellation tests. owner: backend deps: 2.3
 
 - [ ] 3. BYOK Agent Loop
   - [ ] 3.1 Extract a protocol-neutral model-run state machine from the existing BYOK adapter. owner: backend deps: 1.1
