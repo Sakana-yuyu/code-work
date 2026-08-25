@@ -46,6 +46,8 @@ Composition Agent Driver Registry
 
 Adapter 不直接写 Composition 数据库。所有状态变更通过 Driver、事件投影器和持久化 Store 完成，避免外部协议的重试把 T3 状态写坏。
 
+当 `CompositionTaskDispatchRequest.assigneeKind` 为 `squad` 时，`assigneeId` 是持久化的 `CompositionSquad.squadId`；Orchestrator 读取该 Squad 的 `leaderAgentId`，使用 Leader 对应的 Agent Driver 执行，Task 仍保留 Squad 归属，Run 记录实际 Leader Agent。Leader 不存在时拒绝派发，不把 Squad ID 猜测成普通 Agent ID。
+
 ## Interfaces
 
 ### CompositionRuntimeAdapter

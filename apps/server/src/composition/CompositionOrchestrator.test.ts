@@ -56,6 +56,47 @@ layer("CompositionOrchestrator", (it) => {
     }),
   );
 
+  it.effect("按 Squad 的 Leader Agent Driver 执行，并保留 Squad 任务归属", () =>
+    Effect.gen(function* () {
+      const store = yield* CompositionTaskStore;
+      const startedBy: string[] = [];
+      const driverRegistry = makeCompositionAgentDriverRegistry();
+      yield* store.upsertSquad({
+        squadId: "squad-1",
+        name: "代码协同组",
+        leaderAgentId: "agent-leader",
+        memberAgentIds: ["agent-leader", "agent-worker"],
+      });
+      yield* driverRegistry.register({
+        agentId: "agent-leader",
+        runtimeId: "runtime-leader",
+        startTask: (input) =>
+          Effect.sync(() => {
+            startedBy.push(input.run.agentId);
+            return { runtimeTaskId: "runtime-task-squad" };
+          }),
+        cancelTask: () => Effect.succeed({ status: "cancelled" as const }),
+      });
+      const orchestrator = makeCompositionOrchestrator(store, driverRegistry);
+
+      const result = yield* orchestrator.dispatchTask({
+        taskId: "task-squad",
+        runId: "run-squad",
+        projectId: "project-1",
+        assigneeKind: "squad",
+        assigneeId: "squad-1",
+        mode: "parallel",
+        promptDigest: "sha256:squad",
+        dependsOnTaskIds: [],
+      });
+
+      assert.deepEqual(startedBy, ["agent-leader"]);
+      assert.equal(result.task.assigneeId, "squad-1");
+      assert.equal(result.run.agentId, "agent-leader");
+      assert.equal(result.run.runtimeId, "runtime-leader");
+    }),
+  );
+
   it.effect("为普通 Composition Task 签发 grant，并把 grant ID 持久化和传给 Driver", () =>
     Effect.gen(function* () {
       const store = yield* CompositionTaskStore;

@@ -53,6 +53,17 @@ export class CompositionTaskAlreadyExistsError extends Schema.TaggedErrorClass<C
   }
 }
 
+export class CompositionSquadNotFoundError extends Schema.TaggedErrorClass<CompositionSquadNotFoundError>()(
+  "CompositionSquadNotFoundError",
+  {
+    squadId: Schema.String,
+  },
+) {
+  override get message(): string {
+    return `协同组 ${this.squadId} 不存在。`;
+  }
+}
+
 export class CompositionTaskNotFoundError extends Schema.TaggedErrorClass<CompositionTaskNotFoundError>()(
   "CompositionTaskNotFoundError",
   {
@@ -188,6 +199,7 @@ export interface CompositionOrchestrator {
     | CompositionTaskDependencyMissingError
     | CompositionTaskDependencyCycleError
     | CompositionTaskAlreadyExistsError
+    | CompositionSquadNotFoundError
     | CompositionAgentDriverFailure
     | CapabilityGrantRegistry.CapabilityGrantInvalidError
     | CapabilityGrantRegistry.CapabilityGrantPersistenceError
@@ -311,7 +323,15 @@ const makeOrchestrator = (
       );
       const initialStatus: CompositionTaskStatus =
         blockedDependency === undefined ? "queued" : "blocked";
-      const driver = yield* driverRegistry.get(input.assigneeId);
+      const agentId = yield* Effect.gen(function* () {
+        if (input.assigneeKind === "agent") return input.assigneeId;
+        const squad = yield* store.getSquad(input.assigneeId);
+        if (Option.isNone(squad)) {
+          return yield* new CompositionSquadNotFoundError({ squadId: input.assigneeId });
+        }
+        return squad.value.leaderAgentId;
+      });
+      const driver = yield* driverRegistry.get(agentId);
       const runtimeId = driver?.runtimeId ?? "unresolved";
       const capabilityGrantIds =
         grantRegistry === undefined || input.capabilityIds === undefined
@@ -319,7 +339,7 @@ const makeOrchestrator = (
           : yield* grantRegistry
               .issue({
                 taskId: input.taskId,
-                agentId: input.assigneeId,
+                agentId,
                 capabilityIds: input.capabilityIds,
               })
               .pipe(Effect.map((grants) => grants.map((grant) => grant.grantId)));
@@ -340,7 +360,7 @@ const makeOrchestrator = (
       const run: CompositionTaskRun = {
         runId: input.runId,
         taskId: input.taskId,
-        agentId: input.assigneeId,
+        agentId,
         runtimeId,
         status: initialStatus,
         attempt: 1,
