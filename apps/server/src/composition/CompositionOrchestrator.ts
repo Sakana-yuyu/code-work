@@ -81,6 +81,11 @@ export interface CompositionAgentDriver {
     readonly task: CompositionTask;
     readonly run: CompositionTaskRun;
     readonly workspaceRootDigest?: string;
+    /** 只在运行时传递，不写入 CompositionTask 持久化表。 */
+    readonly workspaceRoot?: string;
+    /** 只在运行时传递，不写入 CompositionTask 持久化表。 */
+    readonly prompt?: string;
+    readonly model?: string;
   }) => Effect.Effect<{ readonly runtimeTaskId?: string }, CompositionAgentDriverFailure>;
   readonly cancelTask: (input: {
     readonly task: CompositionTask;
@@ -104,6 +109,10 @@ export type CompositionDispatchInput = {
   readonly promptDigest: string;
   readonly dependsOnTaskIds: ReadonlyArray<string>;
   readonly workspaceRootDigest?: string;
+  /** 完整 prompt 只用于本次派发，不进入任务持久化投影。 */
+  readonly workspaceRoot?: string;
+  readonly prompt?: string;
+  readonly model?: string;
 };
 
 export type CompositionDispatchResult = {
@@ -333,6 +342,9 @@ const makeOrchestrator = (
           ...(input.workspaceRootDigest === undefined
             ? {}
             : { workspaceRootDigest: input.workspaceRootDigest }),
+          ...(input.workspaceRoot === undefined ? {} : { workspaceRoot: input.workspaceRoot }),
+          ...(input.prompt === undefined ? {} : { prompt: input.prompt }),
+          ...(input.model === undefined ? {} : { model: input.model }),
         }),
       );
       if (startResult._tag === "Failure") {
