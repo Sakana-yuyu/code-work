@@ -1,3 +1,4 @@
+import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
 
 import { NonNegativeInt, TrimmedNonEmptyString } from "./baseSchemas.ts";
@@ -77,6 +78,51 @@ export type CompositionIdeResolveResult = typeof CompositionIdeResolveResult.Typ
 
 const CompositionMulticaProbeStatus = Schema.Literals(["online", "offline", "unstable"]);
 export type CompositionMulticaProbeStatus = typeof CompositionMulticaProbeStatus.Type;
+
+/** Multica HTTP Header 与 T3 provider environment secret 的绑定。 */
+export const CompositionMulticaHeaderBinding = Schema.Struct({
+  headerName: TrimmedNonEmptyString,
+  environmentVariable: TrimmedNonEmptyString,
+});
+export type CompositionMulticaHeaderBinding = typeof CompositionMulticaHeaderBinding.Type;
+
+/** T3 assignee 到 Multica Agent/Squad UUID 的显式映射。 */
+export const CompositionMulticaAssigneeRoute = Schema.Struct({
+  t3AgentId: TrimmedNonEmptyString,
+  workspaceId: TrimmedNonEmptyString,
+  multicaAgentId: Schema.optional(TrimmedNonEmptyString),
+  multicaSquadId: Schema.optional(TrimmedNonEmptyString),
+});
+export type CompositionMulticaAssigneeRoute = typeof CompositionMulticaAssigneeRoute.Type;
+
+/**
+ * ServerSettings.providerInstances[instanceId].config 中的 Multica 配置。
+ * Header 值只允许来自 provider environment，避免把 token 写入 settings.json。
+ */
+export const CompositionMulticaRuntimeConfig = Schema.Struct({
+  schemaVersion: Schema.Literal(1).pipe(Schema.withDecodingDefault(Effect.succeed(1 as const))),
+  enabled: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
+  runtimeId: TrimmedNonEmptyString,
+  daemonId: TrimmedNonEmptyString,
+  daemonRuntimeId: TrimmedNonEmptyString,
+  baseUrl: TrimmedNonEmptyString,
+  headers: Schema.Array(CompositionMulticaHeaderBinding).pipe(
+    Schema.withDecodingDefault(Effect.succeed([])),
+  ),
+  assigneeRoutes: Schema.Array(CompositionMulticaAssigneeRoute).pipe(
+    Schema.withDecodingDefault(Effect.succeed([])),
+  ),
+  version: Schema.optional(TrimmedNonEmptyString),
+  capabilities: Schema.Array(TrimmedNonEmptyString).pipe(
+    Schema.withDecodingDefault(Effect.succeed([])),
+  ),
+  supportsResume: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
+  supportsMcp: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
+  supportsSquad: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
+  supportsLeader: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
+  supportsTaskGraph: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
+});
+export type CompositionMulticaRuntimeConfig = typeof CompositionMulticaRuntimeConfig.Type;
 
 /** Multica daemon 适配器的能力探测结果，T3 仍然保留事实源。 */
 export const CompositionMulticaProbeResult = Schema.Struct({

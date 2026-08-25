@@ -4,6 +4,7 @@ import * as Schema from "effect/Schema";
 import {
   CompositionEventEnvelope,
   CompositionIdeResolveResult,
+  CompositionMulticaRuntimeConfig,
   CompositionMulticaProbeResult,
   CompositionRuntimeProbeResult,
 } from "./compositionRuntime.ts";
@@ -12,6 +13,7 @@ const decodeEnvelope = Schema.decodeUnknownSync(CompositionEventEnvelope);
 const decodeRuntimeProbe = Schema.decodeUnknownSync(CompositionRuntimeProbeResult);
 const decodeIdeResult = Schema.decodeUnknownSync(CompositionIdeResolveResult);
 const decodeMulticaProbe = Schema.decodeUnknownSync(CompositionMulticaProbeResult);
+const decodeMulticaConfig = Schema.decodeUnknownSync(CompositionMulticaRuntimeConfig);
 
 describe("composition runtime contracts", () => {
   it("keeps the event envelope additive to task events", () => {
@@ -85,5 +87,28 @@ describe("composition runtime contracts", () => {
 
     expect(decoded.status).toBe("offline");
     expect(decoded.supportsSquad).toBe(false);
+  });
+
+  it("只保存 Header 到环境变量的绑定，不把秘密放进 Multica 配置合同", () => {
+    const decoded = decodeMulticaConfig({
+      runtimeId: "multica:daemon-1:runtime-1",
+      daemonId: "daemon-1",
+      daemonRuntimeId: "runtime-1",
+      baseUrl: "https://multica.test",
+      headers: [{ headerName: "Authorization", environmentVariable: "MULTICA_TOKEN" }],
+      assigneeRoutes: [
+        {
+          t3AgentId: "agent-1",
+          workspaceId: "workspace-1",
+          multicaAgentId: "agent-remote-1",
+        },
+      ],
+    });
+
+    expect(decoded.headers).toEqual([
+      { headerName: "Authorization", environmentVariable: "MULTICA_TOKEN" },
+    ]);
+    expect(decoded.assigneeRoutes[0]?.multicaAgentId).toBe("agent-remote-1");
+    expect((decoded as Record<string, unknown>).token).toBeUndefined();
   });
 });
