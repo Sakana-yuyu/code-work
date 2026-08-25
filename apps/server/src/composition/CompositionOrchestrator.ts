@@ -179,7 +179,7 @@ export interface CompositionOrchestrator {
     readonly reason: string;
   }) => Effect.Effect<
     CompositionCancelResult,
-    CompositionTaskStoreError | CompositionTaskNotFoundError
+    CompositionTaskStoreError | CompositionTaskNotFoundError | CompositionAgentDriverFailure
   >;
 }
 
@@ -431,11 +431,24 @@ const makeOrchestrator = (
       }
       const driver = yield* driverRegistry.get(run.agentId);
       if (driver !== undefined) {
-        const driverResult = yield* Effect.result(
-          driver.cancelTask({ task, run, reason: input.reason }),
-        );
-        if (driverResult._tag === "Success" && driverResult.success.status === "already_terminal") {
+        const driverResult = yield* driver.cancelTask({ task, run, reason: input.reason });
+        if (driverResult.status === "already_terminal") {
           return { task, run, status: "already_terminal" as const };
+        }
+        if (driverResult.status === "cancel_requested") {
+          const priorEvents = yield* store.listEvents(input.taskId, input.runId);
+          yield* store.appendEvent({
+            taskId: task.taskId,
+            runId: run.runId,
+            ...(task.parentTaskId === undefined ? {} : { parentTaskId: task.parentTaskId }),
+            agentId: run.agentId,
+            runtimeId: run.runtimeId,
+            status: task.status,
+            sequence: priorEvents.length,
+            eventType: "message",
+            summary: "取消请求已提交，等待 Runtime 确认",
+          });
+          return { task, run, status: "cancel_requested" as const };
         }
       }
       const now = yield* Clock.currentTimeMillis;
