@@ -231,6 +231,8 @@ import {
   CompositionAgentLoopRunError,
   CompositionAgentLoopRunRequest,
   CompositionAgentLoopRunResult,
+  CompositionRuntimeToolInvocation,
+  CompositionToolResult,
 } from "./composition.ts";
 
 export const WS_METHODS = {
@@ -314,6 +316,7 @@ export const WS_METHODS = {
   serverListByokDelegations: "server.listByokDelegations",
   serverImportByokAdapters: "server.importByokAdapters",
   serverRunCompositionAgent: "server.runCompositionAgent",
+  serverInvokeCompositionRuntimeTool: "server.invokeCompositionRuntimeTool",
   serverDispatchCompositionTask: "server.dispatchCompositionTask",
   serverCancelCompositionTask: "server.cancelCompositionTask",
   serverListCompositionTaskEvents: "server.listCompositionTaskEvents",
@@ -486,6 +489,15 @@ export const WsServerRunCompositionAgentRpc = Rpc.make(WS_METHODS.serverRunCompo
   success: CompositionAgentLoopRunResult,
   error: Schema.Union([CompositionAgentLoopRunError, EnvironmentAuthorizationError]),
 });
+
+export const WsServerInvokeCompositionRuntimeToolRpc = Rpc.make(
+  WS_METHODS.serverInvokeCompositionRuntimeTool,
+  {
+    payload: CompositionRuntimeToolInvocation,
+    success: CompositionToolResult,
+    error: Schema.Union([CompositionTaskRpcError, EnvironmentAuthorizationError]),
+  },
+);
 
 export const WsServerDispatchCompositionTaskRpc = Rpc.make(
   WS_METHODS.serverDispatchCompositionTask,
@@ -1243,4 +1255,4 @@ export const WsRpcGroup = RpcGroup.make(
   WsOrchestrationGetArchivedShellSnapshotRpc,
   WsOrchestrationSubscribeShellRpc,
   WsOrchestrationSubscribeThreadRpc,
-);
+).add(WsServerInvokeCompositionRuntimeToolRpc);

@@ -96,6 +96,7 @@ import * as ByokAdaptersImport from "./provider/byok/ByokAdaptersImport.ts";
 import * as CompositionAgentService from "./composition/CompositionAgentService.ts";
 import * as CompositionOrchestratorService from "./composition/CompositionOrchestratorService.ts";
 import * as CompositionToolBroker from "./composition/ToolBroker.ts";
+import * as CompositionRuntimeToolBridge from "./composition/CompositionRuntimeToolBridge.ts";
 import * as CompositionCapabilityGrantRegistry from "./composition/CapabilityGrantRegistry.ts";
 import * as ProviderMaintenanceRunner from "./provider/providerMaintenanceRunner.ts";
 import * as ServerSelfUpdate from "./cloud/selfUpdate.ts";
@@ -477,6 +478,9 @@ const makeWsRpcLayer = (
       });
       const compositionOrchestrator = yield* Effect.serviceOption(
         CompositionOrchestratorService.CompositionOrchestratorService,
+      );
+      const compositionRuntimeToolBridge = yield* Effect.serviceOption(
+        CompositionRuntimeToolBridge.CompositionRuntimeToolBridgeService,
       );
       const compositionTaskUnavailable = () =>
         new CompositionTaskRpcError({
@@ -1758,6 +1762,14 @@ const makeWsRpcLayer = (
                     ),
                     Effect.map(({ text, rounds }) => ({ text, rounds })),
                   ),
+            { "rpc.aggregate": "composition" },
+          ),
+        [WS_METHODS.serverInvokeCompositionRuntimeTool]: (input) =>
+          observeRpcEffect(
+            WS_METHODS.serverInvokeCompositionRuntimeTool,
+            Option.isNone(compositionRuntimeToolBridge)
+              ? Effect.fail(compositionTaskUnavailable())
+              : compositionRuntimeToolBridge.value.invoke(input),
             { "rpc.aggregate": "composition" },
           ),
         [WS_METHODS.serverDispatchCompositionTask]: (input) =>

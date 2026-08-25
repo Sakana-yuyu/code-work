@@ -220,6 +220,23 @@ export const CompositionToolResult = Schema.Struct({
 });
 export type CompositionToolResult = typeof CompositionToolResult.Type;
 
+/** 外部 Runtime/IDE 通过 T3 请求 canonical tool 的输入，不携带 workspaceRoot。 */
+export const CompositionRuntimeToolInvocation = Schema.Struct({
+  schemaVersion: Schema.Literal(1),
+  runtimeId: TrimmedNonEmptyString,
+  taskId: TrimmedNonEmptyString,
+  runId: TrimmedNonEmptyString,
+  agentId: TrimmedNonEmptyString,
+  capabilityHandshakeId: Schema.optional(TrimmedNonEmptyString),
+  toolCallId: TrimmedNonEmptyString,
+  canonicalToolName: TrimmedNonEmptyString,
+  arguments: Schema.Unknown,
+  idempotencyKey: TrimmedNonEmptyString,
+  capabilityGrantIds: Schema.Array(TrimmedNonEmptyString),
+  approvalRequestId: Schema.optional(ApprovalRequestId),
+});
+export type CompositionRuntimeToolInvocation = typeof CompositionRuntimeToolInvocation.Type;
+
 export const CompositionCapabilityDescriptorList = Schema.Array(CompositionCapabilityDescriptor);
 export type CompositionCapabilityDescriptorList = typeof CompositionCapabilityDescriptorList.Type;
 

@@ -3,12 +3,20 @@ import type {
   CompositionTaskRun,
   CompositionToolResult,
 } from "@t3tools/contracts";
+import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
+import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 
-import type { CompositionTaskInputStoreShape } from "../persistence/Services/CompositionTaskInputStore.ts";
-import type { CompositionTaskStoreShape } from "../persistence/Services/CompositionTaskStore.ts";
+import {
+  CompositionTaskInputStore,
+  type CompositionTaskInputStoreShape,
+} from "../persistence/Services/CompositionTaskInputStore.ts";
+import {
+  CompositionTaskStore,
+  type CompositionTaskStoreShape,
+} from "../persistence/Services/CompositionTaskStore.ts";
 import * as ToolBroker from "./ToolBroker.ts";
 
 /** 外部 Runtime 请求 T3 执行一次 canonical tool 的输入。 */
@@ -53,6 +61,11 @@ export type CompositionRuntimeToolBridgeShape = {
     input: CompositionRuntimeToolCancellation,
   ) => Effect.Effect<CompositionToolResult>;
 };
+
+export class CompositionRuntimeToolBridgeService extends Context.Service<
+  CompositionRuntimeToolBridgeService,
+  CompositionRuntimeToolBridgeShape
+>()("t3/composition/CompositionRuntimeToolBridge/CompositionRuntimeToolBridgeService") {}
 
 type ScopeCheck =
   | {
@@ -219,3 +232,16 @@ export const makeCompositionRuntimeToolBridge = (
 
   return { invoke, cancel };
 };
+
+const live = Effect.gen(function* () {
+  const taskStore = yield* CompositionTaskStore;
+  const inputStore = yield* CompositionTaskInputStore;
+  const toolBroker = yield* ToolBroker.ToolBroker;
+  return makeCompositionRuntimeToolBridge({
+    taskStore,
+    inputStore,
+    toolBroker,
+  });
+});
+
+export const layer = Layer.effect(CompositionRuntimeToolBridgeService, live);

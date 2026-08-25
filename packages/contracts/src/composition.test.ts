@@ -16,6 +16,7 @@ import {
   CompositionTaskEvent,
   CompositionToolInvocation,
   CompositionToolResult,
+  CompositionRuntimeToolInvocation,
 } from "./composition.ts";
 
 const decodeAgentLoopRequest = Schema.decodeUnknownSync(CompositionAgentLoopRequest);
@@ -30,6 +31,7 @@ const decodeTaskEvents = Schema.decodeUnknownSync(CompositionTaskEventsResult);
 const decodeTaskList = Schema.decodeUnknownSync(CompositionTaskListRequest);
 const decodeToolInvocation = Schema.decodeUnknownSync(CompositionToolInvocation);
 const decodeToolResult = Schema.decodeUnknownSync(CompositionToolResult);
+const decodeRuntimeToolInvocation = Schema.decodeUnknownSync(CompositionRuntimeToolInvocation);
 const decodeAgentLoopRunRequest = Schema.decodeUnknownSync(CompositionAgentLoopRunRequest);
 const decodeAgentLoopRunResult = Schema.decodeUnknownSync(CompositionAgentLoopRunResult);
 
@@ -185,6 +187,38 @@ describe("composition contracts", () => {
 
     expect(result.toolCallId).toBe(invocation.toolCallId);
     expect(result.canonicalToolName).toBe(invocation.canonicalToolName);
+  });
+
+  it("keeps runtime tool calls scoped and does not accept an external workspace root", () => {
+    const decoded = decodeRuntimeToolInvocation({
+      schemaVersion: 1,
+      runtimeId: "runtime-1",
+      taskId: "task-1",
+      runId: "run-1",
+      agentId: "agent-1",
+      capabilityHandshakeId: "handshake-1",
+      toolCallId: "call-1",
+      canonicalToolName: "workspace.read_file",
+      arguments: { cwd: "runtime-controlled-path", relativePath: "README.md" },
+      idempotencyKey: "idem-1",
+      capabilityGrantIds: ["grant-1"],
+    });
+
+    expect(decoded.runtimeId).toBe("runtime-1");
+    expect("workspaceRoot" in decoded).toBe(false);
+    expect(() =>
+      decodeRuntimeToolInvocation({
+        runtimeId: "runtime-1",
+        taskId: "task-1",
+        runId: "run-1",
+        agentId: "agent-1",
+        toolCallId: "call-1",
+        canonicalToolName: "workspace.read_file",
+        arguments: {},
+        idempotencyKey: "idem-1",
+        capabilityGrantIds: [],
+      }),
+    ).toThrow();
   });
 
   it("keeps the explicit agent loop RPC payload separate from legacy text turns", () => {
