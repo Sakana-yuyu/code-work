@@ -2,6 +2,7 @@ import { assert, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 
+import { makeCompositionAgentDriverRegistry } from "./CompositionAgentDriverRegistry.ts";
 import { makeCompositionOrchestrator } from "./CompositionOrchestrator.ts";
 import { CompositionTaskStore } from "../persistence/Services/CompositionTaskStore.ts";
 import { CompositionTaskStoreLive } from "../persistence/Layers/CompositionTaskStore.ts";
@@ -14,18 +15,18 @@ layer("CompositionOrchestrator", (it) => {
     Effect.gen(function* () {
       const store = yield* CompositionTaskStore;
       const started: string[] = [];
-      const orchestrator = makeCompositionOrchestrator(store, [
-        {
-          agentId: "agent-1",
-          runtimeId: "runtime-1",
-          startTask: (input) =>
-            Effect.sync(() => {
-              started.push(input.task.taskId);
-              return { runtimeTaskId: "runtime-task-1" };
-            }),
-          cancelTask: () => Effect.succeed({ status: "cancelled" as const }),
-        },
-      ]);
+      const driverRegistry = makeCompositionAgentDriverRegistry();
+      yield* driverRegistry.register({
+        agentId: "agent-1",
+        runtimeId: "runtime-1",
+        startTask: (input) =>
+          Effect.sync(() => {
+            started.push(input.task.taskId);
+            return { runtimeTaskId: "runtime-task-1" };
+          }),
+        cancelTask: () => Effect.succeed({ status: "cancelled" as const }),
+      });
+      const orchestrator = makeCompositionOrchestrator(store, driverRegistry);
 
       const result = yield* orchestrator.dispatchTask({
         taskId: "task-1",
@@ -65,18 +66,18 @@ layer("CompositionOrchestrator", (it) => {
         updatedAtUnixMs: 1,
       });
       const started: string[] = [];
-      const orchestrator = makeCompositionOrchestrator(store, [
-        {
-          agentId: "agent-1",
-          runtimeId: "runtime-1",
-          startTask: (input) =>
-            Effect.sync(() => {
-              started.push(input.task.taskId);
-              return {};
-            }),
-          cancelTask: () => Effect.succeed({ status: "cancelled" as const }),
-        },
-      ]);
+      const driverRegistry = makeCompositionAgentDriverRegistry();
+      yield* driverRegistry.register({
+        agentId: "agent-1",
+        runtimeId: "runtime-1",
+        startTask: (input) =>
+          Effect.sync(() => {
+            started.push(input.task.taskId);
+            return {};
+          }),
+        cancelTask: () => Effect.succeed({ status: "cancelled" as const }),
+      });
+      const orchestrator = makeCompositionOrchestrator(store, driverRegistry);
 
       const result = yield* orchestrator.dispatchTask({
         taskId: "task-blocked",
@@ -102,7 +103,7 @@ layer("CompositionOrchestrator", (it) => {
   it.effect("persists a failed run when its AgentDriver is unavailable", () =>
     Effect.gen(function* () {
       const store = yield* CompositionTaskStore;
-      const orchestrator = makeCompositionOrchestrator(store, []);
+      const orchestrator = makeCompositionOrchestrator(store, makeCompositionAgentDriverRegistry());
 
       const result = yield* orchestrator.dispatchTask({
         taskId: "task-no-driver",

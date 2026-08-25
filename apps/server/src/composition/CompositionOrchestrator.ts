@@ -13,6 +13,7 @@ import {
   type CompositionTaskStoreError,
   type CompositionTaskStoreShape,
 } from "../persistence/Services/CompositionTaskStore.ts";
+import type { CompositionAgentDriverRegistry } from "./CompositionAgentDriverRegistry.ts";
 
 export class CompositionTaskDependencyMissingError extends Schema.TaggedErrorClass<CompositionTaskDependencyMissingError>()(
   "CompositionTaskDependencyMissingError",
@@ -166,10 +167,8 @@ export interface CompositionOrchestrator {
 
 const makeOrchestrator = (
   store: CompositionTaskStoreShape,
-  drivers: ReadonlyArray<CompositionAgentDriver>,
+  driverRegistry: CompositionAgentDriverRegistry,
 ): CompositionOrchestrator => {
-  const driverByAgentId = new Map(drivers.map((driver) => [driver.agentId, driver] as const));
-
   const validateDependencies = (
     taskId: string,
     dependencyIds: ReadonlyArray<string>,
@@ -247,7 +246,7 @@ const makeOrchestrator = (
       );
       const initialStatus: CompositionTaskStatus =
         blockedDependency === undefined ? "queued" : "blocked";
-      const driver = driverByAgentId.get(input.assigneeId);
+      const driver = yield* driverRegistry.get(input.assigneeId);
       const runtimeId = driver?.runtimeId ?? "unresolved";
       const task: CompositionTask = {
         taskId: input.taskId,
@@ -409,7 +408,7 @@ const makeOrchestrator = (
       if (terminalStatuses.has(task.status)) {
         return { task, run, status: "already_terminal" as const };
       }
-      const driver = driverByAgentId.get(run.agentId);
+      const driver = yield* driverRegistry.get(run.agentId);
       if (driver !== undefined) {
         const driverResult = yield* Effect.result(
           driver.cancelTask({ task, run, reason: input.reason }),
@@ -452,5 +451,5 @@ const makeOrchestrator = (
 
 export const makeCompositionOrchestrator = (
   store: CompositionTaskStoreShape,
-  drivers: ReadonlyArray<CompositionAgentDriver>,
-): CompositionOrchestrator => makeOrchestrator(store, drivers);
+  driverRegistry: CompositionAgentDriverRegistry,
+): CompositionOrchestrator => makeOrchestrator(store, driverRegistry);
