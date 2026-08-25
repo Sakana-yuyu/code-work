@@ -20,6 +20,9 @@ import * as BackgroundPolicy from "../../background/BackgroundPolicy.ts";
 import { ServerConfig } from "../../config.ts";
 import { ServerSettingsService } from "../../serverSettings.ts";
 import { makeByokTextGeneration } from "../../textGeneration/ByokTextGeneration.ts";
+import { makeOpenAiByokModelDriver } from "../../composition/OpenAiByokModelDriver.ts";
+import { CompositionAgentServiceError } from "../../composition/CompositionAgentService.ts";
+import { byokAdapterForModel } from "../Layers/byokChatClient.ts";
 import { ProviderDriverError } from "../Errors.ts";
 import { makeByokAdapter } from "../Layers/ByokAdapter.ts";
 import {
@@ -146,6 +149,34 @@ export const ByokDriver: ProviderDriver<ByokSettings, ByokDriverEnv> = {
         snapshot,
         adapter,
         textGeneration,
+        composition: {
+          resolveModelDriver: ({ modelId }) => {
+            const modelAdapter = byokAdapterForModel(effectiveConfig, modelId);
+            if (modelAdapter === undefined) {
+              return Effect.fail(
+                new CompositionAgentServiceError({
+                  code: "model_not_configured",
+                  detail: `BYOK model '${modelId}' is not configured.`,
+                }),
+              );
+            }
+            if (modelAdapter.protocol !== "openai") {
+              return Effect.fail(
+                new CompositionAgentServiceError({
+                  code: "agent_loop_unsupported",
+                  detail: `BYOK protocol '${modelAdapter.protocol}' is not supported by the Agent Loop yet.`,
+                }),
+              );
+            }
+            return Effect.succeed(
+              makeOpenAiByokModelDriver(httpClient, {
+                baseURL: modelAdapter.baseURL,
+                apiKey: modelAdapter.apiKey,
+                modelId: modelAdapter.modelId,
+              }),
+            );
+          },
+        },
       } satisfies ProviderInstance;
     }),
 };

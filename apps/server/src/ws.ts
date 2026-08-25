@@ -53,6 +53,7 @@ import {
   AssetWorkspaceContextResolutionError,
   RpcClientId,
   EnvironmentAuthorizationError,
+  CompositionAgentLoopRunError,
   ThreadId,
   type TerminalAttachStreamEvent,
   type TerminalError,
@@ -86,10 +87,13 @@ import {
 } from "./observability/RpcInstrumentation.ts";
 import * as ProviderRegistry from "./provider/Services/ProviderRegistry.ts";
 import * as ProviderService from "./provider/Services/ProviderService.ts";
+import * as ProviderInstanceRegistry from "./provider/Services/ProviderInstanceRegistry.ts";
 import * as ByokModelDiscovery from "./provider/byok/ByokModelDiscoveryService.ts";
 import * as ByokBalance from "./provider/byok/ByokBalanceService.ts";
 import * as ByokDelegation from "./provider/byok/ByokDelegationService.ts";
 import * as ByokAdaptersImport from "./provider/byok/ByokAdaptersImport.ts";
+import * as CompositionAgentService from "./composition/CompositionAgentService.ts";
+import * as CompositionToolBroker from "./composition/ToolBroker.ts";
 import * as ProviderMaintenanceRunner from "./provider/providerMaintenanceRunner.ts";
 import * as ServerSelfUpdate from "./cloud/selfUpdate.ts";
 import * as ServerLifecycleEvents from "./serverLifecycleEvents.ts";
@@ -448,6 +452,21 @@ const makeWsRpcLayer = (
       const byokBalance = yield* ByokBalance.make;
       const byokDelegation = yield* ByokDelegation.make;
       const byokAdaptersImport = yield* ByokAdaptersImport.make;
+      const compositionAgentServices = yield* Effect.gen(function* () {
+        const registry = yield* Effect.serviceOption(
+          ProviderInstanceRegistry.ProviderInstanceRegistry,
+        );
+        const broker = yield* Effect.serviceOption(CompositionToolBroker.ToolBroker);
+        if (Option.isNone(registry) || Option.isNone(broker)) {
+          return Option.none<CompositionAgentService.CompositionAgentServiceShape>();
+        }
+        return Option.some(
+          CompositionAgentService.makeCompositionAgentServiceFromRegistry(
+            registry.value,
+            broker.value,
+          ),
+        );
+      });
       const serverSelfUpdate = yield* ServerSelfUpdate.ServerSelfUpdate;
       const config = yield* ServerConfig.ServerConfig;
       const lifecycleEvents = yield* ServerLifecycleEvents.ServerLifecycleEvents;
@@ -1675,6 +1694,41 @@ const makeWsRpcLayer = (
             WS_METHODS.serverImportByokAdapters,
             byokAdaptersImport.importAdapters(input),
             { "rpc.aggregate": "server" },
+          ),
+        [WS_METHODS.serverRunCompositionAgent]: (input) =>
+          observeRpcEffect(
+            WS_METHODS.serverRunCompositionAgent,
+            Option.isNone(compositionAgentServices)
+              ? Effect.fail(
+                  new CompositionAgentLoopRunError({
+                    code: "composition_unavailable",
+                    detail: "当前运行时未提供 Composition Agent 能力。",
+                  }),
+                )
+              : compositionAgentServices.value
+                  .run({
+                    providerInstanceId: input.providerInstanceId,
+                    modelId: input.modelId,
+                    taskId: input.taskId,
+                    runId: input.runId,
+                    agentId: input.agentId,
+                    workspaceRoot: input.workspaceRoot,
+                    prompt: input.prompt,
+                    capabilityGrantIds: input.capabilityGrantIds,
+                    tools: input.tools,
+                    ...(input.maxRounds === undefined ? {} : { maxRounds: input.maxRounds }),
+                  })
+                  .pipe(
+                    Effect.mapError(
+                      (error) =>
+                        new CompositionAgentLoopRunError({
+                          code: error.code,
+                          detail: error.detail,
+                        }),
+                    ),
+                    Effect.map(({ text, rounds }) => ({ text, rounds })),
+                  ),
+            { "rpc.aggregate": "composition" },
           ),
         [WS_METHODS.serverDiscoverSourceControl]: (_input) =>
           observeRpcEffect(

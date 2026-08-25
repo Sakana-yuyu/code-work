@@ -3,6 +3,8 @@ import * as Schema from "effect/Schema";
 
 import {
   CompositionAgentLoopRequest,
+  CompositionAgentLoopRunRequest,
+  CompositionAgentLoopRunResult,
   CompositionCapabilityDescriptor,
   CompositionCapabilityPolicyDecision,
   CompositionTaskEvent,
@@ -16,6 +18,8 @@ const decodePolicyDecision = Schema.decodeUnknownSync(CompositionCapabilityPolic
 const decodeTaskEvent = Schema.decodeUnknownSync(CompositionTaskEvent);
 const decodeToolInvocation = Schema.decodeUnknownSync(CompositionToolInvocation);
 const decodeToolResult = Schema.decodeUnknownSync(CompositionToolResult);
+const decodeAgentLoopRunRequest = Schema.decodeUnknownSync(CompositionAgentLoopRunRequest);
+const decodeAgentLoopRunResult = Schema.decodeUnknownSync(CompositionAgentLoopRunResult);
 
 describe("composition contracts", () => {
   it("accepts a legacy text request without agent identity", () => {
@@ -142,5 +146,23 @@ describe("composition contracts", () => {
 
     expect(result.toolCallId).toBe(invocation.toolCallId);
     expect(result.canonicalToolName).toBe(invocation.canonicalToolName);
+  });
+
+  it("keeps the explicit agent loop RPC payload separate from legacy text turns", () => {
+    const decoded = decodeAgentLoopRunRequest({
+      mode: "agent_loop",
+      providerInstanceId: "byok",
+      modelId: "openai/gpt-5",
+      taskId: "task-1",
+      runId: "run-1",
+      agentId: "agent-1",
+      workspaceRoot: "C:/workspace",
+      prompt: "检查项目",
+      capabilityGrantIds: ["t3.workspace.read_file"],
+      tools: [],
+    });
+
+    expect(decoded.mode).toBe("agent_loop");
+    expect(decodeAgentLoopRunResult({ text: "完成", rounds: 1 }).rounds).toBe(1);
   });
 });

@@ -218,6 +218,11 @@ import {
   SourceControlRepositoryLookupInput,
 } from "./sourceControl.ts";
 import { VcsError } from "./vcs.ts";
+import {
+  CompositionAgentLoopRunError,
+  CompositionAgentLoopRunRequest,
+  CompositionAgentLoopRunResult,
+} from "./composition.ts";
 
 export const WS_METHODS = {
   // Project registry methods
@@ -299,6 +304,7 @@ export const WS_METHODS = {
   serverSubmitByokDelegation: "server.submitByokDelegation",
   serverListByokDelegations: "server.listByokDelegations",
   serverImportByokAdapters: "server.importByokAdapters",
+  serverRunCompositionAgent: "server.runCompositionAgent",
   serverDiscoverSourceControl: "server.discoverSourceControl",
   serverGetTraceDiagnostics: "server.getTraceDiagnostics",
   serverGetProcessDiagnostics: "server.getProcessDiagnostics",
@@ -460,6 +466,12 @@ export const WsServerImportByokAdaptersRpc = Rpc.make(WS_METHODS.serverImportByo
   payload: ByokAdaptersImportRequest,
   success: ByokAdaptersImportResult,
   error: EnvironmentAuthorizationError,
+});
+
+export const WsServerRunCompositionAgentRpc = Rpc.make(WS_METHODS.serverRunCompositionAgent, {
+  payload: CompositionAgentLoopRunRequest,
+  success: CompositionAgentLoopRunResult,
+  error: Schema.Union([CompositionAgentLoopRunError, EnvironmentAuthorizationError]),
 });
 
 export const WsServerDiscoverSourceControlRpc = Rpc.make(WS_METHODS.serverDiscoverSourceControl, {
@@ -1091,6 +1103,7 @@ export const WsRpcGroup = RpcGroup.make(
   WsServerSubmitByokDelegationRpc,
   WsServerListByokDelegationsRpc,
   WsServerImportByokAdaptersRpc,
+  WsServerRunCompositionAgentRpc,
   WsServerDiscoverSourceControlRpc,
   WsServerGetTraceDiagnosticsRpc,
   WsServerGetProcessDiagnosticsRpc,

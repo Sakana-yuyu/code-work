@@ -48,6 +48,9 @@ import * as TerminalManager from "./terminal/Manager.ts";
 import * as McpHttpServer from "./mcp/McpHttpServer.ts";
 import * as McpSessionRegistry from "./mcp/McpSessionRegistry.ts";
 import * as PreviewAutomationBroker from "./mcp/PreviewAutomationBroker.ts";
+import * as CompositionCapabilityRegistry from "./composition/CapabilityRegistry.ts";
+import * as CompositionCapabilityPolicy from "./composition/CapabilityPolicy.ts";
+import * as CompositionToolBroker from "./composition/ToolBroker.ts";
 import * as PreviewManager from "./preview/Manager.ts";
 import * as PortScanner from "./preview/PortScanner.ts";
 import * as ProcessRunner from "./processRunner.ts";
@@ -346,6 +349,16 @@ const WorkspaceLayerLive = Layer.mergeAll(
   WorkspaceFileSystemLayerLive,
 );
 
+const CompositionCapabilityPolicyLayerLive = CompositionCapabilityPolicy.layer.pipe(
+  Layer.provide(CompositionCapabilityRegistry.layer),
+);
+
+const CompositionToolBrokerLayerLive = CompositionToolBroker.layer.pipe(
+  Layer.provideMerge(CompositionCapabilityPolicyLayerLive),
+  Layer.provideMerge(CompositionCapabilityRegistry.layer),
+  Layer.provideMerge(WorkspaceFileSystemLayerLive),
+);
+
 const ProjectFaviconResolverLayerLive = ProjectFaviconResolver.layer.pipe(
   Layer.provide(WorkspacePaths.layer),
   Layer.provide(T3ProjectFileLoader.layer),
@@ -399,12 +412,11 @@ const RuntimeCoreDependenciesLive = ReactorLayerLive.pipe(
   // no longer transitively provides it. Exposing it at the runtime level
   // keeps a single Live for all opencode consumers.
   Layer.provideMerge(OpenCodeRuntime.OpenCodeRuntimeLive),
-  Layer.provideMerge(WorkspaceLayerLive),
+  Layer.provideMerge(Layer.mergeAll(WorkspaceLayerLive, CompositionToolBrokerLayerLive)),
   Layer.provideMerge(ProjectFaviconResolverLayerLive),
   Layer.provideMerge(RepositoryIdentityResolver.layer),
   Layer.provideMerge(ServerEnvironment.layer),
-  Layer.provideMerge(AuthLayerLive),
-  Layer.provideMerge(ServerSecretStore.layer),
+  Layer.provideMerge(Layer.mergeAll(AuthLayerLive, ServerSecretStore.layer)),
   Layer.provideMerge(
     Layer.mergeAll(
       CloudCliTokenManager.layer.pipe(

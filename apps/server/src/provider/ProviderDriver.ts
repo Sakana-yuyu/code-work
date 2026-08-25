@@ -31,6 +31,8 @@ import type * as Schema from "effect/Schema";
 import type * as Scope from "effect/Scope";
 
 import type * as TextGeneration from "../textGeneration/TextGeneration.ts";
+import type { ByokAgentModelDriver } from "../composition/ByokAgentLoop.ts";
+import type { CompositionAgentServiceError } from "../composition/CompositionAgentService.ts";
 import type { ProviderAdapterError, ProviderDriverError } from "./Errors.ts";
 import type { ProviderAdapterShape } from "./Services/ProviderAdapter.ts";
 import type { ServerProviderShape } from "./Services/ServerProvider.ts";
@@ -71,6 +73,11 @@ export interface ProviderInstance {
   readonly snapshot: ServerProviderShape;
   readonly adapter: ProviderAdapterShape<ProviderAdapterError>;
   readonly textGeneration: TextGeneration.TextGeneration["Service"];
+  readonly composition?: {
+    readonly resolveModelDriver: (input: {
+      readonly modelId: string;
+    }) => Effect.Effect<ByokAgentModelDriver, CompositionAgentServiceError>;
+  };
 }
 
 export interface ProviderContinuationIdentity {

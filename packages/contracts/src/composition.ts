@@ -35,6 +35,47 @@ export const CompositionAgentLoopRequest = Schema.Union([
 ]);
 export type CompositionAgentLoopRequest = typeof CompositionAgentLoopRequest.Type;
 
+export const CompositionAgentTool = Schema.Struct({
+  canonicalToolName: TrimmedNonEmptyString,
+  description: Schema.String,
+  parameters: Schema.Unknown,
+});
+export type CompositionAgentTool = typeof CompositionAgentTool.Type;
+
+/** 显式启动 BYOK Agent Loop 的 RPC 输入，不改变旧文本会话语义。 */
+export const CompositionAgentLoopRunRequest = Schema.Struct({
+  mode: Schema.Literal("agent_loop"),
+  providerInstanceId: TrimmedNonEmptyString,
+  modelId: TrimmedNonEmptyString,
+  taskId: TrimmedNonEmptyString,
+  runId: TrimmedNonEmptyString,
+  agentId: TrimmedNonEmptyString,
+  workspaceRoot: TrimmedNonEmptyString,
+  prompt: Schema.String,
+  capabilityGrantIds: Schema.Array(TrimmedNonEmptyString),
+  tools: Schema.Array(CompositionAgentTool),
+  maxRounds: Schema.optional(PositiveInt),
+});
+export type CompositionAgentLoopRunRequest = typeof CompositionAgentLoopRunRequest.Type;
+
+export const CompositionAgentLoopRunResult = Schema.Struct({
+  text: Schema.String,
+  rounds: PositiveInt,
+});
+export type CompositionAgentLoopRunResult = typeof CompositionAgentLoopRunResult.Type;
+
+export class CompositionAgentLoopRunError extends Schema.TaggedErrorClass<CompositionAgentLoopRunError>()(
+  "CompositionAgentLoopRunError",
+  {
+    code: TrimmedNonEmptyString,
+    detail: TrimmedNonEmptyString,
+  },
+) {
+  override get message(): string {
+    return `Agent Loop 执行失败：${this.code}: ${this.detail}`;
+  }
+}
+
 const CompositionCapabilityKind = Schema.Literals(["model", "tool", "mcp", "ide", "runtime"]);
 export type CompositionCapabilityKind = typeof CompositionCapabilityKind.Type;
 
