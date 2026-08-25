@@ -56,6 +56,7 @@ import * as CompositionAgentDriverRegistry from "./composition/CompositionAgentD
 import * as CompositionProviderAgentDriverProjection from "./composition/CompositionProviderAgentDriverRegistry.ts";
 import * as CompositionRuntimeAdapterRegistry from "./composition/CompositionRuntimeAdapterRegistry.ts";
 import * as CompositionRuntimeAgentDriverProjection from "./composition/CompositionRuntimeAgentDriverProjection.ts";
+import * as CompositionRuntimeSettings from "./composition/CompositionRuntimeSettings.ts";
 import * as CompositionOrchestratorService from "./composition/CompositionOrchestratorService.ts";
 import * as CompositionTaskRuntimeProjectionService from "./composition/CompositionTaskRuntimeProjectionService.ts";
 import * as PreviewManager from "./preview/Manager.ts";
@@ -370,12 +371,18 @@ const ProviderLayerForCompositionAgentDriversLive = ProviderLayerLive.pipe(
   Layer.provideMerge(ProviderInstanceRegistryHydrationLive),
 );
 
+const CompositionRuntimeSettingsLayerLive = CompositionRuntimeSettings.layer.pipe(
+  Layer.provideMerge(ServerSettingsLayerLive),
+  Layer.provideMerge(CompositionRuntimeAdapterRegistry.layer),
+);
+
 const CompositionAgentDriverProjectionLayerLive = Layer.mergeAll(
   CompositionProviderAgentDriverProjection.layer,
   CompositionRuntimeAgentDriverProjection.layer,
 ).pipe(
   Layer.provideMerge(CompositionAgentDriverRegistry.layer),
   Layer.provideMerge(CompositionRuntimeAdapterRegistry.layer),
+  Layer.provideMerge(CompositionRuntimeSettingsLayerLive),
   Layer.provideMerge(ProviderLayerForCompositionAgentDriversLive),
 );
 

@@ -19,6 +19,7 @@ import {
   CompositionRuntimeAdapterRegistryService,
   type CompositionRuntimeAdapterRegistry,
 } from "./CompositionRuntimeAdapterRegistry.ts";
+import { CompositionRuntimeSettingsReconcilerService } from "./CompositionRuntimeSettings.ts";
 
 export interface CompositionRuntimeAgentDriverProjection {
   readonly registry: CompositionAgentDriverRegistry;
@@ -83,6 +84,8 @@ export const makeCompositionRuntimeAgentDriverProjection = (
 };
 
 const live = Effect.gen(function* () {
+  const runtimeSettings = yield* CompositionRuntimeSettingsReconcilerService;
+  yield* runtimeSettings.ready;
   const adapterRegistry = yield* CompositionRuntimeAdapterRegistryService;
   const agentDriverRegistry = yield* CompositionAgentDriverRegistryService;
   const projection = makeCompositionRuntimeAgentDriverProjection({
