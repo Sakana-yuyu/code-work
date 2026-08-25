@@ -17,6 +17,7 @@ import { CompositionTaskInputStore } from "../persistence/Services/CompositionTa
 export interface CompositionOrchestratorServiceShape {
   readonly dispatchTask: CompositionOrchestrator["dispatchTask"];
   readonly cancelTask: CompositionOrchestrator["cancelTask"];
+  readonly resumeReadyTasks: CompositionOrchestrator["resumeReadyTasks"];
   readonly listTasks: CompositionTaskStoreShape["listTasks"];
   readonly listEvents: CompositionTaskStoreShape["listEvents"];
 }
@@ -41,6 +42,7 @@ const live = Effect.gen(function* () {
   return {
     dispatchTask: orchestrator.dispatchTask,
     cancelTask: orchestrator.cancelTask,
+    resumeReadyTasks: orchestrator.resumeReadyTasks,
     listTasks: store.listTasks,
     listEvents: store.listEvents,
   } satisfies CompositionOrchestratorServiceShape;

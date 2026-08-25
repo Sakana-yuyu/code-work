@@ -166,6 +166,8 @@ export type CompositionCancelResult = {
   readonly status: "cancelled" | "cancel_requested" | "already_terminal";
 };
 
+export type CompositionRecoveryResult = ReadonlyArray<CompositionDispatchResult>;
+
 const terminalStatuses: ReadonlySet<CompositionTaskStatus> = new Set([
   "completed",
   "failed",
@@ -222,6 +224,13 @@ export interface CompositionOrchestrator {
     | CompositionAgentDriverFailure
     | CapabilityGrantRegistry.CapabilityGrantPersistenceError
   >;
+  readonly resumeReadyTasks: () => Effect.Effect<
+    CompositionRecoveryResult,
+    | CompositionTaskStoreError
+    | CompositionAgentDriverFailure
+    | CompositionTaskInputStoreError
+    | CapabilityGrantRegistry.CapabilityGrantPersistenceError
+  >;
 }
 
 const makeOrchestrator = (
@@ -231,6 +240,8 @@ const makeOrchestrator = (
     Partial<Pick<CapabilityGrantRegistry.CapabilityGrantRegistryShape, "revoke">>,
   inputStore?: CompositionTaskInputStoreShape,
 ): CompositionOrchestrator => {
+  const resumingTaskIds = new Set<string>();
+
   const revokeRunCapabilities = (
     driver: CompositionAgentDriver | undefined,
     task: CompositionTask,
@@ -586,7 +597,123 @@ const makeOrchestrator = (
       return { task: cancelledTask, run: cancelledRun, status: "cancelled" as const };
     });
 
-  return { dispatchTask, cancelTask };
+  const resumeReadyTasks: CompositionOrchestrator["resumeReadyTasks"] = () =>
+    Effect.gen(function* () {
+      if (inputStore === undefined) return [];
+      const tasks = yield* store.listTasks();
+      const resumed: Array<CompositionDispatchResult> = [];
+
+      for (const task of tasks) {
+        if (task.status !== "blocked" || resumingTaskIds.has(task.taskId)) continue;
+        const dependencies = yield* Effect.forEach(task.dependsOnTaskIds, (dependencyId) =>
+          store.getTask(dependencyId),
+        );
+        if (
+          dependencies.length !== task.dependsOnTaskIds.length ||
+          dependencies.some(
+            (dependency) =>
+              Option.isNone(dependency) || !dependencySatisfied(dependency.value.status),
+          )
+        ) {
+          continue;
+        }
+
+        const recoveryInput = yield* inputStore.get(task.taskId);
+        if (Option.isNone(recoveryInput)) continue;
+        const runOption = yield* store.getLatestRun(task.taskId);
+        if (Option.isNone(runOption)) continue;
+        const run = runOption.value;
+        const driver = yield* driverRegistry.get(run.agentId);
+        if (driver === undefined) continue;
+
+        resumingTaskIds.add(task.taskId);
+        const result = yield* Effect.gen(function* () {
+          const startResult = yield* Effect.result(
+            driver.startTask({
+              task,
+              run,
+              prompt: recoveryInput.value.prompt,
+              workspaceRoot: recoveryInput.value.workspaceRoot,
+              ...(recoveryInput.value.workspaceRootDigest === undefined
+                ? {}
+                : { workspaceRootDigest: recoveryInput.value.workspaceRootDigest }),
+              ...(recoveryInput.value.model === undefined
+                ? {}
+                : { model: recoveryInput.value.model }),
+              capabilityGrantIds: run.capabilityGrantIds,
+            }),
+          );
+          if (startResult._tag === "Failure") {
+            const failedAt = yield* Clock.currentTimeMillis;
+            const failedTask: CompositionTask = {
+              ...task,
+              status: "failed",
+              updatedAtUnixMs: failedAt,
+              finishedAtUnixMs: failedAt,
+            };
+            const failedRun: CompositionTaskRun = {
+              ...run,
+              runtimeId: driver.runtimeId,
+              status: "failed",
+              finishedAtUnixMs: failedAt,
+              failureCode: startResult.failure.code,
+              resultSummary: startResult.failure.detail,
+            };
+            yield* revokeRunCapabilities(driver, failedTask, failedRun);
+            yield* store.upsertTask(failedTask);
+            yield* store.upsertRun(failedRun);
+            const events = yield* store.listEvents(task.taskId, run.runId);
+            yield* store.appendEvent(
+              makeEvent({
+                task: failedTask,
+                run: failedRun,
+                sequence: events.length,
+                status: "failed",
+                eventType: "status",
+                summary: "恢复任务启动失败",
+              }),
+            );
+            return { task: failedTask, run: failedRun };
+          }
+
+          const startedAt = yield* Clock.currentTimeMillis;
+          const runningTask: CompositionTask = {
+            ...task,
+            status: "running",
+            updatedAtUnixMs: startedAt,
+          };
+          const runningRun: CompositionTaskRun = {
+            ...run,
+            runtimeId: driver.runtimeId,
+            runtimeTaskId: startResult.success.runtimeTaskId,
+            ...(startResult.success.capabilityHandshakeId === undefined
+              ? {}
+              : { capabilityHandshakeId: startResult.success.capabilityHandshakeId }),
+            status: "running",
+            startedAtUnixMs: startedAt,
+          };
+          yield* store.upsertTask(runningTask);
+          yield* store.upsertRun(runningRun);
+          const events = yield* store.listEvents(task.taskId, run.runId);
+          yield* store.appendEvent(
+            makeEvent({
+              task: runningTask,
+              run: runningRun,
+              sequence: events.length,
+              status: "running",
+              eventType: "status",
+              summary: "依赖完成后已恢复任务",
+            }),
+          );
+          return { task: runningTask, run: runningRun };
+        }).pipe(Effect.ensuring(Effect.sync(() => resumingTaskIds.delete(task.taskId))));
+        resumed.push(result);
+      }
+
+      return resumed;
+    });
+
+  return { dispatchTask, cancelTask, resumeReadyTasks };
 };
 
 export const makeCompositionOrchestrator = (

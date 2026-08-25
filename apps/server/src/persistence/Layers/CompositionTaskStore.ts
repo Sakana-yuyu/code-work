@@ -312,6 +312,24 @@ const makeStore = Effect.gen(function* () {
     `,
   });
 
+  const getLatestRunRow = SqlSchema.findOneOption({
+    Request: TaskRequest,
+    Result: RunRowSchema,
+    execute: ({ taskId }) => sql`
+      SELECT
+        run_id AS "runId", task_id AS "taskId", agent_id AS "agentId", runtime_id AS "runtimeId",
+        runtime_task_id AS "runtimeTaskId", capability_handshake_id AS "capabilityHandshakeId",
+        status, attempt,
+        capability_grant_ids_json AS "capabilityGrantIds", lease_id AS "leaseId",
+        started_at_unix_ms AS "startedAtUnixMs", finished_at_unix_ms AS "finishedAtUnixMs",
+        failure_code AS "failureCode", result_summary AS "resultSummary"
+      FROM composition_task_runs
+      WHERE task_id = ${taskId}
+      ORDER BY attempt DESC, rowid DESC
+      LIMIT 1
+    `,
+  });
+
   const appendEventRow = SqlSchema.void({
     Request: Schema.Struct({
       ...EventRowSchema.fields,
@@ -492,6 +510,11 @@ const makeStore = Effect.gen(function* () {
       run(
         "CompositionTaskStore.getRun",
         getRunRow({ id: runId }).pipe(Effect.map(Option.map(toRun))),
+      ),
+    getLatestRun: (taskId) =>
+      run(
+        "CompositionTaskStore.getLatestRun",
+        getLatestRunRow({ taskId }).pipe(Effect.map(Option.map(toRun))),
       ),
     appendEvent: (event) =>
       Effect.gen(function* () {

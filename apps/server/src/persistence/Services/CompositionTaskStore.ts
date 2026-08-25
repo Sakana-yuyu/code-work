@@ -30,6 +30,9 @@ export interface CompositionTaskStoreShape {
   readonly getRun: (
     runId: string,
   ) => Effect.Effect<Option.Option<CompositionTaskRun>, CompositionTaskStoreError>;
+  readonly getLatestRun: (
+    taskId: string,
+  ) => Effect.Effect<Option.Option<CompositionTaskRun>, CompositionTaskStoreError>;
   readonly appendEvent: (
     event: CompositionTaskEvent,
   ) => Effect.Effect<CompositionTaskEvent, CompositionTaskStoreError>;

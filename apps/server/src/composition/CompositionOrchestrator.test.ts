@@ -387,4 +387,84 @@ layer("CompositionOrchestrator", (it) => {
       ]);
     }),
   );
+
+  it.effect("依赖完成后恢复有持久化输入的 blocked task", () =>
+    Effect.gen(function* () {
+      const store = yield* CompositionTaskStore;
+      const started: Array<{ readonly taskId: string; readonly prompt?: string }> = [];
+      const driverRegistry = makeCompositionAgentDriverRegistry();
+      yield* driverRegistry.register({
+        agentId: "agent-resume",
+        runtimeId: "runtime-resume",
+        startTask: (input) =>
+          Effect.sync(() => {
+            started.push({
+              taskId: input.task.taskId,
+              ...(input.prompt === undefined ? {} : { prompt: input.prompt }),
+            });
+            return { runtimeTaskId: "runtime-task-resumed" };
+          }),
+        cancelTask: () => Effect.succeed({ status: "cancelled" as const }),
+      });
+      yield* store.upsertTask({
+        taskId: "dependency-resume",
+        projectId: "project-resume",
+        assigneeKind: "agent",
+        assigneeId: "agent-resume",
+        mode: "serial",
+        status: "completed",
+        promptDigest: "sha256:dependency-resume",
+        dependsOnTaskIds: [],
+        createdAtUnixMs: 1,
+        updatedAtUnixMs: 2,
+        finishedAtUnixMs: 2,
+      });
+      yield* store.upsertTask({
+        taskId: "task-resume",
+        projectId: "project-resume",
+        assigneeKind: "agent",
+        assigneeId: "agent-resume",
+        mode: "serial",
+        status: "blocked",
+        promptDigest: "sha256:task-resume",
+        dependsOnTaskIds: ["dependency-resume"],
+        createdAtUnixMs: 1,
+        updatedAtUnixMs: 1,
+      });
+      yield* store.upsertRun({
+        taskId: "task-resume",
+        runId: "run-resume",
+        agentId: "agent-resume",
+        runtimeId: "runtime-resume",
+        status: "blocked",
+        attempt: 1,
+        capabilityGrantIds: [],
+      });
+
+      const orchestrator = makeCompositionOrchestrator(store, driverRegistry, undefined, {
+        save: () => Effect.void,
+        get: (taskId) =>
+          Effect.succeed(
+            taskId === "task-resume"
+              ? Option.some({
+                  taskId,
+                  prompt: "继续执行恢复任务",
+                  workspaceRoot: "C:/workspace/resume",
+                })
+              : Option.none(),
+          ),
+        remove: () => Effect.void,
+      });
+
+      const resumed = yield* orchestrator.resumeReadyTasks();
+
+      assert.deepEqual(started, [{ taskId: "task-resume", prompt: "继续执行恢复任务" }]);
+      assert.deepEqual(
+        resumed.map((item) => item.task.taskId),
+        ["task-resume"],
+      );
+      assert.equal(resumed[0]?.task.status, "running");
+      assert.equal((yield* store.getTask("task-resume")).pipe(Option.getOrThrow).status, "running");
+    }),
+  );
 });
