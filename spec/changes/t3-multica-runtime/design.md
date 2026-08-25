@@ -96,6 +96,32 @@ interface CompositionRuntimeAdapter {
 
 Multica 适配器使用 daemon 的 HTTP 注册/心跳/任务控制路径和 WebSocket 控制路径。WebSocket 断开时，Adapter 必须退回 HTTP 探测和心跳；重连后只能补发幂等控制，不得重复创建 T3 Run。
 
+任务创建使用 Multica 官方的 `POST /api/issues/quick-create`，而不是把 daemon 的 claim 接口当作 dispatch：
+
+```text
+T3 Agent/Squad 映射
+    -> X-Workspace-ID + agent_id/squad_id + prompt
+    -> Multica quick-create
+    -> queued task_id
+    -> daemon claim
+    -> start/progress/complete/fail
+```
+
+Adapter 配置必须显式提供以下映射：
+
+```ts
+type MulticaTaskAssigneeRoute = {
+  readonly t3AgentId: string;
+  readonly workspaceId: string;
+  readonly multicaAgentId?: string;
+  readonly multicaSquadId?: string;
+};
+```
+
+每一条 route 只能指定一个远端归属。缺少映射时 dispatch 失败，不根据名称、前缀或本地 ID 猜测 Multica UUID。T3 的 Squad 可以通过一个以 Squad ID 为稳定 Driver key 的 route 映射到 `multicaSquadId`；后续若要支持动态 Squad 列表，应把列表同步和 route 持久化作为独立节点。
+
+quick-create 的返回值只保证返回异步队列 `task_id`。当前官方接口没有与 T3 `runId` 等价的幂等键，因此 Adapter 只在进程内按 `idempotencyKey` 复用已接受结果；网络请求成功但响应丢失后重启仍可能产生重复创建，不能宣称跨进程 exactly-once。生产级自动重试需要后续的持久化 outbox、服务端幂等能力或冲突校验。
+
 Multica runtime 映射为：
 
 - `runtimeId`: `multica:<daemonId>:<runtimeId>`。
@@ -124,6 +150,8 @@ Task 事件映射：
 4. Adapter 心跳和事件流持续回传；Projection Service 做状态机校验、事件去重和终态收口。
 5. 取消先调用 Adapter；只有 Adapter 明确接受或已终态时，T3 才写入对应状态。网络错误保留 `cancel_requested` 语义，交由后续心跳/事件收口。
 6. 进程重启后，Adapter 通过持久化的 `runtimeTaskId` 和 Run 记录恢复订阅；不能依赖进程内 Map 作为唯一事实源。
+
+对于 Multica quick-create，步骤 2 的 `runtimeTaskId` 是远端返回的队列 `task_id`。由于当前 quick-create 接口缺少服务端幂等键，T3 必须把 HTTP 成功后的关联持久化视为恢复边界；transport timeout 不能自动重试创建请求，只能进入未知结果并等待人工/服务端查询确认。
 
 ## 能力与安全边界
 
