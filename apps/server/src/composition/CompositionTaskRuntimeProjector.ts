@@ -15,6 +15,8 @@ import type { CompositionAgentDriverRegistry } from "./CompositionAgentDriverReg
 import type { CompositionAgentDriverFailure } from "./CompositionOrchestrator.ts";
 import type * as CapabilityGrantRegistry from "./CapabilityGrantRegistry.ts";
 
+type ResumeReadyTasks = () => Effect.Effect<void>;
+
 const terminalStatuses: ReadonlySet<CompositionTaskStatus> = new Set([
   "completed",
   "failed",
@@ -179,6 +181,7 @@ export const projectCompositionRuntimeEvent = (
   driverRegistry: CompositionAgentDriverRegistry,
   event: ProviderRuntimeEvent,
   grantRegistry?: Pick<CapabilityGrantRegistry.CapabilityGrantRegistryShape, "revoke">,
+  resumeReadyTasks?: ResumeReadyTasks,
 ): Effect.Effect<
   void,
   | PersistenceSqlError
@@ -250,4 +253,7 @@ export const projectCompositionRuntimeEvent = (
       summary: projection.summary,
       ...(projection.blockerCode === undefined ? {} : { blockerCode: projection.blockerCode }),
     });
+    if (becameTerminal && resumeReadyTasks !== undefined) {
+      yield* resumeReadyTasks();
+    }
   });

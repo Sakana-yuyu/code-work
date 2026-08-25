@@ -9,6 +9,7 @@ import type { PersistenceSqlError } from "../persistence/Errors.ts";
 import { CompositionTaskStore } from "../persistence/Services/CompositionTaskStore.ts";
 import { ProviderService } from "../provider/Services/ProviderService.ts";
 import { CompositionAgentDriverRegistryService } from "./CompositionAgentDriverRegistry.ts";
+import { CompositionOrchestratorService } from "./CompositionOrchestratorService.ts";
 import { projectCompositionRuntimeEvent } from "./CompositionTaskRuntimeProjector.ts";
 import { CompositionRuntimeAdapterRegistryService } from "./CompositionRuntimeAdapterRegistry.ts";
 import type { CompositionAgentDriverFailure } from "./CompositionOrchestrator.ts";
@@ -34,10 +35,16 @@ const live = Effect.gen(function* () {
   const store = yield* CompositionTaskStore;
   const provider = yield* ProviderService;
   const driverRegistry = yield* CompositionAgentDriverRegistryService;
+  const orchestrator = yield* CompositionOrchestratorService;
   const grantRegistry = yield* CapabilityGrantRegistry.CapabilityGrantRegistry;
   const runtimeAdapters = yield* CompositionRuntimeAdapterRegistryService;
   const projectRuntimeEvent = (event: Parameters<typeof projectCompositionRuntimeEvent>[2]) =>
-    projectCompositionRuntimeEvent(store, driverRegistry, event, grantRegistry);
+    projectCompositionRuntimeEvent(store, driverRegistry, event, grantRegistry, () =>
+      orchestrator.resumeReadyTasks().pipe(
+        Effect.asVoid,
+        Effect.catchCause((cause) => Effect.logError("Composition Task 依赖恢复失败", { cause })),
+      ),
+    );
 
   const projectRuntimeEventWithLogging = (event: ProviderRuntimeEvent) =>
     projectRuntimeEvent(event).pipe(

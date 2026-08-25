@@ -395,10 +395,7 @@ const CompositionAgentDriverProjectionLayerLive = Layer.mergeAll(
   Layer.provideMerge(ProviderLayerForCompositionAgentDriversLive),
 );
 
-const CompositionRuntimeLayerLive = Layer.mergeAll(
-  CompositionOrchestratorService.layer,
-  CompositionTaskRuntimeProjectionService.layer,
-).pipe(
+const CompositionRuntimeDependenciesLive = Layer.empty.pipe(
   Layer.provideMerge(CompositionCapabilityGrantLayerLive),
   Layer.provideMerge(CompositionAgentDriverProjectionLayerLive),
   Layer.provideMerge(
@@ -408,6 +405,15 @@ const CompositionRuntimeLayerLive = Layer.mergeAll(
     ),
   ),
   Layer.provideMerge(CompositionTaskStoreLive.pipe(Layer.provideMerge(PersistenceLayerLive))),
+);
+
+const CompositionOrchestratorLayerLive = CompositionOrchestratorService.layer.pipe(
+  Layer.provideMerge(CompositionRuntimeDependenciesLive),
+);
+
+const CompositionRuntimeLayerLive = CompositionTaskRuntimeProjectionService.layer.pipe(
+  Layer.provideMerge(CompositionOrchestratorLayerLive),
+  Layer.provideMerge(CompositionRuntimeDependenciesLive),
 );
 
 const ProjectFaviconResolverLayerLive = ProjectFaviconResolver.layer.pipe(

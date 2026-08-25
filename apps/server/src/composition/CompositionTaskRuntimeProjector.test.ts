@@ -81,8 +81,10 @@ layer("CompositionTaskRuntimeProjector", (it) => {
       yield* store.upsertRun(run);
 
       const event = completionEvent("provider-event-1");
-      yield* projectCompositionRuntimeEvent(store, registry, event);
-      yield* projectCompositionRuntimeEvent(store, registry, event);
+      let resumeCalls = 0;
+      const resumeReadyTasks = () => Effect.sync(() => void (resumeCalls += 1));
+      yield* projectCompositionRuntimeEvent(store, registry, event, undefined, resumeReadyTasks);
+      yield* projectCompositionRuntimeEvent(store, registry, event, undefined, resumeReadyTasks);
 
       const loadedTask = yield* store.getTask(task.taskId);
       const loadedRun = yield* store.getRun(run.runId);
@@ -91,6 +93,7 @@ layer("CompositionTaskRuntimeProjector", (it) => {
       assert.equal(Option.getOrThrow(loadedRun).status, "completed");
       assert.equal(events.length, 1);
       assert.equal(events[0]?.sourceEventId, "provider-event-1");
+      assert.equal(resumeCalls, 1);
     }),
   );
 
