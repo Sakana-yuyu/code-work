@@ -50,6 +50,43 @@ Adapter 不直接写 Composition 数据库。所有状态变更通过 Driver、�
 
 ## Interfaces
 
+### Canonical Tool Plane
+
+Composition 的工具入口采用“描述符 + 执行器”注册模型。`ToolBroker` 只负责统一的幂等、取消、Capability Policy、Grant 校验、审批、审计、结果去敏和错误归一化；具体工具通过注册的 handler 访问现有 T3 服务。这样 Provider、BYOK、ACP、CLI、IDE 和 Multica 不需要分别实现文件、终端、Git 或 MCP 的安全边界。
+
+第一批 canonical tool 只开放已经存在且边界明确的能力：
+
+| 工具                   | 底层服务              | 操作    | 说明                               |
+| ---------------------- | --------------------- | ------- | ---------------------------------- |
+| `workspace.read_file`  | `WorkspaceFileSystem` | read    | 读取受信任 workspaceRoot 下的文件  |
+| `workspace.write_file` | `WorkspaceFileSystem` | mutate  | 写文件，默认需要审批               |
+| `terminal.open`        | `TerminalManager`     | execute | 打开或复用 task 绑定的受控终端会话 |
+| `terminal.write`       | `TerminalManager`     | execute | 向已打开的会话写入有限长度输入     |
+| `git.status`           | `GitVcsDriver`        | read    | 获取当前 workspace 的 Git 状态     |
+| `git.diff`             | `GitVcsDriver`        | read    | 获取受限大小的工作区差异预览       |
+
+工具 handler 必须声明 canonical 参数 Schema、Capability ID、操作类型和结果大小上限。外部 Runtime 提供的 `cwd` 只能与持久化的 task workspaceRoot 相等；终端 `threadId/terminalId` 必须绑定到 task，Git 只允许在该 workspaceRoot 上执行。未注册工具、参数不合法、作用域不匹配或缺少 grant 时返回 canonical denied/failed result，不把底层异常直接泄漏给外部 Runtime。
+
+```text
+Provider / BYOK / ACP / CLI / IDE / Multica
+                    |
+                    v
+       Runtime Tool-call WS RPC
+                    |
+                    v
+             CompositionRuntimeToolBridge
+                    |
+                    v
+                 ToolBroker
+          (idempotency + policy + audit)
+                    |
+       +------------+-------------+
+       |            |             |
+ WorkspaceFileSystem  TerminalManager  GitVcsDriver
+```
+
+注册层先在服务端闭环；前端只消费 capability descriptor，不复制工具执行逻辑。后续 MCP、Browser、Cursor/VSCode IDE API 和 Provider API 继续按同一合同接入，不能绕过 `ToolBroker` 直接执行。
+
 ### CompositionRuntimeAdapter
 
 每个外部 runtime 实现以下能力：

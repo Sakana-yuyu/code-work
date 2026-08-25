@@ -6,8 +6,10 @@ import * as Layer from "effect/Layer";
 import * as Path from "effect/Path";
 
 import * as ServerConfig from "../config.ts";
+import * as GitVcsDriver from "../vcs/GitVcsDriver.ts";
 import * as VcsDriverRegistry from "../vcs/VcsDriverRegistry.ts";
 import * as VcsProcess from "../vcs/VcsProcess.ts";
+import * as TerminalManager from "../terminal/Manager.ts";
 import * as WorkspaceEntries from "../workspace/WorkspaceEntries.ts";
 import * as WorkspaceFileSystem from "../workspace/WorkspaceFileSystem.ts";
 import * as WorkspacePaths from "../workspace/WorkspacePaths.ts";
@@ -38,12 +40,51 @@ const CapabilityPolicyLayer = CapabilityPolicy.layer.pipe(
   Layer.provide(CapabilityRegistryLayer),
 );
 
+const ToolTestServicesLayer = Layer.mergeAll(
+  Layer.mock(TerminalManager.TerminalManager)({
+    open: (input) =>
+      Effect.succeed({
+        threadId: input.threadId,
+        terminalId: input.terminalId,
+        cwd: input.cwd,
+        worktreePath: null,
+        status: "running" as const,
+        pid: 123,
+        history: "ready",
+        exitCode: null,
+        exitSignal: null,
+        label: "shell",
+        updatedAt: "2026-08-25T00:00:00.000Z",
+        sequence: 1,
+      }),
+    write: () => Effect.void,
+  }),
+  Layer.mock(GitVcsDriver.GitVcsDriver)({
+    statusDetailsLocal: (cwd) =>
+      Effect.succeed({
+        isRepo: true,
+        hasOriginRemote: false,
+        isDefaultBranch: true,
+        branch: "main",
+        upstreamRef: null,
+        hasWorkingTreeChanges: false,
+        workingTree: { files: [], insertions: 0, deletions: 0 },
+        hasUpstream: false,
+        aheadCount: 0,
+        behindCount: 0,
+        aheadOfDefaultCount: 0,
+        observedCwd: cwd,
+      }),
+  }),
+);
+
 const TestLayer = Layer.mergeAll(
   ToolBroker.layer.pipe(
     Layer.provide(CapabilityPolicyLayer.pipe(Layer.provideMerge(CapabilityGrantLayer))),
     Layer.provideMerge(CapabilityGrantLayer),
     Layer.provide(CapabilityRegistryLayer),
     Layer.provide(WorkspaceFileLayer),
+    Layer.provide(ToolTestServicesLayer),
   ),
   CapabilityPolicyLayer,
   CapabilityGrantLayer,
@@ -51,6 +92,7 @@ const TestLayer = Layer.mergeAll(
   WorkspaceFileLayer,
   WorkspaceEntries.layer.pipe(Layer.provide(WorkspacePaths.layer)),
   WorkspacePaths.layer,
+  ToolTestServicesLayer,
   VcsDriverRegistry.layer.pipe(Layer.provide(VcsProcess.layer)),
   ServerConfig.ServerConfig.layerTest(process.cwd(), {
     prefix: "t3-composition-tool-broker-test-",
@@ -62,6 +104,63 @@ const makeTempDir = Effect.gen(function* () {
   return yield* fileSystem.makeTempDirectoryScoped({
     prefix: "t3-composition-tool-broker-",
   });
+});
+
+it.layer(TestLayer, { excludeTestServices: true })("shared canonical tools", (it) => {
+  it.effect("routes terminal.open through the task-scoped terminal session", () =>
+    Effect.gen(function* () {
+      const broker = yield* ToolBroker.ToolBroker;
+      const policy = yield* CapabilityPolicy.CapabilityPolicy;
+      const input = {
+        ...baseInput("C:/trusted/workspace"),
+        canonicalToolName: "terminal.open",
+        arguments: {
+          terminalId: "term-agent",
+          cwd: "C:/trusted/workspace",
+          cols: 80,
+          rows: 24,
+        },
+        idempotencyKey: "terminal-open-1",
+        capabilityGrantIds: ["t3.terminal.open"],
+      };
+
+      const approval = yield* broker.invoke(input);
+      expect(approval).toMatchObject({ status: "denied", errorCode: "tool_approval_required" });
+      yield* policy.approve({ approvalRequestId: approval.approvalRequestId! });
+      const result = yield* broker.invoke({
+        ...input,
+        ...(approval.approvalRequestId === undefined
+          ? {}
+          : { approvalRequestId: approval.approvalRequestId }),
+      });
+
+      expect(result.status).toBe("succeeded");
+      expect(result.result).toMatchObject({
+        threadId: "task-1",
+        terminalId: "term-agent",
+        cwd: "C:/trusted/workspace",
+      });
+    }),
+  );
+
+  it.effect("routes git.status through the trusted workspace root", () =>
+    Effect.gen(function* () {
+      const broker = yield* ToolBroker.ToolBroker;
+      const result = yield* broker.invoke({
+        ...baseInput("C:/trusted/workspace"),
+        canonicalToolName: "git.status",
+        arguments: { cwd: "C:/trusted/workspace" },
+        idempotencyKey: "git-status-1",
+        capabilityGrantIds: ["t3.git.status"],
+      });
+
+      expect(result.status).toBe("succeeded");
+      expect(result.result).toMatchObject({
+        isRepo: true,
+        observedCwd: "C:/trusted/workspace",
+      });
+    }),
+  );
 });
 
 const writeTextFile = Effect.fn("writeTextFile")(function* (
@@ -101,6 +200,10 @@ it.layer(TestLayer, { excludeTestServices: true })("ToolBrokerLive", (it) => {
         expect(capabilities.map((capability) => capability.capabilityId)).toEqual([
           "t3.workspace.read_file",
           "t3.workspace.write_file",
+          "t3.terminal.open",
+          "t3.terminal.write",
+          "t3.git.status",
+          "t3.git.diff",
           "t3.mcp.preview",
           "t3.runtime.provider",
         ]);

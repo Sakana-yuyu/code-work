@@ -7,6 +7,8 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Schema from "effect/Schema";
 
+import { listCompositionToolDescriptors } from "./CompositionToolRegistry.ts";
+
 export const CapabilityRegistryScope = Schema.Struct({
   scope: Schema.Literals(["workspace", "agent", "task"]),
   scopeId: Schema.String,
@@ -49,24 +51,7 @@ export class CapabilityRegistry extends Context.Service<
 >()("t3/composition/CapabilityRegistry") {}
 
 const capabilities: CompositionCapabilityDescriptorList = [
-  {
-    capabilityId: "t3.workspace.read_file",
-    kind: "tool",
-    version: "1",
-    status: "available",
-    grants: { read: true, execute: false, mutate: false },
-    approval: "never",
-    source: "t3",
-  },
-  {
-    capabilityId: "t3.workspace.write_file",
-    kind: "tool",
-    version: "1",
-    status: "available",
-    grants: { read: false, execute: false, mutate: true },
-    approval: "every_use",
-    source: "t3",
-  },
+  ...listCompositionToolDescriptors(),
   {
     capabilityId: "t3.mcp.preview",
     kind: "mcp",
