@@ -138,3 +138,83 @@ export type CompositionToolResult = typeof CompositionToolResult.Type;
 
 export const CompositionCapabilityDescriptorList = Schema.Array(CompositionCapabilityDescriptor);
 export type CompositionCapabilityDescriptorList = typeof CompositionCapabilityDescriptorList.Type;
+
+const CompositionTaskAssigneeKind = Schema.Literals(["agent", "squad"]);
+export type CompositionTaskAssigneeKind = typeof CompositionTaskAssigneeKind.Type;
+
+const CompositionTaskDispatchMode = Schema.Literals(["serial", "parallel", "review"]);
+export type CompositionTaskDispatchMode = typeof CompositionTaskDispatchMode.Type;
+
+/** 可恢复的 Composition Task 投影，不保存完整 prompt。 */
+export const CompositionTask = Schema.Struct({
+  taskId: TrimmedNonEmptyString,
+  projectId: TrimmedNonEmptyString,
+  threadId: Schema.optional(TrimmedNonEmptyString),
+  parentTaskId: Schema.optional(TrimmedNonEmptyString),
+  assigneeKind: CompositionTaskAssigneeKind,
+  assigneeId: TrimmedNonEmptyString,
+  mode: CompositionTaskDispatchMode,
+  status: CompositionTaskStatus,
+  promptDigest: TrimmedNonEmptyString,
+  dependsOnTaskIds: Schema.Array(TrimmedNonEmptyString),
+  createdAtUnixMs: NonNegativeInt,
+  updatedAtUnixMs: NonNegativeInt,
+  finishedAtUnixMs: Schema.optional(NonNegativeInt),
+});
+export type CompositionTask = typeof CompositionTask.Type;
+
+/** 一次实际执行；重试必须创建新的 runId 和 attempt。 */
+export const CompositionTaskRun = Schema.Struct({
+  runId: TrimmedNonEmptyString,
+  taskId: TrimmedNonEmptyString,
+  agentId: TrimmedNonEmptyString,
+  runtimeId: TrimmedNonEmptyString,
+  runtimeTaskId: Schema.optional(TrimmedNonEmptyString),
+  status: CompositionTaskStatus,
+  attempt: NonNegativeInt,
+  leaseId: Schema.optional(TrimmedNonEmptyString),
+  startedAtUnixMs: Schema.optional(NonNegativeInt),
+  finishedAtUnixMs: Schema.optional(NonNegativeInt),
+  failureCode: Schema.optional(TrimmedNonEmptyString),
+  resultSummary: Schema.optional(TrimmedNonEmptyString),
+});
+export type CompositionTaskRun = typeof CompositionTaskRun.Type;
+
+const CompositionTaskDependencyCondition = Schema.Literals([
+  "success",
+  "terminal",
+  "review_approved",
+]);
+export type CompositionTaskDependencyCondition = typeof CompositionTaskDependencyCondition.Type;
+
+export const CompositionTaskDependency = Schema.Struct({
+  taskId: TrimmedNonEmptyString,
+  dependsOnTaskId: TrimmedNonEmptyString,
+  condition: CompositionTaskDependencyCondition,
+  createdAtUnixMs: NonNegativeInt,
+});
+export type CompositionTaskDependency = typeof CompositionTaskDependency.Type;
+
+const CompositionRuntimeLeaseState = Schema.Literals(["active", "expired", "released"]);
+export type CompositionRuntimeLeaseState = typeof CompositionRuntimeLeaseState.Type;
+
+export const CompositionRuntimeLease = Schema.Struct({
+  leaseId: TrimmedNonEmptyString,
+  runtimeId: TrimmedNonEmptyString,
+  taskId: TrimmedNonEmptyString,
+  workspaceRootDigest: TrimmedNonEmptyString,
+  heartbeatAtUnixMs: NonNegativeInt,
+  expiresAtUnixMs: NonNegativeInt,
+  state: CompositionRuntimeLeaseState,
+});
+export type CompositionRuntimeLease = typeof CompositionRuntimeLease.Type;
+
+export const CompositionSquad = Schema.Struct({
+  squadId: TrimmedNonEmptyString,
+  name: TrimmedNonEmptyString,
+  leaderAgentId: TrimmedNonEmptyString,
+  memberAgentIds: Schema.Array(TrimmedNonEmptyString),
+  instructions: Schema.optional(TrimmedNonEmptyString),
+  archivedAtUnixMs: Schema.optional(NonNegativeInt),
+});
+export type CompositionSquad = typeof CompositionSquad.Type;
