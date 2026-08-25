@@ -51,6 +51,7 @@ import * as PreviewAutomationBroker from "./mcp/PreviewAutomationBroker.ts";
 import * as CompositionCapabilityRegistry from "./composition/CapabilityRegistry.ts";
 import * as CompositionCapabilityPolicy from "./composition/CapabilityPolicy.ts";
 import * as CompositionToolBroker from "./composition/ToolBroker.ts";
+import * as CompositionProviderAgentDriverProjection from "./composition/CompositionProviderAgentDriverRegistry.ts";
 import * as PreviewManager from "./preview/Manager.ts";
 import * as PortScanner from "./preview/PortScanner.ts";
 import * as ProcessRunner from "./processRunner.ts";
@@ -359,6 +360,15 @@ const CompositionToolBrokerLayerLive = CompositionToolBroker.layer.pipe(
   Layer.provideMerge(WorkspaceFileSystemLayerLive),
 );
 
+const ProviderLayerForCompositionAgentDriversLive = ProviderLayerLive.pipe(
+  Layer.provideMerge(ProviderInstanceRegistryHydrationLive),
+);
+
+const CompositionProviderAgentDriverProjectionLayerLive =
+  CompositionProviderAgentDriverProjection.layer.pipe(
+    Layer.provideMerge(ProviderLayerForCompositionAgentDriversLive),
+  );
+
 const ProjectFaviconResolverLayerLive = ProjectFaviconResolver.layer.pipe(
   Layer.provide(WorkspacePaths.layer),
   Layer.provide(T3ProjectFileLoader.layer),
@@ -400,6 +410,7 @@ const RuntimeCoreDependenciesLive = ReactorLayerLive.pipe(
   // `providerInstances` hydration merges `settings.providers.<kind>`
   // with explicit `providerInstances` entries on boot.
   Layer.provideMerge(ProviderInstanceRegistryHydrationLive),
+  Layer.provideMerge(CompositionProviderAgentDriverProjectionLayerLive),
   // Shared native/canonical NDJSON writers used by both the per-instance
   // drivers (native stream, written from inside each `<X>Adapter`) and
   // `ProviderService` (canonical stream, written after event normalization).
