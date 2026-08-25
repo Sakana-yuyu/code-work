@@ -99,6 +99,7 @@ const SquadRowSchema = Schema.Struct({
 
 const IdRequest = Schema.Struct({ id: Schema.String });
 const TaskRequest = Schema.Struct({ taskId: Schema.String });
+const TaskListRequest = Schema.Struct({ projectId: Schema.NullOr(Schema.String) });
 const EventListRequest = Schema.Struct({ taskId: Schema.String, runId: Schema.String });
 
 const toTask = (row: Schema.Schema.Type<typeof TaskRowSchema>): CompositionTask => ({
@@ -224,6 +225,34 @@ const makeStore = Effect.gen(function* () {
         updated_at_unix_ms AS "updatedAtUnixMs", finished_at_unix_ms AS "finishedAtUnixMs"
       FROM composition_tasks WHERE task_id = ${taskId} LIMIT 1
     `,
+  });
+
+  const listTaskRows = SqlSchema.findAll({
+    Request: TaskListRequest,
+    Result: TaskRowSchema,
+    execute: ({ projectId }) =>
+      projectId === null
+        ? sql`
+            SELECT
+              task_id AS "taskId", project_id AS "projectId", thread_id AS "threadId",
+              parent_task_id AS "parentTaskId", assignee_kind AS "assigneeKind",
+              assignee_id AS "assigneeId", mode, status, prompt_digest AS "promptDigest",
+              depends_on_task_ids_json AS "dependsOnTaskIds", created_at_unix_ms AS "createdAtUnixMs",
+              updated_at_unix_ms AS "updatedAtUnixMs", finished_at_unix_ms AS "finishedAtUnixMs"
+            FROM composition_tasks
+            ORDER BY updated_at_unix_ms DESC, task_id ASC
+          `
+        : sql`
+            SELECT
+              task_id AS "taskId", project_id AS "projectId", thread_id AS "threadId",
+              parent_task_id AS "parentTaskId", assignee_kind AS "assigneeKind",
+              assignee_id AS "assigneeId", mode, status, prompt_digest AS "promptDigest",
+              depends_on_task_ids_json AS "dependsOnTaskIds", created_at_unix_ms AS "createdAtUnixMs",
+              updated_at_unix_ms AS "updatedAtUnixMs", finished_at_unix_ms AS "finishedAtUnixMs"
+            FROM composition_tasks
+            WHERE project_id = ${projectId}
+            ORDER BY updated_at_unix_ms DESC, task_id ASC
+          `,
   });
 
   const upsertRunRow = SqlSchema.void({
@@ -402,6 +431,11 @@ const makeStore = Effect.gen(function* () {
       run(
         "CompositionTaskStore.getTask",
         getTaskRow({ taskId }).pipe(Effect.map(Option.map(toTask))),
+      ),
+    listTasks: (projectId) =>
+      run(
+        "CompositionTaskStore.listTasks",
+        listTaskRows({ projectId: projectId ?? null }).pipe(Effect.map((rows) => rows.map(toTask))),
       ),
     upsertRun: (runValue) =>
       run(

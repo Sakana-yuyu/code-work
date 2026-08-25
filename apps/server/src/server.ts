@@ -27,6 +27,7 @@ import { pullRequestHttpApiLayer } from "./pullRequest/http.ts";
 import * as PullRequestProviderRegistry from "./pullRequest/PullRequestProviderRegistry.ts";
 import * as PullRequestService from "./pullRequest/PullRequestService.ts";
 import { layerConfig as SqlitePersistenceLayerLive } from "./persistence/Layers/Sqlite.ts";
+import { CompositionTaskStoreLive } from "./persistence/Layers/CompositionTaskStore.ts";
 import * as ServerLifecycleEvents from "./serverLifecycleEvents.ts";
 import * as AnalyticsService from "./telemetry/AnalyticsService.ts";
 import { ProviderSessionDirectoryLive } from "./provider/Layers/ProviderSessionDirectory.ts";
@@ -52,6 +53,7 @@ import * as CompositionCapabilityRegistry from "./composition/CapabilityRegistry
 import * as CompositionCapabilityPolicy from "./composition/CapabilityPolicy.ts";
 import * as CompositionToolBroker from "./composition/ToolBroker.ts";
 import * as CompositionProviderAgentDriverProjection from "./composition/CompositionProviderAgentDriverRegistry.ts";
+import * as CompositionOrchestratorService from "./composition/CompositionOrchestratorService.ts";
 import * as PreviewManager from "./preview/Manager.ts";
 import * as PortScanner from "./preview/PortScanner.ts";
 import * as ProcessRunner from "./processRunner.ts";
@@ -369,6 +371,11 @@ const CompositionProviderAgentDriverProjectionLayerLive =
     Layer.provideMerge(ProviderLayerForCompositionAgentDriversLive),
   );
 
+const CompositionOrchestratorServiceLayerLive = CompositionOrchestratorService.layer.pipe(
+  Layer.provideMerge(CompositionProviderAgentDriverProjectionLayerLive),
+  Layer.provideMerge(CompositionTaskStoreLive.pipe(Layer.provideMerge(PersistenceLayerLive))),
+);
+
 const ProjectFaviconResolverLayerLive = ProjectFaviconResolver.layer.pipe(
   Layer.provide(WorkspacePaths.layer),
   Layer.provide(T3ProjectFileLoader.layer),
@@ -410,7 +417,8 @@ const RuntimeCoreDependenciesLive = ReactorLayerLive.pipe(
   // `providerInstances` hydration merges `settings.providers.<kind>`
   // with explicit `providerInstances` entries on boot.
   Layer.provideMerge(ProviderInstanceRegistryHydrationLive),
-  Layer.provideMerge(CompositionProviderAgentDriverProjectionLayerLive),
+  // Orchestrator 层已在内部合并 Provider Driver 投影与任务持久化依赖，runtime 只暴露一次。
+  Layer.provideMerge(CompositionOrchestratorServiceLayerLive),
   // Shared native/canonical NDJSON writers used by both the per-instance
   // drivers (native stream, written from inside each `<X>Adapter`) and
   // `ProviderService` (canonical stream, written after event normalization).

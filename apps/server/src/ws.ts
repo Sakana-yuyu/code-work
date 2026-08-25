@@ -54,6 +54,7 @@ import {
   RpcClientId,
   EnvironmentAuthorizationError,
   CompositionAgentLoopRunError,
+  CompositionTaskRpcError,
   ThreadId,
   type TerminalAttachStreamEvent,
   type TerminalError,
@@ -93,6 +94,7 @@ import * as ByokBalance from "./provider/byok/ByokBalanceService.ts";
 import * as ByokDelegation from "./provider/byok/ByokDelegationService.ts";
 import * as ByokAdaptersImport from "./provider/byok/ByokAdaptersImport.ts";
 import * as CompositionAgentService from "./composition/CompositionAgentService.ts";
+import * as CompositionOrchestratorService from "./composition/CompositionOrchestratorService.ts";
 import * as CompositionToolBroker from "./composition/ToolBroker.ts";
 import * as ProviderMaintenanceRunner from "./provider/providerMaintenanceRunner.ts";
 import * as ServerSelfUpdate from "./cloud/selfUpdate.ts";
@@ -142,6 +144,7 @@ import * as SessionStore from "./auth/SessionStore.ts";
 import { failEnvironmentAuthInvalid, failEnvironmentInternal } from "./auth/http.ts";
 import * as RelayClient from "@t3tools/shared/relayClient";
 const isOrchestrationDispatchCommandError = Schema.is(OrchestrationDispatchCommandError);
+const isCompositionTaskRpcError = Schema.is(CompositionTaskRpcError);
 
 const nowIso = Effect.map(DateTime.now, DateTime.formatIso);
 const EDITOR_DISCOVERY_TIMEOUT = Duration.seconds(5);
@@ -467,6 +470,28 @@ const makeWsRpcLayer = (
           ),
         );
       });
+      const compositionOrchestrator = yield* Effect.serviceOption(
+        CompositionOrchestratorService.CompositionOrchestratorService,
+      );
+      const compositionTaskUnavailable = () =>
+        new CompositionTaskRpcError({
+          code: "composition_unavailable",
+          detail: "当前运行时未提供 Composition Task 能力。",
+        });
+      const compositionTaskError = (error: unknown) => {
+        if (isCompositionTaskRpcError(error)) return error;
+        if (typeof error === "object" && error !== null) {
+          const tagged = error as { readonly _tag?: unknown; readonly message?: unknown };
+          return new CompositionTaskRpcError({
+            code: typeof tagged._tag === "string" ? tagged._tag : "composition_task_failed",
+            detail: typeof tagged.message === "string" ? tagged.message : String(error),
+          });
+        }
+        return new CompositionTaskRpcError({
+          code: "composition_task_failed",
+          detail: String(error),
+        });
+      };
       const serverSelfUpdate = yield* ServerSelfUpdate.ServerSelfUpdate;
       const config = yield* ServerConfig.ServerConfig;
       const lifecycleEvents = yield* ServerLifecycleEvents.ServerLifecycleEvents;
@@ -1728,6 +1753,71 @@ const makeWsRpcLayer = (
                     ),
                     Effect.map(({ text, rounds }) => ({ text, rounds })),
                   ),
+            { "rpc.aggregate": "composition" },
+          ),
+        [WS_METHODS.serverDispatchCompositionTask]: (input) =>
+          observeRpcEffect(
+            WS_METHODS.serverDispatchCompositionTask,
+            Option.isNone(compositionOrchestrator)
+              ? Effect.fail(compositionTaskUnavailable())
+              : compositionOrchestrator.value
+                  .dispatchTask({
+                    taskId: input.taskId,
+                    runId: input.runId,
+                    projectId: input.projectId,
+                    ...(input.threadId === undefined ? {} : { threadId: input.threadId }),
+                    ...(input.parentTaskId === undefined
+                      ? {}
+                      : { parentTaskId: input.parentTaskId }),
+                    assigneeKind: input.assigneeKind,
+                    assigneeId: input.assigneeId,
+                    mode: input.mode,
+                    promptDigest: input.promptDigest,
+                    dependsOnTaskIds: input.dependsOnTaskIds,
+                    ...(input.workspaceRootDigest === undefined
+                      ? {}
+                      : { workspaceRootDigest: input.workspaceRootDigest }),
+                    workspaceRoot: input.workspaceRoot,
+                    prompt: input.prompt,
+                    ...(input.model === undefined ? {} : { model: input.model }),
+                  })
+                  .pipe(Effect.mapError(compositionTaskError)),
+            { "rpc.aggregate": "composition" },
+          ),
+        [WS_METHODS.serverCancelCompositionTask]: (input) =>
+          observeRpcEffect(
+            WS_METHODS.serverCancelCompositionTask,
+            Option.isNone(compositionOrchestrator)
+              ? Effect.fail(compositionTaskUnavailable())
+              : compositionOrchestrator.value
+                  .cancelTask(input)
+                  .pipe(Effect.mapError(compositionTaskError)),
+            { "rpc.aggregate": "composition" },
+          ),
+        [WS_METHODS.serverListCompositionTaskEvents]: (input) =>
+          observeRpcEffect(
+            WS_METHODS.serverListCompositionTaskEvents,
+            Option.isNone(compositionOrchestrator)
+              ? Effect.fail(compositionTaskUnavailable())
+              : compositionOrchestrator.value.listEvents(input.taskId, input.runId).pipe(
+                  Effect.map((events) => ({
+                    taskId: input.taskId,
+                    runId: input.runId,
+                    events,
+                  })),
+                  Effect.mapError(compositionTaskError),
+                ),
+            { "rpc.aggregate": "composition" },
+          ),
+        [WS_METHODS.serverListCompositionTasks]: (input) =>
+          observeRpcEffect(
+            WS_METHODS.serverListCompositionTasks,
+            Option.isNone(compositionOrchestrator)
+              ? Effect.fail(compositionTaskUnavailable())
+              : compositionOrchestrator.value.listTasks(input.projectId).pipe(
+                  Effect.map((tasks) => ({ tasks })),
+                  Effect.mapError(compositionTaskError),
+                ),
             { "rpc.aggregate": "composition" },
           ),
         [WS_METHODS.serverDiscoverSourceControl]: (_input) =>

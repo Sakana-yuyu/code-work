@@ -7,6 +7,10 @@ import {
   CompositionAgentLoopRunResult,
   CompositionCapabilityDescriptor,
   CompositionCapabilityPolicyDecision,
+  CompositionTaskCancelRequest,
+  CompositionTaskDispatchRequest,
+  CompositionTaskEventsResult,
+  CompositionTaskListRequest,
   CompositionTaskEvent,
   CompositionToolInvocation,
   CompositionToolResult,
@@ -16,6 +20,10 @@ const decodeAgentLoopRequest = Schema.decodeUnknownSync(CompositionAgentLoopRequ
 const decodeCapability = Schema.decodeUnknownSync(CompositionCapabilityDescriptor);
 const decodePolicyDecision = Schema.decodeUnknownSync(CompositionCapabilityPolicyDecision);
 const decodeTaskEvent = Schema.decodeUnknownSync(CompositionTaskEvent);
+const decodeTaskDispatch = Schema.decodeUnknownSync(CompositionTaskDispatchRequest);
+const decodeTaskCancel = Schema.decodeUnknownSync(CompositionTaskCancelRequest);
+const decodeTaskEvents = Schema.decodeUnknownSync(CompositionTaskEventsResult);
+const decodeTaskList = Schema.decodeUnknownSync(CompositionTaskListRequest);
 const decodeToolInvocation = Schema.decodeUnknownSync(CompositionToolInvocation);
 const decodeToolResult = Schema.decodeUnknownSync(CompositionToolResult);
 const decodeAgentLoopRunRequest = Schema.decodeUnknownSync(CompositionAgentLoopRunRequest);
@@ -164,5 +172,32 @@ describe("composition contracts", () => {
 
     expect(decoded.mode).toBe("agent_loop");
     expect(decodeAgentLoopRunResult({ text: "完成", rounds: 1 }).rounds).toBe(1);
+  });
+
+  it("keeps the full dispatch prompt transient while exposing stable task identities", () => {
+    const dispatch = decodeTaskDispatch({
+      taskId: "task-1",
+      runId: "run-1",
+      projectId: "project-1",
+      assigneeKind: "agent",
+      assigneeId: "provider:codex",
+      mode: "serial",
+      promptDigest: "sha256:prompt",
+      prompt: "检查工作区",
+      workspaceRoot: "C:/workspace",
+      dependsOnTaskIds: [],
+    });
+    expect(dispatch.prompt).toBe("检查工作区");
+    expect(decodeTaskCancel({ taskId: "task-1", runId: "run-1", reason: "用户取消" }).reason).toBe(
+      "用户取消",
+    );
+    expect(
+      decodeTaskEvents({
+        taskId: "task-1",
+        runId: "run-1",
+        events: [],
+      }).events,
+    ).toEqual([]);
+    expect(decodeTaskList({ projectId: "project-1" }).projectId).toBe("project-1");
   });
 });

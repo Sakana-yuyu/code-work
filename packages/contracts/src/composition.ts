@@ -221,6 +221,81 @@ export const CompositionTaskRun = Schema.Struct({
 });
 export type CompositionTaskRun = typeof CompositionTaskRun.Type;
 
+/** Task RPC 失败的稳定传输形状；服务端内部错误不会直接泄漏到客户端。 */
+export class CompositionTaskRpcError extends Schema.TaggedErrorClass<CompositionTaskRpcError>()(
+  "CompositionTaskRpcError",
+  {
+    code: TrimmedNonEmptyString,
+    detail: TrimmedNonEmptyString,
+  },
+) {
+  override get message(): string {
+    return `Composition Task 请求失败：${this.code}: ${this.detail}`;
+  }
+}
+
+/** 派发请求中的完整 prompt 只在本次调用中使用，不写入 CompositionTask。 */
+export const CompositionTaskDispatchRequest = Schema.Struct({
+  taskId: TrimmedNonEmptyString,
+  runId: TrimmedNonEmptyString,
+  projectId: TrimmedNonEmptyString,
+  threadId: Schema.optional(TrimmedNonEmptyString),
+  parentTaskId: Schema.optional(TrimmedNonEmptyString),
+  assigneeKind: Schema.Literals(["agent", "squad"]),
+  assigneeId: TrimmedNonEmptyString,
+  mode: Schema.Literals(["serial", "parallel", "review"]),
+  promptDigest: TrimmedNonEmptyString,
+  prompt: Schema.String,
+  workspaceRoot: TrimmedNonEmptyString,
+  workspaceRootDigest: Schema.optional(TrimmedNonEmptyString),
+  model: Schema.optional(TrimmedNonEmptyString),
+  dependsOnTaskIds: Schema.Array(TrimmedNonEmptyString),
+});
+export type CompositionTaskDispatchRequest = typeof CompositionTaskDispatchRequest.Type;
+
+export const CompositionTaskDispatchResult = Schema.Struct({
+  task: CompositionTask,
+  run: CompositionTaskRun,
+});
+export type CompositionTaskDispatchResult = typeof CompositionTaskDispatchResult.Type;
+
+export const CompositionTaskCancelRequest = Schema.Struct({
+  taskId: TrimmedNonEmptyString,
+  runId: TrimmedNonEmptyString,
+  reason: TrimmedNonEmptyString,
+});
+export type CompositionTaskCancelRequest = typeof CompositionTaskCancelRequest.Type;
+
+export const CompositionTaskCancelResult = Schema.Struct({
+  task: CompositionTask,
+  run: CompositionTaskRun,
+  status: Schema.Literals(["cancelled", "cancel_requested", "already_terminal"]),
+});
+export type CompositionTaskCancelResult = typeof CompositionTaskCancelResult.Type;
+
+export const CompositionTaskEventsRequest = Schema.Struct({
+  taskId: TrimmedNonEmptyString,
+  runId: TrimmedNonEmptyString,
+});
+export type CompositionTaskEventsRequest = typeof CompositionTaskEventsRequest.Type;
+
+export const CompositionTaskEventsResult = Schema.Struct({
+  taskId: TrimmedNonEmptyString,
+  runId: TrimmedNonEmptyString,
+  events: Schema.Array(CompositionTaskEvent),
+});
+export type CompositionTaskEventsResult = typeof CompositionTaskEventsResult.Type;
+
+export const CompositionTaskListRequest = Schema.Struct({
+  projectId: Schema.optional(TrimmedNonEmptyString),
+});
+export type CompositionTaskListRequest = typeof CompositionTaskListRequest.Type;
+
+export const CompositionTaskListResult = Schema.Struct({
+  tasks: Schema.Array(CompositionTask),
+});
+export type CompositionTaskListResult = typeof CompositionTaskListResult.Type;
+
 const CompositionTaskDependencyCondition = Schema.Literals([
   "success",
   "terminal",

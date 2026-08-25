@@ -21,6 +21,9 @@ export interface CompositionTaskStoreShape {
   readonly getTask: (
     taskId: string,
   ) => Effect.Effect<Option.Option<CompositionTask>, CompositionTaskStoreError>;
+  readonly listTasks: (
+    projectId?: string,
+  ) => Effect.Effect<ReadonlyArray<CompositionTask>, CompositionTaskStoreError>;
   readonly upsertRun: (
     run: CompositionTaskRun,
   ) => Effect.Effect<CompositionTaskRun, CompositionTaskStoreError>;

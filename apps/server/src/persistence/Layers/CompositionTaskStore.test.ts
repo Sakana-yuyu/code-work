@@ -81,6 +81,7 @@ layer("CompositionTaskStore", (it) => {
       yield* store.upsertSquad(squad);
 
       const loadedTask = yield* store.getTask("task-1");
+      const listedTasks = yield* store.listTasks("project-1");
       const loadedRun = yield* store.getRun("run-1");
       const events = yield* store.listEvents("task-1", "run-1");
       const dependencies = yield* store.listDependencies("task-1");
@@ -89,6 +90,10 @@ layer("CompositionTaskStore", (it) => {
 
       assert.ok(Option.isSome(loadedTask));
       assert.equal(Option.getOrThrow(loadedTask).taskId, "task-1");
+      assert.deepEqual(
+        listedTasks.map((item) => item.taskId),
+        ["task-1"],
+      );
       assert.ok(Option.isSome(loadedRun));
       assert.equal(Option.getOrThrow(loadedRun).attempt, 1);
       assert.deepEqual(
