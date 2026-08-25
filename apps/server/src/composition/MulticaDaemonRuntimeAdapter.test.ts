@@ -45,6 +45,7 @@ const makeProtocol = (overrides: Partial<MulticaDaemonProtocol> = {}): MulticaDa
   failTask: () => Effect.void,
   acknowledgeCancellation: () => Effect.void,
   getTaskStatus: () => Effect.succeed({ status: "running" }),
+  quickCreateTask: () => Effect.succeed({ taskId: "created-task-1" }),
   ...overrides,
 });
 
@@ -56,6 +57,13 @@ const makeOptions = (
   daemonRuntimeId,
   baseUrl: "https://multica.test",
   protocol: makeProtocol(),
+  taskAssigneeRoutes: [
+    {
+      t3AgentId: "agent-1",
+      workspaceId: "workspace-1",
+      multicaAgentId: "agent-1",
+    },
+  ],
   agents: [
     {
       agentId: "agent-1",
@@ -103,11 +111,15 @@ describe("MulticaDaemonRuntimeAdapter", () => {
     });
   });
 
-  it("不把 Multica claim 接口伪装成 T3 dispatch，并显式暴露 claim/终态回报", async () => {
+  it("通过 quick-create 派发，并显式暴露 claim/终态回报", async () => {
     const calls: string[] = [];
     const adapter = makeMulticaDaemonRuntimeAdapter(
       makeOptions({
         protocol: makeProtocol({
+          quickCreateTask: () => {
+            calls.push("quick-create");
+            return Effect.succeed({ taskId: "created-task-1" });
+          },
           claimTask: () => {
             calls.push("claim");
             return Effect.succeed(task);
@@ -142,7 +154,18 @@ describe("MulticaDaemonRuntimeAdapter", () => {
           idempotencyKey: "run-1",
         }),
       ),
-    ).rejects.toMatchObject({ code: "dispatch_not_supported" });
+    ).resolves.toEqual({ runtimeTaskId: "created-task-1", status: "accepted" });
+    await expect(
+      Effect.runPromise(
+        adapter.dispatchTask({
+          taskId: "t3-task-1",
+          runId: "run-1",
+          agentId: "agent-1",
+          prompt: "执行任务",
+          idempotencyKey: "run-1",
+        }),
+      ),
+    ).resolves.toEqual({ runtimeTaskId: "created-task-1", status: "already_running" });
 
     await expect(Effect.runPromise(adapter.claimTask())).resolves.toEqual(task);
     await Effect.runPromise(adapter.startTask(task.id));
@@ -151,7 +174,23 @@ describe("MulticaDaemonRuntimeAdapter", () => {
     );
     await Effect.runPromise(adapter.completeTask(task.id, { output: "完成" }));
     await Effect.runPromise(adapter.acknowledgeCancellation(task.id, {}));
-    expect(calls).toEqual(["claim", "start", "progress", "complete", "cancel-ack"]);
+    expect(calls).toEqual(["quick-create", "claim", "start", "progress", "complete", "cancel-ack"]);
+  });
+
+  it("没有显式 assignee 映射时拒绝派发，不猜测远端 UUID", async () => {
+    const adapter = makeMulticaDaemonRuntimeAdapter(makeOptions({ taskAssigneeRoutes: [] }));
+
+    await expect(
+      Effect.runPromise(
+        adapter.dispatchTask({
+          taskId: "t3-task-2",
+          runId: "run-2",
+          agentId: "agent-1",
+          prompt: "执行任务",
+          idempotencyKey: "run-2",
+        }),
+      ),
+    ).rejects.toMatchObject({ code: "assignee_mapping_missing" });
   });
 
   it("只将 task 事实帧投影为 ProviderRuntimeEvent，并对同一原始帧生成稳定 eventId", async () => {

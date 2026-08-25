@@ -23,6 +23,7 @@ export type MulticaHttpRequest = {
   readonly path: string;
   readonly url?: string;
   readonly body?: unknown;
+  readonly headers?: Readonly<Record<string, string>>;
 };
 
 export type MulticaHttpResponse<T> = {
@@ -99,6 +100,22 @@ export type MulticaTask = {
 
 export type MulticaTaskStatusResponse = {
   readonly status: string;
+};
+
+export type MulticaQuickCreateTaskInput = {
+  readonly workspaceId: string;
+  readonly agentId?: string;
+  readonly squadId?: string;
+  readonly prompt: string;
+  readonly priority?: string;
+  readonly dueDate?: string;
+  readonly projectId?: string;
+  readonly parentIssueId?: string;
+  readonly attachmentIds?: ReadonlyArray<string>;
+};
+
+export type MulticaQuickCreateTaskResponse = {
+  readonly taskId: string;
 };
 
 export type MulticaTaskProgressInput = {
@@ -234,6 +251,24 @@ const bodyFromCancelAckInput = (input: MulticaTaskCancelAckInput): Record<string
   return body;
 };
 
+const bodyFromQuickCreateInput = (input: MulticaQuickCreateTaskInput): Record<string, unknown> => {
+  const agentId = input.agentId === undefined ? undefined : trimRequired(input.agentId, "agentId");
+  const squadId = input.squadId === undefined ? undefined : trimRequired(input.squadId, "squadId");
+  if ((agentId === undefined) === (squadId === undefined)) {
+    throw new Error("quick-create 必须且只能指定 agentId 或 squadId。");
+  }
+  const prompt = trimRequired(input.prompt, "prompt");
+  const body: Record<string, unknown> = { prompt };
+  withOptional(body, "agent_id", agentId);
+  withOptional(body, "squad_id", squadId);
+  withOptional(body, "priority", input.priority);
+  withOptional(body, "due_date", input.dueDate);
+  withOptional(body, "project_id", input.projectId);
+  withOptional(body, "parent_issue_id", input.parentIssueId);
+  withOptional(body, "attachment_ids", input.attachmentIds);
+  return body;
+};
+
 const normalizeHeartbeatResponse = (body: unknown): MulticaHeartbeatResponse => {
   if (typeof body !== "object" || body === null) {
     throw new Error("heartbeat 响应必须是对象。");
@@ -346,6 +381,17 @@ const normalizeTaskStatusResponse = (body: unknown): MulticaTaskStatusResponse =
   return { status: (body as { status: string }).status };
 };
 
+const normalizeQuickCreateTaskResponse = (body: unknown): MulticaQuickCreateTaskResponse => {
+  if (
+    typeof body !== "object" ||
+    body === null ||
+    typeof (body as { task_id?: unknown }).task_id !== "string"
+  ) {
+    throw new Error("quick-create 响应缺少 task_id。");
+  }
+  return { taskId: (body as { task_id: string }).task_id };
+};
+
 export type MulticaDaemonProtocol = {
   readonly register: (
     input: MulticaRegisterRequest,
@@ -376,6 +422,9 @@ export type MulticaDaemonProtocol = {
   readonly getTaskStatus: (
     taskId: string,
   ) => Effect.Effect<MulticaTaskStatusResponse, MulticaDaemonProtocolFailure>;
+  readonly quickCreateTask: (
+    input: MulticaQuickCreateTaskInput,
+  ) => Effect.Effect<MulticaQuickCreateTaskResponse, MulticaDaemonProtocolFailure>;
 };
 
 export type MulticaDaemonProtocolOptions = {
@@ -394,6 +443,7 @@ export const makeMulticaDaemonProtocol = (
     path: string,
     body?: unknown,
     normalize?: (value: unknown) => T,
+    headers?: Readonly<Record<string, string>>,
   ): Effect.Effect<T, MulticaDaemonProtocolFailure> =>
     options.transport
       .request<unknown>({
@@ -401,6 +451,7 @@ export const makeMulticaDaemonProtocol = (
         path,
         url: `${baseUrl}${path}`,
         ...(body === undefined ? {} : { body }),
+        ...(headers === undefined ? {} : { headers }),
       })
       .pipe(
         Effect.flatMap((response) => {
@@ -514,6 +565,30 @@ export const makeMulticaDaemonProtocol = (
         undefined,
         normalizeTaskStatusResponse,
       ),
+    quickCreateTask: (input) =>
+      Effect.try({
+        try: () => ({
+          body: bodyFromQuickCreateInput(input),
+          workspaceId: trimRequired(input.workspaceId, "workspaceId"),
+        }),
+        catch: (cause) =>
+          new MulticaDaemonProtocolFailure({
+            operation: "quickCreateTask",
+            code: "invalid_input",
+            detail: cause instanceof Error ? cause.message : String(cause),
+          }),
+      }).pipe(
+        Effect.flatMap(({ body, workspaceId }) =>
+          request(
+            "quickCreateTask",
+            "POST",
+            "/api/issues/quick-create",
+            body,
+            normalizeQuickCreateTaskResponse,
+            { "X-Workspace-ID": workspaceId },
+          ),
+        ),
+      ),
   };
 };
 
@@ -539,6 +614,7 @@ export const makeMulticaFetchHttpTransport = (
             headers: {
               accept: "application/json",
               ...(request.body === undefined ? {} : { "content-type": "application/json" }),
+              ...request.headers,
               ...options.headers,
             },
             ...(request.body === undefined ? {} : { body: encodeUnknownJson(request.body) }),

@@ -39,6 +39,14 @@ export type MulticaDaemonStreamFramesInput = {
   readonly daemonRuntimeId: string;
 };
 
+/** T3 assignee 到 Multica 工作区和远端 Agent/Squad UUID 的显式映射。 */
+export type MulticaTaskAssigneeRoute = {
+  readonly t3AgentId: string;
+  readonly workspaceId: string;
+  readonly multicaAgentId?: string;
+  readonly multicaSquadId?: string;
+};
+
 export type MulticaDaemonRuntimeAdapterOptions = {
   /** T3 侧稳定 Runtime ID，建议使用 multica:<daemonId>:<runtimeId>。 */
   readonly runtimeId: string;
@@ -48,6 +56,7 @@ export type MulticaDaemonRuntimeAdapterOptions = {
   readonly baseUrl: string;
   readonly protocol: MulticaDaemonProtocol;
   readonly agents: ReadonlyArray<CompositionRuntimeAgent>;
+  readonly taskAssigneeRoutes?: ReadonlyArray<MulticaTaskAssigneeRoute>;
   readonly version?: string;
   readonly capabilities?: ReadonlyArray<string>;
   readonly supportedModels?: ReadonlyArray<string>;
@@ -267,7 +276,35 @@ export const makeMulticaDaemonRuntimeAdapter = (
     }
     return { ...agent, capabilities: [...agent.capabilities] };
   });
+  const taskAssigneeRoutes = new Map<string, MulticaTaskAssigneeRoute>();
+  for (const route of options.taskAssigneeRoutes ?? []) {
+    const t3AgentId = nonEmpty(route.t3AgentId, "taskAssigneeRoute.t3AgentId");
+    const workspaceId = nonEmpty(route.workspaceId, "taskAssigneeRoute.workspaceId");
+    const multicaAgentId =
+      route.multicaAgentId === undefined
+        ? undefined
+        : nonEmpty(route.multicaAgentId, "taskAssigneeRoute.multicaAgentId");
+    const multicaSquadId =
+      route.multicaSquadId === undefined
+        ? undefined
+        : nonEmpty(route.multicaSquadId, "taskAssigneeRoute.multicaSquadId");
+    if ((multicaAgentId === undefined) === (multicaSquadId === undefined)) {
+      throw new Error(
+        `Multica assignee route '${t3AgentId}' 必须且只能指定 multicaAgentId 或 multicaSquadId。`,
+      );
+    }
+    if (taskAssigneeRoutes.has(t3AgentId)) {
+      throw new Error(`Multica assignee route '${t3AgentId}' 重复。`);
+    }
+    taskAssigneeRoutes.set(t3AgentId, {
+      t3AgentId,
+      workspaceId,
+      ...(multicaAgentId === undefined ? {} : { multicaAgentId }),
+      ...(multicaSquadId === undefined ? {} : { multicaSquadId }),
+    });
+  }
   const activeTaskIds = new Set<string>();
+  const dispatchedTasks = new Map<string, CompositionRuntimeTaskResult>();
 
   const heartbeat = () =>
     options.protocol.heartbeat(daemonRuntimeId).pipe(
@@ -357,13 +394,43 @@ export const makeMulticaDaemonRuntimeAdapter = (
     Effect.gen(function* () {
       nonEmpty(input.taskId, "taskId");
       nonEmpty(input.runId, "runId");
-      nonEmpty(input.agentId, "agentId");
-      nonEmpty(input.idempotencyKey, "idempotencyKey");
-      return yield* adapterFailure(
-        runtimeId,
-        "dispatch_not_supported",
-        "Multica daemon 的 claim 接口只能领取服务端已有任务，当前协议没有把任意 T3 Task 投递到 Multica 的接口。",
-      );
+      const agentId = nonEmpty(input.agentId, "agentId");
+      const idempotencyKey = nonEmpty(input.idempotencyKey, "idempotencyKey");
+      const prompt = input.prompt === undefined ? undefined : input.prompt.trim();
+      if (prompt === undefined || prompt.length === 0) {
+        return yield* adapterFailure(
+          runtimeId,
+          "prompt_required",
+          "Multica quick-create 需要 prompt。",
+        );
+      }
+      const existing = dispatchedTasks.get(idempotencyKey);
+      if (existing !== undefined) {
+        return { ...existing, status: "already_running" as const };
+      }
+      const route = taskAssigneeRoutes.get(agentId);
+      if (route === undefined) {
+        return yield* adapterFailure(
+          runtimeId,
+          "assignee_mapping_missing",
+          `T3 assignee '${agentId}' 没有配置 Multica Agent/Squad 映射。`,
+        );
+      }
+      const created = yield* options.protocol
+        .quickCreateTask({
+          workspaceId: route.workspaceId,
+          ...(route.multicaAgentId === undefined ? {} : { agentId: route.multicaAgentId }),
+          ...(route.multicaSquadId === undefined ? {} : { squadId: route.multicaSquadId }),
+          prompt,
+        })
+        .pipe(Effect.mapError((failure) => mapProtocolFailure(runtimeId, failure)));
+      const result = {
+        runtimeTaskId: created.taskId,
+        status: "accepted" as const,
+      } satisfies CompositionRuntimeTaskResult;
+      dispatchedTasks.set(idempotencyKey, result);
+      activeTaskIds.add(created.taskId);
+      return result;
     });
 
   const cancelTask: CompositionRuntimeAdapter["cancelTask"] = (input: CompositionRuntimeTaskRef) =>

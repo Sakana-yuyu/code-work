@@ -106,6 +106,67 @@ describe("MulticaDaemonProtocol", () => {
     ]);
   });
 
+  it("通过 X-Workspace-ID 调用官方 quick-create 并返回队列 task_id", async () => {
+    const protocol = makeMulticaDaemonProtocol({
+      baseUrl: "https://multica.test",
+      transport: makeTransport((request) => {
+        expect(request.path).toBe("/api/issues/quick-create");
+        expect(request.headers).toEqual({ "X-Workspace-ID": "workspace-1" });
+        expect(request.body).toEqual({
+          squad_id: "squad-1",
+          prompt: "拆分登录任务",
+          priority: "high",
+          due_date: "2026-08-25",
+          project_id: "project-1",
+          parent_issue_id: "issue-1",
+          attachment_ids: ["attachment-1"],
+        });
+        return response(202, { task_id: "multica-task-1" });
+      }),
+    });
+
+    await expect(
+      Effect.runPromise(
+        protocol.quickCreateTask({
+          workspaceId: "workspace-1",
+          squadId: "squad-1",
+          prompt: "拆分登录任务",
+          priority: "high",
+          dueDate: "2026-08-25",
+          projectId: "project-1",
+          parentIssueId: "issue-1",
+          attachmentIds: ["attachment-1"],
+        }),
+      ),
+    ).resolves.toEqual({ taskId: "multica-task-1" });
+  });
+
+  it("拒绝同时指定或同时缺少 Agent/Squad", async () => {
+    const protocol = makeMulticaDaemonProtocol({
+      baseUrl: "https://multica.test",
+      transport: makeTransport(() => response(202, { task_id: "unused" })),
+    });
+
+    await expect(
+      Effect.runPromise(
+        protocol.quickCreateTask({
+          workspaceId: "workspace-1",
+          prompt: "无归属任务",
+        }),
+      ),
+    ).rejects.toMatchObject({ code: "invalid_input" });
+    await expect(
+      Effect.runPromise(
+        protocol.quickCreateTask({
+          workspaceId: "workspace-1",
+          agentId: "agent-1",
+          squadId: "squad-1",
+          prompt: "重复归属任务",
+        }),
+      ),
+    ).rejects.toMatchObject({ code: "invalid_input" });
+  });
+
   it("把进度、完成、失败和取消确认映射到正确的 daemon 回报接口", async () => {
     const requests: MulticaHttpRequest[] = [];
     const protocol = makeMulticaDaemonProtocol({
