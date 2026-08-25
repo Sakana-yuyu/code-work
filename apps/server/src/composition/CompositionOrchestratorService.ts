@@ -12,6 +12,7 @@ import {
   makeCompositionOrchestrator,
   type CompositionOrchestrator,
 } from "./CompositionOrchestrator.ts";
+import { CompositionTaskInputStore } from "../persistence/Services/CompositionTaskInputStore.ts";
 
 export interface CompositionOrchestratorServiceShape {
   readonly dispatchTask: CompositionOrchestrator["dispatchTask"];
@@ -29,10 +30,12 @@ const live = Effect.gen(function* () {
   const store = yield* CompositionTaskStore;
   const driverRegistry = yield* CompositionAgentDriverRegistryService;
   const grantRegistry = yield* Effect.serviceOption(CapabilityGrantRegistry);
+  const inputStore = yield* CompositionTaskInputStore;
   const orchestrator = makeCompositionOrchestrator(
     store,
     driverRegistry,
     grantRegistry._tag === "Some" ? grantRegistry.value : undefined,
+    inputStore,
   );
 
   return {

@@ -1,4 +1,5 @@
 import { assert, it } from "@effect/vitest";
+import * as NodeServices from "@effect/platform-node/NodeServices";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
@@ -6,8 +7,22 @@ import * as Option from "effect/Option";
 import { CompositionTaskStore } from "../Services/CompositionTaskStore.ts";
 import { CompositionTaskStoreLive } from "./CompositionTaskStore.ts";
 import { SqlitePersistenceMemory } from "./Sqlite.ts";
+import { CompositionTaskInputStore } from "../Services/CompositionTaskInputStore.ts";
+import { CompositionTaskInputStoreLive } from "./CompositionTaskInputStore.ts";
+import * as ServerConfig from "../../config.ts";
+import * as ServerSecretStore from "../../auth/ServerSecretStore.ts";
 
 const layer = it.layer(CompositionTaskStoreLive.pipe(Layer.provideMerge(SqlitePersistenceMemory)));
+const secretStoreLayer = ServerSecretStore.layer.pipe(
+  Layer.provide(ServerConfig.layerTest(process.cwd(), { prefix: "t3-composition-input-test-" })),
+  Layer.provide(NodeServices.layer),
+);
+const inputStoreLayer = it.layer(
+  CompositionTaskInputStoreLive.pipe(
+    Layer.provideMerge(SqlitePersistenceMemory),
+    Layer.provideMerge(secretStoreLayer),
+  ),
+);
 
 layer("CompositionTaskStore", (it) => {
   it.effect("persists task, run, ordered events, dependency, lease, and squad records", () =>
@@ -149,6 +164,42 @@ layer("CompositionTaskStore", (it) => {
 
       const events = yield* store.listEvents(event.taskId, event.runId);
       assert.deepEqual(events, [event]);
+    }),
+  );
+});
+
+inputStoreLayer("CompositionTaskInputStore", (it) => {
+  it.effect("persists encrypted dispatch input and round-trips it without exposing plaintext", () =>
+    Effect.gen(function* () {
+      const store = yield* CompositionTaskInputStore;
+      const input = {
+        taskId: "task-input-1",
+        prompt: "读取私有配置并完成任务",
+        workspaceRoot: "C:/workspace/project",
+        workspaceRootDigest: "sha256:workspace",
+        model: "provider/model",
+      };
+
+      yield* store.save(input);
+      const loaded = yield* store.get(input.taskId);
+
+      assert.ok(Option.isSome(loaded));
+      assert.deepEqual(Option.getOrThrow(loaded), input);
+    }),
+  );
+
+  it.effect("removes dispatch input and returns none after cleanup", () =>
+    Effect.gen(function* () {
+      const store = yield* CompositionTaskInputStore;
+      yield* store.save({
+        taskId: "task-input-remove",
+        prompt: "需要清理的输入",
+        workspaceRoot: "C:/workspace/project",
+      });
+
+      yield* store.remove("task-input-remove");
+
+      assert.isTrue(Option.isNone(yield* store.get("task-input-remove")));
     }),
   );
 });

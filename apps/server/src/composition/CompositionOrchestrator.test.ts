@@ -336,4 +336,55 @@ layer("CompositionOrchestrator", (it) => {
       if (Option.isSome(savedTask)) assert.equal(savedTask.value.status, "running");
     }),
   );
+
+  it.effect("持久化可恢复的派发输入而不改变任务摘要投影", () =>
+    Effect.gen(function* () {
+      const store = yield* CompositionTaskStore;
+      const persisted: Array<{
+        readonly taskId: string;
+        readonly prompt: string;
+        readonly workspaceRoot: string;
+        readonly workspaceRootDigest?: string;
+        readonly model?: string;
+      }> = [];
+      const driverRegistry = makeCompositionAgentDriverRegistry();
+      yield* driverRegistry.register({
+        agentId: "agent-recovery",
+        runtimeId: "runtime-recovery",
+        startTask: () => Effect.succeed({ runtimeTaskId: "runtime-task-recovery" }),
+        cancelTask: () => Effect.succeed({ status: "cancelled" as const }),
+      });
+      const orchestrator = makeCompositionOrchestrator(store, driverRegistry, undefined, {
+        save: (input) => Effect.sync(() => void persisted.push(input)),
+        get: () => Effect.succeed(Option.none()),
+        remove: () => Effect.void,
+      });
+
+      const result = yield* orchestrator.dispatchTask({
+        taskId: "task-recovery",
+        runId: "run-recovery",
+        projectId: "project-1",
+        assigneeKind: "agent",
+        assigneeId: "agent-recovery",
+        mode: "serial",
+        promptDigest: "sha256:recovery",
+        dependsOnTaskIds: [],
+        prompt: "恢复这次任务并继续执行",
+        workspaceRoot: "C:/workspace/recovery",
+        workspaceRootDigest: "sha256:workspace-recovery",
+        model: "provider/model",
+      });
+
+      assert.equal(result.task.promptDigest, "sha256:recovery");
+      assert.deepEqual(persisted, [
+        {
+          taskId: "task-recovery",
+          prompt: "恢复这次任务并继续执行",
+          workspaceRoot: "C:/workspace/recovery",
+          workspaceRootDigest: "sha256:workspace-recovery",
+          model: "provider/model",
+        },
+      ]);
+    }),
+  );
 });

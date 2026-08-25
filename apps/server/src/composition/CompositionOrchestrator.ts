@@ -14,6 +14,10 @@ import {
   type CompositionTaskStoreError,
   type CompositionTaskStoreShape,
 } from "../persistence/Services/CompositionTaskStore.ts";
+import {
+  CompositionTaskInputStoreError,
+  type CompositionTaskInputStoreShape,
+} from "../persistence/Services/CompositionTaskInputStore.ts";
 import type { CompositionAgentDriverRegistry } from "./CompositionAgentDriverRegistry.ts";
 import type * as CapabilityGrantRegistry from "./CapabilityGrantRegistry.ts";
 import * as CapabilityRegistry from "./CapabilityRegistry.ts";
@@ -201,6 +205,7 @@ export interface CompositionOrchestrator {
     | CompositionTaskAlreadyExistsError
     | CompositionSquadNotFoundError
     | CompositionAgentDriverFailure
+    | CompositionTaskInputStoreError
     | CapabilityGrantRegistry.CapabilityGrantInvalidError
     | CapabilityGrantRegistry.CapabilityGrantPersistenceError
     | CapabilityRegistry.CapabilityScopeNotFoundError
@@ -224,6 +229,7 @@ const makeOrchestrator = (
   driverRegistry: CompositionAgentDriverRegistry,
   grantRegistry?: Pick<CapabilityGrantRegistry.CapabilityGrantRegistryShape, "issue"> &
     Partial<Pick<CapabilityGrantRegistry.CapabilityGrantRegistryShape, "revoke">>,
+  inputStore?: CompositionTaskInputStoreShape,
 ): CompositionOrchestrator => {
   const revokeRunCapabilities = (
     driver: CompositionAgentDriver | undefined,
@@ -333,6 +339,21 @@ const makeOrchestrator = (
       });
       const driver = yield* driverRegistry.get(agentId);
       const runtimeId = driver?.runtimeId ?? "unresolved";
+      if (
+        inputStore !== undefined &&
+        input.prompt !== undefined &&
+        input.workspaceRoot !== undefined
+      ) {
+        yield* inputStore.save({
+          taskId: input.taskId,
+          prompt: input.prompt,
+          workspaceRoot: input.workspaceRoot,
+          ...(input.workspaceRootDigest === undefined
+            ? {}
+            : { workspaceRootDigest: input.workspaceRootDigest }),
+          ...(input.model === undefined ? {} : { model: input.model }),
+        });
+      }
       const capabilityGrantIds =
         grantRegistry === undefined || input.capabilityIds === undefined
           ? []
@@ -573,4 +594,5 @@ export const makeCompositionOrchestrator = (
   driverRegistry: CompositionAgentDriverRegistry,
   grantRegistry?: Pick<CapabilityGrantRegistry.CapabilityGrantRegistryShape, "issue"> &
     Partial<Pick<CapabilityGrantRegistry.CapabilityGrantRegistryShape, "revoke">>,
-): CompositionOrchestrator => makeOrchestrator(store, driverRegistry, grantRegistry);
+  inputStore?: CompositionTaskInputStoreShape,
+): CompositionOrchestrator => makeOrchestrator(store, driverRegistry, grantRegistry, inputStore);

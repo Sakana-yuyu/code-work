@@ -28,6 +28,7 @@ import * as PullRequestProviderRegistry from "./pullRequest/PullRequestProviderR
 import * as PullRequestService from "./pullRequest/PullRequestService.ts";
 import { layerConfig as SqlitePersistenceLayerLive } from "./persistence/Layers/Sqlite.ts";
 import { CompositionTaskStoreLive } from "./persistence/Layers/CompositionTaskStore.ts";
+import { CompositionTaskInputStoreLive } from "./persistence/Layers/CompositionTaskInputStore.ts";
 import * as ServerLifecycleEvents from "./serverLifecycleEvents.ts";
 import * as AnalyticsService from "./telemetry/AnalyticsService.ts";
 import { ProviderSessionDirectoryLive } from "./provider/Layers/ProviderSessionDirectory.ts";
@@ -400,6 +401,12 @@ const CompositionRuntimeLayerLive = Layer.mergeAll(
 ).pipe(
   Layer.provideMerge(CompositionCapabilityGrantLayerLive),
   Layer.provideMerge(CompositionAgentDriverProjectionLayerLive),
+  Layer.provideMerge(
+    CompositionTaskInputStoreLive.pipe(
+      Layer.provideMerge(PersistenceLayerLive),
+      Layer.provide(ServerSecretStore.layer),
+    ),
+  ),
   Layer.provideMerge(CompositionTaskStoreLive.pipe(Layer.provideMerge(PersistenceLayerLive))),
 );
 
