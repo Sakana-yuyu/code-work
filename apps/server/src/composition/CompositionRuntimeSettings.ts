@@ -1,0 +1,284 @@
+import { createHash } from "node:crypto";
+
+import { CompositionMulticaRuntimeConfig } from "@t3tools/contracts";
+import type { ProviderInstanceConfig, ProviderInstanceEnvironment } from "@t3tools/contracts";
+import * as Context from "effect/Context";
+import * as Effect from "effect/Effect";
+import * as Layer from "effect/Layer";
+import * as Schema from "effect/Schema";
+import * as Scope from "effect/Scope";
+import * as Stream from "effect/Stream";
+
+import { ServerSettingsService } from "../serverSettings.ts";
+import {
+  makeMulticaDaemonRuntimeAdapter,
+  type MulticaDaemonRuntimeAdapter,
+} from "./MulticaDaemonRuntimeAdapter.ts";
+import {
+  makeMulticaDaemonProtocol,
+  makeMulticaFetchHttpTransport,
+} from "./MulticaDaemonProtocol.ts";
+import type { CompositionRuntimeAdapter } from "./CompositionRuntimeAdapter.ts";
+import type { CompositionRuntimeAgent } from "./CompositionRuntimeAdapter.ts";
+import {
+  CompositionRuntimeAdapterRegistryService,
+  type CompositionRuntimeAdapterRegistry,
+} from "./CompositionRuntimeAdapterRegistry.ts";
+
+export type CompositionRuntimeSettings = {
+  readonly settings: Pick<ServerSettingsService["Service"], "getSettings" | "subscribeChanges">;
+  readonly adapterRegistry: Pick<CompositionRuntimeAdapterRegistry, "register" | "unregister">;
+  readonly createAdapter?: (
+    input: CompositionRuntimeSettingsFactoryInput,
+  ) => Effect.Effect<CompositionRuntimeAdapter, CompositionRuntimeSettingsError>;
+  readonly logWarning?: (message: string, cause?: unknown) => Effect.Effect<void>;
+};
+
+export class CompositionRuntimeSettingsError extends Schema.TaggedErrorClass<CompositionRuntimeSettingsError>()(
+  "CompositionRuntimeSettingsError",
+  { detail: Schema.String },
+) {
+  override get message(): string {
+    return `Composition Runtime Settings 无效：${this.detail}`;
+  }
+}
+
+export type CompositionRuntimeSettingsFactoryInput = {
+  readonly instanceId: string;
+  readonly config: CompositionMulticaRuntimeConfig;
+  readonly environment: ProviderInstanceEnvironment;
+  readonly headers: Readonly<Record<string, string>>;
+  readonly agents: ReadonlyArray<CompositionRuntimeAgent>;
+};
+
+export interface CompositionRuntimeSettingsReconciler {
+  readonly refresh: Effect.Effect<void>;
+  readonly start: Effect.Effect<void, never, Scope.Scope>;
+  readonly ready: Effect.Effect<void>;
+}
+
+export class CompositionRuntimeSettingsReconcilerService extends Context.Service<
+  CompositionRuntimeSettingsReconcilerService,
+  CompositionRuntimeSettingsReconciler
+>()("t3/composition/CompositionRuntimeSettings/CompositionRuntimeSettingsReconcilerService") {}
+
+type ManagedAdapter = {
+  readonly instanceId: string;
+  readonly runtimeId: string;
+  readonly fingerprint: string;
+  readonly adapter: CompositionRuntimeAdapter;
+};
+
+const decodeMulticaConfig = Schema.decodeUnknownSync(CompositionMulticaRuntimeConfig);
+
+const settingsError = (cause: unknown): CompositionRuntimeSettingsError =>
+  new CompositionRuntimeSettingsError({
+    detail: cause instanceof Error ? cause.message : String(cause),
+  });
+
+const defaultLogWarning = (message: string, cause?: unknown): Effect.Effect<void> =>
+  Effect.logWarning(message, {
+    cause: cause instanceof Error ? cause.message : cause === undefined ? undefined : String(cause),
+  });
+
+const makeHeaders = (
+  config: CompositionMulticaRuntimeConfig,
+  environment: ProviderInstanceEnvironment,
+): Readonly<Record<string, string>> => {
+  const values = new Map(environment.map((variable) => [variable.name, variable.value]));
+  const headers: Record<string, string> = {};
+  for (const binding of config.headers) {
+    if (headers[binding.headerName] !== undefined) {
+      throw new Error(`Multica Header '${binding.headerName}' 重复。`);
+    }
+    const value = values.get(binding.environmentVariable);
+    if (value === undefined || value.length === 0) {
+      throw new Error(
+        `Multica Header '${binding.headerName}' 依赖环境变量 '${binding.environmentVariable}'，但该变量没有物化值。`,
+      );
+    }
+    headers[binding.headerName] = value;
+  }
+  return headers;
+};
+
+const makeAgents = (
+  config: CompositionMulticaRuntimeConfig,
+): ReadonlyArray<CompositionRuntimeAgent> => {
+  const agentIds = new Set<string>();
+  return config.assigneeRoutes.map((route) => {
+    if (agentIds.has(route.t3AgentId)) {
+      throw new Error(`Multica assignee route '${route.t3AgentId}' 重复。`);
+    }
+    agentIds.add(route.t3AgentId);
+    return {
+      agentId: route.t3AgentId,
+      runtimeId: config.runtimeId,
+      displayName: `Multica ${route.t3AgentId}`,
+      ...(config.version === undefined ? {} : { version: config.version }),
+      status: "online" as const,
+      capabilities: [...config.capabilities],
+    };
+  });
+};
+
+export const makeMulticaRuntimeAdapterFromSettings = (
+  input: CompositionRuntimeSettingsFactoryInput,
+): Effect.Effect<MulticaDaemonRuntimeAdapter, CompositionRuntimeSettingsError> =>
+  Effect.try({
+    try: () => {
+      const transport = makeMulticaFetchHttpTransport({
+        baseUrl: input.config.baseUrl,
+        headers: input.headers,
+      });
+      const protocol = makeMulticaDaemonProtocol({
+        baseUrl: input.config.baseUrl,
+        transport,
+      });
+      return makeMulticaDaemonRuntimeAdapter({
+        runtimeId: input.config.runtimeId,
+        daemonId: input.config.daemonId,
+        daemonRuntimeId: input.config.daemonRuntimeId,
+        baseUrl: input.config.baseUrl,
+        protocol,
+        agents: input.agents,
+        taskAssigneeRoutes: input.config.assigneeRoutes.map((route) => ({
+          t3AgentId: route.t3AgentId,
+          workspaceId: route.workspaceId,
+          ...(route.multicaAgentId === undefined ? {} : { multicaAgentId: route.multicaAgentId }),
+          ...(route.multicaSquadId === undefined ? {} : { multicaSquadId: route.multicaSquadId }),
+        })),
+        ...(input.config.version === undefined ? {} : { version: input.config.version }),
+        capabilities: input.config.capabilities,
+        supportsResume: input.config.supportsResume,
+        supportsMcp: input.config.supportsMcp,
+        supportsSquad: input.config.supportsSquad,
+        supportsLeader: input.config.supportsLeader,
+        supportsTaskGraph: input.config.supportsTaskGraph,
+      });
+    },
+    catch: settingsError,
+  });
+
+const defaultCreateAdapter = (
+  input: CompositionRuntimeSettingsFactoryInput,
+): Effect.Effect<CompositionRuntimeAdapter, CompositionRuntimeSettingsError> =>
+  makeMulticaRuntimeAdapterFromSettings(input);
+
+const fingerprintFor = (input: CompositionRuntimeSettingsFactoryInput): string =>
+  createHash("sha256")
+    .update(
+      JSON.stringify({
+        instanceId: input.instanceId,
+        config: input.config,
+        headers: input.headers,
+        agents: input.agents,
+      }),
+    )
+    .digest("hex");
+
+const instanceEnabled = (instance: ProviderInstanceConfig): boolean => instance.enabled !== false;
+
+const makeFactoryInput = (
+  instanceId: string,
+  instance: ProviderInstanceConfig,
+): CompositionRuntimeSettingsFactoryInput => {
+  const config = decodeMulticaConfig(instance.config);
+  if (!config.enabled || !instanceEnabled(instance)) {
+    throw new Error("Multica Runtime 已禁用。");
+  }
+  const environment = instance.environment ?? [];
+  const headers = makeHeaders(config, environment);
+  const agents = makeAgents(config);
+  return { instanceId, config, environment, headers, agents };
+};
+
+export const makeCompositionRuntimeSettingsReconciler = (
+  options: CompositionRuntimeSettings,
+): CompositionRuntimeSettingsReconciler => {
+  const managed = new Map<string, ManagedAdapter>();
+  const createAdapter = options.createAdapter ?? defaultCreateAdapter;
+  const logWarning = options.logWarning ?? defaultLogWarning;
+
+  const warn = (message: string, cause?: unknown) =>
+    logWarning(message, cause).pipe(Effect.catch(() => Effect.void));
+
+  const refresh: Effect.Effect<void> = Effect.gen(function* () {
+    const settings = yield* options.settings.getSettings.pipe(
+      Effect.catch((cause) =>
+        warn("读取 Runtime Settings 失败，保留现有 Adapter。", cause).pipe(Effect.as(undefined)),
+      ),
+    );
+    if (settings === undefined) return;
+
+    const candidates = new Map<string, CompositionRuntimeSettingsFactoryInput>();
+    for (const [instanceId, instance] of Object.entries(settings.providerInstances)) {
+      if (instance.driver !== "multica" || !instanceEnabled(instance)) continue;
+      try {
+        candidates.set(instanceId, makeFactoryInput(instanceId, instance));
+      } catch (cause) {
+        yield* warn(`跳过无效的 Multica Runtime 配置 '${instanceId}'。`, cause);
+      }
+    }
+
+    const nextManaged = new Map<string, ManagedAdapter>();
+    for (const [instanceId, current] of managed) {
+      const input = candidates.get(instanceId);
+      if (input !== undefined && current.fingerprint === fingerprintFor(input)) {
+        nextManaged.set(instanceId, current);
+        candidates.delete(instanceId);
+        continue;
+      }
+      yield* options.adapterRegistry.unregister(current.runtimeId);
+    }
+
+    for (const [instanceId, input] of candidates) {
+      const adapter = yield* createAdapter(input).pipe(
+        Effect.catch((cause) =>
+          warn(`创建 Multica Runtime Adapter '${instanceId}' 失败。`, cause).pipe(
+            Effect.as<CompositionRuntimeAdapter | undefined>(undefined),
+          ),
+        ),
+      );
+      if (adapter === undefined) continue;
+      const registered = yield* options.adapterRegistry.register(adapter).pipe(
+        Effect.as(true),
+        Effect.catch((cause) =>
+          warn(`注册 Multica Runtime Adapter '${instanceId}' 失败。`, cause).pipe(Effect.as(false)),
+        ),
+      );
+      if (!registered) continue;
+      nextManaged.set(instanceId, {
+        instanceId,
+        runtimeId: adapter.runtimeId,
+        fingerprint: fingerprintFor(input),
+        adapter,
+      });
+    }
+
+    managed.clear();
+    for (const [instanceId, entry] of nextManaged) managed.set(instanceId, entry);
+  });
+
+  const start = Effect.gen(function* () {
+    yield* refresh;
+    const changes = yield* options.settings.subscribeChanges;
+    yield* Effect.forkScoped(
+      Stream.runForEach(changes, () =>
+        refresh.pipe(Effect.catch((cause) => warn("Runtime Settings 刷新失败。", cause))),
+      ),
+    );
+  });
+
+  return { refresh, start, ready: Effect.void };
+};
+
+const live = Effect.gen(function* () {
+  const settings = yield* ServerSettingsService;
+  const adapterRegistry = yield* CompositionRuntimeAdapterRegistryService;
+  const reconciler = makeCompositionRuntimeSettingsReconciler({ settings, adapterRegistry });
+  yield* reconciler.start;
+  return reconciler;
+});
+
+export const layer = Layer.effect(CompositionRuntimeSettingsReconcilerService, live);
