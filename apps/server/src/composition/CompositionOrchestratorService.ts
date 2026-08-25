@@ -7,6 +7,7 @@ import {
   type CompositionTaskStoreShape,
 } from "../persistence/Services/CompositionTaskStore.ts";
 import { CompositionAgentDriverRegistryService } from "./CompositionAgentDriverRegistry.ts";
+import { CapabilityGrantRegistry } from "./CapabilityGrantRegistry.ts";
 import {
   makeCompositionOrchestrator,
   type CompositionOrchestrator,
@@ -27,7 +28,12 @@ export class CompositionOrchestratorService extends Context.Service<
 const live = Effect.gen(function* () {
   const store = yield* CompositionTaskStore;
   const driverRegistry = yield* CompositionAgentDriverRegistryService;
-  const orchestrator = makeCompositionOrchestrator(store, driverRegistry);
+  const grantRegistry = yield* Effect.serviceOption(CapabilityGrantRegistry);
+  const orchestrator = makeCompositionOrchestrator(
+    store,
+    driverRegistry,
+    grantRegistry._tag === "Some" ? grantRegistry.value : undefined,
+  );
 
   return {
     dispatchTask: orchestrator.dispatchTask,

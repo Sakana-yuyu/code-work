@@ -32,6 +32,7 @@ layer("CompositionTaskStore", (it) => {
         runtimeId: "runtime-1",
         status: "running" as const,
         attempt: 1,
+        capabilityGrantIds: [],
         startedAtUnixMs: 2,
       };
       const dependency = {

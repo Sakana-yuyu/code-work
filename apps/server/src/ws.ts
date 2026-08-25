@@ -1785,6 +1785,9 @@ const makeWsRpcLayer = (
                     workspaceRoot: input.workspaceRoot,
                     prompt: input.prompt,
                     ...(input.model === undefined ? {} : { model: input.model }),
+                    ...(input.capabilityIds === undefined
+                      ? {}
+                      : { capabilityIds: input.capabilityIds }),
                   })
                   .pipe(Effect.mapError(compositionTaskError)),
             { "rpc.aggregate": "composition" },

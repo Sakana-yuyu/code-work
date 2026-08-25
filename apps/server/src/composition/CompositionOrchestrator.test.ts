@@ -2,6 +2,7 @@ import { assert, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
+import type { CompositionCapabilityGrant } from "@t3tools/contracts";
 
 import { makeCompositionAgentDriverRegistry } from "./CompositionAgentDriverRegistry.ts";
 import {
@@ -40,6 +41,7 @@ layer("CompositionOrchestrator", (it) => {
         assigneeId: "agent-1",
         mode: "serial",
         promptDigest: "sha256:prompt",
+        capabilityIds: [],
         dependsOnTaskIds: [],
       });
 
@@ -51,6 +53,55 @@ layer("CompositionOrchestrator", (it) => {
         events.map((event) => event.status),
         ["queued", "running"],
       );
+    }),
+  );
+
+  it.effect("为普通 Composition Task 签发 grant，并把 grant ID 持久化和传给 Driver", () =>
+    Effect.gen(function* () {
+      const store = yield* CompositionTaskStore;
+      const captured: string[][] = [];
+      const driverRegistry = makeCompositionAgentDriverRegistry();
+      yield* driverRegistry.register({
+        agentId: "agent-grant",
+        runtimeId: "runtime-grant",
+        startTask: (input) =>
+          Effect.sync(() => {
+            captured.push([...(input.capabilityGrantIds ?? [])]);
+            return { runtimeTaskId: "runtime-task-grant" };
+          }),
+        cancelTask: () => Effect.succeed({ status: "cancelled" as const }),
+      });
+      const grants: CompositionCapabilityGrant[] = [
+        {
+          grantId: "grant-1",
+          taskId: "task-grant",
+          agentId: "agent-grant",
+          capabilityId: "workspace.read",
+          issuedAtUnixMs: 1,
+          expiresAtUnixMs: 900_001,
+        },
+      ];
+      const orchestrator = makeCompositionOrchestrator(store, driverRegistry, {
+        issue: () => Effect.succeed(grants),
+      });
+
+      const result = yield* orchestrator.dispatchTask({
+        taskId: "task-grant",
+        runId: "run-grant",
+        projectId: "project-1",
+        assigneeKind: "agent",
+        assigneeId: "agent-grant",
+        mode: "serial",
+        promptDigest: "sha256:grant",
+        capabilityIds: ["workspace.read"],
+        dependsOnTaskIds: [],
+      });
+
+      assert.deepEqual(result.run.capabilityGrantIds, ["grant-1"]);
+      assert.deepEqual(captured, [["grant-1"]]);
+      const savedRun = yield* store.getRun("run-grant");
+      assert.isTrue(Option.isSome(savedRun));
+      if (Option.isSome(savedRun)) assert.deepEqual(savedRun.value.capabilityGrantIds, ["grant-1"]);
     }),
   );
 
@@ -91,6 +142,7 @@ layer("CompositionOrchestrator", (it) => {
         assigneeId: "agent-1",
         mode: "serial",
         promptDigest: "sha256:prompt",
+        capabilityIds: [],
         dependsOnTaskIds: ["dependency-1"],
       });
 
@@ -117,6 +169,7 @@ layer("CompositionOrchestrator", (it) => {
         assigneeId: "missing-agent",
         mode: "serial",
         promptDigest: "sha256:prompt",
+        capabilityIds: [],
         dependsOnTaskIds: [],
       });
 
@@ -149,6 +202,7 @@ layer("CompositionOrchestrator", (it) => {
         assigneeId: "agent-cancel-requested",
         mode: "serial",
         promptDigest: "sha256:cancel-requested",
+        capabilityIds: [],
         dependsOnTaskIds: [],
       });
 
@@ -194,6 +248,7 @@ layer("CompositionOrchestrator", (it) => {
         assigneeId: "agent-cancel-failed",
         mode: "serial",
         promptDigest: "sha256:cancel-failed",
+        capabilityIds: [],
         dependsOnTaskIds: [],
       });
 

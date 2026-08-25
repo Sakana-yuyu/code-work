@@ -6,6 +6,51 @@ import { makeCompositionRuntimeAgentDriver } from "./CompositionRuntimeAgentDriv
 import { makeInMemoryCompositionRuntimeAdapter } from "./CompositionRuntimeAdapter.ts";
 
 describe("CompositionRuntimeAgentDriver", () => {
+  it("把 Run 的 capability grant 传给 Runtime Adapter", async () => {
+    let captured: readonly string[] = [];
+    const adapter = makeInMemoryCompositionRuntimeAdapter({ runtimeId: "runtime-grant" });
+    const originalDispatch = adapter.dispatchTask;
+    const capturingAdapter = {
+      ...adapter,
+      dispatchTask: (input: Parameters<typeof adapter.dispatchTask>[0]) => {
+        captured = input.capabilityGrantIds ?? [];
+        return originalDispatch(input);
+      },
+    };
+    const driver = makeCompositionRuntimeAgentDriver({
+      adapter: capturingAdapter,
+      agentId: "runtime-grant:agent",
+    });
+
+    await Effect.runPromise(
+      driver.startTask({
+        task: {
+          taskId: "task-grant",
+          projectId: "project-1",
+          assigneeKind: "agent",
+          assigneeId: driver.agentId,
+          mode: "serial",
+          status: "queued",
+          promptDigest: "sha256:grant",
+          dependsOnTaskIds: [],
+          createdAtUnixMs: 1,
+          updatedAtUnixMs: 1,
+        },
+        run: {
+          runId: "run-grant",
+          taskId: "task-grant",
+          agentId: driver.agentId,
+          runtimeId: driver.runtimeId,
+          status: "queued",
+          attempt: 1,
+          capabilityGrantIds: ["grant-1"],
+        },
+      }),
+    );
+
+    expect(captured).toEqual(["grant-1"]);
+  });
+
   it("把 Composition Task 映射到 Runtime Task，并从事件反查 run", async () => {
     const adapter = makeInMemoryCompositionRuntimeAdapter({ runtimeId: "multica-runtime-1" });
     const driver = makeCompositionRuntimeAgentDriver({
@@ -33,6 +78,7 @@ describe("CompositionRuntimeAgentDriver", () => {
           runtimeId: driver.runtimeId,
           status: "queued",
           attempt: 1,
+          capabilityGrantIds: [],
         },
         prompt: "执行检查",
         workspaceRoot: "C:/workspace",
@@ -85,6 +131,7 @@ describe("CompositionRuntimeAgentDriver", () => {
           runtimeId: driver.runtimeId,
           status: "running",
           attempt: 1,
+          capabilityGrantIds: [],
           runtimeTaskId: "runtime-1:task:task-1:run-1",
         },
       }),
@@ -110,6 +157,7 @@ describe("CompositionRuntimeAgentDriver", () => {
           runtimeId: driver.runtimeId,
           status: "running",
           attempt: 1,
+          capabilityGrantIds: [],
           runtimeTaskId: "runtime-1:task:task-1:run-1",
         },
         reason: "用户取消",

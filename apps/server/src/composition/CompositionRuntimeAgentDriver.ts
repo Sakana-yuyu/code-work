@@ -56,6 +56,7 @@ export const makeCompositionRuntimeAgentDriver = (
       ...(input.workspaceRoot === undefined ? {} : { workspaceRoot: input.workspaceRoot }),
       ...(input.prompt === undefined ? {} : { prompt: input.prompt }),
       ...(input.model === undefined ? {} : { model: input.model }),
+      capabilityGrantIds: input.run.capabilityGrantIds ?? [],
       promptDigest: input.task.promptDigest,
     };
 

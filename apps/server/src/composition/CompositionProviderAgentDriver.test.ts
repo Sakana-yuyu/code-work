@@ -92,6 +92,7 @@ describe("CompositionProviderAgentDriver", () => {
             runtimeId: "codex-local",
             status: "queued",
             attempt: 1,
+            capabilityGrantIds: [],
           },
           prompt: "检查工作区",
           workspaceRoot: "C:/workspace",
@@ -145,6 +146,7 @@ describe("CompositionProviderAgentDriver", () => {
       runtimeId: "codex-local",
       status: "queued" as const,
       attempt: 1,
+      capabilityGrantIds: [],
     };
 
     await Effect.runPromise(
@@ -188,6 +190,7 @@ describe("CompositionProviderAgentDriver", () => {
             runtimeId: "codex-local",
             status: "queued",
             attempt: 1,
+            capabilityGrantIds: [],
           },
           prompt: "失败测试",
         }),

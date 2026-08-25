@@ -256,6 +256,8 @@ export const CompositionTaskRun = Schema.Struct({
   runtimeTaskId: Schema.optional(TrimmedNonEmptyString),
   status: CompositionTaskStatus,
   attempt: NonNegativeInt,
+  /** 本次 Run 已由服务端签发的短期 capability grant；不保存用户原始请求。 */
+  capabilityGrantIds: Schema.Array(TrimmedNonEmptyString),
   leaseId: Schema.optional(TrimmedNonEmptyString),
   startedAtUnixMs: Schema.optional(NonNegativeInt),
   finishedAtUnixMs: Schema.optional(NonNegativeInt),
@@ -292,6 +294,8 @@ export const CompositionTaskDispatchRequest = Schema.Struct({
   workspaceRoot: TrimmedNonEmptyString,
   workspaceRootDigest: Schema.optional(TrimmedNonEmptyString),
   model: Schema.optional(TrimmedNonEmptyString),
+  /** 用户请求的 capability ID；服务端派发时会转换成 task-scoped grant。 */
+  capabilityIds: Schema.optional(Schema.Array(TrimmedNonEmptyString)),
   dependsOnTaskIds: Schema.Array(TrimmedNonEmptyString),
 });
 export type CompositionTaskDispatchRequest = typeof CompositionTaskDispatchRequest.Type;

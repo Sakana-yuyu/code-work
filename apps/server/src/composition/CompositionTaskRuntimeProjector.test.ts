@@ -43,6 +43,7 @@ const run: CompositionTaskRun = {
   runtimeTaskId: "runtime-task-1",
   status: "running",
   attempt: 1,
+  capabilityGrantIds: [],
   startedAtUnixMs: 2,
 };
 const runtimeTaskId = "runtime-task-1";

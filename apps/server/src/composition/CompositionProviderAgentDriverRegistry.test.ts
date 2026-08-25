@@ -92,6 +92,7 @@ describe("CompositionProviderAgentDriverRegistry", () => {
           runtimeId: "provider:codex_personal",
           status: "queued",
           attempt: 1,
+          capabilityGrantIds: [],
         },
         prompt: "检查工作区",
         workspaceRoot: "C:/workspace",

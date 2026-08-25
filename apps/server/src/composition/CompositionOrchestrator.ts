@@ -15,6 +15,8 @@ import {
   type CompositionTaskStoreShape,
 } from "../persistence/Services/CompositionTaskStore.ts";
 import type { CompositionAgentDriverRegistry } from "./CompositionAgentDriverRegistry.ts";
+import type * as CapabilityGrantRegistry from "./CapabilityGrantRegistry.ts";
+import * as CapabilityRegistry from "./CapabilityRegistry.ts";
 
 export class CompositionTaskDependencyMissingError extends Schema.TaggedErrorClass<CompositionTaskDependencyMissingError>()(
   "CompositionTaskDependencyMissingError",
@@ -87,6 +89,7 @@ export interface CompositionAgentDriver {
     /** 只在运行时传递，不写入 CompositionTask 持久化表。 */
     readonly prompt?: string;
     readonly model?: string;
+    readonly capabilityGrantIds?: ReadonlyArray<string>;
   }) => Effect.Effect<{ readonly runtimeTaskId?: string }, CompositionAgentDriverFailure>;
   readonly cancelTask: (input: {
     readonly task: CompositionTask;
@@ -122,6 +125,8 @@ export type CompositionDispatchInput = {
   readonly workspaceRoot?: string;
   readonly prompt?: string;
   readonly model?: string;
+  /** 用户请求的 capability ID；由 Orchestrator 转换为短期 grant。 */
+  readonly capabilityIds?: ReadonlyArray<string>;
 };
 
 export type CompositionDispatchResult = {
@@ -172,6 +177,9 @@ export interface CompositionOrchestrator {
     | CompositionTaskDependencyMissingError
     | CompositionTaskDependencyCycleError
     | CompositionTaskAlreadyExistsError
+    | CapabilityGrantRegistry.CapabilityGrantInvalidError
+    | CapabilityRegistry.CapabilityScopeNotFoundError
+    | CapabilityRegistry.CapabilityRegistryUnavailableError
   >;
   readonly cancelTask: (input: {
     readonly taskId: string;
@@ -186,6 +194,7 @@ export interface CompositionOrchestrator {
 const makeOrchestrator = (
   store: CompositionTaskStoreShape,
   driverRegistry: CompositionAgentDriverRegistry,
+  grantRegistry?: Pick<CapabilityGrantRegistry.CapabilityGrantRegistryShape, "issue">,
 ): CompositionOrchestrator => {
   const validateDependencies = (
     taskId: string,
@@ -266,6 +275,16 @@ const makeOrchestrator = (
         blockedDependency === undefined ? "queued" : "blocked";
       const driver = yield* driverRegistry.get(input.assigneeId);
       const runtimeId = driver?.runtimeId ?? "unresolved";
+      const capabilityGrantIds =
+        grantRegistry === undefined || input.capabilityIds === undefined
+          ? []
+          : yield* grantRegistry
+              .issue({
+                taskId: input.taskId,
+                agentId: input.assigneeId,
+                capabilityIds: input.capabilityIds,
+              })
+              .pipe(Effect.map((grants) => grants.map((grant) => grant.grantId)));
       const task: CompositionTask = {
         taskId: input.taskId,
         projectId: input.projectId,
@@ -287,6 +306,7 @@ const makeOrchestrator = (
         runtimeId,
         status: initialStatus,
         attempt: 1,
+        capabilityGrantIds,
       };
 
       yield* store.upsertTask(task);
@@ -354,6 +374,7 @@ const makeOrchestrator = (
           ...(input.workspaceRoot === undefined ? {} : { workspaceRoot: input.workspaceRoot }),
           ...(input.prompt === undefined ? {} : { prompt: input.prompt }),
           ...(input.model === undefined ? {} : { model: input.model }),
+          capabilityGrantIds: run.capabilityGrantIds ?? [],
         }),
       );
       if (startResult._tag === "Failure") {
@@ -486,4 +507,5 @@ const makeOrchestrator = (
 export const makeCompositionOrchestrator = (
   store: CompositionTaskStoreShape,
   driverRegistry: CompositionAgentDriverRegistry,
-): CompositionOrchestrator => makeOrchestrator(store, driverRegistry);
+  grantRegistry?: Pick<CapabilityGrantRegistry.CapabilityGrantRegistryShape, "issue">,
+): CompositionOrchestrator => makeOrchestrator(store, driverRegistry, grantRegistry);

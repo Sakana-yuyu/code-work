@@ -43,6 +43,7 @@ describe("composition task contracts", () => {
       runtimeId: "runtime-1",
       status: "failed",
       attempt: 2,
+      capabilityGrantIds: [],
       failureCode: "runtime_offline",
       resultSummary: "运行时不可用",
     });
