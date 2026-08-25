@@ -19,6 +19,7 @@ import { makeCompositionProviderAgentDriver } from "./CompositionProviderAgentDr
 
 const makeAdapter = (options?: { readonly failTurn?: boolean }) => {
   const calls: string[] = [];
+  const sessionInputs: ProviderSessionStartInput[] = [];
   const session = {
     provider: ProviderDriverKind.make("codex"),
     providerInstanceId: ProviderInstanceId.make("codex-local"),
@@ -33,6 +34,7 @@ const makeAdapter = (options?: { readonly failTurn?: boolean }) => {
     calls,
     adapter: {
       startSession: (input: ProviderSessionStartInput) => {
+        sessionInputs.push(input);
         calls.push(`start:${input.threadId}`);
         return Effect.succeed(session);
       },
@@ -56,6 +58,7 @@ const makeAdapter = (options?: { readonly failTurn?: boolean }) => {
         return Effect.void;
       },
     },
+    sessionInputs,
   };
 };
 
@@ -116,6 +119,46 @@ describe("CompositionProviderAgentDriver", () => {
       runId: "run-1",
       runtimeTaskId: "codex-local:thread-1:turn-1",
     });
+  });
+
+  it("保留 Provider 原生运行时边界，不把 T3 grant 伪装成已完成握手", async () => {
+    const fake = makeAdapter();
+    const driver = makeCompositionProviderAgentDriver({
+      agentId: "agent-codex",
+      runtimeId: "codex-local",
+      providerInstanceId: ProviderInstanceId.make("codex-local"),
+      adapter: fake.adapter,
+    });
+
+    await Effect.runPromise(
+      driver.startTask({
+        task: {
+          taskId: "task-grant",
+          projectId: "project-1",
+          assigneeKind: "agent",
+          assigneeId: "agent-codex",
+          mode: "serial",
+          status: "queued",
+          promptDigest: "sha256:grant",
+          dependsOnTaskIds: [],
+          createdAtUnixMs: 1,
+          updatedAtUnixMs: 1,
+        },
+        run: {
+          runId: "run-grant",
+          taskId: "task-grant",
+          agentId: "agent-codex",
+          runtimeId: "codex-local",
+          status: "queued",
+          attempt: 1,
+          capabilityGrantIds: ["grant-1"],
+        },
+        prompt: "检查工作区",
+      }),
+    );
+
+    expect(fake.sessionInputs[0]).toMatchObject({ runtimeMode: "full-access" });
+    expect(fake.sessionInputs[0]).not.toHaveProperty("capabilityGrantIds");
   });
 
   it("interrupts the provider turn when the composition task is cancelled", async () => {

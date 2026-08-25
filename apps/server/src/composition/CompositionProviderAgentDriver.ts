@@ -78,6 +78,8 @@ export const makeCompositionProviderAgentDriver = (
       const model = input.model ?? options.model;
       const modelSelection: ModelSelection | undefined =
         model === undefined ? undefined : { instanceId: options.providerInstanceId, model };
+      // Provider 原生 Session/Turn 当前没有 T3 capability handshake；grant 只在
+      // BYOK Agent Loop -> ToolBroker 闭环中生效，不能把持久化引用当成外部已授权。
       const sessionInput: ProviderSessionStartInput = {
         threadId,
         providerInstanceId: options.providerInstanceId,

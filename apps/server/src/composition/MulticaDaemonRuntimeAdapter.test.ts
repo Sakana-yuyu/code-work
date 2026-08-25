@@ -113,10 +113,12 @@ describe("MulticaDaemonRuntimeAdapter", () => {
 
   it("通过 quick-create 派发，并显式暴露 claim/终态回报", async () => {
     const calls: string[] = [];
+    let quickCreateInput: unknown;
     const adapter = makeMulticaDaemonRuntimeAdapter(
       makeOptions({
         protocol: makeProtocol({
-          quickCreateTask: () => {
+          quickCreateTask: (input) => {
+            quickCreateInput = input;
             calls.push("quick-create");
             return Effect.succeed({ taskId: "created-task-1" });
           },
@@ -152,9 +154,16 @@ describe("MulticaDaemonRuntimeAdapter", () => {
           agentId: "agent-1",
           prompt: "执行任务",
           idempotencyKey: "run-1",
+          capabilityGrantIds: ["grant-1"],
         }),
       ),
     ).resolves.toEqual({ runtimeTaskId: "created-task-1", status: "accepted" });
+    expect(quickCreateInput).toEqual({
+      workspaceId: "workspace-1",
+      agentId: "agent-1",
+      prompt: "执行任务",
+    });
+    expect(quickCreateInput).not.toHaveProperty("capabilityGrantIds");
     await expect(
       Effect.runPromise(
         adapter.dispatchTask({
@@ -234,5 +243,35 @@ describe("MulticaDaemonRuntimeAdapter", () => {
     await expect(
       Effect.runPromise(adapter.streamEvents().pipe(Stream.runCollect)),
     ).rejects.toMatchObject({ code: "stream_unavailable" });
+  });
+
+  it("外部取消接口未支持时返回稳定错误，并保持运行任务事实", async () => {
+    const adapter = makeMulticaDaemonRuntimeAdapter(makeOptions());
+
+    await expect(
+      Effect.runPromise(
+        adapter.dispatchTask({
+          taskId: "t3-task-cancel",
+          runId: "run-cancel",
+          agentId: "agent-1",
+          prompt: "执行可取消任务",
+          idempotencyKey: "run-cancel",
+        }),
+      ),
+    ).resolves.toEqual({ runtimeTaskId: "created-task-1", status: "accepted" });
+
+    await expect(
+      Effect.runPromise(
+        adapter.cancelTask({
+          taskId: "t3-task-cancel",
+          runId: "run-cancel",
+          runtimeTaskId: "created-task-1",
+        }),
+      ),
+    ).rejects.toMatchObject({ code: "cancel_not_supported" });
+
+    await expect(Effect.runPromise(adapter.heartbeat())).resolves.toMatchObject({
+      activeTaskCount: 1,
+    });
   });
 });

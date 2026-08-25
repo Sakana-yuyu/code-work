@@ -91,6 +91,7 @@ interface CompositionRuntimeAdapter {
 - `resumeTask` 只能恢复外部 runtime 明确支持恢复的任务；不支持恢复时返回稳定错误码。
 - `streamEvents` 的每个事件必须有稳定 `eventId`；投影器按 `(taskId, runId, sourceEventId)` 去重。
 - Adapter 不获得 T3 工具的隐式权限；文件、终端、Git、MCP、浏览器和 IDE 操作仍通过 Capability Registry/Tool Broker 授权。
+- `capabilityGrantIds` 是 T3 内部的 task-scoped 授权引用，不等于外部 runtime 已完成授权握手。Adapter 只有在外部协议明确支持并完成校验后，才可以声称 grant 已注入；否则必须保留明确的未支持边界。
 
 ### MulticaAdapter
 
@@ -145,7 +146,7 @@ Task 事件映射：
 ## 生命周期与幂等
 
 1. T3 派发 Task，Orchestrator 创建 Task/Run，并调用 Driver。
-2. Driver 将完整 prompt、workspaceRoot 和 capability grant 作为一次性输入交给 Adapter；持久化表只保存 digest 和引用。
+2. Driver 将完整 prompt、workspaceRoot 和 capability grant 引用作为一次性输入交给 Adapter；持久化表只保存 digest 和引用。Provider 原生 Session/Turn 当前不接收 grant；Multica 窄协议也不发送未定义的 grant 字段。
 3. Adapter 返回 `runtimeTaskId` 后，T3 保存 Run 关联。
 4. Adapter 心跳和事件流持续回传；Projection Service 做状态机校验、事件去重和终态收口。
 5. 取消先调用 Adapter；只有 Adapter 明确接受或已终态时，T3 才写入对应状态。网络错误保留 `cancel_requested` 语义，交由后续心跳/事件收口。
@@ -158,6 +159,8 @@ Task 事件映射：
 - 未完成 runtime/IDE handshake 时只允许 probe、list 和只读状态查询。
 - 未知 IDE profile 直接拒绝高权限操作，不通过“兼容模式”绕过。
 - task-scoped grant 绑定 `taskId`、`runId`、`workspaceRootDigest` 和过期时间；外部 runtime 不可复用其他 Task 的 grant。
+- Provider Driver 当前只保证 T3 ProviderService 的 Session/Turn 生命周期，不声称 Provider 原生工具已经通过 T3 grant 校验；需要后续 Provider handshake 或 canonical ToolBroker 执行链才能闭环。
+- Multica Adapter 当前只在 T3 内部保存、审计和撤销 grant；官方 quick-create 请求不携带 grant，真实 daemon 也尚未校验 T3 grant。
 - Adapter 日志只记录 ID、状态、版本和去敏后的错误，不记录完整 prompt、API key、用户凭据或敏感文件内容。
 - 所有跨进程事件使用 sourceEventId；重复、乱序和断线重放必须是无害的。
 
@@ -171,7 +174,7 @@ Transport 错误不得直接把运行标成成功；心跳超时只允许标记 
 
 - Adapter 合同：探测、Agent 列表、心跳、派发幂等、取消、恢复能力和事件流。
 - 状态机：重复派发、重复事件、乱序事件、取消竞态、终态后晚到事件。
-- Multica 协议：HTTP fallback、WebSocket 断开/重连、heartbeat、task ID 关联和 capability handshake。
+- Multica 协议：HTTP fallback、WebSocket 断开/重连、heartbeat、task ID 关联，以及当前未支持 capability handshake 时的明确降级。
 - 集成边界：Provider Driver 继续通过现有 ProviderService；Multica Driver 不绕过 Capability Registry/Tool Broker。
 - 真实 daemon、真实 IDE、Web/Desktop/Mobile 多端刷新需另行进行本机 E2E；静态测试和假适配器通过不能替代这些验证。
 

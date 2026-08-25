@@ -43,7 +43,7 @@ T3 Web/Desktop/Mobile 壳
 关键前提是把外部执行器限定在 Adapter 边界内：
 
 - Provider、CLI、ACP、IDE、Multica 都投影为稳定的 Agent Driver。
-- 外部工具调用统一经过 T3 `CapabilityRegistry` 和 `ToolBroker`，不能因为接入了外部 Runtime 就绕过授权。
+- T3 原生工具调用经过 `CapabilityRegistry` 和 `ToolBroker`；外部 Runtime 只有在完成 capability handshake 后才能形成同等闭环，不能因为保存了 grant 引用就声称已经授权。
 - Multica 的任务创建走正式 `POST /api/issues/quick-create`；daemon 的 `claim` 只负责领取服务端已经排队的任务，不能被伪装成任意 T3 Task 的投递接口。
 - T3 assignee ID、Multica Agent/Squad UUID、Runtime ID、Workspace ID 必须显式映射。
 - 真实 IDE 必须实现 handshake、能力验证和断线恢复；仅有 profile 合同或 probe 不能算 IDE 接入完成。
@@ -91,32 +91,32 @@ T3 当前不能通过“接入一个 API”自动获得 Cursor 客户端的全�
 
 ### 4. Delegation、Subagent、Goal 与 Multica 协同
 
-| cursor-byok / Multica 能力                                   | T3 当前状态                | T3 证据                                                                             | 迁移结论                                                                                        |
-| ------------------------------------------------------------ | -------------------------- | ----------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
-| 本地 delegated worker、并发队列、超时、取消、结果预览        | 部分迁移                   | `ByokDelegationService.ts`、`CompositionOrchestrator.ts`、`CompositionTaskStore.ts` | 需要统一 Byok delegation 与 Composition Task，而不是维护两套队列和状态。                        |
-| Provider/Model Group 绑定到 delegation                       | 部分迁移                   | `ByokDelegationService.ts` 的 model group 解析                                      | 应投影成 Agent Driver 的 Provider Profile 选择策略。                                            |
-| Goal Loop：`/goal`、strict、完成标记、pass/时长/费用预算     | 未迁移                     | `cursor-byok\docs\goal-design.md` 及 `internal/backend/forwarder`                   | 这是 T3 下一阶段的高价值能力，应以 Composition Goal/Run 持久化合同实现。                        |
-| Goal 自动重试、idle/stale pivot、二次校验子代理              | 未迁移                     | `cursor-byok\docs\goal-design.md`、`internal/backend/delegation`                    | 需要以预算、重试原因和验证结果事件化，不能只在 prompt 中约定。                                  |
-| T3 Composition Task/Run/Event/Dependency/Lease               | 已有等价                   | `apps\server\src\composition`、`packages\contracts\src\composition.ts`              | 作为统一任务控制面保留。                                                                        |
-| Provider Agent Driver                                        | 已有等价                   | `CompositionProviderAgentDriver.ts`、`CompositionProviderAgentDriverRegistry.ts`    | Provider Session/Turn 继续通过 T3 `ProviderService`。                                           |
-| Multica daemon register/heartbeat/claim/status/complete/fail | 部分迁移                   | `MulticaDaemonProtocol.ts`、`MulticaDaemonRuntimeAdapter.ts`                        | HTTP 正确性路径已接入；真实 daemon 未启动验证。                                                 |
-| Multica quick-create 创建任务                                | 已有协议接线，尚未真实 E2E | `MulticaDaemonProtocol.ts` 的 `quickCreateTask`、commit `57b888cd`                  | 使用 `/api/issues/quick-create`；返回 `task_id` 后由 daemon claim。                             |
-| Multica Agent/Squad/Leader                                   | 部分迁移                   | `CompositionSquad`、`CompositionMulticaProbeResult`、`MulticaTaskAssigneeRoute`     | T3 已有合同和显式映射；还缺运行时 Squad 列表、Leader 调度、子任务图和结果合并。                 |
-| Multica 任务取消/恢复                                        | 未完成                     | `MulticaDaemonRuntimeAdapter.ts`                                                    | 当前窄协议只能查询状态和回传 cancel-ack；不能把取消请求伪装成已取消，恢复仍返回稳定不支持错误。 |
-| 多 Agent 监督、重试、恢复、结果合并                          | 未迁移                     | T3 当前仅有基础 Task/Run/Event 投影                                                 | 需要 Goal + Squad + Task Graph + supervisor 状态机，分阶段建设。                                |
+| cursor-byok / Multica 能力                                   | T3 当前状态                | T3 证据                                                                             | 迁移结论                                                                                               |
+| ------------------------------------------------------------ | -------------------------- | ----------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------ |
+| 本地 delegated worker、并发队列、超时、取消、结果预览        | 部分迁移                   | `ByokDelegationService.ts`、`CompositionOrchestrator.ts`、`CompositionTaskStore.ts` | 需要统一 Byok delegation 与 Composition Task，而不是维护两套队列和状态。                               |
+| Provider/Model Group 绑定到 delegation                       | 部分迁移                   | `ByokDelegationService.ts` 的 model group 解析                                      | 应投影成 Agent Driver 的 Provider Profile 选择策略。                                                   |
+| Goal Loop：`/goal`、strict、完成标记、pass/时长/费用预算     | 未迁移                     | `cursor-byok\docs\goal-design.md` 及 `internal/backend/forwarder`                   | 这是 T3 下一阶段的高价值能力，应以 Composition Goal/Run 持久化合同实现。                               |
+| Goal 自动重试、idle/stale pivot、二次校验子代理              | 未迁移                     | `cursor-byok\docs\goal-design.md`、`internal/backend/delegation`                    | 需要以预算、重试原因和验证结果事件化，不能只在 prompt 中约定。                                         |
+| T3 Composition Task/Run/Event/Dependency/Lease               | 已有等价                   | `apps\server\src\composition`、`packages\contracts\src\composition.ts`              | 作为统一任务控制面保留。                                                                               |
+| Provider Agent Driver                                        | 已有运行底座，授权未闭环   | `CompositionProviderAgentDriver.ts`、`CompositionProviderAgentDriverRegistry.ts`    | Provider Session/Turn 继续通过 T3 `ProviderService`；当前没有 Provider 原生工具的 T3 grant handshake。 |
+| Multica daemon register/heartbeat/claim/status/complete/fail | 部分迁移                   | `MulticaDaemonProtocol.ts`、`MulticaDaemonRuntimeAdapter.ts`                        | HTTP 正确性路径已接入；真实 daemon 未启动验证。                                                        |
+| Multica quick-create 创建任务                                | 已有协议接线，尚未真实 E2E | `MulticaDaemonProtocol.ts` 的 `quickCreateTask`、commit `57b888cd`                  | 使用 `/api/issues/quick-create`；返回 `task_id` 后由 daemon claim。                                    |
+| Multica Agent/Squad/Leader                                   | 部分迁移                   | `CompositionSquad`、`CompositionMulticaProbeResult`、`MulticaTaskAssigneeRoute`     | T3 已有合同和显式映射；还缺运行时 Squad 列表、Leader 调度、子任务图和结果合并。                        |
+| Multica 任务取消/恢复                                        | 未完成                     | `MulticaDaemonRuntimeAdapter.ts`                                                    | 当前窄协议只能查询状态和回传 cancel-ack；不能把取消请求伪装成已取消，恢复仍返回稳定不支持错误。        |
+| 多 Agent 监督、重试、恢复、结果合并                          | 未迁移                     | T3 当前仅有基础 Task/Run/Event 投影                                                 | 需要 Goal + Squad + Task Graph + supervisor 状态机，分阶段建设。                                       |
 
 ### 5. Skills、MCP、Workspace、Terminal、Git、Browser、IDE
 
-| 能力                                           | T3 当前状态                | 证据                                                                        | 缺口                                                                                          |
-| ---------------------------------------------- | -------------------------- | --------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------- |
-| Workspace 文件、Terminal、Git/Worktree         | 已有等价                   | T3 Workspace File System、Terminal Manager、VCS/Worktree 服务               | 外部 Runtime 必须通过 grant 使用，不能直接取得宿主机权限。                                    |
-| Browser/Preview 自动化                         | 已有等价                   | T3 Preview、Browser Automation、Browser trace collector                     | 需要把 task-scoped grant 和审计事件接入外部 Runtime。                                         |
-| MCP HTTP Server、Session Registry、Preview MCP | 已有等价                   | T3 MCP 服务与 `ToolBroker`                                                  | 需要补齐跨 Runtime 的 capability handshake 和撤销。                                           |
-| Skills 搜索、加载、运行时注入                  | 部分迁移                   | T3 Skills 搜索、加载和运行时注入服务                                        | `cursor-byok` 的编辑器、扫描、导入、启停与 sparse activation 规则尚未完全对齐。               |
-| Sparse Skill Activation                        | 未迁移                     | `cursor-byok` 对应设计/实现；T3 当前非完全等价                              | 可复用 `skill-sparse-activation` 的设计，但应以 T3 的 Skill Registry 和 prompt 编译边界实现。 |
-| Cursor 原生工具能力                            | 不直接迁移                 | 依赖 Cursor `ExecServerMessage` 和客户端回注                                | 仅迁移语义到 T3 canonical tool，不迁移私有 wire format。                                      |
-| Cursor/VSCode IDE Adapter handshake            | 只有底层零件               | `CompositionIdeProfile`、`CompositionProbeRegistry`                         | 当前主要是合同和探测；真实 Extension/IPC/API 接入、能力验证、断线恢复均未完成。               |
-| 各 Agent 共享 T3 能力                          | 架构可达，运行时未完全闭环 | `CapabilityRegistry`、`CapabilityPolicy`、`ToolBroker`、Composition Drivers | 需要将 task-scoped grant 真正注入每个 Runtime Adapter，并补充拒绝、过期、撤销测试。           |
+| 能力                                           | T3 当前状态                | 证据                                                                        | 缺口                                                                                                                                         |
+| ---------------------------------------------- | -------------------------- | --------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
+| Workspace 文件、Terminal、Git/Worktree         | 已有等价                   | T3 Workspace File System、Terminal Manager、VCS/Worktree 服务               | 外部 Runtime 必须通过 grant 使用，不能直接取得宿主机权限。                                                                                   |
+| Browser/Preview 自动化                         | 已有等价                   | T3 Preview、Browser Automation、Browser trace collector                     | 需要把 task-scoped grant 和审计事件接入外部 Runtime。                                                                                        |
+| MCP HTTP Server、Session Registry、Preview MCP | 已有等价                   | T3 MCP 服务与 `ToolBroker`                                                  | 需要补齐跨 Runtime 的 capability handshake 和撤销。                                                                                          |
+| Skills 搜索、加载、运行时注入                  | 部分迁移                   | T3 Skills 搜索、加载和运行时注入服务                                        | `cursor-byok` 的编辑器、扫描、导入、启停与 sparse activation 规则尚未完全对齐。                                                              |
+| Sparse Skill Activation                        | 未迁移                     | `cursor-byok` 对应设计/实现；T3 当前非完全等价                              | 可复用 `skill-sparse-activation` 的设计，但应以 T3 的 Skill Registry 和 prompt 编译边界实现。                                                |
+| Cursor 原生工具能力                            | 不直接迁移                 | 依赖 Cursor `ExecServerMessage` 和客户端回注                                | 仅迁移语义到 T3 canonical tool，不迁移私有 wire format。                                                                                     |
+| Cursor/VSCode IDE Adapter handshake            | 只有底层零件               | `CompositionIdeProfile`、`CompositionProbeRegistry`                         | 当前主要是合同和探测；真实 Extension/IPC/API 接入、能力验证、断线恢复均未完成。                                                              |
+| 各 Agent 共享 T3 能力                          | 架构可达，运行时未完全闭环 | `CapabilityRegistry`、`CapabilityPolicy`、`ToolBroker`、Composition Drivers | BYOK Agent Loop 已通过 ToolBroker 校验；Provider 原生 Session/Turn 和 Multica 窄协议目前只保存 T3 grant 引用，仍缺握手、外部校验和撤销回执。 |
 
 ### 6. 多账号、多端与控制中心
 
@@ -135,7 +135,7 @@ T3 当前不能通过“接入一个 API”自动获得 Cursor 客户端的全�
 1. 完整 Supplier/Profile/Account 控制中心：模型分组、权重路由、自动匹配、余额/价格/健康聚合、多账号切换与回滚。
 2. Goal Loop 完整闭环：严格完成标记、pass/时长/费用预算、自动重试、idle/stale pivot、校验子代理、跨重启持久化和 UI。
 3. Multica 真正 Squad/Leader/Task Graph：T3 目前有合同、probe、Adapter 和 quick-create 接线，但没有完整运行时监督、子任务派发、依赖图执行和结果合并。
-4. 外部 Runtime 的 task-scoped capability grant 实际注入：T3 有 Registry/Policy/ToolBroker，但还需要逐个 Adapter 完成握手、授权、撤销、过期和审计闭环。
+4. 外部 Runtime 的 task-scoped capability grant 实际注入：BYOK Agent Loop 已有 T3 ToolBroker 闭环；Provider 原生 Session/Turn、Multica 窄协议和 IDE Adapter 仍需要逐个完成握手、授权、撤销、过期和审计闭环。
 5. IDE Runtime 的真实接入：`cursor_ide`、`vscode_ide` 目前主要是 profile/探测层，未完成真实 Extension/IPC/API handshake。
 6. Request Lab 与通用请求镜像：T3 有诊断和 Provider Event，但没有等价的结构化重放/协议分析界面。
 7. Skills/MCP Control Center 的完整管理体验，以及与 `cursor-byok` 一致的 sparse activation 语义。
@@ -183,6 +183,7 @@ Composition Task / Run / Event Store
 - quick-create 的远端 API 当前没有与 T3 `runId` 等价的服务端幂等键；本轮只做进程内幂等映射。进程在 HTTP 成功但响应丢失后重启，仍存在重复创建风险，必须在后续通过 Multica 服务端幂等能力、持久化 outbox 或人工冲突校验补齐。
 - T3 当前没有默认配置真实 Multica Adapter 来源，也不会扫描或启动用户的 `~/.t3/userdata`、Multica daemon 或真实 IDE。
 - Multica 外部取消和恢复没有被当前窄协议完整暴露；Adapter 会返回稳定错误，不能把本地取消写成外部任务已取消。
+- Provider 原生 Session/Turn 不接收 T3 grant；Multica quick-create 不携带 T3 grant。两者当前均不能宣称外部工具操作已受 T3 task-scoped grant 保护。
 - 真实 IDE、真实 Multica daemon、Web/Desktop/Mobile 多端刷新和真实 API 凭据链路仍需单独 E2E。
 
 ## 推荐迁移顺序
