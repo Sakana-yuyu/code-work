@@ -46,7 +46,7 @@ function makeRow(overrides: Partial<AgentActivityRowProps>): AgentActivityRowPro
 }
 
 const props = {
-  title: "T3 Code",
+  title: "Code Work",
   subtitle: "Agent work in progress",
   activeCount: 1,
   updatedAt: "2026-05-25T13:07:00.000Z",

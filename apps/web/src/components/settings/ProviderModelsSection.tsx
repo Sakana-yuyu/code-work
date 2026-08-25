@@ -114,19 +114,19 @@ export function ProviderModelsSection({
   const handleAdd = () => {
     const normalized = normalizeCustomModelSlug(input);
     if (!normalized) {
-      setError("Enter a model slug.");
+      setError(t("providerModels.errorEmptySlug"));
       return;
     }
     if (models.some((model) => !model.isCustom && model.slug === normalized)) {
-      setError("That model is already built in.");
+      setError(t("providerModels.errorBuiltIn"));
       return;
     }
     if (normalized.length > MAX_CUSTOM_MODEL_LENGTH) {
-      setError(`Model slugs must be ${MAX_CUSTOM_MODEL_LENGTH} characters or less.`);
+      setError(t("providerModels.errorTooLong", { count: MAX_CUSTOM_MODEL_LENGTH }));
       return;
     }
     if (customModels.includes(normalized)) {
-      setError("That custom model is already saved.");
+      setError(t("providerModels.errorDuplicate"));
       return;
     }
 
@@ -205,10 +205,10 @@ export function ProviderModelsSection({
             nextModel !== undefined && favoriteModelSet.has(nextModel.slug) === isFavorite;
           const descriptors = caps?.optionDescriptors ?? [];
           if (descriptors.some((descriptor) => descriptor.id === "fastMode")) {
-            capLabels.push("Fast mode");
+            capLabels.push(t("providerModels.capFastMode"));
           }
           if (descriptors.some((descriptor) => descriptor.id === "thinking")) {
-            capLabels.push("Thinking");
+            capLabels.push(t("providerModels.capThinking"));
           }
           if (
             descriptors.some(
@@ -220,7 +220,7 @@ export function ProviderModelsSection({
                   descriptor.id === "variant"),
             )
           ) {
-            capLabels.push("Reasoning");
+            capLabels.push(t("providerModels.capReasoning"));
           }
           const hasDetails = capLabels.length > 0 || model.name !== model.slug;
 
@@ -249,7 +249,7 @@ export function ProviderModelsSection({
                           size="icon-micro"
                           variant="ghost"
                           className="text-muted-foreground/60 hover:text-muted-foreground"
-                          aria-label={`Details for ${model.name}`}
+                          aria-label={t("providerModels.detailsAria", { name: model.name })}
                         />
                       }
                     >
@@ -287,16 +287,20 @@ export function ProviderModelsSection({
                         variant="ghost-muted"
                         className={cn(isFavorite && "text-yellow-500 hover:text-yellow-600")}
                         onClick={() => handleToggleFavorite(model.slug)}
-                        aria-label={`${isFavorite ? "Remove" : "Add"} ${model.name} ${
-                          isFavorite ? "from" : "to"
-                        } favorites`}
+                        aria-label={
+                          isFavorite
+                            ? t("providerModels.removeFavoriteAria", { name: model.name })
+                            : t("providerModels.addFavoriteAria", { name: model.name })
+                        }
                       />
                     }
                   >
                     <StarIcon className={cn("size-3", isFavorite && "fill-current")} />
                   </TooltipTrigger>
                   <TooltipPopup side="top">
-                    {isFavorite ? "Remove from favorites" : "Add to favorites"}
+                    {isFavorite
+                      ? t("providerModels.removeFavorite")
+                      : t("providerModels.addFavorite")}
                   </TooltipPopup>
                 </Tooltip>
                 <Tooltip>
@@ -307,7 +311,7 @@ export function ProviderModelsSection({
                         variant="ghost-muted"
                         disabled={!canMoveUp}
                         onClick={() => handleMove(model.slug, -1)}
-                        aria-label={`Move ${model.name} up`}
+                        aria-label={t("providerModels.moveUpAria", { name: model.name })}
                       />
                     }
                   >
@@ -323,7 +327,7 @@ export function ProviderModelsSection({
                         variant="ghost-muted"
                         disabled={!canMoveDown}
                         onClick={() => handleMove(model.slug, 1)}
-                        aria-label={`Move ${model.name} down`}
+                        aria-label={t("providerModels.moveDownAria", { name: model.name })}
                       />
                     }
                   >
@@ -339,7 +343,11 @@ export function ProviderModelsSection({
                           size="icon-micro"
                           variant="ghost-muted"
                           onClick={() => handleToggleHidden(model.slug)}
-                          aria-label={`${isHidden ? "Show" : "Hide"} ${model.name}`}
+                          aria-label={
+                            isHidden
+                              ? t("providerModels.showAria", { name: model.name })
+                              : t("providerModels.hideAria", { name: model.name })
+                          }
                         />
                       }
                     >
@@ -350,7 +358,9 @@ export function ProviderModelsSection({
                       )}
                     </TooltipTrigger>
                     <TooltipPopup side="top">
-                      {isHidden ? "Show in picker" : "Hide from picker"}
+                      {isHidden
+                        ? t("providerModels.showInPicker")
+                        : t("providerModels.hideFromPicker")}
                     </TooltipPopup>
                   </Tooltip>
                 ) : null}
@@ -361,7 +371,7 @@ export function ProviderModelsSection({
                         <Button
                           size="icon-micro"
                           variant="ghost-muted"
-                          aria-label={`Remove ${model.slug}`}
+                          aria-label={t("providerModels.removeAria", { name: model.slug })}
                           onClick={() => handleRemove(model.slug)}
                         />
                       }
@@ -395,7 +405,7 @@ export function ProviderModelsSection({
         />
         <Button className="shrink-0" variant="outline" onClick={handleAdd}>
           <PlusIcon className="size-3.5" />
-          Add
+          {t("add")}
         </Button>
       </div>
 

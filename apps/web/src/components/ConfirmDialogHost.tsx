@@ -24,10 +24,22 @@ type ConfirmationCopy = {
   readonly description: string | null;
 };
 
+/** Question terminator, ASCII or full-width, so localized titles split too. */
+const endsWithQuestion = (line: string): boolean =>
+  line.trim().endsWith("?") || line.trim().endsWith("？");
+
+const questionTerminatorLength = (message: string): number => {
+  const ascii = message.indexOf("?");
+  const fullWidth = message.indexOf("？");
+  if (ascii < 0) return fullWidth < 0 ? -1 : fullWidth + 1;
+  if (fullWidth < 0) return ascii + 1;
+  return Math.min(ascii, fullWidth) + 1;
+};
+
 export function resolveConfirmDialogCopy(message: string): ConfirmationCopy {
   const normalizedMessage = message.trim();
   const lines = normalizedMessage.split("\n");
-  const questionLineIndex = lines.findIndex((line) => line.trim().endsWith("?"));
+  const questionLineIndex = lines.findIndex((line) => endsWithQuestion(line));
 
   if (questionLineIndex >= 0) {
     const title = lines[questionLineIndex]!.trim();
@@ -38,11 +50,11 @@ export function resolveConfirmDialogCopy(message: string): ConfirmationCopy {
     return { title, description: description || null };
   }
 
-  const questionMarkIndex = normalizedMessage.indexOf("?");
-  if (questionMarkIndex >= 0) {
+  const questionMarkIndex = questionTerminatorLength(normalizedMessage);
+  if (questionMarkIndex >= 1) {
     return {
-      title: normalizedMessage.slice(0, questionMarkIndex + 1).trim(),
-      description: normalizedMessage.slice(questionMarkIndex + 1).trim() || null,
+      title: normalizedMessage.slice(0, questionMarkIndex).trim(),
+      description: normalizedMessage.slice(questionMarkIndex).trim() || null,
     };
   }
 

@@ -74,7 +74,7 @@ export function buildInitialByokProviderSnapshot(
           version: null,
           status: "warning",
           auth: { status: "unknown" },
-          message: "Cursor BYOK is disabled in T3 Code settings.",
+          message: "Cursor BYOK is disabled in Code Work settings.",
         },
       });
     }

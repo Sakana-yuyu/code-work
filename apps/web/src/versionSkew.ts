@@ -35,7 +35,7 @@ function versionCore(version: string): string {
 }
 
 /**
- * The skew a user can act on: the connected server runs an older T3 Code than
+ * The skew a user can act on: the connected server runs an older Code Work than
  * this client, so the server is the side that needs updating.
  *
  * Versions compare as semver on their core `major.minor.patch` only. Nightlies
@@ -68,7 +68,7 @@ export function resolveVersionMismatch(
   return {
     clientVersion: normalizedClientVersion,
     serverVersion: normalizedServerVersion,
-    hint: "Version mismatch. Try syncing the client and server to the same T3 Code version.",
+    hint: "Version mismatch. Try syncing the client and server to the same Code Work version.",
   };
 }
 

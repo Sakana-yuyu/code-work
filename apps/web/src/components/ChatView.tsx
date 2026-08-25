@@ -5068,19 +5068,19 @@ function ChatViewContent(props: ChatViewProps) {
       if (activeEnvironmentUnavailable && activeEnvironmentUnavailableLabel) {
         setThreadError(
           activeThread.id,
-          `Reconnect ${activeEnvironmentUnavailableLabel} before reverting checkpoints.`,
+          t("checkpointRevert.reconnectFirst", { label: activeEnvironmentUnavailableLabel }),
         );
         return;
       }
       if (phase === "running" || isSendBusy || isConnecting) {
-        setThreadError(activeThread.id, "Interrupt the current turn before reverting checkpoints.");
+        setThreadError(activeThread.id, t("checkpointRevert.interruptFirst"));
         return;
       }
       const confirmed = await localApi.dialogs.confirm(
         [
-          `Revert this thread to checkpoint ${turnCount}?`,
-          "This will discard newer messages and turn diffs in this thread.",
-          "This action cannot be undone.",
+          t("checkpointRevert.title", { count: turnCount }),
+          t("checkpointRevert.description"),
+          t("checkpointRevert.warning"),
         ].join("\n"),
         { variant: "destructive" },
       );
@@ -6539,7 +6539,7 @@ function ChatViewContent(props: ChatViewProps) {
     ) : activeRightPanelSurface?.kind === "pull-request" && !supportsPullRequests ? (
       <PullRequestsUnavailableState
         title={t("pullRequestsUnavailable")}
-        error="Update this environment's T3 Code server to browse pull requests."
+        error="Update this environment's Code Work server to browse pull requests."
       />
     ) : activeRightPanelSurface?.kind === "pull-request" ? (
       // No onClose: the surface tab's own X owns closing here, and a second X in the header

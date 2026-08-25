@@ -315,8 +315,8 @@ export const zhCN: Record<string, string> = {
   "Run a second backend inside a WSL distro alongside the Windows one. Pick a distro to start it; pick Off to stop it. Projects opened against the WSL backend live on the Linux side; Windows projects stay where they are.":
     "在 WSL 发行版中运行第二个后端，与 Windows 后端并存。选择发行版即可启动；选择 Off 即可停止。通过 WSL 后端打开的项目位于 Linux 侧；Windows 项目保持不变。",
   "WSL only": "仅 WSL",
-  "Stop the Windows backend and run only the WSL backend. Useful if you develop entirely inside WSL and don't want a second backend process. T3 Code restarts when you change this.":
-    "停止 Windows 后端，只运行 WSL 后端。如果你完全在 WSL 内开发、不想要第二个后端进程，这很有用。更改后 T3 Code 会重启。",
+  "Stop the Windows backend and run only the WSL backend. Useful if you develop entirely inside WSL and don't want a second backend process. Code Work restarts when you change this.":
+    "停止 Windows 后端，只运行 WSL 后端。如果你完全在 WSL 内开发、不想要第二个后端进程，这很有用。更改后 Code Work 会重启。",
   "Tailscale HTTPS": "Tailscale HTTPS",
   "Network access": "网络访问",
   "This environment": "此环境",
@@ -557,8 +557,8 @@ export const zhCN: Record<string, string> = {
   "Path to the Grok CLI binary.": "Grok CLI 二进制文件路径。",
   "Path to the OpenCode binary.": "OpenCode 二进制文件路径。",
   "Server URL": "服务器 URL",
-  "Leave blank to let T3 Code spawn the server when needed.":
-    "留空以让 T3 Code 在需要时启动服务器。",
+  "Leave blank to let Code Work spawn the server when needed.":
+    "留空以让 Code Work 在需要时启动服务器。",
   "Server password": "服务器密码",
   "Stored in plain text on disk.": "以明文形式存储在磁盘上。",
   "Backend URL": "后端 URL",
@@ -841,12 +841,12 @@ export const zhCN: Record<string, string> = {
   "The project is still available. Try opening the draft again.":
     "项目仍然可用。请再次打开草稿试试。",
   Thinking: "思考中",
-  "This Mac has Apple Silicon, but T3 Code is still running the Intel build under Rosetta. Download the available update to switch to the native Apple Silicon build.":
-    "此 Mac 使用 Apple Silicon 芯片，但 T3 Code 仍在 Rosetta 下运行 Intel 版本。请下载可用更新以切换到原生 Apple Silicon 版本。",
-  "This Mac has Apple Silicon, but T3 Code is still running the Intel build under Rosetta. Restart to install the downloaded Apple Silicon build.":
-    "此 Mac 使用 Apple Silicon 芯片，但 T3 Code 仍在 Rosetta 下运行 Intel 版本。重启即可安装已下载的 Apple Silicon 版本。",
-  "This Mac has Apple Silicon, but T3 Code is still running the Intel build under Rosetta. The next app update will replace it with the native Apple Silicon build.":
-    "此 Mac 使用 Apple Silicon 芯片，但 T3 Code 仍在 Rosetta 下运行 Intel 版本。下次应用更新将替换为原生 Apple Silicon 版本。",
+  "This Mac has Apple Silicon, but Code Work is still running the Intel build under Rosetta. Download the available update to switch to the native Apple Silicon build.":
+    "此 Mac 使用 Apple Silicon 芯片，但 Code Work 仍在 Rosetta 下运行 Intel 版本。请下载可用更新以切换到原生 Apple Silicon 版本。",
+  "This Mac has Apple Silicon, but Code Work is still running the Intel build under Rosetta. Restart to install the downloaded Apple Silicon build.":
+    "此 Mac 使用 Apple Silicon 芯片，但 Code Work 仍在 Rosetta 下运行 Intel 版本。重启即可安装已下载的 Apple Silicon 版本。",
+  "This Mac has Apple Silicon, but Code Work is still running the Intel build under Rosetta. The next app update will replace it with the native Apple Silicon build.":
+    "此 Mac 使用 Apple Silicon 芯片，但 Code Work 仍在 Rosetta 下运行 Intel 版本。下次应用更新将替换为原生 Apple Silicon 版本。",
   "This environment isn’t connected — try again once it reconnects.":
     "此环境未连接——请在其重新连接后重试。",
   "This host could not be read.": "无法读取此托管平台。",
@@ -867,8 +867,8 @@ export const zhCN: Record<string, string> = {
   "Update downloaded": "更新已下载",
   "Update failed": "更新失败",
   "Update timed out — try again.": "更新超时——请重试。",
-  "Update your T3 Code servers to browse pull requests.":
-    "更新你的 T3 Code 服务器后才能浏览拉取请求。",
+  "Update your Code Work servers to browse pull requests.":
+    "更新你的 Code Work 服务器后才能浏览拉取请求。",
   Updated: "已更新",
   "Updates Available:": "有多个可用更新：",
   Updating: "正在更新",
