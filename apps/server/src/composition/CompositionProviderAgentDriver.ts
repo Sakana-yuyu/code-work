@@ -8,6 +8,7 @@ import type {
   ProviderTurnStartResult,
   TurnId,
   RuntimeMode,
+  ProviderRuntimeEvent,
 } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
 
@@ -52,7 +53,16 @@ const makeFailure = (code: string, error: unknown) =>
 export const makeCompositionProviderAgentDriver = (
   options: CompositionProviderAgentDriverOptions,
 ): CompositionAgentDriver => {
-  const activeRuns = new Map<string, { readonly threadId: ThreadId; readonly turnId: TurnId }>();
+  const activeRuns = new Map<
+    string,
+    {
+      readonly taskId: string;
+      readonly runId: string;
+      readonly threadId: ThreadId;
+      readonly turnId: TurnId;
+      readonly runtimeTaskId: string;
+    }
+  >();
   const runtimeMode = options.runtimeMode ?? "full-access";
 
   const startTask: CompositionAgentDriver["startTask"] = (input) =>
@@ -87,8 +97,15 @@ export const makeCompositionProviderAgentDriver = (
         Effect.mapError((error) => makeFailure("provider_turn_start_failed", error)),
         Effect.tapError(() => options.adapter.stopSession(threadId).pipe(Effect.ignore)),
       );
-      activeRuns.set(input.run.runId, { threadId, turnId: turn.turnId });
-      return { runtimeTaskId: `${options.runtimeId}:${threadId}:${turn.turnId}` };
+      const runtimeTaskId = `${options.runtimeId}:${threadId}:${turn.turnId}`;
+      activeRuns.set(input.run.runId, {
+        taskId: input.task.taskId,
+        runId: input.run.runId,
+        threadId,
+        turnId: turn.turnId,
+        runtimeTaskId,
+      });
+      return { runtimeTaskId };
     });
 
   const cancelTask: CompositionAgentDriver["cancelTask"] = (input) =>
@@ -109,5 +126,23 @@ export const makeCompositionProviderAgentDriver = (
     runtimeId: options.runtimeId,
     startTask,
     cancelTask,
+    resolveRuntimeEvent: (event: ProviderRuntimeEvent) => {
+      if (
+        event.providerInstanceId !== undefined &&
+        event.providerInstanceId !== options.providerInstanceId
+      ) {
+        return undefined;
+      }
+      for (const active of activeRuns.values()) {
+        if (active.threadId !== event.threadId) continue;
+        if (event.turnId !== undefined && event.turnId !== active.turnId) continue;
+        return {
+          taskId: active.taskId,
+          runId: active.runId,
+          runtimeTaskId: active.runtimeTaskId,
+        };
+      }
+      return undefined;
+    },
   };
 };

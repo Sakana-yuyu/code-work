@@ -126,4 +126,26 @@ layer("CompositionTaskStore", (it) => {
       assert.equal(result._tag, "Failure");
     }),
   );
+
+  it.effect("deduplicates a repeated provider source event id", () =>
+    Effect.gen(function* () {
+      const store = yield* CompositionTaskStore;
+      const event = {
+        taskId: "task-source",
+        runId: "run-source",
+        sourceEventId: "provider-event-1",
+        agentId: "agent-1",
+        status: "running" as const,
+        sequence: 0,
+        eventType: "progress" as const,
+        summary: "第一次投影",
+      };
+
+      yield* store.appendEvent(event);
+      yield* store.appendEvent({ ...event, sequence: 1, summary: "重复投影" });
+
+      const events = yield* store.listEvents(event.taskId, event.runId);
+      assert.deepEqual(events, [event]);
+    }),
+  );
 });

@@ -2,6 +2,7 @@ import type {
   CompositionTask,
   CompositionTaskRun,
   CompositionTaskStatus,
+  ProviderRuntimeEvent,
 } from "@t3tools/contracts";
 import * as Clock from "effect/Clock";
 import * as Effect from "effect/Effect";
@@ -95,6 +96,14 @@ export interface CompositionAgentDriver {
     { readonly status: "cancelled" | "cancel_requested" | "already_terminal" },
     CompositionAgentDriverFailure
   >;
+  /** 将外部 runtime 事件归属到本驱动已启动的 Composition run。 */
+  readonly resolveRuntimeEvent?: (event: ProviderRuntimeEvent) =>
+    | {
+        readonly taskId: string;
+        readonly runId: string;
+        readonly runtimeTaskId?: string;
+      }
+    | undefined;
 }
 
 export type CompositionDispatchInput = {

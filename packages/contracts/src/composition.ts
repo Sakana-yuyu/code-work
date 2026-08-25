@@ -137,6 +137,8 @@ export type CompositionTaskEventType = typeof CompositionTaskEventType.Type;
 export const CompositionTaskEvent = Schema.Struct({
   taskId: TrimmedNonEmptyString,
   runId: TrimmedNonEmptyString,
+  /** Provider Runtime event id，用于重连或重复投递去重。 */
+  sourceEventId: Schema.optional(TrimmedNonEmptyString),
   parentTaskId: Schema.optional(TrimmedNonEmptyString),
   agentId: TrimmedNonEmptyString,
   runtimeId: Schema.optional(TrimmedNonEmptyString),

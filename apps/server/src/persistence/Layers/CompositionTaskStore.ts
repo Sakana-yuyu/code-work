@@ -58,6 +58,7 @@ const RunRowSchema = Schema.Struct({
 const EventRowSchema = Schema.Struct({
   taskId: Schema.String,
   runId: Schema.String,
+  sourceEventId: Schema.NullOr(Schema.String),
   parentTaskId: Schema.NullOr(Schema.String),
   agentId: Schema.String,
   runtimeId: Schema.NullOr(Schema.String),
@@ -101,6 +102,11 @@ const IdRequest = Schema.Struct({ id: Schema.String });
 const TaskRequest = Schema.Struct({ taskId: Schema.String });
 const TaskListRequest = Schema.Struct({ projectId: Schema.NullOr(Schema.String) });
 const EventListRequest = Schema.Struct({ taskId: Schema.String, runId: Schema.String });
+const EventSourceRequest = Schema.Struct({
+  taskId: Schema.String,
+  runId: Schema.String,
+  sourceEventId: Schema.String,
+});
 
 const toTask = (row: Schema.Schema.Type<typeof TaskRowSchema>): CompositionTask => ({
   taskId: row.taskId,
@@ -136,6 +142,7 @@ const toRun = (row: Schema.Schema.Type<typeof RunRowSchema>): CompositionTaskRun
 const toEvent = (row: Schema.Schema.Type<typeof EventRowSchema>): CompositionTaskEvent => ({
   taskId: row.taskId,
   runId: row.runId,
+  ...(row.sourceEventId === null ? {} : { sourceEventId: row.sourceEventId }),
   ...(row.parentTaskId === null ? {} : { parentTaskId: row.parentTaskId }),
   agentId: row.agentId,
   ...(row.runtimeId === null ? {} : { runtimeId: row.runtimeId }),
@@ -295,14 +302,25 @@ const makeStore = Effect.gen(function* () {
     }),
     execute: (event) => sql`
       INSERT INTO composition_task_events (
-        task_id, run_id, parent_task_id, agent_id, runtime_id, status, sequence,
+        task_id, run_id, source_event_id, parent_task_id, agent_id, runtime_id, status, sequence,
         event_type, summary, progress, blocker_code, approval_request_id, child_task_ids_json
       ) VALUES (
-        ${event.taskId}, ${event.runId}, ${event.parentTaskId}, ${event.agentId}, ${event.runtimeId},
+        ${event.taskId}, ${event.runId}, ${event.sourceEventId}, ${event.parentTaskId}, ${event.agentId}, ${event.runtimeId},
         ${event.status}, ${event.sequence}, ${event.eventType}, ${event.summary}, ${event.progress},
         ${event.blockerCode}, ${event.approvalRequestId},
         ${event.childTaskIds === undefined ? null : encodeStringArray(event.childTaskIds)}
       )
+    `,
+  });
+
+  const findEventBySourceRow = SqlSchema.findOneOption({
+    Request: EventSourceRequest,
+    Result: Schema.Struct({ rowId: Schema.Number }),
+    execute: ({ taskId, runId, sourceEventId }) => sql`
+      SELECT row_id AS "rowId"
+      FROM composition_task_events
+      WHERE task_id = ${taskId} AND run_id = ${runId} AND source_event_id = ${sourceEventId}
+      LIMIT 1
     `,
   });
 
@@ -311,7 +329,8 @@ const makeStore = Effect.gen(function* () {
     Result: EventRowSchema,
     execute: ({ taskId, runId }) => sql`
       SELECT
-        task_id AS "taskId", run_id AS "runId", parent_task_id AS "parentTaskId",
+        task_id AS "taskId", run_id AS "runId", source_event_id AS "sourceEventId",
+        parent_task_id AS "parentTaskId",
         agent_id AS "agentId", runtime_id AS "runtimeId", status, sequence,
         event_type AS "eventType", summary, progress, blocker_code AS "blockerCode",
         approval_request_id AS "approvalRequestId", child_task_ids_json AS "childTaskIds"
@@ -456,17 +475,31 @@ const makeStore = Effect.gen(function* () {
         getRunRow({ id: runId }).pipe(Effect.map(Option.map(toRun))),
       ),
     appendEvent: (event) =>
-      run(
-        "CompositionTaskStore.appendEvent",
-        appendEventRow({
-          ...event,
-          parentTaskId: event.parentTaskId ?? null,
-          runtimeId: event.runtimeId ?? null,
-          progress: event.progress ?? null,
-          blockerCode: event.blockerCode ?? null,
-          approvalRequestId: event.approvalRequestId ?? null,
-        }).pipe(Effect.as(event)),
-      ),
+      Effect.gen(function* () {
+        if (event.sourceEventId !== undefined) {
+          const existing = yield* run(
+            "CompositionTaskStore.findEventBySource",
+            findEventBySourceRow({
+              taskId: event.taskId,
+              runId: event.runId,
+              sourceEventId: event.sourceEventId,
+            }),
+          );
+          if (Option.isSome(existing)) return event;
+        }
+        return yield* run(
+          "CompositionTaskStore.appendEvent",
+          appendEventRow({
+            ...event,
+            sourceEventId: event.sourceEventId ?? null,
+            parentTaskId: event.parentTaskId ?? null,
+            runtimeId: event.runtimeId ?? null,
+            progress: event.progress ?? null,
+            blockerCode: event.blockerCode ?? null,
+            approvalRequestId: event.approvalRequestId ?? null,
+          }).pipe(Effect.as(event)),
+        );
+      }),
     listEvents: (taskId, runId) =>
       run(
         "CompositionTaskStore.listEvents",

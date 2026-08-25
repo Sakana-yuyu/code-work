@@ -1,5 +1,6 @@
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
+import type { ProviderRuntimeEvent } from "@t3tools/contracts";
 
 import type { CompositionAgentDriver } from "./CompositionOrchestrator.ts";
 
@@ -31,6 +32,17 @@ export interface CompositionAgentDriverRegistry {
   readonly unregister: (agentId: string) => Effect.Effect<boolean>;
   readonly get: (agentId: string) => Effect.Effect<CompositionAgentDriver | undefined>;
   readonly list: Effect.Effect<ReadonlyArray<CompositionAgentDriver>>;
+  readonly resolveRuntimeEvent: (
+    event: ProviderRuntimeEvent,
+  ) => Effect.Effect<
+    | {
+        readonly driver: CompositionAgentDriver;
+        readonly taskId: string;
+        readonly runId: string;
+        readonly runtimeTaskId?: string;
+      }
+    | undefined
+  >;
 }
 
 export const makeCompositionAgentDriverRegistry = (): CompositionAgentDriverRegistry => {
@@ -61,5 +73,13 @@ export const makeCompositionAgentDriverRegistry = (): CompositionAgentDriverRegi
     get list() {
       return Effect.sync(() => Array.from(drivers.values()));
     },
+    resolveRuntimeEvent: (event) =>
+      Effect.sync(() => {
+        for (const driver of drivers.values()) {
+          const binding = driver.resolveRuntimeEvent?.(event);
+          if (binding !== undefined) return { driver, ...binding };
+        }
+        return undefined;
+      }),
   };
 };

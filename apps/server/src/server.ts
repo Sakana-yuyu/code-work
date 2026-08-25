@@ -54,6 +54,7 @@ import * as CompositionCapabilityPolicy from "./composition/CapabilityPolicy.ts"
 import * as CompositionToolBroker from "./composition/ToolBroker.ts";
 import * as CompositionProviderAgentDriverProjection from "./composition/CompositionProviderAgentDriverRegistry.ts";
 import * as CompositionOrchestratorService from "./composition/CompositionOrchestratorService.ts";
+import * as CompositionTaskRuntimeProjectionService from "./composition/CompositionTaskRuntimeProjectionService.ts";
 import * as PreviewManager from "./preview/Manager.ts";
 import * as PortScanner from "./preview/PortScanner.ts";
 import * as ProcessRunner from "./processRunner.ts";
@@ -371,7 +372,10 @@ const CompositionProviderAgentDriverProjectionLayerLive =
     Layer.provideMerge(ProviderLayerForCompositionAgentDriversLive),
   );
 
-const CompositionOrchestratorServiceLayerLive = CompositionOrchestratorService.layer.pipe(
+const CompositionRuntimeLayerLive = Layer.mergeAll(
+  CompositionOrchestratorService.layer,
+  CompositionTaskRuntimeProjectionService.layer,
+).pipe(
   Layer.provideMerge(CompositionProviderAgentDriverProjectionLayerLive),
   Layer.provideMerge(CompositionTaskStoreLive.pipe(Layer.provideMerge(PersistenceLayerLive))),
 );
@@ -417,8 +421,8 @@ const RuntimeCoreDependenciesLive = ReactorLayerLive.pipe(
   // `providerInstances` hydration merges `settings.providers.<kind>`
   // with explicit `providerInstances` entries on boot.
   Layer.provideMerge(ProviderInstanceRegistryHydrationLive),
-  // Orchestrator 层已在内部合并 Provider Driver 投影与任务持久化依赖，runtime 只暴露一次。
-  Layer.provideMerge(CompositionOrchestratorServiceLayerLive),
+  // Composition runtime 统一提供 Orchestrator 与 Runtime 事件投影。
+  Layer.provideMerge(CompositionRuntimeLayerLive),
   // Shared native/canonical NDJSON writers used by both the per-instance
   // drivers (native stream, written from inside each `<X>Adapter`) and
   // `ProviderService` (canonical stream, written after event normalization).

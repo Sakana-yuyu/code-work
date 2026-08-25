@@ -4,6 +4,8 @@ import * as Effect from "effect/Effect";
 import {
   ProviderDriverKind,
   ProviderInstanceId,
+  EventId,
+  type ProviderRuntimeEvent,
   ThreadId,
   TurnId,
   type ProviderSendTurnInput,
@@ -97,6 +99,22 @@ describe("CompositionProviderAgentDriver", () => {
       ),
     ).resolves.toMatchObject({ runtimeTaskId: "codex-local:thread-1:turn-1" });
     expect(fake.calls).toEqual(["start:thread-1", "send:thread-1:检查工作区"]);
+
+    const binding = driver.resolveRuntimeEvent?.({
+      eventId: EventId.make("event-1"),
+      provider: ProviderDriverKind.make("codex"),
+      providerInstanceId: ProviderInstanceId.make("codex-local"),
+      threadId: ThreadId.make("thread-1"),
+      turnId: TurnId.make("turn-1"),
+      createdAt: "2026-08-25T00:00:00.000Z",
+      type: "turn.completed",
+      payload: { state: "completed" },
+    } satisfies ProviderRuntimeEvent);
+    expect(binding).toEqual({
+      taskId: "task-1",
+      runId: "run-1",
+      runtimeTaskId: "codex-local:thread-1:turn-1",
+    });
   });
 
   it("interrupts the provider turn when the composition task is cancelled", async () => {
