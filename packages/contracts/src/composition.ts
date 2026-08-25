@@ -101,6 +101,47 @@ export const CompositionCapabilityDescriptor = Schema.Struct({
 });
 export type CompositionCapabilityDescriptor = typeof CompositionCapabilityDescriptor.Type;
 
+const CompositionCapabilityOperation = Schema.Literals(["read", "execute", "mutate"]);
+export type CompositionCapabilityOperation = typeof CompositionCapabilityOperation.Type;
+
+/** 绑定到单个 task/agent 的短期能力授权，不等同于一次审批。 */
+export const CompositionCapabilityGrant = Schema.Struct({
+  grantId: TrimmedNonEmptyString,
+  taskId: TrimmedNonEmptyString,
+  agentId: TrimmedNonEmptyString,
+  capabilityId: TrimmedNonEmptyString,
+  issuedAtUnixMs: NonNegativeInt,
+  expiresAtUnixMs: NonNegativeInt,
+  revokedAtUnixMs: Schema.optional(NonNegativeInt),
+});
+export type CompositionCapabilityGrant = typeof CompositionCapabilityGrant.Type;
+
+const CompositionCapabilityAuditOutcome = Schema.Literals([
+  "allowed",
+  "approval_required",
+  "denied",
+  "expired",
+  "revoked",
+  "cancelled",
+  "failed",
+]);
+export type CompositionCapabilityAuditOutcome = typeof CompositionCapabilityAuditOutcome.Type;
+
+/** 工具调用审计只保留身份、决策和结果，不保存 arguments 或秘密。 */
+export const CompositionCapabilityAuditEvent = Schema.Struct({
+  auditId: TrimmedNonEmptyString,
+  grantId: TrimmedNonEmptyString,
+  taskId: TrimmedNonEmptyString,
+  runId: TrimmedNonEmptyString,
+  agentId: TrimmedNonEmptyString,
+  capabilityId: TrimmedNonEmptyString,
+  operation: CompositionCapabilityOperation,
+  outcome: CompositionCapabilityAuditOutcome,
+  errorCode: Schema.optional(TrimmedNonEmptyString),
+  occurredAtUnixMs: NonNegativeInt,
+});
+export type CompositionCapabilityAuditEvent = typeof CompositionCapabilityAuditEvent.Type;
+
 export const CompositionCapabilityPolicyDecision = Schema.Struct({
   decision: Schema.Literals(["allow", "approval_required", "deny"]),
   reasonCode: TrimmedNonEmptyString,

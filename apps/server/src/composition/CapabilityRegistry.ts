@@ -87,7 +87,7 @@ const capabilities: CompositionCapabilityDescriptorList = [
   },
 ];
 
-const make = Effect.succeed(
+export const makeCompositionCapabilityRegistry = (): CapabilityRegistry["Service"] =>
   CapabilityRegistry.of({
     list: Effect.fn("CapabilityRegistry.list")(function* (input) {
       if (input.scopeId.trim().length === 0) {
@@ -98,7 +98,8 @@ const make = Effect.succeed(
         grants: { ...capability.grants },
       }));
     }),
-  }),
-);
+  });
+
+const make = Effect.succeed(makeCompositionCapabilityRegistry());
 
 export const layer = Layer.effect(CapabilityRegistry, make);

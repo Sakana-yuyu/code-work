@@ -6,6 +6,8 @@ import {
   CompositionAgentLoopRunRequest,
   CompositionAgentLoopRunResult,
   CompositionCapabilityDescriptor,
+  CompositionCapabilityGrant,
+  CompositionCapabilityAuditEvent,
   CompositionCapabilityPolicyDecision,
   CompositionTaskCancelRequest,
   CompositionTaskDispatchRequest,
@@ -18,6 +20,8 @@ import {
 
 const decodeAgentLoopRequest = Schema.decodeUnknownSync(CompositionAgentLoopRequest);
 const decodeCapability = Schema.decodeUnknownSync(CompositionCapabilityDescriptor);
+const decodeCapabilityGrant = Schema.decodeUnknownSync(CompositionCapabilityGrant);
+const decodeCapabilityAuditEvent = Schema.decodeUnknownSync(CompositionCapabilityAuditEvent);
 const decodePolicyDecision = Schema.decodeUnknownSync(CompositionCapabilityPolicyDecision);
 const decodeTaskEvent = Schema.decodeUnknownSync(CompositionTaskEvent);
 const decodeTaskDispatch = Schema.decodeUnknownSync(CompositionTaskDispatchRequest);
@@ -30,6 +34,33 @@ const decodeAgentLoopRunRequest = Schema.decodeUnknownSync(CompositionAgentLoopR
 const decodeAgentLoopRunResult = Schema.decodeUnknownSync(CompositionAgentLoopRunResult);
 
 describe("composition contracts", () => {
+  it("描述 task-scoped capability grant 和脱敏审计事件", () => {
+    const grant = decodeCapabilityGrant({
+      grantId: "grant-1",
+      taskId: "task-1",
+      agentId: "agent-1",
+      capabilityId: "t3.workspace.read_file",
+      issuedAtUnixMs: 100,
+      expiresAtUnixMs: 200,
+      revokedAtUnixMs: undefined,
+    });
+    const audit = decodeCapabilityAuditEvent({
+      auditId: "audit-1",
+      grantId: "grant-1",
+      taskId: "task-1",
+      runId: "run-1",
+      agentId: "agent-1",
+      capabilityId: "t3.workspace.read_file",
+      operation: "read",
+      outcome: "allowed",
+      occurredAtUnixMs: 150,
+    });
+
+    expect(grant.expiresAtUnixMs).toBe(200);
+    expect(audit.outcome).toBe("allowed");
+    expect((audit as Record<string, unknown>).arguments).toBeUndefined();
+  });
+
   it("accepts a legacy text request without agent identity", () => {
     const decoded = decodeAgentLoopRequest({
       mode: "legacy_text",
