@@ -52,7 +52,10 @@ import * as PreviewAutomationBroker from "./mcp/PreviewAutomationBroker.ts";
 import * as CompositionCapabilityRegistry from "./composition/CapabilityRegistry.ts";
 import * as CompositionCapabilityPolicy from "./composition/CapabilityPolicy.ts";
 import * as CompositionToolBroker from "./composition/ToolBroker.ts";
+import * as CompositionAgentDriverRegistry from "./composition/CompositionAgentDriverRegistry.ts";
 import * as CompositionProviderAgentDriverProjection from "./composition/CompositionProviderAgentDriverRegistry.ts";
+import * as CompositionRuntimeAdapterRegistry from "./composition/CompositionRuntimeAdapterRegistry.ts";
+import * as CompositionRuntimeAgentDriverProjection from "./composition/CompositionRuntimeAgentDriverProjection.ts";
 import * as CompositionOrchestratorService from "./composition/CompositionOrchestratorService.ts";
 import * as CompositionTaskRuntimeProjectionService from "./composition/CompositionTaskRuntimeProjectionService.ts";
 import * as PreviewManager from "./preview/Manager.ts";
@@ -367,16 +370,20 @@ const ProviderLayerForCompositionAgentDriversLive = ProviderLayerLive.pipe(
   Layer.provideMerge(ProviderInstanceRegistryHydrationLive),
 );
 
-const CompositionProviderAgentDriverProjectionLayerLive =
-  CompositionProviderAgentDriverProjection.layer.pipe(
-    Layer.provideMerge(ProviderLayerForCompositionAgentDriversLive),
-  );
+const CompositionAgentDriverProjectionLayerLive = Layer.mergeAll(
+  CompositionProviderAgentDriverProjection.layer,
+  CompositionRuntimeAgentDriverProjection.layer,
+).pipe(
+  Layer.provideMerge(CompositionAgentDriverRegistry.layer),
+  Layer.provideMerge(CompositionRuntimeAdapterRegistry.layer),
+  Layer.provideMerge(ProviderLayerForCompositionAgentDriversLive),
+);
 
 const CompositionRuntimeLayerLive = Layer.mergeAll(
   CompositionOrchestratorService.layer,
   CompositionTaskRuntimeProjectionService.layer,
 ).pipe(
-  Layer.provideMerge(CompositionProviderAgentDriverProjectionLayerLive),
+  Layer.provideMerge(CompositionAgentDriverProjectionLayerLive),
   Layer.provideMerge(CompositionTaskStoreLive.pipe(Layer.provideMerge(PersistenceLayerLive))),
 );
 

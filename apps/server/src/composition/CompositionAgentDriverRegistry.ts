@@ -1,4 +1,6 @@
+import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
+import * as Layer from "effect/Layer";
 import * as Schema from "effect/Schema";
 import type { ProviderRuntimeEvent } from "@t3tools/contracts";
 
@@ -32,9 +34,7 @@ export interface CompositionAgentDriverRegistry {
   readonly unregister: (agentId: string) => Effect.Effect<boolean>;
   readonly get: (agentId: string) => Effect.Effect<CompositionAgentDriver | undefined>;
   readonly list: Effect.Effect<ReadonlyArray<CompositionAgentDriver>>;
-  readonly resolveRuntimeEvent: (
-    event: ProviderRuntimeEvent,
-  ) => Effect.Effect<
+  readonly resolveRuntimeEvent: (event: ProviderRuntimeEvent) => Effect.Effect<
     | {
         readonly driver: CompositionAgentDriver;
         readonly taskId: string;
@@ -44,6 +44,13 @@ export interface CompositionAgentDriverRegistry {
     | undefined
   >;
 }
+
+export interface CompositionAgentDriverRegistryServiceShape extends CompositionAgentDriverRegistry {}
+
+export class CompositionAgentDriverRegistryService extends Context.Service<
+  CompositionAgentDriverRegistryService,
+  CompositionAgentDriverRegistryServiceShape
+>()("t3/composition/CompositionAgentDriverRegistry/CompositionAgentDriverRegistryService") {}
 
 export const makeCompositionAgentDriverRegistry = (): CompositionAgentDriverRegistry => {
   const drivers = new Map<string, CompositionAgentDriver>();
@@ -83,3 +90,8 @@ export const makeCompositionAgentDriverRegistry = (): CompositionAgentDriverRegi
       }),
   };
 };
+
+export const layer = Layer.effect(
+  CompositionAgentDriverRegistryService,
+  Effect.sync(makeCompositionAgentDriverRegistry),
+);

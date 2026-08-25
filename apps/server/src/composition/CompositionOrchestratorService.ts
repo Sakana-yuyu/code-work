@@ -6,7 +6,7 @@ import {
   CompositionTaskStore,
   type CompositionTaskStoreShape,
 } from "../persistence/Services/CompositionTaskStore.ts";
-import { CompositionProviderAgentDriverProjectionService } from "./CompositionProviderAgentDriverRegistry.ts";
+import { CompositionAgentDriverRegistryService } from "./CompositionAgentDriverRegistry.ts";
 import {
   makeCompositionOrchestrator,
   type CompositionOrchestrator,
@@ -26,8 +26,8 @@ export class CompositionOrchestratorService extends Context.Service<
 
 const live = Effect.gen(function* () {
   const store = yield* CompositionTaskStore;
-  const projection = yield* CompositionProviderAgentDriverProjectionService;
-  const orchestrator = makeCompositionOrchestrator(store, projection.registry);
+  const driverRegistry = yield* CompositionAgentDriverRegistryService;
+  const orchestrator = makeCompositionOrchestrator(store, driverRegistry);
 
   return {
     dispatchTask: orchestrator.dispatchTask,

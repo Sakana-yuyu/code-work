@@ -12,6 +12,7 @@ import { makeCompositionProviderAgentDriver } from "./CompositionProviderAgentDr
 import {
   CompositionAgentDriverAlreadyRegisteredError,
   CompositionAgentDriverInvalidError,
+  CompositionAgentDriverRegistryService,
   makeCompositionAgentDriverRegistry,
   type CompositionAgentDriverRegistry,
 } from "./CompositionAgentDriverRegistry.ts";
@@ -105,9 +106,11 @@ export const makeCompositionProviderAgentDriverProjection = (
 const live = Effect.gen(function* () {
   const providerRegistry = yield* ProviderInstanceRegistry;
   const providerService = yield* ProviderService;
+  const agentDriverRegistry = yield* CompositionAgentDriverRegistryService;
   const projection = makeCompositionProviderAgentDriverProjection({
     providerRegistry,
     providerService,
+    registry: agentDriverRegistry,
   });
 
   yield* projection.refresh;

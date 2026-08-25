@@ -1,9 +1,13 @@
+import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
+import * as Layer from "effect/Layer";
+import * as PubSub from "effect/PubSub";
 
 import {
   CompositionAgentDriverAlreadyRegisteredError,
   CompositionAgentDriverInvalidError,
   makeCompositionAgentDriverRegistry,
+  CompositionAgentDriverRegistryService,
   type CompositionAgentDriverRegistry,
 } from "./CompositionAgentDriverRegistry.ts";
 import { makeCompositionRuntimeAgentDriver } from "./CompositionRuntimeAgentDriver.ts";
@@ -11,7 +15,10 @@ import type {
   CompositionRuntimeAdapter,
   CompositionRuntimeAdapterFailure,
 } from "./CompositionRuntimeAdapter.ts";
-import type { CompositionRuntimeAdapterRegistry } from "./CompositionRuntimeAdapterRegistry.ts";
+import {
+  CompositionRuntimeAdapterRegistryService,
+  type CompositionRuntimeAdapterRegistry,
+} from "./CompositionRuntimeAdapterRegistry.ts";
 
 export interface CompositionRuntimeAgentDriverProjection {
   readonly registry: CompositionAgentDriverRegistry;
@@ -22,6 +29,15 @@ export interface CompositionRuntimeAgentDriverProjection {
     | CompositionRuntimeAdapterFailure
   >;
 }
+
+export interface CompositionRuntimeAgentDriverProjectionServiceShape extends CompositionRuntimeAgentDriverProjection {}
+
+export class CompositionRuntimeAgentDriverProjectionService extends Context.Service<
+  CompositionRuntimeAgentDriverProjectionService,
+  CompositionRuntimeAgentDriverProjectionServiceShape
+>()(
+  "t3/composition/CompositionRuntimeAgentDriverProjection/CompositionRuntimeAgentDriverProjectionService",
+) {}
 
 export interface CompositionRuntimeAgentDriverProjectionOptions {
   readonly adapterRegistry: Pick<CompositionRuntimeAdapterRegistry, "list">;
@@ -65,3 +81,29 @@ export const makeCompositionRuntimeAgentDriverProjection = (
 
   return { registry, refresh };
 };
+
+const live = Effect.gen(function* () {
+  const adapterRegistry = yield* CompositionRuntimeAdapterRegistryService;
+  const agentDriverRegistry = yield* CompositionAgentDriverRegistryService;
+  const projection = makeCompositionRuntimeAgentDriverProjection({
+    adapterRegistry,
+    registry: agentDriverRegistry,
+  });
+
+  yield* projection.refresh;
+  const subscription = yield* adapterRegistry.subscribeChanges;
+  yield* Effect.forkScoped(
+    Effect.forever(
+      PubSub.take(subscription).pipe(
+        Effect.flatMap(() => projection.refresh),
+        Effect.catchCause((cause) =>
+          Effect.logError("Composition Runtime Agent Driver 刷新失败", { cause }),
+        ),
+      ),
+    ),
+  );
+
+  return projection;
+});
+
+export const layer = Layer.effect(CompositionRuntimeAgentDriverProjectionService, live);
