@@ -225,6 +225,13 @@ Transport 错误不得直接把运行标成成功；心跳超时只允许标记 
 - 不直接启动或托管用户本机 CLI 进程；CLI 由现有 Provider/Multica daemon runtime 负责。
 - 不在本节点声称 cursor-byok 的所有功能已经完成迁移；差异报告和迁移仍按能力域逐项推进。
 
+## Multica 外部依据与许可边界（2026-08-26）
+
+- 官方 README 将 Multica 定位为可自托管的 Agent workspace：由 runtime 驱动已安装并已认证的 Agent CLI，提供 Agent、Squad、Skill、任务执行记录、Review、Retry/Timeout 等协同能力；它不是模型提供商本身。
+- T3 采用外部 `MulticaDaemonRuntimeAdapter` 连接 daemon，只复用公开 HTTP/WebSocket 协议和任务结果，不复制 Multica 的 Web、数据库、账号或内部 issue 模型。
+- 官方 `LICENSE` 在 Apache 2.0 文本之外增加了 hosted service、商业嵌入、品牌和归属条件。若未来从 Multica 源码直接派生、重新分发 daemon/backend/UI 或把其作为商业产品组件提供，必须由发布前的法务与许可证审查确认适用条件；本设计优先采用协议级适配以保持 T3 与 Multica 的发布边界分离。
+- 外部来源：`https://github.com/multica-ai/multica` 的 `README.md` 与 `LICENSE`，访问日期为 2026-08-26；采用官方仓库而非二手文章，因为 Agent/Runtime/Squad 能力和许可证条款都属于项目自身的权威事实。
+
 ## 迁移差异矩阵（2026-08-26）
 
 本节以当前工作树 `E:\MyProject\code-work\t3code`、对照仓库
