@@ -13,6 +13,7 @@ import {
   CompositionTaskDispatchRequest,
   CompositionTaskEventsResult,
   CompositionTaskListRequest,
+  CompositionTaskReviewRequest,
   CompositionTaskEvent,
   CompositionToolInvocation,
   CompositionToolResult,
@@ -29,6 +30,7 @@ const decodeTaskDispatch = Schema.decodeUnknownSync(CompositionTaskDispatchReque
 const decodeTaskCancel = Schema.decodeUnknownSync(CompositionTaskCancelRequest);
 const decodeTaskEvents = Schema.decodeUnknownSync(CompositionTaskEventsResult);
 const decodeTaskList = Schema.decodeUnknownSync(CompositionTaskListRequest);
+const decodeTaskReview = Schema.decodeUnknownSync(CompositionTaskReviewRequest);
 const decodeToolInvocation = Schema.decodeUnknownSync(CompositionToolInvocation);
 const decodeToolResult = Schema.decodeUnknownSync(CompositionToolResult);
 const decodeRuntimeToolInvocation = Schema.decodeUnknownSync(CompositionRuntimeToolInvocation);
@@ -36,6 +38,23 @@ const decodeAgentLoopRunRequest = Schema.decodeUnknownSync(CompositionAgentLoopR
 const decodeAgentLoopRunResult = Schema.decodeUnknownSync(CompositionAgentLoopRunResult);
 
 describe("composition contracts", () => {
+  it("定义显式的 review approve/reject 合同", () => {
+    const approved = decodeTaskReview({
+      taskId: "task-review",
+      runId: "run-review",
+      decision: "approve",
+      reason: "Reviewer 已确认结果可合并",
+    });
+    const rejected = decodeTaskReview({
+      taskId: "task-review",
+      runId: "run-review",
+      decision: "reject",
+      reason: "缺少回归测试",
+    });
+
+    expect(approved.decision).toBe("approve");
+    expect(rejected.decision).toBe("reject");
+  });
   it("描述 task-scoped capability grant 和脱敏审计事件", () => {
     const grant = decodeCapabilityGrant({
       grantId: "grant-1",

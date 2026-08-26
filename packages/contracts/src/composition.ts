@@ -339,6 +339,21 @@ export const CompositionTaskCancelResult = Schema.Struct({
 });
 export type CompositionTaskCancelResult = typeof CompositionTaskCancelResult.Type;
 
+export const CompositionTaskReviewRequest = Schema.Struct({
+  taskId: TrimmedNonEmptyString,
+  runId: TrimmedNonEmptyString,
+  decision: Schema.Literals(["approve", "reject"]),
+  reason: TrimmedNonEmptyString,
+});
+export type CompositionTaskReviewRequest = typeof CompositionTaskReviewRequest.Type;
+
+export const CompositionTaskReviewResult = Schema.Struct({
+  task: CompositionTask,
+  run: CompositionTaskRun,
+  status: Schema.Literals(["approved", "rejected"]),
+});
+export type CompositionTaskReviewResult = typeof CompositionTaskReviewResult.Type;
+
 export const CompositionTaskEventsRequest = Schema.Struct({
   taskId: TrimmedNonEmptyString,
   runId: TrimmedNonEmptyString,

@@ -1,5 +1,7 @@
 import type {
   CompositionTask,
+  CompositionTaskReviewRequest,
+  CompositionTaskReviewResult,
   CompositionTaskRun,
   CompositionTaskStatus,
   ProviderRuntimeEvent,
@@ -80,6 +82,19 @@ export class CompositionTaskNotFoundError extends Schema.TaggedErrorClass<Compos
   }
 }
 
+export class CompositionTaskNotInReviewError extends Schema.TaggedErrorClass<CompositionTaskNotInReviewError>()(
+  "CompositionTaskNotInReviewError",
+  {
+    taskId: Schema.String,
+    runId: Schema.String,
+    status: Schema.String,
+  },
+) {
+  override get message(): string {
+    return `任务 ${this.taskId}/${this.runId} 当前状态为 ${this.status}，不是待审核状态。`;
+  }
+}
+
 export class CompositionAgentDriverFailure extends Schema.TaggedErrorClass<CompositionAgentDriverFailure>()(
   "CompositionAgentDriverFailure",
   {
@@ -124,6 +139,12 @@ export interface CompositionAgentDriver {
   }) => Effect.Effect<
     { readonly status: "cancelled" | "cancel_requested" | "already_terminal" },
     CompositionAgentDriverFailure
+  >;
+  readonly reviewTask: (
+    input: CompositionTaskReviewRequest,
+  ) => Effect.Effect<
+    CompositionTaskReviewResult,
+    CompositionTaskStoreError | CompositionTaskNotFoundError | CompositionTaskNotInReviewError
   >;
   /** 将外部 runtime 事件归属到本驱动已启动的 Composition run。 */
   readonly resolveRuntimeEvent?: (event: ProviderRuntimeEvent) =>
@@ -597,6 +618,62 @@ const makeOrchestrator = (
       return { task: cancelledTask, run: cancelledRun, status: "cancelled" as const };
     });
 
+  const reviewTask: CompositionOrchestrator["reviewTask"] = (input) =>
+    Effect.gen(function* () {
+      const taskOption = yield* store.getTask(input.taskId);
+      const runOption = yield* store.getRun(input.runId);
+      if (Option.isNone(taskOption) || Option.isNone(runOption)) {
+        return yield* new CompositionTaskNotFoundError({
+          taskId: input.taskId,
+          runId: input.runId,
+        });
+      }
+      const task = taskOption.value;
+      const run = runOption.value;
+      if (task.status !== "in_review" || run.status !== "in_review") {
+        return yield* new CompositionTaskNotInReviewError({
+          taskId: input.taskId,
+          runId: input.runId,
+          status: `${task.status}/${run.status}`,
+        });
+      }
+      const now = yield* Clock.currentTimeMillis;
+      const approved = input.decision === "approve";
+      const nextStatus: CompositionTaskStatus = approved ? "completed" : "failed";
+      const nextTask: CompositionTask = {
+        ...task,
+        status: nextStatus,
+        updatedAtUnixMs: now,
+        finishedAtUnixMs: now,
+      };
+      const nextRun: CompositionTaskRun = {
+        ...run,
+        status: nextStatus,
+        finishedAtUnixMs: now,
+        ...(approved ? {} : { failureCode: "review_rejected" }),
+        resultSummary: input.reason,
+      };
+      yield* store.upsertTask(nextTask);
+      yield* store.upsertRun(nextRun);
+      const priorEvents = yield* store.listEvents(input.taskId, input.runId);
+      yield* store.appendEvent({
+        taskId: nextTask.taskId,
+        runId: nextRun.runId,
+        ...(nextTask.parentTaskId === undefined ? {} : { parentTaskId: nextTask.parentTaskId }),
+        agentId: nextRun.agentId,
+        runtimeId: nextRun.runtimeId,
+        status: nextStatus,
+        sequence: priorEvents.length,
+        eventType: "status",
+        summary: approved ? `审核通过：${input.reason}` : `审核拒绝：${input.reason}`,
+      });
+      return {
+        task: nextTask,
+        run: nextRun,
+        status: approved ? "approved" : "rejected",
+      };
+    });
+
   const resumeReadyTasks: CompositionOrchestrator["resumeReadyTasks"] = () =>
     Effect.gen(function* () {
       if (inputStore === undefined) return [];
@@ -713,7 +790,7 @@ const makeOrchestrator = (
       return resumed;
     });
 
-  return { dispatchTask, cancelTask, resumeReadyTasks };
+  return { dispatchTask, cancelTask, reviewTask, resumeReadyTasks };
 };
 
 export const makeCompositionOrchestrator = (

@@ -49,6 +49,7 @@ export const RPC_REQUIRED_SCOPES = {
   [WS_METHODS.serverInvokeCompositionRuntimeTool]: AuthOrchestrationOperateScope,
   [WS_METHODS.serverDispatchCompositionTask]: AuthOrchestrationOperateScope,
   [WS_METHODS.serverCancelCompositionTask]: AuthOrchestrationOperateScope,
+  [WS_METHODS.serverReviewCompositionTask]: AuthOrchestrationOperateScope,
   [WS_METHODS.serverListCompositionTaskEvents]: AuthOrchestrationReadScope,
   [WS_METHODS.serverListCompositionTasks]: AuthOrchestrationReadScope,
   [WS_METHODS.serverDiscoverSourceControl]: AuthOrchestrationReadScope,

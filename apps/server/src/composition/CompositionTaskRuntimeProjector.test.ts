@@ -37,6 +37,12 @@ const task: CompositionTask = {
   updatedAtUnixMs: 1,
 };
 
+const reviewTask: CompositionTask = {
+  ...task,
+  taskId: "task-runtime-review",
+  mode: "review",
+};
+
 const run: CompositionTaskRun = {
   runId: "run-runtime-1",
   taskId: task.taskId,
@@ -47,6 +53,12 @@ const run: CompositionTaskRun = {
   attempt: 1,
   capabilityGrantIds: [],
   startedAtUnixMs: 2,
+};
+
+const reviewRun: CompositionTaskRun = {
+  ...run,
+  taskId: reviewTask.taskId,
+  runId: "run-runtime-review",
 };
 const runtimeTaskId = "runtime-task-1";
 
@@ -94,6 +106,43 @@ layer("CompositionTaskRuntimeProjector", (it) => {
       assert.equal(events.length, 1);
       assert.equal(events[0]?.sourceEventId, "provider-event-1");
       assert.equal(resumeCalls, 1);
+    }),
+  );
+
+  it.effect("review 模式在 Runtime 完成后进入 in_review，并立即回收 Worker grant", () =>
+    Effect.gen(function* () {
+      const store = yield* CompositionTaskStore;
+      const registry = makeCompositionAgentDriverRegistry();
+      const revoked: string[] = [];
+      yield* registry.register({
+        agentId: reviewTask.assigneeId,
+        runtimeId: reviewRun.runtimeId,
+        startTask: () => Effect.succeed({ runtimeTaskId: reviewRun.runtimeTaskId }),
+        revokeCapabilityHandshake: ({ run: currentRun }) =>
+          Effect.sync(() => revoked.push(currentRun.capabilityHandshakeId ?? "missing")),
+        cancelTask: () => Effect.succeed({ status: "cancelled" as const }),
+        resolveRuntimeEvent: () => ({ taskId: reviewTask.taskId, runId: reviewRun.runId }),
+      });
+      yield* store.upsertTask(reviewTask);
+      yield* store.upsertRun({
+        ...reviewRun,
+        capabilityHandshakeId: "review-handshake",
+        capabilityGrantIds: [],
+      });
+
+      yield* projectCompositionRuntimeEvent(store, registry, {
+        ...completionEvent("provider-event-review"),
+        turnId: TurnId.make("turn-runtime-review"),
+      });
+
+      const loadedTask = yield* store.getTask(reviewTask.taskId);
+      const loadedRun = yield* store.getRun(reviewRun.runId);
+      const events = yield* store.listEvents(reviewTask.taskId, reviewRun.runId);
+      assert.equal(Option.getOrThrow(loadedTask).status, "in_review");
+      assert.equal(Option.getOrThrow(loadedRun).status, "in_review");
+      assert.equal(Option.getOrThrow(loadedRun).finishedAtUnixMs !== undefined, true);
+      assert.deepEqual(revoked, ["review-handshake"]);
+      assert.equal(events[0]?.eventType, "review_requested");
     }),
   );
 

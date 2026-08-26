@@ -3,6 +3,7 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import type { CompositionCapabilityGrant } from "@t3tools/contracts";
+import type { CompositionTask, CompositionTaskRun } from "@t3tools/contracts";
 
 import { makeCompositionAgentDriverRegistry } from "./CompositionAgentDriverRegistry.ts";
 import {
@@ -16,6 +17,64 @@ import { SqlitePersistenceMemory } from "../persistence/Layers/Sqlite.ts";
 const layer = it.layer(CompositionTaskStoreLive.pipe(Layer.provideMerge(SqlitePersistenceMemory)));
 
 layer("CompositionOrchestrator", (it) => {
+  it.effect("review approve/reject 只处理 in_review Task，并分别终结状态", () =>
+    Effect.gen(function* () {
+      const store = yield* CompositionTaskStore;
+      const registry = makeCompositionAgentDriverRegistry();
+      const orchestrator = makeCompositionOrchestrator(store, registry);
+      const reviewTask: CompositionTask = {
+        taskId: "task-review-decision",
+        projectId: "project-1",
+        assigneeKind: "agent",
+        assigneeId: "agent-review",
+        mode: "review",
+        status: "in_review",
+        promptDigest: "sha256:review",
+        dependsOnTaskIds: [],
+        createdAtUnixMs: 1,
+        updatedAtUnixMs: 1,
+      };
+      const reviewRun: CompositionTaskRun = {
+        taskId: reviewTask.taskId,
+        runId: "run-review-decision",
+        agentId: reviewTask.assigneeId,
+        runtimeId: "runtime-review",
+        status: "in_review",
+        attempt: 1,
+        capabilityGrantIds: [],
+      };
+      yield* store.upsertTask(reviewTask);
+      yield* store.upsertRun(reviewRun);
+
+      const approved = yield* orchestrator.reviewTask({
+        taskId: reviewTask.taskId,
+        runId: reviewRun.runId,
+        decision: "approve",
+        reason: "Reviewer 已确认",
+      });
+      assert.equal(approved.status, "approved");
+      assert.equal(approved.task.status, "completed");
+      assert.equal(approved.run.status, "completed");
+
+      const rejectedTask = { ...reviewTask, taskId: "task-review-rejected" };
+      const rejectedRun = {
+        ...reviewRun,
+        taskId: rejectedTask.taskId,
+        runId: "run-review-rejected",
+      };
+      yield* store.upsertTask(rejectedTask);
+      yield* store.upsertRun(rejectedRun);
+      const rejected = yield* orchestrator.reviewTask({
+        taskId: rejectedTask.taskId,
+        runId: rejectedRun.runId,
+        decision: "reject",
+        reason: "缺少测试",
+      });
+      assert.equal(rejected.status, "rejected");
+      assert.equal(rejected.task.status, "failed");
+      assert.equal(rejected.run.status, "failed");
+    }),
+  );
   it.effect("dispatches a task through its AgentDriver and persists the run lifecycle", () =>
     Effect.gen(function* () {
       const store = yield* CompositionTaskStore;

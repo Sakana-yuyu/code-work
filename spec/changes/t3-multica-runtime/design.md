@@ -242,7 +242,7 @@ Transport 错误不得直接把运行标成成功；心跳超时只允许标记 
 | Cursor/VSCode IDE API      | cursor-byok 通过 Cursor 本地协议、MCP 和 Windows computer-use 访问 IDE/浏览器边界                              | T3 已有 `CompositionIdeSessionRegistry`、profile probe、task/run/agent 绑定的 handshake lease、probe allowlist 和 `ide.invoke` ToolBroker 入口；真实 Cursor/VSCode Adapter、transport 和 IDE operation 仍未接入 | 可信执行门已迁移，真实 Adapter 未迁移 |
 | Cursor 原生协议代理        | `internal/mitm`、`internal/backend/agent/protocol`、`RunSSE`/`BidiAppend` 相关 forwarder 和 protobuf           | T3 没有 Cursor MITM、原生 Bidi/RunSSE 转发器，也不修改已安装 Cursor bundle                                                                                                                                      | 未迁移；属于独立 Runtime Driver       |
 | 官方请求镜像与对比         | `internal/mitm/mirror.go`、`official.raw.jsonl`、`requestlab` 及 `request-comparison-lab` 设计                 | T3 有 Provider/Runtime 事件和 Trace，但没有官方请求镜像记录、exchangeId 对比实验台                                                                                                                              | 未迁移                                |
-| 监督式委派                 | `internal/backend/forwarder/supervisor_coordinator.go`、`supervisor_provider.go`、`delegation_multitask.go`    | T3 有依赖图、blocked 恢复、Squad/Leader 路由、取消；没有 review/retry/reassign/escalate/circuit breaker 的监督状态机                                                                                            | 部分迁移                              |
+| 监督式委派                 | `internal/backend/forwarder/supervisor_coordinator.go`、`supervisor_provider.go`、`delegation_multitask.go`    | T3 已有 review 模式 checkpoint、`in_review` 投影和 approve/reject RPC；retry/reassign/escalate/circuit breaker 与 sibling failure isolation 仍未接入                                                            | 部分迁移                              |
 | Worker Context Compaction  | `delegation_compaction.go`、`context_overflow.go`、tool result snip 和保留最近轮次规则                         | T3 BYOK Loop 目前只累积消息，没有 worker 预算、工具结果裁剪和 context overflow 自救                                                                                                                             | 未迁移                                |
 | Delegate 运行时            | cursor-byok 有 Claude/Codex/Cursor/Gemini/Kiro/custom executor registry、failover、slot/loop limiter           | T3 Provider Driver、ACP/CLI/Multica Runtime Adapter 已有；统一 driver SPI 已具备，但 cursor-byok executor 具体语义尚未逐项迁移                                                                                  | 部分迁移                              |
 | 供应商目录/模型发现        | cursor-byok 有 supplier catalog、候选 URL、custom headers、模型目录缓存、协议过滤和 pricing                    | T3 有 BYOK adapter/import/balance/discovery 服务，但尚未达到 cursor-byok 的供应商目录管理和多端页面等价                                                                                                         | 部分迁移                              |
@@ -324,3 +324,14 @@ Batch B 固定了所有真实 Cursor/VSCode Adapter 必须遵守的可信执行�
 本批次没有声称已经实现 Cursor/VSCode 的真实本地协议、IDE transport、Bidi/RunSSE、MCP/Computer Use 桥接，
 也没有把测试 Adapter 当作真实 IDE 完成证明。下一批仍需为 Cursor 和 VSCode 分别实现 Adapter、连接生命周期、真实 operation 合同，
 再补本机 IDE E2E 与 Web/Desktop/Mobile 可达性验证。
+
+## Batch C-1 落地记录（2026-08-26）
+
+本节点先落地监督协同的 review checkpoint，不把 retry/reassign/escalate/circuit breaker 混入同一状态迁移：
+
+- `CompositionTask.mode === "review"` 时，Runtime 的成功完成事件只把 Task/Run 投影为 `in_review`，不直接写入 `completed`。
+- Runtime 已经报告完成后，T3 立即回收本次 Run 的 capability handshake 和 grant，避免 Worker 在等待 Reviewer 时继续调用工具。
+- 新增 `server.reviewCompositionTask` RPC，只有 `in_review` 的同一 Task/Run 才能 approve 或 reject；approve 进入 `completed`，reject 进入 `failed` 并保存 `review_rejected`。
+- 新 RPC 受 `AuthOrchestrationOperateScope` 保护，所有转移继续通过 Task Store 和事件流落盘，重复 Runtime 事件不会重复回收权限。
+
+当前仍未实现 retry、reassign、escalate、circuit breaker、兄弟任务失败隔离和 Worker context compaction；这些继续拆成后续独立节点。

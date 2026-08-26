@@ -62,11 +62,13 @@ type RuntimeProjection = {
   readonly summary: string;
   readonly blockerCode?: string;
   readonly failureCode?: string;
+  readonly runtimeTerminal?: boolean;
 };
 
 const projectEvent = (
   event: ProviderRuntimeEvent,
   currentStatus: CompositionTaskStatus,
+  requiresReview: boolean,
 ): RuntimeProjection | undefined => {
   switch (event.type) {
     case "session.started":
@@ -81,15 +83,21 @@ const projectEvent = (
         summary: "Provider Runtime 已开始执行任务",
       };
     case "turn.completed": {
-      const status = runtimeStatusToCompositionStatus(event.payload.state) ?? "failed";
+      const runtimeStatus = runtimeStatusToCompositionStatus(event.payload.state) ?? "failed";
+      const status = requiresReview && runtimeStatus === "completed" ? "in_review" : runtimeStatus;
       return {
         status,
-        eventType: "status",
+        eventType: status === "in_review" ? "review_requested" : "status",
         summary: summaryOf(
           event.payload.errorMessage,
-          status === "completed" ? "Provider Runtime 已完成任务" : "Provider Runtime 执行结束",
+          status === "in_review"
+            ? "Provider Runtime 已完成，等待 Reviewer 审核"
+            : status === "completed"
+              ? "Provider Runtime 已完成任务"
+              : "Provider Runtime 执行结束",
         ),
         ...(status === "failed" ? { failureCode: "provider_turn_failed" } : {}),
+        runtimeTerminal: true,
       };
     }
     case "turn.aborted":
@@ -120,20 +128,26 @@ const projectEvent = (
       };
     }
     case "task.completed": {
-      const status =
+      const runtimeStatus =
         event.payload.status === "completed"
           ? "completed"
           : event.payload.status === "stopped"
             ? "cancelled"
             : "failed";
+      const status = requiresReview && runtimeStatus === "completed" ? "in_review" : runtimeStatus;
       return {
         status,
-        eventType: "status",
+        eventType: status === "in_review" ? "review_requested" : "status",
         summary: summaryOf(
           event.payload.summary,
-          status === "completed" ? "子任务已完成" : "子任务已结束",
+          status === "in_review"
+            ? "子任务已完成，等待 Reviewer 审核"
+            : status === "completed"
+              ? "子任务已完成"
+              : "子任务已结束",
         ),
         ...(status === "failed" ? { failureCode: "provider_task_failed" } : {}),
+        runtimeTerminal: true,
       };
     }
     case "request.opened":
@@ -170,6 +184,7 @@ const projectEvent = (
         eventType: "status",
         summary: event.payload.message,
         failureCode: "provider_runtime_error",
+        runtimeTerminal: true,
       };
     default:
       return undefined;
@@ -198,22 +213,24 @@ export const projectCompositionRuntimeEvent = (
 
     const task = taskOption.value;
     const run = runOption.value;
-    const projection = projectEvent(event, task.status);
+    const projection = projectEvent(event, task.status, task.mode === "review");
     if (projection === undefined) return;
     if (terminalStatuses.has(task.status) && projection.status !== task.status) return;
 
     const now = yield* Clock.currentTimeMillis;
-    const isTerminal = terminalStatuses.has(projection.status);
-    const becameTerminal = !terminalStatuses.has(task.status) && isTerminal;
+    const isTaskTerminal = terminalStatuses.has(projection.status);
+    const runtimeTerminal = projection.runtimeTerminal ?? isTaskTerminal;
+    const becameRuntimeTerminal = runtimeTerminal && run.finishedAtUnixMs === undefined;
+    const becameTaskTerminal = !terminalStatuses.has(task.status) && isTaskTerminal;
     const bindingDriver = yield* driverRegistry.get(run.agentId);
     if (
-      becameTerminal &&
+      becameRuntimeTerminal &&
       run.capabilityHandshakeId !== undefined &&
       bindingDriver?.revokeCapabilityHandshake !== undefined
     ) {
       yield* bindingDriver.revokeCapabilityHandshake({ task, run });
     }
-    if (becameTerminal && grantRegistry !== undefined) {
+    if (becameRuntimeTerminal && grantRegistry !== undefined) {
       yield* Effect.forEach(run.capabilityGrantIds ?? [], (grantId) =>
         grantRegistry
           .revoke({ grantId })
@@ -224,15 +241,15 @@ export const projectCompositionRuntimeEvent = (
       ...task,
       status: projection.status,
       updatedAtUnixMs: now,
-      ...(isTerminal ? { finishedAtUnixMs: now } : {}),
+      ...(isTaskTerminal ? { finishedAtUnixMs: now } : {}),
     };
     const nextRun: CompositionTaskRun = {
       ...run,
       ...(binding.runtimeTaskId === undefined ? {} : { runtimeTaskId: binding.runtimeTaskId }),
       status: projection.status,
-      ...(isTerminal ? { finishedAtUnixMs: now } : {}),
+      ...(runtimeTerminal ? { finishedAtUnixMs: now } : {}),
       ...(projection.failureCode === undefined ? {} : { failureCode: projection.failureCode }),
-      ...(isTerminal ? { resultSummary: projection.summary } : {}),
+      ...(runtimeTerminal ? { resultSummary: projection.summary } : {}),
       ...(projection.status === "running" && run.startedAtUnixMs === undefined
         ? { startedAtUnixMs: now }
         : {}),
@@ -253,7 +270,7 @@ export const projectCompositionRuntimeEvent = (
       summary: projection.summary,
       ...(projection.blockerCode === undefined ? {} : { blockerCode: projection.blockerCode }),
     });
-    if (becameTerminal && resumeReadyTasks !== undefined) {
+    if (becameTaskTerminal && resumeReadyTasks !== undefined) {
       yield* resumeReadyTasks();
     }
   });

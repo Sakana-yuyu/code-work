@@ -227,6 +227,8 @@ import {
   CompositionTaskEventsResult,
   CompositionTaskListRequest,
   CompositionTaskListResult,
+  CompositionTaskReviewRequest,
+  CompositionTaskReviewResult,
   CompositionTaskRpcError,
   CompositionAgentLoopRunError,
   CompositionAgentLoopRunRequest,
@@ -319,6 +321,7 @@ export const WS_METHODS = {
   serverInvokeCompositionRuntimeTool: "server.invokeCompositionRuntimeTool",
   serverDispatchCompositionTask: "server.dispatchCompositionTask",
   serverCancelCompositionTask: "server.cancelCompositionTask",
+  serverReviewCompositionTask: "server.reviewCompositionTask",
   serverListCompositionTaskEvents: "server.listCompositionTaskEvents",
   serverListCompositionTasks: "server.listCompositionTasks",
   serverDiscoverSourceControl: "server.discoverSourceControl",
@@ -511,6 +514,12 @@ export const WsServerDispatchCompositionTaskRpc = Rpc.make(
 export const WsServerCancelCompositionTaskRpc = Rpc.make(WS_METHODS.serverCancelCompositionTask, {
   payload: CompositionTaskCancelRequest,
   success: CompositionTaskCancelResult,
+  error: Schema.Union([CompositionTaskRpcError, EnvironmentAuthorizationError]),
+});
+
+export const WsServerReviewCompositionTaskRpc = Rpc.make(WS_METHODS.serverReviewCompositionTask, {
+  payload: CompositionTaskReviewRequest,
+  success: CompositionTaskReviewResult,
   error: Schema.Union([CompositionTaskRpcError, EnvironmentAuthorizationError]),
 });
 
@@ -1161,6 +1170,7 @@ export const WsRpcGroup = RpcGroup.make(
   WsServerRunCompositionAgentRpc,
   WsServerDispatchCompositionTaskRpc,
   WsServerCancelCompositionTaskRpc,
+  WsServerReviewCompositionTaskRpc,
   WsServerListCompositionTaskEventsRpc,
   WsServerListCompositionTasksRpc,
   WsServerDiscoverSourceControlRpc,

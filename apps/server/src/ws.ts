@@ -1814,6 +1814,16 @@ const makeWsRpcLayer = (
                   .pipe(Effect.mapError(compositionTaskError)),
             { "rpc.aggregate": "composition" },
           ),
+        [WS_METHODS.serverReviewCompositionTask]: (input) =>
+          observeRpcEffect(
+            WS_METHODS.serverReviewCompositionTask,
+            Option.isNone(compositionOrchestrator)
+              ? Effect.fail(compositionTaskUnavailable())
+              : compositionOrchestrator.value
+                  .reviewTask(input)
+                  .pipe(Effect.mapError(compositionTaskError)),
+            { "rpc.aggregate": "composition" },
+          ),
         [WS_METHODS.serverListCompositionTaskEvents]: (input) =>
           observeRpcEffect(
             WS_METHODS.serverListCompositionTaskEvents,
