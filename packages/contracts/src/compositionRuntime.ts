@@ -1,7 +1,12 @@
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
 
-import { NonNegativeInt, TrimmedNonEmptyString, TrimmedString } from "./baseSchemas.ts";
+import {
+  NonNegativeInt,
+  PositiveInt,
+  TrimmedNonEmptyString,
+  TrimmedString,
+} from "./baseSchemas.ts";
 import { CompositionTaskEventType, CompositionTaskStatus } from "./composition.ts";
 
 const COMPOSITION_MCP_ID_PATTERN = /^[A-Za-z][A-Za-z0-9_-]*$/;
@@ -254,6 +259,16 @@ export const CompositionMulticaAssigneeRoute = Schema.Struct({
 });
 export type CompositionMulticaAssigneeRoute = typeof CompositionMulticaAssigneeRoute.Type;
 
+/** T3 侧可选的 Multica 执行扩展；只保存命令配置，不保存任何凭据。 */
+export const CompositionMulticaTaskExecutionExtension = Schema.Struct({
+  command: TrimmedNonEmptyString,
+  args: Schema.Array(Schema.String).pipe(Schema.withDecodingDefault(Effect.succeed([]))),
+  cwd: Schema.optional(TrimmedNonEmptyString),
+  timeoutMs: Schema.optional(PositiveInt),
+});
+export type CompositionMulticaTaskExecutionExtension =
+  typeof CompositionMulticaTaskExecutionExtension.Type;
+
 /**
  * ServerSettings.providerInstances[instanceId].config 中的 Multica 配置。
  * Header 值只允许来自 provider environment，避免把 token 写入 settings.json。
@@ -279,6 +294,8 @@ export const CompositionMulticaRuntimeConfig = Schema.Struct({
   supportsMcp: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
   /** F2 daemon extension 使用的每 Run T3 MCP endpoint。 */
   taskMcpEndpoint: Schema.optional(TrimmedNonEmptyString),
+  /** F2 daemon extension 的一次性进程入口；命令本身不承载凭据。 */
+  taskExecutionExtension: Schema.optional(CompositionMulticaTaskExecutionExtension),
   supportsSquad: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
   supportsLeader: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
   supportsTaskGraph: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),

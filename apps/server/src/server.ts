@@ -418,6 +418,7 @@ const CompositionRuntimeSettingsLayerLive = CompositionRuntimeSettings.layer.pip
   Layer.provideMerge(ServerSettingsLayerLive),
   Layer.provideMerge(CompositionRuntimeAdapterRegistry.layer),
   Layer.provideMerge(CompositionRuntimeMcpSessionRegistryLayerLive),
+  Layer.provideMerge(ProcessRunner.layer),
 );
 
 const CompositionAgentDriverProjectionLayerLive = Layer.mergeAll(

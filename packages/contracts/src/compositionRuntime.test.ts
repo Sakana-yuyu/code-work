@@ -187,6 +187,29 @@ describe("composition runtime contracts", () => {
     expect((decoded as Record<string, unknown>).token).toBeUndefined();
   });
 
+  it("允许声明不含凭据的 Multica task execution extension", () => {
+    const decoded = decodeMulticaConfig({
+      runtimeId: "multica:daemon-1:runtime-1",
+      daemonId: "daemon-1",
+      daemonRuntimeId: "runtime-1",
+      baseUrl: "https://multica.test",
+      taskExecutionExtension: {
+        command: "node",
+        args: ["extension.mjs"],
+        cwd: "C:/multica-extension",
+        timeoutMs: 5_000,
+      },
+    });
+
+    expect(decoded.taskExecutionExtension).toEqual({
+      command: "node",
+      args: ["extension.mjs"],
+      cwd: "C:/multica-extension",
+      timeoutMs: 5_000,
+    });
+    expect((decoded.taskExecutionExtension as Record<string, unknown>).token).toBeUndefined();
+  });
+
   it("为 MCP server 提供可持久化的 transport、trust 和敏感字段状态", () => {
     const decoded = decodeMcpServerConfig({
       name: "  Local Tools  ",

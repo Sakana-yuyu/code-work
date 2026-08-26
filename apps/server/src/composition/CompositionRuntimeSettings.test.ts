@@ -8,6 +8,7 @@ import * as Layer from "effect/Layer";
 import * as Queue from "effect/Queue";
 import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
+import { ChildProcessSpawner } from "effect/unstable/process";
 
 import { DEFAULT_SERVER_SETTINGS, type ServerSettings } from "@t3tools/contracts";
 
@@ -26,6 +27,7 @@ import type {
   MulticaDaemonRuntimeAdapter,
   MulticaDaemonTaskExecutionBridge,
 } from "./MulticaDaemonRuntimeAdapter.ts";
+import type * as ProcessRunner from "../processRunner.ts";
 
 const makeSettings = (providerInstances: unknown): ServerSettings =>
   ({
@@ -100,6 +102,104 @@ const makeReconciler = (
   });
 
 describe("CompositionRuntimeSettings", () => {
+  it("从配置构造 task execution extension，并在 claim/start 时调用 ProcessRunner", async () => {
+    const originalFetch = globalThis.fetch;
+    const requestPaths: string[] = [];
+    const processInputs: ProcessRunner.ProcessRunInput[] = [];
+    globalThis.fetch = (async (input) => {
+      const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+      const path = new URL(url).pathname;
+      requestPaths.push(path);
+      const body =
+        path === "/api/issues/quick-create"
+          ? { task_id: "remote-task-1" }
+          : path.endsWith("/tasks/claim")
+            ? {
+                id: "remote-task-1",
+                agent_id: "agent-1",
+                runtime_id: "runtime-1",
+                status: "dispatched",
+              }
+            : undefined;
+      return {
+        status: 200,
+        text: async () => (body === undefined ? "" : JSON.stringify(body)),
+      } as Response;
+    }) as typeof globalThis.fetch;
+
+    try {
+      await Effect.runPromise(
+        Effect.gen(function* () {
+          const config = yield* Schema.decodeUnknownEffect(CompositionMulticaRuntimeConfig)({
+            ...multicaInstance({
+              taskExecutionExtension: {
+                command: "node",
+                args: ["extension.mjs"],
+                timeoutMs: 2_000,
+              },
+            }).config,
+          });
+          const processRunner: Pick<ProcessRunner.ProcessRunner["Service"], "run"> = {
+            run: (input) => {
+              processInputs.push(input);
+              return Effect.succeed({
+                stdout: "",
+                stderr: "",
+                code: ChildProcessSpawner.ExitCode(0),
+                timedOut: false,
+                stdoutTruncated: false,
+                stderrTruncated: false,
+                stdoutInvalidUtf8: false,
+                stderrInvalidUtf8: false,
+              });
+            },
+          };
+          const adapter = yield* makeMulticaRuntimeAdapterFromSettings({
+            instanceId: "multica_local",
+            config,
+            environment: [],
+            headers: {},
+            agents: [
+              {
+                agentId: "agent-1",
+                runtimeId: config.runtimeId,
+                status: "online",
+                capabilities: [],
+              },
+            ],
+            processRunner,
+          });
+
+          yield* adapter.dispatchTask({
+            taskId: "t3-task-1",
+            runId: "run-1",
+            agentId: "agent-1",
+            prompt: "执行扩展",
+            idempotencyKey: "run-1",
+          });
+          yield* adapter.claimTask();
+          yield* adapter.startTask("remote-task-1");
+
+          expect(requestPaths).toEqual([
+            "/api/issues/quick-create",
+            "/api/daemon/runtimes/runtime-1/tasks/claim",
+            "/api/daemon/tasks/remote-task-1/start",
+          ]);
+          expect(processInputs).toHaveLength(1);
+          expect(processInputs[0]).toMatchObject({
+            command: "node",
+            args: ["extension.mjs"],
+          });
+          expect(processInputs[0]?.timeout).toBeDefined();
+          expect(processInputs[0]?.stdin).toContain('"type":"multica.task.start"');
+          expect(processInputs[0]?.stdin).toContain('"taskId":"t3-task-1"');
+        }),
+      );
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
   it("taskMcpEndpoint 启用每 Run Lease 时不读取静态 Agent token，并可从 Adapter 取回 overlay", async () => {
     await Effect.runPromise(
       Effect.gen(function* () {

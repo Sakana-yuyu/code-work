@@ -12,6 +12,7 @@ import * as Scope from "effect/Scope";
 import * as Stream from "effect/Stream";
 
 import { ServerSettingsService } from "../serverSettings.ts";
+import * as ProcessRunner from "../processRunner.ts";
 import * as CompositionRuntimeMcpSessionRegistry from "../mcp/CompositionRuntimeMcpSessionRegistry.ts";
 import {
   makeMulticaDaemonRuntimeAdapter,
@@ -26,6 +27,7 @@ import {
   makeMulticaTaskMcpLeaseStore,
   type MulticaTaskMcpLeaseStore,
 } from "./MulticaTaskMcpLease.ts";
+import { makeMulticaTaskExecutionProcessBridge } from "./MulticaTaskExecutionProcessBridge.ts";
 import type { CompositionRuntimeAdapter } from "./CompositionRuntimeAdapter.ts";
 import type { CompositionRuntimeAgent } from "./CompositionRuntimeAdapter.ts";
 import {
@@ -36,6 +38,7 @@ import {
 export type CompositionRuntimeSettings = {
   readonly settings: Pick<ServerSettingsService["Service"], "getSettings" | "subscribeChanges">;
   readonly adapterRegistry: Pick<CompositionRuntimeAdapterRegistry, "register" | "unregister">;
+  readonly processRunner?: Pick<ProcessRunner.ProcessRunner["Service"], "run">;
   readonly mcpSessionRegistry?: Pick<
     CompositionRuntimeMcpSessionRegistry.CompositionRuntimeMcpSessionRegistryShape,
     "activate" | "revokeHandshake" | "revokeRuntime"
@@ -63,6 +66,7 @@ export type CompositionRuntimeSettingsFactoryInput = {
   readonly environment: ProviderInstanceEnvironment;
   readonly headers: Readonly<Record<string, string>>;
   readonly agents: ReadonlyArray<CompositionRuntimeAgent>;
+  readonly processRunner?: Pick<ProcessRunner.ProcessRunner["Service"], "run">;
   readonly mcpSessionRegistry?: Pick<
     CompositionRuntimeMcpSessionRegistry.CompositionRuntimeMcpSessionRegistryShape,
     "activate" | "revokeHandshake" | "revokeRuntime"
@@ -317,59 +321,85 @@ const makeRuntimeMcpCapabilityBridge = (
 export const makeMulticaRuntimeAdapterFromSettings = (
   input: CompositionRuntimeSettingsFactoryInput,
 ): Effect.Effect<MulticaDaemonRuntimeAdapter, CompositionRuntimeSettingsError> =>
-  Effect.try({
-    try: () => {
-      const runtimeMcpTokens =
+  Effect.gen(function* () {
+    const runtimeMcpTokens = yield* Effect.try({
+      try: () =>
         input.config.taskMcpEndpoint === undefined
           ? makeRuntimeMcpTokens(input.config, input.environment)
-          : new Map<string, string>();
-      const runtimeMcpBridge = makeRuntimeMcpCapabilityBridge(
-        input.config.runtimeId,
-        runtimeMcpTokens,
-        input.mcpSessionRegistry,
-        input.config.taskMcpEndpoint,
-      );
-      const transport = makeMulticaFetchHttpTransport({
-        baseUrl: input.config.baseUrl,
-        headers: input.headers,
+          : new Map<string, string>(),
+      catch: settingsError,
+    });
+    const runtimeMcpBridge = yield* Effect.try({
+      try: () =>
+        makeRuntimeMcpCapabilityBridge(
+          input.config.runtimeId,
+          runtimeMcpTokens,
+          input.mcpSessionRegistry,
+          input.config.taskMcpEndpoint,
+        ),
+      catch: settingsError,
+    });
+    let taskExecutionBridge = input.taskExecutionBridge;
+    if (taskExecutionBridge === undefined && input.config.taskExecutionExtension !== undefined) {
+      if (input.processRunner === undefined) {
+        return yield* new CompositionRuntimeSettingsError({
+          detail: "Multica taskExecutionExtension 已配置，但 ProcessRunner 未注入。",
+        });
+      }
+      const extension = input.config.taskExecutionExtension;
+      taskExecutionBridge = makeMulticaTaskExecutionProcessBridge({
+        command: extension.command,
+        args: [...extension.args],
+        ...(extension.cwd === undefined ? {} : { cwd: extension.cwd }),
+        ...(extension.timeoutMs === undefined ? {} : { timeoutMs: extension.timeoutMs }),
+        processRunner: input.processRunner,
       });
-      const protocol = makeMulticaDaemonProtocol({
-        baseUrl: input.config.baseUrl,
-        transport,
-      });
-      return makeMulticaDaemonRuntimeAdapter({
-        runtimeId: input.config.runtimeId,
-        daemonId: input.config.daemonId,
-        daemonRuntimeId: input.config.daemonRuntimeId,
-        baseUrl: input.config.baseUrl,
-        protocol,
-        agents: input.agents,
-        taskAssigneeRoutes: input.config.assigneeRoutes.map((route) => ({
-          t3AgentId: route.t3AgentId,
-          ...(route.t3SquadId === undefined ? {} : { t3SquadId: route.t3SquadId }),
-          workspaceId: route.workspaceId,
-          ...(route.multicaAgentId === undefined ? {} : { multicaAgentId: route.multicaAgentId }),
-          ...(route.multicaSquadId === undefined ? {} : { multicaSquadId: route.multicaSquadId }),
-        })),
-        ...(input.config.version === undefined ? {} : { version: input.config.version }),
-        capabilities: input.config.capabilities,
-        supportsResume: input.config.supportsResume,
-        supportsMcp: input.config.supportsMcp,
-        supportsSquad: input.config.supportsSquad,
-        supportsLeader: input.config.supportsLeader,
-        supportsTaskGraph: input.config.supportsTaskGraph,
-        ...(runtimeMcpBridge.capabilityBridge === undefined
-          ? {}
-          : { capabilityBridge: runtimeMcpBridge.capabilityBridge }),
-        ...(runtimeMcpBridge.taskMcpLeaseBridge === undefined
-          ? {}
-          : { taskMcpLeaseBridge: runtimeMcpBridge.taskMcpLeaseBridge }),
-        ...(input.taskExecutionBridge === undefined
-          ? {}
-          : { taskExecutionBridge: input.taskExecutionBridge }),
-      });
-    },
-    catch: settingsError,
+    }
+    const transport = yield* Effect.try({
+      try: () =>
+        makeMulticaFetchHttpTransport({
+          baseUrl: input.config.baseUrl,
+          headers: input.headers,
+        }),
+      catch: settingsError,
+    });
+    const protocol = yield* Effect.try({
+      try: () =>
+        makeMulticaDaemonProtocol({
+          baseUrl: input.config.baseUrl,
+          transport,
+        }),
+      catch: settingsError,
+    });
+    return makeMulticaDaemonRuntimeAdapter({
+      runtimeId: input.config.runtimeId,
+      daemonId: input.config.daemonId,
+      daemonRuntimeId: input.config.daemonRuntimeId,
+      baseUrl: input.config.baseUrl,
+      protocol,
+      agents: input.agents,
+      taskAssigneeRoutes: input.config.assigneeRoutes.map((route) => ({
+        t3AgentId: route.t3AgentId,
+        ...(route.t3SquadId === undefined ? {} : { t3SquadId: route.t3SquadId }),
+        workspaceId: route.workspaceId,
+        ...(route.multicaAgentId === undefined ? {} : { multicaAgentId: route.multicaAgentId }),
+        ...(route.multicaSquadId === undefined ? {} : { multicaSquadId: route.multicaSquadId }),
+      })),
+      ...(input.config.version === undefined ? {} : { version: input.config.version }),
+      capabilities: input.config.capabilities,
+      supportsResume: input.config.supportsResume,
+      supportsMcp: input.config.supportsMcp,
+      supportsSquad: input.config.supportsSquad,
+      supportsLeader: input.config.supportsLeader,
+      supportsTaskGraph: input.config.supportsTaskGraph,
+      ...(runtimeMcpBridge.capabilityBridge === undefined
+        ? {}
+        : { capabilityBridge: runtimeMcpBridge.capabilityBridge }),
+      ...(runtimeMcpBridge.taskMcpLeaseBridge === undefined
+        ? {}
+        : { taskMcpLeaseBridge: runtimeMcpBridge.taskMcpLeaseBridge }),
+      ...(taskExecutionBridge === undefined ? {} : { taskExecutionBridge }),
+    });
   });
 
 const defaultCreateAdapter = (
@@ -440,6 +470,7 @@ export const makeCompositionRuntimeSettingsReconciler = (
           ...(options.mcpSessionRegistry === undefined
             ? {}
             : { mcpSessionRegistry: options.mcpSessionRegistry }),
+          ...(options.processRunner === undefined ? {} : { processRunner: options.processRunner }),
           ...(options.taskExecutionBridge === undefined
             ? {}
             : { taskExecutionBridge: options.taskExecutionBridge }),
@@ -506,12 +537,14 @@ export const makeCompositionRuntimeSettingsReconciler = (
 const live = Effect.gen(function* () {
   const settings = yield* ServerSettingsService;
   const adapterRegistry = yield* CompositionRuntimeAdapterRegistryService;
+  const processRunner = yield* ProcessRunner.ProcessRunner;
   const mcpSessionRegistry =
     yield* CompositionRuntimeMcpSessionRegistry.CompositionRuntimeMcpSessionRegistry;
   const reconciler = makeCompositionRuntimeSettingsReconciler({
     settings,
     adapterRegistry,
     mcpSessionRegistry,
+    processRunner,
   });
   yield* reconciler.start;
   return reconciler;
