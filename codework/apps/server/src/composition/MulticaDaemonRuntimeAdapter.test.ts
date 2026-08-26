@@ -326,6 +326,146 @@ describe("MulticaDaemonRuntimeAdapter", () => {
     });
   });
 
+  it("同时消费独立的 daemon control stream，并把 task_available 交给唤醒处理器而不是投影为任务事件", async () => {
+    const controlTypes: string[] = [];
+    const adapter = makeMulticaDaemonRuntimeAdapter({
+      ...makeOptions({
+        streamFrames: () =>
+          Stream.fromIterable([
+            { type: "task:progress", payload: { task_id: "task-1", summary: "处理中" } },
+          ]),
+      }),
+      controlFrames: () =>
+        Stream.fromIterable([
+          { type: "daemon:heartbeat_ack", payload: { runtime_id: daemonRuntimeId } },
+          {
+            type: "daemon:task_available",
+            payload: { runtime_id: daemonRuntimeId, task_id: "task-1" },
+          },
+          {
+            type: "daemon:pending_work",
+            payload: { runtime_id: daemonRuntimeId, kind: "model_list" },
+          },
+        ]),
+      onControlFrame: (frame: { readonly type: string }) =>
+        Effect.sync(() => {
+          controlTypes.push(frame.type);
+        }),
+    } as MulticaDaemonRuntimeAdapterOptions & {
+      readonly controlFrames: NonNullable<MulticaDaemonRuntimeAdapterOptions["streamFrames"]>;
+      readonly onControlFrame: (frame: { readonly type: string }) => Effect.Effect<void>;
+    });
+
+    const events = await Effect.runPromise(
+      adapter.streamEvents({ runtimeTaskId: "task-1" }).pipe(Stream.runCollect),
+    );
+
+    expect(Array.from(events).map((event) => event.type)).toEqual(["task.progress"]);
+    expect(controlTypes).toEqual(["daemon:task_available", "daemon:pending_work"]);
+  });
+
+  it("没有自定义处理器时，task_available 触发一次权威 claim 和 start", async () => {
+    const calls: string[] = [];
+    const adapter = makeMulticaDaemonRuntimeAdapter(
+      makeOptions({
+        streamFrames: () => Stream.empty,
+        controlFrames: () =>
+          Stream.fromIterable([
+            {
+              type: "daemon:task_available",
+              payload: { runtime_id: daemonRuntimeId, task_id: "task-1" },
+            },
+          ]),
+        protocol: makeProtocol({
+          claimTask: () =>
+            Effect.sync(() => {
+              calls.push("claim");
+              return task;
+            }),
+          startTask: (runtimeTaskId) =>
+            Effect.sync(() => {
+              calls.push("start:" + runtimeTaskId);
+            }),
+        }),
+      }),
+    );
+
+    await Effect.runPromise(adapter.streamEvents().pipe(Stream.runCollect));
+
+    expect(calls).toEqual(["claim", "start:task-1"]);
+  });
+
+  it("保留 Multica 任务事件的进度、消息、终态字段和原始帧来源", async () => {
+    const adapter = makeMulticaDaemonRuntimeAdapter(
+      makeOptions({
+        streamFrames: () =>
+          Stream.fromIterable([
+            {
+              type: "task:progress",
+              payload: { task_id: "task-1", summary: "处理中", step: 2, total: 5 },
+            },
+            {
+              type: "task:message",
+              payload: {
+                task_id: "task-1",
+                issue_id: "issue-1",
+                seq: 7,
+                type: "tool_result",
+                tool: "terminal",
+                content: "命令已完成",
+                output: "ok",
+                created_at: "2026-08-26T04:00:00.000Z",
+              },
+            },
+            {
+              type: "task:failed",
+              payload: {
+                task_id: "task-1",
+                error: "命令失败",
+                failure_reason: "exit_code",
+              },
+            },
+          ]),
+      }),
+    );
+
+    const events = Array.from(
+      await Effect.runPromise(
+        adapter.streamEvents({ runtimeTaskId: "task-1" }).pipe(Stream.runCollect),
+      ),
+    );
+
+    expect(events).toHaveLength(3);
+    expect(events[0]).toMatchObject({
+      type: "task.progress",
+      payload: { taskId: "task-1", step: 2, total: 5 },
+      raw: {
+        source: "multica.task-event",
+        messageType: "task:progress",
+      },
+    });
+    expect(events[1]).toMatchObject({
+      type: "task.progress",
+      payload: {
+        taskId: "task-1",
+        summary: "命令已完成",
+        messageType: "tool_result",
+        messageSeq: 7,
+        messageTool: "terminal",
+        messageOutput: "ok",
+      },
+    });
+    expect(events[2]).toMatchObject({
+      type: "task.completed",
+      payload: {
+        taskId: "task-1",
+        status: "failed",
+        error: "命令失败",
+        failureReason: "exit_code",
+      },
+    });
+  });
+
   it("没有 WebSocket transport 时 streamEvents 显式失败，不返回空流掩盖断线", async () => {
     const adapter = makeMulticaDaemonRuntimeAdapter(makeOptions());
     await expect(

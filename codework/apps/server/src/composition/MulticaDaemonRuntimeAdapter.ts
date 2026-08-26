@@ -11,6 +11,7 @@ import { EventId, ProviderDriverKind, RuntimeTaskId, ThreadId } from "@codework/
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as Stream from "effect/Stream";
+import * as Schema from "effect/Schema";
 
 import {
   CompositionRuntimeAdapterFailure,
@@ -42,6 +43,14 @@ export type MulticaDaemonStreamFramesInput = {
   readonly daemonRuntimeId: string;
   readonly runtimeTaskId?: string;
 };
+
+export type MulticaDaemonStreamFrames = (
+  input: MulticaDaemonStreamFramesInput,
+) => Stream.Stream<MulticaWebSocketFrame, MulticaDaemonProtocolFailure>;
+
+export type MulticaDaemonControlFrameHandler = (
+  frame: MulticaWebSocketFrame,
+) => Effect.Effect<void, CompositionRuntimeAdapterFailure>;
 
 /** Code Work assignee 到 Multica 工作区和远端 Agent/Squad UUID 的显式映射。 */
 export type MulticaTaskAssigneeRoute = {
@@ -93,9 +102,12 @@ export type MulticaDaemonRuntimeAdapterOptions = {
     }) => Effect.Effect<void, CompositionRuntimeAdapterFailure>;
   };
   readonly now?: () => number;
-  readonly streamFrames?: (
-    input: MulticaDaemonStreamFramesInput,
-  ) => Stream.Stream<MulticaWebSocketFrame, MulticaDaemonProtocolFailure>;
+  /** 普通 /ws 任务事件流。 */
+  readonly streamFrames?: MulticaDaemonStreamFrames;
+  /** 独立 /api/daemon/ws 控制流；不得与普通任务事件混用。 */
+  readonly controlFrames?: MulticaDaemonStreamFrames;
+  /** 处理 task_available 等可丢失 hint，不得把 hint 当作任务终态。 */
+  readonly onControlFrame?: MulticaDaemonControlFrameHandler;
 };
 
 export type MulticaDaemonRuntimeAdapter = CompositionRuntimeAdapter & {
@@ -237,9 +249,23 @@ const taskIdFromPayload = (payload: unknown): string | undefined =>
 const summaryFromPayload = (payload: unknown, fallback: string): string =>
   recordString(payload, "summary") ??
   recordString(payload, "description") ??
+  recordString(payload, "content") ??
   recordString(payload, "output") ??
   recordString(payload, "error") ??
+  recordString(payload, "tool") ??
+  recordString(payload, "type") ??
   fallback;
+
+const intFromPayload = (payload: unknown, key: string): number | undefined => {
+  if (typeof payload !== "object" || payload === null) return undefined;
+  const value = (payload as Record<string, unknown>)[key];
+  return typeof value === "number" && Number.isInteger(value) ? value : undefined;
+};
+
+const unknownFromPayload = (payload: unknown, key: string): unknown => {
+  if (typeof payload !== "object" || payload === null) return undefined;
+  return (payload as Record<string, unknown>)[key];
+};
 
 const eventIdForFrame = (frame: MulticaWebSocketFrame): EventId => {
   const explicit =
@@ -257,6 +283,11 @@ const baseEventFor = (frame: MulticaWebSocketFrame, runtimeId: string, now: () =
   provider: ProviderDriverKind.make("multica"),
   threadId: ThreadId.make(runtimeId),
   createdAt: createdAtForFrame(frame, now),
+  raw: {
+    source: "multica.task-event" as const,
+    messageType: frame.type,
+    payload: frame.payload,
+  },
 });
 
 const providerEventFromFrame = (
@@ -272,11 +303,7 @@ const providerEventFromFrame = (
 
   switch (frame.type) {
     case "daemon:task_available":
-      return {
-        ...base,
-        type: "task.updated",
-        payload: { taskId: runtimeTaskId, description: summary },
-      } satisfies Extract<ProviderRuntimeEvent, { type: "task.updated" }>;
+      return undefined;
     case "task:dispatch":
     case "task:running":
       return {
@@ -293,19 +320,69 @@ const providerEventFromFrame = (
           description: summary,
           summary,
           status: "running",
+          ...(intFromPayload(frame.payload, "step") === undefined
+            ? {}
+            : { step: intFromPayload(frame.payload, "step") }),
+          ...(intFromPayload(frame.payload, "total") === undefined
+            ? {}
+            : { total: intFromPayload(frame.payload, "total") }),
         },
       } satisfies Extract<ProviderRuntimeEvent, { type: "task.progress" }>;
+    case "task:message": {
+      const messageType = recordString(frame.payload, "type");
+      const messageSeq = intFromPayload(frame.payload, "seq");
+      const messageTool = recordString(frame.payload, "tool");
+      const messageInput = unknownFromPayload(frame.payload, "input");
+      const messageOutput = recordString(frame.payload, "output");
+      const messageCreatedAt = recordString(frame.payload, "created_at");
+      return {
+        ...base,
+        type: "task.progress",
+        payload: {
+          taskId: runtimeTaskId,
+          description: summary,
+          summary,
+          status: "running",
+          ...(messageType === undefined ? {} : { messageType }),
+          ...(messageSeq === undefined ? {} : { messageSeq }),
+          ...(messageTool === undefined ? {} : { messageTool }),
+          ...(messageInput === undefined ? {} : { messageInput }),
+          ...(messageOutput === undefined ? {} : { messageOutput }),
+          ...(messageCreatedAt === undefined ? {} : { messageCreatedAt }),
+        },
+      } satisfies Extract<ProviderRuntimeEvent, { type: "task.progress" }>;
+    }
     case "task:completed":
       return {
         ...base,
         type: "task.completed",
-        payload: { taskId: runtimeTaskId, status: "completed", summary },
+        payload: {
+          taskId: runtimeTaskId,
+          status: "completed",
+          summary,
+          ...(recordString(frame.payload, "output") === undefined
+            ? {}
+            : { output: recordString(frame.payload, "output") }),
+          ...(recordString(frame.payload, "pr_url") === undefined
+            ? {}
+            : { prUrl: recordString(frame.payload, "pr_url") }),
+        },
       } satisfies Extract<ProviderRuntimeEvent, { type: "task.completed" }>;
     case "task:failed":
       return {
         ...base,
         type: "task.completed",
-        payload: { taskId: runtimeTaskId, status: "failed", summary },
+        payload: {
+          taskId: runtimeTaskId,
+          status: "failed",
+          summary,
+          ...(recordString(frame.payload, "error") === undefined
+            ? {}
+            : { error: recordString(frame.payload, "error") }),
+          ...(recordString(frame.payload, "failure_reason") === undefined
+            ? {}
+            : { failureReason: recordString(frame.payload, "failure_reason") }),
+        },
       } satisfies Extract<ProviderRuntimeEvent, { type: "task.completed" }>;
     case "task:cancelled":
       return {
@@ -333,6 +410,12 @@ const matchesEvent = (
 
 const isTerminalRuntimeStatus = (status: string): boolean =>
   status === "completed" || status === "failed" || status === "cancelled" || status === "stopped";
+
+const isControlHintFrame = (frame: MulticaWebSocketFrame): boolean =>
+  frame.type === "daemon:task_available" ||
+  frame.type === "daemon:pending_work" ||
+  frame.type === "daemon:runtime_profiles_changed" ||
+  frame.type === "daemon:workspaces_changed";
 
 export const makeMulticaCompositionRuntimeId = (
   daemonId: string,
@@ -639,6 +722,20 @@ export const makeMulticaDaemonRuntimeAdapter = (
       activeTaskIds.add(normalizedRuntimeTaskId);
     });
 
+  const handleControlFrame: MulticaDaemonControlFrameHandler = (frame) => {
+    if (options.onControlFrame !== undefined) {
+      return options.onControlFrame(frame);
+    }
+    if (frame.type !== "daemon:task_available" && frame.type !== "daemon:pending_work") {
+      return Effect.void;
+    }
+    return claimTask().pipe(
+      Effect.flatMap((claimed) =>
+        claimed === null ? Effect.void : startTask(claimed.id).pipe(Effect.asVoid),
+      ),
+    );
+  };
+
   const reportProgress = (runtimeTaskId: string, input: MulticaTaskProgressInput) =>
     options.protocol
       .reportProgress(nonEmpty(runtimeTaskId, "runtimeTaskId"), input)
@@ -819,20 +916,65 @@ export const makeMulticaDaemonRuntimeAdapter = (
       ),
     );
 
-  const streamEvents: CompositionRuntimeAdapter["streamEvents"] = (filter) => {
-    if (options.streamFrames === undefined) {
-      return Stream.fail(
-        adapterFailure(runtimeId, "stream_unavailable", "未配置 Multica WebSocket transport。"),
-      );
-    }
-    return options.streamFrames({
-      runtimeId,
-      daemonRuntimeId,
-      ...(filter?.runtimeTaskId === undefined ? {} : { runtimeTaskId: filter.runtimeTaskId }),
-    }).pipe(
-      Stream.mapError((failure) => mapProtocolFailure(runtimeId, failure)),
-      Stream.mapEffect((frame) =>
-        Effect.try({
+  const streamEvents: CompositionRuntimeAdapter["streamEvents"] = (filter) =>
+    Stream.unwrap(
+      Effect.try({
+        try: () => {
+          const streamInput = {
+            runtimeId,
+            daemonRuntimeId,
+            ...(filter?.runtimeTaskId === undefined ? {} : { runtimeTaskId: filter.runtimeTaskId }),
+          } satisfies MulticaDaemonStreamFramesInput;
+          if (options.streamFrames === undefined && options.controlFrames === undefined) {
+            throw adapterFailure(
+              runtimeId,
+              "stream_unavailable",
+              "未配置 Multica WebSocket transport。",
+            );
+          }
+          const taskFrames: Stream.Stream<
+            { readonly source: "task"; readonly frame: MulticaWebSocketFrame },
+            MulticaDaemonProtocolFailure
+          > =
+            options.streamFrames === undefined
+              ? Stream.empty
+              : options
+                  .streamFrames(streamInput)
+                  .pipe(Stream.map((frame) => ({ source: "task" as const, frame })));
+          const controlFrames: Stream.Stream<
+            { readonly source: "control"; readonly frame: MulticaWebSocketFrame },
+            MulticaDaemonProtocolFailure
+          > =
+            options.controlFrames === undefined
+              ? Stream.empty
+              : options
+                  .controlFrames(streamInput)
+                  .pipe(Stream.map((frame) => ({ source: "control" as const, frame })));
+          return Stream.merge(taskFrames, controlFrames);
+        },
+        catch: (cause) =>
+          Schema.is(CompositionRuntimeAdapterFailure)(cause)
+            ? cause
+            : adapterFailure(
+                runtimeId,
+                "stream_unavailable",
+                cause instanceof Error ? cause.message : String(cause),
+              ),
+      }),
+    ).pipe(
+      Stream.mapError((failure) =>
+        Schema.is(CompositionRuntimeAdapterFailure)(failure)
+          ? failure
+          : mapProtocolFailure(runtimeId, failure),
+      ),
+      Stream.mapEffect(({ source, frame }) => {
+        if (source === "control") {
+          if (!isControlHintFrame(frame)) {
+            return Effect.succeed<ProviderRuntimeEvent | undefined>(undefined);
+          }
+          return handleControlFrame(frame).pipe(Effect.as(undefined));
+        }
+        return Effect.try({
           try: () => providerEventFromFrame(frame, runtimeId, now),
           catch: (cause) =>
             adapterFailure(
@@ -840,12 +982,11 @@ export const makeMulticaDaemonRuntimeAdapter = (
               "protocol_invalid",
               cause instanceof Error ? cause.message : String(cause),
             ),
-        }),
-      ),
+        });
+      }),
       Stream.filter((event): event is ProviderRuntimeEvent => event !== undefined),
       Stream.filter((event) => matchesEvent(event, filter)),
     );
-  };
 
   const probeMultica = () =>
     options.protocol.heartbeat(daemonRuntimeId).pipe(

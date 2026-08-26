@@ -24,11 +24,23 @@ import {
   makeMulticaFetchHttpTransport,
 } from "./MulticaDaemonProtocol.ts";
 import {
+  makeMulticaDaemonWebSocketStream,
+  type MulticaDaemonWebSocketTransport,
+  type MulticaDaemonWebSocketTransportOptions,
+} from "./MulticaDaemonWebSocketTransport.ts";
+import {
   makeMulticaTaskMcpLeaseStore,
   type MulticaTaskMcpLeaseStore,
 } from "./MulticaTaskMcpLease.ts";
 import { makeMulticaTaskExecutionProcessBridge } from "./MulticaTaskExecutionProcessBridge.ts";
-import { makeMulticaTaskEventWebSocketStream } from "./MulticaTaskEventWebSocketTransport.ts";
+import {
+  makeMulticaTaskEventWebSocketStream,
+  type MulticaTaskEventWebSocketTransportOptions,
+} from "./MulticaTaskEventWebSocketTransport.ts";
+import type {
+  MulticaDaemonProtocolFailure,
+  MulticaWebSocketFrame,
+} from "./MulticaDaemonProtocol.ts";
 import type { CompositionRuntimeAdapter } from "./CompositionRuntimeAdapter.ts";
 import type { CompositionRuntimeAgent } from "./CompositionRuntimeAdapter.ts";
 import {
@@ -46,6 +58,12 @@ export type CompositionRuntimeSettings = {
   >;
   /** 可选的 Multica daemon extension；未提供时保持官方窄协议行为。 */
   readonly taskExecutionBridge?: MulticaDaemonRuntimeAdapterOptions["taskExecutionBridge"];
+  readonly taskEventStreamFactory?: (
+    options: MulticaTaskEventWebSocketTransportOptions,
+  ) => Stream.Stream<MulticaWebSocketFrame, MulticaDaemonProtocolFailure>;
+  readonly daemonControlStreamFactory?: (
+    options: MulticaDaemonWebSocketTransportOptions,
+  ) => MulticaDaemonWebSocketTransport;
   readonly createAdapter?: (
     input: CompositionRuntimeSettingsFactoryInput,
   ) => Effect.Effect<CompositionRuntimeAdapter, CompositionRuntimeSettingsError>;
@@ -73,6 +91,8 @@ export type CompositionRuntimeSettingsFactoryInput = {
     "activate" | "revokeHandshake" | "revokeRuntime"
   >;
   readonly taskExecutionBridge?: MulticaDaemonRuntimeAdapterOptions["taskExecutionBridge"];
+  readonly taskEventStreamFactory?: CompositionRuntimeSettings["taskEventStreamFactory"];
+  readonly daemonControlStreamFactory?: CompositionRuntimeSettings["daemonControlStreamFactory"];
 };
 
 export interface CompositionRuntimeSettingsReconciler {
@@ -84,7 +104,9 @@ export interface CompositionRuntimeSettingsReconciler {
 export class CompositionRuntimeSettingsReconcilerService extends Context.Service<
   CompositionRuntimeSettingsReconcilerService,
   CompositionRuntimeSettingsReconciler
->()("codework/composition/CompositionRuntimeSettings/CompositionRuntimeSettingsReconcilerService") {}
+>()(
+  "codework/composition/CompositionRuntimeSettings/CompositionRuntimeSettingsReconcilerService",
+) {}
 
 type ManagedAdapter = {
   readonly instanceId: string;
@@ -169,7 +191,9 @@ const makeRuntimeMcpTokens = (
     }
     const existingToken = tokens.get(route.codeworkAgentId);
     if (existingToken !== undefined && existingToken !== token) {
-      throw new Error(`Multica Agent '${route.codeworkAgentId}' 配置了多个不同的 Code Work MCP 凭据。`);
+      throw new Error(
+        `Multica Agent '${route.codeworkAgentId}' 配置了多个不同的 Code Work MCP 凭据。`,
+      );
     }
     const existingOwner = tokenOwners.get(token);
     if (existingOwner !== undefined && existingOwner !== route.codeworkAgentId) {
@@ -404,12 +428,19 @@ export const makeMulticaRuntimeAdapterFromSettings = (
         : { taskMcpLeaseBridge: runtimeMcpBridge.taskMcpLeaseBridge }),
       ...(taskExecutionBridge === undefined ? {} : { taskExecutionBridge }),
       streamFrames: (streamInput) =>
-        makeMulticaTaskEventWebSocketStream({
+        (input.taskEventStreamFactory ?? makeMulticaTaskEventWebSocketStream)({
           baseUrl: input.config.baseUrl,
           headers: input.headers,
           workspaceIds,
           ...(streamInput.runtimeTaskId === undefined ? {} : { taskId: streamInput.runtimeTaskId }),
         }),
+      controlFrames: (streamInput) =>
+        (input.daemonControlStreamFactory ?? makeMulticaDaemonWebSocketStream)({
+          baseUrl: input.config.baseUrl,
+          headers: input.headers,
+          runtimeIds: [streamInput.daemonRuntimeId],
+          workspaceIds,
+        }).stream,
     });
   });
 
@@ -485,6 +516,12 @@ export const makeCompositionRuntimeSettingsReconciler = (
           ...(options.taskExecutionBridge === undefined
             ? {}
             : { taskExecutionBridge: options.taskExecutionBridge }),
+          ...(options.taskEventStreamFactory === undefined
+            ? {}
+            : { taskEventStreamFactory: options.taskEventStreamFactory }),
+          ...(options.daemonControlStreamFactory === undefined
+            ? {}
+            : { daemonControlStreamFactory: options.daemonControlStreamFactory }),
         });
       } catch (cause) {
         yield* warn(`跳过无效的 Multica Runtime 配置 '${instanceId}'。`, cause);

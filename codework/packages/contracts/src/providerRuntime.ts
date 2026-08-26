@@ -29,6 +29,7 @@ const RuntimeEventRawSource = Schema.Union([
   Schema.Literal("opencode.sdk.event"),
   Schema.Literal("acp.jsonrpc"),
   Schema.TemplateLiteral(["acp.", Schema.String, ".extension"]),
+  Schema.Literal("multica.task-event"),
 ]);
 export type RuntimeEventRawSource = typeof RuntimeEventRawSource.Type;
 
@@ -613,12 +614,20 @@ const TaskProgressPayload = Schema.Struct({
   taskId: RuntimeTaskId,
   description: TrimmedNonEmptyStringSchema,
   summary: Schema.optional(TrimmedNonEmptyStringSchema),
+  step: Schema.optional(NonNegativeInt),
+  total: Schema.optional(NonNegativeInt),
   usage: Schema.optional(Schema.Unknown),
   typedUsage: Schema.optional(RuntimeTaskUsage),
   lastToolName: Schema.optional(TrimmedNonEmptyStringSchema),
   /** Present on synthesized member/child progress rows that carry state. */
   status: Schema.optional(RuntimeTaskStatus),
   error: Schema.optional(TrimmedNonEmptyStringSchema),
+  messageType: Schema.optional(TrimmedNonEmptyStringSchema),
+  messageSeq: Schema.optional(Schema.Int),
+  messageTool: Schema.optional(TrimmedNonEmptyStringSchema),
+  messageInput: Schema.optional(Schema.Unknown),
+  messageOutput: Schema.optional(Schema.String),
+  messageCreatedAt: Schema.optional(TrimmedNonEmptyStringSchema),
   ...taskAgentLinkageFields,
 });
 export type TaskProgressPayload = typeof TaskProgressPayload.Type;
@@ -643,6 +652,10 @@ const TaskCompletedPayload = Schema.Struct({
   taskId: RuntimeTaskId,
   status: Schema.Literals(["completed", "failed", "stopped"]),
   summary: Schema.optional(TrimmedNonEmptyStringSchema),
+  output: Schema.optional(Schema.String),
+  prUrl: Schema.optional(TrimmedNonEmptyStringSchema),
+  error: Schema.optional(TrimmedNonEmptyStringSchema),
+  failureReason: Schema.optional(TrimmedNonEmptyStringSchema),
   usage: Schema.optional(Schema.Unknown),
   typedUsage: Schema.optional(RuntimeTaskUsage),
   ...taskAgentLinkageFields,

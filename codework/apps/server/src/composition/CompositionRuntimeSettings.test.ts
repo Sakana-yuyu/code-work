@@ -19,6 +19,10 @@ import {
   type CompositionRuntimeAdapterRegistry,
 } from "./CompositionRuntimeAdapterRegistry.ts";
 import {
+  makeMulticaDaemonWebSocketUrl,
+  type MulticaDaemonWebSocketTransport,
+} from "./MulticaDaemonWebSocketTransport.ts";
+import {
   makeCompositionRuntimeSettingsReconciler,
   makeMulticaRuntimeAdapterFromSettings,
   type CompositionRuntimeSettings,
@@ -102,6 +106,58 @@ const makeReconciler = (
   });
 
 describe("CompositionRuntimeSettings", () => {
+  it("懒创建独立的 daemon control transport，并使用 /api/daemon/ws 所需的 runtime scope", async () => {
+    const createdControlTransports: Array<{
+      readonly url: string;
+      readonly runtimeIds: ReadonlyArray<string>;
+      readonly workspaceIds: ReadonlyArray<string>;
+    }> = [];
+    const controlTransport: MulticaDaemonWebSocketTransport = {
+      stream: Stream.empty,
+      request: () => Effect.die("测试未实现 request"),
+      supportsRpc: () => false,
+      close: () => undefined,
+    };
+    const config = Schema.decodeUnknownSync(CompositionMulticaRuntimeConfig)(
+      multicaInstance().config,
+    );
+    const adapter = await Effect.runPromise(
+      makeMulticaRuntimeAdapterFromSettings({
+        instanceId: "multica_local",
+        config,
+        environment: [{ name: "MULTICA_TOKEN", value: "secret-token", sensitive: true }],
+        headers: { Authorization: "secret-token" },
+        agents: [
+          {
+            agentId: "agent-1",
+            runtimeId: config.runtimeId,
+            status: "online",
+            capabilities: [],
+          },
+        ],
+        daemonControlStreamFactory: (input) => {
+          createdControlTransports.push({
+            url: makeMulticaDaemonWebSocketUrl(input.baseUrl),
+            runtimeIds: input.runtimeIds,
+            workspaceIds: input.workspaceIds ?? [],
+          });
+          return controlTransport;
+        },
+        taskEventStreamFactory: () => Stream.empty,
+      }),
+    );
+
+    expect(createdControlTransports).toEqual([]);
+    await Effect.runPromise(adapter.streamEvents().pipe(Stream.runCollect));
+    expect(createdControlTransports).toEqual([
+      {
+        url: "ws://127.0.0.1:9000/api/daemon/ws",
+        runtimeIds: ["runtime-1"],
+        workspaceIds: ["workspace-1"],
+      },
+    ]);
+  });
+
   it("从配置构造 task execution extension，并在 claim/start 时调用 ProcessRunner", async () => {
     const originalFetch = globalThis.fetch;
     const requestPaths: string[] = [];
