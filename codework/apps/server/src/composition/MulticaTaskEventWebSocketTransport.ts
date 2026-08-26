@@ -1,7 +1,5 @@
 // @effect-diagnostics globalTimers:off - WebSocket 生命周期由原生连接定时器管理。
 
-// @effect-diagnostics globalTimers:off - WebSocket 生命周期由原生连接定时器管理。
-
 import * as NodeSocket from "@effect/platform-node/NodeSocket";
 import * as Effect from "effect/Effect";
 import * as Queue from "effect/Queue";
@@ -325,7 +323,11 @@ export const makeMulticaTaskEventWebSocketStream = (
                   scope === undefined
                     ? "Multica WebSocket 请求被拒绝。"
                     : `Multica ${scope} 订阅被拒绝。`;
-                if (received.type === "auth_error" || scope === "workspace" || scope === undefined) {
+                if (
+                  received.type === "auth_error" ||
+                  scope === "workspace" ||
+                  scope === undefined
+                ) {
                   fail(protocolFailure("taskEventStream", received.type, detail));
                 } else if (scope === "task") {
                   connection.taskSubscribed = false;
