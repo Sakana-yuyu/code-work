@@ -95,11 +95,13 @@ describe("CompositionByokAgentDriver", () => {
 
   it("取消正在运行的 BYOK Loop，并发出 turn.aborted 而不是成功终态", async () => {
     const release = Effect.runSync(Deferred.make<void>());
+    const started = Effect.runSync(Deferred.make<void>());
     let signal: AbortSignal | undefined;
     const service: CompositionAgentServiceShape = {
       run: (input) => {
         signal = input.signal;
-        return Deferred.await(release).pipe(
+        return Deferred.succeed(started, void 0).pipe(
+          Effect.flatMap(() => Deferred.await(release)),
           Effect.as({ text: "不会完成", messages: [], rounds: 1 }),
         );
       },
@@ -114,6 +116,7 @@ describe("CompositionByokAgentDriver", () => {
 
     const eventsFiber = Effect.runFork(Stream.runCollect(Stream.take(driver.streamEvents!(), 2)));
     await Effect.runPromise(start(driver));
+    await Effect.runPromise(Deferred.await(started));
     await expect(
       Effect.runPromise(
         driver.cancelTask({ task, run: { ...run, status: "running" }, reason: "用户取消" }),

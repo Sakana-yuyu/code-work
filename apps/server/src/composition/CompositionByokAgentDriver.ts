@@ -194,6 +194,8 @@ export const makeCompositionByokAgentDriver = (
       } satisfies CompletedRun;
       const abortController = new AbortController();
       const run = Effect.gen(function* () {
+        // 让 Orchestrator 先完成 running 投影，再接收本地 Loop 的第一条事件。
+        yield* Effect.yieldNow;
         yield* publish({
           provider: ProviderDriverKind.make("byok"),
           providerInstanceId: ProviderInstanceId.make(String(options.providerInstanceId)),

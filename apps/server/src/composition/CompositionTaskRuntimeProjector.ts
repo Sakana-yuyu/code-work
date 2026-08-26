@@ -211,6 +211,11 @@ export const projectCompositionRuntimeEvent = (
     const runOption = yield* store.getRun(binding.runId);
     if (Option.isNone(taskOption) || Option.isNone(runOption)) return;
 
+    // 重试会复用 taskId 但创建新的 runId；旧 Run 的迟到事件只能保留在其审计流中，
+    // 不能再次改写当前 Task 投影，否则会把新一轮运行覆盖回旧终态。
+    const latestRunOption = yield* store.getLatestRun(binding.taskId);
+    if (Option.isSome(latestRunOption) && latestRunOption.value.runId !== binding.runId) return;
+
     const task = taskOption.value;
     const run = runOption.value;
     const projection = projectEvent(event, task.status, task.mode === "review");

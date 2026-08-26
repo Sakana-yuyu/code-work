@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vite-plus/test";
 import * as Effect from "effect/Effect";
+import * as Deferred from "effect/Deferred";
 import * as Layer from "effect/Layer";
 import * as PubSub from "effect/PubSub";
 import * as Stream from "effect/Stream";
@@ -46,10 +47,13 @@ const makeByokInstance = (instanceId: string): ProviderInstance =>
 describe("CompositionByokAgentDriverRegistry", () => {
   it("只把 BYOK ProviderInstance 投影成真正使用 ToolBroker 的 Agent Driver", async () => {
     const calls: Array<Parameters<CompositionAgentServiceShape["run"]>[0]> = [];
+    const started = Effect.runSync(Deferred.make<void>());
     const agentService: CompositionAgentServiceShape = {
       run: (input) => {
         calls.push(input);
-        return Effect.succeed({ text: "完成", messages: [], rounds: 1 });
+        return Deferred.succeed(started, void 0).pipe(
+          Effect.as({ text: "完成", messages: [], rounds: 1 }),
+        );
       },
     };
     const instances = [makeByokInstance("byok-personal")];
@@ -101,6 +105,7 @@ describe("CompositionByokAgentDriverRegistry", () => {
         workspaceRoot: "C:/workspace",
       }),
     );
+    await Effect.runPromise(Deferred.await(started));
     expect(calls[0]).toMatchObject({
       providerInstanceId: "byok-personal",
       modelId: "openai/gpt-5",
