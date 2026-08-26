@@ -64,7 +64,7 @@ Audit / Idempotency / Cancellation / Timeout / Retry / Review
 
 ### 当前仍缺少的主线能力
 
-- client-runtime 和 Web/Desktop/Mobile 的 MCP 配置、连接状态、工具目录和错误可达性。
+- MCP 的服务端 Runtime reconcile、工具目录、ToolBroker 动态 capability 和 Web/client-runtime 控制已具备；仍缺少 Mobile 入口、跨端真实点击验收，以及 Provider/ACP/CLI/Multica 外部 Driver 的真实 MCP ToolBroker E2E。
 - Provider/BYOK/ACP/CLI 的统一 capability projection 和真实跨 Driver ToolBroker E2E。
 - Web Settings 已提供 Task Graph 的产品入口、任务/Run/事件可视化以及取消/审核/重试交互；Desktop 复用 Web 壳和
   `client-runtime`，但本批次没有进行真实桌面点击验收；Mobile 仍没有产品导航入口，也没有进行移动端验收。

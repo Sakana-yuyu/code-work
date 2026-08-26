@@ -225,7 +225,7 @@ Transport 错误不得直接把运行标成成功；心跳超时只允许标记 
 - 不直接启动或托管用户本机 CLI 进程；CLI 由现有 Provider/Multica daemon runtime 负责。
 - 不在本节点声称 cursor-byok 的所有功能已经完成迁移；差异报告和迁移仍按能力域逐项推进。
 
-## 迁移差异矩阵（2026-08-25）
+## 迁移差异矩阵（2026-08-26）
 
 本节以当前工作树 `E:\MyProject\code-work\t3code`、对照仓库
 `E:\MyProject\cursor-byok` 和 Multica 只读提交 `8442504201b302cfd6c40c7b8eb8a508bf254d0b`
@@ -237,12 +237,12 @@ Transport 错误不得直接把运行标成成功；心跳超时只允许标记 
 | 多协议 BYOK 请求           | `internal/backend/agent/model/openai_*.go`、`anthropic.go`、`gemini.go`，包含工具参数校验和流式适配            | `byokChatClient.ts` 已支持 OpenAI/Anthropic/Gemini；`99dcc534` 已让 Agent Loop 和 Driver 协议无关                                                                                                               | 已迁移第一阶段                        |
 | 统一 Agent Loop            | cursor-byok 的 provider/worker 以协议适配器承接工具调用                                                        | `ByokAgentLoop` + `ToolBroker` 已实现工具调用、幂等、结果回放、临时 grant 撤销                                                                                                                                  | 已具备，仍需真实模型 E2E              |
 | Composition canonical 工具 | `internal/backend/agent/bridge/exec/exec_open_fs.go`、`exec_open_shell.go`、`exec_open_git.go`                 | `CompositionToolRegistry` + `ToolBroker` 已注册 11 个 canonical 工具，并经 Policy/Grant/Approval/Audit                                                                                                          | 已迁移第一批                          |
-| MCP                        | cursor-byok 有 `mcp_registry.go`、`mcp_runtime.go`、MCP trust 和动态工具目录                                   | T3 有独立 `/mcp` Preview Toolkit 和 `McpSessionRegistry`，但 Composition ToolBroker 尚未把任意 MCP server/tool 统一纳入 canonical tool                                                                          | 部分迁移                              |
-| Browser/Computer Use       | `internal/computeruse`、`computeruse_bridge.go`、IDE browser MCP                                               | T3 只有 Preview/BrowserTrace 等相邻能力，尚未提供 Composition canonical browser/computer tool                                                                                                                   | 未迁移                                |
+| MCP                        | cursor-byok 有 `mcp_registry.go`、`mcp_runtime.go`、MCP trust、动态工具目录和连接控制 UI                       | T3 已完成 stdio/Streamable HTTP/SSE 的 Runtime reconcile、catalog 注册、JSON Schema 校验、结果去敏、取消、ToolBroker 动态 capability、Settings/WS/client-runtime 控制；跨 Driver 真实 E2E 仍缺                  | 服务端闭环已具备，产品级 E2E 未完成   |
+| Browser/Computer Use       | `internal/computeruse`、`computeruse_bridge.go`、IDE browser MCP                                               | T3 已有 Preview canonical tools（status/open/navigate/snapshot）和受限 Browser Context；完整 click/type/press/evaluate、Computer Use 会话、审批和取消闭环仍未接入                                               | Preview 已迁移，完整能力未迁移        |
 | Cursor/VSCode IDE API      | cursor-byok 通过 Cursor 本地协议、MCP 和 Windows computer-use 访问 IDE/浏览器边界                              | T3 已有 `CompositionIdeSessionRegistry`、profile probe、task/run/agent 绑定的 handshake lease、probe allowlist 和 `ide.invoke` ToolBroker 入口；真实 Cursor/VSCode Adapter、transport 和 IDE operation 仍未接入 | 可信执行门已迁移，真实 Adapter 未迁移 |
 | Cursor 原生协议代理        | `internal/mitm`、`internal/backend/agent/protocol`、`RunSSE`/`BidiAppend` 相关 forwarder 和 protobuf           | T3 没有 Cursor MITM、原生 Bidi/RunSSE 转发器，也不修改已安装 Cursor bundle                                                                                                                                      | 未迁移；属于独立 Runtime Driver       |
 | 官方请求镜像与对比         | `internal/mitm/mirror.go`、`official.raw.jsonl`、`requestlab` 及 `request-comparison-lab` 设计                 | T3 有 Provider/Runtime 事件和 Trace，但没有官方请求镜像记录、exchangeId 对比实验台                                                                                                                              | 未迁移                                |
-| 监督式委派                 | `internal/backend/forwarder/supervisor_coordinator.go`、`supervisor_provider.go`、`delegation_multitask.go`    | T3 已有 review 模式 checkpoint、`in_review` 投影和 approve/reject RPC；retry/reassign/escalate/circuit breaker 与 sibling failure isolation 仍未接入                                                            | 部分迁移                              |
+| 监督式委派                 | `internal/backend/forwarder/supervisor_coordinator.go`、`supervisor_provider.go`、`delegation_multitask.go`    | T3 已有 review 模式 checkpoint、`in_review` 投影、approve/reject RPC，以及失败/超时 Run 的显式重试；reassign/escalate/circuit breaker、兄弟任务隔离仍未接入                                                     | 部分迁移                              |
 | Worker Context Compaction  | `delegation_compaction.go`、`context_overflow.go`、tool result snip 和保留最近轮次规则                         | T3 BYOK Loop 目前只累积消息，没有 worker 预算、工具结果裁剪和 context overflow 自救                                                                                                                             | 未迁移                                |
 | Delegate 运行时            | cursor-byok 有 Claude/Codex/Cursor/Gemini/Kiro/custom executor registry、failover、slot/loop limiter           | T3 Provider Driver、ACP/CLI/Multica Runtime Adapter 已有；统一 driver SPI 已具备，但 cursor-byok executor 具体语义尚未逐项迁移                                                                                  | 部分迁移                              |
 | 供应商目录/模型发现        | cursor-byok 有 supplier catalog、候选 URL、custom headers、模型目录缓存、协议过滤和 pricing                    | T3 有 BYOK adapter/import/balance/discovery 服务，但尚未达到 cursor-byok 的供应商目录管理和多端页面等价                                                                                                         | 部分迁移                              |
@@ -269,21 +269,22 @@ T3 Shell
 
 可达不等于当前已经完成。当前能真实声明的范围是：
 
-1. Provider、BYOK 和已有 Runtime Adapter 可以共享 Composition Task、Run、事件、grant 和第一批 Workspace/Terminal/Git 工具。
+1. BYOK 和已经完成 Tool Bridge handshake 的 Runtime 可以共享 Composition Task、Run、事件、grant 和第一批 Workspace/Terminal/Git/MCP 工具；普通 Provider 当前仍只共享会话/模型能力，不能宣称已经共享 ToolBroker。
 2. Multica 可以作为外部 runtime 承接 T3 task，并使用窄 daemon 协议完成注册、心跳、quick-create、claim、start、progress、complete、fail、cancel 和事件投影。
 3. T3 的 `CompositionRuntimeToolBridge` 已提供外部 runtime 调用 `ToolBroker` 的入口，但 Multica 官方 daemon 当前没有 T3 grant handshake 和 Tool-call RPC；因此带 T3 grant 的 Multica 任务必须拒绝或走明确的只读/无 grant 降级，不能宣称“Multica 已共享所有 T3 工具”。
-4. Cursor/VSCode IDE API、Browser/Computer Use、任意 MCP server/tool 仍需要各自 Adapter 和权限合同完成后，才能被所有 Driver 共享。
+4. MCP 服务端工具面已接入 T3 ToolBroker；Cursor/VSCode IDE API、完整 Browser/Computer Use、以及 Provider/ACP/CLI 对 ToolBroker 的真实调用桥仍需要各自 Adapter 和权限合同完成后，才能被所有 Driver 共享。
 5. Supervisor/Reviewer、任务重试/换人/升级/熔断和兄弟任务隔离应建在 T3 Orchestrator 上，不能把 Multica 的外部 issue 状态直接当作 T3 Run 终态。
 
 ## 后续实施批次
 
 按“一步一提交、每批可回滚”拆分：
 
-1. **Batch A：统一 Tool Plane 扩展。** 将 MCP tool catalog/invoke 纳入 `CompositionToolRegistry`/`ToolBroker`，补齐 canonical 参数、结果去敏、取消和审计；随后接 Browser/Computer Use。
-2. **Batch B：IDE Adapter。** 实现 Cursor/VSCode profile 探测、会话握手、verified operation allowlist 和断开恢复；未知 profile 只允许 probe/list，不允许写入或执行。
-3. **Batch C：监督协同。** 在 T3 中增加 review checkpoint、retry/reassign/escalate/circuit 状态和 sibling failure isolation；把 cursor-byok 的 worker context compaction 迁移为独立纯函数模块。
-4. **Batch D：Multica 增强。** 增加显式 Squad/Leader/Task Graph route 同步、持久化 outbox/未知结果恢复和真实 daemon 的 Tool-call/Grant 协议协商；在官方协议未提供前，不绕过握手。
-5. **Batch E：Cursor 专属能力按需接入。** 原生 Bidi/RunSSE、MITM 镜像、账户切换和 Cursor 专属运营 UI 作为独立 Runtime/桌面功能，不污染 T3 核心 Provider/ToolBroker 合同。
+1. **Batch A（服务端基本完成）：统一 Tool Plane 扩展。** MCP catalog/invoke、Preview canonical tools、参数校验、结果去敏、取消和审计已经接入；下一节点是 Browser/Computer Use 的完整 canonical session。
+2. **Batch B（可信执行门已完成，真实 Adapter 未完成）：IDE Adapter。** 已有 Cursor/VSCode profile 探测、会话握手、verified operation allowlist 和断开拒绝边界；仍需真实 Cursor/VSCode transport、operation 和断线恢复。
+3. **Batch C（部分完成）：监督协同。** review checkpoint、approve/reject、失败/超时重试已经接入；仍需 reassign/escalate/circuit、兄弟任务失败隔离和 worker context compaction。
+4. **Batch D（协议接入门已完成，真实 Runtime 未完成）：Multica 增强。** 已有显式 Squad/Leader/Task Graph route、任务上下文和 T3 Runtime Tool Bridge 合同；仍需持久化未知结果恢复、真实 daemon extension、Tool-call/Grant 协商和跨进程 E2E。
+5. **Batch E（未开始）：Provider/ACP/CLI 统一 ToolBroker。** 为每类 Driver 提供真实工具调用桥和 handshake，不允许仅修改 profile 字段伪造能力；完成后再接入所有 T3 API/IDE API。
+6. **Batch F（独立可选）：Cursor 专属能力。** 原生 Bidi/RunSSE、MITM 镜像、账户切换和 Cursor 专属运营 UI 作为独立 Runtime/桌面功能，不污染 T3 核心 Provider/ToolBroker 合同。
 
 每个批次的验收必须分别记录：定向单测、类型/构建、模拟 Runtime、真实本机 Runtime/IDE E2E、Web/Desktop/Mobile 可达性；其中前两类不能替代后三类。
 
