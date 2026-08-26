@@ -774,6 +774,18 @@ export function createServerEnvironmentAtoms<R, E>(
       staleTimeMs: 5_000,
       idleTtlMs: 60_000,
     }),
+    listCompositionTasks: createEnvironmentRpcQueryAtomFamily(runtime, {
+      label: "environment-data:server:list-composition-tasks",
+      tag: WS_METHODS.serverListCompositionTasks,
+      staleTimeMs: 2_000,
+      idleTtlMs: 60_000,
+    }),
+    listCompositionTaskEvents: createEnvironmentRpcQueryAtomFamily(runtime, {
+      label: "environment-data:server:list-composition-task-events",
+      tag: WS_METHODS.serverListCompositionTaskEvents,
+      staleTimeMs: 1_000,
+      idleTtlMs: 30_000,
+    }),
     executeCompositionTaskGraph: createEnvironmentRpcCommand(runtime, {
       label: "environment-data:server:execute-composition-task-graph",
       tag: WS_METHODS.serverExecuteCompositionTaskGraph,
@@ -781,6 +793,33 @@ export function createServerEnvironmentAtoms<R, E>(
         mode: "singleFlight",
         key: ({ environmentId, input }) =>
           JSON.stringify([environmentId, input.leader.taskId, input.leader.runId]),
+      },
+    }),
+    cancelCompositionTask: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:server:cancel-composition-task",
+      tag: WS_METHODS.serverCancelCompositionTask,
+      concurrency: {
+        mode: "singleFlight",
+        key: ({ environmentId, input }) =>
+          JSON.stringify([environmentId, input.taskId, input.runId]),
+      },
+    }),
+    reviewCompositionTask: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:server:review-composition-task",
+      tag: WS_METHODS.serverReviewCompositionTask,
+      concurrency: {
+        mode: "singleFlight",
+        key: ({ environmentId, input }) =>
+          JSON.stringify([environmentId, input.taskId, input.runId]),
+      },
+    }),
+    retryCompositionTask: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:server:retry-composition-task",
+      tag: WS_METHODS.serverRetryCompositionTask,
+      concurrency: {
+        mode: "singleFlight",
+        key: ({ environmentId, input }) =>
+          JSON.stringify([environmentId, input.taskId, input.runId]),
       },
     }),
     traceDiagnostics: createEnvironmentRpcQueryAtomFamily(runtime, {

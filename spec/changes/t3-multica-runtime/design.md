@@ -439,3 +439,13 @@ Web/Desktop/Mobile 和真实 daemon E2E；本节点的 handler 使用仍属于 T
 配置发现与 trust 持久化、动态 catalog 刷新 RPC、Browser/Computer Use、真实 Cursor/VSCode transport、Multica
 Tool-call/Grant handshake，以及 Web/Desktop/Mobile、真实 Multica daemon 和真实外部 MCP server E2E；因此本节点
 证明的是 T3 runtime adapter 与官方 SDK 的本地可运行链路，不宣称用户设置页和跨端产品功能已经可用。
+
+## Batch D-5 落地记录（2026-08-26）
+
+本节点把 Composition Task Graph 的控制面状态入口补到共享 `client-runtime`，让 Web、Desktop 和 Mobile 可以消费同一套 RPC 绑定，避免各端复制协议调用：
+
+- 新增 `listCompositionTasks` 和 `listCompositionTaskEvents` 查询状态，分别按项目和 Task/Run 查询持久化投影；查询使用短 stale time，适配任务运行中的状态刷新。
+- 新增 `cancelCompositionTask`、`reviewCompositionTask` 和 `retryCompositionTask` 命令；每个命令按 `environmentId + taskId + runId` single-flight，避免同一运行被重复取消、审核或重试。
+- 本节点没有改变服务端状态机、Runtime Driver 或 Multica 协议；取消、审核、重试仍由服务端 `CompositionOrchestrator` 和 `TaskStore` 决策并落盘。
+
+本节点已通过 Composition/Orchestrator/Task Graph 定向测试 31 个、`client-runtime` 定向 TypeScript 检查、格式检查和 `git diff --check`。`client-runtime` 检查仅保留既有 `relay/discovery.ts` 的 Effect 建议项。Web/Desktop/Mobile 产品入口、真实 WebSocket 集成、真实 Provider/IDE/Multica daemon E2E 仍未完成。
