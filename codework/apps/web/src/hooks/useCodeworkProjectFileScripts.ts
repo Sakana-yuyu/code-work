@@ -4,7 +4,7 @@ import {
   type CodeworkProjectFile,
   type CodeworkProjectFileScript,
 } from "@codework/contracts";
-import { parseT3ProjectFile } from "@codework/shared/codeworkProjectFile";
+import { parseCodeworkProjectFile } from "@codework/shared/codeworkProjectFile";
 import { useMemo } from "react";
 
 import { useProjectFileQuery } from "~/components/files/projectFilesQueryState";
@@ -44,7 +44,7 @@ export function useCodeworkProjectFileState(
         scripts: NO_SCRIPTS,
       } as const;
     }
-    const file = parseT3ProjectFile(contents);
+    const file = parseCodeworkProjectFile(contents);
     if (file === null) {
       return { status: "invalid", file: null, scripts: NO_SCRIPTS } as const;
     }

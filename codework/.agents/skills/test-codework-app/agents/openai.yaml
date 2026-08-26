@@ -1,0 +1,4 @@
+interface:
+  display_name: "Code Work App Testing"
+  short_description: "Launch and retain isolated Code Work test environments"
+  default_prompt: "Use $test-codework-app to launch an isolated Code Work environment and iteratively test it in the browser while preserving state."

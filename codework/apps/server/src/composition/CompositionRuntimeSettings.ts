@@ -28,6 +28,7 @@ import {
   type MulticaTaskMcpLeaseStore,
 } from "./MulticaTaskMcpLease.ts";
 import { makeMulticaTaskExecutionProcessBridge } from "./MulticaTaskExecutionProcessBridge.ts";
+import { makeMulticaTaskEventWebSocketStream } from "./MulticaTaskEventWebSocketTransport.ts";
 import type { CompositionRuntimeAdapter } from "./CompositionRuntimeAdapter.ts";
 import type { CompositionRuntimeAgent } from "./CompositionRuntimeAdapter.ts";
 import {
@@ -371,6 +372,9 @@ export const makeMulticaRuntimeAdapterFromSettings = (
         }),
       catch: settingsError,
     });
+    const workspaceIds = [
+      ...new Set(input.config.assigneeRoutes.map((route) => route.workspaceId)),
+    ];
     return makeMulticaDaemonRuntimeAdapter({
       runtimeId: input.config.runtimeId,
       daemonId: input.config.daemonId,
@@ -399,6 +403,13 @@ export const makeMulticaRuntimeAdapterFromSettings = (
         ? {}
         : { taskMcpLeaseBridge: runtimeMcpBridge.taskMcpLeaseBridge }),
       ...(taskExecutionBridge === undefined ? {} : { taskExecutionBridge }),
+      streamFrames: (streamInput) =>
+        makeMulticaTaskEventWebSocketStream({
+          baseUrl: input.config.baseUrl,
+          headers: input.headers,
+          workspaceIds,
+          ...(streamInput.runtimeTaskId === undefined ? {} : { taskId: streamInput.runtimeTaskId }),
+        }),
     });
   });
 

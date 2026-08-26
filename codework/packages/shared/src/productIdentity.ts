@@ -101,7 +101,7 @@ export function isLegacyProductIdentity(value: string): boolean {
     normalized === "t3code" ||
     normalized === "t3 code" ||
     normalized === "t3-code" ||
-    normalized === "t3tools" ||
+    normalized === "codeworktools" ||
     normalized.startsWith("t3code-")
   );
 }

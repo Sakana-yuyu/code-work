@@ -1080,7 +1080,7 @@ export const connectHttpApiLayer = HttpApiBuilder.group(
       .handle("preferences", ({ payload }) => cloudPreferencesHandler(dependencies, payload))
       .handle("health", ({ payload }) => cloudEnvironmentHealthHandler(dependencies, payload))
       .handle("mintCredential", ({ payload }) => cloudMintCredentialHandler(dependencies, payload))
-      .handle("t3MintCredential", ({ payload }) =>
+      .handle("codeworkMintCredential", ({ payload }) =>
         traceRelayRequest(cloudMintCredentialHandler(dependencies, payload)),
       );
   }),

@@ -38,7 +38,7 @@ function endpointLabel(environment: RelayClientEnvironmentRecord): string {
     : "Activity publishing only";
 }
 
-export function T3ConnectEnvironmentRow(props: {
+export function CodeworkConnectEnvironmentRow(props: {
   readonly environment: RelayClientEnvironmentRecord;
   readonly confirmationOpen: boolean;
   readonly mutationPending: boolean;
@@ -117,7 +117,7 @@ export function T3ConnectEnvironmentRow(props: {
   );
 }
 
-export function T3ConnectUserProfilePage() {
+export function CodeworkConnectUserProfilePage() {
   const environmentsState = useManagedRelayEnvironments();
   const deregisterEnvironment = useAtomCommand(deregisterManagedRelayEnvironmentCommand, {
     reportFailure: false,
@@ -227,7 +227,7 @@ export function T3ConnectUserProfilePage() {
         ) : environments.length > 0 ? (
           <ul className="border-t">
             {environments.map((environment) => (
-              <T3ConnectEnvironmentRow
+              <CodeworkConnectEnvironmentRow
                 key={environment.environmentId}
                 environment={environment}
                 confirmationOpen={confirmingEnvironmentId === environment.environmentId}

@@ -855,7 +855,7 @@ it.effect("reads a repository once when several worktrees share it", () =>
           id: "p2",
           title: "codework worktree",
           workspaceRoot: "/b",
-          repository: "PingDotGG/T3Code",
+          repository: "PingDotGG/CodeworkCode",
         }),
       ],
       providers: [

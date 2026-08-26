@@ -147,7 +147,7 @@ behind NAT, inbound ports are unavailable, or mobile must reach a desktop-hosted
 the client's perspective this is still an ordinary WebSocket connection; the route is mediated. The
 relay Worker only brokers credentials and a managed endpoint; application traffic then flows over
 the provisioned Cloudflare tunnel hostname for the life of the connection, not through the relay
-Worker itself. See [t3-connect.md](./t3-connect.md).
+Worker itself. See [connect.md](./connect.md).
 
 ### Tailscale access
 
@@ -225,7 +225,7 @@ supervisor owns the resulting disconnect and reconnect like any other involuntar
 These remain unbuilt and are listed to keep the model honest:
 
 - third-party tunnel products as additional endpoint providers;
-- a relay-hosted OAuth callback broker (see [t3-connect.md](./t3-connect.md));
+- a relay-hosted OAuth callback broker (see [connect.md](./connect.md));
 - richer multi-environment UI beyond the current connections list.
 
 [model]: ../../packages/client-runtime/src/connection/model.ts

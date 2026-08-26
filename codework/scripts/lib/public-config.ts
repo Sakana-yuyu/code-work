@@ -3,7 +3,7 @@ import * as NodeFS from "node:fs";
 import * as NodePath from "node:path";
 import * as NodeURL from "node:url";
 import * as NodeUtil from "node:util";
-export interface T3CodePublicConfig {
+export interface CodeworkCodePublicConfig {
   readonly clerkPublishableKey: string | undefined;
   readonly clerkJwtTemplate: string | undefined;
   readonly clerkCliOAuthClientId: string | undefined;
@@ -105,7 +105,7 @@ export function loadRepoEnv({
   };
 }
 
-export function resolvePublicConfig(...sources: readonly Environment[]): T3CodePublicConfig {
+export function resolvePublicConfig(...sources: readonly Environment[]): CodeworkCodePublicConfig {
   return {
     clerkPublishableKey: firstNonEmpty(
       sources,

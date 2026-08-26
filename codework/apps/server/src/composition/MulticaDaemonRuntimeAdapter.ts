@@ -40,6 +40,7 @@ import type { MulticaTaskMcpLease } from "./MulticaTaskMcpLease.ts";
 export type MulticaDaemonStreamFramesInput = {
   readonly runtimeId: string;
   readonly daemonRuntimeId: string;
+  readonly runtimeTaskId?: string;
 };
 
 /** Code Work assignee 到 Multica 工作区和远端 Agent/Squad UUID 的显式映射。 */
@@ -824,7 +825,11 @@ export const makeMulticaDaemonRuntimeAdapter = (
         adapterFailure(runtimeId, "stream_unavailable", "未配置 Multica WebSocket transport。"),
       );
     }
-    return options.streamFrames({ runtimeId, daemonRuntimeId }).pipe(
+    return options.streamFrames({
+      runtimeId,
+      daemonRuntimeId,
+      ...(filter?.runtimeTaskId === undefined ? {} : { runtimeTaskId: filter.runtimeTaskId }),
+    }).pipe(
       Stream.mapError((failure) => mapProtocolFailure(runtimeId, failure)),
       Stream.mapEffect((frame) =>
         Effect.try({

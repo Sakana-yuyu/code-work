@@ -1318,7 +1318,7 @@ const makeNativeOperations = Effect.fn("PreviewManager.makeOperations")(function
     const installed = yield* evaluateWithDebugger<boolean>(
       tabId,
       send,
-      "Boolean(globalThis.__t3PlaywrightInjected)",
+      "Boolean(globalThis.__codeworkPlaywrightInjected)",
       true,
     );
     if (installed) return;
@@ -3197,7 +3197,7 @@ const makeNativeOperations = Effect.fn("PreviewManager.makeOperations")(function
       send,
       `(() => {
           try {
-            const injected = globalThis.__t3PlaywrightInjected;
+            const injected = globalThis.__codeworkPlaywrightInjected;
             const parsed = injected.parseSelector(${locatorJson});
             const element = injected.querySelector(parsed, document, true);
             if (!element) return { notFound: true };
@@ -3334,7 +3334,7 @@ const makeNativeOperations = Effect.fn("PreviewManager.makeOperations")(function
       send,
       `(() => {
           try {
-            const element = ${locatorJson ? `(() => { const injected = globalThis.__t3PlaywrightInjected; return injected.querySelector(injected.parseSelector(${locatorJson}), document, true); })()` : "document.activeElement"};
+            const element = ${locatorJson ? `(() => { const injected = globalThis.__codeworkPlaywrightInjected; return injected.querySelector(injected.parseSelector(${locatorJson}), document, true); })()` : "document.activeElement"};
             if (!element) return { notFound: true };
             const textControl =
               element instanceof HTMLTextAreaElement ||
@@ -3516,7 +3516,7 @@ const makeNativeOperations = Effect.fn("PreviewManager.makeOperations")(function
       send,
       `(() => {
         try {
-          const target = ${locatorJson ? `(() => { const injected = globalThis.__t3PlaywrightInjected; return injected.querySelector(injected.parseSelector(${locatorJson}), document, true); })()` : "window"};
+          const target = ${locatorJson ? `(() => { const injected = globalThis.__codeworkPlaywrightInjected; return injected.querySelector(injected.parseSelector(${locatorJson}), document, true); })()` : "window"};
           if (!target) return { notFound: true };
           target.scrollBy({ left: ${input.deltaX ?? 0}, top: ${input.deltaY ?? 0}, behavior: "instant" });
           return { ok: true };
@@ -3619,7 +3619,7 @@ const makeNativeOperations = Effect.fn("PreviewManager.makeOperations")(function
         send,
         `(() => {
               try {
-                const selectorMatched = ${locatorJson ? `(() => { const injected = globalThis.__t3PlaywrightInjected; return injected.querySelector(injected.parseSelector(${locatorJson}), document, false) !== null; })()` : "true"};
+                const selectorMatched = ${locatorJson ? `(() => { const injected = globalThis.__codeworkPlaywrightInjected; return injected.querySelector(injected.parseSelector(${locatorJson}), document, false) !== null; })()` : "true"};
                 const textMatched = ${
                   textJson ? `(document.body?.innerText || "").includes(${textJson})` : "true"
                 };

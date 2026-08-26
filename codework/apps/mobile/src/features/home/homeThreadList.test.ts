@@ -527,14 +527,14 @@ describe("buildHomeThreadGroups", () => {
   it("matches web repository, repository-path, and separate grouping modes", () => {
     const environmentId = EnvironmentId.make("environment-1");
     const repositoryIdentity = {
-      canonicalKey: "github.com/t3tools/codework",
+      canonicalKey: "github.com/codeworktools/codework",
       locator: {
         source: "git-remote" as const,
         remoteName: "origin",
-        remoteUrl: "git@github.com:t3tools/codework.git",
+        remoteUrl: "git@github.com:codeworktools/codework.git",
       },
       provider: "github",
-      owner: "t3tools",
+      owner: "codeworktools",
       name: "codework",
       displayName: "Code Work",
       rootPath: "/workspaces/codework",

@@ -2,16 +2,16 @@ import * as Schema from "effect/Schema";
 import { describe, expect, it } from "vite-plus/test";
 
 import {
-  buildT3ProjectFileJsonSchema,
-  parseT3ProjectFile,
+  buildCodeworkProjectFileJsonSchema,
+  parseCodeworkProjectFile,
   CodeworkProjectFileFromJson,
 } from "./codeworkProjectFile.ts";
 
 const decodeJson = Schema.decodeUnknownSync(CodeworkProjectFileFromJson);
 
-describe("buildT3ProjectFileJsonSchema", () => {
+describe("buildCodeworkProjectFileJsonSchema", () => {
   it("emits a draft 2020-12 schema with the published $id", () => {
-    const schema = buildT3ProjectFileJsonSchema();
+    const schema = buildCodeworkProjectFileJsonSchema();
 
     expect(schema.$schema).toBe("https://json-schema.org/draft/2020-12/schema");
     expect(schema.$id).toBe("https://t3.codes/schema/t3.json");
@@ -20,7 +20,7 @@ describe("buildT3ProjectFileJsonSchema", () => {
   });
 
   it("documents every supported field", () => {
-    const schema = buildT3ProjectFileJsonSchema() as {
+    const schema = buildCodeworkProjectFileJsonSchema() as {
       properties: Record<
         string,
         {
@@ -54,7 +54,7 @@ describe("buildT3ProjectFileJsonSchema", () => {
   });
 
   it("stays JSON-serializable", () => {
-    const schema = buildT3ProjectFileJsonSchema();
+    const schema = buildCodeworkProjectFileJsonSchema();
     expect(JSON.parse(JSON.stringify(schema))).toEqual(schema);
   });
 });
@@ -78,15 +78,15 @@ describe("CodeworkProjectFileFromJson", () => {
   });
 });
 
-describe("parseT3ProjectFile", () => {
+describe("parseCodeworkProjectFile", () => {
   it("returns the decoded file for valid contents", () => {
-    expect(parseT3ProjectFile('{ "defaultThreadEnvMode": "worktree" }')).toEqual({
+    expect(parseCodeworkProjectFile('{ "defaultThreadEnvMode": "worktree" }')).toEqual({
       defaultThreadEnvMode: "worktree",
     });
   });
 
   it("returns null for malformed or invalid contents", () => {
-    expect(parseT3ProjectFile("{ not json")).toBeNull();
-    expect(parseT3ProjectFile('{ "defaultThreadEnvMode": "spaceship" }')).toBeNull();
+    expect(parseCodeworkProjectFile("{ not json")).toBeNull();
+    expect(parseCodeworkProjectFile('{ "defaultThreadEnvMode": "spaceship" }')).toBeNull();
   });
 });

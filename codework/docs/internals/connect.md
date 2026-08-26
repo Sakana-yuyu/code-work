@@ -248,8 +248,8 @@ flow uses a custom redirect URI, add that exact URI to the same allowlist.
 ## Sign-in Surfaces
 
 Signed-in users manage Code Work Connect under **Connections**. The settings sidebar also has dedicated
-controls, rendered by `SettingsSidebarNav.tsx`: `T3ConnectSidebarSignIn` in the footer shows a
-**Sign in to Code Work Connect** button while signed out, and `T3ConnectSidebarAvatar` shows a Clerk
+controls, rendered by `SettingsSidebarNav.tsx`: `CodeworkConnectSidebarSignIn` in the footer shows a
+**Sign in to Code Work Connect** button while signed out, and `CodeworkConnectSidebarAvatar` shows a Clerk
 `UserButton` account control while signed in. Both are gated on cloud public configuration.
 Desktop renders the same web bundle, so it has them too. The waitlist enrollment flow from the
 private beta was removed when Connect went GA; sign-up is open unless a Clerk restriction below is

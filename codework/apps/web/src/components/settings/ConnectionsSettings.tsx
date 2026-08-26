@@ -1672,7 +1672,7 @@ function ConfiguredCloudLinkRow({ canManageRelay }: { readonly canManageRelay: b
     <>
       {window.desktopBridge ? (
         <SettingsRow
-          title={t("t3Connect")}
+          title={t("codeworkConnect")}
           description={
             managedTunnelActive
               ? "This environment is available to your other devices through Code Work Connect."

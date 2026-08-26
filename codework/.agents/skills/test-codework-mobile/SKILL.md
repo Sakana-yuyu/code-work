@@ -1,11 +1,11 @@
 ---
-name: test-t3-mobile
+name: test-codework-mobile
 description: Launch and test Code Work Mobile on an iOS Simulator or Android Emulator against disposable local Code Work environments, including Metro and dev-client reuse, native rebuild decisions, per-client pairing, seeded projects, semantic UI control, screenshots, and iOS serve-sim streaming. Use after mobile UI or native changes, when reproducing phone or tablet behavior, pairing an emulator to isolated state, or verifying mobile behavior on macOS, Linux, or Windows.
 ---
 
 # Test Code Work Mobile
 
-Run one focused, end-to-end mobile verification pass against disposable Code Work state. Use the sibling [`test-t3-app`](../test-t3-app/SKILL.md) skill as the detailed reference for pairing-token semantics and SQLite fixtures.
+Run one focused, end-to-end mobile verification pass against disposable Code Work state. Use the sibling [`test-codework-app`](../test-codework-app/SKILL.md) skill as the detailed reference for pairing-token semantics and SQLite fixtures.
 
 Command examples use POSIX shell syntax. On Windows, use PowerShell equivalents: set variables with `$env:NAME = "value"`, use an explicit temporary directory from `[System.IO.Path]::GetTempPath()`, and run multiline examples on one line or with PowerShell backticks. Use `$env:ANDROID_HOME\platform-tools\adb.exe` when `adb` is not already on `PATH`.
 
@@ -48,7 +48,7 @@ node apps/server/src/bin.ts project add <git-workspace> \
 
 Running `project add` before the backend starts gives it exclusive offline database access. If a backend is already running, wait until it is ready so the CLI dispatches through the live server; never run offline mutations concurrently with the server.
 
-Use direct SQLite mutation only for disposable projection fixtures. Follow `test-t3-app` and stop the backend before writing.
+Use direct SQLite mutation only for disposable projection fixtures. Follow `test-codework-app` and stop the backend before writing.
 
 Start a headless backend after seeding:
 
@@ -93,8 +93,8 @@ Run Metro from `apps/mobile`.
 
 Use `ios-debugger-agent` to select one UDID and set these XcodeBuildMCP session defaults:
 
-- Workspace: `<repo>/apps/mobile/ios/T3CodeDev.xcworkspace`
-- Scheme: `T3CodeDev`
+- Workspace: `<repo>/apps/mobile/ios/CodeworkCodeDev.xcworkspace`
+- Scheme: `CodeworkCodeDev`
 - Configuration: `Debug`
 - Simulator ID: the selected UDID
 - Bundle ID: `com.t3tools.codework.dev`
@@ -128,10 +128,10 @@ Do not start, stop, erase, or reconfigure an emulator owned by another task. Tra
 Use the bundled helper from the repository root. It issues a fresh credential against the running backend's exact base directory, opens the existing Add Environment route with the credential in an encoded query parameter, and asks that route to connect once:
 
 ```bash
-.agents/skills/test-t3-mobile/scripts/pair-client.sh \
+.agents/skills/test-codework-mobile/scripts/pair-client.sh \
   ios <simulator-udid> <server-port> <base-dir>
 
-.agents/skills/test-t3-mobile/scripts/pair-client.sh \
+.agents/skills/test-codework-mobile/scripts/pair-client.sh \
   android <emulator-serial> <server-port> <base-dir>
 ```
 

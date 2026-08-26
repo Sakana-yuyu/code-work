@@ -67,9 +67,9 @@ describe("shouldOpenPullRequestExternally", () => {
 
 describe("parseChangeRequestUrl", () => {
   it("reads a GitHub pull request", () => {
-    expect(parseChangeRequestUrl("https://github.com/T3Tools/T3Code/pull/123")).toEqual({
+    expect(parseChangeRequestUrl("https://github.com/CodeworkTools/CodeworkCode/pull/123")).toEqual({
       host: "github.com",
-      repository: "t3tools/codework",
+      repository: "codeworktools/codework",
       number: 123,
     });
   });
@@ -84,10 +84,10 @@ describe("parseChangeRequestUrl", () => {
 
   it("reads a GitLab merge request, nested groups and all", () => {
     expect(
-      parseChangeRequestUrl("https://gitlab.com/t3tools/platform/codework/-/merge_requests/42"),
+      parseChangeRequestUrl("https://gitlab.com/codeworktools/platform/codework/-/merge_requests/42"),
     ).toEqual({
       host: "gitlab.com",
-      repository: "t3tools/platform/codework",
+      repository: "codeworktools/platform/codework",
       number: 42,
     });
   });
@@ -128,9 +128,9 @@ describe("parseChangeRequestUrl", () => {
   });
 
   it("survives trailing segments, a trailing slash and a query string", () => {
-    expect(parseChangeRequestUrl("https://github.com/t3tools/codework/pull/123/files?w=1")).toEqual({
+    expect(parseChangeRequestUrl("https://github.com/codeworktools/codework/pull/123/files?w=1")).toEqual({
       host: "github.com",
-      repository: "t3tools/codework",
+      repository: "codeworktools/codework",
       number: 123,
     });
     expect(
@@ -139,27 +139,27 @@ describe("parseChangeRequestUrl", () => {
     expect(
       parseChangeRequestUrl("https://bitbucket.org/team/repo/pull-requests/5/commits"),
     ).toEqual({ host: "bitbucket.org", repository: "team/repo", number: 5 });
-    expect(parseChangeRequestUrl("https://github.com/t3tools/codework/pull/123/")).toEqual({
+    expect(parseChangeRequestUrl("https://github.com/codeworktools/codework/pull/123/")).toEqual({
       host: "github.com",
-      repository: "t3tools/codework",
+      repository: "codeworktools/codework",
       number: 123,
     });
   });
 
   it("claims nothing it cannot be sure of, so the link goes to the browser", () => {
     for (const link of [
-      "https://github.com/t3tools/codework/issues/123",
-      "https://github.com/t3tools/codework/commit/0a1b2c3",
-      "https://github.com/t3tools/codework",
-      "https://github.com/t3tools/codework/pull/abc",
-      "https://gitlab.com/t3tools/codework/-/snippets/12",
-      "https://gitlab.com/t3tools/codework/-/issues/12",
+      "https://github.com/codeworktools/codework/issues/123",
+      "https://github.com/codeworktools/codework/commit/0a1b2c3",
+      "https://github.com/codeworktools/codework",
+      "https://github.com/codeworktools/codework/pull/abc",
+      "https://gitlab.com/codeworktools/codework/-/snippets/12",
+      "https://gitlab.com/codeworktools/codework/-/issues/12",
       // A path shape that means nothing off its own host.
       "https://blog.example.test/2026/updates/pull/3",
       // A lookalike is deliberately not fought here: `github.com.evil.test` reads as a GitHub
       // Enterprise install and there is no way to tell it from one. It is `findProjectForChange
       // Request` that refuses it, because no project in the workspace is checked out from it.
-      "javascript:alert(1)//github.com/t3tools/codework/pull/1",
+      "javascript:alert(1)//github.com/codeworktools/codework/pull/1",
       "not a url",
     ]) {
       expect(parseChangeRequestUrl(link), link).toBeNull();
@@ -173,20 +173,20 @@ describe("findProjectForChangeRequest", () => {
 
   it("matches a nested GitLab group by the whole path below the host", () => {
     // The server identifies a repository by `displayName`, which keeps every group segment; the
-    // two-segment owner/name form would look for `t3tools/codework` and find nothing.
+    // two-segment owner/name form would look for `codeworktools/codework` and find nothing.
     const projects = [
       project({
-        canonicalKey: "gitlab.com/t3tools/platform/codework",
+        canonicalKey: "gitlab.com/codeworktools/platform/codework",
         provider: "gitlab",
-        displayName: "t3tools/platform/codework",
-        owner: "t3tools",
+        displayName: "codeworktools/platform/codework",
+        owner: "codeworktools",
         name: "codework",
       }),
     ];
     expect(
       findProjectForChangeRequest(projects, {
         host: "gitlab.com",
-        repository: "t3tools/platform/codework",
+        repository: "codeworktools/platform/codework",
         number: 42,
       }),
     ).toBe(projects[0]);

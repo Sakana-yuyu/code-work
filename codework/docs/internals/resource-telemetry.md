@@ -338,7 +338,7 @@ longer start recurring process-table commands.
 ## Packaging
 
 Desktop artifact builds compile the Rust target, stage it as
-`resources/resource-monitor/t3-resource-monitor[.exe]`, and pass its path to the
+`resources/resource-monitor/codework-resource-monitor[.exe]`, and pass its path to the
 backend bootstrap.
 
 CLI release jobs upload each active platform monitor artifact and copy it into:

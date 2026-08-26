@@ -340,7 +340,7 @@ export function publicConfigFromOutput(output: unknown): RelayPublicConfig | nul
 const readRelayPublicConfig = Effect.fn("relay.deploy.readState")(function* (stage: string) {
   const state = yield* State.State;
   const service = yield* state;
-  const output = yield* service.getOutput({ stack: "T3CodeRelay", stage });
+  const output = yield* service.getOutput({ stack: "CodeworkCodeRelay", stage });
   const publicConfig = publicConfigFromOutput(output);
   if (publicConfig === null) {
     return yield* new RelayDeployError({

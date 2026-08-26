@@ -6,7 +6,7 @@ import { useThemeColor } from "../lib/useThemeColor";
 import { useFontFamily } from "../lib/useFontFamily";
 import { useScaledTextRole } from "../features/settings/appearance/useScaledTextRole";
 import { useNativePaste } from "../lib/useNativePaste";
-import type { ComposerEditorProps } from "./T3ComposerEditor.types";
+import type { ComposerEditorProps } from "./CodeworkComposerEditor.types";
 
 export function ComposerEditor({
   ref,
@@ -66,4 +66,4 @@ export type {
   ComposerEditorHandle,
   ComposerEditorProps,
   ComposerEditorSelection,
-} from "./T3ComposerEditor.types";
+} from "./CodeworkComposerEditor.types";

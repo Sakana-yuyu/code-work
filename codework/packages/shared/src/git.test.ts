@@ -12,23 +12,23 @@ import {
 
 describe("normalizeGitRemoteUrl", () => {
   it("canonicalizes equivalent GitHub remotes across protocol variants", () => {
-    expect(normalizeGitRemoteUrl("git@github.com:T3Tools/Codework.git")).toBe(
-      "github.com/t3tools/codework",
+    expect(normalizeGitRemoteUrl("git@github.com:CodeworkTools/Codework.git")).toBe(
+      "github.com/codeworktools/codework",
     );
-    expect(normalizeGitRemoteUrl("https://github.com/T3Tools/Codework.git")).toBe(
-      "github.com/t3tools/codework",
+    expect(normalizeGitRemoteUrl("https://github.com/CodeworkTools/Codework.git")).toBe(
+      "github.com/codeworktools/codework",
     );
-    expect(normalizeGitRemoteUrl("ssh://git@github.com/T3Tools/Codework")).toBe(
-      "github.com/t3tools/codework",
+    expect(normalizeGitRemoteUrl("ssh://git@github.com/CodeworkTools/Codework")).toBe(
+      "github.com/codeworktools/codework",
     );
   });
 
   it("preserves nested group paths for providers like GitLab", () => {
-    expect(normalizeGitRemoteUrl("git@gitlab.com:T3Tools/platform/Codework.git")).toBe(
-      "gitlab.com/t3tools/platform/codework",
+    expect(normalizeGitRemoteUrl("git@gitlab.com:CodeworkTools/platform/Codework.git")).toBe(
+      "gitlab.com/codeworktools/platform/codework",
     );
-    expect(normalizeGitRemoteUrl("https://gitlab.com/T3Tools/platform/Codework.git")).toBe(
-      "gitlab.com/t3tools/platform/codework",
+    expect(normalizeGitRemoteUrl("https://gitlab.com/CodeworkTools/platform/Codework.git")).toBe(
+      "gitlab.com/codeworktools/platform/codework",
     );
   });
 
@@ -54,11 +54,11 @@ describe("normalizeGitRemoteUrl", () => {
 describe("parseGitHubRepositoryNameWithOwnerFromRemoteUrl", () => {
   it("extracts the owner and repository from common GitHub remote shapes", () => {
     expect(
-      parseGitHubRepositoryNameWithOwnerFromRemoteUrl("git@github.com:T3Tools/Codework.git"),
-    ).toBe("T3Tools/Codework");
+      parseGitHubRepositoryNameWithOwnerFromRemoteUrl("git@github.com:CodeworkTools/Codework.git"),
+    ).toBe("CodeworkTools/Codework");
     expect(
-      parseGitHubRepositoryNameWithOwnerFromRemoteUrl("https://github.com/T3Tools/Codework.git"),
-    ).toBe("T3Tools/Codework");
+      parseGitHubRepositoryNameWithOwnerFromRemoteUrl("https://github.com/CodeworkTools/Codework.git"),
+    ).toBe("CodeworkTools/Codework");
   });
 });
 

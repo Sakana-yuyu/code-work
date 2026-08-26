@@ -1,11 +1,11 @@
 ---
-name: test-t3-app
+name: test-codework-app
 description: Launch, retain, and test the Code Work web app in isolated development environments, including first-try browser authentication with one-time pairing URLs, pairing-token recovery, worktree-safe state directories, cross-turn dev server lifecycle, and direct SQLite inspection or fixture seeding. Use when an agent needs to run Code Work locally, iteratively test UI behavior with a human, recover from an expired or consumed pairing token, isolate dev state, or prepare test data in state.sqlite.
 ---
 
 # Test Code Work App
 
-Use this skill for the web client. For iOS Simulator, Android Emulator, or physical-device testing against an isolated Code Work backend, use the sibling [`test-t3-mobile`](../test-t3-mobile/SKILL.md) skill.
+Use this skill for the web client. For iOS Simulator, Android Emulator, or physical-device testing against an isolated Code Work backend, use the sibling [`test-codework-mobile`](../test-codework-mobile/SKILL.md) skill.
 
 ## Start an isolated web environment
 
@@ -62,8 +62,8 @@ Tokens from `pair` carry standard client scopes. The startup pairing URL carries
 
 Read [references/sqlite-fixtures.md](references/sqlite-fixtures.md) before changing the database.
 
-- Use `node apps/server/scripts/t3-sqlite-state.ts query` for schema discovery and read-only checks.
-- Stop the dev server before using `node apps/server/scripts/t3-sqlite-state.ts exec`, then restart it with the same base directory.
+- Use `node apps/server/scripts/codework-sqlite-state.ts query` for schema discovery and read-only checks.
+- Stop the dev server before using `node apps/server/scripts/codework-sqlite-state.ts exec`, then restart it with the same base directory.
 - Seed projection tables only for disposable UI fixtures. Use application commands and APIs when testing business behavior or projection correctness.
 - Use the auth CLI, not direct `auth_*` table edits, for pairing and sessions.
 

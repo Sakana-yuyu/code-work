@@ -22,7 +22,7 @@ const UUID_REPAIR = `${MARKER}
     pods_project.instance_variable_set(:@generated_uuids, Array.new(next_index))
     pods_project.instance_variable_set(:@available_uuids, [])
     pods_project.generate_available_uuid_list(1_000)
-    Pod::UI.puts "T3Code: reset CocoaPods UUID allocator at #{next_index} (#{existing_uuids.length} existing objects)"
+    Pod::UI.puts "CodeworkCode: reset CocoaPods UUID allocator at #{next_index} (#{existing_uuids.length} existing objects)"
 `;
 
 module.exports = function withIosCocoaPodsUuidCache(config) {

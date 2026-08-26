@@ -14,7 +14,7 @@ import {
   ExecutionEnvironmentDescriptor,
   PortSchema,
 } from "@codework/contracts";
-import { resolveWorktreeT3Home } from "@codework/shared/devHome";
+import { resolveWorktreeCodeworkHome } from "@codework/shared/devHome";
 import {
   buildTailscaleHttpsBaseUrl,
   DEFAULT_TAILSCALE_SERVE_PORT,
@@ -257,7 +257,7 @@ const discoverPairTarget = Effect.fn("pair.discoverPairTarget")(function* (
     // Same precedence as dev-runner: inside a linked worktree its own `.t3`
     // outranks the shared home, so `t3 pair` in a worktree pairs with the dev
     // server under test rather than the daily-driver install.
-    const worktreeHome = yield* resolveWorktreeT3Home(process.cwd());
+    const worktreeHome = yield* resolveWorktreeCodeworkHome(process.cwd());
     if (worktreeHome !== undefined) {
       bases.push(worktreeHome);
     }

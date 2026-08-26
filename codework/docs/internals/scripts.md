@@ -61,7 +61,7 @@ authenticated.
 - `vp run typecheck`: Strict TypeScript checks for all packages.
 - `vp run test`: Runs workspace tests.
 - `vp run lint:mobile`: Mobile native static analysis (`scripts/mobile-native-static-check.ts`).
-- `node apps/server/scripts/t3-sqlite-state.ts <query|exec> --base-dir <path> ...`: Inspects or seeds
+- `node apps/server/scripts/codework-sqlite-state.ts <query|exec> --base-dir <path> ...`: Inspects or seeds
   an isolated Code Work SQLite database; writes create a private backup first.
 
 ## Desktop artifacts

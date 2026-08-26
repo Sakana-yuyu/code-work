@@ -1,5 +1,5 @@
 included:
-  - ios/T3Code
+  - ios/CodeworkCode
   - modules/t3-composer-editor/ios
   - modules/t3-native-controls/ios
   - modules/t3-terminal/ios

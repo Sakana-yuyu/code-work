@@ -4,22 +4,22 @@ import { LogInIcon, ServerIcon, SmartphoneIcon } from "lucide-react";
 import { hasCloudPublicConfig } from "../../cloud/publicConfig";
 import { SidebarMenu, SidebarMenuButton, SidebarMenuItem } from "../ui/sidebar";
 import { MobileClientsUserProfilePage } from "./MobileClientsUserProfilePage";
-import { T3ConnectUserProfilePage } from "./T3ConnectUserProfilePage";
-import { useT3ConnectAuthPrompt } from "./useT3ConnectAuthPrompt";
+import { CodeworkConnectUserProfilePage } from "./CodeworkConnectUserProfilePage";
+import { useCodeworkConnectAuthPrompt } from "./useCodeworkConnectAuthPrompt";
 
-export function T3ConnectSidebarSignIn() {
+export function CodeworkConnectSidebarSignIn() {
   if (!hasCloudPublicConfig()) return null;
 
-  return <ConfiguredT3ConnectSidebarSignIn />;
+  return <ConfiguredCodeworkConnectSidebarSignIn />;
 }
 
-export function T3ConnectSidebarAvatar() {
+export function CodeworkConnectSidebarAvatar() {
   if (!hasCloudPublicConfig()) return null;
 
-  return <ConfiguredT3ConnectSidebarAvatar />;
+  return <ConfiguredCodeworkConnectSidebarAvatar />;
 }
 
-function ConfiguredT3ConnectSidebarAvatar() {
+function ConfiguredCodeworkConnectSidebarAvatar() {
   const { isLoaded, isSignedIn } = useAuth();
 
   if (!isLoaded || !isSignedIn) return null;
@@ -45,15 +45,15 @@ function ConfiguredT3ConnectSidebarAvatar() {
         labelIcon={<ServerIcon className="size-4" />}
         url="t3-connect"
       >
-        <T3ConnectUserProfilePage />
+        <CodeworkConnectUserProfilePage />
       </UserButton.UserProfilePage>
     </UserButton>
   );
 }
 
-function ConfiguredT3ConnectSidebarSignIn() {
+function ConfiguredCodeworkConnectSidebarSignIn() {
   const { isLoaded, isSignedIn } = useAuth();
-  const { authPrompt, openAuthPrompt } = useT3ConnectAuthPrompt();
+  const { authPrompt, openAuthPrompt } = useCodeworkConnectAuthPrompt();
 
   if (!isLoaded || isSignedIn) return null;
 

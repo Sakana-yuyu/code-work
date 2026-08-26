@@ -17,7 +17,7 @@ import {
   CODEWORK_PROJECT_FILE_NAME,
   ThreadId,
 } from "@codework/contracts";
-import { parseT3ProjectFile } from "@codework/shared/codeworkProjectFile";
+import { parseCodeworkProjectFile } from "@codework/shared/codeworkProjectFile";
 import {
   isDefaultThreadEnvModeSettled,
   resolveDefaultThreadEnvMode,
@@ -363,7 +363,7 @@ export function NewTaskFlowProvider(props: React.PropsWithChildren) {
   // Default mode until the user picks one explicitly — same resolution web
   // uses for new draft threads: per-project setting, then the repo's
   // checked-in t3.json, then the server's configured default.
-  const t3ProjectFileQuery = useEnvironmentQuery(
+  const codeworkProjectFileQuery = useEnvironmentQuery(
     selectedProject !== null && selectedProject.workspaceRoot !== ""
       ? projectEnvironment.readFile({
           environmentId: selectedProject.environmentId,
@@ -371,14 +371,14 @@ export function NewTaskFlowProvider(props: React.PropsWithChildren) {
         })
       : null,
   );
-  const t3ProjectFileData = t3ProjectFileQuery.data as ProjectReadFileResult | null;
-  const t3ProjectFileDefaultMode = useMemo(() => {
-    if (t3ProjectFileData === null || t3ProjectFileData.truncated) return null;
-    return parseT3ProjectFile(t3ProjectFileData.contents)?.defaultThreadEnvMode ?? null;
-  }, [t3ProjectFileData]);
+  const codeworkProjectFileData = codeworkProjectFileQuery.data as ProjectReadFileResult | null;
+  const codeworkProjectFileDefaultMode = useMemo(() => {
+    if (codeworkProjectFileData === null || codeworkProjectFileData.truncated) return null;
+    return parseCodeworkProjectFile(codeworkProjectFileData.contents)?.defaultThreadEnvMode ?? null;
+  }, [codeworkProjectFileData]);
   const defaultWorkspaceMode: WorkspaceMode = resolveDefaultThreadEnvMode({
     projectSetting: selectedProject?.defaultThreadEnvMode,
-    projectFile: t3ProjectFileDefaultMode,
+    projectFile: codeworkProjectFileDefaultMode,
     globalDefault: selectedEnvironmentServerConfig?.settings.defaultThreadEnvMode ?? "local",
   });
   // While unsettled the resolved default is provisional. Nothing may write
@@ -387,7 +387,7 @@ export function NewTaskFlowProvider(props: React.PropsWithChildren) {
   const defaultWorkspaceModeSettled = isDefaultThreadEnvModeSettled({
     explicitMode: selectedProjectDraft.workspaceSelection?.mode,
     projectSetting: selectedProject?.defaultThreadEnvMode,
-    projectFilePending: t3ProjectFileQuery.isPending,
+    projectFilePending: codeworkProjectFileQuery.isPending,
   });
   const workspaceMode = selectedProjectDraft.workspaceSelection?.mode ?? defaultWorkspaceMode;
   const selectedBranchName = selectedProjectDraft.workspaceSelection?.branch ?? null;

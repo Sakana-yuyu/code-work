@@ -1,4 +1,0 @@
-interface:
-  display_name: "Test Code Work Mobile"
-  short_description: "Test Code Work on iOS or Android"
-  default_prompt: "Use $test-t3-mobile to launch Code Work against an isolated backend and verify the affected flow on an available simulator or emulator."

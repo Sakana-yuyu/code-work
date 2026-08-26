@@ -159,7 +159,7 @@ and hosted web builds.
 
 See:
 
-- [Code Work Connect Clerk Setup](../../docs/internals/t3-connect.md) for Clerk keys, JWT templates, and sign-up restrictions
+- [Code Work Connect Clerk Setup](../../docs/internals/connect.md) for Clerk keys, JWT templates, and sign-up restrictions
   setup.
 - [Relay Observability](../../docs/operations/relay-observability.md) for deployment tracing and diagnostics.
 - [Code Work Connect Architecture Overview](../../docs/internals/code-work-connect-auth-flow.html) for the full link,

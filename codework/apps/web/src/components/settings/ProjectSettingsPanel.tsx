@@ -473,17 +473,17 @@ function ProjectDetail({ group }: { group: SidebarProjectSnapshot }) {
   // from the same snapshot would drop each other's changes. One at a time.
   const [isSavingScripts, setIsSavingScripts] = useState(false);
   const savingScriptsRef = useRef(false);
-  const t3File = useCodeworkProjectFileState(
+  const codeworkFile = useCodeworkProjectFileState(
     selectedCheckout.environmentId,
     selectedCheckout.workspaceRoot,
   );
   // What the "Default" option resolves to while no override is set: the
   // repo's t3.json value when present, otherwise the global setting.
-  const inheritedEnvMode = t3File.file?.defaultThreadEnvMode ?? settings.defaultThreadEnvMode;
-  const inheritedEnvModeSource = t3File.file?.defaultThreadEnvMode != null ? "t3.json" : "global";
+  const inheritedEnvMode = codeworkFile.file?.defaultThreadEnvMode ?? settings.defaultThreadEnvMode;
+  const inheritedEnvModeSource = codeworkFile.file?.defaultThreadEnvMode != null ? "t3.json" : "global";
   const importableScripts = useMemo(
     () =>
-      t3File.scripts.filter(
+      codeworkFile.scripts.filter(
         (fileScript) =>
           !scripts.some(
             (script) =>
@@ -491,7 +491,7 @@ function ProjectDetail({ group }: { group: SidebarProjectSnapshot }) {
               script.name.toLowerCase() === fileScript.name.toLowerCase(),
           ),
       ),
-    [scripts, t3File.scripts],
+    [scripts, codeworkFile.scripts],
   );
 
   const persistScripts = useCallback(
@@ -1137,7 +1137,7 @@ function ProjectDetail({ group }: { group: SidebarProjectSnapshot }) {
               );
             })
           )}
-          {t3File.status === "invalid" ? (
+          {codeworkFile.status === "invalid" ? (
             <SettingsRow
               title="t3.json is invalid"
               description="A t3.json exists in this checkout but fails to parse, so every action and icon it declares is ignored. Check the JSON syntax and icon values."

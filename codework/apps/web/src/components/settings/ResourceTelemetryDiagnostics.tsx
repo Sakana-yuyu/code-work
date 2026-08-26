@@ -138,7 +138,7 @@ function categoryLabel(category: ResourceTelemetryProcessCategory): string {
     case "resource-monitor":
       return t("diagnostics.category.monitor");
     case "unknown-t3":
-      return t("diagnostics.category.t3Process");
+      return t("diagnostics.category.codeworkProcess");
   }
 }
 
@@ -1054,7 +1054,7 @@ export function ResourceTelemetryDiagnostics() {
           <div className="flex flex-col gap-3 border-b border-border/60 bg-linear-to-r from-muted/45 via-muted/20 to-transparent px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-5">
             <div>
               <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground/70">
-                {t("diagnostics.t3SystemFootprint")}
+                {t("diagnostics.codeworkSystemFootprint")}
               </div>
               <p className="mt-1 max-w-xl text-xs leading-relaxed text-muted-foreground">
                 {t("diagnostics.footprintDescription")}

@@ -76,8 +76,8 @@ function nativeSnapshot(input: {
       pid: 9_000,
       ppid: process.pid,
       startTimeMs: 400,
-      name: "t3-resource-monitor",
-      command: "t3-resource-monitor",
+      name: "codework-resource-monitor",
+      command: "codework-resource-monitor",
       cpuTimeMs: input.sequence * 5,
     }),
   ];

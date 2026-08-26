@@ -18,7 +18,7 @@ const decodeT3ProjectFile = Schema.decodeExit(CodeworkProjectFileFromJson);
  * absent. Clients use this to read optional defaults (scripts, thread env
  * mode) without surfacing decode errors to the user.
  */
-export function parseT3ProjectFile(contents: string): CodeworkProjectFile | null {
+export function parseCodeworkProjectFile(contents: string): CodeworkProjectFile | null {
   const decoded = decodeT3ProjectFile(contents);
   return Exit.isSuccess(decoded) ? decoded.value : null;
 }
@@ -29,7 +29,7 @@ export function parseT3ProjectFile(contents: string): CodeworkProjectFile | null
  * Served from the marketing site at {@link CODEWORK_PROJECT_FILE_SCHEMA_URL} so
  * editors get LSP support via a `$schema` reference.
  */
-export function buildT3ProjectFileJsonSchema(): Record<string, unknown> {
+export function buildCodeworkProjectFileJsonSchema(): Record<string, unknown> {
   const document = Schema.toJsonSchemaDocument(CodeworkProjectFile);
   const jsonSchema: Record<string, unknown> = {
     $schema: "https://json-schema.org/draft/2020-12/schema",

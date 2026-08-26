@@ -1,5 +1,5 @@
 import { CODEWORK_PROJECT_FILE_NAME, type EnvironmentId, type ThreadEnvMode } from "@codework/contracts";
-import { parseT3ProjectFile } from "@codework/shared/codeworkProjectFile";
+import { parseCodeworkProjectFile } from "@codework/shared/codeworkProjectFile";
 import { executeAtomQuery } from "@codework/client-runtime/state/runtime";
 
 import {
@@ -34,5 +34,5 @@ export async function readT3ProjectFileDefaultThreadEnvMode(
     result._tag === "Success" ? result.value : null,
   );
   if (data === null || data.truncated) return null;
-  return parseT3ProjectFile(data.contents)?.defaultThreadEnvMode ?? null;
+  return parseCodeworkProjectFile(data.contents)?.defaultThreadEnvMode ?? null;
 }

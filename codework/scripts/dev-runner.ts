@@ -5,7 +5,7 @@ import * as NodeOS from "node:os";
 import * as NodeRuntime from "@effect/platform-node/NodeRuntime";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import * as NetService from "@codework/shared/Net";
-import { resolveGitWorktreePath, resolveWorktreeT3Home } from "@codework/shared/devHome";
+import { resolveGitWorktreePath, resolveWorktreeCodeworkHome } from "@codework/shared/devHome";
 import { HostProcessEnvironment, HostProcessWorkingDirectory } from "@codework/shared/hostProcess";
 import { resolveSpawnCommand } from "@codework/shared/shell";
 import * as Config from "effect/Config";
@@ -677,7 +677,7 @@ export function runDevRunnerWithInput(input: DevRunnerCliInput) {
     // A dev server started inside a worktree defaults to that worktree's own
     // (gitignored) `.t3` — see @codework/shared/devHome for why this must
     // outrank an ambient CODEWORK_HOME. `--home-dir` still wins.
-    const worktreeHome = yield* resolveWorktreeT3Home(yield* HostProcessWorkingDirectory);
+    const worktreeHome = yield* resolveWorktreeCodeworkHome(yield* HostProcessWorkingDirectory);
     // Trim before choosing: `--home-dir ""` is not a selection, and treating it
     // as one would skip the worktree default and land on the shared home —
     // exactly the outcome this precedence exists to prevent.

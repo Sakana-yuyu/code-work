@@ -27,9 +27,9 @@ import {
   resolveComposerControlledEventCount,
   type ComposerNativeEventSnapshot,
 } from "./composerEditorRevision";
-import type { ComposerEditorProps, ComposerEditorSelection } from "./T3ComposerEditor.types";
+import type { ComposerEditorProps, ComposerEditorSelection } from "./CodeworkComposerEditor.types";
 
-const NATIVE_MODULE_NAME = "T3ComposerEditor";
+const NATIVE_MODULE_NAME = "CodeworkComposerEditor";
 const EMPTY_SKILLS: NonNullable<ComposerEditorProps["skills"]> = [];
 
 type NativeEditorEvent = NativeSyntheticEvent<{
@@ -305,4 +305,4 @@ export type {
   ComposerEditorHandle,
   ComposerEditorProps,
   ComposerEditorSelection,
-} from "./T3ComposerEditor.types";
+} from "./CodeworkComposerEditor.types";

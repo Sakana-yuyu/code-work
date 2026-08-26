@@ -16,8 +16,8 @@ import * as Electron from "electron";
 
 import * as NetService from "@codework/shared/Net";
 import { HostProcessArchitecture, HostProcessPlatform } from "@codework/shared/hostProcess";
-import { resolveRemoteT3CliPackageSpec } from "@codework/ssh/command";
-import type { RemoteT3RunnerOptions } from "@codework/ssh/tunnel";
+import { resolveRemoteCodeworkCliPackageSpec } from "@codework/ssh/command";
+import type { RemoteCodeworkRunnerOptions } from "@codework/ssh/tunnel";
 import serverPackageJson from "../../server/package.json" with { type: "json" };
 
 import * as DesktopIpc from "./ipc/DesktopIpc.ts";
@@ -84,8 +84,8 @@ const desktopEnvironmentLayer = Layer.unwrap(
 const resolveDesktopSshCliRunner = (
   environment: DesktopEnvironment.DesktopEnvironment["Service"],
   settings: DesktopAppSettings.DesktopSettings,
-): RemoteT3RunnerOptions => {
-  const devRemoteEntryPath = Option.getOrUndefined(environment.devRemoteT3ServerEntryPath);
+): RemoteCodeworkRunnerOptions => {
+  const devRemoteEntryPath = Option.getOrUndefined(environment.devRemoteCodeworkServerEntryPath);
   if (environment.isDevelopment && devRemoteEntryPath !== undefined) {
     return {
       nodeScriptPath: devRemoteEntryPath,
@@ -93,7 +93,7 @@ const resolveDesktopSshCliRunner = (
     };
   }
   return {
-    packageSpec: resolveRemoteT3CliPackageSpec({
+    packageSpec: resolveRemoteCodeworkCliPackageSpec({
       appVersion: environment.appVersion,
       updateChannel: settings.updateChannel,
       isDevelopment: environment.isDevelopment,

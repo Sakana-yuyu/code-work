@@ -42,7 +42,7 @@ the task commands.
 - `infra/relay` (`codework-relay`): the hosted Code Work Connect relay, deployed with Alchemy. Handles
   environment discovery, cloud-side records, and mobile notifications. It is not in the hot path;
   after connect, client traffic goes directly to the environment. See
-  [t3-connect.md](./t3-connect.md).
+  [connect.md](./connect.md).
 
 ## Other top-level directories
 

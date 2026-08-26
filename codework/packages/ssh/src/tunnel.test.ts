@@ -17,7 +17,7 @@ import {
   buildRemoteLaunchScript,
   buildRemotePairingScript,
   buildRemoteStopScript,
-  buildRemoteT3RunnerScript,
+  buildRemoteCodeworkRunnerScript,
   describeReadinessCause,
   issueRemotePairingToken,
   launchOrReuseRemoteServer,
@@ -101,7 +101,7 @@ function commandArgs(command: ChildProcess.Command): ReadonlyArray<string> {
 
 describe("ssh tunnel scripts", () => {
   it("builds the remote t3 runner with npx and npm fallbacks", () => {
-    const script = buildRemoteT3RunnerScript({ nodeEngineRange: TEST_NODE_ENGINE_RANGE });
+    const script = buildRemoteCodeworkRunnerScript({ nodeEngineRange: TEST_NODE_ENGINE_RANGE });
 
     assert.include(script, "CODEWORK_NODE_SCRIPT_PATH=''");
     assert.include(script, 'exec t3 "$@"');
@@ -130,14 +130,14 @@ describe("ssh tunnel scripts", () => {
   });
 
   it("does not hard-code a remote node engine range", () => {
-    const script = buildRemoteT3RunnerScript();
+    const script = buildRemoteCodeworkRunnerScript();
 
     assert.include(script, "CODEWORK_NODE_ENGINE_RANGE=''");
     assert.notInclude(script, TEST_NODE_ENGINE_RANGE);
   });
 
   it("shell-quotes package specs in the remote t3 runner", () => {
-    const script = buildRemoteT3RunnerScript({
+    const script = buildRemoteCodeworkRunnerScript({
       packageSpec: "t3@nightly; touch /tmp/t3-owned",
     });
 
@@ -151,7 +151,7 @@ describe("ssh tunnel scripts", () => {
   });
 
   it("builds the remote t3 runner with a node script override", () => {
-    const script = buildRemoteT3RunnerScript({
+    const script = buildRemoteCodeworkRunnerScript({
       nodeScriptPath: "/Users/julius/Development/Work/codething-mvp/apps/server/dist/bin.mjs",
     });
 

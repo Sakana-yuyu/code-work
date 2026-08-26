@@ -25,7 +25,7 @@ function makeProject(id: string, environmentId = "environment"): EnvironmentProj
 
 function makeScope(projects: ReadonlyArray<EnvironmentProject>): HomeProjectScope {
   return {
-    key: "github.com/t3tools/codework",
+    key: "github.com/codeworktools/codework",
     title: "Code Work",
     representative: projects[0]!,
     projects,

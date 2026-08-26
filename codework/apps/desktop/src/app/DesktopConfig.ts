@@ -86,7 +86,7 @@ export const DesktopConfig = Config.all({
     "CODEWORK_DESKTOP_APP_USER_MODEL_ID",
     "CODEWORK_DESKTOP_APP_USER_MODEL_ID",
   ),
-  devRemoteT3ServerEntryPath: preferredString(
+  devRemoteCodeworkServerEntryPath: preferredString(
     "CODEWORK_DEV_REMOTE_SERVER_ENTRY_PATH",
     "CODEWORK_DEV_REMOTE_T3_SERVER_ENTRY_PATH",
   ),

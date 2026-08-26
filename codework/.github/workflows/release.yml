@@ -431,7 +431,7 @@ jobs:
         id: resource_monitor_cache
         uses: actions/cache@v6
         with:
-          path: native/resource-monitor/target/${{ matrix.rust_target }}/release/t3-resource-monitor${{ matrix.platform == 'win' && '.exe' || '' }}
+          path: native/resource-monitor/target/${{ matrix.rust_target }}/release/codework-resource-monitor${{ matrix.platform == 'win' && '.exe' || '' }}
           key: resource-monitor-${{ matrix.rust_target }}-${{ hashFiles('native/resource-monitor/Cargo.lock', 'native/resource-monitor/Cargo.toml', 'native/resource-monitor/src/**') }}
 
       - name: Setup Rust
@@ -683,7 +683,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          binary_name="t3-resource-monitor"
+          binary_name="codework-resource-monitor"
           if [[ "${{ matrix.platform }}" == "win" ]]; then
             binary_name="${binary_name}.exe"
           fi
@@ -778,8 +778,8 @@ jobs:
             resource_key="${artifact_dir##*/resource-monitor-}"
             target_dir="apps/server/dist/resource-monitor/${resource_key}"
             mkdir -p "$target_dir"
-            cp "$artifact_dir"/t3-resource-monitor* "$target_dir/"
-            chmod +x "$target_dir"/t3-resource-monitor 2>/dev/null || true
+            cp "$artifact_dir"/codework-resource-monitor* "$target_dir/"
+            chmod +x "$target_dir"/codework-resource-monitor 2>/dev/null || true
           done
 
       - name: Publish CLI package
