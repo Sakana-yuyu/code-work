@@ -18,6 +18,7 @@ it("为统一 Runtime Tool Plane 暴露稳定且无重复的 canonical capabilit
       "t3.preview_open",
       "t3.preview_navigate",
       "t3.preview_snapshot",
+      "t3.ide.invoke",
     ],
   );
   assert.equal(

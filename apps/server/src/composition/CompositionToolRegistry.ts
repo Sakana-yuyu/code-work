@@ -91,6 +91,15 @@ const descriptors = [
     approval: "never",
     source: "t3",
   },
+  {
+    capabilityId: "t3.ide.invoke",
+    kind: "tool",
+    version: "1",
+    status: "degraded",
+    grants: { read: false, execute: true, mutate: false },
+    approval: "on_first_use",
+    source: "t3",
+  },
 ] satisfies ReadonlyArray<CompositionCapabilityDescriptor>;
 
 export const listCompositionToolDescriptors = (): CompositionCapabilityDescriptor[] =>

@@ -54,6 +54,7 @@ import * as CompositionCapabilityRegistry from "./composition/CapabilityRegistry
 import * as CompositionCapabilityGrantRegistry from "./composition/CapabilityGrantRegistry.ts";
 import * as CompositionCapabilityPolicy from "./composition/CapabilityPolicy.ts";
 import * as CompositionToolBroker from "./composition/ToolBroker.ts";
+import * as CompositionIdeSessionRegistry from "./composition/CompositionIdeSessionRegistry.ts";
 import * as CompositionRuntimeToolBridge from "./composition/CompositionRuntimeToolBridge.ts";
 import * as CompositionAgentDriverRegistry from "./composition/CompositionAgentDriverRegistry.ts";
 import * as CompositionProviderAgentDriverProjection from "./composition/CompositionProviderAgentDriverRegistry.ts";
@@ -373,6 +374,7 @@ const CompositionCapabilityPolicyLayerLive = CompositionCapabilityPolicy.layer.p
 );
 
 const CompositionToolBrokerLayerLive = CompositionToolBroker.layer.pipe(
+  Layer.provideMerge(CompositionIdeSessionRegistry.layer),
   Layer.provideMerge(CompositionCapabilityPolicyLayerLive),
   Layer.provideMerge(CompositionCapabilityGrantLayerLive),
   Layer.provideMerge(CompositionCapabilityRegistry.layer),

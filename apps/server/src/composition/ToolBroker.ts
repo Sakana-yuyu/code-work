@@ -30,6 +30,7 @@ import * as WorkspaceFileSystem from "../workspace/WorkspaceFileSystem.ts";
 import * as GitVcsDriver from "../vcs/GitVcsDriver.ts";
 import * as TerminalManager from "../terminal/Manager.ts";
 import { compositionToolCapabilityId } from "./CompositionToolRegistry.ts";
+import * as CompositionIdeSessionRegistry from "./CompositionIdeSessionRegistry.ts";
 
 const WorkspaceReadArguments = Schema.Struct({
   cwd: Schema.String,
@@ -64,6 +65,13 @@ const GitDiffArguments = Schema.Struct({
   cwd: Schema.String,
   baseRef: Schema.optional(Schema.String),
   ignoreWhitespace: Schema.optional(Schema.Boolean),
+});
+
+const IdeInvokeArguments = Schema.Struct({
+  sessionId: Schema.String,
+  handshakeId: Schema.String,
+  operation: Schema.String,
+  arguments: Schema.Unknown,
 });
 
 export type ToolBrokerInput = {
@@ -115,6 +123,7 @@ export class ToolScopeMissingError extends Schema.TaggedErrorClass<ToolScopeMiss
 
 const isToolArgumentsInvalidError = Schema.is(ToolArgumentsInvalidError);
 const isToolScopeMissingError = Schema.is(ToolScopeMissingError);
+const isIdeSessionFailure = Schema.is(CompositionIdeSessionRegistry.CompositionIdeSessionFailure);
 const MAX_RESULT_BYTES = 64 * 1024;
 const secretPatterns = [
   /(api[_-]?key\s*[:=]\s*)([^\s\n]+)/gi,
@@ -162,6 +171,9 @@ const make = Effect.gen(function* () {
     PreviewAutomationBroker.PreviewAutomationBroker,
   );
   const serverEnvironment = yield* Effect.serviceOption(ServerEnvironment.ServerEnvironment);
+  const ideSessionRegistry = yield* Effect.serviceOption(
+    CompositionIdeSessionRegistry.CompositionIdeSessionRegistryService,
+  );
   const workspaceFileSystem = yield* WorkspaceFileSystem.WorkspaceFileSystem;
   const completed = new Set<string>();
 
@@ -382,6 +394,34 @@ const make = Effect.gen(function* () {
     });
   }
 
+  if (Option.isSome(ideSessionRegistry)) {
+    handlers.set("ide.invoke", {
+      operation: "execute",
+      execute: (input) =>
+        Effect.gen(function* () {
+          const args = yield* Schema.decodeUnknownEffect(IdeInvokeArguments)(input.arguments).pipe(
+            Effect.mapError(() => new ToolArgumentsInvalidError(input)),
+          );
+          if (
+            args.sessionId.trim().length === 0 ||
+            args.handshakeId.trim().length === 0 ||
+            args.operation.trim().length === 0
+          ) {
+            return yield* new ToolArgumentsInvalidError(input);
+          }
+          return yield* ideSessionRegistry.value.invoke({
+            sessionId: args.sessionId,
+            handshakeId: args.handshakeId,
+            taskId: input.taskId,
+            runId: input.runId,
+            agentId: input.agentId,
+            operation: args.operation,
+            arguments: args.arguments,
+          });
+        }),
+    });
+  }
+
   const resultBase = (input: ToolBrokerInput, startedAtUnixMs: number) => ({
     invocationId: `invocation-${input.idempotencyKey}`,
     taskId: input.taskId,
@@ -482,7 +522,9 @@ const make = Effect.gen(function* () {
             ? "tool_arguments_invalid"
             : isToolScopeMissingError(error)
               ? "tool_scope_missing"
-              : "tool_execution_failed",
+              : isIdeSessionFailure(error)
+                ? error.code
+                : "tool_execution_failed",
           finishedAtUnixMs,
         })),
       ),

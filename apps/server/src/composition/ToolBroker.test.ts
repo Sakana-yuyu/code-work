@@ -19,9 +19,11 @@ import * as WorkspacePaths from "../workspace/WorkspacePaths.ts";
 import * as CapabilityPolicy from "./CapabilityPolicy.ts";
 import * as CapabilityRegistry from "./CapabilityRegistry.ts";
 import * as CapabilityGrantRegistry from "./CapabilityGrantRegistry.ts";
+import * as CompositionIdeSessionRegistry from "./CompositionIdeSessionRegistry.ts";
 import * as ToolBroker from "./ToolBroker.ts";
 
 const previewInvocations: PreviewAutomationBroker.PreviewAutomationInvokeInput[] = [];
+const ideInvocations: CompositionIdeSessionRegistry.CompositionIdeInvocation[] = [];
 
 const WorkspaceFileLayer = WorkspaceFileSystem.layer.pipe(
   Layer.provide(WorkspacePaths.layer),
@@ -64,6 +66,35 @@ const ToolTestServicesLayer = Layer.mergeAll(
         title: null,
         loading: false,
       } as A);
+    },
+  }),
+  Layer.mock(CompositionIdeSessionRegistry.CompositionIdeSessionRegistryService)({
+    register: () => Effect.void,
+    unregister: () => Effect.succeed(false),
+    get: () => Effect.succeed(undefined),
+    list: Effect.succeed([]),
+    resolve: (input) =>
+      Effect.succeed({
+        sessionId: input.sessionId,
+        profile: "unknown" as const,
+        verifiedOperations: [],
+        status: "unavailable" as const,
+      }),
+    handshake: (input) =>
+      Effect.succeed({
+        sessionId: input.sessionId,
+        taskId: input.taskId,
+        runId: input.runId,
+        agentId: input.agentId,
+        profile: "vscode_ide" as const,
+        status: "accepted" as const,
+        acceptedGrantIds: [...input.capabilityGrantIds],
+        verifiedOperations: [...input.requestedOperations],
+        handshakeId: "ide-handshake-test",
+      }),
+    invoke: (input) => {
+      ideInvocations.push(input);
+      return Effect.succeed({ accepted: true, operation: input.operation });
     },
   }),
   Layer.mock(TerminalManager.TerminalManager)({
@@ -274,6 +305,7 @@ it.layer(TestLayer, { excludeTestServices: true })("ToolBrokerLive", (it) => {
           "t3.preview_open",
           "t3.preview_navigate",
           "t3.preview_snapshot",
+          "t3.ide.invoke",
           "t3.mcp.preview",
           "t3.runtime.provider",
         ]);
@@ -431,4 +463,51 @@ it.layer(TestLayer, { excludeTestServices: true })("ToolBrokerLive", (it) => {
       }),
     );
   });
+
+  it.effect("routes ide.invoke through the verified IDE session registry", () =>
+    Effect.gen(function* () {
+      ideInvocations.length = 0;
+      const broker = yield* ToolBroker.ToolBroker;
+      const result = yield* broker.invoke({
+        ...baseInput("C:/trusted/workspace"),
+        canonicalToolName: "ide.invoke",
+        arguments: {
+          sessionId: "vscode-session-1",
+          handshakeId: "ide-handshake-test",
+          operation: "editor.read",
+          arguments: { path: "src/App.tsx" },
+        },
+        idempotencyKey: "ide-invoke-1",
+        capabilityGrantIds: ["t3.ide.invoke"],
+      });
+
+      expect(result).toMatchObject({ status: "denied", errorCode: "tool_approval_required" });
+      const policy = yield* CapabilityPolicy.CapabilityPolicy;
+      yield* policy.approve({ approvalRequestId: result.approvalRequestId! });
+      const approved = yield* broker.invoke({
+        ...baseInput("C:/trusted/workspace"),
+        canonicalToolName: "ide.invoke",
+        arguments: {
+          sessionId: "vscode-session-1",
+          handshakeId: "ide-handshake-test",
+          operation: "editor.read",
+          arguments: { path: "src/App.tsx" },
+        },
+        idempotencyKey: "ide-invoke-1-approved",
+        capabilityGrantIds: ["t3.ide.invoke"],
+        approvalRequestId: result.approvalRequestId,
+      });
+
+      expect(approved.status).toBe("succeeded");
+      expect(approved.result).toMatchObject({ accepted: true, operation: "editor.read" });
+      expect(ideInvocations).toHaveLength(1);
+      expect(ideInvocations[0]).toMatchObject({
+        sessionId: "vscode-session-1",
+        handshakeId: "ide-handshake-test",
+        taskId: "task-1",
+        runId: "run-1",
+        agentId: "agent-1",
+      });
+    }),
+  );
 });
