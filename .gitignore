@@ -1,6 +1,7 @@
 # Reference-only repositories and local analysis
 .analysis-tmp/
 .reference/
+.references/
 .worktrees/
 
 # JavaScript dependencies and generated frontend output
