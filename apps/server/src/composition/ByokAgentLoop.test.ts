@@ -28,6 +28,7 @@ const baseInput = {
   taskId: "task-1",
   runId: "run-1",
   agentId: "agent-1",
+  runtimeId: "byok-instance",
   workspaceRoot: "C:/workspace",
   prompt: "inspect the workspace",
   capabilityGrantIds: ["t3.workspace.read_file"],
@@ -44,10 +45,12 @@ describe("ByokAgentLoop", () => {
   it("executes one tool call, deduplicates its terminal replay, reinjects the result, and continues", async () => {
     const modelInputs: Array<Parameters<ByokAgentModelDriver["complete"]>[0]> = [];
     let brokerCalls = 0;
+    let capturedRuntimeId: string | undefined;
     const broker = ToolBroker.ToolBroker.of({
       invoke: (input) =>
         Effect.sync(() => {
           brokerCalls += 1;
+          capturedRuntimeId = input.runtimeId;
           return makeResult(input);
         }),
       cancel: () => Effect.void,
@@ -83,6 +86,7 @@ describe("ByokAgentLoop", () => {
     expect(result.text).toBe("done");
     expect(result.rounds).toBe(2);
     expect(brokerCalls).toBe(1);
+    expect(capturedRuntimeId).toBe("byok-instance");
     expect(modelInputs[1]?.messages).toEqual(
       expect.arrayContaining([expect.objectContaining({ role: "tool", toolCallId: "call-1" })]),
     );

@@ -286,3 +286,27 @@ T3 Shell
 5. **Batch E：Cursor 专属能力按需接入。** 原生 Bidi/RunSSE、MITM 镜像、账户切换和 Cursor 专属运营 UI 作为独立 Runtime/桌面功能，不污染 T3 核心 Provider/ToolBroker 合同。
 
 每个批次的验收必须分别记录：定向单测、类型/构建、模拟 Runtime、真实本机 Runtime/IDE E2E、Web/Desktop/Mobile 可达性；其中前两类不能替代后三类。
+
+## Batch A 落地记录（2026-08-26）
+
+Batch A 已把 T3 已有 Preview Automation 能力接入 Composition ToolBroker，当前实际开放的
+canonical tool 为：
+
+- `preview_status`：只读查询，直接复用 `PreviewAutomationTabTargetInput`。
+- `preview_open`：执行操作，复用官方 `PreviewAutomationOpenInput`，默认沿用已有 `reuseExistingTab` 语义，需要首次使用审批。
+- `preview_navigate`：执行操作，复用官方 `PreviewAutomationNavigateInput`，需要首次使用审批。
+- `preview_snapshot`：只读查询，复用官方 `PreviewAutomationTabTargetInput`，结果仍由既有 Preview Broker 负责大小限制和远端错误归一化。
+
+Composition Run 使用独立的 `sessionId`：`composition-browser:<taskId>:<runId>`。它不再伪装成
+Provider MCP session；旧的 `providerSessionId` 在 MCP/Preview 错误合同中保留为可选兼容字段，
+真实 host assignment 使用通用 `sessionId`。Runtime ID 会被规范化为 Preview scope 的稳定
+`ProviderInstanceId` 别名，避免 Multica 的 `:` 等协议字符进入 T3 标识类型。
+
+BYOK Agent Loop 和 `CompositionRuntimeToolBridge` 都会把 runtime/thread 上下文传入 ToolBroker。
+缺少受信 runtime scope 时返回 `tool_scope_missing`，不会生成默认 scope 或静默降级。所有调用仍然
+经过 capability registry、task grant、approval、idempotency 和 audit 链路。
+
+本批次没有接入任意 MCP server/tool catalog、`preview_click/type/press/evaluate`、Computer Use、
+Cursor/VSCode IDE API 或真实外部 daemon/IDE。当前验证覆盖 Composition Browser Context、ToolBroker、
+BYOK Loop、Runtime Bridge、MCP scope 兼容和 Preview Broker 定向回归；真实 Preview Host、Multica
+daemon、Cursor/VSCode、Web/Desktop/Mobile E2E 仍需独立验收，不能由本批次静态测试替代。

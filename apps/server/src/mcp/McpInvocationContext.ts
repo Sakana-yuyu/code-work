@@ -12,7 +12,9 @@ export type McpCapability = "preview";
 export interface McpInvocationScope {
   readonly environmentId: EnvironmentId;
   readonly threadId: ThreadId;
-  readonly providerSessionId: string;
+  /** T3 的通用浏览器 session 身份；Provider MCP 继续与旧字段兼容。 */
+  readonly sessionId: string;
+  readonly providerSessionId?: string;
   readonly providerInstanceId: ProviderInstanceId;
   readonly capabilities: ReadonlySet<McpCapability>;
   readonly issuedAt: number;
@@ -23,6 +25,9 @@ export class McpInvocationContext extends Context.Service<
   McpInvocationScope
 >()("t3/mcp/McpInvocationContext") {}
 
+export const diagnosticProviderSessionId = (scope: McpInvocationScope): string =>
+  scope.providerSessionId ?? scope.sessionId;
+
 export const requireMcpCapability = Effect.fn("mcp.requireCapability")(function* (
   capability: McpCapability,
 ) {
@@ -32,7 +37,8 @@ export const requireMcpCapability = Effect.fn("mcp.requireCapability")(function*
       capability,
       environmentId: invocation.environmentId,
       threadId: invocation.threadId,
-      providerSessionId: invocation.providerSessionId,
+      sessionId: invocation.sessionId,
+      providerSessionId: diagnosticProviderSessionId(invocation),
       providerInstanceId: invocation.providerInstanceId,
     });
   }

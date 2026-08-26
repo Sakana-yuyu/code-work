@@ -80,6 +80,8 @@ export type ByokAgentLoopInput = {
   readonly taskId: string;
   readonly runId: string;
   readonly agentId: string;
+  readonly runtimeId?: string;
+  readonly threadId?: string;
   readonly workspaceRoot: string;
   readonly prompt: string;
   readonly capabilityGrantIds: ReadonlyArray<string>;
@@ -160,6 +162,8 @@ export const runByokAgentLoop = (
           taskId: input.taskId,
           runId: input.runId,
           agentId: input.agentId,
+          ...(input.runtimeId === undefined ? {} : { runtimeId: input.runtimeId }),
+          ...(input.threadId === undefined ? {} : { threadId: input.threadId }),
           toolCallId: event.toolCallId,
           canonicalToolName: event.canonicalToolName,
           arguments: event.arguments,

@@ -50,15 +50,46 @@ const input = {
 
 describe("CompositionAgentService", () => {
   it("runs the explicit agent loop through the resolved model driver", async () => {
+    let capturedRuntimeId: string | undefined;
+    const broker: ToolBroker.ToolBroker["Service"] = {
+      invoke: (brokerInput) => {
+        capturedRuntimeId = brokerInput.runtimeId;
+        return Effect.succeed({
+          invocationId: "invocation-1",
+          taskId: brokerInput.taskId,
+          runId: brokerInput.runId,
+          toolCallId: brokerInput.toolCallId,
+          canonicalToolName: brokerInput.canonicalToolName,
+          status: "succeeded" as const,
+          result: { contents: "ok" },
+        });
+      },
+      cancel: () => Effect.void,
+    };
+    let turn = 0;
+    const loopModel: ByokAgentModelDriver = {
+      complete: () => {
+        turn += 1;
+        return turn === 1
+          ? Stream.succeed({
+              type: "tool_call" as const,
+              toolCallId: "call-runtime-context",
+              canonicalToolName: "workspace.read_file",
+              arguments: { cwd: "C:/workspace", relativePath: "README.md" },
+            }).pipe(Stream.concat(Stream.succeed({ type: "model_completed" as const })))
+          : modelDriver.complete({ messages: [], tools: [], turn });
+      },
+    };
     const service = makeCompositionAgentService({
-      broker: makeBroker(),
-      resolveModelDriver: () => Effect.succeed(modelDriver),
+      broker,
+      resolveModelDriver: () => Effect.succeed(loopModel),
     });
 
     await expect(Effect.runPromise(service.run(input))).resolves.toMatchObject({
       text: "完成",
-      rounds: 1,
+      rounds: 2,
     });
+    expect(capturedRuntimeId).toBe(input.providerInstanceId);
   });
 
   it("preserves a resolver error instead of silently falling back to legacy text", async () => {

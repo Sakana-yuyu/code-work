@@ -27,6 +27,7 @@ const makeBroker = PreviewAutomationBroker.make.pipe(Effect.provide(NodeServices
 const scope = {
   environmentId: EnvironmentId.make("environment-1"),
   threadId: ThreadId.make("thread-1"),
+  sessionId: "provider-session-1",
   providerSessionId: "provider-session-1",
   providerInstanceId: ProviderInstanceId.make("codex"),
   capabilities: new Set(["preview"] as const),
@@ -628,6 +629,7 @@ it.effect("pins a provider session to its initial host despite later focus chang
 
       const firstPinnedScope = {
         ...scope,
+        sessionId: "provider-session-first-pinned",
         providerSessionId: "provider-session-first-pinned",
       };
       expect(
@@ -646,7 +648,11 @@ it.effect("pins a provider session to its initial host despite later focus chang
       ).toBe("first");
       expect(
         yield* broker.invoke<string>({
-          scope: { ...scope, providerSessionId: "provider-session-second-pinned" },
+          scope: {
+            ...scope,
+            sessionId: "provider-session-second-pinned",
+            providerSessionId: "provider-session-second-pinned",
+          },
           operation: "status",
           input: {},
         }),

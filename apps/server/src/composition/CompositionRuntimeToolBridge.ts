@@ -200,6 +200,8 @@ export const makeCompositionRuntimeToolBridge = (
           arguments: trustedToolArguments(input.arguments, workspaceRoot),
           idempotencyKey: input.idempotencyKey,
           capabilityGrantIds: input.capabilityGrantIds,
+          runtimeId: input.runtimeId,
+          ...(scope.task.threadId === undefined ? {} : { threadId: scope.task.threadId }),
           ...(input.approvalRequestId === undefined
             ? {}
             : { approvalRequestId: input.approvalRequestId }),

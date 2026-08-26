@@ -13,6 +13,7 @@ it.effect("reports the scoped credential context when preview capability is unav
   const invocation: McpInvocationContext.McpInvocationScope = {
     environmentId: EnvironmentId.make("environment-1"),
     threadId: ThreadId.make("thread-1"),
+    sessionId: "provider-session-1",
     providerSessionId: "provider-session-1",
     providerInstanceId: ProviderInstanceId.make("codex"),
     capabilities: new Set(),
@@ -30,6 +31,7 @@ it.effect("reports the scoped credential context when preview capability is unav
       capability: "preview",
       environmentId: invocation.environmentId,
       threadId: invocation.threadId,
+      sessionId: invocation.sessionId,
       providerSessionId: invocation.providerSessionId,
       providerInstanceId: invocation.providerInstanceId,
     });

@@ -55,6 +55,42 @@ const descriptors = [
     approval: "never",
     source: "t3",
   },
+  {
+    capabilityId: "t3.preview_status",
+    kind: "tool",
+    version: "1",
+    status: "available",
+    grants: { read: true, execute: false, mutate: false },
+    approval: "never",
+    source: "t3",
+  },
+  {
+    capabilityId: "t3.preview_open",
+    kind: "tool",
+    version: "1",
+    status: "available",
+    grants: { read: false, execute: true, mutate: false },
+    approval: "on_first_use",
+    source: "t3",
+  },
+  {
+    capabilityId: "t3.preview_navigate",
+    kind: "tool",
+    version: "1",
+    status: "available",
+    grants: { read: false, execute: true, mutate: false },
+    approval: "on_first_use",
+    source: "t3",
+  },
+  {
+    capabilityId: "t3.preview_snapshot",
+    kind: "tool",
+    version: "1",
+    status: "available",
+    grants: { read: true, execute: false, mutate: false },
+    approval: "never",
+    source: "t3",
+  },
 ] satisfies ReadonlyArray<CompositionCapabilityDescriptor>;
 
 export const listCompositionToolDescriptors = (): CompositionCapabilityDescriptor[] =>

@@ -181,6 +181,7 @@ describe("PreviewAutomationError", () => {
       operation: "type",
       environmentId: "environment-1",
       threadId: "thread-1",
+      sessionId: "provider-session-1",
       providerSessionId: "provider-session-1",
       providerInstanceId: "codex",
       clientId: "client-1",

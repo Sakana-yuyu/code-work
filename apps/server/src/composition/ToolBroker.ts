@@ -1,10 +1,16 @@
-import type {
+import {
   CompositionToolResult,
+  PreviewAutomationNavigateInput,
+  PreviewAutomationOpenInput,
+  PreviewAutomationSnapshot,
+  PreviewAutomationStatus,
+  PreviewAutomationTabTargetInput,
   ProjectReadFileResult,
   ProjectWriteFileResult,
   ReviewDiffPreviewInput,
   TerminalOpenInput,
   TerminalWriteInput,
+  type PreviewTabId,
 } from "@t3tools/contracts";
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
@@ -13,9 +19,13 @@ import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 
+import * as ServerEnvironment from "../environment/ServerEnvironment.ts";
+import * as PreviewAutomationBroker from "../mcp/PreviewAutomationBroker.ts";
+import { normalizePreviewOpenInput } from "../mcp/toolkits/preview/handlers.ts";
 import * as CapabilityPolicy from "./CapabilityPolicy.ts";
 import * as CapabilityRegistry from "./CapabilityRegistry.ts";
 import * as CapabilityGrantRegistry from "./CapabilityGrantRegistry.ts";
+import { makeCompositionBrowserScope } from "./CompositionBrowserContext.ts";
 import * as WorkspaceFileSystem from "../workspace/WorkspaceFileSystem.ts";
 import * as GitVcsDriver from "../vcs/GitVcsDriver.ts";
 import * as TerminalManager from "../terminal/Manager.ts";
@@ -67,6 +77,9 @@ export type ToolBrokerInput = {
   readonly capabilityGrantIds: readonly string[];
   readonly approvalRequestId?: string;
   readonly workspaceRoot: string;
+  readonly runtimeId?: string;
+  readonly threadId?: string;
+  readonly providerInstanceId?: string;
 };
 
 export type ToolBrokerResult = CompositionToolResult & {
@@ -91,7 +104,17 @@ export class ToolArgumentsInvalidError extends Schema.TaggedErrorClass<ToolArgum
   }
 }
 
+export class ToolScopeMissingError extends Schema.TaggedErrorClass<ToolScopeMissingError>()(
+  "ToolScopeMissingError",
+  { canonicalToolName: Schema.String },
+) {
+  override get message(): string {
+    return `Tool '${this.canonicalToolName}' is missing a trusted runtime scope.`;
+  }
+}
+
 const isToolArgumentsInvalidError = Schema.is(ToolArgumentsInvalidError);
+const isToolScopeMissingError = Schema.is(ToolScopeMissingError);
 const MAX_RESULT_BYTES = 64 * 1024;
 const secretPatterns = [
   /(api[_-]?key\s*[:=]\s*)([^\s\n]+)/gi,
@@ -135,6 +158,10 @@ const make = Effect.gen(function* () {
   );
   const terminalManager = yield* Effect.serviceOption(TerminalManager.TerminalManager);
   const gitVcsDriver = yield* Effect.serviceOption(GitVcsDriver.GitVcsDriver);
+  const previewBroker = yield* Effect.serviceOption(
+    PreviewAutomationBroker.PreviewAutomationBroker,
+  );
+  const serverEnvironment = yield* Effect.serviceOption(ServerEnvironment.ServerEnvironment);
   const workspaceFileSystem = yield* WorkspaceFileSystem.WorkspaceFileSystem;
   const completed = new Set<string>();
 
@@ -242,6 +269,119 @@ const make = Effect.gen(function* () {
     });
   }
 
+  if (Option.isSome(previewBroker) && Option.isSome(serverEnvironment)) {
+    const previewScope = Effect.fn("ToolBroker.previewScope")(function* (input: ToolBrokerInput) {
+      const runtimeId = input.runtimeId ?? input.providerInstanceId;
+      if (runtimeId === undefined || runtimeId.trim().length === 0) {
+        return yield* new ToolScopeMissingError({ canonicalToolName: input.canonicalToolName });
+      }
+      const environmentId = yield* serverEnvironment.value.getEnvironmentId;
+      return makeCompositionBrowserScope({
+        environmentId,
+        taskId: input.taskId,
+        runId: input.runId,
+        runtimeId,
+        ...(input.threadId === undefined ? {} : { threadId: input.threadId }),
+        issuedAt: yield* Clock.currentTimeMillis,
+      });
+    });
+
+    const decodePreviewStatus = (input: ToolBrokerInput) =>
+      Schema.decodeUnknownEffect(PreviewAutomationTabTargetInput)(input.arguments).pipe(
+        Effect.mapError(() => new ToolArgumentsInvalidError(input)),
+      );
+    const decodePreviewOpen = (input: ToolBrokerInput) =>
+      Schema.decodeUnknownEffect(PreviewAutomationOpenInput)(input.arguments).pipe(
+        Effect.mapError(() => new ToolArgumentsInvalidError(input)),
+      );
+    const decodePreviewNavigate = (input: ToolBrokerInput) =>
+      Schema.decodeUnknownEffect(PreviewAutomationNavigateInput)(input.arguments).pipe(
+        Effect.mapError(() => new ToolArgumentsInvalidError(input)),
+      );
+
+    const withoutTabId = <A extends { readonly tabId?: PreviewTabId | undefined }>(input: A) => {
+      const { tabId, ...operationInput } = input;
+      return { tabId, operationInput };
+    };
+
+    const invokePreview = <A>(
+      input: ToolBrokerInput,
+      operation: PreviewAutomationBroker.PreviewAutomationInvokeInput["operation"],
+      operationInput: unknown,
+      tabId: PreviewTabId | undefined,
+      timeoutMs?: number,
+    ) =>
+      Effect.gen(function* () {
+        const scope = yield* previewScope(input);
+        return yield* previewBroker.value.invoke<A>({
+          scope,
+          operation,
+          input: operationInput,
+          ...(tabId === undefined ? {} : { tabId }),
+          ...(timeoutMs === undefined ? {} : { timeoutMs }),
+        });
+      });
+
+    handlers.set("preview_status", {
+      operation: "read",
+      execute: (input) =>
+        Effect.gen(function* () {
+          const args = yield* decodePreviewStatus(input);
+          const target = withoutTabId(args);
+          return yield* invokePreview<PreviewAutomationStatus>(
+            input,
+            "status",
+            target.operationInput,
+            target.tabId,
+          );
+        }),
+    });
+    handlers.set("preview_open", {
+      operation: "execute",
+      execute: (input) =>
+        Effect.gen(function* () {
+          const args = yield* decodePreviewOpen(input);
+          const normalized = normalizePreviewOpenInput(args);
+          const target = withoutTabId(normalized);
+          return yield* invokePreview<PreviewAutomationStatus>(
+            input,
+            "open",
+            target.operationInput,
+            target.tabId,
+          );
+        }),
+    });
+    handlers.set("preview_navigate", {
+      operation: "execute",
+      execute: (input) =>
+        Effect.gen(function* () {
+          const args = yield* decodePreviewNavigate(input);
+          const target = withoutTabId(args);
+          return yield* invokePreview<PreviewAutomationStatus>(
+            input,
+            "navigate",
+            target.operationInput,
+            target.tabId,
+            args.timeoutMs,
+          );
+        }),
+    });
+    handlers.set("preview_snapshot", {
+      operation: "read",
+      execute: (input) =>
+        Effect.gen(function* () {
+          const args = yield* decodePreviewStatus(input);
+          const target = withoutTabId(args);
+          return yield* invokePreview<PreviewAutomationSnapshot>(
+            input,
+            "snapshot",
+            target.operationInput,
+            target.tabId,
+          );
+        }),
+    });
+  }
+
   const resultBase = (input: ToolBrokerInput, startedAtUnixMs: number) => ({
     invocationId: `invocation-${input.idempotencyKey}`,
     taskId: input.taskId,
@@ -340,7 +480,9 @@ const make = Effect.gen(function* () {
           status: "failed" as const,
           errorCode: isToolArgumentsInvalidError(error)
             ? "tool_arguments_invalid"
-            : "tool_execution_failed",
+            : isToolScopeMissingError(error)
+              ? "tool_scope_missing"
+              : "tool_execution_failed",
           finishedAtUnixMs,
         })),
       ),

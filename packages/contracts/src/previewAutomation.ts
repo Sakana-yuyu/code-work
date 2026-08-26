@@ -637,7 +637,8 @@ export class PreviewAutomationUnavailableError extends Schema.TaggedErrorClass<P
     capability: Schema.Literal("preview"),
     environmentId: EnvironmentId,
     threadId: ThreadId,
-    providerSessionId: TrimmedNonEmptyString,
+    sessionId: TrimmedNonEmptyString,
+    providerSessionId: Schema.optional(TrimmedNonEmptyString),
     providerInstanceId: ProviderInstanceId,
   },
 ) {
@@ -650,7 +651,8 @@ const PreviewAutomationScopeErrorFields = {
   operation: PreviewAutomationOperation,
   environmentId: EnvironmentId,
   threadId: ThreadId,
-  providerSessionId: TrimmedNonEmptyString,
+  sessionId: TrimmedNonEmptyString,
+  providerSessionId: Schema.optional(TrimmedNonEmptyString),
   providerInstanceId: ProviderInstanceId,
 };
 

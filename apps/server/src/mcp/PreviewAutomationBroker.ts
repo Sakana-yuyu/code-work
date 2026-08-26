@@ -94,6 +94,7 @@ interface PreviewAutomationRequestErrorContext {
   readonly operation: PreviewAutomationOperation;
   readonly environmentId: McpInvocationContext.McpInvocationScope["environmentId"];
   readonly threadId: McpInvocationContext.McpInvocationScope["threadId"];
+  readonly sessionId: McpInvocationContext.McpInvocationScope["sessionId"];
   readonly providerSessionId: string;
   readonly providerInstanceId: McpInvocationContext.McpInvocationScope["providerInstanceId"];
   readonly clientId: string;
@@ -151,7 +152,7 @@ const selectorDiagnosticsFromInput = (
 };
 
 const hostAssignmentKey = (scope: McpInvocationContext.McpInvocationScope): string =>
-  `${scope.environmentId}\u0000${scope.providerSessionId}`;
+  `${scope.environmentId}\u0000${scope.sessionId}`;
 
 const isPreviewTabId = Schema.is(PreviewTabId);
 
@@ -491,7 +492,8 @@ export const make = Effect.gen(function* PreviewAutomationBrokerMake() {
         operation: input.operation,
         environmentId: input.scope.environmentId,
         threadId: input.scope.threadId,
-        providerSessionId: input.scope.providerSessionId,
+        sessionId: input.scope.sessionId,
+        providerSessionId: McpInvocationContext.diagnosticProviderSessionId(input.scope),
         providerInstanceId: input.scope.providerInstanceId,
         clientId: connection.clientId,
         connectionId: connection.connectionId,
@@ -512,7 +514,8 @@ export const make = Effect.gen(function* PreviewAutomationBrokerMake() {
         operation: input.operation,
         environmentId: input.scope.environmentId,
         threadId: input.scope.threadId,
-        providerSessionId: input.scope.providerSessionId,
+        sessionId: input.scope.sessionId,
+        providerSessionId: McpInvocationContext.diagnosticProviderSessionId(input.scope),
         providerInstanceId: input.scope.providerInstanceId,
       });
     }

@@ -99,6 +99,7 @@ const make = (options: CompositionAgentServiceOptions): CompositionAgentServiceS
           taskId: input.taskId,
           runId: input.runId,
           agentId: input.agentId,
+          runtimeId: input.providerInstanceId,
           workspaceRoot: input.workspaceRoot,
           prompt: input.prompt,
           capabilityGrantIds,

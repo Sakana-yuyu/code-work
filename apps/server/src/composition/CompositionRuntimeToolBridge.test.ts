@@ -126,6 +126,8 @@ it.effect("只把持久化 workspaceRoot 传给 ToolBroker", () =>
       cwd: "C:/workspace/tool-bridge",
       relativePath: "README.md",
     });
+    assert.equal(captured?.runtimeId, run.runtimeId);
+    assert.equal(captured?.threadId, task.threadId);
   }),
 );
 

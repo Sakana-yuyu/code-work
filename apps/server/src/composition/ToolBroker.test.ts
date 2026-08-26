@@ -1,11 +1,14 @@
 import * as NodeServices from "@effect/platform-node/NodeServices";
+import { EnvironmentId } from "@t3tools/contracts";
 import { it, describe, expect } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
 import * as Path from "effect/Path";
+import * as PreviewAutomationBroker from "../mcp/PreviewAutomationBroker.ts";
 
 import * as ServerConfig from "../config.ts";
+import * as ServerEnvironment from "../environment/ServerEnvironment.ts";
 import * as GitVcsDriver from "../vcs/GitVcsDriver.ts";
 import * as VcsDriverRegistry from "../vcs/VcsDriverRegistry.ts";
 import * as VcsProcess from "../vcs/VcsProcess.ts";
@@ -17,6 +20,8 @@ import * as CapabilityPolicy from "./CapabilityPolicy.ts";
 import * as CapabilityRegistry from "./CapabilityRegistry.ts";
 import * as CapabilityGrantRegistry from "./CapabilityGrantRegistry.ts";
 import * as ToolBroker from "./ToolBroker.ts";
+
+const previewInvocations: PreviewAutomationBroker.PreviewAutomationInvokeInput[] = [];
 
 const WorkspaceFileLayer = WorkspaceFileSystem.layer.pipe(
   Layer.provide(WorkspacePaths.layer),
@@ -41,6 +46,26 @@ const CapabilityPolicyLayer = CapabilityPolicy.layer.pipe(
 );
 
 const ToolTestServicesLayer = Layer.mergeAll(
+  Layer.mock(ServerEnvironment.ServerEnvironment)({
+    getEnvironmentId: Effect.succeed(EnvironmentId.make("environment-composition-test")),
+    getDescriptor: Effect.die("unused"),
+  }),
+  Layer.mock(PreviewAutomationBroker.PreviewAutomationBroker)({
+    connect: () => Effect.die("unused"),
+    focusHost: () => Effect.die("unused"),
+    respond: () => Effect.die("unused"),
+    invoke: <A = unknown>(request: PreviewAutomationBroker.PreviewAutomationInvokeInput) => {
+      previewInvocations.push(request);
+      return Effect.succeed({
+        available: true,
+        visible: true,
+        tabId: null,
+        url: null,
+        title: null,
+        loading: false,
+      } as A);
+    },
+  }),
   Layer.mock(TerminalManager.TerminalManager)({
     open: (input) =>
       Effect.succeed({
@@ -161,6 +186,47 @@ it.layer(TestLayer, { excludeTestServices: true })("shared canonical tools", (it
       });
     }),
   );
+
+  it.effect("routes preview.status through a Composition-owned browser session", () =>
+    Effect.gen(function* () {
+      previewInvocations.length = 0;
+      const broker = yield* ToolBroker.ToolBroker;
+      const result = yield* broker.invoke({
+        ...baseInput("C:/trusted/workspace"),
+        canonicalToolName: "preview_status",
+        arguments: {},
+        idempotencyKey: "preview-status-1",
+        capabilityGrantIds: ["t3.preview_status"],
+        runtimeId: "multica:daemon-1",
+        threadId: "thread-browser-1",
+      });
+
+      expect(result.status).toBe("succeeded");
+      expect(result.result).toMatchObject({ available: true });
+      expect(previewInvocations).toHaveLength(1);
+      expect(previewInvocations[0]?.scope.sessionId).toBe("composition-browser:task-1:run-1");
+      expect(previewInvocations[0]?.scope.providerSessionId).toBeUndefined();
+      expect(previewInvocations[0]?.scope.threadId).toBe("thread-browser-1");
+    }),
+  );
+
+  it.effect("缺少 runtime scope 时明确拒绝 preview 调用", () =>
+    Effect.gen(function* () {
+      const broker = yield* ToolBroker.ToolBroker;
+      const result = yield* broker.invoke({
+        ...baseInput("C:/trusted/workspace"),
+        canonicalToolName: "preview_status",
+        arguments: {},
+        idempotencyKey: "preview-status-missing-scope",
+        capabilityGrantIds: ["t3.preview_status"],
+      });
+
+      expect(result).toMatchObject({
+        status: "failed",
+        errorCode: "tool_scope_missing",
+      });
+    }),
+  );
 });
 
 const writeTextFile = Effect.fn("writeTextFile")(function* (
@@ -204,6 +270,10 @@ it.layer(TestLayer, { excludeTestServices: true })("ToolBrokerLive", (it) => {
           "t3.terminal.write",
           "t3.git.status",
           "t3.git.diff",
+          "t3.preview_status",
+          "t3.preview_open",
+          "t3.preview_navigate",
+          "t3.preview_snapshot",
           "t3.mcp.preview",
           "t3.runtime.provider",
         ]);
