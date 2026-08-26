@@ -410,19 +410,17 @@ layer("CompositionTaskRuntimeProjector", (it) => {
 
         const lateEvent: ProviderRuntimeEvent =
           current.eventType === "task.progress"
-            ? {
+            ? ({
                 ...baseEvent,
                 eventId: EventId.make(`provider-event-late-${current.suffix}`),
                 type: "task.progress",
                 payload: {
                   taskId: RuntimeTaskId.make(lockedRun.runtimeTaskId),
+                  description: "迟到进度",
                   summary: "迟到进度",
                 },
-              }
-            : {
-                ...completionEvent(`provider-event-late-${current.suffix}`),
-                type: "turn.completed",
-              };
+              } as Extract<ProviderRuntimeEvent, { type: "task.progress" }>)
+            : completionEvent(`provider-event-late-${current.suffix}`);
         yield* projectCompositionRuntimeEvent(store, registry, lateEvent);
 
         const loadedTask = yield* store.getTask(lockedTask.taskId);
@@ -433,6 +431,107 @@ layer("CompositionTaskRuntimeProjector", (it) => {
         assert.equal(events.length, 1);
         assert.equal(events[0]?.sourceEventId, `provider-event-late-${current.suffix}`);
       }
+    }),
+  );
+
+  it.effect("锁定状态收到同状态迟到事件时不刷新投影或覆盖终态结果", () =>
+    Effect.gen(function* () {
+      const store = yield* CompositionTaskStore;
+      const lockedTask = {
+        ...task,
+        taskId: "task-runtime-same-state-late",
+        status: "completed" as const,
+        updatedAtUnixMs: 100,
+        finishedAtUnixMs: 100,
+      };
+      const lockedRun = {
+        ...run,
+        taskId: lockedTask.taskId,
+        runId: "run-runtime-same-state-late",
+        status: "completed" as const,
+        finishedAtUnixMs: 100,
+        resultSummary: "原始终态结果",
+      };
+      const registry = makeCompositionAgentDriverRegistry();
+      yield* registry.register({
+        agentId: lockedTask.assigneeId,
+        runtimeId: lockedRun.runtimeId,
+        startTask: () => Effect.succeed({ runtimeTaskId: lockedRun.runtimeTaskId! }),
+        cancelTask: () => Effect.succeed({ status: "already_terminal" as const }),
+        resolveRuntimeEvent: () => ({
+          taskId: lockedTask.taskId,
+          runId: lockedRun.runId,
+          runtimeTaskId: lockedRun.runtimeTaskId!,
+        }),
+      });
+      yield* store.upsertTask(lockedTask);
+      yield* store.upsertRun(lockedRun);
+
+      yield* projectCompositionRuntimeEvent(store, registry, {
+        ...completionEvent("provider-event-same-state-late"),
+      });
+
+      const loadedTask = yield* store.getTask(lockedTask.taskId);
+      const loadedRun = yield* store.getRun(lockedRun.runId);
+      const events = yield* store.listEvents(lockedTask.taskId, lockedRun.runId);
+      assert.deepEqual(Option.getOrThrow(loadedTask), lockedTask);
+      assert.deepEqual(Option.getOrThrow(loadedRun), lockedRun);
+      assert.equal(events.length, 1);
+      assert.equal(events[0]?.sourceEventId, "provider-event-same-state-late");
+    }),
+  );
+
+  it.effect("Multica task:message 只写 message 审计，不推进或伪装成 progress", () =>
+    Effect.gen(function* () {
+      const store = yield* CompositionTaskStore;
+      const messageTask = { ...task, taskId: "task-runtime-message" };
+      const messageRun = {
+        ...run,
+        taskId: messageTask.taskId,
+        runId: "run-runtime-message",
+        runtimeTaskId: "multica-task-message",
+      };
+      const registry = makeCompositionAgentDriverRegistry();
+      yield* registry.register({
+        agentId: messageTask.assigneeId,
+        runtimeId: messageRun.runtimeId,
+        startTask: () => Effect.succeed({ runtimeTaskId: messageRun.runtimeTaskId! }),
+        cancelTask: () => Effect.succeed({ status: "cancelled" as const }),
+        resolveRuntimeEvent: () => ({
+          taskId: messageTask.taskId,
+          runId: messageRun.runId,
+          runtimeTaskId: messageRun.runtimeTaskId,
+        }),
+      });
+      yield* store.upsertTask(messageTask);
+      yield* store.upsertRun(messageRun);
+
+      yield* projectCompositionRuntimeEvent(store, registry, {
+        ...baseEvent,
+        eventId: EventId.make("provider-event-message"),
+        type: "task.progress",
+        raw: {
+          source: "multica.task-event",
+          messageType: "task:message",
+          payload: { task_id: messageRun.runtimeTaskId, type: "tool_result" },
+        },
+        payload: {
+          taskId: RuntimeTaskId.make(messageRun.runtimeTaskId),
+          description: "工具输出",
+          summary: "工具输出",
+          status: "running",
+          messageType: "tool_result",
+        },
+      });
+
+      const loadedTask = yield* store.getTask(messageTask.taskId);
+      const loadedRun = yield* store.getRun(messageRun.runId);
+      const events = yield* store.listEvents(messageTask.taskId, messageRun.runId);
+      assert.equal(Option.getOrThrow(loadedTask).status, "running");
+      assert.equal(Option.getOrThrow(loadedRun).status, "running");
+      assert.equal(events.length, 1);
+      assert.equal(events[0]?.eventType, "message");
+      assert.equal(events[0]?.summary, "工具输出");
     }),
   );
 

@@ -417,6 +417,8 @@ const isControlHintFrame = (frame: MulticaWebSocketFrame): boolean =>
   frame.type === "daemon:runtime_profiles_changed" ||
   frame.type === "daemon:workspaces_changed";
 
+const maxClaimDrainTasks = 32;
+
 export const makeMulticaCompositionRuntimeId = (
   daemonId: string,
   daemonRuntimeId: string,
@@ -495,6 +497,7 @@ export const makeMulticaDaemonRuntimeAdapter = (
   const taskExecutionBindings = new Map<string, MulticaTaskExecutionBinding>();
   const startingTaskIds = new Set<string>();
   let claimInFlight = false;
+  let claimDrainRequested = false;
 
   const clearTaskState = (runtimeTaskId: string): void => {
     activeTaskIds.delete(runtimeTaskId);
@@ -766,12 +769,31 @@ export const makeMulticaDaemonRuntimeAdapter = (
     ) {
       return Effect.void;
     }
+    claimDrainRequested = true;
     if (claimInFlight) return Effect.void;
     claimInFlight = true;
-    return claimTask().pipe(
-      Effect.flatMap((claimed) =>
-        claimed === null ? Effect.void : startTask(claimed.id).pipe(Effect.asVoid),
-      ),
+    return Effect.gen(function* () {
+      const seenTaskIds = new Set<string>();
+      let drained = 0;
+      while (claimDrainRequested && drained < maxClaimDrainTasks) {
+        claimDrainRequested = false;
+        const claimed = yield* claimTask();
+        if (claimed === null) return;
+        if (seenTaskIds.has(claimed.id)) return;
+        seenTaskIds.add(claimed.id);
+        yield* startTask(claimed.id);
+        drained += 1;
+        if (hintedTaskId !== undefined && claimed.id === hintedTaskId) return;
+        // 继续探测同一唤醒期间的其他权威任务；重复任务和 null 会终止 drain。
+        claimDrainRequested = true;
+      }
+      if (drained >= maxClaimDrainTasks) {
+        yield* Effect.logWarning("Multica 任务唤醒 drain 达到上限", {
+          runtimeId,
+          maxClaimDrainTasks,
+        });
+      }
+    }).pipe(
       Effect.catchCause(() =>
         Effect.logWarning("Multica 任务唤醒 claim/start 失败", {
           runtimeId,

@@ -103,22 +103,43 @@ const exactStringSetMatch = (
   );
 };
 
+const maxHistoricalRuntimeBindings = 4096;
+
+type ProviderRunBinding = {
+  readonly taskId: string;
+  readonly runId: string;
+  readonly threadId: ThreadId;
+  readonly turnId: TurnId;
+  readonly runtimeTaskId: string;
+  readonly capabilityHandshakeId?: string;
+};
+
 export const makeCompositionProviderAgentDriver = (
   options: CompositionProviderAgentDriverOptions,
 ): CompositionAgentDriver => {
-  const activeRuns = new Map<
-    string,
-    {
-      readonly taskId: string;
-      readonly runId: string;
-      readonly threadId: ThreadId;
-      readonly turnId: TurnId;
-      readonly runtimeTaskId: string;
-      readonly capabilityHandshakeId?: string;
-    }
-  >();
+  const activeRuns = new Map<string, ProviderRunBinding>();
+  const historicalRuns = new Map<string, ProviderRunBinding | null>();
   const runtimeMode = options.runtimeMode ?? "full-access";
   const toolBrokerCanonicalTools = options.toolBrokerCanonicalTools ?? [];
+
+  const rememberRun = (binding: ProviderRunBinding): void => {
+    const key = `${binding.threadId}\u0000${binding.turnId}`;
+    const existing = historicalRuns.get(key);
+    if (
+      existing !== undefined &&
+      (existing === null || existing.taskId !== binding.taskId || existing.runId !== binding.runId)
+    ) {
+      historicalRuns.set(key, null);
+      return;
+    }
+    historicalRuns.delete(key);
+    historicalRuns.set(key, binding);
+    while (historicalRuns.size > maxHistoricalRuntimeBindings) {
+      const oldest = historicalRuns.keys().next().value;
+      if (oldest === undefined) break;
+      historicalRuns.delete(oldest);
+    }
+  };
 
   const getProfile: NonNullable<CompositionAgentDriver["getProfile"]> = () => {
     const snapshotEffect: Effect.Effect<ProviderProfileSnapshot> =
@@ -373,14 +394,16 @@ export const makeCompositionProviderAgentDriver = (
         ),
       );
       const runtimeTaskId = `${options.runtimeId}:${threadId}:${turn.turnId}`;
-      activeRuns.set(input.run.runId, {
+      const binding = {
         taskId: input.task.taskId,
         runId: input.run.runId,
         threadId,
         turnId: turn.turnId,
         runtimeTaskId,
         ...(capabilityHandshakeId === undefined ? {} : { capabilityHandshakeId }),
-      });
+      } satisfies ProviderRunBinding;
+      activeRuns.set(input.run.runId, binding);
+      rememberRun(binding);
       return {
         runtimeTaskId,
         ...(capabilityHandshakeId === undefined ? {} : { capabilityHandshakeId }),
@@ -471,6 +494,17 @@ export const makeCompositionProviderAgentDriver = (
           runId: active.runId,
           runtimeTaskId: active.runtimeTaskId,
         };
+      }
+      if (event.turnId !== undefined) {
+        const key = `${event.threadId}\u0000${event.turnId}`;
+        const historical = historicalRuns.get(key);
+        if (historical !== undefined && historical !== null) {
+          return {
+            taskId: historical.taskId,
+            runId: historical.runId,
+            runtimeTaskId: historical.runtimeTaskId,
+          };
+        }
       }
       return undefined;
     },

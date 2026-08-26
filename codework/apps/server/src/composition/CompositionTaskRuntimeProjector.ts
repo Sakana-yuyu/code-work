@@ -118,6 +118,13 @@ const projectEvent = (
         summary: summaryOf(event.payload.description, "子任务已启动"),
       };
     case "task.progress":
+      if (event.raw?.source === "multica.task-event" && event.raw.messageType === "task:message") {
+        return {
+          status: currentStatus,
+          eventType: "message",
+          summary: summaryOf(event.payload.summary ?? event.payload.description, "Runtime 消息"),
+        };
+      }
       return {
         status: runtimeStatusToCompositionStatus(event.payload.status) ?? "running",
         eventType: "progress",
@@ -246,9 +253,9 @@ export const projectCompositionRuntimeEvent = (
       return;
     }
 
-    // 终态和 in_review 都是运行时锁定状态。迟到 progress/completed 仍保留审计，
-    // 但不得让取消、超时或人工审核中的任务复活或覆盖既有结果。
-    if (runtimeLockedStatuses.has(task.status) && projection.status !== task.status) {
+    // 终态和 in_review 都是运行时锁定状态。任何迟到事件（包括映射到同一状态的事件）
+    // 只能保留审计，不能刷新投影时间、覆盖结果或再次触发终态副作用。
+    if (runtimeLockedStatuses.has(task.status)) {
       yield* appendAuditOnly();
       return;
     }

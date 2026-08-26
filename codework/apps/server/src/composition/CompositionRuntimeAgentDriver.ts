@@ -26,6 +26,8 @@ type ActiveRun = {
   readonly capabilityHandshakeId?: string;
 };
 
+const maxHistoricalRuntimeBindings = 4096;
+
 const errorDetail = (error: unknown): string =>
   error instanceof Error ? error.message : String(error);
 
@@ -48,6 +50,27 @@ export const makeCompositionRuntimeAgentDriver = (
   options: CompositionRuntimeAgentDriverOptions,
 ): CompositionAgentDriver => {
   const activeRuns = new Map<string, ActiveRun>();
+  // 活动表只负责当前生命周期；历史表用于终态后迟到事件的只读归属解析。
+  // 设上限避免长期运行的 Runtime 因事件审计绑定无限增长。
+  const historicalRuns = new Map<string, ActiveRun | null>();
+
+  const hasHistoricalBindingConflict = (run: ActiveRun): boolean => {
+    const existing = historicalRuns.get(run.runtimeTaskId);
+    return (
+      existing !== undefined &&
+      (existing === null || existing.taskId !== run.taskId || existing.runId !== run.runId)
+    );
+  };
+
+  const rememberRun = (run: ActiveRun): void => {
+    historicalRuns.delete(run.runtimeTaskId);
+    historicalRuns.set(run.runtimeTaskId, run);
+    while (historicalRuns.size > maxHistoricalRuntimeBindings) {
+      const oldest = historicalRuns.keys().next().value;
+      if (oldest === undefined) break;
+      historicalRuns.delete(oldest);
+    }
+  };
 
   const getProfile: NonNullable<CompositionAgentDriver["getProfile"]> = () =>
     Effect.gen(function* () {
@@ -204,20 +227,41 @@ export const makeCompositionRuntimeAgentDriver = (
                 .revokeCapabilityHandshake({ handshakeId: capabilityHandshakeId })
                 .pipe(Effect.ignore),
         ),
-        Effect.tap((result) =>
-          Effect.sync(() => {
-            activeRuns.set(input.run.runId, {
-              taskId: input.task.taskId,
-              runId: input.run.runId,
+        Effect.flatMap((result) => {
+          const binding = {
+            taskId: input.task.taskId,
+            runId: input.run.runId,
+            runtimeTaskId: result.runtimeTaskId,
+            ...(capabilityHandshakeId === undefined ? {} : { capabilityHandshakeId }),
+          } satisfies ActiveRun;
+          if (hasHistoricalBindingConflict(binding)) {
+            const revoke =
+              capabilityHandshakeId === undefined ||
+              options.adapter.revokeCapabilityHandshake === undefined
+                ? Effect.void
+                : options.adapter
+                    .revokeCapabilityHandshake({ handshakeId: capabilityHandshakeId })
+                    .pipe(Effect.ignore);
+            return revoke.pipe(
+              Effect.andThen(
+                Effect.fail(
+                  new CompositionAgentDriverFailure({
+                    code: "runtime_task_binding_conflict",
+                    detail: "Runtime 返回的 runtimeTaskId 已绑定到其他 Task/Run，拒绝覆盖。",
+                  }),
+                ),
+              ),
+            );
+          }
+          return Effect.sync(() => {
+            activeRuns.set(input.run.runId, binding);
+            rememberRun(binding);
+            return {
               runtimeTaskId: result.runtimeTaskId,
               ...(capabilityHandshakeId === undefined ? {} : { capabilityHandshakeId }),
-            });
-          }),
-        ),
-        Effect.map((result) => ({
-          runtimeTaskId: result.runtimeTaskId,
-          ...(capabilityHandshakeId === undefined ? {} : { capabilityHandshakeId }),
-        })),
+            };
+          });
+        }),
       );
     });
   };
@@ -274,15 +318,14 @@ export const makeCompositionRuntimeAgentDriver = (
     resolveRuntimeEvent: (event) => {
       const runtimeTaskId = runtimeTaskIdFromEvent(event);
       if (runtimeTaskId === undefined) return undefined;
-      for (const active of activeRuns.values()) {
-        if (active.runtimeTaskId !== runtimeTaskId) continue;
-        return {
-          taskId: active.taskId,
-          runId: active.runId,
-          runtimeTaskId: active.runtimeTaskId,
-        };
-      }
-      return undefined;
+      const binding = historicalRuns.get(runtimeTaskId);
+      return binding === undefined || binding === null
+        ? undefined
+        : {
+            taskId: binding.taskId,
+            runId: binding.runId,
+            runtimeTaskId: binding.runtimeTaskId,
+          };
     },
   };
 };

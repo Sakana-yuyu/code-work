@@ -277,7 +277,7 @@ describe("CompositionRuntimeAgentDriver", () => {
     expect(cancelled.status).toBe("cancelled");
   });
 
-  it("返回并撤销 Runtime capability handshake", async () => {
+  it("撤销 Runtime capability handshake 后仍保留迟到事件的历史 Run 绑定", async () => {
     const adapter = makeInMemoryCompositionRuntimeAdapter({ runtimeId: "runtime-revoke" });
     const driver = makeCompositionRuntimeAgentDriver({
       adapter,
@@ -328,7 +328,11 @@ describe("CompositionRuntimeAgentDriver", () => {
           description: "迟到事件",
         },
       }),
-    ).toBeUndefined();
+    ).toEqual({
+      taskId: task.taskId,
+      runId: run.runId,
+      runtimeTaskId: "runtime-revoke:task:task-revoke:run-revoke",
+    });
 
     await expect(
       Effect.runPromise(
@@ -342,5 +346,59 @@ describe("CompositionRuntimeAgentDriver", () => {
         }),
       ),
     ).rejects.toMatchObject({ code: "capability_handshake_mismatch" });
+  });
+
+  it("拒绝跨 Run 复用 runtimeTaskId，并保留旧 Run 的历史绑定", async () => {
+    const adapter = makeInMemoryCompositionRuntimeAdapter({ runtimeId: "runtime-reused" });
+    const dispatchTask = () =>
+      Effect.succeed({ runtimeTaskId: "shared-runtime-task", status: "accepted" as const });
+    const reusedAdapter = { ...adapter, dispatchTask };
+    const driver = makeCompositionRuntimeAgentDriver({
+      adapter: reusedAdapter,
+      agentId: "runtime-reused:agent",
+    });
+    const makeInput = (taskId: string, runId: string) => ({
+      task: {
+        taskId,
+        projectId: "project-1",
+        assigneeKind: "agent" as const,
+        assigneeId: driver.agentId,
+        mode: "serial" as const,
+        status: "queued" as const,
+        promptDigest: `sha256:${taskId}`,
+        dependsOnTaskIds: [],
+        createdAtUnixMs: 1,
+        updatedAtUnixMs: 1,
+      },
+      run: {
+        runId,
+        taskId,
+        agentId: driver.agentId,
+        runtimeId: driver.runtimeId,
+        status: "queued" as const,
+        attempt: 1,
+        capabilityGrantIds: [],
+      },
+    });
+
+    await Effect.runPromise(driver.startTask(makeInput("task-reused-1", "run-reused-1")));
+    await expect(
+      Effect.runPromise(driver.startTask(makeInput("task-reused-2", "run-reused-2"))),
+    ).rejects.toMatchObject({ code: "runtime_task_binding_conflict" });
+
+    expect(
+      driver.resolveRuntimeEvent?.({
+        eventId: EventId.make("event-ambiguous-runtime-task"),
+        provider: ProviderDriverKind.make("multica"),
+        threadId: ThreadId.make("runtime-reused"),
+        createdAt: "2026-08-25T00:00:00.000Z",
+        type: "task.progress",
+        payload: { taskId: RuntimeTaskId.make("shared-runtime-task"), description: "不应绑定" },
+      }),
+    ).toEqual({
+      taskId: "task-reused-1",
+      runId: "run-reused-1",
+      runtimeTaskId: "shared-runtime-task",
+    });
   });
 });

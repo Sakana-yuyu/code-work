@@ -127,6 +127,59 @@ describe("CompositionProviderAgentDriver", () => {
     });
   });
 
+  it("清理活动 Provider Run 后仍能解析带 turnId 的迟到事件", async () => {
+    const fake = makeAdapter();
+    const driver = makeCompositionProviderAgentDriver({
+      agentId: "agent-codex",
+      runtimeId: "codex-local",
+      providerInstanceId: ProviderInstanceId.make("codex-local"),
+      adapter: fake.adapter,
+    });
+    const task = {
+      taskId: "task-late-provider",
+      projectId: "project-1",
+      threadId: "thread-late-provider",
+      assigneeKind: "agent" as const,
+      assigneeId: "agent-codex",
+      mode: "serial" as const,
+      status: "queued" as const,
+      promptDigest: "sha256:late-provider",
+      dependsOnTaskIds: [],
+      createdAtUnixMs: 1,
+      updatedAtUnixMs: 1,
+    };
+    const run = {
+      runId: "run-late-provider",
+      taskId: task.taskId,
+      agentId: "agent-codex",
+      runtimeId: "codex-local",
+      status: "queued" as const,
+      attempt: 1,
+      capabilityGrantIds: [],
+    };
+    await Effect.runPromise(
+      driver.startTask({ task, run, prompt: "检查", workspaceRoot: "C:/workspace" }),
+    );
+    await Effect.runPromise(driver.revokeCapabilityHandshake!({ task, run }));
+
+    expect(
+      driver.resolveRuntimeEvent?.({
+        eventId: EventId.make("event-late-provider"),
+        provider: ProviderDriverKind.make("codex"),
+        providerInstanceId: ProviderInstanceId.make("codex-local"),
+        threadId: ThreadId.make("thread-late-provider"),
+        turnId: TurnId.make("turn-1"),
+        createdAt: "2026-08-26T00:00:00.000Z",
+        type: "turn.completed",
+        payload: { state: "completed" },
+      } satisfies ProviderRuntimeEvent),
+    ).toEqual({
+      taskId: task.taskId,
+      runId: run.runId,
+      runtimeTaskId: "codex-local:thread-late-provider:turn-1",
+    });
+  });
+
   it("Provider 没有 capability handshake 时拒绝带 grant 的任务", async () => {
     const fake = makeAdapter();
     const driver = makeCompositionProviderAgentDriver({

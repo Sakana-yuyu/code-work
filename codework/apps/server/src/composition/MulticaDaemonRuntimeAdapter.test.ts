@@ -395,6 +395,39 @@ describe("MulticaDaemonRuntimeAdapter", () => {
     expect(calls).toEqual(["claim", "start:task-1"]);
   });
 
+  it("一次唤醒会有界地 drain 多个不同任务，遇到重复任务后停止", async () => {
+    const calls: string[] = [];
+    const taskTwo = { ...task, id: "task-2" };
+    const claimedTasks: Array<MulticaTask | null> = [task, taskTwo, taskTwo];
+    const adapter = makeMulticaDaemonRuntimeAdapter(
+      makeOptions({
+        streamFrames: () => Stream.empty,
+        controlFrames: () =>
+          Stream.fromIterable([
+            {
+              type: "daemon:task_available",
+              payload: { runtime_id: daemonRuntimeId },
+            },
+          ]),
+        protocol: makeProtocol({
+          claimTask: () =>
+            Effect.sync(() => {
+              calls.push("claim");
+              return claimedTasks.shift() ?? null;
+            }),
+          startTask: (runtimeTaskId) =>
+            Effect.sync(() => {
+              calls.push("start:" + runtimeTaskId);
+            }),
+        }),
+      }),
+    );
+
+    await Effect.runPromise(adapter.streamEvents().pipe(Stream.runCollect));
+
+    expect(calls).toEqual(["claim", "start:task-1", "claim", "start:task-2", "claim"]);
+  });
+
   it("重复 task_available hint 不会重复 claim 或 start 已激活的任务", async () => {
     const calls: string[] = [];
     const adapter = makeMulticaDaemonRuntimeAdapter(

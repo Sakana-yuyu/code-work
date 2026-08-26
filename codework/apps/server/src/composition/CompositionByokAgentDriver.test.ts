@@ -126,7 +126,11 @@ describe("CompositionByokAgentDriver", () => {
     const events = await Effect.runPromise(Fiber.join(eventsFiber));
 
     expect(events.map((event) => event.type)).toEqual(["turn.started", "turn.aborted"]);
-    expect(driver.resolveRuntimeEvent?.(events[1]!)).toBeUndefined();
+    expect(driver.resolveRuntimeEvent?.(events[1]!)).toEqual({
+      taskId: task.taskId,
+      runId: run.runId,
+      runtimeTaskId: "provider:byok:task:task-byok:run-byok",
+    });
   });
 
   it("没有 prompt 或 model 时拒绝启动，不创建后台执行", async () => {

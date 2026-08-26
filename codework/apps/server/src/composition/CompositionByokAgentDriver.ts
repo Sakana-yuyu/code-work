@@ -242,6 +242,7 @@ export const makeCompositionByokAgentDriver = (
             ? Effect.void
             : Effect.gen(function* () {
                 const detail = errorDetail(cause);
+                completedRuns.set(input.run.runId, completed);
                 yield* publish({
                   provider: ProviderDriverKind.make("byok"),
                   providerInstanceId: ProviderInstanceId.make(String(options.providerInstanceId)),
@@ -299,6 +300,13 @@ export const makeCompositionByokAgentDriver = (
         type: "turn.aborted",
         payload: { reason: input.reason },
       });
+      completedRuns.set(input.run.runId, {
+        taskId: active.taskId,
+        runId: active.runId,
+        runtimeTaskId: active.runtimeTaskId,
+        threadId: active.threadId,
+        turnId: active.turnId,
+      });
       activeRuns.delete(input.run.runId);
       return { status: "cancelled" as const };
     });
@@ -326,16 +334,14 @@ export const makeCompositionByokAgentDriver = (
           runtimeTaskId: active.runtimeTaskId,
         };
       }
-      if (event.type === "turn.completed" || event.type === "runtime.error") {
-        for (const completed of completedRuns.values()) {
-          if (completed.threadId !== event.threadId) continue;
-          if (event.turnId !== undefined && event.turnId !== completed.turnId) continue;
-          return {
-            taskId: completed.taskId,
-            runId: completed.runId,
-            runtimeTaskId: completed.runtimeTaskId,
-          };
-        }
+      for (const completed of completedRuns.values()) {
+        if (completed.threadId !== event.threadId) continue;
+        if (event.turnId !== undefined && event.turnId !== completed.turnId) continue;
+        return {
+          taskId: completed.taskId,
+          runId: completed.runId,
+          runtimeTaskId: completed.runtimeTaskId,
+        };
       }
       return undefined;
     },
