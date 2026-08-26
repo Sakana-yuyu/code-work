@@ -375,3 +375,97 @@ describe("byokChatClient OpenAI tool calls", () => {
     ).rejects.toThrow("tool call arguments are not valid JSON");
   });
 });
+
+describe("byokChatClient multi-protocol tool calls", () => {
+  const tools: ReadonlyArray<ByokToolDescriptor> = [
+    {
+      canonicalToolName: "workspace.read_file",
+      description: "Read a text file",
+      parameters: { type: "object", properties: { cwd: { type: "string" } } },
+    },
+  ];
+
+  it("advertises and aggregates Anthropic tool_use input deltas", async () => {
+    const { client, captured } = makeClient(
+      [
+        'data: {"type":"content_block_start","index":0,"content_block":{"type":"tool_use","id":"call-anthropic","name":"workspace.read_file"}}',
+        "",
+        'data: {"type":"content_block_delta","index":0,"delta":{"type":"input_json_delta","partial_json":"{\\"cwd\\":\\"C:/workspace\\""}}',
+        "",
+        'data: {"type":"content_block_delta","index":0,"delta":{"type":"input_json_delta","partial_json":"}"}}',
+        "",
+        'data: {"type":"message_stop"}',
+        "",
+      ].join("\n"),
+    );
+
+    const events = await runEvents(client, {
+      protocol: "anthropic",
+      baseURL: "https://api.anthropic.com",
+      apiKey: "k",
+      modelId: "claude",
+      messages: [{ role: "user", content: "read README" }],
+      tools,
+      agentLoop: true,
+    });
+
+    expect(events).toEqual([
+      {
+        type: "tool_call",
+        toolCallId: "call-anthropic",
+        canonicalToolName: "workspace.read_file",
+        arguments: { cwd: "C:/workspace" },
+      },
+    ]);
+    expect(captured[0]?.body).toMatchObject({
+      tools: [
+        {
+          name: "workspace.read_file",
+          description: "Read a text file",
+          input_schema: { type: "object", properties: { cwd: { type: "string" } } },
+        },
+      ],
+    });
+  });
+
+  it("advertises and parses Gemini function calls", async () => {
+    const { client, captured } = makeClient(
+      [
+        'data: {"candidates":[{"content":{"parts":[{"functionCall":{"name":"workspace.read_file","args":{"cwd":"C:/workspace"}}}]}}]}',
+        "",
+      ].join("\n"),
+    );
+
+    const events = await runEvents(client, {
+      protocol: "gemini",
+      baseURL: "https://generativelanguage.googleapis.com",
+      apiKey: "k",
+      modelId: "gemini-2.5-pro",
+      messages: [{ role: "user", content: "read README" }],
+      tools,
+      agentLoop: true,
+    });
+
+    expect(events).toEqual([
+      {
+        type: "tool_call",
+        toolCallId: expect.any(String),
+        canonicalToolName: "workspace.read_file",
+        arguments: { cwd: "C:/workspace" },
+      },
+    ]);
+    expect(captured[0]?.body).toMatchObject({
+      tools: [
+        {
+          functionDeclarations: [
+            {
+              name: "workspace.read_file",
+              description: "Read a text file",
+              parameters: { type: "object", properties: { cwd: { type: "string" } } },
+            },
+          ],
+        },
+      ],
+    });
+  });
+});

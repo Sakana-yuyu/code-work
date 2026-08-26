@@ -1,3 +1,4 @@
+import type { ByokModelAdapter } from "@t3tools/contracts";
 import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
 import { type HttpClient } from "effect/unstable/http";
@@ -15,7 +16,8 @@ import {
   type ByokAgentModelDriver,
 } from "./ByokAgentLoop.ts";
 
-export interface OpenAiByokModelDriverOptions {
+export interface ByokModelDriverOptions {
+  readonly protocol: ByokModelAdapter["protocol"];
   readonly baseURL: string;
   readonly apiKey: string;
   readonly modelId: string;
@@ -23,11 +25,14 @@ export interface OpenAiByokModelDriverOptions {
   readonly signal?: AbortSignal;
 }
 
+export type OpenAiByokModelDriverOptions = Omit<ByokModelDriverOptions, "protocol">;
+
 const toChatMessage = (message: ByokAgentMessage): ByokChatMessage => {
   if (message.role === "tool") {
     return {
       role: "tool",
       toolCallId: message.toolCallId,
+      canonicalToolName: message.canonicalToolName,
       content: message.content,
     };
   }
@@ -45,14 +50,14 @@ const toChatMessage = (message: ByokAgentMessage): ByokChatMessage => {
 
 const toToolDescriptor = (tool: ByokAgentTool): ByokToolDescriptor => tool;
 
-/** 将 OpenAI-compatible BYOK 流转换为协议无关的 Agent ModelDriver 事件。 */
-export const makeOpenAiByokModelDriver = (
+/** 将三类 BYOK 原生协议流转换为协议无关的 Agent ModelDriver 事件。 */
+export const makeByokModelDriver = (
   httpClient: HttpClient.HttpClient,
-  options: OpenAiByokModelDriverOptions,
+  options: ByokModelDriverOptions,
 ): ByokAgentModelDriver => ({
   complete: (input) => {
     const stream = streamChat(httpClient, {
-      protocol: "openai",
+      protocol: options.protocol,
       baseURL: options.baseURL,
       apiKey: options.apiKey,
       modelId: options.modelId,
@@ -89,6 +94,12 @@ export const makeOpenAiByokModelDriver = (
     return Stream.concat(stream, Stream.succeed({ type: "model_completed" as const }));
   },
 });
+
+/** 保留旧工厂名，避免已有 OpenAI BYOK 调用方发生破坏性变更。 */
+export const makeOpenAiByokModelDriver = (
+  httpClient: HttpClient.HttpClient,
+  options: OpenAiByokModelDriverOptions,
+): ByokAgentModelDriver => makeByokModelDriver(httpClient, { ...options, protocol: "openai" });
 
 export const OpenAiByokModelDriverOptionsSchema = Schema.Struct({
   baseURL: Schema.String,

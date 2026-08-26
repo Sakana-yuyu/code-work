@@ -20,7 +20,7 @@ import * as BackgroundPolicy from "../../background/BackgroundPolicy.ts";
 import { ServerConfig } from "../../config.ts";
 import { ServerSettingsService } from "../../serverSettings.ts";
 import { makeByokTextGeneration } from "../../textGeneration/ByokTextGeneration.ts";
-import { makeOpenAiByokModelDriver } from "../../composition/OpenAiByokModelDriver.ts";
+import { makeByokModelDriver } from "../../composition/OpenAiByokModelDriver.ts";
 import { CompositionAgentServiceError } from "../../composition/CompositionAgentService.ts";
 import { byokAdapterForModel } from "../Layers/byokChatClient.ts";
 import { ProviderDriverError } from "../Errors.ts";
@@ -160,16 +160,9 @@ export const ByokDriver: ProviderDriver<ByokSettings, ByokDriverEnv> = {
                 }),
               );
             }
-            if (modelAdapter.protocol !== "openai") {
-              return Effect.fail(
-                new CompositionAgentServiceError({
-                  code: "agent_loop_unsupported",
-                  detail: `BYOK protocol '${modelAdapter.protocol}' is not supported by the Agent Loop yet.`,
-                }),
-              );
-            }
             return Effect.succeed(
-              makeOpenAiByokModelDriver(httpClient, {
+              makeByokModelDriver(httpClient, {
+                protocol: modelAdapter.protocol,
                 baseURL: modelAdapter.baseURL,
                 apiKey: modelAdapter.apiKey,
                 modelId: modelAdapter.modelId,

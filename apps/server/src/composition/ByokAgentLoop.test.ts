@@ -6,7 +6,6 @@ import * as Stream from "effect/Stream";
 import * as ToolBroker from "./ToolBroker.ts";
 import {
   ByokAgentLoopMaxRoundsError,
-  ByokAgentLoopUnsupportedError,
   runByokAgentLoop,
   type ByokAgentModelDriver,
 } from "./ByokAgentLoop.ts";
@@ -154,19 +153,59 @@ describe("ByokAgentLoop", () => {
     );
   });
 
-  it("rejects unsupported BYOK agent-loop protocols explicitly", async () => {
+  it("runs the same loop for native non-OpenAI BYOK protocols", async () => {
+    const broker = ToolBroker.ToolBroker.of({
+      invoke: (input) => Effect.succeed(makeResult(input)),
+      cancel: () => Effect.void,
+    });
+    const model: ByokAgentModelDriver = {
+      complete: () =>
+        Stream.fromIterable([
+          { type: "text_delta" as const, text: "anthropic works" },
+          { type: "model_completed" as const },
+        ]),
+    };
+
     await expect(
-      Effect.runPromise(
-        runByokAgentLoop(
-          { ...baseInput, protocol: "anthropic" },
-          { complete: () => Stream.empty },
-          ToolBroker.ToolBroker.of({
-            invoke: () => Effect.die("unused"),
-            cancel: () => Effect.void,
-          }),
-        ),
-      ),
-    ).rejects.toBeInstanceOf(ByokAgentLoopUnsupportedError);
+      Effect.runPromise(runByokAgentLoop({ ...baseInput, protocol: "anthropic" }, model, broker)),
+    ).resolves.toMatchObject({ text: "anthropic works", rounds: 1 });
+  });
+
+  it("replays the canonical tool name with each tool result message", async () => {
+    let secondInput: Parameters<ByokAgentModelDriver["complete"]>[0] | undefined;
+    const broker = ToolBroker.ToolBroker.of({
+      invoke: (input) => Effect.succeed(makeResult(input)),
+      cancel: () => Effect.void,
+    });
+    const model: ByokAgentModelDriver = {
+      complete: (input) => {
+        if (input.turn === 2) {
+          secondInput = input;
+          return Stream.fromIterable([{ type: "model_completed" as const }]);
+        }
+        return Stream.fromIterable([
+          {
+            type: "tool_call" as const,
+            toolCallId: "call-canonical",
+            canonicalToolName: "workspace.read_file",
+            arguments: { cwd: "C:/workspace", relativePath: "README.md" },
+          },
+          { type: "model_completed" as const },
+        ]);
+      },
+    };
+
+    await Effect.runPromise(runByokAgentLoop(baseInput, model, broker));
+
+    expect(secondInput?.messages).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          role: "tool",
+          toolCallId: "call-canonical",
+          canonicalToolName: "workspace.read_file",
+        }),
+      ]),
+    );
   });
 
   it("stops before an unbounded model/tool loop", async () => {

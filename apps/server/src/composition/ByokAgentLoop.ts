@@ -23,7 +23,12 @@ export type ByokAgentMessage =
       readonly content: string;
       readonly toolCalls?: ReadonlyArray<ByokAgentToolCall>;
     }
-  | { readonly role: "tool"; readonly toolCallId: string; readonly content: string };
+  | {
+      readonly role: "tool";
+      readonly toolCallId: string;
+      readonly canonicalToolName: string;
+      readonly content: string;
+    };
 
 export type ByokAgentModelEvent =
   | { readonly type: "text_delta"; readonly text: string }
@@ -48,17 +53,6 @@ export interface ByokAgentModelDriver {
     readonly tools: ReadonlyArray<ByokAgentTool>;
     readonly turn: number;
   }) => Stream.Stream<ByokAgentModelEvent, ByokAgentModelError>;
-}
-
-export class ByokAgentLoopUnsupportedError extends Schema.TaggedErrorClass<ByokAgentLoopUnsupportedError>()(
-  "ByokAgentLoopUnsupportedError",
-  {
-    protocol: Schema.String,
-  },
-) {
-  override get message(): string {
-    return `BYOK agent loop is unsupported for protocol '${this.protocol}'.`;
-  }
 }
 
 export class ByokAgentLoopMaxRoundsError extends Schema.TaggedErrorClass<ByokAgentLoopMaxRoundsError>()(
@@ -114,16 +108,9 @@ export const runByokAgentLoop = (
   broker: ToolBroker.ToolBroker["Service"],
 ): Effect.Effect<
   ByokAgentLoopResult,
-  | ByokAgentLoopUnsupportedError
-  | ByokAgentLoopMaxRoundsError
-  | ByokAgentLoopTerminalEventMissingError
-  | ByokAgentModelError
+  ByokAgentLoopMaxRoundsError | ByokAgentLoopTerminalEventMissingError | ByokAgentModelError
 > =>
   Effect.gen(function* () {
-    if (input.protocol !== undefined && input.protocol !== "openai") {
-      return yield* new ByokAgentLoopUnsupportedError({ protocol: input.protocol });
-    }
-
     const maxRounds = input.maxRounds ?? 8;
     const messages: ByokAgentMessage[] = [{ role: "user", content: input.prompt }];
     const seenToolCallIds = new Set<string>();
@@ -183,6 +170,7 @@ export const runByokAgentLoop = (
         messages.push({
           role: "tool",
           toolCallId: event.toolCallId,
+          canonicalToolName: event.canonicalToolName,
           content: toolResultContent(result),
         });
       }

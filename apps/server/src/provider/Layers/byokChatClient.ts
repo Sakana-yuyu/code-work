@@ -105,6 +105,7 @@ export interface ByokChatMessage {
   /** Plain text, or multimodal parts when the turn carried image attachments. */
   readonly content: string | ReadonlyArray<ByokContentPart>;
   readonly toolCallId?: string;
+  readonly canonicalToolName?: string;
   readonly toolCalls?: ReadonlyArray<{
     readonly toolCallId: string;
     readonly canonicalToolName: string;
@@ -169,14 +170,72 @@ const anthropicMessageContent = (
             },
       );
 
-const geminiMessageParts = (
-  content: ByokChatMessage["content"],
-): ReadonlyArray<Record<string, unknown>> =>
-  (typeof content === "string" ? [{ text: content }] : [...content]).map((part) =>
-    "text" in part
-      ? { text: part.text }
-      : { inlineData: { mimeType: part.mimeType, data: part.dataBase64 } },
-  );
+const geminiMessageParts = (message: ByokChatMessage): ReadonlyArray<Record<string, unknown>> =>
+  message.role === "tool"
+    ? [
+        {
+          functionResponse: {
+            name: message.canonicalToolName ?? message.toolCallId ?? "tool",
+            response: { result: message.content },
+          },
+        },
+      ]
+    : [
+        ...(typeof message.content === "string"
+          ? [{ text: message.content }]
+          : [...message.content].map((part) =>
+              "text" in part
+                ? { text: part.text }
+                : { inlineData: { mimeType: part.mimeType, data: part.dataBase64 } },
+            )),
+        ...(message.role === "assistant" && message.toolCalls !== undefined
+          ? message.toolCalls.map((toolCall) => ({
+              functionCall: {
+                name: toolCall.canonicalToolName,
+                args: toolCall.arguments,
+              },
+            }))
+          : []),
+      ];
+
+const anthropicMessage = (message: ByokChatMessage): Record<string, unknown> => {
+  if (message.role === "tool") {
+    return {
+      role: "user",
+      content: [
+        {
+          type: "tool_result",
+          tool_use_id: message.toolCallId,
+          content: message.content,
+        },
+      ],
+    };
+  }
+
+  if (message.role === "assistant" && message.toolCalls !== undefined) {
+    return {
+      role: "assistant",
+      content: [
+        ...(typeof message.content === "string"
+          ? message.content.length > 0
+            ? [{ type: "text", text: message.content }]
+            : []
+          : anthropicMessageContent(message.content)),
+        ...message.toolCalls.map((toolCall) => ({
+          type: "tool_use",
+          id: toolCall.toolCallId,
+          name: toolCall.canonicalToolName,
+          input: toolCall.arguments,
+        })),
+      ],
+    };
+  }
+
+  return {
+    role: message.role,
+    content: anthropicMessageContent(message.content),
+  };
+};
 
 const openaiUrl = (baseURL: string): string => `${trimBaseURL(baseURL)}/chat/completions`;
 const anthropicUrl = (baseURL: string): string => `${trimBaseURL(baseURL)}/v1/messages`;
@@ -267,6 +326,23 @@ type OpenAiToolCallJsonEvent = {
 
 type OpenAiStreamEvent = ByokChatEvent | OpenAiToolCallJsonEvent;
 
+type AnthropicToolCallState = {
+  readonly toolCallId: string | undefined;
+  readonly canonicalToolName: string | undefined;
+  readonly argumentsText: string;
+};
+
+type AnthropicToolCallAccumulator = ReadonlyMap<number, AnthropicToolCallState>;
+
+type AnthropicToolCallJsonEvent = {
+  readonly type: "tool_call_json";
+  readonly toolCallId: string | undefined;
+  readonly canonicalToolName: string | undefined;
+  readonly argumentsText: string;
+};
+
+type AnthropicStreamEvent = ByokChatEvent | AnthropicToolCallJsonEvent;
+
 const openaiToolCallFragments = (
   payload: Record<string, unknown>,
 ): ReadonlyArray<OpenAiToolCallFragment> => {
@@ -316,6 +392,50 @@ const openaiToolCallJsonEvents = (
       argumentsText: toolCall.argumentsText,
     }));
 
+const anthropicToolCallJsonEvents = (
+  state: AnthropicToolCallAccumulator,
+): ReadonlyArray<AnthropicToolCallJsonEvent> =>
+  [...state.values()].map((toolCall) => ({
+    type: "tool_call_json" as const,
+    toolCallId: toolCall.toolCallId,
+    canonicalToolName: toolCall.canonicalToolName,
+    argumentsText: toolCall.argumentsText,
+  }));
+
+const anthropicToolCallStateForPayload = (
+  state: AnthropicToolCallAccumulator,
+  payload: Record<string, unknown>,
+): AnthropicToolCallAccumulator => {
+  const index = typeof payload.index === "number" ? payload.index : undefined;
+  if (index === undefined || !Number.isInteger(index)) return state;
+
+  if (payload.type === "content_block_start" && isRecord(payload.content_block)) {
+    const block = payload.content_block;
+    if (block.type !== "tool_use") return state;
+    const next = new Map(state);
+    next.set(index, {
+      toolCallId: asString(block.id),
+      canonicalToolName: asString(block.name),
+      argumentsText: "",
+    });
+    return next;
+  }
+
+  if (payload.type !== "content_block_delta" || !isRecord(payload.delta)) return state;
+  const delta = payload.delta;
+  if (delta.type !== "input_json_delta" || typeof delta.partial_json !== "string") {
+    return state;
+  }
+  const previous = state.get(index);
+  if (previous === undefined) return state;
+  const next = new Map(state);
+  next.set(index, {
+    ...previous,
+    argumentsText: `${previous.argumentsText}${delta.partial_json}`,
+  });
+  return next;
+};
+
 /** Translate one SSE `data:` payload into zero or more chat events. */
 const eventsFromSsePayload = (
   protocol: ByokModelAdapter["protocol"],
@@ -348,6 +468,18 @@ const eventsFromSsePayload = (
     const events: ByokChatEvent[] = [];
     for (const part of parts) {
       if (!isRecord(part)) continue;
+      if (isRecord(part.functionCall)) {
+        const name = asString(part.functionCall.name);
+        if (name !== undefined) {
+          events.push({
+            type: "tool_call",
+            toolCallId: `gemini-tool-${name}`,
+            canonicalToolName: name,
+            arguments: part.functionCall.args ?? {},
+          });
+        }
+        continue;
+      }
       const text = asString(part.text);
       if (text === undefined) continue;
       // Gemini 2.5 thinking summaries arrive as parts flagged `thought: true`.
@@ -433,8 +565,21 @@ export const streamChat = (
             HttpClientRequest.bodyJson({
               contents: input.messages.map((message) => ({
                 role: message.role === "assistant" ? "model" : "user",
-                parts: geminiMessageParts(message.content),
+                parts: geminiMessageParts(message),
               })),
+              ...(input.tools !== undefined && input.tools.length > 0
+                ? {
+                    tools: [
+                      {
+                        functionDeclarations: input.tools.map((tool) => ({
+                          name: tool.canonicalToolName,
+                          description: tool.description,
+                          parameters: tool.parameters,
+                        })),
+                      },
+                    ],
+                  }
+                : {}),
               ...(systemPrompt.length > 0
                 ? { systemInstruction: { parts: [{ text: systemPrompt }] } }
                 : {}),
@@ -445,11 +590,17 @@ export const streamChat = (
             HttpClientRequest.setHeader("anthropic-version", "2023-06-01"),
             HttpClientRequest.bodyJson({
               model: input.modelId,
-              messages: input.messages.map((message) => ({
-                role: message.role,
-                content: anthropicMessageContent(message.content),
-              })),
+              messages: input.messages.map(anthropicMessage),
               ...(systemPrompt.length > 0 ? { system: systemPrompt } : {}),
+              ...(input.tools !== undefined && input.tools.length > 0
+                ? {
+                    tools: input.tools.map((tool) => ({
+                      name: tool.canonicalToolName,
+                      description: tool.description,
+                      input_schema: tool.parameters,
+                    })),
+                  }
+                : {}),
               max_tokens: 8192,
               stream: true,
             }),
@@ -479,11 +630,50 @@ export const streamChat = (
     }),
   );
 
-  if (input.protocol !== "openai") {
+  if (input.protocol === "gemini") {
     return payloads.pipe(
       Stream.flatMap((payload) =>
         Stream.fromIterable(eventsFromSsePayload(input.protocol, payload)),
       ),
+    );
+  }
+
+  if (input.protocol === "anthropic") {
+    const anthropicEvents: Stream.Stream<AnthropicStreamEvent, ByokEngineError> = Stream.mapAccum(
+      payloads,
+      () => new Map<number, AnthropicToolCallState>(),
+      (
+        state,
+        payload,
+      ): readonly [AnthropicToolCallAccumulator, ReadonlyArray<AnthropicStreamEvent>] => [
+        anthropicToolCallStateForPayload(state, payload),
+        eventsFromSsePayload("anthropic", payload),
+      ],
+      { onHalt: anthropicToolCallJsonEvents },
+    );
+
+    return anthropicEvents.pipe(
+      Stream.mapEffect((event: AnthropicStreamEvent) => {
+        if (event.type !== "tool_call_json") return Effect.succeed(event);
+        if (event.toolCallId === undefined || event.canonicalToolName === undefined) {
+          return Effect.fail(
+            toEngineError(new Error("Anthropic tool call ended without an id or function name.")),
+          );
+        }
+        const decoded = Schema.decodeUnknownOption(Schema.fromJsonString(Schema.Unknown))(
+          event.argumentsText.length === 0 ? "{}" : event.argumentsText,
+        );
+        return Option.isNone(decoded)
+          ? Effect.fail(
+              toEngineError(new Error("Anthropic tool call arguments are not valid JSON.")),
+            )
+          : Effect.succeed({
+              type: "tool_call" as const,
+              toolCallId: event.toolCallId,
+              canonicalToolName: event.canonicalToolName,
+              arguments: decoded.value,
+            });
+      }),
     );
   }
 
