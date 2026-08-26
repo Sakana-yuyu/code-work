@@ -395,6 +395,140 @@ describe("MulticaDaemonRuntimeAdapter", () => {
     expect(calls).toEqual(["claim", "start:task-1"]);
   });
 
+  it("重复 task_available hint 不会重复 claim 或 start 已激活的任务", async () => {
+    const calls: string[] = [];
+    const adapter = makeMulticaDaemonRuntimeAdapter(
+      makeOptions({
+        streamFrames: () => Stream.empty,
+        controlFrames: () =>
+          Stream.fromIterable([
+            {
+              type: "daemon:task_available",
+              payload: { runtime_id: daemonRuntimeId, task_id: "task-1" },
+            },
+            {
+              type: "daemon:task_available",
+              payload: { runtime_id: daemonRuntimeId, task_id: "task-1" },
+            },
+          ]),
+        protocol: makeProtocol({
+          claimTask: () =>
+            Effect.sync(() => {
+              calls.push("claim");
+              return task;
+            }),
+          startTask: (runtimeTaskId) =>
+            Effect.sync(() => {
+              calls.push("start:" + runtimeTaskId);
+            }),
+        }),
+      }),
+    );
+
+    await Effect.runPromise(adapter.streamEvents().pipe(Stream.runCollect));
+
+    expect(calls).toEqual(["claim", "start:task-1"]);
+  });
+
+  it("start 失败后清理 hint 状态，后续 hint 可以再次 claim/start", async () => {
+    const calls: string[] = [];
+    let startAttempts = 0;
+    const adapter = makeMulticaDaemonRuntimeAdapter(
+      makeOptions({
+        streamFrames: () => Stream.empty,
+        controlFrames: () =>
+          Stream.fromIterable([
+            {
+              type: "daemon:task_available",
+              payload: { runtime_id: daemonRuntimeId, task_id: "task-1" },
+            },
+            {
+              type: "daemon:task_available",
+              payload: { runtime_id: daemonRuntimeId, task_id: "task-1" },
+            },
+          ]),
+        protocol: makeProtocol({
+          claimTask: () =>
+            Effect.sync(() => {
+              calls.push("claim");
+              return task;
+            }),
+          startTask: (runtimeTaskId) =>
+            Effect.sync(() => {
+              startAttempts += 1;
+              calls.push("start:" + runtimeTaskId);
+              if (startAttempts === 1) throw new Error("start failed");
+            }),
+        }),
+      }),
+    );
+
+    await Effect.runPromise(adapter.streamEvents().pipe(Stream.runCollect));
+
+    expect(calls).toEqual(["claim", "start:task-1", "claim", "start:task-1"]);
+  });
+
+  it("pending_work 只作为唤醒提示，claim 为空时不启动任务", async () => {
+    const calls: string[] = [];
+    const adapter = makeMulticaDaemonRuntimeAdapter(
+      makeOptions({
+        streamFrames: () => Stream.empty,
+        controlFrames: () =>
+          Stream.fromIterable([
+            {
+              type: "daemon:pending_work",
+              payload: { runtime_id: daemonRuntimeId, kind: "model_list" },
+            },
+          ]),
+        protocol: makeProtocol({
+          claimTask: () =>
+            Effect.sync(() => {
+              calls.push("claim");
+              return null;
+            }),
+          startTask: () =>
+            Effect.sync(() => {
+              calls.push("start");
+            }),
+        }),
+      }),
+    );
+
+    await Effect.runPromise(adapter.streamEvents().pipe(Stream.runCollect));
+
+    expect(calls).toEqual(["claim"]);
+  });
+
+  it("使用规范化 runtimeTaskId 清理 start 和终态回报状态", async () => {
+    const calls: string[] = [];
+    const adapter = makeMulticaDaemonRuntimeAdapter(
+      makeOptions({
+        streamFrames: () => Stream.empty,
+        protocol: makeProtocol({
+          startTask: (runtimeTaskId) =>
+            Effect.sync(() => {
+              calls.push(`start:${runtimeTaskId}`);
+            }),
+          completeTask: (runtimeTaskId) =>
+            Effect.sync(() => {
+              calls.push(`complete:${runtimeTaskId}`);
+            }),
+        }),
+      }),
+    );
+
+    await Effect.runPromise(adapter.startTask(" task-1 "));
+    await expect(Effect.runPromise(adapter.heartbeat())).resolves.toMatchObject({
+      activeTaskCount: 1,
+    });
+
+    await Effect.runPromise(adapter.completeTask(" task-1 ", { output: "完成" }));
+    await expect(Effect.runPromise(adapter.heartbeat())).resolves.toMatchObject({
+      activeTaskCount: 0,
+    });
+    expect(calls).toEqual(["start:task-1", "complete:task-1"]);
+  });
+
   it("保留 Multica 任务事件的进度、消息、终态字段和原始帧来源", async () => {
     const adapter = makeMulticaDaemonRuntimeAdapter(
       makeOptions({

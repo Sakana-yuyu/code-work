@@ -480,6 +480,7 @@ export const makeMulticaDaemonRuntimeAdapter = (
     }
   }
   const activeTaskIds = new Set<string>();
+  const startedTaskIds = new Set<string>();
   const dispatchedTasks = new Map<string, CompositionRuntimeTaskResult>();
   const capabilityHandshakes = new Map<
     string,
@@ -492,6 +493,16 @@ export const makeMulticaDaemonRuntimeAdapter = (
   >();
   const claimedTasks = new Map<string, MulticaTask>();
   const taskExecutionBindings = new Map<string, MulticaTaskExecutionBinding>();
+  const startingTaskIds = new Set<string>();
+  let claimInFlight = false;
+
+  const clearTaskState = (runtimeTaskId: string): void => {
+    activeTaskIds.delete(runtimeTaskId);
+    startedTaskIds.delete(runtimeTaskId);
+    startingTaskIds.delete(runtimeTaskId);
+    claimedTasks.delete(runtimeTaskId);
+    taskExecutionBindings.delete(runtimeTaskId);
+  };
 
   const normalizeExecutionBinding = (
     input: MulticaTaskExecutionBinding,
@@ -698,20 +709,28 @@ export const makeMulticaDaemonRuntimeAdapter = (
 
   const claimTask = () =>
     options.protocol.claimTask(daemonRuntimeId).pipe(
-      Effect.tap((claimed) =>
-        Effect.sync(() => {
-          if (claimed !== null) {
-            activeTaskIds.add(claimed.id);
-            claimedTasks.set(claimed.id, claimed);
-          }
-        }),
-      ),
+      Effect.map((claimed) => {
+        if (claimed === null) return null;
+        const normalizedTaskId = nonEmpty(claimed.id, "claimedTaskId");
+        const normalizedTask =
+          claimed.id === normalizedTaskId ? claimed : { ...claimed, id: normalizedTaskId };
+        activeTaskIds.add(normalizedTaskId);
+        claimedTasks.set(normalizedTaskId, normalizedTask);
+        return normalizedTask;
+      }),
       Effect.mapError((failure) => mapProtocolFailure(runtimeId, failure)),
     );
 
   const startTask = (runtimeTaskId: string) =>
     Effect.gen(function* () {
       const normalizedRuntimeTaskId = nonEmpty(runtimeTaskId, "runtimeTaskId");
+      if (
+        startedTaskIds.has(normalizedRuntimeTaskId) ||
+        startingTaskIds.has(normalizedRuntimeTaskId)
+      ) {
+        return;
+      }
+      startingTaskIds.add(normalizedRuntimeTaskId);
       if (options.taskExecutionBridge !== undefined) {
         const context = yield* executionContextFor(normalizedRuntimeTaskId);
         yield* options.taskExecutionBridge.injectTaskStart(context);
@@ -720,7 +739,18 @@ export const makeMulticaDaemonRuntimeAdapter = (
         .startTask(normalizedRuntimeTaskId)
         .pipe(Effect.mapError((failure) => mapProtocolFailure(runtimeId, failure)));
       activeTaskIds.add(normalizedRuntimeTaskId);
-    });
+      startedTaskIds.add(normalizedRuntimeTaskId);
+    }).pipe(
+      Effect.ensuring(
+        Effect.sync(() => {
+          const normalizedRuntimeTaskId = runtimeTaskId.trim();
+          startingTaskIds.delete(normalizedRuntimeTaskId);
+          if (!startedTaskIds.has(normalizedRuntimeTaskId)) {
+            clearTaskState(normalizedRuntimeTaskId);
+          }
+        }),
+      ),
+    );
 
   const handleControlFrame: MulticaDaemonControlFrameHandler = (frame) => {
     if (options.onControlFrame !== undefined) {
@@ -729,9 +759,30 @@ export const makeMulticaDaemonRuntimeAdapter = (
     if (frame.type !== "daemon:task_available" && frame.type !== "daemon:pending_work") {
       return Effect.void;
     }
+    const hintedTaskId = taskIdFromPayload(frame.payload);
+    if (
+      hintedTaskId !== undefined &&
+      (activeTaskIds.has(hintedTaskId) || startingTaskIds.has(hintedTaskId))
+    ) {
+      return Effect.void;
+    }
+    if (claimInFlight) return Effect.void;
+    claimInFlight = true;
     return claimTask().pipe(
       Effect.flatMap((claimed) =>
         claimed === null ? Effect.void : startTask(claimed.id).pipe(Effect.asVoid),
+      ),
+      Effect.catchCause(() =>
+        Effect.logWarning("Multica 任务唤醒 claim/start 失败", {
+          runtimeId,
+          hintType: frame.type,
+          ...(hintedTaskId === undefined ? {} : { taskId: hintedTaskId }),
+        }).pipe(Effect.asVoid),
+      ),
+      Effect.ensuring(
+        Effect.sync(() => {
+          claimInFlight = false;
+        }),
       ),
     );
   };
@@ -741,41 +792,29 @@ export const makeMulticaDaemonRuntimeAdapter = (
       .reportProgress(nonEmpty(runtimeTaskId, "runtimeTaskId"), input)
       .pipe(Effect.mapError((failure) => mapProtocolFailure(runtimeId, failure)));
 
-  const completeTask = (runtimeTaskId: string, input: MulticaTaskCompleteInput) =>
-    options.protocol.completeTask(nonEmpty(runtimeTaskId, "runtimeTaskId"), input).pipe(
-      Effect.tap(() =>
-        Effect.sync(() => {
-          activeTaskIds.delete(runtimeTaskId);
-          claimedTasks.delete(runtimeTaskId);
-          taskExecutionBindings.delete(runtimeTaskId);
-        }),
-      ),
+  const completeTask = (runtimeTaskId: string, input: MulticaTaskCompleteInput) => {
+    const normalizedRuntimeTaskId = nonEmpty(runtimeTaskId, "runtimeTaskId");
+    return options.protocol.completeTask(normalizedRuntimeTaskId, input).pipe(
+      Effect.tap(() => Effect.sync(() => clearTaskState(normalizedRuntimeTaskId))),
       Effect.mapError((failure) => mapProtocolFailure(runtimeId, failure)),
     );
+  };
 
-  const failTask = (runtimeTaskId: string, input: MulticaTaskFailInput) =>
-    options.protocol.failTask(nonEmpty(runtimeTaskId, "runtimeTaskId"), input).pipe(
-      Effect.tap(() =>
-        Effect.sync(() => {
-          activeTaskIds.delete(runtimeTaskId);
-          claimedTasks.delete(runtimeTaskId);
-          taskExecutionBindings.delete(runtimeTaskId);
-        }),
-      ),
+  const failTask = (runtimeTaskId: string, input: MulticaTaskFailInput) => {
+    const normalizedRuntimeTaskId = nonEmpty(runtimeTaskId, "runtimeTaskId");
+    return options.protocol.failTask(normalizedRuntimeTaskId, input).pipe(
+      Effect.tap(() => Effect.sync(() => clearTaskState(normalizedRuntimeTaskId))),
       Effect.mapError((failure) => mapProtocolFailure(runtimeId, failure)),
     );
+  };
 
-  const acknowledgeCancellation = (runtimeTaskId: string, input: MulticaTaskCancelAckInput) =>
-    options.protocol.acknowledgeCancellation(nonEmpty(runtimeTaskId, "runtimeTaskId"), input).pipe(
-      Effect.tap(() =>
-        Effect.sync(() => {
-          activeTaskIds.delete(runtimeTaskId);
-          claimedTasks.delete(runtimeTaskId);
-          taskExecutionBindings.delete(runtimeTaskId);
-        }),
-      ),
+  const acknowledgeCancellation = (runtimeTaskId: string, input: MulticaTaskCancelAckInput) => {
+    const normalizedRuntimeTaskId = nonEmpty(runtimeTaskId, "runtimeTaskId");
+    return options.protocol.acknowledgeCancellation(normalizedRuntimeTaskId, input).pipe(
+      Effect.tap(() => Effect.sync(() => clearTaskState(normalizedRuntimeTaskId))),
       Effect.mapError((failure) => mapProtocolFailure(runtimeId, failure)),
     );
+  };
 
   const dispatchTask: CompositionRuntimeAdapter["dispatchTask"] = (
     input: CompositionRuntimeTaskInput,
