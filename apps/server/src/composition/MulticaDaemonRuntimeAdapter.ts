@@ -65,9 +65,21 @@ export type MulticaDaemonRuntimeAdapterOptions = {
   readonly supportedModels?: ReadonlyArray<string>;
   readonly supportsResume?: boolean;
   readonly supportsMcp?: boolean;
-  readonly supportsSquad?: boolean;
-  readonly supportsLeader?: boolean;
-  readonly supportsTaskGraph?: boolean;
+  readonly supportsSquad?: boolean | undefined;
+  readonly supportsLeader?: boolean | undefined;
+  readonly supportsTaskGraph?: boolean | undefined;
+  /** 官方窄协议之外的 T3 扩展；未提供时保持 capability handshake 拒绝。 */
+  readonly capabilityBridge?: {
+    readonly handshakeCapabilities: (
+      input: CompositionRuntimeCapabilityHandshakeRequest,
+    ) => Effect.Effect<
+      CompositionRuntimeCapabilityHandshakeResult,
+      CompositionRuntimeAdapterFailure
+    >;
+    readonly revokeCapabilityHandshake?: (input: {
+      readonly handshakeId: string;
+    }) => Effect.Effect<void, CompositionRuntimeAdapterFailure>;
+  };
   readonly now?: () => number;
   readonly streamFrames?: (
     input: MulticaDaemonStreamFramesInput,
@@ -151,6 +163,12 @@ const hasCapability = (
 ): boolean => {
   const available = new Set(capabilities.map((capability) => capability.trim().toLowerCase()));
   return aliases.some((alias) => available.has(alias));
+};
+
+const sameStringSet = (left: readonly string[], right: readonly string[]): boolean => {
+  const leftSet = new Set(left);
+  const rightSet = new Set(right);
+  return leftSet.size === rightSet.size && [...leftSet].every((value) => rightSet.has(value));
 };
 
 const recordString = (value: unknown, key: string): string | undefined => {
@@ -330,6 +348,15 @@ export const makeMulticaDaemonRuntimeAdapter = (
   }
   const activeTaskIds = new Set<string>();
   const dispatchedTasks = new Map<string, CompositionRuntimeTaskResult>();
+  const capabilityHandshakes = new Map<
+    string,
+    {
+      readonly taskId: string;
+      readonly runId: string;
+      readonly agentId: string;
+      readonly capabilityGrantIds: ReadonlyArray<string>;
+    }
+  >();
 
   const heartbeat = () =>
     options.protocol.heartbeat(daemonRuntimeId).pipe(
@@ -347,16 +374,40 @@ export const makeMulticaDaemonRuntimeAdapter = (
 
   const handshakeCapabilities = (
     input: CompositionRuntimeCapabilityHandshakeRequest,
-  ): Effect.Effect<CompositionRuntimeCapabilityHandshakeResult> =>
-    Effect.succeed({
-      runtimeId,
-      taskId: input.taskId,
-      runId: input.runId,
-      agentId: input.agentId,
-      status: "unsupported",
-      acceptedGrantIds: [],
-      reasonCode: "multica_capability_handshake_unsupported",
-    });
+  ): Effect.Effect<CompositionRuntimeCapabilityHandshakeResult, CompositionRuntimeAdapterFailure> =>
+    options.capabilityBridge === undefined
+      ? Effect.succeed({
+          runtimeId,
+          taskId: input.taskId,
+          runId: input.runId,
+          agentId: input.agentId,
+          status: "unsupported",
+          acceptedGrantIds: [],
+          reasonCode: "multica_capability_handshake_unsupported",
+        })
+      : options.capabilityBridge.handshakeCapabilities(input).pipe(
+          Effect.map((result) => {
+            if (
+              result.status === "accepted" &&
+              result.handshakeId !== undefined &&
+              sameStringSet(result.acceptedGrantIds, input.capabilityGrantIds)
+            ) {
+              capabilityHandshakes.set(result.handshakeId, {
+                taskId: input.taskId,
+                runId: input.runId,
+                agentId: input.agentId,
+                capabilityGrantIds: [...input.capabilityGrantIds],
+              });
+            }
+            return {
+              ...result,
+              runtimeId,
+              taskId: input.taskId,
+              runId: input.runId,
+              agentId: input.agentId,
+            };
+          }),
+        );
 
   const probe = () =>
     options.protocol.heartbeat(daemonRuntimeId).pipe(
@@ -435,12 +486,36 @@ export const makeMulticaDaemonRuntimeAdapter = (
       nonEmpty(input.runId, "runId");
       const agentId = nonEmpty(input.agentId, "agentId");
       const idempotencyKey = nonEmpty(input.idempotencyKey, "idempotencyKey");
-      if ((input.capabilityGrantIds ?? []).length > 0) {
-        return yield* adapterFailure(
-          runtimeId,
-          "capability_handshake_unsupported",
-          "Multica 官方窄协议尚未提供 T3 capability handshake，拒绝带 grant 的派发。",
-        );
+      const capabilityGrantIds = input.capabilityGrantIds ?? [];
+      if (capabilityGrantIds.length > 0) {
+        if (options.capabilityBridge === undefined) {
+          return yield* adapterFailure(
+            runtimeId,
+            "capability_handshake_unsupported",
+            "Multica 官方窄协议尚未提供 T3 capability handshake，拒绝带 grant 的派发。",
+          );
+        }
+        if (input.capabilityHandshakeId === undefined) {
+          return yield* adapterFailure(
+            runtimeId,
+            "capability_handshake_required",
+            "带 grant 的 Multica 派发必须引用已接受的 capability handshake。",
+          );
+        }
+        const handshake = capabilityHandshakes.get(input.capabilityHandshakeId);
+        if (
+          handshake === undefined ||
+          handshake.taskId !== input.taskId ||
+          handshake.runId !== input.runId ||
+          handshake.agentId !== agentId ||
+          !sameStringSet(handshake.capabilityGrantIds, capabilityGrantIds)
+        ) {
+          return yield* adapterFailure(
+            runtimeId,
+            "capability_handshake_mismatch",
+            "Multica capability handshake 与当前 Task/Run/Agent/Grant 不匹配。",
+          );
+        }
       }
       const prompt = input.prompt === undefined ? undefined : input.prompt.trim();
       if (prompt === undefined || prompt.length === 0) {
@@ -458,7 +533,9 @@ export const makeMulticaDaemonRuntimeAdapter = (
         (input.assigneeKind === "squad" && input.assigneeId === undefined
           ? undefined
           : input.assigneeKind === "squad"
-            ? taskSquadRoutes.get(input.assigneeId)
+            ? input.assigneeId === undefined
+              ? undefined
+              : taskSquadRoutes.get(input.assigneeId)
             : undefined) ?? taskAssigneeRoutes.get(agentId);
       if (route === undefined) {
         return yield* adapterFailure(
@@ -583,5 +660,13 @@ export const makeMulticaDaemonRuntimeAdapter = (
     failTask,
     acknowledgeCancellation,
     probeMultica,
+    ...(options.capabilityBridge?.revokeCapabilityHandshake === undefined
+      ? {}
+      : {
+          revokeCapabilityHandshake: (input: { readonly handshakeId: string }) =>
+            options.capabilityBridge!.revokeCapabilityHandshake!(input).pipe(
+              Effect.tap(() => Effect.sync(() => capabilityHandshakes.delete(input.handshakeId))),
+            ),
+        }),
   };
 };

@@ -1887,6 +1887,14 @@ const makeWsRpcLayer = (
               : compositionRuntimeToolBridge.value.invoke(input),
             { "rpc.aggregate": "composition" },
           ),
+        [WS_METHODS.serverCancelCompositionRuntimeTool]: (input) =>
+          observeRpcEffect(
+            WS_METHODS.serverCancelCompositionRuntimeTool,
+            Option.isNone(compositionRuntimeToolBridge)
+              ? Effect.fail(compositionTaskUnavailable())
+              : compositionRuntimeToolBridge.value.cancel(input),
+            { "rpc.aggregate": "composition" },
+          ),
         [WS_METHODS.serverDispatchCompositionTask]: (input) =>
           observeRpcEffect(
             WS_METHODS.serverDispatchCompositionTask,

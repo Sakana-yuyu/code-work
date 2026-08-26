@@ -462,3 +462,14 @@ Tool-call/Grant handshake，以及 Web/Desktop/Mobile、真实 Multica daemon �
 - 新增 Web 面板定向渲染测试，覆盖无环境、无握手降级、待审核操作、终态不可取消和无 capability ID 不可重试。
 
 本节点验证通过 Web 面板 5 个定向测试、Web typecheck、client-runtime typecheck、格式检查和 `git diff --check`。Web typecheck 仅保留既有 `apps/web/src/cloud/dpop.ts` 的 Effect 建议；Contracts 与 Server 全量 typecheck 仍被本批次之前的 settings/MCP/Effect 诊断阻断。真实 WebSocket client-server 点击链路、Desktop/Mobile 入口、Provider 原生 ToolBroker、Cursor/VSCode transport 和 Multica daemon/Tool-call/Grant handshake E2E 仍未完成。
+
+## Batch D-7 落地记录（2026-08-26）
+
+本节点把“外部 Runtime 调用 T3 canonical tools”的边界从内部 WS RPC 扩展为独立、可复用的 HTTP Bridge，同时保留 Multica 官方窄协议的拒绝语义：
+
+- 新增 `CompositionRuntimeToolCancellation` 合同和 `server.cancelCompositionRuntimeTool` WS RPC，使调用和取消使用同一组 Task/Run/Agent/Handshake/Grant/幂等身份。
+- 新增 `t3-composition-runtime/1` HTTP Bridge，提供 `/api/composition/runtime/tools/invoke` 和 `/api/composition/runtime/tools/cancel`。请求受现有 orchestration operate scope 保护，服务端不信任外部 `workspaceRoot`，仍从 `CompositionTaskInputStore` 恢复工作区并调用 `CompositionRuntimeToolBridge`。
+- 新增可供外部 TypeScript Runtime 使用的 Bridge client，固定协议头、幂等键、canonical result 解码、非 2xx/非法 JSON/超时错误收敛；客户端不记录 token、prompt 或 arguments 日志。
+- Multica Adapter 增加显式 `capabilityBridge` 扩展点。未提供扩展时，带 grant 的派发仍返回 `capability_handshake_unsupported`；提供扩展时，必须先接受同一组 grant，并在派发时再次校验 Task/Run/Agent/Grant 与 handshake 的绑定，撤销后不能继续借用。
+
+本节点验证覆盖 4 个 Composition/Contracts 定向测试文件共 33 个测试、`git diff --check`。当前仍未完成真实 Multica daemon extension 的实现、真实 HTTP server + 外部子进程 E2E、Cursor/VSCode transport、Browser/Computer Use 完整闭环和 Web/Desktop/Mobile 多端验收；因此本节点证明的是可执行的 T3 Bridge 合同与 Multica 接入门，不宣称官方 Multica daemon 已经原生获得 T3 工具权限。

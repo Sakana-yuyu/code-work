@@ -394,4 +394,81 @@ describe("MulticaDaemonRuntimeAdapter", () => {
       ),
     ).rejects.toMatchObject({ code: "capability_handshake_unsupported" });
   });
+
+  it("只在显式 T3 capability 扩展接受后开放带 grant 的派发", async () => {
+    const handshakeCalls: string[] = [];
+    const revokeCalls: string[] = [];
+    const adapter = makeMulticaDaemonRuntimeAdapter(
+      makeOptions({
+        capabilities: ["rpc-v1", "t3.toolbroker", "t3.capability_handshake"],
+        capabilityBridge: {
+          handshakeCapabilities: (input) =>
+            Effect.sync(() => {
+              handshakeCalls.push(input.runId);
+              return {
+                runtimeId,
+                taskId: input.taskId,
+                runId: input.runId,
+                agentId: input.agentId,
+                status: "accepted" as const,
+                handshakeId: "handshake-1",
+                acceptedGrantIds: [...input.capabilityGrantIds],
+              };
+            }),
+          revokeCapabilityHandshake: ({ handshakeId }) =>
+            Effect.sync(() => {
+              revokeCalls.push(handshakeId);
+            }),
+        },
+      }),
+    );
+
+    await expect(
+      Effect.runPromise(
+        adapter.handshakeCapabilities!({
+          runtimeId,
+          taskId: "task-grant-2",
+          runId: "run-grant-2",
+          agentId: "agent-1",
+          capabilityGrantIds: ["grant-1"],
+        }),
+      ),
+    ).resolves.toMatchObject({
+      status: "accepted",
+      handshakeId: "handshake-1",
+      acceptedGrantIds: ["grant-1"],
+    });
+    await expect(
+      Effect.runPromise(
+        adapter.dispatchTask({
+          taskId: "task-grant-2",
+          runId: "run-grant-2",
+          agentId: "agent-1",
+          prompt: "执行带 T3 工具授权的任务",
+          idempotencyKey: "run-grant-2",
+          capabilityGrantIds: ["grant-1"],
+          capabilityHandshakeId: "handshake-1",
+        }),
+      ),
+    ).resolves.toMatchObject({ status: "accepted" });
+    await expect(
+      Effect.runPromise(
+        adapter.dispatchTask({
+          taskId: "task-grant-other",
+          runId: "run-grant-other",
+          agentId: "agent-1",
+          prompt: "尝试借用授权",
+          idempotencyKey: "run-grant-other",
+          capabilityGrantIds: ["grant-1"],
+          capabilityHandshakeId: "handshake-1",
+        }),
+      ),
+    ).rejects.toMatchObject({ code: "capability_handshake_mismatch" });
+    await Effect.runPromise(
+      adapter.revokeCapabilityHandshake!({ handshakeId: "handshake-1" }),
+    ).catch(() => undefined);
+
+    expect(handshakeCalls).toEqual(["run-grant-2"]);
+    expect(revokeCalls).toEqual(["handshake-1"]);
+  });
 });

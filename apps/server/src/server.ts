@@ -19,6 +19,7 @@ import {
   browserApiCorsLayer,
   httpCompressionLayer,
 } from "./http.ts";
+import * as CompositionRuntimeToolBridgeHttp from "./composition/CompositionRuntimeToolBridgeHttp.ts";
 import { guardHttpResponseWriteErrors } from "./httpResponseErrorGuard.ts";
 import { fixPath } from "./os-jank.ts";
 import { websocketRpcRouteLayer } from "./ws.ts";
@@ -584,6 +585,9 @@ export const makeRoutesLayer = Layer.mergeAll(
     otlpTracesProxyRouteLayer,
     assetRouteLayer,
     attachmentUploadRouteLayer,
+    CompositionRuntimeToolBridgeHttp.makeRouteLayer(
+      Layer.mergeAll(CompositionRuntimeToolBridgeLayerLive, AuthLayerLive),
+    ),
     staticAndDevRouteLayer,
     websocketRpcRouteLayer,
   ),

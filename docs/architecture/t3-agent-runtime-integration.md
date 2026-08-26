@@ -71,7 +71,7 @@ Audit / Idempotency / Cancellation / Timeout / Retry / Review
 - 真实 WebSocket client-server 集成、Provider/IDE/Multica 外部 Runtime E2E 仍未完成；Web 面板测试和静态检查不能替代这些验收。
 - Multica 在 T3 壳内通过真实 daemon 执行 Leader -> Squad -> Task Graph -> 子 Agent -> 结果汇聚 -> Review 的
   完整外部编排链仍未验收；当前本地 Task Graph 可使用 T3 Driver/ToolBroker，外部 Multica 仍受窄协议限制。
-- Multica 官方窄协议之外的 Tool-call/Grant handshake。当前没有证据证明官方 daemon 接受 T3 grant 或能够回调 T3 ToolBroker，因此不能静默赋予 full access。
+- Multica 官方窄协议之外的 Tool-call/Grant handshake。T3 现在已经提供独立的版本化 Tool Bridge HTTP 合同和客户端，但没有证据证明官方 daemon 原生接受 T3 grant 或能够回调该 Bridge；因此只有显式安装/配置扩展并完成握手后才能开放工具权限。
 - Cursor/VSCode 真实 transport、IDE operation 和断线恢复。
 - Browser/Computer Use 的完整 canonical tool、session、审批、审计和取消闭环。
 - 供应商目录、usage/cost ledger、context compaction、supervisor retry/reassign/escalate/circuit breaker 等产品级控制面。
@@ -95,9 +95,10 @@ T3 Task
 1. T3 的 `taskId`、`runId`、`agentId`、`squadId`、Multica `task_id`、远端 Agent/Squad UUID 显式映射，禁止按名称猜测。
 2. quick-create 返回异步 `task_id` 只能证明任务进入队列，不能直接推断完成。
 3. WebSocket 唤醒帧不是终态事实；终态必须来自 HTTP 状态或带稳定事件 ID 的任务事件。
-4. 当前官方窄协议没有可验证的 T3 Capability Grant 接收、Tool-call RPC 或 revoke 协议。带 grant 的外部派发必须返回明确的 `capability_handshake_unsupported`，不能把 grant 引用当作授权完成。
-5. 若要让 Multica 使用 T3 canonical tools，优先通过显式 MCP bridge 或经过审计的独立 daemon extension；bridge 必须重新校验 `taskId`、`runId`、`agentId`、`grantId` 和过期时间，并最终进入 T3 ToolBroker。
-6. Multica 断线、取消、超时、重放和 quick-create 响应丢失必须保留未知结果语义；没有远端幂等键时不得自动重复创建。
+4. 当前官方窄协议没有可验证的 T3 Capability Grant 接收、Tool-call RPC 或 revoke 协议。未配置扩展时，带 grant 的外部派发必须返回明确的 `capability_handshake_unsupported`，不能把 grant 引用当作授权完成。
+5. T3 已提供 `t3-composition-runtime/1` Tool Bridge：外部 Runtime 使用 `POST /api/composition/runtime/tools/invoke` 和 `/cancel`，请求必须带完整 Task/Run/Agent/Handshake/Grant/幂等身份；服务端再次校验 scope 后才进入 T3 ToolBroker。Multica 只有在显式 capability extension 接受同一组 grant 后才能使用这条路径。
+6. 若要让 Multica 使用 T3 canonical tools，优先通过显式 MCP bridge 或经过审计的独立 daemon extension；bridge 必须重新校验 `taskId`、`runId`、`agentId`、`grantId` 和过期时间，并最终进入 T3 ToolBroker。
+7. Multica 断线、取消、超时、重放和 quick-create 响应丢失必须保留未知结果语义；没有远端幂等键时不得自动重复创建。
 
 ## 实施顺序
 
@@ -106,7 +107,7 @@ T3 Task
 1. 客户端 MCP 状态和生命周期命令，随后接入 Settings UI。
 2. 统一 Agent Driver capability projection，验证 Provider/BYOK/ACP/CLI 共享 Workspace、Terminal、Git、MCP 和 Provider API。
 3. T3 原生 Leader/Squad/Task Graph 执行器，包含并行、依赖、隔离、取消、超时、重试、结果汇聚和 review。
-4. Multica bridge/extension 协议协商；在协议未实现前保持稳定拒绝。
+4. Multica bridge/extension 协议协商；当前已落地 T3 Tool Bridge 合同，下一步仍需真实 daemon extension 和跨进程 E2E，官方窄协议未实现时保持稳定拒绝。
 5. Cursor/VSCode 独立 Adapter，先实现 T3 IDE API 的可验证 operation，再接真实 transport。
 6. Browser/Computer Use canonical session 和 ToolBroker 闭环。
 7. Provider catalog、usage/cost、context compaction、诊断 UI 和跨端可达性。

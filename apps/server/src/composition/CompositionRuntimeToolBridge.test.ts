@@ -182,3 +182,33 @@ it.effect("缺少持久化 workspaceRoot 时拒绝调用而不信任外部路径
     });
   }),
 );
+
+it.effect("取消请求经过同一 scope 校验并调用 ToolBroker.cancel", () =>
+  Effect.gen(function* () {
+    let cancelledKey: string | undefined;
+    const bridge = makeCompositionRuntimeToolBridge(
+      makeDependencies({
+        toolBroker: {
+          invoke: () =>
+            Effect.succeed({
+              invocationId: "invocation-unused",
+              taskId: task.taskId,
+              runId: run.runId,
+              toolCallId: input.toolCallId,
+              canonicalToolName: input.canonicalToolName,
+              status: "succeeded" as const,
+            }),
+          cancel: ({ idempotencyKey }) => {
+            cancelledKey = idempotencyKey;
+            return Effect.void;
+          },
+        },
+      }),
+    );
+
+    const result = yield* bridge.cancel({ ...input, idempotencyKey: "tool-cancel-1" });
+
+    assert.equal(result.status, "cancelled");
+    assert.equal(cancelledKey, "tool-cancel-1");
+  }),
+);

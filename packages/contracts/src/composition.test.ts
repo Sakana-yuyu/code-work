@@ -22,6 +22,7 @@ import {
   CompositionToolInvocation,
   CompositionToolResult,
   CompositionRuntimeToolInvocation,
+  CompositionRuntimeToolCancellation,
 } from "./composition.ts";
 
 const decodeAgentLoopRequest = Schema.decodeUnknownSync(CompositionAgentLoopRequest);
@@ -42,6 +43,7 @@ const decodeTaskRetry = Schema.decodeUnknownSync(CompositionTaskRetryRequest);
 const decodeToolInvocation = Schema.decodeUnknownSync(CompositionToolInvocation);
 const decodeToolResult = Schema.decodeUnknownSync(CompositionToolResult);
 const decodeRuntimeToolInvocation = Schema.decodeUnknownSync(CompositionRuntimeToolInvocation);
+const decodeRuntimeToolCancellation = Schema.decodeUnknownSync(CompositionRuntimeToolCancellation);
 const decodeAgentLoopRunRequest = Schema.decodeUnknownSync(CompositionAgentLoopRunRequest);
 const decodeAgentLoopRunResult = Schema.decodeUnknownSync(CompositionAgentLoopRunResult);
 
@@ -323,6 +325,24 @@ describe("composition contracts", () => {
         capabilityGrantIds: [],
       }),
     ).toThrow();
+  });
+
+  it("keeps runtime tool cancellation on the same task/run/grant contract", () => {
+    const decoded = decodeRuntimeToolCancellation({
+      schemaVersion: 1,
+      runtimeId: "runtime-1",
+      taskId: "task-1",
+      runId: "run-1",
+      agentId: "agent-1",
+      capabilityHandshakeId: "handshake-1",
+      toolCallId: "call-1",
+      canonicalToolName: "terminal.open",
+      idempotencyKey: "idem-cancel-1",
+      capabilityGrantIds: ["grant-1"],
+    });
+
+    expect(decoded.idempotencyKey).toBe("idem-cancel-1");
+    expect(decoded.capabilityGrantIds).toEqual(["grant-1"]);
   });
 
   it("keeps the explicit agent loop RPC payload separate from legacy text turns", () => {

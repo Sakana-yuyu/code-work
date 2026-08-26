@@ -237,6 +237,21 @@ export const CompositionRuntimeToolInvocation = Schema.Struct({
 });
 export type CompositionRuntimeToolInvocation = typeof CompositionRuntimeToolInvocation.Type;
 
+/** 外部 Runtime/IDE 取消一次尚未完成的 canonical tool 调用。 */
+export const CompositionRuntimeToolCancellation = Schema.Struct({
+  schemaVersion: Schema.Literal(1),
+  runtimeId: TrimmedNonEmptyString,
+  taskId: TrimmedNonEmptyString,
+  runId: TrimmedNonEmptyString,
+  agentId: TrimmedNonEmptyString,
+  capabilityHandshakeId: Schema.optional(TrimmedNonEmptyString),
+  toolCallId: TrimmedNonEmptyString,
+  canonicalToolName: TrimmedNonEmptyString,
+  idempotencyKey: TrimmedNonEmptyString,
+  capabilityGrantIds: Schema.Array(TrimmedNonEmptyString),
+});
+export type CompositionRuntimeToolCancellation = typeof CompositionRuntimeToolCancellation.Type;
+
 export const CompositionCapabilityDescriptorList = Schema.Array(CompositionCapabilityDescriptor);
 export type CompositionCapabilityDescriptorList = typeof CompositionCapabilityDescriptorList.Type;
 
