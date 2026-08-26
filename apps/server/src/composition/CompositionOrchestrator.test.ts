@@ -6,6 +6,9 @@ import type { CompositionCapabilityGrant } from "@t3tools/contracts";
 import type { CompositionTask, CompositionTaskRun } from "@t3tools/contracts";
 
 import { makeCompositionAgentDriverRegistry } from "./CompositionAgentDriverRegistry.ts";
+import { makeCompositionRuntimeAgentDriver } from "./CompositionRuntimeAgentDriver.ts";
+import { makeMulticaDaemonRuntimeAdapter } from "./MulticaDaemonRuntimeAdapter.ts";
+import type { MulticaDaemonProtocol } from "./MulticaDaemonProtocol.ts";
 import {
   CompositionAgentDriverFailure,
   makeCompositionOrchestrator,
@@ -126,6 +129,91 @@ layer("CompositionOrchestrator", (it) => {
         },
       ]);
       assert.equal((yield* store.getRun("run-old")).pipe(Option.getOrThrow).status, "failed");
+    }),
+  );
+  it.effect("T3 Squad Task 通过 Leader Driver 路由到 Multica 远端 Squad", () =>
+    Effect.gen(function* () {
+      const store = yield* CompositionTaskStore;
+      let quickCreateInput: unknown;
+      const protocol: MulticaDaemonProtocol = {
+        register: () => Effect.die("测试未实现 register"),
+        heartbeat: () =>
+          Effect.succeed({
+            runtimeId: "runtime-1",
+            status: "online",
+            serverCapabilities: ["rpc-v1", "squad", "leader", "task-graph"],
+            runtimeGone: false,
+          }),
+        claimTask: () => Effect.succeed(null),
+        startTask: () => Effect.void,
+        reportProgress: () => Effect.void,
+        completeTask: () => Effect.void,
+        failTask: () => Effect.void,
+        acknowledgeCancellation: () => Effect.void,
+        getTaskStatus: () => Effect.succeed({ status: "running" }),
+        quickCreateTask: (input) =>
+          Effect.sync(() => {
+            quickCreateInput = input;
+            return { taskId: "multica-task-squad-1" };
+          }),
+      };
+      const adapter = makeMulticaDaemonRuntimeAdapter({
+        runtimeId: "multica:daemon-1:runtime-1",
+        daemonId: "daemon-1",
+        daemonRuntimeId: "runtime-1",
+        baseUrl: "https://multica.test",
+        protocol,
+        agents: [
+          {
+            agentId: "agent-leader",
+            runtimeId: "multica:daemon-1:runtime-1",
+            status: "online",
+            capabilities: ["squad", "leader"],
+          },
+        ],
+        capabilities: ["rpc-v1", "squad", "leader", "task-graph"],
+        taskAssigneeRoutes: [
+          {
+            t3AgentId: "agent-leader",
+            workspaceId: "workspace-squad",
+            multicaSquadId: "remote-squad-1",
+          },
+        ],
+      });
+      const driverRegistry = makeCompositionAgentDriverRegistry();
+      yield* driverRegistry.register(
+        makeCompositionRuntimeAgentDriver({ adapter, agentId: "agent-leader" }),
+      );
+      yield* store.upsertSquad({
+        squadId: "squad-1",
+        name: "T3 协同组",
+        leaderAgentId: "agent-leader",
+        memberAgentIds: ["agent-leader", "agent-worker"],
+      });
+
+      const orchestrator = makeCompositionOrchestrator(store, driverRegistry);
+      const result = yield* orchestrator.dispatchTask({
+        taskId: "task-squad-multica",
+        runId: "run-squad-multica",
+        projectId: "project-squad",
+        assigneeKind: "squad",
+        assigneeId: "squad-1",
+        mode: "parallel",
+        promptDigest: "sha256:squad-multica",
+        prompt: "由 Squad Leader 协调执行",
+        workspaceRoot: "C:/workspace/squad",
+        dependsOnTaskIds: [],
+      });
+
+      assert.equal(result.task.assigneeId, "squad-1");
+      assert.equal(result.run.agentId, "agent-leader");
+      assert.equal(result.run.runtimeTaskId, "multica-task-squad-1");
+      assert.deepEqual(quickCreateInput, {
+        workspaceId: "workspace-squad",
+        squadId: "remote-squad-1",
+        projectId: "project-squad",
+        prompt: "由 Squad Leader 协调执行",
+      });
     }),
   );
   it.effect("只允许最新失败 Run 重试，并拒绝非失败 Task", () =>

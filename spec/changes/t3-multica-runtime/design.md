@@ -358,3 +358,13 @@ Batch B 固定了所有真实 Cursor/VSCode Adapter 必须遵守的可信执行�
 - Multica `probe`/`probeMultica` 合并本地配置与 heartbeat 返回的能力目录；在没有显式配置覆盖时，heartbeat 的 `squad`、`leader`、`task-graph` 能力会被准确暴露，未知能力不会被猜测。
 
 本节点验证覆盖 Runtime Agent Driver 与 Multica Adapter 的 14 个定向测试、server/contracts typecheck、格式检查和 `git diff --check`。这仍是协议适配层验证，不能替代真实 Multica daemon、真实 Squad 路由、Web/Desktop/Mobile 或 T3 capability Tool-call handshake E2E。
+
+## Batch D-2 落地记录（2026-08-26）
+
+本节点补了一条可验证的 T3 壳到 Multica Squad 的模拟执行链：
+
+- `CompositionOrchestrator` 仍以 T3 `CompositionSquad.leaderAgentId` 选择 Driver，同时保留 Task 的 `assigneeKind=squad` 和 `assigneeId`。
+- Runtime Driver 把 squad 任务送入 Multica Adapter；Adapter 依据显式 assignee route 将 leader Agent 映射到远端 `squadId`，并把 `projectId`、prompt 发送给 quick-create。
+- 该链路没有猜测远端 UUID，也没有把 T3 的 `squadId` 当成 Multica 的 UUID；缺少 route 时仍返回 `assignee_mapping_missing`。
+
+新增的定向集成测试实际断言了 `T3 Squad -> Leader Driver -> Multica remote squadId -> project_id/prompt`，本批次累计 30 个相关测试通过。它是本地模拟协议证明，不等价于真实 Multica Server、真实 daemon、真实 Squad 成员协作或 capability Tool-call handshake。
