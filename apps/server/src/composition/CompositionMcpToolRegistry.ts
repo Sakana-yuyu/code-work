@@ -419,13 +419,15 @@ const make = (options: CompositionMcpToolRegistryOptions = {}): CompositionMcpTo
       .pipe(
         Effect.timeoutOption(Duration.millis(registration.timeoutMs ?? DEFAULT_TIMEOUT_MS)),
         Effect.catch((error) =>
-          Effect.fail(
-            new CompositionMcpToolFailure({
-              canonicalToolName: registration.canonicalToolName,
-              code: "mcp_invocation_failed",
-              detail: error instanceof Error ? error.message : String(error),
-            }),
-          ),
+          Schema.is(CompositionMcpToolFailure)(error)
+            ? Effect.fail(error)
+            : Effect.fail(
+                new CompositionMcpToolFailure({
+                  canonicalToolName: registration.canonicalToolName,
+                  code: "mcp_invocation_failed",
+                  detail: error instanceof Error ? error.message : String(error),
+                }),
+              ),
         ),
       );
     if (Option.isNone(timed)) {

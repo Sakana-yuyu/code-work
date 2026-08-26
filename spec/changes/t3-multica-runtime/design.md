@@ -394,3 +394,26 @@ cursor-byok 的 MCP 进程发现或凭据配置直接复制进 T3：
 `git diff --check`。当前仍未完成真实 MCP stdio/HTTP/SSE runtime adapter、MCP server trust 持久化、动态 catalog
 刷新 RPC、Browser/Computer Use、真实 Cursor/VSCode transport、Multica Tool-call/Grant handshake，以及
 Web/Desktop/Mobile 和真实 daemon E2E；本节点的 handler 使用仍属于 T3 内部模拟/适配合同证明。
+
+## Batch A-3 落地记录（2026-08-26）
+
+本节点把 MCP 合同接到官方 MCP SDK 的真实 runtime client，但仍保持安全边界集中在 T3：
+
+- 新增 `CompositionMcpRuntimeAdapter`，支持官方 SDK 的 `stdio`、Streamable HTTP 和 SSE transport；
+  stdio 由 adapter 创建受控子进程，HTTP/SSE 只接收显式配置，不把 headers、env 或 URL 凭据写入状态投影。
+- server 必须同时满足 `enabled` 和 `trusted` 才能连接；未信任 server 在 client factory 之前拒绝，不启动进程，
+  连接失败、catalog 失败、catalog 注册失败分别保留稳定错误码，并在失败路径注销工具和关闭 client。
+- 连接成功后执行真实 `initialize -> listTools`，把 MCP tool 的 `readOnlyHint`/`destructiveHint` 投影为
+  `read`/`mutate`/`execute`，使用 `mcp.<serverId>.<toolName>` 作为 canonical tool ID；调用仍经过
+  `CompositionMcpToolRegistry` 的 JSON Schema、payload、结果去敏、超时，以及后续 ToolBroker 的 grant、审批、
+  幂等和审计链路。
+- 每个幂等键绑定 `AbortController`；取消既能中断进行中的 SDK call，也能标记尚未开始的调用，取消键集合有上限，
+  disconnect/unregister 会中止该 server 的活动调用并撤销其 catalog。
+- 新增注入式 client factory 以便无凭据测试，同时新增真实本地 stdio MCP 子进程 E2E，覆盖 spawn、initialize、
+  tool discovery、canonical invoke 和 close。测试 server 仅使用本地固定脚本，不访问网络、不使用用户配置或 API key。
+
+本节点验证覆盖 5 个 Composition 测试文件共 27 个测试、真实 stdio MCP E2E、server/contracts typecheck、
+`pnpm install --filter t3 --frozen-lockfile --offline`、格式检查和 `git diff --check`。仍未完成 MCP server
+配置发现与 trust 持久化、动态 catalog 刷新 RPC、Browser/Computer Use、真实 Cursor/VSCode transport、Multica
+Tool-call/Grant handshake，以及 Web/Desktop/Mobile、真实 Multica daemon 和真实外部 MCP server E2E；因此本节点
+证明的是 T3 runtime adapter 与官方 SDK 的本地可运行链路，不宣称用户设置页和跨端产品功能已经可用。
