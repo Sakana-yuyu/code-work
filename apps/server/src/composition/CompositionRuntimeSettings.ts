@@ -2,17 +2,21 @@ import { createHash } from "node:crypto";
 
 import { CompositionMulticaRuntimeConfig } from "@t3tools/contracts";
 import type { ProviderInstanceConfig, ProviderInstanceEnvironment } from "@t3tools/contracts";
+import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
+import * as Result from "effect/Result";
 import * as Schema from "effect/Schema";
 import * as Scope from "effect/Scope";
 import * as Stream from "effect/Stream";
 
 import { ServerSettingsService } from "../serverSettings.ts";
+import * as CompositionRuntimeMcpSessionRegistry from "../mcp/CompositionRuntimeMcpSessionRegistry.ts";
 import {
   makeMulticaDaemonRuntimeAdapter,
   type MulticaDaemonRuntimeAdapter,
+  type MulticaDaemonRuntimeAdapterOptions,
 } from "./MulticaDaemonRuntimeAdapter.ts";
 import {
   makeMulticaDaemonProtocol,
@@ -28,6 +32,10 @@ import {
 export type CompositionRuntimeSettings = {
   readonly settings: Pick<ServerSettingsService["Service"], "getSettings" | "subscribeChanges">;
   readonly adapterRegistry: Pick<CompositionRuntimeAdapterRegistry, "register" | "unregister">;
+  readonly mcpSessionRegistry?: Pick<
+    CompositionRuntimeMcpSessionRegistry.CompositionRuntimeMcpSessionRegistryShape,
+    "activate" | "revokeHandshake" | "revokeRuntime"
+  >;
   readonly createAdapter?: (
     input: CompositionRuntimeSettingsFactoryInput,
   ) => Effect.Effect<CompositionRuntimeAdapter, CompositionRuntimeSettingsError>;
@@ -49,6 +57,10 @@ export type CompositionRuntimeSettingsFactoryInput = {
   readonly environment: ProviderInstanceEnvironment;
   readonly headers: Readonly<Record<string, string>>;
   readonly agents: ReadonlyArray<CompositionRuntimeAgent>;
+  readonly mcpSessionRegistry?: Pick<
+    CompositionRuntimeMcpSessionRegistry.CompositionRuntimeMcpSessionRegistryShape,
+    "activate" | "revokeHandshake"
+  >;
 };
 
 export interface CompositionRuntimeSettingsReconciler {
@@ -106,30 +118,151 @@ const makeAgents = (
   config: CompositionMulticaRuntimeConfig,
 ): ReadonlyArray<CompositionRuntimeAgent> => {
   const agentIds = new Set<string>();
-  return config.assigneeRoutes
-    .map((route) => {
-      if (agentIds.has(route.t3AgentId)) {
-        if (route.t3SquadId !== undefined) return undefined;
-        throw new Error(`Multica assignee route '${route.t3AgentId}' 重复。`);
-      }
-      agentIds.add(route.t3AgentId);
-      return {
-        agentId: route.t3AgentId,
-        runtimeId: config.runtimeId,
-        displayName: `Multica ${route.t3AgentId}`,
-        ...(config.version === undefined ? {} : { version: config.version }),
-        status: "online" as const,
-        capabilities: [...config.capabilities],
-      };
-    })
-    .filter((agent): agent is CompositionRuntimeAgent => agent !== undefined);
+  const agents: CompositionRuntimeAgent[] = [];
+  for (const route of config.assigneeRoutes) {
+    if (agentIds.has(route.t3AgentId)) {
+      if (route.t3SquadId !== undefined) continue;
+      throw new Error(`Multica assignee route '${route.t3AgentId}' 重复。`);
+    }
+    agentIds.add(route.t3AgentId);
+    agents.push({
+      agentId: route.t3AgentId,
+      runtimeId: config.runtimeId,
+      displayName: `Multica ${route.t3AgentId}`,
+      ...(config.version === undefined ? {} : { version: config.version }),
+      status: "online",
+      capabilities: [...config.capabilities],
+    });
+  }
+  return agents;
 };
+
+const RUNTIME_MCP_HANDSHAKE_TTL_MS = 24 * 60 * 60 * 1_000;
+
+const makeRuntimeMcpTokens = (
+  config: CompositionMulticaRuntimeConfig,
+  environment: ProviderInstanceEnvironment,
+): ReadonlyMap<string, string> => {
+  const values = new Map(environment.map((variable) => [variable.name, variable.value]));
+  const tokens = new Map<string, string>();
+  const tokenOwners = new Map<string, string>();
+  for (const route of config.assigneeRoutes) {
+    const environmentVariable = route.t3McpCredentialEnvironmentVariable;
+    if (environmentVariable === undefined) continue;
+    const token = values.get(environmentVariable)?.trim();
+    if (token === undefined || token.length === 0) {
+      throw new Error(
+        `Multica Agent '${route.t3AgentId}' 的 T3 MCP 凭据环境变量 '${environmentVariable}' 没有物化值。`,
+      );
+    }
+    const existingToken = tokens.get(route.t3AgentId);
+    if (existingToken !== undefined && existingToken !== token) {
+      throw new Error(`Multica Agent '${route.t3AgentId}' 配置了多个不同的 T3 MCP 凭据。`);
+    }
+    const existingOwner = tokenOwners.get(token);
+    if (existingOwner !== undefined && existingOwner !== route.t3AgentId) {
+      throw new Error(
+        `Multica Agent '${route.t3AgentId}' 与 '${existingOwner}' 不能共用同一个 T3 MCP 凭据。`,
+      );
+    }
+    tokens.set(route.t3AgentId, token);
+    tokenOwners.set(token, route.t3AgentId);
+  }
+  return tokens;
+};
+
+const makeRuntimeMcpCapabilityBridge = (
+  runtimeId: string,
+  tokens: ReadonlyMap<string, string>,
+  mcpSessionRegistry: CompositionRuntimeSettingsFactoryInput["mcpSessionRegistry"],
+): MulticaDaemonRuntimeAdapterOptions["capabilityBridge"] =>
+  tokens.size === 0
+    ? undefined
+    : {
+        handshakeCapabilities: (input) =>
+          Effect.gen(function* () {
+            const rawToken = tokens.get(input.agentId);
+            if (rawToken === undefined) {
+              return {
+                runtimeId,
+                taskId: input.taskId,
+                runId: input.runId,
+                agentId: input.agentId,
+                status: "rejected" as const,
+                acceptedGrantIds: [],
+                reasonCode: "multica_runtime_mcp_credential_missing",
+              };
+            }
+            const now = yield* Clock.currentTimeMillis;
+            const expiresAtUnixMs = now + RUNTIME_MCP_HANDSHAKE_TTL_MS;
+            const activationEffect: Effect.Effect<
+              CompositionRuntimeMcpSessionRegistry.CompositionRuntimeMcpBinding | undefined,
+              CompositionRuntimeMcpSessionRegistry.CompositionRuntimeMcpBindingError
+            > =
+              mcpSessionRegistry === undefined
+                ? Effect.succeed<
+                    CompositionRuntimeMcpSessionRegistry.CompositionRuntimeMcpBinding | undefined
+                  >(undefined)
+                : mcpSessionRegistry.activate({
+                    rawToken,
+                    runtimeId,
+                    taskId: input.taskId,
+                    runId: input.runId,
+                    agentId: input.agentId,
+                    capabilityGrantIds: input.capabilityGrantIds,
+                    expiresAtUnixMs,
+                  });
+            const activationResult = yield* Effect.result(activationEffect);
+            if (Result.isFailure(activationResult)) {
+              return {
+                runtimeId,
+                taskId: input.taskId,
+                runId: input.runId,
+                agentId: input.agentId,
+                status: "rejected" as const,
+                acceptedGrantIds: [],
+                reasonCode: `multica_runtime_mcp_${activationResult.failure.code}`,
+              };
+            }
+            if (activationResult.success === undefined) {
+              return {
+                runtimeId,
+                taskId: input.taskId,
+                runId: input.runId,
+                agentId: input.agentId,
+                status: "rejected" as const,
+                acceptedGrantIds: [],
+                reasonCode: "multica_runtime_mcp_server_unavailable",
+              };
+            }
+            return {
+              runtimeId,
+              taskId: input.taskId,
+              runId: input.runId,
+              agentId: input.agentId,
+              status: "accepted" as const,
+              acceptedGrantIds: [...input.capabilityGrantIds],
+              handshakeId: activationResult.success.capabilityHandshakeId,
+              expiresAtUnixMs: activationResult.success.expiresAtUnixMs,
+            };
+          }),
+        revokeCapabilityHandshake: ({ handshakeId }) =>
+          mcpSessionRegistry === undefined
+            ? Effect.void
+            : mcpSessionRegistry.revokeHandshake(handshakeId),
+      };
 
 export const makeMulticaRuntimeAdapterFromSettings = (
   input: CompositionRuntimeSettingsFactoryInput,
 ): Effect.Effect<MulticaDaemonRuntimeAdapter, CompositionRuntimeSettingsError> =>
   Effect.try({
     try: () => {
+      const runtimeMcpTokens = makeRuntimeMcpTokens(input.config, input.environment);
+      const capabilityBridge = makeRuntimeMcpCapabilityBridge(
+        input.config.runtimeId,
+        runtimeMcpTokens,
+        input.mcpSessionRegistry,
+      );
       const transport = makeMulticaFetchHttpTransport({
         baseUrl: input.config.baseUrl,
         headers: input.headers,
@@ -159,6 +292,7 @@ export const makeMulticaRuntimeAdapterFromSettings = (
         supportsSquad: input.config.supportsSquad,
         supportsLeader: input.config.supportsLeader,
         supportsTaskGraph: input.config.supportsTaskGraph,
+        ...(capabilityBridge === undefined ? {} : { capabilityBridge }),
       });
     },
     catch: settingsError,
@@ -177,6 +311,7 @@ const fingerprintFor = (input: CompositionRuntimeSettingsFactoryInput): string =
         config: input.config,
         headers: input.headers,
         agents: input.agents,
+        environment: input.environment,
       }),
     )
     .digest("hex");
@@ -219,7 +354,12 @@ export const makeCompositionRuntimeSettingsReconciler = (
     for (const [instanceId, instance] of Object.entries(settings.providerInstances)) {
       if (instance.driver !== "multica" || !instanceEnabled(instance)) continue;
       try {
-        candidates.set(instanceId, makeFactoryInput(instanceId, instance));
+        candidates.set(instanceId, {
+          ...makeFactoryInput(instanceId, instance),
+          ...(options.mcpSessionRegistry === undefined
+            ? {}
+            : { mcpSessionRegistry: options.mcpSessionRegistry }),
+        });
       } catch (cause) {
         yield* warn(`跳过无效的 Multica Runtime 配置 '${instanceId}'。`, cause);
       }
@@ -234,6 +374,7 @@ export const makeCompositionRuntimeSettingsReconciler = (
         continue;
       }
       yield* options.adapterRegistry.unregister(current.runtimeId);
+      yield* options.mcpSessionRegistry?.revokeRuntime(current.runtimeId) ?? Effect.void;
     }
 
     for (const [instanceId, input] of candidates) {
@@ -280,7 +421,13 @@ export const makeCompositionRuntimeSettingsReconciler = (
 const live = Effect.gen(function* () {
   const settings = yield* ServerSettingsService;
   const adapterRegistry = yield* CompositionRuntimeAdapterRegistryService;
-  const reconciler = makeCompositionRuntimeSettingsReconciler({ settings, adapterRegistry });
+  const mcpSessionRegistry =
+    yield* CompositionRuntimeMcpSessionRegistry.CompositionRuntimeMcpSessionRegistry;
+  const reconciler = makeCompositionRuntimeSettingsReconciler({
+    settings,
+    adapterRegistry,
+    mcpSessionRegistry,
+  });
   yield* reconciler.start;
   return reconciler;
 });

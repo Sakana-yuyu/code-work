@@ -230,7 +230,7 @@ Transport 错误不得直接把运行标成成功；心跳超时只允许标记 
 - 官方 README 将 Multica 定位为可自托管的 Agent workspace：由 runtime 驱动已安装并已认证的 Agent CLI，提供 Agent、Squad、Skill、任务执行记录、Review、Retry/Timeout 等协同能力；它不是模型提供商本身。
 - T3 采用外部 `MulticaDaemonRuntimeAdapter` 连接 daemon，只复用公开 HTTP/WebSocket 协议和任务结果，不复制 Multica 的 Web、数据库、账号或内部 issue 模型。
 - 官方 `LICENSE` 在 Apache 2.0 文本之外增加了 hosted service、商业嵌入、品牌和归属条件。若未来从 Multica 源码直接派生、重新分发 daemon/backend/UI 或把其作为商业产品组件提供，必须由发布前的法务与许可证审查确认适用条件；本设计优先采用协议级适配以保持 T3 与 Multica 的发布边界分离。
-- 外部来源：`https://github.com/multica-ai/multica` 的 `README.md` 与 `LICENSE`，访问日期为 2026-08-26；采用官方仓库而非二手文章，因为 Agent/Runtime/Squad 能力和许可证条款都属于项目自身的权威事实。
+- 外部来源：`https://github.com/multica-ai/multica` 的 `README.md`、`CLI_AND_DAEMON.md` 与 `LICENSE`，访问日期为 2026-08-26，官方 `main` HEAD 为 `09a2410e882be8435bd6c4a26e03f7e288038203`；采用官方仓库而非二手文章，因为 Agent/Runtime/Squad、daemon、MCP 下发能力和许可证条款都属于项目自身的权威事实。
 
 ## 迁移差异矩阵（2026-08-26）
 
@@ -290,7 +290,7 @@ T3 Shell
 2. **Batch B（可信执行门已完成，真实 Adapter 未完成）：IDE Adapter。** 已有 Cursor/VSCode profile 探测、会话握手、verified operation allowlist 和断开拒绝边界；仍需真实 Cursor/VSCode transport、operation 和断线恢复。
 3. **Batch C（部分完成）：监督协同。** review checkpoint、approve/reject、失败/超时重试已经接入；仍需 reassign/escalate/circuit、兄弟任务失败隔离和 worker context compaction。
 4. **Batch D（协议接入门已完成，真实 Runtime 未完成）：Multica 增强。** 已有显式 Squad/Leader/Task Graph route、任务上下文和 T3 Runtime Tool Bridge 合同；仍需持久化未知结果恢复、真实 daemon extension、Tool-call/Grant 协商和跨进程 E2E。
-5. **Batch E（未开始）：Provider/ACP/CLI 统一 ToolBroker。** 为每类 Driver 提供真实工具调用桥和 handshake，不允许仅修改 profile 字段伪造能力；完成后再接入所有 T3 API/IDE API。
+5. **Batch E（已完成 Provider/ACP 主链）：Provider/ACP/CLI 统一 ToolBroker。** Provider/ACP 已具备真实工具调用桥、严格 handshake、在途取消与终端资源清理；独立 CLI Driver、真实 Cursor CLI 现场链和所有 T3 API/IDE API 仍需后续批次完成。
 6. **Batch F（独立可选）：Cursor 专属能力。** 原生 Bidi/RunSSE、MITM 镜像、账户切换和 Cursor 专属运营 UI 作为独立 Runtime/桌面功能，不污染 T3 核心 Provider/ToolBroker 合同。
 
 每个批次的验收必须分别记录：定向单测、类型/构建、模拟 Runtime、真实本机 Runtime/IDE E2E、Web/Desktop/Mobile 可达性；其中前两类不能替代后三类。
@@ -499,3 +499,31 @@ Tool-call/Grant handshake，以及 Web/Desktop/Mobile、真实 Multica daemon �
 第一条跨进程证据会启动真实本地 ACP mock 子进程，由子进程通过 JSON-RPC 发起文件和终端请求，依次经过 Cursor Adapter、Provider ToolBroker Bridge、Runtime Tool Bridge 和真正的 T3 ToolBroker。第二条终端证据通过真实 `node-pty` 启动 `process.execPath` 与临时命令脚本，验证输出、非零退出码、最终 snapshot 和 release 后 handle 失效。这两条证据分别证明 ACP 协议回调链和真实 PTY 命令进程可运行，尚未组成用户机器上“真实安装 Cursor CLI -> ACP -> ToolBroker -> PTY”的产品现场 E2E，也不证明其他 Provider、独立 CLI Driver、Cursor/VSCode IDE transport 或 Multica daemon 已获得同等能力。
 
 触及文件 TypeScript 过滤检查没有本批新增错误，仅保留 `ToolBroker.test.ts` 的一条 Effect 风格建议；格式检查和 `git diff --check` 需在最终格式化后再次执行。`t3` 全量 typecheck 仍有 312 条既有错误，主要来自 MCP Adapter 类型、Server 测试 Layer 和 branded MCP server ID 等基线问题；这些错误没有通过删除测试、`any` 或缩窄合同掩盖，后续需要按独立主题修复。真实 Cursor CLI、Cursor/VSCode transport、Multica daemon Tool-call/Grant handshake 和双 Agent 跨进程 E2E 仍未完成。
+
+## Batch F1 落地记录：Multica Agent MCP Tool Bridge（2026-08-26）
+
+当前 Multica 官方 daemon 已将 Agent 的 `mcp_config` 作为公开扩展点下发给受支持的 CLI/ACP 运行时。T3 因此不向 Multica 私有 prompt 注入身份或密钥，也不要求修改其 daemon 源码，而是增加独立的 Runtime MCP 工具面：
+
+- 新增 `/mcp/composition-runtime` Streamable HTTP MCP endpoint，提供 `t3_runtime_invoke` 和 `t3_runtime_cancel`。Agent 只能提交 canonical tool 名、参数、`toolCallId` 与幂等键；`runtimeId`、Task、Run、Agent、Handshake 和 Grant 全部由 Bearer token 的服务端绑定注入，再进入 `CompositionRuntimeToolBridge` 和 `ToolBroker`。
+- `CompositionMulticaAssigneeRoute.t3McpCredentialEnvironmentVariable` 只保存环境变量名。token 通过既有 provider environment/secret 物化，并需要由管理员配置到对应 Multica Agent 的官方 `mcp_config`；`settings.json` 和 Multica 配置合同不保存 token 明文。
+- Registry 只保存 token 的 SHA-256 哈希。handshake 使用 24 小时硬上限租约把 token 绑定到唯一 Runtime/Task/Run/Agent/Grant；每次调用仍要求对应 Task/Run 处于 running，终态或撤销 handshake 后立即解绑。重复 Grant、过期绑定、两个 Agent 共用 token、同一 token 在旧 Run 有效时绑定新 Run 都会 fail closed。
+- 只有配置了 Agent MCP credential 且 Runtime MCP Registry 可用时，Multica Adapter 才接受 capability handshake；静态 token 本身不会自动把 Driver 标记为已验证的 `t3.toolbroker`、`t3.capability_handshake` 或 MCP Driver，必须由 Runtime probe/配置明确声明远程 MCP 能力。未配置、服务未启动、凭据冲突或远程 MCP 能力未声明时明确拒绝或保持 degraded，不降级为 full-access。
+- 定向验证覆盖合同、Registry、真实 HTTP MCP transport、Settings、Multica Adapter/Protocol 和 Runtime Tool Bridge。真实 HTTP 测试使用官方 `@modelcontextprotocol/sdk` Client 完成 initialize、session 管理和 `tools/call`，并验证无 token 返回 401。
+
+F1 审查修复补充：
+
+- Settings fingerprint 包含已物化 environment 的摘要；Agent MCP token 轮换会重建 Adapter，并按 Runtime 撤销旧 binding。删除、禁用或替换 Runtime 不能留下仍可使用的旧 Bearer binding。
+- Registry 作为显式 Layer 依赖传入 Settings 和 MCP route，不再通过模块级单例变量在不同 Layer 之间传递。handshake、Run、Runtime 和全量撤销都会通知在途 watcher。
+- `t3_runtime_cancel` 只能取消同一 Runtime/Task/Run/Agent/Handshake/Grant scope 中已经登记的在途 invocation；未知 key 或其他 scope 不会写入全局取消集合。Bridge 使用可中断的 Effect fiber 竞争实际 ToolBroker 调用和 cancellation signal。
+- MCP handler 会同时监听 handshake 撤销/租约到期信号；已经通过 HTTP 鉴权的调用在撤销后也会被中断，而不是只影响下一次请求。
+
+本节点证明的是“Multica Agent 可通过官方 MCP 配置接入 T3 ToolBroker”的 T3 侧真实 HTTP 工具面和授权绑定。它尚未证明真实 Multica daemon 已加载该配置、两个真实 Agent 已并行执行 Task Graph，或 Leader 已完成失败重试、结果汇聚和 Review checkpoint；这些仍是 Batch F2 的跨进程验收目标。
+
+官方当前实现进一步限定了 F1 与 F2 的边界：
+
+- 普通 `agent.mcp_config` 是 Agent 级持久配置；官方 CLI 可以通过 `multica agent update --mcp-config` 更新，产品 REST 使用 `PUT /api/agents/{id}`，但版本化 Public API v1 当前没有 Agent/MCP 管理合同。因此 F1 只能要求管理员预先配置每个 Agent 的 endpoint/token，不能在每次 Run 前依赖一个稳定 Public API 动态改写 Agent 配置。
+- Server 在每次 claim 时会把 Agent MCP、Workspace MCP binding 和内部 `runtime_mcp_overlay` 合并；daemon 还会合并 Runtime 本地 MCP、task-local Remote MCP 和 Plugin Hook MCP。普通外部调用方没有公开的任意 task overlay API，所以 F1 的静态 Agent token 明确限制为“同一 Agent 同时只绑定一个活动 T3 Run”，不同 Agent 必须使用不同 token。
+- 真正的每 Run 短期 token 和同一 Agent 并发 Run 需要 F2 daemon extension：在 claim/start 阶段创建 task-local MCP entry，或复用官方 Remote MCP broker 的 task ID 绑定、approved tools、调用/并发限制、schema digest 和凭据即时解析模式。不得通过并发调用 `agent update` 轮换静态 header。
+- ACP Runtime 只有在 initialize 中声明 HTTP/SSE MCP capability 时才能保留 remote MCP entry；不支持该能力的 Driver 必须 fail closed，不能因 stdio 或个别 Runtime 的兼容例外而对所有 ACP Driver 宣称可用。
+
+本轮官方源码核验路径包括 `server/cmd/server/router.go`、`server/internal/handler/daemon.go`、`server/internal/daemon/client.go`、`server/internal/daemon/types.go`、`server/internal/daemon/daemon.go`、`server/internal/daemon/runtime_mcp.go`、`server/internal/daemon/remote_mcp_broker.go`、`server/internal/handler/mcp_overlay.go`、`server/pkg/agent/{claude,codex,hermes}.go`、`server/cmd/multica/cmd_agent*.go` 和 `server/pkg/publicapi/v1/openapi.yaml`。

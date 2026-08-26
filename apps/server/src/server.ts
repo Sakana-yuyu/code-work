@@ -50,6 +50,8 @@ import { ProviderInstanceRegistryHydrationLive } from "./provider/Layers/Provide
 import * as TerminalManager from "./terminal/Manager.ts";
 import * as McpHttpServer from "./mcp/McpHttpServer.ts";
 import * as McpSessionRegistry from "./mcp/McpSessionRegistry.ts";
+import * as CompositionRuntimeMcpServer from "./mcp/CompositionRuntimeMcpServer.ts";
+import * as CompositionRuntimeMcpSessionRegistry from "./mcp/CompositionRuntimeMcpSessionRegistry.ts";
 import * as PreviewAutomationBroker from "./mcp/PreviewAutomationBroker.ts";
 import * as CompositionCapabilityRegistry from "./composition/CapabilityRegistry.ts";
 import * as CompositionCapabilityGrantRegistry from "./composition/CapabilityGrantRegistry.ts";
@@ -410,9 +412,12 @@ const CompositionAgentServiceLayerLive = CompositionAgentService.layer.pipe(
   Layer.provideMerge(ProviderLayerForCompositionAgentDriversLive),
 );
 
+const CompositionRuntimeMcpSessionRegistryLayerLive = CompositionRuntimeMcpSessionRegistry.layer;
+
 const CompositionRuntimeSettingsLayerLive = CompositionRuntimeSettings.layer.pipe(
   Layer.provideMerge(ServerSettingsLayerLive),
   Layer.provideMerge(CompositionRuntimeAdapterRegistry.layer),
+  Layer.provideMerge(CompositionRuntimeMcpSessionRegistryLayerLive),
 );
 
 const CompositionAgentDriverProjectionLayerLive = Layer.mergeAll(
@@ -592,6 +597,10 @@ export const makeRoutesLayer = Layer.mergeAll(
     websocketRpcRouteLayer,
   ),
   McpHttpServer.layer.pipe(Layer.provide(McpSessionRegistry.layer)),
+  CompositionRuntimeMcpServer.layer.pipe(
+    Layer.provide(CompositionRuntimeMcpSessionRegistryLayerLive),
+    Layer.provide(CompositionRuntimeToolBridgeLayerLive),
+  ),
 ).pipe(
   // Both transports consume the same service instance, so caches single-flight across clients
   // and mutations observed on WebSocket invalidate patches subsequently read over HTTP.

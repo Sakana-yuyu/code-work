@@ -4,6 +4,7 @@ import type {
   CompositionToolResult,
 } from "@t3tools/contracts";
 import * as Context from "effect/Context";
+import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
@@ -111,9 +112,43 @@ const trustedToolArguments = (argumentsValue: unknown, workspaceRoot: string): u
   return { ...argumentsValue, cwd: workspaceRoot };
 };
 
+type ActiveInvocation = {
+  readonly scope: CompositionRuntimeToolCancellation;
+  readonly cancellation: Deferred.Deferred<void>;
+};
+
+const sameInvocationScope = (
+  left: CompositionRuntimeToolCancellation,
+  right: CompositionRuntimeToolCancellation,
+): boolean =>
+  left.runtimeId === right.runtimeId &&
+  left.taskId === right.taskId &&
+  left.runId === right.runId &&
+  left.agentId === right.agentId &&
+  left.capabilityHandshakeId === right.capabilityHandshakeId &&
+  left.toolCallId === right.toolCallId &&
+  left.canonicalToolName === right.canonicalToolName &&
+  sameStringSet(left.capabilityGrantIds, right.capabilityGrantIds);
+
+const cancelled = (
+  input: Pick<
+    CompositionRuntimeToolInvocation,
+    "taskId" | "runId" | "toolCallId" | "canonicalToolName" | "idempotencyKey"
+  >,
+): CompositionToolResult => ({
+  invocationId: invocationId(input.idempotencyKey),
+  taskId: input.taskId,
+  runId: input.runId,
+  toolCallId: input.toolCallId,
+  canonicalToolName: input.canonicalToolName,
+  status: "cancelled",
+});
+
 export const makeCompositionRuntimeToolBridge = (
   dependencies: CompositionRuntimeToolBridgeDependencies,
 ): CompositionRuntimeToolBridgeShape => {
+  const activeInvocations = new Map<string, ActiveInvocation>();
+
   const validateScope = (
     input: CompositionRuntimeToolInvocation | CompositionRuntimeToolCancellation,
   ): Effect.Effect<ScopeCheck> =>
@@ -179,39 +214,64 @@ export const makeCompositionRuntimeToolBridge = (
       const scope = yield* validateScope(input);
       if (!scope.ok) return denied(input, scope.errorCode);
 
+      const cancellationScope: CompositionRuntimeToolCancellation = input;
+      const existing = activeInvocations.get(input.idempotencyKey);
+      if (existing !== undefined && !sameInvocationScope(existing.scope, cancellationScope)) {
+        return denied(input, "tool_invocation_scope_conflict");
+      }
+      const cancellation = yield* Deferred.make<void>();
+      const activeInvocation: ActiveInvocation = {
+        scope: cancellationScope,
+        cancellation,
+      };
+      activeInvocations.set(input.idempotencyKey, activeInvocation);
+
       const inputOption = yield* dependencies.inputStore
         .get(input.taskId)
         .pipe(Effect.catch(() => Effect.succeed(Option.none())));
       if (Option.isNone(inputOption) || inputOption.value.taskId !== input.taskId) {
+        activeInvocations.delete(input.idempotencyKey);
         return denied(input, "workspace_input_missing");
       }
       const workspaceRoot = inputOption.value.workspaceRoot.trim();
       if (workspaceRoot.length === 0) {
+        activeInvocations.delete(input.idempotencyKey);
         return denied(input, "workspace_input_missing");
       }
 
-      return yield* dependencies.toolBroker
-        .invoke({
-          taskId: input.taskId,
-          runId: input.runId,
-          agentId: input.agentId,
-          toolCallId: input.toolCallId,
-          canonicalToolName: input.canonicalToolName,
-          arguments: trustedToolArguments(input.arguments, workspaceRoot),
-          idempotencyKey: input.idempotencyKey,
-          capabilityGrantIds: input.capabilityGrantIds,
-          runtimeId: input.runtimeId,
-          ...(scope.task.threadId === undefined ? {} : { threadId: scope.task.threadId }),
-          ...(input.approvalRequestId === undefined
-            ? {}
-            : { approvalRequestId: input.approvalRequestId }),
-          workspaceRoot,
-        })
-        .pipe(
-          Effect.catch(() =>
-            Effect.succeed(denied(input, "tool_broker_failed") as ToolBroker.ToolBrokerResult),
+      return yield* Effect.raceFirst(
+        dependencies.toolBroker
+          .invoke({
+            taskId: input.taskId,
+            runId: input.runId,
+            agentId: input.agentId,
+            toolCallId: input.toolCallId,
+            canonicalToolName: input.canonicalToolName,
+            arguments: trustedToolArguments(input.arguments, workspaceRoot),
+            idempotencyKey: input.idempotencyKey,
+            capabilityGrantIds: input.capabilityGrantIds,
+            runtimeId: input.runtimeId,
+            ...(scope.task.threadId === undefined ? {} : { threadId: scope.task.threadId }),
+            ...(input.approvalRequestId === undefined
+              ? {}
+              : { approvalRequestId: input.approvalRequestId }),
+            workspaceRoot,
+          })
+          .pipe(
+            Effect.catch(() =>
+              Effect.succeed(denied(input, "tool_broker_failed") as ToolBroker.ToolBrokerResult),
+            ),
           ),
-        );
+        Deferred.await(cancellation).pipe(Effect.as(cancelled(input))),
+      ).pipe(
+        Effect.ensuring(
+          Effect.sync(() => {
+            if (activeInvocations.get(input.idempotencyKey) === activeInvocation) {
+              activeInvocations.delete(input.idempotencyKey);
+            }
+          }),
+        ),
+      );
     });
 
   const cancel: CompositionRuntimeToolBridgeShape["cancel"] = (input) =>
@@ -219,17 +279,13 @@ export const makeCompositionRuntimeToolBridge = (
       const scope = yield* validateScope(input);
       if (!scope.ok) return denied(input, scope.errorCode);
 
-      yield* dependencies.toolBroker
-        .cancel({ idempotencyKey: input.idempotencyKey })
-        .pipe(Effect.catch(() => Effect.void));
-      return {
-        invocationId: invocationId(input.idempotencyKey),
-        taskId: input.taskId,
-        runId: input.runId,
-        toolCallId: input.toolCallId,
-        canonicalToolName: input.canonicalToolName,
-        status: "cancelled" as const,
-      };
+      const activeInvocation = activeInvocations.get(input.idempotencyKey);
+      if (activeInvocation === undefined) return denied(input, "tool_invocation_not_found");
+      if (!sameInvocationScope(activeInvocation.scope, input)) {
+        return denied(input, "tool_invocation_scope_mismatch");
+      }
+      yield* Deferred.succeed(activeInvocation.cancellation, undefined);
+      return cancelled(input);
     });
 
   return { invoke, cancel };

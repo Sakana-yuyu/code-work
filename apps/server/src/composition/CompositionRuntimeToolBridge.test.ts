@@ -1,5 +1,7 @@
 import { assert, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
+import * as Deferred from "effect/Deferred";
+import * as Fiber from "effect/Fiber";
 import * as Option from "effect/Option";
 
 import type { CompositionTask, CompositionTaskRun } from "@t3tools/contracts";
@@ -183,32 +185,93 @@ it.effect("缺少持久化 workspaceRoot 时拒绝调用而不信任外部路径
   }),
 );
 
-it.effect("取消请求经过同一 scope 校验并调用 ToolBroker.cancel", () =>
+it.effect("未知 invocation 的取消请求不会污染 ToolBroker 全局 key", () =>
   Effect.gen(function* () {
-    let cancelledKey: string | undefined;
+    const bridge = makeCompositionRuntimeToolBridge(makeDependencies());
+
+    const result = yield* bridge.cancel({ ...input, idempotencyKey: "tool-cancel-1" });
+
+    assert.deepEqual(result, {
+      invocationId: "invocation-tool-cancel-1",
+      taskId: task.taskId,
+      runId: run.runId,
+      toolCallId: input.toolCallId,
+      canonicalToolName: input.canonicalToolName,
+      status: "denied",
+      errorCode: "tool_invocation_not_found",
+    });
+  }),
+);
+
+it.effect("取消同一 scope 的在途 invocation 会中断 ToolBroker 调用", () =>
+  Effect.gen(function* () {
+    const entered = yield* Deferred.make<void>();
+    const release = yield* Deferred.make<void>();
     const bridge = makeCompositionRuntimeToolBridge(
       makeDependencies({
         toolBroker: {
           invoke: () =>
-            Effect.succeed({
-              invocationId: "invocation-unused",
-              taskId: task.taskId,
-              runId: run.runId,
-              toolCallId: input.toolCallId,
-              canonicalToolName: input.canonicalToolName,
-              status: "succeeded" as const,
+            Effect.gen(function* () {
+              yield* Deferred.succeed(entered, undefined);
+              yield* Deferred.await(release);
+              return {
+                invocationId: `invocation-${input.idempotencyKey}`,
+                taskId: task.taskId,
+                runId: run.runId,
+                toolCallId: input.toolCallId,
+                canonicalToolName: input.canonicalToolName,
+                status: "succeeded" as const,
+              };
             }),
-          cancel: ({ idempotencyKey }) => {
-            cancelledKey = idempotencyKey;
-            return Effect.void;
-          },
+          cancel: () => Effect.die("不应绕过 Bridge 的 scope 取消"),
         },
       }),
     );
 
-    const result = yield* bridge.cancel({ ...input, idempotencyKey: "tool-cancel-1" });
+    const fiber = yield* Effect.forkChild(bridge.invoke(input));
+    yield* Deferred.await(entered);
 
-    assert.equal(result.status, "cancelled");
-    assert.equal(cancelledKey, "tool-cancel-1");
+    const cancelResult = yield* bridge.cancel(input);
+    assert.equal(cancelResult.status, "cancelled");
+    const invokeResult = yield* Fiber.join(fiber);
+    assert.equal(invokeResult.status, "cancelled");
+  }),
+);
+
+it.effect("不同 scope 不能取消另一个 Agent 的在途 invocation", () =>
+  Effect.gen(function* () {
+    const entered = yield* Deferred.make<void>();
+    const bridge = makeCompositionRuntimeToolBridge(
+      makeDependencies({
+        taskStore: {
+          getTask: () => Effect.succeed(Option.some(task)),
+          getRun: (runId) => Effect.succeed(Option.some({ ...run, runId })),
+        },
+        toolBroker: {
+          invoke: () =>
+            Effect.gen(function* () {
+              yield* Deferred.succeed(entered, undefined);
+              return yield* Effect.never.pipe(
+                Effect.as({
+                  invocationId: `invocation-${input.idempotencyKey}`,
+                  taskId: task.taskId,
+                  runId: run.runId,
+                  toolCallId: input.toolCallId,
+                  canonicalToolName: input.canonicalToolName,
+                  status: "succeeded" as const,
+                }),
+              );
+            }),
+          cancel: () => Effect.die("不应调用 ToolBroker.cancel"),
+        },
+      }),
+    );
+
+    const fiber = yield* Effect.forkChild(bridge.invoke(input));
+    yield* Deferred.await(entered);
+    const result = yield* bridge.cancel({ ...input, runId: "run-other" });
+    assert.equal(result.status, "denied");
+    assert.equal(result.errorCode, "tool_invocation_scope_mismatch");
+    yield* Fiber.interrupt(fiber);
   }),
 );

@@ -1,11 +1,17 @@
+import * as NodeServices from "@effect/platform-node/NodeServices";
 import { describe, expect, it } from "vite-plus/test";
+import { CompositionMulticaRuntimeConfig } from "@t3tools/contracts";
+import * as Context from "effect/Context";
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
+import * as Layer from "effect/Layer";
 import * as Queue from "effect/Queue";
+import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
 
 import { DEFAULT_SERVER_SETTINGS, type ServerSettings } from "@t3tools/contracts";
 
+import * as CompositionRuntimeMcpSessionRegistry from "../mcp/CompositionRuntimeMcpSessionRegistry.ts";
 import { makeInMemoryCompositionRuntimeAdapter } from "./CompositionRuntimeAdapter.ts";
 import {
   makeCompositionRuntimeAdapterRegistry,
@@ -13,8 +19,10 @@ import {
 } from "./CompositionRuntimeAdapterRegistry.ts";
 import {
   makeCompositionRuntimeSettingsReconciler,
+  makeMulticaRuntimeAdapterFromSettings,
   type CompositionRuntimeSettings,
 } from "./CompositionRuntimeSettings.ts";
+import type { MulticaDaemonRuntimeAdapter } from "./MulticaDaemonRuntimeAdapter.ts";
 
 const makeSettings = (providerInstances: unknown): ServerSettings =>
   ({
@@ -147,6 +155,214 @@ describe("CompositionRuntimeSettings", () => {
     await expect(
       Effect.runPromise(registry.get("multica:daemon-1:runtime-1")),
     ).resolves.toBeUndefined();
+  });
+
+  it("使用每个 Multica Agent 的独立环境凭据建立可撤销 MCP capability handshake", async () => {
+    await Effect.runPromise(
+      Effect.scoped(
+        Effect.gen(function* () {
+          const registryContext = yield* Layer.build(
+            CompositionRuntimeMcpSessionRegistry.layer.pipe(Layer.provide(NodeServices.layer)),
+          );
+          const runtimeMcpRegistry = Context.get(
+            registryContext,
+            CompositionRuntimeMcpSessionRegistry.CompositionRuntimeMcpSessionRegistry,
+          );
+          const config = yield* Schema.decodeUnknownEffect(CompositionMulticaRuntimeConfig)(
+            multicaInstance({
+              assigneeRoutes: [
+                {
+                  t3AgentId: "agent-1",
+                  workspaceId: "workspace-1",
+                  multicaAgentId: "remote-agent-1",
+                  t3McpCredentialEnvironmentVariable: "MULTICA_AGENT_1_T3_MCP_TOKEN",
+                },
+              ],
+            }).config,
+          );
+          const adapter = yield* makeMulticaRuntimeAdapterFromSettings({
+            instanceId: "multica_local",
+            config,
+            environment: [
+              { name: "MULTICA_TOKEN", value: "secret-token", sensitive: true },
+              {
+                name: "MULTICA_AGENT_1_T3_MCP_TOKEN",
+                value: "agent-1-runtime-token",
+                sensitive: true,
+              },
+            ],
+            headers: { Authorization: "secret-token" },
+            agents: [
+              {
+                agentId: "agent-1",
+                runtimeId: config.runtimeId,
+                displayName: "Multica agent-1",
+                status: "online",
+                capabilities: [],
+              },
+            ],
+            mcpSessionRegistry: runtimeMcpRegistry,
+          });
+
+          const handshake = yield* adapter.handshakeCapabilities!({
+            runtimeId: config.runtimeId,
+            taskId: "task-1",
+            runId: "run-1",
+            agentId: "agent-1",
+            capabilityGrantIds: ["grant-workspace"],
+          });
+          expect(handshake).toMatchObject({
+            status: "accepted",
+            acceptedGrantIds: ["grant-workspace"],
+          });
+          expect(handshake.handshakeId).toBeDefined();
+
+          expect(yield* runtimeMcpRegistry.resolve("agent-1-runtime-token")).toMatchObject({
+            runtimeId: config.runtimeId,
+            taskId: "task-1",
+            runId: "run-1",
+            agentId: "agent-1",
+            capabilityGrantIds: ["grant-workspace"],
+            capabilityHandshakeId: handshake.handshakeId,
+          });
+
+          yield* adapter.revokeCapabilityHandshake!({
+            handshakeId: handshake.handshakeId!,
+          });
+          expect(yield* runtimeMcpRegistry.resolve("agent-1-runtime-token")).toBeUndefined();
+        }),
+      ),
+    );
+  });
+
+  it("拒绝两个 Multica Agent 共用同一个 T3 MCP 凭据", async () => {
+    const config = Schema.decodeUnknownSync(CompositionMulticaRuntimeConfig)(
+      multicaInstance({
+        assigneeRoutes: [
+          {
+            t3AgentId: "agent-1",
+            workspaceId: "workspace-1",
+            multicaAgentId: "remote-agent-1",
+            t3McpCredentialEnvironmentVariable: "AGENT_1_TOKEN",
+          },
+          {
+            t3AgentId: "agent-2",
+            workspaceId: "workspace-1",
+            multicaAgentId: "remote-agent-2",
+            t3McpCredentialEnvironmentVariable: "AGENT_2_TOKEN",
+          },
+        ],
+      }).config,
+    );
+
+    await expect(
+      Effect.runPromise(
+        makeMulticaRuntimeAdapterFromSettings({
+          instanceId: "multica_local",
+          config,
+          environment: [
+            { name: "MULTICA_TOKEN", value: "secret-token", sensitive: true },
+            { name: "AGENT_1_TOKEN", value: "shared-runtime-token", sensitive: true },
+            { name: "AGENT_2_TOKEN", value: "shared-runtime-token", sensitive: true },
+          ],
+          headers: { Authorization: "secret-token" },
+          agents: [
+            {
+              agentId: "agent-1",
+              runtimeId: config.runtimeId,
+              displayName: "Multica agent-1",
+              status: "online",
+              capabilities: [],
+            },
+            {
+              agentId: "agent-2",
+              runtimeId: config.runtimeId,
+              displayName: "Multica agent-2",
+              status: "online",
+              capabilities: [],
+            },
+          ],
+        }),
+      ),
+    ).rejects.toThrow("不能共用同一个 T3 MCP 凭据");
+  });
+
+  it("轮换 Agent MCP 凭据会重建 Adapter 并撤销旧 binding", async () => {
+    await Effect.runPromise(
+      Effect.scoped(
+        Effect.gen(function* () {
+          const registryContext = yield* Layer.build(
+            CompositionRuntimeMcpSessionRegistry.layer.pipe(Layer.provide(NodeServices.layer)),
+          );
+          const mcpSessionRegistry = Context.get(
+            registryContext,
+            CompositionRuntimeMcpSessionRegistry.CompositionRuntimeMcpSessionRegistry,
+          );
+          const configOverrides = {
+            assigneeRoutes: [
+              {
+                t3AgentId: "agent-1",
+                workspaceId: "workspace-1",
+                multicaAgentId: "remote-agent-1",
+                t3McpCredentialEnvironmentVariable: "AGENT_1_TOKEN",
+              },
+            ],
+          };
+          const makeInstance = (token: string) => ({
+            ...multicaInstance(configOverrides),
+            environment: [
+              { name: "MULTICA_TOKEN", value: "daemon-token", sensitive: true },
+              { name: "AGENT_1_TOKEN", value: token, sensitive: true },
+            ],
+          });
+          let settings = makeSettings({ multica_local: makeInstance("old-agent-token") });
+          const adapterRegistry = makeCompositionRuntimeAdapterRegistry();
+          const created: MulticaDaemonRuntimeAdapter[] = [];
+          const reconciler = makeCompositionRuntimeSettingsReconciler({
+            settings: {
+              getSettings: Effect.sync(() => settings),
+              subscribeChanges: Effect.succeed(Stream.empty),
+            },
+            adapterRegistry,
+            mcpSessionRegistry,
+            createAdapter: (input) =>
+              makeMulticaRuntimeAdapterFromSettings(input).pipe(
+                Effect.tap((adapter) => Effect.sync(() => created.push(adapter))),
+              ),
+          });
+
+          yield* reconciler.refresh;
+          const first = created[0];
+          expect(first).toBeDefined();
+          const firstHandshake = yield* first!.handshakeCapabilities!({
+            runtimeId: first!.runtimeId,
+            taskId: "task-rotation",
+            runId: "run-old",
+            agentId: "agent-1",
+            capabilityGrantIds: ["grant-workspace"],
+          });
+          expect(firstHandshake.status).toBe("accepted");
+          expect(yield* mcpSessionRegistry.resolve("old-agent-token")).toBeDefined();
+
+          settings = makeSettings({ multica_local: makeInstance("new-agent-token") });
+          yield* reconciler.refresh;
+
+          expect(created).toHaveLength(2);
+          expect(yield* mcpSessionRegistry.resolve("old-agent-token")).toBeUndefined();
+          const second = created[1];
+          expect(second).toBeDefined();
+          const secondHandshake = yield* second!.handshakeCapabilities!({
+            runtimeId: second!.runtimeId,
+            taskId: "task-rotation",
+            runId: "run-new",
+            agentId: "agent-1",
+            capabilityGrantIds: ["grant-workspace"],
+          });
+          expect(secondHandshake.status).toBe("accepted");
+          expect(yield* mcpSessionRegistry.resolve("new-agent-token")).toBeDefined();
+        }),
+      ),
+    );
   });
 
   it("start 会监听 Settings 变化并替换自己管理的 Adapter", async () => {

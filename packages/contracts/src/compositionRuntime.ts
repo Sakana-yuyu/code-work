@@ -249,6 +249,8 @@ export const CompositionMulticaAssigneeRoute = Schema.Struct({
   workspaceId: TrimmedNonEmptyString,
   multicaAgentId: Schema.optional(TrimmedNonEmptyString),
   multicaSquadId: Schema.optional(TrimmedNonEmptyString),
+  /** 与 Multica Agent mcp_config 共用的静态 Bearer token，仅保存环境变量名。 */
+  t3McpCredentialEnvironmentVariable: Schema.optional(TrimmedNonEmptyString),
 });
 export type CompositionMulticaAssigneeRoute = typeof CompositionMulticaAssigneeRoute.Type;
 
