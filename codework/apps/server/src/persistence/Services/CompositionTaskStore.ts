@@ -36,6 +36,15 @@ export interface CompositionTaskStoreShape {
   readonly appendEvent: (
     event: CompositionTaskEvent,
   ) => Effect.Effect<CompositionTaskEvent, CompositionTaskStoreError>;
+  /**
+   * 以 sourceEventId 原子抢占一次外部事件；返回 false 表示同一事件已被其他投影者处理。
+   */
+  readonly appendEventIfNew: (
+    event: CompositionTaskEvent & { readonly sourceEventId: string },
+  ) => Effect.Effect<boolean, CompositionTaskStoreError>;
+  readonly withTransaction: <A, E, R>(
+    self: Effect.Effect<A, E, R>,
+  ) => Effect.Effect<A, E | CompositionTaskStoreError, R>;
   readonly listEvents: (
     taskId: string,
     runId: string,

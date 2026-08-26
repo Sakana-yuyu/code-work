@@ -348,6 +348,37 @@ const makeStore = Effect.gen(function* () {
     `,
   });
 
+  const appendEventIfNewRow = SqlSchema.findOneOption({
+    Request: Schema.Struct({
+      ...EventRowSchema.fields,
+      sourceEventId: Schema.String,
+      childTaskIds: Schema.optional(Schema.Array(Schema.String)),
+    }),
+    Result: Schema.Struct({ rowId: Schema.Number }),
+    execute: (event) => sql`
+      INSERT INTO composition_task_events (
+        task_id, run_id, source_event_id, parent_task_id, agent_id, runtime_id, status, sequence,
+        event_type, summary, progress, blocker_code, approval_request_id, child_task_ids_json
+      ) VALUES (
+        ${event.taskId}, ${event.runId}, ${event.sourceEventId}, ${event.parentTaskId}, ${event.agentId}, ${event.runtimeId},
+        ${event.status},
+        COALESCE(
+          (
+            SELECT MAX(sequence) + 1
+            FROM composition_task_events
+            WHERE task_id = ${event.taskId} AND run_id = ${event.runId}
+          ),
+          0
+        ),
+        ${event.eventType}, ${event.summary}, ${event.progress},
+        ${event.blockerCode}, ${event.approvalRequestId},
+        ${event.childTaskIds === undefined ? null : encodeStringArray(event.childTaskIds)}
+      )
+      ON CONFLICT (task_id, run_id, source_event_id) WHERE source_event_id IS NOT NULL DO NOTHING
+      RETURNING row_id AS "rowId"
+    `,
+  });
+
   const findEventBySourceRow = SqlSchema.findOneOption({
     Request: EventSourceRequest,
     Result: Schema.Struct({ rowId: Schema.Number }),
@@ -542,6 +573,26 @@ const makeStore = Effect.gen(function* () {
           }).pipe(Effect.as(event)),
         );
       }),
+    appendEventIfNew: (event) =>
+      run(
+        "CompositionTaskStore.appendEventIfNew",
+        appendEventIfNewRow({
+          ...event,
+          parentTaskId: event.parentTaskId ?? null,
+          runtimeId: event.runtimeId ?? null,
+          progress: event.progress ?? null,
+          blockerCode: event.blockerCode ?? null,
+          approvalRequestId: event.approvalRequestId ?? null,
+        }).pipe(Effect.map(Option.isSome)),
+      ),
+    withTransaction: (effect) =>
+      sql
+        .withTransaction(effect)
+        .pipe(
+          Effect.catchTag("SqlError", (cause) =>
+            Effect.fail(toPersistenceSqlError("CompositionTaskStore.withTransaction")(cause)),
+          ),
+        ),
     listEvents: (taskId, runId) =>
       run(
         "CompositionTaskStore.listEvents",

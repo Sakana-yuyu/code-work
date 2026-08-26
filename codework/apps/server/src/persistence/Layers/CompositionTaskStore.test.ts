@@ -166,6 +166,34 @@ layer("CompositionTaskStore", (it) => {
       assert.deepEqual(events, [event]);
     }),
   );
+
+  it.effect("并发追加不同 sourceEventId 时自动分配连续 sequence", () =>
+    Effect.gen(function* () {
+      const store = yield* CompositionTaskStore;
+      const makeEvent = (sourceEventId: string) => ({
+        taskId: "task-concurrent-sequence",
+        runId: "run-concurrent-sequence",
+        sourceEventId,
+        agentId: "agent-1",
+        status: "running" as const,
+        sequence: 0,
+        eventType: "progress" as const,
+        summary: sourceEventId,
+      });
+
+      yield* Effect.forEach(
+        [makeEvent("provider-event-a"), makeEvent("provider-event-b")],
+        (event) => store.appendEventIfNew(event),
+        { concurrency: 2 },
+      );
+
+      const events = yield* store.listEvents("task-concurrent-sequence", "run-concurrent-sequence");
+      assert.deepEqual(
+        events.map((event) => event.sequence),
+        [0, 1],
+      );
+    }),
+  );
 });
 
 inputStoreLayer("CompositionTaskInputStore", (it) => {

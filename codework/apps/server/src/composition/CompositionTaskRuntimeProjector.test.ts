@@ -9,7 +9,9 @@ import {
   type CompositionTaskRun,
   type ProviderRuntimeEvent,
 } from "@codework/contracts";
+import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
+import * as Fiber from "effect/Fiber";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 
@@ -117,7 +119,7 @@ layer("CompositionTaskRuntimeProjector", (it) => {
       yield* registry.register({
         agentId: reviewTask.assigneeId,
         runtimeId: reviewRun.runtimeId,
-        startTask: () => Effect.succeed({ runtimeTaskId: reviewRun.runtimeTaskId }),
+        startTask: () => Effect.succeed({ runtimeTaskId: "runtime-task-review" }),
         revokeCapabilityHandshake: ({ run: currentRun }) =>
           Effect.sync(() => revoked.push(currentRun.capabilityHandshakeId ?? "missing")),
         cancelTask: () => Effect.succeed({ status: "cancelled" as const }),
@@ -252,6 +254,111 @@ layer("CompositionTaskRuntimeProjector", (it) => {
       assert.equal(revoked._tag, "CapabilityGrantRevokedError");
       assert.deepEqual(revokedHandshakes, ["handshake-runtime-grant"]);
       assert.equal((yield* store.listEvents(taskWithGrant.taskId, runWithGrant.runId)).length, 1);
+    }),
+  );
+
+  it.effect("并发重复终态事件只撤销一次 Runtime capability handshake", () =>
+    Effect.gen(function* () {
+      const store = yield* CompositionTaskStore;
+      const concurrentTask = { ...task, taskId: "task-runtime-concurrent" };
+      const concurrentRun = {
+        ...run,
+        taskId: concurrentTask.taskId,
+        runId: "run-runtime-concurrent",
+        capabilityHandshakeId: "handshake-runtime-concurrent",
+      };
+      const revokedHandshakes: string[] = [];
+      const registry = makeCompositionAgentDriverRegistry();
+      yield* registry.register({
+        agentId: concurrentTask.assigneeId,
+        runtimeId: concurrentRun.runtimeId,
+        startTask: () => Effect.succeed({ runtimeTaskId: "runtime-task-concurrent" }),
+        revokeCapabilityHandshake: ({ run: currentRun }) =>
+          Effect.sync(() => {
+            if (currentRun.capabilityHandshakeId !== undefined) {
+              revokedHandshakes.push(currentRun.capabilityHandshakeId);
+            }
+          }),
+        cancelTask: () => Effect.succeed({ status: "cancelled" as const }),
+        resolveRuntimeEvent: () => ({
+          taskId: concurrentTask.taskId,
+          runId: concurrentRun.runId,
+        }),
+      });
+      yield* store.upsertTask(concurrentTask);
+      yield* store.upsertRun(concurrentRun);
+
+      const latestRunReadsReached = yield* Deferred.make<void>();
+      const releaseLatestRunReads = yield* Deferred.make<void>();
+      let latestRunReads = 0;
+      const gatedStore = {
+        ...store,
+        getLatestRun: (taskId: string) =>
+          Effect.gen(function* () {
+            latestRunReads += 1;
+            if (latestRunReads === 2) yield* Deferred.succeed(latestRunReadsReached, undefined);
+            yield* Deferred.await(releaseLatestRunReads);
+            return yield* store.getLatestRun(taskId);
+          }),
+      };
+      const event = completionEvent("provider-event-concurrent");
+      const first = yield* Effect.forkChild(
+        projectCompositionRuntimeEvent(gatedStore, registry, event),
+      );
+      const second = yield* Effect.forkChild(
+        projectCompositionRuntimeEvent(gatedStore, registry, event),
+      );
+      yield* Deferred.await(latestRunReadsReached);
+      yield* Deferred.succeed(releaseLatestRunReads, undefined);
+      yield* Fiber.join(first);
+      yield* Fiber.join(second);
+
+      assert.deepEqual(revokedHandshakes, ["handshake-runtime-concurrent"]);
+      assert.equal((yield* store.listEvents(concurrentTask.taskId, concurrentRun.runId)).length, 1);
+    }),
+  );
+
+  it.effect("Task 投影写入失败时不会留下已抢占但未应用的事件", () =>
+    Effect.gen(function* () {
+      const store = yield* CompositionTaskStore;
+      const rollbackTask = { ...task, taskId: "task-runtime-rollback" };
+      const rollbackRun = {
+        ...run,
+        taskId: rollbackTask.taskId,
+        runId: "run-runtime-rollback",
+      };
+      const registry = makeCompositionAgentDriverRegistry();
+      yield* registry.register({
+        agentId: rollbackTask.assigneeId,
+        runtimeId: rollbackRun.runtimeId,
+        startTask: () => Effect.succeed({ runtimeTaskId: "runtime-task-rollback" }),
+        cancelTask: () => Effect.succeed({ status: "cancelled" as const }),
+        resolveRuntimeEvent: () => ({
+          taskId: rollbackTask.taskId,
+          runId: rollbackRun.runId,
+        }),
+      });
+      yield* store.upsertTask(rollbackTask);
+      yield* store.upsertRun(rollbackRun);
+
+      const failingStore = {
+        ...store,
+        upsertTask: () => Effect.fail(undefined as never),
+      };
+      const result = yield* Effect.exit(
+        projectCompositionRuntimeEvent(
+          failingStore,
+          registry,
+          completionEvent("provider-event-rollback"),
+        ),
+      );
+
+      assert.equal(result._tag, "Failure");
+      assert.deepEqual(yield* store.listEvents(rollbackTask.taskId, rollbackRun.runId), []);
+      assert.equal(
+        (yield* store.getTask(rollbackTask.taskId)).pipe(Option.getOrUndefined)?.status,
+        "running",
+      );
     }),
   );
 });

@@ -227,21 +227,6 @@ export const projectCompositionRuntimeEvent = (
     const runtimeTerminal = projection.runtimeTerminal ?? isTaskTerminal;
     const becameRuntimeTerminal = runtimeTerminal && run.finishedAtUnixMs === undefined;
     const becameTaskTerminal = !terminalStatuses.has(task.status) && isTaskTerminal;
-    const bindingDriver = yield* driverRegistry.get(run.agentId);
-    if (
-      becameRuntimeTerminal &&
-      run.capabilityHandshakeId !== undefined &&
-      bindingDriver?.revokeCapabilityHandshake !== undefined
-    ) {
-      yield* bindingDriver.revokeCapabilityHandshake({ task, run });
-    }
-    if (becameRuntimeTerminal && grantRegistry !== undefined) {
-      yield* Effect.forEach(run.capabilityGrantIds ?? [], (grantId) =>
-        grantRegistry
-          .revoke({ grantId })
-          .pipe(Effect.catchTag("CapabilityGrantNotFoundError", () => Effect.void)),
-      );
-    }
     const nextTask: CompositionTask = {
       ...task,
       status: projection.status,
@@ -259,22 +244,43 @@ export const projectCompositionRuntimeEvent = (
         ? { startedAtUnixMs: now }
         : {}),
     };
-    const priorEvents = yield* store.listEvents(binding.taskId, binding.runId);
-    yield* store.upsertTask(nextTask);
-    yield* store.upsertRun(nextRun);
-    yield* store.appendEvent({
-      taskId: nextTask.taskId,
-      runId: nextRun.runId,
-      ...(nextTask.parentTaskId === undefined ? {} : { parentTaskId: nextTask.parentTaskId }),
-      sourceEventId: String(event.eventId),
-      agentId: nextRun.agentId,
-      runtimeId: nextRun.runtimeId,
-      status: projection.status,
-      sequence: priorEvents.length,
-      eventType: projection.eventType,
-      summary: projection.summary,
-      ...(projection.blockerCode === undefined ? {} : { blockerCode: projection.blockerCode }),
-    });
+    const accepted = yield* store.withTransaction(
+      Effect.gen(function* () {
+        const inserted = yield* store.appendEventIfNew({
+          taskId: binding.taskId,
+          runId: binding.runId,
+          ...(task.parentTaskId === undefined ? {} : { parentTaskId: task.parentTaskId }),
+          sourceEventId: String(event.eventId),
+          agentId: run.agentId,
+          runtimeId: run.runtimeId,
+          status: projection.status,
+          sequence: 0,
+          eventType: projection.eventType,
+          summary: projection.summary,
+          ...(projection.blockerCode === undefined ? {} : { blockerCode: projection.blockerCode }),
+        });
+        if (!inserted) return false;
+        yield* store.upsertTask(nextTask);
+        yield* store.upsertRun(nextRun);
+        return true;
+      }),
+    );
+    if (!accepted) return;
+    const bindingDriver = yield* driverRegistry.get(run.agentId);
+    if (
+      becameRuntimeTerminal &&
+      run.capabilityHandshakeId !== undefined &&
+      bindingDriver?.revokeCapabilityHandshake !== undefined
+    ) {
+      yield* bindingDriver.revokeCapabilityHandshake({ task, run });
+    }
+    if (becameRuntimeTerminal && grantRegistry !== undefined) {
+      yield* Effect.forEach(run.capabilityGrantIds ?? [], (grantId) =>
+        grantRegistry
+          .revoke({ grantId })
+          .pipe(Effect.catchTag("CapabilityGrantNotFoundError", () => Effect.void)),
+      );
+    }
     if (becameTaskTerminal && resumeReadyTasks !== undefined) {
       yield* resumeReadyTasks();
     }
