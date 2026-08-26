@@ -290,6 +290,12 @@ const baseEventFor = (frame: MulticaWebSocketFrame, runtimeId: string, now: () =
   raw: {
     source: "multica.task-event" as const,
     messageType: frame.type,
+    // 这是 Code Work correlation metadata，用于 Driver 注销后的持久化归属恢复，
+    // 不把它伪装成 Multica 官方 payload 字段。
+    runtimeId,
+    ...(taskIdFromPayload(frame.payload) === undefined
+      ? {}
+      : { runtimeTaskId: RuntimeTaskId.make(taskIdFromPayload(frame.payload)!) }),
     payload: frame.payload,
   },
 });

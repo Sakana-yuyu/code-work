@@ -19,7 +19,10 @@ import { CompositionTaskStore } from "../persistence/Services/CompositionTaskSto
 import { ProviderService } from "../provider/Services/ProviderService.ts";
 import { CompositionAgentDriverRegistryService } from "./CompositionAgentDriverRegistry.ts";
 import { CompositionOrchestratorService } from "./CompositionOrchestratorService.ts";
-import { projectCompositionRuntimeEvent } from "./CompositionTaskRuntimeProjector.ts";
+import {
+  projectCompositionRuntimeEvent,
+  resolveCompositionRuntimeEventBinding,
+} from "./CompositionTaskRuntimeProjector.ts";
 import { CompositionRuntimeAdapterRegistryService } from "./CompositionRuntimeAdapterRegistry.ts";
 import type { CompositionRuntimeAdapterRegistry } from "./CompositionRuntimeAdapterRegistry.ts";
 import type { CompositionRuntimeAdapter } from "./CompositionRuntimeAdapter.ts";
@@ -180,7 +183,7 @@ const live = Effect.gen(function* () {
       ),
     ).pipe(
       Effect.flatMap(() =>
-        driverRegistry.resolveRuntimeEvent(event).pipe(
+        resolveCompositionRuntimeEventBinding(store, driverRegistry, event).pipe(
           Effect.flatMap((binding) =>
             binding === undefined
               ? Effect.void

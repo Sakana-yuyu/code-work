@@ -185,6 +185,18 @@ Task 事件映射：
 
 ## 生命周期与幂等
 
+### Multica seq、event_id 与 Code Work sequence 的三层语义
+
+Multica 的三个顺序/身份字段不能合并为一个本地序号：
+
+- `TaskMessagePayload.seq` 只表示同一个 Multica Task 的 `task:message` 消息顺序。它不能给 `task:progress`、`task:completed` 或其他来源的事件排序，也不能跨 Task、跨 Agent 或跨 Runtime 比较。
+- WebSocket 顶层 `event_id` 是 Multica realtime relay 为一次事件投递提供的稳定身份。它用于跨节点、断线重连和 Redis replay 场景下的事件去重；即使两个事件的 payload 完全相同，只要顶层 `event_id` 不同，也必须视为两个独立事件。
+- Code Work `CompositionTaskEvent.sequence` 是本地 Run 审计流的落库顺序，由 Store 原子分配。它只反映 Code Work 实际接收和写入的顺序，不代表远端 `seq`，也不应被用于推断远端事件发生顺序。
+
+Multica Adapter 将 `runtimeId` 和 `runtimeTaskId` 写入 `ProviderRuntimeEvent.raw` 的明确 T3 correlation metadata；这两个字段不是 Multica 官方 payload 字段。Driver Registry 在线时优先使用 Driver 自己的活动/历史绑定；Driver 注销后只有在这两个 metadata 均存在，且持久化查询得到唯一 `(runtime_id, runtime_task_id)` Run 时，才允许恢复归属。零命中记录 `unknown_binding` 并丢弃，多命中记录 `ambiguous_binding` 并丢弃，绝不只凭 `task_id`、`threadId` 或名称猜测。
+
+断线重连或 Redis replay 收到旧事件时，Projector 以 `(task_id, run_id, source_event_id)` 做原子幂等；其中 `source_event_id` 优先使用顶层 `event_id`。没有显式 `event_id` 的旧 fixture 才允许使用明确标记的帧内容 SHA-256 降级，这种降级不能把相同 payload 的两次真实投递可靠地区分开。事件乱序时，只有同一 Run 的状态机和终态锁定规则可以改变投影；终态、`in_review`、取消或超时之后的迟到事件只能追加审计，不能回退状态、覆盖结果、重复释放 grant 或重复触发重试/汇聚。
+
 1. Code Work 派发 Task，Orchestrator 创建 Task/Run，并调用 Driver。
 2. Driver 先向 Runtime/Provider 请求 capability handshake；只有收到 accepted 的 `handshakeId`，才将完整 prompt、workspaceRoot、grant 引用和 handshake ID 交给 Adapter。Provider 原生协议和 Multica 窄协议尚未支持时，带 grant 的任务会稳定拒绝，不会静默降级到 full-access。
 3. Adapter 返回 `runtimeTaskId` 和可选 `capabilityHandshakeId` 后，Code Work 保存 Run 关联；握手 ID 通过 046 迁移持久化。

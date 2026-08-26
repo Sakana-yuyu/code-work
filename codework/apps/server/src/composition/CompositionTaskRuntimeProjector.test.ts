@@ -80,6 +80,29 @@ const completionEvent = (eventId: string): ProviderRuntimeEvent => ({
   payload: { state: "completed" },
 });
 
+const multicaCompletionEvent = (
+  eventId: string,
+  runtimeId: string,
+  runtimeTaskId: string,
+): ProviderRuntimeEvent => ({
+  ...baseEvent,
+  eventId: EventId.make(eventId),
+  threadId: ThreadId.make(runtimeId),
+  type: "task.completed",
+  raw: {
+    source: "multica.task-event",
+    messageType: "task:completed",
+    runtimeId,
+    runtimeTaskId: RuntimeTaskId.make(runtimeTaskId),
+    payload: { task_id: runtimeTaskId },
+  },
+  payload: {
+    taskId: RuntimeTaskId.make(runtimeTaskId),
+    status: "completed",
+    summary: "Multica 任务已完成",
+  },
+});
+
 layer("CompositionTaskRuntimeProjector", (it) => {
   it.effect("projects terminal runtime events and ignores duplicate source events", () =>
     Effect.gen(function* () {
@@ -367,6 +390,152 @@ layer("CompositionTaskRuntimeProjector", (it) => {
       assert.equal(Option.getOrThrow(loadedLatestRun).status, "running");
       assert.equal(oldRunEvents.length, 1);
       assert.equal(oldRunEvents[0]?.sourceEventId, "provider-event-old-run-late");
+    }),
+  );
+
+  it.effect("Driver 注销后按持久化 runtime 归属恢复迟到事件，且不触发 Driver 副作用", () =>
+    Effect.gen(function* () {
+      const store = yield* CompositionTaskStore;
+      const fallbackTask = { ...task, taskId: "task-runtime-fallback" };
+      const fallbackRun = {
+        ...run,
+        taskId: fallbackTask.taskId,
+        runId: "run-runtime-fallback",
+        runtimeId: "runtime-fallback",
+        runtimeTaskId: "runtime-task-fallback",
+        capabilityHandshakeId: "handshake-fallback",
+      };
+      let revokeCalls = 0;
+      const registry = makeCompositionAgentDriverRegistry();
+      yield* registry.register({
+        agentId: fallbackRun.agentId,
+        runtimeId: fallbackRun.runtimeId,
+        startTask: () => Effect.succeed({ runtimeTaskId: fallbackRun.runtimeTaskId! }),
+        revokeCapabilityHandshake: () => Effect.sync(() => void (revokeCalls += 1)),
+        cancelTask: () => Effect.succeed({ status: "cancelled" as const }),
+        resolveRuntimeEvent: () => undefined,
+      });
+      yield* store.upsertTask(fallbackTask);
+      yield* store.upsertRun(fallbackRun);
+      yield* registry.unregister(fallbackRun.agentId);
+
+      yield* projectCompositionRuntimeEvent(
+        store,
+        registry,
+        multicaCompletionEvent(
+          "provider-event-fallback",
+          fallbackRun.runtimeId,
+          fallbackRun.runtimeTaskId!,
+        ),
+      );
+
+      const loadedTask = yield* store.getTask(fallbackTask.taskId);
+      const loadedRun = yield* store.getRun(fallbackRun.runId);
+      const events = yield* store.listEvents(fallbackTask.taskId, fallbackRun.runId);
+      assert.equal(Option.getOrThrow(loadedTask).status, "completed");
+      assert.equal(Option.getOrThrow(loadedRun).status, "completed");
+      assert.equal(events.length, 1);
+      assert.equal(events[0]?.sourceEventId, "provider-event-fallback");
+      assert.equal(revokeCalls, 0);
+    }),
+  );
+
+  it.effect("持久化 runtime 归属无命中时丢弃事件，不凭 task_id 猜测绑定", () =>
+    Effect.gen(function* () {
+      const store = yield* CompositionTaskStore;
+      const unknownTask = { ...task, taskId: "task-runtime-unknown-binding" };
+      const registry = makeCompositionAgentDriverRegistry();
+      yield* store.upsertTask(unknownTask);
+
+      yield* projectCompositionRuntimeEvent(
+        store,
+        registry,
+        multicaCompletionEvent(
+          "provider-event-unknown-binding",
+          "runtime-unknown-binding",
+          unknownTask.taskId,
+        ),
+      );
+
+      const loadedTask = yield* store.getTask(unknownTask.taskId);
+      assert.equal(Option.getOrThrow(loadedTask).status, unknownTask.status);
+      assert.deepEqual(yield* store.listEvents(unknownTask.taskId, "run-never-created"), []);
+    }),
+  );
+
+  it.effect("持久化 runtime 归属多命中时拒绝投影，避免把事件写入不确定的 Run", () =>
+    Effect.gen(function* () {
+      const store = yield* CompositionTaskStore;
+      const ambiguousTask = { ...task, taskId: "task-runtime-ambiguous-binding" };
+      const firstRun = {
+        ...run,
+        taskId: ambiguousTask.taskId,
+        runId: "run-runtime-ambiguous-1",
+        runtimeId: "runtime-ambiguous",
+        runtimeTaskId: "runtime-task-ambiguous",
+        attempt: 1,
+      };
+      const secondRun = { ...firstRun, runId: "run-runtime-ambiguous-2", attempt: 2 };
+      const registry = makeCompositionAgentDriverRegistry();
+      yield* store.upsertTask(ambiguousTask);
+      yield* store.upsertRun(firstRun);
+      yield* store.upsertRun(secondRun);
+
+      yield* projectCompositionRuntimeEvent(
+        store,
+        registry,
+        multicaCompletionEvent(
+          "provider-event-ambiguous-binding",
+          firstRun.runtimeId,
+          firstRun.runtimeTaskId!,
+        ),
+      );
+
+      assert.equal(Option.getOrThrow(yield* store.getTask(ambiguousTask.taskId)).status, "running");
+      assert.deepEqual(yield* store.listEvents(ambiguousTask.taskId, firstRun.runId), []);
+      assert.deepEqual(yield* store.listEvents(ambiguousTask.taskId, secondRun.runId), []);
+    }),
+  );
+
+  it.effect("按持久化归属恢复旧 Run 时仍只追加旧 Run 审计，不覆盖最新 Run", () =>
+    Effect.gen(function* () {
+      const store = yield* CompositionTaskStore;
+      const retriedTask = { ...task, taskId: "task-runtime-fallback-old-run" };
+      const oldRun = {
+        ...run,
+        taskId: retriedTask.taskId,
+        runId: "run-runtime-fallback-old",
+        runtimeId: "runtime-fallback-old",
+        runtimeTaskId: "runtime-task-fallback-old",
+        attempt: 1,
+      };
+      const latestRun = {
+        ...oldRun,
+        runId: "run-runtime-fallback-latest",
+        runtimeTaskId: "runtime-task-fallback-latest",
+        attempt: 2,
+      };
+      const registry = makeCompositionAgentDriverRegistry();
+      yield* store.upsertTask(retriedTask);
+      yield* store.upsertRun(oldRun);
+      yield* store.upsertRun(latestRun);
+
+      yield* projectCompositionRuntimeEvent(
+        store,
+        registry,
+        multicaCompletionEvent(
+          "provider-event-fallback-old-run",
+          oldRun.runtimeId,
+          oldRun.runtimeTaskId!,
+        ),
+      );
+
+      assert.equal(Option.getOrThrow(yield* store.getTask(retriedTask.taskId)).status, "running");
+      assert.equal(Option.getOrThrow(yield* store.getRun(oldRun.runId)).status, "running");
+      assert.equal(Option.getOrThrow(yield* store.getRun(latestRun.runId)).status, "running");
+      const oldEvents = yield* store.listEvents(retriedTask.taskId, oldRun.runId);
+      assert.equal(oldEvents.length, 1);
+      assert.equal(oldEvents[0]?.sourceEventId, "provider-event-fallback-old-run");
     }),
   );
 

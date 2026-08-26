@@ -102,6 +102,10 @@ const SquadRowSchema = Schema.Struct({
 
 const IdRequest = Schema.Struct({ id: Schema.String });
 const TaskRequest = Schema.Struct({ taskId: Schema.String });
+const RuntimeTaskRequest = Schema.Struct({
+  runtimeId: Schema.String,
+  runtimeTaskId: Schema.String,
+});
 const TaskListRequest = Schema.Struct({ projectId: Schema.NullOr(Schema.String) });
 const EventListRequest = Schema.Struct({ taskId: Schema.String, runId: Schema.String });
 const EventSourceRequest = Schema.Struct({
@@ -330,6 +334,23 @@ const makeStore = Effect.gen(function* () {
     `,
   });
 
+  const listRunsByRuntimeTaskRows = SqlSchema.findAll({
+    Request: RuntimeTaskRequest,
+    Result: RunRowSchema,
+    execute: ({ runtimeId, runtimeTaskId }) => sql`
+      SELECT
+        run_id AS "runId", task_id AS "taskId", agent_id AS "agentId", runtime_id AS "runtimeId",
+        runtime_task_id AS "runtimeTaskId", capability_handshake_id AS "capabilityHandshakeId",
+        status, attempt,
+        capability_grant_ids_json AS "capabilityGrantIds", lease_id AS "leaseId",
+        started_at_unix_ms AS "startedAtUnixMs", finished_at_unix_ms AS "finishedAtUnixMs",
+        failure_code AS "failureCode", result_summary AS "resultSummary"
+      FROM composition_task_runs
+      WHERE runtime_id = ${runtimeId} AND runtime_task_id = ${runtimeTaskId}
+      ORDER BY attempt ASC, run_id ASC
+    `,
+  });
+
   const appendEventRow = SqlSchema.void({
     Request: Schema.Struct({
       ...EventRowSchema.fields,
@@ -546,6 +567,13 @@ const makeStore = Effect.gen(function* () {
       run(
         "CompositionTaskStore.getLatestRun",
         getLatestRunRow({ taskId }).pipe(Effect.map(Option.map(toRun))),
+      ),
+    listRunsByRuntimeTask: (runtimeId, runtimeTaskId) =>
+      run(
+        "CompositionTaskStore.listRunsByRuntimeTask",
+        listRunsByRuntimeTaskRows({ runtimeId, runtimeTaskId }).pipe(
+          Effect.map((rows) => rows.map(toRun)),
+        ),
       ),
     appendEvent: (event) =>
       Effect.gen(function* () {

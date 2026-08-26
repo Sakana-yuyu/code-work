@@ -37,6 +37,9 @@ export const RuntimeEventRaw = Schema.Struct({
   source: RuntimeEventRawSource,
   method: Schema.optional(TrimmedNonEmptyStringSchema),
   messageType: Schema.optional(TrimmedNonEmptyStringSchema),
+  /** Code Work 适配器提供的归属元数据，不是外部 Runtime 的原始字段。 */
+  runtimeId: Schema.optional(TrimmedNonEmptyStringSchema),
+  runtimeTaskId: Schema.optional(RuntimeTaskId),
   payload: Schema.Unknown,
 });
 export type RuntimeEventRaw = typeof RuntimeEventRaw.Type;

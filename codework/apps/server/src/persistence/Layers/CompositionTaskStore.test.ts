@@ -194,6 +194,42 @@ layer("CompositionTaskStore", (it) => {
       );
     }),
   );
+
+  it.effect("按 runtime_id 和 runtime_task_id 查询全部关联 Run", () =>
+    Effect.gen(function* () {
+      const store = yield* CompositionTaskStore;
+      const firstRun = {
+        runId: "run-runtime-lookup-1",
+        taskId: "task-runtime-lookup",
+        agentId: "agent-1",
+        runtimeId: "runtime-lookup",
+        runtimeTaskId: "runtime-task-lookup",
+        status: "running" as const,
+        attempt: 1,
+        capabilityGrantIds: [],
+      };
+      const secondRun = {
+        ...firstRun,
+        runId: "run-runtime-lookup-2",
+        attempt: 2,
+      };
+      const otherRun = {
+        ...firstRun,
+        runId: "run-runtime-lookup-other",
+        runtimeTaskId: "runtime-task-other",
+      };
+
+      yield* store.upsertRun(firstRun);
+      yield* store.upsertRun(secondRun);
+      yield* store.upsertRun(otherRun);
+
+      const runs = yield* store.listRunsByRuntimeTask(firstRun.runtimeId, firstRun.runtimeTaskId);
+      assert.deepEqual(
+        runs.map((run) => run.runId),
+        [firstRun.runId, secondRun.runId],
+      );
+    }),
+  );
 });
 
 inputStoreLayer("CompositionTaskInputStore", (it) => {

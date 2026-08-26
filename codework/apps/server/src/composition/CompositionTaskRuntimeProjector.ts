@@ -61,6 +61,66 @@ const nonEmpty = (value: unknown): string | undefined => {
 
 const summaryOf = (value: unknown, fallback: string): string => nonEmpty(value) ?? fallback;
 
+type CompositionRuntimeEventBinding = {
+  readonly driver?: CompositionAgentDriver;
+  readonly taskId: string;
+  readonly runId: string;
+  readonly runtimeTaskId?: string;
+  readonly source: "driver" | "persistence";
+};
+
+const multicaRuntimeEventCorrelation = (
+  event: ProviderRuntimeEvent,
+): { readonly runtimeId: string; readonly runtimeTaskId: string } | undefined => {
+  // 只有 Multica Adapter 写入的明确 correlation metadata 允许触发持久化 fallback；
+  // 不使用 task_id 单独猜测，也不把外部 payload 字段误当成本地 runtime ID。
+  if (event.raw?.source !== "multica.task-event") return undefined;
+  const runtimeTaskId = event.raw.runtimeTaskId;
+  const runtimeId = event.raw.runtimeId;
+  return runtimeTaskId === undefined || runtimeId === undefined
+    ? undefined
+    : { runtimeId, runtimeTaskId };
+};
+
+/** Driver 失联后只用明确的 runtime 复合键恢复审计归属，禁止凭 taskId 猜测。 */
+export const resolveCompositionRuntimeEventBinding = (
+  store: CompositionTaskStoreShape,
+  driverRegistry: CompositionAgentDriverRegistry,
+  event: ProviderRuntimeEvent,
+): Effect.Effect<CompositionRuntimeEventBinding | undefined, PersistenceSqlError> =>
+  Effect.gen(function* () {
+    const liveBinding = yield* driverRegistry.resolveRuntimeEvent(event);
+    if (liveBinding !== undefined) {
+      return { ...liveBinding, source: "driver" as const };
+    }
+
+    const correlation = multicaRuntimeEventCorrelation(event);
+    if (correlation === undefined) return undefined;
+
+    const candidates = yield* store.listRunsByRuntimeTask(
+      correlation.runtimeId,
+      correlation.runtimeTaskId,
+    );
+    if (candidates.length === 1) {
+      const [run] = candidates;
+      if (run === undefined) return undefined;
+      return {
+        taskId: run.taskId,
+        runId: run.runId,
+        runtimeTaskId: run.runtimeTaskId ?? correlation.runtimeTaskId,
+        source: "persistence" as const,
+      };
+    }
+
+    yield* Effect.logWarning("Composition Runtime 事件绑定失败", {
+      reasonCode: candidates.length === 0 ? "unknown_binding" : "ambiguous_binding",
+      runtimeId: correlation.runtimeId,
+      runtimeTaskId: correlation.runtimeTaskId,
+      candidateCount: candidates.length,
+    });
+    return undefined;
+  });
+
 type RuntimeProjection = {
   readonly status: CompositionTaskStatus;
   readonly eventType: CompositionTaskEvent["eventType"];
@@ -216,7 +276,7 @@ export const projectCompositionRuntimeEvent = (
   | CompositionAgentDriverFailure
 > =>
   Effect.gen(function* () {
-    const binding = yield* driverRegistry.resolveRuntimeEvent(event);
+    const binding = yield* resolveCompositionRuntimeEventBinding(store, driverRegistry, event);
     if (binding === undefined) return;
 
     const taskOption = yield* store.getTask(binding.taskId);
@@ -292,7 +352,9 @@ export const projectCompositionRuntimeEvent = (
       }),
     );
     if (!accepted) return;
-    const bindingDriver = yield* driverRegistry.get(run.agentId);
+    // 持久化 fallback 只恢复归属和审计；已注销或新注册的 Driver 都不能借此触发
+    // handshake revoke 等一次性副作用。
+    const bindingDriver = binding.source === "driver" ? binding.driver : undefined;
     if (
       becameRuntimeTerminal &&
       run.capabilityHandshakeId !== undefined &&
