@@ -316,6 +316,20 @@ describe("CompositionRuntimeAgentDriver", () => {
       }),
     );
 
+    expect(
+      driver.resolveRuntimeEvent?.({
+        eventId: EventId.make("event-after-revoke"),
+        provider: ProviderDriverKind.make("multica"),
+        threadId: ThreadId.make("thread-after-revoke"),
+        createdAt: "2026-08-25T00:00:00.000Z",
+        type: "task.progress",
+        payload: {
+          taskId: RuntimeTaskId.make("runtime-revoke:task:task-revoke:run-revoke"),
+          description: "迟到事件",
+        },
+      }),
+    ).toBeUndefined();
+
     await expect(
       Effect.runPromise(
         adapter.dispatchTask({

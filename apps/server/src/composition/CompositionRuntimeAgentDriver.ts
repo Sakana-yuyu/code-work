@@ -225,20 +225,24 @@ export const makeCompositionRuntimeAgentDriver = (
   const revokeCapabilityHandshake: CompositionAgentDriver["revokeCapabilityHandshake"] = ({
     run,
   }) => {
-    if (run.capabilityHandshakeId === undefined) return Effect.void;
+    const removeActiveRun = Effect.sync(() => activeRuns.delete(run.runId));
+    if (run.capabilityHandshakeId === undefined) return removeActiveRun;
     if (options.adapter.revokeCapabilityHandshake === undefined) {
       return Effect.fail(
         new CompositionAgentDriverFailure({
           code: "runtime_capability_handshake_revoke_unsupported",
           detail: "Runtime 没有提供 capability handshake 撤销接口。",
         }),
-      );
+      ).pipe(Effect.ensuring(removeActiveRun));
     }
     return options.adapter
       .revokeCapabilityHandshake({
         handshakeId: run.capabilityHandshakeId,
       })
-      .pipe(Effect.mapError((failure) => makeFailure(failure.code, failure)));
+      .pipe(
+        Effect.mapError((failure) => makeFailure(failure.code, failure)),
+        Effect.ensuring(removeActiveRun),
+      );
   };
 
   const cancelTask: CompositionAgentDriver["cancelTask"] = (input) =>
