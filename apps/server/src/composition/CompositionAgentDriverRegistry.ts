@@ -2,7 +2,7 @@ import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Schema from "effect/Schema";
-import type { ProviderRuntimeEvent } from "@t3tools/contracts";
+import type { CompositionAgentDriverProfile, ProviderRuntimeEvent } from "@t3tools/contracts";
 
 import type { CompositionAgentDriver } from "./CompositionOrchestrator.ts";
 
@@ -34,6 +34,7 @@ export interface CompositionAgentDriverRegistry {
   readonly unregister: (agentId: string) => Effect.Effect<boolean>;
   readonly get: (agentId: string) => Effect.Effect<CompositionAgentDriver | undefined>;
   readonly list: Effect.Effect<ReadonlyArray<CompositionAgentDriver>>;
+  readonly listProfiles: Effect.Effect<ReadonlyArray<CompositionAgentDriverProfile>>;
   readonly resolveRuntimeEvent: (event: ProviderRuntimeEvent) => Effect.Effect<
     | {
         readonly driver: CompositionAgentDriver;
@@ -54,6 +55,29 @@ export class CompositionAgentDriverRegistryService extends Context.Service<
 
 export const makeCompositionAgentDriverRegistry = (): CompositionAgentDriverRegistry => {
   const drivers = new Map<string, CompositionAgentDriver>();
+
+  const missingProfile = (driver: CompositionAgentDriver): CompositionAgentDriverProfile => ({
+    schemaVersion: 1,
+    agentId: driver.agentId,
+    runtimeId: driver.runtimeId,
+    driverKind: "unknown",
+    status: "degraded",
+    capabilities: [],
+    supportsToolBroker: false,
+    supportsCapabilityHandshake: false,
+    supportsWorkspace: false,
+    supportsTerminal: false,
+    supportsGit: false,
+    supportsMcp: false,
+    supportsBrowser: false,
+    supportsIde: false,
+    supportsProviderApi: false,
+    supportsResume: false,
+    supportsSquad: false,
+    supportsLeader: false,
+    supportsTaskGraph: false,
+    reasonCode: "driver_profile_missing",
+  });
 
   const register: CompositionAgentDriverRegistry["register"] = Effect.fn(
     "CompositionAgentDriverRegistry.register",
@@ -79,6 +103,13 @@ export const makeCompositionAgentDriverRegistry = (): CompositionAgentDriverRegi
     get: (agentId) => Effect.sync(() => drivers.get(agentId)),
     get list() {
       return Effect.sync(() => Array.from(drivers.values()));
+    },
+    get listProfiles() {
+      return Effect.forEach(Array.from(drivers.values()), (driver) =>
+        driver.getProfile === undefined
+          ? Effect.succeed(missingProfile(driver))
+          : driver.getProfile(),
+      );
     },
     resolveRuntimeEvent: (event) =>
       Effect.sync(() => {

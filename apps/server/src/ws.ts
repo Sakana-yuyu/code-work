@@ -95,6 +95,7 @@ import * as ByokBalance from "./provider/byok/ByokBalanceService.ts";
 import * as ByokDelegation from "./provider/byok/ByokDelegationService.ts";
 import * as ByokAdaptersImport from "./provider/byok/ByokAdaptersImport.ts";
 import * as CompositionAgentService from "./composition/CompositionAgentService.ts";
+import * as CompositionAgentDriverRegistry from "./composition/CompositionAgentDriverRegistry.ts";
 import * as CompositionOrchestratorService from "./composition/CompositionOrchestratorService.ts";
 import * as CompositionToolBroker from "./composition/ToolBroker.ts";
 import * as CompositionRuntimeToolBridge from "./composition/CompositionRuntimeToolBridge.ts";
@@ -481,6 +482,9 @@ const makeWsRpcLayer = (
       });
       const compositionOrchestrator = yield* Effect.serviceOption(
         CompositionOrchestratorService.CompositionOrchestratorService,
+      );
+      const compositionAgentDrivers = yield* Effect.serviceOption(
+        CompositionAgentDriverRegistry.CompositionAgentDriverRegistryService,
       );
       const compositionRuntimeToolBridge = yield* Effect.serviceOption(
         CompositionRuntimeToolBridge.CompositionRuntimeToolBridgeService,
@@ -1861,6 +1865,14 @@ const makeWsRpcLayer = (
                     ),
                     Effect.map(({ text, rounds }) => ({ text, rounds })),
                   ),
+            { "rpc.aggregate": "composition" },
+          ),
+        [WS_METHODS.serverListCompositionAgentDrivers]: (_input) =>
+          observeRpcEffect(
+            WS_METHODS.serverListCompositionAgentDrivers,
+            Option.isNone(compositionAgentDrivers)
+              ? Effect.succeed([])
+              : compositionAgentDrivers.value.listProfiles,
             { "rpc.aggregate": "composition" },
           ),
         [WS_METHODS.serverInvokeCompositionRuntimeTool]: (input) =>

@@ -379,6 +379,28 @@ Batch B 固定了所有真实 Cursor/VSCode Adapter 必须遵守的可信执行�
 
 本节点通过 contracts/server typecheck、5 个相关测试文件共 36 个测试、格式检查和 `git diff --check`。真实远端 Squad 成员调度、路由刷新后的 daemon 现场探测和 Web/Desktop/Mobile E2E 仍未完成。
 
+## Batch D-4 落地记录（2026-08-26）
+
+本节点把多个 Agent Driver 的可发现能力统一投影到跨端合同，避免 UI、调度器和安全策略从
+Driver 字段自行猜测能力：
+
+- 新增 `CompositionAgentDriverProfile`，统一返回 `agentId`、`runtimeId`、Driver 类型、Provider 类型、
+  在线状态、声明能力、ToolBroker/handshake、Workspace/Terminal/Git/MCP/Browser/IDE/Provider API、
+  Resume 和 Multica Squad/Leader/Task Graph 能力。
+- `CompositionAgentDriverRegistry` 新增 `listProfiles`；没有显式能力投影的旧 Driver 返回
+  `unknown` 和 `driver_profile_missing` 降级状态，不会被猜测成 Provider 或外部 Runtime。
+- Provider Driver 只声明已验证的 Provider Session/Turn/Cancel 和 Provider API；因为当前 Provider
+  原生会话没有接入 T3 ToolBroker，统一能力目录明确显示 `provider_toolbroker_bridge_unavailable`。
+- Runtime Driver 只有在 Runtime 明确声明 `t3.toolbroker` 与 `t3.capability_handshake` 且提供 capability handshake 时，才把
+  ToolBroker 和 Workspace/Terminal/Git/Browser/IDE/Provider API 标为可用；Multica 的 Squad/Leader/
+  Task Graph 可以单独显示为已支持，但窄协议仍显示 ToolBroker 降级。
+- 新增 `server.listCompositionAgentDrivers` RPC、client-runtime 查询状态和 Web Integrations 设置只读面，
+  Web/Desktop/Mobile 可共享同一份服务端能力投影，不复制推断逻辑。
+
+本节点验证覆盖 3 个服务端 Driver 投影测试文件共 9 个测试、contracts Agent Driver 合同测试、Web 和
+client-runtime 定向 TypeScript 检查、格式检查和 `git diff --check`。真实 Provider 原生 ToolBroker、
+真实 Cursor/VSCode Adapter、真实 Multica daemon Tool-call/Grant handshake 及多端点击验收仍未完成。
+
 ## Batch A-2 落地记录（2026-08-26）
 
 本节点把任意受信 MCP Tool 的 catalog/invoke 合同接入 Composition ToolBroker，但没有把

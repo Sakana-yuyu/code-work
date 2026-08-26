@@ -115,6 +115,51 @@ export type CompositionEventEnvelope = typeof CompositionEventEnvelope.Type;
 const CompositionRuntimeDriverKind = Schema.Literals(["acp", "cli", "ide", "multica"]);
 export type CompositionRuntimeDriverKind = typeof CompositionRuntimeDriverKind.Type;
 
+const CompositionAgentDriverKind = Schema.Literals([
+  "unknown",
+  "provider",
+  "acp",
+  "cli",
+  "ide",
+  "multica",
+]);
+export type CompositionAgentDriverKind = typeof CompositionAgentDriverKind.Type;
+
+const CompositionAgentDriverStatus = Schema.Literals(["available", "degraded", "unavailable"]);
+export type CompositionAgentDriverStatus = typeof CompositionAgentDriverStatus.Type;
+
+/**
+ * Composition Agent Driver 的可发现能力投影。
+ *
+ * 这里描述的是 Driver 已经能够证明的事实，不代表当前 Task 已经获得
+ * capability grant，也不替代 ToolBroker 的授权判定。
+ */
+export const CompositionAgentDriverProfile = Schema.Struct({
+  schemaVersion: Schema.Literal(1),
+  agentId: TrimmedNonEmptyString,
+  runtimeId: TrimmedNonEmptyString,
+  driverKind: CompositionAgentDriverKind,
+  providerKind: Schema.optional(TrimmedNonEmptyString),
+  displayName: Schema.optional(TrimmedNonEmptyString),
+  status: CompositionAgentDriverStatus,
+  capabilities: Schema.Array(TrimmedNonEmptyString),
+  supportsToolBroker: Schema.Boolean,
+  supportsCapabilityHandshake: Schema.Boolean,
+  supportsWorkspace: Schema.Boolean,
+  supportsTerminal: Schema.Boolean,
+  supportsGit: Schema.Boolean,
+  supportsMcp: Schema.Boolean,
+  supportsBrowser: Schema.Boolean,
+  supportsIde: Schema.Boolean,
+  supportsProviderApi: Schema.Boolean,
+  supportsResume: Schema.Boolean,
+  supportsSquad: Schema.Boolean,
+  supportsLeader: Schema.Boolean,
+  supportsTaskGraph: Schema.Boolean,
+  reasonCode: Schema.optional(TrimmedNonEmptyString),
+});
+export type CompositionAgentDriverProfile = typeof CompositionAgentDriverProfile.Type;
+
 const CompositionRuntimeProbeStatus = Schema.Literals(["online", "offline", "unstable"]);
 export type CompositionRuntimeProbeStatus = typeof CompositionRuntimeProbeStatus.Type;
 

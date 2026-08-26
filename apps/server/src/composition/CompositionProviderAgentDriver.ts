@@ -1,5 +1,6 @@
 import { ThreadId } from "@t3tools/contracts";
 import type {
+  CompositionAgentDriverProfile,
   CompositionRuntimeCapabilityHandshakeRequest,
   CompositionRuntimeCapabilityHandshakeResult,
   ModelSelection,
@@ -45,9 +46,26 @@ export interface CompositionProviderAgentDriverOptions {
   readonly runtimeId: string;
   readonly providerInstanceId: ProviderInstanceId;
   readonly adapter: CompositionProviderSessionAdapter;
+  readonly providerKind?: string;
+  readonly displayName?: string;
+  readonly getSnapshot?: () => Effect.Effect<{
+    readonly enabled: boolean;
+    readonly installed: boolean;
+    readonly status: "ready" | "warning" | "error" | "disabled";
+    readonly availability?: "available" | "unavailable";
+    readonly version: string | null;
+  }>;
   readonly model?: string;
   readonly runtimeMode?: RuntimeMode;
 }
+
+type ProviderProfileSnapshot = {
+  readonly enabled: boolean;
+  readonly installed: boolean;
+  readonly status: "ready" | "warning" | "error" | "disabled";
+  readonly availability?: "available" | "unavailable";
+  readonly version: string | null;
+};
 
 const errorDetail = (error: unknown): string =>
   error instanceof Error ? error.message : String(error);
@@ -72,6 +90,82 @@ export const makeCompositionProviderAgentDriver = (
     }
   >();
   const runtimeMode = options.runtimeMode ?? "full-access";
+
+  const getProfile: NonNullable<CompositionAgentDriver["getProfile"]> = () => {
+    const snapshotEffect: Effect.Effect<ProviderProfileSnapshot> =
+      options.getSnapshot === undefined
+        ? Effect.succeed({
+            enabled: true,
+            installed: true,
+            status: "ready" as const,
+            version: null,
+          } satisfies ProviderProfileSnapshot)
+        : options.getSnapshot();
+    return snapshotEffect.pipe(
+      Effect.map((snapshot): CompositionAgentDriverProfile => {
+        const available =
+          snapshot.enabled &&
+          snapshot.installed &&
+          snapshot.status === "ready" &&
+          snapshot.availability !== "unavailable";
+        return {
+          schemaVersion: 1,
+          agentId: options.agentId,
+          runtimeId: options.runtimeId,
+          driverKind: "provider",
+          ...(options.providerKind === undefined ? {} : { providerKind: options.providerKind }),
+          ...(options.displayName === undefined ? {} : { displayName: options.displayName }),
+          status: available
+            ? "degraded"
+            : snapshot.status === "warning"
+              ? "degraded"
+              : "unavailable",
+          capabilities: ["model", "provider.session", "provider.turn", "provider.cancel"],
+          supportsToolBroker: false,
+          supportsCapabilityHandshake: options.adapter.handshakeCapabilities !== undefined,
+          supportsWorkspace: false,
+          supportsTerminal: false,
+          supportsGit: false,
+          supportsMcp: false,
+          supportsBrowser: false,
+          supportsIde: false,
+          supportsProviderApi: true,
+          supportsResume: false,
+          supportsSquad: false,
+          supportsLeader: false,
+          supportsTaskGraph: false,
+          reasonCode: available
+            ? "provider_toolbroker_bridge_unavailable"
+            : `provider_${snapshot.status}`,
+        };
+      }),
+      Effect.orElseSucceed(
+        () =>
+          ({
+            schemaVersion: 1,
+            agentId: options.agentId,
+            runtimeId: options.runtimeId,
+            driverKind: "provider" as const,
+            status: "unavailable" as const,
+            capabilities: [],
+            supportsToolBroker: false,
+            supportsCapabilityHandshake: false,
+            supportsWorkspace: false,
+            supportsTerminal: false,
+            supportsGit: false,
+            supportsMcp: false,
+            supportsBrowser: false,
+            supportsIde: false,
+            supportsProviderApi: false,
+            supportsResume: false,
+            supportsSquad: false,
+            supportsLeader: false,
+            supportsTaskGraph: false,
+            reasonCode: "provider_profile_failed",
+          }) satisfies CompositionAgentDriverProfile,
+      ),
+    );
+  };
 
   const startTask: CompositionAgentDriver["startTask"] = (input) =>
     Effect.gen(function* () {
@@ -207,6 +301,7 @@ export const makeCompositionProviderAgentDriver = (
   return {
     agentId: options.agentId,
     runtimeId: options.runtimeId,
+    getProfile,
     startTask,
     revokeCapabilityHandshake,
     cancelTask,

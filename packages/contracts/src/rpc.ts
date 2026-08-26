@@ -208,6 +208,7 @@ import {
   ByokDelegationSubmitRequest,
 } from "./byokDelegation.ts";
 import {
+  CompositionAgentDriverProfile,
   CompositionMcpRuntimeRpcError,
   CompositionMcpRuntimeServerState,
   CompositionMcpServerId,
@@ -329,6 +330,7 @@ export const WS_METHODS = {
   serverListByokDelegations: "server.listByokDelegations",
   serverImportByokAdapters: "server.importByokAdapters",
   serverRunCompositionAgent: "server.runCompositionAgent",
+  serverListCompositionAgentDrivers: "server.listCompositionAgentDrivers",
   serverInvokeCompositionRuntimeTool: "server.invokeCompositionRuntimeTool",
   serverDispatchCompositionTask: "server.dispatchCompositionTask",
   serverCancelCompositionTask: "server.cancelCompositionTask",
@@ -532,6 +534,15 @@ export const WsServerRunCompositionAgentRpc = Rpc.make(WS_METHODS.serverRunCompo
   success: CompositionAgentLoopRunResult,
   error: Schema.Union([CompositionAgentLoopRunError, EnvironmentAuthorizationError]),
 });
+
+export const WsServerListCompositionAgentDriversRpc = Rpc.make(
+  WS_METHODS.serverListCompositionAgentDrivers,
+  {
+    payload: Schema.Struct({}),
+    success: Schema.Array(CompositionAgentDriverProfile),
+    error: EnvironmentAuthorizationError,
+  },
+);
 
 export const WsServerInvokeCompositionRuntimeToolRpc = Rpc.make(
   WS_METHODS.serverInvokeCompositionRuntimeTool,
@@ -1218,6 +1229,7 @@ export const WsRpcGroup = RpcGroup.make(
   WsServerListByokDelegationsRpc,
   WsServerImportByokAdaptersRpc,
   WsServerRunCompositionAgentRpc,
+  WsServerListCompositionAgentDriversRpc,
   WsServerDispatchCompositionTaskRpc,
   WsServerCancelCompositionTaskRpc,
   WsServerReviewCompositionTaskRpc,

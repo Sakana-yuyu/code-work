@@ -1,4 +1,5 @@
 import type {
+  CompositionAgentDriverProfile,
   CompositionTask,
   CompositionTaskRetryRequest,
   CompositionTaskRetryResult,
@@ -125,6 +126,8 @@ export class CompositionAgentDriverFailure extends Schema.TaggedErrorClass<Compo
 export interface CompositionAgentDriver {
   readonly agentId: string;
   readonly runtimeId: string;
+  /** 返回当前 Driver 已经验证过的能力，不包含本次 Task 的授权结果。 */
+  readonly getProfile?: () => Effect.Effect<CompositionAgentDriverProfile>;
   readonly startTask: (input: {
     readonly task: CompositionTask;
     readonly run: CompositionTaskRun;
@@ -155,7 +158,7 @@ export interface CompositionAgentDriver {
     { readonly status: "cancelled" | "cancel_requested" | "already_terminal" },
     CompositionAgentDriverFailure
   >;
-  readonly reviewTask: (
+  readonly reviewTask?: (
     input: CompositionTaskReviewRequest,
   ) => Effect.Effect<
     CompositionTaskReviewResult,

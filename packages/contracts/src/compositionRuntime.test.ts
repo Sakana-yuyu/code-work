@@ -2,6 +2,7 @@ import { describe, expect, it } from "vite-plus/test";
 import * as Schema from "effect/Schema";
 
 import {
+  CompositionAgentDriverProfile,
   CompositionEventEnvelope,
   CompositionIdeResolveResult,
   CompositionMulticaRuntimeConfig,
@@ -25,6 +26,7 @@ const decodeCapabilityHandshakeResult = Schema.decodeUnknownSync(
 );
 const decodeMulticaConfig = Schema.decodeUnknownSync(CompositionMulticaRuntimeConfig);
 const decodeMcpServerConfig = Schema.decodeUnknownSync(CompositionMcpRuntimeServerConfig);
+const decodeAgentDriverProfile = Schema.decodeUnknownSync(CompositionAgentDriverProfile);
 
 describe("composition runtime contracts", () => {
   it("keeps the event envelope additive to task events", () => {
@@ -70,6 +72,35 @@ describe("composition runtime contracts", () => {
         supportsMcp: true,
       }),
     ).not.toThrow();
+  });
+
+  it("固定 Agent Driver 能力投影的跨端字段和降级语义", () => {
+    const decoded = decodeAgentDriverProfile({
+      schemaVersion: 1,
+      agentId: "multica-local:agent",
+      runtimeId: "multica-local",
+      driverKind: "multica",
+      status: "degraded",
+      capabilities: ["squad", "leader", "task-graph"],
+      supportsToolBroker: false,
+      supportsCapabilityHandshake: false,
+      supportsWorkspace: false,
+      supportsTerminal: false,
+      supportsGit: false,
+      supportsMcp: false,
+      supportsBrowser: false,
+      supportsIde: false,
+      supportsProviderApi: false,
+      supportsResume: false,
+      supportsSquad: true,
+      supportsLeader: true,
+      supportsTaskGraph: true,
+      reasonCode: "runtime_capability_handshake_unsupported",
+    });
+
+    expect(decoded.status).toBe("degraded");
+    expect(decoded.supportsToolBroker).toBe(false);
+    expect(decoded.capabilities).toEqual(["squad", "leader", "task-graph"]);
   });
 
   it("requires an accepted capability handshake to carry a traceable handshake ID", () => {

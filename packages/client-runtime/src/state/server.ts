@@ -768,6 +768,12 @@ export function createServerEnvironmentAtoms<R, E>(
       staleTimeMs: 5_000,
       idleTtlMs: 60_000,
     }),
+    compositionAgentDrivers: createEnvironmentRpcQueryAtomFamily(runtime, {
+      label: "environment-data:server:composition-agent-drivers",
+      tag: WS_METHODS.serverListCompositionAgentDrivers,
+      staleTimeMs: 5_000,
+      idleTtlMs: 60_000,
+    }),
     traceDiagnostics: createEnvironmentRpcQueryAtomFamily(runtime, {
       label: "environment-data:server:trace-diagnostics",
       tag: WS_METHODS.serverGetTraceDiagnostics,

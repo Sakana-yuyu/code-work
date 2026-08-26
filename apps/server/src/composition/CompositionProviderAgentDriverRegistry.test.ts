@@ -2,7 +2,9 @@ import { describe, expect, it } from "vite-plus/test";
 import * as Effect from "effect/Effect";
 
 import {
+  ProviderDriverKind,
   ProviderInstanceId,
+  type ServerProvider,
   ThreadId,
   TurnId,
   type ProviderSession,
@@ -18,7 +20,19 @@ import {
 } from "./CompositionProviderAgentDriverRegistry.ts";
 
 const makeProviderInstance = (instanceId: string): ProviderInstance =>
-  ({ instanceId: ProviderInstanceId.make(instanceId) }) as ProviderInstance;
+  ({
+    instanceId: ProviderInstanceId.make(instanceId),
+    driverKind: ProviderDriverKind.make("codex"),
+    snapshot: {
+      getSnapshot: Effect.succeed({
+        enabled: true,
+        installed: true,
+        status: "ready",
+        availability: "available",
+        version: null,
+      } as unknown as ServerProvider),
+    },
+  }) as ProviderInstance;
 
 const makeProviderServiceHarness = () => {
   const calls: string[] = [];
@@ -69,6 +83,15 @@ describe("CompositionProviderAgentDriverRegistry", () => {
       ),
     );
     expect(driver).toBeDefined();
+
+    await expect(Effect.runPromise(driver!.getProfile!())).resolves.toMatchObject({
+      driverKind: "provider",
+      providerKind: "codex",
+      status: "degraded",
+      supportsProviderApi: true,
+      supportsToolBroker: false,
+      reasonCode: "provider_toolbroker_bridge_unavailable",
+    });
 
     await Effect.runPromise(
       driver!.startTask({

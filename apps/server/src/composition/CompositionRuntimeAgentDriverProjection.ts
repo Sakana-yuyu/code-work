@@ -14,6 +14,7 @@ import { makeCompositionRuntimeAgentDriver } from "./CompositionRuntimeAgentDriv
 import type {
   CompositionRuntimeAdapter,
   CompositionRuntimeAdapterFailure,
+  CompositionRuntimeAgent,
 } from "./CompositionRuntimeAdapter.ts";
 import {
   CompositionRuntimeAdapterRegistryService,
@@ -45,10 +46,10 @@ export interface CompositionRuntimeAgentDriverProjectionOptions {
   readonly registry?: CompositionAgentDriverRegistry;
 }
 
-const projectedAgentIdsFor = (
+const projectedAgentsFor = (
   adapter: CompositionRuntimeAdapter,
-): Effect.Effect<ReadonlyArray<string>, CompositionRuntimeAdapterFailure> =>
-  adapter.listAgents().pipe(Effect.map((agents) => agents.map((agent) => agent.agentId)));
+): Effect.Effect<ReadonlyArray<CompositionRuntimeAgent>, CompositionRuntimeAdapterFailure> =>
+  adapter.listAgents();
 
 export const makeCompositionRuntimeAgentDriverProjection = (
   options: CompositionRuntimeAgentDriverProjectionOptions,
@@ -61,8 +62,9 @@ export const makeCompositionRuntimeAgentDriverProjection = (
     const liveAgentIds = new Set<string>();
 
     for (const adapter of adapters) {
-      const agentIds = yield* projectedAgentIdsFor(adapter);
-      for (const agentId of agentIds) {
+      const agents = yield* projectedAgentsFor(adapter);
+      for (const agent of agents) {
+        const agentId = agent.agentId;
         liveAgentIds.add(agentId);
         const existing = yield* registry.get(agentId);
         if (existing !== undefined) continue;

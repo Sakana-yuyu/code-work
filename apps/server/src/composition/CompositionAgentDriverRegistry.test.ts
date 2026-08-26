@@ -46,4 +46,18 @@ describe("CompositionAgentDriverRegistry", () => {
       Effect.runPromise(registry.register({ ...driver, agentId: " agent-codex " })),
     ).rejects.toMatchObject({ detail: "agentId 必须已去除首尾空白。" });
   });
+
+  it("为没有能力投影的旧 Driver 返回明确的降级状态", async () => {
+    const registry = makeCompositionAgentDriverRegistry();
+    await Effect.runPromise(registry.register(driver));
+
+    await expect(Effect.runPromise(registry.listProfiles)).resolves.toMatchObject([
+      {
+        agentId: "agent-codex",
+        status: "degraded",
+        supportsToolBroker: false,
+        reasonCode: "driver_profile_missing",
+      },
+    ]);
+  });
 });

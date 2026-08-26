@@ -42,4 +42,81 @@ describe("CompositionRuntimeAgentDriverProjection", () => {
       Effect.runPromise(projection.registry.get("runtime-1:agent")),
     ).resolves.toBeUndefined();
   });
+
+  it("只把 Runtime 明确声明且完成握手的 ToolBroker 能力标为可用", async () => {
+    const adapters = makeCompositionRuntimeAdapterRegistry();
+    const adapter = makeInMemoryCompositionRuntimeAdapter({
+      runtimeId: "runtime-capabilities",
+      driverKind: "acp",
+      capabilities: [
+        "t3.toolbroker",
+        "t3.capability_handshake",
+        "t3.workspace",
+        "t3.terminal",
+        "t3.git",
+        "t3.browser",
+        "t3.ide",
+        "t3.provider_api",
+        "squad",
+        "leader",
+        "task-graph",
+      ],
+      supportsResume: true,
+      supportsMcp: true,
+    });
+    await Effect.runPromise(adapters.register(adapter));
+    const projection = makeCompositionRuntimeAgentDriverProjection({
+      adapterRegistry: adapters,
+    });
+
+    await Effect.runPromise(projection.refresh);
+    const driver = await Effect.runPromise(projection.registry.get("runtime-capabilities:agent"));
+    const profile = await Effect.runPromise(driver!.getProfile!());
+
+    expect(profile).toMatchObject({
+      driverKind: "acp",
+      status: "available",
+      supportsToolBroker: true,
+      supportsCapabilityHandshake: true,
+      supportsWorkspace: true,
+      supportsTerminal: true,
+      supportsGit: true,
+      supportsBrowser: true,
+      supportsIde: true,
+      supportsProviderApi: true,
+      supportsResume: true,
+      supportsSquad: true,
+      supportsLeader: true,
+      supportsTaskGraph: true,
+    });
+  });
+
+  it("Multica 窄协议没有 ToolBroker 标记时保持降级状态", async () => {
+    const adapters = makeCompositionRuntimeAdapterRegistry();
+    const adapter = makeInMemoryCompositionRuntimeAdapter({
+      runtimeId: "multica-degraded",
+      driverKind: "multica",
+      capabilities: ["squad", "leader", "task-graph"],
+      supportsMcp: false,
+    });
+    await Effect.runPromise(adapters.register(adapter));
+    const projection = makeCompositionRuntimeAgentDriverProjection({
+      adapterRegistry: adapters,
+    });
+
+    await Effect.runPromise(projection.refresh);
+    const driver = await Effect.runPromise(projection.registry.get("multica-degraded:agent"));
+    const profile = await Effect.runPromise(driver!.getProfile!());
+
+    expect(profile).toMatchObject({
+      driverKind: "multica",
+      status: "degraded",
+      supportsToolBroker: false,
+      supportsCapabilityHandshake: false,
+      supportsSquad: true,
+      supportsLeader: true,
+      supportsTaskGraph: true,
+      reasonCode: "runtime_capability_handshake_unsupported",
+    });
+  });
 });

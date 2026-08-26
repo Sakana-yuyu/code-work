@@ -77,6 +77,18 @@ export const makeCompositionProviderAgentDriverProjection = (
         agentId,
         runtimeId: agentId,
         providerInstanceId: instance.instanceId,
+        providerKind: instance.driverKind,
+        ...(instance.displayName === undefined ? {} : { displayName: instance.displayName }),
+        getSnapshot: () =>
+          instance.snapshot.getSnapshot.pipe(
+            Effect.map((value) => ({
+              enabled: value.enabled,
+              installed: value.installed,
+              status: value.status,
+              ...(value.availability === undefined ? {} : { availability: value.availability }),
+              version: value.version,
+            })),
+          ),
         adapter: {
           startSession: (input) => options.providerService.startSession(input.threadId, input),
           sendTurn: (input) => options.providerService.sendTurn(input),

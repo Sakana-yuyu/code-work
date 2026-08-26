@@ -1,4 +1,5 @@
 import type {
+  CompositionAgentDriverProfile,
   CompositionRuntimeCapabilityHandshakeRequest,
   ProviderRuntimeEvent,
 } from "@t3tools/contracts";
@@ -47,6 +48,88 @@ export const makeCompositionRuntimeAgentDriver = (
   options: CompositionRuntimeAgentDriverOptions,
 ): CompositionAgentDriver => {
   const activeRuns = new Map<string, ActiveRun>();
+
+  const getProfile: NonNullable<CompositionAgentDriver["getProfile"]> = () =>
+    Effect.gen(function* () {
+      const probe = yield* options.adapter.probe();
+      const agents = yield* options.adapter.listAgents();
+      const agent = agents.find((candidate) => candidate.agentId === options.agentId);
+      const status = agent?.status ?? probe.status;
+      const capabilities = [
+        ...new Set([...(probe.capabilities ?? []), ...(agent?.capabilities ?? [])]),
+      ];
+      const supportsCapabilityHandshake =
+        options.adapter.handshakeCapabilities !== undefined &&
+        capabilities.includes("t3.capability_handshake");
+      const supportsToolBroker =
+        capabilities.includes("t3.toolbroker") && supportsCapabilityHandshake;
+      const profileStatus =
+        status === "online"
+          ? supportsToolBroker
+            ? "available"
+            : "degraded"
+          : status === "unstable"
+            ? "degraded"
+            : "unavailable";
+      return {
+        schemaVersion: 1,
+        agentId: options.agentId,
+        runtimeId: options.adapter.runtimeId,
+        driverKind: options.adapter.driverKind,
+        ...(agent?.displayName === undefined ? {} : { displayName: agent.displayName }),
+        status: profileStatus,
+        capabilities,
+        supportsToolBroker,
+        supportsCapabilityHandshake,
+        supportsWorkspace: supportsToolBroker && capabilities.includes("t3.workspace"),
+        supportsTerminal: supportsToolBroker && capabilities.includes("t3.terminal"),
+        supportsGit: supportsToolBroker && capabilities.includes("t3.git"),
+        supportsMcp: supportsToolBroker && probe.supportsMcp,
+        supportsBrowser: supportsToolBroker && capabilities.includes("t3.browser"),
+        supportsIde: supportsToolBroker && capabilities.includes("t3.ide"),
+        supportsProviderApi: supportsToolBroker && capabilities.includes("t3.provider_api"),
+        supportsResume: probe.supportsResume,
+        supportsSquad: capabilities.includes("squad"),
+        supportsLeader: capabilities.includes("leader"),
+        supportsTaskGraph: capabilities.includes("task-graph"),
+        ...(profileStatus === "available"
+          ? {}
+          : {
+              reasonCode:
+                status !== "online"
+                  ? `runtime_${status}`
+                  : !supportsCapabilityHandshake
+                    ? "runtime_capability_handshake_unsupported"
+                    : "runtime_toolbroker_unsupported",
+            }),
+      } satisfies CompositionAgentDriverProfile;
+    }).pipe(
+      Effect.orElseSucceed(
+        () =>
+          ({
+            schemaVersion: 1,
+            agentId: options.agentId,
+            runtimeId: options.adapter.runtimeId,
+            driverKind: options.adapter.driverKind,
+            status: "unavailable" as const,
+            capabilities: [],
+            supportsToolBroker: false,
+            supportsCapabilityHandshake: false,
+            supportsWorkspace: false,
+            supportsTerminal: false,
+            supportsGit: false,
+            supportsMcp: false,
+            supportsBrowser: false,
+            supportsIde: false,
+            supportsProviderApi: false,
+            supportsResume: false,
+            supportsSquad: false,
+            supportsLeader: false,
+            supportsTaskGraph: false,
+            reasonCode: "runtime_profile_failed",
+          }) satisfies CompositionAgentDriverProfile,
+      ),
+    );
 
   const startTask: CompositionAgentDriver["startTask"] = (input) => {
     const capabilityGrantIds = [...(input.run.capabilityGrantIds ?? [])];
@@ -180,6 +263,7 @@ export const makeCompositionRuntimeAgentDriver = (
   return {
     agentId: options.agentId,
     runtimeId: options.adapter.runtimeId,
+    getProfile,
     startTask,
     revokeCapabilityHandshake,
     cancelTask,

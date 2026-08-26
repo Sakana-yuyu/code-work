@@ -54,6 +54,24 @@ export const zhCN: Record<string, string> = {
   "This removes the server configuration and its saved secrets.":
     "这将删除服务器配置及其已保存的密钥。",
 
+  // ── Agent Driver 能力投影 ──────────────────────────────────
+  "Agent Drivers": "Agent Driver",
+  "Refresh Agent Drivers": "刷新 Agent Driver",
+  "Unified Driver capability projection": "统一 Driver 能力投影",
+  "This read-only view reports verified runtime and API surfaces. Task grants and ToolBroker approval still apply to every execution.":
+    "此只读视图展示已经验证的运行时和 API 能力面；每次执行仍必须经过 Task grant 和 ToolBroker 审批。",
+  "No Agent Drivers available": "暂无可用 Agent Driver",
+  "Provider and external runtime drivers appear here after their environment is connected.":
+    "连接环境后，Provider 和外部 Runtime Driver 会显示在这里。",
+  "No verified shared surfaces": "暂无已验证的共享能力面",
+  "Authorization boundary": "授权边界",
+  "A visible capability does not grant access by itself; the task-scoped grant, approval, audit, and cancellation path remains authoritative.":
+    "显示为可用的能力本身不会授予访问权；Task 级 grant、审批、审计和取消链路仍是最终依据。",
+  Available: "可用",
+  Degraded: "降级",
+  Unavailable: "不可用",
+  Reason: "原因",
+
   // ── 通用 / 按钮 ─────────────────────────────────────────────
   Save: "保存",
   Cancel: "取消",
@@ -527,7 +545,6 @@ export const zhCN: Record<string, string> = {
   Authenticated: "已认证",
   "Not authenticated": "未认证",
   "Status unknown": "状态未知",
-  Available: "可用",
   "Fetch interval": "拉取间隔",
   "fetch interval": "拉取间隔",
   "Server environment": "服务器环境",
