@@ -1,10 +1,16 @@
 import {
   CompositionToolResult,
+  PreviewAutomationClickInput,
+  PreviewAutomationEvaluateInput,
   PreviewAutomationNavigateInput,
   PreviewAutomationOpenInput,
+  PreviewAutomationPressInput,
+  PreviewAutomationScrollInput,
   PreviewAutomationSnapshot,
   PreviewAutomationStatus,
   PreviewAutomationTabTargetInput,
+  PreviewAutomationTypeInput,
+  PreviewAutomationWaitForInput,
   ProjectReadFileResult,
   ProjectWriteFileResult,
   ReviewDiffPreviewInput,
@@ -405,6 +411,30 @@ const make = Effect.gen(function* () {
       Schema.decodeUnknownEffect(PreviewAutomationNavigateInput)(input.arguments).pipe(
         Effect.mapError(() => new ToolArgumentsInvalidError(input)),
       );
+    const decodePreviewClick = (input: ToolBrokerInput) =>
+      Schema.decodeUnknownEffect(PreviewAutomationClickInput)(input.arguments).pipe(
+        Effect.mapError(() => new ToolArgumentsInvalidError(input)),
+      );
+    const decodePreviewType = (input: ToolBrokerInput) =>
+      Schema.decodeUnknownEffect(PreviewAutomationTypeInput)(input.arguments).pipe(
+        Effect.mapError(() => new ToolArgumentsInvalidError(input)),
+      );
+    const decodePreviewPress = (input: ToolBrokerInput) =>
+      Schema.decodeUnknownEffect(PreviewAutomationPressInput)(input.arguments).pipe(
+        Effect.mapError(() => new ToolArgumentsInvalidError(input)),
+      );
+    const decodePreviewScroll = (input: ToolBrokerInput) =>
+      Schema.decodeUnknownEffect(PreviewAutomationScrollInput)(input.arguments).pipe(
+        Effect.mapError(() => new ToolArgumentsInvalidError(input)),
+      );
+    const decodePreviewEvaluate = (input: ToolBrokerInput) =>
+      Schema.decodeUnknownEffect(PreviewAutomationEvaluateInput)(input.arguments).pipe(
+        Effect.mapError(() => new ToolArgumentsInvalidError(input)),
+      );
+    const decodePreviewWaitFor = (input: ToolBrokerInput) =>
+      Schema.decodeUnknownEffect(PreviewAutomationWaitForInput)(input.arguments).pipe(
+        Effect.mapError(() => new ToolArgumentsInvalidError(input)),
+      );
 
     const withoutTabId = <A extends { readonly tabId?: PreviewTabId | undefined }>(input: A) => {
       const { tabId, ...operationInput } = input;
@@ -485,6 +515,88 @@ const make = Effect.gen(function* () {
             target.operationInput,
             target.tabId,
           );
+        }),
+    });
+    handlers.set("preview_click", {
+      operation: "execute",
+      execute: (input) =>
+        Effect.gen(function* () {
+          const args = yield* decodePreviewClick(input);
+          const target = withoutTabId(args);
+          yield* invokePreview<void>(
+            input,
+            "click",
+            target.operationInput,
+            target.tabId,
+            args.timeoutMs,
+          );
+          return {};
+        }),
+    });
+    handlers.set("preview_type", {
+      operation: "execute",
+      execute: (input) =>
+        Effect.gen(function* () {
+          const args = yield* decodePreviewType(input);
+          const target = withoutTabId(args);
+          yield* invokePreview<void>(
+            input,
+            "type",
+            target.operationInput,
+            target.tabId,
+            args.timeoutMs,
+          );
+          return {};
+        }),
+    });
+    handlers.set("preview_press", {
+      operation: "execute",
+      execute: (input) =>
+        Effect.gen(function* () {
+          const args = yield* decodePreviewPress(input);
+          const target = withoutTabId(args);
+          yield* invokePreview<void>(input, "press", target.operationInput, target.tabId);
+          return {};
+        }),
+    });
+    handlers.set("preview_scroll", {
+      operation: "execute",
+      execute: (input) =>
+        Effect.gen(function* () {
+          const args = yield* decodePreviewScroll(input);
+          const target = withoutTabId(args);
+          yield* invokePreview<void>(input, "scroll", target.operationInput, target.tabId);
+          return {};
+        }),
+    });
+    handlers.set("preview_evaluate", {
+      operation: "execute",
+      execute: (input) =>
+        Effect.gen(function* () {
+          const args = yield* decodePreviewEvaluate(input);
+          const target = withoutTabId(args);
+          return yield* invokePreview<unknown>(
+            input,
+            "evaluate",
+            target.operationInput,
+            target.tabId,
+          );
+        }),
+    });
+    handlers.set("preview_wait_for", {
+      operation: "read",
+      execute: (input) =>
+        Effect.gen(function* () {
+          const args = yield* decodePreviewWaitFor(input);
+          const target = withoutTabId(args);
+          yield* invokePreview<void>(
+            input,
+            "waitFor",
+            target.operationInput,
+            target.tabId,
+            args.timeoutMs,
+          );
+          return {};
         }),
     });
   }

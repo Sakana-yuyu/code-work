@@ -391,6 +391,123 @@ it.layer(TestLayer, { excludeTestServices: true })("shared canonical tools", (it
     }),
   );
 
+  it.effect("routes browser actions through the same Composition-owned browser session", () =>
+    Effect.gen(function* () {
+      previewInvocations.length = 0;
+      const broker = yield* ToolBroker.ToolBroker;
+      const inputs = [
+        {
+          canonicalToolName: "preview_click",
+          arguments: { locator: "role=button[name='Continue']", timeoutMs: 1_000 },
+          idempotencyKey: "preview-click-1",
+          capabilityGrantIds: ["t3.preview_click"],
+        },
+        {
+          canonicalToolName: "preview_type",
+          arguments: {
+            tabId: "preview-tab-1",
+            locator: "textarea[placeholder='Message']",
+            text: "hello",
+            clear: true,
+            timeoutMs: 1_000,
+          },
+          idempotencyKey: "preview-type-1",
+          capabilityGrantIds: ["t3.preview_type"],
+        },
+        {
+          canonicalToolName: "preview_press",
+          arguments: { key: "Enter", modifiers: ["Meta"] },
+          idempotencyKey: "preview-press-1",
+          capabilityGrantIds: ["t3.preview_press"],
+        },
+        {
+          canonicalToolName: "preview_scroll",
+          arguments: { deltaY: 480 },
+          idempotencyKey: "preview-scroll-1",
+          capabilityGrantIds: ["t3.preview_scroll"],
+        },
+        {
+          canonicalToolName: "preview_evaluate",
+          arguments: { expression: "document.title" },
+          idempotencyKey: "preview-evaluate-1",
+          capabilityGrantIds: ["t3.preview_evaluate"],
+        },
+        {
+          canonicalToolName: "preview_wait_for",
+          arguments: { text: "Ready", timeoutMs: 1_000 },
+          idempotencyKey: "preview-wait-1",
+          capabilityGrantIds: ["t3.preview_wait_for"],
+        },
+      ] as const;
+
+      for (const input of inputs) {
+        const invocation = {
+          ...baseInput("C:/trusted/workspace"),
+          ...input,
+          runtimeId: "multica:daemon-1",
+          threadId: "thread-browser-1",
+        };
+        const initial = yield* broker.invoke(invocation);
+        const result =
+          initial.status === "denied" && initial.errorCode === "tool_approval_required"
+            ? yield* Effect.gen(function* () {
+                const policy = yield* CapabilityPolicy.CapabilityPolicy;
+                yield* policy.approve({ approvalRequestId: initial.approvalRequestId! });
+                return yield* broker.invoke({
+                  ...invocation,
+                  ...(initial.approvalRequestId === undefined
+                    ? {}
+                    : { approvalRequestId: initial.approvalRequestId }),
+                });
+              })
+            : initial;
+        expect(result.status).toBe("succeeded");
+      }
+
+      expect(previewInvocations.map((invocation) => invocation.operation)).toEqual([
+        "click",
+        "type",
+        "press",
+        "scroll",
+        "evaluate",
+        "waitFor",
+      ]);
+      expect(previewInvocations[0]).toMatchObject({
+        operation: "click",
+        input: { locator: "role=button[name='Continue']", timeoutMs: 1_000 },
+        timeoutMs: 1_000,
+      });
+      expect(previewInvocations[1]).toMatchObject({
+        operation: "type",
+        tabId: "preview-tab-1",
+        input: {
+          locator: "textarea[placeholder='Message']",
+          text: "hello",
+          clear: true,
+          timeoutMs: 1_000,
+        },
+        timeoutMs: 1_000,
+      });
+      expect(previewInvocations[2]).toMatchObject({
+        operation: "press",
+        input: { key: "Enter", modifiers: ["Meta"] },
+      });
+      expect(previewInvocations[3]).toMatchObject({
+        operation: "scroll",
+        input: { deltaY: 480 },
+      });
+      expect(previewInvocations[4]).toMatchObject({
+        operation: "evaluate",
+        input: { expression: "document.title" },
+      });
+      expect(previewInvocations[5]).toMatchObject({
+        operation: "waitFor",
+        input: { text: "Ready", timeoutMs: 1_000 },
+        timeoutMs: 1_000,
+      });
+    }),
+  );
+
   it.effect("缺少 runtime scope 时明确拒绝 preview 调用", () =>
     Effect.gen(function* () {
       const broker = yield* ToolBroker.ToolBroker;
@@ -459,6 +576,12 @@ it.layer(TestLayer, { excludeTestServices: true })("ToolBrokerLive", (it) => {
           "t3.preview_open",
           "t3.preview_navigate",
           "t3.preview_snapshot",
+          "t3.preview_click",
+          "t3.preview_type",
+          "t3.preview_press",
+          "t3.preview_scroll",
+          "t3.preview_evaluate",
+          "t3.preview_wait_for",
           "t3.ide.invoke",
           "t3.mcp.preview",
           "t3.runtime.provider",

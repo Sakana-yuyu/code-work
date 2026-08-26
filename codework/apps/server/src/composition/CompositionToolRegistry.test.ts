@@ -22,6 +22,12 @@ it("为统一 Runtime Tool Plane 暴露稳定且无重复的 canonical capabilit
       "t3.preview_open",
       "t3.preview_navigate",
       "t3.preview_snapshot",
+      "t3.preview_click",
+      "t3.preview_type",
+      "t3.preview_press",
+      "t3.preview_scroll",
+      "t3.preview_evaluate",
+      "t3.preview_wait_for",
       "t3.ide.invoke",
     ],
   );
@@ -62,6 +68,18 @@ it("为统一 Runtime Tool Plane 暴露稳定且无重复的 canonical capabilit
       status: "available",
       grants: { read: true, execute: false, mutate: false },
       approval: "never",
+      source: "t3",
+    },
+  );
+  assert.deepEqual(
+    descriptors.find((descriptor) => descriptor.capabilityId === "t3.preview_click"),
+    {
+      capabilityId: "t3.preview_click",
+      kind: "tool",
+      version: "1",
+      status: "available",
+      grants: { read: false, execute: true, mutate: false },
+      approval: "on_first_use",
       source: "t3",
     },
   );
