@@ -111,6 +111,34 @@ describe("MulticaDaemonRuntimeAdapter", () => {
     });
   });
 
+  it("采用 heartbeat 宣布的 Squad、Leader 和 Task Graph 能力", async () => {
+    const adapter = makeMulticaDaemonRuntimeAdapter(
+      makeOptions({
+        capabilities: ["rpc-v1"],
+        supportsSquad: undefined,
+        supportsLeader: undefined,
+        supportsTaskGraph: undefined,
+        protocol: makeProtocol({
+          heartbeat: () =>
+            Effect.succeed(
+              heartbeat({
+                serverCapabilities: ["rpc-v1", "squad", "leader", "task-graph"],
+              }),
+            ),
+        }),
+      }),
+    );
+
+    await expect(Effect.runPromise(adapter.probeMultica())).resolves.toMatchObject({
+      supportsSquad: true,
+      supportsLeader: true,
+      supportsTaskGraph: true,
+    });
+    await expect(Effect.runPromise(adapter.probe())).resolves.toMatchObject({
+      capabilities: expect.arrayContaining(["squad", "leader", "task-graph"]),
+    });
+  });
+
   it("通过 quick-create 派发，并显式暴露 claim/终态回报", async () => {
     const calls: string[] = [];
     let quickCreateInput: unknown;
@@ -152,6 +180,9 @@ describe("MulticaDaemonRuntimeAdapter", () => {
           taskId: "t3-task-1",
           runId: "run-1",
           agentId: "agent-1",
+          projectId: "project-1",
+          parentTaskId: "task-parent",
+          dependsOnTaskIds: ["task-dependency"],
           prompt: "执行任务",
           idempotencyKey: "run-1",
         }),
@@ -160,6 +191,7 @@ describe("MulticaDaemonRuntimeAdapter", () => {
     expect(quickCreateInput).toEqual({
       workspaceId: "workspace-1",
       agentId: "agent-1",
+      projectId: "project-1",
       prompt: "执行任务",
     });
     await expect(

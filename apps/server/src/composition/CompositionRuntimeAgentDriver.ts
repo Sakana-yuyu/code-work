@@ -93,6 +93,12 @@ export const makeCompositionRuntimeAgentDriver = (
         taskId: input.task.taskId,
         runId: input.run.runId,
         agentId: options.agentId,
+        projectId: input.task.projectId,
+        ...(input.task.parentTaskId === undefined ? {} : { parentTaskId: input.task.parentTaskId }),
+        dependsOnTaskIds: [...input.task.dependsOnTaskIds],
+        mode: input.task.mode,
+        assigneeKind: input.task.assigneeKind,
+        assigneeId: input.task.assigneeId,
         idempotencyKey: input.run.runId,
         ...(input.workspaceRootDigest === undefined
           ? {}

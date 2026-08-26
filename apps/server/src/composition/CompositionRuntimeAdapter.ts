@@ -44,6 +44,12 @@ export type CompositionRuntimeTaskInput = {
   readonly taskId: string;
   readonly runId: string;
   readonly agentId: string;
+  readonly projectId?: string;
+  readonly parentTaskId?: string;
+  readonly dependsOnTaskIds?: ReadonlyArray<string>;
+  readonly mode?: "serial" | "parallel" | "review";
+  readonly assigneeKind?: "agent" | "squad";
+  readonly assigneeId?: string;
   readonly workspaceRootDigest?: string;
   readonly workspaceRoot?: string;
   readonly prompt?: string;

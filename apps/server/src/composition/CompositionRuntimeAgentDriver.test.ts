@@ -165,6 +165,58 @@ describe("CompositionRuntimeAgentDriver", () => {
     });
   });
 
+  it("把 Project 和 Task Graph 元数据传给 Runtime Adapter", async () => {
+    let captured: Record<string, unknown> | undefined;
+    const adapter = makeInMemoryCompositionRuntimeAdapter({ runtimeId: "runtime-graph" });
+    const capturingAdapter = {
+      ...adapter,
+      dispatchTask: (input: Parameters<typeof adapter.dispatchTask>[0]) => {
+        captured = input as unknown as Record<string, unknown>;
+        return adapter.dispatchTask(input);
+      },
+    };
+    const driver = makeCompositionRuntimeAgentDriver({
+      adapter: capturingAdapter,
+      agentId: "runtime-graph:agent",
+    });
+
+    await Effect.runPromise(
+      driver.startTask({
+        task: {
+          taskId: "task-graph",
+          projectId: "project-graph",
+          parentTaskId: "task-parent",
+          assigneeKind: "squad",
+          assigneeId: "squad-1",
+          mode: "parallel",
+          status: "queued",
+          promptDigest: "sha256:graph",
+          dependsOnTaskIds: ["task-dependency"],
+          createdAtUnixMs: 1,
+          updatedAtUnixMs: 1,
+        },
+        run: {
+          runId: "run-graph",
+          taskId: "task-graph",
+          agentId: driver.agentId,
+          runtimeId: driver.runtimeId,
+          status: "queued",
+          attempt: 1,
+          capabilityGrantIds: [],
+        },
+      }),
+    );
+
+    expect(captured).toMatchObject({
+      projectId: "project-graph",
+      parentTaskId: "task-parent",
+      dependsOnTaskIds: ["task-dependency"],
+      mode: "parallel",
+      assigneeKind: "squad",
+      assigneeId: "squad-1",
+    });
+  });
+
   it("将 Runtime Adapter 的取消结果原样转换为 Driver 状态", async () => {
     const adapter = makeInMemoryCompositionRuntimeAdapter({ runtimeId: "runtime-1" });
     const driver = makeCompositionRuntimeAgentDriver({ adapter, agentId: "runtime-1:agent" });

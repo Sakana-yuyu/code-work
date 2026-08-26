@@ -144,6 +144,14 @@ const mapRuntimeStatus = (
 const unique = (values: ReadonlyArray<string>): ReadonlyArray<string> =>
   Array.from(new Set(values.filter((value) => value.trim().length > 0)));
 
+const hasCapability = (
+  capabilities: ReadonlyArray<string>,
+  aliases: ReadonlyArray<string>,
+): boolean => {
+  const available = new Set(capabilities.map((capability) => capability.trim().toLowerCase()));
+  return aliases.some((alias) => available.has(alias));
+};
+
 const recordString = (value: unknown, key: string): string | undefined => {
   if (typeof value !== "object" || value === null) return undefined;
   const candidate = (value as Record<string, unknown>)[key];
@@ -339,12 +347,13 @@ export const makeMulticaDaemonRuntimeAdapter = (
     options.protocol.heartbeat(daemonRuntimeId).pipe(
       Effect.map((response) => {
         const status = mapRuntimeStatus(response);
+        const capabilities = unique([...configuredCapabilities, ...response.serverCapabilities]);
         return {
           runtimeId,
           driverKind: "multica",
           status,
           ...(options.version === undefined ? {} : { version: options.version }),
-          capabilities: unique([...configuredCapabilities, ...response.serverCapabilities]),
+          capabilities,
           ...(options.supportedModels === undefined
             ? {}
             : { supportedModels: [...options.supportedModels] }),
@@ -443,6 +452,7 @@ export const makeMulticaDaemonRuntimeAdapter = (
           workspaceId: route.workspaceId,
           ...(route.multicaAgentId === undefined ? {} : { agentId: route.multicaAgentId }),
           ...(route.multicaSquadId === undefined ? {} : { squadId: route.multicaSquadId }),
+          ...(input.projectId === undefined ? {} : { projectId: input.projectId }),
           prompt,
         })
         .pipe(Effect.mapError((failure) => mapProtocolFailure(runtimeId, failure)));
@@ -515,15 +525,18 @@ export const makeMulticaDaemonRuntimeAdapter = (
     options.protocol.heartbeat(daemonRuntimeId).pipe(
       Effect.map((response) => {
         const status = mapRuntimeStatus(response);
+        const capabilities = unique([...configuredCapabilities, ...response.serverCapabilities]);
         return {
           runtimeId,
           status,
           ...(options.version === undefined ? {} : { version: options.version }),
-          capabilities: unique([...configuredCapabilities, ...response.serverCapabilities]),
-          supportsSquad: options.supportsSquad ?? configuredCapabilities.includes("squad"),
-          supportsLeader: options.supportsLeader ?? configuredCapabilities.includes("leader"),
+          capabilities,
+          supportsSquad: options.supportsSquad ?? hasCapability(capabilities, ["squad", "squads"]),
+          supportsLeader:
+            options.supportsLeader ?? hasCapability(capabilities, ["leader", "leader-agent"]),
           supportsTaskGraph:
-            options.supportsTaskGraph ?? configuredCapabilities.includes("task-graph"),
+            options.supportsTaskGraph ??
+            hasCapability(capabilities, ["task-graph", "task_graph", "taskgraph"]),
           ...(response.runtimeGone ? { reasonCode: "runtime_gone" } : {}),
         } satisfies CompositionMulticaProbeResult;
       }),

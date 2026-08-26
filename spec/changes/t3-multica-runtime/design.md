@@ -348,3 +348,13 @@ Batch B 固定了所有真实 Cursor/VSCode Adapter 必须遵守的可信执行�
 - 新增 `server.retryCompositionTask` RPC，并纳入 `AuthOrchestrationOperateScope`。
 
 本节点已通过 Composition contract、Orchestrator、server 与 contracts typecheck，以及 27 个定向测试和格式检查。验证仍属于本地持久化层与测试 Driver；真实 Provider、Cursor/VSCode、Multica daemon 和 Web/Desktop/Mobile E2E 不由本节点替代。
+
+## Batch D-1 落地记录（2026-08-26）
+
+本节点补齐 Multica 协同接入中不会改变官方窄协议边界的元数据传递：
+
+- `CompositionRuntimeTaskInput` 现在携带 `projectId`、`parentTaskId`、`dependsOnTaskIds`、执行模式和原始 assignee 信息，所有 Runtime Driver 可以观察同一份 T3 Task Graph 上下文。
+- Multica quick-create 发送 `project_id`；T3 仍在 Orchestrator 内负责依赖阻塞与恢复，不把 T3 的 task ID 直接伪装成 Multica issue ID，也不声称官方 quick-create 已支持任意依赖边同步。
+- Multica `probe`/`probeMultica` 合并本地配置与 heartbeat 返回的能力目录；在没有显式配置覆盖时，heartbeat 的 `squad`、`leader`、`task-graph` 能力会被准确暴露，未知能力不会被猜测。
+
+本节点验证覆盖 Runtime Agent Driver 与 Multica Adapter 的 14 个定向测试、server/contracts typecheck、格式检查和 `git diff --check`。这仍是协议适配层验证，不能替代真实 Multica daemon、真实 Squad 路由、Web/Desktop/Mobile 或 T3 capability Tool-call handshake E2E。
