@@ -5,6 +5,7 @@ import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as PubSub from "effect/PubSub";
 import * as Schema from "effect/Schema";
+import type * as Scope from "effect/Scope";
 import * as Stream from "effect/Stream";
 
 import type {
@@ -20,6 +21,8 @@ import { CompositionAgentDriverRegistryService } from "./CompositionAgentDriverR
 import { CompositionOrchestratorService } from "./CompositionOrchestratorService.ts";
 import { projectCompositionRuntimeEvent } from "./CompositionTaskRuntimeProjector.ts";
 import { CompositionRuntimeAdapterRegistryService } from "./CompositionRuntimeAdapterRegistry.ts";
+import type { CompositionRuntimeAdapterRegistry } from "./CompositionRuntimeAdapterRegistry.ts";
+import type { CompositionRuntimeAdapter } from "./CompositionRuntimeAdapter.ts";
 import type {
   CompositionAgentDriver,
   CompositionAgentDriverFailure,
@@ -64,6 +67,75 @@ export type CompositionTaskRuntimeUpdate = {
   readonly task: CompositionTask;
   readonly run: CompositionTaskRun;
 };
+
+type RuntimeEventStreamSupervisorOptions = {
+  readonly adapterRegistry: Pick<CompositionRuntimeAdapterRegistry, "list" | "subscribeChanges">;
+  readonly projectRuntimeEvent: (event: ProviderRuntimeEvent) => Effect.Effect<void, never, never>;
+};
+
+/** 按 Adapter 实例管理事件流，确保同名 Runtime 热替换时不会继续消费旧连接。 */
+export const superviseCompositionRuntimeEventStreams = (
+  options: RuntimeEventStreamSupervisorOptions,
+): Effect.Effect<void, never, Scope.Scope> =>
+  Effect.gen(function* () {
+    const running = new Map<
+      string,
+      {
+        readonly adapter: CompositionRuntimeAdapter;
+        readonly fiber: Fiber.Fiber<void, never>;
+      }
+    >();
+
+    const refresh = Effect.gen(function* () {
+      const adapters = yield* options.adapterRegistry.list;
+      const liveAdapters = new Map(
+        adapters.map((adapter) => [adapter.runtimeId, adapter] as const),
+      );
+
+      for (const [runtimeId, entry] of running) {
+        if (liveAdapters.get(runtimeId) === entry.adapter) continue;
+        yield* Fiber.interrupt(entry.fiber).pipe(Effect.ignore);
+        running.delete(runtimeId);
+      }
+
+      for (const adapter of adapters) {
+        if (running.has(adapter.runtimeId)) continue;
+        const fiber = yield* Stream.runForEach(
+          adapter.streamEvents(),
+          options.projectRuntimeEvent,
+        ).pipe(
+          Effect.ensuring(
+            Effect.sync(() => {
+              if (running.get(adapter.runtimeId)?.adapter === adapter) {
+                running.delete(adapter.runtimeId);
+              }
+            }),
+          ),
+          Effect.catchCause((cause) =>
+            Effect.logError("Composition Runtime Adapter 事件流失败", {
+              runtimeId: adapter.runtimeId,
+              cause,
+            }),
+          ),
+          Effect.forkScoped,
+        );
+        running.set(adapter.runtimeId, { adapter, fiber });
+      }
+    });
+
+    const subscription = yield* options.adapterRegistry.subscribeChanges;
+    yield* refresh;
+    yield* Effect.forkScoped(
+      Effect.forever(
+        PubSub.take(subscription).pipe(
+          Effect.flatMap(() => refresh),
+          Effect.catchCause((cause) =>
+            Effect.logError("Composition Runtime Adapter 事件流刷新失败", { cause }),
+          ),
+        ),
+      ),
+    );
+  });
 
 const completionStatuses: ReadonlySet<CompositionTaskStatus> = new Set([
   "in_review",
@@ -224,37 +296,10 @@ const live = Effect.gen(function* () {
     ),
   );
 
-  const runningRuntimeStreams = new Set<string>();
-  const startRuntimeStreams = Effect.gen(function* () {
-    const adapters = yield* runtimeAdapters.list;
-    for (const adapter of adapters) {
-      if (runningRuntimeStreams.has(adapter.runtimeId)) continue;
-      runningRuntimeStreams.add(adapter.runtimeId);
-      yield* Stream.runForEach(adapter.streamEvents(), projectRuntimeEventWithLogging).pipe(
-        Effect.ensuring(Effect.sync(() => runningRuntimeStreams.delete(adapter.runtimeId))),
-        Effect.catchCause((cause) =>
-          Effect.logError("Composition Runtime Adapter 事件流失败", {
-            runtimeId: adapter.runtimeId,
-            cause,
-          }),
-        ),
-        Effect.forkScoped,
-      );
-    }
+  yield* superviseCompositionRuntimeEventStreams({
+    adapterRegistry: runtimeAdapters,
+    projectRuntimeEvent: projectRuntimeEventWithLogging,
   });
-
-  yield* startRuntimeStreams;
-  const runtimeSubscription = yield* runtimeAdapters.subscribeChanges;
-  yield* Effect.forkScoped(
-    Effect.forever(
-      PubSub.take(runtimeSubscription).pipe(
-        Effect.flatMap(() => startRuntimeStreams),
-        Effect.catchCause((cause) =>
-          Effect.logError("Composition Runtime Adapter 事件流刷新失败", { cause }),
-        ),
-      ),
-    ),
-  );
 
   return {
     projectRuntimeEvent,
