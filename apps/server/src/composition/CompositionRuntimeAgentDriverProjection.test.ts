@@ -43,6 +43,37 @@ describe("CompositionRuntimeAgentDriverProjection", () => {
     ).resolves.toBeUndefined();
   });
 
+  it("Adapter 重建后替换旧 Driver，避免继续使用旧 Runtime 配置", async () => {
+    const adapters = makeCompositionRuntimeAdapterRegistry();
+    const first = makeInMemoryCompositionRuntimeAdapter({
+      runtimeId: "runtime-rebuilt",
+      capabilities: ["old-capability"],
+    });
+    const second = makeInMemoryCompositionRuntimeAdapter({
+      runtimeId: "runtime-rebuilt",
+      capabilities: ["new-capability"],
+    });
+    await Effect.runPromise(adapters.register(first));
+    const projection = makeCompositionRuntimeAgentDriverProjection({
+      adapterRegistry: adapters,
+    });
+
+    await Effect.runPromise(projection.refresh);
+    await Effect.runPromise(adapters.unregister("runtime-rebuilt"));
+    await Effect.runPromise(adapters.register(second));
+    await Effect.runPromise(projection.refresh);
+
+    const driver = await Effect.runPromise(projection.registry.get("runtime-rebuilt:agent"));
+    expect(driver).toBeDefined();
+    const profile = await Effect.runPromise(driver!.getProfile!());
+    expect(profile).toMatchObject({
+      capabilities: expect.arrayContaining(["new-capability"]),
+    });
+    expect(profile).not.toMatchObject({
+      capabilities: expect.arrayContaining(["old-capability"]),
+    });
+  });
+
   it("只把 Runtime 明确声明且完成握手的 ToolBroker 能力标为可用", async () => {
     const adapters = makeCompositionRuntimeAdapterRegistry();
     const adapter = makeInMemoryCompositionRuntimeAdapter({

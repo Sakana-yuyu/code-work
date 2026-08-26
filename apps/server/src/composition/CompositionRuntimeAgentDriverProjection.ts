@@ -55,7 +55,13 @@ export const makeCompositionRuntimeAgentDriverProjection = (
   options: CompositionRuntimeAgentDriverProjectionOptions,
 ): CompositionRuntimeAgentDriverProjection => {
   const registry = options.registry ?? makeCompositionAgentDriverRegistry();
-  const projectedAgentIds = new Set<string>();
+  const projectedAgents = new Map<
+    string,
+    {
+      readonly adapter: CompositionRuntimeAdapter;
+      readonly driver: ReturnType<typeof makeCompositionRuntimeAgentDriver>;
+    }
+  >();
 
   const refresh = Effect.gen(function* () {
     const adapters = yield* options.adapterRegistry.list;
@@ -66,18 +72,29 @@ export const makeCompositionRuntimeAgentDriverProjection = (
       for (const agent of agents) {
         const agentId = agent.agentId;
         liveAgentIds.add(agentId);
-        const existing = yield* registry.get(agentId);
+        const projected = projectedAgents.get(agentId);
+        let existing = yield* registry.get(agentId);
+        if (projected?.adapter === adapter && existing === projected.driver) continue;
+        if (projected !== undefined) {
+          if (existing === projected.driver) {
+            yield* registry.unregister(agentId);
+            existing = undefined;
+          }
+          projectedAgents.delete(agentId);
+        }
         if (existing !== undefined) continue;
 
-        yield* registry.register(makeCompositionRuntimeAgentDriver({ adapter, agentId }));
-        projectedAgentIds.add(agentId);
+        const driver = makeCompositionRuntimeAgentDriver({ adapter, agentId });
+        yield* registry.register(driver);
+        projectedAgents.set(agentId, { adapter, driver });
       }
     }
 
-    for (const agentId of projectedAgentIds) {
+    for (const [agentId, projected] of projectedAgents) {
       if (!liveAgentIds.has(agentId)) {
-        yield* registry.unregister(agentId);
-        projectedAgentIds.delete(agentId);
+        const existing = yield* registry.get(agentId);
+        if (existing === projected.driver) yield* registry.unregister(agentId);
+        projectedAgents.delete(agentId);
       }
     }
   });
