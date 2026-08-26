@@ -40,6 +40,8 @@ export type CompositionRuntimeSettings = {
     CompositionRuntimeMcpSessionRegistry.CompositionRuntimeMcpSessionRegistryShape,
     "activate" | "revokeHandshake" | "revokeRuntime"
   >;
+  /** 可选的 Multica daemon extension；未提供时保持官方窄协议行为。 */
+  readonly taskExecutionBridge?: MulticaDaemonRuntimeAdapterOptions["taskExecutionBridge"];
   readonly createAdapter?: (
     input: CompositionRuntimeSettingsFactoryInput,
   ) => Effect.Effect<CompositionRuntimeAdapter, CompositionRuntimeSettingsError>;
@@ -65,6 +67,7 @@ export type CompositionRuntimeSettingsFactoryInput = {
     CompositionRuntimeMcpSessionRegistry.CompositionRuntimeMcpSessionRegistryShape,
     "activate" | "revokeHandshake" | "revokeRuntime"
   >;
+  readonly taskExecutionBridge?: MulticaDaemonRuntimeAdapterOptions["taskExecutionBridge"];
 };
 
 export interface CompositionRuntimeSettingsReconciler {
@@ -361,6 +364,9 @@ export const makeMulticaRuntimeAdapterFromSettings = (
         ...(runtimeMcpBridge.taskMcpLeaseBridge === undefined
           ? {}
           : { taskMcpLeaseBridge: runtimeMcpBridge.taskMcpLeaseBridge }),
+        ...(input.taskExecutionBridge === undefined
+          ? {}
+          : { taskExecutionBridge: input.taskExecutionBridge }),
       });
     },
     catch: settingsError,
@@ -434,6 +440,9 @@ export const makeCompositionRuntimeSettingsReconciler = (
           ...(options.mcpSessionRegistry === undefined
             ? {}
             : { mcpSessionRegistry: options.mcpSessionRegistry }),
+          ...(options.taskExecutionBridge === undefined
+            ? {}
+            : { taskExecutionBridge: options.taskExecutionBridge }),
         });
       } catch (cause) {
         yield* warn(`跳过无效的 Multica Runtime 配置 '${instanceId}'。`, cause);

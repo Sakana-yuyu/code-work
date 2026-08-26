@@ -22,7 +22,10 @@ import {
   makeMulticaRuntimeAdapterFromSettings,
   type CompositionRuntimeSettings,
 } from "./CompositionRuntimeSettings.ts";
-import type { MulticaDaemonRuntimeAdapter } from "./MulticaDaemonRuntimeAdapter.ts";
+import type {
+  MulticaDaemonRuntimeAdapter,
+  MulticaDaemonTaskExecutionBridge,
+} from "./MulticaDaemonRuntimeAdapter.ts";
 
 const makeSettings = (providerInstances: unknown): ServerSettings =>
   ({
@@ -66,6 +69,7 @@ const makeReconciler = (
     readonly warnings?: string[];
     readonly created?: Array<Record<string, unknown>>;
     readonly changes?: Stream.Stream<ServerSettings>;
+    readonly taskExecutionBridge?: MulticaDaemonTaskExecutionBridge;
   },
 ) =>
   makeCompositionRuntimeSettingsReconciler({
@@ -77,6 +81,9 @@ const makeReconciler = (
           instanceId: factoryInput.instanceId,
           headers: factoryInput.headers,
           agentIds: factoryInput.agents.map((agent) => agent.agentId),
+          ...(factoryInput.taskExecutionBridge === undefined
+            ? {}
+            : { hasTaskExecutionBridge: true }),
         });
         return makeInMemoryCompositionRuntimeAdapter({
           runtimeId: factoryInput.config.runtimeId,
@@ -87,6 +94,9 @@ const makeReconciler = (
       Effect.sync(() => {
         input?.warnings?.push(message);
       }),
+    ...(input?.taskExecutionBridge === undefined
+      ? {}
+      : { taskExecutionBridge: input.taskExecutionBridge }),
   });
 
 describe("CompositionRuntimeSettings", () => {
@@ -149,6 +159,33 @@ describe("CompositionRuntimeSettings", () => {
         expect(yield* adapter.getTaskMcpLease(handshake.handshakeId!)).toBeUndefined();
       }),
     );
+  });
+
+  it("Reconciler 将 taskExecutionBridge 透传给 Multica Adapter 工厂", async () => {
+    const registry = makeCompositionRuntimeAdapterRegistry();
+    const created: Array<Record<string, unknown>> = [];
+    const bridge: MulticaDaemonTaskExecutionBridge = {
+      injectTaskStart: () => Effect.void,
+    };
+    const reconciler = makeReconciler(
+      () =>
+        makeSettings({
+          multica_local: multicaInstance({ taskMcpEndpoint: "http://127.0.0.1:4317/mcp" }),
+        }),
+      registry,
+      { created, taskExecutionBridge: bridge },
+    );
+
+    await Effect.runPromise(reconciler.refresh);
+
+    expect(created).toEqual([
+      {
+        instanceId: "multica_local",
+        headers: { Authorization: "secret-token" },
+        agentIds: ["agent-1"],
+        hasTaskExecutionBridge: true,
+      },
+    ]);
   });
 
   it("从 Multica provider instance 构造 headers、Agent 投影并注册 Adapter", async () => {
