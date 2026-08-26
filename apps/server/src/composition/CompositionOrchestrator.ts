@@ -1,5 +1,7 @@
 import type {
   CompositionTask,
+  CompositionTaskRetryRequest,
+  CompositionTaskRetryResult,
   CompositionTaskReviewRequest,
   CompositionTaskReviewResult,
   CompositionTaskRun,
@@ -92,6 +94,19 @@ export class CompositionTaskNotInReviewError extends Schema.TaggedErrorClass<Com
 ) {
   override get message(): string {
     return `任务 ${this.taskId}/${this.runId} 当前状态为 ${this.status}，不是待审核状态。`;
+  }
+}
+
+export class CompositionTaskRetryInvalidError extends Schema.TaggedErrorClass<CompositionTaskRetryInvalidError>()(
+  "CompositionTaskRetryInvalidError",
+  {
+    taskId: Schema.String,
+    previousRunId: Schema.String,
+    reason: Schema.String,
+  },
+) {
+  override get message(): string {
+    return `任务 ${this.taskId}/${this.previousRunId} 不允许重试：${this.reason}`;
   }
 }
 
@@ -244,6 +259,20 @@ export interface CompositionOrchestrator {
     | CompositionTaskNotFoundError
     | CompositionAgentDriverFailure
     | CapabilityGrantRegistry.CapabilityGrantPersistenceError
+  >;
+  readonly retryTask: (
+    input: CompositionTaskRetryRequest,
+  ) => Effect.Effect<
+    CompositionTaskRetryResult,
+    | CompositionTaskStoreError
+    | CompositionTaskNotFoundError
+    | CompositionTaskRetryInvalidError
+    | CompositionAgentDriverFailure
+    | CompositionTaskInputStoreError
+    | CapabilityGrantRegistry.CapabilityGrantInvalidError
+    | CapabilityGrantRegistry.CapabilityGrantPersistenceError
+    | CapabilityRegistry.CapabilityScopeNotFoundError
+    | CapabilityRegistry.CapabilityRegistryUnavailableError
   >;
   readonly resumeReadyTasks: () => Effect.Effect<
     CompositionRecoveryResult,
@@ -674,6 +703,201 @@ const makeOrchestrator = (
       };
     });
 
+  const retryTask: CompositionOrchestrator["retryTask"] = (input) =>
+    Effect.gen(function* () {
+      const taskOption = yield* store.getTask(input.taskId);
+      const previousRunOption = yield* store.getRun(input.previousRunId);
+      if (Option.isNone(taskOption) || Option.isNone(previousRunOption)) {
+        return yield* new CompositionTaskNotFoundError({
+          taskId: input.taskId,
+          runId: input.previousRunId,
+        });
+      }
+      const task = taskOption.value;
+      const previousRun = previousRunOption.value;
+      const latestRunOption = yield* store.getLatestRun(input.taskId);
+      const existingRunOption = yield* store.getRun(input.runId);
+      if (Option.isNone(latestRunOption)) {
+        return yield* new CompositionTaskRetryInvalidError({
+          taskId: input.taskId,
+          previousRunId: input.previousRunId,
+          reason: "latest_run_missing",
+        });
+      }
+      if (task.status !== "failed" && task.status !== "timed_out") {
+        return yield* new CompositionTaskRetryInvalidError({
+          taskId: input.taskId,
+          previousRunId: input.previousRunId,
+          reason: `task_status_${task.status}`,
+        });
+      }
+      if (previousRun.status !== "failed" && previousRun.status !== "timed_out") {
+        return yield* new CompositionTaskRetryInvalidError({
+          taskId: input.taskId,
+          previousRunId: input.previousRunId,
+          reason: `run_status_${previousRun.status}`,
+        });
+      }
+      if (latestRunOption.value.runId !== input.previousRunId) {
+        return yield* new CompositionTaskRetryInvalidError({
+          taskId: input.taskId,
+          previousRunId: input.previousRunId,
+          reason: "previous_run_is_not_latest",
+        });
+      }
+      if (input.runId === input.previousRunId || Option.isSome(existingRunOption)) {
+        return yield* new CompositionTaskRetryInvalidError({
+          taskId: input.taskId,
+          previousRunId: input.previousRunId,
+          reason: "run_id_conflict",
+        });
+      }
+      if (input.capabilityIds.length === 0) {
+        return yield* new CompositionTaskRetryInvalidError({
+          taskId: input.taskId,
+          previousRunId: input.previousRunId,
+          reason: "capability_ids_required",
+        });
+      }
+      if (inputStore === undefined) {
+        return yield* new CompositionTaskRetryInvalidError({
+          taskId: input.taskId,
+          previousRunId: input.previousRunId,
+          reason: "recovery_input_store_unavailable",
+        });
+      }
+      const recoveryInput = yield* inputStore.get(input.taskId);
+      if (Option.isNone(recoveryInput)) {
+        return yield* new CompositionTaskRetryInvalidError({
+          taskId: input.taskId,
+          previousRunId: input.previousRunId,
+          reason: "recovery_input_missing",
+        });
+      }
+      const driver = yield* driverRegistry.get(previousRun.agentId);
+      if (driver === undefined) {
+        return yield* new CompositionAgentDriverFailure({
+          code: "agent_driver_unavailable",
+          detail: `未找到 Agent Driver：${previousRun.agentId}`,
+        });
+      }
+      // 先撤销旧 Run 的 grant，避免 CapabilityGrantRegistry 按 task/agent 复用旧授权。
+      yield* revokeRunCapabilities(driver, task, previousRun);
+      const capabilityGrantIds =
+        grantRegistry === undefined
+          ? []
+          : yield* grantRegistry
+              .issue({
+                taskId: input.taskId,
+                agentId: previousRun.agentId,
+                capabilityIds: input.capabilityIds,
+              })
+              .pipe(Effect.map((grants) => grants.map((grant) => grant.grantId)));
+      const queuedAt = yield* Clock.currentTimeMillis;
+      const { finishedAtUnixMs: _finishedAtUnixMs, ...taskWithoutFinishedAt } = task;
+      const queuedTask: CompositionTask = {
+        ...taskWithoutFinishedAt,
+        status: "queued",
+        updatedAtUnixMs: queuedAt,
+      };
+      const queuedRun: CompositionTaskRun = {
+        runId: input.runId,
+        taskId: input.taskId,
+        agentId: previousRun.agentId,
+        runtimeId: driver.runtimeId,
+        status: "queued",
+        attempt: previousRun.attempt + 1,
+        capabilityGrantIds,
+      };
+      yield* store.upsertTask(queuedTask);
+      yield* store.upsertRun(queuedRun);
+      yield* store.appendEvent(
+        makeEvent({
+          task: queuedTask,
+          run: queuedRun,
+          sequence: 0,
+          status: "queued",
+          eventType: "status",
+          summary: `任务已请求重试：${input.reason}`,
+        }),
+      );
+
+      const startResult = yield* Effect.result(
+        driver.startTask({
+          task: queuedTask,
+          run: queuedRun,
+          prompt: recoveryInput.value.prompt,
+          workspaceRoot: recoveryInput.value.workspaceRoot,
+          ...(recoveryInput.value.workspaceRootDigest === undefined
+            ? {}
+            : { workspaceRootDigest: recoveryInput.value.workspaceRootDigest }),
+          ...(recoveryInput.value.model === undefined ? {} : { model: recoveryInput.value.model }),
+          capabilityGrantIds,
+        }),
+      );
+      if (startResult._tag === "Failure") {
+        const failedAt = yield* Clock.currentTimeMillis;
+        const failedTask: CompositionTask = {
+          ...queuedTask,
+          status: "failed",
+          updatedAtUnixMs: failedAt,
+          finishedAtUnixMs: failedAt,
+        };
+        const failedRun: CompositionTaskRun = {
+          ...queuedRun,
+          status: "failed",
+          finishedAtUnixMs: failedAt,
+          failureCode: startResult.failure.code,
+          resultSummary: startResult.failure.detail,
+        };
+        yield* revokeRunCapabilities(driver, failedTask, failedRun);
+        yield* store.upsertTask(failedTask);
+        yield* store.upsertRun(failedRun);
+        const events = yield* store.listEvents(input.taskId, input.runId);
+        yield* store.appendEvent(
+          makeEvent({
+            task: failedTask,
+            run: failedRun,
+            sequence: events.length,
+            status: "failed",
+            eventType: "status",
+            summary: "重试任务启动失败",
+          }),
+        );
+        return { task: failedTask, run: failedRun };
+      }
+
+      const startedAt = yield* Clock.currentTimeMillis;
+      const runningTask: CompositionTask = {
+        ...queuedTask,
+        status: "running",
+        updatedAtUnixMs: startedAt,
+      };
+      const runningRun: CompositionTaskRun = {
+        ...queuedRun,
+        runtimeTaskId: startResult.success.runtimeTaskId,
+        ...(startResult.success.capabilityHandshakeId === undefined
+          ? {}
+          : { capabilityHandshakeId: startResult.success.capabilityHandshakeId }),
+        status: "running",
+        startedAtUnixMs: startedAt,
+      };
+      yield* store.upsertTask(runningTask);
+      yield* store.upsertRun(runningRun);
+      const events = yield* store.listEvents(input.taskId, input.runId);
+      yield* store.appendEvent(
+        makeEvent({
+          task: runningTask,
+          run: runningRun,
+          sequence: events.length,
+          status: "running",
+          eventType: "status",
+          summary: "重试任务已交给 Agent Driver 执行",
+        }),
+      );
+      return { task: runningTask, run: runningRun };
+    });
+
   const resumeReadyTasks: CompositionOrchestrator["resumeReadyTasks"] = () =>
     Effect.gen(function* () {
       if (inputStore === undefined) return [];
@@ -790,7 +1014,7 @@ const makeOrchestrator = (
       return resumed;
     });
 
-  return { dispatchTask, cancelTask, reviewTask, resumeReadyTasks };
+  return { dispatchTask, cancelTask, reviewTask, retryTask, resumeReadyTasks };
 };
 
 export const makeCompositionOrchestrator = (

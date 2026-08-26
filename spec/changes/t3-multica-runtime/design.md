@@ -335,3 +335,16 @@ Batch B 固定了所有真实 Cursor/VSCode Adapter 必须遵守的可信执行�
 - 新 RPC 受 `AuthOrchestrationOperateScope` 保护，所有转移继续通过 Task Store 和事件流落盘，重复 Runtime 事件不会重复回收权限。
 
 当前仍未实现 retry、reassign、escalate、circuit breaker、兄弟任务失败隔离和 Worker context compaction；这些继续拆成后续独立节点。
+
+## Batch C-2 落地记录（2026-08-26）
+
+本节点增加失败任务的显式重试生命周期，重试不会覆盖旧 Run：
+
+- 新增 `CompositionTaskRetryRequest` / `CompositionTaskRetryResult` 合同，调用方必须提供新的 `runId`、旧的 `previousRunId`、重试原因和本次重新申请的 `capabilityIds`。
+- 只有 Task 状态为 `failed` 或 `timed_out`，且 `previousRunId` 是该 Task 最新 Run、Run 同样处于失败终态时才允许重试；已完成、运行中、待审核和旧 Run 均稳定拒绝。
+- 重试从 `CompositionTaskInputStore` 恢复完整 prompt、workspaceRoot、workspaceRootDigest 和 model；恢复输入缺失时不会创建新 Run。
+- 旧 Run 的 `failureCode`、`resultSummary` 和状态保持不变；新 Run 使用 `attempt + 1`、新的 capability grant 和新的 Runtime task 关联。
+- 重试前撤销旧 Run 的 grant；新 Driver 启动失败时把新 Run 置为 `failed` 并回收新 grant，避免权限或运行记录泄漏。
+- 新增 `server.retryCompositionTask` RPC，并纳入 `AuthOrchestrationOperateScope`。
+
+本节点已通过 Composition contract、Orchestrator、server 与 contracts typecheck，以及 27 个定向测试和格式检查。验证仍属于本地持久化层与测试 Driver；真实 Provider、Cursor/VSCode、Multica daemon 和 Web/Desktop/Mobile E2E 不由本节点替代。

@@ -354,6 +354,23 @@ export const CompositionTaskReviewResult = Schema.Struct({
 });
 export type CompositionTaskReviewResult = typeof CompositionTaskReviewResult.Type;
 
+/** 失败或超时 Task 的显式重试请求；每次重试都必须使用新的 Run。 */
+export const CompositionTaskRetryRequest = Schema.Struct({
+  taskId: TrimmedNonEmptyString,
+  previousRunId: TrimmedNonEmptyString,
+  runId: TrimmedNonEmptyString,
+  reason: TrimmedNonEmptyString,
+  /** 本次重试重新申请的 capability，不继承旧 Run 的 grant。 */
+  capabilityIds: Schema.Array(TrimmedNonEmptyString),
+});
+export type CompositionTaskRetryRequest = typeof CompositionTaskRetryRequest.Type;
+
+export const CompositionTaskRetryResult = Schema.Struct({
+  task: CompositionTask,
+  run: CompositionTaskRun,
+});
+export type CompositionTaskRetryResult = typeof CompositionTaskRetryResult.Type;
+
 export const CompositionTaskEventsRequest = Schema.Struct({
   taskId: TrimmedNonEmptyString,
   runId: TrimmedNonEmptyString,

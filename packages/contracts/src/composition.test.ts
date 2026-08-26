@@ -14,6 +14,7 @@ import {
   CompositionTaskEventsResult,
   CompositionTaskListRequest,
   CompositionTaskReviewRequest,
+  CompositionTaskRetryRequest,
   CompositionTaskEvent,
   CompositionToolInvocation,
   CompositionToolResult,
@@ -31,6 +32,7 @@ const decodeTaskCancel = Schema.decodeUnknownSync(CompositionTaskCancelRequest);
 const decodeTaskEvents = Schema.decodeUnknownSync(CompositionTaskEventsResult);
 const decodeTaskList = Schema.decodeUnknownSync(CompositionTaskListRequest);
 const decodeTaskReview = Schema.decodeUnknownSync(CompositionTaskReviewRequest);
+const decodeTaskRetry = Schema.decodeUnknownSync(CompositionTaskRetryRequest);
 const decodeToolInvocation = Schema.decodeUnknownSync(CompositionToolInvocation);
 const decodeToolResult = Schema.decodeUnknownSync(CompositionToolResult);
 const decodeRuntimeToolInvocation = Schema.decodeUnknownSync(CompositionRuntimeToolInvocation);
@@ -54,6 +56,20 @@ describe("composition contracts", () => {
 
     expect(approved.decision).toBe("approve");
     expect(rejected.decision).toBe("reject");
+  });
+
+  it("要求重试使用新的 runId，并显式声明本次 capabilityIds", () => {
+    const decoded = decodeTaskRetry({
+      taskId: "task-retry",
+      previousRunId: "run-old",
+      runId: "run-retry-2",
+      reason: "修复审核反馈后重试",
+      capabilityIds: ["t3.workspace.read_file"],
+    });
+
+    expect(decoded.previousRunId).toBe("run-old");
+    expect(decoded.runId).toBe("run-retry-2");
+    expect(decoded.capabilityIds).toEqual(["t3.workspace.read_file"]);
   });
   it("描述 task-scoped capability grant 和脱敏审计事件", () => {
     const grant = decodeCapabilityGrant({

@@ -17,6 +17,351 @@ import { SqlitePersistenceMemory } from "../persistence/Layers/Sqlite.ts";
 const layer = it.layer(CompositionTaskStoreLive.pipe(Layer.provideMerge(SqlitePersistenceMemory)));
 
 layer("CompositionOrchestrator", (it) => {
+  it.effect("重试失败 Task 时创建新 Run、递增 attempt、恢复输入并重新签发 grant", () =>
+    Effect.gen(function* () {
+      const store = yield* CompositionTaskStore;
+      const started: Array<{
+        readonly runId: string;
+        readonly attempt: number;
+        readonly prompt?: string;
+        readonly workspaceRoot?: string;
+        readonly capabilityGrantIds: ReadonlyArray<string>;
+      }> = [];
+      const driverRegistry = makeCompositionAgentDriverRegistry();
+      yield* driverRegistry.register({
+        agentId: "agent-retry",
+        runtimeId: "runtime-retry",
+        startTask: (input) =>
+          Effect.sync(() => {
+            started.push({
+              runId: input.run.runId,
+              attempt: input.run.attempt,
+              ...(input.prompt === undefined ? {} : { prompt: input.prompt }),
+              ...(input.workspaceRoot === undefined ? {} : { workspaceRoot: input.workspaceRoot }),
+              capabilityGrantIds: [...(input.capabilityGrantIds ?? [])],
+            });
+            return { runtimeTaskId: "runtime-task-retry-2" };
+          }),
+        cancelTask: () => Effect.succeed({ status: "cancelled" as const }),
+      });
+      const issueCalls: Array<ReadonlyArray<string>> = [];
+      const orchestrator = makeCompositionOrchestrator(
+        store,
+        driverRegistry,
+        {
+          issue: ({ capabilityIds }) =>
+            Effect.sync(() => {
+              issueCalls.push([...capabilityIds]);
+              return [
+                {
+                  grantId: "grant-retry-2",
+                  taskId: "task-retry",
+                  agentId: "agent-retry",
+                  capabilityId: "t3.workspace.read_file",
+                  issuedAtUnixMs: 10,
+                  expiresAtUnixMs: 1000,
+                },
+              ];
+            }),
+        },
+        {
+          save: () => Effect.void,
+          get: () =>
+            Effect.succeed(
+              Option.some({
+                taskId: "task-retry",
+                prompt: "继续修复审核反馈",
+                workspaceRoot: "C:/workspace/retry",
+                workspaceRootDigest: "sha256:retry-workspace",
+                model: "provider/model",
+              }),
+            ),
+          remove: () => Effect.void,
+        },
+      );
+      yield* store.upsertTask({
+        taskId: "task-retry",
+        projectId: "project-retry",
+        assigneeKind: "agent",
+        assigneeId: "agent-retry",
+        mode: "review",
+        status: "failed",
+        promptDigest: "sha256:retry-prompt",
+        dependsOnTaskIds: [],
+        createdAtUnixMs: 1,
+        updatedAtUnixMs: 5,
+        finishedAtUnixMs: 5,
+      });
+      yield* store.upsertRun({
+        taskId: "task-retry",
+        runId: "run-old",
+        agentId: "agent-retry",
+        runtimeId: "runtime-old",
+        status: "failed",
+        attempt: 1,
+        capabilityGrantIds: ["grant-old-revoked"],
+        failureCode: "review_rejected",
+      });
+
+      const result = yield* orchestrator.retryTask({
+        taskId: "task-retry",
+        previousRunId: "run-old",
+        runId: "run-retry-2",
+        reason: "已修复审核反馈",
+        capabilityIds: ["t3.workspace.read_file"],
+      });
+
+      assert.equal(result.task.status, "running");
+      assert.equal(result.run.runId, "run-retry-2");
+      assert.equal(result.run.attempt, 2);
+      assert.equal(result.run.runtimeTaskId, "runtime-task-retry-2");
+      assert.deepEqual(issueCalls, [["t3.workspace.read_file"]]);
+      assert.deepEqual(started, [
+        {
+          runId: "run-retry-2",
+          attempt: 2,
+          prompt: "继续修复审核反馈",
+          workspaceRoot: "C:/workspace/retry",
+          capabilityGrantIds: ["grant-retry-2"],
+        },
+      ]);
+      assert.equal((yield* store.getRun("run-old")).pipe(Option.getOrThrow).status, "failed");
+    }),
+  );
+  it.effect("只允许最新失败 Run 重试，并拒绝非失败 Task", () =>
+    Effect.gen(function* () {
+      const store = yield* CompositionTaskStore;
+      const orchestrator = makeCompositionOrchestrator(store, makeCompositionAgentDriverRegistry());
+      yield* store.upsertTask({
+        taskId: "task-retry-invalid-status",
+        projectId: "project-retry",
+        assigneeKind: "agent",
+        assigneeId: "agent-retry",
+        mode: "serial",
+        status: "completed",
+        promptDigest: "sha256:retry-invalid-status",
+        dependsOnTaskIds: [],
+        createdAtUnixMs: 1,
+        updatedAtUnixMs: 2,
+        finishedAtUnixMs: 2,
+      });
+      yield* store.upsertRun({
+        taskId: "task-retry-invalid-status",
+        runId: "run-retry-invalid-status",
+        agentId: "agent-retry",
+        runtimeId: "runtime-retry",
+        status: "completed",
+        attempt: 1,
+        capabilityGrantIds: [],
+      });
+
+      const error = yield* Effect.flip(
+        orchestrator.retryTask({
+          taskId: "task-retry-invalid-status",
+          previousRunId: "run-retry-invalid-status",
+          runId: "run-retry-invalid-status-2",
+          reason: "不应重试已完成任务",
+          capabilityIds: ["t3.workspace.read_file"],
+        }),
+      );
+      assert.equal(error._tag, "CompositionTaskRetryInvalidError");
+    }),
+  );
+  it.effect("拒绝不是最新 Run 的 previousRunId 和重复 Run ID", () =>
+    Effect.gen(function* () {
+      const store = yield* CompositionTaskStore;
+      const orchestrator = makeCompositionOrchestrator(store, makeCompositionAgentDriverRegistry());
+      yield* store.upsertTask({
+        taskId: "task-retry-conflict",
+        projectId: "project-retry",
+        assigneeKind: "agent",
+        assigneeId: "agent-retry",
+        mode: "serial",
+        status: "failed",
+        promptDigest: "sha256:retry-conflict",
+        dependsOnTaskIds: [],
+        createdAtUnixMs: 1,
+        updatedAtUnixMs: 2,
+        finishedAtUnixMs: 2,
+      });
+      yield* store.upsertRun({
+        taskId: "task-retry-conflict",
+        runId: "run-retry-conflict-existing",
+        agentId: "agent-retry",
+        runtimeId: "runtime-retry",
+        status: "failed",
+        attempt: 1,
+        capabilityGrantIds: [],
+      });
+      yield* store.upsertRun({
+        taskId: "task-retry-conflict",
+        runId: "run-retry-conflict-latest",
+        agentId: "agent-retry",
+        runtimeId: "runtime-retry",
+        status: "failed",
+        attempt: 2,
+        capabilityGrantIds: [],
+      });
+
+      const staleError = yield* Effect.flip(
+        orchestrator.retryTask({
+          taskId: "task-retry-conflict",
+          previousRunId: "run-retry-conflict-existing",
+          runId: "run-retry-conflict-new",
+          reason: "旧 Run 不应重试",
+          capabilityIds: ["t3.workspace.read_file"],
+        }),
+      );
+      assert.equal(staleError._tag, "CompositionTaskRetryInvalidError");
+
+      const duplicateError = yield* Effect.flip(
+        orchestrator.retryTask({
+          taskId: "task-retry-conflict",
+          previousRunId: "run-retry-conflict-latest",
+          runId: "run-retry-conflict-existing",
+          reason: "新 Run ID 已存在",
+          capabilityIds: ["t3.workspace.read_file"],
+        }),
+      );
+      assert.equal(duplicateError._tag, "CompositionTaskRetryInvalidError");
+    }),
+  );
+  it.effect("恢复输入缺失时不创建新 Run", () =>
+    Effect.gen(function* () {
+      const store = yield* CompositionTaskStore;
+      const orchestrator = makeCompositionOrchestrator(
+        store,
+        makeCompositionAgentDriverRegistry(),
+        undefined,
+        {
+          save: () => Effect.void,
+          get: () => Effect.succeed(Option.none()),
+          remove: () => Effect.void,
+        },
+      );
+      yield* store.upsertTask({
+        taskId: "task-retry-no-input",
+        projectId: "project-retry",
+        assigneeKind: "agent",
+        assigneeId: "agent-retry",
+        mode: "serial",
+        status: "failed",
+        promptDigest: "sha256:retry-no-input",
+        dependsOnTaskIds: [],
+        createdAtUnixMs: 1,
+        updatedAtUnixMs: 2,
+        finishedAtUnixMs: 2,
+      });
+      yield* store.upsertRun({
+        taskId: "task-retry-no-input",
+        runId: "run-retry-no-input",
+        agentId: "agent-retry",
+        runtimeId: "runtime-retry",
+        status: "failed",
+        attempt: 1,
+        capabilityGrantIds: [],
+      });
+
+      const error = yield* Effect.flip(
+        orchestrator.retryTask({
+          taskId: "task-retry-no-input",
+          previousRunId: "run-retry-no-input",
+          runId: "run-retry-no-input-2",
+          reason: "恢复输入不存在",
+          capabilityIds: ["t3.workspace.read_file"],
+        }),
+      );
+      assert.equal(error._tag, "CompositionTaskRetryInvalidError");
+      assert.isTrue(Option.isNone(yield* store.getRun("run-retry-no-input-2")));
+    }),
+  );
+  it.effect("重试 Driver 启动失败时回收新 grant，并保留旧 Run", () =>
+    Effect.gen(function* () {
+      const store = yield* CompositionTaskStore;
+      const revoked: string[] = [];
+      const driverRegistry = makeCompositionAgentDriverRegistry();
+      yield* driverRegistry.register({
+        agentId: "agent-retry-start-failed",
+        runtimeId: "runtime-retry-start-failed",
+        startTask: () =>
+          Effect.fail(
+            new CompositionAgentDriverFailure({
+              code: "runtime_offline",
+              detail: "Runtime 不在线",
+            }),
+          ),
+        cancelTask: () => Effect.succeed({ status: "cancelled" as const }),
+      });
+      const orchestrator = makeCompositionOrchestrator(
+        store,
+        driverRegistry,
+        {
+          issue: () =>
+            Effect.succeed([
+              {
+                grantId: "grant-retry-start-failed",
+                taskId: "task-retry-start-failed",
+                agentId: "agent-retry-start-failed",
+                capabilityId: "t3.workspace.read_file",
+                issuedAtUnixMs: 1,
+                expiresAtUnixMs: 1000,
+              },
+            ]),
+          revoke: ({ grantId }) => Effect.sync(() => revoked.push(grantId)),
+        },
+        {
+          save: () => Effect.void,
+          get: () =>
+            Effect.succeed(
+              Option.some({
+                taskId: "task-retry-start-failed",
+                prompt: "重试启动失败",
+                workspaceRoot: "C:/workspace/retry-start-failed",
+              }),
+            ),
+          remove: () => Effect.void,
+        },
+      );
+      yield* store.upsertTask({
+        taskId: "task-retry-start-failed",
+        projectId: "project-retry",
+        assigneeKind: "agent",
+        assigneeId: "agent-retry-start-failed",
+        mode: "serial",
+        status: "failed",
+        promptDigest: "sha256:retry-start-failed",
+        dependsOnTaskIds: [],
+        createdAtUnixMs: 1,
+        updatedAtUnixMs: 2,
+        finishedAtUnixMs: 2,
+      });
+      yield* store.upsertRun({
+        taskId: "task-retry-start-failed",
+        runId: "run-retry-start-failed-old",
+        agentId: "agent-retry-start-failed",
+        runtimeId: "runtime-retry-start-failed",
+        status: "failed",
+        attempt: 1,
+        capabilityGrantIds: ["grant-old-retry-start-failed"],
+      });
+
+      const result = yield* orchestrator.retryTask({
+        taskId: "task-retry-start-failed",
+        previousRunId: "run-retry-start-failed-old",
+        runId: "run-retry-start-failed-new",
+        reason: "验证启动失败回收",
+        capabilityIds: ["t3.workspace.read_file"],
+      });
+      assert.equal(result.task.status, "failed");
+      assert.equal(result.run.status, "failed");
+      assert.equal(result.run.failureCode, "runtime_offline");
+      assert.deepEqual(revoked, ["grant-old-retry-start-failed", "grant-retry-start-failed"]);
+      assert.equal(
+        (yield* store.getRun("run-retry-start-failed-old")).pipe(Option.getOrThrow).status,
+        "failed",
+      );
+    }),
+  );
   it.effect("review approve/reject 只处理 in_review Task，并分别终结状态", () =>
     Effect.gen(function* () {
       const store = yield* CompositionTaskStore;

@@ -18,6 +18,7 @@ export interface CompositionOrchestratorServiceShape {
   readonly dispatchTask: CompositionOrchestrator["dispatchTask"];
   readonly cancelTask: CompositionOrchestrator["cancelTask"];
   readonly reviewTask: CompositionOrchestrator["reviewTask"];
+  readonly retryTask: CompositionOrchestrator["retryTask"];
   readonly resumeReadyTasks: CompositionOrchestrator["resumeReadyTasks"];
   readonly listTasks: CompositionTaskStoreShape["listTasks"];
   readonly listEvents: CompositionTaskStoreShape["listEvents"];
@@ -44,6 +45,7 @@ const live = Effect.gen(function* () {
     dispatchTask: orchestrator.dispatchTask,
     cancelTask: orchestrator.cancelTask,
     reviewTask: orchestrator.reviewTask,
+    retryTask: orchestrator.retryTask,
     resumeReadyTasks: orchestrator.resumeReadyTasks,
     listTasks: store.listTasks,
     listEvents: store.listEvents,
