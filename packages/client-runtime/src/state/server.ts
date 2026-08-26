@@ -541,6 +541,7 @@ export function createServerEnvironmentAtoms<R, E>(
   },
 ) {
   const configScheduler = createAtomCommandScheduler();
+  const mcpControlScheduler = createAtomCommandScheduler();
   // Updates stay serial end-to-end, but only their handoff phase occupies the config lane.
   const updateScheduler = createAtomCommandScheduler();
   const configConcurrency = {
@@ -761,6 +762,12 @@ export function createServerEnvironmentAtoms<R, E>(
     updateStateAtom,
     settingsValueAtom,
     providersValueAtom,
+    mcpServers: createEnvironmentRpcQueryAtomFamily(runtime, {
+      label: "environment-data:server:mcp-servers",
+      tag: WS_METHODS.serverGetMcpServers,
+      staleTimeMs: 5_000,
+      idleTtlMs: 60_000,
+    }),
     traceDiagnostics: createEnvironmentRpcQueryAtomFamily(runtime, {
       label: "environment-data:server:trace-diagnostics",
       tag: WS_METHODS.serverGetTraceDiagnostics,
@@ -831,6 +838,33 @@ export function createServerEnvironmentAtoms<R, E>(
       tag: WS_METHODS.serverUpdateSettings,
       scheduler: configScheduler,
       concurrency: configConcurrency,
+    }),
+    connectMcpServer: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:server:connect-mcp-server",
+      tag: WS_METHODS.serverConnectMcpServer,
+      scheduler: mcpControlScheduler,
+      concurrency: {
+        mode: "singleFlight",
+        key: ({ environmentId, input }) => JSON.stringify([environmentId, input.serverId]),
+      },
+    }),
+    disconnectMcpServer: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:server:disconnect-mcp-server",
+      tag: WS_METHODS.serverDisconnectMcpServer,
+      scheduler: mcpControlScheduler,
+      concurrency: {
+        mode: "singleFlight",
+        key: ({ environmentId, input }) => JSON.stringify([environmentId, input.serverId]),
+      },
+    }),
+    refreshMcpServer: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:server:refresh-mcp-server",
+      tag: WS_METHODS.serverRefreshMcpServer,
+      scheduler: mcpControlScheduler,
+      concurrency: {
+        mode: "singleFlight",
+        key: ({ environmentId, input }) => JSON.stringify([environmentId, input.serverId]),
+      },
     }),
     signalProcess: createEnvironmentRpcCommand(runtime, {
       label: "environment-data:server:signal-process",
