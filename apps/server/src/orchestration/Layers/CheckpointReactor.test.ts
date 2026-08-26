@@ -124,6 +124,10 @@ function createProviderServiceHarness(
           continuationKey: `${providerName}:instance:${instanceId}`,
         },
       }),
+    handshakeCapabilities: () => unsupported(),
+    revokeCapabilityHandshake: () => unsupported(),
+    configureToolBroker: () => unsupported(),
+    clearToolBroker: () => unsupported(),
     rollbackConversation,
     uploadFeedback: () => unsupported(),
     get streamEvents() {
@@ -1077,7 +1081,9 @@ describe("CheckpointReactor", () => {
       threadId: ThreadId.make("thread-1"),
       numTurns: 1,
     });
-    expect(NodeFS.readFileSync(NodePath.join(harness.cwd, "README.md"), "utf8")).toBe("v2\n");
+    expect(
+      NodeFS.readFileSync(NodePath.join(harness.cwd, "README.md"), "utf8").replaceAll("\r\n", "\n"),
+    ).toBe("v2\n");
     expect(
       gitRefExists(harness.cwd, checkpointRefForThreadTurn(ThreadId.make("thread-1"), 2)),
     ).toBe(false);

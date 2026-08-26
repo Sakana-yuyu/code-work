@@ -12,6 +12,7 @@
 import {
   ModelSelection,
   NonNegativeInt,
+  type CompositionRuntimeCapabilityHandshakeResult,
   ThreadId,
   ProviderInterruptTurnInput,
   ProviderRespondToRequestInput,
@@ -48,7 +49,11 @@ import {
   providerTurnMetricAttributes,
   withMetrics,
 } from "../../observability/Metrics.ts";
-import { type ProviderAdapterError, ProviderValidationError } from "../Errors.ts";
+import {
+  type ProviderAdapterError,
+  type ProviderServiceError,
+  ProviderValidationError,
+} from "../Errors.ts";
 import type { ProviderAdapterShape } from "../Services/ProviderAdapter.ts";
 import * as ProviderAdapterRegistry from "../Services/ProviderAdapterRegistry.ts";
 import * as ProviderService from "../Services/ProviderService.ts";
@@ -1077,6 +1082,68 @@ const makeProviderService = Effect.fn("makeProviderService")(function* (
   const getInstanceInfo: ProviderServiceMethod<"getInstanceInfo"> = (instanceId) =>
     registry.getInstanceInfo(instanceId);
 
+  const handshakeCapabilities: ProviderServiceMethod<"handshakeCapabilities"> = (
+    instanceId,
+    input,
+  ) =>
+    registry
+      .getByInstance(instanceId)
+      .pipe(
+        Effect.flatMap(
+          (
+            adapter,
+          ): Effect.Effect<CompositionRuntimeCapabilityHandshakeResult, ProviderServiceError> =>
+            adapter.handshakeCapabilities === undefined
+              ? Effect.fail(
+                  toValidationError(
+                    "ProviderService.handshakeCapabilities",
+                    `Provider instance '${instanceId}' does not support capability handshakes.`,
+                  ),
+                )
+              : adapter.handshakeCapabilities(input),
+        ),
+      );
+
+  const revokeCapabilityHandshake: ProviderServiceMethod<"revokeCapabilityHandshake"> = (
+    instanceId,
+    input,
+  ) =>
+    registry
+      .getByInstance(instanceId)
+      .pipe(
+        Effect.flatMap((adapter) =>
+          adapter.revokeCapabilityHandshake === undefined
+            ? Effect.void
+            : adapter.revokeCapabilityHandshake(input),
+        ),
+      );
+
+  const configureToolBroker: ProviderServiceMethod<"configureToolBroker"> = (instanceId, input) =>
+    registry
+      .getByInstance(instanceId)
+      .pipe(
+        Effect.flatMap(
+          (adapter): Effect.Effect<void, ProviderServiceError> =>
+            adapter.configureToolBroker === undefined
+              ? Effect.fail(
+                  toValidationError(
+                    "ProviderService.configureToolBroker",
+                    `Provider instance '${instanceId}' does not support ToolBroker callbacks.`,
+                  ),
+                )
+              : adapter.configureToolBroker(input),
+        ),
+      );
+
+  const clearToolBroker: ProviderServiceMethod<"clearToolBroker"> = (instanceId, threadId) =>
+    registry
+      .getByInstance(instanceId)
+      .pipe(
+        Effect.flatMap((adapter) =>
+          adapter.clearToolBroker === undefined ? Effect.void : adapter.clearToolBroker(threadId),
+        ),
+      );
+
   const rollbackConversation: ProviderServiceMethod<"rollbackConversation"> = Effect.fn(
     "rollbackConversation",
   )(function* (rawInput) {
@@ -1229,6 +1296,10 @@ const makeProviderService = Effect.fn("makeProviderService")(function* (
     listSessions,
     getCapabilities,
     getInstanceInfo,
+    handshakeCapabilities,
+    revokeCapabilityHandshake,
+    configureToolBroker,
+    clearToolBroker,
     rollbackConversation,
     uploadFeedback,
     // Each access creates a fresh PubSub subscription so that multiple

@@ -27,6 +27,10 @@ import {
 
 import { ServerConfig } from "../../config.ts";
 import { ServerSettingsService } from "../../serverSettings.ts";
+import type {
+  ProviderToolBrokerBridge,
+  ProviderToolBrokerInvocation,
+} from "../Services/ProviderAdapter.ts";
 import type { CursorAdapterShape } from "../Services/CursorAdapter.ts";
 import { makeCursorAdapter } from "./CursorAdapter.ts";
 const decodeCursorSettings = Schema.decodeSync(CursorSettings);
@@ -41,22 +45,42 @@ const mockAgentPath = NodePath.join(__dirname, "../../../scripts/acp-mock-agent.
 const mockAgentCommand = "node";
 const mockAgentArgs = [mockAgentPath] as const;
 
+const acceptToolBrokerHandshake = Effect.fn("acceptToolBrokerHandshake")(function* (
+  adapter: CursorAdapterShape,
+  input: Parameters<NonNullable<CursorAdapterShape["handshakeCapabilities"]>>[0],
+) {
+  const result = yield* adapter.handshakeCapabilities!(input);
+  if (result.status !== "accepted" || result.handshakeId === undefined) {
+    return yield* Effect.die(new Error("Cursor 测试握手未被接受。"));
+  }
+  return result.handshakeId;
+});
+
 async function makeMockAgentWrapper(
   extraEnv?: Record<string, string>,
   options?: { initialDelaySeconds?: number },
 ) {
   const dir = await NodeFSP.mkdtemp(NodePath.join(NodeOS.tmpdir(), "cursor-acp-mock-"));
-  const wrapperPath = NodePath.join(dir, "fake-agent.sh");
-  const envExports = Object.entries(extraEnv ?? {})
-    .map(([key, value]) => `export ${key}=${JSON.stringify(value)}`)
-    .join("\n");
-  const script = `#!/bin/sh
-${envExports}
+  const isWindows = process.platform === "win32";
+  const wrapperPath = NodePath.join(dir, isWindows ? "fake-agent.cmd" : "fake-agent.sh");
+  const script = isWindows
+    ? `@echo off
+${Object.entries(extraEnv ?? {})
+  .map(([key, value]) => `set "${key}=${value.replaceAll('"', '""')}"`)
+  .join("\n")}
+${options?.initialDelaySeconds ? `powershell.exe -NoLogo -NoProfile -Command "Start-Sleep -Milliseconds ${Math.ceil(options.initialDelaySeconds * 1000)}"` : ""}
+"${process.execPath}" "${mockAgentPath}" %*
+exit /b %ERRORLEVEL%
+`
+    : `#!/bin/sh
+${Object.entries(extraEnv ?? {})
+  .map(([key, value]) => `export ${key}=${JSON.stringify(value)}`)
+  .join("\n")}
 ${options?.initialDelaySeconds ? `sleep ${JSON.stringify(String(options.initialDelaySeconds))}` : ""}
 exec ${JSON.stringify(mockAgentCommand)} ${mockAgentArgs.map((arg) => JSON.stringify(arg)).join(" ")} "$@"
 `;
   await NodeFSP.writeFile(wrapperPath, script, "utf8");
-  await NodeFSP.chmod(wrapperPath, 0o755);
+  if (!isWindows) await NodeFSP.chmod(wrapperPath, 0o755);
   return wrapperPath;
 }
 
@@ -66,19 +90,30 @@ async function makeProbeWrapper(
   extraEnv?: Record<string, string>,
 ) {
   const dir = await NodeFSP.mkdtemp(NodePath.join(NodeOS.tmpdir(), "cursor-acp-probe-"));
-  const wrapperPath = NodePath.join(dir, "fake-agent.sh");
-  const envExports = Object.entries(extraEnv ?? {})
-    .map(([key, value]) => `export ${key}=${JSON.stringify(value)}`)
-    .join("\n");
-  const script = `#!/bin/sh
+  const isWindows = process.platform === "win32";
+  const wrapperPath = NodePath.join(dir, isWindows ? "fake-agent.cmd" : "fake-agent.sh");
+  const script = isWindows
+    ? `@echo off
+for %%A in (%*) do <nul set /p="%%~A\t" >> "${argvLogPath}"
+echo.>> "${argvLogPath}"
+set "T3_ACP_REQUEST_LOG_PATH=${requestLogPath}"
+${Object.entries(extraEnv ?? {})
+  .map(([key, value]) => `set "${key}=${value.replaceAll('"', '""')}"`)
+  .join("\n")}
+"${process.execPath}" "${mockAgentPath}" %*
+exit /b %ERRORLEVEL%
+`
+    : `#!/bin/sh
 printf '%s\t' "$@" >> ${JSON.stringify(argvLogPath)}
 printf '\n' >> ${JSON.stringify(argvLogPath)}
 export T3_ACP_REQUEST_LOG_PATH=${JSON.stringify(requestLogPath)}
-${envExports}
+${Object.entries(extraEnv ?? {})
+  .map(([key, value]) => `export ${key}=${JSON.stringify(value)}`)
+  .join("\n")}
 exec ${JSON.stringify(mockAgentCommand)} ${mockAgentArgs.map((arg) => JSON.stringify(arg)).join(" ")} "$@"
 `;
   await NodeFSP.writeFile(wrapperPath, script, "utf8");
-  await NodeFSP.chmod(wrapperPath, 0o755);
+  if (!isWindows) await NodeFSP.chmod(wrapperPath, 0o755);
   return wrapperPath;
 }
 
@@ -250,6 +285,572 @@ cursorAdapterTestLayer("CursorAdapterLive", (it) => {
     }),
   );
 
+  it.effect("通过真实 ACP 子进程把文件读取回调路由到 Provider ToolBroker", () =>
+    Effect.gen(function* () {
+      const adapter = yield* CursorAdapter;
+      const settings = yield* ServerSettingsService;
+      const threadId = ThreadId.make("cursor-toolbroker-read-e2e");
+      const workspaceRoot = yield* Effect.promise(() =>
+        NodeFSP.mkdtemp(NodePath.join(NodeOS.tmpdir(), "cursor-toolbroker-workspace-")),
+      );
+      const requestedPath = NodePath.join(workspaceRoot, "notes.txt");
+      const resultLogPath = NodePath.join(workspaceRoot, "tool-results.ndjson");
+      const requestLogPath = NodePath.join(workspaceRoot, "requests.ndjson");
+      const argvLogPath = NodePath.join(workspaceRoot, "argv.txt");
+      yield* Effect.promise(() => NodeFSP.writeFile(requestLogPath, "", "utf8"));
+      const wrapperPath = yield* Effect.promise(() =>
+        makeProbeWrapper(requestLogPath, argvLogPath, {
+          T3_ACP_READ_TEXT_FILE_PATH: requestedPath,
+          T3_ACP_CLIENT_TOOL_RESULT_LOG_PATH: resultLogPath,
+        }),
+      );
+      yield* settings.updateSettings({ providers: { cursor: { binaryPath: wrapperPath } } });
+
+      const invocations: ProviderToolBrokerInvocation[] = [];
+      const bridge: ProviderToolBrokerBridge = {
+        invoke: (invocation) =>
+          Effect.sync(() => {
+            invocations.push(invocation);
+            return {
+              status: "succeeded" as const,
+              result: {
+                relativePath: "notes.txt",
+                contents: "alpha\nbeta\ngamma\ndelta",
+                truncated: false,
+              },
+            };
+          }),
+        cancel: () => Effect.void,
+      };
+      const capabilityHandshakeId = yield* acceptToolBrokerHandshake(adapter, {
+        runtimeId: "provider:cursor",
+        taskId: "task-cursor-toolbroker",
+        runId: "run-cursor-toolbroker",
+        agentId: "provider:cursor",
+        capabilityGrantIds: ["grant-read"],
+      });
+      yield* adapter.configureToolBroker!({
+        threadId,
+        bridge,
+        context: {
+          runtimeId: "provider:cursor",
+          taskId: "task-cursor-toolbroker",
+          runId: "run-cursor-toolbroker",
+          agentId: "provider:cursor",
+          workspaceRoot,
+          capabilityGrantIds: ["grant-read"],
+          capabilityHandshakeId,
+          threadId,
+        },
+      });
+      yield* adapter.startSession({
+        threadId,
+        provider: ProviderDriverKind.make("cursor"),
+        cwd: workspaceRoot,
+        runtimeMode: "full-access",
+        capabilityHandshakeId,
+      });
+      yield* adapter.sendTurn({ threadId, input: "读取测试文件", attachments: [] });
+
+      const toolResults = yield* Effect.promise(() => readJsonLines(resultLogPath));
+      assert.deepStrictEqual(toolResults, [
+        { method: "fs/read_text_file", result: { content: "beta\ngamma" } },
+      ]);
+      assert.equal(invocations.length, 1);
+      assert.equal(invocations[0]?.canonicalToolName, "workspace.read_file");
+      assert.deepStrictEqual(invocations[0]?.arguments, {
+        cwd: workspaceRoot,
+        relativePath: "notes.txt",
+      });
+
+      const requests = yield* Effect.promise(() => readJsonLines(requestLogPath));
+      const initialize = requests.find((entry) => entry.method === "initialize");
+      const clientCapabilities = (
+        initialize?.params as { readonly clientCapabilities?: Record<string, unknown> } | undefined
+      )?.clientCapabilities as
+        | { readonly fs?: Record<string, unknown>; readonly terminal?: boolean }
+        | undefined;
+      assert.deepStrictEqual(clientCapabilities?.fs, {
+        readTextFile: true,
+        writeTextFile: true,
+      });
+      assert.equal(clientCapabilities?.terminal, true);
+      yield* adapter.stopSession(threadId);
+    }),
+  );
+
+  it.effect("ToolBroker 拒绝时向真实 ACP 子进程返回脱敏请求错误", () =>
+    Effect.gen(function* () {
+      const adapter = yield* CursorAdapter;
+      const settings = yield* ServerSettingsService;
+      const threadId = ThreadId.make("cursor-toolbroker-denied-e2e");
+      const workspaceRoot = yield* Effect.promise(() =>
+        NodeFSP.mkdtemp(NodePath.join(NodeOS.tmpdir(), "cursor-toolbroker-denied-")),
+      );
+      const requestedPath = NodePath.join(workspaceRoot, "denied.txt");
+      const wrapperPath = yield* Effect.promise(() =>
+        makeMockAgentWrapper({ T3_ACP_READ_TEXT_FILE_PATH: requestedPath }),
+      );
+      yield* settings.updateSettings({ providers: { cursor: { binaryPath: wrapperPath } } });
+      const capabilityHandshakeId = yield* acceptToolBrokerHandshake(adapter, {
+        runtimeId: "provider:cursor",
+        taskId: "task-cursor-denied",
+        runId: "run-cursor-denied",
+        agentId: "provider:cursor",
+        capabilityGrantIds: ["grant-denied"],
+      });
+      yield* adapter.configureToolBroker!({
+        threadId,
+        bridge: {
+          invoke: () => Effect.succeed({ status: "denied", errorCode: "capability_not_granted" }),
+          cancel: () => Effect.void,
+        },
+        context: {
+          runtimeId: "provider:cursor",
+          taskId: "task-cursor-denied",
+          runId: "run-cursor-denied",
+          agentId: "provider:cursor",
+          workspaceRoot,
+          capabilityGrantIds: ["grant-denied"],
+          capabilityHandshakeId,
+          threadId,
+        },
+      });
+      yield* adapter.startSession({
+        threadId,
+        provider: ProviderDriverKind.make("cursor"),
+        cwd: workspaceRoot,
+        runtimeMode: "full-access",
+        capabilityHandshakeId,
+      });
+
+      const error = yield* adapter
+        .sendTurn({ threadId, input: "读取无权限文件", attachments: [] })
+        .pipe(Effect.flip);
+      assert.notInclude(String(error), requestedPath);
+      assert.notInclude(String(error), "grant-denied");
+      yield* adapter.stopSession(threadId);
+    }),
+  );
+
+  it.effect("拒绝与当前 Cursor session 不匹配的 ACP 工具请求", () =>
+    Effect.gen(function* () {
+      const adapter = yield* CursorAdapter;
+      const settings = yield* ServerSettingsService;
+      const threadId = ThreadId.make("cursor-toolbroker-session-mismatch");
+      const workspaceRoot = yield* Effect.promise(() =>
+        NodeFSP.mkdtemp(NodePath.join(NodeOS.tmpdir(), "cursor-toolbroker-session-mismatch-")),
+      );
+      const requestedPath = NodePath.join(workspaceRoot, "notes.txt");
+      const wrapperPath = yield* Effect.promise(() =>
+        makeMockAgentWrapper({
+          T3_ACP_READ_TEXT_FILE_PATH: requestedPath,
+          T3_ACP_CLIENT_TOOL_SESSION_ID: "foreign-session",
+        }),
+      );
+      yield* settings.updateSettings({ providers: { cursor: { binaryPath: wrapperPath } } });
+      const invocations: ProviderToolBrokerInvocation[] = [];
+      const capabilityHandshakeId = yield* acceptToolBrokerHandshake(adapter, {
+        runtimeId: "provider:cursor",
+        taskId: "task-cursor-session-mismatch",
+        runId: "run-cursor-session-mismatch",
+        agentId: "provider:cursor",
+        capabilityGrantIds: ["grant-read"],
+      });
+      yield* adapter.configureToolBroker!({
+        threadId,
+        bridge: {
+          invoke: (invocation) =>
+            Effect.sync(() => {
+              invocations.push(invocation);
+              return { status: "succeeded" as const, result: { contents: "unexpected" } };
+            }),
+          cancel: () => Effect.void,
+        },
+        context: {
+          runtimeId: "provider:cursor",
+          taskId: "task-cursor-session-mismatch",
+          runId: "run-cursor-session-mismatch",
+          agentId: "provider:cursor",
+          workspaceRoot,
+          capabilityGrantIds: ["grant-read"],
+          capabilityHandshakeId,
+          threadId,
+        },
+      });
+      yield* adapter.startSession({
+        threadId,
+        provider: ProviderDriverKind.make("cursor"),
+        cwd: workspaceRoot,
+        runtimeMode: "full-access",
+        capabilityHandshakeId,
+      });
+
+      yield* adapter
+        .sendTurn({ threadId, input: "尝试使用错误 sessionId", attachments: [] })
+        .pipe(Effect.flip);
+      assert.equal(invocations.length, 0);
+      yield* adapter.stopSession(threadId);
+    }),
+  );
+
+  it.effect("撤销 capability handshake 后旧 ACP handler 不能继续调用 ToolBroker", () =>
+    Effect.gen(function* () {
+      const adapter = yield* CursorAdapter;
+      const settings = yield* ServerSettingsService;
+      const threadId = ThreadId.make("cursor-toolbroker-revoked-handshake");
+      const workspaceRoot = yield* Effect.promise(() =>
+        NodeFSP.mkdtemp(NodePath.join(NodeOS.tmpdir(), "cursor-toolbroker-revoked-")),
+      );
+      const requestedPath = NodePath.join(workspaceRoot, "notes.txt");
+      const wrapperPath = yield* Effect.promise(() =>
+        makeMockAgentWrapper({ T3_ACP_READ_TEXT_FILE_PATH: requestedPath }),
+      );
+      yield* settings.updateSettings({ providers: { cursor: { binaryPath: wrapperPath } } });
+      const invocations: ProviderToolBrokerInvocation[] = [];
+      const capabilityHandshakeId = yield* acceptToolBrokerHandshake(adapter, {
+        runtimeId: "provider:cursor",
+        taskId: "task-cursor-revoked",
+        runId: "run-cursor-revoked",
+        agentId: "provider:cursor",
+        capabilityGrantIds: ["grant-read"],
+      });
+      yield* adapter.configureToolBroker!({
+        threadId,
+        bridge: {
+          invoke: (invocation) =>
+            Effect.sync(() => {
+              invocations.push(invocation);
+              return { status: "succeeded" as const, result: { contents: "unexpected" } };
+            }),
+          cancel: () => Effect.void,
+        },
+        context: {
+          runtimeId: "provider:cursor",
+          taskId: "task-cursor-revoked",
+          runId: "run-cursor-revoked",
+          agentId: "provider:cursor",
+          workspaceRoot,
+          capabilityGrantIds: ["grant-read"],
+          capabilityHandshakeId,
+          threadId,
+        },
+      });
+      yield* adapter.startSession({
+        threadId,
+        provider: ProviderDriverKind.make("cursor"),
+        cwd: workspaceRoot,
+        runtimeMode: "full-access",
+        capabilityHandshakeId,
+      });
+      yield* adapter.revokeCapabilityHandshake!({ handshakeId: capabilityHandshakeId });
+
+      yield* adapter
+        .sendTurn({ threadId, input: "撤销后读取文件", attachments: [] })
+        .pipe(Effect.flip);
+      assert.equal(invocations.length, 0);
+      yield* adapter.stopSession(threadId);
+    }),
+  );
+
+  it.effect("clear 或 revoke 后拒绝使用旧 handshake 启动 Session", () =>
+    Effect.gen(function* () {
+      const adapter = yield* CursorAdapter;
+      const threadId = ThreadId.make("cursor-toolbroker-start-fail-closed");
+      const capabilityHandshakeId = yield* acceptToolBrokerHandshake(adapter, {
+        runtimeId: "provider:cursor",
+        taskId: "task-start-fail-closed",
+        runId: "run-start-fail-closed",
+        agentId: "provider:cursor",
+        capabilityGrantIds: ["grant-read"],
+      });
+      yield* adapter.configureToolBroker!({
+        threadId,
+        bridge: { invoke: () => Effect.die("不应调用"), cancel: () => Effect.void },
+        context: {
+          runtimeId: "provider:cursor",
+          taskId: "task-start-fail-closed",
+          runId: "run-start-fail-closed",
+          agentId: "provider:cursor",
+          workspaceRoot: process.cwd(),
+          capabilityGrantIds: ["grant-read"],
+          capabilityHandshakeId,
+          threadId,
+        },
+      });
+      yield* adapter.clearToolBroker!(threadId);
+
+      const clearError = yield* adapter
+        .startSession({
+          threadId,
+          provider: ProviderDriverKind.make("cursor"),
+          cwd: process.cwd(),
+          runtimeMode: "full-access",
+          capabilityHandshakeId,
+        })
+        .pipe(Effect.flip);
+      assert.include(String(clearError), "同一 Adapter 代次");
+
+      const secondHandshakeId = yield* acceptToolBrokerHandshake(adapter, {
+        runtimeId: "provider:cursor",
+        taskId: "task-start-fail-closed",
+        runId: "run-start-fail-closed-2",
+        agentId: "provider:cursor",
+        capabilityGrantIds: ["grant-read"],
+      });
+      yield* adapter.revokeCapabilityHandshake!({ handshakeId: secondHandshakeId });
+      const revokeError = yield* adapter
+        .startSession({
+          threadId,
+          provider: ProviderDriverKind.make("cursor"),
+          cwd: process.cwd(),
+          runtimeMode: "full-access",
+          capabilityHandshakeId: secondHandshakeId,
+        })
+        .pipe(Effect.flip);
+      assert.include(String(revokeError), "同一 Adapter 代次");
+    }),
+  );
+
+  it.effect("撤销 ToolBroker 时取消在途调用", () =>
+    Effect.gen(function* () {
+      const adapter = yield* CursorAdapter;
+      const settings = yield* ServerSettingsService;
+      const threadId = ThreadId.make("cursor-toolbroker-cancel-inflight");
+      const workspaceRoot = yield* Effect.promise(() =>
+        NodeFSP.mkdtemp(NodePath.join(NodeOS.tmpdir(), "cursor-toolbroker-inflight-")),
+      );
+      const requestedPath = NodePath.join(workspaceRoot, "notes.txt");
+      const wrapperPath = yield* Effect.promise(() =>
+        makeMockAgentWrapper({ T3_ACP_READ_TEXT_FILE_PATH: requestedPath }),
+      );
+      yield* settings.updateSettings({ providers: { cursor: { binaryPath: wrapperPath } } });
+      const invocationStarted = yield* Deferred.make<void>();
+      const invocationResult = yield* Deferred.make<{
+        readonly status: "cancelled";
+        readonly errorCode: string;
+      }>();
+      const cancellations: string[] = [];
+      const capabilityHandshakeId = yield* acceptToolBrokerHandshake(adapter, {
+        runtimeId: "provider:cursor",
+        taskId: "task-inflight",
+        runId: "run-inflight",
+        agentId: "provider:cursor",
+        capabilityGrantIds: ["grant-read"],
+      });
+      yield* adapter.configureToolBroker!({
+        threadId,
+        bridge: {
+          invoke: (invocation) =>
+            Deferred.succeed(invocationStarted, undefined).pipe(
+              Effect.andThen(Deferred.await(invocationResult)),
+            ),
+          cancel: (invocation) =>
+            Effect.sync(() => cancellations.push(invocation.toolCallId)).pipe(
+              Effect.andThen(
+                Deferred.succeed(invocationResult, {
+                  status: "cancelled" as const,
+                  errorCode: "binding_revoked",
+                }),
+              ),
+              Effect.asVoid,
+            ),
+        },
+        context: {
+          runtimeId: "provider:cursor",
+          taskId: "task-inflight",
+          runId: "run-inflight",
+          agentId: "provider:cursor",
+          workspaceRoot,
+          capabilityGrantIds: ["grant-read"],
+          capabilityHandshakeId,
+          threadId,
+        },
+      });
+      yield* adapter.startSession({
+        threadId,
+        provider: ProviderDriverKind.make("cursor"),
+        cwd: workspaceRoot,
+        runtimeMode: "full-access",
+        capabilityHandshakeId,
+      });
+      const sendFiber = yield* adapter
+        .sendTurn({ threadId, input: "读取文件", attachments: [] })
+        .pipe(Effect.forkChild);
+      yield* Deferred.await(invocationStarted);
+      yield* adapter.clearToolBroker!(threadId);
+      yield* Fiber.await(sendFiber);
+      assert.lengthOf(cancellations, 1);
+      yield* adapter.stopSession(threadId);
+    }),
+  );
+
+  it.effect("撤销 ToolBroker 时关闭 ACP 已创建但未 release 的终端", () =>
+    Effect.gen(function* () {
+      const adapter = yield* CursorAdapter;
+      const settings = yield* ServerSettingsService;
+      const threadId = ThreadId.make("cursor-toolbroker-owned-terminal-cleanup");
+      const workspaceRoot = yield* Effect.promise(() =>
+        NodeFSP.mkdtemp(NodePath.join(NodeOS.tmpdir(), "cursor-toolbroker-terminal-cleanup-")),
+      );
+      const resultLogPath = NodePath.join(workspaceRoot, "terminal-results.ndjson");
+      const wrapperPath = yield* Effect.promise(() =>
+        makeMockAgentWrapper({
+          T3_ACP_TERMINAL_COMMAND: "long-running-command",
+          T3_ACP_TERMINAL_CWD: workspaceRoot,
+          T3_ACP_TERMINAL_HANG_AFTER_CREATE: "1",
+          T3_ACP_CLIENT_TOOL_RESULT_LOG_PATH: resultLogPath,
+        }),
+      );
+      yield* settings.updateSettings({ providers: { cursor: { binaryPath: wrapperPath } } });
+      const invocations: ProviderToolBrokerInvocation[] = [];
+      const capabilityHandshakeId = yield* acceptToolBrokerHandshake(adapter, {
+        runtimeId: "provider:cursor",
+        taskId: "task-terminal-cleanup",
+        runId: "run-terminal-cleanup",
+        agentId: "provider:cursor",
+        capabilityGrantIds: ["grant-terminal"],
+      });
+      yield* adapter.configureToolBroker!({
+        threadId,
+        bridge: {
+          invoke: (invocation) =>
+            Effect.sync(() => {
+              invocations.push(invocation);
+              return {
+                status: "succeeded" as const,
+                result:
+                  invocation.canonicalToolName === "terminal.exec" ? { status: "running" } : {},
+              };
+            }),
+          cancel: () => Effect.void,
+        },
+        context: {
+          runtimeId: "provider:cursor",
+          taskId: "task-terminal-cleanup",
+          runId: "run-terminal-cleanup",
+          agentId: "provider:cursor",
+          workspaceRoot,
+          capabilityGrantIds: ["grant-terminal"],
+          capabilityHandshakeId,
+          threadId,
+        },
+      });
+      yield* adapter.startSession({
+        threadId,
+        provider: ProviderDriverKind.make("cursor"),
+        cwd: workspaceRoot,
+        runtimeMode: "full-access",
+        capabilityHandshakeId,
+      });
+      const sendFiber = yield* adapter
+        .sendTurn({ threadId, input: "启动长命令", attachments: [] })
+        .pipe(Effect.forkChild);
+      yield* Effect.promise(() => waitForFileContent(resultLogPath));
+      yield* adapter.clearToolBroker!(threadId);
+      assert.deepEqual(
+        invocations.map((invocation) => invocation.canonicalToolName),
+        ["terminal.exec", "terminal.close"],
+      );
+      yield* adapter.stopSession(threadId);
+      yield* Fiber.interrupt(sendFiber);
+    }),
+  );
+
+  it.effect("真实 ACP 子进程按 kill、output、wait、release 顺序使用终端 handle", () =>
+    Effect.gen(function* () {
+      const adapter = yield* CursorAdapter;
+      const settings = yield* ServerSettingsService;
+      const threadId = ThreadId.make("cursor-toolbroker-terminal-lifecycle");
+      const workspaceRoot = yield* Effect.promise(() =>
+        NodeFSP.mkdtemp(NodePath.join(NodeOS.tmpdir(), "cursor-toolbroker-terminal-lifecycle-")),
+      );
+      const resultLogPath = NodePath.join(workspaceRoot, "terminal-results.ndjson");
+      const wrapperPath = yield* Effect.promise(() =>
+        makeMockAgentWrapper({
+          T3_ACP_TERMINAL_COMMAND: "example-command",
+          T3_ACP_TERMINAL_CWD: workspaceRoot,
+          T3_ACP_TERMINAL_KILL_BEFORE_WAIT: "1",
+          T3_ACP_CLIENT_TOOL_RESULT_LOG_PATH: resultLogPath,
+        }),
+      );
+      yield* settings.updateSettings({ providers: { cursor: { binaryPath: wrapperPath } } });
+      const invocations: ProviderToolBrokerInvocation[] = [];
+      let terminalStatus = "running";
+      const capabilityHandshakeId = yield* acceptToolBrokerHandshake(adapter, {
+        runtimeId: "provider:cursor",
+        taskId: "task-terminal-lifecycle",
+        runId: "run-terminal-lifecycle",
+        agentId: "provider:cursor",
+        capabilityGrantIds: ["grant-terminal"],
+      });
+      yield* adapter.configureToolBroker!({
+        threadId,
+        bridge: {
+          invoke: (invocation) =>
+            Effect.sync(() => {
+              invocations.push(invocation);
+              if (invocation.canonicalToolName === "terminal.kill") terminalStatus = "exited";
+              if (invocation.canonicalToolName === "terminal.snapshot") {
+                return {
+                  status: "succeeded" as const,
+                  result: {
+                    history: "terminal-output",
+                    status: terminalStatus,
+                    exitCode: terminalStatus === "exited" ? 143 : null,
+                    exitSignal: null,
+                  },
+                };
+              }
+              return { status: "succeeded" as const, result: {} };
+            }),
+          cancel: () => Effect.void,
+        },
+        context: {
+          runtimeId: "provider:cursor",
+          taskId: "task-terminal-lifecycle",
+          runId: "run-terminal-lifecycle",
+          agentId: "provider:cursor",
+          workspaceRoot,
+          capabilityGrantIds: ["grant-terminal"],
+          capabilityHandshakeId,
+          threadId,
+        },
+      });
+      yield* adapter.startSession({
+        threadId,
+        provider: ProviderDriverKind.make("cursor"),
+        cwd: workspaceRoot,
+        runtimeMode: "full-access",
+        capabilityHandshakeId,
+      });
+      yield* adapter.sendTurn({ threadId, input: "执行终端生命周期", attachments: [] });
+
+      assert.deepEqual(
+        invocations.map((invocation) => invocation.canonicalToolName),
+        [
+          "terminal.exec",
+          "terminal.kill",
+          "terminal.snapshot",
+          "terminal.snapshot",
+          "terminal.close",
+        ],
+      );
+      const results = yield* Effect.promise(() => readJsonLines(resultLogPath));
+      assert.deepEqual(
+        results.map((entry) => entry.method),
+        [
+          "terminal/create",
+          "terminal/kill",
+          "terminal/output",
+          "terminal/wait_for_exit",
+          "terminal/release",
+        ],
+      );
+      yield* adapter.stopSession(threadId);
+    }),
+  );
+
   it.effect("steers a running turn instead of opening a new one on mid-turn sendTurn", () =>
     Effect.gen(function* () {
       const adapter = yield* CursorAdapter;
@@ -352,9 +953,11 @@ cursorAdapterTestLayer("CursorAdapterLive", (it) => {
       });
 
       yield* adapter.stopSession(threadId);
-
-      const exitLog = yield* Effect.promise(() => waitForFileContent(exitLogPath));
-      assert.include(exitLog, "SIGTERM");
+      assert.isFalse(yield* adapter.hasSession(threadId));
+      if (process.platform !== "win32") {
+        const exitLog = yield* Effect.promise(() => waitForFileContent(exitLogPath));
+        assert.include(exitLog, "SIGTERM");
+      }
     }),
   );
 
@@ -402,11 +1005,17 @@ cursorAdapterTestLayer("CursorAdapterLive", (it) => {
 
         assert.equal(firstSession.threadId, threadId);
         assert.equal(secondSession.threadId, threadId);
+        assert.equal(
+          (yield* adapter.listSessions()).filter((session) => session.threadId === threadId).length,
+          1,
+        );
 
         yield* adapter.stopSession(threadId);
-
-        const exitLog = yield* Effect.promise(() => waitForFileContent(exitLogPath));
-        assert.equal(exitLog.match(/SIGTERM/g)?.length ?? 0, 2);
+        assert.isFalse(yield* adapter.hasSession(threadId));
+        if (process.platform !== "win32") {
+          const exitLog = yield* Effect.promise(() => waitForFileContent(exitLogPath));
+          assert.equal(exitLog.match(/SIGTERM/g)?.length ?? 0, 2);
+        }
       }),
   );
 

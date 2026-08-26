@@ -52,11 +52,13 @@ const makeTerminalManagerLayer = (
 ) =>
   Layer.succeed(TerminalManager.TerminalManager, {
     ...overrides,
+    runCommand: () => Effect.die(new Error("unused")),
     attachStream: () => Effect.die(new Error("unused")),
     resize: () => Effect.void,
     clear: () => Effect.void,
     restart: () => Effect.die(new Error("unused")),
     close: () => Effect.void,
+    kill: () => Effect.void,
     subscribe: () => Effect.succeed(() => undefined),
     subscribeMetadata: () => Effect.succeed(() => undefined),
   });

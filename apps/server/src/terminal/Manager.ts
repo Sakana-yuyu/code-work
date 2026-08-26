@@ -136,6 +136,10 @@ export class TerminalManager extends Context.Service<
       input: TerminalOpenInput,
     ) => Effect.Effect<TerminalSessionSnapshot, TerminalError>;
 
+    readonly runCommand: (
+      input: TerminalRunCommandInput,
+    ) => Effect.Effect<TerminalSessionSnapshot, TerminalError>;
+
     /**
      * Attach to a terminal and stream its initial snapshot followed by live events.
      *
@@ -176,6 +180,8 @@ export class TerminalManager extends Context.Service<
      * When `terminalId` is omitted, closes all sessions for the thread.
      */
     readonly close: (input: TerminalCloseInput) => Effect.Effect<void, TerminalError>;
+
+    readonly kill: (input: TerminalKillInput) => Effect.Effect<void, TerminalError>;
 
     /**
      * Subscribe to terminal runtime events with a direct callback.
@@ -238,6 +244,16 @@ export interface TerminalStartInput extends TerminalOpenInput {
   rows: number;
 }
 
+export interface TerminalRunCommandInput extends TerminalOpenInput {
+  readonly command: string;
+  readonly args?: ReadonlyArray<string>;
+}
+
+export interface TerminalKillInput {
+  readonly threadId: string;
+  readonly terminalId: string;
+}
+
 export interface TerminalSessionState {
   threadId: string;
   terminalId: string;
@@ -263,6 +279,7 @@ export interface TerminalSessionState {
   /** Normalized child command name when `hasRunningSubprocess`; cleared when idle. */
   childCommandLabel: string | null;
   runtimeEnv: Record<string, string> | null;
+  persistenceMode: "debounced" | "on_exit";
 }
 
 interface PersistHistoryRequest {
@@ -1352,6 +1369,22 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
     yield* registerKillFiber(process, fiber);
   });
 
+  const writeHistoryNow = Effect.fn("terminal.writeHistoryNow")(function* (
+    threadId: string,
+    terminalId: string,
+    history: string,
+  ) {
+    yield* fileSystem.writeFileString(historyPath(threadId, terminalId), history).pipe(
+      Effect.catch((error) =>
+        Effect.logWarning("failed to persist terminal history", {
+          threadId,
+          terminalId,
+          error,
+        }),
+      ),
+    );
+  });
+
   const persistWorker = yield* makeKeyedCoalescingWorker<
     string,
     PersistHistoryRequest,
@@ -1372,15 +1405,7 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
         return;
       }
 
-      yield* fileSystem.writeFileString(historyPath(threadId, terminalId), request.history).pipe(
-        Effect.catch((error) =>
-          Effect.logWarning("failed to persist terminal history", {
-            threadId,
-            terminalId,
-            error,
-          }),
-        ),
-      );
+      yield* writeHistoryNow(threadId, terminalId, request.history);
     }),
   });
 
@@ -1673,7 +1698,10 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
             threadId: session.threadId,
             terminalId: session.terminalId,
             sequence: eventStamp.sequence,
-            history: sanitized.visibleText.length > 0 ? session.history : null,
+            history:
+              session.persistenceMode === "debounced" && sanitized.visibleText.length > 0
+                ? session.history
+                : null,
             data: nextEvent.data,
           } as const;
         }
@@ -1732,6 +1760,11 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
         threadId: action.threadId,
         terminalId: action.terminalId,
       });
+      if (session.persistenceMode === "on_exit") {
+        yield* writeHistoryNow(action.threadId, action.terminalId, session.history);
+      } else {
+        yield* persistHistory(action.threadId, action.terminalId, session.history);
+      }
       yield* publishEvent({
         type: "exited",
         threadId: action.threadId,
@@ -1833,6 +1866,7 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
     session: TerminalSessionState,
     input: TerminalStartInput,
     eventType: "started" | "restarted",
+    spawnCandidates?: ReadonlyArray<ShellCandidate>,
   ) {
     yield* stopProcess(session);
     yield* Effect.annotateCurrentSpan({
@@ -1867,7 +1901,8 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
       increment(terminalSessionsTotal, { lifecycle: eventType }).pipe(
         Effect.andThen(
           Effect.gen(function* () {
-            const shellCandidates = resolveShellCandidates(shellResolver, platform, baseEnv);
+            const shellCandidates =
+              spawnCandidates ?? resolveShellCandidates(shellResolver, platform, baseEnv);
             const terminalEnv = createTerminalSpawnEnv(baseEnv, session.runtimeEnv);
             const spawnResult = yield* trySpawn(shellCandidates, terminalEnv, session);
             ptyProcess = spawnResult.process;
@@ -1972,10 +2007,16 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
     if (Option.isSome(session)) {
       yield* stopProcess(session.value);
       yield* unregisterTerminal({ threadId, terminalId });
-      yield* persistHistory(threadId, terminalId, session.value.history);
+      if (session.value.persistenceMode === "on_exit") {
+        yield* writeHistoryNow(threadId, terminalId, session.value.history);
+      } else {
+        yield* persistHistory(threadId, terminalId, session.value.history);
+      }
     }
 
-    yield* flushPersist(threadId, terminalId);
+    if (Option.isNone(session) || session.value.persistenceMode === "debounced") {
+      yield* flushPersist(threadId, terminalId);
+    }
 
     const removed = yield* modifyManagerState((state) => {
       if (!state.sessions.has(key)) {
@@ -2177,6 +2218,7 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
         hasRunningSubprocess: false,
         childCommandLabel: null,
         runtimeEnv: normalizedRuntimeEnv(input.env),
+        persistenceMode: "debounced",
       };
 
       const createdSession = session;
@@ -2267,6 +2309,67 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
 
   const open: TerminalManager["Service"]["open"] = (input) =>
     withThreadLock(input.threadId, openLocked(input));
+
+  const runCommandLocked = Effect.fn("terminal.runCommandLocked")(function* (
+    input: TerminalRunCommandInput,
+  ) {
+    yield* assertValidCwd(input.cwd);
+    const existing = yield* getSession(input.threadId, input.terminalId);
+    if (Option.isSome(existing)) return snapshot(existing.value);
+
+    const cols = input.cols ?? DEFAULT_OPEN_COLS;
+    const rows = input.rows ?? DEFAULT_OPEN_ROWS;
+    const session: TerminalSessionState = {
+      threadId: input.threadId,
+      terminalId: input.terminalId,
+      cwd: input.cwd,
+      worktreePath: input.worktreePath ?? null,
+      status: "starting",
+      pid: null,
+      history: "",
+      pendingHistoryControlSequence: "",
+      pendingProcessEvents: [],
+      pendingProcessEventIndex: 0,
+      processEventDrainRunning: false,
+      exitCode: null,
+      exitSignal: null,
+      updatedAt: yield* nowIso,
+      eventSequence: 0,
+      cols,
+      rows,
+      process: null,
+      unsubscribeData: null,
+      unsubscribeExit: null,
+      hasRunningSubprocess: false,
+      childCommandLabel: null,
+      runtimeEnv: normalizedRuntimeEnv(input.env),
+      persistenceMode: "on_exit",
+    };
+    yield* writeHistoryNow(input.threadId, input.terminalId, "");
+    yield* modifyManagerState((state) => {
+      const sessions = new Map(state.sessions);
+      sessions.set(toSessionKey(input.threadId, input.terminalId), session);
+      return [undefined, { ...state, sessions }] as const;
+    });
+    yield* startSession(
+      session,
+      {
+        threadId: input.threadId,
+        terminalId: input.terminalId,
+        cwd: input.cwd,
+        ...(input.worktreePath !== undefined ? { worktreePath: input.worktreePath } : {}),
+        cols,
+        rows,
+        ...(input.env ? { env: input.env } : {}),
+      },
+      "started",
+      [{ shell: input.command, args: [...(input.args ?? [])] }],
+    );
+    return snapshot(session);
+  });
+
+  const runCommand: TerminalManager["Service"]["runCommand"] = (input) =>
+    withThreadLock(input.threadId, runCommandLocked(input));
 
   const openOrAttachForStream = (input: TerminalAttachInput) =>
     withThreadLock(
@@ -2589,6 +2692,7 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
             hasRunningSubprocess: false,
             childCommandLabel: null,
             runtimeEnv: normalizedRuntimeEnv(input.env),
+            persistenceMode: "debounced",
           };
           const createdSession = session;
           yield* modifyManagerState((state) => {
@@ -2653,14 +2757,40 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
       }),
     );
 
+  const kill: TerminalManager["Service"]["kill"] = (input) =>
+    withThreadLock(
+      input.threadId,
+      Effect.gen(function* () {
+        const session = yield* requireSession(input.threadId, input.terminalId);
+        if (!session.process) return;
+        yield* stopProcess(session);
+        const eventStamp = advanceEventSequence(session);
+        if (session.persistenceMode === "on_exit") {
+          yield* writeHistoryNow(input.threadId, input.terminalId, session.history);
+        } else {
+          yield* persistHistory(input.threadId, input.terminalId, session.history);
+        }
+        yield* publishEvent({
+          type: "exited",
+          threadId: input.threadId,
+          terminalId: input.terminalId,
+          sequence: eventStamp.sequence,
+          exitCode: session.exitCode,
+          exitSignal: session.exitSignal,
+        });
+      }),
+    );
+
   return TerminalManager.of({
     open,
+    runCommand,
     attachStream,
     write,
     resize,
     clear,
     restart,
     close,
+    kill,
     subscribe,
     subscribeMetadata,
   });

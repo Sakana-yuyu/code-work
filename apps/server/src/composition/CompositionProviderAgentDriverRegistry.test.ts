@@ -19,7 +19,7 @@ import {
   makeCompositionProviderAgentDriverProjection,
 } from "./CompositionProviderAgentDriverRegistry.ts";
 
-const makeProviderInstance = (instanceId: string): ProviderInstance =>
+const makeProviderInstance = (instanceId: string, supportsToolBroker = false): ProviderInstance =>
   ({
     instanceId: ProviderInstanceId.make(instanceId),
     driverKind: ProviderDriverKind.make("codex"),
@@ -32,15 +32,59 @@ const makeProviderInstance = (instanceId: string): ProviderInstance =>
         version: null,
       } as unknown as ServerProvider),
     },
-  }) as ProviderInstance;
+    adapter: {
+      capabilities: {
+        sessionModelSwitch: "in-session",
+        ...(supportsToolBroker ? { toolBrokerCanonicalTools: ["workspace.read_file"] } : {}),
+      },
+      ...(supportsToolBroker
+        ? {
+            handshakeCapabilities: () =>
+              Effect.die("projection must route through ProviderService"),
+            revokeCapabilityHandshake: () =>
+              Effect.die("projection must route through ProviderService"),
+            configureToolBroker: () => Effect.die("projection must route through ProviderService"),
+            clearToolBroker: () => Effect.die("projection must route through ProviderService"),
+          }
+        : {}),
+    },
+  }) as unknown as ProviderInstance;
 
 const makeProviderServiceHarness = () => {
   const calls: string[] = [];
   const session = {} as ProviderSession;
   const service: Pick<
     ProviderServiceShape,
-    "startSession" | "sendTurn" | "interruptTurn" | "stopSession"
+    | "startSession"
+    | "sendTurn"
+    | "interruptTurn"
+    | "stopSession"
+    | "handshakeCapabilities"
+    | "revokeCapabilityHandshake"
+    | "configureToolBroker"
+    | "clearToolBroker"
   > = {
+    handshakeCapabilities: (_instanceId, input) => {
+      calls.push(`handshake:${input.runId}:${input.capabilityGrantIds.join(",")}`);
+      return Effect.succeed({
+        ...input,
+        status: "accepted" as const,
+        handshakeId: `adapter-handshake:${input.runId}`,
+        acceptedGrantIds: [...input.capabilityGrantIds],
+      });
+    },
+    revokeCapabilityHandshake: (_instanceId, input) => {
+      calls.push(`revoke:${input.handshakeId}`);
+      return Effect.void;
+    },
+    configureToolBroker: (_instanceId, input) => {
+      calls.push(`configure:${input.threadId}`);
+      return Effect.void;
+    },
+    clearToolBroker: (_instanceId, threadId) => {
+      calls.push(`clear:${threadId}`);
+      return Effect.void;
+    },
     startSession: (threadId, input) => {
       calls.push(`start:${threadId}:${input.providerInstanceId ?? ""}:${input.cwd ?? ""}`);
       return Effect.succeed(session);
@@ -153,5 +197,79 @@ describe("CompositionProviderAgentDriverRegistry", () => {
         projection.registry.get(compositionProviderAgentId(ProviderInstanceId.make("claude_work"))),
       ),
     ).resolves.toBeDefined();
+  });
+
+  it("routes capability handshake through ProviderService instead of fabricating acceptance", async () => {
+    const instanceId = ProviderInstanceId.make("cursor_personal");
+    const providerRegistry = {
+      listInstances: Effect.succeed([makeProviderInstance(instanceId, true)]),
+    } as Pick<ProviderInstanceRegistryShape, "listInstances">;
+    const provider = makeProviderServiceHarness();
+    const projection = makeCompositionProviderAgentDriverProjection({
+      providerRegistry,
+      providerService: provider.service,
+      toolBrokerBridge: {
+        invoke: () => Effect.die("unused"),
+        cancel: () => Effect.die("unused"),
+      },
+    });
+    await Effect.runPromise(projection.refresh);
+    const agentId = compositionProviderAgentId(instanceId);
+    const driver = await Effect.runPromise(projection.registry.get(agentId));
+    expect(driver).toBeDefined();
+    await expect(Effect.runPromise(driver!.getProfile!())).resolves.toMatchObject({
+      status: "available",
+      supportsToolBroker: true,
+      supportsCapabilityHandshake: true,
+      supportsWorkspace: true,
+    });
+
+    const task = {
+      taskId: "task-toolbroker",
+      projectId: "project-toolbroker",
+      threadId: "thread-toolbroker",
+      assigneeKind: "agent" as const,
+      assigneeId: agentId,
+      mode: "serial" as const,
+      status: "queued" as const,
+      promptDigest: "sha256:toolbroker",
+      dependsOnTaskIds: [],
+      createdAtUnixMs: 1,
+      updatedAtUnixMs: 1,
+    };
+    const run = {
+      runId: "run-toolbroker",
+      taskId: task.taskId,
+      agentId,
+      runtimeId: agentId,
+      status: "queued" as const,
+      attempt: 1,
+      capabilityGrantIds: ["grant-workspace-read"],
+    };
+    const started = await Effect.runPromise(
+      driver!.startTask({ task, run, prompt: "读取工作区", workspaceRoot: "C:/workspace" }),
+    );
+    expect(started.capabilityHandshakeId).toBe("adapter-handshake:run-toolbroker");
+    expect(provider.calls).toEqual([
+      "handshake:run-toolbroker:grant-workspace-read",
+      "configure:thread-toolbroker",
+      "start:thread-toolbroker:cursor_personal:C:/workspace",
+      "send:thread-toolbroker:读取工作区",
+    ]);
+
+    await Effect.runPromise(
+      driver!.revokeCapabilityHandshake!({
+        task,
+        run: {
+          ...run,
+          status: "running",
+          capabilityHandshakeId: started.capabilityHandshakeId,
+        },
+      }),
+    );
+    expect(provider.calls.slice(-2)).toEqual([
+      "clear:thread-toolbroker",
+      "revoke:adapter-handshake:run-toolbroker",
+    ]);
   });
 });

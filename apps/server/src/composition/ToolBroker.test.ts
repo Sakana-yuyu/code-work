@@ -25,6 +25,9 @@ import * as ToolBroker from "./ToolBroker.ts";
 
 const previewInvocations: PreviewAutomationBroker.PreviewAutomationInvokeInput[] = [];
 const ideInvocations: CompositionIdeSessionRegistry.CompositionIdeInvocation[] = [];
+const executedCommands: Array<{ threadId: string; terminalId: string; command: string }> = [];
+const killedTerminals: string[] = [];
+const closedTerminals: string[] = [];
 
 const WorkspaceFileLayer = WorkspaceFileSystem.layer.pipe(
   Layer.provide(WorkspacePaths.layer),
@@ -122,6 +125,54 @@ const ToolTestServicesLayer = Layer.mergeAll(
         sequence: 1,
       }),
     write: () => Effect.void,
+    runCommand: (input) =>
+      Effect.sync(() => {
+        executedCommands.push({
+          threadId: input.threadId,
+          terminalId: input.terminalId,
+          command: input.command,
+        });
+        return {
+          threadId: input.threadId,
+          terminalId: input.terminalId,
+          cwd: input.cwd,
+          worktreePath: null,
+          status: "running" as const,
+          pid: 456,
+          history: "",
+          exitCode: null,
+          exitSignal: null,
+          label: input.command,
+          updatedAt: "2026-08-26T00:00:00.000Z",
+          sequence: 1,
+        };
+      }),
+    attachStream: (input, listener) =>
+      listener({
+        type: "snapshot",
+        snapshot: {
+          threadId: input.threadId,
+          terminalId: input.terminalId,
+          cwd: input.cwd ?? "C:/trusted/workspace",
+          worktreePath: null,
+          status: "exited" as const,
+          pid: null,
+          history: "terminal output",
+          exitCode: 0,
+          exitSignal: null,
+          label: "shell",
+          updatedAt: "2026-08-25T00:00:00.000Z",
+          sequence: 2,
+        },
+      }).pipe(Effect.as(() => undefined)),
+    close: (input) =>
+      Effect.sync(() => {
+        closedTerminals.push(`${input.threadId}:${input.terminalId ?? "*"}`);
+      }),
+    kill: (input) =>
+      Effect.sync(() => {
+        killedTerminals.push(`${input.threadId}:${input.terminalId}`);
+      }),
   }),
   Layer.mock(GitVcsDriver.GitVcsDriver)({
     statusDetailsLocal: (cwd) =>
@@ -202,10 +253,99 @@ it.layer(TestLayer, { excludeTestServices: true })("shared canonical tools", (it
 
       expect(result.status).toBe("succeeded");
       expect(result.result).toMatchObject({
-        threadId: "task-1",
+        threadId: "run-1",
         terminalId: "term-agent",
         cwd: "C:/trusted/workspace",
       });
+    }),
+  );
+
+  it.effect("通过 ToolBroker 读取并关闭任务作用域终端", () =>
+    Effect.gen(function* () {
+      closedTerminals.length = 0;
+      const broker = yield* ToolBroker.ToolBroker;
+      const policy = yield* CapabilityPolicy.CapabilityPolicy;
+      const snapshot = yield* broker.invoke({
+        ...baseInput("C:/trusted/workspace"),
+        canonicalToolName: "terminal.snapshot",
+        arguments: { terminalId: "term-agent" },
+        idempotencyKey: "terminal-snapshot-1",
+        capabilityGrantIds: ["t3.terminal.snapshot"],
+      });
+      expect(snapshot).toMatchObject({
+        status: "succeeded",
+        result: { threadId: "run-1", terminalId: "term-agent", history: "terminal output" },
+      });
+
+      const closeInput = {
+        ...baseInput("C:/trusted/workspace"),
+        canonicalToolName: "terminal.close",
+        arguments: { terminalId: "term-agent" },
+        idempotencyKey: "terminal-close-1",
+        capabilityGrantIds: ["t3.terminal.close"],
+      };
+      const approval = yield* broker.invoke(closeInput);
+      expect(approval).toMatchObject({ status: "denied", errorCode: "tool_approval_required" });
+      yield* policy.approve({ approvalRequestId: approval.approvalRequestId! });
+      const closed = yield* broker.invoke({
+        ...closeInput,
+        ...(approval.approvalRequestId === undefined
+          ? {}
+          : { approvalRequestId: approval.approvalRequestId }),
+      });
+      expect(closed).toMatchObject({ status: "succeeded", result: { closed: true } });
+      expect(closedTerminals).toEqual(["run-1:term-agent"]);
+    }),
+  );
+
+  it.effect("按 Run 作用域执行并终止命令进程", () =>
+    Effect.gen(function* () {
+      executedCommands.length = 0;
+      killedTerminals.length = 0;
+      const broker = yield* ToolBroker.ToolBroker;
+      const policy = yield* CapabilityPolicy.CapabilityPolicy;
+      const execInput = {
+        ...baseInput("C:/trusted/workspace"),
+        canonicalToolName: "terminal.exec",
+        arguments: {
+          terminalId: "term-command",
+          cwd: "C:/trusted/workspace",
+          command: "node",
+          args: ["--version"],
+        },
+        idempotencyKey: "terminal-exec-1",
+        capabilityGrantIds: ["t3.terminal.exec"],
+      };
+      const execApproval = yield* broker.invoke(execInput);
+      yield* policy.approve({ approvalRequestId: execApproval.approvalRequestId! });
+      const executed = yield* broker.invoke({
+        ...execInput,
+        ...(execApproval.approvalRequestId === undefined
+          ? {}
+          : { approvalRequestId: execApproval.approvalRequestId }),
+      });
+      expect(executed).toMatchObject({ status: "succeeded", result: { status: "running" } });
+      expect(executedCommands).toEqual([
+        { threadId: "run-1", terminalId: "term-command", command: "node" },
+      ]);
+
+      const killInput = {
+        ...baseInput("C:/trusted/workspace"),
+        canonicalToolName: "terminal.kill",
+        arguments: { terminalId: "term-command" },
+        idempotencyKey: "terminal-kill-1",
+        capabilityGrantIds: ["t3.terminal.kill"],
+      };
+      const killApproval = yield* broker.invoke(killInput);
+      yield* policy.approve({ approvalRequestId: killApproval.approvalRequestId! });
+      const killed = yield* broker.invoke({
+        ...killInput,
+        ...(killApproval.approvalRequestId === undefined
+          ? {}
+          : { approvalRequestId: killApproval.approvalRequestId }),
+      });
+      expect(killed).toMatchObject({ status: "succeeded", result: { killed: true } });
+      expect(killedTerminals).toEqual(["run-1:term-command"]);
     }),
   );
 
@@ -309,6 +449,10 @@ it.layer(TestLayer, { excludeTestServices: true })("ToolBrokerLive", (it) => {
           "t3.workspace.write_file",
           "t3.terminal.open",
           "t3.terminal.write",
+          "t3.terminal.exec",
+          "t3.terminal.snapshot",
+          "t3.terminal.kill",
+          "t3.terminal.close",
           "t3.git.status",
           "t3.git.diff",
           "t3.preview_status",
@@ -551,7 +695,9 @@ it.layer(TestLayer, { excludeTestServices: true })("ToolBrokerLive", (it) => {
         },
         idempotencyKey: "ide-invoke-1-approved",
         capabilityGrantIds: ["t3.ide.invoke"],
-        approvalRequestId: result.approvalRequestId,
+        ...(result.approvalRequestId === undefined
+          ? {}
+          : { approvalRequestId: result.approvalRequestId }),
       });
 
       expect(approved.status).toBe("succeeded");

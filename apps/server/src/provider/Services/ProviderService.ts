@@ -12,6 +12,8 @@
  * @module ProviderService
  */
 import type {
+  CompositionRuntimeCapabilityHandshakeRequest,
+  CompositionRuntimeCapabilityHandshakeResult,
   ProviderInterruptTurnInput,
   ProviderInstanceId,
   ProviderRespondToRequestInput,
@@ -31,7 +33,11 @@ import type * as Effect from "effect/Effect";
 import type * as Stream from "effect/Stream";
 
 import type { ProviderServiceError } from "../Errors.ts";
-import type { ProviderAdapterCapabilities } from "./ProviderAdapter.ts";
+import type {
+  ProviderAdapterCapabilities,
+  ProviderToolBrokerBridge,
+  ProviderToolBrokerContext,
+} from "./ProviderAdapter.ts";
 import type { ProviderInstanceRoutingInfo } from "./ProviderAdapterRegistry.ts";
 
 /**
@@ -98,6 +104,30 @@ export interface ProviderServiceShape {
   readonly getInstanceInfo: (
     instanceId: ProviderInstanceId,
   ) => Effect.Effect<ProviderInstanceRoutingInfo, ProviderServiceError>;
+
+  readonly handshakeCapabilities: (
+    instanceId: ProviderInstanceId,
+    input: CompositionRuntimeCapabilityHandshakeRequest,
+  ) => Effect.Effect<CompositionRuntimeCapabilityHandshakeResult, ProviderServiceError>;
+
+  readonly revokeCapabilityHandshake: (
+    instanceId: ProviderInstanceId,
+    input: { readonly handshakeId: string },
+  ) => Effect.Effect<void, ProviderServiceError>;
+
+  readonly configureToolBroker: (
+    instanceId: ProviderInstanceId,
+    input: {
+      readonly threadId: ThreadId;
+      readonly bridge: ProviderToolBrokerBridge;
+      readonly context: ProviderToolBrokerContext;
+    },
+  ) => Effect.Effect<void, ProviderServiceError>;
+
+  readonly clearToolBroker: (
+    instanceId: ProviderInstanceId,
+    threadId: ThreadId,
+  ) => Effect.Effect<void, ProviderServiceError>;
 
   /**
    * Roll back provider conversation state by a number of turns.

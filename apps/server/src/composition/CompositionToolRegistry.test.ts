@@ -12,6 +12,10 @@ it("为统一 Runtime Tool Plane 暴露稳定且无重复的 canonical capabilit
       "t3.workspace.write_file",
       "t3.terminal.open",
       "t3.terminal.write",
+      "t3.terminal.exec",
+      "t3.terminal.snapshot",
+      "t3.terminal.kill",
+      "t3.terminal.close",
       "t3.git.status",
       "t3.git.diff",
       "t3.preview_status",
@@ -34,6 +38,18 @@ it("为统一 Runtime Tool Plane 暴露稳定且无重复的 canonical capabilit
       status: "available",
       grants: { read: false, execute: true, mutate: false },
       approval: "on_first_use",
+      source: "t3",
+    },
+  );
+  assert.deepEqual(
+    descriptors.find((descriptor) => descriptor.capabilityId === "t3.terminal.snapshot"),
+    {
+      capabilityId: "t3.terminal.snapshot",
+      kind: "tool",
+      version: "1",
+      status: "available",
+      grants: { read: true, execute: false, mutate: false },
+      approval: "never",
       source: "t3",
     },
   );

@@ -6,6 +6,8 @@
 
 import {
   ApprovalRequestId,
+  type CompositionRuntimeCapabilityHandshakeRequest,
+  type CompositionRuntimeCapabilityHandshakeResult,
   type CursorSettings,
   type ProviderOptionSelection,
   EventId,
@@ -24,6 +26,7 @@ import {
 import * as DateTime from "effect/DateTime";
 import * as Crypto from "effect/Crypto";
 import * as Deferred from "effect/Deferred";
+import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
 import * as Fiber from "effect/Fiber";
@@ -74,6 +77,12 @@ import {
   extractPlanMarkdown,
   extractTodosAsPlan,
 } from "../acp/CursorAcpExtension.ts";
+import {
+  type ProviderToolBrokerCancellation,
+  type ProviderToolBrokerBridge,
+  type ProviderToolBrokerContext,
+  type ProviderToolBrokerInvocation,
+} from "../Services/ProviderAdapter.ts";
 import { type CursorAdapterShape } from "../Services/CursorAdapter.ts";
 import { resolveCursorAcpBaseModelId } from "./CursorProvider.ts";
 import { type EventNdjsonLogger, makeEventNdjsonLogger } from "./EventNdjsonLogger.ts";
@@ -84,6 +93,7 @@ const CURSOR_RESUME_VERSION = 1 as const;
 const ACP_PLAN_MODE_ALIASES = ["plan", "architect"];
 const ACP_IMPLEMENT_MODE_ALIASES = ["code", "agent", "default", "chat", "implement"];
 const ACP_APPROVAL_MODE_ALIASES = ["ask"];
+const CAPABILITY_HANDSHAKE_TTL_MS = 10 * 60 * 1000;
 
 function encodeJsonStringForDiagnostics(input: unknown): string | undefined {
   const result = encodeUnknownJsonStringExit(input);
@@ -120,6 +130,19 @@ interface PendingApproval {
 
 interface PendingUserInput {
   readonly answers: Deferred.Deferred<ProviderUserInputAnswers>;
+}
+
+interface CursorToolBrokerBinding {
+  readonly bridge: ProviderToolBrokerBridge;
+  readonly context: ProviderToolBrokerContext;
+  readonly terminalOutputByteLimits: Map<string, number | null>;
+  readonly inFlightInvocations: Map<string, ProviderToolBrokerCancellation>;
+  active: boolean;
+}
+
+interface CursorCapabilityHandshake {
+  readonly request: CompositionRuntimeCapabilityHandshakeRequest;
+  readonly result: CompositionRuntimeCapabilityHandshakeResult;
 }
 
 interface CursorSessionContext {
@@ -168,6 +191,28 @@ function settlePendingUserInputsAsEmptyAnswers(
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function truncateTerminalOutput(
+  output: string,
+  byteLimit: number | null | undefined,
+): {
+  readonly output: string;
+  readonly truncated: boolean;
+} {
+  if (byteLimit === null || byteLimit === undefined) return { output, truncated: false };
+  const encoder = new TextEncoder();
+  if (encoder.encode(output).byteLength <= byteLimit) return { output, truncated: false };
+  const characters = Array.from(output);
+  let retainedBytes = 0;
+  let start = characters.length;
+  while (start > 0) {
+    const nextBytes = encoder.encode(characters[start - 1]).byteLength;
+    if (retainedBytes + nextBytes > byteLimit) break;
+    retainedBytes += nextBytes;
+    start -= 1;
+  }
+  return { output: characters.slice(start).join(""), truncated: true };
 }
 
 function parseCursorResume(raw: unknown): { sessionId: string } | undefined {
@@ -333,6 +378,9 @@ export function makeCursorAdapter(
     const makeAcpNativeLoggers = yield* makeAcpNativeLoggerFactory();
 
     const sessions = new Map<ThreadId, CursorSessionContext>();
+    const capabilityHandshakes = new Map<string, CursorCapabilityHandshake>();
+    const pendingToolBrokerContexts = new Map<ThreadId, CursorToolBrokerBinding>();
+    const toolBrokerContexts = new Map<ThreadId, CursorToolBrokerBinding>();
     const threadLocksRef = yield* SynchronizedRef.make(new Map<string, Semaphore.Semaphore>());
     const runtimeEventPubSub = yield* PubSub.unbounded<ProviderRuntimeEvent>();
 
@@ -456,6 +504,134 @@ export function makeCursorAdapter(
       return Effect.succeed(ctx);
     };
 
+    const closeOwnedTerminal = (
+      threadId: ThreadId,
+      binding: CursorToolBrokerBinding,
+      terminalId: string,
+    ) =>
+      binding.bridge
+        .invoke({
+          toolCallId: `cursor-acp:cleanup:${terminalId}`,
+          canonicalToolName: "terminal.close",
+          arguments: { terminalId },
+          idempotencyKey: `cursor-acp:${threadId}:cleanup:${binding.context.capabilityHandshakeId}:${terminalId}`,
+        })
+        .pipe(Effect.asVoid, Effect.ignore);
+
+    const cleanupToolBrokerBinding = (threadId: ThreadId, binding: CursorToolBrokerBinding) =>
+      Effect.gen(function* () {
+        binding.active = false;
+        if (pendingToolBrokerContexts.get(threadId) === binding) {
+          pendingToolBrokerContexts.delete(threadId);
+        }
+        if (toolBrokerContexts.get(threadId) === binding) {
+          toolBrokerContexts.delete(threadId);
+        }
+        const inFlight = [...binding.inFlightInvocations.values()];
+        binding.inFlightInvocations.clear();
+        yield* Effect.forEach(inFlight, (invocation) => binding.bridge.cancel(invocation), {
+          concurrency: "unbounded",
+          discard: true,
+        }).pipe(Effect.ignore);
+        const terminalIds = [...binding.terminalOutputByteLimits.keys()];
+        binding.terminalOutputByteLimits.clear();
+        yield* Effect.forEach(
+          terminalIds,
+          (terminalId) => closeOwnedTerminal(threadId, binding, terminalId),
+          { concurrency: "unbounded", discard: true },
+        );
+      });
+
+    const cleanupThreadToolBrokerContexts = (threadId: ThreadId) => {
+      const bindings = new Set<CursorToolBrokerBinding>();
+      const pending = pendingToolBrokerContexts.get(threadId);
+      const active = toolBrokerContexts.get(threadId);
+      if (pending !== undefined) bindings.add(pending);
+      if (active !== undefined) bindings.add(active);
+      pendingToolBrokerContexts.delete(threadId);
+      toolBrokerContexts.delete(threadId);
+      return Effect.forEach(bindings, (binding) => cleanupToolBrokerBinding(threadId, binding), {
+        concurrency: "unbounded",
+        discard: true,
+      });
+    };
+
+    const handshakeCapabilities: NonNullable<CursorAdapterShape["handshakeCapabilities"]> = (
+      input,
+    ) =>
+      Effect.gen(function* () {
+        const id = yield* randomUUIDv4;
+        const expiresAtUnixMs =
+          DateTime.toEpochMillis(yield* DateTime.now) + CAPABILITY_HANDSHAKE_TTL_MS;
+        const result = {
+          ...input,
+          status: "accepted" as const,
+          handshakeId: `cursor-handshake:${id}`,
+          acceptedGrantIds: [...input.capabilityGrantIds],
+          expiresAtUnixMs,
+        } satisfies CompositionRuntimeCapabilityHandshakeResult;
+        capabilityHandshakes.set(result.handshakeId, { request: input, result });
+        return result;
+      });
+
+    const revokeCapabilityHandshake: NonNullable<
+      CursorAdapterShape["revokeCapabilityHandshake"]
+    > = (input) =>
+      Effect.gen(function* () {
+        capabilityHandshakes.delete(input.handshakeId);
+        const threadIds = new Set<ThreadId>();
+        for (const [threadId, binding] of pendingToolBrokerContexts)
+          if (binding.context.capabilityHandshakeId === input.handshakeId) threadIds.add(threadId);
+        for (const [threadId, binding] of toolBrokerContexts)
+          if (binding.context.capabilityHandshakeId === input.handshakeId) threadIds.add(threadId);
+        yield* Effect.forEach(threadIds, cleanupThreadToolBrokerContexts, {
+          concurrency: "unbounded",
+          discard: true,
+        });
+      });
+
+    const configureToolBroker: NonNullable<CursorAdapterShape["configureToolBroker"]> = (input) =>
+      Effect.gen(function* () {
+        if (input.threadId !== input.context.threadId) {
+          return yield* new ProviderAdapterValidationError({
+            provider: PROVIDER,
+            operation: "configureToolBroker",
+            issue: "threadId 与可信 ToolBroker context 不匹配。",
+          });
+        }
+        const handshake = capabilityHandshakes.get(input.context.capabilityHandshakeId);
+        const nowUnixMs = DateTime.toEpochMillis(yield* DateTime.now);
+        const requestedGrantIds = [...input.context.capabilityGrantIds].sort();
+        const acceptedGrantIds = [...(handshake?.result.acceptedGrantIds ?? [])].sort();
+        if (
+          handshake === undefined ||
+          handshake.result.expiresAtUnixMs === undefined ||
+          handshake.result.expiresAtUnixMs <= nowUnixMs ||
+          handshake.request.runtimeId !== input.context.runtimeId ||
+          handshake.request.taskId !== input.context.taskId ||
+          handshake.request.runId !== input.context.runId ||
+          handshake.request.agentId !== input.context.agentId ||
+          requestedGrantIds.length !== acceptedGrantIds.length ||
+          requestedGrantIds.some((grantId, index) => grantId !== acceptedGrantIds[index])
+        ) {
+          return yield* new ProviderAdapterValidationError({
+            provider: PROVIDER,
+            operation: "configureToolBroker",
+            issue: "ToolBroker context 与有效 capability handshake 不匹配。",
+          });
+        }
+        pendingToolBrokerContexts.set(input.threadId, {
+          bridge: input.bridge,
+          context: input.context,
+          terminalOutputByteLimits: new Map(),
+          inFlightInvocations: new Map(),
+          active: true,
+        });
+      });
+
+    const clearToolBroker: NonNullable<CursorAdapterShape["clearToolBroker"]> = (threadId) =>
+      cleanupThreadToolBrokerContexts(threadId);
+
     const stopSessionInternal = (ctx: CursorSessionContext) =>
       Effect.gen(function* () {
         if (ctx.stopped) return;
@@ -465,6 +641,7 @@ export function makeCursorAdapter(
         if (ctx.notificationFiber) {
           yield* Fiber.interrupt(ctx.notificationFiber);
         }
+        yield* cleanupThreadToolBrokerContexts(ctx.threadId);
         yield* Effect.ignore(Scope.close(ctx.scope, Exit.void));
         sessions.delete(ctx.threadId);
         yield* offerRuntimeEvent({
@@ -502,13 +679,55 @@ export function makeCursorAdapter(
           if (existing && !existing.stopped) {
             yield* stopSessionInternal(existing);
           }
+          const pendingToolBroker = pendingToolBrokerContexts.get(input.threadId);
+          if (
+            input.capabilityHandshakeId !== undefined &&
+            (pendingToolBroker === undefined ||
+              !pendingToolBroker.active ||
+              pendingToolBroker.context.capabilityHandshakeId !== input.capabilityHandshakeId)
+          ) {
+            return yield* new ProviderAdapterValidationError({
+              provider: PROVIDER,
+              operation: "startSession",
+              issue:
+                "Session capability handshake 没有匹配同一 Adapter 代次的 ToolBroker binding。",
+            });
+          }
+          if (
+            pendingToolBroker !== undefined &&
+            input.capabilityHandshakeId !== pendingToolBroker.context.capabilityHandshakeId
+          ) {
+            return yield* new ProviderAdapterValidationError({
+              provider: PROVIDER,
+              operation: "startSession",
+              issue: "ToolBroker binding 与 Session capability handshake 不匹配。",
+            });
+          }
+          if (pendingToolBroker !== undefined) {
+            toolBrokerContexts.set(input.threadId, pendingToolBroker);
+          }
+          const toolBrokerBinding = toolBrokerContexts.get(input.threadId);
+          if (
+            toolBrokerBinding !== undefined &&
+            path.resolve(toolBrokerBinding.context.workspaceRoot) !== cwd
+          ) {
+            return yield* new ProviderAdapterValidationError({
+              provider: PROVIDER,
+              operation: "startSession",
+              issue: "ToolBroker workspaceRoot 与 Cursor session cwd 不匹配。",
+            });
+          }
 
           const pendingApprovals = new Map<ApprovalRequestId, PendingApproval>();
           const pendingUserInputs = new Map<ApprovalRequestId, PendingUserInput>();
           const sessionScope = yield* Scope.make("sequential");
           let sessionScopeTransferred = false;
           yield* Effect.addFinalizer(() =>
-            sessionScopeTransferred ? Effect.void : Scope.close(sessionScope, Exit.void),
+            sessionScopeTransferred
+              ? Effect.void
+              : Scope.close(sessionScope, Exit.void).pipe(
+                  Effect.ensuring(cleanupThreadToolBrokerContexts(input.threadId)),
+                ),
           );
           let ctx!: CursorSessionContext;
 
@@ -539,6 +758,14 @@ export function makeCursorAdapter(
             cwd,
             ...(resumeSessionId ? { resumeSessionId } : {}),
             clientInfo: { name: "t3-code", version: "0.0.0" },
+            ...(toolBrokerBinding === undefined
+              ? {}
+              : {
+                  clientCapabilities: {
+                    fs: { readTextFile: true, writeTextFile: true },
+                    terminal: true,
+                  },
+                }),
             ...(mcpSession
               ? {
                   mcpServers: [
@@ -570,7 +797,344 @@ export function makeCursorAdapter(
                 }),
             ),
           );
+          const makeToolIdentity = (method: string, suffix?: string) =>
+            randomUUIDv4.pipe(
+              Effect.map((id) => {
+                const stableSuffix = suffix === undefined ? "" : `:${suffix}`;
+                return {
+                  id,
+                  toolCallId: `cursor-acp:${method}:${id}${stableSuffix}`,
+                  idempotencyKey: `cursor-acp:${input.threadId}:${method}:${id}${stableSuffix}`,
+                };
+              }),
+              Effect.mapError(() =>
+                EffectAcpErrors.AcpRequestError.internalError(
+                  "无法生成 ACP 工具调用标识。",
+                  undefined,
+                  { method, operation: "handle-request" },
+                ),
+              ),
+            );
+          const toolRequestFailed = (
+            method: string,
+            result: { readonly status: string; readonly errorCode?: string | undefined },
+          ) =>
+            EffectAcpErrors.AcpRequestError.internalError(
+              "T3 ToolBroker 未完成 ACP 请求。",
+              {
+                status: result.status,
+                ...(result.errorCode === undefined ? {} : { errorCode: result.errorCode }),
+              },
+              { method, operation: "handle-request" },
+            );
+          const invokeTool = (
+            method: string,
+            canonicalToolName: string,
+            argumentsValue: unknown,
+            identity: { readonly toolCallId: string; readonly idempotencyKey: string },
+          ) =>
+            Effect.gen(function* () {
+              const binding = toolBrokerContexts.get(input.threadId);
+              if (binding === undefined || !binding.active) {
+                return yield* EffectAcpErrors.AcpRequestError.resourceNotFound(
+                  "T3 ToolBroker binding 已撤销。",
+                );
+              }
+              const invocation: ProviderToolBrokerInvocation = {
+                ...identity,
+                canonicalToolName,
+                arguments: argumentsValue,
+              };
+              binding.inFlightInvocations.set(invocation.toolCallId, invocation);
+              const result = yield* binding.bridge.invoke(invocation).pipe(
+                Effect.ensuring(
+                  Effect.sync(() => {
+                    binding.inFlightInvocations.delete(invocation.toolCallId);
+                  }),
+                ),
+              );
+              if (!binding.active || toolBrokerContexts.get(input.threadId) !== binding) {
+                return yield* EffectAcpErrors.AcpRequestError.resourceNotFound(
+                  "T3 ToolBroker binding 已撤销。",
+                );
+              }
+              if (result.status !== "succeeded") return yield* toolRequestFailed(method, result);
+              return result.result;
+            });
+          const resolveAcpRelativePath = (requestPath: string) =>
+            Effect.gen(function* () {
+              const binding = toolBrokerContexts.get(input.threadId);
+              if (binding === undefined || !binding.active) {
+                return yield* EffectAcpErrors.AcpRequestError.resourceNotFound(
+                  "T3 ToolBroker binding 已撤销。",
+                );
+              }
+              if (!path.isAbsolute(requestPath)) {
+                return yield* EffectAcpErrors.AcpRequestError.invalidParams(
+                  "ACP 文件路径必须是绝对路径。",
+                );
+              }
+              const workspaceRoot = path.resolve(binding.context.workspaceRoot);
+              const relativePath = path.relative(workspaceRoot, path.resolve(requestPath));
+              if (
+                relativePath.length === 0 ||
+                relativePath === ".." ||
+                relativePath.startsWith(`..${path.sep}`) ||
+                path.isAbsolute(relativePath)
+              ) {
+                return yield* EffectAcpErrors.AcpRequestError.invalidParams(
+                  "ACP 文件路径不在授权工作区内。",
+                );
+              }
+              return relativePath;
+            });
+          const requireOwnedTerminal = (terminalId: string) =>
+            Effect.gen(function* () {
+              const binding = toolBrokerContexts.get(input.threadId);
+              if (
+                binding === undefined ||
+                !binding.active ||
+                !binding.terminalOutputByteLimits.has(terminalId)
+              ) {
+                return yield* EffectAcpErrors.AcpRequestError.resourceNotFound(
+                  "ACP terminal handle 不属于当前授权 Run。",
+                );
+              }
+              return binding;
+            });
+          const readTerminalSnapshot = (
+            method: string,
+            terminalId: string,
+            identity: { readonly toolCallId: string; readonly idempotencyKey: string },
+          ): Effect.Effect<
+            {
+              readonly history: string;
+              readonly status: string;
+              readonly exitCode: unknown;
+              readonly exitSignal: unknown;
+            },
+            EffectAcpErrors.AcpError
+          > =>
+            invokeTool(method, "terminal.snapshot", { terminalId }, identity).pipe(
+              Effect.flatMap((result) => {
+                if (
+                  !isRecord(result) ||
+                  typeof result.history !== "string" ||
+                  typeof result.status !== "string"
+                ) {
+                  return Effect.fail(
+                    EffectAcpErrors.AcpRequestError.internalError(
+                      "T3 终端快照格式无效。",
+                      undefined,
+                      { method, operation: "handle-request" },
+                    ),
+                  );
+                }
+                return Effect.succeed({
+                  history: result.history,
+                  status: result.status,
+                  exitCode: result.exitCode,
+                  exitSignal: result.exitSignal,
+                });
+              }),
+            );
+          let activeAcpSessionId: string | undefined;
+          const requireActiveAcpSession = (requestSessionId: string) =>
+            requestSessionId === activeAcpSessionId
+              ? Effect.void
+              : Effect.fail(
+                  EffectAcpErrors.AcpRequestError.invalidParams(
+                    "ACP 请求 sessionId 与当前 Cursor session 不匹配。",
+                  ),
+                );
           const started = yield* Effect.gen(function* () {
+            if (toolBrokerBinding !== undefined) {
+              yield* acp.handleReadTextFile((request) =>
+                Effect.gen(function* () {
+                  yield* requireActiveAcpSession(request.sessionId);
+                  const relativePath = yield* resolveAcpRelativePath(request.path);
+                  const result = yield* invokeTool(
+                    "fs/read_text_file",
+                    "workspace.read_file",
+                    {
+                      cwd: toolBrokerBinding.context.workspaceRoot,
+                      relativePath,
+                    },
+                    yield* makeToolIdentity("fs/read_text_file"),
+                  );
+                  if (!isRecord(result) || typeof result.contents !== "string") {
+                    return yield* EffectAcpErrors.AcpRequestError.internalError(
+                      "T3 文件读取结果格式无效。",
+                    );
+                  }
+                  const startLine = Math.max(0, (request.line ?? 1) - 1);
+                  const lines = result.contents.split(/\r?\n/);
+                  const selected =
+                    request.limit === undefined || request.limit === null
+                      ? lines.slice(startLine)
+                      : lines.slice(startLine, startLine + request.limit);
+                  return { content: selected.join("\n") };
+                }),
+              );
+              yield* acp.handleWriteTextFile((request) =>
+                Effect.gen(function* () {
+                  yield* requireActiveAcpSession(request.sessionId);
+                  const relativePath = yield* resolveAcpRelativePath(request.path);
+                  yield* invokeTool(
+                    "fs/write_text_file",
+                    "workspace.write_file",
+                    {
+                      cwd: toolBrokerBinding.context.workspaceRoot,
+                      relativePath,
+                      contents: request.content,
+                    },
+                    yield* makeToolIdentity("fs/write_text_file"),
+                  );
+                  return {};
+                }),
+              );
+              yield* acp.handleCreateTerminal((request) =>
+                Effect.gen(function* () {
+                  yield* requireActiveAcpSession(request.sessionId);
+                  if (
+                    request.cwd !== undefined &&
+                    request.cwd !== null &&
+                    path.resolve(request.cwd) !==
+                      path.resolve(toolBrokerBinding.context.workspaceRoot)
+                  ) {
+                    return yield* EffectAcpErrors.AcpRequestError.invalidParams(
+                      "ACP 终端 cwd 必须等于授权工作区根目录。",
+                    );
+                  }
+                  const baseIdentity = yield* makeToolIdentity("terminal/create");
+                  const terminalId = `acp-${baseIdentity.id}`;
+                  const binding = toolBrokerContexts.get(input.threadId);
+                  if (binding === undefined || !binding.active) {
+                    return yield* EffectAcpErrors.AcpRequestError.resourceNotFound(
+                      "T3 ToolBroker binding 已撤销。",
+                    );
+                  }
+                  const env = Object.fromEntries(
+                    (request.env ?? []).map((entry) => [entry.name, entry.value]),
+                  );
+                  const createResult = yield* Effect.result(
+                    invokeTool(
+                      "terminal/create",
+                      "terminal.exec",
+                      {
+                        cwd: binding.context.workspaceRoot,
+                        terminalId,
+                        command: request.command,
+                        args: [...(request.args ?? [])],
+                        ...(Object.keys(env).length === 0 ? {} : { env }),
+                      },
+                      baseIdentity,
+                    ),
+                  );
+                  if (createResult._tag === "Failure") {
+                    yield* closeOwnedTerminal(input.threadId, binding, terminalId);
+                    return yield* createResult.failure;
+                  }
+                  binding.terminalOutputByteLimits.set(terminalId, request.outputByteLimit ?? null);
+                  return { terminalId };
+                }),
+              );
+              yield* acp.handleTerminalOutput((request) =>
+                Effect.gen(function* () {
+                  yield* requireActiveAcpSession(request.sessionId);
+                  const binding = yield* requireOwnedTerminal(request.terminalId);
+                  const snapshot = yield* readTerminalSnapshot(
+                    "terminal/output",
+                    request.terminalId,
+                    yield* makeToolIdentity("terminal/output"),
+                  );
+                  const limited = truncateTerminalOutput(
+                    snapshot.history,
+                    binding.terminalOutputByteLimits.get(request.terminalId),
+                  );
+                  const exited = snapshot.status === "exited" || snapshot.status === "error";
+                  return {
+                    output: limited.output,
+                    truncated: limited.truncated,
+                    ...(exited
+                      ? {
+                          exitStatus: {
+                            exitCode:
+                              typeof snapshot.exitCode === "number" ? snapshot.exitCode : null,
+                            signal:
+                              typeof snapshot.exitSignal === "number"
+                                ? String(snapshot.exitSignal)
+                                : null,
+                          },
+                        }
+                      : {}),
+                  };
+                }),
+              );
+              yield* acp.handleTerminalWaitForExit((request) => {
+                const waitForExit = (
+                  attempt: number,
+                ): Effect.Effect<
+                  EffectAcpSchema.WaitForTerminalExitResponse,
+                  EffectAcpErrors.AcpError
+                > =>
+                  Effect.gen(function* () {
+                    yield* requireActiveAcpSession(request.sessionId);
+                    yield* requireOwnedTerminal(request.terminalId);
+                    const baseIdentity = yield* makeToolIdentity(
+                      "terminal/wait_for_exit",
+                      String(attempt),
+                    );
+                    const snapshot = yield* readTerminalSnapshot(
+                      "terminal/wait_for_exit",
+                      request.terminalId,
+                      baseIdentity,
+                    );
+                    if (snapshot.status === "exited" || snapshot.status === "error") {
+                      return {
+                        exitCode: typeof snapshot.exitCode === "number" ? snapshot.exitCode : null,
+                        signal:
+                          typeof snapshot.exitSignal === "number"
+                            ? String(snapshot.exitSignal)
+                            : null,
+                      };
+                    }
+                    yield* Effect.sleep(Duration.millis(100));
+                    return yield* Effect.suspend(() => waitForExit(attempt + 1));
+                  });
+                return waitForExit(0);
+              });
+              const releaseTerminal = (terminalId: string) =>
+                Effect.gen(function* () {
+                  const binding = yield* requireOwnedTerminal(terminalId);
+                  yield* invokeTool(
+                    "terminal/release",
+                    "terminal.close",
+                    { terminalId },
+                    yield* makeToolIdentity("terminal/release"),
+                  );
+                  binding.terminalOutputByteLimits.delete(terminalId);
+                  return {};
+                });
+              yield* acp.handleTerminalKill((request) =>
+                Effect.gen(function* () {
+                  yield* requireActiveAcpSession(request.sessionId);
+                  yield* requireOwnedTerminal(request.terminalId);
+                  yield* invokeTool(
+                    "terminal/kill",
+                    "terminal.kill",
+                    { terminalId: request.terminalId },
+                    yield* makeToolIdentity("terminal/kill"),
+                  );
+                  return {};
+                }),
+              );
+              yield* acp.handleTerminalRelease((request) =>
+                requireActiveAcpSession(request.sessionId).pipe(
+                  Effect.andThen(releaseTerminal(request.terminalId)),
+                ),
+              );
+            }
             yield* acp.handleExtRequest("cursor/ask_question", CursorAskQuestionRequest, (params) =>
               mapExtensionFailure(
                 Effect.gen(function* () {
@@ -740,6 +1304,7 @@ export function makeCursorAdapter(
               mapAcpToAdapterError(PROVIDER, input.threadId, "session/start", error),
             ),
           );
+          activeAcpSessionId = started.sessionId;
 
           yield* applyRequestedSessionConfiguration({
             runtime: acp,
@@ -885,6 +1450,9 @@ export function makeCursorAdapter(
 
           ctx.notificationFiber = nf;
           sessions.set(input.threadId, ctx);
+          if (pendingToolBrokerContexts.get(input.threadId) === toolBrokerBinding) {
+            pendingToolBrokerContexts.delete(input.threadId);
+          }
           sessionScopeTransferred = true;
 
           yield* offerRuntimeEvent({
@@ -1153,11 +1721,26 @@ export function makeCursorAdapter(
         return c !== undefined && !c.stopped;
       });
 
+    const clearAllToolBrokerContexts = Effect.gen(function* () {
+      const threadIds = new Set<ThreadId>([
+        ...pendingToolBrokerContexts.keys(),
+        ...toolBrokerContexts.keys(),
+      ]);
+      yield* Effect.forEach(threadIds, cleanupThreadToolBrokerContexts, {
+        concurrency: "unbounded",
+        discard: true,
+      });
+      capabilityHandshakes.clear();
+    });
+
     const stopAll: CursorAdapterShape["stopAll"] = () =>
-      Effect.forEach(sessions.values(), stopSessionInternal, { discard: true });
+      Effect.forEach(sessions.values(), stopSessionInternal, { discard: true }).pipe(
+        Effect.ensuring(clearAllToolBrokerContexts),
+      );
 
     yield* Effect.addFinalizer(() =>
       Effect.forEach(sessions.values(), stopSessionInternal, { discard: true }).pipe(
+        Effect.ensuring(clearAllToolBrokerContexts),
         Effect.catch((cause) =>
           Effect.logError("Failed to emit Cursor session shutdown event.", { cause }),
         ),
@@ -1170,7 +1753,21 @@ export function makeCursorAdapter(
 
     return {
       provider: PROVIDER,
-      capabilities: { sessionModelSwitch: "in-session" },
+      capabilities: {
+        sessionModelSwitch: "in-session",
+        toolBrokerCanonicalTools: [
+          "workspace.read_file",
+          "workspace.write_file",
+          "terminal.exec",
+          "terminal.snapshot",
+          "terminal.kill",
+          "terminal.close",
+        ],
+      },
+      handshakeCapabilities,
+      revokeCapabilityHandshake,
+      configureToolBroker,
+      clearToolBroker,
       startSession,
       sendTurn,
       interruptTurn,

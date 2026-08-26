@@ -350,6 +350,10 @@ describe("ProviderCommandReactor", () => {
           },
         });
       },
+      handshakeCapabilities: () => unsupported(),
+      revokeCapabilityHandshake: () => unsupported(),
+      configureToolBroker: () => unsupported(),
+      clearToolBroker: () => unsupported(),
       rollbackConversation: () => unsupported(),
       uploadFeedback: () => unsupported(),
       get streamEvents() {

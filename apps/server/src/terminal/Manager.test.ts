@@ -7,6 +7,7 @@ import {
   type TerminalMetadataStreamEvent,
   type TerminalOpenInput,
   type TerminalRestartInput,
+  type TerminalSessionSnapshot,
 } from "@t3tools/contracts";
 import { HostProcessPlatform } from "@t3tools/shared/hostProcess";
 import * as Data from "effect/Data";
@@ -294,6 +295,92 @@ it.layer(
       assert.equal(second.threadId, "thread-1");
       assert.equal(third.threadId, "thread-1");
       expect(ptyAdapter.spawnInputs).toHaveLength(1);
+    }),
+  );
+
+  it.effect("直接以 executable 和 argv 启动命令进程并保留退出快照", () =>
+    Effect.gen(function* () {
+      const { manager, ptyAdapter, getEvents } = yield* createManager();
+
+      const opened = yield* manager.runCommand({
+        threadId: "run-command-1",
+        terminalId: "command-1",
+        cwd: process.cwd(),
+        command: "example-command",
+        args: ["--flag", "value with spaces"],
+      });
+      assert.equal(opened.status, "running");
+      expect(ptyAdapter.spawnInputs[0]).toMatchObject({
+        shell: "example-command",
+        args: ["--flag", "value with spaces"],
+      });
+
+      const processHandle = ptyAdapter.processes[0];
+      expect(processHandle).toBeDefined();
+      if (!processHandle) return;
+      processHandle.emitData("command-output\n");
+      processHandle.emitExit({ exitCode: 7, signal: 0 });
+      yield* waitFor(
+        Effect.map(getEvents, (events) =>
+          events.some(
+            (event) =>
+              event.type === "exited" &&
+              event.threadId === "run-command-1" &&
+              event.terminalId === "command-1",
+          ),
+        ),
+      );
+
+      let snapshot: TerminalSessionSnapshot | undefined;
+      const unsubscribe = yield* manager.attachStream(
+        { threadId: "run-command-1", terminalId: "command-1" },
+        (event) =>
+          Effect.sync(() => {
+            if (event.type === "snapshot") snapshot = event.snapshot;
+          }),
+      );
+      unsubscribe();
+      expect(snapshot).toMatchObject({
+        status: "exited",
+        history: "command-output\n",
+        exitCode: 7,
+      });
+    }),
+  );
+
+  it.effect("kill 只终止进程并保留 handle，close 才释放 session", () =>
+    Effect.gen(function* () {
+      const { manager, ptyAdapter } = yield* createManager();
+      yield* manager.runCommand({
+        threadId: "run-kill-1",
+        terminalId: "command-kill-1",
+        cwd: process.cwd(),
+        command: "long-running-command",
+      });
+      const processHandle = ptyAdapter.processes[0];
+      expect(processHandle).toBeDefined();
+      if (!processHandle) return;
+      processHandle.emitData("before-kill\n");
+
+      yield* manager.kill({ threadId: "run-kill-1", terminalId: "command-kill-1" });
+      yield* waitFor(Effect.sync(() => processHandle.killed));
+
+      let snapshot: TerminalSessionSnapshot | undefined;
+      const unsubscribe = yield* manager.attachStream(
+        { threadId: "run-kill-1", terminalId: "command-kill-1" },
+        (event) =>
+          Effect.sync(() => {
+            if (event.type === "snapshot") snapshot = event.snapshot;
+          }),
+      );
+      unsubscribe();
+      expect(snapshot).toMatchObject({ status: "exited", history: "before-kill\n" });
+
+      yield* manager.close({ threadId: "run-kill-1", terminalId: "command-kill-1" });
+      const error = yield* manager
+        .write({ threadId: "run-kill-1", terminalId: "command-kill-1", data: "ignored" })
+        .pipe(Effect.flip);
+      assert.equal(error._tag, "TerminalSessionLookupError");
     }),
   );
 

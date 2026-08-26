@@ -183,6 +183,10 @@ describe("ProviderSessionReaper", () => {
           },
         });
       },
+      handshakeCapabilities: () => unsupported(),
+      revokeCapabilityHandshake: () => unsupported(),
+      configureToolBroker: () => unsupported(),
+      clearToolBroker: () => unsupported(),
       rollbackConversation: () => unsupported(),
       uploadFeedback: () => unsupported(),
       streamEvents: Stream.empty,

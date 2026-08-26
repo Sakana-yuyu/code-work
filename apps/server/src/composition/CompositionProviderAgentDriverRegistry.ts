@@ -2,6 +2,7 @@ import { ProviderInstanceId } from "@t3tools/contracts";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
+import * as Option from "effect/Option";
 import * as PubSub from "effect/PubSub";
 
 import type { ProviderInstanceRegistryShape } from "../provider/Services/ProviderInstanceRegistry.ts";
@@ -9,6 +10,10 @@ import { ProviderInstanceRegistry } from "../provider/Services/ProviderInstanceR
 import type { ProviderServiceShape } from "../provider/Services/ProviderService.ts";
 import { ProviderService } from "../provider/Services/ProviderService.ts";
 import { makeCompositionProviderAgentDriver } from "./CompositionProviderAgentDriver.ts";
+import {
+  CompositionRuntimeToolBridgeService,
+  type CompositionRuntimeToolBridgeShape,
+} from "./CompositionRuntimeToolBridge.ts";
 import {
   CompositionAgentDriverAlreadyRegisteredError,
   CompositionAgentDriverInvalidError,
@@ -37,8 +42,16 @@ export interface CompositionProviderAgentDriverProjectionOptions {
   readonly providerRegistry: Pick<ProviderInstanceRegistryShape, "listInstances">;
   readonly providerService: Pick<
     ProviderServiceShape,
-    "startSession" | "sendTurn" | "interruptTurn" | "stopSession"
+    | "startSession"
+    | "sendTurn"
+    | "interruptTurn"
+    | "stopSession"
+    | "handshakeCapabilities"
+    | "revokeCapabilityHandshake"
+    | "configureToolBroker"
+    | "clearToolBroker"
   >;
+  readonly toolBrokerBridge?: CompositionRuntimeToolBridgeShape;
   readonly registry?: CompositionAgentDriverRegistry;
 }
 
@@ -60,6 +73,7 @@ export const makeCompositionProviderAgentDriverProjection = (
 ): CompositionProviderAgentDriverProjection => {
   const registry = options.registry ?? makeCompositionAgentDriverRegistry();
   const projectedAgentIds = new Set<string>();
+  const projectedAdapters = new Map<string, object>();
 
   const refresh = Effect.gen(function* () {
     const instances = yield* options.providerRegistry.listInstances;
@@ -72,16 +86,38 @@ export const makeCompositionProviderAgentDriverProjection = (
       const agentId = compositionProviderAgentId(instance.instanceId);
       liveAgentIds.add(agentId);
       const existing = yield* registry.get(agentId);
-      if (existing !== undefined) {
+      if (existing !== undefined && projectedAdapters.get(agentId) === instance.adapter) {
         continue;
       }
+      if (existing !== undefined) {
+        yield* registry.unregister(agentId);
+        projectedAgentIds.delete(agentId);
+        projectedAdapters.delete(agentId);
+      }
 
+      const instanceAdapter = instance.adapter;
+      const canonicalTools = instanceAdapter?.capabilities.toolBrokerCanonicalTools ?? [];
+      const supportsToolBroker =
+        options.toolBrokerBridge !== undefined &&
+        canonicalTools.length > 0 &&
+        instanceAdapter?.handshakeCapabilities !== undefined &&
+        instanceAdapter.revokeCapabilityHandshake !== undefined &&
+        instanceAdapter?.configureToolBroker !== undefined &&
+        instanceAdapter.clearToolBroker !== undefined;
+      const handshakeCapabilities = supportsToolBroker
+        ? (input: Parameters<ProviderServiceShape["handshakeCapabilities"]>[1]) =>
+            options.providerService.handshakeCapabilities(instance.instanceId, input)
+        : undefined;
       const driver = makeCompositionProviderAgentDriver({
         agentId,
         runtimeId: agentId,
         providerInstanceId: instance.instanceId,
         providerKind: instance.driverKind,
         ...(instance.displayName === undefined ? {} : { displayName: instance.displayName }),
+        ...(options.toolBrokerBridge === undefined
+          ? {}
+          : { toolBrokerBridge: options.toolBrokerBridge }),
+        toolBrokerCanonicalTools: canonicalTools,
         getSnapshot: () =>
           instance.snapshot.getSnapshot.pipe(
             Effect.map((value) => ({
@@ -93,6 +129,17 @@ export const makeCompositionProviderAgentDriverProjection = (
             })),
           ),
         adapter: {
+          ...(handshakeCapabilities === undefined
+            ? {}
+            : {
+                handshakeCapabilities,
+                revokeCapabilityHandshake: (input) =>
+                  options.providerService.revokeCapabilityHandshake(instance.instanceId, input),
+                configureToolBroker: (input) =>
+                  options.providerService.configureToolBroker(instance.instanceId, input),
+                clearToolBroker: (threadId) =>
+                  options.providerService.clearToolBroker(instance.instanceId, threadId),
+              }),
           startSession: (input) => options.providerService.startSession(input.threadId, input),
           sendTurn: (input) => options.providerService.sendTurn(input),
           interruptTurn: (threadId, turnId) =>
@@ -105,12 +152,14 @@ export const makeCompositionProviderAgentDriverProjection = (
       });
       yield* registry.register(driver);
       projectedAgentIds.add(agentId);
+      projectedAdapters.set(agentId, instance.adapter);
     }
 
     for (const agentId of projectedAgentIds) {
       if (!liveAgentIds.has(agentId) && isCompositionProviderAgentId(agentId)) {
         yield* registry.unregister(agentId);
         projectedAgentIds.delete(agentId);
+        projectedAdapters.delete(agentId);
       }
     }
   });
@@ -121,10 +170,14 @@ export const makeCompositionProviderAgentDriverProjection = (
 const live = Effect.gen(function* () {
   const providerRegistry = yield* ProviderInstanceRegistry;
   const providerService = yield* ProviderService;
+  const toolBrokerBridgeOption = yield* Effect.serviceOption(CompositionRuntimeToolBridgeService);
   const agentDriverRegistry = yield* CompositionAgentDriverRegistryService;
   const projection = makeCompositionProviderAgentDriverProjection({
     providerRegistry,
     providerService,
+    ...(Option.isSome(toolBrokerBridgeOption)
+      ? { toolBrokerBridge: toolBrokerBridgeOption.value }
+      : {}),
     registry: agentDriverRegistry,
   });
 

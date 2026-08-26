@@ -9,6 +9,7 @@ import {
   ProjectWriteFileResult,
   ReviewDiffPreviewInput,
   TerminalOpenInput,
+  type TerminalSessionSnapshot,
   TerminalWriteInput,
   type PreviewTabId,
 } from "@t3tools/contracts";
@@ -58,6 +59,26 @@ const TerminalOpenArguments = Schema.Struct({
 const TerminalWriteArguments = Schema.Struct({
   terminalId: Schema.String,
   data: Schema.String,
+});
+
+const TerminalExecArguments = Schema.Struct({
+  cwd: Schema.String,
+  terminalId: Schema.String,
+  command: Schema.String,
+  args: Schema.optional(Schema.Array(Schema.String)),
+  cols: Schema.optional(Schema.Number),
+  rows: Schema.optional(Schema.Number),
+  worktreePath: Schema.optional(Schema.NullOr(Schema.String)),
+  env: Schema.optional(Schema.Record(Schema.String, Schema.String)),
+});
+
+const TerminalSnapshotArguments = Schema.Struct({
+  terminalId: Schema.String,
+});
+
+const TerminalCloseArguments = Schema.Struct({
+  terminalId: Schema.String,
+  deleteHistory: Schema.optional(Schema.Boolean),
 });
 
 const GitStatusArguments = Schema.Struct({ cwd: Schema.String });
@@ -224,7 +245,7 @@ const make = Effect.gen(function* () {
           ).pipe(Effect.mapError(() => new ToolArgumentsInvalidError(input)));
           if (args.cwd !== input.workspaceRoot) return yield* new ToolArgumentsInvalidError(input);
           const terminalInput: TerminalOpenInput = {
-            threadId: input.taskId,
+            threadId: input.runId,
             terminalId: args.terminalId,
             cwd: input.workspaceRoot,
             ...(args.cols === undefined ? {} : { cols: args.cols }),
@@ -243,12 +264,82 @@ const make = Effect.gen(function* () {
             input.arguments,
           ).pipe(Effect.mapError(() => new ToolArgumentsInvalidError(input)));
           const terminalInput: TerminalWriteInput = {
-            threadId: input.taskId,
+            threadId: input.runId,
             terminalId: args.terminalId,
             data: args.data,
           };
           yield* terminalManager.value.write(terminalInput);
-          return { threadId: input.taskId, terminalId: args.terminalId, accepted: true };
+          return { runId: input.runId, terminalId: args.terminalId, accepted: true };
+        }),
+    });
+    handlers.set("terminal.exec", {
+      operation: "execute",
+      execute: (input) =>
+        Effect.gen(function* () {
+          const args = yield* Schema.decodeUnknownEffect(TerminalExecArguments)(
+            input.arguments,
+          ).pipe(Effect.mapError(() => new ToolArgumentsInvalidError(input)));
+          if (args.cwd !== input.workspaceRoot) return yield* new ToolArgumentsInvalidError(input);
+          return yield* terminalManager.value.runCommand({
+            threadId: input.runId,
+            terminalId: args.terminalId,
+            cwd: input.workspaceRoot,
+            command: args.command,
+            ...(args.args === undefined ? {} : { args: [...args.args] }),
+            ...(args.cols === undefined ? {} : { cols: args.cols }),
+            ...(args.rows === undefined ? {} : { rows: args.rows }),
+            ...(args.worktreePath === undefined ? {} : { worktreePath: args.worktreePath }),
+            ...(args.env === undefined ? {} : { env: args.env }),
+          });
+        }),
+    });
+    handlers.set("terminal.snapshot", {
+      operation: "read",
+      execute: (input) =>
+        Effect.gen(function* () {
+          const args = yield* Schema.decodeUnknownEffect(TerminalSnapshotArguments)(
+            input.arguments,
+          ).pipe(Effect.mapError(() => new ToolArgumentsInvalidError(input)));
+          let snapshot: TerminalSessionSnapshot | undefined;
+          const unsubscribe = yield* terminalManager.value.attachStream(
+            { threadId: input.runId, terminalId: args.terminalId },
+            (event) =>
+              Effect.sync(() => {
+                if (event.type === "snapshot") snapshot = event.snapshot;
+              }),
+          );
+          unsubscribe();
+          if (snapshot === undefined) return yield* new ToolArgumentsInvalidError(input);
+          return snapshot;
+        }),
+    });
+    handlers.set("terminal.kill", {
+      operation: "execute",
+      execute: (input) =>
+        Effect.gen(function* () {
+          const args = yield* Schema.decodeUnknownEffect(TerminalSnapshotArguments)(
+            input.arguments,
+          ).pipe(Effect.mapError(() => new ToolArgumentsInvalidError(input)));
+          yield* terminalManager.value.kill({
+            threadId: input.runId,
+            terminalId: args.terminalId,
+          });
+          return { runId: input.runId, terminalId: args.terminalId, killed: true };
+        }),
+    });
+    handlers.set("terminal.close", {
+      operation: "execute",
+      execute: (input) =>
+        Effect.gen(function* () {
+          const args = yield* Schema.decodeUnknownEffect(TerminalCloseArguments)(
+            input.arguments,
+          ).pipe(Effect.mapError(() => new ToolArgumentsInvalidError(input)));
+          yield* terminalManager.value.close({
+            threadId: input.runId,
+            terminalId: args.terminalId,
+            ...(args.deleteHistory === undefined ? {} : { deleteHistory: args.deleteHistory }),
+          });
+          return { runId: input.runId, terminalId: args.terminalId, closed: true };
         }),
     });
   }

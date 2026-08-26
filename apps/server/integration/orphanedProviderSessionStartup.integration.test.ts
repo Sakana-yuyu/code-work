@@ -21,6 +21,7 @@ import { HttpServer } from "effect/unstable/http";
 
 import * as EnvironmentAuth from "../src/auth/EnvironmentAuth.ts";
 import * as ServiceLauncherClient from "../src/cloud/serviceLauncherClient.ts";
+import * as CompositionMcpRuntimeService from "../src/composition/CompositionMcpRuntimeService.ts";
 import * as ServerConfig from "../src/config.ts";
 import * as ServerEnvironment from "../src/environment/ServerEnvironment.ts";
 import * as Keybindings from "../src/keybindings.ts";
@@ -76,6 +77,14 @@ const startupDependencies = Layer.mergeAll(
     start: () => Effect.void,
   }),
   ServerLifecycleEvents.layer,
+  Layer.succeed(CompositionMcpRuntimeService.CompositionMcpRuntimeService, {
+    reconcile: () => Effect.void,
+    start: Effect.void,
+    listServers: () => Effect.succeed([]),
+    connectServer: () => Effect.die("unused"),
+    disconnectServer: () => Effect.succeed(false),
+    refreshServer: () => Effect.die("unused"),
+  }),
   Layer.succeed(ServerEnvironment.ServerEnvironment, {
     getEnvironmentId: Effect.succeed(EnvironmentId.make("environment-startup-orphan")),
     getDescriptor: Effect.succeed({
@@ -115,6 +124,10 @@ const startupDependencies = Layer.mergeAll(
     listSessions: () => Effect.succeed([]),
     getCapabilities: () => Effect.die("unused"),
     getInstanceInfo: () => Effect.die("unused"),
+    handshakeCapabilities: () => Effect.die("unused"),
+    revokeCapabilityHandshake: () => Effect.die("unused"),
+    configureToolBroker: () => Effect.die("unused"),
+    clearToolBroker: () => Effect.die("unused"),
     rollbackConversation: () => Effect.die("unused"),
     uploadFeedback: () => Effect.die("unused"),
     streamEvents: Stream.empty,

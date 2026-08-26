@@ -39,6 +39,26 @@ const failPrompt = process.env.T3_ACP_FAIL_PROMPT === "1";
 const failSetConfigOption = process.env.T3_ACP_FAIL_SET_CONFIG_OPTION === "1";
 const exitOnSetConfigOption = process.env.T3_ACP_EXIT_ON_SET_CONFIG_OPTION === "1";
 const promptResponseText = process.env.T3_ACP_PROMPT_RESPONSE_TEXT;
+const readTextFilePath = process.env.T3_ACP_READ_TEXT_FILE_PATH;
+const clientToolSessionId = process.env.T3_ACP_CLIENT_TOOL_SESSION_ID;
+const writeTextFilePath = process.env.T3_ACP_WRITE_TEXT_FILE_PATH;
+const writeTextFileContent = process.env.T3_ACP_WRITE_TEXT_FILE_CONTENT ?? "mock write";
+const clientToolResultLogPath = process.env.T3_ACP_CLIENT_TOOL_RESULT_LOG_PATH;
+const terminalCommand = process.env.T3_ACP_TERMINAL_COMMAND;
+const terminalArgs = (() => {
+  const indexed = Array.from(
+    { length: 10 },
+    (_, index) => process.env[`T3_ACP_TERMINAL_ARG_${index}`],
+  ).filter((value): value is string => value !== undefined);
+  if (indexed.length > 0) return indexed;
+  const raw = process.env.T3_ACP_TERMINAL_ARGS_JSON;
+  if (!raw) return [] as string[];
+  const value: unknown = JSON.parse(raw);
+  return Array.isArray(value) && value.every((item) => typeof item === "string") ? value : [];
+})();
+const terminalCwd = process.env.T3_ACP_TERMINAL_CWD;
+const terminalKillBeforeWait = process.env.T3_ACP_TERMINAL_KILL_BEFORE_WAIT === "1";
+const terminalHangAfterCreate = process.env.T3_ACP_TERMINAL_HANG_AFTER_CREATE === "1";
 const promptDelayMs = Number(process.env.T3_ACP_PROMPT_DELAY_MS ?? "0");
 const permissionOptionIds = {
   allowOnce: process.env.T3_ACP_ALLOW_ONCE_OPTION_ID ?? "allow-once",
@@ -77,6 +97,11 @@ function logExit(reason: string): void {
 
 function writeJsonRpcNotification(method: string, params: unknown): void {
   process.stdout.write(`${JSON.stringify({ jsonrpc: "2.0", method, params })}\n`);
+}
+
+function logClientToolResult(value: unknown): void {
+  if (!clientToolResultLogPath) return;
+  NodeFS.appendFileSync(clientToolResultLogPath, `${JSON.stringify(value)}\n`, "utf8");
 }
 
 process.once("SIGTERM", () => {
@@ -627,6 +652,57 @@ const program = Effect.gen(function* () {
           },
         });
 
+        return { stopReason: "end_turn" };
+      }
+
+      if (readTextFilePath) {
+        const readResult = yield* agent.client.readTextFile({
+          sessionId: clientToolSessionId ?? requestedSessionId,
+          path: readTextFilePath,
+          line: 2,
+          limit: 2,
+        });
+        logClientToolResult({ method: "fs/read_text_file", result: readResult });
+        if (writeTextFilePath) {
+          const writeResult = yield* agent.client.writeTextFile({
+            sessionId: clientToolSessionId ?? requestedSessionId,
+            path: writeTextFilePath,
+            content: writeTextFileContent,
+          });
+          logClientToolResult({ method: "fs/write_text_file", result: writeResult });
+        }
+        yield* agent.client.sessionUpdate({
+          sessionId: requestedSessionId,
+          update: {
+            sessionUpdate: "agent_message_chunk",
+            content: { type: "text", text: readResult.content },
+          },
+        });
+        return { stopReason: "end_turn" };
+      }
+
+      if (terminalCommand) {
+        const terminal = yield* agent.client.createTerminal({
+          sessionId: requestedSessionId,
+          command: terminalCommand,
+          args: terminalArgs,
+          ...(terminalCwd ? { cwd: terminalCwd } : {}),
+        });
+        logClientToolResult({
+          method: "terminal/create",
+          result: { terminalId: terminal.terminalId },
+        });
+        if (terminalHangAfterCreate) return yield* Effect.never;
+        if (terminalKillBeforeWait) {
+          const killed = yield* terminal.kill;
+          logClientToolResult({ method: "terminal/kill", result: killed });
+        }
+        const output = yield* terminal.output;
+        logClientToolResult({ method: "terminal/output", result: output });
+        const exit = yield* terminal.waitForExit;
+        logClientToolResult({ method: "terminal/wait_for_exit", result: exit });
+        const released = yield* terminal.release;
+        logClientToolResult({ method: "terminal/release", result: released });
         return { stopReason: "end_turn" };
       }
 

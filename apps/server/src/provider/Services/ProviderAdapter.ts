@@ -10,6 +10,8 @@
 import type {
   ApprovalRequestId,
   ProviderApprovalDecision,
+  CompositionRuntimeCapabilityHandshakeRequest,
+  CompositionRuntimeCapabilityHandshakeResult,
   ProviderDriverKind,
   ProviderUserInputAnswers,
   ProviderRuntimeEvent,
@@ -25,6 +27,40 @@ import type {
 import type * as Effect from "effect/Effect";
 import type * as Stream from "effect/Stream";
 
+export type ProviderToolBrokerContext = {
+  readonly runtimeId: string;
+  readonly taskId: string;
+  readonly runId: string;
+  readonly agentId: string;
+  readonly workspaceRoot: string;
+  readonly capabilityGrantIds: ReadonlyArray<string>;
+  readonly capabilityHandshakeId: string;
+  readonly threadId: ThreadId;
+};
+
+export type ProviderToolBrokerInvocation = {
+  readonly toolCallId: string;
+  readonly canonicalToolName: string;
+  readonly arguments: unknown;
+  readonly idempotencyKey: string;
+};
+
+export type ProviderToolBrokerCancellation = Pick<
+  ProviderToolBrokerInvocation,
+  "toolCallId" | "canonicalToolName" | "idempotencyKey"
+>;
+
+export type ProviderToolBrokerResult = {
+  readonly status: "succeeded" | "denied" | "failed" | "cancelled";
+  readonly result?: unknown;
+  readonly errorCode?: string | undefined;
+};
+
+export type ProviderToolBrokerBridge = {
+  readonly invoke: (input: ProviderToolBrokerInvocation) => Effect.Effect<ProviderToolBrokerResult>;
+  readonly cancel: (input: ProviderToolBrokerCancellation) => Effect.Effect<void>;
+};
+
 export type ProviderSessionModelSwitchMode = "in-session" | "unsupported";
 
 export interface ProviderAdapterCapabilities {
@@ -32,6 +68,8 @@ export interface ProviderAdapterCapabilities {
    * Declares whether changing the model on an existing session is supported.
    */
   readonly sessionModelSwitch: ProviderSessionModelSwitchMode;
+  /** 只有真实注册宿主工具回调的 Adapter 才能声明这些 canonical tools。 */
+  readonly toolBrokerCanonicalTools?: ReadonlyArray<string>;
 }
 
 export interface ProviderThreadTurnSnapshot {
@@ -50,6 +88,22 @@ export interface ProviderAdapterShape<TError> {
    */
   readonly provider: ProviderDriverKind;
   readonly capabilities: ProviderAdapterCapabilities;
+
+  readonly configureToolBroker?: (input: {
+    readonly threadId: ThreadId;
+    readonly bridge: ProviderToolBrokerBridge;
+    readonly context: ProviderToolBrokerContext;
+  }) => Effect.Effect<void, TError>;
+
+  readonly clearToolBroker?: (threadId: ThreadId) => Effect.Effect<void, TError>;
+
+  readonly handshakeCapabilities?: (
+    input: CompositionRuntimeCapabilityHandshakeRequest,
+  ) => Effect.Effect<CompositionRuntimeCapabilityHandshakeResult, TError>;
+
+  readonly revokeCapabilityHandshake?: (input: {
+    readonly handshakeId: string;
+  }) => Effect.Effect<void, TError>;
 
   /**
    * Start a provider-backed session.

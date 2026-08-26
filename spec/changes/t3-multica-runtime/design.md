@@ -481,3 +481,21 @@ Tool-call/Grant handshake，以及 Web/Desktop/Mobile、真实 Multica daemon �
 - Multica Adapter 增加显式 `capabilityBridge` 扩展点。未提供扩展时，带 grant 的派发仍返回 `capability_handshake_unsupported`；提供扩展时，必须先接受同一组 grant，并在派发时再次校验 Task/Run/Agent/Grant 与 handshake 的绑定，撤销后不能继续借用。
 
 本节点验证覆盖 4 个 Composition/Contracts 定向测试文件共 33 个测试、`git diff --check`。当前仍未完成真实 Multica daemon extension 的实现、真实 HTTP server + 外部子进程 E2E、Cursor/VSCode transport、Browser/Computer Use 完整闭环和 Web/Desktop/Mobile 多端验收；因此本节点证明的是可执行的 T3 Bridge 合同与 Multica 接入门，不宣称官方 Multica daemon 已经原生获得 T3 工具权限。
+
+## Batch E 落地记录（2026-08-26）
+
+本节点把 Provider/ACP 从“只声明 ToolBroker 能力”推进为可撤销的真实工具回调链路：
+
+- 新增 `CompositionProviderToolBrokerBridge`，Provider 只能提交 `toolCallId`、canonical tool、参数和幂等键；Task、Run、Agent、Workspace、Grant、Handshake 和 Thread 身份全部来自 T3 保存的可信上下文。Registry 只保存 Driver 已返回并通过验证的 handshake，不自行生成或伪造授权结果。
+- Provider Driver 只有在 Runtime Tool Bridge、configure/clear、handshake/revoke 和非空 canonical tool 列表同时存在时才报告 ToolBroker 可用，并按真实目录投影 Workspace、Terminal、Git、MCP、Browser、IDE 和 Provider API 能力。Driver 会校验 `runtimeId`、`taskId`、`runId`、`agentId`、Grant 集合完全一致且无重复，并使用 `Clock` 拒绝过期 handshake。
+- Cursor Adapter 为 pending binding 设置有限 TTL，`startSession` 只能消费同一 Adapter 代次产生的 handshake；还会校验 ACP `sessionId`。Adapter 重建、移除、启动失败、发送失败、取消和终态清理都会先使 binding 失效，再取消在途 Bridge 调用、关闭未 release 的 owned terminal 并撤销 handshake；即使 interrupt 失败，也继续 stop、clear、revoke 和 active Run 清理。
+- Cursor ACP 初始化只在真实 binding 存在时声明文件和终端能力，并实现 `fs/read_text_file`、`fs/write_text_file`、`terminal/create`、`terminal/output`、`terminal/wait_for_exit`、`terminal/kill` 和 `terminal/release` 回调。每次调用都会重新读取 active binding，撤销期间完成的结果不能继续返回 ACP。
+- ACP 绝对路径会转换为可信 workspaceRoot 内的相对路径并拒绝越界；Workspace 文件系统还会以 `realpath` 拒绝通过文件或目录符号链接写出工作区。
+- `terminal/create` 映射到 canonical `terminal.exec`，直接把 executable 与 argv 交给 PTY Adapter，不向未知 PowerShell、cmd 或 POSIX 交互 shell 注入命令文本。`terminal.kill` 只终止进程并保留 session、history 和 snapshot，`terminal.release` 才映射 `terminal.close` 释放 handle；创建失败会补偿关闭。
+- Terminal ToolBroker 使用 `runId` 隔离 handle，同一 Task 的后续 Run 即使知道旧 `terminalId` 也不能访问旧 Run 终端。有限命令进程使用退出时持久化，避免 output 与 exit 紧邻时最终 transcript 尚未落盘的竞争。
+
+本节点验证覆盖 10 个核心测试文件共 132 个测试，以及 6 个 ProviderService 生命周期测试文件共 126 个测试；TerminalManager 服务合同扩展后的 `ProjectSetupScriptRunner` 夹具另有 1 个测试文件共 3 个测试通过。
+
+第一条跨进程证据会启动真实本地 ACP mock 子进程，由子进程通过 JSON-RPC 发起文件和终端请求，依次经过 Cursor Adapter、Provider ToolBroker Bridge、Runtime Tool Bridge 和真正的 T3 ToolBroker。第二条终端证据通过真实 `node-pty` 启动 `process.execPath` 与临时命令脚本，验证输出、非零退出码、最终 snapshot 和 release 后 handle 失效。这两条证据分别证明 ACP 协议回调链和真实 PTY 命令进程可运行，尚未组成用户机器上“真实安装 Cursor CLI -> ACP -> ToolBroker -> PTY”的产品现场 E2E，也不证明其他 Provider、独立 CLI Driver、Cursor/VSCode IDE transport 或 Multica daemon 已获得同等能力。
+
+触及文件 TypeScript 过滤检查没有本批新增错误，仅保留 `ToolBroker.test.ts` 的一条 Effect 风格建议；格式检查和 `git diff --check` 需在最终格式化后再次执行。`t3` 全量 typecheck 仍有 312 条既有错误，主要来自 MCP Adapter 类型、Server 测试 Layer 和 branded MCP server ID 等基线问题；这些错误没有通过删除测试、`any` 或缩窄合同掩盖，后续需要按独立主题修复。真实 Cursor CLI、Cursor/VSCode transport、Multica daemon Tool-call/Grant handshake 和双 Agent 跨进程 E2E 仍未完成。

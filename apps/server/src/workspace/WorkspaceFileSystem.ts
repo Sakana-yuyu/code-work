@@ -132,6 +132,66 @@ export const make = Effect.gen(function* () {
   const workspacePaths = yield* WorkspacePaths.WorkspacePaths;
   const workspaceEntries = yield* WorkspaceEntries.WorkspaceEntries;
 
+  const assertWritePathWithinRoot = Effect.fn("WorkspaceFileSystem.assertWritePathWithinRoot")(
+    function* (input: {
+      readonly workspaceRoot: string;
+      readonly relativePath: string;
+      readonly resolvedWorkspaceRoot: string;
+      readonly resolvedPath: string;
+    }) {
+      const relativeRealPath = path.relative(input.resolvedWorkspaceRoot, input.resolvedPath);
+      if (
+        relativeRealPath.startsWith(`..${path.sep}`) ||
+        relativeRealPath === ".." ||
+        path.isAbsolute(relativeRealPath)
+      ) {
+        return yield* new WorkspaceFilePathEscapeError(input);
+      }
+    },
+  );
+
+  const resolveNearestExistingWritePath = Effect.fn(
+    "WorkspaceFileSystem.resolveNearestExistingWritePath",
+  )(function* (input: {
+    readonly workspaceRoot: string;
+    readonly relativePath: string;
+    readonly resolvedPath: string;
+    readonly operationPath: string;
+  }) {
+    let candidate = input.operationPath;
+    while (true) {
+      const attempt = yield* Effect.promise(() =>
+        NodeFSP.realpath(candidate).then(
+          (resolvedPath) => ({ _tag: "Resolved" as const, resolvedPath }),
+          (cause: unknown) => ({ _tag: "Failed" as const, cause }),
+        ),
+      );
+      if (attempt._tag === "Resolved") return attempt.resolvedPath;
+      if ((attempt.cause as NodeJS.ErrnoException | undefined)?.code !== "ENOENT") {
+        return yield* new WorkspaceFileSystemOperationError({
+          workspaceRoot: input.workspaceRoot,
+          relativePath: input.relativePath,
+          resolvedPath: input.resolvedPath,
+          operationPath: candidate,
+          operation: "realpath-target",
+          cause: attempt.cause,
+        });
+      }
+      const parent = path.dirname(candidate);
+      if (parent === candidate) {
+        return yield* new WorkspaceFileSystemOperationError({
+          workspaceRoot: input.workspaceRoot,
+          relativePath: input.relativePath,
+          resolvedPath: input.resolvedPath,
+          operationPath: candidate,
+          operation: "realpath-target",
+          cause: attempt.cause,
+        });
+      }
+      candidate = parent;
+    }
+  });
+
   const readFile: WorkspaceFileSystem["Service"]["readFile"] = Effect.fn(
     "WorkspaceFileSystem.readFile",
   )(function* (input) {
@@ -267,19 +327,100 @@ export const make = Effect.gen(function* () {
       relativePath: input.relativePath,
     });
 
-    yield* fileSystem.makeDirectory(path.dirname(target.absolutePath), { recursive: true }).pipe(
+    const realWorkspaceRoot = yield* Effect.tryPromise({
+      try: () => NodeFSP.realpath(input.cwd),
+      catch: (cause) =>
+        new WorkspaceFileSystemOperationError({
+          workspaceRoot: input.cwd,
+          relativePath: input.relativePath,
+          resolvedPath: target.absolutePath,
+          operationPath: input.cwd,
+          operation: "realpath-workspace-root",
+          cause,
+        }),
+    });
+    const parentPath = path.dirname(target.absolutePath);
+    const nearestExistingParent = yield* resolveNearestExistingWritePath({
+      workspaceRoot: input.cwd,
+      relativePath: input.relativePath,
+      resolvedPath: target.absolutePath,
+      operationPath: parentPath,
+    });
+    yield* assertWritePathWithinRoot({
+      workspaceRoot: input.cwd,
+      relativePath: input.relativePath,
+      resolvedWorkspaceRoot: realWorkspaceRoot,
+      resolvedPath: nearestExistingParent,
+    });
+
+    yield* fileSystem.makeDirectory(parentPath, { recursive: true }).pipe(
       Effect.mapError(
         (cause) =>
           new WorkspaceFileSystemOperationError({
             workspaceRoot: input.cwd,
             relativePath: input.relativePath,
             resolvedPath: target.absolutePath,
-            operationPath: path.dirname(target.absolutePath),
+            operationPath: parentPath,
             operation: "make-directory",
             cause,
           }),
       ),
     );
+    const realParentPath = yield* Effect.tryPromise({
+      try: () => NodeFSP.realpath(parentPath),
+      catch: (cause) =>
+        new WorkspaceFileSystemOperationError({
+          workspaceRoot: input.cwd,
+          relativePath: input.relativePath,
+          resolvedPath: target.absolutePath,
+          operationPath: parentPath,
+          operation: "realpath-target",
+          cause,
+        }),
+    });
+    yield* assertWritePathWithinRoot({
+      workspaceRoot: input.cwd,
+      relativePath: input.relativePath,
+      resolvedWorkspaceRoot: realWorkspaceRoot,
+      resolvedPath: realParentPath,
+    });
+
+    const targetStat = yield* Effect.promise(() =>
+      NodeFSP.lstat(target.absolutePath).then(
+        () => ({ _tag: "Exists" as const }),
+        (cause: unknown) => ({ _tag: "Failed" as const, cause }),
+      ),
+    );
+    if (targetStat._tag === "Exists") {
+      const realTargetPath = yield* Effect.tryPromise({
+        try: () => NodeFSP.realpath(target.absolutePath),
+        catch: (cause) =>
+          new WorkspaceFileSystemOperationError({
+            workspaceRoot: input.cwd,
+            relativePath: input.relativePath,
+            resolvedPath: target.absolutePath,
+            operationPath: target.absolutePath,
+            operation: "realpath-target",
+            cause,
+          }),
+      });
+      yield* assertWritePathWithinRoot({
+        workspaceRoot: input.cwd,
+        relativePath: input.relativePath,
+        resolvedWorkspaceRoot: realWorkspaceRoot,
+        resolvedPath: realTargetPath,
+      });
+    } else if ((targetStat.cause as NodeJS.ErrnoException | undefined)?.code !== "ENOENT") {
+      return yield* new WorkspaceFileSystemOperationError({
+        workspaceRoot: input.cwd,
+        relativePath: input.relativePath,
+        resolvedPath: target.absolutePath,
+        operationPath: target.absolutePath,
+        operation: "stat",
+        cause: targetStat.cause,
+      });
+    }
+
     yield* fileSystem.writeFileString(target.absolutePath, input.contents).pipe(
       Effect.mapError(
         (cause) =>

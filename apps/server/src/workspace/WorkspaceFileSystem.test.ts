@@ -264,5 +264,51 @@ it.layer(TestLayer, { excludeTestServices: true })("WorkspaceFileSystemLive", (i
         expect(escapedStat).toBeNull();
       }),
     );
+
+    it.effect("rejects writes through a file symlink outside the workspace root", () =>
+      Effect.gen(function* () {
+        const workspaceFileSystem = yield* WorkspaceFileSystem.WorkspaceFileSystem;
+        const cwd = yield* makeTempDir;
+        const outsideDir = yield* makeTempDir;
+        const path = yield* Path.Path;
+        const fileSystem = yield* FileSystem.FileSystem;
+        yield* writeTextFile(outsideDir, "secret.txt", "outside\n");
+        yield* fileSystem.symlink(
+          path.join(outsideDir, "secret.txt"),
+          path.join(cwd, "linked-secret.txt"),
+        );
+
+        const error = yield* workspaceFileSystem
+          .writeFile({ cwd, relativePath: "linked-secret.txt", contents: "overwritten\n" })
+          .pipe(Effect.flip);
+        const outsideContents = yield* fileSystem
+          .readFileString(path.join(outsideDir, "secret.txt"))
+          .pipe(Effect.orDie);
+
+        expect(error).toBeInstanceOf(WorkspaceFileSystem.WorkspaceFilePathEscapeError);
+        expect(outsideContents).toBe("outside\n");
+      }),
+    );
+
+    it.effect("rejects writes through a directory symlink outside the workspace root", () =>
+      Effect.gen(function* () {
+        const workspaceFileSystem = yield* WorkspaceFileSystem.WorkspaceFileSystem;
+        const cwd = yield* makeTempDir;
+        const outsideDir = yield* makeTempDir;
+        const path = yield* Path.Path;
+        const fileSystem = yield* FileSystem.FileSystem;
+        yield* fileSystem.symlink(outsideDir, path.join(cwd, "linked-dir"));
+
+        const error = yield* workspaceFileSystem
+          .writeFile({ cwd, relativePath: "linked-dir/new.txt", contents: "outside\n" })
+          .pipe(Effect.flip);
+        const outsideStat = yield* fileSystem
+          .stat(path.join(outsideDir, "new.txt"))
+          .pipe(Effect.orElseSucceed(() => null));
+
+        expect(error).toBeInstanceOf(WorkspaceFileSystem.WorkspaceFilePathEscapeError);
+        expect(outsideStat).toBeNull();
+      }),
+    );
   });
 });
