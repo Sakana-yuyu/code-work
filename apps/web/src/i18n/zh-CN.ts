@@ -14,6 +14,46 @@ export const zhCN: Record<string, string> = {
   "Choose the language used across the interface. System follows your browser locale.":
     "选择界面使用的语言。“跟随系统”会遵循浏览器语言设置。",
 
+  // ── MCP Runtime 设置 ───────────────────────────────────────
+  "MCP servers": "MCP 服务器",
+  "MCP runtime": "MCP 运行时",
+  "Trusted MCP servers can expose their discovered tools to T3 Agent Drivers through ToolBroker.":
+    "受信任的 MCP 服务器可以通过 ToolBroker 将发现到的工具提供给 T3 Agent Driver。",
+  "Add server": "添加服务器",
+  "No MCP servers configured": "尚未配置 MCP 服务器",
+  "Add a stdio, Streamable HTTP, or SSE server to make its tools available to T3.":
+    "添加 stdio、Streamable HTTP 或 SSE 服务器，使其工具可供 T3 使用。",
+  "Server ID": "服务器 ID",
+  "Local tools": "本地工具",
+  Transport: "传输方式",
+  URL: "URL",
+  Arguments: "参数",
+  "One argument per line": "每行一个参数",
+  "Working directory": "工作目录",
+  Headers: "请求头",
+  "No entries": "暂无条目",
+  "Saved secret; leave blank to keep it": "已保存密钥；留空可保留原值",
+  "Sensitive value": "敏感值",
+  Enabled: "已启用",
+  Disabled: "已禁用",
+  Trusted: "已信任",
+  Untrusted: "未信任",
+  "Trust fingerprint": "信任指纹",
+  "Optional trust fingerprint": "可选的信任指纹",
+  Connected: "已连接",
+  Registered: "已注册",
+  Error: "错误",
+  Connect: "连接",
+  Disconnect: "断开连接",
+  Refresh: "刷新",
+  Tools: "工具",
+  "MCP operation failed": "MCP 操作失败",
+  "Enter a valid server ID, name, and transport endpoint.":
+    "请输入有效的服务器 ID、名称和传输端点。",
+  "Delete MCP server?": "删除 MCP 服务器？",
+  "This removes the server configuration and its saved secrets.":
+    "这将删除服务器配置及其已保存的密钥。",
+
   // ── 通用 / 按钮 ─────────────────────────────────────────────
   Save: "保存",
   Cancel: "取消",
