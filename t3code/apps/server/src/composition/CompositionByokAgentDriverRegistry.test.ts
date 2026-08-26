@@ -5,7 +5,7 @@ import * as Layer from "effect/Layer";
 import * as PubSub from "effect/PubSub";
 import * as Stream from "effect/Stream";
 
-import { ProviderDriverKind, ProviderInstanceId, type ServerProvider } from "@t3tools/contracts";
+import { ProviderDriverKind, ProviderInstanceId, type ServerProvider } from "@codework/contracts";
 
 import type { CompositionAgentServiceShape } from "./CompositionAgentService.ts";
 import { CompositionAgentService } from "./CompositionAgentService.ts";

@@ -6,7 +6,7 @@ import type {
   ByokSupplierCatalogEntry,
   ByokModelAdapter,
   ServerSettings as ServerSettingsContract,
-} from "@t3tools/contracts";
+} from "@codework/contracts";
 import * as Clock from "effect/Clock";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";

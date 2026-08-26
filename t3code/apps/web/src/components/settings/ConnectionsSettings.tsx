@@ -27,12 +27,12 @@ import {
   type DesktopServerExposureState,
   type DesktopWslState,
   type EnvironmentId,
-} from "@t3tools/contracts";
+} from "@codework/contracts";
 import { localizedConnectionStatusText } from "~/lib/localizedConnectionStatus";
 import {
   isAtomCommandInterrupted,
   squashAtomCommandFailure,
-} from "@t3tools/client-runtime/state/runtime";
+} from "@codework/client-runtime/state/runtime";
 import * as DateTime from "effect/DateTime";
 import * as Option from "effect/Option";
 

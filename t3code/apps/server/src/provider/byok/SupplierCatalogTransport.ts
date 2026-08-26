@@ -1,4 +1,4 @@
-import type { ByokSupplierCatalogEntry, ByokSupplierModelPreset } from "@t3tools/contracts";
+import type { ByokSupplierCatalogEntry, ByokSupplierModelPreset } from "@codework/contracts";
 
 import { SUPPLIER_TEMPLATES, type SupplierTemplate } from "./SupplierCatalog.ts";
 

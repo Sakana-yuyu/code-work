@@ -2,8 +2,8 @@
 import * as NodeFS from "node:fs";
 import * as NodePath from "node:path";
 
-import { HostProcessPlatform } from "@t3tools/shared/hostProcess";
-import { SpawnExecutableResolution } from "@t3tools/shared/shell";
+import { HostProcessPlatform } from "@codework/shared/hostProcess";
+import { SpawnExecutableResolution } from "@codework/shared/shell";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 

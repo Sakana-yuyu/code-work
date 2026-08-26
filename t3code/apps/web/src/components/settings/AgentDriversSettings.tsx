@@ -1,4 +1,4 @@
-import type { CompositionAgentDriverProfile } from "@t3tools/contracts";
+import type { CompositionAgentDriverProfile } from "@codework/contracts";
 import { BotIcon, RefreshCwIcon, ShieldCheckIcon } from "lucide-react";
 
 import { usePrimaryEnvironment } from "~/state/environments";

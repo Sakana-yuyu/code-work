@@ -2,8 +2,8 @@ import type {
   CompositionAgentDriverProfile,
   CompositionTaskListResult,
   CompositionTaskEventsResult,
-} from "@t3tools/contracts";
-import { EnvironmentId } from "@t3tools/contracts";
+} from "@codework/contracts";
+import { EnvironmentId } from "@codework/contracts";
 import { renderToStaticMarkup } from "react-dom/server";
 import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
 

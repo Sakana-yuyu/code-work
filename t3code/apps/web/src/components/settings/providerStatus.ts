@@ -1,4 +1,4 @@
-import type { ServerProvider, ServerProviderVersionAdvisory } from "@t3tools/contracts";
+import type { ServerProvider, ServerProviderVersionAdvisory } from "@codework/contracts";
 import { t } from "~/i18n";
 
 /**

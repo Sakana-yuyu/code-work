@@ -4,7 +4,7 @@ import * as Deferred from "effect/Deferred";
 import * as Fiber from "effect/Fiber";
 import * as Option from "effect/Option";
 
-import type { CompositionTask, CompositionTaskRun } from "@t3tools/contracts";
+import type { CompositionTask, CompositionTaskRun } from "@codework/contracts";
 import {
   makeCompositionRuntimeToolBridge,
   type CompositionRuntimeToolBridgeDependencies,

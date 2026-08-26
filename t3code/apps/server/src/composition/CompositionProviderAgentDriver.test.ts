@@ -12,7 +12,7 @@ import {
   type ProviderSession,
   type ProviderSessionStartInput,
   type ProviderTurnStartResult,
-} from "@t3tools/contracts";
+} from "@codework/contracts";
 
 import { ProviderValidationError } from "../provider/Errors.ts";
 import { makeCompositionProviderAgentDriver } from "./CompositionProviderAgentDriver.ts";

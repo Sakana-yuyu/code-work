@@ -5,8 +5,8 @@ import {
   settlePromise,
   squashAtomCommandFailure,
   type AtomCommandResult,
-} from "@t3tools/client-runtime/state/runtime";
-import { scopeProjectRef } from "@t3tools/client-runtime/environment";
+} from "@codework/client-runtime/state/runtime";
+import { scopeProjectRef } from "@codework/client-runtime/environment";
 import { AsyncResult } from "effect/unstable/reactivity";
 import {
   deriveProjectGroupingOverrideKey,
@@ -19,10 +19,10 @@ import type {
   SidebarProjectGroupingMode,
   T3ProjectFileScript,
   ThreadEnvMode,
-} from "@t3tools/contracts";
+} from "@codework/contracts";
 import { resolveEnvModeLabel } from "../BranchToolbar.logic";
-import { createModelSelection } from "@t3tools/shared/model";
-import { DEFAULT_RESOLVED_KEYBINDINGS } from "@t3tools/shared/keybindings";
+import { createModelSelection } from "@codework/shared/model";
+import { DEFAULT_RESOLVED_KEYBINDINGS } from "@codework/shared/keybindings";
 import { useCanGoBack, useNavigate } from "@tanstack/react-router";
 import * as Cause from "effect/Cause";
 import { ChevronDownIcon, CopyIcon, PlusIcon, SettingsIcon, Trash2Icon } from "lucide-react";

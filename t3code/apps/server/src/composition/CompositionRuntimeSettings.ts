@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 
-import { CompositionMulticaRuntimeConfig } from "@t3tools/contracts";
-import type { ProviderInstanceConfig, ProviderInstanceEnvironment } from "@t3tools/contracts";
+import { CompositionMulticaRuntimeConfig } from "@codework/contracts";
+import type { ProviderInstanceConfig, ProviderInstanceEnvironment } from "@codework/contracts";
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";

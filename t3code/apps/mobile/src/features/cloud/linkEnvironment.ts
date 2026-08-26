@@ -9,8 +9,8 @@ import {
   EnvironmentHttpForbiddenError,
   EnvironmentHttpInternalServerError,
   EnvironmentHttpUnauthorizedError,
-} from "@t3tools/contracts";
-import { stripPairingTokenFromUrl } from "@t3tools/shared/remote";
+} from "@codework/contracts";
+import { stripPairingTokenFromUrl } from "@codework/shared/remote";
 import {
   type RelayEnvironmentConnectResponse as RelayEnvironmentConnectResponseType,
   type RelayEnvironmentLinkResponse as RelayEnvironmentLinkResponseType,
@@ -21,12 +21,12 @@ import {
   type RelayClientEnvironmentRecord,
   type RelayEnvironmentStatusResponse as RelayEnvironmentStatusResponseType,
   type RelayManagedEndpointProviderKind,
-} from "@t3tools/contracts/relay";
-import { exchangeRemoteDpopAccessToken } from "@t3tools/client-runtime/authorization";
-import { fetchRemoteEnvironmentDescriptor } from "@t3tools/client-runtime/environment";
-import { findErrorTraceId } from "@t3tools/client-runtime/errors";
-import { ManagedRelay } from "@t3tools/client-runtime/relay";
-import { makeEnvironmentHttpApiClient } from "@t3tools/client-runtime/rpc";
+} from "@codework/contracts/relay";
+import { exchangeRemoteDpopAccessToken } from "@codework/client-runtime/authorization";
+import { fetchRemoteEnvironmentDescriptor } from "@codework/client-runtime/environment";
+import { findErrorTraceId } from "@codework/client-runtime/errors";
+import { ManagedRelay } from "@codework/client-runtime/relay";
+import { makeEnvironmentHttpApiClient } from "@codework/client-runtime/rpc";
 
 import { authClientMetadata } from "../../lib/authClientMetadata";
 import type { SavedRemoteConnection } from "../../lib/connection";

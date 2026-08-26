@@ -1,7 +1,7 @@
-import { ProviderDriverKind, ProviderInstanceId, type ServerProvider } from "@t3tools/contracts";
-import { DEFAULT_UNIFIED_SETTINGS, type UnifiedSettings } from "@t3tools/contracts/settings";
+import { ProviderDriverKind, ProviderInstanceId, type ServerProvider } from "@codework/contracts";
+import { DEFAULT_UNIFIED_SETTINGS, type UnifiedSettings } from "@codework/contracts/settings";
 import { describe, expect, it } from "vite-plus/test";
-import { createModelSelection } from "@t3tools/shared/model";
+import { createModelSelection } from "@codework/shared/model";
 import { deriveProviderInstanceEntries } from "./providerInstances";
 import {
   getAppModelOptionsForInstance,

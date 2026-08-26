@@ -8,8 +8,8 @@ import {
   type TerminalOpenInput,
   type TerminalRestartInput,
   type TerminalSessionSnapshot,
-} from "@t3tools/contracts";
-import { HostProcessPlatform } from "@t3tools/shared/hostProcess";
+} from "@codework/contracts";
+import { HostProcessPlatform } from "@codework/shared/hostProcess";
 import * as Data from "effect/Data";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";

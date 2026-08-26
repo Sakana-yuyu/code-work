@@ -3,7 +3,7 @@ import {
   isToolLifecycleItemType,
   ProviderApprovalOption,
   ProviderRequestKind,
-} from "@t3tools/contracts";
+} from "@codework/contracts";
 import type {
   OrchestrationLatestTurn,
   OrchestrationThread,
@@ -11,8 +11,8 @@ import type {
   ToolLifecycleItemType,
   TurnId,
   UserInputQuestion,
-} from "@t3tools/contracts";
-import { formatDuration } from "@t3tools/shared/orchestrationTiming";
+} from "@codework/contracts";
+import { formatDuration } from "@codework/shared/orchestrationTiming";
 
 import * as Arr from "effect/Array";
 import * as Order from "effect/Order";

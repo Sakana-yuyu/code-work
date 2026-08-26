@@ -3,7 +3,7 @@ import { randomBytes } from "node:crypto";
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
 
-import type { CompositionRuntimeCapabilityHandshakeRequest } from "@t3tools/contracts";
+import type { CompositionRuntimeCapabilityHandshakeRequest } from "@codework/contracts";
 
 import type {
   CompositionRuntimeMcpBinding,

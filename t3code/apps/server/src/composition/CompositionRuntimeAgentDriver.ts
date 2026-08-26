@@ -2,7 +2,7 @@ import type {
   CompositionAgentDriverProfile,
   CompositionRuntimeCapabilityHandshakeRequest,
   ProviderRuntimeEvent,
-} from "@t3tools/contracts";
+} from "@codework/contracts";
 import * as Effect from "effect/Effect";
 
 import {

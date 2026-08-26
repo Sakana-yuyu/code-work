@@ -6,8 +6,8 @@ import type { Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
 import type {
   CompositionMcpRuntimeServerState as ContractCompositionMcpRuntimeServerState,
   CompositionMcpRuntimeServerStatus as ContractCompositionMcpRuntimeServerStatus,
-} from "@t3tools/contracts";
-import { CompositionMcpRuntimeServerState } from "@t3tools/contracts";
+} from "@codework/contracts";
+import { CompositionMcpRuntimeServerState } from "@codework/contracts";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";

@@ -443,7 +443,7 @@ Web/Desktop/Mobile 和真实 daemon E2E；本节点的 handler 使用仍属于 T
   tool discovery、canonical invoke 和 close。测试 server 仅使用本地固定脚本，不访问网络、不使用用户配置或 API key。
 
 本节点验证覆盖 5 个 Composition 测试文件共 27 个测试、真实 stdio MCP E2E、server/contracts typecheck、
-`pnpm install --filter t3 --frozen-lockfile --offline`、格式检查和 `git diff --check`。仍未完成 MCP server
+`pnpm install --filter codework --frozen-lockfile --offline`、格式检查和 `git diff --check`。仍未完成 MCP server
 配置发现与 trust 持久化、动态 catalog 刷新 RPC、Browser/Computer Use、真实 Cursor/VSCode transport、Multica
 Tool-call/Grant handshake，以及 Web/Desktop/Mobile、真实 Multica daemon 和真实外部 MCP server E2E；因此本节点
 证明的是 T3 runtime adapter 与官方 SDK 的本地可运行链路，不宣称用户设置页和跨端产品功能已经可用。

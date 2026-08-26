@@ -1,4 +1,4 @@
-import { type EnvironmentId, ProviderInstanceId, ThreadId } from "@t3tools/contracts";
+import { type EnvironmentId, ProviderInstanceId, ThreadId } from "@codework/contracts";
 
 import type { McpInvocationScope } from "../mcp/McpInvocationContext.ts";
 

@@ -3,8 +3,8 @@ import { t } from "~/i18n";
 import {
   isAtomCommandInterrupted,
   squashAtomCommandFailure,
-} from "@t3tools/client-runtime/state/runtime";
-import type { EnvironmentId, ScopedThreadRef } from "@t3tools/contracts";
+} from "@codework/client-runtime/state/runtime";
+import type { EnvironmentId, ScopedThreadRef } from "@codework/contracts";
 import {
   buildCollapsedProposedPlanPreviewMarkdown,
   buildProposedPlanMarkdownFilename,

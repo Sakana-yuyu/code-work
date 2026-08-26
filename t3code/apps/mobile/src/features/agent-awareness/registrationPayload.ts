@@ -1,4 +1,4 @@
-import type { RelayDeviceRegistrationRequest } from "@t3tools/contracts/relay";
+import type { RelayDeviceRegistrationRequest } from "@codework/contracts/relay";
 
 import type { Preferences } from "../../persistence/mobile-preferences";
 import { supportsAgentAwarenessPush } from "./capabilities";

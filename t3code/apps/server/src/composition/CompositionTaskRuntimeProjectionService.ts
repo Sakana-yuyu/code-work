@@ -13,7 +13,7 @@ import type {
   CompositionTaskRun,
   CompositionTaskStatus,
   ProviderRuntimeEvent,
-} from "@t3tools/contracts";
+} from "@codework/contracts";
 import type { PersistenceSqlError } from "../persistence/Errors.ts";
 import { CompositionTaskStore } from "../persistence/Services/CompositionTaskStore.ts";
 import { ProviderService } from "../provider/Services/ProviderService.ts";

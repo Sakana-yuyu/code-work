@@ -30,7 +30,7 @@ import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
 import { type HttpClient, HttpClientRequest, HttpClientResponse } from "effect/unstable/http";
 
-import type { ByokModelAdapter, ByokSettings } from "@t3tools/contracts";
+import type { ByokModelAdapter, ByokSettings } from "@codework/contracts";
 
 /**
  * Resolve the model adapter for a selected model slug. Matches by adapter id

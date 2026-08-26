@@ -1,7 +1,7 @@
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
-import type { CompositionTaskSnapshot } from "@t3tools/contracts";
+import type { CompositionTaskSnapshot } from "@codework/contracts";
 
 import {
   CompositionTaskStore,

@@ -9,7 +9,7 @@ import {
   TurnId,
   type ProviderSession,
   type ProviderTurnStartResult,
-} from "@t3tools/contracts";
+} from "@codework/contracts";
 
 import type { ProviderInstance } from "../provider/ProviderDriver.ts";
 import type { ProviderInstanceRegistryShape } from "../provider/Services/ProviderInstanceRegistry.ts";

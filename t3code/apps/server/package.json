@@ -1,5 +1,5 @@
 {
-  "name": "t3",
+  "name": "codework",
   "version": "0.0.33",
   "license": "MIT",
   "repository": {
@@ -8,7 +8,7 @@
     "directory": "apps/server"
   },
   "bin": {
-    "t3": "./dist/bin.mjs"
+    "codework": "./dist/bin.mjs"
   },
   "files": [
     "dist"
@@ -38,10 +38,10 @@
   },
   "devDependencies": {
     "@effect/vitest": "catalog:",
-    "@t3tools/contracts": "workspace:*",
-    "@t3tools/shared": "workspace:*",
-    "@t3tools/tailscale": "workspace:*",
-    "@t3tools/web": "workspace:*",
+    "@codework/contracts": "workspace:*",
+    "@codework/shared": "workspace:*",
+    "@codework/tailscale": "workspace:*",
+    "@codework/web": "workspace:*",
     "@types/bun": "1.3.14",
     "@types/node": "catalog:",
     "effect-acp": "workspace:*",

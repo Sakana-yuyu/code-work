@@ -1,14 +1,14 @@
 "use client";
 
-import { scopedThreadKey } from "@t3tools/client-runtime/environment";
-import { squashAtomCommandFailure } from "@t3tools/client-runtime/state/runtime";
+import { scopedThreadKey } from "@codework/client-runtime/environment";
+import { squashAtomCommandFailure } from "@codework/client-runtime/state/runtime";
 import {
   FILL_PREVIEW_VIEWPORT,
   type PreviewAnnotationPayload,
   type PreviewViewportSetting,
   type ScopedThreadRef,
-} from "@t3tools/contracts";
-import { normalizePreviewUrl } from "@t3tools/shared/preview";
+} from "@codework/contracts";
+import { normalizePreviewUrl } from "@codework/shared/preview";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import {

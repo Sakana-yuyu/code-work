@@ -5,7 +5,7 @@ import * as NodePath from "node:path";
 
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, it } from "@effect/vitest";
-import { HostProcessArchitecture, HostProcessPlatform } from "@t3tools/shared/hostProcess";
+import { HostProcessArchitecture, HostProcessPlatform } from "@codework/shared/hostProcess";
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -62,7 +62,7 @@ it.effect("真实 PTY 命令进程保留输出和退出码直到显式 release",
       .pipe(Effect.timeout("5 seconds"));
     yield* Deferred.await(exited).pipe(Effect.timeout("10 seconds"));
 
-    let snapshot: import("@t3tools/contracts").TerminalSessionSnapshot | undefined;
+    let snapshot: import("@codework/contracts").TerminalSessionSnapshot | undefined;
     const detach = yield* manager
       .attachStream({ threadId: "real-run", terminalId: "real-command" }, (event) =>
         Effect.sync(() => {

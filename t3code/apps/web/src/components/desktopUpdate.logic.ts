@@ -1,5 +1,5 @@
 import { t } from "~/i18n";
-import type { DesktopUpdateActionResult, DesktopUpdateState } from "@t3tools/contracts";
+import type { DesktopUpdateActionResult, DesktopUpdateState } from "@codework/contracts";
 
 export type DesktopUpdateButtonAction = "download" | "install" | "none";
 

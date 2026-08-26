@@ -16,8 +16,8 @@
  *
  * @module provider/Layers/ByokProvider
  */
-import type { ByokSettings, ModelCapabilities, ServerProviderModel } from "@t3tools/contracts";
-import { createModelCapabilities } from "@t3tools/shared/model";
+import type { ByokSettings, ModelCapabilities, ServerProviderModel } from "@codework/contracts";
+import { createModelCapabilities } from "@codework/shared/model";
 import * as Cause from "effect/Cause";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";

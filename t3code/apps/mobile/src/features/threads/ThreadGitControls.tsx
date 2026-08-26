@@ -4,12 +4,12 @@ import {
   type ProjectScript,
   ThreadId,
   type VcsStatusResult,
-} from "@t3tools/contracts";
+} from "@codework/contracts";
 import {
   type GitActionRequestInput,
   requiresDefaultBranchConfirmation,
   resolveQuickAction,
-} from "@t3tools/client-runtime/state/vcs";
+} from "@codework/client-runtime/state/vcs";
 import { useNavigation } from "@react-navigation/native";
 import { NativeHeaderToolbar } from "../../native/StackHeader";
 import { useCallback, useMemo } from "react";

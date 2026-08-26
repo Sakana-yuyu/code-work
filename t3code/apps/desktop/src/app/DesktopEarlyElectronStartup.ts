@@ -1,5 +1,5 @@
-import { fromLenientJson } from "@t3tools/shared/schemaJson";
-import { resolvePreferredEnv } from "@t3tools/shared/productIdentity";
+import { fromLenientJson } from "@codework/shared/schemaJson";
+import { resolvePreferredEnv } from "@codework/shared/productIdentity";
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 

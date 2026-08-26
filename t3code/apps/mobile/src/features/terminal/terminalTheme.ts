@@ -1,4 +1,4 @@
-import { BUILT_IN_THEMES, getThemeColorsForAppearance } from "@t3tools/shared/themePalettes";
+import { BUILT_IN_THEMES, getThemeColorsForAppearance } from "@codework/shared/themePalettes";
 
 import {
   getMobileThemeVariables,

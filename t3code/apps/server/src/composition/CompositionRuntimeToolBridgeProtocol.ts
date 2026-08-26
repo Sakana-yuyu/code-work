@@ -2,7 +2,7 @@ import {
   CompositionRuntimeToolCancellation,
   CompositionRuntimeToolInvocation,
   CompositionToolResult,
-} from "@t3tools/contracts";
+} from "@codework/contracts";
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
 

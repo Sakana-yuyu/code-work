@@ -1,7 +1,7 @@
 import {
   DEFAULT_PROVIDER_INTERACTION_MODE,
   type ProviderInteractionMode,
-} from "@t3tools/contracts";
+} from "@codework/contracts";
 
 export function resolveLegacyPlanModeEnabled(input: {
   readonly loaded: boolean;

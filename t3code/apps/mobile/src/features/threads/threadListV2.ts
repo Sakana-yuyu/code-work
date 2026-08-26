@@ -5,15 +5,15 @@ import {
   QUEUED_TURN_START_GRACE_MS,
   resolveSnoozePresets,
   snoozeWakeLabel,
-} from "@t3tools/client-runtime/state/thread-settled";
+} from "@codework/client-runtime/state/thread-settled";
 import type {
   ChangeRequestSettleSource,
   SnoozePreset,
-} from "@t3tools/client-runtime/state/thread-settled";
-import type { EnvironmentThreadShell } from "@t3tools/client-runtime/state/shell";
-import { threadSearchMatchKey } from "@t3tools/client-runtime/state/thread-search";
-import { sortPinnedThreadsByOrderKey } from "@t3tools/client-runtime/state/thread-sort";
-import type { EnvironmentId, ProjectId } from "@t3tools/contracts";
+} from "@codework/client-runtime/state/thread-settled";
+import type { EnvironmentThreadShell } from "@codework/client-runtime/state/shell";
+import { threadSearchMatchKey } from "@codework/client-runtime/state/thread-search";
+import { sortPinnedThreadsByOrderKey } from "@codework/client-runtime/state/thread-sort";
+import type { EnvironmentId, ProjectId } from "@codework/contracts";
 
 import type { PendingNewTask } from "../../state/use-pending-new-tasks";
 

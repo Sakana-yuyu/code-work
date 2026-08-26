@@ -2,7 +2,7 @@ import Constants from "expo-constants";
 import { Image } from "expo-image";
 import { View } from "react-native";
 
-import { PRODUCT_IDENTITY } from "@t3tools/shared/productIdentity";
+import { PRODUCT_IDENTITY } from "@codework/shared/productIdentity";
 
 import { AppText as Text } from "./AppText";
 

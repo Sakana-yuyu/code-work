@@ -97,7 +97,7 @@ model: core owns environments, pairing, and connection lifecycle, and providers 
 Tailscale is the first provider, and T3 manages more than discovery. When `tailscaleServeEnabled` is
 set, the server acquires a Tailscale serve mapping for its actual listening port at startup with
 `ensureTailscaleServe` and releases it with `disableTailscaleServe` on scope close
-(`apps/server/src/server.ts`, using [`@t3tools/tailscale`](../../packages/tailscale/src/tailscale.ts)).
+(`apps/server/src/server.ts`, using [`@codework/tailscale`](../../packages/tailscale/src/tailscale.ts)).
 Endpoint identifiers are synthesized in `apps/desktop/src/backend/tailscaleEndpointProvider.ts` with
 `private-network` reachability.
 

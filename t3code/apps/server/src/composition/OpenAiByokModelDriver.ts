@@ -1,4 +1,4 @@
-import type { ByokModelAdapter } from "@t3tools/contracts";
+import type { ByokModelAdapter } from "@codework/contracts";
 import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
 import { type HttpClient } from "effect/unstable/http";

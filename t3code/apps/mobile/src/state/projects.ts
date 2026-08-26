@@ -1,5 +1,5 @@
-import { createEnvironmentProjectAtoms } from "@t3tools/client-runtime/state/projects";
-import { createProjectEnvironmentAtoms } from "@t3tools/client-runtime/state/projects";
+import { createEnvironmentProjectAtoms } from "@codework/client-runtime/state/projects";
+import { createProjectEnvironmentAtoms } from "@codework/client-runtime/state/projects";
 
 import { environmentCatalog } from "../connection/catalog";
 import { connectionAtomRuntime } from "../connection/runtime";

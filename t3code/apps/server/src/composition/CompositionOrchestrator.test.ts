@@ -2,8 +2,8 @@ import { assert, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
-import type { CompositionCapabilityGrant } from "@t3tools/contracts";
-import type { CompositionTask, CompositionTaskRun } from "@t3tools/contracts";
+import type { CompositionCapabilityGrant } from "@codework/contracts";
+import type { CompositionTask, CompositionTaskRun } from "@codework/contracts";
 
 import { makeCompositionAgentDriverRegistry } from "./CompositionAgentDriverRegistry.ts";
 import { makeCompositionRuntimeAgentDriver } from "./CompositionRuntimeAgentDriver.ts";

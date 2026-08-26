@@ -4,8 +4,8 @@ import {
   EMPTY_TERMINAL_SESSION_STATE,
   type KnownTerminalSession,
   type TerminalSessionState,
-} from "@t3tools/client-runtime/state/terminal";
-import { ThreadId, type EnvironmentId, type TerminalAttachInput } from "@t3tools/contracts";
+} from "@codework/client-runtime/state/terminal";
+import { ThreadId, type EnvironmentId, type TerminalAttachInput } from "@codework/contracts";
 import { useMemo } from "react";
 
 import { useEnvironmentQuery } from "./query";

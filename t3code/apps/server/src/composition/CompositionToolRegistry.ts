@@ -1,4 +1,4 @@
-import type { CompositionCapabilityDescriptor } from "@t3tools/contracts";
+import type { CompositionCapabilityDescriptor } from "@codework/contracts";
 
 const descriptors = [
   {

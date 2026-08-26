@@ -248,7 +248,7 @@ blockmaps, with a 60 MB maximum for a representative sidecar-to-sidecar update.
 ## 0) npm OIDC trusted publishing setup (CLI)
 
 The workflow invokes `node apps/server/scripts/cli.ts publish` after aligning package versions. That
-script temporarily prepares the `t3` package, then runs `vp pm publish --filter t3 ...` from the
+script temporarily prepares the `t3` package, then runs `vp pm publish --filter codework ...` from the
 repository root so workspace publish configuration is applied correctly.
 
 Checklist:

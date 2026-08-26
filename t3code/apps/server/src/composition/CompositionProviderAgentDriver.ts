@@ -1,4 +1,4 @@
-import { ThreadId } from "@t3tools/contracts";
+import { ThreadId } from "@codework/contracts";
 import type {
   CompositionAgentDriverProfile,
   CompositionRuntimeCapabilityHandshakeRequest,
@@ -12,7 +12,7 @@ import type {
   TurnId,
   RuntimeMode,
   ProviderRuntimeEvent,
-} from "@t3tools/contracts";
+} from "@codework/contracts";
 import * as Clock from "effect/Clock";
 import * as Effect from "effect/Effect";
 

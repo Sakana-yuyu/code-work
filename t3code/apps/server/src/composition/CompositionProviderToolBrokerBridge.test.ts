@@ -1,7 +1,7 @@
 import { assert, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 
-import { ThreadId, type CompositionToolResult } from "@t3tools/contracts";
+import { ThreadId, type CompositionToolResult } from "@codework/contracts";
 import type { ProviderToolBrokerInvocation } from "../provider/Services/ProviderAdapter.ts";
 import {
   makeCompositionProviderToolBrokerBridge,

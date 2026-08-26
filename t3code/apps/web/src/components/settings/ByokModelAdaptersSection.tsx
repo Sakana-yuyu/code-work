@@ -8,7 +8,7 @@ import type {
   ByokModelAdapter,
   ByokModelDiscoveryResult,
   ByokSupplierCatalogEntry,
-} from "@t3tools/contracts";
+} from "@codework/contracts";
 
 import { cn, randomUUID } from "../../lib/utils";
 import { Badge } from "../ui/badge";

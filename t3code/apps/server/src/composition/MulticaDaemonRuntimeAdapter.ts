@@ -6,8 +6,8 @@ import type {
   CompositionMulticaProbeResult,
   CompositionRuntimeProbeResult,
   ProviderRuntimeEvent,
-} from "@t3tools/contracts";
-import { EventId, ProviderDriverKind, RuntimeTaskId, ThreadId } from "@t3tools/contracts";
+} from "@codework/contracts";
+import { EventId, ProviderDriverKind, RuntimeTaskId, ThreadId } from "@codework/contracts";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as Stream from "effect/Stream";

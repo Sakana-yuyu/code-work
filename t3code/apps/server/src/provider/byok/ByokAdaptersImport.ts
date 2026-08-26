@@ -4,7 +4,7 @@ import type {
   ByokModelAdapter,
   ServerSettings as ServerSettingsContract,
   ServerSettingsPatch,
-} from "@t3tools/contracts";
+} from "@codework/contracts";
 import * as Effect from "effect/Effect";
 import { parse as parseYaml } from "yaml";
 

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vite-plus/test";
 import * as Effect from "effect/Effect";
-import { EventId, ProviderDriverKind, RuntimeTaskId, ThreadId } from "@t3tools/contracts";
+import { EventId, ProviderDriverKind, RuntimeTaskId, ThreadId } from "@codework/contracts";
 
 import { makeCompositionRuntimeAgentDriver } from "./CompositionRuntimeAgentDriver.ts";
 import { makeInMemoryCompositionRuntimeAdapter } from "./CompositionRuntimeAdapter.ts";

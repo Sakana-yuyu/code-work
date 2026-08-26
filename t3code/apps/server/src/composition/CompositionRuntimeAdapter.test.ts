@@ -2,7 +2,7 @@ import { describe, expect, it } from "vite-plus/test";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
 import * as Stream from "effect/Stream";
-import { EventId, ProviderDriverKind, RuntimeTaskId, ThreadId } from "@t3tools/contracts";
+import { EventId, ProviderDriverKind, RuntimeTaskId, ThreadId } from "@codework/contracts";
 
 import {
   CompositionRuntimeAdapterFailure,

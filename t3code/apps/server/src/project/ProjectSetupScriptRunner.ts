@@ -1,5 +1,5 @@
-import { ProjectId } from "@t3tools/contracts";
-import { projectScriptRuntimeEnv, setupProjectScript } from "@t3tools/shared/projectScripts";
+import { ProjectId } from "@codework/contracts";
+import { projectScriptRuntimeEnv, setupProjectScript } from "@codework/shared/projectScripts";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";

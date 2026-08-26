@@ -8,7 +8,7 @@ import type {
   ByokDelegationSnapshot,
   ByokModelAdapter,
   ByokPromptTemplateConfig,
-} from "@t3tools/contracts";
+} from "@codework/contracts";
 
 import { byokEnvironment } from "../../state/server";
 import { useAtomCommand } from "../../state/use-atom-command";

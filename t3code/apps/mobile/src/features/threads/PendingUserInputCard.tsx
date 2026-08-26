@@ -1,4 +1,4 @@
-import type { ApprovalRequestId, UserInputQuestion } from "@t3tools/contracts";
+import type { ApprovalRequestId, UserInputQuestion } from "@codework/contracts";
 import { useCallback, useRef } from "react";
 import { Platform, Pressable, ScrollView, View, type LayoutChangeEvent } from "react-native";
 import Animated, {

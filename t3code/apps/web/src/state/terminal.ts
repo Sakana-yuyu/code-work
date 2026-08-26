@@ -1,4 +1,4 @@
-import { createTerminalEnvironmentAtoms } from "@t3tools/client-runtime/state/terminal";
+import { createTerminalEnvironmentAtoms } from "@codework/client-runtime/state/terminal";
 
 import { connectionAtomRuntime } from "../connection/runtime";
 

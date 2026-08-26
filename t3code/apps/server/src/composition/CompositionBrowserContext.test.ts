@@ -1,4 +1,4 @@
-import { EnvironmentId, ProviderInstanceId, ThreadId } from "@t3tools/contracts";
+import { EnvironmentId, ProviderInstanceId, ThreadId } from "@codework/contracts";
 import { expect, it } from "@effect/vitest";
 
 import { makeCompositionBrowserScope } from "./CompositionBrowserContext.ts";

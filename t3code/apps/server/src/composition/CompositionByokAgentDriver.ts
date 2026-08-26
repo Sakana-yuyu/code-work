@@ -6,7 +6,7 @@ import {
   type ProviderRuntimeEvent,
   ThreadId,
   TurnId,
-} from "@t3tools/contracts";
+} from "@codework/contracts";
 import * as Cause from "effect/Cause";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";

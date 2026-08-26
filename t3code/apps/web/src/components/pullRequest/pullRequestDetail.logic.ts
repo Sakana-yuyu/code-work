@@ -12,7 +12,7 @@ import type {
   PullRequestState,
   PullRequestUpdateMethod,
   VcsRef,
-} from "@t3tools/contracts";
+} from "@codework/contracts";
 
 import { inferReviewCommentFenceLanguage, type ReviewCommentContext } from "~/reviewCommentContext";
 

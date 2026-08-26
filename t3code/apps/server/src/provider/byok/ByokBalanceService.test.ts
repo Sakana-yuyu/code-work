@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vite-plus/test";
-import { DEFAULT_SERVER_SETTINGS, ProviderDriverKind } from "@t3tools/contracts";
+import { DEFAULT_SERVER_SETTINGS, ProviderDriverKind } from "@codework/contracts";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Stream from "effect/Stream";

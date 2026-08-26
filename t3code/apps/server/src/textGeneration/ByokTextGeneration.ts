@@ -19,9 +19,9 @@ import {
   type ByokSettings,
   type ChatAttachment,
   type ModelSelection,
-} from "@t3tools/contracts";
-import { sanitizeBranchFragment, sanitizeFeatureBranchName } from "@t3tools/shared/git";
-import { extractJsonObject } from "@t3tools/shared/schemaJson";
+} from "@codework/contracts";
+import { sanitizeBranchFragment, sanitizeFeatureBranchName } from "@codework/shared/git";
+import { extractJsonObject } from "@codework/shared/schemaJson";
 
 import {
   byokAdapterForModel,

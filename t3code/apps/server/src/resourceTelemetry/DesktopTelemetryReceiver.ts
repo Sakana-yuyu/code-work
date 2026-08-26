@@ -8,8 +8,8 @@ import {
   type DesktopHostTelemetrySnapshot,
   DesktopTelemetryControlMessage,
   type ResourceTelemetrySourceStatus,
-} from "@t3tools/contracts";
-import { resolveServerBackgroundActivitySettings } from "@t3tools/shared/backgroundActivitySettings";
+} from "@codework/contracts";
+import { resolveServerBackgroundActivitySettings } from "@codework/shared/backgroundActivitySettings";
 import * as Context from "effect/Context";
 import * as DateTime from "effect/DateTime";
 import * as Duration from "effect/Duration";

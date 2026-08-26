@@ -1,10 +1,10 @@
 import { useAtomValue } from "@effect/atom-react";
 import { localizedConnectionStatusText } from "~/lib/localizedConnectionStatus";
-import { safeErrorLogAttributes } from "@t3tools/client-runtime/errors";
+import { safeErrorLogAttributes } from "@codework/client-runtime/errors";
 import {
   isAtomCommandInterrupted,
   squashAtomCommandFailure,
-} from "@t3tools/client-runtime/state/runtime";
+} from "@codework/client-runtime/state/runtime";
 import {
   defaultInstanceIdForDriver,
   type EnvironmentId,
@@ -13,12 +13,12 @@ import {
   type ProviderInstanceConfig,
   type ProviderInstanceId,
   resolveProviderInstanceEnabled,
-} from "@t3tools/contracts";
-import { DEFAULT_UNIFIED_SETTINGS } from "@t3tools/contracts/settings";
+} from "@codework/contracts";
+import { DEFAULT_UNIFIED_SETTINGS } from "@codework/contracts/settings";
 import {
   getBackgroundActivityPresetSettings,
   resolveServerBackgroundActivitySettings,
-} from "@t3tools/shared/backgroundActivitySettings";
+} from "@codework/shared/backgroundActivitySettings";
 import * as Arr from "effect/Array";
 import * as Duration from "effect/Duration";
 import * as Equal from "effect/Equal";

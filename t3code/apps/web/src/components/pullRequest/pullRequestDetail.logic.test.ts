@@ -4,7 +4,7 @@ import {
   type PullRequestComment,
   type PullRequestDetailView,
   type PullRequestReviewThread,
-} from "@t3tools/contracts";
+} from "@codework/contracts";
 import { describe, expect, it } from "vite-plus/test";
 
 import {

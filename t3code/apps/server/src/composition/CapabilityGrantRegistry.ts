@@ -3,7 +3,7 @@ import type {
   CompositionCapabilityAuditOutcome,
   CompositionCapabilityGrant,
   CompositionCapabilityOperation,
-} from "@t3tools/contracts";
+} from "@codework/contracts";
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";

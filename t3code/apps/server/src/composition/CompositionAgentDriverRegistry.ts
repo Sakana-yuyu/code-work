@@ -4,7 +4,7 @@ import * as Layer from "effect/Layer";
 import * as PubSub from "effect/PubSub";
 import * as Schema from "effect/Schema";
 import type * as Scope from "effect/Scope";
-import type { CompositionAgentDriverProfile, ProviderRuntimeEvent } from "@t3tools/contracts";
+import type { CompositionAgentDriverProfile, ProviderRuntimeEvent } from "@codework/contracts";
 
 import type { CompositionAgentDriver } from "./CompositionOrchestrator.ts";
 

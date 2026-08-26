@@ -1,4 +1,4 @@
-import type { EnvironmentConnectionPresentation } from "@t3tools/client-runtime/connection";
+import type { EnvironmentConnectionPresentation } from "@codework/client-runtime/connection";
 
 import { t } from "~/i18n";
 

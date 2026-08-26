@@ -104,9 +104,9 @@ export default defineConfig({
         {
           paths: [
             {
-              name: "@t3tools/client-runtime",
+              name: "@codework/client-runtime",
               message:
-                "Import from an explicit @t3tools/client-runtime/* subpath. The package has no root export.",
+                "Import from an explicit @codework/client-runtime/* subpath. The package has no root export.",
             },
             {
               name: "@pierre/diffs/react",

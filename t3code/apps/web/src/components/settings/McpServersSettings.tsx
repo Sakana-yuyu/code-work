@@ -16,8 +16,8 @@ import type {
   CompositionMcpServerId,
   CompositionMcpTransport,
   ServerSettings,
-} from "@t3tools/contracts";
-import { squashAtomCommandFailure } from "@t3tools/client-runtime/state/runtime";
+} from "@codework/contracts";
+import { squashAtomCommandFailure } from "@codework/client-runtime/state/runtime";
 
 import { usePrimaryEnvironment } from "~/state/environments";
 import { useEnvironmentQuery } from "~/state/query";

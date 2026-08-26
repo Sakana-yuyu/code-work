@@ -33,7 +33,7 @@ import {
   type ProviderSession,
   ThreadId,
   TurnId,
-} from "@t3tools/contracts";
+} from "@codework/contracts";
 import * as Cause from "effect/Cause";
 import * as Crypto from "effect/Crypto";
 import * as DateTime from "effect/DateTime";

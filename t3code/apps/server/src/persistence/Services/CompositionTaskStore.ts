@@ -5,7 +5,7 @@ import type {
   CompositionTaskDependency,
   CompositionTaskEvent,
   CompositionTaskRun,
-} from "@t3tools/contracts";
+} from "@codework/contracts";
 import * as Context from "effect/Context";
 import type * as Effect from "effect/Effect";
 import type * as Option from "effect/Option";

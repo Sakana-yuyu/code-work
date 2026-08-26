@@ -1,5 +1,5 @@
 import Constants from "expo-constants";
-import { PRODUCT_IDENTITY } from "@t3tools/shared/productIdentity";
+import { PRODUCT_IDENTITY } from "@codework/shared/productIdentity";
 import type {
   NativeStackHeaderItem,
   NativeStackNavigationOptions,

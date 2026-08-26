@@ -1,4 +1,4 @@
-import type { EnvironmentId, ProjectListEntriesResult } from "@t3tools/contracts";
+import type { EnvironmentId, ProjectListEntriesResult } from "@codework/contracts";
 import { SymbolView } from "../../components/AppSymbol";
 import { useCallback, useMemo, useState, type ComponentProps } from "react";
 import { Platform, Pressable, View, type NativeSyntheticEvent } from "react-native";

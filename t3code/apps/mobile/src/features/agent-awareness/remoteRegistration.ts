@@ -4,20 +4,20 @@ import * as Notifications from "expo-notifications";
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
 import { AppState, Platform } from "react-native";
-import { PRODUCT_IDENTITY } from "@t3tools/shared/productIdentity";
-import type { EnvironmentId } from "@t3tools/contracts";
+import { PRODUCT_IDENTITY } from "@codework/shared/productIdentity";
+import type { EnvironmentId } from "@codework/contracts";
 import {
   type RelayDeviceRegistrationRequest,
   type RelayAgentActivitySnapshotResponse,
   type RelayLiveActivityRegistrationRequest,
-} from "@t3tools/contracts/relay";
-import { findErrorTraceId } from "@t3tools/client-runtime/errors";
-import { ManagedRelay } from "@t3tools/client-runtime/relay";
+} from "@codework/contracts/relay";
+import { findErrorTraceId } from "@codework/client-runtime/errors";
+import { ManagedRelay } from "@codework/client-runtime/relay";
 import {
   isAtomCommandInterrupted,
   settleAsyncResult,
   squashAtomCommandFailure,
-} from "@t3tools/client-runtime/state/runtime";
+} from "@codework/client-runtime/state/runtime";
 
 import type { SavedRemoteConnection } from "../../lib/connection";
 import { runtime } from "../../lib/runtime";

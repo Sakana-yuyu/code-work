@@ -186,7 +186,7 @@ jobs:
           run-install: true
 
       - name: Ensure Electron runtime is installed
-        run: vp run --filter @t3tools/desktop ensure:electron
+        run: vp run --filter @codework/desktop ensure:electron
 
       - name: Check
         run: vp check
@@ -316,7 +316,7 @@ jobs:
           cache: true
           run-install: |
             args:
-              - --filter=t3...
+              - --filter=codework...
 
       - name: Build node-pty linux-x64 prebuild
         shell: bash
@@ -425,7 +425,7 @@ jobs:
           key: windows-release-packages-v1-${{ matrix.arch }}-${{ hashFiles('pnpm-lock.yaml') }}
 
       - name: Install desktop dependencies
-        run: vp install --filter=@t3tools/desktop... --filter=t3... --filter=@t3tools/scripts...
+        run: vp install --filter=@codework/desktop... --filter=codework... --filter=@codework/scripts...
 
       - name: Cache resource monitor
         id: resource_monitor_cache
@@ -737,9 +737,9 @@ jobs:
           cache: true
           run-install: |
             args:
-              - --filter=t3...
-              - --filter=@t3tools/web...
-              - --filter=@t3tools/scripts...
+              - --filter=codework...
+              - --filter=@codework/web...
+              - --filter=@codework/scripts...
 
       - name: Download relay client tracing config
         uses: actions/download-artifact@v8
@@ -759,10 +759,10 @@ jobs:
         run: node scripts/update-release-package-versions.ts "${{ needs.preflight.outputs.version }}"
 
       - name: Build web package
-        run: vp run --filter @t3tools/web build
+        run: vp run --filter @codework/web build
 
       - name: Build CLI package
-        run: vp run --filter t3 build
+        run: vp run --filter codework build
 
       - name: Download resource monitors
         uses: actions/download-artifact@v8
@@ -810,7 +810,7 @@ jobs:
           cache: true
           run-install: |
             args:
-              - --filter=@t3tools/scripts...
+              - --filter=@codework/scripts...
 
       - name: Download all desktop artifacts
         uses: actions/download-artifact@v8
@@ -945,8 +945,8 @@ jobs:
           cache: true
           run-install: |
             args:
-              - --filter=@t3tools/scripts...
-              - --filter=@t3tools/web...
+              - --filter=@codework/scripts...
+              - --filter=@codework/web...
 
       - name: Download relay client tracing config
         uses: actions/download-artifact@v8
@@ -1073,8 +1073,8 @@ jobs:
           cache: true
           run-install: |
             args:
-              - --filter=@t3tools/scripts...
-              - --filter=@t3tools/oxlint-plugin-t3code...
+              - --filter=@codework/scripts...
+              - --filter=@codework/oxlint-plugin-t3code...
 
       - id: update_versions
         name: Update version strings
@@ -1137,7 +1137,7 @@ jobs:
           cache: true
           run-install: |
             args:
-              - --filter=@t3tools/scripts...
+              - --filter=@codework/scripts...
 
       - name: Announce prerelease on Discord
         if: needs.preflight.outputs.is_prerelease == 'true'

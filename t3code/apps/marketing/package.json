@@ -1,5 +1,5 @@
 {
-  "name": "@t3tools/marketing",
+  "name": "@codework/marketing",
   "version": "0.0.0",
   "private": true,
   "type": "module",
@@ -10,7 +10,7 @@
     "typecheck": "astro check"
   },
   "dependencies": {
-    "@t3tools/shared": "workspace:*",
+    "@codework/shared": "workspace:*",
     "astro": "^7.0.3"
   },
   "devDependencies": {

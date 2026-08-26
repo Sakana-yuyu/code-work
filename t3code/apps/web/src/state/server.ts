@@ -6,13 +6,13 @@ import {
   type ServerLifecycleWelcomePayload,
   type ServerProvider,
   type ServerSettings,
-} from "@t3tools/contracts";
+} from "@codework/contracts";
 import {
   createByokEnvironmentAtoms,
   createServerEnvironmentAtoms,
-} from "@t3tools/client-runtime/state/server";
-import { createEnvironmentServerConfigsAtom } from "@t3tools/client-runtime/state/shell";
-import { DEFAULT_RESOLVED_KEYBINDINGS } from "@t3tools/shared/keybindings";
+} from "@codework/client-runtime/state/server";
+import { createEnvironmentServerConfigsAtom } from "@codework/client-runtime/state/shell";
+import { DEFAULT_RESOLVED_KEYBINDINGS } from "@codework/shared/keybindings";
 import * as Option from "effect/Option";
 import { AsyncResult, Atom } from "effect/unstable/reactivity";
 

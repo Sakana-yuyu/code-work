@@ -5,7 +5,7 @@ import type {
   ByokDelegationSnapshot,
   ByokDelegationSubmitRequest,
   ServerSettings as ServerSettingsContract,
-} from "@t3tools/contracts";
+} from "@codework/contracts";
 import * as Data from "effect/Data";
 import * as Effect from "effect/Effect";
 

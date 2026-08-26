@@ -23,7 +23,7 @@ import { zhCN as legacyZhCN } from "./zh-CN";
 import { en as enCatalog, zhCN as zhCNCatalog } from "./messages";
 import { useClientSettings } from "~/hooks/useSettings";
 import { readBrowserClientSettings } from "~/clientPersistenceStorage";
-import type { LanguagePreference } from "@t3tools/contracts/settings";
+import type { LanguagePreference } from "@codework/contracts/settings";
 
 export type AppLanguage = Exclude<LanguagePreference, "system">;
 

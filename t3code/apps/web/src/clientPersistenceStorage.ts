@@ -1,4 +1,4 @@
-import { ClientSettingsSchema, type ClientSettings } from "@t3tools/contracts";
+import { ClientSettingsSchema, type ClientSettings } from "@codework/contracts";
 import * as Schema from "effect/Schema";
 
 import {

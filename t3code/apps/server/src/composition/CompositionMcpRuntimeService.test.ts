@@ -1,5 +1,5 @@
 import { assert, it } from "@effect/vitest";
-import { DEFAULT_SERVER_SETTINGS, type ServerSettings } from "@t3tools/contracts";
+import { DEFAULT_SERVER_SETTINGS, type ServerSettings } from "@codework/contracts";
 import * as Effect from "effect/Effect";
 import * as Stream from "effect/Stream";
 
