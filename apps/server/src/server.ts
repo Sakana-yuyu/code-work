@@ -56,6 +56,8 @@ import * as CompositionCapabilityPolicy from "./composition/CapabilityPolicy.ts"
 import * as CompositionToolBroker from "./composition/ToolBroker.ts";
 import * as CompositionIdeSessionRegistry from "./composition/CompositionIdeSessionRegistry.ts";
 import * as CompositionMcpToolRegistry from "./composition/CompositionMcpToolRegistry.ts";
+import * as CompositionMcpRuntimeAdapter from "./composition/CompositionMcpRuntimeAdapter.ts";
+import * as CompositionMcpRuntimeService from "./composition/CompositionMcpRuntimeService.ts";
 import * as CompositionRuntimeToolBridge from "./composition/CompositionRuntimeToolBridge.ts";
 import * as CompositionAgentDriverRegistry from "./composition/CompositionAgentDriverRegistry.ts";
 import * as CompositionProviderAgentDriverProjection from "./composition/CompositionProviderAgentDriverRegistry.ts";
@@ -365,6 +367,13 @@ const WorkspaceLayerLive = Layer.mergeAll(
 );
 
 const CompositionMcpToolRegistryLayerLive = CompositionMcpToolRegistry.layer;
+const CompositionMcpRuntimeAdapterLayerLive = CompositionMcpRuntimeAdapter.layer.pipe(
+  Layer.provide(CompositionMcpToolRegistryLayerLive),
+);
+const CompositionMcpRuntimeServiceLayerLive = CompositionMcpRuntimeService.layer.pipe(
+  Layer.provideMerge(ServerSettingsLayerLive),
+  Layer.provideMerge(CompositionMcpRuntimeAdapterLayerLive),
+);
 const CompositionCapabilityRegistryLayerLive = CompositionCapabilityRegistry.layer.pipe(
   Layer.provide(CompositionMcpToolRegistryLayerLive),
 );
@@ -466,6 +475,7 @@ const RuntimeCoreDependenciesBaseLive = ReactorLayerLive.pipe(
   Layer.provideMerge(ProviderRuntimeLayerLive),
   Layer.provideMerge(Layer.mergeAll(TerminalLayerLive, PreviewLayerLive)),
   Layer.provideMerge(PreviewAutomationBrokerLayerLive),
+  Layer.provideMerge(CompositionMcpRuntimeServiceLayerLive),
   Layer.provideMerge(PersistenceLayerLive),
   Layer.provideMerge(Keybindings.layer),
   Layer.provideMerge(ProviderRegistryLive),

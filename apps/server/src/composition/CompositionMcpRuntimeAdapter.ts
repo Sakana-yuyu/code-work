@@ -3,10 +3,13 @@ import { SSEClientTransport } from "@modelcontextprotocol/sdk/client/sse.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import type { Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
+import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
+import * as Layer from "effect/Layer";
 import * as Schema from "effect/Schema";
 
 import {
+  CompositionMcpToolRegistry,
   CompositionMcpToolFailure,
   type CompositionMcpToolInvocation,
   type CompositionMcpToolRegistryShape,
@@ -83,6 +86,11 @@ export type CompositionMcpRuntimeAdapterShape = {
   readonly listServers: () => Effect.Effect<ReadonlyArray<CompositionMcpRuntimeServerState>>;
   readonly cancel: (input: { readonly idempotencyKey: string }) => Effect.Effect<boolean>;
 };
+
+export class CompositionMcpRuntimeAdapterService extends Context.Service<
+  CompositionMcpRuntimeAdapterService,
+  CompositionMcpRuntimeAdapterShape
+>()("t3/composition/CompositionMcpRuntimeAdapter") {}
 
 export type CompositionMcpRuntimeAdapterOptions = {
   readonly toolRegistry: CompositionMcpToolRegistryShape;
@@ -441,3 +449,19 @@ const make = (options: CompositionMcpRuntimeAdapterOptions): CompositionMcpRunti
 export const makeCompositionMcpRuntimeAdapter = (
   options: CompositionMcpRuntimeAdapterOptions,
 ): CompositionMcpRuntimeAdapterShape => make(options);
+
+const live = Effect.gen(function* () {
+  const toolRegistry = yield* CompositionMcpToolRegistry;
+  const adapter = makeCompositionMcpRuntimeAdapter({ toolRegistry });
+  yield* Effect.addFinalizer(() =>
+    Effect.gen(function* () {
+      const servers = yield* adapter.listServers();
+      yield* Effect.forEach(servers, (server) => adapter.disconnect(server.serverId), {
+        discard: true,
+      });
+    }),
+  );
+  return adapter;
+});
+
+export const layer = Layer.effect(CompositionMcpRuntimeAdapterService, live);
