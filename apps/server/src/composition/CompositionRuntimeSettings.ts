@@ -106,20 +106,23 @@ const makeAgents = (
   config: CompositionMulticaRuntimeConfig,
 ): ReadonlyArray<CompositionRuntimeAgent> => {
   const agentIds = new Set<string>();
-  return config.assigneeRoutes.map((route) => {
-    if (agentIds.has(route.t3AgentId)) {
-      throw new Error(`Multica assignee route '${route.t3AgentId}' 重复。`);
-    }
-    agentIds.add(route.t3AgentId);
-    return {
-      agentId: route.t3AgentId,
-      runtimeId: config.runtimeId,
-      displayName: `Multica ${route.t3AgentId}`,
-      ...(config.version === undefined ? {} : { version: config.version }),
-      status: "online" as const,
-      capabilities: [...config.capabilities],
-    };
-  });
+  return config.assigneeRoutes
+    .map((route) => {
+      if (agentIds.has(route.t3AgentId)) {
+        if (route.t3SquadId !== undefined) return undefined;
+        throw new Error(`Multica assignee route '${route.t3AgentId}' 重复。`);
+      }
+      agentIds.add(route.t3AgentId);
+      return {
+        agentId: route.t3AgentId,
+        runtimeId: config.runtimeId,
+        displayName: `Multica ${route.t3AgentId}`,
+        ...(config.version === undefined ? {} : { version: config.version }),
+        status: "online" as const,
+        capabilities: [...config.capabilities],
+      };
+    })
+    .filter((agent): agent is CompositionRuntimeAgent => agent !== undefined);
 };
 
 export const makeMulticaRuntimeAdapterFromSettings = (
@@ -144,6 +147,7 @@ export const makeMulticaRuntimeAdapterFromSettings = (
         agents: input.agents,
         taskAssigneeRoutes: input.config.assigneeRoutes.map((route) => ({
           t3AgentId: route.t3AgentId,
+          ...(route.t3SquadId === undefined ? {} : { t3SquadId: route.t3SquadId }),
           workspaceId: route.workspaceId,
           ...(route.multicaAgentId === undefined ? {} : { multicaAgentId: route.multicaAgentId }),
           ...(route.multicaSquadId === undefined ? {} : { multicaSquadId: route.multicaSquadId }),

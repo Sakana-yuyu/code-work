@@ -123,6 +123,7 @@ export type CompositionMulticaHeaderBinding = typeof CompositionMulticaHeaderBin
 /** T3 assignee 到 Multica Agent/Squad UUID 的显式映射。 */
 export const CompositionMulticaAssigneeRoute = Schema.Struct({
   t3AgentId: TrimmedNonEmptyString,
+  t3SquadId: Schema.optional(TrimmedNonEmptyString),
   workspaceId: TrimmedNonEmptyString,
   multicaAgentId: Schema.optional(TrimmedNonEmptyString),
   multicaSquadId: Schema.optional(TrimmedNonEmptyString),

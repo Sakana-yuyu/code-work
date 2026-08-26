@@ -232,6 +232,63 @@ describe("MulticaDaemonRuntimeAdapter", () => {
     ).rejects.toMatchObject({ code: "assignee_mapping_missing" });
   });
 
+  it("按显式 T3 Squad 路由选择远端 Squad，允许同一 Leader 服务多个 Squad", async () => {
+    const inputs: unknown[] = [];
+    const adapter = makeMulticaDaemonRuntimeAdapter(
+      makeOptions({
+        taskAssigneeRoutes: [
+          {
+            t3AgentId: "agent-1",
+            t3SquadId: "squad-a",
+            workspaceId: "workspace-1",
+            multicaSquadId: "remote-squad-a",
+          },
+          {
+            t3AgentId: "agent-1",
+            t3SquadId: "squad-b",
+            workspaceId: "workspace-1",
+            multicaSquadId: "remote-squad-b",
+          },
+        ],
+        protocol: makeProtocol({
+          quickCreateTask: (input) =>
+            Effect.sync(() => {
+              inputs.push(input);
+              return { taskId: `created-${inputs.length}` };
+            }),
+        }),
+      }),
+    );
+
+    await Effect.runPromise(
+      adapter.dispatchTask({
+        taskId: "task-squad-a",
+        runId: "run-squad-a",
+        agentId: "agent-1",
+        assigneeKind: "squad",
+        assigneeId: "squad-a",
+        prompt: "执行 A",
+        idempotencyKey: "run-squad-a",
+      }),
+    );
+    await Effect.runPromise(
+      adapter.dispatchTask({
+        taskId: "task-squad-b",
+        runId: "run-squad-b",
+        agentId: "agent-1",
+        assigneeKind: "squad",
+        assigneeId: "squad-b",
+        prompt: "执行 B",
+        idempotencyKey: "run-squad-b",
+      }),
+    );
+
+    expect(inputs).toEqual([
+      { workspaceId: "workspace-1", squadId: "remote-squad-a", prompt: "执行 A" },
+      { workspaceId: "workspace-1", squadId: "remote-squad-b", prompt: "执行 B" },
+    ]);
+  });
+
   it("只将 task 事实帧投影为 ProviderRuntimeEvent，并对同一原始帧生成稳定 eventId", async () => {
     const frames = [
       { type: "daemon:heartbeat_ack", payload: { runtime_id: daemonRuntimeId, status: "online" } },

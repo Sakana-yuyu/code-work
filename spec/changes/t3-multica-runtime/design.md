@@ -368,3 +368,13 @@ Batch B 固定了所有真实 Cursor/VSCode Adapter 必须遵守的可信执行�
 - 该链路没有猜测远端 UUID，也没有把 T3 的 `squadId` 当成 Multica 的 UUID；缺少 route 时仍返回 `assignee_mapping_missing`。
 
 新增的定向集成测试实际断言了 `T3 Squad -> Leader Driver -> Multica remote squadId -> project_id/prompt`，本批次累计 30 个相关测试通过。它是本地模拟协议证明，不等价于真实 Multica Server、真实 daemon、真实 Squad 成员协作或 capability Tool-call handshake。
+
+## Batch D-3 落地记录（2026-08-26）
+
+本节点把 Multica assignee route 从隐式 leader 路由扩展为显式 Squad 路由：
+
+- `CompositionMulticaAssigneeRoute` 增加可选 `t3SquadId`；Adapter 同时维护 Agent 路由和 Squad 路由索引。
+- `assigneeKind=squad` 的任务优先按 T3 `assigneeId` 查找 Squad 路由，选择对应的远端 `multicaSquadId`；未配置 Squad 专属路由时才兼容回退到 leader Agent 路由。
+- 同一 leader 可以映射多个不同 T3 Squad；重复 Squad ID 或重复无 Squad 的 Agent 路由会稳定拒绝。Settings 投影只注册一次 leader Driver，不会因为多个 Squad 映射产生重复 Driver。
+
+本节点通过 contracts/server typecheck、5 个相关测试文件共 36 个测试、格式检查和 `git diff --check`。真实远端 Squad 成员调度、路由刷新后的 daemon 现场探测和 Web/Desktop/Mobile E2E 仍未完成。

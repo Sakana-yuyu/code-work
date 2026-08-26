@@ -134,6 +134,7 @@ describe("composition runtime contracts", () => {
       assigneeRoutes: [
         {
           t3AgentId: "agent-1",
+          t3SquadId: "squad-1",
           workspaceId: "workspace-1",
           multicaAgentId: "agent-remote-1",
         },
@@ -144,6 +145,7 @@ describe("composition runtime contracts", () => {
       { headerName: "Authorization", environmentVariable: "MULTICA_TOKEN" },
     ]);
     expect(decoded.assigneeRoutes[0]?.multicaAgentId).toBe("agent-remote-1");
+    expect(decoded.assigneeRoutes[0]?.t3SquadId).toBe("squad-1");
     expect((decoded as Record<string, unknown>).token).toBeUndefined();
   });
 });

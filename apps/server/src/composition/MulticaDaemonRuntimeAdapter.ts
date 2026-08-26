@@ -44,6 +44,7 @@ export type MulticaDaemonStreamFramesInput = {
 /** T3 assignee 到 Multica 工作区和远端 Agent/Squad UUID 的显式映射。 */
 export type MulticaTaskAssigneeRoute = {
   readonly t3AgentId: string;
+  readonly t3SquadId?: string;
   readonly workspaceId: string;
   readonly multicaAgentId?: string;
   readonly multicaSquadId?: string;
@@ -287,8 +288,13 @@ export const makeMulticaDaemonRuntimeAdapter = (
     return { ...agent, capabilities: [...agent.capabilities] };
   });
   const taskAssigneeRoutes = new Map<string, MulticaTaskAssigneeRoute>();
+  const taskSquadRoutes = new Map<string, MulticaTaskAssigneeRoute>();
   for (const route of options.taskAssigneeRoutes ?? []) {
     const t3AgentId = nonEmpty(route.t3AgentId, "taskAssigneeRoute.t3AgentId");
+    const t3SquadId =
+      route.t3SquadId === undefined
+        ? undefined
+        : nonEmpty(route.t3SquadId, "taskAssigneeRoute.t3SquadId");
     const workspaceId = nonEmpty(route.workspaceId, "taskAssigneeRoute.workspaceId");
     const multicaAgentId =
       route.multicaAgentId === undefined
@@ -303,15 +309,24 @@ export const makeMulticaDaemonRuntimeAdapter = (
         `Multica assignee route '${t3AgentId}' 必须且只能指定 multicaAgentId 或 multicaSquadId。`,
       );
     }
-    if (taskAssigneeRoutes.has(t3AgentId)) {
-      throw new Error(`Multica assignee route '${t3AgentId}' 重复。`);
-    }
-    taskAssigneeRoutes.set(t3AgentId, {
+    const normalizedRoute = {
       t3AgentId,
+      ...(t3SquadId === undefined ? {} : { t3SquadId }),
       workspaceId,
       ...(multicaAgentId === undefined ? {} : { multicaAgentId }),
       ...(multicaSquadId === undefined ? {} : { multicaSquadId }),
-    });
+    } satisfies MulticaTaskAssigneeRoute;
+    if (t3SquadId !== undefined) {
+      if (taskSquadRoutes.has(t3SquadId)) {
+        throw new Error(`Multica Squad 路由 '${t3SquadId}' 重复。`);
+      }
+      taskSquadRoutes.set(t3SquadId, normalizedRoute);
+    } else {
+      if (taskAssigneeRoutes.has(t3AgentId)) {
+        throw new Error(`Multica Agent 路由 '${t3AgentId}' 重复。`);
+      }
+      taskAssigneeRoutes.set(t3AgentId, normalizedRoute);
+    }
   }
   const activeTaskIds = new Set<string>();
   const dispatchedTasks = new Map<string, CompositionRuntimeTaskResult>();
@@ -439,7 +454,12 @@ export const makeMulticaDaemonRuntimeAdapter = (
       if (existing !== undefined) {
         return { ...existing, status: "already_running" as const };
       }
-      const route = taskAssigneeRoutes.get(agentId);
+      const route =
+        (input.assigneeKind === "squad" && input.assigneeId === undefined
+          ? undefined
+          : input.assigneeKind === "squad"
+            ? taskSquadRoutes.get(input.assigneeId)
+            : undefined) ?? taskAssigneeRoutes.get(agentId);
       if (route === undefined) {
         return yield* adapterFailure(
           runtimeId,
