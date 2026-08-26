@@ -2026,7 +2026,7 @@ const makeWsRpcLayer = (
             WS_METHODS.serverListCompositionTasks,
             Option.isNone(compositionOrchestrator)
               ? Effect.fail(compositionTaskUnavailable())
-              : compositionOrchestrator.value.listTasks(input.projectId).pipe(
+              : compositionOrchestrator.value.listTaskSnapshots(input.projectId).pipe(
                   Effect.map((tasks) => ({ tasks })),
                   Effect.mapError(compositionTaskError),
                 ),

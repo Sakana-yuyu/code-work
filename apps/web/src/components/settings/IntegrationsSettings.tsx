@@ -28,6 +28,7 @@ import { ScreenRotationIcon } from "~/browser/ScreenRotationIcon";
 import { isElectron } from "../../env";
 import { McpServersSettings } from "./McpServersSettings";
 import { AgentDriversSettings } from "./AgentDriversSettings";
+import { TaskGraphPanel } from "./TaskGraphPanel";
 
 import { Button } from "../ui/button";
 import { NumberField, NumberFieldGroup, NumberFieldInput } from "../ui/number-field";
@@ -481,6 +482,7 @@ export function IntegrationsSettingsPanel() {
         )}
       </SettingsSection>
       <AgentDriversSettings />
+      <TaskGraphPanel />
       <McpServersSettings />
     </SettingsPageContainer>
   );

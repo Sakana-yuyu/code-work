@@ -449,3 +449,16 @@ Tool-call/Grant handshake，以及 Web/Desktop/Mobile、真实 Multica daemon �
 - 本节点没有改变服务端状态机、Runtime Driver 或 Multica 协议；取消、审核、重试仍由服务端 `CompositionOrchestrator` 和 `TaskStore` 决策并落盘。
 
 本节点已通过 Composition/Orchestrator/Task Graph 定向测试 31 个、`client-runtime` 定向 TypeScript 检查、格式检查和 `git diff --check`。`client-runtime` 检查仅保留既有 `relay/discovery.ts` 的 Effect 建议项。Web/Desktop/Mobile 产品入口、真实 WebSocket 集成、真实 Provider/IDE/Multica daemon E2E 仍未完成。
+
+## Batch D-6 落地记录（2026-08-26）
+
+本节点把 Task Graph 控制面接入 Web Settings，并修复刷新后控制操作依赖内存状态的问题：
+
+- `CompositionTaskListResult.tasks` 现在返回 `CompositionTaskSnapshot`，每个快照携带持久化 Store 中的最新 Run；页面刷新后仍能准确获得 `runId`，取消、审核和重试不会依赖前端猜测。
+- Web Settings 新增 Task Graph 面板，支持项目/工作区、Leader Driver、串行/并行子任务、最多四个子节点、依赖前一节点、任务列表、Run/事件查看、取消、Leader approve/reject 和失败/超时重试。
+- Web、Desktop 和 Mobile 共用的 `client-runtime` RPC 绑定继续作为唯一客户端入口；本批次实际挂载的是 Web Settings，Desktop 通过 Web 壳复用代码，Mobile 尚未提供产品导航入口。
+- 面板只把 Driver profile 的 `supportsToolBroker` 与 `supportsCapabilityHandshake` 同时为真时显示为已验证共享工具面；普通 Provider、Multica 或未完成握手的 Driver 仍可以执行任务图，但不会被自动授予 T3 Workspace、Terminal、Git、MCP 或 IDE 权限。
+- 查询首帧会从已返回的 Driver/Task 快照推导默认 Leader、子任务和选中任务，避免等待 React effect 时出现空图或无法控制任务的短暂窗口；状态更新仍由持久化 RPC 和服务端状态机负责。
+- 新增 Web 面板定向渲染测试，覆盖无环境、无握手降级、待审核操作、终态不可取消和无 capability ID 不可重试。
+
+本节点验证通过 Web 面板 5 个定向测试、Web typecheck、client-runtime typecheck、格式检查和 `git diff --check`。Web typecheck 仅保留既有 `apps/web/src/cloud/dpop.ts` 的 Effect 建议；Contracts 与 Server 全量 typecheck 仍被本批次之前的 settings/MCP/Effect 诊断阻断。真实 WebSocket client-server 点击链路、Desktop/Mobile 入口、Provider 原生 ToolBroker、Cursor/VSCode transport 和 Multica daemon/Tool-call/Grant handshake E2E 仍未完成。

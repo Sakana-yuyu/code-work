@@ -14,6 +14,7 @@ import {
   CompositionTaskGraphExecutionRequest,
   CompositionTaskGraphExecutionResult,
   CompositionTaskEventsResult,
+  CompositionTaskListResult,
   CompositionTaskListRequest,
   CompositionTaskReviewRequest,
   CompositionTaskRetryRequest,
@@ -34,6 +35,7 @@ const decodeTaskGraph = Schema.decodeUnknownSync(CompositionTaskGraphExecutionRe
 const decodeTaskGraphResult = Schema.decodeUnknownSync(CompositionTaskGraphExecutionResult);
 const decodeTaskCancel = Schema.decodeUnknownSync(CompositionTaskCancelRequest);
 const decodeTaskEvents = Schema.decodeUnknownSync(CompositionTaskEventsResult);
+const decodeTaskListResult = Schema.decodeUnknownSync(CompositionTaskListResult);
 const decodeTaskList = Schema.decodeUnknownSync(CompositionTaskListRequest);
 const decodeTaskReview = Schema.decodeUnknownSync(CompositionTaskReviewRequest);
 const decodeTaskRetry = Schema.decodeUnknownSync(CompositionTaskRetryRequest);
@@ -366,5 +368,34 @@ describe("composition contracts", () => {
       }).events,
     ).toEqual([]);
     expect(decodeTaskList({ projectId: "project-1" }).projectId).toBe("project-1");
+    expect(
+      decodeTaskListResult({
+        tasks: [
+          {
+            task: {
+              taskId: "task-1",
+              projectId: "project-1",
+              assigneeKind: "agent",
+              assigneeId: "agent-1",
+              mode: "parallel",
+              status: "running",
+              promptDigest: "sha256:prompt",
+              dependsOnTaskIds: [],
+              createdAtUnixMs: 1,
+              updatedAtUnixMs: 2,
+            },
+            latestRun: {
+              runId: "run-1",
+              taskId: "task-1",
+              agentId: "agent-1",
+              runtimeId: "runtime-1",
+              status: "running",
+              attempt: 1,
+              capabilityGrantIds: [],
+            },
+          },
+        ],
+      }).tasks[0]?.latestRun?.runId,
+    ).toBe("run-1");
   });
 });

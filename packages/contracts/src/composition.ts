@@ -445,13 +445,20 @@ export const CompositionTaskEventsResult = Schema.Struct({
 });
 export type CompositionTaskEventsResult = typeof CompositionTaskEventsResult.Type;
 
+/** 任务列表的可操作快照，携带当前最新 Run 以支持刷新后的控制操作。 */
+export const CompositionTaskSnapshot = Schema.Struct({
+  task: CompositionTask,
+  latestRun: Schema.optional(CompositionTaskRun),
+});
+export type CompositionTaskSnapshot = typeof CompositionTaskSnapshot.Type;
+
 export const CompositionTaskListRequest = Schema.Struct({
   projectId: Schema.optional(TrimmedNonEmptyString),
 });
 export type CompositionTaskListRequest = typeof CompositionTaskListRequest.Type;
 
 export const CompositionTaskListResult = Schema.Struct({
-  tasks: Schema.Array(CompositionTask),
+  tasks: Schema.Array(CompositionTaskSnapshot),
 });
 export type CompositionTaskListResult = typeof CompositionTaskListResult.Type;
 

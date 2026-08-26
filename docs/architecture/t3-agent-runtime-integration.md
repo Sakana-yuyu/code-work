@@ -43,6 +43,7 @@ Audit / Idempotency / Cancellation / Timeout / Retry / Review
 - 原生 Task Graph 执行器已通过 `server.executeCompositionTaskGraph` 暴露到 WebSocket RPC，
   `client-runtime` 已提供任务列表、事件查询、执行、取消、审核和重试的共享查询/命令入口；服务端支持
   Leader review、串行/并行子节点、依赖、retry、结果汇聚和迟到事件保护。
+- Web Settings 已提供 Task Graph 控制面，能够从持久化任务快照读取最新 Run，并执行取消、Leader 审核和失败/超时重试；面板会明确显示未完成 ToolBroker handshake 的 Driver 处于降级授权边界。
 
 ### `cursor-byok` 可吸收，但需要 T3 原生重做
 
@@ -65,8 +66,9 @@ Audit / Idempotency / Cancellation / Timeout / Retry / Review
 
 - client-runtime 和 Web/Desktop/Mobile 的 MCP 配置、连接状态、工具目录和错误可达性。
 - Provider/BYOK/ACP/CLI 的统一 capability projection 和真实跨 Driver ToolBroker E2E。
-- Web/Desktop/Mobile 尚未提供 Task Graph 的产品入口、可视化状态和取消/审核交互；当前已有服务端 RPC 与
-  `client-runtime` 共享查询/命令，但还没有真实客户端点击验收。
+- Web Settings 已提供 Task Graph 的产品入口、任务/Run/事件可视化以及取消/审核/重试交互；Desktop 复用 Web 壳和
+  `client-runtime`，但本批次没有进行真实桌面点击验收；Mobile 仍没有产品导航入口，也没有进行移动端验收。
+- 真实 WebSocket client-server 集成、Provider/IDE/Multica 外部 Runtime E2E 仍未完成；Web 面板测试和静态检查不能替代这些验收。
 - Multica 在 T3 壳内通过真实 daemon 执行 Leader -> Squad -> Task Graph -> 子 Agent -> 结果汇聚 -> Review 的
   完整外部编排链仍未验收；当前本地 Task Graph 可使用 T3 Driver/ToolBroker，外部 Multica 仍受窄协议限制。
 - Multica 官方窄协议之外的 Tool-call/Grant handshake。当前没有证据证明官方 daemon 接受 T3 grant 或能够回调 T3 ToolBroker，因此不能静默赋予 full access。

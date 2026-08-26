@@ -266,6 +266,12 @@ export interface CompositionOrchestrator {
     | CompositionAgentDriverFailure
     | CapabilityGrantRegistry.CapabilityGrantPersistenceError
   >;
+  readonly reviewTask: (
+    input: CompositionTaskReviewRequest,
+  ) => Effect.Effect<
+    CompositionTaskReviewResult,
+    CompositionTaskStoreError | CompositionTaskNotFoundError | CompositionTaskNotInReviewError
+  >;
   readonly retryTask: (
     input: CompositionTaskRetryRequest,
   ) => Effect.Effect<
