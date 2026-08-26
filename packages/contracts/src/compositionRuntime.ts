@@ -1,8 +1,51 @@
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
 
-import { NonNegativeInt, TrimmedNonEmptyString } from "./baseSchemas.ts";
+import { NonNegativeInt, TrimmedNonEmptyString, TrimmedString } from "./baseSchemas.ts";
 import { CompositionTaskEventType, CompositionTaskStatus } from "./composition.ts";
+
+const COMPOSITION_MCP_ID_PATTERN = /^[A-Za-z][A-Za-z0-9_-]*$/;
+const COMPOSITION_MCP_ID_MAX_CHARS = 64;
+
+/** MCP server 的持久化键；运行时不会把任意外部名称直接当作 canonical ID。 */
+export const CompositionMcpServerId = TrimmedNonEmptyString.check(
+  Schema.isMaxLength(COMPOSITION_MCP_ID_MAX_CHARS),
+  Schema.isPattern(COMPOSITION_MCP_ID_PATTERN),
+).pipe(Schema.brand("CompositionMcpServerId"));
+export type CompositionMcpServerId = typeof CompositionMcpServerId.Type;
+
+export const CompositionMcpTransport = Schema.Literals(["stdio", "http", "sse"]);
+export type CompositionMcpTransport = typeof CompositionMcpTransport.Type;
+
+/** headers/env 的值在 server settings 对外返回前会被 secret store 脱敏。 */
+export const CompositionMcpSecretValue = Schema.Struct({
+  name: TrimmedNonEmptyString.check(Schema.isMaxLength(128)),
+  value: Schema.String.pipe(Schema.withDecodingDefault(Effect.succeed(""))),
+  sensitive: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
+  valueRedacted: Schema.optionalKey(Schema.Boolean),
+});
+export type CompositionMcpSecretValue = typeof CompositionMcpSecretValue.Type;
+
+/** ServerSettings 中的 MCP 配置；不包含运行时 client 或发现到的 tool catalog。 */
+export const CompositionMcpRuntimeServerConfig = Schema.Struct({
+  schemaVersion: Schema.Literal(1).pipe(Schema.withDecodingDefault(Effect.succeed(1 as const))),
+  name: TrimmedNonEmptyString,
+  transport: CompositionMcpTransport,
+  command: Schema.optionalKey(TrimmedString),
+  args: Schema.Array(TrimmedString).pipe(Schema.withDecodingDefault(Effect.succeed([]))),
+  cwd: Schema.optionalKey(TrimmedString),
+  url: Schema.optionalKey(TrimmedString),
+  headers: Schema.Array(CompositionMcpSecretValue).pipe(
+    Schema.withDecodingDefault(Effect.succeed([])),
+  ),
+  environment: Schema.Array(CompositionMcpSecretValue).pipe(
+    Schema.withDecodingDefault(Effect.succeed([])),
+  ),
+  enabled: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
+  trusted: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
+  trustFingerprint: Schema.optionalKey(TrimmedNonEmptyString),
+});
+export type CompositionMcpRuntimeServerConfig = typeof CompositionMcpRuntimeServerConfig.Type;
 
 const CompositionEventKind = Schema.Literals([
   "composition.task",

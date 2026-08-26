@@ -23,6 +23,7 @@ import {
   ProviderInstanceId,
   type ProviderDriverKind,
 } from "./providerInstance.ts";
+import { CompositionMcpRuntimeServerConfig, CompositionMcpServerId } from "./compositionRuntime.ts";
 
 // ── Client Settings (local-only) ───────────────────────────────
 
@@ -799,6 +800,10 @@ export const ServerSettings = Schema.Struct({
   providerInstances: Schema.Record(ProviderInstanceId, ProviderInstanceConfig).pipe(
     Schema.withDecodingDefault(Effect.succeed({})),
   ),
+  /** MCP 运行时配置；secret value 由 serverSettings 在持久化和回传时处理。 */
+  mcpServers: Schema.Record(CompositionMcpServerId, CompositionMcpRuntimeServerConfig).pipe(
+    Schema.withDecodingDefault(Effect.succeed({})),
+  ),
   observability: ObservabilitySettings.pipe(Schema.withDecodingDefault(Effect.succeed({}))),
 });
 export type ServerSettings = typeof ServerSettings.Type;
@@ -993,6 +998,9 @@ export const ServerSettingsPatch = Schema.Struct({
   // patches risk leaving driver-specific config in a half-merged state.
   // The web UI sends a fully-formed map every time it edits this field.
   providerInstances: Schema.optionalKey(Schema.Record(ProviderInstanceId, ProviderInstanceConfig)),
+  mcpServers: Schema.optionalKey(
+    Schema.Record(CompositionMcpServerId, CompositionMcpRuntimeServerConfig),
+  ),
 });
 export type ServerSettingsPatch = typeof ServerSettingsPatch.Type;
 

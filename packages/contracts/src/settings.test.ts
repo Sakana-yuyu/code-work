@@ -236,6 +236,32 @@ describe("provider enabled defaults", () => {
   });
 });
 
+describe("ServerSettings.mcpServers", () => {
+  it("defaults to an empty map for legacy settings", () => {
+    expect(decodeServerSettings({}).mcpServers).toEqual({});
+    expect(decodeServerSettingsPatch({}).mcpServers).toBeUndefined();
+  });
+
+  it("uses a whole-map replacement while preserving MCP trust defaults", () => {
+    const patch = decodeServerSettingsPatch({
+      mcpServers: {
+        local_tools: {
+          name: " Local Tools ",
+          transport: "stdio",
+          command: " node ",
+          args: ["server.mjs"],
+        },
+      },
+    });
+
+    const server = patch.mcpServers?.local_tools;
+    expect(server?.name).toBe("Local Tools");
+    expect(server?.command).toBe("node");
+    expect(server?.trusted).toBe(false);
+    expect(server?.enabled).toBe(true);
+  });
+});
+
 describe("ServerSettings worktree defaults", () => {
   it("defaults start-from-origin on for legacy configs", () => {
     expect(decodeServerSettings({}).newWorktreesStartFromOrigin).toBe(true);

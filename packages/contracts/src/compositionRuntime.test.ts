@@ -8,6 +8,8 @@ import {
   CompositionMulticaProbeResult,
   CompositionRuntimeCapabilityHandshakeRequest,
   CompositionRuntimeCapabilityHandshakeResult,
+  CompositionMcpRuntimeServerConfig,
+  CompositionMcpServerId,
   CompositionRuntimeProbeResult,
 } from "./compositionRuntime.ts";
 
@@ -22,6 +24,7 @@ const decodeCapabilityHandshakeResult = Schema.decodeUnknownSync(
   CompositionRuntimeCapabilityHandshakeResult,
 );
 const decodeMulticaConfig = Schema.decodeUnknownSync(CompositionMulticaRuntimeConfig);
+const decodeMcpServerConfig = Schema.decodeUnknownSync(CompositionMcpRuntimeServerConfig);
 
 describe("composition runtime contracts", () => {
   it("keeps the event envelope additive to task events", () => {
@@ -147,5 +150,49 @@ describe("composition runtime contracts", () => {
     expect(decoded.assigneeRoutes[0]?.multicaAgentId).toBe("agent-remote-1");
     expect(decoded.assigneeRoutes[0]?.t3SquadId).toBe("squad-1");
     expect((decoded as Record<string, unknown>).token).toBeUndefined();
+  });
+
+  it("为 MCP server 提供可持久化的 transport、trust 和敏感字段状态", () => {
+    const decoded = decodeMcpServerConfig({
+      name: "  Local Tools  ",
+      transport: "stdio",
+      command: "  node  ",
+      args: ["server.mjs"],
+      environment: [
+        {
+          name: "MCP_TOKEN",
+          value: "secret-value",
+          sensitive: true,
+        },
+      ],
+      headers: [
+        {
+          name: "Authorization",
+          value: "Bearer secret-value",
+          sensitive: true,
+        },
+      ],
+      trusted: true,
+      trustFingerprint: "sha256:local-tools",
+    });
+
+    expect(decoded.name).toBe("Local Tools");
+    expect(decoded.command).toBe("node");
+    expect(decoded.enabled).toBe(true);
+    expect(decoded.trusted).toBe(true);
+    expect(decoded.environment[0]?.sensitive).toBe(true);
+    expect(CompositionMcpServerId.make("local-tools")).toBe("local-tools");
+  });
+
+  it("默认 MCP server 不可信且兼容旧设置中的空 mcpServers", () => {
+    const decoded = decodeMcpServerConfig({
+      name: "Remote Tools",
+      transport: "http",
+      url: "https://mcp.example.test",
+    });
+    expect(decoded.enabled).toBe(true);
+    expect(decoded.trusted).toBe(false);
+    expect(decoded.environment).toEqual([]);
+    expect(decoded.headers).toEqual([]);
   });
 });
