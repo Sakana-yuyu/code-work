@@ -54,6 +54,7 @@ import {
   RpcClientId,
   EnvironmentAuthorizationError,
   CompositionAgentLoopRunError,
+  CompositionMcpRuntimeRpcError,
   CompositionTaskRpcError,
   ThreadId,
   type TerminalAttachStreamEvent,
@@ -98,6 +99,7 @@ import * as CompositionOrchestratorService from "./composition/CompositionOrches
 import * as CompositionToolBroker from "./composition/ToolBroker.ts";
 import * as CompositionRuntimeToolBridge from "./composition/CompositionRuntimeToolBridge.ts";
 import * as CompositionCapabilityGrantRegistry from "./composition/CapabilityGrantRegistry.ts";
+import * as CompositionMcpRuntimeService from "./composition/CompositionMcpRuntimeService.ts";
 import * as ProviderMaintenanceRunner from "./provider/providerMaintenanceRunner.ts";
 import * as ServerSelfUpdate from "./cloud/selfUpdate.ts";
 import * as ServerLifecycleEvents from "./serverLifecycleEvents.ts";
@@ -147,6 +149,7 @@ import { failEnvironmentAuthInvalid, failEnvironmentInternal } from "./auth/http
 import * as RelayClient from "@t3tools/shared/relayClient";
 const isOrchestrationDispatchCommandError = Schema.is(OrchestrationDispatchCommandError);
 const isCompositionTaskRpcError = Schema.is(CompositionTaskRpcError);
+const isCompositionMcpRuntimeRpcError = Schema.is(CompositionMcpRuntimeRpcError);
 
 const nowIso = Effect.map(DateTime.now, DateTime.formatIso);
 const EDITOR_DISCOVERY_TIMEOUT = Duration.seconds(5);
@@ -482,6 +485,9 @@ const makeWsRpcLayer = (
       const compositionRuntimeToolBridge = yield* Effect.serviceOption(
         CompositionRuntimeToolBridge.CompositionRuntimeToolBridgeService,
       );
+      const compositionMcpRuntime = yield* Effect.serviceOption(
+        CompositionMcpRuntimeService.CompositionMcpRuntimeService,
+      );
       const compositionTaskUnavailable = () =>
         new CompositionTaskRpcError({
           code: "composition_unavailable",
@@ -501,6 +507,49 @@ const makeWsRpcLayer = (
           detail: String(error),
         });
       };
+      const compositionMcpRuntimeUnavailable = () =>
+        new CompositionMcpRuntimeRpcError({
+          serverId: "unavailable",
+          code: "composition_mcp_unavailable",
+          detail: "当前运行时未提供 MCP Runtime 能力。",
+        });
+      const compositionMcpRuntimeError = (error: unknown, serverId: string) => {
+        if (isCompositionMcpRuntimeRpcError(error)) return error;
+        if (typeof error === "object" && error !== null) {
+          const tagged = error as {
+            readonly _tag?: unknown;
+            readonly message?: unknown;
+            readonly code?: unknown;
+          };
+          return new CompositionMcpRuntimeRpcError({
+            serverId,
+            code: typeof tagged.code === "string" ? tagged.code : "composition_mcp_failed",
+            detail: typeof tagged.message === "string" ? tagged.message : String(error),
+          });
+        }
+        return new CompositionMcpRuntimeRpcError({
+          serverId,
+          code: "composition_mcp_failed",
+          detail: String(error),
+        });
+      };
+      const compositionMcpServerState = (serverId: string) =>
+        Option.isNone(compositionMcpRuntime)
+          ? Effect.fail(compositionMcpRuntimeUnavailable())
+          : compositionMcpRuntime.value.listServers().pipe(
+              Effect.flatMap((servers) => {
+                const state = servers.find((server) => server.serverId === serverId);
+                return state === undefined
+                  ? Effect.fail(
+                      new CompositionMcpRuntimeRpcError({
+                        serverId,
+                        code: "mcp_server_not_found",
+                        detail: "MCP Server 不存在。",
+                      }),
+                    )
+                  : Effect.succeed(state);
+              }),
+            );
       const serverSelfUpdate = yield* ServerSelfUpdate.ServerSelfUpdate;
       const config = yield* ServerConfig.ServerConfig;
       const lifecycleEvents = yield* ServerLifecycleEvents.ServerLifecycleEvents;
@@ -1694,6 +1743,56 @@ const makeWsRpcLayer = (
             {
               "rpc.aggregate": "server",
             },
+          ),
+        [WS_METHODS.serverGetMcpServers]: (_input) =>
+          observeRpcEffect(
+            WS_METHODS.serverGetMcpServers,
+            Option.isNone(compositionMcpRuntime)
+              ? Effect.fail(compositionMcpRuntimeUnavailable())
+              : compositionMcpRuntime.value.listServers(),
+            { "rpc.aggregate": "server" },
+          ),
+        [WS_METHODS.serverConnectMcpServer]: (input) =>
+          observeRpcEffect(
+            WS_METHODS.serverConnectMcpServer,
+            Option.isNone(compositionMcpRuntime)
+              ? Effect.fail(compositionMcpRuntimeUnavailable())
+              : compositionMcpRuntime.value.connectServer(input.serverId).pipe(
+                  Effect.mapError((error) => compositionMcpRuntimeError(error, input.serverId)),
+                  Effect.andThen(compositionMcpServerState(input.serverId)),
+                ),
+            { "rpc.aggregate": "server" },
+          ),
+        [WS_METHODS.serverDisconnectMcpServer]: (input) =>
+          observeRpcEffect(
+            WS_METHODS.serverDisconnectMcpServer,
+            Option.isNone(compositionMcpRuntime)
+              ? Effect.fail(compositionMcpRuntimeUnavailable())
+              : compositionMcpRuntime.value.disconnectServer(input.serverId).pipe(
+                  Effect.flatMap((disconnected) =>
+                    disconnected
+                      ? compositionMcpServerState(input.serverId)
+                      : Effect.fail(
+                          new CompositionMcpRuntimeRpcError({
+                            serverId: input.serverId,
+                            code: "mcp_server_not_found",
+                            detail: "MCP Server 不存在。",
+                          }),
+                        ),
+                  ),
+                ),
+            { "rpc.aggregate": "server" },
+          ),
+        [WS_METHODS.serverRefreshMcpServer]: (input) =>
+          observeRpcEffect(
+            WS_METHODS.serverRefreshMcpServer,
+            Option.isNone(compositionMcpRuntime)
+              ? Effect.fail(compositionMcpRuntimeUnavailable())
+              : compositionMcpRuntime.value.refreshServer(input.serverId).pipe(
+                  Effect.mapError((error) => compositionMcpRuntimeError(error, input.serverId)),
+                  Effect.andThen(compositionMcpServerState(input.serverId)),
+                ),
+            { "rpc.aggregate": "server" },
           ),
         [WS_METHODS.serverGetByokSupplierCatalog]: (_input) =>
           observeRpcEffect(

@@ -30,6 +30,13 @@ export type CompositionMcpRuntimeServiceShape = {
   readonly reconcile: (settings: ServerSettings) => Effect.Effect<void>;
   readonly start: Effect.Effect<void, never, Scope.Scope>;
   readonly listServers: () => Effect.Effect<ReadonlyArray<CompositionMcpRuntimeServerState>>;
+  readonly connectServer: (
+    serverId: string,
+  ) => Effect.Effect<void, import("./CompositionMcpRuntimeAdapter.ts").CompositionMcpRuntimeError>;
+  readonly disconnectServer: (serverId: string) => Effect.Effect<boolean>;
+  readonly refreshServer: (
+    serverId: string,
+  ) => Effect.Effect<void, import("./CompositionMcpRuntimeAdapter.ts").CompositionMcpRuntimeError>;
 };
 
 export class CompositionMcpRuntimeService extends Context.Service<
@@ -168,6 +175,10 @@ export const makeCompositionMcpRuntimeService = (
     reconcile,
     start,
     listServers: options.adapter.listServers,
+    connectServer: options.adapter.connect,
+    disconnectServer: options.adapter.disconnect,
+    refreshServer: (serverId) =>
+      options.adapter.disconnect(serverId).pipe(Effect.andThen(options.adapter.connect(serverId))),
   };
 };
 

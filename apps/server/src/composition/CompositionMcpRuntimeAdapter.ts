@@ -3,6 +3,11 @@ import { SSEClientTransport } from "@modelcontextprotocol/sdk/client/sse.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import type { Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
+import type {
+  CompositionMcpRuntimeServerState as ContractCompositionMcpRuntimeServerState,
+  CompositionMcpRuntimeServerStatus as ContractCompositionMcpRuntimeServerStatus,
+} from "@t3tools/contracts";
+import { CompositionMcpRuntimeServerState } from "@t3tools/contracts";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -50,18 +55,8 @@ export type CompositionMcpRuntimeClient = {
   readonly close: () => Promise<void>;
 };
 
-export type CompositionMcpRuntimeServerStatus = "registered" | "connecting" | "connected" | "error";
-
-export type CompositionMcpRuntimeServerState = {
-  readonly serverId: string;
-  readonly name: string;
-  readonly transport: CompositionMcpRuntimeTransport;
-  readonly trusted: boolean;
-  readonly enabled: boolean;
-  readonly status: CompositionMcpRuntimeServerStatus;
-  readonly toolNames: ReadonlyArray<string>;
-  readonly errorCode?: string;
-};
+export type CompositionMcpRuntimeServerStatus = ContractCompositionMcpRuntimeServerStatus;
+export type CompositionMcpRuntimeServerState = ContractCompositionMcpRuntimeServerState;
 
 export class CompositionMcpRuntimeError extends Schema.TaggedErrorClass<CompositionMcpRuntimeError>()(
   "CompositionMcpRuntimeError",
@@ -416,16 +411,18 @@ const make = (options: CompositionMcpRuntimeAdapterOptions): CompositionMcpRunti
       Effect.succeed(
         [...servers.values()]
           .sort((left, right) => left.config.serverId.localeCompare(right.config.serverId))
-          .map((record) => ({
-            serverId: record.config.serverId,
-            name: record.config.name,
-            transport: record.config.transport,
-            trusted: record.config.trusted,
-            enabled: record.config.enabled === true,
-            status: record.status,
-            toolNames: [...record.toolNames].sort(),
-            ...(record.errorCode === undefined ? {} : { errorCode: record.errorCode }),
-          })),
+          .map((record) =>
+            Schema.decodeUnknownSync(CompositionMcpRuntimeServerState)({
+              serverId: record.config.serverId,
+              name: record.config.name,
+              transport: record.config.transport,
+              trusted: record.config.trusted,
+              enabled: record.config.enabled === true,
+              status: record.status,
+              toolNames: [...record.toolNames].sort(),
+              ...(record.errorCode === undefined ? {} : { errorCode: record.errorCode }),
+            }),
+          ),
       ),
     cancel: ({ idempotencyKey }) =>
       Effect.sync(() => {

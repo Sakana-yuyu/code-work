@@ -208,6 +208,11 @@ import {
   ByokDelegationSubmitRequest,
 } from "./byokDelegation.ts";
 import {
+  CompositionMcpRuntimeRpcError,
+  CompositionMcpRuntimeServerState,
+  CompositionMcpServerId,
+} from "./compositionRuntime.ts";
+import {
   SourceControlCloneRepositoryInput,
   SourceControlCloneRepositoryResult,
   SourceControlDiscoveryResult,
@@ -313,6 +318,10 @@ export const WS_METHODS = {
   serverRemoveKeybinding: "server.removeKeybinding",
   serverGetSettings: "server.getSettings",
   serverUpdateSettings: "server.updateSettings",
+  serverGetMcpServers: "server.getMcpServers",
+  serverConnectMcpServer: "server.connectMcpServer",
+  serverDisconnectMcpServer: "server.disconnectMcpServer",
+  serverRefreshMcpServer: "server.refreshMcpServer",
   serverGetByokSupplierCatalog: "server.getByokSupplierCatalog",
   serverDiscoverByokModels: "server.discoverByokModels",
   serverGetByokBalance: "server.getByokBalance",
@@ -450,6 +459,34 @@ export const WsServerUpdateSettingsRpc = Rpc.make(WS_METHODS.serverUpdateSetting
   payload: Schema.Struct({ patch: ServerSettingsPatch }),
   success: ServerSettings,
   error: Schema.Union([ServerSettingsError, EnvironmentAuthorizationError]),
+});
+
+const CompositionMcpServerControlInput = Schema.Struct({
+  serverId: CompositionMcpServerId,
+});
+
+export const WsServerGetMcpServersRpc = Rpc.make(WS_METHODS.serverGetMcpServers, {
+  payload: Schema.Struct({}),
+  success: Schema.Array(CompositionMcpRuntimeServerState),
+  error: Schema.Union([CompositionMcpRuntimeRpcError, EnvironmentAuthorizationError]),
+});
+
+export const WsServerConnectMcpServerRpc = Rpc.make(WS_METHODS.serverConnectMcpServer, {
+  payload: CompositionMcpServerControlInput,
+  success: CompositionMcpRuntimeServerState,
+  error: Schema.Union([CompositionMcpRuntimeRpcError, EnvironmentAuthorizationError]),
+});
+
+export const WsServerDisconnectMcpServerRpc = Rpc.make(WS_METHODS.serverDisconnectMcpServer, {
+  payload: CompositionMcpServerControlInput,
+  success: CompositionMcpRuntimeServerState,
+  error: Schema.Union([CompositionMcpRuntimeRpcError, EnvironmentAuthorizationError]),
+});
+
+export const WsServerRefreshMcpServerRpc = Rpc.make(WS_METHODS.serverRefreshMcpServer, {
+  payload: CompositionMcpServerControlInput,
+  success: CompositionMcpRuntimeServerState,
+  error: Schema.Union([CompositionMcpRuntimeRpcError, EnvironmentAuthorizationError]),
 });
 
 export const WsServerGetByokSupplierCatalogRpc = Rpc.make(WS_METHODS.serverGetByokSupplierCatalog, {
@@ -1170,6 +1207,10 @@ export const WsRpcGroup = RpcGroup.make(
   WsServerRemoveKeybindingRpc,
   WsServerGetSettingsRpc,
   WsServerUpdateSettingsRpc,
+  WsServerGetMcpServersRpc,
+  WsServerConnectMcpServerRpc,
+  WsServerDisconnectMcpServerRpc,
+  WsServerRefreshMcpServerRpc,
   WsServerGetByokSupplierCatalogRpc,
   WsServerDiscoverByokModelsRpc,
   WsServerGetByokBalanceRpc,

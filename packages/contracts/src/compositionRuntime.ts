@@ -47,6 +47,40 @@ export const CompositionMcpRuntimeServerConfig = Schema.Struct({
 });
 export type CompositionMcpRuntimeServerConfig = typeof CompositionMcpRuntimeServerConfig.Type;
 
+export const CompositionMcpRuntimeServerStatus = Schema.Literals([
+  "registered",
+  "connecting",
+  "connected",
+  "error",
+]);
+export type CompositionMcpRuntimeServerStatus = typeof CompositionMcpRuntimeServerStatus.Type;
+
+/** MCP runtime 的脱敏运行状态；不包含 headers、environment 或 client 实例。 */
+export const CompositionMcpRuntimeServerState = Schema.Struct({
+  serverId: CompositionMcpServerId,
+  name: TrimmedNonEmptyString,
+  transport: CompositionMcpTransport,
+  trusted: Schema.Boolean,
+  enabled: Schema.Boolean,
+  status: CompositionMcpRuntimeServerStatus,
+  toolNames: Schema.Array(TrimmedNonEmptyString),
+  errorCode: Schema.optional(TrimmedNonEmptyString),
+});
+export type CompositionMcpRuntimeServerState = typeof CompositionMcpRuntimeServerState.Type;
+
+export class CompositionMcpRuntimeRpcError extends Schema.TaggedErrorClass<CompositionMcpRuntimeRpcError>()(
+  "CompositionMcpRuntimeRpcError",
+  {
+    serverId: TrimmedNonEmptyString,
+    code: TrimmedNonEmptyString,
+    detail: TrimmedNonEmptyString,
+  },
+) {
+  override get message(): string {
+    return `MCP Runtime 操作失败：${this.serverId}: ${this.code}`;
+  }
+}
+
 const CompositionEventKind = Schema.Literals([
   "composition.task",
   "composition.runtime",
