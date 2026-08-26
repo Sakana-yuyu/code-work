@@ -268,8 +268,12 @@ const unknownFromPayload = (payload: unknown, key: string): unknown => {
 };
 
 const eventIdForFrame = (frame: MulticaWebSocketFrame): EventId => {
+  // 官方 realtime relay 将 event_id 放在 WebSocket 顶层；payload 里的同名
+  // 字段只作为兼容旧 fixture 的降级来源，不能覆盖顶层权威 ID。
   const explicit =
-    recordString(frame.payload, "event_id") ?? recordString(frame.payload, "eventId");
+    frame.eventId ??
+    recordString(frame.payload, "event_id") ??
+    recordString(frame.payload, "eventId");
   if (explicit !== undefined) return EventId.make(explicit);
   const digest = createHash("sha256").update(encodeMulticaWebSocketFrame(frame)).digest("hex");
   return EventId.make(`multica:${digest}`);

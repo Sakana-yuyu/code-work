@@ -155,6 +155,8 @@ export type MulticaTaskCancelAckInput = {
 export type MulticaWebSocketFrame = {
   readonly type: string;
   readonly payload: unknown;
+  /** Multica realtime relay 注入在帧顶层的稳定事件 ID。 */
+  readonly eventId?: string;
 };
 
 export const MulticaDaemonCapability = {
@@ -646,7 +648,13 @@ export const makeMulticaFetchHttpTransport = (
 
 export const encodeMulticaWebSocketFrame = (frame: MulticaWebSocketFrame): string => {
   const type = trimRequired(frame.type, "frame.type");
-  return encodeUnknownJson({ type, payload: frame.payload });
+  return encodeUnknownJson({
+    type,
+    payload: frame.payload,
+    ...(frame.eventId === undefined
+      ? {}
+      : { event_id: trimRequired(frame.eventId, "frame.eventId") }),
+  });
 };
 
 export const decodeMulticaWebSocketFrame = (input: string | Uint8Array): MulticaWebSocketFrame => {
@@ -657,5 +665,13 @@ export const decodeMulticaWebSocketFrame = (input: string | Uint8Array): Multica
   if (typeof record.type !== "string" || record.type.trim().length === 0) {
     throw new Error("WebSocket frame.type 不能为空。");
   }
-  return { type: record.type, payload: record.payload };
+  const eventId = record.event_id ?? record.eventId;
+  if (eventId !== undefined && (typeof eventId !== "string" || eventId.trim().length === 0)) {
+    throw new Error("WebSocket frame.event_id 必须是非空字符串。");
+  }
+  return {
+    type: record.type,
+    payload: record.payload,
+    ...(eventId === undefined ? {} : { eventId }),
+  };
 };

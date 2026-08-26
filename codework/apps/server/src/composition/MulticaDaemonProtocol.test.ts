@@ -254,15 +254,28 @@ describe("MulticaDaemonProtocol", () => {
     );
   });
 
-  it("WebSocket frame 编解码保留事件类型和 capability handshake", () => {
+  it("WebSocket frame 编解码保留事件类型和顶层 event_id", () => {
     const encoded = encodeMulticaWebSocketFrame({
       type: "daemon:heartbeat",
       payload: { runtime_id: "runtime-1" },
+      eventId: "event-1",
     });
     expect(decodeMulticaWebSocketFrame(encoded)).toEqual({
       type: "daemon:heartbeat",
       payload: { runtime_id: "runtime-1" },
+      eventId: "event-1",
     });
+
+    expect(
+      decodeMulticaWebSocketFrame(
+        JSON.stringify({ type: "task:progress", event_id: "relay-event-1", payload: {} }),
+      ),
+    ).toEqual({ type: "task:progress", eventId: "relay-event-1", payload: {} });
+    expect(() =>
+      decodeMulticaWebSocketFrame(
+        JSON.stringify({ type: "task:progress", event_id: "", payload: {} }),
+      ),
+    ).toThrow();
 
     expect(() => decodeMulticaWebSocketFrame("不是 JSON")).toThrow();
   });

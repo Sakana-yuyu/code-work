@@ -290,16 +290,18 @@ describe("MulticaDaemonRuntimeAdapter", () => {
     ]);
   });
 
-  it("只将 task 事实帧投影为 ProviderRuntimeEvent，并对同一原始帧生成稳定 eventId", async () => {
+  it("只将 task 事实帧投影为 ProviderRuntimeEvent，并优先使用顶层 event_id", async () => {
     const frames = [
       { type: "daemon:heartbeat_ack", payload: { runtime_id: daemonRuntimeId, status: "online" } },
       {
         type: "task:progress",
         payload: { task_id: "task-1", summary: "处理中", step: 1, total: 3 },
+        eventId: "relay-event-1",
       },
       {
         type: "task:progress",
         payload: { task_id: "task-1", summary: "处理中", step: 1, total: 3 },
+        eventId: "relay-event-2",
       },
       { type: "task:completed", payload: { task_id: "task-1", output: "完成" } },
     ] as const;
@@ -318,7 +320,9 @@ describe("MulticaDaemonRuntimeAdapter", () => {
       "task.progress",
       "task.completed",
     ]);
-    expect(Array.from(events)[0]?.eventId).toBe(Array.from(events)[1]?.eventId);
+    expect(Array.from(events)[0]?.eventId).not.toBe(Array.from(events)[1]?.eventId);
+    expect(Array.from(events)[0]?.eventId).toBe("relay-event-1");
+    expect(Array.from(events)[1]?.eventId).toBe("relay-event-2");
     expect(Array.from(events)[0]).toMatchObject({
       provider: ProviderDriverKind.make("multica"),
       threadId: ThreadId.make(runtimeId),
