@@ -1,7 +1,9 @@
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
+import * as PubSub from "effect/PubSub";
 import * as Schema from "effect/Schema";
+import type * as Scope from "effect/Scope";
 import type { CompositionAgentDriverProfile, ProviderRuntimeEvent } from "@t3tools/contracts";
 
 import type { CompositionAgentDriver } from "./CompositionOrchestrator.ts";
@@ -35,6 +37,7 @@ export interface CompositionAgentDriverRegistry {
   readonly get: (agentId: string) => Effect.Effect<CompositionAgentDriver | undefined>;
   readonly list: Effect.Effect<ReadonlyArray<CompositionAgentDriver>>;
   readonly listProfiles: Effect.Effect<ReadonlyArray<CompositionAgentDriverProfile>>;
+  readonly subscribeChanges: Effect.Effect<PubSub.Subscription<void>, never, Scope.Scope>;
   readonly resolveRuntimeEvent: (event: ProviderRuntimeEvent) => Effect.Effect<
     | {
         readonly driver: CompositionAgentDriver;
@@ -55,6 +58,7 @@ export class CompositionAgentDriverRegistryService extends Context.Service<
 
 export const makeCompositionAgentDriverRegistry = (): CompositionAgentDriverRegistry => {
   const drivers = new Map<string, CompositionAgentDriver>();
+  const changes = Effect.runSync(PubSub.unbounded<void>());
 
   const missingProfile = (driver: CompositionAgentDriver): CompositionAgentDriverProfile => ({
     schemaVersion: 1,
@@ -95,11 +99,19 @@ export const makeCompositionAgentDriverRegistry = (): CompositionAgentDriverRegi
       return yield* new CompositionAgentDriverAlreadyRegisteredError({ agentId });
     }
     drivers.set(agentId, driver);
+    yield* PubSub.publish(changes, undefined).pipe(Effect.asVoid);
   });
 
   return {
     register,
-    unregister: (agentId) => Effect.sync(() => drivers.delete(agentId)),
+    unregister: (agentId) =>
+      Effect.gen(function* () {
+        const deleted = drivers.delete(agentId);
+        if (deleted) {
+          yield* PubSub.publish(changes, undefined).pipe(Effect.asVoid);
+        }
+        return deleted;
+      }),
     get: (agentId) => Effect.sync(() => drivers.get(agentId)),
     get list() {
       return Effect.sync(() => Array.from(drivers.values()));
@@ -111,6 +123,7 @@ export const makeCompositionAgentDriverRegistry = (): CompositionAgentDriverRegi
           : driver.getProfile(),
       );
     },
+    subscribeChanges: PubSub.subscribe(changes),
     resolveRuntimeEvent: (event) =>
       Effect.sync(() => {
         for (const driver of drivers.values()) {

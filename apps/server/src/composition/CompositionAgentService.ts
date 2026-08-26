@@ -21,6 +21,7 @@ export type CompositionAgentServiceInput = {
   readonly capabilityGrantIds: ReadonlyArray<string>;
   readonly tools: ReadonlyArray<ByokAgentTool>;
   readonly maxRounds?: number | undefined;
+  readonly signal?: AbortSignal | undefined;
 };
 
 export class CompositionAgentServiceError extends Schema.TaggedErrorClass<CompositionAgentServiceError>()(
@@ -55,6 +56,7 @@ export interface CompositionAgentServiceOptions {
   readonly resolveModelDriver: (input: {
     readonly providerInstanceId: string;
     readonly modelId: string;
+    readonly signal?: AbortSignal | undefined;
   }) => Effect.Effect<ByokAgentModelDriver, CompositionAgentServiceError>;
 }
 
@@ -64,6 +66,7 @@ const make = (options: CompositionAgentServiceOptions): CompositionAgentServiceS
       const model = yield* options.resolveModelDriver({
         providerInstanceId: input.providerInstanceId,
         modelId: input.modelId,
+        ...(input.signal === undefined ? {} : { signal: input.signal }),
       });
       const legacyCapabilityIds = input.capabilityGrantIds.filter(
         (grantId) => !grantId.startsWith("grant-"),
@@ -159,7 +162,10 @@ export const makeCompositionAgentServiceFromRegistry = (
                   detail: `Provider instance '${input.providerInstanceId}' has no composition model driver.`,
                 }),
               )
-            : driver({ modelId: input.modelId });
+            : driver({
+                modelId: input.modelId,
+                ...(input.signal === undefined ? {} : { signal: input.signal }),
+              });
         }),
       ),
   });

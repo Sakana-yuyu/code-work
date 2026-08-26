@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vite-plus/test";
 import * as Effect from "effect/Effect";
+import * as Fiber from "effect/Fiber";
+import * as PubSub from "effect/PubSub";
 
 import {
   CompositionAgentDriverAlreadyRegisteredError,
@@ -59,5 +61,23 @@ describe("CompositionAgentDriverRegistry", () => {
         reasonCode: "driver_profile_missing",
       },
     ]);
+  });
+
+  it("在 Driver 增删时发出变更通知，供运行时事件投影器刷新订阅", async () => {
+    const registry = makeCompositionAgentDriverRegistry();
+
+    await expect(
+      Effect.runPromise(
+        Effect.scoped(
+          Effect.gen(function* () {
+            const subscription = yield* registry.subscribeChanges;
+            const notification = yield* PubSub.take(subscription).pipe(Effect.forkChild);
+            yield* registry.register(driver);
+            yield* Fiber.join(notification);
+            return yield* registry.unregister(driver.agentId);
+          }),
+        ),
+      ),
+    ).resolves.toBe(true);
   });
 });

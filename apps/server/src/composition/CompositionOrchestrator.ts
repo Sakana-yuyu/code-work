@@ -13,6 +13,7 @@ import * as Clock from "effect/Clock";
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
+import type * as Stream from "effect/Stream";
 
 import {
   CompositionTaskStore,
@@ -128,6 +129,8 @@ export interface CompositionAgentDriver {
   readonly runtimeId: string;
   /** 返回当前 Driver 已经验证过的能力，不包含本次 Task 的授权结果。 */
   readonly getProfile?: () => Effect.Effect<CompositionAgentDriverProfile>;
+  /** Driver 自己产生的运行时事件；用于不依赖 Provider Session 的本地 Agent Loop。 */
+  readonly streamEvents?: () => Stream.Stream<ProviderRuntimeEvent>;
   readonly startTask: (input: {
     readonly task: CompositionTask;
     readonly run: CompositionTaskRun;

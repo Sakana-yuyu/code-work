@@ -92,6 +92,21 @@ describe("CompositionAgentService", () => {
     expect(capturedRuntimeId).toBe(input.providerInstanceId);
   });
 
+  it("把取消 signal 传递给 Provider Model Driver", async () => {
+    const controller = new AbortController();
+    let receivedSignal: AbortSignal | undefined;
+    const service = makeCompositionAgentService({
+      broker: makeBroker(),
+      resolveModelDriver: (input) => {
+        receivedSignal = input.signal;
+        return Effect.succeed(modelDriver);
+      },
+    });
+
+    await Effect.runPromise(service.run({ ...input, signal: controller.signal }));
+    expect(receivedSignal).toBe(controller.signal);
+  });
+
   it("preserves a resolver error instead of silently falling back to legacy text", async () => {
     const error = new CompositionAgentServiceError({
       code: "agent_loop_unsupported",

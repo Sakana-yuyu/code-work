@@ -66,6 +66,9 @@ export const makeCompositionProviderAgentDriverProjection = (
     const liveAgentIds = new Set<string>();
 
     for (const instance of instances) {
+      // BYOK 使用进程内 Agent Loop，由专用 projection 提供 Driver，避免同一
+      // ProviderInstance 同时注册成会话型 Driver 和 ToolBroker 型 Driver。
+      if (instance.driverKind === "byok") continue;
       const agentId = compositionProviderAgentId(instance.instanceId);
       liveAgentIds.add(agentId);
       const existing = yield* registry.get(agentId);

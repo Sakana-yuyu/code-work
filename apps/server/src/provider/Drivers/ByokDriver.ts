@@ -150,7 +150,8 @@ export const ByokDriver: ProviderDriver<ByokSettings, ByokDriverEnv> = {
         adapter,
         textGeneration,
         composition: {
-          resolveModelDriver: ({ modelId }) => {
+          defaultModelId: effectiveConfig.adapters[0]?.id,
+          resolveModelDriver: ({ modelId, signal }) => {
             const modelAdapter = byokAdapterForModel(effectiveConfig, modelId);
             if (modelAdapter === undefined) {
               return Effect.fail(
@@ -166,6 +167,7 @@ export const ByokDriver: ProviderDriver<ByokSettings, ByokDriverEnv> = {
                 baseURL: modelAdapter.baseURL,
                 apiKey: modelAdapter.apiKey,
                 modelId: modelAdapter.modelId,
+                ...(signal === undefined ? {} : { signal }),
               }),
             );
           },

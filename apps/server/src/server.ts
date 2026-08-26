@@ -60,6 +60,8 @@ import * as CompositionMcpRuntimeAdapter from "./composition/CompositionMcpRunti
 import * as CompositionMcpRuntimeService from "./composition/CompositionMcpRuntimeService.ts";
 import * as CompositionRuntimeToolBridge from "./composition/CompositionRuntimeToolBridge.ts";
 import * as CompositionAgentDriverRegistry from "./composition/CompositionAgentDriverRegistry.ts";
+import * as CompositionAgentService from "./composition/CompositionAgentService.ts";
+import * as CompositionByokAgentDriverProjection from "./composition/CompositionByokAgentDriverRegistry.ts";
 import * as CompositionProviderAgentDriverProjection from "./composition/CompositionProviderAgentDriverRegistry.ts";
 import * as CompositionRuntimeAdapterRegistry from "./composition/CompositionRuntimeAdapterRegistry.ts";
 import * as CompositionRuntimeAgentDriverProjection from "./composition/CompositionRuntimeAgentDriverProjection.ts";
@@ -401,19 +403,26 @@ const ProviderLayerForCompositionAgentDriversLive = ProviderLayerLive.pipe(
   Layer.provideMerge(ProviderInstanceRegistryHydrationLive),
 );
 
+const CompositionAgentServiceLayerLive = CompositionAgentService.layer.pipe(
+  Layer.provideMerge(CompositionToolBrokerLayerLive),
+  Layer.provideMerge(ProviderLayerForCompositionAgentDriversLive),
+);
+
 const CompositionRuntimeSettingsLayerLive = CompositionRuntimeSettings.layer.pipe(
   Layer.provideMerge(ServerSettingsLayerLive),
   Layer.provideMerge(CompositionRuntimeAdapterRegistry.layer),
 );
 
 const CompositionAgentDriverProjectionLayerLive = Layer.mergeAll(
+  CompositionByokAgentDriverProjection.layer,
   CompositionProviderAgentDriverProjection.layer,
   CompositionRuntimeAgentDriverProjection.layer,
 ).pipe(
   Layer.provideMerge(CompositionAgentDriverRegistry.layer),
   Layer.provideMerge(CompositionRuntimeAdapterRegistry.layer),
   Layer.provideMerge(CompositionRuntimeSettingsLayerLive),
-  Layer.provideMerge(ProviderLayerForCompositionAgentDriversLive),
+  Layer.provideMerge(CompositionAgentServiceLayerLive),
+  Layer.provideMerge(CompositionMcpToolRegistryLayerLive),
 );
 
 const CompositionRuntimeDependenciesLive = Layer.empty.pipe(

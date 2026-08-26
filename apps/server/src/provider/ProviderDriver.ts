@@ -76,7 +76,9 @@ export interface ProviderInstance {
   readonly composition?: {
     readonly resolveModelDriver: (input: {
       readonly modelId: string;
+      readonly signal?: AbortSignal | undefined;
     }) => Effect.Effect<ByokAgentModelDriver, CompositionAgentServiceError>;
+    readonly defaultModelId?: string | undefined;
   };
 }
 
