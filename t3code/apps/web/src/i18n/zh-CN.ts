@@ -17,12 +17,12 @@ export const zhCN: Record<string, string> = {
   // ── MCP Runtime 设置 ───────────────────────────────────────
   "MCP servers": "MCP 服务器",
   "MCP runtime": "MCP 运行时",
-  "Trusted MCP servers can expose their discovered tools to T3 Agent Drivers through ToolBroker.":
-    "受信任的 MCP 服务器可以通过 ToolBroker 将发现到的工具提供给 T3 Agent Driver。",
+  "Trusted MCP servers can expose their discovered tools to Code Work Agent Drivers through ToolBroker.":
+    "受信任的 MCP 服务器可以通过 ToolBroker 将发现到的工具提供给 Code Work Agent Driver。",
   "Add server": "添加服务器",
   "No MCP servers configured": "尚未配置 MCP 服务器",
-  "Add a stdio, Streamable HTTP, or SSE server to make its tools available to T3.":
-    "添加 stdio、Streamable HTTP 或 SSE 服务器，使其工具可供 T3 使用。",
+  "Add a stdio, Streamable HTTP, or SSE server to make its tools available to Code Work.":
+    "添加 stdio、Streamable HTTP 或 SSE 服务器，使其工具可供 Code Work 使用。",
   "Server ID": "服务器 ID",
   "Local tools": "本地工具",
   Transport: "传输方式",
@@ -75,7 +75,7 @@ export const zhCN: Record<string, string> = {
   // ── Task Graph 控制面 ──────────────────────────────────────
   "Task Graph": "Task Graph",
   "Refresh Task Graph": "刷新 Task Graph",
-  "T3 multi-agent task control": "T3 多 Agent 任务控制",
+  "Code Work multi-agent task control": "Code Work 多 Agent 任务控制",
   "Create a Leader review task with child Agent Driver nodes, then inspect persisted runs and events.":
     "创建一个由 Leader 审核、多个 Agent Driver 子节点组成的任务图，并查看已持久化的 Run 与事件。",
   "Project ID": "项目 ID",
@@ -84,10 +84,10 @@ export const zhCN: Record<string, string> = {
   "Child schedule": "子任务调度",
   Parallel: "并行",
   Serial: "串行",
-  "This Driver reports a verified T3 ToolBroker handshake surface.":
-    "此 Driver 已报告经过验证的 T3 ToolBroker 握手能力面。",
-  "This Driver does not report a verified T3 ToolBroker handshake; the graph can run, but T3 tools are not granted automatically.":
-    "此 Driver 没有报告经过验证的 T3 ToolBroker 握手；任务图仍可执行，但不会自动获得 T3 工具授权。",
+  "This Driver reports a verified Code Work ToolBroker handshake surface.":
+    "此 Driver 已报告经过验证的 Code Work ToolBroker 握手能力面。",
+  "This Driver does not report a verified Code Work ToolBroker handshake; the graph can run, but Code Work tools are not granted automatically.":
+    "此 Driver 没有报告经过验证的 Code Work ToolBroker 握手；任务图仍可执行，但不会自动获得 Code Work 工具授权。",
   "Leader prompt": "Leader 提示词",
   "Describe the final task for the Leader.": "描述 Leader 最终要完成的任务。",
   "Child tasks": "子任务",
@@ -393,10 +393,10 @@ export const zhCN: Record<string, string> = {
   "Reachable at": "访问地址",
   "Trace ID copied": "已复制 Trace ID",
   "Could not copy trace ID": "无法复制 Trace ID",
-  "T3 Connect": "T3 Connect",
+  "Code Work Connect": "Code Work Connect",
   "Publish agent activity": "发布 Agent 活动",
-  "Send activity from this environment to your mobile clients for push notifications and Live Activities. Works without a T3 Connect tunnel.":
-    "将此环境的活动发送到你的移动客户端，用于推送通知和实时活动。无需 T3 Connect 隧道即可使用。",
+  "Send activity from this environment to your mobile clients for push notifications and Live Activities. Works without a Code Work Connect tunnel.":
+    "将此环境的活动发送到你的移动客户端，用于推送通知和实时活动。无需 Code Work Connect 隧道即可使用。",
   "No saved remote environments": "暂无保存的远程环境",
   "Could not update network access": "无法更新网络访问",
   "Could not set up Tailscale HTTPS": "无法设置 Tailscale HTTPS",
@@ -475,8 +475,8 @@ export const zhCN: Record<string, string> = {
     "当前服务器进程的所有活动子进程的总常驻内存。不包括桌面 shell 和其他父进程。",
   "Server PID": "服务器 PID",
   "Refresh resource history": "刷新资源历史",
-  "Approximate active CPU time for the T3 server root process and its descendants during the selected window. It grows only while sampled processes use CPU and older samples leave as the window moves.":
-    "所选时间窗口内 T3 服务器根进程及其子进程的近似活动 CPU 时间。仅在被采样的进程使用 CPU 时增长，随着窗口移动，较旧的样本会移出。",
+  "Approximate active CPU time for the Code Work server root process and its descendants during the selected window. It grows only while sampled processes use CPU and older samples leave as the window moves.":
+    "所选时间窗口内 Code Work 服务器根进程及其子进程的近似活动 CPU 时间。仅在被采样的进程使用 CPU 时增长，随着窗口移动，较旧的样本会移出。",
   "In-memory process samples retained by the server. This resets when the server restarts.":
     "服务器保留的内存中的进程采样。服务器重启后会重置。",
   Processes: "进程",

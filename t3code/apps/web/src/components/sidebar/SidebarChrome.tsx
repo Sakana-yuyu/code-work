@@ -91,7 +91,7 @@ function SidebarBrand({ onBackdrop }: { onBackdrop: boolean }) {
       )}
       to="/"
     >
-      <T3Wordmark />
+      <CodeworkWordmark />
       <span
         className={cn(
           "-translate-y-px truncate text-sm font-medium tracking-tight",
@@ -104,7 +104,7 @@ function SidebarBrand({ onBackdrop }: { onBackdrop: boolean }) {
   );
 }
 
-function T3Wordmark() {
+function CodeworkWordmark() {
   return (
     <svg
       aria-label="Code Work"

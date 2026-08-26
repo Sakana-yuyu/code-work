@@ -82,7 +82,7 @@ const makeDependencies = (
   ...overrides,
 });
 
-it.effect("通过 T3 scope 校验后把请求转成 canonical ToolBroker result", () =>
+it.effect("通过 Code Work scope 校验后把请求转成 canonical ToolBroker result", () =>
   Effect.gen(function* () {
     const bridge = makeCompositionRuntimeToolBridge(makeDependencies());
 

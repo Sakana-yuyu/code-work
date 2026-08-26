@@ -24,7 +24,7 @@ export function projectScriptRuntimeEnv(
     T3CODE_PROJECT_ROOT: input.project.cwd,
   };
   if (input.worktreePath) {
-    env.T3CODE_WORKTREE_PATH = input.worktreePath;
+    env.CODEWORK_WORKTREE_PATH = input.worktreePath;
   }
   if (input.extraEnv) {
     return { ...env, ...input.extraEnv };

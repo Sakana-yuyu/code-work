@@ -923,16 +923,16 @@ describe("MessagesTimeline", () => {
               createdAt: "2026-03-17T19:12:28.000Z",
               label: "Updated files",
               tone: "tool",
-              changedFiles: ["C:/Users/mike/dev-stuff/t3code/apps/web/src/session-logic.ts"],
+              changedFiles: ["C:/Users/mike/dev-stuff/codework/apps/web/src/session-logic.ts"],
             },
           },
         ]}
-        workspaceRoot="C:/Users/mike/dev-stuff/t3code"
+        workspaceRoot="C:/Users/mike/dev-stuff/codework"
       />,
     );
 
     expect(markup).toContain("Changed 1 file");
-    expect(markup).not.toContain("C:/Users/mike/dev-stuff/t3code/apps/web/src/session-logic.ts");
+    expect(markup).not.toContain("C:/Users/mike/dev-stuff/codework/apps/web/src/session-logic.ts");
   });
 
   it("keeps mixed-success tool groups neutral", () => {

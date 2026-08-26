@@ -557,7 +557,7 @@ const make = Effect.gen(function* () {
   });
 
   // A `git checkout` run inside a thread's dedicated worktree (by an agent or
-  // the user) bypasses T3's commands, so the thread's recorded branch goes
+  // the user) bypasses Code Work's commands, so the thread's recorded branch goes
   // stale. Since #4460 the client only attributes PR state to a thread when
   // the checked-out branch equals the recorded one, so stale metadata silently
   // orphans the thread's PR. Follow the drift here: adopt the checked-out

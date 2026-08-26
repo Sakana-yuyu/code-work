@@ -97,7 +97,7 @@ describe("projectScripts helpers", () => {
 
     expect(env).toMatchObject({
       T3CODE_PROJECT_ROOT: "/repo",
-      T3CODE_WORKTREE_PATH: "/repo/worktree-a",
+      CODEWORK_WORKTREE_PATH: "/repo/worktree-a",
     });
   });
 
@@ -112,7 +112,7 @@ describe("projectScripts helpers", () => {
 
     expect(env.T3CODE_PROJECT_ROOT).toBe("/custom-root");
     expect(env.CUSTOM_FLAG).toBe("1");
-    expect(env.T3CODE_WORKTREE_PATH).toBeUndefined();
+    expect(env.CODEWORK_WORKTREE_PATH).toBeUndefined();
   });
 
   it("prefers the worktree path for script cwd resolution", () => {

@@ -36,4 +36,4 @@ export interface CompositionTaskInputStoreShape {
 export class CompositionTaskInputStore extends Context.Service<
   CompositionTaskInputStore,
   CompositionTaskInputStoreShape
->()("t3/persistence/Services/CompositionTaskInputStore") {}
+>()("codework/persistence/Services/CompositionTaskInputStore") {}

@@ -114,14 +114,14 @@ describe("buildWslNodeEnvPreamble", () => {
   it("passes the required Node engine range into the shared resolver", () => {
     const preamble = buildWslNodeEnvPreamble("^22.16 || ^23.11 || >=24.10");
 
-    expect(preamble).toContain("T3_NODE_ENGINE_RANGE='^22.16 || ^23.11 || >=24.10'");
-    expect(preamble.indexOf("T3_NODE_ENGINE_RANGE=")).toBeLessThan(
+    expect(preamble).toContain("CODEWORK_NODE_ENGINE_RANGE='^22.16 || ^23.11 || >=24.10'");
+    expect(preamble.indexOf("CODEWORK_NODE_ENGINE_RANGE=")).toBeLessThan(
       preamble.lastIndexOf("ensure_remote_node_path || true"),
     );
   });
 
   it("keeps the shared resolver permissive when no Node engine range is provided", () => {
-    expect(buildWslNodeEnvPreamble()).toContain("T3_NODE_ENGINE_RANGE=''");
+    expect(buildWslNodeEnvPreamble()).toContain("CODEWORK_NODE_ENGINE_RANGE=''");
   });
 });
 

@@ -1558,8 +1558,8 @@ function PullRequestsRouteView() {
         {rightPanelState.isOpen && activePullRequestSurface && panelEnvironmentId !== null ? (
           <RightPanelTabs
             mode="inline"
-            widthStorageKey={canonicalStorageKey("t3code:pull-request-panel-width")}
-            legacyWidthStorageKey="t3code:pull-request-panel-width"
+            widthStorageKey={canonicalStorageKey("codework:pull-request-panel-width")}
+            legacyWidthStorageKey="codework:pull-request-panel-width"
             // Default to roughly half the viewport: the PR list needs more
             // room than a chat, so the 540px chat-preview default squashes
             // it. SSR has no window, so fall back to a reasonable width.

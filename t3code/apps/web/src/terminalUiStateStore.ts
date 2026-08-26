@@ -31,7 +31,7 @@ interface ThreadTerminalUiState {
   activeTerminalGroupId: string;
 }
 
-const LEGACY_TERMINAL_UI_STATE_STORAGE_KEY = "t3code:terminal-state:v1";
+const LEGACY_TERMINAL_UI_STATE_STORAGE_KEY = "codework:terminal-state:v1";
 const TERMINAL_UI_STATE_STORAGE_KEY = canonicalStorageKey(LEGACY_TERMINAL_UI_STATE_STORAGE_KEY);
 
 interface PersistedTerminalUiStateStoreState {

@@ -20,15 +20,15 @@ const config = RelayConfiguration.RelayConfiguration.of({
     teamId: "team-id",
     keyId: "key-id",
     privateKey: Redacted.make("private-key"),
-    bundleId: "com.t3tools.t3code.dev",
+    bundleId: "com.t3tools.codework.dev",
   },
   apnsDeliveryJobSigningSecret: Redacted.make("job-secret"),
   clerkSecretKey: Redacted.make("clerk-secret"),
   clerkPublishableKey: "pk_test_test",
-  clerkJwtAudience: "t3-code-relay",
+  clerkJwtAudience: "code-work-relay",
   cloudMintPrivateKey: Redacted.make("cloud-private-key"),
   cloudMintPublicKey: "cloud-public-key",
-  managedEndpointBaseDomain: "t3code.test",
+  managedEndpointBaseDomain: "codework.test",
   managedEndpointNamespace: "dev_julius",
 });
 
@@ -292,7 +292,7 @@ function expectedManagedHostname(environmentId: string, userId = "user_ABC"): st
     .update(`dev_julius:${userId}:${environmentId}`)
     .digest("hex")
     .slice(0, 16);
-  return `dev-julius-${hash}.t3code.test`;
+  return `dev-julius-${hash}.codework.test`;
 }
 
 function expectedManagedTunnelName(environmentId: string, userId = "user_ABC"): string {
@@ -510,7 +510,7 @@ describe("ManagedEndpointProvider", () => {
       expect(configBody).toMatchObject({
         ingress: [
           {
-            hostname: expect.stringMatching(/^dev-julius-[a-f0-9]{16}\.t3code\.test$/),
+            hostname: expect.stringMatching(/^dev-julius-[a-f0-9]{16}\.codework\.test$/),
           },
           { service: "http_status:404" },
         ],

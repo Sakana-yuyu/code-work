@@ -6,7 +6,7 @@ const status = {
   supported: true,
   installed: true,
   current: true,
-  unitPath: "/home/me/.config/systemd/user/t3code.service",
+  unitPath: "/home/me/.config/systemd/user/codework.service",
   logPath: "/home/me/.t3/userdata/logs/boot-service.log",
 } as const;
 
@@ -14,9 +14,9 @@ it("reports the installed service version and host paths", () => {
   assert.equal(
     formatServiceStatus(status, "0.0.29"),
     [
-      "T3 Code service",
+      "Code Work service",
       "  Status: installed · t3@0.0.29",
-      "  Unit: /home/me/.config/systemd/user/t3code.service",
+      "  Unit: /home/me/.config/systemd/user/codework.service",
       "  Logs: /home/me/.t3/userdata/logs/boot-service.log",
     ].join("\n"),
   );

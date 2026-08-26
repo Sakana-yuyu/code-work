@@ -1,6 +1,6 @@
 import type { APIRoute } from "astro";
 
-import { buildT3ProjectFileJsonSchema } from "@codework/shared/t3ProjectFile";
+import { buildT3ProjectFileJsonSchema } from "@codework/shared/codeworkProjectFile";
 
 // Rendered at build time; published at https://t3.codes/schema/t3.json so
 // t3.json files can reference it via "$schema" for editor/LSP support.

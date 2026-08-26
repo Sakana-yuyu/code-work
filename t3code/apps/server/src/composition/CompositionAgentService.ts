@@ -45,7 +45,7 @@ export interface CompositionAgentServiceShape {
 export class CompositionAgentService extends Context.Service<
   CompositionAgentService,
   CompositionAgentServiceShape
->()("t3/composition/CompositionAgentService") {}
+>()("codework/composition/CompositionAgentService") {}
 
 export interface CompositionAgentServiceOptions {
   readonly broker: ToolBroker.ToolBroker["Service"];

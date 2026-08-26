@@ -59,7 +59,7 @@ describe("CompositionProbeRegistry", () => {
     ).resolves.toMatchObject({ profile: "vscode_ide", status: "ready" });
   });
 
-  it("keeps Multica daemon availability separate from T3 orchestration", async () => {
+  it("keeps Multica daemon availability separate from Code Work orchestration", async () => {
     const registry = makeCompositionProbeRegistry({ multica: [] });
 
     await expect(

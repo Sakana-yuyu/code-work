@@ -4,10 +4,10 @@ import { describe, expect, it } from "vite-plus/test";
 import {
   buildT3ProjectFileJsonSchema,
   parseT3ProjectFile,
-  T3ProjectFileFromJson,
-} from "./t3ProjectFile.ts";
+  CodeworkProjectFileFromJson,
+} from "./codeworkProjectFile.ts";
 
-const decodeJson = Schema.decodeUnknownSync(T3ProjectFileFromJson);
+const decodeJson = Schema.decodeUnknownSync(CodeworkProjectFileFromJson);
 
 describe("buildT3ProjectFileJsonSchema", () => {
   it("emits a draft 2020-12 schema with the published $id", () => {
@@ -59,7 +59,7 @@ describe("buildT3ProjectFileJsonSchema", () => {
   });
 });
 
-describe("T3ProjectFileFromJson", () => {
+describe("CodeworkProjectFileFromJson", () => {
   it("decodes lenient JSONC with comments and trailing commas", () => {
     const decoded = decodeJson(`{
       // team scripts

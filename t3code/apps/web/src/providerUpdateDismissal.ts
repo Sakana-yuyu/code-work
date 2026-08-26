@@ -8,7 +8,7 @@ import {
 } from "./hooks/useLocalStorage";
 import { canonicalStorageKey } from "./persistenceStorage";
 
-export const LEGACY_PROVIDER_UPDATE_DISMISSALS_STORAGE_KEY = "t3code:provider-update-dismissals:v1";
+export const LEGACY_PROVIDER_UPDATE_DISMISSALS_STORAGE_KEY = "codework:provider-update-dismissals:v1";
 export const PROVIDER_UPDATE_DISMISSALS_STORAGE_KEY = canonicalStorageKey(
   LEGACY_PROVIDER_UPDATE_DISMISSALS_STORAGE_KEY,
 );

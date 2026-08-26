@@ -240,26 +240,26 @@ export type CompositionIdeResolveResult = typeof CompositionIdeResolveResult.Typ
 const CompositionMulticaProbeStatus = Schema.Literals(["online", "offline", "unstable"]);
 export type CompositionMulticaProbeStatus = typeof CompositionMulticaProbeStatus.Type;
 
-/** Multica HTTP Header 与 T3 provider environment secret 的绑定。 */
+/** Multica HTTP Header 与 Code Work provider environment secret 的绑定。 */
 export const CompositionMulticaHeaderBinding = Schema.Struct({
   headerName: TrimmedNonEmptyString,
   environmentVariable: TrimmedNonEmptyString,
 });
 export type CompositionMulticaHeaderBinding = typeof CompositionMulticaHeaderBinding.Type;
 
-/** T3 assignee 到 Multica Agent/Squad UUID 的显式映射。 */
+/** Code Work assignee 到 Multica Agent/Squad UUID 的显式映射。 */
 export const CompositionMulticaAssigneeRoute = Schema.Struct({
-  t3AgentId: TrimmedNonEmptyString,
-  t3SquadId: Schema.optional(TrimmedNonEmptyString),
+  codeworkAgentId: TrimmedNonEmptyString,
+  codeworkSquadId: Schema.optional(TrimmedNonEmptyString),
   workspaceId: TrimmedNonEmptyString,
   multicaAgentId: Schema.optional(TrimmedNonEmptyString),
   multicaSquadId: Schema.optional(TrimmedNonEmptyString),
   /** 与 Multica Agent mcp_config 共用的静态 Bearer token，仅保存环境变量名。 */
-  t3McpCredentialEnvironmentVariable: Schema.optional(TrimmedNonEmptyString),
+  codeworkMcpCredentialEnvironmentVariable: Schema.optional(TrimmedNonEmptyString),
 });
 export type CompositionMulticaAssigneeRoute = typeof CompositionMulticaAssigneeRoute.Type;
 
-/** T3 侧可选的 Multica 执行扩展；只保存命令配置，不保存任何凭据。 */
+/** Code Work 侧可选的 Multica 执行扩展；只保存命令配置，不保存任何凭据。 */
 export const CompositionMulticaTaskExecutionExtension = Schema.Struct({
   command: TrimmedNonEmptyString,
   args: Schema.Array(Schema.String).pipe(Schema.withDecodingDefault(Effect.succeed([]))),
@@ -292,7 +292,7 @@ export const CompositionMulticaRuntimeConfig = Schema.Struct({
   ),
   supportsResume: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
   supportsMcp: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
-  /** F2 daemon extension 使用的每 Run T3 MCP endpoint。 */
+  /** F2 daemon extension 使用的每 Run Code Work MCP endpoint。 */
   taskMcpEndpoint: Schema.optional(TrimmedNonEmptyString),
   /** F2 daemon extension 的一次性进程入口；命令本身不承载凭据。 */
   taskExecutionExtension: Schema.optional(CompositionMulticaTaskExecutionExtension),
@@ -302,7 +302,7 @@ export const CompositionMulticaRuntimeConfig = Schema.Struct({
 });
 export type CompositionMulticaRuntimeConfig = typeof CompositionMulticaRuntimeConfig.Type;
 
-/** Multica daemon 适配器的能力探测结果，T3 仍然保留事实源。 */
+/** Multica daemon 适配器的能力探测结果，Code Work 仍然保留事实源。 */
 export const CompositionMulticaProbeResult = Schema.Struct({
   runtimeId: TrimmedNonEmptyString,
   status: CompositionMulticaProbeStatus,

@@ -5,7 +5,7 @@ pkgver=0.0.34_nightly.20260814.1095
 pkgrel=1
 pkgdesc='Nightly desktop control surface for local coding agents'
 arch=('x86_64')
-url='https://github.com/pingdotgg/t3code'
+url='https://github.com/Sakana-yuyu/code-work'
 license=('MIT')
 depends=(
   'alsa-lib'
@@ -39,16 +39,16 @@ depends=(
   'zlib'
 )
 optdepends=('openai-codex: use the system-installed Codex CLI')
-provides=("code-work-nightly=$pkgver" "t3code-nightly=$pkgver")
-conflicts=('t3code-nightly-bin' 't3code-nightly' 't3code')
-replaces=('t3code-nightly-bin')
+provides=("code-work-nightly=$pkgver" "codework-nightly=$pkgver")
+conflicts=('codework-nightly-bin' 'codework-nightly' 'codework')
+replaces=('codework-nightly-bin')
 options=('!debug' '!strip')
 
 _upstream_version="${pkgver/_nightly./-nightly.}"
 _appimage="Code-Work-${_upstream_version}-x86_64.AppImage"
 source=(
-  "$_appimage::https://github.com/pingdotgg/t3code/releases/download/v${_upstream_version}/$_appimage"
-  "${pkgname}-${pkgver}-LICENSE::https://raw.githubusercontent.com/pingdotgg/t3code/v${_upstream_version}/LICENSE"
+  "$_appimage::https://github.com/Sakana-yuyu/code-work/releases/download/v${_upstream_version}/$_appimage"
+  "${pkgname}-${pkgver}-LICENSE::https://raw.githubusercontent.com/Sakana-yuyu/code-work/v${_upstream_version}/LICENSE"
 )
 sha256sums=(
   'c4dea5bba9ed0b51b2f60f2d4a4867e61d62b57c50ea66f2792a73112e054566' # AppImage
@@ -77,12 +77,12 @@ package() {
 #!/bin/sh
 exec /opt/code-work-nightly-bin/AppRun "$@"
 EOF
-  ln -s code-work-nightly "$pkgdir/usr/bin/t3code-nightly"
-  ln -s code-work-nightly "$pkgdir/usr/bin/t3-code-nightly-desktop"
+  ln -s code-work-nightly "$pkgdir/usr/bin/codework-nightly"
+  ln -s code-work-nightly "$pkgdir/usr/bin/code-work-nightly-desktop"
 
   # Icon lookup only sees sizes registered in hicolor's index.theme (max 512x512).
   local icon size_dir icon_name
-  for icon_name in code-work-nightly.png code-work.png t3code.png; do
+  for icon_name in code-work-nightly.png code-work.png codework.png; do
     for icon in "$srcdir"/squashfs-root/usr/share/icons/hicolor/*/apps/$icon_name; do
       [[ -f "$icon" ]] || continue
       size_dir="${icon%/apps/$icon_name}"
@@ -102,7 +102,7 @@ Type=Application
 Icon=code-work-nightly
 StartupWMClass=code-work
 Categories=Development;
-MimeType=x-scheme-handler/codework;x-scheme-handler/codework-dev;x-scheme-handler/codework-preview;x-scheme-handler/t3code;x-scheme-handler/t3code-dev;x-scheme-handler/t3code-preview;
+MimeType=x-scheme-handler/codework;x-scheme-handler/codework-dev;x-scheme-handler/codework-preview;x-scheme-handler/codework;x-scheme-handler/codework-dev;x-scheme-handler/codework-preview;
 EOF
 
   install -Dm644 "$srcdir/${pkgname}-${pkgver}-LICENSE" \

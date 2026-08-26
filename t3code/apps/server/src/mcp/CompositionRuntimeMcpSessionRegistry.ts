@@ -44,7 +44,7 @@ export interface CompositionRuntimeMcpSessionRegistryShape {
 export class CompositionRuntimeMcpSessionRegistry extends Context.Service<
   CompositionRuntimeMcpSessionRegistry,
   CompositionRuntimeMcpSessionRegistryShape
->()("t3/mcp/CompositionRuntimeMcpSessionRegistry") {}
+>()("codework/mcp/CompositionRuntimeMcpSessionRegistry") {}
 
 type CredentialRecord = {
   readonly tokenHash: string;

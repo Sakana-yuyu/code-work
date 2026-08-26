@@ -144,9 +144,9 @@ function ProfileSelect({
 function DriverBoundaryNotice({ profile }: { readonly profile: CompositionAgentDriverProfile }) {
   const hasToolBridge = profile.supportsToolBroker && profile.supportsCapabilityHandshake;
   const message = hasToolBridge
-    ? t("This Driver reports a verified T3 ToolBroker handshake surface.")
+    ? t("This Driver reports a verified Code Work ToolBroker handshake surface.")
     : t(
-        "This Driver does not report a verified T3 ToolBroker handshake; the graph can run, but T3 tools are not granted automatically.",
+        "This Driver does not report a verified Code Work ToolBroker handshake; the graph can run, but Code Work tools are not granted automatically.",
       );
 
   return (
@@ -464,7 +464,7 @@ export function TaskGraphPanel() {
       }
     >
       <SettingsRow
-        title={t("T3 multi-agent task control")}
+        title={t("Code Work multi-agent task control")}
         description={t(
           "Create a Leader review task with child Agent Driver nodes, then inspect persisted runs and events.",
         )}

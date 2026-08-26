@@ -121,7 +121,7 @@ export type CompositionMcpToolRegistryShape = {
 export class CompositionMcpToolRegistry extends Context.Service<
   CompositionMcpToolRegistry,
   CompositionMcpToolRegistryShape
->()("t3/composition/CompositionMcpToolRegistry") {}
+>()("codework/composition/CompositionMcpToolRegistry") {}
 
 type StoredRegistration = CompositionMcpToolRegistration & {
   readonly canonicalToolName: string;

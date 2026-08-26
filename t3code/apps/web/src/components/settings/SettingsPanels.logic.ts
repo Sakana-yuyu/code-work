@@ -32,7 +32,7 @@ export function projectGroupingModeFromToggle(
   return lastEnabledMode === "repository_path" ? "repository_path" : "repository";
 }
 
-const LEGACY_LAST_ENABLED_PROJECT_GROUPING_MODE_KEY = "t3code:last-enabled-project-grouping-mode";
+const LEGACY_LAST_ENABLED_PROJECT_GROUPING_MODE_KEY = "codework:last-enabled-project-grouping-mode";
 const LAST_ENABLED_PROJECT_GROUPING_MODE_KEY = canonicalStorageKey(
   LEGACY_LAST_ENABLED_PROJECT_GROUPING_MODE_KEY,
 );

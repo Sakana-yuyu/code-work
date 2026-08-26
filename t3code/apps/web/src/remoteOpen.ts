@@ -182,7 +182,7 @@ export async function openRemoteEditorUrl(url: string): Promise<boolean> {
  * until the first remote open fires (we cannot observe SSH success from here,
  * so first click is the dismiss signal).
  */
-const LEGACY_REMOTE_OPEN_HINT_KEY = "t3code:remote-open-hint-seen";
+const LEGACY_REMOTE_OPEN_HINT_KEY = "codework:remote-open-hint-seen";
 const REMOTE_OPEN_HINT_KEY = canonicalStorageKey(LEGACY_REMOTE_OPEN_HINT_KEY);
 
 export function useRemoteOpenHint(): readonly [seen: boolean, markSeen: () => void] {

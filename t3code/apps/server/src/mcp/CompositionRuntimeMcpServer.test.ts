@@ -55,7 +55,7 @@ const nonRevokingRegistry = Layer.succeed(
   },
 );
 
-it.effect("从 MCP 凭据注入可信 Runtime 身份并调用 T3 Tool Bridge", () => {
+it.effect("从 MCP 凭据注入可信 Runtime 身份并调用 Code Work Tool Bridge", () => {
   const invoke = vi.fn((input: CompositionRuntimeToolBridge.CompositionRuntimeToolInvocation) =>
     Effect.succeed({
       invocationId: `invocation-${input.idempotencyKey}`,

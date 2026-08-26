@@ -11,11 +11,11 @@ import {
   outcomeFromExit,
 } from "./Attributes.ts";
 
-export const rpcRequestsTotal = Metric.counter("t3_rpc_requests_total", {
+export const rpcRequestsTotal = Metric.counter("codework_rpc_requests_total", {
   description: "Total RPC requests handled by the websocket RPC server.",
 });
 
-export const rpcRequestDuration = Metric.timer("t3_rpc_request_duration", {
+export const rpcRequestDuration = Metric.timer("codework_rpc_request_duration", {
   description: "RPC request handling duration.",
 });
 

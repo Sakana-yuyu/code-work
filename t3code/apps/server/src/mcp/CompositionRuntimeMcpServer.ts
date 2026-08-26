@@ -17,7 +17,7 @@ export const COMPOSITION_RUNTIME_MCP_PATH = "/mcp/composition-runtime";
 export class CompositionRuntimeMcpInvocationContext extends Context.Service<
   CompositionRuntimeMcpInvocationContext,
   CompositionRuntimeMcpSessionRegistry.CompositionRuntimeMcpBinding
->()("t3/mcp/CompositionRuntimeMcpServer/CompositionRuntimeMcpInvocationContext") {}
+>()("codework/mcp/CompositionRuntimeMcpServer/CompositionRuntimeMcpInvocationContext") {}
 
 const CompositionRuntimeMcpInvokeInput = Schema.Struct({
   canonicalToolName: TrimmedNonEmptyString,
@@ -35,7 +35,7 @@ const CompositionRuntimeMcpCancelInput = Schema.Struct({
 
 export const CompositionRuntimeInvokeTool = Tool.make("t3_runtime_invoke", {
   description:
-    "Invoke one T3 canonical tool through the current Runtime Task/Run/Agent capability binding.",
+    "Invoke one Code Work canonical tool through the current Runtime Task/Run/Agent capability binding.",
   parameters: CompositionRuntimeMcpInvokeInput,
   success: CompositionToolResult,
   failure: Schema.Never,
@@ -45,13 +45,13 @@ export const CompositionRuntimeInvokeTool = Tool.make("t3_runtime_invoke", {
     CompositionRuntimeToolBridge.CompositionRuntimeToolBridgeService,
   ],
 })
-  .annotate(Tool.Title, "Invoke T3 runtime tool")
+  .annotate(Tool.Title, "Invoke Code Work runtime tool")
   .annotate(Tool.OpenWorld, true)
   .annotate(Tool.Destructive, true);
 
 export const CompositionRuntimeCancelTool = Tool.make("t3_runtime_cancel", {
   description:
-    "Cancel one in-flight T3 canonical tool invocation in the current Runtime Task/Run/Agent binding.",
+    "Cancel one in-flight Code Work canonical tool invocation in the current Runtime Task/Run/Agent binding.",
   parameters: CompositionRuntimeMcpCancelInput,
   success: CompositionToolResult,
   failure: Schema.Never,
@@ -60,7 +60,7 @@ export const CompositionRuntimeCancelTool = Tool.make("t3_runtime_cancel", {
     CompositionRuntimeToolBridge.CompositionRuntimeToolBridgeService,
   ],
 })
-  .annotate(Tool.Title, "Cancel T3 runtime tool")
+  .annotate(Tool.Title, "Cancel Code Work runtime tool")
   .annotate(Tool.Destructive, false)
   .annotate(Tool.Idempotent, true);
 
@@ -181,7 +181,7 @@ const RuntimeMcpAuthMiddlewareLive = HttpRouter.middleware<{
 }>()(makeRuntimeMcpAuthMiddleware).layer;
 
 const McpTransportLive = McpServer.layerHttp({
-  name: "T3 Composition Runtime",
+  name: "Code Work Composition Runtime",
   version: packageJson.version,
   path: COMPOSITION_RUNTIME_MCP_PATH,
   protocols: [McpProtocol.v2025_06_18],

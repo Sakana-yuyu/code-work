@@ -42,7 +42,7 @@ export type CompositionMcpRuntimeServiceShape = {
 export class CompositionMcpRuntimeService extends Context.Service<
   CompositionMcpRuntimeService,
   CompositionMcpRuntimeServiceShape
->()("t3/composition/CompositionMcpRuntimeService") {}
+>()("codework/composition/CompositionMcpRuntimeService") {}
 
 type ManagedServer = {
   readonly fingerprint: string;

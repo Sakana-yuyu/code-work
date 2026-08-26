@@ -31,7 +31,7 @@ export interface CompositionOrchestratorServiceShape {
 export class CompositionOrchestratorService extends Context.Service<
   CompositionOrchestratorService,
   CompositionOrchestratorServiceShape
->()("t3/composition/CompositionOrchestratorService") {}
+>()("codework/composition/CompositionOrchestratorService") {}
 
 const live = Effect.gen(function* () {
   const store = yield* CompositionTaskStore;

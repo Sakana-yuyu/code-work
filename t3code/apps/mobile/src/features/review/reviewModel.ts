@@ -318,7 +318,7 @@ export function getReviewFilePreviewState(file: ReviewRenderableFile): ReviewFil
 
 // The flattened review list item model is inspired by pierre/diffs' iterator-first
 // virtualization architecture, adapted here for React Native virtualization.
-// Original project: https://github.com/pingdotgg/pierre/tree/main/packages/diffs
+// Original project: https://github.com/Sakana-yuyu/pierre/tree/main/packages/diffs
 // Reference files:
 // - src/utils/iterateOverDiff.ts
 // - src/components/VirtualizedFileDiff.ts

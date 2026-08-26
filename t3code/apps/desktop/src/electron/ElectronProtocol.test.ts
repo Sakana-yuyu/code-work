@@ -44,11 +44,11 @@ describe("ElectronProtocol", () => {
 
           const response = yield* Effect.promise(() =>
             handler!(
-              new Request("t3code-dev://app/api/health?verbose=1", {
+              new Request("codework-dev://app/api/health?verbose=1", {
                 headers: {
                   accept: "application/json",
-                  origin: "t3code-dev://app",
-                  referer: "t3code-dev://app/",
+                  origin: "codework-dev://app",
+                  referer: "codework-dev://app/",
                   "sec-fetch-site": "same-origin",
                 },
               }),
@@ -65,18 +65,18 @@ describe("ElectronProtocol", () => {
           );
           assert.include(
             response.headers.get("content-security-policy") ?? "",
-            "img-src 'self' codework-dev: t3code-dev: blob: data: http: https:",
+            "img-src 'self' codework-dev: codework-dev: blob: data: http: https:",
           );
           assert.include(
             response.headers.get("content-security-policy") ?? "",
-            "font-src 'self' codework-dev: t3code-dev: data:",
+            "font-src 'self' codework-dev: codework-dev: data:",
           );
         }),
       );
 
       assert.deepEqual(
         handleMock.mock.calls.map((call) => call[0]),
-        ["codework-dev", "t3code-dev"],
+        ["codework-dev", "codework-dev"],
       );
       assert.equal(netFetchMock.mock.calls[0]?.[0], "http://127.0.0.1:3773/api/health?verbose=1");
       const forwardedHeaders = new Headers(netFetchMock.mock.calls[0]?.[1]?.headers);
@@ -84,7 +84,7 @@ describe("ElectronProtocol", () => {
       assert.isNull(forwardedHeaders.get("origin"));
       assert.isNull(forwardedHeaders.get("referer"));
       assert.isNull(forwardedHeaders.get("sec-fetch-site"));
-      assert.deepEqual(unhandleMock.mock.calls, [["codework-dev"], ["t3code-dev"]]);
+      assert.deepEqual(unhandleMock.mock.calls, [["codework-dev"], ["codework-dev"]]);
     }).pipe(Effect.provide(ElectronProtocol.layer)),
   );
 
@@ -99,12 +99,12 @@ describe("ElectronProtocol", () => {
         Effect.gen(function* () {
           const protocol = yield* ElectronProtocol.ElectronProtocol;
           yield* protocol.registerDesktopProtocol({
-            scheme: "t3code",
+            scheme: "codework",
             targetOrigin: new URL("http://127.0.0.1:3773/"),
             backendOrigin: new URL("http://127.0.0.1:3773/"),
             clerkFrontendApiHostname: undefined,
           });
-          return yield* Effect.promise(() => handler!(new Request("t3code://other/")));
+          return yield* Effect.promise(() => handler!(new Request("codework://other/")));
         }),
       );
 
@@ -132,7 +132,7 @@ describe("ElectronProtocol", () => {
             backendOrigin: new URL("http://127.0.0.1:3773/"),
             clerkFrontendApiHostname: undefined,
           });
-          return yield* Effect.promise(() => handler!(new Request("t3code-dev://app/")));
+          return yield* Effect.promise(() => handler!(new Request("codework-dev://app/")));
         }),
       );
 
@@ -176,7 +176,7 @@ describe("ElectronProtocol", () => {
       const exit = yield* Effect.exit(
         Effect.scoped(
           protocol.registerDesktopProtocol({
-            scheme: "t3code",
+            scheme: "codework",
             targetOrigin: new URL("http://127.0.0.1:3773/"),
             backendOrigin: new URL("http://127.0.0.1:3773/"),
             clerkFrontendApiHostname: undefined,
@@ -197,7 +197,7 @@ describe("ElectronProtocol", () => {
 
   it("keeps executable sources host-restricted while allowing runtime network resources", () => {
     const policy = ElectronProtocol.makeDesktopContentSecurityPolicy({
-      scheme: "t3code",
+      scheme: "codework",
       targetOrigin: new URL("http://127.0.0.1:3773/"),
       backendOrigin: new URL("http://127.0.0.1:3773/"),
       clerkFrontendApiHostname: "clerk.t3.codes",
@@ -220,12 +220,12 @@ describe("ElectronProtocol", () => {
     assert.deepEqual(directives["img-src"], [
       "'self'",
       "codework:",
-      "t3code:",
+      "codework:",
       "blob:",
       "data:",
       "http:",
       "https:",
     ]);
-    assert.deepEqual(directives["font-src"], ["'self'", "codework:", "t3code:", "data:"]);
+    assert.deepEqual(directives["font-src"], ["'self'", "codework:", "codework:", "data:"]);
   });
 });

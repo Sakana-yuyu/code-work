@@ -143,7 +143,7 @@ describe("ProjectSetupScriptRunner", () => {
           worktreePath: "/repo/worktrees/a",
           env: {
             T3CODE_PROJECT_ROOT: "/repo/project",
-            T3CODE_WORKTREE_PATH: "/repo/worktrees/a",
+            CODEWORK_WORKTREE_PATH: "/repo/worktrees/a",
           },
         });
         expect(write).toHaveBeenCalledWith({

@@ -61,7 +61,7 @@ describe("GitHubCli.layer", () => {
             JSON.stringify({
               number: 42,
               title: "Add PR thread creation",
-              url: "https://github.com/pingdotgg/codething-mvp/pull/42",
+              url: "https://github.com/Sakana-yuyu/codething-mvp/pull/42",
               baseRefName: "main",
               headRefName: "feature/pr-threads",
               state: "OPEN",
@@ -87,7 +87,7 @@ describe("GitHubCli.layer", () => {
       assert.deepStrictEqual(result, {
         number: 42,
         title: "Add PR thread creation",
-        url: "https://github.com/pingdotgg/codething-mvp/pull/42",
+        url: "https://github.com/Sakana-yuyu/codething-mvp/pull/42",
         baseRefName: "main",
         headRefName: "feature/pr-threads",
         state: "open",
@@ -120,7 +120,7 @@ describe("GitHubCli.layer", () => {
             JSON.stringify({
               number: 42,
               title: "  Add PR thread creation  \n",
-              url: " https://github.com/pingdotgg/codething-mvp/pull/42 ",
+              url: " https://github.com/Sakana-yuyu/codething-mvp/pull/42 ",
               baseRefName: " main ",
               headRefName: "\tfeature/pr-threads\t",
               state: "OPEN",
@@ -146,7 +146,7 @@ describe("GitHubCli.layer", () => {
       assert.deepStrictEqual(result, {
         number: 42,
         title: "Add PR thread creation",
-        url: "https://github.com/pingdotgg/codething-mvp/pull/42",
+        url: "https://github.com/Sakana-yuyu/codething-mvp/pull/42",
         baseRefName: "main",
         headRefName: "feature/pr-threads",
         state: "open",
@@ -167,14 +167,14 @@ describe("GitHubCli.layer", () => {
               {
                 number: 0,
                 title: "invalid",
-                url: "https://github.com/pingdotgg/codething-mvp/pull/0",
+                url: "https://github.com/Sakana-yuyu/codething-mvp/pull/0",
                 baseRefName: "main",
                 headRefName: "feature/invalid",
               },
               {
                 number: 43,
                 title: "  Valid PR  ",
-                url: " https://github.com/pingdotgg/codething-mvp/pull/43 ",
+                url: " https://github.com/Sakana-yuyu/codething-mvp/pull/43 ",
                 baseRefName: " main ",
                 headRefName: " feature/pr-list ",
                 headRepository: {
@@ -199,7 +199,7 @@ describe("GitHubCli.layer", () => {
         {
           number: 43,
           title: "Valid PR",
-          url: "https://github.com/pingdotgg/codething-mvp/pull/43",
+          url: "https://github.com/Sakana-yuyu/codething-mvp/pull/43",
           baseRefName: "main",
           headRefName: "feature/pr-list",
           state: "open",
@@ -221,9 +221,9 @@ describe("GitHubCli.layer", () => {
               {
                 number: 2829,
                 title: "Codex turn mapping",
-                url: "https://github.com/pingdotgg/codething-mvp/pull/2829",
+                url: "https://github.com/Sakana-yuyu/codething-mvp/pull/2829",
                 baseRefName: "main",
-                headRefName: "t3code/codex-turn-mapping",
+                headRefName: "codework/codex-turn-mapping",
                 state: "OPEN",
                 mergedAt: null,
                 isCrossRepository: false,
@@ -233,7 +233,7 @@ describe("GitHubCli.layer", () => {
                 },
                 headRepositoryOwner: {
                   id: "MDEyOk9yZ2FuaXphdGlvbjg5MTkxNzI3",
-                  login: "pingdotgg",
+                  login: "Sakana-yuyu",
                 },
               },
             ]),
@@ -244,20 +244,20 @@ describe("GitHubCli.layer", () => {
       const gh = yield* GitHubCli.GitHubCli;
       const result = yield* gh.listOpenPullRequests({
         cwd: "/repo",
-        headSelector: "t3code/codex-turn-mapping",
+        headSelector: "codework/codex-turn-mapping",
       });
 
       assert.deepStrictEqual(result, [
         {
           number: 2829,
           title: "Codex turn mapping",
-          url: "https://github.com/pingdotgg/codething-mvp/pull/2829",
+          url: "https://github.com/Sakana-yuyu/codething-mvp/pull/2829",
           baseRefName: "main",
-          headRefName: "t3code/codex-turn-mapping",
+          headRefName: "codework/codex-turn-mapping",
           state: "open",
           isCrossRepository: false,
-          headRepositoryNameWithOwner: "pingdotgg/codething-mvp",
-          headRepositoryOwnerLogin: "pingdotgg",
+          headRepositoryNameWithOwner: "Sakana-yuyu/codething-mvp",
+          headRepositoryOwnerLogin: "Sakana-yuyu",
         },
       ]);
     }).pipe(Effect.provide(layer)),

@@ -13,7 +13,7 @@ export interface VersionMismatch {
 }
 
 export const LEGACY_VERSION_MISMATCH_DISMISSALS_STORAGE_KEY =
-  "t3code:version-mismatch-dismissals:v1";
+  "codework:version-mismatch-dismissals:v1";
 export const VERSION_MISMATCH_DISMISSALS_STORAGE_KEY = canonicalStorageKey(
   LEGACY_VERSION_MISMATCH_DISMISSALS_STORAGE_KEY,
 );

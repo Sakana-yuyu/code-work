@@ -1,10 +1,10 @@
-# Install T3 Code
+# Install Code Work
 
-T3 Code is a web and desktop GUI for running coding agents on your machine.
+Code Work is a web and desktop GUI for running coding agents on your machine.
 
 ## Requirements
 
-Node.js `^22.16 || ^23.11 || >=24.10` on the machine that runs the T3 Code server.
+Node.js `^22.16 || ^23.11 || >=24.10` on the machine that runs the Code Work server.
 
 At least one provider CLI, installed and authenticated. See [Providers](#providers) below.
 
@@ -14,13 +14,13 @@ At least one provider CLI, installed and authenticated. See [Providers](#provide
 npx t3@latest
 ```
 
-This starts the T3 Code server on your machine and opens the local web app. Use
+This starts the Code Work server on your machine and opens the local web app. Use
 `npx t3@latest --help` for the full CLI reference.
 
 ## Desktop App
 
 Download the latest release from
-[GitHub Releases](https://github.com/pingdotgg/t3code/releases), or install from a package
+[GitHub Releases](https://github.com/Sakana-yuyu/code-work/releases), or install from a package
 registry.
 
 Windows:
@@ -32,7 +32,7 @@ winget install T3Tools.T3Code
 macOS:
 
 ```bash
-brew install --cask t3-code
+brew install --cask code-work
 ```
 
 Arch Linux:
@@ -40,18 +40,18 @@ Arch Linux:
 Stable:
 
 ```bash
-yay -S t3code-bin
+yay -S codework-bin
 ```
 
 Nightly:
 
 ```bash
-yay -S t3code-nightly-bin
+yay -S codework-nightly-bin
 ```
 
 ## Providers
 
-T3 Code drives provider CLIs; it does not ship them. Install the CLI for each provider you want
+Code Work drives provider CLIs; it does not ship them. Install the CLI for each provider you want
 to use, then authenticate it.
 
 | Provider   | CLI                                                   | Default binary | Log in with           |
@@ -66,9 +66,9 @@ Codex and Claude are on by default. Cursor, Grok Build, and OpenCode are off by 
 them on in **Settings** → the provider's card when you want to use them.
 
 Cursor is the one to watch: install Cursor CLI, which provides the `cursor-agent` binary that
-T3 Code looks for, but authenticate with `agent login`, not `cursor-agent login`.
+Code Work looks for, but authenticate with `agent login`, not `cursor-agent login`.
 
-Run the login command on the machine running the T3 Code server, not on the device you browse
+Run the login command on the machine running the Code Work server, not on the device you browse
 from.
 
 ### Binary Discovery
@@ -76,12 +76,12 @@ from.
 Each provider CLI must be on the server's `PATH`, or have an explicit binary path set in
 **Settings** → the provider instance → **Binary path**. Use the explicit path when a version
 manager or a non-standard install location keeps the CLI off the `PATH` of the shell that
-started T3 Code.
+started Code Work.
 
 ### When Auth Is Needed
 
 Provider auth is required before you start a session with that provider, not before you start
-T3 Code. You can install T3 Code, open it, and add providers afterwards. A provider that is not
+Code Work. You can install Code Work, open it, and add providers afterwards. A provider that is not
 authenticated shows its status in **Settings** and fails at session start with the login command
 to run.
 
@@ -89,7 +89,7 @@ For multi-account setups, see [Codex](./providers-codex.md) and [Claude](./provi
 
 ## Next Steps
 
-- [Permission modes](./permission-modes.md): how much T3 Code asks before acting
+- [Permission modes](./permission-modes.md): how much Code Work asks before acting
 - [Remote access](./remote-access.md): connect from a phone, tablet, or another desktop
-- [Keeping T3 Code in sync](./updating.md): client and server version skew
+- [Keeping Code Work in sync](./updating.md): client and server version skew
 - [Running in the background](./background-service.md): Linux background service

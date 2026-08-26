@@ -141,7 +141,7 @@ export interface CapabilityGrantRegistryShape {
 export class CapabilityGrantRegistry extends Context.Service<
   CapabilityGrantRegistry,
   CapabilityGrantRegistryShape
->()("t3/composition/CapabilityGrantRegistry") {}
+>()("codework/composition/CapabilityGrantRegistry") {}
 
 export const makeCapabilityGrantRegistry = (
   options: CapabilityGrantRegistryOptions,

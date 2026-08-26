@@ -395,7 +395,7 @@ export const checkOpenCodeProviderStatus = Effect.fn("checkOpenCodeProviderStatu
     if (!version) {
       return fallback(
         new Error(
-          `Unable to determine OpenCode version from \`opencode --version\` output. T3 Code requires OpenCode v${MINIMUM_OPENCODE_VERSION} or newer.`,
+          `Unable to determine OpenCode version from \`opencode --version\` output. Code Work requires OpenCode v${MINIMUM_OPENCODE_VERSION} or newer.`,
         ),
         null,
       );

@@ -1,4 +1,4 @@
-// This file mostly exists because we want dev mode to say "T3 Code (Dev)" instead of "electron"
+// This file mostly exists because we want dev mode to say "Code Work (Dev)" instead of "electron"
 
 import * as NodeChildProcess from "node:child_process";
 import * as NodeFS from "node:fs";
@@ -20,8 +20,8 @@ export const APP_BUNDLE_ID = isDevelopment
   ? `com.codework.desktop.dev.${devBundleIdSuffix || "local"}`
   : "com.codework.desktop";
 const APP_PROTOCOL_SCHEMES = isDevelopment
-  ? ["codework-dev", "t3code-dev"]
-  : ["codework", "t3code"];
+  ? ["codework-dev", "codework-dev"]
+  : ["codework", "codework"];
 const LAUNCHER_VERSION = 15;
 const developmentMacIconPngPath = NodePath.join(
   repoRoot,
@@ -30,7 +30,7 @@ const developmentMacIconPngPath = NodePath.join(
   "blueprint-macos-1024.png",
 );
 const productionMacIconPngPath = NodePath.join(repoRoot, "assets", "prod", "black-macos-1024.png");
-// oxlint-disable-next-line t3code/no-global-process-runtime -- Standalone launcher script has no Effect runtime.
+// oxlint-disable-next-line codework/no-global-process-runtime -- Standalone launcher script has no Effect runtime.
 const hostPlatform = NodeOS.platform();
 
 function setPlistString(plistPath, key, value) {
@@ -110,30 +110,30 @@ export function makeDevelopmentLauncherScript({
 }) {
   const envEntries = [
     ["VITE_DEV_SERVER_URL", environment.VITE_DEV_SERVER_URL],
-    ["CODEWORK_PORT", environment.CODEWORK_PORT ?? environment.T3CODE_PORT],
-    ["T3CODE_PORT", environment.T3CODE_PORT ?? environment.CODEWORK_PORT],
-    ["CODEWORK_HOME", environment.CODEWORK_HOME ?? environment.T3CODE_HOME],
-    ["T3CODE_HOME", environment.T3CODE_HOME ?? environment.CODEWORK_HOME],
-    ["CODEWORK_COMMIT_HASH", environment.CODEWORK_COMMIT_HASH ?? environment.T3CODE_COMMIT_HASH],
-    ["T3CODE_COMMIT_HASH", environment.T3CODE_COMMIT_HASH ?? environment.CODEWORK_COMMIT_HASH],
+    ["CODEWORK_PORT", environment.CODEWORK_PORT ?? environment.CODEWORK_PORT],
+    ["CODEWORK_PORT", environment.CODEWORK_PORT ?? environment.CODEWORK_PORT],
+    ["CODEWORK_HOME", environment.CODEWORK_HOME ?? environment.CODEWORK_HOME],
+    ["CODEWORK_HOME", environment.CODEWORK_HOME ?? environment.CODEWORK_HOME],
+    ["CODEWORK_COMMIT_HASH", environment.CODEWORK_COMMIT_HASH ?? environment.CODEWORK_COMMIT_HASH],
+    ["CODEWORK_COMMIT_HASH", environment.CODEWORK_COMMIT_HASH ?? environment.CODEWORK_COMMIT_HASH],
     [
       "CODEWORK_OTLP_TRACES_URL",
-      environment.CODEWORK_OTLP_TRACES_URL ?? environment.T3CODE_OTLP_TRACES_URL,
+      environment.CODEWORK_OTLP_TRACES_URL ?? environment.CODEWORK_OTLP_TRACES_URL,
     ],
     [
-      "T3CODE_OTLP_TRACES_URL",
-      environment.T3CODE_OTLP_TRACES_URL ?? environment.CODEWORK_OTLP_TRACES_URL,
+      "CODEWORK_OTLP_TRACES_URL",
+      environment.CODEWORK_OTLP_TRACES_URL ?? environment.CODEWORK_OTLP_TRACES_URL,
     ],
     [
       "CODEWORK_OTLP_EXPORT_INTERVAL_MS",
-      environment.CODEWORK_OTLP_EXPORT_INTERVAL_MS ?? environment.T3CODE_OTLP_EXPORT_INTERVAL_MS,
+      environment.CODEWORK_OTLP_EXPORT_INTERVAL_MS ?? environment.CODEWORK_OTLP_EXPORT_INTERVAL_MS,
     ],
     [
-      "T3CODE_OTLP_EXPORT_INTERVAL_MS",
-      environment.T3CODE_OTLP_EXPORT_INTERVAL_MS ?? environment.CODEWORK_OTLP_EXPORT_INTERVAL_MS,
+      "CODEWORK_OTLP_EXPORT_INTERVAL_MS",
+      environment.CODEWORK_OTLP_EXPORT_INTERVAL_MS ?? environment.CODEWORK_OTLP_EXPORT_INTERVAL_MS,
     ],
     ["CODEWORK_DESKTOP_APP_USER_MODEL_ID", APP_BUNDLE_ID],
-    ["T3CODE_DESKTOP_APP_USER_MODEL_ID", APP_BUNDLE_ID],
+    ["CODEWORK_DESKTOP_APP_USER_MODEL_ID", APP_BUNDLE_ID],
   ].filter((entry) => typeof entry[1] === "string" && entry[1].trim().length > 0);
   return [
     "#!/bin/sh",
@@ -367,7 +367,7 @@ function buildMacLauncher(electronBinaryPath) {
   if (isDevelopment) {
     // Keep Electron's native executable inside the branded bundle. Launching the
     // node_modules copy makes macOS associate the process (and Dock label) with
-    // Electron.app even though this bundle's Info.plist has the T3 Code name.
+    // Electron.app even though this bundle's Info.plist has the Code Work name.
     // Its conventional executable name also keeps Electron's default-app runtime
     // in development mode instead of making app.isPackaged report true.
     writeDevelopmentLauncherScript(launcherBinaryPath, runtimeElectronBinaryPath);

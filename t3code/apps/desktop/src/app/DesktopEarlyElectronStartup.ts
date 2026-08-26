@@ -50,18 +50,18 @@ function resolveEarlyDesktopSettingsPath(input: {
   readonly homeDirectory: string;
   readonly joinPath: JoinPath;
 }): string {
-  const configuredHome = resolvePreferredEnv(input.env, "CODEWORK_HOME", "T3CODE_HOME");
-  const t3Home = configuredHome === undefined ? Option.none<string>() : Option.some(configuredHome);
+  const configuredHome = resolvePreferredEnv(input.env, "CODEWORK_HOME", "CODEWORK_HOME");
+  const codeworkHome = configuredHome === undefined ? Option.none<string>() : Option.some(configuredHome);
   const baseDir = resolveDesktopBaseDir({
     homeDirectory: input.homeDirectory,
     joinPath: input.joinPath,
-    t3Home,
+    codeworkHome,
   });
   const stateDir = resolveDesktopStateDir({
     baseDir,
     isDevelopment: isDevelopmentEnvironment(input.env),
     joinPath: input.joinPath,
-    t3Home,
+    codeworkHome,
   });
   return input.joinPath(stateDir, "desktop-settings.json");
 }

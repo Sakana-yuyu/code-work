@@ -2,9 +2,9 @@ import { assert, describe } from "@effect/vitest";
 
 import { createOxlintRuleHarness } from "../test/utils.ts";
 
-const rule = createOxlintRuleHarness("t3code/no-global-process-runtime");
+const rule = createOxlintRuleHarness("codework/no-global-process-runtime");
 
-describe("t3code/no-global-process-runtime", () => {
+describe("codework/no-global-process-runtime", () => {
   rule.valid(
     "allows injected host process references",
     `

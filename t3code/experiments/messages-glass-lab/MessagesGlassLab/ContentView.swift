@@ -11,12 +11,12 @@ struct LabThread: Identifiable, Hashable {
 }
 
 private let threads: [LabThread] = [
-    .init(title: "Markdown rendering test", subtitle: "t3code · Julius’s Mac mini", time: "14h", initials: "MD", tint: .blue, preview: "Renderer stress test, terminal snippets, code blocks, and a very long markdown transcript."),
+    .init(title: "Markdown rendering test", subtitle: "codework · Julius’s Mac mini", time: "14h", initials: "MD", tint: .blue, preview: "Renderer stress test, terminal snippets, code blocks, and a very long markdown transcript."),
     .init(title: "iPad rectly text correction", subtitle: "Julius’s Mac mini · main", time: "16h", initials: "IP", tint: .purple, preview: "Fix iPad layout, search behavior, hardware keyboard, and trackpad scrolling."),
     .init(title: "Preview Webview Persists Off Panel", subtitle: "codething-mvp · Julius’s MacBook Pro", time: "22m", initials: "PW", tint: .teal, preview: "The browser preview should not leak outside the active panel when switching threads."),
     .init(title: "Add file preview action buttons", subtitle: "codex/connection-preview", time: "10d", initials: "FP", tint: .orange, preview: "Open files at exact lines and expose copy/open actions in the renderer."),
     .init(title: "Investigate v2 pipeline slowdown", subtitle: "codex-turn-runner", time: "1d", initials: "V2", tint: .gray, preview: "Compare orchestration traces and find why streamed events are delayed under load."),
-    .init(title: "Fix dark-mode header glass", subtitle: "t3code/ipad-responsive-mobile-layout", time: "2h", initials: "DG", tint: .indigo, preview: "Compare dark scroll-edge material against Messages and Mail, then map the behavior back to React Native Screens."),
+    .init(title: "Fix dark-mode header glass", subtitle: "codework/ipad-responsive-mobile-layout", time: "2h", initials: "DG", tint: .indigo, preview: "Compare dark scroll-edge material against Messages and Mail, then map the behavior back to React Native Screens."),
     .init(title: "Magic Keyboard sidebar scroll", subtitle: "mobile/input-polish", time: "3h", initials: "MK", tint: .cyan, preview: "Trackpad scrolling should remain fluid while swipe actions still work for touch gestures."),
     .init(title: "Terminal tab key routing", subtitle: "terminal/native-pty", time: "5h", initials: "⌘", tint: .green, preview: "Hardware Tab should go to the terminal session instead of escaping to the thread search field."),
     .init(title: "Diff renderer split inspector", subtitle: "review-diff/native", time: "8h", initials: "Δ", tint: .red, preview: "Keep file navigation, sticky headers, and selected hunk state stable in a three-column iPad layout."),

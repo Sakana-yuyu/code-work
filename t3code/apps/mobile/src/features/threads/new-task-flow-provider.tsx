@@ -14,10 +14,10 @@ import {
   DEFAULT_PROVIDER_INTERACTION_MODE,
   DEFAULT_RUNTIME_MODE,
   MessageId,
-  T3_PROJECT_FILE_NAME,
+  CODEWORK_PROJECT_FILE_NAME,
   ThreadId,
 } from "@codework/contracts";
-import { parseT3ProjectFile } from "@codework/shared/t3ProjectFile";
+import { parseT3ProjectFile } from "@codework/shared/codeworkProjectFile";
 import {
   isDefaultThreadEnvModeSettled,
   resolveDefaultThreadEnvMode,
@@ -367,7 +367,7 @@ export function NewTaskFlowProvider(props: React.PropsWithChildren) {
     selectedProject !== null && selectedProject.workspaceRoot !== ""
       ? projectEnvironment.readFile({
           environmentId: selectedProject.environmentId,
-          input: { cwd: selectedProject.workspaceRoot, relativePath: T3_PROJECT_FILE_NAME },
+          input: { cwd: selectedProject.workspaceRoot, relativePath: CODEWORK_PROJECT_FILE_NAME },
         })
       : null,
   );

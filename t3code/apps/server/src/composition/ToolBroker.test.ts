@@ -439,7 +439,7 @@ const baseInput = (workspaceRoot: string) => ({
 
 it.layer(TestLayer, { excludeTestServices: true })("ToolBrokerLive", (it) => {
   describe("CapabilityRegistry", () => {
-    it.effect("discovers T3 workspace, MCP and runtime capabilities without secrets", () =>
+    it.effect("discovers Code Work workspace, MCP and runtime capabilities without secrets", () =>
       Effect.gen(function* () {
         const registry = yield* CapabilityRegistry.CapabilityRegistry;
         const capabilities = yield* registry.list({ scope: "workspace", scopeId: "workspace-1" });

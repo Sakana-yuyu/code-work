@@ -167,11 +167,11 @@ describe("composition runtime contracts", () => {
       headers: [{ headerName: "Authorization", environmentVariable: "MULTICA_TOKEN" }],
       assigneeRoutes: [
         {
-          t3AgentId: "agent-1",
-          t3SquadId: "squad-1",
+          codeworkAgentId: "agent-1",
+          codeworkSquadId: "squad-1",
           workspaceId: "workspace-1",
           multicaAgentId: "agent-remote-1",
-          t3McpCredentialEnvironmentVariable: "MULTICA_AGENT_1_T3_MCP_TOKEN",
+          codeworkMcpCredentialEnvironmentVariable: "MULTICA_AGENT_1_T3_MCP_TOKEN",
         },
       ],
     });
@@ -180,8 +180,8 @@ describe("composition runtime contracts", () => {
       { headerName: "Authorization", environmentVariable: "MULTICA_TOKEN" },
     ]);
     expect(decoded.assigneeRoutes[0]?.multicaAgentId).toBe("agent-remote-1");
-    expect(decoded.assigneeRoutes[0]?.t3SquadId).toBe("squad-1");
-    expect(decoded.assigneeRoutes[0]?.t3McpCredentialEnvironmentVariable).toBe(
+    expect(decoded.assigneeRoutes[0]?.codeworkSquadId).toBe("squad-1");
+    expect(decoded.assigneeRoutes[0]?.codeworkMcpCredentialEnvironmentVariable).toBe(
       "MULTICA_AGENT_1_T3_MCP_TOKEN",
     );
     expect((decoded as Record<string, unknown>).token).toBeUndefined();

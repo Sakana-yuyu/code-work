@@ -61,11 +61,11 @@ export class CompositionProviderAgentDriverProjectionService extends Context.Ser
   CompositionProviderAgentDriverProjectionService,
   CompositionProviderAgentDriverProjectionServiceShape
 >()(
-  "t3/composition/CompositionProviderAgentDriverRegistry/CompositionProviderAgentDriverProjectionService",
+  "codework/composition/CompositionProviderAgentDriverRegistry/CompositionProviderAgentDriverProjectionService",
 ) {}
 
 /**
- * 将 T3 的 ProviderInstance 事实源投影成 Composition Agent Driver。
+ * 将 Code Work 的 ProviderInstance 事实源投影成 Composition Agent Driver。
  * 会话与取消统一通过 ProviderService，避免绕过会话目录和运行时事件。
  */
 export const makeCompositionProviderAgentDriverProjection = (

@@ -166,7 +166,7 @@ const make = Effect.fn("desktop.environment.make")(function* (
   const baseDir = resolveDesktopBaseDir({
     homeDirectory,
     joinPath: path.join,
-    t3Home: config.t3Home,
+    codeworkHome: config.codeworkHome,
   });
   const rootDir = path.resolve(input.dirname, "../../..");
   const appRoot = input.isPackaged ? input.appPath : rootDir;
@@ -183,7 +183,7 @@ const make = Effect.fn("desktop.environment.make")(function* (
     baseDir,
     isDevelopment,
     joinPath: path.join,
-    t3Home: config.t3Home,
+    codeworkHome: config.codeworkHome,
   });
   const userDataDirName = isDevelopment
     ? PRODUCT_IDENTITY.dataDirectories.development
@@ -192,8 +192,8 @@ const make = Effect.fn("desktop.environment.make")(function* (
     ? PRODUCT_IDENTITY.legacyDataDirectories.development
     : PRODUCT_IDENTITY.legacyDataDirectories.production;
   const legacyUserDataDirNames = isDevelopment
-    ? [legacyUserDataDirName, "T3 Code (Dev)"]
-    : [legacyUserDataDirName, "T3 Code (Alpha)"];
+    ? [legacyUserDataDirName, "Code Work (Dev)"]
+    : [legacyUserDataDirName, "Code Work (Alpha)"];
   const linuxApplicationsDir = path.join(
     Option.getOrElse(config.xdgDataHome, () => path.join(homeDirectory, ".local", "share")),
     "applications",

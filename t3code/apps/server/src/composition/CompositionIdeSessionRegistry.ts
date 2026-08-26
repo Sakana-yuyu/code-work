@@ -123,7 +123,7 @@ export interface CompositionIdeSessionRegistryServiceShape extends CompositionId
 export class CompositionIdeSessionRegistryService extends Context.Service<
   CompositionIdeSessionRegistryService,
   CompositionIdeSessionRegistryServiceShape
->()("t3/composition/CompositionIdeSessionRegistry/CompositionIdeSessionRegistryService") {}
+>()("codework/composition/CompositionIdeSessionRegistry/CompositionIdeSessionRegistryService") {}
 
 type CompositionIdeHandshakeState = {
   readonly sessionId: string;

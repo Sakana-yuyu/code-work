@@ -19,7 +19,7 @@ const compositionProviderInstanceId = (runtimeId: string): ProviderInstanceId =>
 /**
  * 为 Composition Run 生成 Preview 专用 scope。
  *
- * sessionId 是 T3 自己的浏览器会话身份，不等同于 Provider MCP session；
+ * sessionId 是 Code Work 自己的浏览器会话身份，不等同于 Provider MCP session；
  * providerSessionId 只由真正的 Provider MCP 凭据填充。
  */
 export const makeCompositionBrowserScope = (

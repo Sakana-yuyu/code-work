@@ -6,17 +6,17 @@ import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Path from "effect/Path";
 
-import * as T3ProjectFileLoader from "./T3ProjectFileLoader.ts";
+import * as CodeworkProjectFileLoader from "./CodeworkProjectFileLoader.ts";
 
 const TestLayer = Layer.empty.pipe(
-  Layer.provideMerge(T3ProjectFileLoader.layer),
+  Layer.provideMerge(CodeworkProjectFileLoader.layer),
   Layer.provideMerge(NodeServices.layer),
 );
 
 const makeTempDir = Effect.gen(function* () {
   const fileSystem = yield* FileSystem.FileSystem;
   return yield* fileSystem.makeTempDirectoryScoped({
-    prefix: "t3code-project-file-",
+    prefix: "codework-project-file-",
   });
 });
 
@@ -26,11 +26,11 @@ const writeProjectFile = Effect.fn("writeProjectFile")(function* (cwd: string, c
   yield* fileSystem.writeFileString(path.join(cwd, "t3.json"), contents).pipe(Effect.orDie);
 });
 
-it.layer(TestLayer)("T3ProjectFileLoader", (it) => {
+it.layer(TestLayer)("CodeworkProjectFileLoader", (it) => {
   describe("load", () => {
     it.effect("loads and decodes a valid t3.json", () =>
       Effect.gen(function* () {
-        const loader = yield* T3ProjectFileLoader.T3ProjectFileLoader;
+        const loader = yield* CodeworkProjectFileLoader.CodeworkProjectFileLoader;
         const cwd = yield* makeTempDir;
         yield* writeProjectFile(
           cwd,
@@ -53,7 +53,7 @@ it.layer(TestLayer)("T3ProjectFileLoader", (it) => {
 
     it.effect("returns none when t3.json is missing", () =>
       Effect.gen(function* () {
-        const loader = yield* T3ProjectFileLoader.T3ProjectFileLoader;
+        const loader = yield* CodeworkProjectFileLoader.CodeworkProjectFileLoader;
         const cwd = yield* makeTempDir;
 
         const loaded = yield* loader.load(cwd);
@@ -64,7 +64,7 @@ it.layer(TestLayer)("T3ProjectFileLoader", (it) => {
 
     it.effect("returns none for malformed JSON without failing", () =>
       Effect.gen(function* () {
-        const loader = yield* T3ProjectFileLoader.T3ProjectFileLoader;
+        const loader = yield* CodeworkProjectFileLoader.CodeworkProjectFileLoader;
         const cwd = yield* makeTempDir;
         yield* writeProjectFile(cwd, "{ not json");
 
@@ -76,7 +76,7 @@ it.layer(TestLayer)("T3ProjectFileLoader", (it) => {
 
     it.effect("returns none for schema-invalid files without failing", () =>
       Effect.gen(function* () {
-        const loader = yield* T3ProjectFileLoader.T3ProjectFileLoader;
+        const loader = yield* CodeworkProjectFileLoader.CodeworkProjectFileLoader;
         const cwd = yield* makeTempDir;
         yield* writeProjectFile(cwd, '{ "scripts": [{ "name": "Dev" }] }');
 

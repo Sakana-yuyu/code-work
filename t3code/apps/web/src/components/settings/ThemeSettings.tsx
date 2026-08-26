@@ -19,7 +19,7 @@ import {
   type ThemeAppearance,
   type ThemeDefinition,
   type ThemeHalves,
-  T3_CHAT_THEME,
+  CODEWORK_CHAT_THEME,
   EMBER_THEME,
   GROVE_THEME,
   IRIS_THEME,
@@ -52,7 +52,7 @@ import { ThemeWireframe } from "./ThemeWireframe";
 import { t } from "~/i18n";
 
 const MAINTAINER_THEMES: ReadonlyArray<ThemeDefinition> = [
-  T3_CHAT_THEME,
+  CODEWORK_CHAT_THEME,
   GROVE_THEME,
   OCEAN_THEME,
   EMBER_THEME,
@@ -684,7 +684,7 @@ export function ThemeLibrary({
 
   // Rings always show the effective owner of each appearance: an unpicked
   // half belongs to the default card (a null owner), so a fresh install
-  // shows T3 Code selected instead of nothing.
+  // shows Code Work selected instead of nothing.
   const pickedModesFor = (cardId: string | null): ThemeMode[] => {
     const rings: ThemeMode[] = [];
     if (lightOwner === cardId) rings.push("light");

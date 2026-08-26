@@ -15,7 +15,7 @@ const registration: RelayDeviceRegistrationRequest = {
   platform: "ios",
   iosMajorVersion: 18,
   appVersion: "1.0.0" as RelayDeviceRegistrationRequest["appVersion"],
-  bundleId: "com.t3tools.t3code.preview" as RelayDeviceRegistrationRequest["bundleId"],
+  bundleId: "com.t3tools.codework.preview" as RelayDeviceRegistrationRequest["bundleId"],
   apsEnvironment: "production",
   pushToken: "apns-device-token" as RelayDeviceRegistrationRequest["pushToken"],
   pushToStartToken: "push-to-start-token" as RelayDeviceRegistrationRequest["pushToStartToken"],
@@ -108,7 +108,7 @@ describe("Devices", () => {
         expect.objectContaining({
           userId: "user-2",
           deviceId: "device-1",
-          bundleId: "com.t3tools.t3code.preview",
+          bundleId: "com.t3tools.codework.preview",
           apsEnvironment: "production",
           pushToken: "apns-device-token",
           pushToStartToken: "push-to-start-token",

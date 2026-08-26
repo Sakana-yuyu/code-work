@@ -14,12 +14,12 @@
       (() => {
         const LIGHT_BACKGROUND = "#ffffff";
         const DARK_BACKGROUND = "#0a0a0a";
-        const LEGACY_CUSTOM_THEMES_STORAGE_KEY = "t3code:themes:v1";
-        const LEGACY_THEME_FOLLOW_SYSTEM_STORAGE_KEY = "t3code:theme-follow-system";
-        const LEGACY_THEME_APPEARANCE_MODE_STORAGE_KEY = "t3code:theme-appearance-mode";
-        const LEGACY_THEME_HALVES_STORAGE_KEY = "t3code:theme-halves:v1";
-        const LEGACY_THEME_STORAGE_KEY = "t3code:theme";
-        const canonicalStorageKey = (legacyKey) => `codework:${legacyKey.slice("t3code:".length)}`;
+        const LEGACY_CUSTOM_THEMES_STORAGE_KEY = "codework:themes:v1";
+        const LEGACY_THEME_FOLLOW_SYSTEM_STORAGE_KEY = "codework:theme-follow-system";
+        const LEGACY_THEME_APPEARANCE_MODE_STORAGE_KEY = "codework:theme-appearance-mode";
+        const LEGACY_THEME_HALVES_STORAGE_KEY = "codework:theme-halves:v1";
+        const LEGACY_THEME_STORAGE_KEY = "codework:theme";
+        const canonicalStorageKey = (legacyKey) => `codework:${legacyKey.slice("codework:".length)}`;
         const CUSTOM_THEMES_STORAGE_KEY = canonicalStorageKey(LEGACY_CUSTOM_THEMES_STORAGE_KEY);
         const THEME_FOLLOW_SYSTEM_STORAGE_KEY = canonicalStorageKey(
           LEGACY_THEME_FOLLOW_SYSTEM_STORAGE_KEY,
@@ -147,7 +147,7 @@
           },
         };
         // Keep the built-in mode list in sync with the runtime so the selected
-        // T3 Chat palette is visible before React has mounted.
+        // Code Work Chat palette is visible before React has mounted.
         const BUILT_IN_THEME_MODES = Object.fromEntries(
           Object.entries(BUILT_IN_THEME_PALETTES).map(([id, palettes]) => [
             id,
@@ -244,7 +244,7 @@
         try {
           const storedTheme = readCanonicalFirst(THEME_STORAGE_KEY, LEGACY_THEME_STORAGE_KEY);
           const prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
-          // Older builds stored the dark T3 Chat palette as its own theme id
+          // Older builds stored the dark Code Work Chat palette as its own theme id
           // and every maintainer theme under a t3- prefix; keep those
           // preferences readable. Mirrors the runtime's legacy alias table.
           const LEGACY_THEME_IDS = {

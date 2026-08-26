@@ -31,7 +31,7 @@ import {
   type SynchronousStateStorage,
 } from "./persistenceStorage";
 
-const LEGACY_BROWSER_FAVICON_STORAGE_KEY = "t3code:browser-favicons:v1";
+const LEGACY_BROWSER_FAVICON_STORAGE_KEY = "codework:browser-favicons:v1";
 const BROWSER_FAVICON_STORAGE_KEY = canonicalStorageKey(LEGACY_BROWSER_FAVICON_STORAGE_KEY);
 const MAX_PENDING_ORIGINS_PER_THREAD = 10;
 const MAX_PENDING_THREADS = 20;

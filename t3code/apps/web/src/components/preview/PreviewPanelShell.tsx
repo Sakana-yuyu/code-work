@@ -16,7 +16,7 @@ import { RightPanelResizeHandle } from "./RightPanelResizeHandle";
 
 export type PreviewPanelMode = "inline" | "sheet" | "sidebar" | "embedded";
 
-const LEGACY_PREVIEW_PANEL_WIDTH_STORAGE_KEY = "t3code:preview-panel-width";
+const LEGACY_PREVIEW_PANEL_WIDTH_STORAGE_KEY = "codework:preview-panel-width";
 const PREVIEW_PANEL_WIDTH_STORAGE_KEY = canonicalStorageKey(LEGACY_PREVIEW_PANEL_WIDTH_STORAGE_KEY);
 const PREVIEW_PANEL_MIN_WIDTH = 360;
 /**

@@ -34,7 +34,7 @@ describe("extractPairingUrlFromQrPayload", () => {
     ).toBe("https://remote.example.com/pair#token=pairing-token");
   });
 
-  it.each(["codework://", "t3code://"])(
+  it.each(["codework://", "codework://"])(
     "unwraps %s mobile deep links that carry an encoded pairing url",
     (scheme) => {
       expect(

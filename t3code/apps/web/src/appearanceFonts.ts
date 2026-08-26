@@ -27,7 +27,7 @@ export const DEFAULT_CODE_FONT_STACK =
 
 import { canonicalStorageKey } from "./persistenceStorage";
 
-export const LEGACY_TYPOGRAPHY_ADVANCED_STORAGE_KEY = "t3code:typography-advanced";
+export const LEGACY_TYPOGRAPHY_ADVANCED_STORAGE_KEY = "codework:typography-advanced";
 export const TYPOGRAPHY_ADVANCED_STORAGE_KEY = canonicalStorageKey(
   LEGACY_TYPOGRAPHY_ADVANCED_STORAGE_KEY,
 );

@@ -1,17 +1,17 @@
 import {
-  T3_PROJECT_FILE_NAME,
+  CODEWORK_PROJECT_FILE_NAME,
   type EnvironmentId,
-  type T3ProjectFile,
-  type T3ProjectFileScript,
+  type CodeworkProjectFile,
+  type CodeworkProjectFileScript,
 } from "@codework/contracts";
-import { parseT3ProjectFile } from "@codework/shared/t3ProjectFile";
+import { parseT3ProjectFile } from "@codework/shared/codeworkProjectFile";
 import { useMemo } from "react";
 
 import { useProjectFileQuery } from "~/components/files/projectFilesQueryState";
 
-const NO_SCRIPTS: ReadonlyArray<T3ProjectFileScript> = [];
+const NO_SCRIPTS: ReadonlyArray<CodeworkProjectFileScript> = [];
 
-export interface T3ProjectFileState {
+export interface CodeworkProjectFileState {
   /**
    * - `valid`: t3.json exists and decoded.
    * - `invalid`: t3.json exists but fails to decode (the server then ignores
@@ -21,19 +21,19 @@ export interface T3ProjectFileState {
    */
   status: "loading" | "missing" | "invalid" | "valid";
   /** The decoded file when status is `valid`, null otherwise. */
-  file: T3ProjectFile | null;
-  scripts: ReadonlyArray<T3ProjectFileScript>;
+  file: CodeworkProjectFile | null;
+  scripts: ReadonlyArray<CodeworkProjectFileScript>;
 }
 
 /**
  * Decoded state of the project's checked-in `t3.json`, including whether the
  * file exists but is broken — which the runtime otherwise swallows silently.
  */
-export function useT3ProjectFileState(
+export function useCodeworkProjectFileState(
   environmentId: EnvironmentId,
   cwd: string | null,
-): T3ProjectFileState {
-  const query = useProjectFileQuery(environmentId, cwd ?? "", T3_PROJECT_FILE_NAME, cwd !== null);
+): CodeworkProjectFileState {
+  const query = useProjectFileQuery(environmentId, cwd ?? "", CODEWORK_PROJECT_FILE_NAME, cwd !== null);
   const contents = query.data && !query.data.truncated ? query.data.contents : null;
   const isPending = query.isPending;
   return useMemo(() => {
@@ -57,9 +57,9 @@ export function useT3ProjectFileState(
  * scripts menu for import. Missing, truncated, or invalid files resolve to
  * an empty list.
  */
-export function useT3ProjectFileScripts(
+export function useCodeworkProjectFileScripts(
   environmentId: EnvironmentId,
   cwd: string | null,
-): ReadonlyArray<T3ProjectFileScript> {
-  return useT3ProjectFileState(environmentId, cwd).scripts;
+): ReadonlyArray<CodeworkProjectFileScript> {
+  return useCodeworkProjectFileState(environmentId, cwd).scripts;
 }

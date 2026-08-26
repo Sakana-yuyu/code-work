@@ -520,7 +520,7 @@ export function McpServersSettings() {
         <SettingsRow
           title={t("MCP runtime")}
           description={t(
-            "Trusted MCP servers can expose their discovered tools to T3 Agent Drivers through ToolBroker.",
+            "Trusted MCP servers can expose their discovered tools to Code Work Agent Drivers through ToolBroker.",
           )}
           status={runtimeQuery.error ?? (runtimeQuery.isPending ? t("Loading...") : undefined)}
         />
@@ -539,7 +539,7 @@ export function McpServersSettings() {
           <SettingsRow
             title={t("No MCP servers configured")}
             description={t(
-              "Add a stdio, Streamable HTTP, or SSE server to make its tools available to T3.",
+              "Add a stdio, Streamable HTTP, or SSE server to make its tools available to Code Work.",
             )}
           />
         ) : null}

@@ -58,7 +58,7 @@ const isRuntimeMode = Schema.is(RuntimeMode);
 const isProviderDriverKind = Schema.is(ProviderDriverKind);
 const isReviewCommentContext = Schema.is(ReviewCommentContextSchema);
 
-export const LEGACY_COMPOSER_DRAFT_STORAGE_KEY = "t3code:composer-drafts:v1";
+export const LEGACY_COMPOSER_DRAFT_STORAGE_KEY = "codework:composer-drafts:v1";
 export const COMPOSER_DRAFT_STORAGE_KEY = canonicalStorageKey(LEGACY_COMPOSER_DRAFT_STORAGE_KEY);
 const COMPOSER_DRAFT_STORAGE_VERSION = 8;
 const DraftThreadEnvModeSchema = Schema.Literals(["local", "worktree"]);

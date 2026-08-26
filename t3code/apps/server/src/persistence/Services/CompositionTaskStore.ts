@@ -63,4 +63,4 @@ export interface CompositionTaskStoreShape {
 export class CompositionTaskStore extends Context.Service<
   CompositionTaskStore,
   CompositionTaskStoreShape
->()("t3/persistence/Services/CompositionTaskStore") {}
+>()("codework/persistence/Services/CompositionTaskStore") {}

@@ -89,7 +89,7 @@ import { hasCloudPublicConfig } from "./cloud/publicConfig.ts";
 import { ProviderRegistryLive } from "./provider/Layers/ProviderRegistry.ts";
 import * as ServerSettings from "./serverSettings.ts";
 import * as ProjectFaviconResolver from "./project/ProjectFaviconResolver.ts";
-import * as T3ProjectFileLoader from "./project/T3ProjectFileLoader.ts";
+import * as CodeworkProjectFileLoader from "./project/CodeworkProjectFileLoader.ts";
 import * as RepositoryIdentityResolver from "./project/RepositoryIdentityResolver.ts";
 import * as WorkspaceEntries from "./workspace/WorkspaceEntries.ts";
 import * as WorkspaceFileSystem from "./workspace/WorkspaceFileSystem.ts";
@@ -146,7 +146,7 @@ import { disableTailscaleServe, ensureTailscaleServe } from "@codework/tailscale
 import { forkParked, ServerActivation } from "./serverActivation.ts";
 
 // Effect's default preemptive shutdown waits 20s before finalizing request scopes.
-// T3's primary transport is long-lived WebSocket RPC, whose Effect scope finalizer
+// Code Work's primary transport is long-lived WebSocket RPC, whose Effect scope finalizer
 // already closes the websocket gracefully. Do not add an artificial drain before
 // those finalizers get a chance to run.
 const HTTP_PREEMPTIVE_SHUTDOWN_GRACE_MS = 0;
@@ -465,7 +465,7 @@ const CompositionTaskGraphExecutorLayerLive = CompositionTaskGraphExecutor.layer
 
 const ProjectFaviconResolverLayerLive = ProjectFaviconResolver.layer.pipe(
   Layer.provide(WorkspacePaths.layer),
-  Layer.provide(T3ProjectFileLoader.layer),
+  Layer.provide(CodeworkProjectFileLoader.layer),
 );
 
 const AuthLayerLive = EnvironmentAuth.layer.pipe(
@@ -775,9 +775,9 @@ export const makeServerLayer = Layer.unwrap(
                   Schedule.upTo({ duration: "10 minutes" }),
                 ),
               }),
-              Effect.tap(() => Effect.logInfo("T3 Connect desired link reconciled on startup")),
+              Effect.tap(() => Effect.logInfo("Code Work Connect desired link reconciled on startup")),
               Effect.catch((cause) =>
-                Effect.logWarning("Failed to reconcile T3 Connect desired link on startup", {
+                Effect.logWarning("Failed to reconcile Code Work Connect desired link on startup", {
                   cause,
                 }),
               ),

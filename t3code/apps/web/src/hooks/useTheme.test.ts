@@ -70,7 +70,7 @@ describe("theme failure handling", () => {
     }
   });
 
-  it("reads the persisted T3 Chat theme preference", async () => {
+  it("reads the persisted Code Work Chat theme preference", async () => {
     vi.stubGlobal("window", {
       localStorage: createStorage({
         getItem: () => "t3-chat",
@@ -158,7 +158,7 @@ describe("theme failure handling", () => {
     expect(errorLog).toHaveBeenCalledTimes(1);
 
     const unsubscribe = subscribeToTheme?.(() => undefined);
-    storageHandler?.({ key: "t3code:theme" } as StorageEvent);
+    storageHandler?.({ key: "codework:theme" } as StorageEvent);
     readSnapshot?.();
 
     expect(themeGetItem).toHaveBeenCalledTimes(2);

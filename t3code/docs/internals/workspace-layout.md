@@ -1,6 +1,6 @@
 # Workspace layout
 
-> For maintainers. Using T3 Code? See [docs/user](../user/).
+> For maintainers. Using Code Work? See [docs/user](../user/).
 
 A pnpm workspace driven by [vite-plus](https://vite.plus) (`vp`). See [scripts.md](./scripts.md) for
 the task commands.
@@ -13,7 +13,7 @@ the task commands.
 - `apps/web` (`@codework/web`): React + Vite UI. Consumes the shared client runtime and adds routing,
   components, and web-specific platform layers.
 - `apps/desktop` (`@codework/desktop`): Electron shell. Supervises a desktop-scoped `t3` backend,
-  loads the web bundle over the `t3code://` protocol, and owns SSH-managed remote environments.
+  loads the web bundle over the `codework://` protocol, and owns SSH-managed remote environments.
 - `apps/mobile` (`@codework/mobile`): Expo/React Native client. Same client runtime composition as
   web, different platform layer and UI.
 - `apps/marketing` (`@codework/marketing`): Astro marketing site.
@@ -39,7 +39,7 @@ the task commands.
 
 ## infra
 
-- `infra/relay` (`t3code-relay`): the hosted T3 Connect relay, deployed with Alchemy. Handles
+- `infra/relay` (`codework-relay`): the hosted Code Work Connect relay, deployed with Alchemy. Handles
   environment discovery, cloud-side records, and mobile notifications. It is not in the hot path;
   after connect, client traffic goes directly to the environment. See
   [t3-connect.md](./t3-connect.md).
@@ -50,7 +50,7 @@ the task commands.
   helpers, mobile static checks and showcase capture, update-manifest merging.
 - `assets/`: brand and app icon sources per channel (`dev`, `nightly`, `prod`).
 - `patches/`: pnpm patches for pinned upstream dependencies.
-- `oxlint-plugin-t3code/`: repo-specific lint rules.
+- `oxlint-plugin-codework/`: repo-specific lint rules.
 - `experiments/`: throwaway prototypes. Not part of the shipped build.
 - `docs/`: this documentation tree.
 

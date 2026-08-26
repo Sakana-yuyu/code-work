@@ -32,7 +32,7 @@ import type { CursorAdapterShape } from "../Services/CursorAdapter.ts";
 import { makeCursorAdapter } from "./CursorAdapter.ts";
 
 class CursorAdapter extends Context.Service<CursorAdapter, CursorAdapterShape>()(
-  "t3/provider/Layers/CursorAdapterToolBroker.e2e.test/CursorAdapter",
+  "codework/provider/Layers/CursorAdapterToolBroker.e2e.test/CursorAdapter",
 ) {}
 
 const __dirname = NodePath.dirname(NodeURL.fileURLToPath(import.meta.url));
@@ -119,7 +119,7 @@ const TestLayer = Layer.mergeAll(
 ).pipe(Layer.provideMerge(NodeServices.layer));
 
 it.layer(TestLayer, { excludeTestServices: true })("Cursor ACP Provider ToolBroker E2E", (it) => {
-  it.effect("真实子进程经 Runtime Bridge 和 T3 ToolBroker 读取工作区文件", () =>
+  it.effect("真实子进程经 Runtime Bridge 和 Code Work ToolBroker 读取工作区文件", () =>
     Effect.gen(function* () {
       const adapter = yield* CursorAdapter;
       const settings = yield* ServerSettingsService;
@@ -134,8 +134,8 @@ it.layer(TestLayer, { excludeTestServices: true })("Cursor ACP Provider ToolBrok
       );
       const wrapperPath = yield* Effect.promise(() =>
         makeMockAgentWrapper({
-          T3_ACP_READ_TEXT_FILE_PATH: requestedPath,
-          T3_ACP_CLIENT_TOOL_RESULT_LOG_PATH: resultLogPath,
+          CODEWORK_ACP_READ_TEXT_FILE_PATH: requestedPath,
+          CODEWORK_ACP_CLIENT_TOOL_RESULT_LOG_PATH: resultLogPath,
         }),
       );
       yield* settings.updateSettings({ providers: { cursor: { binaryPath: wrapperPath } } });

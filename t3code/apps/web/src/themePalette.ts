@@ -8,7 +8,7 @@ import {
   GROVE_THEME,
   IRIS_THEME,
   OCEAN_THEME,
-  T3_CHAT_THEME,
+  CODEWORK_CHAT_THEME,
   THEME_COLOR_ROLES,
   type ThemeAppearance,
   type ThemeColorRole,
@@ -17,11 +17,11 @@ import {
   type ThemeVariants,
 } from "@codework/shared/themePalettes";
 
-export { EMBER_THEME, GROVE_THEME, IRIS_THEME, OCEAN_THEME, T3_CHAT_THEME, THEME_COLOR_ROLES };
+export { EMBER_THEME, GROVE_THEME, IRIS_THEME, OCEAN_THEME, CODEWORK_CHAT_THEME, THEME_COLOR_ROLES };
 export type { ThemeAppearance, ThemeColorRole, ThemeColors, ThemeDefinition, ThemeVariants };
 
-export const T3_CHAT_THEME_ID = "t3-chat" as const;
-export const T3_CHAT_THEME_LABEL = "T3 Chat";
+export const CODEWORK_CHAT_THEME_ID = "t3-chat" as const;
+export const CODEWORK_CHAT_THEME_LABEL = "Code Work Chat";
 export const GROVE_THEME_ID = "grove" as const;
 export const GROVE_THEME_LABEL = "Grove";
 export const OCEAN_THEME_ID = "ocean" as const;
@@ -31,10 +31,10 @@ export const EMBER_THEME_LABEL = "Ember";
 export const IRIS_THEME_ID = "iris" as const;
 export const IRIS_THEME_LABEL = "Iris";
 export const THEME_FILE_VERSION = 1 as const;
-export const LEGACY_CUSTOM_THEMES_STORAGE_KEY = "t3code:themes:v1";
-export const LEGACY_THEME_FOLLOW_SYSTEM_STORAGE_KEY = "t3code:theme-follow-system";
-export const LEGACY_THEME_APPEARANCE_MODE_STORAGE_KEY = "t3code:theme-appearance-mode";
-export const LEGACY_THEME_HALVES_STORAGE_KEY = "t3code:theme-halves:v1";
+export const LEGACY_CUSTOM_THEMES_STORAGE_KEY = "codework:themes:v1";
+export const LEGACY_THEME_FOLLOW_SYSTEM_STORAGE_KEY = "codework:theme-follow-system";
+export const LEGACY_THEME_APPEARANCE_MODE_STORAGE_KEY = "codework:theme-appearance-mode";
+export const LEGACY_THEME_HALVES_STORAGE_KEY = "codework:theme-halves:v1";
 export const CUSTOM_THEMES_STORAGE_KEY = canonicalStorageKey(LEGACY_CUSTOM_THEMES_STORAGE_KEY);
 export const THEME_FOLLOW_SYSTEM_STORAGE_KEY = canonicalStorageKey(
   LEGACY_THEME_FOLLOW_SYSTEM_STORAGE_KEY,
@@ -69,7 +69,7 @@ const RESERVED_THEME_IDS = new Set([
   "system",
   "light",
   "dark",
-  T3_CHAT_THEME_ID,
+  CODEWORK_CHAT_THEME_ID,
   GROVE_THEME_ID,
   OCEAN_THEME_ID,
   EMBER_THEME_ID,
@@ -292,10 +292,10 @@ export function subscribeToCustomThemes(listener: () => void): () => void {
 }
 
 // Earlier builds shipped every maintainer theme under a t3- prefix; only the
-// genuinely T3-branded palette keeps it. Stored preferences and mixes with the
+// genuinely Code Work-branded palette keeps it. Stored preferences and mixes with the
 // old ids stay readable through this alias table.
 const LEGACY_THEME_ID_ALIASES: Readonly<Record<string, string>> = {
-  [LEGACY_T3_CHAT_DARK_THEME_ID]: T3_CHAT_THEME_ID,
+  [LEGACY_T3_CHAT_DARK_THEME_ID]: CODEWORK_CHAT_THEME_ID,
   "t3-grove": GROVE_THEME_ID,
   "t3-ocean": OCEAN_THEME_ID,
   "t3-ember": EMBER_THEME_ID,
@@ -319,7 +319,7 @@ function themeIdFromPreference(theme: ThemePreference): string {
   return normalizeThemeId(theme);
 }
 
-// Older builds stored the dark T3 Chat palette as a separate theme. Keep
+// Older builds stored the dark Code Work Chat palette as a separate theme. Keep
 // those preferences readable while mapping them to the dark variant.
 function legacyThemeMode(theme: ThemePreference): ThemeAppearance | null {
   return theme === LEGACY_T3_CHAT_DARK_THEME_ID ? "dark" : null;
@@ -332,7 +332,7 @@ function legacyThemeMode(theme: ThemePreference): ThemeAppearance | null {
  * their real backdrops (canvas, or the sidebar for its rows) because theme
  * colors are stored as opaque OKLCH tokens.
  */
-const T3_CODE_LIGHT_THEME_COLORS: ThemeColors = {
+const CODEWORK_CODE_LIGHT_THEME_COLORS: ThemeColors = {
   canvas: "#fcfcfc",
   chrome: "#fcfcfc",
   toolbar: "#fcfcfc",
@@ -392,7 +392,7 @@ const T3_CODE_LIGHT_THEME_COLORS: ThemeColors = {
   terminalScrollbarHover: "#bdbdbd",
 };
 
-const T3_CODE_DARK_THEME_COLORS: ThemeColors = {
+const CODEWORK_CODE_DARK_THEME_COLORS: ThemeColors = {
   canvas: "#0a0a0a",
   chrome: "#0a0a0a",
   toolbar: "#0a0a0a",
@@ -455,14 +455,14 @@ const T3_CODE_DARK_THEME_COLORS: ThemeColors = {
 /**
  * The standard Code Work look as a theme palette, for seeding a new theme when
  * no theme is installed. Distinct from {@link getDefaultThemeColors}, which
- * carries the flagship T3 Chat palette used to fill roles omitted by theme
+ * carries the flagship Code Work Chat palette used to fill roles omitted by theme
  * files.
  */
 export function getStandardThemeColors(appearance: ThemeAppearance): ThemeColors {
   if (appearance === "dark") {
-    return (standardDarkThemeColors ??= decodeThemeColors(T3_CODE_DARK_THEME_COLORS));
+    return (standardDarkThemeColors ??= decodeThemeColors(CODEWORK_CODE_DARK_THEME_COLORS));
   }
-  return (standardLightThemeColors ??= decodeThemeColors(T3_CODE_LIGHT_THEME_COLORS));
+  return (standardLightThemeColors ??= decodeThemeColors(CODEWORK_CODE_LIGHT_THEME_COLORS));
 }
 
 type ThemeRgbColor = {
@@ -1243,7 +1243,7 @@ export function createManagedThemeColors(
 
 /** Theme-file defaults follow the flagship palette for the requested mode. */
 export function getDefaultThemeColors(appearance: ThemeAppearance): ThemeColors {
-  return appearance === "dark" ? T3_CHAT_THEME.variants!.dark! : T3_CHAT_THEME.colors;
+  return appearance === "dark" ? CODEWORK_CHAT_THEME.variants!.dark! : CODEWORK_CHAT_THEME.colors;
 }
 
 /**

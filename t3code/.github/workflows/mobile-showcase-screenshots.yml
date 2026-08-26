@@ -24,10 +24,10 @@ on:
       theme:
         description: Palette to capture (all multiplies the run by six)
         required: true
-        default: t3-code
+        default: code-work
         type: choice
         options:
-          - t3-code
+          - code-work
           - t3-chat
           - grove
           - ocean
@@ -99,7 +99,7 @@ jobs:
     # one native build is shared between them.
     timeout-minutes: ${{ inputs.theme == 'all' && 300 || 60 }}
     env:
-      T3_SHOWCASE_ANDROID_ABI: x86_64
+      CODEWORK_SHOWCASE_ANDROID_ABI: x86_64
     steps:
       - name: Checkout
         uses: actions/checkout@v6

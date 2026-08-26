@@ -31,7 +31,7 @@ const makeDesktopBootstrap = (
   mode: "desktop",
   noBrowser: true,
   port: 4888,
-  t3Home: "/tmp/t3-bootstrap-home",
+  codeworkHome: "/tmp/t3-bootstrap-home",
   host: "127.0.0.1",
   desktopBootstrapToken: "desktop-bootstrap-token",
   tailscaleServeEnabled: false,
@@ -94,17 +94,17 @@ it.layer(NodeServices.layer)("cli config resolution", (it) => {
             ConfigProvider.layer(
               ConfigProvider.fromEnv({
                 env: {
-                  T3CODE_LOG_LEVEL: "Warn",
-                  T3CODE_MODE: "desktop",
-                  T3CODE_PORT: "4001",
-                  T3CODE_HOST: "0.0.0.0",
-                  T3CODE_HOME: baseDir,
+                  CODEWORK_LOG_LEVEL: "Warn",
+                  CODEWORK_MODE: "desktop",
+                  CODEWORK_PORT: "4001",
+                  CODEWORK_HOST: "0.0.0.0",
+                  CODEWORK_HOME: baseDir,
                   VITE_DEV_SERVER_URL: "http://127.0.0.1:5173",
-                  T3CODE_DEV_ALLOWED_ORIGINS:
+                  CODEWORK_DEV_ALLOWED_ORIGINS:
                     "https://host.example.ts.net, https://phone.example.ts.net ",
-                  T3CODE_NO_BROWSER: "true",
-                  T3CODE_AUTO_BOOTSTRAP_PROJECT_FROM_CWD: "false",
-                  T3CODE_LOG_WS_EVENTS: "true",
+                  CODEWORK_NO_BROWSER: "true",
+                  CODEWORK_AUTO_BOOTSTRAP_PROJECT_FROM_CWD: "false",
+                  CODEWORK_LOG_WS_EVENTS: "true",
                 },
               }),
             ),
@@ -167,15 +167,15 @@ it.layer(NodeServices.layer)("cli config resolution", (it) => {
             ConfigProvider.layer(
               ConfigProvider.fromEnv({
                 env: {
-                  T3CODE_LOG_LEVEL: "Warn",
-                  T3CODE_MODE: "desktop",
-                  T3CODE_PORT: "4001",
-                  T3CODE_HOST: "0.0.0.0",
-                  T3CODE_HOME: join(NodeOS.tmpdir(), "ignored-base"),
+                  CODEWORK_LOG_LEVEL: "Warn",
+                  CODEWORK_MODE: "desktop",
+                  CODEWORK_PORT: "4001",
+                  CODEWORK_HOST: "0.0.0.0",
+                  CODEWORK_HOME: join(NodeOS.tmpdir(), "ignored-base"),
                   VITE_DEV_SERVER_URL: "http://127.0.0.1:5173",
-                  T3CODE_NO_BROWSER: "false",
-                  T3CODE_AUTO_BOOTSTRAP_PROJECT_FROM_CWD: "false",
-                  T3CODE_LOG_WS_EVENTS: "false",
+                  CODEWORK_NO_BROWSER: "false",
+                  CODEWORK_AUTO_BOOTSTRAP_PROJECT_FROM_CWD: "false",
+                  CODEWORK_LOG_WS_EVENTS: "false",
                 },
               }),
             ),
@@ -245,10 +245,10 @@ it.layer(NodeServices.layer)("cli config resolution", (it) => {
             ConfigProvider.layer(
               ConfigProvider.fromEnv({
                 env: {
-                  T3CODE_BOOTSTRAP_FD: String(fd),
-                  T3CODE_NO_BROWSER: "true",
-                  T3CODE_AUTO_BOOTSTRAP_PROJECT_FROM_CWD: "true",
-                  T3CODE_LOG_WS_EVENTS: "true",
+                  CODEWORK_BOOTSTRAP_FD: String(fd),
+                  CODEWORK_NO_BROWSER: "true",
+                  CODEWORK_AUTO_BOOTSTRAP_PROJECT_FROM_CWD: "true",
+                  CODEWORK_LOG_WS_EVENTS: "true",
                 },
               }),
             ),
@@ -287,7 +287,7 @@ it.layer(NodeServices.layer)("cli config resolution", (it) => {
         makeDesktopBootstrap({
           port: 4888,
           host: "127.0.0.2",
-          t3Home: baseDir,
+          codeworkHome: baseDir,
           noBrowser: true,
           desktopBootstrapToken: "desktop-token",
           desktopTelemetryFd: 4,
@@ -322,7 +322,7 @@ it.layer(NodeServices.layer)("cli config resolution", (it) => {
             ConfigProvider.layer(
               ConfigProvider.fromEnv({
                 env: {
-                  T3CODE_BOOTSTRAP_FD: String(fd),
+                  CODEWORK_BOOTSTRAP_FD: String(fd),
                 },
               }),
             ),
@@ -418,7 +418,7 @@ it.layer(NodeServices.layer)("cli config resolution", (it) => {
         makeDesktopBootstrap({
           port: 4888,
           host: "127.0.0.2",
-          t3Home: "/tmp/t3-bootstrap-home",
+          codeworkHome: "/tmp/t3-bootstrap-home",
           noBrowser: false,
           desktopBootstrapToken: "desktop-token",
           tailscaleServeEnabled: false,
@@ -452,12 +452,12 @@ it.layer(NodeServices.layer)("cli config resolution", (it) => {
             ConfigProvider.layer(
               ConfigProvider.fromEnv({
                 env: {
-                  T3CODE_MODE: "web",
-                  T3CODE_BOOTSTRAP_FD: String(fd),
-                  T3CODE_HOME: baseDir,
-                  T3CODE_NO_BROWSER: "true",
-                  T3CODE_AUTO_BOOTSTRAP_PROJECT_FROM_CWD: "true",
-                  T3CODE_LOG_WS_EVENTS: "true",
+                  CODEWORK_MODE: "web",
+                  CODEWORK_BOOTSTRAP_FD: String(fd),
+                  CODEWORK_HOME: baseDir,
+                  CODEWORK_NO_BROWSER: "true",
+                  CODEWORK_AUTO_BOOTSTRAP_PROJECT_FROM_CWD: "true",
+                  CODEWORK_LOG_WS_EVENTS: "true",
                 },
               }),
             ),
@@ -588,8 +588,8 @@ it.layer(NodeServices.layer)("cli config resolution", (it) => {
             ConfigProvider.layer(
               ConfigProvider.fromEnv({
                 env: {
-                  T3CODE_NO_BROWSER: "false",
-                  T3CODE_AUTO_BOOTSTRAP_PROJECT_FROM_CWD: "true",
+                  CODEWORK_NO_BROWSER: "false",
+                  CODEWORK_AUTO_BOOTSTRAP_PROJECT_FROM_CWD: "true",
                 },
               }),
             ),

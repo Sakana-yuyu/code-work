@@ -75,10 +75,10 @@ function makeEnvironmentLayer(
       Layer.mergeAll(
         NodeServices.layer,
         DesktopConfig.layerTest({
-          T3CODE_HOME: baseDir,
-          T3CODE_PORT: "9999",
-          T3CODE_MODE: "desktop",
-          T3CODE_DESKTOP_LAN_HOST: "192.168.1.50",
+          CODEWORK_HOME: baseDir,
+          CODEWORK_PORT: "9999",
+          CODEWORK_MODE: "desktop",
+          CODEWORK_DESKTOP_LAN_HOST: "192.168.1.50",
           VITE_DEV_SERVER_URL: options?.devServerUrl,
         }),
       ),
@@ -138,15 +138,15 @@ describe("DesktopBackendConfiguration", () => {
         assert.equal(first.cwd, environment.backendCwd);
         assert.equal(first.captureOutput, true);
         assert.equal(first.env.ELECTRON_RUN_AS_NODE, "1");
-        assert.isUndefined(first.env.T3CODE_PORT);
-        assert.isUndefined(first.env.T3CODE_MODE);
-        assert.isUndefined(first.env.T3CODE_DESKTOP_LAN_HOST);
+        assert.isUndefined(first.env.CODEWORK_PORT);
+        assert.isUndefined(first.env.CODEWORK_MODE);
+        assert.isUndefined(first.env.CODEWORK_DESKTOP_LAN_HOST);
 
         assert.equal(first.bootstrap.mode, "desktop");
         assert.equal(first.bootstrap.noBrowser, true);
         assert.equal(first.bootstrap.port, 4888);
         assert.equal(first.bootstrap.host, "0.0.0.0");
-        assert.equal(first.bootstrap.t3Home, environment.baseDir);
+        assert.equal(first.bootstrap.codeworkHome, environment.baseDir);
         assert.equal(first.bootstrap.tailscaleServeEnabled, true);
         assert.equal(first.bootstrap.tailscaleServePort, 8443);
         assert.match(first.bootstrap.desktopBootstrapToken, /^[0-9a-f]{48}$/i);
@@ -571,7 +571,7 @@ describe("DesktopBackendConfiguration", () => {
           // not spawn wsl.exe (which would loop on preflight failures while the
           // Connections backend control is hidden). Resolve the Windows primary.
           assert.equal(config.executablePath, process.execPath);
-          assert.equal(config.bootstrap.t3Home, environment.baseDir);
+          assert.equal(config.bootstrap.codeworkHome, environment.baseDir);
           assert.isTrue(Option.isNone(config.preflightFailure));
         }).pipe(
           Effect.provide(
@@ -958,7 +958,7 @@ describe("DesktopBackendConfiguration", () => {
     // a live async effect — otherwise runSync throws in the handler. Build the
     // real WSL layer (not the sync test stub) and resolve the label with a
     // top-level runSync, exactly as the handler does.
-    // oxlint-disable-next-line t3code/no-manual-effect-runtime-in-tests -- This test intentionally replicates the sync IPC handler's runSync path to catch a regression to async-only resolution; it.effect would mask it.
+    // oxlint-disable-next-line codework/no-manual-effect-runtime-in-tests -- This test intentionally replicates the sync IPC handler's runSync path to catch a regression to async-only resolution; it.effect would mask it.
     const runtime = ManagedRuntime.make(
       DesktopBackendConfiguration.layer.pipe(
         Layer.provideMerge(serverExposureLayer),
@@ -983,7 +983,7 @@ describe("DesktopBackendConfiguration", () => {
       const configuration = await runtime.runPromise(
         DesktopBackendConfiguration.DesktopBackendConfiguration,
       );
-      // oxlint-disable-next-line t3code/no-manual-effect-runtime-in-tests -- Same reason: this is the synchronous resolution the IPC handler performs.
+      // oxlint-disable-next-line codework/no-manual-effect-runtime-in-tests -- Same reason: this is the synchronous resolution the IPC handler performs.
       const label = Effect.runSync(configuration.resolvePrimaryLabel);
       assert.equal(typeof label, "string");
     } finally {

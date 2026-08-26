@@ -20,7 +20,7 @@ import {
 } from "../persistence/Services/CompositionTaskStore.ts";
 import * as ToolBroker from "./ToolBroker.ts";
 
-/** 外部 Runtime 请求 T3 执行一次 canonical tool 的输入。 */
+/** 外部 Runtime 请求 Code Work 执行一次 canonical tool 的输入。 */
 export type CompositionRuntimeToolInvocation = {
   readonly runtimeId: string;
   readonly taskId: string;
@@ -66,7 +66,7 @@ export type CompositionRuntimeToolBridgeShape = {
 export class CompositionRuntimeToolBridgeService extends Context.Service<
   CompositionRuntimeToolBridgeService,
   CompositionRuntimeToolBridgeShape
->()("t3/composition/CompositionRuntimeToolBridge/CompositionRuntimeToolBridgeService") {}
+>()("codework/composition/CompositionRuntimeToolBridge/CompositionRuntimeToolBridgeService") {}
 
 type ScopeCheck =
   | {

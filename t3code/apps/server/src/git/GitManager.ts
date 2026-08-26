@@ -104,7 +104,7 @@ export class GitManager extends Context.Service<
       options?: GitRunStackedActionOptions,
     ) => Effect.Effect<GitRunStackedActionResult, GitManagerServiceError>;
   }
->()("t3/git/GitManager") {}
+>()("codework/git/GitManager") {}
 
 const COMMIT_TIMEOUT_MS = 10 * 60_000;
 const MAX_PROGRESS_TEXT_LENGTH = 500;
@@ -223,7 +223,7 @@ function resolvePullRequestWorktreeLocalBranchName(
 
   const sanitizedHeadBranch = sanitizeBranchFragment(pullRequest.headBranch).trim();
   const suffix = sanitizedHeadBranch.length > 0 ? sanitizedHeadBranch : "head";
-  return `t3code/pr-${pullRequest.number}/${suffix}`;
+  return `codework/pr-${pullRequest.number}/${suffix}`;
 }
 
 function parseGitHubRepositoryNameWithOwnerFromRemoteUrl(url: string | null): string | null {
@@ -1771,7 +1771,7 @@ export const make = Effect.gen(function* () {
 
     const bodyFile = path.join(
       tempDir,
-      `t3code-pr-body-${process.pid}-${yield* randomUUIDv4(cwd)}.md`,
+      `codework-pr-body-${process.pid}-${yield* randomUUIDv4(cwd)}.md`,
     );
     yield* fileSystem.writeFileString(bodyFile, generated.body).pipe(
       Effect.mapError(

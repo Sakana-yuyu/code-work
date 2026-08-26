@@ -60,7 +60,7 @@ const makeOptions = (
   protocol: makeProtocol(),
   taskAssigneeRoutes: [
     {
-      t3AgentId: "agent-1",
+      codeworkAgentId: "agent-1",
       workspaceId: "workspace-1",
       multicaAgentId: "agent-1",
     },
@@ -81,7 +81,7 @@ const makeOptions = (
 });
 
 describe("MulticaDaemonRuntimeAdapter", () => {
-  it("把 heartbeat 映射为 T3 probe/heartbeat，并保留 runtimeGone 的离线事实", async () => {
+  it("把 heartbeat 映射为 Code Work probe/heartbeat，并保留 runtimeGone 的离线事实", async () => {
     const adapter = makeMulticaDaemonRuntimeAdapter(
       makeOptions({
         protocol: makeProtocol({
@@ -233,20 +233,20 @@ describe("MulticaDaemonRuntimeAdapter", () => {
     ).rejects.toMatchObject({ code: "assignee_mapping_missing" });
   });
 
-  it("按显式 T3 Squad 路由选择远端 Squad，允许同一 Leader 服务多个 Squad", async () => {
+  it("按显式 Code Work Squad 路由选择远端 Squad，允许同一 Leader 服务多个 Squad", async () => {
     const inputs: unknown[] = [];
     const adapter = makeMulticaDaemonRuntimeAdapter(
       makeOptions({
         taskAssigneeRoutes: [
           {
-            t3AgentId: "agent-1",
-            t3SquadId: "squad-a",
+            codeworkAgentId: "agent-1",
+            codeworkSquadId: "squad-a",
             workspaceId: "workspace-1",
             multicaSquadId: "remote-squad-a",
           },
           {
-            t3AgentId: "agent-1",
-            t3SquadId: "squad-b",
+            codeworkAgentId: "agent-1",
+            codeworkSquadId: "squad-b",
             workspaceId: "workspace-1",
             multicaSquadId: "remote-squad-b",
           },
@@ -396,7 +396,7 @@ describe("MulticaDaemonRuntimeAdapter", () => {
     ).rejects.toMatchObject({ code: "capability_handshake_unsupported" });
   });
 
-  it("只在显式 T3 capability 扩展接受后开放带 grant 的派发", async () => {
+  it("只在显式 Code Work capability 扩展接受后开放带 grant 的派发", async () => {
     const handshakeCalls: string[] = [];
     const revokeCalls: string[] = [];
     const adapter = makeMulticaDaemonRuntimeAdapter(
@@ -445,7 +445,7 @@ describe("MulticaDaemonRuntimeAdapter", () => {
           taskId: "task-grant-2",
           runId: "run-grant-2",
           agentId: "agent-1",
-          prompt: "执行带 T3 工具授权的任务",
+          prompt: "执行带 Code Work 工具授权的任务",
           idempotencyKey: "run-grant-2",
           capabilityGrantIds: ["grant-1"],
           capabilityHandshakeId: "handshake-1",

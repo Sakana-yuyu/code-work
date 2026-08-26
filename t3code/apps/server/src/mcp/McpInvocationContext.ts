@@ -12,7 +12,7 @@ export type McpCapability = "preview";
 export interface McpInvocationScope {
   readonly environmentId: EnvironmentId;
   readonly threadId: ThreadId;
-  /** T3 的通用浏览器 session 身份；Provider MCP 继续与旧字段兼容。 */
+  /** Code Work 的通用浏览器 session 身份；Provider MCP 继续与旧字段兼容。 */
   readonly sessionId: string;
   readonly providerSessionId?: string;
   readonly providerInstanceId: ProviderInstanceId;
@@ -23,7 +23,7 @@ export interface McpInvocationScope {
 export class McpInvocationContext extends Context.Service<
   McpInvocationContext,
   McpInvocationScope
->()("t3/mcp/McpInvocationContext") {}
+>()("codework/mcp/McpInvocationContext") {}
 
 export const diagnosticProviderSessionId = (scope: McpInvocationScope): string =>
   scope.providerSessionId ?? scope.sessionId;

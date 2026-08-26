@@ -41,9 +41,9 @@ const appLinking = {
     `${PRODUCT_IDENTITY.schemes.production}://`,
     `${PRODUCT_IDENTITY.schemes.development}://`,
     `${PRODUCT_IDENTITY.schemes.preview}://`,
-    "t3code://",
-    "t3code-dev://",
-    "t3code-preview://",
+    "codework://",
+    "codework-dev://",
+    "codework-preview://",
   ],
   // The Expo dev client launches the app via
   // <scheme>://expo-development-client/?url=<packager> — that URL addresses

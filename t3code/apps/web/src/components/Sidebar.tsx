@@ -195,8 +195,8 @@ import { t } from "~/i18n";
 const SETTLED_TAIL_INITIAL_COUNT = 10;
 const SETTLED_TAIL_PAGE_COUNT = 25;
 // Keep the v2 key so existing preferences survive the v2-to-default rename.
-const LEGACY_SETTLED_SHELF_EXPANDED_KEY = "t3code:sidebar-v2:settled-expanded";
-const LEGACY_SNOOZED_SHELF_EXPANDED_KEY = "t3code:sidebar-v2:snoozed-expanded";
+const LEGACY_SETTLED_SHELF_EXPANDED_KEY = "codework:sidebar-v2:settled-expanded";
+const LEGACY_SNOOZED_SHELF_EXPANDED_KEY = "codework:sidebar-v2:snoozed-expanded";
 const SETTLED_SHELF_EXPANDED_KEY = canonicalStorageKey(LEGACY_SETTLED_SHELF_EXPANDED_KEY);
 const SNOOZED_SHELF_EXPANDED_KEY = canonicalStorageKey(LEGACY_SNOOZED_SHELF_EXPANDED_KEY);
 
@@ -1159,7 +1159,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
   );
 
   // A real link so cmd/ctrl+click and middle-click open the host in the
-  // browser. A plain click still opens T3's pull request view.
+  // browser. A plain click still opens Code Work's pull request view.
   const prBadge =
     prStatus && pr ? (
       <a
@@ -1875,7 +1875,7 @@ export default function Sidebar() {
     [sidebarProjectSortOrder, threads, unsortedProjectGroups],
   );
   const serverConfigs = useAtomValue(environmentServerConfigsAtom);
-  // Threads on non-primary environments (T3 Connect, hosted) resolve their
+  // Threads on non-primary environments (Code Work Connect, hosted) resolve their
   // provider entry from their own environment's config: default instance ids
   // are driver slugs, so a flat map would collide across environments.
   const providerEntriesByEnvironment = useMemo(

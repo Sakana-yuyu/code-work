@@ -1,7 +1,7 @@
-# Keeping T3 Code in Sync
+# Keeping Code Work in Sync
 
-The T3 Code web or desktop app and the server it connects to work best when they use the same
-version. If they do not match, T3 Code shows a warning with the right update option for that server.
+The Code Work web or desktop app and the server it connects to work best when they use the same
+version. If they do not match, Code Work shows a warning with the right update option for that server.
 
 ## Where to Find the Update
 
@@ -24,11 +24,11 @@ The update does not remove saved threads, settings, or project files.
 
 | Action                     | What to do                                                                                                                                                                  |
 | -------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Update server**          | Available for the T3 Code Linux background service. Select the button and leave T3 Code open while it prepares, tests, restarts, and reconnects.                            |
-| **Update the desktop app** | Open the T3 Code desktop app on the machine that runs the server and install the app update there. Reopen it if needed.                                                     |
-| **Copy update command**    | Copy the command, open a terminal on the server machine, stop the current T3 Code server, and relaunch it with the copied command and any startup options you normally use. |
+| **Update server**          | Available for the Code Work Linux background service. Select the button and leave Code Work open while it prepares, tests, restarts, and reconnects.                            |
+| **Update the desktop app** | Open the Code Work desktop app on the machine that runs the server and install the app update there. Reopen it if needed.                                                     |
+| **Copy update command**    | Copy the command, open a terminal on the server machine, stop the current Code Work server, and relaunch it with the copied command and any startup options you normally use. |
 
-The available action depends on how that server was started. T3 Code does not update connected
+The available action depends on how that server was started. Code Work does not update connected
 servers silently in the background.
 
 An older background-service launcher may ask you to run the exact
@@ -43,7 +43,7 @@ update. A failure remains visible with its error and an option to retry.
 **Copy update command** gives you `npx t3@<client-version>`, which relaunches the server directly
 at the matching version. Add whatever startup options you normally use.
 
-If the server instead runs as the T3 Code background service, update the service on the host and
+If the server instead runs as the Code Work background service, update the service on the host and
 pin the same version:
 
 ```sh
@@ -54,7 +54,7 @@ npx t3@<client-version> service update
 only resolves the skew when your client happens to be on the latest release. The exact version from
 the warning always works.
 
-See [Running T3 Code in the Background](./background-service.md) for install, status, and removal
+See [Running Code Work in the Background](./background-service.md) for install, status, and removal
 commands.
 
 ## After the Update

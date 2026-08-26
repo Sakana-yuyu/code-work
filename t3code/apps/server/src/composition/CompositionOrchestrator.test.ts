@@ -131,7 +131,7 @@ layer("CompositionOrchestrator", (it) => {
       assert.equal((yield* store.getRun("run-old")).pipe(Option.getOrThrow).status, "failed");
     }),
   );
-  it.effect("T3 Squad Task 通过 Leader Driver 路由到 Multica 远端 Squad", () =>
+  it.effect("Code Work Squad Task 通过 Leader Driver 路由到 Multica 远端 Squad", () =>
     Effect.gen(function* () {
       const store = yield* CompositionTaskStore;
       let quickCreateInput: unknown;
@@ -174,7 +174,7 @@ layer("CompositionOrchestrator", (it) => {
         capabilities: ["rpc-v1", "squad", "leader", "task-graph"],
         taskAssigneeRoutes: [
           {
-            t3AgentId: "agent-leader",
+            codeworkAgentId: "agent-leader",
             workspaceId: "workspace-squad",
             multicaSquadId: "remote-squad-1",
           },
@@ -186,7 +186,7 @@ layer("CompositionOrchestrator", (it) => {
       );
       yield* store.upsertSquad({
         squadId: "squad-1",
-        name: "T3 协同组",
+        name: "Code Work 协同组",
         leaderAgentId: "agent-leader",
         memberAgentIds: ["agent-leader", "agent-worker"],
       });
@@ -786,7 +786,7 @@ layer("CompositionOrchestrator", (it) => {
     }),
   );
 
-  it.effect("外部取消能力失败时不提前修改 T3 任务终态", () =>
+  it.effect("外部取消能力失败时不提前修改 Code Work 任务终态", () =>
     Effect.gen(function* () {
       const store = yield* CompositionTaskStore;
       const driverRegistry = makeCompositionAgentDriverRegistry();

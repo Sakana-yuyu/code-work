@@ -35,12 +35,12 @@ const TARGET = new PrimaryConnectionTarget({
 const PUBLISH_RESULT: SourceControlPublishRepositoryResult = {
   repository: {
     provider: "github",
-    nameWithOwner: "t3tools/t3code",
-    url: "https://github.com/t3tools/t3code",
-    sshUrl: "git@github.com:t3tools/t3code.git",
+    nameWithOwner: "t3tools/codework",
+    url: "https://github.com/t3tools/codework",
+    sshUrl: "git@github.com:t3tools/codework.git",
   },
   remoteName: "origin",
-  remoteUrl: "git@github.com:t3tools/t3code.git",
+  remoteUrl: "git@github.com:t3tools/codework.git",
   branch: "main",
   upstreamBranch: "origin/main",
   status: "pushed",
@@ -138,7 +138,7 @@ describe("source control environment atoms", () => {
             input: {
               cwd: "/repo",
               provider: "github",
-              repository: "t3tools/t3code",
+              repository: "t3tools/codework",
               visibility: "private",
             },
           }),
@@ -154,7 +154,7 @@ describe("source control environment atoms", () => {
             input: {
               cwd: "/repo",
               provider: "github",
-              repository: "t3tools/t3code",
+              repository: "t3tools/codework",
               visibility: "private",
             },
           }),

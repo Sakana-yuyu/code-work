@@ -20,9 +20,9 @@ const defaultEnvironmentInput = {
   platform: "darwin",
   processArch: "arm64",
   appVersion: "1.2.3",
-  appPath: "/Applications/T3 Code.app/Contents/Resources/app.asar",
+  appPath: "/Applications/Code Work.app/Contents/Resources/app.asar",
   isPackaged: true,
-  resourcesPath: "/Applications/T3 Code.app/Contents/Resources",
+  resourcesPath: "/Applications/Code Work.app/Contents/Resources",
   runningUnderArm64Translation: false,
 } satisfies DesktopEnvironment.MakeDesktopEnvironmentInput;
 
@@ -39,7 +39,7 @@ interface ElectronAppCalls {
 const makeElectronAppLayer = (calls: ElectronAppCalls) =>
   Layer.succeed(ElectronApp.ElectronApp, {
     metadata: Effect.die("unexpected metadata read"),
-    name: Effect.succeed("T3 Code"),
+    name: Effect.succeed("Code Work"),
     systemLocale: Effect.succeed("en-US"),
     whenReady: Effect.void,
     quit: Effect.void,
@@ -132,10 +132,10 @@ const withIdentity = <A, E, R>(
                 : Effect.succeed(
                     (input.canonicalPathExists === true && path.includes("code-work")) ||
                       (input.legacyPathExists === true &&
-                        (path.includes("t3code") || path.includes("T3 Code (Alpha)"))),
+                        (path.includes("codework") || path.includes("Code Work (Alpha)"))),
                   ),
             readFileString: () =>
-              Effect.succeed(input.packageJson ?? '{"t3codeCommitHash":"abcdef1234567890"}'),
+              Effect.succeed(input.packageJson ?? '{"codeworkCommitHash":"abcdef1234567890"}'),
           }),
         ),
         Layer.provideMerge(makeAssetsLayer(input.pngIconPath ?? Option.none())),
@@ -155,7 +155,7 @@ describe("DesktopAppIdentity", () => {
 
         assert.equal(
           userDataPath.replaceAll("\\", "/"),
-          "/Users/alice/Library/Application Support/t3code",
+          "/Users/alice/Library/Application Support/codework",
         );
       }),
       { legacyPathExists: true },
@@ -228,7 +228,7 @@ describe("DesktopAppIdentity", () => {
         calls,
         environment: {
           env: {
-            T3CODE_COMMIT_HASH: "0123456789abcdef",
+            CODEWORK_COMMIT_HASH: "0123456789abcdef",
           },
         },
         pngIconPath: Option.some("/icon.png"),

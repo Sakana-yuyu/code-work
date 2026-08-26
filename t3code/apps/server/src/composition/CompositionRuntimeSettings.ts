@@ -83,7 +83,7 @@ export interface CompositionRuntimeSettingsReconciler {
 export class CompositionRuntimeSettingsReconcilerService extends Context.Service<
   CompositionRuntimeSettingsReconcilerService,
   CompositionRuntimeSettingsReconciler
->()("t3/composition/CompositionRuntimeSettings/CompositionRuntimeSettingsReconcilerService") {}
+>()("codework/composition/CompositionRuntimeSettings/CompositionRuntimeSettingsReconcilerService") {}
 
 type ManagedAdapter = {
   readonly instanceId: string;
@@ -131,15 +131,15 @@ const makeAgents = (
   const agentIds = new Set<string>();
   const agents: CompositionRuntimeAgent[] = [];
   for (const route of config.assigneeRoutes) {
-    if (agentIds.has(route.t3AgentId)) {
-      if (route.t3SquadId !== undefined) continue;
-      throw new Error(`Multica assignee route '${route.t3AgentId}' 重复。`);
+    if (agentIds.has(route.codeworkAgentId)) {
+      if (route.codeworkSquadId !== undefined) continue;
+      throw new Error(`Multica assignee route '${route.codeworkAgentId}' 重复。`);
     }
-    agentIds.add(route.t3AgentId);
+    agentIds.add(route.codeworkAgentId);
     agents.push({
-      agentId: route.t3AgentId,
+      agentId: route.codeworkAgentId,
       runtimeId: config.runtimeId,
-      displayName: `Multica ${route.t3AgentId}`,
+      displayName: `Multica ${route.codeworkAgentId}`,
       ...(config.version === undefined ? {} : { version: config.version }),
       status: "online",
       capabilities: [...config.capabilities],
@@ -158,26 +158,26 @@ const makeRuntimeMcpTokens = (
   const tokens = new Map<string, string>();
   const tokenOwners = new Map<string, string>();
   for (const route of config.assigneeRoutes) {
-    const environmentVariable = route.t3McpCredentialEnvironmentVariable;
+    const environmentVariable = route.codeworkMcpCredentialEnvironmentVariable;
     if (environmentVariable === undefined) continue;
     const token = values.get(environmentVariable)?.trim();
     if (token === undefined || token.length === 0) {
       throw new Error(
-        `Multica Agent '${route.t3AgentId}' 的 T3 MCP 凭据环境变量 '${environmentVariable}' 没有物化值。`,
+        `Multica Agent '${route.codeworkAgentId}' 的 Code Work MCP 凭据环境变量 '${environmentVariable}' 没有物化值。`,
       );
     }
-    const existingToken = tokens.get(route.t3AgentId);
+    const existingToken = tokens.get(route.codeworkAgentId);
     if (existingToken !== undefined && existingToken !== token) {
-      throw new Error(`Multica Agent '${route.t3AgentId}' 配置了多个不同的 T3 MCP 凭据。`);
+      throw new Error(`Multica Agent '${route.codeworkAgentId}' 配置了多个不同的 Code Work MCP 凭据。`);
     }
     const existingOwner = tokenOwners.get(token);
-    if (existingOwner !== undefined && existingOwner !== route.t3AgentId) {
+    if (existingOwner !== undefined && existingOwner !== route.codeworkAgentId) {
       throw new Error(
-        `Multica Agent '${route.t3AgentId}' 与 '${existingOwner}' 不能共用同一个 T3 MCP 凭据。`,
+        `Multica Agent '${route.codeworkAgentId}' 与 '${existingOwner}' 不能共用同一个 Code Work MCP 凭据。`,
       );
     }
-    tokens.set(route.t3AgentId, token);
-    tokenOwners.set(token, route.t3AgentId);
+    tokens.set(route.codeworkAgentId, token);
+    tokenOwners.set(token, route.codeworkAgentId);
   }
   return tokens;
 };
@@ -379,8 +379,8 @@ export const makeMulticaRuntimeAdapterFromSettings = (
       protocol,
       agents: input.agents,
       taskAssigneeRoutes: input.config.assigneeRoutes.map((route) => ({
-        t3AgentId: route.t3AgentId,
-        ...(route.t3SquadId === undefined ? {} : { t3SquadId: route.t3SquadId }),
+        codeworkAgentId: route.codeworkAgentId,
+        ...(route.codeworkSquadId === undefined ? {} : { codeworkSquadId: route.codeworkSquadId }),
         workspaceId: route.workspaceId,
         ...(route.multicaAgentId === undefined ? {} : { multicaAgentId: route.multicaAgentId }),
         ...(route.multicaSquadId === undefined ? {} : { multicaSquadId: route.multicaSquadId }),

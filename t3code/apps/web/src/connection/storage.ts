@@ -41,7 +41,7 @@ import {
 } from "../persistenceIndexedDb";
 
 export const CONNECTION_RUNTIME_DATABASE_NAME = "codework:connection-runtime";
-export const LEGACY_CONNECTION_RUNTIME_DATABASE_NAME = "t3code:connection-runtime";
+export const LEGACY_CONNECTION_RUNTIME_DATABASE_NAME = "codework:connection-runtime";
 const DATABASE_VERSION = 4;
 const CATALOG_STORE_NAME = "catalog";
 const SHELL_STORE_NAME = "shell";

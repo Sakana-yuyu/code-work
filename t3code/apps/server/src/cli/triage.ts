@@ -169,7 +169,7 @@ export const triageCommand = Command.make("triage", {
   model: modelFlag,
 }).pipe(
   Command.withDescription(
-    "Investigate a T3 Code problem on this machine with claude or codex, and help file a good issue.",
+    "Investigate a Code Work problem on this machine with claude or codex, and help file a good issue.",
   ),
   Command.withHandler((flags) =>
     Effect.gen(function* () {
@@ -177,10 +177,10 @@ export const triageCommand = Command.make("triage", {
       const path = yield* Path.Path;
 
       // Triage is a user-facing feature: always the userdata state, never dev.
-      // --base-dir wins; T3CODE_HOME is its documented env equivalent (same
+      // --base-dir wins; CODEWORK_HOME is its documented env equivalent (same
       // precedence as `t3 pair`).
       const explicitBaseDir = Option.getOrUndefined(flags.baseDir);
-      const envHome = yield* Config.string("T3CODE_HOME").pipe(Config.option);
+      const envHome = yield* Config.string("CODEWORK_HOME").pipe(Config.option);
       const baseDir = yield* resolveBaseDir(explicitBaseDir ?? Option.getOrUndefined(envHome));
       const paths = yield* ServerConfig.deriveServerPaths(baseDir, undefined, {});
 

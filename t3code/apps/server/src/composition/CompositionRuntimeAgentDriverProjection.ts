@@ -38,7 +38,7 @@ export class CompositionRuntimeAgentDriverProjectionService extends Context.Serv
   CompositionRuntimeAgentDriverProjectionService,
   CompositionRuntimeAgentDriverProjectionServiceShape
 >()(
-  "t3/composition/CompositionRuntimeAgentDriverProjection/CompositionRuntimeAgentDriverProjectionService",
+  "codework/composition/CompositionRuntimeAgentDriverProjection/CompositionRuntimeAgentDriverProjectionService",
 ) {}
 
 export interface CompositionRuntimeAgentDriverProjectionOptions {

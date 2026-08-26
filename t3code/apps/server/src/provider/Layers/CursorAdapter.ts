@@ -757,7 +757,7 @@ export function makeCursorAdapter(
             childProcessSpawner,
             cwd,
             ...(resumeSessionId ? { resumeSessionId } : {}),
-            clientInfo: { name: "t3-code", version: "0.0.0" },
+            clientInfo: { name: "code-work", version: "0.0.0" },
             ...(toolBrokerBinding === undefined
               ? {}
               : {
@@ -771,7 +771,7 @@ export function makeCursorAdapter(
                   mcpServers: [
                     {
                       type: "http" as const,
-                      name: "t3-code",
+                      name: "code-work",
                       url: mcpSession.endpoint,
                       headers: [
                         {
@@ -820,7 +820,7 @@ export function makeCursorAdapter(
             result: { readonly status: string; readonly errorCode?: string | undefined },
           ) =>
             EffectAcpErrors.AcpRequestError.internalError(
-              "T3 ToolBroker 未完成 ACP 请求。",
+              "Code Work ToolBroker 未完成 ACP 请求。",
               {
                 status: result.status,
                 ...(result.errorCode === undefined ? {} : { errorCode: result.errorCode }),
@@ -837,7 +837,7 @@ export function makeCursorAdapter(
               const binding = toolBrokerContexts.get(input.threadId);
               if (binding === undefined || !binding.active) {
                 return yield* EffectAcpErrors.AcpRequestError.resourceNotFound(
-                  "T3 ToolBroker binding 已撤销。",
+                  "Code Work ToolBroker binding 已撤销。",
                 );
               }
               const invocation: ProviderToolBrokerInvocation = {
@@ -855,7 +855,7 @@ export function makeCursorAdapter(
               );
               if (!binding.active || toolBrokerContexts.get(input.threadId) !== binding) {
                 return yield* EffectAcpErrors.AcpRequestError.resourceNotFound(
-                  "T3 ToolBroker binding 已撤销。",
+                  "Code Work ToolBroker binding 已撤销。",
                 );
               }
               if (result.status !== "succeeded") return yield* toolRequestFailed(method, result);
@@ -866,7 +866,7 @@ export function makeCursorAdapter(
               const binding = toolBrokerContexts.get(input.threadId);
               if (binding === undefined || !binding.active) {
                 return yield* EffectAcpErrors.AcpRequestError.resourceNotFound(
-                  "T3 ToolBroker binding 已撤销。",
+                  "Code Work ToolBroker binding 已撤销。",
                 );
               }
               if (!path.isAbsolute(requestPath)) {
@@ -924,7 +924,7 @@ export function makeCursorAdapter(
                 ) {
                   return Effect.fail(
                     EffectAcpErrors.AcpRequestError.internalError(
-                      "T3 终端快照格式无效。",
+                      "Code Work 终端快照格式无效。",
                       undefined,
                       { method, operation: "handle-request" },
                     ),
@@ -964,7 +964,7 @@ export function makeCursorAdapter(
                   );
                   if (!isRecord(result) || typeof result.contents !== "string") {
                     return yield* EffectAcpErrors.AcpRequestError.internalError(
-                      "T3 文件读取结果格式无效。",
+                      "Code Work 文件读取结果格式无效。",
                     );
                   }
                   const startLine = Math.max(0, (request.line ?? 1) - 1);
@@ -1011,7 +1011,7 @@ export function makeCursorAdapter(
                   const binding = toolBrokerContexts.get(input.threadId);
                   if (binding === undefined || !binding.active) {
                     return yield* EffectAcpErrors.AcpRequestError.resourceNotFound(
-                      "T3 ToolBroker binding 已撤销。",
+                      "Code Work ToolBroker binding 已撤销。",
                     );
                   }
                   const env = Object.fromEntries(

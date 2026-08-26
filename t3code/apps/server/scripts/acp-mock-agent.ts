@@ -11,59 +11,59 @@ import * as EffectAcpAgent from "effect-acp/agent";
 import * as AcpError from "effect-acp/errors";
 import type * as AcpSchema from "effect-acp/schema";
 
-const requestLogPath = process.env.T3_ACP_REQUEST_LOG_PATH;
-const exitLogPath = process.env.T3_ACP_EXIT_LOG_PATH;
-const emitToolCalls = process.env.T3_ACP_EMIT_TOOL_CALLS === "1";
+const requestLogPath = process.env.CODEWORK_ACP_REQUEST_LOG_PATH;
+const exitLogPath = process.env.CODEWORK_ACP_EXIT_LOG_PATH;
+const emitToolCalls = process.env.CODEWORK_ACP_EMIT_TOOL_CALLS === "1";
 const emitInterleavedAssistantToolCalls =
-  process.env.T3_ACP_EMIT_INTERLEAVED_ASSISTANT_TOOL_CALLS === "1";
-const emitGenericToolPlaceholders = process.env.T3_ACP_EMIT_GENERIC_TOOL_PLACEHOLDERS === "1";
-const emitAskQuestion = process.env.T3_ACP_EMIT_ASK_QUESTION === "1";
-const emitXAiAskUserQuestion = process.env.T3_ACP_EMIT_XAI_ASK_USER_QUESTION === "1";
-const emitXAiPromptCompleteThenHang = process.env.T3_ACP_EMIT_XAI_PROMPT_COMPLETE_THEN_HANG === "1";
-const emitForeignSessionUpdates = process.env.T3_ACP_EMIT_FOREIGN_SESSION_UPDATES === "1";
-const hangPromptForever = process.env.T3_ACP_HANG_PROMPT_FOREVER === "1";
-const hangFirstPromptForever = process.env.T3_ACP_HANG_FIRST_PROMPT_FOREVER === "1";
-const emitLateUpdateAfterCancel = process.env.T3_ACP_EMIT_LATE_UPDATE_AFTER_CANCEL === "1";
+  process.env.CODEWORK_ACP_EMIT_INTERLEAVED_ASSISTANT_TOOL_CALLS === "1";
+const emitGenericToolPlaceholders = process.env.CODEWORK_ACP_EMIT_GENERIC_TOOL_PLACEHOLDERS === "1";
+const emitAskQuestion = process.env.CODEWORK_ACP_EMIT_ASK_QUESTION === "1";
+const emitXAiAskUserQuestion = process.env.CODEWORK_ACP_EMIT_XAI_ASK_USER_QUESTION === "1";
+const emitXAiPromptCompleteThenHang = process.env.CODEWORK_ACP_EMIT_XAI_PROMPT_COMPLETE_THEN_HANG === "1";
+const emitForeignSessionUpdates = process.env.CODEWORK_ACP_EMIT_FOREIGN_SESSION_UPDATES === "1";
+const hangPromptForever = process.env.CODEWORK_ACP_HANG_PROMPT_FOREVER === "1";
+const hangFirstPromptForever = process.env.CODEWORK_ACP_HANG_FIRST_PROMPT_FOREVER === "1";
+const emitLateUpdateAfterCancel = process.env.CODEWORK_ACP_EMIT_LATE_UPDATE_AFTER_CANCEL === "1";
 const omitXAiPromptCompleteStopReason =
-  process.env.T3_ACP_OMIT_XAI_PROMPT_COMPLETE_STOP_REASON === "1";
-const failLoadSession = process.env.T3_ACP_FAIL_LOAD_SESSION === "1";
-const emitLoadReplay = process.env.T3_ACP_EMIT_LOAD_REPLAY === "1";
-const hangLoadSessionAfterReplay = process.env.T3_ACP_HANG_LOAD_SESSION_AFTER_REPLAY === "1";
-const delayLoadSessionAfterReplay = process.env.T3_ACP_DELAY_LOAD_SESSION_AFTER_REPLAY === "1";
-const loadSessionDelayMs = Number(process.env.T3_ACP_LOAD_SESSION_DELAY_MS ?? "5000");
+  process.env.CODEWORK_ACP_OMIT_XAI_PROMPT_COMPLETE_STOP_REASON === "1";
+const failLoadSession = process.env.CODEWORK_ACP_FAIL_LOAD_SESSION === "1";
+const emitLoadReplay = process.env.CODEWORK_ACP_EMIT_LOAD_REPLAY === "1";
+const hangLoadSessionAfterReplay = process.env.CODEWORK_ACP_HANG_LOAD_SESSION_AFTER_REPLAY === "1";
+const delayLoadSessionAfterReplay = process.env.CODEWORK_ACP_DELAY_LOAD_SESSION_AFTER_REPLAY === "1";
+const loadSessionDelayMs = Number(process.env.CODEWORK_ACP_LOAD_SESSION_DELAY_MS ?? "5000");
 const emitStaleXAiPromptCompleteBeforeSecondHang =
-  process.env.T3_ACP_EMIT_STALE_XAI_PROMPT_COMPLETE_BEFORE_SECOND_HANG === "1";
+  process.env.CODEWORK_ACP_EMIT_STALE_XAI_PROMPT_COMPLETE_BEFORE_SECOND_HANG === "1";
 const emitOverlappingXAiPromptCompleteOutOfOrder =
-  process.env.T3_ACP_EMIT_OVERLAPPING_XAI_PROMPT_COMPLETE_OUT_OF_ORDER === "1";
-const failPrompt = process.env.T3_ACP_FAIL_PROMPT === "1";
-const failSetConfigOption = process.env.T3_ACP_FAIL_SET_CONFIG_OPTION === "1";
-const exitOnSetConfigOption = process.env.T3_ACP_EXIT_ON_SET_CONFIG_OPTION === "1";
-const promptResponseText = process.env.T3_ACP_PROMPT_RESPONSE_TEXT;
-const readTextFilePath = process.env.T3_ACP_READ_TEXT_FILE_PATH;
-const clientToolSessionId = process.env.T3_ACP_CLIENT_TOOL_SESSION_ID;
-const writeTextFilePath = process.env.T3_ACP_WRITE_TEXT_FILE_PATH;
-const writeTextFileContent = process.env.T3_ACP_WRITE_TEXT_FILE_CONTENT ?? "mock write";
-const clientToolResultLogPath = process.env.T3_ACP_CLIENT_TOOL_RESULT_LOG_PATH;
-const terminalCommand = process.env.T3_ACP_TERMINAL_COMMAND;
+  process.env.CODEWORK_ACP_EMIT_OVERLAPPING_XAI_PROMPT_COMPLETE_OUT_OF_ORDER === "1";
+const failPrompt = process.env.CODEWORK_ACP_FAIL_PROMPT === "1";
+const failSetConfigOption = process.env.CODEWORK_ACP_FAIL_SET_CONFIG_OPTION === "1";
+const exitOnSetConfigOption = process.env.CODEWORK_ACP_EXIT_ON_SET_CONFIG_OPTION === "1";
+const promptResponseText = process.env.CODEWORK_ACP_PROMPT_RESPONSE_TEXT;
+const readTextFilePath = process.env.CODEWORK_ACP_READ_TEXT_FILE_PATH;
+const clientToolSessionId = process.env.CODEWORK_ACP_CLIENT_TOOL_SESSION_ID;
+const writeTextFilePath = process.env.CODEWORK_ACP_WRITE_TEXT_FILE_PATH;
+const writeTextFileContent = process.env.CODEWORK_ACP_WRITE_TEXT_FILE_CONTENT ?? "mock write";
+const clientToolResultLogPath = process.env.CODEWORK_ACP_CLIENT_TOOL_RESULT_LOG_PATH;
+const terminalCommand = process.env.CODEWORK_ACP_TERMINAL_COMMAND;
 const terminalArgs = (() => {
   const indexed = Array.from(
     { length: 10 },
-    (_, index) => process.env[`T3_ACP_TERMINAL_ARG_${index}`],
+    (_, index) => process.env[`CODEWORK_ACP_TERMINAL_ARG_${index}`],
   ).filter((value): value is string => value !== undefined);
   if (indexed.length > 0) return indexed;
-  const raw = process.env.T3_ACP_TERMINAL_ARGS_JSON;
+  const raw = process.env.CODEWORK_ACP_TERMINAL_ARGS_JSON;
   if (!raw) return [] as string[];
   const value: unknown = JSON.parse(raw);
   return Array.isArray(value) && value.every((item) => typeof item === "string") ? value : [];
 })();
-const terminalCwd = process.env.T3_ACP_TERMINAL_CWD;
-const terminalKillBeforeWait = process.env.T3_ACP_TERMINAL_KILL_BEFORE_WAIT === "1";
-const terminalHangAfterCreate = process.env.T3_ACP_TERMINAL_HANG_AFTER_CREATE === "1";
-const promptDelayMs = Number(process.env.T3_ACP_PROMPT_DELAY_MS ?? "0");
+const terminalCwd = process.env.CODEWORK_ACP_TERMINAL_CWD;
+const terminalKillBeforeWait = process.env.CODEWORK_ACP_TERMINAL_KILL_BEFORE_WAIT === "1";
+const terminalHangAfterCreate = process.env.CODEWORK_ACP_TERMINAL_HANG_AFTER_CREATE === "1";
+const promptDelayMs = Number(process.env.CODEWORK_ACP_PROMPT_DELAY_MS ?? "0");
 const permissionOptionIds = {
-  allowOnce: process.env.T3_ACP_ALLOW_ONCE_OPTION_ID ?? "allow-once",
-  allowAlways: process.env.T3_ACP_ALLOW_ALWAYS_OPTION_ID ?? "allow-always",
-  rejectOnce: process.env.T3_ACP_REJECT_ONCE_OPTION_ID ?? "reject-once",
+  allowOnce: process.env.CODEWORK_ACP_ALLOW_ONCE_OPTION_ID ?? "allow-once",
+  allowAlways: process.env.CODEWORK_ACP_ALLOW_ALWAYS_OPTION_ID ?? "allow-always",
+  rejectOnce: process.env.CODEWORK_ACP_REJECT_ONCE_OPTION_ID ?? "reject-once",
 };
 const sessionId = "mock-session-1";
 

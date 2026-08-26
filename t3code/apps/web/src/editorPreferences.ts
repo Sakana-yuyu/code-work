@@ -17,7 +17,7 @@ import { useCallback, useMemo } from "react";
 import { shellEnvironment } from "./state/shell";
 import { useAtomCommand } from "./state/use-atom-command";
 
-const LEGACY_LAST_EDITOR_KEY = "t3code:last-editor";
+const LEGACY_LAST_EDITOR_KEY = "codework:last-editor";
 const LAST_EDITOR_KEY = canonicalStorageKey(LEGACY_LAST_EDITOR_KEY);
 
 export class PreferredEditorEnvironmentRequiredError extends Schema.TaggedErrorClass<PreferredEditorEnvironmentRequiredError>()(

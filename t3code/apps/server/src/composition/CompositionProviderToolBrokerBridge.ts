@@ -20,7 +20,7 @@ const timeoutCode = () => ({
   errorCode: "tool_timeout",
 });
 
-/** 将 Provider 原生回调绑定到可信 Run 作用域，实际执行仍由 T3 ToolBroker 决策。 */
+/** 将 Provider 原生回调绑定到可信 Run 作用域，实际执行仍由 Code Work ToolBroker 决策。 */
 export const makeCompositionProviderToolBrokerBridge = (
   options: CompositionProviderToolBrokerBridgeOptions,
 ): ProviderToolBrokerBridge => {

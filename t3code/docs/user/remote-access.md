@@ -1,6 +1,6 @@
 # Remote Access
 
-Use this when you want to connect to a T3 Code server from another device such as a phone, tablet, or separate desktop app.
+Use this when you want to connect to a Code Work server from another device such as a phone, tablet, or separate desktop app.
 
 ## Quick Pairing for a Running Server
 
@@ -35,7 +35,7 @@ That gives you:
 ## Enabling Network Access
 
 There are three ways to reach your server from another device: expose the desktop app's backend,
-run a headless server from the CLI, or have the desktop app launch T3 Code over SSH.
+run a headless server from the CLI, or have the desktop app launch Code Work over SSH.
 
 ### Option 1: Desktop App
 
@@ -124,34 +124,34 @@ the environment the project lives on. Every saved environment is offered, not on
 
 ### Option 3: Desktop-Managed SSH Launch
 
-Use this when you want the desktop app to start or reuse T3 Code on another machine over SSH.
+Use this when you want the desktop app to start or reuse Code Work on another machine over SSH.
 
 1. Open **Settings** → **Connections**.
 2. Under **Remote Environments**, choose **Add environment**.
 3. Select the SSH launch flow.
 4. Enter the SSH target, such as `user@example.com`.
-5. Confirm the launch. The desktop app probes the host, starts or reuses a remote T3 server, opens a local port forward, and saves the environment.
+5. Confirm the launch. The desktop app probes the host, starts or reuses a remote Code Work server, opens a local port forward, and saves the environment.
 
-After setup, the renderer connects to a local forwarded HTTP/WebSocket endpoint. The remote host still owns the actual T3 server, projects, files, git state, terminals, and provider sessions.
+After setup, the renderer connects to a local forwarded HTTP/WebSocket endpoint. The remote host still owns the actual Code Work server, projects, files, git state, terminals, and provider sessions.
 
 SSH launch is a desktop feature because it needs local process and SSH access. Once the environment is paired and saved, it uses the same environment list and connection model as direct LAN, Tailscale, HTTPS, or future tunnel-backed environments.
 
 #### SSH Launch Troubleshooting
 
-The desktop SSH launcher connects with a non-interactive `sh` session, writes a small launcher script under `~/.t3/ssh-launch/<host-key>/`, starts or reuses a remote T3 server, and forwards the remote loopback port back to your desktop.
+The desktop SSH launcher connects with a non-interactive `sh` session, writes a small launcher script under `~/.t3/ssh-launch/<host-key>/`, starts or reuses a remote Code Work server, and forwards the remote loopback port back to your desktop.
 
-The remote host must have a compatible Node.js runtime. T3 Code uses the server package's `engines.node` requirement:
+The remote host must have a compatible Node.js runtime. Code Work uses the server package's `engines.node` requirement:
 
 ```text
 ^22.16 || ^23.11 || >=24.10
 ```
 
-During SSH launch, T3 Code first checks whether `node` is on `PATH`. If it is missing, the launcher
+During SSH launch, Code Work first checks whether `node` is on `PATH`. If it is missing, the launcher
 looks in the usual install directories and tries to activate a version manager if it finds one
 (Volta, asdf, mise, fnm, nodenv, nvm). That covers most setups, but a version manager that only
 initializes from an interactive shell profile will not be picked up.
 
-If launch fails with `node: command not found`, a port-scan failure, or a message that the remote Node version does not satisfy the required range, SSH into the host and check the same non-interactive shell path T3 Code uses:
+If launch fails with `node: command not found`, a port-scan failure, or a message that the remote Node version does not satisfy the required range, SSH into the host and check the same non-interactive shell path Code Work uses:
 
 ```bash
 ssh user@example.com 'sh -lc "command -v node && node --version"'
@@ -169,16 +169,16 @@ If reconnecting after an app update fails, retry the SSH launch once. The launch
 
 ## Updating a Remote Server
 
-When the T3 Code web or desktop app and a remote server use different versions, a warning appears in
-the conversation and in **Settings** → **Connections**. Follow the action shown there: T3 Code may
+When the Code Work web or desktop app and a remote server use different versions, a warning appears in
+the conversation and in **Settings** → **Connections**. Follow the action shown there: Code Work may
 be able to update and reconnect the server for you, or it may ask you to update the desktop app or
 run a copied command on the server machine.
 
 Finish active work before updating because the server restarts briefly. For step-by-step guidance,
-see [Keeping T3 Code in Sync](./updating.md).
+see [Keeping Code Work in Sync](./updating.md).
 
 On a Linux host, you can keep the server running after logout and manage it independently of the
-connection method. See [Running T3 Code in the Background](./background-service.md).
+connection method. See [Running Code Work in the Background](./background-service.md).
 
 ## How Pairing Works
 
@@ -204,7 +204,7 @@ Use hosted pairing when the backend is reachable from the browser over HTTPS/WSS
 
 Do not use hosted pairing for plain HTTP LAN URLs such as `http://192.168.x.y:3773`. Browsers block an HTTPS page from connecting to an insecure HTTP or WS backend. For those endpoints, use the direct pairing URL shown by the desktop app or CLI from a client that can open that HTTP URL directly.
 
-Hosted pairing does not proxy traffic through T3 Code. The browser still connects directly to the backend URL in the pairing link.
+Hosted pairing does not proxy traffic through Code Work. The browser still connects directly to the backend URL in the pairing link.
 
 ## Managing Access Later
 
@@ -218,11 +218,11 @@ Typical uses:
 
 Use `t3 auth --help` and the nested subcommand help pages for the full reference.
 
-### Deregister a T3 Connect Environment
+### Deregister a Code Work Connect Environment
 
-Open your account menu and choose **T3 Connect** to see every environment registered to your
-account. On mobile, open **Settings** → **T3 Connect**. Choose **Deregister** to revoke an
-environment's T3 Connect access, remove any managed tunnel, and free its host space.
+Open your account menu and choose **Code Work Connect** to see every environment registered to your
+account. On mobile, open **Settings** → **Code Work Connect**. Choose **Deregister** to revoke an
+environment's Code Work Connect access, remove any managed tunnel, and free its host space.
 
 Deregistration is an account action and does not need a connection to the environment, so it also
 works for a server that was wiped or is no longer reachable. Device-local connect and disconnect

@@ -53,7 +53,7 @@ export class CompositionByokAgentDriverProjectionService extends Context.Service
   CompositionByokAgentDriverProjectionService,
   CompositionByokAgentDriverProjectionServiceShape
 >()(
-  "t3/composition/CompositionByokAgentDriverRegistry/CompositionByokAgentDriverProjectionService",
+  "codework/composition/CompositionByokAgentDriverRegistry/CompositionByokAgentDriverProjectionService",
 ) {}
 
 const coreTools = (): ReadonlyArray<ByokAgentTool> =>

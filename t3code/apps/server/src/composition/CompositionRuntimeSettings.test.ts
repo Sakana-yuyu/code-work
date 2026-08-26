@@ -47,7 +47,7 @@ const multicaInstance = (overrides: Record<string, unknown> = {}) => ({
     headers: [{ headerName: "Authorization", environmentVariable: "MULTICA_TOKEN" }],
     assigneeRoutes: [
       {
-        t3AgentId: "agent-1",
+        codeworkAgentId: "agent-1",
         workspaceId: "workspace-1",
         multicaAgentId: "remote-agent-1",
       },
@@ -370,10 +370,10 @@ describe("CompositionRuntimeSettings", () => {
             multicaInstance({
               assigneeRoutes: [
                 {
-                  t3AgentId: "agent-1",
+                  codeworkAgentId: "agent-1",
                   workspaceId: "workspace-1",
                   multicaAgentId: "remote-agent-1",
-                  t3McpCredentialEnvironmentVariable: "MULTICA_AGENT_1_T3_MCP_TOKEN",
+                  codeworkMcpCredentialEnvironmentVariable: "MULTICA_AGENT_1_T3_MCP_TOKEN",
                 },
               ],
             }).config,
@@ -433,21 +433,21 @@ describe("CompositionRuntimeSettings", () => {
     );
   });
 
-  it("拒绝两个 Multica Agent 共用同一个 T3 MCP 凭据", async () => {
+  it("拒绝两个 Multica Agent 共用同一个 Code Work MCP 凭据", async () => {
     const config = Schema.decodeUnknownSync(CompositionMulticaRuntimeConfig)(
       multicaInstance({
         assigneeRoutes: [
           {
-            t3AgentId: "agent-1",
+            codeworkAgentId: "agent-1",
             workspaceId: "workspace-1",
             multicaAgentId: "remote-agent-1",
-            t3McpCredentialEnvironmentVariable: "AGENT_1_TOKEN",
+            codeworkMcpCredentialEnvironmentVariable: "AGENT_1_TOKEN",
           },
           {
-            t3AgentId: "agent-2",
+            codeworkAgentId: "agent-2",
             workspaceId: "workspace-1",
             multicaAgentId: "remote-agent-2",
-            t3McpCredentialEnvironmentVariable: "AGENT_2_TOKEN",
+            codeworkMcpCredentialEnvironmentVariable: "AGENT_2_TOKEN",
           },
         ],
       }).config,
@@ -482,7 +482,7 @@ describe("CompositionRuntimeSettings", () => {
           ],
         }),
       ),
-    ).rejects.toThrow("不能共用同一个 T3 MCP 凭据");
+    ).rejects.toThrow("不能共用同一个 Code Work MCP 凭据");
   });
 
   it("轮换 Agent MCP 凭据会重建 Adapter 并撤销旧 binding", async () => {
@@ -499,10 +499,10 @@ describe("CompositionRuntimeSettings", () => {
           const configOverrides = {
             assigneeRoutes: [
               {
-                t3AgentId: "agent-1",
+                codeworkAgentId: "agent-1",
                 workspaceId: "workspace-1",
                 multicaAgentId: "remote-agent-1",
-                t3McpCredentialEnvironmentVariable: "AGENT_1_TOKEN",
+                codeworkMcpCredentialEnvironmentVariable: "AGENT_1_TOKEN",
               },
             ],
           };

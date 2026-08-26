@@ -1,10 +1,10 @@
 /**
  * Where development state lives, and how to keep it away from the shared
- * `~/.t3` that a user's installed T3 Code runs against.
+ * `~/.t3` that a user's installed Code Work runs against.
  *
  * A linked git worktree gets its own (gitignored) `.t3`: feature work in a
  * throwaway branch must not share a database with the real app, and an ambient
- * `T3CODE_HOME` counts as an explicit base dir — flipping the state directory
+ * `CODEWORK_HOME` counts as an explicit base dir — flipping the state directory
  * from `<base>/dev` to `<base>/userdata`, the live production database.
  */
 

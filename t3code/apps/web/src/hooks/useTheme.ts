@@ -37,7 +37,7 @@ type ThemeSnapshot = {
 
 type DesktopThemeBridge = Pick<DesktopBridge, "setTheme">;
 
-const LEGACY_STORAGE_KEY = "t3code:theme";
+const LEGACY_STORAGE_KEY = "codework:theme";
 const STORAGE_KEY = canonicalStorageKey(LEGACY_STORAGE_KEY);
 const MEDIA_QUERY = "(prefers-color-scheme: dark)";
 const DEFAULT_THEME_SNAPSHOT: ThemeSnapshot = {
@@ -457,7 +457,7 @@ function handleStorageChange(e: StorageEvent) {
     emitChange();
   } else if (
     e.key === CUSTOM_THEMES_STORAGE_KEY ||
-    e.key === "t3code:themes:v1" ||
+    e.key === "codework:themes:v1" ||
     e.key === null
   ) {
     if (e.key === null) themeStorageReadFailure = null;

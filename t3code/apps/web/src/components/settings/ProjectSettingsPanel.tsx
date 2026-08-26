@@ -17,7 +17,7 @@ import type {
   ModelSelection,
   ProviderDriverKind,
   SidebarProjectGroupingMode,
-  T3ProjectFileScript,
+  CodeworkProjectFileScript,
   ThreadEnvMode,
 } from "@codework/contracts";
 import { resolveEnvModeLabel } from "../BranchToolbar.logic";
@@ -43,7 +43,7 @@ import {
   usePrimarySettings,
 } from "../../hooks/useSettings";
 import { useCopyToClipboard } from "../../hooks/useCopyToClipboard";
-import { useT3ProjectFileState } from "../../hooks/useT3ProjectFileScripts";
+import { useCodeworkProjectFileState } from "../../hooks/useCodeworkProjectFileScripts";
 import { shortcutLabelForCommand } from "../../keybindings";
 import { keybindingValueForCommand } from "../../lib/projectScriptKeybindings";
 import { releaseProjectDraftUploads } from "../../lib/composerDraftUploads";
@@ -473,7 +473,7 @@ function ProjectDetail({ group }: { group: SidebarProjectSnapshot }) {
   // from the same snapshot would drop each other's changes. One at a time.
   const [isSavingScripts, setIsSavingScripts] = useState(false);
   const savingScriptsRef = useRef(false);
-  const t3File = useT3ProjectFileState(
+  const t3File = useCodeworkProjectFileState(
     selectedCheckout.environmentId,
     selectedCheckout.workspaceRoot,
   );
@@ -625,7 +625,7 @@ function ProjectDetail({ group }: { group: SidebarProjectSnapshot }) {
   );
 
   const importFileScript = useCallback(
-    async (fileScript: T3ProjectFileScript) => {
+    async (fileScript: CodeworkProjectFileScript) => {
       const payload: NewProjectScriptInput = {
         name: fileScript.name,
         command: fileScript.command,

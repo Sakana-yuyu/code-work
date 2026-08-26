@@ -1,12 +1,12 @@
 /**
- * T3ProjectFileLoader - Effect service that loads the checked-in `t3.json`
+ * CodeworkProjectFileLoader - Effect service that loads the checked-in `t3.json`
  * project file from a workspace root.
  *
  * Loading is best-effort: a missing file resolves to `Option.none`, and
  * unreadable or invalid files are logged and treated as absent so callers
  * can fall back to their defaults.
  *
- * @module T3ProjectFileLoader
+ * @module CodeworkProjectFileLoader
  */
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
@@ -16,13 +16,13 @@ import * as Option from "effect/Option";
 import * as Path from "effect/Path";
 import * as Schema from "effect/Schema";
 
-import { T3_PROJECT_FILE_NAME, type T3ProjectFile } from "@codework/contracts";
-import { T3ProjectFileFromJson } from "@codework/shared/t3ProjectFile";
+import { CODEWORK_PROJECT_FILE_NAME, type CodeworkProjectFile } from "@codework/contracts";
+import { CodeworkProjectFileFromJson } from "@codework/shared/codeworkProjectFile";
 
-const decodeT3ProjectFileJson = Schema.decodeEffect(T3ProjectFileFromJson);
+const decodeT3ProjectFileJson = Schema.decodeEffect(CodeworkProjectFileFromJson);
 
-export class T3ProjectFileLoadError extends Schema.TaggedErrorClass<T3ProjectFileLoadError>()(
-  "T3ProjectFileLoadError",
+export class CodeworkProjectFileLoadError extends Schema.TaggedErrorClass<CodeworkProjectFileLoadError>()(
+  "CodeworkProjectFileLoadError",
   {
     operation: Schema.Literals(["read", "decode"]),
     workspaceRoot: Schema.String,
@@ -31,13 +31,13 @@ export class T3ProjectFileLoadError extends Schema.TaggedErrorClass<T3ProjectFil
   },
 ) {
   override get message(): string {
-    return `Failed to ${this.operation} ${T3_PROJECT_FILE_NAME} at ${this.filePath}.`;
+    return `Failed to ${this.operation} ${CODEWORK_PROJECT_FILE_NAME} at ${this.filePath}.`;
   }
 }
 
 /** Service tag for t3.json project file loading. */
-export class T3ProjectFileLoader extends Context.Service<
-  T3ProjectFileLoader,
+export class CodeworkProjectFileLoader extends Context.Service<
+  CodeworkProjectFileLoader,
   {
     /**
      * Load and decode `t3.json` at the workspace root.
@@ -45,11 +45,11 @@ export class T3ProjectFileLoader extends Context.Service<
      * Never fails: missing, unreadable, or invalid files resolve to
      * `Option.none` (invalid files are logged as warnings).
      */
-    readonly load: (workspaceRoot: string) => Effect.Effect<Option.Option<T3ProjectFile>>;
+    readonly load: (workspaceRoot: string) => Effect.Effect<Option.Option<CodeworkProjectFile>>;
   }
->()("t3/project/T3ProjectFileLoader") {}
+>()("codework/project/CodeworkProjectFileLoader") {}
 
-const logT3ProjectFileLoadError = (error: T3ProjectFileLoadError) =>
+const logT3ProjectFileLoadError = (error: CodeworkProjectFileLoadError) =>
   Effect.logWarning(error).pipe(
     Effect.annotateLogs({
       operation: error.operation,
@@ -63,9 +63,9 @@ export const make = Effect.gen(function* () {
   const fileSystem = yield* FileSystem.FileSystem;
   const path = yield* Path.Path;
 
-  const load: T3ProjectFileLoader["Service"]["load"] = Effect.fn("T3ProjectFileLoader.load")(
+  const load: CodeworkProjectFileLoader["Service"]["load"] = Effect.fn("CodeworkProjectFileLoader.load")(
     function* (workspaceRoot) {
-      const filePath = path.join(workspaceRoot, T3_PROJECT_FILE_NAME);
+      const filePath = path.join(workspaceRoot, CODEWORK_PROJECT_FILE_NAME);
       const raw = yield* fileSystem.readFileString(filePath).pipe(
         Effect.map(Option.some),
         Effect.catchTags({
@@ -73,7 +73,7 @@ export const make = Effect.gen(function* () {
             error.reason._tag === "NotFound"
               ? Effect.succeed(Option.none<string>())
               : logT3ProjectFileLoadError(
-                  new T3ProjectFileLoadError({
+                  new CodeworkProjectFileLoadError({
                     operation: "read",
                     workspaceRoot,
                     filePath,
@@ -83,26 +83,26 @@ export const make = Effect.gen(function* () {
         }),
       );
       if (Option.isNone(raw)) {
-        return Option.none<T3ProjectFile>();
+        return Option.none<CodeworkProjectFile>();
       }
       return yield* decodeT3ProjectFileJson(raw.value).pipe(
         Effect.map(Option.some),
         Effect.catchTags({
           SchemaError: (error) =>
             logT3ProjectFileLoadError(
-              new T3ProjectFileLoadError({
+              new CodeworkProjectFileLoadError({
                 operation: "decode",
                 workspaceRoot,
                 filePath,
                 cause: error,
               }),
-            ).pipe(Effect.as(Option.none<T3ProjectFile>())),
+            ).pipe(Effect.as(Option.none<CodeworkProjectFile>())),
         }),
       );
     },
   );
 
-  return T3ProjectFileLoader.of({ load });
+  return CodeworkProjectFileLoader.of({ load });
 });
 
-export const layer = Layer.effect(T3ProjectFileLoader, make);
+export const layer = Layer.effect(CodeworkProjectFileLoader, make);

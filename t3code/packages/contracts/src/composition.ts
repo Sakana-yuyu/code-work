@@ -220,7 +220,7 @@ export const CompositionToolResult = Schema.Struct({
 });
 export type CompositionToolResult = typeof CompositionToolResult.Type;
 
-/** 外部 Runtime/IDE 通过 T3 请求 canonical tool 的输入，不携带 workspaceRoot。 */
+/** 外部 Runtime/IDE 通过 Code Work 请求 canonical tool 的输入，不携带 workspaceRoot。 */
 export const CompositionRuntimeToolInvocation = Schema.Struct({
   schemaVersion: Schema.Literal(1),
   runtimeId: TrimmedNonEmptyString,
@@ -378,7 +378,7 @@ export const CompositionTaskGraphLeaderRequest = Schema.Struct({
 });
 export type CompositionTaskGraphLeaderRequest = typeof CompositionTaskGraphLeaderRequest.Type;
 
-/** 从 T3 Leader、Squad 和子 Agent 节点启动真实 Task Graph。 */
+/** 从 Code Work Leader、Squad 和子 Agent 节点启动真实 Task Graph。 */
 export const CompositionTaskGraphExecutionRequest = Schema.Struct({
   leader: CompositionTaskGraphLeaderRequest,
   children: Schema.Array(CompositionTaskGraphNodeRequest),

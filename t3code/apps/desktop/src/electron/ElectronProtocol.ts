@@ -13,9 +13,9 @@ export const DESKTOP_HOST = "app";
 export const DESKTOP_PRODUCTION_SCHEME = "codework";
 export const DESKTOP_DEVELOPMENT_SCHEME = "codework-dev";
 export const DESKTOP_PREVIEW_SCHEME = "codework-preview";
-export const DESKTOP_LEGACY_PRODUCTION_SCHEME = "t3code";
-export const DESKTOP_LEGACY_DEVELOPMENT_SCHEME = "t3code-dev";
-export const DESKTOP_LEGACY_PREVIEW_SCHEME = "t3code-preview";
+export const DESKTOP_LEGACY_PRODUCTION_SCHEME = "codework";
+export const DESKTOP_LEGACY_DEVELOPMENT_SCHEME = "codework-dev";
+export const DESKTOP_LEGACY_PREVIEW_SCHEME = "codework-preview";
 
 export function getDesktopScheme(isDevelopment: boolean): string {
   return isDevelopment ? DESKTOP_DEVELOPMENT_SCHEME : DESKTOP_PRODUCTION_SCHEME;

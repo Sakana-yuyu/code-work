@@ -80,7 +80,7 @@ export class CapabilityPolicy extends Context.Service<
     readonly cancel: (input: { readonly idempotencyKey: string }) => Effect.Effect<void>;
     readonly isCancelled: (idempotencyKey: string) => boolean;
   }
->()("t3/composition/CapabilityPolicy") {}
+>()("codework/composition/CapabilityPolicy") {}
 
 export const makeCompositionCapabilityPolicy = (
   options: CompositionCapabilityPolicyOptions,

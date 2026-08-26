@@ -107,7 +107,7 @@ it.layer(NodeServices.layer)("EnvironmentAuthPolicy.layer", (it) => {
 
       expect(descriptor.policy).toBe("remote-reachable");
       expect(descriptor.bootstrapMethods).toEqual(["one-time-token"]);
-      expect(descriptor.sessionCookieName).toBe("t3_session");
+      expect(descriptor.sessionCookieName).toBe("codework_session");
     }).pipe(
       Effect.provide(
         makeEnvironmentAuthPolicyLayer({
@@ -143,7 +143,7 @@ it.layer(NodeServices.layer)("EnvironmentAuthPolicy.layer", (it) => {
       const descriptor = yield* policy.getDescriptor();
 
       expect(descriptor.policy).toBe("remote-reachable");
-      expect(descriptor.sessionCookieName).toBe("t3_session");
+      expect(descriptor.sessionCookieName).toBe("codework_session");
     }).pipe(
       Effect.provide(
         makeEnvironmentAuthPolicyLayer({

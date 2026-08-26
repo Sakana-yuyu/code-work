@@ -48,7 +48,7 @@ export interface CompositionTaskRuntimeProjectionServiceShape {
 export class CompositionTaskRuntimeProjectionService extends Context.Service<
   CompositionTaskRuntimeProjectionService,
   CompositionTaskRuntimeProjectionServiceShape
->()("t3/composition/CompositionTaskRuntimeProjectionService") {}
+>()("codework/composition/CompositionTaskRuntimeProjectionService") {}
 
 export class CompositionTaskRuntimeWaitError extends Schema.TaggedErrorClass<CompositionTaskRuntimeWaitError>()(
   "CompositionTaskRuntimeWaitError",

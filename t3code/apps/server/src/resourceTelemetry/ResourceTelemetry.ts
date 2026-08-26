@@ -72,7 +72,7 @@ export class ResourceTelemetry extends Context.Service<
     ) => Effect.Effect<boolean, ResourceTelemetryRefreshFailed>;
     readonly retry: Effect.Effect<ResourceTelemetryRetryResult>;
   }
->()("t3/resourceTelemetry/ResourceTelemetry") {}
+>()("codework/resourceTelemetry/ResourceTelemetry") {}
 
 interface TelemetryState {
   readonly nativeSnapshot: Option.Option<ResourceMonitorSnapshotEvent>;

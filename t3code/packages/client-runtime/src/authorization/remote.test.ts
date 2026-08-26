@@ -162,7 +162,7 @@ describe("remote environment authorization", () => {
         url: "https://remote.example.com/oauth/token",
         method: "POST",
         headers: { dpop: "token-proof", "content-type": "application/x-www-form-urlencoded" },
-        body: "grant_type=urn%3Aietf%3Aparams%3Aoauth%3Agrant-type%3Atoken-exchange&subject_token=one-time-credential&subject_token_type=urn%3At3%3Aparams%3Aoauth%3Atoken-type%3Aenvironment-bootstrap&requested_token_type=urn%3Aietf%3Aparams%3Aoauth%3Atoken-type%3Aaccess_token&client_label=T3+Code+Mobile&client_device_type=mobile&client_os=iOS",
+        body: "grant_type=urn%3Aietf%3Aparams%3Aoauth%3Agrant-type%3Atoken-exchange&subject_token=one-time-credential&subject_token_type=urn%3At3%3Aparams%3Aoauth%3Atoken-type%3Aenvironment-bootstrap&requested_token_type=urn%3Aietf%3Aparams%3Aoauth%3Atoken-type%3Aaccess_token&client_label=Code Work+Code+Mobile&client_device_type=mobile&client_os=iOS",
       });
       expectFetchCall(fetch.calls, 2, {
         url: "https://remote.example.com/api/auth/websocket-ticket",
@@ -204,7 +204,7 @@ describe("remote environment authorization", () => {
       expectFetchCall(fetch.calls, 1, {
         url: "https://remote.example.com/oauth/token",
         method: "POST",
-        body: "grant_type=urn%3Aietf%3Aparams%3Aoauth%3Agrant-type%3Atoken-exchange&subject_token=pairing-token&subject_token_type=urn%3At3%3Aparams%3Aoauth%3Atoken-type%3Aenvironment-bootstrap&requested_token_type=urn%3Aietf%3Aparams%3Aoauth%3Atoken-type%3Aaccess_token&client_label=T3+Code+Mobile&client_device_type=mobile&client_os=iOS",
+        body: "grant_type=urn%3Aietf%3Aparams%3Aoauth%3Agrant-type%3Atoken-exchange&subject_token=pairing-token&subject_token_type=urn%3At3%3Aparams%3Aoauth%3Atoken-type%3Aenvironment-bootstrap&requested_token_type=urn%3Aietf%3Aparams%3Aoauth%3Atoken-type%3Aaccess_token&client_label=Code Work+Code+Mobile&client_device_type=mobile&client_os=iOS",
       });
     }),
   );
@@ -263,7 +263,7 @@ describe("remote environment authorization", () => {
               policy: "remote-reachable",
               bootstrapMethods: ["one-time-token"],
               sessionMethods: ["browser-session-cookie", "bearer-access-token"],
-              sessionCookieName: "t3_session",
+              sessionCookieName: "codework_session",
             },
             scopes: [
               "orchestration:read",
@@ -347,7 +347,7 @@ describe("remote environment authorization", () => {
             policy: "remote-reachable",
             bootstrapMethods: ["one-time-token"],
             sessionMethods: ["dpop-access-token"],
-            sessionCookieName: "t3_session",
+            sessionCookieName: "codework_session",
           },
           sessionMethod: "dpop-access-token",
           scopes: [

@@ -42,17 +42,17 @@ export type MulticaDaemonStreamFramesInput = {
   readonly daemonRuntimeId: string;
 };
 
-/** T3 assignee 到 Multica 工作区和远端 Agent/Squad UUID 的显式映射。 */
+/** Code Work assignee 到 Multica 工作区和远端 Agent/Squad UUID 的显式映射。 */
 export type MulticaTaskAssigneeRoute = {
-  readonly t3AgentId: string;
-  readonly t3SquadId?: string;
+  readonly codeworkAgentId: string;
+  readonly codeworkSquadId?: string;
   readonly workspaceId: string;
   readonly multicaAgentId?: string;
   readonly multicaSquadId?: string;
 };
 
 export type MulticaDaemonRuntimeAdapterOptions = {
-  /** T3 侧稳定 Runtime ID，建议使用 multica:<daemonId>:<runtimeId>。 */
+  /** Code Work 侧稳定 Runtime ID，建议使用 multica:<daemonId>:<runtimeId>。 */
   readonly runtimeId: string;
   readonly daemonId: string;
   /** Multica 服务端 agent_runtime 的真实 ID。 */
@@ -79,7 +79,7 @@ export type MulticaDaemonRuntimeAdapterOptions = {
    * 该扩展是唯一允许接触 task-local MCP overlay 的执行边界。
    */
   readonly taskExecutionBridge?: MulticaDaemonTaskExecutionBridge;
-  /** 官方窄协议之外的 T3 扩展；未提供时保持 capability handshake 拒绝。 */
+  /** 官方窄协议之外的 Code Work 扩展；未提供时保持 capability handshake 拒绝。 */
   readonly capabilityBridge?: {
     readonly handshakeCapabilities: (
       input: CompositionRuntimeCapabilityHandshakeRequest,
@@ -150,7 +150,7 @@ export type MulticaDaemonTaskExecutionContext = MulticaTaskExecutionBinding & {
 };
 
 export type MulticaDaemonTaskExecutionBridge = {
-  /** 外部 claim 的任务没有 T3 派发映射时，由扩展显式解析绑定；返回 undefined 必须拒绝 start。 */
+  /** 外部 claim 的任务没有 Code Work 派发映射时，由扩展显式解析绑定；返回 undefined 必须拒绝 start。 */
   readonly resolveBinding?: (input: {
     readonly runtimeId: string;
     readonly daemonRuntimeId: string;
@@ -357,11 +357,11 @@ export const makeMulticaDaemonRuntimeAdapter = (
   const taskAssigneeRoutes = new Map<string, MulticaTaskAssigneeRoute>();
   const taskSquadRoutes = new Map<string, MulticaTaskAssigneeRoute>();
   for (const route of options.taskAssigneeRoutes ?? []) {
-    const t3AgentId = nonEmpty(route.t3AgentId, "taskAssigneeRoute.t3AgentId");
-    const t3SquadId =
-      route.t3SquadId === undefined
+    const codeworkAgentId = nonEmpty(route.codeworkAgentId, "taskAssigneeRoute.codeworkAgentId");
+    const codeworkSquadId =
+      route.codeworkSquadId === undefined
         ? undefined
-        : nonEmpty(route.t3SquadId, "taskAssigneeRoute.t3SquadId");
+        : nonEmpty(route.codeworkSquadId, "taskAssigneeRoute.codeworkSquadId");
     const workspaceId = nonEmpty(route.workspaceId, "taskAssigneeRoute.workspaceId");
     const multicaAgentId =
       route.multicaAgentId === undefined
@@ -373,26 +373,26 @@ export const makeMulticaDaemonRuntimeAdapter = (
         : nonEmpty(route.multicaSquadId, "taskAssigneeRoute.multicaSquadId");
     if ((multicaAgentId === undefined) === (multicaSquadId === undefined)) {
       throw new Error(
-        `Multica assignee route '${t3AgentId}' 必须且只能指定 multicaAgentId 或 multicaSquadId。`,
+        `Multica assignee route '${codeworkAgentId}' 必须且只能指定 multicaAgentId 或 multicaSquadId。`,
       );
     }
     const normalizedRoute = {
-      t3AgentId,
-      ...(t3SquadId === undefined ? {} : { t3SquadId }),
+      codeworkAgentId,
+      ...(codeworkSquadId === undefined ? {} : { codeworkSquadId }),
       workspaceId,
       ...(multicaAgentId === undefined ? {} : { multicaAgentId }),
       ...(multicaSquadId === undefined ? {} : { multicaSquadId }),
     } satisfies MulticaTaskAssigneeRoute;
-    if (t3SquadId !== undefined) {
-      if (taskSquadRoutes.has(t3SquadId)) {
-        throw new Error(`Multica Squad 路由 '${t3SquadId}' 重复。`);
+    if (codeworkSquadId !== undefined) {
+      if (taskSquadRoutes.has(codeworkSquadId)) {
+        throw new Error(`Multica Squad 路由 '${codeworkSquadId}' 重复。`);
       }
-      taskSquadRoutes.set(t3SquadId, normalizedRoute);
+      taskSquadRoutes.set(codeworkSquadId, normalizedRoute);
     } else {
-      if (taskAssigneeRoutes.has(t3AgentId)) {
-        throw new Error(`Multica Agent 路由 '${t3AgentId}' 重复。`);
+      if (taskAssigneeRoutes.has(codeworkAgentId)) {
+        throw new Error(`Multica Agent 路由 '${codeworkAgentId}' 重复。`);
       }
-      taskAssigneeRoutes.set(t3AgentId, normalizedRoute);
+      taskAssigneeRoutes.set(codeworkAgentId, normalizedRoute);
     }
   }
   const activeTaskIds = new Set<string>();
@@ -480,7 +480,7 @@ export const makeMulticaDaemonRuntimeAdapter = (
         return yield* adapterFailure(
           runtimeId,
           "task_execution_binding_missing",
-          `Multica 任务 '${runtimeTaskId}' 没有可验证的 T3 Task/Run/Agent 绑定。`,
+          `Multica 任务 '${runtimeTaskId}' 没有可验证的 Code Work Task/Run/Agent 绑定。`,
         );
       }
       let mcpConfig: MulticaTaskMcpLease["mcpConfig"] | undefined;
@@ -693,7 +693,7 @@ export const makeMulticaDaemonRuntimeAdapter = (
           return yield* adapterFailure(
             runtimeId,
             "capability_handshake_unsupported",
-            "Multica 官方窄协议尚未提供 T3 capability handshake，拒绝带 grant 的派发。",
+            "Multica 官方窄协议尚未提供 Code Work capability handshake，拒绝带 grant 的派发。",
           );
         }
         if (input.capabilityHandshakeId === undefined) {
@@ -762,7 +762,7 @@ export const makeMulticaDaemonRuntimeAdapter = (
         return yield* adapterFailure(
           runtimeId,
           "assignee_mapping_missing",
-          `T3 assignee '${agentId}' 没有配置 Multica Agent/Squad 映射。`,
+          `Code Work assignee '${agentId}' 没有配置 Multica Agent/Squad 映射。`,
         );
       }
       const created = yield* options.protocol

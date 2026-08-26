@@ -24,7 +24,7 @@
  * cursors never rewind.
  */
 
-// @effect-diagnostics nodeBuiltinImport:off - node:os resolves the shared T3 home guard.
+// @effect-diagnostics nodeBuiltinImport:off - node:os resolves the shared Code Work home guard.
 import * as NodeRuntime from "@effect/platform-node/NodeRuntime";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import * as NodeOS from "node:os";
@@ -89,7 +89,7 @@ export class MigrateDevDbServerRunningError extends Schema.TaggedErrorClass<Migr
   },
 ) {
   override get message(): string {
-    return `Dev database at '${this.databasePath}' is open by a running server (pid ${this.pid} per server-runtime.json). Stop that server first; if that pid is not actually a T3 server (stale descriptor, reused pid), delete the server-runtime.json next to the database and retry.`;
+    return `Dev database at '${this.databasePath}' is open by a running server (pid ${this.pid} per server-runtime.json). Stop that server first; if that pid is not actually a Code Work server (stale descriptor, reused pid), delete the server-runtime.json next to the database and retry.`;
   }
 }
 

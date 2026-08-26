@@ -82,7 +82,7 @@ export interface CompositionTaskGraphExecutorShape {
 export class CompositionTaskGraphExecutor extends Context.Service<
   CompositionTaskGraphExecutor,
   CompositionTaskGraphExecutorShape
->()("t3/composition/CompositionTaskGraphExecutor") {}
+>()("codework/composition/CompositionTaskGraphExecutor") {}
 
 type GraphExecutorOptions = {
   readonly orchestrator: Pick<CompositionOrchestrator, "dispatchTask" | "retryTask">;
@@ -387,7 +387,7 @@ const make = (options: GraphExecutorOptions): CompositionTaskGraphExecutorShape 
             ),
             input.leader.taskId,
           );
-        // 先顺序写入每个子任务的 T3 投影，再并行等待 Driver 运行结果。
+        // 先顺序写入每个子任务的 Code Work 投影，再并行等待 Driver 运行结果。
         const startedBatch = yield* Effect.forEach(ready, runReady);
         const batch =
           (input.schedule ?? "parallel") === "parallel"

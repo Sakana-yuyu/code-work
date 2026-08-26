@@ -15,10 +15,10 @@ Object.assign(process.env, repoEnv);
 
 const APP_VARIANT = resolveAppVariant(repoEnv.APP_VARIANT);
 const isIosPersonalTeamBuild =
-  (repoEnv.CODEWORK_IOS_PERSONAL_TEAM ?? repoEnv.T3CODE_IOS_PERSONAL_TEAM) === "1";
+  (repoEnv.CODEWORK_IOS_PERSONAL_TEAM ?? repoEnv.CODEWORK_IOS_PERSONAL_TEAM) === "1";
 
 const personalTeamBundleIdentifier = (
-  repoEnv.CODEWORK_IOS_PERSONAL_TEAM_BUNDLE_ID ?? repoEnv.T3CODE_IOS_PERSONAL_TEAM_BUNDLE_ID
+  repoEnv.CODEWORK_IOS_PERSONAL_TEAM_BUNDLE_ID ?? repoEnv.CODEWORK_IOS_PERSONAL_TEAM_BUNDLE_ID
 )?.trim();
 const IOS_BUNDLE_IDENTIFIER_PATTERN = /^[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+$/;
 
@@ -30,7 +30,7 @@ if (
     !IOS_BUNDLE_IDENTIFIER_PATTERN.test(personalTeamBundleIdentifier))
 ) {
   throw new Error(
-    "CODEWORK_IOS_PERSONAL_TEAM_BUNDLE_ID (or legacy T3CODE_IOS_PERSONAL_TEAM_BUNDLE_ID) must be a reverse-DNS identifier when personal-team builds are enabled.",
+    "CODEWORK_IOS_PERSONAL_TEAM_BUNDLE_ID (or legacy CODEWORK_IOS_PERSONAL_TEAM_BUNDLE_ID) must be a reverse-DNS identifier when personal-team builds are enabled.",
   );
 }
 
@@ -72,7 +72,7 @@ const VARIANT_CONFIG = {
     appName: `${PRODUCT_IDENTITY.baseName} (${PRODUCT_IDENTITY.stages.development})`,
     identityStage: "development" as const satisfies ProductStage,
     scheme: PRODUCT_IDENTITY.schemes.development,
-    legacySchemes: ["t3code-dev"] as const,
+    legacySchemes: ["codework-dev"] as const,
     iosBundleIdentifier: "com.codework.mobile.dev",
     androidPackage: "com.codework.mobile.dev",
     relyingParty: "clerk.t3.codes",
@@ -82,7 +82,7 @@ const VARIANT_CONFIG = {
     appName: `${PRODUCT_IDENTITY.baseName} (${PRODUCT_IDENTITY.stages.preview})`,
     identityStage: "preview" as const satisfies ProductStage,
     scheme: PRODUCT_IDENTITY.schemes.preview,
-    legacySchemes: ["t3code-preview"] as const,
+    legacySchemes: ["codework-preview"] as const,
     iosBundleIdentifier: "com.codework.mobile.preview",
     androidPackage: "com.codework.mobile.preview",
     relyingParty: "clerk.t3.codes",
@@ -92,7 +92,7 @@ const VARIANT_CONFIG = {
     appName: PRODUCT_IDENTITY.baseName,
     identityStage: "production" as const satisfies ProductStage,
     scheme: PRODUCT_IDENTITY.schemes.production,
-    legacySchemes: ["t3code"] as const,
+    legacySchemes: ["codework"] as const,
     iosBundleIdentifier: "com.codework.mobile",
     androidPackage: "com.codework.mobile",
     relyingParty: "clerk.t3.codes",
@@ -173,7 +173,7 @@ const sharingPlugin: NonNullable<ExpoConfig["plugins"]>[number] = [
 
 const config: ExpoConfig = {
   name: variant.appName,
-  slug: "t3-code",
+  slug: "code-work",
   platforms: ["ios", "android"],
   scheme: variant.scheme,
   version: "1.0.4",
@@ -198,9 +198,9 @@ const config: ExpoConfig = {
     supportsTablet: true,
     // Multitasking-capable iPad apps cannot rotate programmatically, so the
     // showcase capture build requires full screen (see infoPlist below).
-    requireFullScreen: process.env.T3_SHOWCASE_CAPTURE_BUILD === "1",
+    requireFullScreen: process.env.CODEWORK_SHOWCASE_CAPTURE_BUILD === "1",
     bundleIdentifier: iosBundleIdentifier,
-    // Pin code signing to the T3 Tools team so non-interactive `expo run:ios`
+    // Pin code signing to the Code Work Tools team so non-interactive `expo run:ios`
     // does not fall back to a personal team (which cannot sign app groups,
     // Sign in with Apple, or push notification entitlements).
     appleTeamId: "ARK85ZXQ4Z",
@@ -224,7 +224,7 @@ const config: ExpoConfig = {
       // Simulator menu scripting needs), and iPadOS ignores programmatic
       // orientation requests for multitasking-capable apps — so the capture
       // build opts out of multitasking and declares landscape support.
-      ...(process.env.T3_SHOWCASE_CAPTURE_BUILD === "1"
+      ...(process.env.CODEWORK_SHOWCASE_CAPTURE_BUILD === "1"
         ? {
             "UISupportedInterfaceOrientations~ipad": [
               "UIInterfaceOrientationPortrait",
@@ -371,7 +371,7 @@ const config: ExpoConfig = {
     appVariant: APP_VARIANT,
     iosPersonalTeamBuild: isIosPersonalTeamBuild,
     relay: {
-      url: repoEnv.T3CODE_RELAY_URL ?? null,
+      url: repoEnv.CODEWORK_RELAY_URL ?? null,
     },
     clerk: {
       publishableKey: repoEnv.EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY ?? null,
@@ -395,7 +395,7 @@ const config: ExpoConfig = {
       projectId: "d763fcb8-d37c-41ea-a773-b54a0ab4a454",
     },
   },
-  owner: "pingdotgg",
+  owner: "Sakana-yuyu",
 };
 
 export default config;

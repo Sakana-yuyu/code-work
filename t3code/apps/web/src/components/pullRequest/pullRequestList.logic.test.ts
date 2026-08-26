@@ -36,10 +36,10 @@ function entry(
     provider: "github",
     host: "github.com",
     projectId: "project-1",
-    projectTitle: "t3code",
-    repository: "pingdotgg/t3code",
+    projectTitle: "codework",
+    repository: "Sakana-yuyu/code-work",
     title: "Add the pull requests page",
-    url: `https://github.com/pingdotgg/t3code/pull/${overrides.number}`,
+    url: `https://github.com/Sakana-yuyu/code-work/pull/${overrides.number}`,
     author: { login: "octocat", name: null, avatarUrl: null },
     headBranch: `feat/branch-${overrides.number}`,
     baseBranch: "main",
@@ -575,7 +575,7 @@ describe("the list snapshot across a reload", () => {
     providers: [],
     errors: [{ projectId: "project-1", message: "boom" }],
     truncated: true,
-    nextCursors: { "pingdotgg/t3code": "cursor-1" },
+    nextCursors: { "Sakana-yuyu/code-work": "cursor-1" },
   } as never;
 
   it("hydrates the retained rows so ghosts never replace them", () => {
@@ -759,11 +759,11 @@ describe("merging the environments' own listings", () => {
 
   it("keeps each environment's continuation to itself", () => {
     const merged = mergePullRequestLists([
-      [ENV_1, answer({ nextCursors: { "github.com pingdotgg/t3code": "cursor-1" } })],
+      [ENV_1, answer({ nextCursors: { "github.com Sakana-yuyu/code-work": "cursor-1" } })],
       [ENV_2, answer()],
     ]);
     expect(merged?.nextCursors).toEqual({
-      [ENV_1]: { "github.com pingdotgg/t3code": "cursor-1" },
+      [ENV_1]: { "github.com Sakana-yuyu/code-work": "cursor-1" },
     });
   });
 
@@ -972,9 +972,9 @@ describe("colon-namespaced labels typed as a search", () => {
   });
 
   it("leaves a pasted link alone rather than naming a label after its scheme", () => {
-    const parsed = parsePullRequestQuery("https://github.com/pingdotgg/t3code/pull/1");
+    const parsed = parsePullRequestQuery("https://github.com/Sakana-yuyu/code-work/pull/1");
     expect(parsed.filters.labels).toBeUndefined();
-    expect(parsed.text).toBe("https://github.com/pingdotgg/t3code/pull/1");
+    expect(parsed.text).toBe("https://github.com/Sakana-yuyu/code-work/pull/1");
   });
 
   it("mixes with the keys it does know, and with plain words", () => {

@@ -1,7 +1,7 @@
 import type {
   ProjectScript,
   ResolvedKeybindingsConfig,
-  T3ProjectFileScript,
+  CodeworkProjectFileScript,
 } from "@codework/contracts";
 import {
   isAtomCommandInterrupted,
@@ -38,12 +38,12 @@ import { t } from "~/i18n";
 
 export type { NewProjectScriptInput, ProjectScriptActionResult };
 
-const NO_FILE_SCRIPTS: ReadonlyArray<T3ProjectFileScript> = [];
+const NO_FILE_SCRIPTS: ReadonlyArray<CodeworkProjectFileScript> = [];
 
 interface ProjectScriptsControlProps {
   scripts: ReadonlyArray<ProjectScript>;
   /** Scripts declared in the project's checked-in t3.json, offered for import. */
-  fileScripts?: ReadonlyArray<T3ProjectFileScript>;
+  fileScripts?: ReadonlyArray<CodeworkProjectFileScript>;
   keybindings: ResolvedKeybindingsConfig;
   preferredScriptId?: string | null;
   onRunScript: (script: ProjectScript) => void;
@@ -108,7 +108,7 @@ export default function ProjectScriptsControl({
     [onAddScript, onUpdateScript],
   );
 
-  const importFileScript = async (fileScript: T3ProjectFileScript) => {
+  const importFileScript = async (fileScript: CodeworkProjectFileScript) => {
     const payload: NewProjectScriptInput = {
       name: fileScript.name,
       command: fileScript.command,

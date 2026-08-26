@@ -3439,7 +3439,7 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
           yield* emitRuntimeWarning(context, message.text, message);
         }
         return;
-      // Inner protocol/UX details with no T3 surface today — consumed
+      // Inner protocol/UX details with no Code Work surface today — consumed
       // deliberately so they don't masquerade as unknown-subtype warnings.
       case "model_refusal_fallback":
       case "local_command_output":
@@ -3570,7 +3570,7 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
     yield* logNativeSdkMessage(context, message);
     yield* ensureThreadId(context, message);
 
-    // Wire-only command bookkeeping has no user-facing T3 lifecycle.
+    // Wire-only command bookkeeping has no user-facing Code Work lifecycle.
     if (sdkMessageType(message) === "command_lifecycle") {
       return;
     }
@@ -3597,7 +3597,7 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
       case "rate_limit_event":
         yield* handleSdkTelemetryMessage(context, message);
         return;
-      // Composer prompt suggestions have no T3 surface; consumed deliberately.
+      // Composer prompt suggestions have no Code Work surface; consumed deliberately.
       case "prompt_suggestion":
         return;
       default: {
@@ -3881,7 +3881,7 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
         // `id` MUST equal the full question text — Claude SDK >= 2.1.121 looks
         // up answers by question text in `mapToolResultToToolResultBlockParam`,
         // so the key the UI uses to keep its draft answer must match the SDK's
-        // expected lookup key. See https://github.com/pingdotgg/t3code/issues/2388
+        // expected lookup key. See https://github.com/Sakana-yuyu/code-work/issues/2388
         const rawQuestions = Array.isArray(toolInput.questions) ? toolInput.questions : [];
         const questions: Array<UserInputQuestion> = rawQuestions.map(
           (q: Record<string, unknown>, idx: number) => ({
@@ -4234,7 +4234,7 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
         ...(mcpSession
           ? {
               mcpServers: {
-                "t3-code": {
+                "code-work": {
                   type: "http",
                   url: mcpSession.endpoint,
                   headers: {

@@ -54,7 +54,7 @@ export interface CompositionAgentDriverRegistryServiceShape extends CompositionA
 export class CompositionAgentDriverRegistryService extends Context.Service<
   CompositionAgentDriverRegistryService,
   CompositionAgentDriverRegistryServiceShape
->()("t3/composition/CompositionAgentDriverRegistry/CompositionAgentDriverRegistryService") {}
+>()("codework/composition/CompositionAgentDriverRegistry/CompositionAgentDriverRegistryService") {}
 
 export const makeCompositionAgentDriverRegistry = (): CompositionAgentDriverRegistry => {
   const drivers = new Map<string, CompositionAgentDriver>();

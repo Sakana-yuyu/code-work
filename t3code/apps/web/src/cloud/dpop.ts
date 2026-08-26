@@ -30,7 +30,7 @@ export class BrowserDpopError extends Data.TaggedError("BrowserDpopError")<{
 }> {}
 
 export const DPOP_DATABASE_NAME = "codework:cloud-auth";
-export const LEGACY_DPOP_DATABASE_NAME = "t3code:cloud-auth";
+export const LEGACY_DPOP_DATABASE_NAME = "codework:cloud-auth";
 const DPOP_DATABASE_VERSION = 1;
 const DPOP_KEY_STORE_NAME = "keys";
 const DPOP_KEY_ID = "relay-dpop-proof-key";

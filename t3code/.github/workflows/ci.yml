@@ -121,8 +121,8 @@ jobs:
       # job, which covers @codework/desktop, needs the download.
       - name: Test
         env:
-          T3CODE_TRANSFER_BUDGET_REPORT_PATH: ${{ runner.temp }}/t3code-transfer-budget.md
-          T3CODE_TRANSFER_BUDGET_RESULT_PATH: ${{ runner.temp }}/thread-transfer-result.json
+          CODEWORK_TRANSFER_BUDGET_REPORT_PATH: ${{ runner.temp }}/codework-transfer-budget.md
+          CODEWORK_TRANSFER_BUDGET_RESULT_PATH: ${{ runner.temp }}/thread-transfer-result.json
         run: vp run --filter codework test --shard ${{ matrix.shard }}/${{ strategy.job-total }}
 
       # src/server.test.ts writes the budget report, so exactly one shard
@@ -142,8 +142,8 @@ jobs:
       - name: Publish transfer budget report
         if: always() && steps.transfer_budget.outputs.present == 'true'
         run: |
-          if test -f "${{ runner.temp }}/t3code-transfer-budget.md"; then
-            tee -a "$GITHUB_STEP_SUMMARY" < "${{ runner.temp }}/t3code-transfer-budget.md"
+          if test -f "${{ runner.temp }}/codework-transfer-budget.md"; then
+            tee -a "$GITHUB_STEP_SUMMARY" < "${{ runner.temp }}/codework-transfer-budget.md"
           else
             echo "Transfer budget report was not produced." >> "$GITHUB_STEP_SUMMARY"
           fi

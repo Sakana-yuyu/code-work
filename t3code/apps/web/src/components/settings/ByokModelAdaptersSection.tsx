@@ -207,7 +207,7 @@ interface ByokModelAdaptersSectionProps {
 }
 
 /**
- * t3code-style "Model adapters" editor for the built-in Cursor BYOK driver.
+ * codework-style "Model adapters" editor for the built-in Cursor BYOK driver.
  * Renders one card per adapter (protocol badge, model id, base URL, masked
  * API key, context window) plus an inline add/edit form. Deletes go through
  * the shared `AlertDialog` confirmation pattern.

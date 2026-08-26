@@ -54,7 +54,7 @@ const processFailureDetail = (error: ProcessRunner.ProcessRunError): string => {
 /**
  * 通过一次性本地子进程承载 Multica daemon extension。
  *
- * 子进程只接收 start 注入消息；T3 不读取或记录 stdout/stderr，扩展失败只暴露稳定错误码，
+ * 子进程只接收 start 注入消息；Code Work 不读取或记录 stdout/stderr，扩展失败只暴露稳定错误码，
  * 避免把 task-local MCP credential 或 prompt 传播到普通日志。
  */
 export const makeMulticaTaskExecutionProcessBridge = (

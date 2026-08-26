@@ -172,7 +172,7 @@ export class ToolBroker extends Context.Service<
     readonly invoke: (input: ToolBrokerInput) => Effect.Effect<ToolBrokerResult>;
     readonly cancel: (input: { readonly idempotencyKey: string }) => Effect.Effect<void>;
   }
->()("t3/composition/ToolBroker") {}
+>()("codework/composition/ToolBroker") {}
 
 type ToolOperation = "read" | "execute" | "mutate";
 

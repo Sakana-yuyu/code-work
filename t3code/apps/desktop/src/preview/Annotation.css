@@ -1,8 +1,8 @@
 @import "tailwindcss";
 
 @theme inline {
-  --font-sans: var(--t3-font-sans);
-  --font-mono: var(--t3-font-mono);
+  --font-sans: var(--codework-font-sans);
+  --font-mono: var(--codework-font-mono);
   --color-background: var(--t3-background);
   --color-foreground: var(--t3-foreground);
   --color-popover: var(--t3-popover);
@@ -24,10 +24,10 @@
 }
 
 :host {
-  --t3-font-sans:
+  --codework-font-sans:
     "DM Sans Variable", "DM Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui,
     sans-serif;
-  --t3-font-mono:
+  --codework-font-mono:
     "SF Mono", "SFMono-Regular", "JetBrains Mono", Consolas, "Liberation Mono", Menlo, monospace;
   --t3-radius: 0.625rem;
   --t3-background: white;
@@ -44,7 +44,7 @@
   --t3-input: rgb(0 0 0 / 10%);
   --t3-ring: oklch(0.488 0.217 264);
   color: var(--t3-foreground);
-  font-family: var(--t3-font-sans);
+  font-family: var(--codework-font-sans);
 }
 
 * {

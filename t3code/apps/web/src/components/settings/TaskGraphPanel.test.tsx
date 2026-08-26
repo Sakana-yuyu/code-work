@@ -169,8 +169,8 @@ describe("TaskGraphPanel", () => {
 
     const html = renderPanel();
 
-    expect(html).toContain("此 Driver 没有报告经过验证的 T3 ToolBroker 握手");
-    expect(html).not.toContain("此 Driver 已报告经过验证的 T3 ToolBroker 握手能力面");
+    expect(html).toContain("此 Driver 没有报告经过验证的 Code Work ToolBroker 握手");
+    expect(html).not.toContain("此 Driver 已报告经过验证的 Code Work ToolBroker 握手能力面");
   });
 
   it("exposes review actions for an in-review task", () => {

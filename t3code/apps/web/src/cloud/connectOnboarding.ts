@@ -2,11 +2,11 @@ import * as Schema from "effect/Schema";
 import { canonicalStorageKey } from "../persistenceStorage";
 
 /**
- * Accounts that opted out of the post-sign-in T3 Connect onboarding wizard
+ * Accounts that opted out of the post-sign-in Code Work Connect onboarding wizard
  * ("Don't show this again"). The wizard otherwise shows on every sign-in,
  * since sign-out clears the connected environments.
  */
-export const LEGACY_CONNECT_ONBOARDING_OPT_OUT_STORAGE_KEY = "t3code:connect-onboarding-opt-out:v1";
+export const LEGACY_CONNECT_ONBOARDING_OPT_OUT_STORAGE_KEY = "codework:connect-onboarding-opt-out:v1";
 export const CONNECT_ONBOARDING_OPT_OUT_STORAGE_KEY = canonicalStorageKey(
   LEGACY_CONNECT_ONBOARDING_OPT_OUT_STORAGE_KEY,
 );

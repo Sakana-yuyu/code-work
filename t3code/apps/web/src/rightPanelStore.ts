@@ -86,7 +86,7 @@ export type RightPanelSurface =
     }
   | { id: "agents"; kind: "agents" };
 
-const LEGACY_RIGHT_PANEL_STORAGE_KEY = "t3code:right-panel-state:v2";
+const LEGACY_RIGHT_PANEL_STORAGE_KEY = "codework:right-panel-state:v2";
 const RIGHT_PANEL_STORAGE_KEY = canonicalStorageKey(LEGACY_RIGHT_PANEL_STORAGE_KEY);
 // v9 removed the "plan" surface kind (plans render inline in the transcript).
 // v10 keys pull-request surfaces by reference instead of a singleton tab.

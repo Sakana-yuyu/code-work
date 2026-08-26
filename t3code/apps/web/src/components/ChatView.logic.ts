@@ -27,7 +27,7 @@ import type { TimelineEntry } from "../session-logic";
 import { t } from "~/i18n";
 import { canonicalStorageKey } from "../persistenceStorage";
 
-export const LEGACY_LAST_INVOKED_SCRIPT_BY_PROJECT_KEY = "t3code:last-invoked-script-by-project";
+export const LEGACY_LAST_INVOKED_SCRIPT_BY_PROJECT_KEY = "codework:last-invoked-script-by-project";
 export const LAST_INVOKED_SCRIPT_BY_PROJECT_KEY = canonicalStorageKey(
   LEGACY_LAST_INVOKED_SCRIPT_BY_PROJECT_KEY,
 );

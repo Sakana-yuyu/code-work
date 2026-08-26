@@ -23,7 +23,7 @@ export class CompositionRuntimeToolBridgeProtocolFailure extends Schema.TaggedEr
 ) {
   override get message(): string {
     const suffix = this.status === undefined ? "" : `（HTTP ${this.status}）`;
-    return `T3 Runtime Tool Bridge 操作失败：${this.operation}${suffix}：${this.code}`;
+    return `Code Work Runtime Tool Bridge 操作失败：${this.operation}${suffix}：${this.code}`;
   }
 }
 
@@ -56,7 +56,7 @@ const isBridgeProtocolFailure = Schema.is(CompositionRuntimeToolBridgeProtocolFa
 
 const normalizeBaseUrl = (baseUrl: string): string => {
   const trimmed = baseUrl.trim();
-  if (trimmed.length === 0) throw new Error("T3 Tool Bridge baseUrl 不能为空。");
+  if (trimmed.length === 0) throw new Error("Code Work Tool Bridge baseUrl 不能为空。");
   return trimmed.replace(/\/+$/, "");
 };
 
@@ -78,7 +78,7 @@ const decodeResponse = (operation: string, body: unknown): CompositionToolResult
   try {
     return decodeToolResult(body);
   } catch {
-    throw makeFailure(operation, "invalid_response", "T3 Tool Bridge 返回了无效的工具结果。");
+    throw makeFailure(operation, "invalid_response", "Code Work Tool Bridge 返回了无效的工具结果。");
   }
 };
 
@@ -142,7 +142,7 @@ export const makeCompositionRuntimeToolBridgeClient = (
                   makeFailure(
                     operation,
                     "http_error",
-                    "T3 Tool Bridge 请求未成功。",
+                    "Code Work Tool Bridge 请求未成功。",
                     response.status,
                   ),
                 );
@@ -184,7 +184,7 @@ export const makeCompositionRuntimeToolBridgeFetchTransport = (
   if (typeof fetchImpl !== "function") throw new Error("当前运行时没有可用的 fetch 实现。");
   const timeoutMs = options.timeoutMs ?? 30_000;
   if (!Number.isFinite(timeoutMs) || timeoutMs <= 0) {
-    throw new Error("T3 Tool Bridge timeoutMs 必须大于 0。");
+    throw new Error("Code Work Tool Bridge timeoutMs 必须大于 0。");
   }
 
   return {

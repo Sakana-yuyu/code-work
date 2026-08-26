@@ -10,16 +10,16 @@ import {
 
 const environmentId = EnvironmentId.make("environment");
 const repositoryIdentity = {
-  canonicalKey: "github.com/t3tools/t3code",
+  canonicalKey: "github.com/t3tools/codework",
   locator: {
     source: "git-remote" as const,
     remoteName: "upstream",
-    remoteUrl: "https://github.com/t3tools/t3code.git",
+    remoteUrl: "https://github.com/t3tools/codework.git",
   },
   provider: "github",
   owner: "t3tools",
-  name: "t3code",
-  displayName: "T3 Code",
+  name: "codework",
+  displayName: "Code Work",
 };
 
 function makeProject(
@@ -54,18 +54,18 @@ function settings(
 describe("buildProjectGroups", () => {
   it("preserves every physical clone as a selectable member in repository modes", () => {
     const projects = [
-      makeProject("t3code", "/work/t3code"),
-      makeProject("t3code-2", "/work/t3code-2"),
-      makeProject("t3code-3", "/work/t3code-3"),
+      makeProject("codework", "/work/codework"),
+      makeProject("codework-2", "/work/codework-2"),
+      makeProject("codework-3", "/work/codework-3"),
     ];
 
     for (const mode of ["repository", "repository_path"] as const) {
       const groups = buildProjectGroups({ projects, settings: settings(mode) });
       expect(groups).toHaveLength(1);
       expect(groups[0]?.members.map((member) => member.project.id)).toEqual([
-        "t3code",
-        "t3code-2",
-        "t3code-3",
+        "codework",
+        "codework-2",
+        "codework-3",
       ]);
       expect(groups[0]?.memberProjectRefs).toHaveLength(3);
     }
@@ -73,8 +73,8 @@ describe("buildProjectGroups", () => {
 
   it("uses a shared custom title as the repository group's label", () => {
     const projects = [
-      makeProject("first", "/work/t3code", { title: "Custom project" }),
-      makeProject("second", "/work/t3code-2", { title: "Custom project" }),
+      makeProject("first", "/work/codework", { title: "Custom project" }),
+      makeProject("second", "/work/codework-2", { title: "Custom project" }),
     ];
 
     expect(buildProjectGroups({ projects, settings: settings("repository") })[0]?.label).toBe(
@@ -84,32 +84,32 @@ describe("buildProjectGroups", () => {
 
   it("keeps the repository label when shared titles match its repository name", () => {
     const projects = [
-      makeProject("first", "/work/t3code", { title: "t3code" }),
-      makeProject("second", "/work/t3code-2", { title: "t3code" }),
+      makeProject("first", "/work/codework", { title: "codework" }),
+      makeProject("second", "/work/codework-2", { title: "codework" }),
     ];
 
     expect(buildProjectGroups({ projects, settings: settings("repository") })[0]?.label).toBe(
-      "T3 Code",
+      "Code Work",
     );
   });
 
   it("keeps physical clones in separate groups when requested", () => {
     const projects = [
-      makeProject("t3code", "/work/t3code"),
-      makeProject("t3code-2", "/work/t3code-2"),
-      makeProject("t3code-3", "/work/t3code-3"),
+      makeProject("codework", "/work/codework"),
+      makeProject("codework-2", "/work/codework-2"),
+      makeProject("codework-3", "/work/codework-3"),
     ];
 
     const groups = buildProjectGroups({ projects, settings: settings("separate") });
     expect(groups).toHaveLength(3);
     expect(groups.flatMap((group) => group.members)).toHaveLength(3);
-    expect(groups.map((group) => group.label)).toEqual(["t3code", "t3code-2", "t3code-3"]);
+    expect(groups.map((group) => group.label)).toEqual(["codework", "codework-2", "codework-3"]);
   });
 
   it("applies a physical-project override without dropping its siblings", () => {
-    const first = makeProject("t3code", "/work/t3code");
-    const second = makeProject("t3code-2", "/work/t3code-2");
-    const third = makeProject("t3code-3", "/work/t3code-3");
+    const first = makeProject("codework", "/work/codework");
+    const second = makeProject("codework-2", "/work/codework-2");
+    const third = makeProject("codework-3", "/work/codework-3");
     const groups = buildProjectGroups({
       projects: [first, second, third],
       settings: settings("repository", {
@@ -119,18 +119,18 @@ describe("buildProjectGroups", () => {
 
     expect(groups).toHaveLength(2);
     expect(groups.flatMap((group) => group.members.map((member) => member.project.id))).toEqual([
-      "t3code",
-      "t3code-3",
-      "t3code-2",
+      "codework",
+      "codework-3",
+      "codework-2",
     ]);
   });
 
   it("dedupes stale registrations at one physical path using the freshest project", () => {
-    const stale = makeProject("stale", "/work/t3code", {
+    const stale = makeProject("stale", "/work/codework", {
       repositoryIdentity: null,
       updatedAt: "2026-07-01T00:00:00.000Z",
     });
-    const fresh = makeProject("fresh", "/work/t3code/", {
+    const fresh = makeProject("fresh", "/work/codework/", {
       updatedAt: "2026-07-02T00:00:00.000Z",
     });
 
@@ -145,14 +145,14 @@ describe("buildProjectGroups", () => {
   });
 
   it("uses repository identity from a duplicate registration when the winner lacks it", () => {
-    const identified = makeProject("identified", "/work/t3code", {
+    const identified = makeProject("identified", "/work/codework", {
       updatedAt: "2026-07-01T00:00:00.000Z",
     });
-    const freshUnidentified = makeProject("fresh", "/work/t3code/", {
+    const freshUnidentified = makeProject("fresh", "/work/codework/", {
       repositoryIdentity: null,
       updatedAt: "2026-07-02T00:00:00.000Z",
     });
-    const sibling = makeProject("sibling", "/work/t3code-2");
+    const sibling = makeProject("sibling", "/work/codework-2");
 
     const groups = buildProjectGroups({
       projects: [identified, freshUnidentified, sibling],
@@ -169,14 +169,14 @@ describe("buildProjectGroups", () => {
       name: "old-repository",
       displayName: "Old Repository",
     };
-    const stale = makeProject("stale", "/work/t3code", {
+    const stale = makeProject("stale", "/work/codework", {
       repositoryIdentity: staleIdentity,
       updatedAt: "2026-07-01T00:00:00.000Z",
     });
-    const fresh = makeProject("fresh", "/work/t3code/", {
+    const fresh = makeProject("fresh", "/work/codework/", {
       updatedAt: "2026-07-02T00:00:00.000Z",
     });
-    const sibling = makeProject("sibling", "/work/t3code-2");
+    const sibling = makeProject("sibling", "/work/codework-2");
 
     const groups = buildProjectGroups({
       projects: [stale, fresh, sibling],
@@ -193,18 +193,18 @@ describe("buildProjectGroups", () => {
       name: "old-repository",
       displayName: "Old Repository",
     };
-    const staleIdentified = makeProject("stale-identified", "/work/t3code", {
+    const staleIdentified = makeProject("stale-identified", "/work/codework", {
       repositoryIdentity: staleIdentity,
       updatedAt: "2026-07-01T00:00:00.000Z",
     });
-    const freshIdentified = makeProject("fresh-identified", "/work/t3code/", {
+    const freshIdentified = makeProject("fresh-identified", "/work/codework/", {
       updatedAt: "2026-07-02T00:00:00.000Z",
     });
-    const winner = makeProject("winner", "/work/t3code", {
+    const winner = makeProject("winner", "/work/codework", {
       repositoryIdentity: null,
       updatedAt: "2026-07-03T00:00:00.000Z",
     });
-    const sibling = makeProject("sibling", "/work/t3code-2");
+    const sibling = makeProject("sibling", "/work/codework-2");
 
     const groups = buildProjectGroups({
       projects: [staleIdentified, freshIdentified, winner, sibling],

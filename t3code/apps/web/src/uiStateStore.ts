@@ -3,16 +3,16 @@ import { create } from "zustand";
 import { normalizeProjectPathForComparison } from "./lib/projectPaths";
 import { canonicalStorageKey, migrateRawStorageValue } from "./persistenceStorage";
 
-export const LEGACY_PERSISTED_STATE_KEY = "t3code:ui-state:v1";
+export const LEGACY_PERSISTED_STATE_KEY = "codework:ui-state:v1";
 export const PERSISTED_STATE_KEY = canonicalStorageKey(LEGACY_PERSISTED_STATE_KEY);
 const THREAD_CHANGED_FILES_EXPANSION_VERSION = 1;
 const LEGACY_PERSISTED_STATE_KEYS = [
-  "t3code:renderer-state:v8",
-  "t3code:renderer-state:v7",
-  "t3code:renderer-state:v6",
-  "t3code:renderer-state:v5",
-  "t3code:renderer-state:v4",
-  "t3code:renderer-state:v3",
+  "codework:renderer-state:v8",
+  "codework:renderer-state:v7",
+  "codework:renderer-state:v6",
+  "codework:renderer-state:v5",
+  "codework:renderer-state:v4",
+  "codework:renderer-state:v3",
   "codething:renderer-state:v4",
   "codething:renderer-state:v3",
   "codething:renderer-state:v2",

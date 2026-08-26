@@ -1,6 +1,6 @@
 /**
  * Optional integration check against a real `grok agent stdio` install.
- * Enable with: T3_GROK_ACP_PROBE=1 bun run test GrokAcpCliProbe
+ * Enable with: CODEWORK_GROK_ACP_PROBE=1 bun run test GrokAcpCliProbe
  *
  * The probe assumes either `XAI_API_KEY` is set in the environment or
  * the user has previously run `grok login`. Without credentials the
@@ -26,7 +26,7 @@ const makeProbeRuntime = Effect.gen(function* () {
   });
 });
 
-describe.runIf(process.env.T3_GROK_ACP_PROBE === "1")("Grok ACP CLI probe", () => {
+describe.runIf(process.env.CODEWORK_GROK_ACP_PROBE === "1")("Grok ACP CLI probe", () => {
   it.effect("initialize and authenticate against real grok agent stdio", () =>
     Effect.gen(function* () {
       const runtime = yield* makeProbeRuntime;

@@ -85,7 +85,7 @@ export type CompositionMcpRuntimeAdapterShape = {
 export class CompositionMcpRuntimeAdapterService extends Context.Service<
   CompositionMcpRuntimeAdapterService,
   CompositionMcpRuntimeAdapterShape
->()("t3/composition/CompositionMcpRuntimeAdapter") {}
+>()("codework/composition/CompositionMcpRuntimeAdapter") {}
 
 export type CompositionMcpRuntimeAdapterOptions = {
   readonly toolRegistry: CompositionMcpToolRegistryShape;
@@ -165,7 +165,7 @@ const createSdkClient = (
             : new SSEClientTransport(url, { requestInit });
       }
 
-      const client = new Client({ name: "t3-code", version: "0.0.33" });
+      const client = new Client({ name: "code-work", version: "0.0.33" });
       await client.connect(transport);
       return {
         listTools: async () => (await client.listTools()).tools,

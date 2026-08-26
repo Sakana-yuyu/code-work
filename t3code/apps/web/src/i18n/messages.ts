@@ -46,7 +46,7 @@ export const en: Record<string, string> = {
   approval: "Approval",
   approved: "Approved",
   approximateActiveCpuTimeForTheT3ServerRootProcessAndItsDesce:
-    "Approximate active CPU time for the T3 server root process and its descendants during the selected window. It grows only while sampled processes use CPU and older samples leave as the window moves.",
+    "Approximate active CPU time for the Code Work server root process and its descendants during the selected window. It grows only while sampled processes use CPU and older samples leave as the window moves.",
   archive: "Archive",
   archiveConfirmation: "archive confirmation",
   archivedThreadActionFailed: "Archived thread action failed",
@@ -662,7 +662,7 @@ export const en: Record<string, string> = {
   selectAPullRequestFirst: "Select a pull request first",
   selectAtLeastOnePermission: "Select at least one permission.",
   sendActivityFromThisEnvironmentToYourMobileClientsForPushNot:
-    "Send activity from this environment to your mobile clients for push notifications and Live Activities. Works without a T3 Connect tunnel.",
+    "Send activity from this environment to your mobile clients for push notifications and Live Activities. Works without a Code Work Connect tunnel.",
   sendAMessageBeforeYouSubmitFeedback: "Send a message before you submit feedback.",
   sending: "Sending...",
   sending2: "Sending",
@@ -736,7 +736,7 @@ export const en: Record<string, string> = {
   switchesTheHostedAppReleaseChannel: "Switches the hosted app release channel.",
   systemDefaultFollowsYourBrowserOrOsClockPreference:
     "System default follows your browser or OS clock preference.",
-  t3Connect: "T3 Connect",
+  t3Connect: "Code Work Connect",
   tailscaleHttps: "Tailscale HTTPS",
   taskStartedInTheBackground: "Task started in the background",
   terminalFontSize: "Terminal font size",
@@ -1154,7 +1154,7 @@ export const en: Record<string, string> = {
   add: "Add",
   addEnvironmentPairingDescription: "Click “Add environment” to pair another environment.",
   addEnvironmentPairingWithCloudDescription:
-    "Click “Add environment” to pair another environment, or connect one from T3 Connect.",
+    "Click “Add environment” to pair another environment, or connect one from Code Work Connect.",
   addProjectBaseDirectoryDescription: 'Leave empty to use "~/" when the Add Project browser opens.',
   addTheme: "Add theme",
   archivedThreadsEmptyDescription: "Archived threads will appear here.",
@@ -1576,7 +1576,7 @@ export const en: Record<string, string> = {
   "diagnostics.category.gpu": "GPU",
   "diagnostics.category.electronUtility": "Electron utility",
   "diagnostics.category.monitor": "Monitor",
-  "diagnostics.category.t3Process": "T3 process",
+  "diagnostics.category.t3Process": "Code Work process",
   "diagnostics.ioSemantics.storage": "Storage bytes",
   "diagnostics.ioSemantics.logical": "Logical bytes",
   "diagnostics.ioSemantics.allIo": "All I/O bytes",
@@ -1612,7 +1612,7 @@ export const en: Record<string, string> = {
   "diagnostics.failedToSendSignal": "Failed to send {{signal}}.",
   "diagnostics.failedToSendSignalToProcess": "Failed to send {{signal}} to process {{pid}}.",
   "diagnostics.resourceMonitorRetryFailed": "The resource monitor retry failed.",
-  "diagnostics.t3SystemFootprint": "T3 system footprint",
+  "diagnostics.t3SystemFootprint": "Code Work system footprint",
   "diagnostics.footprintDescription":
     "Live native counters for the server, providers, terminals, desktop processes, and the monitor itself.",
   "diagnostics.observedCpuTime": "{{value}} observed CPU time",
@@ -1644,7 +1644,7 @@ export const en: Record<string, string> = {
   "diagnostics.identity": "Identity:",
   "diagnostics.identityPidStartTime": "PID + start time",
   "diagnostics.instrumentedIoDescription":
-    "Native counters identify which process is reading or writing. These application-level counters identify known T3 operations so process spikes can be correlated with specific persistence and logging paths.",
+    "Native counters identify which process is reading or writing. These application-level counters identify known Code Work operations so process spikes can be correlated with specific persistence and logging paths.",
   "diagnostics.noTraceRecords": "No trace records",
   "diagnostics.showFullError": "Show full error",
   "diagnostics.showFullMessage": "Show full message",
@@ -1678,7 +1678,7 @@ export const en: Record<string, string> = {
   "diagnostics.noEnvironmentSelected": "No environment is selected.",
   "diagnostics.unableToOpenLogs": "Unable to open logs folder.",
   "diagnostics.notChildOfServer":
-    "The process is not a child of the T3 Server. It might already have exited.",
+    "The process is not a child of the Code Work Server. It might already have exited.",
   "diagnostics.slowSpansWithDuration": "Spans with a duration of {{duration}} or longer.",
   "diagnostics.slowSpansThreshold": "Spans at or above the configured slow-span threshold.",
   "diagnostics.partialTraceFailure":
@@ -1724,7 +1724,7 @@ export const zhCN: Record<string, string> = {
   approval: "待审批",
   approved: "已批准",
   approximateActiveCpuTimeForTheT3ServerRootProcessAndItsDesce:
-    "所选时间窗口内 T3 服务器根进程及其子进程的近似活动 CPU 时间。仅在被采样的进程使用 CPU 时增长，随着窗口移动，较旧的样本会移出。",
+    "所选时间窗口内 Code Work 服务器根进程及其子进程的近似活动 CPU 时间。仅在被采样的进程使用 CPU 时增长，随着窗口移动，较旧的样本会移出。",
   archive: "归档",
   archiveConfirmation: "归档确认",
   archivedThreadActionFailed: "归档线程操作失败",
@@ -2309,7 +2309,7 @@ export const zhCN: Record<string, string> = {
   selectAPullRequestFirst: "请先选择一个拉取请求",
   selectAtLeastOnePermission: "请至少选择一个权限。",
   sendActivityFromThisEnvironmentToYourMobileClientsForPushNot:
-    "将此环境的活动发送到你的移动客户端，用于推送通知和实时活动。无需 T3 Connect 隧道即可使用。",
+    "将此环境的活动发送到你的移动客户端，用于推送通知和实时活动。无需 Code Work Connect 隧道即可使用。",
   sendAMessageBeforeYouSubmitFeedback: "提交反馈前请先发送一条消息。",
   sending: "发送中…",
   sending2: "发送中",
@@ -2378,7 +2378,7 @@ export const zhCN: Record<string, string> = {
   switchesTheHostedAppReleaseChannel: "切换托管应用的发布通道。",
   systemDefaultFollowsYourBrowserOrOsClockPreference:
     "“跟随系统”会遵循浏览器或操作系统的时钟偏好。",
-  t3Connect: "T3 Connect",
+  t3Connect: "Code Work Connect",
   tailscaleHttps: "Tailscale HTTPS",
   taskStartedInTheBackground: "任务已在后台启动",
   terminalFontSize: "终端字体大小",
@@ -2777,7 +2777,7 @@ export const zhCN: Record<string, string> = {
   add: "添加",
   addEnvironmentPairingDescription: "点击“添加环境”以配对另一个环境。",
   addEnvironmentPairingWithCloudDescription:
-    "点击“添加环境”以配对另一个环境，或从 T3 Connect 连接一个环境。",
+    "点击“添加环境”以配对另一个环境，或从 Code Work Connect 连接一个环境。",
   addProjectBaseDirectoryDescription: "留空时，添加项目浏览器将默认使用 ~/ 目录。",
   addTheme: "添加主题",
   archivedThreadsEmptyDescription: "归档的线程将显示在这里。",
@@ -3183,7 +3183,7 @@ export const zhCN: Record<string, string> = {
   "diagnostics.category.gpu": "GPU",
   "diagnostics.category.electronUtility": "Electron 工具进程",
   "diagnostics.category.monitor": "监控",
-  "diagnostics.category.t3Process": "T3 进程",
+  "diagnostics.category.t3Process": "Code Work 进程",
   "diagnostics.ioSemantics.storage": "存储字节",
   "diagnostics.ioSemantics.logical": "逻辑字节",
   "diagnostics.ioSemantics.allIo": "全部 I/O 字节",
@@ -3218,7 +3218,7 @@ export const zhCN: Record<string, string> = {
   "diagnostics.failedToSendSignal": "发送 {{signal}} 失败。",
   "diagnostics.failedToSendSignalToProcess": "向进程 {{pid}} 发送 {{signal}} 失败。",
   "diagnostics.resourceMonitorRetryFailed": "资源监控重试失败。",
-  "diagnostics.t3SystemFootprint": "T3 系统占用",
+  "diagnostics.t3SystemFootprint": "Code Work 系统占用",
   "diagnostics.footprintDescription": "服务器、提供商、终端、桌面进程以及监控本身的原生实时计数。",
   "diagnostics.observedCpuTime": "已观测 CPU 时间 {{value}}",
   "diagnostics.combinedProcessPeaks": "进程峰值合计 {{value}}",
@@ -3249,7 +3249,7 @@ export const zhCN: Record<string, string> = {
   "diagnostics.identity": "标识：",
   "diagnostics.identityPidStartTime": "PID + 启动时间",
   "diagnostics.instrumentedIoDescription":
-    "原生计数标识哪个进程正在读取或写入。这些应用级计数标识已知的 T3 操作，以便将进程峰值与具体的持久化和日志路径关联起来。",
+    "原生计数标识哪个进程正在读取或写入。这些应用级计数标识已知的 Code Work 操作，以便将进程峰值与具体的持久化和日志路径关联起来。",
   "diagnostics.noTraceRecords": "暂无 trace 记录",
   "diagnostics.showFullError": "显示完整错误",
   "diagnostics.showFullMessage": "显示完整消息",
@@ -3282,7 +3282,7 @@ export const zhCN: Record<string, string> = {
   "diagnostics.noAvailableEditors": "未找到可用编辑器。",
   "diagnostics.noEnvironmentSelected": "未选择环境。",
   "diagnostics.unableToOpenLogs": "无法打开日志文件夹。",
-  "diagnostics.notChildOfServer": "该进程不是 T3 Server 的子进程。它可能已经退出。",
+  "diagnostics.notChildOfServer": "该进程不是 Code Work Server 的子进程。它可能已经退出。",
   "diagnostics.slowSpansWithDuration": "持续时间达到 {{duration}} 或更长的 SPAN。",
   "diagnostics.slowSpansThreshold": "达到或超过所配置慢 SPAN 阈值的 SPAN。",
   "diagnostics.partialTraceFailure": "部分 trace 文件无法读取，诊断结果可能不完整。{{message}}",

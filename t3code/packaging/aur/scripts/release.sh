@@ -2,7 +2,7 @@
 set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
-repo='pingdotgg/t3code'
+repo='Sakana-yuyu/code-work'
 tag="${RELEASE_TAG:?RELEASE_TAG is required}"
 pkgrel="${PKGREL:-1}"
 
@@ -77,7 +77,7 @@ export GIT_SSH_COMMAND="ssh -i $key_file -o IdentitiesOnly=yes -o UserKnownHosts
 git clone "ssh://aur@aur.archlinux.org/$pkgname.git" "$aur_dir"
 cp PKGBUILD .SRCINFO "$aur_dir/"
 cd "$aur_dir"
-  git rm --ignore-unmatch LICENSE .upstream-commit t3code-icon.png code-work-icon.png
+  git rm --ignore-unmatch LICENSE .upstream-commit codework-icon.png code-work-icon.png
   git config user.name 'code-work-ci'
   git config user.email 'code-work-ci@users.noreply.github.com'
 git add -A

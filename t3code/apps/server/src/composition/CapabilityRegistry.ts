@@ -49,7 +49,7 @@ export class CapabilityRegistry extends Context.Service<
       CapabilityScopeNotFoundError | CapabilityRegistryUnavailableError
     >;
   }
->()("t3/composition/CapabilityRegistry") {}
+>()("codework/composition/CapabilityRegistry") {}
 
 const capabilities: CompositionCapabilityDescriptorList = [
   ...listCompositionToolDescriptors(),

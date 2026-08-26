@@ -1,5 +1,5 @@
 {
-  "name": "@codework/oxlint-plugin-t3code",
+  "name": "@codework/oxlint-plugin-codework",
   "private": true,
   "type": "module",
   "scripts": {

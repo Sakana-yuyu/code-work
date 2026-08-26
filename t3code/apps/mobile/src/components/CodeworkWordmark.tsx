@@ -2,14 +2,14 @@ import type { ColorValue } from "react-native";
 import Svg, { Path } from "react-native-svg";
 
 /**
- * The "T3" brand mark, matching the desktop sidebar's T3Wordmark SVG
+ * The "Code Work" brand mark, matching the desktop sidebar's CodeworkWordmark SVG
  * (apps/web Sidebar.tsx). Width derives from the viewBox aspect ratio.
  */
-export function T3Wordmark(props: { readonly height: number; readonly color: ColorValue }) {
+export function CodeworkWordmark(props: { readonly height: number; readonly color: ColorValue }) {
   const aspectRatio = 94.3941 / 56.96;
   return (
     <Svg
-      accessibilityLabel="T3"
+      accessibilityLabel="Code Work"
       height={props.height}
       width={props.height * aspectRatio}
       viewBox="15.5309 37 94.3941 56.96"

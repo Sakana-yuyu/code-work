@@ -5,7 +5,7 @@ import type {
   OrchestrationThreadShell,
   ProviderInteractionMode,
   RuntimeMode,
-  ServerConfig as T3ServerConfig,
+  ServerConfig as CodeworkServerConfig,
 } from "@codework/contracts";
 import {
   detectComposerTrigger,
@@ -105,7 +105,7 @@ export interface ThreadComposerProps {
    */
   readonly threadSyncPhase?: "loading" | "syncing" | null;
   readonly selectedThread: OrchestrationThreadShell;
-  readonly serverConfig: T3ServerConfig | null;
+  readonly serverConfig: CodeworkServerConfig | null;
   readonly queueCount: number;
   readonly environmentId: EnvironmentId;
   readonly projectCwd: string | null;

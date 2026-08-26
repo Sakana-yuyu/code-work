@@ -80,7 +80,7 @@ it.layer(NodeServices.layer)("Claude capability probe SDK boundary", (it) => {
           '  const contents = existsSync(rawMcpConfig) ? readFileSync(rawMcpConfig, "utf8") : rawMcpConfig;',
           "  try { mcpConfig = JSON.parse(contents); } catch { mcpConfig = contents; }",
           "}",
-          "writeFileSync(process.env.T3_PROBE_INVOCATION_PATH, JSON.stringify({",
+          "writeFileSync(process.env.CODEWORK_PROBE_INVOCATION_PATH, JSON.stringify({",
           "  args,",
           "  cwd: process.cwd(),",
           "  connectorEnv: process.env.ENABLE_CLAUDEAI_MCP_SERVERS,",
@@ -116,7 +116,7 @@ it.layer(NodeServices.layer)("Claude capability probe SDK boundary", (it) => {
         decodeClaudeSettings({ binaryPath: executablePath }),
         {
           ...process.env,
-          T3_PROBE_INVOCATION_PATH: invocationPath,
+          CODEWORK_PROBE_INVOCATION_PATH: invocationPath,
           ENABLE_CLAUDEAI_MCP_SERVERS: "true",
         },
         workspaceCwd,

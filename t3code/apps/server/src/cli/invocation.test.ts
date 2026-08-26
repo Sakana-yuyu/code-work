@@ -36,7 +36,7 @@ it("detects package runners from their cache entry paths", () => {
 
 it("treats stable installs as direct invocations", () => {
   assert.isNull(detectCliRunner("/usr/local/lib/node_modules/t3/dist/bin.mjs"));
-  assert.isNull(detectCliRunner("/home/theo/Code/work/t3code/apps/server/dist/bin.mjs"));
+  assert.isNull(detectCliRunner("/home/theo/Code/work/codework/apps/server/dist/bin.mjs"));
   assert.isNull(detectCliRunner("/home/theo/.t3/runtime/0.0.31/node_modules/t3/dist/bin.mjs"));
   assert.isNull(detectCliRunner(""));
 });

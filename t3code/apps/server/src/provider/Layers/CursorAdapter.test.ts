@@ -37,7 +37,7 @@ const decodeCursorSettings = Schema.decodeSync(CursorSettings);
 
 // Test-local service tag so the rest of the file can keep using `yield* CursorAdapter`.
 class CursorAdapter extends Context.Service<CursorAdapter, CursorAdapterShape>()(
-  "t3/provider/Layers/CursorAdapter.test/CursorAdapter",
+  "codework/provider/Layers/CursorAdapter.test/CursorAdapter",
 ) {}
 
 const __dirname = NodePath.dirname(NodeURL.fileURLToPath(import.meta.url));
@@ -96,7 +96,7 @@ async function makeProbeWrapper(
     ? `@echo off
 for %%A in (%*) do <nul set /p="%%~A\t" >> "${argvLogPath}"
 echo.>> "${argvLogPath}"
-set "T3_ACP_REQUEST_LOG_PATH=${requestLogPath}"
+set "CODEWORK_ACP_REQUEST_LOG_PATH=${requestLogPath}"
 ${Object.entries(extraEnv ?? {})
   .map(([key, value]) => `set "${key}=${value.replaceAll('"', '""')}"`)
   .join("\n")}
@@ -106,7 +106,7 @@ exit /b %ERRORLEVEL%
     : `#!/bin/sh
 printf '%s\t' "$@" >> ${JSON.stringify(argvLogPath)}
 printf '\n' >> ${JSON.stringify(argvLogPath)}
-export T3_ACP_REQUEST_LOG_PATH=${JSON.stringify(requestLogPath)}
+export CODEWORK_ACP_REQUEST_LOG_PATH=${JSON.stringify(requestLogPath)}
 ${Object.entries(extraEnv ?? {})
   .map(([key, value]) => `export ${key}=${JSON.stringify(value)}`)
   .join("\n")}
@@ -195,7 +195,7 @@ const cursorAdapterTestLayer = it.layer(
     Layer.provideMerge(ServerSettingsService.layerTest()),
     Layer.provideMerge(
       ServerConfig.layerTest(process.cwd(), {
-        prefix: "t3code-cursor-adapter-test-",
+        prefix: "codework-cursor-adapter-test-",
       }),
     ),
     Layer.provideMerge(NodeServices.layer),
@@ -300,8 +300,8 @@ cursorAdapterTestLayer("CursorAdapterLive", (it) => {
       yield* Effect.promise(() => NodeFSP.writeFile(requestLogPath, "", "utf8"));
       const wrapperPath = yield* Effect.promise(() =>
         makeProbeWrapper(requestLogPath, argvLogPath, {
-          T3_ACP_READ_TEXT_FILE_PATH: requestedPath,
-          T3_ACP_CLIENT_TOOL_RESULT_LOG_PATH: resultLogPath,
+          CODEWORK_ACP_READ_TEXT_FILE_PATH: requestedPath,
+          CODEWORK_ACP_CLIENT_TOOL_RESULT_LOG_PATH: resultLogPath,
         }),
       );
       yield* settings.updateSettings({ providers: { cursor: { binaryPath: wrapperPath } } });
@@ -389,7 +389,7 @@ cursorAdapterTestLayer("CursorAdapterLive", (it) => {
       );
       const requestedPath = NodePath.join(workspaceRoot, "denied.txt");
       const wrapperPath = yield* Effect.promise(() =>
-        makeMockAgentWrapper({ T3_ACP_READ_TEXT_FILE_PATH: requestedPath }),
+        makeMockAgentWrapper({ CODEWORK_ACP_READ_TEXT_FILE_PATH: requestedPath }),
       );
       yield* settings.updateSettings({ providers: { cursor: { binaryPath: wrapperPath } } });
       const capabilityHandshakeId = yield* acceptToolBrokerHandshake(adapter, {
@@ -444,8 +444,8 @@ cursorAdapterTestLayer("CursorAdapterLive", (it) => {
       const requestedPath = NodePath.join(workspaceRoot, "notes.txt");
       const wrapperPath = yield* Effect.promise(() =>
         makeMockAgentWrapper({
-          T3_ACP_READ_TEXT_FILE_PATH: requestedPath,
-          T3_ACP_CLIENT_TOOL_SESSION_ID: "foreign-session",
+          CODEWORK_ACP_READ_TEXT_FILE_PATH: requestedPath,
+          CODEWORK_ACP_CLIENT_TOOL_SESSION_ID: "foreign-session",
         }),
       );
       yield* settings.updateSettings({ providers: { cursor: { binaryPath: wrapperPath } } });
@@ -504,7 +504,7 @@ cursorAdapterTestLayer("CursorAdapterLive", (it) => {
       );
       const requestedPath = NodePath.join(workspaceRoot, "notes.txt");
       const wrapperPath = yield* Effect.promise(() =>
-        makeMockAgentWrapper({ T3_ACP_READ_TEXT_FILE_PATH: requestedPath }),
+        makeMockAgentWrapper({ CODEWORK_ACP_READ_TEXT_FILE_PATH: requestedPath }),
       );
       yield* settings.updateSettings({ providers: { cursor: { binaryPath: wrapperPath } } });
       const invocations: ProviderToolBrokerInvocation[] = [];
@@ -622,7 +622,7 @@ cursorAdapterTestLayer("CursorAdapterLive", (it) => {
       );
       const requestedPath = NodePath.join(workspaceRoot, "notes.txt");
       const wrapperPath = yield* Effect.promise(() =>
-        makeMockAgentWrapper({ T3_ACP_READ_TEXT_FILE_PATH: requestedPath }),
+        makeMockAgentWrapper({ CODEWORK_ACP_READ_TEXT_FILE_PATH: requestedPath }),
       );
       yield* settings.updateSettings({ providers: { cursor: { binaryPath: wrapperPath } } });
       const invocationStarted = yield* Deferred.make<void>();
@@ -696,10 +696,10 @@ cursorAdapterTestLayer("CursorAdapterLive", (it) => {
       const resultLogPath = NodePath.join(workspaceRoot, "terminal-results.ndjson");
       const wrapperPath = yield* Effect.promise(() =>
         makeMockAgentWrapper({
-          T3_ACP_TERMINAL_COMMAND: "long-running-command",
-          T3_ACP_TERMINAL_CWD: workspaceRoot,
-          T3_ACP_TERMINAL_HANG_AFTER_CREATE: "1",
-          T3_ACP_CLIENT_TOOL_RESULT_LOG_PATH: resultLogPath,
+          CODEWORK_ACP_TERMINAL_COMMAND: "long-running-command",
+          CODEWORK_ACP_TERMINAL_CWD: workspaceRoot,
+          CODEWORK_ACP_TERMINAL_HANG_AFTER_CREATE: "1",
+          CODEWORK_ACP_CLIENT_TOOL_RESULT_LOG_PATH: resultLogPath,
         }),
       );
       yield* settings.updateSettings({ providers: { cursor: { binaryPath: wrapperPath } } });
@@ -768,10 +768,10 @@ cursorAdapterTestLayer("CursorAdapterLive", (it) => {
       const resultLogPath = NodePath.join(workspaceRoot, "terminal-results.ndjson");
       const wrapperPath = yield* Effect.promise(() =>
         makeMockAgentWrapper({
-          T3_ACP_TERMINAL_COMMAND: "example-command",
-          T3_ACP_TERMINAL_CWD: workspaceRoot,
-          T3_ACP_TERMINAL_KILL_BEFORE_WAIT: "1",
-          T3_ACP_CLIENT_TOOL_RESULT_LOG_PATH: resultLogPath,
+          CODEWORK_ACP_TERMINAL_COMMAND: "example-command",
+          CODEWORK_ACP_TERMINAL_CWD: workspaceRoot,
+          CODEWORK_ACP_TERMINAL_KILL_BEFORE_WAIT: "1",
+          CODEWORK_ACP_CLIENT_TOOL_RESULT_LOG_PATH: resultLogPath,
         }),
       );
       yield* settings.updateSettings({ providers: { cursor: { binaryPath: wrapperPath } } });
@@ -859,7 +859,7 @@ cursorAdapterTestLayer("CursorAdapterLive", (it) => {
 
       // Keep the first prompt in flight long enough for the steer to land.
       const wrapperPath = yield* Effect.promise(() =>
-        makeMockAgentWrapper({ T3_ACP_PROMPT_DELAY_MS: "1500" }),
+        makeMockAgentWrapper({ CODEWORK_ACP_PROMPT_DELAY_MS: "1500" }),
       );
       yield* settings.updateSettings({ providers: { cursor: { binaryPath: wrapperPath } } });
 
@@ -939,7 +939,7 @@ cursorAdapterTestLayer("CursorAdapterLive", (it) => {
 
       const wrapperPath = yield* Effect.promise(() =>
         makeMockAgentWrapper({
-          T3_ACP_EXIT_LOG_PATH: exitLogPath,
+          CODEWORK_ACP_EXIT_LOG_PATH: exitLogPath,
         }),
       );
       yield* settings.updateSettings({ providers: { cursor: { binaryPath: wrapperPath } } });
@@ -976,7 +976,7 @@ cursorAdapterTestLayer("CursorAdapterLive", (it) => {
         const wrapperPath = yield* Effect.promise(() =>
           makeMockAgentWrapper(
             {
-              T3_ACP_EXIT_LOG_PATH: exitLogPath,
+              CODEWORK_ACP_EXIT_LOG_PATH: exitLogPath,
             },
             { initialDelaySeconds: 0.2 },
           ),
@@ -1167,8 +1167,8 @@ cursorAdapterTestLayer("CursorAdapterLive", (it) => {
     "streams ACP tool calls and approvals on the active turn in approval-required mode",
     () =>
       Effect.gen(function* () {
-        const previousEmitToolCalls = process.env.T3_ACP_EMIT_TOOL_CALLS;
-        process.env.T3_ACP_EMIT_TOOL_CALLS = "1";
+        const previousEmitToolCalls = process.env.CODEWORK_ACP_EMIT_TOOL_CALLS;
+        process.env.CODEWORK_ACP_EMIT_TOOL_CALLS = "1";
 
         const adapter = yield* CursorAdapter;
         const serverSettings = yield* ServerSettingsService;
@@ -1178,7 +1178,7 @@ cursorAdapterTestLayer("CursorAdapterLive", (it) => {
         const settledEventsReady = yield* Deferred.make<void>();
 
         const wrapperPath = yield* Effect.promise(() =>
-          makeMockAgentWrapper({ T3_ACP_EMIT_TOOL_CALLS: "1" }),
+          makeMockAgentWrapper({ CODEWORK_ACP_EMIT_TOOL_CALLS: "1" }),
         );
         yield* serverSettings.updateSettings({
           providers: { cursor: { binaryPath: wrapperPath } },
@@ -1307,9 +1307,9 @@ cursorAdapterTestLayer("CursorAdapterLive", (it) => {
           Effect.ensuring(
             Effect.sync(() => {
               if (previousEmitToolCalls === undefined) {
-                delete process.env.T3_ACP_EMIT_TOOL_CALLS;
+                delete process.env.CODEWORK_ACP_EMIT_TOOL_CALLS;
               } else {
-                process.env.T3_ACP_EMIT_TOOL_CALLS = previousEmitToolCalls;
+                process.env.CODEWORK_ACP_EMIT_TOOL_CALLS = previousEmitToolCalls;
               }
             }),
           ),
@@ -1327,7 +1327,7 @@ cursorAdapterTestLayer("CursorAdapterLive", (it) => {
             Layer.provideMerge(ServerSettingsService.layerTest()),
             Layer.provideMerge(
               ServerConfig.layerTest(process.cwd(), {
-                prefix: "t3code-cursor-adapter-test-",
+                prefix: "codework-cursor-adapter-test-",
               }),
             ),
             Layer.provideMerge(NodeServices.layer),
@@ -1353,7 +1353,7 @@ cursorAdapterTestLayer("CursorAdapterLive", (it) => {
         const argvLogPath = NodePath.join(tempDir, "argv.txt");
         yield* Effect.promise(() => NodeFSP.writeFile(requestLogPath, "", "utf8"));
         const wrapperPath = yield* Effect.promise(() =>
-          makeProbeWrapper(requestLogPath, argvLogPath, { T3_ACP_EMIT_TOOL_CALLS: "1" }),
+          makeProbeWrapper(requestLogPath, argvLogPath, { CODEWORK_ACP_EMIT_TOOL_CALLS: "1" }),
         );
         yield* serverSettings.updateSettings({
           providers: { cursor: { binaryPath: wrapperPath } },
@@ -1443,7 +1443,7 @@ cursorAdapterTestLayer("CursorAdapterLive", (it) => {
       const settledEventsReady = yield* Deferred.make<void>();
 
       const wrapperPath = yield* Effect.promise(() =>
-        makeMockAgentWrapper({ T3_ACP_EMIT_INTERLEAVED_ASSISTANT_TOOL_CALLS: "1" }),
+        makeMockAgentWrapper({ CODEWORK_ACP_EMIT_INTERLEAVED_ASSISTANT_TOOL_CALLS: "1" }),
       );
       yield* serverSettings.updateSettings({
         providers: { cursor: { binaryPath: wrapperPath } },
@@ -1573,7 +1573,7 @@ cursorAdapterTestLayer("CursorAdapterLive", (it) => {
       const argvLogPath = NodePath.join(tempDir, "argv.txt");
       yield* Effect.promise(() => NodeFSP.writeFile(requestLogPath, "", "utf8"));
       const wrapperPath = yield* Effect.promise(() =>
-        makeProbeWrapper(requestLogPath, argvLogPath, { T3_ACP_EMIT_TOOL_CALLS: "1" }),
+        makeProbeWrapper(requestLogPath, argvLogPath, { CODEWORK_ACP_EMIT_TOOL_CALLS: "1" }),
       );
       yield* serverSettings.updateSettings({ providers: { cursor: { binaryPath: wrapperPath } } });
 
@@ -1664,7 +1664,7 @@ cursorAdapterTestLayer("CursorAdapterLive", (it) => {
       const approvalRequested = yield* Deferred.make<void>();
 
       const wrapperPath = yield* Effect.promise(() =>
-        makeMockAgentWrapper({ T3_ACP_EMIT_TOOL_CALLS: "1" }),
+        makeMockAgentWrapper({ CODEWORK_ACP_EMIT_TOOL_CALLS: "1" }),
       );
       yield* serverSettings.updateSettings({ providers: { cursor: { binaryPath: wrapperPath } } });
 
@@ -1707,7 +1707,7 @@ cursorAdapterTestLayer("CursorAdapterLive", (it) => {
       const userInputRequested = yield* Deferred.make<void>();
 
       const wrapperPath = yield* Effect.promise(() =>
-        makeMockAgentWrapper({ T3_ACP_EMIT_ASK_QUESTION: "1" }),
+        makeMockAgentWrapper({ CODEWORK_ACP_EMIT_ASK_QUESTION: "1" }),
       );
       yield* serverSettings.updateSettings({ providers: { cursor: { binaryPath: wrapperPath } } });
 
@@ -1750,7 +1750,7 @@ cursorAdapterTestLayer("CursorAdapterLive", (it) => {
       const userInputRequested = yield* Deferred.make<void>();
 
       const wrapperPath = yield* Effect.promise(() =>
-        makeMockAgentWrapper({ T3_ACP_EMIT_ASK_QUESTION: "1" }),
+        makeMockAgentWrapper({ CODEWORK_ACP_EMIT_ASK_QUESTION: "1" }),
       );
       yield* serverSettings.updateSettings({ providers: { cursor: { binaryPath: wrapperPath } } });
 
@@ -1974,7 +1974,7 @@ cursorAdapterTestLayer("CursorAdapterLive", (it) => {
         Layer.provideMerge(ServerSettingsService.layerTest()),
         Layer.provideMerge(
           ServerConfig.layerTest(process.cwd(), {
-            prefix: "t3code-cursor-adapter-custom-instance-",
+            prefix: "codework-cursor-adapter-custom-instance-",
           }),
         ),
         Layer.provideMerge(NodeServices.layer),

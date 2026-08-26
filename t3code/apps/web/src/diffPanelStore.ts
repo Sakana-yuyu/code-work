@@ -37,7 +37,7 @@ function normalizeBaseRef(baseRef: string | null): string | null {
   return normalized ? normalized : null;
 }
 
-const LEGACY_DIFF_PANEL_STORAGE_KEY = "t3code:diff-panel-state:v1";
+const LEGACY_DIFF_PANEL_STORAGE_KEY = "codework:diff-panel-state:v1";
 const DIFF_PANEL_STORAGE_KEY = canonicalStorageKey(LEGACY_DIFF_PANEL_STORAGE_KEY);
 
 function createDiffPanelStorage() {
