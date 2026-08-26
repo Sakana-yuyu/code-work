@@ -1,0 +1,461 @@
+import type {
+  GitRunStackedActionResult,
+  GitStackedAction,
+  VcsStatusResult,
+} from "@t3tools/contracts";
+import { isTemporaryWorktreeBranch } from "@t3tools/shared/git";
+import {
+  DEFAULT_CHANGE_REQUEST_TERMINOLOGY,
+  getChangeRequestTerminology,
+  type ChangeRequestTerminology,
+} from "../sourceControlPresentation";
+import { t } from "~/i18n";
+
+const PR_LONG_LABEL_KEYS: Record<string, string> = {
+  "pull request": "prLong.pullRequest",
+  "merge request": "prLong.mergeRequest",
+  "change request": "prLong.changeRequest",
+};
+
+/** Provider change-request long names ("pull request") localized per locale. */
+export function localizedPrLong(terminology: ChangeRequestTerminology): string {
+  const key = PR_LONG_LABEL_KEYS[terminology.singular];
+  return key ? t(key) : terminology.singular;
+}
+
+export type GitActionIconName = "commit" | "push" | "pr";
+
+export type GitDialogAction = "commit" | "push" | "create_pr";
+
+export interface GitActionMenuItem {
+  id: "commit" | "push" | "pr";
+  label: string;
+  disabled: boolean;
+  icon: GitActionIconName;
+  kind: "open_dialog" | "open_pr";
+  dialogAction?: GitDialogAction;
+}
+
+export interface GitQuickAction {
+  label: string;
+  disabled: boolean;
+  kind: "run_action" | "run_pull" | "open_pr" | "open_publish" | "show_hint";
+  action?: GitStackedAction;
+  hint?: string;
+}
+
+export interface DefaultBranchActionDialogCopy {
+  title: string;
+  description: string;
+  continueLabel: string;
+}
+
+export type DefaultBranchConfirmableAction =
+  | "push"
+  | "create_pr"
+  | "commit_push"
+  | "commit_push_pr";
+
+function resolveChangeRequestTerminology(
+  gitStatus: VcsStatusResult | null,
+): ChangeRequestTerminology {
+  return gitStatus?.sourceControlProvider
+    ? getChangeRequestTerminology(gitStatus.sourceControlProvider)
+    : DEFAULT_CHANGE_REQUEST_TERMINOLOGY;
+}
+
+export function buildGitActionProgressStages(input: {
+  action: GitStackedAction;
+  hasCustomCommitMessage: boolean;
+  hasWorkingTreeChanges: boolean;
+  pushTarget?: string;
+  featureBranch?: boolean;
+  shouldPushBeforePr?: boolean;
+  terminology?: ChangeRequestTerminology;
+}): string[] {
+  const terminology = input.terminology ?? DEFAULT_CHANGE_REQUEST_TERMINOLOGY;
+  const prLong = localizedPrLong(terminology);
+  const branchStages = input.featureBranch ? [t("gitProgress.preparingFeatureRef")] : [];
+  const pushStage = input.pushTarget
+    ? t("gitProgress.pushingTo", { target: input.pushTarget })
+    : t("gitProgress.pushing");
+  const prStages = [
+    t("gitProgress.preparingPr", { pr: terminology.shortLabel }),
+    t("gitProgress.generatingPrContent", { pr: terminology.shortLabel }),
+    t("gitProgress.creatingPr", { prLong }),
+  ];
+
+  if (input.action === "push") {
+    return [pushStage];
+  }
+  if (input.action === "create_pr") {
+    return input.shouldPushBeforePr ? [pushStage, ...prStages] : prStages;
+  }
+
+  const shouldIncludeCommitStages = input.action === "commit" || input.hasWorkingTreeChanges;
+  const commitStages = !shouldIncludeCommitStages
+    ? []
+    : input.hasCustomCommitMessage
+      ? [t("gitProgress.committing")]
+      : [t("gitProgress.generatingCommitMessage"), t("gitProgress.committing")];
+  if (input.action === "commit") {
+    return [...branchStages, ...commitStages];
+  }
+  if (input.action === "commit_push") {
+    return [...branchStages, ...commitStages, pushStage];
+  }
+  return [...branchStages, ...commitStages, pushStage, ...prStages];
+}
+
+export function buildMenuItems(
+  gitStatus: VcsStatusResult | null,
+  isBusy: boolean,
+  hasPrimaryRemote = true,
+): GitActionMenuItem[] {
+  if (!gitStatus) return [];
+  const terminology = resolveChangeRequestTerminology(gitStatus);
+
+  const hasBranch = gitStatus.refName !== null;
+  const hasChanges = gitStatus.hasWorkingTreeChanges;
+  const hasOpenPr = gitStatus.pr?.state === "open";
+  const isBehind = gitStatus.behindCount > 0;
+  const hasDefaultBranchDelta = (gitStatus.aheadOfDefaultCount ?? gitStatus.aheadCount) > 0;
+  const canPushWithoutUpstream = hasPrimaryRemote && !gitStatus.hasUpstream;
+  const canCommit = !isBusy && hasChanges;
+  const canPush =
+    !isBusy &&
+    hasBranch &&
+    !isBehind &&
+    gitStatus.aheadCount > 0 &&
+    (gitStatus.hasUpstream || canPushWithoutUpstream);
+  const canCreatePr =
+    !isBusy &&
+    hasBranch &&
+    !hasChanges &&
+    !hasOpenPr &&
+    hasDefaultBranchDelta &&
+    !isBehind &&
+    (gitStatus.hasUpstream || canPushWithoutUpstream);
+  const canOpenPr = !isBusy && hasOpenPr;
+
+  const commitItem: GitActionMenuItem = {
+    id: "commit",
+    label: t("gitAction.commit"),
+    disabled: !canCommit,
+    icon: "commit",
+    kind: "open_dialog",
+    dialogAction: "commit",
+  };
+
+  if (!hasPrimaryRemote) {
+    return [commitItem];
+  }
+
+  return [
+    commitItem,
+    {
+      id: "push",
+      label: t("gitAction.push"),
+      disabled: !canPush,
+      icon: "push",
+      kind: "open_dialog",
+      dialogAction: "push",
+    },
+    hasOpenPr
+      ? {
+          id: "pr",
+          label: t("gitAction.viewPr", { pr: terminology.shortLabel }),
+          disabled: !canOpenPr,
+          icon: "pr",
+          kind: "open_pr",
+        }
+      : {
+          id: "pr",
+          label: t("gitAction.createPr", { pr: terminology.shortLabel }),
+          disabled: !canCreatePr,
+          icon: "pr",
+          kind: "open_dialog",
+          dialogAction: "create_pr",
+        },
+  ];
+}
+
+export function resolveQuickAction(
+  gitStatus: VcsStatusResult | null,
+  isBusy: boolean,
+  isDefaultRef = false,
+  hasPrimaryRemote = true,
+): GitQuickAction {
+  if (isBusy) {
+    return {
+      label: t("gitAction.commit"),
+      disabled: true,
+      kind: "show_hint",
+      hint: t("gitHint.actionInProgress"),
+    };
+  }
+
+  if (!gitStatus) {
+    return {
+      label: t("gitAction.commit"),
+      disabled: true,
+      kind: "show_hint",
+      hint: t("gitHint.statusUnavailable"),
+    };
+  }
+
+  const hasBranch = gitStatus.refName !== null;
+  const hasChanges = gitStatus.hasWorkingTreeChanges;
+  const hasOpenPr = gitStatus.pr?.state === "open";
+  const isAhead = gitStatus.aheadCount > 0;
+  const hasDefaultBranchDelta = (gitStatus.aheadOfDefaultCount ?? gitStatus.aheadCount) > 0;
+  const isBehind = gitStatus.behindCount > 0;
+  const isDiverged = isAhead && isBehind;
+  const terminology = resolveChangeRequestTerminology(gitStatus);
+
+  if (!hasBranch) {
+    return {
+      label: t("gitAction.commit"),
+      disabled: true,
+      kind: "show_hint",
+      hint: t("gitHint.createRefFirst", { prLong: localizedPrLong(terminology) }),
+    };
+  }
+
+  if (hasChanges) {
+    if (!gitStatus.hasUpstream && !hasPrimaryRemote) {
+      return {
+        label: t("gitAction.commit"),
+        disabled: false,
+        kind: "run_action",
+        action: "commit",
+      };
+    }
+    if (hasOpenPr || isDefaultRef) {
+      return {
+        label: t("gitAction.commitPush"),
+        disabled: false,
+        kind: "run_action",
+        action: "commit_push",
+      };
+    }
+    return {
+      label: t("gitAction.commitPushPr", { pr: terminology.shortLabel }),
+      disabled: false,
+      kind: "run_action",
+      action: "commit_push_pr",
+    };
+  }
+
+  if (!gitStatus.hasUpstream) {
+    if (!hasPrimaryRemote) {
+      if (hasOpenPr && !isAhead) {
+        return {
+          label: t("gitAction.viewPr", { pr: terminology.shortLabel }),
+          disabled: false,
+          kind: "open_pr",
+        };
+      }
+      return {
+        label: t("gitAction.publishRepository"),
+        disabled: false,
+        kind: "open_publish",
+      };
+    }
+    if (!isAhead) {
+      if (hasOpenPr) {
+        return {
+          label: t("gitAction.viewPr", { pr: terminology.shortLabel }),
+          disabled: false,
+          kind: "open_pr",
+        };
+      }
+      return {
+        label: t("gitAction.push"),
+        disabled: true,
+        kind: "show_hint",
+        hint: t("gitHint.noCommitsToPush"),
+      };
+    }
+    if (hasOpenPr || isDefaultRef) {
+      return {
+        label: t("gitAction.push"),
+        disabled: false,
+        kind: "run_action",
+        action: isDefaultRef ? "commit_push" : "push",
+      };
+    }
+    return {
+      label: t("gitAction.pushCreatePr", { pr: terminology.shortLabel }),
+      disabled: false,
+      kind: "run_action",
+      action: "create_pr",
+    };
+  }
+
+  if (isDiverged) {
+    return {
+      label: t("gitAction.syncRef"),
+      disabled: true,
+      kind: "show_hint",
+      hint: t("gitHint.diverged"),
+    };
+  }
+
+  if (isBehind) {
+    return {
+      label: t("gitAction.pull"),
+      disabled: false,
+      kind: "run_pull",
+    };
+  }
+
+  if (isAhead) {
+    if (hasOpenPr || isDefaultRef) {
+      return {
+        label: t("gitAction.push"),
+        disabled: false,
+        kind: "run_action",
+        action: isDefaultRef ? "commit_push" : "push",
+      };
+    }
+    return {
+      label: t("gitAction.pushCreatePr", { pr: terminology.shortLabel }),
+      disabled: false,
+      kind: "run_action",
+      action: "create_pr",
+    };
+  }
+
+  if (hasOpenPr && gitStatus.hasUpstream) {
+    return {
+      label: t("gitAction.viewPr", { pr: terminology.shortLabel }),
+      disabled: false,
+      kind: "open_pr",
+    };
+  }
+
+  if (hasDefaultBranchDelta && !isDefaultRef) {
+    return {
+      label: t("gitAction.createPr", { pr: terminology.shortLabel }),
+      disabled: false,
+      kind: "run_action",
+      action: "create_pr",
+    };
+  }
+
+  return {
+    label: t("gitAction.commit"),
+    disabled: true,
+    kind: "show_hint",
+    hint: t("gitHint.upToDate"),
+  };
+}
+
+export function requiresDefaultBranchConfirmation(
+  action: GitStackedAction,
+  isDefaultRef: boolean,
+): boolean {
+  if (!isDefaultRef) return false;
+  return (
+    action === "push" ||
+    action === "create_pr" ||
+    action === "commit_push" ||
+    action === "commit_push_pr"
+  );
+}
+
+export function resolveDefaultBranchActionDialogCopy(input: {
+  action: DefaultBranchConfirmableAction;
+  branchName: string;
+  includesCommit: boolean;
+  terminology?: ChangeRequestTerminology;
+}): DefaultBranchActionDialogCopy {
+  const branchLabel = input.branchName;
+  const terminology = input.terminology ?? DEFAULT_CHANGE_REQUEST_TERMINOLOGY;
+  const prLong = localizedPrLong(terminology);
+  const pr = terminology.shortLabel;
+
+  if (input.action === "push" || input.action === "commit_push") {
+    if (input.includesCommit) {
+      return {
+        title: t("gitDialog.commitPushDefaultTitle"),
+        description: t("gitDialog.commitPushDefaultDescription", { branch: branchLabel }),
+        continueLabel: t("gitDialog.commitPushTo", { branch: branchLabel }),
+      };
+    }
+    return {
+      title: t("gitDialog.pushDefaultTitle"),
+      description: t("gitDialog.pushDefaultDescription", { branch: branchLabel }),
+      continueLabel: t("gitDialog.pushTo", { branch: branchLabel }),
+    };
+  }
+
+  if (input.includesCommit) {
+    return {
+      title: t("gitDialog.commitPushPrDefaultTitle", { pr }),
+      description: t("gitDialog.commitPushPrDefaultDescription", { prLong, branch: branchLabel }),
+      continueLabel: t("gitDialog.commitPushPrLabel", { pr }),
+    };
+  }
+  return {
+    title: t("gitDialog.pushPrDefaultTitle", { pr }),
+    description: t("gitDialog.pushPrDefaultDescription", { prLong, branch: branchLabel }),
+    continueLabel: t("gitDialog.pushPrLabel", { pr }),
+  };
+}
+
+export function resolveThreadBranchUpdate(
+  result: GitRunStackedActionResult,
+): { branch: string } | null {
+  if (result.branch.status !== "created" || !result.branch.name) {
+    return null;
+  }
+
+  return {
+    branch: result.branch.name,
+  };
+}
+
+export function resolveThreadBranchMetadataPatch(
+  branch: string | null,
+  expectedBranch: string | null,
+): {
+  branch: string | null;
+  expectedBranch: string | null;
+} {
+  return { branch, expectedBranch };
+}
+
+export function resolveLiveThreadBranchUpdate(input: {
+  threadBranch: string | null;
+  gitStatus: VcsStatusResult | null;
+}): { branch: string | null } | null {
+  if (!input.gitStatus) {
+    return null;
+  }
+
+  if (input.gitStatus.refName === null && input.threadBranch !== null) {
+    return null;
+  }
+
+  if (input.threadBranch === input.gitStatus.refName) {
+    return null;
+  }
+
+  if (
+    input.threadBranch !== null &&
+    input.gitStatus.refName !== null &&
+    !isTemporaryWorktreeBranch(input.threadBranch) &&
+    isTemporaryWorktreeBranch(input.gitStatus.refName)
+  ) {
+    return null;
+  }
+
+  return {
+    branch: input.gitStatus.refName,
+  };
+}
+
+// Re-export from shared for backwards compatibility in this module's exports
+export { resolveAutoFeatureBranchName } from "@t3tools/shared/git";

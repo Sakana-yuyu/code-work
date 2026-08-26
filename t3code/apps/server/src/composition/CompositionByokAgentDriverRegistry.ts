@@ -1,0 +1,151 @@
+import { ProviderInstanceId } from "@t3tools/contracts";
+import * as Context from "effect/Context";
+import * as Effect from "effect/Effect";
+import * as Layer from "effect/Layer";
+import * as PubSub from "effect/PubSub";
+
+import type { ByokAgentTool } from "./ByokAgentLoop.ts";
+import {
+  CompositionAgentService,
+  type CompositionAgentServiceShape,
+} from "./CompositionAgentService.ts";
+import {
+  CompositionAgentDriverAlreadyRegisteredError,
+  CompositionAgentDriverInvalidError,
+  makeCompositionAgentDriverRegistry,
+  type CompositionAgentDriverRegistry,
+} from "./CompositionAgentDriverRegistry.ts";
+import { makeCompositionByokAgentDriver } from "./CompositionByokAgentDriver.ts";
+import { listCompositionToolDescriptors } from "./CompositionToolRegistry.ts";
+import {
+  CompositionMcpToolRegistry,
+  type CompositionMcpToolRegistryShape,
+} from "./CompositionMcpToolRegistry.ts";
+import { compositionProviderAgentId } from "./CompositionProviderAgentDriverRegistry.ts";
+import type { ProviderInstance } from "../provider/ProviderDriver.ts";
+import {
+  ProviderInstanceRegistry,
+  type ProviderInstanceRegistryShape,
+} from "../provider/Services/ProviderInstanceRegistry.ts";
+import { CompositionAgentDriverRegistryService } from "./CompositionAgentDriverRegistry.ts";
+
+export const compositionByokAgentId = (instanceId: ProviderInstanceId | string): string =>
+  compositionProviderAgentId(instanceId);
+
+export interface CompositionByokAgentDriverProjection {
+  readonly registry: CompositionAgentDriverRegistry;
+  readonly refresh: Effect.Effect<
+    void,
+    CompositionAgentDriverAlreadyRegisteredError | CompositionAgentDriverInvalidError
+  >;
+}
+
+export interface CompositionByokAgentDriverProjectionOptions {
+  readonly providerRegistry: Pick<ProviderInstanceRegistryShape, "listInstances">;
+  readonly agentService: CompositionAgentServiceShape;
+  readonly mcpToolRegistry?: CompositionMcpToolRegistryShape;
+  readonly registry?: CompositionAgentDriverRegistry;
+}
+
+export interface CompositionByokAgentDriverProjectionServiceShape extends CompositionByokAgentDriverProjection {}
+
+export class CompositionByokAgentDriverProjectionService extends Context.Service<
+  CompositionByokAgentDriverProjectionService,
+  CompositionByokAgentDriverProjectionServiceShape
+>()(
+  "t3/composition/CompositionByokAgentDriverRegistry/CompositionByokAgentDriverProjectionService",
+) {}
+
+const coreTools = (): ReadonlyArray<ByokAgentTool> =>
+  listCompositionToolDescriptors().map((descriptor) => ({
+    canonicalToolName: descriptor.capabilityId.slice("t3.".length),
+    description: `${descriptor.capabilityId} (${descriptor.status})`,
+    parameters: { type: "object" },
+  }));
+
+export const makeCompositionByokAgentDriverProjection = (
+  options: CompositionByokAgentDriverProjectionOptions,
+): CompositionByokAgentDriverProjection => {
+  const registry = options.registry ?? makeCompositionAgentDriverRegistry();
+  const projectedAgentIds = new Set<string>();
+
+  const refresh = Effect.gen(function* () {
+    const instances = yield* options.providerRegistry.listInstances;
+    const liveAgentIds = new Set<string>();
+
+    for (const instance of instances) {
+      if (instance.driverKind !== "byok") continue;
+      const agentId = compositionByokAgentId(instance.instanceId);
+      liveAgentIds.add(agentId);
+      if ((yield* registry.get(agentId)) !== undefined) continue;
+
+      const driver = makeCompositionByokAgentDriver({
+        agentId,
+        runtimeId: `byok:${instance.instanceId}`,
+        providerInstanceId: instance.instanceId,
+        providerKind: "byok",
+        ...(instance.displayName === undefined ? {} : { displayName: instance.displayName }),
+        ...(instance.composition?.defaultModelId === undefined
+          ? {}
+          : { defaultModel: instance.composition.defaultModelId }),
+        agentService: options.agentService,
+        listTools: () =>
+          Effect.gen(function* () {
+            const dynamicTools =
+              options.mcpToolRegistry === undefined
+                ? []
+                : (yield* options.mcpToolRegistry.list()).filter(
+                    (tool) => tool.trusted && tool.status === "available",
+                  );
+            return [
+              ...coreTools(),
+              ...dynamicTools.map((tool) => ({
+                canonicalToolName: tool.canonicalToolName,
+                description: tool.description,
+                parameters: tool.inputSchema,
+              })),
+            ];
+          }),
+      });
+      yield* registry.register(driver);
+      projectedAgentIds.add(agentId);
+    }
+
+    for (const agentId of projectedAgentIds) {
+      if (!liveAgentIds.has(agentId)) {
+        yield* registry.unregister(agentId);
+        projectedAgentIds.delete(agentId);
+      }
+    }
+  });
+
+  return { registry, refresh };
+};
+
+const live = Effect.gen(function* () {
+  const providerRegistry = yield* ProviderInstanceRegistry;
+  const agentService = yield* CompositionAgentService;
+  const mcpToolRegistry = yield* Effect.serviceOption(CompositionMcpToolRegistry);
+  const driverRegistry = yield* CompositionAgentDriverRegistryService;
+  const projection = makeCompositionByokAgentDriverProjection({
+    providerRegistry,
+    agentService,
+    ...(mcpToolRegistry._tag === "Some" ? { mcpToolRegistry: mcpToolRegistry.value } : {}),
+    registry: driverRegistry,
+  });
+  yield* projection.refresh;
+  const subscription = yield* providerRegistry.subscribeChanges;
+  yield* Effect.forkScoped(
+    Effect.forever(
+      PubSub.take(subscription).pipe(
+        Effect.flatMap(() => projection.refresh),
+        Effect.catchCause((cause) =>
+          Effect.logError("Composition BYOK Agent Driver 刷新失败", { cause }),
+        ),
+      ),
+    ),
+  );
+  return projection;
+});
+
+export const layer = Layer.effect(CompositionByokAgentDriverProjectionService, live);
