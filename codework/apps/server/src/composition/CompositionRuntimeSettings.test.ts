@@ -137,7 +137,7 @@ describe("CompositionRuntimeSettings", () => {
         ],
         daemonControlStreamFactory: (input) => {
           createdControlTransports.push({
-            url: makeMulticaDaemonWebSocketUrl(input.baseUrl),
+            url: makeMulticaDaemonWebSocketUrl(input.baseUrl, input.runtimeIds),
             runtimeIds: input.runtimeIds,
             workspaceIds: input.workspaceIds ?? [],
           });
@@ -151,7 +151,7 @@ describe("CompositionRuntimeSettings", () => {
     await Effect.runPromise(adapter.streamEvents().pipe(Stream.runCollect));
     expect(createdControlTransports).toEqual([
       {
-        url: "ws://127.0.0.1:9000/api/daemon/ws",
+        url: "ws://127.0.0.1:9000/api/daemon/ws?runtime_id=runtime-1",
         runtimeIds: ["runtime-1"],
         workspaceIds: ["workspace-1"],
       },

@@ -82,13 +82,26 @@ const normalizeBaseUrl = (baseUrl: string): URL => {
   return new URL(trimmed.replace(/\/+$/, ""));
 };
 
-export const makeMulticaDaemonWebSocketUrl = (baseUrl: string): string => {
+export const makeMulticaDaemonWebSocketUrl = (
+  baseUrl: string,
+  runtimeIds: ReadonlyArray<string> = [],
+): string => {
   const url = normalizeBaseUrl(baseUrl);
   url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
   const path = url.pathname.replace(/\/+$/, "");
   url.pathname = path.endsWith("/api") ? `${path}/daemon/ws` : `${path}/api/daemon/ws`;
-  for (const key of ["token", "access_token", "api_key", "authorization"]) {
+  for (const key of [
+    "token",
+    "access_token",
+    "api_key",
+    "authorization",
+    "runtime_id",
+    "runtime_ids",
+  ]) {
     url.searchParams.delete(key);
+  }
+  for (const runtimeId of [...new Set(runtimeIds.map((id) => id.trim()).filter(Boolean))]) {
+    url.searchParams.append("runtime_id", runtimeId);
   }
   return url.toString();
 };
@@ -449,9 +462,12 @@ export const makeMulticaDaemonWebSocketStream = (
     const previous = socket;
     clearConnectionTimers();
     serverCapabilities = new Set();
-    const connection = webSocketFactory(makeMulticaDaemonWebSocketUrl(options.baseUrl), {
-      headers: options.headers,
-    });
+    const connection = webSocketFactory(
+      makeMulticaDaemonWebSocketUrl(options.baseUrl, runtimeIds),
+      {
+        headers: options.headers,
+      },
+    );
     socket = connection;
     const connectionGeneration = ++generation;
     const currentOpen = makeOpenPromise();

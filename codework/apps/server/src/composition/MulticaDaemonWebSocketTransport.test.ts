@@ -88,11 +88,16 @@ const makeFactory =
 
 describe("MulticaDaemonWebSocketTransport", () => {
   it("构造独立 daemon 控制地址，并且不把 token 放进 URL", () => {
-    const url = makeMulticaDaemonWebSocketUrl("https://multica.test/api/?token=secret");
+    const url = makeMulticaDaemonWebSocketUrl("https://multica.test/api/?token=secret", [
+      "runtime-1",
+      "runtime-2",
+    ]);
     const parsed = new URL(url);
     expect(parsed.protocol).toBe("wss:");
     expect(parsed.pathname).toBe("/api/daemon/ws");
-    expect(parsed.search).toBe("");
+    expect(parsed.searchParams.getAll("runtime_id")).toEqual(["runtime-1", "runtime-2"]);
+    expect(parsed.searchParams.has("runtime_ids")).toBe(false);
+    expect(parsed.search).not.toContain("token");
   });
 
   it("打开后立即发送每个 runtime 的 heartbeat，并接收 heartbeat ack", async () => {
@@ -107,6 +112,10 @@ describe("MulticaDaemonWebSocketTransport", () => {
     await flushEffects();
     const socket = sockets[0];
     expect(socket).toBeDefined();
+    expect(new URL(socket!.url).searchParams.getAll("runtime_id")).toEqual([
+      "runtime-1",
+      "runtime-2",
+    ]);
     socket!.emit("open");
     expect(decodeSent(socket!)).toEqual([
       {
