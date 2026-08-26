@@ -8,6 +8,7 @@ import * as Layer from "effect/Layer";
 import * as Schema from "effect/Schema";
 
 import { listCompositionToolDescriptors } from "./CompositionToolRegistry.ts";
+import type * as CompositionMcpToolRegistry from "./CompositionMcpToolRegistry.ts";
 
 export const CapabilityRegistryScope = Schema.Struct({
   scope: Schema.Literals(["workspace", "agent", "task"]),
@@ -72,19 +73,38 @@ const capabilities: CompositionCapabilityDescriptorList = [
   },
 ];
 
-export const makeCompositionCapabilityRegistry = (): CapabilityRegistry["Service"] =>
+export type CompositionCapabilityRegistryOptions = {
+  readonly mcpToolRegistry?: Pick<
+    CompositionMcpToolRegistry.CompositionMcpToolRegistryShape,
+    "listCapabilityDescriptors"
+  >;
+};
+
+export const makeCompositionCapabilityRegistry = (
+  options: CompositionCapabilityRegistryOptions = {},
+): CapabilityRegistry["Service"] =>
   CapabilityRegistry.of({
     list: Effect.fn("CapabilityRegistry.list")(function* (input) {
       if (input.scopeId.trim().length === 0) {
         return yield* new CapabilityScopeNotFoundError(input);
       }
-      return capabilities.map((capability) => ({
+      const mcpCapabilities = options.mcpToolRegistry
+        ? yield* options.mcpToolRegistry.listCapabilityDescriptors()
+        : [];
+      return [...capabilities, ...mcpCapabilities].map((capability) => ({
         ...capability,
         grants: { ...capability.grants },
       }));
     }),
   });
 
-const make = Effect.succeed(makeCompositionCapabilityRegistry());
+const make = Effect.gen(function* () {
+  const mcpToolRegistry = yield* Effect.serviceOption(
+    CompositionMcpToolRegistry.CompositionMcpToolRegistry,
+  );
+  return makeCompositionCapabilityRegistry({
+    ...(mcpToolRegistry._tag === "Some" ? { mcpToolRegistry: mcpToolRegistry.value } : {}),
+  });
+});
 
 export const layer = Layer.effect(CapabilityRegistry, make);

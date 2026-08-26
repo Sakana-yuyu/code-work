@@ -55,6 +55,7 @@ import * as CompositionCapabilityGrantRegistry from "./composition/CapabilityGra
 import * as CompositionCapabilityPolicy from "./composition/CapabilityPolicy.ts";
 import * as CompositionToolBroker from "./composition/ToolBroker.ts";
 import * as CompositionIdeSessionRegistry from "./composition/CompositionIdeSessionRegistry.ts";
+import * as CompositionMcpToolRegistry from "./composition/CompositionMcpToolRegistry.ts";
 import * as CompositionRuntimeToolBridge from "./composition/CompositionRuntimeToolBridge.ts";
 import * as CompositionAgentDriverRegistry from "./composition/CompositionAgentDriverRegistry.ts";
 import * as CompositionProviderAgentDriverProjection from "./composition/CompositionProviderAgentDriverRegistry.ts";
@@ -363,21 +364,27 @@ const WorkspaceLayerLive = Layer.mergeAll(
   WorkspaceFileSystemLayerLive,
 );
 
+const CompositionMcpToolRegistryLayerLive = CompositionMcpToolRegistry.layer;
+const CompositionCapabilityRegistryLayerLive = CompositionCapabilityRegistry.layer.pipe(
+  Layer.provide(CompositionMcpToolRegistryLayerLive),
+);
+
 const CompositionCapabilityGrantLayerLive = CompositionCapabilityGrantRegistry.layer.pipe(
   Layer.provideMerge(PersistenceLayerLive),
-  Layer.provide(CompositionCapabilityRegistry.layer),
+  Layer.provide(CompositionCapabilityRegistryLayerLive),
 );
 
 const CompositionCapabilityPolicyLayerLive = CompositionCapabilityPolicy.layer.pipe(
   Layer.provideMerge(CompositionCapabilityGrantLayerLive),
-  Layer.provideMerge(CompositionCapabilityRegistry.layer),
+  Layer.provideMerge(CompositionCapabilityRegistryLayerLive),
 );
 
 const CompositionToolBrokerLayerLive = CompositionToolBroker.layer.pipe(
   Layer.provideMerge(CompositionIdeSessionRegistry.layer),
+  Layer.provideMerge(CompositionMcpToolRegistryLayerLive),
   Layer.provideMerge(CompositionCapabilityPolicyLayerLive),
   Layer.provideMerge(CompositionCapabilityGrantLayerLive),
-  Layer.provideMerge(CompositionCapabilityRegistry.layer),
+  Layer.provideMerge(CompositionCapabilityRegistryLayerLive),
   Layer.provideMerge(WorkspaceFileSystemLayerLive),
 );
 

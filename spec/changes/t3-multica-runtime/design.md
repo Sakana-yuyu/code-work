@@ -378,3 +378,19 @@ Batch B 固定了所有真实 Cursor/VSCode Adapter 必须遵守的可信执行�
 - 同一 leader 可以映射多个不同 T3 Squad；重复 Squad ID 或重复无 Squad 的 Agent 路由会稳定拒绝。Settings 投影只注册一次 leader Driver，不会因为多个 Squad 映射产生重复 Driver。
 
 本节点通过 contracts/server typecheck、5 个相关测试文件共 36 个测试、格式检查和 `git diff --check`。真实远端 Squad 成员调度、路由刷新后的 daemon 现场探测和 Web/Desktop/Mobile E2E 仍未完成。
+
+## Batch A-2 落地记录（2026-08-26）
+
+本节点把任意受信 MCP Tool 的 catalog/invoke 合同接入 Composition ToolBroker，但没有把
+cursor-byok 的 MCP 进程发现或凭据配置直接复制进 T3：
+
+- 新增 `CompositionMcpToolRegistry`，以 `mcp.<serverId>.<toolName>` 生成唯一 canonical tool 名称，保存 server/tool、JSON Schema、operation、trust/status、source 和 handler。
+- 注册时校验标识符、描述、JSON Schema 形状、schema 大小和单次调用超时；重复 canonical tool、非法 schema、未信任工具不会静默覆盖或降级。
+- `CapabilityRegistry` 投影动态 MCP capability；`ToolBroker` 在同一共享 registry 上解析动态 handler，继续经过 Capability Registry、task-scoped Grant、Approval、幂等和 Audit。
+- 调用参数按注册 JSON Schema 做最小递归校验，并限制输入/结果 payload；结果只保留去敏后的 JSON，超限时返回截断结构，handler 超时返回 `mcp_timeout`。
+- 未注册、未信任、参数错误、超限、handler 异常和超时分别保留稳定错误码；MCP handler 不直接获得 Workspace、Terminal、Git 或 IDE 权限。
+
+本节点验证覆盖 7 个 MCP registry 测试、11 个 ToolBroker 回归测试、server/contracts typecheck、格式检查和
+`git diff --check`。当前仍未完成真实 MCP stdio/HTTP/SSE runtime adapter、MCP server trust 持久化、动态 catalog
+刷新 RPC、Browser/Computer Use、真实 Cursor/VSCode transport、Multica Tool-call/Grant handshake，以及
+Web/Desktop/Mobile 和真实 daemon E2E；本节点的 handler 使用仍属于 T3 内部模拟/适配合同证明。

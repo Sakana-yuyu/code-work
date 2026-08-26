@@ -20,6 +20,7 @@ import * as CapabilityPolicy from "./CapabilityPolicy.ts";
 import * as CapabilityRegistry from "./CapabilityRegistry.ts";
 import * as CapabilityGrantRegistry from "./CapabilityGrantRegistry.ts";
 import * as CompositionIdeSessionRegistry from "./CompositionIdeSessionRegistry.ts";
+import * as CompositionMcpToolRegistry from "./CompositionMcpToolRegistry.ts";
 import * as ToolBroker from "./ToolBroker.ts";
 
 const previewInvocations: PreviewAutomationBroker.PreviewAutomationInvokeInput[] = [];
@@ -30,7 +31,10 @@ const WorkspaceFileLayer = WorkspaceFileSystem.layer.pipe(
   Layer.provide(WorkspaceEntries.layer.pipe(Layer.provide(WorkspacePaths.layer))),
 );
 
-const testCapabilityRegistry = CapabilityRegistry.makeCompositionCapabilityRegistry();
+const testMcpToolRegistry = CompositionMcpToolRegistry.makeCompositionMcpToolRegistry();
+const testCapabilityRegistry = CapabilityRegistry.makeCompositionCapabilityRegistry({
+  mcpToolRegistry: testMcpToolRegistry,
+});
 const CapabilityRegistryLayer = Layer.succeed(
   CapabilityRegistry.CapabilityRegistry,
   testCapabilityRegistry,
@@ -45,6 +49,10 @@ const CapabilityGrantLayer = Layer.succeed(
 const CapabilityPolicyLayer = CapabilityPolicy.layer.pipe(
   Layer.provideMerge(CapabilityGrantLayer),
   Layer.provide(CapabilityRegistryLayer),
+);
+const McpToolRegistryLayer = Layer.succeed(
+  CompositionMcpToolRegistry.CompositionMcpToolRegistry,
+  testMcpToolRegistry,
 );
 
 const ToolTestServicesLayer = Layer.mergeAll(
@@ -139,6 +147,7 @@ const TestLayer = Layer.mergeAll(
     Layer.provide(CapabilityPolicyLayer.pipe(Layer.provideMerge(CapabilityGrantLayer))),
     Layer.provideMerge(CapabilityGrantLayer),
     Layer.provide(CapabilityRegistryLayer),
+    Layer.provide(McpToolRegistryLayer),
     Layer.provide(WorkspaceFileLayer),
     Layer.provide(ToolTestServicesLayer),
   ),
@@ -149,6 +158,7 @@ const TestLayer = Layer.mergeAll(
   WorkspaceEntries.layer.pipe(Layer.provide(WorkspacePaths.layer)),
   WorkspacePaths.layer,
   ToolTestServicesLayer,
+  McpToolRegistryLayer,
   VcsDriverRegistry.layer.pipe(Layer.provide(VcsProcess.layer)),
   ServerConfig.ServerConfig.layerTest(process.cwd(), {
     prefix: "t3-composition-tool-broker-test-",
@@ -320,6 +330,52 @@ it.layer(TestLayer, { excludeTestServices: true })("ToolBrokerLive", (it) => {
       }),
     );
   });
+
+  it.effect("通过统一 Grant/Policy/Audit 链路调用受信 MCP 工具", () =>
+    Effect.gen(function* () {
+      const registry = yield* CompositionMcpToolRegistry.CompositionMcpToolRegistry;
+      yield* registry.register({
+        serverId: "github",
+        toolName: "fetch_pr",
+        description: "读取 Pull Request",
+        inputSchema: { type: "object", properties: { number: { type: "integer" } } },
+        operation: "read",
+        trusted: true,
+        invoke: (input) =>
+          Effect.succeed({
+            serverId: input.serverId,
+            body: "apiKey: must-be-redacted",
+            number: (input.arguments as { readonly number: number }).number,
+          }),
+      });
+      const grantRegistry = yield* CapabilityGrantRegistry.CapabilityGrantRegistry;
+      const [grant] = yield* grantRegistry.issue({
+        taskId: "task-1",
+        agentId: "agent-1",
+        capabilityIds: ["t3.mcp.github.fetch_pr"],
+      });
+      const broker = yield* ToolBroker.ToolBroker;
+      const result = yield* broker.invoke({
+        ...baseInput("C:/trusted/workspace"),
+        canonicalToolName: "mcp.github.fetch_pr",
+        arguments: { number: 42 },
+        idempotencyKey: "mcp-fetch-pr-1",
+        capabilityGrantIds: [grant!.grantId],
+      });
+
+      expect(result.status).toBe("succeeded");
+      expect(result.result).toEqual({
+        serverId: "github",
+        body: "apiKey: [REDACTED]",
+        number: 42,
+      });
+      const audit = yield* grantRegistry.listAudit({ taskId: "task-1" });
+      expect(audit.at(-1)).toMatchObject({
+        capabilityId: "t3.mcp.github.fetch_pr",
+        outcome: "allowed",
+      });
+    }),
+  );
 
   describe("workspace tools", () => {
     it.effect("reads through the real workspace path and redacts sensitive values", () =>

@@ -31,6 +31,7 @@ import * as GitVcsDriver from "../vcs/GitVcsDriver.ts";
 import * as TerminalManager from "../terminal/Manager.ts";
 import { compositionToolCapabilityId } from "./CompositionToolRegistry.ts";
 import * as CompositionIdeSessionRegistry from "./CompositionIdeSessionRegistry.ts";
+import * as CompositionMcpToolRegistry from "./CompositionMcpToolRegistry.ts";
 
 const WorkspaceReadArguments = Schema.Struct({
   cwd: Schema.String,
@@ -173,6 +174,9 @@ const make = Effect.gen(function* () {
   const serverEnvironment = yield* Effect.serviceOption(ServerEnvironment.ServerEnvironment);
   const ideSessionRegistry = yield* Effect.serviceOption(
     CompositionIdeSessionRegistry.CompositionIdeSessionRegistryService,
+  );
+  const mcpToolRegistry = yield* Effect.serviceOption(
+    CompositionMcpToolRegistry.CompositionMcpToolRegistry,
   );
   const workspaceFileSystem = yield* WorkspaceFileSystem.WorkspaceFileSystem;
   const completed = new Set<string>();
@@ -453,9 +457,33 @@ const make = Effect.gen(function* () {
     }
 
     const handler = handlers.get(input.canonicalToolName);
+    const dynamicMcpDescriptor =
+      handler === undefined && Option.isSome(mcpToolRegistry)
+        ? yield* mcpToolRegistry.value.get(input.canonicalToolName)
+        : undefined;
+    const resolvedHandler =
+      handler ??
+      (dynamicMcpDescriptor === undefined || !Option.isSome(mcpToolRegistry)
+        ? undefined
+        : {
+            operation: dynamicMcpDescriptor.operation,
+            execute: (toolInput: ToolBrokerInput) =>
+              mcpToolRegistry.value.invoke({
+                canonicalToolName: dynamicMcpDescriptor.canonicalToolName,
+                serverId: dynamicMcpDescriptor.serverId,
+                toolName: dynamicMcpDescriptor.toolName,
+                taskId: toolInput.taskId,
+                runId: toolInput.runId,
+                agentId: toolInput.agentId,
+                workspaceRoot: toolInput.workspaceRoot,
+                ...(toolInput.runtimeId === undefined ? {} : { runtimeId: toolInput.runtimeId }),
+                idempotencyKey: toolInput.idempotencyKey,
+                arguments: toolInput.arguments,
+              }),
+          });
     const known = yield* registry.list({ scope: "task", scopeId: input.taskId });
     if (
-      handler === undefined ||
+      resolvedHandler === undefined ||
       !known.some(
         (capability) =>
           capability.capabilityId === compositionToolCapabilityId(input.canonicalToolName),
@@ -464,7 +492,7 @@ const make = Effect.gen(function* () {
       return {
         ...base,
         status: "denied" as const,
-        errorCode: handler === undefined ? "tool_unavailable" : "tool_not_registered",
+        errorCode: resolvedHandler === undefined ? "tool_unavailable" : "tool_not_registered",
         finishedAtUnixMs: yield* Clock.currentTimeMillis,
       };
     }
@@ -475,7 +503,7 @@ const make = Effect.gen(function* () {
         agentId: input.agentId,
         capabilityId: compositionToolCapabilityId(input.canonicalToolName),
         capabilityGrantIds: [...input.capabilityGrantIds],
-        operation: handler.operation,
+        operation: resolvedHandler.operation,
         approvalRequestId: input.approvalRequestId,
       })
       .pipe(
@@ -502,7 +530,7 @@ const make = Effect.gen(function* () {
       };
     }
 
-    return yield* handler.execute(input).pipe(
+    return yield* resolvedHandler.execute(input).pipe(
       Effect.flatMap((value) =>
         Effect.map(Clock.currentTimeMillis, (finishedAtUnixMs) => {
           completed.add(input.idempotencyKey);
@@ -524,7 +552,11 @@ const make = Effect.gen(function* () {
               ? "tool_scope_missing"
               : isIdeSessionFailure(error)
                 ? error.code
-                : "tool_execution_failed",
+                : Schema.is(CompositionMcpToolRegistry.CompositionMcpToolTrustError)(error)
+                  ? error.code
+                  : Schema.is(CompositionMcpToolRegistry.CompositionMcpToolFailure)(error)
+                    ? error.code
+                    : "tool_execution_failed",
           finishedAtUnixMs,
         })),
       ),
@@ -544,7 +576,13 @@ const make = Effect.gen(function* () {
         ),
       );
       if (Option.isNone(grantRegistry)) return result;
-      const operation = handlers.get(input.canonicalToolName)?.operation ?? "read";
+      const operation =
+        handlers.get(input.canonicalToolName)?.operation ??
+        (Option.isSome(mcpToolRegistry)
+          ? yield* mcpToolRegistry.value
+              .get(input.canonicalToolName)
+              .pipe(Effect.map((descriptor) => descriptor?.operation ?? "read"))
+          : "read");
       const errorCode = "errorCode" in result ? result.errorCode : undefined;
       const outcome =
         result.status === "succeeded"
