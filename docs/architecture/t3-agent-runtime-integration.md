@@ -40,6 +40,9 @@ Audit / Idempotency / Cancellation / Timeout / Retry / Review
 - MCP tool catalog、JSON Schema 校验、结果去敏、超时，以及官方 SDK 的 stdio、Streamable HTTP、SSE runtime adapter。
 - Multica daemon 的注册、心跳、quick-create、任务状态投影、Leader/Squad 显式路由和 T3 Task Graph 元数据传递。
 - review checkpoint、失败 Run 重试和基础 Task/Run 状态机。
+- 原生 Task Graph 执行器已通过 `server.executeCompositionTaskGraph` 暴露到 WebSocket RPC，
+  `client-runtime` 已提供 single-flight command；服务端支持 Leader review、串行/并行子节点、依赖、
+  retry、结果汇聚和迟到事件保护。
 
 ### `cursor-byok` 可吸收，但需要 T3 原生重做
 
@@ -62,7 +65,10 @@ Audit / Idempotency / Cancellation / Timeout / Retry / Review
 
 - client-runtime 和 Web/Desktop/Mobile 的 MCP 配置、连接状态、工具目录和错误可达性。
 - Provider/BYOK/ACP/CLI 的统一 capability projection 和真实跨 Driver ToolBroker E2E。
-- Multica 在 T3 壳内真正执行 Leader -> Squad -> Task Graph -> 子 Agent -> 结果汇聚 -> Review 的本地编排链。
+- Web/Desktop/Mobile 尚未提供 Task Graph 的产品入口、可视化状态和取消/审核交互；当前只有服务端 RPC 与
+  `client-runtime` command。
+- Multica 在 T3 壳内通过真实 daemon 执行 Leader -> Squad -> Task Graph -> 子 Agent -> 结果汇聚 -> Review 的
+  完整外部编排链仍未验收；当前本地 Task Graph 可使用 T3 Driver/ToolBroker，外部 Multica 仍受窄协议限制。
 - Multica 官方窄协议之外的 Tool-call/Grant handshake。当前没有证据证明官方 daemon 接受 T3 grant 或能够回调 T3 ToolBroker，因此不能静默赋予 full access。
 - Cursor/VSCode 真实 transport、IDE operation 和断线恢复。
 - Browser/Computer Use 的完整 canonical tool、session、审批、审计和取消闭环。

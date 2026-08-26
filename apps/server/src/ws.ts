@@ -97,6 +97,7 @@ import * as ByokAdaptersImport from "./provider/byok/ByokAdaptersImport.ts";
 import * as CompositionAgentService from "./composition/CompositionAgentService.ts";
 import * as CompositionAgentDriverRegistry from "./composition/CompositionAgentDriverRegistry.ts";
 import * as CompositionOrchestratorService from "./composition/CompositionOrchestratorService.ts";
+import * as CompositionTaskGraphExecutor from "./composition/CompositionTaskGraphExecutor.ts";
 import * as CompositionToolBroker from "./composition/ToolBroker.ts";
 import * as CompositionRuntimeToolBridge from "./composition/CompositionRuntimeToolBridge.ts";
 import * as CompositionCapabilityGrantRegistry from "./composition/CapabilityGrantRegistry.ts";
@@ -482,6 +483,9 @@ const makeWsRpcLayer = (
       });
       const compositionOrchestrator = yield* Effect.serviceOption(
         CompositionOrchestratorService.CompositionOrchestratorService,
+      );
+      const compositionTaskGraphExecutor = yield* Effect.serviceOption(
+        CompositionTaskGraphExecutor.CompositionTaskGraphExecutor,
       );
       const compositionAgentDrivers = yield* Effect.serviceOption(
         CompositionAgentDriverRegistry.CompositionAgentDriverRegistryService,
@@ -1911,6 +1915,63 @@ const makeWsRpcLayer = (
                     ...(input.capabilityIds === undefined
                       ? {}
                       : { capabilityIds: input.capabilityIds }),
+                  })
+                  .pipe(Effect.mapError(compositionTaskError)),
+            { "rpc.aggregate": "composition" },
+          ),
+        [WS_METHODS.serverExecuteCompositionTaskGraph]: (input) =>
+          observeRpcEffect(
+            WS_METHODS.serverExecuteCompositionTaskGraph,
+            Option.isNone(compositionTaskGraphExecutor)
+              ? Effect.fail(compositionTaskUnavailable())
+              : compositionTaskGraphExecutor.value
+                  .execute({
+                    leader: {
+                      taskId: input.leader.taskId,
+                      runId: input.leader.runId,
+                      projectId: input.leader.projectId,
+                      ...(input.leader.threadId === undefined
+                        ? {}
+                        : { threadId: input.leader.threadId }),
+                      assigneeKind: input.leader.assigneeKind,
+                      assigneeId: input.leader.assigneeId,
+                      promptDigest: input.leader.promptDigest,
+                      workspaceRoot: input.leader.workspaceRoot,
+                      prompt: input.leader.prompt,
+                      ...(input.leader.workspaceRootDigest === undefined
+                        ? {}
+                        : { workspaceRootDigest: input.leader.workspaceRootDigest }),
+                      ...(input.leader.model === undefined ? {} : { model: input.leader.model }),
+                      ...(input.leader.capabilityIds === undefined
+                        ? {}
+                        : { capabilityIds: input.leader.capabilityIds }),
+                      mode: "review",
+                    },
+                    children: input.children.map((child) => ({
+                      nodeId: child.nodeId,
+                      taskId: child.taskId,
+                      runId: child.runId,
+                      projectId: child.projectId,
+                      ...(child.threadId === undefined ? {} : { threadId: child.threadId }),
+                      assigneeKind: child.assigneeKind,
+                      assigneeId: child.assigneeId,
+                      mode: child.mode,
+                      promptDigest: child.promptDigest,
+                      workspaceRoot: child.workspaceRoot,
+                      prompt: child.prompt,
+                      ...(child.workspaceRootDigest === undefined
+                        ? {}
+                        : { workspaceRootDigest: child.workspaceRootDigest }),
+                      ...(child.model === undefined ? {} : { model: child.model }),
+                      ...(child.capabilityIds === undefined
+                        ? {}
+                        : { capabilityIds: child.capabilityIds }),
+                      dependsOnNodeIds: child.dependsOnNodeIds,
+                      ...(child.maxAttempts === undefined
+                        ? {}
+                        : { maxAttempts: child.maxAttempts }),
+                    })),
+                    ...(input.schedule === undefined ? {} : { schedule: input.schedule }),
                   })
                   .pipe(Effect.mapError(compositionTaskError)),
             { "rpc.aggregate": "composition" },

@@ -325,6 +325,67 @@ export const CompositionTaskDispatchResult = Schema.Struct({
 });
 export type CompositionTaskDispatchResult = typeof CompositionTaskDispatchResult.Type;
 
+/** Task Graph 子节点输入；依赖使用 Graph 内的 nodeId 表达，由服务端映射为 taskId。 */
+export const CompositionTaskGraphNodeRequest = Schema.Struct({
+  nodeId: TrimmedNonEmptyString,
+  taskId: TrimmedNonEmptyString,
+  runId: TrimmedNonEmptyString,
+  projectId: TrimmedNonEmptyString,
+  threadId: Schema.optional(TrimmedNonEmptyString),
+  assigneeKind: Schema.Literals(["agent", "squad"]),
+  assigneeId: TrimmedNonEmptyString,
+  mode: Schema.Literals(["serial", "parallel"]),
+  promptDigest: TrimmedNonEmptyString,
+  prompt: Schema.String,
+  workspaceRoot: TrimmedNonEmptyString,
+  workspaceRootDigest: Schema.optional(TrimmedNonEmptyString),
+  model: Schema.optional(TrimmedNonEmptyString),
+  capabilityIds: Schema.optional(Schema.Array(TrimmedNonEmptyString)),
+  dependsOnNodeIds: Schema.Array(TrimmedNonEmptyString),
+  maxAttempts: Schema.optional(PositiveInt),
+});
+export type CompositionTaskGraphNodeRequest = typeof CompositionTaskGraphNodeRequest.Type;
+
+/** Task Graph Leader 输入；Leader 的执行模式由服务端固定为 review。 */
+export const CompositionTaskGraphLeaderRequest = Schema.Struct({
+  taskId: TrimmedNonEmptyString,
+  runId: TrimmedNonEmptyString,
+  projectId: TrimmedNonEmptyString,
+  threadId: Schema.optional(TrimmedNonEmptyString),
+  assigneeKind: Schema.Literals(["agent", "squad"]),
+  assigneeId: TrimmedNonEmptyString,
+  promptDigest: TrimmedNonEmptyString,
+  prompt: Schema.String,
+  workspaceRoot: TrimmedNonEmptyString,
+  workspaceRootDigest: Schema.optional(TrimmedNonEmptyString),
+  model: Schema.optional(TrimmedNonEmptyString),
+  capabilityIds: Schema.optional(Schema.Array(TrimmedNonEmptyString)),
+});
+export type CompositionTaskGraphLeaderRequest = typeof CompositionTaskGraphLeaderRequest.Type;
+
+/** 从 T3 Leader、Squad 和子 Agent 节点启动真实 Task Graph。 */
+export const CompositionTaskGraphExecutionRequest = Schema.Struct({
+  leader: CompositionTaskGraphLeaderRequest,
+  children: Schema.Array(CompositionTaskGraphNodeRequest),
+  schedule: Schema.optional(Schema.Literals(["serial", "parallel"])),
+});
+export type CompositionTaskGraphExecutionRequest = typeof CompositionTaskGraphExecutionRequest.Type;
+
+export const CompositionTaskGraphNodeResult = Schema.Struct({
+  nodeId: TrimmedNonEmptyString,
+  task: CompositionTask,
+  run: CompositionTaskRun,
+  attempts: PositiveInt,
+  dispatches: Schema.Array(CompositionTaskDispatchResult),
+});
+export type CompositionTaskGraphNodeResult = typeof CompositionTaskGraphNodeResult.Type;
+
+export const CompositionTaskGraphExecutionResult = Schema.Struct({
+  leader: CompositionTaskDispatchResult,
+  children: Schema.Array(CompositionTaskGraphNodeResult),
+});
+export type CompositionTaskGraphExecutionResult = typeof CompositionTaskGraphExecutionResult.Type;
+
 export const CompositionTaskCancelRequest = Schema.Struct({
   taskId: TrimmedNonEmptyString,
   runId: TrimmedNonEmptyString,

@@ -774,6 +774,15 @@ export function createServerEnvironmentAtoms<R, E>(
       staleTimeMs: 5_000,
       idleTtlMs: 60_000,
     }),
+    executeCompositionTaskGraph: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:server:execute-composition-task-graph",
+      tag: WS_METHODS.serverExecuteCompositionTaskGraph,
+      concurrency: {
+        mode: "singleFlight",
+        key: ({ environmentId, input }) =>
+          JSON.stringify([environmentId, input.leader.taskId, input.leader.runId]),
+      },
+    }),
     traceDiagnostics: createEnvironmentRpcQueryAtomFamily(runtime, {
       label: "environment-data:server:trace-diagnostics",
       tag: WS_METHODS.serverGetTraceDiagnostics,

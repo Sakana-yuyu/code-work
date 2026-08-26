@@ -11,6 +11,8 @@ import {
   CompositionCapabilityPolicyDecision,
   CompositionTaskCancelRequest,
   CompositionTaskDispatchRequest,
+  CompositionTaskGraphExecutionRequest,
+  CompositionTaskGraphExecutionResult,
   CompositionTaskEventsResult,
   CompositionTaskListRequest,
   CompositionTaskReviewRequest,
@@ -28,6 +30,8 @@ const decodeCapabilityAuditEvent = Schema.decodeUnknownSync(CompositionCapabilit
 const decodePolicyDecision = Schema.decodeUnknownSync(CompositionCapabilityPolicyDecision);
 const decodeTaskEvent = Schema.decodeUnknownSync(CompositionTaskEvent);
 const decodeTaskDispatch = Schema.decodeUnknownSync(CompositionTaskDispatchRequest);
+const decodeTaskGraph = Schema.decodeUnknownSync(CompositionTaskGraphExecutionRequest);
+const decodeTaskGraphResult = Schema.decodeUnknownSync(CompositionTaskGraphExecutionResult);
 const decodeTaskCancel = Schema.decodeUnknownSync(CompositionTaskCancelRequest);
 const decodeTaskEvents = Schema.decodeUnknownSync(CompositionTaskEventsResult);
 const decodeTaskList = Schema.decodeUnknownSync(CompositionTaskListRequest);
@@ -40,6 +44,69 @@ const decodeAgentLoopRunRequest = Schema.decodeUnknownSync(CompositionAgentLoopR
 const decodeAgentLoopRunResult = Schema.decodeUnknownSync(CompositionAgentLoopRunResult);
 
 describe("composition contracts", () => {
+  it("定义 Leader、依赖节点和 retry 次数的 Task Graph RPC 合同", () => {
+    const decoded = decodeTaskGraph({
+      leader: {
+        taskId: "leader-task",
+        runId: "leader-run",
+        projectId: "project-1",
+        assigneeKind: "agent",
+        assigneeId: "leader-agent",
+        promptDigest: "sha256:leader",
+        prompt: "汇总结果",
+        workspaceRoot: "C:/workspace",
+      },
+      children: [
+        {
+          nodeId: "child-a",
+          taskId: "child-task-a",
+          runId: "child-run-a",
+          projectId: "project-1",
+          assigneeKind: "agent",
+          assigneeId: "agent-a",
+          mode: "parallel",
+          promptDigest: "sha256:a",
+          prompt: "执行 A",
+          workspaceRoot: "C:/workspace",
+          dependsOnNodeIds: [],
+          maxAttempts: 2,
+        },
+      ],
+      schedule: "parallel",
+    });
+
+    expect(decoded.children[0]?.dependsOnNodeIds).toEqual([]);
+    expect(decoded.children[0]?.maxAttempts).toBe(2);
+
+    const decodedResult = decodeTaskGraphResult({
+      leader: {
+        task: {
+          taskId: "leader-task",
+          projectId: "project-1",
+          assigneeKind: "agent",
+          assigneeId: "leader-agent",
+          mode: "review",
+          status: "in_review",
+          promptDigest: "sha256:leader",
+          dependsOnTaskIds: ["child-task-a"],
+          createdAtUnixMs: 1,
+          updatedAtUnixMs: 2,
+        },
+        run: {
+          runId: "leader-run",
+          taskId: "leader-task",
+          agentId: "leader-agent",
+          runtimeId: "runtime-1",
+          status: "in_review",
+          attempt: 1,
+          capabilityGrantIds: [],
+        },
+      },
+      children: [],
+    });
+    expect(decodedResult.leader.run.status).toBe("in_review");
+  });
+
   it("定义显式的 review approve/reject 合同", () => {
     const approved = decodeTaskReview({
       taskId: "task-review",

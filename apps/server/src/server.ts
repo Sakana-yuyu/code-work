@@ -68,6 +68,7 @@ import * as CompositionRuntimeAgentDriverProjection from "./composition/Composit
 import * as CompositionRuntimeSettings from "./composition/CompositionRuntimeSettings.ts";
 import * as CompositionOrchestratorService from "./composition/CompositionOrchestratorService.ts";
 import * as CompositionTaskRuntimeProjectionService from "./composition/CompositionTaskRuntimeProjectionService.ts";
+import * as CompositionTaskGraphExecutor from "./composition/CompositionTaskGraphExecutor.ts";
 import * as PreviewManager from "./preview/Manager.ts";
 import * as PortScanner from "./preview/PortScanner.ts";
 import * as ProcessRunner from "./processRunner.ts";
@@ -451,6 +452,10 @@ const CompositionRuntimeLayerLive = CompositionTaskRuntimeProjectionService.laye
   Layer.provideMerge(CompositionRuntimeDependenciesLive),
 );
 
+const CompositionTaskGraphExecutorLayerLive = CompositionTaskGraphExecutor.layer.pipe(
+  Layer.provideMerge(CompositionRuntimeLayerLive),
+);
+
 const ProjectFaviconResolverLayerLive = ProjectFaviconResolver.layer.pipe(
   Layer.provide(WorkspacePaths.layer),
   Layer.provide(T3ProjectFileLoader.layer),
@@ -496,7 +501,11 @@ const RuntimeCoreDependenciesBaseLive = ReactorLayerLive.pipe(
   Layer.provideMerge(ProviderInstanceRegistryHydrationLive),
   // Composition runtime 统一提供 Orchestrator 与 Runtime 事件投影。
   Layer.provideMerge(
-    Layer.mergeAll(CompositionRuntimeLayerLive, CompositionRuntimeToolBridgeLayerLive),
+    Layer.mergeAll(
+      CompositionRuntimeLayerLive,
+      CompositionRuntimeToolBridgeLayerLive,
+      CompositionTaskGraphExecutorLayerLive,
+    ),
   ),
   // Shared native/canonical NDJSON writers used by both the per-instance
   // drivers (native stream, written from inside each `<X>Adapter`) and
@@ -512,9 +521,13 @@ const RuntimeCoreDependenciesBaseLive = ReactorLayerLive.pipe(
   Layer.provideMerge(OpenCodeRuntime.OpenCodeRuntimeLive),
   Layer.provideMerge(Layer.mergeAll(WorkspaceLayerLive, CompositionToolBrokerLayerLive)),
   Layer.provideMerge(ProjectFaviconResolverLayerLive),
-  Layer.provideMerge(RepositoryIdentityResolver.layer),
-  Layer.provideMerge(ServerEnvironment.layer),
-  Layer.provideMerge(Layer.mergeAll(AuthLayerLive, ServerSecretStore.layer)),
+  Layer.provideMerge(Layer.mergeAll(RepositoryIdentityResolver.layer, ServerEnvironment.layer)),
+  Layer.provideMerge(
+    Layer.empty.pipe(
+      Layer.provideMerge(AuthLayerLive),
+      Layer.provideMerge(ServerSecretStore.layer),
+    ),
+  ),
 );
 
 const RuntimeCoreDependenciesLive = RuntimeCoreDependenciesBaseLive.pipe(
