@@ -1,5 +1,6 @@
 import {
   DEFAULT_SERVER_SETTINGS,
+  CompositionMcpServerId,
   ProviderDriverKind,
   ProviderInstanceId,
   type ServerProvider,
@@ -18,6 +19,30 @@ import {
 } from "./serverSettings.ts";
 
 describe("serverSettings helpers", () => {
+  it("replaces the MCP server map instead of deep-merging deleted entries", () => {
+    const serverId = CompositionMcpServerId.make("local_tools");
+    const current = {
+      ...DEFAULT_SERVER_SETTINGS,
+      mcpServers: {
+        [serverId]: {
+          schemaVersion: 1 as const,
+          name: "Local Tools",
+          transport: "stdio" as const,
+          command: "node",
+          args: [],
+          headers: [],
+          environment: [],
+          enabled: true,
+          trusted: false,
+        },
+      },
+    };
+
+    const next = applyServerSettingsPatch(current, { mcpServers: {} });
+
+    expect(next.mcpServers).toEqual({});
+  });
+
   it("normalizes optional persisted strings", () => {
     expect(normalizePersistedServerSettingString(undefined)).toBeUndefined();
     expect(normalizePersistedServerSettingString("   ")).toBeUndefined();

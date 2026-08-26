@@ -15,6 +15,8 @@ import {
   DEFAULT_TEXT_GENERATION_MODEL_BY_PROVIDER,
   DEFAULT_MODEL_BY_PROVIDER,
   DEFAULT_SERVER_SETTINGS,
+  type CompositionMcpRuntimeServerConfig,
+  type CompositionMcpSecretValue,
   type ModelSelection,
   type ProviderInstanceConfig,
   type ProviderInstanceEnvironmentVariable,
@@ -146,6 +148,15 @@ function byokBalanceTokenSecretName(input: {
   return `provider-byok-${Buffer.from(input.instanceId, "utf8").toString("base64url")}-${Buffer.from(input.adapterId, "utf8").toString("base64url")}-balance-token`;
 }
 
+function mcpSecretName(input: {
+  readonly serverId: string;
+  readonly kind: "header" | "environment";
+  readonly name: string;
+}): string {
+  const encode = (value: string) => Buffer.from(value, "utf8").toString("base64url");
+  return `mcp-${encode(input.serverId)}-${input.kind}-${encode(input.name)}`;
+}
+
 function redactByokConfig(config: unknown): unknown {
   if (config === null || typeof config !== "object" || Array.isArray(config)) return config;
   const record = config as Record<string, unknown>;
@@ -191,6 +202,28 @@ function redactProviderEnvironmentVariable(
   };
 }
 
+function redactMcpSecretValue(value: CompositionMcpSecretValue): CompositionMcpSecretValue {
+  if (!value.sensitive) {
+    const { valueRedacted: _omit, ...rest } = value;
+    return rest;
+  }
+  return {
+    ...value,
+    value: "",
+    ...(value.value.length > 0 || value.valueRedacted ? { valueRedacted: true } : {}),
+  };
+}
+
+function redactMcpServerConfig(
+  config: CompositionMcpRuntimeServerConfig,
+): CompositionMcpRuntimeServerConfig {
+  return {
+    ...config,
+    headers: config.headers.map(redactMcpSecretValue),
+    environment: config.environment.map(redactMcpSecretValue),
+  };
+}
+
 export function redactServerSettingsForClient(settings: ServerSettings): ServerSettings {
   const providerInstances = Object.fromEntries(
     Object.entries(settings.providerInstances).map(([instanceId, instance]) => [
@@ -204,7 +237,13 @@ export function redactServerSettingsForClient(settings: ServerSettings): ServerS
       },
     ]),
   );
-  return { ...settings, providerInstances };
+  const mcpServers = Object.fromEntries(
+    Object.entries(settings.mcpServers).map(([serverId, config]) => [
+      serverId,
+      redactMcpServerConfig(config),
+    ]),
+  );
+  return { ...settings, providerInstances, mcpServers };
 }
 
 export class ServerSettingsService extends Context.Service<
@@ -408,6 +447,161 @@ const make = Effect.gen(function* () {
 
   const getSettingsFromCache = Cache.get(settingsCache, cacheKey);
 
+  const materializeMcpSecretValues = (
+    serverId: string,
+    kind: "header" | "environment",
+    values: ReadonlyArray<CompositionMcpSecretValue>,
+  ): Effect.Effect<ReadonlyArray<CompositionMcpSecretValue>, ServerSettingsError> =>
+    Effect.forEach(values, (value) => {
+      if (!value.sensitive || value.valueRedacted !== true) return Effect.succeed(value);
+      return secretStore.get(mcpSecretName({ serverId, kind, name: value.name })).pipe(
+        Effect.map((secret) => ({
+          ...value,
+          value: Option.isSome(secret) ? textDecoder.decode(secret.value) : "",
+        })),
+        Effect.mapError(
+          (cause) =>
+            new ServerSettingsError({
+              settingsPath,
+              operation: "read-secret",
+              environmentVariable: `mcp:${serverId}:${kind}:${value.name}`,
+              cause,
+            }),
+        ),
+      );
+    });
+
+  const materializeMcpServerSecrets = (
+    settings: ServerSettings,
+  ): Effect.Effect<ServerSettings, ServerSettingsError> =>
+    Effect.gen(function* () {
+      const mcpServers: Record<string, CompositionMcpRuntimeServerConfig> = {};
+      for (const [serverId, config] of Object.entries(settings.mcpServers)) {
+        mcpServers[serverId] = {
+          ...config,
+          headers: yield* materializeMcpSecretValues(serverId, "header", config.headers),
+          environment: yield* materializeMcpSecretValues(
+            serverId,
+            "environment",
+            config.environment,
+          ),
+        };
+      }
+      return { ...settings, mcpServers };
+    });
+
+  const persistMcpSecretValues = (
+    serverId: string,
+    kind: "header" | "environment",
+    values: ReadonlyArray<CompositionMcpSecretValue>,
+    nextSecretNames: Set<string>,
+  ): Effect.Effect<ReadonlyArray<CompositionMcpSecretValue>, ServerSettingsError> =>
+    Effect.gen(function* () {
+      const persisted: CompositionMcpSecretValue[] = [];
+      for (const value of values) {
+        const secretName = mcpSecretName({ serverId, kind, name: value.name });
+        if (!value.sensitive) {
+          yield* secretStore.remove(secretName).pipe(
+            Effect.mapError(
+              (cause) =>
+                new ServerSettingsError({
+                  settingsPath,
+                  operation: "remove-secret",
+                  environmentVariable: `mcp:${serverId}:${kind}:${value.name}`,
+                  cause,
+                }),
+            ),
+          );
+          persisted.push(redactMcpSecretValue(value));
+          continue;
+        }
+
+        nextSecretNames.add(secretName);
+        if (value.valueRedacted === true && value.value.length === 0) {
+          persisted.push(redactMcpSecretValue(value));
+          continue;
+        }
+        if (value.value.length > 0) {
+          yield* secretStore.set(secretName, textEncoder.encode(value.value)).pipe(
+            Effect.mapError(
+              (cause) =>
+                new ServerSettingsError({
+                  settingsPath,
+                  operation: "write-secret",
+                  environmentVariable: `mcp:${serverId}:${kind}:${value.name}`,
+                  cause,
+                }),
+            ),
+          );
+          persisted.push({ ...value, value: "", valueRedacted: true });
+        } else {
+          yield* secretStore.remove(secretName).pipe(
+            Effect.mapError(
+              (cause) =>
+                new ServerSettingsError({
+                  settingsPath,
+                  operation: "remove-secret",
+                  environmentVariable: `mcp:${serverId}:${kind}:${value.name}`,
+                  cause,
+                }),
+            ),
+          );
+          const { valueRedacted: _omit, ...rest } = value;
+          persisted.push(rest);
+        }
+      }
+      return persisted;
+    });
+
+  const persistMcpServerSecrets = (
+    current: ServerSettings,
+    next: ServerSettings,
+  ): Effect.Effect<ServerSettings, ServerSettingsError> =>
+    Effect.gen(function* () {
+      const mcpServers: Record<string, CompositionMcpRuntimeServerConfig> = {};
+      const nextSecretNames = new Set<string>();
+      for (const [serverId, config] of Object.entries(next.mcpServers)) {
+        mcpServers[serverId] = {
+          ...config,
+          headers: yield* persistMcpSecretValues(
+            serverId,
+            "header",
+            config.headers,
+            nextSecretNames,
+          ),
+          environment: yield* persistMcpSecretValues(
+            serverId,
+            "environment",
+            config.environment,
+            nextSecretNames,
+          ),
+        };
+      }
+
+      for (const [serverId, config] of Object.entries(current.mcpServers)) {
+        for (const kind of ["header", "environment"] as const) {
+          for (const value of config[kind === "header" ? "headers" : "environment"]) {
+            const secretName = mcpSecretName({ serverId, kind, name: value.name });
+            if (value.sensitive && !nextSecretNames.has(secretName)) {
+              yield* secretStore.remove(secretName).pipe(
+                Effect.mapError(
+                  (cause) =>
+                    new ServerSettingsError({
+                      settingsPath,
+                      operation: "remove-stale-secret",
+                      environmentVariable: `mcp:${serverId}:${kind}:${value.name}`,
+                      cause,
+                    }),
+                ),
+              );
+            }
+          }
+        }
+      }
+
+      return { ...next, mcpServers };
+    });
+
   const materializeByokSecrets = (
     settings: ServerSettings,
   ): Effect.Effect<ServerSettings, ServerSettingsError> =>
@@ -570,6 +764,7 @@ const make = Effect.gen(function* () {
     changes.pipe(
       Stream.mapEffect((settings) =>
         materializeProviderEnvironmentSecrets(settings).pipe(
+          Effect.flatMap(materializeMcpServerSecrets),
           Effect.flatMap(materializeByokSecrets),
           Effect.catch((error: ServerSettingsError) =>
             Effect.logWarning("failed to materialize provider environment secrets", {
@@ -1018,6 +1213,7 @@ const make = Effect.gen(function* () {
     ready: Deferred.await(startedDeferred),
     getSettings: getSettingsFromCache.pipe(
       Effect.flatMap(materializeProviderEnvironmentSecrets),
+      Effect.flatMap(materializeMcpServerSecrets),
       Effect.flatMap(materializeByokSecrets),
       Effect.map(resolveTextGenerationProvider),
     ),
@@ -1029,13 +1225,18 @@ const make = Effect.gen(function* () {
             current,
             applyServerSettingsPatch(current, patch),
           );
-          const nextPersisted = yield* persistByokSecrets(current, nextWithEnvironmentSecrets);
+          const nextWithMcpSecrets = yield* persistMcpServerSecrets(
+            current,
+            nextWithEnvironmentSecrets,
+          );
+          const nextPersisted = yield* persistByokSecrets(current, nextWithMcpSecrets);
           const next = yield* normalizeServerSettings(nextPersisted);
           yield* writeSettingsAtomically(next);
           yield* Cache.set(settingsCache, cacheKey, next);
           yield* emitChange(next);
           const materializedEnvironment = yield* materializeProviderEnvironmentSecrets(next);
-          const materialized = yield* materializeByokSecrets(materializedEnvironment);
+          const materializedMcp = yield* materializeMcpServerSecrets(materializedEnvironment);
+          const materialized = yield* materializeByokSecrets(materializedMcp);
           return resolveTextGenerationProvider(materialized);
         }),
       ),

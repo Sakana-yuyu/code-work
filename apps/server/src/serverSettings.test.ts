@@ -48,6 +48,96 @@ const makeFailingSecretStoreLayer = (cause: ServerSecretStore.SecretStoreError) 
   );
 
 it.layer(NodeServices.layer)("server settings", (it) => {
+  it.effect("stores MCP sensitive values outside settings and redacts client snapshots", () =>
+    Effect.gen(function* () {
+      const serverConfig = yield* ServerConfig.ServerConfig;
+      const fileSystem = yield* FileSystem.FileSystem;
+      const serverSettings = yield* ServerSettingsModule.ServerSettingsService;
+
+      yield* serverSettings.updateSettings({
+        mcpServers: {
+          local_tools: {
+            name: "Local Tools",
+            transport: "stdio",
+            command: "node",
+            args: ["server.mjs"],
+            environment: [
+              {
+                name: "MCP_TOKEN",
+                value: "mcp-secret-value",
+                sensitive: true,
+              },
+            ],
+            headers: [
+              {
+                name: "Authorization",
+                value: "Bearer mcp-secret-value",
+                sensitive: true,
+              },
+            ],
+          },
+        },
+      });
+
+      const persisted = yield* fileSystem.readFileString(serverConfig.settingsPath);
+      assert.notInclude(persisted, "mcp-secret-value");
+      assert.include(persisted, '"valueRedacted": true');
+
+      const materialized = yield* serverSettings.getSettings;
+      assert.strictEqual(
+        materialized.mcpServers.local_tools?.environment[0]?.value,
+        "mcp-secret-value",
+      );
+      assert.strictEqual(
+        materialized.mcpServers.local_tools?.headers[0]?.value,
+        "Bearer mcp-secret-value",
+      );
+
+      const clientSnapshot = ServerSettingsModule.redactServerSettingsForClient(materialized);
+      assert.strictEqual(clientSnapshot.mcpServers.local_tools?.environment[0]?.value, "");
+      assert.strictEqual(clientSnapshot.mcpServers.local_tools?.headers[0]?.value, "");
+      assert.strictEqual(
+        clientSnapshot.mcpServers.local_tools?.environment[0]?.valueRedacted,
+        true,
+      );
+
+      const rotated = yield* serverSettings.updateSettings({
+        mcpServers: {
+          local_tools: {
+            name: "Local Tools",
+            transport: "stdio",
+            command: "node",
+            args: ["server.mjs"],
+            environment: [
+              {
+                name: "MCP_TOKEN",
+                value: "mcp-rotated-value",
+                sensitive: true,
+                valueRedacted: true,
+              },
+            ],
+            headers: [
+              {
+                name: "Authorization",
+                value: "Bearer mcp-rotated-value",
+                sensitive: true,
+                valueRedacted: true,
+              },
+            ],
+          },
+        },
+      });
+      assert.strictEqual(
+        rotated.mcpServers.local_tools?.environment[0]?.value,
+        "mcp-rotated-value",
+      );
+      assert.strictEqual(
+        rotated.mcpServers.local_tools?.headers[0]?.value,
+        "Bearer mcp-rotated-value",
+      );
+    }).pipe(Effect.provide(makeServerSettingsLayer())),
+  );
+
   it.effect("preserves context when reading a provider environment secret fails", () => {
     const platformCause = PlatformError.systemError({
       _tag: "PermissionDenied",
