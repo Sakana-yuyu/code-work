@@ -90,6 +90,67 @@ const makeReconciler = (
   });
 
 describe("CompositionRuntimeSettings", () => {
+  it("taskMcpEndpoint 启用每 Run Lease 时不读取静态 Agent token，并可从 Adapter 取回 overlay", async () => {
+    await Effect.runPromise(
+      Effect.gen(function* () {
+        const registry = yield* CompositionRuntimeMcpSessionRegistry.__testing
+          .make({ now: () => 1_000 })
+          .pipe(Effect.provide(NodeServices.layer));
+        const config = yield* Schema.decodeUnknownEffect(CompositionMulticaRuntimeConfig)({
+          ...multicaInstance().config,
+          taskMcpEndpoint: "http://127.0.0.1:4317/mcp/composition-runtime",
+        });
+        const adapter = yield* makeMulticaRuntimeAdapterFromSettings({
+          instanceId: "multica_local",
+          config,
+          environment: [],
+          headers: {},
+          agents: [
+            {
+              agentId: "agent-1",
+              runtimeId: config.runtimeId,
+              displayName: "Multica Agent",
+              status: "online",
+              capabilities: ["t3.toolbroker"],
+            },
+          ],
+          mcpSessionRegistry: registry,
+        });
+
+        const handshake = yield* adapter.handshakeCapabilities!({
+          runtimeId: config.runtimeId,
+          taskId: "task-f2",
+          runId: "run-f2",
+          agentId: "agent-1",
+          capabilityGrantIds: ["grant-terminal"],
+        });
+        expect(handshake.status).toBe("accepted");
+        expect(handshake.handshakeId).toBeDefined();
+
+        const lease = yield* adapter.getTaskMcpLease(handshake.handshakeId!);
+        expect(lease).toMatchObject({
+          runtimeId: config.runtimeId,
+          taskId: "task-f2",
+          runId: "run-f2",
+          agentId: "agent-1",
+          endpoint: "http://127.0.0.1:4317/mcp/composition-runtime",
+          mcpConfig: {
+            mcpServers: {
+              "t3-composition-runtime": {
+                type: "http",
+                url: "http://127.0.0.1:4317/mcp/composition-runtime",
+              },
+            },
+          },
+        });
+        expect(lease?.rawToken).toMatch(/^t3mcp_/);
+
+        yield* adapter.revokeCapabilityHandshake!({ handshakeId: handshake.handshakeId! });
+        expect(yield* adapter.getTaskMcpLease(handshake.handshakeId!)).toBeUndefined();
+      }),
+    );
+  });
+
   it("从 Multica provider instance 构造 headers、Agent 投影并注册 Adapter", async () => {
     const registry = makeCompositionRuntimeAdapterRegistry();
     const created: Array<Record<string, unknown>> = [];

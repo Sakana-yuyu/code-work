@@ -12,6 +12,7 @@ import type {
   MulticaHeartbeatResponse,
   MulticaTask,
 } from "./MulticaDaemonProtocol.ts";
+import type { MulticaTaskMcpLease } from "./MulticaTaskMcpLease.ts";
 
 const runtimeId = "multica:daemon-1:runtime-1";
 const daemonRuntimeId = "runtime-1";
@@ -470,5 +471,203 @@ describe("MulticaDaemonRuntimeAdapter", () => {
 
     expect(handshakeCalls).toEqual(["run-grant-2"]);
     expect(revokeCalls).toEqual(["handshake-1"]);
+  });
+
+  it("没有 Lease bridge 时不伪造 task-local Lease，并在 Runtime 回收时保持空操作", async () => {
+    const adapter = makeMulticaDaemonRuntimeAdapter(makeOptions());
+
+    await expect(Effect.runPromise(adapter.getTaskMcpLease("missing-handshake"))).resolves.toBe(
+      undefined,
+    );
+    await expect(Effect.runPromise(adapter.revokeTaskMcpLeases())).resolves.toBeUndefined();
+  });
+
+  it("claim 后在 start 前把匹配的每 Run MCP overlay 注入执行器", async () => {
+    const injected: unknown[] = [];
+    const executionTask: MulticaTask = { ...task, id: "remote-task-execution" };
+    const lease = {
+      runtimeId,
+      taskId: "t3-task-execution",
+      runId: "run-execution",
+      agentId: "agent-1",
+      capabilityGrantIds: ["grant-execution"],
+      endpoint: "http://127.0.0.1:4317/mcp/composition-runtime",
+      expiresAtUnixMs: 60_000,
+      capabilityHandshakeId: "handshake-execution",
+      rawToken: "test-only-token",
+      binding: {
+        runtimeId,
+        taskId: "t3-task-execution",
+        runId: "run-execution",
+        agentId: "agent-1",
+        capabilityGrantIds: ["grant-execution"],
+        expiresAtUnixMs: 60_000,
+        capabilityHandshakeId: "handshake-execution",
+      },
+      mcpConfig: {
+        mcpServers: {
+          "t3-composition-runtime": {
+            type: "http" as const,
+            url: "http://127.0.0.1:4317/mcp/composition-runtime",
+            headers: { Authorization: "Bearer test-only-token" },
+          },
+        },
+      },
+    } satisfies MulticaTaskMcpLease;
+    const adapter = makeMulticaDaemonRuntimeAdapter(
+      makeOptions({
+        now: () => 1_000,
+        capabilityBridge: {
+          handshakeCapabilities: (input) =>
+            Effect.succeed({
+              ...input,
+              status: "accepted" as const,
+              handshakeId: "handshake-execution",
+              acceptedGrantIds: [...input.capabilityGrantIds],
+              expiresAtUnixMs: 60_000,
+            }),
+        },
+        taskMcpLeaseBridge: {
+          get: () => Effect.succeed(lease),
+          revokeRuntime: () => Effect.void,
+        },
+        taskExecutionBridge: {
+          injectTaskStart: (context) =>
+            Effect.sync(() => {
+              injected.push(context);
+            }),
+        },
+        protocol: makeProtocol({
+          claimTask: () => Effect.succeed(executionTask),
+          quickCreateTask: () => Effect.succeed({ taskId: executionTask.id }),
+        }),
+      }),
+    );
+
+    await expect(
+      Effect.runPromise(
+        adapter.handshakeCapabilities!({
+          runtimeId,
+          taskId: "t3-task-execution",
+          runId: "run-execution",
+          agentId: "agent-1",
+          capabilityGrantIds: ["grant-execution"],
+        }),
+      ),
+    ).resolves.toMatchObject({ status: "accepted", handshakeId: "handshake-execution" });
+    await Effect.runPromise(
+      adapter.dispatchTask({
+        taskId: "t3-task-execution",
+        runId: "run-execution",
+        agentId: "agent-1",
+        prompt: "执行带 task-local MCP 的任务",
+        idempotencyKey: "run-execution",
+        capabilityGrantIds: ["grant-execution"],
+        capabilityHandshakeId: "handshake-execution",
+      }),
+    );
+    await Effect.runPromise(adapter.claimTask());
+    await Effect.runPromise(adapter.startTask(executionTask.id));
+
+    expect(injected).toHaveLength(1);
+    expect(injected[0]).toMatchObject({
+      taskId: "t3-task-execution",
+      runId: "run-execution",
+      agentId: "agent-1",
+      runtimeTaskId: executionTask.id,
+      mcpConfig: lease.mcpConfig,
+    });
+  });
+
+  it("Lease 过期或 scope 不匹配时拒绝 start，不能调用 Multica startTask", async () => {
+    let protocolStartCalls = 0;
+    const adapter = makeMulticaDaemonRuntimeAdapter(
+      makeOptions({
+        now: () => 10_000,
+        capabilityBridge: {
+          handshakeCapabilities: (input) =>
+            Effect.succeed({
+              ...input,
+              status: "accepted" as const,
+              handshakeId: "handshake-1",
+              acceptedGrantIds: [...input.capabilityGrantIds],
+              expiresAtUnixMs: 20_000,
+            }),
+        },
+        taskMcpLeaseBridge: {
+          get: () =>
+            Effect.succeed({
+              runtimeId,
+              taskId: "other-task",
+              runId: "other-run",
+              agentId: "agent-1",
+              capabilityGrantIds: ["grant-1"],
+              endpoint: "http://127.0.0.1:4317/mcp/composition-runtime",
+              expiresAtUnixMs: 9_999,
+              capabilityHandshakeId: "handshake-1",
+              rawToken: "test-only-token",
+              binding: {
+                runtimeId,
+                taskId: "other-task",
+                runId: "other-run",
+                agentId: "agent-1",
+                capabilityGrantIds: ["grant-1"],
+                expiresAtUnixMs: 9_999,
+                capabilityHandshakeId: "handshake-1",
+              },
+              mcpConfig: {
+                mcpServers: {
+                  "t3-composition-runtime": {
+                    type: "http" as const,
+                    url: "http://127.0.0.1:4317/mcp/composition-runtime",
+                    headers: { Authorization: "Bearer test-only-token" },
+                  },
+                },
+              },
+            } satisfies MulticaTaskMcpLease),
+          revokeRuntime: () => Effect.void,
+        },
+        taskExecutionBridge: {
+          injectTaskStart: () => Effect.void,
+        },
+        protocol: makeProtocol({
+          claimTask: () => Effect.succeed({ ...task, id: "remote-task-expired" }),
+          startTask: () =>
+            Effect.sync(() => {
+              protocolStartCalls += 1;
+            }),
+          quickCreateTask: () => Effect.succeed({ taskId: "remote-task-expired" }),
+        }),
+      }),
+    );
+
+    await Effect.runPromise(
+      adapter.handshakeCapabilities!({
+        runtimeId,
+        taskId: "t3-task-expired",
+        runId: "run-expired",
+        agentId: "agent-1",
+        capabilityGrantIds: ["grant-1"],
+      }),
+    ).then(() => undefined);
+    await Effect.runPromise(
+      adapter.dispatchTask({
+        taskId: "t3-task-expired",
+        runId: "run-expired",
+        agentId: "agent-1",
+        prompt: "执行",
+        idempotencyKey: "run-expired",
+        capabilityGrantIds: ["grant-1"],
+        capabilityHandshakeId: "handshake-1",
+      }),
+    );
+    await Effect.runPromise(adapter.claimTask());
+
+    await expect(Effect.runPromise(adapter.startTask("remote-task-expired"))).rejects.toMatchObject(
+      {
+        code: "task_mcp_lease_mismatch",
+      },
+    );
+    expect(protocolStartCalls).toBe(0);
   });
 });

@@ -277,6 +277,8 @@ export const CompositionMulticaRuntimeConfig = Schema.Struct({
   ),
   supportsResume: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
   supportsMcp: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
+  /** F2 daemon extension 使用的每 Run T3 MCP endpoint。 */
+  taskMcpEndpoint: Schema.optional(TrimmedNonEmptyString),
   supportsSquad: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
   supportsLeader: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
   supportsTaskGraph: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),

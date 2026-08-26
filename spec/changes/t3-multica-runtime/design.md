@@ -527,3 +527,18 @@ F1 审查修复补充：
 - ACP Runtime 只有在 initialize 中声明 HTTP/SSE MCP capability 时才能保留 remote MCP entry；不支持该能力的 Driver 必须 fail closed，不能因 stdio 或个别 Runtime 的兼容例外而对所有 ACP Driver 宣称可用。
 
 本轮官方源码核验路径包括 `server/cmd/server/router.go`、`server/internal/handler/daemon.go`、`server/internal/daemon/client.go`、`server/internal/daemon/types.go`、`server/internal/daemon/daemon.go`、`server/internal/daemon/runtime_mcp.go`、`server/internal/daemon/remote_mcp_broker.go`、`server/internal/handler/mcp_overlay.go`、`server/pkg/agent/{claude,codex,hermes}.go`、`server/cmd/multica/cmd_agent*.go` 和 `server/pkg/publicapi/v1/openapi.yaml`。
+
+## Batch F2：claim/start 的每 Run MCP Lease 注入合同
+
+本节点把 F1 的每 Run Lease 从“可以生成并由 Adapter 读取”推进到 Adapter 的实际 claim/start 执行边界：
+
+- 新增 `MulticaDaemonTaskExecutionBridge` 扩展合同。Multica Adapter 在 `dispatchTask` 成功后只保存远端 task ID 到 T3 `taskId`、`runId`、`agentId`、grant 集合和可选 handshake ID 的非敏感绑定，不保存 raw token。
+- `claimTask` 会保存远端任务事实；`startTask` 在调用 Multica 官方 `start` 协议之前，按远端 task 解析 T3 绑定，并通过 `taskMcpLeaseBridge` 重新读取每 Run Lease。
+- Lease 必须同时满足未过期、`runtimeId`、`taskId`、`runId`、`agentId` 和 grant 集合完全匹配；失败时返回稳定的 `task_execution_context_missing`、`task_execution_binding_missing`、`task_mcp_lease_unavailable` 或 `task_mcp_lease_mismatch`，不会调用 Multica `startTask`。
+- 只有 Lease 通过校验后，Adapter 才把 canonical `mcpConfig` 交给 `injectTaskStart` 扩展；扩展成功后才把远端任务标记为 running。raw token 只存在于这次进程内回调参数，不进入 settings、日志或审计正文。
+- 终态回报会清理远端 task 的本地 claim 事实和执行绑定；重复 grant、重复绑定和非法输入在 quick-create 之前拒绝，避免创建远端孤儿任务。
+- 没有 `taskExecutionBridge` 时，Adapter 保持原有官方窄协议行为；没有 `taskMcpLeaseBridge` 时，带 task-local handshake 的执行明确拒绝，不降级为静态 token 或 full access。
+
+本节点的定向验证覆盖 `serverSettings`、Multica Adapter、Composition Runtime Settings、Task MCP Lease 和 contracts 共 5 个文件、56 个测试；格式检查和 `git diff --check` 通过；服务端 TypeScript 过滤检查没有本节点新增 error，仅保留仓库既有 Effect 风格 suggestions。
+
+这仍然不是官方 Multica daemon 的真实跨进程 E2E。官方当前没有稳定的外部 task-local MCP overlay Public API，因此 `taskExecutionBridge` 是 T3 侧显式 daemon extension 边界；只有将该扩展接到真实 daemon/runtime start 入口并在有 Server、Workspace、两个 Agent 的环境中验证，才能宣称真实 Multica Agent 已获得每 Run T3 ToolBroker 能力。未安装扩展、扩展无法解析绑定、Lease 过期或 scope 不匹配时保持 fail closed。

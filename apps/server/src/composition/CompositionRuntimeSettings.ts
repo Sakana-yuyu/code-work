@@ -22,6 +22,10 @@ import {
   makeMulticaDaemonProtocol,
   makeMulticaFetchHttpTransport,
 } from "./MulticaDaemonProtocol.ts";
+import {
+  makeMulticaTaskMcpLeaseStore,
+  type MulticaTaskMcpLeaseStore,
+} from "./MulticaTaskMcpLease.ts";
 import type { CompositionRuntimeAdapter } from "./CompositionRuntimeAdapter.ts";
 import type { CompositionRuntimeAgent } from "./CompositionRuntimeAdapter.ts";
 import {
@@ -59,7 +63,7 @@ export type CompositionRuntimeSettingsFactoryInput = {
   readonly agents: ReadonlyArray<CompositionRuntimeAgent>;
   readonly mcpSessionRegistry?: Pick<
     CompositionRuntimeMcpSessionRegistry.CompositionRuntimeMcpSessionRegistryShape,
-    "activate" | "revokeHandshake"
+    "activate" | "revokeHandshake" | "revokeRuntime"
   >;
 };
 
@@ -171,97 +175,156 @@ const makeRuntimeMcpTokens = (
   return tokens;
 };
 
+type RuntimeMcpBridgeBundle = {
+  readonly capabilityBridge?: MulticaDaemonRuntimeAdapterOptions["capabilityBridge"];
+  readonly taskMcpLeaseBridge?: MulticaDaemonRuntimeAdapterOptions["taskMcpLeaseBridge"];
+};
+
 const makeRuntimeMcpCapabilityBridge = (
   runtimeId: string,
   tokens: ReadonlyMap<string, string>,
   mcpSessionRegistry: CompositionRuntimeSettingsFactoryInput["mcpSessionRegistry"],
-): MulticaDaemonRuntimeAdapterOptions["capabilityBridge"] =>
-  tokens.size === 0
-    ? undefined
-    : {
-        handshakeCapabilities: (input) =>
-          Effect.gen(function* () {
-            const rawToken = tokens.get(input.agentId);
-            if (rawToken === undefined) {
-              return {
-                runtimeId,
-                taskId: input.taskId,
-                runId: input.runId,
-                agentId: input.agentId,
-                status: "rejected" as const,
-                acceptedGrantIds: [],
-                reasonCode: "multica_runtime_mcp_credential_missing",
-              };
-            }
-            const now = yield* Clock.currentTimeMillis;
-            const expiresAtUnixMs = now + RUNTIME_MCP_HANDSHAKE_TTL_MS;
-            const activationEffect: Effect.Effect<
-              CompositionRuntimeMcpSessionRegistry.CompositionRuntimeMcpBinding | undefined,
-              CompositionRuntimeMcpSessionRegistry.CompositionRuntimeMcpBindingError
-            > =
-              mcpSessionRegistry === undefined
-                ? Effect.succeed<
-                    CompositionRuntimeMcpSessionRegistry.CompositionRuntimeMcpBinding | undefined
-                  >(undefined)
-                : mcpSessionRegistry.activate({
-                    rawToken,
-                    runtimeId,
-                    taskId: input.taskId,
-                    runId: input.runId,
-                    agentId: input.agentId,
-                    capabilityGrantIds: input.capabilityGrantIds,
-                    expiresAtUnixMs,
-                  });
-            const activationResult = yield* Effect.result(activationEffect);
-            if (Result.isFailure(activationResult)) {
-              return {
-                runtimeId,
-                taskId: input.taskId,
-                runId: input.runId,
-                agentId: input.agentId,
-                status: "rejected" as const,
-                acceptedGrantIds: [],
-                reasonCode: `multica_runtime_mcp_${activationResult.failure.code}`,
-              };
-            }
-            if (activationResult.success === undefined) {
-              return {
-                runtimeId,
-                taskId: input.taskId,
-                runId: input.runId,
-                agentId: input.agentId,
-                status: "rejected" as const,
-                acceptedGrantIds: [],
-                reasonCode: "multica_runtime_mcp_server_unavailable",
-              };
-            }
+  taskMcpEndpoint: string | undefined,
+): RuntimeMcpBridgeBundle => {
+  const taskMcpLeaseStore: MulticaTaskMcpLeaseStore | undefined =
+    taskMcpEndpoint === undefined || mcpSessionRegistry === undefined
+      ? undefined
+      : makeMulticaTaskMcpLeaseStore({ registry: mcpSessionRegistry });
+  if (tokens.size === 0 && taskMcpLeaseStore === undefined) return {};
+
+  const capabilityBridge: NonNullable<RuntimeMcpBridgeBundle["capabilityBridge"]> = {
+    handshakeCapabilities: (input) =>
+      Effect.gen(function* () {
+        if (taskMcpLeaseStore !== undefined && taskMcpEndpoint !== undefined) {
+          const now = yield* Clock.currentTimeMillis;
+          const leaseResult = yield* Effect.result(
+            taskMcpLeaseStore.issue({
+              ...input,
+              endpoint: taskMcpEndpoint,
+              expiresAtUnixMs: now + RUNTIME_MCP_HANDSHAKE_TTL_MS,
+            }),
+          );
+          if (Result.isFailure(leaseResult)) {
             return {
               runtimeId,
               taskId: input.taskId,
               runId: input.runId,
               agentId: input.agentId,
-              status: "accepted" as const,
-              acceptedGrantIds: [...input.capabilityGrantIds],
-              handshakeId: activationResult.success.capabilityHandshakeId,
-              expiresAtUnixMs: activationResult.success.expiresAtUnixMs,
+              status: "rejected" as const,
+              acceptedGrantIds: [],
+              reasonCode: `multica_runtime_mcp_lease_${leaseResult.failure.code}`,
             };
-          }),
-        revokeCapabilityHandshake: ({ handshakeId }) =>
+          }
+          return {
+            runtimeId,
+            taskId: input.taskId,
+            runId: input.runId,
+            agentId: input.agentId,
+            status: "accepted" as const,
+            acceptedGrantIds: [...input.capabilityGrantIds],
+            handshakeId: leaseResult.success.capabilityHandshakeId,
+            expiresAtUnixMs: leaseResult.success.expiresAtUnixMs,
+          };
+        }
+        const rawToken = tokens.get(input.agentId);
+        if (rawToken === undefined) {
+          return {
+            runtimeId,
+            taskId: input.taskId,
+            runId: input.runId,
+            agentId: input.agentId,
+            status: "rejected" as const,
+            acceptedGrantIds: [],
+            reasonCode: "multica_runtime_mcp_credential_missing",
+          };
+        }
+        const now = yield* Clock.currentTimeMillis;
+        const expiresAtUnixMs = now + RUNTIME_MCP_HANDSHAKE_TTL_MS;
+        const activationEffect: Effect.Effect<
+          CompositionRuntimeMcpSessionRegistry.CompositionRuntimeMcpBinding | undefined,
+          CompositionRuntimeMcpSessionRegistry.CompositionRuntimeMcpBindingError
+        > =
           mcpSessionRegistry === undefined
-            ? Effect.void
-            : mcpSessionRegistry.revokeHandshake(handshakeId),
-      };
+            ? Effect.succeed<
+                CompositionRuntimeMcpSessionRegistry.CompositionRuntimeMcpBinding | undefined
+              >(undefined)
+            : mcpSessionRegistry.activate({
+                rawToken,
+                runtimeId,
+                taskId: input.taskId,
+                runId: input.runId,
+                agentId: input.agentId,
+                capabilityGrantIds: input.capabilityGrantIds,
+                expiresAtUnixMs,
+              });
+        const activationResult = yield* Effect.result(activationEffect);
+        if (Result.isFailure(activationResult)) {
+          return {
+            runtimeId,
+            taskId: input.taskId,
+            runId: input.runId,
+            agentId: input.agentId,
+            status: "rejected" as const,
+            acceptedGrantIds: [],
+            reasonCode: `multica_runtime_mcp_${activationResult.failure.code}`,
+          };
+        }
+        if (activationResult.success === undefined) {
+          return {
+            runtimeId,
+            taskId: input.taskId,
+            runId: input.runId,
+            agentId: input.agentId,
+            status: "rejected" as const,
+            acceptedGrantIds: [],
+            reasonCode: "multica_runtime_mcp_server_unavailable",
+          };
+        }
+        return {
+          runtimeId,
+          taskId: input.taskId,
+          runId: input.runId,
+          agentId: input.agentId,
+          status: "accepted" as const,
+          acceptedGrantIds: [...input.capabilityGrantIds],
+          handshakeId: activationResult.success.capabilityHandshakeId,
+          expiresAtUnixMs: activationResult.success.expiresAtUnixMs,
+        };
+      }),
+    revokeCapabilityHandshake: ({ handshakeId }) =>
+      taskMcpLeaseStore !== undefined
+        ? taskMcpLeaseStore.revokeHandshake(handshakeId)
+        : mcpSessionRegistry === undefined
+          ? Effect.void
+          : mcpSessionRegistry.revokeHandshake(handshakeId),
+  };
+  return {
+    capabilityBridge,
+    ...(taskMcpLeaseStore === undefined
+      ? {}
+      : {
+          taskMcpLeaseBridge: {
+            get: taskMcpLeaseStore.get,
+            revokeRuntime: taskMcpLeaseStore.revokeRuntime,
+          },
+        }),
+  };
+};
 
 export const makeMulticaRuntimeAdapterFromSettings = (
   input: CompositionRuntimeSettingsFactoryInput,
 ): Effect.Effect<MulticaDaemonRuntimeAdapter, CompositionRuntimeSettingsError> =>
   Effect.try({
     try: () => {
-      const runtimeMcpTokens = makeRuntimeMcpTokens(input.config, input.environment);
-      const capabilityBridge = makeRuntimeMcpCapabilityBridge(
+      const runtimeMcpTokens =
+        input.config.taskMcpEndpoint === undefined
+          ? makeRuntimeMcpTokens(input.config, input.environment)
+          : new Map<string, string>();
+      const runtimeMcpBridge = makeRuntimeMcpCapabilityBridge(
         input.config.runtimeId,
         runtimeMcpTokens,
         input.mcpSessionRegistry,
+        input.config.taskMcpEndpoint,
       );
       const transport = makeMulticaFetchHttpTransport({
         baseUrl: input.config.baseUrl,
@@ -292,7 +355,12 @@ export const makeMulticaRuntimeAdapterFromSettings = (
         supportsSquad: input.config.supportsSquad,
         supportsLeader: input.config.supportsLeader,
         supportsTaskGraph: input.config.supportsTaskGraph,
-        ...(capabilityBridge === undefined ? {} : { capabilityBridge }),
+        ...(runtimeMcpBridge.capabilityBridge === undefined
+          ? {}
+          : { capabilityBridge: runtimeMcpBridge.capabilityBridge }),
+        ...(runtimeMcpBridge.taskMcpLeaseBridge === undefined
+          ? {}
+          : { taskMcpLeaseBridge: runtimeMcpBridge.taskMcpLeaseBridge }),
       });
     },
     catch: settingsError,
@@ -317,6 +385,13 @@ const fingerprintFor = (input: CompositionRuntimeSettingsFactoryInput): string =
     .digest("hex");
 
 const instanceEnabled = (instance: ProviderInstanceConfig): boolean => instance.enabled !== false;
+
+const revokeTaskMcpLeases = (adapter: CompositionRuntimeAdapter): Effect.Effect<void> => {
+  if ("revokeTaskMcpLeases" in adapter && typeof adapter.revokeTaskMcpLeases === "function") {
+    return adapter.revokeTaskMcpLeases();
+  }
+  return Effect.void;
+};
 
 const makeFactoryInput = (
   instanceId: string,
@@ -374,6 +449,7 @@ export const makeCompositionRuntimeSettingsReconciler = (
         continue;
       }
       yield* options.adapterRegistry.unregister(current.runtimeId);
+      yield* revokeTaskMcpLeases(current.adapter);
       yield* options.mcpSessionRegistry?.revokeRuntime(current.runtimeId) ?? Effect.void;
     }
 

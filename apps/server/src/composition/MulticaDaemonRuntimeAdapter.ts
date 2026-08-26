@@ -35,6 +35,7 @@ import {
   type MulticaTaskProgressInput,
   type MulticaWebSocketFrame,
 } from "./MulticaDaemonProtocol.ts";
+import type { MulticaTaskMcpLease } from "./MulticaTaskMcpLease.ts";
 
 export type MulticaDaemonStreamFramesInput = {
   readonly runtimeId: string;
@@ -68,6 +69,16 @@ export type MulticaDaemonRuntimeAdapterOptions = {
   readonly supportsSquad?: boolean | undefined;
   readonly supportsLeader?: boolean | undefined;
   readonly supportsTaskGraph?: boolean | undefined;
+  /** F2 每 Run MCP Lease 的读取与 Runtime 回收合同。 */
+  readonly taskMcpLeaseBridge?: {
+    readonly get: (capabilityHandshakeId: string) => Effect.Effect<MulticaTaskMcpLease | undefined>;
+    readonly revokeRuntime: (runtimeId: string) => Effect.Effect<void>;
+  };
+  /**
+   * F2 daemon extension：在 claim 后、向 Multica 标记 running 前注入当前 Run 的能力配置。
+   * 该扩展是唯一允许接触 task-local MCP overlay 的执行边界。
+   */
+  readonly taskExecutionBridge?: MulticaDaemonTaskExecutionBridge;
   /** 官方窄协议之外的 T3 扩展；未提供时保持 capability handshake 拒绝。 */
   readonly capabilityBridge?: {
     readonly handshakeCapabilities: (
@@ -113,6 +124,42 @@ export type MulticaDaemonRuntimeAdapter = CompositionRuntimeAdapter & {
     CompositionMulticaProbeResult,
     CompositionRuntimeAdapterFailure
   >;
+  /** claim/start 注入层读取 Lease；原始 token 不进入 Composition 合同。 */
+  readonly getTaskMcpLease: (
+    capabilityHandshakeId: string,
+  ) => Effect.Effect<MulticaTaskMcpLease | undefined>;
+  readonly revokeTaskMcpLeases: () => Effect.Effect<void>;
+};
+
+export type MulticaTaskExecutionBinding = {
+  readonly taskId: string;
+  readonly runId: string;
+  readonly agentId: string;
+  readonly capabilityGrantIds: ReadonlyArray<string>;
+  readonly capabilityHandshakeId?: string;
+};
+
+export type MulticaDaemonTaskExecutionContext = MulticaTaskExecutionBinding & {
+  readonly runtimeId: string;
+  readonly daemonId: string;
+  readonly daemonRuntimeId: string;
+  readonly runtimeTaskId: string;
+  readonly task: MulticaTask;
+  /** 只在注入回调的进程内存在，不得写入日志、设置或审计正文。 */
+  readonly mcpConfig?: MulticaTaskMcpLease["mcpConfig"];
+};
+
+export type MulticaDaemonTaskExecutionBridge = {
+  /** 外部 claim 的任务没有 T3 派发映射时，由扩展显式解析绑定；返回 undefined 必须拒绝 start。 */
+  readonly resolveBinding?: (input: {
+    readonly runtimeId: string;
+    readonly daemonRuntimeId: string;
+    readonly task: MulticaTask;
+  }) => Effect.Effect<MulticaTaskExecutionBinding | undefined, CompositionRuntimeAdapterFailure>;
+  /** 在调用 Multica startTask 前，把已校验的 task-local MCP overlay 注入实际执行器。 */
+  readonly injectTaskStart: (
+    context: MulticaDaemonTaskExecutionContext,
+  ) => Effect.Effect<void, CompositionRuntimeAdapterFailure>;
 };
 
 const nonEmpty = (value: string, field: string): string => {
@@ -170,6 +217,8 @@ const sameStringSet = (left: readonly string[], right: readonly string[]): boole
   const rightSet = new Set(right);
   return leftSet.size === rightSet.size && [...leftSet].every((value) => rightSet.has(value));
 };
+
+const hasDuplicate = (values: readonly string[]): boolean => new Set(values).size !== values.length;
 
 const recordString = (value: unknown, key: string): string | undefined => {
   if (typeof value !== "object" || value === null) return undefined;
@@ -357,6 +406,120 @@ export const makeMulticaDaemonRuntimeAdapter = (
       readonly capabilityGrantIds: ReadonlyArray<string>;
     }
   >();
+  const claimedTasks = new Map<string, MulticaTask>();
+  const taskExecutionBindings = new Map<string, MulticaTaskExecutionBinding>();
+
+  const normalizeExecutionBinding = (
+    input: MulticaTaskExecutionBinding,
+  ): MulticaTaskExecutionBinding => {
+    const taskId = nonEmpty(input.taskId, "taskId");
+    const runId = nonEmpty(input.runId, "runId");
+    const agentId = nonEmpty(input.agentId, "agentId");
+    const capabilityGrantIds = input.capabilityGrantIds.map((grantId) =>
+      nonEmpty(grantId, "capabilityGrantId"),
+    );
+    if (hasDuplicate(capabilityGrantIds)) {
+      throw new Error("capabilityGrantIds 不能包含重复值。");
+    }
+    const capabilityHandshakeId =
+      input.capabilityHandshakeId === undefined
+        ? undefined
+        : nonEmpty(input.capabilityHandshakeId, "capabilityHandshakeId");
+    if (capabilityGrantIds.length > 0 && capabilityHandshakeId === undefined) {
+      throw new Error("带 grant 的执行绑定必须包含 capabilityHandshakeId。");
+    }
+    return {
+      taskId,
+      runId,
+      agentId,
+      capabilityGrantIds,
+      ...(capabilityHandshakeId === undefined ? {} : { capabilityHandshakeId }),
+    };
+  };
+
+  const rememberTaskExecutionBinding = (
+    runtimeTaskId: string,
+    binding: MulticaTaskExecutionBinding,
+  ): void => {
+    taskExecutionBindings.set(runtimeTaskId, normalizeExecutionBinding(binding));
+  };
+
+  const executionContextFor = (
+    runtimeTaskId: string,
+  ): Effect.Effect<MulticaDaemonTaskExecutionContext, CompositionRuntimeAdapterFailure> =>
+    Effect.gen(function* () {
+      const task = claimedTasks.get(runtimeTaskId);
+      if (task === undefined) {
+        return yield* adapterFailure(
+          runtimeId,
+          "task_execution_context_missing",
+          `Multica 任务 '${runtimeTaskId}' 尚未 claim，不能注入执行上下文。`,
+        );
+      }
+      let binding = taskExecutionBindings.get(runtimeTaskId);
+      if (binding === undefined && options.taskExecutionBridge?.resolveBinding !== undefined) {
+        const resolved = yield* options.taskExecutionBridge.resolveBinding({
+          runtimeId,
+          daemonRuntimeId,
+          task,
+        });
+        if (resolved !== undefined) {
+          try {
+            binding = normalizeExecutionBinding(resolved);
+          } catch (cause) {
+            return yield* adapterFailure(
+              runtimeId,
+              "task_execution_binding_invalid",
+              cause instanceof Error ? cause.message : String(cause),
+            );
+          }
+          taskExecutionBindings.set(runtimeTaskId, binding);
+        }
+      }
+      if (binding === undefined) {
+        return yield* adapterFailure(
+          runtimeId,
+          "task_execution_binding_missing",
+          `Multica 任务 '${runtimeTaskId}' 没有可验证的 T3 Task/Run/Agent 绑定。`,
+        );
+      }
+      let mcpConfig: MulticaTaskMcpLease["mcpConfig"] | undefined;
+      if (binding.capabilityHandshakeId !== undefined) {
+        if (options.taskMcpLeaseBridge === undefined) {
+          return yield* adapterFailure(
+            runtimeId,
+            "task_mcp_lease_unavailable",
+            "当前执行绑定要求 task-local MCP Lease，但 Adapter 没有 Lease bridge。",
+          );
+        }
+        const lease = yield* options.taskMcpLeaseBridge.get(binding.capabilityHandshakeId);
+        if (
+          lease === undefined ||
+          lease.expiresAtUnixMs <= now() ||
+          lease.runtimeId !== runtimeId ||
+          lease.taskId !== binding.taskId ||
+          lease.runId !== binding.runId ||
+          lease.agentId !== binding.agentId ||
+          !sameStringSet(lease.capabilityGrantIds, binding.capabilityGrantIds)
+        ) {
+          return yield* adapterFailure(
+            runtimeId,
+            "task_mcp_lease_mismatch",
+            "Task MCP Lease 已过期、撤销或与当前 Task/Run/Agent/Grant 不匹配。",
+          );
+        }
+        mcpConfig = lease.mcpConfig;
+      }
+      return {
+        ...binding,
+        runtimeId,
+        daemonId,
+        daemonRuntimeId,
+        runtimeTaskId,
+        task,
+        ...(mcpConfig === undefined ? {} : { mcpConfig }),
+      } satisfies MulticaDaemonTaskExecutionContext;
+    });
 
   const heartbeat = () =>
     options.protocol.heartbeat(daemonRuntimeId).pipe(
@@ -439,21 +602,41 @@ export const makeMulticaDaemonRuntimeAdapter = (
       configuredAgents.map((agent) => ({ ...agent, capabilities: [...agent.capabilities] })),
     );
 
+  const getTaskMcpLease = (capabilityHandshakeId: string) =>
+    options.taskMcpLeaseBridge === undefined
+      ? Effect.succeed<MulticaTaskMcpLease | undefined>(undefined)
+      : options.taskMcpLeaseBridge.get(capabilityHandshakeId);
+
+  const revokeTaskMcpLeases = () =>
+    options.taskMcpLeaseBridge === undefined
+      ? Effect.void
+      : options.taskMcpLeaseBridge.revokeRuntime(runtimeId);
+
   const claimTask = () =>
     options.protocol.claimTask(daemonRuntimeId).pipe(
       Effect.tap((claimed) =>
         Effect.sync(() => {
-          if (claimed !== null) activeTaskIds.add(claimed.id);
+          if (claimed !== null) {
+            activeTaskIds.add(claimed.id);
+            claimedTasks.set(claimed.id, claimed);
+          }
         }),
       ),
       Effect.mapError((failure) => mapProtocolFailure(runtimeId, failure)),
     );
 
   const startTask = (runtimeTaskId: string) =>
-    options.protocol.startTask(nonEmpty(runtimeTaskId, "runtimeTaskId")).pipe(
-      Effect.tap(() => Effect.sync(() => activeTaskIds.add(runtimeTaskId))),
-      Effect.mapError((failure) => mapProtocolFailure(runtimeId, failure)),
-    );
+    Effect.gen(function* () {
+      const normalizedRuntimeTaskId = nonEmpty(runtimeTaskId, "runtimeTaskId");
+      if (options.taskExecutionBridge !== undefined) {
+        const context = yield* executionContextFor(normalizedRuntimeTaskId);
+        yield* options.taskExecutionBridge.injectTaskStart(context);
+      }
+      yield* options.protocol
+        .startTask(normalizedRuntimeTaskId)
+        .pipe(Effect.mapError((failure) => mapProtocolFailure(runtimeId, failure)));
+      activeTaskIds.add(normalizedRuntimeTaskId);
+    });
 
   const reportProgress = (runtimeTaskId: string, input: MulticaTaskProgressInput) =>
     options.protocol
@@ -462,19 +645,37 @@ export const makeMulticaDaemonRuntimeAdapter = (
 
   const completeTask = (runtimeTaskId: string, input: MulticaTaskCompleteInput) =>
     options.protocol.completeTask(nonEmpty(runtimeTaskId, "runtimeTaskId"), input).pipe(
-      Effect.tap(() => Effect.sync(() => activeTaskIds.delete(runtimeTaskId))),
+      Effect.tap(() =>
+        Effect.sync(() => {
+          activeTaskIds.delete(runtimeTaskId);
+          claimedTasks.delete(runtimeTaskId);
+          taskExecutionBindings.delete(runtimeTaskId);
+        }),
+      ),
       Effect.mapError((failure) => mapProtocolFailure(runtimeId, failure)),
     );
 
   const failTask = (runtimeTaskId: string, input: MulticaTaskFailInput) =>
     options.protocol.failTask(nonEmpty(runtimeTaskId, "runtimeTaskId"), input).pipe(
-      Effect.tap(() => Effect.sync(() => activeTaskIds.delete(runtimeTaskId))),
+      Effect.tap(() =>
+        Effect.sync(() => {
+          activeTaskIds.delete(runtimeTaskId);
+          claimedTasks.delete(runtimeTaskId);
+          taskExecutionBindings.delete(runtimeTaskId);
+        }),
+      ),
       Effect.mapError((failure) => mapProtocolFailure(runtimeId, failure)),
     );
 
   const acknowledgeCancellation = (runtimeTaskId: string, input: MulticaTaskCancelAckInput) =>
     options.protocol.acknowledgeCancellation(nonEmpty(runtimeTaskId, "runtimeTaskId"), input).pipe(
-      Effect.tap(() => Effect.sync(() => activeTaskIds.delete(runtimeTaskId))),
+      Effect.tap(() =>
+        Effect.sync(() => {
+          activeTaskIds.delete(runtimeTaskId);
+          claimedTasks.delete(runtimeTaskId);
+          taskExecutionBindings.delete(runtimeTaskId);
+        }),
+      ),
       Effect.mapError((failure) => mapProtocolFailure(runtimeId, failure)),
     );
 
@@ -525,6 +726,26 @@ export const makeMulticaDaemonRuntimeAdapter = (
           "Multica quick-create 需要 prompt。",
         );
       }
+      let executionBinding: MulticaTaskExecutionBinding | undefined;
+      if (options.taskExecutionBridge !== undefined) {
+        try {
+          executionBinding = normalizeExecutionBinding({
+            taskId: input.taskId,
+            runId: input.runId,
+            agentId,
+            capabilityGrantIds,
+            ...(input.capabilityHandshakeId === undefined
+              ? {}
+              : { capabilityHandshakeId: input.capabilityHandshakeId }),
+          });
+        } catch (cause) {
+          return yield* adapterFailure(
+            runtimeId,
+            "task_execution_binding_invalid",
+            cause instanceof Error ? cause.message : String(cause),
+          );
+        }
+      }
       const existing = dispatchedTasks.get(idempotencyKey);
       if (existing !== undefined) {
         return { ...existing, status: "already_running" as const };
@@ -558,6 +779,9 @@ export const makeMulticaDaemonRuntimeAdapter = (
         status: "accepted" as const,
       } satisfies CompositionRuntimeTaskResult;
       dispatchedTasks.set(idempotencyKey, result);
+      if (executionBinding !== undefined) {
+        rememberTaskExecutionBinding(created.taskId, executionBinding);
+      }
       activeTaskIds.add(created.taskId);
       return result;
     });
@@ -660,6 +884,8 @@ export const makeMulticaDaemonRuntimeAdapter = (
     failTask,
     acknowledgeCancellation,
     probeMultica,
+    getTaskMcpLease,
+    revokeTaskMcpLeases,
     ...(options.capabilityBridge?.revokeCapabilityHandshake === undefined
       ? {}
       : {
