@@ -263,6 +263,43 @@ const projectEvent = (
   }
 };
 
+/**
+ * 事件流可能在重连或多路回放后乱序到达。启动/进度类事件不能清除当前
+ * blocker，也不能把已经派发或运行中的任务退回 queued；终态事件仍由上层
+ * 的 runtime lock 和终态规则处理。
+ */
+const preserveStatusForStaleRuntimeEvent = (
+  event: ProviderRuntimeEvent,
+  currentStatus: CompositionTaskStatus,
+  projection: RuntimeProjection,
+): RuntimeProjection => {
+  const isProgressLike =
+    event.type === "turn.started" ||
+    event.type === "task.started" ||
+    event.type === "task.progress" ||
+    event.type === "task.updated";
+  if (
+    !isProgressLike ||
+    terminalStatuses.has(projection.status) ||
+    projection.status === "in_review"
+  ) {
+    return projection;
+  }
+
+  const preserveBlocker =
+    (currentStatus === "waiting_approval" ||
+      currentStatus === "waiting_input" ||
+      currentStatus === "blocked") &&
+    projection.status !== currentStatus;
+  const preventQueueRegression =
+    (currentStatus === "dispatched" || currentStatus === "running") &&
+    projection.status === "queued";
+  if (!preserveBlocker && !preventQueueRegression) {
+    return projection;
+  }
+  return { ...projection, status: currentStatus };
+};
+
 export const projectCompositionRuntimeEvent = (
   store: CompositionTaskStoreShape,
   driverRegistry: CompositionAgentDriverRegistry,
@@ -285,8 +322,9 @@ export const projectCompositionRuntimeEvent = (
 
     const task = taskOption.value;
     const run = runOption.value;
-    const projection = projectEvent(event, task.status, task.mode === "review");
-    if (projection === undefined) return;
+    const projected = projectEvent(event, task.status, task.mode === "review");
+    if (projected === undefined) return;
+    const projection = preserveStatusForStaleRuntimeEvent(event, task.status, projected);
 
     const eventRecord = {
       taskId: binding.taskId,

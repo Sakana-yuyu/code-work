@@ -650,6 +650,108 @@ layer("CompositionTaskRuntimeProjector", (it) => {
     }),
   );
 
+  it.effect("迟到的启动和进度事件不能让运行中任务倒退或清除当前 blocker", () =>
+    Effect.gen(function* () {
+      const store = yield* CompositionTaskStore;
+      const registry = makeCompositionAgentDriverRegistry();
+      const cases = [
+        {
+          suffix: "running-pending",
+          taskStatus: "running" as const,
+          runStatus: "running" as const,
+          event: {
+            ...baseEvent,
+            eventId: EventId.make("provider-event-stale-pending"),
+            type: "task.progress" as const,
+            payload: {
+              taskId: RuntimeTaskId.make("runtime-task-stale-pending"),
+              status: "pending" as const,
+              description: "旧的排队状态",
+            },
+          },
+          expected: "running" as const,
+        },
+        {
+          suffix: "approval-running",
+          taskStatus: "waiting_approval" as const,
+          runStatus: "waiting_approval" as const,
+          event: {
+            ...baseEvent,
+            eventId: EventId.make("provider-event-stale-approval"),
+            type: "task.started" as const,
+            payload: {
+              taskId: RuntimeTaskId.make("runtime-task-stale-approval"),
+              description: "旧的启动事件",
+            },
+          },
+          expected: "waiting_approval" as const,
+        },
+        {
+          suffix: "input-running",
+          taskStatus: "waiting_input" as const,
+          runStatus: "waiting_input" as const,
+          event: {
+            ...baseEvent,
+            eventId: EventId.make("provider-event-stale-input"),
+            type: "task.progress" as const,
+            payload: {
+              taskId: RuntimeTaskId.make("runtime-task-stale-input"),
+              status: "running" as const,
+              description: "旧的运行状态",
+            },
+          },
+          expected: "waiting_input" as const,
+        },
+      ];
+
+      for (const current of cases) {
+        const caseId = `stale-${current.suffix}`;
+        const currentTask = {
+          ...task,
+          taskId: `task-runtime-${caseId}`,
+          assigneeId: `agent-runtime-${caseId}`,
+          status: current.taskStatus,
+        };
+        const currentRun = {
+          ...run,
+          taskId: currentTask.taskId,
+          runId: `run-runtime-${caseId}`,
+          runtimeId: `runtime-${caseId}`,
+          runtimeTaskId: `runtime-task-${caseId}`,
+          agentId: currentTask.assigneeId,
+          status: current.runStatus,
+        };
+        yield* registry.register({
+          agentId: currentTask.assigneeId,
+          runtimeId: currentRun.runtimeId,
+          startTask: () => Effect.succeed({ runtimeTaskId: currentRun.runtimeTaskId! }),
+          cancelTask: () => Effect.succeed({ status: "cancelled" as const }),
+          resolveRuntimeEvent: () => ({
+            taskId: currentTask.taskId,
+            runId: currentRun.runId,
+            runtimeTaskId: currentRun.runtimeTaskId,
+          }),
+        });
+        yield* store.upsertTask(currentTask);
+        yield* store.upsertRun(currentRun);
+
+        yield* projectCompositionRuntimeEvent(store, registry, {
+          ...current.event,
+          threadId: ThreadId.make(`thread-${caseId}`),
+        });
+
+        assert.equal(
+          Option.getOrThrow(yield* store.getTask(currentTask.taskId)).status,
+          current.expected,
+        );
+        assert.equal(
+          Option.getOrThrow(yield* store.getRun(currentRun.runId)).status,
+          current.expected,
+        );
+      }
+    }),
+  );
+
   it.effect("Multica task:message 只写 message 审计，不推进或伪装成 progress", () =>
     Effect.gen(function* () {
       const store = yield* CompositionTaskStore;
