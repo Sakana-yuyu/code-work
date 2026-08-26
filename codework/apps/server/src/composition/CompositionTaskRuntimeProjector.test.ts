@@ -3,6 +3,7 @@ import {
   EventId,
   ProviderDriverKind,
   ProviderInstanceId,
+  RuntimeTaskId,
   ThreadId,
   TurnId,
   type CompositionTask,
@@ -315,6 +316,123 @@ layer("CompositionTaskRuntimeProjector", (it) => {
 
       assert.deepEqual(revokedHandshakes, ["handshake-runtime-concurrent"]);
       assert.equal((yield* store.listEvents(concurrentTask.taskId, concurrentRun.runId)).length, 1);
+    }),
+  );
+
+  it.effect("旧 Run 的迟到终态事件只写入旧 Run 审计，不覆盖最新 Run", () =>
+    Effect.gen(function* () {
+      const store = yield* CompositionTaskStore;
+      const retriedTask = { ...task, taskId: "task-runtime-retried" };
+      const oldRun = {
+        ...run,
+        taskId: retriedTask.taskId,
+        runId: "run-runtime-retried-old",
+        runtimeTaskId: "runtime-task-retried-old",
+        attempt: 1,
+      };
+      const latestRun = {
+        ...oldRun,
+        runId: "run-runtime-retried-latest",
+        runtimeTaskId: "runtime-task-retried-latest",
+        attempt: 2,
+      };
+      const registry = makeCompositionAgentDriverRegistry();
+      yield* registry.register({
+        agentId: retriedTask.assigneeId,
+        runtimeId: oldRun.runtimeId,
+        startTask: () => Effect.succeed({ runtimeTaskId: oldRun.runtimeTaskId! }),
+        cancelTask: () => Effect.succeed({ status: "cancelled" as const }),
+        resolveRuntimeEvent: () => ({
+          taskId: retriedTask.taskId,
+          runId: oldRun.runId,
+          runtimeTaskId: oldRun.runtimeTaskId,
+        }),
+      });
+      yield* store.upsertTask(retriedTask);
+      yield* store.upsertRun(oldRun);
+      yield* store.upsertRun(latestRun);
+
+      yield* projectCompositionRuntimeEvent(
+        store,
+        registry,
+        completionEvent("provider-event-old-run-late"),
+      );
+
+      const loadedTask = yield* store.getTask(retriedTask.taskId);
+      const loadedOldRun = yield* store.getRun(oldRun.runId);
+      const loadedLatestRun = yield* store.getRun(latestRun.runId);
+      const oldRunEvents = yield* store.listEvents(retriedTask.taskId, oldRun.runId);
+      assert.equal(Option.getOrThrow(loadedTask).status, "running");
+      assert.equal(Option.getOrThrow(loadedOldRun).status, "running");
+      assert.equal(Option.getOrThrow(loadedLatestRun).status, "running");
+      assert.equal(oldRunEvents.length, 1);
+      assert.equal(oldRunEvents[0]?.sourceEventId, "provider-event-old-run-late");
+    }),
+  );
+
+  it.effect("取消、超时和审核锁定后，迟到事件只保留审计而不复活任务", () =>
+    Effect.gen(function* () {
+      const cases = [
+        { suffix: "cancelled", status: "cancelled" as const, eventType: "task.progress" as const },
+        { suffix: "timed-out", status: "timed_out" as const, eventType: "task.completed" as const },
+        { suffix: "in-review", status: "in_review" as const, eventType: "task.progress" as const },
+      ];
+
+      for (const current of cases) {
+        const store = yield* CompositionTaskStore;
+        const lockedTask = {
+          ...task,
+          taskId: `task-runtime-locked-${current.suffix}`,
+          status: current.status,
+        };
+        const lockedRun = {
+          ...run,
+          taskId: lockedTask.taskId,
+          runId: `run-runtime-locked-${current.suffix}`,
+          runtimeTaskId: `runtime-task-locked-${current.suffix}`,
+          status: current.status,
+          finishedAtUnixMs: 100,
+        };
+        const registry = makeCompositionAgentDriverRegistry();
+        yield* registry.register({
+          agentId: lockedTask.assigneeId,
+          runtimeId: lockedRun.runtimeId,
+          startTask: () => Effect.succeed({ runtimeTaskId: lockedRun.runtimeTaskId! }),
+          cancelTask: () => Effect.succeed({ status: "cancelled" as const }),
+          resolveRuntimeEvent: () => ({
+            taskId: lockedTask.taskId,
+            runId: lockedRun.runId,
+            runtimeTaskId: lockedRun.runtimeTaskId,
+          }),
+        });
+        yield* store.upsertTask(lockedTask);
+        yield* store.upsertRun(lockedRun);
+
+        const lateEvent: ProviderRuntimeEvent =
+          current.eventType === "task.progress"
+            ? {
+                ...baseEvent,
+                eventId: EventId.make(`provider-event-late-${current.suffix}`),
+                type: "task.progress",
+                payload: {
+                  taskId: RuntimeTaskId.make(lockedRun.runtimeTaskId),
+                  summary: "迟到进度",
+                },
+              }
+            : {
+                ...completionEvent(`provider-event-late-${current.suffix}`),
+                type: "turn.completed",
+              };
+        yield* projectCompositionRuntimeEvent(store, registry, lateEvent);
+
+        const loadedTask = yield* store.getTask(lockedTask.taskId);
+        const loadedRun = yield* store.getRun(lockedRun.runId);
+        const events = yield* store.listEvents(lockedTask.taskId, lockedRun.runId);
+        assert.equal(Option.getOrThrow(loadedTask).status, current.status);
+        assert.equal(Option.getOrThrow(loadedRun).status, current.status);
+        assert.equal(events.length, 1);
+        assert.equal(events[0]?.sourceEventId, `provider-event-late-${current.suffix}`);
+      }
     }),
   );
 

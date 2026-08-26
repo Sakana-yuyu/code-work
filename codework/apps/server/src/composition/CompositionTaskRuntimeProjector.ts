@@ -24,6 +24,11 @@ const terminalStatuses: ReadonlySet<CompositionTaskStatus> = new Set([
   "timed_out",
 ]);
 
+const runtimeLockedStatuses: ReadonlySet<CompositionTaskStatus> = new Set([
+  ...terminalStatuses,
+  "in_review",
+]);
+
 const runtimeStatusToCompositionStatus = (
   status: string | undefined,
 ): CompositionTaskStatus | undefined => {
@@ -211,16 +216,42 @@ export const projectCompositionRuntimeEvent = (
     const runOption = yield* store.getRun(binding.runId);
     if (Option.isNone(taskOption) || Option.isNone(runOption)) return;
 
-    // 重试会复用 taskId 但创建新的 runId；旧 Run 的迟到事件只能保留在其审计流中，
-    // 不能再次改写当前 Task 投影，否则会把新一轮运行覆盖回旧终态。
-    const latestRunOption = yield* store.getLatestRun(binding.taskId);
-    if (Option.isSome(latestRunOption) && latestRunOption.value.runId !== binding.runId) return;
-
     const task = taskOption.value;
     const run = runOption.value;
     const projection = projectEvent(event, task.status, task.mode === "review");
     if (projection === undefined) return;
-    if (terminalStatuses.has(task.status) && projection.status !== task.status) return;
+
+    const eventRecord = {
+      taskId: binding.taskId,
+      runId: binding.runId,
+      ...(task.parentTaskId === undefined ? {} : { parentTaskId: task.parentTaskId }),
+      sourceEventId: String(event.eventId),
+      agentId: run.agentId,
+      runtimeId: run.runtimeId,
+      status: projection.status,
+      sequence: 0,
+      eventType: projection.eventType,
+      summary: projection.summary,
+      ...(projection.blockerCode === undefined ? {} : { blockerCode: projection.blockerCode }),
+    } as const;
+
+    const appendAuditOnly = () =>
+      store.withTransaction(store.appendEventIfNew(eventRecord).pipe(Effect.asVoid));
+
+    // 重试会复用 taskId 但创建新的 runId；旧 Run 的迟到事件只保留在其审计流中，
+    // 不能再次改写当前 Task 或最新 Run 投影。
+    const latestRunOption = yield* store.getLatestRun(binding.taskId);
+    if (Option.isSome(latestRunOption) && latestRunOption.value.runId !== binding.runId) {
+      yield* appendAuditOnly();
+      return;
+    }
+
+    // 终态和 in_review 都是运行时锁定状态。迟到 progress/completed 仍保留审计，
+    // 但不得让取消、超时或人工审核中的任务复活或覆盖既有结果。
+    if (runtimeLockedStatuses.has(task.status) && projection.status !== task.status) {
+      yield* appendAuditOnly();
+      return;
+    }
 
     const now = yield* Clock.currentTimeMillis;
     const isTaskTerminal = terminalStatuses.has(projection.status);
@@ -246,19 +277,7 @@ export const projectCompositionRuntimeEvent = (
     };
     const accepted = yield* store.withTransaction(
       Effect.gen(function* () {
-        const inserted = yield* store.appendEventIfNew({
-          taskId: binding.taskId,
-          runId: binding.runId,
-          ...(task.parentTaskId === undefined ? {} : { parentTaskId: task.parentTaskId }),
-          sourceEventId: String(event.eventId),
-          agentId: run.agentId,
-          runtimeId: run.runtimeId,
-          status: projection.status,
-          sequence: 0,
-          eventType: projection.eventType,
-          summary: projection.summary,
-          ...(projection.blockerCode === undefined ? {} : { blockerCode: projection.blockerCode }),
-        });
+        const inserted = yield* store.appendEventIfNew(eventRecord);
         if (!inserted) return false;
         yield* store.upsertTask(nextTask);
         yield* store.upsertRun(nextRun);
