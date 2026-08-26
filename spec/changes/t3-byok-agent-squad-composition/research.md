@@ -39,7 +39,7 @@
 
 ### 本地代码
 
-- T3：`E:/MyProject/code-work/t3code/apps/server/src/provider/ProviderDriver.ts`、`ProviderAdapter.ts`、`Layers/ByokAdapter.ts`、`provider/byok/ByokDelegationService.ts`、`orchestration/byokDelegation/DelegationScheduler.ts`、`packages/contracts/src/providerRuntime.ts`。
+- T3：`E:/MyProject/code-work/codework/apps/server/src/provider/ProviderDriver.ts`、`ProviderAdapter.ts`、`Layers/ByokAdapter.ts`、`provider/byok/ByokDelegationService.ts`、`orchestration/byokDelegation/DelegationScheduler.ts`、`packages/contracts/src/providerRuntime.ts`。
 - `cursor-byok`：`E:/MyProject/cursor-byok/internal/backend/agent`、`delegation`、`forwarder`、`routing`、`mitm`、`requestlab`、`controlcenter`、`cursoraccount`、`cursorcapabilities`、`computeruse`、`skills`、`terminalenv`。
 - 版本与状态：T3 `51cffa02`；父仓库 `37b9e750`；`cursor-byok` `2ce7481`。`cursor-byok` 有未提交 i18n、host、Agent Contract bridge 相关修改；T3 子仓库干净，父仓库把 `t3code/` 显示为未跟踪目录。
 

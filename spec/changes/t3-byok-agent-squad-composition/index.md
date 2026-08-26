@@ -16,8 +16,8 @@
 
 ## Exemplars
 
-- E-1：`E:/MyProject/code-work/t3code/apps/server/src/provider/ProviderDriver.ts` 的多实例 Driver SPI。
-- E-2：`E:/MyProject/code-work/t3code/apps/server/src/provider/Services/ProviderAdapter.ts` 的会话、审批、用户输入和事件流合同。
+- E-1：`E:/MyProject/code-work/codework/apps/server/src/provider/ProviderDriver.ts` 的多实例 Driver SPI。
+- E-2：`E:/MyProject/code-work/codework/apps/server/src/provider/Services/ProviderAdapter.ts` 的会话、审批、用户输入和事件流合同。
 - E-3：`E:/MyProject/cursor-byok/internal/backend/agent/model/tool_admission.go` 与 `internal/backend/agent/bridge/exec/tool_registry.go` 的工具准入和 canonical 映射。
 - E-4：`E:/MyProject/cursor-byok/internal/backend/delegation/executor_registry.go` 的多 executor 注册、探测、失败冷却与能力声明。
 - E-5：Multica 官方 Squad 文档的 Leader-first 调度语义。

@@ -262,5 +262,5 @@ flowchart TB
 ### 证据登记
 
 - 本地检索日期：2026-08-25；T3 分支 HEAD `51cffa02`，父仓库 HEAD `37b9e750`，`cursor-byok` HEAD `2ce7481`。两个仓库的未提交状态分别按当前工作区事实处理。
-- 本地证据：`E:/MyProject/code-work/t3code/apps/server/src/provider/ProviderDriver.ts`、`ProviderAdapter.ts`、`Layers/ByokAdapter.ts`、`provider/byok/ByokDelegationService.ts`、`orchestration/byokDelegation/DelegationScheduler.ts`、`packages/contracts/src/providerRuntime.ts`；`E:/MyProject/cursor-byok/internal/backend/agent`、`delegation`、`forwarder`、`routing`、`mitm`、`requestlab`、`controlcenter`、`cursoraccount`、`cursorcapabilities`、`computeruse`、`skills`、`terminalenv`。
+- 本地证据：`E:/MyProject/code-work/codework/apps/server/src/provider/ProviderDriver.ts`、`ProviderAdapter.ts`、`Layers/ByokAdapter.ts`、`provider/byok/ByokDelegationService.ts`、`orchestration/byokDelegation/DelegationScheduler.ts`、`packages/contracts/src/providerRuntime.ts`；`E:/MyProject/cursor-byok/internal/backend/agent`、`delegation`、`forwarder`、`routing`、`mitm`、`requestlab`、`controlcenter`、`cursoraccount`、`cursorcapabilities`、`computeruse`、`skills`、`terminalenv`。
 - 外部检索关键词：`multica-ai multica GitHub agent squad task daemon runtime`、`site:github.com/multica-ai/multica Agent Squad Task daemon runtime`；访问日期：2026-08-25；采用来源为 Multica 官方 GitHub README、官方 `CLI_AND_DAEMON.md` 和官方文档 `concepts`、`agents`、`squads`、`tasks`、`security-model`，因为这些是项目作者维护的架构、协议和安全边界说明，优先于第三方介绍。
