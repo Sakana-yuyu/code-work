@@ -886,13 +886,24 @@ export const makeMulticaDaemonRuntimeAdapter = (
     probeMultica,
     getTaskMcpLease,
     revokeTaskMcpLeases,
-    ...(options.capabilityBridge?.revokeCapabilityHandshake === undefined
+    ...(options.capabilityBridge === undefined
       ? {}
       : {
           revokeCapabilityHandshake: (input: { readonly handshakeId: string }) =>
-            options.capabilityBridge!.revokeCapabilityHandshake!(input).pipe(
-              Effect.tap(() => Effect.sync(() => capabilityHandshakes.delete(input.handshakeId))),
-            ),
+            Effect.gen(function* () {
+              if (options.capabilityBridge!.revokeCapabilityHandshake === undefined) {
+                capabilityHandshakes.delete(input.handshakeId);
+                return yield* adapterFailure(
+                  runtimeId,
+                  "capability_handshake_revoke_unsupported",
+                  "Multica capability extension 没有提供远端 handshake 撤销接口。",
+                );
+              }
+              yield* options
+                .capabilityBridge!.revokeCapabilityHandshake(input)
+                .pipe(Effect.mapError((failure) => failure));
+              capabilityHandshakes.delete(input.handshakeId);
+            }),
         }),
   };
 };

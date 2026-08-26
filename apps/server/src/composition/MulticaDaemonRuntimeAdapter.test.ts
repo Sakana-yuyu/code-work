@@ -473,6 +473,52 @@ describe("MulticaDaemonRuntimeAdapter", () => {
     expect(revokeCalls).toEqual(["handshake-1"]);
   });
 
+  it("远端没有 revoke 合同时清理本地 handshake，并拒绝继续派发", async () => {
+    const adapter = makeMulticaDaemonRuntimeAdapter(
+      makeOptions({
+        capabilities: ["rpc-v1", "t3.toolbroker", "t3.capability_handshake"],
+        capabilityBridge: {
+          handshakeCapabilities: (input) =>
+            Effect.succeed({
+              ...input,
+              status: "accepted" as const,
+              handshakeId: "handshake-no-revoke",
+              acceptedGrantIds: [...input.capabilityGrantIds],
+            }),
+        },
+      }),
+    );
+
+    await expect(
+      Effect.runPromise(
+        adapter.handshakeCapabilities!({
+          runtimeId,
+          taskId: "task-no-revoke",
+          runId: "run-no-revoke",
+          agentId: "agent-1",
+          capabilityGrantIds: ["grant-no-revoke"],
+        }),
+      ),
+    ).resolves.toMatchObject({ status: "accepted", handshakeId: "handshake-no-revoke" });
+
+    await expect(
+      Effect.runPromise(adapter.revokeCapabilityHandshake!({ handshakeId: "handshake-no-revoke" })),
+    ).rejects.toMatchObject({ code: "capability_handshake_revoke_unsupported" });
+    await expect(
+      Effect.runPromise(
+        adapter.dispatchTask({
+          taskId: "task-no-revoke",
+          runId: "run-no-revoke",
+          agentId: "agent-1",
+          prompt: "不能借用已撤销的握手",
+          idempotencyKey: "run-no-revoke",
+          capabilityGrantIds: ["grant-no-revoke"],
+          capabilityHandshakeId: "handshake-no-revoke",
+        }),
+      ),
+    ).rejects.toMatchObject({ code: "capability_handshake_mismatch" });
+  });
+
   it("没有 Lease bridge 时不伪造 task-local Lease，并在 Runtime 回收时保持空操作", async () => {
     const adapter = makeMulticaDaemonRuntimeAdapter(makeOptions());
 
