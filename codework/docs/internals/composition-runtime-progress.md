@@ -13,9 +13,9 @@
 | 更新时间 | 2026-08-27 |
 | 仓库 | `E:\MyProject\code-work\codework` |
 | 当前分支 | `tcode` |
-| 当前提交 | Goal Loop 验证子代理合同节点：`feat(composition): Goal Loop 验证子代理合同` |
-| 相对远端 | 领先 `origin/tcode` 32 个提交，尚未 push |
-| 最新节点 | Goal Loop 完成标记接入 validateCompletion 验证子代理合同：拒绝不收敛、记录 rejectedCompletions（20 单测） |
+| 当前提交 | Goal Loop 编排接线节点：`feat(composition): Goal Loop 接入任务台账编排` |
+| 相对远端 | 领先 `origin/tcode` 33 个提交，尚未 push |
+| 最新节点 | 新增 CompositionGoalLoopRunner：每轮/拒绝/终态幂等投影进任务台账（契约测试 5 用例，Goal Loop 全家 25/25） |
 | 工作区边界 | 存在大量其他并行修改；本文不把这些修改计入本迁移进度，也不回滚、暂存或提交它们 |
 
 ## 证据等级
@@ -66,11 +66,12 @@ CapabilityRegistry + ToolBroker
 - 本地 Task Graph 已能表达依赖、并行、有限重试、失败取消和结果汇聚。
 - 新增 `CompositionGoalLoop` 第一切片（纯注入式运行时）：识别 `[[GOAL_COMPLETE]]`/`[[GOAL_COMPLETE: 原因]]` 完成标记与 `[[GOAL_CANCELLED]]` 显式取消标记；attempt 回调可读剩余轮数/剩余成本；支持 maxAttempts、maxCostUnits、deadlineUnixMs（注入 now）与外部 isCancelled 注入，终止判定按"取消 > 截止 > 轮数/成本预算"优先级收敛为 completed/budget_exhausted/deadline_exceeded/cancelled。
 - 新增 idle/stale pivot 判定：`stalePivotRounds` 启用后，连续 N 轮无进展输出（归一化文本与上一轮相同，含空输出空转）即按 `pivot_required` 收敛并暴露 `pivot.staleRounds`/`pivot.lastCleanText`；输出变化重置计数，同轮出现完成/取消标记仍以标记为准，轮开始前的取消与轮数/成本预算判定不受影响。
-- 新增验证子代理合同（本节点）：`validateCompletion` 注入后，完成标记需经验证方接受才收敛为 completed；拒绝的声明记录进 `rejectedCompletions`（round + detail）并继续循环，其输出同时参与停滞判定，可与 pivot 同轮收敛；验证方错误与 attempt 共用错误通道原样上抛。合同含 round/value/cleanText/reason/history 快照上下文，真实"再派 agent 校验"的 validator 实现后续接入此接入点。
+- 新增验证子代理合同：`validateCompletion` 注入后，完成标记需经验证方接受才收敛为 completed；拒绝的声明记录进 `rejectedCompletions`（round + detail）并继续循环，其输出同时参与停滞判定，可与 pivot 同轮收敛；验证方错误与 attempt 共用错误通道原样上抛。合同含 round/value/cleanText/reason/history 快照上下文，真实"再派 agent 校验"的 validator 实现后续接入此接入点。
+- 新增编排接线层 `CompositionGoalLoopRunner`（本节点）：在 Goal Loop 之上把循环事实以幂等 `goalloop:<task>:<run>:*` 事件行投影进任务台账——首 attempt 前落 start 行（非法配置零落账）、每轮 progress 行（仅轮次与成本，不含原始输出文本）、验证拒绝 blocker 行、终态按 completed/failed/cancelled/timed_out/blocked 映射 status 行并统计拒绝次数；attempt 由调用方对接具体 Driver（BYOK 模型循环 / Multica 远端 dispatch），契约测试以去重内存台账验证投影、幂等重放与敏感内容不落账。
 
 仍缺：
 
-- Goal Loop 的真实子代理 validator 实现和完整跨重启 supervisor；完成标记/预算/停滞 pivot/验证合同循环尚未接入任何真实 Driver 编排（当前为独立运行时加单测）。
+- Goal Loop 的真实子代理 validator 实现和完整跨重启 supervisor；runner 的 attempt 尚未接到 BYOK/Multica Driver 的生产派发路径（当前由调用方注入，编排契约测试以 fake Driver 验证）。
 - Byok delegation 与 Composition Task/Run 的单一状态源收敛。
 - 面向用户的恢复、冲突和失败原因展示。
 
@@ -195,7 +196,7 @@ CapabilityRegistry + ToolBroker
 
 ## 当前提交节点
 
-当前 `tcode` 相对 `origin/tcode` 的 32 个提交按主题归并如下。
+当前 `tcode` 相对 `origin/tcode` 的 33 个提交按主题归并如下。
 
 | 主题 | 提交范围 | 结果 |
 | --- | --- | --- |
@@ -211,6 +212,7 @@ CapabilityRegistry + ToolBroker
 | Goal Loop 第一切片 | `feat(composition): Goal Loop 完成标记与预算控制` | 完成/取消标记解析（cleanText 剥离 + reason）、maxAttempts/maxCostUnits/deadline 预算收敛、cancelled 优先级与 attempt 剩余预算上下文，10 单测通过 |
 | Goal Loop 停滞 pivot | `feat(composition): Goal Loop 停滞 pivot 判定` | stalePivotRounds 连续无进展检测（归一化文本 + 空输出空转）、`pivot_required` 终态与 pivot 结果字段，16 单测通过 |
 | Goal Loop 验证子代理合同 | `feat(composition): Goal Loop 验证子代理合同` | validateCompletion 验收/拒绝语义、rejectedCompletions 审计、拒绝输出参与停滞判定与错误通道上抛，20 单测通过 |
+| Goal Loop 台账编排接线 | `feat(composition): Goal Loop 接入任务台账编排` | CompositionGoalLoopRunner：start/每轮/拒绝/终态幂等投影与状态映射、敏感输出不落账、重放幂等，契约测试 5 用例（全家 25/25） |
 | 文档与回归覆盖 | `c5a709b46`、`223b90ee5` | 刷新迁移矩阵并覆盖 ACP 取消终态回归 |
 
 ## 关键结论
@@ -238,7 +240,7 @@ CapabilityRegistry + ToolBroker
 2. ~~为 Multica quick-create 增加持久化 outbox、冲突恢复和集成测试。（本地 HTTP 进程级已完成；真实 daemon 侧的幂等键语义与 by-key 查询能力确认后，收口可自动化）~~
 3. 接入真实 Cursor/VS Code Adapter，完成 capability handshake、最小 IDE API 白名单和撤销测试。
 4. 把 Provider、IDE、Multica 的 grant 状态统一投影到 Composition Run 和 Settings。（本地子任务已完成：grant issued/revoked 与 BYOK resume 输出均已投影为任务历史事件；剩余 = 外部 Driver 的真实 grant 回执接入与 Settings 跨端看板展示，依赖真实产品环境）
-5. 收敛 Goal Loop、预算、重试、验证子代理和跨重启 supervisor。（已完成：完成标记/取消标记解析、maxAttempts/maxCostUnits/deadline 预算收敛、idle/stale pivot 判定与验证子代理合同，共 20 单测；剩余 = 真实子代理 validator 实现、跨重启 supervisor 以及把循环接入真实 Driver 编排）
+5. 收敛 Goal Loop、预算、重试、验证子代理和跨重启 supervisor。（已完成：完成标记/预算/停滞 pivot/验证子代理合同与任务台账编排接线，共 25 单测；剩余 = 真实子代理 validator 实现、跨重启 supervisor、把 runner 的 attempt 接到 BYOK/Multica Driver 生产派发路径）
 6. 最后补齐 Supplier/Profile 控制中心与 Web/Desktop/Mobile 集成 E2E。
 
 ## 风险与回滚
