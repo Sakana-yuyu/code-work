@@ -28,6 +28,7 @@ import { ScreenRotationIcon } from "~/browser/ScreenRotationIcon";
 import { isElectron } from "../../env";
 import { McpServersSettings } from "./McpServersSettings";
 import { AgentDriversSettings } from "./AgentDriversSettings";
+import { IdeSessionsSettings } from "./IdeSessionsSettings";
 import { TaskGraphPanel } from "./TaskGraphPanel";
 
 import { Button } from "../ui/button";
@@ -481,6 +482,7 @@ export function IntegrationsSettingsPanel() {
           previewDefaults
         )}
       </SettingsSection>
+      <IdeSessionsSettings />
       <AgentDriversSettings />
       <TaskGraphPanel />
       <McpServersSettings />

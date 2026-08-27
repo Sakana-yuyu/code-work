@@ -108,6 +108,7 @@ export interface CompositionIdeSessionRegistry {
   readonly unregister: (sessionId: string) => Effect.Effect<boolean>;
   readonly get: (sessionId: string) => Effect.Effect<CompositionIdeAdapter | undefined>;
   readonly list: Effect.Effect<ReadonlyArray<CompositionIdeAdapter>>;
+  readonly listStatus: Effect.Effect<ReadonlyArray<CompositionIdeResolveResult>>;
   readonly resolve: (input: {
     readonly sessionId: string;
     readonly requestedProfile: string;
@@ -398,6 +399,21 @@ export const makeCompositionIdeSessionRegistry = (
     get: (sessionId) => Effect.sync(() => adapters.get(sessionId)),
     get list() {
       return Effect.sync(() => Array.from(adapters.values()));
+    },
+    get listStatus() {
+      return Effect.sync(() => Array.from(adapters.values())).pipe(
+        Effect.flatMap((entries) =>
+          Effect.forEach(entries, (adapter) =>
+            adapter
+              .probe()
+              .pipe(
+                Effect.catch(() =>
+                  Effect.succeed(unavailable(adapter.sessionId, "ide_probe_failed")),
+                ),
+              ),
+          ),
+        ),
+      );
     },
     resolve,
     handshake,

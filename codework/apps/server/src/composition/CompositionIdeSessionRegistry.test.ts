@@ -2,6 +2,7 @@ import { describe, expect, it } from "vite-plus/test";
 import * as Effect from "effect/Effect";
 
 import {
+  CompositionIdeAdapterFailure,
   CompositionIdeSessionAlreadyRegisteredError,
   makeCompositionIdeSessionRegistry,
   type CompositionIdeAdapter,
@@ -75,6 +76,39 @@ describe("CompositionIdeSessionRegistry", () => {
       status: "unavailable",
       reasonCode: "ide_profile_mismatch",
     });
+  });
+
+  it("列出 session 探测状态，并把 Adapter 探测失败收敛为 unavailable", async () => {
+    const registry = makeCompositionIdeSessionRegistry();
+    await Effect.runPromise(registry.register(makeAdapter()));
+    await Effect.runPromise(
+      registry.register(
+        makeAdapter({
+          sessionId: "cursor-session-1",
+          profile: "cursor_ide",
+          probe: () =>
+            Effect.fail(
+              new CompositionIdeAdapterFailure({
+                sessionId: "cursor-session-1",
+                code: "probe_failed",
+                detail: "fixture probe failed",
+              }),
+            ),
+        }),
+      ),
+    );
+
+    const statuses = await Effect.runPromise(registry.listStatus);
+
+    expect(statuses).toEqual([
+      expect.objectContaining({ sessionId: "vscode-session-1", status: "ready" }),
+      expect.objectContaining({
+        sessionId: "cursor-session-1",
+        profile: "unknown",
+        status: "unavailable",
+        reasonCode: "ide_probe_failed",
+      }),
+    ]);
   });
 
   it("握手只保存请求范围内的 verified operation，并按 task/run/agent 绑定租约", async () => {

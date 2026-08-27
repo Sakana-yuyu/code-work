@@ -774,6 +774,12 @@ export function createServerEnvironmentAtoms<R, E>(
       staleTimeMs: 5_000,
       idleTtlMs: 60_000,
     }),
+    compositionIdeSessions: createEnvironmentRpcQueryAtomFamily(runtime, {
+      label: "environment-data:server:composition-ide-sessions",
+      tag: WS_METHODS.serverListCompositionIdeSessions,
+      staleTimeMs: 5_000,
+      idleTtlMs: 60_000,
+    }),
     listCompositionTasks: createEnvironmentRpcQueryAtomFamily(runtime, {
       label: "environment-data:server:list-composition-tasks",
       tag: WS_METHODS.serverListCompositionTasks,
