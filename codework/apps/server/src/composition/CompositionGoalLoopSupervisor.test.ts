@@ -16,17 +16,18 @@ const goalRow = (
   runId: string,
   suffix: string,
   overrides: Partial<CompositionTaskEvent> = {},
-): LedgerRow => ({
-  taskId,
-  runId,
-  agentId: "agent-1",
-  sourceEventId: `${goalLoopEventPrefix(taskId, runId)}:${suffix}`,
-  status: "running",
-  sequence: 0,
-  eventType: "progress",
-  summary: "占位行",
-  ...overrides,
-});
+): LedgerRow =>
+  ({
+    taskId,
+    runId,
+    agentId: "agent-1",
+    sourceEventId: `${goalLoopEventPrefix(taskId, runId)}:${suffix}`,
+    status: "running",
+    sequence: 0,
+    eventType: "progress",
+    summary: "占位行",
+    ...overrides,
+  }) as LedgerRow;
 
 /** 内存台账：listEvents 返回当前全部行，appendEventIfNew 按真实语义去重。 */
 const makeStore = (initialRows: LedgerRow[] = []) => {
@@ -165,7 +166,9 @@ describe("superviseCompositionGoalLoopRun", () => {
         store: fake.store,
         decision: "abandon",
       }).pipe(Effect.flip);
-      expect(twice._tag).toBe("CompositionGoalLoopSupervisorError");
+      if (twice._tag !== "CompositionGoalLoopSupervisorError") {
+        throw new Error("Expected a CompositionGoalLoopSupervisorError");
+      }
       expect(twice.code).toBe("goal_loop_supervisor_not_interrupted");
 
       // 循环已正常收敛的 Run 不允许结算。
@@ -180,6 +183,9 @@ describe("superviseCompositionGoalLoopRun", () => {
         store: converged.store,
         decision: "redispatch",
       }).pipe(Effect.flip);
+      if (notInterrupted._tag !== "CompositionGoalLoopSupervisorError") {
+        throw new Error("Expected a CompositionGoalLoopSupervisorError");
+      }
       expect(notInterrupted.code).toBe("goal_loop_supervisor_not_interrupted");
     }),
   );
@@ -198,7 +204,9 @@ describe("superviseCompositionGoalLoopRun", () => {
         store: fake.store,
         decision: "redispatch",
       }).pipe(Effect.flip);
-      expect(failure._tag).toBe("CompositionGoalLoopSupervisorError");
+      if (failure._tag !== "CompositionGoalLoopSupervisorError") {
+        throw new Error("Expected a CompositionGoalLoopSupervisorError");
+      }
       expect(failure.code).toBe("goal_loop_supervisor_already_settled");
       expect(fake.rows).toHaveLength(2);
     }),

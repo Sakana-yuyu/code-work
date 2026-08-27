@@ -4,7 +4,13 @@ import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
 import * as Queue from "effect/Queue";
 import * as Stream from "effect/Stream";
-import type { ProviderRuntimeEvent } from "@codework/contracts";
+import {
+  EventId,
+  ProviderDriverKind,
+  RuntimeTaskId,
+  ThreadId,
+  type ProviderRuntimeEvent,
+} from "@codework/contracts";
 
 import {
   makeCompositionIdeAgentDriver,
@@ -200,11 +206,11 @@ describe("CompositionIdeAgentDriver", () => {
     const callbackAttempted = await Effect.runPromise(Deferred.make<void>());
     const releaseCallback = await Effect.runPromise(Deferred.make<void>());
     const eventQueue = await Effect.runPromise(Queue.unbounded<ProviderRuntimeEvent>());
-    const runtimeTaskId = "ide-runtime-task-race";
+    const runtimeTaskId = RuntimeTaskId.make("ide-runtime-task-race");
     const event = {
-      eventId: "ide-event-race-1",
-      provider: "ide",
-      threadId: "ide:vscode-session-1",
+      eventId: EventId.make("ide-event-race-1"),
+      provider: ProviderDriverKind.make("ide"),
+      threadId: ThreadId.make("ide:vscode-session-1"),
       createdAt: "2026-08-27T00:00:00.000Z",
       type: "task.completed",
       payload: {

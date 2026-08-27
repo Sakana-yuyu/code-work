@@ -10,6 +10,8 @@ import { assert, it } from "@effect/vitest";
 import {
   CursorSettings,
   ProviderInstanceId,
+  RuntimeTaskId,
+  ThreadId,
   type CompositionTask,
   type CompositionTaskRun,
   type ProviderRuntimeEvent,
@@ -97,7 +99,7 @@ it.layer(TestLayer, { excludeTestServices: true })(
         const adapter = yield* CursorAdapter;
         const settings = yield* ServerSettingsService;
         const store = yield* CompositionTaskStore;
-        const threadId = "composition-provider-cancel-e2e";
+        const threadId = ThreadId.make("composition-provider-cancel-e2e");
         const taskId = "task-provider-cancel-e2e";
         const runId = "run-provider-cancel-e2e";
         const runtimeId = "provider:cursor-acp-cancel-e2e";
@@ -202,7 +204,7 @@ it.layer(TestLayer, { excludeTestServices: true })(
         assert.deepStrictEqual(driver.resolveRuntimeEvent?.(completion), {
           taskId,
           runId,
-          runtimeTaskId: started.runtimeTaskId,
+          runtimeTaskId: started.runtimeTaskId as RuntimeTaskId,
         });
 
         assert.equal(Option.getOrThrow(yield* store.getTask(taskId)).status, "cancelled");
@@ -216,7 +218,7 @@ it.layer(TestLayer, { excludeTestServices: true })(
         );
 
         yield* Fiber.interrupt(runtimeEventsFiber);
-        yield* adapter.stopSession(task.threadId!).pipe(Effect.ignore);
+        yield* adapter.stopSession(ThreadId.make(task.threadId!)).pipe(Effect.ignore);
       }),
     );
 
@@ -225,7 +227,7 @@ it.layer(TestLayer, { excludeTestServices: true })(
         const adapter = yield* CursorAdapter;
         const settings = yield* ServerSettingsService;
         const store = yield* CompositionTaskStore;
-        const threadId = "composition-provider-restart-e2e";
+        const threadId = ThreadId.make("composition-provider-restart-e2e");
         const taskId = "task-provider-restart-e2e";
         const runId = "run-provider-restart-e2e";
         const runtimeId = "provider:cursor-acp-restart-e2e";

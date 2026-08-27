@@ -1,3 +1,4 @@
+// @effect-diagnostics nodeBuiltinImport:off - 本 e2e 直接操作真实文件与子进程，需要 node 模块。
 import * as NodeFSP from "node:fs/promises";
 import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
@@ -26,6 +27,7 @@ import { makeCompositionByokAgentDriver } from "./CompositionByokAgentDriver.ts"
 import { makeCompositionProviderAgentDriver } from "./CompositionProviderAgentDriver.ts";
 import { makeCompositionRuntimeToolBridge } from "./CompositionRuntimeToolBridge.ts";
 import type { CompositionProviderSessionAdapter } from "./CompositionProviderAgentDriver.ts";
+import type { ProviderToolBrokerResult } from "../provider/Services/ProviderAdapter.ts";
 import * as ToolBroker from "./ToolBroker.ts";
 import * as WorkspaceEntries from "../workspace/WorkspaceEntries.ts";
 import * as WorkspaceFileSystem from "../workspace/WorkspaceFileSystem.ts";
@@ -185,7 +187,7 @@ it.layer(TestLayer, { excludeTestServices: true })(
           attempt: 1,
           capabilityGrantIds: ["t3.workspace.read_file"],
         };
-        let providerResult: ToolBroker.ToolBrokerResult | undefined;
+        let providerResult: ToolBroker.ToolBrokerResult | ProviderToolBrokerResult | undefined;
         let configuredBridge:
           | Parameters<NonNullable<CompositionProviderSessionAdapter["configureToolBroker"]>>[0]
           | undefined;

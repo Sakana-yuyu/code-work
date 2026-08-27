@@ -1,12 +1,12 @@
 // @effect-diagnostics globalTimers:off - 本测试等待真实子进程和 WebSocket 生命周期。
 
+// @effect-diagnostics nodeBuiltinImport:off - 本 e2e 直接驱动真实子进程，需要 node 模块。
 import * as NodeChildProcess from "node:child_process";
 import * as NodeReadline from "node:readline";
 import { fileURLToPath } from "node:url";
 
 import { describe, expect, it } from "vite-plus/test";
 import * as Effect from "effect/Effect";
-import * as Fiber from "effect/Fiber";
 import * as Stream from "effect/Stream";
 
 import { ProviderDriverKind } from "@codework/contracts";
