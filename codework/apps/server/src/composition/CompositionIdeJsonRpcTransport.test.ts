@@ -206,8 +206,65 @@ describe("CompositionIdeJsonRpcTransport", () => {
     adapter.close();
     expect(socket.closeCount).toBe(1);
     await expect(Effect.runPromise(adapter.probe())).rejects.toMatchObject({
-      code: "ide_socket_closed",
+      code: "ide_transport_closed",
     });
+  });
+
+  it("远端断线后下一次请求重新建立连接并继续发送 JSON-RPC", async () => {
+    const sockets: FakeSocket[] = [];
+    const adapter = makeCompositionIdeJsonRpcAdapter({
+      sessionId: "vscode-session-reconnect",
+      profile: "vscode_ide",
+      url: "ws://127.0.0.1:4111/t3/ide",
+      webSocketFactory: (url, options) => {
+        expect(url).toBe("ws://127.0.0.1:4111/t3/ide");
+        expect(options.headers).toEqual({});
+        const socket = new FakeSocket();
+        sockets.push(socket);
+        return socket;
+      },
+    });
+
+    const firstProbe = Effect.runPromise(adapter.probe());
+    void firstProbe.catch(() => undefined);
+    await flush();
+    const firstSocket = sockets[0];
+    expect(firstSocket).toBeDefined();
+    firstSocket!.emit("open");
+    await flush();
+    firstSocket!.emit("close");
+    await expect(firstProbe).rejects.toMatchObject({ code: "ide_socket_closed" });
+
+    const secondProbe = Effect.runPromise(adapter.probe());
+    void secondProbe.catch(() => undefined);
+    await flush();
+    const secondSocket = sockets[1];
+    expect(secondSocket).toBeDefined();
+    secondSocket!.emit("open");
+    await flush();
+    const request = decode(secondSocket!)[0];
+    expect(request).toMatchObject({
+      jsonrpc: "2.0",
+      method: "t3.ide.probe",
+      params: { sessionId: "vscode-session-reconnect", profile: "vscode_ide" },
+    });
+    secondSocket!.emit(
+      "message",
+      JSON.stringify({
+        jsonrpc: "2.0",
+        id: request?.id,
+        result: {
+          sessionId: "vscode-session-reconnect",
+          profile: "vscode_ide",
+          verifiedOperations: ["editor.read"],
+          status: "ready",
+        },
+      }),
+    );
+
+    await expect(secondProbe).resolves.toMatchObject({ status: "ready" });
+    expect(sockets).toHaveLength(2);
+    adapter.close();
   });
 
   it("JSON-RPC 错误不泄露认证 Header，并转换为稳定失败码", async () => {

@@ -250,9 +250,7 @@ export const makeCompositionIdeJsonRpcAdapter = (
     clearOpenTimer();
   };
 
-  const invalidate = (cause: CompositionIdeAdapterFailure): void => {
-    if (terminalFailure !== undefined) return;
-    terminalFailure = cause;
+  const disconnect = (cause: CompositionIdeAdapterFailure): void => {
     const current = socket;
     socket = undefined;
     rejectOpening?.(cause);
@@ -260,6 +258,12 @@ export const makeCompositionIdeJsonRpcAdapter = (
     rejectPending(cause);
     current?.terminate?.();
     current?.close();
+  };
+
+  const closePermanently = (cause: CompositionIdeAdapterFailure): void => {
+    if (terminalFailure !== undefined) return;
+    terminalFailure = cause;
+    disconnect(cause);
   };
 
   const ensureOpen = (): Promise<void> => {
@@ -299,8 +303,7 @@ export const makeCompositionIdeJsonRpcAdapter = (
         "ide_socket_open_timeout",
         "IDE WebSocket 建立连接超时。",
       );
-      rejectOpen(transportFailure);
-      invalidate(transportFailure);
+      disconnect(transportFailure);
     }, openTimeoutMs);
 
     current.on("open", () => {
@@ -317,7 +320,7 @@ export const makeCompositionIdeJsonRpcAdapter = (
         const transportFailure = Schema.is(CompositionIdeAdapterFailure)(cause)
           ? cause
           : invalidResponse(sessionId, String(cause));
-        invalidate(transportFailure);
+        closePermanently(transportFailure);
         return;
       }
       const requestId = String(response.id);
@@ -337,7 +340,7 @@ export const makeCompositionIdeJsonRpcAdapter = (
     });
     current.on("error", (cause) => {
       if (socket !== current || terminalFailure !== undefined) return;
-      invalidate(
+      disconnect(
         failure(
           sessionId,
           "ide_socket_error",
@@ -348,8 +351,7 @@ export const makeCompositionIdeJsonRpcAdapter = (
     current.on("close", () => {
       if (socket !== current || terminalFailure !== undefined) return;
       const transportFailure = failure(sessionId, "ide_socket_closed", "IDE WebSocket 已关闭。");
-      if (opening !== undefined) rejectOpen(transportFailure);
-      invalidate(transportFailure);
+      disconnect(transportFailure);
     });
     return openingPromise;
   };
@@ -424,7 +426,7 @@ export const makeCompositionIdeJsonRpcAdapter = (
 
   const close = (): void => {
     if (terminalFailure !== undefined) return;
-    invalidate(failure(sessionId, "ide_transport_closed", "IDE transport 已关闭。"));
+    closePermanently(failure(sessionId, "ide_transport_closed", "IDE transport 已关闭。"));
   };
 
   return { sessionId, profile: options.profile, probe, handshake, invoke, close };
