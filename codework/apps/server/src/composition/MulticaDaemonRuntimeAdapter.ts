@@ -10,6 +10,7 @@ import type {
 import { EventId, ProviderDriverKind, RuntimeTaskId, ThreadId } from "@codework/contracts";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
+import * as Option from "effect/Option";
 import * as Stream from "effect/Stream";
 import * as Schema from "effect/Schema";
 
@@ -37,6 +38,7 @@ import {
   type MulticaWebSocketFrame,
 } from "./MulticaDaemonProtocol.ts";
 import type { MulticaTaskMcpLease } from "./MulticaTaskMcpLease.ts";
+import type { CompositionTaskStoreShape } from "../persistence/Services/CompositionTaskStore.ts";
 
 export type MulticaDaemonStreamFramesInput = {
   readonly runtimeId: string;
@@ -69,6 +71,17 @@ export type MulticaDaemonRuntimeAdapterOptions = {
   readonly daemonRuntimeId: string;
   readonly baseUrl: string;
   readonly protocol: MulticaDaemonProtocol;
+  /**
+   * quick-create 不提供远端幂等键时的本地发送账本。缺失时必须拒绝派发，不能退回不安全的直接 POST。
+   */
+  readonly quickCreateIntentStore?: Pick<
+    CompositionTaskStoreShape,
+    | "createMulticaQuickCreateIntent"
+    | "getMulticaQuickCreateIntent"
+    | "getMulticaQuickCreateIntentByIdempotencyKey"
+    | "claimMulticaQuickCreateIntentForSend"
+    | "acceptMulticaQuickCreateIntent"
+  >;
   readonly agents: ReadonlyArray<CompositionRuntimeAgent>;
   readonly taskAssigneeRoutes?: ReadonlyArray<MulticaTaskAssigneeRoute>;
   readonly version?: string;
@@ -196,6 +209,16 @@ const mapProtocolFailure = (
         : failure.code;
   return adapterFailure(runtimeId, code, failure.detail);
 };
+
+const mapQuickCreatePersistenceFailure = (
+  runtimeId: string,
+  cause: unknown,
+): CompositionRuntimeAdapterFailure =>
+  adapterFailure(
+    runtimeId,
+    "quick_create_persistence_failed",
+    cause instanceof Error ? cause.message : "quick-create 本地发送账本操作失败。",
+  );
 
 const mapRuntimeStatus = (
   response: Pick<MulticaHeartbeatResponse, "status" | "runtimeGone">,
@@ -493,7 +516,14 @@ export const makeMulticaDaemonRuntimeAdapter = (
   }
   const activeTaskIds = new Set<string>();
   const startedTaskIds = new Set<string>();
-  const dispatchedTasks = new Map<string, CompositionRuntimeTaskResult>();
+  const dispatchedTasks = new Map<
+    string,
+    {
+      readonly taskId: string;
+      readonly runId: string;
+      readonly result: CompositionRuntimeTaskResult;
+    }
+  >();
   const capabilityHandshakes = new Map<
     string,
     {
@@ -917,7 +947,87 @@ export const makeMulticaDaemonRuntimeAdapter = (
       }
       const existing = dispatchedTasks.get(idempotencyKey);
       if (existing !== undefined) {
-        return { ...existing, status: "already_running" as const };
+        if (existing.taskId !== input.taskId || existing.runId !== input.runId) {
+          return yield* adapterFailure(
+            runtimeId,
+            "quick_create_idempotency_conflict",
+            "同一 Runtime 下的 quick-create 幂等键已经属于其他 Task/Run。",
+          );
+        }
+        return { ...existing.result, status: "already_running" as const };
+      }
+      const quickCreateIntentStore = options.quickCreateIntentStore;
+      if (quickCreateIntentStore === undefined) {
+        return yield* adapterFailure(
+          runtimeId,
+          "quick_create_persistence_unavailable",
+          "Multica quick-create 未配置持久化发送账本，拒绝执行无法跨进程恢复的 POST。",
+        );
+      }
+      let existingIntent = Option.getOrUndefined(
+        yield* quickCreateIntentStore
+          .getMulticaQuickCreateIntent(input.runId)
+          .pipe(Effect.mapError((cause) => mapQuickCreatePersistenceFailure(runtimeId, cause))),
+      );
+      if (existingIntent === undefined) {
+        const existingByIdempotencyKey = Option.getOrUndefined(
+          yield* quickCreateIntentStore
+            .getMulticaQuickCreateIntentByIdempotencyKey(runtimeId, idempotencyKey)
+            .pipe(Effect.mapError((cause) => mapQuickCreatePersistenceFailure(runtimeId, cause))),
+        );
+        if (existingByIdempotencyKey !== undefined) {
+          if (existingByIdempotencyKey.runId !== input.runId) {
+            return yield* adapterFailure(
+              runtimeId,
+              "quick_create_idempotency_conflict",
+              "同一 Runtime 下的 quick-create 幂等键已经属于其他 Run，拒绝创建第二个远端任务。",
+            );
+          }
+          existingIntent = existingByIdempotencyKey;
+        }
+      }
+      if (existingIntent !== undefined) {
+        if (
+          existingIntent.taskId !== input.taskId ||
+          existingIntent.runtimeId !== runtimeId ||
+          existingIntent.idempotencyKey !== idempotencyKey
+        ) {
+          return yield* adapterFailure(
+            runtimeId,
+            "quick_create_intent_conflict",
+            "同一 Run 的已持久化 quick-create intent 与当前 Task/Runtime/幂等键不一致。",
+          );
+        }
+        if (existingIntent.state === "accepted") {
+          if (existingIntent.remoteTaskId === undefined) {
+            return yield* adapterFailure(
+              runtimeId,
+              "quick_create_recovery_required",
+              "quick-create intent 已标记 accepted 但缺少远端 task ID，必须人工核对 Multica。",
+            );
+          }
+          const recovered = {
+            runtimeTaskId: existingIntent.remoteTaskId,
+            status: "accepted" as const,
+          } satisfies CompositionRuntimeTaskResult;
+          dispatchedTasks.set(idempotencyKey, {
+            taskId: input.taskId,
+            runId: input.runId,
+            result: recovered,
+          });
+          if (executionBinding !== undefined) {
+            rememberTaskExecutionBinding(existingIntent.remoteTaskId, executionBinding);
+          }
+          activeTaskIds.add(existingIntent.remoteTaskId);
+          return { ...recovered, status: "already_running" as const };
+        }
+        if (existingIntent.state === "sending") {
+          return yield* adapterFailure(
+            runtimeId,
+            "quick_create_recovery_required",
+            "quick-create 请求可能已被 Multica 接收但本地未取得 task ID，拒绝自动重放 POST。",
+          );
+        }
       }
       const route =
         (input.assigneeKind === "squad" && input.assigneeId === undefined
@@ -934,6 +1044,51 @@ export const makeMulticaDaemonRuntimeAdapter = (
           `Code Work assignee '${agentId}' 没有配置 Multica Agent/Squad 映射。`,
         );
       }
+      if (existingIntent === undefined) {
+        const inserted = yield* quickCreateIntentStore
+          .createMulticaQuickCreateIntent({
+            runId: input.runId,
+            taskId: input.taskId,
+            runtimeId,
+            idempotencyKey,
+            createdAtUnixMs: now(),
+            updatedAtUnixMs: now(),
+          })
+          .pipe(Effect.mapError((cause) => mapQuickCreatePersistenceFailure(runtimeId, cause)));
+        if (!inserted) {
+          const racedIntent = Option.getOrUndefined(
+            yield* quickCreateIntentStore
+              .getMulticaQuickCreateIntentByIdempotencyKey(runtimeId, idempotencyKey)
+              .pipe(Effect.mapError((cause) => mapQuickCreatePersistenceFailure(runtimeId, cause))),
+          );
+          if (racedIntent !== undefined && racedIntent.runId !== input.runId) {
+            return yield* adapterFailure(
+              runtimeId,
+              "quick_create_idempotency_conflict",
+              "同一 Runtime 下的 quick-create 幂等键已被其他 Run 抢占，拒绝重复派发。",
+            );
+          }
+          return yield* adapterFailure(
+            runtimeId,
+            "quick_create_intent_race",
+            "同一 Run 的 quick-create intent 已被其他执行器创建；请重新读取持久化状态。",
+          );
+        }
+      }
+      const sendingIntent = yield* quickCreateIntentStore
+        .claimMulticaQuickCreateIntentForSend({
+          runId: input.runId,
+          runtimeId,
+          updatedAtUnixMs: now(),
+        })
+        .pipe(Effect.mapError((cause) => mapQuickCreatePersistenceFailure(runtimeId, cause)));
+      if (Option.isNone(sendingIntent)) {
+        return yield* adapterFailure(
+          runtimeId,
+          "quick_create_recovery_required",
+          "quick-create intent 已不再处于可安全发送的 prepared 状态，拒绝自动重放 POST。",
+        );
+      }
       const created = yield* options.protocol
         .quickCreateTask({
           workspaceId: route.workspaceId,
@@ -942,12 +1097,39 @@ export const makeMulticaDaemonRuntimeAdapter = (
           ...(input.projectId === undefined ? {} : { projectId: input.projectId }),
           prompt,
         })
-        .pipe(Effect.mapError((failure) => mapProtocolFailure(runtimeId, failure)));
+        .pipe(
+          Effect.mapError(() =>
+            adapterFailure(
+              runtimeId,
+              "quick_create_recovery_required",
+              "quick-create 请求结果未被本地确认；请先核对 Multica，再决定是否恢复。",
+            ),
+          ),
+        );
+      const acceptedIntent = yield* quickCreateIntentStore
+        .acceptMulticaQuickCreateIntent({
+          runId: input.runId,
+          runtimeId,
+          remoteTaskId: created.taskId,
+          updatedAtUnixMs: now(),
+        })
+        .pipe(Effect.mapError((cause) => mapQuickCreatePersistenceFailure(runtimeId, cause)));
+      if (Option.isNone(acceptedIntent)) {
+        return yield* adapterFailure(
+          runtimeId,
+          "quick_create_recovery_required",
+          "Multica 已返回 task ID，但本地未能原子绑定发送意图；必须人工核对后恢复。",
+        );
+      }
       const result = {
         runtimeTaskId: created.taskId,
         status: "accepted" as const,
       } satisfies CompositionRuntimeTaskResult;
-      dispatchedTasks.set(idempotencyKey, result);
+      dispatchedTasks.set(idempotencyKey, {
+        taskId: input.taskId,
+        runId: input.runId,
+        result,
+      });
       if (executionBinding !== undefined) {
         rememberTaskExecutionBinding(created.taskId, executionBinding);
       }

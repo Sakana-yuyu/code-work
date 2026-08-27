@@ -374,6 +374,7 @@ layer("CompositionOrchestrator", (it) => {
           },
         ],
         capabilities: ["rpc-v1", "squad", "leader", "task-graph"],
+        quickCreateIntentStore: store,
         taskAssigneeRoutes: [
           {
             codeworkAgentId: "agent-leader",

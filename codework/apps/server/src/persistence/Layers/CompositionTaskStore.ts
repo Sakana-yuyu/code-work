@@ -18,6 +18,8 @@ import type { SqlError } from "effect/unstable/sql/SqlError";
 import { toPersistenceSqlError } from "../Errors.ts";
 import {
   CompositionTaskStore,
+  type CompositionMulticaQuickCreateIntent,
+  type CompositionMulticaQuickCreateIntentInput,
   type CompositionTaskStoreShape,
 } from "../Services/CompositionTaskStore.ts";
 
@@ -102,6 +104,17 @@ const SquadRowSchema = Schema.Struct({
   archivedAtUnixMs: Schema.NullOr(Schema.Number),
 });
 
+const MulticaQuickCreateIntentRowSchema = Schema.Struct({
+  runId: Schema.String,
+  taskId: Schema.String,
+  runtimeId: Schema.String,
+  idempotencyKey: Schema.String,
+  state: Schema.Literals(["prepared", "sending", "accepted"]),
+  remoteTaskId: Schema.NullOr(Schema.String),
+  createdAtUnixMs: Schema.Number,
+  updatedAtUnixMs: Schema.Number,
+});
+
 const IdRequest = Schema.Struct({ id: Schema.String });
 const TaskRequest = Schema.Struct({ taskId: Schema.String });
 const RuntimeTaskRequest = Schema.Struct({
@@ -115,6 +128,23 @@ const EventSourceRequest = Schema.Struct({
   runId: Schema.String,
   sourceEventId: Schema.String,
 });
+const QuickCreateIntentRequest = Schema.Struct({ runId: Schema.String });
+const QuickCreateIntentIdempotencyRequest = Schema.Struct({
+  runtimeId: Schema.String,
+  idempotencyKey: Schema.String,
+});
+const QuickCreateIntentClaimRequest = Schema.Struct({
+  runId: Schema.String,
+  runtimeId: Schema.String,
+  updatedAtUnixMs: Schema.Number,
+});
+const QuickCreateIntentAcceptRequest = Schema.Struct({
+  runId: Schema.String,
+  runtimeId: Schema.String,
+  remoteTaskId: Schema.String,
+  updatedAtUnixMs: Schema.Number,
+});
+const QuickCreateIntentListRequest = Schema.Struct({ runtimeId: Schema.NullOr(Schema.String) });
 
 const toTask = (row: Schema.Schema.Type<typeof TaskRowSchema>): CompositionTask => ({
   taskId: row.taskId,
@@ -174,6 +204,19 @@ const toEvent = (row: Schema.Schema.Type<typeof EventRowSchema>): CompositionTas
     ? {}
     : { approvalRequestId: ApprovalRequestId.make(row.approvalRequestId) }),
   ...(row.childTaskIds === null ? {} : { childTaskIds: row.childTaskIds }),
+});
+
+const toMulticaQuickCreateIntent = (
+  row: Schema.Schema.Type<typeof MulticaQuickCreateIntentRowSchema>,
+): CompositionMulticaQuickCreateIntent => ({
+  runId: row.runId,
+  taskId: row.taskId,
+  runtimeId: row.runtimeId,
+  idempotencyKey: row.idempotencyKey,
+  state: row.state,
+  ...(row.remoteTaskId === null ? {} : { remoteTaskId: row.remoteTaskId }),
+  createdAtUnixMs: row.createdAtUnixMs,
+  updatedAtUnixMs: row.updatedAtUnixMs,
 });
 
 const toDependency = (
@@ -370,6 +413,116 @@ const makeStore = Effect.gen(function* () {
       WHERE runtime_id = ${runtimeId} AND runtime_task_id = ${runtimeTaskId}
       ORDER BY attempt ASC, run_id ASC
     `,
+  });
+
+  const createMulticaQuickCreateIntentRow = SqlSchema.findOneOption({
+    Request: Schema.Struct({
+      runId: Schema.String,
+      taskId: Schema.String,
+      runtimeId: Schema.String,
+      idempotencyKey: Schema.String,
+      createdAtUnixMs: Schema.Number,
+      updatedAtUnixMs: Schema.Number,
+    }),
+    Result: Schema.Struct({ created: Schema.Number }),
+    execute: (intent) => sql`
+      INSERT INTO composition_multica_quick_create_intents (
+        run_id, task_id, runtime_id, idempotency_key, state,
+        remote_task_id, created_at_unix_ms, updated_at_unix_ms
+      ) VALUES (
+        ${intent.runId}, ${intent.taskId}, ${intent.runtimeId}, ${intent.idempotencyKey}, 'prepared',
+        NULL, ${intent.createdAtUnixMs}, ${intent.updatedAtUnixMs}
+      ) ON CONFLICT DO NOTHING
+      RETURNING 1 AS "created"
+    `,
+  });
+
+  const getMulticaQuickCreateIntentRow = SqlSchema.findOneOption({
+    Request: QuickCreateIntentRequest,
+    Result: MulticaQuickCreateIntentRowSchema,
+    execute: ({ runId }) => sql`
+      SELECT
+        run_id AS "runId", task_id AS "taskId", runtime_id AS "runtimeId",
+        idempotency_key AS "idempotencyKey", state, remote_task_id AS "remoteTaskId",
+        created_at_unix_ms AS "createdAtUnixMs", updated_at_unix_ms AS "updatedAtUnixMs"
+      FROM composition_multica_quick_create_intents
+      WHERE run_id = ${runId}
+      LIMIT 1
+    `,
+  });
+
+  const getMulticaQuickCreateIntentByIdempotencyKeyRow = SqlSchema.findOneOption({
+    Request: QuickCreateIntentIdempotencyRequest,
+    Result: MulticaQuickCreateIntentRowSchema,
+    execute: ({ runtimeId, idempotencyKey }) => sql`
+      SELECT
+        run_id AS "runId", task_id AS "taskId", runtime_id AS "runtimeId",
+        idempotency_key AS "idempotencyKey", state, remote_task_id AS "remoteTaskId",
+        created_at_unix_ms AS "createdAtUnixMs", updated_at_unix_ms AS "updatedAtUnixMs"
+      FROM composition_multica_quick_create_intents
+      WHERE runtime_id = ${runtimeId} AND idempotency_key = ${idempotencyKey}
+      LIMIT 1
+    `,
+  });
+
+  const claimMulticaQuickCreateIntentRow = SqlSchema.findOneOption({
+    Request: QuickCreateIntentClaimRequest,
+    Result: MulticaQuickCreateIntentRowSchema,
+    execute: (input) => sql`
+      UPDATE composition_multica_quick_create_intents
+      SET state = 'sending', updated_at_unix_ms = ${input.updatedAtUnixMs}
+      WHERE run_id = ${input.runId}
+        AND runtime_id = ${input.runtimeId}
+        AND state = 'prepared'
+        AND remote_task_id IS NULL
+      RETURNING
+        run_id AS "runId", task_id AS "taskId", runtime_id AS "runtimeId",
+        idempotency_key AS "idempotencyKey", state, remote_task_id AS "remoteTaskId",
+        created_at_unix_ms AS "createdAtUnixMs", updated_at_unix_ms AS "updatedAtUnixMs"
+    `,
+  });
+
+  const acceptMulticaQuickCreateIntentRow = SqlSchema.findOneOption({
+    Request: QuickCreateIntentAcceptRequest,
+    Result: MulticaQuickCreateIntentRowSchema,
+    execute: (input) => sql`
+      UPDATE composition_multica_quick_create_intents
+      SET state = 'accepted', remote_task_id = ${input.remoteTaskId},
+        updated_at_unix_ms = ${input.updatedAtUnixMs}
+      WHERE run_id = ${input.runId}
+        AND runtime_id = ${input.runtimeId}
+        AND state = 'sending'
+        AND remote_task_id IS NULL
+      RETURNING
+        run_id AS "runId", task_id AS "taskId", runtime_id AS "runtimeId",
+        idempotency_key AS "idempotencyKey", state, remote_task_id AS "remoteTaskId",
+        created_at_unix_ms AS "createdAtUnixMs", updated_at_unix_ms AS "updatedAtUnixMs"
+    `,
+  });
+
+  const listPendingMulticaQuickCreateIntentRows = SqlSchema.findAll({
+    Request: QuickCreateIntentListRequest,
+    Result: MulticaQuickCreateIntentRowSchema,
+    execute: ({ runtimeId }) =>
+      runtimeId === null
+        ? sql`
+            SELECT
+              run_id AS "runId", task_id AS "taskId", runtime_id AS "runtimeId",
+              idempotency_key AS "idempotencyKey", state, remote_task_id AS "remoteTaskId",
+              created_at_unix_ms AS "createdAtUnixMs", updated_at_unix_ms AS "updatedAtUnixMs"
+            FROM composition_multica_quick_create_intents
+            WHERE state IN ('prepared', 'sending')
+            ORDER BY updated_at_unix_ms ASC, run_id ASC
+          `
+        : sql`
+            SELECT
+              run_id AS "runId", task_id AS "taskId", runtime_id AS "runtimeId",
+              idempotency_key AS "idempotencyKey", state, remote_task_id AS "remoteTaskId",
+              created_at_unix_ms AS "createdAtUnixMs", updated_at_unix_ms AS "updatedAtUnixMs"
+            FROM composition_multica_quick_create_intents
+            WHERE runtime_id = ${runtimeId} AND state IN ('prepared', 'sending')
+            ORDER BY updated_at_unix_ms ASC, run_id ASC
+          `,
   });
 
   const appendEventRow = SqlSchema.void({
@@ -596,6 +749,46 @@ const makeStore = Effect.gen(function* () {
         "CompositionTaskStore.listRunsByRuntimeTask",
         listRunsByRuntimeTaskRows({ runtimeId, runtimeTaskId }).pipe(
           Effect.map((rows) => rows.map(toRun)),
+        ),
+      ),
+    createMulticaQuickCreateIntent: (intent) =>
+      run(
+        "CompositionTaskStore.createMulticaQuickCreateIntent",
+        createMulticaQuickCreateIntentRow(intent).pipe(Effect.map(Option.isSome)),
+      ),
+    getMulticaQuickCreateIntent: (runId) =>
+      run(
+        "CompositionTaskStore.getMulticaQuickCreateIntent",
+        getMulticaQuickCreateIntentRow({ runId }).pipe(
+          Effect.map(Option.map(toMulticaQuickCreateIntent)),
+        ),
+      ),
+    getMulticaQuickCreateIntentByIdempotencyKey: (runtimeId, idempotencyKey) =>
+      run(
+        "CompositionTaskStore.getMulticaQuickCreateIntentByIdempotencyKey",
+        getMulticaQuickCreateIntentByIdempotencyKeyRow({ runtimeId, idempotencyKey }).pipe(
+          Effect.map(Option.map(toMulticaQuickCreateIntent)),
+        ),
+      ),
+    claimMulticaQuickCreateIntentForSend: (input) =>
+      run(
+        "CompositionTaskStore.claimMulticaQuickCreateIntentForSend",
+        claimMulticaQuickCreateIntentRow(input).pipe(
+          Effect.map(Option.map(toMulticaQuickCreateIntent)),
+        ),
+      ),
+    acceptMulticaQuickCreateIntent: (input) =>
+      run(
+        "CompositionTaskStore.acceptMulticaQuickCreateIntent",
+        acceptMulticaQuickCreateIntentRow(input).pipe(
+          Effect.map(Option.map(toMulticaQuickCreateIntent)),
+        ),
+      ),
+    listPendingMulticaQuickCreateIntents: (runtimeId) =>
+      run(
+        "CompositionTaskStore.listPendingMulticaQuickCreateIntents",
+        listPendingMulticaQuickCreateIntentRows({ runtimeId: runtimeId ?? null }).pipe(
+          Effect.map((rows) => rows.map(toMulticaQuickCreateIntent)),
         ),
       ),
     appendEvent: (event) =>

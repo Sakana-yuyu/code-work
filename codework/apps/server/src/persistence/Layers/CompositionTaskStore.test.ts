@@ -232,6 +232,179 @@ layer("CompositionTaskStore", (it) => {
       );
     }),
   );
+
+  it.effect("持久化 Multica quick-create intent，并只允许 prepared 到 sending 再到 accepted", () =>
+    Effect.gen(function* () {
+      const store = yield* CompositionTaskStore;
+      const intent = {
+        runId: "run-quick-create",
+        taskId: "task-quick-create",
+        runtimeId: "multica:daemon-1:runtime-1",
+        idempotencyKey: "run-quick-create",
+        createdAtUnixMs: 1_000,
+        updatedAtUnixMs: 1_000,
+      };
+
+      assert.isTrue(yield* store.createMulticaQuickCreateIntent(intent));
+      assert.isFalse(yield* store.createMulticaQuickCreateIntent({ ...intent, taskId: "other" }));
+      assert.deepEqual(
+        Option.getOrThrow(
+          yield* store.getMulticaQuickCreateIntentByIdempotencyKey(
+            intent.runtimeId,
+            intent.idempotencyKey,
+          ),
+        ),
+        { ...intent, state: "prepared" },
+      );
+
+      const pendingBeforeSend = yield* store.listPendingMulticaQuickCreateIntents(intent.runtimeId);
+      assert.deepEqual(pendingBeforeSend, [{ ...intent, state: "prepared" }]);
+
+      const rejectedWrongRuntime = yield* store.claimMulticaQuickCreateIntentForSend({
+        runId: intent.runId,
+        runtimeId: "multica:other",
+        updatedAtUnixMs: 1_001,
+      });
+      assert.isTrue(Option.isNone(rejectedWrongRuntime));
+
+      const sending = yield* store.claimMulticaQuickCreateIntentForSend({
+        runId: intent.runId,
+        runtimeId: intent.runtimeId,
+        updatedAtUnixMs: 1_001,
+      });
+      assert.deepEqual(Option.getOrThrow(sending), {
+        ...intent,
+        state: "sending",
+        updatedAtUnixMs: 1_001,
+      });
+      assert.isTrue(
+        Option.isNone(
+          yield* store.claimMulticaQuickCreateIntentForSend({
+            runId: intent.runId,
+            runtimeId: intent.runtimeId,
+            updatedAtUnixMs: 1_002,
+          }),
+        ),
+      );
+
+      const accepted = yield* store.acceptMulticaQuickCreateIntent({
+        runId: intent.runId,
+        runtimeId: intent.runtimeId,
+        remoteTaskId: "multica-task-1",
+        updatedAtUnixMs: 1_003,
+      });
+      assert.deepEqual(Option.getOrThrow(accepted), {
+        ...intent,
+        state: "accepted",
+        remoteTaskId: "multica-task-1",
+        updatedAtUnixMs: 1_003,
+      });
+      assert.deepEqual(yield* store.listPendingMulticaQuickCreateIntents(intent.runtimeId), []);
+      assert.deepEqual(Option.getOrThrow(yield* store.getMulticaQuickCreateIntent(intent.runId)), {
+        ...intent,
+        state: "accepted",
+        remoteTaskId: "multica-task-1",
+        updatedAtUnixMs: 1_003,
+      });
+    }),
+  );
+
+  it.effect("并发创建同一 Run 的 Multica quick-create intent 时只允许一个发送者取得记录", () =>
+    Effect.gen(function* () {
+      const store = yield* CompositionTaskStore;
+      const intent = {
+        runId: "run-quick-create-race",
+        taskId: "task-quick-create-race",
+        runtimeId: "multica:daemon-1:runtime-1",
+        idempotencyKey: "run-quick-create-race",
+        createdAtUnixMs: 1_000,
+        updatedAtUnixMs: 1_000,
+      };
+
+      const created = yield* Effect.forEach(
+        [1, 2],
+        () => store.createMulticaQuickCreateIntent(intent),
+        { concurrency: 2 },
+      );
+      assert.deepEqual([...created].sort(), [false, true]);
+      assert.deepEqual(Option.getOrThrow(yield* store.getMulticaQuickCreateIntent(intent.runId)), {
+        ...intent,
+        state: "prepared",
+      });
+    }),
+  );
+
+  it.effect("同一 Runtime 的不同 Run 不能复用 quick-create 幂等键", () =>
+    Effect.gen(function* () {
+      const store = yield* CompositionTaskStore;
+      const owner = {
+        runId: "run-quick-create-key-owner",
+        taskId: "task-quick-create-key-owner",
+        runtimeId: "multica:daemon-1:runtime-key-scope",
+        idempotencyKey: "shared-runtime-key",
+        createdAtUnixMs: 1_000,
+        updatedAtUnixMs: 1_000,
+      };
+
+      assert.isTrue(yield* store.createMulticaQuickCreateIntent(owner));
+      assert.isFalse(
+        yield* store.createMulticaQuickCreateIntent({
+          ...owner,
+          runId: "run-quick-create-key-contender",
+          taskId: "task-quick-create-key-contender",
+        }),
+      );
+      assert.isTrue(
+        yield* store.createMulticaQuickCreateIntent({
+          ...owner,
+          runId: "run-quick-create-other-runtime",
+          taskId: "task-quick-create-other-runtime",
+          runtimeId: "multica:daemon-2:runtime-key-scope",
+        }),
+      );
+      assert.equal(
+        Option.getOrThrow(
+          yield* store.getMulticaQuickCreateIntentByIdempotencyKey(
+            owner.runtimeId,
+            owner.idempotencyKey,
+          ),
+        ).runId,
+        owner.runId,
+      );
+    }),
+  );
+
+  it.effect("并发的不同 Run 争用同一 Runtime 幂等键时只创建一个 intent", () =>
+    Effect.gen(function* () {
+      const store = yield* CompositionTaskStore;
+      const common = {
+        runtimeId: "multica:daemon-1:runtime-key-race",
+        idempotencyKey: "shared-race-key",
+        createdAtUnixMs: 1_000,
+        updatedAtUnixMs: 1_000,
+      };
+      const intents = [
+        { ...common, runId: "run-key-race-a", taskId: "task-key-race-a" },
+        { ...common, runId: "run-key-race-b", taskId: "task-key-race-b" },
+      ];
+
+      const created = yield* Effect.forEach(
+        intents,
+        (intent) => store.createMulticaQuickCreateIntent(intent),
+        { concurrency: 2 },
+      );
+      assert.deepEqual([...created].sort(), [false, true]);
+      const stored = yield* store.getMulticaQuickCreateIntentByIdempotencyKey(
+        common.runtimeId,
+        common.idempotencyKey,
+      );
+      assert.isTrue(Option.isSome(stored));
+      assert.include(
+        intents.map((intent) => intent.runId),
+        Option.getOrThrow(stored).runId,
+      );
+    }),
+  );
 });
 
 inputStoreLayer("CompositionTaskInputStore", (it) => {

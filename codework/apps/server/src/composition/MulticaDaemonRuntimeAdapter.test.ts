@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vite-plus/test";
 import * as Effect from "effect/Effect";
+import * as Option from "effect/Option";
 import * as Stream from "effect/Stream";
 import { ProviderDriverKind, ThreadId } from "@codework/contracts";
 
@@ -77,8 +78,104 @@ const makeOptions = (
   capabilities: ["rpc-v1", "squad", "leader", "task-graph"],
   supportsResume: false,
   supportsMcp: true,
+  quickCreateIntentStore: makeQuickCreateIntentStore(),
   ...overrides,
 });
+
+const makeQuickCreateIntentStore = () => {
+  type Intent = {
+    readonly runId: string;
+    readonly taskId: string;
+    readonly runtimeId: string;
+    readonly idempotencyKey: string;
+    readonly state: "prepared" | "sending" | "accepted";
+    readonly remoteTaskId?: string;
+    readonly createdAtUnixMs: number;
+    readonly updatedAtUnixMs: number;
+  };
+  const intents = new Map<string, Intent>();
+
+  return {
+    seed: (intent: Intent) => intents.set(intent.runId, intent),
+    createMulticaQuickCreateIntent: (intent: Omit<Intent, "state">) =>
+      Effect.sync(() => {
+        if (
+          intents.has(intent.runId) ||
+          [...intents.values()].some(
+            (existing) =>
+              existing.runtimeId === intent.runtimeId &&
+              existing.idempotencyKey === intent.idempotencyKey,
+          )
+        ) {
+          return false;
+        }
+        intents.set(intent.runId, { ...intent, state: "prepared" });
+        return true;
+      }),
+    getMulticaQuickCreateIntent: (runId: string) =>
+      Effect.sync(() => {
+        const intent = intents.get(runId);
+        return intent === undefined ? Option.none<Intent>() : Option.some(intent);
+      }),
+    getMulticaQuickCreateIntentByIdempotencyKey: (
+      intentRuntimeId: string,
+      idempotencyKey: string,
+    ) =>
+      Effect.sync(() => {
+        const intent = [...intents.values()].find(
+          (candidate) =>
+            candidate.runtimeId === intentRuntimeId && candidate.idempotencyKey === idempotencyKey,
+        );
+        return intent === undefined ? Option.none<Intent>() : Option.some(intent);
+      }),
+    claimMulticaQuickCreateIntentForSend: (input: {
+      readonly runId: string;
+      readonly runtimeId: string;
+      readonly updatedAtUnixMs: number;
+    }) =>
+      Effect.sync(() => {
+        const existing = intents.get(input.runId);
+        if (
+          existing === undefined ||
+          existing.runtimeId !== input.runtimeId ||
+          existing.state !== "prepared"
+        ) {
+          return Option.none<Intent>();
+        }
+        const claimed: Intent = {
+          ...existing,
+          state: "sending",
+          updatedAtUnixMs: input.updatedAtUnixMs,
+        };
+        intents.set(input.runId, claimed);
+        return Option.some(claimed);
+      }),
+    acceptMulticaQuickCreateIntent: (input: {
+      readonly runId: string;
+      readonly runtimeId: string;
+      readonly remoteTaskId: string;
+      readonly updatedAtUnixMs: number;
+    }) =>
+      Effect.sync(() => {
+        const existing = intents.get(input.runId);
+        if (
+          existing === undefined ||
+          existing.runtimeId !== input.runtimeId ||
+          existing.state !== "sending"
+        ) {
+          return Option.none<Intent>();
+        }
+        const accepted: Intent = {
+          ...existing,
+          state: "accepted",
+          remoteTaskId: input.remoteTaskId,
+          updatedAtUnixMs: input.updatedAtUnixMs,
+        };
+        intents.set(input.runId, accepted);
+        return Option.some(accepted);
+      }),
+  };
+};
 
 describe("MulticaDaemonRuntimeAdapter", () => {
   it("把 heartbeat 映射为 Code Work probe/heartbeat，并保留 runtimeGone 的离线事实", async () => {
@@ -215,6 +312,239 @@ describe("MulticaDaemonRuntimeAdapter", () => {
     await Effect.runPromise(adapter.completeTask(task.id, { output: "完成" }));
     await Effect.runPromise(adapter.acknowledgeCancellation(task.id, {}));
     expect(calls).toEqual(["quick-create", "claim", "start", "progress", "complete", "cancel-ack"]);
+  });
+
+  it("重建 Adapter 后遇到已发送但未确认的 quick-create intent 时拒绝重放 POST", async () => {
+    const intentStore = makeQuickCreateIntentStore();
+    intentStore.seed({
+      runId: "run-response-lost",
+      taskId: "task-response-lost",
+      runtimeId,
+      idempotencyKey: "run-response-lost",
+      state: "sending",
+      createdAtUnixMs: 1_000,
+      updatedAtUnixMs: 1_001,
+    });
+    let quickCreateCalls = 0;
+    const adapter = makeMulticaDaemonRuntimeAdapter(
+      makeOptions({
+        protocol: makeProtocol({
+          quickCreateTask: () =>
+            Effect.sync(() => {
+              quickCreateCalls += 1;
+              return { taskId: "unexpected-duplicate-task" };
+            }),
+        }),
+        quickCreateIntentStore: intentStore,
+      }),
+    );
+
+    await expect(
+      Effect.runPromise(
+        adapter.dispatchTask({
+          taskId: "task-response-lost",
+          runId: "run-response-lost",
+          agentId: "agent-1",
+          prompt: "响应丢失后不得重复创建",
+          idempotencyKey: "run-response-lost",
+        }),
+      ),
+    ).rejects.toMatchObject({ code: "quick_create_recovery_required" });
+    expect(quickCreateCalls).toBe(0);
+  });
+
+  it("重建 Adapter 后复用已绑定远端 taskId 的 quick-create intent", async () => {
+    const intentStore = makeQuickCreateIntentStore();
+    intentStore.seed({
+      runId: "run-accepted",
+      taskId: "task-accepted",
+      runtimeId,
+      idempotencyKey: "run-accepted",
+      state: "accepted",
+      remoteTaskId: "multica-task-accepted",
+      createdAtUnixMs: 1_000,
+      updatedAtUnixMs: 1_001,
+    });
+    let quickCreateCalls = 0;
+    const adapter = makeMulticaDaemonRuntimeAdapter(
+      makeOptions({
+        protocol: makeProtocol({
+          quickCreateTask: () =>
+            Effect.sync(() => {
+              quickCreateCalls += 1;
+              return { taskId: "unexpected-duplicate-task" };
+            }),
+        }),
+        quickCreateIntentStore: intentStore,
+      }),
+    );
+
+    await expect(
+      Effect.runPromise(
+        adapter.dispatchTask({
+          taskId: "task-accepted",
+          runId: "run-accepted",
+          agentId: "agent-1",
+          prompt: "已确认的远端任务不得重复创建",
+          idempotencyKey: "run-accepted",
+        }),
+      ),
+    ).resolves.toEqual({
+      runtimeTaskId: "multica-task-accepted",
+      status: "already_running",
+    });
+    expect(quickCreateCalls).toBe(0);
+  });
+
+  it("同一 Runtime 下不同 Run 复用幂等键时拒绝创建第二个远端任务", async () => {
+    const intentStore = makeQuickCreateIntentStore();
+    intentStore.seed({
+      runId: "run-idempotency-owner",
+      taskId: "task-idempotency-owner",
+      runtimeId,
+      idempotencyKey: "shared-idempotency-key",
+      state: "accepted",
+      remoteTaskId: "multica-task-owner",
+      createdAtUnixMs: 1_000,
+      updatedAtUnixMs: 1_001,
+    });
+    let quickCreateCalls = 0;
+    const adapter = makeMulticaDaemonRuntimeAdapter(
+      makeOptions({
+        protocol: makeProtocol({
+          quickCreateTask: () =>
+            Effect.sync(() => {
+              quickCreateCalls += 1;
+              return { taskId: "unexpected-duplicate-task" };
+            }),
+        }),
+        quickCreateIntentStore: intentStore,
+      }),
+    );
+
+    await expect(
+      Effect.runPromise(
+        adapter.dispatchTask({
+          taskId: "task-idempotency-contender",
+          runId: "run-idempotency-contender",
+          agentId: "agent-1",
+          prompt: "不得复用其他 Run 的幂等键",
+          idempotencyKey: "shared-idempotency-key",
+        }),
+      ),
+    ).rejects.toMatchObject({ code: "quick_create_idempotency_conflict" });
+    expect(quickCreateCalls).toBe(0);
+  });
+
+  it("不同 Runtime 可以独立使用相同 quick-create 幂等键", async () => {
+    const intentStore = makeQuickCreateIntentStore();
+    intentStore.seed({
+      runId: "run-runtime-a",
+      taskId: "task-runtime-a",
+      runtimeId,
+      idempotencyKey: "runtime-scoped-key",
+      state: "accepted",
+      remoteTaskId: "multica-task-runtime-a",
+      createdAtUnixMs: 1_000,
+      updatedAtUnixMs: 1_001,
+    });
+    const otherRuntimeId = "multica:daemon-2:runtime-2";
+    let quickCreateCalls = 0;
+    const adapter = makeMulticaDaemonRuntimeAdapter(
+      makeOptions({
+        runtimeId: otherRuntimeId,
+        daemonId: "daemon-2",
+        daemonRuntimeId: "runtime-2",
+        agents: [
+          {
+            agentId: "agent-1",
+            runtimeId: otherRuntimeId,
+            displayName: "Multica Agent 2",
+            status: "online",
+            capabilities: ["squad", "leader"],
+          },
+        ],
+        protocol: makeProtocol({
+          quickCreateTask: () =>
+            Effect.sync(() => {
+              quickCreateCalls += 1;
+              return { taskId: "multica-task-runtime-b" };
+            }),
+        }),
+        quickCreateIntentStore: intentStore,
+      }),
+    );
+
+    await expect(
+      Effect.runPromise(
+        adapter.dispatchTask({
+          taskId: "task-runtime-b",
+          runId: "run-runtime-b",
+          agentId: "agent-1",
+          prompt: "不同 Runtime 独立派发",
+          idempotencyKey: "runtime-scoped-key",
+        }),
+      ),
+    ).resolves.toEqual({ runtimeTaskId: "multica-task-runtime-b", status: "accepted" });
+    expect(quickCreateCalls).toBe(1);
+  });
+
+  it("并发的不同 Run 争用同一 Runtime 幂等键时只发送一次 POST", async () => {
+    const intentStore = makeQuickCreateIntentStore();
+    let releaseFirstRequest: () => void = () => undefined;
+    let signalFirstRequest: () => void = () => undefined;
+    const firstRequestStarted = new Promise<void>((resolve) => {
+      signalFirstRequest = resolve;
+    });
+    const firstRequestRelease = new Promise<void>((resolve) => {
+      releaseFirstRequest = resolve;
+    });
+    let quickCreateCalls = 0;
+    const adapter = makeMulticaDaemonRuntimeAdapter(
+      makeOptions({
+        protocol: makeProtocol({
+          quickCreateTask: () =>
+            Effect.promise(async () => {
+              quickCreateCalls += 1;
+              signalFirstRequest();
+              await firstRequestRelease;
+              return { taskId: "multica-task-concurrent-owner" };
+            }),
+        }),
+        quickCreateIntentStore: intentStore,
+      }),
+    );
+    const firstDispatch = Effect.runPromise(
+      adapter.dispatchTask({
+        taskId: "task-concurrent-owner",
+        runId: "run-concurrent-owner",
+        agentId: "agent-1",
+        prompt: "第一个并发请求",
+        idempotencyKey: "concurrent-shared-key",
+      }),
+    );
+
+    await firstRequestStarted;
+    try {
+      await expect(
+        Effect.runPromise(
+          adapter.dispatchTask({
+            taskId: "task-concurrent-contender",
+            runId: "run-concurrent-contender",
+            agentId: "agent-1",
+            prompt: "第二个并发请求",
+            idempotencyKey: "concurrent-shared-key",
+          }),
+        ),
+      ).rejects.toMatchObject({ code: "quick_create_idempotency_conflict" });
+    } finally {
+      releaseFirstRequest();
+    }
+    await expect(firstDispatch).resolves.toEqual({
+      runtimeTaskId: "multica-task-concurrent-owner",
+      status: "accepted",
+    });
+    expect(quickCreateCalls).toBe(1);
   });
 
   it("没有显式 assignee 映射时拒绝派发，不猜测远端 UUID", async () => {

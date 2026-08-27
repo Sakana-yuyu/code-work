@@ -5,6 +5,7 @@ import * as Context from "effect/Context";
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
+import * as Option from "effect/Option";
 import * as Queue from "effect/Queue";
 import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
@@ -68,6 +69,100 @@ const makeSettingsService = (
   getSettings: Effect.sync(getSettings),
   subscribeChanges: Effect.succeed(changes),
 });
+
+const makeQuickCreateIntentStore = () => {
+  type Intent = {
+    readonly runId: string;
+    readonly taskId: string;
+    readonly runtimeId: string;
+    readonly idempotencyKey: string;
+    readonly state: "prepared" | "sending" | "accepted";
+    readonly remoteTaskId?: string;
+    readonly createdAtUnixMs: number;
+    readonly updatedAtUnixMs: number;
+  };
+  const intents = new Map<string, Intent>();
+
+  return {
+    createMulticaQuickCreateIntent: (intent: Omit<Intent, "state">) =>
+      Effect.sync(() => {
+        if (
+          intents.has(intent.runId) ||
+          [...intents.values()].some(
+            (existing) =>
+              existing.runtimeId === intent.runtimeId &&
+              existing.idempotencyKey === intent.idempotencyKey,
+          )
+        ) {
+          return false;
+        }
+        intents.set(intent.runId, { ...intent, state: "prepared" });
+        return true;
+      }),
+    getMulticaQuickCreateIntent: (runId: string) =>
+      Effect.sync(() => {
+        const intent = intents.get(runId);
+        return intent === undefined ? Option.none<Intent>() : Option.some(intent);
+      }),
+    getMulticaQuickCreateIntentByIdempotencyKey: (
+      intentRuntimeId: string,
+      idempotencyKey: string,
+    ) =>
+      Effect.sync(() => {
+        const intent = [...intents.values()].find(
+          (candidate) =>
+            candidate.runtimeId === intentRuntimeId && candidate.idempotencyKey === idempotencyKey,
+        );
+        return intent === undefined ? Option.none<Intent>() : Option.some(intent);
+      }),
+    claimMulticaQuickCreateIntentForSend: (input: {
+      readonly runId: string;
+      readonly runtimeId: string;
+      readonly updatedAtUnixMs: number;
+    }) =>
+      Effect.sync(() => {
+        const intent = intents.get(input.runId);
+        if (
+          intent === undefined ||
+          intent.runtimeId !== input.runtimeId ||
+          intent.state !== "prepared"
+        ) {
+          return Option.none<Intent>();
+        }
+        const sending = {
+          ...intent,
+          state: "sending" as const,
+          updatedAtUnixMs: input.updatedAtUnixMs,
+        };
+        intents.set(input.runId, sending);
+        return Option.some(sending);
+      }),
+    acceptMulticaQuickCreateIntent: (input: {
+      readonly runId: string;
+      readonly runtimeId: string;
+      readonly remoteTaskId: string;
+      readonly updatedAtUnixMs: number;
+    }) =>
+      Effect.sync(() => {
+        const intent = intents.get(input.runId);
+        if (
+          intent === undefined ||
+          intent.runtimeId !== input.runtimeId ||
+          intent.state !== "sending"
+        ) {
+          return Option.none<Intent>();
+        }
+        const accepted = {
+          ...intent,
+          state: "accepted" as const,
+          remoteTaskId: input.remoteTaskId,
+          updatedAtUnixMs: input.updatedAtUnixMs,
+        };
+        intents.set(input.runId, accepted);
+        return Option.some(accepted);
+      }),
+  };
+};
 
 const makeReconciler = (
   settings: () => ServerSettings,
@@ -361,6 +456,7 @@ describe("CompositionRuntimeSettings", () => {
               },
             ],
             processRunner,
+            quickCreateIntentStore: makeQuickCreateIntentStore(),
           });
 
           yield* adapter.dispatchTask({

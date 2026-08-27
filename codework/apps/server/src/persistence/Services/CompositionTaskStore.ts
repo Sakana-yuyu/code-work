@@ -14,6 +14,25 @@ import type { PersistenceSqlError } from "../Errors.ts";
 
 export type CompositionTaskStoreError = PersistenceSqlError;
 
+/**
+ * Multica quick-create 的本地发送事实。仅保存本地关联键和远端任务 ID，绝不保存 prompt、请求头或凭据。
+ */
+export type CompositionMulticaQuickCreateIntent = {
+  readonly runId: string;
+  readonly taskId: string;
+  readonly runtimeId: string;
+  readonly idempotencyKey: string;
+  readonly state: "prepared" | "sending" | "accepted";
+  readonly remoteTaskId?: string;
+  readonly createdAtUnixMs: number;
+  readonly updatedAtUnixMs: number;
+};
+
+export type CompositionMulticaQuickCreateIntentInput = Omit<
+  CompositionMulticaQuickCreateIntent,
+  "state"
+>;
+
 export interface CompositionTaskStoreShape {
   readonly upsertTask: (
     task: CompositionTask,
@@ -38,6 +57,39 @@ export interface CompositionTaskStoreShape {
     runtimeId: string,
     runtimeTaskId: string,
   ) => Effect.Effect<ReadonlyArray<CompositionTaskRun>, CompositionTaskStoreError>;
+  /** 原子创建发送意图；false 表示 Run 或 Runtime 作用域幂等键已有不可覆盖的历史意图。 */
+  readonly createMulticaQuickCreateIntent: (
+    intent: CompositionMulticaQuickCreateIntentInput,
+  ) => Effect.Effect<boolean, CompositionTaskStoreError>;
+  readonly getMulticaQuickCreateIntent: (
+    runId: string,
+  ) => Effect.Effect<Option.Option<CompositionMulticaQuickCreateIntent>, CompositionTaskStoreError>;
+  readonly getMulticaQuickCreateIntentByIdempotencyKey: (
+    runtimeId: string,
+    idempotencyKey: string,
+  ) => Effect.Effect<Option.Option<CompositionMulticaQuickCreateIntent>, CompositionTaskStoreError>;
+  /** 仅 prepared 可转为 sending；sending 代表请求结果已不可安全推断。 */
+  readonly claimMulticaQuickCreateIntentForSend: (input: {
+    readonly runId: string;
+    readonly runtimeId: string;
+    readonly updatedAtUnixMs: number;
+  }) => Effect.Effect<
+    Option.Option<CompositionMulticaQuickCreateIntent>,
+    CompositionTaskStoreError
+  >;
+  /** 仅将本次 sending 意图绑定到已验证的远端 task ID。 */
+  readonly acceptMulticaQuickCreateIntent: (input: {
+    readonly runId: string;
+    readonly runtimeId: string;
+    readonly remoteTaskId: string;
+    readonly updatedAtUnixMs: number;
+  }) => Effect.Effect<
+    Option.Option<CompositionMulticaQuickCreateIntent>,
+    CompositionTaskStoreError
+  >;
+  readonly listPendingMulticaQuickCreateIntents: (
+    runtimeId?: string,
+  ) => Effect.Effect<ReadonlyArray<CompositionMulticaQuickCreateIntent>, CompositionTaskStoreError>;
   readonly appendEvent: (
     event: CompositionTaskEvent,
   ) => Effect.Effect<CompositionTaskEvent, CompositionTaskStoreError>;

@@ -417,12 +417,17 @@ const CompositionAgentServiceLayerLive = CompositionAgentService.layer.pipe(
 
 const CompositionRuntimeMcpSessionRegistryLayerLive = CompositionRuntimeMcpSessionRegistry.layer;
 
+const CompositionTaskStoreLayerLive = CompositionTaskStoreLive.pipe(
+  Layer.provideMerge(PersistenceLayerLive),
+);
+
 const CompositionRuntimeSettingsLayerLive = CompositionRuntimeSettings.layer.pipe(
   Layer.provideMerge(ServerSettingsLayerLive),
   Layer.provideMerge(CompositionRuntimeAdapterRegistry.layer),
   Layer.provideMerge(CompositionIdeSessionRegistryLayerLive),
   Layer.provideMerge(CompositionRuntimeMcpSessionRegistryLayerLive),
   Layer.provideMerge(ProcessRunner.layer),
+  Layer.provideMerge(CompositionTaskStoreLayerLive),
 );
 
 const CompositionAgentDriverProjectionLayerLive = Layer.mergeAll(
@@ -447,7 +452,7 @@ const CompositionRuntimeDependenciesLive = Layer.empty.pipe(
       Layer.provide(ServerSecretStore.layer),
     ),
   ),
-  Layer.provideMerge(CompositionTaskStoreLive.pipe(Layer.provideMerge(PersistenceLayerLive))),
+  Layer.provideMerge(CompositionTaskStoreLayerLive),
 );
 
 const CompositionRuntimeToolBridgeLayerLive = CompositionRuntimeToolBridge.layer.pipe(

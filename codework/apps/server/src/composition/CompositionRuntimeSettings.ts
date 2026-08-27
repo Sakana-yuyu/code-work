@@ -15,6 +15,8 @@ import { ServerSettingsService } from "../serverSettings.ts";
 import * as ProcessRunner from "../processRunner.ts";
 import * as CompositionRuntimeMcpSessionRegistry from "../mcp/CompositionRuntimeMcpSessionRegistry.ts";
 import * as CompositionIdeSessionRegistry from "./CompositionIdeSessionRegistry.ts";
+import { CompositionTaskStore } from "../persistence/Services/CompositionTaskStore.ts";
+import type { CompositionTaskStoreShape } from "../persistence/Services/CompositionTaskStore.ts";
 import { makeCompositionIdeJsonRpcAdapter } from "./CompositionIdeJsonRpcTransport.ts";
 import {
   makeMulticaDaemonRuntimeAdapter,
@@ -62,6 +64,7 @@ export type CompositionRuntimeSettings = {
     CompositionRuntimeMcpSessionRegistry.CompositionRuntimeMcpSessionRegistryShape,
     "activate" | "revokeHandshake" | "revokeRuntime"
   >;
+  readonly quickCreateIntentStore?: MulticaDaemonRuntimeAdapterOptions["quickCreateIntentStore"];
   /** 可选的 Multica daemon extension；未提供时保持官方窄协议行为。 */
   readonly taskExecutionBridge?: MulticaDaemonRuntimeAdapterOptions["taskExecutionBridge"];
   readonly taskEventStreamFactory?: (
@@ -102,6 +105,7 @@ export type CompositionRuntimeSettingsFactoryInput = {
     CompositionRuntimeMcpSessionRegistry.CompositionRuntimeMcpSessionRegistryShape,
     "activate" | "revokeHandshake" | "revokeRuntime"
   >;
+  readonly quickCreateIntentStore?: MulticaDaemonRuntimeAdapterOptions["quickCreateIntentStore"];
   readonly taskExecutionBridge?: MulticaDaemonRuntimeAdapterOptions["taskExecutionBridge"];
   readonly taskEventStreamFactory?: CompositionRuntimeSettings["taskEventStreamFactory"];
   readonly daemonControlStreamFactory?: CompositionRuntimeSettings["daemonControlStreamFactory"];
@@ -446,6 +450,9 @@ export const makeMulticaRuntimeAdapterFromSettings = (
       daemonRuntimeId: input.config.daemonRuntimeId,
       baseUrl: input.config.baseUrl,
       protocol,
+      ...(input.quickCreateIntentStore === undefined
+        ? {}
+        : { quickCreateIntentStore: input.quickCreateIntentStore }),
       agents: input.agents,
       taskAssigneeRoutes: input.config.assigneeRoutes.map((route) => ({
         codeworkAgentId: route.codeworkAgentId,
@@ -625,6 +632,9 @@ export const makeCompositionRuntimeSettingsReconciler = (
           ...(options.mcpSessionRegistry === undefined
             ? {}
             : { mcpSessionRegistry: options.mcpSessionRegistry }),
+          ...(options.quickCreateIntentStore === undefined
+            ? {}
+            : { quickCreateIntentStore: options.quickCreateIntentStore }),
           ...(options.processRunner === undefined ? {} : { processRunner: options.processRunner }),
           ...(options.taskExecutionBridge === undefined
             ? {}
@@ -753,12 +763,21 @@ const live = Effect.gen(function* () {
     yield* CompositionRuntimeMcpSessionRegistry.CompositionRuntimeMcpSessionRegistry;
   const ideSessionRegistry =
     yield* CompositionIdeSessionRegistry.CompositionIdeSessionRegistryService;
+  const quickCreateIntentStore: Pick<
+    CompositionTaskStoreShape,
+    | "createMulticaQuickCreateIntent"
+    | "getMulticaQuickCreateIntent"
+    | "getMulticaQuickCreateIntentByIdempotencyKey"
+    | "claimMulticaQuickCreateIntentForSend"
+    | "acceptMulticaQuickCreateIntent"
+  > = yield* CompositionTaskStore;
   const reconciler = makeCompositionRuntimeSettingsReconciler({
     settings,
     adapterRegistry,
     ideSessionRegistry,
     mcpSessionRegistry,
     processRunner,
+    quickCreateIntentStore,
   });
   yield* reconciler.start;
   return reconciler;
