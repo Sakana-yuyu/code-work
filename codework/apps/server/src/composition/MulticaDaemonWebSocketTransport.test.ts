@@ -142,6 +142,77 @@ describe("MulticaDaemonWebSocketTransport", () => {
     ]);
   });
 
+  it("忽略不属于当前连接 runtime scope 的 heartbeat ack，也不提前解锁 RPC", async () => {
+    const sockets: Array<FakeSocketImpl> = [];
+    const transport = makeMulticaDaemonWebSocketStream({
+      baseUrl: "https://multica.test",
+      headers: { Authorization: "Bearer test-token" },
+      runtimeIds: ["runtime-1"],
+      webSocketFactory: makeFactory(sockets),
+    });
+    const fiber = Effect.runFork(Stream.runCollect(Stream.take(transport.stream, 1)));
+    await flushEffects();
+    const socket = sockets[0]!;
+    socket.emit("open");
+    socket.emit(
+      "message",
+      JSON.stringify({
+        type: "daemon:heartbeat_ack",
+        payload: { runtime_id: "runtime-not-authorized", status: "online" },
+      }),
+    );
+    expect(transport.supportsRpc()).toBe(false);
+    socket.emit(
+      "message",
+      JSON.stringify({
+        type: "daemon:heartbeat_ack",
+        payload: { runtime_id: "runtime-1", status: "online", server_capabilities: ["rpc-v1"] },
+      }),
+    );
+    await expect(Effect.runPromise(Fiber.join(fiber))).resolves.toEqual([
+      {
+        type: "daemon:heartbeat_ack",
+        payload: { runtime_id: "runtime-1", status: "online", server_capabilities: ["rpc-v1"] },
+      },
+    ]);
+    transport.close();
+  });
+
+  it("多 runtime 连接合并 heartbeat ack 的 server capabilities", async () => {
+    const sockets: Array<FakeSocketImpl> = [];
+    const transport = makeMulticaDaemonWebSocketStream({
+      baseUrl: "https://multica.test",
+      headers: { Authorization: "Bearer test-token" },
+      runtimeIds: ["runtime-1", "runtime-2"],
+      webSocketFactory: makeFactory(sockets),
+    });
+    const fiber = Effect.runFork(Stream.runCollect(Stream.take(transport.stream, 2)));
+    await flushEffects();
+    const socket = sockets[0]!;
+    socket.emit("open");
+    socket.emit(
+      "message",
+      JSON.stringify({
+        type: "daemon:heartbeat_ack",
+        payload: { runtime_id: "runtime-1", status: "online", server_capabilities: ["rpc-v1"] },
+      }),
+    );
+    socket.emit(
+      "message",
+      JSON.stringify({
+        type: "daemon:heartbeat_ack",
+        payload: {
+          runtime_id: "runtime-2",
+          status: "online",
+          server_capabilities: ["task-events-v1"],
+        },
+      }),
+    );
+
+    await Effect.runPromise(Fiber.join(fiber));
+    expect(transport.supportsRpc()).toBe(true);
+  });
+
   it("把匹配 request_id 的 RPC response 返回给请求方，并拒绝非 2xx", async () => {
     const sockets: Array<FakeSocketImpl> = [];
     const transport = makeMulticaDaemonWebSocketStream({

@@ -403,11 +403,16 @@ export const makeMulticaDaemonWebSocketStream = (
 
     if (received.type === "daemon:heartbeat_ack") {
       const payload = recordFrom(received.payload);
+      const runtimeId = stringFrom(payload?.runtime_id ?? payload?.runtimeId);
+      // 共享控制连接可能承载多个 runtime；未知或缺失 scope 的 ack 不能
+      // 解锁 RPC，也不能进入上层事件流，避免错误绑定到其他 runtime。
+      if (runtimeId === undefined || !runtimeIds.includes(runtimeId)) return;
       const capabilities = payload?.server_capabilities ?? payload?.serverCapabilities;
       if (Array.isArray(capabilities)) {
-        serverCapabilities = new Set(
-          capabilities.filter((value): value is string => typeof value === "string"),
-        );
+        serverCapabilities = new Set([
+          ...serverCapabilities,
+          ...capabilities.filter((value): value is string => typeof value === "string"),
+        ]);
       }
       resolveCapabilitiesPromise();
       offerFrame(received);
