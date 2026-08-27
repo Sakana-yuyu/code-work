@@ -3,6 +3,8 @@ import type {
   CompositionTask,
   CompositionTaskRetryRequest,
   CompositionTaskRetryResult,
+  CompositionTaskResumeRequest,
+  CompositionTaskResumeResult,
   CompositionTaskReviewRequest,
   CompositionTaskReviewResult,
   CompositionTaskRun,
@@ -112,6 +114,19 @@ export class CompositionTaskRetryInvalidError extends Schema.TaggedErrorClass<Co
   }
 }
 
+export class CompositionTaskResumeInvalidError extends Schema.TaggedErrorClass<CompositionTaskResumeInvalidError>()(
+  "CompositionTaskResumeInvalidError",
+  {
+    taskId: Schema.String,
+    runId: Schema.String,
+    reason: Schema.String,
+  },
+) {
+  override get message(): string {
+    return `任务 ${this.taskId}/${this.runId} 不允许恢复：${this.reason}`;
+  }
+}
+
 export class CompositionAgentDriverFailure extends Schema.TaggedErrorClass<CompositionAgentDriverFailure>()(
   "CompositionAgentDriverFailure",
   {
@@ -159,6 +174,15 @@ export interface CompositionAgentDriver {
     readonly reason: string;
   }) => Effect.Effect<
     { readonly status: "cancelled" | "cancel_requested" | "already_terminal" },
+    CompositionAgentDriverFailure
+  >;
+  /** 对同一外部 Runtime Run 请求恢复，不会创建新的 Run 或授权。 */
+  readonly resumeTask?: (input: {
+    readonly task: CompositionTask;
+    readonly run: CompositionTaskRun;
+    readonly reason: string;
+  }) => Effect.Effect<
+    { readonly status: "accepted" | "already_running" | "already_terminal" },
     CompositionAgentDriverFailure
   >;
   readonly reviewTask?: (
@@ -214,6 +238,8 @@ export type CompositionCancelResult = {
   readonly run: CompositionTaskRun;
   readonly status: "cancelled" | "cancel_requested" | "already_terminal";
 };
+
+export type CompositionResumeResult = CompositionTaskResumeResult;
 
 export type CompositionRecoveryResult = ReadonlyArray<CompositionDispatchResult>;
 
@@ -298,6 +324,15 @@ export interface CompositionOrchestrator {
     | CapabilityRegistry.CapabilityScopeNotFoundError
     | CapabilityRegistry.CapabilityRegistryUnavailableError
   >;
+  readonly resumeTask: (
+    input: CompositionTaskResumeRequest,
+  ) => Effect.Effect<
+    CompositionResumeResult,
+    | CompositionTaskStoreError
+    | CompositionTaskNotFoundError
+    | CompositionTaskResumeInvalidError
+    | CompositionAgentDriverFailure
+  >;
   readonly resumeReadyTasks: () => Effect.Effect<
     CompositionRecoveryResult,
     | CompositionTaskStoreError
@@ -315,6 +350,7 @@ const makeOrchestrator = (
   inputStore?: CompositionTaskInputStoreShape,
 ): CompositionOrchestrator => {
   const resumingTaskIds = new Set<string>();
+  const resumingRunIds = new Set<string>();
 
   const revokeRunCapabilities = (
     driver: CompositionAgentDriver | undefined,
@@ -839,6 +875,221 @@ const makeOrchestrator = (
       };
     });
 
+  const resumeTask: CompositionOrchestrator["resumeTask"] = (input) =>
+    Effect.gen(function* () {
+      if (resumingRunIds.has(input.runId)) {
+        return yield* new CompositionTaskResumeInvalidError({
+          taskId: input.taskId,
+          runId: input.runId,
+          reason: "resume_in_progress",
+        });
+      }
+      resumingRunIds.add(input.runId);
+
+      return yield* Effect.gen(function* () {
+        const taskOption = yield* store.getTask(input.taskId);
+        const runOption = yield* store.getRun(input.runId);
+        if (Option.isNone(taskOption) || Option.isNone(runOption)) {
+          return yield* new CompositionTaskNotFoundError({
+            taskId: input.taskId,
+            runId: input.runId,
+          });
+        }
+        const initialRun = runOption.value;
+        const driver = yield* driverRegistry.get(initialRun.agentId);
+        if (driver === undefined) {
+          return yield* new CompositionAgentDriverFailure({
+            code: "agent_driver_unavailable",
+            detail: `未找到 Agent Driver：${initialRun.agentId}`,
+          });
+        }
+        if (driver.resumeTask === undefined) {
+          return yield* new CompositionAgentDriverFailure({
+            code: "agent_driver_resume_unsupported",
+            detail: `Agent Driver 未提供 Runtime Resume：${initialRun.agentId}`,
+          });
+        }
+
+        const requested = yield* store.withTransaction(
+          Effect.gen(function* () {
+            const taskOption = yield* store.getTask(input.taskId);
+            const runOption = yield* store.getRun(input.runId);
+            const latestRunOption = yield* store.getLatestRun(input.taskId);
+            if (Option.isNone(taskOption) || Option.isNone(runOption)) {
+              return yield* new CompositionTaskNotFoundError({
+                taskId: input.taskId,
+                runId: input.runId,
+              });
+            }
+            const task = taskOption.value;
+            const run = runOption.value;
+            const invalid = (reason: string) =>
+              new CompositionTaskResumeInvalidError({
+                taskId: input.taskId,
+                runId: input.runId,
+                reason,
+              });
+            if (run.taskId !== task.taskId) return yield* invalid("run_task_mismatch");
+            if (Option.isNone(latestRunOption) || latestRunOption.value.runId !== run.runId) {
+              return yield* invalid("run_is_not_latest");
+            }
+            if (terminalStatuses.has(task.status))
+              return yield* invalid(`task_status_${task.status}`);
+            if (terminalStatuses.has(run.status)) return yield* invalid(`run_status_${run.status}`);
+            if (task.status === "in_review") return yield* invalid("task_status_in_review");
+            if (run.status === "in_review") return yield* invalid("run_status_in_review");
+            if (run.cancelRequestedAtUnixMs !== undefined) {
+              return yield* invalid("cancel_requested");
+            }
+            if (run.runtimeTaskId === undefined) return yield* invalid("runtime_task_id_missing");
+
+            const now = yield* Clock.currentTimeMillis;
+            const resumingTask: CompositionTask = {
+              ...task,
+              status: "resuming",
+              updatedAtUnixMs: now,
+            };
+            const resumingRun: CompositionTaskRun = {
+              ...run,
+              status: "resuming",
+            };
+            yield* store.upsertTask(resumingTask);
+            yield* store.upsertRun(resumingRun);
+            const events = yield* store.listEvents(input.taskId, input.runId);
+            yield* store.appendEvent(
+              makeEvent({
+                task: resumingTask,
+                run: resumingRun,
+                sequence: events.length,
+                status: "resuming",
+                eventType: "status",
+                summary: `Runtime 已请求恢复：${input.reason}`,
+              }),
+            );
+            return {
+              task: resumingTask,
+              run: resumingRun,
+              previousTaskStatus: task.status,
+              previousRunStatus: run.status,
+            };
+          }),
+        );
+
+        const restore = (summary: string) =>
+          store.withTransaction(
+            Effect.gen(function* () {
+              const taskOption = yield* store.getTask(input.taskId);
+              const runOption = yield* store.getRun(input.runId);
+              if (Option.isNone(taskOption) || Option.isNone(runOption)) {
+                return yield* new CompositionTaskNotFoundError({
+                  taskId: input.taskId,
+                  runId: input.runId,
+                });
+              }
+              const task = taskOption.value;
+              const run = runOption.value;
+              if (
+                terminalStatuses.has(task.status) ||
+                terminalStatuses.has(run.status) ||
+                task.status === "in_review" ||
+                run.status === "in_review" ||
+                run.cancelRequestedAtUnixMs !== undefined ||
+                task.status !== "resuming" ||
+                run.status !== "resuming"
+              ) {
+                return { task, run };
+              }
+              const now = yield* Clock.currentTimeMillis;
+              const restoredTask: CompositionTask = {
+                ...task,
+                status: requested.previousTaskStatus,
+                updatedAtUnixMs: now,
+              };
+              const restoredRun: CompositionTaskRun = {
+                ...run,
+                status: requested.previousRunStatus,
+              };
+              yield* store.upsertTask(restoredTask);
+              yield* store.upsertRun(restoredRun);
+              const events = yield* store.listEvents(input.taskId, input.runId);
+              yield* store.appendEvent(
+                makeEvent({
+                  task: restoredTask,
+                  run: restoredRun,
+                  sequence: events.length,
+                  status: restoredTask.status,
+                  eventType: "status",
+                  summary,
+                }),
+              );
+              return { task: restoredTask, run: restoredRun };
+            }),
+          );
+
+        const result = yield* Effect.result(
+          driver.resumeTask({ task: requested.task, run: requested.run, reason: input.reason }),
+        );
+        if (result._tag === "Failure") {
+          yield* restore(`Runtime 恢复请求失败：${result.failure.code}`);
+          return yield* result.failure;
+        }
+        if (result.success.status === "already_terminal") {
+          const restored = yield* restore("Runtime 已反馈终态，等待可信终态事件");
+          return { ...restored, status: "already_terminal" as const };
+        }
+
+        return yield* store.withTransaction(
+          Effect.gen(function* () {
+            const taskOption = yield* store.getTask(input.taskId);
+            const runOption = yield* store.getRun(input.runId);
+            if (Option.isNone(taskOption) || Option.isNone(runOption)) {
+              return yield* new CompositionTaskNotFoundError({
+                taskId: input.taskId,
+                runId: input.runId,
+              });
+            }
+            const task = taskOption.value;
+            const run = runOption.value;
+            if (
+              terminalStatuses.has(task.status) ||
+              terminalStatuses.has(run.status) ||
+              task.status === "in_review" ||
+              run.status === "in_review" ||
+              run.cancelRequestedAtUnixMs !== undefined ||
+              task.status !== "resuming" ||
+              run.status !== "resuming"
+            ) {
+              return { task, run, status: result.success.status };
+            }
+            const now = yield* Clock.currentTimeMillis;
+            const runningTask: CompositionTask = {
+              ...task,
+              status: "running",
+              updatedAtUnixMs: now,
+            };
+            const runningRun: CompositionTaskRun = {
+              ...run,
+              status: "running",
+            };
+            yield* store.upsertTask(runningTask);
+            yield* store.upsertRun(runningRun);
+            const events = yield* store.listEvents(input.taskId, input.runId);
+            yield* store.appendEvent(
+              makeEvent({
+                task: runningTask,
+                run: runningRun,
+                sequence: events.length,
+                status: "running",
+                eventType: "status",
+                summary: "Runtime 已确认恢复运行",
+              }),
+            );
+            return { task: runningTask, run: runningRun, status: result.success.status };
+          }),
+        );
+      }).pipe(Effect.ensuring(Effect.sync(() => resumingRunIds.delete(input.runId))));
+    });
+
   const retryTask: CompositionOrchestrator["retryTask"] = (input) =>
     Effect.gen(function* () {
       const taskOption = yield* store.getTask(input.taskId);
@@ -1062,7 +1313,7 @@ const makeOrchestrator = (
       return resumed;
     });
 
-  return { dispatchTask, cancelTask, reviewTask, retryTask, resumeReadyTasks };
+  return { dispatchTask, cancelTask, resumeTask, reviewTask, retryTask, resumeReadyTasks };
 };
 
 export const makeCompositionOrchestrator = (

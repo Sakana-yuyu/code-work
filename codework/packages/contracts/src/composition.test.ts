@@ -18,6 +18,8 @@ import {
   CompositionTaskListRequest,
   CompositionTaskReviewRequest,
   CompositionTaskRetryRequest,
+  CompositionTaskResumeRequest,
+  CompositionTaskResumeResult,
   CompositionTaskEvent,
   CompositionToolInvocation,
   CompositionToolResult,
@@ -40,6 +42,8 @@ const decodeTaskListResult = Schema.decodeUnknownSync(CompositionTaskListResult)
 const decodeTaskList = Schema.decodeUnknownSync(CompositionTaskListRequest);
 const decodeTaskReview = Schema.decodeUnknownSync(CompositionTaskReviewRequest);
 const decodeTaskRetry = Schema.decodeUnknownSync(CompositionTaskRetryRequest);
+const decodeTaskResume = Schema.decodeUnknownSync(CompositionTaskResumeRequest);
+const decodeTaskResumeResult = Schema.decodeUnknownSync(CompositionTaskResumeResult);
 const decodeToolInvocation = Schema.decodeUnknownSync(CompositionToolInvocation);
 const decodeToolResult = Schema.decodeUnknownSync(CompositionToolResult);
 const decodeRuntimeToolInvocation = Schema.decodeUnknownSync(CompositionRuntimeToolInvocation);
@@ -141,6 +145,43 @@ describe("composition contracts", () => {
     expect(decoded.previousRunId).toBe("run-old");
     expect(decoded.runId).toBe("run-retry-2");
     expect(decoded.capabilityIds).toEqual(["t3.workspace.read_file"]);
+  });
+
+  it("定义同一 Run 的 Runtime Resume 合同", () => {
+    const request = decodeTaskResume({
+      taskId: "task-resume",
+      runId: "run-resume",
+      reason: "连接恢复后继续执行",
+    });
+    const result = decodeTaskResumeResult({
+      task: {
+        taskId: "task-resume",
+        projectId: "project-1",
+        assigneeKind: "agent",
+        assigneeId: "agent-1",
+        mode: "serial",
+        status: "running",
+        promptDigest: "sha256:resume",
+        dependsOnTaskIds: [],
+        createdAtUnixMs: 1,
+        updatedAtUnixMs: 2,
+      },
+      run: {
+        runId: "run-resume",
+        taskId: "task-resume",
+        agentId: "agent-1",
+        runtimeId: "runtime-1",
+        runtimeTaskId: "runtime-task-resume",
+        capabilityHandshakeId: "handshake-resume",
+        status: "running",
+        attempt: 1,
+        capabilityGrantIds: ["grant-resume"],
+      },
+      status: "accepted",
+    });
+
+    expect(request.runId).toBe(result.run.runId);
+    expect(result.run.capabilityGrantIds).toEqual(["grant-resume"]);
   });
   it("描述 task-scoped capability grant 和脱敏审计事件", () => {
     const grant = decodeCapabilityGrant({

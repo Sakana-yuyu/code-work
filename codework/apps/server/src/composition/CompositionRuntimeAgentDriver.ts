@@ -309,6 +309,29 @@ export const makeCompositionRuntimeAgentDriver = (
         Effect.map((result) => ({ status: result.status })),
       );
 
+  const resumeTask: NonNullable<CompositionAgentDriver["resumeTask"]> = (input) =>
+    options.adapter
+      .resumeTask({
+        taskId: input.task.taskId,
+        runId: input.run.runId,
+        ...(input.run.runtimeTaskId === undefined
+          ? {}
+          : { runtimeTaskId: input.run.runtimeTaskId }),
+      })
+      .pipe(
+        Effect.mapError((failure) => makeFailure(failure.code, failure)),
+        Effect.flatMap((result) =>
+          input.run.runtimeTaskId !== undefined && result.runtimeTaskId !== input.run.runtimeTaskId
+            ? Effect.fail(
+                new CompositionAgentDriverFailure({
+                  code: "runtime_task_binding_conflict",
+                  detail: "Runtime 恢复返回的 runtimeTaskId 与当前 Run 不一致。",
+                }),
+              )
+            : Effect.succeed({ status: result.status }),
+        ),
+      );
+
   return {
     agentId: options.agentId,
     runtimeId: options.adapter.runtimeId,
@@ -316,6 +339,7 @@ export const makeCompositionRuntimeAgentDriver = (
     startTask,
     revokeCapabilityHandshake,
     cancelTask,
+    resumeTask,
     resolveRuntimeEvent: (event) => {
       if (event.raw?.runtimeId !== undefined && event.raw.runtimeId !== options.adapter.runtimeId) {
         return undefined;

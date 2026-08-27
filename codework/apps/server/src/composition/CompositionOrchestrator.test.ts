@@ -1167,4 +1167,149 @@ layer("CompositionOrchestrator", (it) => {
       assert.equal((yield* store.getTask("task-resume")).pipe(Option.getOrThrow).status, "running");
     }),
   );
+
+  it.effect("恢复同一非终态 Run 时保留运行身份和授权", () =>
+    Effect.gen(function* () {
+      const store = yield* CompositionTaskStore;
+      const driverRegistry = makeCompositionAgentDriverRegistry();
+      const resumed: Array<{
+        readonly taskId: string;
+        readonly runId: string;
+        readonly reason: string;
+      }> = [];
+      yield* driverRegistry.register({
+        agentId: "agent-runtime-resume",
+        runtimeId: "runtime-resume",
+        startTask: () => Effect.succeed({ runtimeTaskId: "runtime-task-resume" }),
+        cancelTask: () => Effect.succeed({ status: "cancelled" as const }),
+        resumeTask: (input) =>
+          Effect.sync(() => {
+            resumed.push({
+              taskId: input.task.taskId,
+              runId: input.run.runId,
+              reason: input.reason,
+            });
+            return { status: "accepted" as const };
+          }),
+      });
+      yield* store.upsertTask({
+        taskId: "task-runtime-resume",
+        projectId: "project-resume",
+        assigneeKind: "agent",
+        assigneeId: "agent-runtime-resume",
+        mode: "serial",
+        status: "running",
+        promptDigest: "sha256:runtime-resume",
+        dependsOnTaskIds: [],
+        createdAtUnixMs: 1,
+        updatedAtUnixMs: 1,
+      });
+      yield* store.upsertRun({
+        taskId: "task-runtime-resume",
+        runId: "run-runtime-resume",
+        agentId: "agent-runtime-resume",
+        runtimeId: "runtime-resume",
+        runtimeTaskId: "runtime-task-resume",
+        capabilityHandshakeId: "handshake-runtime-resume",
+        status: "running",
+        attempt: 3,
+        capabilityGrantIds: ["grant-runtime-resume"],
+      });
+      const orchestrator = makeCompositionOrchestrator(store, driverRegistry);
+
+      const result = yield* orchestrator.resumeTask({
+        taskId: "task-runtime-resume",
+        runId: "run-runtime-resume",
+        reason: "连接恢复后继续执行",
+      });
+
+      assert.equal(result.status, "accepted");
+      assert.equal(result.task.status, "running");
+      assert.equal(result.run.status, "running");
+      assert.equal(result.run.runId, "run-runtime-resume");
+      assert.equal(result.run.attempt, 3);
+      assert.equal(result.run.runtimeTaskId, "runtime-task-resume");
+      assert.equal(result.run.capabilityHandshakeId, "handshake-runtime-resume");
+      assert.deepEqual(result.run.capabilityGrantIds, ["grant-runtime-resume"]);
+      assert.deepEqual(resumed, [
+        {
+          taskId: "task-runtime-resume",
+          runId: "run-runtime-resume",
+          reason: "连接恢复后继续执行",
+        },
+      ]);
+      assert.deepEqual(
+        (yield* store.listEvents("task-runtime-resume", "run-runtime-resume")).map((event) => [
+          event.status,
+          event.summary,
+        ]),
+        [
+          ["resuming", "Runtime 已请求恢复：连接恢复后继续执行"],
+          ["running", "Runtime 已确认恢复运行"],
+        ],
+      );
+    }),
+  );
+
+  it.effect("取消已请求的 Run 不允许恢复且不调用 Driver", () =>
+    Effect.gen(function* () {
+      const store = yield* CompositionTaskStore;
+      const driverRegistry = makeCompositionAgentDriverRegistry();
+      let calls = 0;
+      yield* driverRegistry.register({
+        agentId: "agent-resume-cancelled",
+        runtimeId: "runtime-resume-cancelled",
+        startTask: () => Effect.succeed({ runtimeTaskId: "runtime-task-resume-cancelled" }),
+        cancelTask: () => Effect.succeed({ status: "cancel_requested" as const }),
+        resumeTask: () =>
+          Effect.sync(() => {
+            calls += 1;
+            return { status: "accepted" as const };
+          }),
+      });
+      yield* store.upsertTask({
+        taskId: "task-resume-cancelled",
+        projectId: "project-resume",
+        assigneeKind: "agent",
+        assigneeId: "agent-resume-cancelled",
+        mode: "serial",
+        status: "running",
+        promptDigest: "sha256:resume-cancelled",
+        dependsOnTaskIds: [],
+        createdAtUnixMs: 1,
+        updatedAtUnixMs: 2,
+      });
+      yield* store.upsertRun({
+        taskId: "task-resume-cancelled",
+        runId: "run-resume-cancelled",
+        agentId: "agent-resume-cancelled",
+        runtimeId: "runtime-resume-cancelled",
+        runtimeTaskId: "runtime-task-resume-cancelled",
+        status: "running",
+        attempt: 1,
+        capabilityGrantIds: [],
+        cancelRequestedAtUnixMs: 2,
+      });
+      const orchestrator = makeCompositionOrchestrator(store, driverRegistry);
+
+      const exit = yield* Effect.exit(
+        orchestrator.resumeTask({
+          taskId: "task-resume-cancelled",
+          runId: "run-resume-cancelled",
+          reason: "不应恢复",
+        }),
+      );
+
+      assert.equal(exit._tag, "Failure");
+      assert.equal(calls, 0);
+      assert.equal(
+        (yield* store.getTask("task-resume-cancelled")).pipe(Option.getOrThrow).status,
+        "running",
+      );
+      assert.equal(
+        (yield* store.getRun("run-resume-cancelled")).pipe(Option.getOrThrow).status,
+        "running",
+      );
+    }),
+  );
 });

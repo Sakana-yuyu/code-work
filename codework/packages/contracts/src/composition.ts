@@ -153,6 +153,7 @@ export type CompositionCapabilityPolicyDecision = typeof CompositionCapabilityPo
 export const CompositionTaskStatus = Schema.Literals([
   "queued",
   "dispatched",
+  "resuming",
   "running",
   "waiting_approval",
   "waiting_input",
@@ -418,6 +419,21 @@ export const CompositionTaskCancelResult = Schema.Struct({
   status: Schema.Literals(["cancelled", "cancel_requested", "already_terminal"]),
 });
 export type CompositionTaskCancelResult = typeof CompositionTaskCancelResult.Type;
+
+/** 对仍保有外部 Runtime 身份的非终态 Run 请求恢复；不会创建新的 Run。 */
+export const CompositionTaskResumeRequest = Schema.Struct({
+  taskId: TrimmedNonEmptyString,
+  runId: TrimmedNonEmptyString,
+  reason: TrimmedNonEmptyString,
+});
+export type CompositionTaskResumeRequest = typeof CompositionTaskResumeRequest.Type;
+
+export const CompositionTaskResumeResult = Schema.Struct({
+  task: CompositionTask,
+  run: CompositionTaskRun,
+  status: Schema.Literals(["accepted", "already_running", "already_terminal"]),
+});
+export type CompositionTaskResumeResult = typeof CompositionTaskResumeResult.Type;
 
 export const CompositionTaskReviewRequest = Schema.Struct({
   taskId: TrimmedNonEmptyString,

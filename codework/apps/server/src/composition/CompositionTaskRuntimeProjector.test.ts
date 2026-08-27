@@ -1102,6 +1102,22 @@ layer("CompositionTaskRuntimeProjector", (it) => {
           expected: "running" as const,
         },
         {
+          suffix: "resuming-pending",
+          taskStatus: "resuming" as const,
+          runStatus: "resuming" as const,
+          event: {
+            ...baseEvent,
+            eventId: EventId.make("provider-event-stale-resuming-pending"),
+            type: "task.progress" as const,
+            payload: {
+              taskId: RuntimeTaskId.make("runtime-task-stale-resuming-pending"),
+              status: "pending" as const,
+              description: "恢复前的旧排队状态",
+            },
+          },
+          expected: "resuming" as const,
+        },
+        {
           suffix: "approval-running",
           taskStatus: "waiting_approval" as const,
           runStatus: "waiting_approval" as const,

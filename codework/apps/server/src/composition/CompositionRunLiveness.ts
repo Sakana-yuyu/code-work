@@ -25,6 +25,7 @@ import type {
 } from "./CompositionOrchestrator.ts";
 
 const terminalStatuses = new Set(["completed", "failed", "cancelled", "timed_out", "in_review"]);
+const liveStatuses = new Set(["running", "resuming"]);
 
 export type CompositionRunLivenessAction = {
   readonly taskId: string;
@@ -123,11 +124,11 @@ export const recoverCompositionRunLiveness = (
     const actions: CompositionRunLivenessAction[] = [];
 
     for (const task of tasks) {
-      if (task.status !== "running" || terminalStatuses.has(task.status)) continue;
+      if (!liveStatuses.has(task.status) || terminalStatuses.has(task.status)) continue;
       const runOption = yield* options.store.getLatestRun(task.taskId);
       if (runOption._tag === "None") continue;
       const run = runOption.value;
-      if (run.status !== "running" || terminalStatuses.has(run.status)) continue;
+      if (!liveStatuses.has(run.status) || terminalStatuses.has(run.status)) continue;
       if (run.cancelRequestedAtUnixMs !== undefined) {
         if (options.nowUnixMs - run.cancelRequestedAtUnixMs < options.cancelConfirmationTimeoutMs) {
           continue;

@@ -240,6 +240,8 @@ import {
   CompositionTaskReviewResult,
   CompositionTaskRetryRequest,
   CompositionTaskRetryResult,
+  CompositionTaskResumeRequest,
+  CompositionTaskResumeResult,
   CompositionTaskRpcError,
   CompositionAgentLoopRunError,
   CompositionAgentLoopRunRequest,
@@ -341,6 +343,7 @@ export const WS_METHODS = {
   serverDispatchCompositionTask: "server.dispatchCompositionTask",
   serverExecuteCompositionTaskGraph: "server.executeCompositionTaskGraph",
   serverCancelCompositionTask: "server.cancelCompositionTask",
+  serverResumeCompositionTask: "server.resumeCompositionTask",
   serverReviewCompositionTask: "server.reviewCompositionTask",
   serverRetryCompositionTask: "server.retryCompositionTask",
   serverListCompositionTaskEvents: "server.listCompositionTaskEvents",
@@ -599,6 +602,12 @@ export const WsServerExecuteCompositionTaskGraphRpc = Rpc.make(
 export const WsServerCancelCompositionTaskRpc = Rpc.make(WS_METHODS.serverCancelCompositionTask, {
   payload: CompositionTaskCancelRequest,
   success: CompositionTaskCancelResult,
+  error: Schema.Union([CompositionTaskRpcError, EnvironmentAuthorizationError]),
+});
+
+export const WsServerResumeCompositionTaskRpc = Rpc.make(WS_METHODS.serverResumeCompositionTask, {
+  payload: CompositionTaskResumeRequest,
+  success: CompositionTaskResumeResult,
   error: Schema.Union([CompositionTaskRpcError, EnvironmentAuthorizationError]),
 });
 
@@ -1269,6 +1278,7 @@ export const WsRpcGroup = RpcGroup.make(
   WsServerDispatchCompositionTaskRpc,
   WsServerExecuteCompositionTaskGraphRpc,
   WsServerCancelCompositionTaskRpc,
+  WsServerResumeCompositionTaskRpc,
   WsServerReviewCompositionTaskRpc,
   WsServerRetryCompositionTaskRpc,
   WsServerListCompositionTaskEventsRpc,

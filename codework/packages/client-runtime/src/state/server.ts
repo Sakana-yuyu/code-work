@@ -810,6 +810,15 @@ export function createServerEnvironmentAtoms<R, E>(
           JSON.stringify([environmentId, input.taskId, input.runId]),
       },
     }),
+    resumeCompositionTask: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:server:resume-composition-task",
+      tag: WS_METHODS.serverResumeCompositionTask,
+      concurrency: {
+        mode: "singleFlight",
+        key: ({ environmentId, input }) =>
+          JSON.stringify([environmentId, input.taskId, input.runId]),
+      },
+    }),
     reviewCompositionTask: createEnvironmentRpcCommand(runtime, {
       label: "environment-data:server:review-composition-task",
       tag: WS_METHODS.serverReviewCompositionTask,

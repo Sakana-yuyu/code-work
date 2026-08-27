@@ -638,4 +638,94 @@ describe("CompositionRuntimeAgentDriver", () => {
       runtimeTaskId,
     });
   });
+
+  it("以同一 Composition Run 请求 Runtime 恢复", async () => {
+    let captured: Record<string, unknown> | undefined;
+    const adapter = makeInMemoryCompositionRuntimeAdapter({
+      runtimeId: "runtime-resume",
+      supportsResume: true,
+    });
+    const originalResumeTask = adapter.resumeTask;
+    const capturingAdapter = {
+      ...adapter,
+      resumeTask: (input: Parameters<typeof adapter.resumeTask>[0]) => {
+        captured = input as Record<string, unknown>;
+        return originalResumeTask(input);
+      },
+    };
+    const driver = makeCompositionRuntimeAgentDriver({
+      adapter: capturingAdapter,
+      agentId: "runtime-resume:agent",
+    });
+    const task = {
+      taskId: "task-resume",
+      projectId: "project-1",
+      assigneeKind: "agent" as const,
+      assigneeId: driver.agentId,
+      mode: "serial" as const,
+      status: "running" as const,
+      promptDigest: "sha256:resume",
+      dependsOnTaskIds: [],
+      createdAtUnixMs: 1,
+      updatedAtUnixMs: 1,
+    };
+    const run = {
+      runId: "run-resume",
+      taskId: task.taskId,
+      agentId: driver.agentId,
+      runtimeId: driver.runtimeId,
+      runtimeTaskId: "runtime-resume:task:task-resume:run-resume",
+      capabilityHandshakeId: "handshake:runtime-resume:task-resume:run-resume",
+      status: "running" as const,
+      attempt: 1,
+      capabilityGrantIds: ["grant-resume"],
+    };
+
+    await Effect.runPromise(driver.startTask({ task, run }));
+    const resumed = await Effect.runPromise(
+      driver.resumeTask!({ task, run, reason: "连接恢复后继续执行" }),
+    );
+
+    expect(captured).toEqual({
+      taskId: task.taskId,
+      runId: run.runId,
+      runtimeTaskId: run.runtimeTaskId,
+    });
+    expect(resumed.status).toBe("accepted");
+  });
+
+  it("把 Runtime 不支持恢复映射为稳定 Driver 失败", async () => {
+    const adapter = makeInMemoryCompositionRuntimeAdapter({ runtimeId: "runtime-no-resume" });
+    const driver = makeCompositionRuntimeAgentDriver({
+      adapter,
+      agentId: "runtime-no-resume:agent",
+    });
+    const task = {
+      taskId: "task-no-resume",
+      projectId: "project-1",
+      assigneeKind: "agent" as const,
+      assigneeId: driver.agentId,
+      mode: "serial" as const,
+      status: "running" as const,
+      promptDigest: "sha256:no-resume",
+      dependsOnTaskIds: [],
+      createdAtUnixMs: 1,
+      updatedAtUnixMs: 1,
+    };
+    const run = {
+      runId: "run-no-resume",
+      taskId: task.taskId,
+      agentId: driver.agentId,
+      runtimeId: driver.runtimeId,
+      runtimeTaskId: "runtime-no-resume:task:task-no-resume:run-no-resume",
+      status: "running" as const,
+      attempt: 1,
+      capabilityGrantIds: [],
+    };
+
+    await Effect.runPromise(driver.startTask({ task, run }));
+    await expect(
+      Effect.runPromise(driver.resumeTask!({ task, run, reason: "尝试恢复" })),
+    ).rejects.toMatchObject({ code: "resume_not_supported" });
+  });
 });

@@ -194,6 +194,46 @@ layer("CompositionRunLiveness", (it) => {
     }),
   );
 
+  it.effect("恢复中的 Run 在取消确认超时后仍由 watchdog 收口", () =>
+    Effect.gen(function* () {
+      const store = yield* CompositionTaskStore;
+      const task = makeTask({
+        taskId: "task-liveness-resuming",
+        status: "resuming",
+        updatedAtUnixMs: 9_999,
+      });
+      const run = makeRun({
+        taskId: task.taskId,
+        runId: "run-liveness-resuming",
+        status: "resuming",
+        cancelRequestedAtUnixMs: 9_000,
+      });
+      const registry = makeCompositionAgentDriverRegistry();
+      yield* registry.register({
+        agentId: run.agentId,
+        runtimeId: run.runtimeId,
+        startTask: () => startWithRunTaskId(run),
+        cancelTask: () => Effect.succeed({ status: "cancel_requested" as const }),
+      });
+      const orchestrator = makeCompositionOrchestrator(store, registry);
+      yield* store.upsertTask(task);
+      yield* store.upsertRun(run);
+
+      const actions = yield* recoverCompositionRunLiveness({
+        store: { listTasks: () => Effect.succeed([task]), getLatestRun: store.getLatestRun },
+        orchestrator,
+        nowUnixMs: 10_000,
+        inactivityTimeoutMs: 60_000,
+        cancelConfirmationTimeoutMs: 500,
+        projectRuntimeEvent: (event) => projectCompositionRuntimeEvent(store, registry, event),
+      });
+
+      assert.deepEqual(actions, [{ taskId: task.taskId, runId: run.runId, action: "timed_out" }]);
+      assert.equal(Option.getOrThrow(yield* store.getTask(task.taskId)).status, "timed_out");
+      assert.equal(Option.getOrThrow(yield* store.getRun(run.runId)).status, "timed_out");
+    }),
+  );
+
   it.effect("重复 sweep 与旧 Run 都不会覆盖最新运行或重复收口", () =>
     Effect.gen(function* () {
       const store = yield* CompositionTaskStore;
