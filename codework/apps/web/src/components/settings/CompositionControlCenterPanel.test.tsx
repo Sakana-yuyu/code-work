@@ -6,7 +6,9 @@ const mocks = vi.hoisted(() => ({
   environment: null as { readonly environmentId: string } | null,
   projectionAtom: Symbol("projection"),
   redispatchCommand: Symbol("redispatch-command"),
+  cancelCommand: Symbol("cancel-command"),
   redispatch: vi.fn(),
+  cancel: vi.fn(),
   projectionQuery: {
     data: null as CompositionControlCenterResult | null,
     error: null as string | null,
@@ -35,12 +37,14 @@ vi.mock("~/state/server", () => ({
   serverEnvironment: {
     controlCenterProjection: () => mocks.projectionAtom,
     controlCenterRedispatch: mocks.redispatchCommand,
+    cancelCompositionTask: mocks.cancelCommand,
   },
 }));
 
 vi.mock("~/state/use-atom-command", () => ({
   useAtomCommand: (command: unknown) => {
     if (command === mocks.redispatchCommand) return mocks.redispatch;
+    if (command === mocks.cancelCommand) return mocks.cancel;
     return vi.fn();
   },
 }));
@@ -65,6 +69,7 @@ const taskWith = (options: {
   readonly taskId: string;
   readonly goalLoopState?: Parameters<typeof goalLoop>[0];
   readonly withLatestRun?: boolean;
+  readonly latestRunStatus?: "running" | "failed" | "completed" | "cancelled";
 }): CompositionControlCenterResult["tasks"][number] => ({
   taskId: options.taskId,
   status: "running",
@@ -74,7 +79,11 @@ const taskWith = (options: {
   latestRun:
     options.withLatestRun === false
       ? undefined
-      : { runId: `run-${options.taskId}`, status: "failed", attempt: 2 },
+      : {
+          runId: `run-${options.taskId}`,
+          status: options.latestRunStatus ?? "failed",
+          attempt: 2,
+        },
   goalLoop: options.goalLoopState === undefined ? undefined : goalLoop(options.goalLoopState),
 });
 
@@ -101,6 +110,7 @@ describe("CompositionControlCenterPanel", () => {
     mocks.projectionQuery.isPending = false;
     mocks.projectionQuery.refresh = vi.fn();
     mocks.redispatch = vi.fn();
+    mocks.cancel = vi.fn();
   });
 
   it("渲染任务行：状态徽标、Goal Loop 徽标与轮次/拒绝/grant 摘要", () => {
@@ -176,6 +186,24 @@ describe("CompositionControlCenterPanel", () => {
     const html = renderToStaticMarkup(<CompositionControlCenterPanel />);
     expect(html).not.toContain("control-center-redispatch-");
     expect(html).not.toContain("composition-control-center-capability-ids");
+  });
+
+  it("仅活跃 Run 的任务行渲染取消按钮，终态与无 Run 行不渲染", () => {
+    mocks.projectionQuery.data = projection([
+      taskWith({ taskId: "task-active", latestRunStatus: "running" }),
+      taskWith({ taskId: "task-queued", latestRunStatus: "running", goalLoopState: "running" }),
+      taskWith({ taskId: "task-failed", latestRunStatus: "failed" }),
+      taskWith({ taskId: "task-done", latestRunStatus: "completed" }),
+      taskWith({ taskId: "task-stopped", latestRunStatus: "cancelled" }),
+      taskWith({ taskId: "task-no-run", withLatestRun: false }),
+    ]);
+    const html = renderToStaticMarkup(<CompositionControlCenterPanel />);
+    expect(html).toContain('data-testid="control-center-cancel-task-active"');
+    expect(html).toContain('data-testid="control-center-cancel-task-queued"');
+    expect(html).not.toContain('data-testid="control-center-cancel-task-failed"');
+    expect(html).not.toContain('data-testid="control-center-cancel-task-done"');
+    expect(html).not.toContain('data-testid="control-center-cancel-task-stopped"');
+    expect(html).not.toContain('data-testid="control-center-cancel-task-no-run"');
   });
 
   it("buildRedispatchInput 拆分 capabilityIds 并保留客户端生成的新 RunId", () => {

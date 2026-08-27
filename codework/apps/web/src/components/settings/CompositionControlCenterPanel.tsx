@@ -39,6 +39,17 @@ const REDISPATCHABLE_GOAL_LOOP_STATES: ReadonlySet<string> = new Set([
   "supervisor_settled",
 ]);
 
+/** 与服务端投影的活跃 Run 状态集一致：仅这些 Run 提供取消入口。 */
+const CANCELLABLE_RUN_STATUSES: ReadonlySet<string> = new Set([
+  "queued",
+  "dispatched",
+  "resuming",
+  "running",
+  "waiting_approval",
+  "waiting_input",
+  "in_review",
+]);
+
 /** 控制中心"自动重派"请求输入：capabilityIds 按逗号拆分并去除空白项。 */
 export const buildRedispatchInput = (input: {
   readonly taskId: string;
@@ -68,38 +79,64 @@ export function CompositionControlCenterPanel() {
   const redispatchTask = useAtomCommand(serverEnvironment.controlCenterRedispatch, {
     reportFailure: false,
   });
+  const cancelCompositionTask = useAtomCommand(serverEnvironment.cancelCompositionTask, {
+    reportFailure: false,
+  });
   const [capabilityIdsText, setCapabilityIdsText] = useState("");
   const [pendingTaskId, setPendingTaskId] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
 
   const projection: CompositionControlCenterResult | null = projectionQuery.data ?? null;
 
-  const redispatch = async (input: {
-    readonly taskId: string;
-    readonly runId: string;
-    readonly agentId: string;
-  }): Promise<void> => {
+  const runRowCommand = async (
+    taskId: string,
+    fallbackErrorKey: string,
+    execute: (
+      environmentId: NonNullable<typeof environmentId>,
+    ) => Promise<AtomCommandResult<unknown, unknown>>,
+  ): Promise<void> => {
     if (environmentId === null) return;
-    setPendingTaskId(input.taskId);
+    setPendingTaskId(taskId);
     setActionError(null);
-    const result: AtomCommandResult<unknown, unknown> = await redispatchTask({
-      environmentId,
-      input: buildRedispatchInput({
-        taskId: input.taskId,
-        runId: input.runId,
-        agentId: input.agentId,
-        newRunId: `t3-redispatch-${randomUUID()}`,
-        capabilityIdsText,
-      }),
-    });
+    const result = await execute(environmentId);
     if (result._tag === "Failure") {
       const error = squashAtomCommandFailure(result);
-      setActionError(error instanceof Error ? error.message : t("controlCenter.redispatchFailed"));
+      setActionError(error instanceof Error ? error.message : t(fallbackErrorKey));
     } else {
       projectionQuery.refresh();
     }
     setPendingTaskId(null);
   };
+
+  const redispatch = (input: {
+    readonly taskId: string;
+    readonly runId: string;
+    readonly agentId: string;
+  }): Promise<void> =>
+    runRowCommand(input.taskId, "controlCenter.redispatchFailed", (envId) =>
+      redispatchTask({
+        environmentId: envId,
+        input: buildRedispatchInput({
+          taskId: input.taskId,
+          runId: input.runId,
+          agentId: input.agentId,
+          newRunId: `t3-redispatch-${randomUUID()}`,
+          capabilityIdsText,
+        }),
+      }),
+    );
+
+  const cancel = (input: { readonly taskId: string; readonly runId: string }): Promise<void> =>
+    runRowCommand(input.taskId, "controlCenter.cancelFailed", (envId) =>
+      cancelCompositionTask({
+        environmentId: envId,
+        input: {
+          taskId: input.taskId,
+          runId: input.runId,
+          reason: t("controlCenter.cancelReasonDefault"),
+        },
+      }),
+    );
 
   return (
     <SettingsSection
@@ -157,6 +194,8 @@ export function CompositionControlCenterPanel() {
                 task.latestRun !== undefined &&
                 task.goalLoop !== undefined &&
                 REDISPATCHABLE_GOAL_LOOP_STATES.has(task.goalLoop.state);
+              const cancellable =
+                task.latestRun !== undefined && CANCELLABLE_RUN_STATUSES.has(task.latestRun.status);
               return (
                 <li
                   key={task.taskId}
@@ -188,6 +227,22 @@ export function CompositionControlCenterPanel() {
                         }}
                       >
                         {t("controlCenter.redispatch")}
+                      </Button>
+                    ) : null}
+                    {cancellable ? (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        disabled={pendingTaskId !== null}
+                        data-testid={`control-center-cancel-${task.taskId}`}
+                        onClick={() => {
+                          void cancel({
+                            taskId: task.taskId,
+                            runId: task.latestRun?.runId ?? "",
+                          });
+                        }}
+                      >
+                        {t("controlCenter.cancel")}
                       </Button>
                     ) : null}
                   </div>
