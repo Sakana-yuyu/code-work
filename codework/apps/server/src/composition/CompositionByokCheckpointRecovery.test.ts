@@ -2,9 +2,10 @@ import * as NodeCrypto from "node:crypto";
 
 import { describe, expect } from "vite-plus/test";
 import { it as effectIt } from "@effect/vitest";
-import type { CompositionTaskEvent } from "@codework/contracts";
+import type { CompositionTaskEvent, ProviderRuntimeEvent } from "@codework/contracts";
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
+import * as Stream from "effect/Stream";
 
 import { recoverPersistedCheckpointText } from "./CompositionByokCheckpointRecovery.ts";
 import { makeCompositionByokAgentDriver } from "./CompositionByokAgentDriver.ts";
@@ -183,7 +184,10 @@ describe("BYOK 部分输出跨重启恢复", () => {
       yield* Effect.sleep("20 millis");
 
       // 新的进程：全新 Driver 实例读取同一持久化 store，只能依赖持久化行恢复。
-      const restartedDriver = makeDriver(okService(), { checkpointHistory: ledger.store });
+      const restartedDriver = makeDriver(okService(), {
+        checkpointStore: ledger.store,
+        checkpointHistory: ledger.store,
+      });
       const persisted = yield* ledger.store.listEvents(task.taskId, run.runId);
       expect(persisted.length).toBeGreaterThanOrEqual(deltas.length);
       const recovered = yield* recoverPersistedCheckpointText(persisted);
@@ -191,12 +195,59 @@ describe("BYOK 部分输出跨重启恢复", () => {
       expect(recovered.utf8Bytes).toBe(utf8ByteLength(deltas.join("")));
       expect(recovered.chunkCount).toBe(deltas.length);
 
-      const resumeResult = yield* restartedDriver.resumeTask!({
-        task,
-        run,
-        reason: "process restart",
+      const projection = yield* Effect.scoped(
+        Effect.gen(function* () {
+          const captured = { warning: undefined as ProviderRuntimeEvent | undefined };
+          yield* Effect.forkScoped(
+            Stream.runForEach(
+              Stream.filter(
+                restartedDriver.streamEvents!(),
+                (event) => event.type === "runtime.warning",
+              ),
+              (event) =>
+                Effect.sync(() => {
+                  captured.warning = event;
+                }),
+            ),
+          );
+          // 等待订阅挂载完成，避免首个恢复事件在无订阅者时被丢弃。
+          yield* Effect.sleep("100 millis");
+          const resumeResult = yield* restartedDriver.resumeTask!({
+            task,
+            run,
+            reason: "process restart",
+          });
+          expect(resumeResult.status).toBe("accepted");
+          while (captured.warning === undefined) {
+            yield* Effect.sleep("5 millis");
+          }
+          const restored = captured.warning;
+          const rowsWithRestore = () =>
+            Effect.map(ledger.store.listEvents(task.taskId, run.runId), (rows) =>
+              rows.filter((row) => row.sourceEventId?.startsWith("byok-restore:") === true),
+            );
+          const firstRestoreRows = yield* rowsWithRestore();
+          // 同一实例内重复 resume 不得重复刷恢复投影。
+          const repeatResult = yield* restartedDriver.resumeTask!({
+            task,
+            run,
+            reason: "duplicate resume request",
+          });
+          const repeatedRestoreRows = yield* rowsWithRestore();
+          return { restored, firstRestoreRows, repeatResult, repeatedRestoreRows };
+        }),
+      );
+
+      expect(projection.restored?.payload).toMatchObject({
+        message: "BYOK 已恢复持久化部分输出（2 段）",
+        detail: { restoredChunks: 2, restoredUtf8Bytes: utf8ByteLength(deltas.join("")) },
       });
-      expect(resumeResult.status).toBe("accepted");
+      expect(projection.firstRestoreRows.length).toBe(1);
+      expect(projection.firstRestoreRows[0]?.summary).toContain(
+        `2 段 / ${utf8ByteLength(deltas.join(""))} 字节`,
+      );
+      expect(projection.repeatResult.status).toBe("accepted");
+      expect(projection.repeatedRestoreRows.length).toBe(1);
     }),
   );
 

@@ -14,8 +14,8 @@
 | 仓库 | `E:\MyProject\code-work\codework` |
 | 当前分支 | `tcode` |
 | 当前提交 | BYOK 恢复对外语义节点：`feat(composition): 定义 BYOK checkpoint 恢复语义` |
-| 相对远端 | 领先 `origin/tcode` 27 个提交，尚未 push |
-| 最新节点 | Multica quick-create 持久化 outbox 审计/收口、幂等键出站与真实 HTTP 进程级集成测试 |
+| 相对远端 | 领先 `origin/tcode` 29 个提交，尚未 push |
+| 最新节点 | grant 下发/撤销与 BYOK resume 输出统一投影到任务历史与事件流（幂等去重） |
 | 工作区边界 | 存在大量其他并行修改；本文不把这些修改计入本迁移进度，也不回滚、暂存或提交它们 |
 
 ## 证据等级
@@ -87,12 +87,13 @@ CapabilityRegistry + ToolBroker
 - 新增 `CompositionByokCheckpointRecovery`：跨重启按持久化事件行重构正文，逐行校验 SHA-256 摘要与 UTF-8 偏移连续性；被篡改、缺口或空集显式失败，不返回伪造正文。
 - 落地 `supportsResume` 的启用条件：仅当 Driver 注入 `checkpointHistory`（`listEvents` 恢复路径）时 profile 才承诺 resume，并携带 `byok.checkpoint_recovery` 能力；未注入时 `resumeTask` 显式返回 `byok_resume_not_supported`。
 - **resume 对外语义（重要）**：BYOK 的 resume = 校验并恢复"已经落盘的部分输出"，供上层展示和决定重派；不承诺续跑中断的模型流。运行中请求返回 `already_running`，已终态返回 `already_terminal`。
+- 恢复结果现以两类幂等投影对外可见：任务历史新增 `byok-restore:*` 状态行（段数/字节数），事件流发布确定性 `runtime.warning`（payload 带 restoredChunks/restoredUtf8Bytes）；同一实例重复 resume 不重复投影。
 
 最新验证：
 
-- 9 个目标测试文件通过，共 85/85 个测试通过。
-- 新增进程重启级恢复测试 5 个用例通过（`CompositionByokCheckpointRecovery.test.ts`）：启用条件、拒绝语义、跨进程（新 Driver 实例 + 独立 ledger store）恢复、运行态短路、篡改/缺口显式失败。
-- 目标回归（Driver/Registry/Loop/RuntimeAdapter）5 文件 44/44 用例通过。
+- 本节点目标回归（恢复/Driver/Orchestrator/RuntimeProjector/GrantRegistry）5 文件 68/68 用例通过，其中恢复用例扩展断言了恢复投影的 payload、事件行内容与去重。
+- Orchestrator 新增 grant 投影用例 2 个：下发投影带 capabilityId@grantId 摘要；旧 Run 撤销在 retryTask 时落 `revoked` 幂等行。
+- 此前节点基线：进程重启级恢复测试与目标回归通过记录见 git 历史（本表只维护最新一轮）。
 - 实现文件 lint 通过，19 个目标文件格式检查通过。
 - `git diff --check` 通过，目标文件 TypeScript 错误为 0（新增文件的既有 suggestion 级提示不计入）。
 - 包级 typecheck 仍被仓库内既有 MCP、IDE、server test 和 `local_tools` 等错误阻断，不能宣称全包类型检查通过；composition 全量套件中仅 `CompositionMcpRuntimeAdapter.e2e.test.ts` 真实 stdio E2E 失败，属既有环境问题，与本次改动无关。
@@ -133,6 +134,7 @@ CapabilityRegistry + ToolBroker
 - BYOK loop 和本地 Runtime bridge 已验证 HTTP/MCP 工具路径。
 - IDE 子进程 fixture 已验证工具调用可以跨进程回流。
 - capability handshake 合同、策略和运行时身份已经进入 Composition 设计。
+- （本节点）Grant 生命周期投影：首次派发与重试签发后写入 `issued` 幂等事件行（含 capabilityId@短 grantId 摘要），撤销路径写入 `revoked` 行（含项数）；sourceEventId 形如 `capgrant:<task>:<run>:<action>`，天然防重放刷屏。
 
 仍缺：
 
@@ -202,6 +204,7 @@ CapabilityRegistry + ToolBroker
 | BYOK 部分输出恢复 | `687732124` | checkpoint 持久化、确定性事件、摘要、偏移、去重和正文恢复 |
 | BYOK 恢复对外语义 | `3d04a3823`（已 amend，主题不变） | `supportsResume` 启用条件、`resumeTask` 拒绝/短路语义与进程重启级恢复测试 |
 | Multica outbox 收口 | `feat(composition): Multica quick-create outbox 审计与收口` | outbox 审计/settle、`X-Idempotency-Key` 出站、启动告警接线与真实 HTTP 进程级 e2e |
+| Grant/resume 投影 | `feat(composition): 投影能力授权与恢复状态` | grant issued/revoked 幂等投影、BYOK resume 输出投影与对应测试 |
 | 文档与回归覆盖 | `c5a709b46`、`223b90ee5` | 刷新迁移矩阵并覆盖 ACP 取消终态回归 |
 
 ## 关键结论
@@ -228,7 +231,7 @@ CapabilityRegistry + ToolBroker
 1. ~~完成 BYOK 部分输出恢复的对外语义，决定 `supportsResume` 的启用条件并增加进程重启级测试。（已完成）~~
 2. ~~为 Multica quick-create 增加持久化 outbox、冲突恢复和集成测试。（本地 HTTP 进程级已完成；真实 daemon 侧的幂等键语义与 by-key 查询能力确认后，收口可自动化）~~
 3. 接入真实 Cursor/VS Code Adapter，完成 capability handshake、最小 IDE API 白名单和撤销测试。
-4. 把 Provider、IDE、Multica 的 grant 状态统一投影到 Composition Run 和 Settings；同时把 BYOK resume 恢复出的部分输出投影到用户可见状态。
+4. 把 Provider、IDE、Multica 的 grant 状态统一投影到 Composition Run 和 Settings。（本地子任务已完成：grant issued/revoked 与 BYOK resume 输出均已投影为任务历史事件；剩余 = 外部 Driver 的真实 grant 回执接入与 Settings 跨端看板展示，依赖真实产品环境）
 5. 收敛 Goal Loop、预算、重试、验证子代理和跨重启 supervisor。
 6. 最后补齐 Supplier/Profile 控制中心与 Web/Desktop/Mobile 集成 E2E。
 

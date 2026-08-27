@@ -13,6 +13,8 @@ import {
   type CompositionTaskRun,
 } from "@codework/contracts";
 
+import { makeCapabilityGrantRegistry } from "./CapabilityGrantRegistry.ts";
+import { makeCompositionCapabilityRegistry } from "./CapabilityRegistry.ts";
 import { makeCompositionAgentDriverRegistry } from "./CompositionAgentDriverRegistry.ts";
 import { makeCompositionRuntimeAgentDriver } from "./CompositionRuntimeAgentDriver.ts";
 import { makeMulticaDaemonRuntimeAdapter } from "./MulticaDaemonRuntimeAdapter.ts";
@@ -1312,6 +1314,126 @@ layer("CompositionOrchestrator", (it) => {
         (yield* store.getRun("run-resume-cancelled")).pipe(Option.getOrThrow).status,
         "running",
       );
+    }),
+  );
+
+  it.effect("grant 下发以幂等事件投影到任务历史", () =>
+    Effect.gen(function* () {
+      const store = yield* CompositionTaskStore;
+      const driverRegistry = makeCompositionAgentDriverRegistry();
+      yield* driverRegistry.register({
+        agentId: "agent-grant-projection",
+        runtimeId: "runtime-grant-projection",
+        startTask: () => Effect.succeed({ runtimeTaskId: "runtime-task-grant-projection" }),
+        cancelTask: () => Effect.succeed({ status: "cancelled" as const }),
+      });
+      const grantRegistry = makeCapabilityGrantRegistry({
+        capabilityRegistry: makeCompositionCapabilityRegistry(),
+      });
+      const orchestrator = makeCompositionOrchestrator(store, driverRegistry, grantRegistry);
+
+      const result = yield* orchestrator.dispatchTask({
+        taskId: "task-grant-projection",
+        runId: "run-grant-projection",
+        projectId: "project-grant-projection",
+        assigneeKind: "agent",
+        assigneeId: "agent-grant-projection",
+        mode: "serial",
+        promptDigest: "sha256:grant-projection",
+        prompt: "验证 grant 投影",
+        workspaceRoot: "C:/workspace/grant-projection",
+        capabilityIds: ["t3.workspace.read_file"],
+        dependsOnTaskIds: [],
+      });
+
+      const events = yield* store.listEvents(result.task.taskId, result.run.runId);
+      const issued = events.find((event) => event.sourceEventId?.endsWith(":issued"));
+      assert.ok(issued !== undefined);
+      assert.equal(
+        issued.summary.startsWith(`能力授权已下发（1 项）：t3.workspace.read_file@`),
+        true,
+      );
+    }),
+  );
+  it.effect("旧 Run 的 grant 撤销在重试时投影为幂等事件", () =>
+    Effect.gen(function* () {
+      const store = yield* CompositionTaskStore;
+      let issueCalls = 0;
+      const driverRegistry = makeCompositionAgentDriverRegistry();
+      yield* driverRegistry.register({
+        agentId: "agent-revoke-projection",
+        runtimeId: "runtime-revoke-projection",
+        startTask: (input) =>
+          Effect.succeed({ runtimeTaskId: `runtime-task-${input.run.attempt}` }),
+        cancelTask: () => Effect.succeed({ status: "cancelled" as const }),
+      });
+      // 伪造历史 failed run 及其 grant，重试时会先撤销再签发新 grant。
+      yield* store.upsertTask({
+        taskId: "task-revoke-projection",
+        projectId: "project-revoke-projection",
+        assigneeKind: "agent",
+        assigneeId: "agent-revoke-projection",
+        mode: "serial",
+        status: "failed",
+        promptDigest: "sha256:revoke-projection",
+        dependsOnTaskIds: [],
+        createdAtUnixMs: 1,
+        updatedAtUnixMs: 2,
+      });
+      yield* store.upsertRun({
+        runId: "run-revoke-old",
+        taskId: "task-revoke-projection",
+        agentId: "agent-revoke-projection",
+        runtimeId: "runtime-revoke-projection",
+        status: "failed",
+        attempt: 1,
+        capabilityGrantIds: ["grant-revoke-old-1"],
+        failureCode: "review_rejected",
+      });
+      const grantRegistry = {
+        issue: () => {
+          issueCalls += 1;
+          return Effect.succeed([
+            {
+              grantId: `grant-new-${issueCalls}`,
+              taskId: "task-revoke-projection",
+              agentId: "agent-revoke-projection",
+              capabilityId: "t3.workspace.read_file",
+              issuedAtUnixMs: 10,
+              expiresAtUnixMs: 11_000,
+            },
+          ]);
+        },
+        revoke: () => Effect.void,
+      };
+      const orchestrator = makeCompositionOrchestrator(store, driverRegistry, grantRegistry, {
+        save: () => Effect.void,
+        get: () =>
+          Effect.succeed(
+            Option.some({
+              taskId: "task-revoke-projection",
+              prompt: "重试以验证撤销投影",
+              workspaceRoot: "C:/workspace/revoke-projection",
+            }),
+          ),
+        remove: () => Effect.void,
+      });
+
+      yield* orchestrator.retryTask({
+        taskId: "task-revoke-projection",
+        previousRunId: "run-revoke-old",
+        runId: "run-revoke-new",
+        reason: "回归验证撤销投影",
+        capabilityIds: ["t3.workspace.read_file"],
+      });
+
+      const oldEvents = yield* store.listEvents("task-revoke-projection", "run-revoke-old");
+      const revoked = oldEvents.find((event) => event.sourceEventId?.endsWith(":revoked"));
+      assert.ok(revoked !== undefined);
+      assert.equal(revoked.summary, "能力授权已撤销（1 项）");
+      const newEvents = yield* store.listEvents("task-revoke-projection", "run-revoke-new");
+      const issuedAgain = newEvents.find((event) => event.sourceEventId?.endsWith(":issued"));
+      assert.ok(issuedAgain !== undefined);
     }),
   );
 });

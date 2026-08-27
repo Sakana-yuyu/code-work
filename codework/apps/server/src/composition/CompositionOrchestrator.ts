@@ -1,5 +1,6 @@
 import type {
   CompositionAgentDriverProfile,
+  CompositionCapabilityGrant,
   CompositionTask,
   CompositionTaskRetryRequest,
   CompositionTaskRetryResult,
@@ -364,14 +365,51 @@ const makeOrchestrator = (
       ) {
         yield* driver.revokeCapabilityHandshake({ task, run });
       }
-      if (grantRegistry?.revoke !== undefined) {
-        yield* Effect.forEach(run.capabilityGrantIds ?? [], (grantId) =>
+      const grantIds = [...(run.capabilityGrantIds ?? [])];
+      if (grantRegistry?.revoke !== undefined && grantIds.length > 0) {
+        yield* Effect.forEach(grantIds, (grantId) =>
           grantRegistry.revoke!({ grantId }).pipe(
             Effect.catchTag("CapabilityGrantNotFoundError", () => Effect.void),
           ),
         );
       }
+      if (grantIds.length > 0) {
+        yield* persistCapabilityGrantProjection({
+          task,
+          run,
+          sourceEventId: `capgrant:${task.taskId}:${run.runId}:revoked`,
+          summary: `能力授权已撤销（${grantIds.length} 项）`,
+        });
+      }
     });
+
+  /** 把 grant 下发/撤销状态以幂等事件行投影到任务历史，供用户与多端查看。 */
+  const persistCapabilityGrantProjection = (input: {
+    readonly task: CompositionTask;
+    readonly run: CompositionTaskRun;
+    readonly sourceEventId: string;
+    readonly summary: string;
+  }): Effect.Effect<void, CompositionTaskStoreError> =>
+    Effect.asVoid(
+      store.appendEventIfNew({
+        taskId: input.task.taskId,
+        runId: input.run.runId,
+        ...(input.task.parentTaskId === undefined ? {} : { parentTaskId: input.task.parentTaskId }),
+        agentId: input.run.agentId,
+        ...(input.run.runtimeId === undefined ? {} : { runtimeId: input.run.runtimeId }),
+        sourceEventId: input.sourceEventId,
+        status: input.run.status,
+        sequence: 0,
+        eventType: "status",
+        summary: input.summary,
+      }),
+    );
+
+  const describeIssuedGrants = (grants: ReadonlyArray<CompositionCapabilityGrant>): string =>
+    `能力授权已下发（${grants.length} 项）：${[...grants]
+      .sort((a, b) => a.grantId.localeCompare(b.grantId))
+      .map((grant) => `${grant.capabilityId}@${grant.grantId.slice(0, 12)}`)
+      .join(", ")}`;
 
   /**
    * Provider 可能在 startTask 返回前推送运行时事件。只有 Task/Run 仍处于本次
@@ -618,16 +656,15 @@ const makeOrchestrator = (
           ...(input.model === undefined ? {} : { model: input.model }),
         });
       }
-      const capabilityGrantIds =
+      const issuedGrants =
         grantRegistry === undefined || input.capabilityIds === undefined
           ? []
-          : yield* grantRegistry
-              .issue({
-                taskId: input.taskId,
-                agentId,
-                capabilityIds: input.capabilityIds,
-              })
-              .pipe(Effect.map((grants) => grants.map((grant) => grant.grantId)));
+          : yield* grantRegistry.issue({
+              taskId: input.taskId,
+              agentId,
+              capabilityIds: input.capabilityIds,
+            });
+      const capabilityGrantIds = issuedGrants.map((grant) => grant.grantId);
       const task: CompositionTask = {
         taskId: input.taskId,
         projectId: input.projectId,
@@ -673,6 +710,14 @@ const makeOrchestrator = (
           ...(initialStatus === "blocked" ? { blockerCode: "dependency_pending" } : {}),
         }),
       );
+      if (issuedGrants.length > 0) {
+        yield* persistCapabilityGrantProjection({
+          task,
+          run,
+          sourceEventId: `capgrant:${task.taskId}:${run.runId}:issued`,
+          summary: describeIssuedGrants(issuedGrants),
+        });
+      }
 
       if (blockedDependency !== undefined) {
         return { task, run };
@@ -1170,16 +1215,15 @@ const makeOrchestrator = (
       }
       // 先撤销旧 Run 的 grant，避免 CapabilityGrantRegistry 按 task/agent 复用旧授权。
       yield* revokeRunCapabilities(driver, task, previousRun);
-      const capabilityGrantIds =
+      const issuedGrants =
         grantRegistry === undefined
           ? []
-          : yield* grantRegistry
-              .issue({
-                taskId: input.taskId,
-                agentId: previousRun.agentId,
-                capabilityIds: input.capabilityIds,
-              })
-              .pipe(Effect.map((grants) => grants.map((grant) => grant.grantId)));
+          : yield* grantRegistry.issue({
+              taskId: input.taskId,
+              agentId: previousRun.agentId,
+              capabilityIds: input.capabilityIds,
+            });
+      const capabilityGrantIds = issuedGrants.map((grant) => grant.grantId);
       const queuedAt = yield* Clock.currentTimeMillis;
       const { finishedAtUnixMs: _finishedAtUnixMs, ...taskWithoutFinishedAt } = task;
       const queuedTask: CompositionTask = {
@@ -1208,6 +1252,14 @@ const makeOrchestrator = (
           summary: `任务已请求重试：${input.reason}`,
         }),
       );
+      if (issuedGrants.length > 0) {
+        yield* persistCapabilityGrantProjection({
+          task: queuedTask,
+          run: queuedRun,
+          sourceEventId: `capgrant:${queuedTask.taskId}:${queuedRun.runId}:issued`,
+          summary: describeIssuedGrants(issuedGrants),
+        });
+      }
 
       const startResult = yield* Effect.result(
         driver.startTask({

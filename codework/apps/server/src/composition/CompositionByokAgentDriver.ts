@@ -123,6 +123,8 @@ export const makeCompositionByokAgentDriver = (
   const events = Effect.runSync(PubSub.unbounded<ProviderRuntimeEvent>());
   const activeRuns = new Map<string, ActiveRun>();
   const completedRuns = new Map<string, CompletedRun>();
+  /** 本实例内已广播过的恢复标记，避免同一 Run 的重复 resume 反复刷投影。 */
+  const restoredProjections = new Set<string>();
 
   const publish = (
     eventId: EventId,
@@ -524,12 +526,74 @@ export const makeCompositionByokAgentDriver = (
           detail: "没有可恢复的 BYOK 持久化 checkpoint。",
         });
       }
-      yield* recoverPersistedCheckpointText(events).pipe(
+      const recovered = yield* recoverPersistedCheckpointText(events).pipe(
         Effect.mapError(
           (error): CompositionAgentDriverFailure =>
             new CompositionAgentDriverFailure({ code: error.code, detail: error.detail }),
         ),
       );
+      // 把恢复结果投影到任务历史与事件流，让用户在重启后仍能看到已完成的部分输出。
+      const restoredMarker = `${input.task.taskId}:${input.run.runId}:${recovered.utf8Bytes}:${recovered.chunkCount}`;
+      if (!restoredProjections.has(restoredMarker)) {
+        restoredProjections.add(restoredMarker);
+        const restoredRuntimeTaskId = runtimeTaskIdFor(
+          options.runtimeId,
+          input.task.taskId,
+          input.run.runId,
+        );
+        yield* options.checkpointStore
+          .appendEventIfNew({
+            taskId: input.task.taskId,
+            runId: input.run.runId,
+            ...(input.task.parentTaskId === undefined
+              ? {}
+              : { parentTaskId: input.task.parentTaskId }),
+            agentId: input.run.agentId,
+            runtimeId: options.runtimeId,
+            sourceEventId: `byok-restore:${restoredMarker}`,
+            status: "running",
+            sequence: 0,
+            eventType: "status",
+            summary: `已恢复持久化部分输出（${recovered.chunkCount} 段 / ${recovered.utf8Bytes} 字节）`,
+          })
+          .pipe(
+            Effect.mapError(
+              (error): CompositionAgentDriverFailure =>
+                new CompositionAgentDriverFailure({
+                  code: "byok_checkpoint_recovery_failed",
+                  detail: errorDetail(error),
+                }),
+            ),
+            Effect.asVoid,
+          );
+        yield* publish(
+          deterministicEventId(
+            restoredRuntimeTaskId,
+            "runtime.warning",
+            `restore:${recovered.chunkCount}:${recovered.utf8Bytes}`,
+          ),
+          {
+            provider: ProviderDriverKind.make("byok"),
+            providerInstanceId: ProviderInstanceId.make(String(options.providerInstanceId)),
+            threadId: threadIdFor(input.task.taskId, input.run.runId),
+            turnId: turnIdFor(input.task.taskId, input.run.runId),
+            type: "runtime.warning",
+            payload: {
+              message: `BYOK 已恢复持久化部分输出（${recovered.chunkCount} 段）`,
+              detail: {
+                restoredChunks: recovered.chunkCount,
+                restoredUtf8Bytes: recovered.utf8Bytes,
+              },
+            },
+            raw: {
+              source: "composition.byok.agent-loop",
+              runtimeId: options.runtimeId,
+              runtimeTaskId: restoredRuntimeTaskId,
+              payload: {},
+            },
+          },
+        );
+      }
       return { status: "accepted" as const };
     });
 
