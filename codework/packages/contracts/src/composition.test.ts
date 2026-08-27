@@ -398,9 +398,37 @@ describe("composition contracts", () => {
       prompt: "检查项目",
       capabilityGrantIds: ["t3.workspace.read_file"],
       tools: [],
+      maxContextMessages: 9,
+      maxToolResultChars: 12_000,
     });
 
     expect(decoded.mode).toBe("agent_loop");
+    expect(decoded.maxContextMessages).toBe(9);
+    expect(decoded.maxToolResultChars).toBe(12_000);
+    expect(() =>
+      decodeAgentLoopRunRequest({
+        ...decoded,
+        maxContextMessages: 2,
+      }),
+    ).toThrow();
+    expect(() =>
+      decodeAgentLoopRunRequest({
+        ...decoded,
+        maxContextMessages: 66,
+      }),
+    ).toThrow();
+    expect(() =>
+      decodeAgentLoopRunRequest({
+        ...decoded,
+        maxToolResultChars: 127,
+      }),
+    ).toThrow();
+    expect(() =>
+      decodeAgentLoopRunRequest({
+        ...decoded,
+        maxToolResultChars: 120_001,
+      }),
+    ).toThrow();
     expect(decodeAgentLoopRunResult({ text: "完成", rounds: 1 }).rounds).toBe(1);
   });
 

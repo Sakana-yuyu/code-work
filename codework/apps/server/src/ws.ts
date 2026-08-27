@@ -1862,6 +1862,12 @@ const makeWsRpcLayer = (
                     capabilityGrantIds: input.capabilityGrantIds,
                     tools: input.tools,
                     ...(input.maxRounds === undefined ? {} : { maxRounds: input.maxRounds }),
+                    ...(input.maxContextMessages === undefined
+                      ? {}
+                      : { maxContextMessages: input.maxContextMessages }),
+                    ...(input.maxToolResultChars === undefined
+                      ? {}
+                      : { maxToolResultChars: input.maxToolResultChars }),
                   })
                   .pipe(
                     Effect.mapError(

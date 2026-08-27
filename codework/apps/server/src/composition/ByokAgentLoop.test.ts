@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vite-plus/test";
+import { describe, expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
@@ -11,6 +11,7 @@ import {
 } from "./ByokAgentLoop.ts";
 
 const encodeUnknownJson = Schema.encodeUnknownSync(Schema.fromJsonString(Schema.Unknown));
+const decodeUnknownJson = Schema.decodeUnknownSync(Schema.fromJsonString(Schema.Unknown));
 
 const makeResult = (input: ToolBroker.ToolBrokerInput): ToolBroker.ToolBrokerResult => ({
   invocationId: `invocation-${input.idempotencyKey}`,
@@ -130,6 +131,7 @@ describe("ByokAgentLoop", () => {
         {
           ...baseInput,
           capabilityGrantIds: ["t3.workspace.write_file"],
+          maxToolResultChars: 160,
           tools: [
             {
               canonicalToolName: "workspace.write_file",
@@ -234,4 +236,187 @@ describe("ByokAgentLoop", () => {
       Effect.runPromise(runByokAgentLoop({ ...baseInput, maxRounds: 2 }, model, broker)),
     ).rejects.toBeInstanceOf(ByokAgentLoopMaxRoundsError);
   });
+
+  it.effect("超过消息预算时只向模型重放最近的完整工具轮次", () =>
+    Effect.gen(function* () {
+      const modelInputs: Array<Parameters<ByokAgentModelDriver["complete"]>[0]> = [];
+      const idempotencyKeys: string[] = [];
+      const broker = ToolBroker.ToolBroker.of({
+        invoke: (input) =>
+          Effect.sync(() => {
+            idempotencyKeys.push(input.idempotencyKey);
+            return {
+              ...makeResult(input),
+              result: { contents: `result-${input.toolCallId}` },
+            };
+          }),
+        cancel: () => Effect.void,
+      });
+      const model: ByokAgentModelDriver = {
+        complete: (input) => {
+          modelInputs.push(input);
+          return input.turn === 6
+            ? Stream.fromIterable([
+                { type: "text_delta" as const, text: "done" },
+                { type: "model_completed" as const },
+              ])
+            : Stream.fromIterable([
+                {
+                  type: "tool_call" as const,
+                  toolCallId: `call-${input.turn}`,
+                  canonicalToolName: "workspace.read_file",
+                  arguments: { relativePath: `file-${input.turn}.txt` },
+                },
+                { type: "model_completed" as const },
+              ]);
+        },
+      };
+
+      const result = yield* runByokAgentLoop(
+        { ...baseInput, maxRounds: 6, maxContextMessages: 5 },
+        model,
+        broker,
+      );
+      const finalMessages = modelInputs[5]?.messages ?? [];
+
+      expect(result.text).toBe("done");
+      expect(result.rounds).toBe(6);
+      expect(finalMessages).toHaveLength(5);
+      expect(finalMessages[0]).toEqual({ role: "user", content: baseInput.prompt });
+      expect(finalMessages.slice(1).map((message) => message.role)).toEqual([
+        "assistant",
+        "tool",
+        "assistant",
+        "tool",
+      ]);
+      expect(
+        finalMessages
+          .filter((message) => message.role === "tool")
+          .map((message) => message.toolCallId),
+      ).toEqual(["call-4", "call-5"]);
+      for (const message of finalMessages) {
+        if (message.role !== "tool") continue;
+        expect(
+          finalMessages.some(
+            (candidate) =>
+              candidate.role === "assistant" &&
+              candidate.toolCalls?.some(
+                (toolCall) => toolCall.toolCallId === message.toolCallId,
+              ) === true,
+          ),
+        ).toBe(true);
+      }
+      expect(idempotencyKeys).toEqual([
+        "run-1:call-1",
+        "run-1:call-2",
+        "run-1:call-3",
+        "run-1:call-4",
+        "run-1:call-5",
+      ]);
+      expect(result.messages).toEqual(finalMessages);
+    }),
+  );
+
+  it.effect("超长成功工具结果会被裁剪为有界且有效的 JSON", () =>
+    Effect.gen(function* () {
+      const maxToolResultChars = 160;
+      let secondInput: Parameters<ByokAgentModelDriver["complete"]>[0] | undefined;
+      const broker = ToolBroker.ToolBroker.of({
+        invoke: (input) =>
+          Effect.succeed({
+            ...makeResult(input),
+            result: { contents: "x".repeat(2_000) },
+          }),
+        cancel: () => Effect.void,
+      });
+      const model: ByokAgentModelDriver = {
+        complete: (input) => {
+          if (input.turn === 2) {
+            secondInput = input;
+            return Stream.fromIterable([
+              { type: "text_delta" as const, text: "done" },
+              { type: "model_completed" as const },
+            ]);
+          }
+          return Stream.fromIterable([
+            {
+              type: "tool_call" as const,
+              toolCallId: "call-large-result",
+              canonicalToolName: "workspace.read_file",
+              arguments: { relativePath: "large.txt" },
+            },
+            { type: "model_completed" as const },
+          ]);
+        },
+      };
+
+      yield* runByokAgentLoop({ ...baseInput, maxToolResultChars }, model, broker);
+      const toolMessage = secondInput?.messages.find((message) => message.role === "tool");
+      expect(toolMessage?.content.length).toBeLessThanOrEqual(maxToolResultChars);
+      expect(decodeUnknownJson(toolMessage?.content ?? "")).toMatchObject({
+        status: "succeeded",
+        truncated: true,
+        truncationReason: "max_tool_result_chars",
+        originalCharCount: expect.any(Number),
+        resultPreview: expect.any(String),
+      });
+    }),
+  );
+
+  it.effect("未超过预算时保持原有工具消息结构和内容", () =>
+    Effect.gen(function* () {
+      let secondInput: Parameters<ByokAgentModelDriver["complete"]>[0] | undefined;
+      const broker = ToolBroker.ToolBroker.of({
+        invoke: (input) => Effect.succeed(makeResult(input)),
+        cancel: () => Effect.void,
+      });
+      const model: ByokAgentModelDriver = {
+        complete: (input) => {
+          if (input.turn === 2) {
+            secondInput = input;
+            return Stream.fromIterable([{ type: "model_completed" as const }]);
+          }
+          return Stream.fromIterable([
+            {
+              type: "tool_call" as const,
+              toolCallId: "call-small-result",
+              canonicalToolName: "workspace.read_file",
+              arguments: { relativePath: "README.md" },
+            },
+            { type: "model_completed" as const },
+          ]);
+        },
+      };
+
+      yield* runByokAgentLoop(
+        { ...baseInput, maxContextMessages: 3, maxToolResultChars: 500 },
+        model,
+        broker,
+      );
+
+      expect(secondInput?.messages).toEqual([
+        { role: "user", content: baseInput.prompt },
+        {
+          role: "assistant",
+          content: "",
+          toolCalls: [
+            {
+              toolCallId: "call-small-result",
+              canonicalToolName: "workspace.read_file",
+              arguments: { relativePath: "README.md" },
+            },
+          ],
+        },
+        {
+          role: "tool",
+          toolCallId: "call-small-result",
+          canonicalToolName: "workspace.read_file",
+          content: encodeUnknownJson({
+            status: "succeeded",
+            result: { contents: "workspace result" },
+          }),
+        },
+      ]);
+    }),
+  );
 });

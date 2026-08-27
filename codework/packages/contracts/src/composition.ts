@@ -42,6 +42,11 @@ export const CompositionAgentTool = Schema.Struct({
 });
 export type CompositionAgentTool = typeof CompositionAgentTool.Type;
 
+export const COMPOSITION_AGENT_LOOP_MIN_CONTEXT_MESSAGES = 3;
+export const COMPOSITION_AGENT_LOOP_MAX_CONTEXT_MESSAGES = 65;
+export const COMPOSITION_AGENT_LOOP_MIN_TOOL_RESULT_CHARS = 160;
+export const COMPOSITION_AGENT_LOOP_MAX_TOOL_RESULT_CHARS = 120_000;
+
 /** 显式启动 BYOK Agent Loop 的 RPC 输入，不改变旧文本会话语义。 */
 export const CompositionAgentLoopRunRequest = Schema.Struct({
   mode: Schema.Literal("agent_loop"),
@@ -55,6 +60,18 @@ export const CompositionAgentLoopRunRequest = Schema.Struct({
   capabilityGrantIds: Schema.Array(TrimmedNonEmptyString),
   tools: Schema.Array(CompositionAgentTool),
   maxRounds: Schema.optional(PositiveInt),
+  maxContextMessages: Schema.optional(
+    PositiveInt.check(
+      Schema.isGreaterThanOrEqualTo(COMPOSITION_AGENT_LOOP_MIN_CONTEXT_MESSAGES),
+      Schema.isLessThanOrEqualTo(COMPOSITION_AGENT_LOOP_MAX_CONTEXT_MESSAGES),
+    ),
+  ),
+  maxToolResultChars: Schema.optional(
+    PositiveInt.check(
+      Schema.isGreaterThanOrEqualTo(COMPOSITION_AGENT_LOOP_MIN_TOOL_RESULT_CHARS),
+      Schema.isLessThanOrEqualTo(COMPOSITION_AGENT_LOOP_MAX_TOOL_RESULT_CHARS),
+    ),
+  ),
 });
 export type CompositionAgentLoopRunRequest = typeof CompositionAgentLoopRunRequest.Type;
 

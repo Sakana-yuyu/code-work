@@ -1,3 +1,9 @@
+import {
+  COMPOSITION_AGENT_LOOP_MAX_CONTEXT_MESSAGES,
+  COMPOSITION_AGENT_LOOP_MAX_TOOL_RESULT_CHARS,
+  COMPOSITION_AGENT_LOOP_MIN_CONTEXT_MESSAGES,
+  COMPOSITION_AGENT_LOOP_MIN_TOOL_RESULT_CHARS,
+} from "@codework/contracts";
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
@@ -87,22 +93,107 @@ export type ByokAgentLoopInput = {
   readonly capabilityGrantIds: ReadonlyArray<string>;
   readonly tools: ReadonlyArray<ByokAgentTool>;
   readonly maxRounds?: number;
+  /** 包含初始用户消息；工具调用与结果按两条完整消息计算。 */
+  readonly maxContextMessages?: number;
+  /** 单条成功工具结果重新注入模型时允许的最大字符数。 */
+  readonly maxToolResultChars?: number;
 };
 
 export type ByokAgentLoopResult = {
   readonly text: string;
+  /** 最后一次模型调用使用的有界上下文，不作为完整执行审计记录。 */
   readonly messages: ReadonlyArray<ByokAgentMessage>;
   readonly rounds: number;
 };
 
 const encodeUnknownJson = Schema.encodeUnknownSync(Schema.fromJsonString(Schema.Unknown));
 
-const toolResultContent = (result: ToolBroker.ToolBrokerResult): string =>
-  encodeUnknownJson(
-    result.status === "succeeded"
-      ? { status: result.status, result: result.result }
-      : { status: result.status, errorCode: result.errorCode ?? "tool_failed" },
+const DEFAULT_MAX_CONTEXT_MESSAGES = 17;
+const DEFAULT_MAX_TOOL_RESULT_CHARS = 12_000;
+
+const boundedInteger = (value: number | undefined, fallback: number, min: number, max: number) =>
+  value === undefined || !Number.isFinite(value)
+    ? fallback
+    : Math.max(min, Math.min(max, Math.trunc(value)));
+
+const completeToolRound = (
+  assistant: ByokAgentMessage | undefined,
+  tool: ByokAgentMessage | undefined,
+): readonly [ByokAgentMessage, ByokAgentMessage] | undefined => {
+  if (assistant?.role !== "assistant" || tool?.role !== "tool") return undefined;
+  if (assistant.toolCalls?.some((toolCall) => toolCall.toolCallId === tool.toolCallId) !== true) {
+    return undefined;
+  }
+  return [assistant, tool];
+};
+
+const compactContextMessages = (
+  messages: ReadonlyArray<ByokAgentMessage>,
+  maxContextMessages: number,
+): ByokAgentMessage[] => {
+  const initial = messages[0];
+  if (initial?.role !== "user") return [];
+
+  const completeRounds: Array<readonly [ByokAgentMessage, ByokAgentMessage]> = [];
+  for (let index = 1; index < messages.length; index += 2) {
+    const round = completeToolRound(messages[index], messages[index + 1]);
+    if (round !== undefined) completeRounds.push(round);
+  }
+
+  const roundCapacity = Math.max(0, Math.floor((Math.max(1, maxContextMessages) - 1) / 2));
+  const retainedRounds = roundCapacity === 0 ? [] : completeRounds.slice(-roundCapacity);
+  return [initial, ...retainedRounds.flat()];
+};
+
+const truncatedToolResultContent = (
+  fullContent: string,
+  resultJson: string,
+  maxToolResultChars: number,
+): string => {
+  const encodePreview = (previewChars: number): string =>
+    encodeUnknownJson({
+      status: "succeeded",
+      truncated: true,
+      truncationReason: "max_tool_result_chars",
+      originalCharCount: fullContent.length,
+      resultPreview: resultJson.slice(0, previewChars),
+    });
+
+  let low = 0;
+  let high = resultJson.length;
+  let bounded = encodePreview(0);
+  while (low <= high) {
+    const middle = Math.floor((low + high) / 2);
+    const candidate = encodePreview(middle);
+    if (candidate.length <= maxToolResultChars) {
+      bounded = candidate;
+      low = middle + 1;
+    } else {
+      high = middle - 1;
+    }
+  }
+  return bounded;
+};
+
+const toolResultContent = (
+  result: ToolBroker.ToolBrokerResult,
+  maxToolResultChars: number,
+): string => {
+  if (result.status !== "succeeded") {
+    return encodeUnknownJson({
+      status: result.status,
+      errorCode: result.errorCode ?? "tool_failed",
+    });
+  }
+
+  const fullContent = encodeUnknownJson({ status: result.status, result: result.result });
+  if (fullContent.length <= maxToolResultChars) return fullContent;
+  return truncatedToolResultContent(
+    fullContent,
+    encodeUnknownJson(result.result),
+    maxToolResultChars,
   );
+};
 
 export const runByokAgentLoop = (
   input: ByokAgentLoopInput,
@@ -114,6 +205,18 @@ export const runByokAgentLoop = (
 > =>
   Effect.gen(function* () {
     const maxRounds = input.maxRounds ?? 8;
+    const maxContextMessages = boundedInteger(
+      input.maxContextMessages,
+      DEFAULT_MAX_CONTEXT_MESSAGES,
+      COMPOSITION_AGENT_LOOP_MIN_CONTEXT_MESSAGES,
+      COMPOSITION_AGENT_LOOP_MAX_CONTEXT_MESSAGES,
+    );
+    const maxToolResultChars = boundedInteger(
+      input.maxToolResultChars,
+      DEFAULT_MAX_TOOL_RESULT_CHARS,
+      COMPOSITION_AGENT_LOOP_MIN_TOOL_RESULT_CHARS,
+      COMPOSITION_AGENT_LOOP_MAX_TOOL_RESULT_CHARS,
+    );
     const messages: ByokAgentMessage[] = [{ role: "user", content: input.prompt }];
     const seenToolCallIds = new Set<string>();
     let text = "";
@@ -125,8 +228,10 @@ export const runByokAgentLoop = (
         return yield* new ByokAgentLoopMaxRoundsError({ maxRounds });
       }
 
+      const compactedMessages = compactContextMessages(messages, maxContextMessages);
+      messages.splice(0, messages.length, ...compactedMessages);
       const events = yield* model
-        .complete({ messages, tools: input.tools, turn: rounds })
+        .complete({ messages: compactedMessages, tools: input.tools, turn: rounds })
         .pipe(Stream.runCollect);
       let terminal = false;
       let acceptedToolCall = false;
@@ -175,7 +280,7 @@ export const runByokAgentLoop = (
           role: "tool",
           toolCallId: event.toolCallId,
           canonicalToolName: event.canonicalToolName,
-          content: toolResultContent(result),
+          content: toolResultContent(result, maxToolResultChars),
         });
       }
 

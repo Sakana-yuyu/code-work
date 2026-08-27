@@ -23,6 +23,8 @@ export type CompositionAgentServiceInput = {
   readonly capabilityGrantIds: ReadonlyArray<string>;
   readonly tools: ReadonlyArray<ByokAgentTool>;
   readonly maxRounds?: number | undefined;
+  readonly maxContextMessages?: number | undefined;
+  readonly maxToolResultChars?: number | undefined;
   readonly signal?: AbortSignal | undefined;
 };
 
@@ -110,6 +112,12 @@ const make = (options: CompositionAgentServiceOptions): CompositionAgentServiceS
           capabilityGrantIds,
           tools: input.tools,
           ...(input.maxRounds === undefined ? {} : { maxRounds: input.maxRounds }),
+          ...(input.maxContextMessages === undefined
+            ? {}
+            : { maxContextMessages: input.maxContextMessages }),
+          ...(input.maxToolResultChars === undefined
+            ? {}
+            : { maxToolResultChars: input.maxToolResultChars }),
         },
         model,
         options.broker,

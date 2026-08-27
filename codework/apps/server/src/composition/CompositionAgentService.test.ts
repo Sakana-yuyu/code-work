@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vite-plus/test";
+import { it as effectIt } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as Stream from "effect/Stream";
 
@@ -195,4 +196,72 @@ describe("CompositionAgentService", () => {
     expect(capturedGrantIds[0]?.[0]).toMatch(/^grant-/);
     expect(revokedGrantIds).toEqual(capturedGrantIds[0]);
   });
+
+  effectIt.effect("把上下文与工具结果预算传递给 BYOK Loop", () =>
+    Effect.gen(function* () {
+      const modelInputs: Array<Parameters<ByokAgentModelDriver["complete"]>[0]> = [];
+      const loopModel: ByokAgentModelDriver = {
+        complete: (modelInput) => {
+          modelInputs.push(modelInput);
+          return modelInput.turn === 3
+            ? Stream.fromIterable([
+                { type: "text_delta" as const, text: "完成" },
+                { type: "model_completed" as const },
+              ])
+            : Stream.fromIterable([
+                {
+                  type: "tool_call" as const,
+                  toolCallId: `call-budget-${modelInput.turn}`,
+                  canonicalToolName: "workspace.read_file",
+                  arguments: { relativePath: `file-${modelInput.turn}.txt` },
+                },
+                { type: "model_completed" as const },
+              ]);
+        },
+      };
+      const broker: ToolBroker.ToolBroker["Service"] = {
+        invoke: (brokerInput) =>
+          Effect.succeed({
+            invocationId: `invocation-${brokerInput.toolCallId}`,
+            taskId: brokerInput.taskId,
+            runId: brokerInput.runId,
+            toolCallId: brokerInput.toolCallId,
+            canonicalToolName: brokerInput.canonicalToolName,
+            status: "succeeded" as const,
+            result: { contents: "x".repeat(2_000) },
+          }),
+        cancel: () => Effect.void,
+      };
+      const service = makeCompositionAgentService({
+        broker,
+        resolveModelDriver: () => Effect.succeed(loopModel),
+      });
+
+      const result = yield* service.run({
+        ...input,
+        tools: [
+          {
+            canonicalToolName: "workspace.read_file",
+            description: "读取文件",
+            parameters: { type: "object" },
+          },
+        ],
+        maxRounds: 3,
+        maxContextMessages: 3,
+        maxToolResultChars: 220,
+      });
+      const finalMessages = modelInputs[2]?.messages ?? [];
+
+      expect(result.text).toBe("完成");
+      expect(finalMessages).toHaveLength(3);
+      expect(finalMessages[1]).toMatchObject({
+        role: "assistant",
+        toolCalls: [{ toolCallId: "call-budget-2" }],
+      });
+      expect(finalMessages[2]).toMatchObject({ role: "tool", toolCallId: "call-budget-2" });
+      if (finalMessages[2]?.role === "tool") {
+        expect(finalMessages[2].content.length).toBeLessThanOrEqual(220);
+      }
+    }),
+  );
 });
