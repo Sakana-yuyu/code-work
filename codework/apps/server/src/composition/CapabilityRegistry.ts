@@ -1,14 +1,11 @@
-import type {
-  CompositionCapabilityDescriptor,
-  CompositionCapabilityDescriptorList,
-} from "@codework/contracts";
+import type { CompositionCapabilityDescriptorList } from "@codework/contracts";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Schema from "effect/Schema";
 
 import { listCompositionToolDescriptors } from "./CompositionToolRegistry.ts";
-import type * as CompositionMcpToolRegistry from "./CompositionMcpToolRegistry.ts";
+import * as CompositionMcpToolRegistry from "./CompositionMcpToolRegistry.ts";
 
 export const CapabilityRegistryScope = Schema.Struct({
   scope: Schema.Literals(["workspace", "agent", "task"]),

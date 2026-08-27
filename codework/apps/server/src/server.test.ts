@@ -113,8 +113,10 @@ import { OrchestrationListenerCallbackError } from "./orchestration/Errors.ts";
 import * as ProjectionSnapshotQuery from "./orchestration/Services/ProjectionSnapshotQuery.ts";
 import { SqlitePersistenceMemory } from "./persistence/Layers/Sqlite.ts";
 import { PersistenceSqlError } from "./persistence/Errors.ts";
+import * as ProviderEventLoggers from "./provider/Layers/ProviderEventLoggers.ts";
 import * as ProviderRegistry from "./provider/Services/ProviderRegistry.ts";
 import * as ProviderService from "./provider/Services/ProviderService.ts";
+import * as OpenCodeRuntime from "./provider/opencodeRuntime.ts";
 import { ProviderAdapterRequestError } from "./provider/Errors.ts";
 import { makeManualOnlyProviderMaintenanceCapabilities } from "./provider/providerMaintenance.ts";
 import * as ServerLifecycleEvents from "./serverLifecycleEvents.ts";
@@ -619,6 +621,13 @@ const buildAppUnderTest = (options?: {
       makeRoutesLayer.pipe(
         Layer.provide(serviceLauncherClientLayer),
         Layer.provide(PreviewAutomationBroker.layer.pipe(Layer.provide(NodeServices.layer))),
+        Layer.provideMerge(OpenCodeRuntime.OpenCodeRuntimeLive),
+        Layer.provideMerge(
+          Layer.succeed(
+            ProviderEventLoggers.ProviderEventLoggers,
+            ProviderEventLoggers.NoOpProviderEventLoggers,
+          ),
+        ),
       ),
       {
         disableListenLog: true,
@@ -662,6 +671,7 @@ const buildAppUnderTest = (options?: {
           getSettings: Effect.succeed(DEFAULT_SERVER_SETTINGS),
           updateSettings: () => Effect.succeed(DEFAULT_SERVER_SETTINGS),
           streamChanges: Stream.empty,
+          subscribeChanges: Effect.succeed(Stream.empty),
           ...options?.layers?.serverSettings,
         }),
       ),
@@ -1579,7 +1589,7 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
       ]);
       // Desktop, so port-scoped: instances scan for a free port and share
       // 127.0.0.1, and cookies are not scoped by port.
-      assert.isTrue(body.auth.sessionCookieName.startsWith("t3_session_"));
+      assert.isTrue(body.auth.sessionCookieName.startsWith("codework_session_"));
     }).pipe(Effect.provide(NodeHttpServer.layerTest)),
   );
 
@@ -4781,7 +4791,10 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
         assert.deepEqual(first.config.keybindings, []);
         assert.deepEqual(first.config.issues, []);
         assert.deepEqual(first.config.providers, providers);
-        assert.equal(first.config.observability.logsDirectoryPath.endsWith("/logs"), true);
+        assert.equal(
+          first.config.observability.logsDirectoryPath.replace(/\\/g, "/").endsWith("/logs"),
+          true,
+        );
         assert.equal(first.config.observability.localTracingEnabled, true);
         assert.equal(first.config.observability.otlpTracesUrl, "http://localhost:4318/v1/traces");
         assert.equal(first.config.observability.otlpTracesEnabled, true);
