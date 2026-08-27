@@ -567,3 +567,16 @@ F1 审查修复补充：
 - 新增真实本地 Node 子进程 WebSocket fixture，验证 `CompositionIdeJsonRpcTransport -> CompositionIdeSessionRegistry -> IDE fixture` 的 probe、handshake 和 invoke 回流。
 
 本节点验证的是通用 IDE 协议和真实本地跨进程链路，不是 Cursor 或 VSCode 官方扩展的产品现场 E2E；当前仍未完成具体 Cursor/VSCode extension transport、IDE session 配置持久化、多端 UI 入口和真实安装 IDE 验收。当前 transport 已具备可配置的有界断线重连，但尚未把 session 配置从 Settings/Runtime 入口自动创建并管理。`ide.invoke` 仍必须经过既有 ToolBroker 的 capability、grant、approval、幂等和 audit 边界，transport 本身不提供权限绕过。
+
+## Batch G2：IDE session Settings 生命周期接入（2026-08-27）
+
+本节点把通用 IDE transport 接入 `ServerSettings.providerInstances` 的 Runtime reconciler，配置入口采用独立的 `driver: "ide"` envelope：
+
+- `CompositionIdeRuntimeConfig` 只保存 schemaVersion、sessionId、profile、WebSocket URL、Header 环境变量绑定、超时和有界重连策略；Header 的实际值继续由 provider environment/ServerSecretStore 物化，配置合同不保存 token 明文。
+- `CompositionRuntimeSettings` 对 IDE provider instance 做初次注册、配置指纹比较、配置替换和删除/禁用注销；替换或注销会调用 registry 的 unregister，从而清理旧 transport 和旧 handshake。
+- `CompositionIdeSessionRegistry` 与 ToolBroker 复用同一份 server Layer，避免 Settings reconciler 注册到一个 registry、ToolBroker 调用另一个 registry 的生命周期分裂。
+- 凭据类 Header（Authorization、Proxy-Authorization、API-Key、Token 等）必须绑定到 `sensitive` 环境变量；缺失值、非敏感绑定、非 `ws://`/`wss://` URL 或无效配置都会 fail closed 并只记录脱敏警告。
+
+本节点通过 contracts、Composition Runtime Settings、IDE session registry、IDE JSON-RPC transport 和 IDE ToolBroker 的 focused tests，共 39 个测试；格式检查和 `git diff --check` 通过。局部 server typecheck 没有发现本节点新增的 TypeScript error，但仍输出仓库已有 Effect 风格 suggestions；contracts typecheck 仍被既有 MCP server ID 测试错误阻断。
+
+本节点仍未完成：IDE session 的 Web Settings 可编辑界面、Desktop/Mobile 独立导航、Cursor/VSCode 官方扩展 transport 和 operation、真实安装 IDE E2E、真实 Multica 官方 Server/Agent E2E，以及所有 Driver 对全部 Code Work API 的产品级可达性。上述缺口不能由本地 fixture、配置合同或 session registry 测试替代。

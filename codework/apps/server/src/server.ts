@@ -394,8 +394,10 @@ const CompositionCapabilityPolicyLayerLive = CompositionCapabilityPolicy.layer.p
   Layer.provideMerge(CompositionCapabilityRegistryLayerLive),
 );
 
+const CompositionIdeSessionRegistryLayerLive = CompositionIdeSessionRegistry.layer;
+
 const CompositionToolBrokerLayerLive = CompositionToolBroker.layer.pipe(
-  Layer.provideMerge(CompositionIdeSessionRegistry.layer),
+  Layer.provideMerge(CompositionIdeSessionRegistryLayerLive),
   Layer.provideMerge(CompositionMcpToolRegistryLayerLive),
   Layer.provideMerge(CompositionCapabilityPolicyLayerLive),
   Layer.provideMerge(CompositionCapabilityGrantLayerLive),
@@ -417,6 +419,7 @@ const CompositionRuntimeMcpSessionRegistryLayerLive = CompositionRuntimeMcpSessi
 const CompositionRuntimeSettingsLayerLive = CompositionRuntimeSettings.layer.pipe(
   Layer.provideMerge(ServerSettingsLayerLive),
   Layer.provideMerge(CompositionRuntimeAdapterRegistry.layer),
+  Layer.provideMerge(CompositionIdeSessionRegistryLayerLive),
   Layer.provideMerge(CompositionRuntimeMcpSessionRegistryLayerLive),
   Layer.provideMerge(ProcessRunner.layer),
 );

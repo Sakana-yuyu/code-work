@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 
-import { CompositionMulticaRuntimeConfig } from "@codework/contracts";
+import { CompositionIdeRuntimeConfig, CompositionMulticaRuntimeConfig } from "@codework/contracts";
 import type { ProviderInstanceConfig, ProviderInstanceEnvironment } from "@codework/contracts";
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
@@ -14,6 +14,8 @@ import * as Stream from "effect/Stream";
 import { ServerSettingsService } from "../serverSettings.ts";
 import * as ProcessRunner from "../processRunner.ts";
 import * as CompositionRuntimeMcpSessionRegistry from "../mcp/CompositionRuntimeMcpSessionRegistry.ts";
+import * as CompositionIdeSessionRegistry from "./CompositionIdeSessionRegistry.ts";
+import { makeCompositionIdeJsonRpcAdapter } from "./CompositionIdeJsonRpcTransport.ts";
 import {
   makeMulticaDaemonRuntimeAdapter,
   type MulticaDaemonRuntimeAdapter,
@@ -51,6 +53,10 @@ import {
 export type CompositionRuntimeSettings = {
   readonly settings: Pick<ServerSettingsService["Service"], "getSettings" | "subscribeChanges">;
   readonly adapterRegistry: Pick<CompositionRuntimeAdapterRegistry, "register" | "unregister">;
+  readonly ideSessionRegistry?: Pick<
+    CompositionIdeSessionRegistry.CompositionIdeSessionRegistry,
+    "register" | "unregister"
+  >;
   readonly processRunner?: Pick<ProcessRunner.ProcessRunner["Service"], "run">;
   readonly mcpSessionRegistry?: Pick<
     CompositionRuntimeMcpSessionRegistry.CompositionRuntimeMcpSessionRegistryShape,
@@ -67,6 +73,12 @@ export type CompositionRuntimeSettings = {
   readonly createAdapter?: (
     input: CompositionRuntimeSettingsFactoryInput,
   ) => Effect.Effect<CompositionRuntimeAdapter, CompositionRuntimeSettingsError>;
+  readonly createIdeAdapter?: (
+    input: CompositionIdeSettingsFactoryInput,
+  ) => Effect.Effect<
+    CompositionIdeSessionRegistry.CompositionIdeAdapter,
+    CompositionRuntimeSettingsError
+  >;
   readonly logWarning?: (message: string, cause?: unknown) => Effect.Effect<void>;
 };
 
@@ -95,6 +107,13 @@ export type CompositionRuntimeSettingsFactoryInput = {
   readonly daemonControlStreamFactory?: CompositionRuntimeSettings["daemonControlStreamFactory"];
 };
 
+export type CompositionIdeSettingsFactoryInput = {
+  readonly instanceId: string;
+  readonly config: CompositionIdeRuntimeConfig;
+  readonly environment: ProviderInstanceEnvironment;
+  readonly headers: Readonly<Record<string, string>>;
+};
+
 export interface CompositionRuntimeSettingsReconciler {
   readonly refresh: Effect.Effect<void>;
   readonly start: Effect.Effect<void, never, Scope.Scope>;
@@ -115,6 +134,13 @@ type ManagedAdapter = {
   readonly adapter: CompositionRuntimeAdapter;
 };
 
+type ManagedIdeSession = {
+  readonly instanceId: string;
+  readonly sessionId: string;
+  readonly fingerprint: string;
+  readonly adapter: CompositionIdeSessionRegistry.CompositionIdeAdapter;
+};
+
 const decodeMulticaConfig = Schema.decodeUnknownSync(CompositionMulticaRuntimeConfig);
 
 const settingsError = (cause: unknown): CompositionRuntimeSettingsError =>
@@ -128,19 +154,34 @@ const defaultLogWarning = (message: string, cause?: unknown): Effect.Effect<void
   });
 
 const makeHeaders = (
-  config: CompositionMulticaRuntimeConfig,
+  bindings: ReadonlyArray<{
+    readonly headerName: string;
+    readonly environmentVariable: string;
+  }>,
   environment: ProviderInstanceEnvironment,
 ): Readonly<Record<string, string>> => {
   const values = new Map(environment.map((variable) => [variable.name, variable.value]));
+  const environmentVariables = new Map(environment.map((variable) => [variable.name, variable]));
   const headers: Record<string, string> = {};
-  for (const binding of config.headers) {
+  for (const binding of bindings) {
     if (headers[binding.headerName] !== undefined) {
-      throw new Error(`Multica Header '${binding.headerName}' 重复。`);
+      throw new Error(`Header '${binding.headerName}' 重复。`);
     }
     const value = values.get(binding.environmentVariable);
+    const variable = environmentVariables.get(binding.environmentVariable);
     if (value === undefined || value.length === 0) {
       throw new Error(
-        `Multica Header '${binding.headerName}' 依赖环境变量 '${binding.environmentVariable}'，但该变量没有物化值。`,
+        `Header '${binding.headerName}' 依赖环境变量 '${binding.environmentVariable}'，但该变量没有物化值。`,
+      );
+    }
+    if (
+      /^(authorization|proxy-authorization|api[-_]?key|x[-_]?api[-_]?key|token)$/i.test(
+        binding.headerName,
+      ) &&
+      variable?.sensitive !== true
+    ) {
+      throw new Error(
+        `凭据 Header '${binding.headerName}' 必须绑定到 sensitive 环境变量 '${binding.environmentVariable}'。`,
       );
     }
     headers[binding.headerName] = value;
@@ -462,6 +503,18 @@ const fingerprintFor = (input: CompositionRuntimeSettingsFactoryInput): string =
     )
     .digest("hex");
 
+const fingerprintForIde = (input: CompositionIdeSettingsFactoryInput): string =>
+  createHash("sha256")
+    .update(
+      JSON.stringify({
+        instanceId: input.instanceId,
+        config: input.config,
+        headers: input.headers,
+        environment: input.environment,
+      }),
+    )
+    .digest("hex");
+
 const instanceEnabled = (instance: ProviderInstanceConfig): boolean => instance.enabled !== false;
 
 const revokeTaskMcpLeases = (adapter: CompositionRuntimeAdapter): Effect.Effect<void> => {
@@ -480,16 +533,63 @@ const makeFactoryInput = (
     throw new Error("Multica Runtime 已禁用。");
   }
   const environment = instance.environment ?? [];
-  const headers = makeHeaders(config, environment);
+  const headers = makeHeaders(config.headers, environment);
   const agents = makeAgents(config);
   return { instanceId, config, environment, headers, agents };
 };
+
+const decodeIdeConfig = Schema.decodeUnknownSync(CompositionIdeRuntimeConfig);
+
+const makeIdeFactoryInput = (
+  instanceId: string,
+  instance: ProviderInstanceConfig,
+): CompositionIdeSettingsFactoryInput => {
+  const config = decodeIdeConfig(instance.config);
+  if (!config.enabled || !instanceEnabled(instance)) {
+    throw new Error("IDE Runtime 已禁用。");
+  }
+  const environment = instance.environment ?? [];
+  const headers = makeHeaders(config.headers, environment);
+  const protocol = new URL(config.url).protocol;
+  if (protocol !== "ws:" && protocol !== "wss:") {
+    throw new Error("IDE Runtime url 必须使用 ws:// 或 wss://。");
+  }
+  return { instanceId, config, environment, headers };
+};
+
+const defaultCreateIdeAdapter = (
+  input: CompositionIdeSettingsFactoryInput,
+): Effect.Effect<
+  CompositionIdeSessionRegistry.CompositionIdeAdapter,
+  CompositionRuntimeSettingsError
+> =>
+  Effect.try({
+    try: () =>
+      makeCompositionIdeJsonRpcAdapter({
+        sessionId: input.config.sessionId,
+        profile: input.config.profile,
+        url: input.config.url,
+        headers: input.headers,
+        ...(input.config.openTimeoutMs === undefined
+          ? {}
+          : { openTimeoutMs: input.config.openTimeoutMs }),
+        ...(input.config.requestTimeoutMs === undefined
+          ? {}
+          : { requestTimeoutMs: input.config.requestTimeoutMs }),
+        ...(input.config.reconnectDelaysMs === undefined
+          ? {}
+          : { reconnectDelaysMs: input.config.reconnectDelaysMs }),
+      }),
+    catch: settingsError,
+  });
 
 export const makeCompositionRuntimeSettingsReconciler = (
   options: CompositionRuntimeSettings,
 ): CompositionRuntimeSettingsReconciler => {
   const managed = new Map<string, ManagedAdapter>();
+  const managedIdeSessions = new Map<string, ManagedIdeSession>();
   const createAdapter = options.createAdapter ?? defaultCreateAdapter;
+  const createIdeAdapter = options.createIdeAdapter ?? defaultCreateIdeAdapter;
   const logWarning = options.logWarning ?? defaultLogWarning;
 
   const warn = (message: string, cause?: unknown) =>
@@ -504,7 +604,20 @@ export const makeCompositionRuntimeSettingsReconciler = (
     if (settings === undefined) return;
 
     const candidates = new Map<string, CompositionRuntimeSettingsFactoryInput>();
+    const ideCandidates = new Map<string, CompositionIdeSettingsFactoryInput>();
     for (const [instanceId, instance] of Object.entries(settings.providerInstances)) {
+      if (instance.driver === "ide" && instanceEnabled(instance)) {
+        if (options.ideSessionRegistry === undefined) {
+          yield* warn(`跳过 IDE Runtime 配置 '${instanceId}'：未提供 IDE session registry。`);
+          continue;
+        }
+        try {
+          ideCandidates.set(instanceId, makeIdeFactoryInput(instanceId, instance));
+        } catch (cause) {
+          yield* warn(`跳过无效的 IDE Runtime 配置 '${instanceId}'。`, cause);
+        }
+        continue;
+      }
       if (instance.driver !== "multica" || !instanceEnabled(instance)) continue;
       try {
         candidates.set(instanceId, {
@@ -565,8 +678,58 @@ export const makeCompositionRuntimeSettingsReconciler = (
       });
     }
 
+    const nextManagedIdeSessions = new Map<string, ManagedIdeSession>();
+    for (const [instanceId, current] of managedIdeSessions) {
+      const input = ideCandidates.get(instanceId);
+      if (
+        input !== undefined &&
+        current.sessionId === input.config.sessionId &&
+        current.fingerprint === fingerprintForIde(input)
+      ) {
+        nextManagedIdeSessions.set(instanceId, current);
+        ideCandidates.delete(instanceId);
+        continue;
+      }
+      yield* options.ideSessionRegistry?.unregister(current.sessionId) ?? Effect.succeed(false);
+    }
+
+    if (options.ideSessionRegistry !== undefined) {
+      for (const [instanceId, input] of ideCandidates) {
+        const adapter = yield* createIdeAdapter(input).pipe(
+          Effect.catch((cause) =>
+            warn(`创建 IDE Runtime Adapter '${instanceId}' 失败。`, cause).pipe(
+              Effect.as<CompositionIdeSessionRegistry.CompositionIdeAdapter | undefined>(undefined),
+            ),
+          ),
+        );
+        if (adapter === undefined) continue;
+        const registered = yield* options.ideSessionRegistry.register(adapter).pipe(
+          Effect.as(true),
+          Effect.catch((cause) =>
+            warn(`注册 IDE session '${input.config.sessionId}' 失败。`, cause).pipe(
+              Effect.as(false),
+            ),
+          ),
+        );
+        if (!registered) {
+          adapter.close?.();
+          continue;
+        }
+        nextManagedIdeSessions.set(instanceId, {
+          instanceId,
+          sessionId: input.config.sessionId,
+          fingerprint: fingerprintForIde(input),
+          adapter,
+        });
+      }
+    }
+
     managed.clear();
     for (const [instanceId, entry] of nextManaged) managed.set(instanceId, entry);
+    managedIdeSessions.clear();
+    for (const [instanceId, entry] of nextManagedIdeSessions) {
+      managedIdeSessions.set(instanceId, entry);
+    }
   });
 
   const start = Effect.gen(function* () {
@@ -588,9 +751,12 @@ const live = Effect.gen(function* () {
   const processRunner = yield* ProcessRunner.ProcessRunner;
   const mcpSessionRegistry =
     yield* CompositionRuntimeMcpSessionRegistry.CompositionRuntimeMcpSessionRegistry;
+  const ideSessionRegistry =
+    yield* CompositionIdeSessionRegistry.CompositionIdeSessionRegistryService;
   const reconciler = makeCompositionRuntimeSettingsReconciler({
     settings,
     adapterRegistry,
+    ideSessionRegistry,
     mcpSessionRegistry,
     processRunner,
   });

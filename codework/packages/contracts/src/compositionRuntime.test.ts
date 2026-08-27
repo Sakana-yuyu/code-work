@@ -5,6 +5,7 @@ import {
   CompositionAgentDriverProfile,
   CompositionEventEnvelope,
   CompositionIdeResolveResult,
+  CompositionIdeRuntimeConfig,
   CompositionMulticaRuntimeConfig,
   CompositionMulticaProbeResult,
   CompositionRuntimeCapabilityHandshakeRequest,
@@ -17,6 +18,7 @@ import {
 const decodeEnvelope = Schema.decodeUnknownSync(CompositionEventEnvelope);
 const decodeRuntimeProbe = Schema.decodeUnknownSync(CompositionRuntimeProbeResult);
 const decodeIdeResult = Schema.decodeUnknownSync(CompositionIdeResolveResult);
+const decodeIdeRuntimeConfig = Schema.decodeUnknownSync(CompositionIdeRuntimeConfig);
 const decodeMulticaProbe = Schema.decodeUnknownSync(CompositionMulticaProbeResult);
 const decodeCapabilityHandshakeRequest = Schema.decodeUnknownSync(
   CompositionRuntimeCapabilityHandshakeRequest,
@@ -141,6 +143,24 @@ describe("composition runtime contracts", () => {
 
     expect(decoded.status).toBe("unavailable");
     expect(decoded.profile).toBe("unknown");
+  });
+
+  it("只保存 IDE session 的持久配置和 Header 环境变量绑定", () => {
+    const decoded = decodeIdeRuntimeConfig({
+      sessionId: "vscode-session-1",
+      profile: "vscode_ide",
+      url: "ws://127.0.0.1:4111/t3/ide",
+      headers: [{ headerName: "Authorization", environmentVariable: "IDE_TOKEN" }],
+      reconnectDelaysMs: [250, 1000],
+    });
+
+    expect(decoded.sessionId).toBe("vscode-session-1");
+    expect(decoded.profile).toBe("vscode_ide");
+    expect(decoded.headers).toEqual([
+      { headerName: "Authorization", environmentVariable: "IDE_TOKEN" },
+    ]);
+    expect(decoded.reconnectDelaysMs).toEqual([250, 1000]);
+    expect(JSON.stringify(decoded)).not.toContain("IDE_TOKEN_VALUE");
   });
 
   it("keeps Multica daemon support explicit and probeable", () => {

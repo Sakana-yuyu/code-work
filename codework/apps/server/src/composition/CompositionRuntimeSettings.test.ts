@@ -13,6 +13,7 @@ import { ChildProcessSpawner } from "effect/unstable/process";
 import { DEFAULT_SERVER_SETTINGS, type ServerSettings } from "@codework/contracts";
 
 import * as CompositionRuntimeMcpSessionRegistry from "../mcp/CompositionRuntimeMcpSessionRegistry.ts";
+import * as CompositionIdeSessionRegistry from "./CompositionIdeSessionRegistry.ts";
 import { makeInMemoryCompositionRuntimeAdapter } from "./CompositionRuntimeAdapter.ts";
 import {
   makeCompositionRuntimeAdapterRegistry,
@@ -106,6 +107,142 @@ const makeReconciler = (
   });
 
 describe("CompositionRuntimeSettings", () => {
+  it("从 IDE provider instance 注册 session，并在配置替换或禁用时关闭旧 adapter", async () => {
+    const ideRegistry = CompositionIdeSessionRegistry.makeCompositionIdeSessionRegistry();
+    const created: Array<{ readonly sessionId: string; readonly close: () => void }> = [];
+    const makeIdeAdapter = (input: {
+      readonly sessionId: string;
+      readonly profile: CompositionIdeSessionRegistry.CompositionIdeRequestedProfile;
+    }): CompositionIdeSessionRegistry.CompositionIdeAdapter => {
+      const entry = {
+        sessionId: input.sessionId,
+        close: () => undefined,
+      };
+      created.push(entry);
+      return {
+        ...entry,
+        profile: input.profile,
+        probe: () =>
+          Effect.succeed({
+            sessionId: input.sessionId,
+            profile: input.profile,
+            verifiedOperations: ["editor.read"],
+            status: "ready" as const,
+          }),
+        handshake: (request) =>
+          Effect.succeed({
+            ...request,
+            profile: input.profile,
+            status: "accepted" as const,
+            handshakeId: `${input.sessionId}:handshake`,
+            acceptedGrantIds: request.capabilityGrantIds,
+            verifiedOperations: request.requestedOperations,
+          }),
+        invoke: () => Effect.succeed({ ok: true }),
+      };
+    };
+
+    let settings = makeSettings({
+      ide_local: {
+        driver: "ide",
+        enabled: true,
+        environment: [{ name: "IDE_TOKEN", value: "token-one", sensitive: true }],
+        config: {
+          sessionId: "vscode-session-1",
+          profile: "vscode_ide",
+          url: "ws://127.0.0.1:4111/t3/ide",
+          headers: [{ headerName: "Authorization", environmentVariable: "IDE_TOKEN" }],
+        },
+      },
+    });
+    const changes = Effect.runSync(Queue.unbounded<ServerSettings>());
+    const closeCalls: string[] = [];
+    const reconciler = makeCompositionRuntimeSettingsReconciler({
+      settings: {
+        getSettings: Effect.sync(() => settings),
+        subscribeChanges: Effect.succeed(Stream.fromQueue(changes)),
+      },
+      adapterRegistry: makeCompositionRuntimeAdapterRegistry(),
+      ideSessionRegistry: ideRegistry,
+      createIdeAdapter: (input) =>
+        Effect.sync(() => {
+          const adapter = makeIdeAdapter({
+            sessionId: input.config.sessionId,
+            profile: input.config.profile,
+          });
+          const originalClose = adapter.close;
+          const tracked = {
+            ...adapter,
+            close: () => {
+              closeCalls.push(input.config.sessionId);
+              originalClose?.();
+            },
+          };
+          created[created.length - 1] = tracked;
+          return tracked;
+        }),
+    });
+
+    await Effect.runPromise(reconciler.refresh);
+    await expect(Effect.runPromise(ideRegistry.get("vscode-session-1"))).resolves.toBeDefined();
+
+    settings = makeSettings({
+      ide_local: {
+        driver: "ide",
+        enabled: true,
+        environment: [{ name: "IDE_TOKEN", value: "token-two", sensitive: true }],
+        config: {
+          sessionId: "vscode-session-2",
+          profile: "vscode_ide",
+          url: "ws://127.0.0.1:4112/t3/ide",
+          headers: [{ headerName: "Authorization", environmentVariable: "IDE_TOKEN" }],
+        },
+      },
+    });
+    await Effect.runPromise(reconciler.refresh);
+
+    await expect(Effect.runPromise(ideRegistry.get("vscode-session-1"))).resolves.toBeUndefined();
+    await expect(Effect.runPromise(ideRegistry.get("vscode-session-2"))).resolves.toBeDefined();
+    expect(closeCalls).toEqual(["vscode-session-1"]);
+
+    settings = makeSettings({});
+    await Effect.runPromise(reconciler.refresh);
+    await expect(Effect.runPromise(ideRegistry.get("vscode-session-2"))).resolves.toBeUndefined();
+    expect(closeCalls).toEqual(["vscode-session-1", "vscode-session-2"]);
+  });
+
+  it("拒绝把凭据 Header 绑定到非敏感环境变量", async () => {
+    const warnings: string[] = [];
+    const reconciler = makeCompositionRuntimeSettingsReconciler({
+      settings: {
+        getSettings: Effect.succeed(
+          makeSettings({
+            ide_local: {
+              driver: "ide",
+              enabled: true,
+              environment: [{ name: "IDE_TOKEN", value: "plain-value", sensitive: false }],
+              config: {
+                sessionId: "vscode-session-unsafe",
+                profile: "vscode_ide",
+                url: "ws://127.0.0.1:4111/t3/ide",
+                headers: [{ headerName: "Authorization", environmentVariable: "IDE_TOKEN" }],
+              },
+            },
+          }),
+        ),
+        subscribeChanges: Effect.succeed(Stream.empty),
+      },
+      adapterRegistry: makeCompositionRuntimeAdapterRegistry(),
+      ideSessionRegistry: CompositionIdeSessionRegistry.makeCompositionIdeSessionRegistry(),
+      logWarning: (message) =>
+        Effect.sync(() => {
+          warnings.push(message);
+        }),
+    });
+
+    await Effect.runPromise(reconciler.refresh);
+    expect(warnings).toEqual(["跳过无效的 IDE Runtime 配置 'ide_local'。"]);
+  });
   it("懒创建独立的 daemon control transport，并使用 /api/daemon/ws 所需的 runtime scope", async () => {
     const createdControlTransports: Array<{
       readonly url: string;

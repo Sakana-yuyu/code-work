@@ -216,13 +216,21 @@ export const CompositionRuntimeCapabilityHandshakeResult = Schema.Struct({
 export type CompositionRuntimeCapabilityHandshakeResult =
   typeof CompositionRuntimeCapabilityHandshakeResult.Type;
 
-const CompositionIdeProfile = Schema.Literals([
+export const CompositionIdeProfile = Schema.Literals([
   "cursor_ide",
   "vscode_ide",
   "browser_mcp",
   "unknown",
 ]);
 export type CompositionIdeProfile = typeof CompositionIdeProfile.Type;
+
+/** 可由持久化 IDE Runtime 配置请求的 profile；unknown 只能表示探测失败。 */
+export const CompositionIdeRuntimeProfile = Schema.Literals([
+  "cursor_ide",
+  "vscode_ide",
+  "browser_mcp",
+]);
+export type CompositionIdeRuntimeProfile = typeof CompositionIdeRuntimeProfile.Type;
 
 const CompositionIdeResolveStatus = Schema.Literals(["ready", "incomplete", "unavailable"]);
 export type CompositionIdeResolveStatus = typeof CompositionIdeResolveStatus.Type;
@@ -236,6 +244,32 @@ export const CompositionIdeResolveResult = Schema.Struct({
   reasonCode: Schema.optional(TrimmedNonEmptyString),
 });
 export type CompositionIdeResolveResult = typeof CompositionIdeResolveResult.Type;
+
+/** IDE transport Header 与 provider environment secret 的绑定。 */
+export const CompositionIdeHeaderBinding = Schema.Struct({
+  headerName: TrimmedNonEmptyString,
+  environmentVariable: TrimmedNonEmptyString,
+});
+export type CompositionIdeHeaderBinding = typeof CompositionIdeHeaderBinding.Type;
+
+/**
+ * ServerSettings.providerInstances[instanceId].config 中的 IDE Runtime 配置。
+ * 连接状态保留在运行时 session 中，配置只保存 session 连接参数和环境变量绑定。
+ */
+export const CompositionIdeRuntimeConfig = Schema.Struct({
+  schemaVersion: Schema.Literal(1).pipe(Schema.withDecodingDefault(Effect.succeed(1 as const))),
+  enabled: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
+  sessionId: TrimmedNonEmptyString,
+  profile: CompositionIdeRuntimeProfile,
+  url: TrimmedNonEmptyString,
+  headers: Schema.Array(CompositionIdeHeaderBinding).pipe(
+    Schema.withDecodingDefault(Effect.succeed([])),
+  ),
+  openTimeoutMs: Schema.optional(PositiveInt),
+  requestTimeoutMs: Schema.optional(PositiveInt),
+  reconnectDelaysMs: Schema.optional(Schema.Array(NonNegativeInt)),
+});
+export type CompositionIdeRuntimeConfig = typeof CompositionIdeRuntimeConfig.Type;
 
 const CompositionMulticaProbeStatus = Schema.Literals(["online", "offline", "unstable"]);
 export type CompositionMulticaProbeStatus = typeof CompositionMulticaProbeStatus.Type;
