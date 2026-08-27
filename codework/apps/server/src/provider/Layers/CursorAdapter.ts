@@ -397,7 +397,12 @@ export function makeCursorAdapter(
       ),
     );
     const nextEventId = Effect.map(randomUUIDv4, (id) => EventId.make(id));
-    const makeEventStamp = () => Effect.all({ eventId: nextEventId, createdAt: nowIso });
+    const makeEventStamp = () =>
+      Effect.all({
+        eventId: nextEventId,
+        createdAt: nowIso,
+        providerInstanceId: Effect.succeed(boundInstanceId),
+      });
     const mapExtensionFailure = <A, E, R>(effect: Effect.Effect<A, E, R>) =>
       effect.pipe(
         Effect.mapError(

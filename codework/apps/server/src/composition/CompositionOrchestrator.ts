@@ -175,6 +175,13 @@ export interface CompositionAgentDriver {
         readonly runtimeTaskId?: string;
       }
     | undefined;
+  /** Driver 重建后，用受信任的 Runtime 复合键恢复事件归属；不得返回 Task/Run 猜测。 */
+  readonly resolvePersistedRuntimeEvent?: (event: ProviderRuntimeEvent) =>
+    | {
+        readonly runtimeId: string;
+        readonly runtimeTaskId: string;
+      }
+    | undefined;
 }
 
 export type CompositionDispatchInput = {

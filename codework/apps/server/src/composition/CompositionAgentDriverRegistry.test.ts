@@ -2,6 +2,14 @@ import { describe, expect, it } from "vite-plus/test";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
 import * as PubSub from "effect/PubSub";
+import {
+  EventId,
+  ProviderDriverKind,
+  ProviderInstanceId,
+  ThreadId,
+  TurnId,
+  type ProviderRuntimeEvent,
+} from "@codework/contracts";
 
 import {
   CompositionAgentDriverAlreadyRegisteredError,
@@ -79,5 +87,48 @@ describe("CompositionAgentDriverRegistry", () => {
         ),
       ),
     ).resolves.toBe(true);
+  });
+
+  it("只在唯一 Driver 提供 Runtime 复合键时允许持久化恢复", async () => {
+    const registry = makeCompositionAgentDriverRegistry();
+    const event = {
+      eventId: EventId.make("registry-persisted-correlation"),
+      provider: ProviderDriverKind.make("cursor"),
+      providerInstanceId: ProviderInstanceId.make("cursor-local"),
+      threadId: ThreadId.make("thread-1"),
+      turnId: TurnId.make("turn-1"),
+      createdAt: "2026-08-27T00:00:00.000Z",
+      type: "turn.completed",
+      payload: { state: "completed" },
+    } satisfies ProviderRuntimeEvent;
+    const correlation = {
+      runtimeId: "provider:cursor",
+      runtimeTaskId: "provider:cursor:thread:turn",
+    };
+    await Effect.runPromise(
+      registry.register({
+        ...driver,
+        resolvePersistedRuntimeEvent: () => correlation,
+      }),
+    );
+
+    await expect(Effect.runPromise(registry.resolvePersistedRuntimeEvent(event))).resolves.toEqual(
+      correlation,
+    );
+
+    await Effect.runPromise(
+      registry.register({
+        ...driver,
+        agentId: "agent-claude",
+        runtimeId: "claude-local",
+        resolvePersistedRuntimeEvent: () => ({
+          runtimeId: "provider:claude",
+          runtimeTaskId: "provider:claude:thread:turn",
+        }),
+      }),
+    );
+    await expect(
+      Effect.runPromise(registry.resolvePersistedRuntimeEvent(event)),
+    ).resolves.toBeUndefined();
   });
 });

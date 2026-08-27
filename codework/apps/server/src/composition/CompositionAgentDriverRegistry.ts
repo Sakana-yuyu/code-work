@@ -47,6 +47,14 @@ export interface CompositionAgentDriverRegistry {
       }
     | undefined
   >;
+  /** 仅聚合 Driver 自己验证过的 Runtime 复合键；多 Driver 候选时拒绝恢复。 */
+  readonly resolvePersistedRuntimeEvent: (event: ProviderRuntimeEvent) => Effect.Effect<
+    | {
+        readonly runtimeId: string;
+        readonly runtimeTaskId: string;
+      }
+    | undefined
+  >;
 }
 
 export interface CompositionAgentDriverRegistryServiceShape extends CompositionAgentDriverRegistry {}
@@ -131,6 +139,17 @@ export const makeCompositionAgentDriverRegistry = (): CompositionAgentDriverRegi
           if (binding !== undefined) return { driver, ...binding };
         }
         return undefined;
+      }),
+    resolvePersistedRuntimeEvent: (event) =>
+      Effect.sync(() => {
+        let correlation: { readonly runtimeId: string; readonly runtimeTaskId: string } | undefined;
+        for (const driver of drivers.values()) {
+          const candidate = driver.resolvePersistedRuntimeEvent?.(event);
+          if (candidate === undefined) continue;
+          if (correlation !== undefined) return undefined;
+          correlation = candidate;
+        }
+        return correlation;
       }),
   };
 };

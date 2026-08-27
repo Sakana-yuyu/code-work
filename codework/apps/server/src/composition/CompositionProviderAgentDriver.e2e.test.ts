@@ -219,5 +219,100 @@ it.layer(TestLayer, { excludeTestServices: true })(
         yield* adapter.stopSession(task.threadId!).pipe(Effect.ignore);
       }),
     );
+
+    it.effect("新 Provider Driver 能投影真实 ACP 子进程的已持久化终态事件", () =>
+      Effect.gen(function* () {
+        const adapter = yield* CursorAdapter;
+        const settings = yield* ServerSettingsService;
+        const store = yield* CompositionTaskStore;
+        const threadId = "composition-provider-restart-e2e";
+        const taskId = "task-provider-restart-e2e";
+        const runId = "run-provider-restart-e2e";
+        const runtimeId = "provider:cursor-acp-restart-e2e";
+        const providerInstanceId = ProviderInstanceId.make("cursor");
+        const wrapperPath = yield* Effect.promise(() => makeMockAgentWrapper({}));
+        yield* settings.updateSettings({ providers: { cursor: { binaryPath: wrapperPath } } });
+
+        const driver = makeCompositionProviderAgentDriver({
+          agentId: runtimeId,
+          runtimeId,
+          providerInstanceId,
+          providerKind: "cursor",
+          adapter: {
+            startSession: adapter.startSession,
+            sendTurn: adapter.sendTurn,
+            interruptTurn: (requestedThreadId) => adapter.interruptTurn(requestedThreadId),
+            stopSession: adapter.stopSession,
+          },
+        });
+        const task: CompositionTask = {
+          taskId,
+          projectId: "project-provider-restart-e2e",
+          threadId,
+          assigneeKind: "agent",
+          assigneeId: driver.agentId,
+          mode: "serial",
+          status: "running",
+          promptDigest: "sha256:provider-restart-e2e",
+          dependsOnTaskIds: [],
+          createdAtUnixMs: 1,
+          updatedAtUnixMs: 1,
+        };
+        const run: CompositionTaskRun = {
+          runId,
+          taskId,
+          agentId: driver.agentId,
+          runtimeId,
+          status: "running",
+          attempt: 1,
+          capabilityGrantIds: [],
+          startedAtUnixMs: 2,
+        };
+        yield* store.upsertTask(task);
+        yield* store.upsertRun(run);
+
+        const completed = yield* Deferred.make<ProviderRuntimeEvent>();
+        const runtimeEventsFiber = yield* Stream.runForEach(adapter.streamEvents, (event) =>
+          String(event.threadId) === threadId && event.type === "turn.completed"
+            ? Deferred.succeed(completed, event).pipe(Effect.ignore)
+            : Effect.void,
+        ).pipe(Effect.forkChild);
+        const started = yield* driver.startTask({
+          task,
+          run,
+          prompt: "完成后模拟 Composition 进程重启",
+          workspaceRoot: process.cwd(),
+        });
+        const completion = yield* Deferred.await(completed);
+        yield* store.upsertRun({ ...run, runtimeTaskId: started.runtimeTaskId });
+        assert.equal(String(completion.providerInstanceId), String(providerInstanceId));
+        assert.equal(
+          started.runtimeTaskId,
+          `${runtimeId}:${completion.threadId}:${completion.turnId}`,
+        );
+
+        // 仅保留持久化 Run，使用新的 Driver/Registry 模拟 Composition 进程重启。
+        const restartedRegistry = makeCompositionAgentDriverRegistry();
+        yield* restartedRegistry.register(
+          makeCompositionProviderAgentDriver({
+            agentId: runtimeId,
+            runtimeId,
+            providerInstanceId,
+            adapter: {} as never,
+          }),
+        );
+        yield* projectCompositionRuntimeEvent(store, restartedRegistry, completion);
+
+        assert.equal(Option.getOrThrow(yield* store.getTask(taskId)).status, "completed");
+        assert.equal(Option.getOrThrow(yield* store.getRun(runId)).status, "completed");
+        assert.deepStrictEqual(
+          (yield* store.listEvents(taskId, runId)).map((event) => [event.status, event.eventType]),
+          [["completed", "status"]],
+        );
+
+        yield* Fiber.interrupt(runtimeEventsFiber);
+        yield* adapter.stopSession(threadId).pipe(Effect.ignore);
+      }),
+    );
   },
 );

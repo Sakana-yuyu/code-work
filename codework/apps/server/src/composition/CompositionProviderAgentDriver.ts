@@ -124,6 +124,23 @@ const isTerminalProviderTurnEvent = (event: ProviderRuntimeEvent): boolean =>
   event.type === "turn.aborted" ||
   event.type === "runtime.error";
 
+/**
+ * Provider Session 重建后不恢复内存 binding；仅在 Provider 实例和 Turn 都明确时
+ * 重建本地、持久化的 runtime 复合键，再由 Projector 查询唯一 Run。
+ */
+const persistedProviderRuntimeCorrelation = (
+  options: Pick<CompositionProviderAgentDriverOptions, "runtimeId" | "providerInstanceId">,
+  event: ProviderRuntimeEvent,
+): { readonly runtimeId: string; readonly runtimeTaskId: string } | undefined => {
+  if (event.providerInstanceId !== options.providerInstanceId || event.turnId === undefined) {
+    return undefined;
+  }
+  return {
+    runtimeId: options.runtimeId,
+    runtimeTaskId: `${options.runtimeId}:${event.threadId}:${event.turnId}`,
+  };
+};
+
 export const makeCompositionProviderAgentDriver = (
   options: CompositionProviderAgentDriverOptions,
 ): CompositionAgentDriver => {
@@ -584,5 +601,7 @@ export const makeCompositionProviderAgentDriver = (
       }
       return undefined;
     },
+    resolvePersistedRuntimeEvent: (event: ProviderRuntimeEvent) =>
+      persistedProviderRuntimeCorrelation(options, event),
   };
 };

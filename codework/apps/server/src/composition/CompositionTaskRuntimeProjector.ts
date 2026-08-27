@@ -155,7 +155,9 @@ export const resolveCompositionRuntimeEventBinding = (
       };
     }
 
-    const correlation = multicaRuntimeEventCorrelation(event);
+    const correlation =
+      (yield* driverRegistry.resolvePersistedRuntimeEvent(event)) ??
+      multicaRuntimeEventCorrelation(event);
     if (correlation === undefined) return undefined;
 
     const candidates = yield* store.listRunsByRuntimeTask(

@@ -568,6 +568,45 @@ describe("CompositionProviderAgentDriver", () => {
     });
   });
 
+  it("只为匹配 Provider 实例且带 turnId 的事件派生持久化恢复键", () => {
+    const fake = makeAdapter();
+    const driver = makeCompositionProviderAgentDriver({
+      agentId: "agent-cursor",
+      runtimeId: "provider:cursor-local",
+      providerInstanceId: ProviderInstanceId.make("cursor-local"),
+      adapter: fake.adapter,
+    });
+    const matching = {
+      eventId: EventId.make("event-provider-persisted-correlation"),
+      provider: ProviderDriverKind.make("cursor"),
+      providerInstanceId: ProviderInstanceId.make("cursor-local"),
+      threadId: ThreadId.make("thread-persisted-correlation"),
+      turnId: TurnId.make("turn-persisted-correlation"),
+      createdAt: "2026-08-27T00:00:00.000Z",
+      type: "turn.completed" as const,
+      payload: { state: "completed" as const },
+    } satisfies ProviderRuntimeEvent;
+
+    expect(driver.resolvePersistedRuntimeEvent?.(matching)).toEqual({
+      runtimeId: "provider:cursor-local",
+      runtimeTaskId:
+        "provider:cursor-local:thread-persisted-correlation:turn-persisted-correlation",
+    });
+    expect(
+      driver.resolvePersistedRuntimeEvent?.({
+        ...matching,
+        eventId: EventId.make("event-provider-persisted-other-instance"),
+        providerInstanceId: ProviderInstanceId.make("cursor-other"),
+      }),
+    ).toBeUndefined();
+    const {
+      providerInstanceId: _providerInstanceId,
+      turnId: _turnId,
+      ...withoutCorrelation
+    } = matching;
+    expect(driver.resolvePersistedRuntimeEvent?.(withoutCorrelation)).toBeUndefined();
+  });
+
   it("Provider 没有 capability handshake 时拒绝带 grant 的任务", async () => {
     const fake = makeAdapter();
     const driver = makeCompositionProviderAgentDriver({

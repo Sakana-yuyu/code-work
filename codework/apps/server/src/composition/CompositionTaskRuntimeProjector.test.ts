@@ -20,6 +20,7 @@ import * as TestClock from "effect/testing/TestClock";
 import { makeCompositionAgentDriverRegistry } from "./CompositionAgentDriverRegistry.ts";
 import { makeCapabilityGrantRegistry } from "./CapabilityGrantRegistry.ts";
 import { makeCompositionCapabilityRegistry } from "./CapabilityRegistry.ts";
+import { makeCompositionProviderAgentDriver } from "./CompositionProviderAgentDriver.ts";
 import { projectCompositionRuntimeEvent } from "./CompositionTaskRuntimeProjector.ts";
 import { CompositionTaskStore } from "../persistence/Services/CompositionTaskStore.ts";
 import { CompositionTaskStoreLive } from "../persistence/Layers/CompositionTaskStore.ts";
@@ -236,6 +237,254 @@ layer("CompositionTaskRuntimeProjector", (it) => {
       assert.equal(stored.status, "completed");
       assert.equal(stored.lastRuntimeEventAtUnixMs, 300);
     }).pipe(Effect.provide(TestClock.layer())),
+  );
+
+  it.effect("重启后的 Provider Driver 能凭持久化 runtime 复合键归属带 turnId 的终态事件", () =>
+    Effect.gen(function* () {
+      const store = yield* CompositionTaskStore;
+      const recoveredTask = { ...task, taskId: "task-runtime-provider-restart" };
+      const recoveredRun = {
+        ...run,
+        taskId: recoveredTask.taskId,
+        runId: "run-runtime-provider-restart",
+        agentId: "provider:cursor-local",
+        runtimeId: "provider:cursor-local",
+        runtimeTaskId: "provider:cursor-local:thread-provider-restart:turn-provider-restart",
+      };
+      const registry = makeCompositionAgentDriverRegistry();
+      // 新 Driver 没有进程内 active/historical binding，模拟服务进程重启后的事件消费。
+      yield* registry.register(
+        makeCompositionProviderAgentDriver({
+          agentId: recoveredRun.agentId,
+          runtimeId: recoveredRun.runtimeId,
+          providerInstanceId: ProviderInstanceId.make("cursor-local"),
+          adapter: {} as never,
+        }),
+      );
+      yield* store.upsertTask(recoveredTask);
+      yield* store.upsertRun(recoveredRun);
+
+      yield* projectCompositionRuntimeEvent(store, registry, {
+        ...baseEvent,
+        eventId: EventId.make("provider-event-restart-terminal"),
+        providerInstanceId: ProviderInstanceId.make("cursor-local"),
+        threadId: ThreadId.make("thread-provider-restart"),
+        turnId: TurnId.make("turn-provider-restart"),
+        type: "turn.completed",
+        payload: { state: "completed" },
+      });
+
+      assert.equal(
+        Option.getOrThrow(yield* store.getTask(recoveredTask.taskId)).status,
+        "completed",
+      );
+      assert.equal(Option.getOrThrow(yield* store.getRun(recoveredRun.runId)).status, "completed");
+    }),
+  );
+
+  it.effect("重启后的 Provider 终态回收 Run grant，但不重复撤销旧 handshake", () =>
+    Effect.gen(function* () {
+      const store = yield* CompositionTaskStore;
+      const recoveredTask = { ...task, taskId: "task-runtime-provider-restart-grant" };
+      const grantRegistry = makeCapabilityGrantRegistry({
+        capabilityRegistry: makeCompositionCapabilityRegistry(),
+        now: () => 1000,
+      });
+      const [grant] = yield* grantRegistry.issue({
+        taskId: recoveredTask.taskId,
+        agentId: "provider:cursor-local",
+        capabilityIds: ["t3.workspace.read_file"],
+      });
+      if (grant === undefined) throw new Error("测试预期已签发 grant。");
+      const recoveredRun = {
+        ...run,
+        taskId: recoveredTask.taskId,
+        runId: "run-runtime-provider-restart-grant",
+        agentId: "provider:cursor-local",
+        runtimeId: "provider:cursor-local",
+        runtimeTaskId:
+          "provider:cursor-local:thread-provider-restart-grant:turn-provider-restart-grant",
+        capabilityGrantIds: [grant.grantId],
+        capabilityHandshakeId: "handshake-provider-restart-grant",
+      };
+      let revokeCalls = 0;
+      const registry = makeCompositionAgentDriverRegistry();
+      yield* registry.register(
+        makeCompositionProviderAgentDriver({
+          agentId: recoveredRun.agentId,
+          runtimeId: recoveredRun.runtimeId,
+          providerInstanceId: ProviderInstanceId.make("cursor-local"),
+          adapter: {
+            revokeCapabilityHandshake: () => Effect.sync(() => void (revokeCalls += 1)),
+          } as never,
+        }),
+      );
+      yield* store.upsertTask(recoveredTask);
+      yield* store.upsertRun(recoveredRun);
+
+      yield* projectCompositionRuntimeEvent(
+        store,
+        registry,
+        {
+          ...baseEvent,
+          eventId: EventId.make("provider-event-restart-grant-terminal"),
+          providerInstanceId: ProviderInstanceId.make("cursor-local"),
+          threadId: ThreadId.make("thread-provider-restart-grant"),
+          turnId: TurnId.make("turn-provider-restart-grant"),
+          type: "turn.completed",
+          payload: { state: "completed" },
+        },
+        grantRegistry,
+      );
+
+      const revoked = yield* Effect.flip(
+        grantRegistry.validate({
+          grantId: grant.grantId,
+          taskId: recoveredTask.taskId,
+          agentId: recoveredRun.agentId,
+          capabilityId: "t3.workspace.read_file",
+        }),
+      );
+      assert.equal(revoked._tag, "CapabilityGrantRevokedError");
+      assert.equal(revokeCalls, 0);
+    }),
+  );
+
+  it.effect("重启后的 Provider Driver 拒绝缺少精确 threadId 或 turnId 的持久化归属", () =>
+    Effect.gen(function* () {
+      const store = yield* CompositionTaskStore;
+      const recoveredTask = { ...task, taskId: "task-runtime-provider-restart-rejected" };
+      const recoveredRun = {
+        ...run,
+        taskId: recoveredTask.taskId,
+        runId: "run-runtime-provider-restart-rejected",
+        agentId: "provider:cursor-local",
+        runtimeId: "provider:cursor-local",
+        runtimeTaskId:
+          "provider:cursor-local:thread-provider-restart-rejected:turn-provider-restart-rejected",
+      };
+      const registry = makeCompositionAgentDriverRegistry();
+      yield* registry.register(
+        makeCompositionProviderAgentDriver({
+          agentId: recoveredRun.agentId,
+          runtimeId: recoveredRun.runtimeId,
+          providerInstanceId: ProviderInstanceId.make("cursor-local"),
+          adapter: {} as never,
+        }),
+      );
+      yield* store.upsertTask(recoveredTask);
+      yield* store.upsertRun(recoveredRun);
+
+      const matchingEvent = {
+        ...baseEvent,
+        providerInstanceId: ProviderInstanceId.make("cursor-local"),
+        threadId: ThreadId.make("thread-provider-restart-rejected"),
+        turnId: TurnId.make("turn-provider-restart-rejected"),
+        type: "turn.completed" as const,
+        payload: { state: "completed" as const },
+      } satisfies Omit<ProviderRuntimeEvent, "eventId">;
+      const { turnId: _turnId, ...withoutTurnId } = matchingEvent;
+
+      for (const [eventId, event] of [
+        [
+          "provider-event-restart-other-thread",
+          { ...matchingEvent, threadId: ThreadId.make("thread-provider-other") },
+        ],
+        [
+          "provider-event-restart-other-turn",
+          { ...matchingEvent, turnId: TurnId.make("turn-provider-other") },
+        ],
+        ["provider-event-restart-missing-turn", withoutTurnId],
+      ] as const) {
+        yield* projectCompositionRuntimeEvent(store, registry, {
+          ...event,
+          eventId: EventId.make(eventId),
+        });
+      }
+
+      assert.equal(Option.getOrThrow(yield* store.getTask(recoveredTask.taskId)).status, "running");
+      assert.equal(Option.getOrThrow(yield* store.getRun(recoveredRun.runId)).status, "running");
+      assert.deepEqual(yield* store.listEvents(recoveredTask.taskId, recoveredRun.runId), []);
+    }),
+  );
+
+  it.effect("多个 Driver 同时报持久化候选时拒绝投影，即使 Run 唯一", () =>
+    Effect.gen(function* () {
+      const store = yield* CompositionTaskStore;
+      const ambiguousTask = { ...task, taskId: "task-runtime-provider-driver-ambiguous" };
+      const ambiguousRun = {
+        ...run,
+        taskId: ambiguousTask.taskId,
+        runId: "run-runtime-provider-driver-ambiguous",
+        runtimeId: "provider:cursor-ambiguous",
+        runtimeTaskId: "provider:cursor-ambiguous:thread:turn",
+      };
+      const registry = makeCompositionAgentDriverRegistry();
+      const correlation = {
+        runtimeId: ambiguousRun.runtimeId,
+        runtimeTaskId: ambiguousRun.runtimeTaskId!,
+      };
+      for (const agentId of ["provider:cursor-a", "provider:cursor-b"]) {
+        yield* registry.register({
+          agentId,
+          runtimeId: `${agentId}:runtime`,
+          startTask: () => Effect.succeed({ runtimeTaskId: correlation.runtimeTaskId }),
+          cancelTask: () => Effect.succeed({ status: "cancelled" as const }),
+          resolvePersistedRuntimeEvent: () => correlation,
+        });
+      }
+      yield* store.upsertTask(ambiguousTask);
+      yield* store.upsertRun(ambiguousRun);
+
+      yield* projectCompositionRuntimeEvent(store, registry, {
+        ...completionEvent("provider-event-driver-ambiguous"),
+        providerInstanceId: ProviderInstanceId.make("cursor-ambiguous"),
+        threadId: ThreadId.make("thread"),
+        turnId: TurnId.make("turn"),
+      });
+
+      assert.equal(Option.getOrThrow(yield* store.getTask(ambiguousTask.taskId)).status, "running");
+      assert.equal(Option.getOrThrow(yield* store.getRun(ambiguousRun.runId)).status, "running");
+      assert.deepEqual(yield* store.listEvents(ambiguousTask.taskId, ambiguousRun.runId), []);
+    }),
+  );
+
+  it.effect("注册 Provider Driver 后 Multica 显式 runtime 键仍能独立恢复", () =>
+    Effect.gen(function* () {
+      const store = yield* CompositionTaskStore;
+      const multicaTask = { ...task, taskId: "task-runtime-multica-with-provider" };
+      const multicaRun = {
+        ...run,
+        taskId: multicaTask.taskId,
+        runId: "run-runtime-multica-with-provider",
+        runtimeId: "multica:with-provider",
+        runtimeTaskId: "multica-task-with-provider",
+      };
+      const registry = makeCompositionAgentDriverRegistry();
+      yield* registry.register(
+        makeCompositionProviderAgentDriver({
+          agentId: "provider:cursor-with-multica",
+          runtimeId: "provider:cursor-with-multica",
+          providerInstanceId: ProviderInstanceId.make("cursor-with-multica"),
+          adapter: {} as never,
+        }),
+      );
+      yield* store.upsertTask(multicaTask);
+      yield* store.upsertRun(multicaRun);
+
+      yield* projectCompositionRuntimeEvent(
+        store,
+        registry,
+        multicaCompletionEvent(
+          "provider-event-multica-with-provider",
+          multicaRun.runtimeId,
+          multicaRun.runtimeTaskId!,
+        ),
+      );
+
+      assert.equal(Option.getOrThrow(yield* store.getTask(multicaTask.taskId)).status, "completed");
+      assert.equal(Option.getOrThrow(yield* store.getRun(multicaRun.runId)).status, "completed");
+    }),
   );
 
   it.effect("Runtime 明确报告 timed_out 时保留超时终态而不是降级成失败", () =>
