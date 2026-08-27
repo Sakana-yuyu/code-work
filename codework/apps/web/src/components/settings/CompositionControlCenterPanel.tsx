@@ -82,6 +82,9 @@ export function CompositionControlCenterPanel() {
   const cancelCompositionTask = useAtomCommand(serverEnvironment.cancelCompositionTask, {
     reportFailure: false,
   });
+  const reviewCompositionTask = useAtomCommand(serverEnvironment.reviewCompositionTask, {
+    reportFailure: false,
+  });
   const [capabilityIdsText, setCapabilityIdsText] = useState("");
   const [pendingTaskId, setPendingTaskId] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
@@ -134,6 +137,27 @@ export function CompositionControlCenterPanel() {
           taskId: input.taskId,
           runId: input.runId,
           reason: t("controlCenter.cancelReasonDefault"),
+        },
+      }),
+    );
+
+  const review = (input: {
+    readonly taskId: string;
+    readonly runId: string;
+    readonly decision: "approve" | "reject";
+  }): Promise<void> =>
+    runRowCommand(input.taskId, "controlCenter.reviewFailed", (envId) =>
+      reviewCompositionTask({
+        environmentId: envId,
+        input: {
+          taskId: input.taskId,
+          runId: input.runId,
+          decision: input.decision,
+          reason: t(
+            input.decision === "approve"
+              ? "controlCenter.approveReasonDefault"
+              : "controlCenter.rejectReasonDefault",
+          ),
         },
       }),
     );
@@ -196,6 +220,8 @@ export function CompositionControlCenterPanel() {
                 REDISPATCHABLE_GOAL_LOOP_STATES.has(task.goalLoop.state);
               const cancellable =
                 task.latestRun !== undefined && CANCELLABLE_RUN_STATUSES.has(task.latestRun.status);
+              // 与 TaskGraphPanel 一致：审批门槛看任务状态，后端对非 in_review 任务显式报错。
+              const reviewable = task.status === "in_review" && task.latestRun !== undefined;
               return (
                 <li
                   key={task.taskId}
@@ -244,6 +270,39 @@ export function CompositionControlCenterPanel() {
                       >
                         {t("controlCenter.cancel")}
                       </Button>
+                    ) : null}
+                    {reviewable ? (
+                      <>
+                        <Button
+                          size="sm"
+                          disabled={pendingTaskId !== null}
+                          data-testid={`control-center-approve-${task.taskId}`}
+                          onClick={() => {
+                            void review({
+                              taskId: task.taskId,
+                              runId: task.latestRun?.runId ?? "",
+                              decision: "approve",
+                            });
+                          }}
+                        >
+                          {t("controlCenter.approve")}
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          disabled={pendingTaskId !== null}
+                          data-testid={`control-center-reject-${task.taskId}`}
+                          onClick={() => {
+                            void review({
+                              taskId: task.taskId,
+                              runId: task.latestRun?.runId ?? "",
+                              decision: "reject",
+                            });
+                          }}
+                        >
+                          {t("controlCenter.reject")}
+                        </Button>
+                      </>
                     ) : null}
                   </div>
                   {task.goalLoop === undefined ? null : (

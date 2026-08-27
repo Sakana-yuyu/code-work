@@ -7,8 +7,10 @@ const mocks = vi.hoisted(() => ({
   projectionAtom: Symbol("projection"),
   redispatchCommand: Symbol("redispatch-command"),
   cancelCommand: Symbol("cancel-command"),
+  reviewCommand: Symbol("review-command"),
   redispatch: vi.fn(),
   cancel: vi.fn(),
+  review: vi.fn(),
   projectionQuery: {
     data: null as CompositionControlCenterResult | null,
     error: null as string | null,
@@ -38,6 +40,7 @@ vi.mock("~/state/server", () => ({
     controlCenterProjection: () => mocks.projectionAtom,
     controlCenterRedispatch: mocks.redispatchCommand,
     cancelCompositionTask: mocks.cancelCommand,
+    reviewCompositionTask: mocks.reviewCommand,
   },
 }));
 
@@ -45,6 +48,7 @@ vi.mock("~/state/use-atom-command", () => ({
   useAtomCommand: (command: unknown) => {
     if (command === mocks.redispatchCommand) return mocks.redispatch;
     if (command === mocks.cancelCommand) return mocks.cancel;
+    if (command === mocks.reviewCommand) return mocks.review;
     return vi.fn();
   },
 }));
@@ -67,12 +71,13 @@ const goalLoop = (
 
 const taskWith = (options: {
   readonly taskId: string;
+  readonly taskStatus?: "running" | "in_review" | "failed";
   readonly goalLoopState?: Parameters<typeof goalLoop>[0];
   readonly withLatestRun?: boolean;
-  readonly latestRunStatus?: "running" | "failed" | "completed" | "cancelled";
+  readonly latestRunStatus?: "running" | "failed" | "completed" | "cancelled" | "in_review";
 }): CompositionControlCenterResult["tasks"][number] => ({
   taskId: options.taskId,
-  status: "running",
+  status: options.taskStatus ?? "running",
   agentId: "agent-1",
   updatedAtUnixMs: 2,
   dependsOnTaskIds: [],
@@ -111,6 +116,7 @@ describe("CompositionControlCenterPanel", () => {
     mocks.projectionQuery.refresh = vi.fn();
     mocks.redispatch = vi.fn();
     mocks.cancel = vi.fn();
+    mocks.review = vi.fn();
   });
 
   it("渲染任务行：状态徽标、Goal Loop 徽标与轮次/拒绝/grant 摘要", () => {
@@ -204,6 +210,23 @@ describe("CompositionControlCenterPanel", () => {
     expect(html).not.toContain('data-testid="control-center-cancel-task-done"');
     expect(html).not.toContain('data-testid="control-center-cancel-task-stopped"');
     expect(html).not.toContain('data-testid="control-center-cancel-task-no-run"');
+  });
+
+  it("仅 in_review 任务行渲染通过/驳回按钮，其他状态行不渲染", () => {
+    mocks.projectionQuery.data = projection([
+      taskWith({ taskId: "task-review", taskStatus: "in_review", latestRunStatus: "in_review" }),
+      taskWith({ taskId: "task-active", latestRunStatus: "running" }),
+      taskWith({ taskId: "task-review-no-run", taskStatus: "in_review", withLatestRun: false }),
+    ]);
+    const html = renderToStaticMarkup(<CompositionControlCenterPanel />);
+    expect(html).toContain('data-testid="control-center-approve-task-review"');
+    expect(html).toContain('data-testid="control-center-reject-task-review"');
+    expect(html).not.toContain('data-testid="control-center-approve-task-active"');
+    expect(html).not.toContain('data-testid="control-center-reject-task-active"');
+    expect(html).not.toContain('data-testid="control-center-approve-task-review-no-run"');
+    expect(html).not.toContain('data-testid="control-center-reject-task-review-no-run"');
+    // in_review 属于活跃 Run 状态，取消入口仍然可用。
+    expect(html).toContain('data-testid="control-center-cancel-task-review"');
   });
 
   it("buildRedispatchInput 拆分 capabilityIds 并保留客户端生成的新 RunId", () => {
