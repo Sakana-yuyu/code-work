@@ -52,6 +52,10 @@ export const scanCompositionGoalLoopRun = (
     const suffix = sourceEventId.slice(prefix.length);
     const match = SUFFIX_PATTERN.exec(suffix);
     if (match === null) continue;
+    if (match[0] === "start") {
+      started = true;
+      continue;
+    }
     // 分组：1=round 轮次、2=reject 轮次、3=terminal 状态、4=supervisor 决定（start 无捕获组）。
     if (match[1] !== undefined) {
       started = true;
