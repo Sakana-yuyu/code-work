@@ -11,7 +11,8 @@ export type CompositionGoalLoopStatus =
   | "completed"
   | "budget_exhausted"
   | "deadline_exceeded"
-  | "cancelled";
+  | "cancelled"
+  | "pivot_required";
 
 export class CompositionGoalLoopInvalidError extends Data.TaggedError(
   "CompositionGoalLoopInvalidError",
@@ -35,6 +36,12 @@ export type CompositionGoalLoopOptions<A, E = never> = {
   readonly now?: () => number;
   /** 轮与轮之间检查的外部取消条件。 */
   readonly isCancelled?: () => boolean;
+  /**
+   * 连续 N 轮无进展输出后按 `pivot_required` 收敛。进度 = attempt 的 outputText
+   * 归一化（压缩空白后去首尾）文本；与上一轮不同视为有进展并重置计数。
+   * 不产出 outputText 的 attempt 按空文本参与比较，连续空转同样触发 pivot。
+   */
+  readonly stalePivotRounds?: number;
   readonly attempt: (
     round: number,
     context: {
@@ -54,6 +61,13 @@ export type CompositionGoalLoopResult<A> = {
     | {
         readonly cleanText: string;
         readonly reason: string | undefined;
+      }
+    | undefined;
+  /** 只有 pivot_required 时存在：连续无进展轮数与最后一轮归一化输出文本。 */
+  readonly pivot:
+    | {
+        readonly staleRounds: number;
+        readonly lastCleanText: string;
       }
     | undefined;
   /** 每轮的值快照，供持久化/审计侧自行取舍。 */
@@ -95,11 +109,15 @@ export const parseGoalCompletion = (
 
 const invalid = (detail: string) => new CompositionGoalLoopInvalidError({ detail });
 
+const normalizeProgressText = (outputText: string | undefined): string =>
+  (outputText ?? "").replace(/\s+/g, " ").trim();
+
 /**
- * Goal Loop 第一切片：重复执行 attempt 直到出现显式完成标记；
- * 轮数、成本与墙钟三类预算任一耗尽即按对应终态收敛，外部取消优先于预算判定。
+ * Goal Loop：重复执行 attempt 直到出现显式完成标记；轮数、成本与墙钟三类预算任一
+ * 耗尽即按对应终态收敛，外部取消优先于预算判定。启用 stalePivotRounds 后，连续
+ * 无进展输出会按 pivot_required 提前收敛；同一轮输出中出现完成/取消标记时仍以标记为准。
  *
- * 不在本切片范围内：idle/stale pivot、验证子代理和跨重启 supervisor。
+ * 不在本切片范围内：验证子代理和跨重启 supervisor。
  */
 export const runCompositionGoalLoop = <A, E>(
   options: CompositionGoalLoopOptions<A, E>,
@@ -113,12 +131,22 @@ export const runCompositionGoalLoop = <A, E>(
     if (maxCost !== undefined && !(maxCost >= 0)) {
       return yield* invalid(`maxCostUnits 不能为负数，收到 ${String(maxCost)}。`);
     }
+    const stalePivotRounds = options.stalePivotRounds;
+    if (
+      stalePivotRounds !== undefined &&
+      (!Number.isInteger(stalePivotRounds) || stalePivotRounds <= 0)
+    ) {
+      return yield* invalid(`stalePivotRounds 必须为正整数，收到 ${String(stalePivotRounds)}。`);
+    }
     const now = options.now ?? Date.now;
 
     const history: Array<{ round: number; value: A }> = [];
     let costUsed = 0;
     let rounds = 0;
+    let previousProgressKey: string | undefined;
+    let staleStreak = 0;
     let final: CompositionGoalLoopResult<A>["completion"];
+    let pivot: CompositionGoalLoopResult<A>["pivot"];
     let status: CompositionGoalLoopStatus;
 
     for (;;) {
@@ -158,6 +186,15 @@ export const runCompositionGoalLoop = <A, E>(
         status = "cancelled";
         break;
       }
+
+      const progressKey = normalizeProgressText(decision.outputText);
+      staleStreak = progressKey === previousProgressKey ? staleStreak + 1 : 1;
+      previousProgressKey = progressKey;
+      if (stalePivotRounds !== undefined && staleStreak >= stalePivotRounds) {
+        status = "pivot_required";
+        pivot = { staleRounds: staleStreak, lastCleanText: progressKey };
+        break;
+      }
     }
 
     return {
@@ -165,6 +202,7 @@ export const runCompositionGoalLoop = <A, E>(
       rounds,
       costUnitsUsed: costUsed,
       completion: final,
+      pivot,
       history,
     };
   });

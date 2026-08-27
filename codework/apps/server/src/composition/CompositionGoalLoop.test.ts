@@ -177,6 +177,101 @@ describe("runCompositionGoalLoop", () => {
     }),
   );
 
+  effectIt.effect("连续相同输出达到 stalePivotRounds 阈值时按 pivot_required 收敛", () =>
+    Effect.gen(function* () {
+      const result = yield* runCompositionGoalLoop({
+        maxAttempts: 10,
+        stalePivotRounds: 3,
+        attempt: () => Effect.sync(() => attemptOf("仍在原地打转", 1)),
+      });
+      expect(result.status).toBe("pivot_required");
+      expect(result.rounds).toBe(3);
+      expect(result.costUnitsUsed).toBe(3);
+      expect(result.completion).toBeUndefined();
+      expect(result.pivot?.staleRounds).toBe(3);
+      expect(result.pivot?.lastCleanText).toBe("仍在原地打转");
+    }),
+  );
+
+  effectIt.effect("输出出现变化会重置停滞计数，避免误报 pivot", () =>
+    Effect.gen(function* () {
+      const outputs = ["卡住", "卡住", "有新进展", "卡住", "卡住"];
+      const result = yield* runCompositionGoalLoop({
+        maxAttempts: 5,
+        stalePivotRounds: 3,
+        attempt: (round) => Effect.sync(() => attemptOf(outputs[round - 1], 1)),
+      });
+      expect(result.status).toBe("budget_exhausted");
+      expect(result.rounds).toBe(5);
+      expect(result.pivot).toBeUndefined();
+    }),
+  );
+
+  effectIt.effect("空输出（idle）同样计入无进展并触发 pivot", () =>
+    Effect.gen(function* () {
+      const result = yield* runCompositionGoalLoop({
+        maxAttempts: 5,
+        stalePivotRounds: 2,
+        attempt: () => Effect.sync(() => attemptOf("")),
+      });
+      expect(result.status).toBe("pivot_required");
+      expect(result.rounds).toBe(2);
+      expect(result.pivot?.staleRounds).toBe(2);
+      expect(result.pivot?.lastCleanText).toBe("");
+    }),
+  );
+
+  effectIt.effect("同轮出现完成标记时标记优先于停滞判定", () =>
+    Effect.gen(function* () {
+      const outputs = ["还在停", `还在停 [[GOAL_COMPLETE: 突破并完成]]`];
+      const result = yield* runCompositionGoalLoop({
+        maxAttempts: 5,
+        stalePivotRounds: 2,
+        attempt: (round) => Effect.sync(() => attemptOf(outputs[round - 1])),
+      });
+      expect(result.status).toBe("completed");
+      expect(result.completion?.reason).toBe("突破并完成");
+      expect(result.pivot).toBeUndefined();
+    }),
+  );
+
+  effectIt.effect("轮数预算先耗尽不误报 pivot；轮开始前的取消仍优先", () =>
+    Effect.gen(function* () {
+      const budgetResult = yield* runCompositionGoalLoop({
+        maxAttempts: 2,
+        stalePivotRounds: 3,
+        attempt: () => Effect.sync(() => attemptOf("重复输出")),
+      });
+      expect(budgetResult.status).toBe("budget_exhausted");
+      expect(budgetResult.pivot).toBeUndefined();
+
+      let executed = 0;
+      const cancelResult = yield* runCompositionGoalLoop({
+        maxAttempts: 10,
+        stalePivotRounds: 3,
+        isCancelled: () => executed >= 1,
+        attempt: () =>
+          Effect.sync(() => {
+            executed += 1;
+            return attemptOf("同一输出");
+          }),
+      });
+      expect(cancelResult.status).toBe("cancelled");
+      expect(cancelResult.rounds).toBe(1);
+    }),
+  );
+
+  effectIt.effect("非法 stalePivotRounds 显式拒绝", () =>
+    Effect.gen(function* () {
+      const failure = yield* runCompositionGoalLoop({
+        maxAttempts: 2,
+        stalePivotRounds: 0,
+        attempt: () => Effect.sync(() => attemptOf("x")),
+      }).pipe(Effect.flip);
+      expect(failure._tag).toBe("CompositionGoalLoopInvalidError");
+    }),
+  );
+
   effectIt.effect("attempt 失败原样上抛（本切片不做失败重试策略）", () =>
     Effect.gen(function* () {
       const failure = yield* runCompositionGoalLoop<string, TestAttemptFailure>({
