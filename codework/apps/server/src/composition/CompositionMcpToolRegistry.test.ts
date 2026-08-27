@@ -94,6 +94,8 @@ describe("CompositionMcpToolRegistry", () => {
       Effect.runPromise(
         registry.invoke({
           canonicalToolName: "mcp.github.untrusted_tool",
+          serverId: "github",
+          toolName: "untrusted_tool",
           taskId: "task-1",
           runId: "run-1",
           agentId: "agent-1",
@@ -113,6 +115,8 @@ describe("CompositionMcpToolRegistry", () => {
       Effect.runPromise(
         registry.invoke({
           canonicalToolName: "mcp.github.fetch_pr",
+          serverId: "github",
+          toolName: "fetch_pr",
           taskId: "task-1",
           runId: "run-1",
           agentId: "agent-1",
@@ -125,6 +129,8 @@ describe("CompositionMcpToolRegistry", () => {
     const result = await Effect.runPromise(
       registry.invoke({
         canonicalToolName: "mcp.github.fetch_pr",
+        serverId: "github",
+        toolName: "fetch_pr",
         taskId: "task-1",
         runId: "run-1",
         agentId: "agent-1",
@@ -143,6 +149,8 @@ describe("CompositionMcpToolRegistry", () => {
       Effect.runPromise(
         registry.invoke({
           canonicalToolName: "mcp.github.fetch_pr",
+          serverId: "github",
+          toolName: "fetch_pr",
           taskId: "task-1",
           runId: "run-1",
           agentId: "agent-1",
@@ -168,6 +176,8 @@ describe("CompositionMcpToolRegistry", () => {
       Effect.runPromise(
         registry.invoke({
           canonicalToolName: "mcp.github.slow_tool",
+          serverId: "github",
+          toolName: "slow_tool",
           taskId: "task-1",
           runId: "run-1",
           agentId: "agent-1",
@@ -185,6 +195,8 @@ describe("CompositionMcpToolRegistry", () => {
       Effect.runPromise(
         registry.invoke({
           canonicalToolName: "mcp.unknown.tool",
+          serverId: "unknown",
+          toolName: "tool",
           taskId: "task-1",
           runId: "run-1",
           agentId: "agent-1",

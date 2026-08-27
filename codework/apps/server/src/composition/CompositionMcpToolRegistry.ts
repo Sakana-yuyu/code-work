@@ -285,8 +285,10 @@ const make = (options: CompositionMcpToolRegistryOptions = {}): CompositionMcpTo
     "CompositionMcpToolRegistry.register",
   )(function* (input) {
     const serverId = normalizeSegment(input.serverId, "serverId");
+    // @effect-diagnostics-next-line instanceOfSchema:off
     if (serverId instanceof CompositionMcpToolRegistrationError) return yield* serverId;
     const toolName = normalizeSegment(input.toolName, "toolName");
+    // @effect-diagnostics-next-line instanceOfSchema:off
     if (toolName instanceof CompositionMcpToolRegistrationError) return yield* toolName;
     if (input.description.trim().length === 0) {
       return yield* new CompositionMcpToolRegistrationError({
