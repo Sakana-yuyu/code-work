@@ -1,9 +1,12 @@
+import { it as effectIt } from "@effect/vitest";
 import { describe, expect, it } from "vite-plus/test";
 import * as Effect from "effect/Effect";
+import * as Schema from "effect/Schema";
 import { HttpBody, HttpClient, HttpClientResponse } from "effect/unstable/http";
 import * as Stream from "effect/Stream";
 
 import {
+  ByokEngineError,
   collectChatText,
   streamChat,
   type ByokChatEvent,
@@ -18,6 +21,7 @@ interface CapturedRequest {
 }
 
 const textDecoder = new TextDecoder();
+const encodeUnknownJson = Schema.encodeUnknownSync(Schema.fromJsonString(Schema.Unknown));
 
 const decodeRequestBody = (body: HttpBody.HttpBody): unknown => {
   if (body instanceof HttpBody.Uint8Array) {
@@ -32,6 +36,8 @@ const decodeRequestBody = (body: HttpBody.HttpBody): unknown => {
 
 const makeClient = (
   sseText: string,
+  status = 200,
+  contentType = "text/event-stream",
 ): { client: HttpClient.HttpClient; captured: CapturedRequest[] } => {
   const captured: CapturedRequest[] = [];
   const client = HttpClient.make((request) =>
@@ -43,12 +49,23 @@ const makeClient = (
       });
       return HttpClientResponse.fromWeb(
         request,
-        new Response(sseText, { headers: { "content-type": "text/event-stream" } }),
+        new Response(sseText, { status, headers: { "content-type": contentType } }),
       );
     }),
   );
   return { client, captured };
 };
+
+const baseErrorInput: ByokStreamChatInput = {
+  protocol: "openai",
+  baseURL: "https://api.openai.com/v1",
+  apiKey: "k",
+  modelId: "gpt",
+  messages: [{ role: "user", content: "hi" }],
+};
+
+const runError = (client: HttpClient.HttpClient, input: ByokStreamChatInput) =>
+  Stream.runCollect(streamChat(client, input));
 
 const runEvents = async (client: HttpClient.HttpClient, input: ByokStreamChatInput) => {
   const events: ByokChatEvent[] = [];
@@ -137,6 +154,127 @@ describe("byokChatClient gemini protocol", () => {
     );
     expect(text).toBe("Hello world");
   });
+});
+
+describe("byokChatClient provider errors", () => {
+  effectIt.effect("normalizes OpenAI context_length_exceeded responses", () =>
+    Effect.gen(function* () {
+      const { client } = makeClient(
+        encodeUnknownJson({
+          error: {
+            message: "This model's maximum context length is 128000 tokens.",
+            type: "invalid_request_error",
+            code: "context_length_exceeded",
+          },
+        }),
+        400,
+        "application/json",
+      );
+
+      const error = yield* Effect.flip(runError(client, baseErrorInput));
+      expect(error).toMatchObject({
+        _tag: "ByokEngineError",
+        reason: "context_overflow",
+        status: 400,
+        detail: expect.stringContaining("context_length_exceeded"),
+      });
+    }),
+  );
+
+  effectIt.effect("normalizes Anthropic prompt-too-long responses", () =>
+    Effect.gen(function* () {
+      const { client } = makeClient(
+        encodeUnknownJson({
+          type: "error",
+          error: { type: "invalid_request_error", message: "prompt is too long: 210000 tokens" },
+        }),
+        400,
+        "application/json",
+      );
+
+      const error = yield* Effect.flip(
+        runError(client, {
+          ...baseErrorInput,
+          protocol: "anthropic",
+          baseURL: "https://api.anthropic.com",
+          modelId: "claude",
+        }),
+      );
+      expect(error).toMatchObject({ reason: "context_overflow", status: 400 });
+    }),
+  );
+
+  effectIt.effect("normalizes Gemini maximum-input-token responses", () =>
+    Effect.gen(function* () {
+      const { client } = makeClient(
+        encodeUnknownJson({
+          error: {
+            code: 400,
+            status: "INVALID_ARGUMENT",
+            message: "The input token count exceeds the maximum number of tokens allowed.",
+          },
+        }),
+        400,
+        "application/json",
+      );
+
+      const error = yield* Effect.flip(
+        runError(client, {
+          ...baseErrorInput,
+          protocol: "gemini",
+          baseURL: "https://generativelanguage.googleapis.com",
+          modelId: "gemini-2.5-pro",
+        }),
+      );
+      expect(error).toMatchObject({ reason: "context_overflow", status: 400 });
+    }),
+  );
+
+  effectIt.effect(
+    "normalizes a context overflow error carried inside a successful SSE response",
+    () =>
+      Effect.gen(function* () {
+        const { client } = makeClient(
+          [
+            'data: {"error":{"code":"context_too_large","message":"Your input exceeds the context window."}}',
+            "",
+          ].join("\n"),
+        );
+
+        const error = yield* Effect.flip(runError(client, baseErrorInput));
+        expect(error).toMatchObject({
+          reason: "context_overflow",
+          detail: expect.stringContaining("context_too_large"),
+        });
+      }),
+  );
+
+  for (const status of [400, 401, 429]) {
+    effectIt.effect(`does not classify an ordinary ${status} response as context overflow`, () =>
+      Effect.gen(function* () {
+        const secret = "sk-provider-secret-123456";
+        const { client } = makeClient(
+          encodeUnknownJson({
+            error: {
+              message: `request rejected; authorization: Bearer ${secret}`,
+              api_key: secret,
+              padding: "界".repeat(10_000),
+            },
+          }),
+          status,
+          "application/json",
+        );
+
+        const result = yield* Effect.flip(runError(client, baseErrorInput));
+
+        expect(result).toBeInstanceOf(ByokEngineError);
+        expect(result).toMatchObject({ reason: "provider_error", status });
+        expect(result.detail).not.toContain(secret);
+        expect(new TextEncoder().encode(result.detail).byteLength).toBeLessThanOrEqual(2_048);
+        expect(result.detail).toContain("...[truncated]");
+      }),
+    );
+  }
 });
 
 describe("byokChatClient multimodal parts", () => {

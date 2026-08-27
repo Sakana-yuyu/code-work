@@ -145,6 +145,19 @@ const compactContextMessages = (
   return [initial, ...retainedRounds.flat()];
 };
 
+const contextOverflowRecoveryMessages = (
+  messages: ReadonlyArray<ByokAgentMessage>,
+): ByokAgentMessage[] => {
+  const initial = messages[0];
+  if (initial?.role !== "user") return [];
+
+  for (let index = messages.length - 2; index >= 1; index -= 1) {
+    const round = completeToolRound(messages[index], messages[index + 1]);
+    if (round !== undefined) return [initial, ...round];
+  }
+  return [initial];
+};
+
 const truncatedToolResultContent = (
   fullContent: string,
   resultJson: string,
@@ -221,6 +234,7 @@ export const runByokAgentLoop = (
     const seenToolCallIds = new Set<string>();
     let text = "";
     let rounds = 0;
+    let contextOverflowRecoveryUsed = false;
 
     while (true) {
       rounds += 1;
@@ -230,9 +244,32 @@ export const runByokAgentLoop = (
 
       const compactedMessages = compactContextMessages(messages, maxContextMessages);
       messages.splice(0, messages.length, ...compactedMessages);
-      const events = yield* model
-        .complete({ messages: compactedMessages, tools: input.tools, turn: rounds })
-        .pipe(Stream.runCollect);
+      // 先完整收集模型流，再执行工具；溢出恢复不会重放已产生副作用的工具调用。
+      const complete = (modelMessages: ReadonlyArray<ByokAgentMessage>) =>
+        model.complete({ messages: modelMessages, tools: input.tools, turn: rounds }).pipe(
+          Stream.runCollect,
+          Effect.map((events) => ({ _tag: "succeeded" as const, events })),
+          Effect.catchTag("ByokAgentModelError", (error) =>
+            Effect.succeed({ _tag: "failed" as const, error }),
+          ),
+        );
+
+      let completion = yield* complete(compactedMessages);
+      if (
+        completion._tag === "failed" &&
+        completion.error.code === "context_overflow" &&
+        !contextOverflowRecoveryUsed
+      ) {
+        contextOverflowRecoveryUsed = true;
+        const recoveryMessages = contextOverflowRecoveryMessages(messages);
+        messages.splice(0, messages.length, ...recoveryMessages);
+        completion = yield* complete(recoveryMessages);
+      }
+      if (completion._tag === "failed") {
+        return yield* completion.error;
+      }
+
+      const events = completion.events;
       let terminal = false;
       let acceptedToolCall = false;
 

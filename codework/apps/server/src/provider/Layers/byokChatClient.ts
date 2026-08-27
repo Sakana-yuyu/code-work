@@ -32,6 +32,8 @@ import { type HttpClient, HttpClientRequest, HttpClientResponse } from "effect/u
 
 import type { ByokModelAdapter, ByokSettings } from "@codework/contracts";
 
+import { collectUint8StreamText } from "../../stream/collectUint8StreamText.ts";
+
 /**
  * Resolve the model adapter for a selected model slug. Matches by adapter id
  * (the canonical model slug surfaced in snapshots) or by upstream modelId;
@@ -84,12 +86,22 @@ export interface ByokToolDescriptor {
 /** One failed BYOK engine request (transport, non-2xx, or malformed SSE). */
 export class ByokEngineError extends Schema.TaggedErrorClass<ByokEngineError>()("ByokEngineError", {
   url: Schema.String,
+  reason: Schema.Literals([
+    "context_overflow",
+    "provider_error",
+    "transport_error",
+    "invalid_response",
+  ]),
+  status: Schema.optional(Schema.Int),
   detail: Schema.String,
 }) {
   override get message(): string {
-    return `BYOK engine request to ${this.url} failed: ${this.detail}`;
+    const status = this.status === undefined ? "" : ` status=${this.status}`;
+    return `BYOK engine request to ${this.url} failed (${this.reason}${status}): ${this.detail}`;
   }
 }
+
+const isByokEngineError = Schema.is(ByokEngineError);
 
 /** One image part carried inline as base64 (multimodal user input). */
 export interface ByokImagePart {
@@ -138,6 +150,105 @@ const byokErrorDetail = (cause: unknown): string => {
   }
   return String(cause);
 };
+
+const BYOK_ERROR_RESPONSE_MAX_BYTES = 8 * 1_024;
+const BYOK_ERROR_DETAIL_MAX_BYTES = 2 * 1_024;
+const byokSecretPatterns = [
+  /(authorization\s*[:=]\s*bearer\s+)([^\s"',;}]+)/giu,
+  /((?:api[_-]?key|access[_-]?token|authorization|password|secret|token)(?![a-z])\s*["']?\s*[:=]\s*["']?)([^\s"',;}]+)/giu,
+];
+
+const redactByokErrorDetail = (value: string, apiKey: string): string => {
+  const key = apiKey.trim();
+  const withoutConfiguredKey = key.length === 0 ? value : value.replaceAll(key, "[REDACTED]");
+  return byokSecretPatterns.reduce(
+    (current, pattern) => current.replace(pattern, "$1[REDACTED]"),
+    withoutConfiguredKey,
+  );
+};
+
+const limitUtf8 = (value: string, maxBytes: number): string => {
+  const encoder = new TextEncoder();
+  const encoded = encoder.encode(value);
+  if (encoded.byteLength <= maxBytes) return value;
+
+  const marker = "...[truncated]";
+  const markerBytes = encoder.encode(marker).byteLength;
+  const prefixBudget = Math.max(0, maxBytes - markerBytes);
+  let prefix = "";
+  let prefixBytes = 0;
+  for (const character of value) {
+    const characterBytes = encoder.encode(character).byteLength;
+    if (prefixBytes + characterBytes > prefixBudget) break;
+    prefix += character;
+    prefixBytes += characterBytes;
+  }
+  return `${prefix}${marker}`;
+};
+
+const isContextOverflowDetail = (detail: string): boolean => {
+  const normalized = detail.toLowerCase();
+  return (
+    normalized.includes("context_too_large") ||
+    normalized.includes("context_length_exceeded") ||
+    normalized.includes("maximum context length") ||
+    normalized.includes("exceeds the context window") ||
+    normalized.includes("exceeds context window") ||
+    normalized.includes("prompt is too long") ||
+    (normalized.includes("input token count") &&
+      (normalized.includes("exceeds the maximum") || normalized.includes("exceeds maximum")))
+  );
+};
+
+const providerPayloadErrorDetail = (payload: Record<string, unknown>): string | undefined => {
+  const error = payload.error;
+  if (typeof error === "string") {
+    const detail = error.trim();
+    return detail.length === 0 ? undefined : detail;
+  }
+  if (error === undefined || error === null) return undefined;
+  try {
+    return JSON.stringify(error);
+  } catch {
+    return String(error);
+  }
+};
+
+const providerResponseError = (
+  response: HttpClientResponse.HttpClientResponse,
+  requestUrl: string,
+  apiKey: string,
+): Effect.Effect<never, ByokEngineError> =>
+  collectUint8StreamText({
+    stream: response.stream,
+    maxBytes: BYOK_ERROR_RESPONSE_MAX_BYTES,
+  }).pipe(
+    Effect.orElseSucceed(() => ({
+      text: "",
+      truncated: false,
+      bytes: 0,
+      invalidUtf8: false,
+    })),
+    Effect.flatMap((collected) => {
+      const responseDetail = collected.text.trim();
+      const rawDetail =
+        responseDetail.length === 0
+          ? `HTTP ${response.status}`
+          : `${responseDetail}${collected.truncated ? "\n[response truncated]" : ""}`;
+      const detail = limitUtf8(
+        redactByokErrorDetail(rawDetail, apiKey),
+        BYOK_ERROR_DETAIL_MAX_BYTES,
+      );
+      return Effect.fail(
+        new ByokEngineError({
+          url: requestUrl,
+          reason: isContextOverflowDetail(rawDetail) ? "context_overflow" : "provider_error",
+          status: response.status,
+          detail,
+        }),
+      );
+    }),
+  );
 
 /** Normalize a base URL into a bare origin-ish prefix (no trailing slash). */
 const trimBaseURL = (baseURL: string): string => baseURL.trim().replace(/\/+$/u, "");
@@ -526,11 +637,20 @@ export const streamChat = (
       : input.protocol === "gemini"
         ? geminiUrl(input.baseURL, input.modelId)
         : anthropicUrl(input.baseURL);
-  const toEngineError = (cause: unknown) =>
-    new ByokEngineError({
-      url: requestUrl,
-      detail: byokErrorDetail(cause),
-    });
+  const toEngineError = (
+    cause: unknown,
+    reason: "transport_error" | "invalid_response" = "invalid_response",
+  ) =>
+    isByokEngineError(cause)
+      ? cause
+      : new ByokEngineError({
+          url: requestUrl,
+          reason,
+          detail: limitUtf8(
+            redactByokErrorDetail(byokErrorDetail(cause), input.apiKey),
+            BYOK_ERROR_DETAIL_MAX_BYTES,
+          ),
+        });
 
   const systemPrompt = input.systemPrompt?.trim() ?? "";
   const requestEffect =
@@ -611,11 +731,15 @@ export const streamChat = (
     ByokEngineError
   > = HttpClientResponse.stream(
     Effect.flatMap(requestEffect, (prepared) => httpClient.execute(prepared)).pipe(
-      Effect.flatMap(HttpClientResponse.filterStatusOk),
-      Effect.mapError(toEngineError),
+      Effect.mapError((cause) => toEngineError(cause, "transport_error")),
+      Effect.flatMap((response) =>
+        response.status >= 200 && response.status < 300
+          ? Effect.succeed(response)
+          : providerResponseError(response, requestUrl, input.apiKey),
+      ),
     ),
   ).pipe(
-    Stream.mapError(toEngineError),
+    Stream.mapError((cause) => toEngineError(cause, "transport_error")),
     Stream.decodeText(),
     Stream.splitLines,
     Stream.filter((line) => line.startsWith(sseDataPrefix)),
@@ -627,6 +751,20 @@ export const streamChat = (
         return false;
       }
       return !isTerminalSsePayload(input.protocol, payload);
+    }),
+    Stream.mapEffect((payload) => {
+      const rawDetail = providerPayloadErrorDetail(payload);
+      if (rawDetail === undefined) return Effect.succeed(payload);
+      return Effect.fail(
+        new ByokEngineError({
+          url: requestUrl,
+          reason: isContextOverflowDetail(rawDetail) ? "context_overflow" : "provider_error",
+          detail: limitUtf8(
+            redactByokErrorDetail(rawDetail, input.apiKey),
+            BYOK_ERROR_DETAIL_MAX_BYTES,
+          ),
+        }),
+      );
     }),
   );
 

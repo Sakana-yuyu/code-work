@@ -85,7 +85,7 @@ export const makeByokModelDriver = (
       Stream.mapError(
         (error) =>
           new ByokAgentModelError({
-            code: "byok_engine_error",
+            code: error.reason === "context_overflow" ? "context_overflow" : "byok_engine_error",
             detail: error.message,
           }),
       ),

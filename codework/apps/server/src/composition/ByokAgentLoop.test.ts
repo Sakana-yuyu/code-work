@@ -5,6 +5,7 @@ import * as Stream from "effect/Stream";
 
 import * as ToolBroker from "./ToolBroker.ts";
 import {
+  ByokAgentModelError,
   ByokAgentLoopMaxRoundsError,
   runByokAgentLoop,
   type ByokAgentModelDriver,
@@ -417,6 +418,130 @@ describe("ByokAgentLoop", () => {
           }),
         },
       ]);
+    }),
+  );
+
+  it.effect("上下文溢出时在同一逻辑轮次仅用最近完整工具轮次恢复一次", () =>
+    Effect.gen(function* () {
+      const modelInputs: Array<Parameters<ByokAgentModelDriver["complete"]>[0]> = [];
+      let brokerCalls = 0;
+      const broker = ToolBroker.ToolBroker.of({
+        invoke: (input) =>
+          Effect.sync(() => {
+            brokerCalls += 1;
+            return makeResult(input);
+          }),
+        cancel: () => Effect.void,
+      });
+      const model: ByokAgentModelDriver = {
+        complete: (input) => {
+          modelInputs.push(input);
+          if (modelInputs.length === 3) {
+            return Stream.fail(
+              new ByokAgentModelError({ code: "context_overflow", detail: "context too large" }),
+            );
+          }
+          if (modelInputs.length === 4) {
+            return Stream.fromIterable([
+              { type: "text_delta" as const, text: "recovered" },
+              { type: "model_completed" as const },
+            ]);
+          }
+          return Stream.fromIterable([
+            {
+              type: "tool_call" as const,
+              toolCallId: `call-${input.turn}`,
+              canonicalToolName: "workspace.read_file",
+              arguments: { relativePath: `${input.turn}.txt` },
+            },
+            { type: "model_completed" as const },
+          ]);
+        },
+      };
+
+      const result = yield* runByokAgentLoop(
+        { ...baseInput, maxRounds: 3, maxContextMessages: 5 },
+        model,
+        broker,
+      );
+
+      expect(result.text).toBe("recovered");
+      expect(result.rounds).toBe(3);
+      expect(modelInputs.map((input) => input.turn)).toEqual([1, 2, 3, 3]);
+      expect(modelInputs[2]?.messages).toHaveLength(5);
+      expect(modelInputs[3]?.messages).toHaveLength(3);
+      expect(modelInputs[3]?.messages).toEqual([
+        { role: "user", content: baseInput.prompt },
+        expect.objectContaining({ role: "assistant" }),
+        expect.objectContaining({ role: "tool", toolCallId: "call-2" }),
+      ]);
+      expect(brokerCalls).toBe(2);
+      expect(result.messages).toEqual(modelInputs[3]?.messages);
+    }),
+  );
+
+  it.effect("恢复请求再次溢出时原样失败且不重复工具调用", () =>
+    Effect.gen(function* () {
+      let modelCalls = 0;
+      let brokerCalls = 0;
+      const broker = ToolBroker.ToolBroker.of({
+        invoke: (input) =>
+          Effect.sync(() => {
+            brokerCalls += 1;
+            return makeResult(input);
+          }),
+        cancel: () => Effect.void,
+      });
+      const model: ByokAgentModelDriver = {
+        complete: (input) => {
+          modelCalls += 1;
+          if (modelCalls >= 3) {
+            return Stream.fail(
+              new ByokAgentModelError({ code: "context_overflow", detail: "still too large" }),
+            );
+          }
+          return Stream.fromIterable([
+            {
+              type: "tool_call" as const,
+              toolCallId: `call-${input.turn}`,
+              canonicalToolName: "workspace.read_file",
+              arguments: { relativePath: `${input.turn}.txt` },
+            },
+            { type: "model_completed" as const },
+          ]);
+        },
+      };
+
+      const error = yield* Effect.flip(
+        runByokAgentLoop({ ...baseInput, maxRounds: 3, maxContextMessages: 5 }, model, broker),
+      );
+
+      expect(error).toMatchObject({ code: "context_overflow", detail: "still too large" });
+      expect(modelCalls).toBe(4);
+      expect(brokerCalls).toBe(2);
+    }),
+  );
+
+  it.effect("普通模型错误不触发上下文恢复", () =>
+    Effect.gen(function* () {
+      let modelCalls = 0;
+      const broker = ToolBroker.ToolBroker.of({
+        invoke: (input) => Effect.succeed(makeResult(input)),
+        cancel: () => Effect.void,
+      });
+      const model: ByokAgentModelDriver = {
+        complete: () => {
+          modelCalls += 1;
+          return Stream.fail(
+            new ByokAgentModelError({ code: "byok_engine_error", detail: "unauthorized" }),
+          );
+        },
+      };
+
+      const error = yield* Effect.flip(runByokAgentLoop(baseInput, model, broker));
+
+      expect(error).toMatchObject({ code: "byok_engine_error", detail: "unauthorized" });
+      expect(modelCalls).toBe(1);
     }),
   );
 });

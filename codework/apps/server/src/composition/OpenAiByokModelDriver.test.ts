@@ -1,3 +1,4 @@
+import { it as effectIt } from "@effect/vitest";
 import { describe, expect, it } from "vite-plus/test";
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
@@ -8,6 +9,7 @@ import { makeByokModelDriver, makeOpenAiByokModelDriver } from "./OpenAiByokMode
 
 const decoder = new TextDecoder();
 const decodeJson = Schema.decodeUnknownSync(Schema.fromJsonString(Schema.Unknown));
+const encodeJson = Schema.encodeUnknownSync(Schema.fromJsonString(Schema.Unknown));
 
 const makeClient = (sseText: string) => {
   const captured: unknown[] = [];
@@ -126,6 +128,37 @@ describe("OpenAiByokModelDriver", () => {
       Effect.runPromise(Stream.runCollect(driver.complete({ messages: [], tools: [], turn: 1 }))),
     ).rejects.toMatchObject({ code: "byok_engine_error" });
   });
+
+  effectIt.effect("maps provider context overflow to a dedicated agent model error", () =>
+    Effect.gen(function* () {
+      const client = HttpClient.make((request) =>
+        Effect.succeed(
+          HttpClientResponse.fromWeb(
+            request,
+            new Response(
+              encodeJson({
+                error: {
+                  code: "context_length_exceeded",
+                  message: "This model's maximum context length was exceeded.",
+                },
+              }),
+              { status: 400, headers: { "content-type": "application/json" } },
+            ),
+          ),
+        ),
+      );
+      const driver = makeOpenAiByokModelDriver(client, {
+        baseURL: "https://api.openai.com/v1",
+        apiKey: "k",
+        modelId: "gpt",
+      });
+
+      const error = yield* Effect.flip(
+        Stream.runCollect(driver.complete({ messages: [], tools: [], turn: 1 })),
+      );
+      expect(error).toMatchObject({ code: "context_overflow" });
+    }),
+  );
 });
 
 describe("ByokModelDriver", () => {
