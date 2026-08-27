@@ -1,5 +1,9 @@
 import { assert, it } from "@effect/vitest";
-import { DEFAULT_SERVER_SETTINGS, type ServerSettings } from "@codework/contracts";
+import {
+  CompositionMcpServerId,
+  DEFAULT_SERVER_SETTINGS,
+  type ServerSettings,
+} from "@codework/contracts";
 import * as Effect from "effect/Effect";
 import * as Stream from "effect/Stream";
 
@@ -28,6 +32,7 @@ const remoteServer = {
   name: "Remote Tools",
   transport: "http" as const,
   url: "https://mcp.example.test",
+  args: [],
   environment: [],
   headers: [],
   enabled: true,
@@ -35,9 +40,11 @@ const remoteServer = {
   schemaVersion: 1 as const,
 };
 
-const settingsWithServers = (mcpServers: ServerSettings["mcpServers"]): ServerSettings => ({
+const settingsWithServers = (mcpServers: {
+  readonly [serverId: string]: ServerSettings["mcpServers"][CompositionMcpServerId];
+}): ServerSettings => ({
   ...DEFAULT_SERVER_SETTINGS,
-  mcpServers,
+  mcpServers: mcpServers as ServerSettings["mcpServers"],
 });
 
 const makeFakeAdapter = () => {
@@ -95,8 +102,6 @@ it.effect("reconciles configured MCP servers without connecting untrusted entrie
       transport: "stdio",
       command: "node",
       args: ["server.mjs"],
-      cwd: undefined,
-      url: undefined,
       env: { MCP_TOKEN: "secret" },
       headers: { Authorization: "Bearer secret" },
       trusted: true,
@@ -106,9 +111,7 @@ it.effect("reconciles configured MCP servers without connecting untrusted entrie
       serverId: "remote_tools",
       name: "Remote Tools",
       transport: "http",
-      command: undefined,
       args: [],
-      cwd: undefined,
       url: "https://mcp.example.test",
       env: {},
       headers: {},

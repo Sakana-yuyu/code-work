@@ -1,7 +1,8 @@
 import { createHash } from "node:crypto";
 
-import type { ServerSettings } from "@codework/contracts";
+import type { CompositionMcpServerId, ServerSettings } from "@codework/contracts";
 import * as Context from "effect/Context";
+import * as Data from "effect/Data";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Scope from "effect/Scope";
@@ -67,28 +68,31 @@ const asRecord = (
   return result;
 };
 
+export class CompositionMcpConfigInvalidError extends Data.TaggedError(
+  "CompositionMcpConfigInvalidError",
+)<{
+  readonly cause: unknown;
+}> {}
+
 const toRuntimeConfig = (
   serverId: string,
-  config: ServerSettings["mcpServers"][string],
+  config: ServerSettings["mcpServers"][CompositionMcpServerId],
 ): CompositionMcpRuntimeServerConfig => ({
   serverId,
   name: config.name,
   transport: config.transport,
-  command: config.command,
+  ...(config.command === undefined ? {} : { command: config.command }),
   args: [...(config.args ?? [])],
-  cwd: config.cwd,
-  url: config.url,
+  ...(config.cwd === undefined ? {} : { cwd: config.cwd }),
+  ...(config.url === undefined ? {} : { url: config.url }),
   env: asRecord(config.environment, "environment"),
   headers: asRecord(config.headers, "header"),
   trusted: config.trusted,
-  enabled: config.enabled,
+  ...(config.enabled === undefined ? {} : { enabled: config.enabled }),
 });
 
 const fingerprintFor = (config: CompositionMcpRuntimeServerConfig): string =>
   createHash("sha256").update(JSON.stringify(config)).digest("hex");
-
-const effectValue = <A>(effect: Effect.Effect<A, unknown>): Effect.Effect<A | undefined> =>
-  effect.pipe(Effect.catch(() => Effect.succeed(undefined)));
 
 export const makeCompositionMcpRuntimeService = (
   options: CompositionMcpRuntimeServiceOptions,
@@ -97,18 +101,22 @@ export const makeCompositionMcpRuntimeService = (
   const logWarning = options.logWarning ?? defaultLogWarning;
   let started = false;
 
-  const warn = (message: string, cause?: unknown) =>
-    logWarning(message, cause).pipe(Effect.catch(() => Effect.void));
+  const warn = (message: string, cause?: unknown) => logWarning(message, cause);
 
   const reconcile = (settings: ServerSettings): Effect.Effect<void> =>
     Effect.gen(function* () {
       const configured = new Map<string, CompositionMcpRuntimeServerConfig>();
       for (const [serverId, config] of Object.entries(settings.mcpServers)) {
-        try {
-          configured.set(serverId, toRuntimeConfig(serverId, config));
-        } catch (cause) {
-          yield* warn(`跳过无效的 MCP Server 配置 '${serverId}'。`, cause);
-        }
+        const built = yield* Effect.try({
+          try: () => toRuntimeConfig(serverId, config),
+          catch: (cause) => new CompositionMcpConfigInvalidError({ cause }),
+        }).pipe(
+          Effect.catch((cause) =>
+            warn(`跳过无效的 MCP Server 配置 '${serverId}'。`, cause).pipe(Effect.as(undefined)),
+          ),
+        );
+        if (built === undefined) continue;
+        configured.set(serverId, built);
       }
 
       for (const [serverId, current] of managed) {
@@ -118,11 +126,7 @@ export const makeCompositionMcpRuntimeService = (
           continue;
         }
 
-        const removed = yield* effectValue(options.adapter.unregisterServer(serverId));
-        if (removed === undefined) {
-          yield* warn(`注销 MCP Server '${serverId}' 失败。`);
-          continue;
-        }
+        yield* options.adapter.unregisterServer(serverId);
         managed.delete(serverId);
       }
 
@@ -162,13 +166,7 @@ export const makeCompositionMcpRuntimeService = (
     if (currentSettings !== undefined) yield* reconcile(currentSettings);
 
     const changes = yield* options.settings.subscribeChanges;
-    yield* Effect.forkScoped(
-      Stream.runForEach(changes, (nextSettings) =>
-        reconcile(nextSettings).pipe(
-          Effect.catch((cause) => warn("MCP Server 设置刷新失败。", cause)),
-        ),
-      ),
-    );
+    yield* Effect.forkScoped(Stream.runForEach(changes, (nextSettings) => reconcile(nextSettings)));
   });
 
   return {
