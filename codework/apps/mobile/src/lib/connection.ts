@@ -2,8 +2,6 @@ import { EnvironmentId } from "@codework/contracts";
 import { stripPairingTokenFromUrl } from "@codework/shared/remote";
 import { type EnvironmentConnectionPhase } from "@codework/client-runtime/connection";
 
-export { authClientMetadata } from "./authClientMetadata";
-
 export interface SavedRemoteConnection {
   readonly environmentId: EnvironmentId;
   readonly environmentLabel: string;
