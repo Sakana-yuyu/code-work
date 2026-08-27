@@ -2,6 +2,7 @@
 
 import { describe, expect, it } from "vite-plus/test";
 import * as Effect from "effect/Effect";
+import * as Stream from "effect/Stream";
 
 import {
   makeCompositionIdeJsonRpcAdapter,
@@ -184,6 +185,86 @@ describe("CompositionIdeJsonRpcTransport", () => {
       }),
     );
     await expect(invokePromise).resolves.toEqual({ contents: "export const answer = 42;" });
+  });
+
+  it("接收同一 IDE session 的 task event notification 并暴露给事件流", async () => {
+    const socket = new FakeSocket();
+    const adapter = makeCompositionIdeJsonRpcAdapter({
+      sessionId: "vscode-session-events",
+      profile: "vscode_ide",
+      url: "ws://127.0.0.1:4111/t3/ide",
+      webSocketFactory: makeFactory(socket, {}),
+    });
+    const probePromise = Effect.runPromise(adapter.probe());
+    void probePromise.catch(() => undefined);
+    await flush();
+    socket.emit("open");
+    await flush();
+    const probeRequest = decode(socket)[0];
+    socket.emit(
+      "message",
+      JSON.stringify({
+        jsonrpc: "2.0",
+        id: probeRequest?.id,
+        result: {
+          sessionId: "vscode-session-events",
+          profile: "vscode_ide",
+          verifiedOperations: ["task.start", "task.cancel", "task.events"],
+          status: "ready",
+        },
+      }),
+    );
+    await expect(probePromise).resolves.toMatchObject({ status: "ready" });
+
+    const eventsPromise = Effect.runPromise(
+      adapter.streamEvents!().pipe(Stream.take(1), Stream.runCollect),
+    );
+    await flush();
+    socket.emit(
+      "message",
+      JSON.stringify({
+        jsonrpc: "2.0",
+        method: "t3.ide.event",
+        params: {
+          sessionId: "vscode-session-events",
+          event: {
+            eventId: "ide-event-progress-1",
+            provider: "ide",
+            threadId: "ide:vscode-session-events",
+            createdAt: "2026-08-27T00:00:00.000Z",
+            type: "task.progress",
+            payload: {
+              taskId: "ide-runtime-task-1",
+              description: "IDE 正在执行任务",
+              summary: "已完成第一步",
+              status: "running",
+            },
+            raw: {
+              source: "ide.jsonrpc",
+              method: "t3.ide.event",
+              runtimeId: "ide:vscode-session-events",
+              runtimeTaskId: "ide-runtime-task-1",
+              payload: {
+                sessionId: "vscode-session-events",
+                secret: "remote-raw-payload-must-not-escape",
+              },
+            },
+          },
+        },
+      }),
+    );
+
+    const receivedEvents = Array.from(await eventsPromise);
+    expect(receivedEvents).toMatchObject([
+      {
+        eventId: "ide-event-progress-1",
+        type: "task.progress",
+        raw: { source: "ide.jsonrpc", runtimeTaskId: "ide-runtime-task-1" },
+      },
+    ]);
+    expect(receivedEvents[0]!.raw?.payload).toEqual({ sessionId: "vscode-session-events" });
+    expect(receivedEvents[0]!.raw?.payload).not.toHaveProperty("secret");
+    adapter.close();
   });
 
   it("连接关闭后拒绝新的请求，并关闭时释放 socket", async () => {

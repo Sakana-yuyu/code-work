@@ -1,11 +1,15 @@
 import type { CompositionAgentDriverProfile, ProviderRuntimeEvent } from "@codework/contracts";
+import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
+import * as Option from "effect/Option";
+import * as Stream from "effect/Stream";
 
 import {
   CompositionAgentDriverFailure,
   type CompositionAgentDriver,
 } from "./CompositionOrchestrator.ts";
 import type {
+  CompositionIdeAdapter,
   CompositionIdeRequestedProfile,
   CompositionIdeSessionRegistry,
   CompositionIdeCapabilityHandshakeResult,
@@ -13,6 +17,10 @@ import type {
 
 export const IDE_TASK_START_OPERATION = "task.start";
 export const IDE_TASK_CANCEL_OPERATION = "task.cancel";
+export const IDE_TASK_EVENTS_OPERATION = "task.events";
+
+const IDE_EVENT_BINDING_WAIT = "20 seconds";
+const MAX_PENDING_EVENT_BINDINGS = 256;
 
 export const compositionIdeAgentId = (sessionId: string): string => `ide:${sessionId}`;
 
@@ -24,6 +32,7 @@ export interface CompositionIdeAgentDriverOptions {
   readonly sessionId: string;
   readonly profile: CompositionIdeRequestedProfile;
   readonly agentId?: string;
+  readonly eventStream?: CompositionIdeAdapter["streamEvents"];
 }
 
 type IdeRunBinding = {
@@ -88,18 +97,20 @@ export const makeCompositionIdeAgentDriver = (
 ): CompositionAgentDriver => {
   const sessionId = options.sessionId.trim();
   const agentId = options.agentId ?? compositionIdeAgentId(sessionId);
-  const runtimeId = agentId;
+  const runtimeId = compositionIdeAgentId(sessionId);
   const activeRuns = new Map<string, IdeRunBinding>();
   const historicalRuns = new Map<string, IdeRunBinding | null>();
+  const pendingEventBindings = new Map<string, Deferred.Deferred<void>>();
+  let pendingTaskStarts = 0;
 
-  const remember = (binding: IdeRunBinding): void => {
+  const remember = (binding: IdeRunBinding): boolean => {
     const previous = historicalRuns.get(binding.runtimeTaskId);
     if (
       previous !== undefined &&
       (previous === null || previous.taskId !== binding.taskId || previous.runId !== binding.runId)
     ) {
       historicalRuns.set(binding.runtimeTaskId, null);
-      return;
+      return false;
     }
     historicalRuns.set(binding.runtimeTaskId, binding);
     while (historicalRuns.size > 4096) {
@@ -107,7 +118,54 @@ export const makeCompositionIdeAgentDriver = (
       if (oldest === undefined) break;
       historicalRuns.delete(oldest);
     }
+    return true;
   };
+
+  const releasePendingEventBinding = (runtimeTaskId: string): Effect.Effect<void> =>
+    Effect.gen(function* () {
+      const pending = pendingEventBindings.get(runtimeTaskId);
+      if (pending === undefined) return;
+      pendingEventBindings.delete(runtimeTaskId);
+      yield* Deferred.succeed(pending, undefined);
+    });
+
+  const awaitRuntimeEventBinding = (
+    event: ProviderRuntimeEvent,
+  ): Effect.Effect<ProviderRuntimeEvent> =>
+    Effect.gen(function* () {
+      const runtimeTaskId = runtimeTaskIdFromEvent(event);
+      if (
+        runtimeTaskId === undefined ||
+        historicalRuns.get(runtimeTaskId) !== undefined ||
+        pendingTaskStarts === 0
+      ) {
+        return event;
+      }
+      let pending = pendingEventBindings.get(runtimeTaskId);
+      if (pending === undefined) {
+        pending = yield* Deferred.make<void>();
+        pendingEventBindings.set(runtimeTaskId, pending);
+        while (pendingEventBindings.size > MAX_PENDING_EVENT_BINDINGS) {
+          const oldest = pendingEventBindings.keys().next().value;
+          if (oldest === undefined) break;
+          pendingEventBindings.delete(oldest);
+        }
+      }
+      const resolved = yield* Deferred.await(pending).pipe(
+        Effect.timeoutOption(IDE_EVENT_BINDING_WAIT),
+      );
+      if (Option.isNone(resolved)) {
+        if (pendingEventBindings.get(runtimeTaskId) === pending) {
+          pendingEventBindings.delete(runtimeTaskId);
+        }
+        yield* Effect.logWarning("IDE task event 等待 runtime 关联超时", {
+          sessionId,
+          runtimeId,
+          runtimeTaskId,
+        });
+      }
+      return event;
+    });
 
   const getProfile: NonNullable<CompositionAgentDriver["getProfile"]> = () =>
     Effect.gen(function* () {
@@ -119,7 +177,9 @@ export const makeCompositionIdeAgentDriver = (
       const taskBridgeReady =
         resolved.status === "ready" &&
         operations.has(IDE_TASK_START_OPERATION) &&
-        operations.has(IDE_TASK_CANCEL_OPERATION);
+        operations.has(IDE_TASK_CANCEL_OPERATION) &&
+        operations.has(IDE_TASK_EVENTS_OPERATION) &&
+        options.eventStream !== undefined;
       const status: CompositionAgentDriverProfile["status"] =
         resolved.status === "unavailable"
           ? "unavailable"
@@ -165,12 +225,16 @@ export const makeCompositionIdeAgentDriver = (
     Effect.gen(function* () {
       const handshake = yield* options.registry.handshake({
         sessionId,
-        requestedProfile: "vscode_ide",
+        requestedProfile: options.profile,
         taskId: input.task.taskId,
         runId: input.run.runId,
         agentId,
         capabilityGrantIds: [...(input.run.capabilityGrantIds ?? [])],
-        requestedOperations: [IDE_TASK_START_OPERATION, IDE_TASK_CANCEL_OPERATION],
+        requestedOperations: [
+          IDE_TASK_START_OPERATION,
+          IDE_TASK_CANCEL_OPERATION,
+          IDE_TASK_EVENTS_OPERATION,
+        ],
       });
       if (!acceptedHandshake(handshake)) {
         return yield* Effect.fail(
@@ -181,53 +245,63 @@ export const makeCompositionIdeAgentDriver = (
         );
       }
 
-      const invocation = yield* options.registry
-        .invoke({
-          sessionId,
-          handshakeId: handshake.handshakeId,
-          taskId: input.task.taskId,
-          runId: input.run.runId,
-          agentId,
-          operation: IDE_TASK_START_OPERATION,
-          arguments: {
+      pendingTaskStarts += 1;
+      return yield* Effect.gen(function* () {
+        const invocation = yield* options.registry
+          .invoke({
+            sessionId,
+            handshakeId: handshake.handshakeId,
             taskId: input.task.taskId,
             runId: input.run.runId,
             agentId,
-            projectId: input.task.projectId,
-            parentTaskId: input.task.parentTaskId,
-            dependsOnTaskIds: [...input.task.dependsOnTaskIds],
-            mode: input.task.mode,
-            assigneeKind: input.task.assigneeKind,
-            assigneeId: input.task.assigneeId,
-            prompt: input.prompt,
-            workspaceRoot: input.workspaceRoot,
-            workspaceRootDigest: input.workspaceRootDigest,
-            model: input.model,
-            capabilityGrantIds: [...(input.run.capabilityGrantIds ?? [])],
-          },
-        })
-        .pipe(Effect.mapError((cause) => failure("ide_task_start_failed", errorDetail(cause))));
-      const runtimeTaskId = stringFrom(recordFrom(invocation)?.runtimeTaskId);
-      const status = resultStatus(invocation);
-      if (runtimeTaskId === undefined || status === undefined) {
-        return yield* Effect.fail(
-          failure("ide_task_start_result_invalid", "IDE task.start 返回值格式无效。"),
-        );
-      }
-      if (status === "already_terminal") {
-        return yield* Effect.fail(
-          failure("ide_task_already_terminal", "IDE task.start 返回任务已经处于终态。"),
-        );
-      }
-      const binding = {
-        taskId: input.task.taskId,
-        runId: input.run.runId,
-        runtimeTaskId,
-        handshakeId: handshake.handshakeId,
-      };
-      activeRuns.set(input.run.runId, binding);
-      remember(binding);
-      return { runtimeTaskId, capabilityHandshakeId: handshake.handshakeId };
+            operation: IDE_TASK_START_OPERATION,
+            arguments: {
+              taskId: input.task.taskId,
+              runId: input.run.runId,
+              agentId,
+              runtimeId,
+              projectId: input.task.projectId,
+              parentTaskId: input.task.parentTaskId,
+              dependsOnTaskIds: [...input.task.dependsOnTaskIds],
+              mode: input.task.mode,
+              assigneeKind: input.task.assigneeKind,
+              assigneeId: input.task.assigneeId,
+              prompt: input.prompt,
+              workspaceRoot: input.workspaceRoot,
+              workspaceRootDigest: input.workspaceRootDigest,
+              model: input.model,
+              capabilityGrantIds: [...(input.run.capabilityGrantIds ?? [])],
+            },
+          })
+          .pipe(Effect.mapError((cause) => failure("ide_task_start_failed", errorDetail(cause))));
+        const runtimeTaskId = stringFrom(recordFrom(invocation)?.runtimeTaskId);
+        const status = resultStatus(invocation);
+        if (runtimeTaskId === undefined || status === undefined) {
+          return yield* Effect.fail(
+            failure("ide_task_start_result_invalid", "IDE task.start 返回值格式无效。"),
+          );
+        }
+        if (status === "already_terminal") {
+          return yield* Effect.fail(
+            failure("ide_task_already_terminal", "IDE task.start 返回任务已经处于终态。"),
+          );
+        }
+        const binding = {
+          taskId: input.task.taskId,
+          runId: input.run.runId,
+          runtimeTaskId,
+          handshakeId: handshake.handshakeId,
+        };
+        activeRuns.set(input.run.runId, binding);
+        if (remember(binding)) yield* releasePendingEventBinding(runtimeTaskId);
+        return { runtimeTaskId, capabilityHandshakeId: handshake.handshakeId };
+      }).pipe(
+        Effect.ensuring(
+          Effect.sync(() => {
+            pendingTaskStarts -= 1;
+          }),
+        ),
+      );
     });
 
   const cancelTask: CompositionAgentDriver["cancelTask"] = (input) =>
@@ -272,14 +346,38 @@ export const makeCompositionIdeAgentDriver = (
         Effect.mapError((cause) => failure("ide_handshake_revoke_failed", errorDetail(cause))),
       );
 
+  const streamEvents =
+    options.eventStream === undefined
+      ? undefined
+      : () =>
+          options.eventStream!().pipe(
+            Stream.filter(
+              (event) => event.raw?.source === "ide.jsonrpc" && event.raw.runtimeId === runtimeId,
+            ),
+            Stream.mapEffect(awaitRuntimeEventBinding),
+            Stream.catchCause((cause) =>
+              Stream.fromEffect(
+                Effect.logError("IDE Agent Driver 任务事件流失败", {
+                  sessionId,
+                  runtimeId,
+                  cause,
+                }),
+              ).pipe(Stream.drain),
+            ),
+          );
+
   return {
     agentId,
     runtimeId,
     getProfile,
+    ...(streamEvents === undefined ? {} : { streamEvents }),
     startTask,
     cancelTask,
     revokeCapabilityHandshake,
     resolveRuntimeEvent: (event) => {
+      if (event.raw?.source !== "ide.jsonrpc" || event.raw.runtimeId !== runtimeId) {
+        return undefined;
+      }
       const runtimeTaskId = runtimeTaskIdFromEvent(event);
       if (runtimeTaskId === undefined) return undefined;
       const binding = historicalRuns.get(runtimeTaskId);

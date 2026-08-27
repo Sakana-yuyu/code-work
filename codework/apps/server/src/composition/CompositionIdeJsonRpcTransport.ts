@@ -2,7 +2,9 @@
 
 import * as NodeSocket from "@effect/platform-node/NodeSocket";
 import * as Effect from "effect/Effect";
+import * as PubSub from "effect/PubSub";
 import * as Schema from "effect/Schema";
+import * as Stream from "effect/Stream";
 
 import {
   CompositionIdeAdapterFailure,
@@ -11,7 +13,11 @@ import {
   type CompositionIdeCapabilityHandshakeResult,
   type CompositionIdeInvocation,
 } from "./CompositionIdeSessionRegistry.ts";
-import type { CompositionIdeProfile, CompositionIdeResolveResult } from "@codework/contracts";
+import {
+  ProviderRuntimeEvent,
+  type CompositionIdeProfile,
+  type CompositionIdeResolveResult,
+} from "@codework/contracts";
 
 export type CompositionIdeJsonRpcSocket = {
   readonly on: {
@@ -50,6 +56,12 @@ type JsonRpcResponse = {
   readonly id: string | number;
   readonly result?: unknown;
   readonly error?: { readonly code?: unknown; readonly message?: unknown };
+};
+
+type JsonRpcNotification = {
+  readonly jsonrpc: "2.0";
+  readonly method: "t3.ide.event";
+  readonly params: unknown;
 };
 
 type PendingRequest = {
@@ -111,7 +123,7 @@ const failure = (sessionId: string, code: string, detail: string): CompositionId
 const invalidResponse = (sessionId: string, detail: string): CompositionIdeAdapterFailure =>
   failure(sessionId, "ide_invalid_response", detail);
 
-const parseResponse = (sessionId: string, data: unknown): JsonRpcResponse => {
+const parseMessage = (sessionId: string, data: unknown): JsonRpcResponse | JsonRpcNotification => {
   let value: unknown;
   try {
     value = JSON.parse(textFromMessage(data));
@@ -119,14 +131,50 @@ const parseResponse = (sessionId: string, data: unknown): JsonRpcResponse => {
     throw invalidResponse(sessionId, "IDE JSON-RPC response 不是有效 JSON。");
   }
   const record = recordFrom(value);
+  if (record?.jsonrpc !== "2.0") {
+    throw invalidResponse(sessionId, "IDE JSON-RPC message 格式无效。");
+  }
+  if (record.method === "t3.ide.event" && record.id === undefined) {
+    return record as unknown as JsonRpcNotification;
+  }
   if (
-    record?.jsonrpc !== "2.0" ||
     (typeof record.id !== "string" && typeof record.id !== "number") ||
     (record.result === undefined && record.error === undefined)
   ) {
     throw invalidResponse(sessionId, "IDE JSON-RPC response 格式无效。");
   }
   return record as unknown as JsonRpcResponse;
+};
+
+const parseTaskEvent = (sessionId: string, value: unknown): ProviderRuntimeEvent => {
+  const params = recordFrom(value);
+  if (stringFrom(params?.sessionId) !== sessionId) {
+    throw invalidResponse(sessionId, "IDE task event 的 sessionId 不匹配。");
+  }
+  let event: ProviderRuntimeEvent;
+  try {
+    event = Schema.decodeUnknownSync(ProviderRuntimeEvent)(params?.event);
+  } catch {
+    throw invalidResponse(sessionId, "IDE task event 不符合 ProviderRuntimeEvent 合同。");
+  }
+  if (
+    event.raw?.source !== "ide.jsonrpc" ||
+    event.raw.method !== "t3.ide.event" ||
+    event.raw.runtimeId !== `ide:${sessionId}` ||
+    event.raw.runtimeTaskId === undefined
+  ) {
+    throw invalidResponse(sessionId, "IDE task event 缺少受信任的 runtime correlation。");
+  }
+  return {
+    ...event,
+    raw: {
+      source: "ide.jsonrpc" as const,
+      method: "t3.ide.event",
+      runtimeId: event.raw.runtimeId,
+      runtimeTaskId: event.raw.runtimeTaskId,
+      payload: { sessionId },
+    },
+  };
 };
 
 const parseProbeResult = (sessionId: string, value: unknown): CompositionIdeResolveResult => {
@@ -230,6 +278,7 @@ export const makeCompositionIdeJsonRpcAdapter = (
   const webSocketFactory = options.webSocketFactory ?? defaultWebSocketFactory;
   const headers = options.headers ?? {};
   const pending = new Map<string, PendingRequest>();
+  const events = Effect.runSync(PubSub.unbounded<ProviderRuntimeEvent>());
   let socket: CompositionIdeJsonRpcSocket | undefined;
   let opening: Promise<void> | undefined;
   let rejectOpening: ((cause: CompositionIdeAdapterFailure) => void) | undefined;
@@ -283,6 +332,7 @@ export const makeCompositionIdeJsonRpcAdapter = (
     if (terminalFailure !== undefined) return;
     terminalFailure = cause;
     disconnect(cause);
+    Effect.runFork(PubSub.shutdown(events));
   };
 
   const ensureOpen = (): Promise<void> => {
@@ -333,9 +383,9 @@ export const makeCompositionIdeJsonRpcAdapter = (
     });
     current.on("message", (data) => {
       if (socket !== current || terminalFailure !== undefined) return;
-      let response: JsonRpcResponse;
+      let message: JsonRpcResponse | JsonRpcNotification;
       try {
-        response = parseResponse(sessionId, data);
+        message = parseMessage(sessionId, data);
       } catch (cause) {
         const transportFailure = Schema.is(CompositionIdeAdapterFailure)(cause)
           ? cause
@@ -343,6 +393,21 @@ export const makeCompositionIdeJsonRpcAdapter = (
         closePermanently(transportFailure);
         return;
       }
+      if ("method" in message) {
+        let event: ProviderRuntimeEvent;
+        try {
+          event = parseTaskEvent(sessionId, message.params);
+        } catch (cause) {
+          const transportFailure = Schema.is(CompositionIdeAdapterFailure)(cause)
+            ? cause
+            : invalidResponse(sessionId, String(cause));
+          closePermanently(transportFailure);
+          return;
+        }
+        Effect.runFork(PubSub.publish(events, event).pipe(Effect.asVoid));
+        return;
+      }
+      const response = message;
       const requestId = String(response.id);
       const request = pending.get(requestId);
       if (request === undefined) return;
@@ -449,5 +514,13 @@ export const makeCompositionIdeJsonRpcAdapter = (
     closePermanently(failure(sessionId, "ide_transport_closed", "IDE transport 已关闭。"));
   };
 
-  return { sessionId, profile: options.profile, probe, handshake, invoke, close };
+  return {
+    sessionId,
+    profile: options.profile,
+    probe,
+    handshake,
+    invoke,
+    streamEvents: () => Stream.fromPubSub(events),
+    close,
+  };
 };

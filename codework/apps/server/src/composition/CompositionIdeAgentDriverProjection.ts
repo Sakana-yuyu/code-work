@@ -70,6 +70,7 @@ export const makeCompositionIdeAgentDriverProjection = (options: {
         sessionId: session.sessionId,
         profile: session.profile,
         agentId,
+        eventStream: session.streamEvents,
       });
       yield* registry.register(driver);
       projected.set(agentId, { session, driver });

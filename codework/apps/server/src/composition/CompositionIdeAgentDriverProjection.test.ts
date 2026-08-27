@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vite-plus/test";
 import * as Effect from "effect/Effect";
+import * as Stream from "effect/Stream";
 
 import { compositionIdeAgentId } from "./CompositionIdeAgentDriver.ts";
 import { makeCompositionIdeAgentDriverProjection } from "./CompositionIdeAgentDriverProjection.ts";
@@ -9,6 +10,7 @@ import type { CompositionIdeAdapter } from "./CompositionIdeSessionRegistry.ts";
 const makeAdapter = (
   sessionId: string,
   operations: ReadonlyArray<string>,
+  withEventStream = true,
 ): CompositionIdeAdapter => ({
   sessionId,
   profile: "vscode_ide",
@@ -32,13 +34,16 @@ const makeAdapter = (
       verifiedOperations: [...input.requestedOperations],
     }),
   invoke: () => Effect.succeed({}),
+  ...(withEventStream ? { streamEvents: () => Stream.empty } : {}),
 });
 
 describe("CompositionIdeAgentDriverProjection", () => {
   it("按 session 投影 IDE Agent Driver，并在 session 注销后清理", async () => {
     const sessions = makeCompositionIdeSessionRegistry();
     await Effect.runPromise(
-      sessions.register(makeAdapter("vscode-session-1", ["task.start", "task.cancel"])),
+      sessions.register(
+        makeAdapter("vscode-session-1", ["task.start", "task.cancel", "task.events"]),
+      ),
     );
     const projection = makeCompositionIdeAgentDriverProjection({ sessionRegistry: sessions });
 
@@ -67,6 +72,25 @@ describe("CompositionIdeAgentDriverProjection", () => {
     await Effect.runPromise(projection.refresh);
     const driver = await Effect.runPromise(
       projection.registry.get(compositionIdeAgentId("editor-only")),
+    );
+    await expect(Effect.runPromise(driver!.getProfile!())).resolves.toMatchObject({
+      status: "degraded",
+      reasonCode: "ide_task_bridge_unsupported",
+    });
+  });
+
+  it("没有事件流时明确显示 degraded", async () => {
+    const sessions = makeCompositionIdeSessionRegistry();
+    await Effect.runPromise(
+      sessions.register(
+        makeAdapter("editor-without-events", ["task.start", "task.cancel", "task.events"], false),
+      ),
+    );
+    const projection = makeCompositionIdeAgentDriverProjection({ sessionRegistry: sessions });
+
+    await Effect.runPromise(projection.refresh);
+    const driver = await Effect.runPromise(
+      projection.registry.get(compositionIdeAgentId("editor-without-events")),
     );
     await expect(Effect.runPromise(driver!.getProfile!())).resolves.toMatchObject({
       status: "degraded",

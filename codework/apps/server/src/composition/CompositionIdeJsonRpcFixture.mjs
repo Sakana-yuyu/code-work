@@ -11,9 +11,36 @@ const server = createServer((_request, response) => {
 const webSocketServer = new NodeWS.WebSocketServer({ noServer: true });
 const sockets = new Set();
 const tasks = new Map();
+let eventSequence = 0;
 
 const send = (socket, message) => {
   if (socket.readyState === NodeWS.WebSocket.OPEN) socket.send(JSON.stringify(message));
+};
+
+const sendTaskEvent = (socket, task, type, payload) => {
+  eventSequence += 1;
+  send(socket, {
+    jsonrpc: "2.0",
+    method: "t3.ide.event",
+    params: {
+      sessionId,
+      event: {
+        eventId: `fixture-ide-event-${eventSequence}`,
+        provider: "ide",
+        threadId: task.runtimeId,
+        createdAt: new Date().toISOString(),
+        type,
+        payload,
+        raw: {
+          source: "ide.jsonrpc",
+          method: "t3.ide.event",
+          runtimeId: task.runtimeId,
+          runtimeTaskId: task.runtimeTaskId,
+          payload: { sessionId },
+        },
+      },
+    },
+  });
 };
 
 webSocketServer.on("connection", (socket, request) => {
@@ -34,7 +61,13 @@ webSocketServer.on("connection", (socket, request) => {
         result: {
           sessionId,
           profile: "vscode_ide",
-          verifiedOperations: ["editor.read", "editor.write", "task.start", "task.cancel"],
+          verifiedOperations: [
+            "editor.read",
+            "editor.write",
+            "task.start",
+            "task.cancel",
+            "task.events",
+          ],
           status: "ready",
         },
       });
@@ -61,20 +94,53 @@ webSocketServer.on("connection", (socket, request) => {
     if (requestMessage.method === "t3.ide.invoke") {
       if (params.operation === "task.start") {
         const runtimeTaskId = `fixture-runtime-task-${tasks.size + 1}`;
-        tasks.set(`${params.taskId}:${params.runId}`, runtimeTaskId);
+        const task = {
+          taskId: params.taskId,
+          runId: params.runId,
+          runtimeTaskId,
+          runtimeId: params.arguments?.runtimeId ?? `ide:${sessionId}`,
+        };
+        tasks.set(`${params.taskId}:${params.runId}`, task);
         send(socket, {
           jsonrpc: "2.0",
           id: requestMessage.id,
           result: { runtimeTaskId, status: "accepted" },
         });
+        if (String(params.arguments?.prompt ?? "").includes("[fixture:complete]")) {
+          queueMicrotask(() => {
+            sendTaskEvent(socket, task, "task.progress", {
+              taskId: runtimeTaskId,
+              description: "IDE fixture 正在执行任务",
+              summary: "IDE fixture 已执行第一步",
+              status: "running",
+            });
+            sendTaskEvent(socket, task, "task.completed", {
+              taskId: runtimeTaskId,
+              status: "completed",
+              summary: "IDE fixture 已完成任务",
+            });
+          });
+        }
         return;
       }
       if (params.operation === "task.cancel") {
+        const task = [...tasks.values()].find(
+          (entry) => entry.runtimeTaskId === params.arguments?.runtimeTaskId,
+        );
         send(socket, {
           jsonrpc: "2.0",
           id: requestMessage.id,
           result: { runtimeTaskId: params.arguments?.runtimeTaskId, status: "cancelled" },
         });
+        if (task !== undefined) {
+          queueMicrotask(() => {
+            sendTaskEvent(socket, task, "task.completed", {
+              taskId: task.runtimeTaskId,
+              status: "stopped",
+              summary: "IDE fixture 已取消任务",
+            });
+          });
+        }
         return;
       }
       send(socket, {

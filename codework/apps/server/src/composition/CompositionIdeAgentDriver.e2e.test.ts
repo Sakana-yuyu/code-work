@@ -7,6 +7,7 @@ import { fileURLToPath } from "node:url";
 
 import { describe, expect, it } from "vite-plus/test";
 import * as Effect from "effect/Effect";
+import * as Stream from "effect/Stream";
 
 import {
   compositionIdeAgentId,
@@ -73,6 +74,7 @@ describe("CompositionIdeAgentDriver 本地跨进程 E2E", () => {
         sessionId: "vscode-session-fixture",
         profile: "vscode_ide",
         agentId: compositionIdeAgentId("vscode-session-fixture"),
+        eventStream: adapter.streamEvents,
       });
       const task = {
         taskId: "task-ide-e2e",
@@ -119,6 +121,76 @@ describe("CompositionIdeAgentDriver 本地跨进程 E2E", () => {
           }),
         ),
       ).resolves.toEqual({ status: "cancelled" });
+    } finally {
+      adapter.close();
+      await stopFixture(fixture);
+    }
+  });
+
+  it("接收 IDE bridge 子进程发送的任务进度和终态事件", async () => {
+    const fixture = await startFixture();
+    const adapter = makeCompositionIdeJsonRpcAdapter({
+      sessionId: "vscode-session-fixture",
+      profile: "vscode_ide",
+      url: fixture.url,
+      headers: { Authorization: "Bearer fixture-ide-token" },
+      openTimeoutMs: 5_000,
+      requestTimeoutMs: 5_000,
+    });
+    const sessions = makeCompositionIdeSessionRegistry();
+    try {
+      await Effect.runPromise(sessions.register(adapter));
+      const driver = makeCompositionIdeAgentDriver({
+        registry: sessions,
+        sessionId: "vscode-session-fixture",
+        profile: "vscode_ide",
+        eventStream: adapter.streamEvents,
+      });
+      const task = {
+        taskId: "task-ide-events",
+        projectId: "project-1",
+        assigneeKind: "agent" as const,
+        assigneeId: driver.agentId,
+        mode: "serial" as const,
+        status: "queued" as const,
+        promptDigest: "sha256:ide-events",
+        dependsOnTaskIds: [],
+        createdAtUnixMs: 1,
+        updatedAtUnixMs: 1,
+      };
+      const run = {
+        runId: "run-ide-events",
+        taskId: task.taskId,
+        agentId: driver.agentId,
+        runtimeId: driver.runtimeId,
+        status: "queued" as const,
+        attempt: 1,
+        capabilityGrantIds: [],
+      };
+      const eventsPromise = Effect.runPromise(
+        driver.streamEvents!().pipe(Stream.take(2), Stream.runCollect),
+      );
+      const started = await Effect.runPromise(
+        driver.startTask({
+          task,
+          run,
+          prompt: "[fixture:complete] 执行 IDE bridge event smoke",
+          workspaceRoot: "C:/workspace",
+        }),
+      );
+      const events = Array.from(await eventsPromise);
+
+      expect(events.map((event) => event.type)).toEqual(["task.progress", "task.completed"]);
+      expect(driver.resolveRuntimeEvent!(events[0]!)).toEqual({
+        taskId: task.taskId,
+        runId: run.runId,
+        runtimeTaskId: started.runtimeTaskId,
+      });
+      expect(driver.resolveRuntimeEvent!(events[1]!)).toEqual({
+        taskId: task.taskId,
+        runId: run.runId,
+        runtimeTaskId: started.runtimeTaskId,
+      });
     } finally {
       adapter.close();
       await stopFixture(fixture);
