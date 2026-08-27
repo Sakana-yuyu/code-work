@@ -3,6 +3,7 @@ import type {
   CompositionTaskRun,
   CompositionTaskStatus,
 } from "@codework/contracts";
+import * as Cause from "effect/Cause";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -85,7 +86,7 @@ export class CompositionTaskGraphExecutor extends Context.Service<
 >()("codework/composition/CompositionTaskGraphExecutor") {}
 
 type GraphExecutorOptions = {
-  readonly orchestrator: Pick<CompositionOrchestrator, "dispatchTask" | "retryTask">;
+  readonly orchestrator: Pick<CompositionOrchestrator, "dispatchTask" | "retryTask" | "cancelTask">;
   readonly store: Pick<CompositionTaskStoreShape, "getTask">;
   readonly runtime: Pick<CompositionTaskRuntimeProjectionServiceShape, "awaitTaskCompletion">;
 };
@@ -99,6 +100,7 @@ type RunningNode = {
   readonly node: CompositionTaskGraphNodeInput;
   readonly dispatch: CompositionDispatchResult;
   readonly dispatches: ReadonlyArray<CompositionDispatchResult>;
+  currentDispatch: CompositionDispatchResult;
 };
 
 const terminalStatuses: ReadonlySet<CompositionTaskStatus> = new Set([
@@ -292,11 +294,17 @@ const make = (options: GraphExecutorOptions): CompositionTaskGraphExecutorShape 
         .pipe(
           Effect.mapError((error) => graphError(errorCode(error), errorDetail(error), node.nodeId)),
         );
-      return { node, dispatch, dispatches: [dispatch] } satisfies RunningNode;
+      return {
+        node,
+        dispatch,
+        dispatches: [dispatch],
+        currentDispatch: dispatch,
+      } satisfies RunningNode;
     });
 
   const settleNode = (
     started: RunningNode,
+    activeNodes: Set<RunningNode>,
   ): Effect.Effect<CompositionTaskGraphNodeResult, CompositionTaskGraphExecutionError> =>
     Effect.gen(function* () {
       const { node } = started;
@@ -319,6 +327,7 @@ const make = (options: GraphExecutorOptions): CompositionTaskGraphExecutorShape 
           `Task Graph 收到子任务终态：${node.nodeId}/${settled.run.runId}/${settled.run.status}`,
         );
         if (settled.run.status === "completed") {
+          activeNodes.delete(started);
           return {
             nodeId: node.nodeId,
             task: settled.task,
@@ -328,6 +337,7 @@ const make = (options: GraphExecutorOptions): CompositionTaskGraphExecutorShape 
           } satisfies CompositionTaskGraphNodeResult;
         }
         if (dispatches.length >= maxAttempts) {
+          activeNodes.delete(started);
           return yield* graphError(
             "child_failed",
             `子任务未完成：${settled.run.failureCode ?? settled.run.status}；${settled.run.resultSummary ?? "无结果摘要"}`,
@@ -350,6 +360,7 @@ const make = (options: GraphExecutorOptions): CompositionTaskGraphExecutorShape 
             ),
           );
         dispatch = retry;
+        started.currentDispatch = retry;
         dispatches.push(retry);
       }
     });
@@ -362,6 +373,57 @@ const make = (options: GraphExecutorOptions): CompositionTaskGraphExecutorShape 
       const nodesById = new Map(input.children.map((node) => [node.nodeId, node] as const));
       const pending = new Set(input.children.map((node) => node.nodeId));
       const results = new Map<string, CompositionTaskGraphNodeResult>();
+      const activeNodes = new Set<RunningNode>();
+
+      const cancelNodes = (nodes: ReadonlyArray<RunningNode>, failedNodeId?: string) =>
+        Effect.gen(function* () {
+          const candidates = nodes.filter(
+            (started) => failedNodeId === undefined || started.node.nodeId !== failedNodeId,
+          );
+          const failures: string[] = [];
+          yield* Effect.forEach(
+            candidates,
+            (started) =>
+              Effect.exit(
+                options.orchestrator.cancelTask({
+                  taskId: started.currentDispatch.task.taskId,
+                  runId: started.currentDispatch.run.runId,
+                  reason:
+                    failedNodeId === undefined
+                      ? "Task Graph 启动失败，取消已启动的子任务"
+                      : `Task Graph 子任务 ${failedNodeId} 失败，取消仍运行的并行子任务`,
+                }),
+              ).pipe(
+                Effect.flatMap((exit) => {
+                  if (exit._tag === "Failure") {
+                    failures.push(
+                      `${started.node.nodeId}: ${errorDetail(Cause.squash(exit.cause))}`,
+                    );
+                  }
+                  return Effect.void;
+                }),
+              ),
+            { concurrency: "unbounded", discard: true },
+          );
+          for (const started of candidates) activeNodes.delete(started);
+          return failures;
+        });
+
+      const failAfterCleanup = (
+        failure: CompositionTaskGraphExecutionError,
+        nodes: ReadonlyArray<RunningNode>,
+      ) =>
+        Effect.gen(function* () {
+          const cleanupFailures = yield* cancelNodes(nodes, failure.nodeId);
+          if (cleanupFailures.length > 0) {
+            return yield* graphError(
+              "child_cancel_cleanup_failed",
+              `${failure.detail}；取消其他子任务失败：${cleanupFailures.join("；")}`,
+              failure.nodeId,
+            );
+          }
+          return yield* failure;
+        });
 
       while (pending.size > 0) {
         const ready = input.children.filter(
@@ -388,11 +450,24 @@ const make = (options: GraphExecutorOptions): CompositionTaskGraphExecutorShape 
             input.leader.taskId,
           );
         // 先顺序写入每个子任务的 Code Work 投影，再并行等待 Driver 运行结果。
-        const startedBatch = yield* Effect.forEach(ready, runReady);
+        const startedBatch: RunningNode[] = [];
+        for (const node of ready) {
+          const started = yield* runReady(node).pipe(
+            Effect.catch((failure) => failAfterCleanup(failure, startedBatch)),
+          );
+          startedBatch.push(started);
+          if (!terminalStatuses.has(started.currentDispatch.run.status)) {
+            activeNodes.add(started);
+          }
+        }
         const batch =
           (input.schedule ?? "parallel") === "parallel"
-            ? yield* Effect.forEach(startedBatch, settleNode, { concurrency: "unbounded" })
-            : yield* Effect.forEach(startedBatch, settleNode);
+            ? yield* Effect.forEach(startedBatch, (started) => settleNode(started, activeNodes), {
+                concurrency: "unbounded",
+              }).pipe(Effect.catch((failure) => failAfterCleanup(failure, [...activeNodes])))
+            : yield* Effect.forEach(startedBatch, (started) =>
+                settleNode(started, activeNodes),
+              ).pipe(Effect.catch((failure) => failAfterCleanup(failure, [...activeNodes])));
         for (const result of batch) {
           yield* Effect.logDebug(`Task Graph 子任务结果已汇聚：${result.nodeId}`);
           results.set(result.nodeId, result);
