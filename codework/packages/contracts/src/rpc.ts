@@ -233,6 +233,8 @@ import {
   CompositionControlCenterRedispatchResult,
   CompositionControlCenterRequest,
   CompositionControlCenterResult,
+  CompositionSupplierRegistryRequest,
+  CompositionSupplierRegistryResult,
   CompositionTaskCancelResult,
   CompositionTaskDispatchRequest,
   CompositionTaskDispatchResult,
@@ -357,6 +359,7 @@ export const WS_METHODS = {
   serverControlCenterProjection: "server.controlCenterProjection",
   serverControlCenterRedispatch: "server.controlCenterRedispatch",
   serverControlCenterAbandon: "server.controlCenterAbandon",
+  serverSupplierRegistry: "server.supplierRegistry",
   serverDiscoverSourceControl: "server.discoverSourceControl",
   serverGetTraceDiagnostics: "server.getTraceDiagnostics",
   serverGetProcessDiagnostics: "server.getProcessDiagnostics",
@@ -668,6 +671,12 @@ export const WsServerControlCenterRedispatchRpc = Rpc.make(
 export const WsServerControlCenterAbandonRpc = Rpc.make(WS_METHODS.serverControlCenterAbandon, {
   payload: CompositionControlCenterAbandonRequest,
   success: CompositionControlCenterAbandonResult,
+  error: Schema.Union([CompositionTaskRpcError, EnvironmentAuthorizationError]),
+});
+
+export const WsServerSupplierRegistryRpc = Rpc.make(WS_METHODS.serverSupplierRegistry, {
+  payload: CompositionSupplierRegistryRequest,
+  success: CompositionSupplierRegistryResult,
   error: Schema.Union([CompositionTaskRpcError, EnvironmentAuthorizationError]),
 });
 
@@ -1319,6 +1328,7 @@ export const WsRpcGroup = RpcGroup.make(
   WsServerControlCenterProjectionRpc,
   WsServerControlCenterRedispatchRpc,
   WsServerControlCenterAbandonRpc,
+  WsServerSupplierRegistryRpc,
   WsServerDiscoverSourceControlRpc,
   WsServerGetTraceDiagnosticsRpc,
   WsServerGetProcessDiagnosticsRpc,

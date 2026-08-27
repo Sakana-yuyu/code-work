@@ -100,6 +100,7 @@ import * as CompositionIdeSessionRegistry from "./composition/CompositionIdeSess
 import * as CompositionOrchestratorService from "./composition/CompositionOrchestratorService.ts";
 import * as CompositionControlCenterProjection from "./composition/CompositionControlCenterProjection.ts";
 import * as CompositionGoalLoopRedispatch from "./composition/CompositionGoalLoopRedispatch.ts";
+import * as CompositionSupplierRegistryProjection from "./composition/CompositionSupplierRegistryProjection.ts";
 import { CompositionTaskStore } from "./persistence/Services/CompositionTaskStore.ts";
 import * as CompositionTaskGraphExecutor from "./composition/CompositionTaskGraphExecutor.ts";
 import * as CompositionToolBroker from "./composition/ToolBroker.ts";
@@ -497,6 +498,9 @@ const makeWsRpcLayer = (
       );
       const compositionAgentDrivers = yield* Effect.serviceOption(
         CompositionAgentDriverRegistry.CompositionAgentDriverRegistryService,
+      );
+      const providerInstanceRegistry = yield* Effect.serviceOption(
+        ProviderInstanceRegistry.ProviderInstanceRegistry,
       );
       const compositionIdeSessions = yield* Effect.serviceOption(
         CompositionIdeSessionRegistry.CompositionIdeSessionRegistryService,
@@ -2142,6 +2146,29 @@ const makeWsRpcLayer = (
                   })),
                   Effect.mapError(compositionTaskError),
                 ),
+            { "rpc.aggregate": "composition" },
+          ),
+        [WS_METHODS.serverSupplierRegistry]: (_input) =>
+          observeRpcEffect(
+            WS_METHODS.serverSupplierRegistry,
+            Option.isNone(providerInstanceRegistry) || Option.isNone(compositionAgentDrivers)
+              ? Effect.fail(compositionTaskUnavailable())
+              : Effect.gen(function* () {
+                  const instances = yield* providerInstanceRegistry.value.listInstances;
+                  const profiles = yield* compositionAgentDrivers.value.listProfiles;
+                  return CompositionSupplierRegistryProjection.projectCompositionSupplierRegistry({
+                    instances: instances.map((instance) => ({
+                      instanceId: instance.instanceId,
+                      driverKind: instance.driverKind,
+                      displayName: instance.displayName,
+                      enabled: instance.enabled,
+                      continuationKey: instance.continuationIdentity.continuationKey,
+                      defaultModelId: instance.composition?.defaultModelId,
+                    })),
+                    profiles,
+                    nowUnixMs: Date.now(),
+                  });
+                }),
             { "rpc.aggregate": "composition" },
           ),
         [WS_METHODS.serverDiscoverSourceControl]: (_input) =>

@@ -810,6 +810,12 @@ export function createServerEnvironmentAtoms<R, E>(
           JSON.stringify([environmentId, input.taskId, input.runId]),
       },
     }),
+    supplierRegistry: createEnvironmentRpcQueryAtomFamily(runtime, {
+      label: "environment-data:server:supplier-registry",
+      tag: WS_METHODS.serverSupplierRegistry,
+      staleTimeMs: 5_000,
+      idleTtlMs: 30_000,
+    }),
     listCompositionTaskEvents: createEnvironmentRpcQueryAtomFamily(runtime, {
       label: "environment-data:server:list-composition-task-events",
       tag: WS_METHODS.serverListCompositionTaskEvents,

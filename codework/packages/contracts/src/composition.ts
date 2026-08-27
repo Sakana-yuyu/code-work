@@ -661,6 +661,12 @@ export const CompositionSupplierRegistryResult = Schema.Struct({
 });
 export type CompositionSupplierRegistryResult = typeof CompositionSupplierRegistryResult.Type;
 
+/** Supplier/Profile 统一注册表只读投影请求。 */
+export const CompositionSupplierRegistryRequest = Schema.Struct({
+  projectId: Schema.optional(TrimmedNonEmptyString),
+});
+export type CompositionSupplierRegistryRequest = typeof CompositionSupplierRegistryRequest.Type;
+
 const CompositionTaskDependencyCondition = Schema.Literals([
   "success",
   "terminal",
