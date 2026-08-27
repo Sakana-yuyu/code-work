@@ -18,6 +18,7 @@ import * as Option from "effect/Option";
 import * as TestClock from "effect/testing/TestClock";
 
 import { makeCompositionAgentDriverRegistry } from "./CompositionAgentDriverRegistry.ts";
+import { makeCompositionByokAgentDriver } from "./CompositionByokAgentDriver.ts";
 import { makeCapabilityGrantRegistry } from "./CapabilityGrantRegistry.ts";
 import { makeCompositionCapabilityRegistry } from "./CapabilityRegistry.ts";
 import { makeCompositionProviderAgentDriver } from "./CompositionProviderAgentDriver.ts";
@@ -272,6 +273,56 @@ layer("CompositionTaskRuntimeProjector", (it) => {
         turnId: TurnId.make("turn-provider-restart"),
         type: "turn.completed",
         payload: { state: "completed" },
+      });
+
+      assert.equal(
+        Option.getOrThrow(yield* store.getTask(recoveredTask.taskId)).status,
+        "completed",
+      );
+      assert.equal(Option.getOrThrow(yield* store.getRun(recoveredRun.runId)).status, "completed");
+    }),
+  );
+
+  it.effect("重启后的 BYOK Driver 只按本地关联元数据归属终态事件", () =>
+    Effect.gen(function* () {
+      const store = yield* CompositionTaskStore;
+      const recoveredTask = { ...task, taskId: "task-runtime-byok-restart" };
+      const recoveredRun = {
+        ...run,
+        taskId: recoveredTask.taskId,
+        runId: "run-runtime-byok-restart",
+        agentId: "provider:byok-restart",
+        runtimeId: "byok:restart",
+        runtimeTaskId: "byok:restart:task:task-runtime-byok-restart:run-runtime-byok-restart",
+      };
+      const registry = makeCompositionAgentDriverRegistry();
+      yield* registry.register(
+        makeCompositionByokAgentDriver({
+          agentId: recoveredRun.agentId,
+          runtimeId: recoveredRun.runtimeId,
+          providerInstanceId: "byok-restart",
+          agentService: { run: () => Effect.die("重启恢复测试不应启动新的 BYOK Loop") },
+          listTools: () => Effect.succeed([]),
+        }),
+      );
+      yield* store.upsertTask(recoveredTask);
+      yield* store.upsertRun(recoveredRun);
+
+      yield* projectCompositionRuntimeEvent(store, registry, {
+        ...baseEvent,
+        eventId: EventId.make("byok-event-restart-terminal"),
+        provider: ProviderDriverKind.make("byok"),
+        providerInstanceId: ProviderInstanceId.make("byok-restart"),
+        threadId: ThreadId.make("external-byok-thread"),
+        turnId: TurnId.make("external-byok-turn"),
+        type: "turn.completed",
+        payload: { state: "completed" },
+        raw: {
+          source: "composition.byok.agent-loop",
+          runtimeId: recoveredRun.runtimeId,
+          runtimeTaskId: RuntimeTaskId.make(recoveredRun.runtimeTaskId),
+          payload: {},
+        },
       });
 
       assert.equal(

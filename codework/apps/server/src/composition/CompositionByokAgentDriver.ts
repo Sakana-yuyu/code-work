@@ -59,6 +59,24 @@ const turnIdFor = (taskId: string, runId: string): TurnId =>
 
 const nowIso = (): string => DateTime.formatIso(DateTime.nowUnsafe());
 
+/** 只接受由本地 BYOK Loop 写入的关联元数据，禁止从 threadId 推测 Composition Run。 */
+const persistedByokRuntimeCorrelation = (
+  options: Pick<CompositionByokAgentDriverOptions, "runtimeId" | "providerInstanceId">,
+  event: ProviderRuntimeEvent,
+): { readonly runtimeId: string; readonly runtimeTaskId: string } | undefined => {
+  const raw = event.raw;
+  if (
+    event.provider !== ProviderDriverKind.make("byok") ||
+    event.providerInstanceId !== ProviderInstanceId.make(String(options.providerInstanceId)) ||
+    raw?.source !== "composition.byok.agent-loop" ||
+    raw.runtimeId !== options.runtimeId ||
+    raw.runtimeTaskId === undefined
+  ) {
+    return undefined;
+  }
+  return { runtimeId: options.runtimeId, runtimeTaskId: raw.runtimeTaskId };
+};
+
 export const makeCompositionByokAgentDriver = (
   options: CompositionByokAgentDriverOptions,
 ): CompositionAgentDriver => {
@@ -183,6 +201,12 @@ export const makeCompositionByokAgentDriver = (
       const threadId = threadIdFor(input.task.taskId, input.run.runId);
       const turnId = turnIdFor(input.task.taskId, input.run.runId);
       const runtimeTaskId = runtimeTaskIdFor(options.runtimeId, input.task.taskId, input.run.runId);
+      const raw = {
+        source: "composition.byok.agent-loop" as const,
+        runtimeId: options.runtimeId,
+        runtimeTaskId,
+        payload: {},
+      };
       const context = yield* Effect.context<never>();
       const runFork = Effect.runForkWith(context);
       const completed = {
@@ -203,6 +227,7 @@ export const makeCompositionByokAgentDriver = (
           turnId,
           type: "turn.started",
           payload: { model: modelId },
+          raw,
         });
         const tools = yield* options.listTools();
         const result = yield* options.agentService.run({
@@ -225,6 +250,7 @@ export const makeCompositionByokAgentDriver = (
             turnId,
             type: "content.delta",
             payload: { streamKind: "assistant_text", delta: result.text },
+            raw,
           });
         }
         yield* publish({
@@ -234,6 +260,7 @@ export const makeCompositionByokAgentDriver = (
           turnId,
           type: "turn.completed",
           payload: { state: "completed", stopReason: "agent_loop_completed" },
+          raw,
         });
         completedRuns.set(input.run.runId, completed);
       }).pipe(
@@ -250,6 +277,7 @@ export const makeCompositionByokAgentDriver = (
                   turnId,
                   type: "runtime.error",
                   payload: { message: detail, class: "provider_error" },
+                  raw,
                 });
                 yield* publish({
                   provider: ProviderDriverKind.make("byok"),
@@ -258,6 +286,7 @@ export const makeCompositionByokAgentDriver = (
                   turnId,
                   type: "turn.completed",
                   payload: { state: "failed", errorMessage: detail },
+                  raw,
                 });
               }),
         ),
@@ -299,6 +328,12 @@ export const makeCompositionByokAgentDriver = (
         turnId: active.turnId,
         type: "turn.aborted",
         payload: { reason: input.reason },
+        raw: {
+          source: "composition.byok.agent-loop",
+          runtimeId: options.runtimeId,
+          runtimeTaskId: active.runtimeTaskId,
+          payload: {},
+        },
       });
       completedRuns.set(input.run.runId, {
         taskId: active.taskId,
@@ -345,5 +380,6 @@ export const makeCompositionByokAgentDriver = (
       }
       return undefined;
     },
+    resolvePersistedRuntimeEvent: (event) => persistedByokRuntimeCorrelation(options, event),
   };
 };

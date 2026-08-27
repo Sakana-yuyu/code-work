@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vite-plus/test";
+import { ProviderDriverKind } from "@codework/contracts";
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
@@ -91,6 +92,59 @@ describe("CompositionByokAgentDriver", () => {
       runId: run.runId,
       runtimeTaskId: "provider:byok:task:task-byok:run-byok",
     });
+  });
+
+  it("重建后的 BYOK Driver 仅凭本地关联元数据恢复持久化终态事件", async () => {
+    const service: CompositionAgentServiceShape = {
+      run: () => Effect.succeed({ text: "完成", messages: [], rounds: 1 }),
+    };
+    const options = {
+      agentId: "provider:byok",
+      runtimeId: "provider:byok",
+      providerInstanceId: "byok",
+      agentService: service,
+      listTools: () => Effect.succeed(tools),
+    };
+    const driver = makeCompositionByokAgentDriver(options);
+    const eventsFiber = Effect.runFork(Stream.runCollect(Stream.take(driver.streamEvents!(), 3)));
+    await Effect.runPromise(start(driver));
+    const events = await Effect.runPromise(Fiber.join(eventsFiber));
+    const recoveredDriver = makeCompositionByokAgentDriver(options);
+
+    expect(recoveredDriver.resolvePersistedRuntimeEvent?.(events[2]!)).toEqual({
+      runtimeId: "provider:byok",
+      runtimeTaskId: "provider:byok:task:task-byok:run-byok",
+    });
+    expect(events[2]?.raw).toEqual({
+      source: "composition.byok.agent-loop",
+      runtimeId: "provider:byok",
+      runtimeTaskId: "provider:byok:task:task-byok:run-byok",
+      payload: {},
+    });
+    expect(
+      recoveredDriver.resolvePersistedRuntimeEvent?.({
+        ...events[2]!,
+        raw: {
+          ...events[2]!.raw!,
+          source: "ide.jsonrpc",
+        },
+      }),
+    ).toBeUndefined();
+    expect(
+      recoveredDriver.resolvePersistedRuntimeEvent?.({
+        ...events[2]!,
+        raw: {
+          ...events[2]!.raw!,
+          runtimeId: "provider:other",
+        },
+      }),
+    ).toBeUndefined();
+    expect(
+      recoveredDriver.resolvePersistedRuntimeEvent?.({
+        ...events[2]!,
+        provider: ProviderDriverKind.make("cursor"),
+      }),
+    ).toBeUndefined();
   });
 
   it("取消正在运行的 BYOK Loop，并发出 turn.aborted 而不是成功终态", async () => {

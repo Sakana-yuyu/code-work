@@ -31,6 +31,8 @@ const RuntimeEventRawSource = Schema.Union([
   Schema.TemplateLiteral(["acp.", Schema.String, ".extension"]),
   Schema.Literal("ide.jsonrpc"),
   Schema.Literal("multica.task-event"),
+  /** 仅由 Code Work 本地 BYOK Agent Loop 生成的 Runtime 关联事件。 */
+  Schema.Literal("composition.byok.agent-loop"),
   /** 仅由 Code Work 本地 Run 活性看门狗生成，不能由外部 Runtime 伪造。 */
   Schema.Literal("composition.watchdog"),
 ]);
