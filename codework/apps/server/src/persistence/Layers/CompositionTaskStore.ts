@@ -52,6 +52,7 @@ const RunRowSchema = Schema.Struct({
   capabilityGrantIds: StringArrayJson,
   leaseId: Schema.NullOr(Schema.String),
   startedAtUnixMs: Schema.NullOr(Schema.Number),
+  lastRuntimeEventAtUnixMs: Schema.NullOr(Schema.Number),
   cancelRequestedAtUnixMs: Schema.NullOr(Schema.Number),
   finishedAtUnixMs: Schema.NullOr(Schema.Number),
   failureCode: Schema.NullOr(Schema.String),
@@ -145,6 +146,9 @@ const toRun = (row: Schema.Schema.Type<typeof RunRowSchema>): CompositionTaskRun
   capabilityGrantIds: row.capabilityGrantIds,
   ...(row.leaseId === null ? {} : { leaseId: row.leaseId }),
   ...(row.startedAtUnixMs === null ? {} : { startedAtUnixMs: row.startedAtUnixMs }),
+  ...(row.lastRuntimeEventAtUnixMs === null
+    ? {}
+    : { lastRuntimeEventAtUnixMs: row.lastRuntimeEventAtUnixMs }),
   ...(row.cancelRequestedAtUnixMs === null
     ? {}
     : { cancelRequestedAtUnixMs: row.cancelRequestedAtUnixMs }),
@@ -284,13 +288,15 @@ const makeStore = Effect.gen(function* () {
     execute: (run) => sql`
       INSERT INTO composition_task_runs (
         run_id, task_id, agent_id, runtime_id, runtime_task_id, capability_handshake_id, status, attempt,
-        capability_grant_ids_json, lease_id, started_at_unix_ms, cancel_requested_at_unix_ms, finished_at_unix_ms,
+        capability_grant_ids_json, lease_id, started_at_unix_ms, last_runtime_event_at_unix_ms,
+        cancel_requested_at_unix_ms, finished_at_unix_ms,
         failure_code, result_summary
       ) VALUES (
         ${run.runId}, ${run.taskId}, ${run.agentId}, ${run.runtimeId}, ${run.runtimeTaskId},
         ${run.capabilityHandshakeId},
         ${run.status}, ${run.attempt}, ${encodeStringArray(run.capabilityGrantIds)},
-        ${run.leaseId}, ${run.startedAtUnixMs}, ${run.cancelRequestedAtUnixMs}, ${run.finishedAtUnixMs},
+        ${run.leaseId}, ${run.startedAtUnixMs}, ${run.lastRuntimeEventAtUnixMs},
+        ${run.cancelRequestedAtUnixMs}, ${run.finishedAtUnixMs},
         ${run.failureCode}, ${run.resultSummary}
       )
       ON CONFLICT (run_id) DO UPDATE SET
@@ -300,6 +306,7 @@ const makeStore = Effect.gen(function* () {
         status = excluded.status, attempt = excluded.attempt,
         capability_grant_ids_json = excluded.capability_grant_ids_json,
         lease_id = excluded.lease_id, started_at_unix_ms = excluded.started_at_unix_ms,
+        last_runtime_event_at_unix_ms = excluded.last_runtime_event_at_unix_ms,
         cancel_requested_at_unix_ms = excluded.cancel_requested_at_unix_ms,
         finished_at_unix_ms = excluded.finished_at_unix_ms, failure_code = excluded.failure_code,
         result_summary = excluded.result_summary
@@ -316,6 +323,7 @@ const makeStore = Effect.gen(function* () {
         status, attempt,
         capability_grant_ids_json AS "capabilityGrantIds", lease_id AS "leaseId",
         started_at_unix_ms AS "startedAtUnixMs",
+        last_runtime_event_at_unix_ms AS "lastRuntimeEventAtUnixMs",
         cancel_requested_at_unix_ms AS "cancelRequestedAtUnixMs",
         finished_at_unix_ms AS "finishedAtUnixMs",
         failure_code AS "failureCode", result_summary AS "resultSummary"
@@ -333,6 +341,7 @@ const makeStore = Effect.gen(function* () {
         status, attempt,
         capability_grant_ids_json AS "capabilityGrantIds", lease_id AS "leaseId",
         started_at_unix_ms AS "startedAtUnixMs",
+        last_runtime_event_at_unix_ms AS "lastRuntimeEventAtUnixMs",
         cancel_requested_at_unix_ms AS "cancelRequestedAtUnixMs",
         finished_at_unix_ms AS "finishedAtUnixMs",
         failure_code AS "failureCode", result_summary AS "resultSummary"
@@ -353,6 +362,7 @@ const makeStore = Effect.gen(function* () {
         status, attempt,
         capability_grant_ids_json AS "capabilityGrantIds", lease_id AS "leaseId",
         started_at_unix_ms AS "startedAtUnixMs",
+        last_runtime_event_at_unix_ms AS "lastRuntimeEventAtUnixMs",
         cancel_requested_at_unix_ms AS "cancelRequestedAtUnixMs",
         finished_at_unix_ms AS "finishedAtUnixMs",
         failure_code AS "failureCode", result_summary AS "resultSummary"
@@ -564,6 +574,7 @@ const makeStore = Effect.gen(function* () {
           capabilityGrantIds: [...(runValue.capabilityGrantIds ?? [])],
           leaseId: runValue.leaseId ?? null,
           startedAtUnixMs: runValue.startedAtUnixMs ?? null,
+          lastRuntimeEventAtUnixMs: runValue.lastRuntimeEventAtUnixMs ?? null,
           cancelRequestedAtUnixMs: runValue.cancelRequestedAtUnixMs ?? null,
           finishedAtUnixMs: runValue.finishedAtUnixMs ?? null,
           failureCode: runValue.failureCode ?? null,

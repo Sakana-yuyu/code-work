@@ -276,6 +276,48 @@ layer("CompositionRunLiveness", (it) => {
     }),
   );
 
+  it.effect("任务级更新时间不能掩盖同一 Run 已失活", () =>
+    Effect.gen(function* () {
+      const store = yield* CompositionTaskStore;
+      const task = makeTask({ taskId: "task-liveness-run-watermark", updatedAtUnixMs: 9_500 });
+      // 模拟同一 Task 的非 Runtime 更新：Run 自己最后一次可信活动仍停留在启动时。
+      const run = makeRun({
+        taskId: task.taskId,
+        runId: "run-liveness-run-watermark",
+        lastRuntimeEventAtUnixMs: 1,
+      });
+      const registry = makeCompositionAgentDriverRegistry();
+      let cancelCalls = 0;
+      yield* registry.register({
+        agentId: run.agentId,
+        runtimeId: run.runtimeId,
+        startTask: () => startWithRunTaskId(run),
+        cancelTask: () =>
+          Effect.sync(() => {
+            cancelCalls += 1;
+            return { status: "cancel_requested" as const };
+          }),
+      });
+      const orchestrator = makeCompositionOrchestrator(store, registry);
+      yield* store.upsertTask(task);
+      yield* store.upsertRun(run);
+
+      const actions = yield* recoverCompositionRunLiveness({
+        store: { listTasks: () => Effect.succeed([task]), getLatestRun: store.getLatestRun },
+        orchestrator,
+        nowUnixMs: 10_000,
+        inactivityTimeoutMs: 1_000,
+        cancelConfirmationTimeoutMs: 500,
+        projectRuntimeEvent: (event) => projectCompositionRuntimeEvent(store, registry, event),
+      });
+
+      assert.deepEqual(actions, [
+        { taskId: task.taskId, runId: run.runId, action: "cancel_requested" },
+      ]);
+      assert.equal(cancelCalls, 1);
+    }),
+  );
+
   it.effect("supervisor 启动即扫描，并且下一周期不会重复取消已记录请求的 Run", () =>
     Effect.scoped(
       Effect.gen(function* () {

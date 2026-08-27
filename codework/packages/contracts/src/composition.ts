@@ -294,6 +294,8 @@ export const CompositionTaskRun = Schema.Struct({
   capabilityGrantIds: Schema.Array(TrimmedNonEmptyString),
   leaseId: Schema.optional(TrimmedNonEmptyString),
   startedAtUnixMs: Schema.optional(NonNegativeInt),
+  /** 最近一次被 Composition Runtime Projector 接受的 Runtime 事件时间。 */
+  lastRuntimeEventAtUnixMs: Schema.optional(NonNegativeInt),
   /** Driver 接受取消请求的时间；不是最终取消确认。 */
   cancelRequestedAtUnixMs: Schema.optional(NonNegativeInt),
   finishedAtUnixMs: Schema.optional(NonNegativeInt),

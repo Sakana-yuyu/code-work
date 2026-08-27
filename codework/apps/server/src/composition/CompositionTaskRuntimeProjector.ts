@@ -452,6 +452,7 @@ export const projectCompositionRuntimeEvent = (
       ...(projection.status === "running" && run.startedAtUnixMs === undefined
         ? { startedAtUnixMs: now }
         : {}),
+      lastRuntimeEventAtUnixMs: now,
     };
     const accepted = yield* store.withTransaction(
       Effect.gen(function* () {

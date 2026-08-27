@@ -15,6 +15,7 @@ import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
+import * as TestClock from "effect/testing/TestClock";
 
 import { makeCompositionAgentDriverRegistry } from "./CompositionAgentDriverRegistry.ts";
 import { makeCapabilityGrantRegistry } from "./CapabilityGrantRegistry.ts";
@@ -133,6 +134,108 @@ layer("CompositionTaskRuntimeProjector", (it) => {
       assert.equal(events[0]?.sourceEventId, "provider-event-1");
       assert.equal(resumeCalls, 1);
     }),
+  );
+
+  it.effect("有效 Runtime 事件会持久化 Run 级活动水位", () =>
+    Effect.gen(function* () {
+      const store = yield* CompositionTaskStore;
+      const activityTask = { ...task, taskId: "task-runtime-activity" };
+      const activityRun = {
+        ...run,
+        taskId: activityTask.taskId,
+        runId: "run-runtime-activity",
+        runtimeTaskId: "runtime-task-activity",
+      };
+      const registry = makeCompositionAgentDriverRegistry();
+      yield* registry.register({
+        agentId: activityRun.agentId,
+        runtimeId: activityRun.runtimeId,
+        startTask: () => Effect.succeed({ runtimeTaskId: activityRun.runtimeTaskId }),
+        cancelTask: () => Effect.succeed({ status: "cancelled" as const }),
+        resolveRuntimeEvent: () => ({ taskId: activityTask.taskId, runId: activityRun.runId }),
+      });
+      yield* store.upsertTask(activityTask);
+      yield* store.upsertRun(activityRun);
+
+      yield* projectCompositionRuntimeEvent(store, registry, {
+        ...baseEvent,
+        eventId: EventId.make("provider-event-activity"),
+        type: "task.progress",
+        payload: {
+          taskId: RuntimeTaskId.make(activityRun.runtimeTaskId),
+          description: "Runtime 正在执行",
+          summary: "Runtime 正在执行",
+        },
+      });
+
+      const stored = Option.getOrThrow(yield* store.getRun(activityRun.runId));
+      const storedTask = Option.getOrThrow(yield* store.getTask(activityTask.taskId));
+      assert.equal(typeof stored.lastRuntimeEventAtUnixMs, "number");
+      assert.equal(stored.lastRuntimeEventAtUnixMs, storedTask.updatedAtUnixMs);
+    }),
+  );
+
+  it.effect("重复或终态后的迟到 Runtime 事件不会刷新 Run 活动水位", () =>
+    Effect.gen(function* () {
+      const store = yield* CompositionTaskStore;
+      const activityTask = { ...task, taskId: "task-runtime-activity-locked" };
+      const activityRun = {
+        ...run,
+        taskId: activityTask.taskId,
+        runId: "run-runtime-activity-locked",
+        runtimeTaskId: "runtime-task-activity-locked",
+      };
+      const registry = makeCompositionAgentDriverRegistry();
+      yield* registry.register({
+        agentId: activityRun.agentId,
+        runtimeId: activityRun.runtimeId,
+        startTask: () => Effect.succeed({ runtimeTaskId: activityRun.runtimeTaskId }),
+        cancelTask: () => Effect.succeed({ status: "cancelled" as const }),
+        resolveRuntimeEvent: () => ({ taskId: activityTask.taskId, runId: activityRun.runId }),
+      });
+      yield* store.upsertTask(activityTask);
+      yield* store.upsertRun(activityRun);
+      yield* TestClock.setTime(100);
+      const progressEvent: ProviderRuntimeEvent = {
+        ...baseEvent,
+        eventId: EventId.make("provider-event-activity-locked"),
+        type: "task.progress",
+        payload: {
+          taskId: RuntimeTaskId.make(activityRun.runtimeTaskId),
+          description: "Runtime 正在执行",
+          summary: "Runtime 正在执行",
+        },
+      };
+      yield* projectCompositionRuntimeEvent(store, registry, progressEvent);
+      assert.equal(
+        Option.getOrThrow(yield* store.getRun(activityRun.runId)).lastRuntimeEventAtUnixMs,
+        100,
+      );
+
+      yield* TestClock.setTime(200);
+      yield* projectCompositionRuntimeEvent(store, registry, progressEvent);
+      assert.equal(
+        Option.getOrThrow(yield* store.getRun(activityRun.runId)).lastRuntimeEventAtUnixMs,
+        100,
+      );
+
+      yield* TestClock.setTime(300);
+      yield* projectCompositionRuntimeEvent(store, registry, {
+        ...baseEvent,
+        eventId: EventId.make("provider-event-activity-terminal"),
+        type: "turn.completed",
+        payload: { state: "completed" },
+      });
+      yield* TestClock.setTime(400);
+      yield* projectCompositionRuntimeEvent(store, registry, {
+        ...progressEvent,
+        eventId: EventId.make("provider-event-activity-late"),
+      });
+
+      const stored = Option.getOrThrow(yield* store.getRun(activityRun.runId));
+      assert.equal(stored.status, "completed");
+      assert.equal(stored.lastRuntimeEventAtUnixMs, 300);
+    }).pipe(Effect.provide(TestClock.layer())),
   );
 
   it.effect("Runtime 明确报告 timed_out 时保留超时终态而不是降级成失败", () =>

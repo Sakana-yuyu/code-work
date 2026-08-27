@@ -107,7 +107,8 @@ const isStale = (
   nowUnixMs: number,
   inactivityTimeoutMs: number,
 ): boolean => {
-  const lastObservedAt = Math.max(task.updatedAtUnixMs, run.startedAtUnixMs ?? 0);
+  const lastObservedAt =
+    run.lastRuntimeEventAtUnixMs ?? Math.max(task.updatedAtUnixMs, run.startedAtUnixMs ?? 0);
   return nowUnixMs - lastObservedAt >= inactivityTimeoutMs;
 };
 
