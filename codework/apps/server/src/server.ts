@@ -58,6 +58,7 @@ import * as CompositionCapabilityGrantRegistry from "./composition/CapabilityGra
 import * as CompositionCapabilityPolicy from "./composition/CapabilityPolicy.ts";
 import * as CompositionToolBroker from "./composition/ToolBroker.ts";
 import * as CompositionIdeSessionRegistry from "./composition/CompositionIdeSessionRegistry.ts";
+import * as CompositionIdeAgentDriverProjection from "./composition/CompositionIdeAgentDriverProjection.ts";
 import * as CompositionMcpToolRegistry from "./composition/CompositionMcpToolRegistry.ts";
 import * as CompositionMcpRuntimeAdapter from "./composition/CompositionMcpRuntimeAdapter.ts";
 import * as CompositionMcpRuntimeService from "./composition/CompositionMcpRuntimeService.ts";
@@ -428,6 +429,7 @@ const CompositionAgentDriverProjectionLayerLive = Layer.mergeAll(
   CompositionByokAgentDriverProjection.layer,
   CompositionProviderAgentDriverProjection.layer,
   CompositionRuntimeAgentDriverProjection.layer,
+  CompositionIdeAgentDriverProjection.layer,
 ).pipe(
   Layer.provideMerge(CompositionAgentDriverRegistry.layer),
   Layer.provideMerge(CompositionRuntimeAdapterRegistry.layer),
@@ -778,7 +780,9 @@ export const makeServerLayer = Layer.unwrap(
                   Schedule.upTo({ duration: "10 minutes" }),
                 ),
               }),
-              Effect.tap(() => Effect.logInfo("Code Work Connect desired link reconciled on startup")),
+              Effect.tap(() =>
+                Effect.logInfo("Code Work Connect desired link reconciled on startup"),
+              ),
               Effect.catch((cause) =>
                 Effect.logWarning("Failed to reconcile Code Work Connect desired link on startup", {
                   cause,

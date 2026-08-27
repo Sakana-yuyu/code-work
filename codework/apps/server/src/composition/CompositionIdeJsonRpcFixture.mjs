@@ -10,6 +10,7 @@ const server = createServer((_request, response) => {
 });
 const webSocketServer = new NodeWS.WebSocketServer({ noServer: true });
 const sockets = new Set();
+const tasks = new Map();
 
 const send = (socket, message) => {
   if (socket.readyState === NodeWS.WebSocket.OPEN) socket.send(JSON.stringify(message));
@@ -33,7 +34,7 @@ webSocketServer.on("connection", (socket, request) => {
         result: {
           sessionId,
           profile: "vscode_ide",
-          verifiedOperations: ["editor.read", "editor.write"],
+          verifiedOperations: ["editor.read", "editor.write", "task.start", "task.cancel"],
           status: "ready",
         },
       });
@@ -58,6 +59,24 @@ webSocketServer.on("connection", (socket, request) => {
       return;
     }
     if (requestMessage.method === "t3.ide.invoke") {
+      if (params.operation === "task.start") {
+        const runtimeTaskId = `fixture-runtime-task-${tasks.size + 1}`;
+        tasks.set(`${params.taskId}:${params.runId}`, runtimeTaskId);
+        send(socket, {
+          jsonrpc: "2.0",
+          id: requestMessage.id,
+          result: { runtimeTaskId, status: "accepted" },
+        });
+        return;
+      }
+      if (params.operation === "task.cancel") {
+        send(socket, {
+          jsonrpc: "2.0",
+          id: requestMessage.id,
+          result: { runtimeTaskId: params.arguments?.runtimeTaskId, status: "cancelled" },
+        });
+        return;
+      }
       send(socket, {
         jsonrpc: "2.0",
         id: requestMessage.id,

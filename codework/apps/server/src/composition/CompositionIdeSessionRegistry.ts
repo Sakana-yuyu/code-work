@@ -2,7 +2,10 @@ import type { CompositionIdeProfile, CompositionIdeResolveResult } from "@codewo
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
+import * as PubSub from "effect/PubSub";
 import * as Schema from "effect/Schema";
+import type * as Scope from "effect/Scope";
+import * as Stream from "effect/Stream";
 
 export type CompositionIdeRequestedProfile = Exclude<CompositionIdeProfile, "unknown">;
 
@@ -96,6 +99,11 @@ export interface CompositionIdeAdapter {
   readonly invoke: (
     input: CompositionIdeInvocation,
   ) => Effect.Effect<unknown, CompositionIdeAdapterFailure>;
+  /** T3 IDE bridge 可选的任务事件流；没有明确实现时不得推断任务已完成。 */
+  readonly streamEvents?: () => Stream.Stream<
+    import("@codework/contracts").ProviderRuntimeEvent,
+    CompositionIdeAdapterFailure
+  >;
 }
 
 export interface CompositionIdeSessionRegistry {
@@ -106,9 +114,11 @@ export interface CompositionIdeSessionRegistry {
     CompositionIdeSessionAlreadyRegisteredError | CompositionIdeSessionInvalidError
   >;
   readonly unregister: (sessionId: string) => Effect.Effect<boolean>;
+  readonly revokeHandshake: (handshakeId: string) => Effect.Effect<boolean>;
   readonly get: (sessionId: string) => Effect.Effect<CompositionIdeAdapter | undefined>;
   readonly list: Effect.Effect<ReadonlyArray<CompositionIdeAdapter>>;
   readonly listStatus: Effect.Effect<ReadonlyArray<CompositionIdeResolveResult>>;
+  readonly subscribeChanges: Effect.Effect<PubSub.Subscription<void>, never, Scope.Scope>;
   readonly resolve: (input: {
     readonly sessionId: string;
     readonly requestedProfile: string;
@@ -198,6 +208,7 @@ export const makeCompositionIdeSessionRegistry = (
 ): CompositionIdeSessionRegistry => {
   const adapters = new Map<string, CompositionIdeAdapter>();
   const handshakes = new Map<string, CompositionIdeHandshakeState>();
+  const changes = Effect.runSync(PubSub.unbounded<void>());
   const now = options.now ?? Date.now;
   const handshakeTtlMs = options.handshakeTtlMs ?? 5 * 60 * 1000;
 
@@ -219,18 +230,23 @@ export const makeCompositionIdeSessionRegistry = (
       return yield* new CompositionIdeSessionAlreadyRegisteredError({ sessionId });
     }
     adapters.set(sessionId, adapter);
+    yield* PubSub.publish(changes, undefined).pipe(Effect.asVoid);
   });
 
   const unregister: CompositionIdeSessionRegistry["unregister"] = (sessionId) =>
-    Effect.sync(() => {
+    Effect.gen(function* () {
       const adapter = adapters.get(sessionId);
       const removed = adapters.delete(sessionId);
       for (const [handshakeId, handshake] of handshakes) {
         if (handshake.sessionId === sessionId) handshakes.delete(handshakeId);
       }
       adapter?.close?.();
+      if (removed) yield* PubSub.publish(changes, undefined).pipe(Effect.asVoid);
       return removed;
     });
+
+  const revokeHandshake: CompositionIdeSessionRegistry["revokeHandshake"] = (handshakeId) =>
+    Effect.sync(() => handshakes.delete(handshakeId));
 
   const resolve: CompositionIdeSessionRegistry["resolve"] = (input) => {
     const adapter = adapters.get(input.sessionId);
@@ -396,6 +412,7 @@ export const makeCompositionIdeSessionRegistry = (
   return {
     register,
     unregister,
+    revokeHandshake,
     get: (sessionId) => Effect.sync(() => adapters.get(sessionId)),
     get list() {
       return Effect.sync(() => Array.from(adapters.values()));
@@ -415,6 +432,7 @@ export const makeCompositionIdeSessionRegistry = (
         ),
       );
     },
+    subscribeChanges: PubSub.subscribe(changes),
     resolve,
     handshake,
     invoke,
