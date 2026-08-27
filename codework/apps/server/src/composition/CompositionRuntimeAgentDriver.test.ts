@@ -401,4 +401,241 @@ describe("CompositionRuntimeAgentDriver", () => {
       runtimeTaskId: "shared-runtime-task",
     });
   });
+
+  it("拒绝 runtimeId 不属于当前 Driver 的 delegated runtime event", async () => {
+    const adapter = makeInMemoryCompositionRuntimeAdapter({
+      runtimeId: "runtime-delegated-source",
+    });
+    const driver = makeCompositionRuntimeAgentDriver({
+      adapter,
+      agentId: "runtime-delegated-source:agent",
+    });
+    const started = await Effect.runPromise(
+      driver.startTask({
+        task: {
+          taskId: "task-delegated-source",
+          projectId: "project-1",
+          assigneeKind: "agent",
+          assigneeId: driver.agentId,
+          mode: "serial",
+          status: "queued",
+          promptDigest: "sha256:delegated-source",
+          dependsOnTaskIds: [],
+          createdAtUnixMs: 1,
+          updatedAtUnixMs: 1,
+        },
+        run: {
+          runId: "run-delegated-source",
+          taskId: "task-delegated-source",
+          agentId: driver.agentId,
+          runtimeId: driver.runtimeId,
+          status: "queued",
+          attempt: 1,
+          capabilityGrantIds: [],
+        },
+      }),
+    );
+    const runtimeTaskId = started.runtimeTaskId;
+    if (runtimeTaskId === undefined) throw new Error("测试预期 Runtime Task ID 已返回。");
+
+    expect(
+      driver.resolveRuntimeEvent?.({
+        eventId: EventId.make("event-delegated-wrong-runtime"),
+        provider: ProviderDriverKind.make("cursor"),
+        threadId: ThreadId.make("thread-delegated-source"),
+        createdAt: "2026-08-27T00:00:00.000Z",
+        type: "task.progress",
+        payload: { taskId: RuntimeTaskId.make(runtimeTaskId), description: "不属于当前 runtime" },
+        raw: {
+          source: "ide.jsonrpc",
+          runtimeId: "other-runtime",
+          runtimeTaskId: RuntimeTaskId.make(runtimeTaskId),
+          payload: {},
+        },
+      }),
+    ).toBeUndefined();
+  });
+
+  it("拒绝 delegated executionId 与 runtimeTaskId 不一致的事件", async () => {
+    const adapter = makeInMemoryCompositionRuntimeAdapter({
+      runtimeId: "runtime-delegated-identity",
+    });
+    const driver = makeCompositionRuntimeAgentDriver({
+      adapter,
+      agentId: "runtime-delegated-identity:agent",
+    });
+    const started = await Effect.runPromise(
+      driver.startTask({
+        task: {
+          taskId: "task-delegated-identity",
+          projectId: "project-1",
+          assigneeKind: "agent",
+          assigneeId: driver.agentId,
+          mode: "serial",
+          status: "queued",
+          promptDigest: "sha256:delegated-identity",
+          dependsOnTaskIds: [],
+          createdAtUnixMs: 1,
+          updatedAtUnixMs: 1,
+        },
+        run: {
+          runId: "run-delegated-identity",
+          taskId: "task-delegated-identity",
+          agentId: driver.agentId,
+          runtimeId: driver.runtimeId,
+          status: "queued",
+          attempt: 1,
+          capabilityGrantIds: [],
+        },
+      }),
+    );
+    const runtimeTaskId = started.runtimeTaskId;
+    if (runtimeTaskId === undefined) throw new Error("测试预期 Runtime Task ID 已返回。");
+
+    expect(
+      driver.resolveRuntimeEvent?.({
+        eventId: EventId.make("event-delegated-wrong-execution"),
+        provider: ProviderDriverKind.make("cursor"),
+        threadId: ThreadId.make("thread-delegated-identity"),
+        createdAt: "2026-08-27T00:00:01.000Z",
+        type: "task.progress",
+        payload: { taskId: RuntimeTaskId.make(runtimeTaskId), description: "错误 execution" },
+        raw: {
+          source: "ide.jsonrpc",
+          runtimeId: driver.runtimeId,
+          runtimeTaskId: RuntimeTaskId.make(runtimeTaskId),
+          payload: {},
+          delegatedExecution: {
+            executionId: RuntimeTaskId.make("other-execution"),
+            sourceMessageId: 1,
+          },
+        },
+      }),
+    ).toBeUndefined();
+  });
+
+  it("拒绝同一 delegated execution 的旧 sourceMessageId", async () => {
+    const adapter = makeInMemoryCompositionRuntimeAdapter({ runtimeId: "runtime-delegated-order" });
+    const driver = makeCompositionRuntimeAgentDriver({
+      adapter,
+      agentId: "runtime-delegated-order:agent",
+    });
+    const started = await Effect.runPromise(
+      driver.startTask({
+        task: {
+          taskId: "task-delegated-order",
+          projectId: "project-1",
+          assigneeKind: "agent",
+          assigneeId: driver.agentId,
+          mode: "serial",
+          status: "queued",
+          promptDigest: "sha256:delegated-order",
+          dependsOnTaskIds: [],
+          createdAtUnixMs: 1,
+          updatedAtUnixMs: 1,
+        },
+        run: {
+          runId: "run-delegated-order",
+          taskId: "task-delegated-order",
+          agentId: driver.agentId,
+          runtimeId: driver.runtimeId,
+          status: "queued",
+          attempt: 1,
+          capabilityGrantIds: [],
+        },
+      }),
+    );
+    const runtimeTaskId = started.runtimeTaskId;
+    if (runtimeTaskId === undefined) throw new Error("测试预期 Runtime Task ID 已返回。");
+    const event = (eventId: string, sourceMessageId: number) => ({
+      eventId: EventId.make(eventId),
+      provider: ProviderDriverKind.make("cursor"),
+      threadId: ThreadId.make("thread-delegated-order"),
+      createdAt: "2026-08-27T00:00:02.000Z",
+      type: "task.progress" as const,
+      payload: { taskId: RuntimeTaskId.make(runtimeTaskId), description: "委派事件" },
+      raw: {
+        source: "ide.jsonrpc" as const,
+        runtimeId: driver.runtimeId,
+        runtimeTaskId: RuntimeTaskId.make(runtimeTaskId),
+        payload: {},
+        delegatedExecution: {
+          executionId: runtimeTaskId,
+          sourceMessageId,
+        },
+      },
+    });
+
+    expect(driver.resolveRuntimeEvent?.(event("event-delegated-message-2", 2))).toEqual({
+      taskId: "task-delegated-order",
+      runId: "run-delegated-order",
+      runtimeTaskId,
+    });
+    expect(driver.resolveRuntimeEvent?.(event("event-delegated-message-1", 1))).toBeUndefined();
+  });
+
+  it("接受 providerPass 变化后仍匹配 delegated execution 的事件", async () => {
+    const adapter = makeInMemoryCompositionRuntimeAdapter({ runtimeId: "runtime-delegated-pass" });
+    const driver = makeCompositionRuntimeAgentDriver({
+      adapter,
+      agentId: "runtime-delegated-pass:agent",
+    });
+    const started = await Effect.runPromise(
+      driver.startTask({
+        task: {
+          taskId: "task-delegated-pass",
+          projectId: "project-1",
+          assigneeKind: "agent",
+          assigneeId: driver.agentId,
+          mode: "serial",
+          status: "queued",
+          promptDigest: "sha256:delegated-pass",
+          dependsOnTaskIds: [],
+          createdAtUnixMs: 1,
+          updatedAtUnixMs: 1,
+        },
+        run: {
+          runId: "run-delegated-pass",
+          taskId: "task-delegated-pass",
+          agentId: driver.agentId,
+          runtimeId: driver.runtimeId,
+          status: "queued",
+          attempt: 1,
+          capabilityGrantIds: [],
+        },
+      }),
+    );
+    const runtimeTaskId = started.runtimeTaskId;
+    if (runtimeTaskId === undefined) throw new Error("测试预期 Runtime Task ID 已返回。");
+    const event = (eventId: string, sourceMessageId: number, providerPass: number) => ({
+      eventId: EventId.make(eventId),
+      provider: ProviderDriverKind.make("cursor"),
+      threadId: ThreadId.make("thread-delegated-pass"),
+      createdAt: "2026-08-27T00:00:03.000Z",
+      type: "task.progress" as const,
+      payload: { taskId: RuntimeTaskId.make(runtimeTaskId), description: "委派事件" },
+      raw: {
+        source: "ide.jsonrpc" as const,
+        runtimeId: driver.runtimeId,
+        runtimeTaskId: RuntimeTaskId.make(runtimeTaskId),
+        payload: {},
+        delegatedExecution: {
+          executionId: runtimeTaskId,
+          sourceMessageId,
+          providerPass,
+        },
+      },
+    });
+
+    expect(driver.resolveRuntimeEvent?.(event("event-delegated-pass-1", 1, 1))).toEqual({
+      taskId: "task-delegated-pass",
+      runId: "run-delegated-pass",
+      runtimeTaskId,
+    });
+    expect(driver.resolveRuntimeEvent?.(event("event-delegated-pass-2", 2, 2))).toEqual({
+      taskId: "task-delegated-pass",
+      runId: "run-delegated-pass",
+      runtimeTaskId,
+    });
+  });
 });

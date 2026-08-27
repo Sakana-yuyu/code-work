@@ -36,6 +36,17 @@ const RuntimeEventRawSource = Schema.Union([
 ]);
 export type RuntimeEventRawSource = typeof RuntimeEventRawSource.Type;
 
+/**
+ * 仅 Runtime Adapter 用于关联外部委派执行的元数据。
+ * executionId 是映射后的 Code Work runtimeTaskId；不得透传远端原始执行 payload。
+ */
+export const RuntimeDelegatedExecution = Schema.Struct({
+  executionId: RuntimeTaskId,
+  sourceMessageId: Schema.optional(NonNegativeInt),
+  providerPass: Schema.optional(NonNegativeInt),
+});
+export type RuntimeDelegatedExecution = typeof RuntimeDelegatedExecution.Type;
+
 export const RuntimeEventRaw = Schema.Struct({
   source: RuntimeEventRawSource,
   method: Schema.optional(TrimmedNonEmptyStringSchema),
@@ -43,6 +54,7 @@ export const RuntimeEventRaw = Schema.Struct({
   /** Code Work 适配器提供的归属元数据，不是外部 Runtime 的原始字段。 */
   runtimeId: Schema.optional(TrimmedNonEmptyStringSchema),
   runtimeTaskId: Schema.optional(RuntimeTaskId),
+  delegatedExecution: Schema.optional(RuntimeDelegatedExecution),
   /** 仅 composition.watchdog 使用的受信任本地 Task/Run 关联。 */
   taskId: Schema.optional(TrimmedNonEmptyStringSchema),
   runId: Schema.optional(TrimmedNonEmptyStringSchema),

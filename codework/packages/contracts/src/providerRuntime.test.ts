@@ -6,6 +6,113 @@ import { classifyTaskAgentKind, ProviderRuntimeEvent } from "./providerRuntime.t
 const decodeRuntimeEvent = Schema.decodeUnknownSync(ProviderRuntimeEvent);
 
 describe("ProviderRuntimeEvent", () => {
+  it("解码 Runtime Adapter 提供的 delegated execution 关联元数据", () => {
+    const parsed = decodeRuntimeEvent({
+      type: "task.progress",
+      eventId: "event-delegated-execution",
+      provider: "cursor",
+      createdAt: "2026-08-27T00:00:00.000Z",
+      threadId: "thread-delegated-execution",
+      payload: {
+        taskId: "runtime-task-delegated-execution",
+        description: "执行中",
+      },
+      raw: {
+        source: "ide.jsonrpc",
+        runtimeId: "cursor-runtime-1",
+        runtimeTaskId: "runtime-task-delegated-execution",
+        delegatedExecution: {
+          executionId: "runtime-task-delegated-execution",
+          sourceMessageId: 2,
+          providerPass: 1,
+        },
+        payload: {},
+      },
+    });
+
+    expect(parsed.raw?.delegatedExecution).toEqual({
+      executionId: "runtime-task-delegated-execution",
+      sourceMessageId: 2,
+      providerPass: 1,
+    });
+  });
+
+  it("拒绝非法 delegated execution 关联元数据", () => {
+    const baseEvent = {
+      type: "task.progress",
+      eventId: "event-invalid-delegated-execution",
+      provider: "cursor",
+      createdAt: "2026-08-27T00:00:01.000Z",
+      threadId: "thread-invalid-delegated-execution",
+      payload: {
+        taskId: "runtime-task-invalid-delegated-execution",
+        description: "执行中",
+      },
+      raw: {
+        source: "ide.jsonrpc",
+        runtimeId: "cursor-runtime-1",
+        runtimeTaskId: "runtime-task-invalid-delegated-execution",
+        payload: {},
+      },
+    };
+
+    expect(() =>
+      decodeRuntimeEvent({
+        ...baseEvent,
+        raw: {
+          ...baseEvent.raw,
+          delegatedExecution: { executionId: "   " },
+        },
+      }),
+    ).toThrow();
+    expect(() =>
+      decodeRuntimeEvent({
+        ...baseEvent,
+        raw: {
+          ...baseEvent.raw,
+          delegatedExecution: {
+            executionId: "runtime-task-invalid-delegated-execution",
+            sourceMessageId: -1,
+          },
+        },
+      }),
+    ).toThrow();
+    expect(() =>
+      decodeRuntimeEvent({
+        ...baseEvent,
+        raw: {
+          ...baseEvent.raw,
+          delegatedExecution: {
+            executionId: "runtime-task-invalid-delegated-execution",
+            providerPass: -1,
+          },
+        },
+      }),
+    ).toThrow();
+  });
+
+  it("兼容不带 delegated execution 元数据的既有 Runtime raw event", () => {
+    const parsed = decodeRuntimeEvent({
+      type: "task.progress",
+      eventId: "event-legacy-runtime-raw",
+      provider: "multica",
+      createdAt: "2026-08-27T00:00:02.000Z",
+      threadId: "thread-legacy-runtime-raw",
+      payload: {
+        taskId: "runtime-task-legacy-raw",
+        description: "执行中",
+      },
+      raw: {
+        source: "multica.task-event",
+        runtimeId: "multica-runtime-1",
+        runtimeTaskId: "runtime-task-legacy-raw",
+        payload: {},
+      },
+    });
+
+    expect(parsed.raw?.delegatedExecution).toBeUndefined();
+  });
+
   it("accepts fork-provided driver kinds as branded slugs", () => {
     const parsed = decodeRuntimeEvent({
       type: "session.started",

@@ -24,6 +24,7 @@ type ActiveRun = {
   readonly runId: string;
   readonly runtimeTaskId: string;
   readonly capabilityHandshakeId?: string;
+  readonly lastDelegatedSourceMessageId?: number;
 };
 
 const maxHistoricalRuntimeBindings = 4096;
@@ -316,6 +317,47 @@ export const makeCompositionRuntimeAgentDriver = (
     revokeCapabilityHandshake,
     cancelTask,
     resolveRuntimeEvent: (event) => {
+      if (event.raw?.runtimeId !== undefined && event.raw.runtimeId !== options.adapter.runtimeId) {
+        return undefined;
+      }
+      const delegatedExecution = event.raw?.delegatedExecution;
+      if (delegatedExecution !== undefined) {
+        const raw = event.raw;
+        const runtimeTaskId = raw?.runtimeTaskId;
+        if (
+          raw?.runtimeId === undefined ||
+          runtimeTaskId === undefined ||
+          delegatedExecution.executionId !== runtimeTaskId
+        ) {
+          return undefined;
+        }
+        const binding = historicalRuns.get(runtimeTaskId);
+        if (
+          binding === undefined ||
+          binding === null ||
+          binding.runtimeTaskId !== delegatedExecution.executionId
+        ) {
+          return undefined;
+        }
+        const sourceMessageId = delegatedExecution.sourceMessageId;
+        if (sourceMessageId !== undefined) {
+          const previousSourceMessageId = binding.lastDelegatedSourceMessageId;
+          if (previousSourceMessageId !== undefined && sourceMessageId < previousSourceMessageId) {
+            return undefined;
+          }
+          if (previousSourceMessageId === undefined || sourceMessageId > previousSourceMessageId) {
+            historicalRuns.set(runtimeTaskId, {
+              ...binding,
+              lastDelegatedSourceMessageId: sourceMessageId,
+            });
+          }
+        }
+        return {
+          taskId: binding.taskId,
+          runId: binding.runId,
+          runtimeTaskId: binding.runtimeTaskId,
+        };
+      }
       const runtimeTaskId = runtimeTaskIdFromEvent(event);
       if (runtimeTaskId === undefined) return undefined;
       const binding = historicalRuns.get(runtimeTaskId);
