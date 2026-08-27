@@ -7,6 +7,7 @@ import {
 import { memo, useCallback, useEffect, useMemo } from "react";
 import { isOpenFavoriteEditorShortcut, shortcutLabelForCommand } from "../../keybindings";
 import { usePreferredEditor } from "../../editorPreferences";
+import { editorLabelForPlatform } from "../../editorLabels";
 import {
   openRemoteEditorUrl,
   useRemoteCapableEditors,
@@ -43,7 +44,7 @@ import {
   RustRoverIcon,
   WebStormIcon,
 } from "../JetBrainsIcons";
-import { cn, isMacPlatform, isWindowsPlatform } from "~/lib/utils";
+import { cn } from "~/lib/utils";
 import { shellEnvironment } from "~/state/shell";
 import { useAtomCommand } from "~/state/use-atom-command";
 import { t } from "~/i18n";
@@ -56,140 +57,117 @@ type OpenInOption = {
 };
 
 const resolveOptions = (platform: string, availableEditors: ReadonlyArray<EditorId>) => {
-  const baseOptions: ReadonlyArray<OpenInOption> = [
+  const baseOptions: ReadonlyArray<Omit<OpenInOption, "label">> = [
     {
-      label: t("cursor"),
       Icon: CursorIcon,
       value: "cursor",
       kind: "brand",
     },
     {
-      label: t("trae"),
       Icon: TraeIcon,
       value: "trae",
       kind: "brand",
     },
     {
-      label: t("kiro"),
       Icon: KiroIcon,
       value: "kiro",
       kind: "brand",
     },
     {
-      label: t("vsCode"),
       Icon: VisualStudioCode,
       value: "vscode",
       kind: "brand",
     },
     {
-      label: t("vsCodeInsiders"),
       Icon: VisualStudioCodeInsiders,
       value: "vscode-insiders",
       kind: "brand",
     },
     {
-      label: t("vscodium"),
       Icon: VSCodium,
       value: "vscodium",
       kind: "brand",
     },
     {
-      label: t("zed"),
       Icon: Zed,
       value: "zed",
       kind: "brand",
     },
     {
-      label: t("antigravity"),
       Icon: AntigravityIcon,
       value: "antigravity",
       kind: "brand",
     },
     {
-      label: t("intellijIdea"),
       Icon: IntelliJIdeaIcon,
       value: "idea",
       kind: "brand",
     },
     {
-      label: t("aqua"),
       Icon: AquaIcon,
       value: "aqua",
       kind: "brand",
     },
     {
-      label: t("clion"),
       Icon: CLionIcon,
       value: "clion",
       kind: "brand",
     },
     {
-      label: t("datagrip"),
       Icon: DataGripIcon,
       value: "datagrip",
       kind: "brand",
     },
     {
-      label: t("dataspell"),
       Icon: DataSpellIcon,
       value: "dataspell",
       kind: "brand",
     },
     {
-      label: t("goland"),
       Icon: GoLandIcon,
       value: "goland",
       kind: "brand",
     },
     {
-      label: t("phpstorm"),
       Icon: PhpStormIcon,
       value: "phpstorm",
       kind: "brand",
     },
     {
-      label: t("pycharm"),
       Icon: PyCharmIcon,
       value: "pycharm",
       kind: "brand",
     },
     {
-      label: t("rider"),
       Icon: RiderIcon,
       value: "rider",
       kind: "brand",
     },
     {
-      label: t("rubymine"),
       Icon: RubyMineIcon,
       value: "rubymine",
       kind: "brand",
     },
     {
-      label: t("rustrover"),
       Icon: RustRoverIcon,
       value: "rustrover",
       kind: "brand",
     },
     {
-      label: t("webstorm"),
       Icon: WebStormIcon,
       value: "webstorm",
       kind: "brand",
     },
     {
-      label: isMacPlatform(platform)
-        ? t("finder")
-        : isWindowsPlatform(platform)
-          ? t("explorer")
-          : t("surface.files"),
       Icon: FolderClosedIcon,
       value: "file-manager",
       kind: "generic",
     },
   ];
   const availableEditorSet = new Set(availableEditors);
-  return baseOptions.filter((option) => availableEditorSet.has(option.value));
+  return baseOptions
+    .filter((option) => availableEditorSet.has(option.value))
+    .map((option) => ({ ...option, label: editorLabelForPlatform(option.value, platform) }));
 };
 
 function getOpenInIconClass(kind: OpenInOption["kind"]) {

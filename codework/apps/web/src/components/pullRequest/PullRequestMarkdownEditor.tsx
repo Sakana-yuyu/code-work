@@ -1,4 +1,5 @@
 import { useState } from "react";
+import type { EnvironmentId } from "@codework/contracts";
 
 import { cn } from "~/lib/utils";
 
@@ -18,6 +19,7 @@ import { t } from "~/i18n";
 export function PullRequestMarkdownEditor({
   value,
   cwd,
+  environmentId,
   placeholder,
   label,
   saving,
@@ -28,6 +30,7 @@ export function PullRequestMarkdownEditor({
 }: {
   readonly value: string;
   readonly cwd: string;
+  readonly environmentId: EnvironmentId;
   readonly placeholder?: string | undefined;
   readonly label: string;
   readonly saving: boolean;
@@ -82,7 +85,7 @@ export function PullRequestMarkdownEditor({
           {empty ? (
             <p className="text-xs text-muted-foreground">{t("nothingToPreview")}</p>
           ) : (
-            <PullRequestMarkdown text={draft} cwd={cwd} />
+            <PullRequestMarkdown text={draft} cwd={cwd} environmentId={environmentId} />
           )}
         </div>
       ) : (

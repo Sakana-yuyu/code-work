@@ -1,4 +1,5 @@
 import { ExternalLinkIcon, PaperclipIcon, PlayIcon } from "lucide-react";
+import type { EnvironmentId } from "@codework/contracts";
 
 import { cn } from "~/lib/utils";
 
@@ -20,10 +21,12 @@ import { t } from "~/i18n";
 export function PullRequestMarkdown({
   text,
   cwd,
+  environmentId,
   className,
 }: {
   text: string;
   cwd: string;
+  environmentId: EnvironmentId;
   className?: string;
 }) {
   const segments = splitPullRequestBody(text);
@@ -31,7 +34,14 @@ export function PullRequestMarkdown({
     <div className={cn("space-y-3", className)}>
       {segments.map((segment) => {
         if (segment.kind === "markdown") {
-          return <ChatMarkdown key={segment.id} text={segment.text} cwd={cwd} />;
+          return (
+            <ChatMarkdown
+              key={segment.id}
+              text={segment.text}
+              cwd={cwd}
+              environmentId={environmentId}
+            />
+          );
         }
         const isVideo = segment.media === "video";
         const Icon = isVideo ? PlayIcon : PaperclipIcon;
