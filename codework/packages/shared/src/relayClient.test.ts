@@ -10,7 +10,7 @@ import * as Sink from "effect/Sink";
 import * as Stream from "effect/Stream";
 import { HttpClient, HttpClientResponse } from "effect/unstable/http";
 import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process";
-import * as NodePath from "node:path";
+import * as Path from "effect/Path";
 import { HostProcessArchitecture, HostProcessPlatform } from "./hostProcess.ts";
 
 import {
@@ -108,6 +108,7 @@ describe("RelayClient", () => {
   it.effect("downloads, verifies, validates, and atomically installs the managed executable", () =>
     Effect.gen(function* () {
       const fileSystem = yield* FileSystem.FileSystem;
+      const path = yield* Path.Path;
       const baseDir = yield* fileSystem.makeTempDirectoryScoped({
         prefix: "t3-cloudflared-test-",
       });
@@ -129,7 +130,7 @@ describe("RelayClient", () => {
           }
         }),
       );
-      const managedPath = NodePath.join(
+      const managedPath = path.join(
         baseDir,
         "tools",
         "cloudflared",
@@ -239,11 +240,12 @@ describe("RelayClient", () => {
     const env = { PATH: "" };
     return Effect.gen(function* () {
       const fileSystem = yield* FileSystem.FileSystem;
+      const path = yield* Path.Path;
       const baseDir = yield* fileSystem.makeTempDirectoryScoped({
         prefix: "t3-cloudflared-test-",
       });
-      const binDir = NodePath.join(baseDir, "bin");
-      const executablePath = NodePath.join(binDir, "cloudflared");
+      const binDir = path.join(baseDir, "bin");
+      const executablePath = path.join(binDir, "cloudflared");
       const manager = yield* makeCloudflaredRelayClient({
         baseDir,
       });

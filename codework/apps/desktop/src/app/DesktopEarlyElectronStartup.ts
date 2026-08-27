@@ -50,8 +50,9 @@ function resolveEarlyDesktopSettingsPath(input: {
   readonly homeDirectory: string;
   readonly joinPath: JoinPath;
 }): string {
-  const configuredHome = resolvePreferredEnv(input.env, "CODEWORK_HOME", "CODEWORK_HOME");
-  const codeworkHome = configuredHome === undefined ? Option.none<string>() : Option.some(configuredHome);
+  const configuredHome = resolvePreferredEnv(input.env, "CODEWORK_HOME", "T3CODE_HOME");
+  const codeworkHome =
+    configuredHome === undefined ? Option.none<string>() : Option.some(configuredHome);
   const baseDir = resolveDesktopBaseDir({
     homeDirectory: input.homeDirectory,
     joinPath: input.joinPath,

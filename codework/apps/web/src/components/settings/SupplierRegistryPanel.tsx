@@ -22,11 +22,7 @@ export function SupplierRegistryPanel() {
   const registry: CompositionSupplierRegistryResult | null = registryQuery.data ?? null;
 
   return (
-    <SettingsSection
-      id="supplier-registry"
-      title={t("supplierRegistry.title")}
-      description={t("supplierRegistry.subtitle")}
-    >
+    <SettingsSection id="supplier-registry" title={t("supplierRegistry.title")}>
       <div className="flex items-center justify-between gap-2">
         <h3 className="text-sm font-medium text-foreground">{t("supplierRegistry.suppliers")}</h3>
         <Button

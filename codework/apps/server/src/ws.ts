@@ -1,4 +1,5 @@
 import * as Cause from "effect/Cause";
+import * as Clock from "effect/Clock";
 import * as Crypto from "effect/Crypto";
 import * as DateTime from "effect/DateTime";
 import * as Duration from "effect/Duration";
@@ -2086,66 +2087,74 @@ const makeWsRpcLayer = (
               ? Effect.fail(compositionTaskUnavailable())
               : CompositionControlCenterProjection.projectCompositionControlCenter({
                   store: compositionTaskStore.value,
-                  grantRegistry: Option.isSome(compositionGrantRegistry)
-                    ? compositionGrantRegistry.value
-                    : undefined,
-                  projectId: input.projectId,
-                  squadIds: input.squadIds,
+                  ...(Option.isSome(compositionGrantRegistry)
+                    ? { grantRegistry: compositionGrantRegistry.value }
+                    : {}),
+                  ...(input.projectId !== undefined ? { projectId: input.projectId } : {}),
+                  ...(input.squadIds !== undefined ? { squadIds: input.squadIds } : {}),
                 }).pipe(Effect.mapError(compositionTaskError)),
             { "rpc.aggregate": "composition" },
           ),
         [WS_METHODS.serverControlCenterRedispatch]: (input) =>
           observeRpcEffect(
             WS_METHODS.serverControlCenterRedispatch,
-            Option.isNone(compositionTaskStore) || Option.isNone(compositionOrchestrator)
-              ? Effect.fail(compositionTaskUnavailable())
-              : CompositionGoalLoopRedispatch.settleAndRedispatchInterruptedGoalLoop({
+            Effect.gen(function* () {
+              if (Option.isNone(compositionTaskStore) || Option.isNone(compositionOrchestrator)) {
+                return yield* compositionTaskUnavailable();
+              }
+              const nowUnixMs = yield* Clock.currentTimeMillis;
+              return yield* CompositionGoalLoopRedispatch.settleAndRedispatchInterruptedGoalLoop({
+                taskId: input.taskId,
+                runId: input.runId,
+                agentId: input.agentId,
+                store: compositionTaskStore.value,
+                nowUnixMs,
+                redispatch: ({ previousRunId }) =>
+                  Effect.asVoid(
+                    compositionOrchestrator.value.retryTask({
+                      taskId: input.taskId,
+                      previousRunId,
+                      runId: input.newRunId,
+                      reason: input.note ?? "控制中心自动重派未收敛目标循环",
+                      capabilityIds: input.capabilityIds,
+                    }),
+                  ),
+              }).pipe(
+                Effect.map(({ scan }) => ({
                   taskId: input.taskId,
-                  runId: input.runId,
-                  agentId: input.agentId,
-                  store: compositionTaskStore.value,
-                  nowUnixMs: Date.now(),
-                  redispatch: ({ previousRunId }) =>
-                    Effect.asVoid(
-                      compositionOrchestrator.value.retryTask({
-                        taskId: input.taskId,
-                        previousRunId,
-                        runId: input.newRunId,
-                        reason: input.note ?? "控制中心自动重派未收敛目标循环",
-                        capabilityIds: input.capabilityIds,
-                      }),
-                    ),
-                }).pipe(
-                  Effect.map(({ scan }) => ({
-                    taskId: input.taskId,
-                    previousRunId: input.runId,
-                    newRunId: input.newRunId,
-                    interruptedRounds: scan.completedRounds,
-                  })),
-                  Effect.mapError(compositionTaskError),
-                ),
+                  previousRunId: input.runId,
+                  newRunId: input.newRunId,
+                  interruptedRounds: scan.completedRounds,
+                })),
+                Effect.mapError(compositionTaskError),
+              );
+            }),
             { "rpc.aggregate": "composition" },
           ),
         [WS_METHODS.serverControlCenterAbandon]: (input) =>
           observeRpcEffect(
             WS_METHODS.serverControlCenterAbandon,
-            Option.isNone(compositionTaskStore)
-              ? Effect.fail(compositionTaskUnavailable())
-              : CompositionGoalLoopRedispatch.settleAndAbandonInterruptedGoalLoop({
+            Effect.gen(function* () {
+              if (Option.isNone(compositionTaskStore)) {
+                return yield* compositionTaskUnavailable();
+              }
+              const nowUnixMs = yield* Clock.currentTimeMillis;
+              return yield* CompositionGoalLoopRedispatch.settleAndAbandonInterruptedGoalLoop({
+                taskId: input.taskId,
+                runId: input.runId,
+                agentId: input.agentId,
+                store: compositionTaskStore.value,
+                nowUnixMs,
+                note: input.note ?? "控制中心放弃结算未收敛目标循环",
+              }).pipe(
+                Effect.map(({ scan }) => ({
                   taskId: input.taskId,
                   runId: input.runId,
-                  agentId: input.agentId,
-                  store: compositionTaskStore.value,
-                  nowUnixMs: Date.now(),
-                  note: input.note ?? "控制中心放弃结算未收敛目标循环",
-                }).pipe(
-                  Effect.map(({ scan }) => ({
-                    taskId: input.taskId,
-                    runId: input.runId,
-                    abandonedRounds: scan.completedRounds,
-                  })),
-                  Effect.mapError(compositionTaskError),
-                ),
+                  abandonedRounds: scan.completedRounds,
+                })),
+                Effect.mapError(compositionTaskError),
+              );
+            }),
             { "rpc.aggregate": "composition" },
           ),
         [WS_METHODS.serverSupplierRegistry]: (_input) =>
@@ -2156,6 +2165,7 @@ const makeWsRpcLayer = (
               : Effect.gen(function* () {
                   const instances = yield* providerInstanceRegistry.value.listInstances;
                   const profiles = yield* compositionAgentDrivers.value.listProfiles;
+                  const nowUnixMs = yield* Clock.currentTimeMillis;
                   return CompositionSupplierRegistryProjection.projectCompositionSupplierRegistry({
                     instances: instances.map((instance) => ({
                       instanceId: instance.instanceId,
@@ -2166,7 +2176,7 @@ const makeWsRpcLayer = (
                       defaultModelId: instance.composition?.defaultModelId,
                     })),
                     profiles,
-                    nowUnixMs: Date.now(),
+                    nowUnixMs,
                   });
                 }),
             { "rpc.aggregate": "composition" },

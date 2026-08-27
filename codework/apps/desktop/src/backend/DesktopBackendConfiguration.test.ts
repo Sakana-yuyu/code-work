@@ -1,4 +1,3 @@
-import * as NodePath from "node:path";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, describe, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
@@ -192,9 +191,10 @@ describe("DesktopBackendConfiguration", () => {
         ),
       );
 
+      const path = yield* Path.Path;
       assert.equal(
         config.entryPath,
-        NodePath.join(resourcesPath, "server.asar", "apps", "server", "dist", "bin.mjs"),
+        path.join(resourcesPath, "server.asar", "apps", "server", "dist", "bin.mjs"),
       );
       assert.equal(config.env.ELECTRON_RUN_AS_NODE, "1");
     }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
@@ -819,13 +819,14 @@ describe("DesktopBackendConfiguration", () => {
   it.effect("prefers the external packaged resource monitor over the copy inside the asar", () =>
     Effect.gen(function* () {
       const fileSystem = yield* FileSystem.FileSystem;
+      const path = yield* Path.Path;
       const baseDir = yield* fileSystem.makeTempDirectoryScoped({
         prefix: "t3-desktop-backend-config-test-",
       });
       const resourcesPath = `${baseDir}/resources`;
       const dirname = `${resourcesPath}/app.asar/apps/desktop/dist-electron`;
       const embeddedMonitorPath = `${resourcesPath}/app.asar/apps/desktop/prod-resources/resource-monitor/codework-resource-monitor`;
-      const monitorPath = NodePath.join(resourcesPath, "resource-monitor", "codework-resource-monitor");
+      const monitorPath = path.join(resourcesPath, "resource-monitor", "codework-resource-monitor");
       yield* fileSystem.makeDirectory(
         `${resourcesPath}/app.asar/apps/desktop/prod-resources/resource-monitor`,
         { recursive: true },

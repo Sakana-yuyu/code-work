@@ -69,7 +69,7 @@ describe("DesktopEarlyElectronStartup", () => {
     const options = resolveEarlyLinuxElectronOptions({
       env: {
         CODEWORK_HOME: "/home/user/.code-work-test",
-        CODEWORK_HOME: "/home/user/.t3-test",
+        T3CODE_HOME: "/home/user/.t3-test",
         XDG_CURRENT_DESKTOP: "niri",
         VITE_DEV_SERVER_URL: "http://127.0.0.1:5173",
       },

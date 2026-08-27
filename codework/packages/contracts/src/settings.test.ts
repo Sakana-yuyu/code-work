@@ -2,6 +2,7 @@ import { describe, expect, it } from "vite-plus/test";
 import * as Schema from "effect/Schema";
 
 import { ProviderDriverKind, ProviderInstanceId } from "./providerInstance.ts";
+import { CompositionMcpServerId } from "./compositionRuntime.ts";
 import {
   ClientSettingsSchema,
   ClientSettingsPatch,
@@ -254,7 +255,8 @@ describe("ServerSettings.mcpServers", () => {
       },
     });
 
-    const server = patch.mcpServers?.local_tools;
+    // Record 键是品牌化的 CompositionMcpServerId，普通字面量需显式收窄。
+    const server = patch.mcpServers?.["local_tools" as CompositionMcpServerId];
     expect(server?.name).toBe("Local Tools");
     expect(server?.command).toBe("node");
     expect(server?.trusted).toBe(false);

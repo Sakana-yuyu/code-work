@@ -1,5 +1,6 @@
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import {
+  CompositionMcpServerId,
   DEFAULT_SERVER_SETTINGS,
   ProviderDriverKind,
   ProviderInstanceId,
@@ -20,6 +21,8 @@ import * as ServerSecretStore from "./auth/ServerSecretStore.ts";
 import * as ServerConfig from "./config.ts";
 import * as ServerSettingsModule from "./serverSettings.ts";
 
+// Record 键是品牌化的 CompositionMcpServerId，普通字面量需显式收窄。
+const localToolsKey = "local_tools" as CompositionMcpServerId;
 const decodeSettingsPatch = Schema.decodeUnknownEffect(ServerSettingsPatch);
 const decodeServerSettings = Schema.decodeUnknownEffect(ServerSettings);
 
@@ -56,7 +59,10 @@ it.layer(NodeServices.layer)("server settings", (it) => {
 
       yield* serverSettings.updateSettings({
         mcpServers: {
-          local_tools: {
+          [localToolsKey]: {
+            schemaVersion: 1,
+            enabled: true,
+            trusted: false,
             name: "Local Tools",
             transport: "stdio",
             command: "node",
@@ -85,25 +91,28 @@ it.layer(NodeServices.layer)("server settings", (it) => {
 
       const materialized = yield* serverSettings.getSettings;
       assert.strictEqual(
-        materialized.mcpServers.local_tools?.environment[0]?.value,
+        materialized.mcpServers[localToolsKey]?.environment[0]?.value,
         "mcp-secret-value",
       );
       assert.strictEqual(
-        materialized.mcpServers.local_tools?.headers[0]?.value,
+        materialized.mcpServers[localToolsKey]?.headers[0]?.value,
         "Bearer mcp-secret-value",
       );
 
       const clientSnapshot = ServerSettingsModule.redactServerSettingsForClient(materialized);
-      assert.strictEqual(clientSnapshot.mcpServers.local_tools?.environment[0]?.value, "");
-      assert.strictEqual(clientSnapshot.mcpServers.local_tools?.headers[0]?.value, "");
+      assert.strictEqual(clientSnapshot.mcpServers[localToolsKey]?.environment[0]?.value, "");
+      assert.strictEqual(clientSnapshot.mcpServers[localToolsKey]?.headers[0]?.value, "");
       assert.strictEqual(
-        clientSnapshot.mcpServers.local_tools?.environment[0]?.valueRedacted,
+        clientSnapshot.mcpServers[localToolsKey]?.environment[0]?.valueRedacted,
         true,
       );
 
       const rotated = yield* serverSettings.updateSettings({
         mcpServers: {
-          local_tools: {
+          [localToolsKey]: {
+            schemaVersion: 1,
+            enabled: true,
+            trusted: false,
             name: "Local Tools",
             transport: "stdio",
             command: "node",
@@ -128,11 +137,11 @@ it.layer(NodeServices.layer)("server settings", (it) => {
         },
       });
       assert.strictEqual(
-        rotated.mcpServers.local_tools?.environment[0]?.value,
+        rotated.mcpServers[localToolsKey]?.environment[0]?.value,
         "mcp-rotated-value",
       );
       assert.strictEqual(
-        rotated.mcpServers.local_tools?.headers[0]?.value,
+        rotated.mcpServers[localToolsKey]?.headers[0]?.value,
         "Bearer mcp-rotated-value",
       );
     }).pipe(Effect.provide(makeServerSettingsLayer())),
@@ -807,17 +816,21 @@ it.layer(NodeServices.layer)("server settings", (it) => {
       });
 
       const materializedAdapter = (
-        next.providerInstances[instanceId]?.config as { adapters: Array<Record<string, unknown>> }
-      ).adapters[0];
+        next.providerInstances[instanceId]?.config as
+          | { adapters: Array<Record<string, unknown>> }
+          | undefined
+      )?.adapters[0];
       assert.equal(materializedAdapter?.apiKey, "sk-deepseek-secret");
       assert.equal(materializedAdapter?.apiKeyRedacted, true);
 
       const clientSettings = ServerSettingsModule.redactServerSettingsForClient(next);
       const clientAdapter = (
-        clientSettings.providerInstances[instanceId]?.config as {
-          adapters: Array<Record<string, unknown>>;
-        }
-      ).adapters[0];
+        clientSettings.providerInstances[instanceId]?.config as
+          | {
+              adapters: Array<Record<string, unknown>>;
+            }
+          | undefined
+      )?.adapters[0];
       assert.equal(clientAdapter?.apiKey, "");
       assert.equal(clientAdapter?.apiKeyRedacted, true);
 
@@ -828,7 +841,7 @@ it.layer(NodeServices.layer)("server settings", (it) => {
       assert.equal(persistedAdapter.apiKey, "");
       assert.equal(persistedAdapter.apiKeyRedacted, true);
 
-      const roundTripped = yield* serverSettings.updateSettings({
+      yield* serverSettings.updateSettings({
         providerInstances: {
           [instanceId]: {
             driver: ProviderDriverKind.make("byok"),
@@ -839,11 +852,6 @@ it.layer(NodeServices.layer)("server settings", (it) => {
           },
         },
       });
-      const roundTrippedAdapter = (
-        roundTripped.providerInstances[instanceId]?.config as {
-          adapters: Array<Record<string, unknown>>;
-        }
-      ).adapters[0];
     }).pipe(Effect.provide(makeServerSettingsLayer())),
   );
 
@@ -879,18 +887,22 @@ it.layer(NodeServices.layer)("server settings", (it) => {
       });
 
       const materializedAdapter = (
-        next.providerInstances[instanceId]?.config as { adapters: Array<Record<string, unknown>> }
-      ).adapters[0];
+        next.providerInstances[instanceId]?.config as
+          | { adapters: Array<Record<string, unknown>> }
+          | undefined
+      )?.adapters[0];
       assert.equal(materializedAdapter?.balanceAccessToken, "napi-balance-secret");
       assert.equal(materializedAdapter?.balanceAccessTokenRedacted, true);
       assert.equal(materializedAdapter?.balanceUserID, "42");
 
       const clientSettings = ServerSettingsModule.redactServerSettingsForClient(next);
       const clientAdapter = (
-        clientSettings.providerInstances[instanceId]?.config as {
-          adapters: Array<Record<string, unknown>>;
-        }
-      ).adapters[0];
+        clientSettings.providerInstances[instanceId]?.config as
+          | {
+              adapters: Array<Record<string, unknown>>;
+            }
+          | undefined
+      )?.adapters[0];
       assert.equal(clientAdapter?.balanceAccessToken, "");
       assert.equal(clientAdapter?.balanceAccessTokenRedacted, true);
 
@@ -915,10 +927,12 @@ it.layer(NodeServices.layer)("server settings", (it) => {
         },
       });
       const roundTrippedAdapter = (
-        roundTripped.providerInstances[instanceId]?.config as {
-          adapters: Array<Record<string, unknown>>;
-        }
-      ).adapters[0];
+        roundTripped.providerInstances[instanceId]?.config as
+          | {
+              adapters: Array<Record<string, unknown>>;
+            }
+          | undefined
+      )?.adapters[0];
       assert.equal(roundTrippedAdapter?.balanceAccessToken, "napi-balance-secret");
 
       // Explicitly clearing the token drops the secret and the redacted flag.
@@ -936,10 +950,12 @@ it.layer(NodeServices.layer)("server settings", (it) => {
       });
       const clearedAdapter =
         (
-          cleared.providerInstances[instanceId]?.config as {
-            adapters: Array<Record<string, unknown>>;
-          }
-        ).adapters[0] ?? {};
+          cleared.providerInstances[instanceId]?.config as
+            | {
+                adapters: Array<Record<string, unknown>>;
+              }
+            | undefined
+        )?.adapters[0] ?? {};
       assert.equal(clearedAdapter.balanceAccessToken, "");
       assert.equal(clearedAdapter.balanceAccessTokenRedacted, undefined);
     }).pipe(Effect.provide(makeServerSettingsLayer())),
@@ -970,8 +986,10 @@ it.layer(NodeServices.layer)("server settings", (it) => {
         },
       });
       const persistedSource = (
-        first.providerInstances[instanceId]?.config as { adapters: Array<Record<string, unknown>> }
-      ).adapters[0];
+        first.providerInstances[instanceId]?.config as
+          | { adapters: Array<Record<string, unknown>> }
+          | undefined
+      )?.adapters[0];
 
       const next = yield* serverSettings.updateSettings({
         providerInstances: {
@@ -997,9 +1015,12 @@ it.layer(NodeServices.layer)("server settings", (it) => {
         },
       });
 
-      const materialized = (
-        next.providerInstances[instanceId]?.config as { adapters: Array<Record<string, unknown>> }
-      ).adapters;
+      const materialized =
+        (
+          next.providerInstances[instanceId]?.config as
+            | { adapters: Array<Record<string, unknown>> }
+            | undefined
+        )?.adapters ?? [];
       assert.equal(materialized[1]?.apiKey, "sk-source-secret");
       assert.equal(materialized[1]?.apiKeySourceAdapterId, sourceAdapter.id);
 

@@ -1,10 +1,10 @@
 import type { APIRoute } from "astro";
 
-import { buildT3ProjectFileJsonSchema } from "@codework/shared/codeworkProjectFile";
+import { buildCodeworkProjectFileJsonSchema } from "@codework/shared/codeworkProjectFile";
 
 // Rendered at build time; published at https://t3.codes/schema/t3.json so
 // t3.json files can reference it via "$schema" for editor/LSP support.
 export const GET: APIRoute = () =>
-  new Response(`${JSON.stringify(buildT3ProjectFileJsonSchema(), null, 2)}\n`, {
+  new Response(`${JSON.stringify(buildCodeworkProjectFileJsonSchema(), null, 2)}\n`, {
     headers: { "Content-Type": "application/json" },
   });

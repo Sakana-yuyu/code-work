@@ -13,9 +13,9 @@
 | 更新时间 | 2026-08-27 |
 | 仓库 | `E:\MyProject\code-work\codework` |
 | 当前分支 | `tcode` |
-| 当前提交 | 控制中心 RPC 与 Web 接线节点：`feat(composition): 控制中心投影接入 Server RPC 与 Web 设置` |
-| 相对远端 | 领先 `origin/tcode` 45 个提交，尚未 push |
-| 最新节点 | Supplier 注册表 RPC 与 Web 接线：`serverSupplierRegistry` 四层接线（ReadScope，ws.ts 适配 ProviderInstanceRegistry/driverRegistry），Web 设置"Supplier 注册表"只读区块（双语 i18n，面板 5 用例） |
+| 当前提交 | 类型基线修正节点：`feat(composition): 修复类型与 Effect 规则基线` |
+| 相对远端 | 领先 `origin/tcode` 46 个提交，尚未 push |
+| 最新节点 | 类型与 Effect 规则基线修正：以 contracts `settings.test.ts:257` 品牌 key 收窄为起点，逐包 typecheck 剥出并清偿 committed 代码既有隐性违例（品牌 key、`effect/Path` 服务、存储迁移键恢复、`Clock` 替换 `Date.now`、exactOptional 条件展开等） |
 | 工作区边界 | 存在大量其他并行修改；本文不把这些修改计入本迁移进度，也不回滚、暂存或提交它们 |
 
 ## 证据等级
@@ -199,7 +199,8 @@ CapabilityRegistry + ToolBroker
 - 控制中心审批操作入口：复用既有 `serverReviewCompositionTask` 四层接线（contracts/ws/`AuthOrchestrationOperateScope`/client-runtime `reviewCompositionTask` 命令原子均已就位），面板为 `task.status === "in_review"` 且存在最新 Run 的任务行渲染"通过/驳回"按钮（与 TaskGraphPanel 的审批门槛一致，后端对非 in_review 任务显式报错），decision 取 `approve`/`reject` 字面量、reason 分别取 `controlCenter.approveReasonDefault`/`rejectReasonDefault` 双语缺省文案；面板 9 用例（通过/驳回仅 in_review 行、running 行与无 Run 行不渲染、in_review 行取消入口并存）+ i18n 静态扫描通过。
 - 控制中心放弃结算操作入口：服务端从 `settleAndRedispatchInterruptedGoalLoop` 抽出共用结算流程，新增 `settleAndAbandonInterruptedGoalLoop`——同一"纯扫描 → run/task/最新 Run 校验（失败零副作用）→ supervisor 幂等结算"流程落 `supervisor:abandon`（failed）结算行并把陈旧 run/task 落 failed（failureCode=`goal_loop_abandoned`），**不创建新 Run**，2 新用例（放弃结算落行与不新建 Run、已收敛循环拒绝且零副作用，全家 49/49）；contracts 新增 `serverControlCenterAbandon` 方法与请求/结果 schema（abandonedRounds 返回中断轮次）；授权 `AuthOrchestrationOperateScope`；ws.ts 仅依赖 `compositionTaskStore`（无需 orchestrator）；client-runtime 新增 `controlCenterAbandon` 命令原子（singleFlight）；面板为 goalLoop `interrupted` 且存在最新 Run 的行渲染"放弃结算"按钮（supervisor_settled 行已有结算行会被服务端拒绝，不提供入口），与"自动重派"构成 interrupted 行的两种收敛选择；面板 10 用例 + i18n 静态扫描通过。
 - Supplier/Profile/Account 统一只读投影：contracts 新增 `CompositionSupplierRegistryEntry/Result` schema；新增 `projectCompositionSupplierRegistry` 纯投影——把每个 Provider 实例（`ProviderInstanceRegistry` 适配输入）映射为一个 Supplier 条目（continuationKey 账号锚点、启用态、默认模型），按代码库既有 `provider:<instanceId>` agentId 约定挂上派生的 Agent Driver 档案摘要（runtimeId/status/supportsResume），`provider:` 前缀但无实例的档案识别为孤儿（实例移除后未回收的 Driver，多账号回滚关注对象），非实例派生档案（acp/cli）不参与投影；3 用例（约定挂档与字段透传、孤儿与非参与档案、无档案实例），全家 388/388。
-- Supplier 注册表 RPC 与 Web 接线（本节点）：contracts 新增 `serverSupplierRegistry` 方法与请求/结果 schema；授权 `AuthOrchestrationReadScope`；ws.ts 以 `providerInstanceRegistry`/`compositionAgentDrivers` 服务注入（均缺失时显式 `composition_unavailable`），把 `listInstances`/`listProfiles` 适配为纯投影输入（instanceId/driverKind/displayName/enabled/continuationKey/defaultModelId）；client-runtime 新增 `supplierRegistry` 查询原子（5s stale）；Web 设置"集成"页在组合控制中心下新增"Supplier 注册表"只读区块（条目含名称/驱动类型/启用态/账号锚点/默认模型/档案摘要，孤儿档案独立警示行），i18n 双语目录（`supplierRegistry.*`）齐全，面板 5 用例（字段渲染、孤儿提示有无、四态空错回归）+ i18n 静态扫描通过。
+- Supplier 注册表 RPC 与 Web 接线：contracts 新增 `serverSupplierRegistry` 方法与请求/结果 schema；授权 `AuthOrchestrationReadScope`；ws.ts 以 `providerInstanceRegistry`/`compositionAgentDrivers` 服务注入（均缺失时显式 `composition_unavailable`），把 `listInstances`/`listProfiles` 适配为纯投影输入（instanceId/driverKind/displayName/enabled/continuationKey/defaultModelId）；client-runtime 新增 `supplierRegistry` 查询原子（5s stale）；Web 设置"集成"页在组合控制中心下新增"Supplier 注册表"只读区块（条目含名称/驱动类型/启用态/账号锚点/默认模型/档案摘要，孤儿档案独立警示行），i18n 双语目录（`supplierRegistry.*`）齐全，面板 5 用例（字段渲染、孤儿提示有无、四态空错回归）+ i18n 静态扫描通过。
+- 类型与 Effect 规则基线修正（本节点）：修复 contracts `settings.test.ts` 品牌化 `CompositionMcpServerId` 索引（显式收窄）后，vp typecheck 短路逐包剥出 committed 代码既有隐性违例并全部清偿——shared `relayClient.test.ts` `node:path` 改 `effect/Path` 服务；web 两个设置面板移除 `SettingsSection` 不存在的 `description` prop、控制中心行命令参数改用导入的 `EnvironmentId`（原 `typeof` 循环引用）、TaskGraphPanel 补 `resuming` 状态标签；desktop 早期启动恢复 `resolvePreferredEnv` 的 `T3CODE_HOME` 遗失环境名（批量改名工具合并重复参数所致）、两个后端测试去 `node:path`、`DesktopWslEnvironment` 改 `Effect.fn` 形态、backend pool 空实例测试改 `Effect.exit` 断言；web `persistenceStorage` 恢复被改名工具破坏的 `t3code:`→`codework:` 迁移键并重写 7 用例；marketing schema 调用点跟随导出改名；scripts 构建脚本合并双重 `catchTag` 为 `catchTags`、移除未用导入；mobile `app.config.ts` 消除无用数组展开；server `serverSettings.test.ts` 品牌 key 收窄 + 补齐 `schemaVersion/enabled/trusted` 必填字段（23/23 回归）、ws.ts 控制中心/Supplier 处理器 `Date.now()` 全部改 `Clock.currentTimeMillis`、投影入参按 exactOptionalPropertyTypes 改条件展开。contracts/shared/client-runtime/web/desktop/marketing/scripts 类型检查与触及文件 lint/format 全部 0 错误 0 警告。
 
 仍缺：
 
@@ -207,11 +208,12 @@ CapabilityRegistry + ToolBroker
 - 余额、用量、价格、健康和路由状态的统一看板。
 - Goal、Squad、Leader、运行时恢复和 capability grant 的用户操作路径（投影、只读展示与自动重派/取消/审批/放弃结算入口已在 Web 接通；剩余 = Mobile/Desktop 面板复用）。
 - Web/Desktop/Mobile 关键路径的真实集成验证。
+- apps/server 包整体 typecheck 清偿：本节点触及文件（ws.ts、serverSettings.test.ts）已零错误，但该包仍存约 520 处既有隐性错误（约 44 个文件；`server.test.ts` 258 处、部分 composition 测试与 store 形状漂移），此前一直被 vp typecheck 短路掩盖，需按文件聚类拆独立切片清偿。Mobile 端当前 typecheck 错误全部位于用户并行未提交的 ComposerEditor/T3ComposerEditor 改名级联文件，按工作区边界不计入本进度。
 - Request Lab、通用请求镜像、脱敏回放和协议对比界面。
 
 ## 当前提交节点
 
-当前 `tcode` 相对 `origin/tcode` 的 45 个提交按主题归并如下。
+当前 `tcode` 相对 `origin/tcode` 的 46 个提交按主题归并如下。
 
 | 主题 | 提交范围 | 结果 |
 | --- | --- | --- |
@@ -240,6 +242,7 @@ CapabilityRegistry + ToolBroker
 | 控制中心放弃结算入口 | `feat(composition): 控制中心放弃结算操作入口` | 新增 settleAndAbandonInterruptedGoalLoop（supervisor abandon 结算 + goal_loop_abandoned，不新建 Run）+ serverControlCenterAbandon 四层接线；interrupted 行放弃按钮与重派并存，Goal Loop 49 单测、面板 10 用例 |
 | Supplier 统一投影 | `feat(composition): Supplier/Profile 统一只读投影` | projectCompositionSupplierRegistry：Provider 实例 → Supplier 条目（continuationKey 账号锚点）+ provider:\<instanceId\> 档案挂接 + 孤儿档案识别，3 用例 |
 | Supplier 注册表接线 | `feat(composition): Supplier 注册表接入 RPC 与 Web 设置` | serverSupplierRegistry 四层接线（ReadScope）+ 设置页只读区块与双语 i18n，面板 5 用例 |
+| 类型与 Effect 规则基线修正 | `feat(composition): 修复类型与 Effect 规则基线` | 品牌 key 显式收窄、`effect/Path` 服务化、`t3code:` 存储迁移键与 `T3CODE_HOME` 恢复、`Clock` 替换 `Date.now`、exactOptional 条件展开、lint/format 清零；server 包既有约 520 处隐性错误记为独立后续切片 |
 | 文档与回归覆盖 | `c5a709b46`、`223b90ee5` | 刷新迁移矩阵并覆盖 ACP 取消终态回归 |
 
 ## 关键结论
@@ -269,6 +272,7 @@ CapabilityRegistry + ToolBroker
 4. 把 Provider、IDE、Multica 的 grant 状态统一投影到 Composition Run 和 Settings。（本地子任务已完成：grant issued/revoked 与 BYOK resume 输出均已投影为任务历史事件；剩余 = 外部 Driver 的真实 grant 回执接入与 Settings 跨端看板展示，依赖真实产品环境）
 5. ~~收敛 Goal Loop、预算、重试、验证子代理和跨重启 supervisor。~~（本地切片全部完成：完成标记/预算/停滞 pivot/验证合同与子代理验证器、任务台账编排接线、跨重启监督结算、编排层自动重派接线、BYOK/Multica attempt 生产适配器，共 47 单测；剩余缺口 = Multica 输出查询的生产实现，依赖真实 daemon 服务端能力）
 6. 最后补齐 Supplier/Profile 控制中心与 Web/Desktop/Mobile 集成 E2E。（前三个切片已完成：控制中心统一投影 + `serverControlCenterProjection` RPC 四层接线与 Web 设置"组合控制中心"只读展示（双语 i18n）、`serverControlCenterRedispatch` 自动重派操作入口、复用既有 `serverCancelCompositionTask` 的取消操作入口与 `serverReviewCompositionTask` 的审批（通过/驳回）操作入口、新增 `serverControlCenterAbandon` 放弃结算操作入口；第 6 项另完成 Supplier/Profile/Account 统一只读投影与 `serverSupplierRegistry` RPC/Web 只读区块；剩余 = 管理操作入口与凭据生命周期、余额/用量看板、Request Lab、Mobile/Desktop 面板复用及多端真实集成 E2E）
+7. 清偿 apps/server 包整体 typecheck 既有隐性错误基线。（本节点已完成触及文件清零并记录缺口；剩余约 520 处按文件聚类拆独立切片，优先 `server.test.ts` 与 composition 测试的 store 形状漂移）
 
 ## 风险与回滚
 

@@ -60,9 +60,9 @@ const RELEASE_ASSETS = {
   appIcon: fromRepoRoot(BRAND_ASSET_PATHS.productionIosIconPng),
   iosIcon: fromRepoRoot(BRAND_ASSET_PATHS.productionIosIconPng),
   splashIcon: fromRepoRoot(BRAND_ASSET_PATHS.productionIosIconPng),
-  androidAdaptiveForeground: fromRepoRoot(BRAND_ASSET_PATHS.productionUniversalIconPng),
+  androidAdaptiveForeground: fromRepoRoot(BRAND_ASSET_PATHS.productionLinuxIconPng),
   androidAdaptiveBackgroundColor: "#000000",
-  androidMonochromeIcon: fromRepoRoot(BRAND_ASSET_PATHS.productionUniversalIconPng),
+  androidMonochromeIcon: fromRepoRoot(BRAND_ASSET_PATHS.productionLinuxIconPng),
   androidNotificationIcon: fromRepoRoot("apps/mobile/assets/android-notification-icon.png"),
   androidNotificationColor: "#FFFFFF",
 } as const;
@@ -239,13 +239,11 @@ const config: ExpoConfig = {
   android: {
     icon: variant.assets.appIcon,
     package: variant.androidPackage,
-    intentFilters: [
-      ...mobileSchemes.map((scheme) => ({
-        action: "VIEW" as const,
-        category: ["BROWSABLE", "DEFAULT"],
-        data: [{ scheme }],
-      })),
-    ],
+    intentFilters: mobileSchemes.map((scheme) => ({
+      action: "VIEW" as const,
+      category: ["BROWSABLE", "DEFAULT"],
+      data: [{ scheme }],
+    })),
     adaptiveIcon: {
       backgroundColor: variant.assets.androidAdaptiveBackgroundColor,
       foregroundImage: variant.assets.androidAdaptiveForeground,

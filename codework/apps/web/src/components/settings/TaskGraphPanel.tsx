@@ -60,6 +60,7 @@ type ChildDraft = {
 const STATUS_KEYS: Readonly<Record<CompositionTaskStatus, string>> = {
   queued: "Queued",
   dispatched: "Dispatched",
+  resuming: "Resuming",
   running: "Running",
   waiting_approval: "Waiting for approval",
   waiting_input: "Waiting for input",

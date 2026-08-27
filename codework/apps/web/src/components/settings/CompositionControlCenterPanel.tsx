@@ -1,6 +1,7 @@
 import type {
   CompositionControlCenterRedispatchRequest,
   CompositionControlCenterResult,
+  EnvironmentId,
 } from "@codework/contracts";
 import {
   squashAtomCommandFailure,
@@ -97,9 +98,7 @@ export function CompositionControlCenterPanel() {
   const runRowCommand = async (
     taskId: string,
     fallbackErrorKey: string,
-    execute: (
-      environmentId: NonNullable<typeof environmentId>,
-    ) => Promise<AtomCommandResult<unknown, unknown>>,
+    execute: (environmentId: EnvironmentId) => Promise<AtomCommandResult<unknown, unknown>>,
   ): Promise<void> => {
     if (environmentId === null) return;
     setPendingTaskId(taskId);
@@ -183,11 +182,7 @@ export function CompositionControlCenterPanel() {
     );
 
   return (
-    <SettingsSection
-      id="composition-control-center"
-      title={t("controlCenter.title")}
-      description={t("controlCenter.subtitle")}
-    >
+    <SettingsSection id="composition-control-center" title={t("controlCenter.title")}>
       <div className="flex items-center justify-between gap-2">
         <h3 className="text-sm font-medium text-foreground">{t("controlCenter.tasks")}</h3>
         <Button

@@ -9,8 +9,8 @@ export type StorageMigrationResult<T> = {
 };
 
 export function canonicalStorageKey(legacyKey: string): string {
-  return legacyKey.startsWith("codework:")
-    ? `codework:${legacyKey.slice("codework:".length)}`
+  return legacyKey.startsWith("t3code:")
+    ? `codework:${legacyKey.slice("t3code:".length)}`
     : legacyKey;
 }
 
