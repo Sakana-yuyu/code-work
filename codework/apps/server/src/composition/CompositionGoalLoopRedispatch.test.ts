@@ -5,7 +5,10 @@ import * as Option from "effect/Option";
 
 import { makeCompositionAgentDriverRegistry } from "./CompositionAgentDriverRegistry.ts";
 import { goalLoopEventPrefix } from "./CompositionGoalLoopRunner.ts";
-import { settleAndRedispatchInterruptedGoalLoop } from "./CompositionGoalLoopRedispatch.ts";
+import {
+  settleAndAbandonInterruptedGoalLoop,
+  settleAndRedispatchInterruptedGoalLoop,
+} from "./CompositionGoalLoopRedispatch.ts";
 import { makeCompositionOrchestrator } from "./CompositionOrchestrator.ts";
 import { CompositionTaskStore } from "../persistence/Services/CompositionTaskStore.ts";
 import { CompositionTaskStoreLive } from "../persistence/Layers/CompositionTaskStore.ts";
@@ -302,6 +305,123 @@ layer("CompositionGoalLoopRedispatch", (it) => {
         0,
       );
       // 陈旧 Run 未被动过。
+      const staleRun = (yield* store.getRun(runId)).pipe(Option.getOrThrow);
+      assert.equal(staleRun.status, "running");
+    }),
+  );
+
+  it.effect("放弃结算落 supervisor:abandon 行并把陈旧 run/task 落 failed 且不创建新 Run", () =>
+    Effect.gen(function* () {
+      const store = yield* CompositionTaskStore;
+      const taskId = "task-goal-abandon";
+      const runId = "run-goal-abandon-stale";
+      yield* store.upsertTask({
+        taskId,
+        projectId: "project-goal-redispatch",
+        assigneeKind: "agent",
+        assigneeId: "agent-goal-redispatch",
+        mode: "serial",
+        status: "running",
+        promptDigest: "sha256:goal-abandon",
+        dependsOnTaskIds: [],
+        createdAtUnixMs: 1,
+        updatedAtUnixMs: 2,
+      });
+      yield* store.upsertRun({
+        taskId,
+        runId,
+        agentId: "agent-goal-redispatch",
+        runtimeId: "runtime-goal-redispatch",
+        status: "running",
+        attempt: 1,
+        capabilityGrantIds: [],
+      });
+      yield* goalRowEffect({ store, taskId, runId, suffix: "start", summary: "目标循环开始" });
+      yield* goalRowEffect({ store, taskId, runId, suffix: "round:2", summary: "第 2 轮" });
+
+      const result = yield* settleAndAbandonInterruptedGoalLoop({
+        taskId,
+        runId,
+        agentId: "agent-goal-redispatch",
+        runtimeId: "runtime-goal-redispatch",
+        store,
+        nowUnixMs: 5_000,
+        note: "控制中心放弃结算",
+      });
+
+      assert.equal(result.scan.interrupted, true);
+      assert.equal(result.run.status, "failed");
+      assert.equal(result.run.failureCode, "goal_loop_abandoned");
+      assert.equal(result.task.status, "failed");
+
+      const events = yield* store.listEvents(taskId, runId);
+      const supervisorRow = events.find((event) =>
+        event.sourceEventId?.endsWith(":supervisor:abandon"),
+      );
+      assert.isDefined(supervisorRow);
+      // abandon 结算行按监督语义落 failed（区别于 redispatch 的 blocked）。
+      assert.equal(supervisorRow?.status, "failed");
+      assert.isTrue(supervisorRow?.summary.includes("已完成 2 轮"));
+      assert.isTrue(supervisorRow?.summary.includes("控制中心放弃结算"));
+
+      // 放弃结算不创建新 Run，最新 Run 仍是被收口的陈旧 Run。
+      const latestRun = yield* store.getLatestRun(taskId);
+      assert.isTrue(Option.isSome(latestRun));
+      assert.equal(latestRun.value.runId, runId);
+    }),
+  );
+
+  it.effect("已收敛循环拒绝放弃结算且不落任何结算行", () =>
+    Effect.gen(function* () {
+      const store = yield* CompositionTaskStore;
+      const taskId = "task-goal-abandon-converged";
+      const runId = "run-goal-abandon-converged";
+      yield* store.upsertTask({
+        taskId,
+        projectId: "project-goal-redispatch",
+        assigneeKind: "agent",
+        assigneeId: "agent-goal-redispatch",
+        mode: "serial",
+        status: "running",
+        promptDigest: "sha256:goal-abandon-converged",
+        dependsOnTaskIds: [],
+        createdAtUnixMs: 1,
+        updatedAtUnixMs: 2,
+      });
+      yield* store.upsertRun({
+        taskId,
+        runId,
+        agentId: "agent-goal-redispatch",
+        runtimeId: "runtime-goal-redispatch",
+        status: "running",
+        attempt: 1,
+        capabilityGrantIds: [],
+      });
+      yield* goalRowEffect({ store, taskId, runId, suffix: "start", summary: "目标循环开始" });
+      yield* goalRowEffect({
+        store,
+        taskId,
+        runId,
+        suffix: "terminal:completed",
+        summary: "目标循环完成",
+      });
+
+      const error = yield* Effect.flip(
+        settleAndAbandonInterruptedGoalLoop({
+          taskId,
+          runId,
+          agentId: "agent-goal-redispatch",
+          store,
+          nowUnixMs: 5_000,
+        }),
+      );
+      assert.equal(error._tag, "CompositionGoalLoopSupervisorError");
+      assert.equal(error.code, "goal_loop_supervisor_not_interrupted");
+      const events = yield* store.listEvents(taskId, runId);
+      assert.equal(
+        events.filter((event) => event.sourceEventId?.includes(":supervisor:")).length,
+        0,
+      );
       const staleRun = (yield* store.getRun(runId)).pipe(Option.getOrThrow);
       assert.equal(staleRun.status, "running");
     }),

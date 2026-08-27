@@ -85,6 +85,9 @@ export function CompositionControlCenterPanel() {
   const reviewCompositionTask = useAtomCommand(serverEnvironment.reviewCompositionTask, {
     reportFailure: false,
   });
+  const abandonControlCenterTask = useAtomCommand(serverEnvironment.controlCenterAbandon, {
+    reportFailure: false,
+  });
   const [capabilityIdsText, setCapabilityIdsText] = useState("");
   const [pendingTaskId, setPendingTaskId] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
@@ -162,6 +165,23 @@ export function CompositionControlCenterPanel() {
       }),
     );
 
+  const abandon = (input: {
+    readonly taskId: string;
+    readonly runId: string;
+    readonly agentId: string;
+  }): Promise<void> =>
+    runRowCommand(input.taskId, "controlCenter.abandonFailed", (envId) =>
+      abandonControlCenterTask({
+        environmentId: envId,
+        input: {
+          taskId: input.taskId,
+          runId: input.runId,
+          agentId: input.agentId,
+          note: t("controlCenter.abandonReasonDefault"),
+        },
+      }),
+    );
+
   return (
     <SettingsSection
       id="composition-control-center"
@@ -222,6 +242,9 @@ export function CompositionControlCenterPanel() {
                 task.latestRun !== undefined && CANCELLABLE_RUN_STATUSES.has(task.latestRun.status);
               // 与 TaskGraphPanel 一致：审批门槛看任务状态，后端对非 in_review 任务显式报错。
               const reviewable = task.status === "in_review" && task.latestRun !== undefined;
+              // 仅 interrupted 行提供放弃结算：supervisor_settled 行已有结算行，再落 abandon 会被拒。
+              const abandonable =
+                task.latestRun !== undefined && task.goalLoop?.state === "interrupted";
               return (
                 <li
                   key={task.taskId}
@@ -253,6 +276,23 @@ export function CompositionControlCenterPanel() {
                         }}
                       >
                         {t("controlCenter.redispatch")}
+                      </Button>
+                    ) : null}
+                    {abandonable ? (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        disabled={pendingTaskId !== null}
+                        data-testid={`control-center-abandon-${task.taskId}`}
+                        onClick={() => {
+                          void abandon({
+                            taskId: task.taskId,
+                            runId: task.latestRun?.runId ?? "",
+                            agentId: task.agentId,
+                          });
+                        }}
+                      >
+                        {t("controlCenter.abandon")}
                       </Button>
                     ) : null}
                     {cancellable ? (

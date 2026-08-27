@@ -801,6 +801,15 @@ export function createServerEnvironmentAtoms<R, E>(
           JSON.stringify([environmentId, input.taskId, input.runId]),
       },
     }),
+    controlCenterAbandon: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:server:control-center-abandon",
+      tag: WS_METHODS.serverControlCenterAbandon,
+      concurrency: {
+        mode: "singleFlight",
+        key: ({ environmentId, input }) =>
+          JSON.stringify([environmentId, input.taskId, input.runId]),
+      },
+    }),
     listCompositionTaskEvents: createEnvironmentRpcQueryAtomFamily(runtime, {
       label: "environment-data:server:list-composition-task-events",
       tag: WS_METHODS.serverListCompositionTaskEvents,

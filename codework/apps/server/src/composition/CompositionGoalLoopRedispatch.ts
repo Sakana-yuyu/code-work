@@ -59,24 +59,39 @@ const RUN_TERMINAL_STATUSES: ReadonlySet<CompositionTaskRun["status"]> = new Set
   "timed_out",
 ]);
 
+type CompositionGoalLoopSettleOptions = {
+  readonly taskId: string;
+  readonly runId: string;
+  readonly agentId: string;
+  readonly parentTaskId?: string | undefined;
+  readonly runtimeId?: string | undefined;
+  readonly store: CompositionGoalLoopRedispatchStorePort;
+  /** 中断落定时间戳，写入 run.finishedAtUnixMs 与 task.updatedAtUnixMs。 */
+  readonly nowUnixMs: number;
+  /** 结算说明透传给 supervisor 结算行。 */
+  readonly note?: string | undefined;
+  /** supervisor 结算行类别：redispatch=待改派（blocked）；abandon=放弃恢复（failed）。 */
+  readonly decision: "redispatch" | "abandon";
+  /** 陈旧 running 态 run 收口 failed 时写入的 failureCode。 */
+  readonly staleFailureCode: "goal_loop_interrupted" | "goal_loop_abandoned";
+};
+
 /**
- * supervisor 结算 → 编排层自动重派的接线：
+ * 控制操作（自动重派/放弃结算）共用的结算流程：
  * 1. 纯扫描判定未收敛（无副作用，校验失败不落任何行）；
  * 2. 校验 run 存在且是最新 Run；
- * 3. supervisor 落幂等 `supervisor:redispatch` 结算行（blocked）；
- * 4. 把陈旧的 running 态 run/task 落定为 failed（failureCode=goal_loop_interrupted），
- *    使其满足 retryTask 的"仅失败可重试"门槛；
- * 5. 调用 redispatch 回调执行真实重派。
+ * 3. supervisor 落幂等 `supervisor:<decision>` 结算行（redispatch=blocked/abandon=failed）；
+ * 4. 把陈旧的 running 态 run/task 落定为 failed（failureCode 按 decision 区分）。
+ * 重派或收尾的后续执行由调用方决定。
  */
-export const settleAndRedispatchInterruptedGoalLoop = <E>(
-  options: CompositionGoalLoopRedispatchOptions<E>,
+const settleInterruptedGoalLoop = (
+  options: CompositionGoalLoopSettleOptions,
 ): Effect.Effect<
   {
     readonly scan: CompositionGoalLoopScanResult;
     readonly run: CompositionTaskRun;
     readonly task: CompositionTask;
   },
-  | E
   | CompositionGoalLoopSupervisorError
   | CompositionGoalLoopRedispatchError
   | CompositionTaskStoreError
@@ -125,7 +140,7 @@ export const settleAndRedispatchInterruptedGoalLoop = <E>(
       ...(options.parentTaskId === undefined ? {} : { parentTaskId: options.parentTaskId }),
       ...(options.runtimeId === undefined ? {} : { runtimeId: options.runtimeId }),
       store: options.store,
-      decision: "redispatch",
+      decision: options.decision,
       ...(options.note === undefined ? {} : { note: options.note }),
     });
 
@@ -135,7 +150,7 @@ export const settleAndRedispatchInterruptedGoalLoop = <E>(
       run = {
         ...run,
         status: "failed",
-        failureCode: "goal_loop_interrupted",
+        failureCode: options.staleFailureCode,
         finishedAtUnixMs: options.nowUnixMs,
       };
       yield* options.store.upsertRun(run);
@@ -151,9 +166,78 @@ export const settleAndRedispatchInterruptedGoalLoop = <E>(
       yield* options.store.upsertTask(task);
     }
 
+    return { scan, run, task };
+  });
+
+/**
+ * supervisor 结算 → 编排层自动重派的接线：结算成功后调用 redispatch 回调
+ * （通常包装 orchestrator.retryTask 创建新 Run 并重新派发）。
+ */
+export const settleAndRedispatchInterruptedGoalLoop = <E>(
+  options: CompositionGoalLoopRedispatchOptions<E>,
+): Effect.Effect<
+  {
+    readonly scan: CompositionGoalLoopScanResult;
+    readonly run: CompositionTaskRun;
+    readonly task: CompositionTask;
+  },
+  | E
+  | CompositionGoalLoopSupervisorError
+  | CompositionGoalLoopRedispatchError
+  | CompositionTaskStoreError
+> =>
+  Effect.gen(function* () {
+    const settled = yield* settleInterruptedGoalLoop({
+      taskId: options.taskId,
+      runId: options.runId,
+      agentId: options.agentId,
+      parentTaskId: options.parentTaskId,
+      runtimeId: options.runtimeId,
+      store: options.store,
+      nowUnixMs: options.nowUnixMs,
+      note: options.note,
+      decision: "redispatch",
+      staleFailureCode: "goal_loop_interrupted",
+    });
     yield* options.redispatch({
       previousRunId: options.runId,
-      interruptedRounds: scan.completedRounds,
+      interruptedRounds: settled.scan.completedRounds,
     });
-    return { scan, run, task };
+    return { scan: settled.scan, run: settled.run, task: settled.task };
+  });
+
+/** 放弃结算的入参：与自动重派一致，但无需 redispatch 回调。 */
+export type CompositionGoalLoopAbandonOptions = Omit<
+  CompositionGoalLoopRedispatchOptions<never>,
+  "redispatch"
+>;
+
+/**
+ * supervisor 结算 → 编排层放弃收尾的接线：与自动重派共享校验与结算流程，
+ * 落 `supervisor:abandon`（failed）结算行并把陈旧 run/task 落定
+ * failed（failureCode=goal_loop_abandoned），不创建新 Run。
+ */
+export const settleAndAbandonInterruptedGoalLoop = (
+  options: CompositionGoalLoopAbandonOptions,
+): Effect.Effect<
+  {
+    readonly scan: CompositionGoalLoopScanResult;
+    readonly run: CompositionTaskRun;
+    readonly task: CompositionTask;
+  },
+  | CompositionGoalLoopSupervisorError
+  | CompositionGoalLoopRedispatchError
+  | CompositionTaskStoreError
+> =>
+  settleInterruptedGoalLoop({
+    taskId: options.taskId,
+    runId: options.runId,
+    agentId: options.agentId,
+    parentTaskId: options.parentTaskId,
+    runtimeId: options.runtimeId,
+    store: options.store,
+    nowUnixMs: options.nowUnixMs,
+    note: options.note,
+    decision: "abandon",
+    staleFailureCode: "goal_loop_abandoned",
   });

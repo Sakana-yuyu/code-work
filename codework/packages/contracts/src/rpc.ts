@@ -227,6 +227,8 @@ import {
 import { VcsError } from "./vcs.ts";
 import {
   CompositionTaskCancelRequest,
+  CompositionControlCenterAbandonRequest,
+  CompositionControlCenterAbandonResult,
   CompositionControlCenterRedispatchRequest,
   CompositionControlCenterRedispatchResult,
   CompositionControlCenterRequest,
@@ -354,6 +356,7 @@ export const WS_METHODS = {
   serverListCompositionTasks: "server.listCompositionTasks",
   serverControlCenterProjection: "server.controlCenterProjection",
   serverControlCenterRedispatch: "server.controlCenterRedispatch",
+  serverControlCenterAbandon: "server.controlCenterAbandon",
   serverDiscoverSourceControl: "server.discoverSourceControl",
   serverGetTraceDiagnostics: "server.getTraceDiagnostics",
   serverGetProcessDiagnostics: "server.getProcessDiagnostics",
@@ -661,6 +664,12 @@ export const WsServerControlCenterRedispatchRpc = Rpc.make(
     error: Schema.Union([CompositionTaskRpcError, EnvironmentAuthorizationError]),
   },
 );
+
+export const WsServerControlCenterAbandonRpc = Rpc.make(WS_METHODS.serverControlCenterAbandon, {
+  payload: CompositionControlCenterAbandonRequest,
+  success: CompositionControlCenterAbandonResult,
+  error: Schema.Union([CompositionTaskRpcError, EnvironmentAuthorizationError]),
+});
 
 export const WsServerDiscoverSourceControlRpc = Rpc.make(WS_METHODS.serverDiscoverSourceControl, {
   payload: Schema.Struct({}),
@@ -1309,6 +1318,7 @@ export const WsRpcGroup = RpcGroup.make(
   WsServerListCompositionTasksRpc,
   WsServerControlCenterProjectionRpc,
   WsServerControlCenterRedispatchRpc,
+  WsServerControlCenterAbandonRpc,
   WsServerDiscoverSourceControlRpc,
   WsServerGetTraceDiagnosticsRpc,
   WsServerGetProcessDiagnosticsRpc,

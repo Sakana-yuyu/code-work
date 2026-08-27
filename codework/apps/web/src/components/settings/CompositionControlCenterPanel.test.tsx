@@ -8,9 +8,11 @@ const mocks = vi.hoisted(() => ({
   redispatchCommand: Symbol("redispatch-command"),
   cancelCommand: Symbol("cancel-command"),
   reviewCommand: Symbol("review-command"),
+  abandonCommand: Symbol("abandon-command"),
   redispatch: vi.fn(),
   cancel: vi.fn(),
   review: vi.fn(),
+  abandon: vi.fn(),
   projectionQuery: {
     data: null as CompositionControlCenterResult | null,
     error: null as string | null,
@@ -41,6 +43,7 @@ vi.mock("~/state/server", () => ({
     controlCenterRedispatch: mocks.redispatchCommand,
     cancelCompositionTask: mocks.cancelCommand,
     reviewCompositionTask: mocks.reviewCommand,
+    controlCenterAbandon: mocks.abandonCommand,
   },
 }));
 
@@ -49,6 +52,7 @@ vi.mock("~/state/use-atom-command", () => ({
     if (command === mocks.redispatchCommand) return mocks.redispatch;
     if (command === mocks.cancelCommand) return mocks.cancel;
     if (command === mocks.reviewCommand) return mocks.review;
+    if (command === mocks.abandonCommand) return mocks.abandon;
     return vi.fn();
   },
 }));
@@ -117,6 +121,7 @@ describe("CompositionControlCenterPanel", () => {
     mocks.redispatch = vi.fn();
     mocks.cancel = vi.fn();
     mocks.review = vi.fn();
+    mocks.abandon = vi.fn();
   });
 
   it("渲染任务行：状态徽标、Goal Loop 徽标与轮次/拒绝/grant 摘要", () => {
@@ -227,6 +232,23 @@ describe("CompositionControlCenterPanel", () => {
     expect(html).not.toContain('data-testid="control-center-reject-task-review-no-run"');
     // in_review 属于活跃 Run 状态，取消入口仍然可用。
     expect(html).toContain('data-testid="control-center-cancel-task-review"');
+  });
+
+  it("仅 interrupted 行渲染放弃结算按钮，supervisor_settled 与其他行不渲染", () => {
+    mocks.projectionQuery.data = projection([
+      taskWith({ taskId: "task-interrupted", goalLoopState: "interrupted" }),
+      taskWith({ taskId: "task-settled", goalLoopState: "supervisor_settled" }),
+      taskWith({ taskId: "task-running", goalLoopState: "running", latestRunStatus: "running" }),
+      taskWith({ taskId: "task-no-run", goalLoopState: "interrupted", withLatestRun: false }),
+    ]);
+    const html = renderToStaticMarkup(<CompositionControlCenterPanel />);
+    expect(html).toContain('data-testid="control-center-abandon-task-interrupted"');
+    // supervisor_settled 行已有结算行，放弃结算会被服务端拒绝，不提供入口。
+    expect(html).not.toContain('data-testid="control-center-abandon-task-settled"');
+    expect(html).not.toContain('data-testid="control-center-abandon-task-running"');
+    expect(html).not.toContain('data-testid="control-center-abandon-task-no-run"');
+    // interrupted 行同时提供自动重派与放弃结算两种收敛选择。
+    expect(html).toContain('data-testid="control-center-redispatch-task-interrupted"');
   });
 
   it("buildRedispatchInput 拆分 capabilityIds 并保留客户端生成的新 RunId", () => {

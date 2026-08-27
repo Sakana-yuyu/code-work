@@ -2122,6 +2122,28 @@ const makeWsRpcLayer = (
                 ),
             { "rpc.aggregate": "composition" },
           ),
+        [WS_METHODS.serverControlCenterAbandon]: (input) =>
+          observeRpcEffect(
+            WS_METHODS.serverControlCenterAbandon,
+            Option.isNone(compositionTaskStore)
+              ? Effect.fail(compositionTaskUnavailable())
+              : CompositionGoalLoopRedispatch.settleAndAbandonInterruptedGoalLoop({
+                  taskId: input.taskId,
+                  runId: input.runId,
+                  agentId: input.agentId,
+                  store: compositionTaskStore.value,
+                  nowUnixMs: Date.now(),
+                  note: input.note ?? "控制中心放弃结算未收敛目标循环",
+                }).pipe(
+                  Effect.map(({ scan }) => ({
+                    taskId: input.taskId,
+                    runId: input.runId,
+                    abandonedRounds: scan.completedRounds,
+                  })),
+                  Effect.mapError(compositionTaskError),
+                ),
+            { "rpc.aggregate": "composition" },
+          ),
         [WS_METHODS.serverDiscoverSourceControl]: (_input) =>
           observeRpcEffect(
             WS_METHODS.serverDiscoverSourceControl,

@@ -610,6 +610,24 @@ export const CompositionControlCenterRedispatchResult = Schema.Struct({
 export type CompositionControlCenterRedispatchResult =
   typeof CompositionControlCenterRedispatchResult.Type;
 
+/** 控制中心"放弃结算"操作：结算未收敛 Goal Loop 并落放弃终态，不创建新 Run。 */
+export const CompositionControlCenterAbandonRequest = Schema.Struct({
+  taskId: TrimmedNonEmptyString,
+  runId: TrimmedNonEmptyString,
+  agentId: TrimmedNonEmptyString,
+  note: Schema.optional(TrimmedNonEmptyString),
+});
+export type CompositionControlCenterAbandonRequest =
+  typeof CompositionControlCenterAbandonRequest.Type;
+
+export const CompositionControlCenterAbandonResult = Schema.Struct({
+  taskId: TrimmedNonEmptyString,
+  runId: TrimmedNonEmptyString,
+  abandonedRounds: NonNegativeInt,
+});
+export type CompositionControlCenterAbandonResult =
+  typeof CompositionControlCenterAbandonResult.Type;
+
 const CompositionTaskDependencyCondition = Schema.Literals([
   "success",
   "terminal",
