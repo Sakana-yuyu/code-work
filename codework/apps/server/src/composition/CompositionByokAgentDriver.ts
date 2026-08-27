@@ -40,10 +40,10 @@ type ActiveRun = {
   readonly turnId: TurnId;
   fiber: Fiber.Fiber<void, unknown>;
   readonly abortController: AbortController;
-  cancelled: boolean;
+  terminalOwner: "completion" | "cancellation" | undefined;
 };
 
-type CompletedRun = Omit<ActiveRun, "fiber" | "abortController" | "cancelled">;
+type CompletedRun = Omit<ActiveRun, "fiber" | "abortController" | "terminalOwner">;
 
 const errorDetail = (error: unknown): string =>
   error instanceof Error ? error.message : String(error);
@@ -58,6 +58,15 @@ const turnIdFor = (taskId: string, runId: string): TurnId =>
   TurnId.make(`composition-turn-${taskId}-${runId}`);
 
 const nowIso = (): string => DateTime.formatIso(DateTime.nowUnsafe());
+
+const claimTerminal = (
+  active: ActiveRun,
+  owner: NonNullable<ActiveRun["terminalOwner"]>,
+): boolean => {
+  if (active.terminalOwner !== undefined) return false;
+  active.terminalOwner = owner;
+  return true;
+};
 
 /** 只接受由本地 BYOK Loop 写入的关联元数据，禁止从 threadId 推测 Composition Run。 */
 const persistedByokRuntimeCorrelation = (
@@ -217,6 +226,16 @@ export const makeCompositionByokAgentDriver = (
         turnId,
       } satisfies CompletedRun;
       const abortController = new AbortController();
+      const active: ActiveRun = {
+        taskId: input.task.taskId,
+        runId: input.run.runId,
+        runtimeTaskId,
+        threadId,
+        turnId,
+        fiber: undefined as unknown as Fiber.Fiber<void, unknown>,
+        abortController,
+        terminalOwner: undefined,
+      };
       const run = Effect.gen(function* () {
         // 让 Orchestrator 先完成 running 投影，再接收本地 Loop 的第一条事件。
         yield* Effect.yieldNow;
@@ -243,6 +262,7 @@ export const makeCompositionByokAgentDriver = (
           tools,
           signal: abortController.signal,
         });
+        if (!claimTerminal(active, "completion")) return;
         if (result.text.length > 0) {
           yield* publish({
             provider: ProviderDriverKind.make("byok"),
@@ -254,6 +274,7 @@ export const makeCompositionByokAgentDriver = (
             raw,
           });
         }
+        completedRuns.set(input.run.runId, completed);
         yield* publish({
           provider: ProviderDriverKind.make("byok"),
           providerInstanceId: ProviderInstanceId.make(String(options.providerInstanceId)),
@@ -263,12 +284,12 @@ export const makeCompositionByokAgentDriver = (
           payload: { state: "completed", stopReason: "agent_loop_completed" },
           raw,
         });
-        completedRuns.set(input.run.runId, completed);
       }).pipe(
         Effect.catchCause((cause) =>
           Cause.hasInterruptsOnly(cause)
             ? Effect.void
             : Effect.gen(function* () {
+                if (!claimTerminal(active, "completion")) return;
                 const detail = errorDetail(cause);
                 completedRuns.set(input.run.runId, completed);
                 yield* publish({
@@ -292,16 +313,6 @@ export const makeCompositionByokAgentDriver = (
               }),
         ),
       );
-      const active: ActiveRun = {
-        taskId: input.task.taskId,
-        runId: input.run.runId,
-        runtimeTaskId,
-        threadId,
-        turnId,
-        fiber: undefined as unknown as Fiber.Fiber<void, unknown>,
-        abortController,
-        cancelled: false,
-      };
       activeRuns.set(input.run.runId, active);
       const fiber = runFork(
         run.pipe(Effect.ensuring(Effect.sync(() => activeRuns.delete(input.run.runId)))),
@@ -316,12 +327,18 @@ export const makeCompositionByokAgentDriver = (
       if (active === undefined) {
         return { status: "already_terminal" as const };
       }
-      if (active.cancelled) {
+      if (!claimTerminal(active, "cancellation")) {
         return { status: "already_terminal" as const };
       }
-      active.cancelled = true;
       active.abortController.abort(input.reason);
       yield* Fiber.interrupt(active.fiber).pipe(Effect.ignore);
+      completedRuns.set(input.run.runId, {
+        taskId: active.taskId,
+        runId: active.runId,
+        runtimeTaskId: active.runtimeTaskId,
+        threadId: active.threadId,
+        turnId: active.turnId,
+      });
       yield* publish({
         provider: ProviderDriverKind.make("byok"),
         providerInstanceId: ProviderInstanceId.make(String(options.providerInstanceId)),
@@ -335,13 +352,6 @@ export const makeCompositionByokAgentDriver = (
           runtimeTaskId: active.runtimeTaskId,
           payload: {},
         },
-      });
-      completedRuns.set(input.run.runId, {
-        taskId: active.taskId,
-        runId: active.runId,
-        runtimeTaskId: active.runtimeTaskId,
-        threadId: active.threadId,
-        turnId: active.turnId,
       });
       activeRuns.delete(input.run.runId);
       return { status: "cancelled" as const };

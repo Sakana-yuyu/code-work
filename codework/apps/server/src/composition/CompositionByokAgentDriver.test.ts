@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vite-plus/test";
-import { ProviderDriverKind } from "@codework/contracts";
+import { it as effectIt } from "@effect/vitest";
+import { ProviderDriverKind, type ProviderRuntimeEvent } from "@codework/contracts";
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
@@ -187,6 +188,53 @@ describe("CompositionByokAgentDriver", () => {
       runtimeTaskId: "provider:byok:task:task-byok:run-byok",
     });
   });
+
+  effectIt.effect("完成已认领终态后，迟到取消返回 already_terminal 且不再发 aborted", () =>
+    Effect.gen(function* () {
+      const terminal = yield* Deferred.make<void>();
+      const observed = new Array<ProviderRuntimeEvent>();
+      let cancelResult:
+        | { readonly status: "cancelled" | "cancel_requested" | "already_terminal" }
+        | undefined;
+      const service: CompositionAgentServiceShape = {
+        run: () => Effect.succeed({ text: "完成", messages: [], rounds: 1 }),
+      };
+      const driver = makeCompositionByokAgentDriver({
+        agentId: "provider:byok",
+        runtimeId: "provider:byok",
+        providerInstanceId: "byok",
+        agentService: service,
+        listTools: () => Effect.succeed(tools),
+      });
+      const eventsFiber = yield* Stream.runForEach(driver.streamEvents!(), (event) =>
+        Effect.gen(function* () {
+          observed.push(event);
+          if (event.type === "content.delta") {
+            cancelResult = yield* driver.cancelTask({
+              task,
+              run: { ...run, status: "running" },
+              reason: "迟到取消",
+            });
+          }
+          if (event.type === "turn.completed" || event.type === "turn.aborted") {
+            yield* Deferred.succeed(terminal, void 0);
+          }
+        }),
+      ).pipe(Effect.forkChild);
+
+      yield* Effect.yieldNow;
+      yield* start(driver);
+      yield* Deferred.await(terminal);
+      yield* Fiber.interrupt(eventsFiber);
+
+      expect(cancelResult).toEqual({ status: "already_terminal" });
+      expect(observed.map((event) => event.type)).toEqual([
+        "turn.started",
+        "content.delta",
+        "turn.completed",
+      ]);
+    }),
+  );
 
   it("没有 prompt 或 model 时拒绝启动，不创建后台执行", async () => {
     let called = false;
