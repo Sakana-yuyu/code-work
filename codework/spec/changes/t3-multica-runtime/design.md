@@ -643,3 +643,43 @@ F1 审查修复补充：
 - 现有 `task.completed` 的 completed、failed、stopped 语义不变；新增 timed_out 仅供 Runtime 明确超时或本地 watchdog 收口使用。
 
 本节点仍未完成：IDE session 的 Web Settings 可编辑界面、Desktop/Mobile 独立导航、Cursor/VSCode 官方扩展 transport 和 operation、真实安装 IDE E2E、真实 Multica 官方 Server/Agent E2E，以及所有 Driver 对全部 Code Work API 的产品级可达性。上述缺口不能由本地 fixture、配置合同或 session registry 测试替代。
+
+## Batch I：委派执行关联隔离（设计，2026-08-27）
+
+Cursor BYOK 的 `PendingExec` 同时使用 `exec_id`、`message_id` 和 `provider pass` 管理协议内状态；Code Work 不能将这组字段直接视为所有 Provider 的公共 API。本批只在 Runtime Adapter 与 `CompositionRuntimeAgentDriver` 的关联边界吸收其可迁移语义。
+
+```text
+外部 Runtime Event
+  raw.runtimeId + raw.runtimeTaskId
+  + delegatedExecution { executionId, sourceMessageId?, providerPass? }
+                   |
+                   v
+CompositionRuntimeAgentDriver
+  1. runtimeId 必须等于 Driver Runtime
+  2. executionId 必须等于 runtimeTaskId
+  3. sourceMessageId 不能倒退
+  4. providerPass 仅作为诊断，不能否决仍匹配的执行身份
+                   |
+                   v
+已有 Task Runtime Projector
+  sourceEventId 幂等、旧 Run 隔离、终态锁定、grant 回收
+```
+
+### Interfaces
+
+- delegated execution metadata 只位于 `ProviderRuntimeEvent.raw` 的 Adapter 关联元数据；Adapter 必须自行去敏，不能写入远端原始 payload。
+- `executionId` 与 Adapter 返回的 `runtimeTaskId` 完全相等。事件缺失该可选 metadata 时，沿用现有 Runtime Task 关联，兼容不具备 Cursor delegation 语义的 Runtime。
+- `sourceMessageId` 是同一 `executionId` 的单调协议序号。仅当事件显式提供时校验；更小的值返回未归属，不能推进 Task/Run。相同值交由既有 `sourceEventId` 去重，不由 Driver 推断重复。
+- `providerPass` 不作为状态推进的单独拒绝条件。Cursor 参考实现在 pending `exec_id` 仍存在时允许 pass 漂移的终态；Run 重试的隔离由新的 `runId`、不能重绑的 `runtimeTaskId` 和 Projector 的旧 Run 锁定共同保证。
+
+### Recovery Boundary
+
+`recoverExecWithoutTerminal` 在 Cursor 中能读取本地 `PendingExec`、工具种类和协议消息。Code Work 在没有真实 Cursor execution adapter 之前不能伪造该恢复：第一阶段只允许现有 Run liveness watchdog 先取消、再经受信任本地 `timed_out` 事件收口。未来真实 Cursor Adapter 可在证明其拥有完整 pending identity、工具种类和取消回执后，作为独立节点把恢复结果转换为 Runtime Event；`shell`、`subagent` 与 `delegation_aggregate` 不共享同一超时策略。
+
+### 落地记录（2026-08-27）
+
+- `RuntimeEventRaw` 已增加可选 `delegatedExecution` contract：`executionId` 使用 `RuntimeTaskId`，`sourceMessageId` 和 `providerPass` 使用非负整数；不带该 metadata 的既有 raw event 继续兼容。
+- `CompositionRuntimeAgentDriver` 对携带 `raw.runtimeId` 的事件先校验 Driver 归属；delegated event 还要求 `runtimeId`、`runtimeTaskId` 和 `executionId` 完全匹配，拒绝跨 Runtime 或错误 execution 归属。
+- 每个历史 runtime binding 仅保留已接受的最大 `sourceMessageId`，更旧消息不再交给 Projector；相同消息号仍交给已有 `sourceEventId` 幂等语义，`providerPass` 变化不会单独拒绝事件。消息序号随 4096 条历史绑定的容量上限一起回收。
+- 本地验证覆盖：跨 Runtime 拒绝、错误 executionId 拒绝、消息号倒退拒绝、provider pass 变化接受、contract 正常解码/非法值拒绝/旧 raw event 兼容。
+- 本批仍未实现真实 Cursor execution Adapter、Cursor `recoverExecWithoutTerminal`、真实 Cursor 客户端 E2E，以及真实 Multica daemon 的 Leader/Squad/Task Graph 与 Review/Retry/Cancel/Timeout/Resume E2E。
