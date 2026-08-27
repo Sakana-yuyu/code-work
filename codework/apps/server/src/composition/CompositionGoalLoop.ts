@@ -1,0 +1,170 @@
+import * as Data from "effect/Data";
+import * as Effect from "effect/Effect";
+
+/** 显式完成标记：attempt 输出中出现该 token 即视为 goal 已达成；可带原因 `[[GOAL_COMPLETE: reason]]`。 */
+export const GOAL_COMPLETE_MARKER = "[[GOAL_COMPLETE]]";
+const GOAL_COMPLETE_PREFIX = "[[GOAL_COMPLETE";
+
+export const GOAL_CANCEL_MARKER = "[[GOAL_CANCELLED]]";
+
+export type CompositionGoalLoopStatus =
+  | "completed"
+  | "budget_exhausted"
+  | "deadline_exceeded"
+  | "cancelled";
+
+export class CompositionGoalLoopInvalidError extends Data.TaggedError(
+  "CompositionGoalLoopInvalidError",
+)<{ readonly detail: string }> {}
+
+export type CompositionGoalLoopDecision<A> = {
+  /** 本轮的业务产物，原样透传给调用方。 */
+  readonly value: A;
+  /** 本轮模型输出文本；用于完成标记扫描。 */
+  readonly outputText?: string;
+  /** 本轮消耗的成本单元（工具调用次数、token 折算等），计入总预算。 */
+  readonly costUnits?: number;
+};
+
+export type CompositionGoalLoopOptions<A, E = never> = {
+  readonly maxAttempts: number;
+  /** 成本上限；省略表示本轮循环不计成本。 */
+  readonly maxCostUnits?: number;
+  /** 墙钟截止（Unix 毫秒）；省略表示不限时。需要配合注入 now 才可测。 */
+  readonly deadlineUnixMs?: number;
+  readonly now?: () => number;
+  /** 轮与轮之间检查的外部取消条件。 */
+  readonly isCancelled?: () => boolean;
+  readonly attempt: (
+    round: number,
+    context: {
+      readonly remainingAttempts: number;
+      readonly remainingCostUnits: number | undefined;
+    },
+  ) => Effect.Effect<CompositionGoalLoopDecision<A>, E>;
+};
+
+export type CompositionGoalLoopResult<A> = {
+  readonly status: CompositionGoalLoopStatus;
+  /** 实际执行的 attempt 轮数。 */
+  readonly rounds: number;
+  readonly costUnitsUsed: number;
+  /** 只有 completed 时存在：去掉完成标记后的最后一轮输出文本与解析出的原因。 */
+  readonly completion:
+    | {
+        readonly cleanText: string;
+        readonly reason: string | undefined;
+      }
+    | undefined;
+  /** 每轮的值快照，供持久化/审计侧自行取舍。 */
+  readonly history: ReadonlyArray<{ readonly round: number; readonly value: A }>;
+};
+
+/**
+ * 解析输出中的显式完成标记；返回 cleaned 文本与可选 reason。
+ * 程序化判定通过 `forceComplete` 表达，不依赖文本标记。
+ */
+export const parseGoalCompletion = (
+  outputText: string | undefined,
+): {
+  readonly complete: boolean;
+  readonly cleanText: string;
+  readonly reason: string | undefined;
+} => {
+  if (outputText === undefined) return { complete: false, cleanText: "", reason: undefined };
+  // 兼容无原因的完整标记与带原因的 `[[GOAL_COMPLETE: 原因]]` 形式。
+  const index = outputText.indexOf(GOAL_COMPLETE_PREFIX);
+  if (index === -1) return { complete: false, cleanText: outputText, reason: undefined };
+  let cursor = index + GOAL_COMPLETE_PREFIX.length;
+  let reason: string | undefined;
+  if (outputText[cursor] === ":") {
+    const close = outputText.indexOf("]", cursor);
+    if (close !== -1) {
+      reason = outputText.slice(cursor + 1, close).trim() || undefined;
+      cursor = close;
+    }
+  }
+  // 吞掉收尾的 `]]`（无原因标记天然匹配；带原因形式上面已消费到第一个 `]`）。
+  const rest = outputText.slice(cursor);
+  let end = cursor;
+  if (rest.startsWith("]]")) end = cursor + 2;
+  else if (rest.startsWith("]")) end = cursor + 1;
+  const cleaned = (outputText.slice(0, index) + outputText.slice(end)).replace(/\s+/g, " ").trim();
+  return { complete: true, cleanText: cleaned, reason };
+};
+
+const invalid = (detail: string) => new CompositionGoalLoopInvalidError({ detail });
+
+/**
+ * Goal Loop 第一切片：重复执行 attempt 直到出现显式完成标记；
+ * 轮数、成本与墙钟三类预算任一耗尽即按对应终态收敛，外部取消优先于预算判定。
+ *
+ * 不在本切片范围内：idle/stale pivot、验证子代理和跨重启 supervisor。
+ */
+export const runCompositionGoalLoop = <A, E>(
+  options: CompositionGoalLoopOptions<A, E>,
+): Effect.Effect<CompositionGoalLoopResult<A>, CompositionGoalLoopInvalidError | E> =>
+  Effect.gen(function* () {
+    const maxAttempts = options.maxAttempts;
+    if (!Number.isInteger(maxAttempts) || maxAttempts <= 0) {
+      return yield* invalid(`maxAttempts 必须为正整数，收到 ${String(options.maxAttempts)}。`);
+    }
+    const maxCost = options.maxCostUnits;
+    if (maxCost !== undefined && !(maxCost >= 0)) {
+      return yield* invalid(`maxCostUnits 不能为负数，收到 ${String(maxCost)}。`);
+    }
+    const now = options.now ?? Date.now;
+
+    const history: Array<{ round: number; value: A }> = [];
+    let costUsed = 0;
+    let rounds = 0;
+    let final: CompositionGoalLoopResult<A>["completion"];
+    let status: CompositionGoalLoopStatus;
+
+    for (;;) {
+      const isCancelledBeforeRound = options.isCancelled?.() ?? false;
+      if (isCancelledBeforeRound) {
+        status = "cancelled";
+        break;
+      }
+      if (options.deadlineUnixMs !== undefined && now() >= options.deadlineUnixMs) {
+        status = "deadline_exceeded";
+        break;
+      }
+      if (rounds >= maxAttempts) {
+        status = "budget_exhausted";
+        break;
+      }
+      if (maxCost !== undefined && costUsed >= maxCost) {
+        status = "budget_exhausted";
+        break;
+      }
+
+      const decision = yield* options.attempt(rounds + 1, {
+        remainingAttempts: maxAttempts - rounds,
+        remainingCostUnits: maxCost === undefined ? undefined : Math.max(0, maxCost - costUsed),
+      });
+      rounds += 1;
+      costUsed += decision.costUnits ?? 0;
+      history.push({ round: rounds, value: decision.value });
+
+      const parsed = parseGoalCompletion(decision.outputText);
+      if (parsed.complete) {
+        status = "completed";
+        final = { cleanText: parsed.cleanText, reason: parsed.reason };
+        break;
+      }
+      if ((decision.outputText ?? "").includes(GOAL_CANCEL_MARKER)) {
+        status = "cancelled";
+        break;
+      }
+    }
+
+    return {
+      status,
+      rounds,
+      costUnitsUsed: costUsed,
+      completion: final,
+      history,
+    };
+  });
