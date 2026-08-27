@@ -10,6 +10,7 @@ import {
   type CompositionGoalLoopInvalidError,
   type CompositionGoalLoopOptions,
   type CompositionGoalLoopResult,
+  type CompositionGoalValidationInput,
   type CompositionGoalValidationVerdict,
 } from "./CompositionGoalLoop.ts";
 
@@ -122,6 +123,7 @@ export const runCompositionGoalLoopWithLedger = <A, E>(
       });
     };
 
+    const innerValidate = options.validateCompletion;
     const loopOptions: CompositionGoalLoopOptions<A, E | CompositionTaskStoreError> = {
       ...options,
       attempt: (round, context) =>
@@ -138,28 +140,33 @@ export const runCompositionGoalLoopWithLedger = <A, E>(
             ),
           ),
         ),
+      ...(innerValidate === undefined
+        ? {}
+        : {
+            validateCompletion: (
+              input: CompositionGoalValidationInput<A>,
+            ): Effect.Effect<CompositionGoalValidationVerdict, E | CompositionTaskStoreError> =>
+              Effect.flatMap(
+                innerValidate(input),
+                (
+                  verdict,
+                ): Effect.Effect<CompositionGoalValidationVerdict, E | CompositionTaskStoreError> =>
+                  verdict.accepted
+                    ? Effect.succeed(verdict)
+                    : Effect.map(
+                        persistEvent({
+                          sourceEventId: `${prefix}:reject:${input.round}`,
+                          eventType: "blocker",
+                          status: progressStatus,
+                          summary: `第 ${input.round} 轮完成声明被验证方拒绝${
+                            verdict.detail === undefined ? "" : `：${truncate(verdict.detail)}`
+                          }`,
+                        }),
+                        () => verdict,
+                      ),
+              ),
+          }),
     };
-    if (options.validateCompletion !== undefined) {
-      const innerValidate = options.validateCompletion;
-      loopOptions.validateCompletion = (input) =>
-        Effect.flatMap(
-          innerValidate(input),
-          (verdict): Effect.Effect<CompositionGoalValidationVerdict, CompositionTaskStoreError> =>
-            verdict.accepted
-              ? Effect.succeed(verdict)
-              : Effect.map(
-                  persistEvent({
-                    sourceEventId: `${prefix}:reject:${input.round}`,
-                    eventType: "blocker",
-                    status: progressStatus,
-                    summary: `第 ${input.round} 轮完成声明被验证方拒绝${
-                      verdict.detail === undefined ? "" : `：${truncate(verdict.detail)}`
-                    }`,
-                  }),
-                  () => verdict,
-                ),
-        );
-    }
 
     const result = yield* runCompositionGoalLoop(loopOptions);
     const terminal = describeGoalLoopTerminal(result, truncate);

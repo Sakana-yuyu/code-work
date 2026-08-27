@@ -123,14 +123,17 @@ describe("makeSubAgentGoalValidator", () => {
       const result = yield* runCompositionGoalLoop({
         maxAttempts: 5,
         attempt: (round) =>
-          Effect.sync(() => ({ value: outputs[round - 1], outputText: outputs[round - 1] })),
+          Effect.sync(() => ({
+            value: outputs[round - 1]!,
+            outputText: outputs[round - 1]!,
+          })),
         validateCompletion: makeSubAgentGoalValidator<string, never>({
           goal: "修复登录页崩溃",
           port: {
             review: () => {
               const text = verdicts[reviewCalls];
               reviewCalls += 1;
-              return Effect.succeed(text);
+              return Effect.succeed(text!);
             },
           },
         }),
@@ -152,7 +155,11 @@ describe("makeByokSubAgentValidatorPort", () => {
           run: (input) =>
             Effect.sync(() => {
               seenInputs.push({ ...input, tools: input.tools.length });
-              return { text: `复核完成 ${GOAL_VALID_MARKER}` } as { text: string };
+              return {
+                text: `复核完成 ${GOAL_VALID_MARKER}`,
+                messages: [],
+                rounds: 1,
+              };
             }),
         },
         providerInstanceId: "provider-byok-1",

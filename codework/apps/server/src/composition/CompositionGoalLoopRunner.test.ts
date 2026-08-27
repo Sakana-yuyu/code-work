@@ -47,7 +47,7 @@ describe("runCompositionGoalLoopWithLedger", () => {
         runtimeId: "runtime-byok",
         maxAttempts: 5,
         store: ledger.store,
-        attempt: (round) => Effect.sync(() => attemptOf(outputs[round - 1], 2)),
+        attempt: (round) => Effect.sync(() => attemptOf(outputs[round - 1]!, 2)),
       });
       expect(result.status).toBe("completed");
       expect(ledger.rows.map((row) => row.sourceEventId)).toEqual([
@@ -66,6 +66,7 @@ describe("runCompositionGoalLoopWithLedger", () => {
       expect(terminal?.summary).toContain("2 轮");
       expect(terminal?.summary).toContain("原因：全部通过");
       // 敏感内容约定：原始输出不得进入任务台账摘要。
+      // @effect-diagnostics-next-line preferSchemaOverJson:off - 断言台账行整体序列化不含敏感原文。
       expect(JSON.stringify(ledger.rows)).not.toContain("SECRET-PAYLOAD");
     }),
   );

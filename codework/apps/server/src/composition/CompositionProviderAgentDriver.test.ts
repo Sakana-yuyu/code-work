@@ -115,16 +115,17 @@ describe("CompositionProviderAgentDriver", () => {
     );
     await Effect.runPromise(Deferred.await(turnStarted));
 
-    const event = (threadId: string, type: ProviderRuntimeEvent["type"]): ProviderRuntimeEvent => ({
-      eventId: EventId.make(`event-${threadId}-${type}`),
-      provider: ProviderDriverKind.make("codex"),
-      providerInstanceId: ProviderInstanceId.make("codex-local"),
-      threadId: ThreadId.make(threadId),
-      turnId: TurnId.make("turn-pending-provider"),
-      createdAt: "2026-08-27T00:00:00.000Z",
-      type,
-      payload: type === "turn.started" ? {} : { state: "cancelled" },
-    });
+    const event = (threadId: string, type: ProviderRuntimeEvent["type"]): ProviderRuntimeEvent =>
+      ({
+        eventId: EventId.make(`event-${threadId}-${type}`),
+        provider: ProviderDriverKind.make("codex"),
+        providerInstanceId: ProviderInstanceId.make("codex-local"),
+        threadId: ThreadId.make(threadId),
+        turnId: TurnId.make("turn-pending-provider"),
+        createdAt: "2026-08-27T00:00:00.000Z",
+        type,
+        payload: type === "turn.started" ? {} : { state: "cancelled" },
+      }) as ProviderRuntimeEvent;
 
     expect(
       driver.resolveRuntimeEvent?.(event("thread-other-provider", "turn.started")),
@@ -273,16 +274,17 @@ describe("CompositionProviderAgentDriver", () => {
       driver.startTask({ task, run, prompt: "等待终态", workspaceRoot: "C:/workspace" }),
     );
     await Effect.runPromise(Deferred.await(turnStarted));
-    const event = (type: "turn.started" | "turn.completed"): ProviderRuntimeEvent => ({
-      eventId: EventId.make(`event-early-terminal-handshake-${type}`),
-      provider: ProviderDriverKind.make("codex"),
-      providerInstanceId: ProviderInstanceId.make("codex-local"),
-      threadId: ThreadId.make(task.threadId),
-      turnId: TurnId.make("turn-early-terminal-handshake"),
-      createdAt: "2026-08-27T00:00:00.000Z",
-      type,
-      payload: type === "turn.started" ? {} : { state: "cancelled" },
-    });
+    const event = (type: "turn.started" | "turn.completed"): ProviderRuntimeEvent =>
+      ({
+        eventId: EventId.make(`event-early-terminal-handshake-${type}`),
+        provider: ProviderDriverKind.make("codex"),
+        providerInstanceId: ProviderInstanceId.make("codex-local"),
+        threadId: ThreadId.make(task.threadId),
+        turnId: TurnId.make("turn-early-terminal-handshake"),
+        createdAt: "2026-08-27T00:00:00.000Z",
+        type,
+        payload: type === "turn.started" ? {} : { state: "cancelled" },
+      }) as ProviderRuntimeEvent;
     driver.resolveRuntimeEvent?.(event("turn.started"));
     driver.resolveRuntimeEvent?.(event("turn.completed"));
 

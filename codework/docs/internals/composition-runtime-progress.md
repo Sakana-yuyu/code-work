@@ -13,9 +13,9 @@
 | 更新时间 | 2026-08-27 |
 | 仓库 | `E:\MyProject\code-work\codework` |
 | 当前分支 | `tcode` |
-| 当前提交 | Server typecheck 清偿第一波：`feat(composition): 收敛 MCP 设置协同类型与规则` |
-| 相对远端 | 领先 `origin/tcode` 51 个提交，尚未 push |
-| 最新节点 | apps/server 包 typecheck 清偿第一波（4 个小步切片）：台账测试形状标注、服务端路由测试运行时恢复（129 个失败用例归零，131/131 通过）、MCP 运行时适配器类型债、MCP 设置协同类型与规则；包内 typecheck 错误从约 520 处降至约 75 处 |
+| 当前提交 | Server typecheck 清偿第二波：`feat(composition): 清空 server 包 typecheck 错误` |
+| 相对远端 | 领先 `origin/tcode` 60 个提交，尚未 push |
+| 最新节点 | apps/server 包 typecheck 清偿第二波（8 个小步切片）：attempt 适配器泛型、编排器驱动错误通道、MCP 工具登记调用形状、任务图取消契约、驱动器与 e2e 品牌化、Runtime 事件品牌化、Goal Loop 验证通道、ByokAdapter 与控制中心投影；包内 typecheck 错误从约 75 处降至 0 处，`tsgo --noEmit` 0 错误且 monorepo typecheck 门禁 codework 包转绿 |
 | 工作区边界 | 存在大量其他并行修改；本文不把这些修改计入本迁移进度，也不回滚、暂存或提交它们 |
 
 ## 证据等级
@@ -208,7 +208,7 @@ CapabilityRegistry + ToolBroker
 - 余额、用量、价格、健康和路由状态的统一看板。
 - Goal、Squad、Leader、运行时恢复和 capability grant 的用户操作路径（投影、只读展示与自动重派/取消/审批/放弃结算入口已在 Web 接通；剩余 = Mobile/Desktop 面板复用）。
 - Web/Desktop/Mobile 关键路径的真实集成验证。
-- apps/server 包整体 typecheck 清偿：第一波四个切片后剩余约 75 处（约 21 个文件），最大簇为 `CompositionGoalLoopAttemptAdapters.test.ts`(13)、`CompositionOrchestrator.test.ts`(9)、`CompositionTaskGraphExecutor.test.ts`(7)、`CompositionMcpToolRegistry.test.ts`/`CompositionIdeAgentDriver.test.ts`(各 6) 及 `ByokAdapter.ts`(4)，多为品牌化字段收窄、事件负载形状与错误通道细分的逐点问题，按文件聚类继续小步清偿。`server.test.ts` 已零类型错误且运行时 131/131 通过。Mobile 端当前 typecheck 错误全部位于用户并行未提交的 ComposerEditor/T3ComposerEditor 改名级联文件，按工作区边界不计入本进度。
+- ~~apps/server 包整体 typecheck 清偿~~（已完成：第一波 4 切片约 520→约 75；第二波 8 切片按簇清零——attempt 适配器泛型默认、编排器驱动错误通道、MCP 工具登记调用形状、任务图取消契约、驱动器与 e2e 品牌化构造、Runtime 事件品牌化、Goal Loop 验证通道 E 收敛、ByokAdapter 流事件收窄与控制中心只读数组，`tsgo --noEmit` 0 错误，monorepo `vp run -r typecheck` 门禁中 codework 包转绿）。Mobile 端当前 typecheck 错误全部位于用户并行未提交的 ComposerEditor/T3ComposerEditor 改名级联文件，按工作区边界不计入本进度。
 - Request Lab、通用请求镜像、脱敏回放和协议对比界面。
 
 ## 当前提交节点
@@ -247,6 +247,14 @@ CapabilityRegistry + ToolBroker
 | 服务端路由测试运行时恢复 | `feat(composition): 恢复服务端路由测试运行时` | 修复 CapabilityRegistry `import type` 导致的运行时 ReferenceError；buildAppUnderTest 补 `OpenCodeRuntimeLive` 与 NoOp 事件日志；ServerSettings mock 补 `subscribeChanges`；修正 `codework_session_` cookie 与 Windows 路径两处陈旧断言——server.test.ts 从 129 个运行时失败恢复到 131/131 全绿 |
 | MCP 运行时适配器类型债 | `feat(composition): 清偿 MCP 运行时适配器类型债` | Context Tag 确定性 key、`Schema.is` 替换 `instanceof`、SDK 边界 exactOptional/签名收窄、Record 字段允许重置 undefined、幂等键缺省处理，-22 处 |
 | MCP 设置协同类型与规则 | `feat(composition): 收敛 MCP 设置协同类型与规则` | 品牌化 Record 辅助函数签名、toRuntimeConfig 条件展开、`orElseSucceed`/`Effect.try`+带类型错误替换 unknown 错误通道与 gen 内 try/catch、删除死 catch 分支 |
+| attempt 适配器泛型默认 | `feat(composition): 收敛 Goal Loop attempt 适配器泛型` | CompositionGoalLoopAttemptAdapters `<E>` 补默认泛型，测试 stub 恢复上下文类型并补 ByokAgentLoopResult 形状，-13 处 |
+| 编排器驱动错误通道 | `feat(composition): 收敛编排器测试驱动错误通道` | 测试事件投影包装为 driver 合同唯一错误 CompositionAgentDriverFailure，-9 处 |
+| MCP 工具登记调用形状 | `feat(composition): 修正 MCP 工具登记调用形状` | 测试 invoke 入参补 serverId/toolName 必填字段，-8 处 |
+| 任务图取消契约 | `feat(composition): 补全任务图测试取消契约` | CompositionTaskDispatchResult 更名跟随、取消 stub 返回完整 task/run/status 与类型化失败，-7 处 |
+| 驱动器与 e2e 品牌化 | `feat(composition): 修复驱动器与 e2e 测试类型债务` | IdeAgentDriver/Provider e2e 品牌键 `.make()` 构造、Supervisor 裁决收窄守卫、broker 结果联合拓宽与 e2e node 诊断抑制，-17 处；触及套件 14/14 通过 |
+| Runtime 事件品牌化 | `feat(composition): 修复 Runtime 事件构造品牌化` | delegatedExecution.executionId 品牌化包装与宽联合事件助手断言收窄，-6 处；两套件 35/35 通过 |
+| Goal Loop 验证通道 | `feat(composition): 收敛 Goal Loop 验证通道类型` | Runner 改条件展开消除只读赋值并显式 `E \| CompositionTaskStoreError` 通道、存根补 ByokAgentLoopResult 完整形状，-7 处；Goal Loop 套件 17/17 通过 |
+| server typecheck 清零 | `feat(composition): 清空 server 包 typecheck 错误` | ByokAdapter 流事件先排除 completed 终态再读 text、控制中心 squads 以可变数组构造，-5 处；全包 `tsgo --noEmit` 0 错误，全量 composition + provider/byok 套件 453/454（唯一失败为 MCP stdio 真实进程 e2e，经 e61f6e13e 基线验证为环境既有红线） |
 | 文档与回归覆盖 | `c5a709b46`、`223b90ee5` | 刷新迁移矩阵并覆盖 ACP 取消终态回归 |
 
 ## 关键结论
@@ -276,7 +284,7 @@ CapabilityRegistry + ToolBroker
 4. 把 Provider、IDE、Multica 的 grant 状态统一投影到 Composition Run 和 Settings。（本地子任务已完成：grant issued/revoked 与 BYOK resume 输出均已投影为任务历史事件；剩余 = 外部 Driver 的真实 grant 回执接入与 Settings 跨端看板展示，依赖真实产品环境）
 5. ~~收敛 Goal Loop、预算、重试、验证子代理和跨重启 supervisor。~~（本地切片全部完成：完成标记/预算/停滞 pivot/验证合同与子代理验证器、任务台账编排接线、跨重启监督结算、编排层自动重派接线、BYOK/Multica attempt 生产适配器，共 47 单测；剩余缺口 = Multica 输出查询的生产实现，依赖真实 daemon 服务端能力）
 6. 最后补齐 Supplier/Profile 控制中心与 Web/Desktop/Mobile 集成 E2E。（前三个切片已完成：控制中心统一投影 + `serverControlCenterProjection` RPC 四层接线与 Web 设置"组合控制中心"只读展示（双语 i18n）、`serverControlCenterRedispatch` 自动重派操作入口、复用既有 `serverCancelCompositionTask` 的取消操作入口与 `serverReviewCompositionTask` 的审批（通过/驳回）操作入口、新增 `serverControlCenterAbandon` 放弃结算操作入口；第 6 项另完成 Supplier/Profile/Account 统一只读投影与 `serverSupplierRegistry` RPC/Web 只读区块；剩余 = 管理操作入口与凭据生命周期、余额/用量看板、Request Lab、Mobile/Desktop 面板复用及多端真实集成 E2E）
-7. 清偿 apps/server 包整体 typecheck 既有隐性错误基线。（第一波已完成：台账测试形状标注、服务端路由测试运行时恢复 131/131、MCP 适配器与设置协同两簇清零，剩余约 75 处按文件聚类继续小步切片）
+7. ~~清偿 apps/server 包整体 typecheck 既有隐性错误基线。~~（已完成：第一波 4 切片约 520→约 75，含 server.test.ts 运行时 129 失败归零 131/131；第二波 8 切片按簇清零至 `tsgo --noEmit` 0 错误，monorepo 门禁 codework 包转绿。唯一遗留 = MCP stdio 真实进程 e2e 的本机环境既有红线与测试文件 runPromise 风格 lint 债，均与类型清偿无关）
 
 ## 风险与回滚
 

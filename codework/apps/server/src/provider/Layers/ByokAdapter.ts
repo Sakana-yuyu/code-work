@@ -301,6 +301,9 @@ export function makeByokAdapter(byokSettings: ByokSettings, options?: ByokAdapte
                 detail: "BYOK 旧文本会话不支持结构化工具调用，请使用 composition agent loop 入口。",
               });
             }
+            if (event.type === "completed") {
+              return;
+            }
             if (event.text.length === 0) {
               return;
             }
