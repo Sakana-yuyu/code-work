@@ -1,3 +1,4 @@
+import * as NodePath from "node:path";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, describe, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
@@ -191,7 +192,10 @@ describe("DesktopBackendConfiguration", () => {
         ),
       );
 
-      assert.equal(config.entryPath, `${resourcesPath}/server.asar/apps/server/dist/bin.mjs`);
+      assert.equal(
+        config.entryPath,
+        NodePath.join(resourcesPath, "server.asar", "apps", "server", "dist", "bin.mjs"),
+      );
       assert.equal(config.env.ELECTRON_RUN_AS_NODE, "1");
     }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
   );
@@ -821,7 +825,7 @@ describe("DesktopBackendConfiguration", () => {
       const resourcesPath = `${baseDir}/resources`;
       const dirname = `${resourcesPath}/app.asar/apps/desktop/dist-electron`;
       const embeddedMonitorPath = `${resourcesPath}/app.asar/apps/desktop/prod-resources/resource-monitor/codework-resource-monitor`;
-      const monitorPath = `${resourcesPath}/resource-monitor/codework-resource-monitor`;
+      const monitorPath = NodePath.join(resourcesPath, "resource-monitor", "codework-resource-monitor");
       yield* fileSystem.makeDirectory(
         `${resourcesPath}/app.asar/apps/desktop/prod-resources/resource-monitor`,
         { recursive: true },

@@ -142,6 +142,9 @@ export const make = Effect.fn("resourceTelemetry.resourceMonitorBinary.make")(fu
   const platform = yield* HostProcessPlatform;
   const architecture = yield* HostProcessArchitecture;
   const environment = yield* HostProcessEnvironment;
+  // Exec-bit enforcement is a property of the real host kernel, not of the
+  // injected platform identity (tests may simulate Linux on an NTFS host).
+  const hostEnforcesExecBits = process.platform !== "win32";
   const linuxLibc = platform === "linux" ? yield* ResourceMonitorHostLinuxLibc : undefined;
   const executableName = binaryName(platform);
   const platformKey = resourceMonitorPlatformKey(platform, architecture);
@@ -200,7 +203,7 @@ export const make = Effect.fn("resourceTelemetry.resourceMonitorBinary.make")(fu
       const exists = yield* fileSystem.exists(candidate).pipe(Effect.orElseSucceed(() => false));
       if (!exists) continue;
 
-      if (platform !== "win32") {
+      if (hostEnforcesExecBits) {
         const stat = yield* fileSystem.stat(candidate).pipe(Effect.option);
         if (Option.isSome(stat) && (stat.value.mode & 0o111) === 0) {
           return yield* new ResourceMonitorBinaryNotExecutable({

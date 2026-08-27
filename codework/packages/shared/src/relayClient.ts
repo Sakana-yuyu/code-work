@@ -186,6 +186,10 @@ export const makeCloudflaredRelayClient = Effect.fn("cloudflared.make")(function
   const path = yield* Path.Path;
   const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
   const installSemaphore = yield* Semaphore.make(1);
+  // Real-OS semantics vs simulated identity: PATH entries and exec bits come
+  // from the host filesystem/env and must follow process.platform, while the
+  // managed install layout follows the injected platform/arch identity.
+  const hostIsWindows = process.platform === "win32";
   const platform = yield* HostProcessPlatform;
   const arch = yield* HostProcessArchitecture;
   const releaseAsset = options.releaseAsset ?? resolveReleaseAsset(platform, arch);
@@ -204,14 +208,14 @@ export const makeCloudflaredRelayClient = Effect.fn("cloudflared.make")(function
   ) {
     const info = yield* fileSystem.stat(executablePath).pipe(Effect.option);
     if (Option.isNone(info) || info.value.type !== "File") return false;
-    return platform === "win32" || (info.value.mode & 0o111) !== 0;
+    return hostIsWindows || (info.value.mode & 0o111) !== 0;
   });
 
   const resolvePathExecutable = Effect.gen(function* () {
     const config = yield* loadCloudflaredConfig;
     const pathValue = Option.getOrUndefined(config.path);
     if (!pathValue) return null;
-    const delimiter = platform === "win32" ? ";" : ":";
+    const delimiter = hostIsWindows ? ";" : ":";
     for (const directory of pathValue.split(delimiter)) {
       const trimmed = directory.trim().replace(/^"|"$/gu, "");
       if (trimmed.length === 0) continue;

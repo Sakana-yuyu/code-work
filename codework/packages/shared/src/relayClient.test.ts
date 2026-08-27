@@ -10,6 +10,7 @@ import * as Sink from "effect/Sink";
 import * as Stream from "effect/Stream";
 import { HttpClient, HttpClientResponse } from "effect/unstable/http";
 import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process";
+import * as NodePath from "node:path";
 import { HostProcessArchitecture, HostProcessPlatform } from "./hostProcess.ts";
 
 import {
@@ -128,7 +129,14 @@ describe("RelayClient", () => {
           }
         }),
       );
-      const managedPath = `${baseDir}/tools/cloudflared/${CLOUDFLARED_VERSION}/linux-x64/cloudflared`;
+      const managedPath = NodePath.join(
+        baseDir,
+        "tools",
+        "cloudflared",
+        CLOUDFLARED_VERSION,
+        "linux-x64",
+        "cloudflared",
+      );
       expect(installed).toEqual({
         status: "available",
         executablePath: managedPath,
@@ -234,8 +242,8 @@ describe("RelayClient", () => {
       const baseDir = yield* fileSystem.makeTempDirectoryScoped({
         prefix: "t3-cloudflared-test-",
       });
-      const binDir = `${baseDir}/bin`;
-      const executablePath = `${binDir}/cloudflared`;
+      const binDir = NodePath.join(baseDir, "bin");
+      const executablePath = NodePath.join(binDir, "cloudflared");
       const manager = yield* makeCloudflaredRelayClient({
         baseDir,
       });

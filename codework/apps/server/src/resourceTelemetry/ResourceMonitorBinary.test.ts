@@ -108,6 +108,13 @@ describe("ResourceMonitorBinary", () => {
           CODEWORK_RESOURCE_MONITOR_PATH: binaryPath,
         }),
       );
+      if (process.platform === "win32") {
+        // Exec-bit enforcement belongs to the host kernel, not the injected
+        // platform identity: NTFS neither reports nor enforces POSIX bits, so
+        // resolve legitimately succeeds when simulating Linux on Windows.
+        assert.equal(yield* service.resolve, binaryPath);
+        return;
+      }
       const error = yield* Effect.flip(service.resolve);
 
       assert.instanceOf(error, ResourceMonitorBinary.ResourceMonitorBinaryNotExecutable);
