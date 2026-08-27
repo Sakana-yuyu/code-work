@@ -93,6 +93,27 @@ describe("CompositionAgentService", () => {
     expect(capturedRuntimeId).toBe(input.providerInstanceId);
   });
 
+  it("把模型文本 checkpoint 逐段传给调用方", async () => {
+    const checkpoints: string[] = [];
+    const service = makeCompositionAgentService({
+      broker: makeBroker(),
+      resolveModelDriver: () => Effect.succeed(modelDriver),
+    });
+
+    await expect(
+      Effect.runPromise(
+        service.run({
+          ...input,
+          onTextCheckpoint: (checkpoint) =>
+            Effect.sync(() => {
+              checkpoints.push(checkpoint.delta);
+            }),
+        }),
+      ),
+    ).resolves.toMatchObject({ text: "完成" });
+    expect(checkpoints).toEqual(["完成"]);
+  });
+
   it("把取消 signal 传递给 Provider Model Driver", async () => {
     const controller = new AbortController();
     let receivedSignal: AbortSignal | undefined;

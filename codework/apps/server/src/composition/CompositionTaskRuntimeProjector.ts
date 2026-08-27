@@ -191,6 +191,9 @@ type RuntimeProjection = {
   readonly blockerCode?: string;
   readonly failureCode?: string;
   readonly runtimeTerminal?: boolean;
+  readonly outputDelta?: string;
+  readonly outputOffsetBytes?: number;
+  readonly outputDigest?: string;
 };
 
 const projectEvent = (
@@ -323,6 +326,23 @@ const projectEvent = (
       };
     case "tool.summary":
       return { status: currentStatus, eventType: "tool", summary: event.payload.summary };
+    case "content.delta":
+      if (
+        event.raw?.source !== "composition.byok.agent-loop" ||
+        event.payload.streamKind !== "assistant_text" ||
+        event.payload.checkpointOffsetBytes === undefined ||
+        event.payload.checkpointDigest === undefined
+      ) {
+        return undefined;
+      }
+      return {
+        status: currentStatus,
+        eventType: "message",
+        summary: "BYOK Agent 已保存部分输出",
+        outputDelta: event.payload.delta,
+        outputOffsetBytes: event.payload.checkpointOffsetBytes,
+        outputDigest: event.payload.checkpointDigest,
+      };
     case "runtime.warning":
       return { status: currentStatus, eventType: "message", summary: event.payload.message };
     case "runtime.error":
@@ -413,6 +433,11 @@ export const projectCompositionRuntimeEvent = (
       eventType: projection.eventType,
       summary: projection.summary,
       ...(projection.blockerCode === undefined ? {} : { blockerCode: projection.blockerCode }),
+      ...(projection.outputDelta === undefined ? {} : { outputDelta: projection.outputDelta }),
+      ...(projection.outputOffsetBytes === undefined
+        ? {}
+        : { outputOffsetBytes: projection.outputOffsetBytes }),
+      ...(projection.outputDigest === undefined ? {} : { outputDigest: projection.outputDigest }),
     } as const;
 
     const appendAuditOnly = () =>

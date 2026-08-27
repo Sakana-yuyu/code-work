@@ -24,6 +24,9 @@ import {
   ProviderInstanceRegistry,
   type ProviderInstanceRegistryShape,
 } from "../provider/Services/ProviderInstanceRegistry.ts";
+import { CompositionTaskStore } from "../persistence/Services/CompositionTaskStore.ts";
+import { CompositionTaskStoreLive } from "../persistence/Layers/CompositionTaskStore.ts";
+import { SqlitePersistenceMemory } from "../persistence/Layers/Sqlite.ts";
 
 const makeByokInstance = (instanceId: string): ProviderInstance =>
   ({
@@ -60,9 +63,13 @@ describe("CompositionByokAgentDriverRegistry", () => {
     const providerRegistry = {
       listInstances: Effect.succeed(instances),
     } satisfies Pick<ProviderInstanceRegistryShape, "listInstances">;
+    const checkpointStore = {
+      appendEventIfNew: () => Effect.succeed(true),
+    } satisfies Pick<CompositionTaskStore["Service"], "appendEventIfNew">;
     const projection = makeCompositionByokAgentDriverProjection({
       providerRegistry,
       agentService,
+      checkpointStore,
     });
 
     await Effect.runPromise(projection.refresh);
@@ -122,6 +129,9 @@ describe("CompositionByokAgentDriverRegistry", () => {
       agentService: {
         run: () => Effect.succeed({ text: "", messages: [], rounds: 1 }),
       },
+      checkpointStore: {
+        appendEventIfNew: () => Effect.succeed(true),
+      },
     });
 
     await Effect.runPromise(projection.refresh);
@@ -149,6 +159,9 @@ describe("CompositionByokAgentDriverRegistry", () => {
       Layer.provideMerge(Layer.succeed(ProviderInstanceRegistry, providerRegistry)),
       Layer.provideMerge(Layer.succeed(CompositionAgentService, agentService)),
       Layer.provideMerge(Layer.succeed(CompositionAgentDriverRegistryService, registry)),
+      Layer.provideMerge(
+        CompositionTaskStoreLive.pipe(Layer.provideMerge(SqlitePersistenceMemory)),
+      ),
     );
 
     await expect(

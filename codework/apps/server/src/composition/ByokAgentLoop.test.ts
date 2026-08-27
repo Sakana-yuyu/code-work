@@ -619,6 +619,65 @@ describe("ByokAgentLoop", () => {
     }),
   );
 
+  it.effect("模型截断前逐段提交可恢复文本 checkpoint，且不执行未收口工具调用", () =>
+    Effect.gen(function* () {
+      const checkpoints: Array<{
+        readonly turn: number;
+        readonly chunkIndex: number;
+        readonly delta: string;
+        readonly cumulativeUtf8Bytes: number;
+      }> = [];
+      let brokerCalls = 0;
+      const broker = ToolBroker.ToolBroker.of({
+        invoke: (input) =>
+          Effect.sync(() => {
+            brokerCalls += 1;
+            return makeResult(input);
+          }),
+        cancel: () => Effect.void,
+      });
+      const model: ByokAgentModelDriver = {
+        complete: () =>
+          Stream.fromIterable([
+            { type: "text_delta" as const, text: "部分" },
+            { type: "text_delta" as const, text: "输出" },
+          ]).pipe(
+            Stream.concat(
+              Stream.fail(
+                new ByokAgentModelError({
+                  code: "byok_engine_error",
+                  detail: "output truncated",
+                  reason: "output_truncated",
+                  retryable: false,
+                }),
+              ),
+            ),
+          ),
+      };
+
+      const error = yield* Effect.flip(
+        runByokAgentLoop(
+          {
+            ...baseInput,
+            onTextCheckpoint: (checkpoint) =>
+              Effect.sync(() => {
+                checkpoints.push(checkpoint);
+              }),
+          },
+          model,
+          broker,
+        ),
+      );
+
+      expect(error).toMatchObject({ reason: "output_truncated" });
+      expect(checkpoints).toEqual([
+        { turn: 1, chunkIndex: 0, delta: "部分", cumulativeUtf8Bytes: 6 },
+        { turn: 1, chunkIndex: 1, delta: "输出", cumulativeUtf8Bytes: 12 },
+      ]);
+      expect(brokerCalls).toBe(0);
+    }),
+  );
+
   for (const reason of ["output_truncated", "terminal_event_missing"] as const) {
     it.effect(`${reason} 即使误标为可重试也不会重放请求`, () =>
       Effect.gen(function* () {

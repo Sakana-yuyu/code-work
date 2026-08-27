@@ -1,13 +1,23 @@
 import { describe, expect, it } from "vite-plus/test";
 import { it as effectIt } from "@effect/vitest";
-import { ProviderDriverKind, type ProviderRuntimeEvent } from "@codework/contracts";
+import {
+  ProviderDriverKind,
+  type CompositionTaskEvent,
+  type ProviderRuntimeEvent,
+} from "@codework/contracts";
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
 import * as Stream from "effect/Stream";
 
-import type { CompositionAgentServiceShape } from "./CompositionAgentService.ts";
+import {
+  CompositionAgentServiceError,
+  type CompositionAgentServiceInput,
+  type CompositionAgentServiceShape,
+} from "./CompositionAgentService.ts";
 import { makeCompositionByokAgentDriver } from "./CompositionByokAgentDriver.ts";
+import { PersistenceSqlError } from "../persistence/Errors.ts";
+import type { CompositionTaskStoreShape } from "../persistence/Services/CompositionTaskStore.ts";
 
 const task = {
   taskId: "task-byok",
@@ -41,6 +51,35 @@ const tools = [
   },
 ];
 
+const makeCheckpointLedger = (actions: string[] = []) => {
+  const events = new Map<string, CompositionTaskEvent>();
+  const store = {
+    appendEventIfNew: (event) =>
+      Effect.sync(() => {
+        const key = `${event.taskId}:${event.runId}:${event.sourceEventId}`;
+        actions.push(`persist:${event.sourceEventId}`);
+        if (events.has(key)) return false;
+        events.set(key, event);
+        return true;
+      }),
+  } satisfies Pick<CompositionTaskStoreShape, "appendEventIfNew">;
+  return { events, store };
+};
+
+const persistCheckpoint = (
+  input: CompositionAgentServiceInput,
+  checkpoint: Parameters<NonNullable<CompositionAgentServiceInput["onTextCheckpoint"]>>[0],
+) =>
+  input.onTextCheckpoint!(checkpoint).pipe(
+    Effect.mapError(
+      (error) =>
+        new CompositionAgentServiceError({
+          code: error.code,
+          detail: error.detail,
+        }),
+    ),
+  );
+
 const start = (driver: ReturnType<typeof makeCompositionByokAgentDriver>) =>
   driver.startTask({
     task,
@@ -49,6 +88,12 @@ const start = (driver: ReturnType<typeof makeCompositionByokAgentDriver>) =>
     workspaceRoot: "C:/workspace",
     model: "openai/gpt-5",
   });
+
+const collectUntilTerminal = (driver: ReturnType<typeof makeCompositionByokAgentDriver>) =>
+  driver.streamEvents!().pipe(
+    Stream.takeUntil((event) => event.type === "turn.completed" || event.type === "turn.aborted"),
+    Stream.runCollect,
+  );
 
 describe("CompositionByokAgentDriver", () => {
   it("把 BYOK Agent Loop 投影成真实 Driver，并将终态事件归属到同一个 run", async () => {
@@ -59,12 +104,14 @@ describe("CompositionByokAgentDriver", () => {
         return Effect.succeed({ text: "完成", messages: [], rounds: 1 });
       },
     };
+    const checkpointLedger = makeCheckpointLedger();
     const driver = makeCompositionByokAgentDriver({
       agentId: "provider:byok",
       runtimeId: "provider:byok",
       providerInstanceId: "byok",
       providerKind: "byok",
       agentService: service,
+      checkpointStore: checkpointLedger.store,
       listTools: () => Effect.succeed(tools),
     });
 
@@ -105,6 +152,7 @@ describe("CompositionByokAgentDriver", () => {
       runtimeId: "provider:byok",
       providerInstanceId: "byok",
       agentService: service,
+      checkpointStore: makeCheckpointLedger().store,
       listTools: () => Effect.succeed(tools),
     };
     const driver = makeCompositionByokAgentDriver(options);
@@ -162,11 +210,13 @@ describe("CompositionByokAgentDriver", () => {
         );
       },
     };
+    const checkpointLedger = makeCheckpointLedger();
     const driver = makeCompositionByokAgentDriver({
       agentId: "provider:byok",
       runtimeId: "provider:byok",
       providerInstanceId: "byok",
       agentService: service,
+      checkpointStore: checkpointLedger.store,
       listTools: () => Effect.succeed(tools),
     });
 
@@ -199,11 +249,13 @@ describe("CompositionByokAgentDriver", () => {
       const service: CompositionAgentServiceShape = {
         run: () => Effect.succeed({ text: "完成", messages: [], rounds: 1 }),
       };
+      const checkpointLedger = makeCheckpointLedger();
       const driver = makeCompositionByokAgentDriver({
         agentId: "provider:byok",
         runtimeId: "provider:byok",
         providerInstanceId: "byok",
         agentService: service,
+        checkpointStore: checkpointLedger.store,
         listTools: () => Effect.succeed(tools),
       });
       const eventsFiber = yield* Stream.runForEach(driver.streamEvents!(), (event) =>
@@ -245,11 +297,13 @@ describe("CompositionByokAgentDriver", () => {
           return { text: "", messages: [], rounds: 1 };
         }),
     };
+    const checkpointLedger = makeCheckpointLedger();
     const driver = makeCompositionByokAgentDriver({
       agentId: "provider:byok",
       runtimeId: "provider:byok",
       providerInstanceId: "byok",
       agentService: service,
+      checkpointStore: checkpointLedger.store,
       listTools: () => Effect.succeed(tools),
     });
 
@@ -268,12 +322,14 @@ describe("CompositionByokAgentDriver", () => {
     const service: CompositionAgentServiceShape = {
       run: () => Effect.succeed({ text: "", messages: [], rounds: 1 }),
     };
+    const checkpointLedger = makeCheckpointLedger();
     const driver = makeCompositionByokAgentDriver({
       agentId: "provider:byok",
       runtimeId: "provider:byok",
       providerInstanceId: "byok",
       providerKind: "byok",
       agentService: service,
+      checkpointStore: checkpointLedger.store,
       listTools: () => Effect.succeed(tools),
     });
 
@@ -288,4 +344,209 @@ describe("CompositionByokAgentDriver", () => {
       supportsMcp: false,
     });
   });
+
+  effectIt.effect("文本 checkpoint 先落盘再发布，成功结果只补发尚未保存的后缀", () =>
+    Effect.gen(function* () {
+      const actions: string[] = [];
+      const checkpointLedger = makeCheckpointLedger(actions);
+      const service: CompositionAgentServiceShape = {
+        run: (input) =>
+          Effect.gen(function* () {
+            yield* persistCheckpoint(input, {
+              turn: 1,
+              chunkIndex: 0,
+              delta: "部",
+              cumulativeUtf8Bytes: 3,
+            });
+            return { text: "部分", messages: [], rounds: 1 };
+          }),
+      };
+      const driver = makeCompositionByokAgentDriver({
+        agentId: "provider:byok",
+        runtimeId: "provider:byok",
+        providerInstanceId: "byok",
+        agentService: service,
+        checkpointStore: checkpointLedger.store,
+        listTools: () => Effect.succeed(tools),
+      });
+      const eventsFiber = yield* driver.streamEvents!().pipe(
+        Stream.tap((event) =>
+          Effect.sync(() => {
+            if (event.type === "content.delta") {
+              actions.push(`publish:${event.eventId}`);
+            }
+          }),
+        ),
+        Stream.takeUntil(
+          (event) => event.type === "turn.completed" || event.type === "turn.aborted",
+        ),
+        Stream.runCollect,
+        Effect.forkChild,
+      );
+
+      yield* start(driver);
+      const events = yield* Fiber.join(eventsFiber);
+      const contentEvents = events.filter((event) => event.type === "content.delta");
+
+      expect(contentEvents.map((event) => event.payload.delta)).toEqual(["部", "分"]);
+      expect([...checkpointLedger.events.values()].map((event) => event.outputDelta)).toEqual([
+        "部",
+        "分",
+      ]);
+      for (const event of contentEvents) {
+        expect(actions.indexOf(`persist:${event.eventId}`)).toBeLessThan(
+          actions.indexOf(`publish:${event.eventId}`),
+        );
+      }
+    }),
+  );
+
+  effectIt.effect("同一文本 checkpoint 重放时只保存并发布一次", () =>
+    Effect.gen(function* () {
+      const checkpointLedger = makeCheckpointLedger();
+      const checkpoint = {
+        turn: 1,
+        chunkIndex: 0,
+        delta: "部分输出",
+        cumulativeUtf8Bytes: 12,
+      } as const;
+      const service: CompositionAgentServiceShape = {
+        run: (input) =>
+          Effect.gen(function* () {
+            yield* persistCheckpoint(input, checkpoint);
+            yield* persistCheckpoint(input, checkpoint);
+            return { text: checkpoint.delta, messages: [], rounds: 1 };
+          }),
+      };
+      const driver = makeCompositionByokAgentDriver({
+        agentId: "provider:byok",
+        runtimeId: "provider:byok",
+        providerInstanceId: "byok",
+        agentService: service,
+        checkpointStore: checkpointLedger.store,
+        listTools: () => Effect.succeed(tools),
+      });
+      const eventsFiber = yield* collectUntilTerminal(driver).pipe(Effect.forkChild);
+
+      yield* start(driver);
+      const events = yield* Fiber.join(eventsFiber);
+
+      expect(events.map((event) => event.type)).toEqual([
+        "turn.started",
+        "content.delta",
+        "turn.completed",
+      ]);
+      expect(checkpointLedger.events.size).toBe(1);
+    }),
+  );
+
+  effectIt.effect("截断前的正文可由共享账本恢复，重建 Driver 后不重复发布 checkpoint", () =>
+    Effect.gen(function* () {
+      const checkpointLedger = makeCheckpointLedger();
+      const service: CompositionAgentServiceShape = {
+        run: (input) =>
+          Effect.gen(function* () {
+            yield* persistCheckpoint(input, {
+              turn: 1,
+              chunkIndex: 0,
+              delta: "部分",
+              cumulativeUtf8Bytes: 6,
+            });
+            yield* persistCheckpoint(input, {
+              turn: 1,
+              chunkIndex: 1,
+              delta: "输出",
+              cumulativeUtf8Bytes: 12,
+            });
+            return yield* new CompositionAgentServiceError({
+              code: "output_truncated",
+              detail: "模型输出被截断",
+            });
+          }),
+      };
+      const options = {
+        agentId: "provider:byok",
+        runtimeId: "provider:byok",
+        providerInstanceId: "byok",
+        agentService: service,
+        checkpointStore: checkpointLedger.store,
+        listTools: () => Effect.succeed(tools),
+      };
+      const driver = makeCompositionByokAgentDriver(options);
+      const firstEventsFiber = yield* collectUntilTerminal(driver).pipe(Effect.forkChild);
+
+      yield* start(driver);
+      const firstEvents = yield* Fiber.join(firstEventsFiber);
+      const recoveredDriver = makeCompositionByokAgentDriver(options);
+      const recoveredEventsFiber = yield* collectUntilTerminal(recoveredDriver).pipe(
+        Effect.forkChild,
+      );
+      yield* start(recoveredDriver);
+      const recoveredEvents = yield* Fiber.join(recoveredEventsFiber);
+
+      expect(firstEvents.filter((event) => event.type === "content.delta")).toHaveLength(2);
+      expect(firstEvents.at(-1)).toMatchObject({
+        type: "turn.completed",
+        payload: { state: "failed" },
+      });
+      expect(firstEvents).not.toContainEqual(
+        expect.objectContaining({ type: "turn.completed", payload: { state: "completed" } }),
+      );
+      expect([...checkpointLedger.events.values()].map((event) => event.outputDelta).join("")).toBe(
+        "部分输出",
+      );
+      expect(recoveredEvents.map((event) => event.type)).toEqual([
+        "turn.started",
+        "runtime.error",
+        "turn.completed",
+      ]);
+    }),
+  );
+
+  effectIt.effect("checkpoint 持久化失败时显式失败且不发布未落盘正文", () =>
+    Effect.gen(function* () {
+      const service: CompositionAgentServiceShape = {
+        run: (input) =>
+          persistCheckpoint(input, {
+            turn: 1,
+            chunkIndex: 0,
+            delta: "不能丢失",
+            cumulativeUtf8Bytes: 12,
+          }).pipe(Effect.as({ text: "不能丢失", messages: [], rounds: 1 })),
+      };
+      const driver = makeCompositionByokAgentDriver({
+        agentId: "provider:byok",
+        runtimeId: "provider:byok",
+        providerInstanceId: "byok",
+        agentService: service,
+        checkpointStore: {
+          appendEventIfNew: () =>
+            Effect.fail(
+              new PersistenceSqlError({
+                operation: "CompositionTaskStore.appendEventIfNew",
+                detail: "测试持久化失败",
+              }),
+            ),
+        },
+        listTools: () => Effect.succeed(tools),
+      });
+      const eventsFiber = yield* collectUntilTerminal(driver).pipe(Effect.forkChild);
+
+      yield* start(driver);
+      const events = yield* Fiber.join(eventsFiber);
+
+      expect(events.map((event) => event.type)).toEqual([
+        "turn.started",
+        "runtime.error",
+        "turn.completed",
+      ]);
+      expect(events.at(-1)).toMatchObject({
+        type: "turn.completed",
+        payload: {
+          state: "failed",
+          errorMessage: expect.stringContaining("byok_checkpoint_persistence_failed"),
+        },
+      });
+    }),
+  );
 });

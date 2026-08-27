@@ -4,7 +4,12 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Schema from "effect/Schema";
 
-import type { ByokAgentModelDriver, ByokAgentTool, ByokAgentLoopResult } from "./ByokAgentLoop.ts";
+import type {
+  ByokAgentModelDriver,
+  ByokAgentTool,
+  ByokAgentLoopResult,
+  ByokAgentLoopInput,
+} from "./ByokAgentLoop.ts";
 import { runByokAgentLoop } from "./ByokAgentLoop.ts";
 import * as ToolBroker from "./ToolBroker.ts";
 import * as CapabilityGrantRegistry from "./CapabilityGrantRegistry.ts";
@@ -25,6 +30,7 @@ export type CompositionAgentServiceInput = {
   readonly maxRounds?: number | undefined;
   readonly maxContextMessages?: number | undefined;
   readonly maxToolResultChars?: number | undefined;
+  readonly onTextCheckpoint?: ByokAgentLoopInput["onTextCheckpoint"];
   readonly signal?: AbortSignal | undefined;
 };
 
@@ -118,6 +124,9 @@ const make = (options: CompositionAgentServiceOptions): CompositionAgentServiceS
           ...(input.maxToolResultChars === undefined
             ? {}
             : { maxToolResultChars: input.maxToolResultChars }),
+          ...(input.onTextCheckpoint === undefined
+            ? {}
+            : { onTextCheckpoint: input.onTextCheckpoint }),
         },
         model,
         options.broker,
@@ -141,7 +150,7 @@ const make = (options: CompositionAgentServiceOptions): CompositionAgentServiceS
         Effect.mapError(
           (error) =>
             new CompositionAgentServiceError({
-              code: error._tag,
+              code: error._tag === "ByokAgentLoopCheckpointError" ? error.code : error._tag,
               detail: error.message,
             }),
         ),

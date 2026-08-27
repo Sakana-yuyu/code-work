@@ -234,6 +234,7 @@ describe("CompositionTaskGraphExecutor", () => {
             resolveModelDriver: ({ providerInstanceId }) =>
               Effect.succeed(models.get(providerInstanceId)!),
           });
+          const store = yield* CompositionTaskStore;
           const drivers = [
             makeCompositionByokAgentDriver({
               agentId: "agent-a",
@@ -241,6 +242,7 @@ describe("CompositionTaskGraphExecutor", () => {
               providerInstanceId: "provider-a",
               defaultModel: "model-a",
               agentService,
+              checkpointStore: store,
               listTools: () => Effect.succeed([tool]),
             }),
             makeCompositionByokAgentDriver({
@@ -249,6 +251,7 @@ describe("CompositionTaskGraphExecutor", () => {
               providerInstanceId: "provider-b",
               defaultModel: "model-b",
               agentService,
+              checkpointStore: store,
               listTools: () => Effect.succeed([tool]),
             }),
             makeCompositionByokAgentDriver({
@@ -257,12 +260,12 @@ describe("CompositionTaskGraphExecutor", () => {
               providerInstanceId: "provider-leader",
               defaultModel: "model-leader",
               agentService,
+              checkpointStore: store,
               listTools: () => Effect.succeed([tool]),
             }),
           ];
           const driverRegistry = makeCompositionAgentDriverRegistry();
           yield* Effect.forEach(drivers, (driver) => driverRegistry.register(driver));
-          const store = yield* CompositionTaskStore;
           const updates = yield* PubSub.unbounded<CompositionTaskRuntimeUpdate>();
           const projectAndPublish = (event: Parameters<typeof projectCompositionRuntimeEvent>[2]) =>
             Effect.gen(function* () {

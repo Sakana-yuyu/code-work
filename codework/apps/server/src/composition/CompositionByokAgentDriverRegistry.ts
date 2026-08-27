@@ -22,12 +22,15 @@ import {
   type CompositionMcpToolRegistryShape,
 } from "./CompositionMcpToolRegistry.ts";
 import { compositionProviderAgentId } from "./CompositionProviderAgentDriverRegistry.ts";
-import type { ProviderInstance } from "../provider/ProviderDriver.ts";
 import {
   ProviderInstanceRegistry,
   type ProviderInstanceRegistryShape,
 } from "../provider/Services/ProviderInstanceRegistry.ts";
 import { CompositionAgentDriverRegistryService } from "./CompositionAgentDriverRegistry.ts";
+import {
+  CompositionTaskStore,
+  type CompositionTaskStoreShape,
+} from "../persistence/Services/CompositionTaskStore.ts";
 
 export const compositionByokAgentId = (instanceId: ProviderInstanceId | string): string =>
   compositionProviderAgentId(instanceId);
@@ -43,6 +46,7 @@ export interface CompositionByokAgentDriverProjection {
 export interface CompositionByokAgentDriverProjectionOptions {
   readonly providerRegistry: Pick<ProviderInstanceRegistryShape, "listInstances">;
   readonly agentService: CompositionAgentServiceShape;
+  readonly checkpointStore: Pick<CompositionTaskStoreShape, "appendEventIfNew">;
   readonly mcpToolRegistry?: CompositionMcpToolRegistryShape;
   readonly registry?: CompositionAgentDriverRegistry;
 }
@@ -89,6 +93,7 @@ export const makeCompositionByokAgentDriverProjection = (
           ? {}
           : { defaultModel: instance.composition.defaultModelId }),
         agentService: options.agentService,
+        checkpointStore: options.checkpointStore,
         listTools: () =>
           Effect.gen(function* () {
             const dynamicTools =
@@ -127,9 +132,11 @@ const live = Effect.gen(function* () {
   const agentService = yield* CompositionAgentService;
   const mcpToolRegistry = yield* Effect.serviceOption(CompositionMcpToolRegistry);
   const driverRegistry = yield* CompositionAgentDriverRegistryService;
+  const checkpointStore = yield* CompositionTaskStore;
   const projection = makeCompositionByokAgentDriverProjection({
     providerRegistry,
     agentService,
+    checkpointStore,
     ...(mcpToolRegistry._tag === "Some" ? { mcpToolRegistry: mcpToolRegistry.value } : {}),
     registry: driverRegistry,
   });

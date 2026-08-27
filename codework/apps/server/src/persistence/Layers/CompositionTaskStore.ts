@@ -19,7 +19,6 @@ import { toPersistenceSqlError } from "../Errors.ts";
 import {
   CompositionTaskStore,
   type CompositionMulticaQuickCreateIntent,
-  type CompositionMulticaQuickCreateIntentInput,
   type CompositionTaskStoreShape,
 } from "../Services/CompositionTaskStore.ts";
 
@@ -76,6 +75,9 @@ const EventRowSchema = Schema.Struct({
   blockerCode: Schema.NullOr(Schema.String),
   approvalRequestId: Schema.NullOr(ApprovalRequestId),
   childTaskIds: Schema.NullOr(StringArrayJson),
+  outputDelta: Schema.NullOr(Schema.String),
+  outputOffsetBytes: Schema.NullOr(Schema.Number),
+  outputDigest: Schema.NullOr(Schema.String),
 });
 
 const DependencyRowSchema = Schema.Struct({
@@ -204,6 +206,9 @@ const toEvent = (row: Schema.Schema.Type<typeof EventRowSchema>): CompositionTas
     ? {}
     : { approvalRequestId: ApprovalRequestId.make(row.approvalRequestId) }),
   ...(row.childTaskIds === null ? {} : { childTaskIds: row.childTaskIds }),
+  ...(row.outputDelta === null ? {} : { outputDelta: row.outputDelta }),
+  ...(row.outputOffsetBytes === null ? {} : { outputOffsetBytes: row.outputOffsetBytes }),
+  ...(row.outputDigest === null ? {} : { outputDigest: row.outputDigest }),
 });
 
 const toMulticaQuickCreateIntent = (
@@ -533,12 +538,14 @@ const makeStore = Effect.gen(function* () {
     execute: (event) => sql`
       INSERT INTO composition_task_events (
         task_id, run_id, source_event_id, parent_task_id, agent_id, runtime_id, status, sequence,
-        event_type, summary, progress, blocker_code, approval_request_id, child_task_ids_json
+        event_type, summary, progress, blocker_code, approval_request_id, child_task_ids_json,
+        output_delta, output_offset_bytes, output_digest
       ) VALUES (
         ${event.taskId}, ${event.runId}, ${event.sourceEventId}, ${event.parentTaskId}, ${event.agentId}, ${event.runtimeId},
         ${event.status}, ${event.sequence}, ${event.eventType}, ${event.summary}, ${event.progress},
         ${event.blockerCode}, ${event.approvalRequestId},
-        ${event.childTaskIds === undefined ? null : encodeStringArray(event.childTaskIds)}
+        ${event.childTaskIds === undefined ? null : encodeStringArray(event.childTaskIds)},
+        ${event.outputDelta}, ${event.outputOffsetBytes}, ${event.outputDigest}
       )
     `,
   });
@@ -553,7 +560,8 @@ const makeStore = Effect.gen(function* () {
     execute: (event) => sql`
       INSERT INTO composition_task_events (
         task_id, run_id, source_event_id, parent_task_id, agent_id, runtime_id, status, sequence,
-        event_type, summary, progress, blocker_code, approval_request_id, child_task_ids_json
+        event_type, summary, progress, blocker_code, approval_request_id, child_task_ids_json,
+        output_delta, output_offset_bytes, output_digest
       ) VALUES (
         ${event.taskId}, ${event.runId}, ${event.sourceEventId}, ${event.parentTaskId}, ${event.agentId}, ${event.runtimeId},
         ${event.status},
@@ -567,7 +575,8 @@ const makeStore = Effect.gen(function* () {
         ),
         ${event.eventType}, ${event.summary}, ${event.progress},
         ${event.blockerCode}, ${event.approvalRequestId},
-        ${event.childTaskIds === undefined ? null : encodeStringArray(event.childTaskIds)}
+        ${event.childTaskIds === undefined ? null : encodeStringArray(event.childTaskIds)},
+        ${event.outputDelta}, ${event.outputOffsetBytes}, ${event.outputDigest}
       )
       ON CONFLICT (task_id, run_id, source_event_id) WHERE source_event_id IS NOT NULL DO NOTHING
       RETURNING row_id AS "rowId"
@@ -594,7 +603,9 @@ const makeStore = Effect.gen(function* () {
         parent_task_id AS "parentTaskId",
         agent_id AS "agentId", runtime_id AS "runtimeId", status, sequence,
         event_type AS "eventType", summary, progress, blocker_code AS "blockerCode",
-        approval_request_id AS "approvalRequestId", child_task_ids_json AS "childTaskIds"
+        approval_request_id AS "approvalRequestId", child_task_ids_json AS "childTaskIds",
+        output_delta AS "outputDelta", output_offset_bytes AS "outputOffsetBytes",
+        output_digest AS "outputDigest"
       FROM composition_task_events
       WHERE task_id = ${taskId} AND run_id = ${runId}
       ORDER BY sequence ASC
@@ -814,6 +825,9 @@ const makeStore = Effect.gen(function* () {
             progress: event.progress ?? null,
             blockerCode: event.blockerCode ?? null,
             approvalRequestId: event.approvalRequestId ?? null,
+            outputDelta: event.outputDelta ?? null,
+            outputOffsetBytes: event.outputOffsetBytes ?? null,
+            outputDigest: event.outputDigest ?? null,
           }).pipe(Effect.as(event)),
         );
       }),
@@ -827,6 +841,9 @@ const makeStore = Effect.gen(function* () {
           progress: event.progress ?? null,
           blockerCode: event.blockerCode ?? null,
           approvalRequestId: event.approvalRequestId ?? null,
+          outputDelta: event.outputDelta ?? null,
+          outputOffsetBytes: event.outputOffsetBytes ?? null,
+          outputDigest: event.outputDigest ?? null,
         }).pipe(Effect.map(Option.isSome)),
       ),
     withTransaction: (effect) =>

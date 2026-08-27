@@ -7,7 +7,6 @@ import { assert, it } from "@effect/vitest";
 import {
   ProviderDriverKind,
   ProviderInstanceId,
-  ThreadId,
   TurnId,
   type ProviderSession,
   type ProviderSessionStartInput,
@@ -31,6 +30,9 @@ import * as ToolBroker from "./ToolBroker.ts";
 import * as WorkspaceEntries from "../workspace/WorkspaceEntries.ts";
 import * as WorkspaceFileSystem from "../workspace/WorkspaceFileSystem.ts";
 import * as WorkspacePaths from "../workspace/WorkspacePaths.ts";
+import { CompositionTaskStore } from "../persistence/Services/CompositionTaskStore.ts";
+import { CompositionTaskStoreLive } from "../persistence/Layers/CompositionTaskStore.ts";
+import { SqlitePersistenceMemory } from "../persistence/Layers/Sqlite.ts";
 
 const capabilityRegistry = CapabilityRegistry.makeCompositionCapabilityRegistry();
 const capabilityPolicy = CapabilityPolicy.makeCompositionCapabilityPolicy({
@@ -56,6 +58,7 @@ const TestLayer = Layer.mergeAll(
   WorkspaceFileLayer,
   WorkspaceEntries.layer.pipe(Layer.provide(WorkspacePaths.layer)),
   WorkspacePaths.layer,
+  CompositionTaskStoreLive.pipe(Layer.provideMerge(SqlitePersistenceMemory)),
 ).pipe(Layer.provideMerge(NodeServices.layer));
 
 const makeTask = (suffix: string, runtimeId: string) => ({
@@ -78,6 +81,7 @@ it.layer(TestLayer, { excludeTestServices: true })(
     it.effect("BYOK Driver 和 Provider Driver 通过同一 ToolBroker 读取真实工作区文件", () =>
       Effect.gen(function* () {
         const broker = yield* ToolBroker.ToolBroker;
+        const checkpointStore = yield* CompositionTaskStore;
         const sharedToolBroker = broker;
         const workspaceRoot = yield* Effect.promise(() =>
           NodeFSP.mkdtemp(NodePath.join(NodeOS.tmpdir(), "codework-multi-driver-toolbroker-")),
@@ -139,6 +143,7 @@ it.layer(TestLayer, { excludeTestServices: true })(
           runtimeId: byokTask.runtimeId,
           providerInstanceId: "byok-e2e",
           agentService: byokService,
+          checkpointStore,
           listTools: () =>
             Effect.succeed([
               {

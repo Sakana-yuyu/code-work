@@ -1,7 +1,10 @@
+import * as NodeCrypto from "node:crypto";
+
 import {
   EventId,
   ProviderDriverKind,
   ProviderInstanceId,
+  RuntimeTaskId,
   type CompositionAgentDriverProfile,
   type ProviderRuntimeEvent,
   ThreadId,
@@ -14,12 +17,17 @@ import * as PubSub from "effect/PubSub";
 import * as Stream from "effect/Stream";
 import * as DateTime from "effect/DateTime";
 
-import type { ByokAgentTool } from "./ByokAgentLoop.ts";
+import {
+  ByokAgentLoopCheckpointError,
+  type ByokAgentTextCheckpoint,
+  type ByokAgentTool,
+} from "./ByokAgentLoop.ts";
 import type { CompositionAgentServiceShape } from "./CompositionAgentService.ts";
 import {
   CompositionAgentDriverFailure,
   type CompositionAgentDriver,
 } from "./CompositionOrchestrator.ts";
+import type { CompositionTaskStoreShape } from "../persistence/Services/CompositionTaskStore.ts";
 
 export type CompositionByokAgentDriverOptions = {
   readonly agentId: string;
@@ -29,13 +37,14 @@ export type CompositionByokAgentDriverOptions = {
   readonly displayName?: string;
   readonly defaultModel?: string;
   readonly agentService: CompositionAgentServiceShape;
+  readonly checkpointStore: Pick<CompositionTaskStoreShape, "appendEventIfNew">;
   readonly listTools: () => Effect.Effect<ReadonlyArray<ByokAgentTool>, Error>;
 };
 
 type ActiveRun = {
   readonly taskId: string;
   readonly runId: string;
-  readonly runtimeTaskId: string;
+  readonly runtimeTaskId: RuntimeTaskId;
   readonly threadId: ThreadId;
   readonly turnId: TurnId;
   fiber: Fiber.Fiber<void, unknown>;
@@ -48,8 +57,8 @@ type CompletedRun = Omit<ActiveRun, "fiber" | "abortController" | "terminalOwner
 const errorDetail = (error: unknown): string =>
   error instanceof Error ? error.message : String(error);
 
-const runtimeTaskIdFor = (runtimeId: string, taskId: string, runId: string): string =>
-  `${runtimeId}:task:${taskId}:${runId}`;
+const runtimeTaskIdFor = (runtimeId: string, taskId: string, runId: string): RuntimeTaskId =>
+  RuntimeTaskId.make(`${runtimeId}:task:${taskId}:${runId}`);
 
 const threadIdFor = (taskId: string, runId: string): ThreadId =>
   ThreadId.make(`composition-${taskId}-${runId}`);
@@ -58,6 +67,22 @@ const turnIdFor = (taskId: string, runId: string): TurnId =>
   TurnId.make(`composition-turn-${taskId}-${runId}`);
 
 const nowIso = (): string => DateTime.formatIso(DateTime.nowUnsafe());
+
+const sha256 = (value: string): string =>
+  `sha256:${NodeCrypto.createHash("sha256").update(value, "utf8").digest("hex")}`;
+
+const deterministicEventId = (
+  runtimeTaskId: string,
+  eventType: string,
+  discriminator = "",
+): EventId =>
+  EventId.make(
+    `byok:${NodeCrypto.createHash("sha256")
+      .update(`${runtimeTaskId}\u0000${eventType}\u0000${discriminator}`, "utf8")
+      .digest("hex")}`,
+  );
+
+const utf8ByteLength = (value: string): number => new TextEncoder().encode(value).byteLength;
 
 const claimTerminal = (
   active: ActiveRun,
@@ -92,18 +117,16 @@ export const makeCompositionByokAgentDriver = (
   const events = Effect.runSync(PubSub.unbounded<ProviderRuntimeEvent>());
   const activeRuns = new Map<string, ActiveRun>();
   const completedRuns = new Map<string, CompletedRun>();
-  let eventSequence = 0;
 
   const publish = (
+    eventId: EventId,
     event: Omit<ProviderRuntimeEvent, "eventId" | "createdAt">,
-  ): Effect.Effect<void> => {
-    eventSequence += 1;
-    return PubSub.publish(events, {
+  ): Effect.Effect<void> =>
+    PubSub.publish(events, {
       ...event,
-      eventId: EventId.make(`byok-${options.runtimeId}-${eventSequence}`),
+      eventId,
       createdAt: nowIso(),
     } as ProviderRuntimeEvent).pipe(Effect.asVoid);
-  };
 
   const profile = (): Effect.Effect<CompositionAgentDriverProfile> =>
     Effect.gen(function* () {
@@ -236,10 +259,107 @@ export const makeCompositionByokAgentDriver = (
         abortController,
         terminalOwner: undefined,
       };
+      const observedCheckpoints = new Map<
+        string,
+        ByokAgentTextCheckpoint & { readonly digest: string }
+      >();
+      let checkpointedText = "";
+      let checkpointedUtf8Bytes = 0;
+      let nextCheckpointChunkIndex = 0;
+      let lastCheckpointTurn = 1;
+      const persistTextCheckpoint = (
+        checkpoint: ByokAgentTextCheckpoint,
+        beforePublish?: () => boolean,
+      ): Effect.Effect<void, ByokAgentLoopCheckpointError> =>
+        Effect.gen(function* () {
+          const checkpointKey = `${checkpoint.turn}:${checkpoint.chunkIndex}`;
+          const digest = sha256(checkpoint.delta);
+          const observed = observedCheckpoints.get(checkpointKey);
+          if (observed !== undefined) {
+            if (
+              observed.delta !== checkpoint.delta ||
+              observed.cumulativeUtf8Bytes !== checkpoint.cumulativeUtf8Bytes ||
+              observed.digest !== digest
+            ) {
+              return yield* new ByokAgentLoopCheckpointError({
+                code: "byok_checkpoint_replay_conflict",
+                detail: `checkpoint ${checkpointKey} 的重放内容与已确认内容不一致。`,
+              });
+            }
+            return;
+          }
+          if (checkpoint.chunkIndex !== nextCheckpointChunkIndex) {
+            return yield* new ByokAgentLoopCheckpointError({
+              code: "byok_checkpoint_sequence_invalid",
+              detail: `checkpoint chunkIndex=${checkpoint.chunkIndex}，预期为 ${nextCheckpointChunkIndex}。`,
+            });
+          }
+          const expectedOffset = checkpointedUtf8Bytes + utf8ByteLength(checkpoint.delta);
+          if (checkpoint.cumulativeUtf8Bytes !== expectedOffset) {
+            return yield* new ByokAgentLoopCheckpointError({
+              code: "byok_checkpoint_offset_invalid",
+              detail: `checkpoint offset=${checkpoint.cumulativeUtf8Bytes}，预期为 ${expectedOffset}。`,
+            });
+          }
+          const eventId = deterministicEventId(
+            runtimeTaskId,
+            "content.delta",
+            `${checkpoint.turn}:${checkpoint.chunkIndex}:${checkpoint.cumulativeUtf8Bytes}:${digest}`,
+          );
+          const inserted = yield* options.checkpointStore
+            .appendEventIfNew({
+              taskId: input.task.taskId,
+              runId: input.run.runId,
+              ...(input.task.parentTaskId === undefined
+                ? {}
+                : { parentTaskId: input.task.parentTaskId }),
+              sourceEventId: String(eventId),
+              agentId: input.run.agentId,
+              runtimeId: options.runtimeId,
+              status: "running",
+              sequence: 0,
+              eventType: "message",
+              summary: "BYOK Agent 已保存部分输出",
+              outputDelta: checkpoint.delta,
+              outputOffsetBytes: checkpoint.cumulativeUtf8Bytes,
+              outputDigest: digest,
+            })
+            .pipe(
+              Effect.mapError(
+                (error) =>
+                  new ByokAgentLoopCheckpointError({
+                    code: "byok_checkpoint_persistence_failed",
+                    detail: errorDetail(error),
+                  }),
+              ),
+            );
+          observedCheckpoints.set(checkpointKey, { ...checkpoint, digest });
+          checkpointedText += checkpoint.delta;
+          checkpointedUtf8Bytes = checkpoint.cumulativeUtf8Bytes;
+          nextCheckpointChunkIndex += 1;
+          lastCheckpointTurn = Math.max(lastCheckpointTurn, checkpoint.turn);
+          if (!inserted) return;
+          if (beforePublish !== undefined && !beforePublish()) return;
+          yield* publish(eventId, {
+            provider: ProviderDriverKind.make("byok"),
+            providerInstanceId: ProviderInstanceId.make(String(options.providerInstanceId)),
+            threadId,
+            turnId,
+            type: "content.delta",
+            payload: {
+              streamKind: "assistant_text",
+              delta: checkpoint.delta,
+              contentIndex: checkpoint.chunkIndex,
+              checkpointOffsetBytes: checkpoint.cumulativeUtf8Bytes,
+              checkpointDigest: digest,
+            },
+            raw,
+          });
+        });
       const run = Effect.gen(function* () {
         // 让 Orchestrator 先完成 running 投影，再接收本地 Loop 的第一条事件。
         yield* Effect.yieldNow;
-        yield* publish({
+        yield* publish(deterministicEventId(runtimeTaskId, "turn.started"), {
           provider: ProviderDriverKind.make("byok"),
           providerInstanceId: ProviderInstanceId.make(String(options.providerInstanceId)),
           threadId,
@@ -260,22 +380,34 @@ export const makeCompositionByokAgentDriver = (
           prompt,
           capabilityGrantIds: [...(input.run.capabilityGrantIds ?? [])],
           tools,
+          onTextCheckpoint: persistTextCheckpoint,
           signal: abortController.signal,
         });
-        if (!claimTerminal(active, "completion")) return;
-        if (result.text.length > 0) {
-          yield* publish({
-            provider: ProviderDriverKind.make("byok"),
-            providerInstanceId: ProviderInstanceId.make(String(options.providerInstanceId)),
-            threadId,
-            turnId,
-            type: "content.delta",
-            payload: { streamKind: "assistant_text", delta: result.text },
-            raw,
+        if (!result.text.startsWith(checkpointedText)) {
+          return yield* new ByokAgentLoopCheckpointError({
+            code: "byok_checkpoint_result_mismatch",
+            detail: "Agent Loop 最终文本与已经持久化的 checkpoint 前缀不一致。",
           });
         }
+        const uncheckpointedSuffix = result.text.slice(checkpointedText.length);
+        let completionClaimed = false;
+        if (uncheckpointedSuffix.length > 0) {
+          yield* persistTextCheckpoint(
+            {
+              turn: Math.max(lastCheckpointTurn, result.rounds),
+              chunkIndex: nextCheckpointChunkIndex,
+              delta: uncheckpointedSuffix,
+              cumulativeUtf8Bytes: checkpointedUtf8Bytes + utf8ByteLength(uncheckpointedSuffix),
+            },
+            () => {
+              completionClaimed = claimTerminal(active, "completion");
+              return completionClaimed;
+            },
+          );
+        }
+        if (!completionClaimed && !claimTerminal(active, "completion")) return;
         completedRuns.set(input.run.runId, completed);
-        yield* publish({
+        yield* publish(deterministicEventId(runtimeTaskId, "turn.completed", "completed"), {
           provider: ProviderDriverKind.make("byok"),
           providerInstanceId: ProviderInstanceId.make(String(options.providerInstanceId)),
           threadId,
@@ -292,7 +424,7 @@ export const makeCompositionByokAgentDriver = (
                 if (!claimTerminal(active, "completion")) return;
                 const detail = errorDetail(cause);
                 completedRuns.set(input.run.runId, completed);
-                yield* publish({
+                yield* publish(deterministicEventId(runtimeTaskId, "runtime.error"), {
                   provider: ProviderDriverKind.make("byok"),
                   providerInstanceId: ProviderInstanceId.make(String(options.providerInstanceId)),
                   threadId,
@@ -301,7 +433,7 @@ export const makeCompositionByokAgentDriver = (
                   payload: { message: detail, class: "provider_error" },
                   raw,
                 });
-                yield* publish({
+                yield* publish(deterministicEventId(runtimeTaskId, "turn.completed", "failed"), {
                   provider: ProviderDriverKind.make("byok"),
                   providerInstanceId: ProviderInstanceId.make(String(options.providerInstanceId)),
                   threadId,
@@ -339,7 +471,7 @@ export const makeCompositionByokAgentDriver = (
         threadId: active.threadId,
         turnId: active.turnId,
       });
-      yield* publish({
+      yield* publish(deterministicEventId(active.runtimeTaskId, "turn.aborted"), {
         provider: ProviderDriverKind.make("byok"),
         providerInstanceId: ProviderInstanceId.make(String(options.providerInstanceId)),
         threadId: active.threadId,

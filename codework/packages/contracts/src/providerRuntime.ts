@@ -450,6 +450,10 @@ const ContentDeltaPayload = Schema.Struct({
   delta: Schema.String,
   contentIndex: Schema.optional(Schema.Int),
   summaryIndex: Schema.optional(Schema.Int),
+  /** 本地 Runtime checkpoint 已持久化的 UTF-8 累计字节偏移。 */
+  checkpointOffsetBytes: Schema.optional(NonNegativeInt),
+  /** 本地 Runtime checkpoint 对本次增量计算的内容摘要。 */
+  checkpointDigest: Schema.optional(TrimmedNonEmptyStringSchema),
 });
 export type ContentDeltaPayload = typeof ContentDeltaPayload.Type;
 

@@ -138,6 +138,68 @@ layer("CompositionTaskRuntimeProjector", (it) => {
     }),
   );
 
+  it.effect("将 BYOK 文本 checkpoint 原样持久化，并按确定性事件 ID 去重", () =>
+    Effect.gen(function* () {
+      const store = yield* CompositionTaskStore;
+      const checkpointTask = { ...task, taskId: "task-runtime-byok-checkpoint" };
+      const checkpointRun = {
+        ...run,
+        taskId: checkpointTask.taskId,
+        runId: "run-runtime-byok-checkpoint",
+        runtimeTaskId: "runtime-task-byok-checkpoint",
+      };
+      const registry = makeCompositionAgentDriverRegistry();
+      yield* registry.register({
+        agentId: checkpointTask.assigneeId,
+        runtimeId: checkpointRun.runtimeId,
+        startTask: () => Effect.succeed({ runtimeTaskId }),
+        cancelTask: () => Effect.succeed({ status: "cancelled" as const }),
+        resolveRuntimeEvent: () => ({
+          taskId: checkpointTask.taskId,
+          runId: checkpointRun.runId,
+        }),
+      });
+      yield* store.upsertTask(checkpointTask);
+      yield* store.upsertRun(checkpointRun);
+      const checkpoint = {
+        ...baseEvent,
+        eventId: EventId.make("byok-checkpoint-deterministic-1"),
+        provider: ProviderDriverKind.make("byok"),
+        providerInstanceId: ProviderInstanceId.make("byok-local"),
+        type: "content.delta" as const,
+        payload: {
+          streamKind: "assistant_text" as const,
+          delta: " 部分输出\n",
+          contentIndex: 0,
+          checkpointOffsetBytes: 13,
+          checkpointDigest: "sha256:checkpoint-1",
+        },
+        raw: {
+          source: "composition.byok.agent-loop" as const,
+          runtimeId: checkpointRun.runtimeId,
+          runtimeTaskId: RuntimeTaskId.make(checkpointRun.runtimeTaskId),
+          payload: {},
+        },
+      } satisfies ProviderRuntimeEvent;
+
+      yield* projectCompositionRuntimeEvent(store, registry, checkpoint);
+      yield* projectCompositionRuntimeEvent(store, registry, checkpoint);
+
+      const events = yield* store.listEvents(checkpointTask.taskId, checkpointRun.runId);
+      assert.equal(events.length, 1);
+      assert.equal(events[0]?.sourceEventId, "byok-checkpoint-deterministic-1");
+      assert.equal(events[0]?.eventType, "message");
+      assert.equal(events[0]?.outputDelta, " 部分输出\n");
+      assert.equal(events[0]?.outputOffsetBytes, 13);
+      assert.equal(events[0]?.outputDigest, "sha256:checkpoint-1");
+      assert.equal(
+        Option.getOrThrow(yield* store.getTask(checkpointTask.taskId)).status,
+        "running",
+      );
+      assert.equal(Option.getOrThrow(yield* store.getRun(checkpointRun.runId)).status, "running");
+    }),
+  );
+
   it.effect("有效 Runtime 事件会持久化 Run 级活动水位", () =>
     Effect.gen(function* () {
       const store = yield* CompositionTaskStore;
@@ -302,6 +364,7 @@ layer("CompositionTaskRuntimeProjector", (it) => {
           runtimeId: recoveredRun.runtimeId,
           providerInstanceId: "byok-restart",
           agentService: { run: () => Effect.die("重启恢复测试不应启动新的 BYOK Loop") },
+          checkpointStore: store,
           listTools: () => Effect.succeed([]),
         }),
       );

@@ -209,6 +209,12 @@ export const CompositionTaskEvent = Schema.Struct({
   blockerCode: Schema.optional(TrimmedNonEmptyString),
   approvalRequestId: Schema.optional(ApprovalRequestId),
   childTaskIds: Schema.optional(Schema.Array(TrimmedNonEmptyString)),
+  /** BYOK 等本地 Runtime 已确认持久化的原始输出增量，允许仅包含空白。 */
+  outputDelta: Schema.optional(Schema.String),
+  /** 该输出 checkpoint 结束位置的 UTF-8 累计字节偏移。 */
+  outputOffsetBytes: Schema.optional(NonNegativeInt),
+  /** 该输出增量的内容摘要，用于校验确定性 checkpoint 身份。 */
+  outputDigest: Schema.optional(TrimmedNonEmptyString),
 });
 export type CompositionTaskEvent = typeof CompositionTaskEvent.Type;
 

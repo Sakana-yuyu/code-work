@@ -94,6 +94,20 @@ layer("CompositionTaskStore", (it) => {
         eventType: "status",
         summary: "任务已完成",
       });
+      yield* store.appendEvent({
+        taskId: "task-1",
+        runId: "run-1",
+        sourceEventId: "byok-checkpoint-1",
+        agentId: "agent-1",
+        runtimeId: "runtime-1",
+        status: "running",
+        sequence: 2,
+        eventType: "message",
+        summary: "BYOK Agent 已保存部分输出",
+        outputDelta: " 部分输出\n",
+        outputOffsetBytes: 13,
+        outputDigest: "sha256:checkpoint-1",
+      });
       yield* store.upsertDependency(dependency);
       yield* store.upsertLease(lease);
       yield* store.upsertSquad(squad);
@@ -118,8 +132,11 @@ layer("CompositionTaskStore", (it) => {
       assert.equal(Option.getOrThrow(loadedRun).cancelRequestedAtUnixMs, 3);
       assert.deepEqual(
         events.map((event) => event.sequence),
-        [0, 1],
+        [0, 1, 2],
       );
+      assert.equal(events[2]?.outputDelta, " 部分输出\n");
+      assert.equal(events[2]?.outputOffsetBytes, 13);
+      assert.equal(events[2]?.outputDigest, "sha256:checkpoint-1");
       assert.equal(dependencies[0]?.condition, "success");
       assert.ok(Option.isSome(loadedLease));
       assert.equal(Option.getOrThrow(loadedLease).state, "active");

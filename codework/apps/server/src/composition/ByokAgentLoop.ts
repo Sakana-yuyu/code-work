@@ -84,6 +84,25 @@ export class ByokAgentLoopTerminalEventMissingError extends Schema.TaggedErrorCl
   }
 }
 
+export type ByokAgentTextCheckpoint = {
+  readonly turn: number;
+  readonly chunkIndex: number;
+  readonly delta: string;
+  readonly cumulativeUtf8Bytes: number;
+};
+
+export class ByokAgentLoopCheckpointError extends Schema.TaggedErrorClass<ByokAgentLoopCheckpointError>()(
+  "ByokAgentLoopCheckpointError",
+  {
+    code: Schema.String,
+    detail: Schema.String,
+  },
+) {
+  override get message(): string {
+    return `BYOK agent checkpoint failed: ${this.code}: ${this.detail}`;
+  }
+}
+
 export type ByokAgentLoopInput = {
   readonly protocol?: "openai" | "anthropic" | "gemini";
   readonly taskId: string;
@@ -100,6 +119,9 @@ export type ByokAgentLoopInput = {
   readonly maxContextMessages?: number;
   /** 单条成功工具结果重新注入模型时允许的最大字符数。 */
   readonly maxToolResultChars?: number;
+  readonly onTextCheckpoint?: (
+    checkpoint: ByokAgentTextCheckpoint,
+  ) => Effect.Effect<void, ByokAgentLoopCheckpointError>;
 };
 
 export type ByokAgentLoopResult = {
@@ -113,6 +135,7 @@ const encodeUnknownJson = Schema.encodeUnknownSync(Schema.fromJsonString(Schema.
 
 const DEFAULT_MAX_CONTEXT_MESSAGES = 17;
 const DEFAULT_MAX_TOOL_RESULT_CHARS = 12_000;
+const utf8Encoder = new TextEncoder();
 
 const boundedInteger = (value: number | undefined, fallback: number, min: number, max: number) =>
   value === undefined || !Number.isFinite(value)
@@ -217,7 +240,10 @@ export const runByokAgentLoop = (
   broker: ToolBroker.ToolBroker["Service"],
 ): Effect.Effect<
   ByokAgentLoopResult,
-  ByokAgentLoopMaxRoundsError | ByokAgentLoopTerminalEventMissingError | ByokAgentModelError
+  | ByokAgentLoopMaxRoundsError
+  | ByokAgentLoopTerminalEventMissingError
+  | ByokAgentLoopCheckpointError
+  | ByokAgentModelError
 > =>
   Effect.gen(function* () {
     const maxRounds = input.maxRounds ?? 8;
@@ -237,6 +263,8 @@ export const runByokAgentLoop = (
     const seenToolCallIds = new Set<string>();
     let text = "";
     let rounds = 0;
+    let checkpointChunkIndex = 0;
+    let cumulativeUtf8Bytes = 0;
     let contextOverflowRecoveryUsed = false;
     let transientRetryUsed = false;
 
@@ -253,8 +281,25 @@ export const runByokAgentLoop = (
         let sawOutput = false;
         return model.complete({ messages: modelMessages, tools: input.tools, turn: rounds }).pipe(
           Stream.tap((event) =>
-            Effect.sync(() => {
-              if (event.type === "text_delta" || event.type === "tool_call") sawOutput = true;
+            Effect.gen(function* () {
+              if (event.type === "tool_call") {
+                sawOutput = true;
+                return;
+              }
+              if (event.type !== "text_delta" || event.text.length === 0) return;
+              sawOutput = true;
+              text += event.text;
+              cumulativeUtf8Bytes += utf8Encoder.encode(event.text).byteLength;
+              const checkpoint = {
+                turn: rounds,
+                chunkIndex: checkpointChunkIndex,
+                delta: event.text,
+                cumulativeUtf8Bytes,
+              } satisfies ByokAgentTextCheckpoint;
+              checkpointChunkIndex += 1;
+              if (input.onTextCheckpoint !== undefined) {
+                yield* input.onTextCheckpoint(checkpoint);
+              }
             }),
           ),
           Stream.runCollect,
@@ -306,7 +351,6 @@ export const runByokAgentLoop = (
 
       for (const event of events) {
         if (event.type === "text_delta") {
-          text += event.text;
           continue;
         }
         if (event.type === "model_completed") {
