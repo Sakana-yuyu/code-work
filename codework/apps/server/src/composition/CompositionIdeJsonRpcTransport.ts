@@ -37,6 +37,7 @@ export type CompositionIdeJsonRpcTransportOptions = {
   readonly headers?: Readonly<Record<string, string>>;
   readonly openTimeoutMs?: number;
   readonly requestTimeoutMs?: number;
+  readonly reconnectDelaysMs?: ReadonlyArray<number>;
   readonly webSocketFactory?: CompositionIdeJsonRpcSocketFactory;
 };
 
@@ -59,6 +60,7 @@ type PendingRequest = {
 
 const DEFAULT_OPEN_TIMEOUT_MS = 15_000;
 const DEFAULT_REQUEST_TIMEOUT_MS = 15_000;
+const DEFAULT_RECONNECT_DELAYS_MS = [250, 1_000, 3_000] as const;
 
 const sensitivePatterns = [
   /(api[_-]?key\s*[:=]\s*)([^\s\n]+)/gi,
@@ -214,11 +216,15 @@ export const makeCompositionIdeJsonRpcAdapter = (
   const url = validateUrl(options.url);
   const openTimeoutMs = options.openTimeoutMs ?? DEFAULT_OPEN_TIMEOUT_MS;
   const requestTimeoutMs = options.requestTimeoutMs ?? DEFAULT_REQUEST_TIMEOUT_MS;
+  const reconnectDelaysMs = [...(options.reconnectDelaysMs ?? DEFAULT_RECONNECT_DELAYS_MS)];
   if (!Number.isFinite(openTimeoutMs) || openTimeoutMs <= 0) {
     throw new Error("IDE WebSocket openTimeoutMs 必须是正数。");
   }
   if (!Number.isFinite(requestTimeoutMs) || requestTimeoutMs <= 0) {
     throw new Error("IDE JSON-RPC requestTimeoutMs 必须是正数。");
+  }
+  if (reconnectDelaysMs.some((delay) => !Number.isFinite(delay) || delay < 0)) {
+    throw new Error("IDE WebSocket 重连延迟必须是非负有限数。");
   }
 
   const webSocketFactory = options.webSocketFactory ?? defaultWebSocketFactory;
@@ -230,6 +236,8 @@ export const makeCompositionIdeJsonRpcAdapter = (
   let openTimer: ReturnType<typeof setTimeout> | undefined;
   let nextRequestId = 1;
   let terminalFailure: CompositionIdeAdapterFailure | undefined;
+  let reconnectTimer: ReturnType<typeof setTimeout> | undefined;
+  let reconnectIndex = 0;
 
   const clearOpenTimer = (): void => {
     if (openTimer !== undefined) clearTimeout(openTimer);
@@ -251,6 +259,8 @@ export const makeCompositionIdeJsonRpcAdapter = (
   };
 
   const disconnect = (cause: CompositionIdeAdapterFailure): void => {
+    if (reconnectTimer !== undefined) clearTimeout(reconnectTimer);
+    reconnectTimer = undefined;
     const current = socket;
     socket = undefined;
     rejectOpening?.(cause);
@@ -258,6 +268,15 @@ export const makeCompositionIdeJsonRpcAdapter = (
     rejectPending(cause);
     current?.terminate?.();
     current?.close();
+    if (terminalFailure === undefined && reconnectDelaysMs.length > 0) {
+      if (reconnectIndex < reconnectDelaysMs.length) {
+        const delay = reconnectDelaysMs[reconnectIndex++];
+        reconnectTimer = setTimeout(() => {
+          reconnectTimer = undefined;
+          void ensureOpen().catch(() => undefined);
+        }, delay);
+      }
+    }
   };
 
   const closePermanently = (cause: CompositionIdeAdapterFailure): void => {
@@ -270,6 +289,8 @@ export const makeCompositionIdeJsonRpcAdapter = (
     if (terminalFailure !== undefined) return Promise.reject(terminalFailure);
     if (socket !== undefined && opening === undefined) return Promise.resolve();
     if (opening !== undefined) return opening;
+    if (reconnectTimer !== undefined) clearTimeout(reconnectTimer);
+    reconnectTimer = undefined;
 
     let resolveOpen!: () => void;
     let rejectOpen!: (cause: CompositionIdeAdapterFailure) => void;
@@ -289,9 +310,7 @@ export const makeCompositionIdeJsonRpcAdapter = (
         "ide_socket_create_failed",
         cause instanceof Error ? cause.message : String(cause),
       );
-      terminalFailure = transportFailure;
-      settleOpening();
-      rejectOpen(transportFailure);
+      disconnect(transportFailure);
       return openingPromise;
     }
     socket = current;
@@ -310,6 +329,7 @@ export const makeCompositionIdeJsonRpcAdapter = (
       if (socket !== current || terminalFailure !== undefined) return;
       resolveOpen();
       settleOpening();
+      reconnectIndex = 0;
     });
     current.on("message", (data) => {
       if (socket !== current || terminalFailure !== undefined) return;

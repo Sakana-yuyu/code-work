@@ -561,8 +561,9 @@ F1 审查修复补充：
 
 - 新增 `CompositionIdeJsonRpcTransport`，使用注入式 WebSocket factory，支持单连接建立、open/request 超时、JSON-RPC request/response 关联、probe、capability handshake 和 `ide.invoke`。
 - transport 只传递明确的 T3 JSON-RPC 方法与 task/run/agent/session/handshake scope；认证 Header 由 socket factory 接收，不进入 URL、错误正文或日志；带凭据查询参数的 URL 在构造时直接拒绝。
-- 首次 socket 错误、关闭或显式 `close()` 会把 transport 置为终止状态；所有 pending request 和后续请求都 fail closed，避免 Runtime 热替换或注销后继续借用旧 IDE session。
+- 远端 socket 错误、关闭或 open 超时会拒绝当前 pending request，并按配置的有限延迟新建连接；重连成功后后续请求使用新 socket，未完成的旧 request 不会被自动重放，避免重复执行 IDE 操作。
+- 显式 `close()` 和协议级非法响应会把 transport 置为永久终止状态；所有 pending request、自动重连计时器和后续请求都 fail closed，避免 Runtime 热替换或注销后继续借用旧 IDE session。
 - JSON-RPC error、非法响应、请求超时和 socket 生命周期分别返回稳定的 `CompositionIdeAdapterFailure` 错误码；错误详情经过敏感字段脱敏。
 - 新增真实本地 Node 子进程 WebSocket fixture，验证 `CompositionIdeJsonRpcTransport -> CompositionIdeSessionRegistry -> IDE fixture` 的 probe、handshake 和 invoke 回流。
 
-本节点验证的是通用 IDE 协议和真实本地跨进程链路，不是 Cursor 或 VSCode 官方扩展的产品现场 E2E；当前仍未完成具体 Cursor/VSCode extension transport、IDE session 配置持久化、自动重连、多端 UI 入口和真实安装 IDE 验收。`ide.invoke` 仍必须经过既有 ToolBroker 的 capability、grant、approval、幂等和 audit 边界，transport 本身不提供权限绕过。
+本节点验证的是通用 IDE 协议和真实本地跨进程链路，不是 Cursor 或 VSCode 官方扩展的产品现场 E2E；当前仍未完成具体 Cursor/VSCode extension transport、IDE session 配置持久化、多端 UI 入口和真实安装 IDE 验收。当前 transport 已具备可配置的有界断线重连，但尚未把 session 配置从 Settings/Runtime 入口自动创建并管理。`ide.invoke` 仍必须经过既有 ToolBroker 的 capability、grant、approval、幂等和 audit 边界，transport 本身不提供权限绕过。

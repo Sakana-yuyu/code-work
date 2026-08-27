@@ -267,6 +267,108 @@ describe("CompositionIdeJsonRpcTransport", () => {
     adapter.close();
   });
 
+  it("远端断线后按有界策略自动重连，后续请求复用新连接", async () => {
+    const sockets: FakeSocket[] = [];
+    const adapter = makeCompositionIdeJsonRpcAdapter({
+      sessionId: "vscode-session-auto-reconnect",
+      profile: "vscode_ide",
+      url: "ws://127.0.0.1:4111/t3/ide",
+      reconnectDelaysMs: [0],
+      webSocketFactory: (url, options) => {
+        expect(url).toBe("ws://127.0.0.1:4111/t3/ide");
+        expect(options.headers).toEqual({});
+        const socket = new FakeSocket();
+        sockets.push(socket);
+        return socket;
+      },
+    });
+
+    const firstProbe = Effect.runPromise(adapter.probe());
+    void firstProbe.catch(() => undefined);
+    await flush();
+    const firstSocket = sockets[0];
+    expect(firstSocket).toBeDefined();
+    firstSocket!.emit("open");
+    await flush();
+    const firstRequest = decode(firstSocket!)[0];
+    firstSocket!.emit(
+      "message",
+      JSON.stringify({
+        jsonrpc: "2.0",
+        id: firstRequest?.id,
+        result: {
+          sessionId: "vscode-session-auto-reconnect",
+          profile: "vscode_ide",
+          verifiedOperations: ["editor.read"],
+          status: "ready",
+        },
+      }),
+    );
+    await expect(firstProbe).resolves.toMatchObject({ status: "ready" });
+
+    firstSocket!.emit("close");
+    await new Promise<void>((resolve) => setTimeout(resolve, 5));
+    expect(sockets).toHaveLength(2);
+
+    const secondProbe = Effect.runPromise(adapter.probe());
+    void secondProbe.catch(() => undefined);
+    await flush();
+    const secondSocket = sockets[1];
+    expect(secondSocket).toBeDefined();
+    secondSocket!.emit("open");
+    await flush();
+    const secondRequest = decode(secondSocket!)[0];
+    expect(secondRequest?.method).toBe("t3.ide.probe");
+    secondSocket!.emit(
+      "message",
+      JSON.stringify({
+        jsonrpc: "2.0",
+        id: secondRequest?.id,
+        result: {
+          sessionId: "vscode-session-auto-reconnect",
+          profile: "vscode_ide",
+          verifiedOperations: ["editor.read"],
+          status: "ready",
+        },
+      }),
+    );
+    await expect(secondProbe).resolves.toMatchObject({ status: "ready" });
+    adapter.close();
+  });
+
+  it("连续连接失败只按配置次数重试，不会无限创建 socket", async () => {
+    const sockets: FakeSocket[] = [];
+    const adapter = makeCompositionIdeJsonRpcAdapter({
+      sessionId: "vscode-session-bounded-reconnect",
+      profile: "vscode_ide",
+      url: "ws://127.0.0.1:4111/t3/ide",
+      reconnectDelaysMs: [0, 0],
+      webSocketFactory: (url) => {
+        expect(url).toBe("ws://127.0.0.1:4111/t3/ide");
+        const socket = new FakeSocket();
+        sockets.push(socket);
+        return socket;
+      },
+    });
+
+    const probe = Effect.runPromise(adapter.probe());
+    void probe.catch(() => undefined);
+    await flush();
+    expect(sockets).toHaveLength(1);
+    sockets[0]!.emit("error", new Error("第一次连接失败"));
+    await expect(probe).rejects.toMatchObject({ code: "ide_socket_error" });
+
+    await new Promise<void>((resolve) => setTimeout(resolve, 5));
+    expect(sockets).toHaveLength(2);
+    sockets[1]!.emit("error", new Error("第二次连接失败"));
+    await new Promise<void>((resolve) => setTimeout(resolve, 5));
+    expect(sockets).toHaveLength(3);
+
+    await new Promise<void>((resolve) => setTimeout(resolve, 5));
+    expect(sockets).toHaveLength(3);
+    adapter.close();
+  });
+
   it("JSON-RPC 错误不泄露认证 Header，并转换为稳定失败码", async () => {
     const socket = new FakeSocket();
     const adapter = makeCompositionIdeJsonRpcAdapter({
