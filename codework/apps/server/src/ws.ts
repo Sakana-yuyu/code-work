@@ -99,6 +99,7 @@ import * as CompositionAgentDriverRegistry from "./composition/CompositionAgentD
 import * as CompositionIdeSessionRegistry from "./composition/CompositionIdeSessionRegistry.ts";
 import * as CompositionOrchestratorService from "./composition/CompositionOrchestratorService.ts";
 import * as CompositionControlCenterProjection from "./composition/CompositionControlCenterProjection.ts";
+import * as CompositionGoalLoopRedispatch from "./composition/CompositionGoalLoopRedispatch.ts";
 import { CompositionTaskStore } from "./persistence/Services/CompositionTaskStore.ts";
 import * as CompositionTaskGraphExecutor from "./composition/CompositionTaskGraphExecutor.ts";
 import * as CompositionToolBroker from "./composition/ToolBroker.ts";
@@ -2087,6 +2088,38 @@ const makeWsRpcLayer = (
                   projectId: input.projectId,
                   squadIds: input.squadIds,
                 }).pipe(Effect.mapError(compositionTaskError)),
+            { "rpc.aggregate": "composition" },
+          ),
+        [WS_METHODS.serverControlCenterRedispatch]: (input) =>
+          observeRpcEffect(
+            WS_METHODS.serverControlCenterRedispatch,
+            Option.isNone(compositionTaskStore) || Option.isNone(compositionOrchestrator)
+              ? Effect.fail(compositionTaskUnavailable())
+              : CompositionGoalLoopRedispatch.settleAndRedispatchInterruptedGoalLoop({
+                  taskId: input.taskId,
+                  runId: input.runId,
+                  agentId: input.agentId,
+                  store: compositionTaskStore.value,
+                  nowUnixMs: Date.now(),
+                  redispatch: ({ previousRunId }) =>
+                    Effect.asVoid(
+                      compositionOrchestrator.value.retryTask({
+                        taskId: input.taskId,
+                        previousRunId,
+                        runId: input.newRunId,
+                        reason: input.note ?? "控制中心自动重派未收敛目标循环",
+                        capabilityIds: input.capabilityIds,
+                      }),
+                    ),
+                }).pipe(
+                  Effect.map(({ scan }) => ({
+                    taskId: input.taskId,
+                    previousRunId: input.runId,
+                    newRunId: input.newRunId,
+                    interruptedRounds: scan.completedRounds,
+                  })),
+                  Effect.mapError(compositionTaskError),
+                ),
             { "rpc.aggregate": "composition" },
           ),
         [WS_METHODS.serverDiscoverSourceControl]: (_input) =>

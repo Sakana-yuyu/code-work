@@ -227,6 +227,8 @@ import {
 import { VcsError } from "./vcs.ts";
 import {
   CompositionTaskCancelRequest,
+  CompositionControlCenterRedispatchRequest,
+  CompositionControlCenterRedispatchResult,
   CompositionControlCenterRequest,
   CompositionControlCenterResult,
   CompositionTaskCancelResult,
@@ -351,6 +353,7 @@ export const WS_METHODS = {
   serverListCompositionTaskEvents: "server.listCompositionTaskEvents",
   serverListCompositionTasks: "server.listCompositionTasks",
   serverControlCenterProjection: "server.controlCenterProjection",
+  serverControlCenterRedispatch: "server.controlCenterRedispatch",
   serverDiscoverSourceControl: "server.discoverSourceControl",
   serverGetTraceDiagnostics: "server.getTraceDiagnostics",
   serverGetProcessDiagnostics: "server.getProcessDiagnostics",
@@ -646,6 +649,15 @@ export const WsServerControlCenterProjectionRpc = Rpc.make(
   {
     payload: CompositionControlCenterRequest,
     success: CompositionControlCenterResult,
+    error: Schema.Union([CompositionTaskRpcError, EnvironmentAuthorizationError]),
+  },
+);
+
+export const WsServerControlCenterRedispatchRpc = Rpc.make(
+  WS_METHODS.serverControlCenterRedispatch,
+  {
+    payload: CompositionControlCenterRedispatchRequest,
+    success: CompositionControlCenterRedispatchResult,
     error: Schema.Union([CompositionTaskRpcError, EnvironmentAuthorizationError]),
   },
 );
@@ -1296,6 +1308,7 @@ export const WsRpcGroup = RpcGroup.make(
   WsServerListCompositionTaskEventsRpc,
   WsServerListCompositionTasksRpc,
   WsServerControlCenterProjectionRpc,
+  WsServerControlCenterRedispatchRpc,
   WsServerDiscoverSourceControlRpc,
   WsServerGetTraceDiagnosticsRpc,
   WsServerGetProcessDiagnosticsRpc,

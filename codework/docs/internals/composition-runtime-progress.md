@@ -14,8 +14,8 @@
 | 仓库 | `E:\MyProject\code-work\codework` |
 | 当前分支 | `tcode` |
 | 当前提交 | 控制中心 RPC 与 Web 接线节点：`feat(composition): 控制中心投影接入 Server RPC 与 Web 设置` |
-| 相对远端 | 领先 `origin/tcode` 39 个提交，尚未 push |
-| 最新节点 | 新增 serverControlCenterProjection RPC（contracts/ws/授权/client-runtime 四层）+ Web 设置"组合控制中心"面板（i18n 双语，面板 4 用例） |
+| 相对远端 | 领先 `origin/tcode` 40 个提交，尚未 push |
+| 最新节点 | 控制中心"自动重派"操作入口：`serverControlCenterRedispatch` RPC 四层接线（ws 层调用 `settleAndRedispatchInterruptedGoalLoop` + 真实 `retryTask`），面板为 interrupted/supervisor_settled 行提供重派按钮（7 用例） |
 | 工作区边界 | 存在大量其他并行修改；本文不把这些修改计入本迁移进度，也不回滚、暂存或提交它们 |
 
 ## 证据等级
@@ -193,19 +193,20 @@ CapabilityRegistry + ToolBroker
 - Code Work 已有 Provider Settings、Agents、IDE sessions、MCP 和 Task Graph 等入口或组件。
 - Web/Desktop/Mobile 共享同一 Server/RPC 架构，具备承载统一运行时状态的基础。
 - 新增控制中心统一投影：`projectCompositionControlCenter` 只读聚合——按任务输出最新 Run（runId/status/attempt/failureCode）、Goal Loop 五态投影（not_started/running/converged/supervisor_settled/interrupted，源自台账扫描 + Run 状态区分活跃与中断）、capability grant 审计摘要（事件数/撤销数/最近 outcome）、依赖任务 ID，并按调用方给定的 squadIds 展开 Squad 名册；真实 SQLite 内存 store 上验证五类任务形态与缺失 Squad 的容错。
-- 控制中心 RPC 与 Web 接线（本节点）：contracts 新增 `serverControlCenterProjection` 方法与请求/结果 schema；ws.ts 以 `compositionTaskStore`/`compositionGrantRegistry` 服务注入投影（Composition 不可用时显式 `composition_unavailable`）；授权沿用 `AuthOrchestrationReadScope`；client-runtime 新增 `controlCenterProjection` 查询原子；Web 设置"集成"页新增"组合控制中心"区块（任务行含状态/Goal Loop 徽标/轮次/拒绝/grant 摘要、Squad 名册、四态空错提示），i18n 双语目录（`controlCenter.*`）齐全，面板 4 用例 + i18n 静态扫描 157/157 通过。
+- 控制中心 RPC 与 Web 接线：contracts 新增 `serverControlCenterProjection` 方法与请求/结果 schema；ws.ts 以 `compositionTaskStore`/`compositionGrantRegistry` 服务注入投影（Composition 不可用时显式 `composition_unavailable`）；授权沿用 `AuthOrchestrationReadScope`；client-runtime 新增 `controlCenterProjection` 查询原子；Web 设置"集成"页新增"组合控制中心"区块（任务行含状态/Goal Loop 徽标/轮次/拒绝/grant 摘要、Squad 名册、四态空错提示），i18n 双语目录（`controlCenter.*`）齐全，面板 4 用例 + i18n 静态扫描 157/157 通过。
+- 控制中心自动重派操作入口（本节点）：contracts 新增 `serverControlCenterRedispatch` 方法与请求/结果 schema（taskId/runId/agentId/客户端生成 newRunId/capabilityIds/可选 note）；授权要求 `AuthOrchestrationOperateScope`；ws.ts 经 `settleAndRedispatchInterruptedGoalLoop`（supervisor 结算 + 陈旧 Run 落 failed）回调真实 `compositionOrchestrator.retryTask` 创建新 Run，错误经 `compositionTaskError` 统一映射；client-runtime 新增 `controlCenterRedispatch` 命令原子（按 taskId+runId singleFlight）；面板为 `interrupted`/`supervisor_settled` 且存在最新 Run 的任务行渲染"自动重派"按钮与共享 capabilityIds 输入（逗号拆分、`t3-redispatch-<uuid>` 新 RunId），成功后刷新投影、失败经 `squashAtomCommandFailure` 展示；面板 7 用例（按钮仅 actionable 行、输入构建纯函数、四态空错回归）+ i18n 静态扫描通过。
 
 仍缺：
 
 - Supplier/Profile/Account 的统一管理、凭据生命周期和多账号回滚。
 - 余额、用量、价格、健康和路由状态的统一看板。
-- Goal、Squad、Leader、运行时恢复和 capability grant 的用户操作路径（数据投影与只读展示已接通；剩余 = 操作类入口如重派/取消/结算按钮与 Mobile/Desktop 面板复用）。
+- Goal、Squad、Leader、运行时恢复和 capability grant 的用户操作路径（投影、只读展示与自动重派入口已接通；剩余 = 取消/结算等其余操作按钮与 Mobile/Desktop 面板复用）。
 - Web/Desktop/Mobile 关键路径的真实集成验证。
 - Request Lab、通用请求镜像、脱敏回放和协议对比界面。
 
 ## 当前提交节点
 
-当前 `tcode` 相对 `origin/tcode` 的 39 个提交按主题归并如下。
+当前 `tcode` 相对 `origin/tcode` 的 40 个提交按主题归并如下。
 
 | 主题 | 提交范围 | 结果 |
 | --- | --- | --- |
@@ -228,6 +229,7 @@ CapabilityRegistry + ToolBroker
 | Goal Loop attempt 生产适配器 | `feat(composition): Goal Loop attempt 生产适配器` | BYOK=CompositionAgentService.run 每轮一次模型循环；Multica=quick-create 派发+状态轮询+可选输出钩子，6 用例（全家 47/47） |
 | 控制中心统一投影 | `feat(composition): 控制中心统一状态投影` | projectCompositionControlCenter：Run/Goal Loop 五态/grant 审计/依赖/Squad 只读聚合（第 6 项第一切片），附带 supervisor start 分支修复 |
 | 控制中心 RPC 与 Web 接线 | `feat(composition): 控制中心投影接入 Server RPC 与 Web 设置` | serverControlCenterProjection 四层接线（contracts/ws/授权/客户端原子）+ 设置页组合控制中心区块与双语 i18n，面板 4 用例 |
+| 控制中心自动重派入口 | `feat(composition): 控制中心自动重派操作入口` | serverControlCenterRedispatch 四层接线（OperateScope 授权）→ settleAndRedispatchInterruptedGoalLoop + 真实 retryTask；面板 interrupted/supervisor_settled 行重派按钮与 capabilityIds 输入，面板 7 用例 |
 | 文档与回归覆盖 | `c5a709b46`、`223b90ee5` | 刷新迁移矩阵并覆盖 ACP 取消终态回归 |
 
 ## 关键结论
@@ -256,7 +258,7 @@ CapabilityRegistry + ToolBroker
 3. 接入真实 Cursor/VS Code Adapter，完成 capability handshake、最小 IDE API 白名单和撤销测试。
 4. 把 Provider、IDE、Multica 的 grant 状态统一投影到 Composition Run 和 Settings。（本地子任务已完成：grant issued/revoked 与 BYOK resume 输出均已投影为任务历史事件；剩余 = 外部 Driver 的真实 grant 回执接入与 Settings 跨端看板展示，依赖真实产品环境）
 5. ~~收敛 Goal Loop、预算、重试、验证子代理和跨重启 supervisor。~~（本地切片全部完成：完成标记/预算/停滞 pivot/验证合同与子代理验证器、任务台账编排接线、跨重启监督结算、编排层自动重派接线、BYOK/Multica attempt 生产适配器，共 47 单测；剩余缺口 = Multica 输出查询的生产实现，依赖真实 daemon 服务端能力）
-6. 最后补齐 Supplier/Profile 控制中心与 Web/Desktop/Mobile 集成 E2E。（前两个切片已完成：控制中心统一投影 + `serverControlCenterProjection` RPC 四层接线与 Web 设置"组合控制中心"只读展示（双语 i18n）；剩余 = 操作类入口（重派/取消/结算按钮）、Supplier/Profile/Account 统一管理、余额/用量看板、Request Lab 及多端真实集成 E2E）
+6. 最后补齐 Supplier/Profile 控制中心与 Web/Desktop/Mobile 集成 E2E。（前三个切片已完成：控制中心统一投影 + `serverControlCenterProjection` RPC 四层接线与 Web 设置"组合控制中心"只读展示（双语 i18n）、`serverControlCenterRedispatch` 自动重派操作入口；剩余 = 取消/结算等其余操作按钮、Supplier/Profile/Account 统一管理、余额/用量看板、Request Lab 及多端真实集成 E2E）
 
 ## 风险与回滚
 

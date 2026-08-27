@@ -792,6 +792,15 @@ export function createServerEnvironmentAtoms<R, E>(
       staleTimeMs: 2_000,
       idleTtlMs: 30_000,
     }),
+    controlCenterRedispatch: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:server:control-center-redispatch",
+      tag: WS_METHODS.serverControlCenterRedispatch,
+      concurrency: {
+        mode: "singleFlight",
+        key: ({ environmentId, input }) =>
+          JSON.stringify([environmentId, input.taskId, input.runId]),
+      },
+    }),
     listCompositionTaskEvents: createEnvironmentRpcQueryAtomFamily(runtime, {
       label: "environment-data:server:list-composition-task-events",
       tag: WS_METHODS.serverListCompositionTaskEvents,

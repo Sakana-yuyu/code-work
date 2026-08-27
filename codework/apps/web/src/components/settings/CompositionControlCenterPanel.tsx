@@ -1,13 +1,24 @@
-import type { CompositionControlCenterResult } from "@codework/contracts";
+import type {
+  CompositionControlCenterRedispatchRequest,
+  CompositionControlCenterResult,
+} from "@codework/contracts";
+import {
+  squashAtomCommandFailure,
+  type AtomCommandResult,
+} from "@codework/client-runtime/state/runtime";
 import { RefreshCwIcon } from "lucide-react";
+import { useState } from "react";
 
+import { randomUUID } from "~/lib/utils";
 import { usePrimaryEnvironment } from "~/state/environments";
 import { useEnvironmentQuery } from "~/state/query";
 import { serverEnvironment } from "~/state/server";
+import { useAtomCommand } from "~/state/use-atom-command";
 import { t } from "~/i18n";
 
 import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
+import { Input } from "../ui/input";
 import { SettingsSection } from "./settingsLayout";
 
 const GOAL_LOOP_STATE_LABEL_KEYS: Readonly<Record<string, string>> = {
@@ -23,6 +34,29 @@ const goalLoopStateLabel = (state: string): string => {
   return key === undefined ? state : t(key);
 };
 
+const REDISPATCHABLE_GOAL_LOOP_STATES: ReadonlySet<string> = new Set([
+  "interrupted",
+  "supervisor_settled",
+]);
+
+/** 控制中心"自动重派"请求输入：capabilityIds 按逗号拆分并去除空白项。 */
+export const buildRedispatchInput = (input: {
+  readonly taskId: string;
+  readonly runId: string;
+  readonly agentId: string;
+  readonly newRunId: string;
+  readonly capabilityIdsText: string;
+}): CompositionControlCenterRedispatchRequest => ({
+  taskId: input.taskId,
+  runId: input.runId,
+  agentId: input.agentId,
+  newRunId: input.newRunId,
+  capabilityIds: input.capabilityIdsText
+    .split(",")
+    .map((value) => value.trim())
+    .filter(Boolean),
+});
+
 export function CompositionControlCenterPanel() {
   const primaryEnvironment = usePrimaryEnvironment();
   const environmentId = primaryEnvironment?.environmentId ?? null;
@@ -31,8 +65,41 @@ export function CompositionControlCenterPanel() {
       ? null
       : serverEnvironment.controlCenterProjection({ environmentId, input: {} }),
   );
+  const redispatchTask = useAtomCommand(serverEnvironment.controlCenterRedispatch, {
+    reportFailure: false,
+  });
+  const [capabilityIdsText, setCapabilityIdsText] = useState("");
+  const [pendingTaskId, setPendingTaskId] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
 
   const projection: CompositionControlCenterResult | null = projectionQuery.data ?? null;
+
+  const redispatch = async (input: {
+    readonly taskId: string;
+    readonly runId: string;
+    readonly agentId: string;
+  }): Promise<void> => {
+    if (environmentId === null) return;
+    setPendingTaskId(input.taskId);
+    setActionError(null);
+    const result: AtomCommandResult<unknown, unknown> = await redispatchTask({
+      environmentId,
+      input: buildRedispatchInput({
+        taskId: input.taskId,
+        runId: input.runId,
+        agentId: input.agentId,
+        newRunId: `t3-redispatch-${randomUUID()}`,
+        capabilityIdsText,
+      }),
+    });
+    if (result._tag === "Failure") {
+      const error = squashAtomCommandFailure(result);
+      setActionError(error instanceof Error ? error.message : t("controlCenter.redispatchFailed"));
+    } else {
+      projectionQuery.refresh();
+    }
+    setPendingTaskId(null);
+  };
 
   return (
     <SettingsSection
@@ -61,41 +128,95 @@ export function CompositionControlCenterPanel() {
       ) : projection === null || projection.tasks.length === 0 ? (
         <p className="text-xs text-muted-foreground">{t("controlCenter.noTasks")}</p>
       ) : (
-        <ul className="space-y-2">
-          {projection.tasks.map((task) => (
-            <li
-              key={task.taskId}
-              className="rounded-md border border-border/60 px-3 py-2 text-xs"
-              data-task-id={task.taskId}
-            >
-              <div className="flex flex-wrap items-center gap-2">
-                <span className="font-mono text-[11px] text-muted-foreground">{task.taskId}</span>
-                <Badge variant="outline">{task.status}</Badge>
-                {task.goalLoop === undefined ? null : (
-                  <Badge variant="secondary">
-                    {`${t("controlCenter.goalLoop")}: ${goalLoopStateLabel(task.goalLoop.state)}`}
-                  </Badge>
-                )}
-              </div>
-              {task.goalLoop === undefined ? null : (
-                <p className="mt-1 text-[11px] text-muted-foreground">
-                  {`${t("controlCenter.rounds")}: ${task.goalLoop.completedRounds}`}
-                  {task.goalLoop.rejectedCompletions > 0
-                    ? ` · ${t("controlCenter.rejected")}: ${task.goalLoop.rejectedCompletions}`
-                    : ""}
-                </p>
-              )}
-              {task.grants === undefined ? null : (
-                <p className="mt-1 text-[11px] text-muted-foreground">
-                  {`${t("controlCenter.grants")}: ${task.grants.totalEvents}`}
-                  {task.grants.revokedEvents > 0
-                    ? ` · ${t("controlCenter.revoked")}: ${task.grants.revokedEvents}`
-                    : ""}
-                </p>
-              )}
-            </li>
-          ))}
-        </ul>
+        <>
+          {projection.tasks.some(
+            (task) =>
+              task.latestRun !== undefined &&
+              task.goalLoop !== undefined &&
+              REDISPATCHABLE_GOAL_LOOP_STATES.has(task.goalLoop.state),
+          ) ? (
+            <div className="space-y-1">
+              <label
+                className="block text-[11px] text-muted-foreground"
+                htmlFor="composition-control-center-capability-ids"
+              >
+                {t("controlCenter.capabilityIds")}
+              </label>
+              <Input
+                id="composition-control-center-capability-ids"
+                value={capabilityIdsText}
+                onChange={(event) => setCapabilityIdsText(event.target.value)}
+                placeholder={t("controlCenter.capabilityIdsPlaceholder")}
+                className="h-7 text-xs"
+              />
+            </div>
+          ) : null}
+          <ul className="space-y-2">
+            {projection.tasks.map((task) => {
+              const redispatchable =
+                task.latestRun !== undefined &&
+                task.goalLoop !== undefined &&
+                REDISPATCHABLE_GOAL_LOOP_STATES.has(task.goalLoop.state);
+              return (
+                <li
+                  key={task.taskId}
+                  className="rounded-md border border-border/60 px-3 py-2 text-xs"
+                  data-task-id={task.taskId}
+                >
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="font-mono text-[11px] text-muted-foreground">
+                      {task.taskId}
+                    </span>
+                    <Badge variant="outline">{task.status}</Badge>
+                    {task.goalLoop === undefined ? null : (
+                      <Badge variant="secondary">
+                        {`${t("controlCenter.goalLoop")}: ${goalLoopStateLabel(task.goalLoop.state)}`}
+                      </Badge>
+                    )}
+                    {redispatchable ? (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        disabled={pendingTaskId !== null}
+                        data-testid={`control-center-redispatch-${task.taskId}`}
+                        onClick={() => {
+                          void redispatch({
+                            taskId: task.taskId,
+                            runId: task.latestRun?.runId ?? "",
+                            agentId: task.agentId,
+                          });
+                        }}
+                      >
+                        {t("controlCenter.redispatch")}
+                      </Button>
+                    ) : null}
+                  </div>
+                  {task.goalLoop === undefined ? null : (
+                    <p className="mt-1 text-[11px] text-muted-foreground">
+                      {`${t("controlCenter.rounds")}: ${task.goalLoop.completedRounds}`}
+                      {task.goalLoop.rejectedCompletions > 0
+                        ? ` · ${t("controlCenter.rejected")}: ${task.goalLoop.rejectedCompletions}`
+                        : ""}
+                    </p>
+                  )}
+                  {task.grants === undefined ? null : (
+                    <p className="mt-1 text-[11px] text-muted-foreground">
+                      {`${t("controlCenter.grants")}: ${task.grants.totalEvents}`}
+                      {task.grants.revokedEvents > 0
+                        ? ` · ${t("controlCenter.revoked")}: ${task.grants.revokedEvents}`
+                        : ""}
+                    </p>
+                  )}
+                </li>
+              );
+            })}
+          </ul>
+          {actionError === null ? null : (
+            <p className="text-xs text-destructive" data-testid="control-center-action-error">
+              {actionError}
+            </p>
+          )}
+        </>
       )}
       {projection === null || projection.squads.length === 0 ? null : (
         <div className="space-y-1">

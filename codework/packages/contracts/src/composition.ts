@@ -589,6 +589,27 @@ export const CompositionControlCenterResult = Schema.Struct({
 });
 export type CompositionControlCenterResult = typeof CompositionControlCenterResult.Type;
 
+/** 控制中心"自动重派"操作：结算未收敛 Goal Loop 并经 retryTask 创建新 Run。 */
+export const CompositionControlCenterRedispatchRequest = Schema.Struct({
+  taskId: TrimmedNonEmptyString,
+  runId: TrimmedNonEmptyString,
+  agentId: TrimmedNonEmptyString,
+  newRunId: TrimmedNonEmptyString,
+  capabilityIds: Schema.Array(TrimmedNonEmptyString),
+  note: Schema.optional(TrimmedNonEmptyString),
+});
+export type CompositionControlCenterRedispatchRequest =
+  typeof CompositionControlCenterRedispatchRequest.Type;
+
+export const CompositionControlCenterRedispatchResult = Schema.Struct({
+  taskId: TrimmedNonEmptyString,
+  previousRunId: TrimmedNonEmptyString,
+  newRunId: TrimmedNonEmptyString,
+  interruptedRounds: NonNegativeInt,
+});
+export type CompositionControlCenterRedispatchResult =
+  typeof CompositionControlCenterRedispatchResult.Type;
+
 const CompositionTaskDependencyCondition = Schema.Literals([
   "success",
   "terminal",

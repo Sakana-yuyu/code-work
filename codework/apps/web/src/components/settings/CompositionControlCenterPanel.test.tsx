@@ -5,6 +5,8 @@ import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
 const mocks = vi.hoisted(() => ({
   environment: null as { readonly environmentId: string } | null,
   projectionAtom: Symbol("projection"),
+  redispatchCommand: Symbol("redispatch-command"),
+  redispatch: vi.fn(),
   projectionQuery: {
     data: null as CompositionControlCenterResult | null,
     error: null as string | null,
@@ -32,49 +34,56 @@ vi.mock("~/state/query", () => ({
 vi.mock("~/state/server", () => ({
   serverEnvironment: {
     controlCenterProjection: () => mocks.projectionAtom,
+    controlCenterRedispatch: mocks.redispatchCommand,
   },
 }));
 
-import { CompositionControlCenterPanel } from "./CompositionControlCenterPanel";
+vi.mock("~/state/use-atom-command", () => ({
+  useAtomCommand: (command: unknown) => {
+    if (command === mocks.redispatchCommand) return mocks.redispatch;
+    return vi.fn();
+  },
+}));
 
-const projection = (overrides: {
-  readonly tasks?: CompositionControlCenterResult["tasks"];
-  readonly squads?: CompositionControlCenterResult["squads"];
-}): CompositionControlCenterResult => ({
+import {
+  CompositionControlCenterPanel,
+  buildRedispatchInput,
+} from "./CompositionControlCenterPanel";
+
+const goalLoop = (
+  state: "not_started" | "running" | "converged" | "supervisor_settled" | "interrupted",
+) => ({
+  runId: `run-${state}`,
+  state,
+  completedRounds: 3,
+  rejectedCompletions: 1,
+  terminalStatuses: [],
+  settledBySupervisor: state === "supervisor_settled",
+});
+
+const taskWith = (options: {
+  readonly taskId: string;
+  readonly goalLoopState?: Parameters<typeof goalLoop>[0];
+  readonly withLatestRun?: boolean;
+}): CompositionControlCenterResult["tasks"][number] => ({
+  taskId: options.taskId,
+  status: "running",
+  agentId: "agent-1",
+  updatedAtUnixMs: 2,
+  dependsOnTaskIds: [],
+  latestRun:
+    options.withLatestRun === false
+      ? undefined
+      : { runId: `run-${options.taskId}`, status: "failed", attempt: 2 },
+  goalLoop: options.goalLoopState === undefined ? undefined : goalLoop(options.goalLoopState),
+});
+
+const projection = (
+  tasks: CompositionControlCenterResult["tasks"],
+): CompositionControlCenterResult => ({
   generatedAtUnixMs: 1_000,
-  tasks: overrides.tasks ?? [
-    {
-      taskId: "task-running",
-      status: "running",
-      agentId: "agent-1",
-      updatedAtUnixMs: 2,
-      dependsOnTaskIds: [],
-      latestRun: { runId: "run-1", status: "running", attempt: 1 },
-      goalLoop: {
-        runId: "run-1",
-        state: "running",
-        completedRounds: 3,
-        rejectedCompletions: 1,
-        terminalStatuses: [],
-        settledBySupervisor: false,
-      },
-      grants: {
-        taskId: "task-running",
-        totalEvents: 2,
-        revokedEvents: 1,
-        lastOutcome: "revoked",
-        lastOccurredAtUnixMs: 20,
-      },
-    },
-    {
-      taskId: "task-queued",
-      status: "queued",
-      agentId: "agent-2",
-      updatedAtUnixMs: 3,
-      dependsOnTaskIds: ["task-running"],
-    },
-  ],
-  squads: overrides.squads ?? [
+  tasks,
+  squads: [
     {
       squadId: "squad-1",
       name: "控制中心小队",
@@ -91,10 +100,35 @@ describe("CompositionControlCenterPanel", () => {
     mocks.projectionQuery.error = null;
     mocks.projectionQuery.isPending = false;
     mocks.projectionQuery.refresh = vi.fn();
+    mocks.redispatch = vi.fn();
   });
 
   it("渲染任务行：状态徽标、Goal Loop 徽标与轮次/拒绝/grant 摘要", () => {
-    mocks.projectionQuery.data = projection({});
+    mocks.projectionQuery.data = projection([
+      {
+        taskId: "task-running",
+        status: "running",
+        agentId: "agent-1",
+        updatedAtUnixMs: 2,
+        dependsOnTaskIds: [],
+        latestRun: { runId: "run-1", status: "running", attempt: 1 },
+        goalLoop: goalLoop("running"),
+        grants: {
+          taskId: "task-running",
+          totalEvents: 2,
+          revokedEvents: 1,
+          lastOutcome: "revoked",
+          lastOccurredAtUnixMs: 20,
+        },
+      },
+      {
+        taskId: "task-queued",
+        status: "queued",
+        agentId: "agent-2",
+        updatedAtUnixMs: 3,
+        dependsOnTaskIds: ["task-running"],
+      },
+    ]);
     const html = renderToStaticMarkup(<CompositionControlCenterPanel />);
     expect(html).toContain('data-task-id="task-running"');
     expect(html).toContain('data-task-id="task-queued"');
@@ -108,11 +142,58 @@ describe("CompositionControlCenterPanel", () => {
   });
 
   it("渲染 Squad 名册：名称、队长与成员数", () => {
-    mocks.projectionQuery.data = projection({});
+    mocks.projectionQuery.data = projection([taskWith({ taskId: "task-a" })]);
     const html = renderToStaticMarkup(<CompositionControlCenterPanel />);
     const squadRow = html.split('data-squad-id="squad-1"')[1] ?? "";
     expect(squadRow).toContain("agent-1");
     expect(squadRow).toContain("2");
+  });
+
+  it("仅 interrupted/supervisor_settled 且有最新 Run 的任务行渲染自动重派按钮", () => {
+    mocks.projectionQuery.data = projection([
+      taskWith({ taskId: "task-interrupted", goalLoopState: "interrupted" }),
+      taskWith({ taskId: "task-settled", goalLoopState: "supervisor_settled" }),
+      taskWith({ taskId: "task-running", goalLoopState: "running" }),
+      taskWith({ taskId: "task-converged", goalLoopState: "converged" }),
+      taskWith({ taskId: "task-no-run", goalLoopState: "interrupted", withLatestRun: false }),
+    ]);
+    const html = renderToStaticMarkup(<CompositionControlCenterPanel />);
+    expect(html).toContain('data-testid="control-center-redispatch-task-interrupted"');
+    expect(html).toContain('data-testid="control-center-redispatch-task-settled"');
+    expect(html).not.toContain('data-testid="control-center-redispatch-task-running"');
+    expect(html).not.toContain('data-testid="control-center-redispatch-task-converged"');
+    // 无最新 Run 时无法确定重派基线，不提供操作入口。
+    expect(html).not.toContain('data-testid="control-center-redispatch-task-no-run"');
+    // 存在可操作行时渲染 capabilityIds 输入。
+    expect(html).toContain("composition-control-center-capability-ids");
+  });
+
+  it("无可操作行时不渲染自动重派按钮与 capabilityIds 输入", () => {
+    mocks.projectionQuery.data = projection([
+      taskWith({ taskId: "task-running", goalLoopState: "running" }),
+      taskWith({ taskId: "task-no-loop" }),
+    ]);
+    const html = renderToStaticMarkup(<CompositionControlCenterPanel />);
+    expect(html).not.toContain("control-center-redispatch-");
+    expect(html).not.toContain("composition-control-center-capability-ids");
+  });
+
+  it("buildRedispatchInput 拆分 capabilityIds 并保留客户端生成的新 RunId", () => {
+    expect(
+      buildRedispatchInput({
+        taskId: "task-1",
+        runId: "run-1",
+        agentId: "agent-1",
+        newRunId: "t3-redispatch-abc",
+        capabilityIdsText: " shell.exec , fs.write ,, ",
+      }),
+    ).toEqual({
+      taskId: "task-1",
+      runId: "run-1",
+      agentId: "agent-1",
+      newRunId: "t3-redispatch-abc",
+      capabilityIds: ["shell.exec", "fs.write"],
+    });
   });
 
   it("无环境/加载中/错误/空数据四种状态均正常渲染且不输出 undefined", () => {
@@ -134,7 +215,7 @@ describe("CompositionControlCenterPanel", () => {
     expect(errored).not.toContain("undefined");
 
     mocks.projectionQuery.error = null;
-    mocks.projectionQuery.data = projection({ tasks: [], squads: [] });
+    mocks.projectionQuery.data = { generatedAtUnixMs: 1_000, tasks: [], squads: [] };
     const empty = renderToStaticMarkup(<CompositionControlCenterPanel />);
     expect(empty).not.toContain("data-task-id");
     expect(empty).not.toContain("data-squad-id");
