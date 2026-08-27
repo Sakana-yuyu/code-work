@@ -101,7 +101,7 @@ Type=Application
 Icon=code-work
 StartupWMClass=code-work
 Categories=Development;
-MimeType=x-scheme-handler/codework;x-scheme-handler/codework-dev;x-scheme-handler/codework-preview;x-scheme-handler/codework;x-scheme-handler/codework-dev;x-scheme-handler/codework-preview;
+MimeType=x-scheme-handler/codework;x-scheme-handler/codework-dev;x-scheme-handler/codework-preview;x-scheme-handler/t3code;x-scheme-handler/t3code-dev;x-scheme-handler/t3code-preview;
 EOF
 
   install -Dm644 "$srcdir/${pkgname}-${pkgver}-LICENSE" \

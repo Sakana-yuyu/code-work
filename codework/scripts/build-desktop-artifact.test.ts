@@ -208,13 +208,13 @@ it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
       assert.deepStrictEqual(latestConfig, {
         provider: "github",
         owner: "Sakana-yuyu",
-        repo: "codework",
+        repo: "code-work",
         releaseType: "release",
       });
       assert.deepStrictEqual(nightlyConfig, {
         provider: "github",
         owner: "Sakana-yuyu",
-        repo: "codework",
+        repo: "code-work",
         releaseType: "prerelease",
         channel: "nightly",
       });
@@ -486,9 +486,9 @@ it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
             "codework",
             "codework-dev",
             "codework-preview",
-            "codework",
-            "codework-dev",
-            "codework-preview",
+            "t3code",
+            "t3code-dev",
+            "t3code-preview",
           ],
         },
       ]);
@@ -1132,9 +1132,9 @@ it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
             "codework",
             "codework-dev",
             "codework-preview",
-            "codework",
-            "codework-dev",
-            "codework-preview",
+            "t3code",
+            "t3code-dev",
+            "t3code-preview",
           ],
         },
       ]);
