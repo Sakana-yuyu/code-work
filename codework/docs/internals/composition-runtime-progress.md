@@ -13,9 +13,9 @@
 | 更新时间 | 2026-08-27 |
 | 仓库 | `E:\MyProject\code-work\codework` |
 | 当前分支 | `tcode` |
-| 当前提交 | 类型基线修正节点：`feat(composition): 修复类型与 Effect 规则基线` |
-| 相对远端 | 领先 `origin/tcode` 46 个提交，尚未 push |
-| 最新节点 | 类型与 Effect 规则基线修正：以 contracts `settings.test.ts:257` 品牌 key 收窄为起点，逐包 typecheck 剥出并清偿 committed 代码既有隐性违例（品牌 key、`effect/Path` 服务、存储迁移键恢复、`Clock` 替换 `Date.now`、exactOptional 条件展开等） |
+| 当前提交 | Server typecheck 清偿第一波：`feat(composition): 收敛 MCP 设置协同类型与规则` |
+| 相对远端 | 领先 `origin/tcode` 51 个提交，尚未 push |
+| 最新节点 | apps/server 包 typecheck 清偿第一波（4 个小步切片）：台账测试形状标注、服务端路由测试运行时恢复（129 个失败用例归零，131/131 通过）、MCP 运行时适配器类型债、MCP 设置协同类型与规则；包内 typecheck 错误从约 520 处降至约 75 处 |
 | 工作区边界 | 存在大量其他并行修改；本文不把这些修改计入本迁移进度，也不回滚、暂存或提交它们 |
 
 ## 证据等级
@@ -208,7 +208,7 @@ CapabilityRegistry + ToolBroker
 - 余额、用量、价格、健康和路由状态的统一看板。
 - Goal、Squad、Leader、运行时恢复和 capability grant 的用户操作路径（投影、只读展示与自动重派/取消/审批/放弃结算入口已在 Web 接通；剩余 = Mobile/Desktop 面板复用）。
 - Web/Desktop/Mobile 关键路径的真实集成验证。
-- apps/server 包整体 typecheck 清偿：本节点触及文件（ws.ts、serverSettings.test.ts）已零错误，但该包仍存约 520 处既有隐性错误（约 44 个文件；`server.test.ts` 258 处、部分 composition 测试与 store 形状漂移），此前一直被 vp typecheck 短路掩盖，需按文件聚类拆独立切片清偿。Mobile 端当前 typecheck 错误全部位于用户并行未提交的 ComposerEditor/T3ComposerEditor 改名级联文件，按工作区边界不计入本进度。
+- apps/server 包整体 typecheck 清偿：第一波四个切片后剩余约 75 处（约 21 个文件），最大簇为 `CompositionGoalLoopAttemptAdapters.test.ts`(13)、`CompositionOrchestrator.test.ts`(9)、`CompositionTaskGraphExecutor.test.ts`(7)、`CompositionMcpToolRegistry.test.ts`/`CompositionIdeAgentDriver.test.ts`(各 6) 及 `ByokAdapter.ts`(4)，多为品牌化字段收窄、事件负载形状与错误通道细分的逐点问题，按文件聚类继续小步清偿。`server.test.ts` 已零类型错误且运行时 131/131 通过。Mobile 端当前 typecheck 错误全部位于用户并行未提交的 ComposerEditor/T3ComposerEditor 改名级联文件，按工作区边界不计入本进度。
 - Request Lab、通用请求镜像、脱敏回放和协议对比界面。
 
 ## 当前提交节点
@@ -243,6 +243,10 @@ CapabilityRegistry + ToolBroker
 | Supplier 统一投影 | `feat(composition): Supplier/Profile 统一只读投影` | projectCompositionSupplierRegistry：Provider 实例 → Supplier 条目（continuationKey 账号锚点）+ provider:\<instanceId\> 档案挂接 + 孤儿档案识别，3 用例 |
 | Supplier 注册表接线 | `feat(composition): Supplier 注册表接入 RPC 与 Web 设置` | serverSupplierRegistry 四层接线（ReadScope）+ 设置页只读区块与双语 i18n，面板 5 用例 |
 | 类型与 Effect 规则基线修正 | `feat(composition): 修复类型与 Effect 规则基线` | 品牌 key 显式收窄、`effect/Path` 服务化、`t3code:` 存储迁移键与 `T3CODE_HOME` 恢复、`Clock` 替换 `Date.now`、exactOptional 条件展开、lint/format 清零；server 包既有约 520 处隐性错误记为独立后续切片 |
+| 台账测试形状标注 | `feat(composition): 修正任务台账测试形状标注` | 测试辅助函数参数改用 `CompositionTaskStoreShape`（误用 Tag 类作类型），消除 any 级联，净 -62 处 typecheck 错误 |
+| 服务端路由测试运行时恢复 | `feat(composition): 恢复服务端路由测试运行时` | 修复 CapabilityRegistry `import type` 导致的运行时 ReferenceError；buildAppUnderTest 补 `OpenCodeRuntimeLive` 与 NoOp 事件日志；ServerSettings mock 补 `subscribeChanges`；修正 `codework_session_` cookie 与 Windows 路径两处陈旧断言——server.test.ts 从 129 个运行时失败恢复到 131/131 全绿 |
+| MCP 运行时适配器类型债 | `feat(composition): 清偿 MCP 运行时适配器类型债` | Context Tag 确定性 key、`Schema.is` 替换 `instanceof`、SDK 边界 exactOptional/签名收窄、Record 字段允许重置 undefined、幂等键缺省处理，-22 处 |
+| MCP 设置协同类型与规则 | `feat(composition): 收敛 MCP 设置协同类型与规则` | 品牌化 Record 辅助函数签名、toRuntimeConfig 条件展开、`orElseSucceed`/`Effect.try`+带类型错误替换 unknown 错误通道与 gen 内 try/catch、删除死 catch 分支 |
 | 文档与回归覆盖 | `c5a709b46`、`223b90ee5` | 刷新迁移矩阵并覆盖 ACP 取消终态回归 |
 
 ## 关键结论
@@ -272,7 +276,7 @@ CapabilityRegistry + ToolBroker
 4. 把 Provider、IDE、Multica 的 grant 状态统一投影到 Composition Run 和 Settings。（本地子任务已完成：grant issued/revoked 与 BYOK resume 输出均已投影为任务历史事件；剩余 = 外部 Driver 的真实 grant 回执接入与 Settings 跨端看板展示，依赖真实产品环境）
 5. ~~收敛 Goal Loop、预算、重试、验证子代理和跨重启 supervisor。~~（本地切片全部完成：完成标记/预算/停滞 pivot/验证合同与子代理验证器、任务台账编排接线、跨重启监督结算、编排层自动重派接线、BYOK/Multica attempt 生产适配器，共 47 单测；剩余缺口 = Multica 输出查询的生产实现，依赖真实 daemon 服务端能力）
 6. 最后补齐 Supplier/Profile 控制中心与 Web/Desktop/Mobile 集成 E2E。（前三个切片已完成：控制中心统一投影 + `serverControlCenterProjection` RPC 四层接线与 Web 设置"组合控制中心"只读展示（双语 i18n）、`serverControlCenterRedispatch` 自动重派操作入口、复用既有 `serverCancelCompositionTask` 的取消操作入口与 `serverReviewCompositionTask` 的审批（通过/驳回）操作入口、新增 `serverControlCenterAbandon` 放弃结算操作入口；第 6 项另完成 Supplier/Profile/Account 统一只读投影与 `serverSupplierRegistry` RPC/Web 只读区块；剩余 = 管理操作入口与凭据生命周期、余额/用量看板、Request Lab、Mobile/Desktop 面板复用及多端真实集成 E2E）
-7. 清偿 apps/server 包整体 typecheck 既有隐性错误基线。（本节点已完成触及文件清零并记录缺口；剩余约 520 处按文件聚类拆独立切片，优先 `server.test.ts` 与 composition 测试的 store 形状漂移）
+7. 清偿 apps/server 包整体 typecheck 既有隐性错误基线。（第一波已完成：台账测试形状标注、服务端路由测试运行时恢复 131/131、MCP 适配器与设置协同两簇清零，剩余约 75 处按文件聚类继续小步切片）
 
 ## 风险与回滚
 
