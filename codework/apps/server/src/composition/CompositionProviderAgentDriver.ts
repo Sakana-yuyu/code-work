@@ -114,11 +114,22 @@ type ProviderRunBinding = {
   readonly capabilityHandshakeId?: string;
 };
 
+type PendingProviderRunBinding = Omit<ProviderRunBinding, "turnId" | "runtimeTaskId"> & {
+  readonly turnId?: TurnId;
+  readonly terminalObserved: boolean;
+};
+
+const isTerminalProviderTurnEvent = (event: ProviderRuntimeEvent): boolean =>
+  event.type === "turn.completed" ||
+  event.type === "turn.aborted" ||
+  event.type === "runtime.error";
+
 export const makeCompositionProviderAgentDriver = (
   options: CompositionProviderAgentDriverOptions,
 ): CompositionAgentDriver => {
   const activeRuns = new Map<string, ProviderRunBinding>();
   const historicalRuns = new Map<string, ProviderRunBinding | null>();
+  const pendingRuns = new Map<ThreadId, PendingProviderRunBinding>();
   const runtimeMode = options.runtimeMode ?? "full-access";
   const toolBrokerCanonicalTools = options.toolBrokerCanonicalTools ?? [];
 
@@ -335,6 +346,30 @@ export const makeCompositionProviderAgentDriver = (
             : []),
         ]).pipe(Effect.asVoid);
 
+      const pending = {
+        taskId: input.task.taskId,
+        runId: input.run.runId,
+        threadId,
+        ...(capabilityHandshakeId === undefined ? {} : { capabilityHandshakeId }),
+        terminalObserved: false,
+      } satisfies PendingProviderRunBinding;
+      const hasActiveRunForThread = [...activeRuns.values()].some(
+        (active) => active.threadId === threadId,
+      );
+      if (pendingRuns.has(threadId) || hasActiveRunForThread) {
+        yield* cleanupProviderContext();
+        return yield* new CompositionAgentDriverFailure({
+          code: "provider_thread_busy",
+          detail: "同一 Provider thread 已有正在启动或运行中的 Composition Run。",
+        });
+      }
+      pendingRuns.set(threadId, pending);
+      const clearPendingRun = () =>
+        Effect.sync(() => {
+          const current = pendingRuns.get(threadId);
+          if (current?.runId === input.run.runId) pendingRuns.delete(threadId);
+        });
+
       const sessionInput: ProviderSessionStartInput = {
         threadId,
         providerInstanceId: options.providerInstanceId,
@@ -372,12 +407,16 @@ export const makeCompositionProviderAgentDriver = (
         toolBrokerConfigured = true;
         yield* options.adapter.configureToolBroker({ threadId, bridge, context }).pipe(
           Effect.mapError((error) => makeFailure("provider_toolbroker_configure_failed", error)),
-          Effect.tapError(() => cleanupProviderContext()),
+          Effect.tapError(() =>
+            Effect.all([clearPendingRun(), cleanupProviderContext()]).pipe(Effect.asVoid),
+          ),
         );
       }
       yield* options.adapter.startSession(sessionInput).pipe(
         Effect.mapError((error) => makeFailure("provider_session_start_failed", error)),
-        Effect.tapError(() => cleanupProviderContext()),
+        Effect.tapError(() =>
+          Effect.all([clearPendingRun(), cleanupProviderContext()]).pipe(Effect.asVoid),
+        ),
       );
       const turnInput: ProviderSendTurnInput = {
         threadId,
@@ -388,22 +427,43 @@ export const makeCompositionProviderAgentDriver = (
         Effect.mapError((error) => makeFailure("provider_turn_start_failed", error)),
         Effect.tapError(() =>
           Effect.all([
+            clearPendingRun(),
             options.adapter.stopSession(threadId).pipe(Effect.ignore),
             cleanupProviderContext(),
           ]).pipe(Effect.asVoid),
         ),
       );
-      const runtimeTaskId = `${options.runtimeId}:${threadId}:${turn.turnId}`;
+      const resolvedPending = pendingRuns.get(threadId);
+      if (
+        resolvedPending === undefined ||
+        resolvedPending.taskId !== input.task.taskId ||
+        resolvedPending.runId !== input.run.runId ||
+        (resolvedPending.turnId !== undefined && resolvedPending.turnId !== turn.turnId)
+      ) {
+        yield* Effect.all([
+          clearPendingRun(),
+          options.adapter.stopSession(threadId).pipe(Effect.ignore),
+          cleanupProviderContext(),
+        ]);
+        return yield* new CompositionAgentDriverFailure({
+          code: "provider_runtime_binding_invalid",
+          detail: "Provider 返回的 turnId 与启动中的 Composition Run 绑定不一致。",
+        });
+      }
+      const turnId = resolvedPending.turnId ?? turn.turnId;
+      const runtimeTaskId = `${options.runtimeId}:${threadId}:${turnId}`;
       const binding = {
         taskId: input.task.taskId,
         runId: input.run.runId,
         threadId,
-        turnId: turn.turnId,
+        turnId,
         runtimeTaskId,
         ...(capabilityHandshakeId === undefined ? {} : { capabilityHandshakeId }),
       } satisfies ProviderRunBinding;
-      activeRuns.set(input.run.runId, binding);
+      if (!resolvedPending.terminalObserved) activeRuns.set(input.run.runId, binding);
       rememberRun(binding);
+      pendingRuns.delete(threadId);
+      if (resolvedPending.terminalObserved) yield* cleanupProviderContext();
       return {
         runtimeTaskId,
         ...(capabilityHandshakeId === undefined ? {} : { capabilityHandshakeId }),
@@ -489,6 +549,7 @@ export const makeCompositionProviderAgentDriver = (
       for (const active of activeRuns.values()) {
         if (active.threadId !== event.threadId) continue;
         if (event.turnId !== undefined && event.turnId !== active.turnId) continue;
+        if (isTerminalProviderTurnEvent(event)) activeRuns.delete(active.runId);
         return {
           taskId: active.taskId,
           runId: active.runId,
@@ -505,6 +566,21 @@ export const makeCompositionProviderAgentDriver = (
             runtimeTaskId: historical.runtimeTaskId,
           };
         }
+        const pending = pendingRuns.get(event.threadId);
+        if (pending === undefined) return undefined;
+        if (pending.turnId === undefined && event.type !== "turn.started") return undefined;
+        if (pending.turnId !== undefined && pending.turnId !== event.turnId) return undefined;
+        const bound = {
+          ...pending,
+          turnId: event.turnId,
+          terminalObserved: pending.terminalObserved || isTerminalProviderTurnEvent(event),
+        } satisfies PendingProviderRunBinding;
+        pendingRuns.set(event.threadId, bound);
+        return {
+          taskId: bound.taskId,
+          runId: bound.runId,
+          runtimeTaskId: `${options.runtimeId}:${bound.threadId}:${bound.turnId}`,
+        };
       }
       return undefined;
     },

@@ -2,8 +2,16 @@ import { assert, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
-import type { CompositionCapabilityGrant } from "@codework/contracts";
-import type { CompositionTask, CompositionTaskRun } from "@codework/contracts";
+import {
+  EventId,
+  ProviderDriverKind,
+  ProviderInstanceId,
+  ThreadId,
+  TurnId,
+  type CompositionCapabilityGrant,
+  type CompositionTask,
+  type CompositionTaskRun,
+} from "@codework/contracts";
 
 import { makeCompositionAgentDriverRegistry } from "./CompositionAgentDriverRegistry.ts";
 import { makeCompositionRuntimeAgentDriver } from "./CompositionRuntimeAgentDriver.ts";
@@ -13,6 +21,7 @@ import {
   CompositionAgentDriverFailure,
   makeCompositionOrchestrator,
 } from "./CompositionOrchestrator.ts";
+import { projectCompositionRuntimeEvent } from "./CompositionTaskRuntimeProjector.ts";
 import { CompositionTaskStore } from "../persistence/Services/CompositionTaskStore.ts";
 import { CompositionTaskStoreLive } from "../persistence/Layers/CompositionTaskStore.ts";
 import { SqlitePersistenceMemory } from "../persistence/Layers/Sqlite.ts";
@@ -20,6 +29,199 @@ import { SqlitePersistenceMemory } from "../persistence/Layers/Sqlite.ts";
 const layer = it.layer(CompositionTaskStoreLive.pipe(Layer.provideMerge(SqlitePersistenceMemory)));
 
 layer("CompositionOrchestrator", (it) => {
+  it.effect("Runtime 启动事件早于 Driver startTask 返回时保留状态并持久化 handshake", () =>
+    Effect.gen(function* () {
+      const store = yield* CompositionTaskStore;
+      const driverRegistry = makeCompositionAgentDriverRegistry();
+      let binding:
+        | {
+            readonly taskId: string;
+            readonly runId: string;
+            readonly runtimeTaskId: string;
+          }
+        | undefined;
+      yield* driverRegistry.register({
+        agentId: "agent-early-started",
+        runtimeId: "runtime-early-started",
+        startTask: (input) =>
+          Effect.gen(function* () {
+            binding = {
+              taskId: input.task.taskId,
+              runId: input.run.runId,
+              runtimeTaskId: "runtime-task-early-started",
+            };
+            yield* projectCompositionRuntimeEvent(store, driverRegistry, {
+              eventId: EventId.make("event-early-started"),
+              provider: ProviderDriverKind.make("cursor"),
+              providerInstanceId: ProviderInstanceId.make("cursor"),
+              threadId: ThreadId.make("thread-early-started"),
+              turnId: TurnId.make("turn-early-started"),
+              createdAt: "2026-08-27T00:00:00.000Z",
+              type: "turn.started",
+              payload: {},
+            });
+            return {
+              runtimeTaskId: binding.runtimeTaskId,
+              capabilityHandshakeId: "handshake-early-started",
+            };
+          }),
+        cancelTask: () => Effect.succeed({ status: "cancelled" as const }),
+        resolveRuntimeEvent: () => binding,
+      });
+      const orchestrator = makeCompositionOrchestrator(store, driverRegistry);
+
+      const result = yield* orchestrator.dispatchTask({
+        taskId: "task-early-started",
+        runId: "run-early-started",
+        projectId: "project-early-started",
+        assigneeKind: "agent",
+        assigneeId: "agent-early-started",
+        mode: "serial",
+        promptDigest: "sha256:early-started",
+        prompt: "运行时已经启动",
+        workspaceRoot: "C:/workspace/early-started",
+        capabilityIds: [],
+        dependsOnTaskIds: [],
+      });
+
+      assert.equal(result.task.status, "running");
+      assert.equal(result.run.status, "running");
+      assert.equal(result.run.runtimeTaskId, "runtime-task-early-started");
+      assert.equal(result.run.capabilityHandshakeId, "handshake-early-started");
+    }),
+  );
+  it.effect("Runtime 在 Driver startTask 返回前终态时不会被回写为 running", () =>
+    Effect.gen(function* () {
+      const store = yield* CompositionTaskStore;
+      const driverRegistry = makeCompositionAgentDriverRegistry();
+      let binding:
+        | {
+            readonly taskId: string;
+            readonly runId: string;
+            readonly runtimeTaskId: string;
+          }
+        | undefined;
+      yield* driverRegistry.register({
+        agentId: "agent-early-terminal",
+        runtimeId: "runtime-early-terminal",
+        startTask: (input) =>
+          Effect.gen(function* () {
+            binding = {
+              taskId: input.task.taskId,
+              runId: input.run.runId,
+              runtimeTaskId: "runtime-task-early-terminal",
+            };
+            yield* projectCompositionRuntimeEvent(store, driverRegistry, {
+              eventId: EventId.make("event-early-terminal"),
+              provider: ProviderDriverKind.make("cursor"),
+              providerInstanceId: ProviderInstanceId.make("cursor"),
+              threadId: ThreadId.make("thread-early-terminal"),
+              turnId: TurnId.make("turn-early-terminal"),
+              createdAt: "2026-08-27T00:00:00.000Z",
+              type: "turn.completed",
+              payload: { state: "cancelled" },
+            });
+            return { runtimeTaskId: binding.runtimeTaskId };
+          }),
+        cancelTask: () => Effect.succeed({ status: "cancelled" as const }),
+        resolveRuntimeEvent: () => binding,
+      });
+      const orchestrator = makeCompositionOrchestrator(store, driverRegistry);
+
+      const result = yield* orchestrator.dispatchTask({
+        taskId: "task-early-terminal",
+        runId: "run-early-terminal",
+        projectId: "project-early-terminal",
+        assigneeKind: "agent",
+        assigneeId: "agent-early-terminal",
+        mode: "serial",
+        promptDigest: "sha256:early-terminal",
+        prompt: "运行时已经结束",
+        workspaceRoot: "C:/workspace/early-terminal",
+        capabilityIds: [],
+        dependsOnTaskIds: [],
+      });
+
+      assert.equal(result.task.status, "cancelled");
+      assert.equal(result.run.status, "cancelled");
+      assert.equal(result.run.runtimeTaskId, "runtime-task-early-terminal");
+      assert.equal(
+        Option.getOrThrow(yield* store.getTask("task-early-terminal")).status,
+        "cancelled",
+      );
+      assert.equal(
+        Option.getOrThrow(yield* store.getRun("run-early-terminal")).status,
+        "cancelled",
+      );
+    }),
+  );
+  it.effect("Runtime 终态早于 Driver startTask 失败时保留已投影的终态", () =>
+    Effect.gen(function* () {
+      const store = yield* CompositionTaskStore;
+      const driverRegistry = makeCompositionAgentDriverRegistry();
+      let binding:
+        | {
+            readonly taskId: string;
+            readonly runId: string;
+            readonly runtimeTaskId: string;
+          }
+        | undefined;
+      yield* driverRegistry.register({
+        agentId: "agent-early-terminal-failure",
+        runtimeId: "runtime-early-terminal-failure",
+        startTask: (input) =>
+          Effect.gen(function* () {
+            binding = {
+              taskId: input.task.taskId,
+              runId: input.run.runId,
+              runtimeTaskId: "runtime-task-early-terminal-failure",
+            };
+            yield* projectCompositionRuntimeEvent(store, driverRegistry, {
+              eventId: EventId.make("event-early-terminal-failure"),
+              provider: ProviderDriverKind.make("cursor"),
+              providerInstanceId: ProviderInstanceId.make("cursor"),
+              threadId: ThreadId.make("thread-early-terminal-failure"),
+              turnId: TurnId.make("turn-early-terminal-failure"),
+              createdAt: "2026-08-27T00:00:00.000Z",
+              type: "turn.completed",
+              payload: { state: "cancelled" },
+            });
+            return yield* new CompositionAgentDriverFailure({
+              code: "provider_turn_start_failed",
+              detail: "运行时终态后返回启动失败",
+            });
+          }),
+        cancelTask: () => Effect.succeed({ status: "cancelled" as const }),
+        resolveRuntimeEvent: () => binding,
+      });
+      const orchestrator = makeCompositionOrchestrator(store, driverRegistry);
+
+      const result = yield* orchestrator.dispatchTask({
+        taskId: "task-early-terminal-failure",
+        runId: "run-early-terminal-failure",
+        projectId: "project-early-terminal-failure",
+        assigneeKind: "agent",
+        assigneeId: "agent-early-terminal-failure",
+        mode: "serial",
+        promptDigest: "sha256:early-terminal-failure",
+        prompt: "运行时已经结束",
+        workspaceRoot: "C:/workspace/early-terminal-failure",
+        capabilityIds: [],
+        dependsOnTaskIds: [],
+      });
+
+      assert.equal(result.task.status, "cancelled");
+      assert.equal(result.run.status, "cancelled");
+      assert.equal(
+        Option.getOrThrow(yield* store.getTask("task-early-terminal-failure")).status,
+        "cancelled",
+      );
+      assert.equal(
+        Option.getOrThrow(yield* store.getRun("run-early-terminal-failure")).status,
+        "cancelled",
+      );
+    }),
+  );
   it.effect("重试失败 Task 时创建新 Run、递增 attempt、恢复输入并重新签发 grant", () =>
     Effect.gen(function* () {
       const store = yield* CompositionTaskStore;

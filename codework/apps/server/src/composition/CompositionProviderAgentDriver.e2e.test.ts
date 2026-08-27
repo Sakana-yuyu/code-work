@@ -92,7 +92,7 @@ const TestLayer = Layer.mergeAll(
 it.layer(TestLayer, { excludeTestServices: true })(
   "Composition Provider Driver 本地 ACP 跨进程 E2E",
   (it) => {
-    it.effect("取消后将 ACP cancelled 终态收口到原 Composition Run", () =>
+    it.effect("取消终态早于 Provider startTask 返回时仍收口到原 Composition Run", () =>
       Effect.gen(function* () {
         const adapter = yield* CursorAdapter;
         const settings = yield* ServerSettingsService;
@@ -102,6 +102,7 @@ it.layer(TestLayer, { excludeTestServices: true })(
         const runId = "run-provider-cancel-e2e";
         const runtimeId = "provider:cursor-acp-cancel-e2e";
         const providerInstanceId = ProviderInstanceId.make("cursor");
+        const releaseStartTask = yield* Deferred.make<void>();
         const wrapperPath = yield* Effect.promise(() =>
           makeMockAgentWrapper({ CODEWORK_ACP_HANG_PROMPT_FOREVER: "1" }),
         );
@@ -114,7 +115,9 @@ it.layer(TestLayer, { excludeTestServices: true })(
           providerKind: "cursor",
           adapter: {
             startSession: adapter.startSession,
-            sendTurn: adapter.sendTurn,
+            // ACP 已返回 turnId 后仍暂停，确保终态投影发生在 Driver 写入 binding 之前。
+            sendTurn: (input) =>
+              adapter.sendTurn(input).pipe(Effect.tap(() => Deferred.await(releaseStartTask))),
             interruptTurn: (requestedThreadId) => adapter.interruptTurn(requestedThreadId),
             stopSession: adapter.stopSession,
           },
@@ -154,6 +157,7 @@ it.layer(TestLayer, { excludeTestServices: true })(
           Effect.gen(function* () {
             if (String(event.threadId) !== threadId) return;
             if (event.type === "turn.started") {
+              yield* projectCompositionRuntimeEvent(store, registry, event);
               yield* Deferred.succeed(turnStarted, undefined).pipe(Effect.ignore);
               return;
             }
@@ -182,19 +186,34 @@ it.layer(TestLayer, { excludeTestServices: true })(
           { status: "cancelled" },
         );
         const completion = yield* Deferred.await(cancelledCompletion);
+
+        // ACP 会在 sendTurn 返回 turnId 前发布终态；生产订阅必须在这里就能归属事件。
+        yield* projectCompositionRuntimeEvent(store, registry, completion);
+        assert.equal(Option.getOrThrow(yield* store.getTask(taskId)).status, "cancelled");
+        assert.equal(Option.getOrThrow(yield* store.getRun(runId)).status, "cancelled");
+
+        yield* Deferred.succeed(releaseStartTask, undefined);
         const started = yield* Fiber.join(startFiber);
 
-        yield* store.upsertRun({ ...run, runtimeTaskId: started.runtimeTaskId });
+        assert.equal(
+          Option.getOrThrow(yield* store.getRun(runId)).runtimeTaskId,
+          started.runtimeTaskId,
+        );
         assert.deepStrictEqual(driver.resolveRuntimeEvent?.(completion), {
           taskId,
           runId,
           runtimeTaskId: started.runtimeTaskId,
         });
 
-        yield* projectCompositionRuntimeEvent(store, registry, completion);
         assert.equal(Option.getOrThrow(yield* store.getTask(taskId)).status, "cancelled");
         assert.equal(Option.getOrThrow(yield* store.getRun(runId)).status, "cancelled");
-        assert.equal((yield* store.listEvents(taskId, runId)).length, 1);
+        assert.deepStrictEqual(
+          (yield* store.listEvents(taskId, runId)).map((event) => [event.status, event.eventType]),
+          [
+            ["running", "status"],
+            ["cancelled", "status"],
+          ],
+        );
 
         yield* Fiber.interrupt(runtimeEventsFiber);
         yield* adapter.stopSession(task.threadId!).pipe(Effect.ignore);

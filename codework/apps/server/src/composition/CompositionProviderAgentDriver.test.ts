@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vite-plus/test";
+import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
+import * as Fiber from "effect/Fiber";
 
 import {
   ProviderDriverKind,
@@ -69,6 +71,392 @@ const makeAdapter = (options?: { readonly failTurn?: boolean }) => {
 };
 
 describe("CompositionProviderAgentDriver", () => {
+  it("仅在同一 thread 的 turn.started 后归属启动中 Provider Run", async () => {
+    const fake = makeAdapter();
+    const turnStarted = Effect.runSync(Deferred.make<void>());
+    const releaseTurn = Effect.runSync(Deferred.make<ProviderTurnStartResult>());
+    const driver = makeCompositionProviderAgentDriver({
+      agentId: "agent-codex",
+      runtimeId: "codex-local",
+      providerInstanceId: ProviderInstanceId.make("codex-local"),
+      adapter: {
+        ...fake.adapter,
+        sendTurn: () =>
+          Effect.gen(function* () {
+            yield* Deferred.succeed(turnStarted, undefined);
+            return yield* Deferred.await(releaseTurn);
+          }),
+      },
+    });
+    const task = {
+      taskId: "task-pending-provider",
+      projectId: "project-1",
+      threadId: "thread-pending-provider",
+      assigneeKind: "agent" as const,
+      assigneeId: "agent-codex",
+      mode: "serial" as const,
+      status: "queued" as const,
+      promptDigest: "sha256:pending-provider",
+      dependsOnTaskIds: [],
+      createdAtUnixMs: 1,
+      updatedAtUnixMs: 1,
+    };
+    const run = {
+      runId: "run-pending-provider",
+      taskId: task.taskId,
+      agentId: task.assigneeId,
+      runtimeId: "codex-local",
+      status: "queued" as const,
+      attempt: 1,
+      capabilityGrantIds: [],
+    };
+    const startFiber = Effect.runFork(
+      driver.startTask({ task, run, prompt: "等待 Runtime 事件", workspaceRoot: "C:/workspace" }),
+    );
+    await Effect.runPromise(Deferred.await(turnStarted));
+
+    const event = (threadId: string, type: ProviderRuntimeEvent["type"]): ProviderRuntimeEvent => ({
+      eventId: EventId.make(`event-${threadId}-${type}`),
+      provider: ProviderDriverKind.make("codex"),
+      providerInstanceId: ProviderInstanceId.make("codex-local"),
+      threadId: ThreadId.make(threadId),
+      turnId: TurnId.make("turn-pending-provider"),
+      createdAt: "2026-08-27T00:00:00.000Z",
+      type,
+      payload: type === "turn.started" ? {} : { state: "cancelled" },
+    });
+
+    expect(
+      driver.resolveRuntimeEvent?.(event("thread-other-provider", "turn.started")),
+    ).toBeUndefined();
+    expect(driver.resolveRuntimeEvent?.(event(task.threadId, "turn.completed"))).toBeUndefined();
+    expect(driver.resolveRuntimeEvent?.(event(task.threadId, "turn.started"))).toEqual({
+      taskId: task.taskId,
+      runId: run.runId,
+      runtimeTaskId: "codex-local:thread-pending-provider:turn-pending-provider",
+    });
+    expect(driver.resolveRuntimeEvent?.(event(task.threadId, "turn.completed"))).toEqual({
+      taskId: task.taskId,
+      runId: run.runId,
+      runtimeTaskId: "codex-local:thread-pending-provider:turn-pending-provider",
+    });
+
+    await Effect.runPromise(
+      Deferred.succeed(releaseTurn, {
+        threadId: ThreadId.make(task.threadId),
+        turnId: TurnId.make("turn-pending-provider"),
+      }),
+    );
+    await Effect.runPromise(Fiber.join(startFiber));
+  });
+
+  it("拒绝同一 Provider thread 的并发启动，避免事件串流", async () => {
+    const fake = makeAdapter();
+    const turnStarted = Effect.runSync(Deferred.make<void>());
+    const releaseTurn = Effect.runSync(Deferred.make<ProviderTurnStartResult>());
+    const driver = makeCompositionProviderAgentDriver({
+      agentId: "agent-codex",
+      runtimeId: "codex-local",
+      providerInstanceId: ProviderInstanceId.make("codex-local"),
+      adapter: {
+        ...fake.adapter,
+        sendTurn: () =>
+          Effect.gen(function* () {
+            yield* Deferred.succeed(turnStarted, undefined);
+            return yield* Deferred.await(releaseTurn);
+          }),
+      },
+    });
+    const task = {
+      taskId: "task-shared-thread",
+      projectId: "project-1",
+      threadId: "thread-shared-provider",
+      assigneeKind: "agent" as const,
+      assigneeId: "agent-codex",
+      mode: "serial" as const,
+      status: "queued" as const,
+      promptDigest: "sha256:shared-thread",
+      dependsOnTaskIds: [],
+      createdAtUnixMs: 1,
+      updatedAtUnixMs: 1,
+    };
+    const firstRun = {
+      runId: "run-shared-provider-1",
+      taskId: task.taskId,
+      agentId: task.assigneeId,
+      runtimeId: "codex-local",
+      status: "queued" as const,
+      attempt: 1,
+      capabilityGrantIds: [],
+    };
+    const firstStart = Effect.runFork(
+      driver.startTask({
+        task,
+        run: firstRun,
+        prompt: "第一个任务",
+        workspaceRoot: "C:/workspace",
+      }),
+    );
+    await Effect.runPromise(Deferred.await(turnStarted));
+
+    await expect(
+      Effect.runPromise(
+        driver.startTask({
+          task: { ...task, taskId: "task-shared-thread-2" },
+          run: { ...firstRun, runId: "run-shared-provider-2", taskId: "task-shared-thread-2" },
+          prompt: "第二个任务",
+          workspaceRoot: "C:/workspace",
+        }),
+      ),
+    ).rejects.toMatchObject({ code: "provider_thread_busy" });
+
+    await Effect.runPromise(
+      Deferred.succeed(releaseTurn, {
+        threadId: ThreadId.make(task.threadId),
+        turnId: TurnId.make("turn-shared-provider"),
+      }),
+    );
+    await Effect.runPromise(Fiber.join(firstStart));
+    expect(fake.calls).toEqual(["start:thread-shared-provider"]);
+  });
+
+  it("早到终态在 startTask 返回后撤销待定 capability handshake", async () => {
+    const fake = makeAdapter();
+    const turnStarted = Effect.runSync(Deferred.make<void>());
+    const releaseTurn = Effect.runSync(Deferred.make<ProviderTurnStartResult>());
+    const revokedHandshakeIds: string[] = [];
+    const driver = makeCompositionProviderAgentDriver({
+      agentId: "agent-codex",
+      runtimeId: "codex-local",
+      providerInstanceId: ProviderInstanceId.make("codex-local"),
+      adapter: {
+        ...fake.adapter,
+        handshakeCapabilities: (input) =>
+          Effect.succeed({
+            ...input,
+            status: "accepted" as const,
+            handshakeId: "handshake-early-terminal",
+            acceptedGrantIds: [...input.capabilityGrantIds],
+          }),
+        revokeCapabilityHandshake: ({ handshakeId }) =>
+          Effect.sync(() => revokedHandshakeIds.push(handshakeId)),
+        sendTurn: () =>
+          Effect.gen(function* () {
+            yield* Deferred.succeed(turnStarted, undefined);
+            return yield* Deferred.await(releaseTurn);
+          }),
+      },
+    });
+    const task = {
+      taskId: "task-early-terminal-handshake",
+      projectId: "project-1",
+      threadId: "thread-early-terminal-handshake",
+      assigneeKind: "agent" as const,
+      assigneeId: "agent-codex",
+      mode: "serial" as const,
+      status: "queued" as const,
+      promptDigest: "sha256:early-terminal-handshake",
+      dependsOnTaskIds: [],
+      createdAtUnixMs: 1,
+      updatedAtUnixMs: 1,
+    };
+    const run = {
+      runId: "run-early-terminal-handshake",
+      taskId: task.taskId,
+      agentId: task.assigneeId,
+      runtimeId: "codex-local",
+      status: "queued" as const,
+      attempt: 1,
+      capabilityGrantIds: ["grant-early-terminal"],
+    };
+    const startFiber = Effect.runFork(
+      driver.startTask({ task, run, prompt: "等待终态", workspaceRoot: "C:/workspace" }),
+    );
+    await Effect.runPromise(Deferred.await(turnStarted));
+    const event = (type: "turn.started" | "turn.completed"): ProviderRuntimeEvent => ({
+      eventId: EventId.make(`event-early-terminal-handshake-${type}`),
+      provider: ProviderDriverKind.make("codex"),
+      providerInstanceId: ProviderInstanceId.make("codex-local"),
+      threadId: ThreadId.make(task.threadId),
+      turnId: TurnId.make("turn-early-terminal-handshake"),
+      createdAt: "2026-08-27T00:00:00.000Z",
+      type,
+      payload: type === "turn.started" ? {} : { state: "cancelled" },
+    });
+    driver.resolveRuntimeEvent?.(event("turn.started"));
+    driver.resolveRuntimeEvent?.(event("turn.completed"));
+
+    await Effect.runPromise(
+      Deferred.succeed(releaseTurn, {
+        threadId: ThreadId.make(task.threadId),
+        turnId: TurnId.make("turn-early-terminal-handshake"),
+      }),
+    );
+    await Effect.runPromise(Fiber.join(startFiber));
+    expect(revokedHandshakeIds).toEqual(["handshake-early-terminal"]);
+  });
+
+  it("早到 turnId 与 Provider 返回不一致时清理 handshake 和 ToolBroker", async () => {
+    const fake = makeAdapter();
+    const turnStarted = Effect.runSync(Deferred.make<void>());
+    const releaseTurn = Effect.runSync(Deferred.make<ProviderTurnStartResult>());
+    const revokedHandshakeIds: string[] = [];
+    const clearedThreadIds: string[] = [];
+    const driver = makeCompositionProviderAgentDriver({
+      agentId: "agent-cursor",
+      runtimeId: "cursor-local",
+      providerInstanceId: ProviderInstanceId.make("cursor-local"),
+      toolBrokerBridge: unusedRuntimeToolBridge,
+      toolBrokerCanonicalTools: ["workspace.read_file"],
+      adapter: {
+        ...fake.adapter,
+        handshakeCapabilities: (input) =>
+          Effect.succeed({
+            ...input,
+            status: "accepted" as const,
+            handshakeId: "handshake-turn-mismatch",
+            acceptedGrantIds: [...input.capabilityGrantIds],
+          }),
+        configureToolBroker: () => Effect.void,
+        clearToolBroker: (threadId) => Effect.sync(() => clearedThreadIds.push(threadId)),
+        revokeCapabilityHandshake: ({ handshakeId }) =>
+          Effect.sync(() => revokedHandshakeIds.push(handshakeId)),
+        sendTurn: () =>
+          Effect.gen(function* () {
+            yield* Deferred.succeed(turnStarted, undefined);
+            return yield* Deferred.await(releaseTurn);
+          }),
+      },
+    });
+    const task = {
+      taskId: "task-turn-mismatch",
+      projectId: "project-1",
+      threadId: "thread-turn-mismatch",
+      assigneeKind: "agent" as const,
+      assigneeId: "agent-cursor",
+      mode: "serial" as const,
+      status: "queued" as const,
+      promptDigest: "sha256:turn-mismatch",
+      dependsOnTaskIds: [],
+      createdAtUnixMs: 1,
+      updatedAtUnixMs: 1,
+    };
+    const run = {
+      runId: "run-turn-mismatch",
+      taskId: task.taskId,
+      agentId: task.assigneeId,
+      runtimeId: "cursor-local",
+      status: "queued" as const,
+      attempt: 1,
+      capabilityGrantIds: ["grant-turn-mismatch"],
+    };
+    const startFiber = Effect.runFork(
+      driver.startTask({ task, run, prompt: "等待不一致 turn", workspaceRoot: "C:/workspace" }),
+    );
+    await Effect.runPromise(Deferred.await(turnStarted));
+    driver.resolveRuntimeEvent?.({
+      eventId: EventId.make("event-turn-mismatch"),
+      provider: ProviderDriverKind.make("codex"),
+      providerInstanceId: ProviderInstanceId.make("cursor-local"),
+      threadId: ThreadId.make(task.threadId),
+      turnId: TurnId.make("turn-from-event"),
+      createdAt: "2026-08-27T00:00:00.000Z",
+      type: "turn.started",
+      payload: {},
+    });
+    await Effect.runPromise(
+      Deferred.succeed(releaseTurn, {
+        threadId: ThreadId.make(task.threadId),
+        turnId: TurnId.make("turn-from-result"),
+      }),
+    );
+
+    await expect(Effect.runPromise(Fiber.join(startFiber))).rejects.toMatchObject({
+      code: "provider_runtime_binding_invalid",
+    });
+    expect(revokedHandshakeIds).toEqual(["handshake-turn-mismatch"]);
+    expect(clearedThreadIds).toEqual([task.threadId]);
+  });
+
+  it("ToolBroker 配置失败后允许同一 Provider thread 重新启动", async () => {
+    const fake = makeAdapter();
+    let configureAttempts = 0;
+    const driver = makeCompositionProviderAgentDriver({
+      agentId: "agent-cursor",
+      runtimeId: "cursor-local",
+      providerInstanceId: ProviderInstanceId.make("cursor-local"),
+      toolBrokerBridge: unusedRuntimeToolBridge,
+      toolBrokerCanonicalTools: ["workspace.read_file"],
+      adapter: {
+        ...fake.adapter,
+        handshakeCapabilities: (input) =>
+          Effect.succeed({
+            ...input,
+            status: "accepted" as const,
+            handshakeId: `handshake-retry-${input.runId}`,
+            acceptedGrantIds: [...input.capabilityGrantIds],
+          }),
+        configureToolBroker: () => {
+          configureAttempts += 1;
+          return configureAttempts === 1
+            ? Effect.fail(
+                new ProviderValidationError({
+                  operation: "configureToolBroker",
+                  issue: "首次配置失败",
+                }),
+              )
+            : Effect.void;
+        },
+        clearToolBroker: () => Effect.void,
+        revokeCapabilityHandshake: () => Effect.void,
+      },
+    });
+    const task = {
+      taskId: "task-toolbroker-retry",
+      projectId: "project-1",
+      threadId: "thread-toolbroker-retry",
+      assigneeKind: "agent" as const,
+      assigneeId: "agent-cursor",
+      mode: "serial" as const,
+      status: "queued" as const,
+      promptDigest: "sha256:toolbroker-retry",
+      dependsOnTaskIds: [],
+      createdAtUnixMs: 1,
+      updatedAtUnixMs: 1,
+    };
+    const firstRun = {
+      runId: "run-toolbroker-retry-1",
+      taskId: task.taskId,
+      agentId: task.assigneeId,
+      runtimeId: "cursor-local",
+      status: "queued" as const,
+      attempt: 1,
+      capabilityGrantIds: ["grant-toolbroker-retry"],
+    };
+
+    await expect(
+      Effect.runPromise(
+        driver.startTask({
+          task,
+          run: firstRun,
+          prompt: "首次配置",
+          workspaceRoot: "C:/workspace",
+        }),
+      ),
+    ).rejects.toMatchObject({ code: "provider_toolbroker_configure_failed" });
+    await expect(
+      Effect.runPromise(
+        driver.startTask({
+          task: { ...task, taskId: "task-toolbroker-retry-2" },
+          run: { ...firstRun, runId: "run-toolbroker-retry-2", taskId: "task-toolbroker-retry-2" },
+          prompt: "重新配置",
+          workspaceRoot: "C:/workspace",
+        }),
+      ),
+    ).resolves.toMatchObject({ runtimeTaskId: "cursor-local:thread-toolbroker-retry:turn-1" });
+    expect(configureAttempts).toBe(2);
+  });
+
   it("starts a provider session and sends the transient task prompt", async () => {
     const fake = makeAdapter();
     const driver = makeCompositionProviderAgentDriver({

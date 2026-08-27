@@ -210,6 +210,11 @@ export type CompositionCancelResult = {
 
 export type CompositionRecoveryResult = ReadonlyArray<CompositionDispatchResult>;
 
+type CompositionAgentDriverStartResult = {
+  readonly runtimeTaskId?: string;
+  readonly capabilityHandshakeId?: string;
+};
+
 const terminalStatuses: ReadonlySet<CompositionTaskStatus> = new Set([
   "completed",
   "failed",
@@ -323,6 +328,149 @@ const makeOrchestrator = (
           ),
         );
       }
+    });
+
+  /**
+   * Provider 可能在 startTask 返回前推送运行时事件。只有 Task/Run 仍处于本次
+   * 启动前的原始状态时才写入 running，避免早到终态被后续启动确认复活。
+   */
+  const persistStartedRun = (input: {
+    readonly task: CompositionTask;
+    readonly run: CompositionTaskRun;
+    readonly driver: CompositionAgentDriver;
+    readonly startResult: CompositionAgentDriverStartResult;
+    readonly summary: string;
+  }): Effect.Effect<CompositionDispatchResult, CompositionTaskStoreError> =>
+    store.withTransaction(
+      Effect.gen(function* () {
+        const currentTaskOption = yield* store.getTask(input.task.taskId);
+        const currentRunOption = yield* store.getRun(input.run.runId);
+        if (Option.isNone(currentTaskOption) || Option.isNone(currentRunOption)) {
+          return { task: input.task, run: input.run };
+        }
+        const currentTask = currentTaskOption.value;
+        const currentRun = currentRunOption.value;
+        if (currentTask.status !== input.task.status || currentRun.status !== input.run.status) {
+          if (
+            terminalStatuses.has(currentTask.status) ||
+            terminalStatuses.has(currentRun.status) ||
+            currentTask.status === "in_review" ||
+            currentRun.status === "in_review"
+          ) {
+            return { task: currentTask, run: currentRun };
+          }
+          const startedAt = currentRun.startedAtUnixMs ?? (yield* Clock.currentTimeMillis);
+          const synchronizedRun: CompositionTaskRun = {
+            ...currentRun,
+            runtimeId: input.driver.runtimeId,
+            ...(currentRun.runtimeTaskId === undefined &&
+            input.startResult.runtimeTaskId !== undefined
+              ? { runtimeTaskId: input.startResult.runtimeTaskId }
+              : {}),
+            ...(currentRun.capabilityHandshakeId === undefined &&
+            input.startResult.capabilityHandshakeId !== undefined
+              ? { capabilityHandshakeId: input.startResult.capabilityHandshakeId }
+              : {}),
+            ...(currentRun.startedAtUnixMs === undefined ? { startedAtUnixMs: startedAt } : {}),
+          };
+          yield* store.upsertRun(synchronizedRun);
+          return { task: currentTask, run: synchronizedRun };
+        }
+
+        const startedAt = yield* Clock.currentTimeMillis;
+        const runningTask: CompositionTask = {
+          ...currentTask,
+          status: "running",
+          updatedAtUnixMs: startedAt,
+        };
+        const runningRun: CompositionTaskRun = {
+          ...currentRun,
+          runtimeId: input.driver.runtimeId,
+          runtimeTaskId: input.startResult.runtimeTaskId,
+          ...(input.startResult.capabilityHandshakeId === undefined
+            ? {}
+            : { capabilityHandshakeId: input.startResult.capabilityHandshakeId }),
+          status: "running",
+          startedAtUnixMs: startedAt,
+        };
+        yield* store.upsertTask(runningTask);
+        yield* store.upsertRun(runningRun);
+        const events = yield* store.listEvents(runningTask.taskId, runningRun.runId);
+        yield* store.appendEvent(
+          makeEvent({
+            task: runningTask,
+            run: runningRun,
+            sequence: events.length,
+            status: "running",
+            eventType: "status",
+            summary: input.summary,
+          }),
+        );
+        return { task: runningTask, run: runningRun };
+      }),
+    );
+
+  const persistFailedStart = (input: {
+    readonly task: CompositionTask;
+    readonly run: CompositionTaskRun;
+    readonly driver: CompositionAgentDriver;
+    readonly failure: CompositionAgentDriverFailure;
+    readonly summary: string;
+    readonly finishTask: boolean;
+  }) =>
+    Effect.gen(function* () {
+      const persisted = yield* store.withTransaction(
+        Effect.gen(function* () {
+          const currentTaskOption = yield* store.getTask(input.task.taskId);
+          const currentRunOption = yield* store.getRun(input.run.runId);
+          if (Option.isNone(currentTaskOption) || Option.isNone(currentRunOption)) {
+            return { task: input.task, run: input.run, failurePersisted: false };
+          }
+          const currentTask = currentTaskOption.value;
+          const currentRun = currentRunOption.value;
+          if (
+            terminalStatuses.has(currentTask.status) ||
+            terminalStatuses.has(currentRun.status) ||
+            currentTask.status === "in_review" ||
+            currentRun.status === "in_review"
+          ) {
+            return { task: currentTask, run: currentRun, failurePersisted: false };
+          }
+          const failedAt = yield* Clock.currentTimeMillis;
+          const failedTask: CompositionTask = {
+            ...currentTask,
+            status: "failed",
+            updatedAtUnixMs: failedAt,
+            ...(input.finishTask ? { finishedAtUnixMs: failedAt } : {}),
+          };
+          const failedRun: CompositionTaskRun = {
+            ...currentRun,
+            runtimeId: input.driver.runtimeId,
+            status: "failed",
+            finishedAtUnixMs: failedAt,
+            failureCode: input.failure.code,
+            resultSummary: input.failure.detail,
+          };
+          yield* store.upsertTask(failedTask);
+          yield* store.upsertRun(failedRun);
+          const events = yield* store.listEvents(failedTask.taskId, failedRun.runId);
+          yield* store.appendEvent(
+            makeEvent({
+              task: failedTask,
+              run: failedRun,
+              sequence: events.length,
+              status: "failed",
+              eventType: "status",
+              summary: input.summary,
+            }),
+          );
+          return { task: failedTask, run: failedRun, failurePersisted: true };
+        }),
+      );
+      if (persisted.failurePersisted) {
+        yield* revokeRunCapabilities(input.driver, persisted.task, persisted.run);
+      }
+      return { task: persisted.task, run: persisted.run };
     });
 
   const validateDependencies = (
@@ -531,65 +679,23 @@ const makeOrchestrator = (
         }),
       );
       if (startResult._tag === "Failure") {
-        const failedAt = yield* Clock.currentTimeMillis;
-        const failedTask: CompositionTask = {
-          ...task,
-          status: "failed",
-          updatedAtUnixMs: failedAt,
-        };
-        const failedRun: CompositionTaskRun = {
-          ...run,
-          status: "failed",
-          runtimeId: driver.runtimeId,
-          finishedAtUnixMs: failedAt,
-          failureCode: startResult.failure.code,
-          resultSummary: startResult.failure.detail,
-        };
-        yield* revokeRunCapabilities(driver, failedTask, failedRun);
-        yield* store.upsertTask(failedTask);
-        yield* store.upsertRun(failedRun);
-        yield* store.appendEvent(
-          makeEvent({
-            task: failedTask,
-            run: failedRun,
-            sequence: 1,
-            status: "failed",
-            eventType: "status",
-            summary: "Agent Driver 启动失败",
-          }),
-        );
-        return { task: failedTask, run: failedRun };
+        return yield* persistFailedStart({
+          task,
+          run,
+          driver,
+          failure: startResult.failure,
+          summary: "Agent Driver 启动失败",
+          finishTask: false,
+        });
       }
 
-      const startedAt = yield* Clock.currentTimeMillis;
-      const runningTask: CompositionTask = {
-        ...task,
-        status: "running",
-        updatedAtUnixMs: startedAt,
-      };
-      const runningRun: CompositionTaskRun = {
-        ...run,
-        runtimeId: driver.runtimeId,
-        runtimeTaskId: startResult.success.runtimeTaskId,
-        ...(startResult.success.capabilityHandshakeId === undefined
-          ? {}
-          : { capabilityHandshakeId: startResult.success.capabilityHandshakeId }),
-        status: "running",
-        startedAtUnixMs: startedAt,
-      };
-      yield* store.upsertTask(runningTask);
-      yield* store.upsertRun(runningRun);
-      yield* store.appendEvent(
-        makeEvent({
-          task: runningTask,
-          run: runningRun,
-          sequence: 1,
-          status: "running",
-          eventType: "status",
-          summary: "任务已交给 Agent Driver 执行",
-        }),
-      );
-      return { task: runningTask, run: runningRun };
+      return yield* persistStartedRun({
+        task,
+        run,
+        driver,
+        startResult: startResult.success,
+        summary: "任务已交给 Agent Driver 执行",
+      });
     });
 
   const cancelTask: CompositionOrchestrator["cancelTask"] = (input) =>
@@ -859,66 +965,23 @@ const makeOrchestrator = (
         }),
       );
       if (startResult._tag === "Failure") {
-        const failedAt = yield* Clock.currentTimeMillis;
-        const failedTask: CompositionTask = {
-          ...queuedTask,
-          status: "failed",
-          updatedAtUnixMs: failedAt,
-          finishedAtUnixMs: failedAt,
-        };
-        const failedRun: CompositionTaskRun = {
-          ...queuedRun,
-          status: "failed",
-          finishedAtUnixMs: failedAt,
-          failureCode: startResult.failure.code,
-          resultSummary: startResult.failure.detail,
-        };
-        yield* revokeRunCapabilities(driver, failedTask, failedRun);
-        yield* store.upsertTask(failedTask);
-        yield* store.upsertRun(failedRun);
-        const events = yield* store.listEvents(input.taskId, input.runId);
-        yield* store.appendEvent(
-          makeEvent({
-            task: failedTask,
-            run: failedRun,
-            sequence: events.length,
-            status: "failed",
-            eventType: "status",
-            summary: "重试任务启动失败",
-          }),
-        );
-        return { task: failedTask, run: failedRun };
+        return yield* persistFailedStart({
+          task: queuedTask,
+          run: queuedRun,
+          driver,
+          failure: startResult.failure,
+          summary: "重试任务启动失败",
+          finishTask: true,
+        });
       }
 
-      const startedAt = yield* Clock.currentTimeMillis;
-      const runningTask: CompositionTask = {
-        ...queuedTask,
-        status: "running",
-        updatedAtUnixMs: startedAt,
-      };
-      const runningRun: CompositionTaskRun = {
-        ...queuedRun,
-        runtimeTaskId: startResult.success.runtimeTaskId,
-        ...(startResult.success.capabilityHandshakeId === undefined
-          ? {}
-          : { capabilityHandshakeId: startResult.success.capabilityHandshakeId }),
-        status: "running",
-        startedAtUnixMs: startedAt,
-      };
-      yield* store.upsertTask(runningTask);
-      yield* store.upsertRun(runningRun);
-      const events = yield* store.listEvents(input.taskId, input.runId);
-      yield* store.appendEvent(
-        makeEvent({
-          task: runningTask,
-          run: runningRun,
-          sequence: events.length,
-          status: "running",
-          eventType: "status",
-          summary: "重试任务已交给 Agent Driver 执行",
-        }),
-      );
-      return { task: runningTask, run: runningRun };
+      return yield* persistStartedRun({
+        task: queuedTask,
+        run: queuedRun,
+        driver,
+        startResult: startResult.success,
+        summary: "重试任务已交给 Agent Driver 执行",
+      });
     });
 
   const resumeReadyTasks: CompositionOrchestrator["resumeReadyTasks"] = () =>
@@ -968,68 +1031,23 @@ const makeOrchestrator = (
             }),
           );
           if (startResult._tag === "Failure") {
-            const failedAt = yield* Clock.currentTimeMillis;
-            const failedTask: CompositionTask = {
-              ...task,
-              status: "failed",
-              updatedAtUnixMs: failedAt,
-              finishedAtUnixMs: failedAt,
-            };
-            const failedRun: CompositionTaskRun = {
-              ...run,
-              runtimeId: driver.runtimeId,
-              status: "failed",
-              finishedAtUnixMs: failedAt,
-              failureCode: startResult.failure.code,
-              resultSummary: startResult.failure.detail,
-            };
-            yield* revokeRunCapabilities(driver, failedTask, failedRun);
-            yield* store.upsertTask(failedTask);
-            yield* store.upsertRun(failedRun);
-            const events = yield* store.listEvents(task.taskId, run.runId);
-            yield* store.appendEvent(
-              makeEvent({
-                task: failedTask,
-                run: failedRun,
-                sequence: events.length,
-                status: "failed",
-                eventType: "status",
-                summary: "恢复任务启动失败",
-              }),
-            );
-            return { task: failedTask, run: failedRun };
+            return yield* persistFailedStart({
+              task,
+              run,
+              driver,
+              failure: startResult.failure,
+              summary: "恢复任务启动失败",
+              finishTask: true,
+            });
           }
 
-          const startedAt = yield* Clock.currentTimeMillis;
-          const runningTask: CompositionTask = {
-            ...task,
-            status: "running",
-            updatedAtUnixMs: startedAt,
-          };
-          const runningRun: CompositionTaskRun = {
-            ...run,
-            runtimeId: driver.runtimeId,
-            runtimeTaskId: startResult.success.runtimeTaskId,
-            ...(startResult.success.capabilityHandshakeId === undefined
-              ? {}
-              : { capabilityHandshakeId: startResult.success.capabilityHandshakeId }),
-            status: "running",
-            startedAtUnixMs: startedAt,
-          };
-          yield* store.upsertTask(runningTask);
-          yield* store.upsertRun(runningRun);
-          const events = yield* store.listEvents(task.taskId, run.runId);
-          yield* store.appendEvent(
-            makeEvent({
-              task: runningTask,
-              run: runningRun,
-              sequence: events.length,
-              status: "running",
-              eventType: "status",
-              summary: "依赖完成后已恢复任务",
-            }),
-          );
-          return { task: runningTask, run: runningRun };
+          return yield* persistStartedRun({
+            task,
+            run,
+            driver,
+            startResult: startResult.success,
+            summary: "依赖完成后已恢复任务",
+          });
         }).pipe(Effect.ensuring(Effect.sync(() => resumingTaskIds.delete(task.taskId))));
         resumed.push(result);
       }
