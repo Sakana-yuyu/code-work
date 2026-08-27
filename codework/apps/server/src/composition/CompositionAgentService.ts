@@ -12,6 +12,8 @@ import { ProviderInstanceRegistry } from "../provider/Services/ProviderInstanceR
 
 export type CompositionAgentServiceInput = {
   readonly providerInstanceId: string;
+  /** Composition Driver 的稳定运行时身份；缺省时兼容旧调用并使用 Provider 实例 ID。 */
+  readonly runtimeId?: string;
   readonly modelId: string;
   readonly taskId: string;
   readonly runId: string;
@@ -102,7 +104,7 @@ const make = (options: CompositionAgentServiceOptions): CompositionAgentServiceS
           taskId: input.taskId,
           runId: input.runId,
           agentId: input.agentId,
-          runtimeId: input.providerInstanceId,
+          runtimeId: input.runtimeId ?? input.providerInstanceId,
           workspaceRoot: input.workspaceRoot,
           prompt: input.prompt,
           capabilityGrantIds,

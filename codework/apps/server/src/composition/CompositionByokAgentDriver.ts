@@ -232,6 +232,7 @@ export const makeCompositionByokAgentDriver = (
         const tools = yield* options.listTools();
         const result = yield* options.agentService.run({
           providerInstanceId: String(options.providerInstanceId),
+          runtimeId: options.runtimeId,
           modelId,
           taskId: input.task.taskId,
           runId: input.run.runId,

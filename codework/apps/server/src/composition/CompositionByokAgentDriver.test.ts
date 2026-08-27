@@ -73,6 +73,7 @@ describe("CompositionByokAgentDriver", () => {
 
     expect(calls[0]).toMatchObject({
       providerInstanceId: "byok",
+      runtimeId: "provider:byok",
       modelId: "openai/gpt-5",
       taskId: task.taskId,
       runId: run.runId,
