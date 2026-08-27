@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { t } from "~/i18n";
+import { t } from "~/i18n/runtime";
 import {
   searchableSetting,
   searchSettings,

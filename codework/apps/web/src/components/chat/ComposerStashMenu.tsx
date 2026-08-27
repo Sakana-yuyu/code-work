@@ -129,7 +129,7 @@ export const ComposerStashMenu = memo(function ComposerStashMenu(props: {
           <CommandGroup>
             {entries.length === 0 ? (
               <p className="px-3 py-1.5 text-secondary-label text-xs">
-                Nothing stashed yet. Press ⌘S with a prompt in the composer to stash it.
+                {t("nothingStashedYetPressSWithAPromptInTheComposerToStashIt")}
               </p>
             ) : (
               entries.map((entry) => (
@@ -155,13 +155,13 @@ export const ComposerStashMenu = memo(function ComposerStashMenu(props: {
                   </span>
                   {entry.pendingImageCount ? (
                     <span className="shrink-0 text-[10px] text-secondary-label">
-                      saving {entry.pendingImageCount} image
+                      {t("saving2")} {entry.pendingImageCount} {t("image")}
                       {entry.pendingImageCount === 1 ? "" : "s"}…
                     </span>
                   ) : missingImageCount(entry) > 0 ? (
                     <span className="shrink-0 text-[10px] text-warning-foreground">
-                      {missingImageCount(entry)} image
-                      {missingImageCount(entry) === 1 ? "" : "s"} dropped
+                      {missingImageCount(entry)} {t("image")}
+                      {missingImageCount(entry) === 1 ? "" : "s"} {t("dropped")}
                     </span>
                   ) : null}
                   {entry.attachments.length > 0 ? (

@@ -84,13 +84,13 @@ function KeybindingPill({ value }: { value: string }) {
           {part === "mod"
             ? navigator.platform.toLowerCase().includes("mac")
               ? "⌘"
-              : "Ctrl"
+              : t("ctrl")
             : part === "shift"
               ? "⇧"
               : part === "alt"
                 ? navigator.platform.toLowerCase().includes("mac")
                   ? "⌥"
-                  : "Alt"
+                  : t("alt")
                 : part === "ctrl"
                   ? "⌃"
                   : part.length === 1
@@ -517,10 +517,10 @@ function WhenExpressionNodeEditor({
             className="w-fit min-w-24"
           >
             <SelectItem value="and" className="min-h-7 py-1 font-mono text-[12px]">
-              and
+              {t("and")}
             </SelectItem>
             <SelectItem value="or" className="min-h-7 py-1 font-mono text-[12px]">
-              or
+              {t("or")}
             </SelectItem>
           </SelectContent>
         </Select>

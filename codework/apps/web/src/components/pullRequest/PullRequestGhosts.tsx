@@ -32,7 +32,7 @@ export function PullRequestListGhost({
   return (
     <div
       role="status"
-      aria-label={caption ?? "Loading pull requests"}
+      aria-label={caption ?? t("loadingPullRequests")}
       className="animate-ghost-pulse space-y-0.5"
     >
       {caption ? (

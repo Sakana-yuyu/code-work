@@ -1,6 +1,7 @@
 import type { UsageProviderKind } from "@codework/contracts";
 
 import { ClaudeAI, type Icon, OpenAI } from "../Icons";
+import { t } from "~/i18n/runtime";
 
 type UsageProviderPresentation = {
   readonly label: string;
@@ -15,12 +16,16 @@ type UsageProviderPresentation = {
  */
 export const PROVIDER_PRESENTATION = {
   codex: {
-    label: "Codex",
+    get label() {
+      return t("codex");
+    },
     color: "var(--contrast-foreground)",
     mark: OpenAI,
   },
   claude: {
-    label: "Claude Code",
+    get label() {
+      return t("claudeCode");
+    },
     color: "#d97757",
     mark: ClaudeAI,
   },

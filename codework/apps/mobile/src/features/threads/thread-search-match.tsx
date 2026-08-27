@@ -2,6 +2,7 @@ import type { EnvironmentThreadSearchMatch } from "@codework/client-runtime/stat
 
 import { AppText as Text } from "../../components/AppText";
 import { cn } from "../../lib/cn";
+import { t } from "../../i18n";
 
 function foldAsciiCase(value: string): string {
   return value.replace(/[A-Z]/g, (character) => character.toLowerCase());
@@ -69,7 +70,7 @@ export function ThreadSearchMatchExcerpt(props: {
               : "text-emerald-600 dark:text-emerald-400",
         )}
       >
-        {isUser ? "You:" : "Agent:"}{" "}
+        {isUser ? t("commandPalette.youPrefix") : t("commandPalette.agentPrefix")}{" "}
       </Text>
       {parts.map((part) => (
         <Text

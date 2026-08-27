@@ -38,6 +38,7 @@ import {
   reportRelayClientInstallProgress,
   requestRelayClientInstallConfirmation,
 } from "./relayClientInstallDialog";
+import { t } from "~/i18n/runtime";
 
 export function normalizeRelayBaseUrl(value: string | null | undefined): string | null {
   const trimmed = value?.trim();
@@ -74,7 +75,10 @@ function ensureRelayClientAvailable(
     if (status.status === "available") return;
     if (status.status === "unsupported") {
       return yield* new CloudEnvironmentLinkError({
-        message: `Code Work cannot install the relay client automatically on ${status.platform}-${status.arch}.`,
+        message: t("codeWorkCannotInstallTheRelayClientAutomaticallyOn", {
+          platform: status.platform,
+          arch: status.arch,
+        }),
       });
     }
 
@@ -84,7 +88,7 @@ function ensureRelayClientAvailable(
     });
     if (!confirmed) {
       return yield* new CloudEnvironmentLinkError({
-        message: "Relay client installation was cancelled.",
+        message: t("relayClientInstallationWasCancelled"),
       });
     }
 
@@ -102,7 +106,7 @@ function ensureRelayClientAvailable(
       );
     if (Option.isNone(installed) || installed.value.type !== "complete") {
       return yield* new CloudEnvironmentLinkError({
-        message: "The relay client install completed without a final status.",
+        message: t("theRelayClientInstallCompletedWithoutAFinalStatus"),
       });
     }
     const installedStatus = installed.value.status;
@@ -110,8 +114,11 @@ function ensureRelayClientAvailable(
       return yield* new CloudEnvironmentLinkError({
         message:
           installedStatus.status === "unsupported"
-            ? `Code Work cannot install the relay client automatically on ${installedStatus.platform}-${installedStatus.arch}.`
-            : "The relay client is still unavailable after installation.",
+            ? t("codeWorkCannotInstallTheRelayClientAutomaticallyOn", {
+                platform: installedStatus.platform,
+                arch: installedStatus.arch,
+              })
+            : t("theRelayClientIsStillUnavailableAfterInstallation"),
       });
     }
   });
@@ -224,12 +231,12 @@ function ensureLinkedEnvironmentMatches(input: {
 }): Effect.Effect<void, CloudEnvironmentLinkError> {
   if (input.link.environmentId !== input.expectedEnvironmentId) {
     return new CloudEnvironmentLinkError({
-      message: "Relay returned credentials for a different environment.",
+      message: t("relayReturnedCredentialsForADifferentEnvironment"),
     });
   }
   if (input.link.endpoint.providerKind !== input.expectedProviderKind) {
     return new CloudEnvironmentLinkError({
-      message: "Relay returned credentials for a different endpoint provider.",
+      message: t("relayReturnedCredentialsForADifferentEndpointProvider"),
     });
   }
   return Effect.void;
@@ -285,7 +292,7 @@ export function listManagedCloudEnvironments(input: {
     const configuredRelayUrl = relayUrl();
     if (!configuredRelayUrl) {
       return yield* new CloudEnvironmentLinkError({
-        message: "CODEWORK_RELAY_URL is not configured.",
+        message: t("codeworkRelayUrlIsNotConfigured"),
       });
     }
     const relayClient = yield* ManagedRelay.ManagedRelayClient;
@@ -297,7 +304,7 @@ export function listManagedCloudEnvironments(input: {
         Effect.mapError(
           (cause) =>
             new CloudEnvironmentLinkError({
-              message: "Could not list relay-managed environments.",
+              message: t("couldNotListRelayManagedEnvironments"),
               cause,
             }),
         ),
@@ -315,7 +322,7 @@ export function listCloudDevices(input: {
   return Effect.gen(function* () {
     if (!relayUrl()) {
       return yield* new CloudEnvironmentLinkError({
-        message: "CODEWORK_RELAY_URL is not configured.",
+        message: t("codeworkRelayUrlIsNotConfigured"),
       });
     }
     const relayClient = yield* ManagedRelay.ManagedRelayClient;
@@ -323,7 +330,7 @@ export function listCloudDevices(input: {
       Effect.mapError(
         (cause) =>
           new CloudEnvironmentLinkError({
-            message: "Could not list cloud devices.",
+            message: t("couldNotListCloudDevices"),
             cause,
           }),
       ),
@@ -412,7 +419,7 @@ export function linkPrimaryEnvironmentToCloud(input: {
     const configuredRelayUrl = relayUrl();
     if (!configuredRelayUrl) {
       return yield* new CloudEnvironmentLinkError({
-        message: "CODEWORK_RELAY_URL is not configured.",
+        message: t("codeworkRelayUrlIsNotConfigured"),
       });
     }
     const managedTunnelsEnabled = (input.mode ?? "managed") === "managed";

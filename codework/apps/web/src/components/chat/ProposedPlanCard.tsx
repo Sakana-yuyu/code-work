@@ -60,8 +60,8 @@ export const ProposedPlanCard = memo(function ProposedPlanCard({
       toastManager.add(
         stackedThreadToast({
           type: "error",
-          title: "Could not copy plan",
-          description: error instanceof Error ? error.message : "An error occurred while copying.",
+          title: t("couldNotCopyPlan"),
+          description: error instanceof Error ? error.message : t("anErrorOccurredWhileCopying"),
         }),
       );
     },
@@ -91,7 +91,7 @@ export const ProposedPlanCard = memo(function ProposedPlanCard({
         stackedThreadToast({
           type: "error",
           title: t("chat.workspacePathUnavailable"),
-          description: "This thread does not have a workspace path to save into.",
+          description: t("thisThreadDoesNotHaveAWorkspacePathToSaveInto"),
         }),
       );
       return;
@@ -108,7 +108,7 @@ export const ProposedPlanCard = memo(function ProposedPlanCard({
     if (!relativePath) {
       toastManager.add({
         type: "warning",
-        title: "Enter a workspace path",
+        title: t("enterAWorkspacePath"),
       });
       return;
     }
@@ -128,7 +128,7 @@ export const ProposedPlanCard = memo(function ProposedPlanCard({
         setIsSaveDialogOpen(false);
         toastManager.add({
           type: "success",
-          title: "Plan saved to workspace",
+          title: t("planSavedToWorkspace"),
           description: result.value.relativePath,
         });
         return;
@@ -138,8 +138,8 @@ export const ProposedPlanCard = memo(function ProposedPlanCard({
         toastManager.add(
           stackedThreadToast({
             type: "error",
-            title: "Could not save plan",
-            description: error instanceof Error ? error.message : "An error occurred while saving.",
+            title: t("couldNotSavePlan"),
+            description: error instanceof Error ? error.message : t("anErrorOccurredWhileSaving"),
           }),
         );
       }
@@ -150,7 +150,7 @@ export const ProposedPlanCard = memo(function ProposedPlanCard({
     <div className="rounded-[24px] border border-border/80 bg-card/70 p-4 sm:p-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex min-w-0 items-center gap-2">
-          <Badge variant="secondary">Plan</Badge>
+          <Badge variant="secondary">{t("chat.plan")}</Badge>
           <p className="truncate text-sm font-medium text-foreground">{title}</p>
         </div>
         <Menu>
@@ -161,11 +161,11 @@ export const ProposedPlanCard = memo(function ProposedPlanCard({
           </MenuTrigger>
           <MenuPopup align="end">
             <MenuItem onClick={handleCopyPlan}>
-              {isCopied ? "Copied!" : "Copy to clipboard"}
+              {isCopied ? t("copied") : t("copyToClipboard")}
             </MenuItem>
-            <MenuItem onClick={handleDownload}>Download as markdown</MenuItem>
+            <MenuItem onClick={handleDownload}>{t("downloadAsMarkdown")}</MenuItem>
             <MenuItem onClick={openSaveDialog} disabled={!workspaceRoot || isSavingToWorkspace}>
-              Save to workspace
+              {t("saveToWorkspace")}
             </MenuItem>
           </MenuPopup>
         </Menu>
@@ -199,7 +199,7 @@ export const ProposedPlanCard = memo(function ProposedPlanCard({
               data-scroll-anchor-ignore
               onClick={() => setExpanded((value) => !value)}
             >
-              {expanded ? "Collapse plan" : "Expand plan"}
+              {expanded ? t("collapsePlan") : t("expandPlan")}
             </Button>
           </div>
         ) : null}
@@ -215,9 +215,9 @@ export const ProposedPlanCard = memo(function ProposedPlanCard({
       >
         <DialogPopup className="max-w-xl">
           <DialogHeader>
-            <DialogTitle>Save plan to workspace</DialogTitle>
+            <DialogTitle>{t("savePlanToWorkspace")}</DialogTitle>
             <DialogDescription>
-              Enter a path relative to <code>{workspaceRoot ?? "the workspace"}</code>.
+              {t("enterAPathRelativeTo")} <code>{workspaceRoot ?? t("theWorkspace")}</code>.
             </DialogDescription>
           </DialogHeader>
           <DialogPanel className="space-y-3">
@@ -240,14 +240,14 @@ export const ProposedPlanCard = memo(function ProposedPlanCard({
               onClick={() => setIsSaveDialogOpen(false)}
               disabled={isSavingToWorkspace}
             >
-              Cancel
+              {t("cancel")}
             </Button>
             <Button
               size="sm"
               onClick={() => void handleSaveToWorkspace()}
               disabled={isSavingToWorkspace}
             >
-              {isSavingToWorkspace ? "Saving..." : "Save"}
+              {isSavingToWorkspace ? t("saving3") : t("save")}
             </Button>
           </DialogFooter>
         </DialogPopup>

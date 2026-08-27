@@ -16,6 +16,7 @@ import {
   ClerkUserProfileRefreshButton,
   ClerkUserProfileRow,
 } from "./ClerkUserProfilePage";
+import { t } from "~/i18n";
 
 const MOBILE_CLIENT_SKELETON_ROWS = ["primary", "secondary"] as const;
 
@@ -28,7 +29,7 @@ function MobileClientStatusBadge({
 }) {
   return (
     <Badge variant={enabled ? "success" : "outline"}>
-      {label}: {enabled ? "On" : "Off"}
+      {label}: {enabled ? t("on2") : t("off")}
     </Badge>
   );
 }
@@ -52,9 +53,12 @@ function MobileClientRow({ device }: { readonly device: RelayClientDeviceRecord 
       <div className="mt-2 flex flex-wrap gap-1.5">
         <MobileClientStatusBadge
           enabled={device.notifications.enabled}
-          label="Push notifications"
+          label={t("pushNotifications")}
         />
-        <MobileClientStatusBadge enabled={device.liveActivities.enabled} label="Live Activities" />
+        <MobileClientStatusBadge
+          enabled={device.liveActivities.enabled}
+          label={t("liveActivities")}
+        />
       </div>
       <p className="mt-1.5 text-xs leading-[1.125rem] text-muted-foreground/80">
         {mobileClientNotificationDetail(device)}
@@ -65,7 +69,7 @@ function MobileClientRow({ device }: { readonly device: RelayClientDeviceRecord 
 
 function MobileClientsSkeleton() {
   return (
-    <div aria-label="Loading mobile clients" className="divide-y border-t" role="status">
+    <div aria-label={t("loadingMobileClients")} className="divide-y border-t" role="status">
       {MOBILE_CLIENT_SKELETON_ROWS.map((row) => (
         <div key={row} className="py-4">
           <div className="flex gap-3">
@@ -92,10 +96,9 @@ function EmptyMobileClients() {
         <SmartphoneIcon />
       </EmptyMedia>
       <EmptyHeader>
-        <EmptyTitle className="text-[1.0625rem] leading-6">No mobile clients</EmptyTitle>
+        <EmptyTitle className="text-[1.0625rem] leading-6">{t("noMobileClients")}</EmptyTitle>
         <EmptyDescription className="text-[0.8125rem] leading-[1.125rem]">
-          Sign in to Code Work on your iPhone to register it for push notifications and Live
-          Activities.
+          {t("signInToCodeWorkOnYourIphoneToRegisterItForPushNotificationsAndLiveActiv")}
         </EmptyDescription>
       </EmptyHeader>
     </Empty>
@@ -111,8 +114,8 @@ export function MobileClientsUserProfilePage() {
 
   return (
     <ClerkUserProfilePage
-      title="Mobile clients"
-      description="Devices registered to receive Code Work Connect activity from your environments."
+      title={t("mobileClients")}
+      description={t("devicesRegisteredToReceiveCodeWorkConnectActivityFromYourEnvironments")}
       action={
         <ClerkUserProfileRefreshButton
           isPending={devicesState.isPending}
@@ -128,12 +131,12 @@ export function MobileClientsUserProfilePage() {
           >
             <div>
               <p className="font-medium text-destructive-foreground">
-                Could not load mobile clients
+                {t("couldNotLoadMobileClients")}
               </p>
               <p className="mt-0.5 text-xs text-muted-foreground">{devicesState.error}</p>
             </div>
             <Button size="xs" variant="outline" onClick={devicesState.refresh}>
-              Try again
+              {t("tryAgain2")}
             </Button>
           </div>
         ) : null}

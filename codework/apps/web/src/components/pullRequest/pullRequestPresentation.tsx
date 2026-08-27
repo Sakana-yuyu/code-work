@@ -25,6 +25,7 @@ import { cn } from "~/lib/utils";
 import { Badge } from "../ui/badge";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import type { PullRequestReviewOutcome } from "./pullRequestDetail.logic";
+import { t } from "~/i18n";
 
 interface StatePresentation {
   readonly label: string;
@@ -48,21 +49,21 @@ export function resolvePullRequestState(input: {
 }): StatePresentation {
   if (input.state === "merged") {
     return {
-      label: "Merged",
+      label: t("pullRequests.merged"),
       toneClassName: "text-violet-600 dark:text-violet-300/90",
       Icon: GitMergeIcon,
     };
   }
   if (input.state === "closed") {
     return {
-      label: "Closed",
+      label: t("pullRequests.closed"),
       toneClassName: "text-red-600 dark:text-red-300/90",
       Icon: GitPullRequestClosedIcon,
     };
   }
   if (input.isDraft) {
     return {
-      label: "Draft",
+      label: t("draft"),
       toneClassName: "text-zinc-500 dark:text-zinc-400/80",
       Icon: GitPullRequestDraftIcon,
     };
@@ -71,13 +72,15 @@ export function resolvePullRequestState(input: {
     return {
       // "Has conflicts" leaves out the one thing a reader wants when the warning triangle catches
       // their eye, so name the branch it collides with wherever the caller knows it.
-      label: input.baseBranch ? `Conflicts with ${input.baseBranch}` : "Has conflicts",
+      label: input.baseBranch
+        ? t("conflictsWith", { baseBranch: input.baseBranch })
+        : t("hasConflicts"),
       toneClassName: "text-destructive",
       Icon: TriangleAlertIcon,
     };
   }
   return {
-    label: "Open",
+    label: t("open"),
     toneClassName: "text-emerald-600 dark:text-emerald-300/90",
     Icon: GitPullRequestIcon,
   };
@@ -119,16 +122,48 @@ export function PullRequestStateGlyph({
 }
 
 const CHECK_STATUS_PRESENTATION = {
-  pending: { label: "Running", Icon: LoaderIcon, toneClassName: "animate-spin text-amber-500" },
+  pending: {
+    get label() {
+      return t("running");
+    },
+    Icon: LoaderIcon,
+    toneClassName: "animate-spin text-amber-500",
+  },
   success: {
-    label: "Passed",
+    get label() {
+      return t("passed");
+    },
     Icon: CircleCheckIcon,
     toneClassName: "text-emerald-600 dark:text-emerald-300/90",
   },
-  failure: { label: "Failed", Icon: CircleXIcon, toneClassName: "text-destructive" },
-  cancelled: { label: "Cancelled", Icon: CircleXIcon, toneClassName: "text-destructive" },
-  skipped: { label: "Skipped", Icon: CircleDashedIcon, toneClassName: "text-muted-foreground/70" },
-  neutral: { label: "Neutral", Icon: CircleDashedIcon, toneClassName: "text-muted-foreground/70" },
+  failure: {
+    get label() {
+      return t("failed");
+    },
+    Icon: CircleXIcon,
+    toneClassName: "text-destructive",
+  },
+  cancelled: {
+    get label() {
+      return t("cancelled");
+    },
+    Icon: CircleXIcon,
+    toneClassName: "text-destructive",
+  },
+  skipped: {
+    get label() {
+      return t("skipped");
+    },
+    Icon: CircleDashedIcon,
+    toneClassName: "text-muted-foreground/70",
+  },
+  neutral: {
+    get label() {
+      return t("neutral");
+    },
+    Icon: CircleDashedIcon,
+    toneClassName: "text-muted-foreground/70",
+  },
 } as const satisfies Record<
   PullRequestCheckStatus,
   { label: string; Icon: typeof CircleCheckIcon; toneClassName: string }
@@ -154,17 +189,23 @@ export function PullRequestCheckStatusIcon({ status }: { status: PullRequestChec
  */
 const CHECKS_STATE_PRESENTATION = {
   passing: {
-    label: "All checks have passed",
+    get label() {
+      return t("allChecksHavePassed");
+    },
     Icon: CircleCheckIcon,
     toneClassName: "text-emerald-600 dark:text-emerald-300/90",
   },
   failing: {
-    label: "Some checks were not successful",
+    get label() {
+      return t("someChecksWereNotSuccessful");
+    },
     Icon: CircleXIcon,
     toneClassName: "text-destructive",
   },
   pending: {
-    label: "Some checks haven't completed yet",
+    get label() {
+      return t("someChecksHavenTCompletedYet");
+    },
     Icon: CircleDotIcon,
     toneClassName: "text-amber-600 dark:text-amber-400/90",
   },
@@ -203,7 +244,9 @@ export function pullRequestChecksState(
  */
 const REVIEW_OUTCOME_PRESENTATION = {
   approved: {
-    label: "Approved",
+    get label() {
+      return t("approved");
+    },
     Icon: CircleCheckIcon,
     toneClassName: "text-emerald-600 dark:text-emerald-300/90",
     ringClassName: "ring-2 ring-emerald-500 dark:ring-emerald-400",
@@ -212,7 +255,9 @@ const REVIEW_OUTCOME_PRESENTATION = {
     badgeVariant: "success",
   },
   "changes-requested": {
-    label: "Changes requested",
+    get label() {
+      return t("changesRequested");
+    },
     Icon: CircleXIcon,
     toneClassName: "text-destructive",
     ringClassName: "ring-2 ring-destructive",
@@ -220,7 +265,9 @@ const REVIEW_OUTCOME_PRESENTATION = {
     badgeVariant: "error",
   },
   dismissed: {
-    label: "Review dismissed",
+    get label() {
+      return t("reviewDismissed");
+    },
     Icon: CircleDashedIcon,
     toneClassName: "text-muted-foreground/70",
     ringClassName: "ring-2 ring-muted-foreground/60",

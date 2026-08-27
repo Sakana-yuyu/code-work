@@ -162,9 +162,7 @@ function HostedStaticOnboardingState() {
               </EmptyTitle>
               <EmptyDescription className="mt-2 text-sm leading-relaxed text-muted-foreground/78">
                 {cloudEnabled
-                  ? t(
-                      "Sign in to Code Work Connect to connect a linked environment through its managed tunnel, or add a reachable backend manually.",
-                    )
+                  ? t("connectEnvironmentSignInDescription")
                   : t("addAReachableBackendManuallyToStartWorkingFromThisBrowser")}
               </EmptyDescription>
               <div className="mt-6 flex justify-center">

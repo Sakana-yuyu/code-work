@@ -20,6 +20,7 @@ import * as Tracer from "effect/Tracer";
 import { OtlpExporter, OtlpSerialization, OtlpTracer } from "effect/unstable/observability";
 
 import * as DesktopEnvironment from "./DesktopEnvironment.ts";
+import { t } from "../i18n.js";
 
 const DESKTOP_LOG_FILE_MAX_BYTES = 10 * 1024 * 1024;
 const DESKTOP_LOG_FILE_MAX_FILES = 10;
@@ -426,7 +427,7 @@ const makeBackendOutputLogShape = (
         const writeFailure = Effect.fn("desktop.observability.backendOutput.writeFailure")(
           function* (session: BackendOutputSession, details: string) {
             yield* writeBackendChildLogRecord(logFile, {
-              message: "backend child process failure output start",
+              message: t("backendChildProcessFailureOutputStart"),
               level: "ERROR",
               annotations: {
                 component: "desktop-backend-child",
@@ -438,7 +439,7 @@ const makeBackendOutputLogShape = (
             });
             for (const output of session.chunks) {
               yield* writeBackendChildLogRecord(logFile, {
-                message: "backend child process output",
+                message: t("backendChildProcessOutput"),
                 level: output.streamName === "stderr" ? "ERROR" : "INFO",
                 annotations: {
                   component: "desktop-backend-child",
@@ -450,7 +451,7 @@ const makeBackendOutputLogShape = (
               });
             }
             yield* writeBackendChildLogRecord(logFile, {
-              message: "backend child process failure output end",
+              message: t("backendChildProcessFailureOutputEnd"),
               level: "ERROR",
               annotations: {
                 component: "desktop-backend-child",

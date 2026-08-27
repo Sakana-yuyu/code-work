@@ -206,7 +206,11 @@ function itemSummary({
   readonly authAccount: string | null;
 }) {
   if (isVcsNotReady(item)) {
-    return <span>Support for {item.label} is coming soon.</span>;
+    return (
+      <span>
+        {t("supportFor")} {item.label} {t("isComingSoon")}
+      </span>
+    );
   }
 
   if (item.status !== "available") {
@@ -220,7 +224,7 @@ function itemSummary({
           <span>{t("authenticated")}</span>
           {authAccount ? (
             <>
-              <span aria-hidden>as</span>
+              <span aria-hidden>{t("as")}</span>
               <RedactedAccount account={authAccount} />
             </>
           ) : null}
@@ -235,16 +239,16 @@ function itemSummary({
     if (auth.status === "unauthenticated") {
       return (
         <span>
-          {item.label} is not authenticated on this server. Sign in or configure credentials using
-          the <code className="rounded bg-muted px-1 py-px text-[11px]">{item.executable}</code>{" "}
-          tool on the server host to enable change request features.
+          {item.label} {t("isNotAuthenticatedOnThisServerSignInOrConfigureCredentialsUsingThe")}{" "}
+          <code className="rounded bg-muted px-1 py-px text-[11px]">{item.executable}</code>{" "}
+          {t("toolOnTheServerHostToEnableChangeRequestFeatures")}
         </span>
       );
     }
     const authDetail = optionLabel(auth.detail);
     return (
       <span>
-        Could not verify {item.label}. {authDetail ?? item.installHint}
+        {t("couldNotVerify")} {item.label}. {authDetail ?? item.installHint}
       </span>
     );
   }
@@ -287,7 +291,7 @@ function DiscoveryItemRow({
               {version ? <code className="text-xs text-muted-foreground">{version}</code> : null}
               {isVcsNotReady(item) ? (
                 <Badge variant="warning" size="sm">
-                  Coming Soon
+                  {t("comingSoon")}
                 </Badge>
               ) : null}
               {authStatus?.badge ? (
@@ -307,7 +311,7 @@ function DiscoveryItemRow({
                 variant="ghost-muted"
                 onClick={() => setIsExpanded((open) => !open)}
                 aria-expanded={isExpanded}
-                aria-label={`Toggle ${item.label} details`}
+                aria-label={t("toggleProviderDetails", { name: item.label })}
               >
                 <ChevronDownIcon
                   className={cn("size-3.5 transition-transform", isExpanded && "rotate-180")}
@@ -315,7 +319,11 @@ function DiscoveryItemRow({
               </Button>
             ) : null}
             {!isVcsNotReady(item) ? (
-              <Switch checked={enabled} disabled aria-label={`${item.label} availability`} />
+              <Switch
+                checked={enabled}
+                disabled
+                aria-label={t("availability", { label: item.label })}
+              />
             ) : null}
           </div>
         </div>
@@ -354,9 +362,7 @@ function GitFetchIntervalSettings() {
           <div className="flex min-w-0 items-center gap-1">
             <span className="text-xs font-medium text-foreground">{t("fetchInterval")}</span>
             <PolicyTooltip>
-              This interval is configured for Git only. The shared Background activity policy still
-              decides whether Git refreshes may run when the timer fires. Custom intervals appear as
-              Advanced in General settings.
+              {t("thisIntervalIsConfiguredForGitOnlyTheSharedBackgroundActivityPolicyStill")}
             </PolicyTooltip>
             <span
               className={cn(
@@ -380,8 +386,7 @@ function GitFetchIntervalSettings() {
             </span>
           </div>
           <p className="max-w-2xl text-xs leading-relaxed text-muted-foreground">
-            Refresh remote branch status in the background. Set this to 0 seconds if Git credentials
-            or security keys should only be prompted by explicit Git actions.
+            {t("refreshRemoteBranchStatusInTheBackgroundSetThisTo0SecondsIfGitCredential")}
           </p>
         </div>
         <div className="flex shrink-0 items-center gap-2">
@@ -400,9 +405,9 @@ function GitFetchIntervalSettings() {
             }
           >
             <NumberFieldGroup>
-              <NumberFieldDecrement aria-label="Decrease fetch interval" />
-              <NumberFieldInput aria-label="Automatic Git fetch interval in seconds" />
-              <NumberFieldIncrement aria-label="Increase fetch interval" />
+              <NumberFieldDecrement aria-label={t("decreaseFetchInterval")} />
+              <NumberFieldInput aria-label={t("automaticGitFetchIntervalInSeconds")} />
+              <NumberFieldIncrement aria-label={t("increaseFetchInterval")} />
             </NumberFieldGroup>
           </NumberField>
           <span className="text-xs text-muted-foreground">{t("seconds")}</span>
@@ -468,12 +473,12 @@ function EmptySourceControlDiscovery({
         </EmptyMedia>
         <EmptyHeader>
           <EmptyTitle>
-            {hasError ? "Could not scan the server environment" : "Nothing detected yet"}
+            {hasError ? t("couldNotScanTheServerEnvironment") : t("nothingDetectedYet")}
           </EmptyTitle>
           <EmptyDescription>
             {hasError
               ? error
-              : "Install Git on the server, add optional hosting integrations or credentials your workspace needs, then rescan."}
+              : t("installGitOnTheServerAddOptionalHostingIntegrationsOrCredentialsYourWork")}
           </EmptyDescription>
         </EmptyHeader>
         <EmptyContent>
@@ -485,7 +490,7 @@ function EmptySourceControlDiscovery({
             disabled={isPending}
           >
             <RefreshCwIcon className={cn("size-3.5", isPending && "animate-spin")} />
-            Scan
+            {t("scan")}
           </Button>
         </EmptyContent>
       </Empty>
@@ -527,7 +532,7 @@ export function SourceControlSettingsPanel() {
             variant="ghost-muted"
             onClick={handleScan}
             disabled={discovery.isPending}
-            aria-label="Rescan server environment"
+            aria-label={t("rescanServerEnvironment")}
           >
             <RefreshCwIcon className={cn("size-3", discovery.isPending && "animate-spin")} />
           </Button>

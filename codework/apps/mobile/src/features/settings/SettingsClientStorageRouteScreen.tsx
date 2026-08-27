@@ -14,6 +14,7 @@ import {
 } from "../../state/client-cache-state";
 import { useSavedRemoteConnections } from "../../state/use-remote-environment-registry";
 import { SettingsSection } from "./components/SettingsSection";
+import { t } from "../../i18n";
 
 export function SettingsClientStorageRouteScreen() {
   const insets = useSafeAreaInsets();
@@ -40,12 +41,12 @@ export function SettingsClientStorageRouteScreen() {
       savedConnectionsById[environment.environmentId]?.environmentLabel ??
       environment.environmentId;
     Alert.alert(
-      `Clear cache for ${label}?`,
-      "This removes offline threads, server metadata, and cached branches for this environment. The saved connection and credentials stay intact.",
+      t("clearCacheFor2", { label: label }),
+      t("thisRemovesOfflineThreadsServerMetadataAndCachedBranchesForThisEnvironme"),
       [
-        { text: "Cancel", style: "cancel" },
+        { text: t("cancel"), style: "cancel" },
         {
-          text: "Clear Cache",
+          text: t("clearCache"),
           style: "destructive",
           onPress: () =>
             clearCache({ type: "environment", environmentId: environment.environmentId }),
@@ -56,12 +57,12 @@ export function SettingsClientStorageRouteScreen() {
 
   const confirmClearAll = () => {
     Alert.alert(
-      "Clear all client caches?",
-      "This removes offline data for every environment. Connections, credentials, account data, and app preferences stay intact.",
+      t("clearAllClientCaches"),
+      t("thisRemovesOfflineDataForEveryEnvironmentConnectionsCredentialsAccountDa"),
       [
-        { text: "Cancel", style: "cancel" },
+        { text: t("cancel"), style: "cancel" },
         {
-          text: "Clear All Caches",
+          text: t("clearAllCaches"),
           style: "destructive",
           onPress: () => clearCache({ type: "all" }),
         },
@@ -78,7 +79,7 @@ export function SettingsClientStorageRouteScreen() {
         className="flex-1"
         contentContainerClassName="gap-6 px-5 pt-4 pb-[18px]"
       >
-        <SettingsSection title="Environment caches">
+        <SettingsSection title={t("environmentCaches")}>
           {AsyncResult.isFailure(summaryResult) ? (
             <View className="items-center gap-2 px-6 py-8">
               <SymbolView
@@ -88,16 +89,18 @@ export function SettingsClientStorageRouteScreen() {
                 type="monochrome"
                 weight="regular"
               />
-              <Text className="text-center text-base text-foreground">Storage unavailable</Text>
+              <Text className="text-center text-base text-foreground">
+                {t("storageUnavailable")}
+              </Text>
               <Text className="text-center text-sm text-foreground-muted">
-                Restart the app and try again.
+                {t("restartTheAppAndTryAgain")}
               </Text>
             </View>
           ) : !summary ? (
             <View className="items-center gap-3 px-6 py-8">
               <ActivityIndicator />
               <Text className="text-center text-sm text-foreground-muted">
-                Inspecting cached data…
+                {t("inspectingCachedData")}
               </Text>
             </View>
           ) : environmentSummaries.length > 0 ? (
@@ -123,16 +126,16 @@ export function SettingsClientStorageRouteScreen() {
                 type="monochrome"
                 weight="regular"
               />
-              <Text className="text-center text-base text-foreground">No cached data</Text>
+              <Text className="text-center text-base text-foreground">{t("noCachedData")}</Text>
               <Text className="text-center text-sm text-foreground-muted">
-                Offline cache records will appear here after environments are used.
+                {t("offlineCacheRecordsWillAppearHereAfterEnvironmentsAreUsed")}
               </Text>
             </View>
           )}
         </SettingsSection>
 
         <View className="gap-3">
-          <SettingsSection title="Actions">
+          <SettingsSection title={t("commandPalette.actions")}>
             <Pressable
               accessibilityRole="button"
               disabled={isClearing || !summary || summary.recordCount === 0}
@@ -147,18 +150,19 @@ export function SettingsClientStorageRouteScreen() {
                 weight="regular"
               />
               <Text className="flex-1 text-lg tabular-nums text-danger-foreground">
-                {summary ? `Clear ${formatBytes(summary.payloadBytes)}` : "Clear caches"}
+                {summary
+                  ? t("clear", { value1: formatBytes(summary.payloadBytes) })
+                  : t("clearCaches")}
               </Text>
               {isClearing ? <ActivityIndicator color={dangerForegroundColor} /> : null}
             </Pressable>
           </SettingsSection>
           <Text className="px-2 text-sm leading-normal text-foreground-muted">
-            Clearing caches never removes environment connections, credentials, account data, or
-            appearance preferences.
+            {t("clearingCachesNeverRemovesEnvironmentConnectionsCredentialsAccountDataOr")}
           </Text>
           {AsyncResult.isFailure(summaryResult) || AsyncResult.isFailure(clearResult) ? (
             <Text selectable className="px-2 text-sm text-danger-foreground">
-              Client storage is temporarily unavailable. Try again after restarting the app.
+              {t("clientStorageIsTemporarilyUnavailableTryAgainAfterRestartingTheApp")}
             </Text>
           ) : null}
         </View>
@@ -194,14 +198,14 @@ function CacheEnvironmentRow(props: {
         {props.environmentLabel}
       </Text>
       <Pressable
-        accessibilityLabel={`Clear cache for ${props.environmentLabel}`}
+        accessibilityLabel={t("clearCacheFor", { environmentLabel: props.environmentLabel })}
         accessibilityRole="button"
         disabled={props.disabled}
         onPress={props.onClear}
         className="rounded-full px-3 py-2 disabled:opacity-40"
       >
         <Text className="font-t3-medium tabular-nums text-danger-foreground" numberOfLines={1}>
-          Clear {formatBytes(props.environment.payloadBytes)}
+          {t("clear2")} {formatBytes(props.environment.payloadBytes)}
         </Text>
       </Pressable>
     </View>

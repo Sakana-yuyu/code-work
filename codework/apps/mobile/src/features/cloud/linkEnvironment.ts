@@ -33,6 +33,7 @@ import type { SavedRemoteConnection } from "../../lib/connection";
 import * as MobilePreferences from "../../persistence/mobile-preferences";
 import * as MobileStorage from "../../persistence/mobile-storage";
 import { resolveCloudPublicConfig } from "./publicConfig";
+import { t } from "../../i18n/runtime";
 
 const RELAY_STATUS_AND_CONNECT_SCOPES = [
   RelayEnvironmentStatusScope,
@@ -189,7 +190,7 @@ function requireRelayUrl(): Effect.Effect<string, CloudEnvironmentLinkError> {
   const relayUrl = readRelayUrl();
   return relayUrl
     ? Effect.succeed(relayUrl)
-    : Effect.fail(new CloudEnvironmentLinkError({ message: "Relay URL is not configured." }));
+    : Effect.fail(new CloudEnvironmentLinkError({ message: t("relayUrlIsNotConfigured") }));
 }
 
 function endpointOrigin(httpBaseUrl: string) {
@@ -207,12 +208,12 @@ function ensureLinkedEnvironmentMatches(input: {
 }): Effect.Effect<void, CloudEnvironmentLinkError> {
   if (input.link.environmentId !== input.expectedEnvironmentId) {
     return new CloudEnvironmentLinkError({
-      message: "Relay returned credentials for a different environment.",
+      message: t("relayReturnedCredentialsForADifferentEnvironment"),
     });
   }
   if (input.link.endpoint.providerKind !== input.expectedProviderKind) {
     return new CloudEnvironmentLinkError({
-      message: "Relay returned credentials for a different endpoint provider.",
+      message: t("relayReturnedCredentialsForADifferentEndpointProvider"),
     });
   }
   return Effect.void;
@@ -235,12 +236,12 @@ function ensureStatusMatchesEnvironment(input: {
 }): Effect.Effect<void, CloudEnvironmentLinkError> {
   if (input.status.environmentId !== input.environment.environmentId) {
     return new CloudEnvironmentLinkError({
-      message: "Relay returned status for a different environment.",
+      message: t("relayReturnedStatusForADifferentEnvironment"),
     });
   }
   if (!endpointMatches(input.status.endpoint, input.environment.endpoint)) {
     return new CloudEnvironmentLinkError({
-      message: "Relay returned status for a different endpoint.",
+      message: t("relayReturnedStatusForADifferentEndpoint"),
     });
   }
   if (
@@ -248,7 +249,7 @@ function ensureStatusMatchesEnvironment(input: {
     input.status.descriptor.environmentId !== input.environment.environmentId
   ) {
     return new CloudEnvironmentLinkError({
-      message: "Relay returned status descriptor for a different environment.",
+      message: t("relayReturnedStatusDescriptorForADifferentEnvironment"),
     });
   }
   return Effect.void;
@@ -260,7 +261,7 @@ function ensureConnectEndpointMatchesEnvironment(input: {
 }): Effect.Effect<void, CloudEnvironmentLinkError> {
   if (!endpointMatches(input.connect.endpoint, input.environment.endpoint)) {
     return new CloudEnvironmentLinkError({
-      message: "Relay returned credentials for a different endpoint.",
+      message: t("relayReturnedCredentialsForADifferentEndpoint"),
     });
   }
   return Effect.void;
@@ -282,7 +283,7 @@ export function linkEnvironmentToCloudWithPreference(
   return Effect.gen(function* () {
     if (!input.connection.bearerToken) {
       return yield* new CloudEnvironmentLinkError({
-        message: "Only a locally paired bearer connection can be linked to the cloud.",
+        message: t("onlyALocallyPairedBearerConnectionCanBeLinkedToTheCloud"),
       });
     }
     const localBearerToken = input.connection.bearerToken;
@@ -524,7 +525,7 @@ const connectRelayManagedEnvironment = Effect.fn("mobile.cloud.connectRelayManag
       );
     if (connect.environmentId !== input.environmentId) {
       return yield* new CloudEnvironmentLinkError({
-        message: "Relay returned credentials for a different environment.",
+        message: t("relayReturnedCredentialsForADifferentEnvironment"),
       });
     }
     if (input.expectedEnvironment) {
@@ -543,7 +544,7 @@ const connectRelayManagedEnvironment = Effect.fn("mobile.cloud.connectRelayManag
     );
     if (descriptor.environmentId !== connect.environmentId) {
       return yield* new CloudEnvironmentLinkError({
-        message: "Connected endpoint descriptor does not match the selected environment.",
+        message: t("connectedEndpointDescriptorDoesNotMatchTheSelectedEnvironment"),
       });
     }
     const signer = yield* ManagedRelay.ManagedRelayDpopSigner;

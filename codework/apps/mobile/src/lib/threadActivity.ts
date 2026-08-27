@@ -17,6 +17,7 @@ import { formatDuration } from "@codework/shared/orchestrationTiming";
 import * as Arr from "effect/Array";
 import * as Order from "effect/Order";
 import * as Schema from "effect/Schema";
+import { t } from "../i18n/runtime";
 
 export interface PendingApproval {
   readonly requestId: ApprovalRequestId;
@@ -1251,11 +1252,11 @@ function deriveThreadFeedTurnFolds(
     const interrupted = latestTurnMatches && latestTurn.state === "interrupted";
     const label = interrupted
       ? duration
-        ? `You stopped after ${duration}`
-        : "You stopped this response"
+        ? t("interface.you-stopped-after-value", { value1: duration })
+        : t("interface.you-stopped-this-response")
       : duration
-        ? `Worked for ${duration}`
-        : "Worked";
+        ? t("interface.worked-for-value", { value1: duration })
+        : t("interface.worked");
 
     foldsByAnchorId.set(firstHiddenEntry.id, {
       turnId,

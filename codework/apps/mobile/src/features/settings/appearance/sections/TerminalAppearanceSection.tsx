@@ -13,6 +13,7 @@ import {
   TerminalAppearancePreview,
 } from "../components/AppearancePreviews";
 import { FontSizeSliderRow } from "../components/FontSizeSliderRow";
+import { t } from "../../../../i18n";
 
 export function TerminalAppearanceSection() {
   const { isReady, appearance, setTerminalFontSize } = useAppearancePreferences();
@@ -26,13 +27,13 @@ export function TerminalAppearanceSection() {
   );
 
   return (
-    <SettingsSection card title="Terminal">
+    <SettingsSection card title={t("surface.terminal")}>
       <TerminalAppearancePreview fontSize={appearance.terminalFontSize} />
       <AppearancePreviewSeparator />
       <SettingsSwitchRow
         disabled={!isReady}
         icon="terminal"
-        label="Custom font size"
+        label={t("customFontSize")}
         onValueChange={handleToggleCustom}
         value={custom}
       />
@@ -40,7 +41,7 @@ export function TerminalAppearanceSection() {
         <FontSizeSliderRow
           disabled={!isReady}
           icon="textformat.size"
-          label="Font size"
+          label={t("fontSize")}
           max={MAX_TERMINAL_FONT_SIZE}
           min={MIN_TERMINAL_FONT_SIZE}
           onChange={setTerminalFontSize}

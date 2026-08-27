@@ -7,11 +7,14 @@ import type { DesktopSshEnvironmentTarget } from "@codework/contracts";
 import * as Effect from "effect/Effect";
 
 import { connectionAtomRuntime } from "./runtime";
+import { t } from "~/i18n/runtime";
 
 const onboardingScheduler = createAtomCommandScheduler();
 
 export const connectPairing = createRuntimeCommand(connectionAtomRuntime, {
-  label: "web:connection:connect-pairing",
+  get label() {
+    return t("webConnectionConnectPairing");
+  },
   scheduler: onboardingScheduler,
   concurrency: {
     mode: "singleFlight",
@@ -27,7 +30,9 @@ export const connectPairing = createRuntimeCommand(connectionAtomRuntime, {
 });
 
 export const connectSshEnvironment = createRuntimeCommand(connectionAtomRuntime, {
-  label: "web:connection:connect-ssh",
+  get label() {
+    return t("webConnectionConnectSsh");
+  },
   scheduler: onboardingScheduler,
   concurrency: {
     mode: "serial",

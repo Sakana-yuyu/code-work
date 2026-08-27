@@ -3,6 +3,7 @@ import { memo } from "react";
 
 import { cn } from "~/lib/utils";
 import { Button } from "../ui/button";
+import { t } from "~/i18n";
 
 /**
  * Bookmark control that shows the stash count and opens the stash menu. It
@@ -43,7 +44,7 @@ export const ComposerStashBadge = memo(function ComposerStashBadge(props: {
         size="micro"
         variant="ghost-muted"
         data-prompt-stash-badge="true"
-        aria-label={`Stashed prompts: ${props.count}. Open stash.`}
+        aria-label={t("stashedPromptsOpenStash", { count: props.count })}
         aria-expanded={props.menuOpen}
         className={cn(
           "shrink-0 gap-1 px-1.5",
@@ -63,7 +64,7 @@ export const ComposerStashBadge = memo(function ComposerStashBadge(props: {
     <button
       type="button"
       data-prompt-stash-badge="true"
-      aria-label={`Stashed prompts: ${props.count}. Open stash.`}
+      aria-label={t("stashedPromptsOpenStash", { count: props.count })}
       aria-expanded={props.menuOpen}
       className={cn(
         "chat-composer-shoulder-tab chat-composer-stash-tab absolute -top-7 right-4 z-0 inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-t-xl border border-b-0 px-3 pb-1 text-xs leading-none",
@@ -80,7 +81,7 @@ export const ComposerStashBadge = memo(function ComposerStashBadge(props: {
       onClick={props.onToggleMenu}
     >
       <BookmarkIcon className="size-3 shrink-0" aria-hidden="true" />
-      Stash
+      {t("stash")}
       {count}
     </button>
   );

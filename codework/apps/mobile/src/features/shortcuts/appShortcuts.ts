@@ -3,6 +3,7 @@ import type { NavigationState } from "@react-navigation/native";
 import { EnvironmentId, ThreadId, type ScopedThreadRef } from "@codework/contracts";
 
 import type { RecentThreadShortcut } from "../../persistence/imperative";
+import { t } from "../../i18n/runtime";
 
 // Launchers cap visible shortcuts around 4; one slot is the static
 // "New task" entry, the rest rotate through recently opened threads.
@@ -118,7 +119,7 @@ export function buildShortcutActions(recents: ReadonlyArray<RecentThreadShortcut
   return [
     {
       id: NEW_TASK_SHORTCUT_ID,
-      title: "New task",
+      title: t("newTask"),
       icon: SHORTCUT_ICON,
       params: { href: NEW_TASK_SHORTCUT_HREF },
     },

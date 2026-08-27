@@ -4,6 +4,7 @@ import { cn } from "~/lib/utils";
 
 import ChatMarkdown from "../ChatMarkdown";
 import { splitPullRequestBody } from "./pullRequestMarkdown.logic";
+import { t } from "~/i18n";
 
 /**
  * A pull request body, rendered with the app's markdown renderer plus a card for each upload
@@ -47,7 +48,7 @@ export function PullRequestMarkdown({
           >
             <Icon aria-hidden className="size-3.5 shrink-0 text-muted-foreground" />
             <span className="min-w-0 flex-1 truncate">
-              {isVideo ? "Play video on GitHub" : "Open attachment on GitHub"}
+              {isVideo ? t("playVideoOnGithub") : t("openAttachmentOnGithub")}
             </span>
             <ExternalLinkIcon aria-hidden className="size-3 shrink-0 text-muted-foreground" />
           </a>

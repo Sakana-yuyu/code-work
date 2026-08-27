@@ -145,10 +145,8 @@ function ProfileSelect({
 function DriverBoundaryNotice({ profile }: { readonly profile: CompositionAgentDriverProfile }) {
   const hasToolBridge = profile.supportsToolBroker && profile.supportsCapabilityHandshake;
   const message = hasToolBridge
-    ? t("This Driver reports a verified Code Work ToolBroker handshake surface.")
-    : t(
-        "This Driver does not report a verified Code Work ToolBroker handshake; the graph can run, but Code Work tools are not granted automatically.",
-      );
+    ? t("taskGraph.verifiedToolBroker")
+    : t("taskGraph.unverifiedToolBroker");
 
   return (
     <div className="flex items-start gap-2 rounded-lg border border-border/60 bg-muted/20 px-3 py-2 text-xs text-muted-foreground">
@@ -185,7 +183,7 @@ function TaskSnapshotRow({
       <span className="mt-1 flex min-w-0 items-center justify-between gap-3 text-[11px] text-muted-foreground">
         <span className="min-w-0 truncate">{task.assigneeId}</span>
         <span className="shrink-0 tabular-nums">
-          {latestRun === undefined ? t("No Run") : `#${latestRun.attempt}`}
+          {latestRun === undefined ? t("taskGraph.noRun") : `#${latestRun.attempt}`}
         </span>
       </span>
     </button>
@@ -194,7 +192,7 @@ function TaskSnapshotRow({
 
 function TaskEvents({ events }: { readonly events: ReadonlyArray<CompositionTaskEvent> }) {
   if (events.length === 0) {
-    return <p className="text-xs text-muted-foreground">{t("No events yet")}</p>;
+    return <p className="text-xs text-muted-foreground">{t("taskGraph.noEvents")}</p>;
   }
   return (
     <ol className="space-y-2">
@@ -352,7 +350,7 @@ export function TaskGraphPanel() {
     const result = await command({ environmentId, input });
     if (result._tag === "Failure") {
       const error = squashAtomCommandFailure(result);
-      setActionError(error instanceof Error ? error.message : t("Task Graph operation failed"));
+      setActionError(error instanceof Error ? error.message : t("taskGraph.operationFailed"));
     } else {
       refreshTaskState();
     }
@@ -369,7 +367,7 @@ export function TaskGraphPanel() {
       effectiveChildren.length === 0 ||
       effectiveChildren.some((child) => child.prompt.trim() === "" || child.driverId.trim() === "")
     ) {
-      setActionError(t("Complete the project, workspace, leader, and child task fields first."));
+      setActionError(t("taskGraph.completeFields"));
       return;
     }
 
@@ -417,7 +415,7 @@ export function TaskGraphPanel() {
 
   const runSelectedAction = async (action: "cancel" | "approve" | "reject" | "retry") => {
     if (environmentId === null || selectedSnapshot === null || selectedRunId === undefined) return;
-    const reason = actionReason.trim() || t("Action requested from Task Graph settings.");
+    const reason = actionReason.trim() || t("taskGraph.actionReasonDefault");
     if (action === "cancel") {
       await runCommand("cancel", cancelTask, {
         taskId: selectedSnapshot.task.taskId,
@@ -450,13 +448,13 @@ export function TaskGraphPanel() {
   return (
     <SettingsSection
       id="task-graph"
-      title={t("Task Graph")}
+      title={t("taskGraph.title")}
       icon={<GitBranchIcon className="size-4 text-muted-foreground" />}
       headerAction={
         <Button
           size="icon-sm"
           variant="ghost-muted"
-          aria-label={t("Refresh Task Graph")}
+          aria-label={t("taskGraph.refresh")}
           onClick={refreshTaskState}
           disabled={tasksQuery.isPending || pendingAction !== null}
         >
@@ -465,14 +463,12 @@ export function TaskGraphPanel() {
       }
     >
       <SettingsRow
-        title={t("Code Work multi-agent task control")}
-        description={t(
-          "Create a Leader review task with child Agent Driver nodes, then inspect persisted runs and events.",
-        )}
+        title={t("taskGraph.subtitle")}
+        description={t("taskGraph.description")}
         status={
           driverQuery.error ??
           tasksQuery.error ??
-          (driverQuery.isPending || tasksQuery.isPending ? t("Loading...") : actionError)
+          (driverQuery.isPending || tasksQuery.isPending ? t("loading") : actionError)
         }
       />
 
@@ -481,44 +477,44 @@ export function TaskGraphPanel() {
           <div className="rounded-xl border border-border/60 px-3 py-3 sm:px-4">
             <div className="grid gap-3 sm:grid-cols-2">
               <label className="min-w-0 space-y-1 text-xs">
-                <span className="text-muted-foreground">{t("Project ID")}</span>
+                <span className="text-muted-foreground">{t("taskGraph.projectId")}</span>
                 <Input value={projectId} onValueChange={setProjectId} size="sm" />
               </label>
               <label className="min-w-0 space-y-1 text-xs">
-                <span className="text-muted-foreground">{t("Workspace root")}</span>
+                <span className="text-muted-foreground">{t("taskGraph.workspaceRoot")}</span>
                 <Input value={workspaceRoot} onValueChange={setWorkspaceRoot} size="sm" />
               </label>
             </div>
             <div className="mt-3 grid gap-3 sm:grid-cols-2">
               <label className="min-w-0 space-y-1 text-xs">
-                <span className="text-muted-foreground">{t("Leader Driver")}</span>
+                <span className="text-muted-foreground">{t("taskGraph.leaderDriver")}</span>
                 {availableProfiles.length === 0 ? (
                   <p className="rounded-lg border border-border/60 px-3 py-2 text-muted-foreground">
-                    {t("No available Driver")}
+                    {t("taskGraph.noAvailableDriver")}
                   </p>
                 ) : (
                   <ProfileSelect
                     value={effectiveLeaderDriverId}
                     profiles={availableProfiles}
                     onChange={setLeaderDriverId}
-                    label={t("Leader Driver")}
+                    label={t("taskGraph.leaderDriver")}
                   />
                 )}
               </label>
               <label className="min-w-0 space-y-1 text-xs">
-                <span className="text-muted-foreground">{t("Child schedule")}</span>
+                <span className="text-muted-foreground">{t("taskGraph.childSchedule")}</span>
                 <Select
                   value={schedule}
                   onValueChange={(value) => value && setSchedule(value as GraphSchedule)}
                 >
-                  <SelectTrigger className="w-full" aria-label={t("Child schedule")}>
+                  <SelectTrigger className="w-full" aria-label={t("taskGraph.childSchedule")}>
                     <SelectValue>
-                      {schedule === "parallel" ? t("Parallel") : t("Serial")}
+                      {schedule === "parallel" ? t("taskGraph.parallel") : t("taskGraph.serial")}
                     </SelectValue>
                   </SelectTrigger>
                   <SelectPopup align="start" alignItemWithTrigger={false}>
-                    <SelectItem value="parallel">{t("Parallel")}</SelectItem>
-                    <SelectItem value="serial">{t("Serial")}</SelectItem>
+                    <SelectItem value="parallel">{t("taskGraph.parallel")}</SelectItem>
+                    <SelectItem value="serial">{t("taskGraph.serial")}</SelectItem>
                   </SelectPopup>
                 </Select>
               </label>
@@ -529,11 +525,11 @@ export function TaskGraphPanel() {
               </div>
             ) : null}
             <label className="mt-3 block space-y-1 text-xs">
-              <span className="text-muted-foreground">{t("Leader prompt")}</span>
+              <span className="text-muted-foreground">{t("taskGraph.leaderPrompt")}</span>
               <Textarea
                 value={leaderPrompt}
                 onChange={(event) => setLeaderPrompt(event.target.value)}
-                placeholder={t("Describe the final task for the Leader.")}
+                placeholder={t("taskGraph.leaderPromptPlaceholder")}
                 size="sm"
               />
             </label>
@@ -542,9 +538,9 @@ export function TaskGraphPanel() {
           <div className="rounded-xl border border-border/60 px-3 py-3 sm:px-4">
             <div className="flex items-center justify-between gap-3">
               <div>
-                <h3 className="text-sm font-medium">{t("Child tasks")}</h3>
+                <h3 className="text-sm font-medium">{t("taskGraph.childTasks")}</h3>
                 <p className="mt-1 text-xs text-muted-foreground">
-                  {t("Each child runs through its selected Agent Driver.")}
+                  {t("taskGraph.childTasksDescription")}
                 </p>
               </div>
               <Button
@@ -562,7 +558,7 @@ export function TaskGraphPanel() {
                 disabled={availableProfiles.length === 0 || effectiveChildren.length >= 4}
               >
                 <PlusIcon />
-                {t("Add child")}
+                {t("taskGraph.addChild")}
               </Button>
             </div>
             <div className="mt-3 space-y-3">
@@ -573,7 +569,7 @@ export function TaskGraphPanel() {
                     <Button
                       size="icon-sm"
                       variant="ghost-muted"
-                      aria-label={t("Remove child")}
+                      aria-label={t("taskGraph.removeChild")}
                       onClick={() =>
                         setChildren((current) =>
                           (current.length > 0 ? current : defaultChildren).filter(
@@ -588,12 +584,12 @@ export function TaskGraphPanel() {
                   </div>
                   <div className="mt-2 grid gap-3 sm:grid-cols-[minmax(0,1fr)_minmax(10rem,0.7fr)]">
                     <label className="min-w-0 space-y-1 text-xs">
-                      <span className="text-muted-foreground">{t("Child Driver")}</span>
+                      <span className="text-muted-foreground">{t("taskGraph.childDriver")}</span>
                       <ProfileSelect
                         value={child.driverId}
                         profiles={availableProfiles}
                         onChange={(value) => updateChild(child.nodeId, { driverId: value })}
-                        label={t("Child Driver")}
+                        label={t("taskGraph.childDriver")}
                       />
                     </label>
                     <label className="flex items-end gap-2 pb-1 text-xs text-muted-foreground">
@@ -605,14 +601,14 @@ export function TaskGraphPanel() {
                           updateChild(child.nodeId, { dependsOnPrevious: event.target.checked })
                         }
                       />
-                      {t("Depends on previous child")}
+                      {t("taskGraph.dependsOnPrevious")}
                     </label>
                   </div>
                   <Textarea
                     className="mt-3"
                     value={child.prompt}
                     onChange={(event) => updateChild(child.nodeId, { prompt: event.target.value })}
-                    placeholder={t("Describe this child task.")}
+                    placeholder={t("taskGraph.childPromptPlaceholder")}
                     size="sm"
                   />
                 </div>
@@ -624,7 +620,7 @@ export function TaskGraphPanel() {
               disabled={pendingAction !== null || availableProfiles.length === 0}
             >
               <PlayIcon />
-              {pendingAction === "execute" ? t("Starting...") : t("Run Task Graph")}
+              {pendingAction === "execute" ? t("taskGraph.starting") : t("taskGraph.run")}
             </Button>
           </div>
         </div>
@@ -632,12 +628,12 @@ export function TaskGraphPanel() {
         <div className="min-w-0 space-y-3">
           <div className="rounded-xl border border-border/60 px-3 py-3 sm:px-4">
             <div className="flex items-center justify-between gap-3">
-              <h3 className="text-sm font-medium">{t("Recent tasks")}</h3>
+              <h3 className="text-sm font-medium">{t("taskGraph.recentTasks")}</h3>
               <span className="text-[11px] text-muted-foreground">{snapshots.length}</span>
             </div>
             <div className="mt-3 space-y-2">
               {snapshots.length === 0 ? (
-                <p className="text-xs text-muted-foreground">{t("No Task Graph tasks yet")}</p>
+                <p className="text-xs text-muted-foreground">{t("taskGraph.empty")}</p>
               ) : (
                 snapshots.map((snapshot) => (
                   <TaskSnapshotRow
@@ -659,7 +655,7 @@ export function TaskGraphPanel() {
                 <div className="min-w-0">
                   <h3 className="truncate text-sm font-medium">{selectedSnapshot.task.taskId}</h3>
                   <p className="mt-1 break-all font-mono text-[11px] text-muted-foreground">
-                    {selectedRunId ?? t("No Run")}
+                    {selectedRunId ?? t("taskGraph.noRun")}
                   </p>
                 </div>
                 <Badge variant={statusVariant(selectedSnapshot.task.status)} size="sm">
@@ -671,10 +667,9 @@ export function TaskGraphPanel() {
                   {selectedSnapshot.task.assigneeId}
                 </Badge>
                 {selectedSnapshot.latestRun ? (
-                  <Badge
-                    variant="outline"
-                    size="sm"
-                  >{`runtime:${selectedSnapshot.latestRun.runtimeId}`}</Badge>
+                  <Badge variant="outline" size="sm">
+                    {t("runtime", { runtimeId: selectedSnapshot.latestRun.runtimeId })}
+                  </Badge>
                 ) : null}
               </div>
               <div className="mt-3 flex flex-wrap gap-1.5">
@@ -685,7 +680,7 @@ export function TaskGraphPanel() {
                   disabled={selectedTaskIsTerminal || pendingAction !== null}
                 >
                   <SquareIcon />
-                  {t("Cancel task")}
+                  {t("taskGraph.cancelTask")}
                 </Button>
                 {selectedTaskNeedsReview ? (
                   <>
@@ -695,7 +690,7 @@ export function TaskGraphPanel() {
                       disabled={pendingAction !== null}
                     >
                       <CheckIcon />
-                      {t("Approve")}
+                      {t("approve")}
                     </Button>
                     <Button
                       size="sm"
@@ -704,7 +699,7 @@ export function TaskGraphPanel() {
                       disabled={pendingAction !== null}
                     >
                       <XIcon />
-                      {t("Reject")}
+                      {t("reject")}
                     </Button>
                   </>
                 ) : null}
@@ -715,29 +710,29 @@ export function TaskGraphPanel() {
                   disabled={!canRetry || pendingAction !== null}
                 >
                   <RotateCcwIcon />
-                  {t("Retry task")}
+                  {t("taskGraph.retryTask")}
                 </Button>
               </div>
               <label className="mt-3 block space-y-1 text-xs">
-                <span className="text-muted-foreground">{t("Action reason")}</span>
+                <span className="text-muted-foreground">{t("taskGraph.actionReason")}</span>
                 <Input value={actionReason} onValueChange={setActionReason} size="sm" />
               </label>
               <label className="mt-3 block space-y-1 text-xs">
-                <span className="text-muted-foreground">{t("Retry capability IDs")}</span>
+                <span className="text-muted-foreground">{t("taskGraph.retryCapabilityIds")}</span>
                 <Input
                   value={retryCapabilityIds}
                   onValueChange={setRetryCapabilityIds}
-                  placeholder={t("Comma-separated capability IDs")}
+                  placeholder={t("taskGraph.retryCapabilityIdsPlaceholder")}
                   size="sm"
                 />
               </label>
               <div className="mt-4 border-t border-border/60 pt-3">
                 <div className="mb-2 flex items-center justify-between gap-3">
-                  <h4 className="text-xs font-medium">{t("Task events")}</h4>
+                  <h4 className="text-xs font-medium">{t("taskGraph.events")}</h4>
                   <Button
                     size="icon-sm"
                     variant="ghost-muted"
-                    aria-label={t("Refresh events")}
+                    aria-label={t("taskGraph.refreshEvents")}
                     onClick={() => eventsQuery.refresh()}
                     disabled={eventsQuery.isPending}
                   >

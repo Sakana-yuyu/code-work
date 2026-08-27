@@ -63,7 +63,7 @@ function EmptyProjectFilePicker() {
       value=""
     >
       <div className="py-10 text-center text-sm text-muted-foreground">
-        Open a project to search its files.
+        {t("openAProjectToSearchItsFiles")}
       </div>
     </CommandPaletteContent>
   );

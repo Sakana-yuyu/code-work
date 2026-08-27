@@ -18,17 +18,53 @@ import {
   DialogPopup,
   DialogTitle,
 } from "../ui/dialog";
+import { t } from "~/i18n";
 const installSteps: ReadonlyArray<{
   readonly stage: RelayClientInstallProgressStage;
   readonly label: string;
 }> = [
-  { stage: "checking", label: "Checking current installation" },
-  { stage: "waiting_for_lock", label: "Waiting for installer" },
-  { stage: "downloading", label: "Downloading relay client" },
-  { stage: "verifying", label: "Verifying download" },
-  { stage: "installing", label: "Installing relay client" },
-  { stage: "validating", label: "Validating executable" },
-  { stage: "activating", label: "Activating installation" },
+  {
+    stage: "checking",
+    get label() {
+      return t("checkingCurrentInstallation");
+    },
+  },
+  {
+    stage: "waiting_for_lock",
+    get label() {
+      return t("waitingForInstaller");
+    },
+  },
+  {
+    stage: "downloading",
+    get label() {
+      return t("downloadingRelayClient");
+    },
+  },
+  {
+    stage: "verifying",
+    get label() {
+      return t("verifyingDownload");
+    },
+  },
+  {
+    stage: "installing",
+    get label() {
+      return t("installingRelayClient");
+    },
+  },
+  {
+    stage: "validating",
+    get label() {
+      return t("validatingExecutable");
+    },
+  },
+  {
+    stage: "activating",
+    get label() {
+      return t("activatingInstallation");
+    },
+  },
 ];
 
 export function RelayClientInstallDialog() {
@@ -65,12 +101,12 @@ export function RelayClientInstallDialog() {
             <DownloadIcon aria-hidden className="size-4.5 text-muted-foreground" />
           </div>
           <DialogTitle>
-            {isInstalling ? "Installing relay client" : "Install relay client?"}
+            {isInstalling ? t("installingRelayClient") : t("installRelayClient")}
           </DialogTitle>
           <DialogDescription>
             {isInstalling
-              ? "Code Work is preparing this environment for secure access through Code Work Connect."
-              : "Code Work needs the relay client to make this environment available through Code Work Connect."}
+              ? t("codeWorkIsPreparingThisEnvironmentForSecureAccessThroughCodeWorkConnect")
+              : t("codeWorkNeedsTheRelayClientToMakeThisEnvironmentAvailableThroughCodeWork")}
           </DialogDescription>
         </DialogHeader>
         <DialogPanel scrollFade={false}>
@@ -81,25 +117,25 @@ export function RelayClientInstallDialog() {
                   {activeStep?.label}
                 </p>
                 <p className="shrink-0 tabular-nums text-muted-foreground">
-                  {activeStepIndex + 1} of {installSteps.length}
+                  {activeStepIndex + 1} {t("of")} {installSteps.length}
                 </p>
               </div>
               <progress
-                aria-label="Relay client installation progress"
+                aria-label={t("relayClientInstallationProgress")}
                 className="h-2 w-full appearance-none overflow-hidden rounded-full bg-muted [&::-moz-progress-bar]:rounded-full [&::-moz-progress-bar]:bg-primary [&::-webkit-progress-bar]:rounded-full [&::-webkit-progress-bar]:bg-muted [&::-webkit-progress-value]:rounded-full [&::-webkit-progress-value]:bg-primary"
                 max={installSteps.length}
                 value={activeStepIndex + 1}
               />
               <p className="text-xs leading-relaxed text-muted-foreground">
-                Keep Code Work open while the relay client is installed.
+                {t("keepCodeWorkOpenWhileTheRelayClientIsInstalled")}
               </p>
             </div>
           ) : (
             <div className="rounded-xl border border-border/70 bg-muted/35 p-3">
-              <p className="text-sm font-medium text-foreground">Managed relay client</p>
+              <p className="text-sm font-medium text-foreground">{t("managedRelayClient")}</p>
               <p className="mt-1 text-sm leading-relaxed text-muted-foreground">
-                Code Work will download and install version{" "}
-                {view.status === "confirming" ? view.version : ""} locally.
+                {t("codeWorkWillDownloadAndInstallVersion")}{" "}
+                {view.status === "confirming" ? view.version : ""} {t("locally")}
               </p>
             </div>
           )}
@@ -110,10 +146,10 @@ export function RelayClientInstallDialog() {
               variant="outline"
               onClick={() => respondToRelayClientInstallConfirmation(false)}
             >
-              Cancel
+              {t("cancel")}
             </Button>
             <Button onClick={() => respondToRelayClientInstallConfirmation(true)}>
-              Download and install
+              {t("downloadAndInstall")}
             </Button>
           </DialogFooter>
         ) : null}

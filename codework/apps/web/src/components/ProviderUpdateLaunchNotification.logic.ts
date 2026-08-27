@@ -7,7 +7,7 @@ import {
   type ProviderInstanceId,
   type ServerProvider,
 } from "@codework/contracts";
-import { t } from "~/i18n";
+import { t } from "~/i18n/runtime";
 import {
   squashAtomCommandFailure,
   type AtomCommandResult,
@@ -486,10 +486,11 @@ export function getProviderUpdateSidebarPillView(
       title:
         unchangedProviders.length === 1
           ? `${unchangedProviderName} ${t("stillNeedsAnUpdate")}`
-          : `${unchangedProviders.length} providers still need updates`,
-      description: `${formatProviderList(unchangedProviders)} ${
-        unchangedProviders.length === 1 ? "still appears" : "still appear"
-      } outdated. Review provider settings for details.`,
+          : t("providersStillNeedUpdates2", { value1: unchangedProviders.length }),
+      description: t("outdatedReviewProviderSettingsForDetails", {
+        value1: formatProviderList(unchangedProviders),
+        value2: unchangedProviders.length === 1 ? "still appears" : "still appear",
+      }),
       dismissible: true,
     });
   }
@@ -511,7 +512,7 @@ export function getProviderUpdateSidebarPillView(
       title:
         succeededProviders.length === 1
           ? getProviderUpdatedTitle(succeededProvider)
-          : `${succeededProviders.length} providers updated`,
+          : t("providersUpdated", { value1: succeededProviders.length }),
       description: getProviderUpdatedDescription(succeededProviders.length),
       dismissAfterVisibleMs: PROVIDER_UPDATE_SUCCESS_VISIBLE_MS,
     });

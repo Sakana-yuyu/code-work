@@ -75,7 +75,11 @@ export const ComposerTasksBadge = memo(function ComposerTasksBadge({
   if (progress.totalSteps <= 0) return null;
 
   const allDone = progress.completedSteps >= progress.totalSteps;
-  const label = `Tasks: ${progress.completedSteps} of ${progress.totalSteps} complete. Current task: ${progress.step}`;
+  const label = t("interface.tasks-value-of-value-complete-current-task-value", {
+    value1: progress.completedSteps,
+    value2: progress.totalSteps,
+    value3: progress.step,
+  });
   if (placement === "inline") {
     return (
       <span className="inline-flex shrink-0 items-center gap-0.5" data-composer-tasks-badge="true">
@@ -236,7 +240,7 @@ export const ComposerTasksDrawer = memo(function ComposerTasksDrawer({
               {step.durationMs !== undefined
                 ? formatDuration(step.durationMs)
                 : step.status === "inProgress"
-                  ? "now"
+                  ? t("now")
                   : null}
             </span>
           </div>

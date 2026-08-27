@@ -36,6 +36,7 @@ import * as DesktopBackendPool from "../backend/DesktopBackendPool.ts";
 import * as DesktopServerExposure from "../backend/DesktopServerExposure.ts";
 import * as DesktopAppSettings from "../settings/DesktopAppSettings.ts";
 import * as DesktopWslEnvironment from "./DesktopWslEnvironment.ts";
+import { t } from "../i18n.js";
 
 // Exported so callers that parse pool ids (e.g. the pickFolder IPC
 // handler in ipc/methods/window.ts) reference the same prefix this
@@ -87,7 +88,10 @@ const scanForWslPort = Effect.fn("desktop.wslBackend.scanForWslPort")(function* 
     }
   }
   return yield* new NetService.NetError({
-    message: `No loopback port available for WSL backend between ${startPort} and ${MAX_TCP_PORT}.`,
+    message: t("noLoopbackPortAvailableForWslBackendBetweenAnd", {
+      startPort: startPort,
+      MAX_TCP_PORT: MAX_TCP_PORT,
+    }),
   });
 });
 

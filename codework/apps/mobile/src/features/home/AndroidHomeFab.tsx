@@ -4,6 +4,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { SymbolView } from "../../components/AppSymbol";
 import { useThemeColor } from "../../lib/useThemeColor";
+import { t } from "../../i18n";
 
 /**
  * Android-only wrapper that overlays a bottom-right new-task FAB on a thread
@@ -31,7 +32,7 @@ function AndroidHomeFab(props: {
     <View className="flex-1">
       {props.children}
       <Pressable
-        accessibilityLabel="New task"
+        accessibilityLabel={t("newTask")}
         accessibilityRole="button"
         onPress={props.onStartNewTask}
         className="absolute right-5 size-14 items-center justify-center rounded-full bg-primary shadow-lg"

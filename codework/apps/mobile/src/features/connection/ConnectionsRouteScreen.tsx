@@ -12,6 +12,7 @@ import { AppText as Text } from "../../components/AppText";
 import { cn } from "../../lib/cn";
 import { useRemoteConnections } from "../../state/use-remote-environment-registry";
 import { ConnectionEnvironmentRow } from "./ConnectionEnvironmentRow";
+import { t } from "../../i18n";
 
 export function ConnectionsRouteScreen() {
   const {
@@ -35,11 +36,11 @@ export function ConnectionsRouteScreen() {
     <View collapsable={false} className="flex-1 bg-sheet">
       {Platform.OS === "android" ? (
         <AndroidScreenHeader
-          title="Environments"
+          title={t("commandPalette.environments")}
           onBack={() => navigation.goBack()}
           actions={[
             {
-              accessibilityLabel: "Add environment",
+              accessibilityLabel: t("addEnvironment"),
               icon: "plus",
               onPress: () => navigation.navigate("ConnectionsNew"),
             },
@@ -94,8 +95,9 @@ export function ConnectionsRouteScreen() {
               />
             </View>
             <Text className="text-center text-sm leading-normal text-foreground-muted">
-              No environments connected yet.{"\n"}Tap{" "}
-              <Text className="font-t3-bold text-foreground">+</Text> to add one.
+              {t("noEnvironmentsConnectedYet")}
+              {"\n"}
+              {t("tap")} <Text className="font-t3-bold text-foreground">+</Text> {t("toAddOne")}
             </Text>
           </View>
         )}

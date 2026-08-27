@@ -16,10 +16,7 @@ import {
   sortAddProjectProviderSources,
   type AddProjectRemoteSource,
 } from "@codework/client-runtime/operations/projects";
-import {
-  connectionStatusText,
-  type EnvironmentConnectionPhase,
-} from "@codework/client-runtime/connection";
+import type { EnvironmentConnectionPhase } from "@codework/client-runtime/connection";
 import {
   canPreloadBrowsePath,
   createBrowseNavigationCoordinator,
@@ -61,6 +58,8 @@ import {
   useSavedRemoteConnections,
 } from "../../state/use-remote-environment-registry";
 import { resolveAddProjectEnvironment } from "./AddProjectScreen.logic";
+import { t } from "../../i18n";
+import { localizedConnectionStatusText } from "../../i18n/connectionStatus";
 
 interface EnvironmentOption {
   readonly environmentId: EnvironmentId;
@@ -234,7 +233,7 @@ function ProjectPathInput(props: {
       onChangeText={props.onChangeText}
       autoCapitalize="none"
       autoCorrect={false}
-      placeholder="~/projects/my-app"
+      placeholder={t("projectsMyApp")}
       returnKeyType="done"
       onSubmitEditing={props.onSubmit}
     />
@@ -392,15 +391,17 @@ function EmptyEnvironmentState() {
 
   return (
     <View className="items-center gap-3 rounded-2xl bg-card px-5 py-8">
-      <Text className="text-center text-lg font-t3-bold">Environment unavailable</Text>
+      <Text className="text-center text-lg font-t3-bold">
+        {t("commandPalette.environmentUnavailable")}
+      </Text>
       <Text className="text-center text-sm leading-normal text-foreground-muted">
-        Start or reconnect an environment before adding a project.
+        {t("startOrReconnectAnEnvironmentBeforeAddingAProject")}
       </Text>
       <Pressable
         onPress={() => navigation.dispatch(StackActions.replace("ConnectionsNew"))}
         className="mt-1 rounded-full bg-primary px-4 py-2.5 active:opacity-70"
       >
-        <Text className="text-sm font-t3-bold text-primary-foreground">Add environment</Text>
+        <Text className="text-sm font-t3-bold text-primary-foreground">{t("addEnvironment")}</Text>
       </Pressable>
     </View>
   );
@@ -416,11 +417,16 @@ function SourceControlRow(props: {
   const navigation = useNavigation();
   const iconColor = useThemeColor("--color-icon");
   const title =
-    props.source === "url" ? "Git URL" : `${addProjectRemoteSourceLabel(props.source)} repository`;
+    props.source === "url"
+      ? "Git URL"
+      : t("interface.value-repository", { value1: addProjectRemoteSourceLabel(props.source) });
   const subtitle =
     props.source === "url"
-      ? "Clone from a remote URL"
-      : `Clone ${addProjectRemoteSourceLabel(props.source)} ${props.hint}`;
+      ? t("interface.clone-from-a-remote-url")
+      : t("interface.clone-value-value", {
+          value1: addProjectRemoteSourceLabel(props.source),
+          value2: props.hint,
+        });
   const icon =
     props.source === "url" ? (
       <SymbolView name="link" size={17} tintColor={iconColor} type="monochrome" />
@@ -477,7 +483,7 @@ export function AddProjectSourceScreen() {
 
       {environmentOptions.length > 1 ? (
         <>
-          <SectionTitle>Environments</SectionTitle>
+          <SectionTitle>{t("commandPalette.environments")}</SectionTitle>
           <ListSection>
             {environmentOptions.map((environment, index) => (
               <ListRow
@@ -486,7 +492,7 @@ export function AddProjectSourceScreen() {
                 subtitle={
                   canCreateProjectInEnvironment(environment.connectionState)
                     ? environment.environmentId
-                    : connectionStatusText({
+                    : localizedConnectionStatusText({
                         phase: environment.connectionState,
                         error: environment.connectionError,
                         traceId: environment.connectionErrorTraceId,
@@ -524,8 +530,8 @@ export function AddProjectSourceScreen() {
         <>
           <ListSection>
             <ListRow
-              title="Local folder"
-              subtitle="Browse a folder on disk"
+              title={t("commandPalette.localFolder")}
+              subtitle={t("commandPalette.localFolderDescription")}
               icon={
                 <SymbolView
                   name="folder.badge.plus"
@@ -582,7 +588,7 @@ function useCreateProject(environment: EnvironmentOption | null) {
         path: workspaceRoot,
       });
       if (existing) {
-        Alert.alert("Project already exists", existing.title);
+        Alert.alert(t("projectAlreadyExists"), existing.title);
         navigation.dispatch(
           CommonActions.reset({
             index: 0,
@@ -715,14 +721,14 @@ export function AddProjectRepositoryScreen(props: {
             autoCorrect={false}
             placeholder={
               source === "url"
-                ? "https://github.com/org/repo.git"
+                ? t("httpsGithubComOrgRepoGit")
                 : addProjectRemoteSourcePathHint(source)
             }
             returnKeyType="next"
             onSubmitEditing={() => void lookupRepository()}
           />
           <PrimaryActionButton
-            label={source === "url" ? "Continue" : "Lookup repository"}
+            label={source === "url" ? t("commandPalette.continue") : t("lookupRepository")}
             disabled={isSubmitting || repositoryInput.trim().length === 0}
             onPress={() => void lookupRepository()}
             loading={isSubmitting}
@@ -776,7 +782,7 @@ function FolderBrowser(props: {
 
   return (
     <>
-      <SectionTitle>Browse folders</SectionTitle>
+      <SectionTitle>{t("browseFolders")}</SectionTitle>
       {browseState.error ? <ErrorBanner message={browseState.error} /> : null}
       <ListSection>
         {browseState.isPending && browseState.data === null ? (
@@ -866,7 +872,7 @@ export function AddProjectLocalFolderScreen(props: { readonly environmentId?: st
             onSubmit={() => void submitPath()}
           />
           <PrimaryActionButton
-            label="Add project"
+            label={t("addProject")}
             disabled={isBrowseNavigating || isSubmitting}
             onPress={() => void submitPath()}
             loading={isSubmitting}
@@ -969,7 +975,7 @@ export function AddProjectDestinationScreen(props: {
             onSubmit={() => void submitPath()}
           />
           <PrimaryActionButton
-            label="Clone project"
+            label={t("cloneProject")}
             disabled={isBrowseNavigating || isSubmitting || !remoteUrl}
             onPress={() => void submitPath()}
             loading={isSubmitting}

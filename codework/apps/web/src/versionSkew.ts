@@ -5,6 +5,7 @@ import * as Schema from "effect/Schema";
 import { APP_VERSION } from "./branding";
 import { getCanonicalFirstLocalStorageItem, setLocalStorageItem } from "./hooks/useLocalStorage";
 import { canonicalStorageKey } from "./persistenceStorage";
+import { t } from "~/i18n/runtime";
 
 export interface VersionMismatch {
   readonly clientVersion: string;
@@ -68,7 +69,7 @@ export function resolveVersionMismatch(
   return {
     clientVersion: normalizedClientVersion,
     serverVersion: normalizedServerVersion,
-    hint: "Version mismatch. Try syncing the client and server to the same Code Work version.",
+    hint: t("interface.version-mismatch-try-syncing-the-client-and-server-to-the-same-code"),
   };
 }
 

@@ -6,6 +6,7 @@ import {
   resolveWizardNavigation,
   type WizardNavigation,
 } from "./AddProviderInstanceDialog.logic";
+import { t } from "~/i18n";
 
 interface AddProviderInstanceWizardStepsProps {
   readonly currentStep: number;
@@ -35,7 +36,11 @@ export function AddProviderInstanceWizardSteps({
                 "bg-card text-foreground shadow-xs ring-1 ring-black/5 hover:bg-card dark:shadow-none dark:ring-white/5",
             )}
             aria-current={index === currentStep ? "step" : undefined}
-            aria-label={`${step}, step ${index + 1}${index < currentStep && summaries[index] ? `, ${summaries[index]}` : ""}`}
+            aria-label={t("step2", {
+              step: step,
+              value2: index + 1,
+              value3: index < currentStep && summaries[index] ? `, ${summaries[index]}` : "",
+            })}
             onClick={() =>
               onNavigation(
                 resolveWizardNavigation(currentStep, index, ADD_PROVIDER_WIZARD_STEPS.length, {

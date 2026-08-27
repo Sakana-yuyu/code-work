@@ -6,6 +6,7 @@ import { useNowMinute } from "~/hooks/useNowMinute";
 import { formatRelativeTimeLabel } from "~/timestampFormat";
 
 import { PreviewFaviconIcon } from "./PreviewFaviconIcon";
+import { t } from "~/i18n";
 
 interface Props {
   threadRef: ScopedThreadRef;
@@ -42,7 +43,7 @@ export function PreviewRecentUrlCard({ threadRef, entry, onOpen, onRemove }: Pro
       </button>
       <button
         type="button"
-        aria-label={`Remove ${label} from history`}
+        aria-label={t("removeFromHistory", { label: label })}
         onClick={onRemove}
         className="absolute right-3 rounded p-1 text-muted-foreground opacity-0 hover:bg-accent hover:text-foreground focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring group-hover:opacity-100"
       >

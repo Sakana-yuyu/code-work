@@ -1,5 +1,5 @@
 import type { VcsStatusResult } from "@codework/contracts";
-import { t } from "~/i18n";
+import { t } from "~/i18n/runtime";
 import { assert, describe, it } from "vite-plus/test";
 import {
   buildGitActionProgressStages,

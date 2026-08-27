@@ -282,7 +282,7 @@ function ProviderEnvironmentSection(props: {
                       onCommit={(name) => updateVariable(variable.id, { name: name.trim() })}
                       placeholder={t("variableName")}
                       spellCheck={false}
-                      aria-label={`Environment variable name ${index + 1}`}
+                      aria-label={t("environmentVariableName", { value1: index + 1 })}
                     />
                   </TableCell>
                   <TableCell>
@@ -293,11 +293,11 @@ function ProviderEnvironmentSection(props: {
                       autoComplete="off"
                       placeholder={
                         variable.valueRedacted
-                          ? "Stored secret - enter a new value to replace"
-                          : "Value"
+                          ? t("storedSecretEnterANewValueToReplace")
+                          : t("value")
                       }
                       spellCheck={false}
-                      aria-label={`Environment variable value ${index + 1}`}
+                      aria-label={t("environmentVariableValue", { value1: index + 1 })}
                     />
                   </TableCell>
                   <TableCell className="w-20">
@@ -313,7 +313,9 @@ function ProviderEnvironmentSection(props: {
                               : { valueRedacted: sensitive ? variable.valueRedacted : false }),
                           });
                         }}
-                        aria-label={`Mark environment variable ${variable.name || index + 1} as sensitive`}
+                        aria-label={t("markEnvironmentVariableAsSensitive", {
+                          value1: variable.name || index + 1,
+                        })}
                       />
                     </div>
                   </TableCell>
@@ -325,7 +327,9 @@ function ProviderEnvironmentSection(props: {
                         variant="ghost"
                         className="size-8 text-muted-foreground hover:text-destructive"
                         onClick={() => removeVariable(variable.id)}
-                        aria-label={`Remove environment variable ${variable.name || index + 1}`}
+                        aria-label={t("removeEnvironmentVariable", {
+                          value1: variable.name || index + 1,
+                        })}
                       >
                         <XIcon className="size-3.5" />
                       </Button>
@@ -446,7 +450,7 @@ export function ProviderInstanceCard({
     onCopy: ({ providerName }) => {
       toastManager.add({
         type: "success",
-        title: `${providerName} update command copied`,
+        title: t("updateCommandCopied2", { providerName: providerName }),
         description: t("runItInATerminalWhenYouAreReadyToUpdate"),
       });
     },
@@ -454,7 +458,7 @@ export function ProviderInstanceCard({
       toastManager.add(
         stackedThreadToast({
           type: "error",
-          title: `Could not copy ${providerName} update command`,
+          title: t("couldNotCopyUpdateCommand2", { providerName: providerName }),
           description: error.message,
         }),
       );
@@ -609,7 +613,7 @@ export function ProviderInstanceCard({
                   variant="ghost"
                   className="text-muted-foreground hover:text-destructive"
                   onClick={onDelete}
-                  aria-label={`Delete provider instance ${instanceId}`}
+                  aria-label={t("deleteProviderInstance", { instanceId: instanceId })}
                 >
                   <Trash2Icon className="size-3" />
                 </Button>
@@ -666,7 +670,7 @@ export function ProviderInstanceCard({
                             ? "text-warning hover:text-warning"
                             : "text-update-foreground hover:text-update-foreground",
                         )}
-                        aria-label="Update available — view details"
+                        aria-label={t("updateAvailableViewDetails")}
                       >
                         <ArrowUpCircleIcon className="size-3.5 [animation:bounce_2.4s_ease-in-out_infinite] motion-reduce:animate-none" />
                       </Button>
@@ -680,7 +684,7 @@ export function ProviderInstanceCard({
                     <div className="grid min-w-0 gap-3">
                       <div className="grid gap-0.5">
                         <p className="text-[13px] font-semibold leading-tight text-foreground">
-                          Update available
+                          {t("updateAvailable2")}
                         </p>
                         <p
                           className={cn(
@@ -703,13 +707,13 @@ export function ProviderInstanceCard({
                           onClick={onRunUpdate}
                         >
                           {isUpdating ? <LoaderIcon className="animate-spin" /> : <DownloadIcon />}
-                          {isUpdating ? "Updating" : "Update now"}
+                          {isUpdating ? t("updating") : t("updateNow")}
                         </Button>
                       ) : null}
                       {onRunUpdate && updateCommand ? (
                         <div className="flex items-center gap-2 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
                           <span aria-hidden className="h-px flex-1 bg-border" />
-                          or, update manually using
+                          {t("orUpdateManuallyUsing")}
                           <span aria-hidden className="h-px flex-1 bg-border" />
                         </div>
                       ) : null}
@@ -733,7 +737,7 @@ export function ProviderInstanceCard({
                                       providerName: displayName,
                                     })
                                   }
-                                  aria-label="Copy update command"
+                                  aria-label={t("copyUpdateCommand")}
                                 >
                                   <CopyIcon className="size-3" />
                                 </Button>
@@ -863,10 +867,9 @@ export function ProviderInstanceCard({
             ) : (
               <div>
                 <p className="text-xs text-muted-foreground">
-                  This instance uses a driver (
-                  <code className="text-foreground">{String(instance.driver)}</code>) that is not
-                  shipped with the current build. Configuration values are preserved but cannot be
-                  edited from this surface.
+                  {t("thisInstanceUsesADriver")}
+                  <code className="text-foreground">{String(instance.driver)}</code>
+                  {t("thatIsNotShippedWithTheCurrentBuildConfigurationValuesArePreservedButCan")}
                 </p>
               </div>
             )}

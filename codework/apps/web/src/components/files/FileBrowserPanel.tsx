@@ -21,6 +21,7 @@ import { CODEWORK_PIERRE_ICONS } from "~/pierre-icons";
 
 import { createFileTreeDragMentionController } from "./fileTreeDragMention";
 import { useProjectEntriesQuery } from "./projectFilesQueryState";
+import { t } from "~/i18n";
 
 interface FileBrowserPanelProps {
   environmentId: EnvironmentId;
@@ -59,14 +60,14 @@ function RefreshFilesButton(props: { isPending: boolean; onRefresh: () => void }
             type="button"
             variant="ghost"
             size="icon-xs"
-            aria-label="Refresh workspace files"
+            aria-label={t("refreshWorkspaceFiles")}
             onClick={props.onRefresh}
           />
         }
       >
         <RotateCw className={cn(props.isPending && "animate-spin")} />
       </TooltipTrigger>
-      <TooltipPopup>{props.isPending ? "Refreshing…" : "Refresh files"}</TooltipPopup>
+      <TooltipPopup>{props.isPending ? t("refreshing") : t("refreshFiles")}</TooltipPopup>
     </Tooltip>
   );
 }
@@ -86,7 +87,7 @@ function FileSearchField(props: {
         size="sm"
         value={props.value}
         aria-label={props.ariaLabel}
-        placeholder="Search files"
+        placeholder={t("searchFiles")}
         spellCheck={false}
         onChange={(event) => props.onValueChange(event.target.value)}
         onKeyDown={(event) => {
@@ -155,20 +156,25 @@ export default function FileBrowserPanel({
     try {
       const clicked = await api.contextMenu.show(
         [
-          { id: "copy-mention", label: "Copy mention" },
-          { id: "add-to-chat", label: "Add to chat" },
+          { id: "copy-mention", label: t("copyMention") },
+          { id: "add-to-chat", label: t("addToChat") },
         ],
         position,
       );
       if (clicked === "copy-mention") {
         try {
           await writeTextToClipboard(mention);
-          toastManager.add({ type: "success", title: "Mention copied", description: relativePath });
+          toastManager.add({
+            type: "success",
+            title: t("mentionCopied"),
+            description: relativePath,
+          });
         } catch (error) {
           toastManager.add({
             type: "error",
-            title: "Failed to copy mention",
-            description: error instanceof Error ? error.message : "An error occurred.",
+            title: t("failedToCopyMention"),
+            description:
+              error instanceof Error ? error.message : t("commandPalette.anErrorOccurred"),
           });
         }
         return;
@@ -178,8 +184,8 @@ export default function FileBrowserPanel({
         if (!composer) {
           toastManager.add({
             type: "error",
-            title: "Unable to add to chat",
-            description: "Open a chat for this project and try again.",
+            title: t("unableToAddToChat"),
+            description: t("openAChatForThisProjectAndTryAgain"),
           });
           return;
         }
@@ -187,8 +193,8 @@ export default function FileBrowserPanel({
         if (!inserted) {
           toastManager.add({
             type: "error",
-            title: "Unable to add to chat",
-            description: "The chat isn't ready to accept input right now.",
+            title: t("unableToAddToChat"),
+            description: t("theChatIsnTReadyToAcceptInputRightNow"),
           });
         }
       }
@@ -374,7 +380,7 @@ export default function FileBrowserPanel({
       ) : (
         <FileTree
           model={model}
-          aria-label={`${projectName} files`}
+          aria-label={t("files2", { projectName: projectName })}
           className="min-h-0 flex-1 overflow-hidden"
           style={{
             colorScheme: resolvedTheme,

@@ -12,6 +12,7 @@ import type { EnvironmentProject } from "@codework/client-runtime/state/shell";
 
 import { useProjects, useServerConfigs } from "../state/entities";
 import { usePrimaryEnvironmentId } from "../state/environments";
+import { t } from "~/i18n/runtime";
 
 export class PullRequestLinkOpenError extends Schema.TaggedErrorClass<PullRequestLinkOpenError>()(
   "PullRequestLinkOpenError",
@@ -288,7 +289,7 @@ export function useOpenPrLink(threadRef?: ScopedThreadRef) {
       if (!api) {
         toastManager.add({
           type: "error",
-          title: "Link opening is unavailable.",
+          title: t("gitHint.linkOpeningUnavailable"),
         });
         return false;
       }
@@ -298,8 +299,9 @@ export function useOpenPrLink(threadRef?: ScopedThreadRef) {
         toastManager.add(
           stackedThreadToast({
             type: "error",
-            title: "Unable to open pull request link",
-            description: error instanceof Error ? error.message : "An error occurred.",
+            title: t("gitHint.unableToOpenPrLink"),
+            description:
+              error instanceof Error ? error.message : t("commandPalette.anErrorOccurred"),
           }),
         );
       });

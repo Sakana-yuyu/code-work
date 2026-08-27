@@ -15,6 +15,7 @@ import type {
 } from "@codework/contracts";
 
 import { inferReviewCommentFenceLanguage, type ReviewCommentContext } from "~/reviewCommentContext";
+import { t } from "~/i18n/runtime";
 
 /** Activity changes only when the same host resource reports a newer revision. */
 export function shouldRefreshPullRequestActivity(
@@ -332,7 +333,7 @@ export function buildPullRequestTimeline(
       id: "created",
       at: detail.createdAt,
       kind: "opened" as const,
-      title: "opened this pull request",
+      title: t("openedThisPullRequest"),
       body: null,
       markdown: false,
       url: null,
@@ -348,7 +349,7 @@ export function buildPullRequestTimeline(
       id: commit.oid,
       at: commit.committedDate,
       kind: "commit" as const,
-      title: `Commit ${commit.oid.slice(0, 7)}`,
+      title: t("commit", { value1: commit.oid.slice(0, 7) }),
       body: commit.messageHeadline || null,
       markdown: false,
       url: null,
@@ -364,7 +365,7 @@ export function buildPullRequestTimeline(
       id: comment.id,
       at: comment.createdAt,
       kind: comment.kind === "review" ? ("review" as const) : ("comment" as const),
-      title: comment.kind === "review" ? "reviewed" : "commented",
+      title: comment.kind === "review" ? t("reviewed") : t("commented"),
       body: visibleBody(comment.body),
       markdown: true,
       url: comment.url,
@@ -382,7 +383,7 @@ export function buildPullRequestTimeline(
             id: "merged",
             at: detail.mergedAt,
             kind: "merged" as const,
-            title: "Pull request merged",
+            title: t("pullRequestMerged"),
             body: null,
             markdown: false,
             url: null,
@@ -402,7 +403,7 @@ export function buildPullRequestTimeline(
             id: "closed",
             at: detail.closedAt,
             kind: "closed" as const,
-            title: "Pull request closed",
+            title: t("pullRequestClosed"),
             body: null,
             markdown: false,
             url: null,
@@ -448,7 +449,7 @@ function reviewThreadContext(
   return {
     id: `pull-request-finding:${thread.id}`,
     sectionId: `pull-request:${pullRequestNumber}`,
-    sectionTitle: `PR #${pullRequestNumber} review`,
+    sectionTitle: t("interface.pr-value-review", { value1: pullRequestNumber }),
     filePath: thread.path,
     startIndex: lineIndex,
     endIndex: lineIndex,

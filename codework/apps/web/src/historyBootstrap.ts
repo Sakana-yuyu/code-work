@@ -1,4 +1,5 @@
 import type { ChatMessage } from "./types";
+import { t } from "~/i18n/runtime";
 
 export interface BootstrapInputResult {
   text: string;
@@ -28,7 +29,7 @@ function attachmentSummary(message: ChatMessage): string | null {
   const names = imageAttachments?.slice(0, 3).map((image) => image.name) ?? [];
   const namesSummary = names.join(", ");
   const extraCount = count - names.length;
-  const extraSummary = extraCount > 0 ? ` (+${extraCount} more)` : "";
+  const extraSummary = extraCount > 0 ? t("interface.value-more", { value1: extraCount }) : "";
   return `[Attached image${count === 1 ? "" : "s"}: ${namesSummary}${extraSummary}]`;
 }
 

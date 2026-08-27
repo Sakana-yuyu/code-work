@@ -168,7 +168,9 @@ const PUBLISH_PROVIDER_OPTIONS = [
   {
     value: "github",
     label: "GitHub",
-    description: "github.com",
+    get description() {
+      return t("githubCom");
+    },
     host: "github.com",
     pathPlaceholder: "owner/repo",
     Icon: GitHubIcon,
@@ -176,7 +178,9 @@ const PUBLISH_PROVIDER_OPTIONS = [
   {
     value: "gitlab",
     label: "GitLab",
-    description: "gitlab.com",
+    get description() {
+      return t("gitlabCom");
+    },
     host: "gitlab.com",
     pathPlaceholder: "group/project",
     Icon: GitLabIcon,
@@ -184,15 +188,21 @@ const PUBLISH_PROVIDER_OPTIONS = [
   {
     value: "bitbucket",
     label: "Bitbucket",
-    description: "bitbucket.org",
+    get description() {
+      return t("bitbucketOrg");
+    },
     host: "bitbucket.org",
     pathPlaceholder: "workspace/repository",
     Icon: BitbucketIcon,
   },
   {
     value: "azure-devops",
-    label: "Azure DevOps",
-    description: "dev.azure.com",
+    get label() {
+      return t("azureDevops");
+    },
+    get description() {
+      return t("devAzureCom");
+    },
     host: "dev.azure.com",
     pathPlaceholder: "project/repository",
     Icon: AzureDevOpsIcon,
@@ -816,7 +826,7 @@ function PublishRepositoryDialog(props: PublishRepositoryDialogProps) {
                           id="publish-remote-name"
                           value={publishRemoteName}
                           onChange={(event) => setPublishRemoteName(event.target.value)}
-                          placeholder="origin"
+                          placeholder={t("origin")}
                           disabled={publishRepositoryAction.isPending}
                         />
                       </label>
@@ -1593,8 +1603,11 @@ export default function GitActionsControl({
             pullResult.status === "pulled" ? t("gitHint.pulled") : t("gitHint.alreadyUpToDate"),
           description:
             pullResult.status === "pulled"
-              ? `Updated ${pullResult.refName} from ${pullResult.upstreamRef ?? "upstream"}`
-              : `${pullResult.refName} is already synchronized.`,
+              ? t("updatedFrom", {
+                  refName: pullResult.refName,
+                  value2: pullResult.upstreamRef ?? "upstream",
+                })
+              : t("isAlreadySynchronized", { refName: pullResult.refName }),
           data: threadToastData,
         });
       })();
@@ -1820,13 +1833,12 @@ export default function GitActionsControl({
                   }}
                 >
                   <CloudUploadIcon />
-                  Publish repository...
+                  {t("publishRepository")}
                 </MenuItem>
               ) : null}
               {gitStatusForActions?.refName === null && (
                 <p className="px-2 py-1.5 text-xs text-warning">
-                  Detached HEAD: create and checkout a refName to enable push and pull request
-                  actions.
+                  {t("detachedHeadCreateAndCheckoutARefnameToEnablePushAndPullRequestActions")}
                 </p>
               )}
               {gitStatusForActions &&
@@ -1835,7 +1847,7 @@ export default function GitActionsControl({
                 gitStatusForActions.behindCount > 0 &&
                 gitStatusForActions.aheadCount === 0 && (
                   <p className="px-2 py-1.5 text-xs text-warning">
-                    Behind upstream. Pull/rebase first.
+                    {t("behindUpstreamPullRebaseFirst")}
                   </p>
                 )}
               {gitStatusError && (
@@ -1868,7 +1880,7 @@ export default function GitActionsControl({
                 <span className="text-muted-foreground">{t("gitCommit.branch")}</span>
                 <span className="flex items-center justify-between gap-2">
                   <span className="font-medium">
-                    {gitStatusForActions?.refName ?? "(detached HEAD)"}
+                    {gitStatusForActions?.refName ?? t("detachedHead")}
                   </span>
                   {isDefaultRef && (
                     <span className="text-right text-warning">
@@ -2002,7 +2014,7 @@ export default function GitActionsControl({
                 setIsEditingFiles(false);
               }}
             >
-              Cancel
+              {t("cancel")}
             </Button>
             <Button
               variant="outline"
@@ -2010,10 +2022,10 @@ export default function GitActionsControl({
               disabled={noneSelected}
               onClick={runDialogActionOnNewBranch}
             >
-              Commit on new refName
+              {t("commitOnNewRefname")}
             </Button>
             <Button size="sm" disabled={noneSelected} onClick={runDialogAction}>
-              Commit
+              {t("gitAction.commit")}
             </Button>
           </DialogFooter>
         </DialogPopup>
@@ -2063,7 +2075,7 @@ export default function GitActionsControl({
               size="sm"
               onClick={checkoutFeatureBranchAndContinuePendingAction}
             >
-              Checkout feature branch & continue
+              {t("checkoutFeatureBranchContinue")}
             </Button>
           </DialogFooter>
         </DialogPopup>

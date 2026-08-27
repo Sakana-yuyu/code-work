@@ -1,5 +1,8 @@
 import type { EnvironmentConnectionPresentation } from "@codework/client-runtime/connection";
 import { describe, expect, it } from "vite-plus/test";
+import { setCurrentLanguage } from "~/i18n/runtime";
+
+setCurrentLanguage("en");
 
 import { presentSavedCloudEnvironmentConnection } from "./cloudEnvironmentConnectionPresentation";
 

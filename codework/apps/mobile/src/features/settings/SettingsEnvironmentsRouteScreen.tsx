@@ -20,6 +20,7 @@ import {
   SHOWCASE_AVAILABLE_CLOUD_ENVIRONMENTS,
   SHOWCASE_CONNECTED_CLOUD_ENVIRONMENTS,
 } from "../showcase/showcaseEnvironmentRows";
+import { t } from "../../i18n";
 
 const SHOWCASE_ENABLED = process.env.EXPO_PUBLIC_SHOWCASE === "1";
 
@@ -84,11 +85,11 @@ export function SettingsEnvironmentsRouteScreen() {
           {/* Android renders its own in-screen header instead of the native bar. */}
           <NativeStackScreenOptions options={{ headerShown: false }} />
           <AndroidScreenHeader
-            title="Environments"
+            title={t("commandPalette.environments")}
             onBack={() => navigation.goBack()}
             actions={[
               {
-                accessibilityLabel: "Add environment",
+                accessibilityLabel: t("addEnvironment"),
                 icon: "plus",
                 onPress: () =>
                   navigation.navigate("SettingsSheet", {
@@ -153,8 +154,9 @@ export function SettingsEnvironmentsRouteScreen() {
               />
             </View>
             <Text className="text-center text-sm leading-normal text-foreground-muted">
-              No environments connected yet.{"\n"}Tap{" "}
-              <Text className="font-t3-bold text-foreground">+</Text> to add one.
+              {t("noEnvironmentsConnectedYet")}
+              {"\n"}
+              {t("tap")} <Text className="font-t3-bold text-foreground">+</Text> {t("toAddOne")}
             </Text>
           </View>
         )}

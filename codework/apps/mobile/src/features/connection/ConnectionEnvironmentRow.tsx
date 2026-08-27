@@ -1,5 +1,4 @@
 import { SymbolView } from "../../components/AppSymbol";
-import { connectionStatusText } from "@codework/client-runtime/connection";
 import type { AtomCommandResult } from "@codework/client-runtime/state/runtime";
 import type { EnvironmentId } from "@codework/contracts";
 import * as Cause from "effect/Cause";
@@ -14,9 +13,11 @@ import { cn } from "../../lib/cn";
 import { copyTextWithHaptic } from "../../lib/copyTextWithHaptic";
 import type { ConnectedEnvironmentSummary } from "../../state/remote-runtime-types";
 import { ConnectionStatusDot } from "./ConnectionStatusDot";
+import { t } from "../../i18n";
+import { localizedConnectionStatusText } from "../../i18n/connectionStatus";
 
 function connectionStatusLabel(environment: ConnectedEnvironmentSummary): string | null {
-  return connectionStatusText({
+  return localizedConnectionStatusText({
     phase: environment.connectionState,
     error: environment.connectionError,
     traceId: environment.connectionErrorTraceId,
@@ -57,8 +58,8 @@ export function ConnectionEnvironmentRow(props: {
     }
     const error = Cause.squash(result.cause);
     Alert.alert(
-      "Could not update environment",
-      error instanceof Error ? error.message : "The environment could not be updated.",
+      t("couldNotUpdateEnvironment"),
+      error instanceof Error ? error.message : t("theEnvironmentCouldNotBeUpdated"),
     );
   }, [label, url, props]);
 
@@ -93,9 +94,9 @@ export function ConnectionEnvironmentRow(props: {
               {statusLabel}
               {statusTraceId ? (
                 <>
-                  {" Trace ID: "}
+                  {t("traceId")}
                   <Text
-                    accessibilityHint="Copies the trace ID"
+                    accessibilityHint={t("copiesTheTraceId")}
                     accessibilityRole="button"
                     className="underline decoration-dotted"
                     onLongPress={(event) => {
@@ -133,18 +134,18 @@ export function ConnectionEnvironmentRow(props: {
         >
           {props.environment.isRelayManaged ? (
             <Text className="text-sm text-foreground-muted">
-              Managed by Code Work Connect. Tunnel details update automatically.
+              {t("managedByCodeWorkConnectTunnelDetailsUpdateAutomatically")}
             </Text>
           ) : (
             <>
               <View className="gap-1.5">
                 <Text className="text-2xs font-t3-bold tracking-[0.8px] uppercase text-foreground-muted">
-                  Label
+                  {t("label")}
                 </Text>
                 <TextInput
                   autoCapitalize="words"
                   autoCorrect={false}
-                  placeholder="My MacBook"
+                  placeholder={t("myMacbook")}
                   value={label}
                   onChangeText={setLabel}
                   className="rounded-[14px] border border-input-border bg-input px-4 py-3 text-base text-foreground"
@@ -176,7 +177,7 @@ export function ConnectionEnvironmentRow(props: {
               >
                 <SymbolView name="checkmark" size={13} tintColor={primaryFg} type="monochrome" />
                 <Text className="text-xs font-t3-bold tracking-[0.8px] uppercase text-primary-foreground">
-                  Save
+                  {t("save")}
                 </Text>
               </Pressable>
             )}

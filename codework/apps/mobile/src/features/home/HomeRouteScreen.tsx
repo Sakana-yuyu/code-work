@@ -21,6 +21,7 @@ import { buildHomeProjectScopes } from "./homeThreadList";
 import { usePendingTaskListActions } from "./usePendingTaskListActions";
 import { useThreadListActions } from "./useThreadListActions";
 import { getConnectionAwareBrandHeaderOptions } from "./WorkspaceConnectionTitle";
+import { t } from "../../i18n";
 
 /* ─── Route screen ───────────────────────────────────────────────────── */
 
@@ -116,7 +117,7 @@ export function HomeRouteScreen() {
         <WorkspaceSidebarToolbar
           afterSidebarButton={
             <NativeHeaderToolbar.Button
-              accessibilityLabel="New task"
+              accessibilityLabel={t("newTask")}
               icon="square.and.pencil"
               onPress={() => navigation.navigate("NewTaskSheet", { screen: "NewTask" })}
             />

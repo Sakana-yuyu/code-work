@@ -352,8 +352,8 @@ const ComposerFooterModeControls = memo(function ComposerFooterModeControls(prop
   const RuntimeModeIcon = runtimeModeOption.icon;
   const interactionModeTooltip =
     props.interactionMode === "plan"
-      ? "Plan mode — click to return to normal build mode"
-      : "Default mode — click to enter plan mode";
+      ? t("interface.plan-mode-click-to-return-to-normal-build-mode")
+      : t("interface.default-mode-click-to-enter-plan-mode");
 
   const interactionModeToggle = props.showInteractionModeToggle ? (
     <>
@@ -380,7 +380,7 @@ const ComposerFooterModeControls = memo(function ComposerFooterModeControls(prop
             <ComposerControlIcon icon={BotIcon} opticalSize="large" />
           )}
           <span className="sr-only sm:not-sr-only">
-            {props.interactionMode === "plan" ? "Plan" : "Build"}
+            {props.interactionMode === "plan" ? t("chat.plan") : t("projectScript.iconBuild")}
           </span>
         </TooltipTrigger>
         <TooltipPopup side="top">{interactionModeTooltip}</TooltipPopup>
@@ -470,7 +470,7 @@ const ComposerFooterPrimaryActions = memo(function ComposerFooterPrimaryActions(
         />
       ) : null}
       {props.isPreparingWorktree ? (
-        <span className="text-secondary-label text-xs">Preparing worktree...</span>
+        <span className="text-secondary-label text-xs">{t("preparingWorktree2")}</span>
       ) : null}
       <ComposerPrimaryActions
         compact={props.compact}
@@ -1132,7 +1132,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
           type: "slash-command",
           command: "model",
           label: "/model",
-          description: "Switch response model for this thread",
+          description: t("switchResponseModelForThisThread"),
         },
         ...(planModeUiEnabled
           ? ([
@@ -1141,14 +1141,14 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                 type: "slash-command",
                 command: "plan",
                 label: "/plan",
-                description: "Switch this thread into plan mode",
+                description: t("switchThisThreadIntoPlanMode"),
               },
               {
                 id: "slash:default",
                 type: "slash-command",
                 command: "default",
                 label: "/default",
-                description: "Switch this thread back to normal build mode",
+                description: t("switchThisThreadBackToNormalBuildMode"),
               },
             ] as const)
           : []),
@@ -1349,7 +1349,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     projectSelectionRequired ||
     environmentUnavailable !== null ||
     !composerSendState.hasSendableContent;
-  const collapsedComposerPrimaryActionLabel = "Send message";
+  const collapsedComposerPrimaryActionLabel = t("sendMessage");
   const showMobilePendingAnswerActions =
     isMobileViewport && !isComposerCollapsedMobile && pendingPrimaryAction !== null;
 
@@ -1951,8 +1951,8 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
         event?.preventDefault();
         toastManager.add({
           type: "info",
-          title: "Still compressing a pasted image.",
-          description: "Send again once its thumbnail appears.",
+          title: t("stillCompressingAPastedImage"),
+          description: t("sendAgainOnceItsThumbnailAppears"),
         });
         return;
       }
@@ -2094,9 +2094,8 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       if (!durable) {
         toastManager.add({
           type: "warning",
-          title: "Restored prompt may reappear in the stash",
-          description:
-            "Browser storage rejected the update, so this entry could still be there after a reload.",
+          title: t("restoredPromptMayReappearInTheStash"),
+          description: t("browserStorageRejectedTheUpdateSoThisEntryCouldStillBeThereAfterAReload"),
           data: { hideCopyButton: true },
         });
       }
@@ -2178,7 +2177,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       if (missingImageReasons.length > 0) {
         toastManager.add({
           type: "warning",
-          title: "Some images were not restored",
+          title: t("someImagesWereNotRestored"),
           description: missingImageReasons.join(" "),
         });
       }
@@ -2207,9 +2206,8 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       if (!durable) {
         toastManager.add({
           type: "warning",
-          title: "Stash entry may come back",
-          description:
-            "Browser storage rejected the delete, so this prompt could reappear after a reload.",
+          title: t("stashEntryMayComeBack"),
+          description: t("browserStorageRejectedTheDeleteSoThisPromptCouldReappearAfterAReload"),
           data: { hideCopyButton: true },
         });
       }
@@ -2262,9 +2260,10 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       if (!written) {
         toastManager.add({
           type: "error",
-          title: "Could not stash this prompt",
-          description:
-            "Browser storage rejected the write, so the composer was left as-is. Free up site data and try again.",
+          title: t("couldNotStashThisPrompt"),
+          description: t(
+            "browserStorageRejectedTheWriteSoTheComposerWasLeftAsIsFreeUpSiteDataAndT",
+          ),
           data: { hideCopyButton: true },
         });
         return;
@@ -2275,9 +2274,8 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       if (!durable) {
         toastManager.add({
           type: "warning",
-          title: "Stashed prompt will not survive a reload",
-          description:
-            "Browser storage is unavailable, so this stash is kept in memory only for this session.",
+          title: t("stashedPromptWillNotSurviveAReload"),
+          description: t("browserStorageIsUnavailableSoThisStashIsKeptInMemoryOnlyForThisSession"),
           data: { hideCopyButton: true },
         });
       }
@@ -2297,8 +2295,10 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       if (evicted) {
         toastManager.add({
           type: "warning",
-          title: "Oldest stashed prompt discarded",
-          description: `The stash holds ${MAX_STASH_ENTRIES} prompts; the oldest was removed to make room.`,
+          title: t("oldestStashedPromptDiscarded"),
+          description: t("theStashHoldsPromptsTheOldestWasRemovedToMakeRoom", {
+            MAX_STASH_ENTRIES: MAX_STASH_ENTRIES,
+          }),
           data: { hideCopyButton: true },
         });
       }
@@ -2345,9 +2345,10 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
         if (!imagesDurable && durable && images.length > 0) {
           toastManager.add({
             type: "warning",
-            title: "Stashed images were not saved",
-            description:
-              "The prompt was stashed, but browser storage rejected its images. They will be missing if you reload.",
+            title: t("stashedImagesWereNotSaved"),
+            description: t(
+              "thePromptWasStashedButBrowserStorageRejectedItsImagesTheyWillBeMissingIf",
+            ),
             data: { hideCopyButton: true },
           });
         }
@@ -2357,8 +2358,16 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
         // them evaporate.
         toastManager.add({
           type: "warning",
-          title: "Stashed images did not attach",
-          description: `That prompt was restored or deleted before ${kept.length} image${kept.length === 1 ? "" : "s"} finished saving. Re-attach ${kept.length === 1 ? "it" : "them"} if you still need ${kept.length === 1 ? "it" : "them"}.`,
+          title: t("stashedImagesDidNotAttach"),
+          description: t(
+            "thatPromptWasRestoredOrDeletedBeforeImageFinishedSavingReAttachIfYouStil",
+            {
+              value1: kept.length,
+              value2: kept.length === 1 ? "" : "s",
+              value3: kept.length === 1 ? "it" : "them",
+              value4: kept.length === 1 ? "it" : "them",
+            },
+          ),
           data: { hideCopyButton: true },
         });
       }
@@ -2523,7 +2532,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     if (pendingUserInputs.length > 0) {
       toastManager.add({
         type: "error",
-        title: "Attach images after answering plan questions.",
+        title: t("attachImagesAfterAnsweringPlanQuestions"),
       });
       return;
     }
@@ -2656,8 +2665,8 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     onInsertRejected: () => {
       toastManager.add({
         type: "error",
-        title: "Unable to add to chat",
-        description: "The composer is busy; try again once it is ready.",
+        title: t("unableToAddToChat"),
+        description: t("theComposerIsBusyTryAgainOnceItIsReady"),
       });
     },
   });
@@ -2980,9 +2989,9 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                     )}
                     onPointerDown={(event) => event.preventDefault()}
                     onClick={expandMobileComposer}
-                    aria-label="Write custom answer"
+                    aria-label={t("writeCustomAnswer")}
                   >
-                    {activePendingProgress?.customAnswer || "Write custom answer"}
+                    {activePendingProgress?.customAnswer || t("writeCustomAnswer")}
                   </button>
                   {inlineTasksBadge}
                   {inlineStashBadge}
@@ -3076,13 +3085,13 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                   )}
                   onPointerDown={(event) => event.preventDefault()}
                   onClick={expandMobileComposer}
-                  aria-label="Expand composer"
+                  aria-label={t("expandComposer")}
                 >
                   {activePendingProgress
                     ? activePendingProgress.customAnswer ||
-                      "Type your own answer, or leave this blank to use the selected option"
+                      t("typeYourOwnAnswerOrLeaveThisBlankToUseTheSelectedOption")
                     : prompt.trim() ||
-                      (noProviderAvailable ? "Enable a provider in Settings" : "Ask anything...")}
+                      (noProviderAvailable ? t("enableAProviderInSettings") : t("askAnything"))}
                 </button>
                 {inlineTasksBadge}
                 {inlineStashBadge}
@@ -3225,7 +3234,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                               <button
                                 type="button"
                                 className="h-full w-full cursor-zoom-in"
-                                aria-label={`Preview ${image.name}`}
+                                aria-label={t("preview", { name: image.name })}
                                 onClick={() => {
                                   const preview = buildExpandedImagePreview(
                                     composerImages,
@@ -3252,7 +3261,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                                   render={
                                     <span
                                       role="img"
-                                      aria-label="Draft attachment may not persist"
+                                      aria-label={t("draftAttachmentMayNotPersist")}
                                       className="absolute left-1 top-1 inline-flex items-center justify-center rounded bg-background/85 p-0.5 text-amber-600"
                                     >
                                       <CircleAlertIcon className="size-3" />
@@ -3263,8 +3272,9 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                                   side="top"
                                   className="max-w-64 whitespace-normal leading-tight"
                                 >
-                                  Draft attachment could not be saved locally and may be lost on
-                                  navigation.
+                                  {t(
+                                    "draftAttachmentCouldNotBeSavedLocallyAndMayBeLostOnNavigation",
+                                  )}
                                 </TooltipPopup>
                               </Tooltip>
                             )}
@@ -3284,7 +3294,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                                       onClick={() =>
                                         retryAttachmentUpload({ environmentId, image })
                                       }
-                                      aria-label={`Retry upload for ${image.name}`}
+                                      aria-label={t("retryUploadFor", { name: image.name })}
                                     />
                                   }
                                 >
@@ -3303,7 +3313,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                               size="icon-xs"
                               className="absolute right-1 top-1 bg-background/80 hover:bg-background/90"
                               onClick={() => removeComposerImage(image.id)}
-                              aria-label={`Remove ${image.name}`}
+                              aria-label={t("providerModels.removeAria", { name: image.name })}
                             >
                               <XIcon />
                             </Button>
@@ -3412,7 +3422,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                       className="shrink-0 gap-2 px-2 text-secondary-label sm:px-3"
                     >
                       <CircleAlertIcon className="size-4" />
-                      No provider available
+                      {t("noProviderAvailable")}
                     </Button>
                   ) : (
                     <ProviderModelPicker

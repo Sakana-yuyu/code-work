@@ -20,6 +20,7 @@ import {
 } from "../agent-awareness/remoteRegistration";
 import { clearConnectOnboardingRequest, requestConnectOnboarding } from "./connectOnboarding";
 import { resolveCloudPublicConfig, resolveRelayClerkTokenOptions } from "./publicConfig";
+import { t } from "../../i18n";
 
 function resetManagedRelayTokenCache() {
   return settleAsyncResult(() =>
@@ -104,7 +105,7 @@ function CloudAuthBridge(props: { readonly children: ReactNode }) {
         ];
         const results = await Promise.all(cleanup);
         for (const result of results) {
-          reportAtomCommandResult(result, { label: "cloud account cleanup" });
+          reportAtomCommandResult(result, { label: t("cloudAccountCleanup") });
         }
       });
       return accountTransitionRef.current;
@@ -138,7 +139,7 @@ function CloudAuthBridge(props: { readonly children: ReactNode }) {
           await transition;
           activateSession();
         });
-        reportAtomCommandResult(result, { label: "cloud account activation" });
+        reportAtomCommandResult(result, { label: t("cloudAccountActivation") });
       })();
     };
     if (

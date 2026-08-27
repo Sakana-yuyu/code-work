@@ -4,6 +4,7 @@ import { Modal, Pressable, View } from "react-native";
 import { useThemeColor } from "../lib/useThemeColor";
 import { cn } from "../lib/cn";
 import { AppText } from "./AppText";
+import { t } from "../i18n";
 
 export type ConfirmDialogRequest = {
   readonly title: string;
@@ -81,7 +82,7 @@ export function ConfirmDialogHost() {
                   onPress={handleCancel}
                 >
                   <AppText className="text-base font-t3-medium">
-                    {request.cancelText ?? "Cancel"}
+                    {request.cancelText ?? t("cancel")}
                   </AppText>
                 </Pressable>
               </View>

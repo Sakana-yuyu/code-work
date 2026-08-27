@@ -1,4 +1,5 @@
 import { type EnvironmentConnectionPhase } from "@codework/client-runtime/connection";
+import { t } from "../../i18n/runtime";
 
 export type ThreadContentPresentation =
   | { readonly kind: "ready" }
@@ -21,14 +22,14 @@ export function projectThreadContentPresentation(input: {
   if (input.detailDeleted) {
     return {
       kind: "unavailable",
-      title: "Thread unavailable",
-      detail: "This thread was deleted or is no longer available.",
+      title: t("threadUnavailable"),
+      detail: t("thisThreadWasDeletedOrIsNoLongerAvailable"),
     };
   }
   if (input.detailError !== null) {
     return {
       kind: "unavailable",
-      title: "Could not load conversation",
+      title: t("couldNotLoadConversation"),
       detail: input.detailError,
     };
   }
@@ -43,7 +44,7 @@ export function projectThreadContentPresentation(input: {
   }
   return {
     kind: "unavailable",
-    title: "Messages not cached",
-    detail: "Reconnect this environment to load the conversation.",
+    title: t("messagesNotCached"),
+    detail: t("reconnectThisEnvironmentToLoadTheConversation"),
   };
 }

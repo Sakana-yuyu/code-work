@@ -18,6 +18,7 @@ import {
   pullRequestChecksStatePresentation,
   summarizePullRequestChecks,
 } from "./pullRequestPresentation";
+import { t } from "~/i18n";
 
 /**
  * The checks behind the rollup, for a row that only carries the rollup. Mounted by the popup, so
@@ -40,7 +41,7 @@ function LazyChecksBody({
   if (detailQuery.data === null) {
     return (
       <p className="text-muted-foreground text-xs">
-        {detailQuery.isPending ? "Loading checks…" : "No checks reported"}
+        {detailQuery.isPending ? t("loadingChecks") : t("noChecksReported")}
       </p>
     );
   }
@@ -49,7 +50,7 @@ function LazyChecksBody({
 
 function ChecksBody({ checks }: { checks: ReadonlyArray<PullRequestCheck> }) {
   if (checks.length === 0) {
-    return <p className="text-muted-foreground text-xs">No checks reported</p>;
+    return <p className="text-muted-foreground text-xs">{t("noChecksReported")}</p>;
   }
   return (
     <ul className="flex flex-col gap-1">
@@ -73,7 +74,7 @@ function ChecksBody({ checks }: { checks: ReadonlyArray<PullRequestCheck> }) {
               className="shrink-0 text-primary hover:underline"
               onClick={() => void readLocalApi()?.shell.openExternal(check.url ?? "")}
             >
-              Details
+              {t("details")}
             </button>
           )}
         </li>
@@ -116,7 +117,7 @@ export function PullRequestChecksPopover({
           <span
             role="button"
             tabIndex={0}
-            aria-label={`Checks: ${presentation.label}`}
+            aria-label={t("checks2", { label: presentation.label })}
             className={cn("inline-flex shrink-0 cursor-pointer items-center", className)}
           />
         }

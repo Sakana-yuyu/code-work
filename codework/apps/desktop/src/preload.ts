@@ -8,6 +8,7 @@ import { exposeClerkBridge } from "@clerk/electron/preload";
 import { contextBridge, ipcRenderer } from "electron";
 
 import * as IpcChannels from "./ipc/channels.ts";
+import { t } from "./i18n.js";
 
 exposeClerkBridge({ passkeys: true });
 
@@ -21,7 +22,7 @@ function unwrapEnsureSshEnvironmentResult(result: unknown) {
     const message =
       "message" in result && typeof result.message === "string"
         ? result.message
-        : "SSH authentication cancelled.";
+        : t("interface.ssh-authentication-cancelled");
     throw new Error(message);
   }
   return result as Awaited<ReturnType<DesktopBridge["ensureSshEnvironment"]>>;

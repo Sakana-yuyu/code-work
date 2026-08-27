@@ -2,6 +2,7 @@ import type { EnvironmentId, SidebarThreadSortOrder } from "@codework/contracts"
 
 import type { HomeProjectSortOrder } from "./homeThreadList";
 import { PROJECT_SORT_OPTIONS, THREAD_SORT_OPTIONS } from "./home-list-options";
+import { t } from "../../i18n/runtime";
 
 export interface HomeListFilterMenuEnvironment {
   readonly environmentId: EnvironmentId;
@@ -52,12 +53,12 @@ export function buildHomeListFilterMenu(props: {
 
   items.push({
     type: "submenu",
-    title: "Environment",
+    title: t("environment"),
     items: [
       {
         type: "action",
-        title: "All environments",
-        subtitle: "Show threads from every environment",
+        title: t("allEnvironments"),
+        subtitle: t("showThreadsFromEveryEnvironment"),
         state: props.selectedEnvironmentId === null ? "on" : "off",
         onPress: () => props.onEnvironmentChange(null),
       },
@@ -76,12 +77,12 @@ export function buildHomeListFilterMenu(props: {
   if (props.projects.length > 0) {
     items.push({
       type: "submenu",
-      title: "Project",
+      title: t("pullRequests.project"),
       items: [
         {
           type: "action",
-          title: "All projects",
-          subtitle: "Show threads from every project",
+          title: t("allProjects"),
+          subtitle: t("showThreadsFromEveryProject"),
           state: props.selectedProjectKey === null ? "on" : "off",
           onPress: () => props.onProjectChange(null),
         },
@@ -99,20 +100,20 @@ export function buildHomeListFilterMenu(props: {
     items.push(
       {
         type: "submenu",
-        title: "Sort projects",
+        title: t("sortProjects"),
         items: PROJECT_SORT_OPTIONS.map((option) => ({
           type: "action",
-          title: option.label,
+          title: t(option.labelKey),
           state: props.projectSortOrder === option.value ? "on" : "off",
           onPress: () => props.onProjectSortOrderChange(option.value),
         })),
       },
       {
         type: "submenu",
-        title: "Sort threads",
+        title: t("sortThreads"),
         items: THREAD_SORT_OPTIONS.map((option) => ({
           type: "action",
-          title: option.label,
+          title: t(option.labelKey),
           state: props.threadSortOrder === option.value ? "on" : "off",
           onPress: () => props.onThreadSortOrderChange(option.value),
         })),
@@ -121,7 +122,7 @@ export function buildHomeListFilterMenu(props: {
   }
 
   return {
-    title: "Thread list options",
+    title: t("threadListOptions"),
     items,
   };
 }

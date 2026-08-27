@@ -5,6 +5,7 @@ import { View } from "react-native";
 import { PRODUCT_IDENTITY } from "@codework/shared/productIdentity";
 
 import { AppText as Text } from "./AppText";
+import { t } from "../i18n";
 
 const appVariant = Constants.expoConfig?.extra?.appVariant;
 const BRAND_MARK_SOURCE =
@@ -45,7 +46,7 @@ export function BrandMark(props: { readonly compact?: boolean; readonly stageLab
         </View>
         {!compact ? (
           <Text className="text-xs font-medium text-foreground-muted">
-            Mobile control surface for your live coding environments
+            {t("mobileControlSurfaceForYourLiveCodingEnvironments")}
           </Text>
         ) : null}
       </View>

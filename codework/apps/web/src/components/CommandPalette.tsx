@@ -1998,7 +1998,7 @@ function OpenCommandPaletteDialog(props: {
         toastManager.add(
           stackedThreadToast({
             type: "error",
-            title: "Clone failed",
+            title: t("commandPalette.cloneFailed"),
             description: errorMessage(squashAtomCommandFailure(cloneResult)),
           }),
         );
@@ -2120,7 +2120,7 @@ function OpenCommandPaletteDialog(props: {
     !hasHighlightedBrowseItem &&
     (hasTrailingPathSeparator(query) ? !browseResult : exactBrowseEntry === null);
   const useMetaForMod = isMacPlatform(navigator.platform);
-  const submitModifierLabel = useMetaForMod ? "\u2318" : "Ctrl";
+  const submitModifierLabel = useMetaForMod ? "\u2318" : t("ctrl");
   const isCloneDestinationStep = addProjectCloneFlow?.step === "confirm";
   const submitActionLabel = isCloneDestinationStep
     ? willCreateProjectPath
@@ -2129,7 +2129,9 @@ function OpenCommandPaletteDialog(props: {
     : willCreateProjectPath
       ? t("commandPalette.createAndAdd")
       : t("commandPalette.add");
-  const addShortcutLabel = hasHighlightedBrowseItem ? `${submitModifierLabel} Enter` : "Enter";
+  const addShortcutLabel = hasHighlightedBrowseItem
+    ? t("enter2", { submitModifierLabel: submitModifierLabel })
+    : t("enter");
   const remoteProjectButtonLabel = addProjectCloneFlow
     ? addProjectCloneFlow.source === "url"
       ? t("commandPalette.continue")
@@ -2389,7 +2391,7 @@ function OpenCommandPaletteDialog(props: {
             {isRemoteProjectPending ? t("commandPalette.working") : remoteProjectButtonLabel}
           </span>
           <KbdGroup className="pointer-events-none -me-0.5 items-center gap-1">
-            <Kbd>Enter</Kbd>
+            <Kbd>{t("enter")}</Kbd>
           </KbdGroup>
         </TooltipTrigger>
         <TooltipPopup side="top">
@@ -2440,7 +2442,11 @@ function OpenCommandPaletteDialog(props: {
               : submitActionLabel}
           </span>
           <KbdGroup className="pointer-events-none -me-0.5 items-center gap-1">
-            <Kbd>{hasHighlightedBrowseItem ? `${submitModifierLabel} Enter` : "Enter"}</Kbd>
+            <Kbd>
+              {hasHighlightedBrowseItem
+                ? t("enter2", { submitModifierLabel: submitModifierLabel })
+                : t("enter")}
+            </Kbd>
           </KbdGroup>
         </TooltipTrigger>
         <TooltipPopup side="top">

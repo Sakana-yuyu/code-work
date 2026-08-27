@@ -128,14 +128,14 @@ function EnvironmentUpdateRow({
     case "unchanged":
       trailing = (
         <Button size="xs" variant="outline" onClick={onUpdate}>
-          Retry
+          {t("retry")}
         </Button>
       );
       break;
     default:
       trailing = (
         <Button size="xs" onClick={onUpdate}>
-          Update
+          {t("update")}
         </Button>
       );
       break;

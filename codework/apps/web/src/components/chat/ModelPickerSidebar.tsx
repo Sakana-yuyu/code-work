@@ -124,7 +124,7 @@ export const ModelPickerSidebar = memo(function ModelPickerSidebar(props: {
                     align="center"
                     className={PICKER_TOOLTIP_CLASS}
                   >
-                    Favorites
+                    {t("favorites")}
                   </TooltipPopup>
                 </Tooltip>
               </div>
@@ -147,7 +147,7 @@ export const ModelPickerSidebar = memo(function ModelPickerSidebar(props: {
               : isContextDisabled
                 ? (props.getDisabledInstanceTooltip?.(entry) ?? entry.displayName)
                 : showNewBadge
-                  ? `${entry.displayName} — New`
+                  ? t("interface.value-new", { value1: entry.displayName })
                   : entry.displayName;
 
             const button = (
@@ -172,7 +172,7 @@ export const ModelPickerSidebar = memo(function ModelPickerSidebar(props: {
                   isDisabled
                     ? tooltip
                     : showNewBadge
-                      ? `${entry.displayName}, new`
+                      ? t("new2", { displayName: entry.displayName })
                       : entry.displayName
                 }
               >

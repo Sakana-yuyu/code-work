@@ -24,6 +24,7 @@ import * as DesktopAppSettings from "../settings/DesktopAppSettings.ts";
 import * as DesktopConfig from "../app/DesktopConfig.ts";
 import * as DesktopNetworkInterfaces from "./DesktopNetworkInterfaces.ts";
 import { resolveTailscaleAdvertisedEndpoints } from "./tailscaleEndpointProvider.ts";
+import { t } from "../i18n.js";
 
 const TAILSCALE_STATUS_CACHE_TTL = Duration.seconds(60);
 
@@ -47,14 +48,14 @@ interface DesktopAdvertisedEndpointInput {
 
 const DESKTOP_CORE_ENDPOINT_PROVIDER: AdvertisedEndpointProvider = {
   id: "desktop-core",
-  label: "Desktop",
+  label: t("desktop"),
   kind: "core",
   isAddon: false,
 };
 
 const DESKTOP_MANUAL_ENDPOINT_PROVIDER: AdvertisedEndpointProvider = {
   id: "manual",
-  label: "Manual",
+  label: t("manual"),
   kind: "manual",
   isAddon: false,
 };
@@ -157,11 +158,11 @@ const resolveDesktopCoreAdvertisedEndpoints = (
   const endpoints: AdvertisedEndpoint[] = [
     createDesktopEndpoint({
       id: `desktop-loopback:${input.port}`,
-      label: "This machine",
+      label: t("thisMachine"),
       httpBaseUrl: input.exposure.localHttpUrl,
       reachability: "loopback",
       status: "available",
-      description: "Loopback endpoint for this desktop app.",
+      description: t("loopbackEndpointForThisDesktopApp"),
     }),
   ];
 
@@ -169,12 +170,12 @@ const resolveDesktopCoreAdvertisedEndpoints = (
     endpoints.push(
       createDesktopEndpoint({
         id: `desktop-lan:${input.exposure.endpointUrl}`,
-        label: "Local network",
+        label: t("localNetwork"),
         httpBaseUrl: input.exposure.endpointUrl,
         reachability: "lan",
         status: "available",
         isDefault: true,
-        description: "Reachable from devices on the same network.",
+        description: t("reachableFromDevicesOnTheSameNetwork"),
       }),
     );
   }
@@ -185,14 +186,14 @@ const resolveDesktopCoreAdvertisedEndpoints = (
       endpoints.push(
         createManualEndpoint({
           id: `manual:${customEndpointUrl}`,
-          label: isHttpsEndpoint ? "Custom HTTPS" : "Custom endpoint",
+          label: isHttpsEndpoint ? t("customHttps") : t("byokAdapters.supplierCustom"),
           httpBaseUrl: customEndpointUrl,
           reachability: "public",
           ...(isHttpsEndpoint ? ({ hostedHttpsCompatibility: "compatible" } as const) : {}),
           status: "unknown",
           description: isHttpsEndpoint
-            ? "User-configured HTTPS endpoint for this desktop backend."
-            : "User-configured endpoint for this desktop backend.",
+            ? t("userConfiguredHttpsEndpointForThisDesktopBackend")
+            : t("userConfiguredEndpointForThisDesktopBackend"),
         }),
       );
     } catch {

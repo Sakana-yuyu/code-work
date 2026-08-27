@@ -21,6 +21,7 @@ import {
 
 import { PrimaryEnvironmentHttpClient } from "./httpClient";
 import { runPrimaryHttp } from "../../lib/runtime";
+import { t } from "~/i18n/runtime";
 
 const PrimaryEnvironmentRequestOperation = Schema.Literals([
   "fetch-session-state",
@@ -339,7 +340,7 @@ async function bootstrapServerAuth(): Promise<ServerAuthGateState> {
     return {
       status: "requires-auth",
       auth: currentSession.auth,
-      errorMessage: error instanceof Error ? error.message : "Authentication failed.",
+      errorMessage: error instanceof Error ? error.message : t("pairing.authenticationFailed"),
     };
   }
 }

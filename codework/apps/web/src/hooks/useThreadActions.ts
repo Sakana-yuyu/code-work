@@ -39,6 +39,7 @@ import { formatWorktreePathForDisplay, getOrphanedWorktreePathForThread } from "
 import { stackedThreadToast, toastManager } from "../components/ui/toast";
 import { useClientSettings } from "./useSettings";
 import { useAtomCommand } from "../state/use-atom-command";
+import { t } from "~/i18n/runtime";
 
 export class ThreadArchiveBlockedError extends Schema.TaggedErrorClass<ThreadArchiveBlockedError>()(
   "ThreadArchiveBlockedError",
@@ -436,7 +437,8 @@ export function useThreadActions() {
             : null;
       if (cleanupFailure) {
         const error = squashAtomCommandFailure(cleanupFailure);
-        const message = error instanceof Error ? error.message : "Unknown error removing worktree.";
+        const message =
+          error instanceof Error ? error.message : t("interface.unknown-error-removing-worktree");
         console.error("Failed to remove orphaned worktree after thread deletion", {
           threadId: threadRef.threadId,
           projectCwd: threadProject.workspaceRoot,
@@ -446,8 +448,11 @@ export function useThreadActions() {
         toastManager.add(
           stackedThreadToast({
             type: "error",
-            title: "Thread deleted, but worktree removal failed",
-            description: `Could not remove ${displayWorktreePath ?? orphanedWorktreePath}. ${message}`,
+            title: t("threadDeletedButWorktreeRemovalFailed"),
+            description: t("couldNotRemove", {
+              orphanedWorktreePath: displayWorktreePath ?? orphanedWorktreePath,
+              message: message,
+            }),
           }),
         );
         return cleanupFailure;

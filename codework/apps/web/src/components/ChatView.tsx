@@ -1933,7 +1933,7 @@ function ChatViewContent(props: ChatViewProps) {
           stackedThreadToast({
             type: "error",
             title: t("couldNotReconnectEnvironment"),
-            description: error instanceof Error ? error.message : "Failed to reconnect.",
+            description: error instanceof Error ? error.message : t("failedToReconnect"),
           }),
         );
       }
@@ -2124,7 +2124,12 @@ function ChatViewContent(props: ChatViewProps) {
   const hasMultipleRegisteredEnvironments = environments.length > 1;
   const versionMismatchServerLabel =
     hasMultipleRegisteredEnvironments && activeThread
-      ? `${environmentById.get(activeThread.environmentId)?.label ?? serverConfig?.environment.label ?? activeThread.environmentId} server`
+      ? t("interface.value-server", {
+          value1:
+            environmentById.get(activeThread.environmentId)?.label ??
+            serverConfig?.environment.label ??
+            activeThread.environmentId,
+        })
       : "server";
   const serverUpdateEnvironmentId = activeThread?.environmentId ?? null;
   const versionMismatchSelfUpdate = resolveServerSelfUpdateCapability(serverConfig);
@@ -2239,7 +2244,7 @@ function ChatViewContent(props: ChatViewProps) {
               <TooltipTrigger
                 render={
                   <button type="button" className="cursor-help rounded-sm text-left">
-                    Server update available
+                    {t("serverUpdateAvailable")}
                   </button>
                 }
               />
@@ -2249,7 +2254,7 @@ function ChatViewContent(props: ChatViewProps) {
               </TooltipPopup>
             </Tooltip>
           ) : (
-            "Server update available"
+            t("serverUpdateAvailable")
           ),
         description:
           updateInProgress || updateFailed ? (
@@ -3336,7 +3341,7 @@ function ChatViewContent(props: ChatViewProps) {
       if (result._tag === "Success") {
         toastManager.add({
           type: "success",
-          title: `Deleted action "${deletedName ?? "Unknown"}"`,
+          title: t("deletedAction", { value1: deletedName ?? "Unknown" }),
         });
       } else if (!isAtomCommandInterrupted(result)) {
         const error = squashAtomCommandFailure(result);
@@ -3344,7 +3349,8 @@ function ChatViewContent(props: ChatViewProps) {
           stackedThreadToast({
             type: "error",
             title: t("couldNotDeleteAction"),
-            description: error instanceof Error ? error.message : "An unexpected error occurred.",
+            description:
+              error instanceof Error ? error.message : t("commandPalette.unexpectedError"),
           }),
         );
       }
@@ -3737,7 +3743,8 @@ function ChatViewContent(props: ChatViewProps) {
           stackedThreadToast({
             type: "error",
             title: t("failedToCopyPath"),
-            description: error instanceof Error ? error.message : "An error occurred.",
+            description:
+              error instanceof Error ? error.message : t("commandPalette.anErrorOccurred"),
           }),
         );
       },
@@ -4447,7 +4454,8 @@ function ChatViewContent(props: ChatViewProps) {
           stackedThreadToast({
             type: "error",
             title: t("failedToUnSettleThread"),
-            description: error instanceof Error ? error.message : "An error occurred.",
+            description:
+              error instanceof Error ? error.message : t("commandPalette.anErrorOccurred"),
           }),
         );
       }
@@ -4475,7 +4483,8 @@ function ChatViewContent(props: ChatViewProps) {
           stackedThreadToast({
             type: "error",
             title: t("failedToWakeThread"),
-            description: error instanceof Error ? error.message : "An error occurred.",
+            description:
+              error instanceof Error ? error.message : t("commandPalette.anErrorOccurred"),
           }),
         );
       }
@@ -4648,9 +4657,9 @@ function ChatViewContent(props: ChatViewProps) {
       ),
       title: working
         ? liveCount > 0
-          ? `${liveCount} ${liveCount === 1 ? "agent" : "agents"} working`
-          : "Background work"
-        : "Monitoring",
+          ? t("working4", { liveCount: liveCount, value2: liveCount === 1 ? "agent" : "agents" })
+          : t("backgroundWork")
+        : t("monitoring"),
       actions: (
         <Button
           size="xs"
@@ -4682,7 +4691,7 @@ function ChatViewContent(props: ChatViewProps) {
       icon: <AlarmClockIcon />,
       title: t("thisThreadWokeFromSnooze"),
       description: t("dismissToClearTheWokeIndicatorOrSendAMessageToKeepGoing"),
-      dismissLabel: "Dismiss Woke notification",
+      dismissLabel: t("dismissWokeNotification"),
       onDismiss: acknowledgeActiveThreadWoke,
     };
   }, [acknowledgeActiveThreadWoke, activeThread?.id, activeThreadWokeVisible]);
@@ -4702,10 +4711,10 @@ function ChatViewContent(props: ChatViewProps) {
       id: `thread-${isSnoozed ? "snoozed" : "settled"}:${activeThread?.id ?? "unknown"}`,
       variant: "info",
       icon: isSnoozed ? <AlarmClockIcon /> : <CheckCircle2Icon />,
-      title: `This thread is ${isSnoozed ? "snoozed" : "settled"}`,
+      title: t("thisThreadIs", { value1: isSnoozed ? "snoozed" : "settled" }),
       description: isSnoozed
-        ? "Sending a message wakes it and moves it back to Active in the sidebar."
-        : "Sending a message moves it back to Active in the sidebar.",
+        ? t("sendingAMessageWakesItAndMovesItBackToActiveInTheSidebar")
+        : t("sendingAMessageMovesItBackToActiveInTheSidebar"),
       actions: (
         <Button
           size="xs"
@@ -4717,11 +4726,11 @@ function ChatViewContent(props: ChatViewProps) {
         >
           {isSnoozed
             ? isUnsnoozing
-              ? "Waking..."
-              : "Wake now"
+              ? t("waking")
+              : t("wakeNow")
             : isUnsettling
-              ? "Un-settling..."
-              : "Un-settle"}
+              ? t("unSettling")
+              : t("unSettle")}
         </Button>
       ),
     };
@@ -4782,8 +4791,8 @@ function ChatViewContent(props: ChatViewProps) {
                 }
               />
               <TooltipPopup side="top" className="max-w-80">
-                This thread last ran on {localCheckoutBranchMismatch.threadBranch}. Sending will
-                continue on {localCheckoutBranchMismatch.currentBranch}.
+                {t("thisThreadLastRanOn")} {localCheckoutBranchMismatch.threadBranch}
+                {t("sendingWillContinueOn")} {localCheckoutBranchMismatch.currentBranch}.
               </TooltipPopup>
             </Tooltip>
           </span>
@@ -4796,10 +4805,10 @@ function ChatViewContent(props: ChatViewProps) {
             disabled={isRestoringThreadBranch}
             onClick={handleRestoreThreadBranch}
           >
-            {isRestoringThreadBranch ? "Restoring..." : "Restore branch"}
+            {isRestoringThreadBranch ? t("restoring") : t("restoreBranch")}
           </Button>
         ),
-        dismissLabel: "Dismiss branch change notice",
+        dismissLabel: t("interface.dismiss-branch-change-notice"),
         onDismiss: () => {
           dismissBranchMismatchForSession(activeBranchMismatchKey);
           setBranchMismatchDismissTick((tick) => tick + 1);
@@ -5293,7 +5302,7 @@ function ChatViewContent(props: ChatViewProps) {
         stackedThreadToast({
           type: "success",
           title: t("feedbackSentToOpenai"),
-          description: `Thread ID: ${feedbackId}`,
+          description: t("threadId", { feedbackId: feedbackId }),
           timeout: 0,
           actionProps: {
             children: t("copyId"),
@@ -5719,8 +5728,8 @@ function ChatViewContent(props: ChatViewProps) {
                 title: t("taskStartedInTheBackground"),
                 description:
                   error instanceof Error
-                    ? `Could not open a fresh composer: ${error.message}`
-                    : "Could not open a fresh composer.",
+                    ? t("couldNotOpenAFreshComposer", { message: error.message })
+                    : t("couldNotOpenAFreshComposer2"),
               }),
             );
           }
@@ -6260,7 +6269,7 @@ function ChatViewContent(props: ChatViewProps) {
             description:
               error instanceof Error
                 ? error.message
-                : "An error occurred while creating the new thread.",
+                : t("anErrorOccurredWhileCreatingTheNewThread"),
           }),
         );
       }
@@ -6689,7 +6698,7 @@ function ChatViewContent(props: ChatViewProps) {
                   className="flex items-center gap-2 rounded-full border border-primary/25 bg-background/95 px-4 py-2.5 text-sm font-medium text-foreground shadow-lg"
                 >
                   <PaperclipIcon className="size-4 text-primary" aria-hidden="true" />
-                  Drop files to attach
+                  {t("dropFilesToAttach")}
                 </div>
               </div>
             ) : null}
@@ -6752,7 +6761,7 @@ function ChatViewContent(props: ChatViewProps) {
                     variant="glass"
                   >
                     <ChevronDownIcon className="size-3.5" />
-                    Scroll to end
+                    {t("chat.scrollToEnd")}
                   </Button>
                 </div>
               )}
@@ -6961,15 +6970,14 @@ function ChatViewContent(props: ChatViewProps) {
               <AlertDialogPopup>
                 <AlertDialogHeader>
                   <AlertDialogTitle>
-                    Switch to{" "}
+                    {t("switchTo")}{" "}
                     <code className="font-medium">
                       {localCheckoutBranchMismatch?.threadBranch ?? ""}
                     </code>
                     ?
                   </AlertDialogTitle>
                   <AlertDialogDescription>
-                    You have uncommitted changes. They'll carry over to the other branch, or block
-                    the switch if they conflict.
+                    {t("youHaveUncommittedChangesTheyLlCarryOverToTheOtherBranchOrBlockTheSwitch")}
                   </AlertDialogDescription>
                 </AlertDialogHeader>
                 <AlertDialogFooter>
@@ -6983,7 +6991,7 @@ function ChatViewContent(props: ChatViewProps) {
                       void handleSwitchCheckoutToThread();
                     }}
                   >
-                    Switch branch
+                    {t("switchBranch")}
                   </Button>
                 </AlertDialogFooter>
               </AlertDialogPopup>

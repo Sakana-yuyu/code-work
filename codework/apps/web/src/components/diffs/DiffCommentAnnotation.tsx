@@ -5,6 +5,7 @@ import { Button } from "~/components/ui/button";
 import { Textarea } from "~/components/ui/textarea";
 
 import { isCommentSubmitShortcut } from "./commentSubmitShortcut";
+import { t } from "~/i18n";
 
 interface DiffCommentSecondaryAction {
   readonly label: string;
@@ -60,7 +61,7 @@ export function DiffCommentAnnotation({
             className="-my-1 -mr-1 shrink-0 text-muted-foreground opacity-0 transition-opacity group-hover/comment:opacity-100 focus-visible:opacity-100 max-sm:opacity-100"
             variant="ghost"
             size="icon-xs"
-            aria-label="Delete comment"
+            aria-label={t("deleteComment")}
             onClick={onDelete}
           >
             <Trash2 className="size-3" />
@@ -84,7 +85,7 @@ export function DiffCommentAnnotation({
         size="sm"
         value={displayedText}
         placeholder={placeholder}
-        aria-label={`Comment on lines ${rangeLabel}`}
+        aria-label={t("commentOnLines", { rangeLabel: rangeLabel })}
         onChange={(event) => (onTextChange ?? setLocalDraftText)(event.target.value)}
         onFocus={(event) => {
           const end = event.currentTarget.value.length;
@@ -102,14 +103,14 @@ export function DiffCommentAnnotation({
         }}
       />
       <div className="mt-1.5 flex items-center gap-1">
-        <span className="mr-auto text-[10px] text-muted-foreground/70">⌘/Ctrl Enter to send</span>
+        <span className="mr-auto text-[10px] text-muted-foreground/70">{t("ctrlEnterToSend")}</span>
         <Button
           className="text-muted-foreground hover:text-foreground"
           variant="ghost"
           size="xs"
           onClick={onCancel}
         >
-          Cancel
+          {t("cancel")}
         </Button>
         {secondaryAction ? (
           <Button

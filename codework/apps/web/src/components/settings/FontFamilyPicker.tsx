@@ -11,6 +11,7 @@ import {
   ComboboxPopup,
   ComboboxTrigger,
 } from "../ui/combobox";
+import { t } from "~/i18n";
 
 const DEFAULT_FONT_VALUE = "__default__";
 
@@ -173,7 +174,7 @@ export function FontFamilyPicker({
           </span>
           <span className="flex shrink-0 items-center gap-1.5">
             {isDefault ? (
-              <span className="text-[10px] text-muted-foreground/60">default</span>
+              <span className="text-[10px] text-muted-foreground/60">{t("default3")}</span>
             ) : null}
             {item === selectedValue ? (
               <CheckIcon className="size-3.5 text-muted-foreground" />
@@ -222,7 +223,7 @@ export function FontFamilyPicker({
             <ComboboxInput
               className="[&_input]:h-6.5 [&_input]:ps-5 [&_input]:font-sans [&_input]:leading-6.5"
               inputClassName="rounded-none bg-transparent text-sm"
-              placeholder="Search fonts…"
+              placeholder={t("searchFonts")}
               showTrigger={false}
               size="sm"
               unstyled
@@ -232,7 +233,7 @@ export function FontFamilyPicker({
           </div>
         </div>
         <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-          <ComboboxEmpty>No fonts found.</ComboboxEmpty>
+          <ComboboxEmpty>{t("noFontsFound")}</ComboboxEmpty>
           <div className="relative min-h-0 max-h-72 w-full flex-1 overflow-hidden">
             <ComboboxListVirtualized className="size-full min-w-0 p-0">
               <LegendList<string>

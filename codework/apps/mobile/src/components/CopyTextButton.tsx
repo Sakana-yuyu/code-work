@@ -3,6 +3,7 @@ import { memo, useEffect, useRef, useState } from "react";
 import { Pressable, type ColorValue } from "react-native";
 
 import { copyTextWithHaptic } from "../lib/copyTextWithHaptic";
+import { t } from "../i18n";
 
 const COPY_FEEDBACK_DURATION_MS = 1200;
 
@@ -31,7 +32,7 @@ export const CopyTextButton = memo(function CopyTextButton(props: {
   return (
     <Pressable
       accessibilityRole="button"
-      accessibilityLabel={copied ? "Copied" : props.accessibilityLabel}
+      accessibilityLabel={copied ? t("diagnostics.copied") : props.accessibilityLabel}
       disabled={props.text.length === 0}
       hitSlop={8}
       onPress={() => {

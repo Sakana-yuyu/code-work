@@ -6,6 +6,7 @@ import { SymbolView, type AppSymbolName } from "./AppSymbol";
 import { AppText as Text } from "./AppText";
 import { cn } from "../lib/cn";
 import { useThemeColor } from "../lib/useThemeColor";
+import { t } from "../i18n";
 
 export interface AndroidHeaderAction {
   readonly accessibilityLabel: string;
@@ -66,7 +67,7 @@ export function AndroidScreenHeader(props: {
       <View className="min-h-12 flex-row items-center gap-2">
         {props.onBack ? (
           <Pressable
-            accessibilityLabel="Navigate up"
+            accessibilityLabel={t("navigateUp")}
             accessibilityRole="button"
             hitSlop={8}
             onPress={props.onBack}

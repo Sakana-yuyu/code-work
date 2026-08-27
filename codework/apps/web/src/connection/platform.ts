@@ -23,7 +23,10 @@ import {
 } from "@codework/client-runtime/connection";
 import { bootstrapRemoteBearerSession } from "@codework/client-runtime/authorization";
 import { fetchRemoteEnvironmentDescriptor } from "@codework/client-runtime/environment";
-import { managedRelayAccountChanges, managedRelaySessionAtom } from "@codework/client-runtime/relay";
+import {
+  managedRelayAccountChanges,
+  managedRelaySessionAtom,
+} from "@codework/client-runtime/relay";
 import { EnvironmentRpcRequestObserver } from "@codework/client-runtime/rpc";
 import {
   AuthStandardClientScopes,
@@ -59,6 +62,7 @@ import {
   type DesktopSecondaryBootstrapsRead,
 } from "./desktopLocal";
 import { connectionStorageLayer } from "./storage";
+import { t } from "~/i18n/runtime";
 
 let nextObservedRpcRequestId = 0;
 
@@ -118,7 +122,7 @@ function clientMetadata() {
   const desktop = window.desktopBridge !== undefined;
   const platform = navigator.platform.trim();
   return {
-    label: desktop ? "Code Work Desktop" : "Code Work Web",
+    label: desktop ? t("codeWorkDesktop") : t("codeWorkWeb"),
     deviceType: "desktop" as const,
     ...(platform === "" ? {} : { os: platform }),
     surface: desktop ? ("desktop" as const) : ("web" as const),
@@ -136,7 +140,7 @@ function sshPreparationError(cause: unknown) {
   }
   return new ConnectionTransientError({
     reason: "remote-unavailable",
-    detail: `Could not prepare the SSH environment: ${message}`,
+    detail: t("couldNotPrepareTheSshEnvironment", { message: message }),
   });
 }
 
@@ -154,7 +158,7 @@ export const provisionDesktopSshEnvironment = Effect.fn(
   if (pairingToken === null) {
     return yield* new ConnectionBlockedError({
       reason: "authentication",
-      detail: "The SSH environment did not issue a pairing credential.",
+      detail: t("theSshEnvironmentDidNotIssueAPairingCredential"),
     });
   }
   const descriptor = yield* Effect.tryPromise({
@@ -185,7 +189,7 @@ const capabilitiesLayer = Layer.effectContext(
         if (session === null) {
           return yield* new ConnectionBlockedError({
             reason: "authentication",
-            detail: "Sign in to Code Work Connect to connect this environment.",
+            detail: t("signInToCodeWorkConnectToConnectThisEnvironment"),
           });
         }
         const token = yield* session.readClerkToken().pipe(
@@ -200,7 +204,7 @@ const capabilitiesLayer = Layer.effectContext(
         if (token === null) {
           return yield* new ConnectionBlockedError({
             reason: "authentication",
-            detail: "The Code Work Connect session is unavailable.",
+            detail: t("theCodeWorkConnectSessionIsUnavailable"),
           });
         }
         return token;
@@ -215,7 +219,7 @@ const capabilitiesLayer = Layer.effectContext(
         catch: (cause) =>
           new ConnectionTransientError({
             reason: "remote-unavailable",
-            detail: `Could not load the desktop primary credential: ${String(cause)}`,
+            detail: t("couldNotLoadTheDesktopPrimaryCredential", { value1: String(cause) }),
           }),
       }).pipe(Effect.map(Option.fromNullishOr)),
     });
@@ -225,7 +229,7 @@ const capabilitiesLayer = Layer.effectContext(
         if (bridge === undefined) {
           return yield* new ConnectionBlockedError({
             reason: "unsupported",
-            detail: "SSH environments are only available in the desktop app.",
+            detail: t("sshEnvironmentsAreOnlyAvailableInTheDesktopApp"),
           });
         }
         return yield* provisionDesktopSshEnvironment(bridge, target);
@@ -235,7 +239,7 @@ const capabilitiesLayer = Layer.effectContext(
         if (bridge === undefined) {
           return yield* new ConnectionBlockedError({
             reason: "unsupported",
-            detail: "SSH environments are only available in the desktop app.",
+            detail: t("sshEnvironmentsAreOnlyAvailableInTheDesktopApp"),
           });
         }
         const bootstrap = yield* Effect.tryPromise({
@@ -248,7 +252,7 @@ const capabilitiesLayer = Layer.effectContext(
         if (bootstrap.pairingToken === null) {
           return yield* new ConnectionBlockedError({
             reason: "authentication",
-            detail: "The SSH environment did not issue a pairing credential.",
+            detail: t("theSshEnvironmentDidNotIssueAPairingCredential"),
           });
         }
         const access = yield* Effect.tryPromise({
@@ -271,7 +275,7 @@ const capabilitiesLayer = Layer.effectContext(
           catch: (cause) =>
             new ConnectionTransientError({
               reason: "remote-unavailable",
-              detail: `Could not disconnect the SSH environment: ${String(cause)}`,
+              detail: t("couldNotDisconnectTheSshEnvironment", { value1: String(cause) }),
             }),
         });
       }),
@@ -315,7 +319,7 @@ const loadSecondaryConnectionRegistration = Effect.fn(
   ) {
     return yield* new ConnectionTransientError({
       reason: "endpoint-unavailable",
-      detail: `Desktop-local backend ${entry.id} is not ready yet.`,
+      detail: t("desktopLocalBackendIsNotReadyYet", { id: entry.id }),
     });
   }
   const httpBaseUrl = entry.httpBaseUrl;

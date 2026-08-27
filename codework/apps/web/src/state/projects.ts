@@ -6,6 +6,7 @@ import { WS_METHODS } from "@codework/contracts";
 import { environmentCatalog } from "../connection/catalog";
 import { connectionAtomRuntime } from "../connection/runtime";
 import { environmentSnapshotAtom } from "./shell";
+import { t } from "~/i18n/runtime";
 
 export const projectEnvironment = createProjectEnvironmentAtoms(connectionAtomRuntime);
 /**
@@ -14,7 +15,9 @@ export const projectEnvironment = createProjectEnvironmentAtoms(connectionAtomRu
  * project atoms consumed by the mobile app.
  */
 export const projectContentSearch = createEnvironmentRpcQueryAtomFamily(connectionAtomRuntime, {
-  label: "environment-data:projects:search-contents",
+  get label() {
+    return t("environmentDataProjectsSearchContents");
+  },
   tag: WS_METHODS.projectsSearchContents,
   staleTimeMs: 5_000,
   idleTtlMs: 60_000,

@@ -52,13 +52,13 @@ const EMPTY_INSTANCES: Readonly<Record<string, ProviderInstanceConfig>> = {};
 const statusLabel = (status: CompositionIdeResolveResult["status"] | undefined): string => {
   switch (status) {
     case "ready":
-      return t("已就绪");
+      return t("ideSessions.ready");
     case "incomplete":
-      return t("已注册但未完成");
+      return t("ideSessions.registeredIncomplete");
     case "unavailable":
-      return t("不可用");
+      return t("pullRequests.unavailable");
     default:
-      return t("未注册");
+      return t("ideSessions.notRegistered");
   }
 };
 
@@ -85,7 +85,9 @@ function HeaderEditor({
   return (
     <div className="grid gap-2 rounded-lg border border-border/60 bg-muted/10 p-3">
       <div className="flex items-center justify-between gap-3">
-        <span className="text-xs font-medium text-foreground">{t("请求 Header")}</span>
+        <span className="text-xs font-medium text-foreground">
+          {t("ideSessions.requestHeaders")}
+        </span>
         <Button
           type="button"
           size="sm"
@@ -93,11 +95,11 @@ function HeaderEditor({
           onClick={() => onChange([...values, { headerName: "", environmentVariable: "" }])}
         >
           <PlusIcon />
-          {t("添加")}
+          {t("commandPalette.add")}
         </Button>
       </div>
       {values.length === 0 ? (
-        <p className="text-xs text-muted-foreground">{t("尚未配置 Header")}</p>
+        <p className="text-xs text-muted-foreground">{t("ideSessions.noHeaders")}</p>
       ) : (
         values.map((value, index) => (
           <div
@@ -106,8 +108,8 @@ function HeaderEditor({
           >
             <Input
               value={value.headerName}
-              placeholder={t("Header 名称")}
-              aria-label={`${t("Header 名称")} ${index + 1}`}
+              placeholder={t("ideSessions.headerName")}
+              aria-label={`${t("ideSessions.headerName")} ${index + 1}`}
               onChange={(event) =>
                 onChange(
                   values.map((entry, entryIndex) =>
@@ -119,8 +121,8 @@ function HeaderEditor({
             />
             <Input
               value={value.environmentVariable}
-              placeholder={t("环境变量名称")}
-              aria-label={`${t("环境变量名称")} ${index + 1}`}
+              placeholder={t("ideSessions.environmentVariableName")}
+              aria-label={`${t("ideSessions.environmentVariableName")} ${index + 1}`}
               onChange={(event) =>
                 onChange(
                   values.map((entry, entryIndex) =>
@@ -136,7 +138,7 @@ function HeaderEditor({
               type="button"
               size="icon-sm"
               variant="ghost-muted"
-              aria-label={t("删除 Header")}
+              aria-label={t("ideSessions.deleteHeader")}
               onClick={() => onChange(values.filter((_, entryIndex) => entryIndex !== index))}
             >
               <XIcon />
@@ -144,7 +146,7 @@ function HeaderEditor({
           </div>
         ))
       )}
-      <p className="text-[11px] text-muted-foreground">{t("Header 值从对应的环境变量读取。")}</p>
+      <p className="text-[11px] text-muted-foreground">{t("ideSessions.headerFromEnvironment")}</p>
     </div>
   );
 }
@@ -173,7 +175,7 @@ function EnvironmentEditor({
   return (
     <div className="grid gap-2 rounded-lg border border-border/60 bg-muted/10 p-3">
       <div className="flex items-center justify-between gap-3">
-        <span className="text-xs font-medium text-foreground">{t("环境变量")}</span>
+        <span className="text-xs font-medium text-foreground">{t("environmentVariables")}</span>
         <Button
           type="button"
           size="sm"
@@ -181,11 +183,11 @@ function EnvironmentEditor({
           onClick={() => onChange([...values, { name: "", value: "", sensitive: true }])}
         >
           <PlusIcon />
-          {t("添加")}
+          {t("commandPalette.add")}
         </Button>
       </div>
       {values.length === 0 ? (
-        <p className="text-xs text-muted-foreground">{t("尚未配置环境变量")}</p>
+        <p className="text-xs text-muted-foreground">{t("ideSessions.noEnvironmentVariables")}</p>
       ) : (
         values.map((value, index) => (
           <div
@@ -194,16 +196,18 @@ function EnvironmentEditor({
           >
             <Input
               value={value.name}
-              placeholder={t("变量名称")}
-              aria-label={`${t("变量名称")} ${index + 1}`}
+              placeholder={t("ideSessions.variableName")}
+              aria-label={`${t("ideSessions.variableName")} ${index + 1}`}
               onChange={(event) => update(index, { name: event.target.value })}
               spellCheck={false}
             />
             <Input
               value={value.valueRedacted ? "" : value.value}
               type={value.sensitive ? "password" : "text"}
-              placeholder={value.valueRedacted ? t("已保存密钥，输入新值即可替换") : t("值")}
-              aria-label={`${t("变量值")} ${index + 1}`}
+              placeholder={
+                value.valueRedacted ? t("ideSessions.savedSecretPlaceholder") : t("value")
+              }
+              aria-label={`${t("ideSessions.variableValue")} ${index + 1}`}
               onChange={(event) => update(index, { value: event.target.value })}
               autoComplete="off"
               spellCheck={false}
@@ -212,15 +216,15 @@ function EnvironmentEditor({
               <Switch
                 checked={value.sensitive}
                 onCheckedChange={(checked) => update(index, { sensitive: Boolean(checked) })}
-                aria-label={`${t("敏感值")} ${index + 1}`}
+                aria-label={`${t("ideSessions.sensitiveValue")} ${index + 1}`}
               />
-              {t("敏感值")}
+              {t("ideSessions.sensitiveValue")}
             </label>
             <Button
               type="button"
               size="icon-sm"
               variant="ghost-muted"
-              aria-label={t("删除环境变量")}
+              aria-label={t("ideSessions.deleteEnvironmentVariable")}
               onClick={() => onChange(values.filter((_, entryIndex) => entryIndex !== index))}
             >
               <XIcon />
@@ -229,7 +233,7 @@ function EnvironmentEditor({
         ))
       )}
       <p className="text-[11px] text-muted-foreground">
-        {t("敏感值会单独保存，保存后不会完整显示。")}
+        {t("ideSessions.sensitiveValueDescription")}
       </p>
     </div>
   );
@@ -260,16 +264,16 @@ function IdeSessionEditor({
     <div className="grid gap-4 rounded-xl border border-border/60 bg-card px-3 py-3 sm:px-4">
       <div className="grid gap-3 sm:grid-cols-2">
         <label className="grid gap-1.5 text-xs font-medium text-foreground">
-          {t("Session ID")}
+          {t("ideSessions.sessionId")}
           <Input
             value={draft.sessionId}
             onChange={(event) => update("sessionId", event.target.value)}
-            placeholder={t("vscode-session-1")}
+            placeholder={"vscode-session-1"}
             spellCheck={false}
           />
         </label>
         <label className="grid gap-1.5 text-xs font-medium text-foreground">
-          {t("IDE Profile")}
+          {t("ideSessions.profile")}
           <Select
             value={draft.profile}
             onValueChange={(value) => update("profile", value as CompositionIdeRuntimeProfile)}
@@ -292,17 +296,17 @@ function IdeSessionEditor({
 
       {!editing ? (
         <label className="grid gap-1.5 text-xs font-medium text-foreground">
-          {t("实例 ID")}
+          {t("instanceId")}
           <Input
             value={draft.instanceId}
             onChange={(event) => update("instanceId", event.target.value)}
-            placeholder="ide_local"
+            placeholder={t("ideLocal")}
             spellCheck={false}
           />
         </label>
       ) : (
         <div className="grid gap-1.5 text-xs font-medium text-foreground">
-          {t("实例 ID")}
+          {t("instanceId")}
           <code className="rounded-md border border-input bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
             {draft.instanceId}
           </code>
@@ -310,11 +314,11 @@ function IdeSessionEditor({
       )}
 
       <label className="grid gap-1.5 text-xs font-medium text-foreground">
-        {t("WebSocket URL")}
+        {t("ideSessions.websocketUrl")}
         <Input
           value={draft.url}
           onChange={(event) => update("url", event.target.value)}
-          placeholder="ws://127.0.0.1:4111/t3/ide"
+          placeholder={t("ws1270014111T3Ide")}
           spellCheck={false}
         />
       </label>
@@ -327,7 +331,7 @@ function IdeSessionEditor({
 
       <div className="grid gap-3 sm:grid-cols-3">
         <label className="grid gap-1.5 text-xs font-medium text-foreground">
-          {t("Open timeout (ms)")}
+          {t("ideSessions.openTimeout")}
           <Input
             value={draft.openTimeoutMs}
             onChange={(event) => update("openTimeoutMs", event.target.value)}
@@ -335,7 +339,7 @@ function IdeSessionEditor({
           />
         </label>
         <label className="grid gap-1.5 text-xs font-medium text-foreground">
-          {t("Request timeout (ms)")}
+          {t("ideSessions.requestTimeout")}
           <Input
             value={draft.requestTimeoutMs}
             onChange={(event) => update("requestTimeoutMs", event.target.value)}
@@ -343,7 +347,7 @@ function IdeSessionEditor({
           />
         </label>
         <label className="grid gap-1.5 text-xs font-medium text-foreground">
-          {t("Reconnect delays (ms)")}
+          {t("ideSessions.reconnectDelays")}
           <Input
             value={draft.reconnectDelaysMs}
             onChange={(event) => update("reconnectDelaysMs", event.target.value)}
@@ -354,7 +358,7 @@ function IdeSessionEditor({
       </div>
 
       <label className="flex items-center justify-between gap-3 rounded-lg border border-border/60 px-3 py-2 text-xs font-medium text-foreground">
-        {t("启用")}
+        {t("enable")}
         <Switch
           checked={draft.enabled}
           onCheckedChange={(checked) => update("enabled", Boolean(checked))}
@@ -364,10 +368,10 @@ function IdeSessionEditor({
       {error ? <p className="text-xs text-destructive">{error}</p> : null}
       <div className="flex flex-wrap justify-end gap-2">
         <Button type="button" variant="outline" size="sm" onClick={onCancel}>
-          {t("取消")}
+          {t("cancel")}
         </Button>
         <Button type="button" size="sm" onClick={save}>
-          {t("保存")}
+          {t("save")}
         </Button>
       </div>
     </div>
@@ -423,7 +427,7 @@ export function IdeSessionsSettings() {
   const saveSession = (originalId: string | null, draft: IdeSessionDraft): string | null => {
     const saved = configFromIdeSessionDraft(draft);
     if (saved === null) {
-      return t("请输入有效的实例 ID、Session ID、WebSocket URL、环境变量绑定和超时值。");
+      return t("ideSessions.invalidForm");
     }
     const nextInstances = { ...instances };
     if (originalId !== null && originalId !== saved.instanceId) delete nextInstances[originalId];
@@ -457,7 +461,7 @@ export function IdeSessionsSettings() {
     <>
       <SettingsSection
         id="ide-sessions"
-        title={t("IDE 会话")}
+        title={t("ideSessions.title")}
         icon={<LaptopIcon className="size-4 text-muted-foreground" />}
         headerAction={
           <Button
@@ -467,16 +471,14 @@ export function IdeSessionsSettings() {
             disabled={editingId !== null}
           >
             <PlusIcon />
-            {t("添加 IDE 会话")}
+            {t("ideSessions.add")}
           </Button>
         }
       >
         <SettingsRow
-          title={t("IDE Runtime 连接")}
-          description={t(
-            "配置 Cursor、VS Code 或 Browser MCP 会话。服务端会探测每个已注册会话；IDE 操作仍需要任务级 Grant 和审批。",
-          )}
-          status={statusQuery.error ?? (statusQuery.isPending ? t("Loading...") : undefined)}
+          title={t("ideSessions.runtimeTitle")}
+          description={t("ideSessions.runtimeDescription")}
+          status={statusQuery.error ?? (statusQuery.isPending ? t("loading") : undefined)}
         />
 
         {editingId === "__new__" ? (
@@ -491,8 +493,8 @@ export function IdeSessionsSettings() {
 
         {ideEntries.length === 0 && editingId !== "__new__" ? (
           <SettingsRow
-            title={t("尚未配置 IDE 会话")}
-            description={t("添加 WebSocket 会话后，Composition Runtime 才能使用受支持的 IDE API。")}
+            title={t("ideSessions.empty")}
+            description={t("ideSessions.emptyDescription")}
           />
         ) : null}
 
@@ -531,7 +533,7 @@ export function IdeSessionsSettings() {
                         type="button"
                         size="icon-sm"
                         variant="ghost-muted"
-                        aria-label={t("Edit IDE session")}
+                        aria-label={t("ideSessions.edit")}
                         onClick={() => setEditingId(instanceId)}
                         disabled={editingId !== null}
                       >
@@ -541,7 +543,7 @@ export function IdeSessionsSettings() {
                         type="button"
                         size="icon-sm"
                         variant="ghost-muted"
-                        aria-label={t("Delete IDE session")}
+                        aria-label={t("ideSessions.delete")}
                         onClick={() => setPendingDelete(instanceId)}
                         disabled={editingId !== null}
                       >
@@ -550,14 +552,14 @@ export function IdeSessionsSettings() {
                     </div>
                   </div>
                   <div className="flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
-                    <span>{draft.enabled ? t("已启用") : t("已停用")}</span>
+                    <span>{draft.enabled ? t("diagnostics.enabled") : t("disabledStatus")}</span>
                     {draft.environment.some((entry) => entry.valueRedacted === true) ? (
-                      <span className="text-warning">{t("已配置敏感值")}</span>
+                      <span className="text-warning">{t("ideSessions.sensitiveConfigured")}</span>
                     ) : null}
                     <span className="break-all font-mono">{draft.url}</span>
                     {status?.verifiedOperations.length ? (
                       <span>
-                        {t("已验证操作")}: {status.verifiedOperations.length}
+                        {t("ideSessions.verifiedOperations")}: {status.verifiedOperations.length}
                       </span>
                     ) : null}
                   </div>
@@ -568,10 +570,8 @@ export function IdeSessionsSettings() {
         })}
 
         <SettingsRow
-          title={t("授权边界")}
-          description={t(
-            "已注册会话不是不受限制的 Agent。每次 IDE 调用仍受已验证 operation allowlist、任务 Grant、审批、审计和取消链路约束。",
-          )}
+          title={t("authorizationBoundary")}
+          description={t("ideSessions.authorizationDescription")}
           status={<ShieldCheckIcon className="inline size-3.5 align-[-2px]" />}
         />
       </SettingsSection>
@@ -582,18 +582,18 @@ export function IdeSessionsSettings() {
       >
         <AlertDialogPopup>
           <AlertDialogHeader>
-            <AlertDialogTitle>{t("删除 IDE 会话？")}</AlertDialogTitle>
+            <AlertDialogTitle>{t("ideSessions.deleteConfirmTitle")}</AlertDialogTitle>
             <AlertDialogDescription>
-              {t("这会删除会话配置并注销对应的 transport。")}
+              {t("ideSessions.deleteConfirmDescription")}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogClose render={<Button type="button" variant="outline" />}>
-              {t("取消")}
+              {t("cancel")}
             </AlertDialogClose>
             <Button type="button" variant="destructive" onClick={deleteSession}>
               <Trash2Icon />
-              {t("删除")}
+              {t("delete")}
             </Button>
           </AlertDialogFooter>
         </AlertDialogPopup>

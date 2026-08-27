@@ -14,6 +14,7 @@ import { useSelectedThreadGitState } from "../../../state/use-selected-thread-gi
 import { useSelectedThreadWorktree } from "../../../state/use-selected-thread-worktree";
 import { vcsEnvironment } from "../../../state/vcs";
 import { SheetActionButton } from "./gitSheetComponents";
+import { t } from "../../../i18n";
 
 type GitBranchesSheetProps = StaticScreenProps<{
   readonly environmentId: string;
@@ -60,7 +61,7 @@ export function GitBranchesSheet(_props: GitBranchesSheetProps) {
   return (
     <View collapsable={false} className="flex-1 bg-sheet">
       {Platform.OS === "android" ? (
-        <AndroidSheetHeader title="Branches & worktrees" onBack={() => navigation.goBack()} />
+        <AndroidSheetHeader title={t("branchesWorktrees")} onBack={() => navigation.goBack()} />
       ) : null}
       <ScrollView
         className="flex-1"
@@ -70,7 +71,7 @@ export function GitBranchesSheet(_props: GitBranchesSheetProps) {
       >
         <View className="gap-2 rounded-[18px] border border-border bg-card px-4 py-4">
           <Text className="text-foreground-secondary text-2xs font-t3-bold tracking-[1px] uppercase">
-            New branch
+            {t("newBranch")}
           </Text>
           <TextInput
             value={newBranchName}
@@ -80,7 +81,7 @@ export function GitBranchesSheet(_props: GitBranchesSheetProps) {
           />
           <SheetActionButton
             icon="plus"
-            label="Create & checkout"
+            label={t("createCheckout")}
             tone="primary"
             disabled={busy || newBranchName.trim().length === 0}
             onPress={() => {
@@ -96,12 +97,12 @@ export function GitBranchesSheet(_props: GitBranchesSheetProps) {
 
         <View className="gap-2 rounded-[18px] border border-border bg-card px-4 py-4">
           <Text className="text-foreground-secondary text-2xs font-t3-bold tracking-[1px] uppercase">
-            New worktree
+            {t("threadModeNewWorktree")}
           </Text>
           <TextInput
             value={worktreeBaseBranch}
             onChangeText={setWorktreeBaseBranch}
-            placeholder="main"
+            placeholder={t("main")}
             className="rounded-[18px]"
           />
           <TextInput
@@ -112,7 +113,7 @@ export function GitBranchesSheet(_props: GitBranchesSheetProps) {
           />
           <SheetActionButton
             icon="square.split.2x1"
-            label="Create worktree"
+            label={t("createWorktree")}
             tone="primary"
             disabled={
               busy ||
@@ -133,27 +134,27 @@ export function GitBranchesSheet(_props: GitBranchesSheetProps) {
 
         <View className="gap-2">
           <Text className="text-foreground-secondary text-2xs font-t3-bold tracking-[1px] uppercase">
-            Existing branches
+            {t("existingBranches")}
           </Text>
           {branchesLoading ? (
             <Text className="text-foreground-secondary text-sm font-medium">
-              Loading branches...
+              {t("loadingBranches")}
             </Text>
           ) : null}
           {!branchesLoading && availableBranches.length === 0 ? (
             <Text className="text-foreground-secondary text-sm font-medium">
-              No local branches found.
+              {t("noLocalBranchesFound")}
             </Text>
           ) : null}
           {availableBranches.map((branch) => {
             const disabled = disabledExistingBranches.has(branch.name);
             const subtitle = branch.worktreePath
               ? branch.worktreePath === currentWorktreePath
-                ? "Checked out in this thread"
-                : "Checked out in another worktree"
+                ? t("interface.checked-out-in-this-thread")
+                : t("interface.checked-out-in-another-worktree")
               : branch.isDefault
-                ? "Default branch"
-                : "Local branch";
+                ? t("interface.default-branch")
+                : t("interface.local-branch");
 
             return (
               <Pressable

@@ -19,6 +19,7 @@ import { resolveThreadStatusPill, type ThreadStatusPill } from "./Sidebar.logic"
 import type { SidebarThreadSummary } from "../types";
 import { formatWorktreePathForDisplay } from "../worktreeCleanup";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "./ui/tooltip";
+import { t } from "~/i18n";
 
 export interface PrStatusIndicator {
   label: string;
@@ -30,7 +31,7 @@ export interface PrStatusIndicator {
 }
 
 export interface TerminalStatusIndicator {
-  label: "Terminal process running";
+  label: string;
   colorClass: string;
   pulse: boolean;
 }
@@ -67,7 +68,7 @@ export function prStatusIndicator(
 
   if (pr.state === "open") {
     return {
-      label: `${presentation.shortName} open`,
+      label: t("open2", { shortName: presentation.shortName }),
       colorClass: "text-emerald-600 dark:text-emerald-300/90",
       tooltip,
       tooltipLead,
@@ -77,7 +78,7 @@ export function prStatusIndicator(
   }
   if (pr.state === "closed") {
     return {
-      label: `${presentation.shortName} closed`,
+      label: t("closed", { shortName: presentation.shortName }),
       colorClass: "text-red-600 dark:text-red-300/90",
       tooltip,
       tooltipLead,
@@ -87,7 +88,7 @@ export function prStatusIndicator(
   }
   if (pr.state === "merged") {
     return {
-      label: `${presentation.shortName} merged`,
+      label: t("merged", { shortName: presentation.shortName }),
       colorClass: "text-violet-600 dark:text-violet-300/90",
       tooltip,
       tooltipLead,
@@ -308,7 +309,7 @@ export function terminalStatusFromRunningIds(
     return null;
   }
   return {
-    label: "Terminal process running",
+    label: t("terminalProcessRunning"),
     colorClass: "text-teal-600 dark:text-teal-300/90",
     pulse: true,
   };
@@ -326,8 +327,8 @@ export function ThreadWorktreeIndicator({
 
   const displayPath = formatWorktreePathForDisplay(worktreePath);
   const tooltip = thread.branch
-    ? `Worktree: ${displayPath} (${thread.branch})`
-    : `Worktree: ${displayPath}`;
+    ? t("interface.worktree-value-value", { value1: displayPath, value2: thread.branch })
+    : t("interface.worktree-value", { value1: displayPath });
 
   return (
     <Tooltip>
@@ -512,7 +513,7 @@ export function ThreadRowTrailingStatus({ thread }: { thread: SidebarThreadSumma
           <TooltipTrigger
             render={
               <span
-                aria-label={threadEnvironmentLabel ?? "Remote"}
+                aria-label={threadEnvironmentLabel ?? t("commandPalette.environmentLabelRemote")}
                 className="inline-flex items-center justify-center"
               />
             }

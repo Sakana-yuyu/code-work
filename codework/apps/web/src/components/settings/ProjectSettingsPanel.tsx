@@ -113,6 +113,7 @@ import {
   canPickExternalProjectFavicon,
   ProjectFaviconPickerDialog,
 } from "./ProjectFaviconPickerDialog";
+import { t } from "~/i18n";
 
 export const PROJECT_GROUPING_MODE_LABELS: Record<SidebarProjectGroupingMode, string> = {
   repository: "Group by repository",
@@ -215,14 +216,14 @@ function ProjectSettingsBreadcrumb({ projectKey }: { projectKey: string }) {
 
   return (
     <WorkspaceBreadcrumb ariaLabel="Project settings breadcrumb">
-      <WorkspaceBreadcrumbItem>Projects</WorkspaceBreadcrumbItem>
+      <WorkspaceBreadcrumbItem>{t("projects")}</WorkspaceBreadcrumbItem>
       <WorkspaceBreadcrumbSeparator />
       <WorkspaceBreadcrumbItem current>
         {selected ? (
           <button
             type="button"
             aria-haspopup="menu"
-            aria-label="Switch project"
+            aria-label={t("switchProject")}
             onClick={openProjectMenu}
             className="group/project-title inline-flex min-w-0 max-w-64 cursor-pointer items-center gap-1 rounded-sm text-left focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
           >
@@ -233,7 +234,7 @@ function ProjectSettingsBreadcrumb({ projectKey }: { projectKey: string }) {
             />
           </button>
         ) : (
-          <span className="truncate text-muted-foreground">Unavailable project</span>
+          <span className="truncate text-muted-foreground">{t("unavailableProject")}</span>
         )}
       </WorkspaceBreadcrumbItem>
     </WorkspaceBreadcrumb>
@@ -280,8 +281,8 @@ export function ProjectSettingsPanel({ projectKey }: { projectKey: string }) {
     return (
       <div className="flex flex-1 items-center justify-center p-8 text-sm text-muted-foreground">
         {groups.length === 0
-          ? "Add a project from the sidebar to configure it here."
-          : "This project is no longer available."}
+          ? t("addAProjectFromTheSidebarToConfigureItHere")
+          : t("thisProjectIsNoLongerAvailable")}
       </div>
     );
   }
@@ -306,14 +307,14 @@ function ProjectDetail({ group }: { group: SidebarProjectSnapshot }) {
   });
   const { copyToClipboard: copyPathToClipboard } = useCopyToClipboard<{ path: string }>({
     onCopy: ({ path }) => {
-      toastManager.add({ type: "success", title: "Path copied", description: path });
+      toastManager.add({ type: "success", title: t("pathCopied"), description: path });
     },
     onError: (error) => {
       toastManager.add(
         stackedThreadToast({
           type: "error",
-          title: "Failed to copy path",
-          description: error instanceof Error ? error.message : "An error occurred.",
+          title: t("failedToCopyPath"),
+          description: error instanceof Error ? error.message : t("commandPalette.anErrorOccurred"),
         }),
       );
     },
@@ -349,7 +350,7 @@ function ProjectDetail({ group }: { group: SidebarProjectSnapshot }) {
       stackedThreadToast({
         type: "error",
         title,
-        description: error instanceof Error ? error.message : "An error occurred.",
+        description: error instanceof Error ? error.message : t("commandPalette.anErrorOccurred"),
       }),
     );
   }, []);
@@ -395,7 +396,7 @@ function ProjectDetail({ group }: { group: SidebarProjectSnapshot }) {
     async (nextTitle: string) => {
       const title = nextTitle.trim();
       if (!title) {
-        toastManager.add({ type: "warning", title: "Project title cannot be empty" });
+        toastManager.add({ type: "warning", title: t("projectTitleCannotBeEmpty") });
         return;
       }
       if (title === group.displayName) return;
@@ -480,7 +481,8 @@ function ProjectDetail({ group }: { group: SidebarProjectSnapshot }) {
   // What the "Default" option resolves to while no override is set: the
   // repo's t3.json value when present, otherwise the global setting.
   const inheritedEnvMode = codeworkFile.file?.defaultThreadEnvMode ?? settings.defaultThreadEnvMode;
-  const inheritedEnvModeSource = codeworkFile.file?.defaultThreadEnvMode != null ? "t3.json" : "global";
+  const inheritedEnvModeSource =
+    codeworkFile.file?.defaultThreadEnvMode != null ? "t3.json" : "global";
   const importableScripts = useMemo(
     () =>
       codeworkFile.scripts.filter(
@@ -757,15 +759,15 @@ function ProjectDetail({ group }: { group: SidebarProjectSnapshot }) {
   return (
     <>
       <SettingsPageContainer>
-        <SettingsSection title="Project">
+        <SettingsSection title={t("pullRequests.project")}>
           <SettingsRow
-            title="Name"
-            description="The shared name for this project group in the sidebar and thread lists."
+            title={t("name")}
+            description={t("theSharedNameForThisProjectGroupInTheSidebarAndThreadLists")}
             control={
               <Input
                 key={`${group.projectKey}:${group.displayName}`}
                 className="w-full sm:w-64"
-                aria-label="Project name"
+                aria-label={t("projectName")}
                 defaultValue={group.displayName}
                 onBlur={(event) => {
                   void renameGroup(event.currentTarget.value);
@@ -777,12 +779,12 @@ function ProjectDetail({ group }: { group: SidebarProjectSnapshot }) {
             }
           />
           <SettingsRow
-            title="Project icon"
-            description={faviconPath ?? "Automatic"}
+            title={t("projectIcon")}
+            description={faviconPath ?? t("automatic")}
             resetAction={
               faviconPath !== null ? (
                 <SettingResetButton
-                  label="project icon"
+                  label={t("projectIcon2")}
                   disabled={isSavingFavicon}
                   onClick={() => void setFaviconPath(null)}
                 />
@@ -800,25 +802,27 @@ function ProjectDetail({ group }: { group: SidebarProjectSnapshot }) {
                   size="xs"
                   variant="outline"
                   type="button"
-                  aria-label="Choose a project icon file"
+                  aria-label={t("chooseAProjectIconFile")}
                   disabled={isSavingFavicon}
                   onClick={() => setFaviconPickerOpen(true)}
                 >
-                  Choose file
+                  {t("chooseFile")}
                 </Button>
               </div>
             }
           />
         </SettingsSection>
 
-        <SettingsSection title="New threads">
+        <SettingsSection title={t("settings.newThreads")}>
           <SettingsRow
-            title="Model"
-            description="New threads in this project start with this model. Applies to every checkout in this group."
+            title={t("model")}
+            description={t(
+              "newThreadsInThisProjectStartWithThisModelAppliesToEveryCheckoutInThisGro",
+            )}
             resetAction={
               storedSelection !== null ? (
                 <SettingResetButton
-                  label="project default model"
+                  label={t("projectDefaultModel")}
                   onClick={() => setDefaultModel(null)}
                 />
               ) : null
@@ -861,17 +865,19 @@ function ProjectDetail({ group }: { group: SidebarProjectSnapshot }) {
                   />
                 </div>
               ) : (
-                <span className="text-sm text-muted-foreground">No providers available</span>
+                <span className="text-sm text-muted-foreground">{t("noProvidersAvailable")}</span>
               )
             }
           />
           <SettingsRow
-            title="Workspace"
-            description="Where new threads in this project start. Overrides t3.json and the global default; applies to every checkout in this group."
+            title={t("workspace.label")}
+            description={t(
+              "whereNewThreadsInThisProjectStartOverridesT3JsonAndTheGlobalDefaultAppli",
+            )}
             resetAction={
               storedEnvMode !== null ? (
                 <SettingResetButton
-                  label="project workspace default"
+                  label={t("projectWorkspaceDefault")}
                   onClick={() => setDefaultThreadEnvMode(null)}
                 />
               ) : null
@@ -887,20 +893,25 @@ function ProjectDetail({ group }: { group: SidebarProjectSnapshot }) {
                   }
                 }}
               >
-                <SelectTrigger aria-label="New-thread workspace">
+                <SelectTrigger aria-label={t("newThreadWorkspace")}>
                   <SelectValue>
                     {storedEnvMode === null
                       ? group.memberProjects.length > 1
-                        ? "Default (per checkout)"
-                        : `Default (${resolveEnvModeLabel(inheritedEnvMode).toLowerCase()})`
+                        ? t("defaultPerCheckout")
+                        : t("default4", {
+                            value1: resolveEnvModeLabel(inheritedEnvMode).toLowerCase(),
+                          })
                       : resolveEnvModeLabel(storedEnvMode)}
                   </SelectValue>
                 </SelectTrigger>
                 <SelectPopup align="end" alignItemWithTrigger={false}>
                   <SelectItem value="inherit">
                     {group.memberProjects.length > 1
-                      ? "Default (each checkout's t3.json or global setting)"
-                      : `Default (${inheritedEnvModeSource}: ${resolveEnvModeLabel(inheritedEnvMode).toLowerCase()})`}
+                      ? t("defaultEachCheckoutST3JsonOrGlobalSetting")
+                      : t("default5", {
+                          inheritedEnvModeSource: inheritedEnvModeSource,
+                          value2: resolveEnvModeLabel(inheritedEnvMode).toLowerCase(),
+                        })}
                   </SelectItem>
                   <SelectItem value="worktree">{resolveEnvModeLabel("worktree")}</SelectItem>
                   <SelectItem value="local">{resolveEnvModeLabel("local")}</SelectItem>
@@ -911,13 +922,13 @@ function ProjectDetail({ group }: { group: SidebarProjectSnapshot }) {
         </SettingsSection>
 
         <SettingsSection
-          title="Checkout"
+          title={t("checkout")}
           headerAction={
             <Select
               value={selectedCheckout.physicalProjectKey}
               onValueChange={(value) => setSelectedCheckoutKey(String(value))}
             >
-              <SelectTrigger className="max-w-64" aria-label="Selected checkout">
+              <SelectTrigger className="max-w-64" aria-label={t("selectedCheckout")}>
                 <SelectValue>{selectedCheckoutLabel}</SelectValue>
               </SelectTrigger>
               <SelectPopup align="end" alignItemWithTrigger={false}>
@@ -927,7 +938,7 @@ function ProjectDetail({ group }: { group: SidebarProjectSnapshot }) {
                     hideIndicator
                     value={member.physicalProjectKey}
                   >
-                    {member.environmentLabel ?? "This machine"} · {member.workspaceRoot}
+                    {member.environmentLabel ?? t("thisMachine")} · {member.workspaceRoot}
                   </SelectItem>
                 ))}
               </SelectPopup>
@@ -940,7 +951,7 @@ function ProjectDetail({ group }: { group: SidebarProjectSnapshot }) {
                 <TooltipTrigger
                   render={
                     <button
-                      aria-label="Copy checkout path"
+                      aria-label={t("copyCheckoutPath")}
                       className="group flex min-w-0 flex-1 cursor-pointer items-center gap-2 rounded-md px-2 py-1 text-left outline-none hover:bg-accent/60 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
                       type="button"
                       onClick={() =>
@@ -956,18 +967,20 @@ function ProjectDetail({ group }: { group: SidebarProjectSnapshot }) {
                     </button>
                   }
                 />
-                <TooltipPopup side="top">Copy path</TooltipPopup>
+                <TooltipPopup side="top">{t("copyPath2")}</TooltipPopup>
               </Tooltip>
               <div className="shrink-0 border-l border-border/60 px-2 tabular-nums">
                 {selectedCheckoutThreadCount === 1
-                  ? "1 thread"
-                  : `${selectedCheckoutThreadCount} threads`}
+                  ? t("m1Thread")
+                  : t("threads", { selectedCheckoutThreadCount: selectedCheckoutThreadCount })}
               </div>
             </div>
           </div>
           <SettingsRow
-            title="Project grouping"
-            description="How this checkout joins project groups in the sidebar. Changing it can move you to a different project group."
+            title={t("projectGrouping")}
+            description={t(
+              "howThisCheckoutJoinsProjectGroupsInTheSidebarChangingItCanMoveYouToADiff",
+            )}
             control={
               <Select
                 value={selectedCheckoutGrouping}
@@ -982,16 +995,25 @@ function ProjectDetail({ group }: { group: SidebarProjectSnapshot }) {
                   }
                 }}
               >
-                <SelectTrigger aria-label={`Grouping rule for ${selectedCheckoutLabel}`}>
+                <SelectTrigger
+                  aria-label={t("groupingRuleFor", {
+                    selectedCheckoutLabel: selectedCheckoutLabel,
+                  })}
+                >
                   <SelectValue>
                     {selectedCheckoutGrouping === "inherit"
-                      ? `Default (${PROJECT_GROUPING_MODE_LABELS[projectGroupingSettings.sidebarProjectGroupingMode]})`
+                      ? t("default4", {
+                          value1:
+                            PROJECT_GROUPING_MODE_LABELS[
+                              projectGroupingSettings.sidebarProjectGroupingMode
+                            ],
+                        })
                       : PROJECT_GROUPING_MODE_LABELS[selectedCheckoutGrouping]}
                   </SelectValue>
                 </SelectTrigger>
                 <SelectPopup align="end" alignItemWithTrigger={false}>
                   <SelectItem hideIndicator value="inherit">
-                    Use global default
+                    {t("useGlobalDefault2")}
                   </SelectItem>
                   <SelectItem hideIndicator value="repository">
                     {PROJECT_GROUPING_MODE_LABELS.repository}
@@ -1008,8 +1030,10 @@ function ProjectDetail({ group }: { group: SidebarProjectSnapshot }) {
           />
           {group.memberProjects.length > 1 ? (
             <SettingsRow
-              title="Remove checkout"
-              description="Removes this checkout and its threads from the project group. Files on disk are not touched."
+              title={t("removeCheckout")}
+              description={t(
+                "removesThisCheckoutAndItsThreadsFromTheProjectGroupFilesOnDiskAreNotTouc",
+              )}
               control={
                 <Button
                   size="xs"
@@ -1017,16 +1041,18 @@ function ProjectDetail({ group }: { group: SidebarProjectSnapshot }) {
                   onClick={() => void removeMembers([selectedCheckout])}
                 >
                   <Trash2Icon className="size-3.5" />
-                  Remove checkout
+                  {t("removeCheckout")}
                 </Button>
               }
             />
           ) : null}
           <div className="flex min-h-8 flex-col items-start gap-3 px-3 pt-4 sm:flex-row sm:items-center sm:justify-between sm:gap-4 sm:px-4">
             <div className="min-w-0">
-              <h3 className="text-base font-semibold text-foreground">Actions</h3>
+              <h3 className="text-base font-semibold text-foreground">
+                {t("commandPalette.actions")}
+              </h3>
               <p className="text-pretty text-sm text-muted-foreground">
-                Saved and run only in {selectedCheckoutLabel}.
+                {t("savedAndRunOnlyIn")} {selectedCheckoutLabel}.
               </p>
             </div>
             <div className="flex w-full flex-wrap gap-1.5 sm:w-auto sm:shrink-0 sm:justify-end">
@@ -1037,14 +1063,14 @@ function ProjectDetail({ group }: { group: SidebarProjectSnapshot }) {
                       <Button size="xs" variant="ghost" disabled={isSavingScripts} type="button" />
                     }
                   >
-                    Import scripts
+                    {t("importScripts")}
                     <ChevronDownIcon className="size-3.5" />
                   </MenuTrigger>
                   <MenuPopup align="end" className="w-72">
                     <MenuGroup>
-                      <MenuGroupLabel>Import from t3.json</MenuGroupLabel>
+                      <MenuGroupLabel>{t("importFromT3Json")}</MenuGroupLabel>
                       <p className="px-2 pb-2 text-pretty text-sm text-muted-foreground">
-                        Add actions declared by this checkout without editing them first.
+                        {t("addActionsDeclaredByThisCheckoutWithoutEditingThemFirst")}
                       </p>
                     </MenuGroup>
                     <MenuSeparator />
@@ -1074,13 +1100,13 @@ function ProjectDetail({ group }: { group: SidebarProjectSnapshot }) {
                 }
               >
                 <PlusIcon className="size-3.5" />
-                Add action
+                {t("addAction")}
               </Button>
             </div>
           </div>
           {scripts.length === 0 ? (
             <p className="px-3 py-2 text-base text-muted-foreground sm:px-4 sm:text-sm">
-              No actions configured for this checkout.
+              {t("noActionsConfiguredForThisCheckout")}
             </p>
           ) : (
             scripts.map((script) => {
@@ -1104,12 +1130,12 @@ function ProjectDetail({ group }: { group: SidebarProjectSnapshot }) {
                       </code>
                       {script.runOnWorktreeCreate ? (
                         <span className="shrink-0 rounded-sm border border-border/60 px-1.5 py-px text-[11px] font-normal text-muted-foreground">
-                          setup
+                          {t("setup2")}
                         </span>
                       ) : null}
                       {script.previewUrl ? (
                         <span className="shrink-0 rounded-sm border border-border/60 px-1.5 py-px text-[11px] font-normal text-muted-foreground max-sm:hidden">
-                          preview · desktop only
+                          {t("previewDesktopOnly")}
                         </span>
                       ) : null}
                     </span>
@@ -1123,7 +1149,7 @@ function ProjectDetail({ group }: { group: SidebarProjectSnapshot }) {
                         size="icon-xs"
                         variant="ghost"
                         className="shrink-0 text-muted-foreground opacity-0 group-focus-within:opacity-100 group-hover:opacity-100"
-                        aria-label={`Edit ${script.name}`}
+                        aria-label={t("editScriptName", { name: script.name })}
                         disabled={isSavingScripts}
                         onClick={() =>
                           setEditorRequest(editorRequestForScript(script, keybindings))
@@ -1139,22 +1165,28 @@ function ProjectDetail({ group }: { group: SidebarProjectSnapshot }) {
           )}
           {codeworkFile.status === "invalid" ? (
             <SettingsRow
-              title="t3.json is invalid"
-              description="A t3.json exists in this checkout but fails to parse, so every action and icon it declares is ignored. Check the JSON syntax and icon values."
+              title={t("t3JsonIsInvalid")}
+              description={t(
+                "aT3JsonExistsInThisCheckoutButFailsToParseSoEveryActionAndIconItDeclares",
+              )}
               className="text-warning"
             />
           ) : null}
         </SettingsSection>
 
-        <SettingsSection title="Danger">
+        <SettingsSection title={t("danger")}>
           <SettingsRow
             title={
-              group.memberProjects.length > 1 ? "Remove this project everywhere" : "Remove project"
+              group.memberProjects.length > 1
+                ? t("removeThisProjectEverywhere")
+                : t("removeProject")
             }
             description={
               group.memberProjects.length > 1
-                ? `Deletes all ${group.memberProjects.length} checkout entries and their threads on every machine. Files on disk are not touched.`
-                : "Deletes the project entry and its threads. Files on disk are not touched."
+                ? t("deletesAllCheckoutEntriesAndTheirThreadsOnEveryMachineFilesOnDiskAreNotT", {
+                    value1: group.memberProjects.length,
+                  })
+                : t("deletesTheProjectEntryAndItsThreadsFilesOnDiskAreNotTouched")
             }
             control={
               <Button
@@ -1162,7 +1194,7 @@ function ProjectDetail({ group }: { group: SidebarProjectSnapshot }) {
                 onClick={() => void removeMembers(group.memberProjects)}
               >
                 <Trash2Icon />
-                {group.memberProjects.length > 1 ? "Remove all entries" : "Remove project"}
+                {group.memberProjects.length > 1 ? t("removeAllEntries") : t("removeProject")}
               </Button>
             }
           />

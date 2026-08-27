@@ -1,5 +1,6 @@
 import type { RelayEnvironmentStatusResponse } from "@codework/contracts/relay";
 import { type EnvironmentConnectionPhase } from "@codework/client-runtime/connection";
+import { t } from "../../i18n/runtime";
 
 export interface AvailableCloudEnvironmentPresentation {
   readonly connectionError: string | null;
@@ -19,7 +20,7 @@ export function availableCloudEnvironmentPresentation(input: {
       connectionError: null,
       connectionErrorTraceId: null,
       connectionState: "available",
-      statusText: "Available · Relay online",
+      statusText: t("interface.available-relay-online"),
     };
   }
 
@@ -47,7 +48,7 @@ export function availableCloudEnvironmentPresentation(input: {
     connectionErrorTraceId: null,
     connectionState: "available",
     statusText: input.isStatusPending
-      ? "Available · Checking relay status..."
-      : "Available · Relay status unknown",
+      ? t("interface.available-checking-relay-status")
+      : t("interface.available-relay-status-unknown"),
   };
 }

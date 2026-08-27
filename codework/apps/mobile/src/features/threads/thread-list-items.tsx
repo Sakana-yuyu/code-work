@@ -27,6 +27,7 @@ import { ThreadSwipeable } from "../home/thread-swipe-actions";
 import { buildThreadTitleRegenerationMenuItems } from "./thread-title-regeneration-menu";
 import { resolveThreadStatus } from "./threadPresentation";
 import { ThreadSearchMatchExcerpt } from "./thread-search-match";
+import { t } from "../../i18n";
 
 /**
  * Shared presentation for the thread lists: the compact (phone) Home list and
@@ -124,8 +125,8 @@ export const ThreadListGroupHeader = memo(function ThreadListGroupHeader(props: 
       <Pressable
         accessibilityRole="button"
         accessibilityState={{ expanded: !props.collapsed }}
-        accessibilityLabel={`${props.title}, ${props.threadCount} threads`}
-        accessibilityHint={props.collapsed ? "Expands the project" : "Collapses the project"}
+        accessibilityLabel={t("threads2", { title: props.title, threadCount: props.threadCount })}
+        accessibilityHint={props.collapsed ? t("expandsTheProject") : t("collapsesTheProject")}
         className={
           compact ? "flex-1 flex-row items-center gap-2.5" : "flex-1 flex-row items-center gap-2"
         }
@@ -162,7 +163,7 @@ export const ThreadListGroupHeader = memo(function ThreadListGroupHeader(props: 
       </Pressable>
       {showNewThreadButton ? (
         <Pressable
-          accessibilityLabel={`Create new thread in ${props.title}`}
+          accessibilityLabel={t("createNewThreadIn", { title: props.title })}
           accessibilityRole="button"
           hitSlop={{ ...verticalHitSlop, left: 10, right: 14 }}
           onPress={handleNewThread}
@@ -206,7 +207,7 @@ export const ThreadListShowMoreRow = memo(function ThreadListShowMoreRow(props: 
   const button = (label: string, icon: "chevron.down" | "chevron.up", onPress: () => void) => (
     <Pressable
       accessibilityRole="button"
-      accessibilityLabel={label === "Show more" ? "Show more threads" : "Show fewer threads"}
+      accessibilityLabel={label === "Show more" ? t("showMoreThreads") : t("showFewerThreads")}
       className="rounded-full bg-subtle"
       hitSlop={6}
       onPress={onPress}
@@ -257,9 +258,9 @@ export const ThreadListShowMoreRow = memo(function ThreadListShowMoreRow(props: 
 
 /* ─── Pending task row ───────────────────────────────────────────────── */
 
-const PENDING_TASK_MENU_ACTIONS: MenuAction[] = [
-  { id: "delete", title: "Delete", image: "trash", attributes: { destructive: true } },
-];
+function pendingTaskMenuActions(): MenuAction[] {
+  return [{ id: "delete", title: t("delete"), image: "trash", attributes: { destructive: true } }];
+}
 
 /**
  * A queued new task waiting in the outbox for its environment to reconnect.
@@ -295,7 +296,7 @@ export const PendingTaskListRow = memo(function PendingTaskListRow(props: {
 
   const statusPill = (
     <View className="rounded-full bg-zinc-500/12 px-1.5 py-0.5 dark:bg-zinc-500/16">
-      <Text className="text-3xs font-t3-bold text-zinc-600 dark:text-zinc-300">Pending</Text>
+      <Text className="text-3xs font-t3-bold text-zinc-600 dark:text-zinc-300">{t("pending")}</Text>
     </View>
   );
 
@@ -323,7 +324,7 @@ export const PendingTaskListRow = memo(function PendingTaskListRow(props: {
 
   const rowContent = compact ? (
     <Pressable
-      accessibilityHint="Opens the queued task for editing"
+      accessibilityHint={t("opensTheQueuedTaskForEditing")}
       accessibilityLabel={pendingTask.title}
       accessibilityRole="button"
       className="bg-screen"
@@ -366,7 +367,7 @@ export const PendingTaskListRow = memo(function PendingTaskListRow(props: {
     </Pressable>
   ) : (
     <Pressable
-      accessibilityHint="Opens the queued task for editing"
+      accessibilityHint={t("opensTheQueuedTaskForEditing")}
       accessibilityLabel={pendingTask.title}
       accessibilityRole="button"
       onPress={() => onSelectPendingTask(pendingTask)}
@@ -399,7 +400,7 @@ export const PendingTaskListRow = memo(function PendingTaskListRow(props: {
 
   return (
     <ControlPillMenu
-      actions={PENDING_TASK_MENU_ACTIONS}
+      actions={pendingTaskMenuActions()}
       onPressAction={handleMenuAction}
       shouldOpenOnLongPress
     >
@@ -410,10 +411,12 @@ export const PendingTaskListRow = memo(function PendingTaskListRow(props: {
 
 /* ─── Thread row ─────────────────────────────────────────────────────── */
 
-const THREAD_ROW_MENU_ACTIONS: MenuAction[] = [
-  { id: "archive", title: "Archive", image: "archivebox" },
-  { id: "delete", title: "Delete", image: "trash", attributes: { destructive: true } },
-];
+function threadRowMenuActions(): MenuAction[] {
+  return [
+    { id: "archive", title: t("archive"), image: "archivebox" },
+    { id: "delete", title: t("delete"), image: "trash", attributes: { destructive: true } },
+  ];
+}
 
 export const ThreadListRow = memo(function ThreadListRow(props: {
   readonly variant: ThreadListVariant;
@@ -487,20 +490,20 @@ export const ThreadListRow = memo(function ThreadListRow(props: {
   );
   const menuActions = useMemo<MenuAction[]>(
     () => [
-      THREAD_ROW_MENU_ACTIONS[0]!,
+      threadRowMenuActions()[0]!,
       ...buildThreadTitleRegenerationMenuItems({
         supported: props.titleRegenerationSupported,
         isRegenerating: thread.titleRegeneration != null,
       }),
-      THREAD_ROW_MENU_ACTIONS[1]!,
+      threadRowMenuActions()[1]!,
     ],
     [props.titleRegenerationSupported, thread.titleRegeneration],
   );
   const primaryAction = useMemo(
     () => ({
-      accessibilityLabel: `Archive ${thread.title}`,
+      accessibilityLabel: t("archive2", { title: thread.title }),
       icon: "archivebox" as const,
-      label: "Archive",
+      label: t("archive"),
       onPress: handleArchive,
     }),
     [handleArchive, thread.title],
@@ -565,7 +568,7 @@ export const ThreadListRow = memo(function ThreadListRow(props: {
   const rowContent = (close: () => void) =>
     compact ? (
       <Pressable
-        accessibilityHint="Swipe left for archive and delete actions"
+        accessibilityHint={t("swipeLeftForArchiveAndDeleteActions")}
         accessibilityLabel={threadAccessibilityLabel}
         accessibilityRole="button"
         className="bg-screen"
@@ -618,7 +621,7 @@ export const ThreadListRow = memo(function ThreadListRow(props: {
       </Pressable>
     ) : (
       <Pressable
-        accessibilityHint="Opens the thread"
+        accessibilityHint={t("opensTheThread")}
         accessibilityLabel={threadAccessibilityLabel}
         accessibilityRole="button"
         accessibilityState={{ selected }}

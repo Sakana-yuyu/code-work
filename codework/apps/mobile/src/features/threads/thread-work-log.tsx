@@ -9,6 +9,7 @@ import type { ThreadFeedActivity } from "../../lib/threadActivity";
 import { MOBILE_TYPOGRAPHY } from "../../lib/typography";
 import { useThemeColor } from "../../lib/useThemeColor";
 import Animated, { FadeIn } from "react-native-reanimated";
+import { t } from "../../i18n";
 
 const WORK_LOG_LAYOUT_ANIMATION = {
   duration: 180,
@@ -144,7 +145,7 @@ export function ThreadWorkLog(props: {
     <View className="-mx-1 mb-1 px-1 py-0">
       {!onlyToolRows ? (
         <Text className="px-0.5 pb-0.5 font-t3-medium text-2xs text-foreground-muted opacity-60">
-          work log
+          {t("workLog")}
         </Text>
       ) : null}
 
@@ -165,9 +166,7 @@ export function ThreadWorkLog(props: {
                 accessibilityRole={canExpand ? "button" : undefined}
                 accessibilityLabel={displayText}
                 accessibilityHint={
-                  canExpand
-                    ? "Double tap to show full details. Long press to copy."
-                    : "Long press to copy."
+                  canExpand ? t("doubleTapToShowFullDetailsLongPressToCopy") : t("longPressToCopy")
                 }
                 accessibilityState={canExpand ? { expanded } : undefined}
                 hitSlop={4}
@@ -211,7 +210,7 @@ export function ThreadWorkLog(props: {
                   <View className="shrink-0 flex-row items-center gap-px">
                     {props.copiedRowId === row.id ? (
                       <Text className="pr-1 font-t3-medium text-3xs text-emerald-600 dark:text-emerald-400">
-                        Copied
+                        {t("diagnostics.copied")}
                       </Text>
                     ) : null}
                     <View className="h-4 w-4 items-center justify-center">
@@ -289,10 +288,13 @@ export function ThreadWorkGroupToggle(props: {
     : props.hiddenCount === 1
       ? "log entry"
       : "log entries";
-  const collapsedLabel = `Show ${props.hiddenCount} previous ${noun}`;
+  const collapsedLabel = t("interface.show-value-previous-value", {
+    value1: props.hiddenCount,
+    value2: noun,
+  });
   const expandedLabel = props.onlyToolActivities
-    ? "Show fewer tool calls"
-    : "Show fewer log entries";
+    ? t("interface.show-fewer-tool-calls")
+    : t("interface.show-fewer-log-entries");
 
   return (
     <View className="-mx-1 mb-1 px-1 py-0">
@@ -323,7 +325,9 @@ export function ThreadWorkGroupToggle(props: {
           />
         </View>
         <Text className="font-t3-medium text-xs text-foreground opacity-80">
-          {props.expanded ? expandedLabel : `+${props.hiddenCount} previous ${noun}`}
+          {props.expanded
+            ? expandedLabel
+            : t("previous", { hiddenCount: props.hiddenCount, noun: noun })}
         </Text>
       </Pressable>
     </View>

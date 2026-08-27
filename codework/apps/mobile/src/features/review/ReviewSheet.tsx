@@ -74,6 +74,7 @@ import { resolveSelectedReviewFileId } from "./reviewPaneSelection";
 import { buildReviewSectionMenu } from "./review-section-menu";
 import type { ReviewSectionItem } from "./reviewModel";
 import { reportShowcaseSceneRendered } from "../showcase/showcaseRenderSignal";
+import { t } from "../../i18n";
 
 const REVIEW_HEADER_SPACING = 0;
 const SHOWCASE_ENABLED = process.env.EXPO_PUBLIC_SHOWCASE === "1";
@@ -82,7 +83,7 @@ const ReviewNotice = memo(function ReviewNotice(props: { readonly notice: string
   return (
     <View className="border-b border-amber-200 bg-amber-50 px-4 py-3 dark:border-amber-900/60 dark:bg-amber-950/40">
       <Text className="text-xs font-t3-bold uppercase text-amber-700 dark:text-amber-300">
-        Partial diff
+        {t("partialDiff")}
       </Text>
       <Text className="text-xs leading-normal text-amber-800 dark:text-amber-200">
         {props.notice}
@@ -308,7 +309,7 @@ function ReviewFileNavigator({
               hideShadow={false}
               navigationItemStyle="editor"
               subtitle={`${files.length} ${files.length === 1 ? "file" : "files"}`}
-              title="Changed files"
+              title={t("changedFiles")}
               titleColor={foregroundColor}
               titleFontSize={17}
               titleFontWeight="700"
@@ -324,9 +325,9 @@ function ReviewFileNavigator({
     <View className="flex-1 border-l border-border bg-sheet">
       <View className="border-b border-border" style={{ paddingTop: headerInset }}>
         <View className="px-4 py-3">
-          <Text className="text-sm font-t3-bold text-foreground">Changed files</Text>
+          <Text className="text-sm font-t3-bold text-foreground">{t("changedFiles")}</Text>
           <Text className="text-xs text-foreground-muted">
-            {files.length} {files.length === 1 ? "file" : "files"}
+            {files.length} {files.length === 1 ? t("file") : t("files")}
           </Text>
         </View>
       </View>
@@ -532,7 +533,7 @@ export function ReviewSheet(props: ReviewSheetProps) {
   const androidSectionMenuActions = useMemo<MenuAction[]>(() => {
     const sectionAction = (section: ReviewSectionItem | null, title: string): MenuAction => ({
       id: section ? `section:${section.id}` : `unavailable:${title}`,
-      title: section?.id === selectedSection?.id ? `${title} (selected)` : title,
+      title: section?.id === selectedSection?.id ? t("selected2", { title: title }) : title,
       attributes: section ? undefined : { disabled: true },
     });
     const actions: MenuAction[] = [
@@ -544,10 +545,13 @@ export function ReviewSheet(props: ReviewSheetProps) {
     if (sectionMenu.turns.length > 0) {
       actions.push({
         id: "turns",
-        title: "Turn",
+        title: t("turn"),
         subactions: sectionMenu.turns.map((section) => ({
           id: `section:${section.id}`,
-          title: section.id === selectedSection?.id ? `${section.title} (selected)` : section.title,
+          title:
+            section.id === selectedSection?.id
+              ? t("selected2", { title: section.title })
+              : section.title,
           subtitle: section.subtitle ?? undefined,
         })),
       });
@@ -557,7 +561,7 @@ export function ReviewSheet(props: ReviewSheetProps) {
     // stays a menu action there (iOS refreshes via pull-to-refresh instead).
     actions.push({
       id: "refresh",
-      title: "Refresh current diff",
+      title: t("refreshCurrentDiff"),
       attributes: {
         disabled: !selectedSection || selectedSection.isLoading,
       },
@@ -608,7 +612,7 @@ export function ReviewSheet(props: ReviewSheetProps) {
     if (error) {
       children.push(
         <View key="review-error" className="border-b border-border bg-card px-4 py-3">
-          <Text className="text-sm font-t3-bold text-foreground">Review unavailable</Text>
+          <Text className="text-sm font-t3-bold text-foreground">{t("reviewUnavailable")}</Text>
           <Text className="text-xs leading-normal text-foreground-muted">{error}</Text>
         </View>,
       );
@@ -657,8 +661,8 @@ export function ReviewSheet(props: ReviewSheetProps) {
 
       {isAndroid ? (
         <AndroidScreenHeader
-          title="Review changes"
-          subtitle={androidHeaderSubtitle || "Select a diff"}
+          title={t("reviewChanges")}
+          subtitle={androidHeaderSubtitle || t("selectADiff")}
           onBack={handleReturnToThread}
           trailing={
             showSectionToolbar ? (
@@ -668,7 +672,7 @@ export function ReviewSheet(props: ReviewSheetProps) {
                 onPressAction={handleAndroidSectionMenuAction}
               >
                 <AndroidHeaderIconButton
-                  accessibilityLabel="Select review diff"
+                  accessibilityLabel={t("selectReviewDiff")}
                   icon="ellipsis.circle"
                 />
               </ControlPillMenu>
@@ -679,7 +683,7 @@ export function ReviewSheet(props: ReviewSheetProps) {
 
       <WorkspaceSidebarToolbar>
         <NativeHeaderToolbar.Button
-          accessibilityLabel="Back to chat"
+          accessibilityLabel={t("backToChat")}
           icon="chevron.left"
           onPress={handleReturnToThread}
         />
@@ -690,7 +694,7 @@ export function ReviewSheet(props: ReviewSheetProps) {
           {panes.supportsAuxiliaryPane ? (
             <NativeHeaderToolbar.Button
               accessibilityLabel={
-                panes.auxiliaryPaneVisible ? "Hide changed files" : "Show changed files"
+                panes.auxiliaryPaneVisible ? t("hideChangedFiles") : t("showChangedFiles")
               }
               icon="sidebar.right"
               onPress={toggleAuxiliaryPane}
@@ -709,7 +713,7 @@ export function ReviewSheet(props: ReviewSheetProps) {
             />
           ) : null}
           {showSectionToolbar ? (
-            <NativeHeaderToolbar.Menu icon="ellipsis" title="Select diff" separateBackground>
+            <NativeHeaderToolbar.Menu icon="ellipsis" title={t("selectDiff")} separateBackground>
               <NativeHeaderToolbar.Menu inline>
                 <NativeHeaderToolbar.MenuAction
                   disabled={sectionMenu.workingTree === null}
@@ -720,7 +724,7 @@ export function ReviewSheet(props: ReviewSheetProps) {
                     }
                   }}
                 >
-                  <NativeHeaderToolbar.Label>Working tree</NativeHeaderToolbar.Label>
+                  <NativeHeaderToolbar.Label>{t("workingTree")}</NativeHeaderToolbar.Label>
                 </NativeHeaderToolbar.MenuAction>
                 <NativeHeaderToolbar.MenuAction
                   disabled={sectionMenu.branchChanges === null}
@@ -731,7 +735,7 @@ export function ReviewSheet(props: ReviewSheetProps) {
                     }
                   }}
                 >
-                  <NativeHeaderToolbar.Label>Branch changes</NativeHeaderToolbar.Label>
+                  <NativeHeaderToolbar.Label>{t("branchChanges")}</NativeHeaderToolbar.Label>
                 </NativeHeaderToolbar.MenuAction>
                 <NativeHeaderToolbar.MenuAction
                   disabled={sectionMenu.latestTurn === null}
@@ -742,10 +746,10 @@ export function ReviewSheet(props: ReviewSheetProps) {
                     }
                   }}
                 >
-                  <NativeHeaderToolbar.Label>Latest turn</NativeHeaderToolbar.Label>
+                  <NativeHeaderToolbar.Label>{t("latestTurn")}</NativeHeaderToolbar.Label>
                 </NativeHeaderToolbar.MenuAction>
                 {sectionMenu.turns.length > 0 ? (
-                  <NativeHeaderToolbar.Menu title="Turn">
+                  <NativeHeaderToolbar.Menu title={t("turn")}>
                     {sectionMenu.turns.map((section) => (
                       <NativeHeaderToolbar.MenuAction
                         key={section.id}
@@ -838,21 +842,21 @@ export function ReviewSheet(props: ReviewSheetProps) {
             {listHeader}
             {!selectedSection ? (
               <View className="border-b border-border bg-card px-4 py-5">
-                <Text className="text-sm font-t3-bold text-foreground">No review diffs</Text>
+                <Text className="text-sm font-t3-bold text-foreground">{t("noReviewDiffs")}</Text>
                 <Text className="text-xs leading-normal text-foreground-muted">
-                  This thread has no ready turn diffs and the worktree diff is empty.
+                  {t("thisThreadHasNoReadyTurnDiffsAndTheWorktreeDiffIsEmpty")}
                 </Text>
               </View>
             ) : selectedSection.isLoading && selectedSection.diff === null ? (
               <View className="items-center gap-3 border-b border-border bg-card px-4 py-6">
                 <ActivityIndicator size="small" />
-                <Text className="text-xs text-foreground-muted">Loading diff…</Text>
+                <Text className="text-xs text-foreground-muted">{t("loadingDiff")}</Text>
               </View>
             ) : parsedDiff.kind === "empty" ? (
               <View className="border-b border-border bg-card px-4 py-5">
-                <Text className="text-sm font-t3-bold text-foreground">No changes</Text>
+                <Text className="text-sm font-t3-bold text-foreground">{t("noChanges")}</Text>
                 <Text className="text-xs leading-normal text-foreground-muted">
-                  {selectedSection.subtitle ?? "This diff is empty."}
+                  {selectedSection.subtitle ?? t("thisDiffIsEmpty")}
                 </Text>
               </View>
             ) : parsedDiff.kind === "raw" ? (

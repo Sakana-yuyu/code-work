@@ -55,18 +55,18 @@ export function CommandPaletteContent({
             </KbdGroup>
             {footerActionLabel !== undefined ? (
               <KbdGroup className="items-center gap-1.5">
-                <Kbd>Enter</Kbd>
+                <Kbd>{t("enter")}</Kbd>
                 <span>{footerActionLabel}</span>
               </KbdGroup>
             ) : null}
             {showBackHint ? (
               <KbdGroup className="items-center gap-1.5">
-                <Kbd>Backspace</Kbd>
+                <Kbd>{t("backspace")}</Kbd>
                 <span>{t("back")}</span>
               </KbdGroup>
             ) : null}
             <KbdGroup className="items-center gap-1.5">
-              <Kbd>Esc</Kbd>
+              <Kbd>{t("esc")}</Kbd>
               <span>{escapeLabel}</span>
             </KbdGroup>
           </div>

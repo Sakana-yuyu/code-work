@@ -33,7 +33,10 @@ import {
   SidebarMenuItem,
   useSidebar,
 } from "../ui/sidebar";
-import { CodeworkConnectSidebarAvatar, CodeworkConnectSidebarSignIn } from "../clerk/CodeworkConnectSidebarSignIn";
+import {
+  CodeworkConnectSidebarAvatar,
+  CodeworkConnectSidebarSignIn,
+} from "../clerk/CodeworkConnectSidebarSignIn";
 import { SidebarUtilityMenu } from "../sidebar/SidebarChrome";
 import { scrollToSettingsTarget } from "./settingsLayout";
 import {
@@ -196,7 +199,7 @@ export function SettingsSidebarNav({ pathname }: { pathname: string }) {
               }}
               onKeyDown={handleSearchKeyDown}
               placeholder={t("search")}
-              aria-label={t("searchSettings")}
+              aria-label={t("settings.searchSettings")}
               role="combobox"
               aria-autocomplete="list"
               aria-expanded={isSearching && hasResults}
@@ -214,7 +217,7 @@ export function SettingsSidebarNav({ pathname }: { pathname: string }) {
                 size="icon-micro"
                 variant="ghost"
                 className="shrink-0 text-sidebar-muted-foreground hover:bg-sidebar-control-surface hover:text-sidebar-foreground"
-                aria-label={t("clearSettingsSearch")}
+                aria-label={t("settings.clearSettingsSearch")}
                 onClick={() => {
                   clearSearch();
                   searchInputRef.current?.focus();
@@ -231,14 +234,14 @@ export function SettingsSidebarNav({ pathname }: { pathname: string }) {
               role="status"
               className="px-2 py-6 text-center text-xs text-sidebar-muted-foreground"
             >
-              {t("noSettingsFound")}
+              {t("settings.noSettingsFound")}
             </p>
           ) : null}
           <SidebarMenu
             className="ps-px"
             id={isSearching && hasResults ? "settings-search-results" : undefined}
             role={isSearching && hasResults ? "listbox" : undefined}
-            aria-label={isSearching && hasResults ? "Settings search results" : undefined}
+            aria-label={isSearching && hasResults ? t("settingsSearchResults") : undefined}
           >
             {isSearching
               ? results.map((item, index) => (

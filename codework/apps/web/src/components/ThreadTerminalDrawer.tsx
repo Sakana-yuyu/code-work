@@ -265,8 +265,8 @@ export type TerminalContextMenuAction = "add-to-chat" | "copy" | "paste";
 /** Post-selection popup: just the two selection actions, always enabled. */
 export function terminalSelectionMenuItems(): ContextMenuItem<"add-to-chat" | "copy">[] {
   return [
-    { id: "add-to-chat", label: "Add to chat" },
-    { id: "copy", label: "Copy" },
+    { id: "add-to-chat", label: t("addToChat") },
+    { id: "copy", label: t("copy") },
   ];
 }
 
@@ -284,7 +284,7 @@ export function terminalContextMenuItems(options: {
       ...item,
       disabled: !options.hasSelection,
     })),
-    { id: "paste", label: "Paste" },
+    { id: "paste", label: t("paste") },
   ];
 }
 
@@ -897,7 +897,9 @@ export function TerminalViewport({
         setupTerminal = null;
         if (cancelled) return;
         const message =
-          error instanceof Error ? error.message : "Unable to initialize libghostty-vt";
+          error instanceof Error
+            ? error.message
+            : t("interface.unable-to-initialize-libghostty-vt");
         mount.textContent = `${message} — close and reopen the terminal to retry.`;
       });
 
@@ -1410,7 +1412,7 @@ export default function ThreadTerminalDrawer({
           />
         ) : null}
         <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-3 px-4 py-6 text-center text-sm text-muted-foreground">
-          <p>No terminal sessions for this thread yet.</p>
+          <p>{t("noTerminalSessionsForThisThreadYet")}</p>
           <Button size="xs" variant="outline" onClick={onNewTerminalAction}>
             {newTerminalActionLabel}
           </Button>
@@ -1635,10 +1637,10 @@ export default function ThreadTerminalDrawer({
                   const terminalCount = terminalGroup.terminalIds.length;
                   const isSplitGroup = terminalCount > 1;
                   const groupLabel = !isSplitGroup
-                    ? "Single"
+                    ? t("interface.single")
                     : terminalGroup.splitDirection === "vertical"
-                      ? "Stacked"
-                      : "Side by side";
+                      ? t("interface.stacked")
+                      : t("interface.side-by-side");
                   const GroupIcon = !isSplitGroup
                     ? Square
                     : terminalGroup.splitDirection === "vertical"
@@ -1669,9 +1671,11 @@ export default function ThreadTerminalDrawer({
                         {terminalGroup.terminalIds.map((terminalId) => {
                           const isActive = terminalId === resolvedActiveTerminalId;
                           const terminalLabel = terminalLabelById.get(terminalId) ?? "Terminal";
-                          const closeTerminalLabel = `Close ${terminalLabel}${
-                            isActive && closeShortcutLabel ? ` (${closeShortcutLabel})` : ""
-                          }`;
+                          const closeTerminalLabel = t("interface.close-value-value", {
+                            value1: terminalLabel,
+                            value2:
+                              isActive && closeShortcutLabel ? ` (${closeShortcutLabel})` : "",
+                          });
                           return (
                             <div
                               key={terminalId}

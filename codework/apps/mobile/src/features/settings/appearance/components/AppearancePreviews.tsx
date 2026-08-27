@@ -8,6 +8,7 @@ import {
 import { useThemeColor } from "../../../../lib/useThemeColor";
 import { getMobileTerminalTheme } from "../../../terminal/terminalTheme";
 import { useAppearancePreferences } from "../AppearancePreferencesProvider";
+import { t } from "../../../../i18n";
 
 const CODE_FONT_FAMILY = Platform.select({
   ios: "ui-monospace",
@@ -30,13 +31,13 @@ export function TextAppearancePreview(props: { readonly fontSize: number }) {
         className="text-foreground"
         style={{ fontSize: sizes.m, lineHeight: sizes.bodyLineHeight }}
       >
-        The quick brown fox jumps over the lazy dog.
+        {t("theQuickBrownFoxJumpsOverTheLazyDog")}
       </Text>
       <Text
         className="text-foreground-muted"
         style={{ fontSize: sizes.s, lineHeight: Math.round(sizes.s * 1.4) }}
       >
-        Messages, labels, and headings scale with this size.
+        {t("messagesLabelsAndHeadingsScaleWithThisSize")}
       </Text>
     </View>
   );
@@ -76,12 +77,12 @@ export function TerminalAppearancePreview(props: { readonly fontSize: number }) 
       </Text>
       <Text style={span(theme.foreground)}>
         <Text style={span(theme.palette[2])}>VITE v7.1.1</Text>
-        <Text style={span(theme.mutedForeground)}> ready in</Text>
+        <Text style={span(theme.mutedForeground)}> {t("readyIn")}</Text>
         <Text style={span(theme.foreground)}> 1.24s</Text>
       </Text>
       <Text style={span(theme.foreground)}>
         <Text style={span(theme.palette[2])}>→ </Text>
-        <Text style={span(theme.mutedForeground)}>Local: </Text>
+        <Text style={span(theme.mutedForeground)}>{t("local")} </Text>
         <Text style={span(theme.palette[6], { textDecorationLine: "underline" })}>
           http://127.0.0.1:5173/
         </Text>

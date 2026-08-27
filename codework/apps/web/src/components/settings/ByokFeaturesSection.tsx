@@ -272,7 +272,7 @@ export function ByokFeaturesSection(props: ByokFeaturesSectionProps) {
             </span>
             <Input
               value={delegation.executorCommand}
-              placeholder="claude"
+              placeholder={t("claude2")}
               onChange={(event) => patchDelegation({ executorCommand: event.target.value })}
             />
           </label>
@@ -418,9 +418,9 @@ export function ByokFeaturesSection(props: ByokFeaturesSectionProps) {
         <p className="text-muted-foreground text-xs">{t("byokFeatures.importDescription")}</p>
         <textarea
           className="border-input bg-background min-h-24 w-full rounded-md border px-3 py-2 font-mono text-xs"
-          placeholder={
-            "modelAdapters:\n  - displayName: Example\n    type: openai\n    baseURL: https://api.example.com/v1\n    apiKey: sk-...\n    modelID: example-model"
-          }
+          placeholder={t(
+            "modeladaptersDisplaynameExampleTypeOpenaiBaseurlHttpsApiExampleComV1Apik",
+          )}
           value={importYaml}
           onChange={(event) => setImportYaml(event.target.value)}
         />

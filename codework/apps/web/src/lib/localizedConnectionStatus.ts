@@ -1,6 +1,6 @@
 import type { EnvironmentConnectionPresentation } from "@codework/client-runtime/connection";
 
-import { t } from "~/i18n";
+import { t } from "~/i18n/runtime";
 
 /**
  * Localized replacements for the English strings produced by

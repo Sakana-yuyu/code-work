@@ -44,8 +44,10 @@ export function ContextWindowMeter(props: {
             className="size-7 rounded-full hover:text-muted-foreground data-pressed:text-muted-foreground"
             aria-label={
               usage.maxTokens !== null && usedPercentage
-                ? `Context window ${usedPercentage} used`
-                : `Context window ${formatContextWindowTokens(usage.usedTokens)} tokens used`
+                ? t("contextWindowUsed", { usedPercentage: usedPercentage })
+                : t("contextWindowTokensUsed", {
+                    value1: formatContextWindowTokens(usage.usedTokens),
+                  })
             }
           >
             <span className="relative flex size-5 items-center justify-center">
@@ -88,7 +90,7 @@ export function ContextWindowMeter(props: {
       >
         <div className="flex flex-col gap-2 p-[var(--floating-content-inset)]">
           <div className="flex items-center justify-between gap-3">
-            <div className="font-medium text-muted-foreground text-xs">Context Window</div>
+            <div className="font-medium text-muted-foreground text-xs">{t("contextWindow")}</div>
             {usage.maxTokens !== null && usedPercentage ? (
               <div className="text-secondary-label text-[11px] tabular-nums">
                 <span>{usedPercentage}</span>

@@ -6,6 +6,7 @@ import { SidebarMenu, SidebarMenuButton, SidebarMenuItem } from "../ui/sidebar";
 import { MobileClientsUserProfilePage } from "./MobileClientsUserProfilePage";
 import { CodeworkConnectUserProfilePage } from "./CodeworkConnectUserProfilePage";
 import { useCodeworkConnectAuthPrompt } from "./useCodeworkConnectAuthPrompt";
+import { t } from "~/i18n";
 
 export function CodeworkConnectSidebarSignIn() {
   if (!hasCloudPublicConfig()) return null;
@@ -34,7 +35,7 @@ function ConfiguredCodeworkConnectSidebarAvatar() {
       }}
     >
       <UserButton.UserProfilePage
-        label="Mobile clients"
+        label={t("mobileClients")}
         labelIcon={<SmartphoneIcon className="size-4" />}
         url="mobile-clients"
       >
@@ -63,7 +64,7 @@ function ConfiguredCodeworkConnectSidebarSignIn() {
         <SidebarMenuItem>
           <SidebarMenuButton onClick={openAuthPrompt}>
             <LogInIcon />
-            <span>Sign in to Code Work Connect</span>
+            <span>{t("signInToCodeWorkConnect")}</span>
           </SidebarMenuButton>
         </SidebarMenuItem>
       </SidebarMenu>

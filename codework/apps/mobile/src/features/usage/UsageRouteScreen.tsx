@@ -23,12 +23,13 @@ import { SettingsSection } from "../settings/components/SettingsSection";
 import { UsageDailyChart } from "./UsageDailyChart";
 import type { UsageChartMetric } from "./usageChartData";
 import { PROVIDER_LABEL, useProviderColors } from "./usageProviders";
+import { t } from "../../i18n";
 
 const WINDOW_OPTIONS = [
-  { days: 1, label: "Past 24h" },
-  { days: 7, label: "7 days" },
-  { days: 30, label: "30 days" },
-  { days: 90, label: "90 days" },
+  { days: 1, labelKey: "usage.past24h" },
+  { days: 7, labelKey: "usage.past7Days" },
+  { days: 30, labelKey: "usage.past30Days" },
+  { days: 90, labelKey: "usage.past90Days" },
 ] as const;
 
 const CHART_HEIGHT = 180;
@@ -98,7 +99,7 @@ export function UsageRouteScreen() {
       {Platform.OS === "android" ? (
         <>
           <NativeStackScreenOptions options={{ headerShown: false }} />
-          <AndroidScreenHeader title="Usage" onBack={() => navigation.goBack()} />
+          <AndroidScreenHeader title={t("usage")} onBack={() => navigation.goBack()} />
         </>
       ) : null}
       <ScrollView
@@ -110,7 +111,10 @@ export function UsageRouteScreen() {
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refreshWindow} />}
       >
         <SegmentedControl
-          options={WINDOW_OPTIONS.map((option) => ({ value: option.days, label: option.label }))}
+          options={WINDOW_OPTIONS.map((option) => ({
+            value: option.days,
+            label: t(option.labelKey),
+          }))}
           selected={windowDays}
           onSelect={selectWindow}
         />
@@ -119,11 +123,11 @@ export function UsageRouteScreen() {
 
         {isPending ? (
           <Text className="py-16 text-center text-base text-foreground-muted">
-            Scanning provider transcripts…
+            {t("scanningProviderTranscripts")}
           </Text>
         ) : environments.length === 0 ? (
           <Text className="py-16 text-center text-base text-foreground-muted">
-            Connect an environment to see usage.
+            {t("connectAnEnvironmentToSeeUsage")}
           </Text>
         ) : (
           <>
@@ -204,15 +208,15 @@ function ChartCard(props: {
       <View className="flex-row items-start justify-between gap-3">
         <View className="min-w-0 flex-1 gap-0.5">
           <Text className="text-sm text-foreground-muted">
-            {metric === "cost" ? "Raw token cost" : "Processed tokens"}
+            {metric === "cost" ? t("rawTokenCost") : t("processedTokens2")}
           </Text>
           <Text className="text-4xl font-t3-bold tabular-nums text-foreground">
             {metric === "cost" ? `${formatUsd(merged.costUsd)}*` : formatTokens(merged.totalTokens)}
           </Text>
           <Text className="text-sm text-foreground-muted">
             {metric === "cost"
-              ? "* if billed at full API rate"
-              : `Across ${formatCount(merged.sessions)} sessions`}
+              ? t("ifBilledAtFullApiRate")
+              : t("acrossSessions", { value1: formatCount(merged.sessions) })}
           </Text>
         </View>
         <MetricToggle metric={metric} onChange={props.onMetricChange} />
@@ -227,7 +231,7 @@ function ChartCard(props: {
         />
       ) : (
         <View style={{ height: CHART_HEIGHT }} className="items-center justify-center">
-          <Text className="text-base text-foreground-muted">No activity in this window.</Text>
+          <Text className="text-base text-foreground-muted">{t("noActivityInThisWindow")}</Text>
         </View>
       )}
 
@@ -307,7 +311,7 @@ function ProviderSection(props: {
   );
 
   return (
-    <SettingsSection title="Providers" card>
+    <SettingsSection title={t("providers2")} card>
       {ordered.map((provider, index) => {
         const share = metric === "cost" ? provider.costShare : provider.tokenShare;
         return (
@@ -338,8 +342,14 @@ function ProviderSection(props: {
             </View>
             <Text className="text-sm text-foreground-muted">
               {metric === "cost"
-                ? `${formatPercent(share)} of cost · ${formatTokens(provider.totalTokens)} tokens`
-                : `${formatPercent(share)} of tokens · ${formatUsd(provider.costUsd)}`}
+                ? t("ofCostTokens", {
+                    value1: formatPercent(share),
+                    value2: formatTokens(provider.totalTokens),
+                  })
+                : t("ofTokens", {
+                    value1: formatPercent(share),
+                    value2: formatUsd(provider.costUsd),
+                  })}
             </Text>
           </View>
         );
@@ -358,41 +368,46 @@ function TotalsSection(props: { readonly merged: MergedUsage; readonly isPast24H
   const cachedShare = observedInput === 0 ? 0 : merged.cachedInputTokens / observedInput;
 
   return (
-    <SettingsSection title="Totals" card>
+    <SettingsSection title={t("totals")} card>
       <View className="flex-row flex-wrap">
         <MetricCell
-          label="Processed tokens"
+          label={t("processedTokens2")}
           value={formatTokens(merged.totalTokens)}
-          detail={`${formatTokens(periodAverage)} per active ${props.isPast24Hours ? "hour" : "day"}`}
+          detail={t("perActive", {
+            value1: formatTokens(periodAverage),
+            value2: props.isPast24Hours ? "hour" : "day",
+          })}
         />
         <MetricCell
-          label="Cache savings"
+          label={t("cacheSavings")}
           value={formatUsd(merged.costQuality.cacheSavingsUsd)}
           detail={
             merged.costUsd > 0
-              ? `${(merged.costQuality.cacheSavingsUsd / merged.costUsd).toFixed(1)}x the raw cost`
-              : "vs full input rates"
+              ? t("xTheRawCost", {
+                  value1: (merged.costQuality.cacheSavingsUsd / merged.costUsd).toFixed(1),
+                })
+              : t("vsFullInputRates")
           }
         />
         <MetricCell
-          label="Cached input"
+          label={t("cachedInput")}
           value={formatTokens(merged.cachedInputTokens)}
-          detail={`${formatPercent(cachedShare)} of observed input`}
+          detail={t("ofObservedInput", { value1: formatPercent(cachedShare) })}
         />
         <MetricCell
-          label="Uncached input"
+          label={t("uncachedInput")}
           value={formatTokens(merged.uncachedInputTokens)}
-          detail={`${formatTokens(merged.cacheCreationTokens)} cache writes`}
+          detail={t("cacheWrites", { value1: formatTokens(merged.cacheCreationTokens) })}
         />
         <MetricCell
-          label="Output"
+          label={t("output")}
           value={formatTokens(merged.outputTokens)}
-          detail={`incl. ${formatTokens(merged.reasoningTokens)} reasoning`}
+          detail={t("inclReasoning", { value1: formatTokens(merged.reasoningTokens) })}
         />
         <MetricCell
-          label="Unpriced"
+          label={t("unpriced")}
           value={formatPercent(merged.costQuality.unpricedShare)}
-          detail="of records, excluded from cost"
+          detail={t("ofRecordsExcludedFromCost")}
         />
       </View>
     </SettingsSection>
@@ -419,7 +434,7 @@ function ModelsSection(props: { readonly merged: MergedUsage }) {
   if (merged.models.length === 0) return null;
 
   return (
-    <SettingsSection title="By model" card>
+    <SettingsSection title={t("byModel")} card>
       {merged.models.map((model, index) => (
         <View
           key={`${model.provider}:${model.model}`}
@@ -438,7 +453,8 @@ function ModelsSection(props: { readonly merged: MergedUsage }) {
               {model.model}
             </Text>
             <Text className="text-sm text-foreground-muted">
-              {formatPercent(model.costShare)} of cost · {formatTokens(model.totalTokens)} tokens
+              {formatPercent(model.costShare)} {t("ofCost")} {formatTokens(model.totalTokens)}{" "}
+              {t("tokens")}
             </Text>
           </View>
           <Text className="text-base tabular-nums text-foreground">{formatUsd(model.costUsd)}</Text>
@@ -476,22 +492,22 @@ function UsageCoverageNotice(props: {
     <View className="gap-1 rounded-[16px] border-continuous bg-card px-4 py-3">
       {props.isPartial ? (
         <Text className="text-sm text-foreground-muted">
-          Some environments are still reporting. Totals are partial.
+          {t("someEnvironmentsAreStillReportingTotalsArePartial")}
         </Text>
       ) : null}
       {failed.map((environment) => (
         <Text key={environment.environmentId} className="text-sm text-foreground-muted">
-          {environment.label} could not report usage.
+          {environment.label} {t("couldNotReportUsage")}
         </Text>
       ))}
       {stale.map((environment) => (
         <Text key={environment.environmentId} className="text-sm text-foreground-muted">
-          {environment.label} runs an older server version and is excluded from totals.
+          {environment.label} {t("runsAnOlderServerVersionAndIsExcludedFromTotals")}
         </Text>
       ))}
       {duplicateSources.length > 0 ? (
         <Text className="text-sm text-foreground-muted">
-          Counted once across environments sharing a transcript directory:{" "}
+          {t("countedOnceAcrossEnvironmentsSharingATranscriptDirectory")}{" "}
           {duplicateSources.join(", ")}
         </Text>
       ) : null}

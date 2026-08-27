@@ -4,6 +4,7 @@ import { XIcon } from "lucide-react";
 import { cn } from "~/lib/utils";
 import { Alert, AlertAction, AlertDescription, AlertTitle } from "../ui/alert";
 import { Button } from "../ui/button";
+import { t } from "~/i18n";
 
 const DISMISS_TRANSITION_MS = 220;
 const frontExitStyle = {
@@ -222,7 +223,7 @@ function ComposerBannerStackAlert({
             <Button
               size="icon-xs"
               variant="ghost"
-              aria-label={item.dismissLabel ?? "Dismiss warning"}
+              aria-label={item.dismissLabel ?? t("dismissWarning")}
               disabled={exiting}
               onClick={onDismissRequest}
             >

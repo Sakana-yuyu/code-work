@@ -25,6 +25,7 @@ import { useAtomCommand } from "./use-atom-command";
 import { showGitActionResult } from "./use-vcs-action-state";
 import { useThreadSelection } from "./use-thread-selection";
 import { useSelectedThreadWorktree } from "./use-selected-thread-worktree";
+import { t } from "../i18n/runtime";
 
 export function useSelectedThreadGitActions() {
   const updateThreadMetadata = useAtomCommand(threadEnvironment.updateMetadata, {
@@ -99,13 +100,14 @@ export function useSelectedThreadGitActions() {
             target,
             {
               operation: "refresh_status",
-              label: "Refreshing source control status",
+              label: t("refreshingSourceControlStatus"),
             },
             execute,
           );
       if (AsyncResult.isFailure(result)) {
         const error = Cause.squash(result.cause);
-        const message = error instanceof Error ? error.message : "Failed to refresh git status.";
+        const message =
+          error instanceof Error ? error.message : t("interface.failed-to-refresh-git-status");
         setPendingConnectionError(message);
         return null;
       }
@@ -154,9 +156,9 @@ export function useSelectedThreadGitActions() {
           : await vcsActionManager.track(appAtomRegistry, target, { operation, label }, run);
       if (AsyncResult.isFailure(result)) {
         const error = Cause.squash(result.cause);
-        const message = error instanceof Error ? error.message : "Git action failed.";
+        const message = error instanceof Error ? error.message : t("interface.git-action-failed");
         setPendingConnectionError(message);
-        showGitActionResult({ type: "error", title: "Git action failed", description: message });
+        showGitActionResult({ type: "error", title: t("gitActionFailed"), description: message });
         return null;
       }
       return result.value;
@@ -309,8 +311,8 @@ export function useSelectedThreadGitActions() {
           type: "success",
           title:
             result.value.status === "skipped_up_to_date"
-              ? "Already up to date"
-              : `Pulled latest on ${result.value.refName}`,
+              ? t("gitHint.alreadyUpToDate")
+              : t("pulledLatestOn", { refName: result.value.refName }),
         });
         return result;
       },

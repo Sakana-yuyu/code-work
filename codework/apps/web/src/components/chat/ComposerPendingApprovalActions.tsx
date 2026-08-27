@@ -5,6 +5,7 @@ import {
 } from "@codework/contracts";
 import { memo } from "react";
 import { Button } from "../ui/button";
+import { t } from "~/i18n";
 
 interface ComposerPendingApprovalActionsProps {
   requestId: ApprovalRequestId;
@@ -18,10 +19,30 @@ interface ComposerPendingApprovalActionsProps {
 
 const APPROVAL_ACTION_CLASS_NAME = "font-normal";
 const DEFAULT_APPROVAL_OPTIONS = [
-  { decision: "cancel", label: "Cancel" },
-  { decision: "decline", label: "Decline" },
-  { decision: "acceptForSession", label: "Always allow this session" },
-  { decision: "accept", label: "Approve" },
+  {
+    decision: "cancel",
+    get label() {
+      return t("cancel");
+    },
+  },
+  {
+    decision: "decline",
+    get label() {
+      return t("decline");
+    },
+  },
+  {
+    decision: "acceptForSession",
+    get label() {
+      return t("alwaysAllowThisSession");
+    },
+  },
+  {
+    decision: "accept",
+    get label() {
+      return t("approve");
+    },
+  },
 ] satisfies ReadonlyArray<ProviderApprovalOption>;
 
 export const ComposerPendingApprovalActions = memo(function ComposerPendingApprovalActions({

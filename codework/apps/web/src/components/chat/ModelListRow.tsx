@@ -73,7 +73,7 @@ export const ModelListRow = memo(function ModelListRow(props: {
               className="shrink-0 rounded border border-update/35 bg-update/15 px-0.5 py-px text-[10px] font-bold uppercase leading-none tracking-wide text-update-foreground"
               aria-label={t("newModel")}
             >
-              New
+              {t("new")}
             </span>
           ) : null}
         </div>
@@ -109,7 +109,11 @@ export const ModelListRow = memo(function ModelListRow(props: {
                   event.stopPropagation();
                 }}
                 disabled={Boolean(props.disabledReason)}
-                aria-label={props.isFavorite ? "Remove from favorites" : "Add to favorites"}
+                aria-label={
+                  props.isFavorite
+                    ? t("providerModels.removeFavorite")
+                    : t("providerModels.addFavorite")
+                }
               >
                 <StarIcon
                   className={cn(
@@ -121,7 +125,9 @@ export const ModelListRow = memo(function ModelListRow(props: {
             }
           />
           <TooltipPopup side="top" align="center">
-            {props.isFavorite ? "Remove from favorites" : "Add to favorites"}
+            {props.isFavorite
+              ? t("providerModels.removeFavorite")
+              : t("providerModels.addFavorite")}
           </TooltipPopup>
         </Tooltip>
       </div>

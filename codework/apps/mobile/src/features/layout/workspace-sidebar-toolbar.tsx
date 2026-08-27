@@ -3,6 +3,7 @@ import type { ReactNode } from "react";
 import { Platform } from "react-native";
 
 import { useAdaptiveWorkspaceLayout } from "./AdaptiveWorkspaceLayout";
+import { t } from "../../i18n";
 
 export function WorkspaceSidebarToolbar(
   props: {
@@ -21,7 +22,7 @@ export function WorkspaceSidebarToolbar(
       {props.children}
       <NativeHeaderToolbar.Button
         accessibilityLabel={
-          panes.primarySidebarVisible ? "Maximize content" : "Show thread sidebar"
+          panes.primarySidebarVisible ? t("maximizeContent") : t("showThreadSidebar")
         }
         icon={panes.primarySidebarVisible ? "arrow.up.left.and.arrow.down.right" : "sidebar.left"}
         onPress={togglePrimarySidebar}

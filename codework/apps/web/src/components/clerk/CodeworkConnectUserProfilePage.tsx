@@ -22,6 +22,7 @@ import {
   ClerkUserProfileRefreshButton,
   ClerkUserProfileRow,
 } from "./ClerkUserProfilePage";
+import { t } from "~/i18n";
 
 const linkedAtFormatter = new Intl.DateTimeFormat(undefined, { dateStyle: "medium" });
 
@@ -66,7 +67,7 @@ export function CodeworkConnectEnvironmentRow(props: {
                 className="text-[0.8125rem]"
                 disabled={props.mutationPending}
               >
-                Deregister
+                {t("deregister")}
               </Button>
             }
           />
@@ -77,17 +78,17 @@ export function CodeworkConnectEnvironmentRow(props: {
             <div
               className="rounded-lg border border-input bg-muted/32 px-5 py-4 shadow-xs/5"
               role="group"
-              aria-label={`Confirm deregistration of ${environment.label}`}
+              aria-label={t("confirmDeregistrationOf", { label: environment.label })}
             >
               <h4 className="text-[0.8125rem] leading-[1.125rem] font-semibold text-foreground">
-                Deregister server
+                {t("deregisterServer")}
               </h4>
               <p className="mt-1 text-[0.8125rem] leading-[1.125rem] text-muted-foreground">
-                “{environment.label}” will be removed from this account.
+                “{environment.label}
+                {t("willBeRemovedFromThisAccount")}
               </p>
               <p className="mt-4 max-w-xl text-[0.8125rem] leading-[1.125rem] text-muted-foreground">
-                Code Work Connect access will be revoked, any managed tunnel will be removed, and a host
-                space will become available. Local connections on your devices are not changed.
+                {t("codeWorkConnectAccessWillBeRevokedAnyManagedTunnelWillBeRemovedAndAHostS")}
               </p>
               <div className="mt-4 flex justify-end gap-2">
                 <Button
@@ -97,7 +98,7 @@ export function CodeworkConnectEnvironmentRow(props: {
                   disabled={props.mutationPending}
                   onClick={() => props.onConfirmationChange(false)}
                 >
-                  Cancel
+                  {t("cancel")}
                 </Button>
                 <Button
                   size="sm"
@@ -106,7 +107,7 @@ export function CodeworkConnectEnvironmentRow(props: {
                   disabled={props.mutationPending}
                   onClick={() => props.onDeregister(environment)}
                 >
-                  {props.mutationPending ? "Deregistering…" : "Deregister"}
+                  {props.mutationPending ? t("deregistering") : t("deregister")}
                 </Button>
               </div>
             </div>
@@ -156,15 +157,16 @@ export function CodeworkConnectUserProfilePage() {
       environmentsState.refresh();
       toastManager.add({
         type: "success",
-        title: "Server deregistered",
-        description: "Code Work Connect access was revoked and a host space is now available.",
+        title: t("serverDeregistered"),
+        description: t("codeWorkConnectAccessWasRevokedAndAHostSpaceIsNowAvailable"),
       });
       return;
     }
     if (isAtomCommandInterrupted(result)) return;
 
     const cause = squashAtomCommandFailure(result);
-    const message = cause instanceof Error ? cause.message : "Could not deregister the server.";
+    const message =
+      cause instanceof Error ? cause.message : t("interface.could-not-deregister-the-server");
     const traceId = findErrorTraceId(cause);
     console.error("[t3-connect] Could not deregister environment", {
       environmentId: environment.environmentId,
@@ -174,7 +176,7 @@ export function CodeworkConnectUserProfilePage() {
     });
     toastManager.add({
       type: "error",
-      title: "Could not deregister server",
+      title: t("couldNotDeregisterServer"),
       description: message,
       data: traceId
         ? {
@@ -201,7 +203,7 @@ export function CodeworkConnectUserProfilePage() {
   return (
     <ClerkUserProfilePage
       title="Code Work Connect"
-      description="Environments registered to your account. Connections on this device are managed in Settings."
+      description={t("environmentsRegisteredToYourAccountConnectionsOnThisDeviceAreManagedInSe")}
       action={
         <ClerkUserProfileRefreshButton
           disabled={deregisteringEnvironmentId !== null}
@@ -214,7 +216,7 @@ export function CodeworkConnectUserProfilePage() {
         {environmentsState.error ? (
           <div className="mb-4 border-t border-destructive/35 py-3 text-[0.8125rem]" role="alert">
             <p className="font-medium text-destructive-foreground">
-              Could not load Code Work Connect environments
+              {t("couldNotLoadCodeWorkConnectEnvironments")}
             </p>
             <p className="mt-1 text-xs text-muted-foreground">{environmentsState.error}</p>
           </div>
@@ -222,7 +224,7 @@ export function CodeworkConnectUserProfilePage() {
 
         {isInitialLoad ? (
           <p className="border-t py-4 text-[0.8125rem] text-muted-foreground" role="status">
-            Loading environments…
+            {t("loadingEnvironments")}
           </p>
         ) : environments.length > 0 ? (
           <ul className="border-t">
@@ -246,10 +248,10 @@ export function CodeworkConnectUserProfilePage() {
             </EmptyMedia>
             <EmptyHeader>
               <EmptyTitle className="text-[1.0625rem] leading-6">
-                No Code Work Connect environments
+                {t("noCodeWorkConnectEnvironments")}
               </EmptyTitle>
               <EmptyDescription className="text-[0.8125rem] leading-[1.125rem]">
-                Link an environment from its local Settings to make it available through Code Work Connect.
+                {t("linkAnEnvironmentFromItsLocalSettingsToMakeItAvailableThroughCodeWorkCon")}
               </EmptyDescription>
             </EmptyHeader>
           </Empty>

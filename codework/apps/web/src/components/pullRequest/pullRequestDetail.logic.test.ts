@@ -6,6 +6,9 @@ import {
   type PullRequestReviewThread,
 } from "@codework/contracts";
 import { describe, expect, it } from "vite-plus/test";
+import { setCurrentLanguage } from "~/i18n/runtime";
+
+setCurrentLanguage("en");
 
 import {
   buildAddSelectionToAgentHandoff,

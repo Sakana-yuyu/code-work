@@ -1,7 +1,7 @@
 import type { EnvironmentId, VcsRef, ProjectId } from "@codework/contracts";
 import * as Schema from "effect/Schema";
 import { toSortableTimestamp } from "../lib/threadSort";
-import { t } from "~/i18n";
+import { t } from "~/i18n/runtime";
 export {
   dedupeRemoteBranchesWithLocalMatches,
   deriveLocalBranchNameFromRemoteRef,

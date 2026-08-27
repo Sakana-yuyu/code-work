@@ -26,18 +26,28 @@ import { t } from "~/i18n";
 const MODE_OPTIONS: Record<SourceControlWritingStyleMode, { label: string; description: string }> =
   {
     repo_conventions: {
-      label: t("repositoryConventions"),
-      description: t("inEachProjectMatchesRecentChangeDescriptionsAndChangeRequest"),
+      get label() {
+        return t("repositoryConventions");
+      },
+      get description() {
+        return t("inEachProjectMatchesRecentChangeDescriptionsAndChangeRequest");
+      },
     },
     conventional_commits: {
-      label: t("conventionalCommits"),
-      description:
-        "Uses Conventional Commit prefixes for change descriptions; change request titles and descriptions stay concise.",
+      get label() {
+        return t("conventionalCommits");
+      },
+      get description() {
+        return t("usesConventionalCommitPrefixesForChangeDescriptionsChangeRequestTitlesAn");
+      },
     },
     custom: {
-      label: t("customInstructions"),
-      description:
-        "Applies your instructions to change descriptions and change request titles and descriptions in every project.",
+      get label() {
+        return t("customInstructions");
+      },
+      get description() {
+        return t("appliesYourInstructionsToChangeDescriptionsAndChangeRequestTitlesAndDesc");
+      },
     },
   };
 
@@ -104,7 +114,7 @@ export function SourceControlWritingSettingsSection() {
               });
             }}
           >
-            <SelectTrigger className="w-full sm:w-56" aria-label="Source control writing style">
+            <SelectTrigger className="w-full sm:w-56" aria-label={t("sourceControlWritingStyle")}>
               <SelectValue>{MODE_OPTIONS[style.mode].label}</SelectValue>
             </SelectTrigger>
             <SelectPopup align="end" alignItemWithTrigger={false}>
@@ -131,7 +141,7 @@ export function SourceControlWritingSettingsSection() {
               }}
               rows={4}
               placeholder={t("keepTitlesConciseUseShortBulletPointsInDescriptions")}
-              aria-label="Custom source control writing instructions"
+              aria-label={t("customSourceControlWritingInstructions")}
             />
           </div>
         ) : null}
@@ -139,9 +149,7 @@ export function SourceControlWritingSettingsSection() {
 
       <SettingsRow
         title={t("followChangeRequestTemplates")}
-        description={t(
-          "Structures change request descriptions using the current repository's template when one is available.",
-        )}
+        description={t("sourceControlTemplateDescription")}
         resetAction={
           style.followChangeRequestTemplates !== defaults.followChangeRequestTemplates ? (
             <SettingResetButton
@@ -166,7 +174,7 @@ export function SourceControlWritingSettingsSection() {
                 },
               })
             }
-            aria-label="Follow change request templates"
+            aria-label={t("followChangeRequestTemplates")}
           />
         }
       />
@@ -206,7 +214,7 @@ export function SourceControlWritingSettingsSection() {
                     : null,
                 })
               }
-              aria-label="Use a separate source control writer model"
+              aria-label={t("useASeparateSourceControlWriterModel")}
             />
           </div>
         }

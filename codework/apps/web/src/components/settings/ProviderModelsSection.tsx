@@ -400,7 +400,7 @@ export function ProviderModelsSection({
             event.preventDefault();
             handleAdd();
           }}
-          placeholder={driverKind ? CUSTOM_MODEL_PLACEHOLDER_BY_KIND[driverKind] : "model-slug"}
+          placeholder={driverKind ? CUSTOM_MODEL_PLACEHOLDER_BY_KIND[driverKind] : t("modelSlug")}
           spellCheck={false}
         />
         <Button className="shrink-0" variant="outline" onClick={handleAdd}>

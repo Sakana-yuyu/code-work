@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { cn } from "~/lib/utils";
+import { t } from "~/i18n";
 
 interface ColorSelectorProps {
   colors: string[];
@@ -91,7 +92,7 @@ export function ColorSelector({
             }}
             tabIndex={0}
             role="button"
-            aria-label={`Select ${color} color`}
+            aria-label={t("selectColor", { color: color })}
             aria-pressed={selectedColor === color}
           />
         );

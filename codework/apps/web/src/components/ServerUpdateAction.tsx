@@ -122,15 +122,15 @@ export function ServerUpdateAction({
         }
         toastManager.add({
           type: "error",
-          title: "Server update failed",
+          title: t("serverUpdateFailed"),
           description: updateFailureMessage(squashAtomCommandFailure(result)),
         });
         return;
       }
       toastManager.add({
         type: "success",
-        title: `${serverLabel} updated`,
-        description: `Reconnected on t3@${result.value.targetVersion}.`,
+        title: t("updated3", { serverLabel: serverLabel }),
+        description: t("reconnectedOnT3", { targetVersion: result.value.targetVersion }),
       });
     } finally {
       pendingUpdateEnvironmentIds.delete(environmentId);
@@ -140,7 +140,7 @@ export function ServerUpdateAction({
   if (selfUpdate === "desktop-managed") {
     return (
       <span className="text-muted-foreground text-xs">
-        Update the desktop app on that machine to update this server.
+        {t("updateTheDesktopAppOnThatMachineToUpdateThisServer")}
       </span>
     );
   }
@@ -149,7 +149,7 @@ export function ServerUpdateAction({
     const command = manualServerUpdateCommand(targetVersion);
     return (
       <Button size="xs" variant="outline" onClick={() => copyToClipboard(command, { command })}>
-        Copy update command
+        {t("copyUpdateCommand")}
       </Button>
     );
   }

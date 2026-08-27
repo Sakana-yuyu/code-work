@@ -12,6 +12,7 @@ import {
   DialogTitle,
 } from "../ui/dialog";
 import { Input } from "../ui/input";
+import { t } from "~/i18n";
 
 function describeSshTarget(request: DesktopSshPasswordPromptRequest): string {
   return request.username ? `${request.username}@${request.destination}` : request.destination;
@@ -22,7 +23,8 @@ function formatRemainingSeconds(seconds: number): string {
 }
 
 function getPromptErrorMessage(error: unknown): string {
-  const message = error instanceof Error ? error.message : "SSH password prompt failed.";
+  const message =
+    error instanceof Error ? error.message : t("interface.ssh-password-prompt-failed");
   return message.includes("expired") || message.includes("no longer pending")
     ? "This SSH password prompt expired. Try connecting again."
     : message;
@@ -158,10 +160,10 @@ function ActiveSshPasswordPrompt({
     >
       <DialogPopup className="max-w-md" showCloseButton={false}>
         <DialogHeader>
-          <DialogTitle>SSH Password Required</DialogTitle>
+          <DialogTitle>{t("sshPasswordRequired")}</DialogTitle>
           <DialogDescription>
-            Code Work needs your SSH password to connect to <code>{target}</code>. The password is passed
-            to the local SSH process for this connection attempt and is not saved by Code Work.
+            {t("codeWorkNeedsYourSshPasswordToConnectTo")} <code>{target}</code>
+            {t("thePasswordIsPassedToTheLocalSshProcessForThisConnectionAttemptAndIsNotS")}
           </DialogDescription>
         </DialogHeader>
         <DialogPanel className="space-y-3" scrollFade={false}>
@@ -184,7 +186,7 @@ function ActiveSshPasswordPrompt({
                         : "shrink-0 text-xs text-muted-foreground"
                     }
                   >
-                    {isExpired ? "Expired" : remainingLabel}
+                    {isExpired ? t("expired") : remainingLabel}
                   </span>
                 ) : null}
               </div>
@@ -202,17 +204,17 @@ function ActiveSshPasswordPrompt({
               <p className="text-sm text-destructive">{visibleResponseError}</p>
             ) : (
               <p className="text-sm text-muted-foreground">
-                Use SSH keys to avoid repeated password prompts on new SSH sessions.
+                {t("useSshKeysToAvoidRepeatedPasswordPromptsOnNewSshSessions")}
               </p>
             )}
           </form>
         </DialogPanel>
         <DialogFooter>
           <Button disabled={isResponding} type="button" variant="outline" onClick={cancelPrompt}>
-            {isExpired ? "Dismiss" : "Cancel"}
+            {isExpired ? t("dismiss") : t("cancel")}
           </Button>
           <Button disabled={isResponding || isExpired} form={formId} type="submit">
-            Continue
+            {t("commandPalette.continue")}
           </Button>
         </DialogFooter>
       </DialogPopup>

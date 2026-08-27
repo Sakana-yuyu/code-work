@@ -12,7 +12,7 @@ import {
 } from "@codework/shared/keybindings";
 
 import { isMacPlatform } from "../../lib/utils";
-import { t } from "~/i18n";
+import { t } from "~/i18n/runtime";
 
 export type KeybindingSource = "Default" | "Custom" | "Project";
 

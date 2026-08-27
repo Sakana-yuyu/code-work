@@ -7,6 +7,7 @@ import { isBrowserPreviewFile, isImagePreviewFile } from "./filePath";
 import { prepareSourceFileDocument } from "./source-file-document";
 import { sourceHighlightAtom } from "./sourceHighlightingState";
 import type { ReviewDiffTheme } from "../review/shikiReviewHighlighter";
+import { t } from "../../i18n/runtime";
 
 const inFlightPreloads = new Map<string, Promise<void>>();
 const MAX_HIGHLIGHT_PRELOAD_CHARACTERS = 256 * 1024;
@@ -41,7 +42,7 @@ export function preloadWorkspaceFileContents(input: {
       input: { cwd: input.cwd, relativePath: input.relativePath },
     }),
     {
-      label: "workspace file preload",
+      label: t("workspaceFilePreload"),
       reportDefect: false,
       reportFailure: false,
     },
@@ -58,7 +59,7 @@ export function preloadWorkspaceFileContents(input: {
               theme: input.theme,
             }),
             {
-              label: "workspace source highlight preload",
+              label: t("workspaceSourceHighlightPreload"),
               reportDefect: false,
               reportFailure: false,
             },

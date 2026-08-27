@@ -39,6 +39,7 @@ import {
   migrateIndexedDbStores,
   type IndexedDbMigrationReport,
 } from "../persistenceIndexedDb";
+import { t } from "~/i18n/runtime";
 
 export const CONNECTION_RUNTIME_DATABASE_NAME = "codework:connection-runtime";
 export const LEGACY_CONNECTION_RUNTIME_DATABASE_NAME = "codework:connection-runtime";
@@ -98,7 +99,7 @@ const encodeStoredVcsRefs = Schema.encodeEffect(StoredVcsRefsJson);
 function catalogError(operation: string, cause: unknown) {
   return new ConnectionTransientError({
     reason: "remote-unavailable",
-    detail: `Could not ${operation} the local connection catalog: ${String(cause)}`,
+    detail: t("couldNotTheLocalConnectionCatalog", { operation: operation, value2: String(cause) }),
   });
 }
 
@@ -123,7 +124,7 @@ function persistenceError(
 ) {
   return new ConnectionPersistenceError({
     operation,
-    message: `Could not ${operation.replaceAll("-", " ")}: ${String(cause)}`,
+    message: t("couldNot", { value1: operation.replaceAll("-", " "), value2: String(cause) }),
   });
 }
 

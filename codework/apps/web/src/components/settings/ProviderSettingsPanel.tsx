@@ -168,14 +168,14 @@ function EnvironmentUnavailableRow({
 }) {
   const isLoading = access.kind === "loading";
   const title = isLoading
-    ? "Loading provider settings"
+    ? t("interface.loading-provider-settings")
     : access.kind === "error"
-      ? "Could not connect to this device"
-      : "Provider settings are unavailable";
+      ? t("interface.could-not-connect-to-this-device")
+      : t("interface.provider-settings-are-unavailable");
   const description = isLoading
     ? access.reason === "permissions"
-      ? "Checking what this session is allowed to change."
-      : `Waiting for ${environment.label}'s configuration.`
+      ? t("interface.checking-what-this-session-is-allowed-to-change")
+      : t("interface.waiting-for-value-s-configuration", { value1: environment.label })
     : localizedConnectionStatusText(environment.connection);
   // No spinner: this state can persist indefinitely for a wedged device, and a
   // continuously repainting animation would run the whole time.
@@ -217,11 +217,11 @@ export function ProviderSettingsPanel() {
             // The catalog hydrates asynchronously, so an empty list before it is
             // ready means "not loaded yet", not "nothing is connected".
             <SettingsRow
-              title={isReady ? "No connected devices" : "Loading devices"}
+              title={isReady ? t("noConnectedDevices") : t("loadingDevices")}
               description={
                 isReady
-                  ? "Connect an execution environment before configuring providers."
-                  : "Reading connected execution environments."
+                  ? t("connectAnExecutionEnvironmentBeforeConfiguringProviders")
+                  : t("readingConnectedExecutionEnvironments")
               }
             />
           ) : (
@@ -461,11 +461,13 @@ export function EnvironmentProviderSettings({
         toastManager.add(
           stackedThreadToast({
             type: "error",
-            title: `Could not update ${PROVIDER_DISPLAY_NAMES[candidate.driver] ?? candidate.driver}`,
+            title: t("couldNotUpdate", {
+              driver: PROVIDER_DISPLAY_NAMES[candidate.driver] ?? candidate.driver,
+            }),
             description:
               error instanceof Error
                 ? error.message
-                : "The provider update command could not be started.",
+                : t("theProviderUpdateCommandCouldNotBeStarted"),
           }),
         );
       }
@@ -695,7 +697,7 @@ export function EnvironmentProviderSettings({
                         variant="ghost-muted"
                         disabled={isRefreshingProviders}
                         onClick={() => void refreshProviders()}
-                        aria-label="Refresh provider status"
+                        aria-label={t("refreshProviderStatus")}
                       >
                         {isRefreshingProviders ? (
                           <LoaderIcon className="size-3 animate-spin" />
@@ -715,7 +717,10 @@ export function EnvironmentProviderSettings({
         {readOnly ? (
           <SettingsRow
             title={t("limitedPermissions")}
-            description={`This session can view ${environmentLabel}'s providers, but its credential does not allow changing their configuration.`}
+            description={t(
+              "thisSessionCanViewSProvidersButItsCredentialDoesNotAllowChangingTheirCon",
+              { environmentLabel: environmentLabel },
+            )}
           />
         ) : null}
         <div
@@ -731,9 +736,7 @@ export function EnvironmentProviderSettings({
               <span className="inline-flex items-center gap-1.5">
                 {t("providerHealthCheckIntervalTitle")}
                 <PolicyTooltip>
-                  This interval is configured here, then the shared Background activity policy
-                  decides whether provider probes may run when the timer fires. Custom intervals
-                  appear as Advanced in General settings.
+                  {t("thisIntervalIsConfiguredHereThenTheSharedBackgroundActivityPolicyDecides")}
                 </PolicyTooltip>
               </span>
             }
@@ -780,9 +783,9 @@ export function EnvironmentProviderSettings({
                   }
                 >
                   <NumberFieldGroup>
-                    <NumberFieldDecrement aria-label="Decrease provider health check interval" />
-                    <NumberFieldInput aria-label="Provider health check interval in seconds" />
-                    <NumberFieldIncrement aria-label="Increase provider health check interval" />
+                    <NumberFieldDecrement aria-label={t("decreaseProviderHealthCheckInterval")} />
+                    <NumberFieldInput aria-label={t("providerHealthCheckIntervalInSeconds")} />
+                    <NumberFieldIncrement aria-label={t("increaseProviderHealthCheckInterval")} />
                   </NumberFieldGroup>
                 </NumberField>
                 <span className="text-xs text-muted-foreground">{t("seconds")}</span>
@@ -825,7 +828,7 @@ export function EnvironmentProviderSettings({
             const headerAction =
               row.isDefault && row.isDirty ? (
                 <SettingResetButton
-                  label={`${resetLabel} provider settings`}
+                  label={t("providerSettings", { resetLabel: resetLabel })}
                   onClick={() => resetDefaultInstance(row.driver)}
                 />
               ) : null;

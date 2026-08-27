@@ -33,6 +33,7 @@ import Animated, {
 } from "react-native-reanimated";
 
 import { AppText as Text } from "../../components/AppText";
+import { t } from "../../i18n";
 
 // Wide enough for the longest action label ("Unarchive").
 const ACTION_ITEM_WIDTH = 58;
@@ -79,10 +80,10 @@ function resolveSecondaryAction(input: {
   if (input.secondaryAction === null) return null;
   if (input.secondaryAction === undefined) {
     return {
-      accessibilityLabel: `Delete ${input.threadTitle}`,
+      accessibilityLabel: t("deleteThread", { threadTitle: input.threadTitle }),
       backgroundColor: "#ff2d55",
       icon: "trash",
-      label: "Delete",
+      label: t("delete"),
       onPress: () => {
         input.close();
         input.onDelete();

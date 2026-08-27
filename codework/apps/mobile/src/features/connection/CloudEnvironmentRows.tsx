@@ -1,9 +1,6 @@
 import { useAuth } from "@clerk/expo";
 import { SymbolView } from "../../components/AppSymbol";
-import {
-  connectionStatusText,
-  type EnvironmentConnectionPhase,
-} from "@codework/client-runtime/connection";
+import type { EnvironmentConnectionPhase } from "@codework/client-runtime/connection";
 import type { EnvironmentId } from "@codework/contracts";
 import { useCallback, useState } from "react";
 import {
@@ -24,6 +21,8 @@ import { availableCloudEnvironmentPresentation } from "../cloud/cloudEnvironment
 import { hasCloudPublicConfig } from "../cloud/publicConfig";
 import { ConnectionStatusDot } from "./ConnectionStatusDot";
 import { type RelayEnvironmentView, useConnectionController } from "./useConnectionController";
+import { t } from "../../i18n";
+import { localizedConnectionStatusText } from "../../i18n/connectionStatus";
 
 interface CloudEnvironmentRowsProps {
   readonly connectedCloudEnvironments: ReadonlyArray<ConnectedEnvironmentSummary>;
@@ -107,7 +106,9 @@ function CloudEnvironmentRowsContent(
     <View collapsable={false} className={cn("gap-3", showHeader && "mt-5")}>
       {showHeader ? (
         <View className="flex-row items-center justify-between px-1">
-          <Text className="text-sm font-t3-bold uppercase text-foreground-muted">Code Work Connect</Text>
+          <Text className="text-sm font-t3-bold uppercase text-foreground-muted">
+            Code Work Connect
+          </Text>
           {discoveryAvailable ? (
             <Pressable
               accessibilityRole="button"
@@ -160,13 +161,13 @@ function CloudEnvironmentRowsContent(
         <View collapsable={false} className="items-center gap-3 rounded-[24px] bg-card p-6">
           <ActivityIndicator color={iconColor} />
           <Text className="text-center text-sm leading-normal text-foreground-muted">
-            Loading linked cloud environments.
+            {t("loadingLinkedCloudEnvironments")}
           </Text>
         </View>
       ) : controller.relayDiscovery.error ? null : (
         <View collapsable={false} className="rounded-[24px] bg-card p-5">
           <Text className="text-sm leading-normal text-foreground-muted">
-            No additional linked cloud environments.
+            {t("noAdditionalLinkedCloudEnvironments")}
           </Text>
         </View>
       )}
@@ -178,7 +179,7 @@ function CloudEnvironmentRowsContent(
       !controller.relayDiscovery.isRefreshing ? (
         <View collapsable={false} className="gap-3 rounded-[24px] bg-card p-5">
           <Text className="text-base font-t3-bold text-foreground">
-            Could not load Code Work Connect environments
+            {t("couldNotLoadCodeWorkConnectEnvironments")}
           </Text>
           <Text className="text-sm text-foreground-muted">{controller.relayDiscovery.error}</Text>
           {controller.relayDiscovery.errorTraceId ? (
@@ -191,7 +192,7 @@ function CloudEnvironmentRowsContent(
             }}
             className="self-start rounded-full bg-subtle px-3.5 py-2 active:opacity-70"
           >
-            <Text className="text-xs font-t3-bold text-foreground">Try again</Text>
+            <Text className="text-xs font-t3-bold text-foreground">{t("tryAgain2")}</Text>
           </Pressable>
         </View>
       ) : null}
@@ -281,7 +282,7 @@ function CloudEnvironmentRowShell(props: {
   const shouldPulse = isRetrying;
   const statusText =
     props.statusText ??
-    connectionStatusText({
+    localizedConnectionStatusText({
       phase: props.connectionState,
       error: props.connectionError,
       traceId: props.connectionErrorTraceId,
@@ -355,9 +356,9 @@ function CloudEnvironmentRowShell(props: {
             {statusText}
             {errorTraceId ? (
               <>
-                {" Trace ID: "}
+                {t("traceId")}
                 <Text
-                  accessibilityHint="Copies the trace ID"
+                  accessibilityHint={t("copiesTheTraceId")}
                   accessibilityRole="button"
                   className={cn("text-xs underline decoration-dotted", statusClassName)}
                   onLongPress={(event) => {
@@ -408,7 +409,7 @@ function CopyTraceIdButton(props: { readonly traceId: string }) {
       className="self-start flex-row items-center gap-1.5 rounded-full bg-subtle px-3 py-2 active:opacity-70"
     >
       <SymbolView name="doc.on.doc" size={12} tintColor={iconColor} type="monochrome" />
-      <Text className="text-xs font-t3-bold text-foreground">Copy trace ID</Text>
+      <Text className="text-xs font-t3-bold text-foreground">{t("diagnostics.copyTraceId")}</Text>
     </Pressable>
   );
 }

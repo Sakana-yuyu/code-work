@@ -13,7 +13,10 @@ import {
   Connectivity,
   Wakeups,
 } from "@codework/client-runtime/connection";
-import { managedRelayAccountChanges, managedRelaySessionAtom } from "@codework/client-runtime/relay";
+import {
+  managedRelayAccountChanges,
+  managedRelaySessionAtom,
+} from "@codework/client-runtime/relay";
 import { AuthStandardClientScopes } from "@codework/contracts";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
@@ -33,6 +36,7 @@ import { clearThreadOutboxEnvironment } from "../state/thread-outbox";
 import { clearComposerDraftsEnvironment } from "../state/use-composer-drafts";
 import { mobileApplicationActiveWakeup } from "./app-state-wakeups";
 import { connectionStorageLayer } from "./storage";
+import { t } from "../i18n/runtime";
 
 function networkStatus(state: Network.NetworkState): "unknown" | "offline" | "online" {
   if (state.isConnected === false) {
@@ -123,7 +127,7 @@ const capabilitiesLayer = Layer.effectContext(
           if (session === null) {
             return yield* new ConnectionBlockedError({
               reason: "authentication",
-              detail: "Sign in to Code Work Connect to connect this environment.",
+              detail: t("signInToCodeWorkConnectToConnectThisEnvironment"),
             });
           }
           const token = yield* session.readClerkToken().pipe(
@@ -138,7 +142,7 @@ const capabilitiesLayer = Layer.effectContext(
           if (token === null) {
             return yield* new ConnectionBlockedError({
               reason: "authentication",
-              detail: "The Code Work Connect session is unavailable.",
+              detail: t("theCodeWorkConnectSessionIsUnavailable"),
             });
           }
           return token;
@@ -157,7 +161,7 @@ const capabilitiesLayer = Layer.effectContext(
               (cause) =>
                 new ConnectionTransientError({
                   reason: "remote-unavailable",
-                  detail: `Could not load the mobile device identity: ${String(cause)}`,
+                  detail: t("couldNotLoadTheMobileDeviceIdentity", { value1: String(cause) }),
                 }),
             ),
             Effect.map(Option.some),
@@ -178,14 +182,14 @@ const capabilitiesLayer = Layer.effectContext(
             Effect.fail(
               new ConnectionBlockedError({
                 reason: "unsupported",
-                detail: "SSH environments are only available in the desktop app.",
+                detail: t("sshEnvironmentsAreOnlyAvailableInTheDesktopApp"),
               }),
             ),
           prepare: () =>
             Effect.fail(
               new ConnectionBlockedError({
                 reason: "unsupported",
-                detail: "SSH environments are only available in the desktop app.",
+                detail: t("sshEnvironmentsAreOnlyAvailableInTheDesktopApp"),
               }),
             ),
           disconnect: () => Effect.void,

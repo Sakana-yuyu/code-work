@@ -3,7 +3,10 @@ import { KeyboardAwareLegendList } from "@legendapp/list/keyboard";
 import { type LegendListRef } from "@legendapp/list/react-native";
 import type { EnvironmentId, MessageId, ThreadId, TurnId } from "@codework/contracts";
 import { classifyMarkdownImageSource } from "@codework/client-runtime/markdown-images";
-import { CHAT_LIST_ANCHOR_OFFSET, resolveChatListAnchoredEndSpace } from "@codework/shared/chatList";
+import {
+  CHAT_LIST_ANCHOR_OFFSET,
+  resolveChatListAnchoredEndSpace,
+} from "@codework/shared/chatList";
 import { formatElapsed } from "@codework/shared/orchestrationTiming";
 import { SymbolView } from "../../components/AppSymbol";
 import { HeaderHeightContext } from "@react-navigation/elements";
@@ -111,6 +114,7 @@ import { useMarkdownCodeHighlight } from "./markdownCodeHighlightState";
 import { useAssetUrl, useAssetUrlState } from "../../state/assets";
 import { resolveWorkspaceRelativeFilePath } from "../files/filePath";
 import { MARKDOWN_IMAGE_MAX_WIDTH, resolveMarkdownImageDisplaySize } from "./markdownImageSize";
+import { t } from "../../i18n";
 
 const WIDE_MARKDOWN_BLOCK_OPTIONS = {
   includeOrderedLists: Platform.OS === "android",
@@ -251,7 +255,7 @@ function ThreadMarkdownImageView(props: {
           }}
         >
           {failed ? (
-            <Text className="text-xs text-foreground-muted">Image unavailable</Text>
+            <Text className="text-xs text-foreground-muted">{t("imageUnavailable")}</Text>
           ) : (
             <ActivityIndicator />
           )}
@@ -259,7 +263,7 @@ function ThreadMarkdownImageView(props: {
       ) : (
         <TouchableOpacity
           accessibilityRole="imagebutton"
-          accessibilityLabel={props.alt ?? "Markdown image"}
+          accessibilityLabel={props.alt ?? t("markdownImage")}
           activeOpacity={0.7}
           onPress={() => props.onPressImage(props.uri!)}
           style={{ alignSelf: "flex-start" }}
@@ -317,7 +321,7 @@ function ThreadMarkdownImageRequest(props: {
           pointerEvents="none"
           style={[StyleSheet.absoluteFill, { alignItems: "center", justifyContent: "center" }]}
         >
-          <Text className="text-xs text-foreground-muted">Loading image…</Text>
+          <Text className="text-xs text-foreground-muted">{t("loadingImage2")}</Text>
         </View>
       )}
     </>
@@ -483,7 +487,7 @@ function MarkdownCodeBlock(props: {
           {languageLabel}
         </NativeText>
         <CopyTextButton
-          accessibilityLabel="Copy code"
+          accessibilityLabel={t("copyCode")}
           text={content}
           tintColor={props.copyTintColor}
           buttonSize={32}
@@ -1105,7 +1109,7 @@ function renderFeedEntry(
             </Text>
             {message.text.trim().length > 0 ? (
               <CopyTextButton
-                accessibilityLabel="Copy message"
+                accessibilityLabel={t("copyMessage")}
                 text={message.text}
                 tintColor={iconSubtleColor}
                 buttonSize={28}
@@ -1163,7 +1167,7 @@ function renderFeedEntry(
         {showAssistantMeta ? (
           <View className="mt-1 flex-row items-center gap-1">
             <CopyTextButton
-              accessibilityLabel="Copy message"
+              accessibilityLabel={t("copyMessage")}
               text={message.text}
               tintColor={iconSubtleColor}
               buttonSize={28}
@@ -1210,7 +1214,7 @@ const WorkingTimelineRow = memo(function WorkingTimelineRow(props: { readonly st
         <View className="h-1 w-1 rounded-full bg-neutral-400/60 dark:bg-neutral-500/60" />
       </View>
       <Text className="font-t3-medium text-xs tabular-nums text-neutral-600 dark:text-neutral-400">
-        Working for {durationLabel}
+        {t("workingFor")} {durationLabel}
       </Text>
     </View>
   );
@@ -2200,7 +2204,7 @@ export const ThreadFeed = memo(function ThreadFeed(props: ThreadFeedProps) {
                     className="items-center py-2"
                   >
                     <Text className="text-xs text-foreground-secondary">
-                      {props.loadEarlier.loading ? "Loading earlier turns…" : "Load earlier turns"}
+                      {props.loadEarlier.loading ? t("loadingEarlierTurns") : t("loadEarlierTurns")}
                     </Text>
                   </Pressable>
                 ) : null}
@@ -2217,8 +2221,8 @@ export const ThreadFeed = memo(function ThreadFeed(props: ThreadFeedProps) {
         props.contentPresentation.kind === "ready" ? (
           <View pointerEvents="none" style={StyleSheet.absoluteFill}>
             <ThreadFeedPlaceholder
-              title="No conversation yet"
-              detail="Ask the agent to inspect the repo, run a command, or continue the active thread."
+              title={t("noConversationYet")}
+              detail={t("askTheAgentToInspectTheRepoRunACommandOrContinueTheActiveThread")}
               topInset={topContentInset}
               bottomInset={bottomContentInset}
               horizontalPadding={horizontalPadding}

@@ -16,6 +16,7 @@ import {
   markProjectFaviconFailed,
   markProjectFaviconLoaded,
 } from "./projectFaviconCache";
+import { t } from "../i18n";
 
 /* ─── Component ──────────────────────────────────────────────────────── */
 export function ProjectFavicon(props: {
@@ -112,7 +113,7 @@ function ProjectFaviconImage(props: {
           }}
           cachePolicy="memory-disk"
           recyclingKey={faviconRequest.cacheKey}
-          accessibilityLabel={`${props.projectTitle} favicon`}
+          accessibilityLabel={t("favicon", { projectTitle: props.projectTitle })}
           style={{
             width: props.size,
             height: props.size,

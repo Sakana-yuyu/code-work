@@ -324,7 +324,7 @@ export function ProjectScriptEditorDialog({
                   onKeyDown={captureKeybinding}
                 />
                 <p className="text-xs text-muted-foreground">
-                  {t("projectScript.keybindingHintPrefix")} <code>Backspace</code>{" "}
+                  {t("projectScript.keybindingHintPrefix")} <code>{t("backspace")}</code>{" "}
                   {t("projectScript.keybindingHintSuffix")}
                 </p>
               </div>
@@ -332,7 +332,7 @@ export function ProjectScriptEditorDialog({
                 <Label htmlFor="script-command">{t("command")}</Label>
                 <Textarea
                   id="script-command"
-                  placeholder="bun test"
+                  placeholder={t("bunTest")}
                   value={command}
                   onChange={(event) => setCommand(event.target.value)}
                 />
@@ -341,7 +341,7 @@ export function ProjectScriptEditorDialog({
                 <Label htmlFor="script-preview-url">{t("projectScript.previewUrlLabel")}</Label>
                 <Input
                   id="script-preview-url"
-                  placeholder="http://localhost:5173"
+                  placeholder={t("httpLocalhost5173")}
                   value={previewUrl}
                   onChange={(event) => setPreviewUrl(event.target.value)}
                 />

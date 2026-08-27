@@ -233,8 +233,8 @@ export function UsagePage() {
                       </span>
                       <span className="text-xs text-muted-foreground">
                         {metric === "cost"
-                          ? `${formatCount(merged.sessions)} sessions · API estimate`
-                          : `${formatCount(merged.sessions)} sessions`}
+                          ? t("sessionsApiEstimate", { value1: formatCount(merged.sessions) })
+                          : t("sessions", { value1: formatCount(merged.sessions) })}
                       </span>
                     </div>
 
@@ -275,8 +275,14 @@ export function UsagePage() {
                           </div>
                           <span className="text-xs text-muted-foreground">
                             {metric === "cost"
-                              ? `${formatPercent(share)} of cost · ${formatTokens(totals?.totalTokens ?? 0)} tokens`
-                              : `${formatPercent(share)} of tokens · ${formatUsd(totals?.costUsd ?? 0)}`}
+                              ? t("ofCostTokens", {
+                                  value1: formatPercent(share),
+                                  value2: formatTokens(totals?.totalTokens ?? 0),
+                                })
+                              : t("ofTokens", {
+                                  value1: formatPercent(share),
+                                  value2: formatUsd(totals?.costUsd ?? 0),
+                                })}
                           </span>
                         </div>
                       );
@@ -349,17 +355,17 @@ export function UsagePage() {
                       </colgroup>
                       <thead>
                         <tr className="border-b border-border text-left text-xs text-muted-foreground">
-                          <th className="py-2 font-normal">Model</th>
-                          <th className="py-2 text-right font-normal">Cost</th>
-                          <th className="py-2 text-right font-normal">Share</th>
-                          <th className="py-2 text-right font-normal">Tokens</th>
+                          <th className="py-2 font-normal">{t("model")}</th>
+                          <th className="py-2 text-right font-normal">{t("cost")}</th>
+                          <th className="py-2 text-right font-normal">{t("share")}</th>
+                          <th className="py-2 text-right font-normal">{t("tokens")}</th>
                         </tr>
                       </thead>
                       <tbody>
                         {merged.models.length === 0 ? (
                           <tr>
                             <td colSpan={4} className="py-6 text-center text-muted-foreground">
-                              No activity in this window.
+                              {t("noActivityInThisWindow")}
                             </td>
                           </tr>
                         ) : (
@@ -400,14 +406,16 @@ export function UsagePage() {
                       </colgroup>
                       <thead>
                         <tr className="border-b border-border text-left text-xs text-muted-foreground">
-                          <th className="py-2 font-normal">{isPast24Hours ? "Hour" : "Day"}</th>
+                          <th className="py-2 font-normal">
+                            {isPast24Hours ? t("hour") : t("day")}
+                          </th>
                           {activeProviders.map((provider) => (
                             <th key={provider} className="py-2 text-right font-normal">
                               {PROVIDER_PRESENTATION[provider].label}
                             </th>
                           ))}
-                          <th className="py-2 text-right font-normal">Total</th>
-                          <th className="py-2 text-right font-normal">Tokens</th>
+                          <th className="py-2 text-right font-normal">{t("total")}</th>
+                          <th className="py-2 text-right font-normal">{t("tokens")}</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -417,7 +425,7 @@ export function UsagePage() {
                               colSpan={activeProviders.length + 3}
                               className="py-6 text-center text-muted-foreground"
                             >
-                              No activity in this window.
+                              {t("noActivityInThisWindow")}
                             </td>
                           </tr>
                         ) : (
@@ -508,16 +516,18 @@ function UsageCoverageNotice({
   return (
     <div className="flex flex-col gap-1 border border-border px-3 py-2 text-xs text-muted-foreground">
       {failed.map((environment) => (
-        <span key={environment.label}>{environment.label} could not report usage.</span>
+        <span key={environment.label}>
+          {environment.label} {t("couldNotReportUsage")}
+        </span>
       ))}
       {stale.map((environment) => (
         <span key={environment.label}>
-          {environment.label} runs an older server version and is excluded from totals.
+          {environment.label} {t("runsAnOlderServerVersionAndIsExcludedFromTotals")}
         </span>
       ))}
       {duplicateSources.length > 0 ? (
         <span>
-          Counted once across environments sharing a transcript directory:{" "}
+          {t("countedOnceAcrossEnvironmentsSharingATranscriptDirectory")}{" "}
           {duplicateSources.join(", ")}
         </span>
       ) : null}
@@ -574,8 +584,8 @@ function UsageDeviceStrip({
       })}
       <span className="ms-auto text-muted-foreground">
         {scanning.length === 1
-          ? "1 device still scanning"
-          : `${scanning.length} devices still scanning`}
+          ? t("m1DeviceStillScanning")
+          : t("devicesStillScanning", { value1: scanning.length })}
       </span>
     </div>
   );

@@ -17,6 +17,7 @@ import {
 } from "./linkEnvironmentAtoms";
 import { usePrimaryCloudLinkState } from "./primaryCloudLinkState";
 import { resolveRelayClerkTokenOptions } from "./publicConfig";
+import { t } from "~/i18n/runtime";
 
 export interface CloudLinkDesiredState {
   readonly managedTunnel: boolean;
@@ -51,13 +52,16 @@ export function useCloudLinkController() {
   const [operationError, setOperationError] = useState<string | null>(null);
 
   const reportUpdateFailure = (cause: unknown) => {
-    const message = cause instanceof Error ? cause.message : "Could not update Code Work Connect access.";
+    const message =
+      cause instanceof Error
+        ? cause.message
+        : t("interface.could-not-update-code-work-connect-access");
     const traceId = findErrorTraceId(cause);
     console.error("[t3-connect] Could not update Code Work Connect", { message, traceId, cause });
     setOperationError(traceId ? `${message} Trace ID: ${traceId}` : message);
     toastManager.add({
       type: "error",
-      title: "Could not update Code Work Connect",
+      title: t("couldNotUpdateCodeWorkConnect"),
       description: message,
       data: traceId
         ? {

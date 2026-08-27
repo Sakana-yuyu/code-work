@@ -13,6 +13,7 @@ import {
   formatElementContextLabel,
   formatElementContextSourceLabel,
 } from "~/lib/elementContext";
+import { t } from "~/i18n";
 
 interface ComposerPendingElementContextsProps {
   contexts: ReadonlyArray<ElementContextDraft>;
@@ -59,7 +60,7 @@ export function ComposerPendingElementContextChip({
             ) : null}
             <button
               type="button"
-              aria-label={`Remove ${label}`}
+              aria-label={t("providerModels.removeAria", { name: label })}
               className={COMPOSER_INLINE_CHIP_DISMISS_BUTTON_CLASS_NAME}
               onClick={(event) => {
                 event.preventDefault();

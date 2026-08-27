@@ -13,6 +13,7 @@ import * as ElectronMenu from "../electron/ElectronMenu.ts";
 import * as DesktopEnvironment from "../app/DesktopEnvironment.ts";
 import * as DesktopUpdates from "../updates/DesktopUpdates.ts";
 import * as DesktopWindow from "./DesktopWindow.ts";
+import { t } from "../i18n.js";
 
 export class DesktopApplicationMenuActionError extends Schema.TaggedErrorClass<DesktopApplicationMenuActionError>()(
   "DesktopApplicationMenuActionError",
@@ -65,15 +66,17 @@ const checkForUpdatesFromMenu = Effect.gen(function* () {
   if (updateState.status === "up-to-date") {
     yield* electronDialog.showMessageBox({
       type: "info",
-      title: "You're up to date!",
-      message: `Code Work ${updateState.currentVersion} is currently the newest version available.`,
+      title: t("youReUpToDate"),
+      message: t("codeWorkIsCurrentlyTheNewestVersionAvailable", {
+        currentVersion: updateState.currentVersion,
+      }),
       buttons: ["OK"],
     });
   } else if (updateState.status === "error") {
     yield* electronDialog.showMessageBox({
       type: "warning",
-      title: "Update check failed",
-      message: "Could not check for updates.",
+      title: t("updateCheckFailed"),
+      message: t("couldNotCheckForUpdates"),
       detail: updateState.message ?? "An unknown error occurred. Please try again later.",
       buttons: ["OK"],
     });
@@ -90,8 +93,8 @@ const handleCheckForUpdatesMenuClick = Effect.gen(function* () {
     });
     yield* electronDialog.showMessageBox({
       type: "info",
-      title: "Updates unavailable",
-      message: "Automatic updates are not available right now.",
+      title: t("updatesUnavailable"),
+      message: t("automaticUpdatesAreNotAvailableRightNow"),
       detail: disabledReason.value,
       buttons: ["OK"],
     });
@@ -145,12 +148,12 @@ export const make = Effect.gen(function* () {
         submenu: [
           { role: "about" },
           {
-            label: "Check for Updates...",
+            label: t("checkForUpdates"),
             click: checkForUpdatesClick,
           },
           { type: "separator" },
           {
-            label: "Settings...",
+            label: t("settings"),
             accelerator: "CmdOrCtrl+,",
             click: settingsClick,
           },
@@ -168,13 +171,13 @@ export const make = Effect.gen(function* () {
 
     template.push(
       {
-        label: "File",
+        label: t("file"),
         submenu: [
           ...(environment.platform === "darwin"
             ? []
             : [
                 {
-                  label: "Settings...",
+                  label: t("settings"),
                   accelerator: "CmdOrCtrl+,",
                   click: settingsClick,
                 },
@@ -185,7 +188,7 @@ export const make = Effect.gen(function* () {
       },
       { role: "editMenu" },
       {
-        label: "View",
+        label: t("view"),
         submenu: [
           { role: "reload" },
           { role: "forceReload" },
@@ -197,15 +200,15 @@ export const make = Effect.gen(function* () {
             page and the app UI appears stuck. These always zoom the main
             window (see DesktopWindow.zoomMain).
           */
-          { label: "Actual Size", accelerator: "CmdOrCtrl+0", click: zoomClick("reset") },
-          { label: "Zoom In", accelerator: "CmdOrCtrl+=", click: zoomClick("in") },
+          { label: t("actualSize"), accelerator: "CmdOrCtrl+0", click: zoomClick("reset") },
+          { label: t("zoomIn"), accelerator: "CmdOrCtrl+=", click: zoomClick("in") },
           {
-            label: "Zoom In",
+            label: t("zoomIn"),
             accelerator: "CmdOrCtrl+Plus",
             visible: false,
             click: zoomClick("in"),
           },
-          { label: "Zoom Out", accelerator: "CmdOrCtrl+-", click: zoomClick("out") },
+          { label: t("zoomOut"), accelerator: "CmdOrCtrl+-", click: zoomClick("out") },
           { type: "separator" },
           { role: "togglefullscreen" },
         ],
@@ -215,7 +218,7 @@ export const make = Effect.gen(function* () {
         role: "help",
         submenu: [
           {
-            label: "Check for Updates...",
+            label: t("checkForUpdates"),
             click: checkForUpdatesClick,
           },
         ],

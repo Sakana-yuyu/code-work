@@ -24,6 +24,7 @@ import { cn } from "~/lib/utils";
 import { Badge } from "../ui/badge";
 import { Command, CommandGroup, CommandItem, CommandList } from "../ui/command";
 import { PierreEntryIcon } from "./PierreEntryIcon";
+import { t } from "~/i18n";
 
 export type ComposerCommandItem =
   | {
@@ -114,14 +115,14 @@ export const ComposerCommandMenu = memo(function ComposerCommandMenu(props: {
             <p className="text-secondary-label text-xs">
               {props.isLoading
                 ? props.triggerKind === "skill"
-                  ? "Searching workspace skills..."
-                  : "Searching workspace files..."
+                  ? t("searchingWorkspaceSkills")
+                  : t("searchingWorkspaceFiles")
                 : (props.emptyStateText ??
                   (props.triggerKind === "skill"
-                    ? "No skills found. Try / to browse provider commands."
+                    ? t("noSkillsFoundTryToBrowseProviderCommands")
                     : props.triggerKind === "path"
-                      ? "No matching files or folders."
-                      : "No matching command."))}
+                      ? t("noMatchingFilesOrFolders")
+                      : t("noMatchingCommand")))}
             </p>
           </div>
         )}
@@ -217,7 +218,7 @@ function SkillSourceBadge(props: { kind: ProviderSkillSourceKind; showSkillSuffi
     <Badge className="ms-auto" variant="secondary">
       <Icon aria-hidden="true" className="text-current" />
       {SKILL_SOURCE_LABEL_BY_KIND[props.kind]}
-      {props.showSkillSuffix ? " Skill" : null}
+      {props.showSkillSuffix ? t("skill") : null}
     </Badge>
   );
 }

@@ -9,7 +9,7 @@ import {
 } from "@codework/contracts";
 import type * as Schema from "effect/Schema";
 import { ClaudeAI, CursorIcon, GrokIcon, type Icon, OpenAI, OpenCodeIcon } from "../Icons";
-import { t } from "~/i18n";
+import { t } from "~/i18n/runtime";
 
 type ProviderSettingsSchema = {
   readonly fields: Readonly<Record<string, Schema.Top>>;
@@ -39,43 +39,61 @@ export interface ProviderClientDefinition {
 export const PROVIDER_CLIENT_DEFINITIONS: readonly ProviderClientDefinition[] = [
   {
     value: ProviderDriverKind.make("codex"),
-    label: t("codex"),
+    get label() {
+      return t("codex");
+    },
     icon: OpenAI,
     settingsSchema: CodexSettings,
   },
   {
     value: ProviderDriverKind.make("claudeAgent"),
-    label: t("claude"),
+    get label() {
+      return t("claude");
+    },
     icon: ClaudeAI,
     settingsSchema: ClaudeSettings,
   },
   {
     value: ProviderDriverKind.make("cursor"),
-    label: t("cursor"),
+    get label() {
+      return t("cursor");
+    },
     icon: CursorIcon,
-    badgeLabel: "Early Access",
+    get badgeLabel() {
+      return t("interface.early-access");
+    },
     settingsSchema: CursorSettings,
   },
   {
     value: ProviderDriverKind.make("grok"),
-    label: t("grok"),
+    get label() {
+      return t("grok");
+    },
     icon: GrokIcon,
-    badgeLabel: "Early Access",
+    get badgeLabel() {
+      return t("interface.early-access");
+    },
     settingsSchema: GrokSettings,
   },
   {
     value: ProviderDriverKind.make("opencode"),
-    label: t("opencode"),
+    get label() {
+      return t("opencode");
+    },
     icon: OpenCodeIcon,
     settingsSchema: OpenCodeSettings,
   },
   {
     value: ProviderDriverKind.make("byok"),
-    label: t("cursorByok"),
+    get label() {
+      return t("cursorByok");
+    },
     // No dedicated icon yet — reuse the Cursor mark since the built-in BYOK
     // engine fronts the local Cursor agent.
     icon: CursorIcon,
-    badgeLabel: "Early Access",
+    get badgeLabel() {
+      return t("interface.early-access");
+    },
     settingsSchema: ByokSettings,
   },
 ];

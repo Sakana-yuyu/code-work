@@ -13,12 +13,13 @@ import * as HttpClient from "effect/unstable/http/HttpClient";
 import * as ChildProcessSpawner from "effect/unstable/process/ChildProcessSpawner";
 
 import type { NetworkInterfaces } from "./DesktopNetworkInterfaces.ts";
+import { t } from "../i18n.js";
 
 export { isTailscaleIpv4Address, parseTailscaleMagicDnsName } from "@codework/tailscale";
 
 const TAILSCALE_ENDPOINT_PROVIDER: AdvertisedEndpointProvider = {
   id: "tailscale",
-  label: "Tailscale",
+  label: t("tailscale"),
   kind: "private-network",
   isAddon: true,
 };
@@ -45,11 +46,11 @@ function resolveTailscaleIpAdvertisedEndpoints(input: {
           provider: TAILSCALE_ENDPOINT_PROVIDER,
           source: "desktop-addon",
           id: `tailscale-ip:http://${address.address}:${input.port}`,
-          label: "Tailscale IP",
+          label: t("tailscaleIp"),
           httpBaseUrl: `http://${address.address}:${input.port}`,
           reachability: "private-network",
           status: "available",
-          description: "Reachable from devices on the same Tailnet.",
+          description: t("reachableFromDevicesOnTheSameTailnet"),
         }),
       );
     }
@@ -86,14 +87,14 @@ const resolveTailscaleMagicDnsAdvertisedEndpoint = Effect.fn(
       provider: TAILSCALE_ENDPOINT_PROVIDER,
       source: "desktop-addon",
       id: `tailscale-magicdns:${httpBaseUrl}`,
-      label: "Tailscale HTTPS",
+      label: t("tailscaleHttps"),
       httpBaseUrl,
       reachability: "private-network",
       hostedHttpsCompatibility: isReachable ? "compatible" : "requires-configuration",
       status: isReachable ? "available" : "unavailable",
       description: isReachable
-        ? "HTTPS endpoint served by Tailscale Serve."
-        : "MagicDNS hostname. Configure Tailscale Serve for HTTPS access.",
+        ? t("httpsEndpointServedByTailscaleServe")
+        : t("magicdnsHostnameConfigureTailscaleServeForHttpsAccess"),
     }),
   );
 });

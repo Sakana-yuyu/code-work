@@ -19,82 +19,19 @@
  * individually.
  */
 import { Fragment, type ReactNode, useSyncExternalStore } from "react";
-import { zhCN as legacyZhCN } from "./zh-CN";
-import { en as enCatalog, zhCN as zhCNCatalog } from "./messages";
 import { useClientSettings } from "~/hooks/useSettings";
-import { readBrowserClientSettings } from "~/clientPersistenceStorage";
-import type { LanguagePreference } from "@codework/contracts/settings";
+import {
+  getCurrentLanguage,
+  RESOLVED_LANGUAGE_FALLBACK,
+  resolveLanguage,
+  setCurrentLanguage,
+  subscribeLanguage,
+  t,
+} from "./runtime";
+import type { AppLanguage } from "./runtime";
 
-export type AppLanguage = Exclude<LanguagePreference, "system">;
-
-/**
- * The full message catalogs per locale. Keys are stable message ids; values
- * may contain `{{name}}` placeholders.
- */
-export const CATALOGS: Record<AppLanguage, Record<string, string>> = {
-  "zh-CN": zhCNCatalog,
-  en: enCatalog,
-};
-
-/**
- * Transitional source-string dictionary (English source → zh-CN). Used only
- * after both locale catalogs miss, so data-driven English (schema annotation
- * titles/descriptions) still renders translated during the migration.
- */
-export const LEGACY_DICTIONARIES: Record<AppLanguage, Record<string, string>> = {
-  "zh-CN": legacyZhCN,
-  en: {},
-};
-
-const RESOLVED_LANGUAGE_FALLBACK: AppLanguage = "zh-CN";
-
-/** Resolves the "system" preference against the browser locale. */
-export function resolveLanguage(preference: LanguagePreference): AppLanguage {
-  if (preference !== "system") {
-    return preference;
-  }
-  if (typeof navigator !== "undefined" && navigator.language) {
-    return navigator.language.toLowerCase().startsWith("zh") ? "zh-CN" : "en";
-  }
-  return RESOLVED_LANGUAGE_FALLBACK;
-}
-
-// ── Module-level locale (kept in sync by <I18nProvider>) ────────────
-
-/** Reads the persisted language preference synchronously (browser localStorage). */
-function initialLanguage(): AppLanguage {
-  try {
-    const persisted = readBrowserClientSettings();
-    if (persisted && persisted.language) {
-      return resolveLanguage(persisted.language);
-    }
-  } catch {
-    // Fall through to the default.
-  }
-  return RESOLVED_LANGUAGE_FALLBACK;
-}
-
-let currentLanguage: AppLanguage = initialLanguage();
-const languageListeners = new Set<() => void>();
-
-function subscribeLanguage(listener: () => void): () => void {
-  languageListeners.add(listener);
-  return () => {
-    languageListeners.delete(listener);
-  };
-}
-
-function setModuleLanguage(next: AppLanguage, notify = true): void {
-  if (currentLanguage === next) {
-    return;
-  }
-  currentLanguage = next;
-  if (notify) {
-    for (const listener of languageListeners) {
-      listener();
-    }
-  }
-}
+export { CATALOGS, LEGACY_DICTIONARIES, resolveLanguage, t } from "./runtime";
+export type { AppLanguage, TranslateParams } from "./runtime";
 
 /**
  * Subscribe to resolved-language changes from React (used by the provider and
@@ -103,47 +40,9 @@ function setModuleLanguage(next: AppLanguage, notify = true): void {
 export function useResolvedLanguage(): AppLanguage {
   return useSyncExternalStore(
     subscribeLanguage,
-    () => currentLanguage,
+    getCurrentLanguage,
     () => RESOLVED_LANGUAGE_FALLBACK,
   );
-}
-
-export type TranslateParams = {
-  readonly [name: string]: string | number | undefined;
-};
-
-function interpolate(template: string, params: TranslateParams): string {
-  return template.replace(/\{\{(\w+)\}\}/g, (match, name: string) => {
-    const value = params[name];
-    return value === undefined ? match : String(value);
-  });
-}
-
-/**
- * Resolve a message. Lookup order: active locale catalog (with plural
- * variant), English catalog, transitional source-string dictionary, then the
- * input itself — so a missing key degrades to readable text, never an id.
- */
-export function t(key: string, params?: TranslateParams): string {
-  let template: string | undefined;
-  const catalog = CATALOGS[currentLanguage];
-  if (catalog) {
-    template =
-      params && typeof params.count === "number" && params.count !== 1
-        ? (catalog[`${key}_plural`] ?? catalog[key])
-        : catalog[key];
-  }
-  template ??= CATALOGS.en[key];
-  if (template === undefined) {
-    const legacy = LEGACY_DICTIONARIES[currentLanguage][key];
-    if (legacy !== undefined) {
-      template = legacy;
-    }
-  }
-  if (template === undefined) {
-    return key;
-  }
-  return params ? interpolate(template, params) : template;
 }
 
 /**
@@ -168,7 +67,7 @@ export function I18nProvider({ children }: { children: ReactNode }) {
   // assignment is idempotent and emits no notifications, so it is safe during
   // render; the keyed fragment below remounts the subtree so every `t()` call
   // site re-renders with the new language.
-  setModuleLanguage(resolved, false);
+  setCurrentLanguage(resolved, false);
 
   return <Fragment key={resolved}>{children}</Fragment>;
 }

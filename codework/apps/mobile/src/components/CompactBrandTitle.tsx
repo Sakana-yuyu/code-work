@@ -12,6 +12,7 @@ import { IPAD_HOME_TITLE_OFFSET } from "../lib/layoutMetrics";
 import { resolveMobileStageLabel } from "../lib/mobileBranding";
 import { useThemeColor } from "../lib/useThemeColor";
 import { NATIVE_LIQUID_GLASS_SUPPORTED } from "../native/native-glass";
+import { t } from "../i18n";
 
 // Native leading items inherit different UIKit margins than title views.
 const IOS_NATIVE_LEADING_TITLE_OFFSET = -6;
@@ -47,7 +48,7 @@ export function CompactBrandTitle(
   return (
     <View
       aria-level={1}
-      accessibilityLabel={`${PRODUCT_IDENTITY.baseName}, Threads`}
+      accessibilityLabel={t("threads", { baseName: PRODUCT_IDENTITY.baseName })}
       accessible
       role="heading"
       style={{
@@ -67,7 +68,7 @@ export function CompactBrandTitle(
           letterSpacing: -0.5,
         }}
       >
-        Code
+        {t("code")}
       </Text>
       <View
         style={{
@@ -113,9 +114,9 @@ export function getCompactBrandHeaderOptions(
 ): NativeStackNavigationOptions {
   if (Platform.OS === "ios" && NATIVE_LIQUID_GLASS_SUPPORTED) {
     return {
-      headerTitle: "Threads",
+      headerTitle: t("commandPalette.threads"),
       headerTitleStyle: { color: "transparent", fontSize: 18, fontWeight: "800" },
-      title: "Threads",
+      title: t("commandPalette.threads"),
       unstable_headerLeftItems: renderCompactBrandHeaderItems,
     };
   }
@@ -123,6 +124,6 @@ export function getCompactBrandHeaderOptions(
   return {
     headerTitle: renderCompactBrandTitle,
     headerTitleStyle: fallbackTitleStyle,
-    title: "Threads",
+    title: t("commandPalette.threads"),
   };
 }

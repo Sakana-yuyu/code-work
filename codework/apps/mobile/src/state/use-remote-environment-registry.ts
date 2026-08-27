@@ -21,6 +21,7 @@ import { appAtomRegistry } from "./atom-registry";
 import type { ConnectedEnvironmentSummary, EnvironmentRuntimeState } from "./remote-runtime-types";
 import { environmentSession, usePreparedConnection } from "./session";
 import { environmentCatalog } from "../connection/catalog";
+import { t } from "../i18n/runtime";
 
 const connectionPairingUrlAtom = Atom.make("").pipe(
   Atom.keepAlive,
@@ -169,7 +170,9 @@ export function useRemoteConnections() {
       if (AsyncResult.isFailure(result)) {
         const error = Cause.squash(result.cause);
         const message =
-          error instanceof Error ? error.message : "Failed to pair with the environment.";
+          error instanceof Error
+            ? error.message
+            : t("interface.failed-to-pair-with-the-environment");
         setPendingConnectionError(message);
       } else {
         appAtomRegistry.set(connectionPairingUrlAtom, "");
@@ -200,12 +203,12 @@ export function useRemoteConnections() {
         return;
       }
       Alert.alert(
-        "Remove environment?",
-        `Disconnect and forget ${environment.environmentLabel} on this device.`,
+        t("removeEnvironment"),
+        t("disconnectAndForgetOnThisDevice", { environmentLabel: environment.environmentLabel }),
         [
-          { text: "Cancel", style: "cancel" },
+          { text: t("cancel"), style: "cancel" },
           {
-            text: "Remove",
+            text: t("byokFeatures.delegationRemoveEnvVar"),
             style: "destructive",
             onPress: () => {
               void controller.removeEnvironment(environmentId);

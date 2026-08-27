@@ -1,4 +1,4 @@
-import { t } from "~/i18n";
+import { t } from "~/i18n/runtime";
 import type { DesktopUpdateActionResult, DesktopUpdateState } from "@codework/contracts";
 
 export type DesktopUpdateButtonAction = "download" | "install" | "none";

@@ -22,6 +22,7 @@ import { Alert } from "../ui/alert";
 import { Button } from "../ui/button";
 import { Dialog, DialogHeader, DialogPanel, DialogPopup, DialogTitle } from "../ui/dialog";
 import { ThemeSearchSection } from "./ThemeSearchSection";
+import { t } from "~/i18n";
 
 /**
  * A full theme export is a few KB, so anything past this is not a theme file.
@@ -122,7 +123,7 @@ function ThemeJsonEditor({
         </pre>
       )}
       <textarea
-        aria-label="Theme JSON"
+        aria-label={t("themeJson")}
         className={cn(
           "relative z-10 block min-h-44 w-full resize-y overflow-auto bg-transparent p-3 font-mono text-[12px] leading-5 caret-foreground outline-none placeholder:text-muted-foreground selection:bg-primary selection:text-primary-foreground",
           isPlainText ? "text-foreground" : "text-transparent",
@@ -130,9 +131,7 @@ function ThemeJsonEditor({
         id={id}
         onChange={(event) => onChange(event.currentTarget.value)}
         onScroll={syncScroll}
-        placeholder={
-          '{\n  "version": 1,\n  "name": "Aurora",\n  "appearance": "light",\n  "colors": { ... }\n}'
-        }
+        placeholder={t("version1NameAuroraAppearanceLightColors")}
         spellCheck={false}
         value={value}
       />
@@ -425,7 +424,7 @@ export function ThemeImportDialog({
     >
       <DialogPopup className="max-w-3xl overflow-hidden">
         <DialogHeader>
-          <DialogTitle>Add a theme</DialogTitle>
+          <DialogTitle>{t("addATheme")}</DialogTitle>
         </DialogHeader>
         <DialogPanel className="space-y-5">
           <ThemeSearchSection
@@ -439,7 +438,7 @@ export function ThemeImportDialog({
           <div className="flex items-center gap-3" aria-hidden>
             <div className="h-px flex-1 bg-border" />
             <span className="text-muted-foreground text-[11px] uppercase tracking-wider">
-              or import a file
+              {t("orImportAFile")}
             </span>
             <div className="h-px flex-1 bg-border" />
           </div>
@@ -474,14 +473,14 @@ export function ThemeImportDialog({
             const chooseButton = (label = "Choose files") => (
               <Button disabled={isReading} size="sm" variant="outline" onClick={openFilePicker}>
                 <DownloadIcon />
-                {isReading ? "Reading…" : label}
+                {isReading ? t("reading") : label}
               </Button>
             );
             const editorSection = () => (
               <div className="space-y-2">
                 <div className="flex items-baseline justify-between gap-3">
                   <label className="text-sm font-medium" htmlFor="theme-json-editor">
-                    Theme JSON
+                    {t("themeJson")}
                   </label>
                 </div>
                 <ThemeJsonEditor id="theme-json-editor" onChange={setJson} value={json} />
@@ -491,23 +490,23 @@ export function ThemeImportDialog({
               return (
                 <div className="space-y-3">
                   <div className="rounded-xl border border-border/70 bg-muted/20 p-3">
-                    <p className="text-sm font-medium">Already installed</p>
+                    <p className="text-sm font-medium">{t("alreadyInstalled")}</p>
                     <p className="mt-1 text-xs text-muted-foreground">
                       {conflicts.map((theme) => theme.label).join(", ")}
                     </p>
                   </div>
                   <div className="flex flex-wrap items-center gap-2">
                     <Button size="sm" onClick={() => resolveConflicts("update")}>
-                      Update existing
+                      {t("updateExisting")}
                     </Button>
                     <Button size="sm" variant="outline" onClick={() => resolveConflicts("copy")}>
-                      Keep both
+                      {t("keepBoth")}
                     </Button>
                     <Button size="sm" variant="ghost" onClick={() => setConflicts(null)}>
-                      Back
+                      {t("back")}
                     </Button>
                     <Button size="sm" variant="ghost" onClick={() => onOpenChange(false)}>
-                      Cancel
+                      {t("cancel")}
                     </Button>
                   </div>
                 </div>
@@ -523,9 +522,9 @@ export function ThemeImportDialog({
                   {...dropHandlers}
                 >
                   <div className="min-w-0">
-                    <p className="text-sm font-medium">Theme file</p>
+                    <p className="text-sm font-medium">{t("themeFile")}</p>
                     <p className="truncate text-xs text-muted-foreground">
-                      {fileName ?? "Drop Code Work or VS Code .json files"}
+                      {fileName ?? t("dropCodeWorkOrVsCodeJsonFiles")}
                     </p>
                   </div>
                   {chooseButton()}
@@ -538,11 +537,11 @@ export function ThemeImportDialog({
                     the dialog also has the search and conflict views. */}
                 <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
                   <Button variant="ghost" onClick={() => onOpenChange(false)}>
-                    Cancel
+                    {t("cancel")}
                   </Button>
                   <Button disabled={!json.trim() || isReading} onClick={handleSubmit}>
                     <PlusIcon />
-                    Add theme
+                    {t("addTheme")}
                   </Button>
                 </div>
               </div>

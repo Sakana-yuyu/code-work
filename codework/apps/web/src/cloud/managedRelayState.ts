@@ -23,6 +23,7 @@ import { useCallback, useEffect } from "react";
 
 import { runtime } from "../lib/runtime";
 import { appAtomRegistry } from "../rpc/atomRegistry";
+import { t } from "~/i18n/runtime";
 
 const managedRelayAtomRuntime = Atom.runtime(
   Layer.effect(
@@ -40,7 +41,9 @@ const managedRelayMutationScheduler = createAtomCommandScheduler();
 export const deregisterManagedRelayEnvironmentCommand = createRuntimeCommand(
   managedRelayAtomRuntime,
   {
-    label: "web:managed-relay:deregister-environment",
+    get label() {
+      return t("webManagedRelayDeregisterEnvironment");
+    },
     scheduler: managedRelayMutationScheduler,
     concurrency: {
       mode: "serial",

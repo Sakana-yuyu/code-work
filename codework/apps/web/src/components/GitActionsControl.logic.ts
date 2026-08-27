@@ -9,7 +9,7 @@ import {
   getChangeRequestTerminology,
   type ChangeRequestTerminology,
 } from "../sourceControlPresentation";
-import { t } from "~/i18n";
+import { t } from "~/i18n/runtime";
 
 const PR_LONG_LABEL_KEYS: Record<string, string> = {
   "pull request": "prLong.pullRequest",

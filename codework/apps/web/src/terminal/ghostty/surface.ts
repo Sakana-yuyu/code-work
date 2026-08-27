@@ -1,5 +1,5 @@
 import { isMacPlatform } from "../../lib/utils";
-import { t } from "~/i18n";
+import { t } from "~/i18n/runtime";
 import { collectWrappedTerminalLinkLine, extractTerminalLinks } from "../../terminal-links";
 import {
   GhosttyTerminalCore,

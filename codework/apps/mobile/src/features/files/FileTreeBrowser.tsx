@@ -17,6 +17,7 @@ import {
   type FileTreeNode,
   type VisibleFileTreeNode,
 } from "./fileTree";
+import { t } from "../../i18n";
 
 const fileTreeCache = new WeakMap<ReadonlyArray<ProjectEntry>, ReadonlyArray<FileTreeNode>>();
 const FILE_TREE_INITIAL_RENDER_COUNT = 20;
@@ -228,7 +229,7 @@ export function FileTreeBrowser(props: {
   if (props.error && props.entries.length === 0) {
     return (
       <View className="flex-1 bg-sheet px-4 py-5">
-        <Text className="text-sm font-t3-bold text-foreground">Files unavailable</Text>
+        <Text className="text-sm font-t3-bold text-foreground">{t("filesUnavailable")}</Text>
         <Text className="mt-1 text-xs leading-normal text-foreground-muted">{props.error}</Text>
       </View>
     );
@@ -265,11 +266,11 @@ export function FileTreeBrowser(props: {
             <ActivityIndicator size="small" />
           ) : (
             <>
-              <Text className="text-sm font-t3-bold text-foreground">No files found</Text>
+              <Text className="text-sm font-t3-bold text-foreground">{t("noFilesFound")}</Text>
               <Text className="mt-1 text-xs leading-normal text-foreground-muted">
                 {props.searchQuery.trim().length > 0
-                  ? "Try a different search."
-                  : "The workspace file index is empty."}
+                  ? t("tryADifferentSearch")
+                  : t("theWorkspaceFileIndexIsEmpty")}
               </Text>
             </>
           )}

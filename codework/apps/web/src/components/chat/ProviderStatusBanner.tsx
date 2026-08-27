@@ -5,6 +5,7 @@ import { cn } from "~/lib/utils";
 import { Button } from "../ui/button";
 import { formatProviderDriverKindLabel } from "../../providerModels";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
+import { t } from "~/i18n";
 
 export function getProviderStatusBannerKey(status: ServerProvider | null): string | null {
   return !status || status.status === "ready" || status.status === "disabled"
@@ -34,10 +35,10 @@ export const ProviderStatusBanner = memo(function ProviderStatusBanner({
   const providerName = status.displayName?.trim() || formatProviderDriverKindLabel(status.driver);
   const isUnauthenticated = status.status === "error" && status.auth.status === "unauthenticated";
   const title = isUnauthenticated
-    ? `${providerName} is unauthenticated`
-    : `${providerName} provider status`;
+    ? t("interface.value-is-unauthenticated", { value1: providerName })
+    : t("interface.value-provider-status", { value1: providerName });
   const message = isUnauthenticated
-    ? "Sign in via the CLI to authenticate again."
+    ? t("interface.sign-in-via-the-cli-to-authenticate-again")
     : (status.message ??
       (status.status === "error"
         ? `${providerName} provider is unavailable.`
@@ -68,7 +69,7 @@ export const ProviderStatusBanner = memo(function ProviderStatusBanner({
           </Tooltip>
         </div>
         <Button
-          aria-label={`Dismiss ${providerName} provider ${status.status}`}
+          aria-label={t("dismissProvider", { providerName: providerName, status: status.status })}
           className="absolute top-2 right-2 size-6 text-muted-foreground hover:text-foreground"
           onClick={onDismiss}
           size="icon-xs"

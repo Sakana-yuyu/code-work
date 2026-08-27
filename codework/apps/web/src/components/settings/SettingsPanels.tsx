@@ -200,10 +200,30 @@ const BACKGROUND_ACTIVITY_BOOLEAN_OVERRIDES: ReadonlyArray<{
     | "pauseWhenOnBattery";
   readonly label: string;
 }> = [
-  { key: "pauseWhenHostLocked", label: t("pauseWhenHostIsLocked") },
-  { key: "pauseWhenHostLowPower", label: t("pauseOnHostLowPower") },
-  { key: "pauseWhenClientLowPower", label: t("pauseOnClientLowPower") },
-  { key: "pauseWhenOnBattery", label: t("pauseOnBattery") },
+  {
+    key: "pauseWhenHostLocked",
+    get label() {
+      return t("pauseWhenHostIsLocked");
+    },
+  },
+  {
+    key: "pauseWhenHostLowPower",
+    get label() {
+      return t("pauseOnHostLowPower");
+    },
+  },
+  {
+    key: "pauseWhenClientLowPower",
+    get label() {
+      return t("pauseOnClientLowPower");
+    },
+  },
+  {
+    key: "pauseWhenOnBattery",
+    get label() {
+      return t("pauseOnBattery");
+    },
+  },
 ];
 
 function resetBackgroundActivitySettings() {
@@ -259,7 +279,7 @@ function AboutVersionSection() {
             stackedThreadToast({
               type: "error",
               title: t("couldNotChangeUpdateTrack"),
-              description: error instanceof Error ? error.message : "Update track change failed.",
+              description: error instanceof Error ? error.message : t("updateTrackChangeFailed"),
             }),
           );
         })
@@ -282,7 +302,7 @@ function AboutVersionSection() {
           stackedThreadToast({
             type: "error",
             title: t("couldNotDownloadUpdate"),
-            description: error instanceof Error ? error.message : "Download failed.",
+            description: error instanceof Error ? error.message : t("downloadFailed"),
           }),
         );
       });
@@ -305,7 +325,7 @@ function AboutVersionSection() {
           stackedThreadToast({
             type: "error",
             title: t("couldNotConfirmUpdate"),
-            description: error instanceof Error ? error.message : "Update confirmation failed.",
+            description: error instanceof Error ? error.message : t("updateConfirmationFailed"),
           }),
         );
         return;
@@ -321,7 +341,7 @@ function AboutVersionSection() {
             stackedThreadToast({
               type: "error",
               title: t("couldNotInstallUpdate"),
-              description: error instanceof Error ? error.message : "Install failed.",
+              description: error instanceof Error ? error.message : t("installFailed"),
             }),
           );
         })
@@ -349,7 +369,7 @@ function AboutVersionSection() {
           stackedThreadToast({
             type: "error",
             title: t("couldNotCheckForUpdates"),
-            description: error instanceof Error ? error.message : "Update check failed.",
+            description: error instanceof Error ? error.message : t("updateCheckFailed"),
           }),
         );
       });
@@ -372,8 +392,8 @@ function AboutVersionSection() {
     actionLabel[action] ?? statusLabel[updateState?.status ?? ""] ?? "Check for Updates";
   const description =
     action === "download" || action === "install"
-      ? "Update available."
-      : "Current version of the application.";
+      ? t("interface.update-available")
+      : t("currentVersionOfTheApplication");
 
   return (
     <>
@@ -759,7 +779,7 @@ function BackgroundActivityAdvancedDialog({
               <div className="min-w-0 space-y-1">
                 <div className="text-sm font-medium">{t("sharedPolicy")}</div>
                 <p className="text-xs leading-relaxed text-muted-foreground">
-                  Controls whether background work may run after a subscribed interval fires.
+                  {t("controlsWhetherBackgroundWorkMayRunAfterASubscribedIntervalFires")}
                 </p>
               </div>
               <Select
@@ -1007,7 +1027,7 @@ function BackgroundActivityAdvancedDialog({
             variant="outline"
             onClick={() => updateSettings(resetBackgroundActivitySettings())}
           >
-            Reset all
+            {t("resetAll")}
           </Button>
           <Button onClick={() => onOpenChange(false)}>{t("done")}</Button>
         </DialogFooter>
@@ -1421,9 +1441,7 @@ function FontSmoothingRow() {
   return (
     <SettingsRow
       {...searchableSetting("font-smoothing")}
-      description={t(
-        "Render text with thinner grayscale anti-aliasing instead of macOS's heavier default.",
-      )}
+      description={t("fontSmoothingDescription")}
       resetAction={
         settings.fontSmoothing !== DEFAULT_UNIFIED_SETTINGS.fontSmoothing ? (
           <SettingResetButton
@@ -1683,7 +1701,7 @@ function FontFamilySettingsRow({
       />
     ) : (
       <Input
-        aria-label={`${title} family`}
+        aria-label={t("family", { title: title })}
         aria-invalid={draftPending || undefined}
         autoCapitalize="off"
         autoComplete="off"
@@ -1743,13 +1761,15 @@ function FontFamilySettingsRow({
         }}
       >
         <SelectTrigger className="w-22 shrink-0" aria-label={size.label}>
-          <SelectValue>{size.value} px</SelectValue>
+          <SelectValue>
+            {size.value} {t("px")}
+          </SelectValue>
         </SelectTrigger>
         <SelectPopup align="end" alignItemWithTrigger={false}>
           {Array.from({ length: size.max - size.min + 1 }, (_, index) => size.min + index).map(
             (px) => (
               <SelectItem hideIndicator key={px} value={String(px)}>
-                {px} px
+                {px} {t("px")}
               </SelectItem>
             ),
           )}
@@ -2704,7 +2724,8 @@ export function ArchivedThreadsPanel() {
             stackedThreadToast({
               type: "error",
               title: t("failedToUnarchiveThread"),
-              description: error instanceof Error ? error.message : "An error occurred.",
+              description:
+                error instanceof Error ? error.message : t("commandPalette.anErrorOccurred"),
             }),
           );
         }
@@ -2721,7 +2742,8 @@ export function ArchivedThreadsPanel() {
             stackedThreadToast({
               type: "error",
               title: t("failedToDeleteThread"),
-              description: error instanceof Error ? error.message : "An error occurred.",
+              description:
+                error instanceof Error ? error.message : t("commandPalette.anErrorOccurred"),
             }),
           );
         }
@@ -2795,7 +2817,9 @@ export function ArchivedThreadsPanel() {
                           type: "error",
                           title: t("archivedThreadActionFailed"),
                           description:
-                            error instanceof Error ? error.message : "An error occurred.",
+                            error instanceof Error
+                              ? error.message
+                              : t("commandPalette.anErrorOccurred"),
                         }),
                       );
                     }
@@ -2804,8 +2828,9 @@ export function ArchivedThreadsPanel() {
                 title={thread.title}
                 description={
                   <>
-                    Archived {formatRelativeTimeLabel(thread.archivedAt ?? thread.createdAt)}
-                    {" \u00b7 Created "}
+                    {t("archivedShelf")}{" "}
+                    {formatRelativeTimeLabel(thread.archivedAt ?? thread.createdAt)}
+                    {t("created")}
                     {formatRelativeTimeLabel(thread.createdAt)}
                   </>
                 }
@@ -2831,7 +2856,9 @@ export function ArchivedThreadsPanel() {
                               type: "error",
                               title: t("failedToUnarchiveThread"),
                               description:
-                                error instanceof Error ? error.message : "An error occurred.",
+                                error instanceof Error
+                                  ? error.message
+                                  : t("commandPalette.anErrorOccurred"),
                             }),
                           );
                         }

@@ -31,6 +31,7 @@ import { useSelectedThreadWorktree } from "../../../state/use-selected-thread-wo
 import { vcsEnvironment } from "../../../state/vcs";
 import { resolveGitOverviewReviewNavigationAction } from "./git-overview-navigation";
 import { MetaCard, SheetListRow, menuItemIconName, statusSummary } from "./gitSheetComponents";
+import { t } from "../../../i18n";
 
 const HEADER_SCROLL_EDGE_EFFECTS = nativeHeaderScrollEdgeEffects(Platform.OS, Platform.Version);
 
@@ -102,11 +103,11 @@ export function GitOverviewSheet(props: GitOverviewSheetProps) {
   const openExistingPr = useCallback(async () => {
     const prUrl = gitStatus.data?.pr?.state === "open" ? gitStatus.data.pr.url : null;
     if (!prUrl) {
-      Alert.alert("No open PR", "This branch does not have an open pull request.");
+      Alert.alert(t("noOpenPr"), t("thisBranchDoesNotHaveAnOpenPullRequest"));
       return;
     }
     if (!(await tryOpenExternalUrl(prUrl, "pull-request"))) {
-      Alert.alert("Unable to open PR", "The pull request could not be opened.");
+      Alert.alert(t("unableToOpenPr"), t("thePullRequestCouldNotBeOpened"));
     }
   }, [gitStatus.data]);
 
@@ -249,8 +250,11 @@ export function GitOverviewSheet(props: GitOverviewSheetProps) {
             <View className="ml-12 h-px bg-border" />
             <SheetListRow
               icon="arrow.down.circle"
-              title="Pull latest"
-              subtitle={`${behindCount} commit${behindCount === 1 ? "" : "s"} behind upstream`}
+              title={t("pullLatest")}
+              subtitle={t("commitBehindUpstream", {
+                behindCount: behindCount,
+                value2: behindCount === 1 ? "" : "s",
+              })}
               disabled={busy || !isRepo}
               onPress={() => void gitActions.onPullSelectedThreadBranch()}
             />
@@ -259,8 +263,8 @@ export function GitOverviewSheet(props: GitOverviewSheetProps) {
         <View className="ml-12 h-px bg-border" />
         <SheetListRow
           icon="text.bubble"
-          title="Review changes"
-          subtitle="Inspect turn diffs, worktree changes, and base branch diff"
+          title={t("reviewChanges")}
+          subtitle={t("inspectTurnDiffsWorktreeChangesAndBaseBranchDiff")}
           disabled={busy || !isRepo}
           onPress={() => {
             const params = { environmentId, threadId };
@@ -274,8 +278,8 @@ export function GitOverviewSheet(props: GitOverviewSheetProps) {
         <View className="ml-12 h-px bg-border" />
         <SheetListRow
           icon="point.topleft.down.curvedto.point.bottomright.up"
-          title="Branches & worktrees"
-          subtitle="Switch branch, create branch, or move to a worktree"
+          title={t("branchesWorktrees")}
+          subtitle={t("switchBranchCreateBranchOrMoveToAWorktree")}
           disabled={busy || !isRepo}
           onPress={() =>
             navigation.navigate("GitBranches", {
@@ -286,7 +290,9 @@ export function GitOverviewSheet(props: GitOverviewSheetProps) {
         />
       </View>
 
-      {currentWorktreePath ? <MetaCard label="Worktree" value={currentWorktreePath} /> : null}
+      {currentWorktreePath ? (
+        <MetaCard label={t("workspace.worktree")} value={currentWorktreePath} />
+      ) : null}
     </ScrollView>
   );
 
@@ -391,7 +397,7 @@ export function GitOverviewSheet(props: GitOverviewSheetProps) {
             />
           </Pressable>
           <Text className="text-xs font-t3-bold tracking-[1px] uppercase text-foreground-muted">
-            Repository
+            {t("commandPalette.repository")}
           </Text>
           <Text className="pr-10 text-xl font-t3-bold">{currentBranchLabel}</Text>
           <Text className="text-foreground-secondary text-sm font-medium leading-normal">
@@ -405,7 +411,7 @@ export function GitOverviewSheet(props: GitOverviewSheetProps) {
           onBack={() => navigation.goBack()}
           actions={[
             {
-              accessibilityLabel: "Refresh repository status",
+              accessibilityLabel: t("refreshRepositoryStatus"),
               disabled: busy,
               icon: "arrow.clockwise",
               onPress: () => void gitActions.refreshSelectedThreadGitStatus(),

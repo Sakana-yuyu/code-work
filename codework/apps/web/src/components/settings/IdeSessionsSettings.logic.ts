@@ -5,6 +5,7 @@ import {
   type ProviderInstanceEnvironmentVariable,
 } from "@codework/contracts";
 import * as Schema from "effect/Schema";
+import { t } from "~/i18n/runtime";
 
 export type IdeSessionHeaderDraft = {
   readonly headerName: string;
@@ -28,9 +29,24 @@ export const IDE_SESSION_PROFILES: ReadonlyArray<{
   readonly value: CompositionIdeRuntimeProfile;
   readonly label: string;
 }> = [
-  { value: "cursor_ide", label: "Cursor IDE" },
-  { value: "vscode_ide", label: "VS Code" },
-  { value: "browser_mcp", label: "Browser MCP" },
+  {
+    value: "cursor_ide",
+    get label() {
+      return t("cursorIde");
+    },
+  },
+  {
+    value: "vscode_ide",
+    get label() {
+      return t("vsCode");
+    },
+  },
+  {
+    value: "browser_mcp",
+    get label() {
+      return t("browserMcp");
+    },
+  },
 ];
 
 const IDE_INSTANCE_ID_PATTERN = /^[A-Za-z][A-Za-z0-9_-]{0,63}$/;

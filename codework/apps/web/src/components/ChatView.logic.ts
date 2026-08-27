@@ -24,7 +24,7 @@ import {
 import type { DraftThreadEnvMode } from "../composerDraftStore";
 import type { ComposerSubmissionIntent } from "../composer-logic";
 import type { TimelineEntry } from "../session-logic";
-import { t } from "~/i18n";
+import { t } from "~/i18n/runtime";
 import { canonicalStorageKey } from "../persistenceStorage";
 
 export const LEGACY_LAST_INVOKED_SCRIPT_BY_PROJECT_KEY = "codework:last-invoked-script-by-project";
@@ -406,13 +406,13 @@ export function buildExpiredTerminalContextToastCopy(
   const noun = count === 1 ? "Expired terminal context" : "Expired terminal contexts";
   if (variant === "empty") {
     return {
-      title: `${noun} won't be sent`,
-      description: "Remove it or re-add it to include terminal output.",
+      title: t("wonTBeSent", { noun: noun }),
+      description: t("removeItOrReAddItToIncludeTerminalOutput"),
     };
   }
   return {
-    title: `${noun} omitted from message`,
-    description: "Re-add it if you want that terminal output included.",
+    title: t("omittedFromMessage", { noun: noun }),
+    description: t("reAddItIfYouWantThatTerminalOutputIncluded"),
   };
 }
 
@@ -530,8 +530,8 @@ export function getStartedThreadModelChangeBlockReason(input: {
     return null;
   }
   return {
-    title: "Start a new chat to change models",
-    description: "This provider does not allow switching models after a conversation has started.",
+    title: t("startANewChatToChangeModels"),
+    description: t("thisProviderDoesNotAllowSwitchingModelsAfterAConversationHasStarted"),
   };
 }
 

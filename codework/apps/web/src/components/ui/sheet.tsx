@@ -5,6 +5,7 @@ import { XIcon } from "lucide-react";
 import { cn } from "~/lib/utils";
 import { Button } from "~/components/ui/button";
 import { ScrollArea } from "~/components/ui/scroll-area";
+import { t } from "~/i18n";
 
 const Sheet = SheetPrimitive.Root;
 
@@ -96,7 +97,7 @@ function SheetPopup({
           {children}
           {showCloseButton && (
             <SheetPrimitive.Close
-              aria-label="Close"
+              aria-label={t("commandPalette.close")}
               className="absolute end-2 top-2"
               render={<Button size="icon" variant="ghost" />}
             >

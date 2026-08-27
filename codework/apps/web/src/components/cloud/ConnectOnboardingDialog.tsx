@@ -29,6 +29,7 @@ import {
 } from "../ui/dialog";
 import { Switch } from "../ui/switch";
 import { toastManager } from "../ui/toast";
+import { t } from "~/i18n";
 
 /**
  * Post-sign-in onboarding wizard for Code Work Connect. Opens on every in-session
@@ -202,10 +203,10 @@ function ConfiguredConnectOnboardingDialog() {
     if (!ok) return;
     toastManager.add({
       type: "success",
-      title: "Code Work Connect enabled",
+      title: t("codeWorkConnectEnabled"),
       description: exposeEnvironment
-        ? "This environment is available to your other devices through Code Work Connect."
-        : "This environment publishes agent activity to your mobile clients.",
+        ? t("thisEnvironmentIsAvailableToYourOtherDevicesThroughCodeWorkConnect")
+        : t("thisEnvironmentPublishesAgentActivityToYourMobileClients"),
     });
     setStep("devices");
   };
@@ -221,10 +222,9 @@ function ConfiguredConnectOnboardingDialog() {
     >
       <DialogPopup className="max-w-xl">
         <DialogHeader>
-          <DialogTitle>Set up Code Work Connect</DialogTitle>
+          <DialogTitle>{t("setUpCodeWorkConnect")}</DialogTitle>
           <DialogDescription>
-            Mesh your devices together — publish this environment and connect the rest, all in one
-            place.
+            {t("meshYourDevicesTogetherPublishThisEnvironmentAndConnectTheRestAllInOnePl")}
           </DialogDescription>
           {steps.length > 1 ? (
             <OnboardingStepper
@@ -255,13 +255,13 @@ function ConfiguredConnectOnboardingDialog() {
               checked={dontShowAgain}
               onCheckedChange={(checked) => setDontShowAgain(checked === true)}
             />
-            Don&apos;t show this again
+            {t("donAposTShowThisAgain")}
           </label>
           <div className="flex flex-col-reverse gap-2 sm:flex-row">
             {step === "publish" ? (
               <>
                 <Button variant="ghost" disabled={isApplying} onClick={() => setStep("devices")}>
-                  Not now
+                  {t("notNow")}
                 </Button>
                 <Button
                   disabled={
@@ -269,12 +269,12 @@ function ConfiguredConnectOnboardingDialog() {
                   }
                   onClick={() => void applyPublishSelection()}
                 >
-                  {isApplying ? "Enabling…" : "Continue"}
+                  {isApplying ? t("enabling") : t("commandPalette.continue")}
                 </Button>
               </>
             ) : (
               <Button disabled={isApplying} onClick={complete}>
-                Done
+                {t("done")}
               </Button>
             )}
           </div>
@@ -332,7 +332,7 @@ function OnboardingStepper({
             {index < currentIndex ? <CheckIcon className="size-3" /> : null}
           </span>
           <span className="text-[10px] font-medium uppercase text-muted-foreground">
-            Step {index + 1}
+            {t("step")} {index + 1}
           </span>
           <span className="truncate text-xs font-semibold text-foreground">
             {STEP_LABELS[step]}
@@ -362,15 +362,17 @@ function PublishStep({
     <div className="space-y-3">
       <div className="rounded-lg border">
         <OnboardingToggleRow
-          title="Publish this environment"
-          description="Make this environment available to your other devices through Code Work Connect."
+          title={t("publishThisEnvironment")}
+          description={t("makeThisEnvironmentAvailableToYourOtherDevicesThroughCodeWorkConnect")}
           checked={exposeEnvironment}
           disabled={disabled}
           onCheckedChange={onExposeEnvironmentChange}
         />
         <OnboardingToggleRow
-          title="Publish agent activity"
-          description="Send activity from this environment to your mobile clients for push notifications and Live Activities."
+          title={t("publishAgentActivity")}
+          description={t(
+            "sendActivityFromThisEnvironmentToYourMobileClientsForPushNotificationsAn",
+          )}
           checked={publishAgentActivity}
           disabled={disabled}
           onCheckedChange={onPublishAgentActivityChange}
@@ -425,8 +427,7 @@ function DevicesStep() {
         showSavedEnvironments
         empty={
           <p className="px-4 py-6 text-center text-sm text-muted-foreground">
-            No other environments are published to your account yet. Publish one from another device
-            and it will show up here.
+            {t("noOtherEnvironmentsArePublishedToYourAccountYetPublishOneFromAnotherDevi")}
           </p>
         }
       />

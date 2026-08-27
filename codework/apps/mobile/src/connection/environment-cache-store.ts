@@ -15,6 +15,7 @@ import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 
 import * as MobileDatabase from "../persistence/mobile-database";
+import { t } from "../i18n/runtime";
 
 const SHELL_SNAPSHOT_CACHE_SCHEMA_VERSION = 1;
 // v3 adds windowed (paginated) snapshots carrying `page` metadata; the bump
@@ -67,7 +68,7 @@ type CacheOperation = ConnectionPersistenceError["operation"];
 function persistenceError(operation: CacheOperation, cause: unknown) {
   return new ConnectionPersistenceError({
     operation,
-    message: `Could not ${operation.replaceAll("-", " ")}: ${String(cause)}`,
+    message: t("couldNot", { value1: operation.replaceAll("-", " "), value2: String(cause) }),
   });
 }
 

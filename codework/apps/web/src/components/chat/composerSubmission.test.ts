@@ -1,5 +1,8 @@
 import { PROVIDER_SEND_TURN_MAX_INPUT_CHARS } from "@codework/contracts";
 import { describe, expect, it, vi } from "vite-plus/test";
+import { setCurrentLanguage } from "~/i18n/runtime";
+
+setCurrentLanguage("en");
 
 import { submitComposerDraft } from "./composerSubmission";
 

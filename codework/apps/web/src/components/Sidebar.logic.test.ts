@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { defaultAnimateLayoutChanges, type AnimateLayoutChanges } from "@dnd-kit/sortable";
+import { t } from "~/i18n/runtime";
 import {
   animatePinnedLayoutChanges,
   archiveSelectedThreadEntries,
@@ -193,7 +194,7 @@ describe("buildBulkTitleRegenerationContextMenuItem", () => {
       }),
     ).toEqual({
       id: "regenerate-title",
-      label: "Regenerate titles (3)",
+      label: t("regenerateTitles", { actionableCount: 3 }),
     });
   });
 
@@ -205,7 +206,7 @@ describe("buildBulkTitleRegenerationContextMenuItem", () => {
       }),
     ).toEqual({
       id: "regenerate-title",
-      label: "Regenerating… (2)",
+      label: t("regenerating", { supportedCount: 2 }),
       disabled: true,
     });
   });
@@ -224,13 +225,21 @@ describe("buildMultiSelectThreadContextMenuItems", () => {
   it("offers bulk archive with the selected count", () => {
     expect(
       buildMultiSelectThreadContextMenuItems({ count: 3, hasRunningThread: false }),
-    ).toContainEqual({ id: "archive", label: "Archive (3)", disabled: false });
+    ).toContainEqual({
+      id: "archive",
+      label: t("archive3", { count: 3 }),
+      disabled: false,
+    });
   });
 
   it("disables bulk archive when a selected thread is running", () => {
     expect(
       buildMultiSelectThreadContextMenuItems({ count: 2, hasRunningThread: true }),
-    ).toContainEqual({ id: "archive", label: "Archive (2)", disabled: true });
+    ).toContainEqual({
+      id: "archive",
+      label: t("archive3", { count: 2 }),
+      disabled: true,
+    });
   });
 });
 
@@ -1103,7 +1112,7 @@ describe("resolveThreadStatusPill", () => {
           hasPendingUserInput: true,
         },
       }),
-    ).toMatchObject({ label: "Pending Approval", pulse: false });
+    ).toMatchObject({ kind: "pending-approval", label: t("pendingApproval"), pulse: false });
   });
 
   it("shows awaiting input when plan mode is blocked on user answers", () => {
@@ -1114,7 +1123,7 @@ describe("resolveThreadStatusPill", () => {
           hasPendingUserInput: true,
         },
       }),
-    ).toMatchObject({ label: "Awaiting Input", pulse: false });
+    ).toMatchObject({ kind: "awaiting-input", label: t("awaitingInput"), pulse: false });
   });
 
   it("falls back to working when the thread is actively running without blockers", () => {
@@ -1122,7 +1131,7 @@ describe("resolveThreadStatusPill", () => {
       resolveThreadStatusPill({
         thread: baseThread,
       }),
-    ).toMatchObject({ label: "Working", pulse: true });
+    ).toMatchObject({ kind: "working", label: t("working"), pulse: true });
   });
 
   it("shows plan ready when a settled plan turn has a proposed plan ready for follow-up", () => {
@@ -1139,7 +1148,7 @@ describe("resolveThreadStatusPill", () => {
           },
         },
       }),
-    ).toMatchObject({ label: "Plan Ready", pulse: false });
+    ).toMatchObject({ kind: "plan-ready", label: t("planReady"), pulse: false });
   });
 
   it("does not manufacture completed state without a client visit marker", () => {
@@ -1173,7 +1182,7 @@ describe("resolveThreadStatusPill", () => {
           },
         },
       }),
-    ).toMatchObject({ label: "Completed", pulse: false });
+    ).toMatchObject({ kind: "completed", label: t("completed"), pulse: false });
   });
 });
 
@@ -1208,18 +1217,21 @@ describe("resolveProjectStatusIndicator", () => {
     expect(
       resolveProjectStatusIndicator([
         {
+          kind: "completed",
           label: "Completed",
           colorClass: "text-emerald-600",
           dotClass: "bg-emerald-500",
           pulse: false,
         },
         {
+          kind: "pending-approval",
           label: "Pending Approval",
           colorClass: "text-amber-600",
           dotClass: "bg-amber-500",
           pulse: false,
         },
         {
+          kind: "working",
           label: "Working",
           colorClass: "text-sky-600",
           dotClass: "bg-sky-500",
@@ -1233,12 +1245,14 @@ describe("resolveProjectStatusIndicator", () => {
     expect(
       resolveProjectStatusIndicator([
         {
+          kind: "completed",
           label: "Completed",
           colorClass: "text-emerald-600",
           dotClass: "bg-emerald-500",
           pulse: false,
         },
         {
+          kind: "plan-ready",
           label: "Plan Ready",
           colorClass: "text-violet-600",
           dotClass: "bg-violet-500",

@@ -15,6 +15,7 @@ import {
   type TerminalGridSize,
   type ThreadTerminalSubscriptionIdentity,
 } from "./threadTerminalPanelModel";
+import { t } from "../../i18n";
 
 interface ThreadTerminalPanelProps {
   readonly environmentId: EnvironmentId;
@@ -220,10 +221,10 @@ export const ThreadTerminalPanel = memo(function ThreadTerminalPanel(
       <View className="flex-row items-center justify-between border-b border-border px-3 py-2">
         <View className="min-w-0 flex-1">
           <Text className="font-t3-bold text-sm text-foreground" numberOfLines={1}>
-            Terminal
+            {t("surface.terminal")}
           </Text>
           <Text className="text-2xs text-foreground-muted" numberOfLines={1}>
-            {nativeTerminalAvailable ? "Native Ghostty surface" : "Text fallback active"}
+            {nativeTerminalAvailable ? t("nativeGhosttySurface") : t("textFallbackActive")}
           </Text>
         </View>
         <View className="flex-row items-center gap-2">

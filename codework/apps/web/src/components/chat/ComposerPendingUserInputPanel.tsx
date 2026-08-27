@@ -8,6 +8,7 @@ import {
 import { CheckIcon, ChevronDownIcon } from "lucide-react";
 import { Collapsible, CollapsiblePanel, CollapsibleTrigger } from "../ui/collapsible";
 import { cn } from "~/lib/utils";
+import { t } from "~/i18n";
 
 interface PendingUserInputPanelProps {
   pendingUserInputs: PendingUserInput[];
@@ -182,7 +183,7 @@ const ComposerPendingUserInputCard = memo(function ComposerPendingUserInputCard(
       <div className="flex items-center gap-1 px-1 sm:px-2">
         <CollapsibleTrigger
           title={
-            isCollapsed ? "Show the question and its options" : "Hide the question and its options"
+            isCollapsed ? t("showTheQuestionAndItsOptions") : t("hideTheQuestionAndItsOptions")
           }
           data-pending-user-input-toggle={isCollapsed ? "collapsed" : "expanded"}
           className="group -my-1 flex min-w-0 flex-1 items-center gap-2 rounded-md px-2 py-1.5 text-left outline-none transition-colors duration-150 hover:bg-muted/35 focus-visible:ring-1 focus-visible:ring-primary/25"
@@ -221,7 +222,7 @@ const ComposerPendingUserInputCard = memo(function ComposerPendingUserInputCard(
         <div className="pt-2 pb-0.5">
           <p className="text-sm text-foreground/85">{activeQuestion.question}</p>
           {activeQuestion.multiSelect ? (
-            <p className="mt-1 text-secondary-label text-xs">Select one or more options.</p>
+            <p className="mt-1 text-secondary-label text-xs">{t("selectOneOrMoreOptions")}</p>
           ) : null}
           <div className="mt-2 space-y-0.5">
             {activeQuestion.options.map((option, index) => {

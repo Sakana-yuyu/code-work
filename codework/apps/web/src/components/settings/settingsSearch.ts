@@ -1,5 +1,5 @@
 import { isElectron } from "~/env";
-import { CATALOGS, t } from "~/i18n";
+import { CATALOGS, t } from "~/i18n/runtime";
 
 export type SettingsPath =
   | "/settings/general"

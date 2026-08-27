@@ -47,6 +47,7 @@ import { SettingsRow } from "./components/SettingsRow";
 import { SettingsSection } from "./components/SettingsSection";
 import { SettingsSwitchRow } from "./components/SettingsSwitchRow";
 import { resolveAgentAwarenessPlatformPresentation } from "./SettingsRouteScreen.logic";
+import { t } from "../../i18n";
 
 type NotificationStatus = "checking" | "enabled" | "disabled" | "unsupported";
 type LiveActivityStatus = "checking" | "enabled" | "disabled" | "signed-out" | "linking";
@@ -74,7 +75,7 @@ export function SettingsRouteScreen() {
         <>
           {/* Android renders its own in-screen header instead of the native bar. */}
           <NativeStackScreenOptions options={{ headerShown: false }} />
-          <AndroidScreenHeader title="Settings" onBack={() => navigation.goBack()} />
+          <AndroidScreenHeader title={t("settings")} onBack={() => navigation.goBack()} />
         </>
       ) : (
         <NativeStackScreenOptions
@@ -83,7 +84,7 @@ export function SettingsRouteScreen() {
               Platform.OS === "ios"
                 ? () => [
                     withNativeGlassHeaderItem({
-                      accessibilityLabel: "Close settings",
+                      accessibilityLabel: t("closeSettings"),
                       icon: { name: "xmark", type: "sfSymbol" } as const,
                       identifier: "settings-close",
                       label: "",
@@ -116,10 +117,10 @@ function LocalSettingsRouteScreen() {
           paddingBottom: Math.max(insets.bottom, 18) + 18,
         }}
       >
-        <SettingsSection title="Configuration">
+        <SettingsSection title={t("configuration")}>
           <SettingsRow
             icon="desktopcomputer"
-            label="Environments"
+            label={t("commandPalette.environments")}
             value={`${environmentCount}`}
             target="SettingsEnvironments"
           />
@@ -127,8 +128,8 @@ function LocalSettingsRouteScreen() {
 
         <GeneralSettingsSection />
 
-        <SettingsSection title="Appearance">
-          <SettingsRow icon="paintbrush" label="Appearance" target="SettingsAppearance" />
+        <SettingsSection title={t("appearance")}>
+          <SettingsRow icon="paintbrush" label={t("appearance")} target="SettingsAppearance" />
         </SettingsSection>
 
         <LegacySettingsSection />
@@ -173,7 +174,7 @@ function ConfiguredSettingsRouteScreen() {
     }
     const result = await settlePromise(() => Notifications.getPermissionsAsync());
     if (result._tag === "Failure") {
-      reportAtomCommandResult(result, { label: "notification permission refresh" });
+      reportAtomCommandResult(result, { label: t("notificationPermissionRefresh") });
       setNotificationStatus("disabled");
       return;
     }
@@ -195,7 +196,7 @@ function ConfiguredSettingsRouteScreen() {
     }
     if (!AsyncResult.isSuccess(preferencesResult)) {
       if (AsyncResult.isFailure(preferencesResult)) {
-        reportAtomCommandResult(preferencesResult, { label: "live activity preference load" });
+        reportAtomCommandResult(preferencesResult, { label: t("liveActivityPreferenceLoad") });
         setLiveActivityStatus("enabled");
       } else {
         setLiveActivityStatus("checking");
@@ -221,8 +222,8 @@ function ConfiguredSettingsRouteScreen() {
       if (!isAtomCommandInterrupted(result)) {
         const error = squashAtomCommandFailure(result);
         Alert.alert(
-          "Notifications unavailable",
-          error instanceof Error ? error.message : "Could not request notification permission.",
+          t("notificationsUnavailable"),
+          error instanceof Error ? error.message : t("couldNotRequestNotificationPermission"),
         );
       }
       return;
@@ -233,13 +234,13 @@ function ConfiguredSettingsRouteScreen() {
       // registration succeeds, so tell the user the truth about which happened.
       if (getAgentAwarenessRegistrationStatus() === "registered") {
         Alert.alert(
-          "Notifications enabled",
-          "Live Activity notifications are enabled for this device.",
+          t("notificationsEnabled"),
+          t("liveActivityNotificationsAreEnabledForThisDevice"),
         );
       } else {
         Alert.alert(
-          "Couldn't finish enabling notifications",
-          "Notification access was granted, but this device could not be registered with Code Work Connect. Notifications will start once registration succeeds.",
+          t("couldnTFinishEnablingNotifications"),
+          t("notificationAccessWasGrantedButThisDeviceCouldNotBeRegisteredWithCodeWor"),
         );
       }
       return;
@@ -247,34 +248,34 @@ function ConfiguredSettingsRouteScreen() {
     if (result.value.type === "unsupported") {
       setNotificationStatus("unsupported");
       Alert.alert(
-        "Notifications unavailable",
-        "Live Activity notifications are only available on iOS.",
+        t("notificationsUnavailable"),
+        t("liveActivityNotificationsAreOnlyAvailableOnIos"),
       );
       return;
     }
     setNotificationStatus("disabled");
     if (result.value.canAskAgain) {
-      Alert.alert("Notifications disabled", "Notifications were not enabled.");
+      Alert.alert(t("notificationsDisabled"), t("notificationsWereNotEnabled"));
       return;
     }
     Alert.alert(
-      "Notifications disabled",
-      "Notifications were denied for this app. Open Settings to enable them.",
+      t("notificationsDisabled"),
+      t("notificationsWereDeniedForThisAppOpenSettingsToEnableThem"),
       [
-        { text: "Cancel", style: "cancel" },
-        { text: "Open Settings", onPress: () => void Linking.openSettings() },
+        { text: t("cancel"), style: "cancel" },
+        { text: t("openSettings"), onPress: () => void Linking.openSettings() },
       ],
     );
   }, []);
 
   const promptSignIn = useCallback(() => {
     Alert.alert(
-      "Sign in to Code Work Connect",
-      "Live Activity updates require Code Work Connect so relay can deliver updates to this device.",
+      t("signInToCodeWorkConnect"),
+      t("liveActivityUpdatesRequireCodeWorkConnectSoRelayCanDeliverUpdatesToThisD"),
       [
-        { text: "Cancel", style: "cancel" },
+        { text: t("cancel"), style: "cancel" },
         {
-          text: "Continue",
+          text: t("commandPalette.continue"),
           onPress: () => navigation.navigate("SettingsSheet", { screen: "SettingsAuth" }),
         },
       ],
@@ -293,8 +294,8 @@ function ConfiguredSettingsRouteScreen() {
       setLiveActivityStatus("disabled");
       const error = squashAtomCommandFailure(tokenResult);
       Alert.alert(
-        "Live Activities unavailable",
-        error instanceof Error ? error.message : "Could not enable Live Activity updates.",
+        t("liveActivitiesUnavailable"),
+        error instanceof Error ? error.message : t("couldNotEnableLiveActivityUpdates"),
       );
       return;
     }
@@ -319,8 +320,8 @@ function ConfiguredSettingsRouteScreen() {
       if (!isAtomCommandInterrupted(updateResult)) {
         const error = squashAtomCommandFailure(updateResult);
         Alert.alert(
-          "Live Activities unavailable",
-          error instanceof Error ? error.message : "Could not enable Live Activity updates.",
+          t("liveActivitiesUnavailable"),
+          error instanceof Error ? error.message : t("couldNotEnableLiveActivityUpdates"),
         );
       }
       return;
@@ -334,15 +335,18 @@ function ConfiguredSettingsRouteScreen() {
     // Activities are live until the device is actually registered.
     if (getAgentAwarenessRegistrationStatus() === "registered") {
       Alert.alert(
-        "Live Activities enabled",
+        t("liveActivitiesEnabled"),
         environmentCount > 0
-          ? `${environmentCount} environment${environmentCount === 1 ? "" : "s"} linked for Live Activity updates.`
-          : "Live Activity updates are enabled. Add an environment to start receiving updates.",
+          ? t("environmentLinkedForLiveActivityUpdates", {
+              environmentCount: environmentCount,
+              value2: environmentCount === 1 ? "" : "s",
+            })
+          : t("liveActivityUpdatesAreEnabledAddAnEnvironmentToStartReceivingUpdates"),
       );
     } else {
       Alert.alert(
-        "Couldn't finish enabling Live Activities",
-        "This device could not be registered with Code Work Connect, so Live Activities won't appear yet. They'll start once registration succeeds.",
+        t("couldnTFinishEnablingLiveActivities"),
+        t("thisDeviceCouldNotBeRegisteredWithCodeWorkConnectSoLiveActivitiesWonTApp"),
       );
     }
   }, [
@@ -363,11 +367,11 @@ function ConfiguredSettingsRouteScreen() {
       }
 
       Alert.alert(
-        "Disable notifications",
-        "Notification permission is controlled by iOS. Open Settings to disable notifications for Code Work.",
+        t("disableNotifications"),
+        t("notificationPermissionIsControlledByIosOpenSettingsToDisableNotification"),
         [
-          { text: "Cancel", style: "cancel" },
-          { text: "Open Settings", onPress: () => void Linking.openSettings() },
+          { text: t("cancel"), style: "cancel" },
+          { text: t("openSettings"), onPress: () => void Linking.openSettings() },
         ],
       );
     },
@@ -386,7 +390,7 @@ function ConfiguredSettingsRouteScreen() {
             );
             if (tokenResult._tag === "Failure") {
               reportAtomCommandResult(tokenResult, {
-                label: "live activity disable token lookup",
+                label: t("liveActivityDisableTokenLookup"),
               });
               return;
             }
@@ -406,7 +410,7 @@ function ConfiguredSettingsRouteScreen() {
           if (updateResult._tag === "Failure") {
             setLiveActivityStatus("enabled");
             reportAtomCommandResult(updateResult, {
-              label: "live activity disable",
+              label: t("liveActivityDisable"),
             });
             return;
           }
@@ -451,29 +455,29 @@ function ConfiguredSettingsRouteScreen() {
         }}
       >
         <View className="gap-3">
-          <SettingsSection title="Account">
+          <SettingsSection title={t("account")}>
             <SettingsRow
               icon="person.crop.circle"
-              label="Code Work Account"
+              label={t("codeWorkAccount")}
               value={accountLabel}
               onPress={openAccount}
             />
           </SettingsSection>
           <Text className="px-2 text-sm text-foreground-muted">
-            Code Work works locally without signing in. Cloud features are optional.
+            {t("codeWorkWorksLocallyWithoutSigningInCloudFeaturesAreOptional")}
           </Text>
         </View>
 
-        <SettingsSection title="Configuration">
+        <SettingsSection title={t("configuration")}>
           <SettingsRow
             icon="desktopcomputer"
-            label="Environments"
+            label={t("commandPalette.environments")}
             value={`${environmentCount}`}
             target="SettingsEnvironments"
           />
           <SettingsSwitchRow
             icon="bell.badge"
-            label="Device Notifications"
+            label={t("deviceNotifications")}
             disabled={
               !agentAwarenessPlatform.supported ||
               !agentAwarenessPushAvailable ||
@@ -498,7 +502,7 @@ function ConfiguredSettingsRouteScreen() {
               liveActivityStatus === "linking"
             }
             icon="bolt.circle"
-            label="Live Activity Updates"
+            label={t("liveActivityUpdates")}
             subtitle={agentAwarenessPlatform.subtitle}
             // Same gate: a saved preference is meaningless until the device
             // registration the relay needs to push updates has succeeded.
@@ -513,8 +517,8 @@ function ConfiguredSettingsRouteScreen() {
 
         <GeneralSettingsSection />
 
-        <SettingsSection title="Appearance">
-          <SettingsRow icon="paintbrush" label="Appearance" target="SettingsAppearance" />
+        <SettingsSection title={t("appearance")}>
+          <SettingsRow icon="paintbrush" label={t("appearance")} target="SettingsAppearance" />
         </SettingsSection>
 
         <LegacySettingsSection />
@@ -535,15 +539,15 @@ function GeneralSettingsSection() {
     preferencesResult.value.autoSettleOnMerge !== false;
 
   return (
-    <SettingsSection title="General">
-      <SettingsRow icon="folder" label="Project Grouping" target="SettingsProjectGrouping" />
+    <SettingsSection title={t("general")}>
+      <SettingsRow icon="folder" label={t("projectGrouping")} target="SettingsProjectGrouping" />
       <SettingsSwitchRow
         icon="arrow.triangle.branch"
-        label="Auto-settle merged threads"
+        label={t("settings.autoSettleMergedThreads")}
         value={autoSettleOnMerge}
         onValueChange={(value) => savePreferences({ autoSettleOnMerge: value })}
       />
-      <SettingsRow icon="chart.bar.xaxis" label="Usage" target="SettingsUsage" />
+      <SettingsRow icon="chart.bar.xaxis" label={t("usage")} target="SettingsUsage" />
     </SettingsSection>
   );
 }
@@ -562,23 +566,22 @@ function LegacySettingsSection() {
 
   return (
     <View className="gap-3">
-      <SettingsSection title="Legacy">
+      <SettingsSection title={t("legacy")}>
         <SettingsSwitchRow
           icon="sidebar.left"
-          label="Legacy Thread List"
+          label={t("legacyThreadList")}
           value={!threadListV2Enabled}
           onValueChange={(value) => savePreferences({ legacyThreadListEnabled: value })}
         />
         <SettingsSwitchRow
           icon="hammer"
-          label="Plan Mode"
+          label={t("planMode")}
           value={planModeEnabled}
           onValueChange={(value) => savePreferences({ planModeEnabled: value })}
         />
       </SettingsSection>
       <Text className="px-2 text-sm text-foreground-muted">
-        Opt into retired interfaces kept for compatibility. Plan Mode restores the Build/Plan
-        control; otherwise every task runs in Build mode.
+        {t("optIntoRetiredInterfacesKeptForCompatibilityPlanModeRestoresTheBuildPlan")}
       </Text>
     </View>
   );
@@ -618,7 +621,7 @@ function AppSettingsSection() {
       // apply immediately instead of prompting.
       await runAppUpdateCheck({
         applyMode: "immediate",
-        onFailure: (message) => Alert.alert("Update failed", message),
+        onFailure: (message) => Alert.alert(t("updateFailed"), message),
         onStateChange: setUpdateState,
       });
     } finally {
@@ -637,17 +640,17 @@ function AppSettingsSection() {
 
   const statusLabel =
     updateState === "checking"
-      ? "Checking…"
+      ? t("interface.checking")
       : updateState === "downloading"
-        ? "Downloading…"
+        ? t("interface.downloading")
         : // "ready" appears only when this check joined an in-flight background-mode
           // check; that download installs at the next backgrounding.
           updateState === "ready"
-          ? "Update ready"
+          ? t("updateReady")
           : updateState === "restarting"
-            ? "Restarting…"
+            ? t("interface.restarting")
             : updateState === "current"
-              ? "Up to date"
+              ? t("interface.up-to-date")
               : null;
 
   const versionRow = (
@@ -659,7 +662,7 @@ function AppSettingsSection() {
         type="monochrome"
         weight="regular"
       />
-      <Text className="flex-1 text-lg text-foreground">Version</Text>
+      <Text className="flex-1 text-lg text-foreground">{t("version")}</Text>
       <View className="items-end">
         <Text className="text-lg text-foreground-muted">{versionLabel}</Text>
         {statusLabel ? (
@@ -670,12 +673,12 @@ function AppSettingsSection() {
   );
 
   return (
-    <SettingsSection title="App">
-      <SettingsRow icon="internaldrive" label="Client Storage" target="SettingsClientStorage" />
-      <SettingsRow icon="doc.text" label="Legal" fullScreenTarget="SettingsLegal" />
+    <SettingsSection title={t("app")}>
+      <SettingsRow icon="internaldrive" label={t("clientStorage")} target="SettingsClientStorage" />
+      <SettingsRow icon="doc.text" label={t("legal")} fullScreenTarget="SettingsLegal" />
       {updateCheckAvailable ? (
         <Pressable
-          accessibilityLabel={`Version ${versionLabel}`}
+          accessibilityLabel={t("version2", { versionLabel: versionLabel })}
           accessibilityRole="text"
           disabled={busy}
           onPress={handleVersionPress}
@@ -695,8 +698,8 @@ function capitalize(value: string): string {
 
 function ArchivedThreadsSettingsSection() {
   return (
-    <SettingsSection title="Threads">
-      <SettingsRow icon="archivebox" label="Archived Threads" target="SettingsArchive" />
+    <SettingsSection title={t("commandPalette.threads")}>
+      <SettingsRow icon="archivebox" label={t("archivedThreads")} target="SettingsArchive" />
     </SettingsSection>
   );
 }

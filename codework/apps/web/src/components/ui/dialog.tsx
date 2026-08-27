@@ -10,6 +10,7 @@ import {
   DIALOG_POPUP_CLASS,
 } from "~/components/ui/dialog-styles";
 import { ScrollArea } from "~/components/ui/scroll-area";
+import { t } from "~/i18n";
 
 const DialogCreateHandle = DialogPrimitive.createHandle;
 
@@ -78,7 +79,7 @@ function DialogPopup({
           {children}
           {showCloseButton && (
             <DialogPrimitive.Close
-              aria-label="Close"
+              aria-label={t("commandPalette.close")}
               className="absolute end-2 top-2"
               render={<Button size="icon" variant="ghost" />}
             >

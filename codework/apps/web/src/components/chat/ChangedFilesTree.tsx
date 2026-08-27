@@ -147,7 +147,7 @@ export const ChangedFilesCard = memo(function ChangedFilesCard(props: {
               <FileDiffIcon className="size-3" />
               <span className="hidden @[24rem]/changed-files:inline">{t("openDiff")}</span>
             </TooltipTrigger>
-            <TooltipPopup side="top">Open the full diff</TooltipPopup>
+            <TooltipPopup side="top">{t("openTheFullDiff")}</TooltipPopup>
           </Tooltip>
         </div>
       </div>
@@ -168,7 +168,8 @@ export const ChangedFilesCard = memo(function ChangedFilesCard(props: {
                 {index > 0 ? <span aria-hidden="true">·</span> : null}
                 <span className="font-mono text-foreground/75">{scope.label}</span>
                 <span>
-                  {scope.fileCount} file{scope.fileCount === 1 ? "" : "s"}
+                  {scope.fileCount} {t("file")}
+                  {scope.fileCount === 1 ? "" : "s"}
                 </span>
               </span>
             ))}
@@ -201,7 +202,7 @@ export const ChangedFilesCard = memo(function ChangedFilesCard(props: {
               className="rounded-md px-1.5 py-1 text-[11px] font-medium text-muted-foreground transition-colors hover:bg-accent/60 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               onClick={() => onExpandedChange(true)}
             >
-              Show all {files.length} files
+              {t("showAll")} {files.length} {t("files")}
             </button>
           </div>
         </div>

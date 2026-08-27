@@ -24,6 +24,7 @@ import { Button } from "../ui/button";
 import { Skeleton } from "../ui/skeleton";
 import { toastManager } from "../ui/toast";
 import { presentSavedCloudEnvironmentConnection } from "./cloudEnvironmentConnectionPresentation";
+import { t } from "~/i18n";
 
 export interface SavedCloudEnvironmentConnection {
   readonly environmentId: EnvironmentId;
@@ -99,8 +100,8 @@ export function CloudEnvironmentConnectRows({
     if (result._tag === "Success") {
       toastManager.add({
         type: "success",
-        title: "Environment added",
-        description: `Connecting to ${environment.label} through Code Work Connect.`,
+        title: t("environmentAdded"),
+        description: t("connectingToThroughCodeWorkConnect", { label: environment.label }),
       });
       return;
     }
@@ -109,12 +110,14 @@ export function CloudEnvironmentConnectRows({
     }
     const cause = squashAtomCommandFailure(result);
     const message =
-      cause instanceof Error ? cause.message : "Could not connect the Code Work Connect environment.";
+      cause instanceof Error
+        ? cause.message
+        : t("interface.could-not-connect-the-code-work-connect-environment");
     const traceId = findErrorTraceId(cause);
     console.error("[t3-connect] Could not connect environment", { message, traceId, cause });
     toastManager.add({
       type: "error",
-      title: "Could not connect environment",
+      title: t("couldNotConnectEnvironment"),
       description: message,
       data: traceId
         ? {
@@ -154,7 +157,7 @@ export function CloudEnvironmentConnectRows({
       return (
         <div className={ITEM_ROW_CLASSNAME}>
           <p className="text-sm font-medium text-destructive">
-            Could not load Code Work Connect environments
+            {t("couldNotLoadCodeWorkConnectEnvironments")}
           </p>
           <p className="mt-1 text-xs text-muted-foreground">{discoveryProblem}</p>
           <Button
@@ -163,7 +166,7 @@ export function CloudEnvironmentConnectRows({
             className="mt-3"
             onClick={() => void refreshRelayEnvironments()}
           >
-            Try again
+            {t("tryAgain2")}
           </Button>
         </div>
       );
@@ -194,11 +197,11 @@ export function CloudEnvironmentConnectRows({
     const statusText = savedConnection
       ? savedConnection.statusText
       : availability === "online"
-        ? "Available · Relay online"
+        ? t("interface.available-relay-online")
         : availability === "offline"
-          ? "Available · Relay offline"
+          ? t("interface.available-relay-offline")
           : availability === "checking"
-            ? "Available · Checking relay status…"
+            ? t("interface.available-checking-relay-status")
             : (Option.getOrNull(error)?.message ?? "Available · Relay status unavailable");
     return (
       <div key={environment.environmentId} className={ITEM_ROW_CLASSNAME}>
@@ -250,7 +253,9 @@ export function CloudEnvironmentConnectRows({
               disabled={connectingEnvironmentId !== null}
               onClick={() => void connectEnvironment(environment)}
             >
-              {connectingEnvironmentId === environment.environmentId ? "Connecting…" : "Connect"}
+              {connectingEnvironmentId === environment.environmentId
+                ? t("connecting2")
+                : t("connect")}
             </Button>
           )}
         </div>

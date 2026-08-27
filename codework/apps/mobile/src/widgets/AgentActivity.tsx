@@ -15,6 +15,7 @@ import {
   type LiveActivityComponent,
   type LiveActivityLayout,
 } from "expo-widgets";
+import { t } from "../i18n";
 
 type LiveActivityEnvironment = Parameters<LiveActivityComponent<AgentActivityProps>>[1];
 
@@ -131,8 +132,10 @@ export function AgentActivity(
   // minimal glyph — must agree, and a failure anywhere should dominate a
   // newer success.
   const allDone = props.activeCount === 0;
-  const doneLabel = failedRow ? "Failed" : "Done";
-  const outcomeLabel = failedRow ? "Agent work failed" : "Agent work completed";
+  const doneLabel = failedRow ? t("failed") : t("done");
+  const outcomeLabel = failedRow
+    ? t("interface.agent-work-failed")
+    : t("interface.agent-work-completed");
 
   // Header copy: "5 active agents" + (", 1 needs attention"). The banner renders
   // the two parts in-line so the attention half can carry the accent color;
@@ -143,7 +146,9 @@ export function AgentActivity(
     attentionRows.length > 0
       ? `${attentionRows.length} need${attentionRows.length === 1 ? "s" : ""} attention`
       : "";
-  const activeLabel = allDone ? doneLabel : `${props.activeCount} active`;
+  const activeLabel = allDone
+    ? doneLabel
+    : t("interface.value-active", { value1: props.activeCount });
   const summary = attentionSuffix || activeLabel;
 
   // Any registered scheme variant routes back to this app; taps are delivered
@@ -328,8 +333,8 @@ export function AgentActivity(
       <Text modifiers={[font({ weight: "semibold", size: 11 }), foregroundStyle(tint)]}>
         {attentionRow
           ? attentionRow.phase === "waiting_for_approval"
-            ? "Approval"
-            : "Input"
+            ? t("approval")
+            : t("input")
           : activeLabel}
       </Text>
     ),

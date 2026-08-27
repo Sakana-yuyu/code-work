@@ -332,7 +332,7 @@ function CommentComposer({
     });
     setPosting(false);
     if (result._tag === "Failure") {
-      toastManager.add({ type: "error", title: "Could not post the comment" });
+      toastManager.add({ type: "error", title: t("couldNotPostTheComment") });
       return;
     }
     setBody("");
@@ -359,7 +359,7 @@ function CommentComposer({
           onClick={() => void submit()}
         >
           <SendIcon className="size-3.5" />
-          {posting ? "Posting..." : "Comment"}
+          {posting ? t("posting") : t("comment2")}
         </Button>
       </div>
     </div>
@@ -481,7 +481,7 @@ export function PullRequestSummaryTab({
     const result = await update({ environmentId, input: { ...reference, body } });
     setBodySaving(false);
     if (result._tag === "Failure") {
-      toastManager.add({ type: "error", title: "Could not save the description" });
+      toastManager.add({ type: "error", title: t("couldNotSaveTheDescription") });
       return;
     }
     setBodyScope(null);
@@ -506,7 +506,7 @@ export function PullRequestSummaryTab({
       });
       setCommentSaving(false);
       if (result._tag === "Failure") {
-        toastManager.add({ type: "error", title: "Could not save the comment" });
+        toastManager.add({ type: "error", title: t("couldNotSaveTheComment") });
         return;
       }
       setCommentScope(null);
@@ -521,7 +521,7 @@ export function PullRequestSummaryTab({
           <MetaRow icon={<UsersIcon className="size-3.5" />} label={t("reviewers")}>
             <span className="flex min-w-0 flex-wrap items-center gap-1.5">
               {reviewerEntries.length === 0 ? (
-                <span className="text-muted-foreground">None</span>
+                <span className="text-muted-foreground">{t("settings.envIdNone")}</span>
               ) : (
                 <span className="flex items-center -space-x-1">
                   {reviewerEntries.map((entry) => {
@@ -632,12 +632,12 @@ export function PullRequestSummaryTab({
           ) : null}
           <MetaRow icon={<MessageSquareIcon className="size-3.5" />} label={t("comments")}>
             {activityPending
-              ? "Loading conversation…"
+              ? t("loadingConversation")
               : activityError
-                ? "Conversation unavailable"
+                ? t("conversationUnavailable")
                 : detail.commentCount === 1
-                  ? "1 comment"
-                  : `${detail.commentCount} comments`}
+                  ? t("m1Comment")
+                  : t("comments3", { commentCount: detail.commentCount })}
           </MetaRow>
         </div>
       </section>
@@ -689,7 +689,7 @@ export function PullRequestSummaryTab({
 
       <Section title={t("checks")} count={detail.checks.length}>
         {detail.checks.length === 0 ? (
-          <p className="text-xs text-muted-foreground">No checks reported.</p>
+          <p className="text-xs text-muted-foreground">{t("noChecksReported2")}</p>
         ) : (
           <div className="space-y-0.5">
             {detail.checks.map((check, index) => {
@@ -729,7 +729,7 @@ export function PullRequestSummaryTab({
                     >
                       <HammerIcon className="size-3" />
                       {pendingFinding === pullRequestFindingKey(finding)
-                        ? "Preparing..."
+                        ? t("preparing")
                         : fixCheckLabel}
                     </Button>
                   ) : null}
@@ -751,13 +751,13 @@ export function PullRequestSummaryTab({
               className="h-7 shrink-0 px-2 text-[10px] text-muted-foreground"
               aria-label={
                 commentOrder === "newest"
-                  ? "Show oldest comments first"
-                  : "Show newest comments first"
+                  ? t("showOldestCommentsFirst")
+                  : t("showNewestCommentsFirst")
               }
               onClick={() => setCommentOrder((value) => (value === "newest" ? "oldest" : "newest"))}
             >
               <ArrowDownUpIcon aria-hidden className="size-3" />
-              {commentOrder === "newest" ? "Newest first" : "Oldest first"}
+              {commentOrder === "newest" ? t("newestFirst") : t("oldestFirst")}
             </Button>
           ) : null
         }
@@ -770,12 +770,12 @@ export function PullRequestSummaryTab({
           <>
             {detail.commentsTruncated ? (
               <p className="mb-2 rounded-md border border-amber-500/30 bg-amber-500/5 px-2 py-1.5 text-xs">
-                This conversation is longer than this page reads in one go. The most recent{" "}
-                {detail.comments.length} are here; open it on the host to read the rest.
+                {t("thisConversationIsLongerThanThisPageReadsInOneGoTheMostRecent")}{" "}
+                {detail.comments.length} {t("areHereOpenItOnTheHostToReadTheRest")}
               </p>
             ) : null}
             {detail.comments.length === 0 ? (
-              <p className="py-2 text-xs text-muted-foreground">No comments yet.</p>
+              <p className="py-2 text-xs text-muted-foreground">{t("noCommentsYet")}</p>
             ) : (
               <div className="space-y-3">
                 {hiddenCommentCount > 0 ? (
@@ -790,8 +790,8 @@ export function PullRequestSummaryTab({
                       setShown({ url: detail.url, count: shownComments + COMMENT_PAGE })
                     }
                   >
-                    Show {Math.min(hiddenCommentCount, COMMENT_PAGE)} earlier{" "}
-                    {hiddenCommentCount === 1 ? "comment" : "comments"}
+                    {t("show")} {Math.min(hiddenCommentCount, COMMENT_PAGE)} {t("earlier")}{" "}
+                    {hiddenCommentCount === 1 ? t("comment") : t("comments2")}
                   </Button>
                 ) : null}
                 {visibleComments.map((comment) => {
@@ -804,7 +804,7 @@ export function PullRequestSummaryTab({
                         key={comment.id}
                         comment={comment}
                         editing={commentEditing}
-                        label={thread?.isResolved ? "Resolved" : "Approval dismissed"}
+                        label={thread?.isResolved ? t("resolved") : t("approvalDismissed")}
                         body={body}
                         reactionBar={
                           <PullRequestReactionBar
@@ -877,7 +877,7 @@ export function PullRequestSummaryTab({
                           >
                             <HammerIcon className="size-3" />
                             {pendingFinding === pullRequestFindingKey(finding)
-                              ? "Preparing..."
+                              ? t("preparing")
                               : fixFindingLabel}
                           </Button>
                         ) : null}

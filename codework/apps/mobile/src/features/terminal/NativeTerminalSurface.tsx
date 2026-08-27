@@ -22,6 +22,7 @@ import {
   type TerminalTheme,
 } from "./terminalTheme";
 import { terminalDebugLog } from "./terminalDebugLog";
+import { t } from "../../i18n";
 
 interface TerminalInputEvent {
   readonly data: string;
@@ -63,8 +64,8 @@ const FallbackTerminalSurface = memo(function FallbackTerminalSurface(props: Ter
   const { themeAppearance, themeId } = useAppearancePreferences();
   const theme = props.theme ?? getMobileTerminalTheme(themeId, themeAppearance);
   const statusLabel = props.isRunning
-    ? "Native terminal unavailable. Using text fallback."
-    : "Open terminal to start a shell.";
+    ? t("interface.native-terminal-unavailable-using-text-fallback")
+    : t("interface.open-terminal-to-start-a-shell");
 
   const handleLayout = (event: LayoutChangeEvent) => {
     const { width, height } = event.nativeEvent.layout;
@@ -133,7 +134,7 @@ const FallbackTerminalSurface = memo(function FallbackTerminalSurface(props: Ter
           autoCorrect={false}
           blurOnSubmit={false}
           editable={props.isRunning}
-          placeholder="type and press return"
+          placeholder={t("typeAndPressReturn")}
           placeholderTextColor={theme.mutedForeground}
           returnKeyType="send"
           className="text-sm"

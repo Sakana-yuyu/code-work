@@ -76,6 +76,7 @@ import {
   useThreadSettingsSheetPresentation,
   type NavigationWithFinishTransitioning,
 } from "./use-thread-settings-sheet-presentation";
+import { t } from "../../i18n";
 
 /**
  * Height of the collapsed composer (pill + vertical padding, excluding safe-area inset).
@@ -204,20 +205,26 @@ function composerConnectionStatus(input: {
         kind: "reconnecting",
         label:
           input.connectionError === null
-            ? `Reconnecting to ${environmentLabel}...`
-            : `Failed to connect. Retrying ${environmentLabel}...`,
+            ? t("reconnectingTo", { environmentLabel: environmentLabel })
+            : t("failedToConnectRetrying", { environmentLabel: environmentLabel }),
       };
     case "offline":
-      return { kind: "unavailable", label: "You are offline" };
+      return { kind: "unavailable", label: t("youAreOffline") };
     case "error":
       return {
         kind: "unavailable",
         label: input.connectionError
-          ? `Failed to connect to ${environmentLabel}: ${input.connectionError}`
-          : `Failed to connect to ${environmentLabel}`,
+          ? t("failedToConnectTo", {
+              environmentLabel: environmentLabel,
+              connectionError: input.connectionError,
+            })
+          : t("failedToConnectTo2", { environmentLabel: environmentLabel }),
       };
     case "available":
-      return { kind: "unavailable", label: `${environmentLabel} is not connected` };
+      return {
+        kind: "unavailable",
+        label: t("isNotConnected", { environmentLabel: environmentLabel }),
+      };
     case "connected":
       break;
   }
@@ -227,9 +234,9 @@ function composerConnectionStatus(input: {
   // cached messages are already visible.
   switch (input.threadSyncPhase) {
     case "loading":
-      return { kind: "syncing", label: "Loading messages..." };
+      return { kind: "syncing", label: t("loadingMessages") };
     case "syncing":
-      return { kind: "syncing", label: "Syncing messages..." };
+      return { kind: "syncing", label: t("syncingMessages") };
     default:
       return null;
   }
@@ -333,7 +340,9 @@ export const ThreadComposer = memo(function ThreadComposer(props: ThreadComposer
     props.selectedThread.session?.status === "starting";
 
   const sendLabel =
-    props.connectionState !== "connected" || props.queueCount > 0 ? "Queue" : "Send";
+    props.connectionState !== "connected" || props.queueCount > 0
+      ? t("interface.queue")
+      : t("interface.send");
   const currentModelSelection = props.selectedThread.modelSelection;
   const currentRuntimeMode = props.selectedThread.runtimeMode;
   const connectionStatus = composerConnectionStatus({
@@ -400,21 +409,21 @@ export const ThreadComposer = memo(function ThreadComposer(props: ThreadComposer
           type: "slash-command" as const,
           command: "model",
           label: "/model",
-          description: "Switch model",
+          description: t("switchModel"),
         },
         {
           id: "cmd:plan",
           type: "slash-command" as const,
           command: "plan",
           label: "/plan",
-          description: "Switch to plan mode",
+          description: t("switchToPlanMode"),
         },
         {
           id: "cmd:default",
           type: "slash-command" as const,
           command: "default",
           label: "/default",
-          description: "Switch to default mode",
+          description: t("switchToDefaultMode"),
         },
       ];
       const builtIn = allBuiltIn.filter((item) => item.command.includes(q));
@@ -437,7 +446,7 @@ export const ThreadComposer = memo(function ThreadComposer(props: ThreadComposer
           id: `skill:${skill.name}`,
           type: "skill" as const,
           skill,
-          label: `skill:${skill.name}`,
+          label: t("skill2", { name: skill.name }),
           description: skill.shortDescription ?? skill.description ?? "",
         }));
 
@@ -871,13 +880,13 @@ export const ThreadComposer = memo(function ThreadComposer(props: ThreadComposer
                 contentPaddingRight={8}
               >
                 <ComposerToolbarButton
-                  accessibilityLabel="Add attachment"
+                  accessibilityLabel={t("addAttachment")}
                   icon="plus"
                   onPress={() => void props.onPickDraftImages()}
                   showChevron={false}
                 />
                 <ComposerInlineControl
-                  accessibilityLabel="Model and reasoning settings"
+                  accessibilityLabel={t("modelAndReasoningSettings")}
                   emphasized
                   iconNode={
                     <ProviderIcon provider={currentModelOption?.providerDriver} size={16} />
@@ -888,7 +897,7 @@ export const ThreadComposer = memo(function ThreadComposer(props: ThreadComposer
                 />
                 {showStopAction ? (
                   <ComposerToolbarButton
-                    accessibilityLabel="Stop"
+                    accessibilityLabel={t("stop")}
                     icon="stop.fill"
                     variant="danger"
                     onPress={props.onStopThread}
@@ -912,8 +921,8 @@ export const ThreadComposer = memo(function ThreadComposer(props: ThreadComposer
         {props.queueCount > 0 ? (
           <Animated.View entering={FadeIn.duration(180)} exiting={FadeOut.duration(120)}>
             <Text className="pt-2 text-xs text-foreground-muted">
-              {props.queueCount} queued message{props.queueCount === 1 ? "" : "s"} will send
-              automatically.
+              {props.queueCount} {t("queuedMessage")}
+              {props.queueCount === 1 ? "" : "s"} {t("willSendAutomatically")}
             </Text>
           </Animated.View>
         ) : null}

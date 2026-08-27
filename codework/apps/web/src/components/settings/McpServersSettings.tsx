@@ -143,16 +143,16 @@ function statusLabel(
   state: CompositionMcpRuntimeServerState | undefined,
   enabled: boolean,
 ): string {
-  if (!enabled) return t("Disabled");
+  if (!enabled) return t("providerStatusDisabled");
   switch (state?.status) {
     case "connected":
-      return t("Connected");
+      return t("connection.connected");
     case "connecting":
-      return t("Connecting");
+      return t("connecting");
     case "error":
-      return t("Error");
+      return t("error");
     default:
-      return t("Registered");
+      return t("registered");
   }
 }
 
@@ -196,11 +196,11 @@ function SecretList({
           type="button"
         >
           <PlusIcon />
-          {t("Add")}
+          {t("commandPalette.add")}
         </Button>
       </div>
       {values.length === 0 ? (
-        <p className="text-xs text-muted-foreground">{t("No entries")}</p>
+        <p className="text-xs text-muted-foreground">{t("mcpServers.noEntries")}</p>
       ) : (
         values.map((value, index) => (
           <div
@@ -209,8 +209,8 @@ function SecretList({
           >
             <Input
               value={value.name}
-              placeholder={t("Name")}
-              aria-label={`${label} ${t("Name")}`}
+              placeholder={t("name")}
+              aria-label={`${label} ${t("name")}`}
               onChange={(event) => update(index, { name: event.target.value })}
               spellCheck={false}
             />
@@ -218,9 +218,9 @@ function SecretList({
               value={value.value}
               type={value.sensitive ? "password" : "text"}
               placeholder={
-                value.valueRedacted ? t("Saved secret; leave blank to keep it") : t("Value")
+                value.valueRedacted ? t("mcpServers.savedSecretPlaceholder") : t("value")
               }
-              aria-label={`${label} ${t("Value")}`}
+              aria-label={`${label} ${t("value")}`}
               onChange={(event) =>
                 update(index, {
                   value: event.target.value,
@@ -233,13 +233,13 @@ function SecretList({
             <div className="flex items-center justify-end gap-1">
               <Switch
                 checked={value.sensitive}
-                aria-label={t("Sensitive value")}
+                aria-label={t("mcpServers.sensitiveValue")}
                 onCheckedChange={(checked) => update(index, { sensitive: Boolean(checked) })}
               />
               <Button
                 size="icon-sm"
                 variant="ghost-muted"
-                aria-label={t("Remove")}
+                aria-label={t("byokFeatures.delegationRemoveEnvVar")}
                 onClick={() => onChange(values.filter((_, valueIndex) => valueIndex !== index))}
                 type="button"
               >
@@ -272,7 +272,7 @@ function McpServerEditor({
   const save = () => {
     const config = configFromForm(form);
     if (!config) {
-      setError(t("Enter a valid server ID, name, and transport endpoint."));
+      setError(t("mcpServers.invalidForm"));
       return;
     }
     setError(null);
@@ -283,20 +283,20 @@ function McpServerEditor({
     <div className="space-y-3 rounded-xl border border-border/70 bg-muted/10 p-3 sm:p-4">
       <div className="grid gap-3 sm:grid-cols-2">
         <label className="grid gap-1.5 text-xs font-medium text-foreground">
-          {t("Server ID")}
+          {t("mcpServers.serverId")}
           <Input
             value={form.serverId}
             disabled={editing}
-            placeholder="local-tools"
+            placeholder={t("localTools")}
             onChange={(event) => update("serverId", event.target.value)}
             spellCheck={false}
           />
         </label>
         <label className="grid gap-1.5 text-xs font-medium text-foreground">
-          {t("Display name")}
+          {t("displayName")}
           <Input
             value={form.name}
-            placeholder={t("Local tools")}
+            placeholder={t("mcpServers.localTools")}
             onChange={(event) => update("name", event.target.value)}
             spellCheck={false}
           />
@@ -305,7 +305,7 @@ function McpServerEditor({
 
       <div className="grid gap-3 sm:grid-cols-2">
         <label className="grid gap-1.5 text-xs font-medium text-foreground">
-          {t("Transport")}
+          {t("mcpServers.transport")}
           <Select
             value={form.transport}
             onValueChange={(value) => {
@@ -328,20 +328,20 @@ function McpServerEditor({
         </label>
         {form.transport === "stdio" ? (
           <label className="grid gap-1.5 text-xs font-medium text-foreground">
-            {t("Command")}
+            {t("command")}
             <Input
               value={form.command}
-              placeholder="node"
+              placeholder={t("node")}
               onChange={(event) => update("command", event.target.value)}
               spellCheck={false}
             />
           </label>
         ) : (
           <label className="grid gap-1.5 text-xs font-medium text-foreground">
-            {t("URL")}
+            {t("url")}
             <Input
               value={form.url}
-              placeholder="https://mcp.example.test"
+              placeholder={t("httpsMcpExampleTest")}
               onChange={(event) => update("url", event.target.value)}
               spellCheck={false}
             />
@@ -352,20 +352,20 @@ function McpServerEditor({
       {form.transport === "stdio" ? (
         <div className="grid gap-3 sm:grid-cols-2">
           <label className="grid gap-1.5 text-xs font-medium text-foreground">
-            {t("Arguments")}
+            {t("mcpServers.arguments")}
             <textarea
               className="min-h-20 w-full rounded-md border border-input bg-background px-3 py-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
               value={form.args}
-              placeholder={t("One argument per line")}
+              placeholder={t("mcpServers.argumentPlaceholder")}
               onChange={(event) => update("args", event.target.value)}
               spellCheck={false}
             />
           </label>
           <label className="grid gap-1.5 text-xs font-medium text-foreground">
-            {t("Working directory")}
+            {t("mcpServers.workingDirectory")}
             <Input
               value={form.cwd}
-              placeholder="C:\\workspace"
+              placeholder={t("cWorkspace")}
               onChange={(event) => update("cwd", event.target.value)}
               spellCheck={false}
             />
@@ -374,26 +374,26 @@ function McpServerEditor({
       ) : null}
 
       <SecretList
-        label={t("Headers")}
+        label={t("mcpServers.headers")}
         values={form.headers}
         onChange={(values) => update("headers", values)}
       />
       <SecretList
-        label={t("Environment variables")}
+        label={t("environmentVariables")}
         values={form.environment}
         onChange={(values) => update("environment", values)}
       />
 
       <div className="grid gap-3 sm:grid-cols-2">
         <label className="flex items-center justify-between gap-3 rounded-lg border border-border/60 px-3 py-2 text-xs font-medium text-foreground">
-          {t("Enabled")}
+          {t("diagnostics.enabled")}
           <Switch
             checked={form.enabled}
             onCheckedChange={(checked) => update("enabled", Boolean(checked))}
           />
         </label>
         <label className="flex items-center justify-between gap-3 rounded-lg border border-border/60 px-3 py-2 text-xs font-medium text-foreground">
-          {t("Trusted")}
+          {t("trusted")}
           <Switch
             checked={form.trusted}
             onCheckedChange={(checked) => update("trusted", Boolean(checked))}
@@ -403,10 +403,10 @@ function McpServerEditor({
 
       {form.trusted ? (
         <label className="grid gap-1.5 text-xs font-medium text-foreground">
-          {t("Trust fingerprint")}
+          {t("mcpServers.trustFingerprint")}
           <Input
             value={form.trustFingerprint}
-            placeholder={t("Optional trust fingerprint")}
+            placeholder={t("mcpServers.trustFingerprintPlaceholder")}
             onChange={(event) => update("trustFingerprint", event.target.value)}
             spellCheck={false}
           />
@@ -416,10 +416,10 @@ function McpServerEditor({
       {error ? <p className="text-xs text-destructive">{error}</p> : null}
       <div className="flex flex-wrap justify-end gap-2">
         <Button variant="outline" onClick={onCancel} type="button">
-          {t("Cancel")}
+          {t("cancel")}
         </Button>
         <Button onClick={save} type="button">
-          {t("Save")}
+          {t("save")}
         </Button>
       </div>
     </div>
@@ -493,7 +493,7 @@ export function McpServersSettings() {
           : await refresh({ environmentId, input: { serverId } });
     if (result._tag === "Failure") {
       const error = squashAtomCommandFailure(result);
-      setActionError(error instanceof Error ? error.message : t("MCP operation failed"));
+      setActionError(error instanceof Error ? error.message : t("mcpServers.operationFailed"));
     }
     setPendingControl(null);
     runtimeQuery.refresh();
@@ -503,7 +503,7 @@ export function McpServersSettings() {
     <>
       <SettingsSection
         id="mcp-servers"
-        title={t("MCP servers")}
+        title={t("mcpServers.title")}
         icon={<LinkIcon className="size-4 text-muted-foreground" />}
         headerAction={
           <Button
@@ -513,16 +513,14 @@ export function McpServersSettings() {
             type="button"
           >
             <PlusIcon />
-            {t("Add server")}
+            {t("mcpServers.add")}
           </Button>
         }
       >
         <SettingsRow
-          title={t("MCP runtime")}
-          description={t(
-            "Trusted MCP servers can expose their discovered tools to Code Work Agent Drivers through ToolBroker.",
-          )}
-          status={runtimeQuery.error ?? (runtimeQuery.isPending ? t("Loading...") : undefined)}
+          title={t("mcpServers.runtimeTitle")}
+          description={t("mcpServers.runtimeDescription")}
+          status={runtimeQuery.error ?? (runtimeQuery.isPending ? t("loading") : undefined)}
         />
 
         {editingId === "__new__" ? (
@@ -537,10 +535,8 @@ export function McpServersSettings() {
 
         {serverEntries.length === 0 && editingId !== "__new__" ? (
           <SettingsRow
-            title={t("No MCP servers configured")}
-            description={t(
-              "Add a stdio, Streamable HTTP, or SSE server to make its tools available to Code Work.",
-            )}
+            title={t("mcpServers.empty")}
+            description={t("mcpServers.emptyDescription")}
           />
         ) : null}
 
@@ -595,12 +591,12 @@ export function McpServersSettings() {
                         type="button"
                       >
                         {connected ? <UnplugIcon /> : <PlugZapIcon />}
-                        {connected ? t("Disconnect") : t("Connect")}
+                        {connected ? t("disconnect") : t("connect")}
                       </Button>
                       <Button
                         size="icon-sm"
                         variant="ghost-muted"
-                        aria-label={t("Refresh")}
+                        aria-label={t("refresh")}
                         onClick={() =>
                           void runControl(serverId as CompositionMcpServerId, "refresh")
                         }
@@ -616,7 +612,7 @@ export function McpServersSettings() {
                       <Button
                         size="icon-sm"
                         variant="ghost-muted"
-                        aria-label={t("Edit")}
+                        aria-label={t("edit")}
                         onClick={() => setEditingId(serverId)}
                         disabled={editingId !== null || pendingControl !== null}
                         type="button"
@@ -626,7 +622,7 @@ export function McpServersSettings() {
                       <Button
                         size="icon-sm"
                         variant="ghost-muted"
-                        aria-label={t("Delete")}
+                        aria-label={t("delete")}
                         onClick={() => setPendingDelete(serverId)}
                         disabled={pendingControl !== null}
                         type="button"
@@ -637,10 +633,12 @@ export function McpServersSettings() {
                   </div>
 
                   <div className="flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
-                    <span>{config.enabled ? t("Enabled") : t("Disabled")}</span>
-                    <span>{config.trusted ? t("Trusted") : t("Untrusted")}</span>
                     <span>
-                      {t("Tools")}: {state?.toolNames.length ?? 0}
+                      {config.enabled ? t("diagnostics.enabled") : t("providerStatusDisabled")}
+                    </span>
+                    <span>{config.trusted ? t("trusted") : t("untrusted")}</span>
+                    <span>
+                      {t("tools")}: {state?.toolNames.length ?? 0}
                     </span>
                   </div>
                   {state?.toolNames.length ? (
@@ -669,16 +667,16 @@ export function McpServersSettings() {
       >
         <AlertDialogPopup>
           <AlertDialogHeader>
-            <AlertDialogTitle>{t("Delete MCP server?")}</AlertDialogTitle>
+            <AlertDialogTitle>{t("mcpServers.deleteConfirmTitle")}</AlertDialogTitle>
             <AlertDialogDescription>
-              {t("This removes the server configuration and its saved secrets.")}
+              {t("mcpServers.deleteConfirmDescription")}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogClose render={<Button variant="outline" />}>{t("Cancel")}</AlertDialogClose>
+            <AlertDialogClose render={<Button variant="outline" />}>{t("cancel")}</AlertDialogClose>
             <Button variant="destructive" onClick={deleteServer} type="button">
               <Trash2Icon />
-              {t("Delete")}
+              {t("delete")}
             </Button>
           </AlertDialogFooter>
         </AlertDialogPopup>

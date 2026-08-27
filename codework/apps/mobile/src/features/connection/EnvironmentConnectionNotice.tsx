@@ -8,6 +8,7 @@ import { ActivityIndicator, Pressable, View } from "react-native";
 import { AppText as Text } from "../../components/AppText";
 import { copyTextWithHaptic } from "../../lib/copyTextWithHaptic";
 import { useThemeColor } from "../../lib/useThemeColor";
+import { t } from "../../i18n";
 
 function noticeTitle(phase: EnvironmentConnectionPhase, environmentLabel: string): string {
   switch (phase) {
@@ -80,9 +81,9 @@ export function EnvironmentConnectionNotice(props: {
           {noticeDetail(props.connection.phase, props.resourceName, props.connection.error)}
           {props.connection.traceId ? (
             <>
-              {" Trace ID: "}
+              {t("traceId")}
               <Text
-                accessibilityHint="Copies the trace ID"
+                accessibilityHint={t("copiesTheTraceId")}
                 accessibilityRole="button"
                 className="underline decoration-dotted"
                 onPress={() =>
@@ -103,7 +104,7 @@ export function EnvironmentConnectionNotice(props: {
             className="mt-1 rounded-full bg-subtle px-4 py-2.5 active:opacity-70"
             onPress={props.onRetry}
           >
-            <Text className="text-sm font-t3-bold text-foreground">Retry now</Text>
+            <Text className="text-sm font-t3-bold text-foreground">{t("retryNow")}</Text>
           </Pressable>
         ) : null}
       </View>

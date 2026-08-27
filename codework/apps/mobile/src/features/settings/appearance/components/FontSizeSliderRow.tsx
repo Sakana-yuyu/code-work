@@ -13,6 +13,7 @@ import type { ComponentProps } from "react";
 
 import { AppText as Text } from "../../../../components/AppText";
 import { useThemeColor } from "../../../../lib/useThemeColor";
+import { t } from "../../../../i18n";
 
 type SymbolName = ComponentProps<typeof SymbolView>["name"];
 
@@ -160,8 +161,8 @@ export function FontSizeSliderRow(props: {
           <View
             accessible
             accessibilityActions={[
-              { name: "increment", label: `Increase ${props.label}` },
-              { name: "decrement", label: `Decrease ${props.label}` },
+              { name: "increment", label: t("increaseIntervalLabel", { label: props.label }) },
+              { name: "decrement", label: t("decreaseIntervalLabel", { label: props.label }) },
             ]}
             accessibilityLabel={props.label}
             accessibilityRole="adjustable"

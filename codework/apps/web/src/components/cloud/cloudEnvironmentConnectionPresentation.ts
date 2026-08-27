@@ -1,7 +1,6 @@
-import {
-  connectionStatusText,
-  type EnvironmentConnectionPresentation,
-} from "@codework/client-runtime/connection";
+import type { EnvironmentConnectionPresentation } from "@codework/client-runtime/connection";
+import { t } from "~/i18n/runtime";
+import { localizedConnectionStatusText } from "~/lib/localizedConnectionStatus";
 
 export interface SavedCloudEnvironmentConnectionPresentation {
   readonly buttonLabel: string;
@@ -20,38 +19,38 @@ export function presentSavedCloudEnvironmentConnection(
   switch (connection.phase) {
     case "connected":
       return {
-        buttonLabel: "Connected",
-        statusText: connectionStatusText(connection),
+        buttonLabel: t("connection.connected"),
+        statusText: localizedConnectionStatusText(connection),
         tone: "connected",
       };
     case "connecting":
       return {
-        buttonLabel: "Connecting…",
-        statusText: connectionStatusText(connection),
+        buttonLabel: t("connecting2"),
+        statusText: localizedConnectionStatusText(connection),
         tone: "connecting",
       };
     case "reconnecting":
       return {
-        buttonLabel: "Reconnecting…",
-        statusText: connectionStatusText(connection),
+        buttonLabel: t("interface.reconnecting"),
+        statusText: localizedConnectionStatusText(connection),
         tone: "connecting",
       };
     case "error":
       return {
-        buttonLabel: "Connection failed",
-        statusText: connectionStatusText(connection),
+        buttonLabel: t("connection.failed"),
+        statusText: localizedConnectionStatusText(connection),
         tone: "error",
       };
     case "offline":
       return {
-        buttonLabel: "Offline",
-        statusText: connectionStatusText(connection),
+        buttonLabel: t("connection.offline"),
+        statusText: localizedConnectionStatusText(connection),
         tone: "idle",
       };
     case "available":
       return {
-        buttonLabel: "Not connected",
-        statusText: connectionStatusText(connection),
+        buttonLabel: t("interface.not-connected"),
+        statusText: localizedConnectionStatusText(connection),
         tone: "idle",
       };
   }

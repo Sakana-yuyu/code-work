@@ -1,6 +1,9 @@
 import { EnvironmentId } from "@codework/contracts";
 import type { RelayEnvironmentStatusResponse } from "@codework/contracts/relay";
 import { describe, expect, it } from "vite-plus/test";
+import { setCurrentLanguage } from "../../i18n/runtime";
+
+setCurrentLanguage("en");
 
 import { availableCloudEnvironmentPresentation } from "./cloudEnvironmentPresentation";
 

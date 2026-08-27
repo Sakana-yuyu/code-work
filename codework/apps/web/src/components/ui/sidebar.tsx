@@ -252,8 +252,8 @@ function Sidebar({
             }
           >
             <SheetHeader className="sr-only">
-              <SheetTitle>Sidebar</SheetTitle>
-              <SheetDescription>Displays the mobile sidebar.</SheetDescription>
+              <SheetTitle>{t("sidebar")}</SheetTitle>
+              <SheetDescription>{t("displaysTheMobileSidebar")}</SheetDescription>
             </SheetHeader>
             <div
               className={cn(

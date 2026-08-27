@@ -80,6 +80,7 @@ import {
 import { ThreadFeed } from "./ThreadFeed";
 import type { ThreadContentPresentation } from "./threadContentPresentation";
 import { resolveThreadFeedSubmissionAnchor } from "./thread-feed-live-follow";
+import { t } from "../../i18n";
 
 export interface ThreadDetailScreenProps {
   readonly selectedThread: OrchestrationThreadShell;
@@ -251,7 +252,9 @@ export const ThreadDetailScreen = memo(function ThreadDetailScreen(props: Thread
   }, []);
   const windowHeight = useWindowDimensions().height;
   const navigationHeaderHeight = useContext(HeaderHeightContext) || insets.top + IOS_NAV_BAR_HEIGHT;
-  const agentLabel = `${props.selectedThread.modelSelection.instanceId} agent`;
+  const agentLabel = t("interface.value-agent", {
+    value1: props.selectedThread.modelSelection.instanceId,
+  });
   const selectedThreadKey = scopedThreadKey(props.environmentId, props.selectedThread.id);
   const composerEditorRef = useRef<ComposerEditorHandle>(null);
   const composerOverlayRef = useRef<View>(null);
@@ -675,7 +678,7 @@ export const ThreadDetailScreen = memo(function ThreadDetailScreen(props: Thread
                     }}
                   >
                     <ControlPill
-                      accessibilityLabel="Scroll to end"
+                      accessibilityLabel={t("chat.scrollToEnd")}
                       activateOnPressIn
                       className="h-9 w-9 bg-transparent"
                       icon={{ ios: "chevron.down", android: "keyboard_arrow_down" }}
@@ -684,7 +687,7 @@ export const ThreadDetailScreen = memo(function ThreadDetailScreen(props: Thread
                   </LiquidGlassView>
                 ) : (
                   <ControlPill
-                    accessibilityLabel="Scroll to end"
+                    accessibilityLabel={t("chat.scrollToEnd")}
                     activateOnPressIn
                     className="h-9 w-9 border border-border bg-card shadow-md shadow-black/10"
                     icon={{ ios: "chevron.down", android: "keyboard_arrow_down" }}
@@ -743,7 +746,7 @@ export const ThreadDetailScreen = memo(function ThreadDetailScreen(props: Thread
                 editorRef={composerEditorRef}
                 draftMessage={props.draftMessage}
                 draftAttachments={props.draftAttachments}
-                placeholder="Ask the repo agent, or run a command…"
+                placeholder={t("askTheRepoAgentOrRunACommand")}
                 contentMaxWidth={contentMaxWidth}
                 connectionState={props.connectionStateLabel}
                 connectionError={props.connectionError}

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vite-plus/test";
 import type { ResolvedKeybindingsConfig } from "@codework/contracts";
 
-import { t } from "~/i18n";
+import { t } from "~/i18n/runtime";
 import {
   buildKeybindingRows,
   buildKeybindingCommandOptions,

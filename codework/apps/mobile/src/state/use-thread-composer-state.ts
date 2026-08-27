@@ -53,6 +53,7 @@ import { enqueueThreadOutboxMessage } from "./thread-outbox";
 import { useThreadOutboxMessages } from "./use-thread-outbox";
 import { threadEnvironment } from "./threads";
 import { useAtomCommand } from "./use-atom-command";
+import { t } from "../i18n/runtime";
 
 export function appendReviewCommentToDraft(input: {
   readonly environmentId: EnvironmentId;
@@ -182,7 +183,7 @@ export function useThreadComposerState() {
         : null;
     if (feedbackCommand) {
       if (thread.session === null) {
-        Alert.alert("Start a Codex thread first", "Send a message before you submit feedback.");
+        Alert.alert(t("startACodexThreadFirst"), t("sendAMessageBeforeYouSubmitFeedback"));
         return null;
       }
       const metadata = makeQueuedMessageMetadata();
@@ -220,16 +221,16 @@ export function useThreadComposerState() {
         }
         const error = Cause.squash(result.cause);
         Alert.alert(
-          "Could not send feedback to OpenAI",
-          error instanceof Error ? error.message : "An error occurred.",
+          t("couldNotSendFeedbackToOpenai"),
+          error instanceof Error ? error.message : t("commandPalette.anErrorOccurred"),
         );
         return null;
       }
       const feedbackId = result.value.feedbackId;
-      Alert.alert("Feedback sent to OpenAI", `Thread ID: ${feedbackId}`, [
-        { text: "OK", style: "cancel" },
+      Alert.alert(t("feedbackSentToOpenai"), t("threadId", { feedbackId: feedbackId }), [
+        { text: t("ok"), style: "cancel" },
         {
-          text: "Copy ID",
+          text: t("copyId"),
           onPress: () => copyTextWithHaptic(feedbackId, { target: "Codex feedback thread ID" }),
         },
       ]);

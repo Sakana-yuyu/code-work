@@ -14,6 +14,7 @@ import { useCopyToClipboard } from "../../hooks/useCopyToClipboard";
 import { AuthSurfaceShell } from "../auth/AuthSurfaceShell";
 import { resolveClerkSignInProps } from "../clerk/authRedirect";
 import { Button } from "../ui/button";
+import { t } from "~/i18n";
 
 function ConnectCliAuthMessage({
   eyebrow,
@@ -38,10 +39,15 @@ function ConnectCliAuthMessage({
 }
 
 const invalidLinkMessage = {
-  eyebrow: "Authorization request",
-  title: "This connect link is incomplete",
-  description:
-    "The link is missing its authorization request. Re-run `t3 connect` in your terminal and open the freshly printed URL.",
+  get eyebrow() {
+    return t("interface.authorization-request");
+  },
+  get title() {
+    return t("thisConnectLinkIsIncomplete");
+  },
+  get description() {
+    return t("theLinkIsMissingItsAuthorizationRequestReRunT3ConnectInYourTerminalAndOp");
+  },
 } as const;
 
 /**
@@ -105,20 +111,20 @@ export function ConnectCliAuthorizeSurface() {
       <ConnectCliAuthMessage
         eyebrow={
           request.loopbackPort === undefined
-            ? "Step 1 of 2 · Browser authorization"
-            : "Browser authorization"
+            ? t("interface.step-1-of-2-browser-authorization")
+            : t("interface.browser-authorization")
         }
-        title="Connecting your terminal"
+        title={t("connectingYourTerminal")}
         description={
           isSignedIn
-            ? "Redirecting to authorize Code Work Connect for your CLI…"
-            : "Sign in to continue authorizing Code Work Connect for your CLI."
+            ? t("redirectingToAuthorizeCodeWorkConnectForYourCli")
+            : t("signInToContinueAuthorizingCodeWorkConnectForYourCli")
         }
       />
       {isLoaded && !isSignedIn ? (
         <div className="mt-6">
           <Button type="button" onClick={openSignIn}>
-            Sign in
+            {t("signIn")}
           </Button>
         </div>
       ) : null}
@@ -140,9 +146,9 @@ export function ConnectCliCallbackSurface() {
     return (
       <AuthSurfaceShell>
         <ConnectCliAuthMessage
-          eyebrow="Step 2 of 2 · Terminal handoff"
-          title="Authorization did not complete"
-          description="No authorization code was returned. Re-run `t3 connect` in your terminal and try again."
+          eyebrow={t("interface.step-2-of-2-terminal-handoff")}
+          title={t("authorizationDidNotComplete")}
+          description={t("noAuthorizationCodeWasReturnedReRunT3ConnectInYourTerminalAndTryAgain")}
         />
       </AuthSurfaceShell>
     );
@@ -156,9 +162,11 @@ export function ConnectCliCallbackSurface() {
     return (
       <AuthSurfaceShell>
         <ConnectCliAuthMessage
-          eyebrow="Step 2 of 2 · Terminal handoff"
-          title="This code belongs to a different request"
-          description="This authorization response does not match a connect request started in this browser. Re-run `t3 connect` in your terminal and open the freshly printed URL in this browser."
+          eyebrow={t("interface.step-2-of-2-terminal-handoff")}
+          title={t("thisCodeBelongsToADifferentRequest")}
+          description={t(
+            "thisAuthorizationResponseDoesNotMatchAConnectRequestStartedInThisBrowser",
+          )}
         />
       </AuthSurfaceShell>
     );
@@ -170,21 +178,21 @@ export function ConnectCliCallbackSurface() {
   return (
     <AuthSurfaceShell>
       <ConnectCliAuthMessage
-        eyebrow="Step 2 of 2 · Terminal handoff"
-        title="Almost connected"
+        eyebrow={t("interface.step-2-of-2-terminal-handoff")}
+        title={t("almostConnected")}
         description={
           accountLabel
-            ? `Enter this code in your waiting terminal to connect it as ${accountLabel}.`
-            : "Enter this code in your waiting terminal to finish connecting."
+            ? t("enterThisCodeInYourWaitingTerminalToConnectItAs", { accountLabel: accountLabel })
+            : t("enterThisCodeInYourWaitingTerminalToFinishConnecting")
         }
       />
 
       <div className="mt-6 overflow-hidden rounded-xl border border-border/80 bg-background/65">
         <div className="flex items-center justify-between border-b border-border/70 px-4 py-2.5">
           <span className="text-[10px] font-semibold tracking-[0.16em] text-muted-foreground uppercase">
-            One-time authorization code
+            {t("oneTimeAuthorizationCode")}
           </span>
-          <span className="font-mono text-[10px] text-muted-foreground">expires shortly</span>
+          <span className="font-mono text-[10px] text-muted-foreground">{t("expiresShortly")}</span>
         </div>
         <code
           className="block p-4 font-mono text-sm leading-relaxed break-all select-all"
@@ -196,13 +204,12 @@ export function ConnectCliCallbackSurface() {
 
       <div className="mt-4 flex items-center gap-3">
         <Button type="button" onClick={() => copyToClipboard(authCode)}>
-          {isCopied ? "Copied!" : "Copy authorization code"}
+          {isCopied ? t("copied") : t("copyAuthorizationCode")}
         </Button>
       </div>
 
       <p className="mt-6 text-xs leading-relaxed text-muted-foreground">
-        Only enter this code in a terminal session you started yourself. Anyone holding it can link
-        their machine to your Code Work Connect account while it is valid.
+        {t("onlyEnterThisCodeInATerminalSessionYouStartedYourselfAnyoneHoldingItCanL")}
       </p>
     </AuthSurfaceShell>
   );

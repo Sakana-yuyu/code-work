@@ -57,7 +57,9 @@ type ByokSupplierTemplate = {
 const CUSTOM_SUPPLIER_TEMPLATE: ByokSupplierTemplate = {
   id: "custom",
   labelKey: "byokAdapters.supplierCustom",
-  label: "Custom",
+  get label() {
+    return t("custom2");
+  },
   protocol: "openai",
   baseURL: "",
   modelId: "",
@@ -459,7 +461,7 @@ export function ByokModelAdaptersSection({
             className="mt-1"
             value={form.displayName}
             onChange={(event) => patchForm({ displayName: event.target.value })}
-            placeholder="DeepSeek Chat"
+            placeholder={t("deepseekChat")}
             spellCheck={false}
           />
         </label>
@@ -529,7 +531,7 @@ export function ByokModelAdaptersSection({
             className="mt-1"
             value={form.modelId}
             onChange={(event) => patchForm({ modelId: event.target.value })}
-            placeholder="deepseek-chat"
+            placeholder={t("deepseekChat2")}
             spellCheck={false}
           />
         </label>

@@ -19,14 +19,30 @@ import {
 import { Tooltip, TooltipPopup, TooltipTrigger } from "~/components/ui/tooltip";
 
 import { previewBridge } from "./previewBridge";
+import { t } from "~/i18n";
 
 const COLOR_SCHEME_OPTIONS: ReadonlyArray<{
   value: DesktopPreviewColorScheme;
   label: string;
 }> = [
-  { value: "system", label: "System" },
-  { value: "light", label: "Light" },
-  { value: "dark", label: "Dark" },
+  {
+    value: "system",
+    get label() {
+      return t("settings.system");
+    },
+  },
+  {
+    value: "light",
+    get label() {
+      return t("browserAppearanceLight");
+    },
+  },
+  {
+    value: "dark",
+    get label() {
+      return t("browserAppearanceDark");
+    },
+  },
 ];
 
 interface Props {
@@ -83,32 +99,37 @@ export function PreviewMoreMenu({
           render={
             <MenuTrigger
               render={
-                <Button variant="ghost" size="icon-xs" type="button" aria-label="Preview menu" />
+                <Button
+                  variant="ghost"
+                  size="icon-xs"
+                  type="button"
+                  aria-label={t("previewMenu")}
+                />
               }
             />
           }
         >
           <MoreVertical />
         </TooltipTrigger>
-        <TooltipPopup>More</TooltipPopup>
+        <TooltipPopup>{t("more")}</TooltipPopup>
       </Tooltip>
       <MenuPopup align="end" sideOffset={6} className="min-w-56">
         <MenuItem onClick={callTab(bridge.hardReload)} disabled={tabDisabled}>
-          Hard reload
+          {t("hardReload")}
         </MenuItem>
         <MenuItem onClick={callTab(bridge.openDevTools)} disabled={tabDisabled}>
-          Open DevTools
+          {t("openDevtools")}
         </MenuItem>
         <MenuItem onClick={onNativePictureInPicture} disabled={tabDisabled}>
           {nativePictureInPicture
-            ? "Close separate preview window"
-            : "Open separate preview window"}
+            ? t("closeSeparatePreviewWindow")
+            : t("openSeparatePreviewWindow")}
         </MenuItem>
         <MenuItem onClick={onToggleDeviceToolbar} disabled={tabDisabled}>
-          {deviceToolbarVisible ? "Hide device toolbar" : "Show device toolbar"}
+          {deviceToolbarVisible ? t("hideDeviceToolbar") : t("showDeviceToolbar")}
         </MenuItem>
         <MenuSub>
-          <MenuSubTrigger disabled={tabDisabled}>Appearance</MenuSubTrigger>
+          <MenuSubTrigger disabled={tabDisabled}>{t("appearance")}</MenuSubTrigger>
           <MenuSubPopup className="min-w-32">
             <MenuRadioGroup
               value={colorScheme}
@@ -138,14 +159,14 @@ export function PreviewMoreMenu({
           className="justify-between"
           disabled={tabDisabled}
         >
-          <span>Zoom</span>
+          <span>{t("zoom")}</span>
           <span className="flex items-center gap-1">
             <Button
               variant="outline"
               size="icon-xs"
               type="button"
               onClick={callTab(bridge.zoomOut)}
-              aria-label="Zoom out"
+              aria-label={t("zoomOut")}
               disabled={tabDisabled}
             >
               <Minus />
@@ -158,7 +179,7 @@ export function PreviewMoreMenu({
               size="icon-xs"
               type="button"
               onClick={callTab(bridge.zoomIn)}
-              aria-label="Zoom in"
+              aria-label={t("zoomIn")}
               disabled={tabDisabled}
             >
               <PlusIcon />
@@ -168,7 +189,7 @@ export function PreviewMoreMenu({
               size="icon-xs"
               type="button"
               onClick={callTab(bridge.resetZoom)}
-              aria-label="Reset zoom"
+              aria-label={t("resetZoom")}
               className="[:hover,[data-pressed]]:bg-foreground/10"
               disabled={tabDisabled}
             >
@@ -178,10 +199,10 @@ export function PreviewMoreMenu({
         </MenuItem>
         <MenuSeparator />
         <MenuItem onClick={() => void bridge.clearCookies().catch(() => undefined)}>
-          Clear cookies
+          {t("clearCookies")}
         </MenuItem>
         <MenuItem onClick={() => void bridge.clearCache().catch(() => undefined)}>
-          Clear cache
+          {t("clearCache")}
         </MenuItem>
       </MenuPopup>
     </Menu>

@@ -66,6 +66,7 @@ import {
   resolveNewTaskWorkspaceLabel,
 } from "./new-task-context-presentation";
 import { useIncomingShare } from "../sharing/IncomingShareProvider";
+import { t } from "../../i18n";
 
 function NewTaskWorkspaceIcon(props: {
   readonly workspaceMode: "local" | "worktree";
@@ -416,8 +417,8 @@ export function NewTaskDraftScreen(props: {
       if (isIncomingShareUnavailable && alertedUnavailableIncomingShareIdRef.current !== shareId) {
         alertedUnavailableIncomingShareIdRef.current = shareId;
         Alert.alert(
-          "Shared content unavailable",
-          "The shared content is no longer in the inbox. You can continue editing this task draft.",
+          t("sharedContentUnavailable"),
+          t("theSharedContentIsNoLongerInTheInboxYouCanContinueEditingThisTaskDraft"),
         );
       }
       return;
@@ -476,7 +477,7 @@ export function NewTaskDraftScreen(props: {
         );
       }
       if (warnings.length > 0) {
-        Alert.alert("Some shared content was skipped", warnings.join("\n"));
+        Alert.alert(t("someSharedContentWasSkipped"), warnings.join("\n"));
       }
       shareImportDraftBackupRef.current.delete(importKey);
     })()
@@ -485,11 +486,11 @@ export function NewTaskDraftScreen(props: {
           return;
         }
         Alert.alert(
-          "Could not import shared content",
-          error instanceof Error ? error.message : "The shared content could not be saved.",
+          t("couldNotImportSharedContent"),
+          error instanceof Error ? error.message : t("theSharedContentCouldNotBeSaved"),
           [
             {
-              text: "Cancel import",
+              text: t("cancelImport"),
               style: "cancel",
               onPress: () => {
                 const cancelImport = async (): Promise<void> => {
@@ -522,13 +523,13 @@ export function NewTaskDraftScreen(props: {
                       return;
                     }
                     Alert.alert(
-                      "Could not cancel import",
+                      t("couldNotCancelImport"),
                       cancelError instanceof Error
                         ? cancelError.message
-                        : "The shared content could not be restored safely.",
+                        : t("theSharedContentCouldNotBeRestoredSafely"),
                       [
                         {
-                          text: "Retry import",
+                          text: t("retryImport"),
                           onPress: () => {
                             cancellingShareImportKeyRef.current = null;
                             setIsCancellingShareImport(false);
@@ -536,7 +537,7 @@ export function NewTaskDraftScreen(props: {
                           },
                         },
                         {
-                          text: "Retry cancel",
+                          text: t("retryCancel"),
                           onPress: () => void cancelImport(),
                         },
                       ],
@@ -548,7 +549,7 @@ export function NewTaskDraftScreen(props: {
               },
             },
             {
-              text: "Retry",
+              text: t("retry"),
               onPress: () => setShareImportAttempt((attempt) => attempt + 1),
             },
           ],
@@ -694,8 +695,8 @@ export function NewTaskDraftScreen(props: {
         await enqueueThreadOutboxMessage(message);
       } catch (error) {
         Alert.alert(
-          "Could not queue task",
-          error instanceof Error ? error.message : "The task could not be saved to the outbox.",
+          t("couldNotQueueTask"),
+          error instanceof Error ? error.message : t("theTaskCouldNotBeSavedToTheOutbox"),
         );
         return;
       } finally {
@@ -756,8 +757,8 @@ export function NewTaskDraftScreen(props: {
       if (!isAtomCommandInterrupted(result)) {
         const error = squashAtomCommandFailure(result);
         Alert.alert(
-          "Could not start task",
-          error instanceof Error ? error.message : "The task could not be started.",
+          t("couldNotStartTask"),
+          error instanceof Error ? error.message : t("theTaskCouldNotBeStarted"),
         );
       }
       return;
@@ -787,10 +788,10 @@ export function NewTaskDraftScreen(props: {
         {Platform.OS === "android" ? (
           <>
             <NativeStackScreenOptions options={{ headerShown: false }} />
-            <AndroidScreenHeader title="New Thread" onBack={() => navigation.goBack()} />
+            <AndroidScreenHeader title={t("newThread")} onBack={() => navigation.goBack()} />
           </>
         ) : (
-          <NativeStackScreenOptions options={{ title: "Loading task" }} />
+          <NativeStackScreenOptions options={{ title: t("loadingTask") }} />
         )}
       </View>
     );
@@ -821,7 +822,7 @@ export function NewTaskDraftScreen(props: {
       onFocus={() => setIsComposerFocused(true)}
       onBlur={() => setIsComposerFocused(false)}
       onPasteImages={(uris) => void handleNativePasteImages(uris)}
-      placeholder="Ask anything…"
+      placeholder={t("askAnything")}
       singleLineCentered={false}
       contentInsetVertical={0}
       style={{
@@ -864,13 +865,13 @@ export function NewTaskDraftScreen(props: {
     <View className="items-center gap-6 px-6" testID="new-task-hero">
       <View className="w-full items-center gap-1.5">
         <Text className="text-center text-2xl font-t3-medium tracking-tight text-foreground">
-          What should we build
+          {t("whatShouldWeBuild")}
         </Text>
         <View className="max-w-full flex-row items-center justify-center">
-          <Text className="text-2xl font-t3-medium tracking-tight text-foreground">in </Text>
+          <Text className="text-2xl font-t3-medium tracking-tight text-foreground">{t("in")} </Text>
           <Pressable
-            accessibilityHint="Opens the project picker"
-            accessibilityLabel={`Change project from ${selectedProject.title}`}
+            accessibilityHint={t("opensTheProjectPicker")}
+            accessibilityLabel={t("changeProjectFrom", { title: selectedProject.title })}
             accessibilityRole="button"
             disabled={isIncomingShareTransferPending}
             onPress={chooseProject}
@@ -892,11 +893,13 @@ export function NewTaskDraftScreen(props: {
       </View>
 
       <ComposerInlineControl
-        accessibilityLabel={`Environment: ${selectedEnvironmentLabel}`}
+        accessibilityLabel={t("environment2", {
+          selectedEnvironmentLabel: selectedEnvironmentLabel,
+        })}
         chevronDirection="right"
         disabled={isIncomingShareTransferPending}
         icon="desktopcomputer"
-        label={`on ${selectedEnvironmentLabel}`}
+        label={t("on", { selectedEnvironmentLabel: selectedEnvironmentLabel })}
         maxWidth={260}
         onPress={
           flow.environments.length > 1 ? () => openContextPicker("NewTaskEnvironment") : undefined
@@ -927,7 +930,9 @@ export function NewTaskDraftScreen(props: {
   const workspaceControls = (
     <View className="flex-row items-center gap-1 px-2">
       <ComposerInlineControl
-        accessibilityHint={`Switches to ${flow.workspaceMode === "local" ? "a new worktree" : "the current checkout"}`}
+        accessibilityHint={t("switchesTo", {
+          value1: flow.workspaceMode === "local" ? "a new worktree" : "the current checkout",
+        })}
         accessibilityLabel={workspaceLabel}
         disabled={isIncomingShareTransferPending}
         iconNode={
@@ -947,7 +952,7 @@ export function NewTaskDraftScreen(props: {
         chevronDirection="right"
         disabled={isIncomingShareTransferPending}
         icon="arrow.triangle.branch"
-        label={showBranchLoading ? "Loading branches…" : selectedBranchLabel}
+        label={showBranchLoading ? t("loadingBranches2") : selectedBranchLabel}
         maxWidth={190}
         onPress={() => openContextPicker("NewTaskBranch")}
       />
@@ -990,27 +995,31 @@ export function NewTaskDraftScreen(props: {
             contentPaddingRight={8}
           >
             <ComposerToolbarButton
-              accessibilityLabel="Add attachment"
+              accessibilityLabel={t("addAttachment")}
               disabled={isIncomingShareTransferPending}
               icon="plus"
               onPress={() => void handlePickImages()}
               showChevron={false}
             />
             <ComposerInlineControl
-              accessibilityLabel="Model and reasoning settings"
+              accessibilityLabel={t("modelAndReasoningSettings")}
               disabled={isIncomingShareTransferPending}
               emphasized
               iconNode={
                 <ProviderIcon provider={flow.selectedModelOption?.providerDriver} size={16} />
               }
-              label={flow.selectedModelOption?.label ?? "Choose model"}
+              label={flow.selectedModelOption?.label ?? t("chooseModel")}
               maxWidth={152}
               onPress={settingsSheetPresentation.open}
             />
             {flow.planModeEnabled ? (
               <ComposerInlineControl
-                accessibilityHint={`Switches to ${flow.interactionMode === "plan" ? "Build" : "Plan"} mode`}
-                accessibilityLabel={`Interaction mode: ${flow.interactionMode === "plan" ? "Plan" : "Build"}`}
+                accessibilityHint={t("switchesToMode", {
+                  value1: flow.interactionMode === "plan" ? "Build" : "Plan",
+                })}
+                accessibilityLabel={t("interactionMode", {
+                  value1: flow.interactionMode === "plan" ? "Plan" : "Build",
+                })}
                 disabled={isIncomingShareTransferPending}
                 emphasized
                 icon={
@@ -1018,7 +1027,9 @@ export function NewTaskDraftScreen(props: {
                     ? { ios: "list.bullet.clipboard", android: "auto_awesome" }
                     : { ios: "hammer", android: "construction" }
                 }
-                label={flow.interactionMode === "plan" ? "Plan" : "Build"}
+                label={
+                  flow.interactionMode === "plan" ? t("chat.plan") : t("projectScript.iconBuild")
+                }
                 onPress={() =>
                   flow.setInteractionMode(flow.interactionMode === "plan" ? "default" : "plan")
                 }
@@ -1028,7 +1039,11 @@ export function NewTaskDraftScreen(props: {
           </ComposerToolbarScroller>
           <ComposerToolbarButton
             accessibilityLabel={
-              flow.submitting ? "Starting task" : environmentConnected ? "Start task" : "Queue task"
+              flow.submitting
+                ? t("startingTask")
+                : environmentConnected
+                  ? t("startTask")
+                  : t("queueTask")
             }
             disabled={!canStart}
             icon={environmentConnected ? "arrow.up" : "tray.and.arrow.up"}
@@ -1045,7 +1060,7 @@ export function NewTaskDraftScreen(props: {
     return (
       <View className="flex-1 bg-sheet" collapsable={false}>
         <NativeStackScreenOptions options={{ headerShown: false }} />
-        <AndroidScreenHeader title="New task" onBack={closeNewTask} />
+        <AndroidScreenHeader title={t("newTask")} onBack={closeNewTask} />
         {heroViewport}
 
         <KeyboardStickyView
@@ -1069,8 +1084,8 @@ export function NewTaskDraftScreen(props: {
       />
       <NativeHeaderToolbar placement="left">
         <NativeHeaderToolbar.Button
-          accessibilityLabel="Cancel new task"
-          label="Cancel"
+          accessibilityLabel={t("cancelNewTask")}
+          label={t("cancel")}
           onPress={closeNewTask}
         />
       </NativeHeaderToolbar>

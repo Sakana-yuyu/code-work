@@ -57,10 +57,34 @@ import { SettingsSection, useRelativeTimeTick } from "./settingsLayout";
 import { t } from "~/i18n";
 
 const HISTORY_WINDOWS = [
-  { label: t("m5m"), windowMs: 5 * 60_000, bucketMs: 15_000 },
-  { label: t("m15m"), windowMs: 15 * 60_000, bucketMs: 30_000 },
-  { label: t("m30m"), windowMs: 30 * 60_000, bucketMs: 60_000 },
-  { label: t("m1h"), windowMs: 60 * 60_000, bucketMs: 2 * 60_000 },
+  {
+    get label() {
+      return t("m5m");
+    },
+    windowMs: 5 * 60_000,
+    bucketMs: 15_000,
+  },
+  {
+    get label() {
+      return t("m15m");
+    },
+    windowMs: 15 * 60_000,
+    bucketMs: 30_000,
+  },
+  {
+    get label() {
+      return t("m30m");
+    },
+    windowMs: 30 * 60_000,
+    bucketMs: 60_000,
+  },
+  {
+    get label() {
+      return t("m1h");
+    },
+    windowMs: 60 * 60_000,
+    bucketMs: 2 * 60_000,
+  },
 ] as const;
 
 function formatBytes(value: number): string {

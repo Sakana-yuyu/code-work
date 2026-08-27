@@ -129,7 +129,7 @@ export function PreviewChromeRow({
             >
               <ArrowLeft />
             </TooltipTrigger>
-            <TooltipPopup>Back</TooltipPopup>
+            <TooltipPopup>{t("back")}</TooltipPopup>
           </Tooltip>
           <Tooltip>
             <TooltipTrigger
@@ -146,7 +146,7 @@ export function PreviewChromeRow({
             >
               <ArrowRight />
             </TooltipTrigger>
-            <TooltipPopup>Forward</TooltipPopup>
+            <TooltipPopup>{t("forward")}</TooltipPopup>
           </Tooltip>
           <Tooltip>
             <TooltipTrigger
@@ -156,14 +156,14 @@ export function PreviewChromeRow({
                   size="icon-xs"
                   onClick={refreshDisabled ? NOOP : onRefresh}
                   disabled={refreshDisabled}
-                  aria-label={loading ? "Stop" : "Refresh"}
+                  aria-label={loading ? t("stop") : t("refresh")}
                   type="button"
                 />
               }
             >
               <RotateCw className={cn(loading && "animate-spin")} />
             </TooltipTrigger>
-            <TooltipPopup>{loading ? "Loading…" : "Refresh"}</TooltipPopup>
+            <TooltipPopup>{loading ? t("loading2") : t("refresh")}</TooltipPopup>
           </Tooltip>
         </div>
 
@@ -224,7 +224,7 @@ export function PreviewChromeRow({
                 >
                   <ExternalLink />
                 </TooltipTrigger>
-                <TooltipPopup>Open in system browser</TooltipPopup>
+                <TooltipPopup>{t("openInSystemBrowser")}</TooltipPopup>
               </Tooltip>
             </InputGroupAddon>
           ) : null}
@@ -239,7 +239,7 @@ export function PreviewChromeRow({
                   size="icon-xs"
                   onClick={onPickElement}
                   disabled={pickDisabled}
-                  aria-label={pickActive ? "Cancel annotation" : "Annotate preview"}
+                  aria-label={pickActive ? t("cancelAnnotation") : t("annotatePreview")}
                   aria-pressed={pickActive ? "true" : "false"}
                   type="button"
                 />
@@ -251,8 +251,8 @@ export function PreviewChromeRow({
               {pickDisabled && pickDisabledReason
                 ? pickDisabledReason
                 : pickActive
-                  ? "Cancel annotation (Esc)"
-                  : "Annotate elements, regions, and drawings"}
+                  ? t("cancelAnnotationEsc")
+                  : t("annotateElementsRegionsAndDrawings")}
             </TooltipPopup>
           </Tooltip>
         ) : null}
@@ -264,7 +264,7 @@ export function PreviewChromeRow({
                   variant={recording ? "secondary" : "ghost"}
                   size="icon-xs"
                   onClick={(event) => onCapture(event.shiftKey)}
-                  aria-label={recording ? "Stop recording" : "Capture screenshot"}
+                  aria-label={recording ? t("stopRecording") : t("captureScreenshot")}
                   type="button"
                   className="relative"
                   disabled={captureDisabled}
@@ -277,7 +277,7 @@ export function PreviewChromeRow({
               ) : null}
             </TooltipTrigger>
             <TooltipPopup>
-              {recording ? "Stop recording" : "Screenshot · Shift-click to record"}
+              {recording ? t("stopRecording") : t("screenshotShiftClickToRecord")}
             </TooltipPopup>
           </Tooltip>
         ) : null}
@@ -290,7 +290,7 @@ export function PreviewChromeRow({
                   size="icon-xs"
                   onClick={onPictureInPicture}
                   aria-label={
-                    pictureInPicture ? "Close floating preview" : "Float preview over chat"
+                    pictureInPicture ? t("closeFloatingPreview") : t("floatPreviewOverChat")
                   }
                   aria-pressed={pictureInPicture ? "true" : "false"}
                   type="button"
@@ -301,7 +301,7 @@ export function PreviewChromeRow({
               <PictureInPicture2 className={cn(pictureInPicture && "text-primary")} />
             </TooltipTrigger>
             <TooltipPopup>
-              {pictureInPicture ? "Close floating preview" : "Float preview over chat"}
+              {pictureInPicture ? t("closeFloatingPreview") : t("floatPreviewOverChat")}
             </TooltipPopup>
           </Tooltip>
         ) : null}

@@ -120,7 +120,7 @@ function handleToastDismissClick(
 
 function CopyErrorButton({ text }: { text: string }) {
   const { copyToClipboard, isCopied } = useCopyToClipboard({ target: "error-message" });
-  const label = isCopied ? "Copied error" : "Copy error";
+  const label = isCopied ? t("interface.copied-error") : t("interface.copy-error");
 
   return (
     <Tooltip>
@@ -754,7 +754,7 @@ function AnchoredToasts() {
                     <>
                       <div className={toastCornerDismissClass}>
                         <button
-                          aria-label="Dismiss notification"
+                          aria-label={t("dismissNotification")}
                           className={toastCornerOrbClass}
                           data-slot="toast-close"
                           onClick={() =>

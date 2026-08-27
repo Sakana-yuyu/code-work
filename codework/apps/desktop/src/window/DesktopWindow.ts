@@ -28,6 +28,7 @@ import * as DesktopAppSettings from "../settings/DesktopAppSettings.ts";
 import * as DesktopClientSettings from "../settings/DesktopClientSettings.ts";
 import * as ElectronApp from "../electron/ElectronApp.ts";
 import { makeQuitHoldHandler } from "./QuitHold.ts";
+import { t } from "../i18n.js";
 
 const TITLEBAR_HEIGHT = 40;
 const TITLEBAR_COLOR = "#01000000"; // #00000000 does not work correctly on Linux
@@ -490,7 +491,7 @@ export const make = Effect.gen(function* () {
           });
         }
         if (params.dictionarySuggestions.length === 0) {
-          menuTemplate.push({ label: "No suggestions", enabled: false });
+          menuTemplate.push({ label: t("noSuggestions"), enabled: false });
         }
         menuTemplate.push({ type: "separator" });
       }
@@ -498,7 +499,7 @@ export const make = Effect.gen(function* () {
       if (Option.isSome(ElectronShell.parseSafeExternalUrl(params.linkURL))) {
         menuTemplate.push(
           {
-            label: "Copy Link",
+            label: t("copyLink"),
             click: () => {
               void runPromise(electronShell.copyText(params.linkURL));
             },
@@ -509,7 +510,7 @@ export const make = Effect.gen(function* () {
 
       if (params.mediaType === "image") {
         menuTemplate.push({
-          label: "Copy Image",
+          label: t("copyImage"),
           click: () => window.webContents.copyImageAt(params.x, params.y),
         });
         menuTemplate.push({ type: "separator" });

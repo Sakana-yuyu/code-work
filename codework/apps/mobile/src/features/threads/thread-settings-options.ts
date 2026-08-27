@@ -1,4 +1,5 @@
 import type { ProviderOptionDescriptor, RuntimeMode } from "@codework/contracts";
+import { t } from "../../i18n/runtime";
 
 /**
  * Desktop-oriented effort keywords that don't belong in the phone picker.
@@ -9,32 +10,34 @@ import type { ProviderOptionDescriptor, RuntimeMode } from "@codework/contracts"
  */
 const HIDDEN_EFFORT_OPTION_IDS: ReadonlySet<string> = new Set(["ultracode"]);
 
-export const RUNTIME_MODE_CHOICES: ReadonlyArray<{
+export function runtimeModeChoices(): ReadonlyArray<{
   readonly mode: RuntimeMode;
   readonly label: string;
   readonly description: string;
-}> = [
-  {
-    mode: "approval-required",
-    label: "Supervised",
-    description: "Ask before commands and file changes.",
-  },
-  {
-    mode: "auto-accept-edits",
-    label: "Auto-accept edits",
-    description: "Auto-approve edits, ask before other actions.",
-  },
-  {
-    mode: "auto",
-    label: "Auto",
-    description: "Supported providers approve routine actions; others still ask.",
-  },
-  {
-    mode: "full-access",
-    label: "Full access",
-    description: "Allow commands and edits without prompts.",
-  },
-];
+}> {
+  return [
+    {
+      mode: "approval-required",
+      label: t("chat.supervised"),
+      description: t("chat.supervisedDescription"),
+    },
+    {
+      mode: "auto-accept-edits",
+      label: t("chat.autoAcceptEdits"),
+      description: t("chat.autoAcceptEditsDescription"),
+    },
+    {
+      mode: "auto",
+      label: t("chat.auto"),
+      description: t("chat.autoDescription"),
+    },
+    {
+      mode: "full-access",
+      label: t("chat.fullAccess"),
+      description: t("chat.fullAccessDescription"),
+    },
+  ];
+}
 
 export function selectableChoices(
   descriptor: Extract<ProviderOptionDescriptor, { type: "select" }>,

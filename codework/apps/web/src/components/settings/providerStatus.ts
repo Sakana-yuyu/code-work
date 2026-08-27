@@ -1,5 +1,5 @@
 import type { ServerProvider, ServerProviderVersionAdvisory } from "@codework/contracts";
-import { t } from "~/i18n";
+import { t } from "~/i18n/runtime";
 
 /**
  * Visual treatment for each server-reported provider status. Centralized so
@@ -114,7 +114,7 @@ export function getProviderVersionAdvisoryPresentation(
     return null;
   }
 
-  const label = "Update available";
+  const label = t("updateAvailable2");
   const version = advisory.latestVersion;
   const versionLabel = getProviderVersionLabel(version);
 

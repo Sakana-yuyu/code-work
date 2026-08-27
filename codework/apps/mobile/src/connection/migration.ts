@@ -14,6 +14,7 @@ import {
 import { EnvironmentId } from "@codework/contracts";
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
+import { t } from "../i18n/runtime";
 
 const LegacySavedRemoteConnection = Schema.Struct({
   environmentId: EnvironmentId,
@@ -94,14 +95,14 @@ export const migrateLegacyConnectionCatalog = Effect.fn(
     try: () => JSON.parse(raw) as unknown,
     catch: (cause) =>
       new LegacyConnectionMigrationError({
-        message: `Could not parse the legacy mobile connection catalog: ${String(cause)}`,
+        message: t("couldNotParseTheLegacyMobileConnectionCatalog", { value1: String(cause) }),
       }),
   });
   const legacy = yield* decodeLegacyConnectionDocument(parsed).pipe(
     Effect.mapError(
       (cause) =>
         new LegacyConnectionMigrationError({
-          message: `Could not decode the legacy mobile connection catalog: ${String(cause)}`,
+          message: t("couldNotDecodeTheLegacyMobileConnectionCatalog", { value1: String(cause) }),
         }),
     ),
   );

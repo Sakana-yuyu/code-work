@@ -1,5 +1,8 @@
 import { EnvironmentId } from "@codework/contracts";
 import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { setCurrentLanguage } from "~/i18n/runtime";
+
+setCurrentLanguage("en");
 
 // Pinned so the direction cases below read as fixed versions instead of
 // arithmetic on whatever version this checkout happens to be at.

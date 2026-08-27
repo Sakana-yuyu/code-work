@@ -12,6 +12,7 @@ import * as Semaphore from "effect/Semaphore";
 
 import * as MobileSecureStorage from "../persistence/mobile-secure-storage";
 import { migrateLegacyConnectionCatalog } from "./migration";
+import { t } from "../i18n/runtime";
 
 export const CONNECTION_CATALOG_KEY = "codework.connection-catalog.v1";
 export const LEGACY_CONNECTIONS_KEY = "codework.connections";
@@ -19,7 +20,7 @@ export const LEGACY_CONNECTIONS_KEY = "codework.connections";
 function catalogError(operation: string, cause: unknown) {
   return new ConnectionTransientError({
     reason: "remote-unavailable",
-    detail: `Could not ${operation} the local connection catalog: ${String(cause)}`,
+    detail: t("couldNotTheLocalConnectionCatalog", { operation: operation, value2: String(cause) }),
   });
 }
 

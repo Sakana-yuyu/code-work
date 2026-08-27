@@ -86,8 +86,8 @@ export function PullRequestReviewerPicker({
       toastManager.add({
         type: "error",
         title: candidate.isRequested
-          ? `Could not take back the review request to ${candidate.login}`
-          : `Could not ask ${candidate.login} for a review`,
+          ? t("couldNotTakeBackTheReviewRequestTo", { login: candidate.login })
+          : t("couldNotAskForAReview", { login: candidate.login }),
         description: readableFailure(
           squashAtomCommandFailure(result),
           "The host refused it. Check that you have write access on this repository, and that they still have access to it.",
@@ -98,8 +98,8 @@ export function PullRequestReviewerPicker({
     toastManager.add({
       type: "success",
       title: candidate.isRequested
-        ? `Review request to ${candidate.login} taken back`
-        : `Review requested from ${candidate.login}`,
+        ? t("reviewRequestToTakenBack", { login: candidate.login })
+        : t("reviewRequestedFrom", { login: candidate.login }),
     });
     onRequested();
     candidatesQuery.refresh();
@@ -116,7 +116,7 @@ export function PullRequestReviewerPicker({
           }
         />
         <TooltipPopup side="bottom">
-          Asking someone to review needs write access on this repository
+          {t("askingSomeoneToReviewNeedsWriteAccessOnThisRepository")}
         </TooltipPopup>
       </Tooltip>
     );
@@ -147,13 +147,13 @@ export function PullRequestReviewerPicker({
             <PullRequestPeopleGhost rows={4} />
           ) : candidatesQuery.error !== null ? (
             <p className="p-2 text-xs text-muted-foreground">
-              The people with access could not be read. {candidatesQuery.error}
+              {t("thePeopleWithAccessCouldNotBeRead")} {candidatesQuery.error}
             </p>
           ) : candidates.length === 0 ? (
             <p className="p-2 text-xs text-muted-foreground">
               {query.length > 0
-                ? "Nobody with access matches that."
-                : "Nobody else has access to this repository."}
+                ? t("nobodyWithAccessMatchesThat")
+                : t("nobodyElseHasAccessToThisRepository")}
             </p>
           ) : (
             candidates.map((candidate) => (
@@ -166,7 +166,7 @@ export function PullRequestReviewerPicker({
               >
                 <PullRequestActorLabel actor={candidate} className="min-w-0 flex-1 truncate" />
                 {candidate.kind === "team" ? (
-                  <span className="shrink-0 text-muted-foreground">team</span>
+                  <span className="shrink-0 text-muted-foreground">{t("team")}</span>
                 ) : null}
                 {candidate.isRequested ? (
                   <CheckIcon aria-label={t("alreadyAsked")} className="size-3.5 shrink-0" />
@@ -178,8 +178,7 @@ export function PullRequestReviewerPicker({
             // Typing filters what arrived; it does not ask the host again, so this says what the
             // list is rather than offering a search that would find nothing further.
             <p className="px-2 py-1.5 text-xs text-muted-foreground">
-              This repository has more people with access than are listed here. Ask for the rest on
-              the host.
+              {t("thisRepositoryHasMorePeopleWithAccessThanAreListedHereAskForTheRestOnThe")}
             </p>
           ) : null}
         </div>

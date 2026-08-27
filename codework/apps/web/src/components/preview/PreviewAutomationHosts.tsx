@@ -73,6 +73,7 @@ import {
 } from "./previewAutomationTarget";
 import { isPreviewViewportReady } from "./previewViewportReadiness";
 import { shouldRollbackPreviewViewport } from "./previewViewportRollback";
+import { t } from "~/i18n";
 
 const PREVIEW_PRESENTATION_SETTLE_TIMEOUT_MS = 500;
 
@@ -701,7 +702,10 @@ function PreviewAutomationHost(props: { readonly environmentId: EnvironmentId })
             environmentId,
             input: response,
           }),
-        label: `preview:automation-host:${environmentId}:${automationClientId}`,
+        label: t("previewAutomationHost", {
+          environmentId: environmentId,
+          automationClientId: automationClientId,
+        }),
       }),
     [
       automationClientId,

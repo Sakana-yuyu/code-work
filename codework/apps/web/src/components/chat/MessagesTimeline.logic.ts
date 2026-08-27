@@ -10,6 +10,7 @@ import {
 } from "../../session-logic";
 import { type ChatMessage, type ProposedPlan, type TurnDiffSummary } from "../../types";
 import { type MessageId, type OrchestrationLatestTurn, type TurnId } from "@codework/contracts";
+import { t } from "~/i18n/runtime";
 
 export const MAX_VISIBLE_WORK_LOG_ENTRIES = 1;
 export const TIMELINE_MINIMAP_ITEM_SPACING = 8;
@@ -640,11 +641,11 @@ function deriveTurnFolds(input: {
     const duration = elapsedMs !== null ? formatDuration(elapsedMs) : null;
     const label = isLatestInterruptedTurn
       ? duration
-        ? `You stopped after ${duration}`
-        : "You stopped this response"
+        ? t("interface.you-stopped-after-value", { value1: duration })
+        : t("interface.you-stopped-this-response")
       : duration
-        ? `Worked for ${duration}`
-        : "Worked";
+        ? t("interface.worked-for-value", { value1: duration })
+        : t("interface.worked");
 
     foldsByAnchorEntryId.set(firstHiddenEntry.id, {
       turnId,

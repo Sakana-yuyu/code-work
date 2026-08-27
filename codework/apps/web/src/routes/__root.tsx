@@ -401,8 +401,8 @@ function EventRouter() {
     if (decision._tag === "Success") {
       toastManager.add({
         type: "success",
-        title: "Keybindings updated",
-        description: "Keybindings configuration reloaded successfully.",
+        title: t("keybindingsUpdated"),
+        description: t("keybindingsConfigurationReloadedSuccessfully"),
       });
       return;
     }
@@ -410,7 +410,7 @@ function EventRouter() {
     toastManager.add(
       stackedThreadToast({
         type: "warning",
-        title: "Invalid keybindings configuration",
+        title: t("invalidKeybindingsConfiguration"),
         description: decision.message,
         actionVariant: "outline",
         actionProps: {
@@ -439,9 +439,9 @@ function EventRouter() {
               toastManager.add(
                 stackedThreadToast({
                   type: "error",
-                  title: "Unable to open keybindings file",
+                  title: t("unableToOpenKeybindingsFile"),
                   description:
-                    error instanceof Error ? error.message : "Unknown error opening file.",
+                    error instanceof Error ? error.message : t("unknownErrorOpeningFile"),
                 }),
               );
             })();

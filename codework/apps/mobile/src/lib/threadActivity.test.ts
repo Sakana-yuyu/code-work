@@ -1,4 +1,7 @@
 import { describe, expect, it } from "vite-plus/test";
+import { setCurrentLanguage } from "../i18n/runtime";
+
+setCurrentLanguage("en");
 import { codexFeedbackMessage } from "@codework/client-runtime/state/threads";
 
 import {

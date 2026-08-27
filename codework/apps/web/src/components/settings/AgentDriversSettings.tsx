@@ -14,11 +14,11 @@ const EMPTY_PROFILES: ReadonlyArray<CompositionAgentDriverProfile> = [];
 const statusLabel = (status: CompositionAgentDriverProfile["status"]): string => {
   switch (status) {
     case "available":
-      return t("Available");
+      return t("available");
     case "degraded":
-      return t("Degraded");
+      return t("diagnostics.sourceStatus.degraded");
     case "unavailable":
-      return t("Unavailable");
+      return t("pullRequests.unavailable");
   }
 };
 
@@ -72,7 +72,7 @@ function DriverProfileRow({ profile }: { readonly profile: CompositionAgentDrive
         </p>
         <div className="flex flex-wrap gap-1.5 text-[11px] text-muted-foreground">
           {activeSurfaces.length === 0 ? (
-            <span>{t("No verified shared surfaces")}</span>
+            <span>{t("agentDrivers.noVerifiedSharedSurfaces")}</span>
           ) : (
             activeSurfaces.map(([key, label]) => (
               <span key={String(key)} className="rounded bg-muted px-1.5 py-0.5">
@@ -95,7 +95,7 @@ function DriverProfileRow({ profile }: { readonly profile: CompositionAgentDrive
         ) : null}
         {profile.reasonCode ? (
           <p className="text-xs text-muted-foreground">
-            {t("Reason")}: <code>{profile.reasonCode}</code>
+            {t("agentDrivers.reason")}: <code>{profile.reasonCode}</code>
           </p>
         ) : null}
       </div>
@@ -116,13 +116,13 @@ export function AgentDriversSettings() {
   return (
     <SettingsSection
       id="agent-drivers"
-      title={t("Agent Drivers")}
+      title={t("agentDrivers.title")}
       icon={<BotIcon className="size-4 text-muted-foreground" />}
       headerAction={
         <Button
           size="icon-sm"
           variant="ghost-muted"
-          aria-label={t("Refresh Agent Drivers")}
+          aria-label={t("agentDrivers.refresh")}
           onClick={() => query.refresh()}
           disabled={query.isPending}
           type="button"
@@ -132,27 +132,21 @@ export function AgentDriversSettings() {
       }
     >
       <SettingsRow
-        title={t("Unified Driver capability projection")}
-        description={t(
-          "This read-only view reports verified runtime and API surfaces. Task grants and ToolBroker approval still apply to every execution.",
-        )}
-        status={query.error ?? (query.isPending ? t("Loading...") : undefined)}
+        title={t("agentDrivers.projectionTitle")}
+        description={t("agentDrivers.projectionDescription")}
+        status={query.error ?? (query.isPending ? t("loading") : undefined)}
       />
       {profiles.length === 0 ? (
         <SettingsRow
-          title={t("No Agent Drivers available")}
-          description={t(
-            "Provider and external runtime drivers appear here after their environment is connected.",
-          )}
+          title={t("agentDrivers.empty")}
+          description={t("agentDrivers.emptyDescription")}
         />
       ) : (
         profiles.map((profile) => <DriverProfileRow key={profile.agentId} profile={profile} />)
       )}
       <SettingsRow
-        title={t("Authorization boundary")}
-        description={t(
-          "A visible capability does not grant access by itself; the task-scoped grant, approval, audit, and cancellation path remains authoritative.",
-        )}
+        title={t("authorizationBoundary")}
+        description={t("agentDrivers.authorizationDescription")}
         status={<ShieldCheckIcon className="inline size-3.5 align-[-2px]" />}
       />
     </SettingsSection>

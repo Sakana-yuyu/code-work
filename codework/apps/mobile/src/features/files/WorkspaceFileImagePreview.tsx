@@ -7,6 +7,7 @@ import { AsyncResult } from "effect/unstable/reactivity";
 import { AppText as Text } from "../../components/AppText";
 import { EmptyState } from "../../components/EmptyState";
 import { workspaceFileImageAtom } from "./workspace-file-image-cache";
+import { t } from "../../i18n";
 
 function ResolvedWorkspaceFileImagePreview(props: {
   readonly accessibilityLabel: string;
@@ -24,7 +25,9 @@ function ResolvedWorkspaceFileImagePreview(props: {
     <View className="relative flex-1 bg-subtle">
       <Pressable
         accessibilityRole="button"
-        accessibilityLabel={`Open full-screen preview of ${props.accessibilityLabel}`}
+        accessibilityLabel={t("openFullScreenPreviewOf", {
+          accessibilityLabel: props.accessibilityLabel,
+        })}
         disabled={loadError !== null}
         className="flex-1 p-4 active:bg-subtle-strong"
         onPress={() => setFullScreenVisible(true)}
@@ -43,7 +46,7 @@ function ResolvedWorkspaceFileImagePreview(props: {
 
       {loadError !== null ? (
         <View className="absolute inset-0 items-center justify-center bg-card px-6">
-          <EmptyState title="Image unavailable" detail={loadError} />
+          <EmptyState title={t("imageUnavailable")} detail={loadError} />
         </View>
       ) : null}
 
@@ -70,8 +73,8 @@ function CachedWorkspaceFileImagePreview(props: {
     return (
       <View className="flex-1 items-center justify-center bg-card px-6">
         <EmptyState
-          title="Image unavailable"
-          detail="The image could not be loaded into the local cache."
+          title={t("imageUnavailable")}
+          detail={t("theImageCouldNotBeLoadedIntoTheLocalCache")}
         />
       </View>
     );
@@ -81,7 +84,7 @@ function CachedWorkspaceFileImagePreview(props: {
     return (
       <View className="flex-1 items-center justify-center gap-3 bg-card px-6">
         <ActivityIndicator />
-        <Text className="text-center text-sm text-foreground-muted">Loading image...</Text>
+        <Text className="text-center text-sm text-foreground-muted">{t("loadingImage")}</Text>
       </View>
     );
   }
@@ -103,7 +106,7 @@ export function WorkspaceFileImagePreview(props: {
       <View className="flex-1 items-center justify-center gap-3 bg-card px-6">
         <ActivityIndicator />
         <Text className="text-center text-sm text-foreground-muted">
-          Preparing image preview...
+          {t("preparingImagePreview")}
         </Text>
       </View>
     );

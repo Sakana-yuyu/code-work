@@ -19,6 +19,7 @@ import type {
   NativeReviewDiffCommentTarget,
 } from "./nativeReviewDiffAdapter";
 import type { ReviewSectionItem } from "./reviewModel";
+import { t } from "../../i18n/runtime";
 
 interface PendingNativeCommentSelection extends NativeReviewDiffCommentTarget {
   readonly sectionId: string;
@@ -79,7 +80,7 @@ export function useReviewCommentSelectionController(input: {
       activeCommentTarget.startIndex !== activeCommentTarget.endIndex
     ) {
       return {
-        title: `Comment on ${formatReviewSelectedRangeLabel(activeCommentTarget)}`,
+        title: t("commentOn", { value1: formatReviewSelectedRangeLabel(activeCommentTarget) }),
         onOpenComment: openReviewCommentSheet,
       };
     }
@@ -89,7 +90,7 @@ export function useReviewCommentSelectionController(input: {
       pendingNativeCommentSelection.sectionTitle === selectedSection?.title
     ) {
       return {
-        title: "Select range end",
+        title: t("selectRangeEnd"),
         onOpenComment: null,
       };
     }

@@ -14,6 +14,7 @@ import { splitEnvironmentSections } from "../connection/environmentSections";
 import { useConnectionController } from "../connection/useConnectionController";
 import { optOutOfConnectOnboarding } from "./connectOnboardingOptOut";
 import { hasCloudPublicConfig } from "./publicConfig";
+import { t } from "../../i18n";
 
 /**
  * Post-sign-in onboarding sheet for Code Work Connect. Mobile never publishes
@@ -74,7 +75,7 @@ function ConfiguredConnectOnboardingRouteScreen() {
     void (async () => {
       if (userId) {
         const result = await settlePromise(() => optOutOfConnectOnboarding(userId));
-        reportAtomCommandResult(result, { label: "connect onboarding opt-out" });
+        reportAtomCommandResult(result, { label: t("connectOnboardingOptOut") });
       }
       navigation.goBack();
     })();
@@ -84,8 +85,10 @@ function ConfiguredConnectOnboardingRouteScreen() {
     <View collapsable={false} className="flex-1 bg-sheet">
       {Platform.OS === "android" ? (
         <AndroidSheetHeader
-          title="Set up Code Work Connect"
-          actions={[{ accessibilityLabel: "Close", icon: "xmark", onPress: handleClose }]}
+          title={t("setUpCodeWorkConnect")}
+          actions={[
+            { accessibilityLabel: t("commandPalette.close"), icon: "xmark", onPress: handleClose },
+          ]}
         />
       ) : (
         <NativeHeaderToolbar placement="right">
@@ -116,7 +119,7 @@ function ConfiguredConnectOnboardingRouteScreen() {
         ) : (
           <View collapsable={false} className="rounded-[24px] bg-card p-5">
             <Text className="text-sm leading-normal text-foreground-muted">
-              Sign in to your Code Work account to set up Code Work Connect.
+              {t("signInToYourCodeWorkAccountToSetUpCodeWorkConnect")}
             </Text>
           </View>
         )}
@@ -128,7 +131,7 @@ function ConfiguredConnectOnboardingRouteScreen() {
             onPress={handleDontShowAgain}
             className="items-center py-1 active:opacity-70"
           >
-            <Text className="text-xs text-foreground-muted">{"Don't show this again"}</Text>
+            <Text className="text-xs text-foreground-muted">{t("donTShowThisAgain")}</Text>
           </Pressable>
         ) : null}
       </ScrollView>

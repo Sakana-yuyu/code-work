@@ -25,6 +25,7 @@ import {
 } from "./ui/dialog";
 import { Input } from "./ui/input";
 import { Spinner } from "./ui/spinner";
+import { t } from "~/i18n";
 
 interface PullRequestThreadDialogProps {
   open: boolean;
@@ -171,9 +172,13 @@ export function PullRequestThreadDialog({
   const validationMessage = !referenceDirty
     ? null
     : reference.trim().length === 0
-      ? `Paste a ${terminology.singular} URL, checkout command, or enter 123 / #123.`
+      ? t("interface.paste-a-value-url-checkout-command-or-enter-123-123", {
+          value1: terminology.singular,
+        })
       : parsedReference === null
-        ? `Use a ${terminology.singular} URL, checkout command, 123, or #123.`
+        ? t("interface.use-a-value-url-checkout-command-123-or-123", {
+            value1: terminology.singular,
+          })
         : null;
   const errorMessage =
     validationMessage ??
@@ -198,11 +203,11 @@ export function PullRequestThreadDialog({
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <SourceControlIcon className="size-4" />
-            Checkout {terminology.singular}
+            {t("checkout")} {terminology.singular}
           </DialogTitle>
           <DialogDescription>
-            Resolve a {sourceControlPresentation.providerName} {terminology.singular}, then create
-            the draft thread in the main repo or in a dedicated worktree.
+            {t("resolveA")} {sourceControlPresentation.providerName} {terminology.singular}
+            {t("thenCreateTheDraftThreadInTheMainRepoOrInADedicatedWorktree")}
           </DialogDescription>
         </DialogHeader>
         <DialogPanel className="space-y-4">
@@ -212,7 +217,7 @@ export function PullRequestThreadDialog({
             </span>
             <Input
               ref={referenceInputRef}
-              placeholder={`${terminology.shortLabel} URL, checkout command, or #42`}
+              placeholder={t("urlCheckoutCommandOr42", { shortLabel: terminology.shortLabel })}
               value={reference}
               onChange={(event) => {
                 setReferenceDirty(true);
@@ -236,7 +241,7 @@ export function PullRequestThreadDialog({
                 <div className="min-w-0">
                   <p className="truncate font-medium text-sm">{resolvedPullRequest.title}</p>
                   <p className="truncate text-muted-foreground text-xs">
-                    #{resolvedPullRequest.number} · {resolvedPullRequest.headBranch} to{" "}
+                    #{resolvedPullRequest.number} · {resolvedPullRequest.headBranch} {t("to")}{" "}
                     {resolvedPullRequest.baseBranch}
                   </p>
                 </div>
@@ -250,7 +255,7 @@ export function PullRequestThreadDialog({
           {isResolving ? (
             <div className="flex items-center gap-2 text-muted-foreground text-xs">
               <Spinner className="size-3.5" />
-              Resolving {terminology.singular}...
+              {t("resolving")} {terminology.singular}...
             </div>
           ) : null}
 
@@ -264,7 +269,7 @@ export function PullRequestThreadDialog({
             onClick={() => onOpenChange(false)}
             disabled={preparePullRequestThreadAction.isPending}
           >
-            Cancel
+            {t("cancel")}
           </Button>
           <Button
             type="button"
@@ -280,7 +285,9 @@ export function PullRequestThreadDialog({
               preparePullRequestThreadAction.isPending
             }
           >
-            {preparingMode === "local" ? "Preparing local..." : "Local"}
+            {preparingMode === "local"
+              ? t("preparingLocal")
+              : t("commandPalette.environmentLabelLocal")}
           </Button>
           <Button
             type="button"
@@ -295,7 +302,7 @@ export function PullRequestThreadDialog({
               preparePullRequestThreadAction.isPending
             }
           >
-            {preparingMode === "worktree" ? "Preparing worktree..." : "Worktree"}
+            {preparingMode === "worktree" ? t("preparingWorktree2") : t("workspace.worktree")}
           </Button>
         </DialogFooter>
       </DialogPopup>

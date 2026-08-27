@@ -15,6 +15,7 @@ import {
   workspaceConnectionStatusPresentation,
   type WorkspaceConnectionStatusPresentation,
 } from "./workspace-connection-status";
+import { t } from "../../i18n";
 
 /**
  * Delay before a connection interruption surfaces in the title slot. Sub-second
@@ -115,7 +116,7 @@ export function WorkspaceConnectionTitle(props: {
   return (
     <StatusFadeIn grow={props.grow}>
       <Pressable
-        accessibilityHint="Opens environment settings"
+        accessibilityHint={t("opensEnvironmentSettings")}
         accessibilityLabel={status.label}
         accessibilityRole="button"
         disabled={props.onPress === undefined}
@@ -161,9 +162,9 @@ export function getConnectionAwareBrandHeaderOptions(opts: {
 }): NativeStackNavigationOptions {
   if (Platform.OS === "ios" && NATIVE_LIQUID_GLASS_SUPPORTED) {
     return {
-      headerTitle: "Threads",
+      headerTitle: t("commandPalette.threads"),
       headerTitleStyle: { color: "transparent", fontSize: 18, fontWeight: "800" },
-      title: "Threads",
+      title: t("commandPalette.threads"),
       unstable_headerLeftItems: (): NativeStackHeaderItem[] => [
         {
           element: (
@@ -189,6 +190,6 @@ export function getConnectionAwareBrandHeaderOptions(opts: {
       />
     ),
     headerTitleStyle: opts.fallbackTitleStyle,
-    title: "Threads",
+    title: t("commandPalette.threads"),
   };
 }

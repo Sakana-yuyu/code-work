@@ -32,6 +32,7 @@ import { getProviderModelCapabilities } from "../../providerModels";
 import { cn } from "~/lib/utils";
 import { Badge } from "../ui/badge";
 import { ComposerControl, ComposerControlChevron, ComposerControlIcon } from "./ComposerControl";
+import { t } from "~/i18n";
 
 type ProviderOptions = ReadonlyArray<ProviderOptionSelection>;
 
@@ -54,7 +55,7 @@ function DefaultBadge() {
       variant="outline"
       className="inline-flex h-4 w-fit min-w-0 items-center justify-center gap-0 border-border/70 bg-muted/60 px-1.5 py-0 font-semibold text-[10px] text-muted-foreground leading-none sm:h-4"
     >
-      Default
+      {t("default")}
     </Badge>
   );
 }
@@ -317,8 +318,7 @@ export const TraitsMenuContent = memo(function TraitsMenuContentImpl({
               </div>
               {ultrathinkInBodyText && descriptor.id === primarySelectDescriptor?.id ? (
                 <div className="px-2 pb-1.5 text-muted-foreground/80 text-xs">
-                  Your prompt contains &quot;ultrathink&quot; in the text. Remove it to change this
-                  option.
+                  {t("yourPromptContainsQuotUltrathinkQuotInTheTextRemoveItToChangeThisOption")}
                 </div>
               ) : null}
               <MenuRadioGroup
@@ -381,7 +381,7 @@ export const TraitsMenuContent = memo(function TraitsMenuContentImpl({
                 {(["on", "off"] as const).map((value) => (
                   <MenuRadioItem key={value} value={value} hideIndicator closeOnClick>
                     <span className="flex w-full min-w-0 items-center justify-between gap-3">
-                      <span>{value === "on" ? "On" : "Off"}</span>
+                      <span>{value === "on" ? t("on2") : t("off")}</span>
                     </span>
                   </MenuRadioItem>
                 ))}
@@ -506,7 +506,7 @@ export const TraitsPicker = memo(function TraitsPicker({
           provider === "claudeAgent" ? "text-[#d97757]" : "text-foreground",
         )}
       />
-      <span className="sr-only">Fast mode on</span>
+      <span className="sr-only">{t("fastModeOn")}</span>
     </>
   ) : null;
 

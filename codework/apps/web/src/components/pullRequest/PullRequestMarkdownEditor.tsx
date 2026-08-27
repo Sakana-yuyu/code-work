@@ -5,6 +5,7 @@ import { cn } from "~/lib/utils";
 import { Button } from "../ui/button";
 import { Textarea } from "../ui/textarea";
 import { PullRequestMarkdown } from "./PullRequestMarkdown";
+import { t } from "~/i18n";
 
 /**
  * The box a body is rewritten in — a description, or a remark already posted. It owns the draft
@@ -65,7 +66,7 @@ export function PullRequestMarkdownEditor({
           disabled={saving}
           onClick={() => setPreview(false)}
         >
-          Write
+          {t("write")}
         </Button>
         <Button
           size="xs"
@@ -73,13 +74,13 @@ export function PullRequestMarkdownEditor({
           disabled={saving}
           onClick={() => setPreview(true)}
         >
-          Preview
+          {t("preview2")}
         </Button>
       </div>
       {preview ? (
         <div className="rounded-lg border border-border/60 px-3 py-2">
           {empty ? (
-            <p className="text-xs text-muted-foreground">Nothing to preview.</p>
+            <p className="text-xs text-muted-foreground">{t("nothingToPreview")}</p>
           ) : (
             <PullRequestMarkdown text={draft} cwd={cwd} />
           )}
@@ -97,7 +98,7 @@ export function PullRequestMarkdownEditor({
       )}
       <div className="flex justify-end gap-2">
         <Button size="xs" variant="ghost" disabled={saving} onClick={onCancel}>
-          Cancel
+          {t("cancel")}
         </Button>
         <Button
           size="xs"
@@ -105,7 +106,7 @@ export function PullRequestMarkdownEditor({
           disabled={saving || (empty && !allowEmpty)}
           onClick={() => onSave(draft)}
         >
-          {saving ? "Saving..." : "Save"}
+          {saving ? t("saving3") : t("save")}
         </Button>
       </div>
     </div>

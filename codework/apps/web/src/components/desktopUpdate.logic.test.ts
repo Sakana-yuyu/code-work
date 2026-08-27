@@ -1,4 +1,4 @@
-import { t } from "~/i18n";
+import { t } from "~/i18n/runtime";
 import { describe, expect, it } from "vite-plus/test";
 import type { DesktopUpdateActionResult, DesktopUpdateState } from "@codework/contracts";
 

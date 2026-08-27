@@ -18,7 +18,7 @@ const onCopy = (ref: React.RefObject<HTMLButtonElement | null>) => {
         anchor: ref.current,
       },
       timeout: ANCHORED_TOAST_TIMEOUT_MS,
-      title: "Copied!",
+      title: t("copied"),
     });
   }
 };
@@ -33,7 +33,7 @@ const onCopyError = (ref: React.RefObject<HTMLButtonElement | null>, error: Erro
         anchor: ref.current,
       },
       timeout: ANCHORED_TOAST_TIMEOUT_MS,
-      title: "Failed to copy",
+      title: t("failedToCopy"),
       description: error.message,
     });
   }
@@ -76,7 +76,7 @@ export const MessageCopyButton = memo(function MessageCopyButton({
         {isCopied ? <CheckIcon className="size-3 text-primary" /> : <CopyIcon className="size-3" />}
       </TooltipTrigger>
       <TooltipPopup>
-        <p>Copy to clipboard</p>
+        <p>{t("copyToClipboard")}</p>
       </TooltipPopup>
     </Tooltip>
   );

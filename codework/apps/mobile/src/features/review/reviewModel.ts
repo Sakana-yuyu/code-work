@@ -4,6 +4,7 @@ import type { OrchestrationCheckpointSummary, ReviewDiffPreviewSource } from "@c
 import * as Arr from "effect/Array";
 import { pipe } from "effect/Function";
 import * as Order from "effect/Order";
+import { t } from "../../i18n/runtime";
 
 export type ReviewSectionKind = "turn" | "working-tree" | "branch-range";
 
@@ -295,8 +296,8 @@ export function getReviewFilePreviewState(file: ReviewRenderableFile): ReviewFil
     return {
       kind: "suppressed",
       reason: "non-text",
-      title: "Non-text file",
-      message: "Diff preview is not available for this file format.",
+      title: t("nonTextFile"),
+      message: t("diffPreviewIsNotAvailableForThisFileFormat"),
       actionLabel: null,
     };
   }
@@ -307,9 +308,9 @@ export function getReviewFilePreviewState(file: ReviewRenderableFile): ReviewFil
     return {
       kind: "suppressed",
       reason: "large",
-      title: "Large diff",
-      message: "Large diffs are not rendered by default.",
-      actionLabel: "Load diff",
+      title: t("largeDiff"),
+      message: t("largeDiffsAreNotRenderedByDefault"),
+      actionLabel: t("interface.load-diff"),
     };
   }
 

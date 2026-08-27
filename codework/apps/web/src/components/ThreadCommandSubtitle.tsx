@@ -3,6 +3,7 @@ import { FolderGit2Icon, FolderIcon, GitBranchIcon } from "lucide-react";
 import { ProjectFavicon } from "./ProjectFavicon";
 import { ProviderInstanceIcon } from "./chat/ProviderInstanceIcon";
 import { cn } from "~/lib/utils";
+import { t } from "~/i18n";
 
 /**
  * Flip this while reviewing command-palette thread subtitles.
@@ -104,7 +105,7 @@ export function ThreadCommandSubtitle(props: {
       {props.isCurrent ? (
         <>
           {projectLabel || branchLabel || showHarness ? <CommandPaletteMetaDot /> : null}
-          <span className="shrink-0">Current thread</span>
+          <span className="shrink-0">{t("commandPalette.currentThread")}</span>
         </>
       ) : null}
     </span>

@@ -5,6 +5,7 @@ import type {
 
 import type { HomeListFilterMenu } from "../home/home-list-filter-menu";
 import { withNativeGlassHeaderItem } from "../layout/native-glass-header-items";
+import { t } from "../../i18n/runtime";
 
 type NativeHeaderMenuItems = NativeStackHeaderItemMenu["menu"]["items"];
 type NativeHeaderIcon = NonNullable<Extract<NativeStackHeaderItem, { type: "button" }>["icon"]>;
@@ -45,7 +46,7 @@ export function createSidebarHeaderItems(input: {
     withNativeGlassHeaderItem({
       type: "menu",
       label: "",
-      accessibilityLabel: "Filter and sort threads",
+      accessibilityLabel: t("filterAndSortThreads"),
       icon: sfSymbolIcon(input.filterIcon),
       menu: {
         title: input.filterMenu.title,
@@ -55,7 +56,7 @@ export function createSidebarHeaderItems(input: {
     withNativeGlassHeaderItem({
       type: "button",
       label: "",
-      accessibilityLabel: "Open settings",
+      accessibilityLabel: t("commandPalette.openSettings"),
       icon: sfSymbolIcon("gearshape"),
       onPress: input.onOpenSettings,
     }),

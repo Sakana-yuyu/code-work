@@ -734,7 +734,7 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
                               {t("chat.legacyModels")}
                             </div>
                             <div className="mt-1 text-xs font-normal leading-snug text-muted-foreground/70">
-                              {legacySection.legacyModels.length} models
+                              {legacySection.legacyModels.length} {t("models2")}
                             </div>
                           </div>
                           <ChevronRightIcon
@@ -795,7 +795,7 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
               </ComboboxListVirtualized>
             </div>
             <ComboboxEmpty className="not-empty:py-6 empty:h-0 text-xs font-normal leading-snug">
-              No models found
+              {t("noModelsFound")}
             </ComboboxEmpty>
           </div>
         </Combobox>

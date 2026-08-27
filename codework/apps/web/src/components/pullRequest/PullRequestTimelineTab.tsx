@@ -73,7 +73,7 @@ function TimelineBody({ body, markdown, cwd }: { body: string; markdown: boolean
 }
 
 function ActorName({ actor }: { actor: PullRequestActor | null }) {
-  return <span className="font-semibold text-foreground">{actor?.login ?? "ghost"}</span>;
+  return <span className="font-semibold text-foreground">{actor?.login ?? t("ghost")}</span>;
 }
 
 function TimelineMarker({
@@ -190,7 +190,7 @@ function ConversationCard({
     });
     setSaving(false);
     if (result._tag === "Failure") {
-      toastManager.add({ type: "error", title: "Could not save the comment" });
+      toastManager.add({ type: "error", title: t("couldNotSaveTheComment") });
       return;
     }
     setEditing(false);
@@ -308,11 +308,12 @@ function ConversationGroup({
           >
             <span className="min-w-0 flex-1">
               <span className="block text-xs font-semibold">
-                {events.length.toLocaleString()} {events.length === 1 ? "comment" : "comments"}
+                {events.length.toLocaleString()}{" "}
+                {events.length === 1 ? t("comment") : t("comments2")}
               </span>
               <span className="block truncate text-[10px] text-muted-foreground">
-                {actors.length.toLocaleString()} {actors.length === 1 ? "author" : "authors"} ·{" "}
-                {formatRelativeTimeLabel(first.at)}
+                {actors.length.toLocaleString()} {actors.length === 1 ? t("author") : t("authors")}{" "}
+                · {formatRelativeTimeLabel(first.at)}
               </span>
             </span>
             <ChevronDownIcon
@@ -359,7 +360,7 @@ function CommitEvent({
     <button
       type="button"
       className="group relative mb-5 block w-full rounded-sm pl-12 text-left outline-none [contain-intrinsic-block-size:48px] [content-visibility:auto] focus-visible:ring-2 focus-visible:ring-ring"
-      aria-label={`View commit ${event.id}`}
+      aria-label={t("viewCommit", { id: event.id })}
       onClick={() => onOpen(event.id)}
     >
       <ActorTimelineMarker
@@ -369,7 +370,7 @@ function CommitEvent({
       <div className="flex min-w-0 items-center gap-2.5 py-1.5">
         <div className="min-w-0 flex-1">
           <div className="truncate text-xs font-semibold text-foreground transition-colors group-hover:text-primary">
-            {event.body ?? "Untitled commit"}
+            {event.body ?? t("untitledCommit")}
           </div>
           <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[10px] text-muted-foreground">
             <code className="font-mono">{event.id.slice(0, 7)}</code>
@@ -393,16 +394,16 @@ function LifecycleEvent({ event }: { event: PullRequestTimelineEvent }) {
     event.kind === "opened"
       ? {
           icon: <GitPullRequestIcon className="size-3.5" />,
-          label: "Pull request opened",
+          label: t("pullRequestOpened"),
         }
       : event.kind === "merged"
         ? {
             icon: <GitMergeIcon className="size-3.5" />,
-            label: "Pull request merged",
+            label: t("pullRequestMerged"),
           }
         : {
             icon: <GitPullRequestClosedIcon className="size-3.5" />,
-            label: "Pull request closed",
+            label: t("pullRequestClosed"),
           };
 
   return (
@@ -474,7 +475,7 @@ function ReviewVerdictEvent({
                 }
               >
                 {pullRequestReviewOutcomeLabel(outcome)}
-                {stale ? <span className="sr-only">, before the latest commits</span> : null}
+                {stale ? <span className="sr-only">{t("beforeTheLatestCommits")}</span> : null}
               </TooltipTrigger>
               <TooltipPopup>{pullRequestReviewOutcomeStaleLabel(outcome)}</TooltipPopup>
             </Tooltip>
@@ -594,7 +595,7 @@ export function PullRequestTimelineTab({
         {events.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-16 text-center text-muted-foreground">
             <GitPullRequestIcon className="mb-2 size-5" />
-            <p className="text-xs">No activity yet.</p>
+            <p className="text-xs">{t("noActivityYet")}</p>
           </div>
         ) : null}
       </div>

@@ -29,19 +29,25 @@ const VERDICTS: ReadonlyArray<{
 }> = [
   {
     value: "comment",
-    label: "Comment",
+    get label() {
+      return t("comment2");
+    },
     sent: "Review submitted",
     icon: <MessageSquareIcon className="size-3" />,
   },
   {
     value: "approve",
-    label: "Approve",
+    get label() {
+      return t("approve");
+    },
     sent: "Pull request approved",
     icon: <CheckIcon className="size-3" />,
   },
   {
     value: "request-changes",
-    label: "Request changes",
+    get label() {
+      return t("requestChanges");
+    },
     sent: "Changes requested",
     icon: <XCircleIcon className="size-3" />,
   },
@@ -93,7 +99,7 @@ export function PullRequestReviewBar({
     setPending(false);
     if (result._tag === "Failure") {
       // The draft is kept: whatever went wrong, retyping the review is not the answer.
-      toastManager.add({ type: "error", title: "The review could not be submitted" });
+      toastManager.add({ type: "error", title: t("theReviewCouldNotBeSubmitted") });
       return;
     }
     // More remarks may have been added while the host was accepting this snapshot. Leave those,
@@ -116,12 +122,15 @@ export function PullRequestReviewBar({
       <div className="flex items-center gap-2 text-xs text-muted-foreground">
         <span>
           {comments.length === 0
-            ? "No line comments yet"
-            : `${comments.length} ${comments.length === 1 ? "comment" : "comments"} pending`}
+            ? t("noLineCommentsYet")
+            : t("pending2", {
+                value1: comments.length,
+                value2: comments.length === 1 ? "comment" : "comments",
+              })}
         </span>
         {comments.length > 0 ? (
           <Button size="xs" variant="ghost" disabled={pending} onClick={() => clear(reviewKey)}>
-            Discard
+            {t("discard")}
           </Button>
         ) : null}
       </div>

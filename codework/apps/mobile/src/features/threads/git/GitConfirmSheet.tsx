@@ -13,6 +13,7 @@ import { AppText as Text } from "../../../components/AppText";
 import { useSelectedThreadGitActions } from "../../../state/use-selected-thread-git-actions";
 import { useSelectedThreadGitState } from "../../../state/use-selected-thread-git-state";
 import { SheetActionButton } from "./gitSheetComponents";
+import { t } from "../../../i18n";
 
 type GitConfirmSheetProps = StaticScreenProps<{
   readonly environmentId: string;
@@ -104,32 +105,32 @@ export function GitConfirmSheet(props: GitConfirmSheetProps) {
   return (
     <View collapsable={false} className="flex-1 bg-sheet">
       {Platform.OS === "android" ? (
-        <AndroidSheetHeader title="Confirm action" onBack={() => navigation.goBack()} />
+        <AndroidSheetHeader title={t("confirmAction")} onBack={() => navigation.goBack()} />
       ) : (
         <View className="min-h-4 pt-2" />
       )}
 
       <View className="items-center gap-1 px-5 pb-3 pt-4">
         <Text className="text-xs font-t3-bold tracking-[1px] uppercase text-foreground-muted">
-          Confirm
+          {t("confirm")}
         </Text>
         <Text className="text-center text-3xl font-t3-bold">
-          {copy?.title ?? "Run action on default branch?"}
+          {copy?.title ?? t("runActionOnDefaultBranch")}
         </Text>
         <Text className="text-center text-foreground-secondary text-sm font-medium leading-normal">
-          {copy?.description ?? "Choose how to continue."}
+          {copy?.description ?? t("chooseHowToContinue")}
         </Text>
       </View>
 
       <View className="gap-3 px-5 pt-2" style={{ paddingBottom: Math.max(insets.bottom, 18) + 8 }}>
         <SheetActionButton
           icon="arrow.right.circle"
-          label={copy?.continueLabel ?? "Continue"}
+          label={copy?.continueLabel ?? t("commandPalette.continue")}
           onPress={() => void continuePendingAction()}
         />
         <SheetActionButton
           icon="arrow.branch"
-          label="Feature branch & continue"
+          label={t("featureBranchContinue")}
           tone="primary"
           onPress={() => void movePendingActionToFeatureBranch()}
         />

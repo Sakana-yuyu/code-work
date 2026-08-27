@@ -96,7 +96,7 @@ function EmptyContentSearchDialog() {
       testId="project-content-search"
       value=""
     >
-      Open a project to search its files.
+      {t("openAProjectToSearchItsFiles")}
     </CommandPaletteContent>
   );
 }
@@ -175,14 +175,14 @@ function OpenContentSearchDialog(props: {
             label={t("matchCase")}
             onClick={() => setCaseSensitive((current) => !current)}
           >
-            Aa
+            {t("aa")}
           </SearchOptionButton>
           <SearchOptionButton
             active={wholeWord}
             label={t("matchWholeWord")}
             onClick={() => setWholeWord((current) => !current)}
           >
-            <span className="underline decoration-2 underline-offset-2">ab</span>
+            <span className="underline decoration-2 underline-offset-2">{t("ab")}</span>
           </SearchOptionButton>
           <SearchOptionButton
             active={useRegex}
@@ -229,14 +229,18 @@ function OpenContentSearchDialog(props: {
         <div className="flex h-9 shrink-0 items-center border-b px-3 text-xs text-muted-foreground">
           {search.isPending ? (
             <span className="flex items-center gap-2">
-              <LoaderCircle className="size-3.5 animate-spin" /> Searching…
+              <LoaderCircle className="size-3.5 animate-spin" /> {t("searching")}
             </span>
           ) : search.error ? (
             <span className="text-destructive">{search.error}</span>
           ) : search.invalidRegex ? (
-            <span className="text-destructive">Invalid regular expression</span>
+            <span className="text-destructive">{t("invalidRegularExpression")}</span>
           ) : (
-            `${matches.length.toLocaleString()}${search.truncated ? "+" : ""} results in ${fileCount.toLocaleString()} files`
+            t("resultsInFiles", {
+              value1: matches.length.toLocaleString(),
+              value2: search.truncated ? "+" : "",
+              value3: fileCount.toLocaleString(),
+            })
           )}
         </div>
       ) : null}
@@ -244,8 +248,8 @@ function OpenContentSearchDialog(props: {
       {matches.length === 0 ? (
         <div className="flex flex-1 items-center justify-center px-6 text-center text-sm text-muted-foreground">
           {search.hasQuery && !search.isPending && !search.error
-            ? "No results found."
-            : "Type to search across your project."}
+            ? t("noResultsFound")
+            : t("typeToSearchAcrossYourProject")}
         </div>
       ) : (
         <ScrollArea className="min-h-0 flex-1" scrollFade>

@@ -81,22 +81,30 @@ interface ComingSoonDriverOption {
 const COMING_SOON_DRIVER_OPTIONS: readonly ComingSoonDriverOption[] = [
   {
     value: ProviderDriverKind.make("githubCopilot"),
-    label: t("githubCopilot"),
+    get label() {
+      return t("githubCopilot");
+    },
     icon: GithubCopilotIcon,
   },
   {
     value: ProviderDriverKind.make("gemini"),
-    label: t("gemini"),
+    get label() {
+      return t("gemini");
+    },
     icon: Gemini,
   },
   {
     value: ProviderDriverKind.make("acpRegistry"),
-    label: t("acpRegistry"),
+    get label() {
+      return t("acpRegistry");
+    },
     icon: ACPRegistryIcon,
   },
   {
     value: ProviderDriverKind.make("piAgent"),
-    label: t("piAgent"),
+    get label() {
+      return t("piAgent");
+    },
     icon: PiAgentIcon,
   },
 ];
@@ -217,14 +225,14 @@ export function AddProviderInstanceDialog({
       toastManager.add({
         type: "success",
         title: t("providerInstanceAdded"),
-        description: `${driverOption.label} instance '${instanceId}' was added.`,
+        description: t("instanceWasAdded", { label: driverOption.label, instanceId: instanceId }),
       });
       onOpenChange(false);
     } catch (error) {
       toastManager.add({
         type: "error",
         title: t("couldNotAddProviderInstance"),
-        description: error instanceof Error ? error.message : "Update failed.",
+        description: error instanceof Error ? error.message : t("updateFailed3"),
       });
     }
   };
@@ -253,7 +261,7 @@ export function AddProviderInstanceDialog({
             <AnimatedHeight>
               <div className={cn("grid gap-2", wizardStep !== 0 && "hidden")}>
                 <div id="add-instance-driver-label" className="text-sm font-medium text-foreground">
-                  Driver
+                  {t("driver")}
                 </div>
                 <RadioGroup
                   value={driver}
@@ -306,7 +314,7 @@ export function AddProviderInstanceDialog({
                           {option.label}
                         </span>
                         <Badge variant="warning" size="sm">
-                          Coming Soon
+                          {t("comingSoon")}
                         </Badge>
                       </RadioPrimitive.Root>
                     );
@@ -323,7 +331,7 @@ export function AddProviderInstanceDialog({
                   onChange={(event) => setLabel(event.target.value)}
                 />
                 <span className="text-[11px] text-muted-foreground">
-                  Shown in the provider list. Optional.
+                  {t("shownInTheProviderListOptional")}
                 </span>
               </label>
 
@@ -331,7 +339,7 @@ export function AddProviderInstanceDialog({
                 <span className="text-xs font-medium text-foreground">{t("instanceId")}</span>
                 <Input
                   className="bg-background"
-                  placeholder={`${driver}_work`}
+                  placeholder={t("work", { driver: driver })}
                   value={instanceId}
                   onChange={(event) => {
                     setInstanceIdOverride(event.target.value);
@@ -342,7 +350,7 @@ export function AddProviderInstanceDialog({
                   <span className="text-[11px] text-destructive">{instanceIdError}</span>
                 ) : (
                   <span className="text-[11px] text-muted-foreground">
-                    Routing key used by threads and sessions. Letters, digits, '-', or '_'.
+                    {t("routingKeyUsedByThreadsAndSessionsLettersDigitsOr")}
                   </span>
                 )}
               </label>
@@ -354,7 +362,7 @@ export function AddProviderInstanceDialog({
                     type="color"
                     value={normalizeProviderAccentColor(accentColor) ?? PROVIDER_ACCENT_SWATCHES[0]}
                     onChange={(event) => setAccentColor(event.target.value)}
-                    aria-label="Provider instance accent color"
+                    aria-label={t("providerInstanceAccentColor")}
                     className="h-8 w-10 cursor-pointer rounded-xl border border-input bg-background p-0.5"
                   />
                   <div className="flex flex-wrap gap-1.5">
@@ -372,7 +380,7 @@ export function AddProviderInstanceDialog({
                           )}
                           style={{ backgroundColor: swatch }}
                           onClick={() => setAccentColor(swatch)}
-                          aria-label={`Use ${swatch} accent`}
+                          aria-label={t("useAccent", { swatch: swatch })}
                         />
                       );
                     })}
@@ -385,12 +393,12 @@ export function AddProviderInstanceDialog({
                       className="h-7 px-2 text-xs text-muted-foreground"
                       onClick={() => setAccentColor("")}
                     >
-                      Clear
+                      {t("clear")}
                     </Button>
                   ) : null}
                 </div>
                 <span className="text-[11px] text-muted-foreground">
-                  Optional marker shown in the picker.
+                  {t("optionalMarkerShownInThePicker")}
                 </span>
               </div>
 
@@ -407,7 +415,7 @@ export function AddProviderInstanceDialog({
               ) : wizardStep === 2 ? (
                 <div className="grid gap-2">
                   <p className="text-sm text-muted-foreground">
-                    This driver has no required configuration. You can add the instance now.
+                    {t("thisDriverHasNoRequiredConfigurationYouCanAddTheInstanceNow")}
                   </p>
                 </div>
               ) : null}
@@ -426,15 +434,15 @@ export function AddProviderInstanceDialog({
                 setWizardStep((step) => Math.max(0, step - 1));
               }}
             >
-              {wizardStep === 0 ? "Cancel" : "Back"}
+              {wizardStep === 0 ? t("cancel") : t("back")}
             </Button>
             {wizardStep < ADD_PROVIDER_WIZARD_STEPS.length - 1 ? (
               <Button size="sm" onClick={() => navigateToStep(wizardStep + 1)}>
-                Next
+                {t("next")}
               </Button>
             ) : (
               <Button size="sm" onClick={handleSave}>
-                Add instance
+                {t("addInstance")}
               </Button>
             )}
           </DialogFooter>

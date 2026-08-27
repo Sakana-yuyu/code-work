@@ -40,6 +40,7 @@ import {
   resolveWslPickFolderDefaultPath,
   wslUncPathToLinuxPath,
 } from "../../wsl/wslPathParsing.ts";
+import { t } from "../../i18n.js";
 
 const ContextMenuPosition = Schema.Struct({
   x: Schema.Number,
@@ -133,7 +134,10 @@ export const getLocalEnvironmentBootstraps = DesktopIpc.makeSyncIpcMethod({
       const runningDistro = config.value.runningDistro ?? null;
       bootstraps.push({
         id: instance.id,
-        label: runningDistro === null ? yield* instance.label : `WSL (${runningDistro})`,
+        label:
+          runningDistro === null
+            ? yield* instance.label
+            : t("wsl", { runningDistro: runningDistro }),
         runningDistro,
         httpBaseUrl: httpBaseUrl.href,
         wsBaseUrl: toWebSocketBaseUrl(httpBaseUrl),

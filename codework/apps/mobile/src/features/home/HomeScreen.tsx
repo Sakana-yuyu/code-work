@@ -74,6 +74,7 @@ import {
   type HomeProjectSortOrder,
 } from "./homeThreadList";
 import { SwipeableScrollGateProvider, useSwipeableScrollGate } from "./thread-swipe-actions";
+import { t } from "../../i18n";
 
 /* ─── Types ──────────────────────────────────────────────────────────── */
 
@@ -141,16 +142,16 @@ function deriveEmptyState(props: {
   const { catalogState } = props;
   if (catalogState.isLoadingConnections) {
     return {
-      title: "Loading environments",
-      detail: "Checking saved environments on this device.",
+      title: t("loadingEnvironments"),
+      detail: t("checkingSavedEnvironmentsOnThisDevice"),
       loading: true,
     };
   }
 
   if (!catalogState.hasConnections) {
     return {
-      title: "No environments connected",
-      detail: "Add an environment to load projects and start coding sessions.",
+      title: t("noEnvironmentsConnected"),
+      detail: t("addAnEnvironmentToLoadProjectsAndStartCodingSessions"),
       loading: false,
     };
   }
@@ -162,7 +163,7 @@ function deriveEmptyState(props: {
     !catalogState.hasLoadedShellSnapshot
   ) {
     return {
-      title: "Environment unavailable",
+      title: t("commandPalette.environmentUnavailable"),
       detail:
         catalogState.connectionError ??
         "The saved environment is offline. Check the URL or start the environment, then retry.",
@@ -176,23 +177,23 @@ function deriveEmptyState(props: {
     catalogState.connectionError === null
   ) {
     return {
-      title: "Connecting to environment",
-      detail: "Loading projects and threads from the saved environment.",
+      title: t("connectingToEnvironment"),
+      detail: t("loadingProjectsAndThreadsFromTheSavedEnvironment"),
       loading: true,
     };
   }
 
   if (props.projectCount === 0 && catalogState.hasLoadedShellSnapshot) {
     return {
-      title: "No projects found",
-      detail: "The connected environment did not report any projects.",
+      title: t("noProjectsFound"),
+      detail: t("theConnectedEnvironmentDidNotReportAnyProjects"),
       loading: false,
     };
   }
 
   return {
-    title: "No threads yet",
-    detail: "Create a task to start a new coding session in one of your connected projects.",
+    title: t("noThreadsYet"),
+    detail: t("createATaskToStartANewCodingSessionInOneOfYourConnectedProjects"),
     loading: false,
   };
 }
@@ -1103,19 +1104,22 @@ export function HomeScreen(props: HomeScreenProps) {
 
   const listEmpty = !hasResults ? (
     hasSearchQuery && threadSearch.isPending ? null : hasSearchQuery ? (
-      <EmptyState title="No results" detail={`No threads matching "${props.searchQuery}".`} />
+      <EmptyState
+        title={t("noResults")}
+        detail={t("noThreadsMatching", { searchQuery: props.searchQuery })}
+      />
     ) : selectedProjectScope !== null ? (
       <EmptyState
-        title={`No threads in ${selectedProjectScope.title}`}
-        detail="Choose another project or create a new task."
+        title={t("noThreadsIn", { title: selectedProjectScope.title })}
+        detail={t("chooseAnotherProjectOrCreateANewTask")}
       />
     ) : selectedEnvironmentLabel ? (
       <EmptyState
-        title={`No threads in ${selectedEnvironmentLabel}`}
-        detail="Choose another environment or create a new task."
+        title={t("noThreadsIn2", { selectedEnvironmentLabel: selectedEnvironmentLabel })}
+        detail={t("chooseAnotherEnvironmentOrCreateANewTask")}
       />
     ) : (
-      <EmptyState title="No threads yet" detail="Create a task to start a new coding session." />
+      <EmptyState title={t("noThreadsYet")} detail={t("createATaskToStartANewCodingSession")} />
     )
   ) : null;
   // Self-contained: v1's listEmpty keys off projectGroups, which ignores the
@@ -1124,11 +1128,14 @@ export function HomeScreen(props: HomeScreenProps) {
   // is a list row even while collapsed.
   const v2ListEmpty =
     hasSearchQuery && threadSearch.isPending ? null : hasSearchQuery ? (
-      <EmptyState title="No results" detail={`No threads matching "${props.searchQuery}".`} />
+      <EmptyState
+        title={t("noResults")}
+        detail={t("noThreadsMatching", { searchQuery: props.searchQuery })}
+      />
     ) : v2ScopedProjectGroup !== null ? (
       <EmptyState
-        title={`No threads in ${v2ScopedProjectGroup.title}`}
-        detail="Choose another project or create a new task."
+        title={t("noThreadsIn", { title: v2ScopedProjectGroup.title })}
+        detail={t("chooseAnotherProjectOrCreateANewTask")}
       />
     ) : (
       listEmpty
@@ -1148,13 +1155,19 @@ export function HomeScreen(props: HomeScreenProps) {
               settledShelfExpanded && threadListV2Layout.hiddenSettledCount > 0 ? (
                 <Pressable
                   accessibilityRole="button"
-                  accessibilityLabel={`Show ${Math.min(threadListV2Layout.hiddenSettledCount, THREAD_LIST_V2_SETTLED_PAGE_COUNT)} more settled threads`}
+                  accessibilityLabel={t("showMoreSettledThreads", {
+                    value1: Math.min(
+                      threadListV2Layout.hiddenSettledCount,
+                      THREAD_LIST_V2_SETTLED_PAGE_COUNT,
+                    ),
+                  })}
                   onPress={showMoreSettled}
                   className="mx-4 mt-2 items-center rounded-lg border border-dashed border-border py-2.5"
                   style={({ pressed }) => ({ opacity: pressed ? 0.6 : 1 })}
                 >
                   <Text className="text-xs font-t3-medium text-foreground-muted">
-                    Show more ({threadListV2Layout.hiddenSettledCount} settled hidden)
+                    {t("showMore")}
+                    {threadListV2Layout.hiddenSettledCount} {t("settledHidden")}
                   </Text>
                 </Pressable>
               ) : null

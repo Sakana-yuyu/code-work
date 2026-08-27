@@ -8,6 +8,7 @@ import { Button } from "../ui/button";
 import { Popover, PopoverPopup, PopoverTrigger } from "../ui/popover";
 import { normalizeProviderAccentColor } from "../../providerInstances";
 import { cn } from "../../lib/utils";
+import { t } from "~/i18n";
 
 const PROVIDER_ACCENT_SWATCHES = [
   "#2563eb",
@@ -170,7 +171,7 @@ function ProviderCustomColorPanel(props: {
             props.onCommit(nextColor);
           }}
           className="h-8 rounded-md border border-input bg-background px-2 font-mono text-xs text-foreground outline-none transition-colors focus:border-ring"
-          aria-label="Custom hex accent color"
+          aria-label={t("customHexAccentColor")}
           spellCheck={false}
         />
       </div>
@@ -204,7 +205,7 @@ function ProviderCustomColorPicker(props: {
                   }
                 : {}),
             }}
-            aria-label={`Choose custom accent color for ${props.displayName}`}
+            aria-label={t("chooseCustomAccentColorFor", { displayName: props.displayName })}
           >
             <PipetteIcon className="size-3 text-foreground/25" aria-hidden />
           </button>
@@ -297,7 +298,7 @@ export function ProviderAccentColorPicker(props: {
 
   return (
     <div className="grid gap-2">
-      <span className="text-xs font-medium text-foreground">Accent color</span>
+      <span className="text-xs font-medium text-foreground">{t("accentColor")}</span>
       <div className="flex min-w-0 flex-wrap items-center gap-2">
         <ProviderCustomColorPicker
           displayName={displayName}
@@ -322,7 +323,7 @@ export function ProviderAccentColorPicker(props: {
             normalized ? "opacity-100" : "pointer-events-none opacity-0",
           )}
           onClick={() => commitAccentColor("")}
-          aria-label={`Clear accent color for ${displayName}`}
+          aria-label={t("clearAccentColorFor", { displayName: displayName })}
           aria-hidden={!normalized}
           tabIndex={normalized ? 0 : -1}
         >

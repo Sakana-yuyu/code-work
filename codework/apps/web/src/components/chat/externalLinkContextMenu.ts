@@ -1,4 +1,5 @@
 import type { ContextMenuItem } from "@codework/contracts";
+import { t } from "~/i18n/runtime";
 
 export type ExternalLinkContextMenuAction = "open-in-preview" | "open-external" | "copy-link";
 
@@ -15,9 +16,24 @@ const FAILURE_OPERATION_BY_ACTION = {
 } as const satisfies Record<ExternalLinkContextMenuAction, ExternalLinkContextMenuFailureOperation>;
 
 const EXTERNAL_LINK_CONTEXT_MENU_ITEMS = [
-  { id: "open-in-preview", label: "Open in integrated browser" },
-  { id: "open-external", label: "Open in system browser" },
-  { id: "copy-link", label: "Copy Link" },
+  {
+    id: "open-in-preview",
+    get label() {
+      return t("openInIntegratedBrowser");
+    },
+  },
+  {
+    id: "open-external",
+    get label() {
+      return t("openInSystemBrowser");
+    },
+  },
+  {
+    id: "copy-link",
+    get label() {
+      return t("copyLink2");
+    },
+  },
 ] as const satisfies readonly ContextMenuItem<ExternalLinkContextMenuAction>[];
 
 /**

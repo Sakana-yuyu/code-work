@@ -16,26 +16,27 @@ import {
 } from "../../state/project-grouping";
 import { mobilePreferencesAtom, updateMobilePreferencesAtom } from "../../state/preferences";
 import { SettingsSection } from "./components/SettingsSection";
+import { t } from "../../i18n";
 
 const GROUPING_OPTIONS: ReadonlyArray<{
   readonly mode: SidebarProjectGroupingMode;
-  readonly label: string;
-  readonly description: string;
+  readonly labelKey: string;
+  readonly descriptionKey: string;
 }> = [
   {
     mode: "repository",
-    label: "Group by repository",
-    description: "Matching repositories appear as one project.",
+    labelKey: "groupByRepository",
+    descriptionKey: "matchingRepositoriesAppearAsOneProject",
   },
   {
     mode: "repository_path",
-    label: "Group by repository path",
-    description: "Keep monorepo paths separate.",
+    labelKey: "groupByRepositoryPath",
+    descriptionKey: "keepMonorepoPathsSeparate",
   },
   {
     mode: "separate",
-    label: "Keep separate",
-    description: "Show every workspace as its own project.",
+    labelKey: "keepSeparate",
+    descriptionKey: "showEveryWorkspaceAsItsOwnProject",
   },
 ];
 
@@ -55,7 +56,7 @@ export function SettingsProjectGroupingRouteScreen() {
       {Platform.OS === "android" ? (
         <>
           <NativeStackScreenOptions options={{ headerShown: false }} />
-          <AndroidScreenHeader title="Project Grouping" onBack={() => navigation.goBack()} />
+          <AndroidScreenHeader title={t("projectGrouping")} onBack={() => navigation.goBack()} />
         </>
       ) : null}
       <ScrollView
@@ -65,7 +66,7 @@ export function SettingsProjectGroupingRouteScreen() {
         contentContainerClassName="gap-3 px-5 pt-4"
         contentContainerStyle={{ paddingBottom: Math.max(insets.bottom, 18) + 18 }}
       >
-        <SettingsSection title="Default grouping">
+        <SettingsSection title={t("defaultGrouping")}>
           {GROUPING_OPTIONS.map((option, index) => (
             <Pressable
               key={option.mode}
@@ -83,9 +84,9 @@ export function SettingsProjectGroupingRouteScreen() {
               }
             >
               <View className="min-w-0 flex-1 gap-1">
-                <Text className="text-lg text-foreground">{option.label}</Text>
+                <Text className="text-lg text-foreground">{t(option.labelKey)}</Text>
                 <Text className="text-sm leading-normal text-foreground-muted">
-                  {option.description}
+                  {t(option.descriptionKey)}
                 </Text>
               </View>
               {selectedMode === option.mode ? (

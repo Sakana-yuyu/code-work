@@ -13,6 +13,7 @@ import type { ThreadRouteTarget } from "../threadRoutes";
 import { cn } from "../lib/utils";
 import { isLatestTurnSettled } from "../session-logic";
 import { resolveServerBackedAppStageLabel } from "../branding.logic";
+import { t } from "~/i18n/runtime";
 
 export const THREAD_SELECTION_SAFE_SELECTOR = "[data-thread-item], [data-thread-selection-safe]";
 export const THREAD_JUMP_HINT_SHOW_DELAY_MS = 100;
@@ -96,13 +97,13 @@ export function buildMultiSelectThreadContextMenuItems(input: {
   hasRunningThread: boolean;
 }): readonly ContextMenuItem<"mark-unread" | "archive" | "delete">[] {
   return [
-    { id: "mark-unread", label: `Mark unread (${input.count})` },
+    { id: "mark-unread", label: t("markUnread2", { count: input.count }) },
     {
       id: "archive",
-      label: `Archive (${input.count})`,
+      label: t("archive3", { count: input.count }),
       disabled: input.hasRunningThread,
     },
-    { id: "delete", label: `Delete (${input.count})`, destructive: true },
+    { id: "delete", label: t("delete2", { count: input.count }), destructive: true },
   ];
 }
 
@@ -114,25 +115,26 @@ export function buildBulkTitleRegenerationContextMenuItem(input: {
   if (input.actionableCount === 0) {
     return {
       id: "regenerate-title",
-      label: `Regenerating… (${input.supportedCount})`,
+      label: t("regenerating", { supportedCount: input.supportedCount }),
       disabled: true,
     };
   }
   return {
     id: "regenerate-title",
-    label: `Regenerate titles (${input.actionableCount})`,
+    label: t("regenerateTitles", { actionableCount: input.actionableCount }),
   };
 }
 
 export interface ThreadStatusPill {
-  label:
-    | "Working"
-    | "Monitoring"
-    | "Connecting"
-    | "Completed"
-    | "Pending Approval"
-    | "Awaiting Input"
-    | "Plan Ready";
+  kind:
+    | "working"
+    | "monitoring"
+    | "connecting"
+    | "completed"
+    | "pending-approval"
+    | "awaiting-input"
+    | "plan-ready";
+  label: string;
   colorClass: string;
   dotClass: string;
   pulse: boolean;
@@ -141,14 +143,14 @@ export interface ThreadStatusPill {
 // Rollup order mirrors the per-thread resolver exactly: attention states,
 // then active work, then the actionable plan prompt, then passive
 // monitoring. A Monitoring sibling must never hide a Plan Ready thread.
-const THREAD_STATUS_PRIORITY: Record<ThreadStatusPill["label"], number> = {
-  "Pending Approval": 6,
-  "Awaiting Input": 5,
-  Working: 4,
-  Connecting: 4,
-  "Plan Ready": 3,
-  Monitoring: 2,
-  Completed: 1,
+const THREAD_STATUS_PRIORITY: Record<ThreadStatusPill["kind"], number> = {
+  "pending-approval": 6,
+  "awaiting-input": 5,
+  working: 4,
+  connecting: 4,
+  "plan-ready": 3,
+  monitoring: 2,
+  completed: 1,
 };
 
 type ThreadStatusInput = Pick<
@@ -649,7 +651,8 @@ export function resolveThreadStatusPill(input: {
 
   if (thread.hasPendingApprovals) {
     return {
-      label: "Pending Approval",
+      kind: "pending-approval",
+      label: t("pendingApproval"),
       colorClass: "text-amber-600 dark:text-amber-300/90",
       dotClass: "bg-amber-500 dark:bg-amber-300/90",
       pulse: false,
@@ -658,7 +661,8 @@ export function resolveThreadStatusPill(input: {
 
   if (thread.hasPendingUserInput) {
     return {
-      label: "Awaiting Input",
+      kind: "awaiting-input",
+      label: t("awaitingInput"),
       colorClass: "text-indigo-600 dark:text-indigo-300/90",
       dotClass: "bg-indigo-500 dark:bg-indigo-300/90",
       pulse: false,
@@ -667,7 +671,8 @@ export function resolveThreadStatusPill(input: {
 
   if (thread.session?.status === "running") {
     return {
-      label: "Working",
+      kind: "working",
+      label: t("working"),
       colorClass: "text-sky-600 dark:text-sky-300/80",
       dotClass: "bg-sky-500 dark:bg-sky-300/80",
       pulse: true,
@@ -676,7 +681,8 @@ export function resolveThreadStatusPill(input: {
 
   if (thread.session?.status === "starting") {
     return {
-      label: "Connecting",
+      kind: "connecting",
+      label: t("connecting"),
       colorClass: "text-sky-600 dark:text-sky-300/80",
       dotClass: "bg-sky-500 dark:bg-sky-300/80",
       pulse: true,
@@ -692,7 +698,8 @@ export function resolveThreadStatusPill(input: {
     thread.hasActionableProposedPlan;
   if (hasPlanReadyPrompt) {
     return {
-      label: "Plan Ready",
+      kind: "plan-ready",
+      label: t("planReady"),
       colorClass: "text-violet-600 dark:text-violet-300/90",
       dotClass: "bg-violet-500 dark:bg-violet-300/90",
       pulse: false,
@@ -705,7 +712,8 @@ export function resolveThreadStatusPill(input: {
   // live work. Same recede treatment as Working per inbox-zero.
   if (thread.backgroundLiveness === "working") {
     return {
-      label: "Working",
+      kind: "working",
+      label: t("working"),
       colorClass: "text-sky-600 dark:text-sky-300/80",
       dotClass: "bg-sky-500 dark:bg-sky-300/80",
       pulse: true,
@@ -714,7 +722,8 @@ export function resolveThreadStatusPill(input: {
 
   if (thread.backgroundLiveness === "monitoring") {
     return {
-      label: "Monitoring",
+      kind: "monitoring",
+      label: t("monitoring"),
       colorClass: "text-sky-600 dark:text-sky-300/80",
       dotClass: "bg-sky-500 dark:bg-sky-300/80",
       pulse: false,
@@ -723,7 +732,8 @@ export function resolveThreadStatusPill(input: {
 
   if (hasUnseenCompletion(thread)) {
     return {
-      label: "Completed",
+      kind: "completed",
+      label: t("completed"),
       colorClass: "text-emerald-600 dark:text-emerald-300/90",
       dotClass: "bg-emerald-500 dark:bg-emerald-300/90",
       pulse: false,
@@ -742,7 +752,7 @@ export function resolveProjectStatusIndicator(
     if (status === null) continue;
     if (
       highestPriorityStatus === null ||
-      THREAD_STATUS_PRIORITY[status.label] > THREAD_STATUS_PRIORITY[highestPriorityStatus.label]
+      THREAD_STATUS_PRIORITY[status.kind] > THREAD_STATUS_PRIORITY[highestPriorityStatus.kind]
     ) {
       highestPriorityStatus = status;
     }

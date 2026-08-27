@@ -1,4 +1,5 @@
 import { PROVIDER_SEND_TURN_MAX_INPUT_CHARS } from "@codework/contracts";
+import { t } from "~/i18n/runtime";
 
 type ComposerSubmitEvent = { preventDefault: () => void };
 
@@ -12,8 +13,11 @@ export function getComposerPromptLengthValidationMessage(prompt: string): string
   const excessCharacters = prompt.trim().length - PROVIDER_SEND_TURN_MAX_INPUT_CHARS;
   if (excessCharacters <= 0) return null;
 
-  const characterLabel = excessCharacters === 1 ? "character" : "characters";
-  return `Prompt is ${excessCharacters.toLocaleString("en-US")} ${characterLabel} over the ${PROVIDER_SEND_TURN_MAX_INPUT_CHARS.toLocaleString("en-US")}-character limit. Shorten or split it before sending.`;
+  return t("composer.promptTooLong", {
+    count: excessCharacters,
+    excess: excessCharacters.toLocaleString("en-US"),
+    limit: PROVIDER_SEND_TURN_MAX_INPUT_CHARS.toLocaleString("en-US"),
+  });
 }
 
 export function getComposerSubmissionValidationMessage(

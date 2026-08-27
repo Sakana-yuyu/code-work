@@ -8,6 +8,7 @@ import { LoadingStrip } from "../../../components/LoadingStrip";
 import { SymbolView } from "../../../components/AppSymbol";
 import { useThemeColor } from "../../../lib/useThemeColor";
 import { isLegalDocumentUrl, LEGAL_URL } from "../lib/legal-document-url";
+import { t } from "../../../i18n";
 
 export function SettingsLegalDocumentCloseHeaderButton() {
   const navigation = useNavigation();
@@ -15,7 +16,7 @@ export function SettingsLegalDocumentCloseHeaderButton() {
 
   return (
     <Pressable
-      accessibilityLabel="Close legal document"
+      accessibilityLabel={t("closeLegalDocument")}
       accessibilityRole="button"
       hitSlop={12}
       onPress={() => navigation.goBack()}
@@ -42,7 +43,7 @@ export function SettingsLegalDocumentExternalHeaderButton({
 
   return (
     <Pressable
-      accessibilityLabel="Open legal documents in external browser"
+      accessibilityLabel={t("openLegalDocumentsInExternalBrowser")}
       accessibilityRole="button"
       hitSlop={12}
       onPress={() => void Linking.openURL(safeExternalUrl).catch(() => undefined)}
@@ -100,7 +101,7 @@ export function SettingsLegalDocumentRouteScreen({
         />
         <View className="items-center gap-2">
           <Text className="text-center font-t3-bold text-lg text-foreground">
-            Couldn&apos;t load the {documentName.toLowerCase()}
+            {t("couldnAposTLoadThe")} {documentName.toLowerCase()}
           </Text>
           <Text selectable className="text-center text-sm leading-normal text-foreground-muted">
             {loadError}
@@ -115,14 +116,16 @@ export function SettingsLegalDocumentRouteScreen({
             }}
             className="items-center rounded-xl bg-foreground px-4 py-3 active:opacity-80"
           >
-            <Text className="font-t3-bold text-base text-sheet">Try Again</Text>
+            <Text className="font-t3-bold text-base text-sheet">{t("tryAgain")}</Text>
           </Pressable>
           <Pressable
             accessibilityRole="link"
             onPress={() => openExternalUrl(documentUrl)}
             className="items-center rounded-xl px-4 py-3 active:bg-foreground/5"
           >
-            <Text className="font-t3-medium text-base text-foreground-muted">Open in Browser</Text>
+            <Text className="font-t3-medium text-base text-foreground-muted">
+              {t("openInBrowser")}
+            </Text>
           </Pressable>
         </View>
       </View>
