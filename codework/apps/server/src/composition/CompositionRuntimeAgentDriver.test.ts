@@ -560,7 +560,7 @@ describe("CompositionRuntimeAgentDriver", () => {
         runtimeTaskId: RuntimeTaskId.make(runtimeTaskId),
         payload: {},
         delegatedExecution: {
-          executionId: runtimeTaskId,
+          executionId: RuntimeTaskId.make(runtimeTaskId),
           sourceMessageId,
         },
       },
@@ -620,7 +620,7 @@ describe("CompositionRuntimeAgentDriver", () => {
         runtimeTaskId: RuntimeTaskId.make(runtimeTaskId),
         payload: {},
         delegatedExecution: {
-          executionId: runtimeTaskId,
+          executionId: RuntimeTaskId.make(runtimeTaskId),
           sourceMessageId,
           providerPass,
         },
