@@ -45,6 +45,23 @@ describe("CompositionIdeSessionRegistry", () => {
     await expect(Effect.runPromise(registry.get("vscode-session-1"))).resolves.toBe(adapter);
   });
 
+  it("注销 session 时关闭可关闭的 transport，避免热替换留下旧连接", async () => {
+    let closeCount = 0;
+    const registry = makeCompositionIdeSessionRegistry();
+    await Effect.runPromise(
+      registry.register(
+        makeAdapter({
+          close: () => {
+            closeCount += 1;
+          },
+        }),
+      ),
+    );
+
+    await expect(Effect.runPromise(registry.unregister("vscode-session-1"))).resolves.toBe(true);
+    expect(closeCount).toBe(1);
+  });
+
   it("profile 探测不匹配时返回 unavailable，不猜测 IDE 类型", async () => {
     const registry = makeCompositionIdeSessionRegistry();
     await Effect.runPromise(registry.register(makeAdapter()));

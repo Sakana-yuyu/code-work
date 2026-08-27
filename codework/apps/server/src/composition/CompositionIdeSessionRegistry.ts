@@ -87,6 +87,8 @@ export class CompositionIdeSessionFailure extends Schema.TaggedErrorClass<Compos
 export interface CompositionIdeAdapter {
   readonly sessionId: string;
   readonly profile: CompositionIdeRequestedProfile;
+  /** Runtime 注销或热替换时释放底层 IDE transport。 */
+  readonly close?: () => void;
   readonly probe: () => Effect.Effect<CompositionIdeResolveResult, CompositionIdeAdapterFailure>;
   readonly handshake: (
     input: CompositionIdeCapabilityHandshakeRequest,
@@ -220,10 +222,12 @@ export const makeCompositionIdeSessionRegistry = (
 
   const unregister: CompositionIdeSessionRegistry["unregister"] = (sessionId) =>
     Effect.sync(() => {
+      const adapter = adapters.get(sessionId);
       const removed = adapters.delete(sessionId);
       for (const [handshakeId, handshake] of handshakes) {
         if (handshake.sessionId === sessionId) handshakes.delete(handshakeId);
       }
+      adapter?.close?.();
       return removed;
     });
 
