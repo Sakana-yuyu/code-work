@@ -1,6 +1,8 @@
 import { it as effectIt } from "@effect/vitest";
 import { describe, expect, it } from "vite-plus/test";
+import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
+import * as Fiber from "effect/Fiber";
 import * as Schema from "effect/Schema";
 import { HttpBody, HttpClient, HttpClientResponse } from "effect/unstable/http";
 import * as Stream from "effect/Stream";
@@ -114,9 +116,14 @@ describe("OpenAiByokModelDriver", () => {
     });
   });
 
-  it("maps BYOK transport failures to the agent model error", async () => {
+  it("preserves retry metadata on BYOK provider failures", async () => {
     const client = HttpClient.make((request) =>
-      Effect.succeed(HttpClientResponse.fromWeb(request, new Response("no", { status: 503 }))),
+      Effect.succeed(
+        HttpClientResponse.fromWeb(
+          request,
+          new Response("no", { status: 503, headers: { "retry-after": "2" } }),
+        ),
+      ),
     );
     const driver = makeOpenAiByokModelDriver(client, {
       baseURL: "https://api.openai.com/v1",
@@ -126,7 +133,12 @@ describe("OpenAiByokModelDriver", () => {
 
     await expect(
       Effect.runPromise(Stream.runCollect(driver.complete({ messages: [], tools: [], turn: 1 }))),
-    ).rejects.toMatchObject({ code: "byok_engine_error" });
+    ).rejects.toMatchObject({
+      code: "byok_engine_error",
+      reason: "unavailable",
+      retryable: true,
+      retryAfterMs: 2_000,
+    });
   });
 
   effectIt.effect("maps provider context overflow to a dedicated agent model error", () =>
@@ -157,6 +169,39 @@ describe("OpenAiByokModelDriver", () => {
         Stream.runCollect(driver.complete({ messages: [], tools: [], turn: 1 })),
       );
       expect(error).toMatchObject({ code: "context_overflow" });
+    }),
+  );
+
+  effectIt.effect("maps AbortSignal interruption to a non-retryable canceled error", () =>
+    Effect.gen(function* () {
+      const controller = new AbortController();
+      const started = yield* Deferred.make<void>();
+      let calls = 0;
+      const client = HttpClient.make(() =>
+        Effect.sync(() => {
+          calls += 1;
+        }).pipe(Effect.andThen(Deferred.succeed(started, undefined)), Effect.andThen(Effect.never)),
+      );
+      const driver = makeOpenAiByokModelDriver(client, {
+        baseURL: "https://api.openai.com/v1",
+        apiKey: "k",
+        modelId: "gpt",
+        signal: controller.signal,
+      });
+      const fiber = yield* Stream.runCollect(
+        driver.complete({ messages: [], tools: [], turn: 1 }),
+      ).pipe(Effect.forkChild);
+
+      yield* Deferred.await(started);
+      controller.abort();
+
+      const error = yield* Effect.flip(Fiber.join(fiber));
+      expect(error).toMatchObject({
+        code: "byok_engine_error",
+        reason: "canceled",
+        retryable: false,
+      });
+      expect(calls).toBe(1);
     }),
   );
 });

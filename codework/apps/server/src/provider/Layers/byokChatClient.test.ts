@@ -1,6 +1,8 @@
 import { it as effectIt } from "@effect/vitest";
 import { describe, expect, it } from "vite-plus/test";
+import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
+import * as Fiber from "effect/Fiber";
 import * as Schema from "effect/Schema";
 import { HttpBody, HttpClient, HttpClientResponse } from "effect/unstable/http";
 import * as Stream from "effect/Stream";
@@ -38,6 +40,7 @@ const makeClient = (
   sseText: string,
   status = 200,
   contentType = "text/event-stream",
+  headers: Readonly<Record<string, string>> = {},
 ): { client: HttpClient.HttpClient; captured: CapturedRequest[] } => {
   const captured: CapturedRequest[] = [];
   const client = HttpClient.make((request) =>
@@ -49,7 +52,10 @@ const makeClient = (
       });
       return HttpClientResponse.fromWeb(
         request,
-        new Response(sseText, { status, headers: { "content-type": contentType } }),
+        new Response(sseText, {
+          status,
+          headers: { "content-type": contentType, ...headers },
+        }),
       );
     }),
   );
@@ -157,6 +163,88 @@ describe("byokChatClient gemini protocol", () => {
 });
 
 describe("byokChatClient provider errors", () => {
+  effectIt.effect("normalizes OpenAI rate limits and clamps Retry-After", () =>
+    Effect.gen(function* () {
+      const { client } = makeClient(
+        encodeUnknownJson({
+          error: { type: "rate_limit_error", message: "Too many requests." },
+        }),
+        429,
+        "application/json",
+        { "retry-after": "45" },
+      );
+
+      const error = yield* Effect.flip(runError(client, baseErrorInput));
+      expect(error).toMatchObject({
+        reason: "rate_limit",
+        status: 429,
+        retryable: true,
+        retryAfterMs: 30_000,
+      });
+    }),
+  );
+
+  for (const status of [503, 529]) {
+    effectIt.effect(`normalizes Anthropic ${status} overloads as retryable`, () =>
+      Effect.gen(function* () {
+        const { client } = makeClient(
+          encodeUnknownJson({
+            type: "error",
+            error: { type: "overloaded_error", message: "Capacity is temporarily exhausted." },
+          }),
+          status,
+          "application/json",
+        );
+
+        const error = yield* Effect.flip(
+          runError(client, {
+            ...baseErrorInput,
+            protocol: "anthropic",
+            baseURL: "https://api.anthropic.com",
+            modelId: "claude",
+          }),
+        );
+        expect(error).toMatchObject({ reason: "unavailable", status, retryable: true });
+      }),
+    );
+  }
+
+  effectIt.effect("normalizes Gemini unavailable responses as retryable", () =>
+    Effect.gen(function* () {
+      const { client } = makeClient(
+        encodeUnknownJson({
+          error: { code: 503, status: "UNAVAILABLE", message: "Service temporarily unavailable." },
+        }),
+        503,
+        "application/json",
+      );
+
+      const error = yield* Effect.flip(
+        runError(client, {
+          ...baseErrorInput,
+          protocol: "gemini",
+          baseURL: "https://generativelanguage.googleapis.com",
+          modelId: "gemini-2.5-pro",
+        }),
+      );
+      expect(error).toMatchObject({ reason: "unavailable", status: 503, retryable: true });
+    }),
+  );
+
+  effectIt.effect("normalizes HTTP and SSE request timeouts as retryable", () =>
+    Effect.gen(function* () {
+      const { client: httpClient } = makeClient("request timeout", 408, "text/plain");
+      const httpError = yield* Effect.flip(runError(httpClient, baseErrorInput));
+      expect(httpError).toMatchObject({ reason: "timeout", status: 408, retryable: true });
+
+      const { client: sseClient } = makeClient(
+        ['data: {"error":{"type":"request_timeout","message":"stream timed out"}}', ""].join("\n"),
+      );
+      const sseError = yield* Effect.flip(runError(sseClient, baseErrorInput));
+      expect(sseError).toMatchObject({ reason: "timeout", retryable: true });
+    }),
+  );
+
   effectIt.effect("normalizes OpenAI context_length_exceeded responses", () =>
     Effect.gen(function* () {
       const { client } = makeClient(
@@ -176,6 +264,7 @@ describe("byokChatClient provider errors", () => {
         _tag: "ByokEngineError",
         reason: "context_overflow",
         status: 400,
+        retryable: false,
         detail: expect.stringContaining("context_length_exceeded"),
       });
     }),
@@ -249,8 +338,35 @@ describe("byokChatClient provider errors", () => {
       }),
   );
 
-  for (const status of [400, 401, 429]) {
-    effectIt.effect(`does not classify an ordinary ${status} response as context overflow`, () =>
+  effectIt.effect("normalizes an overloaded error carried inside a successful SSE response", () =>
+    Effect.gen(function* () {
+      const { client } = makeClient(
+        [
+          'data: {"type":"error","error":{"type":"overloaded_error","message":"capacity"}}',
+          "",
+        ].join("\n"),
+      );
+
+      const error = yield* Effect.flip(
+        runError(client, {
+          ...baseErrorInput,
+          protocol: "anthropic",
+          baseURL: "https://api.anthropic.com",
+          modelId: "claude",
+        }),
+      );
+      expect(error).toMatchObject({ reason: "unavailable", retryable: true });
+    }),
+  );
+
+  for (const [status, reason] of [
+    [400, "invalid_request"],
+    [404, "invalid_request"],
+    [422, "invalid_request"],
+    [401, "authentication_error"],
+    [403, "authentication_error"],
+  ] as const) {
+    effectIt.effect(`normalizes non-retryable HTTP ${status} responses`, () =>
       Effect.gen(function* () {
         const secret = "sk-provider-secret-123456";
         const { client } = makeClient(
@@ -268,13 +384,37 @@ describe("byokChatClient provider errors", () => {
         const result = yield* Effect.flip(runError(client, baseErrorInput));
 
         expect(result).toBeInstanceOf(ByokEngineError);
-        expect(result).toMatchObject({ reason: "provider_error", status });
+        expect(result).toMatchObject({ reason, status, retryable: false });
         expect(result.detail).not.toContain(secret);
         expect(new TextEncoder().encode(result.detail).byteLength).toBeLessThanOrEqual(2_048);
         expect(result.detail).toContain("...[truncated]");
       }),
     );
   }
+
+  effectIt.effect("interrupts an in-flight provider request as canceled", () =>
+    Effect.gen(function* () {
+      const controller = new AbortController();
+      const started = yield* Deferred.make<void>();
+      let calls = 0;
+      const client = HttpClient.make(() =>
+        Effect.sync(() => {
+          calls += 1;
+        }).pipe(Effect.andThen(Deferred.succeed(started, undefined)), Effect.andThen(Effect.never)),
+      );
+      const fiber = yield* runError(client, { ...baseErrorInput, signal: controller.signal }).pipe(
+        Effect.forkChild,
+      );
+
+      yield* Deferred.await(started);
+      expect(calls).toBe(1);
+      controller.abort();
+
+      const error = yield* Effect.flip(Fiber.join(fiber));
+      expect(error).toMatchObject({ reason: "canceled", retryable: false });
+      expect(calls).toBe(1);
+    }),
+  );
 });
 
 describe("byokChatClient multimodal parts", () => {

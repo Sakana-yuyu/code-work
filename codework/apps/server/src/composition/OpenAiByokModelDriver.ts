@@ -87,6 +87,9 @@ export const makeByokModelDriver = (
           new ByokAgentModelError({
             code: error.reason === "context_overflow" ? "context_overflow" : "byok_engine_error",
             detail: error.message,
+            reason: error.reason,
+            ...(error.retryable === undefined ? {} : { retryable: error.retryable }),
+            ...(error.retryAfterMs === undefined ? {} : { retryAfterMs: error.retryAfterMs }),
           }),
       ),
     );

@@ -25,6 +25,7 @@
  * @module provider/Layers/byokChatClient
  */
 import * as Effect from "effect/Effect";
+import * as DateTime from "effect/DateTime";
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
@@ -87,12 +88,20 @@ export interface ByokToolDescriptor {
 export class ByokEngineError extends Schema.TaggedErrorClass<ByokEngineError>()("ByokEngineError", {
   url: Schema.String,
   reason: Schema.Literals([
+    "authentication_error",
+    "rate_limit",
+    "invalid_request",
+    "unavailable",
+    "timeout",
+    "canceled",
     "context_overflow",
     "provider_error",
     "transport_error",
     "invalid_response",
   ]),
   status: Schema.optional(Schema.Int),
+  retryable: Schema.optional(Schema.Boolean),
+  retryAfterMs: Schema.optional(Schema.Int),
   detail: Schema.String,
 }) {
   override get message(): string {
@@ -153,6 +162,7 @@ const byokErrorDetail = (cause: unknown): string => {
 
 const BYOK_ERROR_RESPONSE_MAX_BYTES = 8 * 1_024;
 const BYOK_ERROR_DETAIL_MAX_BYTES = 2 * 1_024;
+const BYOK_RETRY_AFTER_MAX_MS = 30_000;
 const byokSecretPatterns = [
   /(authorization\s*[:=]\s*bearer\s+)([^\s"',;}]+)/giu,
   /((?:api[_-]?key|access[_-]?token|authorization|password|secret|token)(?![a-z])\s*["']?\s*[:=]\s*["']?)([^\s"',;}]+)/giu,
@@ -200,6 +210,119 @@ const isContextOverflowDetail = (detail: string): boolean => {
   );
 };
 
+type ByokEngineErrorReason = ByokEngineError["reason"];
+
+const hasDetailMarker = (detail: string, markers: ReadonlyArray<string>): boolean => {
+  const normalized = detail.toLowerCase();
+  return markers.some((marker) => normalized.includes(marker));
+};
+
+const classifyProviderError = (
+  detail: string,
+  status?: number,
+): { readonly reason: ByokEngineErrorReason; readonly retryable: boolean } => {
+  if (isContextOverflowDetail(detail)) {
+    return { reason: "context_overflow", retryable: false };
+  }
+  if (status === 401 || status === 403) {
+    return { reason: "authentication_error", retryable: false };
+  }
+  if (status === 400 || status === 404 || status === 422) {
+    return { reason: "invalid_request", retryable: false };
+  }
+  if (status === 408) {
+    return { reason: "timeout", retryable: true };
+  }
+  if (status === 429) {
+    return { reason: "rate_limit", retryable: true };
+  }
+  if (status !== undefined && status >= 500 && status <= 599) {
+    return { reason: "unavailable", retryable: true };
+  }
+  if (
+    hasDetailMarker(detail, [
+      "request_timeout",
+      "request timeout",
+      "timed out",
+      "deadline exceeded",
+      "stream idle timeout",
+    ])
+  ) {
+    return { reason: "timeout", retryable: true };
+  }
+  if (
+    hasDetailMarker(detail, [
+      "rate_limit",
+      "rate limit",
+      "too many requests",
+      "resource_exhausted",
+      "resource exhausted",
+    ])
+  ) {
+    return { reason: "rate_limit", retryable: true };
+  }
+  if (
+    hasDetailMarker(detail, [
+      "overloaded_error",
+      '"overloaded"',
+      '"unavailable"',
+      "temporarily unavailable",
+      "server_error",
+    ])
+  ) {
+    return { reason: "unavailable", retryable: true };
+  }
+  if (
+    hasDetailMarker(detail, [
+      "authentication_error",
+      "unauthorized",
+      "invalid api key",
+      "incorrect api key",
+    ])
+  ) {
+    return { reason: "authentication_error", retryable: false };
+  }
+  if (hasDetailMarker(detail, ["invalid_request_error", "invalid_argument", "bad request"])) {
+    return { reason: "invalid_request", retryable: false };
+  }
+  return { reason: "provider_error", retryable: false };
+};
+
+const classifyTransportError = (
+  detail: string,
+  canceled: boolean,
+): { readonly reason: ByokEngineErrorReason; readonly retryable: boolean } => {
+  if (canceled) return { reason: "canceled", retryable: false };
+  return hasDetailMarker(detail, [
+    "request timeout",
+    "request_timeout",
+    "timed out",
+    "timeout",
+    "deadline exceeded",
+    "etimedout",
+  ])
+    ? { reason: "timeout", retryable: true }
+    : { reason: "transport_error", retryable: true };
+};
+
+const parseRetryAfterMs = (raw: string | undefined, nowUnixMs: number): number | undefined => {
+  const value = raw?.trim();
+  if (value === undefined || value.length === 0) return undefined;
+
+  let delayMs: number | undefined;
+  if (/^\d+$/u.test(value)) {
+    const seconds = Number(value);
+    if (Number.isSafeInteger(seconds)) delayMs = seconds * 1_000;
+  } else {
+    const retryAt = DateTime.make(value);
+    if (Option.isSome(retryAt)) {
+      delayMs = Math.max(0, DateTime.toEpochMillis(retryAt.value) - nowUnixMs);
+    }
+  }
+  if (delayMs === undefined || !Number.isSafeInteger(delayMs) || delayMs < 0) return undefined;
+  return Math.min(delayMs, BYOK_RETRY_AFTER_MAX_MS);
+};
+
 const providerPayloadErrorDetail = (payload: Record<string, unknown>): string | undefined => {
   const error = payload.error;
   if (typeof error === "string") {
@@ -219,36 +342,39 @@ const providerResponseError = (
   requestUrl: string,
   apiKey: string,
 ): Effect.Effect<never, ByokEngineError> =>
-  collectUint8StreamText({
-    stream: response.stream,
-    maxBytes: BYOK_ERROR_RESPONSE_MAX_BYTES,
-  }).pipe(
-    Effect.orElseSucceed(() => ({
-      text: "",
-      truncated: false,
-      bytes: 0,
-      invalidUtf8: false,
-    })),
-    Effect.flatMap((collected) => {
-      const responseDetail = collected.text.trim();
-      const rawDetail =
-        responseDetail.length === 0
-          ? `HTTP ${response.status}`
-          : `${responseDetail}${collected.truncated ? "\n[response truncated]" : ""}`;
-      const detail = limitUtf8(
-        redactByokErrorDetail(rawDetail, apiKey),
-        BYOK_ERROR_DETAIL_MAX_BYTES,
-      );
-      return Effect.fail(
-        new ByokEngineError({
-          url: requestUrl,
-          reason: isContextOverflowDetail(rawDetail) ? "context_overflow" : "provider_error",
-          status: response.status,
-          detail,
-        }),
-      );
-    }),
-  );
+  Effect.gen(function* () {
+    const collected = yield* collectUint8StreamText({
+      stream: response.stream,
+      maxBytes: BYOK_ERROR_RESPONSE_MAX_BYTES,
+    }).pipe(
+      Effect.orElseSucceed(() => ({
+        text: "",
+        truncated: false,
+        bytes: 0,
+        invalidUtf8: false,
+      })),
+    );
+    const responseDetail = collected.text.trim();
+    const rawDetail =
+      responseDetail.length === 0
+        ? `HTTP ${response.status}`
+        : `${responseDetail}${collected.truncated ? "\n[response truncated]" : ""}`;
+    const detail = limitUtf8(redactByokErrorDetail(rawDetail, apiKey), BYOK_ERROR_DETAIL_MAX_BYTES);
+    const classification = classifyProviderError(rawDetail, response.status);
+    const retryAfterMs = classification.retryable
+      ? parseRetryAfterMs(
+          response.headers["retry-after"],
+          DateTime.toEpochMillis(yield* DateTime.now),
+        )
+      : undefined;
+    return yield* new ByokEngineError({
+      url: requestUrl,
+      ...classification,
+      status: response.status,
+      ...(retryAfterMs === undefined ? {} : { retryAfterMs }),
+      detail,
+    });
+  });
 
 /** Normalize a base URL into a bare origin-ish prefix (no trailing slash). */
 const trimBaseURL = (baseURL: string): string => baseURL.trim().replace(/\/+$/u, "");
@@ -622,6 +748,18 @@ const isTerminalSsePayload = (
 
 const sseDataPrefix = "data:";
 
+/** 等待外部 AbortSignal，并在调用方中断时移除监听器。 */
+const abortEffect = (signal: AbortSignal): Effect.Effect<void> =>
+  Effect.callback<void>((resume) => {
+    if (signal.aborted) {
+      resume(Effect.void);
+      return;
+    }
+    const onAbort = () => resume(Effect.void);
+    signal.addEventListener("abort", onAbort, { once: true });
+    return Effect.sync(() => signal.removeEventListener("abort", onAbort));
+  });
+
 /**
  * Stream a chat completion from a BYOK model adapter. Interruption of the
  * consuming fiber aborts the underlying request; an explicit `signal` also
@@ -640,17 +778,39 @@ export const streamChat = (
   const toEngineError = (
     cause: unknown,
     reason: "transport_error" | "invalid_response" = "invalid_response",
-  ) =>
-    isByokEngineError(cause)
-      ? cause
-      : new ByokEngineError({
-          url: requestUrl,
-          reason,
-          detail: limitUtf8(
-            redactByokErrorDetail(byokErrorDetail(cause), input.apiKey),
-            BYOK_ERROR_DETAIL_MAX_BYTES,
+  ) => {
+    if (isByokEngineError(cause)) return cause;
+    const detail = limitUtf8(
+      redactByokErrorDetail(byokErrorDetail(cause), input.apiKey),
+      BYOK_ERROR_DETAIL_MAX_BYTES,
+    );
+    const classification =
+      reason === "transport_error"
+        ? classifyTransportError(detail, input.signal?.aborted === true)
+        : { reason, retryable: false };
+    return new ByokEngineError({ url: requestUrl, ...classification, detail });
+  };
+  const interruptOnAbort = <A>(
+    stream: Stream.Stream<A, ByokEngineError>,
+  ): Stream.Stream<A, ByokEngineError> =>
+    input.signal === undefined
+      ? stream
+      : stream.pipe(
+          Stream.interruptWhen(
+            abortEffect(input.signal).pipe(
+              Effect.andThen(
+                Effect.fail(
+                  new ByokEngineError({
+                    url: requestUrl,
+                    reason: "canceled",
+                    retryable: false,
+                    detail: "Provider request was canceled.",
+                  }),
+                ),
+              ),
+            ),
           ),
-        });
+        );
 
   const systemPrompt = input.systemPrompt?.trim() ?? "";
   const requestEffect =
@@ -755,10 +915,11 @@ export const streamChat = (
     Stream.mapEffect((payload) => {
       const rawDetail = providerPayloadErrorDetail(payload);
       if (rawDetail === undefined) return Effect.succeed(payload);
+      const classification = classifyProviderError(rawDetail);
       return Effect.fail(
         new ByokEngineError({
           url: requestUrl,
-          reason: isContextOverflowDetail(rawDetail) ? "context_overflow" : "provider_error",
+          ...classification,
           detail: limitUtf8(
             redactByokErrorDetail(rawDetail, input.apiKey),
             BYOK_ERROR_DETAIL_MAX_BYTES,
@@ -769,9 +930,11 @@ export const streamChat = (
   );
 
   if (input.protocol === "gemini") {
-    return payloads.pipe(
-      Stream.flatMap((payload) =>
-        Stream.fromIterable(eventsFromSsePayload(input.protocol, payload)),
+    return interruptOnAbort(
+      payloads.pipe(
+        Stream.flatMap((payload) =>
+          Stream.fromIterable(eventsFromSsePayload(input.protocol, payload)),
+        ),
       ),
     );
   }
@@ -790,28 +953,30 @@ export const streamChat = (
       { onHalt: anthropicToolCallJsonEvents },
     );
 
-    return anthropicEvents.pipe(
-      Stream.mapEffect((event: AnthropicStreamEvent) => {
-        if (event.type !== "tool_call_json") return Effect.succeed(event);
-        if (event.toolCallId === undefined || event.canonicalToolName === undefined) {
-          return Effect.fail(
-            toEngineError(new Error("Anthropic tool call ended without an id or function name.")),
+    return interruptOnAbort(
+      anthropicEvents.pipe(
+        Stream.mapEffect((event: AnthropicStreamEvent) => {
+          if (event.type !== "tool_call_json") return Effect.succeed(event);
+          if (event.toolCallId === undefined || event.canonicalToolName === undefined) {
+            return Effect.fail(
+              toEngineError(new Error("Anthropic tool call ended without an id or function name.")),
+            );
+          }
+          const decoded = Schema.decodeUnknownOption(Schema.fromJsonString(Schema.Unknown))(
+            event.argumentsText.length === 0 ? "{}" : event.argumentsText,
           );
-        }
-        const decoded = Schema.decodeUnknownOption(Schema.fromJsonString(Schema.Unknown))(
-          event.argumentsText.length === 0 ? "{}" : event.argumentsText,
-        );
-        return Option.isNone(decoded)
-          ? Effect.fail(
-              toEngineError(new Error("Anthropic tool call arguments are not valid JSON.")),
-            )
-          : Effect.succeed({
-              type: "tool_call" as const,
-              toolCallId: event.toolCallId,
-              canonicalToolName: event.canonicalToolName,
-              arguments: decoded.value,
-            });
-      }),
+          return Option.isNone(decoded)
+            ? Effect.fail(
+                toEngineError(new Error("Anthropic tool call arguments are not valid JSON.")),
+              )
+            : Effect.succeed({
+                type: "tool_call" as const,
+                toolCallId: event.toolCallId,
+                canonicalToolName: event.canonicalToolName,
+                arguments: decoded.value,
+              });
+        }),
+      ),
     );
   }
 
@@ -836,40 +1001,32 @@ export const streamChat = (
     { onHalt: openaiToolCallJsonEvents },
   );
 
-  return openaiEvents.pipe(
-    Stream.mapEffect((event: OpenAiStreamEvent) => {
-      if (event.type !== "tool_call_json") {
-        return Effect.succeed(event);
-      }
-      if (event.toolCallId === undefined || event.canonicalToolName === undefined) {
-        return Effect.fail(
-          toEngineError(new Error("OpenAI tool call ended without an id or function name.")),
+  return interruptOnAbort(
+    openaiEvents.pipe(
+      Stream.mapEffect((event: OpenAiStreamEvent) => {
+        if (event.type !== "tool_call_json") {
+          return Effect.succeed(event);
+        }
+        if (event.toolCallId === undefined || event.canonicalToolName === undefined) {
+          return Effect.fail(
+            toEngineError(new Error("OpenAI tool call ended without an id or function name.")),
+          );
+        }
+        const decoded = Schema.decodeUnknownOption(Schema.fromJsonString(Schema.Unknown))(
+          event.argumentsText,
         );
-      }
-      const decoded = Schema.decodeUnknownOption(Schema.fromJsonString(Schema.Unknown))(
-        event.argumentsText,
-      );
-      return Option.isNone(decoded)
-        ? Effect.fail(toEngineError(new Error("OpenAI tool call arguments are not valid JSON.")))
-        : Effect.succeed({
-            type: "tool_call" as const,
-            toolCallId: event.toolCallId,
-            canonicalToolName: event.canonicalToolName,
-            arguments: decoded.value,
-          });
-    }),
+        return Option.isNone(decoded)
+          ? Effect.fail(toEngineError(new Error("OpenAI tool call arguments are not valid JSON.")))
+          : Effect.succeed({
+              type: "tool_call" as const,
+              toolCallId: event.toolCallId,
+              canonicalToolName: event.canonicalToolName,
+              arguments: decoded.value,
+            });
+      }),
+    ),
   );
 };
-
-/** Effect that completes when the abort signal fires. */
-const abortEffect = (signal: AbortSignal): Effect.Effect<void> =>
-  Effect.callback<void>((resume) => {
-    if (signal.aborted) {
-      resume(Effect.void);
-      return;
-    }
-    signal.addEventListener("abort", () => resume(Effect.void), { once: true });
-  });
 
 /** Consume a `streamChat` stream element-by-element, honoring an abort signal. */
 export const runChatEvents = <E2, R2>(

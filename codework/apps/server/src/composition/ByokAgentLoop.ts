@@ -46,6 +46,9 @@ export class ByokAgentModelError extends Schema.TaggedErrorClass<ByokAgentModelE
   {
     code: Schema.String,
     detail: Schema.String,
+    reason: Schema.optional(Schema.String),
+    retryable: Schema.optional(Schema.Boolean),
+    retryAfterMs: Schema.optional(Schema.Int),
   },
 ) {
   override get message(): string {
@@ -235,6 +238,7 @@ export const runByokAgentLoop = (
     let text = "";
     let rounds = 0;
     let contextOverflowRecoveryUsed = false;
+    let transientRetryUsed = false;
 
     while (true) {
       rounds += 1;
@@ -245,25 +249,48 @@ export const runByokAgentLoop = (
       const compactedMessages = compactContextMessages(messages, maxContextMessages);
       messages.splice(0, messages.length, ...compactedMessages);
       // 先完整收集模型流，再执行工具；溢出恢复不会重放已产生副作用的工具调用。
-      const complete = (modelMessages: ReadonlyArray<ByokAgentMessage>) =>
-        model.complete({ messages: modelMessages, tools: input.tools, turn: rounds }).pipe(
+      const complete = (modelMessages: ReadonlyArray<ByokAgentMessage>) => {
+        let sawOutput = false;
+        return model.complete({ messages: modelMessages, tools: input.tools, turn: rounds }).pipe(
+          Stream.tap((event) =>
+            Effect.sync(() => {
+              if (event.type === "text_delta" || event.type === "tool_call") sawOutput = true;
+            }),
+          ),
           Stream.runCollect,
-          Effect.map((events) => ({ _tag: "succeeded" as const, events })),
+          Effect.map((events) => ({ _tag: "succeeded" as const, events, sawOutput })),
           Effect.catchTag("ByokAgentModelError", (error) =>
-            Effect.succeed({ _tag: "failed" as const, error }),
+            Effect.succeed({ _tag: "failed" as const, error, sawOutput }),
           ),
         );
+      };
 
-      let completion = yield* complete(compactedMessages);
-      if (
-        completion._tag === "failed" &&
-        completion.error.code === "context_overflow" &&
-        !contextOverflowRecoveryUsed
-      ) {
-        contextOverflowRecoveryUsed = true;
-        const recoveryMessages = contextOverflowRecoveryMessages(messages);
-        messages.splice(0, messages.length, ...recoveryMessages);
-        completion = yield* complete(recoveryMessages);
+      let modelMessages = compactedMessages;
+      let completion = yield* complete(modelMessages);
+      while (completion._tag === "failed") {
+        if (completion.error.code === "context_overflow" && !contextOverflowRecoveryUsed) {
+          contextOverflowRecoveryUsed = true;
+          modelMessages = contextOverflowRecoveryMessages(messages);
+          messages.splice(0, messages.length, ...modelMessages);
+          completion = yield* complete(modelMessages);
+          continue;
+        }
+        const canceled =
+          completion.error.reason === "canceled" || completion.error.code === "canceled";
+        if (
+          completion.error.retryable === true &&
+          !completion.sawOutput &&
+          !transientRetryUsed &&
+          !canceled
+        ) {
+          transientRetryUsed = true;
+          if ((completion.error.retryAfterMs ?? 0) > 0) {
+            yield* Effect.sleep(completion.error.retryAfterMs ?? 0);
+          }
+          completion = yield* complete(modelMessages);
+          continue;
+        }
+        break;
       }
       if (completion._tag === "failed") {
         return yield* completion.error;

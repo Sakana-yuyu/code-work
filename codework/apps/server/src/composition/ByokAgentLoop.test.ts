@@ -1,7 +1,9 @@
 import { describe, expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
+import * as Fiber from "effect/Fiber";
 import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
+import * as TestClock from "effect/testing/TestClock";
 
 import * as ToolBroker from "./ToolBroker.ts";
 import {
@@ -543,5 +545,226 @@ describe("ByokAgentLoop", () => {
       expect(error).toMatchObject({ code: "byok_engine_error", detail: "unauthorized" });
       expect(modelCalls).toBe(1);
     }),
+  );
+
+  it.effect("无模型输出的瞬时失败只在同一 turn 重试一次", () =>
+    Effect.gen(function* () {
+      const modelInputs: Array<Parameters<ByokAgentModelDriver["complete"]>[0]> = [];
+      const broker = ToolBroker.ToolBroker.of({
+        invoke: (input) => Effect.succeed(makeResult(input)),
+        cancel: () => Effect.void,
+      });
+      const model: ByokAgentModelDriver = {
+        complete: (input) => {
+          modelInputs.push(input);
+          return modelInputs.length === 1
+            ? Stream.fail(
+                new ByokAgentModelError({
+                  code: "byok_engine_error",
+                  detail: "connection refused",
+                  reason: "transport_error",
+                  retryable: true,
+                }),
+              )
+            : Stream.fromIterable([
+                { type: "text_delta" as const, text: "recovered" },
+                { type: "model_completed" as const },
+              ]);
+        },
+      };
+
+      const result = yield* runByokAgentLoop(baseInput, model, broker);
+
+      expect(result.text).toBe("recovered");
+      expect(result.rounds).toBe(1);
+      expect(modelInputs.map((input) => input.turn)).toEqual([1, 1]);
+    }),
+  );
+
+  it.effect("已产生模型输出后失败时不重试也不执行工具", () =>
+    Effect.gen(function* () {
+      let modelCalls = 0;
+      let brokerCalls = 0;
+      const broker = ToolBroker.ToolBroker.of({
+        invoke: (input) =>
+          Effect.sync(() => {
+            brokerCalls += 1;
+            return makeResult(input);
+          }),
+        cancel: () => Effect.void,
+      });
+      const model: ByokAgentModelDriver = {
+        complete: () => {
+          modelCalls += 1;
+          return Stream.succeed({ type: "text_delta" as const, text: "partial" }).pipe(
+            Stream.concat(
+              Stream.fail(
+                new ByokAgentModelError({
+                  code: "byok_engine_error",
+                  detail: "stream disconnected",
+                  reason: "transport_error",
+                  retryable: true,
+                }),
+              ),
+            ),
+          );
+        },
+      };
+
+      const error = yield* Effect.flip(runByokAgentLoop(baseInput, model, broker));
+
+      expect(error).toMatchObject({ reason: "transport_error", retryable: true });
+      expect(modelCalls).toBe(1);
+      expect(brokerCalls).toBe(0);
+    }),
+  );
+
+  it.effect("瞬时失败重试耗尽后原样失败且不会循环", () =>
+    Effect.gen(function* () {
+      let modelCalls = 0;
+      const broker = ToolBroker.ToolBroker.of({
+        invoke: (input) => Effect.succeed(makeResult(input)),
+        cancel: () => Effect.void,
+      });
+      const model: ByokAgentModelDriver = {
+        complete: () => {
+          modelCalls += 1;
+          return Stream.fail(
+            new ByokAgentModelError({
+              code: "byok_engine_error",
+              detail: modelCalls === 1 ? "first unavailable" : "second unavailable",
+              reason: "unavailable",
+              retryable: true,
+            }),
+          );
+        },
+      };
+
+      const error = yield* Effect.flip(runByokAgentLoop(baseInput, model, broker));
+
+      expect(error).toMatchObject({ detail: "second unavailable", retryable: true });
+      expect(modelCalls).toBe(2);
+    }),
+  );
+
+  it.effect("已有工具轮次后的 503 重试不会重复调用 ToolBroker", () =>
+    Effect.gen(function* () {
+      const turns: number[] = [];
+      let brokerCalls = 0;
+      const broker = ToolBroker.ToolBroker.of({
+        invoke: (input) =>
+          Effect.sync(() => {
+            brokerCalls += 1;
+            return makeResult(input);
+          }),
+        cancel: () => Effect.void,
+      });
+      const model: ByokAgentModelDriver = {
+        complete: (input) => {
+          turns.push(input.turn);
+          if (turns.length === 1) {
+            return Stream.fromIterable([
+              {
+                type: "tool_call" as const,
+                toolCallId: "call-before-retry",
+                canonicalToolName: "workspace.read_file",
+                arguments: { relativePath: "README.md" },
+              },
+              { type: "model_completed" as const },
+            ]);
+          }
+          if (turns.length === 2) {
+            return Stream.fail(
+              new ByokAgentModelError({
+                code: "byok_engine_error",
+                detail: "HTTP 503",
+                reason: "unavailable",
+                retryable: true,
+              }),
+            );
+          }
+          return Stream.fromIterable([
+            { type: "text_delta" as const, text: "done" },
+            { type: "model_completed" as const },
+          ]);
+        },
+      };
+
+      const result = yield* runByokAgentLoop(baseInput, model, broker);
+
+      expect(result.text).toBe("done");
+      expect(result.rounds).toBe(2);
+      expect(turns).toEqual([1, 2, 2]);
+      expect(brokerCalls).toBe(1);
+    }),
+  );
+
+  it.effect("取消错误即使被标记为可重试也不会重放请求", () =>
+    Effect.gen(function* () {
+      let modelCalls = 0;
+      const broker = ToolBroker.ToolBroker.of({
+        invoke: (input) => Effect.succeed(makeResult(input)),
+        cancel: () => Effect.void,
+      });
+      const model: ByokAgentModelDriver = {
+        complete: () => {
+          modelCalls += 1;
+          return Stream.fail(
+            new ByokAgentModelError({
+              code: "byok_engine_error",
+              detail: "canceled",
+              reason: "canceled",
+              retryable: true,
+            }),
+          );
+        },
+      };
+
+      const error = yield* Effect.flip(runByokAgentLoop(baseInput, model, broker));
+
+      expect(error).toMatchObject({ reason: "canceled" });
+      expect(modelCalls).toBe(1);
+    }),
+  );
+
+  it.effect("重试等待遵循 Retry-After 且不真实休眠", () =>
+    Effect.gen(function* () {
+      let modelCalls = 0;
+      const broker = ToolBroker.ToolBroker.of({
+        invoke: (input) => Effect.succeed(makeResult(input)),
+        cancel: () => Effect.void,
+      });
+      const model: ByokAgentModelDriver = {
+        complete: () => {
+          modelCalls += 1;
+          return modelCalls === 1
+            ? Stream.fail(
+                new ByokAgentModelError({
+                  code: "byok_engine_error",
+                  detail: "rate limited",
+                  reason: "rate_limit",
+                  retryable: true,
+                  retryAfterMs: 5_000,
+                }),
+              )
+            : Stream.fromIterable([
+                { type: "text_delta" as const, text: "done" },
+                { type: "model_completed" as const },
+              ]);
+        },
+      };
+      const fiber = yield* runByokAgentLoop(baseInput, model, broker).pipe(Effect.forkChild);
+
+      yield* Effect.yieldNow;
+      expect(modelCalls).toBe(1);
+      yield* TestClock.adjust("4999 millis");
+      expect(modelCalls).toBe(1);
+      yield* TestClock.adjust("1 millis");
+      const result = yield* Fiber.join(fiber);
+
+      expect(result.text).toBe("done");
+      expect(result.rounds).toBe(1);
+      expect(modelCalls).toBe(2);
+    }).pipe(Effect.provide(TestClock.layer())),
   );
 });
