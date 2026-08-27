@@ -15,6 +15,10 @@ import {
 
 type LedgerPort = Pick<CompositionTaskStoreShape, "appendEventIfNew">;
 
+/** Goal Loop 台账行的统一 sourceEventId 前缀；supervisor 复用同一构造器避免漂移。 */
+export const goalLoopEventPrefix = (taskId: string, runId: string): string =>
+  `goalloop:${taskId}:${runId}`;
+
 /**
  * Goal Loop 编排接线选项：在普通 Goal Loop 选项之上，补充任务台账投影所需的
  * 任务/Run 身份与存储端口。attempt 由调用方对接具体 Driver（BYOK 模型循环、
@@ -80,7 +84,7 @@ export const runCompositionGoalLoopWithLedger = <A, E>(
       const trimmed = text.trim();
       return trimmed.length > limit ? `${trimmed.slice(0, limit)}…` : trimmed;
     };
-    const prefix = `goalloop:${options.taskId}:${options.runId}`;
+    const prefix = goalLoopEventPrefix(options.taskId, options.runId);
     const baseEvent = {
       taskId: options.taskId,
       runId: options.runId,
