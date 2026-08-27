@@ -13,9 +13,9 @@
 | 更新时间 | 2026-08-27 |
 | 仓库 | `E:\MyProject\code-work\codework` |
 | 当前分支 | `tcode` |
-| 当前提交 | Goal Loop 子代理验证器节点：`feat(composition): Goal Loop 子代理验证器实现` |
-| 相对远端 | 领先 `origin/tcode` 36 个提交，尚未 push |
-| 最新节点 | 新增 CompositionGoalValidator：[[GOAL_VALID]]/[[GOAL_INVALID]] fail-closed 裁决协议 + BYOK agentService 生产评审端口，可直插 validateCompletion（6 用例，Goal Loop 全家 41/41） |
+| 当前提交 | Goal Loop attempt 生产适配器节点：`feat(composition): Goal Loop attempt 生产适配器` |
+| 相对远端 | 领先 `origin/tcode` 37 个提交，尚未 push |
+| 最新节点 | 新增 makeByokGoalLoopAttempt（每轮=一次 CompositionAgentService 模型循环）与 makeMulticaGoalLoopAttempt（每轮=一次 quick-create 派发+状态轮询），6 用例，Goal Loop 全家 47/47 |
 | 工作区边界 | 存在大量其他并行修改；本文不把这些修改计入本迁移进度，也不回滚、暂存或提交它们 |
 
 ## 证据等级
@@ -74,9 +74,11 @@ CapabilityRegistry + ToolBroker
 
 - 新增子代理验证器实现（本节点）：`CompositionGoalValidator` 定义显式裁决标记 `[[GOAL_VALID]]`/`[[GOAL_INVALID: 理由]]`，缺标记或双标记一律 fail-closed 按拒绝处理；`composeGoalValidatorPrompt` 组装含目标/完成声明/历史轮次摘要的评审提示词（逐项截断防无界增长）；`makeSubAgentGoalValidator` 把"提示词→端口评审→标记解析"包装成 validateCompletion 注入；`makeByokSubAgentValidatorPort` 把验证子代理接到 BYOK 生产模型循环（CompositionAgentService，无工具、maxRounds=1、无 capability grant 的独立评审调用）。
 
+- 新增 attempt 生产适配器（本节点）：`makeByokGoalLoopAttempt` 把每一轮接到 BYOK 生产模型循环（CompositionAgentService.run，提示词自动带 Goal Loop 轮次与完成标记说明，costUnits=1/轮，错误通道原样透传）；`makeMulticaGoalLoopAttempt` 把每一轮接到 Multica 远端（quick-create 派发 → 轮询 getTaskStatus 至终态，agentId/squadId 互斥校验、可注入 now/sleep、失败态与超时显式报 `multica_round_failed`/`multica_round_timeout`）。远端协议当前只回状态不回输出，完成文本依赖可选 `fetchOutput` 钩子，未提供时轮产物为空文本参与停滞判定。
+
 仍缺：
 
-- runner 的 attempt 尚未接到 BYOK/Multica Driver 的生产派发路径（当前由调用方注入，编排契约测试以 fake Driver 验证）。
+- Multica 真实 daemon 的输出查询能力（`fetchOutput` 生产实现）——依赖服务端暴露输出查询接口，属外部环境缺口。
 - Byok delegation 与 Composition Task/Run 的单一状态源收敛。
 - 面向用户的恢复、冲突和失败原因展示。
 
@@ -201,7 +203,7 @@ CapabilityRegistry + ToolBroker
 
 ## 当前提交节点
 
-当前 `tcode` 相对 `origin/tcode` 的 36 个提交按主题归并如下。
+当前 `tcode` 相对 `origin/tcode` 的 37 个提交按主题归并如下。
 
 | 主题 | 提交范围 | 结果 |
 | --- | --- | --- |
@@ -221,6 +223,7 @@ CapabilityRegistry + ToolBroker
 | Goal Loop 跨重启监督 | `feat(composition): Goal Loop 跨重启监督结算` | 未收敛扫描（scope 过滤 + 轮次/拒绝统计）与幂等 redispatch/abandon 结算行、显式错误合同，6 用例（全家 31/31） |
 | Goal Loop 自动重派接线 | `feat(composition): Goal Loop 自动重派接线` | supervisor 结算 → 陈旧 run/task 落 failed → 真实 retryTask 自动重派；校验失败零副作用，4 用例（全家 35/35） |
 | Goal Loop 子代理验证器 | `feat(composition): Goal Loop 子代理验证器实现` | GOAL_VALID/GOAL_INVALID fail-closed 裁决协议、评审提示词组装与 BYOK agentService 生产端口，6 用例（全家 41/41） |
+| Goal Loop attempt 生产适配器 | `feat(composition): Goal Loop attempt 生产适配器` | BYOK=CompositionAgentService.run 每轮一次模型循环；Multica=quick-create 派发+状态轮询+可选输出钩子，6 用例（全家 47/47） |
 | 文档与回归覆盖 | `c5a709b46`、`223b90ee5` | 刷新迁移矩阵并覆盖 ACP 取消终态回归 |
 
 ## 关键结论
@@ -248,7 +251,7 @@ CapabilityRegistry + ToolBroker
 2. ~~为 Multica quick-create 增加持久化 outbox、冲突恢复和集成测试。（本地 HTTP 进程级已完成；真实 daemon 侧的幂等键语义与 by-key 查询能力确认后，收口可自动化）~~
 3. 接入真实 Cursor/VS Code Adapter，完成 capability handshake、最小 IDE API 白名单和撤销测试。
 4. 把 Provider、IDE、Multica 的 grant 状态统一投影到 Composition Run 和 Settings。（本地子任务已完成：grant issued/revoked 与 BYOK resume 输出均已投影为任务历史事件；剩余 = 外部 Driver 的真实 grant 回执接入与 Settings 跨端看板展示，依赖真实产品环境）
-5. 收敛 Goal Loop、预算、重试、验证子代理和跨重启 supervisor。（已完成：完成标记/预算/停滞 pivot/验证合同与子代理验证器、任务台账编排接线、跨重启监督结算与编排层自动重派接线，共 41 单测；剩余 = runner 的 attempt 接到 BYOK/Multica Driver 生产派发路径）
+5. ~~收敛 Goal Loop、预算、重试、验证子代理和跨重启 supervisor。~~（本地切片全部完成：完成标记/预算/停滞 pivot/验证合同与子代理验证器、任务台账编排接线、跨重启监督结算、编排层自动重派接线、BYOK/Multica attempt 生产适配器，共 47 单测；剩余缺口 = Multica 输出查询的生产实现，依赖真实 daemon 服务端能力）
 6. 最后补齐 Supplier/Profile 控制中心与 Web/Desktop/Mobile 集成 E2E。
 
 ## 风险与回滚
