@@ -13,9 +13,9 @@
 | 更新时间 | 2026-08-27 |
 | 仓库 | `E:\MyProject\code-work\codework` |
 | 当前分支 | `tcode` |
-| 当前提交 | Goal Loop 自动重派接线节点：`feat(composition): Goal Loop 自动重派接线` |
-| 相对远端 | 领先 `origin/tcode` 35 个提交，尚未 push |
-| 最新节点 | 新增 settleAndRedispatchInterruptedGoalLoop：supervisor 结算 + 陈旧 run/task 落 failed + 真实 orchestrator.retryTask 自动重派（4 用例，Goal Loop 全家 35/35） |
+| 当前提交 | Goal Loop 子代理验证器节点：`feat(composition): Goal Loop 子代理验证器实现` |
+| 相对远端 | 领先 `origin/tcode` 36 个提交，尚未 push |
+| 最新节点 | 新增 CompositionGoalValidator：[[GOAL_VALID]]/[[GOAL_INVALID]] fail-closed 裁决协议 + BYOK agentService 生产评审端口，可直插 validateCompletion（6 用例，Goal Loop 全家 41/41） |
 | 工作区边界 | 存在大量其他并行修改；本文不把这些修改计入本迁移进度，也不回滚、暂存或提交它们 |
 
 ## 证据等级
@@ -72,9 +72,11 @@ CapabilityRegistry + ToolBroker
 - 新增跨重启监督：`CompositionGoalLoopSupervisor` 按 (taskId, runId) 作用域扫描台账行（`goalloop:*` 幂等前缀），"已开始且无终态行、无 supervisor 结算行"即判定为跨重启未收敛，并统计已完成轮次/拒绝次数；结算落幂等 `supervisor:redispatch`（blocked，待改派）或 `supervisor:abandon`（failed，放弃恢复）行，已收敛 Run 结算、重复结算、写入被抢占分别显式报 `not_interrupted`/`already_settled`。
 - 新增 supervisor→编排层自动重派接线（本节点）：`settleAndRedispatchInterruptedGoalLoop` 按"纯扫描判定 → run 存在且为最新 Run 校验（失败零副作用）→ supervisor 幂等结算 → 陈旧 running 态 run/task 落 failed（failureCode=goal_loop_interrupted，满足 retryTask 仅失败可重试门槛）→ 调用 redispatch 回调"顺序执行；测试接入真实 SQLite 内存 store 与真实 orchestrator.retryTask，验证新 Run 创建、陈旧 Run 标记 `goal_loop_interrupted`、task 从 failed 回到 running。
 
+- 新增子代理验证器实现（本节点）：`CompositionGoalValidator` 定义显式裁决标记 `[[GOAL_VALID]]`/`[[GOAL_INVALID: 理由]]`，缺标记或双标记一律 fail-closed 按拒绝处理；`composeGoalValidatorPrompt` 组装含目标/完成声明/历史轮次摘要的评审提示词（逐项截断防无界增长）；`makeSubAgentGoalValidator` 把"提示词→端口评审→标记解析"包装成 validateCompletion 注入；`makeByokSubAgentValidatorPort` 把验证子代理接到 BYOK 生产模型循环（CompositionAgentService，无工具、maxRounds=1、无 capability grant 的独立评审调用）。
+
 仍缺：
 
-- Goal Loop 的真实子代理 validator 实现；runner 的 attempt 尚未接到 BYOK/Multica Driver 的生产派发路径（当前由调用方注入，编排契约测试以 fake Driver 验证）。
+- runner 的 attempt 尚未接到 BYOK/Multica Driver 的生产派发路径（当前由调用方注入，编排契约测试以 fake Driver 验证）。
 - Byok delegation 与 Composition Task/Run 的单一状态源收敛。
 - 面向用户的恢复、冲突和失败原因展示。
 
@@ -199,7 +201,7 @@ CapabilityRegistry + ToolBroker
 
 ## 当前提交节点
 
-当前 `tcode` 相对 `origin/tcode` 的 35 个提交按主题归并如下。
+当前 `tcode` 相对 `origin/tcode` 的 36 个提交按主题归并如下。
 
 | 主题 | 提交范围 | 结果 |
 | --- | --- | --- |
@@ -218,6 +220,7 @@ CapabilityRegistry + ToolBroker
 | Goal Loop 台账编排接线 | `feat(composition): Goal Loop 接入任务台账编排` | CompositionGoalLoopRunner：start/每轮/拒绝/终态幂等投影与状态映射、敏感输出不落账、重放幂等，契约测试 5 用例（全家 25/25） |
 | Goal Loop 跨重启监督 | `feat(composition): Goal Loop 跨重启监督结算` | 未收敛扫描（scope 过滤 + 轮次/拒绝统计）与幂等 redispatch/abandon 结算行、显式错误合同，6 用例（全家 31/31） |
 | Goal Loop 自动重派接线 | `feat(composition): Goal Loop 自动重派接线` | supervisor 结算 → 陈旧 run/task 落 failed → 真实 retryTask 自动重派；校验失败零副作用，4 用例（全家 35/35） |
+| Goal Loop 子代理验证器 | `feat(composition): Goal Loop 子代理验证器实现` | GOAL_VALID/GOAL_INVALID fail-closed 裁决协议、评审提示词组装与 BYOK agentService 生产端口，6 用例（全家 41/41） |
 | 文档与回归覆盖 | `c5a709b46`、`223b90ee5` | 刷新迁移矩阵并覆盖 ACP 取消终态回归 |
 
 ## 关键结论
@@ -245,7 +248,7 @@ CapabilityRegistry + ToolBroker
 2. ~~为 Multica quick-create 增加持久化 outbox、冲突恢复和集成测试。（本地 HTTP 进程级已完成；真实 daemon 侧的幂等键语义与 by-key 查询能力确认后，收口可自动化）~~
 3. 接入真实 Cursor/VS Code Adapter，完成 capability handshake、最小 IDE API 白名单和撤销测试。
 4. 把 Provider、IDE、Multica 的 grant 状态统一投影到 Composition Run 和 Settings。（本地子任务已完成：grant issued/revoked 与 BYOK resume 输出均已投影为任务历史事件；剩余 = 外部 Driver 的真实 grant 回执接入与 Settings 跨端看板展示，依赖真实产品环境）
-5. 收敛 Goal Loop、预算、重试、验证子代理和跨重启 supervisor。（已完成：完成标记/预算/停滞 pivot/验证子代理合同、任务台账编排接线、跨重启监督结算与编排层自动重派接线，共 35 单测；剩余 = 真实子代理 validator 实现、runner 的 attempt 接到 BYOK/Multica Driver 生产派发路径）
+5. 收敛 Goal Loop、预算、重试、验证子代理和跨重启 supervisor。（已完成：完成标记/预算/停滞 pivot/验证合同与子代理验证器、任务台账编排接线、跨重启监督结算与编排层自动重派接线，共 41 单测；剩余 = runner 的 attempt 接到 BYOK/Multica Driver 生产派发路径）
 6. 最后补齐 Supplier/Profile 控制中心与 Web/Desktop/Mobile 集成 E2E。
 
 ## 风险与回滚
