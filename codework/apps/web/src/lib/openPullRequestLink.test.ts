@@ -9,7 +9,7 @@ import {
   PullRequestLinkOpenError,
   shouldOpenPullRequestExternally,
 } from "./openPullRequestLink";
-import { ProjectId } from "@t3tools/contracts";
+import { ProjectId } from "@codework/contracts";
 
 describe("changeRequestRepositoryUrl", () => {
   it("preserves repository path casing", () => {
