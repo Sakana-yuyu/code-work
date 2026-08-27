@@ -554,3 +554,15 @@ F1 审查修复补充：
 本节点的定向验证覆盖 `serverSettings`、Multica Adapter、Composition Runtime Settings、Task MCP Lease 和 contracts 共 5 个文件、56 个测试；格式检查和 `git diff --check` 通过；服务端 TypeScript 过滤检查没有本节点新增 error，仅保留仓库既有 Effect 风格 suggestions。
 
 这仍然不是官方 Multica daemon 的真实跨进程 E2E。官方当前没有稳定的外部 task-local MCP overlay Public API，因此 `taskExecutionBridge` 是 Code Work 侧显式 daemon extension 边界；只有将该扩展接到真实 daemon/runtime start 入口并在有 Server、Workspace、两个 Agent 的环境中验证，才能宣称真实 Multica Agent 已获得每 Run Code Work ToolBroker 能力。未安装扩展、扩展无法解析绑定、Lease 过期或 scope 不匹配时保持 fail closed。
+
+## Batch G1：通用 IDE JSON-RPC transport 本地跨进程闭环（2026-08-27）
+
+本节点把既有 `CompositionIdeSessionRegistry` 和 `ToolBroker` 的 IDE 抽象推进到一个可运行的通用 transport：
+
+- 新增 `CompositionIdeJsonRpcTransport`，使用注入式 WebSocket factory，支持单连接建立、open/request 超时、JSON-RPC request/response 关联、probe、capability handshake 和 `ide.invoke`。
+- transport 只传递明确的 T3 JSON-RPC 方法与 task/run/agent/session/handshake scope；认证 Header 由 socket factory 接收，不进入 URL、错误正文或日志；带凭据查询参数的 URL 在构造时直接拒绝。
+- 首次 socket 错误、关闭或显式 `close()` 会把 transport 置为终止状态；所有 pending request 和后续请求都 fail closed，避免 Runtime 热替换或注销后继续借用旧 IDE session。
+- JSON-RPC error、非法响应、请求超时和 socket 生命周期分别返回稳定的 `CompositionIdeAdapterFailure` 错误码；错误详情经过敏感字段脱敏。
+- 新增真实本地 Node 子进程 WebSocket fixture，验证 `CompositionIdeJsonRpcTransport -> CompositionIdeSessionRegistry -> IDE fixture` 的 probe、handshake 和 invoke 回流。
+
+本节点验证的是通用 IDE 协议和真实本地跨进程链路，不是 Cursor 或 VSCode 官方扩展的产品现场 E2E；当前仍未完成具体 Cursor/VSCode extension transport、IDE session 配置持久化、自动重连、多端 UI 入口和真实安装 IDE 验收。`ide.invoke` 仍必须经过既有 ToolBroker 的 capability、grant、approval、幂等和 audit 边界，transport 本身不提供权限绕过。
