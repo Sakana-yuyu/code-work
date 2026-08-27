@@ -10,17 +10,17 @@
  *     `stream: true`; `choices[0].delta.content` is text,
  *     `choices[0].delta.reasoning_content` (DeepSeek style) is reasoning, and
  *     `choices[0].delta.tool_calls` is accumulated before being decoded.
- *     `data: [DONE]` terminates the stream.
+ *     `choices[0].finish_reason` 标记模型终态；`[DONE]` 只表示传输结束。
  *   - `anthropic` protocol: `POST ${baseURL}/v1/messages` with `x-api-key` +
  *     `anthropic-version: 2023-06-01` and `stream: true`;
  *     `content_block_delta.delta.text` is text and `delta.thinking` is
- *     reasoning. `message_stop` terminates the stream.
+ *     reasoning。只有 `message_delta.stop_reason` 后续收到 `message_stop` 才算完成。
  *   - `gemini` protocol: `POST
  *     ${baseURL}/v1beta/models/{model}:streamGenerateContent?alt=sse` with
  *     `x-goog-api-key`; roles map user→`user`, assistant→`model`, and the
  *     system prompt becomes top-level `systemInstruction`. Each SSE payload
  *     carries `candidates[0].content.parts[]`; parts flagged `thought: true`
- *     are reasoning. The stream ends without a terminator chunk.
+ *     are reasoning。`candidates[0].finishReason` 标记模型终态。
  *
  * @module provider/Layers/byokChatClient
  */
@@ -70,6 +70,7 @@ export const byokAdapterForModel = (
 export type ByokChatEvent =
   | { readonly type: "text"; readonly text: string }
   | { readonly type: "reasoning"; readonly text: string }
+  | { readonly type: "completed"; readonly finishReason: string }
   | {
       readonly type: "tool_call";
       readonly toolCallId: string;
@@ -98,6 +99,8 @@ export class ByokEngineError extends Schema.TaggedErrorClass<ByokEngineError>()(
     "provider_error",
     "transport_error",
     "invalid_response",
+    "output_truncated",
+    "terminal_event_missing",
   ]),
   status: Schema.optional(Schema.Int),
   retryable: Schema.optional(Schema.Boolean),
@@ -561,7 +564,19 @@ type OpenAiToolCallJsonEvent = {
   readonly argumentsText: string;
 };
 
-type OpenAiStreamEvent = ByokChatEvent | OpenAiToolCallJsonEvent;
+type ByokStreamErrorEvent = {
+  readonly type: "stream_error";
+  readonly reason: ByokEngineErrorReason;
+  readonly detail: string;
+};
+
+type ByokSseItem =
+  | { readonly type: "payload"; readonly payload: Record<string, unknown> }
+  | { readonly type: "done" }
+  | { readonly type: "invalid_json" }
+  | { readonly type: "eof" };
+
+type OpenAiStreamEvent = ByokChatEvent | OpenAiToolCallJsonEvent | ByokStreamErrorEvent;
 
 type AnthropicToolCallState = {
   readonly toolCallId: string | undefined;
@@ -578,7 +593,104 @@ type AnthropicToolCallJsonEvent = {
   readonly argumentsText: string;
 };
 
-type AnthropicStreamEvent = ByokChatEvent | AnthropicToolCallJsonEvent;
+type AnthropicStreamEvent = ByokChatEvent | AnthropicToolCallJsonEvent | ByokStreamErrorEvent;
+
+type OpenAiStreamState = {
+  readonly toolCalls: OpenAiToolCallAccumulator;
+  readonly terminalSeen: boolean;
+};
+
+type AnthropicStreamState = {
+  readonly toolCalls: AnthropicToolCallAccumulator;
+  readonly stopReason: string | undefined;
+  readonly terminalSeen: boolean;
+};
+
+type GeminiStreamState = {
+  readonly terminalSeen: boolean;
+};
+
+type ByokTerminalEvent =
+  | Extract<ByokChatEvent, { readonly type: "completed" }>
+  | ByokStreamErrorEvent;
+
+const outputTruncationFinishReasons = new Set([
+  "length",
+  "max_tokens",
+  "max_output_tokens",
+  "incomplete",
+  "model_context_window_exceeded",
+]);
+
+const successfulFinishReasons = {
+  openai: new Set(["stop", "tool_calls", "function_call"]),
+  anthropic: new Set(["end_turn", "tool_use", "stop_sequence", "refusal"]),
+  gemini: new Set(["stop"]),
+} satisfies Record<ByokModelAdapter["protocol"], ReadonlySet<string>>;
+
+const streamErrorEvent = (reason: ByokEngineErrorReason, detail: string): ByokStreamErrorEvent => ({
+  type: "stream_error",
+  reason,
+  detail,
+});
+
+const missingTerminalEvent = (protocol: ByokModelAdapter["protocol"]): ByokStreamErrorEvent =>
+  streamErrorEvent(
+    "terminal_event_missing",
+    `${protocol} provider stream ended without a valid terminal event.`,
+  );
+
+const terminalEventForFinishReason = (
+  protocol: ByokModelAdapter["protocol"],
+  finishReason: string,
+): ByokTerminalEvent => {
+  const normalized = finishReason.trim().toLowerCase();
+  if (outputTruncationFinishReasons.has(normalized)) {
+    return streamErrorEvent(
+      "output_truncated",
+      `${protocol} provider output was truncated (${finishReason}).`,
+    );
+  }
+  if (successfulFinishReasons[protocol].has(normalized)) {
+    return { type: "completed", finishReason };
+  }
+  return streamErrorEvent(
+    "provider_error",
+    `${protocol} provider stream ended with unsupported finish reason ${finishReason}.`,
+  );
+};
+
+const openAiFinishReason = (payload: Record<string, unknown>): string | undefined => {
+  const choices = payload.choices;
+  if (!Array.isArray(choices) || choices.length === 0 || !isRecord(choices[0])) {
+    return undefined;
+  }
+  return asString(choices[0].finish_reason);
+};
+
+const anthropicStopReason = (payload: Record<string, unknown>): string | undefined => {
+  if (payload.type !== "message_delta" || !isRecord(payload.delta)) return undefined;
+  return asString(payload.delta.stop_reason);
+};
+
+const geminiFinishReason = (payload: Record<string, unknown>): string | undefined => {
+  const candidates = payload.candidates;
+  if (!Array.isArray(candidates) || candidates.length === 0 || !isRecord(candidates[0])) {
+    return undefined;
+  }
+  return asString(candidates[0].finishReason);
+};
+
+const isProtocolTransportTerminator = (
+  protocol: ByokModelAdapter["protocol"],
+  item: ByokSseItem,
+): boolean => {
+  if (item.type === "done") return true;
+  if (item.type !== "payload") return false;
+  if (protocol === "openai") return openAiFinishReason(item.payload) !== undefined;
+  if (protocol === "anthropic") return item.payload.type === "message_stop";
+  return geminiFinishReason(item.payload) !== undefined;
+};
 
 const openaiToolCallFragments = (
   payload: Record<string, unknown>,
@@ -741,11 +853,6 @@ const eventsFromSsePayload = (
   ];
 };
 
-const isTerminalSsePayload = (
-  protocol: ByokModelAdapter["protocol"],
-  payload: Record<string, unknown>,
-): boolean => protocol === "anthropic" && payload.type === "message_stop";
-
 const sseDataPrefix = "data:";
 
 /** 等待外部 AbortSignal，并在调用方中断时移除监听器。 */
@@ -886,10 +993,7 @@ export const streamChat = (
             }),
           );
 
-  const payloads: Stream.Stream<
-    Record<string, unknown>,
-    ByokEngineError
-  > = HttpClientResponse.stream(
+  const sseItems: Stream.Stream<ByokSseItem, ByokEngineError> = HttpClientResponse.stream(
     Effect.flatMap(requestEffect, (prepared) => httpClient.execute(prepared)).pipe(
       Effect.mapError((cause) => toEngineError(cause, "transport_error")),
       Effect.flatMap((response) =>
@@ -904,17 +1008,25 @@ export const streamChat = (
     Stream.splitLines,
     Stream.filter((line) => line.startsWith(sseDataPrefix)),
     Stream.map((line) => line.slice(sseDataPrefix.length).trim()),
-    Stream.map((data) => (data === "[DONE]" ? undefined : parseJsonLine(data))),
-    Stream.takeWhile((payload): payload is Record<string, unknown> => {
-      if (payload === undefined) {
-        // openai `data: [DONE]` terminator.
-        return false;
-      }
-      return !isTerminalSsePayload(input.protocol, payload);
+    Stream.map((data): ByokSseItem => {
+      if (data === "[DONE]") return { type: "done" };
+      const payload = parseJsonLine(data);
+      return payload === undefined ? { type: "invalid_json" } : { type: "payload", payload };
     }),
-    Stream.mapEffect((payload) => {
-      const rawDetail = providerPayloadErrorDetail(payload);
-      if (rawDetail === undefined) return Effect.succeed(payload);
+    Stream.mapEffect((item): Effect.Effect<ByokSseItem, ByokEngineError> => {
+      if (item.type === "invalid_json") {
+        return Effect.fail(
+          new ByokEngineError({
+            url: requestUrl,
+            reason: "invalid_response",
+            retryable: false,
+            detail: "Provider SSE data was not valid JSON.",
+          }),
+        );
+      }
+      if (item.type !== "payload") return Effect.succeed(item);
+      const rawDetail = providerPayloadErrorDetail(item.payload);
+      if (rawDetail === undefined) return Effect.succeed(item);
       const classification = classifyProviderError(rawDetail);
       return Effect.fail(
         new ByokEngineError({
@@ -927,13 +1039,45 @@ export const streamChat = (
         }),
       );
     }),
+    Stream.takeUntil((item) => isProtocolTransportTerminator(input.protocol, item)),
+    Stream.concat(Stream.succeed({ type: "eof" } as ByokSseItem)),
   );
 
   if (input.protocol === "gemini") {
+    const geminiEvents: Stream.Stream<ByokChatEvent | ByokStreamErrorEvent, ByokEngineError> =
+      Stream.mapAccum(
+        sseItems,
+        (): GeminiStreamState => ({ terminalSeen: false }),
+        (
+          state,
+          item,
+        ): readonly [GeminiStreamState, ReadonlyArray<ByokChatEvent | ByokStreamErrorEvent>] => {
+          if (state.terminalSeen) return [state, []];
+          if (item.type !== "payload") {
+            return [{ terminalSeen: true }, [missingTerminalEvent("gemini")]];
+          }
+          const events = eventsFromSsePayload("gemini", item.payload);
+          const finishReason = geminiFinishReason(item.payload);
+          if (finishReason === undefined) return [state, events];
+          return [
+            { terminalSeen: true },
+            [...events, terminalEventForFinishReason("gemini", finishReason)],
+          ];
+        },
+      );
     return interruptOnAbort(
-      payloads.pipe(
-        Stream.flatMap((payload) =>
-          Stream.fromIterable(eventsFromSsePayload(input.protocol, payload)),
+      geminiEvents.pipe(
+        Stream.mapEffect((event) =>
+          event.type === "stream_error"
+            ? Effect.fail(
+                new ByokEngineError({
+                  url: requestUrl,
+                  reason: event.reason,
+                  retryable: false,
+                  detail: event.detail,
+                }),
+              )
+            : Effect.succeed(event),
         ),
       ),
     );
@@ -941,21 +1085,56 @@ export const streamChat = (
 
   if (input.protocol === "anthropic") {
     const anthropicEvents: Stream.Stream<AnthropicStreamEvent, ByokEngineError> = Stream.mapAccum(
-      payloads,
-      () => new Map<number, AnthropicToolCallState>(),
-      (
-        state,
-        payload,
-      ): readonly [AnthropicToolCallAccumulator, ReadonlyArray<AnthropicStreamEvent>] => [
-        anthropicToolCallStateForPayload(state, payload),
-        eventsFromSsePayload("anthropic", payload),
-      ],
-      { onHalt: anthropicToolCallJsonEvents },
+      sseItems,
+      (): AnthropicStreamState => ({
+        toolCalls: new Map<number, AnthropicToolCallState>(),
+        stopReason: undefined,
+        terminalSeen: false,
+      }),
+      (state, item): readonly [AnthropicStreamState, ReadonlyArray<AnthropicStreamEvent>] => {
+        if (state.terminalSeen) return [state, []];
+        if (item.type !== "payload") {
+          return [{ ...state, terminalSeen: true }, [missingTerminalEvent("anthropic")]];
+        }
+
+        const toolCalls = anthropicToolCallStateForPayload(state.toolCalls, item.payload);
+        const stopReason = anthropicStopReason(item.payload) ?? state.stopReason;
+        const events = eventsFromSsePayload("anthropic", item.payload);
+        if (item.payload.type !== "message_stop") {
+          return [{ toolCalls, stopReason, terminalSeen: false }, events];
+        }
+        if (stopReason === undefined) {
+          return [
+            { toolCalls, stopReason, terminalSeen: true },
+            [...events, missingTerminalEvent("anthropic")],
+          ];
+        }
+
+        const terminalEvent = terminalEventForFinishReason("anthropic", stopReason);
+        return [
+          { toolCalls: new Map(), stopReason, terminalSeen: true },
+          [
+            ...events,
+            ...(terminalEvent.type === "completed" ? anthropicToolCallJsonEvents(toolCalls) : []),
+            terminalEvent,
+          ],
+        ];
+      },
     );
 
     return interruptOnAbort(
       anthropicEvents.pipe(
         Stream.mapEffect((event: AnthropicStreamEvent) => {
+          if (event.type === "stream_error") {
+            return Effect.fail(
+              new ByokEngineError({
+                url: requestUrl,
+                reason: event.reason,
+                retryable: false,
+                detail: event.detail,
+              }),
+            );
+          }
           if (event.type !== "tool_call_json") return Effect.succeed(event);
           if (event.toolCallId === undefined || event.canonicalToolName === undefined) {
             return Effect.fail(
@@ -981,29 +1160,61 @@ export const streamChat = (
   }
 
   const openaiEvents: Stream.Stream<OpenAiStreamEvent, ByokEngineError> = Stream.mapAccum(
-    payloads,
-    () => new Map<number, OpenAiToolCallState>(),
-    (
-      state,
-      payload,
-    ): readonly [Map<number, OpenAiToolCallState>, ReadonlyArray<OpenAiStreamEvent>] => {
-      const nextState = new Map(state);
-      for (const fragment of openaiToolCallFragments(payload)) {
-        const previous = nextState.get(fragment.index);
-        nextState.set(fragment.index, {
+    sseItems,
+    (): OpenAiStreamState => ({
+      toolCalls: new Map<number, OpenAiToolCallState>(),
+      terminalSeen: false,
+    }),
+    (state, item): readonly [OpenAiStreamState, ReadonlyArray<OpenAiStreamEvent>] => {
+      if (state.terminalSeen) return [state, []];
+      if (item.type !== "payload") {
+        return [{ ...state, terminalSeen: true }, [missingTerminalEvent("openai")]];
+      }
+
+      const toolCalls = new Map(state.toolCalls);
+      for (const fragment of openaiToolCallFragments(item.payload)) {
+        const previous = toolCalls.get(fragment.index);
+        toolCalls.set(fragment.index, {
           toolCallId: fragment.id ?? previous?.toolCallId,
           canonicalToolName: fragment.name ?? previous?.canonicalToolName,
           argumentsText: `${previous?.argumentsText ?? ""}${fragment.arguments ?? ""}`,
         });
       }
-      return [nextState, eventsFromSsePayload("openai", payload)];
+      const events = eventsFromSsePayload("openai", item.payload);
+      const finishReason = openAiFinishReason(item.payload);
+      if (finishReason === undefined) {
+        return [{ toolCalls, terminalSeen: false }, events];
+      }
+
+      const normalizedFinishReason =
+        toolCalls.size > 0 && finishReason.trim().toLowerCase() === "stop"
+          ? "tool_calls"
+          : finishReason;
+      const terminalEvent = terminalEventForFinishReason("openai", normalizedFinishReason);
+      return [
+        { toolCalls: new Map(), terminalSeen: true },
+        [
+          ...events,
+          ...(terminalEvent.type === "completed" ? openaiToolCallJsonEvents(toolCalls) : []),
+          terminalEvent,
+        ],
+      ];
     },
-    { onHalt: openaiToolCallJsonEvents },
   );
 
   return interruptOnAbort(
     openaiEvents.pipe(
       Stream.mapEffect((event: OpenAiStreamEvent) => {
+        if (event.type === "stream_error") {
+          return Effect.fail(
+            new ByokEngineError({
+              url: requestUrl,
+              reason: event.reason,
+              retryable: false,
+              detail: event.detail,
+            }),
+          );
+        }
         if (event.type !== "tool_call_json") {
           return Effect.succeed(event);
         }

@@ -4,6 +4,8 @@ import * as Stream from "effect/Stream";
 import { type HttpClient } from "effect/unstable/http";
 
 import {
+  type ByokChatEvent,
+  type ByokEngineError,
   type ByokChatMessage,
   type ByokToolDescriptor,
   streamChat,
@@ -11,6 +13,7 @@ import {
 
 import {
   ByokAgentModelError,
+  type ByokAgentModelEvent,
   type ByokAgentTool,
   type ByokAgentMessage,
   type ByokAgentModelDriver,
@@ -50,13 +53,25 @@ const toChatMessage = (message: ByokAgentMessage): ByokChatMessage => {
 
 const toToolDescriptor = (tool: ByokAgentTool): ByokToolDescriptor => tool;
 
+const toAgentModelEvent = (event: ByokChatEvent): ByokAgentModelEvent | undefined => {
+  if (event.type === "reasoning") return undefined;
+  if (event.type === "completed") return { type: "model_completed" };
+  if (event.type === "text") return { type: "text_delta", text: event.text };
+  return {
+    type: "tool_call",
+    toolCallId: event.toolCallId,
+    canonicalToolName: event.canonicalToolName,
+    arguments: event.arguments,
+  };
+};
+
 /** 将三类 BYOK 原生协议流转换为协议无关的 Agent ModelDriver 事件。 */
 export const makeByokModelDriver = (
   httpClient: HttpClient.HttpClient,
   options: ByokModelDriverOptions,
 ): ByokAgentModelDriver => ({
-  complete: (input) => {
-    const stream = streamChat(httpClient, {
+  complete: (input): Stream.Stream<ByokAgentModelEvent, ByokAgentModelError> => {
+    const stream: Stream.Stream<ByokAgentModelEvent, ByokAgentModelError> = streamChat(httpClient, {
       protocol: options.protocol,
       baseURL: options.baseURL,
       apiKey: options.apiKey,
@@ -67,23 +82,10 @@ export const makeByokModelDriver = (
       ...(options.systemPrompt !== undefined ? { systemPrompt: options.systemPrompt } : {}),
       ...(options.signal !== undefined ? { signal: options.signal } : {}),
     }).pipe(
-      Stream.flatMap((event) => {
-        if (event.type === "reasoning") {
-          return Stream.empty;
-        }
-        return Stream.succeed(
-          event.type === "text"
-            ? ({ type: "text_delta", text: event.text } as const)
-            : ({
-                type: "tool_call",
-                toolCallId: event.toolCallId,
-                canonicalToolName: event.canonicalToolName,
-                arguments: event.arguments,
-              } as const),
-        );
-      }),
+      Stream.map(toAgentModelEvent),
+      Stream.filter((event): event is ByokAgentModelEvent => event !== undefined),
       Stream.mapError(
-        (error) =>
+        (error: ByokEngineError) =>
           new ByokAgentModelError({
             code: error.reason === "context_overflow" ? "context_overflow" : "byok_engine_error",
             detail: error.message,
@@ -94,7 +96,7 @@ export const makeByokModelDriver = (
       ),
     );
 
-    return Stream.concat(stream, Stream.succeed({ type: "model_completed" as const }));
+    return stream;
   },
 });
 

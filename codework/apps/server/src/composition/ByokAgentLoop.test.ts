@@ -619,6 +619,75 @@ describe("ByokAgentLoop", () => {
     }),
   );
 
+  for (const reason of ["output_truncated", "terminal_event_missing"] as const) {
+    it.effect(`${reason} 即使误标为可重试也不会重放请求`, () =>
+      Effect.gen(function* () {
+        let modelCalls = 0;
+        const broker = ToolBroker.ToolBroker.of({
+          invoke: (input) => Effect.succeed(makeResult(input)),
+          cancel: () => Effect.void,
+        });
+        const model: ByokAgentModelDriver = {
+          complete: () => {
+            modelCalls += 1;
+            return Stream.fail(
+              new ByokAgentModelError({
+                code: "byok_engine_error",
+                detail: reason,
+                reason,
+                retryable: true,
+              }),
+            );
+          },
+        };
+
+        const error = yield* Effect.flip(runByokAgentLoop(baseInput, model, broker));
+
+        expect(error).toMatchObject({ reason });
+        expect(modelCalls).toBe(1);
+      }),
+    );
+  }
+
+  it.effect("工具调用尚未收口即截断时不执行 ToolBroker", () =>
+    Effect.gen(function* () {
+      let brokerCalls = 0;
+      const broker = ToolBroker.ToolBroker.of({
+        invoke: (input) =>
+          Effect.sync(() => {
+            brokerCalls += 1;
+            return makeResult(input);
+          }),
+        cancel: () => Effect.void,
+      });
+      const model: ByokAgentModelDriver = {
+        complete: () =>
+          Stream.succeed({
+            type: "tool_call" as const,
+            toolCallId: "call-truncated",
+            canonicalToolName: "workspace.read_file",
+            arguments: { relativePath: "README.md" },
+          }).pipe(
+            Stream.concat(
+              Stream.fail(
+                new ByokAgentModelError({
+                  code: "byok_engine_error",
+                  detail: "output truncated",
+                  reason: "output_truncated",
+                  retryable: false,
+                }),
+              ),
+            ),
+          ),
+      };
+
+      const error = yield* Effect.flip(runByokAgentLoop(baseInput, model, broker));
+
+      expect(error).toMatchObject({ reason: "output_truncated" });
+      expect(brokerCalls).toBe(0);
+    }),
+  );
+
   it.effect("瞬时失败重试耗尽后原样失败且不会循环", () =>
     Effect.gen(function* () {
       let modelCalls = 0;

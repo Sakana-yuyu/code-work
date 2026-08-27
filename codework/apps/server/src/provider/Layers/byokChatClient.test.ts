@@ -115,6 +115,7 @@ describe("byokChatClient gemini protocol", () => {
       { type: "reasoning", text: "thinking hard" },
       { type: "text", text: "Hello" },
       { type: "text", text: " world" },
+      { type: "completed", finishReason: "STOP" },
     ]);
     expect(captured).toHaveLength(1);
     expect(captured[0]?.url).toBe(
@@ -428,7 +429,14 @@ describe("byokChatClient multimodal parts", () => {
 
   it("encodes openai image parts as image_url data URLs", async () => {
     const { client, captured } = makeClient(
-      ['data: {"choices":[{"delta":{"content":"cat"}}]}', "", "data: [DONE]", ""].join("\n"),
+      [
+        'data: {"choices":[{"delta":{"content":"cat"}}]}',
+        "",
+        'data: {"choices":[{"delta":{},"finish_reason":"stop"}]}',
+        "",
+        "data: [DONE]",
+        "",
+      ].join("\n"),
     );
     await runEvents(client, {
       protocol: "openai",
@@ -446,7 +454,14 @@ describe("byokChatClient multimodal parts", () => {
 
   it("encodes anthropic image parts as base64 source blocks", async () => {
     const { client, captured } = makeClient(
-      ['data: {"type":"content_block_delta","delta":{"text":"cat"}}', ""].join("\n"),
+      [
+        'data: {"type":"content_block_delta","delta":{"text":"cat"}}',
+        "",
+        'data: {"type":"message_delta","delta":{"stop_reason":"end_turn"}}',
+        "",
+        'data: {"type":"message_stop"}',
+        "",
+      ].join("\n"),
     );
     await runEvents(client, {
       protocol: "anthropic",
@@ -482,7 +497,14 @@ describe("byokChatClient multimodal parts", () => {
 describe("byokChatClient existing protocols", () => {
   it("still parses openai deltas", async () => {
     const { client } = makeClient(
-      ['data: {"choices":[{"delta":{"content":"hey"}}]}', "", "data: [DONE]", ""].join("\n"),
+      [
+        'data: {"choices":[{"delta":{"content":"hey"}}]}',
+        "",
+        'data: {"choices":[{"delta":{},"finish_reason":"stop"}]}',
+        "",
+        "data: [DONE]",
+        "",
+      ].join("\n"),
     );
     const events = await runEvents(client, {
       protocol: "openai",
@@ -491,13 +513,18 @@ describe("byokChatClient existing protocols", () => {
       modelId: "gpt",
       messages: [{ role: "user", content: "hi" }],
     });
-    expect(events).toEqual([{ type: "text", text: "hey" }]);
+    expect(events).toEqual([
+      { type: "text", text: "hey" },
+      { type: "completed", finishReason: "stop" },
+    ]);
   });
 
   it("still parses anthropic deltas", async () => {
     const { client } = makeClient(
       [
         'data: {"type":"content_block_delta","delta":{"text":"yo"}}',
+        "",
+        'data: {"type":"message_delta","delta":{"stop_reason":"end_turn"}}',
         "",
         'data: {"type":"message_stop"}',
         "",
@@ -510,7 +537,179 @@ describe("byokChatClient existing protocols", () => {
       modelId: "claude",
       messages: [{ role: "user", content: "hi" }],
     });
-    expect(events).toEqual([{ type: "text", text: "yo" }]);
+    expect(events).toEqual([
+      { type: "text", text: "yo" },
+      { type: "completed", finishReason: "end_turn" },
+    ]);
+  });
+});
+
+describe("byokChatClient provider terminal events", () => {
+  it("rejects malformed SSE JSON as an invalid response", async () => {
+    const { client } = makeClient("data: not-json\n\n");
+
+    await expect(Effect.runPromise(runError(client, baseErrorInput))).rejects.toMatchObject({
+      reason: "invalid_response",
+      retryable: false,
+    });
+  });
+
+  it("emits an explicit completion for OpenAI stop and tool_calls finish reasons", async () => {
+    const stopClient = makeClient(
+      [
+        'data: {"choices":[{"delta":{"content":"done"},"finish_reason":"stop"}]}',
+        "",
+        "data: [DONE]",
+        "",
+      ].join("\n"),
+    ).client;
+    const toolClient = makeClient(
+      [
+        'data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call-1","function":{"name":"workspace.read_file","arguments":"{}"}}]},"finish_reason":"tool_calls"}]}',
+        "",
+        "data: [DONE]",
+        "",
+      ].join("\n"),
+    ).client;
+
+    await expect(runEvents(stopClient, baseErrorInput)).resolves.toEqual([
+      { type: "text", text: "done" },
+      { type: "completed", finishReason: "stop" },
+    ]);
+    await expect(
+      runEvents(toolClient, {
+        ...baseErrorInput,
+        tools: [
+          {
+            canonicalToolName: "workspace.read_file",
+            description: "Read a text file",
+            parameters: { type: "object" },
+          },
+        ],
+        agentLoop: true,
+      }),
+    ).resolves.toEqual([
+      {
+        type: "tool_call",
+        toolCallId: "call-1",
+        canonicalToolName: "workspace.read_file",
+        arguments: {},
+      },
+      { type: "completed", finishReason: "tool_calls" },
+    ]);
+  });
+
+  it("fails OpenAI output truncation and EOF without a finish reason", async () => {
+    const truncated = makeClient(
+      [
+        'data: {"choices":[{"delta":{"content":"partial"},"finish_reason":"length"}]}',
+        "",
+        "data: [DONE]",
+        "",
+      ].join("\n"),
+    ).client;
+    const missing = makeClient(
+      ['data: {"choices":[{"delta":{"content":"partial"}}]}', ""].join("\n"),
+    ).client;
+    const doneWithoutFinishReason = makeClient(
+      ['data: {"choices":[{"delta":{"content":"partial"}}]}', "", "data: [DONE]", ""].join("\n"),
+    ).client;
+
+    await expect(Effect.runPromise(runError(truncated, baseErrorInput))).rejects.toMatchObject({
+      reason: "output_truncated",
+      retryable: false,
+    });
+    await expect(Effect.runPromise(runError(missing, baseErrorInput))).rejects.toMatchObject({
+      reason: "terminal_event_missing",
+      retryable: false,
+    });
+    await expect(
+      Effect.runPromise(runError(doneWithoutFinishReason, baseErrorInput)),
+    ).rejects.toMatchObject({
+      reason: "terminal_event_missing",
+      retryable: false,
+    });
+  });
+
+  it("requires Anthropic stop_reason followed by message_stop", async () => {
+    const completed = makeClient(
+      [
+        'data: {"type":"content_block_delta","delta":{"text":"done"}}',
+        "",
+        'data: {"type":"message_delta","delta":{"stop_reason":"end_turn"}}',
+        "",
+        'data: {"type":"message_stop"}',
+        "",
+      ].join("\n"),
+    ).client;
+    const truncated = makeClient(
+      [
+        'data: {"type":"content_block_delta","delta":{"text":"partial"}}',
+        "",
+        'data: {"type":"message_delta","delta":{"stop_reason":"max_tokens"}}',
+        "",
+        'data: {"type":"message_stop"}',
+        "",
+      ].join("\n"),
+    ).client;
+    const missingStop = makeClient(
+      ['data: {"type":"message_delta","delta":{"stop_reason":"end_turn"}}', ""].join("\n"),
+    ).client;
+    const missingStopReason = makeClient(['data: {"type":"message_stop"}', ""].join("\n")).client;
+    const input = {
+      ...baseErrorInput,
+      protocol: "anthropic" as const,
+      baseURL: "https://api.anthropic.com",
+      modelId: "claude",
+    };
+
+    await expect(runEvents(completed, input)).resolves.toEqual([
+      { type: "text", text: "done" },
+      { type: "completed", finishReason: "end_turn" },
+    ]);
+    await expect(Effect.runPromise(runError(truncated, input))).rejects.toMatchObject({
+      reason: "output_truncated",
+      retryable: false,
+    });
+    await expect(Effect.runPromise(runError(missingStop, input))).rejects.toMatchObject({
+      reason: "terminal_event_missing",
+      retryable: false,
+    });
+    await expect(Effect.runPromise(runError(missingStopReason, input))).rejects.toMatchObject({
+      reason: "terminal_event_missing",
+      retryable: false,
+    });
+  });
+
+  it("normalizes Gemini STOP, MAX_TOKENS, and missing finishReason", async () => {
+    const completed = makeClient(
+      'data: {"candidates":[{"content":{"parts":[{"text":"done"}]},"finishReason":"STOP"}]}\n\n',
+    ).client;
+    const truncated = makeClient(
+      'data: {"candidates":[{"content":{"parts":[{"text":"partial"}]},"finishReason":"MAX_TOKENS"}]}\n\n',
+    ).client;
+    const missing = makeClient(
+      'data: {"candidates":[{"content":{"parts":[{"text":"partial"}]}}]}\n\n',
+    ).client;
+    const input = {
+      ...baseErrorInput,
+      protocol: "gemini" as const,
+      baseURL: "https://generativelanguage.googleapis.com",
+      modelId: "gemini-2.5-pro",
+    };
+
+    await expect(runEvents(completed, input)).resolves.toEqual([
+      { type: "text", text: "done" },
+      { type: "completed", finishReason: "STOP" },
+    ]);
+    await expect(Effect.runPromise(runError(truncated, input))).rejects.toMatchObject({
+      reason: "output_truncated",
+      retryable: false,
+    });
+    await expect(Effect.runPromise(runError(missing, input))).rejects.toMatchObject({
+      reason: "terminal_event_missing",
+      retryable: false,
+    });
   });
 });
 
@@ -551,6 +750,7 @@ describe("byokChatClient OpenAI tool calls", () => {
         canonicalToolName: "workspace.read_file",
         arguments: { cwd: "C:/workspace", relativePath: "README.md" },
       },
+      { type: "completed", finishReason: "tool_calls" },
     ]);
     expect(captured[0]?.body).toMatchObject({
       tools: [
@@ -569,7 +769,14 @@ describe("byokChatClient OpenAI tool calls", () => {
 
   it("replays assistant tool calls and tool results using the OpenAI message shape", async () => {
     const { client, captured } = makeClient(
-      'data: {"choices":[{"delta":{"content":"done"}}]}\n\ndata: [DONE]\n',
+      [
+        'data: {"choices":[{"delta":{"content":"done"}}]}',
+        "",
+        'data: {"choices":[{"delta":{},"finish_reason":"stop"}]}',
+        "",
+        "data: [DONE]",
+        "",
+      ].join("\n"),
     );
 
     await runEvents(client, {
@@ -629,6 +836,7 @@ describe("byokChatClient OpenAI tool calls", () => {
               },
             ],
           },
+          finish_reason: "tool_calls",
         },
       ],
     });
@@ -672,6 +880,8 @@ describe("byokChatClient multi-protocol tool calls", () => {
         "",
         'data: {"type":"content_block_delta","index":0,"delta":{"type":"input_json_delta","partial_json":"}"}}',
         "",
+        'data: {"type":"message_delta","delta":{"stop_reason":"tool_use"}}',
+        "",
         'data: {"type":"message_stop"}',
         "",
       ].join("\n"),
@@ -694,6 +904,7 @@ describe("byokChatClient multi-protocol tool calls", () => {
         canonicalToolName: "workspace.read_file",
         arguments: { cwd: "C:/workspace" },
       },
+      { type: "completed", finishReason: "tool_use" },
     ]);
     expect(captured[0]?.body).toMatchObject({
       tools: [
@@ -709,7 +920,7 @@ describe("byokChatClient multi-protocol tool calls", () => {
   it("advertises and parses Gemini function calls", async () => {
     const { client, captured } = makeClient(
       [
-        'data: {"candidates":[{"content":{"parts":[{"functionCall":{"name":"workspace.read_file","args":{"cwd":"C:/workspace"}}}]}}]}',
+        'data: {"candidates":[{"content":{"parts":[{"functionCall":{"name":"workspace.read_file","args":{"cwd":"C:/workspace"}}}]},"finishReason":"STOP"}]}',
         "",
       ].join("\n"),
     );
@@ -731,6 +942,7 @@ describe("byokChatClient multi-protocol tool calls", () => {
         canonicalToolName: "workspace.read_file",
         arguments: { cwd: "C:/workspace" },
       },
+      { type: "completed", finishReason: "STOP" },
     ]);
     expect(captured[0]?.body).toMatchObject({
       tools: [

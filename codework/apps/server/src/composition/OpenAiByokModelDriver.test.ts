@@ -33,7 +33,7 @@ describe("OpenAiByokModelDriver", () => {
   it("maps BYOK events and replays agent messages and tools", async () => {
     const { client, captured } = makeClient(
       [
-        'data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call-1","function":{"name":"workspace.read_file","arguments":"{\\"cwd\\":\\"C:/workspace\\"}"}}]}}]}',
+        'data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call-1","function":{"name":"workspace.read_file","arguments":"{\\"cwd\\":\\"C:/workspace\\"}"}}]},"finish_reason":"tool_calls"}]}',
         "",
         "data: [DONE]",
         "",
@@ -204,6 +204,47 @@ describe("OpenAiByokModelDriver", () => {
       expect(calls).toBe(1);
     }),
   );
+
+  it("does not synthesize completion when the provider stream has no terminal event", async () => {
+    const { client } = makeClient('data: {"choices":[{"delta":{"content":"partial"}}]}\n\n');
+    const driver = makeOpenAiByokModelDriver(client, {
+      baseURL: "https://api.openai.com/v1",
+      apiKey: "k",
+      modelId: "gpt",
+    });
+
+    await expect(
+      Effect.runPromise(Stream.runCollect(driver.complete({ messages: [], tools: [], turn: 1 }))),
+    ).rejects.toMatchObject({
+      code: "byok_engine_error",
+      reason: "terminal_event_missing",
+      retryable: false,
+    });
+  });
+
+  it("preserves output truncation as a non-retryable model error", async () => {
+    const { client } = makeClient(
+      [
+        'data: {"choices":[{"delta":{"content":"partial"},"finish_reason":"length"}]}',
+        "",
+        "data: [DONE]",
+        "",
+      ].join("\n"),
+    );
+    const driver = makeOpenAiByokModelDriver(client, {
+      baseURL: "https://api.openai.com/v1",
+      apiKey: "k",
+      modelId: "gpt",
+    });
+
+    await expect(
+      Effect.runPromise(Stream.runCollect(driver.complete({ messages: [], tools: [], turn: 1 }))),
+    ).rejects.toMatchObject({
+      code: "byok_engine_error",
+      reason: "output_truncated",
+      retryable: false,
+    });
+  });
 });
 
 describe("ByokModelDriver", () => {
@@ -213,6 +254,8 @@ describe("ByokModelDriver", () => {
         'data: {"type":"content_block_start","index":0,"content_block":{"type":"tool_use","id":"call-anthropic","name":"workspace.read_file"}}',
         "",
         'data: {"type":"content_block_delta","index":0,"delta":{"type":"input_json_delta","partial_json":"{\\"cwd\\":\\"C:/workspace\\"}"}}',
+        "",
+        'data: {"type":"message_delta","delta":{"stop_reason":"tool_use"}}',
         "",
         'data: {"type":"message_stop"}',
         "",
@@ -294,7 +337,7 @@ describe("ByokModelDriver", () => {
   it("maps Gemini function calls and replays tool messages", async () => {
     const { client, captured } = makeClient(
       [
-        'data: {"candidates":[{"content":{"parts":[{"functionCall":{"name":"workspace.read_file","args":{"cwd":"C:/workspace"}}}]}}]}',
+        'data: {"candidates":[{"content":{"parts":[{"functionCall":{"name":"workspace.read_file","args":{"cwd":"C:/workspace"}}}]},"finishReason":"STOP"}]}',
         "",
       ].join("\n"),
     );

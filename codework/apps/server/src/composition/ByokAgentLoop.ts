@@ -277,11 +277,15 @@ export const runByokAgentLoop = (
         }
         const canceled =
           completion.error.reason === "canceled" || completion.error.code === "canceled";
+        const terminalFailure =
+          completion.error.reason === "output_truncated" ||
+          completion.error.reason === "terminal_event_missing";
         if (
           completion.error.retryable === true &&
           !completion.sawOutput &&
           !transientRetryUsed &&
-          !canceled
+          !canceled &&
+          !terminalFailure
         ) {
           transientRetryUsed = true;
           if ((completion.error.retryAfterMs ?? 0) > 0) {
