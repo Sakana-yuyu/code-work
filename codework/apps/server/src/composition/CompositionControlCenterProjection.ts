@@ -130,7 +130,7 @@ export const projectCompositionControlCenter = (deps: {
     for (const task of tasks) {
       projections.push(yield* projectTask(deps, task));
     }
-    const squads: CompositionControlCenterProjection["squads"] = [];
+    const squads: Array<CompositionControlCenterProjection["squads"][number]> = [];
     for (const squadId of deps.squadIds ?? []) {
       const squadOption = yield* deps.store.getSquad(squadId);
       if (Option.isSome(squadOption)) {
