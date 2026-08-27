@@ -1,9 +1,11 @@
-import type {
-  CompositionTask,
-  CompositionTaskEvent,
-  CompositionTaskRun,
-  CompositionTaskStatus,
-  ProviderRuntimeEvent,
+import {
+  ProviderDriverKind,
+  ProviderInstanceId,
+  type CompositionTask,
+  type CompositionTaskEvent,
+  type CompositionTaskRun,
+  type CompositionTaskStatus,
+  type ProviderRuntimeEvent,
 } from "@codework/contracts";
 import * as Clock from "effect/Clock";
 import * as Effect from "effect/Effect";
@@ -12,7 +14,10 @@ import * as Option from "effect/Option";
 import type { PersistenceSqlError } from "../persistence/Errors.ts";
 import type { CompositionTaskStoreShape } from "../persistence/Services/CompositionTaskStore.ts";
 import type { CompositionAgentDriverRegistry } from "./CompositionAgentDriverRegistry.ts";
-import type { CompositionAgentDriverFailure } from "./CompositionOrchestrator.ts";
+import type {
+  CompositionAgentDriver,
+  CompositionAgentDriverFailure,
+} from "./CompositionOrchestrator.ts";
 import type * as CapabilityGrantRegistry from "./CapabilityGrantRegistry.ts";
 
 type ResumeReadyTasks = () => Effect.Effect<void>;
@@ -66,7 +71,36 @@ type CompositionRuntimeEventBinding = {
   readonly taskId: string;
   readonly runId: string;
   readonly runtimeTaskId?: string;
-  readonly source: "driver" | "persistence";
+  readonly source: "driver" | "persistence" | "watchdog";
+};
+
+type WatchdogRuntimeEventCorrelation = {
+  readonly taskId: string;
+  readonly runId: string;
+  readonly runtimeId: string;
+  readonly runtimeTaskId?: string;
+};
+
+const watchdogRuntimeEventCorrelation = (
+  event: ProviderRuntimeEvent,
+): WatchdogRuntimeEventCorrelation | undefined => {
+  if (event.raw?.source !== "composition.watchdog") return undefined;
+  if (
+    event.provider !== ProviderDriverKind.make("composition") ||
+    event.providerInstanceId !== ProviderInstanceId.make("composition")
+  ) {
+    return undefined;
+  }
+  const taskId = event.raw.taskId;
+  const runId = event.raw.runId;
+  const runtimeId = event.raw.runtimeId;
+  if (taskId === undefined || runId === undefined || runtimeId === undefined) return undefined;
+  return {
+    taskId,
+    runId,
+    runtimeId,
+    ...(event.raw.runtimeTaskId === undefined ? {} : { runtimeTaskId: event.raw.runtimeTaskId }),
+  };
 };
 
 const multicaRuntimeEventCorrelation = (
@@ -92,6 +126,33 @@ export const resolveCompositionRuntimeEventBinding = (
     const liveBinding = yield* driverRegistry.resolveRuntimeEvent(event);
     if (liveBinding !== undefined) {
       return { ...liveBinding, source: "driver" as const };
+    }
+
+    const watchdog = watchdogRuntimeEventCorrelation(event);
+    if (watchdog !== undefined) {
+      const run = yield* store.getRun(watchdog.runId);
+      if (
+        Option.isNone(run) ||
+        run.value.taskId !== watchdog.taskId ||
+        run.value.runtimeId !== watchdog.runtimeId ||
+        (watchdog.runtimeTaskId !== undefined && run.value.runtimeTaskId !== watchdog.runtimeTaskId)
+      ) {
+        yield* Effect.logWarning("Composition Watchdog 事件绑定失败", {
+          reasonCode: "watchdog_binding_invalid",
+          taskId: watchdog.taskId,
+          runId: watchdog.runId,
+          runtimeId: watchdog.runtimeId,
+        });
+        return undefined;
+      }
+      const driver = yield* driverRegistry.get(run.value.agentId);
+      return {
+        taskId: watchdog.taskId,
+        runId: watchdog.runId,
+        ...(watchdog.runtimeTaskId === undefined ? {} : { runtimeTaskId: watchdog.runtimeTaskId }),
+        ...(driver === undefined ? {} : { driver }),
+        source: "watchdog" as const,
+      };
     }
 
     const correlation = multicaRuntimeEventCorrelation(event);
@@ -205,7 +266,9 @@ const projectEvent = (
           ? "completed"
           : event.payload.status === "stopped"
             ? "cancelled"
-            : "failed";
+            : event.payload.status === "timed_out"
+              ? "timed_out"
+              : "failed";
       const status = requiresReview && runtimeStatus === "completed" ? "in_review" : runtimeStatus;
       return {
         status,
@@ -218,7 +281,17 @@ const projectEvent = (
               ? "子任务已完成"
               : "子任务已结束",
         ),
-        ...(status === "failed" ? { failureCode: "provider_task_failed" } : {}),
+        ...(status === "failed"
+          ? { failureCode: "provider_task_failed" }
+          : status === "timed_out"
+            ? {
+                failureCode:
+                  event.raw?.source === "composition.watchdog" &&
+                  event.raw.method === "cancel_confirmation_timeout"
+                    ? "runtime_cancel_confirmation_timeout"
+                    : "runtime_liveness_timeout",
+              }
+            : {}),
         runtimeTerminal: true,
       };
     }
@@ -392,7 +465,7 @@ export const projectCompositionRuntimeEvent = (
     if (!accepted) return;
     // 持久化 fallback 只恢复归属和审计；已注销或新注册的 Driver 都不能借此触发
     // handshake revoke 等一次性副作用。
-    const bindingDriver = binding.source === "driver" ? binding.driver : undefined;
+    const bindingDriver = binding.source === "persistence" ? undefined : binding.driver;
     if (
       becameRuntimeTerminal &&
       run.capabilityHandshakeId !== undefined &&

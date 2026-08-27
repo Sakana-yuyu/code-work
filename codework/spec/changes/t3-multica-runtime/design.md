@@ -172,7 +172,7 @@ Multica runtime 映射为：
 
 Task 事件映射：
 
-| Multica 事件            | Code Work ProviderRuntimeEvent                     | Composition 状态                         |
+| Multica 事件            | Code Work ProviderRuntimeEvent              | Composition 状态                         |
 | ----------------------- | ------------------------------------------- | ---------------------------------------- |
 | `daemon:task_available` | `task.updated`                              | 不直接改变终态，只触发重新探测/拉取      |
 | `task:dispatch`         | `task.started`                              | `running`                                |
@@ -251,25 +251,25 @@ Transport 错误不得直接把运行标成成功；心跳超时只允许标记 
 的源码、测试和设计文档为依据。这里的“已具备”只表示 Code Work 有可调用的实现和定向测试，
 不表示已经完成 Web/Desktop/Mobile 和真实外部 Runtime 的端到端验收。
 
-| 能力域                     | cursor-byok 现状证据                                                                                           | Code Work 当前状态                                                                                                                                                                                                     | 结论                                  |
-| -------------------------- | -------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------- |
-| 多协议 BYOK 请求           | `internal/backend/agent/model/openai_*.go`、`anthropic.go`、`gemini.go`，包含工具参数校验和流式适配            | `byokChatClient.ts` 已支持 OpenAI/Anthropic/Gemini；`99dcc534` 已让 Agent Loop 和 Driver 协议无关                                                                                                               | 已迁移第一阶段                        |
-| 统一 Agent Loop            | cursor-byok 的 provider/worker 以协议适配器承接工具调用                                                        | `ByokAgentLoop` + `ToolBroker` 已实现工具调用、幂等、结果回放、临时 grant 撤销                                                                                                                                  | 已具备，仍需真实模型 E2E              |
-| Composition canonical 工具 | `internal/backend/agent/bridge/exec/exec_open_fs.go`、`exec_open_shell.go`、`exec_open_git.go`                 | `CompositionToolRegistry` + `ToolBroker` 已注册 11 个 canonical 工具，并经 Policy/Grant/Approval/Audit                                                                                                          | 已迁移第一批                          |
-| MCP                        | cursor-byok 有 `mcp_registry.go`、`mcp_runtime.go`、MCP trust、动态工具目录和连接控制 UI                       | Code Work 已完成 stdio/Streamable HTTP/SSE 的 Runtime reconcile、catalog 注册、JSON Schema 校验、结果去敏、取消、ToolBroker 动态 capability、Settings/WS/client-runtime 控制；跨 Driver 真实 E2E 仍缺                  | 服务端闭环已具备，产品级 E2E 未完成   |
-| Browser/Computer Use       | `internal/computeruse`、`computeruse_bridge.go`、IDE browser MCP                                               | Code Work 已有 Preview canonical tools（status/open/navigate/snapshot）和受限 Browser Context；完整 click/type/press/evaluate、Computer Use 会话、审批和取消闭环仍未接入                                               | Preview 已迁移，完整能力未迁移        |
-| Cursor/VSCode IDE API      | cursor-byok 通过 Cursor 本地协议、MCP 和 Windows computer-use 访问 IDE/浏览器边界                              | Code Work 已有 `CompositionIdeSessionRegistry`、profile probe、task/run/agent 绑定的 handshake lease、probe allowlist 和 `ide.invoke` ToolBroker 入口；真实 Cursor/VSCode Adapter、transport 和 IDE operation 仍未接入 | 可信执行门已迁移，真实 Adapter 未迁移 |
-| Cursor 原生协议代理        | `internal/mitm`、`internal/backend/agent/protocol`、`RunSSE`/`BidiAppend` 相关 forwarder 和 protobuf           | Code Work 没有 Cursor MITM、原生 Bidi/RunSSE 转发器，也不修改已安装 Cursor bundle                                                                                                                                      | 未迁移；属于独立 Runtime Driver       |
-| 官方请求镜像与对比         | `internal/mitm/mirror.go`、`official.raw.jsonl`、`requestlab` 及 `request-comparison-lab` 设计                 | Code Work 有 Provider/Runtime 事件和 Trace，但没有官方请求镜像记录、exchangeId 对比实验台                                                                                                                              | 未迁移                                |
-| 监督式委派                 | `internal/backend/forwarder/supervisor_coordinator.go`、`supervisor_provider.go`、`delegation_multitask.go`    | Code Work 已有 review 模式 checkpoint、`in_review` 投影、approve/reject RPC，以及失败/超时 Run 的显式重试；reassign/escalate/circuit breaker、兄弟任务隔离仍未接入                                                     | 部分迁移                              |
-| Worker Context Compaction  | `delegation_compaction.go`、`context_overflow.go`、tool result snip 和保留最近轮次规则                         | Code Work BYOK Loop 目前只累积消息，没有 worker 预算、工具结果裁剪和 context overflow 自救                                                                                                                             | 未迁移                                |
-| Delegate 运行时            | cursor-byok 有 Claude/Codex/Cursor/Gemini/Kiro/custom executor registry、failover、slot/loop limiter           | Code Work Provider Driver、ACP/CLI/Multica Runtime Adapter 已有；统一 driver SPI 已具备，但 cursor-byok executor 具体语义尚未逐项迁移                                                                                  | 部分迁移                              |
-| 供应商目录/模型发现        | cursor-byok 有 supplier catalog、候选 URL、custom headers、模型目录缓存、协议过滤和 pricing                    | Code Work 有 BYOK adapter/import/balance/discovery 服务，但尚未达到 cursor-byok 的供应商目录管理和多端页面等价                                                                                                         | 部分迁移                              |
-| 余额/用量/成本             | cursor-byok 有 provider balance、usage、pricing、metrics、local cache 与 force refresh                         | Code Work 已有部分 BYOK balance/usage 代码；Composition 事件仍未统一产出跨 Driver 的成本/用量账本                                                                                                                      | 部分迁移                              |
-| Cursor 多账户              | `internal/cursoraccount`、OAuth PKCE、Token/JSON/本机导入、切换事务、state.vscdb 回写                          | Code Work 没有 Cursor 官方账户 OAuth/导入/切换和客户端状态回滚能力                                                                                                                                                     | 未迁移；不应放入 Provider ToolBroker  |
-| Skills/原生提示词          | cursor-byok 有 bundled skills、native prompt、custom_subagents、non_file_rules、sparse activation、AGENTS 扫描 | Code Work 有 Provider Skills 相关能力，但没有 cursor-byok 的原生提示词资产、custom_subagents 与统一 skill activation contract                                                                                          | 部分迁移                              |
-| 运营与诊断 UI              | cursor-byok 有 ControlCenter、Diagnostics、StatsOverlay、MetricsDetail、RequestLab、SupplierDetail             | Code Work 有 Provider/Composition 设置和任务事件基础，但没有逐项等价的 Cursor 运营面板                                                                                                                                 | 未迁移/需重做为 Code Work 面板               |
-| 发布与隔离 E2E             | cursor-byok 有 isolated-cursor-e2e、MITM 证书、Windows Wails 打包和 release 检查                               | Code Work 有 Web/Desktop/Mobile 架构与自身 dev/build 流程，但没有 Cursor 专属隔离启动器与协议证据链                                                                                                                    | 不直接迁移，改为 Code Work Runtime/CI 验收   |
+| 能力域                     | cursor-byok 现状证据                                                                                           | Code Work 当前状态                                                                                                                                                                                                     | 结论                                       |
+| -------------------------- | -------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------ |
+| 多协议 BYOK 请求           | `internal/backend/agent/model/openai_*.go`、`anthropic.go`、`gemini.go`，包含工具参数校验和流式适配            | `byokChatClient.ts` 已支持 OpenAI/Anthropic/Gemini；`99dcc534` 已让 Agent Loop 和 Driver 协议无关                                                                                                                      | 已迁移第一阶段                             |
+| 统一 Agent Loop            | cursor-byok 的 provider/worker 以协议适配器承接工具调用                                                        | `ByokAgentLoop` + `ToolBroker` 已实现工具调用、幂等、结果回放、临时 grant 撤销                                                                                                                                         | 已具备，仍需真实模型 E2E                   |
+| Composition canonical 工具 | `internal/backend/agent/bridge/exec/exec_open_fs.go`、`exec_open_shell.go`、`exec_open_git.go`                 | `CompositionToolRegistry` + `ToolBroker` 已注册 11 个 canonical 工具，并经 Policy/Grant/Approval/Audit                                                                                                                 | 已迁移第一批                               |
+| MCP                        | cursor-byok 有 `mcp_registry.go`、`mcp_runtime.go`、MCP trust、动态工具目录和连接控制 UI                       | Code Work 已完成 stdio/Streamable HTTP/SSE 的 Runtime reconcile、catalog 注册、JSON Schema 校验、结果去敏、取消、ToolBroker 动态 capability、Settings/WS/client-runtime 控制；跨 Driver 真实 E2E 仍缺                  | 服务端闭环已具备，产品级 E2E 未完成        |
+| Browser/Computer Use       | `internal/computeruse`、`computeruse_bridge.go`、IDE browser MCP                                               | Code Work 已有 Preview canonical tools（status/open/navigate/snapshot）和受限 Browser Context；完整 click/type/press/evaluate、Computer Use 会话、审批和取消闭环仍未接入                                               | Preview 已迁移，完整能力未迁移             |
+| Cursor/VSCode IDE API      | cursor-byok 通过 Cursor 本地协议、MCP 和 Windows computer-use 访问 IDE/浏览器边界                              | Code Work 已有 `CompositionIdeSessionRegistry`、profile probe、task/run/agent 绑定的 handshake lease、probe allowlist 和 `ide.invoke` ToolBroker 入口；真实 Cursor/VSCode Adapter、transport 和 IDE operation 仍未接入 | 可信执行门已迁移，真实 Adapter 未迁移      |
+| Cursor 原生协议代理        | `internal/mitm`、`internal/backend/agent/protocol`、`RunSSE`/`BidiAppend` 相关 forwarder 和 protobuf           | Code Work 没有 Cursor MITM、原生 Bidi/RunSSE 转发器，也不修改已安装 Cursor bundle                                                                                                                                      | 未迁移；属于独立 Runtime Driver            |
+| 官方请求镜像与对比         | `internal/mitm/mirror.go`、`official.raw.jsonl`、`requestlab` 及 `request-comparison-lab` 设计                 | Code Work 有 Provider/Runtime 事件和 Trace，但没有官方请求镜像记录、exchangeId 对比实验台                                                                                                                              | 未迁移                                     |
+| 监督式委派                 | `internal/backend/forwarder/supervisor_coordinator.go`、`supervisor_provider.go`、`delegation_multitask.go`    | Code Work 已有 review 模式 checkpoint、`in_review` 投影、approve/reject RPC，以及失败/超时 Run 的显式重试；reassign/escalate/circuit breaker、兄弟任务隔离仍未接入                                                     | 部分迁移                                   |
+| Worker Context Compaction  | `delegation_compaction.go`、`context_overflow.go`、tool result snip 和保留最近轮次规则                         | Code Work BYOK Loop 目前只累积消息，没有 worker 预算、工具结果裁剪和 context overflow 自救                                                                                                                             | 未迁移                                     |
+| Delegate 运行时            | cursor-byok 有 Claude/Codex/Cursor/Gemini/Kiro/custom executor registry、failover、slot/loop limiter           | Code Work Provider Driver、ACP/CLI/Multica Runtime Adapter 已有；统一 driver SPI 已具备，但 cursor-byok executor 具体语义尚未逐项迁移                                                                                  | 部分迁移                                   |
+| 供应商目录/模型发现        | cursor-byok 有 supplier catalog、候选 URL、custom headers、模型目录缓存、协议过滤和 pricing                    | Code Work 有 BYOK adapter/import/balance/discovery 服务，但尚未达到 cursor-byok 的供应商目录管理和多端页面等价                                                                                                         | 部分迁移                                   |
+| 余额/用量/成本             | cursor-byok 有 provider balance、usage、pricing、metrics、local cache 与 force refresh                         | Code Work 已有部分 BYOK balance/usage 代码；Composition 事件仍未统一产出跨 Driver 的成本/用量账本                                                                                                                      | 部分迁移                                   |
+| Cursor 多账户              | `internal/cursoraccount`、OAuth PKCE、Token/JSON/本机导入、切换事务、state.vscdb 回写                          | Code Work 没有 Cursor 官方账户 OAuth/导入/切换和客户端状态回滚能力                                                                                                                                                     | 未迁移；不应放入 Provider ToolBroker       |
+| Skills/原生提示词          | cursor-byok 有 bundled skills、native prompt、custom_subagents、non_file_rules、sparse activation、AGENTS 扫描 | Code Work 有 Provider Skills 相关能力，但没有 cursor-byok 的原生提示词资产、custom_subagents 与统一 skill activation contract                                                                                          | 部分迁移                                   |
+| 运营与诊断 UI              | cursor-byok 有 ControlCenter、Diagnostics、StatsOverlay、MetricsDetail、RequestLab、SupplierDetail             | Code Work 有 Provider/Composition 设置和任务事件基础，但没有逐项等价的 Cursor 运营面板                                                                                                                                 | 未迁移/需重做为 Code Work 面板             |
+| 发布与隔离 E2E             | cursor-byok 有 isolated-cursor-e2e、MITM 证书、Windows Wails 打包和 release 检查                               | Code Work 有 Web/Desktop/Mobile 架构与自身 dev/build 流程，但没有 Cursor 专属隔离启动器与协议证据链                                                                                                                    | 不直接迁移，改为 Code Work Runtime/CI 验收 |
 
 ## 迁移边界与可达性判断
 
@@ -578,5 +578,68 @@ F1 审查修复补充：
 - 凭据类 Header（Authorization、Proxy-Authorization、API-Key、Token 等）必须绑定到 `sensitive` 环境变量；缺失值、非敏感绑定、非 `ws://`/`wss://` URL 或无效配置都会 fail closed 并只记录脱敏警告。
 
 本节点通过 contracts、Composition Runtime Settings、IDE session registry、IDE JSON-RPC transport 和 IDE ToolBroker 的 focused tests，共 39 个测试；格式检查和 `git diff --check` 通过。局部 server typecheck 没有发现本节点新增的 TypeScript error，但仍输出仓库已有 Effect 风格 suggestions；contracts typecheck 仍被既有 MCP server ID 测试错误阻断。
+
+## Batch H：Composition Run 活性与孤儿终态恢复（设计，2026-08-27）
+
+### Architecture
+
+```text
+[Composition Task/Run 持久化]
+  └─提供最新 Run 与最后投影时间
+             │ 扫描非终态最新 Run
+             ▼
+[Run Liveness Supervisor]
+  ├─失活时请求真实 Driver cancel
+  └─取消确认宽限到期时生成本地受信任事件
+             │
+             ▼
+[Runtime Projector]
+  ├─原子去重 / 旧 Run 隔离 / 终态锁定
+  ├─写 Task、Run 和审计
+  └─撤销 handshake 与 grant
+             │
+             ▼
+[Task Graph / Web / Desktop / Mobile]
+  └─消费同一份持久化投影
+```
+
+### Interfaces
+
+- Run liveness scan
+  - Input: 当前时间、无活动阈值、取消确认宽限、Task Store、Orchestrator、运行时事件投影函数。
+  - Output: 每个候选 Run 的 `skipped`、`cancel_requested`、`cancelled` 或 `timed_out` 受控动作。
+  - Invariants: 只处理当前 Task 的最新 Run；只处理 Task/Run 都为 `running` 的记录；不直接写 Task/Run。
+- Local watchdog runtime event
+  - Input: 受信任的本地 `taskId`、`runId`、`runtimeId`、可选 `runtimeTaskId`、稳定 `eventId`、`timed_out` 状态。
+  - Output: 与普通 Runtime Event 相同的投影结果。
+  - Error codes: `runtime_liveness_timeout`、`runtime_cancel_confirmation_timeout`。
+  - Invariants: 仅 `composition.watchdog` 本地产生，且 `provider` 与 `providerInstanceId` 都必须是本地 `composition`；关联 Task/Run 必须与持久化的 runtime 身份一致；重复 eventId 无害。
+
+### Data Model
+
+- `CompositionTaskRun.cancelRequestedAtUnixMs?: number`
+  - 首次收到 Driver 的 `cancel_requested` 时写入。
+  - 不等于终态；只用于服务重启后的取消确认宽限判断。
+- `ProviderRuntimeEvent.task.completed.payload.status`
+  - 新增 `timed_out`，映射为 Composition `timed_out` 终态。
+- `RuntimeEventRaw`
+  - `composition.watchdog` 事件携带受信任的 `taskId` 和 `runId`，Projector 验证后才允许恢复归属。
+
+### Key Decisions
+
+- Problem: Driver 流中断或进程重启后，内存 active run 消失，但持久化 Task 仍显示 running；直接改表会绕过事件去重、终态锁定和 capability 回收。\
+  Solution: 看门狗仅产生本地可信运行时事件，继续通过 Projector 投影。\
+  Cost: Projector 需要支持一个严格受限的本地事件来源。\
+  Why not the alternatives: 仅靠 Driver 内存无法跨重启；直接更新表会形成第二条状态机。
+
+- Problem: `cancel_requested` 不是 Runtime 的最终确认，若立即标记成功或取消，会丢失晚到终态并掩盖远端不响应。\
+  Solution: 将取消请求时间持久化；超过确认宽限时只写入 `timed_out`，不写入成功。\
+  Cost: 取消后的 UI 会在宽限期内保持 running。\
+  Why not the alternatives: 立即终态会伪造远端事实；无限等待会留下永久运行状态。
+
+### Migration / Compatibility
+
+- 通过新增可空的 `cancel_requested_at_unix_ms` 列保持现有 Run 记录兼容；旧记录没有该字段时按“未请求取消”处理。
+- 现有 `task.completed` 的 completed、failed、stopped 语义不变；新增 timed_out 仅供 Runtime 明确超时或本地 watchdog 收口使用。
 
 本节点仍未完成：IDE session 的 Web Settings 可编辑界面、Desktop/Mobile 独立导航、Cursor/VSCode 官方扩展 transport 和 operation、真实安装 IDE E2E、真实 Multica 官方 Server/Agent E2E，以及所有 Driver 对全部 Code Work API 的产品级可达性。上述缺口不能由本地 fixture、配置合同或 session registry 测试替代。

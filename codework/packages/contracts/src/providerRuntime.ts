@@ -31,6 +31,8 @@ const RuntimeEventRawSource = Schema.Union([
   Schema.TemplateLiteral(["acp.", Schema.String, ".extension"]),
   Schema.Literal("ide.jsonrpc"),
   Schema.Literal("multica.task-event"),
+  /** 仅由 Code Work 本地 Run 活性看门狗生成，不能由外部 Runtime 伪造。 */
+  Schema.Literal("composition.watchdog"),
 ]);
 export type RuntimeEventRawSource = typeof RuntimeEventRawSource.Type;
 
@@ -41,6 +43,9 @@ export const RuntimeEventRaw = Schema.Struct({
   /** Code Work 适配器提供的归属元数据，不是外部 Runtime 的原始字段。 */
   runtimeId: Schema.optional(TrimmedNonEmptyStringSchema),
   runtimeTaskId: Schema.optional(RuntimeTaskId),
+  /** 仅 composition.watchdog 使用的受信任本地 Task/Run 关联。 */
+  taskId: Schema.optional(TrimmedNonEmptyStringSchema),
+  runId: Schema.optional(TrimmedNonEmptyStringSchema),
   payload: Schema.Unknown,
 });
 export type RuntimeEventRaw = typeof RuntimeEventRaw.Type;
@@ -654,7 +659,7 @@ export type TaskUpdatedPayload = typeof TaskUpdatedPayload.Type;
 
 const TaskCompletedPayload = Schema.Struct({
   taskId: RuntimeTaskId,
-  status: Schema.Literals(["completed", "failed", "stopped"]),
+  status: Schema.Literals(["completed", "failed", "stopped", "timed_out"]),
   summary: Schema.optional(TrimmedNonEmptyStringSchema),
   output: Schema.optional(Schema.String),
   prUrl: Schema.optional(TrimmedNonEmptyStringSchema),

@@ -294,6 +294,8 @@ export const CompositionTaskRun = Schema.Struct({
   capabilityGrantIds: Schema.Array(TrimmedNonEmptyString),
   leaseId: Schema.optional(TrimmedNonEmptyString),
   startedAtUnixMs: Schema.optional(NonNegativeInt),
+  /** Driver 接受取消请求的时间；不是最终取消确认。 */
+  cancelRequestedAtUnixMs: Schema.optional(NonNegativeInt),
   finishedAtUnixMs: Schema.optional(NonNegativeInt),
   failureCode: Schema.optional(TrimmedNonEmptyString),
   resultSummary: Schema.optional(TrimmedNonEmptyString),

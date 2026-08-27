@@ -777,6 +777,12 @@ layer("CompositionOrchestrator", (it) => {
       assert.equal(result.status, "cancel_requested");
       assert.equal(result.task.status, "running");
       assert.equal(result.run.status, "running");
+      assert.equal(result.run.cancelRequestedAtUnixMs !== undefined, true);
+      assert.equal(
+        Option.getOrThrow(yield* store.getRun("run-cancel-requested")).cancelRequestedAtUnixMs !==
+          undefined,
+        true,
+      );
       assert.deepEqual(revoked, []);
       assert.equal(
         (yield* store.listEvents("task-cancel-requested", "run-cancel-requested")).at(-1)

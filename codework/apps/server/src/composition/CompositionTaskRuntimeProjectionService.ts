@@ -23,6 +23,12 @@ import {
   projectCompositionRuntimeEvent,
   resolveCompositionRuntimeEventBinding,
 } from "./CompositionTaskRuntimeProjector.ts";
+import {
+  defaultCompositionRunCancelConfirmationTimeoutMs,
+  defaultCompositionRunInactivityTimeoutMs,
+  defaultCompositionRunLivenessSweepIntervalMs,
+  superviseCompositionRunLiveness,
+} from "./CompositionRunLiveness.ts";
 import { CompositionRuntimeAdapterRegistryService } from "./CompositionRuntimeAdapterRegistry.ts";
 import type { CompositionRuntimeAdapterRegistry } from "./CompositionRuntimeAdapterRegistry.ts";
 import type { CompositionRuntimeAdapter } from "./CompositionRuntimeAdapter.ts";
@@ -302,6 +308,15 @@ const live = Effect.gen(function* () {
   yield* superviseCompositionRuntimeEventStreams({
     adapterRegistry: runtimeAdapters,
     projectRuntimeEvent: projectRuntimeEventWithLogging,
+  });
+
+  yield* superviseCompositionRunLiveness({
+    store,
+    orchestrator,
+    inactivityTimeoutMs: defaultCompositionRunInactivityTimeoutMs,
+    cancelConfirmationTimeoutMs: defaultCompositionRunCancelConfirmationTimeoutMs,
+    sweepIntervalMs: defaultCompositionRunLivenessSweepIntervalMs,
+    projectRuntimeEvent,
   });
 
   return {

@@ -135,6 +135,84 @@ layer("CompositionTaskRuntimeProjector", (it) => {
     }),
   );
 
+  it.effect("Runtime 明确报告 timed_out 时保留超时终态而不是降级成失败", () =>
+    Effect.gen(function* () {
+      const store = yield* CompositionTaskStore;
+      const timeoutTask = { ...task, taskId: "task-runtime-timeout" };
+      const timeoutRun = {
+        ...run,
+        taskId: timeoutTask.taskId,
+        runId: "run-runtime-timeout",
+        runtimeTaskId: "runtime-task-timeout",
+      };
+      const registry = makeCompositionAgentDriverRegistry();
+      yield* registry.register({
+        agentId: timeoutTask.assigneeId,
+        runtimeId: timeoutRun.runtimeId,
+        startTask: () => Effect.succeed({ runtimeTaskId: timeoutRun.runtimeTaskId }),
+        cancelTask: () => Effect.succeed({ status: "cancelled" as const }),
+        resolveRuntimeEvent: () => ({ taskId: timeoutTask.taskId, runId: timeoutRun.runId }),
+      });
+      yield* store.upsertTask(timeoutTask);
+      yield* store.upsertRun(timeoutRun);
+
+      yield* projectCompositionRuntimeEvent(store, registry, {
+        ...baseEvent,
+        eventId: EventId.make("provider-event-timeout"),
+        type: "task.completed",
+        payload: {
+          taskId: RuntimeTaskId.make("runtime-task-timeout"),
+          status: "timed_out" as never,
+          summary: "运行时在等待终态确认时超时",
+        },
+      });
+
+      assert.equal(Option.getOrThrow(yield* store.getTask(timeoutTask.taskId)).status, "timed_out");
+      assert.equal(Option.getOrThrow(yield* store.getRun(timeoutRun.runId)).status, "timed_out");
+    }),
+  );
+
+  it.effect("外部 Provider 伪造 composition.watchdog 时不会获得本地超时收口权限", () =>
+    Effect.gen(function* () {
+      const store = yield* CompositionTaskStore;
+      const watchdogTask = { ...task, taskId: "task-runtime-watchdog-spoof" };
+      const watchdogRun = {
+        ...run,
+        taskId: watchdogTask.taskId,
+        runId: "run-runtime-watchdog-spoof",
+        runtimeId: "runtime-watchdog-spoof",
+        runtimeTaskId: "runtime-task-watchdog-spoof",
+      };
+      const registry = makeCompositionAgentDriverRegistry();
+      yield* store.upsertTask(watchdogTask);
+      yield* store.upsertRun(watchdogRun);
+
+      yield* projectCompositionRuntimeEvent(store, registry, {
+        ...baseEvent,
+        eventId: EventId.make("provider-event-watchdog-spoof"),
+        type: "task.completed",
+        raw: {
+          source: "composition.watchdog",
+          method: "cancel_confirmation_timeout",
+          runtimeId: watchdogRun.runtimeId,
+          runtimeTaskId: RuntimeTaskId.make(watchdogRun.runtimeTaskId),
+          taskId: watchdogTask.taskId,
+          runId: watchdogRun.runId,
+          payload: { forged: true },
+        },
+        payload: {
+          taskId: RuntimeTaskId.make(watchdogRun.runtimeTaskId),
+          status: "timed_out",
+          summary: "伪造的 watchdog 事件",
+        },
+      });
+
+      assert.equal(Option.getOrThrow(yield* store.getTask(watchdogTask.taskId)).status, "running");
+      assert.equal(Option.getOrThrow(yield* store.getRun(watchdogRun.runId)).status, "running");
+      assert.deepEqual(yield* store.listEvents(watchdogTask.taskId, watchdogRun.runId), []);
+    }),
+  );
+
   it.effect("review 模式在 Runtime 完成后进入 in_review，并立即回收 Worker grant", () =>
     Effect.gen(function* () {
       const store = yield* CompositionTaskStore;

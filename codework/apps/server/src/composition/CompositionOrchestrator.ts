@@ -614,6 +614,17 @@ const makeOrchestrator = (
           return { task, run, status: "already_terminal" as const };
         }
         if (driverResult.status === "cancel_requested") {
+          const now = yield* Clock.currentTimeMillis;
+          const requestedTask: CompositionTask = {
+            ...task,
+            updatedAtUnixMs: now,
+          };
+          const requestedRun: CompositionTaskRun = {
+            ...run,
+            cancelRequestedAtUnixMs: run.cancelRequestedAtUnixMs ?? now,
+          };
+          yield* store.upsertTask(requestedTask);
+          yield* store.upsertRun(requestedRun);
           const priorEvents = yield* store.listEvents(input.taskId, input.runId);
           yield* store.appendEvent({
             taskId: task.taskId,
@@ -621,12 +632,12 @@ const makeOrchestrator = (
             ...(task.parentTaskId === undefined ? {} : { parentTaskId: task.parentTaskId }),
             agentId: run.agentId,
             runtimeId: run.runtimeId,
-            status: task.status,
+            status: requestedTask.status,
             sequence: priorEvents.length,
             eventType: "message",
             summary: "取消请求已提交，等待 Runtime 确认",
           });
-          return { task, run, status: "cancel_requested" as const };
+          return { task: requestedTask, run: requestedRun, status: "cancel_requested" as const };
         }
       }
       const now = yield* Clock.currentTimeMillis;

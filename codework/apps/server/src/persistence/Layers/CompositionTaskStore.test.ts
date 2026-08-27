@@ -50,6 +50,7 @@ layer("CompositionTaskStore", (it) => {
         attempt: 1,
         capabilityGrantIds: [],
         startedAtUnixMs: 2,
+        cancelRequestedAtUnixMs: 3,
       };
       const dependency = {
         taskId: "task-1",
@@ -114,6 +115,7 @@ layer("CompositionTaskStore", (it) => {
       assert.ok(Option.isSome(loadedRun));
       assert.equal(Option.getOrThrow(loadedRun).attempt, 1);
       assert.equal(Option.getOrThrow(loadedRun).capabilityHandshakeId, "handshake-1");
+      assert.equal(Option.getOrThrow(loadedRun).cancelRequestedAtUnixMs, 3);
       assert.deepEqual(
         events.map((event) => event.sequence),
         [0, 1],

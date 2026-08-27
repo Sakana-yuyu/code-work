@@ -61,6 +61,7 @@ import Migration0045 from "./Migrations/045_CompositionCapabilityGrants.ts";
 import Migration0046 from "./Migrations/046_CompositionTaskRunCapabilityHandshake.ts";
 import Migration0047 from "./Migrations/047_CompositionTaskInputs.ts";
 import Migration0048 from "./Migrations/048_CompositionTaskRunRuntimeTaskIndex.ts";
+import Migration0049 from "./Migrations/049_CompositionTaskRunCancelRequestedAt.ts";
 
 /**
  * Migration loader with all migrations defined inline.
@@ -121,6 +122,7 @@ export const migrationEntries = [
   [46, "CompositionTaskRunCapabilityHandshake", Migration0046],
   [47, "CompositionTaskInputs", Migration0047],
   [48, "CompositionTaskRunRuntimeTaskIndex", Migration0048],
+  [49, "CompositionTaskRunCancelRequestedAt", Migration0049],
 ] as const;
 
 export const migrationManifest = migrationEntries.map(([id, name]) => [id, name] as const);
