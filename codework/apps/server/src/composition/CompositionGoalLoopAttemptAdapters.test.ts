@@ -8,6 +8,7 @@ import {
   makeMulticaGoalLoopAttempt,
 } from "./CompositionGoalLoopAttemptAdapters.ts";
 import { CompositionAgentServiceError } from "./CompositionAgentService.ts";
+import type { ByokAgentLoopResult } from "./ByokAgentLoop.ts";
 import type { MulticaDaemonProtocol } from "./MulticaDaemonProtocol.ts";
 
 describe("makeByokGoalLoopAttempt", () => {
@@ -21,7 +22,7 @@ describe("makeByokGoalLoopAttempt", () => {
             Effect.sync(() => {
               prompts.push(input.prompt);
               return { text: outputs[prompts.length - 1] };
-            }) as unknown as Effect.Effect<{ text: string }, CompositionAgentServiceError>,
+            }) as unknown as Effect.Effect<ByokAgentLoopResult, CompositionAgentServiceError>,
         },
         providerInstanceId: "provider-1",
         runtimeId: "runtime-1",
@@ -34,7 +35,7 @@ describe("makeByokGoalLoopAttempt", () => {
       });
       const result = yield* runCompositionGoalLoop({
         maxAttempts: 5,
-        attempt: (round, context) => attempt(round, context),
+        attempt: (round) => attempt(round),
       });
       expect(result.status).toBe("completed");
       expect(result.rounds).toBe(2);
@@ -92,7 +93,7 @@ describe("makeMulticaGoalLoopAttempt", () => {
           pollCount += 1;
           return { status: handler.status(pollCount) };
         }),
-    } as unknown as Pick<MulticaDaemonProtocol, "quickCreateTask" | "getTaskStatus">;
+    };
   };
 
   effectIt.effect("轮询到 completed 并取回带完成标记的输出，attempt 收敛为 completed", () =>

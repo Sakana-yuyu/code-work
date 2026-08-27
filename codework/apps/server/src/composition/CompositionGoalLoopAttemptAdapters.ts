@@ -78,7 +78,7 @@ const DEFAULT_FAILED_STATES = ["failed", "cancelled", "canceled"];
  * 未提供时轮产物为空文本（参与停滞判定），costUnits 计 1。
  */
 export const makeMulticaGoalLoopAttempt =
-  <E>(options: {
+  <E = never>(options: {
     readonly protocol: Pick<MulticaDaemonProtocol, "quickCreateTask" | "getTaskStatus">;
     readonly workspaceId: string;
     readonly agentId?: string;
