@@ -30,6 +30,18 @@ import { SqlitePersistenceMemory } from "../persistence/Layers/Sqlite.ts";
 
 const layer = it.layer(CompositionTaskStoreLive.pipe(Layer.provideMerge(SqlitePersistenceMemory)));
 
+// Driver 合同要求 startTask 的错误通道收敛为 CompositionAgentDriverFailure。
+const projectDriverEvent = (...args: Parameters<typeof projectCompositionRuntimeEvent>) =>
+  projectCompositionRuntimeEvent(...args).pipe(
+    Effect.mapError(
+      (cause) =>
+        new CompositionAgentDriverFailure({
+          code: "runtime_event_persist_failed",
+          detail: `${cause}`,
+        }),
+    ),
+  );
+
 layer("CompositionOrchestrator", (it) => {
   it.effect("Runtime 启动事件早于 Driver startTask 返回时保留状态并持久化 handshake", () =>
     Effect.gen(function* () {
@@ -52,7 +64,7 @@ layer("CompositionOrchestrator", (it) => {
               runId: input.run.runId,
               runtimeTaskId: "runtime-task-early-started",
             };
-            yield* projectCompositionRuntimeEvent(store, driverRegistry, {
+            yield* projectDriverEvent(store, driverRegistry, {
               eventId: EventId.make("event-early-started"),
               provider: ProviderDriverKind.make("cursor"),
               providerInstanceId: ProviderInstanceId.make("cursor"),
@@ -113,7 +125,7 @@ layer("CompositionOrchestrator", (it) => {
               runId: input.run.runId,
               runtimeTaskId: "runtime-task-early-terminal",
             };
-            yield* projectCompositionRuntimeEvent(store, driverRegistry, {
+            yield* projectDriverEvent(store, driverRegistry, {
               eventId: EventId.make("event-early-terminal"),
               provider: ProviderDriverKind.make("cursor"),
               providerInstanceId: ProviderInstanceId.make("cursor"),
@@ -178,7 +190,7 @@ layer("CompositionOrchestrator", (it) => {
               runId: input.run.runId,
               runtimeTaskId: "runtime-task-early-terminal-failure",
             };
-            yield* projectCompositionRuntimeEvent(store, driverRegistry, {
+            yield* projectDriverEvent(store, driverRegistry, {
               eventId: EventId.make("event-early-terminal-failure"),
               provider: ProviderDriverKind.make("cursor"),
               providerInstanceId: ProviderInstanceId.make("cursor"),
