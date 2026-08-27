@@ -14,8 +14,8 @@
 | 仓库 | `E:\MyProject\code-work\codework` |
 | 当前分支 | `tcode` |
 | 当前提交 | 控制中心 RPC 与 Web 接线节点：`feat(composition): 控制中心投影接入 Server RPC 与 Web 设置` |
-| 相对远端 | 领先 `origin/tcode` 43 个提交，尚未 push |
-| 最新节点 | 控制中心"放弃结算"操作入口：新增 `serverControlCenterAbandon` RPC 四层接线（新服务端 `settleAndAbandonInterruptedGoalLoop`：supervisor abandon 结算 + 陈旧 Run 落 failed，不创建新 Run），interrupted 行提供放弃按钮（Goal Loop 49 单测、面板 10 用例） |
+| 相对远端 | 领先 `origin/tcode` 44 个提交，尚未 push |
+| 最新节点 | Supplier/Profile/Account 统一只读投影：`projectCompositionSupplierRegistry`（Provider 实例 → Supplier 条目 + `provider:<instanceId>` 档案挂接 + 孤儿档案识别），3 用例（全家 388/388） |
 | 工作区边界 | 存在大量其他并行修改；本文不把这些修改计入本迁移进度，也不回滚、暂存或提交它们 |
 
 ## 证据等级
@@ -197,11 +197,12 @@ CapabilityRegistry + ToolBroker
 - 控制中心自动重派操作入口：contracts 新增 `serverControlCenterRedispatch` 方法与请求/结果 schema（taskId/runId/agentId/客户端生成 newRunId/capabilityIds/可选 note）；授权要求 `AuthOrchestrationOperateScope`；ws.ts 经 `settleAndRedispatchInterruptedGoalLoop`（supervisor 结算 + 陈旧 Run 落 failed）回调真实 `compositionOrchestrator.retryTask` 创建新 Run，错误经 `compositionTaskError` 统一映射；client-runtime 新增 `controlCenterRedispatch` 命令原子（按 taskId+runId singleFlight）；面板为 `interrupted`/`supervisor_settled` 且存在最新 Run 的任务行渲染"自动重派"按钮与共享 capabilityIds 输入（逗号拆分、`t3-redispatch-<uuid>` 新 RunId），成功后刷新投影、失败经 `squashAtomCommandFailure` 展示；面板 7 用例（按钮仅 actionable 行、输入构建纯函数、四态空错回归）+ i18n 静态扫描通过。
 - 控制中心取消操作入口：复用既有 `serverCancelCompositionTask` 四层接线（contracts/ws/`AuthOrchestrationOperateScope`/client-runtime `cancelCompositionTask` 命令原子均已就位），面板为最新 Run 处于活跃状态（queued/dispatched/resuming/running/waiting_approval/waiting_input/in_review，与服务端投影 `RUN_ACTIVE_STATUSES` 一致）的任务行渲染"取消"按钮，reason 取 `controlCenter.cancelReasonDefault` 双语缺省文案；行操作统一收敛为 `runRowCommand`（pending 守卫、失败 `squashAtomCommandFailure` 展示、成功刷新投影）；面板 8 用例（取消按钮仅活跃 Run 行、终态 failed/completed/cancelled 与无 Run 行不渲染）+ i18n 静态扫描通过。
 - 控制中心审批操作入口：复用既有 `serverReviewCompositionTask` 四层接线（contracts/ws/`AuthOrchestrationOperateScope`/client-runtime `reviewCompositionTask` 命令原子均已就位），面板为 `task.status === "in_review"` 且存在最新 Run 的任务行渲染"通过/驳回"按钮（与 TaskGraphPanel 的审批门槛一致，后端对非 in_review 任务显式报错），decision 取 `approve`/`reject` 字面量、reason 分别取 `controlCenter.approveReasonDefault`/`rejectReasonDefault` 双语缺省文案；面板 9 用例（通过/驳回仅 in_review 行、running 行与无 Run 行不渲染、in_review 行取消入口并存）+ i18n 静态扫描通过。
-- 控制中心放弃结算操作入口（本节点）：服务端从 `settleAndRedispatchInterruptedGoalLoop` 抽出共用结算流程，新增 `settleAndAbandonInterruptedGoalLoop`——同一"纯扫描 → run/task/最新 Run 校验（失败零副作用）→ supervisor 幂等结算"流程落 `supervisor:abandon`（failed）结算行并把陈旧 run/task 落 failed（failureCode=`goal_loop_abandoned`），**不创建新 Run**，2 新用例（放弃结算落行与不新建 Run、已收敛循环拒绝且零副作用，全家 49/49）；contracts 新增 `serverControlCenterAbandon` 方法与请求/结果 schema（abandonedRounds 返回中断轮次）；授权 `AuthOrchestrationOperateScope`；ws.ts 仅依赖 `compositionTaskStore`（无需 orchestrator）；client-runtime 新增 `controlCenterAbandon` 命令原子（singleFlight）；面板为 goalLoop `interrupted` 且存在最新 Run 的行渲染"放弃结算"按钮（supervisor_settled 行已有结算行会被服务端拒绝，不提供入口），与"自动重派"构成 interrupted 行的两种收敛选择；面板 10 用例 + i18n 静态扫描通过。
+- 控制中心放弃结算操作入口：服务端从 `settleAndRedispatchInterruptedGoalLoop` 抽出共用结算流程，新增 `settleAndAbandonInterruptedGoalLoop`——同一"纯扫描 → run/task/最新 Run 校验（失败零副作用）→ supervisor 幂等结算"流程落 `supervisor:abandon`（failed）结算行并把陈旧 run/task 落 failed（failureCode=`goal_loop_abandoned`），**不创建新 Run**，2 新用例（放弃结算落行与不新建 Run、已收敛循环拒绝且零副作用，全家 49/49）；contracts 新增 `serverControlCenterAbandon` 方法与请求/结果 schema（abandonedRounds 返回中断轮次）；授权 `AuthOrchestrationOperateScope`；ws.ts 仅依赖 `compositionTaskStore`（无需 orchestrator）；client-runtime 新增 `controlCenterAbandon` 命令原子（singleFlight）；面板为 goalLoop `interrupted` 且存在最新 Run 的行渲染"放弃结算"按钮（supervisor_settled 行已有结算行会被服务端拒绝，不提供入口），与"自动重派"构成 interrupted 行的两种收敛选择；面板 10 用例 + i18n 静态扫描通过。
+- Supplier/Profile/Account 统一只读投影（本节点）：contracts 新增 `CompositionSupplierRegistryEntry/Result` schema；新增 `projectCompositionSupplierRegistry` 纯投影——把每个 Provider 实例（`ProviderInstanceRegistry` 适配输入）映射为一个 Supplier 条目（continuationKey 账号锚点、启用态、默认模型），按代码库既有 `provider:<instanceId>` agentId 约定挂上派生的 Agent Driver 档案摘要（runtimeId/status/supportsResume），`provider:` 前缀但无实例的档案识别为孤儿（实例移除后未回收的 Driver，多账号回滚关注对象），非实例派生档案（acp/cli）不参与投影；3 用例（约定挂档与字段透传、孤儿与非参与档案、无档案实例），全家 388/388。
 
 仍缺：
 
-- Supplier/Profile/Account 的统一管理、凭据生命周期和多账号回滚。
+- Supplier/Profile/Account 的统一管理（统一只读投影已完成：Supplier 条目 + 档案关联 + 孤儿档案识别；剩余 = RPC/Web 接线、管理操作入口、凭据生命周期变更与多账号回滚操作）。
 - 余额、用量、价格、健康和路由状态的统一看板。
 - Goal、Squad、Leader、运行时恢复和 capability grant 的用户操作路径（投影、只读展示与自动重派/取消/审批/放弃结算入口已在 Web 接通；剩余 = Mobile/Desktop 面板复用）。
 - Web/Desktop/Mobile 关键路径的真实集成验证。
@@ -209,7 +210,7 @@ CapabilityRegistry + ToolBroker
 
 ## 当前提交节点
 
-当前 `tcode` 相对 `origin/tcode` 的 43 个提交按主题归并如下。
+当前 `tcode` 相对 `origin/tcode` 的 44 个提交按主题归并如下。
 
 | 主题 | 提交范围 | 结果 |
 | --- | --- | --- |
@@ -236,6 +237,7 @@ CapabilityRegistry + ToolBroker
 | 控制中心取消入口 | `feat(composition): 控制中心取消操作入口` | 复用 serverCancelCompositionTask 四层接线（OperateScope）；活跃 Run 行取消按钮 + runRowCommand 统一行操作收敛，面板 8 用例 |
 | 控制中心审批入口 | `feat(composition): 控制中心审批操作入口` | 复用 serverReviewCompositionTask 四层接线（OperateScope）；in_review 行通过/驳回按钮与双语缺省 reason，面板 9 用例 |
 | 控制中心放弃结算入口 | `feat(composition): 控制中心放弃结算操作入口` | 新增 settleAndAbandonInterruptedGoalLoop（supervisor abandon 结算 + goal_loop_abandoned，不新建 Run）+ serverControlCenterAbandon 四层接线；interrupted 行放弃按钮与重派并存，Goal Loop 49 单测、面板 10 用例 |
+| Supplier 统一投影 | `feat(composition): Supplier/Profile 统一只读投影` | projectCompositionSupplierRegistry：Provider 实例 → Supplier 条目（continuationKey 账号锚点）+ provider:\<instanceId\> 档案挂接 + 孤儿档案识别，3 用例 |
 | 文档与回归覆盖 | `c5a709b46`、`223b90ee5` | 刷新迁移矩阵并覆盖 ACP 取消终态回归 |
 
 ## 关键结论
@@ -264,7 +266,7 @@ CapabilityRegistry + ToolBroker
 3. 接入真实 Cursor/VS Code Adapter，完成 capability handshake、最小 IDE API 白名单和撤销测试。
 4. 把 Provider、IDE、Multica 的 grant 状态统一投影到 Composition Run 和 Settings。（本地子任务已完成：grant issued/revoked 与 BYOK resume 输出均已投影为任务历史事件；剩余 = 外部 Driver 的真实 grant 回执接入与 Settings 跨端看板展示，依赖真实产品环境）
 5. ~~收敛 Goal Loop、预算、重试、验证子代理和跨重启 supervisor。~~（本地切片全部完成：完成标记/预算/停滞 pivot/验证合同与子代理验证器、任务台账编排接线、跨重启监督结算、编排层自动重派接线、BYOK/Multica attempt 生产适配器，共 47 单测；剩余缺口 = Multica 输出查询的生产实现，依赖真实 daemon 服务端能力）
-6. 最后补齐 Supplier/Profile 控制中心与 Web/Desktop/Mobile 集成 E2E。（前三个切片已完成：控制中心统一投影 + `serverControlCenterProjection` RPC 四层接线与 Web 设置"组合控制中心"只读展示（双语 i18n）、`serverControlCenterRedispatch` 自动重派操作入口、复用既有 `serverCancelCompositionTask` 的取消操作入口与 `serverReviewCompositionTask` 的审批（通过/驳回）操作入口、新增 `serverControlCenterAbandon` 放弃结算操作入口；剩余 = Supplier/Profile/Account 统一管理、余额/用量看板、Request Lab、Mobile/Desktop 面板复用及多端真实集成 E2E）
+6. 最后补齐 Supplier/Profile 控制中心与 Web/Desktop/Mobile 集成 E2E。（前三个切片已完成：控制中心统一投影 + `serverControlCenterProjection` RPC 四层接线与 Web 设置"组合控制中心"只读展示（双语 i18n）、`serverControlCenterRedispatch` 自动重派操作入口、复用既有 `serverCancelCompositionTask` 的取消操作入口与 `serverReviewCompositionTask` 的审批（通过/驳回）操作入口、新增 `serverControlCenterAbandon` 放弃结算操作入口；第 6 项另完成 Supplier/Profile/Account 统一只读投影（Supplier 条目 + 档案挂接 + 孤儿识别，RPC/Web 接线待接）；剩余 = 管理操作入口与凭据生命周期、余额/用量看板、Request Lab、Mobile/Desktop 面板复用及多端真实集成 E2E）
 
 ## 风险与回滚
 

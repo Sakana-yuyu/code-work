@@ -628,6 +628,39 @@ export const CompositionControlCenterAbandonResult = Schema.Struct({
 export type CompositionControlCenterAbandonResult =
   typeof CompositionControlCenterAbandonResult.Type;
 
+/** Supplier 条目上与 Provider 实例关联的 Agent Driver 档案摘要。 */
+export const CompositionSupplierRegistryProfileLink = Schema.Struct({
+  agentId: TrimmedNonEmptyString,
+  runtimeId: TrimmedNonEmptyString,
+  status: Schema.Literals(["available", "degraded", "unavailable"]),
+  supportsResume: Schema.Boolean,
+});
+export type CompositionSupplierRegistryProfileLink =
+  typeof CompositionSupplierRegistryProfileLink.Type;
+
+/**
+ * Supplier/Profile/Account 统一投影条目：一个 Provider 实例即一个 Supplier
+ * 账号绑定（continuationKey 为账号延续身份），profile 为其派生的 Agent Driver。
+ */
+export const CompositionSupplierRegistryEntry = Schema.Struct({
+  instanceId: TrimmedNonEmptyString,
+  driverKind: TrimmedNonEmptyString,
+  displayName: Schema.optional(TrimmedNonEmptyString),
+  enabled: Schema.Boolean,
+  continuationKey: TrimmedNonEmptyString,
+  defaultModelId: Schema.optional(TrimmedNonEmptyString),
+  profile: Schema.optional(CompositionSupplierRegistryProfileLink),
+});
+export type CompositionSupplierRegistryEntry = typeof CompositionSupplierRegistryEntry.Type;
+
+/** Supplier/Profile/Account 统一只读投影：Supplier 条目 + 失去实例的孤儿档案。 */
+export const CompositionSupplierRegistryResult = Schema.Struct({
+  generatedAtUnixMs: NonNegativeInt,
+  suppliers: Schema.Array(CompositionSupplierRegistryEntry),
+  orphanProfileAgentIds: Schema.Array(TrimmedNonEmptyString),
+});
+export type CompositionSupplierRegistryResult = typeof CompositionSupplierRegistryResult.Type;
+
 const CompositionTaskDependencyCondition = Schema.Literals([
   "success",
   "terminal",
