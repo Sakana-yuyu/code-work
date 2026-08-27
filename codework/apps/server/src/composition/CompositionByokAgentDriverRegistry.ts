@@ -47,6 +47,7 @@ export interface CompositionByokAgentDriverProjectionOptions {
   readonly providerRegistry: Pick<ProviderInstanceRegistryShape, "listInstances">;
   readonly agentService: CompositionAgentServiceShape;
   readonly checkpointStore: Pick<CompositionTaskStoreShape, "appendEventIfNew">;
+  readonly checkpointHistory?: Pick<CompositionTaskStoreShape, "listEvents">;
   readonly mcpToolRegistry?: CompositionMcpToolRegistryShape;
   readonly registry?: CompositionAgentDriverRegistry;
 }
@@ -94,6 +95,9 @@ export const makeCompositionByokAgentDriverProjection = (
           : { defaultModel: instance.composition.defaultModelId }),
         agentService: options.agentService,
         checkpointStore: options.checkpointStore,
+        ...(options.checkpointHistory === undefined
+          ? {}
+          : { checkpointHistory: options.checkpointHistory }),
         listTools: () =>
           Effect.gen(function* () {
             const dynamicTools =
@@ -137,6 +141,7 @@ const live = Effect.gen(function* () {
     providerRegistry,
     agentService,
     checkpointStore,
+    checkpointHistory: checkpointStore,
     ...(mcpToolRegistry._tag === "Some" ? { mcpToolRegistry: mcpToolRegistry.value } : {}),
     registry: driverRegistry,
   });

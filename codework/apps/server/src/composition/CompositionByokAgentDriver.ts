@@ -27,6 +27,7 @@ import {
   CompositionAgentDriverFailure,
   type CompositionAgentDriver,
 } from "./CompositionOrchestrator.ts";
+import { recoverPersistedCheckpointText } from "./CompositionByokCheckpointRecovery.ts";
 import type { CompositionTaskStoreShape } from "../persistence/Services/CompositionTaskStore.ts";
 
 export type CompositionByokAgentDriverOptions = {
@@ -38,6 +39,11 @@ export type CompositionByokAgentDriverOptions = {
   readonly defaultModel?: string;
   readonly agentService: CompositionAgentServiceShape;
   readonly checkpointStore: Pick<CompositionTaskStoreShape, "appendEventIfNew">;
+  /**
+   * 进程重启级部分输出恢复路径；提供后才会对外承诺 supportsResume。
+   * resume 语义 = 校验并恢复已持久化输出，不是续跑中断的模型流。
+   */
+  readonly checkpointHistory?: Pick<CompositionTaskStoreShape, "listEvents">;
   readonly listTools: () => Effect.Effect<ReadonlyArray<ByokAgentTool>, Error>;
 };
 
@@ -138,6 +144,7 @@ export const makeCompositionByokAgentDriver = (
       const supportsGit = [...toolNames].some((name) => name.startsWith("git."));
       const supportsMcp = [...toolNames].some((name) => name.startsWith("mcp."));
       const supportsIde = toolNames.has("ide.invoke");
+      const supportsResume = options.checkpointHistory !== undefined;
       const available: CompositionAgentDriverProfile = {
         schemaVersion: 1,
         agentId: options.agentId,
@@ -156,6 +163,7 @@ export const makeCompositionByokAgentDriver = (
           ...(supportsMcp ? ["t3.mcp"] : []),
           ...(supportsIde ? ["t3.ide"] : []),
           "t3.provider_api",
+          ...(supportsResume ? ["byok.checkpoint_recovery"] : []),
         ],
         supportsToolBroker: true,
         supportsCapabilityHandshake: false,
@@ -166,7 +174,7 @@ export const makeCompositionByokAgentDriver = (
         supportsBrowser: false,
         supportsIde,
         supportsProviderApi: true,
-        supportsResume: false,
+        supportsResume,
         supportsSquad: false,
         supportsLeader: false,
         supportsTaskGraph: false,
@@ -489,12 +497,49 @@ export const makeCompositionByokAgentDriver = (
       return { status: "cancelled" as const };
     });
 
+  const resumeTask: CompositionAgentDriver["resumeTask"] = (input) =>
+    Effect.gen(function* () {
+      if (activeRuns.has(input.run.runId)) return { status: "already_running" as const };
+      if (completedRuns.has(input.run.runId)) return { status: "already_terminal" as const };
+      const history = options.checkpointHistory;
+      if (history === undefined) {
+        return yield* new CompositionAgentDriverFailure({
+          code: "byok_resume_not_supported",
+          detail:
+            "BYOK Driver 未提供 checkpoint 恢复路径，不支持跨重启恢复；需注入 checkpointHistory 后才可恢复。",
+        });
+      }
+      const events = yield* history.listEvents(input.task.taskId, input.run.runId).pipe(
+        Effect.mapError(
+          (error): CompositionAgentDriverFailure =>
+            new CompositionAgentDriverFailure({
+              code: "byok_checkpoint_recovery_failed",
+              detail: errorDetail(error),
+            }),
+        ),
+      );
+      if (!events.some((event) => event.runtimeId === options.runtimeId)) {
+        return yield* new CompositionAgentDriverFailure({
+          code: "byok_checkpoint_recovery_empty",
+          detail: "没有可恢复的 BYOK 持久化 checkpoint。",
+        });
+      }
+      yield* recoverPersistedCheckpointText(events).pipe(
+        Effect.mapError(
+          (error): CompositionAgentDriverFailure =>
+            new CompositionAgentDriverFailure({ code: error.code, detail: error.detail }),
+        ),
+      );
+      return { status: "accepted" as const };
+    });
+
   return {
     agentId: options.agentId,
     runtimeId: options.runtimeId,
     getProfile: profile,
     startTask,
     cancelTask,
+    resumeTask,
     streamEvents: () => Stream.fromPubSub(events),
     resolveRuntimeEvent: (event) => {
       if (
