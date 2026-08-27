@@ -20,7 +20,7 @@ const serverConfig: CompositionMcpRuntimeServerConfig = {
 
 const makeClient = (
   options: {
-    readonly calls?: Array<{ readonly name: string; readonly arguments: unknown }>;
+    readonly calls?: Array<{ readonly name: string; readonly arguments?: unknown }>;
     readonly closed?: { value: boolean };
   } = {},
 ): CompositionMcpRuntimeClient => ({

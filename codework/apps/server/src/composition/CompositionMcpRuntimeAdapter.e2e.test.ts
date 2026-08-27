@@ -1,5 +1,7 @@
 import { describe, expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
+// 该用例为普通 async 测试，无法接入 Effect 的 Path 服务；cwd 拼接保持 node:path。
+// @effect-diagnostics-next-line nodeBuiltinImport:off
 import { join } from "node:path";
 
 import { makeCompositionMcpRuntimeAdapter } from "./CompositionMcpRuntimeAdapter.ts";

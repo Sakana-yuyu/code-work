@@ -7,7 +7,7 @@ import type {
   CompositionMcpRuntimeServerState as ContractCompositionMcpRuntimeServerState,
   CompositionMcpRuntimeServerStatus as ContractCompositionMcpRuntimeServerStatus,
 } from "@codework/contracts";
-import { CompositionMcpRuntimeServerState } from "@codework/contracts";
+import { CompositionMcpRuntimeServerState as CompositionMcpRuntimeServerStateSchema } from "@codework/contracts";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -85,7 +85,7 @@ export type CompositionMcpRuntimeAdapterShape = {
 export class CompositionMcpRuntimeAdapterService extends Context.Service<
   CompositionMcpRuntimeAdapterService,
   CompositionMcpRuntimeAdapterShape
->()("codework/composition/CompositionMcpRuntimeAdapter") {}
+>()("codework/composition/CompositionMcpRuntimeAdapter/CompositionMcpRuntimeAdapterService") {}
 
 export type CompositionMcpRuntimeAdapterOptions = {
   readonly toolRegistry: CompositionMcpToolRegistryShape;
@@ -95,9 +95,9 @@ export type CompositionMcpRuntimeAdapterOptions = {
 type RuntimeServerRecord = {
   readonly config: CompositionMcpRuntimeServerConfig;
   status: CompositionMcpRuntimeServerStatus;
-  client?: CompositionMcpRuntimeClient;
+  client?: CompositionMcpRuntimeClient | undefined;
   toolNames: string[];
-  errorCode?: string;
+  errorCode?: string | undefined;
 };
 
 type ToolCallState = {
@@ -106,13 +106,14 @@ type ToolCallState = {
   readonly toolName: string;
 };
 
+const isCompositionMcpRuntimeError = Schema.is(CompositionMcpRuntimeError);
+
 const normalizeErrorDetail = (error: unknown): string => {
-  const detail =
-    error instanceof CompositionMcpRuntimeError
-      ? error.detail
-      : error instanceof Error && error.message.trim().length > 0
-        ? error.message
-        : "MCP runtime 返回未知错误";
+  const detail = isCompositionMcpRuntimeError(error)
+    ? error.detail
+    : error instanceof Error && error.message.trim().length > 0
+      ? error.message
+      : "MCP runtime 返回未知错误";
   return detail
     .replace(
       /(api[_-]?key|authorization|bearer|access[_-]?token|password|secret|token)\s*[:=]\s*[^\s,;]+/gi,
@@ -144,8 +145,8 @@ const createSdkClient = (
         transport = new StdioClientTransport({
           command: config.command,
           args: [...(config.args ?? [])],
-          env: config.env === undefined ? undefined : { ...config.env },
-          cwd: config.cwd,
+          ...(config.env === undefined ? {} : { env: { ...config.env } }),
+          ...(config.cwd === undefined ? {} : { cwd: config.cwd }),
           stderr: "pipe",
         });
       } else {
@@ -157,24 +158,32 @@ const createSdkClient = (
           });
         }
         const url = new URL(config.url);
-        const requestInit =
-          config.headers === undefined ? undefined : { headers: { ...config.headers } };
-        transport =
+        const transportOptions =
+          config.headers === undefined ? {} : { requestInit: { headers: { ...config.headers } } };
+        transport = (
           config.transport === "http"
-            ? new StreamableHTTPClientTransport(url, { requestInit })
-            : new SSEClientTransport(url, { requestInit });
+            ? new StreamableHTTPClientTransport(url, transportOptions)
+            : new SSEClientTransport(url, transportOptions)
+        ) as Transport;
       }
 
       const client = new Client({ name: "code-work", version: "0.0.33" });
       await client.connect(transport);
       return {
-        listTools: async () => (await client.listTools()).tools,
-        callTool: (input, options) => client.callTool(input, undefined, options),
+        // SDK 的 Tool 描述带显式 `| undefined` 可选字段，边界处直接收窄为运行时工具类型。
+        listTools: async () =>
+          (await client.listTools()).tools as ReadonlyArray<CompositionMcpRuntimeTool>,
+        callTool: (input, options) =>
+          client.callTool(
+            input as { name: string; arguments?: Record<string, unknown> },
+            undefined,
+            options,
+          ),
         close: () => client.close(),
       } satisfies CompositionMcpRuntimeClient;
     },
     catch: (error) =>
-      error instanceof CompositionMcpRuntimeError
+      isCompositionMcpRuntimeError(error)
         ? error
         : new CompositionMcpRuntimeError({
             serverId: config.serverId,
@@ -182,6 +191,8 @@ const createSdkClient = (
             detail: normalizeErrorDetail(error),
           }),
   });
+
+const isCompositionMcpToolFailure = Schema.is(CompositionMcpToolFailure);
 
 const make = (options: CompositionMcpRuntimeAdapterOptions): CompositionMcpRuntimeAdapterShape => {
   const createClient = options.createClient ?? createSdkClient;
@@ -199,12 +210,14 @@ const make = (options: CompositionMcpRuntimeAdapterOptions): CompositionMcpRunti
     ).pipe(Effect.asVoid);
 
   const closeClient = (record: RuntimeServerRecord) =>
-    record.client === undefined
-      ? Effect.succeed(undefined)
-      : Effect.tryPromise({
-          try: () => record.client!.close(),
-          catch: () => undefined,
-        });
+    Effect.promise(async () => {
+      if (record.client === undefined) return;
+      try {
+        await record.client.close();
+      } catch {
+        // 关闭失败不阻断收尾流程。
+      }
+    });
 
   const registerServer: CompositionMcpRuntimeAdapterShape["registerServer"] = (config) =>
     Effect.gen(function* () {
@@ -311,7 +324,7 @@ const make = (options: CompositionMcpRuntimeAdapterOptions): CompositionMcpRunti
             status: "available",
             source: "runtime",
             invoke: (input: CompositionMcpToolInvocation) => {
-              const key = input.idempotencyKey;
+              const key = input.idempotencyKey ?? "";
               if (cancelledKeys.delete(key)) {
                 return Effect.fail(
                   new CompositionMcpToolFailure({
@@ -343,7 +356,7 @@ const make = (options: CompositionMcpRuntimeAdapterOptions): CompositionMcpRunti
                   return result;
                 },
                 catch: (error) =>
-                  error instanceof CompositionMcpToolFailure
+                  isCompositionMcpToolFailure(error)
                     ? error
                     : controller.signal.aborted
                       ? new CompositionMcpToolFailure({
@@ -412,7 +425,7 @@ const make = (options: CompositionMcpRuntimeAdapterOptions): CompositionMcpRunti
         [...servers.values()]
           .sort((left, right) => left.config.serverId.localeCompare(right.config.serverId))
           .map((record) =>
-            Schema.decodeUnknownSync(CompositionMcpRuntimeServerState)({
+            Schema.decodeUnknownSync(CompositionMcpRuntimeServerStateSchema)({
               serverId: record.config.serverId,
               name: record.config.name,
               transport: record.config.transport,
