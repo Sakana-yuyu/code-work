@@ -118,6 +118,7 @@ import * as ProjectionSnapshotQuery from "./orchestration/Services/ProjectionSna
 import { SqlitePersistenceMemory } from "./persistence/Layers/Sqlite.ts";
 import { PersistenceSqlError } from "./persistence/Errors.ts";
 import * as ProviderEventLoggers from "./provider/Layers/ProviderEventLoggers.ts";
+import * as ModelManifest from "./provider/ModelManifest.ts";
 import * as ProviderRegistry from "./provider/Services/ProviderRegistry.ts";
 import * as ProviderService from "./provider/Services/ProviderService.ts";
 import * as OpenCodeRuntime from "./provider/opencodeRuntime.ts";
@@ -626,6 +627,8 @@ const buildAppUnderTest = (options?: {
         Layer.provide(serviceLauncherClientLayer),
         Layer.provide(PreviewAutomationBroker.layer.pipe(Layer.provide(NodeServices.layer))),
         Layer.provideMerge(OpenCodeRuntime.OpenCodeRuntimeLive),
+        // 上游 #8227 起 Claude/Codex 驱动需要 ModelManifest；测试用内置数据版避免联网。
+        Layer.provideMerge(ModelManifest.layerTest),
         Layer.provideMerge(
           Layer.succeed(
             ProviderEventLoggers.ProviderEventLoggers,
