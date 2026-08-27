@@ -1,4 +1,4 @@
-import { createHash } from "node:crypto";
+import * as NodeCrypto from "node:crypto";
 
 import { CompositionIdeRuntimeConfig, CompositionMulticaRuntimeConfig } from "@codework/contracts";
 import type { ProviderInstanceConfig, ProviderInstanceEnvironment } from "@codework/contracts";
@@ -36,6 +36,7 @@ import {
   makeMulticaTaskMcpLeaseStore,
   type MulticaTaskMcpLeaseStore,
 } from "./MulticaTaskMcpLease.ts";
+import { auditMulticaQuickCreateIntents } from "./MulticaQuickCreateOutbox.ts";
 import { makeMulticaTaskExecutionProcessBridge } from "./MulticaTaskExecutionProcessBridge.ts";
 import {
   makeMulticaTaskEventWebSocketStream,
@@ -498,7 +499,7 @@ const defaultCreateAdapter = (
   makeMulticaRuntimeAdapterFromSettings(input);
 
 const fingerprintFor = (input: CompositionRuntimeSettingsFactoryInput): string =>
-  createHash("sha256")
+  NodeCrypto.createHash("sha256")
     .update(
       JSON.stringify({
         instanceId: input.instanceId,
@@ -511,7 +512,7 @@ const fingerprintFor = (input: CompositionRuntimeSettingsFactoryInput): string =
     .digest("hex");
 
 const fingerprintForIde = (input: CompositionIdeSettingsFactoryInput): string =>
-  createHash("sha256")
+  NodeCrypto.createHash("sha256")
     .update(
       JSON.stringify({
         instanceId: input.instanceId,
@@ -756,6 +757,8 @@ export const makeCompositionRuntimeSettingsReconciler = (
 };
 
 const live = Effect.gen(function* () {
+  // sending 租约窗口：超过该时长仍无终态的快建意图视为悬挂。
+  const QUICK_CREATE_SENDING_LEASE_MS = 5 * 60_000;
   const settings = yield* ServerSettingsService;
   const adapterRegistry = yield* CompositionRuntimeAdapterRegistryService;
   const processRunner = yield* ProcessRunner.ProcessRunner;
@@ -770,7 +773,26 @@ const live = Effect.gen(function* () {
     | "getMulticaQuickCreateIntentByIdempotencyKey"
     | "claimMulticaQuickCreateIntentForSend"
     | "acceptMulticaQuickCreateIntent"
+    | "listPendingMulticaQuickCreateIntents"
   > = yield* CompositionTaskStore;
+  // 启动即审计持久化 outbox：悬挂的 sending 需要人工核对 Multica，不允许静默丢失。
+  const nowUnixMs = yield* Clock.currentTimeMillis;
+  yield* auditMulticaQuickCreateIntents(quickCreateIntentStore, {
+    staleBeforeUnixMs: Number(nowUnixMs) - QUICK_CREATE_SENDING_LEASE_MS,
+  }).pipe(
+    Effect.flatMap((audit) =>
+      audit.staleSending.length === 0
+        ? Effect.void
+        : Effect.logWarning(
+            `发现 ${audit.staleSending.length} 个悬挂的 quick-create 发送意图，需人工核对后收口`,
+            {
+              runs: audit.staleSending.map((intent) => `${intent.runtimeId}:${intent.runId}`),
+              readyToDispatch: audit.readyToDispatch.length,
+            },
+          ),
+    ),
+    Effect.catchCause((cause) => Effect.logWarning("quick-create outbox 启动审计失败", { cause })),
+  );
   const reconciler = makeCompositionRuntimeSettingsReconciler({
     settings,
     adapterRegistry,

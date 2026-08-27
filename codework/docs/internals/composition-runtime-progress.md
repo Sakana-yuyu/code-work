@@ -15,7 +15,7 @@
 | 当前分支 | `tcode` |
 | 当前提交 | BYOK 恢复对外语义节点：`feat(composition): 定义 BYOK checkpoint 恢复语义` |
 | 相对远端 | 领先 `origin/tcode` 27 个提交，尚未 push |
-| 最新节点 | BYOK 部分输出恢复的对外语义落地：`supportsResume` 启用条件与进程重启级恢复测试 |
+| 最新节点 | Multica quick-create 持久化 outbox 审计/收口、幂等键出站与真实 HTTP 进程级集成测试 |
 | 工作区边界 | 存在大量其他并行修改；本文不把这些修改计入本迁移进度，也不回滚、暂存或提交它们 |
 
 ## 证据等级
@@ -143,21 +143,31 @@ CapabilityRegistry + ToolBroker
 
 ### 5. Multica Agent / Squad / Leader
 
-**状态：L3 的窄协议 fixture；真实 Multica 协同仍停留在 L1/L2。**
+**状态：L3 的本地协议与进程级 HTTP 集成已闭环；真实 Multica 协同仍停留在 L1/L2。**
+
+最新验证（本节点）：
+
+- 新增 outbox 审计/收口单测 4 用例、真实 HTTP 进程级 e2e 2 用例通过；Multica 协议、Adapter、Runtime Settings 回归共 52/52 通过。
+- 新增/触碰文件 lint 0 错误；目标文件 typecheck 无 error 级问题（既有测试文件的 `runPromise` 类 lint 债务不计入本次）。
 
 已完成：
 
 - Multica daemon register、heartbeat、claim、status、complete、fail 的窄协议适配。
 - 使用正式 `POST /api/issues/quick-create` 创建远端排队任务，并显式映射 `agent_id`、`squad_id`、Runtime 和 Workspace。
 - quick-create 发送意图已持久化，减少本地重试状态丢失。
+- 新增持久化 outbox 审计与收口（`MulticaQuickCreateOutbox`）：把 pending intent 分为可安全重派（prepared）、需人工核对收口（stale sending）、在途观察三类；提供 `settleStaleSendingIntent` 仅在 sending 态原子绑定人工核对取得的远端 task ID，重复 settle 或对 prepared settle 显式失败。
+- quick-create POST 现在携带本地已持久化的幂等键头 `X-Idempotency-Key`；服务端一旦支持即可据此去重。
+- Runtime Settings live 层启动时审计 outbox，发现悬挂 sending 即告警，静默丢失不可能。
 - 本地 Node 子进程已验证 control 与 task-event 双通道回流。
+- 新增真实 HTTP 进程级集成测试（`MulticaQuickCreateHttp.e2e.test.ts` + 独立进程 daemon fixture）：覆盖 happy path、响应丢失后拒绝重放、审计发现悬挂、查回远端 ID 收口、重派命中 accepted 恢复且全程只产生一次 POST。
 - Composition 本地 Task Graph 已具备 Leader 汇聚所需的依赖调度、并行和失败处理底座。
 
 仍缺：
 
 - 启动真实 Multica daemon，验证真实身份、数据库、权限、heartbeat、claim 和任务回报。
 - 查询真实 Agent/Squad、动态成员调度、Leader 结果映射和跨重启监督。
-- quick-create 服务端幂等键或持久化 outbox；当前仍有“远端成功但本地响应丢失”导致重复创建的风险。
+- 真实服务端的幂等键语义确认：当前 `X-Idempotency-Key` 已出站，但收到 4xx/忽略该头时重复创建防线依赖"拒绝重放 + 人工收口"，还不是全自动。
+- 悬挂 sending 的自动查询回源接口：收口目前需要外部（人或 by-key 查询类能力）提供远端 task ID。
 - 完整外部 cancel/resume 协议和断线重连演练。
 - Multica Runtime 获得 Code Work ToolBroker 能力的真实授权与调用闭环。
 
@@ -190,7 +200,8 @@ CapabilityRegistry + ToolBroker
 | Multica 投递可靠性 | `4a9d648fb` | 持久化 quick-create 发送意图 |
 | BYOK 模型循环可靠性 | `f016bc851` 至 `c120282c5` | 取消竞争、上下文增长与溢出、安全重试和流终态校验 |
 | BYOK 部分输出恢复 | `687732124` | checkpoint 持久化、确定性事件、摘要、偏移、去重和正文恢复 |
-| BYOK 恢复对外语义 | `3d04a3823` | `supportsResume` 启用条件、`resumeTask` 拒绝/短路语义与进程重启级恢复测试 |
+| BYOK 恢复对外语义 | `3d04a3823`（已 amend，主题不变） | `supportsResume` 启用条件、`resumeTask` 拒绝/短路语义与进程重启级恢复测试 |
+| Multica outbox 收口 | `feat(composition): Multica quick-create outbox 审计与收口` | outbox 审计/settle、`X-Idempotency-Key` 出站、启动告警接线与真实 HTTP 进程级 e2e |
 | 文档与回归覆盖 | `c5a709b46`、`223b90ee5` | 刷新迁移矩阵并覆盖 ACP 取消终态回归 |
 
 ## 关键结论
@@ -214,8 +225,8 @@ CapabilityRegistry + ToolBroker
 
 ## 下一最小实施顺序
 
-1. ~~完成 BYOK 部分输出恢复的对外语义，决定 `supportsResume` 的启用条件并增加进程重启级测试。（已完成：resume = 校验并恢复已持久化输出；启用条件 = 注入 `checkpointHistory`）~~
-2. 为 Multica quick-create 增加持久化 outbox、冲突恢复和真实 daemon 集成测试。
+1. ~~完成 BYOK 部分输出恢复的对外语义，决定 `supportsResume` 的启用条件并增加进程重启级测试。（已完成）~~
+2. ~~为 Multica quick-create 增加持久化 outbox、冲突恢复和集成测试。（本地 HTTP 进程级已完成；真实 daemon 侧的幂等键语义与 by-key 查询能力确认后，收口可自动化）~~
 3. 接入真实 Cursor/VS Code Adapter，完成 capability handshake、最小 IDE API 白名单和撤销测试。
 4. 把 Provider、IDE、Multica 的 grant 状态统一投影到 Composition Run 和 Settings；同时把 BYOK resume 恢复出的部分输出投影到用户可见状态。
 5. 收敛 Goal Loop、预算、重试、验证子代理和跨重启 supervisor。

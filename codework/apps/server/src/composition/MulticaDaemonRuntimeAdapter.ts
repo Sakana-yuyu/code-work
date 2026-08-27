@@ -1095,6 +1095,7 @@ export const makeMulticaDaemonRuntimeAdapter = (
           ...(route.multicaAgentId === undefined ? {} : { agentId: route.multicaAgentId }),
           ...(route.multicaSquadId === undefined ? {} : { squadId: route.multicaSquadId }),
           ...(input.projectId === undefined ? {} : { projectId: input.projectId }),
+          idempotencyKey,
           prompt,
         })
         .pipe(

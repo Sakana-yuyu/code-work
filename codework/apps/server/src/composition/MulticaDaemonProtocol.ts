@@ -112,6 +112,8 @@ export type MulticaQuickCreateTaskInput = {
   readonly projectId?: string;
   readonly parentIssueId?: string;
   readonly attachmentIds?: ReadonlyArray<string>;
+  /** 本地发送账本已持久化的幂等键；服务端支持时可据此去重重复 POST。 */
+  readonly idempotencyKey?: string;
 };
 
 export type MulticaQuickCreateTaskResponse = {
@@ -572,6 +574,10 @@ export const makeMulticaDaemonProtocol = (
         try: () => ({
           body: bodyFromQuickCreateInput(input),
           workspaceId: trimRequired(input.workspaceId, "workspaceId"),
+          idempotencyKey:
+            input.idempotencyKey === undefined
+              ? undefined
+              : trimRequired(input.idempotencyKey, "idempotencyKey"),
         }),
         catch: (cause) =>
           new MulticaDaemonProtocolFailure({
@@ -580,14 +586,17 @@ export const makeMulticaDaemonProtocol = (
             detail: cause instanceof Error ? cause.message : String(cause),
           }),
       }).pipe(
-        Effect.flatMap(({ body, workspaceId }) =>
+        Effect.flatMap(({ body, workspaceId, idempotencyKey }) =>
           request(
             "quickCreateTask",
             "POST",
             "/api/issues/quick-create",
             body,
             normalizeQuickCreateTaskResponse,
-            { "X-Workspace-ID": workspaceId },
+            {
+              "X-Workspace-ID": workspaceId,
+              ...(idempotencyKey === undefined ? {} : { "X-Idempotency-Key": idempotencyKey }),
+            },
           ),
         ),
       ),

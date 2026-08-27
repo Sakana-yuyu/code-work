@@ -290,6 +290,7 @@ describe("MulticaDaemonRuntimeAdapter", () => {
       workspaceId: "workspace-1",
       agentId: "agent-1",
       projectId: "project-1",
+      idempotencyKey: "run-1",
       prompt: "执行任务",
     });
     await expect(
@@ -615,8 +616,18 @@ describe("MulticaDaemonRuntimeAdapter", () => {
     );
 
     expect(inputs).toEqual([
-      { workspaceId: "workspace-1", squadId: "remote-squad-a", prompt: "执行 A" },
-      { workspaceId: "workspace-1", squadId: "remote-squad-b", prompt: "执行 B" },
+      {
+        workspaceId: "workspace-1",
+        squadId: "remote-squad-a",
+        idempotencyKey: "run-squad-a",
+        prompt: "执行 A",
+      },
+      {
+        workspaceId: "workspace-1",
+        squadId: "remote-squad-b",
+        idempotencyKey: "run-squad-b",
+        prompt: "执行 B",
+      },
     ]);
   });
 

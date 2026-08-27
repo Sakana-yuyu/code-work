@@ -415,6 +415,7 @@ layer("CompositionOrchestrator", (it) => {
         workspaceId: "workspace-squad",
         squadId: "remote-squad-1",
         projectId: "project-squad",
+        idempotencyKey: "run-squad-multica",
         prompt: "由 Squad Leader 协调执行",
       });
     }),
