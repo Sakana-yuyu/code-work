@@ -27,6 +27,21 @@ export type CompositionGoalLoopDecision<A> = {
   readonly costUnits?: number;
 };
 
+/** 验证子代理收到的完成声明上下文；history 含当前轮在内的全部轮次值快照。 */
+export type CompositionGoalValidationInput<A> = {
+  readonly round: number;
+  readonly value: A;
+  readonly cleanText: string;
+  readonly reason: string | undefined;
+  readonly history: ReadonlyArray<{ readonly round: number; readonly value: A }>;
+};
+
+/** 验证子代理的裁决；accepted=false 时附 detail 说明拒绝原因。 */
+export type CompositionGoalValidationVerdict = {
+  readonly accepted: boolean;
+  readonly detail?: string;
+};
+
 export type CompositionGoalLoopOptions<A, E = never> = {
   readonly maxAttempts: number;
   /** 成本上限；省略表示本轮循环不计成本。 */
@@ -42,6 +57,14 @@ export type CompositionGoalLoopOptions<A, E = never> = {
    * 不产出 outputText 的 attempt 按空文本参与比较，连续空转同样触发 pivot。
    */
   readonly stalePivotRounds?: number;
+  /**
+   * 完成标记出现时的验证子代理入口：accepted=false 则本轮不收敛、继续循环，
+   * 拒绝记录进入 rejectedCompletions 并参与停滞判定；缺省表示信任完成标记。
+   * 真实"再派一个 agent 校验"的子代理实现后续接入，本合同只定义接入点。
+   */
+  readonly validateCompletion?: (
+    input: CompositionGoalValidationInput<A>,
+  ) => Effect.Effect<CompositionGoalValidationVerdict, E>;
   readonly attempt: (
     round: number,
     context: {
@@ -70,6 +93,11 @@ export type CompositionGoalLoopResult<A> = {
         readonly lastCleanText: string;
       }
     | undefined;
+  /** validateCompletion 拒绝过的完成声明（round + 拒绝原因），供审计与测试断言。 */
+  readonly rejectedCompletions: ReadonlyArray<{
+    readonly round: number;
+    readonly detail: string | undefined;
+  }>;
   /** 每轮的值快照，供持久化/审计侧自行取舍。 */
   readonly history: ReadonlyArray<{ readonly round: number; readonly value: A }>;
 };
@@ -116,8 +144,10 @@ const normalizeProgressText = (outputText: string | undefined): string =>
  * Goal Loop：重复执行 attempt 直到出现显式完成标记；轮数、成本与墙钟三类预算任一
  * 耗尽即按对应终态收敛，外部取消优先于预算判定。启用 stalePivotRounds 后，连续
  * 无进展输出会按 pivot_required 提前收敛；同一轮输出中出现完成/取消标记时仍以标记为准。
+ * 提供 validateCompletion 时，完成标记需经验证子代理接受才收敛为 completed，
+ * 被拒绝的声明记录在 rejectedCompletions 中并继续循环。
  *
- * 不在本切片范围内：验证子代理和跨重启 supervisor。
+ * 不在本切片范围内：真实子代理驱动的 validator 实现和跨重启 supervisor。
  */
 export const runCompositionGoalLoop = <A, E>(
   options: CompositionGoalLoopOptions<A, E>,
@@ -148,6 +178,7 @@ export const runCompositionGoalLoop = <A, E>(
     let final: CompositionGoalLoopResult<A>["completion"];
     let pivot: CompositionGoalLoopResult<A>["pivot"];
     let status: CompositionGoalLoopStatus;
+    const rejectedCompletions: Array<{ round: number; detail: string | undefined }> = [];
 
     for (;;) {
       const isCancelledBeforeRound = options.isCancelled?.() ?? false;
@@ -178,9 +209,23 @@ export const runCompositionGoalLoop = <A, E>(
 
       const parsed = parseGoalCompletion(decision.outputText);
       if (parsed.complete) {
-        status = "completed";
-        final = { cleanText: parsed.cleanText, reason: parsed.reason };
-        break;
+        // 快照 history，避免验证方持有可变引用看到后续轮次。
+        const verdict =
+          options.validateCompletion === undefined
+            ? undefined
+            : yield* options.validateCompletion({
+                round: rounds,
+                value: decision.value,
+                cleanText: parsed.cleanText,
+                reason: parsed.reason,
+                history: history.slice(),
+              });
+        if (verdict === undefined || verdict.accepted) {
+          status = "completed";
+          final = { cleanText: parsed.cleanText, reason: parsed.reason };
+          break;
+        }
+        rejectedCompletions.push({ round: rounds, detail: verdict.detail });
       }
       if ((decision.outputText ?? "").includes(GOAL_CANCEL_MARKER)) {
         status = "cancelled";
@@ -203,6 +248,7 @@ export const runCompositionGoalLoop = <A, E>(
       costUnitsUsed: costUsed,
       completion: final,
       pivot,
+      rejectedCompletions,
       history,
     };
   });

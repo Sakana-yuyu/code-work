@@ -302,4 +302,76 @@ describe("runCompositionGoalLoop", () => {
       expect(negativeBudget._tag).toBe("CompositionGoalLoopInvalidError");
     }),
   );
+
+  effectIt.effect("完成标记需验证子代理接受才收敛，拒绝后继续循环", () =>
+    Effect.gen(function* () {
+      const outputs = [`第一轮 [[GOAL_COMPLETE: 为时过早]]`, `第二轮 [[GOAL_COMPLETE: 真完成]]`];
+      const seen: Array<{ round: number; cleanText: string; reason: string | undefined }> = [];
+      const result = yield* runCompositionGoalLoop({
+        maxAttempts: 5,
+        attempt: (round) => Effect.sync(() => attemptOf(outputs[round - 1], 1)),
+        validateCompletion: (input) => {
+          seen.push({ round: input.round, cleanText: input.cleanText, reason: input.reason });
+          return Effect.succeed(
+            input.round === 1 ? { accepted: false, detail: "证据不足" } : { accepted: true },
+          );
+        },
+      });
+      expect(result.status).toBe("completed");
+      expect(result.rounds).toBe(2);
+      expect(result.completion?.reason).toBe("真完成");
+      expect(result.rejectedCompletions).toEqual([{ round: 1, detail: "证据不足" }]);
+      expect(seen).toEqual([
+        { round: 1, cleanText: "第一轮", reason: "为时过早" },
+        { round: 2, cleanText: "第二轮", reason: "真完成" },
+      ]);
+    }),
+  );
+
+  effectIt.effect("验证始终拒绝时按既有预算规则收敛，并保留全部拒绝记录", () =>
+    Effect.gen(function* () {
+      const result = yield* runCompositionGoalLoop({
+        maxAttempts: 2,
+        attempt: () => Effect.sync(() => attemptOf(`进展 [[GOAL_COMPLETE: 想完成]]`, 1)),
+        validateCompletion: () => Effect.succeed({ accepted: false, detail: "未通过校验" }),
+      });
+      expect(result.status).toBe("budget_exhausted");
+      expect(result.rounds).toBe(2);
+      expect(result.completion).toBeUndefined();
+      expect(result.rejectedCompletions).toEqual([
+        { round: 1, detail: "未通过校验" },
+        { round: 2, detail: "未通过校验" },
+      ]);
+    }),
+  );
+
+  effectIt.effect("被拒绝的声明输出参与停滞判定，可在拒绝同时提前 pivot", () =>
+    Effect.gen(function* () {
+      const result = yield* runCompositionGoalLoop({
+        maxAttempts: 10,
+        stalePivotRounds: 2,
+        attempt: () => Effect.sync(() => attemptOf("卡在同一句话 [[GOAL_COMPLETE: 完成了？]]", 1)),
+        validateCompletion: () => Effect.succeed({ accepted: false, detail: "重复输出不可信" }),
+      });
+      expect(result.status).toBe("pivot_required");
+      expect(result.rounds).toBe(2);
+      expect(result.pivot?.staleRounds).toBe(2);
+      expect(result.rejectedCompletions).toEqual([
+        { round: 1, detail: "重复输出不可信" },
+        { round: 2, detail: "重复输出不可信" },
+      ]);
+    }),
+  );
+
+  effectIt.effect("验证子代理失败原样上抛", () =>
+    Effect.gen(function* () {
+      const failure = yield* runCompositionGoalLoop<string, TestAttemptFailure>({
+        maxAttempts: 3,
+        attempt: () => Effect.sync(() => attemptOf(`输出 [[GOAL_COMPLETE]]`)),
+        validateCompletion: () => Effect.fail(new TestAttemptFailure({ detail: "校验器超时" })),
+      }).pipe(Effect.flip);
+      expect(failure._tag).toBe("TestAttemptFailure");
+      expect(failure.detail).toBe("校验器超时");
+    }),
+  );
 });
