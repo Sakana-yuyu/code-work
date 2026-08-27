@@ -5,13 +5,14 @@ import * as Layer from "effect/Layer";
 import { goalLoopEventPrefix } from "./CompositionGoalLoopRunner.ts";
 import { projectCompositionControlCenter } from "./CompositionControlCenterProjection.ts";
 import { CompositionTaskStore } from "../persistence/Services/CompositionTaskStore.ts";
+import type { CompositionTaskStoreShape } from "../persistence/Services/CompositionTaskStore.ts";
 import { CompositionTaskStoreLive } from "../persistence/Layers/CompositionTaskStore.ts";
 import { SqlitePersistenceMemory } from "../persistence/Layers/Sqlite.ts";
 
 const layer = it.layer(CompositionTaskStoreLive.pipe(Layer.provideMerge(SqlitePersistenceMemory)));
 
 const seedTask = (
-  store: CompositionTaskStore,
+  store: CompositionTaskStoreShape,
   input: {
     readonly taskId: string;
     readonly status: "queued" | "running" | "failed" | "completed";
@@ -32,7 +33,7 @@ const seedTask = (
   });
 
 const seedRun = (
-  store: CompositionTaskStore,
+  store: CompositionTaskStoreShape,
   input: {
     readonly taskId: string;
     readonly runId: string;
@@ -50,7 +51,7 @@ const seedRun = (
   });
 
 const seedGoalRow = (
-  store: CompositionTaskStore,
+  store: CompositionTaskStoreShape,
   input: {
     readonly taskId: string;
     readonly runId: string;

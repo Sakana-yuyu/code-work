@@ -11,13 +11,14 @@ import {
 } from "./CompositionGoalLoopRedispatch.ts";
 import { makeCompositionOrchestrator } from "./CompositionOrchestrator.ts";
 import { CompositionTaskStore } from "../persistence/Services/CompositionTaskStore.ts";
+import type { CompositionTaskStoreShape } from "../persistence/Services/CompositionTaskStore.ts";
 import { CompositionTaskStoreLive } from "../persistence/Layers/CompositionTaskStore.ts";
 import { SqlitePersistenceMemory } from "../persistence/Layers/Sqlite.ts";
 
 const layer = it.layer(CompositionTaskStoreLive.pipe(Layer.provideMerge(SqlitePersistenceMemory)));
 
 const goalRowEffect = (input: {
-  readonly store: CompositionTaskStore;
+  readonly store: CompositionTaskStoreShape;
   readonly taskId: string;
   readonly runId: string;
   readonly suffix: string;
@@ -35,7 +36,7 @@ const goalRowEffect = (input: {
     summary: input.summary,
   });
 
-const makeRedispatchable = (store: CompositionTaskStore) =>
+const makeRedispatchable = (store: CompositionTaskStoreShape) =>
   Effect.gen(function* () {
     const driverRegistry = makeCompositionAgentDriverRegistry();
     yield* driverRegistry.register({
@@ -233,7 +234,9 @@ layer("CompositionGoalLoopRedispatch", (it) => {
             }),
         }),
       );
-      assert.equal(error._tag, "CompositionGoalLoopSupervisorError");
+      if (error._tag !== "CompositionGoalLoopSupervisorError") {
+        assert.fail("Expected a CompositionGoalLoopSupervisorError");
+      }
       assert.equal(error.code, "goal_loop_supervisor_not_interrupted");
       assert.isFalse(invoked);
       const events = yield* store.listEvents(taskId, runId);
@@ -296,7 +299,9 @@ layer("CompositionGoalLoopRedispatch", (it) => {
             }),
         }),
       );
-      assert.equal(error._tag, "CompositionGoalLoopRedispatchError");
+      if (error._tag !== "CompositionGoalLoopRedispatchError") {
+        assert.fail("Expected a CompositionGoalLoopRedispatchError");
+      }
       assert.equal(error.code, "goal_loop_redispatch_not_latest");
       assert.isFalse(invoked);
       const events = yield* store.listEvents(taskId, runId);
@@ -366,7 +371,9 @@ layer("CompositionGoalLoopRedispatch", (it) => {
 
       // 放弃结算不创建新 Run，最新 Run 仍是被收口的陈旧 Run。
       const latestRun = yield* store.getLatestRun(taskId);
-      assert.isTrue(Option.isSome(latestRun));
+      if (Option.isNone(latestRun)) {
+        assert.fail("Expected the stale run to stay latest");
+      }
       assert.equal(latestRun.value.runId, runId);
     }),
   );
@@ -415,7 +422,9 @@ layer("CompositionGoalLoopRedispatch", (it) => {
           nowUnixMs: 5_000,
         }),
       );
-      assert.equal(error._tag, "CompositionGoalLoopSupervisorError");
+      if (error._tag !== "CompositionGoalLoopSupervisorError") {
+        assert.fail("Expected a CompositionGoalLoopSupervisorError");
+      }
       assert.equal(error.code, "goal_loop_supervisor_not_interrupted");
       const events = yield* store.listEvents(taskId, runId);
       assert.equal(
