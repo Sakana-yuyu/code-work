@@ -1,7 +1,7 @@
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import type {
   CompositionCapabilityGrant,
-  CompositionDispatchResult,
+  CompositionTaskDispatchResult,
   CompositionTask,
   CompositionTaskRun,
 } from "@codework/contracts";
@@ -27,6 +27,7 @@ import {
   type CompositionTaskGraphExecutionInput,
 } from "./CompositionTaskGraphExecutor.ts";
 import {
+  CompositionAgentDriverFailure,
   makeCompositionOrchestrator,
   type CompositionOrchestrator,
 } from "./CompositionOrchestrator.ts";
@@ -493,20 +494,25 @@ describe("CompositionTaskGraphExecutor", () => {
                   capabilityGrantIds: [],
                 }
               : makeRun(child, "running");
-          return Effect.succeed({ task, run } satisfies CompositionDispatchResult);
+          return Effect.succeed({ task, run } satisfies CompositionTaskDispatchResult);
         },
         retryTask: () => Effect.die("本测试不应触发重试"),
         cancelTask: ({ taskId, runId }) =>
           Effect.sync(() => {
             cancelled.push(`${taskId}/${runId}`);
-            return { status: "cancelled" as const };
+            const child = children.find((entry) => entry.taskId === taskId) ?? children[0]!;
+            return {
+              task: makeTask(child, "cancelled"),
+              run: makeRun(child, "cancelled"),
+              status: "cancelled" as const,
+            };
           }),
       };
       const taskProjections = new Map(
         children.map((child) => [child.taskId, makeTask(child, "running")] as const),
       );
       const runtime = {
-        awaitTaskCompletion: ({ runId }) =>
+        awaitTaskCompletion: ({ runId }: { taskId: string; runId: string }) =>
           runId === "run-b"
             ? Deferred.succeed(childBStarted, undefined).pipe(
                 Effect.flatMap(() => Deferred.await(cancelRelease)),
@@ -634,18 +640,23 @@ describe("CompositionTaskGraphExecutor", () => {
                 attempt: 1,
                 capabilityGrantIds: [],
               },
-            } satisfies CompositionDispatchResult);
+            } satisfies CompositionTaskDispatchResult);
           }
           return Effect.succeed({
             task: makeTask(child, "running"),
             run: makeRun(child, "running"),
-          } satisfies CompositionDispatchResult);
+          } satisfies CompositionTaskDispatchResult);
         },
         retryTask: () => Effect.die("本测试不应触发重试"),
         cancelTask: ({ taskId, runId }) =>
           Effect.sync(() => {
             cancelled.push(`${taskId}/${runId}`);
-            return { status: "cancelled" as const };
+            const child = children.find((entry) => entry.taskId === taskId) ?? children[0]!;
+            return {
+              task: makeTask(child, "cancelled"),
+              run: makeRun(child, "cancelled"),
+              status: "cancelled" as const,
+            };
           }),
       };
       const runtime = {
@@ -773,18 +784,30 @@ describe("CompositionTaskGraphExecutor", () => {
                 attempt: 1,
                 capabilityGrantIds: [],
               },
-            } satisfies CompositionDispatchResult);
+            } satisfies CompositionTaskDispatchResult);
           }
           return Effect.succeed({
             task: makeTask(child, "running"),
             run: makeRun(child, "running"),
-          } satisfies CompositionDispatchResult);
+          } satisfies CompositionTaskDispatchResult);
         },
         retryTask: () => Effect.die("本测试不应触发重试"),
         cancelTask: ({ taskId, runId }) =>
           taskId === children[1]!.taskId && runId === children[1]!.runId
-            ? Effect.fail(new Error("取消失败"))
-            : Effect.succeed({ status: "cancelled" as const }),
+            ? Effect.fail(
+                new CompositionAgentDriverFailure({
+                  code: "cancel_failed",
+                  detail: "取消失败",
+                }),
+              )
+            : Effect.sync(() => {
+                const child = children.find((entry) => entry.taskId === taskId) ?? children[0]!;
+                return {
+                  task: makeTask(child, "cancelled"),
+                  run: makeRun(child, "cancelled"),
+                  status: "cancelled" as const,
+                };
+              }),
       };
       const runtime = {
         awaitTaskCompletion: ({ runId }: { taskId: string; runId: string }) =>
