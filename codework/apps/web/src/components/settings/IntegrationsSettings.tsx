@@ -30,6 +30,7 @@ import { McpServersSettings } from "./McpServersSettings";
 import { AgentDriversSettings } from "./AgentDriversSettings";
 import { IdeSessionsSettings } from "./IdeSessionsSettings";
 import { TaskGraphPanel } from "./TaskGraphPanel";
+import { CompositionControlCenterPanel } from "./CompositionControlCenterPanel";
 
 import { Button } from "../ui/button";
 import { NumberField, NumberFieldGroup, NumberFieldInput } from "../ui/number-field";
@@ -484,6 +485,7 @@ export function IntegrationsSettingsPanel() {
       </SettingsSection>
       <IdeSessionsSettings />
       <AgentDriversSettings />
+      <CompositionControlCenterPanel />
       <TaskGraphPanel />
       <McpServersSettings />
     </SettingsPageContainer>

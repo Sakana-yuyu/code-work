@@ -520,6 +520,75 @@ export const CompositionTaskListResult = Schema.Struct({
 });
 export type CompositionTaskListResult = typeof CompositionTaskListResult.Type;
 
+/** 控制中心统一投影的请求：可选项目过滤与关注的 Squad 集合。 */
+export const CompositionControlCenterRequest = Schema.Struct({
+  projectId: Schema.optional(TrimmedNonEmptyString),
+  squadIds: Schema.optional(Schema.Array(TrimmedNonEmptyString)),
+});
+export type CompositionControlCenterRequest = typeof CompositionControlCenterRequest.Type;
+
+const CompositionControlCenterGoalLoopState = Schema.Literals([
+  "not_started",
+  "running",
+  "converged",
+  "supervisor_settled",
+  "interrupted",
+]);
+export type CompositionControlCenterGoalLoopState =
+  typeof CompositionControlCenterGoalLoopState.Type;
+
+export const CompositionControlCenterGoalLoop = Schema.Struct({
+  runId: TrimmedNonEmptyString,
+  state: CompositionControlCenterGoalLoopState,
+  completedRounds: NonNegativeInt,
+  rejectedCompletions: NonNegativeInt,
+  terminalStatuses: Schema.Array(Schema.String),
+  settledBySupervisor: Schema.Boolean,
+});
+export type CompositionControlCenterGoalLoop = typeof CompositionControlCenterGoalLoop.Type;
+
+export const CompositionControlCenterTask = Schema.Struct({
+  taskId: TrimmedNonEmptyString,
+  status: CompositionTaskStatus,
+  agentId: TrimmedNonEmptyString,
+  updatedAtUnixMs: NonNegativeInt,
+  dependsOnTaskIds: Schema.Array(TrimmedNonEmptyString),
+  latestRun: Schema.optional(
+    Schema.Struct({
+      runId: TrimmedNonEmptyString,
+      status: CompositionTaskStatus,
+      attempt: NonNegativeInt,
+      failureCode: Schema.optional(TrimmedNonEmptyString),
+    }),
+  ),
+  goalLoop: Schema.optional(CompositionControlCenterGoalLoop),
+  grants: Schema.optional(
+    Schema.Struct({
+      taskId: TrimmedNonEmptyString,
+      totalEvents: NonNegativeInt,
+      revokedEvents: NonNegativeInt,
+      lastOutcome: Schema.optional(CompositionCapabilityAuditOutcome),
+      lastOccurredAtUnixMs: Schema.optional(NonNegativeInt),
+    }),
+  ),
+});
+export type CompositionControlCenterTask = typeof CompositionControlCenterTask.Type;
+
+export const CompositionControlCenterSquad = Schema.Struct({
+  squadId: TrimmedNonEmptyString,
+  name: TrimmedNonEmptyString,
+  leaderAgentId: TrimmedNonEmptyString,
+  memberAgentIds: Schema.Array(TrimmedNonEmptyString),
+});
+export type CompositionControlCenterSquad = typeof CompositionControlCenterSquad.Type;
+
+export const CompositionControlCenterResult = Schema.Struct({
+  generatedAtUnixMs: NonNegativeInt,
+  tasks: Schema.Array(CompositionControlCenterTask),
+  squads: Schema.Array(CompositionControlCenterSquad),
+});
+export type CompositionControlCenterResult = typeof CompositionControlCenterResult.Type;
+
 const CompositionTaskDependencyCondition = Schema.Literals([
   "success",
   "terminal",

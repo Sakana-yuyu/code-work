@@ -786,6 +786,12 @@ export function createServerEnvironmentAtoms<R, E>(
       staleTimeMs: 2_000,
       idleTtlMs: 60_000,
     }),
+    controlCenterProjection: createEnvironmentRpcQueryAtomFamily(runtime, {
+      label: "environment-data:server:control-center-projection",
+      tag: WS_METHODS.serverControlCenterProjection,
+      staleTimeMs: 2_000,
+      idleTtlMs: 30_000,
+    }),
     listCompositionTaskEvents: createEnvironmentRpcQueryAtomFamily(runtime, {
       label: "environment-data:server:list-composition-task-events",
       tag: WS_METHODS.serverListCompositionTaskEvents,

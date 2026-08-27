@@ -98,6 +98,8 @@ import * as CompositionAgentService from "./composition/CompositionAgentService.
 import * as CompositionAgentDriverRegistry from "./composition/CompositionAgentDriverRegistry.ts";
 import * as CompositionIdeSessionRegistry from "./composition/CompositionIdeSessionRegistry.ts";
 import * as CompositionOrchestratorService from "./composition/CompositionOrchestratorService.ts";
+import * as CompositionControlCenterProjection from "./composition/CompositionControlCenterProjection.ts";
+import { CompositionTaskStore } from "./persistence/Services/CompositionTaskStore.ts";
 import * as CompositionTaskGraphExecutor from "./composition/CompositionTaskGraphExecutor.ts";
 import * as CompositionToolBroker from "./composition/ToolBroker.ts";
 import * as CompositionRuntimeToolBridge from "./composition/CompositionRuntimeToolBridge.ts";
@@ -484,6 +486,10 @@ const makeWsRpcLayer = (
       });
       const compositionOrchestrator = yield* Effect.serviceOption(
         CompositionOrchestratorService.CompositionOrchestratorService,
+      );
+      const compositionTaskStore = yield* Effect.serviceOption(CompositionTaskStore);
+      const compositionGrantRegistry = yield* Effect.serviceOption(
+        CompositionCapabilityGrantRegistry.CapabilityGrantRegistry,
       );
       const compositionTaskGraphExecutor = yield* Effect.serviceOption(
         CompositionTaskGraphExecutor.CompositionTaskGraphExecutor,
@@ -2066,6 +2072,21 @@ const makeWsRpcLayer = (
                   Effect.map((tasks) => ({ tasks })),
                   Effect.mapError(compositionTaskError),
                 ),
+            { "rpc.aggregate": "composition" },
+          ),
+        [WS_METHODS.serverControlCenterProjection]: (input) =>
+          observeRpcEffect(
+            WS_METHODS.serverControlCenterProjection,
+            Option.isNone(compositionTaskStore)
+              ? Effect.fail(compositionTaskUnavailable())
+              : CompositionControlCenterProjection.projectCompositionControlCenter({
+                  store: compositionTaskStore.value,
+                  grantRegistry: Option.isSome(compositionGrantRegistry)
+                    ? compositionGrantRegistry.value
+                    : undefined,
+                  projectId: input.projectId,
+                  squadIds: input.squadIds,
+                }).pipe(Effect.mapError(compositionTaskError)),
             { "rpc.aggregate": "composition" },
           ),
         [WS_METHODS.serverDiscoverSourceControl]: (_input) =>
