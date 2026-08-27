@@ -60,7 +60,12 @@ export const makeMulticaTaskEventWebSocketUrl = (baseUrl: string, workspaceId: s
   const url = new URL(normalizeBaseUrl(baseUrl));
   url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
   const path = url.pathname.replace(/\/+$/, "");
-  url.pathname = path.endsWith("/ws") ? path || "/ws" : `${path}/ws`;
+  // Multica 的 HTTP API 位于 /api，而普通 realtime WebSocket 位于同一部署前缀下的 /ws。
+  // 配置通常复用 API baseUrl，因此只去掉末尾的 /api，不影响反向代理前缀。
+  const deploymentPath = path.endsWith("/api") ? path.slice(0, -"/api".length) : path;
+  url.pathname = deploymentPath.endsWith("/ws")
+    ? deploymentPath || "/ws"
+    : `${deploymentPath}/ws` || "/ws";
   for (const key of ["token", "access_token", "api_key", "authorization"]) {
     url.searchParams.delete(key);
   }

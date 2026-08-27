@@ -145,9 +145,15 @@ describe("MulticaTaskEventWebSocketTransport", () => {
     const parsed = new URL(url);
 
     expect(parsed.protocol).toBe("wss:");
-    expect(parsed.pathname).toBe("/api/ws");
+    expect(parsed.pathname).toBe("/ws");
     expect(parsed.searchParams.get("workspace_id")).toBe("workspace one");
     expect(parsed.search).not.toContain("token");
+  });
+
+  it("保留反向代理前缀，但不把末尾 /api 带入普通事件路由", () => {
+    const url = makeMulticaTaskEventWebSocketUrl("https://multica.test/multica/api", "workspace-1");
+
+    expect(new URL(url).pathname).toBe("/multica/ws");
   });
 
   it("等待认证和订阅确认后才放行任务事件，并按官方顺序发送控制帧", async () => {
