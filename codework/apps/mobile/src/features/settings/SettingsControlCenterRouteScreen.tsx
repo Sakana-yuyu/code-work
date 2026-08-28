@@ -2,6 +2,7 @@ import { useNavigation } from "@react-navigation/native";
 import type {
   CompositionControlCenterResult,
   CompositionControlCenterTask,
+  CompositionTaskEvent,
   EnvironmentId,
 } from "@codework/contracts";
 import {
@@ -31,6 +32,7 @@ import {
   formatGrantMeta,
   formatSquadMeta,
   goalLoopStateLabelKey,
+  resolveControlCenterEventTarget,
   resolveControlCenterTaskActions,
 } from "./SettingsControlCenterRouteScreen.logic";
 
@@ -70,8 +72,18 @@ export function SettingsControlCenterRouteScreen() {
   );
   const [pendingTaskId, setPendingTaskId] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [selectedEventTaskId, setSelectedEventTaskId] = useState<string | null>(null);
 
   const projection: CompositionControlCenterResult | null = projectionQuery.data;
+  const eventTarget = resolveControlCenterEventTarget(projection?.tasks ?? [], selectedEventTaskId);
+  const eventsQuery = useEnvironmentQuery(
+    environmentId === null || eventTarget === null
+      ? null
+      : serverEnvironment.listCompositionTaskEvents({
+          environmentId,
+          input: eventTarget,
+        }),
+  );
 
   const runRowCommand = async (
     taskId: string,
@@ -87,6 +99,7 @@ export function SettingsControlCenterRouteScreen() {
       setActionError(error instanceof Error ? error.message : t(fallbackErrorKey));
     } else {
       projectionQuery.refresh();
+      if (selectedEventTaskId === taskId) eventsQuery.refresh();
     }
     setPendingTaskId(null);
   };
@@ -198,7 +211,10 @@ export function SettingsControlCenterRouteScreen() {
         refreshControl={
           <RefreshControl
             refreshing={projectionQuery.isPending && projection !== null}
-            onRefresh={projectionQuery.refresh}
+            onRefresh={() => {
+              projectionQuery.refresh();
+              eventsQuery.refresh();
+            }}
           />
         }
       >
@@ -221,6 +237,12 @@ export function SettingsControlCenterRouteScreen() {
                   key={task.taskId}
                   task={task}
                   actionsDisabled={pendingTaskId !== null}
+                  eventLogSelected={selectedEventTaskId === task.taskId}
+                  eventLogPending={eventsQuery.isPending}
+                  eventLogError={eventsQuery.error === null ? null : String(eventsQuery.error)}
+                  events={
+                    selectedEventTaskId === task.taskId ? (eventsQuery.data?.events ?? []) : []
+                  }
                   onRedispatch={() => void redispatch(task)}
                   onCancel={() => void cancel(task)}
                   onResume={() => void resume(task)}
@@ -228,6 +250,11 @@ export function SettingsControlCenterRouteScreen() {
                   onReject={() => void review(task, "reject")}
                   onAbandon={() => void abandon(task)}
                   onByokResumeRedispatch={() => void byokResumeRedispatch(task)}
+                  onToggleEvents={() =>
+                    setSelectedEventTaskId((current) =>
+                      current === task.taskId ? null : task.taskId,
+                    )
+                  }
                 />
               ))}
               {actionError === null ? null : (
@@ -269,6 +296,10 @@ export function SettingsControlCenterRouteScreen() {
 function ControlCenterTaskCard(props: {
   readonly task: CompositionControlCenterTask;
   readonly actionsDisabled: boolean;
+  readonly eventLogSelected: boolean;
+  readonly eventLogPending: boolean;
+  readonly eventLogError: string | null;
+  readonly events: ReadonlyArray<CompositionTaskEvent>;
   readonly onRedispatch: () => void;
   readonly onCancel: () => void;
   readonly onResume: () => void;
@@ -276,16 +307,18 @@ function ControlCenterTaskCard(props: {
   readonly onReject: () => void;
   readonly onAbandon: () => void;
   readonly onByokResumeRedispatch: () => void;
+  readonly onToggleEvents: () => void;
 }) {
   const { task } = props;
   const actions = resolveControlCenterTaskActions(task);
-  const hasActions =
+  const hasTaskActions =
     actions.redispatchable ||
     actions.cancellable ||
     actions.resumable ||
     actions.reviewable ||
     actions.abandonable ||
     actions.byokResumable;
+  const hasActions = hasTaskActions || task.latestRun !== undefined;
 
   return (
     <View className="gap-2 rounded-[24px] border-continuous bg-card p-4">
@@ -358,6 +391,17 @@ function ControlCenterTaskCard(props: {
       )}
       {hasActions ? (
         <View className="flex-row flex-wrap gap-2 pt-1">
+          {task.latestRun === undefined ? null : (
+            <ActionButton
+              label={t(
+                props.eventLogSelected
+                  ? "controlCenter.hideTaskEvents"
+                  : "controlCenter.viewTaskEvents",
+              )}
+              disabled={false}
+              onPress={props.onToggleEvents}
+            />
+          )}
           {actions.redispatchable ? (
             <ActionButton
               label={t("controlCenter.redispatch")}
@@ -411,6 +455,50 @@ function ControlCenterTaskCard(props: {
           ) : null}
         </View>
       ) : null}
+      {props.eventLogSelected ? (
+        <View className="gap-2 border-t border-border-subtle pt-3">
+          <Text className="text-sm font-t3-medium text-foreground">
+            {t("controlCenter.taskEvents")}
+          </Text>
+          {props.eventLogError !== null ? (
+            <Text className="text-sm text-danger-foreground">
+              {t("controlCenter.taskEventsFailed", { message: props.eventLogError })}
+            </Text>
+          ) : props.eventLogPending ? (
+            <Text className="text-sm text-foreground-muted">
+              {t("controlCenter.taskEventsLoading")}
+            </Text>
+          ) : props.events.length === 0 ? (
+            <Text className="text-sm text-foreground-muted">
+              {t("controlCenter.taskEventsEmpty")}
+            </Text>
+          ) : (
+            props.events.map((event) => (
+              <ControlCenterEventRow key={`${event.runId}:${event.sequence}`} event={event} />
+            ))
+          )}
+        </View>
+      ) : null}
+    </View>
+  );
+}
+
+function ControlCenterEventRow(props: { readonly event: CompositionTaskEvent }) {
+  const { event } = props;
+  return (
+    <View className="gap-1 border-t border-border-subtle pt-2 first:border-t-0 first:pt-0">
+      <Text className="text-sm text-foreground">{event.summary}</Text>
+      <Text className="font-mono text-xs text-foreground-muted">
+        #{event.sequence} · {event.eventType} · {event.status}
+      </Text>
+      {event.blockerCode === undefined ? null : (
+        <Text className="font-mono text-xs text-warning-foreground">{event.blockerCode}</Text>
+      )}
+      {event.progress === undefined ? null : (
+        <Text className="text-xs text-foreground-muted">
+          {t("controlCenter.taskEventProgress", { progress: event.progress })}
+        </Text>
+      )}
     </View>
   );
 }

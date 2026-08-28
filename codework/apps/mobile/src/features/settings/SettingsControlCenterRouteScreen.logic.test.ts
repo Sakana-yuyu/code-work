@@ -14,6 +14,7 @@ import {
   formatGrantMeta,
   formatSquadMeta,
   goalLoopStateLabelKey,
+  resolveControlCenterEventTarget,
   resolveControlCenterTaskActions,
 } from "./SettingsControlCenterRouteScreen.logic";
 import { isByokResumeRedispatchable } from "@codework/contracts";
@@ -244,6 +245,25 @@ describe("resolveControlCenterTaskActions", () => {
       abandonable: false,
       byokResumable: false,
     });
+  });
+});
+
+describe("resolveControlCenterEventTarget", () => {
+  const withRun = makeTask({ taskId: "task-events", latestRun: makeRun("running") });
+
+  it("returns only the selected task latest run identity", () => {
+    expect(resolveControlCenterEventTarget([withRun], "task-events")).toEqual({
+      taskId: "task-events",
+      runId: "run-1",
+    });
+  });
+
+  it("returns null when the task is not selected or has no latest run", () => {
+    expect(resolveControlCenterEventTarget([withRun], null)).toBe(null);
+    expect(resolveControlCenterEventTarget([withRun], "task-missing")).toBe(null);
+    expect(
+      resolveControlCenterEventTarget([makeTask({ taskId: "task-events" })], "task-events"),
+    ).toBe(null);
   });
 });
 

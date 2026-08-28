@@ -47,6 +47,17 @@ export interface ControlCenterTaskActions {
   readonly byokResumable: boolean;
 }
 
+export const resolveControlCenterEventTarget = (
+  tasks: ReadonlyArray<CompositionControlCenterTask>,
+  selectedTaskId: string | null,
+): { readonly taskId: string; readonly runId: string } | null => {
+  if (selectedTaskId === null) return null;
+  const task = tasks.find((candidate) => candidate.taskId === selectedTaskId);
+  return task?.latestRun === undefined
+    ? null
+    : { taskId: task.taskId, runId: task.latestRun.runId };
+};
+
 /**
  * 行操作渲染门槛，与 Web 控制中心面板逐条对齐：
  * - 重派：goalLoop interrupted/supervisor_settled 且存在最新 Run；
