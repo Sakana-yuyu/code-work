@@ -15,6 +15,7 @@ import {
   CompositionSquadPlanner,
   type CompositionSquadPlannerShape,
 } from "./CompositionSquadPlanner.ts";
+import { composeCompositionSquadReviewPrompt } from "./CompositionSquadReview.ts";
 import {
   CompositionSquadService,
   type CompositionSquadServiceShape,
@@ -258,7 +259,26 @@ export const compileCompositionSquadGraph = ({
       }
       resolvedNodes.push({ ...node, member });
     }
-    const modeNodes = applyModeDependencies(squad.collaborationMode, resolvedNodes);
+    const reworkableNodeIds = resolvedNodes
+      .filter((node) => node.member.role === "worker")
+      .map((node) => node.nodeId);
+    const promptedNodes =
+      squad.collaborationMode === "review_critic"
+        ? resolvedNodes.map((node) =>
+            node.member.role === "reviewer" || node.member.role === "critic"
+              ? {
+                  ...node,
+                  prompt: composeCompositionSquadReviewPrompt({
+                    role: node.member.role,
+                    goal: input.goal,
+                    taskPrompt: node.prompt,
+                    reworkableNodeIds,
+                  }),
+                }
+              : node,
+          )
+        : resolvedNodes;
+    const modeNodes = applyModeDependencies(squad.collaborationMode, promptedNodes);
     const scope = executionScope(input);
     const maxAttempts = (squad.maxRetries ?? 0) + 1;
     const children: CompositionTaskGraphNodeInput[] = modeNodes.map((node) => {
