@@ -3,6 +3,7 @@
 import type {
   CompositionSquad,
   CompositionSquadExecutionResult,
+  CompositionTaskEvent,
   CompositionTaskSnapshot,
   CompositionTaskStatus,
   EnvironmentId,
@@ -13,6 +14,7 @@ import {
 } from "@codework/client-runtime/state/runtime";
 import {
   CheckIcon,
+  FileTextIcon,
   GitBranchIcon,
   HistoryIcon,
   PlayIcon,
@@ -285,15 +287,56 @@ function nodeActionIcon(action: CompositionSquadNodeAction): ReactNode {
   }
 }
 
+function CompositionSquadEventLog({
+  events,
+}: {
+  readonly events: ReadonlyArray<CompositionTaskEvent>;
+}) {
+  if (events.length === 0) {
+    return <p className="text-xs text-muted-foreground">{t("squadRun.eventLogEmpty")}</p>;
+  }
+  return (
+    <ol className="space-y-2">
+      {events.map((event) => (
+        <li key={`${event.runId}:${event.sequence}`} className="flex gap-2 text-xs">
+          <span className="w-7 shrink-0 font-mono text-[11px] text-muted-foreground">
+            #{event.sequence}
+          </span>
+          <span className="min-w-0 flex-1">
+            <span className="block text-foreground">{event.summary}</span>
+            <span className="flex flex-wrap items-center gap-1.5 text-[11px] text-muted-foreground">
+              <span>
+                {event.eventType} · {statusLabel(event.status)}
+              </span>
+              {event.blockerCode === undefined ? null : (
+                <code className="rounded bg-warning/10 px-1.5 py-0.5 text-warning-foreground">
+                  {event.blockerCode}
+                </code>
+              )}
+              {event.progress === undefined ? null : (
+                <span>{t("squadRun.eventProgress", { progress: event.progress })}</span>
+              )}
+            </span>
+          </span>
+        </li>
+      ))}
+    </ol>
+  );
+}
+
 function CompositionSquadExecutionHistoryView({
   executions,
   squad,
+  selectedTaskId,
   pendingAction,
+  onSelectLogs,
   onAction,
 }: {
   readonly executions: ReadonlyArray<CompositionSquadExecutionHistoryItem>;
   readonly squad: CompositionSquad;
+  readonly selectedTaskId: string | null;
   readonly pendingAction: string | null;
+  readonly onSelectLogs: (snapshot: CompositionTaskSnapshot) => void;
   readonly onAction: (
     action: CompositionSquadNodeAction,
     snapshot: CompositionTaskSnapshot,
@@ -335,8 +378,14 @@ function CompositionSquadExecutionHistoryView({
               const capabilityIds =
                 squad.members?.find((member) => member.agentId === agentId)?.capabilityIds ?? [];
               const actions = getCompositionSquadNodeActions(snapshot, capabilityIds);
+              const selected = selectedTaskId === snapshot.task.taskId;
               return (
-                <div key={snapshot.task.taskId} data-squad-history-node={nodeId}>
+                <div
+                  key={snapshot.task.taskId}
+                  data-squad-history-node={nodeId}
+                  data-selected={selected ? "true" : undefined}
+                  className={selected ? "bg-accent/20" : undefined}
+                >
                   <ResultRow
                     nodeId={nodeId}
                     label={historyNodeLabel(nodeId)}
@@ -349,39 +398,44 @@ function CompositionSquadExecutionHistoryView({
                     {...(latestRun?.failureCode === undefined
                       ? {}
                       : { failureCode: latestRun.failureCode })}
-                    {...(actions.length === 0
-                      ? {}
-                      : {
-                          actions: (
-                            <div className="flex flex-wrap items-center gap-1">
-                              {actions.map((action) => {
-                                const actionKey = `${action}:${snapshot.task.taskId}`;
-                                const label = nodeActionLabel(action);
-                                return (
-                                  <Button
-                                    key={action}
-                                    data-squad-node-action={action}
-                                    data-squad-node-task={snapshot.task.taskId}
-                                    size="icon-sm"
-                                    variant={
-                                      action === "reject" ? "destructive-outline" : "outline"
-                                    }
-                                    aria-label={label}
-                                    title={label}
-                                    disabled={pendingAction !== null}
-                                    onClick={() => onAction(action, snapshot, capabilityIds)}
-                                  >
-                                    {pendingAction === actionKey ? (
-                                      <RefreshCwIcon className="animate-spin" />
-                                    ) : (
-                                      nodeActionIcon(action)
-                                    )}
-                                  </Button>
-                                );
-                              })}
-                            </div>
-                          ),
+                    actions={
+                      <div className="flex flex-wrap items-center gap-1">
+                        <Button
+                          data-squad-node-action="logs"
+                          data-squad-node-task={snapshot.task.taskId}
+                          size="icon-sm"
+                          variant={selected ? "secondary" : "outline"}
+                          aria-label={t("squadRun.viewNodeLogs")}
+                          title={t("squadRun.viewNodeLogs")}
+                          onClick={() => onSelectLogs(snapshot)}
+                        >
+                          <FileTextIcon />
+                        </Button>
+                        {actions.map((action) => {
+                          const actionKey = `${action}:${snapshot.task.taskId}`;
+                          const label = nodeActionLabel(action);
+                          return (
+                            <Button
+                              key={action}
+                              data-squad-node-action={action}
+                              data-squad-node-task={snapshot.task.taskId}
+                              size="icon-sm"
+                              variant={action === "reject" ? "destructive-outline" : "outline"}
+                              aria-label={label}
+                              title={label}
+                              disabled={pendingAction !== null}
+                              onClick={() => onAction(action, snapshot, capabilityIds)}
+                            >
+                              {pendingAction === actionKey ? (
+                                <RefreshCwIcon className="animate-spin" />
+                              ) : (
+                                nodeActionIcon(action)
+                              )}
+                            </Button>
+                          );
                         })}
+                      </div>
+                    }
                   />
                 </div>
               );
@@ -463,6 +517,7 @@ function CompositionSquadRunEnvironmentPanel({
   const [nodeActionReason, setNodeActionReason] = useState("");
   const [pendingNodeAction, setPendingNodeAction] = useState<string | null>(null);
   const [nodeActionError, setNodeActionError] = useState<string | null>(null);
+  const [selectedHistoryTaskId, setSelectedHistoryTaskId] = useState<string | null>(null);
   const [executionResult, setExecutionResult] = useState<CompositionSquadExecutionResult | null>(
     null,
   );
@@ -482,6 +537,27 @@ function CompositionSquadRunEnvironmentPanel({
             tasksQuery.data?.tasks ?? [],
           ),
     [selectedSquad, tasksQuery.data?.tasks],
+  );
+  const selectedHistoryNode = useMemo(() => {
+    const nodes = executionHistory.flatMap((execution) => execution.nodes);
+    return (
+      nodes.find((node) => node.snapshot.task.taskId === selectedHistoryTaskId) ??
+      executionHistory[0]?.nodes.find((node) => node.nodeId === "leader-finalize") ??
+      executionHistory[0]?.nodes[0] ??
+      null
+    );
+  }, [executionHistory, selectedHistoryTaskId]);
+  const selectedHistoryRun = selectedHistoryNode?.snapshot.latestRun;
+  const eventsQuery = useEnvironmentQuery(
+    environmentId === null || selectedHistoryNode === null || selectedHistoryRun === undefined
+      ? null
+      : serverEnvironment.listCompositionTaskEvents({
+          environmentId,
+          input: {
+            taskId: selectedHistoryNode.snapshot.task.taskId,
+            runId: selectedHistoryRun.runId,
+          },
+        }),
   );
 
   useEffect(() => {
@@ -505,6 +581,7 @@ function CompositionSquadRunEnvironmentPanel({
     setDraft((current) => ({ ...current, planText: buildPlanTemplate(squad) }));
     setActionError(null);
     setNodeActionError(null);
+    setSelectedHistoryTaskId(null);
     setExecutionResult(null);
   };
 
@@ -515,6 +592,7 @@ function CompositionSquadRunEnvironmentPanel({
       projectId,
       workspaceRoot: project?.workspaceRoot ?? current.workspaceRoot,
     }));
+    setSelectedHistoryTaskId(null);
   };
 
   const run = async (): Promise<void> => {
@@ -578,6 +656,7 @@ function CompositionSquadRunEnvironmentPanel({
       setNodeActionError(error instanceof Error ? error.message : t("squadRun.nodeActionFailed"));
     } else {
       tasksQuery.refresh();
+      eventsQuery.refresh();
     }
     setPendingNodeAction(null);
   };
@@ -600,6 +679,7 @@ function CompositionSquadRunEnvironmentPanel({
             squadsQuery.refresh();
             revisionsQuery.refresh();
             tasksQuery.refresh();
+            eventsQuery.refresh();
           }}
         >
           <RefreshCwIcon />
@@ -861,11 +941,54 @@ function CompositionSquadRunEnvironmentPanel({
                 <CompositionSquadExecutionHistoryView
                   executions={executionHistory}
                   squad={selectedSquad}
+                  selectedTaskId={selectedHistoryNode?.snapshot.task.taskId ?? null}
                   pendingAction={pendingNodeAction}
+                  onSelectLogs={(snapshot) => setSelectedHistoryTaskId(snapshot.task.taskId)}
                   onAction={(action, snapshot, capabilityIds) =>
                     void runNodeAction(action, snapshot, capabilityIds)
                   }
                 />
+              )}
+              {selectedHistoryNode === null || selectedHistoryRun === undefined ? null : (
+                <div
+                  data-squad-event-task={selectedHistoryNode.snapshot.task.taskId}
+                  className="rounded-md border border-border/70 bg-background/40 p-3 sm:p-4"
+                >
+                  <div className="mb-3 flex flex-wrap items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="text-xs font-medium text-foreground">
+                        {t("squadRun.eventLog")}
+                      </p>
+                      <p className="mt-1 break-all font-mono text-[11px] text-muted-foreground">
+                        {selectedHistoryNode.snapshot.task.taskId}
+                      </p>
+                      <p className="break-all font-mono text-[11px] text-muted-foreground">
+                        {selectedHistoryRun.runId}
+                      </p>
+                    </div>
+                    <Button
+                      size="icon-sm"
+                      variant="ghost-muted"
+                      aria-label={t("squadRun.refreshEventLog")}
+                      title={t("squadRun.refreshEventLog")}
+                      disabled={eventsQuery.isPending}
+                      onClick={() => eventsQuery.refresh()}
+                    >
+                      <RefreshCwIcon
+                        className={eventsQuery.isPending ? "animate-spin" : undefined}
+                      />
+                    </Button>
+                  </div>
+                  {eventsQuery.error ? (
+                    <p className="text-xs text-destructive">
+                      {t("squadRun.eventLogFailed", { message: String(eventsQuery.error) })}
+                    </p>
+                  ) : eventsQuery.isPending ? (
+                    <p className="text-xs text-muted-foreground">{t("squadRun.eventLogLoading")}</p>
+                  ) : (
+                    <CompositionSquadEventLog events={eventsQuery.data?.events ?? []} />
+                  )}
+                </div>
               )}
             </div>
           </div>

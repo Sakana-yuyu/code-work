@@ -2,6 +2,7 @@ import type {
   CompositionSquadExecutionResult,
   CompositionSquadListResult,
   CompositionSquadRevisionListResult,
+  CompositionTaskEventsResult,
   CompositionTaskListResult,
   CompositionTaskStatus,
 } from "@codework/contracts";
@@ -19,6 +20,7 @@ const mocks = vi.hoisted(() => ({
     squads: Symbol("squads"),
     revisions: Symbol("revisions"),
     tasks: Symbol("tasks"),
+    events: Symbol("events"),
     run: Symbol("run"),
     cancel: Symbol("cancel"),
     resume: Symbol("resume"),
@@ -44,10 +46,17 @@ const mocks = vi.hoisted(() => ({
       isPending: false,
       refresh: vi.fn(),
     },
+    events: {
+      data: null as CompositionTaskEventsResult | null,
+      error: null as string | null,
+      isPending: false,
+      refresh: vi.fn(),
+    },
   },
   compositionSquads: vi.fn(),
   compositionSquadRevisions: vi.fn(),
   listCompositionTasks: vi.fn(),
+  listCompositionTaskEvents: vi.fn(),
   runCommand: vi.fn(),
   useAtomCommand: vi.fn(),
 }));
@@ -65,6 +74,7 @@ vi.mock("~/state/query", () => ({
     if (atom === mocks.atoms.squads) return mocks.queries.squads;
     if (atom === mocks.atoms.revisions) return mocks.queries.revisions;
     if (atom === mocks.atoms.tasks) return mocks.queries.tasks;
+    if (atom === mocks.atoms.events) return mocks.queries.events;
     return {
       data: null,
       error: null,
@@ -87,6 +97,10 @@ vi.mock("~/state/server", () => ({
     listCompositionTasks: (...args: unknown[]) => {
       mocks.listCompositionTasks(...args);
       return mocks.atoms.tasks;
+    },
+    listCompositionTaskEvents: (...args: unknown[]) => {
+      mocks.listCompositionTaskEvents(...args);
+      return mocks.atoms.events;
     },
     runCompositionSquad: mocks.atoms.run,
     cancelCompositionTask: mocks.atoms.cancel,
@@ -229,9 +243,13 @@ describe("CompositionSquadRunPanel", () => {
     mocks.queries.tasks.data = null;
     mocks.queries.tasks.error = null;
     mocks.queries.tasks.isPending = false;
+    mocks.queries.events.data = null;
+    mocks.queries.events.error = null;
+    mocks.queries.events.isPending = false;
     mocks.compositionSquads.mockReset();
     mocks.compositionSquadRevisions.mockReset();
     mocks.listCompositionTasks.mockReset();
+    mocks.listCompositionTaskEvents.mockReset();
     mocks.runCommand.mockReset();
     mocks.useAtomCommand.mockReset();
   });
@@ -415,5 +433,62 @@ describe("CompositionSquadRunPanel", () => {
     expect(html).toContain(
       'data-squad-node-task="execution-actions:squad:squad-active:r3:task:build"',
     );
+  });
+
+  it("查询并显示最新 execution 的持久化节点事件日志", () => {
+    mocks.environment = { environmentId: EnvironmentId.make("env-test") };
+    mocks.projects = [project("env-test", "project-1", "Code Work")];
+    mocks.queries.squads.data = { squads: [activeSquad] };
+    mocks.queries.revisions.data = { revisions: [] };
+    const leaderTaskId = "execution-events:squad:squad-active:r3:task:leader-finalize";
+    const leaderRunId = "run-leader-events";
+    mocks.queries.tasks.data = {
+      tasks: [
+        {
+          task: {
+            ...task(leaderTaskId, "waiting_approval"),
+            assigneeKind: "squad",
+            assigneeId: "squad-active",
+            mode: "review",
+            updatedAtUnixMs: 50,
+          },
+          latestRun: {
+            ...run(leaderRunId, "waiting_approval"),
+            taskId: leaderTaskId,
+            agentId: "agent-lead",
+            runtimeTaskId: "runtime-task-leader",
+          },
+        },
+      ],
+    };
+    mocks.queries.events.data = {
+      taskId: leaderTaskId,
+      runId: leaderRunId,
+      events: [
+        {
+          taskId: leaderTaskId,
+          runId: leaderRunId,
+          agentId: "agent-lead",
+          runtimeId: "runtime-1",
+          status: "waiting_approval",
+          sequence: 0,
+          eventType: "blocker",
+          summary: "等待负责人确认最终结果",
+          blockerCode: "approval_required",
+        },
+      ],
+    };
+
+    const html = renderToStaticMarkup(<CompositionSquadRunPanel />);
+
+    expect(mocks.listCompositionTaskEvents).toHaveBeenCalledWith({
+      environmentId: "env-test",
+      input: { taskId: leaderTaskId, runId: leaderRunId },
+    });
+    expect(html).toContain('data-squad-node-action="logs"');
+    expect(html).toContain(`data-squad-event-task="${leaderTaskId}"`);
+    expect(html).toContain("等待负责人确认最终结果");
+    expect(html).toContain("approval_required");
+    expect(html).toContain("#0");
   });
 });
