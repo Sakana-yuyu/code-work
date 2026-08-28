@@ -72,6 +72,8 @@ import * as CompositionRuntimeAdapterRegistry from "./composition/CompositionRun
 import * as CompositionRuntimeAgentDriverProjection from "./composition/CompositionRuntimeAgentDriverProjection.ts";
 import * as CompositionRuntimeSettings from "./composition/CompositionRuntimeSettings.ts";
 import * as CompositionOrchestratorService from "./composition/CompositionOrchestratorService.ts";
+import * as CompositionSquadRunner from "./composition/CompositionSquadRunner.ts";
+import * as CompositionSquadService from "./composition/CompositionSquadService.ts";
 import * as CompositionTaskRuntimeProjectionService from "./composition/CompositionTaskRuntimeProjectionService.ts";
 import * as CompositionTaskGraphExecutor from "./composition/CompositionTaskGraphExecutor.ts";
 import * as PreviewManager from "./preview/Manager.ts";
@@ -477,6 +479,15 @@ const CompositionTaskGraphExecutorLayerLive = CompositionTaskGraphExecutor.layer
   Layer.provideMerge(CompositionRuntimeLayerLive),
 );
 
+const CompositionSquadServiceLayerLive = CompositionSquadService.layer.pipe(
+  Layer.provide(CompositionRuntimeDependenciesLive),
+);
+
+const CompositionSquadRunnerLayerLive = CompositionSquadRunner.layer.pipe(
+  Layer.provide(CompositionSquadServiceLayerLive),
+  Layer.provide(CompositionTaskGraphExecutorLayerLive),
+);
+
 const ProjectFaviconResolverLayerLive = ProjectFaviconResolver.layer.pipe(
   Layer.provide(WorkspacePaths.layer),
   Layer.provide(CodeworkProjectFileLoader.layer),
@@ -526,6 +537,8 @@ const RuntimeCoreDependenciesBaseLive = ReactorLayerLive.pipe(
       CompositionRuntimeLayerLive,
       CompositionRuntimeToolBridgeLayerLive,
       CompositionTaskGraphExecutorLayerLive,
+      CompositionSquadServiceLayerLive,
+      CompositionSquadRunnerLayerLive,
     ),
   ),
   // Shared native/canonical NDJSON writers used by both the per-instance

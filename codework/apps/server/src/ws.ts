@@ -109,6 +109,9 @@ import * as CompositionOrchestratorService from "./composition/CompositionOrches
 import * as CompositionByokResumeRedispatch from "./composition/CompositionByokResumeRedispatch.ts";
 import * as CompositionControlCenterProjection from "./composition/CompositionControlCenterProjection.ts";
 import * as CompositionGoalLoopRedispatch from "./composition/CompositionGoalLoopRedispatch.ts";
+import * as CompositionSquadRunner from "./composition/CompositionSquadRunner.ts";
+import { toCompositionSquadRpcError } from "./composition/CompositionSquadRpcError.ts";
+import * as CompositionSquadService from "./composition/CompositionSquadService.ts";
 import * as CompositionSupplierRegistryProjection from "./composition/CompositionSupplierRegistryProjection.ts";
 import { CompositionTaskInputStore } from "./persistence/Services/CompositionTaskInputStore.ts";
 import { CompositionTaskStore } from "./persistence/Services/CompositionTaskStore.ts";
@@ -539,6 +542,12 @@ const makeWsRpcLayer = (
       const compositionTaskGraphExecutor = yield* Effect.serviceOption(
         CompositionTaskGraphExecutor.CompositionTaskGraphExecutor,
       );
+      const compositionSquadService = yield* Effect.serviceOption(
+        CompositionSquadService.CompositionSquadService,
+      );
+      const compositionSquadRunner = yield* Effect.serviceOption(
+        CompositionSquadRunner.CompositionSquadRunner,
+      );
       const compositionAgentDrivers = yield* Effect.serviceOption(
         CompositionAgentDriverRegistry.CompositionAgentDriverRegistryService,
       );
@@ -559,6 +568,15 @@ const makeWsRpcLayer = (
           code: "composition_unavailable",
           detail: "当前运行时未提供 Composition Task 能力。",
         });
+      const compositionSquadUnavailable = (squadId: string) =>
+        toCompositionSquadRpcError(
+          {
+            code: "composition_squad_unavailable",
+            detail: "当前运行时未提供 Squad 能力。",
+            squadId,
+          },
+          squadId,
+        );
       const compositionTaskError = (error: unknown) => {
         if (isCompositionTaskRpcError(error)) return error;
         if (typeof error === "object" && error !== null) {
@@ -2105,6 +2123,161 @@ const makeWsRpcLayer = (
                       : { partialSuccessPolicy: input.partialSuccessPolicy }),
                   })
                   .pipe(Effect.mapError(compositionTaskError)),
+            { "rpc.aggregate": "composition" },
+          ),
+        [WS_METHODS.serverListCompositionSquads]: (input) =>
+          observeRpcEffect(
+            WS_METHODS.serverListCompositionSquads,
+            Option.isNone(compositionSquadService)
+              ? Effect.fail(compositionSquadUnavailable("*"))
+              : compositionSquadService.value
+                  .list(
+                    input.includeArchived === undefined
+                      ? undefined
+                      : { includeArchived: input.includeArchived },
+                  )
+                  .pipe(
+                    Effect.map((squads) => ({ squads })),
+                    Effect.mapError((error) => toCompositionSquadRpcError(error, "*")),
+                  ),
+            { "rpc.aggregate": "composition" },
+          ),
+        [WS_METHODS.serverGetCompositionSquad]: (input) =>
+          observeRpcEffect(
+            WS_METHODS.serverGetCompositionSquad,
+            Option.isNone(compositionSquadService)
+              ? Effect.fail(compositionSquadUnavailable(input.squadId))
+              : compositionSquadService.value.get(input.squadId).pipe(
+                  Effect.map((squad) => ({ squad })),
+                  Effect.mapError((error) => toCompositionSquadRpcError(error, input.squadId)),
+                ),
+            { "rpc.aggregate": "composition" },
+          ),
+        [WS_METHODS.serverListCompositionSquadRevisions]: (input) =>
+          observeRpcEffect(
+            WS_METHODS.serverListCompositionSquadRevisions,
+            Option.isNone(compositionSquadService)
+              ? Effect.fail(compositionSquadUnavailable(input.squadId))
+              : compositionSquadService.value.listRevisions(input.squadId).pipe(
+                  Effect.map((revisions) => ({ revisions })),
+                  Effect.mapError((error) => toCompositionSquadRpcError(error, input.squadId)),
+                ),
+            { "rpc.aggregate": "composition" },
+          ),
+        [WS_METHODS.serverCreateCompositionSquad]: (input) =>
+          observeRpcEffect(
+            WS_METHODS.serverCreateCompositionSquad,
+            Option.isNone(compositionSquadService)
+              ? Effect.fail(compositionSquadUnavailable(input.squadId))
+              : compositionSquadService.value
+                  .create({
+                    squadId: input.squadId,
+                    name: input.name,
+                    leaderAgentId: input.leaderAgentId,
+                    ...(input.instructions === undefined
+                      ? {}
+                      : { instructions: input.instructions }),
+                    collaborationMode: input.collaborationMode,
+                    members: input.members,
+                    maxConcurrency: input.maxConcurrency,
+                    ...(input.maxRetries === undefined ? {} : { maxRetries: input.maxRetries }),
+                    failurePolicy: input.failurePolicy,
+                    partialSuccessPolicy: input.partialSuccessPolicy,
+                    ...(input.approvalStages === undefined
+                      ? {}
+                      : { approvalStages: input.approvalStages }),
+                  })
+                  .pipe(
+                    Effect.map((squad) => ({ squad })),
+                    Effect.mapError((error) => toCompositionSquadRpcError(error, input.squadId)),
+                  ),
+            { "rpc.aggregate": "composition" },
+          ),
+        [WS_METHODS.serverUpdateCompositionSquad]: (input) =>
+          observeRpcEffect(
+            WS_METHODS.serverUpdateCompositionSquad,
+            Option.isNone(compositionSquadService)
+              ? Effect.fail(compositionSquadUnavailable(input.squadId))
+              : compositionSquadService.value
+                  .update({
+                    squadId: input.squadId,
+                    name: input.name,
+                    leaderAgentId: input.leaderAgentId,
+                    ...(input.instructions === undefined
+                      ? {}
+                      : { instructions: input.instructions }),
+                    collaborationMode: input.collaborationMode,
+                    members: input.members,
+                    maxConcurrency: input.maxConcurrency,
+                    ...(input.maxRetries === undefined ? {} : { maxRetries: input.maxRetries }),
+                    failurePolicy: input.failurePolicy,
+                    partialSuccessPolicy: input.partialSuccessPolicy,
+                    ...(input.approvalStages === undefined
+                      ? {}
+                      : { approvalStages: input.approvalStages }),
+                    expectedRevision: input.expectedRevision,
+                  })
+                  .pipe(
+                    Effect.map((squad) => ({ squad })),
+                    Effect.mapError((error) => toCompositionSquadRpcError(error, input.squadId)),
+                  ),
+            { "rpc.aggregate": "composition" },
+          ),
+        [WS_METHODS.serverDuplicateCompositionSquad]: (input) =>
+          observeRpcEffect(
+            WS_METHODS.serverDuplicateCompositionSquad,
+            Option.isNone(compositionSquadService)
+              ? Effect.fail(compositionSquadUnavailable(input.squadId))
+              : compositionSquadService.value.duplicate(input).pipe(
+                  Effect.map((squad) => ({ squad })),
+                  Effect.mapError((error) => toCompositionSquadRpcError(error, input.squadId)),
+                ),
+            { "rpc.aggregate": "composition" },
+          ),
+        [WS_METHODS.serverArchiveCompositionSquad]: (input) =>
+          observeRpcEffect(
+            WS_METHODS.serverArchiveCompositionSquad,
+            Option.isNone(compositionSquadService)
+              ? Effect.fail(compositionSquadUnavailable(input.squadId))
+              : compositionSquadService.value.archive(input).pipe(
+                  Effect.map((squad) => ({ squad })),
+                  Effect.mapError((error) => toCompositionSquadRpcError(error, input.squadId)),
+                ),
+            { "rpc.aggregate": "composition" },
+          ),
+        [WS_METHODS.serverRestoreCompositionSquad]: (input) =>
+          observeRpcEffect(
+            WS_METHODS.serverRestoreCompositionSquad,
+            Option.isNone(compositionSquadService)
+              ? Effect.fail(compositionSquadUnavailable(input.squadId))
+              : compositionSquadService.value.restore(input).pipe(
+                  Effect.map((squad) => ({ squad })),
+                  Effect.mapError((error) => toCompositionSquadRpcError(error, input.squadId)),
+                ),
+            { "rpc.aggregate": "composition" },
+          ),
+        [WS_METHODS.serverRunCompositionSquad]: (input) =>
+          observeRpcEffect(
+            WS_METHODS.serverRunCompositionSquad,
+            Option.isNone(compositionSquadRunner)
+              ? Effect.fail(compositionSquadUnavailable(input.squadId))
+              : compositionSquadRunner.value
+                  .run({
+                    executionId: input.executionId,
+                    squadId: input.squadId,
+                    squadRevision: input.squadRevision,
+                    projectId: input.projectId,
+                    ...(input.threadId === undefined ? {} : { threadId: input.threadId }),
+                    goal: input.goal,
+                    workspaceRoot: input.workspaceRoot,
+                    ...(input.workspaceRootDigest === undefined
+                      ? {}
+                      : { workspaceRootDigest: input.workspaceRootDigest }),
+                    ...(input.plan === undefined ? {} : { plan: input.plan }),
+                  })
+                  .pipe(
+                    Effect.mapError((error) => toCompositionSquadRpcError(error, input.squadId)),
+                  ),
             { "rpc.aggregate": "composition" },
           ),
         [WS_METHODS.serverCancelCompositionTask]: (input) =>
