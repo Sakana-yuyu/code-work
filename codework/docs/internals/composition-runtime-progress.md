@@ -8,16 +8,27 @@
 
 ## 当前快照
 
-| 项目     | 当前值                                                                                                                                                                                    |
-| -------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 更新时间 | 2026-08-28                                                                                                                                                                                |
-| 仓库     | `E:\MyProject\code-work\codework`                                                                                                                                                         |
-| 当前分支 | `tcode`                                                                                                                                                                                   |
-| 当前提交 | BYOK 委派取消节点：`feat(byok): 接通控制中心委派取消`                                                                                                                                     |
-| 相对远端 | 预计提交后领先 `origin/tcode` 109 个提交，尚未 push                                                                                                                                       |
-| 最新节点 | 控制中心 Web/Mobile 的活跃 BYOK 委派行复用 `serverCancelCompositionTask`；服务端先取消对应 `DelegationScheduler` 执行，再以委派专属幂等事件把 Composition Task/Run 严格收敛为 `cancelled` |
-| 范围调整 | 真实 Cursor/VS Code Adapter 接入与真实 Multica daemon 协同/输出查询列为**后期内容（本次不做，TODO 待排期）**；当前阶段仅对接 BYOK Driver，本地协议与进程级验证维持既有结论                |
-| 上游基线 | 已并入上游 `t3code` v0.0.35（合并提交 `05d694cfa`）：PR 关联线程、Claude 旧线程压缩、git push base 分支修复等；上游迁移 042/043 因与本地 composition 迁移撞号重编为 054/055               |
+| 项目     | 当前值                                                                                                                                                                     |
+| -------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 更新时间 | 2026-08-28                                                                                                                                                                 |
+| 仓库     | `E:\MyProject\code-work\codework`                                                                                                                                          |
+| 当前分支 | `tcode`                                                                                                                                                                    |
+| 当前提交 | `f4022d426`：`feat(byok): 接通控制中心委派取消`；其后与 `t3code/main@b0ae3f3a8` 的 subtree 同步由本次 merge commit 落地                                                    |
+| 合并状态 | 所有冲突已解决并暂存，`git diff --name-only --diff-filter=U` 为空；聚焦回归、触及包 typecheck、i18n 与品牌扫描均已通过；本次同步提交后保持 no-push                         |
+| 相对远端 | 当前领先 `origin/tcode` 109 个提交，尚未 push                                                                                                                              |
+| 最新节点 | BYOK 委派取消已独立提交并通过聚焦验证；当前节点转为同步上游 Grok、Codex approval、Projection replay、Provider Settings 与 Android 图标修复                                 |
+| 范围调整 | 真实 Cursor/VS Code Adapter 接入与真实 Multica daemon 协同/输出查询列为**后期内容（本次不做，TODO 待排期）**；当前阶段仅对接 BYOK Driver，本地协议与进程级验证维持既有结论 |
+| 上游基线 | 已发布稳定版仍为 `v0.0.35@f925d6394`；本轮正在同步 `main@b0ae3f3a8`，对应最新已发现 nightly `v0.0.36-nightly.20260827.1207`，不得表述为稳定版 `v0.0.36`                    |
+
+### 上游同步已完成验证：T3code 0.0.36 nightly/main
+
+- 合并命令：`git merge --no-ff --no-commit -X subtree=codework t3code/main`。
+- 所有冲突均已逐段整合并 `git add`；`git diff --name-only --diff-filter=U` 为空。保留 `@codework/*` 包名、Code Work 图标/Bundle ID/scheme/品牌变量与独立版本 `0.0.34`，同时采纳 Android adaptive foreground、Grok skills/plans/usage/turn reliability、Codex approval callback、Projection bootstrap replay 与 Provider Settings 拆分。
+- Provider Settings 的上游布局把标题改为可搜索键、刷新按钮放到 `TooltipTrigger` render 槽位；回归测试改为依赖稳定的设置锚点和 `t("refreshProviderStatus")`，真实按钮继续保留可访问的 `aria-label`。
+- Windows Grok/ACP 测试夹具改为 `.cmd` 包装器，并通过 JSON 环境文件传递包含引号、换行和 JSON 的测试值；`AcpSessionRuntime` 在 `.cmd/.bat` shell 路径关闭时额外执行 Windows 进程树终止，避免 CLI 子进程脱离 Composition/Provider 会话生命周期。POSIX 仍验证 `SIGTERM`，Windows 验证目标子进程已退出。
+- 验证：Grok/ACP 9 文件 `131 passed / 5 skipped`；ProjectionPipeline、ProviderCommandReactor 与 BYOK 委派取消 4 文件 `86/86`；Provider Settings 环境路由 `5/5`；`@codework/contracts`、`@codework/shared`、`@codework/client-runtime`、`@codework/web`、`codework` 的 typecheck 均退出码 0；`node scripts/check-ui-i18n.mjs` 通过；暂存品牌扫描无 `@t3tools`、`T3 Code`、`T3_ACP_*`、`T3_GROK_*` 残留；Android foreground PNG 已验证为 `432x432`，SVG 可解析。
+- 未执行真实 Provider API、真实 Cursor/VS Code、真实 Multica daemon 或多端产品 E2E；这些仍不能因本地 fixture、类型检查或静态资源检查而视为完成。
+- 本次同步以单一 merge commit 落地；不 push，不修改 `E:\MyProject\cursor-byok`，不处理已登记的非本轮基线问题。
 
 ## 证据等级
 

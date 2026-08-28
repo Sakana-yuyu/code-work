@@ -1,6 +1,6 @@
 import type { UsageProviderKind } from "@codework/contracts";
 
-import { ClaudeAI, type Icon, OpenAI } from "../Icons";
+import { ClaudeAI, GrokIcon, type Icon, OpenAI } from "../Icons";
 import { t } from "~/i18n/runtime";
 
 type UsageProviderPresentation = {
@@ -28,6 +28,14 @@ export const PROVIDER_PRESENTATION = {
     },
     color: "#d97757",
     mark: ClaudeAI,
+  },
+  grok: {
+    get label() {
+      return t("grok");
+    },
+    // Contrast-aware neutral between the Codex series and muted chart chrome.
+    color: "color-mix(in oklab, var(--contrast-foreground) 72%, var(--background))",
+    mark: GrokIcon,
   },
 } satisfies Record<UsageProviderKind, UsageProviderPresentation>;
 

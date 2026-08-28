@@ -10,6 +10,7 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Schema from "effect/Schema";
 import { createModelSelection } from "@codework/shared/model";
+import { HostProcessPlatform } from "@codework/shared/hostProcess";
 import { expect } from "vite-plus/test";
 import { GrokSettings, ProviderInstanceId } from "@codework/contracts";
 
@@ -29,25 +30,61 @@ const GrokTextGenerationTestLayer = ServerConfig.ServerConfig.layerTest(process.
   prefix: "codework-grok-text-generation-test-",
 }).pipe(Layer.provideMerge(NodeServices.layer));
 
-function makeAcpGrokWrapper(dir: string, env: Record<string, string>): string {
+function makeAcpGrokWrapper(
+  dir: string,
+  env: Record<string, string>,
+  platform: NodeJS.Platform,
+): string {
   const binDir = NodePath.join(dir, "bin");
-  const grokPath = NodePath.join(binDir, "grok");
+  const isWindows = platform === "win32";
+  const grokPath = NodePath.join(binDir, isWindows ? "grok.cmd" : "grok");
   NodeFS.mkdirSync(binDir, { recursive: true });
+  const envPath = NodePath.join(binDir, "mock-env.json");
+  const bootstrapPath = NodePath.join(binDir, "fake-grok-bootstrap.cjs");
+  if (isWindows) {
+    NodeFS.writeFileSync(envPath, JSON.stringify(env), "utf8");
+    NodeFS.writeFileSync(
+      bootstrapPath,
+      [
+        'const { readFileSync } = require("node:fs");',
+        'const { spawn } = require("node:child_process");',
+        "const [envPath, agentPath, ...args] = process.argv.slice(2);",
+        'const extraEnv = JSON.parse(readFileSync(envPath, "utf8"));',
+        "const child = spawn(process.execPath, [agentPath, ...args], {",
+        "  env: { ...process.env, ...extraEnv },",
+        '  stdio: "inherit",',
+        "});",
+        'child.once("exit", (code) => process.exit(code ?? 1));',
+        "",
+      ].join("\n"),
+      "utf8",
+    );
+  }
   NodeFS.writeFileSync(
     grokPath,
-    [
-      "#!/bin/sh",
-      ...Object.entries(env).map(([key, value]) => `export ${key}=${shellSingleQuote(value)}`),
-      'if [ "$1" != "agent" ] || [ "$2" != "stdio" ]; then',
-      '  printf "%s\\n" "unexpected args: $*" >&2',
-      "  exit 11",
-      "fi",
-      `exec ${JSON.stringify(process.execPath)} ${JSON.stringify(mockAgentPath)}`,
-      "",
-    ].join("\n"),
+    isWindows
+      ? [
+          "@echo off",
+          'if not "%~1"=="agent" exit /b 11',
+          'if not "%~2"=="stdio" exit /b 11',
+          `"${process.execPath}" "${bootstrapPath}" "${envPath}" "${mockAgentPath}"`,
+          "",
+        ].join("\r\n")
+      : [
+          "#!/bin/sh",
+          ...Object.entries(env).map(([key, value]) => `export ${key}=${shellSingleQuote(value)}`),
+          'if [ "$1" != "agent" ] || [ "$2" != "stdio" ]; then',
+          '  printf "%s\\n" "unexpected args: $*" >&2',
+          "  exit 11",
+          "fi",
+          `exec ${JSON.stringify(process.execPath)} ${JSON.stringify(mockAgentPath)}`,
+          "",
+        ].join("\n"),
     "utf8",
   );
-  NodeFS.chmodSync(grokPath, 0o755);
+  if (!isWindows) {
+    NodeFS.chmodSync(grokPath, 0o755);
+  }
   return grokPath;
 }
 
@@ -62,7 +99,7 @@ function withFakeAcpGrok<A, E, R>(
         NodeFS.rmSync(tempDir, { recursive: true, force: true });
       }),
     );
-    const binaryPath = makeAcpGrokWrapper(tempDir, env);
+    const binaryPath = makeAcpGrokWrapper(tempDir, env, yield* HostProcessPlatform);
     const config = decodeGrokSettings({ binaryPath });
     const textGeneration = yield* makeGrokTextGeneration(config);
     return yield* effectFn(textGeneration);
