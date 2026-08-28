@@ -254,6 +254,19 @@ import {
   CompositionTaskDispatchResult,
   CompositionTaskGraphExecutionRequest,
   CompositionTaskGraphExecutionResult,
+  CompositionSquadCreateRequest,
+  CompositionSquadDuplicateRequest,
+  CompositionSquadExecutionRequest,
+  CompositionSquadExecutionResult,
+  CompositionSquadGetRequest,
+  CompositionSquadListRequest,
+  CompositionSquadListResult,
+  CompositionSquadRevisionListRequest,
+  CompositionSquadRevisionListResult,
+  CompositionSquadRevisionMutationRequest,
+  CompositionSquadResult,
+  CompositionSquadRpcError,
+  CompositionSquadUpdateRequest,
   CompositionTaskEventsRequest,
   CompositionTaskEventsResult,
   CompositionTaskListRequest,
@@ -365,6 +378,15 @@ export const WS_METHODS = {
   serverCancelCompositionRuntimeTool: "server.cancelCompositionRuntimeTool",
   serverDispatchCompositionTask: "server.dispatchCompositionTask",
   serverExecuteCompositionTaskGraph: "server.executeCompositionTaskGraph",
+  serverListCompositionSquads: "server.listCompositionSquads",
+  serverGetCompositionSquad: "server.getCompositionSquad",
+  serverListCompositionSquadRevisions: "server.listCompositionSquadRevisions",
+  serverCreateCompositionSquad: "server.createCompositionSquad",
+  serverUpdateCompositionSquad: "server.updateCompositionSquad",
+  serverDuplicateCompositionSquad: "server.duplicateCompositionSquad",
+  serverArchiveCompositionSquad: "server.archiveCompositionSquad",
+  serverRestoreCompositionSquad: "server.restoreCompositionSquad",
+  serverRunCompositionSquad: "server.runCompositionSquad",
   serverCancelCompositionTask: "server.cancelCompositionTask",
   serverResumeCompositionTask: "server.resumeCompositionTask",
   serverReviewCompositionTask: "server.reviewCompositionTask",
@@ -634,6 +656,72 @@ export const WsServerExecuteCompositionTaskGraphRpc = Rpc.make(
     error: Schema.Union([CompositionTaskRpcError, EnvironmentAuthorizationError]),
   },
 );
+
+export const WsServerListCompositionSquadsRpc = Rpc.make(WS_METHODS.serverListCompositionSquads, {
+  payload: CompositionSquadListRequest,
+  success: CompositionSquadListResult,
+  error: Schema.Union([CompositionSquadRpcError, EnvironmentAuthorizationError]),
+});
+
+export const WsServerGetCompositionSquadRpc = Rpc.make(WS_METHODS.serverGetCompositionSquad, {
+  payload: CompositionSquadGetRequest,
+  success: CompositionSquadResult,
+  error: Schema.Union([CompositionSquadRpcError, EnvironmentAuthorizationError]),
+});
+
+export const WsServerListCompositionSquadRevisionsRpc = Rpc.make(
+  WS_METHODS.serverListCompositionSquadRevisions,
+  {
+    payload: CompositionSquadRevisionListRequest,
+    success: CompositionSquadRevisionListResult,
+    error: Schema.Union([CompositionSquadRpcError, EnvironmentAuthorizationError]),
+  },
+);
+
+export const WsServerCreateCompositionSquadRpc = Rpc.make(WS_METHODS.serverCreateCompositionSquad, {
+  payload: CompositionSquadCreateRequest,
+  success: CompositionSquadResult,
+  error: Schema.Union([CompositionSquadRpcError, EnvironmentAuthorizationError]),
+});
+
+export const WsServerUpdateCompositionSquadRpc = Rpc.make(WS_METHODS.serverUpdateCompositionSquad, {
+  payload: CompositionSquadUpdateRequest,
+  success: CompositionSquadResult,
+  error: Schema.Union([CompositionSquadRpcError, EnvironmentAuthorizationError]),
+});
+
+export const WsServerDuplicateCompositionSquadRpc = Rpc.make(
+  WS_METHODS.serverDuplicateCompositionSquad,
+  {
+    payload: CompositionSquadDuplicateRequest,
+    success: CompositionSquadResult,
+    error: Schema.Union([CompositionSquadRpcError, EnvironmentAuthorizationError]),
+  },
+);
+
+export const WsServerArchiveCompositionSquadRpc = Rpc.make(
+  WS_METHODS.serverArchiveCompositionSquad,
+  {
+    payload: CompositionSquadRevisionMutationRequest,
+    success: CompositionSquadResult,
+    error: Schema.Union([CompositionSquadRpcError, EnvironmentAuthorizationError]),
+  },
+);
+
+export const WsServerRestoreCompositionSquadRpc = Rpc.make(
+  WS_METHODS.serverRestoreCompositionSquad,
+  {
+    payload: CompositionSquadRevisionMutationRequest,
+    success: CompositionSquadResult,
+    error: Schema.Union([CompositionSquadRpcError, EnvironmentAuthorizationError]),
+  },
+);
+
+export const WsServerRunCompositionSquadRpc = Rpc.make(WS_METHODS.serverRunCompositionSquad, {
+  payload: CompositionSquadExecutionRequest,
+  success: CompositionSquadExecutionResult,
+  error: Schema.Union([CompositionSquadRpcError, EnvironmentAuthorizationError]),
+});
 
 export const WsServerCancelCompositionTaskRpc = Rpc.make(WS_METHODS.serverCancelCompositionTask, {
   payload: CompositionTaskCancelRequest,
@@ -1379,6 +1467,15 @@ export const WsRpcGroup = RpcGroup.make(
   WsServerCancelCompositionRuntimeToolRpc,
   WsServerDispatchCompositionTaskRpc,
   WsServerExecuteCompositionTaskGraphRpc,
+  WsServerListCompositionSquadsRpc,
+  WsServerGetCompositionSquadRpc,
+  WsServerListCompositionSquadRevisionsRpc,
+  WsServerCreateCompositionSquadRpc,
+  WsServerUpdateCompositionSquadRpc,
+  WsServerDuplicateCompositionSquadRpc,
+  WsServerArchiveCompositionSquadRpc,
+  WsServerRestoreCompositionSquadRpc,
+  WsServerRunCompositionSquadRpc,
   WsServerCancelCompositionTaskRpc,
   WsServerResumeCompositionTaskRpc,
   WsServerReviewCompositionTaskRpc,

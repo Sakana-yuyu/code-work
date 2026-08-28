@@ -10,6 +10,15 @@ import {
   CompositionCapabilityAuditEvent,
   CompositionCapabilityPolicyDecision,
   CompositionSquad,
+  CompositionSquadCreateRequest,
+  CompositionSquadDuplicateRequest,
+  CompositionSquadExecutionRequest,
+  CompositionSquadExecutionResult,
+  CompositionSquadListRequest,
+  CompositionSquadListResult,
+  CompositionSquadRevisionListResult,
+  CompositionSquadRevisionMutationRequest,
+  CompositionSquadUpdateRequest,
   validateCompositionSquadConfiguration,
   CompositionTaskCancelRequest,
   CompositionTaskDispatchRequest,
@@ -38,6 +47,17 @@ const decodeCapabilityGrant = Schema.decodeUnknownSync(CompositionCapabilityGran
 const decodeCapabilityAuditEvent = Schema.decodeUnknownSync(CompositionCapabilityAuditEvent);
 const decodePolicyDecision = Schema.decodeUnknownSync(CompositionCapabilityPolicyDecision);
 const decodeSquad = Schema.decodeUnknownSync(CompositionSquad);
+const decodeSquadCreate = Schema.decodeUnknownSync(CompositionSquadCreateRequest);
+const decodeSquadDuplicate = Schema.decodeUnknownSync(CompositionSquadDuplicateRequest);
+const decodeSquadExecution = Schema.decodeUnknownSync(CompositionSquadExecutionRequest);
+const decodeSquadExecutionResult = Schema.decodeUnknownSync(CompositionSquadExecutionResult);
+const decodeSquadList = Schema.decodeUnknownSync(CompositionSquadListRequest);
+const decodeSquadListResult = Schema.decodeUnknownSync(CompositionSquadListResult);
+const decodeSquadRevisionListResult = Schema.decodeUnknownSync(CompositionSquadRevisionListResult);
+const decodeSquadRevisionMutation = Schema.decodeUnknownSync(
+  CompositionSquadRevisionMutationRequest,
+);
+const decodeSquadUpdate = Schema.decodeUnknownSync(CompositionSquadUpdateRequest);
 const decodeTaskEvent = Schema.decodeUnknownSync(CompositionTaskEvent);
 const decodeTaskDispatch = Schema.decodeUnknownSync(CompositionTaskDispatchRequest);
 const decodeTaskGraph = Schema.decodeUnknownSync(CompositionTaskGraphExecutionRequest);
@@ -259,6 +279,113 @@ describe("composition contracts", () => {
       { code: "concurrency_exceeded", path: "maxConcurrency" },
       { code: "duplicate_approval_stage", path: "approvalStages" },
     ]);
+  });
+
+  it("定义由服务端维护 revision 和成员投影的 Squad 生命周期合同", () => {
+    const create = decodeSquadCreate({
+      squadId: "squad-rpc",
+      name: "RPC 协同组",
+      leaderAgentId: "agent-leader",
+      instructions: "先并行实现，再由 Reviewer 验收。",
+      collaborationMode: "review_critic",
+      members: validSquadConfiguration.members,
+      maxConcurrency: 3,
+      maxRetries: 1,
+      failurePolicy: "continue_independent",
+      partialSuccessPolicy: "require_review",
+      approvalStages: ["before_finalize"],
+    });
+    const update = decodeSquadUpdate({ ...create, expectedRevision: 4 });
+    const duplicate = decodeSquadDuplicate({
+      sourceSquadId: "squad-rpc",
+      squadId: "squad-rpc-copy",
+      name: "RPC 协同组副本",
+    });
+    const lifecycle = decodeSquadRevisionMutation({
+      squadId: "squad-rpc",
+      expectedRevision: 4,
+    });
+
+    expect(create).not.toHaveProperty("revision");
+    expect(create).not.toHaveProperty("memberAgentIds");
+    expect(update.expectedRevision).toBe(4);
+    expect(duplicate.sourceSquadId).toBe("squad-rpc");
+    expect(lifecycle).toEqual({ squadId: "squad-rpc", expectedRevision: 4 });
+  });
+
+  it("定义 Squad 列表、不可变 revision 历史与结构化运行合同", () => {
+    const list = decodeSquadList({ includeArchived: true });
+    const listResult = decodeSquadListResult({ squads: [validSquadConfiguration] });
+    const revisions = decodeSquadRevisionListResult({
+      revisions: [
+        {
+          squadId: "squad-validation",
+          revision: 1,
+          configuration: validSquadConfiguration,
+          createdAtUnixMs: 20,
+        },
+      ],
+    });
+    const execution = decodeSquadExecution({
+      executionId: "execution-1",
+      squadId: "squad-validation",
+      squadRevision: 1,
+      projectId: "project-1",
+      threadId: "thread-1",
+      goal: "完成合同和服务端接线",
+      workspaceRoot: "E:/workspace",
+      plan: [
+        {
+          nodeId: "contracts",
+          agentId: "agent-worker",
+          prompt: "完成合同定义并验证。",
+          dependsOnNodeIds: [],
+        },
+        {
+          nodeId: "review",
+          agentId: "agent-reviewer",
+          prompt: "审查合同兼容性。",
+          dependsOnNodeIds: ["contracts"],
+        },
+      ],
+    });
+    const executionResult = decodeSquadExecutionResult({
+      executionId: "execution-1",
+      squadId: "squad-validation",
+      squadRevision: 1,
+      graph: {
+        leader: {
+          task: {
+            taskId: "leader-task",
+            projectId: "project-1",
+            assigneeKind: "squad",
+            assigneeId: "squad-validation",
+            mode: "review",
+            status: "completed",
+            promptDigest: "sha256:leader",
+            dependsOnTaskIds: ["contracts-task"],
+            createdAtUnixMs: 1,
+            updatedAtUnixMs: 2,
+          },
+          run: {
+            runId: "leader-run",
+            taskId: "leader-task",
+            agentId: "agent-leader",
+            runtimeId: "runtime-1",
+            status: "completed",
+            attempt: 1,
+            capabilityGrantIds: [],
+          },
+        },
+        children: [],
+      },
+    });
+
+    expect(list.includeArchived).toBe(true);
+    expect(listResult.squads).toHaveLength(1);
+    expect(revisions.revisions[0]?.configuration?.revision).toBe(1);
+    expect(execution.plan?.[1]?.dependsOnNodeIds).toEqual(["contracts"]);
+    expect(executionResult.graph.leader.run.status).toBe("completed");
   });
 
   it("定义 Leader、依赖节点和 retry 次数的 Task Graph RPC 合同", () => {

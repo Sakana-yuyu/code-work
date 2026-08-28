@@ -994,3 +994,118 @@ export const CompositionSquadRevision = Schema.Struct({
   createdAtUnixMs: NonNegativeInt,
 });
 export type CompositionSquadRevision = typeof CompositionSquadRevision.Type;
+
+const CompositionSquadWritableFields = {
+  squadId: TrimmedNonEmptyString,
+  name: TrimmedNonEmptyString,
+  leaderAgentId: TrimmedNonEmptyString,
+  instructions: Schema.optional(TrimmedNonEmptyString),
+  collaborationMode: CompositionSquadCollaborationMode,
+  members: Schema.Array(CompositionSquadMember),
+  maxConcurrency: PositiveInt,
+  maxRetries: Schema.optional(NonNegativeInt),
+  failurePolicy: CompositionSquadFailurePolicy,
+  partialSuccessPolicy: CompositionSquadPartialSuccessPolicy,
+  approvalStages: Schema.optional(Schema.Array(CompositionSquadApprovalStage)),
+};
+
+/** Squad Builder 只提交业务配置；revision、成员投影和时间戳由服务端维护。 */
+export const CompositionSquadCreateRequest = Schema.Struct(CompositionSquadWritableFields);
+export type CompositionSquadCreateRequest = typeof CompositionSquadCreateRequest.Type;
+
+export const CompositionSquadUpdateRequest = Schema.Struct({
+  ...CompositionSquadWritableFields,
+  expectedRevision: PositiveInt,
+});
+export type CompositionSquadUpdateRequest = typeof CompositionSquadUpdateRequest.Type;
+
+export const CompositionSquadDuplicateRequest = Schema.Struct({
+  sourceSquadId: TrimmedNonEmptyString,
+  squadId: TrimmedNonEmptyString,
+  name: TrimmedNonEmptyString,
+});
+export type CompositionSquadDuplicateRequest = typeof CompositionSquadDuplicateRequest.Type;
+
+export const CompositionSquadRevisionMutationRequest = Schema.Struct({
+  squadId: TrimmedNonEmptyString,
+  expectedRevision: PositiveInt,
+});
+export type CompositionSquadRevisionMutationRequest =
+  typeof CompositionSquadRevisionMutationRequest.Type;
+
+export const CompositionSquadGetRequest = Schema.Struct({
+  squadId: TrimmedNonEmptyString,
+});
+export type CompositionSquadGetRequest = typeof CompositionSquadGetRequest.Type;
+
+export const CompositionSquadResult = Schema.Struct({
+  squad: CompositionSquad,
+});
+export type CompositionSquadResult = typeof CompositionSquadResult.Type;
+
+export const CompositionSquadListRequest = Schema.Struct({
+  includeArchived: Schema.optional(Schema.Boolean),
+});
+export type CompositionSquadListRequest = typeof CompositionSquadListRequest.Type;
+
+export const CompositionSquadListResult = Schema.Struct({
+  squads: Schema.Array(CompositionSquad),
+});
+export type CompositionSquadListResult = typeof CompositionSquadListResult.Type;
+
+export const CompositionSquadRevisionListRequest = Schema.Struct({
+  squadId: TrimmedNonEmptyString,
+});
+export type CompositionSquadRevisionListRequest = typeof CompositionSquadRevisionListRequest.Type;
+
+export const CompositionSquadRevisionListResult = Schema.Struct({
+  revisions: Schema.Array(CompositionSquadRevision),
+});
+export type CompositionSquadRevisionListResult = typeof CompositionSquadRevisionListResult.Type;
+
+export const CompositionSquadPlanNode = Schema.Struct({
+  nodeId: TrimmedNonEmptyString,
+  agentId: TrimmedNonEmptyString,
+  prompt: TrimmedNonEmptyString,
+  dependsOnNodeIds: Schema.Array(TrimmedNonEmptyString),
+});
+export type CompositionSquadPlanNode = typeof CompositionSquadPlanNode.Type;
+
+/** 运行请求固定绑定 Squad revision，防止编辑配置后静默改变已发起的执行。 */
+export const CompositionSquadExecutionRequest = Schema.Struct({
+  executionId: TrimmedNonEmptyString,
+  squadId: TrimmedNonEmptyString,
+  squadRevision: PositiveInt,
+  projectId: TrimmedNonEmptyString,
+  threadId: Schema.optional(ThreadId),
+  goal: TrimmedNonEmptyString,
+  workspaceRoot: TrimmedNonEmptyString,
+  workspaceRootDigest: Schema.optional(TrimmedNonEmptyString),
+  plan: Schema.optional(Schema.Array(CompositionSquadPlanNode)),
+});
+export type CompositionSquadExecutionRequest = typeof CompositionSquadExecutionRequest.Type;
+
+export const CompositionSquadExecutionResult = Schema.Struct({
+  executionId: TrimmedNonEmptyString,
+  squadId: TrimmedNonEmptyString,
+  squadRevision: PositiveInt,
+  graph: CompositionTaskGraphExecutionResult,
+});
+export type CompositionSquadExecutionResult = typeof CompositionSquadExecutionResult.Type;
+
+/** Squad 生命周期和执行错误的稳定传输形状，不向客户端泄漏内部异常。 */
+export class CompositionSquadRpcError extends Schema.TaggedErrorClass<CompositionSquadRpcError>()(
+  "CompositionSquadRpcError",
+  {
+    code: TrimmedNonEmptyString,
+    detail: TrimmedNonEmptyString,
+    squadId: TrimmedNonEmptyString,
+    nodeId: Schema.optional(TrimmedNonEmptyString),
+    expectedRevision: Schema.optional(PositiveInt),
+    actualRevision: Schema.optional(NonNegativeInt),
+  },
+) {
+  override get message(): string {
+    return `Squad 操作失败：${this.code}: ${this.detail}`;
+  }
+}
