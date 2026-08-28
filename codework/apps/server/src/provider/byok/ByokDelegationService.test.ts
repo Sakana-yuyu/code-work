@@ -1,4 +1,8 @@
-import { ProviderDriverKind, ProviderInstanceId } from "@codework/contracts";
+import {
+  ProviderDriverKind,
+  ProviderInstanceId,
+  type ByokDelegationConfig,
+} from "@codework/contracts";
 import { assert, it as effectIt } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -15,8 +19,13 @@ import * as ServerSettings from "../../serverSettings.ts";
 import { CompositionTaskStore } from "../../persistence/Services/CompositionTaskStore.ts";
 import { CompositionTaskStoreLive } from "../../persistence/Layers/CompositionTaskStore.ts";
 import { SqlitePersistenceMemory } from "../../persistence/Layers/Sqlite.ts";
+import {
+  makeByokDelegationProjectionScope,
+  projectByokDelegationTransition,
+} from "../../composition/CompositionByokDelegationProjection.ts";
 
-const { parseExecutorCommand, buildChildEnv, preview } = __testables;
+const { parseExecutorCommand, buildChildEnv, preview, registerLiveProjectedDelegation } =
+  __testables;
 
 const config = (overrides: Record<string, unknown> = {}) => ({
   enabled: true,
@@ -205,9 +214,7 @@ ledgerLayer("delegation ledger projection (Composition 单一状态源)", (it) =
         const events = yield* store.listEvents(task.taskId, run.runId);
         assert.isTrue(events.some((event) => event.sourceEventId?.endsWith(":queued")));
         assert.isTrue(events.some((event) => event.sourceEventId?.endsWith(":running")));
-        assert.isTrue(
-          events.some((event) => event.sourceEventId?.endsWith(":terminal:succeeded")),
-        );
+        assert.isTrue(events.some((event) => event.sourceEventId?.endsWith(":terminal:succeeded")));
         // 敏感内容约定：委派 prompt 与执行输出不得进入任务台账。
         // @effect-diagnostics-next-line preferSchemaOverJson:off - 断言台账整体序列化不含敏感原文。
         const serialized = JSON.stringify({ events, task, run });
@@ -217,42 +224,116 @@ ledgerLayer("delegation ledger projection (Composition 单一状态源)", (it) =
     20_000,
   );
 
-  it.effect("执行失败的委派在台账中收敛为 failed 并带错误码", () =>
-    Effect.gen(function* () {
-      const settings = yield* ServerSettings.ServerSettingsService;
-      yield* settings.updateSettings({
-        providerInstances: {
-          [ProviderInstanceId.make(LEDGER_INSTANCE_ID)]: {
-            driver: ProviderDriverKind.make("byok"),
-            config: {
-              delegation: {
-                enabled: true,
-                maxConcurrency: 1,
-                queueTimeoutMs: 10_000,
-                executionTimeoutMs: 15_000,
-                executorCommand: `"${process.execPath}" -e process.exit(3)`,
+  it.effect(
+    "执行失败的委派在台账中收敛为 failed 并带错误码",
+    () =>
+      Effect.gen(function* () {
+        const settings = yield* ServerSettings.ServerSettingsService;
+        yield* settings.updateSettings({
+          providerInstances: {
+            [ProviderInstanceId.make(LEDGER_INSTANCE_ID)]: {
+              driver: ProviderDriverKind.make("byok"),
+              config: {
+                delegation: {
+                  enabled: true,
+                  maxConcurrency: 1,
+                  queueTimeoutMs: 10_000,
+                  executionTimeoutMs: 15_000,
+                  executorCommand: `"${process.execPath}" -e process.exit(3)`,
+                },
               },
             },
           },
-        },
-      });
-      const service = yield* make;
-      const snapshot = yield* service.submit({
-        instanceId: LEDGER_INSTANCE_ID,
-        task: "ledger-failing-task",
-      });
-      assert.equal(snapshot.status, "failed");
+        });
+        const service = yield* make;
+        const snapshot = yield* service.submit({
+          instanceId: LEDGER_INSTANCE_ID,
+          task: "ledger-failing-task",
+        });
+        assert.equal(snapshot.status, "failed");
 
-      const store = yield* CompositionTaskStore;
-      const tasks = yield* store.listTasks("byok-delegation");
-      const task = tasks.find((candidate) => candidate.status === "failed");
-      assert.isDefined(task);
-      const run = (yield* store.getLatestRun(task!.taskId)).pipe(Option.getOrThrow);
-      assert.equal(run.status, "failed");
-      assert.isDefined(run.failureCode);
-      const events = yield* store.listEvents(task!.taskId, run.runId);
-      assert.isTrue(events.some((event) => event.sourceEventId?.endsWith(":terminal:failed")));
+        const store = yield* CompositionTaskStore;
+        const tasks = yield* store.listTasks("byok-delegation");
+        const task = tasks.find((candidate) => candidate.status === "failed");
+        assert.isDefined(task);
+        const run = (yield* store.getLatestRun(task!.taskId)).pipe(Option.getOrThrow);
+        assert.equal(run.status, "failed");
+        assert.isDefined(run.failureCode);
+        const events = yield* store.listEvents(task!.taskId, run.runId);
+        assert.isTrue(events.some((event) => event.sourceEventId?.endsWith(":terminal:failed")));
+      }),
+    20_000,
+  );
+});
+
+const CANCEL_INSTANCE_ID = "byok-ledger-cancel";
+const cancellationConfig: ByokDelegationConfig = {
+  enabled: true,
+  maxConcurrency: 1,
+  queueTimeoutMs: 10_000,
+  executionTimeoutMs: 60_000,
+  modelGroups: [],
+  executorCommand: `"${process.execPath}" -e setTimeout(()=>{},60000)`,
+  executorEnvironmentVariables: [],
+};
+const cancellationLayer = effectIt.layer(
+  Layer.mergeAll(
+    CompositionTaskStoreLive.pipe(Layer.provideMerge(SqlitePersistenceMemory)),
+    ServerSettings.layerTest({
+      providerInstances: {
+        [ProviderInstanceId.make(CANCEL_INSTANCE_ID)]: {
+          driver: ProviderDriverKind.make("byok"),
+          config: { delegation: cancellationConfig },
+        },
+      },
     }),
+  ),
+);
+
+cancellationLayer("delegation composition cancel bridge", (it) => {
+  it.effect(
+    "composition cancel 命中真实调度器并把委派台账落为 cancelled",
+    () =>
+      Effect.gen(function* () {
+        const scheduler = resolveScheduler(cancellationConfig, CANCEL_INSTANCE_ID);
+        const blocker = scheduler.submit({ input: "blocker" });
+        const queued = scheduler.submit({ input: "cancel-secret-prompt" });
+        assert.equal(queued.status, "queued");
+
+        const scope = makeByokDelegationProjectionScope({
+          instanceId: CANCEL_INSTANCE_ID,
+          delegationId: queued.id,
+          uniqueKey: "service-cancel",
+          taskText: "cancel-secret-prompt",
+        });
+        const unregisterLive = registerLiveProjectedDelegation(scope, scheduler);
+        const store = yield* CompositionTaskStore;
+        yield* projectByokDelegationTransition({
+          store,
+          scope,
+          transition: { status: "queued" },
+          nowUnixMs: 1_000,
+        });
+
+        const service = yield* make;
+        const result = yield* service.cancelCompositionTask({
+          taskId: scope.taskId,
+          runId: scope.runId,
+          reason: "控制中心取消",
+        });
+
+        assert.equal(result?.status, "cancelled");
+        assert.equal(scheduler.get(queued.id)?.status, "cancelled");
+        assert.equal(result?.task.status, "cancelled");
+        assert.equal(result?.run.status, "cancelled");
+        const events = yield* store.listEvents(scope.taskId, scope.runId);
+        assert.isTrue(events.some((event) => event.sourceEventId?.endsWith(":terminal:cancelled")));
+        // @effect-diagnostics-next-line preferSchemaOverJson:off - 整体序列化用于验证敏感正文不进入台账/返回值。
+        assert.isFalse(JSON.stringify({ events, result }).includes("cancel-secret-prompt"));
+
+        unregisterLive();
+        scheduler.cancel(blocker.id);
+      }),
     20_000,
   );
 });

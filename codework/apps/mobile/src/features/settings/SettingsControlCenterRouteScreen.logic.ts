@@ -51,7 +51,7 @@ export interface ControlCenterTaskActions {
  * - 放弃：仅 goalLoop interrupted（supervisor_settled 已有结算行，再落 abandon 会被拒）；
  * - 恢复并重派：与 Web 共用 `isByokResumeRedispatchable`（存在最新 Run、排除已结算，
  *   接受 byok_resume_interrupted 或可恢复 checkpoint 链）；
- * - BYOK 委派行只展示、不套 Goal Loop 五态操作或 composition cancel。
+ * - BYOK 委派行不套 Goal Loop 五态，只在最新 Run 活跃时复用 composition cancel。
  */
 export const resolveControlCenterTaskActions = (
   task: CompositionControlCenterTask,
@@ -59,7 +59,8 @@ export const resolveControlCenterTaskActions = (
   if (isByokDelegationControlTask(task)) {
     return {
       redispatchable: false,
-      cancellable: false,
+      cancellable:
+        task.latestRun !== undefined && CANCELLABLE_RUN_STATUSES.has(task.latestRun.status),
       reviewable: false,
       abandonable: false,
       byokResumable: false,

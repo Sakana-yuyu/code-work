@@ -436,7 +436,7 @@ describe("CompositionControlCenterPanel", () => {
     expect(html).not.toContain("undefined");
   });
 
-  it("BYOK 委派行显示委派徽标与 agentId/轮次/错误码，不套 Goal Loop 五态与操作入口", () => {
+  it("BYOK 委派行显示摘要并只提供取消，不套 Goal Loop 重派/放弃/恢复入口", () => {
     mocks.projectionQuery.data = projection([
       taskWith({
         taskId: "task-delegation",
@@ -455,7 +455,7 @@ describe("CompositionControlCenterPanel", () => {
     const goalRow = html.split('data-task-id="task-goal"')[1]?.split("<li")[0] ?? "";
     expect(delegationRow).toContain("agent-1");
     expect(delegationRow).not.toContain("control-center-redispatch-");
-    expect(delegationRow).not.toContain("control-center-cancel-");
+    expect(delegationRow).toContain("control-center-cancel-task-delegation");
     expect(delegationRow).not.toContain("control-center-abandon-");
     expect(delegationRow).not.toContain("control-center-byok-resume-");
     expect(goalRow).toContain("control-center-cancel-task-goal");

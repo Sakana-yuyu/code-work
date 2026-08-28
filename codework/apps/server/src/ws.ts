@@ -2101,11 +2101,18 @@ const makeWsRpcLayer = (
         [WS_METHODS.serverCancelCompositionTask]: (input) =>
           observeRpcEffect(
             WS_METHODS.serverCancelCompositionTask,
-            Option.isNone(compositionOrchestrator)
-              ? Effect.fail(compositionTaskUnavailable())
-              : compositionOrchestrator.value
-                  .cancelTask(input)
-                  .pipe(Effect.mapError(compositionTaskError)),
+            byokDelegation.cancelCompositionTask(input).pipe(
+              Effect.mapError(compositionTaskError),
+              Effect.flatMap((delegationResult) =>
+                delegationResult !== undefined
+                  ? Effect.succeed(delegationResult)
+                  : Option.isNone(compositionOrchestrator)
+                    ? Effect.fail(compositionTaskUnavailable())
+                    : compositionOrchestrator.value
+                        .cancelTask(input)
+                        .pipe(Effect.mapError(compositionTaskError)),
+              ),
+            ),
             { "rpc.aggregate": "composition" },
           ),
         [WS_METHODS.serverResumeCompositionTask]: (input) =>

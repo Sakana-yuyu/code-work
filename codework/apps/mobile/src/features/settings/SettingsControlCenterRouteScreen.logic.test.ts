@@ -174,7 +174,7 @@ describe("resolveControlCenterTaskActions", () => {
     ).toBe(false);
   });
 
-  it("hides Goal Loop and composition actions on BYOK delegation rows", () => {
+  it("allows cancel but hides Goal Loop redispatch/abandon/review on active BYOK delegation rows", () => {
     const actions = resolveControlCenterTaskActions(
       makeTask({
         latestRun: makeRun("running"),
@@ -183,6 +183,27 @@ describe("resolveControlCenterTaskActions", () => {
           runId: "run-1",
           delegationId: "delegation-9",
           status: "running",
+          attempt: 1,
+        },
+      }),
+    );
+    expect(actions).toEqual({
+      redispatchable: false,
+      cancellable: true,
+      reviewable: false,
+      abandonable: false,
+      byokResumable: false,
+    });
+  });
+
+  it("hides cancel after a BYOK delegation row reaches a terminal status", () => {
+    const actions = resolveControlCenterTaskActions(
+      makeTask({
+        latestRun: makeRun("cancelled"),
+        byokDelegation: {
+          runId: "run-1",
+          delegationId: "delegation-9",
+          status: "cancelled",
           attempt: 1,
         },
       }),

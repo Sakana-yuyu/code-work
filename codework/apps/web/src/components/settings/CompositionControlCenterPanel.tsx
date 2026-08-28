@@ -279,9 +279,7 @@ export function CompositionControlCenterPanel() {
                 task.goalLoop !== undefined &&
                 REDISPATCHABLE_GOAL_LOOP_STATES.has(task.goalLoop.state);
               const cancellable =
-                !delegationRow &&
-                task.latestRun !== undefined &&
-                CANCELLABLE_RUN_STATUSES.has(task.latestRun.status);
+                task.latestRun !== undefined && CANCELLABLE_RUN_STATUSES.has(task.latestRun.status);
               // 与 TaskGraphPanel 一致：审批门槛看任务状态，后端对非 in_review 任务显式报错。
               const reviewable =
                 !delegationRow && task.status === "in_review" && task.latestRun !== undefined;

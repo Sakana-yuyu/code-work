@@ -8,16 +8,16 @@
 
 ## 当前快照
 
-| 项目     | 当前值                                                                                                                                                                                                      |
-| -------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 更新时间 | 2026-08-28                                                                                                                                                                                                  |
-| 仓库     | `E:\MyProject\code-work\codework`                                                                                                                                                                           |
-| 当前分支 | `tcode`                                                                                                                                                                                                     |
-| 当前提交 | BYOK 缺口补齐节点：`feat(byok): 补齐余额看板、Supplier 管理、resume 重派与 delegation 收敛`                                                                                                                 |
-| 相对远端 | 领先 `origin/tcode` 104 个提交，尚未 push                                                                                                                                                                   |
-| 最新节点 | BYOK 剩余缺口批量补齐：余额/用量/健康统一看板、Supplier 启停与凭据轮换操作面、resume 恢复后自动重派（含控制中心入口）、delegation 状态投影进 Composition 台账、控制中心与 Supplier 注册表的 Mobile 面板复用 |
-| 范围调整 | 真实 Cursor/VS Code Adapter 接入与真实 Multica daemon 协同/输出查询列为**后期内容（本次不做，TODO 待排期）**；当前阶段仅对接 BYOK Driver，本地协议与进程级验证维持既有结论                                  |
-| 上游基线 | 已并入上游 `t3code` v0.0.35（合并提交 `05d694cfa`）：PR 关联线程、Claude 旧线程压缩、git push base 分支修复等；上游迁移 042/043 因与本地 composition 迁移撞号重编为 054/055                                 |
+| 项目     | 当前值                                                                                                                                                                                    |
+| -------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 更新时间 | 2026-08-28                                                                                                                                                                                |
+| 仓库     | `E:\MyProject\code-work\codework`                                                                                                                                                         |
+| 当前分支 | `tcode`                                                                                                                                                                                   |
+| 当前提交 | BYOK 委派取消节点：`feat(byok): 接通控制中心委派取消`                                                                                                                                     |
+| 相对远端 | 预计提交后领先 `origin/tcode` 109 个提交，尚未 push                                                                                                                                       |
+| 最新节点 | 控制中心 Web/Mobile 的活跃 BYOK 委派行复用 `serverCancelCompositionTask`；服务端先取消对应 `DelegationScheduler` 执行，再以委派专属幂等事件把 Composition Task/Run 严格收敛为 `cancelled` |
+| 范围调整 | 真实 Cursor/VS Code Adapter 接入与真实 Multica daemon 协同/输出查询列为**后期内容（本次不做，TODO 待排期）**；当前阶段仅对接 BYOK Driver，本地协议与进程级验证维持既有结论                |
+| 上游基线 | 已并入上游 `t3code` v0.0.35（合并提交 `05d694cfa`）：PR 关联线程、Claude 旧线程压缩、git push base 分支修复等；上游迁移 042/043 因与本地 composition 迁移撞号重编为 054/055               |
 
 ## 证据等级
 
@@ -80,13 +80,14 @@ CapabilityRegistry + ToolBroker
 - 新增 Byok delegation 状态收敛第一切片（本节点）：`ByokDelegationService.submit` 现把每次委派的 queued/running/终态迁移以幂等 `byok-delegation:<task>:<run>:<phase>` 事件行投影进 Composition 台账，并在首次落行后 upsert 合成 Task/Run（`projectId=byok-delegation`、`agentId=provider:<instanceId>`（沿用 Supplier 投影约定）、`runtimeTaskId=调度器 delegation-N`；succeeded→completed、failed→failed+errorCode、两类超时→timed_out 并区分 `delegation_queue_timed_out`/`delegation_execution_timed_out`、cancelled→cancelled），迟到低阶状态只补事件行不回退已推进的 Task/Run；taskId 用 randomUUID 而非调度器计数器（后者跨重启复用，不能当台账主键）。敏感约定：委派 prompt 只落 `sha256:` 摘要（`promptDigest`），原文与输出文本不进台账，摘要只含委派 ID/状态/错误码/输出字符数。台账经 `Effect.serviceOption(CompositionTaskStore)` 可选注入，ws.ts 零改动即生效；`submit` 重构为"同一同步 tick 内提交+订阅"以消除让出执行权后丢事件的窗口。投影 4 用例 + 服务级集成 2 用例。
 
 - 新增 Byok delegation 跨重启收口（本节点）：`scanByokDelegationRun` / `recoverInterruptedByokDelegations` 复用 Goal Loop「无终态行即中断」扫描——`projectId=byok-delegation` 且最新 Run 仍为 queued/running、调度器内存没有对应 `runtimeTaskId`（进程重启后 live 集合为空）则幂等写入 `terminal:failed`（failureCode=`byok_delegation_interrupted`），已终态不回退，重复扫描零副作用，摘要只含委派 ID/状态/错误码。接线：Composition 运行时 boot 做一次空 live 集合扫描；`ByokDelegationService.make` 首次调用再带当前 in-flight ID 扫一次（模块级 once）。真实 SQLite 覆盖 queued/running 收口、已终态不改写、live 条目跳过、幂等重扫。
-- 控制中心消费委派台账（本节点）：`projectCompositionControlCenter` 识别 `projectId=byok-delegation` 合成 Task，投影可选 `byokDelegation`（delegationId/status/attempt/failureCode），**不**套 Goal Loop 五态、不把 prompt/输出带进投影；Web/Mobile 用独立「BYOK 委派」徽标与 agentId/轮次/错误码摘要，委派行不提供 Goal Loop 重派/放弃/composition 取消。
+- 控制中心消费委派台账（本节点）：`projectCompositionControlCenter` 识别 `projectId=byok-delegation` 合成 Task，投影可选 `byokDelegation`（delegationId/status/attempt/failureCode），**不**套 Goal Loop 五态、不把 prompt/输出带进投影；Web/Mobile 用独立「BYOK 委派」徽标与 agentId/轮次/错误码摘要，委派行不提供 Goal Loop 重派/放弃/恢复，只在最新 Run 活跃时复用 Composition 取消。
+- 控制中心委派取消闭环（本节点）：不新增 RPC，复用既有 `serverCancelCompositionTask`、`AuthOrchestrationOperateScope` 与 client-runtime `cancelCompositionTask` 命令原子；`ws.ts` 先让 `ByokDelegationService` 识别 `projectId=byok-delegation` 的合成 Task，命中时取消该 Task 对应的真实调度器记录，并严格写入 `byok-delegation:<task>:<run>:terminal:cancelled`，非委派 Task 再回落通用 Orchestrator。若调度器恰好先到终态，则投影真实 completed/failed/timed_out 状态，不误覆盖成 cancelled。取消链路只读取既有 sha256 promptDigest、状态、错误码与字符数，prompt/输出正文仍不进入台账或返回值。
 
 仍缺：
 
 - Multica 真实 daemon 的输出查询能力（`fetchOutput` 生产实现）——依赖服务端暴露输出查询接口，属外部环境缺口。
 - Byok delegation 的**彻底**单一状态源收敛：台账投影已就位且可独立查询，但调度器内存仍是 `submit` 返回值与 `list` RPC 的权威来源（投影失败被降级为不中断委派），且未进入队列的拒绝快照（disabled/未配置）不落台账；彻底收敛需把 `DelegationScheduler` 队列改为读写 Composition Run。
-- 控制中心委派行目前只读展示；委派取消/重试仍走调度器 RPC，未接到 composition cancel。
+- BYOK 委派自动重试未接入：委派 prompt 按既定安全边界只保留 SHA-256 摘要，旧 Run 没有可用于重建任务的原文。本刀因此不提供“复活”或 Goal Loop redispatch；后续若增加重试，必须由调用方重新提供任务输入，并创建新 UUID taskId 与新 Run，绝不复活 `byok_delegation_interrupted` Run。
 
 ### 2. BYOK Provider Driver
 
@@ -204,7 +205,7 @@ CapabilityRegistry + ToolBroker
 - 新增控制中心统一投影：`projectCompositionControlCenter` 只读聚合——按任务输出最新 Run（runId/status/attempt/failureCode）、Goal Loop 五态投影（not_started/running/converged/supervisor_settled/interrupted，源自台账扫描 + Run 状态区分活跃与中断）、capability grant 审计摘要（事件数/撤销数/最近 outcome）、依赖任务 ID，并按调用方给定的 squadIds 展开 Squad 名册；真实 SQLite 内存 store 上验证五类任务形态与缺失 Squad 的容错。
 - 控制中心 RPC 与 Web 接线：contracts 新增 `serverControlCenterProjection` 方法与请求/结果 schema；ws.ts 以 `compositionTaskStore`/`compositionGrantRegistry` 服务注入投影（Composition 不可用时显式 `composition_unavailable`）；授权沿用 `AuthOrchestrationReadScope`；client-runtime 新增 `controlCenterProjection` 查询原子；Web 设置"集成"页新增"组合控制中心"区块（任务行含状态/Goal Loop 徽标/轮次/拒绝/grant 摘要、Squad 名册、四态空错提示），i18n 双语目录（`controlCenter.*`）齐全，面板 4 用例 + i18n 静态扫描 157/157 通过。
 - 控制中心自动重派操作入口：contracts 新增 `serverControlCenterRedispatch` 方法与请求/结果 schema（taskId/runId/agentId/客户端生成 newRunId/capabilityIds/可选 note）；授权要求 `AuthOrchestrationOperateScope`；ws.ts 经 `settleAndRedispatchInterruptedGoalLoop`（supervisor 结算 + 陈旧 Run 落 failed）回调真实 `compositionOrchestrator.retryTask` 创建新 Run，错误经 `compositionTaskError` 统一映射；client-runtime 新增 `controlCenterRedispatch` 命令原子（按 taskId+runId singleFlight）；面板为 `interrupted`/`supervisor_settled` 且存在最新 Run 的任务行渲染"自动重派"按钮与共享 capabilityIds 输入（逗号拆分、`t3-redispatch-<uuid>` 新 RunId），成功后刷新投影、失败经 `squashAtomCommandFailure` 展示；面板 7 用例（按钮仅 actionable 行、输入构建纯函数、四态空错回归）+ i18n 静态扫描通过。
-- 控制中心取消操作入口：复用既有 `serverCancelCompositionTask` 四层接线（contracts/ws/`AuthOrchestrationOperateScope`/client-runtime `cancelCompositionTask` 命令原子均已就位），面板为最新 Run 处于活跃状态（queued/dispatched/resuming/running/waiting_approval/waiting_input/in_review，与服务端投影 `RUN_ACTIVE_STATUSES` 一致）的任务行渲染"取消"按钮，reason 取 `controlCenter.cancelReasonDefault` 双语缺省文案；行操作统一收敛为 `runRowCommand`（pending 守卫、失败 `squashAtomCommandFailure` 展示、成功刷新投影）；面板 8 用例（取消按钮仅活跃 Run 行、终态 failed/completed/cancelled 与无 Run 行不渲染）+ i18n 静态扫描通过。
+- 控制中心取消操作入口：复用既有 `serverCancelCompositionTask` 四层接线（contracts/ws/`AuthOrchestrationOperateScope`/client-runtime `cancelCompositionTask` 命令原子均已就位），面板为最新 Run 处于活跃状态（queued/dispatched/resuming/running/waiting_approval/waiting_input/in_review，与服务端投影 `RUN_ACTIVE_STATUSES` 一致）的任务行渲染"取消"按钮，reason 取 `controlCenter.cancelReasonDefault` 双语缺省文案；行操作统一收敛为 `runRowCommand`（pending 守卫、失败 `squashAtomCommandFailure` 展示、成功刷新投影）。本节点扩展 BYOK 委派行：服务端取消真实 scheduler 后严格落 `cancelled`，Web/Mobile 只开放取消而继续屏蔽 Goal Loop 重派/放弃/恢复。委派取消协调器与服务集成共 14/14、Web 面板 15/15、Mobile logic 23/23 通过。
 - 控制中心审批操作入口：复用既有 `serverReviewCompositionTask` 四层接线（contracts/ws/`AuthOrchestrationOperateScope`/client-runtime `reviewCompositionTask` 命令原子均已就位），面板为 `task.status === "in_review"` 且存在最新 Run 的任务行渲染"通过/驳回"按钮（与 TaskGraphPanel 的审批门槛一致，后端对非 in_review 任务显式报错），decision 取 `approve`/`reject` 字面量、reason 分别取 `controlCenter.approveReasonDefault`/`rejectReasonDefault` 双语缺省文案；面板 9 用例（通过/驳回仅 in_review 行、running 行与无 Run 行不渲染、in_review 行取消入口并存）+ i18n 静态扫描通过。
 - 控制中心放弃结算操作入口：服务端从 `settleAndRedispatchInterruptedGoalLoop` 抽出共用结算流程，新增 `settleAndAbandonInterruptedGoalLoop`——同一"纯扫描 → run/task/最新 Run 校验（失败零副作用）→ supervisor 幂等结算"流程落 `supervisor:abandon`（failed）结算行并把陈旧 run/task 落 failed（failureCode=`goal_loop_abandoned`），**不创建新 Run**，2 新用例（放弃结算落行与不新建 Run、已收敛循环拒绝且零副作用，全家 49/49）；contracts 新增 `serverControlCenterAbandon` 方法与请求/结果 schema（abandonedRounds 返回中断轮次）；授权 `AuthOrchestrationOperateScope`；ws.ts 仅依赖 `compositionTaskStore`（无需 orchestrator）；client-runtime 新增 `controlCenterAbandon` 命令原子（singleFlight）；面板为 goalLoop `interrupted` 且存在最新 Run 的行渲染"放弃结算"按钮（supervisor_settled 行已有结算行会被服务端拒绝，不提供入口），与"自动重派"构成 interrupted 行的两种收敛选择；面板 10 用例 + i18n 静态扫描通过。
 - Supplier/Profile/Account 统一只读投影：contracts 新增 `CompositionSupplierRegistryEntry/Result` schema；新增 `projectCompositionSupplierRegistry` 纯投影——把每个 Provider 实例（`ProviderInstanceRegistry` 适配输入）映射为一个 Supplier 条目（continuationKey 账号锚点、启用态、默认模型），按代码库既有 `provider:<instanceId>` agentId 约定挂上派生的 Agent Driver 档案摘要（runtimeId/status/supportsResume），`provider:` 前缀但无实例的档案识别为孤儿（实例移除后未回收的 Driver，多账号回滚关注对象），非实例派生档案（acp/cli）不参与投影；3 用例（约定挂档与字段透传、孤儿与非参与档案、无档案实例），全家 388/388。
@@ -225,7 +226,7 @@ CapabilityRegistry + ToolBroker
 
 已清偿（本节点）：
 
-- 委派台账的消费端 UI：控制中心投影新增可选 `byokDelegation`，Web/Mobile 用独立徽标/摘要区分 Goal Loop 与 BYOK 委派，空态文案同步；委派行不套 Goal Loop 五态扫描与操作入口。
+- 委派台账的消费端 UI 与取消操作：控制中心投影新增可选 `byokDelegation`，Web/Mobile 用独立徽标/摘要区分 Goal Loop 与 BYOK 委派，空态文案同步；委派行不套 Goal Loop 五态，只为活跃 Run 提供 Composition 取消。
 
 已清偿（前节点遗留）：
 
@@ -273,6 +274,7 @@ CapabilityRegistry + ToolBroker
 | server typecheck 清偿        | `feat(composition): 清空 server 包 typecheck 错误`（及前两波记录提交）   | 按文件聚类清偿约 520 处既有隐性错误至 0；`server.test.ts` store 形状漂移与 composition 测试品牌化收窄                                                                                                                                                                                                            |
 | 上游 v0.0.35 同步            | `05d694cfa`（merge）                                                     | subtree 合并上游 34 提交/165 文件：PR 关联线程、Claude 压缩、git push base 分支修复；34 个冲突以"保留本地品牌与 i18n、采纳上游功能"解决，上游迁移 042/043 重编为 054/055，`editorLabels` 集中本地化                                                                                                              |
 | BYOK 缺口批量补齐            | `feat(byok): 补齐余额看板、Supplier 管理、resume 重派与 delegation 收敛` | 余额看板四层接线 + Supplier 启停/凭据轮换（凭据零回显）+ resume 重派编排与控制中心入口（含投影新增 `byokResume` 字段与九码错误映射）+ delegation 台账投影 + Mobile 面板复用 + 上游遗留 20 处文案双语补齐；六包 typecheck（mobile 除既有基线）0 错误，新增/回归测试 server 46、web 62、mobile 23、路由层 133 全过 |
+| BYOK 委派取消                | `feat(byok): 接通控制中心委派取消`                                       | 复用 Composition cancel 全链路，命中真实 scheduler 后幂等落 `terminal:cancelled`；Web/Mobile 活跃委派行只提供取消，不挂 Goal Loop 重派/放弃/恢复；服务端 14、Web 15、Mobile 23 个聚焦测试通过                                                                                                                    |
 | 文档与回归覆盖               | `c5a709b46`、`223b90ee5`                                                 | 刷新迁移矩阵并覆盖 ACP 取消终态回归                                                                                                                                                                                                                                                                              |
 
 ## 关键结论
@@ -301,7 +303,7 @@ CapabilityRegistry + ToolBroker
 3. ~~接入真实 Cursor/VS Code Adapter，完成 capability handshake、最小 IDE API 白名单和撤销测试。~~（**后期内容：本次不做，TODO 待排期**——依赖真实 IDE 环境；本地 JSON-RPC bridge、capability handshake 合同与 fixture 级验证维持既有结论）
 4. 把 Provider、IDE、Multica 的 grant 状态统一投影到 Composition Run 和 Settings。（本地子任务已完成：grant issued/revoked 与 BYOK resume 输出均已投影为任务历史事件；剩余 = 外部 Driver 的真实 grant 回执接入与 Settings 跨端看板展示，其中**真实回执接入随真实 IDE/Multica 接入一并列为后期内容**，跨端看板展示仍在本次范围）
 5. ~~收敛 Goal Loop、预算、重试、验证子代理和跨重启 supervisor。~~（本地切片全部完成：完成标记/预算/停滞 pivot/验证合同与子代理验证器、任务台账编排接线、跨重启监督结算、编排层自动重派接线、BYOK/Multica attempt 生产适配器，共 47 单测；剩余缺口 = Multica 输出查询的生产实现，**已列为后期内容（本次不做，TODO 待排期）**，依赖真实 daemon 服务端能力）
-6. ~~最后补齐 Supplier/Profile 控制中心与 Web/Desktop/Mobile 集成 E2E。~~（本轮已补齐：控制中心统一投影与四个操作入口（重派/取消/审批/放弃结算）、Supplier/Profile 只读投影与注册表区块、**BYOK 余额/用量/健康看板**、**Supplier 启停与凭据轮换操作面**、**resume 恢复重派入口**、**Mobile 面板复用**（Desktop 经共享 web 页天然可达）；剩余 = 多账号 profile 回滚（依赖凭据版本历史合同）、模型分组/权重路由/failover、Request Lab、委派台账消费端 UI、多端真实集成 E2E）
+6. ~~最后补齐 Supplier/Profile 控制中心与 Web/Desktop/Mobile 集成 E2E。~~（本轮已补齐：控制中心统一投影与四个 Goal Loop/通用操作入口（重派/取消/审批/放弃结算）、Supplier/Profile 只读投影与注册表区块、**BYOK 余额/用量/健康看板**、**Supplier 启停与凭据轮换操作面**、**resume 恢复重派入口**、**BYOK 委派台账消费端与取消入口**、**Mobile 面板复用**（Desktop 经共享 web 页天然可达）；剩余 = 多账号 profile 回滚（依赖凭据版本历史合同）、模型分组/权重路由/failover、Request Lab、多端真实集成 E2E）
 7. ~~清偿 apps/server 包整体 typecheck 既有隐性错误基线。~~（已完成：约 520 处清零，`server.test.ts` 路由层 133/133 通过）
 8. BYOK 真实 API 生产验证：用真实 OpenAI/Anthropic/Gemini 兼容凭据走通模型循环、resume 恢复重派与余额看板查询的 E2E。**这是当前 BYOK 主线唯一的非代码阻塞项**——协议、编排、恢复、控制面与多端展示均已形成测试闭环，只差真实凭据下的断线、重试、限流与凭据轮换验证。
 

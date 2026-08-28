@@ -6,6 +6,8 @@ import type {
   ByokDelegationConfig,
   ByokDelegationSnapshot,
   ByokDelegationSubmitRequest,
+  CompositionTaskCancelRequest,
+  CompositionTaskCancelResult,
   ServerSettings as ServerSettingsContract,
 } from "@codework/contracts";
 import * as Clock from "effect/Clock";
@@ -15,13 +17,21 @@ import * as Option from "effect/Option";
 
 import * as ServerSettings from "../../serverSettings.ts";
 import {
+  cancelProjectedByokDelegationTask,
+  isTerminalByokDelegationStatus,
+  type ByokDelegationRuntimeCancelResult,
+} from "../../composition/CompositionByokDelegationCancel.ts";
+import {
   makeByokDelegationProjectionScope,
   projectByokDelegationTransition,
   type ByokDelegationProjectionScope,
   type ByokDelegationProjectionTransition,
 } from "../../composition/CompositionByokDelegationProjection.ts";
 import { recoverInterruptedByokDelegations } from "../../composition/CompositionByokDelegationSupervisor.ts";
-import { CompositionTaskStore } from "../../persistence/Services/CompositionTaskStore.ts";
+import {
+  CompositionTaskStore,
+  type CompositionTaskStoreError,
+} from "../../persistence/Services/CompositionTaskStore.ts";
 import {
   DelegationScheduler,
   type DelegationExecutionContext,
@@ -43,7 +53,15 @@ interface SchedulerEntry {
   readonly scheduler: DelegationScheduler<string, string>;
 }
 
+interface LiveProjectedDelegation {
+  readonly runId: string;
+  readonly instanceId: string;
+  readonly delegationId: string;
+  readonly scheduler: DelegationScheduler<string, string>;
+}
+
 const schedulers = new Map<string, SchedulerEntry>();
+const liveProjectedDelegations = new Map<string, LiveProjectedDelegation>();
 let interruptSweepStarted = false;
 
 const DEFAULT_DELEGATION_CONFIG: ByokDelegationConfig = {
@@ -224,9 +242,67 @@ const toSnapshot = (snapshot: DelegationSnapshot<string, string>): ByokDelegatio
   ...(snapshot.finishedAt !== undefined ? { finishedAt: snapshot.finishedAt } : {}),
 });
 
+const delegationTransitionOf = (
+  snapshot: DelegationSnapshot<string, string>,
+): ByokDelegationProjectionTransition => ({
+  status: snapshot.status,
+  ...(snapshot.error?.code === undefined ? {} : { errorCode: snapshot.error.code }),
+  ...(snapshot.result === undefined ? {} : { resultChars: snapshot.result.length }),
+});
+
+const registerLiveProjectedDelegation = (
+  scope: ByokDelegationProjectionScope,
+  scheduler: DelegationScheduler<string, string>,
+): (() => void) => {
+  const live: LiveProjectedDelegation = {
+    runId: scope.runId,
+    instanceId: scope.instanceId,
+    delegationId: scope.delegationId,
+    scheduler,
+  };
+  liveProjectedDelegations.set(scope.taskId, live);
+  return () => {
+    if (liveProjectedDelegations.get(scope.taskId) === live) {
+      liveProjectedDelegations.delete(scope.taskId);
+    }
+  };
+};
+
+const cancelRuntimeDelegation = (input: {
+  readonly taskId: string;
+  readonly runId: string;
+  readonly instanceId: string;
+  readonly delegationId: string;
+}): ByokDelegationRuntimeCancelResult => {
+  const live = liveProjectedDelegations.get(input.taskId);
+  const scheduler =
+    live !== undefined &&
+    live.runId === input.runId &&
+    live.instanceId === input.instanceId &&
+    live.delegationId === input.delegationId
+      ? live.scheduler
+      : undefined;
+  const snapshot = scheduler?.get(input.delegationId);
+  if (snapshot === undefined) return { status: "not_found" };
+  if (isTerminalByokDelegationStatus(snapshot.status)) {
+    return { status: "already_terminal", transition: delegationTransitionOf(snapshot) };
+  }
+
+  const accepted = scheduler?.cancel(input.delegationId) ?? false;
+  const terminal = scheduler?.get(input.delegationId);
+  if (accepted && terminal?.status === "cancelled") return { status: "cancelled" };
+  if (terminal !== undefined && isTerminalByokDelegationStatus(terminal.status)) {
+    return { status: "already_terminal", transition: delegationTransitionOf(terminal) };
+  }
+  return { status: "not_found" };
+};
+
 export interface ByokDelegationService {
   readonly submit: (input: ByokDelegationSubmitRequest) => Effect.Effect<ByokDelegationSnapshot>;
   readonly list: (instanceId: string) => Effect.Effect<ReadonlyArray<ByokDelegationSnapshot>>;
+  readonly cancelCompositionTask: (
+    input: CompositionTaskCancelRequest,
+  ) => Effect.Effect<CompositionTaskCancelResult | undefined, CompositionTaskStoreError>;
 }
 
 export class DelegationNotConfiguredError extends Data.TaggedError("DelegationNotConfiguredError")<{
@@ -370,14 +446,6 @@ export const make = Effect.gen(function* () {
           Effect.catch(() => Effect.void),
         );
 
-  const delegationTransitionOf = (
-    snapshot: DelegationSnapshot<string, string>,
-  ): ByokDelegationProjectionTransition => ({
-    status: snapshot.status,
-    ...(snapshot.error?.code === undefined ? {} : { errorCode: snapshot.error.code }),
-    ...(snapshot.result === undefined ? {} : { resultChars: snapshot.result.length }),
-  });
-
   /** Submit to the scheduler, projecting each observed transition in order. */
   const runDelegationToTerminal = (
     input: ByokDelegationSubmitRequest,
@@ -407,6 +475,7 @@ export const make = Effect.gen(function* () {
         uniqueKey: NodeCrypto.randomUUID(),
         taskText: input.task,
       });
+      const unregisterLive = registerLiveProjectedDelegation(scope, scheduler);
       return yield* Effect.gen(function* () {
         // 每个委派都真实经过 queued；submit 内部的同步 drain 可能让返回快照已是 running。
         yield* projectTransition(scope, { status: "queued" });
@@ -423,7 +492,14 @@ export const make = Effect.gen(function* () {
           last = next;
         }
         return last;
-      }).pipe(Effect.ensuring(Effect.sync(feed.close)));
+      }).pipe(
+        Effect.ensuring(
+          Effect.sync(() => {
+            feed.close();
+            unregisterLive();
+          }),
+        ),
+      );
     });
 
   const submit = (input: ByokDelegationSubmitRequest) =>
@@ -472,11 +548,26 @@ export const make = Effect.gen(function* () {
       return entry.scheduler.list().map(toSnapshot);
     }).pipe(Effect.catch(() => Effect.succeed([] as ReadonlyArray<ByokDelegationSnapshot>)));
 
-  return { submit, list } satisfies ByokDelegationService;
+  const cancelCompositionTask: ByokDelegationService["cancelCompositionTask"] = (input) =>
+    Option.isNone(taskStore)
+      ? Effect.succeed(undefined)
+      : Clock.currentTimeMillis.pipe(
+          Effect.flatMap((nowUnixMs) =>
+            cancelProjectedByokDelegationTask({
+              store: taskStore.value,
+              input,
+              cancelRuntime: cancelRuntimeDelegation,
+              nowUnixMs,
+            }),
+          ),
+        );
+
+  return { submit, list, cancelCompositionTask } satisfies ByokDelegationService;
 });
 
 export const __testables = {
   parseExecutorCommand,
   buildChildEnv,
   preview,
+  registerLiveProjectedDelegation,
 };
