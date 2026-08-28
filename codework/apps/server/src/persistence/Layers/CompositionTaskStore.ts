@@ -147,6 +147,23 @@ const QuickCreateIntentAcceptRequest = Schema.Struct({
   updatedAtUnixMs: Schema.Number,
 });
 const QuickCreateIntentListRequest = Schema.Struct({ runtimeId: Schema.NullOr(Schema.String) });
+const LeaseClaimRequest = Schema.Struct({
+  ...LeaseRowSchema.fields,
+  nowUnixMs: Schema.Number,
+});
+const LeaseRenewRequest = Schema.Struct({
+  leaseId: Schema.String,
+  runtimeId: Schema.String,
+  heartbeatAtUnixMs: Schema.Number,
+  expiresAtUnixMs: Schema.Number,
+  nowUnixMs: Schema.Number,
+});
+const LeaseReleaseRequest = Schema.Struct({
+  leaseId: Schema.String,
+  runtimeId: Schema.String,
+  releasedAtUnixMs: Schema.Number,
+});
+const LeaseReclaimRequest = Schema.Struct({ nowUnixMs: Schema.Number });
 
 const toTask = (row: Schema.Schema.Type<typeof TaskRowSchema>): CompositionTask => ({
   taskId: row.taskId,
@@ -670,6 +687,119 @@ const makeStore = Effect.gen(function* () {
     `,
   });
 
+  const claimLeaseRow = SqlSchema.findOneOption({
+    Request: LeaseClaimRequest,
+    Result: LeaseRowSchema,
+    execute: (lease) => sql`
+      INSERT INTO composition_runtime_leases (
+        lease_id, runtime_id, task_id, workspace_root_digest,
+        heartbeat_at_unix_ms, expires_at_unix_ms, state
+      )
+      SELECT
+        ${lease.leaseId}, ${lease.runtimeId}, ${lease.taskId}, ${lease.workspaceRootDigest},
+        ${lease.heartbeatAtUnixMs}, ${lease.expiresAtUnixMs}, ${lease.state}
+      WHERE ${lease.state} = 'active'
+        AND (
+          ${lease.heartbeatAtUnixMs} >= ${lease.nowUnixMs}
+          OR EXISTS (
+            SELECT 1 FROM composition_runtime_leases
+            WHERE lease_id = ${lease.leaseId}
+              AND runtime_id = ${lease.runtimeId}
+              AND task_id = ${lease.taskId}
+              AND workspace_root_digest = ${lease.workspaceRootDigest}
+              AND heartbeat_at_unix_ms = ${lease.heartbeatAtUnixMs}
+              AND expires_at_unix_ms = ${lease.expiresAtUnixMs}
+              AND state = 'active'
+              AND expires_at_unix_ms > ${lease.nowUnixMs}
+          )
+        )
+        AND ${lease.expiresAtUnixMs} > ${lease.heartbeatAtUnixMs}
+        AND ${lease.expiresAtUnixMs} > ${lease.nowUnixMs}
+        AND NOT EXISTS (
+          SELECT 1 FROM composition_runtime_leases
+          WHERE workspace_root_digest = ${lease.workspaceRootDigest}
+            AND state = 'active'
+            AND expires_at_unix_ms > ${lease.nowUnixMs}
+            AND lease_id <> ${lease.leaseId}
+        )
+      ON CONFLICT (lease_id) DO UPDATE SET lease_id = excluded.lease_id
+      WHERE composition_runtime_leases.runtime_id = excluded.runtime_id
+        AND composition_runtime_leases.task_id = excluded.task_id
+        AND composition_runtime_leases.workspace_root_digest = excluded.workspace_root_digest
+        AND composition_runtime_leases.heartbeat_at_unix_ms = excluded.heartbeat_at_unix_ms
+        AND composition_runtime_leases.expires_at_unix_ms = excluded.expires_at_unix_ms
+        AND composition_runtime_leases.state = 'active'
+        AND composition_runtime_leases.expires_at_unix_ms > ${lease.nowUnixMs}
+      RETURNING
+        lease_id AS "leaseId", runtime_id AS "runtimeId", task_id AS "taskId",
+        workspace_root_digest AS "workspaceRootDigest",
+        heartbeat_at_unix_ms AS "heartbeatAtUnixMs",
+        expires_at_unix_ms AS "expiresAtUnixMs", state
+    `,
+  });
+
+  const renewLeaseRow = SqlSchema.findOneOption({
+    Request: LeaseRenewRequest,
+    Result: LeaseRowSchema,
+    execute: (input) => sql`
+      UPDATE composition_runtime_leases
+      SET heartbeat_at_unix_ms = ${input.heartbeatAtUnixMs},
+        expires_at_unix_ms = ${input.expiresAtUnixMs}
+      WHERE lease_id = ${input.leaseId}
+        AND runtime_id = ${input.runtimeId}
+        AND state = 'active'
+        AND expires_at_unix_ms > ${input.nowUnixMs}
+        AND heartbeat_at_unix_ms <= ${input.heartbeatAtUnixMs}
+        AND expires_at_unix_ms <= ${input.expiresAtUnixMs}
+        AND ${input.heartbeatAtUnixMs} >= ${input.nowUnixMs}
+        AND ${input.expiresAtUnixMs} > ${input.heartbeatAtUnixMs}
+      RETURNING
+        lease_id AS "leaseId", runtime_id AS "runtimeId", task_id AS "taskId",
+        workspace_root_digest AS "workspaceRootDigest",
+        heartbeat_at_unix_ms AS "heartbeatAtUnixMs",
+        expires_at_unix_ms AS "expiresAtUnixMs", state
+    `,
+  });
+
+  const releaseLeaseRow = SqlSchema.findOneOption({
+    Request: LeaseReleaseRequest,
+    Result: LeaseRowSchema,
+    execute: (input) => sql`
+      UPDATE composition_runtime_leases
+      SET heartbeat_at_unix_ms = CASE
+          WHEN state = 'active' THEN MAX(heartbeat_at_unix_ms, ${input.releasedAtUnixMs})
+          ELSE heartbeat_at_unix_ms
+        END,
+        state = 'released'
+      WHERE lease_id = ${input.leaseId}
+        AND runtime_id = ${input.runtimeId}
+        AND (
+          state = 'released'
+          OR (state = 'active' AND expires_at_unix_ms > ${input.releasedAtUnixMs})
+        )
+      RETURNING
+        lease_id AS "leaseId", runtime_id AS "runtimeId", task_id AS "taskId",
+        workspace_root_digest AS "workspaceRootDigest",
+        heartbeat_at_unix_ms AS "heartbeatAtUnixMs",
+        expires_at_unix_ms AS "expiresAtUnixMs", state
+    `,
+  });
+
+  const reclaimExpiredLeaseRows = SqlSchema.findAll({
+    Request: LeaseReclaimRequest,
+    Result: LeaseRowSchema,
+    execute: (input) => sql`
+      UPDATE composition_runtime_leases
+      SET state = 'expired'
+      WHERE state = 'active' AND expires_at_unix_ms <= ${input.nowUnixMs}
+      RETURNING
+        lease_id AS "leaseId", runtime_id AS "runtimeId", task_id AS "taskId",
+        workspace_root_digest AS "workspaceRootDigest",
+        heartbeat_at_unix_ms AS "heartbeatAtUnixMs",
+        expires_at_unix_ms AS "expiresAtUnixMs", state
+    `,
+  });
+
   const upsertSquadRow = SqlSchema.void({
     Request: Schema.Struct({
       squadId: Schema.String,
@@ -875,6 +1005,30 @@ const makeStore = Effect.gen(function* () {
       run(
         "CompositionTaskStore.getLease",
         getLeaseRow({ id: leaseId }).pipe(Effect.map(Option.map(toLease))),
+      ),
+    claimLease: ({ lease, nowUnixMs }) =>
+      run(
+        "CompositionTaskStore.claimLease",
+        claimLeaseRow({ ...lease, nowUnixMs }).pipe(Effect.map(Option.map(toLease))),
+      ),
+    renewLease: (input) =>
+      run(
+        "CompositionTaskStore.renewLease",
+        renewLeaseRow(input).pipe(Effect.map(Option.map(toLease))),
+      ),
+    releaseLease: (input) =>
+      run(
+        "CompositionTaskStore.releaseLease",
+        releaseLeaseRow(input).pipe(Effect.map(Option.map(toLease))),
+      ),
+    reclaimExpiredLeases: (input) =>
+      run(
+        "CompositionTaskStore.reclaimExpiredLeases",
+        reclaimExpiredLeaseRows(input).pipe(
+          Effect.map((rows) =>
+            rows.map(toLease).sort((left, right) => left.leaseId.localeCompare(right.leaseId)),
+          ),
+        ),
       ),
     upsertSquad: (squad) =>
       run(

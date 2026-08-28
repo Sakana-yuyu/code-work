@@ -164,6 +164,170 @@ layer("CompositionTaskStore", (it) => {
     }),
   );
 
+  it.effect("同一工作区的并发领取只有一个赢家，且完全相同的请求可以幂等重放", () =>
+    Effect.gen(function* () {
+      const store = yield* CompositionTaskStore;
+      const firstLease = {
+        leaseId: "lease-claim-a",
+        runtimeId: "runtime-a",
+        taskId: "task-a",
+        workspaceRootDigest: "sha256:shared-workspace",
+        heartbeatAtUnixMs: 10,
+        expiresAtUnixMs: 100,
+        state: "active" as const,
+      };
+      const secondLease = {
+        ...firstLease,
+        leaseId: "lease-claim-b",
+        runtimeId: "runtime-b",
+        taskId: "task-b",
+      };
+
+      const claims = yield* Effect.all(
+        [
+          store.claimLease({ lease: firstLease, nowUnixMs: 10 }),
+          store.claimLease({ lease: secondLease, nowUnixMs: 10 }),
+        ],
+        { concurrency: "unbounded" },
+      );
+      const winners = claims.filter(Option.isSome).map(Option.getOrThrow);
+      assert.equal(winners.length, 1);
+
+      const winner = winners[0]!;
+      const replay = yield* store.claimLease({ lease: winner, nowUnixMs: 20 });
+      const mutatedReplay = yield* store.claimLease({
+        lease: { ...winner, expiresAtUnixMs: winner.expiresAtUnixMs + 1 },
+        nowUnixMs: 20,
+      });
+      const staleClaim = yield* store.claimLease({
+        lease: {
+          ...winner,
+          leaseId: "lease-stale-claim",
+          workspaceRootDigest: "sha256:stale-workspace",
+          heartbeatAtUnixMs: 19,
+        },
+        nowUnixMs: 20,
+      });
+      assert.deepEqual(Option.getOrThrow(replay), winner);
+      assert.ok(Option.isNone(mutatedReplay));
+      assert.ok(Option.isNone(staleClaim));
+    }),
+  );
+
+  it.effect("只有当前 owner 能在租约有效期内续租，并且释放操作可以幂等重放", () =>
+    Effect.gen(function* () {
+      const store = yield* CompositionTaskStore;
+      const lease = {
+        leaseId: "lease-renew",
+        runtimeId: "runtime-owner",
+        taskId: "task-renew",
+        workspaceRootDigest: "sha256:renew-workspace",
+        heartbeatAtUnixMs: 10,
+        expiresAtUnixMs: 100,
+        state: "active" as const,
+      };
+      assert.ok(Option.isSome(yield* store.claimLease({ lease, nowUnixMs: 10 })));
+
+      const rejected = yield* store.renewLease({
+        leaseId: lease.leaseId,
+        runtimeId: "runtime-other",
+        heartbeatAtUnixMs: 20,
+        expiresAtUnixMs: 200,
+        nowUnixMs: 20,
+      });
+      const renewed = yield* store.renewLease({
+        leaseId: lease.leaseId,
+        runtimeId: lease.runtimeId,
+        heartbeatAtUnixMs: 20,
+        expiresAtUnixMs: 200,
+        nowUnixMs: 20,
+      });
+      const shortened = yield* store.renewLease({
+        leaseId: lease.leaseId,
+        runtimeId: lease.runtimeId,
+        heartbeatAtUnixMs: 21,
+        expiresAtUnixMs: 199,
+        nowUnixMs: 21,
+      });
+      assert.ok(Option.isNone(rejected));
+      assert.equal(Option.getOrThrow(renewed).expiresAtUnixMs, 200);
+      assert.ok(Option.isNone(shortened));
+
+      const rejectedRelease = yield* store.releaseLease({
+        leaseId: lease.leaseId,
+        runtimeId: "runtime-other",
+        releasedAtUnixMs: 30,
+      });
+      assert.ok(Option.isNone(rejectedRelease));
+
+      const released = yield* store.releaseLease({
+        leaseId: lease.leaseId,
+        runtimeId: lease.runtimeId,
+        releasedAtUnixMs: 30,
+      });
+      const replayedRelease = yield* store.releaseLease({
+        leaseId: lease.leaseId,
+        runtimeId: lease.runtimeId,
+        releasedAtUnixMs: 31,
+      });
+      const renewedAfterRelease = yield* store.renewLease({
+        leaseId: lease.leaseId,
+        runtimeId: lease.runtimeId,
+        heartbeatAtUnixMs: 40,
+        expiresAtUnixMs: 300,
+        nowUnixMs: 40,
+      });
+      assert.equal(Option.getOrThrow(released).state, "released");
+      assert.deepEqual(Option.getOrThrow(replayedRelease), Option.getOrThrow(released));
+      assert.ok(Option.isNone(renewedAfterRelease));
+    }),
+  );
+
+  it.effect("回收过期租约后允许新的 owner 领取同一工作区", () =>
+    Effect.gen(function* () {
+      const store = yield* CompositionTaskStore;
+      const expiredLease = {
+        leaseId: "lease-expired",
+        runtimeId: "runtime-old",
+        taskId: "task-old",
+        workspaceRootDigest: "sha256:reclaimed-workspace",
+        heartbeatAtUnixMs: 10,
+        expiresAtUnixMs: 20,
+        state: "active" as const,
+      };
+      assert.ok(Option.isSome(yield* store.claimLease({ lease: expiredLease, nowUnixMs: 10 })));
+
+      const notYetReclaimed = yield* store.reclaimExpiredLeases({ nowUnixMs: 19 });
+      const renewAtExpiry = yield* store.renewLease({
+        leaseId: expiredLease.leaseId,
+        runtimeId: expiredLease.runtimeId,
+        heartbeatAtUnixMs: 20,
+        expiresAtUnixMs: 120,
+        nowUnixMs: 20,
+      });
+      const reclaimed = yield* store.reclaimExpiredLeases({ nowUnixMs: 20 });
+      const storedExpiredLease = yield* store.getLease(expiredLease.leaseId);
+      const nextLease = {
+        ...expiredLease,
+        leaseId: "lease-reclaimed",
+        runtimeId: "runtime-new",
+        taskId: "task-new",
+        heartbeatAtUnixMs: 20,
+        expiresAtUnixMs: 120,
+      };
+      const nextClaim = yield* store.claimLease({ lease: nextLease, nowUnixMs: 20 });
+
+      assert.deepEqual(notYetReclaimed, []);
+      assert.ok(Option.isNone(renewAtExpiry));
+      assert.deepEqual(
+        reclaimed.map((lease) => lease.leaseId),
+        [expiredLease.leaseId],
+      );
+      assert.equal(Option.getOrThrow(storedExpiredLease).state, "expired");
+      assert.equal(Option.getOrThrow(nextClaim).runtimeId, "runtime-new");
+    }),
+  );
+
   it.effect("deduplicates a repeated provider source event id", () =>
     Effect.gen(function* () {
       const store = yield* CompositionTaskStore;

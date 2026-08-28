@@ -33,6 +33,29 @@ export type CompositionMulticaQuickCreateIntentInput = Omit<
   "state"
 >;
 
+export type CompositionRuntimeLeaseClaimInput = {
+  readonly lease: CompositionRuntimeLease;
+  readonly nowUnixMs: number;
+};
+
+export type CompositionRuntimeLeaseRenewInput = {
+  readonly leaseId: string;
+  readonly runtimeId: string;
+  readonly heartbeatAtUnixMs: number;
+  readonly expiresAtUnixMs: number;
+  readonly nowUnixMs: number;
+};
+
+export type CompositionRuntimeLeaseReleaseInput = {
+  readonly leaseId: string;
+  readonly runtimeId: string;
+  readonly releasedAtUnixMs: number;
+};
+
+export type CompositionRuntimeLeaseReclaimInput = {
+  readonly nowUnixMs: number;
+};
+
 export interface CompositionTaskStoreShape {
   readonly upsertTask: (
     task: CompositionTask,
@@ -118,6 +141,22 @@ export interface CompositionTaskStoreShape {
   readonly getLease: (
     leaseId: string,
   ) => Effect.Effect<Option.Option<CompositionRuntimeLease>, CompositionTaskStoreError>;
+  /** 同一 workspace 同时只允许一个未过期 active lease；完全相同的请求可安全重放。 */
+  readonly claimLease: (
+    input: CompositionRuntimeLeaseClaimInput,
+  ) => Effect.Effect<Option.Option<CompositionRuntimeLease>, CompositionTaskStoreError>;
+  /** 仅 lease owner 可在当前租约过期前单调延长 heartbeat 和 expiresAt。 */
+  readonly renewLease: (
+    input: CompositionRuntimeLeaseRenewInput,
+  ) => Effect.Effect<Option.Option<CompositionRuntimeLease>, CompositionTaskStoreError>;
+  /** owner 可幂等释放仍有效或已经释放的租约，不能覆盖 expired 终态。 */
+  readonly releaseLease: (
+    input: CompositionRuntimeLeaseReleaseInput,
+  ) => Effect.Effect<Option.Option<CompositionRuntimeLease>, CompositionTaskStoreError>;
+  /** 批量把到期的 active lease 收口为 expired，返回本次实际回收的记录。 */
+  readonly reclaimExpiredLeases: (
+    input: CompositionRuntimeLeaseReclaimInput,
+  ) => Effect.Effect<ReadonlyArray<CompositionRuntimeLease>, CompositionTaskStoreError>;
   readonly upsertSquad: (
     squad: CompositionSquad,
   ) => Effect.Effect<CompositionSquad, CompositionTaskStoreError>;
