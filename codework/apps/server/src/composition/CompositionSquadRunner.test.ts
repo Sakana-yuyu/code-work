@@ -158,6 +158,11 @@ it.effect("五种协同模式生成各自的调度与依赖语义", () =>
     expect(critic).toMatchObject({ dependsOnNodeIds: ["member:1:agent-worker"] });
     expect(critic.prompt).toContain("Critic");
     expect(critic.prompt).toContain('"decision":"approve"');
+    expect(reviewCritic.review).toEqual({
+      reviewerNodeIds: ["member:2:agent-reviewer", "member:3:agent-critic"],
+      reworkableNodeIds: ["member:1:agent-worker"],
+      maxRevisions: 2,
+    });
     expect(leaderWorkers.schedule).toBe("parallel");
     expect(dependencyGraph.children.map((node) => node.dependsOnNodeIds)).toEqual([
       [],

@@ -37,6 +37,7 @@ import {
   type CompositionTaskRuntimeUpdate,
 } from "./CompositionTaskRuntimeProjectionService.ts";
 import { projectCompositionRuntimeEvent } from "./CompositionTaskRuntimeProjector.ts";
+import { encodeCompositionSquadReviewDecision } from "./CompositionSquadReview.ts";
 import * as ToolBroker from "./ToolBroker.ts";
 import * as WorkspaceEntries from "../workspace/WorkspaceEntries.ts";
 import * as WorkspaceFileSystem from "../workspace/WorkspaceFileSystem.ts";
@@ -406,6 +407,244 @@ describe("CompositionTaskGraphExecutor", () => {
       expect(leader.promptDigest).toBe(
         `sha256:${NodeCrypto.createHash("sha256").update(leader.prompt!, "utf8").digest("hex")}`,
       );
+    }),
+  );
+
+  it.effect("Reviewer 驳回后只重做点名节点并使用修订结果再次评审", () =>
+    Effect.gen(function* () {
+      const tasks = new Map<string, CompositionTask>();
+      const runs = new Map<string, CompositionTaskRun>();
+      const dispatches: Array<{ readonly taskId: string; readonly prompt: string | undefined }> =
+        [];
+      const worker = {
+        nodeId: "worker",
+        taskId: "task-worker",
+        runId: "run-worker",
+        projectId: "project-graph",
+        assigneeKind: "agent" as const,
+        assigneeId: "agent-worker",
+        mode: "parallel" as const,
+        promptDigest: "sha256:worker",
+        prompt: "完成实现",
+        workspaceRoot: "C:/workspace",
+      };
+      const reviewer = {
+        nodeId: "reviewer",
+        taskId: "task-reviewer",
+        runId: "run-reviewer",
+        projectId: "project-graph",
+        assigneeKind: "agent" as const,
+        assigneeId: "agent-reviewer",
+        mode: "parallel" as const,
+        promptDigest: "sha256:reviewer",
+        prompt: "严格评审实现",
+        workspaceRoot: "C:/workspace",
+        dependsOnNodeIds: [worker.nodeId],
+      };
+      const orchestrator: Pick<
+        CompositionOrchestrator,
+        "dispatchTask" | "retryTask" | "cancelTask"
+      > = {
+        dispatchTask: (input) =>
+          Effect.sync(() => {
+            dispatches.push({ taskId: input.taskId, prompt: input.prompt });
+            const leader = input.taskId === baseLeader.taskId;
+            const task: CompositionTask = {
+              taskId: input.taskId,
+              projectId: input.projectId,
+              assigneeKind: input.assigneeKind,
+              assigneeId: input.assigneeId,
+              mode: input.mode,
+              status: leader ? "completed" : "running",
+              promptDigest: input.promptDigest,
+              dependsOnTaskIds: [...input.dependsOnTaskIds],
+              createdAtUnixMs: 1,
+              updatedAtUnixMs: 1,
+            };
+            const run: CompositionTaskRun = {
+              runId: input.runId,
+              taskId: input.taskId,
+              agentId: input.assigneeId,
+              runtimeId: `runtime-${input.assigneeId}`,
+              status: leader ? "completed" : "running",
+              attempt: 1,
+              capabilityGrantIds: [],
+              ...(leader ? { resultSummary: "Leader 汇总完成" } : {}),
+            };
+            tasks.set(task.taskId, task);
+            runs.set(run.runId, run);
+            return { task, run };
+          }),
+        retryTask: () => Effect.die("本测试不应触发瞬态重试"),
+        cancelTask: () => Effect.die("本测试不应触发取消"),
+      };
+      const executor = makeCompositionTaskGraphExecutor({
+        orchestrator,
+        store: { getTask: (taskId) => Effect.succeed(Option.fromNullishOr(tasks.get(taskId))) },
+        runtime: {
+          awaitTaskCompletion: ({ taskId, runId }) =>
+            Effect.sync(() => {
+              const task = tasks.get(taskId)!;
+              const run = runs.get(runId)!;
+              const resultSummary =
+                taskId === worker.taskId
+                  ? "初稿缺少失败场景测试"
+                  : taskId === `${worker.taskId}:review:1`
+                    ? "修订稿已补齐失败场景测试"
+                    : taskId === reviewer.taskId
+                      ? encodeCompositionSquadReviewDecision({
+                          decision: "reject",
+                          feedback: "补齐失败场景测试。",
+                          reworkNodeIds: [worker.nodeId],
+                        })
+                      : encodeCompositionSquadReviewDecision({
+                          decision: "approve",
+                          feedback: "修订结果满足要求。",
+                          reworkNodeIds: [],
+                        });
+              const completedTask = { ...task, status: "completed" as const };
+              const completedRun = { ...run, status: "completed" as const, resultSummary };
+              tasks.set(taskId, completedTask);
+              runs.set(runId, completedRun);
+              return completedRun;
+            }),
+        },
+      });
+      const input: CompositionTaskGraphExecutionInput = {
+        leader: baseLeader,
+        children: [worker, reviewer],
+        schedule: "parallel" as const,
+        review: {
+          reviewerNodeIds: [reviewer.nodeId],
+          reworkableNodeIds: [worker.nodeId],
+          maxRevisions: 1,
+        },
+      };
+
+      const result = yield* executor.execute(input);
+
+      expect(dispatches.map((dispatch) => dispatch.taskId)).toEqual([
+        worker.taskId,
+        reviewer.taskId,
+        `${worker.taskId}:review:1`,
+        `${reviewer.taskId}:review:1`,
+        baseLeader.taskId,
+      ]);
+      expect(
+        dispatches.find((dispatch) => dispatch.taskId === `${worker.taskId}:review:1`)?.prompt,
+      ).toContain("补齐失败场景测试。");
+      expect(
+        dispatches.find((dispatch) => dispatch.taskId === `${worker.taskId}:review:1`)?.prompt,
+      ).toContain("初稿缺少失败场景测试");
+      expect(
+        dispatches.find((dispatch) => dispatch.taskId === `${reviewer.taskId}:review:1`)?.prompt,
+      ).toContain("修订稿已补齐失败场景测试");
+      expect(result.children.find((child) => child.nodeId === worker.nodeId)).toMatchObject({
+        attempts: 2,
+        task: { taskId: `${worker.taskId}:review:1` },
+      });
+    }),
+  );
+
+  it.effect("评审输出非法或重做预算耗尽时阻止 Leader 汇总", () =>
+    Effect.gen(function* () {
+      const run = (reviewSummary: string, maxRevisions: number) => {
+        const tasks = new Map<string, CompositionTask>();
+        const dispatchedTaskIds: string[] = [];
+        const worker = {
+          nodeId: "worker",
+          taskId: "task-worker-boundary",
+          runId: "run-worker-boundary",
+          projectId: "project-graph",
+          assigneeKind: "agent" as const,
+          assigneeId: "agent-worker",
+          mode: "parallel" as const,
+          promptDigest: "sha256:worker-boundary",
+          prompt: "完成实现",
+          workspaceRoot: "C:/workspace",
+        };
+        const reviewer = {
+          nodeId: "reviewer",
+          taskId: "task-reviewer-boundary",
+          runId: "run-reviewer-boundary",
+          projectId: "project-graph",
+          assigneeKind: "agent" as const,
+          assigneeId: "agent-reviewer",
+          mode: "parallel" as const,
+          promptDigest: "sha256:reviewer-boundary",
+          prompt: "严格评审实现",
+          workspaceRoot: "C:/workspace",
+          dependsOnNodeIds: [worker.nodeId],
+        };
+        const executor = makeCompositionTaskGraphExecutor({
+          orchestrator: {
+            dispatchTask: (input) =>
+              Effect.sync(() => {
+                dispatchedTaskIds.push(input.taskId);
+                const resultSummary =
+                  input.taskId === reviewer.taskId
+                    ? reviewSummary
+                    : input.taskId === worker.taskId
+                      ? "初稿"
+                      : "不应派发 Leader";
+                const task: CompositionTask = {
+                  taskId: input.taskId,
+                  projectId: input.projectId,
+                  assigneeKind: input.assigneeKind,
+                  assigneeId: input.assigneeId,
+                  mode: input.mode,
+                  status: "completed",
+                  promptDigest: input.promptDigest,
+                  dependsOnTaskIds: [...input.dependsOnTaskIds],
+                  createdAtUnixMs: 1,
+                  updatedAtUnixMs: 1,
+                };
+                const run: CompositionTaskRun = {
+                  runId: input.runId,
+                  taskId: input.taskId,
+                  agentId: input.assigneeId,
+                  runtimeId: `runtime-${input.assigneeId}`,
+                  status: "completed",
+                  attempt: 1,
+                  capabilityGrantIds: [],
+                  resultSummary,
+                };
+                tasks.set(task.taskId, task);
+                return { task, run };
+              }),
+            retryTask: () => Effect.die("本测试不应触发瞬态重试"),
+            cancelTask: () => Effect.die("本测试不应触发取消"),
+          },
+          store: { getTask: (taskId) => Effect.succeed(Option.fromNullishOr(tasks.get(taskId))) },
+          runtime: { awaitTaskCompletion: () => Effect.die("终态任务不应等待 Runtime") },
+        });
+        return Effect.flip(
+          executor.execute({
+            leader: baseLeader,
+            children: [worker, reviewer],
+            review: {
+              reviewerNodeIds: [reviewer.nodeId],
+              reworkableNodeIds: [worker.nodeId],
+              maxRevisions,
+            },
+          }),
+        ).pipe(Effect.map((error) => ({ error, dispatchedTaskIds })));
+      };
+
+      const invalid = yield* run("不是 JSON", 1);
+      expect(invalid.error).toMatchObject({ code: "squad_review_output_invalid" });
+      expect(invalid.dispatchedTaskIds).not.toContain(baseLeader.taskId);
+
+      const exhausted = yield* run(
+        encodeCompositionSquadReviewDecision({
+          decision: "reject",
+          feedback: "仍缺少边界测试。",
+          reworkNodeIds: ["worker"],
+        }),
+        0,
+      );
+      expect(exhausted.error).toMatchObject({ code: "review_rework_exhausted" });
+      expect(exhausted.dispatchedTaskIds).not.toContain(baseLeader.taskId);
     }),
   );
 

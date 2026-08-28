@@ -23,6 +23,7 @@ import {
   type CompositionOrchestrator,
 } from "./CompositionOrchestrator.ts";
 import { CompositionOrchestratorService } from "./CompositionOrchestratorService.ts";
+import { parseCompositionSquadReviewDecision } from "./CompositionSquadReview.ts";
 import {
   CompositionTaskRuntimeProjectionService,
   type CompositionTaskRuntimeProjectionServiceShape,
@@ -69,6 +70,11 @@ export type CompositionTaskGraphExecutionInput = {
   readonly maxConcurrency?: number;
   readonly failurePolicy?: CompositionSquadFailurePolicy;
   readonly partialSuccessPolicy?: CompositionSquadPartialSuccessPolicy;
+  readonly review?: {
+    readonly reviewerNodeIds: ReadonlyArray<string>;
+    readonly reworkableNodeIds: ReadonlyArray<string>;
+    readonly maxRevisions: number;
+  };
 };
 
 export type CompositionTaskGraphNodeResult = {
@@ -163,6 +169,12 @@ const normalizeError = (error: unknown): CompositionTaskGraphExecutionError =>
 const retryRunId = (initialRunId: string, attempt: number): string =>
   `${initialRunId}:retry:${attempt}`;
 
+const reviewTaskId = (initialTaskId: string, revision: number): string =>
+  `${initialTaskId}:review:${revision}`;
+
+const reviewRunId = (initialRunId: string, revision: number): string =>
+  `${initialRunId}:review:${revision}`;
+
 const sha256 = (value: string): string =>
   `sha256:${NodeCrypto.createHash("sha256").update(value, "utf8").digest("hex")}`;
 
@@ -245,6 +257,49 @@ const validateGraph = (
     taskIds.add(node.taskId);
     runIds.add(node.runId);
     nodesById.set(node.nodeId, node);
+  }
+
+  if (input.review !== undefined) {
+    if (!Number.isInteger(input.review.maxRevisions) || input.review.maxRevisions < 0) {
+      return graphError(
+        "invalid_review_max_revisions",
+        "review.maxRevisions 必须是大于等于 0 的整数。",
+      );
+    }
+    if (input.review.reviewerNodeIds.length === 0) {
+      return graphError("reviewer_node_missing", "review 至少需要一个 Reviewer/Critic 节点。");
+    }
+    if (input.review.reworkableNodeIds.length === 0) {
+      return graphError("reworkable_node_missing", "review 至少需要一个可重做节点。");
+    }
+    const reviewerIds = new Set<string>();
+    for (const nodeId of input.review.reviewerNodeIds) {
+      if (reviewerIds.has(nodeId)) {
+        return graphError(
+          "duplicate_reviewer_node",
+          `重复的 Reviewer/Critic 节点：${nodeId}`,
+          nodeId,
+        );
+      }
+      reviewerIds.add(nodeId);
+      if (!nodesById.has(nodeId)) {
+        return graphError("reviewer_node_missing", `Reviewer/Critic 节点不存在：${nodeId}`, nodeId);
+      }
+    }
+    const reworkableIds = new Set<string>();
+    for (const nodeId of input.review.reworkableNodeIds) {
+      if (reworkableIds.has(nodeId)) {
+        return graphError("duplicate_reworkable_node", `重复的可重做节点：${nodeId}`, nodeId);
+      }
+      reworkableIds.add(nodeId);
+      if (!nodesById.has(nodeId) || reviewerIds.has(nodeId)) {
+        return graphError(
+          "reworkable_node_invalid",
+          `可重做节点不存在或属于评审节点：${nodeId}`,
+          nodeId,
+        );
+      }
+    }
   }
 
   for (const node of input.children) {
@@ -425,6 +480,7 @@ const make = (options: GraphExecutorOptions): CompositionTaskGraphExecutorShape 
       const validationError = validateGraph(input);
       if (validationError !== undefined) return yield* validationError;
 
+      const nodesById = new Map(input.children.map((node) => [node.nodeId, node] as const));
       const pending = new Set(input.children.map((node) => node.nodeId));
       const results = new Map<string, CompositionTaskGraphNodeResult>();
       const failures = new Map<string, CompositionTaskGraphNodeFailure>();
@@ -480,6 +536,57 @@ const make = (options: GraphExecutorOptions): CompositionTaskGraphExecutorShape 
             );
           }
           return yield* failure;
+        });
+
+      const runRevisionNodes = (
+        nodeIds: ReadonlyArray<string>,
+        revision: number,
+        prompts: ReadonlyMap<string, string>,
+      ) =>
+        Effect.gen(function* () {
+          const startedBatch: RunningNode[] = [];
+          for (const nodeId of nodeIds) {
+            const baseNode = nodesById.get(nodeId)!;
+            const prompt = prompts.get(nodeId) ?? baseNode.prompt;
+            const revisionNode: CompositionTaskGraphNodeInput = {
+              ...baseNode,
+              taskId: reviewTaskId(baseNode.taskId, revision),
+              runId: reviewRunId(baseNode.runId, revision),
+              prompt,
+              promptDigest: sha256(prompt),
+            };
+            const dependencies = (baseNode.dependsOnNodeIds ?? []).map(
+              (dependencyId) => results.get(dependencyId)!,
+            );
+            const started = yield* startNode(revisionNode, dependencies, input.leader.taskId).pipe(
+              Effect.catch((failure) => failAfterCleanup(failure, startedBatch)),
+            );
+            startedBatch.push(started);
+            if (!terminalStatuses.has(started.currentDispatch.run.status)) {
+              activeNodes.add(started);
+            }
+          }
+          const settled = yield* Effect.forEach(
+            startedBatch,
+            (started) => settleNode(started, activeNodes, false),
+            { concurrency: input.maxConcurrency ?? "unbounded" },
+          ).pipe(Effect.catch((failure) => failAfterCleanup(failure, [...activeNodes])));
+          for (const outcome of settled) {
+            if ("kind" in outcome) {
+              return yield* graphError("review_revision_failed", outcome.detail, outcome.nodeId);
+            }
+            const previous = results.get(outcome.nodeId);
+            results.set(
+              outcome.nodeId,
+              previous === undefined
+                ? outcome
+                : {
+                    ...outcome,
+                    attempts: previous.attempts + outcome.attempts,
+                    dispatches: [...previous.dispatches, ...outcome.dispatches],
+                  },
+            );
+          }
         });
 
       while (pending.size > 0) {
@@ -591,6 +698,61 @@ const make = (options: GraphExecutorOptions): CompositionTaskGraphExecutorShape 
             results.set(outcome.nodeId, outcome);
           }
           pending.delete(outcome.nodeId);
+        }
+      }
+
+      if (input.review !== undefined) {
+        let revision = 0;
+        for (;;) {
+          const reviewed = yield* Effect.forEach(input.review.reviewerNodeIds, (reviewerNodeId) => {
+            const result = results.get(reviewerNodeId);
+            if (result === undefined) {
+              return Effect.fail(
+                graphError(
+                  "reviewer_result_missing",
+                  `Reviewer/Critic 节点没有成功结果：${reviewerNodeId}`,
+                  reviewerNodeId,
+                ),
+              );
+            }
+            return parseCompositionSquadReviewDecision({
+              output: result.run.resultSummary ?? "",
+              reviewerNodeId,
+              reworkableNodeIds: input.review!.reworkableNodeIds,
+            }).pipe(
+              Effect.map((decision) => ({ reviewerNodeId, decision })),
+              Effect.mapError((error) => graphError(error.code, error.detail, reviewerNodeId)),
+            );
+          });
+          const rejected = reviewed.filter((entry) => entry.decision.decision === "reject");
+          if (rejected.length === 0) break;
+          if (revision >= input.review.maxRevisions) {
+            return yield* graphError(
+              "review_rework_exhausted",
+              `评审连续驳回，已用尽 ${input.review.maxRevisions} 次重做预算。`,
+            );
+          }
+          revision += 1;
+
+          const targetNodeIds = input.review.reworkableNodeIds.filter((nodeId) =>
+            rejected.some((entry) => entry.decision.reworkNodeIds.includes(nodeId)),
+          );
+          const reworkPrompts = new Map<string, string>();
+          for (const nodeId of targetNodeIds) {
+            const feedback = rejected
+              .filter((entry) => entry.decision.reworkNodeIds.includes(nodeId))
+              .map((entry) => `- ${entry.reviewerNodeId}: ${entry.decision.feedback}`)
+              .join("\n");
+            const baseNode = nodesById.get(nodeId)!;
+            const previousSummary =
+              results.get(nodeId)?.run.resultSummary ?? "（无上一版结果摘要）";
+            reworkPrompts.set(
+              nodeId,
+              `${baseNode.prompt}\n\n上一版结果摘要：\n${previousSummary}\n\n第 ${revision} 次评审重做要求：\n${feedback}`,
+            );
+          }
+          yield* runRevisionNodes(targetNodeIds, revision, reworkPrompts);
+          yield* runRevisionNodes(input.review.reviewerNodeIds, revision, new Map());
         }
       }
 

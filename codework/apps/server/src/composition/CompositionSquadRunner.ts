@@ -328,6 +328,17 @@ export const compileCompositionSquadGraph = ({
       maxConcurrency: squad.maxConcurrency,
       failurePolicy: squad.failurePolicy,
       partialSuccessPolicy: squad.partialSuccessPolicy,
+      ...(squad.collaborationMode === "review_critic"
+        ? {
+            review: {
+              reviewerNodeIds: modeNodes
+                .filter((node) => node.member.role === "reviewer" || node.member.role === "critic")
+                .map((node) => node.nodeId),
+              reworkableNodeIds,
+              maxRevisions: squad.maxRetries ?? 0,
+            },
+          }
+        : {}),
     } satisfies CompositionTaskGraphExecutionInput;
   });
 
