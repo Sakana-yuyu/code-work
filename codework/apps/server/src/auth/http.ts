@@ -22,13 +22,14 @@ import {
   EnvironmentAuthenticatedAuth,
   EnvironmentAuthenticatedPrincipal,
 } from "@codework/contracts";
-import type { AuthEnvironmentScope } from "@codework/contracts";
+import type { AuthEnvironmentScope, ServerAuthSessionMethod } from "@codework/contracts";
 import { parseAllowedOAuthScope } from "@codework/shared/oauthScope";
 import { causeErrorTag } from "@codework/shared/observability";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import { identity } from "effect/Function";
 import * as Layer from "effect/Layer";
+import * as Result from "effect/Result";
 import * as Cookies from "effect/unstable/http/Cookies";
 import * as HttpEffect from "effect/unstable/http/HttpEffect";
 import { HttpServerRequest, HttpServerResponse } from "effect/unstable/http";
@@ -37,13 +38,67 @@ import * as HttpApiBuilder from "effect/unstable/httpapi/HttpApiBuilder";
 import * as EnvironmentAuth from "./EnvironmentAuth.ts";
 import * as SessionStore from "./SessionStore.ts";
 import { traceAuthenticatedRelayRequest, traceRelayRequest } from "../cloud/traceRelayRequest.ts";
-import { deriveAuthClientMetadata } from "./utils.ts";
+import { deriveAuthClientMetadata, readSessionCookie } from "./utils.ts";
 import { verifyRequestDpopProof } from "./dpop.ts";
 
 const CREDENTIAL_RESPONSE_HEADERS = {
   "cache-control": "no-store",
   pragma: "no-cache",
 } as const;
+
+const SESSION_COOKIE_OPTIONS = {
+  httpOnly: true,
+  path: "/",
+  sameSite: "lax",
+} as const;
+
+/**
+ * Re-issues a pre-rename session cookie under the current name and expires the
+ * old one. The token itself is unchanged and still verifies, so a browser that
+ * paired with an older build stays signed in across the rename instead of
+ * silently landing back on the pairing screen. Best effort: a cookie we cannot
+ * encode is logged and skipped rather than failing an otherwise good request.
+ */
+const migrateLegacySessionCookie = (input: {
+  readonly request: HttpServerRequest.HttpServerRequest;
+  readonly sessions: SessionStore.SessionStore["Service"];
+  readonly method: ServerAuthSessionMethod;
+  readonly expiresAt: DateTime.Utc | undefined;
+}) =>
+  Effect.gen(function* () {
+    if (input.method !== "browser-session-cookie") {
+      return;
+    }
+    const presented = readSessionCookie({
+      cookies: input.request.cookies,
+      cookieName: input.sessions.cookieName,
+      legacyCookieNames: input.sessions.legacyCookieNames,
+    });
+    const legacyCookieName = presented?.legacyCookieName;
+    if (presented === undefined || legacyCookieName === undefined) {
+      return;
+    }
+
+    const migrated = Cookies.set(Cookies.empty, input.sessions.cookieName, presented.token, {
+      ...SESSION_COOKIE_OPTIONS,
+      ...(input.expiresAt ? { expires: DateTime.toDate(input.expiresAt) } : {}),
+    }).pipe(
+      Result.flatMap((cookies) =>
+        Cookies.expireCookie(cookies, legacyCookieName, SESSION_COOKIE_OPTIONS),
+      ),
+    );
+    if (Result.isFailure(migrated)) {
+      yield* Effect.logWarning("Failed to migrate legacy session cookie.", {
+        legacyCookieName,
+        cause: migrated.failure,
+      });
+      return;
+    }
+
+    yield* HttpEffect.appendPreResponseHandler((_request, response) =>
+      Effect.succeed(HttpServerResponse.mergeCookies(response, migrated.success)),
+    );
+  });
 
 const appendCredentialResponseHeaders = HttpEffect.appendPreResponseHandler((_request, response) =>
   Effect.succeed(HttpServerResponse.setHeaders(response, CREDENTIAL_RESPONSE_HEADERS)),
@@ -175,6 +230,7 @@ export const environmentAuthenticatedAuthLayer = Layer.effect(
   EnvironmentAuthenticatedAuth,
   Effect.gen(function* () {
     const serverAuth = yield* EnvironmentAuth.EnvironmentAuth;
+    const sessions = yield* SessionStore.SessionStore;
     return (httpEffect) =>
       Effect.gen(function* () {
         const request = yield* HttpServerRequest.HttpServerRequest;
@@ -186,6 +242,12 @@ export const environmentAuthenticatedAuthLayer = Layer.effect(
             failEnvironmentInternal("internal_error", error),
           ),
         );
+        yield* migrateLegacySessionCookie({
+          request,
+          sessions,
+          method: session.method,
+          expiresAt: session.expiresAt ? DateTime.toUtc(session.expiresAt) : undefined,
+        });
         return yield* httpEffect.pipe(
           Effect.provideService(EnvironmentAuthenticatedPrincipal, {
             ...session,
@@ -211,7 +273,18 @@ export const authHttpApiLayer = HttpApiBuilder.group(
           function* (args) {
             yield* annotateEnvironmentRequest(args.endpoint.name);
             const request = yield* HttpServerRequest.HttpServerRequest;
-            return yield* serverAuth.getSessionState(request);
+            const state = yield* serverAuth.getSessionState(request);
+            if (state.authenticated && state.sessionMethod !== undefined) {
+              // Clients call this first on boot, so it is where a browser
+              // upgraded across the rename gets its cookie moved over.
+              yield* migrateLegacySessionCookie({
+                request,
+                sessions,
+                method: state.sessionMethod,
+                expiresAt: state.expiresAt,
+              });
+            }
+            return state;
           },
           Effect.catchIf(EnvironmentAuth.isServerAuthInternalError, (error) =>
             failEnvironmentInternal("internal_error", error),

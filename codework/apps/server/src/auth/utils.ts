@@ -11,6 +11,24 @@ import * as Result from "effect/Result";
 const SESSION_COOKIE_NAME = "codework_session";
 
 /**
+ * Cookie prefixes this server answered to before the current brand, newest
+ * first. Sessions last 30 days and their signing key survives a release, so a
+ * browser that paired with an older build still holds a valid token under one
+ * of these names. The read path accepts them and the HTTP layer re-issues the
+ * same token under {@link SESSION_COOKIE_NAME}; dropping them outright would
+ * sign every browser out on upgrade.
+ */
+const LEGACY_SESSION_COOKIE_NAMES: ReadonlyArray<string> = ["t3_session"];
+
+export type SessionCookieScope = {
+  readonly mode: "web" | "desktop";
+  readonly port: number;
+  readonly host: string | undefined;
+  readonly instanceKey: string;
+  readonly development: boolean;
+};
+
+/**
  * Cookies are scoped by host but *not* by port, so any two servers that can be
  * live on one hostname at once need separate names — otherwise the second
  * clobbers the first's session and both sides see "Invalid session token
@@ -25,19 +43,53 @@ const SESSION_COOKIE_NAME = "codework_session";
  * Hosted deployments keep the stable production name: their public port can
  * change between releases, and scoping it would log every user out.
  */
-export function resolveSessionCookieName(input: {
-  readonly mode: "web" | "desktop";
-  readonly port: number;
-  readonly host: string | undefined;
-  readonly instanceKey: string;
-  readonly development: boolean;
-}): string {
+export function resolveSessionCookieName(input: SessionCookieScope): string {
+  return scopeSessionCookieName(SESSION_COOKIE_NAME, input);
+}
+
+/**
+ * The same scoping applied to every retired prefix, so a pre-rename cookie is
+ * matched under the exact name that build would have written.
+ */
+export function resolveLegacySessionCookieNames(
+  input: SessionCookieScope,
+): ReadonlyArray<string> {
+  return LEGACY_SESSION_COOKIE_NAMES.map((prefix) => scopeSessionCookieName(prefix, input));
+}
+
+/**
+ * Resolves the session cookie a request presents, preferring the current name
+ * so a browser mid-migration (both cookies present) is read under the new one.
+ * `legacyCookieName` is set only when the token came from a retired name, which
+ * is what tells the response path to re-issue it.
+ */
+export function readSessionCookie(input: {
+  readonly cookies: Readonly<Record<string, string | undefined>>;
+  readonly cookieName: string;
+  readonly legacyCookieNames: ReadonlyArray<string>;
+}): { readonly token: string; readonly legacyCookieName: string | undefined } | undefined {
+  const current = input.cookies[input.cookieName];
+  if (current !== undefined && current.length > 0) {
+    return { token: current, legacyCookieName: undefined };
+  }
+
+  for (const legacyCookieName of input.legacyCookieNames) {
+    const legacy = input.cookies[legacyCookieName];
+    if (legacy !== undefined && legacy.length > 0) {
+      return { token: legacy, legacyCookieName };
+    }
+  }
+
+  return undefined;
+}
+
+function scopeSessionCookieName(prefix: string, input: SessionCookieScope): string {
   if (input.mode === "desktop") {
-    return `${SESSION_COOKIE_NAME}_${input.port}`;
+    return `${prefix}_${input.port}`;
   }
 
   if (!input.development && isRemoteReachableHost(input.host)) {
-    return SESSION_COOKIE_NAME;
+    return prefix;
   }
 
   // Cookies are scoped by host, not port. Loopback development servers need an
@@ -47,7 +99,7 @@ export function resolveSessionCookieName(input: {
     .update(input.instanceKey)
     .digest("hex")
     .slice(0, 12);
-  return `${SESSION_COOKIE_NAME}_${input.port}_${instanceHash}`;
+  return `${prefix}_${input.port}_${instanceHash}`;
 }
 
 export function isRemoteReachableHost(host: string | undefined): boolean {

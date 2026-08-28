@@ -33,6 +33,7 @@ import * as PairingGrantStore from "./PairingGrantStore.ts";
 import * as ServerSecretStore from "./ServerSecretStore.ts";
 import * as SessionStore from "./SessionStore.ts";
 import { verifyRequestDpopProof } from "./dpop.ts";
+import { readSessionCookie } from "./utils.ts";
 import { layerConfig as SqlitePersistenceLayer } from "../persistence/Layers/Sqlite.ts";
 
 export const DEFAULT_SESSION_SUBJECT = "cli-issued-session";
@@ -592,7 +593,11 @@ export const make = Effect.gen(function* () {
   const authenticateRequest = (
     request: HttpServerRequest.HttpServerRequest,
   ): Effect.Effect<AuthenticatedSession, ServerAuthCredentialError | ServerAuthInternalError> => {
-    const cookieToken = request.cookies[sessions.cookieName];
+    const cookieToken = readSessionCookie({
+      cookies: request.cookies,
+      cookieName: sessions.cookieName,
+      legacyCookieNames: sessions.legacyCookieNames,
+    })?.token;
     const bearerToken = parseBearerToken(request);
     const dpopToken = parseDpopToken(request);
     const credential = cookieToken ?? bearerToken ?? dpopToken;

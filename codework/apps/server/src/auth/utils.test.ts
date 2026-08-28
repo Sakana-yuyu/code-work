@@ -3,6 +3,8 @@ import { describe, expect, it } from "vite-plus/test";
 import {
   deriveAuthClientMetadata,
   isRemoteReachableHost,
+  readSessionCookie,
+  resolveLegacySessionCookieNames,
   resolveSessionCookieName,
 } from "./utils.ts";
 
@@ -74,8 +76,8 @@ describe("session cookie isolation", () => {
       development: true,
     });
 
-    expect(first).toMatch(/^t3_session_5775_[a-f0-9]{12}$/);
-    expect(second).toMatch(/^t3_session_5775_[a-f0-9]{12}$/);
+    expect(first).toMatch(/^codework_session_5775_[a-f0-9]{12}$/);
+    expect(second).toMatch(/^codework_session_5775_[a-f0-9]{12}$/);
     expect(first).not.toBe(second);
   });
 
@@ -109,7 +111,7 @@ describe("session cookie isolation", () => {
         instanceKey: "/tmp/desktop",
         development: true,
       }),
-    ).toBe("t3_session_3773");
+    ).toBe("codework_session_3773");
   });
 
   it("isolates development servers even when they bind a wildcard host", () => {
@@ -121,7 +123,7 @@ describe("session cookie isolation", () => {
         instanceKey: "/tmp/t3-wildcard-dev",
         development: true,
       }),
-    ).toMatch(/^t3_session_5775_[a-f0-9]{12}$/);
+    ).toMatch(/^codework_session_5775_[a-f0-9]{12}$/);
   });
 
   it("classifies loopback aliases separately from remotely reachable hosts", () => {
@@ -131,5 +133,72 @@ describe("session cookie isolation", () => {
     expect(isRemoteReachableHost("[::1]")).toBe(false);
     expect(isRemoteReachableHost("0.0.0.0")).toBe(true);
     expect(isRemoteReachableHost("192.168.1.50")).toBe(true);
+  });
+});
+
+describe("pre-rename session cookie compatibility", () => {
+  const hostedScope = {
+    mode: "web",
+    port: 8080,
+    host: "app.example.com",
+    instanceKey: "/srv/release-a",
+    development: false,
+  } as const;
+
+  const desktopScope = {
+    mode: "desktop",
+    port: 3773,
+    host: "127.0.0.1",
+    instanceKey: "/tmp/desktop",
+    development: false,
+  } as const;
+
+  const loopbackScope = {
+    mode: "web",
+    port: 5775,
+    host: "127.0.0.1",
+    instanceKey: "/tmp/codework-agent-one",
+    development: true,
+  } as const;
+
+  it("scopes retired names exactly as the build that wrote them did", () => {
+    expect(resolveLegacySessionCookieNames(hostedScope)).toEqual(["t3_session"]);
+    expect(resolveLegacySessionCookieNames(desktopScope)).toEqual(["t3_session_3773"]);
+
+    const [legacyLoopback] = resolveLegacySessionCookieNames(loopbackScope);
+    // Same instance hash as the current name: only the prefix moved.
+    expect(legacyLoopback).toBe(
+      resolveSessionCookieName(loopbackScope).replace(/^codework_session/, "t3_session"),
+    );
+  });
+
+  it("accepts a pre-rename cookie and reports which name carried it", () => {
+    expect(
+      readSessionCookie({
+        cookies: { t3_session: "legacy-token" },
+        cookieName: "codework_session",
+        legacyCookieNames: ["t3_session"],
+      }),
+    ).toEqual({ token: "legacy-token", legacyCookieName: "t3_session" });
+  });
+
+  it("prefers the current name while both cookies are still in the jar", () => {
+    expect(
+      readSessionCookie({
+        cookies: { codework_session: "current-token", t3_session: "legacy-token" },
+        cookieName: "codework_session",
+        legacyCookieNames: ["t3_session"],
+      }),
+    ).toEqual({ token: "current-token", legacyCookieName: undefined });
+  });
+
+  it("ignores empty cookies so a cleared legacy name does not shadow the current one", () => {
+    expect(
+      readSessionCookie({
+        cookies: { codework_session: "", t3_session: "" },
+        cookieName: "codework_session",
+        legacyCookieNames: ["t3_session"],
+      }),
+    ).toBeUndefined();
   });
 });

@@ -109,6 +109,49 @@ it.layer(NodeServices.layer)("EnvironmentAuth.layer", (it) => {
     }).pipe(Effect.provide(makeEnvironmentAuthLayer())),
   );
 
+  it.effect("keeps browsers signed in when they still present a pre-rename session cookie", () =>
+    Effect.gen(function* () {
+      const serverAuth = yield* EnvironmentAuth.EnvironmentAuth;
+      const sessions = yield* SessionStore.SessionStore;
+
+      const pairingCredential = yield* serverAuth.issuePairingCredential();
+      const exchanged = yield* serverAuth.createBrowserSession(
+        pairingCredential.credential,
+        requestMetadata,
+      );
+
+      const legacyCookieName = sessions.legacyCookieNames[0];
+      expect(legacyCookieName).toBe(
+        sessions.cookieName.replace(/^codework_session/, "t3_session"),
+      );
+
+      const verified = yield* serverAuth.authenticateHttpRequest(
+        makeCookieRequest(legacyCookieName ?? "", exchanged.sessionToken),
+      );
+
+      expect(verified.subject).toBe("one-time-token");
+      expect(verified.method).toBe("browser-session-cookie");
+    }).pipe(Effect.provide(makeEnvironmentAuthLayer())),
+  );
+
+  it.effect("rejects an unknown cookie name outright", () =>
+    Effect.gen(function* () {
+      const serverAuth = yield* EnvironmentAuth.EnvironmentAuth;
+
+      const pairingCredential = yield* serverAuth.issuePairingCredential();
+      const exchanged = yield* serverAuth.createBrowserSession(
+        pairingCredential.credential,
+        requestMetadata,
+      );
+
+      const error = yield* serverAuth
+        .authenticateHttpRequest(makeCookieRequest("some_other_session", exchanged.sessionToken))
+        .pipe(Effect.flip);
+
+      expect(error._tag).toBe("ServerAuthMissingCredentialError");
+    }).pipe(Effect.provide(makeEnvironmentAuthLayer())),
+  );
+
   it.effect("does not exchange ordinary pairing grants for administrative access tokens", () =>
     Effect.gen(function* () {
       const serverAuth = yield* EnvironmentAuth.EnvironmentAuth;

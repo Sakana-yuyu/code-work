@@ -26,6 +26,7 @@ import * as ServerSecretStore from "./ServerSecretStore.ts";
 import {
   base64UrlDecodeUtf8,
   base64UrlEncode,
+  resolveLegacySessionCookieNames,
   resolveSessionCookieName,
   signPayload,
   timingSafeEqualBase64Url,
@@ -360,6 +361,8 @@ export class SessionStore extends Context.Service<
   SessionStore,
   {
     readonly cookieName: string;
+    /** Pre-rename names still accepted on read, then migrated to `cookieName`. */
+    readonly legacyCookieNames: ReadonlyArray<string>;
     readonly issue: (input?: {
       readonly ttl?: Duration.Duration;
       readonly subject?: string;
@@ -475,13 +478,15 @@ export const make = Effect.gen(function* () {
   const signingSecret = yield* secretStore.getOrCreateRandom(SIGNING_SECRET_NAME, 32);
   const connectedSessionsRef = yield* Ref.make(new Map<string, number>());
   const changesPubSub = yield* PubSub.unbounded<SessionCredentialChange>();
-  const cookieName = resolveSessionCookieName({
+  const cookieScope = {
     mode: serverConfig.mode,
     port: serverConfig.port,
     host: serverConfig.host,
     instanceKey: serverConfig.stateDir,
     development: serverConfig.devUrl !== undefined,
-  });
+  };
+  const cookieName = resolveSessionCookieName(cookieScope);
+  const legacyCookieNames = resolveLegacySessionCookieNames(cookieScope);
 
   const emitUpsert = (clientSession: AuthClientSession) =>
     PubSub.publish(changesPubSub, {
@@ -930,6 +935,7 @@ export const make = Effect.gen(function* () {
 
   return SessionStore.of({
     cookieName,
+    legacyCookieNames,
     issue,
     verify,
     issueWebSocketToken,
