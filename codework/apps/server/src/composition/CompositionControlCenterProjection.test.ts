@@ -363,5 +363,58 @@ layer("CompositionControlCenterProjection", (it) => {
         assert.isUndefined(byTask.get("task-byok-none")?.byokResume);
       }),
     );
+
+    it.effect("BYOK 委派合成 Task 投影委派摘要且不套 Goal Loop 五态，原文不进投影", () =>
+      Effect.gen(function* () {
+        const store = yield* CompositionTaskStore;
+        yield* store.upsertTask({
+          taskId: "byok-delegation-task-cc",
+          projectId: "byok-delegation",
+          assigneeKind: "agent",
+          assigneeId: "provider:byok-inst",
+          mode: "serial",
+          status: "running",
+          promptDigest: "sha256:delegation-digest",
+          dependsOnTaskIds: [],
+          createdAtUnixMs: 10,
+          updatedAtUnixMs: 11,
+        });
+        yield* store.upsertRun({
+          taskId: "byok-delegation-task-cc",
+          runId: "byok-delegation-run-cc",
+          agentId: "provider:byok-inst",
+          runtimeId: "byok-delegation:byok-inst",
+          runtimeTaskId: "delegation-9",
+          status: "running",
+          attempt: 1,
+          capabilityGrantIds: [],
+        });
+        yield* store.appendEventIfNew({
+          taskId: "byok-delegation-task-cc",
+          runId: "byok-delegation-run-cc",
+          agentId: "provider:byok-inst",
+          runtimeId: "byok-delegation:byok-inst",
+          sourceEventId: "byok-delegation:byok-delegation-task-cc:byok-delegation-run-cc:running",
+          status: "running",
+          sequence: 0,
+          eventType: "status",
+          summary: "BYOK 委派开始执行（delegation-9）",
+        });
+
+        const projection = yield* projectCompositionControlCenter({ store, now: () => 1 });
+        const row = projection.tasks.find((task) => task.taskId === "byok-delegation-task-cc");
+        assert.isDefined(row);
+        assert.isUndefined(row?.goalLoop);
+        assert.isUndefined(row?.byokResume);
+        assert.equal(row?.agentId, "provider:byok-inst");
+        assert.equal(row?.byokDelegation?.runId, "byok-delegation-run-cc");
+        assert.equal(row?.byokDelegation?.delegationId, "delegation-9");
+        assert.equal(row?.byokDelegation?.status, "running");
+        assert.equal(row?.byokDelegation?.attempt, 1);
+        assert.isUndefined(row?.byokDelegation?.failureCode);
+        // @effect-diagnostics-next-line preferSchemaOverJson:off - 断言投影不含委派原文。
+        assert.isFalse(JSON.stringify(projection).includes("SECRET-DELEGATION-PROMPT"));
+      }),
+    );
   });
 });

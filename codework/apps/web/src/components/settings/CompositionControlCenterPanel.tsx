@@ -1,8 +1,10 @@
-import type {
-  CompositionControlCenterByokResumeRedispatchRequest,
-  CompositionControlCenterRedispatchRequest,
-  CompositionControlCenterResult,
-  EnvironmentId,
+import {
+  isByokDelegationControlTask,
+  isByokResumeRedispatchable,
+  type CompositionControlCenterByokResumeRedispatchRequest,
+  type CompositionControlCenterRedispatchRequest,
+  type CompositionControlCenterResult,
+  type EnvironmentId,
 } from "@codework/contracts";
 import {
   squashAtomCommandFailure,
@@ -52,8 +54,8 @@ const CANCELLABLE_RUN_STATUSES: ReadonlySet<string> = new Set([
   "in_review",
 ]);
 
-/** 服务端 BYOK 恢复重派结算给陈旧 Run 打的 failureCode。 */
-const BYOK_RESUME_INTERRUPTED_FAILURE_CODE = "byok_resume_interrupted";
+/** 控制中心"恢复并重派"门槛：与 Mobile 共用 `@codework/contracts` 纯函数。 */
+export { isByokResumeRedispatchable };
 
 /** 控制中心"自动重派"请求输入：capabilityIds 按逗号拆分并去除空白项。 */
 export const buildRedispatchInput = (input: {
@@ -72,22 +74,6 @@ export const buildRedispatchInput = (input: {
     .map((value) => value.trim())
     .filter(Boolean),
 });
-
-/**
- * "恢复并重派"渲染门槛：最新 Run 被 BYOK 恢复中断（failureCode），或服务端投影出的
- * BYOK checkpoint 链可完整恢复。已有恢复重派结算行的 Run 会被服务端按 already_settled
- * 拒绝，不提供入口。Goal Loop 五态只识别 `goalloop:*` 前缀，对这条路径不可用。
- */
-export const isByokResumeRedispatchable = (
-  task: CompositionControlCenterResult["tasks"][number],
-): boolean => {
-  if (task.latestRun === undefined) return false;
-  if (task.byokResume?.redispatchSettled === true) return false;
-  return (
-    task.latestRun.failureCode === BYOK_RESUME_INTERRUPTED_FAILURE_CODE ||
-    task.byokResume?.recoverable === true
-  );
-};
 
 /** 恢复并重派与自动重派共用同一份 capabilityIds 输入。 */
 export const buildByokResumeRedispatchInput = (input: {
@@ -286,18 +272,25 @@ export function CompositionControlCenterPanel() {
           ) : null}
           <ul className="space-y-2">
             {projection.tasks.map((task) => {
+              const delegationRow = isByokDelegationControlTask(task);
               const redispatchable =
+                !delegationRow &&
                 task.latestRun !== undefined &&
                 task.goalLoop !== undefined &&
                 REDISPATCHABLE_GOAL_LOOP_STATES.has(task.goalLoop.state);
               const cancellable =
-                task.latestRun !== undefined && CANCELLABLE_RUN_STATUSES.has(task.latestRun.status);
+                !delegationRow &&
+                task.latestRun !== undefined &&
+                CANCELLABLE_RUN_STATUSES.has(task.latestRun.status);
               // 与 TaskGraphPanel 一致：审批门槛看任务状态，后端对非 in_review 任务显式报错。
-              const reviewable = task.status === "in_review" && task.latestRun !== undefined;
+              const reviewable =
+                !delegationRow && task.status === "in_review" && task.latestRun !== undefined;
               // 仅 interrupted 行提供放弃结算：supervisor_settled 行已有结算行，再落 abandon 会被拒。
               const abandonable =
-                task.latestRun !== undefined && task.goalLoop?.state === "interrupted";
-              const byokResumable = isByokResumeRedispatchable(task);
+                !delegationRow &&
+                task.latestRun !== undefined &&
+                task.goalLoop?.state === "interrupted";
+              const byokResumable = !delegationRow && isByokResumeRedispatchable(task);
               return (
                 <li
                   key={task.taskId}
@@ -313,6 +306,9 @@ export function CompositionControlCenterPanel() {
                       <Badge variant="secondary">
                         {`${t("controlCenter.goalLoop")}: ${goalLoopStateLabel(task.goalLoop.state)}`}
                       </Badge>
+                    )}
+                    {task.byokDelegation === undefined ? null : (
+                      <Badge variant="secondary">{t("controlCenter.byokDelegation")}</Badge>
                     )}
                     {redispatchable ? (
                       <Button
@@ -421,6 +417,14 @@ export function CompositionControlCenterPanel() {
                       {task.goalLoop.rejectedCompletions > 0
                         ? ` · ${t("controlCenter.rejected")}: ${task.goalLoop.rejectedCompletions}`
                         : ""}
+                    </p>
+                  )}
+                  {task.byokDelegation === undefined ? null : (
+                    <p className="mt-1 text-[11px] text-muted-foreground">
+                      {`${task.agentId} · ${t("controlCenter.rounds")}: ${task.byokDelegation.attempt}`}
+                      {task.byokDelegation.failureCode === undefined
+                        ? ""
+                        : ` · ${t("controlCenter.errorCode")}: ${task.byokDelegation.failureCode}`}
                     </p>
                   )}
                   {task.byokResume === undefined ? null : (

@@ -5,13 +5,17 @@ import type {
 import { describe, expect, it } from "vite-plus/test";
 
 import {
+  buildByokResumeRedispatchInput,
   buildRedispatchInput,
+  formatByokDelegationMeta,
+  formatByokResumeMeta,
   formatGoalLoopMeta,
   formatGrantMeta,
   formatSquadMeta,
   goalLoopStateLabelKey,
   resolveControlCenterTaskActions,
 } from "./SettingsControlCenterRouteScreen.logic";
+import { isByokResumeRedispatchable } from "@codework/contracts";
 
 const makeGoalLoop = (
   state: CompositionControlCenterGoalLoop["state"],
@@ -56,6 +60,7 @@ describe("resolveControlCenterTaskActions", () => {
     expect(actions.abandonable).toBe(true);
     expect(actions.cancellable).toBe(false);
     expect(actions.reviewable).toBe(false);
+    expect(actions.byokResumable).toBe(false);
   });
 
   it("offers redispatch but not abandon on supervisor_settled rows", () => {
@@ -68,6 +73,7 @@ describe("resolveControlCenterTaskActions", () => {
     );
     expect(actions.redispatchable).toBe(true);
     expect(actions.abandonable).toBe(false);
+    expect(actions.byokResumable).toBe(false);
   });
 
   it("offers cancel only while the latest run is active", () => {
@@ -116,6 +122,7 @@ describe("resolveControlCenterTaskActions", () => {
       cancellable: false,
       reviewable: false,
       abandonable: false,
+      byokResumable: false,
     });
   });
 
@@ -127,6 +134,66 @@ describe("resolveControlCenterTaskActions", () => {
         ).redispatchable,
       ).toBe(false);
     }
+  });
+
+  it("offers recover & redispatch when the shared predicate says so", () => {
+    expect(
+      resolveControlCenterTaskActions(
+        makeTask({
+          latestRun: { ...makeRun("failed"), failureCode: "byok_resume_interrupted" },
+        }),
+      ).byokResumable,
+    ).toBe(true);
+    expect(
+      resolveControlCenterTaskActions(
+        makeTask({
+          latestRun: makeRun("failed"),
+          byokResume: {
+            runId: "run-1",
+            checkpointCount: 2,
+            recoveredUtf8Bytes: 42,
+            recoverable: true,
+            redispatchSettled: false,
+          },
+        }),
+      ).byokResumable,
+    ).toBe(true);
+    expect(
+      resolveControlCenterTaskActions(
+        makeTask({
+          latestRun: { ...makeRun("failed"), failureCode: "byok_resume_interrupted" },
+          byokResume: {
+            runId: "run-1",
+            checkpointCount: 2,
+            recoveredUtf8Bytes: 42,
+            recoverable: true,
+            redispatchSettled: true,
+          },
+        }),
+      ).byokResumable,
+    ).toBe(false);
+  });
+
+  it("hides Goal Loop and composition actions on BYOK delegation rows", () => {
+    const actions = resolveControlCenterTaskActions(
+      makeTask({
+        latestRun: makeRun("running"),
+        goalLoop: makeGoalLoop("interrupted"),
+        byokDelegation: {
+          runId: "run-1",
+          delegationId: "delegation-9",
+          status: "running",
+          attempt: 1,
+        },
+      }),
+    );
+    expect(actions).toEqual({
+      redispatchable: false,
+      cancellable: false,
+      reviewable: false,
+      abandonable: false,
+      byokResumable: false,
+    });
   });
 });
 
@@ -216,5 +283,136 @@ describe("formatSquadMeta", () => {
         { leaderAgentId: "agent-lead", memberAgentIds: ["a", "b", "c"] },
       ),
     ).toBe("Leader: agent-lead · Members: 3");
+  });
+});
+
+describe("isByokResumeRedispatchable shared predicate", () => {
+  it("matches the web/contracts gate: latest run, not settled, interrupted code or recoverable chain", () => {
+    const interrupted = makeTask({
+      latestRun: { ...makeRun("failed"), failureCode: "byok_resume_interrupted" },
+    });
+    const recoverable = makeTask({
+      latestRun: makeRun("failed"),
+      byokResume: {
+        runId: "run-1",
+        checkpointCount: 1,
+        recoveredUtf8Bytes: 8,
+        recoverable: true,
+        redispatchSettled: false,
+      },
+    });
+    const corrupt = makeTask({
+      latestRun: makeRun("failed"),
+      byokResume: {
+        runId: "run-1",
+        checkpointCount: 1,
+        recoveredUtf8Bytes: 0,
+        recoverable: false,
+        redispatchSettled: false,
+      },
+    });
+    const settled = makeTask({
+      latestRun: { ...makeRun("failed"), failureCode: "byok_resume_interrupted" },
+      byokResume: {
+        runId: "run-1",
+        checkpointCount: 1,
+        recoveredUtf8Bytes: 8,
+        recoverable: true,
+        redispatchSettled: true,
+      },
+    });
+    expect(isByokResumeRedispatchable(interrupted)).toBe(true);
+    expect(isByokResumeRedispatchable(recoverable)).toBe(true);
+    expect(isByokResumeRedispatchable(corrupt)).toBe(false);
+    expect(isByokResumeRedispatchable(settled)).toBe(false);
+    expect(isByokResumeRedispatchable(makeTask({ latestRun: makeRun("failed") }))).toBe(false);
+    expect(
+      isByokResumeRedispatchable(
+        makeTask({
+          byokResume: {
+            runId: "run-1",
+            checkpointCount: 1,
+            recoveredUtf8Bytes: 8,
+            recoverable: true,
+            redispatchSettled: false,
+          },
+        }),
+      ),
+    ).toBe(false);
+    expect(resolveControlCenterTaskActions(interrupted).byokResumable).toBe(
+      isByokResumeRedispatchable(interrupted),
+    );
+    expect(resolveControlCenterTaskActions(recoverable).byokResumable).toBe(
+      isByokResumeRedispatchable(recoverable),
+    );
+    expect(resolveControlCenterTaskActions(settled).byokResumable).toBe(
+      isByokResumeRedispatchable(settled),
+    );
+  });
+});
+
+describe("buildByokResumeRedispatchInput", () => {
+  it("uses an empty capability grant list on mobile", () => {
+    expect(
+      buildByokResumeRedispatchInput({
+        taskId: "task-1",
+        runId: "run-1",
+        agentId: "agent-1",
+        newRunId: "t3-byok-resume-abc",
+        note: "recover",
+      }),
+    ).toEqual({
+      taskId: "task-1",
+      runId: "run-1",
+      agentId: "agent-1",
+      newRunId: "t3-byok-resume-abc",
+      capabilityIds: [],
+      note: "recover",
+    });
+  });
+});
+
+describe("formatByokResumeMeta", () => {
+  const labels = {
+    checkpoints: "Checkpoints",
+    recoveredBytes: "Bytes",
+    unrecoverable: "Unrecoverable",
+  };
+
+  it("shows checkpoint count and recovered bytes when recoverable", () => {
+    expect(
+      formatByokResumeMeta(labels, {
+        checkpointCount: 2,
+        recoveredUtf8Bytes: 42,
+        recoverable: true,
+      }),
+    ).toBe("Checkpoints: 2 · Bytes: 42");
+  });
+
+  it("marks an unrecoverable chain without recovered bytes", () => {
+    expect(
+      formatByokResumeMeta(labels, {
+        checkpointCount: 1,
+        recoveredUtf8Bytes: 0,
+        recoverable: false,
+      }),
+    ).toBe("Checkpoints: 1 · Unrecoverable");
+  });
+});
+
+describe("formatByokDelegationMeta", () => {
+  const labels = { rounds: "Rounds", errorCode: "Error" };
+
+  it("joins agent id and attempt, and appends a failure code when present", () => {
+    expect(formatByokDelegationMeta(labels, { agentId: "provider:byok-inst", attempt: 1 })).toBe(
+      "provider:byok-inst · Rounds: 1",
+    );
+    expect(
+      formatByokDelegationMeta(labels, {
+        agentId: "provider:byok-inst",
+        attempt: 1,
+        failureCode: "byok_delegation_interrupted",
+      }),
+    ).toBe("provider:byok-inst · Rounds: 1 · Error: byok_delegation_interrupted");
   });
 });

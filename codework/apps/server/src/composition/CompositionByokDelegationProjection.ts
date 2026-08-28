@@ -1,10 +1,11 @@
 import * as NodeCrypto from "node:crypto";
 
-import type {
-  ByokDelegationStatus,
-  CompositionTask,
-  CompositionTaskRun,
-  CompositionTaskStatus,
+import {
+  BYOK_DELEGATION_PROJECT_ID,
+  type ByokDelegationStatus,
+  type CompositionTask,
+  type CompositionTaskRun,
+  type CompositionTaskStatus,
 } from "@codework/contracts";
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
@@ -18,7 +19,9 @@ import type {
 export const byokDelegationEventPrefix = (taskId: string, runId: string): string =>
   `byok-delegation:${taskId}:${runId}`;
 
-/** 委派投影的 Composition 任务台账端口。 */
+/** 进程死亡后 in-flight 委派收口时写入的稳定 failureCode。 */
+export const BYOK_DELEGATION_INTERRUPTED_FAILURE_CODE = "byok_delegation_interrupted";
+
 export type ByokDelegationLedgerStorePort = Pick<
   CompositionTaskStoreShape,
   "appendEventIfNew" | "getTask" | "getRun" | "upsertTask" | "upsertRun"
@@ -210,16 +213,14 @@ export const projectByokDelegationTransition = (options: {
     } satisfies CompositionTaskRun);
     yield* store.upsertTask({
       taskId: scope.taskId,
-      projectId: "byok-delegation",
+      projectId: BYOK_DELEGATION_PROJECT_ID,
       assigneeKind: "agent",
       assigneeId: scope.agentId,
       mode: "serial",
       status,
       promptDigest: scope.promptDigest,
       dependsOnTaskIds: [],
-      createdAtUnixMs: Option.isSome(existingTask)
-        ? existingTask.value.createdAtUnixMs
-        : nowUnixMs,
+      createdAtUnixMs: Option.isSome(existingTask) ? existingTask.value.createdAtUnixMs : nowUnixMs,
       updatedAtUnixMs: nowUnixMs,
       ...(terminal ? { finishedAtUnixMs: nowUnixMs } : {}),
     } satisfies CompositionTask);

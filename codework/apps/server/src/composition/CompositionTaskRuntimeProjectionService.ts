@@ -1,4 +1,5 @@
 import * as Context from "effect/Context";
+import * as Clock from "effect/Clock";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
 import * as Layer from "effect/Layer";
@@ -29,6 +30,7 @@ import {
   defaultCompositionRunLivenessSweepIntervalMs,
   superviseCompositionRunLiveness,
 } from "./CompositionRunLiveness.ts";
+import { recoverInterruptedByokDelegations } from "./CompositionByokDelegationSupervisor.ts";
 import { CompositionRuntimeAdapterRegistryService } from "./CompositionRuntimeAdapterRegistry.ts";
 import type { CompositionRuntimeAdapterRegistry } from "./CompositionRuntimeAdapterRegistry.ts";
 import type { CompositionRuntimeAdapter } from "./CompositionRuntimeAdapter.ts";
@@ -309,6 +311,19 @@ const live = Effect.gen(function* () {
     adapterRegistry: runtimeAdapters,
     projectRuntimeEvent: projectRuntimeEventWithLogging,
   });
+
+  yield* Clock.currentTimeMillis.pipe(
+    Effect.flatMap((nowUnixMs) =>
+      recoverInterruptedByokDelegations({
+        store,
+        liveDelegationIds: new Set(),
+        nowUnixMs,
+      }),
+    ),
+    Effect.catchCause((cause) =>
+      Effect.logError("BYOK 委派跨重启收口失败", { cause }).pipe(Effect.as([])),
+    ),
+  );
 
   yield* superviseCompositionRunLiveness({
     store,

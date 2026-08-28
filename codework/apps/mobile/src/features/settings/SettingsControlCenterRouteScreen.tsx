@@ -22,7 +22,10 @@ import { serverEnvironment } from "../../state/server";
 import { useAtomCommand } from "../../state/use-atom-command";
 import { t } from "../../i18n";
 import {
+  buildByokResumeRedispatchInput,
   buildRedispatchInput,
+  formatByokDelegationMeta,
+  formatByokResumeMeta,
   formatGoalLoopMeta,
   formatGrantMeta,
   formatSquadMeta,
@@ -57,6 +60,10 @@ export function SettingsControlCenterRouteScreen() {
   const abandonControlCenterTask = useAtomCommand(serverEnvironment.controlCenterAbandon, {
     reportFailure: false,
   });
+  const byokResumeRedispatchTask = useAtomCommand(
+    serverEnvironment.controlCenterByokResumeRedispatch,
+    { reportFailure: false },
+  );
   const [pendingTaskId, setPendingTaskId] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
 
@@ -140,6 +147,20 @@ export function SettingsControlCenterRouteScreen() {
       }),
     );
 
+  const byokResumeRedispatch = (task: CompositionControlCenterTask): Promise<void> =>
+    runRowCommand(task.taskId, "controlCenter.byokResumeRedispatchFailed", (envId) =>
+      byokResumeRedispatchTask({
+        environmentId: envId,
+        input: buildByokResumeRedispatchInput({
+          taskId: task.taskId,
+          runId: task.latestRun?.runId ?? "",
+          agentId: task.agentId,
+          newRunId: `t3-byok-resume-${uuidv4()}`,
+          note: t("controlCenter.byokResumeReasonDefault"),
+        }),
+      }),
+    );
+
   return (
     <View collapsable={false} className="flex-1 bg-sheet">
       {Platform.OS === "android" ? (
@@ -189,6 +210,7 @@ export function SettingsControlCenterRouteScreen() {
                   onApprove={() => void review(task, "approve")}
                   onReject={() => void review(task, "reject")}
                   onAbandon={() => void abandon(task)}
+                  onByokResumeRedispatch={() => void byokResumeRedispatch(task)}
                 />
               ))}
               {actionError === null ? null : (
@@ -206,7 +228,9 @@ export function SettingsControlCenterRouteScreen() {
               {projection.squads.map((squad, index) => (
                 <View
                   key={squad.squadId}
-                  className={index === 0 ? "gap-0.5 p-4" : "gap-0.5 border-t border-border-subtle p-4"}
+                  className={
+                    index === 0 ? "gap-0.5 p-4" : "gap-0.5 border-t border-border-subtle p-4"
+                  }
                 >
                   <Text className="text-base text-foreground">{squad.name}</Text>
                   <Text className="text-sm text-foreground-muted">
@@ -233,11 +257,16 @@ function ControlCenterTaskCard(props: {
   readonly onApprove: () => void;
   readonly onReject: () => void;
   readonly onAbandon: () => void;
+  readonly onByokResumeRedispatch: () => void;
 }) {
   const { task } = props;
   const actions = resolveControlCenterTaskActions(task);
   const hasActions =
-    actions.redispatchable || actions.cancellable || actions.reviewable || actions.abandonable;
+    actions.redispatchable ||
+    actions.cancellable ||
+    actions.reviewable ||
+    actions.abandonable ||
+    actions.byokResumable;
 
   return (
     <View className="gap-2 rounded-[24px] border-continuous bg-card p-4">
@@ -252,12 +281,41 @@ function ControlCenterTaskCard(props: {
             emphasized
           />
         )}
+        {task.byokDelegation === undefined ? null : (
+          <BadgePill label={t("controlCenter.byokDelegation")} emphasized />
+        )}
       </View>
       {task.goalLoop === undefined ? null : (
         <Text className="text-sm text-foreground-muted">
           {formatGoalLoopMeta(
             { rounds: t("controlCenter.rounds"), rejected: t("controlCenter.rejected") },
             task.goalLoop,
+          )}
+        </Text>
+      )}
+      {task.byokDelegation === undefined ? null : (
+        <Text className="text-sm text-foreground-muted">
+          {formatByokDelegationMeta(
+            { rounds: t("controlCenter.rounds"), errorCode: t("controlCenter.errorCode") },
+            {
+              agentId: task.agentId,
+              attempt: task.byokDelegation.attempt,
+              ...(task.byokDelegation.failureCode === undefined
+                ? {}
+                : { failureCode: task.byokDelegation.failureCode }),
+            },
+          )}
+        </Text>
+      )}
+      {task.byokResume === undefined ? null : (
+        <Text className="text-sm text-foreground-muted">
+          {formatByokResumeMeta(
+            {
+              checkpoints: t("controlCenter.byokCheckpoints"),
+              recoveredBytes: t("controlCenter.byokRecoveredBytes"),
+              unrecoverable: t("controlCenter.byokUnrecoverable"),
+            },
+            task.byokResume,
           )}
         </Text>
       )}
@@ -276,6 +334,13 @@ function ControlCenterTaskCard(props: {
               label={t("controlCenter.redispatch")}
               disabled={props.actionsDisabled}
               onPress={props.onRedispatch}
+            />
+          ) : null}
+          {actions.byokResumable ? (
+            <ActionButton
+              label={t("controlCenter.byokResumeRedispatch")}
+              disabled={props.actionsDisabled}
+              onPress={props.onByokResumeRedispatch}
             />
           ) : null}
           {actions.abandonable ? (

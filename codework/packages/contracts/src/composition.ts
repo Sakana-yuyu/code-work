@@ -566,6 +566,27 @@ export const CompositionControlCenterByokResume = Schema.Struct({
 });
 export type CompositionControlCenterByokResume = typeof CompositionControlCenterByokResume.Type;
 
+/** 合成委派 Task 在 Composition 台账上的 projectId；控制中心据此跳过 Goal Loop 五态。 */
+export const BYOK_DELEGATION_PROJECT_ID = "byok-delegation";
+
+/** 服务端 BYOK 恢复重派结算给陈旧 Run 打的 failureCode。 */
+export const BYOK_RESUME_INTERRUPTED_FAILURE_CODE = "byok_resume_interrupted";
+
+/**
+ * 最新 Run 的 BYOK 委派台账摘要。只含委派 ID/状态/轮次/错误码；
+ * 委派 prompt 原文与输出正文不进投影。
+ */
+export const CompositionControlCenterByokDelegation = Schema.Struct({
+  runId: TrimmedNonEmptyString,
+  /** 调度器进程内 ID（delegation-N），跨重启会复用，只作展示。 */
+  delegationId: TrimmedNonEmptyString,
+  status: CompositionTaskStatus,
+  attempt: NonNegativeInt,
+  failureCode: Schema.optional(TrimmedNonEmptyString),
+});
+export type CompositionControlCenterByokDelegation =
+  typeof CompositionControlCenterByokDelegation.Type;
+
 export const CompositionControlCenterTask = Schema.Struct({
   taskId: TrimmedNonEmptyString,
   status: CompositionTaskStatus,
@@ -582,6 +603,7 @@ export const CompositionControlCenterTask = Schema.Struct({
   ),
   goalLoop: Schema.optional(CompositionControlCenterGoalLoop),
   byokResume: Schema.optional(CompositionControlCenterByokResume),
+  byokDelegation: Schema.optional(CompositionControlCenterByokDelegation),
   grants: Schema.optional(
     Schema.Struct({
       taskId: TrimmedNonEmptyString,
@@ -593,6 +615,24 @@ export const CompositionControlCenterTask = Schema.Struct({
   ),
 });
 export type CompositionControlCenterTask = typeof CompositionControlCenterTask.Type;
+
+/**
+ * 控制中心"恢复并重派"渲染门槛：存在最新 Run、排除已有结算行，然后接受
+ * `byok_resume_interrupted` 或校验通过的可恢复 checkpoint 链。
+ * 不可只凭 failureCode 开门——带该码且已结算的 Run 再触发只会 `already_settled`。
+ */
+export const isByokResumeRedispatchable = (task: CompositionControlCenterTask): boolean => {
+  if (task.latestRun === undefined) return false;
+  if (task.byokResume?.redispatchSettled === true) return false;
+  return (
+    task.latestRun.failureCode === BYOK_RESUME_INTERRUPTED_FAILURE_CODE ||
+    task.byokResume?.recoverable === true
+  );
+};
+
+/** 控制中心行是否为 BYOK 委派合成 Task（有委派摘要即视为委派行）。 */
+export const isByokDelegationControlTask = (task: CompositionControlCenterTask): boolean =>
+  task.byokDelegation !== undefined;
 
 export const CompositionControlCenterSquad = Schema.Struct({
   squadId: TrimmedNonEmptyString,

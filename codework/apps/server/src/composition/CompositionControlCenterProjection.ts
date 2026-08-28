@@ -1,11 +1,12 @@
-import type {
-  CompositionCapabilityAuditEvent,
-  CompositionCapabilityAuditOutcome,
-  CompositionSquad,
-  CompositionTask,
-  CompositionTaskEvent,
-  CompositionTaskRun,
-  CompositionTaskStatus,
+import {
+  BYOK_DELEGATION_PROJECT_ID,
+  type CompositionCapabilityAuditEvent,
+  type CompositionCapabilityAuditOutcome,
+  type CompositionSquad,
+  type CompositionTask,
+  type CompositionTaskEvent,
+  type CompositionTaskRun,
+  type CompositionTaskStatus,
 } from "@codework/contracts";
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
@@ -71,7 +72,20 @@ export type CompositionTaskControlProjection = {
     | undefined;
   readonly goalLoop?: CompositionGoalLoopProjection | undefined;
   readonly byokResume?: CompositionByokResumeProjection | undefined;
+  readonly byokDelegation?: CompositionByokDelegationProjection | undefined;
   readonly grants?: CompositionGrantProjection | undefined;
+};
+
+/**
+ * BYOK 委派合成 Task 的控制中心摘要。只从 Task/Run 取 ID/状态/轮次/错误码，
+ * 不把台账事件摘要或 promptDigest 带进投影。
+ */
+export type CompositionByokDelegationProjection = {
+  readonly runId: string;
+  readonly delegationId: string;
+  readonly status: CompositionTaskStatus;
+  readonly attempt: number;
+  readonly failureCode?: string | undefined;
 };
 
 export type CompositionControlCenterProjection = {
@@ -219,7 +233,18 @@ const projectTask = (
     const latestRun = Option.isNone(latestRunOption) ? undefined : latestRunOption.value;
     let goalLoop: CompositionGoalLoopProjection | undefined;
     let byokResume: CompositionByokResumeProjection | undefined;
-    if (latestRun !== undefined) {
+    let byokDelegation: CompositionByokDelegationProjection | undefined;
+    const isByokDelegation = task.projectId === BYOK_DELEGATION_PROJECT_ID;
+    if (latestRun !== undefined && isByokDelegation) {
+      // Goal Loop 五态只扫 `goalloop:*`，套到委派行会得到误导性的 not_started。
+      byokDelegation = {
+        runId: latestRun.runId,
+        delegationId: latestRun.runtimeTaskId ?? latestRun.runId,
+        status: latestRun.status,
+        attempt: latestRun.attempt,
+        ...(latestRun.failureCode === undefined ? {} : { failureCode: latestRun.failureCode }),
+      };
+    } else if (latestRun !== undefined) {
       const events = yield* deps.store.listEvents(task.taskId, latestRun.runId);
       const scan = scanCompositionGoalLoopRun(events, {
         taskId: task.taskId,
@@ -268,6 +293,7 @@ const projectTask = (
           }),
       ...(goalLoop === undefined ? {} : { goalLoop }),
       ...(byokResume === undefined ? {} : { byokResume }),
+      ...(byokDelegation === undefined ? {} : { byokDelegation }),
       ...(grants === undefined ? {} : { grants }),
     };
   });

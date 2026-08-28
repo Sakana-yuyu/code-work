@@ -1,5 +1,5 @@
 // @effect-diagnostics nodeBuiltinImport:off - The scheduler owns cancellable child processes directly.
-import { spawn } from "node:child_process";
+import * as NodeChildProcess from "node:child_process";
 import * as NodeCrypto from "node:crypto";
 
 import type {
@@ -20,6 +20,7 @@ import {
   type ByokDelegationProjectionScope,
   type ByokDelegationProjectionTransition,
 } from "../../composition/CompositionByokDelegationProjection.ts";
+import { recoverInterruptedByokDelegations } from "../../composition/CompositionByokDelegationSupervisor.ts";
 import { CompositionTaskStore } from "../../persistence/Services/CompositionTaskStore.ts";
 import {
   DelegationScheduler,
@@ -43,6 +44,7 @@ interface SchedulerEntry {
 }
 
 const schedulers = new Map<string, SchedulerEntry>();
+let interruptSweepStarted = false;
 
 const DEFAULT_DELEGATION_CONFIG: ByokDelegationConfig = {
   enabled: false,
@@ -135,7 +137,7 @@ const runExecutor = (
     if (delegationModel !== undefined) {
       childEnv["BYOK_DELEGATION_MODEL"] = delegationModel;
     }
-    const child = spawn(tokens[0]!, tokens.slice(1), {
+    const child = NodeChildProcess.spawn(tokens[0]!, tokens.slice(1), {
       env: childEnv,
       stdio: ["pipe", "pipe", "pipe"],
       windowsHide: true,
@@ -281,6 +283,18 @@ export function resolveScheduler(
   return scheduler;
 }
 
+export const listInFlightDelegationIds = (): ReadonlySet<string> => {
+  const ids = new Set<string>();
+  for (const { scheduler } of schedulers.values()) {
+    for (const snapshot of scheduler.list()) {
+      if (snapshot.status === "queued" || snapshot.status === "running") {
+        ids.add(snapshot.id);
+      }
+    }
+  }
+  return ids;
+};
+
 const isTerminalStatus = (status: DelegationStatus): boolean =>
   status !== "queued" && status !== "running";
 
@@ -289,10 +303,7 @@ const isTerminalStatus = (status: DelegationStatus): boolean =>
  * stream, so the Effect side can consume queued→running→terminal in order
  * without missing events published while it is projecting.
  */
-const watchDelegationTransitions = (
-  scheduler: DelegationScheduler<string, string>,
-  id: string,
-) => {
+const watchDelegationTransitions = (scheduler: DelegationScheduler<string, string>, id: string) => {
   const buffered: Array<DelegationSnapshot<string, string>> = [];
   let pending: ((snapshot: DelegationSnapshot<string, string>) => void) | undefined;
   const unsubscribe = scheduler.subscribe((event) => {
@@ -322,6 +333,22 @@ export const make = Effect.gen(function* () {
   // Composition 台账为可选依赖：注入后每次委派状态迁移都会投影成幂等事件行，
   // 使 Composition Task/Run 成为委派状态的可查询单一状态源。
   const taskStore = yield* Effect.serviceOption(CompositionTaskStore);
+
+  if (Option.isSome(taskStore) && !interruptSweepStarted) {
+    interruptSweepStarted = true;
+    yield* Clock.currentTimeMillis.pipe(
+      Effect.flatMap((nowUnixMs) =>
+        recoverInterruptedByokDelegations({
+          store: taskStore.value,
+          liveDelegationIds: listInFlightDelegationIds(),
+          nowUnixMs,
+        }),
+      ),
+      Effect.catchCause((cause) =>
+        Effect.logError("BYOK 委派跨重启收口失败", { cause }).pipe(Effect.as([])),
+      ),
+    );
+  }
 
   const projectTransition = (
     scope: ByokDelegationProjectionScope,

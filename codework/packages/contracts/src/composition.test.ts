@@ -25,6 +25,9 @@ import {
   CompositionToolResult,
   CompositionRuntimeToolInvocation,
   CompositionRuntimeToolCancellation,
+  CompositionControlCenterTask,
+  isByokResumeRedispatchable,
+  isByokDelegationControlTask,
 } from "./composition.ts";
 
 const decodeAgentLoopRequest = Schema.decodeUnknownSync(CompositionAgentLoopRequest);
@@ -486,5 +489,114 @@ describe("composition contracts", () => {
         ],
       }).tasks[0]?.latestRun?.runId,
     ).toBe("run-1");
+  });
+});
+
+const controlCenterTask = (
+  overrides: Partial<CompositionControlCenterTask> = {},
+): CompositionControlCenterTask => ({
+  taskId: "task-1",
+  status: "failed",
+  agentId: "agent-1",
+  updatedAtUnixMs: 0,
+  dependsOnTaskIds: [],
+  ...overrides,
+});
+
+const controlCenterRun = (
+  overrides: Partial<NonNullable<CompositionControlCenterTask["latestRun"]>> = {},
+): NonNullable<CompositionControlCenterTask["latestRun"]> => ({
+  runId: "run-1",
+  status: "failed",
+  attempt: 1,
+  ...overrides,
+});
+
+describe("isByokResumeRedispatchable", () => {
+  it("requires a latest run and rejects already-settled redispatch rows", () => {
+    expect(
+      isByokResumeRedispatchable(
+        controlCenterTask({
+          latestRun: controlCenterRun({ failureCode: "byok_resume_interrupted" }),
+        }),
+      ),
+    ).toBe(true);
+    expect(
+      isByokResumeRedispatchable(
+        controlCenterTask({
+          latestRun: controlCenterRun(),
+          byokResume: {
+            runId: "run-1",
+            checkpointCount: 1,
+            recoveredUtf8Bytes: 8,
+            recoverable: true,
+            redispatchSettled: false,
+          },
+        }),
+      ),
+    ).toBe(true);
+    expect(
+      isByokResumeRedispatchable(
+        controlCenterTask({
+          latestRun: controlCenterRun(),
+          byokResume: {
+            runId: "run-1",
+            checkpointCount: 1,
+            recoveredUtf8Bytes: 0,
+            recoverable: false,
+            redispatchSettled: false,
+            recoveryFailureCode: "digest_mismatch",
+          },
+        }),
+      ),
+    ).toBe(false);
+    expect(
+      isByokResumeRedispatchable(
+        controlCenterTask({
+          latestRun: controlCenterRun({ failureCode: "byok_resume_interrupted" }),
+          byokResume: {
+            runId: "run-1",
+            checkpointCount: 1,
+            recoveredUtf8Bytes: 8,
+            recoverable: true,
+            redispatchSettled: true,
+          },
+        }),
+      ),
+    ).toBe(false);
+    expect(isByokResumeRedispatchable(controlCenterTask({ latestRun: controlCenterRun() }))).toBe(
+      false,
+    );
+    expect(
+      isByokResumeRedispatchable(
+        controlCenterTask({
+          byokResume: {
+            runId: "run-1",
+            checkpointCount: 1,
+            recoveredUtf8Bytes: 8,
+            recoverable: true,
+            redispatchSettled: false,
+          },
+        }),
+      ),
+    ).toBe(false);
+  });
+});
+
+describe("isByokDelegationControlTask", () => {
+  it("treats the optional byokDelegation field as the discriminator", () => {
+    expect(isByokDelegationControlTask(controlCenterTask())).toBe(false);
+    expect(
+      isByokDelegationControlTask(
+        controlCenterTask({
+          byokDelegation: {
+            runId: "run-1",
+            delegationId: "delegation-1",
+            status: "running",
+            attempt: 1,
+          },
+        }),
+      ),
+    ).toBe(true);
   });
 });

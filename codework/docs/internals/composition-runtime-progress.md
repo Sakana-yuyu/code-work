@@ -4,32 +4,32 @@
 
 本文记录 `tcode` 分支把 `cursor-byok`、Code Work 原生 Provider/Tool 能力与 Multica 多 Agent 协同接入统一 Composition 运行时的实施进度。
 
-架构差距、功能取舍和目标数据流以 [byok-multica-migration-matrix.md](./byok-multica-migration-matrix.md) 为准；本文只维护已经实施的节点、验证证据、剩余缺口和下一步顺序。
+架构差距、功能取舍和目标数据流以 [byok-multica-migration-matrix.md](./byok-multica-migration-matrix.md) 为准；本文只维护已经实施的节点、验证证据、剩余缺口和下一步顺序。下一位接手请先读 [byok-ai-handoff.md](./byok-ai-handoff.md)（剩余切片、不可推翻的判断、工作区陷阱）。
 
 ## 当前快照
 
-| 项目 | 当前值 |
-| --- | --- |
-| 更新时间 | 2026-08-28 |
-| 仓库 | `E:\MyProject\code-work\codework` |
-| 当前分支 | `tcode` |
-| 当前提交 | BYOK 缺口补齐节点：`feat(byok): 补齐余额看板、Supplier 管理、resume 重派与 delegation 收敛` |
-| 相对远端 | 领先 `origin/tcode` 104 个提交，尚未 push |
+| 项目     | 当前值                                                                                                                                                                                                      |
+| -------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 更新时间 | 2026-08-28                                                                                                                                                                                                  |
+| 仓库     | `E:\MyProject\code-work\codework`                                                                                                                                                                           |
+| 当前分支 | `tcode`                                                                                                                                                                                                     |
+| 当前提交 | BYOK 缺口补齐节点：`feat(byok): 补齐余额看板、Supplier 管理、resume 重派与 delegation 收敛`                                                                                                                 |
+| 相对远端 | 领先 `origin/tcode` 104 个提交，尚未 push                                                                                                                                                                   |
 | 最新节点 | BYOK 剩余缺口批量补齐：余额/用量/健康统一看板、Supplier 启停与凭据轮换操作面、resume 恢复后自动重派（含控制中心入口）、delegation 状态投影进 Composition 台账、控制中心与 Supplier 注册表的 Mobile 面板复用 |
-| 范围调整 | 真实 Cursor/VS Code Adapter 接入与真实 Multica daemon 协同/输出查询列为**后期内容（本次不做，TODO 待排期）**；当前阶段仅对接 BYOK Driver，本地协议与进程级验证维持既有结论 |
-| 上游基线 | 已并入上游 `t3code` v0.0.35（合并提交 `05d694cfa`）：PR 关联线程、Claude 旧线程压缩、git push base 分支修复等；上游迁移 042/043 因与本地 composition 迁移撞号重编为 054/055 |
+| 范围调整 | 真实 Cursor/VS Code Adapter 接入与真实 Multica daemon 协同/输出查询列为**后期内容（本次不做，TODO 待排期）**；当前阶段仅对接 BYOK Driver，本地协议与进程级验证维持既有结论                                  |
+| 上游基线 | 已并入上游 `t3code` v0.0.35（合并提交 `05d694cfa`）：PR 关联线程、Claude 旧线程压缩、git push base 分支修复等；上游迁移 042/043 因与本地 composition 迁移撞号重编为 054/055                                 |
 
 ## 证据等级
 
 本文不使用单一百分比表达完成度。协议底座、真实产品接入和多端可用性成熟度不同，用一个数字会掩盖关键缺口。
 
-| 等级 | 含义 |
-| --- | --- |
-| L1 已编码 | 实现已进入当前分支，但不能单独证明行为正确 |
-| L2 聚焦测试通过 | 对应单元、集成或回归测试已通过 |
-| L3 本地跨进程通过 | 使用本地子进程或协议 fixture 验证了进程边界、事件流或工具回流 |
+| 等级                 | 含义                                                                                         |
+| -------------------- | -------------------------------------------------------------------------------------------- |
+| L1 已编码            | 实现已进入当前分支，但不能单独证明行为正确                                                   |
+| L2 聚焦测试通过      | 对应单元、集成或回归测试已通过                                                               |
+| L3 本地跨进程通过    | 使用本地子进程或协议 fixture 验证了进程边界、事件流或工具回流                                |
 | L4 真实产品 E2E 通过 | 使用真实 Multica daemon、真实 Cursor/VS Code、真实 Provider API 或真实多端客户端完成关键路径 |
-| L5 可发布 | 完成故障演练、权限审计、升级兼容、回滚和发布前验证 |
+| L5 可发布            | 完成故障演练、权限审计、升级兼容、回滚和发布前验证                                           |
 
 ## 总体目标
 
@@ -79,12 +79,14 @@ CapabilityRegistry + ToolBroker
 
 - 新增 Byok delegation 状态收敛第一切片（本节点）：`ByokDelegationService.submit` 现把每次委派的 queued/running/终态迁移以幂等 `byok-delegation:<task>:<run>:<phase>` 事件行投影进 Composition 台账，并在首次落行后 upsert 合成 Task/Run（`projectId=byok-delegation`、`agentId=provider:<instanceId>`（沿用 Supplier 投影约定）、`runtimeTaskId=调度器 delegation-N`；succeeded→completed、failed→failed+errorCode、两类超时→timed_out 并区分 `delegation_queue_timed_out`/`delegation_execution_timed_out`、cancelled→cancelled），迟到低阶状态只补事件行不回退已推进的 Task/Run；taskId 用 randomUUID 而非调度器计数器（后者跨重启复用，不能当台账主键）。敏感约定：委派 prompt 只落 `sha256:` 摘要（`promptDigest`），原文与输出文本不进台账，摘要只含委派 ID/状态/错误码/输出字符数。台账经 `Effect.serviceOption(CompositionTaskStore)` 可选注入，ws.ts 零改动即生效；`submit` 重构为"同一同步 tick 内提交+订阅"以消除让出执行权后丢事件的窗口。投影 4 用例 + 服务级集成 2 用例。
 
+- 新增 Byok delegation 跨重启收口（本节点）：`scanByokDelegationRun` / `recoverInterruptedByokDelegations` 复用 Goal Loop「无终态行即中断」扫描——`projectId=byok-delegation` 且最新 Run 仍为 queued/running、调度器内存没有对应 `runtimeTaskId`（进程重启后 live 集合为空）则幂等写入 `terminal:failed`（failureCode=`byok_delegation_interrupted`），已终态不回退，重复扫描零副作用，摘要只含委派 ID/状态/错误码。接线：Composition 运行时 boot 做一次空 live 集合扫描；`ByokDelegationService.make` 首次调用再带当前 in-flight ID 扫一次（模块级 once）。真实 SQLite 覆盖 queued/running 收口、已终态不改写、live 条目跳过、幂等重扫。
+- 控制中心消费委派台账（本节点）：`projectCompositionControlCenter` 识别 `projectId=byok-delegation` 合成 Task，投影可选 `byokDelegation`（delegationId/status/attempt/failureCode），**不**套 Goal Loop 五态、不把 prompt/输出带进投影；Web/Mobile 用独立「BYOK 委派」徽标与 agentId/轮次/错误码摘要，委派行不提供 Goal Loop 重派/放弃/composition 取消。
+
 仍缺：
 
 - Multica 真实 daemon 的输出查询能力（`fetchOutput` 生产实现）——依赖服务端暴露输出查询接口，属外部环境缺口。
 - Byok delegation 的**彻底**单一状态源收敛：台账投影已就位且可独立查询，但调度器内存仍是 `submit` 返回值与 `list` RPC 的权威来源（投影失败被降级为不中断委派），且未进入队列的拒绝快照（disabled/未配置）不落台账；彻底收敛需把 `DelegationScheduler` 队列改为读写 Composition Run。
-- delegation 台账的跨重启收口：调度器为纯内存，进程死亡时 in-flight 委派在台账上停留 queued/running 无终态行，需复用 Goal Loop supervisor 的"无终态行即中断"扫描模式，本次未做。
-- 面向用户的恢复、冲突和失败原因展示（控制中心已展示 Goal Loop 五态、grant 审计与 BYOK 恢复态；委派台账尚无消费端 UI）。
+- 控制中心委派行目前只读展示；委派取消/重试仍走调度器 RPC，未接到 composition cancel。
 
 ### 2. BYOK Provider Driver
 
@@ -120,7 +122,8 @@ CapabilityRegistry + ToolBroker
 - 使用真实 OpenAI/Anthropic/Gemini 兼容 API 的断线、重试、限流和凭据轮换 E2E（唯一阻塞项：需要真实 API 凭据，非代码缺口）。
 - Provider 原生 Session/Turn 的真实 capability grant 注入、撤销回执和审计闭环。
 - 模型分组、权重路由、自动匹配和 failover 状态机（Supplier/Profile 控制面见第 6 节，本节点已补齐只读看板与启停/凭据操作面）。
-- Mobile/Desktop 的 BYOK 恢复重派入口（Web 已接通；移动端控制中心面板已复用但未包含该入口）。
+
+已清偿（本节点）：Mobile 控制中心接通 BYOK 恢复重派入口；门槛与 Web 共用 `@codework/contracts` 的 `isByokResumeRedispatchable`（存在最新 Run、排除 `redispatchSettled`，接受 `byok_resume_interrupted` 或可恢复 checkpoint 链）。Desktop 经共享 Web 设置页天然可达。
 
 ### 3. IDE Agent Driver
 
@@ -218,8 +221,11 @@ CapabilityRegistry + ToolBroker
 - 多账号与账号级凭据回滚：本节点已补启用态与凭据轮换，但账号级 profile 回滚未实现——Code Work 没有独立 Account Profile 存储（迁移矩阵第 1、6 节明确 Provider Instance ≠ Cursor 账户），回滚需先落"凭据版本历史/账号快照"持久化合同（建议 secret store 侧保留上一版本 + `rollbackCredential` RPC，以 `updatedFields` 审计行为依据），记为独立切片。
 - 模型分组、权重路由、自动使用匹配与 failover 状态机（仍为"只有底层零件"）。
 - Request Lab、通用请求镜像、脱敏回放和协议对比界面。
-- 委派台账的消费端 UI（第 1 节已投影 `byok-delegation:*`，控制中心尚未按 `projectId` 过滤展示）。
 - 多端真实集成 E2E（Web/Desktop/Mobile 面板已接通，真实多端刷新与凭据链路验证未做）。
+
+已清偿（本节点）：
+
+- 委派台账的消费端 UI：控制中心投影新增可选 `byokDelegation`，Web/Mobile 用独立徽标/摘要区分 Goal Loop 与 BYOK 委派，空态文案同步；委派行不套 Goal Loop 五态扫描与操作入口。
 
 已清偿（前节点遗留）：
 
@@ -236,38 +242,38 @@ CapabilityRegistry + ToolBroker
 
 当前 `tcode` 相对 `origin/tcode` 的 46 个提交按主题归并如下。
 
-| 主题 | 提交范围 | 结果 |
-| --- | --- | --- |
-| IDE transport 与 ToolBroker | `7357e17e7` 至 `f4d94b81b` | 通用 JSON-RPC transport、重连、session 生命周期、Agent Driver 和事件流 |
-| Run 监督与事件隔离 | `cc93318bb` 至 `d2e6e389d` | watchdog、委派事件隔离、早到事件保留和 Provider Run 失活监督 |
-| 运行时恢复与归属 | `6f62ea81f` 至 `bfda2e21b` | Provider/BYOK 事件归属修复和运行时任务恢复 |
-| Multica 投递可靠性 | `4a9d648fb` | 持久化 quick-create 发送意图 |
-| BYOK 模型循环可靠性 | `f016bc851` 至 `c120282c5` | 取消竞争、上下文增长与溢出、安全重试和流终态校验 |
-| BYOK 部分输出恢复 | `687732124` | checkpoint 持久化、确定性事件、摘要、偏移、去重和正文恢复 |
-| BYOK 恢复对外语义 | `3d04a3823`（已 amend，主题不变） | `supportsResume` 启用条件、`resumeTask` 拒绝/短路语义与进程重启级恢复测试 |
-| Multica outbox 收口 | `feat(composition): Multica quick-create outbox 审计与收口` | outbox 审计/settle、`X-Idempotency-Key` 出站、启动告警接线与真实 HTTP 进程级 e2e |
-| Grant/resume 投影 | `feat(composition): 投影能力授权与恢复状态` | grant issued/revoked 幂等投影、BYOK resume 输出投影与对应测试 |
-| Goal Loop 第一切片 | `feat(composition): Goal Loop 完成标记与预算控制` | 完成/取消标记解析（cleanText 剥离 + reason）、maxAttempts/maxCostUnits/deadline 预算收敛、cancelled 优先级与 attempt 剩余预算上下文，10 单测通过 |
-| Goal Loop 停滞 pivot | `feat(composition): Goal Loop 停滞 pivot 判定` | stalePivotRounds 连续无进展检测（归一化文本 + 空输出空转）、`pivot_required` 终态与 pivot 结果字段，16 单测通过 |
-| Goal Loop 验证子代理合同 | `feat(composition): Goal Loop 验证子代理合同` | validateCompletion 验收/拒绝语义、rejectedCompletions 审计、拒绝输出参与停滞判定与错误通道上抛，20 单测通过 |
-| Goal Loop 台账编排接线 | `feat(composition): Goal Loop 接入任务台账编排` | CompositionGoalLoopRunner：start/每轮/拒绝/终态幂等投影与状态映射、敏感输出不落账、重放幂等，契约测试 5 用例（全家 25/25） |
-| Goal Loop 跨重启监督 | `feat(composition): Goal Loop 跨重启监督结算` | 未收敛扫描（scope 过滤 + 轮次/拒绝统计）与幂等 redispatch/abandon 结算行、显式错误合同，6 用例（全家 31/31） |
-| Goal Loop 自动重派接线 | `feat(composition): Goal Loop 自动重派接线` | supervisor 结算 → 陈旧 run/task 落 failed → 真实 retryTask 自动重派；校验失败零副作用，4 用例（全家 35/35） |
-| Goal Loop 子代理验证器 | `feat(composition): Goal Loop 子代理验证器实现` | GOAL_VALID/GOAL_INVALID fail-closed 裁决协议、评审提示词组装与 BYOK agentService 生产端口，6 用例（全家 41/41） |
-| Goal Loop attempt 生产适配器 | `feat(composition): Goal Loop attempt 生产适配器` | BYOK=CompositionAgentService.run 每轮一次模型循环；Multica=quick-create 派发+状态轮询+可选输出钩子，6 用例（全家 47/47） |
-| 控制中心统一投影 | `feat(composition): 控制中心统一状态投影` | projectCompositionControlCenter：Run/Goal Loop 五态/grant 审计/依赖/Squad 只读聚合（第 6 项第一切片），附带 supervisor start 分支修复 |
-| 控制中心 RPC 与 Web 接线 | `feat(composition): 控制中心投影接入 Server RPC 与 Web 设置` | serverControlCenterProjection 四层接线（contracts/ws/授权/客户端原子）+ 设置页组合控制中心区块与双语 i18n，面板 4 用例 |
-| 控制中心自动重派入口 | `feat(composition): 控制中心自动重派操作入口` | serverControlCenterRedispatch 四层接线（OperateScope 授权）→ settleAndRedispatchInterruptedGoalLoop + 真实 retryTask；面板 interrupted/supervisor_settled 行重派按钮与 capabilityIds 输入，面板 7 用例 |
-| 控制中心取消入口 | `feat(composition): 控制中心取消操作入口` | 复用 serverCancelCompositionTask 四层接线（OperateScope）；活跃 Run 行取消按钮 + runRowCommand 统一行操作收敛，面板 8 用例 |
-| 控制中心审批入口 | `feat(composition): 控制中心审批操作入口` | 复用 serverReviewCompositionTask 四层接线（OperateScope）；in_review 行通过/驳回按钮与双语缺省 reason，面板 9 用例 |
-| 控制中心放弃结算入口 | `feat(composition): 控制中心放弃结算操作入口` | 新增 settleAndAbandonInterruptedGoalLoop（supervisor abandon 结算 + goal_loop_abandoned，不新建 Run）+ serverControlCenterAbandon 四层接线；interrupted 行放弃按钮与重派并存，Goal Loop 49 单测、面板 10 用例 |
-| Supplier 统一投影 | `feat(composition): Supplier/Profile 统一只读投影` | projectCompositionSupplierRegistry：Provider 实例 → Supplier 条目（continuationKey 账号锚点）+ provider:\<instanceId\> 档案挂接 + 孤儿档案识别，3 用例 |
-| Supplier 注册表接线 | `feat(composition): Supplier 注册表接入 RPC 与 Web 设置` | serverSupplierRegistry 四层接线（ReadScope）+ 设置页只读区块与双语 i18n，面板 5 用例 |
-| 类型与 Effect 规则基线修正 | `feat(composition): 修复类型与 Effect 规则基线` | 品牌 key 显式收窄、`effect/Path` 服务化、`t3code:` 存储迁移键与 `T3CODE_HOME` 恢复、`Clock` 替换 `Date.now`、exactOptional 条件展开、lint/format 清零；server 包既有约 520 处隐性错误记为独立后续切片 |
-| server typecheck 清偿 | `feat(composition): 清空 server 包 typecheck 错误`（及前两波记录提交） | 按文件聚类清偿约 520 处既有隐性错误至 0；`server.test.ts` store 形状漂移与 composition 测试品牌化收窄 |
-| 上游 v0.0.35 同步 | `05d694cfa`（merge） | subtree 合并上游 34 提交/165 文件：PR 关联线程、Claude 压缩、git push base 分支修复；34 个冲突以"保留本地品牌与 i18n、采纳上游功能"解决，上游迁移 042/043 重编为 054/055，`editorLabels` 集中本地化 |
-| BYOK 缺口批量补齐 | `feat(byok): 补齐余额看板、Supplier 管理、resume 重派与 delegation 收敛` | 余额看板四层接线 + Supplier 启停/凭据轮换（凭据零回显）+ resume 重派编排与控制中心入口（含投影新增 `byokResume` 字段与九码错误映射）+ delegation 台账投影 + Mobile 面板复用 + 上游遗留 20 处文案双语补齐；六包 typecheck（mobile 除既有基线）0 错误，新增/回归测试 server 46、web 62、mobile 23、路由层 133 全过 |
-| 文档与回归覆盖 | `c5a709b46`、`223b90ee5` | 刷新迁移矩阵并覆盖 ACP 取消终态回归 |
+| 主题                         | 提交范围                                                                 | 结果                                                                                                                                                                                                                                                                                                             |
+| ---------------------------- | ------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| IDE transport 与 ToolBroker  | `7357e17e7` 至 `f4d94b81b`                                               | 通用 JSON-RPC transport、重连、session 生命周期、Agent Driver 和事件流                                                                                                                                                                                                                                           |
+| Run 监督与事件隔离           | `cc93318bb` 至 `d2e6e389d`                                               | watchdog、委派事件隔离、早到事件保留和 Provider Run 失活监督                                                                                                                                                                                                                                                     |
+| 运行时恢复与归属             | `6f62ea81f` 至 `bfda2e21b`                                               | Provider/BYOK 事件归属修复和运行时任务恢复                                                                                                                                                                                                                                                                       |
+| Multica 投递可靠性           | `4a9d648fb`                                                              | 持久化 quick-create 发送意图                                                                                                                                                                                                                                                                                     |
+| BYOK 模型循环可靠性          | `f016bc851` 至 `c120282c5`                                               | 取消竞争、上下文增长与溢出、安全重试和流终态校验                                                                                                                                                                                                                                                                 |
+| BYOK 部分输出恢复            | `687732124`                                                              | checkpoint 持久化、确定性事件、摘要、偏移、去重和正文恢复                                                                                                                                                                                                                                                        |
+| BYOK 恢复对外语义            | `3d04a3823`（已 amend，主题不变）                                        | `supportsResume` 启用条件、`resumeTask` 拒绝/短路语义与进程重启级恢复测试                                                                                                                                                                                                                                        |
+| Multica outbox 收口          | `feat(composition): Multica quick-create outbox 审计与收口`              | outbox 审计/settle、`X-Idempotency-Key` 出站、启动告警接线与真实 HTTP 进程级 e2e                                                                                                                                                                                                                                 |
+| Grant/resume 投影            | `feat(composition): 投影能力授权与恢复状态`                              | grant issued/revoked 幂等投影、BYOK resume 输出投影与对应测试                                                                                                                                                                                                                                                    |
+| Goal Loop 第一切片           | `feat(composition): Goal Loop 完成标记与预算控制`                        | 完成/取消标记解析（cleanText 剥离 + reason）、maxAttempts/maxCostUnits/deadline 预算收敛、cancelled 优先级与 attempt 剩余预算上下文，10 单测通过                                                                                                                                                                 |
+| Goal Loop 停滞 pivot         | `feat(composition): Goal Loop 停滞 pivot 判定`                           | stalePivotRounds 连续无进展检测（归一化文本 + 空输出空转）、`pivot_required` 终态与 pivot 结果字段，16 单测通过                                                                                                                                                                                                  |
+| Goal Loop 验证子代理合同     | `feat(composition): Goal Loop 验证子代理合同`                            | validateCompletion 验收/拒绝语义、rejectedCompletions 审计、拒绝输出参与停滞判定与错误通道上抛，20 单测通过                                                                                                                                                                                                      |
+| Goal Loop 台账编排接线       | `feat(composition): Goal Loop 接入任务台账编排`                          | CompositionGoalLoopRunner：start/每轮/拒绝/终态幂等投影与状态映射、敏感输出不落账、重放幂等，契约测试 5 用例（全家 25/25）                                                                                                                                                                                       |
+| Goal Loop 跨重启监督         | `feat(composition): Goal Loop 跨重启监督结算`                            | 未收敛扫描（scope 过滤 + 轮次/拒绝统计）与幂等 redispatch/abandon 结算行、显式错误合同，6 用例（全家 31/31）                                                                                                                                                                                                     |
+| Goal Loop 自动重派接线       | `feat(composition): Goal Loop 自动重派接线`                              | supervisor 结算 → 陈旧 run/task 落 failed → 真实 retryTask 自动重派；校验失败零副作用，4 用例（全家 35/35）                                                                                                                                                                                                      |
+| Goal Loop 子代理验证器       | `feat(composition): Goal Loop 子代理验证器实现`                          | GOAL_VALID/GOAL_INVALID fail-closed 裁决协议、评审提示词组装与 BYOK agentService 生产端口，6 用例（全家 41/41）                                                                                                                                                                                                  |
+| Goal Loop attempt 生产适配器 | `feat(composition): Goal Loop attempt 生产适配器`                        | BYOK=CompositionAgentService.run 每轮一次模型循环；Multica=quick-create 派发+状态轮询+可选输出钩子，6 用例（全家 47/47）                                                                                                                                                                                         |
+| 控制中心统一投影             | `feat(composition): 控制中心统一状态投影`                                | projectCompositionControlCenter：Run/Goal Loop 五态/grant 审计/依赖/Squad 只读聚合（第 6 项第一切片），附带 supervisor start 分支修复                                                                                                                                                                            |
+| 控制中心 RPC 与 Web 接线     | `feat(composition): 控制中心投影接入 Server RPC 与 Web 设置`             | serverControlCenterProjection 四层接线（contracts/ws/授权/客户端原子）+ 设置页组合控制中心区块与双语 i18n，面板 4 用例                                                                                                                                                                                           |
+| 控制中心自动重派入口         | `feat(composition): 控制中心自动重派操作入口`                            | serverControlCenterRedispatch 四层接线（OperateScope 授权）→ settleAndRedispatchInterruptedGoalLoop + 真实 retryTask；面板 interrupted/supervisor_settled 行重派按钮与 capabilityIds 输入，面板 7 用例                                                                                                           |
+| 控制中心取消入口             | `feat(composition): 控制中心取消操作入口`                                | 复用 serverCancelCompositionTask 四层接线（OperateScope）；活跃 Run 行取消按钮 + runRowCommand 统一行操作收敛，面板 8 用例                                                                                                                                                                                       |
+| 控制中心审批入口             | `feat(composition): 控制中心审批操作入口`                                | 复用 serverReviewCompositionTask 四层接线（OperateScope）；in_review 行通过/驳回按钮与双语缺省 reason，面板 9 用例                                                                                                                                                                                               |
+| 控制中心放弃结算入口         | `feat(composition): 控制中心放弃结算操作入口`                            | 新增 settleAndAbandonInterruptedGoalLoop（supervisor abandon 结算 + goal_loop_abandoned，不新建 Run）+ serverControlCenterAbandon 四层接线；interrupted 行放弃按钮与重派并存，Goal Loop 49 单测、面板 10 用例                                                                                                    |
+| Supplier 统一投影            | `feat(composition): Supplier/Profile 统一只读投影`                       | projectCompositionSupplierRegistry：Provider 实例 → Supplier 条目（continuationKey 账号锚点）+ provider:\<instanceId\> 档案挂接 + 孤儿档案识别，3 用例                                                                                                                                                           |
+| Supplier 注册表接线          | `feat(composition): Supplier 注册表接入 RPC 与 Web 设置`                 | serverSupplierRegistry 四层接线（ReadScope）+ 设置页只读区块与双语 i18n，面板 5 用例                                                                                                                                                                                                                             |
+| 类型与 Effect 规则基线修正   | `feat(composition): 修复类型与 Effect 规则基线`                          | 品牌 key 显式收窄、`effect/Path` 服务化、`t3code:` 存储迁移键与 `T3CODE_HOME` 恢复、`Clock` 替换 `Date.now`、exactOptional 条件展开、lint/format 清零；server 包既有约 520 处隐性错误记为独立后续切片                                                                                                            |
+| server typecheck 清偿        | `feat(composition): 清空 server 包 typecheck 错误`（及前两波记录提交）   | 按文件聚类清偿约 520 处既有隐性错误至 0；`server.test.ts` store 形状漂移与 composition 测试品牌化收窄                                                                                                                                                                                                            |
+| 上游 v0.0.35 同步            | `05d694cfa`（merge）                                                     | subtree 合并上游 34 提交/165 文件：PR 关联线程、Claude 压缩、git push base 分支修复；34 个冲突以"保留本地品牌与 i18n、采纳上游功能"解决，上游迁移 042/043 重编为 054/055，`editorLabels` 集中本地化                                                                                                              |
+| BYOK 缺口批量补齐            | `feat(byok): 补齐余额看板、Supplier 管理、resume 重派与 delegation 收敛` | 余额看板四层接线 + Supplier 启停/凭据轮换（凭据零回显）+ resume 重派编排与控制中心入口（含投影新增 `byokResume` 字段与九码错误映射）+ delegation 台账投影 + Mobile 面板复用 + 上游遗留 20 处文案双语补齐；六包 typecheck（mobile 除既有基线）0 错误，新增/回归测试 server 46、web 62、mobile 23、路由层 133 全过 |
+| 文档与回归覆盖               | `c5a709b46`、`223b90ee5`                                                 | 刷新迁移矩阵并覆盖 ACP 取消终态回归                                                                                                                                                                                                                                                                              |
 
 ## 关键结论
 

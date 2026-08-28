@@ -101,6 +101,12 @@ const taskWith = (options: {
   readonly latestRunStatus?: "running" | "failed" | "completed" | "cancelled" | "in_review";
   readonly latestRunFailureCode?: string;
   readonly byokResume?: Parameters<typeof byokResume>[0];
+  readonly byokDelegation?: {
+    readonly status?: "queued" | "running" | "failed" | "completed";
+    readonly attempt?: number;
+    readonly failureCode?: string;
+    readonly delegationId?: string;
+  };
 }): CompositionControlCenterResult["tasks"][number] => ({
   taskId: options.taskId,
   status: options.taskStatus ?? "running",
@@ -120,6 +126,19 @@ const taskWith = (options: {
         },
   goalLoop: options.goalLoopState === undefined ? undefined : goalLoop(options.goalLoopState),
   ...(options.byokResume === undefined ? {} : { byokResume: byokResume(options.byokResume) }),
+  ...(options.byokDelegation === undefined
+    ? {}
+    : {
+        byokDelegation: {
+          runId: `run-${options.taskId}`,
+          delegationId: options.byokDelegation.delegationId ?? "delegation-1",
+          status: options.byokDelegation.status ?? "running",
+          attempt: options.byokDelegation.attempt ?? 1,
+          ...(options.byokDelegation.failureCode === undefined
+            ? {}
+            : { failureCode: options.byokDelegation.failureCode }),
+        },
+      }),
 });
 
 const projection = (
@@ -414,6 +433,32 @@ describe("CompositionControlCenterPanel", () => {
     mocks.projectionQuery.data = null;
     const html = renderToStaticMarkup(<CompositionControlCenterPanel />);
     expect(html).not.toContain("data-task-id");
+    expect(html).not.toContain("undefined");
+  });
+
+  it("BYOK 委派行显示委派徽标与 agentId/轮次/错误码，不套 Goal Loop 五态与操作入口", () => {
+    mocks.projectionQuery.data = projection([
+      taskWith({
+        taskId: "task-delegation",
+        latestRunStatus: "running",
+        byokDelegation: {
+          status: "running",
+          attempt: 1,
+          failureCode: "byok_delegation_interrupted",
+          delegationId: "delegation-9",
+        },
+      }),
+      taskWith({ taskId: "task-goal", goalLoopState: "running", latestRunStatus: "running" }),
+    ]);
+    const html = renderToStaticMarkup(<CompositionControlCenterPanel />);
+    const delegationRow = html.split('data-task-id="task-delegation"')[1]?.split("<li")[0] ?? "";
+    const goalRow = html.split('data-task-id="task-goal"')[1]?.split("<li")[0] ?? "";
+    expect(delegationRow).toContain("agent-1");
+    expect(delegationRow).not.toContain("control-center-redispatch-");
+    expect(delegationRow).not.toContain("control-center-cancel-");
+    expect(delegationRow).not.toContain("control-center-abandon-");
+    expect(delegationRow).not.toContain("control-center-byok-resume-");
+    expect(goalRow).toContain("control-center-cancel-task-goal");
     expect(html).not.toContain("undefined");
   });
 });
