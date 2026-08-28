@@ -106,6 +106,89 @@ export function createByokEnvironmentAtoms<R, E>(
 
 export type ByokEnvironmentAtoms<R, E> = ReturnType<typeof createByokEnvironmentAtoms<R, E>>;
 
+export const compositionSquadLifecycleCommandKey = (target: {
+  readonly environmentId: EnvironmentId;
+  readonly input: { readonly squadId: string };
+}): string => JSON.stringify([target.environmentId, target.input.squadId]);
+
+export const compositionSquadRunCommandKey = (target: {
+  readonly environmentId: EnvironmentId;
+  readonly input: { readonly squadId: string; readonly executionId: string };
+}): string =>
+  JSON.stringify([target.environmentId, target.input.squadId, target.input.executionId]);
+
+/** Web 与 Mobile 共用的 Squad 查询、生命周期和执行入口。 */
+export function createCompositionSquadEnvironmentAtoms<R, E>(
+  runtime: Atom.AtomRuntime<EnvironmentRegistry | R, E>,
+) {
+  const lifecycleScheduler = createAtomCommandScheduler();
+  const runScheduler = createAtomCommandScheduler();
+  const lifecycleConcurrency = {
+    mode: "singleFlight" as const,
+    key: compositionSquadLifecycleCommandKey,
+  };
+
+  return {
+    compositionSquads: createEnvironmentRpcQueryAtomFamily(runtime, {
+      label: "environment-data:server:composition-squads",
+      tag: WS_METHODS.serverListCompositionSquads,
+      staleTimeMs: 2_000,
+      idleTtlMs: 60_000,
+    }),
+    compositionSquad: createEnvironmentRpcQueryAtomFamily(runtime, {
+      label: "environment-data:server:composition-squad",
+      tag: WS_METHODS.serverGetCompositionSquad,
+      staleTimeMs: 2_000,
+      idleTtlMs: 60_000,
+    }),
+    compositionSquadRevisions: createEnvironmentRpcQueryAtomFamily(runtime, {
+      label: "environment-data:server:composition-squad-revisions",
+      tag: WS_METHODS.serverListCompositionSquadRevisions,
+      staleTimeMs: 2_000,
+      idleTtlMs: 60_000,
+    }),
+    createCompositionSquad: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:server:create-composition-squad",
+      tag: WS_METHODS.serverCreateCompositionSquad,
+      scheduler: lifecycleScheduler,
+      concurrency: lifecycleConcurrency,
+    }),
+    updateCompositionSquad: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:server:update-composition-squad",
+      tag: WS_METHODS.serverUpdateCompositionSquad,
+      scheduler: lifecycleScheduler,
+      concurrency: lifecycleConcurrency,
+    }),
+    duplicateCompositionSquad: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:server:duplicate-composition-squad",
+      tag: WS_METHODS.serverDuplicateCompositionSquad,
+      scheduler: lifecycleScheduler,
+      concurrency: lifecycleConcurrency,
+    }),
+    archiveCompositionSquad: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:server:archive-composition-squad",
+      tag: WS_METHODS.serverArchiveCompositionSquad,
+      scheduler: lifecycleScheduler,
+      concurrency: lifecycleConcurrency,
+    }),
+    restoreCompositionSquad: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:server:restore-composition-squad",
+      tag: WS_METHODS.serverRestoreCompositionSquad,
+      scheduler: lifecycleScheduler,
+      concurrency: lifecycleConcurrency,
+    }),
+    runCompositionSquad: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:server:run-composition-squad",
+      tag: WS_METHODS.serverRunCompositionSquad,
+      scheduler: runScheduler,
+      concurrency: {
+        mode: "singleFlight",
+        key: compositionSquadRunCommandKey,
+      },
+    }),
+  };
+}
+
 export type ServerUpdateState =
   | { readonly status: "idle" }
   | {
@@ -780,6 +863,7 @@ export function createServerEnvironmentAtoms<R, E>(
       staleTimeMs: 5_000,
       idleTtlMs: 60_000,
     }),
+    ...createCompositionSquadEnvironmentAtoms(runtime),
     listCompositionTasks: createEnvironmentRpcQueryAtomFamily(runtime, {
       label: "environment-data:server:list-composition-tasks",
       tag: WS_METHODS.serverListCompositionTasks,

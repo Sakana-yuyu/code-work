@@ -11,12 +11,14 @@ import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
 import * as Fiber from "effect/Fiber";
+import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Queue from "effect/Queue";
 import * as Ref from "effect/Ref";
 import * as Stream from "effect/Stream";
 import * as SubscriptionRef from "effect/SubscriptionRef";
 import * as TestClock from "effect/testing/TestClock";
+import { Atom } from "effect/unstable/reactivity";
 import { RpcClientError } from "effect/unstable/rpc";
 import * as Socket from "effect/unstable/socket/Socket";
 
@@ -26,11 +28,15 @@ import {
   type PreparedConnection,
 } from "../connection/model.ts";
 import * as EnvironmentSupervisor from "../connection/supervisor.ts";
+import type { EnvironmentRegistry } from "../connection/registry.ts";
 import * as Persistence from "../platform/persistence.ts";
 import type { WsRpcProtocolClient } from "../rpc/protocol.ts";
 import type { RpcSession } from "../rpc/session.ts";
 import {
   applyServerConfigProjection,
+  compositionSquadLifecycleCommandKey,
+  compositionSquadRunCommandKey,
+  createCompositionSquadEnvironmentAtoms,
   makeEnvironmentServerConfigState,
   isLegacyUpdateHandoffLoss,
   matchesServerUpdateReadyEvent,
@@ -42,6 +48,71 @@ import {
   serverUpdateStateForServerVersion,
   validateServerUpdateReadyEvent,
 } from "./server.ts";
+
+describe("Composition Squad environment atoms", () => {
+  it("暴露查询和命令原子，并按环境与查询输入隔离缓存", () => {
+    const runtime = Atom.runtime(Layer.empty) as unknown as Atom.AtomRuntime<
+      EnvironmentRegistry,
+      never
+    >;
+    const atoms = createCompositionSquadEnvironmentAtoms(runtime);
+    const environmentId = EnvironmentId.make("environment-1");
+
+    expect(Object.keys(atoms)).toEqual([
+      "compositionSquads",
+      "compositionSquad",
+      "compositionSquadRevisions",
+      "createCompositionSquad",
+      "updateCompositionSquad",
+      "duplicateCompositionSquad",
+      "archiveCompositionSquad",
+      "restoreCompositionSquad",
+      "runCompositionSquad",
+    ]);
+    expect(atoms.compositionSquads({ environmentId, input: {} })).toBe(
+      atoms.compositionSquads({ environmentId, input: {} }),
+    );
+    expect(atoms.compositionSquads({ environmentId, input: {} })).not.toBe(
+      atoms.compositionSquads({ environmentId, input: { includeArchived: true } }),
+    );
+    expect(atoms.compositionSquad({ environmentId, input: { squadId: "squad-1" } })).not.toBe(
+      atoms.compositionSquad({ environmentId, input: { squadId: "squad-2" } }),
+    );
+  });
+
+  it("为生命周期和执行命令生成稳定且隔离的 single-flight 键", () => {
+    const environmentId = EnvironmentId.make("environment-1");
+
+    expect(
+      compositionSquadLifecycleCommandKey({
+        environmentId,
+        input: { squadId: "squad-1" },
+      }),
+    ).toBe(compositionSquadLifecycleCommandKey({ environmentId, input: { squadId: "squad-1" } }));
+    expect(
+      compositionSquadLifecycleCommandKey({
+        environmentId,
+        input: { squadId: "squad-1" },
+      }),
+    ).not.toBe(
+      compositionSquadLifecycleCommandKey({
+        environmentId,
+        input: { squadId: "squad-2" },
+      }),
+    );
+    expect(
+      compositionSquadRunCommandKey({
+        environmentId,
+        input: { squadId: "squad-1", executionId: "execution-1" },
+      }),
+    ).not.toBe(
+      compositionSquadRunCommandKey({
+        environmentId,
+        input: { squadId: "squad-1", executionId: "execution-2" },
+      }),
+    );
+  });
+});
 
 const CONFIG = {
   availableEditors: [],
