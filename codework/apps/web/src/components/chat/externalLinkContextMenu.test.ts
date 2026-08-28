@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vite-plus/test";
 
+import { t } from "~/i18n/runtime";
 import { resolveExternalWebLinkHost, showExternalLinkContextMenu } from "./externalLinkContextMenu";
 
 function createHarness(
@@ -40,9 +41,9 @@ describe("external chat link context menu", () => {
 
     expect(harness.showContextMenu).toHaveBeenCalledWith(
       [
-        { id: "open-in-preview", label: "Open in integrated browser" },
-        { id: "open-external", label: "Open in system browser" },
-        { id: "copy-link", label: "Copy Link" },
+        { id: "open-in-preview", label: t("openInIntegratedBrowser") },
+        { id: "open-external", label: t("openInSystemBrowser") },
+        { id: "copy-link", label: t("copyLink2") },
       ],
       { x: 12, y: 24 },
     );
@@ -63,8 +64,8 @@ describe("external chat link context menu", () => {
 
     expect(harness.showContextMenu).toHaveBeenCalledWith(
       [
-        { id: "open-external", label: "Open in system browser" },
-        { id: "copy-link", label: "Copy Link" },
+        { id: "open-external", label: t("openInSystemBrowser") },
+        { id: "copy-link", label: t("copyLink2") },
       ],
       { x: 4, y: 8 },
     );
@@ -82,8 +83,8 @@ describe("external chat link context menu", () => {
   });
 
   it.each([
-    ["link-to-thread", "Link to thread", true],
-    ["unlink-from-thread", "Unlink from thread", false],
+    ["link-to-thread", t("linkToThread"), true],
+    ["unlink-from-thread", t("unlinkFromThread"), false],
   ] as const)("offers and runs the %s action", async (action, label, linked) => {
     const harness = createHarness(action);
     const href = "https://github.com/pingdotgg/t3code/pull/42";

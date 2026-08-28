@@ -1,4 +1,5 @@
 import type {
+  CompositionControlCenterByokResumeRedispatchRequest,
   CompositionControlCenterRedispatchRequest,
   CompositionControlCenterResult,
   EnvironmentId,
@@ -51,6 +52,9 @@ const CANCELLABLE_RUN_STATUSES: ReadonlySet<string> = new Set([
   "in_review",
 ]);
 
+/** 服务端 BYOK 恢复重派结算给陈旧 Run 打的 failureCode。 */
+const BYOK_RESUME_INTERRUPTED_FAILURE_CODE = "byok_resume_interrupted";
+
 /** 控制中心"自动重派"请求输入：capabilityIds 按逗号拆分并去除空白项。 */
 export const buildRedispatchInput = (input: {
   readonly taskId: string;
@@ -67,6 +71,35 @@ export const buildRedispatchInput = (input: {
     .split(",")
     .map((value) => value.trim())
     .filter(Boolean),
+});
+
+/**
+ * "恢复并重派"渲染门槛：最新 Run 被 BYOK 恢复中断（failureCode），或服务端投影出的
+ * BYOK checkpoint 链可完整恢复。已有恢复重派结算行的 Run 会被服务端按 already_settled
+ * 拒绝，不提供入口。Goal Loop 五态只识别 `goalloop:*` 前缀，对这条路径不可用。
+ */
+export const isByokResumeRedispatchable = (
+  task: CompositionControlCenterResult["tasks"][number],
+): boolean => {
+  if (task.latestRun === undefined) return false;
+  if (task.byokResume?.redispatchSettled === true) return false;
+  return (
+    task.latestRun.failureCode === BYOK_RESUME_INTERRUPTED_FAILURE_CODE ||
+    task.byokResume?.recoverable === true
+  );
+};
+
+/** 恢复并重派与自动重派共用同一份 capabilityIds 输入。 */
+export const buildByokResumeRedispatchInput = (input: {
+  readonly taskId: string;
+  readonly runId: string;
+  readonly agentId: string;
+  readonly newRunId: string;
+  readonly capabilityIdsText: string;
+  readonly note: string;
+}): CompositionControlCenterByokResumeRedispatchRequest => ({
+  ...buildRedispatchInput(input),
+  note: input.note,
 });
 
 export function CompositionControlCenterPanel() {
@@ -89,6 +122,10 @@ export function CompositionControlCenterPanel() {
   const abandonControlCenterTask = useAtomCommand(serverEnvironment.controlCenterAbandon, {
     reportFailure: false,
   });
+  const byokResumeRedispatchTask = useAtomCommand(
+    serverEnvironment.controlCenterByokResumeRedispatch,
+    { reportFailure: false },
+  );
   const [capabilityIdsText, setCapabilityIdsText] = useState("");
   const [pendingTaskId, setPendingTaskId] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
@@ -127,6 +164,25 @@ export function CompositionControlCenterPanel() {
           agentId: input.agentId,
           newRunId: `t3-redispatch-${randomUUID()}`,
           capabilityIdsText,
+        }),
+      }),
+    );
+
+  const byokResumeRedispatch = (input: {
+    readonly taskId: string;
+    readonly runId: string;
+    readonly agentId: string;
+  }): Promise<void> =>
+    runRowCommand(input.taskId, "controlCenter.byokResumeRedispatchFailed", (envId) =>
+      byokResumeRedispatchTask({
+        environmentId: envId,
+        input: buildByokResumeRedispatchInput({
+          taskId: input.taskId,
+          runId: input.runId,
+          agentId: input.agentId,
+          newRunId: `t3-byok-resume-${randomUUID()}`,
+          capabilityIdsText,
+          note: t("controlCenter.byokResumeReasonDefault"),
         }),
       }),
     );
@@ -207,9 +263,10 @@ export function CompositionControlCenterPanel() {
         <>
           {projection.tasks.some(
             (task) =>
-              task.latestRun !== undefined &&
-              task.goalLoop !== undefined &&
-              REDISPATCHABLE_GOAL_LOOP_STATES.has(task.goalLoop.state),
+              (task.latestRun !== undefined &&
+                task.goalLoop !== undefined &&
+                REDISPATCHABLE_GOAL_LOOP_STATES.has(task.goalLoop.state)) ||
+              isByokResumeRedispatchable(task),
           ) ? (
             <div className="space-y-1">
               <label
@@ -240,6 +297,7 @@ export function CompositionControlCenterPanel() {
               // 仅 interrupted 行提供放弃结算：supervisor_settled 行已有结算行，再落 abandon 会被拒。
               const abandonable =
                 task.latestRun !== undefined && task.goalLoop?.state === "interrupted";
+              const byokResumable = isByokResumeRedispatchable(task);
               return (
                 <li
                   key={task.taskId}
@@ -271,6 +329,23 @@ export function CompositionControlCenterPanel() {
                         }}
                       >
                         {t("controlCenter.redispatch")}
+                      </Button>
+                    ) : null}
+                    {byokResumable ? (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        disabled={pendingTaskId !== null}
+                        data-testid={`control-center-byok-resume-${task.taskId}`}
+                        onClick={() => {
+                          void byokResumeRedispatch({
+                            taskId: task.taskId,
+                            runId: task.latestRun?.runId ?? "",
+                            agentId: task.agentId,
+                          });
+                        }}
+                      >
+                        {t("controlCenter.byokResumeRedispatch")}
                       </Button>
                     ) : null}
                     {abandonable ? (
@@ -346,6 +421,14 @@ export function CompositionControlCenterPanel() {
                       {task.goalLoop.rejectedCompletions > 0
                         ? ` · ${t("controlCenter.rejected")}: ${task.goalLoop.rejectedCompletions}`
                         : ""}
+                    </p>
+                  )}
+                  {task.byokResume === undefined ? null : (
+                    <p className="mt-1 text-[11px] text-muted-foreground">
+                      {`${t("controlCenter.byokCheckpoints")}: ${task.byokResume.checkpointCount}`}
+                      {task.byokResume.recoverable
+                        ? ` · ${t("controlCenter.byokRecoveredBytes")}: ${task.byokResume.recoveredUtf8Bytes}`
+                        : ` · ${t("controlCenter.byokUnrecoverable")}`}
                     </p>
                   )}
                   {task.grants === undefined ? null : (

@@ -1,15 +1,26 @@
 // @effect-diagnostics nodeBuiltinImport:off - The scheduler owns cancellable child processes directly.
 import { spawn } from "node:child_process";
+import * as NodeCrypto from "node:crypto";
+
 import type {
   ByokDelegationConfig,
   ByokDelegationSnapshot,
   ByokDelegationSubmitRequest,
   ServerSettings as ServerSettingsContract,
 } from "@codework/contracts";
+import * as Clock from "effect/Clock";
 import * as Data from "effect/Data";
 import * as Effect from "effect/Effect";
+import * as Option from "effect/Option";
 
 import * as ServerSettings from "../../serverSettings.ts";
+import {
+  makeByokDelegationProjectionScope,
+  projectByokDelegationTransition,
+  type ByokDelegationProjectionScope,
+  type ByokDelegationProjectionTransition,
+} from "../../composition/CompositionByokDelegationProjection.ts";
+import { CompositionTaskStore } from "../../persistence/Services/CompositionTaskStore.ts";
 import {
   DelegationScheduler,
   type DelegationExecutionContext,
@@ -273,8 +284,120 @@ export function resolveScheduler(
 const isTerminalStatus = (status: DelegationStatus): boolean =>
   status !== "queued" && status !== "running";
 
+/**
+ * Buffered per-delegation transition feed over the scheduler's sync event
+ * stream, so the Effect side can consume queued→running→terminal in order
+ * without missing events published while it is projecting.
+ */
+const watchDelegationTransitions = (
+  scheduler: DelegationScheduler<string, string>,
+  id: string,
+) => {
+  const buffered: Array<DelegationSnapshot<string, string>> = [];
+  let pending: ((snapshot: DelegationSnapshot<string, string>) => void) | undefined;
+  const unsubscribe = scheduler.subscribe((event) => {
+    if (event.snapshot.id !== id) return;
+    if (pending !== undefined) {
+      const resolve = pending;
+      pending = undefined;
+      resolve(event.snapshot);
+      return;
+    }
+    buffered.push(event.snapshot);
+  });
+  return {
+    next: (): Promise<DelegationSnapshot<string, string>> => {
+      const head = buffered.shift();
+      if (head !== undefined) return Promise.resolve(head);
+      return new Promise((resolve) => {
+        pending = resolve;
+      });
+    },
+    close: unsubscribe,
+  };
+};
+
 export const make = Effect.gen(function* () {
   const serverSettings = yield* ServerSettings.ServerSettingsService;
+  // Composition 台账为可选依赖：注入后每次委派状态迁移都会投影成幂等事件行，
+  // 使 Composition Task/Run 成为委派状态的可查询单一状态源。
+  const taskStore = yield* Effect.serviceOption(CompositionTaskStore);
+
+  const projectTransition = (
+    scope: ByokDelegationProjectionScope,
+    transition: ByokDelegationProjectionTransition,
+  ): Effect.Effect<void> =>
+    Option.isNone(taskStore)
+      ? Effect.void
+      : Effect.gen(function* () {
+          const nowUnixMs = yield* Clock.currentTimeMillis;
+          yield* projectByokDelegationTransition({
+            store: taskStore.value,
+            scope,
+            transition,
+            nowUnixMs,
+          });
+        }).pipe(
+          // 台账投影失败不改变委派本身的结果；此时调度器内存仍是权威来源，
+          // 该双源风险已在迁移进度文档中登记。
+          Effect.catch(() => Effect.void),
+        );
+
+  const delegationTransitionOf = (
+    snapshot: DelegationSnapshot<string, string>,
+  ): ByokDelegationProjectionTransition => ({
+    status: snapshot.status,
+    ...(snapshot.error?.code === undefined ? {} : { errorCode: snapshot.error.code }),
+    ...(snapshot.result === undefined ? {} : { resultChars: snapshot.result.length }),
+  });
+
+  /** Submit to the scheduler, projecting each observed transition in order. */
+  const runDelegationToTerminal = (
+    input: ByokDelegationSubmitRequest,
+    config: ByokDelegationConfig,
+  ) =>
+    Effect.gen(function* () {
+      const scheduler = resolveScheduler(config, input.instanceId);
+      // 提交与订阅必须发生在同一同步 tick：一旦让出执行权，中间发布的事件
+      // 既不在返回快照里也不在订阅缓冲里，终态等待就会悬挂。
+      const { submitted, feed } = yield* Effect.try({
+        try: () => {
+          const submitted = scheduler.submit({
+            input: input.task,
+            queueTimeoutMs: config.queueTimeoutMs,
+            executionTimeoutMs: config.executionTimeoutMs,
+          });
+          return { submitted, feed: watchDelegationTransitions(scheduler, submitted.id) };
+        },
+        catch: (cause) =>
+          new DelegationExecutorError({
+            message: cause instanceof Error ? cause.message : String(cause),
+          }),
+      });
+      const scope = makeByokDelegationProjectionScope({
+        instanceId: input.instanceId,
+        delegationId: submitted.id,
+        uniqueKey: NodeCrypto.randomUUID(),
+        taskText: input.task,
+      });
+      return yield* Effect.gen(function* () {
+        // 每个委派都真实经过 queued；submit 内部的同步 drain 可能让返回快照已是 running。
+        yield* projectTransition(scope, { status: "queued" });
+        let last = submitted;
+        if (last.status !== "queued") {
+          yield* projectTransition(scope, delegationTransitionOf(last));
+        }
+        while (!isTerminalStatus(last.status)) {
+          const next = yield* Effect.promise(() => feed.next());
+          if (next.sequence <= last.sequence) continue;
+          if (next.status !== last.status) {
+            yield* projectTransition(scope, delegationTransitionOf(next));
+          }
+          last = next;
+        }
+        return last;
+      }).pipe(Effect.ensuring(Effect.sync(feed.close)));
+    });
 
   const submit = (input: ByokDelegationSubmitRequest) =>
     Effect.gen(function* () {
@@ -294,26 +417,9 @@ export const make = Effect.gen(function* () {
           "No delegation executor command is configured.",
         );
       }
-      const scheduler = resolveScheduler(config, input.instanceId);
-      const outcome = yield* Effect.result(
-        Effect.tryPromise({
-          try: async () => {
-            const submitted = scheduler.submit({
-              input: input.task,
-              queueTimeoutMs: config.queueTimeoutMs,
-              executionTimeoutMs: config.executionTimeoutMs,
-            });
-            return await waitForTerminal(scheduler, submitted.id);
-          },
-          catch: (cause) =>
-            new DelegationExecutorError({
-              message: cause instanceof Error ? cause.message : String(cause),
-            }),
-        }),
-      );
+      const outcome = yield* Effect.result(runDelegationToTerminal(input, config));
       if (outcome._tag === "Failure") {
-        const failure = outcome.failure as DelegationExecutorError;
-        return failedSnapshot(input, "DELEGATION_SUBMIT_FAILED", failure.message);
+        return failedSnapshot(input, "DELEGATION_SUBMIT_FAILED", outcome.failure.message);
       }
       return toSnapshot(outcome.success);
     }).pipe(
@@ -341,47 +447,6 @@ export const make = Effect.gen(function* () {
 
   return { submit, list } satisfies ByokDelegationService;
 });
-
-/**
- * Await a delegation's terminal state through the scheduler event stream,
- * bounded by the scheduler's own queue/execution timeouts.
- */
-function waitForTerminal(
-  scheduler: DelegationScheduler<string, string>,
-  id: string,
-): Promise<DelegationSnapshot<string, string>> {
-  return new Promise((resolve) => {
-    const existing = scheduler.get(id);
-    if (existing !== undefined && isTerminalStatus(existing.status)) {
-      resolve(existing);
-      return;
-    }
-    const unsubscribe = scheduler.subscribe((event) => {
-      if (event.snapshot.id !== id) return;
-      if (isTerminalStatus(event.snapshot.status)) {
-        unsubscribe();
-        resolve(event.snapshot);
-      }
-    });
-    // Safety net: if the record was evicted before terminal, resolve with the
-    // last known snapshot instead of hanging.
-    const existingAfter = scheduler.get(id);
-    if (existingAfter === undefined) {
-      unsubscribe();
-      resolve({
-        id,
-        sequence: 0,
-        status: "failed",
-        request: { input: "" },
-        submittedAt: 0,
-        error: {
-          name: "DelegationEvictedError",
-          message: "Delegation was evicted before completion.",
-        },
-      });
-    }
-  });
-}
 
 export const __testables = {
   parseExecutorCommand,

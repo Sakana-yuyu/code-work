@@ -148,7 +148,7 @@ export function ContextWindowMeter(props: {
                 onClick={onCompact}
               >
                 <Minimize2Icon aria-hidden="true" />
-                Compact context
+                {t("compactContext")}
               </Button>
               {compactDisabled && compactDisabledReason ? (
                 <div className="text-pretty text-secondary-label text-[11px]">

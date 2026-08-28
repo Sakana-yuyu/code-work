@@ -1,9 +1,13 @@
 import type {
+  ByokBalanceDashboardRequest,
+  ByokBalanceDashboardResult,
   ByokBalanceRequest,
   ByokBalanceResult,
   ByokModelAdapter,
   ServerSettings as ServerSettingsContract,
+  ServerSettingsError,
 } from "@codework/contracts";
+import { resolveProviderInstanceEnabled } from "@codework/contracts";
 import * as Clock from "effect/Clock";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
@@ -21,6 +25,11 @@ import {
   type BalanceCache,
   type NormalizedBalanceResult,
 } from "./BalanceCore.ts";
+import {
+  projectByokBalanceDashboard,
+  type ByokBalanceDashboardAdapterInput,
+  type ByokBalanceDashboardInstanceInput,
+} from "./ByokBalanceDashboardCore.ts";
 import { supplierTemplate } from "./SupplierCatalog.ts";
 import { fetchByokCatalog } from "./byokHttp.ts";
 import type { ByokHttpError } from "./byokHttp.ts";
@@ -212,12 +221,41 @@ const toResult = (
   ...(cached ? { cached: true } : {}),
 });
 
+/**
+ * List a BYOK instance's adapters from the opaque config blob. Same duck
+ * typing as `adapterFromSettings`, but returning the whole array so the
+ * dashboard can enumerate.
+ */
+const byokAdaptersFromConfig = (config: unknown): ReadonlyArray<ByokModelAdapter> => {
+  if (config === null || typeof config !== "object" || Array.isArray(config)) return [];
+  const adapters = (config as Record<string, unknown>).adapters;
+  if (!Array.isArray(adapters)) return [];
+  return adapters.filter(
+    (adapter): adapter is ByokModelAdapter =>
+      adapter !== null &&
+      typeof adapter === "object" &&
+      typeof (adapter as Record<string, unknown>).id === "string",
+  );
+};
+
 export interface ByokBalanceService {
   readonly balance: (
     input: ByokBalanceRequest,
   ) => Effect.Effect<
     ByokBalanceResult,
     never,
+    HttpClient.HttpClient | ServerSettings.ServerSettingsService
+  >;
+  /**
+   * Aggregate balance/usage/health across every configured BYOK instance.
+   * Each adapter query reuses `balance` (including its cache); per-adapter
+   * failures are carried as structured error results, never swallowed.
+   */
+  readonly dashboard: (
+    input: ByokBalanceDashboardRequest,
+  ) => Effect.Effect<
+    ByokBalanceDashboardResult,
+    ServerSettingsError,
     HttpClient.HttpClient | ServerSettings.ServerSettingsService
   >;
 }
@@ -312,5 +350,57 @@ export const make = Effect.gen(function* () {
       }
       return lastError ?? failure(input, "balance", "invalid_payload");
     }).pipe(Effect.catch(() => Effect.succeed(failure(input, "service", "invalid_payload"))));
-  return { balance } satisfies ByokBalanceService;
+
+  const dashboard = (input: ByokBalanceDashboardRequest) =>
+    Effect.gen(function* () {
+      const settings = yield* serverSettings.getSettings;
+      const byokInstances = Object.entries(settings.providerInstances).filter(
+        ([, instance]) => instance.driver === "byok",
+      );
+      const instances = yield* Effect.forEach(
+        byokInstances,
+        ([instanceId, instance]) =>
+          Effect.gen(function* () {
+            const adapters = byokAdaptersFromConfig(instance.config);
+            const adapterEntries = yield* Effect.forEach(
+              adapters,
+              (adapter) =>
+                balance({
+                  instanceId,
+                  adapterId: adapter.id,
+                  ...(input.forceRefresh === undefined
+                    ? {}
+                    : { forceRefresh: input.forceRefresh }),
+                }).pipe(
+                  Effect.map(
+                    (result): ByokBalanceDashboardAdapterInput => ({
+                      adapterId: adapter.id,
+                      // The config blob is duck-typed; a malformed adapter may
+                      // lack displayName at runtime despite the schema type.
+                      ...(typeof adapter.displayName === "string" &&
+                      adapter.displayName.trim() !== ""
+                        ? { displayName: adapter.displayName }
+                        : {}),
+                      balance: result,
+                    }),
+                  ),
+                ),
+              { concurrency: 4 },
+            );
+            return {
+              instanceId,
+              ...(instance.displayName === undefined
+                ? {}
+                : { displayName: instance.displayName }),
+              enabled: resolveProviderInstanceEnabled(instance),
+              adapters: adapterEntries,
+            } satisfies ByokBalanceDashboardInstanceInput;
+          }),
+        { concurrency: 2 },
+      );
+      const nowUnixMs = yield* Clock.currentTimeMillis;
+      return projectByokBalanceDashboard({ instances, nowUnixMs });
+    });
+
+  return { balance, dashboard } satisfies ByokBalanceService;
 });

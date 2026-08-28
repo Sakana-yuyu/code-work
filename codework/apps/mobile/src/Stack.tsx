@@ -53,7 +53,9 @@ import { NewTaskRouteScreen } from "./features/threads/NewTaskRouteScreen";
 import { SettingsAppearanceRouteScreen } from "./features/settings/SettingsAppearanceRouteScreen";
 import { SettingsClientStorageRouteScreen } from "./features/settings/SettingsClientStorageRouteScreen";
 import { SettingsAuthRouteScreen } from "./features/settings/SettingsAuthRouteScreen";
+import { SettingsControlCenterRouteScreen } from "./features/settings/SettingsControlCenterRouteScreen";
 import { SettingsEnvironmentsRouteScreen } from "./features/settings/SettingsEnvironmentsRouteScreen";
+import { SettingsSupplierRegistryRouteScreen } from "./features/settings/SettingsSupplierRegistryRouteScreen";
 import { SettingsLegalRouteScreen } from "./features/settings/SettingsLegalRouteScreen";
 import { SettingsProjectGroupingRouteScreen } from "./features/settings/SettingsProjectGroupingRouteScreen";
 import { UsageRouteScreen } from "./features/usage/UsageRouteScreen";
@@ -197,6 +199,20 @@ const SettingsContentStack = createNativeStackNavigator({
       linking: "usage",
       options: () => ({
         title: t("usage"),
+      }),
+    }),
+    SettingsControlCenter: createNativeStackScreen({
+      screen: SettingsControlCenterRouteScreen,
+      linking: "control-center",
+      options: () => ({
+        title: t("controlCenter.title"),
+      }),
+    }),
+    SettingsSupplierRegistry: createNativeStackScreen({
+      screen: SettingsSupplierRegistryRouteScreen,
+      linking: "supplier-registry",
+      options: () => ({
+        title: t("supplierRegistry.title"),
       }),
     }),
   },

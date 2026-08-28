@@ -19,6 +19,7 @@ export * from "./cursorByok.ts";
 export * from "./byokDiscovery.ts";
 export * from "./byokBalance.ts";
 export * from "./byokDelegation.ts";
+export * from "./supplierAdmin.ts";
 export * from "./composition.ts";
 export * from "./compositionRuntime.ts";
 export * from "./git.ts";

@@ -13,11 +13,11 @@
 | 更新时间 | 2026-08-28 |
 | 仓库 | `E:\MyProject\code-work\codework` |
 | 当前分支 | `tcode` |
-| 当前提交 | 类型基线修正节点：`feat(composition): 修复类型与 Effect 规则基线` |
-| 相对远端 | 领先 `origin/tcode` 46 个提交，尚未 push |
-| 最新节点 | 类型与 Effect 规则基线修正：以 contracts `settings.test.ts:257` 品牌 key 收窄为起点，逐包 typecheck 剥出并清偿 committed 代码既有隐性违例（品牌 key、`effect/Path` 服务、存储迁移键恢复、`Clock` 替换 `Date.now`、exactOptional 条件展开等） |
+| 当前提交 | BYOK 缺口补齐节点：`feat(byok): 补齐余额看板、Supplier 管理、resume 重派与 delegation 收敛` |
+| 相对远端 | 领先 `origin/tcode` 104 个提交，尚未 push |
+| 最新节点 | BYOK 剩余缺口批量补齐：余额/用量/健康统一看板、Supplier 启停与凭据轮换操作面、resume 恢复后自动重派（含控制中心入口）、delegation 状态投影进 Composition 台账、控制中心与 Supplier 注册表的 Mobile 面板复用 |
 | 范围调整 | 真实 Cursor/VS Code Adapter 接入与真实 Multica daemon 协同/输出查询列为**后期内容（本次不做，TODO 待排期）**；当前阶段仅对接 BYOK Driver，本地协议与进程级验证维持既有结论 |
-| 工作区边界 | 存在大量其他并行修改；本文不把这些修改计入本迁移进度，也不回滚、暂存或提交它们 |
+| 上游基线 | 已并入上游 `t3code` v0.0.35（合并提交 `05d694cfa`）：PR 关联线程、Claude 旧线程压缩、git push base 分支修复等；上游迁移 042/043 因与本地 composition 迁移撞号重编为 054/055 |
 
 ## 证据等级
 
@@ -77,11 +77,14 @@ CapabilityRegistry + ToolBroker
 
 - 新增 attempt 生产适配器（本节点）：`makeByokGoalLoopAttempt` 把每一轮接到 BYOK 生产模型循环（CompositionAgentService.run，提示词自动带 Goal Loop 轮次与完成标记说明，costUnits=1/轮，错误通道原样透传）；`makeMulticaGoalLoopAttempt` 把每一轮接到 Multica 远端（quick-create 派发 → 轮询 getTaskStatus 至终态，agentId/squadId 互斥校验、可注入 now/sleep、失败态与超时显式报 `multica_round_failed`/`multica_round_timeout`）。远端协议当前只回状态不回输出，完成文本依赖可选 `fetchOutput` 钩子，未提供时轮产物为空文本参与停滞判定。
 
+- 新增 Byok delegation 状态收敛第一切片（本节点）：`ByokDelegationService.submit` 现把每次委派的 queued/running/终态迁移以幂等 `byok-delegation:<task>:<run>:<phase>` 事件行投影进 Composition 台账，并在首次落行后 upsert 合成 Task/Run（`projectId=byok-delegation`、`agentId=provider:<instanceId>`（沿用 Supplier 投影约定）、`runtimeTaskId=调度器 delegation-N`；succeeded→completed、failed→failed+errorCode、两类超时→timed_out 并区分 `delegation_queue_timed_out`/`delegation_execution_timed_out`、cancelled→cancelled），迟到低阶状态只补事件行不回退已推进的 Task/Run；taskId 用 randomUUID 而非调度器计数器（后者跨重启复用，不能当台账主键）。敏感约定：委派 prompt 只落 `sha256:` 摘要（`promptDigest`），原文与输出文本不进台账，摘要只含委派 ID/状态/错误码/输出字符数。台账经 `Effect.serviceOption(CompositionTaskStore)` 可选注入，ws.ts 零改动即生效；`submit` 重构为"同一同步 tick 内提交+订阅"以消除让出执行权后丢事件的窗口。投影 4 用例 + 服务级集成 2 用例。
+
 仍缺：
 
 - Multica 真实 daemon 的输出查询能力（`fetchOutput` 生产实现）——依赖服务端暴露输出查询接口，属外部环境缺口。
-- Byok delegation 与 Composition Task/Run 的单一状态源收敛。
-- 面向用户的恢复、冲突和失败原因展示。
+- Byok delegation 的**彻底**单一状态源收敛：台账投影已就位且可独立查询，但调度器内存仍是 `submit` 返回值与 `list` RPC 的权威来源（投影失败被降级为不中断委派），且未进入队列的拒绝快照（disabled/未配置）不落台账；彻底收敛需把 `DelegationScheduler` 队列改为读写 Composition Run。
+- delegation 台账的跨重启收口：调度器为纯内存，进程死亡时 in-flight 委派在台账上停留 queued/running 无终态行，需复用 Goal Loop supervisor 的"无终态行即中断"扫描模式，本次未做。
+- 面向用户的恢复、冲突和失败原因展示（控制中心已展示 Goal Loop 五态、grant 审计与 BYOK 恢复态；委派台账尚无消费端 UI）。
 
 ### 2. BYOK Provider Driver
 
@@ -100,6 +103,8 @@ CapabilityRegistry + ToolBroker
 - 落地 `supportsResume` 的启用条件：仅当 Driver 注入 `checkpointHistory`（`listEvents` 恢复路径）时 profile 才承诺 resume，并携带 `byok.checkpoint_recovery` 能力；未注入时 `resumeTask` 显式返回 `byok_resume_not_supported`。
 - **resume 对外语义（重要）**：BYOK 的 resume = 校验并恢复"已经落盘的部分输出"，供上层展示和决定重派；不承诺续跑中断的模型流。运行中请求返回 `already_running`，已终态返回 `already_terminal`。
 - 恢复结果现以两类幂等投影对外可见：任务历史新增 `byok-restore:*` 状态行（段数/字节数），事件流发布确定性 `runtime.warning`（payload 带 restoredChunks/restoredUtf8Bytes）；同一实例重复 resume 不重复投影。
+- 新增 resume 后自动重派接线（本节点）：`settleAndRedispatchRecoveredByokRun` 按"纯校验（run 存在且归属一致、是最新 Run、未终态、无既有结算行、checkpoint 链完整可恢复、恢复输入存在；任一失败零副作用）→ 幂等 `byok-redispatch:<task>:<run>:settle` 结算行（重复触发与写入被抢占均报 `already_settled`）→ 陈旧 run/task 落 failed（failureCode=`byok_resume_interrupted`，满足 retryTask 仅失败可重试门槛）→ 恢复输出以 `[[BYOK_RESUME_CONTEXT]]` 标记块截断写回恢复输入 prompt（保留尾部 2000 字符，组装前剥离旧块防多次恢复无界增长）→ 调用真实 `orchestrator.retryTask` 创建新 Run 续跑"顺序执行；结算行摘要只含段数/字节数，恢复原文不落账。真实 SQLite + 真实 retryTask 测试 7 用例。
+- 新增 resume 重派的 RPC 与控制中心入口（本节点）：contracts 新增 `serverControlCenterByokResumeRedispatch`（请求形状对齐既有 `serverControlCenterRedispatch`，结果只回 previousRunId/newRunId/恢复段数/恢复字节数，不含恢复正文）；授权 `AuthOrchestrationOperateScope`；ws.ts 新增 `CompositionTaskInputStore` 服务依赖与专用错误映射 `compositionByokResumeError`——共用 `compositionTaskError` 按 `_tag` 取码会把九种失败塌缩成两种，故解包 `code` 字段后逐一稳定映射（task/run missing、not_latest、run/task_terminal、already_settled、input_missing、checkpoint empty/digest_mismatch/offset_gap）。**门槛判断结论**：仅凭 `byok_resume_interrupted` failureCode 不可用作按钮门槛——该码只由本函数结算时写入，带此码的 Run 必然已有结算行，重复触发只会报 `already_settled`；故在 `projectCompositionControlCenter` 新增 `byokResume` 字段（仅当最新 Run 真实存在 `byok:` checkpoint 行时填充，含 checkpointCount/recoveredUtf8Bytes/recoverable/redispatchSettled/recoveryFailureCode），投影内跑 `recoverPersistedCheckpointText` 并把校验失败降级为 `recoverable: false` + 稳定码而非上抛，恢复正文不进投影（测试断言）。面板门槛抽为纯函数 `isByokResumeRedispatchable`（要求存在最新 Run、排除 redispatchSettled、接受 `byok_resume_interrupted` 或校验通过的可恢复链），沿用 `runRowCommand` 行操作收敛；server 侧投影/重派/授权 14 用例、Web 面板 14 用例通过。
 
 最新验证：
 
@@ -112,10 +117,10 @@ CapabilityRegistry + ToolBroker
 
 仍缺：
 
-- 使用真实 OpenAI/Anthropic/Gemini 兼容 API 的断线、重试、限流和凭据轮换 E2E。
-- resume 后的"重派新 turn"编排：目前 Driver 只验证并恢复持久化输出，重新派发由上层决定，尚未接入 Orchestrator 自动续跑。
+- 使用真实 OpenAI/Anthropic/Gemini 兼容 API 的断线、重试、限流和凭据轮换 E2E（唯一阻塞项：需要真实 API 凭据，非代码缺口）。
 - Provider 原生 Session/Turn 的真实 capability grant 注入、撤销回执和审计闭环。
-- Supplier/Profile/Account 控制中心、模型分组、权重路由、自动匹配和 failover 状态机。
+- 模型分组、权重路由、自动匹配和 failover 状态机（Supplier/Profile 控制面见第 6 节，本节点已补齐只读看板与启停/凭据操作面）。
+- Mobile/Desktop 的 BYOK 恢复重派入口（Web 已接通；移动端控制中心面板已复用但未包含该入口）。
 
 ### 3. IDE Agent Driver
 
@@ -203,14 +208,23 @@ CapabilityRegistry + ToolBroker
 - Supplier 注册表 RPC 与 Web 接线：contracts 新增 `serverSupplierRegistry` 方法与请求/结果 schema；授权 `AuthOrchestrationReadScope`；ws.ts 以 `providerInstanceRegistry`/`compositionAgentDrivers` 服务注入（均缺失时显式 `composition_unavailable`），把 `listInstances`/`listProfiles` 适配为纯投影输入（instanceId/driverKind/displayName/enabled/continuationKey/defaultModelId）；client-runtime 新增 `supplierRegistry` 查询原子（5s stale）；Web 设置"集成"页在组合控制中心下新增"Supplier 注册表"只读区块（条目含名称/驱动类型/启用态/账号锚点/默认模型/档案摘要，孤儿档案独立警示行），i18n 双语目录（`supplierRegistry.*`）齐全，面板 5 用例（字段渲染、孤儿提示有无、四态空错回归）+ i18n 静态扫描通过。
 - 类型与 Effect 规则基线修正（本节点）：修复 contracts `settings.test.ts` 品牌化 `CompositionMcpServerId` 索引（显式收窄）后，vp typecheck 短路逐包剥出 committed 代码既有隐性违例并全部清偿——shared `relayClient.test.ts` `node:path` 改 `effect/Path` 服务；web 两个设置面板移除 `SettingsSection` 不存在的 `description` prop、控制中心行命令参数改用导入的 `EnvironmentId`（原 `typeof` 循环引用）、TaskGraphPanel 补 `resuming` 状态标签；desktop 早期启动恢复 `resolvePreferredEnv` 的 `T3CODE_HOME` 遗失环境名（批量改名工具合并重复参数所致）、两个后端测试去 `node:path`、`DesktopWslEnvironment` 改 `Effect.fn` 形态、backend pool 空实例测试改 `Effect.exit` 断言；web `persistenceStorage` 恢复被改名工具破坏的 `t3code:`→`codework:` 迁移键并重写 7 用例；marketing schema 调用点跟随导出改名；scripts 构建脚本合并双重 `catchTag` 为 `catchTags`、移除未用导入；mobile `app.config.ts` 消除无用数组展开；server `serverSettings.test.ts` 品牌 key 收窄 + 补齐 `schemaVersion/enabled/trusted` 必填字段（23/23 回归）、ws.ts 控制中心/Supplier 处理器 `Date.now()` 全部改 `Clock.currentTimeMillis`、投影入参按 exactOptionalPropertyTypes 改条件展开。contracts/shared/client-runtime/web/desktop/marketing/scripts 类型检查与触及文件 lint/format 全部 0 错误 0 警告。
 
+- BYOK 余额/用量/健康统一看板（本节点）：contracts 新增 `serverByokBalanceDashboard` 方法与请求/结果 schema——适配器健康四态 `ok/empty/unsupported/error`，其中 **`empty` 仅在查询成功且余额耗尽时出现、`error` 一律保留原始错误码与消息，两态严格区分不吞错误**；实例级聚合五态含 `degraded/failed`。服务端新增纯聚合投影 `ByokBalanceDashboardCore` 与 `ByokBalanceService.dashboard`（枚举全部 byok 实例适配器、复用既有 balance 查询与正负缓存）；授权 `AuthOrchestrationReadScope`；client-runtime 新增 `byokBalanceDashboard` 查询原子（30s stale）；Web 设置"集成"页在 Supplier 注册表下新增 BYOK 余额看板区块（总计行 + 实例卡片 + 适配器行：健康徽标/余额摘要/错误消息/缓存标记），i18n 双语 `byokBalance.*` 齐全；投影 6 用例 + 服务聚合用例（含密钥零泄漏断言）+ 面板 5 用例通过。
+- Supplier 管理操作入口（本节点，第一切片：启用态与凭据生命周期）：contracts 新增 `serverSupplierSetInstanceEnabled`/`serverSupplierUpdateCredential` 与 `SupplierAdminRpcError`（五类稳定失败码）；服务端新增纯函数 `SupplierAdminCore`，在 `providerInstances` 整图上切换 envelope enabled（`resolveProviderInstanceEnabled` 最严格优先语义，同步 config 旧 enabled 标志）、轮换 BYOK 适配器 apiKey/balanceAccessToken 与实例敏感环境变量（写入即清除 `*Redacted` 占位标志，避免持久化层把新密钥误判为占位符），经 `ServerSettingsService.updateSettings` 落盘并复用既有 registry 热加载，无需改 `ProviderInstanceRegistry`；授权 `AuthOrchestrationOperateScope`；**敏感字段合同：结果与错误 detail 只含定位信息（实例/适配器/变量名/字段名），凭据值零回显、不进投影不入日志**（专门测试断言）；client-runtime 新增两个命令原子（按 instanceId singleFlight）；Web Supplier 注册表面板每行新增启用/禁用切换与懒展开凭据表单（password 输入），面板扩至 7 用例；核心 6 用例 + RpcAuthorization 6 用例通过。
+- 控制中心与 Supplier 注册表 Mobile 面板复用（本节点）：移动端设置主屏新增"集成"分组入口，`SettingsContentStack` 注册 `SettingsControlCenter`/`SettingsSupplierRegistry` 两个路由屏（linking `settings/control-center`、`settings/supplier-registry`），复用 client-runtime 既有 `controlCenterProjection`/`supplierRegistry` 查询原子与 `controlCenterRedispatch`/`cancelCompositionTask`/`reviewCompositionTask`/`controlCenterAbandon` 命令原子，无新增服务端接口；任务行含状态/Goal Loop 五态徽标/轮次/拒绝/grant 摘要与 Squad 名册，Supplier 条目含名称/驱动/启用态/continuationKey 账号锚点/默认模型/档案摘要与孤儿档案警示，四态空错与下拉刷新齐全；五个操作入口全部接通，行渲染门槛与 Web 一致并抽成 `*.logic.ts` 纯函数（重派在移动端不暴露 capabilityIds 输入，固定空数组，不重发 capability grant）；i18n 新增 `integrations`/`controlCenter.*`/`supplierRegistry.*` 键组，en/zh-CN 双语齐全；logic 测试 23/23 通过。Desktop 经共享 web 设置"集成"页天然可达（`/settings/integrations` 为侧栏无条件导航项，页内唯一 `isElectron` 分支只影响浏览器预览默认值），无需单写面板。
+
 仍缺（本次范围，按对 BYOK 闭环的价值排序）：
 
-- 余额、用量、价格、健康和路由状态的统一看板（BYOK 场景价值最高：`ByokBalanceService`/`serverGetByokBalance` RPC 底子已在，缺聚合投影 + Web 呈现）。
-- Supplier/Profile/Account 的统一管理（只读投影与 RPC/Web 只读区块已完成；剩余 = 管理操作入口、凭据生命周期变更与多账号回滚操作）。
-- BYOK 真实 API 生产验证（真实 key 走通模型循环、resume、余额查询的 E2E）。
-- Goal、Squad、Leader、运行时恢复和 capability grant 的用户操作路径（投影、只读展示与自动重派/取消/审批/放弃结算入口已在 Web 接通；剩余 = Mobile/Desktop 面板复用，其中 Mobile 复用依赖移动端 i18n 迁移落地）。
+- BYOK 真实 API 生产验证（真实 key 走通模型循环、resume、余额查询的 E2E）——**当前唯一的非代码阻塞项，需要真实凭据**。
+- 多账号与账号级凭据回滚：本节点已补启用态与凭据轮换，但账号级 profile 回滚未实现——Code Work 没有独立 Account Profile 存储（迁移矩阵第 1、6 节明确 Provider Instance ≠ Cursor 账户），回滚需先落"凭据版本历史/账号快照"持久化合同（建议 secret store 侧保留上一版本 + `rollbackCredential` RPC，以 `updatedFields` 审计行为依据），记为独立切片。
+- 模型分组、权重路由、自动使用匹配与 failover 状态机（仍为"只有底层零件"）。
 - Request Lab、通用请求镜像、脱敏回放和协议对比界面。
-- apps/server 包整体 typecheck 清偿：本节点触及文件（ws.ts、serverSettings.test.ts）已零错误，但该包仍存约 520 处既有隐性错误（约 44 个文件；`server.test.ts` 258 处、部分 composition 测试与 store 形状漂移），此前一直被 vp typecheck 短路掩盖，需按文件聚类拆独立切片清偿。Mobile 端当前 typecheck 错误全部位于用户并行未提交的 ComposerEditor/T3ComposerEditor 改名级联文件，按工作区边界不计入本进度。
+- 委派台账的消费端 UI（第 1 节已投影 `byok-delegation:*`，控制中心尚未按 `projectId` 过滤展示）。
+- 多端真实集成 E2E（Web/Desktop/Mobile 面板已接通，真实多端刷新与凭据链路验证未做）。
+
+已清偿（前节点遗留）：
+
+- apps/server 包整体 typecheck：前节点记录的约 520 处既有隐性错误已全部清零，`server.test.ts` 路由层 133/133 通过（含本节点新增的 4 个 ws handler）。Mobile 端剩余 17 处错误全部位于用户并行未提交的 ComposerEditor/T3ComposerEditor 改名级联文件，按工作区边界不计入本进度。
+- web 端 i18n 门禁：上游 v0.0.35 合并带入的 20 处英文硬编码文案（Claude 压缩提示、PR 关联菜单、用量页明细）已补齐双语，`node scripts/check-ui-i18n.mjs` 对 web/mobile/desktop 三端全绿。
 
 后期内容（本次不做，TODO 待排期）：
 
@@ -250,6 +264,9 @@ CapabilityRegistry + ToolBroker
 | Supplier 统一投影 | `feat(composition): Supplier/Profile 统一只读投影` | projectCompositionSupplierRegistry：Provider 实例 → Supplier 条目（continuationKey 账号锚点）+ provider:\<instanceId\> 档案挂接 + 孤儿档案识别，3 用例 |
 | Supplier 注册表接线 | `feat(composition): Supplier 注册表接入 RPC 与 Web 设置` | serverSupplierRegistry 四层接线（ReadScope）+ 设置页只读区块与双语 i18n，面板 5 用例 |
 | 类型与 Effect 规则基线修正 | `feat(composition): 修复类型与 Effect 规则基线` | 品牌 key 显式收窄、`effect/Path` 服务化、`t3code:` 存储迁移键与 `T3CODE_HOME` 恢复、`Clock` 替换 `Date.now`、exactOptional 条件展开、lint/format 清零；server 包既有约 520 处隐性错误记为独立后续切片 |
+| server typecheck 清偿 | `feat(composition): 清空 server 包 typecheck 错误`（及前两波记录提交） | 按文件聚类清偿约 520 处既有隐性错误至 0；`server.test.ts` store 形状漂移与 composition 测试品牌化收窄 |
+| 上游 v0.0.35 同步 | `05d694cfa`（merge） | subtree 合并上游 34 提交/165 文件：PR 关联线程、Claude 压缩、git push base 分支修复；34 个冲突以"保留本地品牌与 i18n、采纳上游功能"解决，上游迁移 042/043 重编为 054/055，`editorLabels` 集中本地化 |
+| BYOK 缺口批量补齐 | `feat(byok): 补齐余额看板、Supplier 管理、resume 重派与 delegation 收敛` | 余额看板四层接线 + Supplier 启停/凭据轮换（凭据零回显）+ resume 重派编排与控制中心入口（含投影新增 `byokResume` 字段与九码错误映射）+ delegation 台账投影 + Mobile 面板复用 + 上游遗留 20 处文案双语补齐；六包 typecheck（mobile 除既有基线）0 错误，新增/回归测试 server 46、web 62、mobile 23、路由层 133 全过 |
 | 文档与回归覆盖 | `c5a709b46`、`223b90ee5` | 刷新迁移矩阵并覆盖 ACP 取消终态回归 |
 
 ## 关键结论
@@ -262,7 +279,7 @@ CapabilityRegistry + ToolBroker
 
 目前只能回答“部分可以”：
 
-- BYOK Driver 已存在真实 Code Work ToolBroker 调用路径，并有聚焦测试。
+- BYOK Driver 已存在真实 Code Work ToolBroker 调用路径，并有聚焦测试；本轮补齐后其控制面（余额/健康看板、Supplier 启停与凭据轮换）、恢复路径（resume 校验恢复 + 自动重派入口）与状态可观测性（delegation 台账投影）也已闭环，但仍未使用真实凭据验证。
 - 本地 Runtime HTTP/MCP bridge 和 IDE JSON-RPC fixture 已验证跨进程工具回流。
 - 真实 Provider Session/Turn、真实 Multica daemon、真实 Cursor/VS Code 尚未完成 capability grant 和官方 API E2E。
 - 因此现在不能宣称所有 Driver 已经可以安全、稳定、可撤销地使用全部 Code Work API 和各 IDE API。
@@ -278,8 +295,9 @@ CapabilityRegistry + ToolBroker
 3. ~~接入真实 Cursor/VS Code Adapter，完成 capability handshake、最小 IDE API 白名单和撤销测试。~~（**后期内容：本次不做，TODO 待排期**——依赖真实 IDE 环境；本地 JSON-RPC bridge、capability handshake 合同与 fixture 级验证维持既有结论）
 4. 把 Provider、IDE、Multica 的 grant 状态统一投影到 Composition Run 和 Settings。（本地子任务已完成：grant issued/revoked 与 BYOK resume 输出均已投影为任务历史事件；剩余 = 外部 Driver 的真实 grant 回执接入与 Settings 跨端看板展示，其中**真实回执接入随真实 IDE/Multica 接入一并列为后期内容**，跨端看板展示仍在本次范围）
 5. ~~收敛 Goal Loop、预算、重试、验证子代理和跨重启 supervisor。~~（本地切片全部完成：完成标记/预算/停滞 pivot/验证合同与子代理验证器、任务台账编排接线、跨重启监督结算、编排层自动重派接线、BYOK/Multica attempt 生产适配器，共 47 单测；剩余缺口 = Multica 输出查询的生产实现，**已列为后期内容（本次不做，TODO 待排期）**，依赖真实 daemon 服务端能力）
-6. 最后补齐 Supplier/Profile 控制中心与 Web/Desktop/Mobile 集成 E2E。（前三个切片已完成：控制中心统一投影 + `serverControlCenterProjection` RPC 四层接线与 Web 设置"组合控制中心"只读展示（双语 i18n）、`serverControlCenterRedispatch` 自动重派操作入口、复用既有 `serverCancelCompositionTask` 的取消操作入口与 `serverReviewCompositionTask` 的审批（通过/驳回）操作入口、新增 `serverControlCenterAbandon` 放弃结算操作入口；第 6 项另完成 Supplier/Profile/Account 统一只读投影与 `serverSupplierRegistry` RPC/Web 只读区块；剩余 = 管理操作入口与凭据生命周期、余额/用量看板、Request Lab、Mobile/Desktop 面板复用及多端真实集成 E2E）
-7. 清偿 apps/server 包整体 typecheck 既有隐性错误基线。（本节点已完成触及文件清零并记录缺口；剩余约 520 处按文件聚类拆独立切片，优先 `server.test.ts` 与 composition 测试的 store 形状漂移）
+6. ~~最后补齐 Supplier/Profile 控制中心与 Web/Desktop/Mobile 集成 E2E。~~（本轮已补齐：控制中心统一投影与四个操作入口（重派/取消/审批/放弃结算）、Supplier/Profile 只读投影与注册表区块、**BYOK 余额/用量/健康看板**、**Supplier 启停与凭据轮换操作面**、**resume 恢复重派入口**、**Mobile 面板复用**（Desktop 经共享 web 页天然可达）；剩余 = 多账号 profile 回滚（依赖凭据版本历史合同）、模型分组/权重路由/failover、Request Lab、委派台账消费端 UI、多端真实集成 E2E）
+7. ~~清偿 apps/server 包整体 typecheck 既有隐性错误基线。~~（已完成：约 520 处清零，`server.test.ts` 路由层 133/133 通过）
+8. BYOK 真实 API 生产验证：用真实 OpenAI/Anthropic/Gemini 兼容凭据走通模型循环、resume 恢复重派与余额看板查询的 E2E。**这是当前 BYOK 主线唯一的非代码阻塞项**——协议、编排、恢复、控制面与多端展示均已形成测试闭环，只差真实凭据下的断线、重试、限流与凭据轮换验证。
 
 ## 风险与回滚
 

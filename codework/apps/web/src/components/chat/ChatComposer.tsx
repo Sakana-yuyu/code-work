@@ -2018,8 +2018,8 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     if ((pendingImageCompressionsRef.current.get(activeThreadId) ?? 0) > 0) {
       toastManager.add({
         type: "info",
-        title: "Still compressing a pasted image.",
-        description: "Compact again once its thumbnail appears.",
+        title: t("stillCompressingAPastedImage"),
+        description: t("compactAgainOnceItsThumbnailAppears"),
       });
       return;
     }

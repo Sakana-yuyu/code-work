@@ -801,6 +801,15 @@ export function createServerEnvironmentAtoms<R, E>(
           JSON.stringify([environmentId, input.taskId, input.runId]),
       },
     }),
+    controlCenterByokResumeRedispatch: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:server:control-center-byok-resume-redispatch",
+      tag: WS_METHODS.serverControlCenterByokResumeRedispatch,
+      concurrency: {
+        mode: "singleFlight",
+        key: ({ environmentId, input }) =>
+          JSON.stringify([environmentId, input.taskId, input.runId]),
+      },
+    }),
     controlCenterAbandon: createEnvironmentRpcCommand(runtime, {
       label: "environment-data:server:control-center-abandon",
       tag: WS_METHODS.serverControlCenterAbandon,
@@ -815,6 +824,28 @@ export function createServerEnvironmentAtoms<R, E>(
       tag: WS_METHODS.serverSupplierRegistry,
       staleTimeMs: 5_000,
       idleTtlMs: 30_000,
+    }),
+    supplierSetInstanceEnabled: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:server:supplier-set-instance-enabled",
+      tag: WS_METHODS.serverSupplierSetInstanceEnabled,
+      concurrency: {
+        mode: "singleFlight",
+        key: ({ environmentId, input }) => JSON.stringify([environmentId, input.instanceId]),
+      },
+    }),
+    supplierUpdateCredential: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:server:supplier-update-credential",
+      tag: WS_METHODS.serverSupplierUpdateCredential,
+      concurrency: {
+        mode: "singleFlight",
+        key: ({ environmentId, input }) => JSON.stringify([environmentId, input.instanceId]),
+      },
+    }),
+    byokBalanceDashboard: createEnvironmentRpcQueryAtomFamily(runtime, {
+      label: "environment-data:server:byok-balance-dashboard",
+      tag: WS_METHODS.serverByokBalanceDashboard,
+      staleTimeMs: 30_000,
+      idleTtlMs: 60_000,
     }),
     listCompositionTaskEvents: createEnvironmentRpcQueryAtomFamily(runtime, {
       label: "environment-data:server:list-composition-task-events",

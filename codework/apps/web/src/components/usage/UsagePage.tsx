@@ -653,7 +653,7 @@ function UsageSkeleton() {
 
       <section className="flex flex-col gap-3">
         <div className="flex items-center justify-between gap-3">
-          <h2 className="text-sm font-medium text-foreground">Breakdown</h2>
+          <h2 className="text-sm font-medium text-foreground">{t("breakdown")}</h2>
           <div className="h-7 w-28 rounded-lg bg-input/40" />
         </div>
         <div className="h-44 rounded-sm bg-muted/35" />

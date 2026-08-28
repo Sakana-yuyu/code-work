@@ -128,6 +128,8 @@ function LocalSettingsRouteScreen() {
 
         <GeneralSettingsSection />
 
+        <CompositionSettingsSection />
+
         <SettingsSection title={t("appearance")}>
           <SettingsRow icon="paintbrush" label={t("appearance")} target="SettingsAppearance" />
         </SettingsSection>
@@ -517,6 +519,8 @@ function ConfiguredSettingsRouteScreen() {
 
         <GeneralSettingsSection />
 
+        <CompositionSettingsSection />
+
         <SettingsSection title={t("appearance")}>
           <SettingsRow icon="paintbrush" label={t("appearance")} target="SettingsAppearance" />
         </SettingsSection>
@@ -528,6 +532,24 @@ function ConfiguredSettingsRouteScreen() {
         <AppSettingsSection />
       </ScrollView>
     </View>
+  );
+}
+
+/** Composition 运行时投影入口：与 Web 设置"集成"页的两个区块对应。 */
+function CompositionSettingsSection() {
+  return (
+    <SettingsSection title={t("integrations")}>
+      <SettingsRow
+        icon="slider.horizontal.3"
+        label={t("controlCenter.title")}
+        target="SettingsControlCenter"
+      />
+      <SettingsRow
+        icon="server.rack"
+        label={t("supplierRegistry.title")}
+        target="SettingsSupplierRegistry"
+      />
+    </SettingsSection>
   );
 }
 

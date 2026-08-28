@@ -4892,15 +4892,17 @@ function ChatViewContent(props: ChatViewProps) {
           composerRef.current?.compactContext();
         }}
       >
-        Compact
+        {t("compact")}
       </Button>
     );
     return {
       id: `resume-compaction:${resumeCompactionKey}`,
       variant: "info",
       icon: <Minimize2Icon />,
-      title: "Resume with less context",
-      description: `${formatContextWindowTokens(activeContextWindow.usedTokens)} tokens from an older session`,
+      title: t("resumeWithLessContext"),
+      description: t("tokensFromAnOlderSession", {
+        value: formatContextWindowTokens(activeContextWindow.usedTokens),
+      }),
       actions: compactDisabledReason ? (
         <Tooltip>
           <TooltipTrigger render={<span className="inline-flex">{compactAction}</span>} />
@@ -4909,7 +4911,7 @@ function ChatViewContent(props: ChatViewProps) {
       ) : (
         compactAction
       ),
-      dismissLabel: "Keep full history",
+      dismissLabel: t("keepFullHistory"),
       onDismiss: dismiss,
     };
   }, [
@@ -5152,8 +5154,8 @@ function ChatViewContent(props: ChatViewProps) {
           toastManager.add(
             stackedThreadToast({
               type: "error",
-              title: "Failed to settle thread",
-              description: error instanceof Error ? error.message : "An error occurred.",
+              title: t("failedToSettleThread"),
+              description: error instanceof Error ? error.message : t("anErrorOccurred"),
             }),
           );
         });

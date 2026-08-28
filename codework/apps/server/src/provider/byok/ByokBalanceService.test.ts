@@ -38,6 +38,24 @@ const makeSettings = (instanceId: string, adapters: ReadonlyArray<Adapter>) =>
     },
   }) as typeof DEFAULT_SERVER_SETTINGS;
 
+const testLayers = (
+  settings: typeof DEFAULT_SERVER_SETTINGS,
+  fetchImplementation: typeof globalThis.fetch,
+) =>
+  Layer.merge(
+    Layer.succeed(ServerSettings.ServerSettingsService, {
+      start: Effect.void,
+      ready: Effect.void,
+      getSettings: Effect.succeed(settings),
+      updateSettings: () => Effect.succeed(settings),
+      streamChanges: Stream.empty,
+      subscribeChanges: Effect.succeed(Stream.empty),
+    }),
+    FetchHttpClient.layer.pipe(
+      Layer.provide(Layer.succeed(FetchHttpClient.Fetch, fetchImplementation)),
+    ),
+  );
+
 const runBalance = async (
   settings: typeof DEFAULT_SERVER_SETTINGS,
   fetchImplementation: typeof globalThis.fetch,
@@ -47,23 +65,18 @@ const runBalance = async (
     Effect.gen(function* () {
       const service = yield* make;
       return yield* service.balance(input);
-    }).pipe(
-      Effect.provide(
-        Layer.merge(
-          Layer.succeed(ServerSettings.ServerSettingsService, {
-            start: Effect.void,
-            ready: Effect.void,
-            getSettings: Effect.succeed(settings),
-            updateSettings: () => Effect.succeed(settings),
-            streamChanges: Stream.empty,
-            subscribeChanges: Effect.succeed(Stream.empty),
-          }),
-          FetchHttpClient.layer.pipe(
-            Layer.provide(Layer.succeed(FetchHttpClient.Fetch, fetchImplementation)),
-          ),
-        ),
-      ),
-    ),
+    }).pipe(Effect.provide(testLayers(settings, fetchImplementation))),
+  );
+
+const runDashboard = async (
+  settings: typeof DEFAULT_SERVER_SETTINGS,
+  fetchImplementation: typeof globalThis.fetch,
+) =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const service = yield* make;
+      return yield* service.dashboard({ forceRefresh: true });
+    }).pipe(Effect.provide(testLayers(settings, fetchImplementation))),
   );
 
 const adapter = (overrides: Partial<Adapter> = {}): Adapter => ({
@@ -185,6 +198,66 @@ describe("ByokBalanceService", () => {
     expect(result.error?.code).toBe("unsupported_profile");
   });
 
+  it("dashboard 聚合全部 BYOK 实例并区分 ok/unsupported/error，不泄漏密钥", async () => {
+    const settings = {
+      ...DEFAULT_SERVER_SETTINGS,
+      providerInstances: {
+        "byok-main": {
+          driver: ProviderDriverKind.make("byok"),
+          displayName: "主账号",
+          enabled: true,
+          config: {
+            enabled: true,
+            adapters: [
+              adapter({ id: "adapter-ok", displayName: "OK 模型" }),
+              adapter({
+                id: "adapter-gemini",
+                displayName: "Gemini",
+                protocol: "gemini",
+                baseURL: "https://generativelanguage.googleapis.com/v1beta",
+              }),
+              adapter({ id: "adapter-broken", displayName: "坏端点", baseURL: "https://broken.test/v1" }),
+            ],
+          },
+        },
+        codex: { driver: ProviderDriverKind.make("codex"), enabled: true, config: {} },
+      },
+    } as typeof DEFAULT_SERVER_SETTINGS;
+
+    const result = await runDashboard(
+      settings,
+      asFetch(async (input) => {
+        const url = String(input);
+        if (url.startsWith("https://broken.test")) {
+          return jsonResponse({ error: "boom" }, 500);
+        }
+        if (url.endsWith("/v1/dashboard/billing/subscription")) {
+          return jsonResponse({ hard_limit_usd: 100 });
+        }
+        if (url.includes("billing/usage")) {
+          return jsonResponse({ total_usage: 2500 });
+        }
+        return jsonResponse({ error: "boom" }, 500);
+      }),
+    );
+
+    // 非 byok 实例不参与看板。
+    expect(result.totals.instanceCount).toBe(1);
+    expect(result.totals.adapterCount).toBe(3);
+    const instance = result.instances[0];
+    expect(instance?.instanceId).toBe("byok-main");
+    expect(instance?.displayName).toBe("主账号");
+    expect(instance?.enabled).toBe(true);
+    const byId = new Map(instance?.adapters.map((entry) => [entry.adapterId, entry]));
+    expect(byId.get("adapter-ok")?.health).toBe("ok");
+    expect(byId.get("adapter-gemini")?.health).toBe("unsupported");
+    // 三个 attempt 全部 500：查询失败保留结构化错误，不伪装成余额为空。
+    expect(byId.get("adapter-broken")?.health).toBe("error");
+    expect(byId.get("adapter-broken")?.balance.error?.code).toBe("upstream_http");
+    expect(instance?.health).toBe("degraded");
+    expect(JSON.stringify(result)).not.toContain("sk-test-key");
+  });
+
   it("maps upstream HTTP failures to structured errors", async () => {
     const result = await runBalance(
       makeSettings("instance-5", [adapter()]),
@@ -194,5 +267,42 @@ describe("ByokBalanceService", () => {
 
     expect(result.supported).toBe(false);
     expect(result.error?.code).toBe("upstream_http");
+  });
+});
+
+describe("ByokBalanceService dashboard", () => {
+  it("仅有不支持余额查询的适配器时实例聚合为 unsupported", async () => {
+    const settings = {
+      ...DEFAULT_SERVER_SETTINGS,
+      providerInstances: {
+        "dash-gemini": {
+          driver: ProviderDriverKind.make("byok"),
+          enabled: false,
+          config: {
+            enabled: false,
+            adapters: [
+              adapter({
+                id: "gemini-adapter",
+                protocol: "gemini",
+                baseURL: "https://generativelanguage.googleapis.com/v1beta",
+              }),
+            ],
+          },
+        },
+      },
+    } as typeof DEFAULT_SERVER_SETTINGS;
+
+    const result = await runDashboard(
+      settings,
+      asFetch(async () => {
+        throw new Error("unsupported adapters must not issue requests");
+      }),
+    );
+
+    const instance = result.instances[0];
+    expect(instance?.health).toBe("unsupported");
+    expect(instance?.enabled).toBe(false);
+    expect(instance?.adapters[0]?.health).toBe("unsupported");
+    expect(instance?.adapters[0]?.balance.error?.code).toBe("unsupported_profile");
   });
 });

@@ -1410,8 +1410,8 @@ const MarkdownFileLink = memo(function MarkdownFileLink({
         toastManager.add(
           stackedThreadToast({
             type: "error",
-            title: "Unable to reveal file",
-            description: error instanceof Error ? error.message : "An error occurred.",
+            title: t("unableToRevealFile"),
+            description: error instanceof Error ? error.message : t("anErrorOccurred"),
           }),
         );
       } catch (cause) {
@@ -1422,8 +1422,8 @@ const MarkdownFileLink = memo(function MarkdownFileLink({
         toastManager.add(
           stackedThreadToast({
             type: "error",
-            title: "Unable to reveal file",
-            description: cause instanceof Error ? cause.message : "An error occurred.",
+            title: t("unableToRevealFile"),
+            description: cause instanceof Error ? cause.message : t("anErrorOccurred"),
           }),
         );
       }
@@ -1594,7 +1594,7 @@ const MarkdownFileLink = memo(function MarkdownFileLink({
           ) : (
             <button
               type="button"
-              aria-label={`File options for ${label}`}
+              aria-label={t("fileOptionsFor", { value: label })}
               aria-haspopup="menu"
               className={cn(
                 CHAT_FILE_TAG_CHIP_CLASS_NAME,
@@ -2113,10 +2113,10 @@ function ChatMarkdown({
                           type: "error",
                           title:
                             operation === "link-pull-request-to-thread"
-                              ? "Unable to link pull request"
-                              : "Unable to unlink pull request",
+                              ? t("unableToLinkPullRequest")
+                              : t("unableToUnlinkPullRequest"),
                           description:
-                            cause instanceof Error ? cause.message : "The request failed.",
+                            cause instanceof Error ? cause.message : t("theRequestFailed"),
                         }),
                       );
                     }

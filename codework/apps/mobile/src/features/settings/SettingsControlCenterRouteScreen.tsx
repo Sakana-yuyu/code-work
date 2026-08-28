@@ -1,0 +1,369 @@
+import { useNavigation } from "@react-navigation/native";
+import type {
+  CompositionControlCenterResult,
+  CompositionControlCenterTask,
+  EnvironmentId,
+} from "@codework/contracts";
+import {
+  squashAtomCommandFailure,
+  type AtomCommandResult,
+} from "@codework/client-runtime/state/runtime";
+import { useState } from "react";
+import { Platform, Pressable, RefreshControl, ScrollView, View } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+
+import { AndroidScreenHeader } from "../../components/AndroidScreenHeader";
+import { AppText as Text } from "../../components/AppText";
+import { NativeStackScreenOptions } from "../../native/StackHeader";
+import { uuidv4 } from "../../lib/uuid";
+import { useEnvironments } from "../../state/environments";
+import { useEnvironmentQuery } from "../../state/query";
+import { serverEnvironment } from "../../state/server";
+import { useAtomCommand } from "../../state/use-atom-command";
+import { t } from "../../i18n";
+import {
+  buildRedispatchInput,
+  formatGoalLoopMeta,
+  formatGrantMeta,
+  formatSquadMeta,
+  goalLoopStateLabelKey,
+  resolveControlCenterTaskActions,
+} from "./SettingsControlCenterRouteScreen.logic";
+
+const goalLoopStateLabel = (state: string): string => {
+  const key = goalLoopStateLabelKey(state);
+  return key === null ? state : t(key);
+};
+
+export function SettingsControlCenterRouteScreen() {
+  const navigation = useNavigation();
+  const insets = useSafeAreaInsets();
+  const { environments } = useEnvironments();
+  const environmentId = environments[0]?.environmentId ?? null;
+  const projectionQuery = useEnvironmentQuery(
+    environmentId === null
+      ? null
+      : serverEnvironment.controlCenterProjection({ environmentId, input: {} }),
+  );
+  const redispatchTask = useAtomCommand(serverEnvironment.controlCenterRedispatch, {
+    reportFailure: false,
+  });
+  const cancelCompositionTask = useAtomCommand(serverEnvironment.cancelCompositionTask, {
+    reportFailure: false,
+  });
+  const reviewCompositionTask = useAtomCommand(serverEnvironment.reviewCompositionTask, {
+    reportFailure: false,
+  });
+  const abandonControlCenterTask = useAtomCommand(serverEnvironment.controlCenterAbandon, {
+    reportFailure: false,
+  });
+  const [pendingTaskId, setPendingTaskId] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
+
+  const projection: CompositionControlCenterResult | null = projectionQuery.data;
+
+  const runRowCommand = async (
+    taskId: string,
+    fallbackErrorKey: string,
+    execute: (environmentId: EnvironmentId) => Promise<AtomCommandResult<unknown, unknown>>,
+  ): Promise<void> => {
+    if (environmentId === null || pendingTaskId !== null) return;
+    setPendingTaskId(taskId);
+    setActionError(null);
+    const result = await execute(environmentId);
+    if (result._tag === "Failure") {
+      const error = squashAtomCommandFailure(result);
+      setActionError(error instanceof Error ? error.message : t(fallbackErrorKey));
+    } else {
+      projectionQuery.refresh();
+    }
+    setPendingTaskId(null);
+  };
+
+  const redispatch = (task: CompositionControlCenterTask): Promise<void> =>
+    runRowCommand(task.taskId, "controlCenter.redispatchFailed", (envId) =>
+      redispatchTask({
+        environmentId: envId,
+        input: buildRedispatchInput({
+          taskId: task.taskId,
+          runId: task.latestRun?.runId ?? "",
+          agentId: task.agentId,
+          newRunId: `t3-redispatch-${uuidv4()}`,
+          // 移动端不提供能力 ID 输入：重派不重发 capability grant。
+          capabilityIdsText: "",
+        }),
+      }),
+    );
+
+  const cancel = (task: CompositionControlCenterTask): Promise<void> =>
+    runRowCommand(task.taskId, "controlCenter.cancelFailed", (envId) =>
+      cancelCompositionTask({
+        environmentId: envId,
+        input: {
+          taskId: task.taskId,
+          runId: task.latestRun?.runId ?? "",
+          reason: t("controlCenter.cancelReasonDefault"),
+        },
+      }),
+    );
+
+  const review = (
+    task: CompositionControlCenterTask,
+    decision: "approve" | "reject",
+  ): Promise<void> =>
+    runRowCommand(task.taskId, "controlCenter.reviewFailed", (envId) =>
+      reviewCompositionTask({
+        environmentId: envId,
+        input: {
+          taskId: task.taskId,
+          runId: task.latestRun?.runId ?? "",
+          decision,
+          reason: t(
+            decision === "approve"
+              ? "controlCenter.approveReasonDefault"
+              : "controlCenter.rejectReasonDefault",
+          ),
+        },
+      }),
+    );
+
+  const abandon = (task: CompositionControlCenterTask): Promise<void> =>
+    runRowCommand(task.taskId, "controlCenter.abandonFailed", (envId) =>
+      abandonControlCenterTask({
+        environmentId: envId,
+        input: {
+          taskId: task.taskId,
+          runId: task.latestRun?.runId ?? "",
+          agentId: task.agentId,
+          note: t("controlCenter.abandonReasonDefault"),
+        },
+      }),
+    );
+
+  return (
+    <View collapsable={false} className="flex-1 bg-sheet">
+      {Platform.OS === "android" ? (
+        <>
+          {/* Android renders its own in-screen header instead of the native bar. */}
+          <NativeStackScreenOptions options={{ headerShown: false }} />
+          <AndroidScreenHeader
+            title={t("controlCenter.title")}
+            onBack={() => navigation.goBack()}
+          />
+        </>
+      ) : null}
+      <ScrollView
+        contentInsetAdjustmentBehavior="automatic"
+        showsVerticalScrollIndicator={false}
+        className="flex-1"
+        contentContainerClassName="gap-6 px-5 pt-4"
+        contentContainerStyle={{ paddingBottom: Math.max(insets.bottom, 18) + 18 }}
+        refreshControl={
+          <RefreshControl
+            refreshing={projectionQuery.isPending && projection !== null}
+            onRefresh={projectionQuery.refresh}
+          />
+        }
+      >
+        <View className="gap-3">
+          <Text className="px-2 text-sm font-t3-medium text-foreground-muted">
+            {t("controlCenter.tasks")}
+          </Text>
+          {environmentId === null ? (
+            <StatusMessage text={t("controlCenter.noEnvironment")} />
+          ) : projection === null && projectionQuery.isPending ? (
+            <StatusMessage text={t("controlCenter.pending")} />
+          ) : projection === null && projectionQuery.error !== null ? (
+            <StatusMessage text={t("controlCenter.error")} tone="danger" />
+          ) : projection === null || projection.tasks.length === 0 ? (
+            <StatusMessage text={t("controlCenter.noTasks")} />
+          ) : (
+            <View className="gap-3">
+              {projection.tasks.map((task) => (
+                <ControlCenterTaskCard
+                  key={task.taskId}
+                  task={task}
+                  actionsDisabled={pendingTaskId !== null}
+                  onRedispatch={() => void redispatch(task)}
+                  onCancel={() => void cancel(task)}
+                  onApprove={() => void review(task, "approve")}
+                  onReject={() => void review(task, "reject")}
+                  onAbandon={() => void abandon(task)}
+                />
+              ))}
+              {actionError === null ? null : (
+                <Text className="px-2 text-sm text-danger-foreground">{actionError}</Text>
+              )}
+            </View>
+          )}
+        </View>
+        {projection === null || projection.squads.length === 0 ? null : (
+          <View className="gap-3">
+            <Text className="px-2 text-sm font-t3-medium text-foreground-muted">
+              {t("controlCenter.squads")}
+            </Text>
+            <View className="overflow-hidden rounded-[24px] border-continuous bg-card">
+              {projection.squads.map((squad, index) => (
+                <View
+                  key={squad.squadId}
+                  className={index === 0 ? "gap-0.5 p-4" : "gap-0.5 border-t border-border-subtle p-4"}
+                >
+                  <Text className="text-base text-foreground">{squad.name}</Text>
+                  <Text className="text-sm text-foreground-muted">
+                    {formatSquadMeta(
+                      { leader: t("controlCenter.leader"), members: t("controlCenter.members") },
+                      squad,
+                    )}
+                  </Text>
+                </View>
+              ))}
+            </View>
+          </View>
+        )}
+      </ScrollView>
+    </View>
+  );
+}
+
+function ControlCenterTaskCard(props: {
+  readonly task: CompositionControlCenterTask;
+  readonly actionsDisabled: boolean;
+  readonly onRedispatch: () => void;
+  readonly onCancel: () => void;
+  readonly onApprove: () => void;
+  readonly onReject: () => void;
+  readonly onAbandon: () => void;
+}) {
+  const { task } = props;
+  const actions = resolveControlCenterTaskActions(task);
+  const hasActions =
+    actions.redispatchable || actions.cancellable || actions.reviewable || actions.abandonable;
+
+  return (
+    <View className="gap-2 rounded-[24px] border-continuous bg-card p-4">
+      <Text className="font-mono text-xs text-foreground-muted" numberOfLines={1}>
+        {task.taskId}
+      </Text>
+      <View className="flex-row flex-wrap items-center gap-2">
+        <BadgePill label={task.status} />
+        {task.goalLoop === undefined ? null : (
+          <BadgePill
+            label={`${t("controlCenter.goalLoop")}: ${goalLoopStateLabel(task.goalLoop.state)}`}
+            emphasized
+          />
+        )}
+      </View>
+      {task.goalLoop === undefined ? null : (
+        <Text className="text-sm text-foreground-muted">
+          {formatGoalLoopMeta(
+            { rounds: t("controlCenter.rounds"), rejected: t("controlCenter.rejected") },
+            task.goalLoop,
+          )}
+        </Text>
+      )}
+      {task.grants === undefined ? null : (
+        <Text className="text-sm text-foreground-muted">
+          {formatGrantMeta(
+            { grants: t("controlCenter.grants"), revoked: t("controlCenter.revoked") },
+            task.grants,
+          )}
+        </Text>
+      )}
+      {hasActions ? (
+        <View className="flex-row flex-wrap gap-2 pt-1">
+          {actions.redispatchable ? (
+            <ActionButton
+              label={t("controlCenter.redispatch")}
+              disabled={props.actionsDisabled}
+              onPress={props.onRedispatch}
+            />
+          ) : null}
+          {actions.abandonable ? (
+            <ActionButton
+              label={t("controlCenter.abandon")}
+              disabled={props.actionsDisabled}
+              onPress={props.onAbandon}
+            />
+          ) : null}
+          {actions.cancellable ? (
+            <ActionButton
+              label={t("controlCenter.cancel")}
+              disabled={props.actionsDisabled}
+              onPress={props.onCancel}
+            />
+          ) : null}
+          {actions.reviewable ? (
+            <>
+              <ActionButton
+                label={t("controlCenter.approve")}
+                disabled={props.actionsDisabled}
+                onPress={props.onApprove}
+                emphasized
+              />
+              <ActionButton
+                label={t("controlCenter.reject")}
+                disabled={props.actionsDisabled}
+                onPress={props.onReject}
+              />
+            </>
+          ) : null}
+        </View>
+      ) : null}
+    </View>
+  );
+}
+
+function StatusMessage(props: { readonly text: string; readonly tone?: "danger" }) {
+  return (
+    <View className="rounded-[24px] border-continuous bg-card px-4 py-6">
+      <Text
+        className={
+          props.tone === "danger"
+            ? "text-center text-sm text-danger-foreground"
+            : "text-center text-sm text-foreground-muted"
+        }
+      >
+        {props.text}
+      </Text>
+    </View>
+  );
+}
+
+function BadgePill(props: { readonly label: string; readonly emphasized?: boolean }) {
+  return (
+    <View
+      className={
+        props.emphasized
+          ? "rounded-full bg-subtle-strong px-2.5 py-0.5"
+          : "rounded-full bg-subtle px-2.5 py-0.5"
+      }
+    >
+      <Text className="text-xs text-foreground">{props.label}</Text>
+    </View>
+  );
+}
+
+function ActionButton(props: {
+  readonly label: string;
+  readonly disabled: boolean;
+  readonly onPress: () => void;
+  readonly emphasized?: boolean;
+}) {
+  return (
+    <Pressable
+      accessibilityLabel={props.label}
+      accessibilityRole="button"
+      disabled={props.disabled}
+      onPress={props.onPress}
+      className={
+        props.disabled
+          ? "rounded-full bg-subtle px-3 py-1.5 opacity-[0.45]"
+          : props.emphasized
+            ? "rounded-full bg-subtle-strong px-3 py-1.5"
+            : "rounded-full bg-subtle px-3 py-1.5"
+      }
+    >
+      <Text className="text-sm font-t3-medium text-foreground">{props.label}</Text>
+    </Pressable>
+  );
+}

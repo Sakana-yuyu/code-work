@@ -3,6 +3,7 @@ import type {
   CompositionCapabilityAuditOutcome,
   CompositionSquad,
   CompositionTask,
+  CompositionTaskEvent,
   CompositionTaskRun,
   CompositionTaskStatus,
 } from "@codework/contracts";
@@ -15,6 +16,11 @@ import type {
   CompositionTaskStoreError,
   CompositionTaskStoreShape,
 } from "../persistence/Services/CompositionTaskStore.ts";
+import {
+  isByokPersistedCheckpointEvent,
+  recoverPersistedCheckpointText,
+} from "./CompositionByokCheckpointRecovery.ts";
+import { byokResumeRedispatchEventPrefix } from "./CompositionByokResumeRedispatch.ts";
 import { scanCompositionGoalLoopRun } from "./CompositionGoalLoopSupervisor.ts";
 
 export type CompositionGoalLoopProjectionState =
@@ -31,6 +37,19 @@ export type CompositionGoalLoopProjection = {
   readonly rejectedCompletions: number;
   readonly terminalStatuses: ReadonlyArray<string>;
   readonly settledBySupervisor: boolean;
+};
+
+/**
+ * 最新 Run 的 BYOK 部分输出恢复态。Goal Loop 五态只识别 `goalloop:*` 前缀，
+ * `byok:` checkpoint 链对它不可见，因此控制中心"恢复并重派"门槛需要这一路独立投影。
+ */
+export type CompositionByokResumeProjection = {
+  readonly runId: string;
+  readonly checkpointCount: number;
+  readonly recoveredUtf8Bytes: number;
+  readonly recoverable: boolean;
+  readonly redispatchSettled: boolean;
+  readonly recoveryFailureCode: string | undefined;
 };
 
 export type CompositionGrantProjection = {
@@ -51,6 +70,7 @@ export type CompositionTaskControlProjection = {
     | Pick<CompositionTaskRun, "runId" | "status" | "attempt" | "failureCode">
     | undefined;
   readonly goalLoop?: CompositionGoalLoopProjection | undefined;
+  readonly byokResume?: CompositionByokResumeProjection | undefined;
   readonly grants?: CompositionGrantProjection | undefined;
 };
 
@@ -85,6 +105,47 @@ const deriveGoalLoopState = (
   if (scan.settledBySupervisor) return "supervisor_settled";
   // Run 已终结但循环没有终态行：进程中断所致。
   return RUN_ACTIVE_STATUSES.has(runStatus) ? "running" : "interrupted";
+};
+
+/**
+ * 只读推导 BYOK 恢复态：跑一遍摘要链校验（失败降级为 recoverable=false + 稳定错误码），
+ * 并检测是否已有恢复重派结算行。调用方先确认存在 `byok:` checkpoint 行，非 BYOK 任务
+ * 不挂空字段。
+ */
+const projectByokResume = (input: {
+  readonly taskId: string;
+  readonly runId: string;
+  readonly events: ReadonlyArray<CompositionTaskEvent>;
+  readonly checkpoints: ReadonlyArray<CompositionTaskEvent>;
+}): Effect.Effect<CompositionByokResumeProjection> => {
+  const settleSourceEventId = `${byokResumeRedispatchEventPrefix(input.taskId, input.runId)}:settle`;
+  const redispatchSettled = input.events.some(
+    (event) => event.sourceEventId === settleSourceEventId,
+  );
+  return recoverPersistedCheckpointText(input.checkpoints).pipe(
+    Effect.map(
+      (recovered): CompositionByokResumeProjection => ({
+        runId: input.runId,
+        checkpointCount: recovered.chunkCount,
+        recoveredUtf8Bytes: recovered.utf8Bytes,
+        recoverable: true,
+        redispatchSettled,
+        recoveryFailureCode: undefined,
+      }),
+    ),
+    Effect.catchTag(
+      "ByokCheckpointRecoveryError",
+      (error): Effect.Effect<CompositionByokResumeProjection> =>
+        Effect.succeed({
+          runId: input.runId,
+          checkpointCount: input.checkpoints.length,
+          recoveredUtf8Bytes: 0,
+          recoverable: false,
+          redispatchSettled,
+          recoveryFailureCode: error.code,
+        }),
+    ),
+  );
 };
 
 const summarizeGrantAudit = (
@@ -157,6 +218,7 @@ const projectTask = (
     const latestRunOption = yield* deps.store.getLatestRun(task.taskId);
     const latestRun = Option.isNone(latestRunOption) ? undefined : latestRunOption.value;
     let goalLoop: CompositionGoalLoopProjection | undefined;
+    let byokResume: CompositionByokResumeProjection | undefined;
     if (latestRun !== undefined) {
       const events = yield* deps.store.listEvents(task.taskId, latestRun.runId);
       const scan = scanCompositionGoalLoopRun(events, {
@@ -171,6 +233,15 @@ const projectTask = (
         terminalStatuses: scan.terminalStatuses,
         settledBySupervisor: scan.settledBySupervisor,
       };
+      const checkpoints = events.filter(isByokPersistedCheckpointEvent);
+      if (checkpoints.length > 0) {
+        byokResume = yield* projectByokResume({
+          taskId: task.taskId,
+          runId: latestRun.runId,
+          events,
+          checkpoints,
+        });
+      }
     }
     let grants: CompositionGrantProjection | undefined;
     if (deps.grantRegistry !== undefined) {
@@ -196,6 +267,7 @@ const projectTask = (
             },
           }),
       ...(goalLoop === undefined ? {} : { goalLoop }),
+      ...(byokResume === undefined ? {} : { byokResume }),
       ...(grants === undefined ? {} : { grants }),
     };
   });

@@ -59,6 +59,7 @@ import {
   CompositionAgentLoopRunError,
   CompositionMcpRuntimeRpcError,
   CompositionTaskRpcError,
+  SupplierAdminRpcError,
   ThreadId,
   type TerminalAttachStreamEvent,
   type TerminalError,
@@ -97,13 +98,19 @@ import * as ByokModelDiscovery from "./provider/byok/ByokModelDiscoveryService.t
 import * as ByokBalance from "./provider/byok/ByokBalanceService.ts";
 import * as ByokDelegation from "./provider/byok/ByokDelegationService.ts";
 import * as ByokAdaptersImport from "./provider/byok/ByokAdaptersImport.ts";
+import {
+  applySupplierCredentialUpdate,
+  setSupplierInstanceEnabled,
+} from "./provider/SupplierAdminCore.ts";
 import * as CompositionAgentService from "./composition/CompositionAgentService.ts";
 import * as CompositionAgentDriverRegistry from "./composition/CompositionAgentDriverRegistry.ts";
 import * as CompositionIdeSessionRegistry from "./composition/CompositionIdeSessionRegistry.ts";
 import * as CompositionOrchestratorService from "./composition/CompositionOrchestratorService.ts";
+import * as CompositionByokResumeRedispatch from "./composition/CompositionByokResumeRedispatch.ts";
 import * as CompositionControlCenterProjection from "./composition/CompositionControlCenterProjection.ts";
 import * as CompositionGoalLoopRedispatch from "./composition/CompositionGoalLoopRedispatch.ts";
 import * as CompositionSupplierRegistryProjection from "./composition/CompositionSupplierRegistryProjection.ts";
+import { CompositionTaskInputStore } from "./persistence/Services/CompositionTaskInputStore.ts";
 import { CompositionTaskStore } from "./persistence/Services/CompositionTaskStore.ts";
 import * as CompositionTaskGraphExecutor from "./composition/CompositionTaskGraphExecutor.ts";
 import * as CompositionToolBroker from "./composition/ToolBroker.ts";
@@ -525,6 +532,7 @@ const makeWsRpcLayer = (
         CompositionOrchestratorService.CompositionOrchestratorService,
       );
       const compositionTaskStore = yield* Effect.serviceOption(CompositionTaskStore);
+      const compositionTaskInputStore = yield* Effect.serviceOption(CompositionTaskInputStore);
       const compositionGrantRegistry = yield* Effect.serviceOption(
         CompositionCapabilityGrantRegistry.CapabilityGrantRegistry,
       );
@@ -564,6 +572,32 @@ const makeWsRpcLayer = (
           code: "composition_task_failed",
           detail: String(error),
         });
+      };
+      /**
+       * BYOK 恢复重派的错误合同比 Goal Loop 版本细（not_latest / already_settled /
+       * run_terminal / task_terminal / input_missing / checkpoint 三种校验失败）。
+       * `compositionTaskError` 只按 `_tag` 取 code，会把它们塌缩成两个通用错误码，
+       * 因此这两个 tagged error 直接展开自带的 `code` 字段。
+       */
+      const compositionByokResumeError = (error: unknown) => {
+        if (typeof error === "object" && error !== null) {
+          const tagged = error as {
+            readonly _tag?: unknown;
+            readonly code?: unknown;
+            readonly detail?: unknown;
+          };
+          if (
+            (tagged._tag === "CompositionByokResumeRedispatchError" ||
+              tagged._tag === "ByokCheckpointRecoveryError") &&
+            typeof tagged.code === "string"
+          ) {
+            return new CompositionTaskRpcError({
+              code: tagged.code,
+              detail: typeof tagged.detail === "string" ? tagged.detail : String(error),
+            });
+          }
+        }
+        return compositionTaskError(error);
       };
       const compositionMcpRuntimeUnavailable = () =>
         new CompositionMcpRuntimeRpcError({
@@ -1880,6 +1914,10 @@ const makeWsRpcLayer = (
           observeRpcEffect(WS_METHODS.serverGetByokBalance, byokBalance.balance(input), {
             "rpc.aggregate": "server",
           }),
+        [WS_METHODS.serverByokBalanceDashboard]: (input) =>
+          observeRpcEffect(WS_METHODS.serverByokBalanceDashboard, byokBalance.dashboard(input), {
+            "rpc.aggregate": "server",
+          }),
         [WS_METHODS.serverSubmitByokDelegation]: (input) =>
           observeRpcEffect(WS_METHODS.serverSubmitByokDelegation, byokDelegation.submit(input), {
             "rpc.aggregate": "server",
@@ -2177,6 +2215,49 @@ const makeWsRpcLayer = (
             }),
             { "rpc.aggregate": "composition" },
           ),
+        [WS_METHODS.serverControlCenterByokResumeRedispatch]: (input) =>
+          observeRpcEffect(
+            WS_METHODS.serverControlCenterByokResumeRedispatch,
+            Effect.gen(function* () {
+              if (
+                Option.isNone(compositionTaskStore) ||
+                Option.isNone(compositionOrchestrator) ||
+                Option.isNone(compositionTaskInputStore)
+              ) {
+                return yield* compositionTaskUnavailable();
+              }
+              const nowUnixMs = yield* Clock.currentTimeMillis;
+              return yield* CompositionByokResumeRedispatch.settleAndRedispatchRecoveredByokRun({
+                taskId: input.taskId,
+                runId: input.runId,
+                agentId: input.agentId,
+                store: compositionTaskStore.value,
+                inputStore: compositionTaskInputStore.value,
+                nowUnixMs,
+                ...(input.note === undefined ? {} : { note: input.note }),
+                redispatch: ({ previousRunId }) =>
+                  Effect.asVoid(
+                    compositionOrchestrator.value.retryTask({
+                      taskId: input.taskId,
+                      previousRunId,
+                      runId: input.newRunId,
+                      reason: input.note ?? "控制中心恢复 BYOK 部分输出后重派",
+                      capabilityIds: input.capabilityIds,
+                    }),
+                  ),
+              }).pipe(
+                Effect.map(({ recovered }) => ({
+                  taskId: input.taskId,
+                  previousRunId: input.runId,
+                  newRunId: input.newRunId,
+                  recoveredChunkCount: recovered.chunkCount,
+                  recoveredUtf8Bytes: recovered.utf8Bytes,
+                })),
+                Effect.mapError(compositionByokResumeError),
+              );
+            }),
+            { "rpc.aggregate": "composition" },
+          ),
         [WS_METHODS.serverControlCenterAbandon]: (input) =>
           observeRpcEffect(
             WS_METHODS.serverControlCenterAbandon,
@@ -2226,6 +2307,58 @@ const makeWsRpcLayer = (
                   });
                 }),
             { "rpc.aggregate": "composition" },
+          ),
+        [WS_METHODS.serverSupplierSetInstanceEnabled]: (input) =>
+          observeRpcEffect(
+            WS_METHODS.serverSupplierSetInstanceEnabled,
+            Effect.gen(function* () {
+              const settings = yield* serverSettings.getSettings;
+              const outcome = setSupplierInstanceEnabled(
+                settings.providerInstances,
+                input.instanceId,
+                input.enabled,
+              );
+              if (!outcome.ok) {
+                return yield* new SupplierAdminRpcError({
+                  code: outcome.code,
+                  detail: outcome.detail,
+                });
+              }
+              yield* serverSettings.updateSettings({
+                providerInstances: outcome.value.providerInstances,
+              });
+              return { instanceId: input.instanceId, enabled: input.enabled };
+            }),
+            { "rpc.aggregate": "server" },
+          ),
+        [WS_METHODS.serverSupplierUpdateCredential]: (input) =>
+          observeRpcEffect(
+            WS_METHODS.serverSupplierUpdateCredential,
+            Effect.gen(function* () {
+              const settings = yield* serverSettings.getSettings;
+              const outcome = applySupplierCredentialUpdate(
+                settings.providerInstances,
+                input.instanceId,
+                input.credential,
+              );
+              if (!outcome.ok) {
+                // detail 只携带定位信息（实例/目标标识），绝不携带凭据值。
+                return yield* new SupplierAdminRpcError({
+                  code: outcome.code,
+                  detail: outcome.detail,
+                });
+              }
+              yield* serverSettings.updateSettings({
+                providerInstances: outcome.value.providerInstances,
+              });
+              return {
+                instanceId: input.instanceId,
+                kind: input.credential.kind,
+                target: outcome.value.target,
+                updatedFields: outcome.value.updatedFields,
+              };
+            }),
+            { "rpc.aggregate": "server" },
           ),
         [WS_METHODS.serverDiscoverSourceControl]: (_input) =>
           observeRpcEffect(

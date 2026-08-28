@@ -5,6 +5,10 @@ import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
 const mocks = vi.hoisted(() => ({
   environment: null as { readonly environmentId: string } | null,
   registryAtom: Symbol("registry"),
+  setEnabledCommand: Symbol("set-enabled-command"),
+  updateCredentialCommand: Symbol("update-credential-command"),
+  setEnabled: vi.fn(),
+  updateCredential: vi.fn(),
   registryQuery: {
     data: null as CompositionSupplierRegistryResult | null,
     error: null as string | null,
@@ -32,10 +36,20 @@ vi.mock("~/state/query", () => ({
 vi.mock("~/state/server", () => ({
   serverEnvironment: {
     supplierRegistry: () => mocks.registryAtom,
+    supplierSetInstanceEnabled: mocks.setEnabledCommand,
+    supplierUpdateCredential: mocks.updateCredentialCommand,
   },
 }));
 
-import { SupplierRegistryPanel } from "./SupplierRegistryPanel";
+vi.mock("~/state/use-atom-command", () => ({
+  useAtomCommand: (command: unknown) => {
+    if (command === mocks.setEnabledCommand) return mocks.setEnabled;
+    if (command === mocks.updateCredentialCommand) return mocks.updateCredential;
+    return vi.fn();
+  },
+}));
+
+import { SupplierRegistryPanel, buildSupplierCredentialInput } from "./SupplierRegistryPanel";
 
 const registry = (): CompositionSupplierRegistryResult => ({
   generatedAtUnixMs: 1_000,
@@ -71,6 +85,8 @@ describe("SupplierRegistryPanel", () => {
     mocks.registryQuery.error = null;
     mocks.registryQuery.isPending = false;
     mocks.registryQuery.refresh = vi.fn();
+    mocks.setEnabled = vi.fn();
+    mocks.updateCredential = vi.fn();
   });
 
   it("渲染 Supplier 条目：名称/驱动类型/启用态/账号锚点/默认模型/档案摘要", () => {
@@ -102,6 +118,35 @@ describe("SupplierRegistryPanel", () => {
     };
     const html = renderToStaticMarkup(<SupplierRegistryPanel />);
     expect(html).not.toContain("supplier-registry-orphans");
+  });
+
+  it("每个 Supplier 行渲染启用/禁用切换与凭据更新入口，表单默认不展开", () => {
+    mocks.registryQuery.data = registry();
+    const html = renderToStaticMarkup(<SupplierRegistryPanel />);
+    expect(html).toContain('data-testid="supplier-toggle-instance-byok-1"');
+    expect(html).toContain('data-testid="supplier-toggle-instance-provider-1"');
+    expect(html).toContain('data-testid="supplier-credential-toggle-instance-byok-1"');
+    expect(html).toContain('data-testid="supplier-credential-toggle-instance-provider-1"');
+    // 表单懒展开：未点击前不渲染任何凭据输入。
+    expect(html).not.toContain("supplier-credential-form-");
+    expect(html).not.toContain("supplier-credential-submit-");
+  });
+
+  it("buildSupplierCredentialInput：byok 走适配器 apiKey，其余驱动走环境变量，目标去除空白", () => {
+    expect(
+      buildSupplierCredentialInput({
+        driverKind: "byok",
+        target: " adapter-1 ",
+        secret: "sk-new",
+      }),
+    ).toEqual({ kind: "byok_adapter", adapterId: "adapter-1", apiKey: "sk-new" });
+    expect(
+      buildSupplierCredentialInput({
+        driverKind: "codex",
+        target: "CODEX_API_KEY",
+        secret: "env-secret",
+      }),
+    ).toEqual({ kind: "environment_variable", name: "CODEX_API_KEY", value: "env-secret" });
   });
 
   it("无环境/加载中/错误/空数据四种状态均正常渲染且不输出 undefined", () => {

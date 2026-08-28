@@ -63,7 +63,7 @@ export function externalLinkContextMenuItems(options: {
     {
       id: options.threadLinkAction,
       label:
-        options.threadLinkAction === "link-to-thread" ? "Link to thread" : "Unlink from thread",
+        options.threadLinkAction === "link-to-thread" ? t("linkToThread") : t("unlinkFromThread"),
     },
     ...items,
   ];

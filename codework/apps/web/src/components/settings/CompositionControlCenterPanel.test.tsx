@@ -9,10 +9,12 @@ const mocks = vi.hoisted(() => ({
   cancelCommand: Symbol("cancel-command"),
   reviewCommand: Symbol("review-command"),
   abandonCommand: Symbol("abandon-command"),
+  byokResumeCommand: Symbol("byok-resume-command"),
   redispatch: vi.fn(),
   cancel: vi.fn(),
   review: vi.fn(),
   abandon: vi.fn(),
+  byokResume: vi.fn(),
   projectionQuery: {
     data: null as CompositionControlCenterResult | null,
     error: null as string | null,
@@ -44,6 +46,7 @@ vi.mock("~/state/server", () => ({
     cancelCompositionTask: mocks.cancelCommand,
     reviewCompositionTask: mocks.reviewCommand,
     controlCenterAbandon: mocks.abandonCommand,
+    controlCenterByokResumeRedispatch: mocks.byokResumeCommand,
   },
 }));
 
@@ -53,13 +56,16 @@ vi.mock("~/state/use-atom-command", () => ({
     if (command === mocks.cancelCommand) return mocks.cancel;
     if (command === mocks.reviewCommand) return mocks.review;
     if (command === mocks.abandonCommand) return mocks.abandon;
+    if (command === mocks.byokResumeCommand) return mocks.byokResume;
     return vi.fn();
   },
 }));
 
 import {
   CompositionControlCenterPanel,
+  buildByokResumeRedispatchInput,
   buildRedispatchInput,
+  isByokResumeRedispatchable,
 } from "./CompositionControlCenterPanel";
 
 const goalLoop = (
@@ -73,12 +79,28 @@ const goalLoop = (
   settledBySupervisor: state === "supervisor_settled",
 });
 
+const byokResume = (options: {
+  readonly recoverable?: boolean;
+  readonly redispatchSettled?: boolean;
+}): NonNullable<CompositionControlCenterResult["tasks"][number]["byokResume"]> => ({
+  runId: "run-byok",
+  checkpointCount: 2,
+  recoveredUtf8Bytes: options.recoverable === false ? 0 : 42,
+  recoverable: options.recoverable ?? true,
+  redispatchSettled: options.redispatchSettled ?? false,
+  ...(options.recoverable === false
+    ? { recoveryFailureCode: "byok_checkpoint_recovery_digest_mismatch" }
+    : {}),
+});
+
 const taskWith = (options: {
   readonly taskId: string;
   readonly taskStatus?: "running" | "in_review" | "failed";
   readonly goalLoopState?: Parameters<typeof goalLoop>[0];
   readonly withLatestRun?: boolean;
   readonly latestRunStatus?: "running" | "failed" | "completed" | "cancelled" | "in_review";
+  readonly latestRunFailureCode?: string;
+  readonly byokResume?: Parameters<typeof byokResume>[0];
 }): CompositionControlCenterResult["tasks"][number] => ({
   taskId: options.taskId,
   status: options.taskStatus ?? "running",
@@ -92,8 +114,12 @@ const taskWith = (options: {
           runId: `run-${options.taskId}`,
           status: options.latestRunStatus ?? "failed",
           attempt: 2,
+          ...(options.latestRunFailureCode === undefined
+            ? {}
+            : { failureCode: options.latestRunFailureCode }),
         },
   goalLoop: options.goalLoopState === undefined ? undefined : goalLoop(options.goalLoopState),
+  ...(options.byokResume === undefined ? {} : { byokResume: byokResume(options.byokResume) }),
 });
 
 const projection = (
@@ -122,6 +148,7 @@ describe("CompositionControlCenterPanel", () => {
     mocks.cancel = vi.fn();
     mocks.review = vi.fn();
     mocks.abandon = vi.fn();
+    mocks.byokResume = vi.fn();
   });
 
   it("渲染任务行：状态徽标、Goal Loop 徽标与轮次/拒绝/grant 摘要", () => {
@@ -249,6 +276,95 @@ describe("CompositionControlCenterPanel", () => {
     expect(html).not.toContain('data-testid="control-center-abandon-task-no-run"');
     // interrupted 行同时提供自动重派与放弃结算两种收敛选择。
     expect(html).toContain('data-testid="control-center-redispatch-task-interrupted"');
+  });
+
+  it("恢复并重派按钮只对 byok_resume_interrupted 或 checkpoint 可恢复的行渲染", () => {
+    mocks.projectionQuery.data = projection([
+      // 最新 Run 被 BYOK 恢复中断（failureCode 门槛）。
+      taskWith({
+        taskId: "task-byok-interrupted",
+        latestRunFailureCode: "byok_resume_interrupted",
+      }),
+      // 存在可恢复的 checkpoint 链（投影门槛）。
+      taskWith({ taskId: "task-byok-recoverable", byokResume: {} }),
+      // checkpoint 链损坏：服务端会零副作用拒绝，不提供入口。
+      taskWith({ taskId: "task-byok-corrupt", byokResume: { recoverable: false } }),
+      // 已有恢复重派结算行：服务端按 already_settled 拒绝，不提供入口。
+      taskWith({ taskId: "task-byok-settled", byokResume: { redispatchSettled: true } }),
+      // 已结算的行即使带中断 failureCode 也不提供入口。
+      taskWith({
+        taskId: "task-byok-settled-code",
+        latestRunFailureCode: "byok_resume_interrupted",
+        byokResume: { redispatchSettled: true },
+      }),
+      // 无 BYOK checkpoint 也无中断 failureCode。
+      taskWith({ taskId: "task-plain", goalLoopState: "running", latestRunStatus: "running" }),
+      // 无最新 Run 时无法确定恢复基线。
+      taskWith({ taskId: "task-byok-no-run", withLatestRun: false, byokResume: {} }),
+    ]);
+    const html = renderToStaticMarkup(<CompositionControlCenterPanel />);
+    expect(html).toContain('data-testid="control-center-byok-resume-task-byok-interrupted"');
+    expect(html).toContain('data-testid="control-center-byok-resume-task-byok-recoverable"');
+    expect(html).not.toContain('data-testid="control-center-byok-resume-task-byok-corrupt"');
+    expect(html).not.toContain('data-testid="control-center-byok-resume-task-byok-settled"');
+    expect(html).not.toContain('data-testid="control-center-byok-resume-task-byok-settled-code"');
+    expect(html).not.toContain('data-testid="control-center-byok-resume-task-plain"');
+    expect(html).not.toContain('data-testid="control-center-byok-resume-task-byok-no-run"');
+    // 恢复并重派与自动重派共用 capabilityIds 输入，只有 BYOK 行也要渲染它。
+    expect(html).toContain("composition-control-center-capability-ids");
+    // BYOK 恢复摘要行：段数与恢复字节数/不可恢复提示。
+    expect(html).not.toContain("undefined");
+  });
+
+  it("无 BYOK 恢复态且无 Goal Loop 可操作行时不渲染 capabilityIds 输入", () => {
+    mocks.projectionQuery.data = projection([
+      taskWith({ taskId: "task-running", goalLoopState: "running", latestRunStatus: "running" }),
+      taskWith({ taskId: "task-byok-corrupt", byokResume: { recoverable: false } }),
+    ]);
+    const html = renderToStaticMarkup(<CompositionControlCenterPanel />);
+    expect(html).not.toContain("control-center-byok-resume-");
+    expect(html).not.toContain("composition-control-center-capability-ids");
+  });
+
+  it("isByokResumeRedispatchable 门槛：failureCode 或可恢复 checkpoint，已结算一律拒绝", () => {
+    expect(
+      isByokResumeRedispatchable(
+        taskWith({ taskId: "a", latestRunFailureCode: "byok_resume_interrupted" }),
+      ),
+    ).toBe(true);
+    expect(isByokResumeRedispatchable(taskWith({ taskId: "b", byokResume: {} }))).toBe(true);
+    expect(
+      isByokResumeRedispatchable(taskWith({ taskId: "c", byokResume: { recoverable: false } })),
+    ).toBe(false);
+    expect(
+      isByokResumeRedispatchable(
+        taskWith({ taskId: "d", byokResume: { redispatchSettled: true } }),
+      ),
+    ).toBe(false);
+    expect(isByokResumeRedispatchable(taskWith({ taskId: "e" }))).toBe(false);
+    expect(
+      isByokResumeRedispatchable(taskWith({ taskId: "f", withLatestRun: false, byokResume: {} })),
+    ).toBe(false);
+  });
+
+  it("buildByokResumeRedispatchInput 复用 capabilityIds 拆分并带上结算说明", () => {
+    expect(
+      buildByokResumeRedispatchInput({
+        taskId: "task-1",
+        runId: "run-1",
+        agentId: "agent-1",
+        newRunId: "t3-byok-resume-abc",
+        capabilityIdsText: " shell.exec , fs.write ,, ",
+        note: "恢复说明",
+      }),
+    ).toEqual({
+      taskId: "task-1",
+      runId: "run-1",
+      agentId: "agent-1",
+      newRunId: "t3-byok-resume-abc",
+      capabilityIds: ["shell.exec", "fs.write"],
+      note: "恢复说明",
+    });
   });
 
   it("buildRedispatchInput 拆分 capabilityIds 并保留客户端生成的新 RunId", () => {

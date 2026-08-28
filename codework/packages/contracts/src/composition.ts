@@ -547,6 +547,25 @@ export const CompositionControlCenterGoalLoop = Schema.Struct({
 });
 export type CompositionControlCenterGoalLoop = typeof CompositionControlCenterGoalLoop.Type;
 
+/**
+ * 最新 Run 的 BYOK 部分输出恢复态：控制中心"恢复并重派"入口的渲染门槛数据源。
+ * Goal Loop 五态只扫 `goalloop:*` 前缀，识别不到 BYOK checkpoint 链，故单独投影。
+ */
+export const CompositionControlCenterByokResume = Schema.Struct({
+  runId: TrimmedNonEmptyString,
+  /** `byok:` 前缀的持久化 checkpoint 行数。 */
+  checkpointCount: NonNegativeInt,
+  /** 摘要链校验通过时的恢复字节数；不可恢复时为 0。 */
+  recoveredUtf8Bytes: NonNegativeInt,
+  /** 摘要链完整可恢复（`recoverPersistedCheckpointText` 成功）。 */
+  recoverable: Schema.Boolean,
+  /** 已存在 `byok-redispatch:<task>:<run>:settle` 结算行，重复触发会被服务端拒绝。 */
+  redispatchSettled: Schema.Boolean,
+  /** 校验失败时的稳定错误码（empty/digest_mismatch/offset_gap）。 */
+  recoveryFailureCode: Schema.optional(TrimmedNonEmptyString),
+});
+export type CompositionControlCenterByokResume = typeof CompositionControlCenterByokResume.Type;
+
 export const CompositionControlCenterTask = Schema.Struct({
   taskId: TrimmedNonEmptyString,
   status: CompositionTaskStatus,
@@ -562,6 +581,7 @@ export const CompositionControlCenterTask = Schema.Struct({
     }),
   ),
   goalLoop: Schema.optional(CompositionControlCenterGoalLoop),
+  byokResume: Schema.optional(CompositionControlCenterByokResume),
   grants: Schema.optional(
     Schema.Struct({
       taskId: TrimmedNonEmptyString,
@@ -609,6 +629,33 @@ export const CompositionControlCenterRedispatchResult = Schema.Struct({
 });
 export type CompositionControlCenterRedispatchResult =
   typeof CompositionControlCenterRedispatchResult.Type;
+
+/**
+ * 控制中心"恢复并重派"操作：校验 BYOK checkpoint 链可恢复后结算陈旧 Run，
+ * 把恢复出的部分输出写回重派 prompt，再经 retryTask 创建新 Run 续跑。
+ */
+export const CompositionControlCenterByokResumeRedispatchRequest = Schema.Struct({
+  taskId: TrimmedNonEmptyString,
+  runId: TrimmedNonEmptyString,
+  agentId: TrimmedNonEmptyString,
+  newRunId: TrimmedNonEmptyString,
+  capabilityIds: Schema.Array(TrimmedNonEmptyString),
+  note: Schema.optional(TrimmedNonEmptyString),
+});
+export type CompositionControlCenterByokResumeRedispatchRequest =
+  typeof CompositionControlCenterByokResumeRedispatchRequest.Type;
+
+export const CompositionControlCenterByokResumeRedispatchResult = Schema.Struct({
+  taskId: TrimmedNonEmptyString,
+  previousRunId: TrimmedNonEmptyString,
+  newRunId: TrimmedNonEmptyString,
+  /** 恢复的 checkpoint 段数。 */
+  recoveredChunkCount: NonNegativeInt,
+  /** 恢复的部分输出字节数；恢复正文本身不回传客户端。 */
+  recoveredUtf8Bytes: NonNegativeInt,
+});
+export type CompositionControlCenterByokResumeRedispatchResult =
+  typeof CompositionControlCenterByokResumeRedispatchResult.Type;
 
 /** 控制中心"放弃结算"操作：结算未收敛 Goal Loop 并落放弃终态，不创建新 Run。 */
 export const CompositionControlCenterAbandonRequest = Schema.Struct({

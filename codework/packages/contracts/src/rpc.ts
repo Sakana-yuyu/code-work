@@ -199,7 +199,19 @@ import {
   ByokModelDiscoveryResult,
   ByokSupplierCatalogEntry,
 } from "./byokDiscovery.ts";
-import { ByokBalanceRequest, ByokBalanceResult } from "./byokBalance.ts";
+import {
+  ByokBalanceDashboardRequest,
+  ByokBalanceDashboardResult,
+  ByokBalanceRequest,
+  ByokBalanceResult,
+} from "./byokBalance.ts";
+import {
+  SupplierAdminRpcError,
+  SupplierCredentialUpdateRequest,
+  SupplierCredentialUpdateResult,
+  SupplierInstanceEnabledRequest,
+  SupplierInstanceEnabledResult,
+} from "./supplierAdmin.ts";
 import {
   ByokAdaptersImportRequest,
   ByokAdaptersImportResult,
@@ -229,6 +241,8 @@ import {
   CompositionTaskCancelRequest,
   CompositionControlCenterAbandonRequest,
   CompositionControlCenterAbandonResult,
+  CompositionControlCenterByokResumeRedispatchRequest,
+  CompositionControlCenterByokResumeRedispatchResult,
   CompositionControlCenterRedispatchRequest,
   CompositionControlCenterRedispatchResult,
   CompositionControlCenterRequest,
@@ -340,6 +354,7 @@ export const WS_METHODS = {
   serverGetByokSupplierCatalog: "server.getByokSupplierCatalog",
   serverDiscoverByokModels: "server.discoverByokModels",
   serverGetByokBalance: "server.getByokBalance",
+  serverByokBalanceDashboard: "server.byokBalanceDashboard",
   serverSubmitByokDelegation: "server.submitByokDelegation",
   serverListByokDelegations: "server.listByokDelegations",
   serverImportByokAdapters: "server.importByokAdapters",
@@ -358,8 +373,11 @@ export const WS_METHODS = {
   serverListCompositionTasks: "server.listCompositionTasks",
   serverControlCenterProjection: "server.controlCenterProjection",
   serverControlCenterRedispatch: "server.controlCenterRedispatch",
+  serverControlCenterByokResumeRedispatch: "server.controlCenterByokResumeRedispatch",
   serverControlCenterAbandon: "server.controlCenterAbandon",
   serverSupplierRegistry: "server.supplierRegistry",
+  serverSupplierSetInstanceEnabled: "server.supplierSetInstanceEnabled",
+  serverSupplierUpdateCredential: "server.supplierUpdateCredential",
   serverDiscoverSourceControl: "server.discoverSourceControl",
   serverGetTraceDiagnostics: "server.getTraceDiagnostics",
   serverGetProcessDiagnostics: "server.getProcessDiagnostics",
@@ -531,6 +549,12 @@ export const WsServerGetByokBalanceRpc = Rpc.make(WS_METHODS.serverGetByokBalanc
   error: EnvironmentAuthorizationError,
 });
 
+export const WsServerByokBalanceDashboardRpc = Rpc.make(WS_METHODS.serverByokBalanceDashboard, {
+  payload: ByokBalanceDashboardRequest,
+  success: ByokBalanceDashboardResult,
+  error: Schema.Union([ServerSettingsError, EnvironmentAuthorizationError]),
+});
+
 export const WsServerSubmitByokDelegationRpc = Rpc.make(WS_METHODS.serverSubmitByokDelegation, {
   payload: ByokDelegationSubmitRequest,
   success: ByokDelegationSnapshot,
@@ -668,6 +692,15 @@ export const WsServerControlCenterRedispatchRpc = Rpc.make(
   },
 );
 
+export const WsServerControlCenterByokResumeRedispatchRpc = Rpc.make(
+  WS_METHODS.serverControlCenterByokResumeRedispatch,
+  {
+    payload: CompositionControlCenterByokResumeRedispatchRequest,
+    success: CompositionControlCenterByokResumeRedispatchResult,
+    error: Schema.Union([CompositionTaskRpcError, EnvironmentAuthorizationError]),
+  },
+);
+
 export const WsServerControlCenterAbandonRpc = Rpc.make(WS_METHODS.serverControlCenterAbandon, {
   payload: CompositionControlCenterAbandonRequest,
   success: CompositionControlCenterAbandonResult,
@@ -679,6 +712,32 @@ export const WsServerSupplierRegistryRpc = Rpc.make(WS_METHODS.serverSupplierReg
   success: CompositionSupplierRegistryResult,
   error: Schema.Union([CompositionTaskRpcError, EnvironmentAuthorizationError]),
 });
+
+export const WsServerSupplierSetInstanceEnabledRpc = Rpc.make(
+  WS_METHODS.serverSupplierSetInstanceEnabled,
+  {
+    payload: SupplierInstanceEnabledRequest,
+    success: SupplierInstanceEnabledResult,
+    error: Schema.Union([
+      SupplierAdminRpcError,
+      ServerSettingsError,
+      EnvironmentAuthorizationError,
+    ]),
+  },
+);
+
+export const WsServerSupplierUpdateCredentialRpc = Rpc.make(
+  WS_METHODS.serverSupplierUpdateCredential,
+  {
+    payload: SupplierCredentialUpdateRequest,
+    success: SupplierCredentialUpdateResult,
+    error: Schema.Union([
+      SupplierAdminRpcError,
+      ServerSettingsError,
+      EnvironmentAuthorizationError,
+    ]),
+  },
+);
 
 export const WsServerDiscoverSourceControlRpc = Rpc.make(WS_METHODS.serverDiscoverSourceControl, {
   payload: Schema.Struct({}),
@@ -1310,6 +1369,7 @@ export const WsRpcGroup = RpcGroup.make(
   WsServerGetByokSupplierCatalogRpc,
   WsServerDiscoverByokModelsRpc,
   WsServerGetByokBalanceRpc,
+  WsServerByokBalanceDashboardRpc,
   WsServerSubmitByokDelegationRpc,
   WsServerListByokDelegationsRpc,
   WsServerImportByokAdaptersRpc,
@@ -1327,8 +1387,11 @@ export const WsRpcGroup = RpcGroup.make(
   WsServerListCompositionTasksRpc,
   WsServerControlCenterProjectionRpc,
   WsServerControlCenterRedispatchRpc,
+  WsServerControlCenterByokResumeRedispatchRpc,
   WsServerControlCenterAbandonRpc,
   WsServerSupplierRegistryRpc,
+  WsServerSupplierSetInstanceEnabledRpc,
+  WsServerSupplierUpdateCredentialRpc,
   WsServerDiscoverSourceControlRpc,
   WsServerGetTraceDiagnosticsRpc,
   WsServerGetProcessDiagnosticsRpc,
