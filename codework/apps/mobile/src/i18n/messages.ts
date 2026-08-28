@@ -811,6 +811,20 @@ export const en: Record<string, string> = {
   "controlCenter.runningSquad": "Starting…",
   "controlCenter.runSquadProject": "Project",
   "controlCenter.runSquadGoalPlaceholder": "Describe the goal for this squad…",
+  "controlCenter.dependencyPlan": "Dependency plan",
+  "controlCenter.dependencyPlanHint":
+    "Assign each node to a squad member and reference prerequisite node IDs with commas.",
+  "controlCenter.dependencyPlanEmpty": "Add the first node to define this dependency graph.",
+  "controlCenter.dependencyPlanNode": "Node {{index}}",
+  "controlCenter.addDependencyPlanNode": "Add node",
+  "controlCenter.removeDependencyPlanNode": "Remove",
+  "controlCenter.dependencyPlanNodeId": "Node ID",
+  "controlCenter.dependencyPlanNodeIdPlaceholder": "for example: implement",
+  "controlCenter.dependencyPlanAgent": "Assigned agent",
+  "controlCenter.dependencyPlanPrompt": "Prompt",
+  "controlCenter.dependencyPlanPromptPlaceholder": "Describe the work and acceptance criteria…",
+  "controlCenter.dependencyPlanDependencies": "Depends on node IDs",
+  "controlCenter.dependencyPlanDependenciesPlaceholder": "for example: research, implement",
   "controlCenter.squadRunFailed": "Squad could not be started",
   "controlCenter.squadRunAccepted": "Squad execution created",
   "controlCenter.squadRunSummary": "{{children}} child nodes · {{failures}} failures",
@@ -823,7 +837,18 @@ export const en: Record<string, string> = {
   "controlCenter.squadRunIssue.squad_configuration_incomplete":
     "This squad needs a complete Builder configuration before it can run.",
   "controlCenter.squadRunIssue.dependency_plan_required":
-    "Dependency graph mode needs an explicit plan. Configure and run it from the full Builder.",
+    "Add at least one node to the dependency plan.",
+  "controlCenter.squadRunIssue.dependency_plan_node_required":
+    "Every dependency node needs an ID, assigned agent, and prompt.",
+  "controlCenter.squadRunIssue.dependency_plan_duplicate_node":
+    "Dependency node IDs must be unique.",
+  "controlCenter.squadRunIssue.dependency_plan_agent_unknown":
+    "Every dependency node must use a member of the selected squad.",
+  "controlCenter.squadRunIssue.dependency_plan_dependency_unknown":
+    "A dependency references a node ID that is not in this plan.",
+  "controlCenter.squadRunIssue.dependency_plan_self_dependency":
+    "A dependency node cannot depend on itself.",
+  "controlCenter.squadRunIssue.dependency_plan_cycle": "The dependency plan contains a cycle.",
   "controlCenter.leader": "Leader",
   "controlCenter.members": "Members",
   "controlCenter.state.notStarted": "Not started",
@@ -1753,6 +1778,19 @@ export const zhCN: Record<string, string> = {
   "controlCenter.runningSquad": "正在启动……",
   "controlCenter.runSquadProject": "项目",
   "controlCenter.runSquadGoalPlaceholder": "描述需要 Squad 完成的目标……",
+  "controlCenter.dependencyPlan": "依赖计划",
+  "controlCenter.dependencyPlanHint": "为每个节点选择 Squad 成员，并用逗号填写前置节点 ID。",
+  "controlCenter.dependencyPlanEmpty": "添加第一个节点来定义依赖图。",
+  "controlCenter.dependencyPlanNode": "节点 {{index}}",
+  "controlCenter.addDependencyPlanNode": "添加节点",
+  "controlCenter.removeDependencyPlanNode": "移除",
+  "controlCenter.dependencyPlanNodeId": "节点 ID",
+  "controlCenter.dependencyPlanNodeIdPlaceholder": "例如：implement",
+  "controlCenter.dependencyPlanAgent": "执行 Agent",
+  "controlCenter.dependencyPlanPrompt": "任务指令",
+  "controlCenter.dependencyPlanPromptPlaceholder": "描述工作内容和验收标准……",
+  "controlCenter.dependencyPlanDependencies": "依赖节点 ID",
+  "controlCenter.dependencyPlanDependenciesPlaceholder": "例如：research, implement",
   "controlCenter.squadRunFailed": "Squad 启动失败",
   "controlCenter.squadRunAccepted": "已创建 Squad 执行",
   "controlCenter.squadRunSummary": "{{children}} 个子节点 · {{failures}} 个失败",
@@ -1764,8 +1802,16 @@ export const zhCN: Record<string, string> = {
   "controlCenter.squadRunIssue.squad_archived": "已归档 Squad 不能运行。",
   "controlCenter.squadRunIssue.squad_configuration_incomplete":
     "该 Squad 需要先在 Builder 中补齐完整配置。",
-  "controlCenter.squadRunIssue.dependency_plan_required":
-    "依赖图模式需要显式计划，请在完整 Builder 中配置后运行。",
+  "controlCenter.squadRunIssue.dependency_plan_required": "请至少添加一个依赖计划节点。",
+  "controlCenter.squadRunIssue.dependency_plan_node_required":
+    "每个依赖节点都必须填写节点 ID、执行 Agent 和任务指令。",
+  "controlCenter.squadRunIssue.dependency_plan_duplicate_node": "依赖节点 ID 不能重复。",
+  "controlCenter.squadRunIssue.dependency_plan_agent_unknown":
+    "每个依赖节点都必须选择当前 Squad 的成员。",
+  "controlCenter.squadRunIssue.dependency_plan_dependency_unknown":
+    "依赖项引用了当前计划中不存在的节点 ID。",
+  "controlCenter.squadRunIssue.dependency_plan_self_dependency": "依赖节点不能依赖自身。",
+  "controlCenter.squadRunIssue.dependency_plan_cycle": "依赖计划中存在循环依赖。",
   "controlCenter.leader": "队长",
   "controlCenter.members": "成员",
   "controlCenter.state.notStarted": "未开始",

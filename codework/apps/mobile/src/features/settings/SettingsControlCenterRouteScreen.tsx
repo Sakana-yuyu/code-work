@@ -29,6 +29,7 @@ import {
   buildControlCenterSquadRunRequest,
   buildRedispatchInput,
   buildResumeInput,
+  createControlCenterSquadPlanNodeDraft,
   formatByokDelegationMeta,
   formatByokResumeMeta,
   formatGoalLoopMeta,
@@ -38,8 +39,10 @@ import {
   resolveControlCenterEventTarget,
   resolveControlCenterTaskActions,
   sortControlCenterSquads,
+  type ControlCenterSquadPlanNodeDraft,
   type ControlCenterSquadRunIssue,
 } from "./SettingsControlCenterRouteScreen.logic";
+import { squadMemberRoleLabelKey } from "./SettingsSquadBuilderRouteScreen.logic";
 
 const goalLoopStateLabel = (state: string): string => {
   const key = goalLoopStateLabelKey(state);
@@ -93,6 +96,7 @@ export function SettingsControlCenterRouteScreen() {
   const [selectedSquadId, setSelectedSquadId] = useState<string | null>(null);
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
   const [squadGoal, setSquadGoal] = useState("");
+  const [squadPlanDrafts, setSquadPlanDrafts] = useState<ControlCenterSquadPlanNodeDraft[]>([]);
   const [squadRunPending, setSquadRunPending] = useState(false);
   const [squadRunError, setSquadRunError] = useState<string | null>(null);
   const [squadRunResult, setSquadRunResult] = useState<CompositionSquadExecutionResult | null>(
@@ -113,6 +117,7 @@ export function SettingsControlCenterRouteScreen() {
     squad: selectedSquad,
     project: selectedProject,
     goal: squadGoal,
+    planDrafts: squadPlanDrafts,
   });
   const eventTarget = resolveControlCenterEventTarget(projection?.tasks ?? [], selectedEventTaskId);
   const eventsQuery = useEnvironmentQuery(
@@ -229,6 +234,38 @@ export function SettingsControlCenterRouteScreen() {
       }),
     );
 
+  const selectSquad = (squadId: string): void => {
+    setSelectedSquadId(squadId);
+    setSquadPlanDrafts([]);
+    setSquadRunError(null);
+    setSquadRunResult(null);
+  };
+
+  const addSquadPlanNode = (): void => {
+    const agentId = selectedSquad?.members?.[0]?.agentId ?? "";
+    setSquadPlanDrafts((current) => [
+      ...current,
+      createControlCenterSquadPlanNodeDraft({
+        clientId: uuidv4(),
+        agentId,
+        current,
+      }),
+    ]);
+  };
+
+  const patchSquadPlanNode = (
+    clientId: string,
+    patch: Partial<Omit<ControlCenterSquadPlanNodeDraft, "clientId">>,
+  ): void => {
+    setSquadPlanDrafts((current) =>
+      current.map((node) => (node.clientId === clientId ? { ...node, ...patch } : node)),
+    );
+  };
+
+  const removeSquadPlanNode = (clientId: string): void => {
+    setSquadPlanDrafts((current) => current.filter((node) => node.clientId !== clientId));
+  };
+
   const runSelectedSquad = async (): Promise<void> => {
     if (environmentId === null || squadRunPending) return;
     const built = buildControlCenterSquadRunRequest({
@@ -236,6 +273,7 @@ export function SettingsControlCenterRouteScreen() {
       squad: selectedSquad,
       project: selectedProject,
       goal: squadGoal,
+      planDrafts: squadPlanDrafts,
     });
     if (built.request === null) {
       setSquadRunError(squadRunIssueLabel(built.issue ?? "squad_missing"));
@@ -252,6 +290,7 @@ export function SettingsControlCenterRouteScreen() {
     } else {
       setSquadRunResult(result.value);
       setSquadGoal("");
+      setSquadPlanDrafts([]);
       projectionQuery.refresh();
       eventsQuery.refresh();
     }
@@ -352,7 +391,7 @@ export function SettingsControlCenterRouteScreen() {
                       key={squad.squadId}
                       accessibilityRole="radio"
                       accessibilityState={{ selected }}
-                      onPress={() => setSelectedSquadId(squad.squadId)}
+                      onPress={() => selectSquad(squad.squadId)}
                       className={`${index === 0 ? "" : "border-t border-border-subtle "}${selected ? "bg-subtle " : ""}gap-0.5 p-4`}
                     >
                       <Text className="text-base text-foreground">{squad.name}</Text>
@@ -405,6 +444,112 @@ export function SettingsControlCenterRouteScreen() {
                 className="min-h-28"
                 placeholder={t("controlCenter.runSquadGoalPlaceholder")}
               />
+              {selectedSquad?.collaborationMode === "dependency_graph" ? (
+                <View className="gap-3 border-t border-border-subtle pt-3">
+                  <View className="gap-1">
+                    <Text className="text-sm font-t3-medium text-foreground">
+                      {t("controlCenter.dependencyPlan")}
+                    </Text>
+                    <Text className="text-sm text-foreground-muted">
+                      {t("controlCenter.dependencyPlanHint")}
+                    </Text>
+                  </View>
+                  {squadPlanDrafts.length === 0 ? (
+                    <Text className="text-sm text-foreground-muted">
+                      {t("controlCenter.dependencyPlanEmpty")}
+                    </Text>
+                  ) : (
+                    squadPlanDrafts.map((node, index) => (
+                      <View
+                        key={node.clientId}
+                        className={`${index === 0 ? "" : "border-t border-border-subtle pt-3 "}gap-3`}
+                      >
+                        <View className="flex-row items-center justify-between gap-3">
+                          <Text className="text-sm font-t3-medium text-foreground">
+                            {t("controlCenter.dependencyPlanNode", { index: index + 1 })}
+                          </Text>
+                          <ActionButton
+                            label={t("controlCenter.removeDependencyPlanNode")}
+                            disabled={squadRunPending}
+                            onPress={() => removeSquadPlanNode(node.clientId)}
+                          />
+                        </View>
+                        <View className="gap-2">
+                          <Text className="text-sm text-foreground-muted">
+                            {t("controlCenter.dependencyPlanNodeId")}
+                          </Text>
+                          <TextInput
+                            value={node.nodeId}
+                            onChangeText={(nodeId) => patchSquadPlanNode(node.clientId, { nodeId })}
+                            editable={!squadRunPending}
+                            autoCapitalize="none"
+                            autoCorrect={false}
+                            placeholder={t("controlCenter.dependencyPlanNodeIdPlaceholder")}
+                          />
+                        </View>
+                        <View className="gap-2">
+                          <Text className="text-sm text-foreground-muted">
+                            {t("controlCenter.dependencyPlanAgent")}
+                          </Text>
+                          <View className="flex-row flex-wrap gap-2">
+                            {(selectedSquad.members ?? []).map((member) => {
+                              const roleLabelKey = squadMemberRoleLabelKey(member.role);
+                              const roleLabel =
+                                roleLabelKey === null ? member.role : t(roleLabelKey);
+                              return (
+                                <ActionButton
+                                  key={member.agentId}
+                                  label={`${member.agentId} · ${roleLabel}`}
+                                  disabled={squadRunPending}
+                                  emphasized={member.agentId === node.agentId}
+                                  onPress={() =>
+                                    patchSquadPlanNode(node.clientId, { agentId: member.agentId })
+                                  }
+                                />
+                              );
+                            })}
+                          </View>
+                        </View>
+                        <View className="gap-2">
+                          <Text className="text-sm text-foreground-muted">
+                            {t("controlCenter.dependencyPlanPrompt")}
+                          </Text>
+                          <TextInput
+                            value={node.prompt}
+                            onChangeText={(prompt) => patchSquadPlanNode(node.clientId, { prompt })}
+                            editable={!squadRunPending}
+                            multiline
+                            textAlignVertical="top"
+                            className="min-h-24"
+                            placeholder={t("controlCenter.dependencyPlanPromptPlaceholder")}
+                          />
+                        </View>
+                        <View className="gap-2">
+                          <Text className="text-sm text-foreground-muted">
+                            {t("controlCenter.dependencyPlanDependencies")}
+                          </Text>
+                          <TextInput
+                            value={node.dependsOnNodeIdsText}
+                            onChangeText={(dependsOnNodeIdsText) =>
+                              patchSquadPlanNode(node.clientId, { dependsOnNodeIdsText })
+                            }
+                            editable={!squadRunPending}
+                            autoCapitalize="none"
+                            autoCorrect={false}
+                            placeholder={t("controlCenter.dependencyPlanDependenciesPlaceholder")}
+                          />
+                        </View>
+                      </View>
+                    ))
+                  )}
+                  <ActionButton
+                    label={t("controlCenter.addDependencyPlanNode")}
+                    disabled={squadRunPending}
+                    emphasized
+                    onPress={addSquadPlanNode}
+                  />
+                </View>
+              ) : null}
               {squadRunBuild.issue === null ? null : (
                 <Text className="text-sm text-warning-foreground">
                   {squadRunIssueLabel(squadRunBuild.issue)}

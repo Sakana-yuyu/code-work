@@ -10,6 +10,7 @@ import {
   buildControlCenterSquadRunRequest,
   buildRedispatchInput,
   buildResumeInput,
+  createControlCenterSquadPlanNodeDraft,
   formatByokDelegationMeta,
   formatByokResumeMeta,
   formatGoalLoopMeta,
@@ -343,7 +344,7 @@ describe("buildControlCenterSquadRunRequest", () => {
     });
   });
 
-  it("rejects missing inputs, incomplete squads, archived squads, and dependency graph runs", () => {
+  it("rejects missing inputs, incomplete squads, archived squads, and missing dependency plans", () => {
     const base = {
       executionId: "mobile-execution-1",
       squad: executableSquad,
@@ -378,6 +379,158 @@ describe("buildControlCenterSquadRunRequest", () => {
         squad: { ...executableSquad, collaborationMode: "dependency_graph" },
       }).issue,
     ).toBe("dependency_plan_required");
+  });
+
+  it("builds an explicit dependency graph plan after trimming node fields", () => {
+    const result = buildControlCenterSquadRunRequest({
+      executionId: "mobile-execution-graph",
+      squad: { ...executableSquad, collaborationMode: "dependency_graph" },
+      project: { id: "project-1", workspaceRoot: "E:/MyProject/code-work" },
+      goal: "执行依赖图",
+      planDrafts: [
+        {
+          clientId: "node-1",
+          nodeId: " contracts ",
+          agentId: " agent-worker ",
+          prompt: " 完成合同 ",
+          dependsOnNodeIdsText: "",
+        },
+        {
+          clientId: "node-2",
+          nodeId: " review ",
+          agentId: " agent-lead ",
+          prompt: " 审查合同 ",
+          dependsOnNodeIdsText: " contracts ",
+        },
+      ],
+    });
+
+    expect(result.issue).toBeNull();
+    expect(result.request?.plan).toEqual([
+      {
+        nodeId: "contracts",
+        agentId: "agent-worker",
+        prompt: "完成合同",
+        dependsOnNodeIds: [],
+      },
+      {
+        nodeId: "review",
+        agentId: "agent-lead",
+        prompt: "审查合同",
+        dependsOnNodeIds: ["contracts"],
+      },
+    ]);
+  });
+
+  it("rejects unknown agents, unknown dependencies, and cyclic dependency plans", () => {
+    const base = {
+      executionId: "mobile-execution-graph",
+      squad: { ...executableSquad, collaborationMode: "dependency_graph" as const },
+      project: { id: "project-1", workspaceRoot: "E:/MyProject/code-work" },
+      goal: "执行依赖图",
+    };
+    const node = {
+      clientId: "node-1",
+      nodeId: "node-a",
+      agentId: "agent-worker",
+      prompt: "执行 A",
+      dependsOnNodeIdsText: "",
+    };
+
+    expect(
+      buildControlCenterSquadRunRequest({
+        ...base,
+        planDrafts: [{ ...node, agentId: "agent-outside" }],
+      }).issue,
+    ).toBe("dependency_plan_agent_unknown");
+    expect(
+      buildControlCenterSquadRunRequest({
+        ...base,
+        planDrafts: [{ ...node, dependsOnNodeIdsText: "missing" }],
+      }).issue,
+    ).toBe("dependency_plan_dependency_unknown");
+    expect(
+      buildControlCenterSquadRunRequest({
+        ...base,
+        planDrafts: [
+          { ...node, dependsOnNodeIdsText: "node-b" },
+          {
+            ...node,
+            clientId: "node-2",
+            nodeId: "node-b",
+            dependsOnNodeIdsText: "node-a",
+          },
+        ],
+      }).issue,
+    ).toBe("dependency_plan_cycle");
+  });
+
+  it("rejects incomplete, duplicate, and self-dependent dependency nodes", () => {
+    const base = {
+      executionId: "mobile-execution-graph",
+      squad: { ...executableSquad, collaborationMode: "dependency_graph" as const },
+      project: { id: "project-1", workspaceRoot: "E:/MyProject/code-work" },
+      goal: "执行依赖图",
+    };
+    const node = {
+      clientId: "node-1",
+      nodeId: "node-a",
+      agentId: "agent-worker",
+      prompt: "执行 A",
+      dependsOnNodeIdsText: "",
+    };
+
+    expect(
+      buildControlCenterSquadRunRequest({
+        ...base,
+        planDrafts: [{ ...node, prompt: " " }],
+      }).issue,
+    ).toBe("dependency_plan_node_required");
+    expect(
+      buildControlCenterSquadRunRequest({
+        ...base,
+        planDrafts: [node, { ...node, clientId: "node-2" }],
+      }).issue,
+    ).toBe("dependency_plan_duplicate_node");
+    expect(
+      buildControlCenterSquadRunRequest({
+        ...base,
+        planDrafts: [{ ...node, dependsOnNodeIdsText: "node-a" }],
+      }).issue,
+    ).toBe("dependency_plan_self_dependency");
+  });
+});
+
+describe("createControlCenterSquadPlanNodeDraft", () => {
+  it("uses the first available generated node ID after nodes are removed", () => {
+    expect(
+      createControlCenterSquadPlanNodeDraft({
+        clientId: "draft-3",
+        agentId: "agent-worker",
+        current: [
+          {
+            clientId: "draft-1",
+            nodeId: "node-1",
+            agentId: "agent-worker",
+            prompt: "执行 A",
+            dependsOnNodeIdsText: "",
+          },
+          {
+            clientId: "draft-2",
+            nodeId: "node-3",
+            agentId: "agent-worker",
+            prompt: "执行 C",
+            dependsOnNodeIdsText: "node-1",
+          },
+        ],
+      }),
+    ).toEqual({
+      clientId: "draft-3",
+      nodeId: "node-2",
+      agentId: "agent-worker",
+      prompt: "",
+      dependsOnNodeIdsText: "",
+    });
   });
 });
 

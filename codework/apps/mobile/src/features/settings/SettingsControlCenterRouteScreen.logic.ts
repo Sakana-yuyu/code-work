@@ -6,6 +6,7 @@ import {
   type CompositionControlCenterTask,
   type CompositionSquad,
   type CompositionSquadExecutionRequest,
+  type CompositionSquadPlanNode,
   type CompositionTaskResumeRequest,
 } from "@codework/contracts";
 
@@ -77,13 +78,74 @@ export type ControlCenterSquadRunIssue =
   | "goal_required"
   | "squad_archived"
   | "squad_configuration_incomplete"
-  | "dependency_plan_required";
+  | "dependency_plan_required"
+  | "dependency_plan_node_required"
+  | "dependency_plan_duplicate_node"
+  | "dependency_plan_agent_unknown"
+  | "dependency_plan_dependency_unknown"
+  | "dependency_plan_self_dependency"
+  | "dependency_plan_cycle";
+
+export interface ControlCenterSquadPlanNodeDraft {
+  readonly clientId: string;
+  readonly nodeId: string;
+  readonly agentId: string;
+  readonly prompt: string;
+  readonly dependsOnNodeIdsText: string;
+}
+
+export const createControlCenterSquadPlanNodeDraft = (input: {
+  readonly clientId: string;
+  readonly agentId: string;
+  readonly current: ReadonlyArray<ControlCenterSquadPlanNodeDraft>;
+}): ControlCenterSquadPlanNodeDraft => {
+  const occupiedNodeIds = new Set(input.current.map((node) => node.nodeId.trim()));
+  let nextNodeNumber = 1;
+  while (occupiedNodeIds.has(`node-${nextNodeNumber}`)) nextNodeNumber += 1;
+  return {
+    clientId: input.clientId,
+    nodeId: `node-${nextNodeNumber}`,
+    agentId: input.agentId,
+    prompt: "",
+    dependsOnNodeIdsText: "",
+  };
+};
+
+const dependencyIdsFromText = (value: string): ReadonlyArray<string> => [
+  ...new Set(
+    value
+      .split(",")
+      .map((item) => item.trim())
+      .filter(Boolean),
+  ),
+];
+
+const dependencyPlanHasCycle = (plan: ReadonlyArray<CompositionSquadPlanNode>): boolean => {
+  const dependenciesByNodeId = new Map(plan.map((node) => [node.nodeId, node.dependsOnNodeIds]));
+  const visiting = new Set<string>();
+  const visited = new Set<string>();
+
+  const visit = (nodeId: string): boolean => {
+    if (visiting.has(nodeId)) return true;
+    if (visited.has(nodeId)) return false;
+    visiting.add(nodeId);
+    for (const dependencyId of dependenciesByNodeId.get(nodeId) ?? []) {
+      if (visit(dependencyId)) return true;
+    }
+    visiting.delete(nodeId);
+    visited.add(nodeId);
+    return false;
+  };
+
+  return plan.some((node) => visit(node.nodeId));
+};
 
 export const buildControlCenterSquadRunRequest = (input: {
   readonly executionId: string;
   readonly squad: CompositionSquad | null;
   readonly project: { readonly id: string; readonly workspaceRoot: string } | null;
   readonly goal: string;
+  readonly planDrafts?: ReadonlyArray<ControlCenterSquadPlanNodeDraft>;
 }): {
   readonly request: CompositionSquadExecutionRequest | null;
   readonly issue: ControlCenterSquadRunIssue | null;
@@ -105,8 +167,38 @@ export const buildControlCenterSquadRunRequest = (input: {
   ) {
     return { request: null, issue: "squad_configuration_incomplete" };
   }
+  let plan: ReadonlyArray<CompositionSquadPlanNode> | undefined;
   if (squad.collaborationMode === "dependency_graph") {
-    return { request: null, issue: "dependency_plan_required" };
+    const drafts = input.planDrafts ?? [];
+    if (drafts.length === 0) return { request: null, issue: "dependency_plan_required" };
+    plan = drafts.map((draft) => ({
+      nodeId: draft.nodeId.trim(),
+      agentId: draft.agentId.trim(),
+      prompt: draft.prompt.trim(),
+      dependsOnNodeIds: dependencyIdsFromText(draft.dependsOnNodeIdsText),
+    }));
+    if (plan.some((node) => node.nodeId === "" || node.agentId === "" || node.prompt === "")) {
+      return { request: null, issue: "dependency_plan_node_required" };
+    }
+    const nodeIds = new Set(plan.map((node) => node.nodeId));
+    if (nodeIds.size !== plan.length) {
+      return { request: null, issue: "dependency_plan_duplicate_node" };
+    }
+    const squadAgentIds = new Set(squad.members.map((member) => member.agentId));
+    if (plan.some((node) => !squadAgentIds.has(node.agentId))) {
+      return { request: null, issue: "dependency_plan_agent_unknown" };
+    }
+    if (
+      plan.some((node) => node.dependsOnNodeIds.some((dependencyId) => !nodeIds.has(dependencyId)))
+    ) {
+      return { request: null, issue: "dependency_plan_dependency_unknown" };
+    }
+    if (plan.some((node) => node.dependsOnNodeIds.includes(node.nodeId))) {
+      return { request: null, issue: "dependency_plan_self_dependency" };
+    }
+    if (dependencyPlanHasCycle(plan)) {
+      return { request: null, issue: "dependency_plan_cycle" };
+    }
   }
   return {
     request: {
@@ -116,6 +208,7 @@ export const buildControlCenterSquadRunRequest = (input: {
       projectId: project.id,
       goal,
       workspaceRoot: project.workspaceRoot,
+      ...(plan === undefined ? {} : { plan }),
     },
     issue: null,
   };
