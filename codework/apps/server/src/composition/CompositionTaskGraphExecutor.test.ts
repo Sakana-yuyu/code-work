@@ -397,6 +397,81 @@ describe("CompositionTaskGraphExecutor", () => {
       ),
   );
 
+  it.effect("权限失败即使保留尝试次数也不会自动重试", () =>
+    Effect.gen(function* () {
+      const child = {
+        nodeId: "permission-child",
+        taskId: "permission-task",
+        runId: "permission-run",
+        projectId: "project-graph",
+        assigneeKind: "agent" as const,
+        assigneeId: "permission-agent",
+        mode: "parallel" as const,
+        promptDigest: "sha256:permission",
+        prompt: "执行需要额外权限的任务",
+        workspaceRoot: "C:/workspace",
+        capabilityIds: ["test.permission"],
+        maxAttempts: 3,
+      };
+      const task: CompositionTask = {
+        taskId: child.taskId,
+        projectId: child.projectId,
+        assigneeKind: child.assigneeKind,
+        assigneeId: child.assigneeId,
+        mode: child.mode,
+        status: "failed",
+        promptDigest: child.promptDigest,
+        dependsOnTaskIds: [],
+        createdAtUnixMs: 1,
+        updatedAtUnixMs: 1,
+      };
+      const makeFailedRun = (runId: string, attempt: number): CompositionTaskRun => ({
+        runId,
+        taskId: child.taskId,
+        agentId: child.assigneeId,
+        runtimeId: "permission-runtime",
+        status: "failed",
+        attempt,
+        capabilityGrantIds: [],
+        failureCode: "permission_error",
+        resultSummary: "缺少执行权限",
+      });
+      let retryCalls = 0;
+      const executor = makeCompositionTaskGraphExecutor({
+        orchestrator: {
+          dispatchTask: () =>
+            Effect.succeed({
+              task,
+              run: makeFailedRun(child.runId, 1),
+            } satisfies CompositionTaskDispatchResult),
+          retryTask: ({ runId }) =>
+            Effect.sync(() => {
+              retryCalls += 1;
+              return {
+                task,
+                run: makeFailedRun(runId, retryCalls + 1),
+              } satisfies CompositionTaskDispatchResult;
+            }),
+          cancelTask: () => Effect.die("本测试没有仍在运行的任务"),
+        },
+        store: { getTask: () => Effect.succeed(Option.some(task)) },
+        runtime: { awaitTaskCompletion: () => Effect.die("初始 Run 已是终态") },
+      });
+
+      const error = yield* Effect.flip(
+        executor.execute({
+          leader: baseLeader,
+          children: [child],
+        }),
+      );
+
+      expect(retryCalls).toBe(0);
+      expect(error).toMatchObject({ code: "child_failed", nodeId: child.nodeId });
+      expect(error.detail).toContain("失败码=permission_error");
+      expect(error.detail).toContain("失败分类=permission");
+    }),
+  );
+
   it.effect("并行子任务失败时取消仍在运行的兄弟任务，并且不派发 Leader", () =>
     Effect.gen(function* () {
       const childBStarted = yield* Deferred.make<void>();

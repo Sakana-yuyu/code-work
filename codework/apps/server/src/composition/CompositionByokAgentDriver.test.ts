@@ -503,6 +503,40 @@ describe("CompositionByokAgentDriver", () => {
     }),
   );
 
+  effectIt.effect("把稳定失败码和错误类别写入 runtime.error", () =>
+    Effect.gen(function* () {
+      const checkpointLedger = makeCheckpointLedger();
+      const driver = makeCompositionByokAgentDriver({
+        agentId: "provider:byok",
+        runtimeId: "provider:byok",
+        providerInstanceId: "byok",
+        agentService: {
+          run: () =>
+            Effect.fail(
+              new CompositionAgentServiceError({
+                code: "temporary_model_failure",
+                detail: "Provider 暂时不可用",
+              }),
+            ),
+        },
+        checkpointStore: checkpointLedger.store,
+        listTools: () => Effect.succeed(tools),
+      });
+      const eventsFiber = yield* collectUntilTerminal(driver).pipe(Effect.forkChild);
+
+      yield* start(driver);
+      const events = yield* Fiber.join(eventsFiber);
+
+      expect(events.find((event) => event.type === "runtime.error")).toMatchObject({
+        type: "runtime.error",
+        payload: {
+          class: "transport_error",
+          detail: { failureCode: "temporary_model_failure" },
+        },
+      });
+    }),
+  );
+
   effectIt.effect("checkpoint 持久化失败时显式失败且不发布未落盘正文", () =>
     Effect.gen(function* () {
       const service: CompositionAgentServiceShape = {

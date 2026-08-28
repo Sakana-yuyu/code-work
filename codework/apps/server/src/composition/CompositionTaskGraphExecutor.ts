@@ -12,6 +12,7 @@ import * as Schema from "effect/Schema";
 
 import type { CompositionTaskStoreShape } from "../persistence/Services/CompositionTaskStore.ts";
 import { CompositionTaskStore } from "../persistence/Services/CompositionTaskStore.ts";
+import { classifyCompositionFailure } from "./CompositionFailurePolicy.ts";
 import {
   type CompositionDispatchInput,
   type CompositionDispatchResult,
@@ -336,11 +337,12 @@ const make = (options: GraphExecutorOptions): CompositionTaskGraphExecutorShape 
             dispatches,
           } satisfies CompositionTaskGraphNodeResult;
         }
-        if (dispatches.length >= maxAttempts) {
+        const failure = classifyCompositionFailure(settled.run);
+        if (dispatches.length >= maxAttempts || !failure.retryable) {
           activeNodes.delete(started);
           return yield* graphError(
             "child_failed",
-            `子任务未完成：${settled.run.failureCode ?? settled.run.status}；${settled.run.resultSummary ?? "无结果摘要"}`,
+            `子任务未完成：失败码=${failure.code}；失败分类=${failure.category}；恢复动作=${failure.recovery}；${settled.run.resultSummary ?? "无结果摘要"}`,
             node.nodeId,
           );
         }

@@ -7,7 +7,7 @@ import {
   CompositionAgentServiceError,
   makeCompositionAgentService,
 } from "./CompositionAgentService.ts";
-import type { ByokAgentModelDriver } from "./ByokAgentLoop.ts";
+import { ByokAgentModelError, type ByokAgentModelDriver } from "./ByokAgentLoop.ts";
 import type * as ToolBroker from "./ToolBroker.ts";
 import type * as ProviderInstanceRegistry from "../provider/Services/ProviderInstanceRegistry.ts";
 import { makeCompositionAgentServiceFromRegistry } from "./CompositionAgentService.ts";
@@ -143,6 +143,27 @@ describe("CompositionAgentService", () => {
       code: "agent_loop_unsupported",
     });
   });
+
+  effectIt.effect("保留模型驱动返回的稳定失败码", () =>
+    Effect.gen(function* () {
+      const service = makeCompositionAgentService({
+        broker: makeBroker(),
+        resolveModelDriver: () =>
+          Effect.succeed({
+            complete: () =>
+              Stream.fail(
+                new ByokAgentModelError({
+                  code: "temporary_model_failure",
+                  detail: "Provider 暂时不可用",
+                }),
+              ),
+          }),
+      });
+
+      const error = yield* Effect.flip(service.run(input));
+      expect(error).toMatchObject({ code: "temporary_model_failure" });
+    }),
+  );
 
   it("returns a stable error when the selected provider has no composition driver", async () => {
     const registry = {

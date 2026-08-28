@@ -150,7 +150,7 @@ const make = (options: CompositionAgentServiceOptions): CompositionAgentServiceS
         Effect.mapError(
           (error) =>
             new CompositionAgentServiceError({
-              code: error._tag === "ByokAgentLoopCheckpointError" ? error.code : error._tag,
+              code: "code" in error && typeof error.code === "string" ? error.code : error._tag,
               detail: error.message,
             }),
         ),

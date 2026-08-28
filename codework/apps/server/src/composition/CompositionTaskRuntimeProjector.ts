@@ -66,6 +66,22 @@ const nonEmpty = (value: unknown): string | undefined => {
 
 const summaryOf = (value: unknown, fallback: string): string => nonEmpty(value) ?? fallback;
 
+const runtimeFailureCode = (
+  payload: Extract<ProviderRuntimeEvent, { readonly type: "runtime.error" }>["payload"],
+): string => {
+  const detail =
+    typeof payload.detail === "object" && payload.detail !== null && !Array.isArray(payload.detail)
+      ? (payload.detail as Record<string, unknown>)
+      : undefined;
+  const structuredCode = nonEmpty(detail?.failureCode);
+  if (structuredCode !== undefined) return structuredCode;
+  return payload.class === undefined ||
+    payload.class === "unknown" ||
+    payload.class === "provider_error"
+    ? "provider_runtime_error"
+    : payload.class;
+};
+
 type CompositionRuntimeEventBinding = {
   readonly driver?: CompositionAgentDriver;
   readonly taskId: string;
@@ -350,7 +366,7 @@ const projectEvent = (
         status: "failed",
         eventType: "status",
         summary: event.payload.message,
-        failureCode: "provider_runtime_error",
+        failureCode: runtimeFailureCode(event.payload),
         runtimeTerminal: true,
       };
     default:

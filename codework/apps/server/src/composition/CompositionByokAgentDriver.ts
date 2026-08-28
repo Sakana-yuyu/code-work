@@ -28,6 +28,10 @@ import {
   type CompositionAgentDriver,
 } from "./CompositionOrchestrator.ts";
 import { recoverPersistedCheckpointText } from "./CompositionByokCheckpointRecovery.ts";
+import {
+  classifyCompositionFailure,
+  type CompositionFailureCategory,
+} from "./CompositionFailurePolicy.ts";
 import type { CompositionTaskStoreShape } from "../persistence/Services/CompositionTaskStore.ts";
 
 export type CompositionByokAgentDriverOptions = {
@@ -62,6 +66,28 @@ type CompletedRun = Omit<ActiveRun, "fiber" | "abortController" | "terminalOwner
 
 const errorDetail = (error: unknown): string =>
   error instanceof Error ? error.message : String(error);
+
+const stableErrorCode = (error: unknown): string | undefined => {
+  if (typeof error !== "object" || error === null || !("code" in error)) return undefined;
+  const code = error.code;
+  return typeof code === "string" && code.trim().length > 0 ? code.trim() : undefined;
+};
+
+const runtimeErrorClass = (
+  category: CompositionFailureCategory,
+): "provider_error" | "transport_error" | "permission_error" | "validation_error" => {
+  switch (category) {
+    case "transport":
+    case "capacity":
+      return "transport_error";
+    case "permission":
+      return "permission_error";
+    case "configuration":
+      return "validation_error";
+    default:
+      return "provider_error";
+  }
+};
 
 const runtimeTaskIdFor = (runtimeId: string, taskId: string, runId: string): RuntimeTaskId =>
   RuntimeTaskId.make(`${runtimeId}:task:${taskId}:${runId}`);
@@ -432,7 +458,13 @@ export const makeCompositionByokAgentDriver = (
             ? Effect.void
             : Effect.gen(function* () {
                 if (!claimTerminal(active, "completion")) return;
-                const detail = errorDetail(cause);
+                const failure = Cause.squash(cause);
+                const detail = errorDetail(failure);
+                const failureCode = stableErrorCode(failure);
+                const classification = classifyCompositionFailure({
+                  status: "failed",
+                  ...(failureCode === undefined ? {} : { failureCode }),
+                });
                 completedRuns.set(input.run.runId, completed);
                 yield* publish(deterministicEventId(runtimeTaskId, "runtime.error"), {
                   provider: ProviderDriverKind.make("byok"),
@@ -440,7 +472,11 @@ export const makeCompositionByokAgentDriver = (
                   threadId,
                   turnId,
                   type: "runtime.error",
-                  payload: { message: detail, class: "provider_error" },
+                  payload: {
+                    message: detail,
+                    class: runtimeErrorClass(classification.category),
+                    ...(failureCode === undefined ? {} : { detail: { failureCode } }),
+                  },
                   raw,
                 });
                 yield* publish(deterministicEventId(runtimeTaskId, "turn.completed", "failed"), {
