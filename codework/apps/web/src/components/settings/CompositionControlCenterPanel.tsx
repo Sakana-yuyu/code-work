@@ -4,13 +4,14 @@ import {
   type CompositionControlCenterByokResumeRedispatchRequest,
   type CompositionControlCenterRedispatchRequest,
   type CompositionControlCenterResult,
+  type CompositionTaskResumeRequest,
   type EnvironmentId,
 } from "@codework/contracts";
 import {
   squashAtomCommandFailure,
   type AtomCommandResult,
 } from "@codework/client-runtime/state/runtime";
-import { RefreshCwIcon } from "lucide-react";
+import { CheckIcon, InboxIcon, PlayIcon, RefreshCwIcon, XIcon } from "lucide-react";
 import { useState } from "react";
 
 import { randomUUID } from "~/lib/utils";
@@ -37,6 +38,12 @@ const goalLoopStateLabel = (state: string): string => {
   const key = GOAL_LOOP_STATE_LABEL_KEYS[state];
   return key === undefined ? state : t(key);
 };
+
+const HUMAN_ACTION_KIND_LABEL_KEYS = {
+  approval: "controlCenter.inboxKind.approval",
+  input: "controlCenter.inboxKind.input",
+  review: "controlCenter.inboxKind.review",
+} as const;
 
 const REDISPATCHABLE_GOAL_LOOP_STATES: ReadonlySet<string> = new Set([
   "interrupted",
@@ -88,6 +95,16 @@ export const buildByokResumeRedispatchInput = (input: {
   note: input.note,
 });
 
+export const buildResumeInput = (input: {
+  readonly taskId: string;
+  readonly runId: string;
+  readonly reason: string;
+}): CompositionTaskResumeRequest => ({
+  taskId: input.taskId,
+  runId: input.runId,
+  reason: input.reason,
+});
+
 export function CompositionControlCenterPanel() {
   const primaryEnvironment = usePrimaryEnvironment();
   const environmentId = primaryEnvironment?.environmentId ?? null;
@@ -100,6 +117,9 @@ export function CompositionControlCenterPanel() {
     reportFailure: false,
   });
   const cancelCompositionTask = useAtomCommand(serverEnvironment.cancelCompositionTask, {
+    reportFailure: false,
+  });
+  const resumeCompositionTask = useAtomCommand(serverEnvironment.resumeCompositionTask, {
     reportFailure: false,
   });
   const reviewCompositionTask = useAtomCommand(serverEnvironment.reviewCompositionTask, {
@@ -117,6 +137,12 @@ export function CompositionControlCenterPanel() {
   const [actionError, setActionError] = useState<string | null>(null);
 
   const projection: CompositionControlCenterResult | null = projectionQuery.data ?? null;
+  const humanActionTasks =
+    projection === null
+      ? []
+      : projection.tasks.filter(
+          (task) => task.humanAction !== undefined && !isByokDelegationControlTask(task),
+        );
 
   const runRowCommand = async (
     taskId: string,
@@ -185,6 +211,18 @@ export function CompositionControlCenterPanel() {
       }),
     );
 
+  const resume = (input: { readonly taskId: string; readonly runId: string }): Promise<void> =>
+    runRowCommand(input.taskId, "controlCenter.resumeFailed", (envId) =>
+      resumeCompositionTask({
+        environmentId: envId,
+        input: buildResumeInput({
+          taskId: input.taskId,
+          runId: input.runId,
+          reason: t("controlCenter.resumeReasonDefault"),
+        }),
+      }),
+    );
+
   const review = (input: {
     readonly taskId: string;
     readonly runId: string;
@@ -247,6 +285,99 @@ export function CompositionControlCenterPanel() {
         <p className="text-xs text-muted-foreground">{t("controlCenter.noTasks")}</p>
       ) : (
         <>
+          {humanActionTasks.length === 0 ? null : (
+            <section
+              className="space-y-2 border-b border-border/60 pb-3"
+              data-testid="control-center-inbox"
+            >
+              <div className="flex items-center gap-2">
+                <InboxIcon className="size-4 text-muted-foreground" aria-hidden="true" />
+                <h3 className="text-sm font-medium text-foreground">{t("controlCenter.inbox")}</h3>
+                <Badge variant="secondary">{humanActionTasks.length}</Badge>
+              </div>
+              <ul className="space-y-1.5">
+                {humanActionTasks.map((task) => {
+                  const humanAction = task.humanAction;
+                  if (humanAction === undefined) return null;
+                  return (
+                    <li
+                      key={`${task.taskId}:${humanAction.runId}`}
+                      className="rounded-md border border-border/60 bg-muted/20 px-3 py-2"
+                      data-inbox-task-id={task.taskId}
+                    >
+                      <div className="flex flex-wrap items-start justify-between gap-2">
+                        <div className="min-w-0 flex-1 space-y-1">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <Badge variant="outline">
+                              {t(HUMAN_ACTION_KIND_LABEL_KEYS[humanAction.kind])}
+                            </Badge>
+                            <span className="font-mono text-[11px] text-muted-foreground">
+                              {task.taskId}
+                            </span>
+                          </div>
+                          <p className="text-xs text-foreground">{humanAction.summary}</p>
+                          {humanAction.blockerCode === undefined ? null : (
+                            <p className="text-[11px] text-muted-foreground">
+                              {`${t("controlCenter.blockerCode")}: ${humanAction.blockerCode}`}
+                            </p>
+                          )}
+                        </div>
+                        <div className="flex shrink-0 flex-wrap items-center gap-1.5">
+                          {humanAction.kind === "review" ? (
+                            <>
+                              <Button
+                                size="sm"
+                                disabled={pendingTaskId !== null}
+                                data-testid={`control-center-inbox-approve-${task.taskId}`}
+                                onClick={() => {
+                                  void review({
+                                    taskId: task.taskId,
+                                    runId: humanAction.runId,
+                                    decision: "approve",
+                                  });
+                                }}
+                              >
+                                <CheckIcon className="size-3.5" />
+                                {t("controlCenter.approve")}
+                              </Button>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                disabled={pendingTaskId !== null}
+                                data-testid={`control-center-inbox-reject-${task.taskId}`}
+                                onClick={() => {
+                                  void review({
+                                    taskId: task.taskId,
+                                    runId: humanAction.runId,
+                                    decision: "reject",
+                                  });
+                                }}
+                              >
+                                <XIcon className="size-3.5" />
+                                {t("controlCenter.reject")}
+                              </Button>
+                            </>
+                          ) : (
+                            <Button
+                              size="sm"
+                              disabled={pendingTaskId !== null}
+                              data-testid={`control-center-inbox-resume-${task.taskId}`}
+                              onClick={() => {
+                                void resume({ taskId: task.taskId, runId: humanAction.runId });
+                              }}
+                            >
+                              <PlayIcon className="size-3.5" />
+                              {t("controlCenter.resume")}
+                            </Button>
+                          )}
+                        </div>
+                      </div>
+                    </li>
+                  );
+                })}
+              </ul>
+            </section>
+          )}
           {projection.tasks.some(
             (task) =>
               (task.latestRun !== undefined &&

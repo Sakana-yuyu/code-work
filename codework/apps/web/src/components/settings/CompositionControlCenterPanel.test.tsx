@@ -7,11 +7,13 @@ const mocks = vi.hoisted(() => ({
   projectionAtom: Symbol("projection"),
   redispatchCommand: Symbol("redispatch-command"),
   cancelCommand: Symbol("cancel-command"),
+  resumeCommand: Symbol("resume-command"),
   reviewCommand: Symbol("review-command"),
   abandonCommand: Symbol("abandon-command"),
   byokResumeCommand: Symbol("byok-resume-command"),
   redispatch: vi.fn(),
   cancel: vi.fn(),
+  resume: vi.fn(),
   review: vi.fn(),
   abandon: vi.fn(),
   byokResume: vi.fn(),
@@ -44,6 +46,7 @@ vi.mock("~/state/server", () => ({
     controlCenterProjection: () => mocks.projectionAtom,
     controlCenterRedispatch: mocks.redispatchCommand,
     cancelCompositionTask: mocks.cancelCommand,
+    resumeCompositionTask: mocks.resumeCommand,
     reviewCompositionTask: mocks.reviewCommand,
     controlCenterAbandon: mocks.abandonCommand,
     controlCenterByokResumeRedispatch: mocks.byokResumeCommand,
@@ -54,6 +57,7 @@ vi.mock("~/state/use-atom-command", () => ({
   useAtomCommand: (command: unknown) => {
     if (command === mocks.redispatchCommand) return mocks.redispatch;
     if (command === mocks.cancelCommand) return mocks.cancel;
+    if (command === mocks.resumeCommand) return mocks.resume;
     if (command === mocks.reviewCommand) return mocks.review;
     if (command === mocks.abandonCommand) return mocks.abandon;
     if (command === mocks.byokResumeCommand) return mocks.byokResume;
@@ -65,6 +69,7 @@ import {
   CompositionControlCenterPanel,
   buildByokResumeRedispatchInput,
   buildRedispatchInput,
+  buildResumeInput,
   isByokResumeRedispatchable,
 } from "./CompositionControlCenterPanel";
 
@@ -95,10 +100,17 @@ const byokResume = (options: {
 
 const taskWith = (options: {
   readonly taskId: string;
-  readonly taskStatus?: "running" | "in_review" | "failed";
+  readonly taskStatus?: "running" | "waiting_approval" | "waiting_input" | "in_review" | "failed";
   readonly goalLoopState?: Parameters<typeof goalLoop>[0];
   readonly withLatestRun?: boolean;
-  readonly latestRunStatus?: "running" | "failed" | "completed" | "cancelled" | "in_review";
+  readonly latestRunStatus?:
+    | "running"
+    | "waiting_approval"
+    | "waiting_input"
+    | "failed"
+    | "completed"
+    | "cancelled"
+    | "in_review";
   readonly latestRunFailureCode?: string;
   readonly byokResume?: Parameters<typeof byokResume>[0];
   readonly byokDelegation?: {
@@ -106,6 +118,11 @@ const taskWith = (options: {
     readonly attempt?: number;
     readonly failureCode?: string;
     readonly delegationId?: string;
+  };
+  readonly humanAction?: {
+    readonly kind: "approval" | "input" | "review";
+    readonly summary: string;
+    readonly blockerCode?: string;
   };
 }): CompositionControlCenterResult["tasks"][number] => ({
   taskId: options.taskId,
@@ -139,6 +156,19 @@ const taskWith = (options: {
             : { failureCode: options.byokDelegation.failureCode }),
         },
       }),
+  ...(options.humanAction === undefined
+    ? {}
+    : {
+        humanAction: {
+          runId: `run-${options.taskId}`,
+          kind: options.humanAction.kind,
+          summary: options.humanAction.summary,
+          sequence: 3,
+          ...(options.humanAction.blockerCode === undefined
+            ? {}
+            : { blockerCode: options.humanAction.blockerCode }),
+        },
+      }),
 });
 
 const projection = (
@@ -165,6 +195,7 @@ describe("CompositionControlCenterPanel", () => {
     mocks.projectionQuery.refresh = vi.fn();
     mocks.redispatch = vi.fn();
     mocks.cancel = vi.fn();
+    mocks.resume = vi.fn();
     mocks.review = vi.fn();
     mocks.abandon = vi.fn();
     mocks.byokResume = vi.fn();
@@ -214,6 +245,57 @@ describe("CompositionControlCenterPanel", () => {
     const squadRow = html.split('data-squad-id="squad-1"')[1] ?? "";
     expect(squadRow).toContain("agent-1");
     expect(squadRow).toContain("2");
+  });
+
+  it("渲染 Human Inbox：三类待办显示摘要，操作按类型收敛", () => {
+    mocks.projectionQuery.data = projection([
+      taskWith({
+        taskId: "task-approval",
+        taskStatus: "waiting_approval",
+        latestRunStatus: "waiting_approval",
+        humanAction: {
+          kind: "approval",
+          summary: "需要批准工作区写入",
+          blockerCode: "workspace_write_approval",
+        },
+      }),
+      taskWith({
+        taskId: "task-input",
+        taskStatus: "waiting_input",
+        latestRunStatus: "waiting_input",
+        humanAction: { kind: "input", summary: "需要补充运行参数" },
+      }),
+      taskWith({
+        taskId: "task-review",
+        taskStatus: "in_review",
+        latestRunStatus: "in_review",
+        humanAction: { kind: "review", summary: "请审核当前实现结果" },
+      }),
+      taskWith({ taskId: "task-ordinary", latestRunStatus: "running" }),
+      taskWith({
+        taskId: "task-delegation",
+        latestRunStatus: "running",
+        byokDelegation: {},
+        humanAction: { kind: "input", summary: "不应进入 Inbox" },
+      }),
+    ]);
+
+    const html = renderToStaticMarkup(<CompositionControlCenterPanel />);
+    expect(html).toContain('data-testid="control-center-inbox"');
+    expect(html).toContain('data-inbox-task-id="task-approval"');
+    expect(html).toContain('data-inbox-task-id="task-input"');
+    expect(html).toContain('data-inbox-task-id="task-review"');
+    expect(html).not.toContain('data-inbox-task-id="task-ordinary"');
+    expect(html).not.toContain('data-inbox-task-id="task-delegation"');
+    expect(html).toContain("需要批准工作区写入");
+    expect(html).toContain("workspace_write_approval");
+    expect(html).toContain("需要补充运行参数");
+    expect(html).toContain("请审核当前实现结果");
+    expect(html).toContain('data-testid="control-center-inbox-resume-task-approval"');
+    expect(html).toContain('data-testid="control-center-inbox-resume-task-input"');
+    expect(html).toContain('data-testid="control-center-inbox-approve-task-review"');
+    expect(html).toContain('data-testid="control-center-inbox-reject-task-review"');
+    expect(html).not.toContain('data-testid="control-center-inbox-resume-task-review"');
   });
 
   it("仅 interrupted/supervisor_settled 且有最新 Run 的任务行渲染自动重派按钮", () => {
@@ -401,6 +483,20 @@ describe("CompositionControlCenterPanel", () => {
       agentId: "agent-1",
       newRunId: "t3-redispatch-abc",
       capabilityIds: ["shell.exec", "fs.write"],
+    });
+  });
+
+  it("buildResumeInput 使用人工待办对应的 Task/Run 并带上继续原因", () => {
+    expect(
+      buildResumeInput({
+        taskId: "task-approval",
+        runId: "run-approval",
+        reason: "从人工待办继续任务",
+      }),
+    ).toEqual({
+      taskId: "task-approval",
+      runId: "run-approval",
+      reason: "从人工待办继续任务",
     });
   });
 
