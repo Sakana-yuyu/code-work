@@ -648,6 +648,404 @@ describe("CompositionTaskGraphExecutor", () => {
     }),
   );
 
+  it.effect("成员 Driver 离线时按候选顺序接管且保留原失败尝试", () =>
+    Effect.gen(function* () {
+      const tasks = new Map<string, CompositionTask>();
+      const runs = new Map<string, CompositionTaskRun>();
+      const dispatches: Array<{
+        readonly taskId: string;
+        readonly assigneeId: string;
+        readonly prompt: string | undefined;
+        readonly capabilityIds: ReadonlyArray<string> | undefined;
+      }> = [];
+      const child = {
+        nodeId: "offline-worker",
+        taskId: "task-offline-worker",
+        runId: "run-offline-worker",
+        projectId: "project-graph",
+        assigneeKind: "agent" as const,
+        assigneeId: "agent-primary",
+        mode: "parallel" as const,
+        promptDigest: "sha256:offline-worker",
+        prompt: "完成离线接管测试",
+        workspaceRoot: "C:/workspace/primary",
+        capabilityIds: ["t3.workspace.read_file"],
+        failoverCandidates: [
+          {
+            assigneeId: "agent-backup",
+            model: "provider/backup-model",
+            workspaceRoot: "C:/workspace/backup",
+            capabilityIds: ["t3.workspace.read_file", "t3.git.status"],
+          },
+        ],
+      };
+      const executor = makeCompositionTaskGraphExecutor({
+        orchestrator: {
+          dispatchTask: (input) =>
+            Effect.sync(() => {
+              dispatches.push({
+                taskId: input.taskId,
+                assigneeId: input.assigneeId,
+                prompt: input.prompt,
+                capabilityIds: input.capabilityIds,
+              });
+              const primary = input.assigneeId === child.assigneeId;
+              const leader = input.taskId === baseLeader.taskId;
+              const status = primary
+                ? ("failed" as const)
+                : leader
+                  ? ("completed" as const)
+                  : ("running" as const);
+              const task: CompositionTask = {
+                taskId: input.taskId,
+                projectId: input.projectId,
+                assigneeKind: input.assigneeKind,
+                assigneeId: input.assigneeId,
+                mode: input.mode,
+                status,
+                promptDigest: input.promptDigest,
+                dependsOnTaskIds: [...input.dependsOnTaskIds],
+                createdAtUnixMs: 1,
+                updatedAtUnixMs: 1,
+              };
+              const run: CompositionTaskRun = {
+                runId: input.runId,
+                taskId: input.taskId,
+                agentId: input.assigneeId,
+                runtimeId: `runtime-${input.assigneeId}`,
+                status,
+                attempt: 1,
+                capabilityGrantIds: [],
+                ...(primary
+                  ? {
+                      failureCode: "agent_driver_unavailable",
+                      resultSummary: "主成员 Driver 未注册",
+                    }
+                  : leader
+                    ? { resultSummary: "Leader 汇总完成" }
+                    : {}),
+              };
+              tasks.set(task.taskId, task);
+              runs.set(run.runId, run);
+              return { task, run };
+            }),
+          retryTask: () => Effect.die("离线接管不应走原成员瞬态重试"),
+          cancelTask: () => Effect.die("本测试不应取消"),
+        },
+        store: { getTask: (taskId) => Effect.succeed(Option.fromNullishOr(tasks.get(taskId))) },
+        runtime: {
+          awaitTaskCompletion: ({ taskId, runId }) =>
+            Effect.sync(() => {
+              const task = tasks.get(taskId)!;
+              const run = runs.get(runId)!;
+              const completedTask = { ...task, status: "completed" as const };
+              const completedRun = {
+                ...run,
+                status: "completed" as const,
+                resultSummary: "备用成员完成接管任务",
+              };
+              tasks.set(taskId, completedTask);
+              runs.set(runId, completedRun);
+              return completedRun;
+            }),
+        },
+      });
+
+      const result = yield* executor.execute({ leader: baseLeader, children: [child] });
+
+      expect(dispatches.map((dispatch) => [dispatch.taskId, dispatch.assigneeId])).toEqual([
+        [child.taskId, "agent-primary"],
+        [`${child.taskId}:failover:1`, "agent-backup"],
+        [baseLeader.taskId, baseLeader.assigneeId],
+      ]);
+      const failover = dispatches[1]!;
+      expect(failover.prompt).toContain("主成员 Driver 未注册");
+      expect(failover.capabilityIds).toEqual(["t3.workspace.read_file"]);
+      expect(result.children[0]).toMatchObject({
+        attempts: 2,
+        task: { taskId: `${child.taskId}:failover:1`, assigneeId: "agent-backup" },
+        run: { agentId: "agent-backup", resultSummary: "备用成员完成接管任务" },
+      });
+    }),
+  );
+
+  it.effect("用户取消确认超时不触发成员接管", () =>
+    Effect.gen(function* () {
+      const tasks = new Map<string, CompositionTask>();
+      const dispatches: string[] = [];
+      const child = {
+        nodeId: "cancel-timeout-worker",
+        taskId: "task-cancel-timeout-worker",
+        runId: "run-cancel-timeout-worker",
+        projectId: "project-graph",
+        assigneeKind: "agent" as const,
+        assigneeId: "agent-primary",
+        mode: "parallel" as const,
+        promptDigest: "sha256:cancel-timeout-worker",
+        prompt: "等待用户取消确认",
+        workspaceRoot: "C:/workspace/primary",
+        capabilityIds: ["t3.workspace.read_file"],
+        failoverCandidates: [
+          {
+            assigneeId: "agent-backup",
+            workspaceRoot: "C:/workspace/backup",
+            capabilityIds: ["t3.workspace.read_file"],
+          },
+        ],
+      };
+      const executor = makeCompositionTaskGraphExecutor({
+        orchestrator: {
+          dispatchTask: (input) =>
+            Effect.sync(() => {
+              dispatches.push(input.taskId);
+              const isPrimary = input.taskId === child.taskId;
+              const task: CompositionTask = {
+                taskId: input.taskId,
+                projectId: input.projectId,
+                assigneeKind: input.assigneeKind,
+                assigneeId: input.assigneeId,
+                mode: input.mode,
+                status: isPrimary ? "timed_out" : "completed",
+                promptDigest: input.promptDigest,
+                dependsOnTaskIds: [...input.dependsOnTaskIds],
+                createdAtUnixMs: 1,
+                updatedAtUnixMs: 1,
+              };
+              const run: CompositionTaskRun = {
+                runId: input.runId,
+                taskId: input.taskId,
+                agentId: input.assigneeId,
+                runtimeId: `runtime-${input.assigneeId}`,
+                status: isPrimary ? "timed_out" : "completed",
+                attempt: 1,
+                capabilityGrantIds: [],
+                ...(isPrimary
+                  ? {
+                      failureCode: "runtime_cancel_confirmation_timeout",
+                      resultSummary: "用户取消请求未在确认窗口内完成",
+                    }
+                  : { resultSummary: "不应执行" }),
+              };
+              tasks.set(task.taskId, task);
+              return { task, run };
+            }),
+          retryTask: () => Effect.die("取消确认超时不应重试"),
+          cancelTask: () => Effect.die("本测试不应再次取消"),
+        },
+        store: { getTask: (taskId) => Effect.succeed(Option.fromNullishOr(tasks.get(taskId))) },
+        runtime: { awaitTaskCompletion: () => Effect.die("终态任务不应等待") },
+      });
+
+      const exit = yield* Effect.exit(executor.execute({ leader: baseLeader, children: [child] }));
+
+      expect(exit._tag).toBe("Failure");
+      expect(dispatches).toEqual([child.taskId]);
+    }),
+  );
+
+  it.effect("所有接管候选耗尽时返回结构化失败且不派发 Leader", () =>
+    Effect.gen(function* () {
+      const tasks = new Map<string, CompositionTask>();
+      const dispatches: string[] = [];
+      const child = {
+        nodeId: "exhausted-worker",
+        taskId: "task-exhausted-worker",
+        runId: "run-exhausted-worker",
+        projectId: "project-graph",
+        assigneeKind: "agent" as const,
+        assigneeId: "agent-primary",
+        mode: "parallel" as const,
+        promptDigest: "sha256:exhausted-worker",
+        prompt: "完成候选耗尽测试",
+        workspaceRoot: "C:/workspace/primary",
+        capabilityIds: ["t3.workspace.read_file"],
+        failoverCandidates: [
+          {
+            assigneeId: "agent-backup-a",
+            workspaceRoot: "C:/workspace/backup-a",
+            capabilityIds: ["t3.workspace.read_file"],
+          },
+          {
+            assigneeId: "agent-backup-b",
+            workspaceRoot: "C:/workspace/backup-b",
+            capabilityIds: ["t3.workspace.read_file"],
+          },
+        ],
+      };
+      const executor = makeCompositionTaskGraphExecutor({
+        orchestrator: {
+          dispatchTask: (input) =>
+            input.taskId === baseLeader.taskId
+              ? Effect.die("候选耗尽后不应派发 Leader")
+              : Effect.sync(() => {
+                  dispatches.push(input.taskId);
+                  const task: CompositionTask = {
+                    taskId: input.taskId,
+                    projectId: input.projectId,
+                    assigneeKind: input.assigneeKind,
+                    assigneeId: input.assigneeId,
+                    mode: input.mode,
+                    status: "failed",
+                    promptDigest: input.promptDigest,
+                    dependsOnTaskIds: [...input.dependsOnTaskIds],
+                    createdAtUnixMs: 1,
+                    updatedAtUnixMs: 1,
+                  };
+                  const run: CompositionTaskRun = {
+                    runId: input.runId,
+                    taskId: input.taskId,
+                    agentId: input.assigneeId,
+                    runtimeId: "unresolved",
+                    status: "failed",
+                    attempt: 1,
+                    capabilityGrantIds: [],
+                    failureCode: "agent_driver_unavailable",
+                    resultSummary: `${input.assigneeId} 的 Driver 不可用`,
+                  };
+                  tasks.set(task.taskId, task);
+                  return { task, run };
+                }),
+          retryTask: () => Effect.die("候选离线不应走原成员重试"),
+          cancelTask: () => Effect.die("本测试不应取消"),
+        },
+        store: { getTask: (taskId) => Effect.succeed(Option.fromNullishOr(tasks.get(taskId))) },
+        runtime: { awaitTaskCompletion: () => Effect.die("终态任务不应等待") },
+      });
+
+      const error = yield* Effect.flip(executor.execute({ leader: baseLeader, children: [child] }));
+
+      expect(error).toMatchObject({
+        code: "failover_candidates_exhausted",
+        nodeId: child.nodeId,
+      });
+      expect(dispatches).toEqual([
+        child.taskId,
+        `${child.taskId}:failover:1`,
+        `${child.taskId}:failover:2`,
+      ]);
+    }),
+  );
+
+  it.effect("接管成员的瞬态失败在接管 Task 上重试", () =>
+    Effect.gen(function* () {
+      const tasks = new Map<string, CompositionTask>();
+      const dispatches: Array<[string, string]> = [];
+      const retries: Array<{ taskId: string; previousRunId: string; runId: string }> = [];
+      const child = {
+        nodeId: "retry-failover-worker",
+        taskId: "task-retry-failover-worker",
+        runId: "run-retry-failover-worker",
+        projectId: "project-graph",
+        assigneeKind: "agent" as const,
+        assigneeId: "agent-primary",
+        mode: "parallel" as const,
+        promptDigest: "sha256:retry-failover-worker",
+        prompt: "完成接管重试测试",
+        workspaceRoot: "C:/workspace/primary",
+        capabilityIds: ["t3.workspace.read_file"],
+        maxAttempts: 2,
+        failoverCandidates: [
+          {
+            assigneeId: "agent-backup",
+            workspaceRoot: "C:/workspace/backup",
+            capabilityIds: ["t3.workspace.read_file"],
+          },
+        ],
+      };
+      const executor = makeCompositionTaskGraphExecutor({
+        orchestrator: {
+          dispatchTask: (input) =>
+            Effect.sync(() => {
+              dispatches.push([input.taskId, input.assigneeId]);
+              const isLeader = input.taskId === baseLeader.taskId;
+              const isPrimary = input.taskId === child.taskId;
+              const status = isLeader ? "completed" : "failed";
+              const task: CompositionTask = {
+                taskId: input.taskId,
+                projectId: input.projectId,
+                assigneeKind: input.assigneeKind,
+                assigneeId: input.assigneeId,
+                mode: input.mode,
+                status,
+                promptDigest: input.promptDigest,
+                dependsOnTaskIds: [...input.dependsOnTaskIds],
+                createdAtUnixMs: 1,
+                updatedAtUnixMs: 1,
+              };
+              const run: CompositionTaskRun = {
+                runId: input.runId,
+                taskId: input.taskId,
+                agentId: input.assigneeId,
+                runtimeId: `runtime-${input.assigneeId}`,
+                status,
+                attempt: 1,
+                capabilityGrantIds: [],
+                ...(isLeader
+                  ? { resultSummary: "Leader 汇总完成" }
+                  : isPrimary
+                    ? {
+                        failureCode: "agent_driver_unavailable",
+                        resultSummary: "主成员 Driver 未注册",
+                      }
+                    : {
+                        failureCode: "provider_network",
+                        resultSummary: "备用成员网络瞬时失败",
+                      }),
+              };
+              tasks.set(task.taskId, task);
+              return { task, run };
+            }),
+          retryTask: (input) =>
+            Effect.sync(() => {
+              retries.push({
+                taskId: input.taskId,
+                previousRunId: input.previousRunId,
+                runId: input.runId,
+              });
+              const task = { ...tasks.get(input.taskId)!, status: "completed" as const };
+              const run: CompositionTaskRun = {
+                runId: input.runId,
+                taskId: input.taskId,
+                agentId: "agent-backup",
+                runtimeId: "runtime-agent-backup",
+                status: "completed",
+                attempt: 2,
+                capabilityGrantIds: [],
+                resultSummary: "备用成员重试后完成",
+              };
+              tasks.set(task.taskId, task);
+              return { task, run };
+            }),
+          cancelTask: () => Effect.die("本测试不应取消"),
+        },
+        store: { getTask: (taskId) => Effect.succeed(Option.fromNullishOr(tasks.get(taskId))) },
+        runtime: { awaitTaskCompletion: () => Effect.die("终态任务不应等待") },
+      });
+
+      const result = yield* executor.execute({ leader: baseLeader, children: [child] });
+
+      const failoverTaskId = `${child.taskId}:failover:1`;
+      const failoverRunId = `${child.runId}:failover:1`;
+      expect(retries).toEqual([
+        {
+          taskId: failoverTaskId,
+          previousRunId: failoverRunId,
+          runId: `${failoverRunId}:retry:2`,
+        },
+      ]);
+      expect(dispatches).toEqual([
+        [child.taskId, "agent-primary"],
+        [failoverTaskId, "agent-backup"],
+        [baseLeader.taskId, baseLeader.assigneeId],
+      ]);
+      expect(result.children[0]).toMatchObject({
+        attempts: 3,
+        task: { taskId: failoverTaskId, assigneeId: "agent-backup" },
+        run: { runId: `${failoverRunId}:retry:2`, resultSummary: "备用成员重试后完成" },
+      });
+    }),
+  );
+
   it.effect("parallel 调度不允许启动超过 maxConcurrency 的节点", () =>
     Effect.gen(function* () {
       const events: string[] = [];

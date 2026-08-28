@@ -91,6 +91,21 @@ type ResolvedPlanNode = CompositionSquadPlanNode & {
   readonly member: CompositionSquadMember;
 };
 
+const canTakeOverRole = (
+  source: CompositionSquadMember,
+  candidate: CompositionSquadMember,
+): boolean =>
+  source.role === "worker"
+    ? candidate.role === "worker"
+    : (source.role === "reviewer" || source.role === "critic") &&
+      (candidate.role === "reviewer" || candidate.role === "critic");
+
+const hasCapabilities = (
+  candidate: CompositionSquadMember,
+  requiredCapabilityIds: ReadonlyArray<string>,
+): boolean =>
+  requiredCapabilityIds.every((capabilityId) => candidate.capabilityIds.includes(capabilityId));
+
 const runnerError = (
   code: string,
   detail: string,
@@ -281,8 +296,29 @@ export const compileCompositionSquadGraph = ({
     const modeNodes = applyModeDependencies(squad.collaborationMode, promptedNodes);
     const scope = executionScope(input);
     const maxAttempts = (squad.maxRetries ?? 0) + 1;
+    const assignedNodeCounts = new Map<string, number>();
+    for (const node of modeNodes) {
+      assignedNodeCounts.set(
+        node.member.agentId,
+        (assignedNodeCounts.get(node.member.agentId) ?? 0) + 1,
+      );
+    }
     const children: CompositionTaskGraphNodeInput[] = modeNodes.map((node) => {
       const workspaceRoot = node.member.workspaceRoot ?? input.workspaceRoot;
+      const failoverCandidates = members
+        .filter(
+          (candidate) =>
+            candidate.agentId !== node.member.agentId &&
+            canTakeOverRole(node.member, candidate) &&
+            hasCapabilities(candidate, node.member.capabilityIds) &&
+            (assignedNodeCounts.get(candidate.agentId) ?? 0) < candidate.maxConcurrentTasks,
+        )
+        .map((candidate) => ({
+          assigneeId: candidate.agentId,
+          workspaceRoot: candidate.workspaceRoot ?? input.workspaceRoot,
+          ...(candidate.model === undefined ? {} : { model: candidate.model }),
+          capabilityIds: [...node.member.capabilityIds],
+        }));
       return {
         nodeId: node.nodeId,
         taskId: `${scope}:task:${node.nodeId}`,
@@ -302,6 +338,7 @@ export const compileCompositionSquadGraph = ({
         capabilityIds: [...node.member.capabilityIds],
         dependsOnNodeIds: [...node.dependsOnNodeIds],
         maxAttempts: node.member.capabilityIds.length === 0 ? 1 : maxAttempts,
+        ...(failoverCandidates.length === 0 ? {} : { failoverCandidates }),
       };
     });
     const finalPrompt = leaderPrompt(squad, input.goal);

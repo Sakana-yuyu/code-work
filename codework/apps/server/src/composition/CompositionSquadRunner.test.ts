@@ -116,6 +116,140 @@ it.effect("把 Squad 成员模型、工作目录、能力和重试策略编译�
   }),
 );
 
+it.effect("为节点编译同角色且能力不降级的有序接管候选", () =>
+  Effect.gen(function* () {
+    const squad: CompositionSquad = {
+      ...baseSquad,
+      memberAgentIds: [
+        ...baseSquad.memberAgentIds,
+        "agent-worker-backup",
+        "agent-worker-underqualified",
+      ],
+      members: [
+        ...baseSquad.members!,
+        {
+          agentId: "agent-worker-backup",
+          role: "worker",
+          order: 4,
+          required: false,
+          model: "provider/backup-model",
+          workspaceRoot: "C:/workspace/backup",
+          capabilityIds: ["t3.workspace.read_file", "t3.workspace.write_file", "t3.git.status"],
+          maxConcurrentTasks: 1,
+        },
+        {
+          agentId: "agent-worker-underqualified",
+          role: "worker",
+          order: 5,
+          required: false,
+          model: "provider/underqualified-model",
+          workspaceRoot: "C:/workspace/underqualified",
+          capabilityIds: ["t3.workspace.read_file"],
+          maxConcurrentTasks: 1,
+        },
+      ],
+    };
+
+    const graph = yield* compileCompositionSquadGraph({
+      squad,
+      input: {
+        ...baseInput,
+        plan: [
+          {
+            nodeId: "primary-work",
+            agentId: "agent-worker",
+            prompt: "完成主实现",
+            dependsOnNodeIds: [],
+          },
+        ],
+      },
+    });
+
+    expect(graph.children.find((node) => node.assigneeId === "agent-worker")).toMatchObject({
+      failoverCandidates: [
+        {
+          assigneeId: "agent-worker-backup",
+          model: "provider/backup-model",
+          workspaceRoot: "C:/workspace/backup",
+          capabilityIds: ["t3.workspace.read_file", "t3.workspace.write_file"],
+        },
+      ],
+    });
+  }),
+);
+
+it.effect("Reviewer 与 Critic 在评审角色池内互相接管", () =>
+  Effect.gen(function* () {
+    const graph = yield* compileCompositionSquadGraph({
+      squad: { ...baseSquad, collaborationMode: "review_critic" },
+      input: {
+        ...baseInput,
+        plan: [
+          {
+            nodeId: "review-only",
+            agentId: "agent-reviewer",
+            prompt: "审查实现证据",
+            dependsOnNodeIds: [],
+          },
+        ],
+      },
+    });
+
+    expect(graph.children[0]).toMatchObject({
+      assigneeId: "agent-reviewer",
+      failoverCandidates: [
+        {
+          assigneeId: "agent-critic",
+          capabilityIds: ["t3.workspace.read_file"],
+        },
+      ],
+    });
+  }),
+);
+
+it.effect("已达到计划并发上限的成员不进入接管候选", () =>
+  Effect.gen(function* () {
+    const backup = {
+      agentId: "agent-worker-backup",
+      role: "worker" as const,
+      order: 4,
+      required: false,
+      workspaceRoot: "C:/workspace/backup",
+      capabilityIds: ["t3.workspace.read_file", "t3.workspace.write_file"],
+      maxConcurrentTasks: 1,
+    };
+    const squad: CompositionSquad = {
+      ...baseSquad,
+      memberAgentIds: [...baseSquad.memberAgentIds, backup.agentId],
+      members: [...baseSquad.members!, backup],
+    };
+    const graph = yield* compileCompositionSquadGraph({
+      squad,
+      input: {
+        ...baseInput,
+        plan: [
+          {
+            nodeId: "primary-work",
+            agentId: "agent-worker",
+            prompt: "完成主实现",
+            dependsOnNodeIds: [],
+          },
+          {
+            nodeId: "backup-own-work",
+            agentId: backup.agentId,
+            prompt: "完成备用成员自己的任务",
+            dependsOnNodeIds: [],
+          },
+        ],
+      },
+    });
+
+    expect(graph.children.find((node) => node.nodeId === "primary-work")?.failoverCandidates).toBe(
+      undefined,
+    );
+  }),
+);
+
 it.effect("五种协同模式生成各自的调度与依赖语义", () =>
   Effect.gen(function* () {
     const serial = yield* compile("serial");

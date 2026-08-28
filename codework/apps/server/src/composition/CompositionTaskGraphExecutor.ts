@@ -57,6 +57,14 @@ export type CompositionTaskGraphNodeInput = GraphDispatchInput & {
   readonly mode: "serial" | "parallel";
   readonly dependsOnNodeIds?: ReadonlyArray<string>;
   readonly maxAttempts?: number;
+  readonly failoverCandidates?: ReadonlyArray<CompositionTaskGraphFailoverCandidate>;
+};
+
+export type CompositionTaskGraphFailoverCandidate = {
+  readonly assigneeId: string;
+  readonly workspaceRoot: string;
+  readonly model?: string;
+  readonly capabilityIds: ReadonlyArray<string>;
 };
 
 export type CompositionTaskGraphLeaderInput = GraphDispatchInput & {
@@ -126,6 +134,8 @@ type RunningNode = {
   readonly node: CompositionTaskGraphNodeInput;
   readonly dispatch: CompositionDispatchResult;
   readonly dispatches: ReadonlyArray<CompositionDispatchResult>;
+  readonly dependencies: ReadonlyArray<CompositionTaskGraphNodeResult>;
+  readonly leaderTaskId: string;
   currentDispatch: CompositionDispatchResult;
 };
 
@@ -174,6 +184,25 @@ const reviewTaskId = (initialTaskId: string, revision: number): string =>
 
 const reviewRunId = (initialRunId: string, revision: number): string =>
   `${initialRunId}:review:${revision}`;
+
+const failoverTaskId = (initialTaskId: string, failover: number): string =>
+  `${initialTaskId}:failover:${failover}`;
+
+const failoverRunId = (initialRunId: string, failover: number): string =>
+  `${initialRunId}:failover:${failover}`;
+
+const normalizeFailureCode = (code: string): string =>
+  code
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "");
+
+const failoverFailureCodes: ReadonlySet<string> = new Set(["agent_driver_unavailable"]);
+
+const canFailover = (failure: ReturnType<typeof classifyCompositionFailure>): boolean =>
+  failure.category === "runtime_offline" ||
+  failoverFailureCodes.has(normalizeFailureCode(failure.code));
 
 const sha256 = (value: string): string =>
   `sha256:${NodeCrypto.createHash("sha256").update(value, "utf8").digest("hex")}`;
@@ -252,6 +281,39 @@ const validateGraph = (
         "当前 Orchestrator 的重试需要显式 capabilityIds，不能对无 capability 的子任务自动重试。",
         node.nodeId,
       );
+    }
+    const failoverAssigneeIds = new Set<string>();
+    const requiredCapabilityIds = new Set(node.capabilityIds ?? []);
+    for (const candidate of node.failoverCandidates ?? []) {
+      if (!nonEmpty(candidate.assigneeId) || !nonEmpty(candidate.workspaceRoot)) {
+        return graphError(
+          "failover_candidate_invalid",
+          "接管候选的 assigneeId 和 workspaceRoot 不能为空。",
+          node.nodeId,
+        );
+      }
+      if (
+        candidate.assigneeId === node.assigneeId ||
+        failoverAssigneeIds.has(candidate.assigneeId)
+      ) {
+        return graphError(
+          "failover_candidate_duplicate",
+          `接管候选重复或与主成员相同：${candidate.assigneeId}`,
+          node.nodeId,
+        );
+      }
+      failoverAssigneeIds.add(candidate.assigneeId);
+      if (
+        [...requiredCapabilityIds].some(
+          (capabilityId) => !candidate.capabilityIds.includes(capabilityId),
+        )
+      ) {
+        return graphError(
+          "failover_capability_downgrade",
+          `接管候选 ${candidate.assigneeId} 缺少主节点所需能力。`,
+          node.nodeId,
+        );
+      }
     }
     nodeIds.add(node.nodeId);
     taskIds.add(node.taskId);
@@ -397,6 +459,8 @@ const make = (options: GraphExecutorOptions): CompositionTaskGraphExecutorShape 
         node,
         dispatch,
         dispatches: [dispatch],
+        dependencies,
+        leaderTaskId,
         currentDispatch: dispatch,
       } satisfies RunningNode;
     });
@@ -417,15 +481,19 @@ const make = (options: GraphExecutorOptions): CompositionTaskGraphExecutorShape 
       const maxAttempts = node.maxAttempts ?? 1;
       const dispatches = [...started.dispatches];
       let dispatch = started.dispatch;
+      let failoverIndex = 0;
+      let attemptsForAssignee = 1;
+      let assignmentBaseRunId = node.runId;
+      let currentCapabilityIds = [...(node.capabilityIds ?? [])];
       for (;;) {
         const run = terminalStatuses.has(dispatch.run.status)
           ? dispatch.run
           : yield* awaitSettled({
-              taskId: node.taskId,
+              taskId: dispatch.task.taskId,
               runId: dispatch.run.runId,
               nodeId: node.nodeId,
             });
-        const settled = yield* getSettledTask(node.taskId, run, node.nodeId);
+        const settled = yield* getSettledTask(dispatch.task.taskId, run, node.nodeId);
         yield* Effect.logDebug(
           `Task Graph 收到子任务终态：${node.nodeId}/${settled.run.runId}/${settled.run.status}`,
         );
@@ -440,7 +508,62 @@ const make = (options: GraphExecutorOptions): CompositionTaskGraphExecutorShape 
           } satisfies CompositionTaskGraphNodeResult;
         }
         const failure = classifyCompositionFailure(settled.run);
-        if (dispatches.length >= maxAttempts || !failure.retryable) {
+        const failoverEligible = canFailover(failure);
+        const failoverCandidates = node.failoverCandidates ?? [];
+        const failoverCandidate = failoverEligible ? failoverCandidates[failoverIndex] : undefined;
+        if (failoverCandidate !== undefined) {
+          failoverIndex += 1;
+          const { model: _model, failoverCandidates: _failoverCandidates, ...nodeBase } = node;
+          const failoverPrompt = [
+            node.prompt,
+            `接管说明：原成员 ${settled.run.agentId} 因 ${failure.code} 无法继续，现由 ${failoverCandidate.assigneeId} 接管。`,
+            `原失败摘要：${settled.run.resultSummary ?? "无结果摘要"}`,
+            "请从当前工作区状态继续完成原任务，并输出可验证的结果摘要。",
+          ].join("\n\n");
+          const failoverNode: CompositionTaskGraphNodeInput = {
+            ...nodeBase,
+            taskId: failoverTaskId(node.taskId, failoverIndex),
+            runId: failoverRunId(node.runId, failoverIndex),
+            assigneeKind: "agent",
+            assigneeId: failoverCandidate.assigneeId,
+            prompt: failoverPrompt,
+            promptDigest: sha256(failoverPrompt),
+            workspaceRoot: failoverCandidate.workspaceRoot,
+            ...(failoverCandidate.model === undefined ? {} : { model: failoverCandidate.model }),
+            capabilityIds: [...(node.capabilityIds ?? [])],
+          };
+          const failover = yield* startNode(
+            failoverNode,
+            started.dependencies,
+            started.leaderTaskId,
+          );
+          dispatch = failover.dispatch;
+          started.currentDispatch = failover.dispatch;
+          dispatches.push(failover.dispatch);
+          attemptsForAssignee = 1;
+          assignmentBaseRunId = failoverNode.runId;
+          currentCapabilityIds = [...(node.capabilityIds ?? [])];
+          continue;
+        }
+        if (
+          failoverEligible &&
+          failoverCandidates.length > 0 &&
+          failoverIndex >= failoverCandidates.length
+        ) {
+          activeNodes.delete(started);
+          const detail = `子任务接管候选已耗尽：${failoverCandidates.map((candidate) => candidate.assigneeId).join(", ")}；最后失败码=${failure.code}；${settled.run.resultSummary ?? "无结果摘要"}`;
+          return continueOnFailure
+            ? ({
+                nodeId: node.nodeId,
+                kind: "failed",
+                failureCode: "failover_candidates_exhausted",
+                detail,
+                task: settled.task,
+                run: settled.run,
+              } satisfies CompositionTaskGraphNodeFailure)
+            : yield* graphError("failover_candidates_exhausted", detail, node.nodeId);
+        }
+        if (attemptsForAssignee >= maxAttempts || !failure.retryable) {
           activeNodes.delete(started);
           const detail = `子任务未完成：失败码=${failure.code}；失败分类=${failure.category}；恢复动作=${failure.recovery}；${settled.run.resultSummary ?? "无结果摘要"}`;
           return continueOnFailure
@@ -455,14 +578,15 @@ const make = (options: GraphExecutorOptions): CompositionTaskGraphExecutorShape 
             : yield* graphError("child_failed", detail, node.nodeId);
         }
 
-        const nextRunId = retryRunId(node.runId, dispatches.length + 1);
+        const nextAttempt = attemptsForAssignee + 1;
+        const nextRunId = retryRunId(assignmentBaseRunId, nextAttempt);
         const retry = yield* options.orchestrator
           .retryTask({
-            taskId: node.taskId,
+            taskId: settled.task.taskId,
             previousRunId: settled.run.runId,
             runId: nextRunId,
-            reason: `Task Graph 自动重试第 ${dispatches.length + 1} 次`,
-            capabilityIds: [...(node.capabilityIds ?? [])],
+            reason: `Task Graph 自动重试第 ${nextAttempt} 次`,
+            capabilityIds: currentCapabilityIds,
           })
           .pipe(
             Effect.mapError((error) =>
@@ -472,6 +596,7 @@ const make = (options: GraphExecutorOptions): CompositionTaskGraphExecutorShape 
         dispatch = retry;
         started.currentDispatch = retry;
         dispatches.push(retry);
+        attemptsForAssignee = nextAttempt;
       }
     });
 
