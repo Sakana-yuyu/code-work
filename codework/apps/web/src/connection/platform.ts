@@ -52,7 +52,6 @@ import {
   readPrimaryEnvironmentTarget,
   type PrimaryEnvironmentTarget,
 } from "../environments/primary/target";
-import { clearComposerDraftsEnvironment } from "../composerDraftStore";
 import { isHostedStaticApp } from "../hostedPairing";
 import { appAtomRegistry } from "../rpc/atomRegistry";
 import { acknowledgeRpcRequest, trackRpcRequestSent } from "../rpc/requestLatencyState";
@@ -584,9 +583,11 @@ const environmentOwnedDataCleanupLayer = Layer.succeed(
   EnvironmentOwnedDataCleanup,
   EnvironmentOwnedDataCleanup.of({
     clear: (environmentId) =>
-      Effect.sync(() => {
-        clearComposerDraftsEnvironment(environmentId);
-      }),
+      Effect.promise(() =>
+        import("../composerDraftStore").then(({ clearComposerDraftsEnvironment }) => {
+          clearComposerDraftsEnvironment(environmentId);
+        }),
+      ),
   }),
 );
 
