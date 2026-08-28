@@ -55,7 +55,8 @@ const APPROVAL_STAGES: ReadonlyArray<CompositionSquadApprovalStage> = [
   "before_finalize",
 ];
 
-export function SettingsSquadBuilderCreateForm(props: {
+export function SettingsSquadBuilderForm(props: {
+  readonly variant: "create" | "edit";
   readonly draft: CompositionSquadDraft;
   readonly issues: ReadonlyArray<CompositionSquadDraftIssue>;
   readonly pending: boolean;
@@ -72,7 +73,7 @@ export function SettingsSquadBuilderCreateForm(props: {
     <View className="gap-5 border-b border-border-subtle pb-5">
       <View className="flex-row items-center justify-between gap-3">
         <Text className="text-lg font-t3-semibold text-foreground">
-          {t("squadBuilder.createTitle")}
+          {t(props.variant === "create" ? "squadBuilder.createTitle" : "squadBuilder.editTitle")}
         </Text>
         <ActionButton
           label={t("squadBuilder.cancel")}
@@ -85,7 +86,7 @@ export function SettingsSquadBuilderCreateForm(props: {
         <TextInput
           value={draft.squadId}
           onChangeText={(squadId) => patchDraft({ squadId })}
-          editable={!props.pending}
+          editable={!props.pending && props.variant === "create"}
           autoCapitalize="none"
           autoCorrect={false}
           placeholder={t("squadBuilder.squadIdPlaceholder")}
@@ -233,7 +234,11 @@ export function SettingsSquadBuilderCreateForm(props: {
       </View>
 
       <ActionButton
-        label={props.pending ? t("squadBuilder.saving") : t("squadBuilder.save")}
+        label={
+          props.pending
+            ? t(props.variant === "create" ? "squadBuilder.saving" : "squadBuilder.updating")
+            : t(props.variant === "create" ? "squadBuilder.save" : "squadBuilder.update")
+        }
         disabled={props.pending || props.issues.length > 0}
         emphasized
         onPress={props.onSubmit}

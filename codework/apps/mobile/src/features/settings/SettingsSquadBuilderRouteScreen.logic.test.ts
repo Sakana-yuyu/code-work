@@ -4,6 +4,7 @@ import { describe, expect, it } from "vite-plus/test";
 
 import {
   addSquadBuilderMember,
+  buildSquadBuilderUpdateRequest,
   patchSquadBuilderMember,
   removeSquadBuilderMember,
   resolveSquadBuilderMembers,
@@ -154,5 +155,35 @@ describe("Squad Builder draft mutations", () => {
     expect(enabled.approvalStages).toEqual(["before_finalize"]);
     expect(enabledAgain).toBe(enabled);
     expect(disabled.approvalStages).toEqual([]);
+  });
+});
+
+describe("buildSquadBuilderUpdateRequest", () => {
+  it("pins the expected revision after applying the shared create validation", () => {
+    const draft = createEmptyCompositionSquadDraft();
+    draft.squadId = "squad-edit";
+    draft.name = "Edit Squad";
+    draft.members[0] = { ...draft.members[0]!, agentId: "agent-lead" };
+
+    const result = buildSquadBuilderUpdateRequest(draft, 7);
+
+    expect(result.issues).toEqual([]);
+    expect(result.request).toMatchObject({
+      squadId: "squad-edit",
+      expectedRevision: 7,
+      leaderAgentId: "agent-lead",
+    });
+  });
+
+  it("keeps validation failures and never emits a partial update request", () => {
+    const result = buildSquadBuilderUpdateRequest(createEmptyCompositionSquadDraft(), 2);
+
+    expect(result.request).toBeNull();
+    expect(result.issues).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ code: "required", path: "squadId" }),
+        expect.objectContaining({ code: "required", path: "name" }),
+      ]),
+    );
   });
 });

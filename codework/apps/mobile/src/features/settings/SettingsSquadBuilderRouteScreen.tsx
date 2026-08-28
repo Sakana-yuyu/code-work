@@ -2,6 +2,7 @@ import { useNavigation } from "@react-navigation/native";
 import {
   buildCompositionSquadCreateRequest,
   createEmptyCompositionSquadDraft,
+  draftFromCompositionSquad,
   type CompositionSquadDraft,
 } from "@codework/client-runtime/composition/squad-builder";
 import { squashAtomCommandFailure } from "@codework/client-runtime/state/runtime";
@@ -18,8 +19,9 @@ import { useEnvironments } from "../../state/environments";
 import { useEnvironmentQuery } from "../../state/query";
 import { serverEnvironment } from "../../state/server";
 import { useAtomCommand } from "../../state/use-atom-command";
-import { SettingsSquadBuilderCreateForm } from "./SettingsSquadBuilderCreateForm";
+import { SettingsSquadBuilderForm } from "./SettingsSquadBuilderForm";
 import {
+  buildSquadBuilderUpdateRequest,
   resolveSquadBuilderMembers,
   squadCollaborationModeLabelKey,
   squadMemberRoleLabelKey,
@@ -27,7 +29,7 @@ import {
   summarizeSquadBuilderConfiguration,
 } from "./SettingsSquadBuilderRouteScreen.logic";
 
-/** Mobile Squad Builder 的只读入口，直接展示服务端持久化配置与归档状态。 */
+/** Mobile Squad Builder 管理入口，直接读写服务端持久化配置。 */
 export function SettingsSquadBuilderRouteScreen() {
   const navigation = useNavigation();
   const insets = useSafeAreaInsets();
@@ -44,43 +46,78 @@ export function SettingsSquadBuilderRouteScreen() {
   const createSquad = useAtomCommand(serverEnvironment.createCompositionSquad, {
     reportFailure: false,
   });
-  const [isCreating, setIsCreating] = useState(false);
+  const updateSquad = useAtomCommand(serverEnvironment.updateCompositionSquad, {
+    reportFailure: false,
+  });
+  const [editorMode, setEditorMode] = useState<"create" | "edit" | null>(null);
+  const [editingSquadId, setEditingSquadId] = useState<string | null>(null);
   const [draft, setDraft] = useState<CompositionSquadDraft>(createEmptyCompositionSquadDraft);
-  const [createPending, setCreatePending] = useState(false);
-  const [createError, setCreateError] = useState<string | null>(null);
-  const [createdSquadName, setCreatedSquadName] = useState<string | null>(null);
-  const buildResult = useMemo(() => buildCompositionSquadCreateRequest(draft), [draft]);
+  const [actionPending, setActionPending] = useState(false);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const [actionSuccess, setActionSuccess] = useState<{
+    readonly kind: "created" | "updated";
+    readonly name: string;
+  } | null>(null);
   const squads = sortSquadBuilderSquads(squadsQuery.data?.squads ?? []);
+  const editingSquad = squads.find((squad) => squad.squadId === editingSquadId) ?? null;
+  const createBuildResult = useMemo(() => buildCompositionSquadCreateRequest(draft), [draft]);
+  const updateBuildResult = useMemo(
+    () => buildSquadBuilderUpdateRequest(draft, editingSquad?.revision ?? 1),
+    [draft, editingSquad?.revision],
+  );
+  const activeBuildResult = editorMode === "edit" ? updateBuildResult : createBuildResult;
 
   const startCreate = (): void => {
     setDraft(createEmptyCompositionSquadDraft());
-    setCreateError(null);
-    setCreatedSquadName(null);
-    setIsCreating(true);
+    setEditingSquadId(null);
+    setActionError(null);
+    setActionSuccess(null);
+    setEditorMode("create");
   };
 
-  const cancelCreate = (): void => {
-    if (createPending) return;
-    setIsCreating(false);
-    setCreateError(null);
+  const startEdit = (squad: CompositionSquad): void => {
+    if (squad.archivedAtUnixMs !== undefined) return;
+    setDraft(draftFromCompositionSquad(squad));
+    setEditingSquadId(squad.squadId);
+    setActionError(null);
+    setActionSuccess(null);
+    setEditorMode("edit");
   };
 
-  const submitCreate = async (): Promise<void> => {
-    if (environmentId === null || buildResult.request === null || createPending) return;
-    setCreatePending(true);
-    setCreateError(null);
-    setCreatedSquadName(null);
-    const result = await createSquad({ environmentId, input: buildResult.request });
+  const cancelEditor = (): void => {
+    if (actionPending) return;
+    setEditorMode(null);
+    setEditingSquadId(null);
+    setActionError(null);
+  };
+
+  const submitEditor = async (): Promise<void> => {
+    if (environmentId === null || editorMode === null || actionPending) return;
+    if (editorMode === "create" && createBuildResult.request === null) return;
+    if (editorMode === "edit" && (updateBuildResult.request === null || editingSquad === null)) {
+      return;
+    }
+    setActionPending(true);
+    setActionError(null);
+    setActionSuccess(null);
+    const result =
+      editorMode === "create"
+        ? await createSquad({ environmentId, input: createBuildResult.request! })
+        : await updateSquad({ environmentId, input: updateBuildResult.request! });
     if (result._tag === "Failure") {
       const error = squashAtomCommandFailure(result);
-      setCreateError(error instanceof Error ? error.message : t("squadBuilder.actionFailed"));
+      setActionError(error instanceof Error ? error.message : t("squadBuilder.actionFailed"));
     } else {
-      setCreatedSquadName(result.value.squad.name);
+      setActionSuccess({
+        kind: editorMode === "create" ? "created" : "updated",
+        name: result.value.squad.name,
+      });
       setDraft(createEmptyCompositionSquadDraft());
-      setIsCreating(false);
+      setEditorMode(null);
+      setEditingSquadId(null);
       squadsQuery.refresh();
     }
-    setCreatePending(false);
+    setActionPending(false);
   };
 
   return (
@@ -108,28 +145,29 @@ export function SettingsSquadBuilderRouteScreen() {
           <View className="flex-row justify-end">
             <ActionButton
               label={t("squadBuilder.new")}
-              disabled={createPending || isCreating}
+              disabled={actionPending || editorMode !== null}
               emphasized
               onPress={startCreate}
             />
           </View>
         )}
-        {isCreating ? (
-          <SettingsSquadBuilderCreateForm
+        {editorMode === null ? null : (
+          <SettingsSquadBuilderForm
+            variant={editorMode}
             draft={draft}
-            issues={buildResult.issues}
-            pending={createPending}
+            issues={activeBuildResult.issues}
+            pending={actionPending}
             onDraftChange={setDraft}
-            onSubmit={() => void submitCreate()}
-            onCancel={cancelCreate}
+            onSubmit={() => void submitEditor()}
+            onCancel={cancelEditor}
           />
-        ) : null}
-        {createError === null ? null : (
-          <Text className="text-sm text-danger-foreground">{createError}</Text>
         )}
-        {createdSquadName === null ? null : (
+        {actionError === null ? null : (
+          <Text className="text-sm text-danger-foreground">{actionError}</Text>
+        )}
+        {actionSuccess === null ? null : (
           <Text className="text-sm text-success-foreground">
-            {t("squadBuilder.created", { name: createdSquadName })}
+            {t(`squadBuilder.${actionSuccess.kind}`, { name: actionSuccess.name })}
           </Text>
         )}
         {environmentId === null ? (
@@ -141,14 +179,25 @@ export function SettingsSquadBuilderRouteScreen() {
         ) : squads.length === 0 ? (
           <StatusMessage text={t("squadBuilder.empty")} />
         ) : (
-          squads.map((squad) => <SquadConfigurationCard key={squad.squadId} squad={squad} />)
+          squads.map((squad) => (
+            <SquadConfigurationCard
+              key={squad.squadId}
+              squad={squad}
+              actionsDisabled={actionPending || editorMode !== null}
+              onEdit={() => startEdit(squad)}
+            />
+          ))
         )}
       </ScrollView>
     </View>
   );
 }
 
-function SquadConfigurationCard(props: { readonly squad: CompositionSquad }) {
+function SquadConfigurationCard(props: {
+  readonly squad: CompositionSquad;
+  readonly actionsDisabled: boolean;
+  readonly onEdit: () => void;
+}) {
   const { squad } = props;
   const summary = summarizeSquadBuilderConfiguration(squad);
   const members = resolveSquadBuilderMembers(squad);
@@ -210,6 +259,15 @@ function SquadConfigurationCard(props: { readonly squad: CompositionSquad }) {
           <SquadMemberRow key={`${member.order}:${member.agentId}`} member={member} />
         ))}
       </View>
+      {summary.archived ? null : (
+        <View className="flex-row justify-end border-t border-border-subtle pt-3">
+          <ActionButton
+            label={t("squadBuilder.edit")}
+            disabled={props.actionsDisabled}
+            onPress={props.onEdit}
+          />
+        </View>
+      )}
     </View>
   );
 }

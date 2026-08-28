@@ -1,9 +1,14 @@
-import type { CompositionSquad, CompositionSquadMember } from "@codework/contracts";
-import type {
-  CompositionSquadDraft,
-  CompositionSquadMemberDraft,
+import {
+  buildCompositionSquadCreateRequest,
+  type CompositionSquadDraft,
+  type CompositionSquadMemberDraft,
 } from "@codework/client-runtime/composition/squad-builder";
-import type { CompositionSquadApprovalStage } from "@codework/contracts";
+import type {
+  CompositionSquad,
+  CompositionSquadApprovalStage,
+  CompositionSquadMember,
+  CompositionSquadUpdateRequest,
+} from "@codework/contracts";
 
 export interface SquadBuilderConfigurationSummary {
   readonly archived: boolean;
@@ -93,6 +98,22 @@ export const toggleSquadBuilderApprovalStage = (
       ? [...draft.approvalStages, stage]
       : draft.approvalStages.filter((candidate) => candidate !== stage),
   };
+};
+
+export const buildSquadBuilderUpdateRequest = (
+  draft: CompositionSquadDraft,
+  expectedRevision: number,
+): {
+  readonly request: CompositionSquadUpdateRequest | null;
+  readonly issues: ReturnType<typeof buildCompositionSquadCreateRequest>["issues"];
+} => {
+  const built = buildCompositionSquadCreateRequest(draft);
+  return built.request === null
+    ? { request: null, issues: built.issues }
+    : {
+        request: { ...built.request, expectedRevision },
+        issues: built.issues,
+      };
 };
 
 /** Builder 同时展示活动与归档配置，活动项优先，各分组内按最近更新时间排序。 */
