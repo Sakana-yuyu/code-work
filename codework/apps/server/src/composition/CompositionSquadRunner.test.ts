@@ -93,6 +93,8 @@ it.effect("把 Squad 成员模型、工作目录、能力和重试策略编译�
 
     expect(graph.maxConcurrency).toBe(3);
     expect(graph.schedule).toBe("parallel");
+    expect(graph.failurePolicy).toBe("fail_fast");
+    expect(graph.partialSuccessPolicy).toBe("reject");
     expect(graph.leader).toMatchObject({
       assigneeKind: "squad",
       assigneeId: baseSquad.squadId,

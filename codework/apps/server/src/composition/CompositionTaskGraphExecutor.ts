@@ -1,4 +1,6 @@
 import type {
+  CompositionSquadFailurePolicy,
+  CompositionSquadPartialSuccessPolicy,
   CompositionTask,
   CompositionTaskRun,
   CompositionTaskStatus,
@@ -63,6 +65,8 @@ export type CompositionTaskGraphExecutionInput = {
   readonly children: ReadonlyArray<CompositionTaskGraphNodeInput>;
   readonly schedule?: "serial" | "parallel";
   readonly maxConcurrency?: number;
+  readonly failurePolicy?: CompositionSquadFailurePolicy;
+  readonly partialSuccessPolicy?: CompositionSquadPartialSuccessPolicy;
 };
 
 export type CompositionTaskGraphNodeResult = {
@@ -73,9 +77,19 @@ export type CompositionTaskGraphNodeResult = {
   readonly dispatches: ReadonlyArray<CompositionDispatchResult>;
 };
 
+export type CompositionTaskGraphNodeFailure = {
+  readonly nodeId: string;
+  readonly kind: "failed" | "skipped";
+  readonly failureCode: string;
+  readonly detail: string;
+  readonly task?: CompositionTask;
+  readonly run?: CompositionTaskRun;
+};
+
 export type CompositionTaskGraphExecutionResult = {
   readonly leader: CompositionDispatchResult;
   readonly children: ReadonlyArray<CompositionTaskGraphNodeResult>;
+  readonly failures?: ReadonlyArray<CompositionTaskGraphNodeFailure>;
 };
 
 export interface CompositionTaskGraphExecutorShape {
@@ -315,7 +329,11 @@ const make = (options: GraphExecutorOptions): CompositionTaskGraphExecutorShape 
   const settleNode = (
     started: RunningNode,
     activeNodes: Set<RunningNode>,
-  ): Effect.Effect<CompositionTaskGraphNodeResult, CompositionTaskGraphExecutionError> =>
+    continueOnFailure: boolean,
+  ): Effect.Effect<
+    CompositionTaskGraphNodeResult | CompositionTaskGraphNodeFailure,
+    CompositionTaskGraphExecutionError
+  > =>
     Effect.gen(function* () {
       const { node } = started;
       yield* Effect.logDebug(
@@ -349,11 +367,17 @@ const make = (options: GraphExecutorOptions): CompositionTaskGraphExecutorShape 
         const failure = classifyCompositionFailure(settled.run);
         if (dispatches.length >= maxAttempts || !failure.retryable) {
           activeNodes.delete(started);
-          return yield* graphError(
-            "child_failed",
-            `子任务未完成：失败码=${failure.code}；失败分类=${failure.category}；恢复动作=${failure.recovery}；${settled.run.resultSummary ?? "无结果摘要"}`,
-            node.nodeId,
-          );
+          const detail = `子任务未完成：失败码=${failure.code}；失败分类=${failure.category}；恢复动作=${failure.recovery}；${settled.run.resultSummary ?? "无结果摘要"}`;
+          return continueOnFailure
+            ? ({
+                nodeId: node.nodeId,
+                kind: "failed",
+                failureCode: failure.code,
+                detail,
+                task: settled.task,
+                run: settled.run,
+              } satisfies CompositionTaskGraphNodeFailure)
+            : yield* graphError("child_failed", detail, node.nodeId);
         }
 
         const nextRunId = retryRunId(node.runId, dispatches.length + 1);
@@ -384,7 +408,10 @@ const make = (options: GraphExecutorOptions): CompositionTaskGraphExecutorShape 
       const nodesById = new Map(input.children.map((node) => [node.nodeId, node] as const));
       const pending = new Set(input.children.map((node) => node.nodeId));
       const results = new Map<string, CompositionTaskGraphNodeResult>();
+      const failures = new Map<string, CompositionTaskGraphNodeFailure>();
       const activeNodes = new Set<RunningNode>();
+      const failurePolicy = input.failurePolicy ?? "fail_fast";
+      const partialSuccessPolicy = input.partialSuccessPolicy ?? "reject";
 
       const cancelNodes = (nodes: ReadonlyArray<RunningNode>, failedNodeId?: string) =>
         Effect.gen(function* () {
@@ -437,6 +464,26 @@ const make = (options: GraphExecutorOptions): CompositionTaskGraphExecutorShape 
         });
 
       while (pending.size > 0) {
+        if (failurePolicy === "continue_independent") {
+          const skipped = input.children.filter(
+            (node) =>
+              pending.has(node.nodeId) &&
+              (node.dependsOnNodeIds ?? []).some((dependencyId) => failures.has(dependencyId)),
+          );
+          for (const node of skipped) {
+            const failedDependencies = (node.dependsOnNodeIds ?? []).filter((dependencyId) =>
+              failures.has(dependencyId),
+            );
+            failures.set(node.nodeId, {
+              nodeId: node.nodeId,
+              kind: "skipped",
+              failureCode: "dependency_failed",
+              detail: `依赖节点未成功：${failedDependencies.join(", ")}`,
+            });
+            pending.delete(node.nodeId);
+          }
+          if (pending.size === 0) break;
+        }
         const ready = input.children.filter(
           (node) =>
             pending.has(node.nodeId) &&
@@ -466,30 +513,84 @@ const make = (options: GraphExecutorOptions): CompositionTaskGraphExecutorShape 
         // 先顺序写入每个子任务的 Code Work 投影，再并行等待 Driver 运行结果。
         const startedBatch: RunningNode[] = [];
         for (const node of scheduled) {
-          const started = yield* runReady(node).pipe(
-            Effect.catch((failure) => failAfterCleanup(failure, startedBatch)),
-          );
+          const started =
+            failurePolicy === "fail_fast"
+              ? yield* runReady(node).pipe(
+                  Effect.catch((failure) => failAfterCleanup(failure, startedBatch)),
+                )
+              : yield* Effect.result(runReady(node)).pipe(
+                  Effect.flatMap((result) => {
+                    if (result._tag === "Success") return Effect.succeed(result.success);
+                    failures.set(node.nodeId, {
+                      nodeId: node.nodeId,
+                      kind: "failed",
+                      failureCode: result.failure.code,
+                      detail: result.failure.detail,
+                    });
+                    pending.delete(node.nodeId);
+                    return Effect.void;
+                  }),
+                );
+          if (started === undefined) continue;
           startedBatch.push(started);
           if (!terminalStatuses.has(started.currentDispatch.run.status)) {
             activeNodes.add(started);
           }
         }
         const batch =
-          schedule === "parallel"
-            ? yield* Effect.forEach(startedBatch, (started) => settleNode(started, activeNodes), {
-                concurrency: "unbounded",
-              }).pipe(Effect.catch((failure) => failAfterCleanup(failure, [...activeNodes])))
-            : yield* Effect.forEach(startedBatch, (started) =>
-                settleNode(started, activeNodes),
-              ).pipe(Effect.catch((failure) => failAfterCleanup(failure, [...activeNodes])));
-        for (const result of batch) {
-          yield* Effect.logDebug(`Task Graph 子任务结果已汇聚：${result.nodeId}`);
-          results.set(result.nodeId, result);
-          pending.delete(result.nodeId);
+          failurePolicy === "fail_fast"
+            ? yield* (
+                schedule === "parallel"
+                  ? Effect.forEach(
+                      startedBatch,
+                      (started) => settleNode(started, activeNodes, false),
+                      { concurrency: "unbounded" },
+                    )
+                  : Effect.forEach(startedBatch, (started) =>
+                      settleNode(started, activeNodes, false),
+                    )
+              ).pipe(Effect.catch((failure) => failAfterCleanup(failure, [...activeNodes])))
+            : yield* Effect.forEach(
+                startedBatch,
+                (started) =>
+                  settleNode(started, activeNodes, true).pipe(
+                    Effect.catch((failure) => {
+                      activeNodes.delete(started);
+                      return Effect.succeed({
+                        nodeId: started.node.nodeId,
+                        kind: "failed" as const,
+                        failureCode: failure.code,
+                        detail: failure.detail,
+                      });
+                    }),
+                  ),
+                schedule === "parallel" ? { concurrency: "unbounded" } : undefined,
+              );
+        for (const outcome of batch) {
+          yield* Effect.logDebug(`Task Graph 子任务结果已汇聚：${outcome.nodeId}`);
+          if ("kind" in outcome) {
+            failures.set(outcome.nodeId, outcome);
+          } else {
+            results.set(outcome.nodeId, outcome);
+          }
+          pending.delete(outcome.nodeId);
         }
       }
 
-      const childResults = input.children.map((node) => results.get(node.nodeId)!);
+      const childResults = input.children.flatMap((node) => {
+        const result = results.get(node.nodeId);
+        return result === undefined ? [] : [result];
+      });
+      const childFailures = input.children.flatMap((node) => {
+        const failure = failures.get(node.nodeId);
+        return failure === undefined ? [] : [failure];
+      });
+      if (childFailures.length > 0 && partialSuccessPolicy === "reject") {
+        return yield* graphError(
+          "partial_success_rejected",
+          `存在 ${childFailures.length} 个失败或跳过节点，当前策略拒绝部分成功。`,
+        );
+      }
       yield* Effect.logDebug("Task Graph 开始派发 Leader");
       const childSummary = childResults
         .map(
@@ -497,7 +598,13 @@ const make = (options: GraphExecutorOptions): CompositionTaskGraphExecutorShape 
             `- ${result.nodeId} (${result.run.agentId}): ${result.run.resultSummary ?? "已完成"}`,
         )
         .join("\n");
-      const leaderPrompt = `${input.leader.prompt}\n\n子 Agent 执行结果：\n${childSummary || "（没有子任务）"}`;
+      const failureSummary = childFailures
+        .map(
+          (failure) =>
+            `- ${failure.nodeId} [${failure.kind}/${failure.failureCode}]: ${failure.detail}`,
+        )
+        .join("\n");
+      const leaderPrompt = `${input.leader.prompt}\n\n子 Agent 执行结果：\n${childSummary || "（没有成功子任务）"}${failureSummary.length === 0 ? "" : `\n\n失败与跳过节点：\n${failureSummary}`}`;
       const leader = yield* options.orchestrator
         .dispatchTask({
           taskId: input.leader.taskId,
@@ -541,6 +648,7 @@ const make = (options: GraphExecutorOptions): CompositionTaskGraphExecutorShape 
       return {
         leader: { task: leaderTask.task, run: leaderTask.run },
         children: childResults,
+        ...(childFailures.length === 0 ? {} : { failures: childFailures }),
       } satisfies CompositionTaskGraphExecutionResult;
     }).pipe(Effect.mapError(normalizeError));
 

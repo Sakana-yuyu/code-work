@@ -291,11 +291,15 @@ describe("composition contracts", () => {
       ],
       schedule: "parallel",
       maxConcurrency: 2,
+      failurePolicy: "continue_independent",
+      partialSuccessPolicy: "require_review",
     });
 
     expect(decoded.children[0]?.dependsOnNodeIds).toEqual([]);
     expect(decoded.children[0]?.maxAttempts).toBe(2);
     expect(decoded.maxConcurrency).toBe(2);
+    expect(decoded.failurePolicy).toBe("continue_independent");
+    expect(decoded.partialSuccessPolicy).toBe("require_review");
 
     const decodedResult = decodeTaskGraphResult({
       leader: {
@@ -322,8 +326,17 @@ describe("composition contracts", () => {
         },
       },
       children: [],
+      failures: [
+        {
+          nodeId: "child-failed",
+          kind: "failed",
+          failureCode: "worker_failed",
+          detail: "子任务失败",
+        },
+      ],
     });
     expect(decodedResult.leader.run.status).toBe("in_review");
+    expect(decodedResult.failures?.[0]?.failureCode).toBe("worker_failed");
   });
 
   it("定义显式的 review approve/reject 合同", () => {

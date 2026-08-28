@@ -295,6 +295,8 @@ export const compileCompositionSquadGraph = ({
       children,
       schedule: squad.collaborationMode === "serial" ? "serial" : "parallel",
       maxConcurrency: squad.maxConcurrency,
+      failurePolicy: squad.failurePolicy,
+      partialSuccessPolicy: squad.partialSuccessPolicy,
     } satisfies CompositionTaskGraphExecutionInput;
   });
 

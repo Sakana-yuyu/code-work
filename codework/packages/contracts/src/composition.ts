@@ -407,11 +407,19 @@ export const CompositionTaskGraphLeaderRequest = Schema.Struct({
 export type CompositionTaskGraphLeaderRequest = typeof CompositionTaskGraphLeaderRequest.Type;
 
 /** 从 Code Work Leader、Squad 和子 Agent 节点启动真实 Task Graph。 */
+export const CompositionSquadFailurePolicy = Schema.Literals(["fail_fast", "continue_independent"]);
+export type CompositionSquadFailurePolicy = typeof CompositionSquadFailurePolicy.Type;
+
+export const CompositionSquadPartialSuccessPolicy = Schema.Literals(["reject", "require_review"]);
+export type CompositionSquadPartialSuccessPolicy = typeof CompositionSquadPartialSuccessPolicy.Type;
+
 export const CompositionTaskGraphExecutionRequest = Schema.Struct({
   leader: CompositionTaskGraphLeaderRequest,
   children: Schema.Array(CompositionTaskGraphNodeRequest),
   schedule: Schema.optional(Schema.Literals(["serial", "parallel"])),
   maxConcurrency: Schema.optional(PositiveInt),
+  failurePolicy: Schema.optional(CompositionSquadFailurePolicy),
+  partialSuccessPolicy: Schema.optional(CompositionSquadPartialSuccessPolicy),
 });
 export type CompositionTaskGraphExecutionRequest = typeof CompositionTaskGraphExecutionRequest.Type;
 
@@ -424,9 +432,20 @@ export const CompositionTaskGraphNodeResult = Schema.Struct({
 });
 export type CompositionTaskGraphNodeResult = typeof CompositionTaskGraphNodeResult.Type;
 
+export const CompositionTaskGraphNodeFailure = Schema.Struct({
+  nodeId: TrimmedNonEmptyString,
+  kind: Schema.Literals(["failed", "skipped"]),
+  failureCode: TrimmedNonEmptyString,
+  detail: TrimmedNonEmptyString,
+  task: Schema.optional(CompositionTask),
+  run: Schema.optional(CompositionTaskRun),
+});
+export type CompositionTaskGraphNodeFailure = typeof CompositionTaskGraphNodeFailure.Type;
+
 export const CompositionTaskGraphExecutionResult = Schema.Struct({
   leader: CompositionTaskDispatchResult,
   children: Schema.Array(CompositionTaskGraphNodeResult),
+  failures: Schema.optional(Schema.Array(CompositionTaskGraphNodeFailure)),
 });
 export type CompositionTaskGraphExecutionResult = typeof CompositionTaskGraphExecutionResult.Type;
 
@@ -800,12 +819,6 @@ export const CompositionSquadCollaborationMode = Schema.Literals([
   "leader_workers",
 ]);
 export type CompositionSquadCollaborationMode = typeof CompositionSquadCollaborationMode.Type;
-
-export const CompositionSquadFailurePolicy = Schema.Literals(["fail_fast", "continue_independent"]);
-export type CompositionSquadFailurePolicy = typeof CompositionSquadFailurePolicy.Type;
-
-export const CompositionSquadPartialSuccessPolicy = Schema.Literals(["reject", "require_review"]);
-export type CompositionSquadPartialSuccessPolicy = typeof CompositionSquadPartialSuccessPolicy.Type;
 
 export const CompositionSquadApprovalStage = Schema.Literals([
   "before_dispatch",

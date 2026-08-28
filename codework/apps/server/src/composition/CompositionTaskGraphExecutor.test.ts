@@ -185,7 +185,160 @@ const schedulingChildren = ["a", "b", "c"].map((suffix) => ({
   workspaceRoot: "C:/workspace",
 }));
 
+const makePartialSuccessExecutor = (events: string[], leaderPrompts: string[]) => {
+  const tasks = new Map<string, CompositionTask>();
+  const runs = new Map<string, CompositionTaskRun>();
+  const orchestrator: Pick<CompositionOrchestrator, "dispatchTask" | "retryTask" | "cancelTask"> = {
+    dispatchTask: (input) =>
+      Effect.sync(() => {
+        events.push(`dispatch:${input.taskId}`);
+        if (input.taskId === baseLeader.taskId && input.prompt !== undefined) {
+          leaderPrompts.push(input.prompt);
+        }
+        const terminal = input.taskId === baseLeader.taskId;
+        const task: CompositionTask = {
+          taskId: input.taskId,
+          projectId: input.projectId,
+          assigneeKind: input.assigneeKind,
+          assigneeId: input.assigneeId,
+          mode: input.mode,
+          status: terminal ? "completed" : "running",
+          promptDigest: input.promptDigest,
+          dependsOnTaskIds: [...input.dependsOnTaskIds],
+          createdAtUnixMs: 1,
+          updatedAtUnixMs: 1,
+        };
+        const run: CompositionTaskRun = {
+          runId: input.runId,
+          taskId: input.taskId,
+          agentId: input.assigneeId,
+          runtimeId: `runtime-${input.assigneeId}`,
+          status: terminal ? "completed" : "running",
+          attempt: 1,
+          capabilityGrantIds: [],
+        };
+        tasks.set(task.taskId, task);
+        runs.set(run.runId, run);
+        return { task, run };
+      }),
+    retryTask: () => Effect.die("本测试不应重试"),
+    cancelTask: ({ taskId }) =>
+      Effect.sync(() => {
+        events.push(`cancel:${taskId}`);
+        const task = tasks.get(taskId)!;
+        const run = [...runs.values()].find((candidate) => candidate.taskId === taskId)!;
+        return {
+          task: { ...task, status: "cancelled" as const },
+          run: { ...run, status: "cancelled" as const },
+          status: "cancelled" as const,
+        };
+      }),
+  };
+  return makeCompositionTaskGraphExecutor({
+    orchestrator,
+    store: {
+      getTask: (taskId) => Effect.succeed(Option.fromNullishOr(tasks.get(taskId))),
+    },
+    runtime: {
+      awaitTaskCompletion: ({ taskId, runId }) =>
+        Effect.sync(() => {
+          const task = tasks.get(taskId)!;
+          const run = runs.get(runId)!;
+          const failed = taskId === "task-a";
+          const status = failed ? ("failed" as const) : ("completed" as const);
+          events.push(`${status}:${taskId}`);
+          tasks.set(taskId, { ...task, status });
+          const settledRun: CompositionTaskRun = {
+            ...run,
+            status,
+            ...(failed
+              ? { failureCode: "worker_failed", resultSummary: "A 节点执行失败" }
+              : { resultSummary: `${taskId} 已完成` }),
+          };
+          runs.set(runId, settledRun);
+          return settledRun;
+        }),
+    },
+  });
+};
+
+const partialSuccessChildren = [
+  { ...schedulingChildren[0]!, dependsOnNodeIds: [] },
+  { ...schedulingChildren[1]!, dependsOnNodeIds: [] },
+  { ...schedulingChildren[2]!, dependsOnNodeIds: ["node-a"] },
+  {
+    nodeId: "node-d",
+    taskId: "task-d",
+    runId: "run-d",
+    projectId: "project-graph",
+    assigneeKind: "agent" as const,
+    assigneeId: "agent-d",
+    mode: "parallel" as const,
+    promptDigest: "sha256:d",
+    prompt: "任务 D",
+    workspaceRoot: "C:/workspace",
+    dependsOnNodeIds: ["node-b"],
+  },
+];
+
 describe("CompositionTaskGraphExecutor", () => {
+  it.effect("continue_independent 继续无关分支并把部分成功交给 Leader review", () =>
+    Effect.gen(function* () {
+      const events: string[] = [];
+      const leaderPrompts: string[] = [];
+      const executor = makePartialSuccessExecutor(events, leaderPrompts);
+
+      const result = yield* executor.execute({
+        leader: baseLeader,
+        children: partialSuccessChildren,
+        schedule: "serial",
+        failurePolicy: "continue_independent",
+        partialSuccessPolicy: "require_review",
+      } as CompositionTaskGraphExecutionInput);
+      const failures = (
+        result as typeof result & {
+          readonly failures: ReadonlyArray<{
+            readonly nodeId: string;
+            readonly kind: "failed" | "skipped";
+            readonly failureCode: string;
+          }>;
+        }
+      ).failures;
+
+      expect(events).toContain("dispatch:task-b");
+      expect(events).toContain("dispatch:task-d");
+      expect(events).not.toContain("dispatch:task-c");
+      expect(events.some((event) => event.startsWith("cancel:"))).toBe(false);
+      expect(failures).toMatchObject([
+        { nodeId: "node-a", kind: "failed", failureCode: "worker_failed" },
+        { nodeId: "node-c", kind: "skipped", failureCode: "dependency_failed" },
+      ]);
+      expect(leaderPrompts[0]).toContain("node-a");
+      expect(leaderPrompts[0]).toContain("A 节点执行失败");
+    }),
+  );
+
+  it.effect("partialSuccessPolicy=reject 在独立分支收口后拒绝派发 Leader", () =>
+    Effect.gen(function* () {
+      const events: string[] = [];
+      const executor = makePartialSuccessExecutor(events, []);
+
+      const error = yield* Effect.flip(
+        executor.execute({
+          leader: baseLeader,
+          children: partialSuccessChildren.slice(0, 2),
+          schedule: "serial",
+          failurePolicy: "continue_independent",
+          partialSuccessPolicy: "reject",
+        } as CompositionTaskGraphExecutionInput),
+      );
+
+      expect(events).toContain("completed:task-b");
+      expect(events).not.toContain(`dispatch:${baseLeader.taskId}`);
+      expect(error).toMatchObject({ code: "partial_success_rejected" });
+    }),
+  );
+
   it.effect("serial 调度必须等待前一节点完成后再启动下一节点", () =>
     Effect.gen(function* () {
       const events: string[] = [];

@@ -2097,6 +2097,12 @@ const makeWsRpcLayer = (
                     ...(input.maxConcurrency === undefined
                       ? {}
                       : { maxConcurrency: input.maxConcurrency }),
+                    ...(input.failurePolicy === undefined
+                      ? {}
+                      : { failurePolicy: input.failurePolicy }),
+                    ...(input.partialSuccessPolicy === undefined
+                      ? {}
+                      : { partialSuccessPolicy: input.partialSuccessPolicy }),
                   })
                   .pipe(Effect.mapError(compositionTaskError)),
             { "rpc.aggregate": "composition" },
