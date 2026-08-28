@@ -3,6 +3,7 @@ import {
   CompositionSquad as CompositionSquadSchema,
   type CompositionRuntimeLease,
   type CompositionSquad,
+  type CompositionSquadRevision,
   type CompositionTask,
   type CompositionTaskDependency,
   type CompositionTaskEvent,
@@ -118,6 +119,13 @@ const SquadRowSchema = Schema.Struct({
   archivedAtUnixMs: Schema.NullOr(Schema.Number),
 });
 
+const SquadRevisionRowSchema = Schema.Struct({
+  squadId: Schema.String,
+  revision: Schema.Number,
+  configuration: Schema.NullOr(CompositionSquadJson),
+  createdAtUnixMs: Schema.Number,
+});
+
 const MulticaQuickCreateIntentRowSchema = Schema.Struct({
   runId: Schema.String,
   taskId: Schema.String,
@@ -176,6 +184,8 @@ const LeaseReleaseRequest = Schema.Struct({
   releasedAtUnixMs: Schema.Number,
 });
 const LeaseReclaimRequest = Schema.Struct({ nowUnixMs: Schema.Number });
+const SquadListRequest = Schema.Struct({ includeArchived: Schema.Number });
+const SquadRevisionListRequest = Schema.Struct({ squadId: Schema.String });
 
 const toTask = (row: Schema.Schema.Type<typeof TaskRowSchema>): CompositionTask => ({
   taskId: row.taskId,
@@ -281,6 +291,15 @@ const toSquad = (row: Schema.Schema.Type<typeof SquadRowSchema>): CompositionSqu
     ...(row.instructions === null ? {} : { instructions: row.instructions }),
     ...(row.archivedAtUnixMs === null ? {} : { archivedAtUnixMs: row.archivedAtUnixMs }),
   };
+
+const toSquadRevision = (
+  row: Schema.Schema.Type<typeof SquadRevisionRowSchema>,
+): CompositionSquadRevision => ({
+  squadId: row.squadId,
+  revision: row.revision,
+  configuration: row.configuration,
+  createdAtUnixMs: row.createdAtUnixMs,
+});
 
 const makeStore = Effect.gen(function* () {
   const sql = yield* SqlClient.SqlClient;
@@ -904,6 +923,33 @@ const makeStore = Effect.gen(function* () {
       FROM composition_squads WHERE squad_id = ${id} LIMIT 1
     `,
   });
+  const listSquadRows = SqlSchema.findAll({
+    Request: SquadListRequest,
+    Result: SquadRowSchema,
+    execute: ({ includeArchived }) => sql`
+      SELECT squad_id AS "squadId", name, leader_agent_id AS "leaderAgentId",
+        member_agent_ids_json AS "memberAgentIds", instructions, revision,
+        configuration_json AS "configuration",
+        created_at_unix_ms AS "createdAtUnixMs",
+        updated_at_unix_ms AS "updatedAtUnixMs",
+        archived_at_unix_ms AS "archivedAtUnixMs"
+      FROM composition_squads
+      WHERE ${includeArchived} = 1 OR archived_at_unix_ms IS NULL
+      ORDER BY updated_at_unix_ms DESC, squad_id ASC
+    `,
+  });
+  const listSquadRevisionRows = SqlSchema.findAll({
+    Request: SquadRevisionListRequest,
+    Result: SquadRevisionRowSchema,
+    execute: ({ squadId }) => sql`
+      SELECT squad_id AS "squadId", revision,
+        configuration_json AS "configuration",
+        created_at_unix_ms AS "createdAtUnixMs"
+      FROM composition_squad_revisions
+      WHERE squad_id = ${squadId}
+      ORDER BY revision ASC
+    `,
+  });
 
   type CompositionTaskSqlError = SqlError | Schema.SchemaError;
   const run = <A>(operation: string, effect: Effect.Effect<A, CompositionTaskSqlError>) =>
@@ -1142,6 +1188,18 @@ const makeStore = Effect.gen(function* () {
       run(
         "CompositionTaskStore.getSquad",
         getSquadRow({ id: squadId }).pipe(Effect.map(Option.map(toSquad))),
+      ),
+    listSquads: (options) =>
+      run(
+        "CompositionTaskStore.listSquads",
+        listSquadRows({ includeArchived: options?.includeArchived === true ? 1 : 0 }).pipe(
+          Effect.map((rows) => rows.map(toSquad)),
+        ),
+      ),
+    listSquadRevisions: (squadId) =>
+      run(
+        "CompositionTaskStore.listSquadRevisions",
+        listSquadRevisionRows({ squadId }).pipe(Effect.map((rows) => rows.map(toSquadRevision))),
       ),
   };
 

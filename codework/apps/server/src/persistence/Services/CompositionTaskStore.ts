@@ -1,6 +1,7 @@
 import type {
   CompositionRuntimeLease,
   CompositionSquad,
+  CompositionSquadRevision,
   CompositionTask,
   CompositionTaskDependency,
   CompositionTaskEvent,
@@ -163,6 +164,12 @@ export interface CompositionTaskStoreShape {
   readonly getSquad: (
     squadId: string,
   ) => Effect.Effect<Option.Option<CompositionSquad>, CompositionTaskStoreError>;
+  readonly listSquads: (options?: {
+    readonly includeArchived?: boolean;
+  }) => Effect.Effect<ReadonlyArray<CompositionSquad>, CompositionTaskStoreError>;
+  readonly listSquadRevisions: (
+    squadId: string,
+  ) => Effect.Effect<ReadonlyArray<CompositionSquadRevision>, CompositionTaskStoreError>;
 }
 
 export class CompositionTaskStore extends Context.Service<

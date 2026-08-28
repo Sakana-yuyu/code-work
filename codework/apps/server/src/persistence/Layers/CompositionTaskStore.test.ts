@@ -26,6 +26,120 @@ const inputStoreLayer = it.layer(
 );
 
 layer("CompositionTaskStore", (it) => {
+  it.effect("按归档状态列出 Squad，并保持稳定的更新时间顺序", () =>
+    Effect.gen(function* () {
+      const store = yield* CompositionTaskStore;
+      const makeSquad = (squadId: string, updatedAtUnixMs: number, archivedAtUnixMs?: number) => ({
+        squadId,
+        name: `协同组 ${squadId}`,
+        leaderAgentId: `leader-${squadId}`,
+        memberAgentIds: [`leader-${squadId}`],
+        revision: 1,
+        collaborationMode: "serial" as const,
+        members: [
+          {
+            agentId: `leader-${squadId}`,
+            role: "leader" as const,
+            order: 0,
+            required: true,
+            capabilityIds: [],
+            maxConcurrentTasks: 1,
+          },
+        ],
+        maxConcurrency: 1,
+        maxRetries: 0,
+        failurePolicy: "fail_fast" as const,
+        partialSuccessPolicy: "reject" as const,
+        approvalStages: [],
+        createdAtUnixMs: 100,
+        updatedAtUnixMs,
+        ...(archivedAtUnixMs === undefined ? {} : { archivedAtUnixMs }),
+      });
+
+      yield* store.upsertSquad(makeSquad("active-older", 200));
+      yield* store.upsertSquad(makeSquad("active-newer", 300));
+      yield* store.upsertSquad(makeSquad("archived", 400, 400));
+
+      assert.deepEqual(
+        (yield* store.listSquads()).map((squad) => squad.squadId),
+        ["active-newer", "active-older"],
+      );
+      assert.deepEqual(
+        (yield* store.listSquads({ includeArchived: true })).map((squad) => squad.squadId),
+        ["archived", "active-newer", "active-older"],
+      );
+    }),
+  );
+
+  it.effect("按 revision 顺序读取 Squad 不可变历史并标记旧版空配置", () =>
+    Effect.gen(function* () {
+      const store = yield* CompositionTaskStore;
+      const revision1 = {
+        squadId: "squad-history",
+        name: "历史协同组",
+        leaderAgentId: "history-leader",
+        memberAgentIds: ["history-leader"],
+        revision: 1,
+        collaborationMode: "serial" as const,
+        members: [
+          {
+            agentId: "history-leader",
+            role: "leader" as const,
+            order: 0,
+            required: true,
+            capabilityIds: [],
+            maxConcurrentTasks: 1,
+          },
+        ],
+        maxConcurrency: 1,
+        maxRetries: 0,
+        failurePolicy: "fail_fast" as const,
+        partialSuccessPolicy: "reject" as const,
+        approvalStages: [],
+        createdAtUnixMs: 100,
+        updatedAtUnixMs: 100,
+      };
+      const revision2 = {
+        ...revision1,
+        name: "历史协同组 v2",
+        revision: 2,
+        updatedAtUnixMs: 200,
+      };
+
+      yield* store.upsertSquad(revision1);
+      yield* store.upsertSquad(revision2);
+      yield* store.upsertSquad({
+        squadId: "legacy-history",
+        name: "旧版协同组",
+        leaderAgentId: "legacy-leader",
+        memberAgentIds: ["legacy-leader"],
+      });
+
+      assert.deepEqual(yield* store.listSquadRevisions(revision1.squadId), [
+        {
+          squadId: revision1.squadId,
+          revision: 1,
+          configuration: revision1,
+          createdAtUnixMs: 100,
+        },
+        {
+          squadId: revision1.squadId,
+          revision: 2,
+          configuration: revision2,
+          createdAtUnixMs: 200,
+        },
+      ]);
+      assert.deepEqual(yield* store.listSquadRevisions("legacy-history"), [
+        {
+          squadId: "legacy-history",
+          revision: 1,
+          configuration: null,
+          createdAtUnixMs: 0,
+        },
+      ]);
+    }),
+  );
+
   it.effect("持久化丰富 Squad 配置、不可变 revision 历史和幂等重放", () =>
     Effect.gen(function* () {
       const store = yield* CompositionTaskStore;

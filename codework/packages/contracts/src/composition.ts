@@ -971,3 +971,12 @@ export const CompositionSquad = CompositionSquadFields.check(
   }),
 );
 export type CompositionSquad = typeof CompositionSquad.Type;
+
+/** Squad 的不可变历史记录；旧版迁移记录可能没有完整配置快照。 */
+export const CompositionSquadRevision = Schema.Struct({
+  squadId: TrimmedNonEmptyString,
+  revision: PositiveInt,
+  configuration: Schema.NullOr(CompositionSquad),
+  createdAtUnixMs: NonNegativeInt,
+});
+export type CompositionSquadRevision = typeof CompositionSquadRevision.Type;
