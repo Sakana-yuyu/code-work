@@ -11,6 +11,10 @@
       "types": "./src/authorization/index.ts",
       "default": "./src/authorization/index.ts"
     },
+    "./composition/squad-builder": {
+      "types": "./src/composition/squadBuilder.ts",
+      "default": "./src/composition/squadBuilder.ts"
+    },
     "./environment": {
       "types": "./src/environment/index.ts",
       "default": "./src/environment/index.ts"
