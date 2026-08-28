@@ -411,6 +411,7 @@ export const CompositionTaskGraphExecutionRequest = Schema.Struct({
   leader: CompositionTaskGraphLeaderRequest,
   children: Schema.Array(CompositionTaskGraphNodeRequest),
   schedule: Schema.optional(Schema.Literals(["serial", "parallel"])),
+  maxConcurrency: Schema.optional(PositiveInt),
 });
 export type CompositionTaskGraphExecutionRequest = typeof CompositionTaskGraphExecutionRequest.Type;
 

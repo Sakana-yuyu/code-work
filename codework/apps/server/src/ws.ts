@@ -2094,6 +2094,9 @@ const makeWsRpcLayer = (
                         : { maxAttempts: child.maxAttempts }),
                     })),
                     ...(input.schedule === undefined ? {} : { schedule: input.schedule }),
+                    ...(input.maxConcurrency === undefined
+                      ? {}
+                      : { maxConcurrency: input.maxConcurrency }),
                   })
                   .pipe(Effect.mapError(compositionTaskError)),
             { "rpc.aggregate": "composition" },

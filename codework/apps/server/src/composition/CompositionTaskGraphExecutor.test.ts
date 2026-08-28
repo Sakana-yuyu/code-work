@@ -116,53 +116,159 @@ const makeGrantRegistry = (): Pick<
 
 const completionStatuses = new Set(["in_review", "completed", "failed", "cancelled", "timed_out"]);
 
-describe("CompositionTaskGraphExecutor", () => {
-  it("拒绝循环依赖，而不是进入不可结束的等待", async () => {
-    const executor = makeCompositionTaskGraphExecutor({
-      orchestrator: {
-        dispatchTask: () => Effect.die("不会执行"),
-        retryTask: () => Effect.die("不会执行"),
-        cancelTask: () => Effect.die("不会执行"),
-      },
-      store: { getTask: () => Effect.die("不会执行") },
-      runtime: { awaitTaskCompletion: () => Effect.die("不会执行") },
-    });
-    const input: CompositionTaskGraphExecutionInput = {
-      leader: baseLeader,
-      children: [
-        {
-          nodeId: "a",
-          taskId: "task-a",
-          runId: "run-a",
-          projectId: "project-graph",
-          assigneeKind: "agent",
-          assigneeId: "agent-a",
-          mode: "parallel",
-          promptDigest: "sha256:a",
-          prompt: "任务 A",
-          workspaceRoot: "C:/workspace",
-          dependsOnNodeIds: ["b"],
-        },
-        {
-          nodeId: "b",
-          taskId: "task-b",
-          runId: "run-b",
-          projectId: "project-graph",
-          assigneeKind: "agent",
-          assigneeId: "agent-b",
-          mode: "parallel",
-          promptDigest: "sha256:b",
-          prompt: "任务 B",
-          workspaceRoot: "C:/workspace",
-          dependsOnNodeIds: ["a"],
-        },
-      ],
-    };
-
-    await expect(Effect.runPromise(executor.execute(input))).rejects.toMatchObject({
-      code: "dependency_cycle",
-    });
+const makeSchedulingExecutor = (events: string[]) => {
+  const tasks = new Map<string, CompositionTask>();
+  const runs = new Map<string, CompositionTaskRun>();
+  const orchestrator: Pick<CompositionOrchestrator, "dispatchTask" | "retryTask" | "cancelTask"> = {
+    dispatchTask: (input) =>
+      Effect.sync(() => {
+        events.push(`dispatch:${input.taskId}`);
+        const terminal = input.taskId === baseLeader.taskId;
+        const task: CompositionTask = {
+          taskId: input.taskId,
+          projectId: input.projectId,
+          assigneeKind: input.assigneeKind,
+          assigneeId: input.assigneeId,
+          mode: input.mode,
+          status: terminal ? "completed" : "running",
+          promptDigest: input.promptDigest,
+          dependsOnTaskIds: [...input.dependsOnTaskIds],
+          createdAtUnixMs: 1,
+          updatedAtUnixMs: 1,
+        };
+        const run: CompositionTaskRun = {
+          runId: input.runId,
+          taskId: input.taskId,
+          agentId: input.assigneeId,
+          runtimeId: `runtime-${input.assigneeId}`,
+          status: terminal ? "completed" : "running",
+          attempt: 1,
+          capabilityGrantIds: [],
+        };
+        tasks.set(task.taskId, task);
+        runs.set(run.runId, run);
+        return { task, run };
+      }),
+    retryTask: () => Effect.die("本测试不应重试"),
+    cancelTask: () => Effect.die("本测试不应取消"),
+  };
+  return makeCompositionTaskGraphExecutor({
+    orchestrator,
+    store: {
+      getTask: (taskId) => Effect.succeed(Option.fromNullishOr(tasks.get(taskId))),
+    },
+    runtime: {
+      awaitTaskCompletion: ({ taskId, runId }) =>
+        Effect.sync(() => {
+          events.push(`settle:${taskId}`);
+          const task = tasks.get(taskId)!;
+          const run = runs.get(runId)!;
+          tasks.set(taskId, { ...task, status: "completed" });
+          const completedRun = { ...run, status: "completed" as const };
+          runs.set(runId, completedRun);
+          return completedRun;
+        }),
+    },
   });
+};
+
+const schedulingChildren = ["a", "b", "c"].map((suffix) => ({
+  nodeId: `node-${suffix}`,
+  taskId: `task-${suffix}`,
+  runId: `run-${suffix}`,
+  projectId: "project-graph",
+  assigneeKind: "agent" as const,
+  assigneeId: `agent-${suffix}`,
+  mode: "parallel" as const,
+  promptDigest: `sha256:${suffix}`,
+  prompt: `任务 ${suffix.toUpperCase()}`,
+  workspaceRoot: "C:/workspace",
+}));
+
+describe("CompositionTaskGraphExecutor", () => {
+  it.effect("serial 调度必须等待前一节点完成后再启动下一节点", () =>
+    Effect.gen(function* () {
+      const events: string[] = [];
+      const executor = makeSchedulingExecutor(events);
+
+      yield* executor.execute({
+        leader: baseLeader,
+        children: schedulingChildren.slice(0, 2),
+        schedule: "serial",
+      });
+
+      expect(events.slice(0, 4)).toEqual([
+        "dispatch:task-a",
+        "settle:task-a",
+        "dispatch:task-b",
+        "settle:task-b",
+      ]);
+    }),
+  );
+
+  it.effect("parallel 调度不允许启动超过 maxConcurrency 的节点", () =>
+    Effect.gen(function* () {
+      const events: string[] = [];
+      const executor = makeSchedulingExecutor(events);
+
+      yield* executor.execute({
+        leader: baseLeader,
+        children: schedulingChildren,
+        schedule: "parallel",
+        maxConcurrency: 2,
+      } as CompositionTaskGraphExecutionInput);
+
+      expect(events.indexOf("dispatch:task-c")).toBeGreaterThan(events.indexOf("settle:task-b"));
+    }),
+  );
+
+  it.effect("拒绝循环依赖，而不是进入不可结束的等待", () =>
+    Effect.gen(function* () {
+      const executor = makeCompositionTaskGraphExecutor({
+        orchestrator: {
+          dispatchTask: () => Effect.die("不会执行"),
+          retryTask: () => Effect.die("不会执行"),
+          cancelTask: () => Effect.die("不会执行"),
+        },
+        store: { getTask: () => Effect.die("不会执行") },
+        runtime: { awaitTaskCompletion: () => Effect.die("不会执行") },
+      });
+      const input: CompositionTaskGraphExecutionInput = {
+        leader: baseLeader,
+        children: [
+          {
+            nodeId: "a",
+            taskId: "task-a",
+            runId: "run-a",
+            projectId: "project-graph",
+            assigneeKind: "agent",
+            assigneeId: "agent-a",
+            mode: "parallel",
+            promptDigest: "sha256:a",
+            prompt: "任务 A",
+            workspaceRoot: "C:/workspace",
+            dependsOnNodeIds: ["b"],
+          },
+          {
+            nodeId: "b",
+            taskId: "task-b",
+            runId: "run-b",
+            projectId: "project-graph",
+            assigneeKind: "agent",
+            assigneeId: "agent-b",
+            mode: "parallel",
+            promptDigest: "sha256:b",
+            prompt: "任务 B",
+            workspaceRoot: "C:/workspace",
+            dependsOnNodeIds: ["a"],
+          },
+        ],
+      };
+
+      const error = yield* Effect.flip(executor.execute(input));
+      expect(error).toMatchObject({ code: "dependency_cycle" });
+    }),
+  );
 
   it.layer(TestLayer, { excludeTestServices: true })(
     "通过真实 ToolBroker 执行两个 BYOK 子 Agent，失败子任务重试后由 Leader 进入 review",

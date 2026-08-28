@@ -37,6 +37,8 @@ export class CompositionTaskGraphExecutionError extends Schema.TaggedErrorClass<
   }
 }
 
+const isCompositionTaskGraphExecutionError = Schema.is(CompositionTaskGraphExecutionError);
+
 type GraphDispatchInput = Omit<
   CompositionDispatchInput,
   "parentTaskId" | "dependsOnTaskIds" | "mode"
@@ -60,6 +62,7 @@ export type CompositionTaskGraphExecutionInput = {
   readonly leader: CompositionTaskGraphLeaderInput;
   readonly children: ReadonlyArray<CompositionTaskGraphNodeInput>;
   readonly schedule?: "serial" | "parallel";
+  readonly maxConcurrency?: number;
 };
 
 export type CompositionTaskGraphNodeResult = {
@@ -137,7 +140,7 @@ const graphError = (
   });
 
 const normalizeError = (error: unknown): CompositionTaskGraphExecutionError =>
-  Schema.is(CompositionTaskGraphExecutionError)(error)
+  isCompositionTaskGraphExecutionError(error)
     ? error
     : graphError(errorCode(error), errorDetail(error));
 
@@ -156,6 +159,12 @@ const validateGraph = (
       "Leader prompt 和 workspaceRoot 不能为空。",
       "leader",
     );
+  }
+  if (
+    input.maxConcurrency !== undefined &&
+    (!Number.isInteger(input.maxConcurrency) || input.maxConcurrency < 1)
+  ) {
+    return graphError("invalid_max_concurrency", "maxConcurrency 必须是大于 0 的整数。");
   }
 
   const nodeIds = new Set<string>();
@@ -443,6 +452,9 @@ const make = (options: GraphExecutorOptions): CompositionTaskGraphExecutorShape 
           );
         }
 
+        const schedule = input.schedule ?? "parallel";
+        const batchLimit = schedule === "serial" ? 1 : (input.maxConcurrency ?? ready.length);
+        const scheduled = ready.slice(0, batchLimit);
         const runReady = (node: CompositionTaskGraphNodeInput) =>
           startNode(
             node,
@@ -453,7 +465,7 @@ const make = (options: GraphExecutorOptions): CompositionTaskGraphExecutorShape 
           );
         // 先顺序写入每个子任务的 Code Work 投影，再并行等待 Driver 运行结果。
         const startedBatch: RunningNode[] = [];
-        for (const node of ready) {
+        for (const node of scheduled) {
           const started = yield* runReady(node).pipe(
             Effect.catch((failure) => failAfterCleanup(failure, startedBatch)),
           );
@@ -463,7 +475,7 @@ const make = (options: GraphExecutorOptions): CompositionTaskGraphExecutorShape 
           }
         }
         const batch =
-          (input.schedule ?? "parallel") === "parallel"
+          schedule === "parallel"
             ? yield* Effect.forEach(startedBatch, (started) => settleNode(started, activeNodes), {
                 concurrency: "unbounded",
               }).pipe(Effect.catch((failure) => failAfterCleanup(failure, [...activeNodes])))

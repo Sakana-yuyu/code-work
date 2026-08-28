@@ -290,10 +290,12 @@ describe("composition contracts", () => {
         },
       ],
       schedule: "parallel",
+      maxConcurrency: 2,
     });
 
     expect(decoded.children[0]?.dependsOnNodeIds).toEqual([]);
     expect(decoded.children[0]?.maxAttempts).toBe(2);
+    expect(decoded.maxConcurrency).toBe(2);
 
     const decodedResult = decodeTaskGraphResult({
       leader: {
