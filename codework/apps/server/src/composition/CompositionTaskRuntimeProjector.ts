@@ -19,6 +19,10 @@ import type {
   CompositionAgentDriverFailure,
 } from "./CompositionOrchestrator.ts";
 import type * as CapabilityGrantRegistry from "./CapabilityGrantRegistry.ts";
+import {
+  releaseCompositionRuntimeLease,
+  renewCompositionRuntimeLease,
+} from "./CompositionRuntimeLeaseLifecycle.ts";
 
 type ResumeReadyTasks = () => Effect.Effect<void>;
 
@@ -507,6 +511,20 @@ export const projectCompositionRuntimeEvent = (
       }),
     );
     if (!accepted) return;
+    if (run.leaseId !== undefined) {
+      const leaseResult = becameRuntimeTerminal
+        ? yield* releaseCompositionRuntimeLease(store, run, now)
+        : yield* renewCompositionRuntimeLease(store, run, now);
+      if (Option.isNone(leaseResult)) {
+        yield* Effect.logWarning("Composition Runtime 租约更新被拒绝", {
+          reasonCode: becameRuntimeTerminal ? "lease_release_rejected" : "lease_renew_rejected",
+          taskId: task.taskId,
+          runId: run.runId,
+          runtimeId: run.runtimeId,
+          leaseId: run.leaseId,
+        });
+      }
+    }
     // 持久化 fallback 只恢复归属和审计；已注销或新注册的 Driver 都不能借此触发
     // handshake revoke 等一次性副作用。
     const bindingDriver = binding.source === "persistence" ? undefined : binding.driver;

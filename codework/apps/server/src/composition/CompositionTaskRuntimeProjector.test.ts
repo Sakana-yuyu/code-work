@@ -107,6 +107,84 @@ const multicaCompletionEvent = (
 });
 
 layer("CompositionTaskRuntimeProjector", (it) => {
+  it.effect("被接受的 Runtime 活动续租，终态事件释放 Run 绑定的租约", () =>
+    Effect.gen(function* () {
+      const store = yield* CompositionTaskStore;
+      const registry = makeCompositionAgentDriverRegistry();
+      const leaseId = "lease-runtime-projector-lifecycle";
+      const leaseTask = {
+        ...task,
+        taskId: "task-runtime-projector-lease",
+        assigneeId: "agent-runtime-projector-lease",
+      };
+      const leasedRun = {
+        ...run,
+        taskId: leaseTask.taskId,
+        runId: "run-runtime-projector-lease",
+        agentId: leaseTask.assigneeId,
+        runtimeId: "runtime-projector-lease",
+        runtimeTaskId: "runtime-task-projector-lease",
+        leaseId,
+      };
+      yield* registry.register({
+        agentId: leaseTask.assigneeId,
+        runtimeId: leasedRun.runtimeId,
+        startTask: () => Effect.succeed({ runtimeTaskId }),
+        cancelTask: () => Effect.succeed({ status: "cancelled" as const }),
+        resolveRuntimeEvent: () => ({
+          taskId: leaseTask.taskId,
+          runId: leasedRun.runId,
+          runtimeTaskId: leasedRun.runtimeTaskId,
+        }),
+      });
+      yield* store.upsertTask(leaseTask);
+      yield* store.upsertRun(leasedRun);
+      yield* TestClock.setTime(1_000);
+      assert.ok(
+        Option.isSome(
+          yield* store.claimLease({
+            lease: {
+              leaseId,
+              runtimeId: leasedRun.runtimeId,
+              taskId: leaseTask.taskId,
+              workspaceRootDigest: "sha256:runtime-projector-workspace",
+              heartbeatAtUnixMs: 1_000,
+              expiresAtUnixMs: 10_000,
+              state: "active",
+            },
+            nowUnixMs: 1_000,
+          }),
+        ),
+      );
+
+      yield* TestClock.setTime(2_000);
+      yield* projectCompositionRuntimeEvent(store, registry, {
+        ...baseEvent,
+        eventId: EventId.make("provider-event-lease-progress"),
+        type: "task.progress",
+        payload: {
+          taskId: RuntimeTaskId.make(leasedRun.runtimeTaskId),
+          status: "running",
+          description: "任务仍在执行",
+        },
+      });
+      const renewed = Option.getOrThrow(yield* store.getLease(leaseId));
+      assert.equal(renewed.state, "active");
+      assert.equal(renewed.heartbeatAtUnixMs, 2_000);
+      assert.ok(renewed.expiresAtUnixMs > 10_000);
+
+      yield* TestClock.setTime(3_000);
+      yield* projectCompositionRuntimeEvent(
+        store,
+        registry,
+        completionEvent("provider-event-lease-terminal"),
+      );
+      const released = Option.getOrThrow(yield* store.getLease(leaseId));
+      assert.equal(released.state, "released");
+      assert.equal(released.heartbeatAtUnixMs, 3_000);
+    }),
+  );
+
   it.effect("projects terminal runtime events and ignores duplicate source events", () =>
     Effect.gen(function* () {
       const store = yield* CompositionTaskStore;

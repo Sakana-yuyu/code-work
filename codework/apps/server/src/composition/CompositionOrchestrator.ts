@@ -19,7 +19,6 @@ import * as Schema from "effect/Schema";
 import type * as Stream from "effect/Stream";
 
 import {
-  CompositionTaskStore,
   type CompositionTaskStoreError,
   type CompositionTaskStoreShape,
 } from "../persistence/Services/CompositionTaskStore.ts";
@@ -30,6 +29,10 @@ import {
 import type { CompositionAgentDriverRegistry } from "./CompositionAgentDriverRegistry.ts";
 import type * as CapabilityGrantRegistry from "./CapabilityGrantRegistry.ts";
 import * as CapabilityRegistry from "./CapabilityRegistry.ts";
+import {
+  claimCompositionRuntimeLease,
+  releaseCompositionRuntimeLease,
+} from "./CompositionRuntimeLeaseLifecycle.ts";
 
 export class CompositionTaskDependencyMissingError extends Schema.TaggedErrorClass<CompositionTaskDependencyMissingError>()(
   "CompositionTaskDependencyMissingError",
@@ -352,6 +355,29 @@ const makeOrchestrator = (
 ): CompositionOrchestrator => {
   const resumingTaskIds = new Set<string>();
   const resumingRunIds = new Set<string>();
+
+  const prepareRunLease = (
+    task: CompositionTask,
+    run: CompositionTaskRun,
+    workspaceRootDigest: string | undefined,
+  ) =>
+    Effect.gen(function* () {
+      if (workspaceRootDigest === undefined) return Option.some(run);
+      const now = yield* Clock.currentTimeMillis;
+      return yield* claimCompositionRuntimeLease(store, {
+        task,
+        run,
+        workspaceRootDigest,
+        nowUnixMs: now,
+      });
+    });
+
+  const releaseRunLease = (run: CompositionTaskRun) =>
+    Effect.gen(function* () {
+      if (run.leaseId === undefined) return;
+      const now = yield* Clock.currentTimeMillis;
+      yield* releaseCompositionRuntimeLease(store, run, now);
+    });
 
   const revokeRunCapabilities = (
     driver: CompositionAgentDriver | undefined,
@@ -753,33 +779,51 @@ const makeOrchestrator = (
         return { task: failedTask, run: failedRun };
       }
 
+      const leasedRunOption = yield* prepareRunLease(task, run, input.workspaceRootDigest);
+      if (Option.isNone(leasedRunOption)) {
+        return yield* persistFailedStart({
+          task,
+          run,
+          driver,
+          failure: new CompositionAgentDriverFailure({
+            code: "capacity_exceeded",
+            detail: "工作区已有未过期的 Runtime 租约，拒绝重复派发。",
+          }),
+          summary: "工作区正由其他 Runtime Run 使用",
+          finishTask: false,
+        });
+      }
+      const leasedRun = leasedRunOption.value;
+
       const startResult = yield* Effect.result(
         driver.startTask({
           task,
-          run,
+          run: leasedRun,
           ...(input.workspaceRootDigest === undefined
             ? {}
             : { workspaceRootDigest: input.workspaceRootDigest }),
           ...(input.workspaceRoot === undefined ? {} : { workspaceRoot: input.workspaceRoot }),
           ...(input.prompt === undefined ? {} : { prompt: input.prompt }),
           ...(input.model === undefined ? {} : { model: input.model }),
-          capabilityGrantIds: run.capabilityGrantIds ?? [],
+          capabilityGrantIds: leasedRun.capabilityGrantIds ?? [],
         }),
       );
       if (startResult._tag === "Failure") {
-        return yield* persistFailedStart({
+        const failed = yield* persistFailedStart({
           task,
-          run,
+          run: leasedRun,
           driver,
           failure: startResult.failure,
           summary: "Agent Driver 启动失败",
           finishTask: false,
         });
+        yield* releaseRunLease(failed.run);
+        return failed;
       }
 
       return yield* persistStartedRun({
         task,
-        run,
+        run: leasedRun,
         driver,
         startResult: startResult.success,
         summary: "任务已交给 Agent Driver 执行",
@@ -861,6 +905,7 @@ const makeOrchestrator = (
           summary: "任务已取消",
         }),
       );
+      yield* releaseRunLease(cancelledRun);
       return { task: cancelledTask, run: cancelledRun, status: "cancelled" as const };
     });
 
@@ -913,6 +958,7 @@ const makeOrchestrator = (
         eventType: "status",
         summary: approved ? `审核通过：${input.reason}` : `审核拒绝：${input.reason}`,
       });
+      yield* releaseRunLease(nextRun);
       return {
         task: nextTask,
         run: nextRun,
@@ -1215,6 +1261,7 @@ const makeOrchestrator = (
       }
       // 先撤销旧 Run 的 grant，避免 CapabilityGrantRegistry 按 task/agent 复用旧授权。
       yield* revokeRunCapabilities(driver, task, previousRun);
+      yield* releaseRunLease(previousRun);
       const issuedGrants =
         grantRegistry === undefined
           ? []
@@ -1261,10 +1308,30 @@ const makeOrchestrator = (
         });
       }
 
+      const leasedRunOption = yield* prepareRunLease(
+        queuedTask,
+        queuedRun,
+        recoveryInput.value.workspaceRootDigest,
+      );
+      if (Option.isNone(leasedRunOption)) {
+        return yield* persistFailedStart({
+          task: queuedTask,
+          run: queuedRun,
+          driver,
+          failure: new CompositionAgentDriverFailure({
+            code: "capacity_exceeded",
+            detail: "工作区已有未过期的 Runtime 租约，拒绝重复派发。",
+          }),
+          summary: "重试任务未获得工作区租约",
+          finishTask: true,
+        });
+      }
+      const leasedRun = leasedRunOption.value;
+
       const startResult = yield* Effect.result(
         driver.startTask({
           task: queuedTask,
-          run: queuedRun,
+          run: leasedRun,
           prompt: recoveryInput.value.prompt,
           workspaceRoot: recoveryInput.value.workspaceRoot,
           ...(recoveryInput.value.workspaceRootDigest === undefined
@@ -1275,19 +1342,21 @@ const makeOrchestrator = (
         }),
       );
       if (startResult._tag === "Failure") {
-        return yield* persistFailedStart({
+        const failed = yield* persistFailedStart({
           task: queuedTask,
-          run: queuedRun,
+          run: leasedRun,
           driver,
           failure: startResult.failure,
           summary: "重试任务启动失败",
           finishTask: true,
         });
+        yield* releaseRunLease(failed.run);
+        return failed;
       }
 
       return yield* persistStartedRun({
         task: queuedTask,
-        run: queuedRun,
+        run: leasedRun,
         driver,
         startResult: startResult.success,
         summary: "重试任务已交给 Agent Driver 执行",
@@ -1323,12 +1392,20 @@ const makeOrchestrator = (
         const driver = yield* driverRegistry.get(run.agentId);
         if (driver === undefined) continue;
 
+        const leasedRunOption = yield* prepareRunLease(
+          task,
+          run,
+          recoveryInput.value.workspaceRootDigest,
+        );
+        if (Option.isNone(leasedRunOption)) continue;
+        const leasedRun = leasedRunOption.value;
+
         resumingTaskIds.add(task.taskId);
         const result = yield* Effect.gen(function* () {
           const startResult = yield* Effect.result(
             driver.startTask({
               task,
-              run,
+              run: leasedRun,
               prompt: recoveryInput.value.prompt,
               workspaceRoot: recoveryInput.value.workspaceRoot,
               ...(recoveryInput.value.workspaceRootDigest === undefined
@@ -1337,23 +1414,25 @@ const makeOrchestrator = (
               ...(recoveryInput.value.model === undefined
                 ? {}
                 : { model: recoveryInput.value.model }),
-              capabilityGrantIds: run.capabilityGrantIds,
+              capabilityGrantIds: leasedRun.capabilityGrantIds,
             }),
           );
           if (startResult._tag === "Failure") {
-            return yield* persistFailedStart({
+            const failed = yield* persistFailedStart({
               task,
-              run,
+              run: leasedRun,
               driver,
               failure: startResult.failure,
               summary: "恢复任务启动失败",
               finishTask: true,
             });
+            yield* releaseRunLease(failed.run);
+            return failed;
           }
 
           return yield* persistStartedRun({
             task,
-            run,
+            run: leasedRun,
             driver,
             startResult: startResult.success,
             summary: "依赖完成后已恢复任务",

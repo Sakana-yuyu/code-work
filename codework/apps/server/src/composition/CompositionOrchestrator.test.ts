@@ -43,6 +43,103 @@ const projectDriverEvent = (...args: Parameters<typeof projectCompositionRuntime
   );
 
 layer("CompositionOrchestrator", (it) => {
+  it.effect("工作区租约在 Driver 派发前原子领取，冲突时不调用 Driver，取消后允许新 Run 接管", () =>
+    Effect.gen(function* () {
+      const store = yield* CompositionTaskStore;
+      const driverRegistry = makeCompositionAgentDriverRegistry();
+      const started: string[] = [];
+      yield* driverRegistry.register({
+        agentId: "agent-runtime-lease",
+        runtimeId: "runtime-lease-owner",
+        startTask: (input) =>
+          Effect.sync(() => {
+            started.push(input.task.taskId);
+            return { runtimeTaskId: `runtime-${input.run.runId}` };
+          }),
+        cancelTask: () => Effect.succeed({ status: "cancelled" as const }),
+      });
+      const orchestrator = makeCompositionOrchestrator(store, driverRegistry);
+      const dispatch = (taskId: string, runId: string) =>
+        orchestrator.dispatchTask({
+          taskId,
+          runId,
+          projectId: "project-runtime-lease",
+          assigneeKind: "agent",
+          assigneeId: "agent-runtime-lease",
+          mode: "serial",
+          promptDigest: `sha256:${taskId}`,
+          prompt: `执行 ${taskId}`,
+          workspaceRoot: "C:/workspace/runtime-lease",
+          workspaceRootDigest: "sha256:runtime-lease-workspace",
+          capabilityIds: [],
+          dependsOnTaskIds: [],
+        });
+
+      const first = yield* dispatch("task-runtime-lease-first", "run-runtime-lease-first");
+      assert.equal(first.run.leaseId !== undefined, true);
+      const firstLease = yield* store.getLease(first.run.leaseId!);
+      const blocked = yield* dispatch("task-runtime-lease-blocked", "run-runtime-lease-blocked");
+
+      assert.equal(first.task.status, "running");
+      assert.equal(Option.getOrThrow(firstLease).state, "active");
+      assert.equal(blocked.task.status, "failed");
+      assert.equal(blocked.run.failureCode, "capacity_exceeded");
+      assert.deepEqual(started, ["task-runtime-lease-first"]);
+
+      yield* orchestrator.cancelTask({
+        taskId: first.task.taskId,
+        runId: first.run.runId,
+        reason: "交给下一次运行",
+      });
+      assert.equal(Option.getOrThrow(yield* store.getLease(first.run.leaseId!)).state, "released");
+
+      const successor = yield* dispatch(
+        "task-runtime-lease-successor",
+        "run-runtime-lease-successor",
+      );
+      assert.equal(successor.task.status, "running");
+      assert.equal(successor.run.leaseId !== first.run.leaseId, true);
+      assert.deepEqual(started, ["task-runtime-lease-first", "task-runtime-lease-successor"]);
+    }),
+  );
+
+  it.effect("Driver 启动失败会释放已领取的工作区租约", () =>
+    Effect.gen(function* () {
+      const store = yield* CompositionTaskStore;
+      const driverRegistry = makeCompositionAgentDriverRegistry();
+      yield* driverRegistry.register({
+        agentId: "agent-runtime-lease-failure",
+        runtimeId: "runtime-lease-failure",
+        startTask: () =>
+          Effect.fail(
+            new CompositionAgentDriverFailure({
+              code: "provider_network",
+              detail: "Runtime 启动连接失败",
+            }),
+          ),
+        cancelTask: () => Effect.succeed({ status: "cancelled" as const }),
+      });
+      const orchestrator = makeCompositionOrchestrator(store, driverRegistry);
+
+      const result = yield* orchestrator.dispatchTask({
+        taskId: "task-runtime-lease-failure",
+        runId: "run-runtime-lease-failure",
+        projectId: "project-runtime-lease",
+        assigneeKind: "agent",
+        assigneeId: "agent-runtime-lease-failure",
+        mode: "serial",
+        promptDigest: "sha256:runtime-lease-failure",
+        workspaceRootDigest: "sha256:runtime-lease-failure-workspace",
+        capabilityIds: [],
+        dependsOnTaskIds: [],
+      });
+
+      assert.equal(result.task.status, "failed");
+      assert.equal(result.run.leaseId !== undefined, true);
+      assert.equal(Option.getOrThrow(yield* store.getLease(result.run.leaseId!)).state, "released");
+    }),
+  );
+
   it.effect("Runtime 启动事件早于 Driver startTask 返回时保留状态并持久化 handshake", () =>
     Effect.gen(function* () {
       const store = yield* CompositionTaskStore;
@@ -152,6 +249,7 @@ layer("CompositionOrchestrator", (it) => {
         promptDigest: "sha256:early-terminal",
         prompt: "运行时已经结束",
         workspaceRoot: "C:/workspace/early-terminal",
+        workspaceRootDigest: "sha256:early-terminal-workspace",
         capabilityIds: [],
         dependsOnTaskIds: [],
       });
@@ -159,6 +257,8 @@ layer("CompositionOrchestrator", (it) => {
       assert.equal(result.task.status, "cancelled");
       assert.equal(result.run.status, "cancelled");
       assert.equal(result.run.runtimeTaskId, "runtime-task-early-terminal");
+      assert.equal(result.run.leaseId !== undefined, true);
+      assert.equal(Option.getOrThrow(yield* store.getLease(result.run.leaseId!)).state, "released");
       assert.equal(
         Option.getOrThrow(yield* store.getTask("task-early-terminal")).status,
         "cancelled",
@@ -969,7 +1069,6 @@ layer("CompositionOrchestrator", (it) => {
         startTask: () => Effect.succeed({ runtimeTaskId: "runtime-task-cancel-requested" }),
         cancelTask: () => Effect.succeed({ status: "cancel_requested" as const }),
       });
-      const orchestrator = makeCompositionOrchestrator(store, driverRegistry);
       const orchestratorWithGrants = makeCompositionOrchestrator(store, driverRegistry, {
         issue: () => Effect.succeed(grants),
         revoke: ({ grantId }) => Effect.sync(() => revoked.push(grantId)),
@@ -983,6 +1082,7 @@ layer("CompositionOrchestrator", (it) => {
         assigneeId: "agent-cancel-requested",
         mode: "serial",
         promptDigest: "sha256:cancel-requested",
+        workspaceRootDigest: "sha256:cancel-requested-workspace",
         capabilityIds: ["workspace.read"],
         dependsOnTaskIds: [],
       });
@@ -1002,6 +1102,8 @@ layer("CompositionOrchestrator", (it) => {
         true,
       );
       assert.deepEqual(revoked, []);
+      assert.equal(result.run.leaseId !== undefined, true);
+      assert.equal(Option.getOrThrow(yield* store.getLease(result.run.leaseId!)).state, "active");
       assert.equal(
         (yield* store.listEvents("task-cancel-requested", "run-cancel-requested")).at(-1)
           ?.eventType,
