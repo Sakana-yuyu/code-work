@@ -545,6 +545,11 @@ function CompositionSettingsSection() {
         target="SettingsControlCenter"
       />
       <SettingsRow
+        icon="point.3.connected.trianglepath.dotted"
+        label={t("squadBuilder.title")}
+        target="SettingsSquadBuilder"
+      />
+      <SettingsRow
         icon="server.rack"
         label={t("supplierRegistry.title")}
         target="SettingsSupplierRegistry"

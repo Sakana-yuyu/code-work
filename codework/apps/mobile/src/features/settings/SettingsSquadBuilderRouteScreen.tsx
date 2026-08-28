@@ -1,0 +1,206 @@
+import { useNavigation } from "@react-navigation/native";
+import type { CompositionSquad, CompositionSquadMember } from "@codework/contracts";
+import { Platform, RefreshControl, ScrollView, View } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+
+import { AndroidScreenHeader } from "../../components/AndroidScreenHeader";
+import { AppText as Text } from "../../components/AppText";
+import { t } from "../../i18n";
+import { NativeStackScreenOptions } from "../../native/StackHeader";
+import { useEnvironments } from "../../state/environments";
+import { useEnvironmentQuery } from "../../state/query";
+import { serverEnvironment } from "../../state/server";
+import {
+  resolveSquadBuilderMembers,
+  squadCollaborationModeLabelKey,
+  squadMemberRoleLabelKey,
+  sortSquadBuilderSquads,
+  summarizeSquadBuilderConfiguration,
+} from "./SettingsSquadBuilderRouteScreen.logic";
+
+/** Mobile Squad Builder 的只读入口，直接展示服务端持久化配置与归档状态。 */
+export function SettingsSquadBuilderRouteScreen() {
+  const navigation = useNavigation();
+  const insets = useSafeAreaInsets();
+  const { environments } = useEnvironments();
+  const environmentId = environments[0]?.environmentId ?? null;
+  const squadsQuery = useEnvironmentQuery(
+    environmentId === null
+      ? null
+      : serverEnvironment.compositionSquads({
+          environmentId,
+          input: { includeArchived: true },
+        }),
+  );
+  const squads = sortSquadBuilderSquads(squadsQuery.data?.squads ?? []);
+
+  return (
+    <View collapsable={false} className="flex-1 bg-sheet">
+      {Platform.OS === "android" ? (
+        <>
+          <NativeStackScreenOptions options={{ headerShown: false }} />
+          <AndroidScreenHeader title={t("squadBuilder.title")} onBack={() => navigation.goBack()} />
+        </>
+      ) : null}
+      <ScrollView
+        contentInsetAdjustmentBehavior="automatic"
+        showsVerticalScrollIndicator={false}
+        className="flex-1"
+        contentContainerClassName="gap-3 px-5 pt-4"
+        contentContainerStyle={{ paddingBottom: Math.max(insets.bottom, 18) + 18 }}
+        refreshControl={
+          <RefreshControl
+            refreshing={squadsQuery.isPending && squadsQuery.data !== null}
+            onRefresh={squadsQuery.refresh}
+          />
+        }
+      >
+        {environmentId === null ? (
+          <StatusMessage text={t("squadBuilder.noEnvironment")} />
+        ) : squadsQuery.data === null && squadsQuery.isPending ? (
+          <StatusMessage text={t("squadBuilder.pending")} />
+        ) : squadsQuery.data === null && squadsQuery.error !== null ? (
+          <StatusMessage text={t("squadBuilder.error")} tone="danger" />
+        ) : squads.length === 0 ? (
+          <StatusMessage text={t("squadBuilder.empty")} />
+        ) : (
+          squads.map((squad) => <SquadConfigurationCard key={squad.squadId} squad={squad} />)
+        )}
+      </ScrollView>
+    </View>
+  );
+}
+
+function SquadConfigurationCard(props: { readonly squad: CompositionSquad }) {
+  const { squad } = props;
+  const summary = summarizeSquadBuilderConfiguration(squad);
+  const members = resolveSquadBuilderMembers(squad);
+  const collaborationModeLabelKey = squadCollaborationModeLabelKey(summary.collaborationMode);
+
+  return (
+    <View className="gap-3 rounded-[24px] border-continuous bg-card p-4">
+      <View className="gap-1">
+        <View className="flex-row flex-wrap items-center gap-2">
+          <Text className="min-w-0 flex-1 text-base font-t3-medium text-foreground">
+            {squad.name}
+          </Text>
+          <BadgePill
+            label={t(summary.archived ? "squadBuilder.archived" : "squadBuilder.active")}
+            emphasized={!summary.archived}
+          />
+        </View>
+        <Text className="font-mono text-xs text-foreground-muted" numberOfLines={1}>
+          {squad.squadId}
+        </Text>
+      </View>
+
+      <View className="flex-row flex-wrap gap-2">
+        <BadgePill
+          label={
+            collaborationModeLabelKey === null
+              ? summary.collaborationMode
+              : t(collaborationModeLabelKey)
+          }
+        />
+        <BadgePill label={t("squadBuilder.revision", { revision: summary.revision })} />
+        <BadgePill label={t("squadBuilder.memberCount", { count: summary.memberCount })} />
+      </View>
+
+      <View className="gap-1 rounded-[16px] bg-subtle px-3 py-2.5">
+        <Text className="text-sm text-foreground">
+          {t("squadBuilder.leader", { agentId: squad.leaderAgentId })}
+        </Text>
+        <Text className="text-xs text-foreground-muted">
+          {t("squadBuilder.limits", {
+            concurrency: summary.maxConcurrency,
+            retries: summary.maxRetries,
+          })}
+        </Text>
+      </View>
+
+      {squad.instructions === undefined ? null : (
+        <View className="gap-1">
+          <Text className="text-xs font-t3-medium text-foreground-muted">
+            {t("squadBuilder.instructions")}
+          </Text>
+          <Text className="text-sm text-foreground">{squad.instructions}</Text>
+        </View>
+      )}
+
+      <View className="gap-2 border-t border-border-subtle pt-3">
+        <Text className="text-sm font-t3-medium text-foreground">{t("squadBuilder.members")}</Text>
+        {members.map((member) => (
+          <SquadMemberRow key={`${member.order}:${member.agentId}`} member={member} />
+        ))}
+      </View>
+    </View>
+  );
+}
+
+function SquadMemberRow(props: { readonly member: CompositionSquadMember }) {
+  const { member } = props;
+  const roleLabelKey = squadMemberRoleLabelKey(member.role);
+  return (
+    <View className="gap-1 border-t border-border-subtle pt-2 first:border-t-0 first:pt-0">
+      <View className="flex-row flex-wrap items-center gap-2">
+        <Text className="min-w-0 flex-1 font-mono text-sm text-foreground" numberOfLines={1}>
+          {member.agentId}
+        </Text>
+        <BadgePill
+          label={roleLabelKey === null ? member.role : t(roleLabelKey)}
+          emphasized={member.role === "leader"}
+        />
+        <BadgePill label={t(member.required ? "squadBuilder.required" : "squadBuilder.optional")} />
+      </View>
+      {member.model === undefined ? null : (
+        <Text className="text-xs text-foreground-muted">
+          {t("squadBuilder.model", { model: member.model })}
+        </Text>
+      )}
+      {member.workspaceRoot === undefined ? null : (
+        <Text className="font-mono text-xs text-foreground-muted" numberOfLines={1}>
+          {t("squadBuilder.workspace", { workspace: member.workspaceRoot })}
+        </Text>
+      )}
+      <Text className="text-xs text-foreground-muted">
+        {t("squadBuilder.memberLimits", {
+          capabilities:
+            member.capabilityIds.length === 0
+              ? t("squadBuilder.noCapabilities")
+              : member.capabilityIds.join(", "),
+          concurrency: member.maxConcurrentTasks,
+        })}
+      </Text>
+    </View>
+  );
+}
+
+function StatusMessage(props: { readonly text: string; readonly tone?: "danger" }) {
+  return (
+    <View className="rounded-[24px] border-continuous bg-card px-4 py-6">
+      <Text
+        className={
+          props.tone === "danger"
+            ? "text-center text-sm text-danger-foreground"
+            : "text-center text-sm text-foreground-muted"
+        }
+      >
+        {props.text}
+      </Text>
+    </View>
+  );
+}
+
+function BadgePill(props: { readonly label: string; readonly emphasized?: boolean }) {
+  return (
+    <View
+      className={
+        props.emphasized
+          ? "rounded-full bg-subtle-strong px-2.5 py-0.5"
+          : "rounded-full bg-subtle px-2.5 py-0.5"
+      }
+    >
+      <Text className="text-xs text-foreground">{props.label}</Text>
+    </View>
+  );
+}
