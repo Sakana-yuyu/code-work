@@ -2,6 +2,7 @@ import type {
   CompositionSquadExecutionResult,
   CompositionSquadListResult,
   CompositionSquadRevisionListResult,
+  CompositionTaskListResult,
 } from "@codework/contracts";
 import { EnvironmentId, ProjectId } from "@codework/contracts";
 import type { EnvironmentProject } from "@codework/client-runtime/state/shell";
@@ -16,6 +17,7 @@ const mocks = vi.hoisted(() => ({
   atoms: {
     squads: Symbol("squads"),
     revisions: Symbol("revisions"),
+    tasks: Symbol("tasks"),
     run: Symbol("run"),
   },
   queries: {
@@ -31,9 +33,16 @@ const mocks = vi.hoisted(() => ({
       isPending: false,
       refresh: vi.fn(),
     },
+    tasks: {
+      data: null as CompositionTaskListResult | null,
+      error: null as string | null,
+      isPending: false,
+      refresh: vi.fn(),
+    },
   },
   compositionSquads: vi.fn(),
   compositionSquadRevisions: vi.fn(),
+  listCompositionTasks: vi.fn(),
   runCommand: vi.fn(),
   useAtomCommand: vi.fn(),
 }));
@@ -50,6 +59,7 @@ vi.mock("~/state/query", () => ({
   useEnvironmentQuery: (atom: unknown) => {
     if (atom === mocks.atoms.squads) return mocks.queries.squads;
     if (atom === mocks.atoms.revisions) return mocks.queries.revisions;
+    if (atom === mocks.atoms.tasks) return mocks.queries.tasks;
     return {
       data: null,
       error: null,
@@ -68,6 +78,10 @@ vi.mock("~/state/server", () => ({
     compositionSquadRevisions: (...args: unknown[]) => {
       mocks.compositionSquadRevisions(...args);
       return mocks.atoms.revisions;
+    },
+    listCompositionTasks: (...args: unknown[]) => {
+      mocks.listCompositionTasks(...args);
+      return mocks.atoms.tasks;
     },
     runCompositionSquad: mocks.atoms.run,
   },
@@ -203,8 +217,12 @@ describe("CompositionSquadRunPanel", () => {
     mocks.queries.revisions.data = null;
     mocks.queries.revisions.error = null;
     mocks.queries.revisions.isPending = false;
+    mocks.queries.tasks.data = null;
+    mocks.queries.tasks.error = null;
+    mocks.queries.tasks.isPending = false;
     mocks.compositionSquads.mockReset();
     mocks.compositionSquadRevisions.mockReset();
+    mocks.listCompositionTasks.mockReset();
     mocks.runCommand.mockReset();
     mocks.useAtomCommand.mockReset();
   });
@@ -282,5 +300,60 @@ describe("CompositionSquadRunPanel", () => {
     expect(html).toContain("Implementation completed");
     expect(html).toContain("provider_timeout");
     expect(html).toContain("Provider did not respond");
+  });
+
+  it("从 Composition 台账显示刷新后仍可恢复的 Squad execution 历史", () => {
+    mocks.environment = { environmentId: EnvironmentId.make("env-test") };
+    mocks.projects = [project("env-test", "project-1", "Code Work")];
+    mocks.queries.squads.data = { squads: [activeSquad] };
+    mocks.queries.revisions.data = { revisions: [] };
+    const buildTaskId = "execution-persisted:squad:squad-active:r3:task:build";
+    const leaderTaskId = "execution-persisted:squad:squad-active:r3:task:leader-finalize";
+    mocks.queries.tasks.data = {
+      tasks: [
+        {
+          task: {
+            ...task(buildTaskId, "completed"),
+            assigneeId: "agent-build",
+            updatedAtUnixMs: 20,
+          },
+          latestRun: {
+            ...run("run-build", "completed"),
+            taskId: buildTaskId,
+            agentId: "agent-build",
+            resultSummary: "持久化实现摘要",
+          },
+        },
+        {
+          task: {
+            ...task(leaderTaskId, "failed"),
+            assigneeKind: "squad",
+            assigneeId: "squad-active",
+            mode: "review",
+            updatedAtUnixMs: 30,
+          },
+          latestRun: {
+            ...run("run-leader", "failed"),
+            taskId: leaderTaskId,
+            agentId: "agent-lead",
+            failureCode: "review_rejected",
+          },
+        },
+      ],
+    };
+
+    const html = renderToStaticMarkup(<CompositionSquadRunPanel />);
+
+    expect(mocks.listCompositionTasks).toHaveBeenCalledWith({
+      environmentId: "env-test",
+      input: { projectId: "project-1" },
+    });
+    expect(html).toContain('data-squad-history-execution="execution-persisted"');
+    expect(html).toContain('data-squad-history-node="build"');
+    expect(html).toContain('data-squad-history-node="leader-finalize"');
+    expect(html).toContain("持久化实现摘要");
+    expect(html).toContain("review_rejected");
+    expect(html).toContain("agent-build");
+    expect(html).toContain("agent-lead");
   });
 });

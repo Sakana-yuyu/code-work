@@ -3,6 +3,8 @@ import {
   type CompositionSquad,
   type CompositionSquadExecutionRequest,
   type CompositionSquadPlanNode,
+  type CompositionTaskSnapshot,
+  type CompositionTaskStatus,
 } from "@codework/contracts";
 
 export interface CompositionSquadRunDraft {
@@ -40,6 +42,27 @@ export interface CompositionSquadRunBuildResult {
   readonly issues: ReadonlyArray<CompositionSquadRunIssue>;
 }
 
+export interface CompositionSquadExecutionTaskIdentity {
+  readonly executionId: string;
+  readonly squadRevision: number;
+  readonly nodeId: string;
+}
+
+export interface CompositionSquadExecutionHistoryNode {
+  readonly nodeId: string;
+  readonly snapshot: CompositionTaskSnapshot;
+}
+
+export interface CompositionSquadExecutionHistoryItem {
+  readonly executionId: string;
+  readonly squadId: string;
+  readonly squadRevision: number;
+  readonly projectId: string;
+  readonly status: CompositionTaskStatus;
+  readonly updatedAtUnixMs: number;
+  readonly nodes: ReadonlyArray<CompositionSquadExecutionHistoryNode>;
+}
+
 export const compositionSquadRunEnvironmentKey = (environmentId: string | null): string =>
   environmentId === null ? "disconnected" : `environment:${environmentId}`;
 
@@ -50,6 +73,93 @@ export const advanceCompositionSquadRunDraft = (
   ...draft,
   executionId: nextExecutionId.trim(),
 });
+
+export const parseCompositionSquadExecutionTaskId = (
+  taskId: string,
+  squadId: string,
+): CompositionSquadExecutionTaskIdentity | null => {
+  const marker = `:squad:${squadId}:r`;
+  const markerIndex = taskId.lastIndexOf(marker);
+  if (markerIndex <= 0) return null;
+
+  const executionId = taskId.slice(0, markerIndex);
+  const suffix = taskId.slice(markerIndex + marker.length);
+  const taskSeparator = suffix.indexOf(":task:");
+  if (taskSeparator <= 0) return null;
+
+  const revisionText = suffix.slice(0, taskSeparator);
+  const nodeId = suffix.slice(taskSeparator + ":task:".length);
+  if (!/^[1-9]\d*$/.test(revisionText) || nodeId.length === 0) return null;
+
+  const squadRevision = Number(revisionText);
+  if (!Number.isSafeInteger(squadRevision)) return null;
+  return { executionId, squadRevision, nodeId };
+};
+
+const squadHistoryNodeOrder = (nodeId: string): number => {
+  if (nodeId === "leader-plan") return 0;
+  if (nodeId === "leader-finalize") return 2;
+  return 1;
+};
+
+export const projectCompositionSquadExecutionHistory = (
+  squadId: string,
+  snapshots: ReadonlyArray<CompositionTaskSnapshot>,
+): ReadonlyArray<CompositionSquadExecutionHistoryItem> => {
+  const grouped = new Map<
+    string,
+    {
+      readonly executionId: string;
+      readonly squadRevision: number;
+      readonly projectId: string;
+      readonly nodes: CompositionSquadExecutionHistoryNode[];
+    }
+  >();
+
+  for (const snapshot of snapshots) {
+    const identity = parseCompositionSquadExecutionTaskId(snapshot.task.taskId, squadId);
+    if (identity === null) continue;
+    const key = `${identity.executionId}\u0000${identity.squadRevision}`;
+    const execution = grouped.get(key) ?? {
+      executionId: identity.executionId,
+      squadRevision: identity.squadRevision,
+      projectId: snapshot.task.projectId,
+      nodes: [],
+    };
+    execution.nodes.push({ nodeId: identity.nodeId, snapshot });
+    grouped.set(key, execution);
+  }
+
+  return [...grouped.values()]
+    .map((execution): CompositionSquadExecutionHistoryItem => {
+      const nodes = [...execution.nodes].sort((left, right) => {
+        const order = squadHistoryNodeOrder(left.nodeId) - squadHistoryNodeOrder(right.nodeId);
+        if (order !== 0) return order;
+        const createdAt = left.snapshot.task.createdAtUnixMs - right.snapshot.task.createdAtUnixMs;
+        return createdAt !== 0 ? createdAt : left.nodeId.localeCompare(right.nodeId);
+      });
+      const updatedAtUnixMs = Math.max(...nodes.map((node) => node.snapshot.task.updatedAtUnixMs));
+      const status =
+        nodes.find((node) => node.nodeId === "leader-finalize")?.snapshot.task.status ??
+        [...nodes].sort(
+          (left, right) => right.snapshot.task.updatedAtUnixMs - left.snapshot.task.updatedAtUnixMs,
+        )[0]!.snapshot.task.status;
+      return {
+        executionId: execution.executionId,
+        squadId,
+        squadRevision: execution.squadRevision,
+        projectId: execution.projectId,
+        status,
+        updatedAtUnixMs,
+        nodes,
+      };
+    })
+    .sort(
+      (left, right) =>
+        right.updatedAtUnixMs - left.updatedAtUnixMs ||
+        right.executionId.localeCompare(left.executionId),
+    );
+};
 
 const addRequiredIssue = (
   value: string,

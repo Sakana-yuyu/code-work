@@ -1,10 +1,16 @@
-import type { CompositionSquad } from "@codework/contracts";
+import type {
+  CompositionSquad,
+  CompositionTaskSnapshot,
+  CompositionTaskStatus,
+} from "@codework/contracts";
 import { describe, expect, it } from "vite-plus/test";
 
 import {
   advanceCompositionSquadRunDraft,
   buildCompositionSquadExecutionRequest,
   compositionSquadRunEnvironmentKey,
+  parseCompositionSquadExecutionTaskId,
+  projectCompositionSquadExecutionHistory,
   type CompositionSquadRunDraft,
 } from "./CompositionSquadRunPanel.logic";
 
@@ -69,6 +75,39 @@ const makeDraft = (
     },
   ]),
   ...overrides,
+});
+
+const taskSnapshot = (input: {
+  readonly taskId: string;
+  readonly status: CompositionTaskStatus;
+  readonly updatedAtUnixMs: number;
+  readonly agentId: string;
+  readonly resultSummary?: string;
+  readonly failureCode?: string;
+}): CompositionTaskSnapshot => ({
+  task: {
+    taskId: input.taskId,
+    projectId: "project-1",
+    assigneeKind: input.taskId.endsWith(":leader-finalize") ? "squad" : "agent",
+    assigneeId: input.agentId,
+    mode: input.taskId.endsWith(":leader-finalize") ? "review" : "parallel",
+    status: input.status,
+    promptDigest: `sha256:${input.taskId}`,
+    dependsOnTaskIds: [],
+    createdAtUnixMs: input.updatedAtUnixMs - 10,
+    updatedAtUnixMs: input.updatedAtUnixMs,
+  },
+  latestRun: {
+    runId: `${input.taskId}:run:1`,
+    taskId: input.taskId,
+    agentId: input.agentId,
+    runtimeId: `runtime:${input.agentId}`,
+    status: input.status,
+    attempt: 1,
+    capabilityGrantIds: [],
+    ...(input.resultSummary === undefined ? {} : { resultSummary: input.resultSummary }),
+    ...(input.failureCode === undefined ? {} : { failureCode: input.failureCode }),
+  },
 });
 
 describe("CompositionSquadRunPanel logic", () => {
@@ -247,6 +286,92 @@ describe("CompositionSquadRunPanel logic", () => {
     expect(compositionSquadRunEnvironmentKey(null)).toBe("disconnected");
     expect(compositionSquadRunEnvironmentKey("env-a")).toBe("environment:env-a");
     expect(compositionSquadRunEnvironmentKey("env-b")).toBe("environment:env-b");
+  });
+
+  it("从稳定 taskId 解析 execution、Squad revision 和节点，并支持 ID 中包含冒号", () => {
+    expect(
+      parseCompositionSquadExecutionTaskId(
+        "execution:west:squad:squad:build:r4:task:review",
+        "squad:build",
+      ),
+    ).toEqual({
+      executionId: "execution:west",
+      squadRevision: 4,
+      nodeId: "review",
+    });
+  });
+
+  it.each([
+    ["其他 Squad", "execution-1:squad:squad-other:r4:task:build"],
+    ["revision 非正整数", "execution-1:squad:squad-build:r0:task:build"],
+    ["缺少节点", "execution-1:squad:squad-build:r4:task:"],
+  ])("拒绝%s的 taskId", (_label, taskId) => {
+    expect(parseCompositionSquadExecutionTaskId(taskId, "squad-build")).toBeNull();
+  });
+
+  it("从持久化 Task/Run 快照恢复 Squad execution 历史并按最新活动排序", () => {
+    const history = projectCompositionSquadExecutionHistory("squad-build", [
+      taskSnapshot({
+        taskId: "execution-old:squad:squad-build:r3:task:leader-finalize",
+        status: "completed",
+        updatedAtUnixMs: 100,
+        agentId: "agent-lead",
+        resultSummary: "旧运行已完成",
+      }),
+      taskSnapshot({
+        taskId: "execution-new:squad:squad-build:r4:task:review",
+        status: "failed",
+        updatedAtUnixMs: 220,
+        agentId: "agent-review",
+        failureCode: "provider_timeout",
+      }),
+      taskSnapshot({
+        taskId: "execution-new:squad:squad-build:r4:task:build",
+        status: "completed",
+        updatedAtUnixMs: 210,
+        agentId: "agent-build",
+        resultSummary: "实现完成",
+      }),
+      taskSnapshot({
+        taskId: "execution-new:squad:squad-build:r4:task:leader-finalize",
+        status: "in_review",
+        updatedAtUnixMs: 230,
+        agentId: "agent-lead",
+      }),
+      taskSnapshot({
+        taskId: "execution-new:squad:squad-build:r4:task:leader-plan",
+        status: "completed",
+        updatedAtUnixMs: 200,
+        agentId: "agent-lead",
+      }),
+      taskSnapshot({
+        taskId: "execution-other:squad:squad-other:r1:task:build",
+        status: "running",
+        updatedAtUnixMs: 999,
+        agentId: "agent-other",
+      }),
+    ]);
+
+    expect(history.map((execution) => execution.executionId)).toEqual([
+      "execution-new",
+      "execution-old",
+    ]);
+    expect(history[0]).toMatchObject({
+      squadId: "squad-build",
+      squadRevision: 4,
+      status: "in_review",
+      updatedAtUnixMs: 230,
+    });
+    expect(history[0]?.nodes.map((node) => node.nodeId)).toEqual([
+      "leader-plan",
+      "build",
+      "review",
+      "leader-finalize",
+    ]);
+    expect(history[0]?.nodes[2]?.snapshot.latestRun).toMatchObject({
+      agentId: "agent-review",
+      failureCode: "provider_timeout",
+    });
   });
 
   it.each([

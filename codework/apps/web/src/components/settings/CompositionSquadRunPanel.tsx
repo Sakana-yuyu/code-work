@@ -30,6 +30,8 @@ import {
   advanceCompositionSquadRunDraft,
   buildCompositionSquadExecutionRequest,
   compositionSquadRunEnvironmentKey,
+  projectCompositionSquadExecutionHistory,
+  type CompositionSquadExecutionHistoryItem,
   type CompositionSquadRunDraft,
   type CompositionSquadRunIssue,
 } from "./CompositionSquadRunPanel.logic";
@@ -105,6 +107,7 @@ function ResultRow({
   label,
   status,
   attempts,
+  agentId,
   summary,
   failureCode,
   detail,
@@ -113,6 +116,7 @@ function ResultRow({
   readonly label: string;
   readonly status: CompositionTaskStatus | "skipped";
   readonly attempts?: number;
+  readonly agentId?: string;
   readonly summary?: string;
   readonly failureCode?: string;
   readonly detail?: string;
@@ -141,6 +145,11 @@ function ResultRow({
             <span className="text-[11px] tabular-nums text-muted-foreground">
               {t("squadRun.attempts", { count: attempts })}
             </span>
+          )}
+          {agentId === undefined ? null : (
+            <Badge variant="outline" size="sm">
+              {agentId}
+            </Badge>
           )}
         </div>
         {summary ? (
@@ -180,6 +189,7 @@ export function CompositionSquadExecutionResultView({
         label={t("squadRun.leader")}
         status={result.graph.leader.run.status}
         attempts={result.graph.leader.run.attempt}
+        agentId={result.graph.leader.run.agentId}
         {...(result.graph.leader.run.resultSummary === undefined
           ? {}
           : { summary: result.graph.leader.run.resultSummary })}
@@ -194,6 +204,7 @@ export function CompositionSquadExecutionResultView({
           label={child.nodeId}
           status={child.run.status}
           attempts={child.attempts}
+          agentId={child.run.agentId}
           {...(child.run.resultSummary === undefined ? {} : { summary: child.run.resultSummary })}
           {...(child.run.failureCode === undefined ? {} : { failureCode: child.run.failureCode })}
         />
@@ -205,12 +216,80 @@ export function CompositionSquadExecutionResultView({
           label={failure.nodeId}
           status={failure.run?.status ?? (failure.kind === "skipped" ? "skipped" : "failed")}
           {...(failure.run === undefined ? {} : { attempts: failure.run.attempt })}
+          {...(failure.run === undefined ? {} : { agentId: failure.run.agentId })}
           {...(failure.run?.resultSummary === undefined
             ? {}
             : { summary: failure.run.resultSummary })}
           failureCode={failure.failureCode}
           detail={failure.detail}
         />
+      ))}
+    </div>
+  );
+}
+
+function historyNodeLabel(nodeId: string): string {
+  if (nodeId === "leader-plan") return t("squadRun.leaderPlanning");
+  if (nodeId === "leader-finalize") return t("squadRun.leader");
+  return nodeId;
+}
+
+function CompositionSquadExecutionHistoryView({
+  executions,
+}: {
+  readonly executions: ReadonlyArray<CompositionSquadExecutionHistoryItem>;
+}) {
+  return (
+    <div className="overflow-hidden rounded-md border border-border/70 bg-background/40">
+      {executions.map((execution, index) => (
+        <details
+          key={`${execution.executionId}:${execution.squadRevision}`}
+          data-squad-history-execution={execution.executionId}
+          open={index === 0}
+          className="group border-b border-border/60 last:border-b-0"
+        >
+          <summary className="flex cursor-pointer list-none flex-wrap items-center justify-between gap-2 px-3 py-3 sm:px-4">
+            <div className="min-w-0">
+              <p className="truncate font-mono text-xs text-foreground">{execution.executionId}</p>
+              <p className="mt-1 text-[11px] tabular-nums text-muted-foreground">
+                {new Date(execution.updatedAtUnixMs).toLocaleString()}
+              </p>
+            </div>
+            <div className="flex flex-wrap items-center justify-end gap-1.5">
+              <Badge variant={statusVariant(execution.status)} size="sm">
+                {statusLabel(execution.status)}
+              </Badge>
+              <Badge variant="outline" size="sm">
+                {t("squadRun.revision", { revision: execution.squadRevision })}
+              </Badge>
+              <span className="text-[11px] tabular-nums text-muted-foreground">
+                {t("squadRun.historyNodes", { count: execution.nodes.length })}
+              </span>
+            </div>
+          </summary>
+          <div className="border-t border-border/60">
+            {execution.nodes.map(({ nodeId, snapshot }) => {
+              const latestRun = snapshot.latestRun;
+              return (
+                <div key={snapshot.task.taskId} data-squad-history-node={nodeId}>
+                  <ResultRow
+                    nodeId={nodeId}
+                    label={historyNodeLabel(nodeId)}
+                    status={latestRun?.status ?? snapshot.task.status}
+                    {...(latestRun === undefined ? {} : { attempts: latestRun.attempt })}
+                    agentId={latestRun?.agentId ?? snapshot.task.assigneeId}
+                    {...(latestRun?.resultSummary === undefined
+                      ? {}
+                      : { summary: latestRun.resultSummary })}
+                    {...(latestRun?.failureCode === undefined
+                      ? {}
+                      : { failureCode: latestRun.failureCode })}
+                  />
+                </div>
+              );
+            })}
+          </div>
+        </details>
       ))}
     </div>
   );
@@ -261,6 +340,14 @@ function CompositionSquadRunEnvironmentPanel({
     workspaceRoot: firstProject?.workspaceRoot ?? "",
     planText: buildPlanTemplate(firstSquad ?? null),
   }));
+  const tasksQuery = useEnvironmentQuery(
+    environmentId === null || draft.projectId.trim().length === 0
+      ? null
+      : serverEnvironment.listCompositionTasks({
+          environmentId,
+          input: { projectId: draft.projectId },
+        }),
+  );
   const [pending, setPending] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
   const [executionResult, setExecutionResult] = useState<CompositionSquadExecutionResult | null>(
@@ -272,6 +359,16 @@ function CompositionSquadRunEnvironmentPanel({
         ? { request: null, issues: [] }
         : buildCompositionSquadExecutionRequest(draft, selectedSquad),
     [draft, selectedSquad],
+  );
+  const executionHistory = useMemo(
+    () =>
+      selectedSquad === null
+        ? []
+        : projectCompositionSquadExecutionHistory(
+            selectedSquad.squadId,
+            tasksQuery.data?.tasks ?? [],
+          ),
+    [selectedSquad, tasksQuery.data?.tasks],
   );
 
   useEffect(() => {
@@ -321,6 +418,7 @@ function CompositionSquadRunEnvironmentPanel({
     } else {
       setExecutionResult(result.value);
       setDraft((current) => advanceCompositionSquadRunDraft(current, randomUUID()));
+      tasksQuery.refresh();
     }
     setPending(false);
   };
@@ -342,6 +440,7 @@ function CompositionSquadRunEnvironmentPanel({
           onClick={() => {
             squadsQuery.refresh();
             revisionsQuery.refresh();
+            tasksQuery.refresh();
           }}
         >
           <RefreshCwIcon />
@@ -568,6 +667,27 @@ function CompositionSquadRunEnvironmentPanel({
             {executionResult ? (
               <CompositionSquadExecutionResultView result={executionResult} />
             ) : null}
+
+            <div className="space-y-2 border-t border-border/60 pt-4">
+              <div className="flex items-center gap-2 text-xs font-medium text-foreground">
+                <HistoryIcon className="size-3.5 text-muted-foreground" />
+                {t("squadRun.executionHistory")}
+              </div>
+              <p className="text-xs leading-relaxed text-muted-foreground">
+                {t("squadRun.executionHistoryDescription")}
+              </p>
+              {tasksQuery.isPending ? (
+                <p className="text-xs text-muted-foreground">{t("squadRun.historyLoading")}</p>
+              ) : tasksQuery.error ? (
+                <p className="text-xs text-destructive">
+                  {t("squadRun.historyFailed", { message: String(tasksQuery.error) })}
+                </p>
+              ) : executionHistory.length === 0 ? (
+                <p className="text-xs text-muted-foreground">{t("squadRun.noExecutionHistory")}</p>
+              ) : (
+                <CompositionSquadExecutionHistoryView executions={executionHistory} />
+              )}
+            </div>
           </div>
         )}
       </div>
