@@ -1,6 +1,7 @@
 import type {
   CompositionControlCenterGoalLoop,
   CompositionControlCenterTask,
+  CompositionSquad,
 } from "@codework/contracts";
 import { describe, expect, it } from "vite-plus/test";
 
@@ -16,6 +17,7 @@ import {
   goalLoopStateLabelKey,
   resolveControlCenterEventTarget,
   resolveControlCenterTaskActions,
+  sortControlCenterSquads,
 } from "./SettingsControlCenterRouteScreen.logic";
 import { isByokResumeRedispatchable } from "@codework/contracts";
 
@@ -264,6 +266,27 @@ describe("resolveControlCenterEventTarget", () => {
     expect(
       resolveControlCenterEventTarget([makeTask({ taskId: "task-events" })], "task-events"),
     ).toBe(null);
+  });
+});
+
+describe("sortControlCenterSquads", () => {
+  const squad = (overrides: Partial<CompositionSquad>): CompositionSquad => ({
+    squadId: "squad-a",
+    name: "Alpha",
+    leaderAgentId: "agent-lead",
+    memberAgentIds: ["agent-lead"],
+    ...overrides,
+  });
+
+  it("excludes archived squads and sorts newest first with a stable name fallback", () => {
+    expect(
+      sortControlCenterSquads([
+        squad({ squadId: "squad-b", name: "Beta", updatedAtUnixMs: 10 }),
+        squad({ squadId: "squad-c", name: "Charlie", updatedAtUnixMs: 20 }),
+        squad({ squadId: "squad-a", name: "Alpha", updatedAtUnixMs: 10 }),
+        squad({ squadId: "squad-archived", archivedAtUnixMs: 30 }),
+      ]).map((item) => item.squadId),
+    ).toEqual(["squad-c", "squad-a", "squad-b"]);
   });
 });
 

@@ -34,6 +34,7 @@ import {
   goalLoopStateLabelKey,
   resolveControlCenterEventTarget,
   resolveControlCenterTaskActions,
+  sortControlCenterSquads,
 } from "./SettingsControlCenterRouteScreen.logic";
 
 const goalLoopStateLabel = (state: string): string => {
@@ -50,6 +51,11 @@ export function SettingsControlCenterRouteScreen() {
     environmentId === null
       ? null
       : serverEnvironment.controlCenterProjection({ environmentId, input: {} }),
+  );
+  const squadsQuery = useEnvironmentQuery(
+    environmentId === null
+      ? null
+      : serverEnvironment.compositionSquads({ environmentId, input: {} }),
   );
   const redispatchTask = useAtomCommand(serverEnvironment.controlCenterRedispatch, {
     reportFailure: false,
@@ -75,6 +81,7 @@ export function SettingsControlCenterRouteScreen() {
   const [selectedEventTaskId, setSelectedEventTaskId] = useState<string | null>(null);
 
   const projection: CompositionControlCenterResult | null = projectionQuery.data;
+  const squads = sortControlCenterSquads(squadsQuery.data?.squads ?? []);
   const eventTarget = resolveControlCenterEventTarget(projection?.tasks ?? [], selectedEventTaskId);
   const eventsQuery = useEnvironmentQuery(
     environmentId === null || eventTarget === null
@@ -214,6 +221,7 @@ export function SettingsControlCenterRouteScreen() {
             onRefresh={() => {
               projectionQuery.refresh();
               eventsQuery.refresh();
+              squadsQuery.refresh();
             }}
           />
         }
@@ -263,29 +271,40 @@ export function SettingsControlCenterRouteScreen() {
             </View>
           )}
         </View>
-        {projection === null || projection.squads.length === 0 ? null : (
+        {environmentId === null ? null : (
           <View className="gap-3">
             <Text className="px-2 text-sm font-t3-medium text-foreground-muted">
               {t("controlCenter.squads")}
             </Text>
-            <View className="overflow-hidden rounded-[24px] border-continuous bg-card">
-              {projection.squads.map((squad, index) => (
-                <View
-                  key={squad.squadId}
-                  className={
-                    index === 0 ? "gap-0.5 p-4" : "gap-0.5 border-t border-border-subtle p-4"
-                  }
-                >
-                  <Text className="text-base text-foreground">{squad.name}</Text>
-                  <Text className="text-sm text-foreground-muted">
-                    {formatSquadMeta(
-                      { leader: t("controlCenter.leader"), members: t("controlCenter.members") },
-                      squad,
-                    )}
-                  </Text>
-                </View>
-              ))}
-            </View>
+            {squadsQuery.data === null && squadsQuery.isPending ? (
+              <StatusMessage text={t("controlCenter.squadsPending")} />
+            ) : squadsQuery.error !== null ? (
+              <StatusMessage text={t("controlCenter.squadsError")} tone="danger" />
+            ) : squads.length === 0 ? (
+              <StatusMessage text={t("controlCenter.squadsEmpty")} />
+            ) : (
+              <View className="overflow-hidden rounded-[24px] border-continuous bg-card">
+                {squads.map((squad, index) => (
+                  <View
+                    key={squad.squadId}
+                    className={
+                      index === 0 ? "gap-0.5 p-4" : "gap-0.5 border-t border-border-subtle p-4"
+                    }
+                  >
+                    <Text className="text-base text-foreground">{squad.name}</Text>
+                    <Text className="text-sm text-foreground-muted">
+                      {formatSquadMeta(
+                        {
+                          leader: t("controlCenter.leader"),
+                          members: t("controlCenter.members"),
+                        },
+                        squad,
+                      )}
+                    </Text>
+                  </View>
+                ))}
+              </View>
+            )}
           </View>
         )}
       </ScrollView>

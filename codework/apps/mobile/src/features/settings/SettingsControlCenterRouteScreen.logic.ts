@@ -4,6 +4,7 @@ import {
   type CompositionControlCenterByokResumeRedispatchRequest,
   type CompositionControlCenterRedispatchRequest,
   type CompositionControlCenterTask,
+  type CompositionSquad,
   type CompositionTaskResumeRequest,
 } from "@codework/contracts";
 
@@ -57,6 +58,17 @@ export const resolveControlCenterEventTarget = (
     ? null
     : { taskId: task.taskId, runId: task.latestRun.runId };
 };
+
+export const sortControlCenterSquads = (
+  squads: ReadonlyArray<CompositionSquad>,
+): ReadonlyArray<CompositionSquad> =>
+  squads
+    .filter((squad) => squad.archivedAtUnixMs === undefined)
+    .toSorted(
+      (left, right) =>
+        (right.updatedAtUnixMs ?? 0) - (left.updatedAtUnixMs ?? 0) ||
+        left.name.localeCompare(right.name),
+    );
 
 /**
  * 行操作渲染门槛，与 Web 控制中心面板逐条对齐：
