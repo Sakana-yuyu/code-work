@@ -1,5 +1,6 @@
 import * as NodeCrypto from "node:crypto";
 
+import type { CompositionTaskStatus } from "@codework/contracts";
 import { assert, describe, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -18,7 +19,7 @@ const seedTask = (
   store: CompositionTaskStoreShape,
   input: {
     readonly taskId: string;
-    readonly status: "queued" | "running" | "failed" | "completed";
+    readonly status: CompositionTaskStatus;
     readonly dependsOnTaskIds?: ReadonlyArray<string>;
   },
 ) =>
@@ -40,7 +41,7 @@ const seedRun = (
   input: {
     readonly taskId: string;
     readonly runId: string;
-    readonly status: "running" | "failed";
+    readonly status: CompositionTaskStatus;
   },
 ) =>
   store.upsertRun({
@@ -414,6 +415,99 @@ layer("CompositionControlCenterProjection", (it) => {
         assert.isUndefined(row?.byokDelegation?.failureCode);
         // @effect-diagnostics-next-line preferSchemaOverJson:off - 断言投影不含委派原文。
         assert.isFalse(JSON.stringify(projection).includes("SECRET-DELEGATION-PROMPT"));
+      }),
+    );
+
+    it.effect("把等待审批、等待输入和审核中的任务投影为人工 Inbox 项", () =>
+      Effect.gen(function* () {
+        const store = yield* CompositionTaskStore;
+        yield* seedTask(store, { taskId: "task-approval", status: "waiting_approval" });
+        yield* seedRun(store, {
+          taskId: "task-approval",
+          runId: "run-approval",
+          status: "waiting_approval",
+        });
+        yield* store.appendEvent({
+          taskId: "task-approval",
+          runId: "run-approval",
+          agentId: "agent-task-approval",
+          runtimeId: "runtime-control",
+          status: "waiting_approval",
+          sequence: 0,
+          eventType: "blocker",
+          summary: "需要批准写入工作区",
+          blockerCode: "tool_approval_required",
+        });
+        yield* store.appendEvent({
+          taskId: "task-approval",
+          runId: "run-approval",
+          agentId: "agent-task-approval",
+          runtimeId: "runtime-control",
+          status: "waiting_approval",
+          sequence: 1,
+          eventType: "blocker",
+          summary: "最新审批请求",
+          blockerCode: "workspace_write_approval",
+        });
+
+        yield* seedTask(store, { taskId: "task-input", status: "waiting_input" });
+        yield* seedRun(store, {
+          taskId: "task-input",
+          runId: "run-input",
+          status: "waiting_input",
+        });
+
+        yield* seedTask(store, { taskId: "task-review", status: "in_review" });
+        yield* seedRun(store, {
+          taskId: "task-review",
+          runId: "run-review",
+          status: "in_review",
+        });
+        yield* store.appendEvent({
+          taskId: "task-review",
+          runId: "run-review",
+          agentId: "agent-task-review",
+          runtimeId: "runtime-control",
+          status: "in_review",
+          sequence: 0,
+          eventType: "review_requested",
+          summary: "请审核当前实现结果",
+        });
+
+        yield* seedTask(store, { taskId: "task-running-normal", status: "running" });
+        yield* seedRun(store, {
+          taskId: "task-running-normal",
+          runId: "run-running-normal",
+          status: "running",
+        });
+
+        const projection = yield* projectCompositionControlCenter({ store, now: () => 1 });
+        const byTask = new Map(projection.tasks.map((task) => [task.taskId, task]));
+        const approval = byTask.get("task-approval");
+        const input = byTask.get("task-input");
+        const review = byTask.get("task-review");
+        const running = byTask.get("task-running-normal");
+
+        assert.deepEqual(approval?.humanAction, {
+          kind: "approval",
+          runId: "run-approval",
+          summary: "最新审批请求",
+          blockerCode: "workspace_write_approval",
+          sequence: 1,
+        });
+        assert.deepEqual(input?.humanAction, {
+          kind: "input",
+          runId: "run-input",
+          summary: "任务等待人工输入",
+          sequence: 0,
+        });
+        assert.deepEqual(review?.humanAction, {
+          kind: "review",
+          runId: "run-review",
+          summary: "请审核当前实现结果",
+          sequence: 0,
+        });
+        assert.isUndefined(running?.humanAction);
       }),
     );
   });

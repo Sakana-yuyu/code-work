@@ -2,6 +2,7 @@ import {
   BYOK_DELEGATION_PROJECT_ID,
   type CompositionCapabilityAuditEvent,
   type CompositionCapabilityAuditOutcome,
+  type CompositionControlCenterHumanAction,
   type CompositionSquad,
   type CompositionTask,
   type CompositionTaskEvent,
@@ -73,6 +74,7 @@ export type CompositionTaskControlProjection = {
   readonly goalLoop?: CompositionGoalLoopProjection | undefined;
   readonly byokResume?: CompositionByokResumeProjection | undefined;
   readonly byokDelegation?: CompositionByokDelegationProjection | undefined;
+  readonly humanAction?: CompositionControlCenterHumanAction | undefined;
   readonly grants?: CompositionGrantProjection | undefined;
 };
 
@@ -105,6 +107,46 @@ const RUN_ACTIVE_STATUSES: ReadonlySet<CompositionTaskStatus> = new Set([
   "waiting_input",
   "in_review",
 ]);
+
+const humanActionKind = (
+  status: CompositionTaskStatus,
+): CompositionControlCenterHumanAction["kind"] | undefined => {
+  if (status === "waiting_approval") return "approval";
+  if (status === "waiting_input") return "input";
+  if (status === "in_review") return "review";
+  return undefined;
+};
+
+const humanActionFallbackSummary: Readonly<
+  Record<CompositionControlCenterHumanAction["kind"], string>
+> = {
+  approval: "任务等待人工审批",
+  input: "任务等待人工输入",
+  review: "任务等待人工审核",
+};
+
+const projectHumanAction = (input: {
+  readonly taskStatus: CompositionTaskStatus;
+  readonly run: CompositionTaskRun;
+  readonly events: ReadonlyArray<CompositionTaskEvent>;
+}): CompositionControlCenterHumanAction | undefined => {
+  const kind = humanActionKind(input.taskStatus);
+  if (kind === undefined || input.run.status !== input.taskStatus) return undefined;
+  const event = [...input.events]
+    .filter((candidate) => candidate.status === input.taskStatus)
+    .sort((left, right) => left.sequence - right.sequence)
+    .at(-1);
+  return {
+    runId: input.run.runId,
+    kind,
+    summary: event?.summary ?? humanActionFallbackSummary[kind],
+    sequence: event?.sequence ?? 0,
+    ...(event?.blockerCode === undefined ? {} : { blockerCode: event.blockerCode }),
+    ...(event?.approvalRequestId === undefined
+      ? {}
+      : { approvalRequestId: event.approvalRequestId }),
+  };
+};
 
 const deriveGoalLoopState = (
   runStatus: CompositionTaskStatus,
@@ -234,6 +276,7 @@ const projectTask = (
     let goalLoop: CompositionGoalLoopProjection | undefined;
     let byokResume: CompositionByokResumeProjection | undefined;
     let byokDelegation: CompositionByokDelegationProjection | undefined;
+    let humanAction: CompositionControlCenterHumanAction | undefined;
     const isByokDelegation = task.projectId === BYOK_DELEGATION_PROJECT_ID;
     if (latestRun !== undefined && isByokDelegation) {
       // Goal Loop 五态只扫 `goalloop:*`，套到委派行会得到误导性的 not_started。
@@ -246,6 +289,7 @@ const projectTask = (
       };
     } else if (latestRun !== undefined) {
       const events = yield* deps.store.listEvents(task.taskId, latestRun.runId);
+      humanAction = projectHumanAction({ taskStatus: task.status, run: latestRun, events });
       const scan = scanCompositionGoalLoopRun(events, {
         taskId: task.taskId,
         runId: latestRun.runId,
@@ -294,6 +338,7 @@ const projectTask = (
       ...(goalLoop === undefined ? {} : { goalLoop }),
       ...(byokResume === undefined ? {} : { byokResume }),
       ...(byokDelegation === undefined ? {} : { byokDelegation }),
+      ...(humanAction === undefined ? {} : { humanAction }),
       ...(grants === undefined ? {} : { grants }),
     };
   });

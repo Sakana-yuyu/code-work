@@ -607,6 +607,25 @@ export const CompositionControlCenterByokDelegation = Schema.Struct({
 export type CompositionControlCenterByokDelegation =
   typeof CompositionControlCenterByokDelegation.Type;
 
+export const CompositionControlCenterHumanActionKind = Schema.Literals([
+  "approval",
+  "input",
+  "review",
+]);
+export type CompositionControlCenterHumanActionKind =
+  typeof CompositionControlCenterHumanActionKind.Type;
+
+/** 由最新 Run 的持久化状态事件派生出的人工待办摘要，不包含 prompt 或输出正文。 */
+export const CompositionControlCenterHumanAction = Schema.Struct({
+  runId: TrimmedNonEmptyString,
+  kind: CompositionControlCenterHumanActionKind,
+  summary: TrimmedNonEmptyString,
+  sequence: NonNegativeInt,
+  blockerCode: Schema.optional(TrimmedNonEmptyString),
+  approvalRequestId: Schema.optional(ApprovalRequestId),
+});
+export type CompositionControlCenterHumanAction = typeof CompositionControlCenterHumanAction.Type;
+
 export const CompositionControlCenterTask = Schema.Struct({
   taskId: TrimmedNonEmptyString,
   status: CompositionTaskStatus,
@@ -624,6 +643,7 @@ export const CompositionControlCenterTask = Schema.Struct({
   goalLoop: Schema.optional(CompositionControlCenterGoalLoop),
   byokResume: Schema.optional(CompositionControlCenterByokResume),
   byokDelegation: Schema.optional(CompositionControlCenterByokDelegation),
+  humanAction: Schema.optional(CompositionControlCenterHumanAction),
   grants: Schema.optional(
     Schema.Struct({
       taskId: TrimmedNonEmptyString,
