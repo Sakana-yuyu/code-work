@@ -1,4 +1,5 @@
 import * as NodeServices from "@effect/platform-node/NodeServices";
+import * as NodeCrypto from "node:crypto";
 import type {
   CompositionCapabilityGrant,
   CompositionTaskDispatchResult,
@@ -116,13 +117,25 @@ const makeGrantRegistry = (): Pick<
 
 const completionStatuses = new Set(["in_review", "completed", "failed", "cancelled", "timed_out"]);
 
-const makeSchedulingExecutor = (events: string[]) => {
+const makeSchedulingExecutor = (
+  events: string[],
+  dispatchedInputs: Array<{
+    readonly taskId: string;
+    readonly prompt: string | undefined;
+    readonly promptDigest: string;
+  }> = [],
+) => {
   const tasks = new Map<string, CompositionTask>();
   const runs = new Map<string, CompositionTaskRun>();
   const orchestrator: Pick<CompositionOrchestrator, "dispatchTask" | "retryTask" | "cancelTask"> = {
     dispatchTask: (input) =>
       Effect.sync(() => {
         events.push(`dispatch:${input.taskId}`);
+        dispatchedInputs.push({
+          taskId: input.taskId,
+          prompt: input.prompt,
+          promptDigest: input.promptDigest,
+        });
         const terminal = input.taskId === baseLeader.taskId;
         const task: CompositionTask = {
           taskId: input.taskId,
@@ -164,7 +177,11 @@ const makeSchedulingExecutor = (events: string[]) => {
           const task = tasks.get(taskId)!;
           const run = runs.get(runId)!;
           tasks.set(taskId, { ...task, status: "completed" });
-          const completedRun = { ...run, status: "completed" as const };
+          const completedRun = {
+            ...run,
+            status: "completed" as const,
+            resultSummary: `${taskId} 的可验证结果`,
+          };
           runs.set(runId, completedRun);
           return completedRun;
         }),
@@ -356,6 +373,39 @@ describe("CompositionTaskGraphExecutor", () => {
         "dispatch:task-b",
         "settle:task-b",
       ]);
+    }),
+  );
+
+  it.effect("依赖节点收到上游结果摘要且 promptDigest 覆盖实际提示词", () =>
+    Effect.gen(function* () {
+      const events: string[] = [];
+      const dispatchedInputs: Array<{
+        readonly taskId: string;
+        readonly prompt: string | undefined;
+        readonly promptDigest: string;
+      }> = [];
+      const executor = makeSchedulingExecutor(events, dispatchedInputs);
+
+      yield* executor.execute({
+        leader: baseLeader,
+        children: [
+          schedulingChildren[0]!,
+          { ...schedulingChildren[1]!, dependsOnNodeIds: [schedulingChildren[0]!.nodeId] },
+        ],
+        schedule: "serial",
+      });
+
+      const dependent = dispatchedInputs.find((input) => input.taskId === "task-b")!;
+      expect(dependent.prompt).toContain("依赖任务结果：");
+      expect(dependent.prompt).toContain("node-a (agent-a): task-a 的可验证结果");
+      expect(dependent.promptDigest).toBe(
+        `sha256:${NodeCrypto.createHash("sha256").update(dependent.prompt!, "utf8").digest("hex")}`,
+      );
+
+      const leader = dispatchedInputs.find((input) => input.taskId === baseLeader.taskId)!;
+      expect(leader.promptDigest).toBe(
+        `sha256:${NodeCrypto.createHash("sha256").update(leader.prompt!, "utf8").digest("hex")}`,
+      );
     }),
   );
 

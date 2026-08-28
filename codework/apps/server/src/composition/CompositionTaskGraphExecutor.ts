@@ -1,3 +1,5 @@
+import * as NodeCrypto from "node:crypto";
+
 import type {
   CompositionSquadFailurePolicy,
   CompositionSquadPartialSuccessPolicy,
@@ -161,6 +163,23 @@ const normalizeError = (error: unknown): CompositionTaskGraphExecutionError =>
 const retryRunId = (initialRunId: string, attempt: number): string =>
   `${initialRunId}:retry:${attempt}`;
 
+const sha256 = (value: string): string =>
+  `sha256:${NodeCrypto.createHash("sha256").update(value, "utf8").digest("hex")}`;
+
+const appendDependencyResults = (
+  prompt: string,
+  dependencies: ReadonlyArray<CompositionTaskGraphNodeResult>,
+): string => {
+  if (dependencies.length === 0) return prompt;
+  const summary = dependencies
+    .map(
+      (dependency) =>
+        `- ${dependency.nodeId} (${dependency.run.agentId}): ${dependency.run.resultSummary ?? "已完成"}`,
+    )
+    .join("\n");
+  return `${prompt}\n\n依赖任务结果：\n${summary}`;
+};
+
 const validateGraph = (
   input: CompositionTaskGraphExecutionInput,
 ): CompositionTaskGraphExecutionError | undefined => {
@@ -291,10 +310,11 @@ const make = (options: GraphExecutorOptions): CompositionTaskGraphExecutorShape 
 
   const startNode = (
     node: CompositionTaskGraphNodeInput,
-    dependencyTaskIds: ReadonlyArray<string>,
+    dependencies: ReadonlyArray<CompositionTaskGraphNodeResult>,
     leaderTaskId: string,
   ): Effect.Effect<RunningNode, CompositionTaskGraphExecutionError> =>
     Effect.gen(function* () {
+      const prompt = appendDependencyResults(node.prompt, dependencies);
       const dispatch = yield* options.orchestrator
         .dispatchTask({
           taskId: node.taskId,
@@ -305,13 +325,13 @@ const make = (options: GraphExecutorOptions): CompositionTaskGraphExecutorShape 
           assigneeKind: node.assigneeKind,
           assigneeId: node.assigneeId,
           mode: node.mode,
-          promptDigest: node.promptDigest,
-          dependsOnTaskIds: [...dependencyTaskIds],
+          promptDigest: dependencies.length === 0 ? node.promptDigest : sha256(prompt),
+          dependsOnTaskIds: dependencies.map((dependency) => dependency.task.taskId),
           workspaceRoot: node.workspaceRoot,
           ...(node.workspaceRootDigest === undefined
             ? {}
             : { workspaceRootDigest: node.workspaceRootDigest }),
-          prompt: node.prompt,
+          prompt,
           ...(node.model === undefined ? {} : { model: node.model }),
           ...(node.capabilityIds === undefined ? {} : { capabilityIds: [...node.capabilityIds] }),
         })
@@ -405,7 +425,6 @@ const make = (options: GraphExecutorOptions): CompositionTaskGraphExecutorShape 
       const validationError = validateGraph(input);
       if (validationError !== undefined) return yield* validationError;
 
-      const nodesById = new Map(input.children.map((node) => [node.nodeId, node] as const));
       const pending = new Set(input.children.map((node) => node.nodeId));
       const results = new Map<string, CompositionTaskGraphNodeResult>();
       const failures = new Map<string, CompositionTaskGraphNodeFailure>();
@@ -505,9 +524,7 @@ const make = (options: GraphExecutorOptions): CompositionTaskGraphExecutorShape 
         const runReady = (node: CompositionTaskGraphNodeInput) =>
           startNode(
             node,
-            (node.dependsOnNodeIds ?? []).map(
-              (dependencyId) => nodesById.get(dependencyId)!.taskId,
-            ),
+            (node.dependsOnNodeIds ?? []).map((dependencyId) => results.get(dependencyId)!),
             input.leader.taskId,
           );
         // 先顺序写入每个子任务的 Code Work 投影，再并行等待 Driver 运行结果。
@@ -614,7 +631,7 @@ const make = (options: GraphExecutorOptions): CompositionTaskGraphExecutorShape 
           assigneeKind: input.leader.assigneeKind,
           assigneeId: input.leader.assigneeId,
           mode: "review",
-          promptDigest: input.leader.promptDigest,
+          promptDigest: sha256(leaderPrompt),
           dependsOnTaskIds: childResults.map((result) => result.task.taskId),
           workspaceRoot: input.leader.workspaceRoot,
           ...(input.leader.workspaceRootDigest === undefined
