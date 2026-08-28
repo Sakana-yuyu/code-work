@@ -278,6 +278,106 @@ layer("CompositionTaskRuntimeProjector", (it) => {
     }),
   );
 
+  it.effect("将任意 Provider 的助手文本增量写入统一审计输出", () =>
+    Effect.gen(function* () {
+      const store = yield* CompositionTaskStore;
+      const outputTask = {
+        ...task,
+        taskId: "execution-1:squad:squad-1:r1:task:leader-plan",
+      };
+      const outputRun = {
+        ...run,
+        taskId: outputTask.taskId,
+        runId: "run-runtime-provider-output",
+        runtimeTaskId: "runtime-task-provider-output",
+      };
+      const registry = makeCompositionAgentDriverRegistry();
+      yield* registry.register({
+        agentId: outputTask.assigneeId,
+        runtimeId: outputRun.runtimeId,
+        startTask: () => Effect.succeed({ runtimeTaskId: outputRun.runtimeTaskId }),
+        cancelTask: () => Effect.succeed({ status: "cancelled" as const }),
+        resolveRuntimeEvent: () => ({
+          taskId: outputTask.taskId,
+          runId: outputRun.runId,
+          runtimeTaskId: outputRun.runtimeTaskId,
+        }),
+      });
+      yield* store.upsertTask(outputTask);
+      yield* store.upsertRun(outputRun);
+
+      yield* projectCompositionRuntimeEvent(store, registry, {
+        ...baseEvent,
+        eventId: EventId.make("provider-output-1"),
+        type: "content.delta",
+        payload: {
+          streamKind: "assistant_text",
+          delta: '{"schemaVersion":1}',
+          contentIndex: 0,
+        },
+      });
+      yield* projectCompositionRuntimeEvent(store, registry, {
+        ...baseEvent,
+        eventId: EventId.make("provider-output-reasoning"),
+        type: "content.delta",
+        payload: {
+          streamKind: "reasoning_text",
+          delta: "不应持久化的推理内容",
+          contentIndex: 0,
+        },
+      });
+
+      const events = yield* store.listEvents(outputTask.taskId, outputRun.runId);
+      assert.equal(events.length, 1);
+      assert.equal(events[0]?.sourceEventId, "provider-output-1");
+      assert.equal(events[0]?.eventType, "message");
+      assert.equal(events[0]?.outputDelta, '{"schemaVersion":1}');
+      assert.equal(events[0]?.outputOffsetBytes, undefined);
+      assert.equal(events[0]?.outputDigest, undefined);
+      assert.equal(Option.getOrThrow(yield* store.getRun(outputRun.runId)).status, "running");
+    }),
+  );
+
+  it.effect("普通 Composition 任务不额外持久化 Provider 文本增量", () =>
+    Effect.gen(function* () {
+      const store = yield* CompositionTaskStore;
+      const ordinaryTask = { ...task, taskId: "task-runtime-ordinary-output" };
+      const ordinaryRun = {
+        ...run,
+        taskId: ordinaryTask.taskId,
+        runId: "run-runtime-ordinary-output",
+        runtimeTaskId: "runtime-task-ordinary-output",
+      };
+      const registry = makeCompositionAgentDriverRegistry();
+      yield* registry.register({
+        agentId: ordinaryTask.assigneeId,
+        runtimeId: ordinaryRun.runtimeId,
+        startTask: () => Effect.succeed({ runtimeTaskId: ordinaryRun.runtimeTaskId }),
+        cancelTask: () => Effect.succeed({ status: "cancelled" as const }),
+        resolveRuntimeEvent: () => ({
+          taskId: ordinaryTask.taskId,
+          runId: ordinaryRun.runId,
+          runtimeTaskId: ordinaryRun.runtimeTaskId,
+        }),
+      });
+      yield* store.upsertTask(ordinaryTask);
+      yield* store.upsertRun(ordinaryRun);
+
+      yield* projectCompositionRuntimeEvent(store, registry, {
+        ...baseEvent,
+        eventId: EventId.make("provider-output-ordinary"),
+        type: "content.delta",
+        payload: {
+          streamKind: "assistant_text",
+          delta: "普通任务输出不进入 Composition 审计增量",
+          contentIndex: 0,
+        },
+      });
+
+      assert.deepEqual(yield* store.listEvents(ordinaryTask.taskId, ordinaryRun.runId), []);
+    }),
+  );
+
   it.effect("有效 Runtime 事件会持久化 Run 级活动水位", () =>
     Effect.gen(function* () {
       const store = yield* CompositionTaskStore;

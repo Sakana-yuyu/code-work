@@ -192,6 +192,17 @@ it.effect("Runner 固定 revision 后调用现有 TaskGraphExecutor", () =>
     let captured: CompositionTaskGraphExecutionInput | undefined;
     const runner = makeCompositionSquadRunner({
       squads: { getRunnable: () => Effect.succeed(baseSquad) },
+      planner: {
+        plan: () =>
+          Effect.succeed([
+            {
+              nodeId: "planned-worker",
+              agentId: "agent-worker",
+              prompt: "由 Leader 拆解后的实现任务",
+              dependsOnNodeIds: [],
+            },
+          ]),
+      },
       executor: {
         execute: (input) =>
           Effect.sync(() => {
@@ -230,7 +241,67 @@ it.effect("Runner 固定 revision 后调用现有 TaskGraphExecutor", () =>
 
     expect(result.squadId).toBe(baseSquad.squadId);
     expect(result.squadRevision).toBe(3);
-    expect(captured?.children[0]?.assigneeId).toBe("agent-worker");
+    expect(captured?.children[0]).toMatchObject({
+      nodeId: "planned-worker",
+      assigneeId: "agent-worker",
+    });
+  }),
+);
+
+it.effect("显式用户计划绕过 Leader 自动规划", () =>
+  Effect.gen(function* () {
+    let captured: CompositionTaskGraphExecutionInput | undefined;
+    const explicitPlan = [
+      {
+        nodeId: "explicit-worker",
+        agentId: "agent-worker",
+        prompt: "执行用户明确给出的任务",
+        dependsOnNodeIds: [],
+      },
+    ];
+    const runner = makeCompositionSquadRunner({
+      squads: { getRunnable: () => Effect.succeed(baseSquad) },
+      planner: { plan: () => Effect.die("显式计划不应调用 Leader Planner") },
+      executor: {
+        execute: (graph) =>
+          Effect.sync(() => {
+            captured = graph;
+            return {
+              leader: {
+                task: {
+                  taskId: graph.leader.taskId,
+                  projectId: graph.leader.projectId,
+                  assigneeKind: graph.leader.assigneeKind,
+                  assigneeId: graph.leader.assigneeId,
+                  mode: "review" as const,
+                  status: "in_review" as const,
+                  promptDigest: graph.leader.promptDigest,
+                  dependsOnTaskIds: [],
+                  createdAtUnixMs: 1,
+                  updatedAtUnixMs: 2,
+                },
+                run: {
+                  runId: graph.leader.runId,
+                  taskId: graph.leader.taskId,
+                  agentId: baseSquad.leaderAgentId,
+                  runtimeId: "runtime-leader",
+                  status: "in_review" as const,
+                  attempt: 1,
+                  capabilityGrantIds: [],
+                },
+              },
+              children: [],
+            };
+          }),
+      },
+    });
+
+    yield* runner.run({ ...baseInput, plan: explicitPlan });
+
+    expect(captured?.children[0]).toMatchObject({
+      nodeId: "explicit-worker",
+      assigneeId: "agent-worker",
+    });
   }),
 );
 
@@ -238,6 +309,7 @@ it.effect("Runner 拒绝用陈旧 revision 启动运行", () =>
   Effect.gen(function* () {
     const runner = makeCompositionSquadRunner({
       squads: { getRunnable: () => Effect.succeed(baseSquad) },
+      planner: { plan: () => Effect.die("revision 冲突时不应规划") },
       executor: { execute: () => Effect.die("revision 冲突时不应执行") },
     });
 

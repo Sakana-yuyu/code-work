@@ -7,6 +7,15 @@ import * as Layer from "effect/Layer";
 import * as Schema from "effect/Schema";
 
 import {
+  compositionSquadExecutionScope,
+  validateCompositionSquadPlan,
+  type CompositionSquadPlanNode,
+} from "./CompositionSquadPlan.ts";
+import {
+  CompositionSquadPlanner,
+  type CompositionSquadPlannerShape,
+} from "./CompositionSquadPlanner.ts";
+import {
   CompositionSquadService,
   type CompositionSquadServiceShape,
 } from "./CompositionSquadService.ts";
@@ -18,12 +27,7 @@ import {
   type CompositionTaskGraphNodeInput,
 } from "./CompositionTaskGraphExecutor.ts";
 
-export interface CompositionSquadPlanNode {
-  readonly nodeId: string;
-  readonly agentId: string;
-  readonly prompt: string;
-  readonly dependsOnNodeIds: ReadonlyArray<string>;
-}
+export type { CompositionSquadPlanNode } from "./CompositionSquadPlan.ts";
 
 export interface CompositionSquadExecutionInput {
   readonly executionId: string;
@@ -73,6 +77,7 @@ export class CompositionSquadRunner extends Context.Service<
 
 export interface CompositionSquadRunnerOptions {
   readonly squads: Pick<CompositionSquadServiceShape, "getRunnable">;
+  readonly planner: Pick<CompositionSquadPlannerShape, "plan">;
   readonly executor: Pick<CompositionTaskGraphExecutorShape, "execute">;
 }
 
@@ -112,7 +117,11 @@ const sha256 = (value: string): string =>
 const revisionOf = (squad: CompositionSquad): number => squad.revision ?? 1;
 
 const executionScope = (input: CompositionSquadExecutionInput): string =>
-  `${input.executionId}:squad:${input.squadId}:r${input.squadRevision}`;
+  compositionSquadExecutionScope({
+    executionId: input.executionId,
+    squadId: input.squadId,
+    squadRevision: input.squadRevision,
+  });
 
 const defaultMemberPrompt = (
   squad: CompositionSquad,
@@ -223,19 +232,21 @@ export const compileCompositionSquadGraph = ({
         prompt: defaultMemberPrompt(squad, member, input.goal),
         dependsOnNodeIds: [],
       }));
-    const plan = input.plan ?? defaultPlan;
-    const seenNodeIds = new Set<string>();
+    const plan = yield* validateCompositionSquadPlan({
+      squad,
+      plan: input.plan ?? defaultPlan,
+    }).pipe(
+      Effect.mapError((error) =>
+        runnerError(
+          error.code,
+          error.detail,
+          input.squadId,
+          error.nodeId === undefined ? undefined : { nodeId: error.nodeId },
+        ),
+      ),
+    );
     const resolvedNodes: ResolvedPlanNode[] = [];
     for (const node of plan) {
-      if (seenNodeIds.has(node.nodeId)) {
-        return yield* runnerError(
-          "squad_plan_duplicate_node",
-          `计划包含重复 nodeId：${node.nodeId}。`,
-          input.squadId,
-          { nodeId: node.nodeId },
-        );
-      }
-      seenNodeIds.add(node.nodeId);
       const member = membersById.get(node.agentId);
       if (member === undefined || member.role === "leader") {
         return yield* runnerError(
@@ -314,7 +325,44 @@ export const makeCompositionSquadRunner = (
         }),
       ),
     );
-    const graphInput = yield* compileCompositionSquadGraph({ squad, input });
+    const actualRevision = revisionOf(squad);
+    if (actualRevision !== input.squadRevision) {
+      return yield* runnerError(
+        "squad_revision_conflict",
+        `预期 revision ${input.squadRevision}，实际为 ${actualRevision}。`,
+        input.squadId,
+        { expectedRevision: input.squadRevision, actualRevision },
+      );
+    }
+    const plan =
+      input.plan === undefined
+        ? yield* options.planner
+            .plan({
+              executionId: input.executionId,
+              squad,
+              projectId: input.projectId,
+              ...(input.threadId === undefined ? {} : { threadId: input.threadId }),
+              goal: input.goal,
+              workspaceRoot: input.workspaceRoot,
+              ...(input.workspaceRootDigest === undefined
+                ? {}
+                : { workspaceRootDigest: input.workspaceRootDigest }),
+            })
+            .pipe(
+              Effect.mapError((error) =>
+                runnerError(
+                  error.code,
+                  error.detail,
+                  input.squadId,
+                  error.nodeId === undefined ? undefined : { nodeId: error.nodeId },
+                ),
+              ),
+            )
+        : input.plan;
+    const graphInput = yield* compileCompositionSquadGraph({
+      squad,
+      input: { ...input, plan },
+    });
     const graph = yield* options.executor
       .execute(graphInput)
       .pipe(
@@ -338,8 +386,9 @@ export const makeCompositionSquadRunner = (
 
 const live = Effect.gen(function* () {
   const squads = yield* CompositionSquadService;
+  const planner = yield* CompositionSquadPlanner;
   const executor = yield* CompositionTaskGraphExecutor;
-  return makeCompositionSquadRunner({ squads, executor });
+  return makeCompositionSquadRunner({ squads, planner, executor });
 });
 
 export const layer = Layer.effect(CompositionSquadRunner, live);

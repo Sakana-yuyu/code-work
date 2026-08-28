@@ -23,6 +23,7 @@ import {
   releaseCompositionRuntimeLease,
   renewCompositionRuntimeLease,
 } from "./CompositionRuntimeLeaseLifecycle.ts";
+import { isCompositionSquadLeaderPlanTaskId } from "./CompositionSquadPlan.ts";
 
 type ResumeReadyTasks = () => Effect.Effect<void>;
 
@@ -220,6 +221,7 @@ const projectEvent = (
   event: ProviderRuntimeEvent,
   currentStatus: CompositionTaskStatus,
   requiresReview: boolean,
+  captureAssistantOutput: boolean,
 ): RuntimeProjection | undefined => {
   switch (event.type) {
     case "session.started":
@@ -347,21 +349,28 @@ const projectEvent = (
     case "tool.summary":
       return { status: currentStatus, eventType: "tool", summary: event.payload.summary };
     case "content.delta":
-      if (
-        event.raw?.source !== "composition.byok.agent-loop" ||
-        event.payload.streamKind !== "assistant_text" ||
-        event.payload.checkpointOffsetBytes === undefined ||
-        event.payload.checkpointDigest === undefined
-      ) {
+      if (event.payload.streamKind !== "assistant_text" || event.payload.delta.length === 0) {
         return undefined;
       }
+      const isByokCheckpoint =
+        event.raw?.source === "composition.byok.agent-loop" &&
+        event.payload.checkpointOffsetBytes !== undefined &&
+        event.payload.checkpointDigest !== undefined;
+      if (!isByokCheckpoint && !captureAssistantOutput) return undefined;
       return {
         status: currentStatus,
         eventType: "message",
-        summary: "BYOK Agent 已保存部分输出",
+        summary:
+          event.raw?.source === "composition.byok.agent-loop"
+            ? "BYOK Agent 已保存部分输出"
+            : "Agent 已保存部分输出",
         outputDelta: event.payload.delta,
-        outputOffsetBytes: event.payload.checkpointOffsetBytes,
-        outputDigest: event.payload.checkpointDigest,
+        ...(event.payload.checkpointOffsetBytes === undefined
+          ? {}
+          : { outputOffsetBytes: event.payload.checkpointOffsetBytes }),
+        ...(event.payload.checkpointDigest === undefined
+          ? {}
+          : { outputDigest: event.payload.checkpointDigest }),
       };
     case "runtime.warning":
       return { status: currentStatus, eventType: "message", summary: event.payload.message };
@@ -437,7 +446,12 @@ export const projectCompositionRuntimeEvent = (
 
     const task = taskOption.value;
     const run = runOption.value;
-    const projected = projectEvent(event, task.status, task.mode === "review");
+    const projected = projectEvent(
+      event,
+      task.status,
+      task.mode === "review",
+      isCompositionSquadLeaderPlanTaskId(task.taskId),
+    );
     if (projected === undefined) return;
     const projection = preserveStatusForStaleRuntimeEvent(event, task.status, projected);
 
