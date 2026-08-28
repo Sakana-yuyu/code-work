@@ -33,11 +33,13 @@ const mocks = vi.hoisted(() => ({
   commands: {
     execute: vi.fn(),
     cancel: vi.fn(),
+    resume: vi.fn(),
     review: vi.fn(),
     retry: vi.fn(),
   },
   executeCommand: Symbol("execute-command"),
   cancelCommand: Symbol("cancel-command"),
+  resumeCommand: Symbol("resume-command"),
   reviewCommand: Symbol("review-command"),
   retryCommand: Symbol("retry-command"),
 }));
@@ -67,6 +69,7 @@ vi.mock("~/state/server", () => ({
     listCompositionTaskEvents: () => mocks.eventsAtom,
     executeCompositionTaskGraph: mocks.executeCommand,
     cancelCompositionTask: mocks.cancelCommand,
+    resumeCompositionTask: mocks.resumeCommand,
     reviewCompositionTask: mocks.reviewCommand,
     retryCompositionTask: mocks.retryCommand,
   },
@@ -76,6 +79,7 @@ vi.mock("~/state/use-atom-command", () => ({
   useAtomCommand: (command: unknown) => {
     if (command === mocks.executeCommand) return mocks.commands.execute;
     if (command === mocks.cancelCommand) return mocks.commands.cancel;
+    if (command === mocks.resumeCommand) return mocks.commands.resume;
     if (command === mocks.reviewCommand) return mocks.commands.review;
     return mocks.commands.retry;
   },
@@ -110,7 +114,9 @@ const profile = (
   ...overrides,
 });
 
-const task = (status: "failed" | "in_review" | "completed") => ({
+const task = (
+  status: "failed" | "waiting_approval" | "waiting_input" | "in_review" | "completed",
+) => ({
   taskId: `task-${status}`,
   projectId: "project-test",
   assigneeKind: "agent" as const,
@@ -123,7 +129,9 @@ const task = (status: "failed" | "in_review" | "completed") => ({
   updatedAtUnixMs: 2,
 });
 
-const snapshot = (status: "failed" | "in_review" | "completed") => ({
+const snapshot = (
+  status: "failed" | "waiting_approval" | "waiting_input" | "in_review" | "completed",
+) => ({
   task: task(status),
   latestRun: {
     runId: `run-${status}`,
@@ -151,6 +159,7 @@ describe("TaskGraphPanel", () => {
     mocks.eventsQuery.error = null;
     mocks.commands.execute.mockReset();
     mocks.commands.cancel.mockReset();
+    mocks.commands.resume.mockReset();
     mocks.commands.review.mockReset();
     mocks.commands.retry.mockReset();
   });
@@ -181,10 +190,31 @@ describe("TaskGraphPanel", () => {
 
     const html = renderPanel();
 
-    expect(html).toContain("通过");
-    expect(html).toContain("拒绝");
+    expect(html).toContain('data-testid="task-graph-approve"');
+    expect(html).toContain('data-testid="task-graph-reject"');
+    expect(html).not.toContain('data-testid="task-graph-resume"');
     expect(html).toMatch(/Cancel task|取消任务/);
   });
+
+  it.each(["waiting_approval", "waiting_input"] as const)(
+    "exposes resume for a %s task and not review actions",
+    (status) => {
+      mocks.environment = { environmentId: EnvironmentId.make("env-test") };
+      mocks.driverQuery.data = [profile()];
+      mocks.taskQuery.data = { tasks: [snapshot(status)] };
+      mocks.eventsQuery.data = {
+        taskId: `task-${status}`,
+        runId: `run-${status}`,
+        events: [],
+      };
+
+      const html = renderPanel();
+
+      expect(html).toContain('data-testid="task-graph-resume"');
+      expect(html).not.toContain('data-testid="task-graph-approve"');
+      expect(html).not.toContain('data-testid="task-graph-reject"');
+    },
+  );
 
   it("disables cancellation for a terminal task", () => {
     mocks.environment = { environmentId: EnvironmentId.make("env-test") };

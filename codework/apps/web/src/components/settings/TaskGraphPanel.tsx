@@ -280,6 +280,9 @@ export function TaskGraphPanel() {
   const cancelTask = useAtomCommand(serverEnvironment.cancelCompositionTask, {
     reportFailure: false,
   });
+  const resumeTask = useAtomCommand(serverEnvironment.resumeCompositionTask, {
+    reportFailure: false,
+  });
   const reviewTask = useAtomCommand(serverEnvironment.reviewCompositionTask, {
     reportFailure: false,
   });
@@ -406,6 +409,9 @@ export function TaskGraphPanel() {
 
   const selectedTaskIsTerminal =
     selectedSnapshot === null || TERMINAL_STATUSES.has(selectedSnapshot.task.status);
+  const selectedTaskCanResume =
+    selectedSnapshot?.task.status === "waiting_approval" ||
+    selectedSnapshot?.task.status === "waiting_input";
   const selectedTaskNeedsReview = selectedSnapshot?.task.status === "in_review";
   const canRetry =
     selectedSnapshot !== null &&
@@ -413,11 +419,21 @@ export function TaskGraphPanel() {
     (selectedSnapshot.task.status === "failed" || selectedSnapshot.task.status === "timed_out") &&
     retryCapabilityIds.split(",").some((value) => value.trim() !== "");
 
-  const runSelectedAction = async (action: "cancel" | "approve" | "reject" | "retry") => {
+  const runSelectedAction = async (
+    action: "cancel" | "resume" | "approve" | "reject" | "retry",
+  ) => {
     if (environmentId === null || selectedSnapshot === null || selectedRunId === undefined) return;
     const reason = actionReason.trim() || t("taskGraph.actionReasonDefault");
     if (action === "cancel") {
       await runCommand("cancel", cancelTask, {
+        taskId: selectedSnapshot.task.taskId,
+        runId: selectedRunId,
+        reason,
+      });
+      return;
+    }
+    if (action === "resume") {
+      await runCommand("resume", resumeTask, {
         taskId: selectedSnapshot.task.taskId,
         runId: selectedRunId,
         reason,
@@ -682,9 +698,21 @@ export function TaskGraphPanel() {
                   <SquareIcon />
                   {t("taskGraph.cancelTask")}
                 </Button>
+                {selectedTaskCanResume ? (
+                  <Button
+                    data-testid="task-graph-resume"
+                    size="sm"
+                    onClick={() => void runSelectedAction("resume")}
+                    disabled={pendingAction !== null}
+                  >
+                    <PlayIcon />
+                    {t("taskGraph.resumeTask")}
+                  </Button>
+                ) : null}
                 {selectedTaskNeedsReview ? (
                   <>
                     <Button
+                      data-testid="task-graph-approve"
                       size="sm"
                       onClick={() => void runSelectedAction("approve")}
                       disabled={pendingAction !== null}
@@ -693,6 +721,7 @@ export function TaskGraphPanel() {
                       {t("approve")}
                     </Button>
                     <Button
+                      data-testid="task-graph-reject"
                       size="sm"
                       variant="destructive-outline"
                       onClick={() => void runSelectedAction("reject")}
