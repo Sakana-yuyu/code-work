@@ -18,6 +18,8 @@ import type {
   CompositionTaskStoreShape,
 } from "../persistence/Services/CompositionTaskStore.ts";
 import type * as CapabilityGrantRegistry from "./CapabilityGrantRegistry.ts";
+import type { CompositionRuntimeHeartbeat } from "./CompositionRuntimeAdapter.ts";
+import { COMPOSITION_RUNTIME_LEASE_DURATION_MS } from "./CompositionRuntimeLeaseLifecycle.ts";
 import type {
   CompositionAgentDriverFailure,
   CompositionOrchestrator,
@@ -43,11 +45,16 @@ type CompositionRunLivenessError =
   | CompositionTaskNotFoundError;
 
 export type CompositionRunLivenessOptions = {
-  readonly store: Pick<CompositionTaskStoreShape, "listTasks" | "getLatestRun">;
+  readonly store: Pick<CompositionTaskStoreShape, "listTasks" | "getLatestRun"> &
+    Partial<Pick<CompositionTaskStoreShape, "getLease" | "renewLease">>;
   readonly orchestrator: Pick<CompositionOrchestrator, "cancelTask">;
   readonly nowUnixMs: number;
   readonly inactivityTimeoutMs: number;
   readonly cancelConfirmationTimeoutMs: number;
+  readonly reconnectGraceUntilUnixMs?: number;
+  readonly runtimeHeartbeat?: (
+    runtimeId: string,
+  ) => Effect.Effect<CompositionRuntimeHeartbeat | undefined, never>;
   readonly projectRuntimeEvent: (
     event: ProviderRuntimeEvent,
   ) => Effect.Effect<void, CompositionRunLivenessProjectionError>;
@@ -55,16 +62,18 @@ export type CompositionRunLivenessOptions = {
 
 export type CompositionRunLivenessSupervisorOptions = Omit<
   CompositionRunLivenessOptions,
-  "nowUnixMs"
+  "nowUnixMs" | "reconnectGraceUntilUnixMs"
 > & {
   readonly inactivityTimeoutMs: number;
   readonly cancelConfirmationTimeoutMs: number;
   readonly sweepIntervalMs: number;
+  readonly reconnectGraceMs?: number;
 };
 
 export const defaultCompositionRunInactivityTimeoutMs = 5 * 60 * 1000;
 export const defaultCompositionRunCancelConfirmationTimeoutMs = 30 * 1000;
 export const defaultCompositionRunLivenessSweepIntervalMs = 15 * 1000;
+export const defaultCompositionRunReconnectGraceMs = 30 * 1000;
 
 const watchdogSourceEventId = (runId: string): string =>
   `composition-watchdog:${runId}:cancel-confirmation-timeout:1`;
@@ -107,9 +116,11 @@ const isStale = (
   run: CompositionTaskRun,
   nowUnixMs: number,
   inactivityTimeoutMs: number,
+  runtimeHeartbeatAtUnixMs?: number,
 ): boolean => {
-  const lastObservedAt =
+  const taskActivityAtUnixMs =
     run.lastRuntimeEventAtUnixMs ?? Math.max(task.updatedAtUnixMs, run.startedAtUnixMs ?? 0);
+  const lastObservedAt = Math.max(taskActivityAtUnixMs, runtimeHeartbeatAtUnixMs ?? 0);
   return nowUnixMs - lastObservedAt >= inactivityTimeoutMs;
 };
 
@@ -122,6 +133,7 @@ export const recoverCompositionRunLiveness = (
   Effect.gen(function* () {
     const tasks = yield* options.store.listTasks();
     const actions: CompositionRunLivenessAction[] = [];
+    const heartbeatByRuntimeId = new Map<string, CompositionRuntimeHeartbeat | undefined>();
 
     for (const task of tasks) {
       if (!liveStatuses.has(task.status) || terminalStatuses.has(task.status)) continue;
@@ -129,7 +141,46 @@ export const recoverCompositionRunLiveness = (
       if (runOption._tag === "None") continue;
       const run = runOption.value;
       if (!liveStatuses.has(run.status) || terminalStatuses.has(run.status)) continue;
+
+      let runtimeHeartbeatAtUnixMs: number | undefined;
+      if (run.leaseId !== undefined && options.store.getLease !== undefined) {
+        const lease = yield* options.store.getLease(run.leaseId);
+        if (lease._tag === "Some" && lease.value.state === "active") {
+          runtimeHeartbeatAtUnixMs = lease.value.heartbeatAtUnixMs;
+        }
+      }
+      if (options.runtimeHeartbeat !== undefined) {
+        const heartbeat = heartbeatByRuntimeId.has(run.runtimeId)
+          ? heartbeatByRuntimeId.get(run.runtimeId)
+          : yield* options
+              .runtimeHeartbeat(run.runtimeId)
+              .pipe(
+                Effect.tap((result) =>
+                  Effect.sync(() => heartbeatByRuntimeId.set(run.runtimeId, result)),
+                ),
+              );
+        if (heartbeat !== undefined && heartbeat.status !== "offline") {
+          runtimeHeartbeatAtUnixMs = options.nowUnixMs;
+          if (run.leaseId !== undefined && options.store.renewLease !== undefined) {
+            const renewed = yield* options.store.renewLease({
+              leaseId: run.leaseId,
+              runtimeId: run.runtimeId,
+              heartbeatAtUnixMs: options.nowUnixMs,
+              expiresAtUnixMs: options.nowUnixMs + COMPOSITION_RUNTIME_LEASE_DURATION_MS,
+              nowUnixMs: options.nowUnixMs,
+            });
+            if (renewed._tag === "Some") {
+              runtimeHeartbeatAtUnixMs = renewed.value.heartbeatAtUnixMs;
+            }
+          }
+        }
+      }
+
+      const reconnectGraceActive =
+        options.reconnectGraceUntilUnixMs !== undefined &&
+        options.nowUnixMs < options.reconnectGraceUntilUnixMs;
       if (run.cancelRequestedAtUnixMs !== undefined) {
+        if (reconnectGraceActive) continue;
         if (options.nowUnixMs - run.cancelRequestedAtUnixMs < options.cancelConfirmationTimeoutMs) {
           continue;
         }
@@ -139,7 +190,10 @@ export const recoverCompositionRunLiveness = (
         continue;
       }
 
-      if (isStale(task, run, options.nowUnixMs, options.inactivityTimeoutMs)) {
+      if (reconnectGraceActive) continue;
+      if (
+        isStale(task, run, options.nowUnixMs, options.inactivityTimeoutMs, runtimeHeartbeatAtUnixMs)
+      ) {
         const result = yield* options.orchestrator.cancelTask({
           taskId: task.taskId,
           runId: run.runId,
@@ -160,18 +214,26 @@ export const recoverCompositionRunLiveness = (
 /** 服务生命周期内定时扫描；单次失败不会中断后续 Runtime 事件流。 */
 export const superviseCompositionRunLiveness = (
   options: CompositionRunLivenessSupervisorOptions,
-): Effect.Effect<void, never, Scope.Scope> => {
-  const sweep = Clock.currentTimeMillis.pipe(
-    Effect.flatMap((nowUnixMs) => recoverCompositionRunLiveness({ ...options, nowUnixMs })),
-    Effect.catchCause((cause) =>
-      Effect.logError("Composition Run 活性扫描失败", { cause }).pipe(Effect.as([])),
-    ),
-    Effect.asVoid,
-  );
-  return Effect.gen(function* () {
+): Effect.Effect<void, never, Scope.Scope> =>
+  Effect.gen(function* () {
+    const startedAtUnixMs = yield* Clock.currentTimeMillis;
+    const reconnectGraceUntilUnixMs =
+      startedAtUnixMs + (options.reconnectGraceMs ?? defaultCompositionRunReconnectGraceMs);
+    const sweep = Clock.currentTimeMillis.pipe(
+      Effect.flatMap((nowUnixMs) =>
+        recoverCompositionRunLiveness({
+          ...options,
+          nowUnixMs,
+          reconnectGraceUntilUnixMs,
+        }),
+      ),
+      Effect.catchCause((cause) =>
+        Effect.logError("Composition Run 活性扫描失败", { cause }).pipe(Effect.as([])),
+      ),
+      Effect.asVoid,
+    );
     yield* sweep;
     yield* Effect.forkScoped(
       Effect.forever(Effect.sleep(options.sweepIntervalMs).pipe(Effect.flatMap(() => sweep))),
     );
   });
-};

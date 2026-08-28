@@ -1,13 +1,5 @@
 import { assert, it } from "@effect/vitest";
-import {
-  EventId,
-  ProviderDriverKind,
-  ProviderInstanceId,
-  RuntimeTaskId,
-  ThreadId,
-  type CompositionTask,
-  type CompositionTaskRun,
-} from "@codework/contracts";
+import { type CompositionTask, type CompositionTaskRun } from "@codework/contracts";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
@@ -316,6 +308,127 @@ layer("CompositionRunLiveness", (it) => {
     }),
   );
 
+  it.effect("任务事件安静时，健康 Runtime heartbeat 会续租并阻止误取消", () =>
+    Effect.gen(function* () {
+      const store = yield* CompositionTaskStore;
+      const task = makeTask({ taskId: "task-liveness-heartbeat", updatedAtUnixMs: 1 });
+      const leaseId = "lease-liveness-heartbeat";
+      const run = makeRun({
+        taskId: task.taskId,
+        runId: "run-liveness-heartbeat",
+        leaseId,
+        lastRuntimeEventAtUnixMs: 1,
+      });
+      const registry = makeCompositionAgentDriverRegistry();
+      let cancelCalls = 0;
+      yield* registry.register({
+        agentId: run.agentId,
+        runtimeId: run.runtimeId,
+        startTask: () => startWithRunTaskId(run),
+        cancelTask: () =>
+          Effect.sync(() => {
+            cancelCalls += 1;
+            return { status: "cancel_requested" as const };
+          }),
+      });
+      const orchestrator = makeCompositionOrchestrator(store, registry);
+      yield* store.upsertTask(task);
+      yield* store.upsertRun(run);
+      yield* store.claimLease({
+        lease: {
+          leaseId,
+          runtimeId: run.runtimeId,
+          taskId: task.taskId,
+          workspaceRootDigest: "sha256:liveness-heartbeat-workspace",
+          heartbeatAtUnixMs: 1,
+          expiresAtUnixMs: 20_000,
+          state: "active",
+        },
+        nowUnixMs: 1,
+      });
+
+      const actions = yield* recoverCompositionRunLiveness({
+        store: { ...store, listTasks: () => Effect.succeed([task]) },
+        orchestrator,
+        nowUnixMs: 10_000,
+        inactivityTimeoutMs: 1_000,
+        cancelConfirmationTimeoutMs: 500,
+        runtimeHeartbeat: () =>
+          Effect.succeed({
+            runtimeId: run.runtimeId,
+            status: "online" as const,
+            heartbeatAtUnixMs: 10_000,
+            activeTaskCount: 1,
+          }),
+        projectRuntimeEvent: (event) => projectCompositionRuntimeEvent(store, registry, event),
+      });
+
+      assert.deepEqual(actions, []);
+      assert.equal(cancelCalls, 0);
+      const lease = Option.getOrThrow(yield* store.getLease(leaseId));
+      assert.equal(lease.heartbeatAtUnixMs, 10_000);
+      assert.ok(lease.expiresAtUnixMs > 20_000);
+    }),
+  );
+
+  it.effect("服务重启后的 reconnect grace 会延迟旧 Run 的失活取消", () =>
+    Effect.gen(function* () {
+      const store = yield* CompositionTaskStore;
+      const task = makeTask({ taskId: "task-liveness-reconnect-grace", updatedAtUnixMs: 1 });
+      const run = makeRun({
+        taskId: task.taskId,
+        runId: "run-liveness-reconnect-grace",
+        lastRuntimeEventAtUnixMs: 1,
+      });
+      const registry = makeCompositionAgentDriverRegistry();
+      let cancelCalls = 0;
+      yield* registry.register({
+        agentId: run.agentId,
+        runtimeId: run.runtimeId,
+        startTask: () => startWithRunTaskId(run),
+        cancelTask: () =>
+          Effect.sync(() => {
+            cancelCalls += 1;
+            return { status: "cancel_requested" as const };
+          }),
+      });
+      const orchestrator = makeCompositionOrchestrator(store, registry);
+      yield* store.upsertTask(task);
+      yield* store.upsertRun(run);
+      const baseOptions = {
+        store: { ...store, listTasks: () => Effect.succeed([task]) },
+        orchestrator,
+        inactivityTimeoutMs: 1_000,
+        cancelConfirmationTimeoutMs: 500,
+        reconnectGraceUntilUnixMs: 11_000,
+        runtimeHeartbeat: () =>
+          Effect.succeed({
+            runtimeId: run.runtimeId,
+            status: "offline" as const,
+            heartbeatAtUnixMs: 1,
+            activeTaskCount: 0,
+          }),
+        projectRuntimeEvent: (event: Parameters<typeof projectCompositionRuntimeEvent>[2]) =>
+          projectCompositionRuntimeEvent(store, registry, event),
+      };
+
+      const duringGrace = yield* recoverCompositionRunLiveness({
+        ...baseOptions,
+        nowUnixMs: 10_000,
+      });
+      const afterGrace = yield* recoverCompositionRunLiveness({
+        ...baseOptions,
+        nowUnixMs: 11_000,
+      });
+
+      assert.deepEqual(duringGrace, []);
+      assert.deepEqual(afterGrace, [
+        { taskId: task.taskId, runId: run.runId, action: "cancel_requested" },
+      ]);
+      assert.equal(cancelCalls, 1);
+    }),
+  );
+
   it.effect("任务级更新时间不能掩盖同一 Run 已失活", () =>
     Effect.gen(function* () {
       const store = yield* CompositionTaskStore;
@@ -387,6 +500,7 @@ layer("CompositionRunLiveness", (it) => {
           inactivityTimeoutMs: 1_000,
           cancelConfirmationTimeoutMs: 1_000,
           sweepIntervalMs: 100,
+          reconnectGraceMs: 0,
           projectRuntimeEvent: () => Effect.void,
         });
         assert.equal(cancelCalls, 1);

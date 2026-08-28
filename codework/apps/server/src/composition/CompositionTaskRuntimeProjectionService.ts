@@ -28,12 +28,16 @@ import {
   defaultCompositionRunCancelConfirmationTimeoutMs,
   defaultCompositionRunInactivityTimeoutMs,
   defaultCompositionRunLivenessSweepIntervalMs,
+  defaultCompositionRunReconnectGraceMs,
   superviseCompositionRunLiveness,
 } from "./CompositionRunLiveness.ts";
 import { recoverInterruptedByokDelegations } from "./CompositionByokDelegationSupervisor.ts";
 import { CompositionRuntimeAdapterRegistryService } from "./CompositionRuntimeAdapterRegistry.ts";
 import type { CompositionRuntimeAdapterRegistry } from "./CompositionRuntimeAdapterRegistry.ts";
-import type { CompositionRuntimeAdapter } from "./CompositionRuntimeAdapter.ts";
+import type {
+  CompositionRuntimeAdapter,
+  CompositionRuntimeHeartbeat,
+} from "./CompositionRuntimeAdapter.ts";
 import type {
   CompositionAgentDriver,
   CompositionAgentDriverFailure,
@@ -331,6 +335,22 @@ const live = Effect.gen(function* () {
     inactivityTimeoutMs: defaultCompositionRunInactivityTimeoutMs,
     cancelConfirmationTimeoutMs: defaultCompositionRunCancelConfirmationTimeoutMs,
     sweepIntervalMs: defaultCompositionRunLivenessSweepIntervalMs,
+    reconnectGraceMs: defaultCompositionRunReconnectGraceMs,
+    runtimeHeartbeat: (runtimeId) =>
+      runtimeAdapters.get(runtimeId).pipe(
+        Effect.flatMap((adapter) =>
+          adapter === undefined
+            ? Effect.sync((): CompositionRuntimeHeartbeat | undefined => undefined)
+            : adapter.heartbeat().pipe(
+                Effect.catchCause((cause) =>
+                  Effect.logWarning("Composition Runtime heartbeat 失败", {
+                    runtimeId,
+                    cause,
+                  }).pipe(Effect.as(undefined)),
+                ),
+              ),
+        ),
+      ),
     projectRuntimeEvent,
   });
 
