@@ -9,6 +9,7 @@ import {
   CompositionCapabilityGrant,
   CompositionCapabilityAuditEvent,
   CompositionCapabilityPolicyDecision,
+  CompositionSquad,
   CompositionTaskCancelRequest,
   CompositionTaskDispatchRequest,
   CompositionTaskGraphExecutionRequest,
@@ -35,6 +36,7 @@ const decodeCapability = Schema.decodeUnknownSync(CompositionCapabilityDescripto
 const decodeCapabilityGrant = Schema.decodeUnknownSync(CompositionCapabilityGrant);
 const decodeCapabilityAuditEvent = Schema.decodeUnknownSync(CompositionCapabilityAuditEvent);
 const decodePolicyDecision = Schema.decodeUnknownSync(CompositionCapabilityPolicyDecision);
+const decodeSquad = Schema.decodeUnknownSync(CompositionSquad);
 const decodeTaskEvent = Schema.decodeUnknownSync(CompositionTaskEvent);
 const decodeTaskDispatch = Schema.decodeUnknownSync(CompositionTaskDispatchRequest);
 const decodeTaskGraph = Schema.decodeUnknownSync(CompositionTaskGraphExecutionRequest);
@@ -55,6 +57,82 @@ const decodeAgentLoopRunRequest = Schema.decodeUnknownSync(CompositionAgentLoopR
 const decodeAgentLoopRunResult = Schema.decodeUnknownSync(CompositionAgentLoopRunResult);
 
 describe("composition contracts", () => {
+  it("保留可版本化 Squad 的成员角色、运行约束和审批配置", () => {
+    const decoded = decodeSquad({
+      squadId: "squad-native",
+      name: "原生协同组",
+      leaderAgentId: "agent-leader",
+      memberAgentIds: ["agent-leader", "agent-worker", "agent-reviewer"],
+      revision: 3,
+      collaborationMode: "review_critic",
+      members: [
+        {
+          agentId: "agent-leader",
+          role: "leader",
+          order: 0,
+          required: true,
+          model: "provider/leader-model",
+          workspaceRoot: "C:/workspace/leader",
+          capabilityIds: ["t3.workspace.read_file"],
+          maxConcurrentTasks: 1,
+        },
+        {
+          agentId: "agent-worker",
+          role: "worker",
+          order: 1,
+          required: true,
+          capabilityIds: ["t3.workspace.read_file", "t3.workspace.write_file"],
+          maxConcurrentTasks: 2,
+        },
+        {
+          agentId: "agent-reviewer",
+          role: "reviewer",
+          order: 2,
+          required: true,
+          capabilityIds: ["t3.workspace.read_file"],
+          maxConcurrentTasks: 1,
+        },
+      ],
+      maxConcurrency: 3,
+      maxRetries: 2,
+      failurePolicy: "continue_independent",
+      partialSuccessPolicy: "require_review",
+      approvalStages: ["before_mutating_tool", "before_finalize"],
+      createdAtUnixMs: 10,
+      updatedAtUnixMs: 20,
+    });
+
+    expect(decoded.revision).toBe(3);
+    expect(decoded.collaborationMode).toBe("review_critic");
+    expect(decoded.members?.[0]).toMatchObject({
+      role: "leader",
+      model: "provider/leader-model",
+      workspaceRoot: "C:/workspace/leader",
+      maxConcurrentTasks: 1,
+    });
+    expect(decoded.members?.[1]?.capabilityIds).toEqual([
+      "t3.workspace.read_file",
+      "t3.workspace.write_file",
+    ]);
+    expect(decoded.maxConcurrency).toBe(3);
+    expect(decoded.maxRetries).toBe(2);
+    expect(decoded.failurePolicy).toBe("continue_independent");
+    expect(decoded.partialSuccessPolicy).toBe("require_review");
+    expect(decoded.approvalStages).toEqual(["before_mutating_tool", "before_finalize"]);
+  });
+
+  it("拒绝零并发的 Squad 配置", () => {
+    expect(() =>
+      decodeSquad({
+        squadId: "squad-invalid-concurrency",
+        name: "错误配置",
+        leaderAgentId: "agent-leader",
+        memberAgentIds: ["agent-leader"],
+        maxConcurrency: 0,
+      }),
+    ).toThrow();
+  });
+
   it("定义 Leader、依赖节点和 retry 次数的 Task Graph RPC 合同", () => {
     const decoded = decodeTaskGraph({
       leader: {

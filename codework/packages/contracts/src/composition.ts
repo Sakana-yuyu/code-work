@@ -783,12 +783,66 @@ export const CompositionRuntimeLease = Schema.Struct({
 });
 export type CompositionRuntimeLease = typeof CompositionRuntimeLease.Type;
 
+export const CompositionSquadMemberRole = Schema.Literals([
+  "leader",
+  "worker",
+  "reviewer",
+  "critic",
+]);
+export type CompositionSquadMemberRole = typeof CompositionSquadMemberRole.Type;
+
+export const CompositionSquadCollaborationMode = Schema.Literals([
+  "serial",
+  "parallel",
+  "dependency_graph",
+  "review_critic",
+  "leader_workers",
+]);
+export type CompositionSquadCollaborationMode = typeof CompositionSquadCollaborationMode.Type;
+
+export const CompositionSquadFailurePolicy = Schema.Literals(["fail_fast", "continue_independent"]);
+export type CompositionSquadFailurePolicy = typeof CompositionSquadFailurePolicy.Type;
+
+export const CompositionSquadPartialSuccessPolicy = Schema.Literals(["reject", "require_review"]);
+export type CompositionSquadPartialSuccessPolicy = typeof CompositionSquadPartialSuccessPolicy.Type;
+
+export const CompositionSquadApprovalStage = Schema.Literals([
+  "before_dispatch",
+  "before_mutating_tool",
+  "before_finalize",
+]);
+export type CompositionSquadApprovalStage = typeof CompositionSquadApprovalStage.Type;
+
+/** Squad 成员模板只保存默认请求；每次运行仍签发 task-scoped capability grant。 */
+export const CompositionSquadMember = Schema.Struct({
+  agentId: TrimmedNonEmptyString,
+  role: CompositionSquadMemberRole,
+  order: NonNegativeInt,
+  required: Schema.Boolean,
+  model: Schema.optional(TrimmedNonEmptyString),
+  workspaceRoot: Schema.optional(TrimmedNonEmptyString),
+  capabilityIds: Schema.Array(TrimmedNonEmptyString),
+  maxConcurrentTasks: PositiveInt,
+});
+export type CompositionSquadMember = typeof CompositionSquadMember.Type;
+
+/** 可版本化的 Squad 模板；可选丰富字段兼容已持久化的旧版 Squad。 */
 export const CompositionSquad = Schema.Struct({
   squadId: TrimmedNonEmptyString,
   name: TrimmedNonEmptyString,
   leaderAgentId: TrimmedNonEmptyString,
   memberAgentIds: Schema.Array(TrimmedNonEmptyString),
   instructions: Schema.optional(TrimmedNonEmptyString),
+  revision: Schema.optional(PositiveInt),
+  collaborationMode: Schema.optional(CompositionSquadCollaborationMode),
+  members: Schema.optional(Schema.Array(CompositionSquadMember)),
+  maxConcurrency: Schema.optional(PositiveInt),
+  maxRetries: Schema.optional(NonNegativeInt),
+  failurePolicy: Schema.optional(CompositionSquadFailurePolicy),
+  partialSuccessPolicy: Schema.optional(CompositionSquadPartialSuccessPolicy),
+  approvalStages: Schema.optional(Schema.Array(CompositionSquadApprovalStage)),
+  createdAtUnixMs: Schema.optional(NonNegativeInt),
+  updatedAtUnixMs: Schema.optional(NonNegativeInt),
   archivedAtUnixMs: Schema.optional(NonNegativeInt),
 });
 export type CompositionSquad = typeof CompositionSquad.Type;
