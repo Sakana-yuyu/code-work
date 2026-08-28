@@ -10,11 +10,10 @@
 
 当前最高价值、可编码的下一刀（按顺序，做完再开下一刀）：
 
-1. **会话 cookie 改名兼容**（若工作区仍有未提交的 `apps/server/src/auth/` 改动，先收口这条，不要另起炉灶）。
-2. **委派取消/重试接到 composition cancel**（控制中心委派行目前只读；取消仍走调度器 RPC）。
-3. **DelegationScheduler 单一状态源**（台账已是投影，内存调度器仍是 `submit`/`list` 权威；投影失败被降级为不中断委派）。
-4. **凭据版本历史 + `rollbackCredential`**（多账号回滚的前置合同；Code Work 没有独立 Account Profile 存储）。
-5. 不要主动开：Request Lab、权重路由/failover、真实 IDE Adapter、真实 Multica daemon。除非用户点名。
+1. **委派取消/重试接到 composition cancel**（控制中心委派行目前只读；取消仍走调度器 RPC）。
+2. **DelegationScheduler 单一状态源**（台账已是投影，内存调度器仍是 `submit`/`list` 权威；投影失败被降级为不中断委派）。
+3. **凭据版本历史 + `rollbackCredential`**（多账号回滚的前置合同；Code Work 没有独立 Account Profile 存储）。
+4. 不要主动开：Request Lab、权重路由/failover、真实 IDE Adapter、真实 Multica daemon。除非用户点名。
 
 BYOK 真实 API E2E 是主线**唯一非代码阻塞项**，需要用户提供真实凭据后才能做。没有 key 就不要假装在做 E2E。
 
@@ -24,14 +23,14 @@ BYOK 真实 API E2E 是主线**唯一非代码阻塞项**，需要用户提供�
 
 上一会话完成了两批 BYOK 缺口：
 
-| 提交（若尚未落盘，工作区应有对应 diff） | 内容 |
+| 提交 | 内容 |
 | --- | --- |
-| `cfb79999e` `feat(byok): 补齐余额看板、Supplier 管理、resume 重派与 delegation 收敛` | 余额看板、Supplier 启停/凭据轮换、resume 自动重派 RPC+Web 按钮、delegation 台账投影、Mobile 控制中心/注册表面板、上游 20 处 i18n |
-| 后续切片（可能仍未 commit，或已由并行代理提交） | Mobile 恢复重派按钮；控制中心消费 `byok-delegation:*`；进程重启后 in-flight 委派收口为 `byok_delegation_interrupted` |
+| `cfb79999e` | 余额看板、Supplier 启停/凭据轮换、resume 自动重派 RPC+Web 按钮、delegation 台账投影、Mobile 控制中心/注册表面板、上游 20 处 i18n |
+| `02d01f440` | Mobile 恢复重派按钮；控制中心消费 `byok-delegation:*`；进程重启后 in-flight 委派收口为 `byok_delegation_interrupted` |
+| `c1d029843` | 本交接文档 |
+| `6d6a6f65` `feat(auth): 兼容读取旧 t3_session cookie 并静默迁移` | 读 `t3_session_*`、写 `codework_session_*`、过期旧 cookie；升级后不掉线 |
 
-相对 `origin/tcode` 领先约 100+ 提交，**尚未 push**。不要擅自 push。
-
-并行未完成线：品牌改名把 cookie 从 `t3_session_*` 改成 `codework_session_*`，测试仍断言旧名。已有代理在评估「只改测试」vs「读取旧 cookie 并静默迁移」。**升级后已登录用户可能静默掉线**，这是真实兼容性问题，不是单纯测试过时。
+相对 `origin/tcode` 领先约 107+ 提交，**尚未 push**。不要擅自 push。
 
 ## Current state
 
@@ -49,6 +48,7 @@ BYOK 真实 API E2E 是主线**唯一非代码阻塞项**，需要用户提供�
 - Mobile：`SettingsControlCenter`、`SettingsSupplierRegistry`；Desktop 走共享 Web `/settings/integrations`。
 - server 包 typecheck 已从约 520 错清到 0；`server.test.ts` 路由层 133 通过（含本轮新 handler）。
 - `node scripts/check-ui-i18n.mjs` 应对 web/mobile/desktop 全绿。
+- 会话 cookie 品牌改名兼容：写入 `codework_session_*`，读取同时接受 `t3_session_*`（同 scope），HTTP 层把旧 cookie 静默迁到新名并 expire 旧名。`getSessionState` 与 environment-authenticated 请求都会迁移。auth 测试 28 通过。
 
 ### 仍缺（代码）
 
@@ -60,7 +60,6 @@ BYOK 真实 API E2E 是主线**唯一非代码阻塞项**，需要用户提供�
 - 模型分组、权重路由、自动匹配、failover：只有底层零件。
 - Request Lab / 请求镜像 / 脱敏回放：未做。
 - Provider 原生 Session/Turn 的真实 capability grant 闭环：未做。
-- Cookie 改名升级兼容：进行中（见下）。
 
 ### 仍缺（环境，本次不要假装完成）
 
@@ -70,12 +69,7 @@ BYOK 真实 API E2E 是主线**唯一非代码阻塞项**，需要用户提供�
 
 ### 工作区陷阱
 
-接手时先 `git status`。常见脏文件：
-
-**不要混进无关提交的 cookie 改名（`apps/server/src/auth/`，除本切片真正改了的 `RpcAuthorization.ts`）：**
-
-- `EnvironmentAuth.ts` / `EnvironmentAuth.test.ts` / `EnvironmentAuthPolicy.test.ts`
-- `SessionStore.ts` / `http.ts` / `utils.ts` / `utils.test.ts`
+接手时先 `git status`。cookie 兼容已提交，auth 目录不应再是脏的。若仍有未提交文件，先问用户，不要和委派切片混提交。
 
 **不要去修的既有噪音：**
 
@@ -102,6 +96,7 @@ BYOK 真实 API E2E 是主线**唯一非代码阻塞项**，需要用户提供�
 10. **Provider Instance ≠ Cursor 账户。** 账号级回滚要先做凭据版本历史，不要假装改 enabled 就是多账号。
 11. **上游合并策略：** 保留本地 `@codework` 品牌与 i18n，采纳上游功能。迁移号 042/043 已被本地占用，上游那两支已重编为 054/055。不要改回 042。
 12. **真实 IDE / 真实 Multica = 后期。** 当前阶段只对接 BYOK Driver。
+13. **会话 cookie 写新名、读旧名。** 生产写入 `codework_session_*`；读取接受同 scope 的 `t3_session_*`；认证成功后 Set-Cookie 新名并 expire 旧名。不要改回只认旧名，也不要去掉兼容读取。
 
 ## What was tried
 
@@ -124,7 +119,8 @@ BYOK 真实 API E2E 是主线**唯一非代码阻塞项**，需要用户提供�
 | `packages/contracts/src/rpc.ts` | WS 方法注册 |
 | `packages/client-runtime/src/state/server.ts` | 查询/命令原子（singleFlight） |
 | `apps/server/src/ws.ts` | handler；改前确认服务依赖（如 `CompositionTaskInputStore`） |
-| `apps/server/src/auth/RpcAuthorization.ts` | ReadScope / OperateScope；cookie 线不要碰此文件以外的 auth |
+| `apps/server/src/auth/RpcAuthorization.ts` | ReadScope / OperateScope |
+| `apps/server/src/auth/utils.ts` / `http.ts` | cookie 名解析、legacy 读取、静默迁移 |
 | `apps/server/src/composition/CompositionByokResumeRedispatch.ts` | resume 结算+重派 |
 | `apps/server/src/composition/CompositionByokDelegationProjection.ts` | 委派台账投影 |
 | `apps/server/src/composition/CompositionByokDelegationSupervisor.ts` | 重启收口 |
@@ -150,7 +146,7 @@ BYOK 真实 API E2E 是主线**唯一非代码阻塞项**，需要用户提供�
 - 新 RPC 必须四层：contracts schema → `rpc.ts` → `ws.ts` handler → `RpcAuthorization` → client-runtime 原子 → UI。少一层就是没做完。
 - 验证用针对性 `vp test run <files>` 与触及包 `typecheck`。不要全仓 `vp check` / 全量 test，除非用户要求。
 - Windows 提交不要依赖 bash HEREDOC；用 `git commit -m "..." -m "..."`。
-- 提交前 `git diff --cached --name-only` 确认没有 auth cookie 半成品、没有 `.t3/`、没有 secrets。
+- 提交前 `git diff --cached --name-only` 确认没有 `.t3/`、没有 secrets。
 - 用户并行 ComposerEditor 改名：碰了会和别人的工作树打架。
 
 ## Acceptance criteria（下一刀通用）
@@ -162,18 +158,9 @@ BYOK 真实 API E2E 是主线**唯一非代码阻塞项**，需要用户提供�
 - [ ] i18n 门禁通过。
 - [ ] 没有把 fixture / fake transport 写成 L4 真实产品 E2E。
 
-## 建议的第一刀（cookie，若仍脏）
+## 建议的第一刀（委派操作面）
 
-先查 `apps/server/src/auth/` 工作区：
-
-- 若已有「读旧名 + 写新名静默迁移」实现：补测试（旧 cookie 请求仍登录，响应 Set-Cookie 为 `codework_session_*`），跑 `utils.test.ts` / `EnvironmentAuthPolicy.test.ts`，单独提交，message 写清升级后不会掉线。
-- 若只有测试改名、生产只认新名：在提交说明和进度文档写明这是 breaking change，已登录用户升级后需重新登录。不要为了让测试绿就把生产改回 `t3_session_*`。
-
-证据不足时选更保守做法：兼容读取。
-
-## 建议的第二刀（委派操作面）
-
-控制中心委派行接到取消（复用 `serverCancelCompositionTask` 或显式映射到调度器 cancel，但台账必须落到 `cancelled`）。不要给委派行挂 Goal Loop 的 redispatch/abandon。重试若要做：新 Run + 新 UUID task，不要复活已 `byok_delegation_interrupted` 的 Run。
+控制中心委派行接到取消（复用 `serverCancelCompositionTask` 或显式映射到调度器 cancel，但台账必须落到 `cancelled`）。不要给委派行挂 Goal Loop 的 redispatch/abandon。重试若要做：新 Run + 新 UUID task，不要复活已 `byok_delegation_interrupted` 的 Run。Cookie 兼容已提交，不要重做。
 
 ## 仓库惯例（短）
 
