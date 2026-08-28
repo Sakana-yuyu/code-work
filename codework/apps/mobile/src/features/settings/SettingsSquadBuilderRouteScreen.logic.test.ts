@@ -1,12 +1,17 @@
 import type { CompositionSquad } from "@codework/contracts";
+import { createEmptyCompositionSquadDraft } from "@codework/client-runtime/composition/squad-builder";
 import { describe, expect, it } from "vite-plus/test";
 
 import {
+  addSquadBuilderMember,
+  patchSquadBuilderMember,
+  removeSquadBuilderMember,
   resolveSquadBuilderMembers,
   squadCollaborationModeLabelKey,
   squadMemberRoleLabelKey,
   sortSquadBuilderSquads,
   summarizeSquadBuilderConfiguration,
+  toggleSquadBuilderApprovalStage,
 } from "./SettingsSquadBuilderRouteScreen.logic";
 
 const squad = (overrides: Partial<CompositionSquad>): CompositionSquad => ({
@@ -109,5 +114,45 @@ describe("Squad Builder label keys", () => {
   it("returns null for unknown values so callers can preserve forward compatibility", () => {
     expect(squadCollaborationModeLabelKey("future-mode")).toBe(null);
     expect(squadMemberRoleLabelKey("future-role")).toBe(null);
+  });
+});
+
+describe("Squad Builder draft mutations", () => {
+  it("adds and patches a worker without mutating the source draft", () => {
+    const source = createEmptyCompositionSquadDraft();
+    const withWorker = addSquadBuilderMember(source, "member-worker");
+    const patched = patchSquadBuilderMember(withWorker, 1, {
+      agentId: "agent-worker",
+      role: "reviewer",
+      capabilityIdsText: "fs.read",
+    });
+
+    expect(source.members).toHaveLength(1);
+    expect(patched.members[1]).toMatchObject({
+      clientId: "member-worker",
+      agentId: "agent-worker",
+      role: "reviewer",
+      capabilityIdsText: "fs.read",
+      required: true,
+      maxConcurrentTasksText: "1",
+    });
+  });
+
+  it("removes only the selected member and ignores an invalid index", () => {
+    const source = addSquadBuilderMember(createEmptyCompositionSquadDraft(), "member-worker");
+
+    expect(removeSquadBuilderMember(source, 1).members).toHaveLength(1);
+    expect(removeSquadBuilderMember(source, 99)).toBe(source);
+  });
+
+  it("toggles approval stages without creating duplicates", () => {
+    const source = createEmptyCompositionSquadDraft();
+    const enabled = toggleSquadBuilderApprovalStage(source, "before_finalize", true);
+    const enabledAgain = toggleSquadBuilderApprovalStage(enabled, "before_finalize", true);
+    const disabled = toggleSquadBuilderApprovalStage(enabledAgain, "before_finalize", false);
+
+    expect(enabled.approvalStages).toEqual(["before_finalize"]);
+    expect(enabledAgain).toBe(enabled);
+    expect(disabled.approvalStages).toEqual([]);
   });
 });

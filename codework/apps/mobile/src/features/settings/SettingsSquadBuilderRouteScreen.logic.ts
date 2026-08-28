@@ -1,4 +1,9 @@
 import type { CompositionSquad, CompositionSquadMember } from "@codework/contracts";
+import type {
+  CompositionSquadDraft,
+  CompositionSquadMemberDraft,
+} from "@codework/client-runtime/composition/squad-builder";
+import type { CompositionSquadApprovalStage } from "@codework/contracts";
 
 export interface SquadBuilderConfigurationSummary {
   readonly archived: boolean;
@@ -29,6 +34,66 @@ export const squadCollaborationModeLabelKey = (mode: string): string | null =>
 
 export const squadMemberRoleLabelKey = (role: string): string | null =>
   MEMBER_ROLE_LABEL_KEYS[role] ?? null;
+
+export const addSquadBuilderMember = (
+  draft: CompositionSquadDraft,
+  clientId: string,
+): CompositionSquadDraft => ({
+  ...draft,
+  members: [
+    ...draft.members,
+    {
+      clientId,
+      agentId: "",
+      role: "worker",
+      required: true,
+      model: "",
+      workspaceRoot: "",
+      capabilityIdsText: "",
+      maxConcurrentTasksText: "1",
+    },
+  ],
+});
+
+export const patchSquadBuilderMember = (
+  draft: CompositionSquadDraft,
+  index: number,
+  patch: Partial<CompositionSquadMemberDraft>,
+): CompositionSquadDraft => {
+  if (draft.members[index] === undefined) return draft;
+  return {
+    ...draft,
+    members: draft.members.map((member, memberIndex) =>
+      memberIndex === index ? { ...member, ...patch } : member,
+    ),
+  };
+};
+
+export const removeSquadBuilderMember = (
+  draft: CompositionSquadDraft,
+  index: number,
+): CompositionSquadDraft => {
+  if (draft.members[index] === undefined) return draft;
+  return {
+    ...draft,
+    members: draft.members.filter((_, memberIndex) => memberIndex !== index),
+  };
+};
+
+export const toggleSquadBuilderApprovalStage = (
+  draft: CompositionSquadDraft,
+  stage: CompositionSquadApprovalStage,
+  enabled: boolean,
+): CompositionSquadDraft => {
+  const currentlyEnabled = draft.approvalStages.includes(stage);
+  if (currentlyEnabled === enabled) return draft;
+  return {
+    ...draft,
+    approvalStages: enabled
+      ? [...draft.approvalStages, stage]
+      : draft.approvalStages.filter((candidate) => candidate !== stage),
+  };
+};
 
 /** Builder 同时展示活动与归档配置，活动项优先，各分组内按最近更新时间排序。 */
 export const sortSquadBuilderSquads = (

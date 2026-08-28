@@ -1,6 +1,13 @@
 import { useNavigation } from "@react-navigation/native";
+import {
+  buildCompositionSquadCreateRequest,
+  createEmptyCompositionSquadDraft,
+  type CompositionSquadDraft,
+} from "@codework/client-runtime/composition/squad-builder";
+import { squashAtomCommandFailure } from "@codework/client-runtime/state/runtime";
 import type { CompositionSquad, CompositionSquadMember } from "@codework/contracts";
-import { Platform, RefreshControl, ScrollView, View } from "react-native";
+import { useMemo, useState } from "react";
+import { Platform, Pressable, RefreshControl, ScrollView, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { AndroidScreenHeader } from "../../components/AndroidScreenHeader";
@@ -10,6 +17,8 @@ import { NativeStackScreenOptions } from "../../native/StackHeader";
 import { useEnvironments } from "../../state/environments";
 import { useEnvironmentQuery } from "../../state/query";
 import { serverEnvironment } from "../../state/server";
+import { useAtomCommand } from "../../state/use-atom-command";
+import { SettingsSquadBuilderCreateForm } from "./SettingsSquadBuilderCreateForm";
 import {
   resolveSquadBuilderMembers,
   squadCollaborationModeLabelKey,
@@ -32,7 +41,47 @@ export function SettingsSquadBuilderRouteScreen() {
           input: { includeArchived: true },
         }),
   );
+  const createSquad = useAtomCommand(serverEnvironment.createCompositionSquad, {
+    reportFailure: false,
+  });
+  const [isCreating, setIsCreating] = useState(false);
+  const [draft, setDraft] = useState<CompositionSquadDraft>(createEmptyCompositionSquadDraft);
+  const [createPending, setCreatePending] = useState(false);
+  const [createError, setCreateError] = useState<string | null>(null);
+  const [createdSquadName, setCreatedSquadName] = useState<string | null>(null);
+  const buildResult = useMemo(() => buildCompositionSquadCreateRequest(draft), [draft]);
   const squads = sortSquadBuilderSquads(squadsQuery.data?.squads ?? []);
+
+  const startCreate = (): void => {
+    setDraft(createEmptyCompositionSquadDraft());
+    setCreateError(null);
+    setCreatedSquadName(null);
+    setIsCreating(true);
+  };
+
+  const cancelCreate = (): void => {
+    if (createPending) return;
+    setIsCreating(false);
+    setCreateError(null);
+  };
+
+  const submitCreate = async (): Promise<void> => {
+    if (environmentId === null || buildResult.request === null || createPending) return;
+    setCreatePending(true);
+    setCreateError(null);
+    setCreatedSquadName(null);
+    const result = await createSquad({ environmentId, input: buildResult.request });
+    if (result._tag === "Failure") {
+      const error = squashAtomCommandFailure(result);
+      setCreateError(error instanceof Error ? error.message : t("squadBuilder.actionFailed"));
+    } else {
+      setCreatedSquadName(result.value.squad.name);
+      setDraft(createEmptyCompositionSquadDraft());
+      setIsCreating(false);
+      squadsQuery.refresh();
+    }
+    setCreatePending(false);
+  };
 
   return (
     <View collapsable={false} className="flex-1 bg-sheet">
@@ -55,6 +104,34 @@ export function SettingsSquadBuilderRouteScreen() {
           />
         }
       >
+        {environmentId === null ? null : (
+          <View className="flex-row justify-end">
+            <ActionButton
+              label={t("squadBuilder.new")}
+              disabled={createPending || isCreating}
+              emphasized
+              onPress={startCreate}
+            />
+          </View>
+        )}
+        {isCreating ? (
+          <SettingsSquadBuilderCreateForm
+            draft={draft}
+            issues={buildResult.issues}
+            pending={createPending}
+            onDraftChange={setDraft}
+            onSubmit={() => void submitCreate()}
+            onCancel={cancelCreate}
+          />
+        ) : null}
+        {createError === null ? null : (
+          <Text className="text-sm text-danger-foreground">{createError}</Text>
+        )}
+        {createdSquadName === null ? null : (
+          <Text className="text-sm text-success-foreground">
+            {t("squadBuilder.created", { name: createdSquadName })}
+          </Text>
+        )}
         {environmentId === null ? (
           <StatusMessage text={t("squadBuilder.noEnvironment")} />
         ) : squadsQuery.data === null && squadsQuery.isPending ? (
@@ -202,5 +279,30 @@ function BadgePill(props: { readonly label: string; readonly emphasized?: boolea
     >
       <Text className="text-xs text-foreground">{props.label}</Text>
     </View>
+  );
+}
+
+function ActionButton(props: {
+  readonly label: string;
+  readonly disabled: boolean;
+  readonly onPress: () => void;
+  readonly emphasized?: boolean;
+}) {
+  return (
+    <Pressable
+      accessibilityLabel={props.label}
+      accessibilityRole="button"
+      disabled={props.disabled}
+      onPress={props.onPress}
+      className={
+        props.disabled
+          ? "rounded-full bg-subtle px-3 py-1.5 opacity-[0.45]"
+          : props.emphasized
+            ? "rounded-full bg-subtle-strong px-3 py-1.5"
+            : "rounded-full bg-subtle px-3 py-1.5"
+      }
+    >
+      <Text className="text-sm font-t3-medium text-foreground">{props.label}</Text>
+    </Pressable>
   );
 }
