@@ -6,6 +6,171 @@ import { makeCompositionRuntimeAgentDriver } from "./CompositionRuntimeAgentDriv
 import { makeInMemoryCompositionRuntimeAdapter } from "./CompositionRuntimeAdapter.ts";
 
 describe("CompositionRuntimeAgentDriver", () => {
+  it("Runtime 实时探测为离线时拒绝派发，不调用 capability handshake 或 dispatch", async () => {
+    const adapter = makeInMemoryCompositionRuntimeAdapter({ runtimeId: "runtime-offline" });
+    await Effect.runPromise(adapter.setProbeStatus("offline"));
+    const handshakeCapabilities = adapter.handshakeCapabilities;
+    if (handshakeCapabilities === undefined) {
+      throw new Error("测试适配器预期支持 capability handshake。");
+    }
+    let handshakeCalled = false;
+    let dispatched = false;
+    const guardedAdapter = {
+      ...adapter,
+      handshakeCapabilities: (input: Parameters<typeof handshakeCapabilities>[0]) => {
+        handshakeCalled = true;
+        return handshakeCapabilities(input);
+      },
+      dispatchTask: (input: Parameters<typeof adapter.dispatchTask>[0]) => {
+        dispatched = true;
+        return adapter.dispatchTask(input);
+      },
+    };
+    const driver = makeCompositionRuntimeAgentDriver({
+      adapter: guardedAdapter,
+      agentId: "runtime-offline:agent",
+    });
+
+    await expect(
+      Effect.runPromise(
+        driver.startTask({
+          task: {
+            taskId: "task-offline",
+            projectId: "project-1",
+            assigneeKind: "agent",
+            assigneeId: driver.agentId,
+            mode: "serial",
+            status: "queued",
+            promptDigest: "sha256:offline",
+            dependsOnTaskIds: [],
+            createdAtUnixMs: 1,
+            updatedAtUnixMs: 1,
+          },
+          run: {
+            runId: "run-offline",
+            taskId: "task-offline",
+            agentId: driver.agentId,
+            runtimeId: driver.runtimeId,
+            status: "queued",
+            attempt: 1,
+            capabilityGrantIds: ["grant-offline"],
+          },
+        }),
+      ),
+    ).rejects.toMatchObject({ code: "runtime_offline" });
+    expect(handshakeCalled).toBe(false);
+    expect(dispatched).toBe(false);
+  });
+
+  it("目标 Agent 不在 Runtime 的实时名册中时拒绝派发", async () => {
+    const adapter = makeInMemoryCompositionRuntimeAdapter({
+      runtimeId: "runtime-agent-scope",
+      agents: [],
+    });
+    let dispatched = false;
+    const guardedAdapter = {
+      ...adapter,
+      dispatchTask: (input: Parameters<typeof adapter.dispatchTask>[0]) => {
+        dispatched = true;
+        return adapter.dispatchTask(input);
+      },
+    };
+    const driver = makeCompositionRuntimeAgentDriver({
+      adapter: guardedAdapter,
+      agentId: "runtime-agent-scope:missing-agent",
+    });
+
+    const profile = await Effect.runPromise(driver.getProfile!());
+    expect(profile).toMatchObject({
+      status: "unavailable",
+      reasonCode: "runtime_agent_unavailable",
+    });
+
+    await expect(
+      Effect.runPromise(
+        driver.startTask({
+          task: {
+            taskId: "task-agent-scope",
+            projectId: "project-1",
+            assigneeKind: "agent",
+            assigneeId: driver.agentId,
+            mode: "serial",
+            status: "queued",
+            promptDigest: "sha256:agent-scope",
+            dependsOnTaskIds: [],
+            createdAtUnixMs: 1,
+            updatedAtUnixMs: 1,
+          },
+          run: {
+            runId: "run-agent-scope",
+            taskId: "task-agent-scope",
+            agentId: driver.agentId,
+            runtimeId: driver.runtimeId,
+            status: "queued",
+            attempt: 1,
+            capabilityGrantIds: [],
+          },
+        }),
+      ),
+    ).rejects.toMatchObject({ code: "runtime_agent_unavailable" });
+    expect(dispatched).toBe(false);
+  });
+
+  it("目标 Agent 的 runtimeId 与当前 Adapter 不匹配时拒绝跨 Runtime 派发", async () => {
+    const adapter = makeInMemoryCompositionRuntimeAdapter({
+      runtimeId: "runtime-scope-owner",
+      agents: [
+        {
+          agentId: "runtime-scope-owner:agent",
+          runtimeId: "runtime-scope-other",
+          status: "online",
+          capabilities: [],
+        },
+      ],
+    });
+    let dispatched = false;
+    const guardedAdapter = {
+      ...adapter,
+      dispatchTask: (input: Parameters<typeof adapter.dispatchTask>[0]) => {
+        dispatched = true;
+        return adapter.dispatchTask(input);
+      },
+    };
+    const driver = makeCompositionRuntimeAgentDriver({
+      adapter: guardedAdapter,
+      agentId: "runtime-scope-owner:agent",
+    });
+
+    await expect(
+      Effect.runPromise(
+        driver.startTask({
+          task: {
+            taskId: "task-runtime-scope",
+            projectId: "project-1",
+            assigneeKind: "agent",
+            assigneeId: driver.agentId,
+            mode: "serial",
+            status: "queued",
+            promptDigest: "sha256:runtime-scope",
+            dependsOnTaskIds: [],
+            createdAtUnixMs: 1,
+            updatedAtUnixMs: 1,
+          },
+          run: {
+            runId: "run-runtime-scope",
+            taskId: "task-runtime-scope",
+            agentId: driver.agentId,
+            runtimeId: driver.runtimeId,
+            status: "queued",
+            attempt: 1,
+            capabilityGrantIds: [],
+          },
+        }),
+      ),
+    ).rejects.toMatchObject({ code: "runtime_agent_scope_mismatch" });
+    expect(dispatched).toBe(false);
+  });
+
   it("把 Run 的 capability grant 传给 Runtime Adapter", async () => {
     let captured: readonly string[] = [];
     let capturedHandshakeId: string | undefined;

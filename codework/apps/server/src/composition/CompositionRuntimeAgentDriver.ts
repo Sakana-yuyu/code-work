@@ -78,7 +78,14 @@ export const makeCompositionRuntimeAgentDriver = (
       const probe = yield* options.adapter.probe();
       const agents = yield* options.adapter.listAgents();
       const agent = agents.find((candidate) => candidate.agentId === options.agentId);
-      const status = agent?.status ?? probe.status;
+      const agentScopeMismatch =
+        agent !== undefined && agent.runtimeId !== options.adapter.runtimeId;
+      const status =
+        agent === undefined || agentScopeMismatch
+          ? "offline"
+          : probe.status === "online"
+            ? agent.status
+            : probe.status;
       const capabilities = [
         ...new Set([...(probe.capabilities ?? []), ...(agent?.capabilities ?? [])]),
       ];
@@ -95,6 +102,20 @@ export const makeCompositionRuntimeAgentDriver = (
           : status === "unstable"
             ? "degraded"
             : "unavailable";
+      const profileReasonCode =
+        agent === undefined
+          ? "runtime_agent_unavailable"
+          : agentScopeMismatch
+            ? "runtime_agent_scope_mismatch"
+            : profileStatus === "available"
+              ? undefined
+              : probe.status !== "online"
+                ? (probe.reasonCode ?? `runtime_${probe.status}`)
+                : agent.status !== "online"
+                  ? `runtime_agent_${agent.status}`
+                  : !supportsCapabilityHandshake
+                    ? "runtime_capability_handshake_unsupported"
+                    : "runtime_toolbroker_unsupported";
       return {
         schemaVersion: 1,
         agentId: options.agentId,
@@ -116,16 +137,7 @@ export const makeCompositionRuntimeAgentDriver = (
         supportsSquad: capabilities.includes("squad"),
         supportsLeader: capabilities.includes("leader"),
         supportsTaskGraph: capabilities.includes("task-graph"),
-        ...(profileStatus === "available"
-          ? {}
-          : {
-              reasonCode:
-                status !== "online"
-                  ? `runtime_${status}`
-                  : !supportsCapabilityHandshake
-                    ? "runtime_capability_handshake_unsupported"
-                    : "runtime_toolbroker_unsupported",
-            }),
+        ...(profileReasonCode === undefined ? {} : { reasonCode: profileReasonCode }),
       } satisfies CompositionAgentDriverProfile;
     }).pipe(
       Effect.orElseSucceed(
@@ -159,6 +171,39 @@ export const makeCompositionRuntimeAgentDriver = (
     const capabilityGrantIds = [...(input.run.capabilityGrantIds ?? [])];
 
     return Effect.gen(function* () {
+      const probe = yield* options.adapter.probe().pipe(
+        Effect.mapError((failure) => makeFailure("runtime_probe_failed", failure)),
+      );
+      if (probe.status !== "online") {
+        return yield* new CompositionAgentDriverFailure({
+          code: probe.reasonCode ?? `runtime_${probe.status}`,
+          detail: `Runtime '${options.adapter.runtimeId}' 当前状态为 ${probe.status}，拒绝派发。`,
+        });
+      }
+
+      const agents = yield* options.adapter.listAgents().pipe(
+        Effect.mapError((failure) => makeFailure("runtime_agent_list_failed", failure)),
+      );
+      const agent = agents.find((candidate) => candidate.agentId === options.agentId);
+      if (agent === undefined) {
+        return yield* new CompositionAgentDriverFailure({
+          code: "runtime_agent_unavailable",
+          detail: `Runtime '${options.adapter.runtimeId}' 未声明目标 Agent '${options.agentId}'。`,
+        });
+      }
+      if (agent.runtimeId !== options.adapter.runtimeId) {
+        return yield* new CompositionAgentDriverFailure({
+          code: "runtime_agent_scope_mismatch",
+          detail: `Agent '${options.agentId}' 属于 Runtime '${agent.runtimeId}'，不能由 '${options.adapter.runtimeId}' 派发。`,
+        });
+      }
+      if (agent.status !== "online") {
+        return yield* new CompositionAgentDriverFailure({
+          code: `runtime_agent_${agent.status}`,
+          detail: `Agent '${options.agentId}' 当前状态为 ${agent.status}，拒绝派发。`,
+        });
+      }
+
       let capabilityHandshakeId: string | undefined;
       if (capabilityGrantIds.length > 0) {
         const handshake = options.adapter.handshakeCapabilities;
