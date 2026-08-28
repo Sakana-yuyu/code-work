@@ -7,6 +7,7 @@ import { describe, expect, it } from "vite-plus/test";
 import {
   buildByokResumeRedispatchInput,
   buildRedispatchInput,
+  buildResumeInput,
   formatByokDelegationMeta,
   formatByokResumeMeta,
   formatGoalLoopMeta,
@@ -113,6 +114,31 @@ describe("resolveControlCenterTaskActions", () => {
     ).toBe(false);
   });
 
+  it("offers continue only for approval or input blockers with a latest run", () => {
+    for (const status of ["waiting_approval", "waiting_input"] as const) {
+      const latestRun = {
+        ...makeRun(status),
+        runtimeTaskId: `runtime-task-${status}`,
+      } as NonNullable<CompositionControlCenterTask["latestRun"]> & {
+        readonly runtimeTaskId: string;
+      };
+      expect(resolveControlCenterTaskActions(makeTask({ status, latestRun })).resumable).toBe(true);
+    }
+    expect(
+      resolveControlCenterTaskActions(
+        makeTask({ status: "running", latestRun: makeRun("running") }),
+      ).resumable,
+    ).toBe(false);
+    expect(resolveControlCenterTaskActions(makeTask({ status: "waiting_input" })).resumable).toBe(
+      false,
+    );
+    expect(
+      resolveControlCenterTaskActions(
+        makeTask({ status: "waiting_input", latestRun: makeRun("waiting_input") }),
+      ).resumable,
+    ).toBe(false);
+  });
+
   it("renders no actions for rows without a latest run", () => {
     const actions = resolveControlCenterTaskActions(
       makeTask({ status: "in_review", goalLoop: makeGoalLoop("interrupted") }),
@@ -120,6 +146,7 @@ describe("resolveControlCenterTaskActions", () => {
     expect(actions).toEqual({
       redispatchable: false,
       cancellable: false,
+      resumable: false,
       reviewable: false,
       abandonable: false,
       byokResumable: false,
@@ -190,6 +217,7 @@ describe("resolveControlCenterTaskActions", () => {
     expect(actions).toEqual({
       redispatchable: false,
       cancellable: true,
+      resumable: false,
       reviewable: false,
       abandonable: false,
       byokResumable: false,
@@ -211,6 +239,7 @@ describe("resolveControlCenterTaskActions", () => {
     expect(actions).toEqual({
       redispatchable: false,
       cancellable: false,
+      resumable: false,
       reviewable: false,
       abandonable: false,
       byokResumable: false,
@@ -263,6 +292,22 @@ describe("buildRedispatchInput", () => {
         capabilityIdsText: "",
       }).capabilityIds,
     ).toEqual([]);
+  });
+});
+
+describe("buildResumeInput", () => {
+  it("keeps the persisted task and run identity with the human action reason", () => {
+    expect(
+      buildResumeInput({
+        taskId: "task-approval",
+        runId: "run-approval",
+        reason: "从人工待办继续任务",
+      }),
+    ).toEqual({
+      taskId: "task-approval",
+      runId: "run-approval",
+      reason: "从人工待办继续任务",
+    });
   });
 });
 

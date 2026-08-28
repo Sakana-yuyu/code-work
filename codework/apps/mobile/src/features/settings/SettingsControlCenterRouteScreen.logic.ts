@@ -4,6 +4,7 @@ import {
   type CompositionControlCenterByokResumeRedispatchRequest,
   type CompositionControlCenterRedispatchRequest,
   type CompositionControlCenterTask,
+  type CompositionTaskResumeRequest,
 } from "@codework/contracts";
 
 /** Goal Loop 五态 → i18n 标签键；未知状态返回 null，调用方回退为原始状态文本。 */
@@ -35,9 +36,12 @@ const CANCELLABLE_RUN_STATUSES: ReadonlySet<string> = new Set([
   "in_review",
 ]);
 
+const RESUMABLE_RUN_STATUSES: ReadonlySet<string> = new Set(["waiting_approval", "waiting_input"]);
+
 export interface ControlCenterTaskActions {
   readonly redispatchable: boolean;
   readonly cancellable: boolean;
+  readonly resumable: boolean;
   readonly reviewable: boolean;
   readonly abandonable: boolean;
   readonly byokResumable: boolean;
@@ -61,6 +65,7 @@ export const resolveControlCenterTaskActions = (
       redispatchable: false,
       cancellable:
         task.latestRun !== undefined && CANCELLABLE_RUN_STATUSES.has(task.latestRun.status),
+      resumable: false,
       reviewable: false,
       abandonable: false,
       byokResumable: false,
@@ -73,11 +78,26 @@ export const resolveControlCenterTaskActions = (
       REDISPATCHABLE_GOAL_LOOP_STATES.has(task.goalLoop.state),
     cancellable:
       task.latestRun !== undefined && CANCELLABLE_RUN_STATUSES.has(task.latestRun.status),
+    resumable:
+      task.latestRun !== undefined &&
+      task.latestRun.runtimeTaskId !== undefined &&
+      task.latestRun.status === task.status &&
+      RESUMABLE_RUN_STATUSES.has(task.status),
     reviewable: task.status === "in_review" && task.latestRun !== undefined,
     abandonable: task.latestRun !== undefined && task.goalLoop?.state === "interrupted",
     byokResumable: isByokResumeRedispatchable(task),
   };
 };
+
+export const buildResumeInput = (input: {
+  readonly taskId: string;
+  readonly runId: string;
+  readonly reason: string;
+}): CompositionTaskResumeRequest => ({
+  taskId: input.taskId,
+  runId: input.runId,
+  reason: input.reason,
+});
 
 /** 控制中心"自动重派"请求输入：capabilityIds 按逗号拆分并去除空白项，与 Web 面板一致。 */
 export const buildRedispatchInput = (input: {

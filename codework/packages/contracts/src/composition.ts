@@ -637,6 +637,7 @@ export const CompositionControlCenterTask = Schema.Struct({
       runId: TrimmedNonEmptyString,
       status: CompositionTaskStatus,
       attempt: NonNegativeInt,
+      runtimeTaskId: Schema.optional(TrimmedNonEmptyString),
       failureCode: Schema.optional(TrimmedNonEmptyString),
     }),
   ),

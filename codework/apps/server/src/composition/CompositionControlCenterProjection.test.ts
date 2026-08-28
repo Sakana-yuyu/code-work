@@ -42,6 +42,7 @@ const seedRun = (
     readonly taskId: string;
     readonly runId: string;
     readonly status: CompositionTaskStatus;
+    readonly runtimeTaskId?: string;
   },
 ) =>
   store.upsertRun({
@@ -49,6 +50,7 @@ const seedRun = (
     runId: input.runId,
     agentId: `agent-${input.taskId}`,
     runtimeId: "runtime-control",
+    ...(input.runtimeTaskId === undefined ? {} : { runtimeTaskId: input.runtimeTaskId }),
     status: input.status,
     attempt: 1,
     capabilityGrantIds: [],
@@ -426,6 +428,7 @@ layer("CompositionControlCenterProjection", (it) => {
           taskId: "task-approval",
           runId: "run-approval",
           status: "waiting_approval",
+          runtimeTaskId: "runtime-task-approval",
         });
         yield* store.appendEvent({
           taskId: "task-approval",
@@ -455,6 +458,7 @@ layer("CompositionControlCenterProjection", (it) => {
           taskId: "task-input",
           runId: "run-input",
           status: "waiting_input",
+          runtimeTaskId: "runtime-task-input",
         });
 
         yield* seedTask(store, { taskId: "task-review", status: "in_review" });
@@ -495,12 +499,14 @@ layer("CompositionControlCenterProjection", (it) => {
           blockerCode: "workspace_write_approval",
           sequence: 1,
         });
+        assert.equal(approval?.latestRun?.runtimeTaskId, "runtime-task-approval");
         assert.deepEqual(input?.humanAction, {
           kind: "input",
           runId: "run-input",
           summary: "任务等待人工输入",
           sequence: 0,
         });
+        assert.equal(input?.latestRun?.runtimeTaskId, "runtime-task-input");
         assert.deepEqual(review?.humanAction, {
           kind: "review",
           runId: "run-review",

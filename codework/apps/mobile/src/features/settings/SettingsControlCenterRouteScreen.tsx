@@ -24,6 +24,7 @@ import { t } from "../../i18n";
 import {
   buildByokResumeRedispatchInput,
   buildRedispatchInput,
+  buildResumeInput,
   formatByokDelegationMeta,
   formatByokResumeMeta,
   formatGoalLoopMeta,
@@ -52,6 +53,9 @@ export function SettingsControlCenterRouteScreen() {
     reportFailure: false,
   });
   const cancelCompositionTask = useAtomCommand(serverEnvironment.cancelCompositionTask, {
+    reportFailure: false,
+  });
+  const resumeCompositionTask = useAtomCommand(serverEnvironment.resumeCompositionTask, {
     reportFailure: false,
   });
   const reviewCompositionTask = useAtomCommand(serverEnvironment.reviewCompositionTask, {
@@ -111,6 +115,18 @@ export function SettingsControlCenterRouteScreen() {
           runId: task.latestRun?.runId ?? "",
           reason: t("controlCenter.cancelReasonDefault"),
         },
+      }),
+    );
+
+  const resume = (task: CompositionControlCenterTask): Promise<void> =>
+    runRowCommand(task.taskId, "controlCenter.resumeFailed", (envId) =>
+      resumeCompositionTask({
+        environmentId: envId,
+        input: buildResumeInput({
+          taskId: task.taskId,
+          runId: task.latestRun?.runId ?? "",
+          reason: t("controlCenter.resumeReasonDefault"),
+        }),
       }),
     );
 
@@ -207,6 +223,7 @@ export function SettingsControlCenterRouteScreen() {
                   actionsDisabled={pendingTaskId !== null}
                   onRedispatch={() => void redispatch(task)}
                   onCancel={() => void cancel(task)}
+                  onResume={() => void resume(task)}
                   onApprove={() => void review(task, "approve")}
                   onReject={() => void review(task, "reject")}
                   onAbandon={() => void abandon(task)}
@@ -254,6 +271,7 @@ function ControlCenterTaskCard(props: {
   readonly actionsDisabled: boolean;
   readonly onRedispatch: () => void;
   readonly onCancel: () => void;
+  readonly onResume: () => void;
   readonly onApprove: () => void;
   readonly onReject: () => void;
   readonly onAbandon: () => void;
@@ -264,6 +282,7 @@ function ControlCenterTaskCard(props: {
   const hasActions =
     actions.redispatchable ||
     actions.cancellable ||
+    actions.resumable ||
     actions.reviewable ||
     actions.abandonable ||
     actions.byokResumable;
@@ -327,6 +346,16 @@ function ControlCenterTaskCard(props: {
           )}
         </Text>
       )}
+      {task.humanAction === undefined ? null : (
+        <View className="gap-1 rounded-[16px] bg-subtle px-3 py-2.5">
+          <Text className="text-sm text-foreground">{task.humanAction.summary}</Text>
+          {task.humanAction.blockerCode === undefined ? null : (
+            <Text className="font-mono text-xs text-foreground-muted">
+              {task.humanAction.blockerCode}
+            </Text>
+          )}
+        </View>
+      )}
       {hasActions ? (
         <View className="flex-row flex-wrap gap-2 pt-1">
           {actions.redispatchable ? (
@@ -355,6 +384,14 @@ function ControlCenterTaskCard(props: {
               label={t("controlCenter.cancel")}
               disabled={props.actionsDisabled}
               onPress={props.onCancel}
+            />
+          ) : null}
+          {actions.resumable ? (
+            <ActionButton
+              label={t("controlCenter.resume")}
+              disabled={props.actionsDisabled}
+              onPress={props.onResume}
+              emphasized
             />
           ) : null}
           {actions.reviewable ? (

@@ -69,7 +69,7 @@ export type CompositionTaskControlProjection = {
   readonly updatedAtUnixMs: number;
   readonly dependsOnTaskIds: ReadonlyArray<string>;
   readonly latestRun?:
-    | Pick<CompositionTaskRun, "runId" | "status" | "attempt" | "failureCode">
+    | Pick<CompositionTaskRun, "runId" | "status" | "attempt" | "runtimeTaskId" | "failureCode">
     | undefined;
   readonly goalLoop?: CompositionGoalLoopProjection | undefined;
   readonly byokResume?: CompositionByokResumeProjection | undefined;
@@ -332,6 +332,9 @@ const projectTask = (
               runId: latestRun.runId,
               status: latestRun.status,
               attempt: latestRun.attempt,
+              ...(latestRun.runtimeTaskId === undefined
+                ? {}
+                : { runtimeTaskId: latestRun.runtimeTaskId }),
               failureCode: latestRun.failureCode,
             },
           }),
