@@ -7,6 +7,7 @@ export type SettingsPath =
   | "/settings/keybindings"
   | "/settings/providers"
   | "/settings/integrations"
+  | "/settings/squads"
   | "/settings/source-control"
   | "/settings/connections"
   | "/settings/archived";
@@ -31,6 +32,7 @@ export const SETTINGS_SECTION_LABELS: Readonly<Record<SettingsPath, string>> = {
   "/settings/keybindings": "settings.keybindings",
   "/settings/providers": "settings.providers",
   "/settings/integrations": "settings.integrations",
+  "/settings/squads": "settings.squads",
   "/settings/source-control": "settings.sourceControl",
   "/settings/connections": "settings.connections",
   "/settings/archived": "settings.archive",
@@ -43,6 +45,11 @@ export const SETTINGS_SECTION_LABELS: Readonly<Record<SettingsPath, string>> = {
  * here once instead of separately in the panel and the index.
  */
 export const SETTINGS_SEARCH_ITEMS = [
+  {
+    id: "composition-squads",
+    title: "squadBuilder.title",
+    to: "/settings/squads",
+  },
   {
     id: "color-scheme",
     title: "settings.colorScheme",
