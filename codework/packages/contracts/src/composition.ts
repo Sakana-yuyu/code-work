@@ -827,7 +827,7 @@ export const CompositionSquadMember = Schema.Struct({
 export type CompositionSquadMember = typeof CompositionSquadMember.Type;
 
 /** 可版本化的 Squad 模板；可选丰富字段兼容已持久化的旧版 Squad。 */
-export const CompositionSquad = Schema.Struct({
+const CompositionSquadFields = Schema.Struct({
   squadId: TrimmedNonEmptyString,
   name: TrimmedNonEmptyString,
   leaderAgentId: TrimmedNonEmptyString,
@@ -845,4 +845,129 @@ export const CompositionSquad = Schema.Struct({
   updatedAtUnixMs: Schema.optional(NonNegativeInt),
   archivedAtUnixMs: Schema.optional(NonNegativeInt),
 });
+
+type CompositionSquadUnchecked = typeof CompositionSquadFields.Type;
+
+export type CompositionSquadValidationIssueCode =
+  | "rich_configuration_incomplete"
+  | "duplicate_member"
+  | "duplicate_order"
+  | "duplicate_capability"
+  | "leader_mismatch"
+  | "member_projection_mismatch"
+  | "missing_required_role"
+  | "concurrency_exceeded"
+  | "duplicate_approval_stage"
+  | "timestamp_order_invalid";
+
+export type CompositionSquadValidationIssue = {
+  readonly code: CompositionSquadValidationIssueCode;
+  readonly path: string;
+};
+
+const hasDuplicates = <A>(values: ReadonlyArray<A>): boolean =>
+  new Set(values).size !== values.length;
+
+/** 后端保存与 Squad Builder 实时校验共用的跨字段规则。 */
+export const validateCompositionSquadConfiguration = (
+  input: CompositionSquadUnchecked,
+): ReadonlyArray<CompositionSquadValidationIssue> => {
+  const issues: CompositionSquadValidationIssue[] = [];
+  const add = (code: CompositionSquadValidationIssueCode, path: string): void => {
+    issues.push({ code, path });
+  };
+  const members = input.members;
+  const richConfigurationEnabled =
+    input.revision !== undefined ||
+    input.collaborationMode !== undefined ||
+    members !== undefined ||
+    input.maxConcurrency !== undefined ||
+    input.maxRetries !== undefined ||
+    input.failurePolicy !== undefined ||
+    input.partialSuccessPolicy !== undefined ||
+    input.approvalStages !== undefined;
+
+  if (richConfigurationEnabled) {
+    if (
+      input.revision === undefined ||
+      input.collaborationMode === undefined ||
+      members === undefined ||
+      members.length === 0 ||
+      input.maxConcurrency === undefined ||
+      input.failurePolicy === undefined ||
+      input.partialSuccessPolicy === undefined
+    ) {
+      add("rich_configuration_incomplete", "members");
+    }
+  }
+
+  if (hasDuplicates(input.memberAgentIds)) add("duplicate_member", "memberAgentIds");
+
+  if (members !== undefined) {
+    const memberIds = members.map((member) => member.agentId);
+    const memberOrders = members.map((member) => member.order);
+    if (hasDuplicates(memberIds)) add("duplicate_member", "members.agentId");
+    if (hasDuplicates(memberOrders)) add("duplicate_order", "members.order");
+    for (const [index, member] of members.entries()) {
+      if (hasDuplicates(member.capabilityIds)) {
+        add("duplicate_capability", `members.${index}.capabilityIds`);
+      }
+    }
+
+    const leaders = members.filter((member) => member.role === "leader");
+    if (leaders.length !== 1 || leaders[0]?.agentId !== input.leaderAgentId) {
+      add("leader_mismatch", "leaderAgentId");
+    }
+
+    const projectedMemberIds = new Set(input.memberAgentIds);
+    const memberIdSet = new Set(memberIds);
+    if (
+      projectedMemberIds.size !== memberIdSet.size ||
+      [...projectedMemberIds].some((agentId) => !memberIdSet.has(agentId))
+    ) {
+      add("member_projection_mismatch", "memberAgentIds");
+    }
+
+    if (
+      input.collaborationMode === "review_critic" &&
+      !members.some((member) => member.role === "reviewer" || member.role === "critic")
+    ) {
+      add("missing_required_role", "members.role");
+    }
+    if (
+      input.collaborationMode === "leader_workers" &&
+      !members.some((member) => member.role === "worker")
+    ) {
+      add("missing_required_role", "members.role");
+    }
+
+    const memberCapacity = members.reduce((total, member) => total + member.maxConcurrentTasks, 0);
+    if (input.maxConcurrency !== undefined && input.maxConcurrency > memberCapacity) {
+      add("concurrency_exceeded", "maxConcurrency");
+    }
+  }
+
+  if (input.approvalStages !== undefined && hasDuplicates(input.approvalStages)) {
+    add("duplicate_approval_stage", "approvalStages");
+  }
+  if (
+    (input.createdAtUnixMs !== undefined &&
+      input.updatedAtUnixMs !== undefined &&
+      input.updatedAtUnixMs < input.createdAtUnixMs) ||
+    (input.updatedAtUnixMs !== undefined &&
+      input.archivedAtUnixMs !== undefined &&
+      input.archivedAtUnixMs < input.updatedAtUnixMs)
+  ) {
+    add("timestamp_order_invalid", "updatedAtUnixMs");
+  }
+
+  return issues;
+};
+
+export const CompositionSquad = CompositionSquadFields.check(
+  Schema.makeFilter((input) => {
+    const issue = validateCompositionSquadConfiguration(input)[0];
+    return issue === undefined || `Invalid Squad configuration: ${issue.code} at ${issue.path}`;
+  }),
+);
 export type CompositionSquad = typeof CompositionSquad.Type;

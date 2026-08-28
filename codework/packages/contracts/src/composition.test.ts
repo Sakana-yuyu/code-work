@@ -10,6 +10,7 @@ import {
   CompositionCapabilityAuditEvent,
   CompositionCapabilityPolicyDecision,
   CompositionSquad,
+  validateCompositionSquadConfiguration,
   CompositionTaskCancelRequest,
   CompositionTaskDispatchRequest,
   CompositionTaskGraphExecutionRequest,
@@ -55,6 +56,48 @@ const decodeRuntimeToolInvocation = Schema.decodeUnknownSync(CompositionRuntimeT
 const decodeRuntimeToolCancellation = Schema.decodeUnknownSync(CompositionRuntimeToolCancellation);
 const decodeAgentLoopRunRequest = Schema.decodeUnknownSync(CompositionAgentLoopRunRequest);
 const decodeAgentLoopRunResult = Schema.decodeUnknownSync(CompositionAgentLoopRunResult);
+
+const validSquadConfiguration = {
+  squadId: "squad-validation",
+  name: "校验协同组",
+  leaderAgentId: "agent-leader",
+  memberAgentIds: ["agent-leader", "agent-worker", "agent-reviewer"],
+  revision: 1,
+  collaborationMode: "review_critic" as const,
+  members: [
+    {
+      agentId: "agent-leader",
+      role: "leader" as const,
+      order: 0,
+      required: true,
+      capabilityIds: ["t3.workspace.read_file"],
+      maxConcurrentTasks: 1,
+    },
+    {
+      agentId: "agent-worker",
+      role: "worker" as const,
+      order: 1,
+      required: true,
+      capabilityIds: ["t3.workspace.write_file"],
+      maxConcurrentTasks: 2,
+    },
+    {
+      agentId: "agent-reviewer",
+      role: "reviewer" as const,
+      order: 2,
+      required: true,
+      capabilityIds: ["t3.workspace.read_file"],
+      maxConcurrentTasks: 1,
+    },
+  ],
+  maxConcurrency: 3,
+  maxRetries: 1,
+  failurePolicy: "continue_independent" as const,
+  partialSuccessPolicy: "require_review" as const,
+  approvalStages: ["before_finalize" as const],
+  createdAtUnixMs: 10,
+  updatedAtUnixMs: 20,
+};
 
 describe("composition contracts", () => {
   it("保留可版本化 Squad 的成员角色、运行约束和审批配置", () => {
@@ -131,6 +174,91 @@ describe("composition contracts", () => {
         maxConcurrency: 0,
       }),
     ).toThrow();
+  });
+
+  it("拒绝重复成员、顺序和成员能力", () => {
+    const duplicateMember = {
+      ...validSquadConfiguration,
+      members: [
+        ...validSquadConfiguration.members,
+        { ...validSquadConfiguration.members[1], order: 3 },
+      ],
+    };
+    const duplicateOrder = {
+      ...validSquadConfiguration,
+      members: validSquadConfiguration.members.map((member, index) =>
+        index === 2 ? { ...member, order: 1 } : member,
+      ),
+    };
+    const duplicateCapability = {
+      ...validSquadConfiguration,
+      members: validSquadConfiguration.members.map((member, index) =>
+        index === 1
+          ? {
+              ...member,
+              capabilityIds: ["t3.workspace.write_file", "t3.workspace.write_file"],
+            }
+          : member,
+      ),
+    };
+
+    expect(() => decodeSquad(duplicateMember)).toThrow();
+    expect(() => decodeSquad(duplicateOrder)).toThrow();
+    expect(() => decodeSquad(duplicateCapability)).toThrow();
+  });
+
+  it("拒绝 Leader 不一致及协同模式缺少必要角色", () => {
+    const mismatchedLeader = {
+      ...validSquadConfiguration,
+      leaderAgentId: "agent-worker",
+    };
+    const missingReviewer = {
+      ...validSquadConfiguration,
+      members: validSquadConfiguration.members.filter((member) => member.role !== "reviewer"),
+      memberAgentIds: ["agent-leader", "agent-worker"],
+    };
+    const missingWorker = {
+      ...validSquadConfiguration,
+      collaborationMode: "leader_workers" as const,
+      members: validSquadConfiguration.members.filter((member) => member.role !== "worker"),
+      memberAgentIds: ["agent-leader", "agent-reviewer"],
+    };
+
+    expect(() => decodeSquad(mismatchedLeader)).toThrow();
+    expect(() => decodeSquad(missingReviewer)).toThrow();
+    expect(() => decodeSquad(missingWorker)).toThrow();
+  });
+
+  it("拒绝超出成员容量、成员投影不一致和倒序时间", () => {
+    const capacityExceeded = {
+      ...validSquadConfiguration,
+      maxConcurrency: 5,
+    };
+    const memberProjectionMismatch = {
+      ...validSquadConfiguration,
+      memberAgentIds: ["agent-leader", "agent-worker"],
+    };
+    const timeReversed = {
+      ...validSquadConfiguration,
+      updatedAtUnixMs: 9,
+    };
+
+    expect(() => decodeSquad(capacityExceeded)).toThrow();
+    expect(() => decodeSquad(memberProjectionMismatch)).toThrow();
+    expect(() => decodeSquad(timeReversed)).toThrow();
+  });
+
+  it("为 Squad Builder 返回稳定的跨字段校验码和字段路径", () => {
+    const issues = validateCompositionSquadConfiguration({
+      ...validSquadConfiguration,
+      maxConcurrency: 5,
+      approvalStages: ["before_finalize", "before_finalize"],
+    });
+
+    expect(issues).toEqual([
+      { code: "concurrency_exceeded", path: "maxConcurrency" },
+      { code: "duplicate_approval_stage", path: "approvalStages" },
+    ]);
   });
 
   it("定义 Leader、依赖节点和 retry 次数的 Task Graph RPC 合同", () => {
