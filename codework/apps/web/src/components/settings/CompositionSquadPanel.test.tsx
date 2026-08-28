@@ -160,5 +160,12 @@ describe("CompositionSquadPanel", () => {
     expect(html).toContain('data-testid="squad-archive"');
     expect(html).toContain('value="squad-active"');
     expect(html).toContain('value="Build Squad"');
+    expect(html).toContain(`placeholder="${t("squadBuilder.capabilityIdsPlaceholder")}"`);
+  });
+
+  it("中文 Squad 角色与 Agent 字段使用本地化文案", () => {
+    expect(t("squadBuilder.leader")).toBe("队长");
+    expect(t("squadBuilder.agentId")).toBe("Agent 标识");
+    expect(t("squadBuilder.role.leader")).toBe("队长");
   });
 });

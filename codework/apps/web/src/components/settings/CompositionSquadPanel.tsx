@@ -223,7 +223,7 @@ function SquadMemberEditor({
             size="compact"
             value={member.capabilityIdsText}
             disabled={disabled}
-            placeholder="fs.read, git.diff"
+            placeholder={t("squadBuilder.capabilityIdsPlaceholder")}
             onChange={(event) => onChange({ capabilityIdsText: event.currentTarget.value })}
           />
         </FormField>
