@@ -5,6 +5,7 @@ import {
   type CompositionControlCenterRedispatchRequest,
   type CompositionControlCenterTask,
   type CompositionSquad,
+  type CompositionSquadExecutionRequest,
   type CompositionTaskResumeRequest,
 } from "@codework/contracts";
 
@@ -69,6 +70,56 @@ export const sortControlCenterSquads = (
         (right.updatedAtUnixMs ?? 0) - (left.updatedAtUnixMs ?? 0) ||
         left.name.localeCompare(right.name),
     );
+
+export type ControlCenterSquadRunIssue =
+  | "squad_missing"
+  | "project_missing"
+  | "goal_required"
+  | "squad_archived"
+  | "squad_configuration_incomplete"
+  | "dependency_plan_required";
+
+export const buildControlCenterSquadRunRequest = (input: {
+  readonly executionId: string;
+  readonly squad: CompositionSquad | null;
+  readonly project: { readonly id: string; readonly workspaceRoot: string } | null;
+  readonly goal: string;
+}): {
+  readonly request: CompositionSquadExecutionRequest | null;
+  readonly issue: ControlCenterSquadRunIssue | null;
+} => {
+  const { squad, project } = input;
+  const goal = input.goal.trim();
+  if (squad === null) return { request: null, issue: "squad_missing" };
+  if (project === null) return { request: null, issue: "project_missing" };
+  if (goal.length === 0) return { request: null, issue: "goal_required" };
+  if (squad.archivedAtUnixMs !== undefined) {
+    return { request: null, issue: "squad_archived" };
+  }
+  if (
+    squad.collaborationMode === undefined ||
+    squad.members === undefined ||
+    squad.maxConcurrency === undefined ||
+    squad.failurePolicy === undefined ||
+    squad.partialSuccessPolicy === undefined
+  ) {
+    return { request: null, issue: "squad_configuration_incomplete" };
+  }
+  if (squad.collaborationMode === "dependency_graph") {
+    return { request: null, issue: "dependency_plan_required" };
+  }
+  return {
+    request: {
+      executionId: input.executionId,
+      squadId: squad.squadId,
+      squadRevision: squad.revision ?? 1,
+      projectId: project.id,
+      goal,
+      workspaceRoot: project.workspaceRoot,
+    },
+    issue: null,
+  };
+};
 
 /**
  * 行操作渲染门槛，与 Web 控制中心面板逐条对齐：

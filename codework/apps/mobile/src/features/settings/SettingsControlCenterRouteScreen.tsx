@@ -2,6 +2,7 @@ import { useNavigation } from "@react-navigation/native";
 import type {
   CompositionControlCenterResult,
   CompositionControlCenterTask,
+  CompositionSquadExecutionResult,
   CompositionTaskEvent,
   EnvironmentId,
 } from "@codework/contracts";
@@ -14,16 +15,18 @@ import { Platform, Pressable, RefreshControl, ScrollView, View } from "react-nat
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { AndroidScreenHeader } from "../../components/AndroidScreenHeader";
-import { AppText as Text } from "../../components/AppText";
+import { AppText as Text, AppTextInput as TextInput } from "../../components/AppText";
 import { NativeStackScreenOptions } from "../../native/StackHeader";
 import { uuidv4 } from "../../lib/uuid";
 import { useEnvironments } from "../../state/environments";
+import { useProjects } from "../../state/entities";
 import { useEnvironmentQuery } from "../../state/query";
 import { serverEnvironment } from "../../state/server";
 import { useAtomCommand } from "../../state/use-atom-command";
 import { t } from "../../i18n";
 import {
   buildByokResumeRedispatchInput,
+  buildControlCenterSquadRunRequest,
   buildRedispatchInput,
   buildResumeInput,
   formatByokDelegationMeta,
@@ -35,6 +38,7 @@ import {
   resolveControlCenterEventTarget,
   resolveControlCenterTaskActions,
   sortControlCenterSquads,
+  type ControlCenterSquadRunIssue,
 } from "./SettingsControlCenterRouteScreen.logic";
 
 const goalLoopStateLabel = (state: string): string => {
@@ -42,10 +46,14 @@ const goalLoopStateLabel = (state: string): string => {
   return key === null ? state : t(key);
 };
 
+const squadRunIssueLabel = (issue: ControlCenterSquadRunIssue): string =>
+  t(`controlCenter.squadRunIssue.${issue}`);
+
 export function SettingsControlCenterRouteScreen() {
   const navigation = useNavigation();
   const insets = useSafeAreaInsets();
   const { environments } = useEnvironments();
+  const projects = useProjects();
   const environmentId = environments[0]?.environmentId ?? null;
   const projectionQuery = useEnvironmentQuery(
     environmentId === null
@@ -57,6 +65,9 @@ export function SettingsControlCenterRouteScreen() {
       ? null
       : serverEnvironment.compositionSquads({ environmentId, input: {} }),
   );
+  const runCompositionSquad = useAtomCommand(serverEnvironment.runCompositionSquad, {
+    reportFailure: false,
+  });
   const redispatchTask = useAtomCommand(serverEnvironment.controlCenterRedispatch, {
     reportFailure: false,
   });
@@ -79,9 +90,30 @@ export function SettingsControlCenterRouteScreen() {
   const [pendingTaskId, setPendingTaskId] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [selectedEventTaskId, setSelectedEventTaskId] = useState<string | null>(null);
+  const [selectedSquadId, setSelectedSquadId] = useState<string | null>(null);
+  const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
+  const [squadGoal, setSquadGoal] = useState("");
+  const [squadRunPending, setSquadRunPending] = useState(false);
+  const [squadRunError, setSquadRunError] = useState<string | null>(null);
+  const [squadRunResult, setSquadRunResult] = useState<CompositionSquadExecutionResult | null>(
+    null,
+  );
 
   const projection: CompositionControlCenterResult | null = projectionQuery.data;
   const squads = sortControlCenterSquads(squadsQuery.data?.squads ?? []);
+  const environmentProjects = projects.filter((project) => project.environmentId === environmentId);
+  const selectedSquad =
+    squads.find((squad) => squad.squadId === selectedSquadId) ?? squads[0] ?? null;
+  const selectedProject =
+    environmentProjects.find((project) => project.id === selectedProjectId) ??
+    environmentProjects[0] ??
+    null;
+  const squadRunBuild = buildControlCenterSquadRunRequest({
+    executionId: "mobile-preview",
+    squad: selectedSquad,
+    project: selectedProject,
+    goal: squadGoal,
+  });
   const eventTarget = resolveControlCenterEventTarget(projection?.tasks ?? [], selectedEventTaskId);
   const eventsQuery = useEnvironmentQuery(
     environmentId === null || eventTarget === null
@@ -197,6 +229,35 @@ export function SettingsControlCenterRouteScreen() {
       }),
     );
 
+  const runSelectedSquad = async (): Promise<void> => {
+    if (environmentId === null || squadRunPending) return;
+    const built = buildControlCenterSquadRunRequest({
+      executionId: `mobile-squad-${uuidv4()}`,
+      squad: selectedSquad,
+      project: selectedProject,
+      goal: squadGoal,
+    });
+    if (built.request === null) {
+      setSquadRunError(squadRunIssueLabel(built.issue ?? "squad_missing"));
+      return;
+    }
+    setSquadRunPending(true);
+    setSquadRunError(null);
+    setSquadRunResult(null);
+    const result: AtomCommandResult<CompositionSquadExecutionResult, unknown> =
+      await runCompositionSquad({ environmentId, input: built.request });
+    if (result._tag === "Failure") {
+      const error = squashAtomCommandFailure(result);
+      setSquadRunError(error instanceof Error ? error.message : t("controlCenter.squadRunFailed"));
+    } else {
+      setSquadRunResult(result.value);
+      setSquadGoal("");
+      projectionQuery.refresh();
+      eventsQuery.refresh();
+    }
+    setSquadRunPending(false);
+  };
+
   return (
     <View collapsable={false} className="flex-1 bg-sheet">
       {Platform.OS === "android" ? (
@@ -284,27 +345,99 @@ export function SettingsControlCenterRouteScreen() {
               <StatusMessage text={t("controlCenter.squadsEmpty")} />
             ) : (
               <View className="overflow-hidden rounded-[24px] border-continuous bg-card">
-                {squads.map((squad, index) => (
-                  <View
-                    key={squad.squadId}
-                    className={
-                      index === 0 ? "gap-0.5 p-4" : "gap-0.5 border-t border-border-subtle p-4"
-                    }
-                  >
-                    <Text className="text-base text-foreground">{squad.name}</Text>
-                    <Text className="text-sm text-foreground-muted">
-                      {formatSquadMeta(
-                        {
-                          leader: t("controlCenter.leader"),
-                          members: t("controlCenter.members"),
-                        },
-                        squad,
-                      )}
-                    </Text>
-                  </View>
-                ))}
+                {squads.map((squad, index) => {
+                  const selected = squad.squadId === selectedSquad?.squadId;
+                  return (
+                    <Pressable
+                      key={squad.squadId}
+                      accessibilityRole="radio"
+                      accessibilityState={{ selected }}
+                      onPress={() => setSelectedSquadId(squad.squadId)}
+                      className={`${index === 0 ? "" : "border-t border-border-subtle "}${selected ? "bg-subtle " : ""}gap-0.5 p-4`}
+                    >
+                      <Text className="text-base text-foreground">{squad.name}</Text>
+                      <Text className="text-sm text-foreground-muted">
+                        {formatSquadMeta(
+                          {
+                            leader: t("controlCenter.leader"),
+                            members: t("controlCenter.members"),
+                          },
+                          squad,
+                        )}
+                      </Text>
+                      <Text className="text-xs text-foreground-muted">
+                        {t("controlCenter.squadRevisionMode", {
+                          revision: squad.revision ?? 1,
+                          mode: squad.collaborationMode ?? t("controlCenter.squadLegacyMode"),
+                        })}
+                      </Text>
+                    </Pressable>
+                  );
+                })}
               </View>
             )}
+            <View className="gap-3 rounded-[24px] border-continuous bg-card p-4">
+              <Text className="text-base font-t3-medium text-foreground">
+                {t("controlCenter.runSquad")}
+              </Text>
+              <View className="gap-2">
+                <Text className="text-sm text-foreground-muted">
+                  {t("controlCenter.runSquadProject")}
+                </Text>
+                <View className="flex-row flex-wrap gap-2">
+                  {environmentProjects.map((project) => (
+                    <ActionButton
+                      key={project.id}
+                      label={project.title}
+                      disabled={squadRunPending}
+                      emphasized={project.id === selectedProject?.id}
+                      onPress={() => setSelectedProjectId(project.id)}
+                    />
+                  ))}
+                </View>
+              </View>
+              <TextInput
+                value={squadGoal}
+                onChangeText={setSquadGoal}
+                editable={!squadRunPending}
+                multiline
+                textAlignVertical="top"
+                className="min-h-28"
+                placeholder={t("controlCenter.runSquadGoalPlaceholder")}
+              />
+              {squadRunBuild.issue === null ? null : (
+                <Text className="text-sm text-warning-foreground">
+                  {squadRunIssueLabel(squadRunBuild.issue)}
+                </Text>
+              )}
+              {squadRunError === null ? null : (
+                <Text className="text-sm text-danger-foreground">{squadRunError}</Text>
+              )}
+              <ActionButton
+                label={
+                  squadRunPending ? t("controlCenter.runningSquad") : t("controlCenter.runSquad")
+                }
+                disabled={squadRunPending || squadRunBuild.request === null}
+                emphasized
+                onPress={() => void runSelectedSquad()}
+              />
+              {squadRunResult === null ? null : (
+                <View className="gap-1 border-t border-border-subtle pt-3">
+                  <Text className="text-sm text-success-foreground">
+                    {t("controlCenter.squadRunAccepted")}
+                  </Text>
+                  <Text className="font-mono text-xs text-foreground-muted">
+                    {squadRunResult.executionId}
+                  </Text>
+                  <Text className="text-sm text-foreground-muted">
+                    {t("controlCenter.squadRunSummary", {
+                      children: squadRunResult.graph.children.length,
+                      failures: squadRunResult.graph.failures?.length ?? 0,
+                    })}
+                  </Text>
+                </View>
+              )}
+            </View>
           </View>
         )}
       </ScrollView>

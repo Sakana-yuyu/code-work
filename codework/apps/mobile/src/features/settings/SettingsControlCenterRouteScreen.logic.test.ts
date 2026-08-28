@@ -7,6 +7,7 @@ import { describe, expect, it } from "vite-plus/test";
 
 import {
   buildByokResumeRedispatchInput,
+  buildControlCenterSquadRunRequest,
   buildRedispatchInput,
   buildResumeInput,
   formatByokDelegationMeta,
@@ -287,6 +288,96 @@ describe("sortControlCenterSquads", () => {
         squad({ squadId: "squad-archived", archivedAtUnixMs: 30 }),
       ]).map((item) => item.squadId),
     ).toEqual(["squad-c", "squad-a", "squad-b"]);
+  });
+});
+
+describe("buildControlCenterSquadRunRequest", () => {
+  const executableSquad: CompositionSquad = {
+    squadId: "squad-run",
+    name: "Run Squad",
+    leaderAgentId: "agent-lead",
+    memberAgentIds: ["agent-lead", "agent-worker"],
+    revision: 3,
+    collaborationMode: "parallel",
+    members: [
+      {
+        agentId: "agent-lead",
+        role: "leader",
+        order: 0,
+        required: true,
+        capabilityIds: [],
+        maxConcurrentTasks: 1,
+      },
+      {
+        agentId: "agent-worker",
+        role: "worker",
+        order: 1,
+        required: true,
+        capabilityIds: [],
+        maxConcurrentTasks: 1,
+      },
+    ],
+    maxConcurrency: 2,
+    failurePolicy: "fail_fast",
+    partialSuccessPolicy: "require_review",
+  };
+
+  it("builds a revision-pinned request from the selected project and trimmed goal", () => {
+    expect(
+      buildControlCenterSquadRunRequest({
+        executionId: "mobile-execution-1",
+        squad: executableSquad,
+        project: { id: "project-1", workspaceRoot: "E:/MyProject/code-work" },
+        goal: "  完成移动端协同验证  ",
+      }),
+    ).toEqual({
+      request: {
+        executionId: "mobile-execution-1",
+        squadId: "squad-run",
+        squadRevision: 3,
+        projectId: "project-1",
+        goal: "完成移动端协同验证",
+        workspaceRoot: "E:/MyProject/code-work",
+      },
+      issue: null,
+    });
+  });
+
+  it("rejects missing inputs, incomplete squads, archived squads, and dependency graph runs", () => {
+    const base = {
+      executionId: "mobile-execution-1",
+      squad: executableSquad,
+      project: { id: "project-1", workspaceRoot: "E:/MyProject/code-work" },
+      goal: "目标",
+    };
+    expect(buildControlCenterSquadRunRequest({ ...base, squad: null }).issue).toBe("squad_missing");
+    expect(buildControlCenterSquadRunRequest({ ...base, project: null }).issue).toBe(
+      "project_missing",
+    );
+    expect(buildControlCenterSquadRunRequest({ ...base, goal: "  " }).issue).toBe("goal_required");
+    expect(
+      buildControlCenterSquadRunRequest({
+        ...base,
+        squad: { ...executableSquad, archivedAtUnixMs: 1 },
+      }).issue,
+    ).toBe("squad_archived");
+    expect(
+      buildControlCenterSquadRunRequest({
+        ...base,
+        squad: {
+          squadId: "legacy",
+          name: "Legacy",
+          leaderAgentId: "agent-lead",
+          memberAgentIds: ["agent-lead"],
+        },
+      }).issue,
+    ).toBe("squad_configuration_incomplete");
+    expect(
+      buildControlCenterSquadRunRequest({
+        ...base,
+        squad: { ...executableSquad, collaborationMode: "dependency_graph" },
+      }).issue,
+    ).toBe("dependency_plan_required");
   });
 });
 
