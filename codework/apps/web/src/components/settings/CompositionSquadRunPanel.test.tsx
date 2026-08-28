@@ -1,0 +1,286 @@
+import type {
+  CompositionSquadExecutionResult,
+  CompositionSquadListResult,
+  CompositionSquadRevisionListResult,
+} from "@codework/contracts";
+import { EnvironmentId, ProjectId } from "@codework/contracts";
+import type { EnvironmentProject } from "@codework/client-runtime/state/shell";
+import { renderToStaticMarkup } from "react-dom/server";
+import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
+
+import { t } from "~/i18n";
+
+const mocks = vi.hoisted(() => ({
+  environment: null as { readonly environmentId: string } | null,
+  projects: [] as EnvironmentProject[],
+  atoms: {
+    squads: Symbol("squads"),
+    revisions: Symbol("revisions"),
+    run: Symbol("run"),
+  },
+  queries: {
+    squads: {
+      data: null as CompositionSquadListResult | null,
+      error: null as string | null,
+      isPending: false,
+      refresh: vi.fn(),
+    },
+    revisions: {
+      data: null as CompositionSquadRevisionListResult | null,
+      error: null as string | null,
+      isPending: false,
+      refresh: vi.fn(),
+    },
+  },
+  compositionSquads: vi.fn(),
+  compositionSquadRevisions: vi.fn(),
+  runCommand: vi.fn(),
+  useAtomCommand: vi.fn(),
+}));
+
+vi.mock("~/state/environments", () => ({
+  usePrimaryEnvironment: () => mocks.environment,
+}));
+
+vi.mock("~/state/entities", () => ({
+  useProjects: () => mocks.projects,
+}));
+
+vi.mock("~/state/query", () => ({
+  useEnvironmentQuery: (atom: unknown) => {
+    if (atom === mocks.atoms.squads) return mocks.queries.squads;
+    if (atom === mocks.atoms.revisions) return mocks.queries.revisions;
+    return {
+      data: null,
+      error: null,
+      isPending: false,
+      refresh: vi.fn(),
+    };
+  },
+}));
+
+vi.mock("~/state/server", () => ({
+  serverEnvironment: {
+    compositionSquads: (...args: unknown[]) => {
+      mocks.compositionSquads(...args);
+      return mocks.atoms.squads;
+    },
+    compositionSquadRevisions: (...args: unknown[]) => {
+      mocks.compositionSquadRevisions(...args);
+      return mocks.atoms.revisions;
+    },
+    runCompositionSquad: mocks.atoms.run,
+  },
+}));
+
+vi.mock("~/state/use-atom-command", () => ({
+  useAtomCommand: (command: unknown, options: unknown) => {
+    mocks.useAtomCommand(command, options);
+    return mocks.runCommand;
+  },
+}));
+
+import {
+  CompositionSquadExecutionResultView,
+  CompositionSquadRunPanel,
+} from "./CompositionSquadRunPanel";
+
+const activeSquad = {
+  squadId: "squad-active",
+  name: "Build Squad",
+  leaderAgentId: "agent-lead",
+  memberAgentIds: ["agent-lead", "agent-build"],
+  revision: 3,
+  collaborationMode: "parallel" as const,
+  members: [
+    {
+      agentId: "agent-lead",
+      role: "leader" as const,
+      order: 0,
+      required: true,
+      capabilityIds: [],
+      maxConcurrentTasks: 1,
+    },
+    {
+      agentId: "agent-build",
+      role: "worker" as const,
+      order: 1,
+      required: true,
+      capabilityIds: [],
+      maxConcurrentTasks: 1,
+    },
+  ],
+  maxConcurrency: 2,
+  failurePolicy: "fail_fast" as const,
+  partialSuccessPolicy: "reject" as const,
+};
+
+const project = (environmentId: string, id: string, title: string): EnvironmentProject => ({
+  environmentId: EnvironmentId.make(environmentId),
+  id: ProjectId.make(id),
+  title,
+  workspaceRoot: `E:\\workspace\\${id}`,
+  defaultModelSelection: null,
+  scripts: [],
+  createdAt: "2026-08-28T00:00:00.000Z",
+  updatedAt: "2026-08-28T00:00:00.000Z",
+});
+
+const task = (taskId: string, status: "completed" | "failed") => ({
+  taskId,
+  projectId: "project-1",
+  assigneeKind: "agent" as const,
+  assigneeId: "agent-build",
+  mode: "parallel" as const,
+  status,
+  promptDigest: `sha256:${taskId}`,
+  dependsOnTaskIds: [],
+  createdAtUnixMs: 1,
+  updatedAtUnixMs: 2,
+});
+
+const run = (runId: string, status: "completed" | "failed") => ({
+  runId,
+  taskId: runId.replace("run", "task"),
+  agentId: "agent-build",
+  runtimeId: "runtime-1",
+  status,
+  attempt: 2,
+  capabilityGrantIds: [],
+  ...(status === "completed"
+    ? { resultSummary: "Implementation completed" }
+    : { failureCode: "provider_timeout" }),
+});
+
+const executionResult: CompositionSquadExecutionResult = {
+  executionId: "execution-1",
+  squadId: "squad-active",
+  squadRevision: 3,
+  graph: {
+    leader: {
+      task: {
+        ...task("task-leader", "completed"),
+        assigneeKind: "squad",
+        assigneeId: "squad-active",
+        mode: "review",
+      },
+      run: {
+        ...run("run-leader", "completed"),
+        taskId: "task-leader",
+        agentId: "agent-lead",
+        attempt: 1,
+      },
+    },
+    children: [
+      {
+        nodeId: "build",
+        task: task("task-build", "completed"),
+        run: { ...run("run-build", "completed"), taskId: "task-build" },
+        attempts: 2,
+        dispatches: [],
+      },
+    ],
+    failures: [
+      {
+        nodeId: "review",
+        kind: "failed",
+        failureCode: "provider_timeout",
+        detail: "Provider did not respond",
+        task: task("task-review", "failed"),
+        run: { ...run("run-review", "failed"), taskId: "task-review" },
+      },
+    ],
+  },
+};
+
+describe("CompositionSquadRunPanel", () => {
+  beforeEach(() => {
+    mocks.environment = null;
+    mocks.projects = [];
+    mocks.queries.squads.data = null;
+    mocks.queries.squads.error = null;
+    mocks.queries.squads.isPending = false;
+    mocks.queries.revisions.data = null;
+    mocks.queries.revisions.error = null;
+    mocks.queries.revisions.isPending = false;
+    mocks.compositionSquads.mockReset();
+    mocks.compositionSquadRevisions.mockReset();
+    mocks.runCommand.mockReset();
+    mocks.useAtomCommand.mockReset();
+  });
+
+  it("查询当前环境的 Squad，并查询所选 Squad 的 revision 历史", () => {
+    mocks.environment = { environmentId: EnvironmentId.make("env-test") };
+    mocks.projects = [
+      project("env-test", "project-1", "Code Work"),
+      project("env-other", "project-2", "Other environment"),
+    ];
+    mocks.queries.squads.data = { squads: [activeSquad] };
+    mocks.queries.revisions.data = {
+      revisions: [
+        {
+          squadId: "squad-active",
+          revision: 3,
+          configuration: activeSquad,
+          createdAtUnixMs: 1_788_000_000_000,
+        },
+        {
+          squadId: "squad-active",
+          revision: 2,
+          configuration: null,
+          createdAtUnixMs: 1_787_000_000_000,
+        },
+      ],
+    };
+
+    const html = renderToStaticMarkup(<CompositionSquadRunPanel />);
+
+    expect(mocks.compositionSquads).toHaveBeenCalledWith({
+      environmentId: "env-test",
+      input: { includeArchived: true },
+    });
+    expect(mocks.compositionSquadRevisions).toHaveBeenCalledWith({
+      environmentId: "env-test",
+      input: { squadId: "squad-active" },
+    });
+    expect(mocks.useAtomCommand).toHaveBeenCalledWith(mocks.atoms.run, {
+      reportFailure: false,
+    });
+    expect(html).toContain('data-squad-run-environment="env-test"');
+    expect(html).toContain('data-squad-run-id="squad-active"');
+    expect(html).toContain('data-squad-revision="3"');
+    expect(html).toContain('data-squad-revision="2"');
+    expect(html).toContain("Code Work");
+    expect(html).not.toContain("Other environment");
+    expect(html).toContain('data-testid="squad-run"');
+  });
+
+  it("归档 Squad 不提供新运行入口", () => {
+    mocks.environment = { environmentId: EnvironmentId.make("env-test") };
+    mocks.projects = [project("env-test", "project-1", "Code Work")];
+    mocks.queries.squads.data = {
+      squads: [{ ...activeSquad, archivedAtUnixMs: 1_788_000_000_000 }],
+    };
+    mocks.queries.revisions.data = { revisions: [] };
+
+    const html = renderToStaticMarkup(<CompositionSquadRunPanel />);
+
+    expect(html).toContain(t("squadRun.archivedReadonly"));
+    expect(html).not.toContain('data-testid="squad-run"');
+  });
+
+  it("显示真实 execution、Leader、子节点尝试次数和结构化失败", () => {
+    const html = renderToStaticMarkup(
+      <CompositionSquadExecutionResultView result={executionResult} />,
+    );
+
+    expect(html).toContain("execution-1");
+    expect(html).toContain('data-squad-result-node="leader"');
+    expect(html).toContain('data-squad-result-node="build"');
+    expect(html).toContain('data-squad-result-node="review"');
+    expect(html).toContain(t("squadRun.attempts", { count: 2 }));
+    expect(html).toContain("Implementation completed");
+    expect(html).toContain("provider_timeout");
+    expect(html).toContain("Provider did not respond");
+  });
+});
