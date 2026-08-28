@@ -3,6 +3,7 @@ import type {
   CompositionSquadListResult,
   CompositionSquadRevisionListResult,
   CompositionTaskListResult,
+  CompositionTaskStatus,
 } from "@codework/contracts";
 import { EnvironmentId, ProjectId } from "@codework/contracts";
 import type { EnvironmentProject } from "@codework/client-runtime/state/shell";
@@ -19,6 +20,10 @@ const mocks = vi.hoisted(() => ({
     revisions: Symbol("revisions"),
     tasks: Symbol("tasks"),
     run: Symbol("run"),
+    cancel: Symbol("cancel"),
+    resume: Symbol("resume"),
+    review: Symbol("review"),
+    retry: Symbol("retry"),
   },
   queries: {
     squads: {
@@ -84,6 +89,10 @@ vi.mock("~/state/server", () => ({
       return mocks.atoms.tasks;
     },
     runCompositionSquad: mocks.atoms.run,
+    cancelCompositionTask: mocks.atoms.cancel,
+    resumeCompositionTask: mocks.atoms.resume,
+    reviewCompositionTask: mocks.atoms.review,
+    retryCompositionTask: mocks.atoms.retry,
   },
 }));
 
@@ -140,7 +149,7 @@ const project = (environmentId: string, id: string, title: string): EnvironmentP
   updatedAt: "2026-08-28T00:00:00.000Z",
 });
 
-const task = (taskId: string, status: "completed" | "failed") => ({
+const task = (taskId: string, status: CompositionTaskStatus) => ({
   taskId,
   projectId: "project-1",
   assigneeKind: "agent" as const,
@@ -153,7 +162,7 @@ const task = (taskId: string, status: "completed" | "failed") => ({
   updatedAtUnixMs: 2,
 });
 
-const run = (runId: string, status: "completed" | "failed") => ({
+const run = (runId: string, status: CompositionTaskStatus) => ({
   runId,
   taskId: runId.replace("run", "task"),
   agentId: "agent-build",
@@ -355,5 +364,56 @@ describe("CompositionSquadRunPanel", () => {
     expect(html).toContain("review_rejected");
     expect(html).toContain("agent-build");
     expect(html).toContain("agent-lead");
+  });
+
+  it("为持久化节点显示取消、继续、审核和受 capability 约束的重试操作", () => {
+    mocks.environment = { environmentId: EnvironmentId.make("env-test") };
+    mocks.projects = [project("env-test", "project-1", "Code Work")];
+    mocks.queries.squads.data = {
+      squads: [
+        {
+          ...activeSquad,
+          members: activeSquad.members.map((member) =>
+            member.agentId === "agent-build" ? { ...member, capabilityIds: ["fs.write"] } : member,
+          ),
+        },
+      ],
+    };
+    mocks.queries.revisions.data = { revisions: [] };
+    const snapshot = (nodeId: string, status: CompositionTaskStatus, agentId: string) => {
+      const taskId = `execution-actions:squad:squad-active:r3:task:${nodeId}`;
+      return {
+        task: {
+          ...task(taskId, status),
+          assigneeKind: nodeId === "leader-finalize" ? ("squad" as const) : ("agent" as const),
+          assigneeId: nodeId === "leader-finalize" ? "squad-active" : agentId,
+          mode: nodeId === "leader-finalize" ? ("review" as const) : ("parallel" as const),
+        },
+        latestRun: {
+          ...run(`run-${nodeId}`, status),
+          taskId,
+          agentId,
+          ...(status === "waiting_input" ? { runtimeTaskId: `runtime-task-${nodeId}` } : {}),
+        },
+      };
+    };
+    mocks.queries.tasks.data = {
+      tasks: [
+        snapshot("build", "waiting_input", "agent-build"),
+        snapshot("review", "failed", "agent-build"),
+        snapshot("leader-finalize", "in_review", "agent-lead"),
+      ],
+    };
+
+    const html = renderToStaticMarkup(<CompositionSquadRunPanel />);
+
+    expect(html).toContain('data-squad-node-action="cancel"');
+    expect(html).toContain('data-squad-node-action="resume"');
+    expect(html).toContain('data-squad-node-action="approve"');
+    expect(html).toContain('data-squad-node-action="reject"');
+    expect(html).toContain('data-squad-node-action="retry"');
+    expect(html).toContain(
+      'data-squad-node-task="execution-actions:squad:squad-active:r3:task:build"',
+    );
   });
 });

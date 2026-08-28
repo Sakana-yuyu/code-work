@@ -3,6 +3,10 @@ import {
   type CompositionSquad,
   type CompositionSquadExecutionRequest,
   type CompositionSquadPlanNode,
+  type CompositionTaskCancelRequest,
+  type CompositionTaskResumeRequest,
+  type CompositionTaskRetryRequest,
+  type CompositionTaskReviewRequest,
   type CompositionTaskSnapshot,
   type CompositionTaskStatus,
 } from "@codework/contracts";
@@ -62,6 +66,14 @@ export interface CompositionSquadExecutionHistoryItem {
   readonly updatedAtUnixMs: number;
   readonly nodes: ReadonlyArray<CompositionSquadExecutionHistoryNode>;
 }
+
+export type CompositionSquadNodeAction = "cancel" | "resume" | "approve" | "reject" | "retry";
+
+export type CompositionSquadNodeActionRequest =
+  | { readonly kind: "cancel"; readonly input: CompositionTaskCancelRequest }
+  | { readonly kind: "resume"; readonly input: CompositionTaskResumeRequest }
+  | { readonly kind: "review"; readonly input: CompositionTaskReviewRequest }
+  | { readonly kind: "retry"; readonly input: CompositionTaskRetryRequest };
 
 export const compositionSquadRunEnvironmentKey = (environmentId: string | null): string =>
   environmentId === null ? "disconnected" : `environment:${environmentId}`;
@@ -159,6 +171,93 @@ export const projectCompositionSquadExecutionHistory = (
         right.updatedAtUnixMs - left.updatedAtUnixMs ||
         right.executionId.localeCompare(left.executionId),
     );
+};
+
+const cancellableStatuses: ReadonlySet<CompositionTaskStatus> = new Set([
+  "queued",
+  "dispatched",
+  "resuming",
+  "running",
+  "waiting_approval",
+  "waiting_input",
+  "blocked",
+  "in_review",
+]);
+
+export const getCompositionSquadNodeActions = (
+  snapshot: CompositionTaskSnapshot,
+  capabilityIds: ReadonlyArray<string>,
+): ReadonlyArray<CompositionSquadNodeAction> => {
+  const run = snapshot.latestRun;
+  if (run === undefined) return [];
+
+  if (run.status === "failed" || run.status === "timed_out") {
+    return capabilityIds.some((capabilityId) => capabilityId.trim().length > 0) ? ["retry"] : [];
+  }
+
+  const actions: CompositionSquadNodeAction[] = [];
+  if (cancellableStatuses.has(run.status)) actions.push("cancel");
+  if (
+    (run.status === "waiting_approval" || run.status === "waiting_input") &&
+    run.runtimeTaskId !== undefined
+  ) {
+    actions.push("resume");
+  }
+  if (run.status === "in_review") actions.push("approve", "reject");
+  return actions;
+};
+
+export const buildCompositionSquadNodeActionRequest = (
+  action: CompositionSquadNodeAction,
+  snapshot: CompositionTaskSnapshot,
+  capabilityIds: ReadonlyArray<string>,
+  nextRunId: string,
+  reason: string,
+): CompositionSquadNodeActionRequest | null => {
+  const run = snapshot.latestRun;
+  const normalizedReason = reason.trim();
+  if (
+    run === undefined ||
+    normalizedReason.length === 0 ||
+    !getCompositionSquadNodeActions(snapshot, capabilityIds).includes(action)
+  ) {
+    return null;
+  }
+
+  const taskId = snapshot.task.taskId;
+  if (action === "cancel") {
+    return { kind: "cancel", input: { taskId, runId: run.runId, reason: normalizedReason } };
+  }
+  if (action === "resume") {
+    return { kind: "resume", input: { taskId, runId: run.runId, reason: normalizedReason } };
+  }
+  if (action === "approve" || action === "reject") {
+    return {
+      kind: "review",
+      input: {
+        taskId,
+        runId: run.runId,
+        decision: action === "approve" ? "approve" : "reject",
+        reason: normalizedReason,
+      },
+    };
+  }
+
+  const normalizedCapabilities = [
+    ...new Set(capabilityIds.map((capabilityId) => capabilityId.trim()).filter(Boolean)),
+  ];
+  const normalizedRunId = nextRunId.trim();
+  if (normalizedCapabilities.length === 0 || normalizedRunId.length === 0) return null;
+  return {
+    kind: "retry",
+    input: {
+      taskId,
+      previousRunId: run.runId,
+      runId: normalizedRunId,
+      reason: normalizedReason,
+      capabilityIds: normalizedCapabilities,
+    },
+  };
 };
 
 const addRequiredIssue = (

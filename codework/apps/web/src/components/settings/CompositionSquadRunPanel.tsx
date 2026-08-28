@@ -3,6 +3,7 @@
 import type {
   CompositionSquad,
   CompositionSquadExecutionResult,
+  CompositionTaskSnapshot,
   CompositionTaskStatus,
   EnvironmentId,
 } from "@codework/contracts";
@@ -10,7 +11,17 @@ import {
   squashAtomCommandFailure,
   type AtomCommandResult,
 } from "@codework/client-runtime/state/runtime";
-import { GitBranchIcon, HistoryIcon, PlayIcon, RefreshCwIcon, UsersIcon } from "lucide-react";
+import {
+  CheckIcon,
+  GitBranchIcon,
+  HistoryIcon,
+  PlayIcon,
+  RefreshCwIcon,
+  RotateCcwIcon,
+  SquareIcon,
+  UsersIcon,
+  XIcon,
+} from "lucide-react";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 
 import { t } from "~/i18n";
@@ -28,10 +39,13 @@ import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from "../
 import { Textarea } from "../ui/textarea";
 import {
   advanceCompositionSquadRunDraft,
+  buildCompositionSquadNodeActionRequest,
   buildCompositionSquadExecutionRequest,
   compositionSquadRunEnvironmentKey,
+  getCompositionSquadNodeActions,
   projectCompositionSquadExecutionHistory,
   type CompositionSquadExecutionHistoryItem,
+  type CompositionSquadNodeAction,
   type CompositionSquadRunDraft,
   type CompositionSquadRunIssue,
 } from "./CompositionSquadRunPanel.logic";
@@ -111,6 +125,7 @@ function ResultRow({
   summary,
   failureCode,
   detail,
+  actions,
 }: {
   readonly nodeId: string;
   readonly label: string;
@@ -120,6 +135,7 @@ function ResultRow({
   readonly summary?: string;
   readonly failureCode?: string;
   readonly detail?: string;
+  readonly actions?: ReactNode;
 }) {
   const badge =
     status === "skipped" ? (
@@ -157,11 +173,16 @@ function ResultRow({
         ) : null}
         {detail ? <p className="text-xs leading-relaxed text-destructive">{detail}</p> : null}
       </div>
-      {failureCode ? (
-        <code className="max-w-full overflow-hidden text-ellipsis rounded bg-destructive/10 px-2 py-1 text-[11px] text-destructive">
-          {failureCode}
-        </code>
-      ) : null}
+      {failureCode === undefined && actions === undefined ? null : (
+        <div className="flex max-w-full flex-wrap items-center justify-end gap-1.5">
+          {failureCode ? (
+            <code className="max-w-full overflow-hidden text-ellipsis rounded bg-destructive/10 px-2 py-1 text-[11px] text-destructive">
+              {failureCode}
+            </code>
+          ) : null}
+          {actions}
+        </div>
+      )}
     </div>
   );
 }
@@ -234,10 +255,50 @@ function historyNodeLabel(nodeId: string): string {
   return nodeId;
 }
 
+function nodeActionLabel(action: CompositionSquadNodeAction): string {
+  switch (action) {
+    case "cancel":
+      return t("squadRun.cancelNode");
+    case "resume":
+      return t("squadRun.resumeNode");
+    case "approve":
+      return t("squadRun.approveNode");
+    case "reject":
+      return t("squadRun.rejectNode");
+    case "retry":
+      return t("squadRun.retryNode");
+  }
+}
+
+function nodeActionIcon(action: CompositionSquadNodeAction): ReactNode {
+  switch (action) {
+    case "cancel":
+      return <SquareIcon />;
+    case "resume":
+      return <PlayIcon />;
+    case "approve":
+      return <CheckIcon />;
+    case "reject":
+      return <XIcon />;
+    case "retry":
+      return <RotateCcwIcon />;
+  }
+}
+
 function CompositionSquadExecutionHistoryView({
   executions,
+  squad,
+  pendingAction,
+  onAction,
 }: {
   readonly executions: ReadonlyArray<CompositionSquadExecutionHistoryItem>;
+  readonly squad: CompositionSquad;
+  readonly pendingAction: string | null;
+  readonly onAction: (
+    action: CompositionSquadNodeAction,
+    snapshot: CompositionTaskSnapshot,
+    capabilityIds: ReadonlyArray<string>,
+  ) => void;
 }) {
   return (
     <div className="overflow-hidden rounded-md border border-border/70 bg-background/40">
@@ -270,6 +331,10 @@ function CompositionSquadExecutionHistoryView({
           <div className="border-t border-border/60">
             {execution.nodes.map(({ nodeId, snapshot }) => {
               const latestRun = snapshot.latestRun;
+              const agentId = latestRun?.agentId ?? snapshot.task.assigneeId;
+              const capabilityIds =
+                squad.members?.find((member) => member.agentId === agentId)?.capabilityIds ?? [];
+              const actions = getCompositionSquadNodeActions(snapshot, capabilityIds);
               return (
                 <div key={snapshot.task.taskId} data-squad-history-node={nodeId}>
                   <ResultRow
@@ -284,6 +349,39 @@ function CompositionSquadExecutionHistoryView({
                     {...(latestRun?.failureCode === undefined
                       ? {}
                       : { failureCode: latestRun.failureCode })}
+                    {...(actions.length === 0
+                      ? {}
+                      : {
+                          actions: (
+                            <div className="flex flex-wrap items-center gap-1">
+                              {actions.map((action) => {
+                                const actionKey = `${action}:${snapshot.task.taskId}`;
+                                const label = nodeActionLabel(action);
+                                return (
+                                  <Button
+                                    key={action}
+                                    data-squad-node-action={action}
+                                    data-squad-node-task={snapshot.task.taskId}
+                                    size="icon-sm"
+                                    variant={
+                                      action === "reject" ? "destructive-outline" : "outline"
+                                    }
+                                    aria-label={label}
+                                    title={label}
+                                    disabled={pendingAction !== null}
+                                    onClick={() => onAction(action, snapshot, capabilityIds)}
+                                  >
+                                    {pendingAction === actionKey ? (
+                                      <RefreshCwIcon className="animate-spin" />
+                                    ) : (
+                                      nodeActionIcon(action)
+                                    )}
+                                  </Button>
+                                );
+                              })}
+                            </div>
+                          ),
+                        })}
                   />
                 </div>
               );
@@ -331,6 +429,18 @@ function CompositionSquadRunEnvironmentPanel({
   const runSquad = useAtomCommand(serverEnvironment.runCompositionSquad, {
     reportFailure: false,
   });
+  const cancelTask = useAtomCommand(serverEnvironment.cancelCompositionTask, {
+    reportFailure: false,
+  });
+  const resumeTask = useAtomCommand(serverEnvironment.resumeCompositionTask, {
+    reportFailure: false,
+  });
+  const reviewTask = useAtomCommand(serverEnvironment.reviewCompositionTask, {
+    reportFailure: false,
+  });
+  const retryTask = useAtomCommand(serverEnvironment.retryCompositionTask, {
+    reportFailure: false,
+  });
   const firstProject = projects[0] ?? null;
   const [draft, setDraft] = useState<CompositionSquadRunDraft>(() => ({
     executionId: randomUUID(),
@@ -350,6 +460,9 @@ function CompositionSquadRunEnvironmentPanel({
   );
   const [pending, setPending] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [nodeActionReason, setNodeActionReason] = useState("");
+  const [pendingNodeAction, setPendingNodeAction] = useState<string | null>(null);
+  const [nodeActionError, setNodeActionError] = useState<string | null>(null);
   const [executionResult, setExecutionResult] = useState<CompositionSquadExecutionResult | null>(
     null,
   );
@@ -391,6 +504,7 @@ function CompositionSquadRunEnvironmentPanel({
     setSelectedSquadId(squadId);
     setDraft((current) => ({ ...current, planText: buildPlanTemplate(squad) }));
     setActionError(null);
+    setNodeActionError(null);
     setExecutionResult(null);
   };
 
@@ -421,6 +535,51 @@ function CompositionSquadRunEnvironmentPanel({
       tasksQuery.refresh();
     }
     setPending(false);
+  };
+
+  const runNodeAction = async (
+    action: CompositionSquadNodeAction,
+    snapshot: CompositionTaskSnapshot,
+    capabilityIds: ReadonlyArray<string>,
+  ): Promise<void> => {
+    if (environmentId === null || pendingNodeAction !== null) return;
+    const defaultReason =
+      action === "cancel"
+        ? t("squadRun.cancelReasonDefault")
+        : action === "resume"
+          ? t("squadRun.resumeReasonDefault")
+          : action === "approve"
+            ? t("squadRun.approveReasonDefault")
+            : action === "reject"
+              ? t("squadRun.rejectReasonDefault")
+              : t("squadRun.retryReasonDefault");
+    const request = buildCompositionSquadNodeActionRequest(
+      action,
+      snapshot,
+      capabilityIds,
+      `squad-retry-${randomUUID()}`,
+      nodeActionReason.trim() || defaultReason,
+    );
+    if (request === null) return;
+
+    const actionKey = `${action}:${snapshot.task.taskId}`;
+    setPendingNodeAction(actionKey);
+    setNodeActionError(null);
+    const result =
+      request.kind === "cancel"
+        ? await cancelTask({ environmentId, input: request.input })
+        : request.kind === "resume"
+          ? await resumeTask({ environmentId, input: request.input })
+          : request.kind === "review"
+            ? await reviewTask({ environmentId, input: request.input })
+            : await retryTask({ environmentId, input: request.input });
+    if (result._tag === "Failure") {
+      const error = squashAtomCommandFailure(result);
+      setNodeActionError(error instanceof Error ? error.message : t("squadRun.nodeActionFailed"));
+    } else {
+      tasksQuery.refresh();
+    }
+    setPendingNodeAction(null);
   };
 
   const isArchived = selectedSquad?.archivedAtUnixMs !== undefined;
@@ -676,6 +835,20 @@ function CompositionSquadRunEnvironmentPanel({
               <p className="text-xs leading-relaxed text-muted-foreground">
                 {t("squadRun.executionHistoryDescription")}
               </p>
+              <FormField
+                label={t("squadRun.actionReason")}
+                description={t("squadRun.actionReasonDescription")}
+              >
+                <Input
+                  size="compact"
+                  value={nodeActionReason}
+                  placeholder={t("squadRun.actionReasonPlaceholder")}
+                  onChange={(event) => setNodeActionReason(event.currentTarget.value)}
+                />
+              </FormField>
+              {nodeActionError ? (
+                <p className="text-xs text-destructive">{nodeActionError}</p>
+              ) : null}
               {tasksQuery.isPending ? (
                 <p className="text-xs text-muted-foreground">{t("squadRun.historyLoading")}</p>
               ) : tasksQuery.error ? (
@@ -685,7 +858,14 @@ function CompositionSquadRunEnvironmentPanel({
               ) : executionHistory.length === 0 ? (
                 <p className="text-xs text-muted-foreground">{t("squadRun.noExecutionHistory")}</p>
               ) : (
-                <CompositionSquadExecutionHistoryView executions={executionHistory} />
+                <CompositionSquadExecutionHistoryView
+                  executions={executionHistory}
+                  squad={selectedSquad}
+                  pendingAction={pendingNodeAction}
+                  onAction={(action, snapshot, capabilityIds) =>
+                    void runNodeAction(action, snapshot, capabilityIds)
+                  }
+                />
               )}
             </div>
           </div>

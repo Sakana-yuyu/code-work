@@ -7,8 +7,10 @@ import { describe, expect, it } from "vite-plus/test";
 
 import {
   advanceCompositionSquadRunDraft,
+  buildCompositionSquadNodeActionRequest,
   buildCompositionSquadExecutionRequest,
   compositionSquadRunEnvironmentKey,
+  getCompositionSquadNodeActions,
   parseCompositionSquadExecutionTaskId,
   projectCompositionSquadExecutionHistory,
   type CompositionSquadRunDraft,
@@ -102,6 +104,7 @@ const taskSnapshot = (input: {
     taskId: input.taskId,
     agentId: input.agentId,
     runtimeId: `runtime:${input.agentId}`,
+    runtimeTaskId: `runtime-task:${input.taskId}`,
     status: input.status,
     attempt: 1,
     capabilityGrantIds: [],
@@ -372,6 +375,91 @@ describe("CompositionSquadRunPanel logic", () => {
       agentId: "agent-review",
       failureCode: "provider_timeout",
     });
+  });
+
+  it.each([
+    ["running", ["cancel"]],
+    ["waiting_approval", ["cancel", "resume"]],
+    ["waiting_input", ["cancel", "resume"]],
+    ["in_review", ["cancel", "approve", "reject"]],
+    ["completed", []],
+    ["cancelled", []],
+  ] as const)("为 %s 节点只开放真实可用操作", (status, expected) => {
+    const snapshot = taskSnapshot({
+      taskId: `execution-1:squad:squad-build:r4:task:build`,
+      status,
+      updatedAtUnixMs: 100,
+      agentId: "agent-build",
+    });
+
+    expect(getCompositionSquadNodeActions(snapshot, ["fs.write"])).toEqual(expected);
+  });
+
+  it("失败节点只有在可复用原成员 capability 时才允许重试", () => {
+    const snapshot = taskSnapshot({
+      taskId: "execution-1:squad:squad-build:r4:task:build",
+      status: "failed",
+      updatedAtUnixMs: 100,
+      agentId: "agent-build",
+    });
+
+    expect(getCompositionSquadNodeActions(snapshot, [])).toEqual([]);
+    expect(getCompositionSquadNodeActions(snapshot, ["fs.read", "fs.write"])).toEqual(["retry"]);
+  });
+
+  it("构造取消、继续、审核和新 Run 重试请求，不复用旧 runId", () => {
+    const waiting = taskSnapshot({
+      taskId: "execution-1:squad:squad-build:r4:task:build",
+      status: "waiting_input",
+      updatedAtUnixMs: 100,
+      agentId: "agent-build",
+    });
+    const review = taskSnapshot({
+      taskId: "execution-1:squad:squad-build:r4:task:leader-finalize",
+      status: "in_review",
+      updatedAtUnixMs: 110,
+      agentId: "agent-lead",
+    });
+    const failed = taskSnapshot({
+      taskId: "execution-1:squad:squad-build:r4:task:review",
+      status: "failed",
+      updatedAtUnixMs: 120,
+      agentId: "agent-review",
+    });
+
+    expect(
+      buildCompositionSquadNodeActionRequest("cancel", waiting, [], "unused", "用户取消"),
+    ).toMatchObject({ kind: "cancel", input: { reason: "用户取消" } });
+    expect(
+      buildCompositionSquadNodeActionRequest("resume", waiting, [], "unused", "继续执行"),
+    ).toMatchObject({ kind: "resume", input: { reason: "继续执行" } });
+    expect(
+      buildCompositionSquadNodeActionRequest("approve", review, [], "unused", "审核通过"),
+    ).toMatchObject({ kind: "review", input: { decision: "approve", reason: "审核通过" } });
+    expect(
+      buildCompositionSquadNodeActionRequest("reject", review, [], "unused", "需要返工"),
+    ).toMatchObject({ kind: "review", input: { decision: "reject", reason: "需要返工" } });
+    expect(
+      buildCompositionSquadNodeActionRequest(
+        "retry",
+        failed,
+        ["fs.read"],
+        "new-run-id",
+        "重试节点",
+      ),
+    ).toEqual({
+      kind: "retry",
+      input: {
+        taskId: failed.task.taskId,
+        previousRunId: failed.latestRun?.runId,
+        runId: "new-run-id",
+        reason: "重试节点",
+        capabilityIds: ["fs.read"],
+      },
+    });
+    expect(
+      buildCompositionSquadNodeActionRequest("retry", failed, [], "new-run-id", "重试节点"),
+    ).toBeNull();
   });
 
   it.each([
