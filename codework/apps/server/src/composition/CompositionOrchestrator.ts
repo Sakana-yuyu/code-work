@@ -31,6 +31,7 @@ import type * as CapabilityGrantRegistry from "./CapabilityGrantRegistry.ts";
 import * as CapabilityRegistry from "./CapabilityRegistry.ts";
 import {
   claimCompositionRuntimeLease,
+  recoverCompositionRuntimeLease,
   releaseCompositionRuntimeLease,
 } from "./CompositionRuntimeLeaseLifecycle.ts";
 
@@ -986,6 +987,7 @@ const makeOrchestrator = (
             runId: input.runId,
           });
         }
+        const initialTask = taskOption.value;
         const initialRun = runOption.value;
         const driver = yield* driverRegistry.get(initialRun.agentId);
         if (driver === undefined) {
@@ -998,6 +1000,22 @@ const makeOrchestrator = (
           return yield* new CompositionAgentDriverFailure({
             code: "agent_driver_resume_unsupported",
             detail: `Agent Driver 未提供 Runtime Resume：${initialRun.agentId}`,
+          });
+        }
+
+        const leaseRecovered = yield* Clock.currentTimeMillis.pipe(
+          Effect.flatMap((nowUnixMs) =>
+            recoverCompositionRuntimeLease(store, {
+              task: initialTask,
+              run: initialRun,
+              nowUnixMs,
+            }),
+          ),
+        );
+        if (Option.isNone(leaseRecovered)) {
+          return yield* new CompositionAgentDriverFailure({
+            code: "capacity_exceeded",
+            detail: "Runtime Run 无法恢复其工作区租约，拒绝恢复执行。",
           });
         }
 

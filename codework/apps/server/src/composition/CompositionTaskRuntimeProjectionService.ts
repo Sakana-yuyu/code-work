@@ -31,6 +31,7 @@ import {
   defaultCompositionRunReconnectGraceMs,
   superviseCompositionRunLiveness,
 } from "./CompositionRunLiveness.ts";
+import { recoverOrphanedCompositionRuns } from "./CompositionRunRecovery.ts";
 import { recoverInterruptedByokDelegations } from "./CompositionByokDelegationSupervisor.ts";
 import { CompositionRuntimeAdapterRegistryService } from "./CompositionRuntimeAdapterRegistry.ts";
 import type { CompositionRuntimeAdapterRegistry } from "./CompositionRuntimeAdapterRegistry.ts";
@@ -326,6 +327,20 @@ const live = Effect.gen(function* () {
     ),
     Effect.catchCause((cause) =>
       Effect.logError("BYOK 委派跨重启收口失败", { cause }).pipe(Effect.as([])),
+    ),
+  );
+
+  yield* recoverOrphanedCompositionRuns({ store, orchestrator }).pipe(
+    Effect.tap((actions) =>
+      actions.length === 0
+        ? Effect.void
+        : Effect.logInfo("Composition orphan Run 恢复扫描完成", {
+            actionCount: actions.length,
+            deferredCount: actions.filter((action) => action.action === "deferred").length,
+          }),
+    ),
+    Effect.catchCause((cause) =>
+      Effect.logError("Composition orphan Run 恢复扫描失败", { cause }).pipe(Effect.as([])),
     ),
   );
 

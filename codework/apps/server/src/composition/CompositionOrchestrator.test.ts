@@ -2,6 +2,7 @@ import { assert, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
+import * as TestClock from "effect/testing/TestClock";
 import {
   EventId,
   ProviderDriverKind,
@@ -1294,6 +1295,7 @@ layer("CompositionOrchestrator", (it) => {
         readonly taskId: string;
         readonly runId: string;
         readonly reason: string;
+        readonly leaseId?: string;
       }> = [];
       yield* driverRegistry.register({
         agentId: "agent-runtime-resume",
@@ -1306,6 +1308,7 @@ layer("CompositionOrchestrator", (it) => {
               taskId: input.task.taskId,
               runId: input.run.runId,
               reason: input.reason,
+              ...(input.run.leaseId === undefined ? {} : { leaseId: input.run.leaseId }),
             });
             return { status: "accepted" as const };
           }),
@@ -1329,11 +1332,25 @@ layer("CompositionOrchestrator", (it) => {
         runtimeId: "runtime-resume",
         runtimeTaskId: "runtime-task-resume",
         capabilityHandshakeId: "handshake-runtime-resume",
+        leaseId: "lease-runtime-resume-expired",
         status: "running",
         attempt: 3,
         capabilityGrantIds: ["grant-runtime-resume"],
       });
+      yield* store.claimLease({
+        lease: {
+          leaseId: "lease-runtime-resume-expired",
+          runtimeId: "runtime-resume",
+          taskId: "task-runtime-resume",
+          workspaceRootDigest: "sha256:runtime-resume-workspace",
+          heartbeatAtUnixMs: 1,
+          expiresAtUnixMs: 100,
+          state: "active",
+        },
+        nowUnixMs: 1,
+      });
       const orchestrator = makeCompositionOrchestrator(store, driverRegistry);
+      yield* TestClock.setTime(1_000);
 
       const result = yield* orchestrator.resumeTask({
         taskId: "task-runtime-resume",
@@ -1348,12 +1365,23 @@ layer("CompositionOrchestrator", (it) => {
       assert.equal(result.run.attempt, 3);
       assert.equal(result.run.runtimeTaskId, "runtime-task-resume");
       assert.equal(result.run.capabilityHandshakeId, "handshake-runtime-resume");
+      const recoveredLeaseId = result.run.leaseId;
+      if (recoveredLeaseId === undefined) {
+        throw new Error("恢复后的 Runtime Run 应关联新租约");
+      }
+      assert.equal(recoveredLeaseId !== "lease-runtime-resume-expired", true);
+      assert.equal(
+        Option.getOrThrow(yield* store.getLease("lease-runtime-resume-expired")).state,
+        "expired",
+      );
+      assert.equal(Option.getOrThrow(yield* store.getLease(recoveredLeaseId)).state, "active");
       assert.deepEqual(result.run.capabilityGrantIds, ["grant-runtime-resume"]);
       assert.deepEqual(resumed, [
         {
           taskId: "task-runtime-resume",
           runId: "run-runtime-resume",
           reason: "连接恢复后继续执行",
+          leaseId: recoveredLeaseId,
         },
       ]);
       assert.deepEqual(

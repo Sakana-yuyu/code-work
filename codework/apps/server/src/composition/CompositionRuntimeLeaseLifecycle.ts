@@ -13,6 +13,9 @@ export const COMPOSITION_RUNTIME_LEASE_DURATION_MS = 60_000;
 export const compositionRuntimeLeaseIdForRun = (runId: string): string =>
   `composition-runtime-lease:${runId}`;
 
+const compositionRuntimeRecoveryLeaseId = (runId: string, nowUnixMs: number): string =>
+  `${compositionRuntimeLeaseIdForRun(runId)}:recovery:${nowUnixMs}`;
+
 export const claimCompositionRuntimeLease = Effect.fn("claimCompositionRuntimeLease")(function* (
   store: CompositionTaskStoreShape,
   input: {
@@ -73,6 +76,76 @@ export const renewCompositionRuntimeLease = Effect.fn("renewCompositionRuntimeLe
     nowUnixMs,
   });
 });
+
+export const recoverCompositionRuntimeLease = Effect.fn("recoverCompositionRuntimeLease")(
+  function* (
+    store: CompositionTaskStoreShape,
+    input: {
+      readonly task: CompositionTask;
+      readonly run: CompositionTaskRun;
+      readonly nowUnixMs: number;
+    },
+  ) {
+    const leaseId = input.run.leaseId;
+    if (leaseId === undefined) return Option.some(input.run);
+
+    return yield* store.withTransaction(
+      Effect.gen(function* () {
+        const currentLease = yield* store.getLease(leaseId);
+        if (
+          Option.isNone(currentLease) ||
+          currentLease.value.runtimeId !== input.run.runtimeId ||
+          currentLease.value.taskId !== input.task.taskId
+        ) {
+          return Option.none<CompositionTaskRun>();
+        }
+
+        if (
+          currentLease.value.state === "active" &&
+          currentLease.value.expiresAtUnixMs > input.nowUnixMs
+        ) {
+          const renewed = yield* store.renewLease({
+            leaseId: currentLease.value.leaseId,
+            runtimeId: input.run.runtimeId,
+            heartbeatAtUnixMs: input.nowUnixMs,
+            expiresAtUnixMs: input.nowUnixMs + COMPOSITION_RUNTIME_LEASE_DURATION_MS,
+            nowUnixMs: input.nowUnixMs,
+          });
+          return Option.isSome(renewed)
+            ? Option.some(input.run)
+            : Option.none<CompositionTaskRun>();
+        }
+
+        yield* store.reclaimExpiredLeases({ nowUnixMs: input.nowUnixMs });
+        const replacementLeaseId = compositionRuntimeRecoveryLeaseId(
+          input.run.runId,
+          input.nowUnixMs,
+        );
+        const replacement: CompositionRuntimeLease = {
+          leaseId: replacementLeaseId,
+          runtimeId: input.run.runtimeId,
+          taskId: input.task.taskId,
+          workspaceRootDigest: currentLease.value.workspaceRootDigest,
+          heartbeatAtUnixMs: input.nowUnixMs,
+          expiresAtUnixMs: input.nowUnixMs + COMPOSITION_RUNTIME_LEASE_DURATION_MS,
+          state: "active",
+        };
+        const claimed = yield* store.claimLease({
+          lease: replacement,
+          nowUnixMs: input.nowUnixMs,
+        });
+        if (Option.isNone(claimed)) return Option.none<CompositionTaskRun>();
+
+        const recoveredRun: CompositionTaskRun = {
+          ...input.run,
+          leaseId: replacementLeaseId,
+        };
+        yield* store.upsertRun(recoveredRun);
+        return Option.some(recoveredRun);
+      }),
+    );
+  },
+);
 
 export const releaseCompositionRuntimeLease = Effect.fn("releaseCompositionRuntimeLease")(
   function* (store: CompositionTaskStoreShape, run: CompositionTaskRun, releasedAtUnixMs: number) {
