@@ -3,6 +3,7 @@ import * as NodeServices from "@effect/platform-node/NodeServices";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
+import * as SqlClient from "effect/unstable/sql/SqlClient";
 
 import { CompositionTaskStore } from "../Services/CompositionTaskStore.ts";
 import { CompositionTaskStoreLive } from "./CompositionTaskStore.ts";
@@ -25,6 +26,91 @@ const inputStoreLayer = it.layer(
 );
 
 layer("CompositionTaskStore", (it) => {
+  it.effect("持久化丰富 Squad 配置、不可变 revision 历史和幂等重放", () =>
+    Effect.gen(function* () {
+      const store = yield* CompositionTaskStore;
+      const sql = yield* SqlClient.SqlClient;
+      const revision1 = {
+        squadId: "squad-versioned",
+        name: "版本化协同组",
+        leaderAgentId: "agent-leader-versioned",
+        memberAgentIds: ["agent-leader-versioned", "agent-worker-versioned"],
+        instructions: "由 Leader 拆解并汇总结果",
+        revision: 1,
+        collaborationMode: "leader_workers" as const,
+        members: [
+          {
+            agentId: "agent-leader-versioned",
+            role: "leader" as const,
+            order: 0,
+            required: true,
+            model: "provider/leader-model",
+            workspaceRoot: "C:/workspace/leader",
+            capabilityIds: ["t3.workspace.read_file"],
+            maxConcurrentTasks: 1,
+          },
+          {
+            agentId: "agent-worker-versioned",
+            role: "worker" as const,
+            order: 1,
+            required: true,
+            model: "provider/worker-model",
+            workspaceRoot: "C:/workspace/worker",
+            capabilityIds: ["t3.workspace.read_file", "t3.workspace.write_file"],
+            maxConcurrentTasks: 2,
+          },
+        ],
+        maxConcurrency: 2,
+        maxRetries: 1,
+        failurePolicy: "fail_fast" as const,
+        partialSuccessPolicy: "reject" as const,
+        approvalStages: ["before_finalize" as const],
+        createdAtUnixMs: 100,
+        updatedAtUnixMs: 100,
+      };
+      const revision2 = {
+        ...revision1,
+        name: "版本化协同组 v2",
+        revision: 2,
+        maxConcurrency: 3,
+        updatedAtUnixMs: 200,
+      };
+
+      yield* store.upsertSquad(revision1);
+      assert.deepEqual(Option.getOrThrow(yield* store.getSquad(revision1.squadId)), revision1);
+
+      yield* store.upsertSquad(revision2);
+      yield* store.upsertSquad(revision2);
+      assert.deepEqual(Option.getOrThrow(yield* store.getSquad(revision1.squadId)), revision2);
+
+      const driftedRevision = yield* Effect.result(
+        store.upsertSquad({ ...revision2, name: "同 revision 漂移" }),
+      );
+      const staleRevision = yield* Effect.result(store.upsertSquad(revision1));
+      assert.equal(driftedRevision._tag, "Failure");
+      assert.equal(staleRevision._tag, "Failure");
+      assert.deepEqual(Option.getOrThrow(yield* store.getSquad(revision1.squadId)), revision2);
+
+      const revisions = yield* sql<{
+        readonly revision: number;
+        readonly configurationJson: string;
+      }>`
+        SELECT revision, configuration_json AS "configurationJson"
+        FROM composition_squad_revisions
+        WHERE squad_id = ${revision1.squadId}
+        ORDER BY revision ASC
+      `;
+      assert.deepEqual(
+        revisions.map((row) => row.revision),
+        [1, 2],
+      );
+      assert.deepEqual(
+        revisions.map((row) => JSON.parse(row.configurationJson).name),
+        [revision1.name, revision2.name],
+      );
+    }),
+  );
+
   it.effect("persists task, run, ordered events, dependency, lease, and squad records", () =>
     Effect.gen(function* () {
       const store = yield* CompositionTaskStore;

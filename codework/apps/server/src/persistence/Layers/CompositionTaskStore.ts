@@ -1,5 +1,6 @@
 import {
   ApprovalRequestId,
+  CompositionSquad as CompositionSquadSchema,
   type CompositionRuntimeLease,
   type CompositionSquad,
   type CompositionTask,
@@ -24,6 +25,13 @@ import {
 
 const StringArrayJson = Schema.fromJsonString(Schema.Array(Schema.String));
 const encodeStringArray = Schema.encodeSync(StringArrayJson);
+const CompositionSquadJson = Schema.fromJsonString(CompositionSquadSchema);
+const encodeCompositionSquad = Schema.encodeSync(CompositionSquadJson);
+
+class CompositionSquadRevisionWriteError extends Schema.TaggedErrorClass<CompositionSquadRevisionWriteError>()(
+  "CompositionSquadRevisionWriteError",
+  { detail: Schema.String },
+) {}
 
 const TaskRowSchema = Schema.Struct({
   taskId: Schema.String,
@@ -103,6 +111,10 @@ const SquadRowSchema = Schema.Struct({
   leaderAgentId: Schema.String,
   memberAgentIds: StringArrayJson,
   instructions: Schema.NullOr(Schema.String),
+  revision: Schema.Number,
+  configuration: Schema.NullOr(CompositionSquadJson),
+  createdAtUnixMs: Schema.Number,
+  updatedAtUnixMs: Schema.Number,
   archivedAtUnixMs: Schema.NullOr(Schema.Number),
 });
 
@@ -260,14 +272,15 @@ const toLease = (row: Schema.Schema.Type<typeof LeaseRowSchema>): CompositionRun
   state: row.state as CompositionRuntimeLease["state"],
 });
 
-const toSquad = (row: Schema.Schema.Type<typeof SquadRowSchema>): CompositionSquad => ({
-  squadId: row.squadId,
-  name: row.name,
-  leaderAgentId: row.leaderAgentId,
-  memberAgentIds: row.memberAgentIds,
-  ...(row.instructions === null ? {} : { instructions: row.instructions }),
-  ...(row.archivedAtUnixMs === null ? {} : { archivedAtUnixMs: row.archivedAtUnixMs }),
-});
+const toSquad = (row: Schema.Schema.Type<typeof SquadRowSchema>): CompositionSquad =>
+  row.configuration ?? {
+    squadId: row.squadId,
+    name: row.name,
+    leaderAgentId: row.leaderAgentId,
+    memberAgentIds: row.memberAgentIds,
+    ...(row.instructions === null ? {} : { instructions: row.instructions }),
+    ...(row.archivedAtUnixMs === null ? {} : { archivedAtUnixMs: row.archivedAtUnixMs }),
+  };
 
 const makeStore = Effect.gen(function* () {
   const sql = yield* SqlClient.SqlClient;
@@ -800,25 +813,81 @@ const makeStore = Effect.gen(function* () {
     `,
   });
 
-  const upsertSquadRow = SqlSchema.void({
-    Request: Schema.Struct({
-      squadId: Schema.String,
-      name: Schema.String,
-      leaderAgentId: Schema.String,
-      memberAgentIds: Schema.Array(Schema.String),
-      instructions: Schema.NullOr(Schema.String),
-      archivedAtUnixMs: Schema.NullOr(Schema.Number),
-    }),
+  const SquadWriteRequest = Schema.Struct({
+    squadId: Schema.String,
+    name: Schema.String,
+    leaderAgentId: Schema.String,
+    memberAgentIds: Schema.Array(Schema.String),
+    instructions: Schema.NullOr(Schema.String),
+    revision: Schema.Number,
+    configurationJson: Schema.NullOr(Schema.String),
+    createdAtUnixMs: Schema.Number,
+    updatedAtUnixMs: Schema.Number,
+    revisionCreatedAtUnixMs: Schema.Number,
+    archivedAtUnixMs: Schema.NullOr(Schema.Number),
+  });
+  const upsertSquadRevisionRow = SqlSchema.findOneOption({
+    Request: SquadWriteRequest,
+    Result: Schema.Struct({ squadId: Schema.String }),
+    execute: (squad) => sql`
+      INSERT INTO composition_squad_revisions (
+        squad_id, revision, configuration_json, created_at_unix_ms
+      ) VALUES (
+        ${squad.squadId}, ${squad.revision}, ${squad.configurationJson},
+        ${squad.revisionCreatedAtUnixMs}
+      ) ON CONFLICT (squad_id, revision) DO UPDATE SET
+        squad_id = excluded.squad_id
+      WHERE composition_squad_revisions.configuration_json IS excluded.configuration_json
+        AND composition_squad_revisions.created_at_unix_ms = excluded.created_at_unix_ms
+      RETURNING squad_id AS "squadId"
+    `,
+  });
+  const upsertSquadRow = SqlSchema.findOneOption({
+    Request: SquadWriteRequest,
+    Result: SquadRowSchema,
     execute: (squad) => sql`
       INSERT INTO composition_squads (
-        squad_id, name, leader_agent_id, member_agent_ids_json, instructions, archived_at_unix_ms
-      ) VALUES (
+        squad_id, name, leader_agent_id, member_agent_ids_json, instructions,
+        revision, configuration_json, created_at_unix_ms, updated_at_unix_ms,
+        archived_at_unix_ms
+      ) SELECT
         ${squad.squadId}, ${squad.name}, ${squad.leaderAgentId},
-        ${encodeStringArray(squad.memberAgentIds)}, ${squad.instructions}, ${squad.archivedAtUnixMs}
-      ) ON CONFLICT (squad_id) DO UPDATE SET
+        ${encodeStringArray(squad.memberAgentIds)}, ${squad.instructions},
+        ${squad.revision}, ${squad.configurationJson}, ${squad.createdAtUnixMs},
+        ${squad.updatedAtUnixMs}, ${squad.archivedAtUnixMs}
+      WHERE ${squad.revision} = 1
+        OR EXISTS (
+          SELECT 1 FROM composition_squads WHERE squad_id = ${squad.squadId}
+        )
+      ON CONFLICT (squad_id) DO UPDATE SET
         name = excluded.name, leader_agent_id = excluded.leader_agent_id,
         member_agent_ids_json = excluded.member_agent_ids_json,
-        instructions = excluded.instructions, archived_at_unix_ms = excluded.archived_at_unix_ms
+        instructions = excluded.instructions, revision = excluded.revision,
+        configuration_json = excluded.configuration_json,
+        created_at_unix_ms = excluded.created_at_unix_ms,
+        updated_at_unix_ms = excluded.updated_at_unix_ms,
+        archived_at_unix_ms = excluded.archived_at_unix_ms
+      WHERE (
+          excluded.revision = composition_squads.revision + 1
+          AND excluded.created_at_unix_ms = composition_squads.created_at_unix_ms
+        ) OR (
+          excluded.revision = composition_squads.revision
+          AND excluded.name = composition_squads.name
+          AND excluded.leader_agent_id = composition_squads.leader_agent_id
+          AND excluded.member_agent_ids_json = composition_squads.member_agent_ids_json
+          AND excluded.instructions IS composition_squads.instructions
+          AND excluded.configuration_json IS composition_squads.configuration_json
+          AND excluded.created_at_unix_ms = composition_squads.created_at_unix_ms
+          AND excluded.updated_at_unix_ms = composition_squads.updated_at_unix_ms
+          AND excluded.archived_at_unix_ms IS composition_squads.archived_at_unix_ms
+        )
+      RETURNING
+        squad_id AS "squadId", name, leader_agent_id AS "leaderAgentId",
+        member_agent_ids_json AS "memberAgentIds", instructions, revision,
+        configuration_json AS "configuration",
+        created_at_unix_ms AS "createdAtUnixMs",
+        updated_at_unix_ms AS "updatedAtUnixMs",
+        archived_at_unix_ms AS "archivedAtUnixMs"
     `,
   });
 
@@ -827,7 +896,10 @@ const makeStore = Effect.gen(function* () {
     Result: SquadRowSchema,
     execute: ({ id }) => sql`
       SELECT squad_id AS "squadId", name, leader_agent_id AS "leaderAgentId",
-        member_agent_ids_json AS "memberAgentIds", instructions,
+        member_agent_ids_json AS "memberAgentIds", instructions, revision,
+        configuration_json AS "configuration",
+        created_at_unix_ms AS "createdAtUnixMs",
+        updated_at_unix_ms AS "updatedAtUnixMs",
         archived_at_unix_ms AS "archivedAtUnixMs"
       FROM composition_squads WHERE squad_id = ${id} LIMIT 1
     `,
@@ -1030,15 +1102,42 @@ const makeStore = Effect.gen(function* () {
           ),
         ),
       ),
-    upsertSquad: (squad) =>
-      run(
-        "CompositionTaskStore.upsertSquad",
-        upsertSquadRow({
-          ...squad,
-          instructions: squad.instructions ?? null,
-          archivedAtUnixMs: squad.archivedAtUnixMs ?? null,
-        }).pipe(Effect.as(squad)),
-      ),
+    upsertSquad: (squad) => {
+      const createdAtUnixMs = squad.createdAtUnixMs ?? 0;
+      const updatedAtUnixMs = squad.updatedAtUnixMs ?? createdAtUnixMs;
+      const input = {
+        squadId: squad.squadId,
+        name: squad.name,
+        leaderAgentId: squad.leaderAgentId,
+        memberAgentIds: squad.memberAgentIds,
+        instructions: squad.instructions ?? null,
+        revision: squad.revision ?? 1,
+        configurationJson: squad.members === undefined ? null : encodeCompositionSquad(squad),
+        createdAtUnixMs,
+        updatedAtUnixMs,
+        revisionCreatedAtUnixMs: updatedAtUnixMs,
+        archivedAtUnixMs: squad.archivedAtUnixMs ?? null,
+      };
+      return sql
+        .withTransaction(
+          Effect.gen(function* () {
+            const revision = yield* upsertSquadRevisionRow(input);
+            if (Option.isNone(revision)) {
+              return yield* new CompositionSquadRevisionWriteError({
+                detail: "Squad revision 已存在且内容不一致。",
+              });
+            }
+            const current = yield* upsertSquadRow(input);
+            if (Option.isNone(current)) {
+              return yield* new CompositionSquadRevisionWriteError({
+                detail: "Squad revision 必须从 1 开始并连续递增。",
+              });
+            }
+            return squad;
+          }),
+        )
+        .pipe(Effect.mapError(toPersistenceSqlError("CompositionTaskStore.upsertSquad")));
+    },
     getSquad: (squadId) =>
       run(
         "CompositionTaskStore.getSquad",
