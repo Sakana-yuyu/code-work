@@ -6,7 +6,9 @@ import {
 import type {
   CompositionSquad,
   CompositionSquadApprovalStage,
+  CompositionSquadDuplicateRequest,
   CompositionSquadMember,
+  CompositionSquadRevisionMutationRequest,
   CompositionSquadUpdateRequest,
 } from "@codework/contracts";
 
@@ -115,6 +117,23 @@ export const buildSquadBuilderUpdateRequest = (
         issues: built.issues,
       };
 };
+
+export const buildSquadBuilderDuplicateRequest = (
+  squad: CompositionSquad,
+  suffix: string,
+  name: string,
+): CompositionSquadDuplicateRequest => ({
+  sourceSquadId: squad.squadId,
+  squadId: `${squad.squadId}-${suffix}`,
+  name,
+});
+
+export const buildSquadBuilderRevisionMutationRequest = (
+  squad: CompositionSquad,
+): CompositionSquadRevisionMutationRequest => ({
+  squadId: squad.squadId,
+  expectedRevision: squad.revision ?? 1,
+});
 
 /** Builder 同时展示活动与归档配置，活动项优先，各分组内按最近更新时间排序。 */
 export const sortSquadBuilderSquads = (

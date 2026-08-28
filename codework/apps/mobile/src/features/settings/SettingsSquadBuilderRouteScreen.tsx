@@ -5,15 +5,23 @@ import {
   draftFromCompositionSquad,
   type CompositionSquadDraft,
 } from "@codework/client-runtime/composition/squad-builder";
-import { squashAtomCommandFailure } from "@codework/client-runtime/state/runtime";
-import type { CompositionSquad, CompositionSquadMember } from "@codework/contracts";
-import { useMemo, useState } from "react";
+import {
+  squashAtomCommandFailure,
+  type AtomCommandResult,
+} from "@codework/client-runtime/state/runtime";
+import type {
+  CompositionSquad,
+  CompositionSquadMember,
+  CompositionSquadResult,
+} from "@codework/contracts";
+import { useMemo, useRef, useState } from "react";
 import { Platform, Pressable, RefreshControl, ScrollView, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { AndroidScreenHeader } from "../../components/AndroidScreenHeader";
 import { AppText as Text } from "../../components/AppText";
 import { t } from "../../i18n";
+import { uuidv4 } from "../../lib/uuid";
 import { NativeStackScreenOptions } from "../../native/StackHeader";
 import { useEnvironments } from "../../state/environments";
 import { useEnvironmentQuery } from "../../state/query";
@@ -21,6 +29,8 @@ import { serverEnvironment } from "../../state/server";
 import { useAtomCommand } from "../../state/use-atom-command";
 import { SettingsSquadBuilderForm } from "./SettingsSquadBuilderForm";
 import {
+  buildSquadBuilderDuplicateRequest,
+  buildSquadBuilderRevisionMutationRequest,
   buildSquadBuilderUpdateRequest,
   resolveSquadBuilderMembers,
   squadCollaborationModeLabelKey,
@@ -49,15 +59,25 @@ export function SettingsSquadBuilderRouteScreen() {
   const updateSquad = useAtomCommand(serverEnvironment.updateCompositionSquad, {
     reportFailure: false,
   });
+  const duplicateSquad = useAtomCommand(serverEnvironment.duplicateCompositionSquad, {
+    reportFailure: false,
+  });
+  const archiveSquad = useAtomCommand(serverEnvironment.archiveCompositionSquad, {
+    reportFailure: false,
+  });
+  const restoreSquad = useAtomCommand(serverEnvironment.restoreCompositionSquad, {
+    reportFailure: false,
+  });
   const [editorMode, setEditorMode] = useState<"create" | "edit" | null>(null);
   const [editingSquadId, setEditingSquadId] = useState<string | null>(null);
   const [draft, setDraft] = useState<CompositionSquadDraft>(createEmptyCompositionSquadDraft);
   const [actionPending, setActionPending] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
   const [actionSuccess, setActionSuccess] = useState<{
-    readonly kind: "created" | "updated";
+    readonly kind: "created" | "updated" | "duplicated" | "archivedSuccess" | "restored";
     readonly name: string;
   } | null>(null);
+  const actionInFlightRef = useRef(false);
   const squads = sortSquadBuilderSquads(squadsQuery.data?.squads ?? []);
   const editingSquad = squads.find((squad) => squad.squadId === editingSquadId) ?? null;
   const createBuildResult = useMemo(() => buildCompositionSquadCreateRequest(draft), [draft]);
@@ -92,11 +112,12 @@ export function SettingsSquadBuilderRouteScreen() {
   };
 
   const submitEditor = async (): Promise<void> => {
-    if (environmentId === null || editorMode === null || actionPending) return;
+    if (environmentId === null || editorMode === null || actionInFlightRef.current) return;
     if (editorMode === "create" && createBuildResult.request === null) return;
     if (editorMode === "edit" && (updateBuildResult.request === null || editingSquad === null)) {
       return;
     }
+    actionInFlightRef.current = true;
     setActionPending(true);
     setActionError(null);
     setActionSuccess(null);
@@ -117,7 +138,55 @@ export function SettingsSquadBuilderRouteScreen() {
       setEditingSquadId(null);
       squadsQuery.refresh();
     }
+    actionInFlightRef.current = false;
     setActionPending(false);
+  };
+
+  const settleLifecycle = async (
+    kind: "duplicated" | "archivedSuccess" | "restored",
+    execute: () => Promise<AtomCommandResult<CompositionSquadResult, unknown>>,
+  ): Promise<void> => {
+    if (editorMode !== null || actionInFlightRef.current) return;
+    actionInFlightRef.current = true;
+    setActionPending(true);
+    setActionError(null);
+    setActionSuccess(null);
+    const result = await execute();
+    if (result._tag === "Failure") {
+      const error = squashAtomCommandFailure(result);
+      setActionError(error instanceof Error ? error.message : t("squadBuilder.actionFailed"));
+    } else {
+      setActionSuccess({ kind, name: result.value.squad.name });
+      squadsQuery.refresh();
+    }
+    actionInFlightRef.current = false;
+    setActionPending(false);
+  };
+
+  const duplicateSelectedSquad = async (squad: CompositionSquad): Promise<void> => {
+    if (environmentId === null) return;
+    const suffix = `copy-${uuidv4().slice(0, 8)}`;
+    await settleLifecycle("duplicated", () =>
+      duplicateSquad({
+        environmentId,
+        input: buildSquadBuilderDuplicateRequest(
+          squad,
+          suffix,
+          t("squadBuilder.copyName", { name: squad.name }),
+        ),
+      }),
+    );
+  };
+
+  const changeArchiveState = async (squad: CompositionSquad, archive: boolean): Promise<void> => {
+    if (environmentId === null) return;
+    const command = archive ? archiveSquad : restoreSquad;
+    await settleLifecycle(archive ? "archivedSuccess" : "restored", () =>
+      command({
+        environmentId,
+        input: buildSquadBuilderRevisionMutationRequest(squad),
+      }),
+    );
   };
 
   return (
@@ -185,6 +254,8 @@ export function SettingsSquadBuilderRouteScreen() {
               squad={squad}
               actionsDisabled={actionPending || editorMode !== null}
               onEdit={() => startEdit(squad)}
+              onDuplicate={() => void duplicateSelectedSquad(squad)}
+              onArchiveStateChange={(archive) => void changeArchiveState(squad, archive)}
             />
           ))
         )}
@@ -197,6 +268,8 @@ function SquadConfigurationCard(props: {
   readonly squad: CompositionSquad;
   readonly actionsDisabled: boolean;
   readonly onEdit: () => void;
+  readonly onDuplicate: () => void;
+  readonly onArchiveStateChange: (archive: boolean) => void;
 }) {
   const { squad } = props;
   const summary = summarizeSquadBuilderConfiguration(squad);
@@ -259,15 +332,25 @@ function SquadConfigurationCard(props: {
           <SquadMemberRow key={`${member.order}:${member.agentId}`} member={member} />
         ))}
       </View>
-      {summary.archived ? null : (
-        <View className="flex-row justify-end border-t border-border-subtle pt-3">
+      <View className="flex-row flex-wrap justify-end gap-2 border-t border-border-subtle pt-3">
+        {summary.archived ? null : (
           <ActionButton
             label={t("squadBuilder.edit")}
             disabled={props.actionsDisabled}
             onPress={props.onEdit}
           />
-        </View>
-      )}
+        )}
+        <ActionButton
+          label={t("squadBuilder.duplicate")}
+          disabled={props.actionsDisabled}
+          onPress={props.onDuplicate}
+        />
+        <ActionButton
+          label={t(summary.archived ? "squadBuilder.restore" : "squadBuilder.archive")}
+          disabled={props.actionsDisabled}
+          onPress={() => props.onArchiveStateChange(!summary.archived)}
+        />
+      </View>
     </View>
   );
 }

@@ -4,6 +4,8 @@ import { describe, expect, it } from "vite-plus/test";
 
 import {
   addSquadBuilderMember,
+  buildSquadBuilderDuplicateRequest,
+  buildSquadBuilderRevisionMutationRequest,
   buildSquadBuilderUpdateRequest,
   patchSquadBuilderMember,
   removeSquadBuilderMember,
@@ -185,5 +187,32 @@ describe("buildSquadBuilderUpdateRequest", () => {
         expect.objectContaining({ code: "required", path: "name" }),
       ]),
     );
+  });
+});
+
+describe("Squad Builder lifecycle requests", () => {
+  it("builds a deterministic duplicate request from the selected squad", () => {
+    expect(
+      buildSquadBuilderDuplicateRequest(
+        squad({ squadId: "squad-source", name: "Source" }),
+        "copy-1234",
+        "Source copy",
+      ),
+    ).toEqual({
+      sourceSquadId: "squad-source",
+      squadId: "squad-source-copy-1234",
+      name: "Source copy",
+    });
+  });
+
+  it("pins archive and restore mutations to the current revision", () => {
+    expect(buildSquadBuilderRevisionMutationRequest(squad({ revision: 9 }))).toEqual({
+      squadId: "squad-a",
+      expectedRevision: 9,
+    });
+    expect(buildSquadBuilderRevisionMutationRequest(squad({ revision: undefined }))).toEqual({
+      squadId: "squad-a",
+      expectedRevision: 1,
+    });
   });
 });
