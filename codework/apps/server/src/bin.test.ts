@@ -336,6 +336,25 @@ it.layer(NodeServices.layer)("bin cli parsing", (it) => {
     }),
   );
 
+  it.effect("exposes idempotent Automation run-once and retry commands", () =>
+    Effect.gen(function* () {
+      const runOnce = yield* captureStdout(
+        runCli(["automation", "run-once", "--help"], noConnectCli),
+      );
+      const retry = yield* captureStdout(
+        runCli(["automation", "retry", "--help"], noConnectCli),
+      );
+
+      assert.include(runOnce.output, "Run a composition automation once with a stable operation id.");
+      assert.include(runOnce.output, "--expected-revision");
+      assert.include(runOnce.output, "--operation-id");
+      assert.include(retry.output, "Retry a composition automation run with a stable operation id.");
+      assert.include(retry.output, "<automation-run-id>");
+      assert.include(retry.output, "--expected-revision");
+      assert.include(retry.output, "--operation-id");
+    }),
+  );
+
   it.effect("reports fresh headless connect state without requiring local configuration", () =>
     Effect.gen(function* () {
       const baseDir = NodeFS.mkdtempSync(

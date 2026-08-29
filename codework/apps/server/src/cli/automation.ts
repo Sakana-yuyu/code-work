@@ -1,3 +1,5 @@
+import * as NodeCrypto from "node:crypto";
+
 import {
   type CompositionAutomation,
   CompositionAutomationCreateRequest as CompositionAutomationCreateRequestSchema,
@@ -5,6 +7,7 @@ import {
   type CompositionAutomationDeleteResult,
   type CompositionAutomationListResult,
   type CompositionAutomationResult,
+  type CompositionAutomationRunResult,
   CompositionAutomationStatus,
   type CompositionAutomationStatus as CompositionAutomationStatusType,
   CompositionAutomationUpdateRequest as CompositionAutomationUpdateRequestSchema,
@@ -48,6 +51,14 @@ export interface UpdateAutomationOptions extends ControlConnectionOptions {
 export interface MutateAutomationRevisionOptions extends ControlConnectionOptions {
   readonly automationId: string;
   readonly expectedRevision: number;
+}
+
+export interface RunAutomationOnceOptions extends MutateAutomationRevisionOptions {
+  readonly operationId: string;
+}
+
+export interface RetryAutomationRunOptions extends RunAutomationOnceOptions {
+  readonly automationRunId: string;
 }
 
 export class AutomationStatusInputError extends Data.TaggedError("AutomationStatusInputError")<{
@@ -155,6 +166,41 @@ export const deleteAutomation = (
       rpc[WS_METHODS.serverDeleteCompositionAutomation]({
         automationId: options.automationId,
         expectedRevision: options.expectedRevision,
+      }),
+  );
+
+export const runAutomationOnce = (
+  options: RunAutomationOnceOptions,
+  open: ControlClientOpen = openControlClient,
+) =>
+  open(
+    {
+      serverUrl: options.serverUrl,
+      ...(options.accessToken ? { accessToken: options.accessToken } : {}),
+    },
+    (rpc) =>
+      rpc[WS_METHODS.serverRunCompositionAutomationOnce]({
+        automationId: options.automationId,
+        expectedRevision: options.expectedRevision,
+        operationId: options.operationId,
+      }),
+  );
+
+export const retryAutomationRun = (
+  options: RetryAutomationRunOptions,
+  open: ControlClientOpen = openControlClient,
+) =>
+  open(
+    {
+      serverUrl: options.serverUrl,
+      ...(options.accessToken ? { accessToken: options.accessToken } : {}),
+    },
+    (rpc) =>
+      rpc[WS_METHODS.serverRetryCompositionAutomationRun]({
+        automationId: options.automationId,
+        automationRunId: options.automationRunId,
+        expectedRevision: options.expectedRevision,
+        operationId: options.operationId,
       }),
   );
 
@@ -323,6 +369,30 @@ export function formatAutomationDeleteResult(
     : `Deleted ${result.automationId} at ${formatUnixMs(result.deletedAtUnixMs)}`;
 }
 
+export function formatAutomationRunResult(
+  result: CompositionAutomationRunResult,
+  json: boolean,
+): string {
+  const { run } = result;
+  if (json) {
+    return JSON.stringify(run, null, 2);
+  }
+  const error = [run.errorCode, run.errorDetail].filter((part) => part !== null).join("  ");
+  return [
+    `Run: ${run.automationRunId}`,
+    `Automation: ${run.automationId} r${String(run.automationRevision)}`,
+    `Status: ${run.status}`,
+    `Trigger: ${run.trigger}`,
+    `Operation ID: ${run.operationId ?? "none"}`,
+    `Scheduled for: ${formatUnixMs(run.scheduledForUnixMs)}`,
+    `Attempt: ${String(run.attempt)}`,
+    `Task: ${run.compositionTaskId ?? "none"}`,
+    `Composition run: ${run.compositionRunId ?? "none"}`,
+    `Output: ${run.outputSummary ?? "none"}`,
+    `Error: ${error || "none"}`,
+  ].join("\n");
+}
+
 const serverFlag = Flag.string("server").pipe(
   Flag.withDescription("Code Work server URL or pairing link."),
   Flag.withDefault("http://127.0.0.1:3773"),
@@ -354,6 +424,10 @@ const automationIdArgument = Argument.string("automation-id").pipe(
   Argument.withDescription("Composition automation id."),
 );
 
+const automationRunIdArgument = Argument.string("automation-run-id").pipe(
+  Argument.withDescription("Source composition automation run id."),
+);
+
 const configFileFlag = Flag.string("config").pipe(
   Flag.withSchema(TrimmedNonEmptyString),
   Flag.withDescription("JSON file validated against the Code Work Automation contract."),
@@ -362,6 +436,14 @@ const configFileFlag = Flag.string("config").pipe(
 const expectedRevisionFlag = Flag.integer("expected-revision").pipe(
   Flag.withSchema(PositiveInt),
   Flag.withDescription("Current revision required for optimistic concurrency."),
+);
+
+const operationIdFlag = Flag.string("operation-id").pipe(
+  Flag.withSchema(TrimmedNonEmptyString),
+  Flag.withDescription(
+    "Stable idempotency key. Generated and printed before dispatch when omitted.",
+  ),
+  Flag.optional,
 );
 
 const automationListCommand = Command.make("list", {
@@ -510,6 +592,58 @@ const automationDeleteCommand = Command.make("delete", {
   ),
 );
 
+const automationRunOnceCommand = Command.make("run-once", {
+  automationId: automationIdArgument,
+  expectedRevision: expectedRevisionFlag,
+  operationId: operationIdFlag,
+  server: serverFlag,
+  accessToken: accessTokenFlag,
+  json: jsonFlag,
+}).pipe(
+  Command.withDescription("Run a composition automation once with a stable operation id."),
+  Command.withHandler((flags) =>
+    Effect.gen(function* () {
+      const operationId = Option.getOrElse(flags.operationId, NodeCrypto.randomUUID);
+      yield* Console.error(`Operation ID: ${operationId}`);
+      const result = yield* runAutomationOnce({
+        serverUrl: flags.server,
+        ...(Option.isSome(flags.accessToken) ? { accessToken: flags.accessToken.value } : {}),
+        automationId: flags.automationId,
+        expectedRevision: flags.expectedRevision,
+        operationId,
+      });
+      yield* Console.log(formatAutomationRunResult(result, flags.json));
+    }),
+  ),
+);
+
+const automationRetryCommand = Command.make("retry", {
+  automationId: automationIdArgument,
+  automationRunId: automationRunIdArgument,
+  expectedRevision: expectedRevisionFlag,
+  operationId: operationIdFlag,
+  server: serverFlag,
+  accessToken: accessTokenFlag,
+  json: jsonFlag,
+}).pipe(
+  Command.withDescription("Retry a composition automation run with a stable operation id."),
+  Command.withHandler((flags) =>
+    Effect.gen(function* () {
+      const operationId = Option.getOrElse(flags.operationId, NodeCrypto.randomUUID);
+      yield* Console.error(`Operation ID: ${operationId}`);
+      const result = yield* retryAutomationRun({
+        serverUrl: flags.server,
+        ...(Option.isSome(flags.accessToken) ? { accessToken: flags.accessToken.value } : {}),
+        automationId: flags.automationId,
+        automationRunId: flags.automationRunId,
+        expectedRevision: flags.expectedRevision,
+        operationId,
+      });
+      yield* Console.log(formatAutomationRunResult(result, flags.json));
+    }),
+  ),
+);
+
 export const automationCommand = Command.make("automation").pipe(
   Command.withDescription("Manage composition automations."),
   Command.withSubcommands([
@@ -520,5 +654,7 @@ export const automationCommand = Command.make("automation").pipe(
     automationPauseCommand,
     automationResumeCommand,
     automationDeleteCommand,
+    automationRunOnceCommand,
+    automationRetryCommand,
   ]),
 );
