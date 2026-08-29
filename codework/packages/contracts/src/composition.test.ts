@@ -609,6 +609,14 @@ describe("composition contracts", () => {
         pausedAtUnixMs: 110,
       }),
     ).toThrow();
+    expect(
+      validateCompositionSquadExecution({
+        ...base,
+        status: "paused",
+        pausedFromStatus: "queued",
+        pausedAtUnixMs: 180,
+      }),
+    ).toContainEqual({ code: "start_state_invalid", path: "startedAtUnixMs" });
     const approvalBeforeStartIssues = validateCompositionSquadExecution({
       ...base,
       status: "awaiting_approval",

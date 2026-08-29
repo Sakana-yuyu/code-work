@@ -1409,9 +1409,11 @@ export const validateCompositionSquadExecution = (
   const requiresStart =
     squadExecutionStatusesRequiringStart.has(input.status) ||
     (input.status === "paused" && input.pausedFromStatus !== "queued");
+  const forbidsStart =
+    input.status === "queued" || (input.status === "paused" && input.pausedFromStatus === "queued");
   if (
     (requiresStart && input.startedAtUnixMs === undefined) ||
-    (input.status === "queued" && input.startedAtUnixMs !== undefined)
+    (forbidsStart && input.startedAtUnixMs !== undefined)
   ) {
     add("start_state_invalid", "startedAtUnixMs");
   }
