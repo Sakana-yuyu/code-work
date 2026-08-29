@@ -4,6 +4,7 @@ import * as Schema from "effect/Schema";
 import { ApprovalRequestId } from "./baseSchemas.ts";
 
 import {
+  COMPOSITION_SQUAD_EXECUTION_HISTORY_MAX_LIMIT,
   CompositionAgentLoopRequest,
   CompositionAgentLoopRunRequest,
   CompositionAgentLoopRunResult,
@@ -15,6 +16,8 @@ import {
   CompositionSquadCreateRequest,
   CompositionSquadDuplicateRequest,
   CompositionSquadExecution,
+  CompositionSquadExecutionListRequest,
+  CompositionSquadExecutionListResult,
   CompositionSquadExecutionRequest,
   CompositionSquadExecutionResult,
   CompositionSquadListRequest,
@@ -55,6 +58,10 @@ const decodeSquad = Schema.decodeUnknownSync(CompositionSquad);
 const decodeSquadCreate = Schema.decodeUnknownSync(CompositionSquadCreateRequest);
 const decodeSquadDuplicate = Schema.decodeUnknownSync(CompositionSquadDuplicateRequest);
 const decodePersistedSquadExecution = Schema.decodeUnknownSync(CompositionSquadExecution);
+const decodeSquadExecutionList = Schema.decodeUnknownSync(CompositionSquadExecutionListRequest);
+const decodeSquadExecutionListResult = Schema.decodeUnknownSync(
+  CompositionSquadExecutionListResult,
+);
 const decodeSquadExecution = Schema.decodeUnknownSync(CompositionSquadExecutionRequest);
 const decodeSquadExecutionResult = Schema.decodeUnknownSync(CompositionSquadExecutionResult);
 const decodeSquadList = Schema.decodeUnknownSync(CompositionSquadListRequest);
@@ -500,6 +507,50 @@ describe("composition contracts", () => {
     expect(paused.pausedFromStatus).toBe("running");
     expect(awaitingApproval.pendingApprovals[0]?.stage).toBe("before_finalize");
     expect(completed.resultSummary).toContain("控制面");
+  });
+
+  it("定义可过滤且有明确上限的 Squad execution 历史查询合同", () => {
+    const fullRequest = decodeSquadExecutionList({
+      projectId: "project-1",
+      threadId: "thread-1",
+      squadId: "squad-validation",
+      statuses: ["queued", "running", "failed"],
+      limit: COMPOSITION_SQUAD_EXECUTION_HISTORY_MAX_LIMIT,
+    });
+    const emptyRequest = decodeSquadExecutionList({});
+    const firstExecution = decodePersistedSquadExecution({
+      executionId: "execution-history-1",
+      squadId: "squad-validation",
+      squadRevision: 1,
+      projectId: "project-1",
+      threadId: "thread-1",
+      goalDigest: "sha256:history-goal",
+      goalTaskId: "execution-history-1:task:goal",
+      workspaceRootDigest: "sha256:history-workspace",
+      status: "queued",
+      revision: 1,
+      leaderTaskId: "execution-history-1:task:leader",
+      leaderRunId: "execution-history-1:run:leader:1",
+      pendingApprovals: [],
+      createdAtUnixMs: 100,
+      updatedAtUnixMs: 100,
+    });
+    const result = decodeSquadExecutionListResult({ executions: [firstExecution] });
+
+    expect(fullRequest).toEqual({
+      projectId: "project-1",
+      threadId: "thread-1",
+      squadId: "squad-validation",
+      statuses: ["queued", "running", "failed"],
+      limit: 200,
+    });
+    expect(emptyRequest).toEqual({});
+    expect(result.executions).toEqual([firstExecution]);
+    expect(decodeSquadExecutionList({ limit: 1 })).toEqual({ limit: 1 });
+    expect(decodeSquadExecutionList({ limit: 200 })).toEqual({ limit: 200 });
+    expect(() => decodeSquadExecutionList({ limit: 0 })).toThrow();
+    expect(() => decodeSquadExecutionList({ limit: 1.5 })).toThrow();
+    expect(() => decodeSquadExecutionList({ limit: 201 })).toThrow();
   });
 
   it("拒绝时间线、暂停、审批和终态字段不一致的 Squad execution", () => {

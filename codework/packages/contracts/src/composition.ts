@@ -1440,6 +1440,29 @@ export const CompositionSquadExecution = CompositionSquadExecutionFields.check(
 );
 export type CompositionSquadExecution = typeof CompositionSquadExecution.Type;
 
+export const COMPOSITION_SQUAD_EXECUTION_HISTORY_MAX_LIMIT = 200;
+
+/** Squad execution 历史查询只暴露产品过滤条件，不复用恢复扫描游标。 */
+export const CompositionSquadExecutionListRequest = Schema.Struct({
+  projectId: Schema.optional(TrimmedNonEmptyString),
+  threadId: Schema.optional(ThreadId),
+  squadId: Schema.optional(TrimmedNonEmptyString),
+  statuses: Schema.optional(
+    Schema.Array(CompositionSquadExecutionStatus).check(Schema.isMaxLength(10)),
+  ),
+  limit: Schema.optional(
+    PositiveInt.check(Schema.isLessThanOrEqualTo(COMPOSITION_SQUAD_EXECUTION_HISTORY_MAX_LIMIT)),
+  ),
+});
+export type CompositionSquadExecutionListRequest = typeof CompositionSquadExecutionListRequest.Type;
+
+export const CompositionSquadExecutionListResult = Schema.Struct({
+  executions: Schema.Array(CompositionSquadExecution).check(
+    Schema.isMaxLength(COMPOSITION_SQUAD_EXECUTION_HISTORY_MAX_LIMIT),
+  ),
+});
+export type CompositionSquadExecutionListResult = typeof CompositionSquadExecutionListResult.Type;
+
 const allowedCompositionSquadExecutionStatusTransitions = {
   queued: new Set<CompositionSquadExecutionStatus>(["planning", "paused", "cancelled"]),
   planning: new Set<CompositionSquadExecutionStatus>([
