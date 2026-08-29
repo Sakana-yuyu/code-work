@@ -1,8 +1,11 @@
 import type {
   CompositionSquad,
+  CompositionSquadExecutionResult,
   CompositionSquadListResult,
+  CompositionSquadPlanNode,
   CompositionSquadRevisionListResult,
   CompositionSquadResult,
+  CompositionTaskStatus,
 } from "@codework/contracts";
 import { it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
@@ -11,11 +14,14 @@ import { describe, expect, vi } from "vite-plus/test";
 import type { ControlClientOpen } from "./controlClient.ts";
 import {
   formatSquadDetails,
+  formatSquadExecutionResult,
   formatSquadList,
   formatSquadRevisions,
+  decodeSquadPlanText,
   getSquad,
   listSquadRevisions,
   listSquads,
+  runSquad,
 } from "./squad.ts";
 
 const squad: CompositionSquad = {
@@ -70,6 +76,84 @@ const revisions: CompositionSquadRevisionListResult = {
       createdAtUnixMs: 1_000,
     },
   ],
+};
+
+const task = (taskId: string, status: CompositionTaskStatus) => ({
+  taskId,
+  projectId: "project-1",
+  assigneeKind: "agent" as const,
+  assigneeId: "agent-build",
+  mode: "parallel" as const,
+  status,
+  promptDigest: `sha256:${taskId}`,
+  dependsOnTaskIds: [],
+  createdAtUnixMs: 1,
+  updatedAtUnixMs: 2,
+});
+
+const run = (runId: string, status: CompositionTaskStatus) => ({
+  runId,
+  taskId: runId.replace("run", "task"),
+  agentId: "agent-build",
+  runtimeId: "runtime-1",
+  status,
+  attempt: 2,
+  capabilityGrantIds: [],
+  ...(status === "completed"
+    ? { resultSummary: "Implementation completed" }
+    : { failureCode: "provider_timeout" }),
+});
+
+const plan: ReadonlyArray<CompositionSquadPlanNode> = [
+  {
+    nodeId: "build",
+    agentId: "agent-build",
+    prompt: "Implement the change",
+    dependsOnNodeIds: [],
+  },
+];
+const planJson =
+  '[{"nodeId":"build","agentId":"agent-build","prompt":"Implement the change","dependsOnNodeIds":[]}]';
+
+const executionResult: CompositionSquadExecutionResult = {
+  executionId: "execution-1",
+  squadId: squad.squadId,
+  squadRevision: 3,
+  graph: {
+    leader: {
+      task: {
+        ...task("task-leader", "completed"),
+        assigneeKind: "squad",
+        assigneeId: squad.squadId,
+        mode: "review",
+      },
+      run: {
+        ...run("run-leader", "completed"),
+        taskId: "task-leader",
+        agentId: "agent-lead",
+        attempt: 1,
+      },
+    },
+    children: [
+      {
+        nodeId: "build",
+        task: task("task-build", "completed"),
+        run: { ...run("run-build", "completed"), taskId: "task-build" },
+        attempts: 2,
+        dispatches: [],
+      },
+    ],
+    failures: [
+      {
+        nodeId: "review",
+        kind: "failed",
+        failureCode: "provider_timeout",
+        detail: "Provider did not respond",
+        task: task("task-review", "failed"),
+        run: { ...run("run-review", "failed"), taskId: "task-review" },
+      },
+    ],
+  },
 };
 
 describe("Squad CLI", () => {
@@ -186,5 +270,79 @@ describe("Squad CLI", () => {
       ].join("\n"),
     );
     expect(formatSquadRevisions({ revisions: [] }, false)).toBe("No squad revisions found.");
+  });
+
+  it.effect("使用稳定 execution id 发起 Squad 运行", () =>
+    Effect.gen(function* () {
+      const rpc = vi.fn(() => Effect.succeed(executionResult));
+      const connections: Array<Parameters<ControlClientOpen>[0]> = [];
+      const open: ControlClientOpen = (connection, use) => {
+        connections.push(connection);
+        return use({ "server.runCompositionSquad": rpc } as never);
+      };
+
+      const result = yield* runSquad(
+        {
+          serverUrl: "https://codework.example.test",
+          accessToken: "session-token",
+          executionId: "execution-1",
+          squadId: squad.squadId,
+          squadRevision: 3,
+          projectId: "project-1",
+          threadId: "thread-1",
+          goal: "Implement and review the change",
+          workspaceRoot: "E:\\workspace\\project-1",
+          workspaceRootDigest: "sha256:workspace",
+          plan,
+        },
+        open,
+      );
+
+      expect(result).toEqual(executionResult);
+      expect(connections).toEqual([
+        {
+          serverUrl: "https://codework.example.test",
+          accessToken: "session-token",
+        },
+      ]);
+      expect(rpc).toHaveBeenCalledWith({
+        executionId: "execution-1",
+        squadId: "squad-build",
+        squadRevision: 3,
+        projectId: "project-1",
+        threadId: "thread-1",
+        goal: "Implement and review the change",
+        workspaceRoot: "E:\\workspace\\project-1",
+        workspaceRootDigest: "sha256:workspace",
+        plan,
+      });
+    }),
+  );
+
+  it.effect("校验显式 Squad 计划 JSON", () =>
+    Effect.gen(function* () {
+      expect(yield* decodeSquadPlanText(planJson)).toEqual(plan);
+      const error = yield* decodeSquadPlanText('{"nodes":[]}').pipe(Effect.flip);
+      expect(error).toMatchObject({
+        _tag: "SquadPlanInputError",
+        message: "Squad plan file must contain a JSON array of valid plan nodes.",
+      });
+    }),
+  );
+
+  it("输出稳定的 Squad 运行结果", () => {
+    expect(formatSquadExecutionResult(executionResult, true)).toBe(
+      JSON.stringify(executionResult, null, 2),
+    );
+    expect(formatSquadExecutionResult(executionResult, false)).toBe(
+      [
+        "Execution: execution-1",
+        "Squad: squad-build r3",
+        "Leader: completed  agent-lead  attempt 1",
+        "build: completed  agent-build  attempts 2  Implementation completed",
+        "review: failed  provider_timeout  Provider did not respond",
+        "Summary: 1 child result, 1 failure",
+      ].join("\n"),
+    );
   });
 });

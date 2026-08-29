@@ -241,6 +241,20 @@ it.layer(NodeServices.layer)("bin cli parsing", (it) => {
     }),
   );
 
+  it.effect("exposes the idempotent Squad run command", () =>
+    Effect.gen(function* () {
+      const { output } = yield* captureStdout(runCli(["squad", "run", "--help"], noConnectCli));
+
+      assert.include(output, "Run a composition squad with a stable execution id.");
+      assert.include(output, "--execution-id");
+      assert.include(output, "--revision");
+      assert.include(output, "--project");
+      assert.include(output, "--goal");
+      assert.include(output, "--workspace-root");
+      assert.include(output, "--plan-file");
+    }),
+  );
+
   it.effect("reports fresh headless connect state without requiring local configuration", () =>
     Effect.gen(function* () {
       const baseDir = NodeFS.mkdtempSync(
