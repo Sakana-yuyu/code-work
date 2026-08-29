@@ -8,16 +8,19 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
+import * as NodeCrypto from "node:crypto";
 
 import * as CapabilityRegistry from "./CapabilityRegistry.ts";
 import * as CapabilityGrantRegistry from "./CapabilityGrantRegistry.ts";
 
 export const CapabilityPolicyInput = Schema.Struct({
   taskId: Schema.String,
+  runId: Schema.String,
   agentId: Schema.String,
   capabilityId: Schema.String,
   capabilityGrantIds: Schema.Array(Schema.String),
   operation: Schema.Literals(["read", "execute", "mutate"]),
+  idempotencyKey: Schema.String,
   approvalRequestId: Schema.optional(Schema.String),
 });
 export type CapabilityPolicyInput = typeof CapabilityPolicyInput.Type;
@@ -51,15 +54,52 @@ export class ApprovalRequestNotFoundError extends Schema.TaggedErrorClass<Approv
 
 export type CompositionCapabilityPolicyOptions = {
   readonly capabilityRegistry: Pick<CapabilityRegistry.CapabilityRegistry["Service"], "list">;
-  readonly grantRegistry?: Pick<CapabilityGrantRegistry.CapabilityGrantRegistryShape, "validate">;
+  readonly grantRegistry?: Pick<CapabilityGrantRegistry.CapabilityGrantRegistryShape, "validate"> &
+    Partial<
+      Pick<
+        CapabilityGrantRegistry.CapabilityGrantRegistryShape,
+        "getAuditById" | "recordAuditIfNew"
+      >
+    >;
 };
 
 type ApprovalState = {
   readonly taskId: string;
+  readonly runId: string;
   readonly agentId: string;
   readonly capabilityId: string;
+  readonly operation: CapabilityPolicyInput["operation"];
+  readonly idempotencyKey: string;
   approved: boolean;
 };
+
+const approvalRequestIdFor = (input: CapabilityPolicyInput): string => {
+  const digest = NodeCrypto.createHash("sha256")
+    .update(
+      JSON.stringify([
+        input.taskId,
+        input.runId,
+        input.agentId,
+        input.capabilityId,
+        input.operation,
+        input.idempotencyKey,
+      ]),
+      "utf8",
+    )
+    .digest("hex")
+    .slice(0, 24);
+  return `approval-${digest}`;
+};
+
+const approvalAuditId = (
+  phase: "requested" | "approved" | "consumed",
+  approvalRequestId: string,
+): string => {
+  const order = phase === "requested" ? 1 : phase === "approved" ? 2 : 3;
+  return `capability-approval:${approvalRequestId}:${order}-${phase}`;
+};
+
+const decodeApprovalRequestId = Schema.decodeUnknownEffect(ApprovalRequestId);
 
 export class CapabilityPolicy extends Context.Service<
   CapabilityPolicy,
@@ -76,7 +116,10 @@ export class CapabilityPolicy extends Context.Service<
     >;
     readonly approve: (input: {
       readonly approvalRequestId: string;
-    }) => Effect.Effect<void, ApprovalRequestNotFoundError>;
+    }) => Effect.Effect<
+      void,
+      ApprovalRequestNotFoundError | CapabilityGrantRegistry.CapabilityGrantPersistenceError
+    >;
     readonly cancel: (input: { readonly idempotencyKey: string }) => Effect.Effect<void>;
     readonly isCancelled: (idempotencyKey: string) => boolean;
   }
@@ -88,7 +131,14 @@ export const makeCompositionCapabilityPolicy = (
   const registry = options.capabilityRegistry;
   const approvals = new Map<string, ApprovalState>();
   const cancelled = new Set<string>();
-  let approvalSequence = 0;
+  const approvalLedger =
+    options.grantRegistry?.getAuditById === undefined ||
+    options.grantRegistry.recordAuditIfNew === undefined
+      ? undefined
+      : {
+          getAuditById: options.grantRegistry.getAuditById,
+          recordAuditIfNew: options.grantRegistry.recordAuditIfNew,
+        };
 
   const findCapability = (
     descriptors: readonly CompositionCapabilityDescriptor[],
@@ -112,6 +162,7 @@ export const makeCompositionCapabilityPolicy = (
       }
 
       const legacyGrant = input.capabilityGrantIds.includes(input.capabilityId);
+      let validGrantId: string | undefined;
       let validGrantExpiresAtUnixMs: number | undefined;
       if (!legacyGrant && options.grantRegistry !== undefined) {
         for (const grantId of input.capabilityGrantIds) {
@@ -131,6 +182,7 @@ export const makeCompositionCapabilityPolicy = (
               }),
             );
           if (grant !== undefined) {
+            validGrantId = grant.grantId;
             validGrantExpiresAtUnixMs = grant.expiresAtUnixMs;
             break;
           }
@@ -150,6 +202,96 @@ export const makeCompositionCapabilityPolicy = (
         };
       }
 
+      const approvalRequestId = yield* decodeApprovalRequestId(approvalRequestIdFor(input)).pipe(
+        Effect.mapError(
+          () => new CapabilityPolicyInvalidError({ reason: "approval_request_id_invalid" }),
+        ),
+      );
+      if (input.approvalRequestId !== undefined && input.approvalRequestId !== approvalRequestId) {
+        return yield* new CapabilityPolicyInvalidError({ reason: "approval_scope_mismatch" });
+      }
+
+      const approvalGrantId = legacyGrant
+        ? `legacy:${input.capabilityId}`
+        : (validGrantId ?? input.capabilityGrantIds[0]);
+      if (approvalGrantId === undefined) {
+        return yield* new CapabilityPolicyInvalidError({ reason: "approval_grant_missing" });
+      }
+
+      if (approvalLedger !== undefined) {
+        const requestedAuditId = approvalAuditId("requested", approvalRequestId);
+        const approvedAuditId = approvalAuditId("approved", approvalRequestId);
+        const consumedAuditId = approvalAuditId("consumed", approvalRequestId);
+        const requested = yield* approvalLedger.getAuditById({ auditId: requestedAuditId });
+        const consumed = yield* approvalLedger.getAuditById({ auditId: consumedAuditId });
+
+        if (input.approvalRequestId !== undefined) {
+          if (Option.isNone(requested)) {
+            return yield* new CapabilityPolicyInvalidError({
+              reason: "approval_request_not_found",
+            });
+          }
+          const request = requested.value;
+          if (
+            request.taskId !== input.taskId ||
+            request.runId !== input.runId ||
+            request.agentId !== input.agentId ||
+            request.capabilityId !== input.capabilityId ||
+            request.operation !== input.operation ||
+            request.grantId !== approvalGrantId
+          ) {
+            return yield* new CapabilityPolicyInvalidError({ reason: "approval_scope_mismatch" });
+          }
+          if (Option.isSome(consumed)) {
+            return yield* new CapabilityPolicyInvalidError({
+              reason: "approval_request_consumed",
+            });
+          }
+          const approved = yield* approvalLedger.getAuditById({ auditId: approvedAuditId });
+          if (Option.isSome(approved)) {
+            const consumedNow = yield* approvalLedger.recordAuditIfNew({
+              auditId: consumedAuditId,
+              grantId: approvalGrantId,
+              taskId: input.taskId,
+              runId: input.runId,
+              agentId: input.agentId,
+              capabilityId: input.capabilityId,
+              operation: input.operation,
+              outcome: "allowed",
+              errorCode: "capability_approval_consumed",
+            });
+            if (!consumedNow) {
+              return yield* new CapabilityPolicyInvalidError({
+                reason: "approval_request_consumed",
+              });
+            }
+            return { decision: "allow", reasonCode: "approval_granted" };
+          }
+        } else if (Option.isSome(consumed)) {
+          return { decision: "deny", reasonCode: "approval_request_consumed" };
+        }
+
+        yield* approvalLedger.recordAuditIfNew({
+          auditId: requestedAuditId,
+          grantId: approvalGrantId,
+          taskId: input.taskId,
+          runId: input.runId,
+          agentId: input.agentId,
+          capabilityId: input.capabilityId,
+          operation: input.operation,
+          outcome: "approval_required",
+          errorCode: "capability_approval_requested",
+        });
+        return {
+          decision: "approval_required",
+          reasonCode: "destructive_capability_requires_approval",
+          approvalRequestId,
+          ...(validGrantExpiresAtUnixMs === undefined
+            ? {}
+            : { expiresAtUnixMs: validGrantExpiresAtUnixMs }),
+        };
+      }
+
       if (input.approvalRequestId) {
         const approval = approvals.get(input.approvalRequestId);
         if (!approval) {
@@ -157,8 +299,11 @@ export const makeCompositionCapabilityPolicy = (
         }
         if (
           approval.taskId !== input.taskId ||
+          approval.runId !== input.runId ||
           approval.agentId !== input.agentId ||
-          approval.capabilityId !== input.capabilityId
+          approval.capabilityId !== input.capabilityId ||
+          approval.operation !== input.operation ||
+          approval.idempotencyKey !== input.idempotencyKey
         ) {
           return yield* new CapabilityPolicyInvalidError({ reason: "approval_scope_mismatch" });
         }
@@ -167,21 +312,17 @@ export const makeCompositionCapabilityPolicy = (
           return { decision: "allow", reasonCode: "approval_granted" };
         }
       }
-
-      approvalSequence += 1;
-      const approvalRequestId = yield* Schema.decodeUnknownEffect(ApprovalRequestId)(
-        `approval-${approvalSequence}`,
-      ).pipe(
-        Effect.mapError(
-          () => new CapabilityPolicyInvalidError({ reason: "approval_request_id_invalid" }),
-        ),
-      );
-      approvals.set(approvalRequestId, {
-        taskId: input.taskId,
-        agentId: input.agentId,
-        capabilityId: input.capabilityId,
-        approved: false,
-      });
+      if (!approvals.has(approvalRequestId)) {
+        approvals.set(approvalRequestId, {
+          taskId: input.taskId,
+          runId: input.runId,
+          agentId: input.agentId,
+          capabilityId: input.capabilityId,
+          operation: input.operation,
+          idempotencyKey: input.idempotencyKey,
+          approved: false,
+        });
+      }
       return {
         decision: "approval_required",
         reasonCode: "destructive_capability_requires_approval",
@@ -195,6 +336,27 @@ export const makeCompositionCapabilityPolicy = (
 
   const approve: CapabilityPolicy["Service"]["approve"] = Effect.fn("CapabilityPolicy.approve")(
     function* (input) {
+      if (approvalLedger !== undefined) {
+        const requested = yield* approvalLedger.getAuditById({
+          auditId: approvalAuditId("requested", input.approvalRequestId),
+        });
+        if (Option.isNone(requested)) {
+          return yield* new ApprovalRequestNotFoundError(input);
+        }
+        const request = requested.value;
+        yield* approvalLedger.recordAuditIfNew({
+          auditId: approvalAuditId("approved", input.approvalRequestId),
+          grantId: request.grantId,
+          taskId: request.taskId,
+          runId: request.runId,
+          agentId: request.agentId,
+          capabilityId: request.capabilityId,
+          operation: request.operation,
+          outcome: "allowed",
+          errorCode: "capability_approval_approved",
+        });
+        return;
+      }
       const approval = approvals.get(input.approvalRequestId);
       if (!approval) {
         return yield* new ApprovalRequestNotFoundError(input);
@@ -204,9 +366,7 @@ export const makeCompositionCapabilityPolicy = (
   );
 
   const cancel: CapabilityPolicy["Service"]["cancel"] = Effect.fn("CapabilityPolicy.cancel")(
-    function* (input) {
-      cancelled.add(input.idempotencyKey);
-    },
+    (input) => Effect.sync(() => void cancelled.add(input.idempotencyKey)),
   );
 
   return CapabilityPolicy.of({

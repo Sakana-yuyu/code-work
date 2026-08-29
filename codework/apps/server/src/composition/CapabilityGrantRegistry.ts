@@ -4,10 +4,10 @@ import type {
   CompositionCapabilityGrant,
   CompositionCapabilityOperation,
 } from "@codework/contracts";
-import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
+import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 import * as SqlClient from "effect/unstable/sql/SqlClient";
 import * as SqlSchema from "effect/unstable/sql/SqlSchema";
@@ -99,6 +99,10 @@ export type CapabilityGrantAuditInput = {
   readonly errorCode?: string;
 };
 
+export type CapabilityGrantAuditIfNewInput = CapabilityGrantAuditInput & {
+  readonly auditId: string;
+};
+
 export type CapabilityGrantRegistryOptions = {
   readonly capabilityRegistry: Pick<CapabilityRegistry.CapabilityRegistry["Service"], "list">;
   readonly now?: () => number;
@@ -130,6 +134,15 @@ export interface CapabilityGrantRegistryShape {
   readonly recordAudit: (
     input: CapabilityGrantAuditInput,
   ) => Effect.Effect<void, CapabilityGrantPersistenceError>;
+  readonly recordAuditIfNew: (
+    input: CapabilityGrantAuditIfNewInput,
+  ) => Effect.Effect<boolean, CapabilityGrantPersistenceError>;
+  readonly getAuditById: (input: {
+    readonly auditId: string;
+  }) => Effect.Effect<
+    Option.Option<CompositionCapabilityAuditEvent>,
+    CapabilityGrantPersistenceError
+  >;
   readonly listAudit: (input: {
     readonly taskId: string;
   }) => Effect.Effect<
@@ -248,28 +261,53 @@ export const makeCapabilityGrantRegistry = (
 
   const recordAudit: CapabilityGrantRegistryShape["recordAudit"] = Effect.fn(
     "CapabilityGrantRegistry.recordAudit",
-  )(function* (input) {
-    auditSequence += 1;
-    const event = {
-      auditId: `audit-${auditSequence}`,
-      grantId: input.grantId,
-      taskId: input.taskId,
-      runId: input.runId,
-      agentId: input.agentId,
-      capabilityId: input.capabilityId,
-      operation: input.operation,
-      outcome: input.outcome,
-      ...(input.errorCode === undefined ? {} : { errorCode: input.errorCode }),
-      occurredAtUnixMs: now(),
-    } satisfies CompositionCapabilityAuditEvent;
-    audit.set(event.auditId, event);
-  });
+  )((input) =>
+    Effect.sync(() => {
+      auditSequence += 1;
+      const event = {
+        auditId: `audit-${auditSequence}`,
+        grantId: input.grantId,
+        taskId: input.taskId,
+        runId: input.runId,
+        agentId: input.agentId,
+        capabilityId: input.capabilityId,
+        operation: input.operation,
+        outcome: input.outcome,
+        ...(input.errorCode === undefined ? {} : { errorCode: input.errorCode }),
+        occurredAtUnixMs: now(),
+      } satisfies CompositionCapabilityAuditEvent;
+      audit.set(event.auditId, event);
+    }),
+  );
+
+  const recordAuditIfNew: CapabilityGrantRegistryShape["recordAuditIfNew"] = Effect.fn(
+    "CapabilityGrantRegistry.recordAuditIfNew",
+  )((input) =>
+    Effect.sync(() => {
+      if (audit.has(input.auditId)) return false;
+      audit.set(input.auditId, {
+        auditId: input.auditId,
+        grantId: input.grantId,
+        taskId: input.taskId,
+        runId: input.runId,
+        agentId: input.agentId,
+        capabilityId: input.capabilityId,
+        operation: input.operation,
+        outcome: input.outcome,
+        ...(input.errorCode === undefined ? {} : { errorCode: input.errorCode }),
+        occurredAtUnixMs: now(),
+      });
+      return true;
+    }),
+  );
 
   return {
     issue,
     validate,
     revoke,
     recordAudit,
+    recordAuditIfNew,
+    getAuditById: (input) => Effect.succeed(Option.fromNullishOr(audit.get(input.auditId))),
     listAudit: (input) =>
       Effect.succeed([...audit.values()].filter((event) => event.taskId === input.taskId)),
   };
@@ -434,6 +472,48 @@ export const makeSqliteCapabilityGrantRegistry = (
     `,
   });
 
+  const insertAuditIfNew = SqlSchema.findOneOption({
+    Request: Schema.Struct({
+      auditId: Schema.String,
+      grantId: Schema.String,
+      taskId: Schema.String,
+      runId: Schema.String,
+      agentId: Schema.String,
+      capabilityId: Schema.String,
+      operation: Schema.String,
+      outcome: Schema.String,
+      errorCode: Schema.NullOr(Schema.String),
+      occurredAtUnixMs: Schema.Number,
+    }),
+    Result: Schema.Struct({ auditId: Schema.String }),
+    execute: (event) => sql`
+      INSERT INTO composition_capability_audit (
+        audit_id, grant_id, task_id, run_id, agent_id, capability_id,
+        operation, outcome, error_code, occurred_at_unix_ms
+      ) VALUES (
+        ${event.auditId}, ${event.grantId}, ${event.taskId}, ${event.runId},
+        ${event.agentId}, ${event.capabilityId}, ${event.operation}, ${event.outcome},
+        ${event.errorCode}, ${event.occurredAtUnixMs}
+      )
+      ON CONFLICT (audit_id) DO NOTHING
+      RETURNING audit_id AS "auditId"
+    `,
+  });
+
+  const findAuditById = SqlSchema.findOneOption({
+    Request: Schema.Struct({ auditId: Schema.String }),
+    Result: AuditRowSchema,
+    execute: ({ auditId }) => sql`
+      SELECT
+        audit_id AS "auditId", grant_id AS "grantId", task_id AS "taskId",
+        run_id AS "runId", agent_id AS "agentId", capability_id AS "capabilityId",
+        operation, outcome, error_code AS "errorCode", occurred_at_unix_ms AS "occurredAtUnixMs"
+      FROM composition_capability_audit
+      WHERE audit_id = ${auditId}
+      LIMIT 1
+    `,
+  });
+
   const listAuditRows = SqlSchema.findAll({
     Request: Schema.Struct({ taskId: Schema.String }),
     Result: AuditRowSchema,
@@ -575,11 +655,35 @@ export const makeSqliteCapabilityGrantRegistry = (
     );
   });
 
+  const recordAuditIfNew: CapabilityGrantRegistryShape["recordAuditIfNew"] = Effect.fn(
+    "CapabilityGrantRegistry.sqliteRecordAuditIfNew",
+  )(function* (input) {
+    const inserted = yield* insertAuditIfNew({
+      auditId: input.auditId,
+      grantId: input.grantId,
+      taskId: input.taskId,
+      runId: input.runId,
+      agentId: input.agentId,
+      capabilityId: input.capabilityId,
+      operation: input.operation,
+      outcome: input.outcome,
+      errorCode: input.errorCode ?? null,
+      occurredAtUnixMs: now(),
+    }).pipe(Effect.mapError((cause) => persistenceError("insertAuditIfNew", cause)));
+    return Option.isSome(inserted);
+  });
+
   return {
     issue,
     validate,
     revoke,
     recordAudit,
+    recordAuditIfNew,
+    getAuditById: (input) =>
+      findAuditById(input).pipe(
+        Effect.map(Option.map(toAudit)),
+        Effect.mapError((cause) => persistenceError("findAuditById", cause)),
+      ),
     listAudit: (input) =>
       listAuditRows(input).pipe(
         Effect.map((rows) => rows.map(toAudit)),

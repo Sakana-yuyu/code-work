@@ -816,7 +816,7 @@ it.layer(TestLayer, { excludeTestServices: true })("ToolBrokerLive", (it) => {
           operation: "editor.read",
           arguments: { path: "src/App.tsx" },
         },
-        idempotencyKey: "ide-invoke-1-approved",
+        idempotencyKey: "ide-invoke-1",
         capabilityGrantIds: ["t3.ide.invoke"],
         ...(result.approvalRequestId === undefined
           ? {}

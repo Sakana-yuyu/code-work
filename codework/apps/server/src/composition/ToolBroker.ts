@@ -703,10 +703,12 @@ const make = Effect.gen(function* () {
     const decision = yield* policy
       .evaluate({
         taskId: input.taskId,
+        runId: input.runId,
         agentId: input.agentId,
         capabilityId: compositionToolCapabilityId(input.canonicalToolName),
         capabilityGrantIds: [...input.capabilityGrantIds],
         operation: resolvedHandler.operation,
+        idempotencyKey: input.idempotencyKey,
         approvalRequestId: input.approvalRequestId,
       })
       .pipe(

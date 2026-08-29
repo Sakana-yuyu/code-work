@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vite-plus/test";
+import { it as effectIt } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as SqlClient from "effect/unstable/sql/SqlClient";
 
@@ -184,4 +185,44 @@ describe("CapabilityGrantRegistry", () => {
     expect(result.audit[0]?.runId).toBe("run-sqlite");
     expect(result.revoked._tag).toBe("CapabilityGrantRevokedError");
   });
+
+  effectIt.effect("SQLite 审计按确定性 ID 幂等写入并可跨实例读取", () =>
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      const capabilityRegistry = makeCompositionCapabilityRegistry();
+      const options = {
+        capabilityRegistry,
+        sql,
+        now: () => 1000,
+        randomUUID: () => "unused",
+      };
+      const first = makeSqliteCapabilityGrantRegistry(options);
+      const input = {
+        auditId: "capability-approval-requested:approval-stable",
+        grantId: "grant-stable",
+        taskId: "task-stable",
+        runId: "run-stable",
+        agentId: "agent-stable",
+        capabilityId: "t3.workspace.write_file",
+        operation: "mutate" as const,
+        outcome: "approval_required" as const,
+        errorCode: "capability_approval_requested",
+      };
+
+      const inserted = yield* first.recordAuditIfNew(input);
+      const duplicate = yield* first.recordAuditIfNew(input);
+      const restarted = makeSqliteCapabilityGrantRegistry(options);
+      const restored = yield* restarted.getAuditById({ auditId: input.auditId });
+      expect(inserted).toBe(true);
+      expect(duplicate).toBe(false);
+      expect(restored).toMatchObject({
+        _tag: "Some",
+        value: {
+          auditId: "capability-approval-requested:approval-stable",
+          taskId: "task-stable",
+          outcome: "approval_required",
+        },
+      });
+    }).pipe(Effect.provide(SqlitePersistenceMemory)),
+  );
 });
