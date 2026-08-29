@@ -1,12 +1,17 @@
+import * as NodeCrypto from "node:crypto";
+
 import {
   CompositionAutomation as CompositionAutomationSchema,
   type CompositionAutomation,
   type CompositionAutomationCreateRequest,
   type CompositionAutomationDeleteResult,
   type CompositionAutomationListRequest,
+  type CompositionAutomationRetryRequest,
   type CompositionAutomationRevisionMutationRequest,
+  type CompositionAutomationRun,
   type CompositionAutomationRunListRequest,
   type CompositionAutomationRunListResult,
+  type CompositionAutomationRunOnceRequest,
   type CompositionAutomationUpdateRequest,
 } from "@codework/contracts";
 import * as Clock from "effect/Clock";
@@ -25,6 +30,10 @@ import {
   calculateNextCompositionAutomationRun,
   type CompositionAutomationCadenceError,
 } from "./CompositionAutomationCadence.ts";
+import {
+  CompositionAutomationRunExecutor,
+  type CompositionAutomationRunExecutorShape,
+} from "./CompositionAutomationScheduler.ts";
 
 const decodeAutomation = Schema.decodeUnknownEffect(CompositionAutomationSchema);
 
@@ -38,6 +47,8 @@ export type CompositionAutomationServiceErrorCode =
   | "automation_timezone_invalid"
   | "automation_cron_invalid"
   | "automation_timestamp_out_of_range"
+  | "automation_run_not_found"
+  | "automation_run_retry_pending"
   | "automation_persistence_failed";
 
 export class CompositionAutomationServiceError extends Schema.TaggedErrorClass<CompositionAutomationServiceError>()(
@@ -45,6 +56,7 @@ export class CompositionAutomationServiceError extends Schema.TaggedErrorClass<C
   {
     code: Schema.String,
     automationId: Schema.String,
+    automationRunId: Schema.optional(Schema.String),
     detail: Schema.String,
     expectedRevision: Schema.optional(Schema.Number),
     actualRevision: Schema.optional(Schema.Number),
@@ -80,6 +92,12 @@ export interface CompositionAutomationServiceShape {
   readonly listRuns: (
     request: CompositionAutomationRunListRequest,
   ) => Effect.Effect<CompositionAutomationRunListResult, CompositionAutomationServiceError>;
+  readonly runOnce: (
+    request: CompositionAutomationRunOnceRequest,
+  ) => Effect.Effect<CompositionAutomationRun, CompositionAutomationServiceError>;
+  readonly retry: (
+    request: CompositionAutomationRetryRequest,
+  ) => Effect.Effect<CompositionAutomationRun, CompositionAutomationServiceError>;
 }
 
 export class CompositionAutomationService extends Context.Service<
@@ -89,6 +107,7 @@ export class CompositionAutomationService extends Context.Service<
 
 export interface CompositionAutomationServiceOptions {
   readonly store: CompositionAutomationStoreShape;
+  readonly executor: Pick<CompositionAutomationRunExecutorShape, "ensureStarted">;
   readonly now?: () => number;
 }
 
@@ -96,13 +115,17 @@ const serviceError = (
   code: CompositionAutomationServiceErrorCode,
   automationId: string,
   detail: string,
-  revisions?: { readonly expectedRevision: number; readonly actualRevision: number },
+  correlation: {
+    readonly automationRunId?: string;
+    readonly expectedRevision?: number;
+    readonly actualRevision?: number;
+  } = {},
 ): CompositionAutomationServiceError =>
   new CompositionAutomationServiceError({
     code,
     automationId,
     detail,
-    ...(revisions === undefined ? {} : revisions),
+    ...correlation,
   });
 
 const persistenceError = (
@@ -136,6 +159,25 @@ const persistenceError = (
   );
 };
 
+const manualRunPersistenceError = (
+  operation: string,
+  automationId: string,
+  cause: CompositionAutomationStoreError,
+): CompositionAutomationServiceError => {
+  if (
+    cause._tag === "CompositionAutomationStoreDomainError" &&
+    cause.code === "automation_run_status_conflict"
+  ) {
+    return serviceError(
+      "automation_invalid_state",
+      automationId,
+      cause.detail,
+      cause.automationRunId === undefined ? {} : { automationRunId: cause.automationRunId },
+    );
+  }
+  return persistenceError(operation, automationId, cause);
+};
+
 const cadenceError = (
   cause: CompositionAutomationCadenceError,
 ): CompositionAutomationServiceError => serviceError(cause.code, cause.automationId, cause.detail);
@@ -164,6 +206,47 @@ export const makeCompositionAutomationService = (
       return yield* serviceError("automation_not_found", automationId, "Automation 不存在。");
     }
     return automation.value;
+  });
+
+  const getRun = Effect.fn("CompositionAutomationService.getRun")(function* (
+    automationId: string,
+    automationRunId: string,
+  ) {
+    const run = yield* options.store
+      .getRun(automationRunId)
+      .pipe(
+        Effect.mapError((cause) => persistenceError("读取 Automation Run", automationId, cause)),
+      );
+    if (Option.isNone(run) || run.value.automationId !== automationId) {
+      return yield* serviceError(
+        "automation_run_not_found",
+        automationId,
+        "Automation Run 不存在。",
+        { automationRunId },
+      );
+    }
+    return run.value;
+  });
+
+  const getRunRevision = Effect.fn("CompositionAutomationService.getRunRevision")(function* (
+    run: CompositionAutomationRun,
+  ) {
+    const revision = yield* options.store
+      .getAutomationRevision(run.automationId, run.automationRevision)
+      .pipe(
+        Effect.mapError((cause) =>
+          persistenceError("读取 Automation Run revision", run.automationId, cause),
+        ),
+      );
+    if (Option.isNone(revision)) {
+      return yield* serviceError(
+        "automation_persistence_failed",
+        run.automationId,
+        `Automation revision ${run.automationRevision} 不存在。`,
+        { automationRunId: run.automationRunId },
+      );
+    }
+    return revision.value;
   });
 
   const checkRevision = (
@@ -421,6 +504,154 @@ export const makeCompositionAutomationService = (
       );
   });
 
+  const executeManualRun = Effect.fn("CompositionAutomationService.executeManualRun")(function* (
+    run: CompositionAutomationRun,
+  ) {
+    if (
+      run.status === "succeeded" ||
+      run.status === "failed" ||
+      run.status === "cancelled" ||
+      run.status === "skipped"
+    ) {
+      return run;
+    }
+
+    let running = run;
+    if (run.status === "queued") {
+      const observedAtUnixMs = yield* currentTimeMillis;
+      const execution = yield* options.store
+        .claimRunExecution({
+          ...run,
+          status: "running",
+          startedAtUnixMs: Math.max(observedAtUnixMs, run.requestedAtUnixMs),
+          compositionTaskId: `${run.automationRunId}:task`,
+          compositionRunId: `${run.automationRunId}:run`,
+        })
+        .pipe(
+          Effect.mapError((cause) =>
+            manualRunPersistenceError("领取手动 Automation Run 执行权", run.automationId, cause),
+          ),
+        );
+      running = execution.run;
+    }
+
+    const automation = yield* getRunRevision(running);
+    const started = yield* Effect.result(
+      options.executor.ensureStarted({ automation, run: running }),
+    );
+    if (started._tag === "Success") return running;
+    if (started.failure.retryable) {
+      return yield* serviceError(
+        "automation_run_retry_pending",
+        running.automationId,
+        `${started.failure.code}: ${started.failure.detail}`,
+        { automationRunId: running.automationRunId },
+      );
+    }
+
+    const failedAtUnixMs = yield* currentTimeMillis;
+    return yield* options.store
+      .saveRunTransition({
+        expectedStatus: "running",
+        run: {
+          ...running,
+          status: "failed",
+          finishedAtUnixMs: Math.max(
+            failedAtUnixMs,
+            running.startedAtUnixMs ?? running.requestedAtUnixMs,
+          ),
+          errorCode: started.failure.code,
+          errorDetail: started.failure.detail,
+        },
+      })
+      .pipe(
+        Effect.mapError((cause) =>
+          manualRunPersistenceError("记录手动 Automation Run 失败", running.automationId, cause),
+        ),
+      );
+  });
+
+  const makeManualRunId = (automationId: string, operationId: string): string =>
+    `composition-automation-manual:${NodeCrypto.createHash("sha256")
+      .update(automationId)
+      .update("\0")
+      .update(operationId)
+      .digest("hex")}`;
+
+  const runOnce = Effect.fn("CompositionAutomationService.runOnce")(function* (
+    request: CompositionAutomationRunOnceRequest,
+  ) {
+    const current = yield* get(request.automationId);
+    if (current.status === "completed") {
+      return yield* serviceError(
+        "automation_invalid_state",
+        request.automationId,
+        "completed Automation 不允许立即运行。",
+      );
+    }
+    const requestedAtUnixMs = yield* currentTimeMillis;
+    const claim = yield* options.store
+      .claimManualRun({
+        automationRunId: makeManualRunId(request.automationId, request.operationId),
+        automationId: request.automationId,
+        expectedAutomationRevision: request.expectedRevision,
+        automationRevision: request.expectedRevision,
+        operationId: request.operationId,
+        trigger: "run_once",
+        requestedAtUnixMs,
+        attempt: 1,
+      })
+      .pipe(
+        Effect.mapError((cause) =>
+          manualRunPersistenceError("认领立即运行 operation", request.automationId, cause),
+        ),
+      );
+    return yield* executeManualRun(claim.run);
+  });
+
+  const retry = Effect.fn("CompositionAutomationService.retry")(function* (
+    request: CompositionAutomationRetryRequest,
+  ) {
+    yield* get(request.automationId);
+    const source = yield* getRun(request.automationId, request.automationRunId);
+    if (source.status !== "failed") {
+      return yield* serviceError(
+        "automation_invalid_state",
+        request.automationId,
+        `只有 failed Automation Run 可以重试，当前状态为 ${source.status}。`,
+        { automationRunId: source.automationRunId },
+      );
+    }
+    if (source.attempt >= Number.MAX_SAFE_INTEGER) {
+      return yield* serviceError(
+        "automation_validation_failed",
+        request.automationId,
+        "Automation Run attempt 已达到安全整数上限。",
+        { automationRunId: source.automationRunId },
+      );
+    }
+
+    const requestedAtUnixMs = yield* currentTimeMillis;
+    const claim = yield* options.store
+      .claimManualRun({
+        automationRunId: makeManualRunId(request.automationId, request.operationId),
+        automationId: request.automationId,
+        expectedAutomationRevision: request.expectedRevision,
+        automationRevision: source.automationRevision,
+        operationId: request.operationId,
+        trigger: "retry",
+        sourceAutomationRunId: source.automationRunId,
+        requestedAtUnixMs,
+        attempt: source.attempt + 1,
+      })
+      .pipe(
+        Effect.mapError((cause) =>
+          manualRunPersistenceError("认领失败重试 operation", request.automationId, cause),
+        ),
+      );
+    return yield* executeManualRun(claim.run);
+  });
+
   return {
     create,
     update,
@@ -432,6 +663,8 @@ export const makeCompositionAutomationService = (
     pause,
     resume,
     delete: deleteAutomation,
+    runOnce,
+    retry,
     listRuns: (request) =>
       options.store
         .listRuns(request)
@@ -445,7 +678,8 @@ export const makeCompositionAutomationService = (
 
 const live = Effect.gen(function* () {
   const store = yield* CompositionAutomationStore;
-  return makeCompositionAutomationService({ store });
+  const executor = yield* CompositionAutomationRunExecutor;
+  return makeCompositionAutomationService({ store, executor });
 });
 
 export const CompositionAutomationServiceLive = Layer.effect(CompositionAutomationService, live);

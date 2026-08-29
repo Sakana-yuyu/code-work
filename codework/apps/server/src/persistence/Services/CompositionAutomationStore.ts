@@ -71,6 +71,7 @@ export interface CompositionAutomationRunClaimResult {
 export interface CompositionAutomationManualRunClaimInput {
   readonly automationRunId: string;
   readonly automationId: string;
+  readonly expectedAutomationRevision: number;
   readonly automationRevision: number;
   readonly operationId: string;
   readonly trigger: "run_once" | "retry";

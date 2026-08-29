@@ -1335,6 +1335,30 @@ const makeStore = Effect.gen(function* () {
           );
         }
 
+        const currentAutomation = yield* readAutomation(input.automationId);
+        if (Option.isNone(currentAutomation)) {
+          return yield* domainError(
+            "automation_not_found",
+            input.automationId,
+            "Automation 不存在。",
+          );
+        }
+        if (currentAutomation.value.revision !== input.expectedAutomationRevision) {
+          return yield* revisionConflict(
+            input.automationId,
+            input.expectedAutomationRevision,
+            currentAutomation.value.revision,
+          );
+        }
+        if (input.trigger === "run_once" && currentAutomation.value.status === "completed") {
+          return yield* domainError(
+            "automation_run_status_conflict",
+            input.automationId,
+            "completed Automation 不允许立即运行。",
+            { expectedStatus: "active|paused", actualStatus: currentAutomation.value.status },
+          );
+        }
+
         const revision = yield* readRevision(input.automationId, input.automationRevision);
         if (Option.isNone(revision)) {
           return yield* domainError(

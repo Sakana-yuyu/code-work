@@ -245,6 +245,7 @@ layer("CompositionAutomationStore", (it) => {
 
       const common = {
         automationId: automation.automationId,
+        expectedAutomationRevision: automation.revision,
         automationRevision: automation.revision,
         operationId: "operation-manual-shared",
         trigger: "run_once" as const,
@@ -283,6 +284,7 @@ layer("CompositionAutomationStore", (it) => {
       yield* store.claimManualRun({
         automationRunId: "manual-conflict-first",
         automationId: automation.automationId,
+        expectedAutomationRevision: automation.revision,
         automationRevision: automation.revision,
         operationId: "operation-conflict",
         trigger: "run_once",
@@ -294,6 +296,7 @@ layer("CompositionAutomationStore", (it) => {
         store.claimManualRun({
           automationRunId: "manual-conflict-retry",
           automationId: automation.automationId,
+          expectedAutomationRevision: automation.revision,
           automationRevision: automation.revision,
           operationId: "operation-conflict",
           trigger: "retry",
