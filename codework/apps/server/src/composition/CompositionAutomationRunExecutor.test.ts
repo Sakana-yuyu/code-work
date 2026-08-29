@@ -149,10 +149,226 @@ const makeOptions = (
   contexts: {
     resolve: () => Effect.succeed({ workspaceRoot: "E:/workspace/automation-agent" }),
   },
+  agent: {
+    runtime: {
+      awaitTaskCompletion: () => Effect.die("默认测试不应执行 Agent 后台观察任务"),
+    },
+    background: {
+      ensure: () => Effect.succeed("started" as const),
+    },
+    runs: {
+      saveRunTransition: (input) => Effect.succeed(input.run),
+    },
+  },
   ...overrides,
 });
 
 describe("CompositionAutomationRunExecutor", () => {
+  it.effect("Agent Automation 后台等待 Composition 终态并回写成功历史", () =>
+    Effect.gen(function* () {
+      let backgroundWork: Effect.Effect<void, never> | undefined;
+      let waitInput: { readonly taskId: string; readonly runId: string } | undefined;
+      let transition:
+        | Parameters<
+            NonNullable<
+              CompositionAutomationRunExecutorOptions["agent"]
+            >["runs"]["saveRunTransition"]
+          >[0]
+        | undefined;
+      const executor = makeCompositionAutomationRunExecutor(
+        makeOptions({
+          agent: {
+            runtime: {
+              awaitTaskCompletion: (input) =>
+                Effect.sync(() => {
+                  waitInput = input;
+                  return makeRun({
+                    status: "completed",
+                    finishedAtUnixMs: 1_900,
+                    resultSummary: "Agent 已完成检查并修复问题",
+                  });
+                }),
+            },
+            background: {
+              ensure: (automationRunId, work) =>
+                Effect.sync(() => {
+                  assert.equal(automationRunId, automationRun.automationRunId);
+                  backgroundWork = work;
+                  return "started" as const;
+                }),
+            },
+            runs: {
+              saveRunTransition: (input) =>
+                Effect.sync(() => {
+                  transition = input;
+                  return input.run;
+                }),
+            },
+            now: () => 2_000,
+          },
+        }),
+      );
+
+      yield* executor.ensureStarted({ automation: makeAutomation(), run: automationRun });
+
+      assert.isUndefined(waitInput);
+      assert.isDefined(backgroundWork);
+      yield* backgroundWork!;
+      assert.deepEqual(waitInput, {
+        taskId: "automation-run-agent:task",
+        runId: "automation-run-agent:run",
+      });
+      assert.deepEqual(transition, {
+        expectedStatus: "running",
+        run: {
+          ...automationRun,
+          status: "succeeded",
+          finishedAtUnixMs: 2_000,
+          outputSummary: "Agent 已完成检查并修复问题",
+          errorCode: null,
+          errorDetail: null,
+        },
+      });
+    }),
+  );
+
+  it.effect("恢复已完成的 Agent Composition Run 时不重复派发并立即回写", () =>
+    Effect.gen(function* () {
+      let dispatches = 0;
+      let backgroundWork: Effect.Effect<void, never> | undefined;
+      let transition: CompositionAutomationRun | undefined;
+      const completedRun = makeRun({
+        status: "completed",
+        finishedAtUnixMs: 1_900,
+        resultSummary: "已持久化的 Agent 完成结果",
+      });
+      const executor = makeCompositionAutomationRunExecutor(
+        makeOptions({
+          orchestrator: {
+            dispatchTask: () =>
+              Effect.sync(() => void (dispatches += 1)).pipe(
+                Effect.as({ task: makeTask(), run: makeRun() }),
+              ),
+          },
+          store: {
+            getTask: () => Effect.succeed(Option.some(makeTask({ status: "completed" }))),
+            getRun: () => Effect.succeed(Option.some(completedRun)),
+          },
+          agent: {
+            runtime: {
+              awaitTaskCompletion: () => Effect.die("已完成 Run 不应再次等待"),
+            },
+            background: {
+              ensure: (_automationRunId, work) =>
+                Effect.sync(() => {
+                  backgroundWork = work;
+                  return "started" as const;
+                }),
+            },
+            runs: {
+              saveRunTransition: (input) =>
+                Effect.sync(() => {
+                  transition = input.run;
+                  return input.run;
+                }),
+            },
+            now: () => 2_000,
+          },
+        }),
+      );
+
+      yield* executor.ensureStarted({ automation: makeAutomation(), run: automationRun });
+
+      assert.equal(dispatches, 0);
+      assert.isDefined(backgroundWork);
+      yield* backgroundWork!;
+      assert.deepEqual(transition, {
+        ...automationRun,
+        status: "succeeded",
+        finishedAtUnixMs: 2_000,
+        outputSummary: "已持久化的 Agent 完成结果",
+        errorCode: null,
+        errorDetail: null,
+      });
+    }),
+  );
+
+  it.effect("Agent 取消、待评审和超时终态不会继续停留 running", () =>
+    Effect.gen(function* () {
+      const terminalRuns = [
+        makeRun({
+          status: "cancelled",
+          failureCode: "user_cancelled",
+          resultSummary: "用户取消了 Agent 任务",
+        }),
+        makeRun({
+          status: "in_review",
+          resultSummary: "Agent 已提交结果，等待人工评审",
+        }),
+        makeRun({
+          status: "timed_out",
+          failureCode: "agent_deadline_exceeded",
+          resultSummary: "Agent 执行超过截止时间",
+        }),
+      ];
+      const transitions: CompositionAutomationRun[] = [];
+      let terminalIndex = 0;
+      const executor = makeCompositionAutomationRunExecutor(
+        makeOptions({
+          agent: {
+            runtime: {
+              awaitTaskCompletion: () => Effect.succeed(terminalRuns[terminalIndex++]!),
+            },
+            background: {
+              ensure: (_automationRunId, work) => work.pipe(Effect.as("started" as const)),
+            },
+            runs: {
+              saveRunTransition: (input) =>
+                Effect.sync(() => {
+                  transitions.push(input.run);
+                  return input.run;
+                }),
+            },
+            now: () => 2_000 + terminalIndex,
+          },
+        }),
+      );
+
+      yield* executor.ensureStarted({ automation: makeAutomation(), run: automationRun });
+      yield* executor.ensureStarted({ automation: makeAutomation(), run: automationRun });
+      yield* executor.ensureStarted({ automation: makeAutomation(), run: automationRun });
+
+      assert.deepEqual(
+        transitions.map((run) => ({
+          status: run.status,
+          outputSummary: run.outputSummary,
+          errorCode: run.errorCode,
+          errorDetail: run.errorDetail,
+        })),
+        [
+          {
+            status: "cancelled",
+            outputSummary: "用户取消了 Agent 任务",
+            errorCode: "user_cancelled",
+            errorDetail: "用户取消了 Agent 任务",
+          },
+          {
+            status: "failed",
+            outputSummary: "Agent 已提交结果，等待人工评审",
+            errorCode: "automation_agent_review_required",
+            errorDetail: "Agent 已提交结果，等待人工评审",
+          },
+          {
+            status: "failed",
+            outputSummary: "Agent 执行超过截止时间",
+            errorCode: "agent_deadline_exceeded",
+            errorDetail: "Agent 执行超过截止时间",
+          },
+        ],
+      );
+    }),
+  );
+
   it.effect("Goal Loop Automation 在后台启动并把稳定身份、预算和评审配置传入运行器", () =>
     Effect.gen(function* () {
       let backgroundWork: Effect.Effect<void, never> | undefined;

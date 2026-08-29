@@ -517,6 +517,7 @@ const CompositionAutomationBackgroundRunnerLayerLive =
 const CompositionAutomationRunExecutorLayerLive = CompositionAutomationRunExecutor.layer.pipe(
   Layer.provide(CompositionOrchestratorLayerLive),
   Layer.provide(CompositionTaskStoreLayerLive),
+  Layer.provide(CompositionRuntimeLayerLive),
   Layer.provide(CompositionAutomationExecutionContextLayerLive),
   Layer.provide(CompositionSquadRunnerLayerLive),
   Layer.provide(CompositionGoalLoopAutomationRunnerLayerLive),

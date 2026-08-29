@@ -47,6 +47,17 @@ import {
   CompositionSquadRunner,
   type CompositionSquadRunnerShape,
 } from "./CompositionSquadRunner.ts";
+import {
+  CompositionTaskRuntimeProjectionService,
+  type CompositionTaskRuntimeProjectionServiceShape,
+} from "./CompositionTaskRuntimeProjectionService.ts";
+
+type AgentAutomationRuntime = {
+  readonly runtime: Pick<CompositionTaskRuntimeProjectionServiceShape, "awaitTaskCompletion">;
+  readonly background: Pick<CompositionAutomationBackgroundRunnerShape, "ensure">;
+  readonly runs: Pick<CompositionAutomationStoreShape, "saveRunTransition">;
+  readonly now?: () => number;
+};
 
 type SquadAutomationRuntime = {
   readonly runner: Pick<CompositionSquadRunnerShape, "run">;
@@ -69,11 +80,19 @@ const terminalFailureStatuses: ReadonlySet<CompositionTaskRun["status"]> = new S
   "cancelled",
   "timed_out",
 ]);
+const observedAgentTerminalStatuses: ReadonlySet<CompositionTaskRun["status"]> = new Set([
+  "in_review",
+  "completed",
+  "failed",
+  "cancelled",
+  "timed_out",
+]);
 
 export interface CompositionAutomationRunExecutorOptions {
   readonly orchestrator: Pick<CompositionOrchestratorServiceShape, "dispatchTask">;
   readonly store: Pick<CompositionTaskStoreShape, "getTask" | "getRun">;
   readonly contexts: Pick<CompositionAutomationExecutionContextResolverShape, "resolve">;
+  readonly agent?: AgentAutomationRuntime;
   readonly squad?: SquadAutomationRuntime;
   readonly goalLoop?: GoalLoopAutomationRuntime;
 }
@@ -155,7 +174,7 @@ export const makeCompositionAutomationRunExecutor = (
         executorError("automation_composition_lookup_failed", errorDetail(cause), true),
       ),
     );
-    if (Option.isNone(task) && Option.isNone(run)) return false;
+    if (Option.isNone(task) && Option.isNone(run)) return undefined;
     if (
       Option.isNone(task) ||
       Option.isNone(run) ||
@@ -167,10 +186,111 @@ export const makeCompositionAutomationRunExecutor = (
         false,
       );
     }
-    const failure = terminalRunError(run.value);
-    if (failure !== undefined) return yield* failure;
-    return true;
+    return { task: task.value, run: run.value };
   });
+
+  const ensureAgentObserved = Effect.fn("CompositionAutomationRunExecutor.ensureAgentObserved")(
+    function* (
+      input: CompositionAutomationRunExecutionInput,
+      initialRun: CompositionTaskRun,
+      runtime: AgentAutomationRuntime,
+    ) {
+      const taskId = input.run.compositionTaskId!;
+      const runId = input.run.compositionRunId!;
+      const work = Effect.gen(function* () {
+        const outcome = yield* Effect.result(
+          observedAgentTerminalStatuses.has(initialRun.status)
+            ? Effect.succeed(initialRun)
+            : runtime.runtime.awaitTaskCompletion({ taskId, runId }),
+        );
+        const finishedAtUnixMs = yield* runtime.now === undefined
+          ? Clock.currentTimeMillis
+          : Effect.sync(runtime.now);
+        let run: CompositionAutomationRunExecutionInput["run"];
+        if (outcome._tag === "Failure") {
+          run = {
+            ...input.run,
+            status: "failed",
+            finishedAtUnixMs,
+            outputSummary: null,
+            errorCode: "automation_agent_wait_failed",
+            errorDetail: errorDetail(outcome.failure),
+          };
+        } else {
+          const compositionRun = outcome.success;
+          const summary =
+            compositionRun.resultSummary?.trim() ||
+            (compositionRun.status === "completed"
+              ? "Agent Automation 执行完成。"
+              : `Agent Composition Run 以状态 ${compositionRun.status} 终止。`);
+          switch (compositionRun.status) {
+            case "completed":
+              run = {
+                ...input.run,
+                status: "succeeded",
+                finishedAtUnixMs,
+                outputSummary: summary,
+                errorCode: null,
+                errorDetail: null,
+              };
+              break;
+            case "cancelled":
+              run = {
+                ...input.run,
+                status: "cancelled",
+                finishedAtUnixMs,
+                outputSummary: summary,
+                errorCode: compositionRun.failureCode ?? "automation_agent_cancelled",
+                errorDetail: summary,
+              };
+              break;
+            case "in_review":
+              run = {
+                ...input.run,
+                status: "failed",
+                finishedAtUnixMs,
+                outputSummary: summary,
+                errorCode: "automation_agent_review_required",
+                errorDetail: summary,
+              };
+              break;
+            case "failed":
+            case "timed_out": {
+              const failure = classifyCompositionFailure(compositionRun);
+              run = {
+                ...input.run,
+                status: "failed",
+                finishedAtUnixMs,
+                outputSummary: compositionRun.resultSummary ?? null,
+                errorCode: failure.code,
+                errorDetail: summary,
+              };
+              break;
+            }
+            default:
+              run = {
+                ...input.run,
+                status: "failed",
+                finishedAtUnixMs,
+                outputSummary: compositionRun.resultSummary ?? null,
+                errorCode: "automation_agent_terminal_invalid",
+                errorDetail: summary,
+              };
+          }
+        }
+        yield* runtime.runs.saveRunTransition({ run, expectedStatus: "running" }).pipe(
+          Effect.catchCause((cause) =>
+            Effect.logError("Automation Agent 终态回写失败", {
+              automationId: input.automation.automationId,
+              automationRunId: input.run.automationRunId,
+              cause,
+            }),
+          ),
+        );
+      });
+      yield* runtime.background.ensure(input.run.automationRunId, work);
+    },
+  );
 
   const ensureAgentStarted = Effect.fn("CompositionAutomationRunExecutor.ensureAgentStarted")(
     function* (input: CompositionAutomationRunExecutionInput) {
@@ -191,6 +311,14 @@ export const makeCompositionAutomationRunExecutor = (
           false,
         );
       }
+      const runtime = options.agent;
+      if (runtime === undefined) {
+        return yield* executorError(
+          "automation_agent_runtime_unavailable",
+          "Agent Automation 后台终态观察服务尚未就绪。",
+          true,
+        );
+      }
       const context = yield* options.contexts
         .resolve({
           projectId: input.automation.projectId,
@@ -205,7 +333,11 @@ export const makeCompositionAutomationRunExecutor = (
         agentId: target.agentId,
         promptDigest: sha256(input.automation.prompt),
       };
-      if (yield* inspectExisting(scope)) return;
+      const existing = yield* inspectExisting(scope);
+      if (existing !== undefined) {
+        yield* ensureAgentObserved(input, existing.run, runtime);
+        return;
+      }
 
       const dispatched = yield* Effect.result(
         options.orchestrator.dispatchTask({
@@ -226,7 +358,11 @@ export const makeCompositionAutomationRunExecutor = (
       );
       if (dispatched._tag === "Failure") {
         if (isTaskAlreadyExistsError(dispatched.failure)) {
-          if (yield* inspectExisting(scope)) return;
+          const raced = yield* inspectExisting(scope);
+          if (raced !== undefined) {
+            yield* ensureAgentObserved(input, raced.run, runtime);
+            return;
+          }
         }
         return yield* dispatchError(dispatched.failure);
       }
@@ -239,6 +375,7 @@ export const makeCompositionAutomationRunExecutor = (
       }
       const failure = terminalRunError(dispatched.success.run);
       if (failure !== undefined) return yield* failure;
+      yield* ensureAgentObserved(input, dispatched.success.run, runtime);
     },
   );
 
@@ -447,6 +584,7 @@ const live = Effect.gen(function* () {
   const orchestrator = yield* CompositionOrchestratorService;
   const store = yield* CompositionTaskStore;
   const contexts = yield* CompositionAutomationExecutionContextResolver;
+  const taskRuntime = yield* CompositionTaskRuntimeProjectionService;
   const squadRunner = yield* CompositionSquadRunner;
   const goalLoopRunner = yield* CompositionGoalLoopAutomationRunner;
   const background = yield* CompositionAutomationBackgroundRunner;
@@ -455,6 +593,7 @@ const live = Effect.gen(function* () {
     orchestrator,
     store,
     contexts,
+    agent: { runtime: taskRuntime, background, runs: automationStore },
     squad: { runner: squadRunner, background, runs: automationStore },
     goalLoop: { runner: goalLoopRunner, background, runs: automationStore },
   });
