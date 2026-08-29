@@ -105,6 +105,8 @@ export interface CompositionAutomationSchedulerOptions {
   readonly batchSize?: number;
 }
 
+const PERIODIC_RECOVERY_DELAY_MS = 30_000;
+
 export const makeCompositionAutomationRunId = (input: {
   readonly automationId: string;
   readonly scheduledForUnixMs: number;
@@ -384,32 +386,44 @@ export const makeCompositionAutomationScheduler = (
     },
   );
 
+  const recoverAt = Effect.fn("CompositionAutomationScheduler.recoverAt")(function* (
+    nowUnixMs: number,
+    minimumAgeMs: number,
+  ) {
+    const runs = yield* options.store
+      .listRecoverableRuns({ limit: batchSize })
+      .pipe(Effect.mapError((cause) => persistenceError("列出待恢复 Automation Run", cause)));
+    const recoverable = runs.filter((run) => {
+      const activeSinceUnixMs = run.startedAtUnixMs ?? run.requestedAtUnixMs;
+      return nowUnixMs - activeSinceUnixMs >= minimumAgeMs;
+    });
+    const outcomes = yield* Effect.forEach(
+      recoverable,
+      (run) => ensureStarted(run, Math.max(nowUnixMs, run.requestedAtUnixMs)),
+      { concurrency: Math.min(batchSize, 4) },
+    );
+    return { outcomes } satisfies CompositionAutomationSchedulerBatchResult;
+  });
+
   const tick: CompositionAutomationSchedulerShape["tick"] = () =>
     Effect.gen(function* () {
       const nowUnixMs = yield* currentTimeMillis;
+      const recovered = yield* recoverAt(nowUnixMs, PERIODIC_RECOVERY_DELAY_MS);
       const due = yield* options.store
         .listDueAutomations({ nowUnixMs, limit: batchSize })
         .pipe(Effect.mapError((cause) => persistenceError("列出到期 Automation", cause)));
-      const outcomes = yield* Effect.forEach(
+      const scheduled = yield* Effect.forEach(
         due,
         (automation) => processDueAutomation(automation, nowUnixMs),
         { concurrency: Math.min(batchSize, 4) },
       );
-      return { outcomes };
+      return { outcomes: [...recovered.outcomes, ...scheduled] };
     });
 
   const recover: CompositionAutomationSchedulerShape["recover"] = () =>
     Effect.gen(function* () {
       const nowUnixMs = yield* currentTimeMillis;
-      const runs = yield* options.store
-        .listRecoverableRuns({ limit: batchSize })
-        .pipe(Effect.mapError((cause) => persistenceError("列出待恢复 Automation Run", cause)));
-      const outcomes = yield* Effect.forEach(
-        runs,
-        (run) => ensureStarted(run, Math.max(nowUnixMs, run.requestedAtUnixMs)),
-        { concurrency: Math.min(batchSize, 4) },
-      );
-      return { outcomes };
+      return yield* recoverAt(nowUnixMs, 0);
     });
 
   return { tick, recover };

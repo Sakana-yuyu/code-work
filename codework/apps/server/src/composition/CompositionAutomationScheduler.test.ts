@@ -11,6 +11,7 @@ import { CompositionAutomationStoreLive } from "../persistence/Layers/Compositio
 import { SqlitePersistenceMemory } from "../persistence/Layers/Sqlite.ts";
 import { CompositionAutomationStore } from "../persistence/Services/CompositionAutomationStore.ts";
 import {
+  CompositionAutomationRunExecutorError,
   makeCompositionAutomationRunId,
   makeCompositionAutomationScheduler,
   type CompositionAutomationRunExecutorShape,
@@ -92,6 +93,63 @@ layer("CompositionAutomationScheduler", (it) => {
       assert.equal(
         starts[0]?.run.idempotencyKey,
         makeCompositionAutomationRunIdempotencyKey({
+          automationId: automation.automationId,
+          scheduledForUnixMs: 1_000,
+        }),
+      );
+    }),
+  );
+
+  it.effect("下一次 tick 恢复 retry_pending Run，且不创建重复计划运行", () =>
+    Effect.gen(function* () {
+      const store = yield* CompositionAutomationStore;
+      const automation = makeAutomation("automation-scheduler-retry-pending");
+      let starts = 0;
+      let nowUnixMs = 5_000;
+      const scheduler = makeCompositionAutomationScheduler({
+        store,
+        executor: {
+          ensureStarted: (input) => {
+            if (input.automation.automationId !== automation.automationId) return Effect.void;
+            starts += 1;
+            return starts === 1
+              ? Effect.fail(
+                  new CompositionAutomationRunExecutorError({
+                    code: "runtime_temporarily_unavailable",
+                    detail: "Runtime 正在重新连接",
+                    retryable: true,
+                  }),
+                )
+              : Effect.void;
+          },
+        },
+        now: () => nowUnixMs,
+        batchSize: 10,
+      });
+      yield* store.createAutomation(automation);
+
+      const first = yield* scheduler.tick();
+      nowUnixMs = 35_000;
+      const second = yield* scheduler.tick();
+      const runs = (yield* store.listRuns({ automationId: automation.automationId })).runs;
+      const secondAutomationOutcomes = second.outcomes.filter(
+        (outcome) => outcome.automationId === automation.automationId,
+      );
+
+      assert.deepEqual(
+        first.outcomes.map((outcome) => outcome.status),
+        ["retry_pending"],
+      );
+      assert.deepEqual(
+        secondAutomationOutcomes.map((outcome) => outcome.status),
+        ["recovered"],
+      );
+      assert.equal(starts, 2);
+      assert.equal(runs.length, 1);
+      assert.equal(runs[0]?.status, "running");
+      assert.equal(
+        runs[0]?.automationRunId,
+        makeCompositionAutomationRunId({
           automationId: automation.automationId,
           scheduledForUnixMs: 1_000,
         }),
