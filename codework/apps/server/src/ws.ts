@@ -65,6 +65,7 @@ import {
   type TerminalError,
   type TerminalEvent,
   type TerminalMetadataStreamEvent,
+  WorkspaceScriptRpcError,
   WS_METHODS,
   WsRpcGroup,
 } from "@codework/contracts";
@@ -142,6 +143,7 @@ import * as VcsProvisioningService from "./vcs/VcsProvisioningService.ts";
 import * as GitWorkflowService from "./git/GitWorkflowService.ts";
 import * as ReviewService from "./review/ReviewService.ts";
 import * as ProjectSetupScriptRunner from "./project/ProjectSetupScriptRunner.ts";
+import * as WorkspaceScriptService from "./project/WorkspaceScriptService.ts";
 import * as ServerEnvironment from "./environment/ServerEnvironment.ts";
 import * as RemoteOpenTargets from "./environment/RemoteOpenTargets.ts";
 import * as BackgroundPolicy from "./background/BackgroundPolicy.ts";
@@ -553,6 +555,9 @@ const makeWsRpcLayer = (
       const compositionAutomationService = yield* Effect.serviceOption(
         CompositionAutomationService.CompositionAutomationService,
       );
+      const workspaceScriptService = yield* Effect.serviceOption(
+        WorkspaceScriptService.WorkspaceScriptService,
+      );
       const compositionAgentDrivers = yield* Effect.serviceOption(
         CompositionAgentDriverRegistry.CompositionAgentDriverRegistryService,
       );
@@ -591,6 +596,18 @@ const makeWsRpcLayer = (
           },
           automationId,
         );
+      const workspaceScriptUnavailable = (workspaceScriptRunId?: string) =>
+        new WorkspaceScriptRpcError({
+          code: "workspace_script_unavailable",
+          detail: "当前运行时未提供 Workspace Script 能力。",
+          ...(workspaceScriptRunId === undefined ? {} : { workspaceScriptRunId }),
+        });
+      const workspaceScriptRunNotFound = (workspaceScriptRunId: string) =>
+        new WorkspaceScriptRpcError({
+          code: "workspace_script_run_not_found",
+          detail: "Workspace Script 运行记录不存在。",
+          workspaceScriptRunId,
+        });
       const compositionTaskError = (error: unknown) => {
         if (isCompositionTaskRpcError(error)) return error;
         if (typeof error === "object" && error !== null) {
@@ -2423,6 +2440,46 @@ const makeWsRpcLayer = (
                     ),
                   ),
             { "rpc.aggregate": "composition" },
+          ),
+        [WS_METHODS.serverStartWorkspaceScript]: (input) =>
+          observeRpcEffect(
+            WS_METHODS.serverStartWorkspaceScript,
+            Option.isNone(workspaceScriptService)
+              ? Effect.fail(workspaceScriptUnavailable())
+              : workspaceScriptService.value.start(input).pipe(Effect.map((run) => ({ run }))),
+            { "rpc.aggregate": "workspace-script" },
+          ),
+        [WS_METHODS.serverStopWorkspaceScript]: (input) =>
+          observeRpcEffect(
+            WS_METHODS.serverStopWorkspaceScript,
+            Option.isNone(workspaceScriptService)
+              ? Effect.fail(workspaceScriptUnavailable(input.workspaceScriptRunId))
+              : workspaceScriptService.value.stop(input).pipe(Effect.map((run) => ({ run }))),
+            { "rpc.aggregate": "workspace-script" },
+          ),
+        [WS_METHODS.serverGetWorkspaceScriptRun]: (input) =>
+          observeRpcEffect(
+            WS_METHODS.serverGetWorkspaceScriptRun,
+            Option.isNone(workspaceScriptService)
+              ? Effect.fail(workspaceScriptUnavailable(input.workspaceScriptRunId))
+              : workspaceScriptService.value.get(input.workspaceScriptRunId).pipe(
+                  Effect.flatMap(
+                    Option.match({
+                      onNone: () =>
+                        Effect.fail(workspaceScriptRunNotFound(input.workspaceScriptRunId)),
+                      onSome: (run) => Effect.succeed({ run }),
+                    }),
+                  ),
+                ),
+            { "rpc.aggregate": "workspace-script" },
+          ),
+        [WS_METHODS.serverListWorkspaceScriptRuns]: (input) =>
+          observeRpcEffect(
+            WS_METHODS.serverListWorkspaceScriptRuns,
+            Option.isNone(workspaceScriptService)
+              ? Effect.fail(workspaceScriptUnavailable())
+              : workspaceScriptService.value.list(input).pipe(Effect.map((runs) => ({ runs }))),
+            { "rpc.aggregate": "workspace-script" },
           ),
         [WS_METHODS.serverCancelCompositionTask]: (input) =>
           observeRpcEffect(

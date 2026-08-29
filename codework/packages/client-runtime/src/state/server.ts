@@ -6,6 +6,8 @@ import {
   type ServerLifecycleStreamReadyEvent,
   type ServerSelfUpdateProgressEvent,
   type ServerSelfUpdateResult,
+  type WorkspaceScriptStartRequest,
+  type WorkspaceScriptStopRequest,
   WS_METHODS,
 } from "@codework/contracts";
 import * as Cause from "effect/Cause";
@@ -283,6 +285,75 @@ export function createCompositionSquadEnvironmentAtoms<R, E>(
       concurrency: {
         mode: "singleFlight",
         key: compositionSquadRunCommandKey,
+      },
+    }),
+  };
+}
+
+export const workspaceScriptStartCommandKey = (target: {
+  readonly environmentId: EnvironmentId;
+  readonly input: WorkspaceScriptStartRequest;
+}): string =>
+  JSON.stringify([
+    target.environmentId,
+    "start",
+    target.input.operationId,
+    target.input.projectId,
+    target.input.threadId,
+    target.input.scriptId,
+    target.input.worktreePath ?? null,
+    target.input.compositionTaskId ?? null,
+    target.input.compositionRunId ?? null,
+  ]);
+
+export const workspaceScriptStopCommandKey = (target: {
+  readonly environmentId: EnvironmentId;
+  readonly input: WorkspaceScriptStopRequest;
+}): string =>
+  JSON.stringify([
+    target.environmentId,
+    "stop",
+    target.input.workspaceScriptRunId,
+    target.input.operationId,
+    target.input.expectedRevision,
+  ]);
+
+/** Web 与 Mobile 共用的 Workspace Script 查询、启动和停止入口。 */
+export function createWorkspaceScriptEnvironmentAtoms<R, E>(
+  runtime: Atom.AtomRuntime<EnvironmentRegistry | R, E>,
+) {
+  const startScheduler = createAtomCommandScheduler();
+  const stopScheduler = createAtomCommandScheduler();
+
+  return {
+    workspaceScriptRuns: createEnvironmentRpcQueryAtomFamily(runtime, {
+      label: "environment-data:server:workspace-script-runs",
+      tag: WS_METHODS.serverListWorkspaceScriptRuns,
+      staleTimeMs: 1_000,
+      idleTtlMs: 30_000,
+    }),
+    workspaceScriptRun: createEnvironmentRpcQueryAtomFamily(runtime, {
+      label: "environment-data:server:workspace-script-run",
+      tag: WS_METHODS.serverGetWorkspaceScriptRun,
+      staleTimeMs: 1_000,
+      idleTtlMs: 30_000,
+    }),
+    startWorkspaceScript: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:server:start-workspace-script",
+      tag: WS_METHODS.serverStartWorkspaceScript,
+      scheduler: startScheduler,
+      concurrency: {
+        mode: "singleFlight",
+        key: workspaceScriptStartCommandKey,
+      },
+    }),
+    stopWorkspaceScript: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:server:stop-workspace-script",
+      tag: WS_METHODS.serverStopWorkspaceScript,
+      scheduler: stopScheduler,
+      concurrency: {
+        mode: "singleFlight",
+        key: workspaceScriptStopCommandKey,
       },
     }),
   };
@@ -964,6 +1035,7 @@ export function createServerEnvironmentAtoms<R, E>(
     }),
     ...createCompositionSquadEnvironmentAtoms(runtime),
     ...createCompositionAutomationEnvironmentAtoms(runtime),
+    ...createWorkspaceScriptEnvironmentAtoms(runtime),
     listCompositionTasks: createEnvironmentRpcQueryAtomFamily(runtime, {
       label: "environment-data:server:list-composition-tasks",
       tag: WS_METHODS.serverListCompositionTasks,

@@ -301,6 +301,15 @@ import {
   CompositionAutomationRpcError,
   CompositionAutomationUpdateRequest,
 } from "./compositionAutomation.ts";
+import {
+  WorkspaceScriptGetRequest,
+  WorkspaceScriptListRequest,
+  WorkspaceScriptRpcError,
+  WorkspaceScriptRunListResult,
+  WorkspaceScriptRunResult,
+  WorkspaceScriptStartRequest,
+  WorkspaceScriptStopRequest,
+} from "./workspaceScript.ts";
 
 export const WS_METHODS = {
   // Project registry methods
@@ -413,6 +422,10 @@ export const WS_METHODS = {
   serverRunCompositionAutomationOnce: "server.runCompositionAutomationOnce",
   serverRetryCompositionAutomationRun: "server.retryCompositionAutomationRun",
   serverListCompositionAutomationRuns: "server.listCompositionAutomationRuns",
+  serverStartWorkspaceScript: "server.startWorkspaceScript",
+  serverStopWorkspaceScript: "server.stopWorkspaceScript",
+  serverGetWorkspaceScriptRun: "server.getWorkspaceScriptRun",
+  serverListWorkspaceScriptRuns: "server.listWorkspaceScriptRuns",
   serverCancelCompositionTask: "server.cancelCompositionTask",
   serverResumeCompositionTask: "server.resumeCompositionTask",
   serverReviewCompositionTask: "server.reviewCompositionTask",
@@ -836,6 +849,33 @@ export const WsServerListCompositionAutomationRunsRpc = Rpc.make(
     payload: CompositionAutomationRunListRequest,
     success: CompositionAutomationRunListResult,
     error: Schema.Union([CompositionAutomationRpcError, EnvironmentAuthorizationError]),
+  },
+);
+
+export const WsServerStartWorkspaceScriptRpc = Rpc.make(WS_METHODS.serverStartWorkspaceScript, {
+  payload: WorkspaceScriptStartRequest,
+  success: WorkspaceScriptRunResult,
+  error: Schema.Union([WorkspaceScriptRpcError, EnvironmentAuthorizationError]),
+});
+
+export const WsServerStopWorkspaceScriptRpc = Rpc.make(WS_METHODS.serverStopWorkspaceScript, {
+  payload: WorkspaceScriptStopRequest,
+  success: WorkspaceScriptRunResult,
+  error: Schema.Union([WorkspaceScriptRpcError, EnvironmentAuthorizationError]),
+});
+
+export const WsServerGetWorkspaceScriptRunRpc = Rpc.make(WS_METHODS.serverGetWorkspaceScriptRun, {
+  payload: WorkspaceScriptGetRequest,
+  success: WorkspaceScriptRunResult,
+  error: Schema.Union([WorkspaceScriptRpcError, EnvironmentAuthorizationError]),
+});
+
+export const WsServerListWorkspaceScriptRunsRpc = Rpc.make(
+  WS_METHODS.serverListWorkspaceScriptRuns,
+  {
+    payload: WorkspaceScriptListRequest,
+    success: WorkspaceScriptRunListResult,
+    error: Schema.Union([WorkspaceScriptRpcError, EnvironmentAuthorizationError]),
   },
 );
 
@@ -1602,6 +1642,10 @@ export const WsRpcGroup = RpcGroup.make(
   WsServerRunCompositionAutomationOnceRpc,
   WsServerRetryCompositionAutomationRunRpc,
   WsServerListCompositionAutomationRunsRpc,
+  WsServerStartWorkspaceScriptRpc,
+  WsServerStopWorkspaceScriptRpc,
+  WsServerGetWorkspaceScriptRunRpc,
+  WsServerListWorkspaceScriptRunsRpc,
   WsServerCancelCompositionTaskRpc,
   WsServerResumeCompositionTaskRpc,
   WsServerReviewCompositionTaskRpc,

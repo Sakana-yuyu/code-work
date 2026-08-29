@@ -29,6 +29,7 @@ import {
   ProviderInstanceId,
   ResolvedKeybindingRule,
   ThreadId,
+  type WorkspaceScriptRun,
   WS_METHODS,
   WsRpcGroup,
   EditorId,
@@ -136,6 +137,7 @@ import * as BrowserTraceCollector from "./observability/BrowserTraceCollector.ts
 import * as ProjectFaviconResolver from "./project/ProjectFaviconResolver.ts";
 import * as CodeworkProjectFileLoader from "./project/CodeworkProjectFileLoader.ts";
 import * as ProjectSetupScriptRunner from "./project/ProjectSetupScriptRunner.ts";
+import * as WorkspaceScriptService from "./project/WorkspaceScriptService.ts";
 import * as RepositoryIdentityResolver from "./project/RepositoryIdentityResolver.ts";
 import * as ServerEnvironment from "./environment/ServerEnvironment.ts";
 import * as WorkspaceEntries from "./workspace/WorkspaceEntries.ts";
@@ -412,6 +414,7 @@ const buildAppUnderTest = (options?: {
     projectSetupScriptRunner?: Partial<
       ProjectSetupScriptRunner.ProjectSetupScriptRunner["Service"]
     >;
+    workspaceScriptService?: Partial<WorkspaceScriptService.WorkspaceScriptService["Service"]>;
     terminalManager?: Partial<TerminalManager.TerminalManager["Service"]>;
     orchestrationEngine?: Partial<OrchestrationEngine.OrchestrationEngineService["Service"]>;
     analyticsService?: Partial<AnalyticsService.AnalyticsService["Service"]>;
@@ -609,6 +612,11 @@ const buildAppUnderTest = (options?: {
           ...options.layers.vcsStatusBroadcaster,
         })
       : VcsStatusBroadcaster.layer.pipe(Layer.provide(gitWorkflowLayer));
+    const workspaceScriptServiceLayer = options?.layers?.workspaceScriptService
+      ? Layer.mock(WorkspaceScriptService.WorkspaceScriptService)({
+          ...options.layers.workspaceScriptService,
+        })
+      : Layer.empty;
     const resourceTelemetryLayer = ResourceTelemetry.layer.pipe(
       Layer.provide(
         Layer.mergeAll(
@@ -768,10 +776,13 @@ const buildAppUnderTest = (options?: {
       ),
       Layer.provideMerge(vcsStatusBroadcasterLayer),
       Layer.provide(
-        Layer.mock(ProjectSetupScriptRunner.ProjectSetupScriptRunner)({
-          runForThread: () => Effect.succeed({ status: "no-script" as const }),
-          ...options?.layers?.projectSetupScriptRunner,
-        }),
+        Layer.mergeAll(
+          Layer.mock(ProjectSetupScriptRunner.ProjectSetupScriptRunner)({
+            runForThread: () => Effect.succeed({ status: "no-script" as const }),
+            ...options?.layers?.projectSetupScriptRunner,
+          }),
+          workspaceScriptServiceLayer,
+        ),
       ),
       Layer.provide(
         Layer.mock(TerminalManager.TerminalManager)({
@@ -4603,6 +4614,92 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
 
       assert.deepEqual(response.issues, []);
       assert.deepEqual(response.keybindings, [resolved]);
+    }).pipe(Effect.provide(NodeHttpServer.layerTest)),
+  );
+
+  it.effect("routes Workspace Script lifecycle and queries through websocket rpc", () =>
+    Effect.gen(function* () {
+      const run: WorkspaceScriptRun = {
+        workspaceScriptRunId: "workspace-script-run:operation-1",
+        idempotencyKey: "workspace-script:project-1:thread-1:serve:operation-1",
+        projectId: "project-1",
+        threadId: "thread-1",
+        scriptId: "serve",
+        scriptName: "启动开发服务",
+        terminalId: "workspace-script-operation-1",
+        cwd: "E:/workspace/project-1",
+        worktreePath: null,
+        status: "running",
+        healthStatus: "healthy",
+        healthCheckedAtUnixMs: 1_200,
+        healthDetail: null,
+        ports: [
+          {
+            port: 5_173,
+            protocol: "http",
+            source: "discovered",
+            url: "http://127.0.0.1:5173",
+          },
+        ],
+        revision: 2,
+        requestedAtUnixMs: 1_000,
+        startedAtUnixMs: 1_100,
+        finishedAtUnixMs: null,
+        exitCode: null,
+        exitSignal: null,
+        errorCode: null,
+        errorDetail: null,
+        compositionTaskId: null,
+        compositionRunId: null,
+        updatedAtUnixMs: 1_200,
+      };
+      const startInput = {
+        operationId: "operation-1",
+        projectId: "project-1",
+        threadId: "thread-1",
+        scriptId: "serve",
+      };
+      const stopInput = {
+        workspaceScriptRunId: run.workspaceScriptRunId,
+        operationId: "stop-1",
+        expectedRevision: run.revision,
+      };
+      const start = vi.fn<WorkspaceScriptService.WorkspaceScriptService["Service"]["start"]>(() =>
+        Effect.succeed(run),
+      );
+      const stop = vi.fn<WorkspaceScriptService.WorkspaceScriptService["Service"]["stop"]>(() =>
+        Effect.succeed(run),
+      );
+      const get = vi.fn<WorkspaceScriptService.WorkspaceScriptService["Service"]["get"]>(() =>
+        Effect.succeed(Option.some(run)),
+      );
+      const list = vi.fn<WorkspaceScriptService.WorkspaceScriptService["Service"]["list"]>(() =>
+        Effect.succeed([run]),
+      );
+
+      yield* buildAppUnderTest({
+        layers: { workspaceScriptService: { start, stop, get, list } },
+      });
+
+      const wsUrl = yield* getWsServerUrl("/ws");
+      const results = yield* Effect.scoped(
+        withWsRpcClient(wsUrl, (client) =>
+          Effect.all([
+            client[WS_METHODS.serverStartWorkspaceScript](startInput),
+            client[WS_METHODS.serverGetWorkspaceScriptRun]({
+              workspaceScriptRunId: run.workspaceScriptRunId,
+            }),
+            client[WS_METHODS.serverListWorkspaceScriptRuns]({ projectId: run.projectId }),
+            client[WS_METHODS.serverStopWorkspaceScript](stopInput),
+          ]),
+        ),
+      );
+
+      assert.deepEqual(results, [{ run }, { run }, { runs: [run] }, { run }]);
+      assert.deepEqual(start.mock.calls, [[startInput]]);
+      assert.deepEqual(get.mock.calls, [[run.workspaceScriptRunId]]);
+      assert.deepEqual(list.mock.calls, [[{ projectId: run.projectId }]]);
+      assert.deepEqual(stop.mock.calls, [[stopInput]]);
     }).pipe(Effect.provide(NodeHttpServer.layerTest)),
   );
 
