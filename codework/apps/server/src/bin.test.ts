@@ -255,6 +255,22 @@ it.layer(NodeServices.layer)("bin cli parsing", (it) => {
     }),
   );
 
+  it.effect("exposes optimistic Squad lifecycle commands", () =>
+    Effect.gen(function* () {
+      const duplicate = yield* captureStdout(
+        runCli(["squad", "duplicate", "--help"], noConnectCli),
+      );
+      const archive = yield* captureStdout(runCli(["squad", "archive", "--help"], noConnectCli));
+      const restore = yield* captureStdout(runCli(["squad", "restore", "--help"], noConnectCli));
+
+      assert.include(duplicate.output, "Duplicate a composition squad into a new id.");
+      assert.include(duplicate.output, "--id");
+      assert.include(duplicate.output, "--name");
+      assert.include(archive.output, "--expected-revision");
+      assert.include(restore.output, "--expected-revision");
+    }),
+  );
+
   it.effect("reports fresh headless connect state without requiring local configuration", () =>
     Effect.gen(function* () {
       const baseDir = NodeFS.mkdtempSync(

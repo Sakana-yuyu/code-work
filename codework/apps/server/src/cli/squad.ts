@@ -47,6 +47,17 @@ export interface RunSquadOptions extends ControlConnectionOptions {
   readonly plan?: ReadonlyArray<CompositionSquadPlanNodeType>;
 }
 
+export interface DuplicateSquadOptions extends ControlConnectionOptions {
+  readonly sourceSquadId: string;
+  readonly squadId: string;
+  readonly name: string;
+}
+
+export interface MutateSquadRevisionOptions extends ControlConnectionOptions {
+  readonly squadId: string;
+  readonly expectedRevision: number;
+}
+
 export class SquadPlanInputError extends Data.TaggedError("SquadPlanInputError")<{
   readonly message: string;
 }> {}
@@ -106,6 +117,55 @@ export const runSquad = (options: RunSquadOptions, open: ControlClientOpen = ope
           ? {}
           : { workspaceRootDigest: options.workspaceRootDigest }),
         ...(options.plan === undefined ? {} : { plan: options.plan }),
+      }),
+  );
+
+export const duplicateSquad = (
+  options: DuplicateSquadOptions,
+  open: ControlClientOpen = openControlClient,
+) =>
+  open(
+    {
+      serverUrl: options.serverUrl,
+      ...(options.accessToken ? { accessToken: options.accessToken } : {}),
+    },
+    (rpc) =>
+      rpc[WS_METHODS.serverDuplicateCompositionSquad]({
+        sourceSquadId: options.sourceSquadId,
+        squadId: options.squadId,
+        name: options.name,
+      }),
+  );
+
+export const archiveSquad = (
+  options: MutateSquadRevisionOptions,
+  open: ControlClientOpen = openControlClient,
+) =>
+  open(
+    {
+      serverUrl: options.serverUrl,
+      ...(options.accessToken ? { accessToken: options.accessToken } : {}),
+    },
+    (rpc) =>
+      rpc[WS_METHODS.serverArchiveCompositionSquad]({
+        squadId: options.squadId,
+        expectedRevision: options.expectedRevision,
+      }),
+  );
+
+export const restoreSquad = (
+  options: MutateSquadRevisionOptions,
+  open: ControlClientOpen = openControlClient,
+) =>
+  open(
+    {
+      serverUrl: options.serverUrl,
+      ...(options.accessToken ? { accessToken: options.accessToken } : {}),
+    },
+    (rpc) =>
+      rpc[WS_METHODS.serverRestoreCompositionSquad]({
+        squadId: options.squadId,
+        expectedRevision: options.expectedRevision,
       }),
   );
 
@@ -309,6 +369,21 @@ const planFileFlag = Flag.string("plan-file").pipe(
   Flag.optional,
 );
 
+const newSquadIdFlag = Flag.string("id").pipe(
+  Flag.withSchema(TrimmedNonEmptyString),
+  Flag.withDescription("New composition squad id."),
+);
+
+const squadNameFlag = Flag.string("name").pipe(
+  Flag.withSchema(TrimmedNonEmptyString),
+  Flag.withDescription("New composition squad name."),
+);
+
+const expectedRevisionFlag = Flag.integer("expected-revision").pipe(
+  Flag.withSchema(PositiveInt),
+  Flag.withDescription("Current revision required for optimistic concurrency."),
+);
+
 const squadListCommand = Command.make("list", {
   server: serverFlag,
   accessToken: accessTokenFlag,
@@ -408,6 +483,67 @@ const squadRunCommand = Command.make("run", {
   ),
 );
 
+const squadDuplicateCommand = Command.make("duplicate", {
+  sourceSquadId: squadIdArgument,
+  squadId: newSquadIdFlag,
+  name: squadNameFlag,
+  server: serverFlag,
+  accessToken: accessTokenFlag,
+  json: jsonFlag,
+}).pipe(
+  Command.withDescription("Duplicate a composition squad into a new id."),
+  Command.withHandler((flags) =>
+    Effect.gen(function* () {
+      const result = yield* duplicateSquad({
+        serverUrl: flags.server,
+        ...(Option.isSome(flags.accessToken) ? { accessToken: flags.accessToken.value } : {}),
+        sourceSquadId: flags.sourceSquadId,
+        squadId: flags.squadId,
+        name: flags.name,
+      });
+      yield* Console.log(formatSquadDetails(result, flags.json));
+    }),
+  ),
+);
+
+const makeSquadRevisionCommand = (
+  name: "archive" | "restore",
+  description: string,
+  mutate: typeof archiveSquad,
+) =>
+  Command.make(name, {
+    squadId: squadIdArgument,
+    expectedRevision: expectedRevisionFlag,
+    server: serverFlag,
+    accessToken: accessTokenFlag,
+    json: jsonFlag,
+  }).pipe(
+    Command.withDescription(description),
+    Command.withHandler((flags) =>
+      Effect.gen(function* () {
+        const result = yield* mutate({
+          serverUrl: flags.server,
+          ...(Option.isSome(flags.accessToken) ? { accessToken: flags.accessToken.value } : {}),
+          squadId: flags.squadId,
+          expectedRevision: flags.expectedRevision,
+        });
+        yield* Console.log(formatSquadDetails(result, flags.json));
+      }),
+    ),
+  );
+
+const squadArchiveCommand = makeSquadRevisionCommand(
+  "archive",
+  "Archive a composition squad at an expected revision.",
+  archiveSquad,
+);
+
+const squadRestoreCommand = makeSquadRevisionCommand(
+  "restore",
+  "Restore a composition squad at an expected revision.",
+  restoreSquad,
+);
+
 export const squadCommand = Command.make("squad").pipe(
   Command.withDescription("Manage composition squads."),
   Command.withSubcommands([
@@ -415,5 +551,8 @@ export const squadCommand = Command.make("squad").pipe(
     squadGetCommand,
     squadRevisionsCommand,
     squadRunCommand,
+    squadDuplicateCommand,
+    squadArchiveCommand,
+    squadRestoreCommand,
   ]),
 );
