@@ -91,4 +91,12 @@ describe("searchSettings", () => {
       targetId: "appearance",
     });
   });
+
+  it("indexes the Automation Center route", () => {
+    expect(SETTINGS_SEARCH_ITEMS).toContainEqual({
+      id: "composition-automations",
+      title: "automationCenter.title",
+      to: "/settings/automations",
+    });
+  });
 });

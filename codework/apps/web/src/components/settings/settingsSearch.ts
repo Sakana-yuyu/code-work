@@ -8,6 +8,7 @@ export type SettingsPath =
   | "/settings/providers"
   | "/settings/integrations"
   | "/settings/squads"
+  | "/settings/automations"
   | "/settings/source-control"
   | "/settings/connections"
   | "/settings/archived";
@@ -33,6 +34,7 @@ export const SETTINGS_SECTION_LABELS: Readonly<Record<SettingsPath, string>> = {
   "/settings/providers": "settings.providers",
   "/settings/integrations": "settings.integrations",
   "/settings/squads": "settings.squads",
+  "/settings/automations": "settings.automations",
   "/settings/source-control": "settings.sourceControl",
   "/settings/connections": "settings.connections",
   "/settings/archived": "settings.archive",
@@ -49,6 +51,11 @@ export const SETTINGS_SEARCH_ITEMS = [
     id: "composition-squads",
     title: "squadBuilder.title",
     to: "/settings/squads",
+  },
+  {
+    id: "composition-automations",
+    title: "automationCenter.title",
+    to: "/settings/automations",
   },
   {
     id: "color-scheme",
