@@ -47,21 +47,24 @@ const reviewError = (
 
 const documentKeys = new Set(["schemaVersion", "decision", "feedback", "reworkNodeIds"]);
 
+const UnknownJson = Schema.fromJsonString(Schema.Unknown);
+const ReviewDocumentJson = Schema.fromJsonString(CompositionSquadReviewDocument);
+const decodeUnknownJson = Schema.decodeUnknownEffect(UnknownJson);
 const decodeDocument = Schema.decodeUnknownEffect(CompositionSquadReviewDocument);
+const encodeReviewDocument = Schema.encodeSync(ReviewDocumentJson);
 
 const parseStrictJson = (
   output: string,
   reviewerNodeId: string,
 ): Effect.Effect<unknown, CompositionSquadReviewError> =>
-  Effect.try({
-    try: () => JSON.parse(output.trim()) as unknown,
-    catch: () =>
+  decodeUnknownJson(output.trim()).pipe(
+    Effect.mapError(() =>
       reviewError(
         "squad_review_output_invalid",
         "评审输出必须是 schemaVersion=1 的严格 JSON，不能包含 Markdown 代码围栏或额外说明。",
         { reviewerNodeId },
       ),
-  }).pipe(
+    ),
     Effect.flatMap((value) => {
       if (typeof value !== "object" || value === null || Array.isArray(value)) {
         return Effect.fail(
@@ -144,7 +147,7 @@ export const parseCompositionSquadReviewDecision = Effect.fn("parseCompositionSq
 
 export const encodeCompositionSquadReviewDecision = (
   decision: CompositionSquadReviewDecision,
-): string => JSON.stringify({ schemaVersion: 1, ...decision });
+): string => encodeReviewDocument({ schemaVersion: 1, ...decision });
 
 export const composeCompositionSquadReviewPrompt = (input: {
   readonly role: "reviewer" | "critic";
