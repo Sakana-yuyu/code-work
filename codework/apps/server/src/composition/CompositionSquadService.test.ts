@@ -107,6 +107,52 @@ layer("CompositionSquadService", (it) => {
     }),
   );
 
+  it.effect("按固定 revision 读取不可变配置，不受后续编辑和归档影响", () =>
+    Effect.gen(function* () {
+      const store = yield* CompositionTaskStore;
+      const service = makeCompositionSquadService({ store, now: makeNow(100, 200, 300) });
+      const created = yield* service.create(makeInput("history"));
+      const updated = yield* service.update({
+        ...makeInput("history", { name: "协同组 history v2", maxConcurrency: 3 }),
+        expectedRevision: 1,
+      });
+      const archived = yield* service.archive({ squadId: created.squadId, expectedRevision: 2 });
+
+      assert.deepEqual(yield* service.getRevision(created.squadId, 1), created);
+      assert.deepEqual(yield* service.getRevision(created.squadId, 2), updated);
+      assert.deepEqual(yield* service.getRevision(created.squadId, 3), archived);
+
+      const missing = yield* Effect.flip(service.getRevision(created.squadId, 4));
+      assert.equal(missing.code, "squad_revision_not_found");
+      assert.equal(missing.expectedRevision, 4);
+      assert.equal(missing.actualRevision, 3);
+    }),
+  );
+
+  it.effect("旧迁移 revision 缺少完整配置时拒绝伪造恢复", () =>
+    Effect.gen(function* () {
+      const store = yield* CompositionTaskStore;
+      const service = makeCompositionSquadService({
+        store: {
+          ...store,
+          listSquadRevisions: () =>
+            Effect.succeed([
+              {
+                squadId: "legacy-history",
+                revision: 1,
+                configuration: null,
+                createdAtUnixMs: 100,
+              },
+            ]),
+        },
+      });
+
+      const unavailable = yield* Effect.flip(service.getRevision("legacy-history", 1));
+      assert.equal(unavailable.code, "squad_revision_unavailable");
+      assert.equal(unavailable.expectedRevision, 1);
+    }),
+  );
+
   it.effect("复制 Squad 时保留协同策略并建立独立 revision 历史", () =>
     Effect.gen(function* () {
       const store = yield* CompositionTaskStore;

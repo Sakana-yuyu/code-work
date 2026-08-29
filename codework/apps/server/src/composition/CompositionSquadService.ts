@@ -59,6 +59,8 @@ export type CompositionSquadServiceErrorCode =
   | "squad_already_archived"
   | "squad_not_archived"
   | "squad_revision_conflict"
+  | "squad_revision_not_found"
+  | "squad_revision_unavailable"
   | "squad_validation_failed"
   | "squad_persistence_failed";
 
@@ -97,6 +99,10 @@ export interface CompositionSquadServiceShape {
   readonly getRunnable: (
     squadId: string,
   ) => Effect.Effect<CompositionSquad, CompositionSquadServiceError>;
+  readonly getRevision: (
+    squadId: string,
+    revision: number,
+  ) => Effect.Effect<CompositionSquad, CompositionSquadServiceError>;
   readonly list: (options?: {
     readonly includeArchived?: boolean;
   }) => Effect.Effect<ReadonlyArray<CompositionSquad>, CompositionSquadServiceError>;
@@ -132,7 +138,7 @@ const serviceError = (
   code: CompositionSquadServiceErrorCode,
   squadId: string,
   detail: string,
-  revisions?: { readonly expectedRevision: number; readonly actualRevision: number },
+  revisions?: { readonly expectedRevision?: number; readonly actualRevision?: number },
 ): CompositionSquadServiceError =>
   new CompositionSquadServiceError({
     code,
@@ -397,6 +403,44 @@ export const makeCompositionSquadService = (
     return squad;
   });
 
+  const listRevisions = (squadId: string) =>
+    options.store
+      .listSquadRevisions(squadId)
+      .pipe(Effect.mapError((cause) => persistenceError("列出 Squad revision", squadId, cause)));
+
+  const getRevision = Effect.fn("CompositionSquadService.getRevision")(function* (
+    squadId: string,
+    revision: number,
+  ) {
+    const revisions = yield* listRevisions(squadId);
+    const snapshot = revisions.find((candidate) => candidate.revision === revision);
+    if (snapshot === undefined) {
+      const latestRevision = revisions.at(-1)?.revision;
+      return yield* serviceError(
+        "squad_revision_not_found",
+        squadId,
+        `Squad revision ${revision} 不存在。`,
+        {
+          expectedRevision: revision,
+          ...(latestRevision === undefined ? {} : { actualRevision: latestRevision }),
+        },
+      );
+    }
+    if (
+      snapshot.configuration === null ||
+      snapshot.configuration.squadId !== squadId ||
+      revisionOf(snapshot.configuration) !== revision
+    ) {
+      return yield* serviceError(
+        "squad_revision_unavailable",
+        squadId,
+        `Squad revision ${revision} 缺少可恢复的完整配置。`,
+        { expectedRevision: revision },
+      );
+    }
+    return snapshot.configuration;
+  });
+
   return {
     create,
     update,
@@ -405,14 +449,12 @@ export const makeCompositionSquadService = (
     restore,
     get,
     getRunnable,
+    getRevision,
     list: (listOptions) =>
       options.store
         .listSquads(listOptions)
         .pipe(Effect.mapError((cause) => persistenceError("列出 Squad", "*", cause))),
-    listRevisions: (squadId) =>
-      options.store
-        .listSquadRevisions(squadId)
-        .pipe(Effect.mapError((cause) => persistenceError("列出 Squad revision", squadId, cause))),
+    listRevisions,
   };
 };
 
