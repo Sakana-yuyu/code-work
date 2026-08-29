@@ -21,6 +21,7 @@ export * from "./byokBalance.ts";
 export * from "./byokDelegation.ts";
 export * from "./supplierAdmin.ts";
 export * from "./composition.ts";
+export * from "./compositionAutomation.ts";
 export * from "./compositionRuntime.ts";
 export * from "./git.ts";
 export * from "./vcs.ts";
