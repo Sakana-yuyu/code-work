@@ -285,6 +285,22 @@ import {
   CompositionRuntimeToolCancellation,
   CompositionToolResult,
 } from "./composition.ts";
+import {
+  CompositionAutomationCreateRequest,
+  CompositionAutomationDeleteResult,
+  CompositionAutomationGetRequest,
+  CompositionAutomationListRequest,
+  CompositionAutomationListResult,
+  CompositionAutomationResult,
+  CompositionAutomationRetryRequest,
+  CompositionAutomationRevisionMutationRequest,
+  CompositionAutomationRunListRequest,
+  CompositionAutomationRunListResult,
+  CompositionAutomationRunOnceRequest,
+  CompositionAutomationRunResult,
+  CompositionAutomationRpcError,
+  CompositionAutomationUpdateRequest,
+} from "./compositionAutomation.ts";
 
 export const WS_METHODS = {
   // Project registry methods
@@ -387,6 +403,16 @@ export const WS_METHODS = {
   serverArchiveCompositionSquad: "server.archiveCompositionSquad",
   serverRestoreCompositionSquad: "server.restoreCompositionSquad",
   serverRunCompositionSquad: "server.runCompositionSquad",
+  serverListCompositionAutomations: "server.listCompositionAutomations",
+  serverGetCompositionAutomation: "server.getCompositionAutomation",
+  serverCreateCompositionAutomation: "server.createCompositionAutomation",
+  serverUpdateCompositionAutomation: "server.updateCompositionAutomation",
+  serverPauseCompositionAutomation: "server.pauseCompositionAutomation",
+  serverResumeCompositionAutomation: "server.resumeCompositionAutomation",
+  serverDeleteCompositionAutomation: "server.deleteCompositionAutomation",
+  serverRunCompositionAutomationOnce: "server.runCompositionAutomationOnce",
+  serverRetryCompositionAutomationRun: "server.retryCompositionAutomationRun",
+  serverListCompositionAutomationRuns: "server.listCompositionAutomationRuns",
   serverCancelCompositionTask: "server.cancelCompositionTask",
   serverResumeCompositionTask: "server.resumeCompositionTask",
   serverReviewCompositionTask: "server.reviewCompositionTask",
@@ -722,6 +748,96 @@ export const WsServerRunCompositionSquadRpc = Rpc.make(WS_METHODS.serverRunCompo
   success: CompositionSquadExecutionResult,
   error: Schema.Union([CompositionSquadRpcError, EnvironmentAuthorizationError]),
 });
+
+export const WsServerListCompositionAutomationsRpc = Rpc.make(
+  WS_METHODS.serverListCompositionAutomations,
+  {
+    payload: CompositionAutomationListRequest,
+    success: CompositionAutomationListResult,
+    error: Schema.Union([CompositionAutomationRpcError, EnvironmentAuthorizationError]),
+  },
+);
+
+export const WsServerGetCompositionAutomationRpc = Rpc.make(
+  WS_METHODS.serverGetCompositionAutomation,
+  {
+    payload: CompositionAutomationGetRequest,
+    success: CompositionAutomationResult,
+    error: Schema.Union([CompositionAutomationRpcError, EnvironmentAuthorizationError]),
+  },
+);
+
+export const WsServerCreateCompositionAutomationRpc = Rpc.make(
+  WS_METHODS.serverCreateCompositionAutomation,
+  {
+    payload: CompositionAutomationCreateRequest,
+    success: CompositionAutomationResult,
+    error: Schema.Union([CompositionAutomationRpcError, EnvironmentAuthorizationError]),
+  },
+);
+
+export const WsServerUpdateCompositionAutomationRpc = Rpc.make(
+  WS_METHODS.serverUpdateCompositionAutomation,
+  {
+    payload: CompositionAutomationUpdateRequest,
+    success: CompositionAutomationResult,
+    error: Schema.Union([CompositionAutomationRpcError, EnvironmentAuthorizationError]),
+  },
+);
+
+export const WsServerPauseCompositionAutomationRpc = Rpc.make(
+  WS_METHODS.serverPauseCompositionAutomation,
+  {
+    payload: CompositionAutomationRevisionMutationRequest,
+    success: CompositionAutomationResult,
+    error: Schema.Union([CompositionAutomationRpcError, EnvironmentAuthorizationError]),
+  },
+);
+
+export const WsServerResumeCompositionAutomationRpc = Rpc.make(
+  WS_METHODS.serverResumeCompositionAutomation,
+  {
+    payload: CompositionAutomationRevisionMutationRequest,
+    success: CompositionAutomationResult,
+    error: Schema.Union([CompositionAutomationRpcError, EnvironmentAuthorizationError]),
+  },
+);
+
+export const WsServerDeleteCompositionAutomationRpc = Rpc.make(
+  WS_METHODS.serverDeleteCompositionAutomation,
+  {
+    payload: CompositionAutomationRevisionMutationRequest,
+    success: CompositionAutomationDeleteResult,
+    error: Schema.Union([CompositionAutomationRpcError, EnvironmentAuthorizationError]),
+  },
+);
+
+export const WsServerRunCompositionAutomationOnceRpc = Rpc.make(
+  WS_METHODS.serverRunCompositionAutomationOnce,
+  {
+    payload: CompositionAutomationRunOnceRequest,
+    success: CompositionAutomationRunResult,
+    error: Schema.Union([CompositionAutomationRpcError, EnvironmentAuthorizationError]),
+  },
+);
+
+export const WsServerRetryCompositionAutomationRunRpc = Rpc.make(
+  WS_METHODS.serverRetryCompositionAutomationRun,
+  {
+    payload: CompositionAutomationRetryRequest,
+    success: CompositionAutomationRunResult,
+    error: Schema.Union([CompositionAutomationRpcError, EnvironmentAuthorizationError]),
+  },
+);
+
+export const WsServerListCompositionAutomationRunsRpc = Rpc.make(
+  WS_METHODS.serverListCompositionAutomationRuns,
+  {
+    payload: CompositionAutomationRunListRequest,
+    success: CompositionAutomationRunListResult,
+    error: Schema.Union([CompositionAutomationRpcError, EnvironmentAuthorizationError]),
+  },
+);
 
 export const WsServerCancelCompositionTaskRpc = Rpc.make(WS_METHODS.serverCancelCompositionTask, {
   payload: CompositionTaskCancelRequest,
@@ -1476,6 +1592,16 @@ export const WsRpcGroup = RpcGroup.make(
   WsServerArchiveCompositionSquadRpc,
   WsServerRestoreCompositionSquadRpc,
   WsServerRunCompositionSquadRpc,
+  WsServerListCompositionAutomationsRpc,
+  WsServerGetCompositionAutomationRpc,
+  WsServerCreateCompositionAutomationRpc,
+  WsServerUpdateCompositionAutomationRpc,
+  WsServerPauseCompositionAutomationRpc,
+  WsServerResumeCompositionAutomationRpc,
+  WsServerDeleteCompositionAutomationRpc,
+  WsServerRunCompositionAutomationOnceRpc,
+  WsServerRetryCompositionAutomationRunRpc,
+  WsServerListCompositionAutomationRunsRpc,
   WsServerCancelCompositionTaskRpc,
   WsServerResumeCompositionTaskRpc,
   WsServerReviewCompositionTaskRpc,

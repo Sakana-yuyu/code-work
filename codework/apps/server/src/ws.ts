@@ -109,6 +109,8 @@ import * as CompositionOrchestratorService from "./composition/CompositionOrches
 import * as CompositionByokResumeRedispatch from "./composition/CompositionByokResumeRedispatch.ts";
 import * as CompositionControlCenterProjection from "./composition/CompositionControlCenterProjection.ts";
 import * as CompositionGoalLoopRedispatch from "./composition/CompositionGoalLoopRedispatch.ts";
+import * as CompositionAutomationService from "./composition/CompositionAutomationService.ts";
+import { toCompositionAutomationRpcError } from "./composition/CompositionAutomationRpcError.ts";
 import * as CompositionSquadRunner from "./composition/CompositionSquadRunner.ts";
 import { toCompositionSquadRpcError } from "./composition/CompositionSquadRpcError.ts";
 import * as CompositionSquadService from "./composition/CompositionSquadService.ts";
@@ -548,6 +550,9 @@ const makeWsRpcLayer = (
       const compositionSquadRunner = yield* Effect.serviceOption(
         CompositionSquadRunner.CompositionSquadRunner,
       );
+      const compositionAutomationService = yield* Effect.serviceOption(
+        CompositionAutomationService.CompositionAutomationService,
+      );
       const compositionAgentDrivers = yield* Effect.serviceOption(
         CompositionAgentDriverRegistry.CompositionAgentDriverRegistryService,
       );
@@ -576,6 +581,15 @@ const makeWsRpcLayer = (
             squadId,
           },
           squadId,
+        );
+      const compositionAutomationUnavailable = (automationId: string) =>
+        toCompositionAutomationRpcError(
+          {
+            code: "composition_automation_unavailable",
+            detail: "当前运行时未提供 Automation 能力。",
+            automationId,
+          },
+          automationId,
         );
       const compositionTaskError = (error: unknown) => {
         if (isCompositionTaskRpcError(error)) return error;
@@ -2277,6 +2291,136 @@ const makeWsRpcLayer = (
                   })
                   .pipe(
                     Effect.mapError((error) => toCompositionSquadRpcError(error, input.squadId)),
+                  ),
+            { "rpc.aggregate": "composition" },
+          ),
+        [WS_METHODS.serverListCompositionAutomations]: (input) =>
+          observeRpcEffect(
+            WS_METHODS.serverListCompositionAutomations,
+            Option.isNone(compositionAutomationService)
+              ? Effect.fail(compositionAutomationUnavailable("*"))
+              : compositionAutomationService.value.list(input).pipe(
+                  Effect.map((automations) => ({ automations })),
+                  Effect.mapError((error) => toCompositionAutomationRpcError(error, "*")),
+                ),
+            { "rpc.aggregate": "composition" },
+          ),
+        [WS_METHODS.serverGetCompositionAutomation]: (input) =>
+          observeRpcEffect(
+            WS_METHODS.serverGetCompositionAutomation,
+            Option.isNone(compositionAutomationService)
+              ? Effect.fail(compositionAutomationUnavailable(input.automationId))
+              : compositionAutomationService.value.get(input.automationId).pipe(
+                  Effect.map((automation) => ({ automation })),
+                  Effect.mapError((error) =>
+                    toCompositionAutomationRpcError(error, input.automationId),
+                  ),
+                ),
+            { "rpc.aggregate": "composition" },
+          ),
+        [WS_METHODS.serverCreateCompositionAutomation]: (input) =>
+          observeRpcEffect(
+            WS_METHODS.serverCreateCompositionAutomation,
+            Option.isNone(compositionAutomationService)
+              ? Effect.fail(compositionAutomationUnavailable(input.automationId))
+              : compositionAutomationService.value.create(input).pipe(
+                  Effect.map((automation) => ({ automation })),
+                  Effect.mapError((error) =>
+                    toCompositionAutomationRpcError(error, input.automationId),
+                  ),
+                ),
+            { "rpc.aggregate": "composition" },
+          ),
+        [WS_METHODS.serverUpdateCompositionAutomation]: (input) =>
+          observeRpcEffect(
+            WS_METHODS.serverUpdateCompositionAutomation,
+            Option.isNone(compositionAutomationService)
+              ? Effect.fail(compositionAutomationUnavailable(input.automationId))
+              : compositionAutomationService.value.update(input).pipe(
+                  Effect.map((automation) => ({ automation })),
+                  Effect.mapError((error) =>
+                    toCompositionAutomationRpcError(error, input.automationId),
+                  ),
+                ),
+            { "rpc.aggregate": "composition" },
+          ),
+        [WS_METHODS.serverPauseCompositionAutomation]: (input) =>
+          observeRpcEffect(
+            WS_METHODS.serverPauseCompositionAutomation,
+            Option.isNone(compositionAutomationService)
+              ? Effect.fail(compositionAutomationUnavailable(input.automationId))
+              : compositionAutomationService.value.pause(input).pipe(
+                  Effect.map((automation) => ({ automation })),
+                  Effect.mapError((error) =>
+                    toCompositionAutomationRpcError(error, input.automationId),
+                  ),
+                ),
+            { "rpc.aggregate": "composition" },
+          ),
+        [WS_METHODS.serverResumeCompositionAutomation]: (input) =>
+          observeRpcEffect(
+            WS_METHODS.serverResumeCompositionAutomation,
+            Option.isNone(compositionAutomationService)
+              ? Effect.fail(compositionAutomationUnavailable(input.automationId))
+              : compositionAutomationService.value.resume(input).pipe(
+                  Effect.map((automation) => ({ automation })),
+                  Effect.mapError((error) =>
+                    toCompositionAutomationRpcError(error, input.automationId),
+                  ),
+                ),
+            { "rpc.aggregate": "composition" },
+          ),
+        [WS_METHODS.serverDeleteCompositionAutomation]: (input) =>
+          observeRpcEffect(
+            WS_METHODS.serverDeleteCompositionAutomation,
+            Option.isNone(compositionAutomationService)
+              ? Effect.fail(compositionAutomationUnavailable(input.automationId))
+              : compositionAutomationService.value
+                  .delete(input)
+                  .pipe(
+                    Effect.mapError((error) =>
+                      toCompositionAutomationRpcError(error, input.automationId),
+                    ),
+                  ),
+            { "rpc.aggregate": "composition" },
+          ),
+        [WS_METHODS.serverRunCompositionAutomationOnce]: (input) =>
+          observeRpcEffect(
+            WS_METHODS.serverRunCompositionAutomationOnce,
+            Option.isNone(compositionAutomationService)
+              ? Effect.fail(compositionAutomationUnavailable(input.automationId))
+              : compositionAutomationService.value.runOnce(input).pipe(
+                  Effect.map((run) => ({ run })),
+                  Effect.mapError((error) =>
+                    toCompositionAutomationRpcError(error, input.automationId),
+                  ),
+                ),
+            { "rpc.aggregate": "composition" },
+          ),
+        [WS_METHODS.serverRetryCompositionAutomationRun]: (input) =>
+          observeRpcEffect(
+            WS_METHODS.serverRetryCompositionAutomationRun,
+            Option.isNone(compositionAutomationService)
+              ? Effect.fail(compositionAutomationUnavailable(input.automationId))
+              : compositionAutomationService.value.retry(input).pipe(
+                  Effect.map((run) => ({ run })),
+                  Effect.mapError((error) =>
+                    toCompositionAutomationRpcError(error, input.automationId),
+                  ),
+                ),
+            { "rpc.aggregate": "composition" },
+          ),
+        [WS_METHODS.serverListCompositionAutomationRuns]: (input) =>
+          observeRpcEffect(
+            WS_METHODS.serverListCompositionAutomationRuns,
+            Option.isNone(compositionAutomationService)
+              ? Effect.fail(compositionAutomationUnavailable(input.automationId))
+              : compositionAutomationService.value
+                  .listRuns(input)
+                  .pipe(
+                    Effect.mapError((error) =>
+                      toCompositionAutomationRpcError(error, input.automationId),
+                    ),
                   ),
             { "rpc.aggregate": "composition" },
           ),

@@ -63,6 +63,27 @@ describe("RPC authorization scopes", () => {
     }
   });
 
+  it("separates Automation reads from lifecycle and execution operations", () => {
+    for (const method of [
+      WS_METHODS.serverListCompositionAutomations,
+      WS_METHODS.serverGetCompositionAutomation,
+      WS_METHODS.serverListCompositionAutomationRuns,
+    ]) {
+      expect(requiredScopeForRpcMethod(method)).toBe(AuthOrchestrationReadScope);
+    }
+    for (const method of [
+      WS_METHODS.serverCreateCompositionAutomation,
+      WS_METHODS.serverUpdateCompositionAutomation,
+      WS_METHODS.serverPauseCompositionAutomation,
+      WS_METHODS.serverResumeCompositionAutomation,
+      WS_METHODS.serverDeleteCompositionAutomation,
+      WS_METHODS.serverRunCompositionAutomationOnce,
+      WS_METHODS.serverRetryCompositionAutomationRun,
+    ]) {
+      expect(requiredScopeForRpcMethod(method)).toBe(AuthOrchestrationOperateScope);
+    }
+  });
+
   it("reads the reviewer menu under the same scope as the pull request it belongs to", () => {
     // The candidate list is a read like the detail beside it, and asking somebody for a review is
     // a write like every other pull request operation.

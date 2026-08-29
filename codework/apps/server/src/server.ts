@@ -83,6 +83,7 @@ import * as CompositionAutomationBackgroundRunner from "./composition/Compositio
 import * as CompositionAutomationExecutionContext from "./composition/CompositionAutomationExecutionContext.ts";
 import * as CompositionAutomationRunExecutor from "./composition/CompositionAutomationRunExecutor.ts";
 import * as CompositionAutomationScheduler from "./composition/CompositionAutomationScheduler.ts";
+import * as CompositionAutomationService from "./composition/CompositionAutomationService.ts";
 import * as CompositionAutomationRuntime from "./composition/CompositionAutomationRuntime.ts";
 import * as PreviewManager from "./preview/Manager.ts";
 import * as PortScanner from "./preview/PortScanner.ts";
@@ -501,8 +502,9 @@ const CompositionSquadRunnerLayerLive = CompositionSquadRunner.layer.pipe(
   Layer.provide(CompositionTaskGraphExecutorLayerLive),
 );
 
-const CompositionGoalLoopAutomationRunnerLayerLive =
-  CompositionGoalLoopAutomationRunner.layer.pipe(Layer.provide(CompositionRuntimeLayerLive));
+const CompositionGoalLoopAutomationRunnerLayerLive = CompositionGoalLoopAutomationRunner.layer.pipe(
+  Layer.provide(CompositionRuntimeLayerLive),
+);
 
 const CompositionAutomationStoreLayerLive = CompositionAutomationStoreLive.pipe(
   Layer.provideMerge(PersistenceLayerLive),
@@ -511,8 +513,7 @@ const CompositionAutomationStoreLayerLive = CompositionAutomationStoreLive.pipe(
 const CompositionAutomationExecutionContextLayerLive =
   CompositionAutomationExecutionContext.layer.pipe(Layer.provide(OrchestrationLayerLive));
 
-const CompositionAutomationBackgroundRunnerLayerLive =
-  CompositionAutomationBackgroundRunner.layer;
+const CompositionAutomationBackgroundRunnerLayerLive = CompositionAutomationBackgroundRunner.layer;
 
 const CompositionAutomationRunExecutorLayerLive = CompositionAutomationRunExecutor.layer.pipe(
   Layer.provide(CompositionOrchestratorLayerLive),
@@ -527,6 +528,12 @@ const CompositionAutomationRunExecutorLayerLive = CompositionAutomationRunExecut
 
 const CompositionAutomationSchedulerLayerLive =
   CompositionAutomationScheduler.CompositionAutomationSchedulerLive.pipe(
+    Layer.provide(CompositionAutomationStoreLayerLive),
+    Layer.provide(CompositionAutomationRunExecutorLayerLive),
+  );
+
+const CompositionAutomationServiceLayerLive =
+  CompositionAutomationService.CompositionAutomationServiceLive.pipe(
     Layer.provide(CompositionAutomationStoreLayerLive),
     Layer.provide(CompositionAutomationRunExecutorLayerLive),
   );
@@ -594,6 +601,7 @@ const RuntimeCoreDependenciesBaseLive = ReactorLayerLive.pipe(
       CompositionSquadServiceLayerLive,
       CompositionSquadPlannerLayerLive,
       CompositionSquadRunnerLayerLive,
+      CompositionAutomationServiceLayerLive,
       CompositionAutomationRuntimeStartLayerLive,
     ),
   ),
