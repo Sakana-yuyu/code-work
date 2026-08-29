@@ -5,10 +5,12 @@ import * as FileSystem from "effect/FileSystem";
 import * as Path from "effect/Path";
 import * as SqlClient from "effect/unstable/sql/SqlClient";
 
-import { runMigrations } from "../src/persistence/Migrations.ts";
+import { migrationManifest, runMigrations } from "../src/persistence/Migrations.ts";
 import { frozenLegacyCompositionMigrations } from "../src/persistence/Migrations/CompositionMigrationHistory.fixture.ts";
 import * as NodeSqliteClient from "../src/persistence/NodeSqliteClient.ts";
 import { runMigrateDevDb } from "./migrate-dev-db.ts";
+
+const futureMigrationId = migrationManifest.at(-1)![0] + 1;
 
 const withDatabase = <A, E>(
   databasePath: string,
@@ -246,7 +248,7 @@ it.layer(NodeServices.layer)("migrate-dev-db", (it) => {
           yield* sql`DELETE FROM effect_sql_migrations WHERE migration_id = 60`;
           yield* sql`
             INSERT INTO effect_sql_migrations (migration_id, name)
-            VALUES (61, 'FutureMigrationWithoutReconciliation')
+            VALUES (${futureMigrationId}, 'FutureMigrationWithoutReconciliation')
           `;
         }),
       );
