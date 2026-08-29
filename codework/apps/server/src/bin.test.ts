@@ -283,6 +283,22 @@ it.layer(NodeServices.layer)("bin cli parsing", (it) => {
     }),
   );
 
+  it.effect("exposes Automation list and detail commands", () =>
+    Effect.gen(function* () {
+      const list = yield* captureStdout(runCli(["automation", "list", "--help"], noConnectCli));
+      const details = yield* captureStdout(runCli(["automation", "get", "--help"], noConnectCli));
+
+      assert.include(list.output, "List composition automations.");
+      assert.include(list.output, "--project");
+      assert.include(list.output, "--status");
+      assert.include(list.output, "--server");
+      assert.include(list.output, "--access-token");
+      assert.include(list.output, "--json");
+      assert.include(details.output, "Get one composition automation.");
+      assert.include(details.output, "<automation-id>");
+    }),
+  );
+
   it.effect("reports fresh headless connect state without requiring local configuration", () =>
     Effect.gen(function* () {
       const baseDir = NodeFS.mkdtempSync(
