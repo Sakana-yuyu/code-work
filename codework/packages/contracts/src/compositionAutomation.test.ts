@@ -4,8 +4,20 @@ import * as Schema from "effect/Schema";
 import {
   CompositionAutomation,
   CompositionAutomationCreateRequest,
+  CompositionAutomationDeleteResult,
+  CompositionAutomationGetRequest,
+  CompositionAutomationListRequest,
+  CompositionAutomationListResult,
+  CompositionAutomationResult,
+  CompositionAutomationRetryRequest,
+  CompositionAutomationRevisionMutationRequest,
   CompositionAutomationRun,
+  CompositionAutomationRunListRequest,
+  CompositionAutomationRunListResult,
+  CompositionAutomationRunOnceRequest,
   CompositionAutomationRunRequest,
+  CompositionAutomationRunResult,
+  CompositionAutomationRpcError,
   CompositionAutomationTarget,
   CompositionAutomationUpdateRequest,
   makeCompositionAutomationRunIdempotencyKey,
@@ -16,8 +28,21 @@ import {
 
 const decodeAutomation = Schema.decodeUnknownSync(CompositionAutomation);
 const decodeCreate = Schema.decodeUnknownSync(CompositionAutomationCreateRequest);
+const decodeDeleteResult = Schema.decodeUnknownSync(CompositionAutomationDeleteResult);
+const decodeGet = Schema.decodeUnknownSync(CompositionAutomationGetRequest);
+const decodeList = Schema.decodeUnknownSync(CompositionAutomationListRequest);
+const decodeListResult = Schema.decodeUnknownSync(CompositionAutomationListResult);
+const decodeResult = Schema.decodeUnknownSync(CompositionAutomationResult);
+const decodeRetry = Schema.decodeUnknownSync(CompositionAutomationRetryRequest);
+const decodeRevisionMutation = Schema.decodeUnknownSync(
+  CompositionAutomationRevisionMutationRequest,
+);
 const decodeRun = Schema.decodeUnknownSync(CompositionAutomationRun);
+const decodeRunList = Schema.decodeUnknownSync(CompositionAutomationRunListRequest);
+const decodeRunListResult = Schema.decodeUnknownSync(CompositionAutomationRunListResult);
+const decodeRunOnce = Schema.decodeUnknownSync(CompositionAutomationRunOnceRequest);
 const decodeRunRequest = Schema.decodeUnknownSync(CompositionAutomationRunRequest);
+const decodeRunResult = Schema.decodeUnknownSync(CompositionAutomationRunResult);
 const decodeTarget = Schema.decodeUnknownSync(CompositionAutomationTarget);
 const decodeUpdate = Schema.decodeUnknownSync(CompositionAutomationUpdateRequest);
 
@@ -191,6 +216,7 @@ describe("Composition Automation contracts", () => {
     const running = {
       automationRunId: "automation-run-1",
       automationId: "automation-1",
+      automationRevision: 2,
       scheduledForUnixMs: 3_000,
       idempotencyKey,
       trigger: "scheduled" as const,
@@ -211,6 +237,7 @@ describe("Composition Automation contracts", () => {
     expect(
       decodeRunRequest({
         automationId: "automation-1",
+        automationRevision: 2,
         scheduledForUnixMs: 3_000,
         trigger: "scheduled",
         idempotencyKey,
@@ -225,6 +252,7 @@ describe("Composition Automation contracts", () => {
     expect(() =>
       decodeRunRequest({
         automationId: "automation-1",
+        automationRevision: 2,
         scheduledForUnixMs: 3_000,
         trigger: "recovery",
         idempotencyKey: "composition-automation:automation-1:recovery:3000",
@@ -236,6 +264,7 @@ describe("Composition Automation contracts", () => {
     const invalidRun = {
       automationRunId: "automation-run-2",
       automationId: "automation-1",
+      automationRevision: 2,
       scheduledForUnixMs: 3_000,
       idempotencyKey: "composition-automation:automation-1:3000",
       trigger: "scheduled" as const,
@@ -264,6 +293,7 @@ describe("Composition Automation contracts", () => {
       decodeRun({
         automationRunId: "automation-run-cancelled",
         automationId: "automation-1",
+        automationRevision: 2,
         scheduledForUnixMs: 3_000,
         idempotencyKey: "composition-automation:automation-1:3000",
         trigger: "run_once",
@@ -279,5 +309,91 @@ describe("Composition Automation contracts", () => {
         errorDetail: null,
       }),
     ).toMatchObject({ status: "cancelled", startedAtUnixMs: null });
+  });
+
+  it("定义查询、列表和 revision 保护的生命周期合同", () => {
+    expect(decodeGet({ automationId: "automation-1" })).toEqual({
+      automationId: "automation-1",
+    });
+    expect(decodeList({ projectId: "project-1", statuses: ["active", "paused"] })).toEqual({
+      projectId: "project-1",
+      statuses: ["active", "paused"],
+    });
+    expect(decodeRevisionMutation({ automationId: "automation-1", expectedRevision: 2 })).toEqual({
+      automationId: "automation-1",
+      expectedRevision: 2,
+    });
+    expect(decodeResult({ automation: activeAutomation }).automation.automationId).toBe(
+      "automation-1",
+    );
+    expect(decodeListResult({ automations: [activeAutomation] }).automations).toHaveLength(1);
+    expect(decodeDeleteResult({ automationId: "automation-1", deletedAtUnixMs: 4_000 })).toEqual({
+      automationId: "automation-1",
+      deletedAtUnixMs: 4_000,
+    });
+  });
+
+  it("定义立即运行、失败重试和运行历史分页合同", () => {
+    const runOnce = decodeRunOnce({
+      automationId: "automation-1",
+      expectedRevision: 2,
+      operationId: "operation-run-once-1",
+    });
+    const retry = decodeRetry({
+      automationId: "automation-1",
+      automationRunId: "automation-run-1",
+      expectedRevision: 2,
+      operationId: "operation-retry-1",
+    });
+    const list = decodeRunList({
+      automationId: "automation-1",
+      cursor: "automation-run-cursor-1",
+      limit: 50,
+    });
+
+    expect(runOnce.operationId).toBe("operation-run-once-1");
+    expect(retry.automationRunId).toBe("automation-run-1");
+    expect(list.limit).toBe(50);
+    expect(list.cursor).toBe("automation-run-cursor-1");
+    expect(
+      decodeRunResult({
+        run: {
+          automationRunId: "automation-run-1",
+          automationId: "automation-1",
+          automationRevision: 2,
+          scheduledForUnixMs: 3_000,
+          idempotencyKey: "composition-automation:automation-1:3000",
+          trigger: "scheduled",
+          status: "running",
+          attempt: 1,
+          requestedAtUnixMs: 3_001,
+          startedAtUnixMs: 3_002,
+          finishedAtUnixMs: null,
+          compositionTaskId: "task-1",
+          compositionRunId: "run-1",
+          outputSummary: null,
+          errorCode: null,
+          errorDetail: null,
+        },
+      }).run.automationRevision,
+    ).toBe(2);
+    expect(decodeRunListResult({ runs: [], nextCursor: null })).toEqual({
+      runs: [],
+      nextCursor: null,
+    });
+    expect(() => decodeRunList({ automationId: "automation-1", limit: 201 })).toThrow();
+  });
+
+  it("Automation RPC 错误保留稳定错误码和 revision 证据", () => {
+    const error = new CompositionAutomationRpcError({
+      code: "revision_conflict",
+      detail: "Automation 已被其他客户端更新",
+      automationId: "automation-1",
+      expectedRevision: 2,
+      actualRevision: 3,
+    });
+
+    expect(error.message).toContain("revision_conflict");
+    expect(error.actualRevision).toBe(3);
   });
 });

@@ -242,6 +242,57 @@ export const CompositionAutomationUpdateRequest = CompositionAutomationUpdateFie
 );
 export type CompositionAutomationUpdateRequest = typeof CompositionAutomationUpdateRequest.Type;
 
+export const CompositionAutomationGetRequest = Schema.Struct({
+  automationId: TrimmedNonEmptyString,
+});
+export type CompositionAutomationGetRequest = typeof CompositionAutomationGetRequest.Type;
+
+export const CompositionAutomationListRequest = Schema.Struct({
+  projectId: Schema.optional(TrimmedNonEmptyString),
+  statuses: Schema.optional(Schema.Array(CompositionAutomationStatus)),
+});
+export type CompositionAutomationListRequest = typeof CompositionAutomationListRequest.Type;
+
+export const CompositionAutomationResult = Schema.Struct({
+  automation: CompositionAutomation,
+});
+export type CompositionAutomationResult = typeof CompositionAutomationResult.Type;
+
+export const CompositionAutomationListResult = Schema.Struct({
+  automations: Schema.Array(CompositionAutomation),
+});
+export type CompositionAutomationListResult = typeof CompositionAutomationListResult.Type;
+
+/** 暂停、恢复和删除都使用乐观 revision，防止覆盖其他客户端的新配置。 */
+export const CompositionAutomationRevisionMutationRequest = Schema.Struct({
+  automationId: TrimmedNonEmptyString,
+  expectedRevision: PositiveInt,
+});
+export type CompositionAutomationRevisionMutationRequest =
+  typeof CompositionAutomationRevisionMutationRequest.Type;
+
+export const CompositionAutomationDeleteResult = Schema.Struct({
+  automationId: TrimmedNonEmptyString,
+  deletedAtUnixMs: NonNegativeInt,
+});
+export type CompositionAutomationDeleteResult = typeof CompositionAutomationDeleteResult.Type;
+
+export const CompositionAutomationRunOnceRequest = Schema.Struct({
+  automationId: TrimmedNonEmptyString,
+  expectedRevision: PositiveInt,
+  /** 客户端重试同一次点击时必须复用 operationId。 */
+  operationId: TrimmedNonEmptyString,
+});
+export type CompositionAutomationRunOnceRequest = typeof CompositionAutomationRunOnceRequest.Type;
+
+export const CompositionAutomationRetryRequest = Schema.Struct({
+  automationId: TrimmedNonEmptyString,
+  automationRunId: TrimmedNonEmptyString,
+  expectedRevision: PositiveInt,
+  operationId: TrimmedNonEmptyString,
+});
+export type CompositionAutomationRetryRequest = typeof CompositionAutomationRetryRequest.Type;
+
 export const CompositionAutomationRunTrigger = Schema.Literals([
   "scheduled",
   "run_once",
@@ -268,6 +319,7 @@ export const makeCompositionAutomationRunIdempotencyKey = (input: {
 const CompositionAutomationRunFields = Schema.Struct({
   automationRunId: TrimmedNonEmptyString,
   automationId: TrimmedNonEmptyString,
+  automationRevision: PositiveInt,
   /** automationId + scheduledForUnixMs 是定时触发去重的稳定业务身份。 */
   scheduledForUnixMs: NonNegativeInt,
   idempotencyKey: TrimmedNonEmptyString,
@@ -378,9 +430,48 @@ export const CompositionAutomationRun = CompositionAutomationRunFields.check(
 );
 export type CompositionAutomationRun = typeof CompositionAutomationRun.Type;
 
+export const CompositionAutomationRunResult = Schema.Struct({
+  run: CompositionAutomationRun,
+});
+export type CompositionAutomationRunResult = typeof CompositionAutomationRunResult.Type;
+
+export const COMPOSITION_AUTOMATION_RUN_HISTORY_MAX_LIMIT = 200;
+
+export const CompositionAutomationRunListRequest = Schema.Struct({
+  automationId: TrimmedNonEmptyString,
+  cursor: Schema.optional(TrimmedNonEmptyString),
+  limit: Schema.optional(
+    PositiveInt.check(Schema.isLessThanOrEqualTo(COMPOSITION_AUTOMATION_RUN_HISTORY_MAX_LIMIT)),
+  ),
+});
+export type CompositionAutomationRunListRequest = typeof CompositionAutomationRunListRequest.Type;
+
+export const CompositionAutomationRunListResult = Schema.Struct({
+  runs: Schema.Array(CompositionAutomationRun),
+  nextCursor: Schema.NullOr(TrimmedNonEmptyString),
+});
+export type CompositionAutomationRunListResult = typeof CompositionAutomationRunListResult.Type;
+
+export class CompositionAutomationRpcError extends Schema.TaggedErrorClass<CompositionAutomationRpcError>()(
+  "CompositionAutomationRpcError",
+  {
+    code: TrimmedNonEmptyString,
+    detail: TrimmedNonEmptyString,
+    automationId: TrimmedNonEmptyString,
+    automationRunId: Schema.optional(TrimmedNonEmptyString),
+    expectedRevision: Schema.optional(PositiveInt),
+    actualRevision: Schema.optional(NonNegativeInt),
+  },
+) {
+  override get message(): string {
+    return `Automation 操作失败：${this.code}: ${this.detail}`;
+  }
+}
+
 /** Scheduler 到执行适配器的命令；幂等键由调用方稳定生成并由 Store 唯一约束。 */
 const CompositionAutomationRunRequestFields = Schema.Struct({
   automationId: TrimmedNonEmptyString,
+  automationRevision: PositiveInt,
   scheduledForUnixMs: NonNegativeInt,
   trigger: CompositionAutomationRunTrigger,
   idempotencyKey: TrimmedNonEmptyString,
