@@ -117,6 +117,16 @@ describe("CompositionFailurePolicy", () => {
       },
     },
     {
+      name: "Runtime 心跳过期进入重连恢复而不是普通重试",
+      run: { status: "failed", failureCode: "runtime_heartbeat_stale" },
+      expected: {
+        code: "runtime_heartbeat_stale",
+        category: "runtime_offline",
+        recovery: "reconnect",
+        retryable: false,
+      },
+    },
+    {
       name: "Agent 作用域错误不重试",
       run: { status: "failed", failureCode: "runtime_agent_scope_mismatch" },
       expected: {

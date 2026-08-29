@@ -6,6 +6,120 @@ import { makeCompositionRuntimeAgentDriver } from "./CompositionRuntimeAgentDriv
 import { makeInMemoryCompositionRuntimeAdapter } from "./CompositionRuntimeAdapter.ts";
 
 describe("CompositionRuntimeAgentDriver", () => {
+  it("Runtime 心跳已过期时拒绝派发，不调用 capability handshake 或 dispatch", async () => {
+    const adapter = makeInMemoryCompositionRuntimeAdapter({ runtimeId: "runtime-stale-heartbeat" });
+    const handshakeCapabilities = adapter.handshakeCapabilities;
+    if (handshakeCapabilities === undefined) {
+      throw new Error("测试适配器预期支持 capability handshake。");
+    }
+    let handshakeCalled = false;
+    let dispatched = false;
+    const guardedAdapter = {
+      ...adapter,
+      heartbeat: () =>
+        Effect.succeed({
+          runtimeId: adapter.runtimeId,
+          status: "online" as const,
+          heartbeatAtUnixMs: 0,
+          activeTaskCount: 0,
+        }),
+      handshakeCapabilities: (input: Parameters<typeof handshakeCapabilities>[0]) => {
+        handshakeCalled = true;
+        return handshakeCapabilities(input);
+      },
+      dispatchTask: (input: Parameters<typeof adapter.dispatchTask>[0]) => {
+        dispatched = true;
+        return adapter.dispatchTask(input);
+      },
+    };
+    const driver = makeCompositionRuntimeAgentDriver({
+      adapter: guardedAdapter,
+      agentId: "runtime-stale-heartbeat:agent",
+    });
+
+    await expect(
+      Effect.runPromise(
+        driver.startTask({
+          task: {
+            taskId: "task-stale-heartbeat",
+            projectId: "project-1",
+            assigneeKind: "agent",
+            assigneeId: driver.agentId,
+            mode: "serial",
+            status: "queued",
+            promptDigest: "sha256:stale-heartbeat",
+            dependsOnTaskIds: [],
+            createdAtUnixMs: 1,
+            updatedAtUnixMs: 1,
+          },
+          run: {
+            runId: "run-stale-heartbeat",
+            taskId: "task-stale-heartbeat",
+            agentId: driver.agentId,
+            runtimeId: driver.runtimeId,
+            status: "queued",
+            attempt: 1,
+            capabilityGrantIds: ["grant-stale-heartbeat"],
+          },
+        }),
+      ),
+    ).rejects.toMatchObject({ code: "runtime_heartbeat_stale" });
+    expect(handshakeCalled).toBe(false);
+    expect(dispatched).toBe(false);
+  });
+
+  it("Runtime 心跳归属与 Adapter 不匹配时拒绝跨 Runtime 派发", async () => {
+    const adapter = makeInMemoryCompositionRuntimeAdapter({ runtimeId: "runtime-heartbeat-owner" });
+    let dispatched = false;
+    const guardedAdapter = {
+      ...adapter,
+      heartbeat: () =>
+        Effect.succeed({
+          runtimeId: "runtime-heartbeat-other",
+          status: "online" as const,
+          heartbeatAtUnixMs: 0,
+          activeTaskCount: 0,
+        }),
+      dispatchTask: (input: Parameters<typeof adapter.dispatchTask>[0]) => {
+        dispatched = true;
+        return adapter.dispatchTask(input);
+      },
+    };
+    const driver = makeCompositionRuntimeAgentDriver({
+      adapter: guardedAdapter,
+      agentId: "runtime-heartbeat-owner:agent",
+    });
+
+    await expect(
+      Effect.runPromise(
+        driver.startTask({
+          task: {
+            taskId: "task-heartbeat-scope",
+            projectId: "project-1",
+            assigneeKind: "agent",
+            assigneeId: driver.agentId,
+            mode: "serial",
+            status: "queued",
+            promptDigest: "sha256:heartbeat-scope",
+            dependsOnTaskIds: [],
+            createdAtUnixMs: 1,
+            updatedAtUnixMs: 1,
+          },
+          run: {
+            runId: "run-heartbeat-scope",
+            taskId: "task-heartbeat-scope",
+            agentId: driver.agentId,
+            runtimeId: driver.runtimeId,
+            status: "queued",
+            attempt: 1,
+            capabilityGrantIds: [],
+          },
+        }),
+      ),
+    ).rejects.toMatchObject({ code: "runtime_heartbeat_scope_mismatch" });
+    expect(dispatched).toBe(false);
+  });
+
   it("Runtime 实时探测为离线时拒绝派发，不调用 capability handshake 或 dispatch", async () => {
     const adapter = makeInMemoryCompositionRuntimeAdapter({ runtimeId: "runtime-offline" });
     await Effect.runPromise(adapter.setProbeStatus("offline"));

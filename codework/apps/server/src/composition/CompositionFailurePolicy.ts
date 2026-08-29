@@ -34,8 +34,11 @@ const retryableTransportCodes: ReadonlySet<string> = new Set([
 
 const runtimeOfflineCodes: ReadonlySet<string> = new Set([
   "runtime_offline",
+  "runtime_unstable",
   "provider_offline",
   "runtime_probe_failed",
+  "runtime_heartbeat_failed",
+  "runtime_heartbeat_stale",
   "runtime_agent_list_failed",
 ]);
 

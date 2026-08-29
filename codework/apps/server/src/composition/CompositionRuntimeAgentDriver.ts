@@ -3,6 +3,7 @@ import type {
   CompositionRuntimeCapabilityHandshakeRequest,
   ProviderRuntimeEvent,
 } from "@codework/contracts";
+import * as Clock from "effect/Clock";
 import * as Effect from "effect/Effect";
 
 import {
@@ -17,7 +18,10 @@ import type {
 export interface CompositionRuntimeAgentDriverOptions {
   readonly adapter: CompositionRuntimeAdapter;
   readonly agentId: string;
+  readonly heartbeatFreshnessMs?: number;
 }
+
+export const defaultCompositionRuntimeHeartbeatFreshnessMs = 30_000;
 
 type ActiveRun = {
   readonly taskId: string;
@@ -50,6 +54,8 @@ const runtimeTaskIdFromEvent = (event: ProviderRuntimeEvent): string | undefined
 export const makeCompositionRuntimeAgentDriver = (
   options: CompositionRuntimeAgentDriverOptions,
 ): CompositionAgentDriver => {
+  const heartbeatFreshnessMs =
+    options.heartbeatFreshnessMs ?? defaultCompositionRuntimeHeartbeatFreshnessMs;
   const activeRuns = new Map<string, ActiveRun>();
   // 活动表只负责当前生命周期；历史表用于终态后迟到事件的只读归属解析。
   // 设上限避免长期运行的 Runtime 因事件审计绑定无限增长。
@@ -171,9 +177,9 @@ export const makeCompositionRuntimeAgentDriver = (
     const capabilityGrantIds = [...(input.run.capabilityGrantIds ?? [])];
 
     return Effect.gen(function* () {
-      const probe = yield* options.adapter.probe().pipe(
-        Effect.mapError((failure) => makeFailure("runtime_probe_failed", failure)),
-      );
+      const probe = yield* options.adapter
+        .probe()
+        .pipe(Effect.mapError((failure) => makeFailure("runtime_probe_failed", failure)));
       if (probe.status !== "online") {
         return yield* new CompositionAgentDriverFailure({
           code: probe.reasonCode ?? `runtime_${probe.status}`,
@@ -181,9 +187,38 @@ export const makeCompositionRuntimeAgentDriver = (
         });
       }
 
-      const agents = yield* options.adapter.listAgents().pipe(
-        Effect.mapError((failure) => makeFailure("runtime_agent_list_failed", failure)),
-      );
+      const heartbeat = yield* options.adapter
+        .heartbeat()
+        .pipe(Effect.mapError((failure) => makeFailure("runtime_heartbeat_failed", failure)));
+      if (heartbeat.runtimeId !== options.adapter.runtimeId) {
+        return yield* new CompositionAgentDriverFailure({
+          code: "runtime_heartbeat_scope_mismatch",
+          detail: `Runtime 心跳属于 '${heartbeat.runtimeId}'，不能用于 '${options.adapter.runtimeId}' 派发。`,
+        });
+      }
+      if (heartbeat.status !== "online") {
+        return yield* new CompositionAgentDriverFailure({
+          code: `runtime_${heartbeat.status}`,
+          detail: `Runtime '${options.adapter.runtimeId}' 心跳状态为 ${heartbeat.status}，拒绝派发。`,
+        });
+      }
+      const nowUnixMs = yield* Clock.currentTimeMillis;
+      if (!Number.isSafeInteger(heartbeat.heartbeatAtUnixMs) || heartbeat.heartbeatAtUnixMs < 0) {
+        return yield* new CompositionAgentDriverFailure({
+          code: "runtime_heartbeat_invalid",
+          detail: `Runtime '${options.adapter.runtimeId}' 返回了非法心跳时间。`,
+        });
+      }
+      if (heartbeat.heartbeatAtUnixMs < nowUnixMs - heartbeatFreshnessMs) {
+        return yield* new CompositionAgentDriverFailure({
+          code: "runtime_heartbeat_stale",
+          detail: `Runtime '${options.adapter.runtimeId}' 心跳已超过 ${heartbeatFreshnessMs}ms 新鲜度窗口。`,
+        });
+      }
+
+      const agents = yield* options.adapter
+        .listAgents()
+        .pipe(Effect.mapError((failure) => makeFailure("runtime_agent_list_failed", failure)));
       const agent = agents.find((candidate) => candidate.agentId === options.agentId);
       if (agent === undefined) {
         return yield* new CompositionAgentDriverFailure({
