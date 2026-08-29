@@ -172,6 +172,19 @@ const sameRunIdentity = (left: WorkspaceScriptRun, right: WorkspaceScriptRun): b
   left.compositionTaskId === right.compositionTaskId &&
   left.compositionRunId === right.compositionRunId;
 
+const sameStartClaimIdentity = (left: WorkspaceScriptRun, right: WorkspaceScriptRun): boolean =>
+  left.workspaceScriptRunId === right.workspaceScriptRunId &&
+  left.idempotencyKey === right.idempotencyKey &&
+  left.projectId === right.projectId &&
+  left.threadId === right.threadId &&
+  left.scriptId === right.scriptId &&
+  left.scriptName === right.scriptName &&
+  left.terminalId === right.terminalId &&
+  left.cwd === right.cwd &&
+  left.worktreePath === right.worktreePath &&
+  left.compositionTaskId === right.compositionTaskId &&
+  left.compositionRunId === right.compositionRunId;
+
 const domainError = (
   code: WorkspaceScriptStoreErrorCode,
   detail: string,
@@ -688,7 +701,7 @@ const makeStore = Effect.gen(function* () {
 
         const byId = yield* readStoredRun(run.workspaceScriptRunId);
         if (Option.isSome(byId)) {
-          if (sameRunIdentity(byId.value.run, run)) {
+          if (sameStartClaimIdentity(byId.value.run, run)) {
             return { run: byId.value.run, claimed: false } satisfies WorkspaceScriptRunClaimResult;
           }
           return yield* domainError(
@@ -699,7 +712,7 @@ const makeStore = Effect.gen(function* () {
         }
 
         const byIdempotency = yield* readStoredRunByIdempotency(run.idempotencyKey);
-        if (Option.isSome(byIdempotency) && sameRunIdentity(byIdempotency.value.run, run)) {
+        if (Option.isSome(byIdempotency) && sameStartClaimIdentity(byIdempotency.value.run, run)) {
           return {
             run: byIdempotency.value.run,
             claimed: false,

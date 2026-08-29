@@ -61,6 +61,11 @@ layer("WorkspaceScriptStore", (it) => {
 
       const first = yield* store.claimStart(run);
       const repeated = yield* store.claimStart(run);
+      const concurrentReplay = yield* store.claimStart({
+        ...run,
+        requestedAtUnixMs: 1_001,
+        updatedAtUnixMs: 1_001,
+      });
       const conflict = yield* store
         .claimStart({ ...run, idempotencyKey: "workspace-script:key:other" })
         .pipe(Effect.flip);
@@ -75,6 +80,7 @@ layer("WorkspaceScriptStore", (it) => {
 
       assert.isTrue(first.claimed);
       assert.isFalse(repeated.claimed);
+      assert.isFalse(concurrentReplay.claimed);
       assert.equal(repeated.run.workspaceScriptRunId, run.workspaceScriptRunId);
       assert.equal(assertDomainError(conflict).code, "workspace_script_run_conflict");
       assert.equal(assertDomainError(idempotencyConflict).code, "workspace_script_run_conflict");
