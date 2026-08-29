@@ -355,6 +355,20 @@ it.layer(NodeServices.layer)("bin cli parsing", (it) => {
     }),
   );
 
+  it.effect("exposes paginated Automation history command", () =>
+    Effect.gen(function* () {
+      const history = yield* captureStdout(
+        runCli(["automation", "history", "--help"], noConnectCli),
+      );
+
+      assert.include(history.output, "List composition automation run history.");
+      assert.include(history.output, "<automation-id>");
+      assert.include(history.output, "--cursor");
+      assert.include(history.output, "--limit");
+      assert.include(history.output, "--json");
+    }),
+  );
+
   it.effect("reports fresh headless connect state without requiring local configuration", () =>
     Effect.gen(function* () {
       const baseDir = NodeFS.mkdtempSync(

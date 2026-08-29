@@ -1,6 +1,7 @@
 import * as NodeCrypto from "node:crypto";
 
 import {
+  COMPOSITION_AUTOMATION_RUN_HISTORY_MAX_LIMIT,
   type CompositionAutomation,
   CompositionAutomationCreateRequest as CompositionAutomationCreateRequestSchema,
   type CompositionAutomationCreateRequest,
@@ -8,6 +9,7 @@ import {
   type CompositionAutomationListResult,
   type CompositionAutomationResult,
   type CompositionAutomationRunResult,
+  type CompositionAutomationRunListResult,
   CompositionAutomationStatus,
   type CompositionAutomationStatus as CompositionAutomationStatusType,
   CompositionAutomationUpdateRequest as CompositionAutomationUpdateRequestSchema,
@@ -59,6 +61,12 @@ export interface RunAutomationOnceOptions extends MutateAutomationRevisionOption
 
 export interface RetryAutomationRunOptions extends RunAutomationOnceOptions {
   readonly automationRunId: string;
+}
+
+export interface ListAutomationRunsOptions extends ControlConnectionOptions {
+  readonly automationId: string;
+  readonly cursor?: string;
+  readonly limit?: number;
 }
 
 export class AutomationStatusInputError extends Data.TaggedError("AutomationStatusInputError")<{
@@ -201,6 +209,23 @@ export const retryAutomationRun = (
         automationRunId: options.automationRunId,
         expectedRevision: options.expectedRevision,
         operationId: options.operationId,
+      }),
+  );
+
+export const listAutomationRuns = (
+  options: ListAutomationRunsOptions,
+  open: ControlClientOpen = openControlClient,
+) =>
+  open(
+    {
+      serverUrl: options.serverUrl,
+      ...(options.accessToken ? { accessToken: options.accessToken } : {}),
+    },
+    (rpc) =>
+      rpc[WS_METHODS.serverListCompositionAutomationRuns]({
+        automationId: options.automationId,
+        ...(options.cursor === undefined ? {} : { cursor: options.cursor }),
+        ...(options.limit === undefined ? {} : { limit: options.limit }),
       }),
   );
 
@@ -393,6 +418,35 @@ export function formatAutomationRunResult(
   ].join("\n");
 }
 
+export function formatAutomationRunHistory(
+  result: CompositionAutomationRunListResult,
+  json: boolean,
+): string {
+  if (json) {
+    return JSON.stringify(result, null, 2);
+  }
+  if (result.runs.length === 0) {
+    return "No automation runs found.";
+  }
+  const runs = result.runs.map((run) => {
+    const error = [run.errorCode, run.errorDetail].filter((part) => part !== null).join(": ");
+    return [
+      run.automationRunId,
+      run.status,
+      run.trigger,
+      `r${String(run.automationRevision)}`,
+      `attempt=${String(run.attempt)}`,
+      `scheduled=${formatUnixMs(run.scheduledForUnixMs)}`,
+      run.compositionTaskId === null ? undefined : `task=${run.compositionTaskId}`,
+      run.outputSummary === null ? undefined : `output=${run.outputSummary}`,
+      error.length === 0 ? undefined : `error=${error}`,
+    ]
+      .filter((part) => part !== undefined)
+      .join("  ");
+  });
+  return [...runs, `Next cursor: ${result.nextCursor ?? "none"}`].join("\n");
+}
+
 const serverFlag = Flag.string("server").pipe(
   Flag.withDescription("Code Work server URL or pairing link."),
   Flag.withDefault("http://127.0.0.1:3773"),
@@ -442,6 +496,24 @@ const operationIdFlag = Flag.string("operation-id").pipe(
   Flag.withSchema(TrimmedNonEmptyString),
   Flag.withDescription(
     "Stable idempotency key. Generated and printed before dispatch when omitted.",
+  ),
+  Flag.optional,
+);
+
+const cursorFlag = Flag.string("cursor").pipe(
+  Flag.withSchema(TrimmedNonEmptyString),
+  Flag.withDescription("Opaque pagination cursor returned by the previous history page."),
+  Flag.optional,
+);
+
+const AutomationHistoryLimit = PositiveInt.check(
+  Schema.isLessThanOrEqualTo(COMPOSITION_AUTOMATION_RUN_HISTORY_MAX_LIMIT),
+);
+
+const limitFlag = Flag.integer("limit").pipe(
+  Flag.withSchema(AutomationHistoryLimit),
+  Flag.withDescription(
+    `Maximum history rows to return, up to ${String(COMPOSITION_AUTOMATION_RUN_HISTORY_MAX_LIMIT)}.`,
   ),
   Flag.optional,
 );
@@ -644,6 +716,29 @@ const automationRetryCommand = Command.make("retry", {
   ),
 );
 
+const automationHistoryCommand = Command.make("history", {
+  automationId: automationIdArgument,
+  cursor: cursorFlag,
+  limit: limitFlag,
+  server: serverFlag,
+  accessToken: accessTokenFlag,
+  json: jsonFlag,
+}).pipe(
+  Command.withDescription("List composition automation run history."),
+  Command.withHandler((flags) =>
+    Effect.gen(function* () {
+      const result = yield* listAutomationRuns({
+        serverUrl: flags.server,
+        ...(Option.isSome(flags.accessToken) ? { accessToken: flags.accessToken.value } : {}),
+        automationId: flags.automationId,
+        ...(Option.isSome(flags.cursor) ? { cursor: flags.cursor.value } : {}),
+        ...(Option.isSome(flags.limit) ? { limit: flags.limit.value } : {}),
+      });
+      yield* Console.log(formatAutomationRunHistory(result, flags.json));
+    }),
+  ),
+);
+
 export const automationCommand = Command.make("automation").pipe(
   Command.withDescription("Manage composition automations."),
   Command.withSubcommands([
@@ -656,5 +751,6 @@ export const automationCommand = Command.make("automation").pipe(
     automationDeleteCommand,
     automationRunOnceCommand,
     automationRetryCommand,
+    automationHistoryCommand,
   ]),
 );
