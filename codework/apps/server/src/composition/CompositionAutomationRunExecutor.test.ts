@@ -10,6 +10,7 @@ import { assert, describe, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
 
+import { CompositionGoalLoopAutomationRunnerError } from "./CompositionGoalLoopAutomationRunner.ts";
 import { CompositionTaskAlreadyExistsError } from "./CompositionOrchestrator.ts";
 import {
   makeCompositionAutomationRunExecutor,
@@ -62,6 +63,25 @@ const makeSquadAutomation = (): CompositionAutomation => ({
   },
 });
 
+const makeGoalLoopAutomation = (): CompositionAutomation => ({
+  ...makeAutomation(),
+  automationId: "automation-goal-loop",
+  name: "Goal Loop Automation",
+  prompt: "持续修复问题，直到通过独立评审",
+  target: {
+    type: "goal_loop",
+    agentId: "agent-codex",
+    reviewerAgentId: "agent-reviewer",
+    model: "gpt-5.6",
+    capabilityIds: ["t3.workspace.read_file", "t3.workspace.write_file"],
+    maxAttempts: 4,
+    maxCostUnits: 8,
+    stalePivotRounds: 2,
+    deadlineDurationMs: 120_000,
+    executionContext: { mode: "existing_thread", threadId: "thread-goal-loop" },
+  },
+});
+
 const automationRun: CompositionAutomationRun = {
   automationRunId: "automation-run-agent",
   automationId: "automation-agent",
@@ -79,6 +99,15 @@ const automationRun: CompositionAutomationRun = {
   outputSummary: null,
   errorCode: null,
   errorDetail: null,
+};
+
+const goalLoopAutomationRun: CompositionAutomationRun = {
+  ...automationRun,
+  automationRunId: "automation-run-goal-loop",
+  automationId: "automation-goal-loop",
+  idempotencyKey: "automation-goal-loop:1000",
+  compositionTaskId: "automation-run-goal-loop:task",
+  compositionRunId: "automation-run-goal-loop:run",
 };
 
 const makeTask = (overrides: Partial<CompositionTask> = {}): CompositionTask => ({
@@ -124,6 +153,223 @@ const makeOptions = (
 });
 
 describe("CompositionAutomationRunExecutor", () => {
+  it.effect("Goal Loop Automation 在后台启动并把稳定身份、预算和评审配置传入运行器", () =>
+    Effect.gen(function* () {
+      let backgroundWork: Effect.Effect<void, never> | undefined;
+      let goalLoopInput:
+        | Parameters<
+            NonNullable<
+              CompositionAutomationRunExecutorOptions["goalLoop"]
+            >["runner"]["run"]
+          >[0]
+        | undefined;
+      let transition:
+        | Parameters<
+            NonNullable<
+              CompositionAutomationRunExecutorOptions["goalLoop"]
+            >["runs"]["saveRunTransition"]
+          >[0]
+        | undefined;
+      const executor = makeCompositionAutomationRunExecutor(
+        makeOptions({
+          contexts: {
+            resolve: () =>
+              Effect.succeed({
+                workspaceRoot: "E:/workspace/goal-loop",
+                threadId: "thread-goal-loop",
+              }),
+          },
+          goalLoop: {
+            runner: {
+              run: (input) =>
+                Effect.sync(() => {
+                  goalLoopInput = input;
+                  return {
+                    goalStatus: "completed" as const,
+                    automationStatus: "succeeded" as const,
+                    summary: "目标循环完成（2 轮，独立评审通过）",
+                  };
+                }),
+            },
+            background: {
+              ensure: (automationRunId, work) =>
+                Effect.sync(() => {
+                  assert.equal(automationRunId, goalLoopAutomationRun.automationRunId);
+                  backgroundWork = work;
+                  return "started" as const;
+                }),
+            },
+            runs: {
+              saveRunTransition: (input) =>
+                Effect.sync(() => {
+                  transition = input;
+                  return input.run;
+                }),
+            },
+            now: () => 2_000,
+          },
+        }),
+      );
+
+      yield* executor.ensureStarted({
+        automation: makeGoalLoopAutomation(),
+        run: goalLoopAutomationRun,
+      });
+
+      assert.isUndefined(goalLoopInput);
+      assert.isDefined(backgroundWork);
+      yield* backgroundWork!;
+      assert.deepEqual(goalLoopInput, {
+        taskId: "automation-run-goal-loop:task",
+        runId: "automation-run-goal-loop:run",
+        projectId: "project-agent",
+        threadId: "thread-goal-loop",
+        agentId: "agent-codex",
+        reviewerAgentId: "agent-reviewer",
+        model: "gpt-5.6",
+        capabilityIds: ["t3.workspace.read_file", "t3.workspace.write_file"],
+        workspaceRoot: "E:/workspace/goal-loop",
+        goal: "持续修复问题，直到通过独立评审",
+        maxAttempts: 4,
+        maxCostUnits: 8,
+        stalePivotRounds: 2,
+        deadlineDurationMs: 120_000,
+        startedAtUnixMs: 1_100,
+      });
+      assert.deepEqual(transition, {
+        expectedStatus: "running",
+        run: {
+          ...goalLoopAutomationRun,
+          status: "succeeded",
+          finishedAtUnixMs: 2_000,
+          outputSummary: "目标循环完成（2 轮，独立评审通过）",
+          errorCode: null,
+          errorDetail: null,
+        },
+      });
+    }),
+  );
+
+  it.effect("Goal Loop 预算耗尽和取消保留稳定终态与错误码", () =>
+    Effect.gen(function* () {
+      const transitions: CompositionAutomationRun[] = [];
+      const results = [
+        {
+          goalStatus: "budget_exhausted" as const,
+          automationStatus: "failed" as const,
+          summary: "目标循环因预算耗尽收敛（4 轮）",
+          errorCode: "goal_loop_budget_exhausted",
+        },
+        {
+          goalStatus: "cancelled" as const,
+          automationStatus: "cancelled" as const,
+          summary: "目标循环已取消（2 轮）",
+          errorCode: "goal_loop_cancelled",
+        },
+      ];
+      let resultIndex = 0;
+      const executor = makeCompositionAutomationRunExecutor(
+        makeOptions({
+          goalLoop: {
+            runner: {
+              run: () => Effect.succeed(results[resultIndex++]!),
+            },
+            background: {
+              ensure: (_automationRunId, work) => work.pipe(Effect.as("started" as const)),
+            },
+            runs: {
+              saveRunTransition: (input) =>
+                Effect.sync(() => {
+                  transitions.push(input.run);
+                  return input.run;
+                }),
+            },
+            now: () => 2_000 + resultIndex,
+          },
+        }),
+      );
+
+      yield* executor.ensureStarted({
+        automation: makeGoalLoopAutomation(),
+        run: goalLoopAutomationRun,
+      });
+      yield* executor.ensureStarted({
+        automation: makeGoalLoopAutomation(),
+        run: { ...goalLoopAutomationRun, automationRunId: "automation-run-goal-loop-cancelled" },
+      });
+
+      assert.deepEqual(
+        transitions.map((run) => ({
+          status: run.status,
+          outputSummary: run.outputSummary,
+          errorCode: run.errorCode,
+          errorDetail: run.errorDetail,
+        })),
+        [
+          {
+            status: "failed",
+            outputSummary: "目标循环因预算耗尽收敛（4 轮）",
+            errorCode: "goal_loop_budget_exhausted",
+            errorDetail: "目标循环因预算耗尽收敛（4 轮）",
+          },
+          {
+            status: "cancelled",
+            outputSummary: "目标循环已取消（2 轮）",
+            errorCode: "goal_loop_cancelled",
+            errorDetail: "目标循环已取消（2 轮）",
+          },
+        ],
+      );
+    }),
+  );
+
+  it.effect("Goal Loop 执行异常回写原始稳定错误码和详情", () =>
+    Effect.gen(function* () {
+      let transition: CompositionAutomationRun | undefined;
+      const executor = makeCompositionAutomationRunExecutor(
+        makeOptions({
+          goalLoop: {
+            runner: {
+              run: () =>
+                Effect.fail(
+                  new CompositionGoalLoopAutomationRunnerError({
+                    code: "goal_loop_agent_driver_unavailable",
+                    detail: "执行 Agent Driver 当前离线。",
+                    retryable: true,
+                  }),
+                ),
+            },
+            background: {
+              ensure: (_automationRunId, work) => work.pipe(Effect.as("started" as const)),
+            },
+            runs: {
+              saveRunTransition: (input) =>
+                Effect.sync(() => {
+                  transition = input.run;
+                  return input.run;
+                }),
+            },
+            now: () => 2_000,
+          },
+        }),
+      );
+
+      yield* executor.ensureStarted({
+        automation: makeGoalLoopAutomation(),
+        run: goalLoopAutomationRun,
+      });
+
+      assert.deepEqual(transition, {
+        ...goalLoopAutomationRun,
+        status: "failed",
+        finishedAtUnixMs: 2_000,
+        outputSummary: null,
+        errorCode: "goal_loop_agent_driver_unavailable",
+        errorDetail: "执行 Agent Driver 当前离线。",
+      });
+    }),
+  );
+
   it.effect("Squad Automation 固定 revision 后台启动并在完成后回写运行结果", () =>
     Effect.gen(function* () {
       let backgroundWork: Effect.Effect<void, never> | undefined;

@@ -32,6 +32,10 @@ import {
 } from "./CompositionAutomationScheduler.ts";
 import { classifyCompositionFailure } from "./CompositionFailurePolicy.ts";
 import {
+  CompositionGoalLoopAutomationRunner,
+  type CompositionGoalLoopAutomationRunnerShape,
+} from "./CompositionGoalLoopAutomationRunner.ts";
+import {
   CompositionAgentDriverFailure,
   CompositionTaskAlreadyExistsError,
 } from "./CompositionOrchestrator.ts";
@@ -51,6 +55,13 @@ type SquadAutomationRuntime = {
   readonly now?: () => number;
 };
 
+type GoalLoopAutomationRuntime = {
+  readonly runner: Pick<CompositionGoalLoopAutomationRunnerShape, "run">;
+  readonly background: Pick<CompositionAutomationBackgroundRunnerShape, "ensure">;
+  readonly runs: Pick<CompositionAutomationStoreShape, "saveRunTransition">;
+  readonly now?: () => number;
+};
+
 const isTaskAlreadyExistsError = Schema.is(CompositionTaskAlreadyExistsError);
 const isAgentDriverFailure = Schema.is(CompositionAgentDriverFailure);
 const terminalFailureStatuses: ReadonlySet<CompositionTaskRun["status"]> = new Set([
@@ -64,6 +75,7 @@ export interface CompositionAutomationRunExecutorOptions {
   readonly store: Pick<CompositionTaskStoreShape, "getTask" | "getRun">;
   readonly contexts: Pick<CompositionAutomationExecutionContextResolverShape, "resolve">;
   readonly squad?: SquadAutomationRuntime;
+  readonly goalLoop?: GoalLoopAutomationRuntime;
 }
 
 type AgentExecutionScope = {
@@ -309,6 +321,114 @@ export const makeCompositionAutomationRunExecutor = (
     },
   );
 
+  const ensureGoalLoopStarted = Effect.fn(
+    "CompositionAutomationRunExecutor.ensureGoalLoopStarted",
+  )(function* (input: CompositionAutomationRunExecutionInput) {
+    const target = input.automation.target;
+    if (target.type !== "goal_loop") {
+      return yield* executorError(
+        "automation_target_unsupported",
+        `当前执行适配器尚不支持 ${target.type} target。`,
+        false,
+      );
+    }
+    const taskId = input.run.compositionTaskId;
+    const runId = input.run.compositionRunId;
+    const startedAtUnixMs = input.run.startedAtUnixMs;
+    if (taskId === null || runId === null) {
+      return yield* executorError(
+        "automation_composition_identity_missing",
+        "Automation Run 尚未绑定稳定 Composition Task/Run ID。",
+        false,
+      );
+    }
+    if (startedAtUnixMs === null) {
+      return yield* executorError(
+        "automation_run_start_missing",
+        "Goal Loop Automation Run 缺少 startedAtUnixMs。",
+        false,
+      );
+    }
+    const runtime = options.goalLoop;
+    if (runtime === undefined) {
+      return yield* executorError(
+        "automation_goal_loop_runtime_unavailable",
+        "Goal Loop Automation 后台执行服务尚未就绪。",
+        true,
+      );
+    }
+    const context = yield* options.contexts
+      .resolve({
+        projectId: input.automation.projectId,
+        executionContext: target.executionContext,
+      })
+      .pipe(Effect.mapError((cause) => executorError(cause.code, cause.detail, cause.retryable)));
+    const work = Effect.gen(function* () {
+      const outcome = yield* Effect.result(
+        runtime.runner.run({
+          taskId,
+          runId,
+          projectId: input.automation.projectId,
+          ...(context.threadId === undefined ? {} : { threadId: context.threadId }),
+          agentId: target.agentId,
+          ...(target.reviewerAgentId === undefined
+            ? {}
+            : { reviewerAgentId: target.reviewerAgentId }),
+          ...(target.model === undefined ? {} : { model: target.model }),
+          capabilityIds: [...target.capabilityIds],
+          workspaceRoot: context.workspaceRoot,
+          goal: input.automation.prompt,
+          maxAttempts: target.maxAttempts,
+          ...(target.maxCostUnits === undefined ? {} : { maxCostUnits: target.maxCostUnits }),
+          ...(target.stalePivotRounds === undefined
+            ? {}
+            : { stalePivotRounds: target.stalePivotRounds }),
+          ...(target.deadlineDurationMs === undefined
+            ? {}
+            : { deadlineDurationMs: target.deadlineDurationMs }),
+          startedAtUnixMs,
+        }),
+      );
+      const finishedAtUnixMs = yield* runtime.now === undefined
+        ? Clock.currentTimeMillis
+        : Effect.sync(runtime.now);
+      const run =
+        outcome._tag === "Failure"
+          ? {
+              ...input.run,
+              status: "failed" as const,
+              finishedAtUnixMs,
+              outputSummary: null,
+              errorCode: outcome.failure.code,
+              errorDetail: outcome.failure.detail,
+            }
+          : {
+              ...input.run,
+              status: outcome.success.automationStatus,
+              finishedAtUnixMs,
+              outputSummary: outcome.success.summary,
+              errorCode:
+                outcome.success.automationStatus === "succeeded"
+                  ? null
+                  : (outcome.success.errorCode ?? "goal_loop_execution_failed"),
+              errorDetail:
+                outcome.success.automationStatus === "succeeded"
+                  ? null
+                  : outcome.success.summary,
+            };
+      yield* runtime.runs.saveRunTransition({ run, expectedStatus: "running" }).pipe(
+        Effect.catchCause((cause) =>
+          Effect.logError("Automation Goal Loop 终态回写失败", {
+            automationId: input.automation.automationId,
+            automationRunId: input.run.automationRunId,
+            cause,
+          }),
+        ),
+      );
+    });
+    yield* runtime.background.ensure(input.run.automationRunId, work);
+  });
+
   const ensureStarted: CompositionAutomationRunExecutorShape["ensureStarted"] = (input) => {
     switch (input.automation.target.type) {
       case "agent":
@@ -316,13 +436,7 @@ export const makeCompositionAutomationRunExecutor = (
       case "squad":
         return ensureSquadStarted(input);
       case "goal_loop":
-        return Effect.fail(
-          executorError(
-            "automation_target_unsupported",
-            "当前执行适配器尚不支持 goal_loop target。",
-            false,
-          ),
-        );
+        return ensureGoalLoopStarted(input);
     }
   };
 
@@ -334,6 +448,7 @@ const live = Effect.gen(function* () {
   const store = yield* CompositionTaskStore;
   const contexts = yield* CompositionAutomationExecutionContextResolver;
   const squadRunner = yield* CompositionSquadRunner;
+  const goalLoopRunner = yield* CompositionGoalLoopAutomationRunner;
   const background = yield* CompositionAutomationBackgroundRunner;
   const automationStore = yield* CompositionAutomationStore;
   return makeCompositionAutomationRunExecutor({
@@ -341,6 +456,7 @@ const live = Effect.gen(function* () {
     store,
     contexts,
     squad: { runner: squadRunner, background, runs: automationStore },
+    goalLoop: { runner: goalLoopRunner, background, runs: automationStore },
   });
 });
 
