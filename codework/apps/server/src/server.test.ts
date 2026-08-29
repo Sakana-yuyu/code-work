@@ -138,6 +138,7 @@ import * as ProjectFaviconResolver from "./project/ProjectFaviconResolver.ts";
 import * as CodeworkProjectFileLoader from "./project/CodeworkProjectFileLoader.ts";
 import * as ProjectSetupScriptRunner from "./project/ProjectSetupScriptRunner.ts";
 import * as WorkspaceScriptService from "./project/WorkspaceScriptService.ts";
+import * as CompositionSquadExecutionService from "./composition/CompositionSquadExecutionService.ts";
 import * as RepositoryIdentityResolver from "./project/RepositoryIdentityResolver.ts";
 import * as ServerEnvironment from "./environment/ServerEnvironment.ts";
 import * as WorkspaceEntries from "./workspace/WorkspaceEntries.ts";
@@ -415,6 +416,9 @@ const buildAppUnderTest = (options?: {
       ProjectSetupScriptRunner.ProjectSetupScriptRunner["Service"]
     >;
     workspaceScriptService?: Partial<WorkspaceScriptService.WorkspaceScriptService["Service"]>;
+    compositionSquadExecutionService?: Partial<
+      CompositionSquadExecutionService.CompositionSquadExecutionService["Service"]
+    >;
     terminalManager?: Partial<TerminalManager.TerminalManager["Service"]>;
     orchestrationEngine?: Partial<OrchestrationEngine.OrchestrationEngineService["Service"]>;
     analyticsService?: Partial<AnalyticsService.AnalyticsService["Service"]>;
@@ -617,6 +621,12 @@ const buildAppUnderTest = (options?: {
           ...options.layers.workspaceScriptService,
         })
       : Layer.empty;
+    const compositionSquadExecutionServiceLayer = Layer.mock(
+      CompositionSquadExecutionService.CompositionSquadExecutionService,
+    )({
+      list: () => Effect.succeed([]),
+      ...options?.layers?.compositionSquadExecutionService,
+    });
     const resourceTelemetryLayer = ResourceTelemetry.layer.pipe(
       Layer.provide(
         Layer.mergeAll(
@@ -782,6 +792,7 @@ const buildAppUnderTest = (options?: {
             ...options?.layers?.projectSetupScriptRunner,
           }),
           workspaceScriptServiceLayer,
+          compositionSquadExecutionServiceLayer,
         ),
       ),
       Layer.provide(
@@ -4614,6 +4625,41 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
 
       assert.deepEqual(response.issues, []);
       assert.deepEqual(response.keybindings, [resolved]);
+    }).pipe(Effect.provide(NodeHttpServer.layerTest)),
+  );
+
+  it.effect("routes persisted Squad execution history through websocket rpc", () =>
+    Effect.gen(function* () {
+      const list = vi.fn<
+        CompositionSquadExecutionService.CompositionSquadExecutionService["Service"]["list"]
+      >(() => Effect.succeed([]));
+      yield* buildAppUnderTest({
+        layers: { compositionSquadExecutionService: { list } },
+      });
+
+      const wsUrl = yield* getWsServerUrl("/ws");
+      const response = yield* Effect.scoped(
+        withWsRpcClient(wsUrl, (client) =>
+          client[WS_METHODS.serverListCompositionSquadExecutions]({
+            projectId: "project-history",
+            squadId: "squad-history",
+            statuses: ["queued", "failed"],
+            limit: 50,
+          }),
+        ),
+      );
+
+      assert.deepEqual(response, { executions: [] });
+      assert.deepEqual(list.mock.calls, [
+        [
+          {
+            projectId: "project-history",
+            squadId: "squad-history",
+            statuses: ["queued", "failed"],
+            limit: 50,
+          },
+        ],
+      ]);
     }).pipe(Effect.provide(NodeHttpServer.layerTest)),
   );
 

@@ -48,6 +48,7 @@ describe("RPC authorization scopes", () => {
       WS_METHODS.serverListCompositionSquads,
       WS_METHODS.serverGetCompositionSquad,
       WS_METHODS.serverListCompositionSquadRevisions,
+      WS_METHODS.serverListCompositionSquadExecutions,
     ]) {
       expect(requiredScopeForRpcMethod(method)).toBe(AuthOrchestrationReadScope);
     }

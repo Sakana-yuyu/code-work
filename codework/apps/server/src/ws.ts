@@ -112,6 +112,7 @@ import * as CompositionControlCenterProjection from "./composition/CompositionCo
 import * as CompositionGoalLoopRedispatch from "./composition/CompositionGoalLoopRedispatch.ts";
 import * as CompositionAutomationService from "./composition/CompositionAutomationService.ts";
 import { toCompositionAutomationRpcError } from "./composition/CompositionAutomationRpcError.ts";
+import * as CompositionSquadExecutionService from "./composition/CompositionSquadExecutionService.ts";
 import * as CompositionSquadRunner from "./composition/CompositionSquadRunner.ts";
 import { toCompositionSquadRpcError } from "./composition/CompositionSquadRpcError.ts";
 import * as CompositionSquadService from "./composition/CompositionSquadService.ts";
@@ -548,6 +549,9 @@ const makeWsRpcLayer = (
       );
       const compositionSquadService = yield* Effect.serviceOption(
         CompositionSquadService.CompositionSquadService,
+      );
+      const compositionSquadExecutionService = yield* Effect.serviceOption(
+        CompositionSquadExecutionService.CompositionSquadExecutionService,
       );
       const compositionSquadRunner = yield* Effect.serviceOption(
         CompositionSquadRunner.CompositionSquadRunner,
@@ -2192,6 +2196,19 @@ const makeWsRpcLayer = (
               : compositionSquadService.value.listRevisions(input.squadId).pipe(
                   Effect.map((revisions) => ({ revisions })),
                   Effect.mapError((error) => toCompositionSquadRpcError(error, input.squadId)),
+                ),
+            { "rpc.aggregate": "composition" },
+          ),
+        [WS_METHODS.serverListCompositionSquadExecutions]: (input) =>
+          observeRpcEffect(
+            WS_METHODS.serverListCompositionSquadExecutions,
+            Option.isNone(compositionSquadExecutionService)
+              ? Effect.fail(compositionSquadUnavailable(input.squadId ?? "*"))
+              : compositionSquadExecutionService.value.list(input).pipe(
+                  Effect.map((executions) => ({ executions })),
+                  Effect.mapError((error) =>
+                    toCompositionSquadRpcError(error, input.squadId ?? "*"),
+                  ),
                 ),
             { "rpc.aggregate": "composition" },
           ),

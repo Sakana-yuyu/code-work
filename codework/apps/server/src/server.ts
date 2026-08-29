@@ -78,6 +78,7 @@ import * as CompositionOrchestratorService from "./composition/CompositionOrches
 import * as CompositionGoalLoopAutomationRunner from "./composition/CompositionGoalLoopAutomationRunner.ts";
 import * as CompositionSquadPlanner from "./composition/CompositionSquadPlanner.ts";
 import * as CompositionSquadRunner from "./composition/CompositionSquadRunner.ts";
+import * as CompositionSquadExecutionService from "./composition/CompositionSquadExecutionService.ts";
 import * as CompositionSquadService from "./composition/CompositionSquadService.ts";
 import * as CompositionTaskRuntimeProjectionService from "./composition/CompositionTaskRuntimeProjectionService.ts";
 import * as CompositionTaskGraphExecutor from "./composition/CompositionTaskGraphExecutor.ts";
@@ -503,6 +504,11 @@ const CompositionSquadExecutionStoreLayerLive = CompositionSquadExecutionStoreLi
   Layer.provideMerge(PersistenceLayerLive),
 );
 
+const CompositionSquadExecutionServiceLayerLive =
+  CompositionSquadExecutionService.CompositionSquadExecutionServiceLive.pipe(
+    Layer.provide(CompositionSquadExecutionStoreLayerLive),
+  );
+
 const CompositionSquadRunnerLayerLive = CompositionSquadRunner.layer.pipe(
   Layer.provide(CompositionSquadServiceLayerLive),
   Layer.provide(CompositionSquadPlannerLayerLive),
@@ -618,6 +624,7 @@ const RuntimeCoreDependenciesWithoutWorkspaceScriptLive = ReactorLayerLive.pipe(
       CompositionRuntimeToolBridgeLayerLive,
       CompositionTaskGraphExecutorLayerLive,
       CompositionSquadServiceLayerLive,
+      CompositionSquadExecutionServiceLayerLive,
       CompositionSquadPlannerLayerLive,
       CompositionSquadRunnerLayerLive,
       CompositionAutomationServiceLayerLive,
