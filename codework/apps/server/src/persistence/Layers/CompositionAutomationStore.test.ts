@@ -307,4 +307,102 @@ layer("CompositionAutomationStore", (it) => {
       assert.equal(failureCode(malformed), "automation_history_cursor_invalid");
     }),
   );
+
+  it.effect("按计划时间稳定列出到期 Automation，并限制批次大小", () =>
+    Effect.gen(function* () {
+      const store = yield* CompositionAutomationStore;
+      const dueB = makeAutomation("automation-due-b", { nextRunAtUnixMs: 900 });
+      const dueA = makeAutomation("automation-due-a", { nextRunAtUnixMs: 900 });
+      const future = makeAutomation("automation-future", { nextRunAtUnixMs: 2_000 });
+      const paused = makeAutomation("automation-paused", {
+        status: "paused",
+        updatedAtUnixMs: 1_100,
+        nextRunAtUnixMs: null,
+        pausedAtUnixMs: 1_100,
+      });
+      yield* Effect.forEach([dueB, dueA, future, paused], (automation) =>
+        store.createAutomation(automation),
+      );
+
+      const due = yield* store.listDueAutomations({ nowUnixMs: 1_000, limit: 10 });
+      const first = yield* store.listDueAutomations({ nowUnixMs: 1_000, limit: 1 });
+
+      assert.deepEqual(
+        due.map((automation) => automation.automationId),
+        [dueA.automationId, dueB.automationId],
+      );
+      assert.deepEqual(first, [dueA]);
+    }),
+  );
+
+  it.effect("并发推进同一计划点只增加一次 runCount，并幂等返回获胜 Run", () =>
+    Effect.gen(function* () {
+      const store = yield* CompositionAutomationStore;
+      const current = makeAutomation("automation-scheduled-claim", {
+        nextRunAtUnixMs: 2_000,
+        expiresAtUnixMs: 120_000,
+      });
+      const next: CompositionAutomation = {
+        ...current,
+        runCount: 1,
+        updatedAtUnixMs: 2_100,
+        nextRunAtUnixMs: 62_000,
+        lastRunAtUnixMs: 2_100,
+      };
+      const firstRun = makeQueuedRun(current.automationId, "scheduled-run-a", 2_000, 2_100);
+      const competingRun = { ...firstRun, automationRunId: "scheduled-run-b" };
+      yield* store.createAutomation(current);
+
+      const results = yield* Effect.all(
+        [
+          store.claimScheduledRun({ run: firstRun, nextAutomation: next }),
+          store.claimScheduledRun({ run: competingRun, nextAutomation: next }),
+        ],
+        { concurrency: "unbounded" },
+      );
+
+      assert.equal(results.filter((result) => result.claimed).length, 1);
+      assert.equal(results.filter((result) => result.scheduleAdvanced).length, 1);
+      assert.equal(results[0]?.run.automationRunId, results[1]?.run.automationRunId);
+      assert.deepEqual(Option.getOrThrow(yield* store.getAutomation(current.automationId)), next);
+      assert.equal((yield* store.listRuns({ automationId: current.automationId })).runs.length, 1);
+    }),
+  );
+
+  it.effect("崩溃窗口可用既有 queued Run 推进计划，并在 maxRuns 后完成 Automation", () =>
+    Effect.gen(function* () {
+      const store = yield* CompositionAutomationStore;
+      const current = makeAutomation("automation-recovery-claim", {
+        maxRuns: 1,
+        nextRunAtUnixMs: 3_000,
+      });
+      const run = makeQueuedRun(current.automationId, "scheduled-run-recovery", 3_000, 3_100);
+      const completed: CompositionAutomation = {
+        ...current,
+        status: "completed",
+        runCount: 1,
+        updatedAtUnixMs: 3_100,
+        nextRunAtUnixMs: null,
+        lastRunAtUnixMs: 3_100,
+      };
+      yield* store.createAutomation(current);
+      assert.equal((yield* store.claimRun(run)).claimed, true);
+
+      const recovered = yield* store.claimScheduledRun({ run, nextAutomation: completed });
+      assert.equal(recovered.claimed, false);
+      assert.equal(recovered.scheduleAdvanced, true);
+      assert.deepEqual(recovered.automation, completed);
+
+      const replay = yield* store.claimScheduledRun({ run, nextAutomation: completed });
+      assert.equal(replay.claimed, false);
+      assert.equal(replay.scheduleAdvanced, false);
+
+      const recoverable = yield* store.listRecoverableRuns({ limit: 10 });
+      assert.ok(recoverable.some((candidate) => candidate.automationRunId === run.automationRunId));
+      assert.deepEqual(
+        recoverable.map((candidate) => candidate.requestedAtUnixMs),
+        recoverable.map((candidate) => candidate.requestedAtUnixMs).toSorted((a, b) => a - b),
+      );
+    }),
+  );
 });

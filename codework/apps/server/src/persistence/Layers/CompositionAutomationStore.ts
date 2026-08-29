@@ -26,6 +26,7 @@ import {
   CompositionAutomationStore,
   CompositionAutomationStoreDomainError,
   type CompositionAutomationRunClaimResult,
+  type CompositionAutomationScheduledRunClaimResult,
   type CompositionAutomationStoreErrorCode,
   type CompositionAutomationStoreShape,
 } from "../Services/CompositionAutomationStore.ts";
@@ -40,6 +41,7 @@ const encodeTarget = Schema.encodeSync(TargetJson);
 const encodeRun = Schema.encodeSync(RunJson);
 const decodeAutomation = Schema.decodeUnknownEffect(CompositionAutomationSchema);
 const decodeRun = Schema.decodeUnknownEffect(CompositionAutomationRunSchema);
+const AUTOMATION_STORE_BATCH_MAX = 200;
 
 const AutomationRowSchema = Schema.Struct({
   automationId: Schema.String,
@@ -124,6 +126,10 @@ const AutomationListRequest = Schema.Struct({
   includePaused: Schema.Number,
   includeCompleted: Schema.Number,
 });
+const AutomationDueListRequest = Schema.Struct({
+  nowUnixMs: Schema.Number,
+  limit: Schema.Number,
+});
 const AutomationRevisionUpdateRequest = Schema.Struct({
   ...AutomationWriteSchema.fields,
   expectedRevision: Schema.Number,
@@ -133,6 +139,17 @@ const AutomationDeleteRequest = Schema.Struct({
   expectedRevision: Schema.Number,
 });
 const AutomationDeleteRow = Schema.Struct({ automationId: Schema.String });
+const AutomationScheduleUpdateRequest = Schema.Struct({
+  automationId: Schema.String,
+  expectedRevision: Schema.Number,
+  expectedNextRunAtUnixMs: Schema.Number,
+  status: CompositionAutomationStatus,
+  runCount: Schema.Number,
+  updatedAtUnixMs: Schema.Number,
+  nextRunAtUnixMs: Schema.NullOr(Schema.Number),
+  lastRunAtUnixMs: Schema.Number,
+  pausedAtUnixMs: Schema.NullOr(Schema.Number),
+});
 
 const AutomationRunIdRequest = Schema.Struct({ automationRunId: Schema.String });
 const AutomationRunIdentityRequest = Schema.Struct({
@@ -149,6 +166,7 @@ const AutomationRunHistoryRequest = Schema.Struct({
   cursorAutomationRunId: Schema.NullOr(Schema.String),
   limit: Schema.Number,
 });
+const AutomationRecoverableRunListRequest = Schema.Struct({ limit: Schema.Number });
 
 const HistoryCursorSchema = Schema.Struct({
   version: Schema.Literal(1),
@@ -255,6 +273,54 @@ const sameClaimIdentity = (
   existing.automationRevision === requested.automationRevision &&
   existing.scheduledForUnixMs === requested.scheduledForUnixMs &&
   existing.idempotencyKey === requested.idempotencyKey;
+
+const sameAutomationConfiguration = (
+  current: CompositionAutomation,
+  next: CompositionAutomation,
+): boolean =>
+  current.automationId === next.automationId &&
+  current.projectId === next.projectId &&
+  current.name === next.name &&
+  current.prompt === next.prompt &&
+  encodeCadence(current.cadence) === encodeCadence(next.cadence) &&
+  encodeTarget(current.target) === encodeTarget(next.target) &&
+  current.revision === next.revision &&
+  current.maxRuns === next.maxRuns &&
+  current.createdAtUnixMs === next.createdAtUnixMs &&
+  current.expiresAtUnixMs === next.expiresAtUnixMs;
+
+const isValidScheduledAdvance = (
+  current: CompositionAutomation,
+  run: CompositionAutomationRun,
+  next: CompositionAutomation,
+): boolean => {
+  if (
+    current.status !== "active" ||
+    current.nextRunAtUnixMs === null ||
+    current.nextRunAtUnixMs !== run.scheduledForUnixMs ||
+    run.automationId !== current.automationId ||
+    run.automationRevision !== current.revision ||
+    run.trigger !== "scheduled" ||
+    run.status !== "queued" ||
+    !sameAutomationConfiguration(current, next) ||
+    next.runCount !== current.runCount + 1 ||
+    next.updatedAtUnixMs < current.updatedAtUnixMs ||
+    next.updatedAtUnixMs < run.requestedAtUnixMs ||
+    next.lastRunAtUnixMs !== run.requestedAtUnixMs ||
+    next.pausedAtUnixMs !== null
+  ) {
+    return false;
+  }
+
+  if (next.status === "active") {
+    return (
+      next.nextRunAtUnixMs !== null &&
+      next.nextRunAtUnixMs > run.scheduledForUnixMs &&
+      (next.maxRuns === null || next.runCount < next.maxRuns)
+    );
+  }
+  return next.status === "completed" && next.nextRunAtUnixMs === null;
+};
 
 const domainError = (
   code: CompositionAutomationStoreErrorCode,
@@ -372,6 +438,35 @@ const makeStore = Effect.gen(function* () {
     `,
   });
 
+  const listDueAutomationRows = SqlSchema.findAll({
+    Request: AutomationDueListRequest,
+    Result: AutomationRowSchema,
+    execute: (request) => sql`
+      SELECT
+        automation_id AS "automationId",
+        project_id AS "projectId",
+        name,
+        prompt,
+        cadence_json AS cadence,
+        target_json AS target,
+        status,
+        revision,
+        max_runs AS "maxRuns",
+        run_count AS "runCount",
+        created_at_unix_ms AS "createdAtUnixMs",
+        updated_at_unix_ms AS "updatedAtUnixMs",
+        next_run_at_unix_ms AS "nextRunAtUnixMs",
+        last_run_at_unix_ms AS "lastRunAtUnixMs",
+        paused_at_unix_ms AS "pausedAtUnixMs",
+        expires_at_unix_ms AS "expiresAtUnixMs"
+      FROM composition_automations
+      WHERE status = 'active'
+        AND next_run_at_unix_ms <= ${request.nowUnixMs}
+      ORDER BY next_run_at_unix_ms ASC, automation_id ASC
+      LIMIT ${request.limit}
+    `,
+  });
+
   const getRevisionRow = SqlSchema.findOneOption({
     Request: AutomationRevisionRequest,
     Result: AutomationRevisionRowSchema,
@@ -466,6 +561,42 @@ const makeStore = Effect.gen(function* () {
         expires_at_unix_ms = ${request.expiresAtUnixMs}
       WHERE automation_id = ${request.automationId}
         AND revision = ${request.expectedRevision}
+      RETURNING
+        automation_id AS "automationId",
+        project_id AS "projectId",
+        name,
+        prompt,
+        cadence_json AS cadence,
+        target_json AS target,
+        status,
+        revision,
+        max_runs AS "maxRuns",
+        run_count AS "runCount",
+        created_at_unix_ms AS "createdAtUnixMs",
+        updated_at_unix_ms AS "updatedAtUnixMs",
+        next_run_at_unix_ms AS "nextRunAtUnixMs",
+        last_run_at_unix_ms AS "lastRunAtUnixMs",
+        paused_at_unix_ms AS "pausedAtUnixMs",
+        expires_at_unix_ms AS "expiresAtUnixMs"
+    `,
+  });
+
+  const updateAutomationScheduleRow = SqlSchema.findOneOption({
+    Request: AutomationScheduleUpdateRequest,
+    Result: AutomationRowSchema,
+    execute: (request) => sql`
+      UPDATE composition_automations
+      SET
+        status = ${request.status},
+        run_count = ${request.runCount},
+        updated_at_unix_ms = ${request.updatedAtUnixMs},
+        next_run_at_unix_ms = ${request.nextRunAtUnixMs},
+        last_run_at_unix_ms = ${request.lastRunAtUnixMs},
+        paused_at_unix_ms = ${request.pausedAtUnixMs}
+      WHERE automation_id = ${request.automationId}
+        AND revision = ${request.expectedRevision}
+        AND status = 'active'
+        AND next_run_at_unix_ms = ${request.expectedNextRunAtUnixMs}
       RETURNING
         automation_id AS "automationId",
         project_id AS "projectId",
@@ -656,6 +787,34 @@ const makeStore = Effect.gen(function* () {
         )
       ORDER BY requested_at_unix_ms DESC, automation_run_id DESC
       LIMIT ${request.limit}
+    `,
+  });
+
+  const listRecoverableRunRows = SqlSchema.findAll({
+    Request: AutomationRecoverableRunListRequest,
+    Result: AutomationRunRowSchema,
+    execute: ({ limit }) => sql`
+      SELECT
+        automation_run_id AS "automationRunId",
+        automation_id AS "automationId",
+        automation_revision AS "automationRevision",
+        scheduled_for_unix_ms AS "scheduledForUnixMs",
+        idempotency_key AS "idempotencyKey",
+        trigger,
+        status,
+        attempt,
+        requested_at_unix_ms AS "requestedAtUnixMs",
+        started_at_unix_ms AS "startedAtUnixMs",
+        finished_at_unix_ms AS "finishedAtUnixMs",
+        composition_task_id AS "compositionTaskId",
+        composition_run_id AS "compositionRunId",
+        output_summary AS "outputSummary",
+        error_code AS "errorCode",
+        error_detail AS "errorDetail"
+      FROM composition_automation_runs
+      WHERE status IN ('queued', 'running')
+      ORDER BY requested_at_unix_ms ASC, automation_run_id ASC
+      LIMIT ${limit}
     `,
   });
 
@@ -921,68 +1080,157 @@ const makeStore = Effect.gen(function* () {
       }),
     );
 
-  const claimRun: CompositionAutomationStoreShape["claimRun"] = (run) =>
-    withTransaction(
-      Effect.gen(function* () {
-        const existingByIdentity = yield* readRunByIdentity(
-          run.automationId,
-          run.scheduledForUnixMs,
-        );
-        if (Option.isSome(existingByIdentity)) {
-          if (sameClaimIdentity(existingByIdentity.value, run)) {
-            return { run: existingByIdentity.value, claimed: false };
-          }
-          return yield* domainError(
-            "automation_run_conflict",
-            run.automationId,
-            "同一计划时间已经绑定到不同 Automation revision。",
-            { automationRunId: existingByIdentity.value.automationRunId },
-          );
-        }
-
-        const existingById = yield* readRun(run.automationRunId);
-        if (Option.isSome(existingById)) {
-          if (sameRun(existingById.value, run)) {
-            return { run: existingById.value, claimed: false };
-          }
-          return yield* domainError(
-            "automation_run_conflict",
-            run.automationId,
-            "automationRunId 已被其他计划占用。",
-            { automationRunId: run.automationRunId },
-          );
-        }
-
-        const revision = yield* readRevision(run.automationId, run.automationRevision);
-        if (Option.isNone(revision)) {
-          return yield* domainError(
-            "automation_revision_invalid",
-            run.automationId,
-            `Automation revision ${run.automationRevision} 不存在。`,
-            { actualRevision: run.automationRevision },
-          );
-        }
-
-        const inserted = yield* query(
-          "CompositionAutomationStore.claimRun.insert",
-          insertRunRow(run),
-        );
-        if (Option.isSome(inserted)) {
-          const decoded = yield* decodeRunRow(
-            "CompositionAutomationStore.claimRun.insert",
-            inserted.value,
-          );
-          return { run: decoded, claimed: true } satisfies CompositionAutomationRunClaimResult;
-        }
-        const winner = yield* readRunByIdentity(run.automationId, run.scheduledForUnixMs);
-        if (Option.isSome(winner) && sameClaimIdentity(winner.value, run)) {
-          return { run: winner.value, claimed: false };
+  const claimRunInTransaction = (run: CompositionAutomationRun) =>
+    Effect.gen(function* () {
+      const existingByIdentity = yield* readRunByIdentity(run.automationId, run.scheduledForUnixMs);
+      if (Option.isSome(existingByIdentity)) {
+        if (sameClaimIdentity(existingByIdentity.value, run)) {
+          return { run: existingByIdentity.value, claimed: false };
         }
         return yield* domainError(
           "automation_run_conflict",
           run.automationId,
-          "Run claim 与既有记录冲突。",
+          "同一计划时间已经绑定到不同 Automation revision。",
+          { automationRunId: existingByIdentity.value.automationRunId },
+        );
+      }
+
+      const existingById = yield* readRun(run.automationRunId);
+      if (Option.isSome(existingById)) {
+        if (sameRun(existingById.value, run)) {
+          return { run: existingById.value, claimed: false };
+        }
+        return yield* domainError(
+          "automation_run_conflict",
+          run.automationId,
+          "automationRunId 已被其他计划占用。",
           { automationRunId: run.automationRunId },
+        );
+      }
+
+      const revision = yield* readRevision(run.automationId, run.automationRevision);
+      if (Option.isNone(revision)) {
+        return yield* domainError(
+          "automation_revision_invalid",
+          run.automationId,
+          `Automation revision ${run.automationRevision} 不存在。`,
+          { actualRevision: run.automationRevision },
+        );
+      }
+
+      const inserted = yield* query(
+        "CompositionAutomationStore.claimRun.insert",
+        insertRunRow(run),
+      );
+      if (Option.isSome(inserted)) {
+        const decoded = yield* decodeRunRow(
+          "CompositionAutomationStore.claimRun.insert",
+          inserted.value,
+        );
+        return { run: decoded, claimed: true } satisfies CompositionAutomationRunClaimResult;
+      }
+      const winner = yield* readRunByIdentity(run.automationId, run.scheduledForUnixMs);
+      if (Option.isSome(winner) && sameClaimIdentity(winner.value, run)) {
+        return { run: winner.value, claimed: false };
+      }
+      return yield* domainError(
+        "automation_run_conflict",
+        run.automationId,
+        "Run claim 与既有记录冲突。",
+        { automationRunId: run.automationRunId },
+      );
+    });
+
+  const claimRun: CompositionAutomationStoreShape["claimRun"] = (run) =>
+    withTransaction(claimRunInTransaction(run));
+
+  const claimScheduledRun: CompositionAutomationStoreShape["claimScheduledRun"] = (input) =>
+    withTransaction(
+      Effect.gen(function* () {
+        const current = yield* readAutomation(input.run.automationId);
+        if (Option.isNone(current)) {
+          return yield* domainError(
+            "automation_not_found",
+            input.run.automationId,
+            "Automation 不存在。",
+          );
+        }
+
+        if (sameAutomation(current.value, input.nextAutomation)) {
+          const replayRun = yield* readRunByIdentity(
+            input.run.automationId,
+            input.run.scheduledForUnixMs,
+          );
+          if (Option.isSome(replayRun) && sameClaimIdentity(replayRun.value, input.run)) {
+            return {
+              automation: current.value,
+              run: replayRun.value,
+              claimed: false,
+              scheduleAdvanced: false,
+            } satisfies CompositionAutomationScheduledRunClaimResult;
+          }
+        }
+
+        if (!isValidScheduledAdvance(current.value, input.run, input.nextAutomation)) {
+          return yield* domainError(
+            "automation_schedule_invalid",
+            input.run.automationId,
+            "计划推进必须保持配置 revision，并且只递增一次 runCount。",
+            { automationRunId: input.run.automationRunId },
+          );
+        }
+
+        const claim = yield* claimRunInTransaction(input.run);
+        const updated = yield* query(
+          "CompositionAutomationStore.claimScheduledRun.updateSchedule",
+          updateAutomationScheduleRow({
+            automationId: input.run.automationId,
+            expectedRevision: current.value.revision,
+            expectedNextRunAtUnixMs: input.run.scheduledForUnixMs,
+            status: input.nextAutomation.status,
+            runCount: input.nextAutomation.runCount,
+            updatedAtUnixMs: input.nextAutomation.updatedAtUnixMs,
+            nextRunAtUnixMs: input.nextAutomation.nextRunAtUnixMs,
+            lastRunAtUnixMs: input.nextAutomation.lastRunAtUnixMs!,
+            pausedAtUnixMs: input.nextAutomation.pausedAtUnixMs,
+          }),
+        );
+        if (Option.isSome(updated)) {
+          const automation = yield* decodeAutomationRow(
+            "CompositionAutomationStore.claimScheduledRun.updateSchedule",
+            updated.value,
+          );
+          return {
+            automation,
+            run: claim.run,
+            claimed: claim.claimed,
+            scheduleAdvanced: true,
+          } satisfies CompositionAutomationScheduledRunClaimResult;
+        }
+
+        const latest = yield* readAutomation(input.run.automationId);
+        const winner = yield* readRunByIdentity(
+          input.run.automationId,
+          input.run.scheduledForUnixMs,
+        );
+        if (
+          Option.isSome(latest) &&
+          sameAutomation(latest.value, input.nextAutomation) &&
+          Option.isSome(winner) &&
+          sameClaimIdentity(winner.value, input.run)
+        ) {
+          return {
+            automation: latest.value,
+            run: winner.value,
+            claimed: false,
+            scheduleAdvanced: false,
+          } satisfies CompositionAutomationScheduledRunClaimResult;
+        }
+        return yield* domainError(
+          "automation_schedule_conflict",
+          input.run.automationId,
+          "计划点已被其他调度器推进。",
+          { automationRunId: input.run.automationRunId },
         );
       }),
     );
@@ -1070,10 +1318,61 @@ const makeStore = Effect.gen(function* () {
         ),
       );
     },
+    listDueAutomations: (input) => {
+      if (
+        !Number.isSafeInteger(input.limit) ||
+        input.limit < 1 ||
+        input.limit > AUTOMATION_STORE_BATCH_MAX
+      ) {
+        return Effect.fail(
+          domainError(
+            "automation_schedule_invalid",
+            "*",
+            `到期 Automation 批次必须在 1 到 ${AUTOMATION_STORE_BATCH_MAX} 之间。`,
+          ),
+        );
+      }
+      return query(
+        "CompositionAutomationStore.listDueAutomations",
+        listDueAutomationRows(input),
+      ).pipe(
+        Effect.flatMap((rows) =>
+          Effect.forEach(rows, (row) =>
+            decodeAutomationRow("CompositionAutomationStore.listDueAutomations", row),
+          ),
+        ),
+      );
+    },
     deleteAutomation,
     claimRun,
+    claimScheduledRun,
     saveRunTransition,
     getRun: readRun,
+    listRecoverableRuns: (input) => {
+      if (
+        !Number.isSafeInteger(input.limit) ||
+        input.limit < 1 ||
+        input.limit > AUTOMATION_STORE_BATCH_MAX
+      ) {
+        return Effect.fail(
+          domainError(
+            "automation_schedule_invalid",
+            "*",
+            `恢复 Run 批次必须在 1 到 ${AUTOMATION_STORE_BATCH_MAX} 之间。`,
+          ),
+        );
+      }
+      return query(
+        "CompositionAutomationStore.listRecoverableRuns",
+        listRecoverableRunRows(input),
+      ).pipe(
+        Effect.flatMap((rows) =>
+          Effect.forEach(rows, (row) =>
+            decodeRunRow("CompositionAutomationStore.listRecoverableRuns", row),
+          ),
+        ),
+      );
+    },
     listRuns: (request) =>
       Effect.gen(function* () {
         const limit = request.limit ?? 50;

@@ -22,6 +22,8 @@ export const CompositionAutomationStoreErrorCode = Schema.Literals([
   "automation_run_not_found",
   "automation_run_conflict",
   "automation_run_status_conflict",
+  "automation_schedule_conflict",
+  "automation_schedule_invalid",
   "automation_history_cursor_invalid",
   "automation_history_limit_invalid",
 ]);
@@ -66,6 +68,25 @@ export interface CompositionAutomationRunClaimResult {
   readonly claimed: boolean;
 }
 
+export interface CompositionAutomationDueListInput {
+  readonly nowUnixMs: number;
+  readonly limit: number;
+}
+
+export interface CompositionAutomationScheduledRunClaimInput {
+  readonly run: CompositionAutomationRun;
+  readonly nextAutomation: CompositionAutomation;
+}
+
+export interface CompositionAutomationScheduledRunClaimResult extends CompositionAutomationRunClaimResult {
+  readonly automation: CompositionAutomation;
+  readonly scheduleAdvanced: boolean;
+}
+
+export interface CompositionAutomationRecoverableRunListInput {
+  readonly limit: number;
+}
+
 export interface CompositionAutomationRunTransitionInput {
   readonly run: CompositionAutomationRun;
   readonly expectedStatus: CompositionAutomationRunStatus;
@@ -88,18 +109,27 @@ export interface CompositionAutomationStoreShape {
   readonly listAutomations: (
     request: CompositionAutomationListRequest,
   ) => Effect.Effect<ReadonlyArray<CompositionAutomation>, CompositionAutomationStoreError>;
+  readonly listDueAutomations: (
+    input: CompositionAutomationDueListInput,
+  ) => Effect.Effect<ReadonlyArray<CompositionAutomation>, CompositionAutomationStoreError>;
   readonly deleteAutomation: (
     input: CompositionAutomationDeleteInput,
   ) => Effect.Effect<CompositionAutomationDeleteResult, CompositionAutomationStoreError>;
   readonly claimRun: (
     run: CompositionAutomationRun,
   ) => Effect.Effect<CompositionAutomationRunClaimResult, CompositionAutomationStoreError>;
+  readonly claimScheduledRun: (
+    input: CompositionAutomationScheduledRunClaimInput,
+  ) => Effect.Effect<CompositionAutomationScheduledRunClaimResult, CompositionAutomationStoreError>;
   readonly saveRunTransition: (
     input: CompositionAutomationRunTransitionInput,
   ) => Effect.Effect<CompositionAutomationRun, CompositionAutomationStoreError>;
   readonly getRun: (
     automationRunId: string,
   ) => Effect.Effect<Option.Option<CompositionAutomationRun>, CompositionAutomationStoreError>;
+  readonly listRecoverableRuns: (
+    input: CompositionAutomationRecoverableRunListInput,
+  ) => Effect.Effect<ReadonlyArray<CompositionAutomationRun>, CompositionAutomationStoreError>;
   readonly listRuns: (
     request: CompositionAutomationRunListRequest,
   ) => Effect.Effect<CompositionAutomationRunListResult, CompositionAutomationStoreError>;
