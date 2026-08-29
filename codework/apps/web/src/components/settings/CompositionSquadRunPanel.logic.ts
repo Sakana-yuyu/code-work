@@ -67,7 +67,18 @@ export interface CompositionSquadExecutionHistoryItem {
   readonly nodes: ReadonlyArray<CompositionSquadExecutionHistoryNode>;
 }
 
-export type CompositionSquadNodeAction = "cancel" | "resume" | "approve" | "reject" | "retry";
+export type CompositionSquadNodeAction =
+  | "cancel"
+  | "resume"
+  | "approve"
+  | "reject"
+  | "retry"
+  | "reassign";
+
+export interface CompositionSquadReassignTarget {
+  readonly agentId: string;
+  readonly capabilityIds: ReadonlyArray<string>;
+}
 
 export type CompositionSquadNodeActionRequest =
   | { readonly kind: "cancel"; readonly input: CompositionTaskCancelRequest }
@@ -187,12 +198,25 @@ const cancellableStatuses: ReadonlySet<CompositionTaskStatus> = new Set([
 export const getCompositionSquadNodeActions = (
   snapshot: CompositionTaskSnapshot,
   capabilityIds: ReadonlyArray<string>,
+  reassignTarget?: CompositionSquadReassignTarget,
 ): ReadonlyArray<CompositionSquadNodeAction> => {
   const run = snapshot.latestRun;
   if (run === undefined) return [];
 
   if (run.status === "failed" || run.status === "timed_out") {
-    return capabilityIds.some((capabilityId) => capabilityId.trim().length > 0) ? ["retry"] : [];
+    const actions: CompositionSquadNodeAction[] = [];
+    if (capabilityIds.some((capabilityId) => capabilityId.trim().length > 0)) {
+      actions.push("retry");
+    }
+    if (
+      reassignTarget !== undefined &&
+      reassignTarget.agentId.trim().length > 0 &&
+      reassignTarget.agentId.trim() !== run.agentId &&
+      reassignTarget.capabilityIds.some((capabilityId) => capabilityId.trim().length > 0)
+    ) {
+      actions.push("reassign");
+    }
+    return actions;
   }
 
   const actions: CompositionSquadNodeAction[] = [];
@@ -213,13 +237,21 @@ export const buildCompositionSquadNodeActionRequest = (
   capabilityIds: ReadonlyArray<string>,
   nextRunId: string,
   reason: string,
+  reassignAgentId?: string,
 ): CompositionSquadNodeActionRequest | null => {
   const run = snapshot.latestRun;
   const normalizedReason = reason.trim();
+  const normalizedReassignAgentId = reassignAgentId?.trim();
   if (
     run === undefined ||
     normalizedReason.length === 0 ||
-    !getCompositionSquadNodeActions(snapshot, capabilityIds).includes(action)
+    !getCompositionSquadNodeActions(
+      snapshot,
+      capabilityIds,
+      action === "reassign" && normalizedReassignAgentId !== undefined
+        ? { agentId: normalizedReassignAgentId, capabilityIds }
+        : undefined,
+    ).includes(action)
   ) {
     return null;
   }
@@ -254,6 +286,7 @@ export const buildCompositionSquadNodeActionRequest = (
       taskId,
       previousRunId: run.runId,
       runId: normalizedRunId,
+      ...(action === "reassign" ? { agentId: normalizedReassignAgentId! } : {}),
       reason: normalizedReason,
       capabilityIds: normalizedCapabilities,
     },

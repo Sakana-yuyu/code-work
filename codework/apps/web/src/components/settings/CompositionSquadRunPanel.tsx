@@ -269,6 +269,8 @@ function nodeActionLabel(action: CompositionSquadNodeAction): string {
       return t("squadRun.rejectNode");
     case "retry":
       return t("squadRun.retryNode");
+    case "reassign":
+      return t("controlCenter.redispatch");
   }
 }
 
@@ -284,6 +286,8 @@ function nodeActionIcon(action: CompositionSquadNodeAction): ReactNode {
       return <XIcon />;
     case "retry":
       return <RotateCcwIcon />;
+    case "reassign":
+      return <UsersIcon />;
   }
 }
 
@@ -341,8 +345,10 @@ function CompositionSquadExecutionHistoryView({
     action: CompositionSquadNodeAction,
     snapshot: CompositionTaskSnapshot,
     capabilityIds: ReadonlyArray<string>,
+    reassignAgentId?: string,
   ) => void;
 }) {
+  const [reassignAgentIds, setReassignAgentIds] = useState<Readonly<Record<string, string>>>({});
   return (
     <div className="overflow-hidden rounded-md border border-border/70 bg-background/40">
       {executions.map((execution, index) => (
@@ -377,7 +383,29 @@ function CompositionSquadExecutionHistoryView({
               const agentId = latestRun?.agentId ?? snapshot.task.assigneeId;
               const capabilityIds =
                 squad.members?.find((member) => member.agentId === agentId)?.capabilityIds ?? [];
-              const actions = getCompositionSquadNodeActions(snapshot, capabilityIds);
+              const reassignMembers =
+                latestRun?.status === "failed" || latestRun?.status === "timed_out"
+                  ? (squad.members ?? []).filter(
+                      (member) =>
+                        member.agentId !== agentId &&
+                        member.maxConcurrentTasks > 0 &&
+                        member.capabilityIds.some((capabilityId) => capabilityId.trim().length > 0),
+                    )
+                  : [];
+              const selectedReassignAgentId = reassignAgentIds[snapshot.task.taskId];
+              const reassignMember =
+                reassignMembers.find((member) => member.agentId === selectedReassignAgentId) ??
+                reassignMembers[0];
+              const actions = getCompositionSquadNodeActions(
+                snapshot,
+                capabilityIds,
+                reassignMember === undefined
+                  ? undefined
+                  : {
+                      agentId: reassignMember.agentId,
+                      capabilityIds: reassignMember.capabilityIds,
+                    },
+              );
               const selected = selectedTaskId === snapshot.task.taskId;
               return (
                 <div
@@ -400,6 +428,35 @@ function CompositionSquadExecutionHistoryView({
                       : { failureCode: latestRun.failureCode })}
                     actions={
                       <div className="flex flex-wrap items-center gap-1">
+                        {reassignMember === undefined ? null : (
+                          <Select
+                            value={reassignMember.agentId}
+                            onValueChange={(value) => {
+                              if (!value) return;
+                              setReassignAgentIds((current) => ({
+                                ...current,
+                                [snapshot.task.taskId]: value,
+                              }));
+                            }}
+                          >
+                            <SelectTrigger
+                              data-squad-node-reassign-target={snapshot.task.taskId}
+                              size="compact"
+                              className="w-36 min-w-36"
+                              aria-label={t("squadBuilder.agentId")}
+                              title={t("squadBuilder.agentId")}
+                            >
+                              <SelectValue>{reassignMember.agentId}</SelectValue>
+                            </SelectTrigger>
+                            <SelectPopup align="end" alignItemWithTrigger={false}>
+                              {reassignMembers.map((member) => (
+                                <SelectItem key={member.agentId} value={member.agentId}>
+                                  {member.agentId}
+                                </SelectItem>
+                              ))}
+                            </SelectPopup>
+                          </Select>
+                        )}
                         <Button
                           data-squad-node-action="logs"
                           data-squad-node-task={snapshot.task.taskId}
@@ -424,7 +481,16 @@ function CompositionSquadExecutionHistoryView({
                               aria-label={label}
                               title={label}
                               disabled={pendingAction !== null}
-                              onClick={() => onAction(action, snapshot, capabilityIds)}
+                              onClick={() =>
+                                onAction(
+                                  action,
+                                  snapshot,
+                                  action === "reassign"
+                                    ? (reassignMember?.capabilityIds ?? [])
+                                    : capabilityIds,
+                                  action === "reassign" ? reassignMember?.agentId : undefined,
+                                )
+                              }
                             >
                               {pendingAction === actionKey ? (
                                 <RefreshCwIcon className="animate-spin" />
@@ -619,6 +685,7 @@ function CompositionSquadRunEnvironmentPanel({
     action: CompositionSquadNodeAction,
     snapshot: CompositionTaskSnapshot,
     capabilityIds: ReadonlyArray<string>,
+    reassignAgentId?: string,
   ): Promise<void> => {
     if (environmentId === null || pendingNodeAction !== null) return;
     const defaultReason =
@@ -635,8 +702,9 @@ function CompositionSquadRunEnvironmentPanel({
       action,
       snapshot,
       capabilityIds,
-      `squad-retry-${randomUUID()}`,
+      `squad-${action === "reassign" ? "reassign" : "retry"}-${randomUUID()}`,
       nodeActionReason.trim() || defaultReason,
+      reassignAgentId,
     );
     if (request === null) return;
 
@@ -944,8 +1012,8 @@ function CompositionSquadRunEnvironmentPanel({
                   selectedTaskId={selectedHistoryNode?.snapshot.task.taskId ?? null}
                   pendingAction={pendingNodeAction}
                   onSelectLogs={(snapshot) => setSelectedHistoryTaskId(snapshot.task.taskId)}
-                  onAction={(action, snapshot, capabilityIds) =>
-                    void runNodeAction(action, snapshot, capabilityIds)
+                  onAction={(action, snapshot, capabilityIds, reassignAgentId) =>
+                    void runNodeAction(action, snapshot, capabilityIds, reassignAgentId)
                   }
                 />
               )}

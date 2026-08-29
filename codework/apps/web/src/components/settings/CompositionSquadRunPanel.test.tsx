@@ -384,16 +384,29 @@ describe("CompositionSquadRunPanel", () => {
     expect(html).toContain("agent-lead");
   });
 
-  it("为持久化节点显示取消、继续、审核和受 capability 约束的重试操作", () => {
+  it("为持久化节点显示取消、继续、审核、重试和 Squad 成员重派操作", () => {
     mocks.environment = { environmentId: EnvironmentId.make("env-test") };
     mocks.projects = [project("env-test", "project-1", "Code Work")];
     mocks.queries.squads.data = {
       squads: [
         {
           ...activeSquad,
-          members: activeSquad.members.map((member) =>
-            member.agentId === "agent-build" ? { ...member, capabilityIds: ["fs.write"] } : member,
-          ),
+          memberAgentIds: [...activeSquad.memberAgentIds, "agent-review"],
+          members: [
+            ...activeSquad.members.map((member) =>
+              member.agentId === "agent-build"
+                ? { ...member, capabilityIds: ["fs.write"] }
+                : member,
+            ),
+            {
+              agentId: "agent-review",
+              role: "reviewer" as const,
+              order: 2,
+              required: true,
+              capabilityIds: ["fs.read"],
+              maxConcurrentTasks: 1,
+            },
+          ],
         },
       ],
     };
@@ -430,6 +443,11 @@ describe("CompositionSquadRunPanel", () => {
     expect(html).toContain('data-squad-node-action="approve"');
     expect(html).toContain('data-squad-node-action="reject"');
     expect(html).toContain('data-squad-node-action="retry"');
+    expect(html).toContain('data-squad-node-action="reassign"');
+    expect(html).toContain(
+      'data-squad-node-reassign-target="execution-actions:squad:squad-active:r3:task:review"',
+    );
+    expect(html).toContain("agent-review");
     expect(html).toContain(
       'data-squad-node-task="execution-actions:squad:squad-active:r3:task:build"',
     );

@@ -395,7 +395,7 @@ describe("CompositionSquadRunPanel logic", () => {
     expect(getCompositionSquadNodeActions(snapshot, ["fs.write"])).toEqual(expected);
   });
 
-  it("失败节点只有在可复用原成员 capability 时才允许重试", () => {
+  it("失败节点按原成员 capability 开放重试，并按目标成员开放重派", () => {
     const snapshot = taskSnapshot({
       taskId: "execution-1:squad:squad-build:r4:task:build",
       status: "failed",
@@ -405,9 +405,21 @@ describe("CompositionSquadRunPanel logic", () => {
 
     expect(getCompositionSquadNodeActions(snapshot, [])).toEqual([]);
     expect(getCompositionSquadNodeActions(snapshot, ["fs.read", "fs.write"])).toEqual(["retry"]);
+    expect(
+      getCompositionSquadNodeActions(snapshot, ["fs.write"], {
+        agentId: "agent-review",
+        capabilityIds: ["fs.read"],
+      }),
+    ).toEqual(["retry", "reassign"]);
+    expect(
+      getCompositionSquadNodeActions(snapshot, ["fs.write"], {
+        agentId: "agent-build",
+        capabilityIds: ["fs.read"],
+      }),
+    ).toEqual(["retry"]);
   });
 
-  it("构造取消、继续、审核和新 Run 重试请求，不复用旧 runId", () => {
+  it("构造取消、继续、审核、重试和指定目标 Agent 的重派请求", () => {
     const waiting = taskSnapshot({
       taskId: "execution-1:squad:squad-build:r4:task:build",
       status: "waiting_input",
@@ -459,6 +471,36 @@ describe("CompositionSquadRunPanel logic", () => {
     });
     expect(
       buildCompositionSquadNodeActionRequest("retry", failed, [], "new-run-id", "重试节点"),
+    ).toBeNull();
+    expect(
+      buildCompositionSquadNodeActionRequest(
+        "reassign",
+        failed,
+        ["fs.write"],
+        "reassigned-run-id",
+        "人工重派节点",
+        "agent-build",
+      ),
+    ).toEqual({
+      kind: "retry",
+      input: {
+        taskId: failed.task.taskId,
+        previousRunId: failed.latestRun?.runId,
+        runId: "reassigned-run-id",
+        agentId: "agent-build",
+        reason: "人工重派节点",
+        capabilityIds: ["fs.write"],
+      },
+    });
+    expect(
+      buildCompositionSquadNodeActionRequest(
+        "reassign",
+        failed,
+        ["fs.write"],
+        "reassigned-run-id",
+        "不得重派给当前 Agent",
+        "agent-review",
+      ),
     ).toBeNull();
   });
 
