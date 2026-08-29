@@ -317,6 +317,32 @@ it.layer(NodeServices.layer)("bin cli parsing", (it) => {
     }),
   );
 
+  it.effect("exposes idempotent Workspace Script start and stop commands", () =>
+    Effect.gen(function* () {
+      const start = yield* captureStdout(runCli(["script", "start", "--help"], noConnectCli));
+      const stop = yield* captureStdout(runCli(["script", "stop", "--help"], noConnectCli));
+
+      assert.include(start.output, "Start a workspace script with a stable operation id.");
+      assert.include(start.output, "<script-id>");
+      assert.include(start.output, "--project");
+      assert.include(start.output, "--thread");
+      assert.include(start.output, "--worktree-path");
+      assert.include(start.output, "--composition-task-id");
+      assert.include(start.output, "--composition-run-id");
+      assert.include(start.output, "--operation-id");
+      assert.include(start.output, "--server");
+      assert.include(start.output, "--access-token");
+      assert.include(start.output, "--json");
+      assert.include(stop.output, "Stop a workspace script run at an expected revision.");
+      assert.include(stop.output, "<run-id>");
+      assert.include(stop.output, "--expected-revision");
+      assert.include(stop.output, "--operation-id");
+      assert.include(stop.output, "--server");
+      assert.include(stop.output, "--access-token");
+      assert.include(stop.output, "--json");
+    }),
+  );
+
   it.effect("exposes schema-validated Automation create and update commands", () =>
     Effect.gen(function* () {
       const create = yield* captureStdout(
