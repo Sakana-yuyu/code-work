@@ -545,6 +545,11 @@ function CompositionSettingsSection() {
         target="SettingsControlCenter"
       />
       <SettingsRow
+        icon="clock"
+        label={t("squadExecutionHistory.title")}
+        target="SettingsSquadExecutionHistory"
+      />
+      <SettingsRow
         icon="point.3.connected.trianglepath.dotted"
         label={t("squadBuilder.title")}
         target="SettingsSquadBuilder"

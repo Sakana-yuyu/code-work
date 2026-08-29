@@ -55,6 +55,7 @@ import { SettingsClientStorageRouteScreen } from "./features/settings/SettingsCl
 import { SettingsAuthRouteScreen } from "./features/settings/SettingsAuthRouteScreen";
 import { SettingsControlCenterRouteScreen } from "./features/settings/SettingsControlCenterRouteScreen";
 import { SettingsEnvironmentsRouteScreen } from "./features/settings/SettingsEnvironmentsRouteScreen";
+import { SettingsSquadExecutionHistoryRouteScreen } from "./features/settings/SettingsSquadExecutionHistoryRouteScreen";
 import { SettingsSquadBuilderRouteScreen } from "./features/settings/SettingsSquadBuilderRouteScreen";
 import { SettingsSupplierRegistryRouteScreen } from "./features/settings/SettingsSupplierRegistryRouteScreen";
 import { SettingsLegalRouteScreen } from "./features/settings/SettingsLegalRouteScreen";
@@ -207,6 +208,13 @@ const SettingsContentStack = createNativeStackNavigator({
       linking: "control-center",
       options: () => ({
         title: t("controlCenter.title"),
+      }),
+    }),
+    SettingsSquadExecutionHistory: createNativeStackScreen({
+      screen: SettingsSquadExecutionHistoryRouteScreen,
+      linking: "squad-execution-history",
+      options: () => ({
+        title: t("squadExecutionHistory.title"),
       }),
     }),
     SettingsSquadBuilder: createNativeStackScreen({

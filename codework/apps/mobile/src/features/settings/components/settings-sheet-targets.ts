@@ -6,6 +6,7 @@ export type SettingsSheetTarget =
   | "SettingsClientStorage"
   | "SettingsUsage"
   | "SettingsControlCenter"
+  | "SettingsSquadExecutionHistory"
   | "SettingsSquadBuilder"
   | "SettingsSupplierRegistry";
 
