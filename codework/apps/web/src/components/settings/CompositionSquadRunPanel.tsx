@@ -676,8 +676,8 @@ function CompositionSquadRunEnvironmentPanel({
     } else {
       setExecutionResult(result.value);
       setDraft((current) => advanceCompositionSquadRunDraft(current, randomUUID()));
-      tasksQuery.refresh();
     }
+    tasksQuery.refresh();
     setPending(false);
   };
 
