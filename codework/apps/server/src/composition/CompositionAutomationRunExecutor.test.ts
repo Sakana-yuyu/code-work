@@ -50,6 +50,18 @@ const makeAutomation = (
   expiresAtUnixMs: null,
 });
 
+const makeSquadAutomation = (): CompositionAutomation => ({
+  ...makeAutomation(),
+  automationId: "automation-squad",
+  name: "Squad Automation",
+  target: {
+    type: "squad",
+    squadId: "squad-review",
+    squadRevision: 7,
+    executionContext: { mode: "existing_thread", threadId: "thread-squad" },
+  },
+});
+
 const automationRun: CompositionAutomationRun = {
   automationRunId: "automation-run-agent",
   automationId: "automation-agent",
@@ -112,6 +124,97 @@ const makeOptions = (
 });
 
 describe("CompositionAutomationRunExecutor", () => {
+  it.effect("Squad Automation 固定 revision 后台启动并在完成后回写运行结果", () =>
+    Effect.gen(function* () {
+      let backgroundWork: Effect.Effect<void, never> | undefined;
+      let squadInput:
+        | Parameters<
+            NonNullable<CompositionAutomationRunExecutorOptions["squad"]>["runner"]["run"]
+          >[0]
+        | undefined;
+      let transition:
+        | Parameters<
+            NonNullable<
+              CompositionAutomationRunExecutorOptions["squad"]
+            >["runs"]["saveRunTransition"]
+          >[0]
+        | undefined;
+      const executor = makeCompositionAutomationRunExecutor(
+        makeOptions({
+          contexts: {
+            resolve: () =>
+              Effect.succeed({
+                workspaceRoot: "E:/workspace/squad",
+                threadId: "thread-squad",
+              }),
+          },
+          squad: {
+            runner: {
+              run: (input) =>
+                Effect.sync(() => {
+                  squadInput = input;
+                  const leaderTask = makeTask({ taskId: "squad-leader-task" });
+                  const leaderRun = makeRun({
+                    runId: "squad-leader-run",
+                    taskId: leaderTask.taskId,
+                    resultSummary: "Squad 已完成代码审查并给出结论",
+                  });
+                  return {
+                    executionId: input.executionId,
+                    squadId: input.squadId,
+                    squadRevision: input.squadRevision,
+                    graph: { leader: { task: leaderTask, run: leaderRun }, children: [] },
+                  };
+                }),
+            },
+            background: {
+              ensure: (automationRunId, work) =>
+                Effect.sync(() => {
+                  assert.equal(automationRunId, automationRun.automationRunId);
+                  backgroundWork = work;
+                  return "started" as const;
+                }),
+            },
+            runs: {
+              saveRunTransition: (input) =>
+                Effect.sync(() => {
+                  transition = input;
+                  return input.run;
+                }),
+            },
+            now: () => 2_000,
+          },
+        }),
+      );
+
+      yield* executor.ensureStarted({ automation: makeSquadAutomation(), run: automationRun });
+
+      assert.isUndefined(squadInput);
+      assert.isDefined(backgroundWork);
+      yield* backgroundWork!;
+      assert.deepEqual(squadInput, {
+        executionId: automationRun.automationRunId,
+        squadId: "squad-review",
+        squadRevision: 7,
+        projectId: "project-agent",
+        threadId: "thread-squad",
+        goal: "检查代码并修复问题",
+        workspaceRoot: "E:/workspace/squad",
+      });
+      assert.deepEqual(transition, {
+        expectedStatus: "running",
+        run: {
+          ...automationRun,
+          status: "succeeded",
+          finishedAtUnixMs: 2_000,
+          outputSummary: "Squad 已完成代码审查并给出结论",
+          errorCode: null,
+          errorDetail: null,
+        },
+      });
+    }),
+  );
+
   it.effect("Agent Automation 使用稳定身份和解析后的上下文派发 Composition Task", () =>
     Effect.gen(function* () {
       const dispatches: Parameters<
