@@ -18,6 +18,7 @@ import type { CompositionTaskStoreShape } from "../persistence/Services/Composit
 import { CompositionTaskStore } from "../persistence/Services/CompositionTaskStore.ts";
 import { classifyCompositionFailure } from "./CompositionFailurePolicy.ts";
 import {
+  CompositionTaskAlreadyExistsError,
   type CompositionDispatchInput,
   type CompositionDispatchResult,
   type CompositionOrchestrator,
@@ -121,7 +122,8 @@ export class CompositionTaskGraphExecutor extends Context.Service<
 
 type GraphExecutorOptions = {
   readonly orchestrator: Pick<CompositionOrchestrator, "dispatchTask" | "retryTask" | "cancelTask">;
-  readonly store: Pick<CompositionTaskStoreShape, "getTask">;
+  readonly store: Pick<CompositionTaskStoreShape, "getTask"> &
+    Partial<Pick<CompositionTaskStoreShape, "getRun">>;
   readonly runtime: Pick<CompositionTaskRuntimeProjectionServiceShape, "awaitTaskCompletion">;
 };
 
@@ -159,6 +161,28 @@ const errorCode = (error: unknown): string => {
   }
   return "task_graph_dependency_failed";
 };
+
+const isTaskAlreadyExistsError = Schema.is(CompositionTaskAlreadyExistsError);
+
+const sameTaskIds = (left: ReadonlyArray<string>, right: ReadonlyArray<string>): boolean =>
+  left.length === right.length && left.every((value, index) => value === right[index]);
+
+const matchesDispatchIdentity = (
+  task: CompositionTask,
+  run: CompositionTaskRun,
+  input: CompositionDispatchInput,
+): boolean =>
+  task.taskId === input.taskId &&
+  task.projectId === input.projectId &&
+  task.threadId === input.threadId &&
+  task.parentTaskId === input.parentTaskId &&
+  task.assigneeKind === input.assigneeKind &&
+  task.assigneeId === input.assigneeId &&
+  task.mode === input.mode &&
+  task.promptDigest === input.promptDigest &&
+  sameTaskIds(task.dependsOnTaskIds, input.dependsOnTaskIds) &&
+  run.runId === input.runId &&
+  run.taskId === input.taskId;
 
 const graphError = (
   code: string,
@@ -402,6 +426,56 @@ const validateGraph = (
 };
 
 const make = (options: GraphExecutorOptions): CompositionTaskGraphExecutorShape => {
+  const readExistingDispatch = Effect.fn("CompositionTaskGraphExecutor.readExistingDispatch")(
+    function* (input: CompositionDispatchInput, nodeId: string) {
+      const task = yield* options.store
+        .getTask(input.taskId)
+        .pipe(Effect.mapError((error) => graphError(errorCode(error), errorDetail(error), nodeId)));
+      if (Option.isNone(task)) return Option.none<CompositionDispatchResult>();
+      const getRun = options.store.getRun;
+      if (getRun === undefined) {
+        return yield* graphError(
+          "task_graph_run_lookup_unavailable",
+          `任务 ${input.taskId} 已存在，但当前 Store 不支持按 runId 读取，无法安全复用。`,
+          nodeId,
+        );
+      }
+      const run = yield* getRun(input.runId).pipe(
+        Effect.mapError((error) => graphError(errorCode(error), errorDetail(error), nodeId)),
+      );
+      if (Option.isNone(run) || !matchesDispatchIdentity(task.value, run.value, input)) {
+        return yield* graphError(
+          "task_graph_identity_conflict",
+          `稳定任务 ${input.taskId}/${input.runId} 与既有 Task Graph 记录冲突。`,
+          nodeId,
+        );
+      }
+      return Option.some({ task: task.value, run: run.value });
+    },
+  );
+
+  const dispatchOrReuse = Effect.fn("CompositionTaskGraphExecutor.dispatchOrReuse")(function* (
+    input: CompositionDispatchInput,
+    nodeId: string,
+  ) {
+    if (options.store.getRun !== undefined) {
+      const existing = yield* readExistingDispatch(input, nodeId);
+      if (Option.isSome(existing)) return existing.value;
+    }
+
+    const dispatched = yield* Effect.result(options.orchestrator.dispatchTask(input));
+    if (dispatched._tag === "Success") return dispatched.success;
+    if (isTaskAlreadyExistsError(dispatched.failure)) {
+      const winner = yield* readExistingDispatch(input, nodeId);
+      if (Option.isSome(winner)) return winner.value;
+    }
+    return yield* graphError(
+      errorCode(dispatched.failure),
+      errorDetail(dispatched.failure),
+      nodeId,
+    );
+  });
+
   const getSettledTask = (taskId: string, run: CompositionTaskRun, nodeId: string) =>
     options.store.getTask(taskId).pipe(
       Effect.mapError((error) => graphError(errorCode(error), errorDetail(error), nodeId)),
@@ -432,8 +506,8 @@ const make = (options: GraphExecutorOptions): CompositionTaskGraphExecutorShape 
   ): Effect.Effect<RunningNode, CompositionTaskGraphExecutionError> =>
     Effect.gen(function* () {
       const prompt = appendDependencyResults(node.prompt, dependencies);
-      const dispatch = yield* options.orchestrator
-        .dispatchTask({
+      const dispatch = yield* dispatchOrReuse(
+        {
           taskId: node.taskId,
           runId: node.runId,
           projectId: node.projectId,
@@ -451,10 +525,9 @@ const make = (options: GraphExecutorOptions): CompositionTaskGraphExecutorShape 
           prompt,
           ...(node.model === undefined ? {} : { model: node.model }),
           ...(node.capabilityIds === undefined ? {} : { capabilityIds: [...node.capabilityIds] }),
-        })
-        .pipe(
-          Effect.mapError((error) => graphError(errorCode(error), errorDetail(error), node.nodeId)),
-        );
+        },
+        node.nodeId,
+      );
       return {
         node,
         dispatch,
@@ -909,8 +982,8 @@ const make = (options: GraphExecutorOptions): CompositionTaskGraphExecutorShape 
         )
         .join("\n");
       const leaderPrompt = `${input.leader.prompt}\n\n子 Agent 执行结果：\n${childSummary || "（没有成功子任务）"}${failureSummary.length === 0 ? "" : `\n\n失败与跳过节点：\n${failureSummary}`}`;
-      const leader = yield* options.orchestrator
-        .dispatchTask({
+      const leader = yield* dispatchOrReuse(
+        {
           taskId: input.leader.taskId,
           runId: input.leader.runId,
           projectId: input.leader.projectId,
@@ -929,10 +1002,9 @@ const make = (options: GraphExecutorOptions): CompositionTaskGraphExecutorShape 
           ...(input.leader.capabilityIds === undefined
             ? {}
             : { capabilityIds: [...input.leader.capabilityIds] }),
-        })
-        .pipe(
-          Effect.mapError((error) => graphError(errorCode(error), errorDetail(error), "leader")),
-        );
+        },
+        "leader",
+      );
 
       const leaderRun = terminalStatuses.has(leader.run.status)
         ? leader.run

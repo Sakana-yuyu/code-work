@@ -141,6 +141,8 @@ const makeSchedulingExecutor = (
         const task: CompositionTask = {
           taskId: input.taskId,
           projectId: input.projectId,
+          ...(input.threadId === undefined ? {} : { threadId: input.threadId }),
+          ...(input.parentTaskId === undefined ? {} : { parentTaskId: input.parentTaskId }),
           assigneeKind: input.assigneeKind,
           assigneeId: input.assigneeId,
           mode: input.mode,
@@ -170,6 +172,7 @@ const makeSchedulingExecutor = (
     orchestrator,
     store: {
       getTask: (taskId) => Effect.succeed(Option.fromNullishOr(tasks.get(taskId))),
+      getRun: (runId) => Effect.succeed(Option.fromNullishOr(runs.get(runId))),
     },
     runtime: {
       awaitTaskCompletion: ({ taskId, runId }) =>
@@ -300,6 +303,29 @@ const partialSuccessChildren = [
 ];
 
 describe("CompositionTaskGraphExecutor", () => {
+  it.effect("重复执行相同任务图时复用稳定 Task/Run 且不重复派发", () =>
+    Effect.gen(function* () {
+      const events: string[] = [];
+      const executor = makeSchedulingExecutor(events);
+      const input: CompositionTaskGraphExecutionInput = {
+        leader: baseLeader,
+        children: schedulingChildren.slice(0, 2),
+        schedule: "parallel",
+        maxConcurrency: 2,
+      };
+
+      const first = yield* executor.execute(input);
+      const firstDispatchCount = events.filter((event) => event.startsWith("dispatch:")).length;
+      const second = yield* executor.execute(input);
+      const secondDispatchCount = events.filter((event) => event.startsWith("dispatch:")).length;
+
+      expect(first.children.map((child) => child.run.runId)).toEqual(["run-a", "run-b"]);
+      expect(second.children.map((child) => child.run.runId)).toEqual(["run-a", "run-b"]);
+      expect(firstDispatchCount).toBe(3);
+      expect(secondDispatchCount).toBe(firstDispatchCount);
+    }),
+  );
+
   it.effect("continue_independent 继续无关分支并把部分成功交给 Leader review", () =>
     Effect.gen(function* () {
       const events: string[] = [];
