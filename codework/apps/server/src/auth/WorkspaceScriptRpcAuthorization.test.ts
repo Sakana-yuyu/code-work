@@ -12,6 +12,7 @@ describe("Workspace Script RPC authorization", () => {
     for (const method of [
       WS_METHODS.serverGetWorkspaceScriptRun,
       WS_METHODS.serverListWorkspaceScriptRuns,
+      WS_METHODS.serverGetWorkspaceScriptLogs,
     ]) {
       expect(requiredScopeForRpcMethod(method)).toBe(AuthOrchestrationReadScope);
     }

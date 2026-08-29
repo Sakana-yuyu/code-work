@@ -2481,6 +2481,14 @@ const makeWsRpcLayer = (
               : workspaceScriptService.value.list(input).pipe(Effect.map((runs) => ({ runs }))),
             { "rpc.aggregate": "workspace-script" },
           ),
+        [WS_METHODS.serverGetWorkspaceScriptLogs]: (input) =>
+          observeRpcEffect(
+            WS_METHODS.serverGetWorkspaceScriptLogs,
+            Option.isNone(workspaceScriptService)
+              ? Effect.fail(workspaceScriptUnavailable(input.workspaceScriptRunId))
+              : workspaceScriptService.value.getLogs(input.workspaceScriptRunId),
+            { "rpc.aggregate": "workspace-script" },
+          ),
         [WS_METHODS.serverCancelCompositionTask]: (input) =>
           observeRpcEffect(
             WS_METHODS.serverCancelCompositionTask,

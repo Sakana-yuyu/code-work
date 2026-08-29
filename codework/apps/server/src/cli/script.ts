@@ -1,8 +1,11 @@
 import * as NodeCrypto from "node:crypto";
+import * as NodeUtil from "node:util";
 
 import {
   PositiveInt,
   TrimmedNonEmptyString,
+  WORKSPACE_SCRIPT_LOG_MAX_BYTES,
+  type WorkspaceScriptLogsResult,
   type WorkspaceScriptRun,
   type WorkspaceScriptRunListResult,
   type WorkspaceScriptRunResult,
@@ -34,6 +37,10 @@ export interface ListWorkspaceScriptRunsOptions extends ControlConnectionOptions
 }
 
 export interface GetWorkspaceScriptRunOptions extends ControlConnectionOptions {
+  readonly workspaceScriptRunId: string;
+}
+
+export interface GetWorkspaceScriptLogsOptions extends ControlConnectionOptions {
   readonly workspaceScriptRunId: string;
 }
 
@@ -85,6 +92,21 @@ export const getWorkspaceScriptRun = (
     },
     (rpc) =>
       rpc[WS_METHODS.serverGetWorkspaceScriptRun]({
+        workspaceScriptRunId: options.workspaceScriptRunId,
+      }),
+  );
+
+export const getWorkspaceScriptLogs = (
+  options: GetWorkspaceScriptLogsOptions,
+  open: ControlClientOpen = openControlClient,
+) =>
+  open(
+    {
+      serverUrl: options.serverUrl,
+      ...(options.accessToken ? { accessToken: options.accessToken } : {}),
+    },
+    (rpc) =>
+      rpc[WS_METHODS.serverGetWorkspaceScriptLogs]({
         workspaceScriptRunId: options.workspaceScriptRunId,
       }),
   );
@@ -240,6 +262,84 @@ export function formatWorkspaceScriptRunDetails(
   ].join("\n");
 }
 
+const isTerminalStringControlStart = (codePoint: number): boolean =>
+  codePoint === 0x50 ||
+  codePoint === 0x58 ||
+  codePoint === 0x5d ||
+  codePoint === 0x5e ||
+  codePoint === 0x5f;
+
+const isC1TerminalStringControlStart = (codePoint: number): boolean =>
+  codePoint === 0x90 ||
+  codePoint === 0x98 ||
+  codePoint === 0x9d ||
+  codePoint === 0x9e ||
+  codePoint === 0x9f;
+
+const findTerminalStringControlEnd = (value: string, start: number): number => {
+  for (let index = start; index < value.length; index += 1) {
+    const codePoint = value.charCodeAt(index);
+    if (codePoint === 0x07 || codePoint === 0x9c) {
+      return index + 1;
+    }
+    if (codePoint === 0x1b && value.charCodeAt(index + 1) === 0x5c) {
+      return index + 2;
+    }
+  }
+  return value.length;
+};
+
+const stripTerminalStringControls = (value: string): string => {
+  let output = "";
+  let index = 0;
+  while (index < value.length) {
+    const codePoint = value.charCodeAt(index);
+    if (codePoint === 0x1b && isTerminalStringControlStart(value.charCodeAt(index + 1))) {
+      index = findTerminalStringControlEnd(value, index + 2);
+      continue;
+    }
+    if (isC1TerminalStringControlStart(codePoint)) {
+      index = findTerminalStringControlEnd(value, index + 1);
+      continue;
+    }
+    output += value[index];
+    index += 1;
+  }
+  return output;
+};
+
+const stripUnsafeTerminalControls = (value: string): string => {
+  let output = "";
+  for (const character of value) {
+    const codePoint = character.codePointAt(0)!;
+    if (
+      (codePoint < 0x20 && codePoint !== 0x09 && codePoint !== 0x0a) ||
+      (codePoint >= 0x7f && codePoint <= 0x9f)
+    ) {
+      continue;
+    }
+    output += character;
+  }
+  return output;
+};
+
+export function formatWorkspaceScriptLogs(
+  result: WorkspaceScriptLogsResult,
+  json: boolean,
+): string {
+  if (json) {
+    return JSON.stringify(result, null, 2);
+  }
+  const safeHistory = stripUnsafeTerminalControls(
+    NodeUtil.stripVTControlCharacters(stripTerminalStringControls(result.history)),
+  );
+  const transcript = safeHistory.length === 0 ? "No workspace script output." : safeHistory;
+  const output = result.truncated
+    ? `[Earlier output truncated to the last ${String(WORKSPACE_SCRIPT_LOG_MAX_BYTES)} bytes]\n${transcript}`
+    : transcript;
+  return output.endsWith("\n") ? output.slice(0, -1) : output;
+}
+
 const serverFlag = Flag.string("server").pipe(
   Flag.withDescription("Code Work server URL or pairing link."),
   Flag.withDefault("http://127.0.0.1:3773"),
@@ -373,6 +473,25 @@ const scriptGetCommand = Command.make("get", {
   ),
 );
 
+const scriptLogsCommand = Command.make("logs", {
+  workspaceScriptRunId: workspaceScriptRunIdArgument,
+  server: serverFlag,
+  accessToken: accessTokenFlag,
+  json: jsonFlag,
+}).pipe(
+  Command.withDescription("Read a workspace script log snapshot."),
+  Command.withHandler((flags) =>
+    Effect.gen(function* () {
+      const result = yield* getWorkspaceScriptLogs({
+        serverUrl: flags.server,
+        ...(Option.isSome(flags.accessToken) ? { accessToken: flags.accessToken.value } : {}),
+        workspaceScriptRunId: flags.workspaceScriptRunId,
+      });
+      yield* Console.log(formatWorkspaceScriptLogs(result, flags.json));
+    }),
+  ),
+);
+
 const scriptStartCommand = Command.make("start", {
   scriptId: workspaceScriptIdArgument,
   project: requiredProjectFlag,
@@ -445,6 +564,7 @@ export const scriptCommand = Command.make("script").pipe(
   Command.withSubcommands([
     scriptListCommand,
     scriptGetCommand,
+    scriptLogsCommand,
     scriptStartCommand,
     scriptStopCommand,
   ]),

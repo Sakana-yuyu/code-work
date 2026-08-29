@@ -203,6 +203,11 @@ export const WorkspaceScriptGetRequest = Schema.Struct({
 });
 export type WorkspaceScriptGetRequest = typeof WorkspaceScriptGetRequest.Type;
 
+export const WorkspaceScriptLogsRequest = Schema.Struct({
+  workspaceScriptRunId: TrimmedNonEmptyString,
+});
+export type WorkspaceScriptLogsRequest = typeof WorkspaceScriptLogsRequest.Type;
+
 export const WorkspaceScriptListRequest = Schema.Struct({
   projectId: Schema.optional(TrimmedNonEmptyString),
   threadId: Schema.optional(TrimmedNonEmptyString),
@@ -219,6 +224,16 @@ export const WorkspaceScriptRunListResult = Schema.Struct({
   runs: Schema.Array(WorkspaceScriptRun),
 });
 export type WorkspaceScriptRunListResult = typeof WorkspaceScriptRunListResult.Type;
+
+export const WORKSPACE_SCRIPT_LOG_MAX_BYTES = 256 * 1024;
+
+export const WorkspaceScriptLogsResult = Schema.Struct({
+  workspaceScriptRunId: TrimmedNonEmptyString,
+  terminalId: TrimmedNonEmptyString,
+  history: Schema.String.check(Schema.isMaxLength(WORKSPACE_SCRIPT_LOG_MAX_BYTES)),
+  truncated: Schema.Boolean,
+});
+export type WorkspaceScriptLogsResult = typeof WorkspaceScriptLogsResult.Type;
 
 export class WorkspaceScriptRpcError extends Schema.TaggedErrorClass<WorkspaceScriptRpcError>()(
   "WorkspaceScriptRpcError",

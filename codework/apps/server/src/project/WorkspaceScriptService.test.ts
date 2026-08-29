@@ -4,7 +4,7 @@ import type {
   TerminalSessionSnapshot,
   WorkspaceScriptRun,
 } from "@codework/contracts";
-import { ProjectId } from "@codework/contracts";
+import { ProjectId, WORKSPACE_SCRIPT_LOG_MAX_BYTES } from "@codework/contracts";
 import { assert, describe, it } from "@effect/vitest";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
@@ -16,6 +16,7 @@ import { SqlitePersistenceMemory } from "../persistence/Layers/Sqlite.ts";
 import { WorkspaceScriptStore } from "../persistence/Services/WorkspaceScriptStore.ts";
 import {
   makeWorkspaceScriptService,
+  WorkspaceScriptDependencyError,
   type WorkspaceScriptTerminalPort,
   workspaceScriptShellInvocation,
 } from "./WorkspaceScriptService.ts";
@@ -70,6 +71,9 @@ const makeFixture = () => {
   const listeners = new Set<(event: TerminalEvent) => Effect.Effect<void>>();
   const starts: Array<Parameters<WorkspaceScriptTerminalPort["runCommand"]>[0]> = [];
   const kills: Array<Parameters<WorkspaceScriptTerminalPort["kill"]>[0]> = [];
+  const historyRequests: Array<{ threadId: string; terminalId: string }> = [];
+  const histories = new Map<string, string>();
+  const historyFailures: unknown[] = [];
   let nowUnixMs = 1_000;
 
   const emit = (event: TerminalEvent) =>
@@ -91,6 +95,18 @@ const makeFixture = () => {
           exitCode: null,
           exitSignal: 15,
         });
+      }),
+    getHistory: (input) =>
+      Effect.gen(function* () {
+        historyRequests.push(input);
+        const failure = historyFailures.shift();
+        if (failure !== undefined) {
+          return yield* new WorkspaceScriptDependencyError({
+            operation: "getHistory",
+            cause: failure,
+          });
+        }
+        return histories.get(`${input.threadId}\u0000${input.terminalId}`) ?? "";
       }),
     subscribe: (listener) =>
       Effect.sync(() => {
@@ -117,7 +133,16 @@ const makeFixture = () => {
         now: () => nowUnixMs++,
       });
     const service = yield* makeService();
-    return { service, starts, kills, emit, restartService: makeService };
+    return {
+      service,
+      starts,
+      kills,
+      histories,
+      historyFailures,
+      historyRequests,
+      emit,
+      restartService: makeService,
+    };
   });
 };
 
@@ -299,6 +324,68 @@ describe("WorkspaceScriptService", () => {
         [run.workspaceScriptRunId],
       );
       assert.deepEqual(yield* service.list({ statuses: ["failed"] }), []);
+    }),
+  );
+
+  it.effect("日志快照只使用持久化 Run 绑定的线程和终端", () =>
+    Effect.gen(function* () {
+      const { service, histories, historyRequests } = yield* makeFixture();
+      const run = yield* service.start(startRequest);
+      histories.set(`${run.threadId}\u0000${run.terminalId}`, "server ready\n");
+
+      assert.deepEqual(yield* service.getLogs(run.workspaceScriptRunId), {
+        workspaceScriptRunId: run.workspaceScriptRunId,
+        terminalId: run.terminalId,
+        history: "server ready\n",
+        truncated: false,
+      });
+      assert.deepEqual(historyRequests, [
+        {
+          threadId: run.threadId,
+          terminalId: run.terminalId,
+        },
+      ]);
+    }),
+  );
+
+  it.effect("日志快照按 UTF-8 字节限制为最新内容且不切断字符", () =>
+    Effect.gen(function* () {
+      const { service, histories } = yield* makeFixture();
+      const run = yield* service.start({ ...startRequest, operationId: "operation-log-cap" });
+      const history = `old\n${"界".repeat(Math.ceil(WORKSPACE_SCRIPT_LOG_MAX_BYTES / 3) + 20)}\nlatest\n`;
+      histories.set(`${run.threadId}\u0000${run.terminalId}`, history);
+
+      const result = yield* service.getLogs(run.workspaceScriptRunId);
+
+      assert.isTrue(result.truncated);
+      assert.isAtMost(Buffer.byteLength(result.history, "utf8"), WORKSPACE_SCRIPT_LOG_MAX_BYTES);
+      assert.isTrue(result.history.endsWith("\nlatest\n"));
+      assert.isFalse(result.history.includes("\uFFFD"));
+    }),
+  );
+
+  it.effect("不存在的 Run 不读取任意终端日志", () =>
+    Effect.gen(function* () {
+      const { service, historyRequests } = yield* makeFixture();
+
+      const error = yield* service.getLogs("workspace-script-run:missing").pipe(Effect.flip);
+
+      assert.equal(error.code, "workspace_script_run_not_found");
+      assert.equal(historyRequests.length, 0);
+    }),
+  );
+
+  it.effect("终端历史读取失败时返回稳定错误且不泄漏本地路径", () =>
+    Effect.gen(function* () {
+      const { service, historyFailures } = yield* makeFixture();
+      const run = yield* service.start({ ...startRequest, operationId: "operation-log-failure" });
+      historyFailures.push(new Error("E:/secret/userdata/logs/terminals/private.log"));
+
+      const error = yield* service.getLogs(run.workspaceScriptRunId).pipe(Effect.flip);
+
+      assert.equal(error.code, "workspace_script_logs_failed");
+      assert.equal(error.detail, "读取 Workspace Script 日志失败。");
+      assert.isFalse(error.detail.includes("private.log"));
     }),
   );
 

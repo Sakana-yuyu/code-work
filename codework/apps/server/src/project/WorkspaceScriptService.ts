@@ -3,11 +3,13 @@ import {
   makeWorkspaceScriptRunIdempotencyKey,
   ProjectId,
   ThreadId,
+  WORKSPACE_SCRIPT_LOG_MAX_BYTES,
   type OrchestrationProjectShell,
   type TerminalEvent,
   type TerminalOpenInput,
   type TerminalSessionSnapshot,
   type WorkspaceScriptListRequest,
+  type WorkspaceScriptLogsResult,
   type WorkspaceScriptRun,
   type WorkspaceScriptStartRequest,
   type WorkspaceScriptStopRequest,
@@ -43,6 +45,10 @@ export interface WorkspaceScriptTerminalPort {
     readonly threadId: string;
     readonly terminalId: string;
   }) => Effect.Effect<void, WorkspaceScriptDependencyError>;
+  readonly getHistory: (input: {
+    readonly threadId: string;
+    readonly terminalId: string;
+  }) => Effect.Effect<string, WorkspaceScriptDependencyError>;
   readonly subscribe: (
     listener: (event: TerminalEvent) => Effect.Effect<void>,
   ) => Effect.Effect<() => void>;
@@ -61,6 +67,9 @@ export interface WorkspaceScriptServiceShape {
   readonly list: (
     input: WorkspaceScriptListRequest,
   ) => Effect.Effect<ReadonlyArray<WorkspaceScriptRun>, WorkspaceScriptRpcError>;
+  readonly getLogs: (
+    workspaceScriptRunId: string,
+  ) => Effect.Effect<WorkspaceScriptLogsResult, WorkspaceScriptRpcError>;
 }
 
 export class WorkspaceScriptService extends Context.Service<
@@ -71,7 +80,12 @@ export class WorkspaceScriptService extends Context.Service<
 export class WorkspaceScriptDependencyError extends Data.TaggedError(
   "WorkspaceScriptDependencyError",
 )<{
-  readonly operation: "resolveProject" | "resolveThread" | "runCommand" | "killTerminal";
+  readonly operation:
+    | "resolveProject"
+    | "resolveThread"
+    | "runCommand"
+    | "killTerminal"
+    | "getHistory";
   readonly cause: unknown;
 }> {}
 
@@ -105,6 +119,24 @@ const operationError = (
     readonly actualRevision?: number;
   } = {},
 ): WorkspaceScriptRpcError => new WorkspaceScriptRpcError({ code, detail, ...correlation });
+
+const capWorkspaceScriptHistory = (
+  history: string,
+): Pick<WorkspaceScriptLogsResult, "history" | "truncated"> => {
+  const bytes = Buffer.from(history, "utf8");
+  if (bytes.length <= WORKSPACE_SCRIPT_LOG_MAX_BYTES) {
+    return { history, truncated: false };
+  }
+
+  let start = bytes.length - WORKSPACE_SCRIPT_LOG_MAX_BYTES;
+  while (start < bytes.length && (bytes[start]! & 0xc0) === 0x80) {
+    start += 1;
+  }
+  return {
+    history: bytes.subarray(start).toString("utf8"),
+    truncated: true,
+  };
+};
 
 const persistenceError = (
   operation: string,
@@ -323,6 +355,38 @@ export const makeWorkspaceScriptService = Effect.fn("WorkspaceScriptService.make
     options.store
       .listRuns(input)
       .pipe(Effect.mapError((cause) => persistenceError("查询 Workspace Script Run", cause)));
+
+  const getLogs: WorkspaceScriptServiceShape["getLogs"] = Effect.fn(
+    "WorkspaceScriptService.getLogs",
+  )(function* (workspaceScriptRunId) {
+    const run = yield* readRun(workspaceScriptRunId);
+    if (Option.isNone(run)) {
+      return yield* operationError(
+        "workspace_script_run_not_found",
+        "Workspace Script 运行记录不存在。",
+        { workspaceScriptRunId },
+      );
+    }
+
+    const history = yield* options.terminal
+      .getHistory({
+        threadId: run.value.threadId,
+        terminalId: run.value.terminalId,
+      })
+      .pipe(
+        Effect.mapError(() =>
+          operationError("workspace_script_logs_failed", "读取 Workspace Script 日志失败。", {
+            workspaceScriptRunId,
+          }),
+        ),
+      );
+    const capped = capWorkspaceScriptHistory(history);
+    return {
+      workspaceScriptRunId,
+      terminalId: run.value.terminalId,
+      ...capped,
+    } satisfies WorkspaceScriptLogsResult;
+  });
 
   const start: WorkspaceScriptServiceShape["start"] = Effect.fn("WorkspaceScriptService.start")(
     function* (input) {
@@ -564,7 +628,7 @@ export const makeWorkspaceScriptService = Effect.fn("WorkspaceScriptService.make
     },
   );
 
-  return WorkspaceScriptService.of({ start, stop, get, list });
+  return WorkspaceScriptService.of({ start, stop, get, list, getLogs });
 });
 
 export const make = Effect.gen(function* () {
@@ -589,6 +653,14 @@ export const make = Effect.gen(function* () {
           .pipe(
             Effect.mapError(
               (cause) => new WorkspaceScriptDependencyError({ operation: "killTerminal", cause }),
+            ),
+          ),
+      getHistory: (input) =>
+        terminalManager
+          .getHistory(input)
+          .pipe(
+            Effect.mapError(
+              (cause) => new WorkspaceScriptDependencyError({ operation: "getHistory", cause }),
             ),
           ),
       subscribe: terminalManager.subscribe,

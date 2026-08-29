@@ -304,6 +304,8 @@ import {
 import {
   WorkspaceScriptGetRequest,
   WorkspaceScriptListRequest,
+  WorkspaceScriptLogsRequest,
+  WorkspaceScriptLogsResult,
   WorkspaceScriptRpcError,
   WorkspaceScriptRunListResult,
   WorkspaceScriptRunResult,
@@ -426,6 +428,7 @@ export const WS_METHODS = {
   serverStopWorkspaceScript: "server.stopWorkspaceScript",
   serverGetWorkspaceScriptRun: "server.getWorkspaceScriptRun",
   serverListWorkspaceScriptRuns: "server.listWorkspaceScriptRuns",
+  serverGetWorkspaceScriptLogs: "server.getWorkspaceScriptLogs",
   serverCancelCompositionTask: "server.cancelCompositionTask",
   serverResumeCompositionTask: "server.resumeCompositionTask",
   serverReviewCompositionTask: "server.reviewCompositionTask",
@@ -878,6 +881,12 @@ export const WsServerListWorkspaceScriptRunsRpc = Rpc.make(
     error: Schema.Union([WorkspaceScriptRpcError, EnvironmentAuthorizationError]),
   },
 );
+
+export const WsServerGetWorkspaceScriptLogsRpc = Rpc.make(WS_METHODS.serverGetWorkspaceScriptLogs, {
+  payload: WorkspaceScriptLogsRequest,
+  success: WorkspaceScriptLogsResult,
+  error: Schema.Union([WorkspaceScriptRpcError, EnvironmentAuthorizationError]),
+});
 
 export const WsServerCancelCompositionTaskRpc = Rpc.make(WS_METHODS.serverCancelCompositionTask, {
   payload: CompositionTaskCancelRequest,
@@ -1646,6 +1655,7 @@ export const WsRpcGroup = RpcGroup.make(
   WsServerStopWorkspaceScriptRpc,
   WsServerGetWorkspaceScriptRunRpc,
   WsServerListWorkspaceScriptRunsRpc,
+  WsServerGetWorkspaceScriptLogsRpc,
   WsServerCancelCompositionTaskRpc,
   WsServerResumeCompositionTaskRpc,
   WsServerReviewCompositionTaskRpc,

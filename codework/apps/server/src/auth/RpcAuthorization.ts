@@ -80,6 +80,7 @@ export const RPC_REQUIRED_SCOPES = {
   [WS_METHODS.serverStopWorkspaceScript]: AuthOrchestrationOperateScope,
   [WS_METHODS.serverGetWorkspaceScriptRun]: AuthOrchestrationReadScope,
   [WS_METHODS.serverListWorkspaceScriptRuns]: AuthOrchestrationReadScope,
+  [WS_METHODS.serverGetWorkspaceScriptLogs]: AuthOrchestrationReadScope,
   [WS_METHODS.serverCancelCompositionTask]: AuthOrchestrationOperateScope,
   [WS_METHODS.serverResumeCompositionTask]: AuthOrchestrationOperateScope,
   [WS_METHODS.serverReviewCompositionTask]: AuthOrchestrationOperateScope,

@@ -3,7 +3,10 @@ import * as Schema from "effect/Schema";
 
 import {
   makeWorkspaceScriptRunId,
+  WORKSPACE_SCRIPT_LOG_MAX_BYTES,
   validateWorkspaceScriptRun,
+  WorkspaceScriptLogsRequest,
+  WorkspaceScriptLogsResult,
   WorkspaceScriptRun,
   WorkspaceScriptStartRequest,
   WorkspaceScriptStopRequest,
@@ -12,6 +15,8 @@ import {
 const decodeRun = Schema.decodeUnknownSync(WorkspaceScriptRun);
 const decodeStart = Schema.decodeUnknownSync(WorkspaceScriptStartRequest);
 const decodeStop = Schema.decodeUnknownSync(WorkspaceScriptStopRequest);
+const decodeLogsRequest = Schema.decodeUnknownSync(WorkspaceScriptLogsRequest);
+const decodeLogsResult = Schema.decodeUnknownSync(WorkspaceScriptLogsResult);
 
 const runningRun = {
   workspaceScriptRunId: "workspace-script-run:operation-1",
@@ -78,6 +83,34 @@ describe("Workspace Script contracts", () => {
         expectedRevision: 2,
       }),
     ).toMatchObject({ expectedRevision: 2 });
+  });
+
+  it("日志快照只接受有效 Run ID，并允许终端暂时没有输出", () => {
+    expect(decodeLogsRequest({ workspaceScriptRunId: "workspace-script-run:operation-1" })).toEqual(
+      { workspaceScriptRunId: "workspace-script-run:operation-1" },
+    );
+    expect(
+      decodeLogsResult({
+        workspaceScriptRunId: "workspace-script-run:operation-1",
+        terminalId: "workspace-script-operation-1",
+        history: "",
+        truncated: false,
+      }),
+    ).toEqual({
+      workspaceScriptRunId: "workspace-script-run:operation-1",
+      terminalId: "workspace-script-operation-1",
+      history: "",
+      truncated: false,
+    });
+    expect(() => decodeLogsRequest({ workspaceScriptRunId: " " })).toThrow();
+    expect(() =>
+      decodeLogsResult({
+        workspaceScriptRunId: "workspace-script-run:operation-1",
+        terminalId: "workspace-script-operation-1",
+        history: "x".repeat(WORKSPACE_SCRIPT_LOG_MAX_BYTES + 1),
+        truncated: true,
+      }),
+    ).toThrow();
   });
 
   it("拒绝与状态不一致的开始、结束时间", () => {

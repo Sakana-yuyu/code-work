@@ -317,6 +317,18 @@ it.layer(NodeServices.layer)("bin cli parsing", (it) => {
     }),
   );
 
+  it.effect("exposes read-only Workspace Script log snapshots", () =>
+    Effect.gen(function* () {
+      const logs = yield* captureStdout(runCli(["script", "logs", "--help"], noConnectCli));
+
+      assert.include(logs.output, "Read a workspace script log snapshot.");
+      assert.include(logs.output, "<run-id>");
+      assert.include(logs.output, "--server");
+      assert.include(logs.output, "--access-token");
+      assert.include(logs.output, "--json");
+    }),
+  );
+
   it.effect("exposes idempotent Workspace Script start and stop commands", () =>
     Effect.gen(function* () {
       const start = yield* captureStdout(runCli(["script", "start", "--help"], noConnectCli));

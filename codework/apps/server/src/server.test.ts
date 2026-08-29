@@ -4676,9 +4676,18 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
       const list = vi.fn<WorkspaceScriptService.WorkspaceScriptService["Service"]["list"]>(() =>
         Effect.succeed([run]),
       );
+      const getLogs = vi.fn<WorkspaceScriptService.WorkspaceScriptService["Service"]["getLogs"]>(
+        () =>
+          Effect.succeed({
+            workspaceScriptRunId: run.workspaceScriptRunId,
+            terminalId: run.terminalId,
+            history: "server ready\n",
+            truncated: false,
+          }),
+      );
 
       yield* buildAppUnderTest({
-        layers: { workspaceScriptService: { start, stop, get, list } },
+        layers: { workspaceScriptService: { start, stop, get, list, getLogs } },
       });
 
       const wsUrl = yield* getWsServerUrl("/ws");
@@ -4690,15 +4699,30 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
               workspaceScriptRunId: run.workspaceScriptRunId,
             }),
             client[WS_METHODS.serverListWorkspaceScriptRuns]({ projectId: run.projectId }),
+            client[WS_METHODS.serverGetWorkspaceScriptLogs]({
+              workspaceScriptRunId: run.workspaceScriptRunId,
+            }),
             client[WS_METHODS.serverStopWorkspaceScript](stopInput),
           ]),
         ),
       );
 
-      assert.deepEqual(results, [{ run }, { run }, { runs: [run] }, { run }]);
+      assert.deepEqual(results, [
+        { run },
+        { run },
+        { runs: [run] },
+        {
+          workspaceScriptRunId: run.workspaceScriptRunId,
+          terminalId: run.terminalId,
+          history: "server ready\n",
+          truncated: false,
+        },
+        { run },
+      ]);
       assert.deepEqual(start.mock.calls, [[startInput]]);
       assert.deepEqual(get.mock.calls, [[run.workspaceScriptRunId]]);
       assert.deepEqual(list.mock.calls, [[{ projectId: run.projectId }]]);
+      assert.deepEqual(getLogs.mock.calls, [[run.workspaceScriptRunId]]);
       assert.deepEqual(stop.mock.calls, [[stopInput]]);
     }).pipe(Effect.provide(NodeHttpServer.layerTest)),
   );
