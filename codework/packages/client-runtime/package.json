@@ -15,6 +15,10 @@
       "types": "./src/composition/squadBuilder.ts",
       "default": "./src/composition/squadBuilder.ts"
     },
+    "./composition/automation-builder": {
+      "types": "./src/composition/automationBuilder.ts",
+      "default": "./src/composition/automationBuilder.ts"
+    },
     "./environment": {
       "types": "./src/environment/index.ts",
       "default": "./src/environment/index.ts"
