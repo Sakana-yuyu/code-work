@@ -1,12 +1,16 @@
 import * as NodeCrypto from "node:crypto";
 
 import {
+  CompositionSquadCreateRequest as CompositionSquadCreateRequestSchema,
+  type CompositionSquadCreateRequest,
   type CompositionSquadExecutionResult,
   type CompositionSquadListResult,
   CompositionSquadPlanNode,
   type CompositionSquadPlanNode as CompositionSquadPlanNodeType,
   type CompositionSquadRevisionListResult,
   type CompositionSquadResult,
+  CompositionSquadUpdateRequest as CompositionSquadUpdateRequestSchema,
+  type CompositionSquadUpdateRequest,
   PositiveInt,
   ThreadId,
   TrimmedNonEmptyString,
@@ -58,7 +62,19 @@ export interface MutateSquadRevisionOptions extends ControlConnectionOptions {
   readonly expectedRevision: number;
 }
 
+export interface CreateSquadOptions extends ControlConnectionOptions {
+  readonly input: CompositionSquadCreateRequest;
+}
+
+export interface UpdateSquadOptions extends ControlConnectionOptions {
+  readonly input: CompositionSquadUpdateRequest;
+}
+
 export class SquadPlanInputError extends Data.TaggedError("SquadPlanInputError")<{
+  readonly message: string;
+}> {}
+
+export class SquadConfigInputError extends Data.TaggedError("SquadConfigInputError")<{
   readonly message: string;
 }> {}
 
@@ -169,8 +185,36 @@ export const restoreSquad = (
       }),
   );
 
+export const createSquad = (
+  options: CreateSquadOptions,
+  open: ControlClientOpen = openControlClient,
+) =>
+  open(
+    {
+      serverUrl: options.serverUrl,
+      ...(options.accessToken ? { accessToken: options.accessToken } : {}),
+    },
+    (rpc) => rpc[WS_METHODS.serverCreateCompositionSquad](options.input),
+  );
+
+export const updateSquad = (
+  options: UpdateSquadOptions,
+  open: ControlClientOpen = openControlClient,
+) =>
+  open(
+    {
+      serverUrl: options.serverUrl,
+      ...(options.accessToken ? { accessToken: options.accessToken } : {}),
+    },
+    (rpc) => rpc[WS_METHODS.serverUpdateCompositionSquad](options.input),
+  );
+
 const SquadPlanDocument = Schema.fromJsonString(Schema.Array(CompositionSquadPlanNode));
 const decodeSquadPlanDocument = Schema.decodeUnknownEffect(SquadPlanDocument);
+const SquadCreateConfigDocument = Schema.fromJsonString(CompositionSquadCreateRequestSchema);
+const SquadUpdateConfigDocument = Schema.fromJsonString(CompositionSquadUpdateRequestSchema);
+const decodeSquadCreateConfigDocument = Schema.decodeUnknownEffect(SquadCreateConfigDocument);
+const decodeSquadUpdateConfigDocument = Schema.decodeUnknownEffect(SquadUpdateConfigDocument);
 
 export const decodeSquadPlanText = (raw: string) =>
   decodeSquadPlanDocument(raw).pipe(
@@ -178,6 +222,26 @@ export const decodeSquadPlanText = (raw: string) =>
       () =>
         new SquadPlanInputError({
           message: "Squad plan file must contain a JSON array of valid plan nodes.",
+        }),
+    ),
+  );
+
+export const decodeSquadCreateConfigText = (raw: string) =>
+  decodeSquadCreateConfigDocument(raw).pipe(
+    Effect.mapError(
+      () =>
+        new SquadConfigInputError({
+          message: "Squad create config does not match the Code Work contract.",
+        }),
+    ),
+  );
+
+export const decodeSquadUpdateConfigText = (raw: string) =>
+  decodeSquadUpdateConfigDocument(raw).pipe(
+    Effect.mapError(
+      () =>
+        new SquadConfigInputError({
+          message: "Squad update config does not match the Code Work contract.",
         }),
     ),
   );
@@ -193,6 +257,18 @@ const readSquadPlanFile = Effect.fn("cli.squad.readPlanFile")(function* (path: s
     ),
   );
   return yield* decodeSquadPlanText(raw);
+});
+
+const readSquadConfigText = Effect.fn("cli.squad.readConfigFile")(function* (path: string) {
+  const fileSystem = yield* FileSystem.FileSystem;
+  return yield* fileSystem.readFileString(path).pipe(
+    Effect.mapError(
+      () =>
+        new SquadConfigInputError({
+          message: `Could not read Squad config file: ${path}`,
+        }),
+    ),
+  );
 });
 
 export function formatSquadList(result: CompositionSquadListResult, json: boolean): string {
@@ -384,6 +460,11 @@ const expectedRevisionFlag = Flag.integer("expected-revision").pipe(
   Flag.withDescription("Current revision required for optimistic concurrency."),
 );
 
+const configFileFlag = Flag.string("config").pipe(
+  Flag.withSchema(TrimmedNonEmptyString),
+  Flag.withDescription("JSON file validated against the Code Work Squad contract."),
+);
+
 const squadListCommand = Command.make("list", {
   server: serverFlag,
   accessToken: accessTokenFlag,
@@ -544,6 +625,50 @@ const squadRestoreCommand = makeSquadRevisionCommand(
   restoreSquad,
 );
 
+const squadCreateCommand = Command.make("create", {
+  config: configFileFlag,
+  server: serverFlag,
+  accessToken: accessTokenFlag,
+  json: jsonFlag,
+}).pipe(
+  Command.withDescription("Create a composition squad from a validated JSON config."),
+  Command.withHandler((flags) =>
+    Effect.gen(function* () {
+      const input = yield* readSquadConfigText(flags.config).pipe(
+        Effect.flatMap(decodeSquadCreateConfigText),
+      );
+      const result = yield* createSquad({
+        serverUrl: flags.server,
+        ...(Option.isSome(flags.accessToken) ? { accessToken: flags.accessToken.value } : {}),
+        input,
+      });
+      yield* Console.log(formatSquadDetails(result, flags.json));
+    }),
+  ),
+);
+
+const squadUpdateCommand = Command.make("update", {
+  config: configFileFlag,
+  server: serverFlag,
+  accessToken: accessTokenFlag,
+  json: jsonFlag,
+}).pipe(
+  Command.withDescription("Update a composition squad from a validated JSON config."),
+  Command.withHandler((flags) =>
+    Effect.gen(function* () {
+      const input = yield* readSquadConfigText(flags.config).pipe(
+        Effect.flatMap(decodeSquadUpdateConfigText),
+      );
+      const result = yield* updateSquad({
+        serverUrl: flags.server,
+        ...(Option.isSome(flags.accessToken) ? { accessToken: flags.accessToken.value } : {}),
+        input,
+      });
+      yield* Console.log(formatSquadDetails(result, flags.json));
+    }),
+  ),
+);
+
 export const squadCommand = Command.make("squad").pipe(
   Command.withDescription("Manage composition squads."),
   Command.withSubcommands([
@@ -554,5 +679,7 @@ export const squadCommand = Command.make("squad").pipe(
     squadDuplicateCommand,
     squadArchiveCommand,
     squadRestoreCommand,
+    squadCreateCommand,
+    squadUpdateCommand,
   ]),
 );

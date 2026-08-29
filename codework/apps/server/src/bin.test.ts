@@ -271,6 +271,18 @@ it.layer(NodeServices.layer)("bin cli parsing", (it) => {
     }),
   );
 
+  it.effect("exposes schema-validated Squad create and update commands", () =>
+    Effect.gen(function* () {
+      const create = yield* captureStdout(runCli(["squad", "create", "--help"], noConnectCli));
+      const update = yield* captureStdout(runCli(["squad", "update", "--help"], noConnectCli));
+
+      assert.include(create.output, "Create a composition squad from a validated JSON config.");
+      assert.include(create.output, "--config");
+      assert.include(update.output, "Update a composition squad from a validated JSON config.");
+      assert.include(update.output, "--config");
+    }),
+  );
+
   it.effect("reports fresh headless connect state without requiring local configuration", () =>
     Effect.gen(function* () {
       const baseDir = NodeFS.mkdtempSync(
