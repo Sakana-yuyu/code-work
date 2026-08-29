@@ -31,6 +31,7 @@ import { layerConfig as SqlitePersistenceLayerLive } from "./persistence/Layers/
 import { CompositionTaskStoreLive } from "./persistence/Layers/CompositionTaskStore.ts";
 import { CompositionTaskInputStoreLive } from "./persistence/Layers/CompositionTaskInputStore.ts";
 import { CompositionAutomationStoreLive } from "./persistence/Layers/CompositionAutomationStore.ts";
+import { WorkspaceScriptStoreLive } from "./persistence/Layers/WorkspaceScriptStore.ts";
 import * as ServerLifecycleEvents from "./serverLifecycleEvents.ts";
 import * as AnalyticsService from "./telemetry/AnalyticsService.ts";
 import { ProviderSessionDirectoryLive } from "./provider/Layers/ProviderSessionDirectory.ts";
@@ -119,6 +120,7 @@ import * as SourceControlProviderRegistry from "./sourceControl/SourceControlPro
 import * as SourceControlRateLimit from "./sourceControl/SourceControlRateLimit.ts";
 import * as SourceControlRepositoryService from "./sourceControl/SourceControlRepositoryService.ts";
 import * as ProjectSetupScriptRunner from "./project/ProjectSetupScriptRunner.ts";
+import * as WorkspaceScriptService from "./project/WorkspaceScriptService.ts";
 import { ObservabilityLive } from "./observability/Layers/Observability.ts";
 import * as ServerEnvironment from "./environment/ServerEnvironment.ts";
 import * as RemoteOpenTargets from "./environment/RemoteOpenTargets.ts";
@@ -510,6 +512,10 @@ const CompositionAutomationStoreLayerLive = CompositionAutomationStoreLive.pipe(
   Layer.provideMerge(PersistenceLayerLive),
 );
 
+const WorkspaceScriptStoreLayerLive = WorkspaceScriptStoreLive.pipe(
+  Layer.provideMerge(PersistenceLayerLive),
+);
+
 const CompositionAutomationExecutionContextLayerLive =
   CompositionAutomationExecutionContext.layer.pipe(Layer.provide(OrchestrationLayerLive));
 
@@ -549,6 +555,13 @@ const CompositionAutomationRuntimeStartLayerLive = Layer.effectDiscard(
   }),
 ).pipe(Layer.provide(CompositionAutomationRuntimeLayerLive));
 
+const WorkspaceScriptServiceLayerLive = WorkspaceScriptService.layer.pipe(
+  Layer.provide(WorkspaceScriptStoreLayerLive),
+  Layer.provide(TerminalLayerLive),
+  Layer.provide(OrchestrationLayerLive),
+  Layer.provide(RepositoryIdentityResolver.layer),
+);
+
 const ProjectFaviconResolverLayerLive = ProjectFaviconResolver.layer.pipe(
   Layer.provide(WorkspacePaths.layer),
   Layer.provide(CodeworkProjectFileLoader.layer),
@@ -572,7 +585,7 @@ const ProviderRuntimeLayerLive = ProviderSessionReaperLive.pipe(
   Layer.provideMerge(OrchestrationLayerLive),
 );
 
-const RuntimeCoreDependenciesBaseLive = ReactorLayerLive.pipe(
+const RuntimeCoreDependenciesWithoutWorkspaceScriptLive = ReactorLayerLive.pipe(
   // Core Services
   Layer.provideMerge(ServerSettingsLayerLive),
   Layer.provideMerge(CheckpointingLayerLive),
@@ -629,6 +642,10 @@ const RuntimeCoreDependenciesBaseLive = ReactorLayerLive.pipe(
       Layer.provideMerge(ServerSecretStore.layer),
     ),
   ),
+);
+
+const RuntimeCoreDependenciesBaseLive = RuntimeCoreDependenciesWithoutWorkspaceScriptLive.pipe(
+  Layer.provideMerge(WorkspaceScriptServiceLayerLive),
 );
 
 const RuntimeCoreDependenciesLive = RuntimeCoreDependenciesBaseLive.pipe(
