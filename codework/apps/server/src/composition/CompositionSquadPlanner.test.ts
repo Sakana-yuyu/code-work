@@ -1,3 +1,5 @@
+import * as NodeCrypto from "node:crypto";
+
 import { expect, it } from "@effect/vitest";
 import type {
   CompositionSquad,
@@ -5,18 +7,29 @@ import type {
   CompositionTaskEvent,
   CompositionTaskRun,
 } from "@codework/contracts";
+import * as Cause from "effect/Cause";
+import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
+import * as Fiber from "effect/Fiber";
 import * as Option from "effect/Option";
+import * as TestClock from "effect/testing/TestClock";
 
-import { CompositionTaskAlreadyExistsError } from "./CompositionOrchestrator.ts";
+import { PersistenceSqlError } from "../persistence/Errors.ts";
+import {
+  CompositionAgentDriverFailure,
+  CompositionTaskAlreadyExistsError,
+} from "./CompositionOrchestrator.ts";
 import {
   encodeCompositionSquadPlanOutput,
   type CompositionSquadPlanNode,
 } from "./CompositionSquadPlan.ts";
 import {
   makeCompositionSquadPlanner,
+  makeCompositionSquadPlanningPrompt,
+  type CompositionSquadPlanningCancellationReceipt,
   type CompositionSquadPlanningInput,
 } from "./CompositionSquadPlanner.ts";
+import { CompositionTaskRuntimeWaitError } from "./CompositionTaskRuntimeProjectionService.ts";
 
 const squad: CompositionSquad = {
   squadId: "squad-planner",
@@ -75,6 +88,9 @@ const input: CompositionSquadPlanningInput = {
   goal: "实现功能并完成独立审查",
   workspaceRoot: "C:/workspace/default",
 };
+
+const planningTaskId = "execution-planner-1:squad:squad-planner:r4:task:leader-plan";
+const planningRunId = "execution-planner-1:squad:squad-planner:r4:run:leader-plan:1";
 
 const completedPlanJson = encodeCompositionSquadPlanOutput([
   {
@@ -256,6 +272,12 @@ const makeHarness = (output = completedPlanJson) => {
           ]);
           return { task, run };
         }),
+      cancelTask: ({ taskId, runId }) =>
+        Effect.sync(() => ({
+          task: tasks.get(taskId)!,
+          run: runs.get(runId)!,
+          status: "already_terminal" as const,
+        })),
     },
     runtime: {
       awaitTaskCompletion: ({ runId }) =>
@@ -318,6 +340,668 @@ it.effect("重复规划请求复用已完成的稳定运行，不重复调用外
   }),
 );
 
+it.effect("复用稳定 Leader 规划 Run 等待中断时发布完整取消回执", () =>
+  Effect.gen(function* () {
+    const waiting = yield* Deferred.make<void>();
+    const prompt = yield* makeCompositionSquadPlanningPrompt(squad, input.goal);
+    const promptDigest = `sha256:${NodeCrypto.createHash("sha256")
+      .update(prompt, "utf8")
+      .digest("hex")}`;
+    const task: CompositionTask = {
+      taskId: planningTaskId,
+      projectId: input.projectId,
+      threadId: input.threadId,
+      assigneeKind: "agent",
+      assigneeId: squad.leaderAgentId,
+      mode: "serial",
+      status: "running",
+      promptDigest,
+      dependsOnTaskIds: [],
+      createdAtUnixMs: 1,
+      updatedAtUnixMs: 1,
+    };
+    const run: CompositionTaskRun = {
+      runId: planningRunId,
+      taskId: planningTaskId,
+      agentId: squad.leaderAgentId,
+      runtimeId: "runtime-leader",
+      status: "running",
+      attempt: 1,
+      capabilityGrantIds: [],
+    };
+    let receipt: CompositionSquadPlanningCancellationReceipt | undefined;
+    let cancelCalls = 0;
+    const planner = makeCompositionSquadPlanner({
+      orchestrator: {
+        dispatchTask: () => Effect.die("稳定 Leader 规划 Run 不应重复派发"),
+        cancelTask: () =>
+          Effect.sync(() => {
+            cancelCalls += 1;
+            return {
+              task: { ...task, status: "cancelled" as const, finishedAtUnixMs: 2 },
+              run: { ...run, status: "cancelled" as const, finishedAtUnixMs: 2 },
+              status: "cancelled" as const,
+            };
+          }),
+      },
+      runtime: {
+        awaitTaskCompletion: () =>
+          Deferred.succeed(waiting, undefined).pipe(Effect.andThen(Effect.never)),
+      },
+      store: {
+        getTask: () => Effect.succeed(Option.some(task)),
+        getRun: () => Effect.succeed(Option.some(run)),
+        listEvents: () => Effect.die("等待中的 Leader 规划 Run 不应读取输出"),
+      },
+    });
+    const fiber = yield* Effect.forkChild(
+      planner.plan(input, {
+        onInterruptedCancellation: (value) =>
+          Effect.sync(() => {
+            receipt = value;
+          }),
+      }),
+    );
+
+    yield* Deferred.await(waiting);
+    yield* Fiber.interrupt(fiber);
+    const exit = yield* Fiber.await(fiber);
+
+    expect(cancelCalls).toBe(1);
+    expect(receipt).toEqual({
+      runs: [
+        {
+          taskId: planningTaskId,
+          runId: planningRunId,
+          outcome: "terminal",
+          terminalStatus: "cancelled",
+        },
+      ],
+      complete: true,
+    });
+    expect(exit._tag).toBe("Failure");
+    if (exit._tag === "Failure") {
+      expect(Cause.hasFails(exit.cause)).toBe(false);
+      expect(Cause.hasDies(exit.cause)).toBe(false);
+      expect(Cause.interruptors(exit.cause).size).toBeGreaterThan(0);
+    }
+  }),
+);
+
+it.effect("Leader 规划派发响应丢失但稳定 Run 已落库时中断仍核验归属并取消", () =>
+  Effect.gen(function* () {
+    const dispatchPersisted = yield* Deferred.make<void>();
+    const tasks = new Map<string, CompositionTask>();
+    const runs = new Map<string, CompositionTaskRun>();
+    let receipt: CompositionSquadPlanningCancellationReceipt | undefined;
+    let cancelCalls = 0;
+    const planner = makeCompositionSquadPlanner({
+      orchestrator: {
+        dispatchTask: (dispatch) =>
+          Effect.sync(() => {
+            tasks.set(dispatch.taskId, {
+              taskId: dispatch.taskId,
+              projectId: dispatch.projectId,
+              ...(dispatch.threadId === undefined ? {} : { threadId: dispatch.threadId }),
+              assigneeKind: dispatch.assigneeKind,
+              assigneeId: dispatch.assigneeId,
+              mode: dispatch.mode,
+              status: "running",
+              promptDigest: dispatch.promptDigest,
+              dependsOnTaskIds: [...dispatch.dependsOnTaskIds],
+              createdAtUnixMs: 1,
+              updatedAtUnixMs: 1,
+            });
+            runs.set(dispatch.runId, {
+              runId: dispatch.runId,
+              taskId: dispatch.taskId,
+              agentId: dispatch.assigneeId,
+              runtimeId: "runtime-leader",
+              status: "running",
+              attempt: 1,
+              capabilityGrantIds: [],
+            });
+          }).pipe(
+            Effect.andThen(Deferred.succeed(dispatchPersisted, undefined)),
+            Effect.andThen(Effect.never),
+          ),
+        cancelTask: ({ taskId, runId }) =>
+          Effect.sync(() => {
+            cancelCalls += 1;
+            const task = tasks.get(taskId)!;
+            const run = runs.get(runId)!;
+            return {
+              task: { ...task, status: "cancelled" as const, finishedAtUnixMs: 2 },
+              run: { ...run, status: "cancelled" as const, finishedAtUnixMs: 2 },
+              status: "cancelled" as const,
+            };
+          }),
+      },
+      runtime: { awaitTaskCompletion: () => Effect.die("派发响应丢失时不应进入等待") },
+      store: {
+        getTask: (taskId) => Effect.succeed(Option.fromNullishOr(tasks.get(taskId))),
+        getRun: (runId) => Effect.succeed(Option.fromNullishOr(runs.get(runId))),
+        listEvents: () => Effect.die("派发响应丢失时不应读取输出"),
+      },
+    });
+    const fiber = yield* Effect.forkChild(
+      planner.plan(input, {
+        onInterruptedCancellation: (value) =>
+          Effect.sync(() => {
+            receipt = value;
+          }),
+      }),
+    );
+
+    yield* Deferred.await(dispatchPersisted);
+    yield* Fiber.interrupt(fiber);
+    const exit = yield* Fiber.await(fiber);
+
+    expect(cancelCalls).toBe(1);
+    expect(receipt).toMatchObject({
+      runs: [
+        {
+          taskId: planningTaskId,
+          runId: planningRunId,
+          outcome: "terminal",
+          terminalStatus: "cancelled",
+        },
+      ],
+      complete: true,
+    });
+    expect(exit._tag).toBe("Failure");
+  }),
+);
+
+it.effect("Leader 规划派发成功后 Store 查询失败仍按已确认归属取消", () =>
+  Effect.gen(function* () {
+    const waiting = yield* Deferred.make<void>();
+    const tasks = new Map<string, CompositionTask>();
+    const runs = new Map<string, CompositionTaskRun>();
+    let dispatchReturned = false;
+    let receipt: CompositionSquadPlanningCancellationReceipt | undefined;
+    let cancelCalls = 0;
+    const planner = makeCompositionSquadPlanner({
+      orchestrator: {
+        dispatchTask: (dispatch) =>
+          Effect.sync(() => {
+            const task: CompositionTask = {
+              taskId: dispatch.taskId,
+              projectId: dispatch.projectId,
+              ...(dispatch.threadId === undefined ? {} : { threadId: dispatch.threadId }),
+              assigneeKind: dispatch.assigneeKind,
+              assigneeId: dispatch.assigneeId,
+              mode: dispatch.mode,
+              status: "running",
+              promptDigest: dispatch.promptDigest,
+              dependsOnTaskIds: [...dispatch.dependsOnTaskIds],
+              createdAtUnixMs: 1,
+              updatedAtUnixMs: 1,
+            };
+            const run: CompositionTaskRun = {
+              runId: dispatch.runId,
+              taskId: dispatch.taskId,
+              agentId: dispatch.assigneeId,
+              runtimeId: "runtime-leader",
+              status: "running",
+              attempt: 1,
+              capabilityGrantIds: [],
+            };
+            tasks.set(task.taskId, task);
+            runs.set(run.runId, run);
+            dispatchReturned = true;
+            return { task, run };
+          }),
+        cancelTask: ({ taskId, runId }) =>
+          Effect.sync(() => {
+            cancelCalls += 1;
+            return {
+              task: { ...tasks.get(taskId)!, status: "cancelled" as const, finishedAtUnixMs: 2 },
+              run: { ...runs.get(runId)!, status: "cancelled" as const, finishedAtUnixMs: 2 },
+              status: "cancelled" as const,
+            };
+          }),
+      },
+      runtime: {
+        awaitTaskCompletion: () =>
+          Deferred.succeed(waiting, undefined).pipe(Effect.andThen(Effect.never)),
+      },
+      store: {
+        getTask: (taskId) =>
+          dispatchReturned
+            ? Effect.fail(
+                new PersistenceSqlError({
+                  operation: "load confirmed planning task",
+                  detail: "派发成功后的临时查询故障",
+                  cause: new Error("temporary store failure"),
+                }),
+              )
+            : Effect.succeed(Option.fromNullishOr(tasks.get(taskId))),
+        getRun: (runId) =>
+          dispatchReturned
+            ? Effect.fail(
+                new PersistenceSqlError({
+                  operation: "load confirmed planning run",
+                  detail: "派发成功后的临时查询故障",
+                  cause: new Error("temporary store failure"),
+                }),
+              )
+            : Effect.succeed(Option.fromNullishOr(runs.get(runId))),
+        listEvents: () => Effect.die("等待中的 Leader 规划 Run 不应读取输出"),
+      },
+    });
+    const fiber = yield* Effect.forkChild(
+      planner.plan(input, {
+        onInterruptedCancellation: (value) =>
+          Effect.sync(() => {
+            receipt = value;
+          }),
+      }),
+    );
+
+    yield* Deferred.await(waiting);
+    yield* Fiber.interrupt(fiber);
+    const exit = yield* Fiber.await(fiber);
+
+    expect(cancelCalls).toBe(1);
+    expect(receipt).toEqual({
+      runs: [
+        {
+          taskId: planningTaskId,
+          runId: planningRunId,
+          outcome: "terminal",
+          terminalStatus: "cancelled",
+        },
+      ],
+      complete: true,
+    });
+    expect(exit._tag).toBe("Failure");
+    if (exit._tag === "Failure") {
+      expect(Cause.hasFails(exit.cause)).toBe(false);
+      expect(Cause.interruptors(exit.cause).size).toBeGreaterThan(0);
+    }
+  }),
+);
+
+it.effect("Leader 规划派发成功但返回串线身份时拒绝升级归属", () =>
+  Effect.gen(function* () {
+    for (const status of ["running", "completed"] as const) {
+      const foreignTask: CompositionTask = {
+        taskId: `${planningTaskId}:foreign`,
+        projectId: input.projectId,
+        threadId: input.threadId,
+        assigneeKind: "agent",
+        assigneeId: squad.leaderAgentId,
+        mode: "serial",
+        status,
+        promptDigest: "sha256:foreign-response",
+        dependsOnTaskIds: [],
+        createdAtUnixMs: 1,
+        updatedAtUnixMs: 1,
+        ...(status === "completed" ? { finishedAtUnixMs: 2 } : {}),
+      };
+      const foreignRun: CompositionTaskRun = {
+        runId: `${planningRunId}:foreign`,
+        taskId: foreignTask.taskId,
+        agentId: squad.leaderAgentId,
+        runtimeId: "runtime-foreign",
+        status,
+        attempt: 1,
+        capabilityGrantIds: [],
+        ...(status === "completed" ? { finishedAtUnixMs: 2 } : {}),
+      };
+      let cancellationReceipt: CompositionSquadPlanningCancellationReceipt | undefined;
+      let cancellationTrigger: "interrupted" | "business_failure" | undefined;
+      let cancelCalls = 0;
+      const planner = makeCompositionSquadPlanner({
+        orchestrator: {
+          dispatchTask: () => Effect.succeed({ task: foreignTask, run: foreignRun }),
+          cancelTask: () =>
+            Effect.sync(() => {
+              cancelCalls += 1;
+              return {
+                task: { ...foreignTask, status: "cancelled" as const, finishedAtUnixMs: 3 },
+                run: { ...foreignRun, status: "cancelled" as const, finishedAtUnixMs: 3 },
+                status: "cancelled" as const,
+              };
+            }),
+        },
+        runtime: {
+          awaitTaskCompletion: () =>
+            Effect.fail(
+              new CompositionTaskRuntimeWaitError({
+                taskId: planningTaskId,
+                runId: planningRunId,
+                reason: "串线派发响应不应进入等待",
+              }),
+            ),
+        },
+        store: {
+          getTask: () => Effect.succeed(Option.none<CompositionTask>()),
+          getRun: () => Effect.succeed(Option.none<CompositionTaskRun>()),
+          listEvents: () =>
+            Effect.fail(
+              new PersistenceSqlError({
+                operation: "list foreign planning events",
+                detail: "串线派发响应不应读取输出",
+                cause: new Error("foreign dispatch response"),
+              }),
+            ),
+        },
+      });
+
+      const error = yield* Effect.flip(
+        planner.plan(input, {
+          onCancellationReceipt: (report) =>
+            Effect.sync(() => {
+              cancellationTrigger = report.trigger;
+              cancellationReceipt = report.receipt;
+            }),
+        }),
+      );
+
+      expect(error.code).toBe("squad_plan_identity_conflict");
+      expect(cancelCalls).toBe(0);
+      expect(cancellationTrigger).toBe("business_failure");
+      expect(cancellationReceipt).toEqual({
+        runs: [
+          {
+            taskId: planningTaskId,
+            runId: planningRunId,
+            outcome: "not_owned",
+          },
+        ],
+        complete: true,
+      });
+    }
+  }),
+);
+
+it.effect("Leader 规划等待返回 foreign terminal 时拒绝伪造终态", () =>
+  Effect.gen(function* () {
+    const tasks = new Map<string, CompositionTask>();
+    const runs = new Map<string, CompositionTaskRun>();
+    let cancelCalls = 0;
+    const planner = makeCompositionSquadPlanner({
+      orchestrator: {
+        dispatchTask: (dispatch) =>
+          Effect.sync(() => {
+            const task: CompositionTask = {
+              taskId: dispatch.taskId,
+              projectId: dispatch.projectId,
+              ...(dispatch.threadId === undefined ? {} : { threadId: dispatch.threadId }),
+              assigneeKind: dispatch.assigneeKind,
+              assigneeId: dispatch.assigneeId,
+              mode: dispatch.mode,
+              status: "running",
+              promptDigest: dispatch.promptDigest,
+              dependsOnTaskIds: [...dispatch.dependsOnTaskIds],
+              createdAtUnixMs: 1,
+              updatedAtUnixMs: 1,
+            };
+            const run: CompositionTaskRun = {
+              runId: dispatch.runId,
+              taskId: dispatch.taskId,
+              agentId: dispatch.assigneeId,
+              runtimeId: "runtime-leader",
+              status: "running",
+              attempt: 1,
+              capabilityGrantIds: [],
+            };
+            tasks.set(task.taskId, task);
+            runs.set(run.runId, run);
+            return { task, run };
+          }),
+        cancelTask: ({ taskId, runId }) =>
+          Effect.sync(() => {
+            cancelCalls += 1;
+            return {
+              task: { ...tasks.get(taskId)!, status: "cancelled" as const, finishedAtUnixMs: 3 },
+              run: { ...runs.get(runId)!, status: "cancelled" as const, finishedAtUnixMs: 3 },
+              status: "cancelled" as const,
+            };
+          }),
+      },
+      runtime: {
+        awaitTaskCompletion: () =>
+          Effect.succeed({
+            ...runs.get(planningRunId)!,
+            runtimeId: "foreign-runtime",
+            status: "completed" as const,
+            attempt: 99,
+            resultSummary: "串线终态结果",
+            finishedAtUnixMs: 2,
+          }),
+      },
+      store: {
+        getTask: () => Effect.succeed(Option.none<CompositionTask>()),
+        getRun: () => Effect.succeed(Option.none<CompositionTaskRun>()),
+        listEvents: () =>
+          Effect.fail(
+            new PersistenceSqlError({
+              operation: "list events after foreign terminal",
+              detail: "foreign terminal 不应进入输出读取",
+              cause: new Error("foreign terminal accepted"),
+            }),
+          ),
+      },
+    });
+
+    const error = yield* Effect.flip(planner.plan(input));
+
+    expect(error.code).toBe("squad_plan_identity_conflict");
+    expect(cancelCalls).toBe(1);
+  }),
+);
+
+it.effect("Leader 规划派发响应未返回且归属查询失败时保持不完整回执", () =>
+  Effect.gen(function* () {
+    const dispatchStarted = yield* Deferred.make<void>();
+    let receipt: CompositionSquadPlanningCancellationReceipt | undefined;
+    let cancelCalls = 0;
+    let dispatching = false;
+    const lookupFailure = () =>
+      Effect.fail(
+        new PersistenceSqlError({
+          operation: "load candidate planning run",
+          detail: "third-party-secret-lookup-detail",
+          cause: new Error("third-party-secret-store-cause"),
+        }),
+      );
+    const planner = makeCompositionSquadPlanner({
+      orchestrator: {
+        dispatchTask: () =>
+          Effect.sync(() => {
+            dispatching = true;
+          }).pipe(
+            Effect.andThen(Deferred.succeed(dispatchStarted, undefined)),
+            Effect.andThen(Effect.never),
+          ),
+        cancelTask: () =>
+          Effect.sync(() => {
+            cancelCalls += 1;
+            return {
+              task: {} as CompositionTask,
+              run: {} as CompositionTaskRun,
+              status: "cancelled" as const,
+            };
+          }),
+      },
+      runtime: { awaitTaskCompletion: () => Effect.die("派发响应未返回时不应进入等待") },
+      store: {
+        getTask: () =>
+          dispatching ? lookupFailure() : Effect.succeed(Option.none<CompositionTask>()),
+        getRun: () =>
+          dispatching ? lookupFailure() : Effect.succeed(Option.none<CompositionTaskRun>()),
+        listEvents: () => Effect.die("派发响应未返回时不应读取输出"),
+      },
+    });
+    const fiber = yield* Effect.forkChild(
+      planner.plan(input, {
+        onInterruptedCancellation: (value) =>
+          Effect.sync(() => {
+            receipt = value;
+          }),
+      }),
+    );
+
+    yield* Deferred.await(dispatchStarted);
+    yield* Fiber.interrupt(fiber);
+    const exit = yield* Fiber.await(fiber);
+
+    expect(cancelCalls).toBe(0);
+    expect(receipt).toMatchObject({
+      runs: [
+        {
+          taskId: planningTaskId,
+          runId: planningRunId,
+          outcome: "ownership_unverified",
+          failureCode: "ownership_lookup_failed",
+        },
+      ],
+      complete: false,
+    });
+    expect(receipt?.runs.flatMap((run) => Object.values(run).map(String)).join("\n")).not.toContain(
+      "third-party-secret",
+    );
+    expect(exit._tag).toBe("Failure");
+    if (exit._tag === "Failure") {
+      expect(Cause.hasFails(exit.cause)).toBe(true);
+      expect(Cause.interruptors(exit.cause).size).toBeGreaterThan(0);
+    }
+  }),
+);
+
+it.effect("Leader 规划中断清理失败只发布受控不完整回执且不泄露第三方详情", () =>
+  Effect.gen(function* () {
+    const cases = [
+      {
+        name: "cancel_failed",
+        expectedOutcome: "cancel_failed",
+        expectedFailureCode: "cancel_failed",
+      },
+      {
+        name: "pending",
+        expectedOutcome: "pending",
+        expectedFailureCode: "cancel_confirmation_failed",
+      },
+      {
+        name: "timeout",
+        expectedOutcome: "timeout",
+        expectedFailureCode: "cancel_timeout",
+      },
+    ] as const;
+
+    for (const currentCase of cases) {
+      const waiting = yield* Deferred.make<void>();
+      const prompt = yield* makeCompositionSquadPlanningPrompt(squad, input.goal);
+      const promptDigest = `sha256:${NodeCrypto.createHash("sha256")
+        .update(prompt, "utf8")
+        .digest("hex")}`;
+      const task: CompositionTask = {
+        taskId: planningTaskId,
+        projectId: input.projectId,
+        threadId: input.threadId,
+        assigneeKind: "agent",
+        assigneeId: squad.leaderAgentId,
+        mode: "serial",
+        status: "running",
+        promptDigest,
+        dependsOnTaskIds: [],
+        createdAtUnixMs: 1,
+        updatedAtUnixMs: 1,
+      };
+      const run: CompositionTaskRun = {
+        runId: planningRunId,
+        taskId: planningTaskId,
+        agentId: squad.leaderAgentId,
+        runtimeId: "runtime-leader",
+        status: "running",
+        attempt: 1,
+        capabilityGrantIds: [],
+      };
+      let waitCount = 0;
+      let receipt: CompositionSquadPlanningCancellationReceipt | undefined;
+      const planner = makeCompositionSquadPlanner({
+        orchestrator: {
+          dispatchTask: () => Effect.die("稳定 Leader 规划 Run 不应重复派发"),
+          cancelTask: () =>
+            currentCase.name === "cancel_failed"
+              ? Effect.fail(
+                  new CompositionAgentDriverFailure({
+                    code: "provider_secret_cancel_failure",
+                    detail: "third-party-secret-cancel-detail",
+                  }),
+                )
+              : currentCase.name === "timeout"
+                ? Effect.never
+                : Effect.succeed({ task, run, status: "cancel_requested" as const }),
+        },
+        runtime: {
+          awaitTaskCompletion: () => {
+            waitCount += 1;
+            if (waitCount === 1) {
+              return Deferred.succeed(waiting, undefined).pipe(Effect.andThen(Effect.never));
+            }
+            return Effect.fail(
+              new CompositionTaskRuntimeWaitError({
+                taskId: planningTaskId,
+                runId: planningRunId,
+                reason: "third-party-secret-confirmation-detail",
+              }),
+            );
+          },
+        },
+        store: {
+          getTask: () => Effect.succeed(Option.some(task)),
+          getRun: () => Effect.succeed(Option.some(run)),
+          listEvents: () => Effect.die("等待中的 Leader 规划 Run 不应读取输出"),
+        },
+        cancelTimeoutMs: 5,
+      });
+      const fiber = yield* Effect.forkChild(
+        planner.plan(input, {
+          onInterruptedCancellation: (value) =>
+            Effect.sync(() => {
+              receipt = value;
+            }),
+        }),
+      );
+
+      yield* Deferred.await(waiting);
+      if (currentCase.name === "timeout") {
+        const interruptFiber = yield* Effect.forkChild(Fiber.interrupt(fiber), {
+          startImmediately: true,
+        });
+        yield* TestClock.adjust("5 millis");
+        yield* Fiber.join(interruptFiber);
+      } else {
+        yield* Fiber.interrupt(fiber);
+      }
+      const exit = yield* Fiber.await(fiber);
+
+      expect(receipt).toMatchObject({
+        complete: false,
+      });
+      expect(receipt?.runs[0]).toMatchObject({
+        taskId: planningTaskId,
+        runId: planningRunId,
+        outcome: currentCase.expectedOutcome,
+        failureCode: currentCase.expectedFailureCode,
+      });
+      expect(
+        receipt?.runs.flatMap((run) => Object.values(run).map(String)).join("\n"),
+      ).not.toContain("third-party-secret");
+      expect(exit._tag).toBe("Failure");
+      if (exit._tag === "Failure") {
+        expect(Cause.hasFails(exit.cause)).toBe(true);
+        expect(Cause.hasDies(exit.cause)).toBe(false);
+        expect(Cause.interruptors(exit.cause).size).toBeGreaterThan(0);
+      }
+    }
+  }),
+);
+
 it.effect("并发创建竞争命中稳定 Task 后恢复既有运行，不发起第二次外部调用", () =>
   Effect.gen(function* () {
     const tasks = new Map<string, CompositionTask>();
@@ -369,6 +1053,7 @@ it.effect("并发创建竞争命中稳定 Task 后恢复既有运行，不发起
           ]);
           return Effect.fail(new CompositionTaskAlreadyExistsError({ taskId: dispatch.taskId }));
         },
+        cancelTask: () => Effect.die("已完成竞争 Run 不应取消"),
       },
       runtime: { awaitTaskCompletion: () => Effect.die("已完成 Run 不应等待") },
       store: {
@@ -402,6 +1087,10 @@ it.effect("Leader 输出非严格 JSON 或规划运行失败时拒绝继续派�
     expect(parseError.code).toBe("squad_plan_output_invalid");
 
     const failed = makeHarness();
+    const failedPrompt = yield* makeCompositionSquadPlanningPrompt(squad, input.goal);
+    const failedPromptDigest = `sha256:${NodeCrypto.createHash("sha256")
+      .update(failedPrompt, "utf8")
+      .digest("hex")}`;
     failed.planner = makeCompositionSquadPlanner({
       orchestrator: {
         dispatchTask: () =>
@@ -413,7 +1102,7 @@ it.effect("Leader 输出非严格 JSON 或规划运行失败时拒绝继续派�
               assigneeId: "agent-leader",
               mode: "serial",
               status: "failed",
-              promptDigest: "sha256:failed",
+              promptDigest: failedPromptDigest,
               dependsOnTaskIds: [],
               createdAtUnixMs: 1,
               updatedAtUnixMs: 2,
@@ -432,6 +1121,7 @@ it.effect("Leader 输出非严格 JSON 或规划运行失败时拒绝继续派�
               finishedAtUnixMs: 2,
             },
           }),
+        cancelTask: () => Effect.die("已失败终态 Run 不应取消"),
       },
       runtime: { awaitTaskCompletion: () => Effect.die("终态 Run 不应等待") },
       store: {

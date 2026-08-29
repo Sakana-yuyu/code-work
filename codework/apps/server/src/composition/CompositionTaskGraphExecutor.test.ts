@@ -28,6 +28,8 @@ import { makeCompositionByokAgentDriver } from "./CompositionByokAgentDriver.ts"
 import { makeCompositionAgentDriverRegistry } from "./CompositionAgentDriverRegistry.ts";
 import {
   makeCompositionTaskGraphExecutor,
+  type CompositionTaskGraphCancellationReport,
+  type CompositionTaskGraphCancellationReceipt,
   type CompositionTaskGraphExecutionInput,
 } from "./CompositionTaskGraphExecutor.ts";
 import {
@@ -46,6 +48,7 @@ import * as ToolBroker from "./ToolBroker.ts";
 import * as WorkspaceEntries from "../workspace/WorkspaceEntries.ts";
 import * as WorkspaceFileSystem from "../workspace/WorkspaceFileSystem.ts";
 import * as WorkspacePaths from "../workspace/WorkspacePaths.ts";
+import { PersistenceSqlError } from "../persistence/Errors.ts";
 import { CompositionTaskStore } from "../persistence/Services/CompositionTaskStore.ts";
 import type {
   CompositionTaskInputStoreShape,
@@ -224,6 +227,8 @@ const makePartialSuccessExecutor = (events: string[], leaderPrompts: string[]) =
         const task: CompositionTask = {
           taskId: input.taskId,
           projectId: input.projectId,
+          ...(input.threadId === undefined ? {} : { threadId: input.threadId }),
+          ...(input.parentTaskId === undefined ? {} : { parentTaskId: input.parentTaskId }),
           assigneeKind: input.assigneeKind,
           assigneeId: input.assigneeId,
           mode: input.mode,
@@ -398,6 +403,8 @@ describe("CompositionTaskGraphExecutor", () => {
               const task: CompositionTask = {
                 taskId: input.taskId,
                 projectId: input.projectId,
+                ...(input.threadId === undefined ? {} : { threadId: input.threadId }),
+                ...(input.parentTaskId === undefined ? {} : { parentTaskId: input.parentTaskId }),
                 assigneeKind: input.assigneeKind,
                 assigneeId: input.assigneeId,
                 mode: input.mode,
@@ -606,6 +613,8 @@ describe("CompositionTaskGraphExecutor", () => {
             const task: CompositionTask = {
               taskId: input.taskId,
               projectId: input.projectId,
+              ...(input.threadId === undefined ? {} : { threadId: input.threadId }),
+              ...(input.parentTaskId === undefined ? {} : { parentTaskId: input.parentTaskId }),
               assigneeKind: input.assigneeKind,
               assigneeId: input.assigneeId,
               mode: input.mode,
@@ -744,6 +753,8 @@ describe("CompositionTaskGraphExecutor", () => {
                 const task: CompositionTask = {
                   taskId: input.taskId,
                   projectId: input.projectId,
+                  ...(input.threadId === undefined ? {} : { threadId: input.threadId }),
+                  ...(input.parentTaskId === undefined ? {} : { parentTaskId: input.parentTaskId }),
                   assigneeKind: input.assigneeKind,
                   assigneeId: input.assigneeId,
                   mode: input.mode,
@@ -853,6 +864,8 @@ describe("CompositionTaskGraphExecutor", () => {
               const task: CompositionTask = {
                 taskId: input.taskId,
                 projectId: input.projectId,
+                ...(input.threadId === undefined ? {} : { threadId: input.threadId }),
+                ...(input.parentTaskId === undefined ? {} : { parentTaskId: input.parentTaskId }),
                 assigneeKind: input.assigneeKind,
                 assigneeId: input.assigneeId,
                 mode: input.mode,
@@ -956,6 +969,8 @@ describe("CompositionTaskGraphExecutor", () => {
               const task: CompositionTask = {
                 taskId: input.taskId,
                 projectId: input.projectId,
+                ...(input.threadId === undefined ? {} : { threadId: input.threadId }),
+                ...(input.parentTaskId === undefined ? {} : { parentTaskId: input.parentTaskId }),
                 assigneeKind: input.assigneeKind,
                 assigneeId: input.assigneeId,
                 mode: input.mode,
@@ -1036,6 +1051,10 @@ describe("CompositionTaskGraphExecutor", () => {
                   const task: CompositionTask = {
                     taskId: input.taskId,
                     projectId: input.projectId,
+                    ...(input.threadId === undefined ? {} : { threadId: input.threadId }),
+                    ...(input.parentTaskId === undefined
+                      ? {}
+                      : { parentTaskId: input.parentTaskId }),
                     assigneeKind: input.assigneeKind,
                     assigneeId: input.assigneeId,
                     mode: input.mode,
@@ -1117,6 +1136,8 @@ describe("CompositionTaskGraphExecutor", () => {
               const task: CompositionTask = {
                 taskId: input.taskId,
                 projectId: input.projectId,
+                ...(input.threadId === undefined ? {} : { threadId: input.threadId }),
+                ...(input.parentTaskId === undefined ? {} : { parentTaskId: input.parentTaskId }),
                 assigneeKind: input.assigneeKind,
                 assigneeId: input.assigneeId,
                 mode: input.mode,
@@ -1516,6 +1537,7 @@ describe("CompositionTaskGraphExecutor", () => {
       const task: CompositionTask = {
         taskId: child.taskId,
         projectId: child.projectId,
+        parentTaskId: baseLeader.taskId,
         assigneeKind: child.assigneeKind,
         assigneeId: child.assigneeId,
         mode: child.mode,
@@ -1584,6 +1606,7 @@ describe("CompositionTaskGraphExecutor", () => {
       ): CompositionTask => ({
         taskId: input.taskId,
         projectId: input.projectId,
+        parentTaskId: baseLeader.taskId,
         assigneeKind: input.assigneeKind,
         assigneeId: input.assigneeId,
         mode: input.mode,
@@ -1647,6 +1670,8 @@ describe("CompositionTaskGraphExecutor", () => {
               ? {
                   taskId: input.taskId,
                   projectId: input.projectId,
+                  ...(input.threadId === undefined ? {} : { threadId: input.threadId }),
+                  ...(input.parentTaskId === undefined ? {} : { parentTaskId: input.parentTaskId }),
                   assigneeKind: input.assigneeKind,
                   assigneeId: input.assigneeId,
                   mode: input.mode,
@@ -1760,6 +1785,7 @@ describe("CompositionTaskGraphExecutor", () => {
       ): CompositionTask => ({
         taskId: input.taskId,
         projectId: input.projectId,
+        parentTaskId: baseLeader.taskId,
         assigneeKind: input.assigneeKind,
         assigneeId: input.assigneeId,
         mode: input.mode,
@@ -1797,6 +1823,8 @@ describe("CompositionTaskGraphExecutor", () => {
               task: {
                 taskId: input.taskId,
                 projectId: input.projectId,
+                ...(input.threadId === undefined ? {} : { threadId: input.threadId }),
+                ...(input.parentTaskId === undefined ? {} : { parentTaskId: input.parentTaskId }),
                 assigneeKind: input.assigneeKind,
                 assigneeId: input.assigneeId,
                 mode: input.mode,
@@ -1904,6 +1932,7 @@ describe("CompositionTaskGraphExecutor", () => {
       ): CompositionTask => ({
         taskId: input.taskId,
         projectId: input.projectId,
+        parentTaskId: baseLeader.taskId,
         assigneeKind: input.assigneeKind,
         assigneeId: input.assigneeId,
         mode: input.mode,
@@ -1941,6 +1970,8 @@ describe("CompositionTaskGraphExecutor", () => {
               task: {
                 taskId: input.taskId,
                 projectId: input.projectId,
+                ...(input.threadId === undefined ? {} : { threadId: input.threadId }),
+                ...(input.parentTaskId === undefined ? {} : { parentTaskId: input.parentTaskId }),
                 assigneeKind: input.assigneeKind,
                 assigneeId: input.assigneeId,
                 mode: input.mode,
@@ -2004,14 +2035,186 @@ describe("CompositionTaskGraphExecutor", () => {
         },
         runtime,
       });
+      let report: CompositionTaskGraphCancellationReport | undefined;
 
-      const error = yield* Effect.flip(
-        executor.execute({
-          leader: baseLeader,
-          children,
-        }),
+      const exit = yield* Effect.exit(
+        executor.execute(
+          {
+            leader: baseLeader,
+            children,
+          },
+          {
+            onCancellationReceipt: (value) =>
+              Effect.sync(() => {
+                report = value;
+              }),
+          },
+        ),
       );
-      expect(error).toMatchObject({ code: "child_cancel_cleanup_failed" });
+      expect(report).toMatchObject({
+        trigger: "business_failure",
+        receipt: {
+          complete: false,
+          runs: [
+            {
+              nodeId: "child-b",
+              taskId: "task-b-cancel-failure",
+              runId: "run-b-cancel-failure",
+              outcome: "cancel_failed",
+              failureCode: "cancel_failed",
+            },
+          ],
+        },
+      });
+      expect(exit._tag).toBe("Failure");
+      if (exit._tag === "Failure") {
+        const rendered = Cause.prettyErrors(exit.cause)
+          .map((error) => error.message)
+          .join("\n");
+        expect(rendered).toContain("子任务 A 失败");
+        expect(rendered).toContain("取消其他子任务未全部确认终态");
+      }
+    }),
+  );
+
+  it.effect("内置 v1 Executor 在任何派发前发布 cancellation scope ready", () =>
+    Effect.gen(function* () {
+      const events: string[] = [];
+      const executor = makeSchedulingExecutor(events);
+
+      expect(executor.cancellationScopeProtocol).toBe("v1");
+      yield* executor.execute(
+        { leader: baseLeader, children: [] },
+        {
+          onCancellationScopeReady: () =>
+            Effect.sync(() => {
+              events.push("scope:ready");
+            }),
+        },
+      );
+
+      expect(events[0]).toBe("scope:ready");
+      expect(events).toContain("dispatch:leader-task");
+    }),
+  );
+
+  it.effect("continue_independent 节点清理不完整时发布 receipt 并组合原失败与清理失败", () =>
+    Effect.gen(function* () {
+      const child: CompositionTaskGraphExecutionInput["children"][number] = {
+        nodeId: "independent-cleanup",
+        taskId: "independent-cleanup-task",
+        runId: "independent-cleanup-run",
+        projectId: "project-graph",
+        assigneeKind: "agent",
+        assigneeId: "independent-agent",
+        mode: "parallel",
+        promptDigest: "sha256:independent-cleanup",
+        prompt: "执行独立节点",
+        workspaceRoot: "C:/workspace",
+      };
+      const tasks = new Map<string, CompositionTask>();
+      const runs = new Map<string, CompositionTaskRun>();
+      let report: CompositionTaskGraphCancellationReport | undefined;
+      const executor = makeCompositionTaskGraphExecutor({
+        orchestrator: {
+          dispatchTask: (dispatch) =>
+            Effect.sync(() => {
+              if (dispatch.taskId === baseLeader.taskId) {
+                throw new Error("清理不完整时不应派发 Leader");
+              }
+              const task: CompositionTask = {
+                taskId: dispatch.taskId,
+                projectId: dispatch.projectId,
+                ...(dispatch.threadId === undefined ? {} : { threadId: dispatch.threadId }),
+                ...(dispatch.parentTaskId === undefined
+                  ? {}
+                  : { parentTaskId: dispatch.parentTaskId }),
+                assigneeKind: dispatch.assigneeKind,
+                assigneeId: dispatch.assigneeId,
+                mode: dispatch.mode,
+                status: "running",
+                promptDigest: dispatch.promptDigest,
+                dependsOnTaskIds: [...dispatch.dependsOnTaskIds],
+                createdAtUnixMs: 1,
+                updatedAtUnixMs: 1,
+              };
+              const run: CompositionTaskRun = {
+                runId: dispatch.runId,
+                taskId: dispatch.taskId,
+                agentId: dispatch.assigneeId,
+                runtimeId: "runtime-independent",
+                status: "running",
+                attempt: 1,
+                capabilityGrantIds: [],
+              };
+              tasks.set(task.taskId, task);
+              runs.set(run.runId, run);
+              return { task, run };
+            }),
+          retryTask: () => Effect.die("独立节点等待失败不应重试"),
+          cancelTask: () =>
+            Effect.fail(
+              new CompositionAgentDriverFailure({
+                code: "independent_cancel_failed",
+                detail: "sensitive independent cancellation detail",
+              }),
+            ),
+        },
+        store: {
+          getTask: (taskId) => Effect.succeed(Option.fromNullishOr(tasks.get(taskId))),
+          getRun: (runId) => Effect.succeed(Option.fromNullishOr(runs.get(runId))),
+        },
+        runtime: {
+          awaitTaskCompletion: ({ taskId, runId }) =>
+            Effect.fail(
+              new CompositionTaskRuntimeWaitError({
+                taskId,
+                runId,
+                reason: "independent runtime wait failed",
+              }),
+            ),
+        },
+      });
+
+      const exit = yield* Effect.exit(
+        executor.execute(
+          {
+            leader: baseLeader,
+            children: [child],
+            failurePolicy: "continue_independent",
+          },
+          {
+            onCancellationReceipt: (value) =>
+              Effect.sync(() => {
+                report = value;
+              }),
+          },
+        ),
+      );
+
+      expect(report).toMatchObject({
+        trigger: "business_failure",
+        receipt: {
+          complete: false,
+          runs: [
+            {
+              nodeId: child.nodeId,
+              taskId: child.taskId,
+              runId: child.runId,
+              outcome: "cancel_failed",
+            },
+          ],
+        },
+      });
+      expect(exit._tag).toBe("Failure");
+      if (exit._tag === "Failure") {
+        const rendered = Cause.prettyErrors(exit.cause)
+          .map((error) => error.message)
+          .join("\n");
+        expect(rendered).toContain("independent runtime wait failed");
+        expect(rendered).toContain("取消该节点任务未确认终态");
+        expect(rendered).not.toContain("sensitive independent cancellation detail");
+      }
     }),
   );
 
@@ -2085,6 +2288,407 @@ describe("CompositionTaskGraphExecutor", () => {
         nodeId: child.nodeId,
       });
       expect(cancelCalls).toBe(0);
+    }),
+  );
+
+  it.effect("派发成功返回串线身份时在 tracker 升级前拒绝 terminal 与 nonterminal", () =>
+    Effect.gen(function* () {
+      const child: CompositionTaskGraphExecutionInput["children"][number] = {
+        nodeId: "dispatch-response-identity-child",
+        taskId: "dispatch-response-identity-task",
+        runId: "dispatch-response-identity-run",
+        projectId: "project-graph",
+        assigneeKind: "agent",
+        assigneeId: "dispatch-response-agent",
+        mode: "parallel",
+        promptDigest: "sha256:dispatch-response-identity",
+        prompt: "验证派发成功响应的稳定身份",
+        workspaceRoot: "C:/workspace",
+      };
+
+      for (const status of ["running", "completed"] as const) {
+        const foreignTask: CompositionTask = {
+          taskId: `${child.taskId}:foreign`,
+          projectId: "foreign-project",
+          parentTaskId: baseLeader.taskId,
+          assigneeKind: "agent",
+          assigneeId: "foreign-agent",
+          mode: child.mode,
+          status,
+          promptDigest: "sha256:foreign-dispatch-response",
+          dependsOnTaskIds: [],
+          createdAtUnixMs: 1,
+          updatedAtUnixMs: 1,
+          ...(status === "completed" ? { finishedAtUnixMs: 2 } : {}),
+        };
+        const foreignRun: CompositionTaskRun = {
+          runId: `${child.runId}:foreign`,
+          taskId: foreignTask.taskId,
+          agentId: foreignTask.assigneeId,
+          runtimeId: "foreign-dispatch-runtime",
+          status,
+          attempt: 1,
+          capabilityGrantIds: [],
+          ...(status === "completed" ? { finishedAtUnixMs: 2, resultSummary: "串线终态结果" } : {}),
+        };
+        let cancelCalls = 0;
+        const executor = makeCompositionTaskGraphExecutor({
+          orchestrator: {
+            dispatchTask: () => Effect.succeed({ task: foreignTask, run: foreignRun }),
+            retryTask: () => Effect.die("派发身份冲突不应进入重试"),
+            cancelTask: () =>
+              Effect.sync(() => {
+                cancelCalls += 1;
+                return {
+                  task: { ...foreignTask, status: "cancelled" as const },
+                  run: { ...foreignRun, status: "cancelled" as const },
+                  status: "cancelled" as const,
+                };
+              }),
+          },
+          store: {
+            getTask: () => Effect.succeed(Option.none<CompositionTask>()),
+            getRun: () => Effect.succeed(Option.none<CompositionTaskRun>()),
+          },
+          runtime: {
+            awaitTaskCompletion: ({ taskId, runId }) =>
+              Effect.fail(
+                new CompositionTaskRuntimeWaitError({
+                  taskId,
+                  runId,
+                  reason: "串线派发响应不应进入等待",
+                }),
+              ),
+          },
+        });
+
+        const error = yield* Effect.flip(
+          executor.execute({ leader: baseLeader, children: [child] }),
+        );
+
+        expect(error).toMatchObject({
+          code: "task_graph_identity_conflict",
+          nodeId: child.nodeId,
+        });
+        expect(cancelCalls).toBe(0);
+      }
+    }),
+  );
+
+  it.effect("重试成功返回串线身份时在 tracker 升级前拒绝 terminal 与 nonterminal", () =>
+    Effect.gen(function* () {
+      const child: CompositionTaskGraphExecutionInput["children"][number] = {
+        nodeId: "retry-response-identity-child",
+        taskId: "retry-response-identity-task",
+        runId: "retry-response-identity-run",
+        projectId: "project-graph",
+        assigneeKind: "agent",
+        assigneeId: "retry-response-agent",
+        mode: "parallel",
+        promptDigest: "sha256:retry-response-identity",
+        prompt: "验证重试成功响应的稳定身份",
+        workspaceRoot: "C:/workspace",
+        capabilityIds: ["t3.workspace.read_file"],
+        maxAttempts: 2,
+      };
+      const initialTask: CompositionTask = {
+        taskId: child.taskId,
+        projectId: child.projectId,
+        parentTaskId: baseLeader.taskId,
+        assigneeKind: child.assigneeKind,
+        assigneeId: child.assigneeId,
+        mode: child.mode,
+        status: "failed",
+        promptDigest: child.promptDigest,
+        dependsOnTaskIds: [],
+        createdAtUnixMs: 1,
+        updatedAtUnixMs: 2,
+        finishedAtUnixMs: 2,
+      };
+      const initialRun: CompositionTaskRun = {
+        runId: child.runId,
+        taskId: child.taskId,
+        agentId: child.assigneeId,
+        runtimeId: "retry-response-runtime",
+        status: "failed",
+        attempt: 1,
+        capabilityGrantIds: [],
+        failureCode: "provider_network",
+        resultSummary: "首次执行发生瞬态网络错误",
+        finishedAtUnixMs: 2,
+      };
+
+      for (const status of ["running", "completed"] as const) {
+        let initialDispatched = false;
+        let retryReturned = false;
+        let cancelCalls = 0;
+        const foreignTask: CompositionTask = {
+          ...initialTask,
+          taskId: `${child.taskId}:foreign`,
+          assigneeId: "foreign-retry-agent",
+          status,
+          ...(status === "completed" ? { finishedAtUnixMs: 3 } : {}),
+        };
+        const foreignRun: CompositionTaskRun = {
+          runId: `${child.runId}:retry:2:foreign`,
+          taskId: foreignTask.taskId,
+          agentId: foreignTask.assigneeId,
+          runtimeId: "foreign-retry-runtime",
+          status,
+          attempt: 99,
+          capabilityGrantIds: [],
+          ...(status === "completed"
+            ? { finishedAtUnixMs: 3, resultSummary: "串线重试终态结果" }
+            : {}),
+        };
+        const executor = makeCompositionTaskGraphExecutor({
+          orchestrator: {
+            dispatchTask: (input) =>
+              Effect.sync(() => {
+                if (input.taskId !== child.taskId) {
+                  throw new Error(`身份冲突前不应派发 Leader：${input.taskId}`);
+                }
+                initialDispatched = true;
+                return { task: initialTask, run: initialRun };
+              }),
+            retryTask: () =>
+              Effect.sync(() => {
+                retryReturned = true;
+                return { task: foreignTask, run: foreignRun };
+              }),
+            cancelTask: () =>
+              Effect.sync(() => {
+                cancelCalls += 1;
+                return {
+                  task: { ...foreignTask, status: "cancelled" as const },
+                  run: { ...foreignRun, status: "cancelled" as const },
+                  status: "cancelled" as const,
+                };
+              }),
+          },
+          store: {
+            getTask: (taskId) =>
+              Effect.succeed(
+                initialDispatched && !retryReturned && taskId === child.taskId
+                  ? Option.some(initialTask)
+                  : Option.none<CompositionTask>(),
+              ),
+            getRun: () => Effect.succeed(Option.none<CompositionTaskRun>()),
+          },
+          runtime: {
+            awaitTaskCompletion: ({ taskId, runId }) =>
+              Effect.fail(
+                new CompositionTaskRuntimeWaitError({
+                  taskId,
+                  runId,
+                  reason: "串线重试响应不应进入等待",
+                }),
+              ),
+          },
+        });
+
+        const error = yield* Effect.flip(
+          executor.execute({ leader: baseLeader, children: [child] }),
+        );
+
+        expect(error).toMatchObject({
+          code: "task_graph_retry_identity_conflict",
+          nodeId: child.nodeId,
+        });
+        expect(cancelCalls).toBe(0);
+      }
+    }),
+  );
+
+  it.effect("等待子 Run 返回 foreign terminal 时拒绝伪造节点完成", () =>
+    Effect.gen(function* () {
+      const child: CompositionTaskGraphExecutionInput["children"][number] = {
+        nodeId: "await-identity-child",
+        taskId: "await-identity-task",
+        runId: "await-identity-run",
+        projectId: "project-graph",
+        assigneeKind: "agent",
+        assigneeId: "await-identity-agent",
+        mode: "parallel",
+        promptDigest: "sha256:await-identity",
+        prompt: "等待严格绑定当前 Run 的终态",
+        workspaceRoot: "C:/workspace",
+      };
+      const task: CompositionTask = {
+        taskId: child.taskId,
+        projectId: child.projectId,
+        parentTaskId: baseLeader.taskId,
+        assigneeKind: child.assigneeKind,
+        assigneeId: child.assigneeId,
+        mode: child.mode,
+        status: "running",
+        promptDigest: child.promptDigest,
+        dependsOnTaskIds: [],
+        createdAtUnixMs: 1,
+        updatedAtUnixMs: 1,
+      };
+      const run: CompositionTaskRun = {
+        runId: child.runId,
+        taskId: child.taskId,
+        agentId: child.assigneeId,
+        runtimeId: "await-identity-runtime",
+        status: "running",
+        attempt: 1,
+        capabilityGrantIds: [],
+      };
+      let childDispatched = false;
+      let leaderDispatches = 0;
+      let cancelCalls = 0;
+      const executor = makeCompositionTaskGraphExecutor({
+        orchestrator: {
+          dispatchTask: (input) =>
+            input.taskId === child.taskId
+              ? Effect.sync(() => {
+                  childDispatched = true;
+                  return { task, run };
+                })
+              : Effect.sync(() => {
+                  leaderDispatches += 1;
+                }).pipe(
+                  Effect.andThen(
+                    Effect.fail(
+                      new CompositionAgentDriverFailure({
+                        code: "leader_dispatched_after_foreign_terminal",
+                        detail: "foreign terminal 被错误接受后派发了 Leader",
+                      }),
+                    ),
+                  ),
+                ),
+          retryTask: () => Effect.die("foreign terminal 不应进入重试"),
+          cancelTask: () =>
+            Effect.sync(() => {
+              cancelCalls += 1;
+              return {
+                task: { ...task, status: "cancelled" as const },
+                run: { ...run, status: "cancelled" as const },
+                status: "cancelled" as const,
+              };
+            }),
+        },
+        store: {
+          getTask: (taskId) =>
+            Effect.succeed(
+              childDispatched && taskId === child.taskId
+                ? Option.some(task)
+                : Option.none<CompositionTask>(),
+            ),
+          getRun: () => Effect.succeed(Option.none<CompositionTaskRun>()),
+        },
+        runtime: {
+          awaitTaskCompletion: () =>
+            Effect.succeed({
+              ...run,
+              runId: `${run.runId}:foreign`,
+              taskId: `${run.taskId}:foreign`,
+              agentId: "foreign-agent",
+              runtimeId: "foreign-runtime",
+              status: "completed" as const,
+              attempt: 99,
+              resultSummary: "串线终态结果",
+              finishedAtUnixMs: 2,
+            }),
+        },
+      });
+
+      const error = yield* Effect.flip(executor.execute({ leader: baseLeader, children: [child] }));
+
+      expect(error).toMatchObject({
+        code: "task_graph_run_identity_conflict",
+        nodeId: child.nodeId,
+      });
+      expect(leaderDispatches).toBe(0);
+      expect(cancelCalls).toBe(1);
+    }),
+  );
+
+  it.effect("等待 Leader Run 返回 foreign terminal 时拒绝伪造执行完成", () =>
+    Effect.gen(function* () {
+      let leaderTask: CompositionTask | undefined;
+      let leaderRun: CompositionTaskRun | undefined;
+      let leaderDispatched = false;
+      let cancelCalls = 0;
+      const executor = makeCompositionTaskGraphExecutor({
+        orchestrator: {
+          dispatchTask: (input) =>
+            Effect.sync(() => {
+              leaderDispatched = true;
+              leaderTask = {
+                taskId: input.taskId,
+                projectId: input.projectId,
+                ...(input.threadId === undefined ? {} : { threadId: input.threadId }),
+                ...(input.parentTaskId === undefined ? {} : { parentTaskId: input.parentTaskId }),
+                assigneeKind: input.assigneeKind,
+                assigneeId: input.assigneeId,
+                mode: input.mode,
+                status: "running",
+                promptDigest: input.promptDigest,
+                dependsOnTaskIds: [...input.dependsOnTaskIds],
+                createdAtUnixMs: 1,
+                updatedAtUnixMs: 1,
+              };
+              leaderRun = {
+                runId: input.runId,
+                taskId: input.taskId,
+                agentId: input.assigneeId,
+                runtimeId: "leader-await-runtime",
+                status: "running",
+                attempt: 1,
+                capabilityGrantIds: [],
+              };
+              return { task: leaderTask, run: leaderRun };
+            }),
+          retryTask: () => Effect.die("Leader foreign terminal 不应进入重试"),
+          cancelTask: () =>
+            Effect.sync(() => {
+              cancelCalls += 1;
+              return {
+                task: { ...leaderTask!, status: "cancelled" as const },
+                run: { ...leaderRun!, status: "cancelled" as const },
+                status: "cancelled" as const,
+              };
+            }),
+        },
+        store: {
+          getTask: () =>
+            leaderDispatched
+              ? Effect.fail(
+                  new PersistenceSqlError({
+                    operation: "load leader after foreign terminal",
+                    detail: "foreign terminal 不应进入 Leader 投影读取",
+                    cause: new Error("foreign leader terminal accepted"),
+                  }),
+                )
+              : Effect.succeed(Option.none<CompositionTask>()),
+          getRun: () => Effect.succeed(Option.none<CompositionTaskRun>()),
+        },
+        runtime: {
+          awaitTaskCompletion: () =>
+            Effect.succeed({
+              ...leaderRun!,
+              runId: `${leaderRun!.runId}:foreign`,
+              taskId: `${leaderRun!.taskId}:foreign`,
+              agentId: "foreign-leader-agent",
+              runtimeId: "foreign-leader-runtime",
+              status: "completed" as const,
+              attempt: 99,
+              resultSummary: "串线 Leader 终态结果",
+              finishedAtUnixMs: 2,
+            }),
+        },
+      });
+
+      const error = yield* Effect.flip(executor.execute({ leader: baseLeader, children: [] }));
+
+      expect(error).toMatchObject({
+        code: "task_graph_run_identity_conflict",
+        nodeId: "leader",
+      });
+      expect(cancelCalls).toBe(1);
     }),
   );
 
@@ -2383,6 +2987,7 @@ describe("CompositionTaskGraphExecutor", () => {
       let taskReads = 0;
       let cancelCalls = 0;
       let interruptCompleted = false;
+      let receipt: CompositionTaskGraphCancellationReceipt | undefined;
       const executor = makeCompositionTaskGraphExecutor({
         orchestrator: {
           dispatchTask: (input) =>
@@ -2449,7 +3054,15 @@ describe("CompositionTaskGraphExecutor", () => {
       });
 
       const executionFiber = yield* Effect.forkChild(
-        executor.execute({ leader: baseLeader, children: [child] }),
+        executor.execute(
+          { leader: baseLeader, children: [child] },
+          {
+            onInterruptedCancellation: (value) =>
+              Effect.sync(() => {
+                receipt = value;
+              }),
+          },
+        ),
       );
       yield* Deferred.await(dispatched);
       const interruptFiber = yield* Effect.forkChild(
@@ -2466,16 +3079,242 @@ describe("CompositionTaskGraphExecutor", () => {
       const completedBeforeRelease = interruptCompleted;
       yield* Deferred.succeed(ownershipLookupRelease, undefined);
       yield* Fiber.join(interruptFiber);
+      const exit = yield* Fiber.await(executionFiber);
 
       expect(completedBeforeRelease).toBe(true);
       expect(cancelCalls).toBe(0);
+      expect(receipt).toEqual({
+        complete: false,
+        runs: [
+          {
+            nodeId: child.nodeId,
+            taskId: child.taskId,
+            runId: child.runId,
+            outcome: "timeout",
+            failureCode: "cancel_timeout",
+          },
+        ],
+      });
+      expect(exit._tag).toBe("Failure");
+      if (exit._tag === "Failure") {
+        expect(Cause.hasFails(exit.cause)).toBe(true);
+        expect(Cause.interruptors(exit.cause).size).toBeGreaterThan(0);
+      }
     }).pipe(TestClock.withLive),
   );
+
+  it.effect("候选 Run 归属查询失败时发布 ownership_unverified 而不是 not_owned", () =>
+    Effect.gen(function* () {
+      const dispatched = yield* Deferred.make<void>();
+      const tasks = new Map<string, CompositionTask>();
+      const runs = new Map<string, CompositionTaskRun>();
+      let taskReads = 0;
+      let cancelCalls = 0;
+      let receipt: CompositionTaskGraphCancellationReceipt | undefined;
+      const executor = makeCompositionTaskGraphExecutor({
+        orchestrator: {
+          dispatchTask: (input) =>
+            Effect.gen(function* () {
+              yield* Effect.sync(() => {
+                tasks.set(input.taskId, {
+                  taskId: input.taskId,
+                  projectId: input.projectId,
+                  assigneeKind: input.assigneeKind,
+                  assigneeId: input.assigneeId,
+                  mode: input.mode,
+                  status: "running",
+                  promptDigest: input.promptDigest,
+                  dependsOnTaskIds: [...input.dependsOnTaskIds],
+                  createdAtUnixMs: 1,
+                  updatedAtUnixMs: 1,
+                });
+                runs.set(input.runId, {
+                  runId: input.runId,
+                  taskId: input.taskId,
+                  agentId: input.assigneeId,
+                  runtimeId: `runtime-${input.assigneeId}`,
+                  status: "running",
+                  attempt: 1,
+                  capabilityGrantIds: [],
+                });
+              });
+              yield* Deferred.succeed(dispatched, undefined);
+              return yield* Effect.never;
+            }),
+          retryTask: () => Effect.die("归属失败测试不应重试"),
+          cancelTask: () =>
+            Effect.sync(() => {
+              cancelCalls += 1;
+              throw new Error("归属未确认时不应取消");
+            }),
+        },
+        store: {
+          getTask: (_taskId) =>
+            Effect.suspend(() => {
+              taskReads += 1;
+              return taskReads === 1
+                ? Effect.succeed(Option.none<CompositionTask>())
+                : Effect.die("sensitive ownership lookup detail");
+            }),
+          getRun: (runId) => Effect.succeed(Option.fromNullishOr(runs.get(runId))),
+        },
+        runtime: { awaitTaskCompletion: () => Effect.die("归属未确认时不应等待终态") },
+      });
+      const fiber = yield* Effect.forkChild(
+        executor.execute(
+          { leader: baseLeader, children: [] },
+          {
+            onInterruptedCancellation: (value) =>
+              Effect.sync(() => {
+                receipt = value;
+              }),
+          },
+        ),
+      );
+
+      yield* Deferred.await(dispatched);
+      yield* Fiber.interrupt(fiber);
+      const exit = yield* Fiber.await(fiber);
+
+      expect(cancelCalls).toBe(0);
+      expect(receipt).toEqual({
+        complete: false,
+        runs: [
+          {
+            nodeId: "leader",
+            taskId: baseLeader.taskId,
+            runId: baseLeader.runId,
+            outcome: "ownership_unverified",
+            failureCode: "ownership_lookup_failed",
+          },
+        ],
+      });
+      expect(exit._tag).toBe("Failure");
+      if (exit._tag === "Failure") {
+        expect(Cause.hasFails(exit.cause)).toBe(true);
+        expect(Cause.interruptors(exit.cause).size).toBeGreaterThan(0);
+        expect(Cause.pretty(exit.cause)).not.toContain("sensitive ownership lookup detail");
+      }
+    }),
+  );
+
+  it.effect("cancel_requested 在预算内确认终态，超时则发布 incomplete receipt", () => {
+    const runCase = (confirm: boolean) =>
+      Effect.gen(function* () {
+        const dispatched = yield* Deferred.make<void>();
+        const tasks = new Map<string, CompositionTask>();
+        const runs = new Map<string, CompositionTaskRun>();
+        let receipt: CompositionTaskGraphCancellationReceipt | undefined;
+        const executor = makeCompositionTaskGraphExecutor({
+          orchestrator: {
+            dispatchTask: (input) =>
+              Effect.gen(function* () {
+                yield* Effect.sync(() => {
+                  tasks.set(input.taskId, {
+                    taskId: input.taskId,
+                    projectId: input.projectId,
+                    assigneeKind: input.assigneeKind,
+                    assigneeId: input.assigneeId,
+                    mode: input.mode,
+                    status: "running",
+                    promptDigest: input.promptDigest,
+                    dependsOnTaskIds: [...input.dependsOnTaskIds],
+                    createdAtUnixMs: 1,
+                    updatedAtUnixMs: 1,
+                  });
+                  runs.set(input.runId, {
+                    runId: input.runId,
+                    taskId: input.taskId,
+                    agentId: input.assigneeId,
+                    runtimeId: `runtime-${input.assigneeId}`,
+                    status: "running",
+                    attempt: 1,
+                    capabilityGrantIds: [],
+                  });
+                });
+                yield* Deferred.succeed(dispatched, undefined);
+                return yield* Effect.never;
+              }),
+            retryTask: () => Effect.die("取消确认测试不应重试"),
+            cancelTask: ({ taskId, runId }) =>
+              Effect.succeed({
+                task: tasks.get(taskId)!,
+                run: runs.get(runId)!,
+                status: "cancel_requested" as const,
+              }),
+          },
+          store: {
+            getTask: (taskId) => Effect.succeed(Option.fromNullishOr(tasks.get(taskId))),
+            getRun: (runId) => Effect.succeed(Option.fromNullishOr(runs.get(runId))),
+          },
+          runtime: {
+            awaitTaskCompletion: ({ runId }) =>
+              confirm
+                ? Effect.succeed({ ...runs.get(runId)!, status: "cancelled" as const })
+                : Effect.never,
+          },
+          cancelTimeoutMs: 5,
+        });
+        const fiber = yield* Effect.forkChild(
+          executor.execute(
+            { leader: baseLeader, children: [] },
+            {
+              onInterruptedCancellation: (value) =>
+                Effect.sync(() => {
+                  receipt = value;
+                }),
+            },
+          ),
+        );
+        yield* Deferred.await(dispatched);
+        yield* Fiber.interrupt(fiber);
+        return { exit: yield* Fiber.await(fiber), receipt };
+      });
+
+    return Effect.gen(function* () {
+      const confirmed = yield* runCase(true);
+      expect(confirmed.receipt).toEqual({
+        complete: true,
+        runs: [
+          {
+            nodeId: "leader",
+            taskId: baseLeader.taskId,
+            runId: baseLeader.runId,
+            outcome: "terminal",
+            terminalStatus: "cancelled",
+          },
+        ],
+      });
+      if (confirmed.exit._tag === "Failure") {
+        expect(Cause.hasFails(confirmed.exit.cause)).toBe(false);
+        expect(Cause.interruptors(confirmed.exit.cause).size).toBeGreaterThan(0);
+      }
+
+      const timedOut = yield* runCase(false);
+      expect(timedOut.receipt).toEqual({
+        complete: false,
+        runs: [
+          {
+            nodeId: "leader",
+            taskId: baseLeader.taskId,
+            runId: baseLeader.runId,
+            outcome: "timeout",
+            failureCode: "cancel_timeout",
+          },
+        ],
+      });
+      if (timedOut.exit._tag === "Failure") {
+        expect(Cause.hasFails(timedOut.exit.cause)).toBe(true);
+        expect(Cause.interruptors(timedOut.exit.cause).size).toBeGreaterThan(0);
+      }
+    }).pipe(TestClock.withLive);
+  });
 
   it.effect("子任务派发已持久化但响应未返回时中断仍会清理全部 Run", () =>
     Effect.gen(function* () {
       const childBDispatched = yield* Deferred.make<void>();
       const cancelled: string[] = [];
+      let receipt: CompositionTaskGraphCancellationReceipt | undefined;
       const tasks = new Map<string, CompositionTask>();
       const runs = new Map<string, CompositionTaskRun>();
       const children: CompositionTaskGraphExecutionInput["children"] = [
@@ -2574,11 +3413,19 @@ describe("CompositionTaskGraphExecutor", () => {
       });
 
       const fiber = yield* Effect.forkChild(
-        executor.execute({
-          leader: baseLeader,
-          children,
-          maxConcurrency: 2,
-        }),
+        executor.execute(
+          {
+            leader: baseLeader,
+            children,
+            maxConcurrency: 2,
+          },
+          {
+            onInterruptedCancellation: (value) =>
+              Effect.sync(() => {
+                receipt = value;
+              }),
+          },
+        ),
       );
       yield* Deferred.await(childBDispatched);
       yield* Fiber.interrupt(fiber);
@@ -2588,11 +3435,35 @@ describe("CompositionTaskGraphExecutor", () => {
         "interrupt-task-a/interrupt-run-a",
         "interrupt-task-b/interrupt-run-b",
       ]);
+      expect(receipt).toEqual({
+        complete: false,
+        runs: [
+          {
+            nodeId: "interrupt-child-a",
+            taskId: "interrupt-task-a",
+            runId: "interrupt-run-a",
+            outcome: "cancel_failed",
+            failureCode: "cancel_failed",
+          },
+          {
+            nodeId: "interrupt-child-b",
+            taskId: "interrupt-task-b",
+            runId: "interrupt-run-b",
+            outcome: "terminal",
+            terminalStatus: "cancelled",
+          },
+        ],
+      });
       expect(exit._tag).toBe("Failure");
       if (exit._tag === "Failure") {
-        expect(Cause.hasFails(exit.cause)).toBe(false);
+        expect(Cause.hasFails(exit.cause)).toBe(true);
         expect(Cause.hasDies(exit.cause)).toBe(false);
         expect(Cause.interruptors(exit.cause).size).toBeGreaterThan(0);
+        expect(Option.getOrUndefined(Cause.findErrorOption(exit.cause))).toMatchObject({
+          code: "child_cancel_cleanup_incomplete",
+          detail: "Task Graph 中断清理未确认所有子 Run 已进入终态。",
+        });
+        expect(Cause.pretty(exit.cause)).not.toContain("第一个子任务取消失败");
       }
     }),
   );

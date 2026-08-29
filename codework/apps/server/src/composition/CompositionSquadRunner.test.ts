@@ -1,23 +1,36 @@
 import * as NodeCrypto from "node:crypto";
 
 import { expect, it } from "@effect/vitest";
-import type {
-  CompositionSquad,
-  CompositionSquadExecution,
-  CompositionSquadExecutionStatus,
+import {
+  isCompositionSquadExecutionStatusTransitionAllowed,
+  validateCompositionSquadExecution,
+  type CompositionSquad,
+  type CompositionSquadExecution,
+  type CompositionSquadExecutionStatus,
+  type CompositionTask,
+  type CompositionTaskDispatchResult,
+  type CompositionTaskRun,
 } from "@codework/contracts";
+import * as Cause from "effect/Cause";
+import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
+import * as Fiber from "effect/Fiber";
 import * as Logger from "effect/Logger";
+import * as Option from "effect/Option";
 import * as References from "effect/References";
 
 import { PersistenceDecodeError, PersistenceSqlError } from "../persistence/Errors.ts";
 import {
   type CompositionSquadExecutionClaimResult,
+  type CompositionSquadExecutionStoreError,
   CompositionSquadExecutionStoreDomainError,
   type CompositionSquadExecutionStoreShape,
 } from "../persistence/Services/CompositionSquadExecutionStore.ts";
 import { encodeCompositionSquadPlanOutput } from "./CompositionSquadPlan.ts";
-import { CompositionSquadPlannerError } from "./CompositionSquadPlanner.ts";
+import {
+  CompositionSquadPlannerError,
+  makeCompositionSquadPlanner,
+} from "./CompositionSquadPlanner.ts";
 import {
   compileCompositionSquadGraph,
   makeCompositionSquadRunner,
@@ -25,9 +38,12 @@ import {
 } from "./CompositionSquadRunner.ts";
 import {
   CompositionTaskGraphExecutionError,
+  makeCompositionTaskGraphExecutor,
   type CompositionTaskGraphExecutionInput,
   type CompositionTaskGraphExecutionResult,
 } from "./CompositionTaskGraphExecutor.ts";
+import { CompositionAgentDriverFailure } from "./CompositionOrchestrator.ts";
+import { CompositionTaskRuntimeWaitError } from "./CompositionTaskRuntimeProjectionService.ts";
 
 const baseSquad: CompositionSquad = {
   squadId: "squad-core",
@@ -103,14 +119,17 @@ const sha256 = (value: string): string =>
 
 type RunnerExecutionStore = Pick<
   CompositionSquadExecutionStoreShape,
-  "claimExecution" | "saveTransition"
+  "claimExecution" | "getExecution" | "saveTransition"
 >;
 
 const makeStoreError = (
   executionId: string,
   detail: string,
   options?: {
-    readonly code?: "squad_execution_conflict" | "squad_execution_revision_conflict";
+    readonly code?:
+      | "squad_execution_conflict"
+      | "squad_execution_revision_conflict"
+      | "squad_execution_status_conflict";
     readonly expectedRevision?: number;
     readonly actualRevision?: number;
   },
@@ -129,15 +148,48 @@ const makeExecutionStoreHarness = (options?: {
   readonly forceClaimedFalse?: boolean;
   readonly failClaim?: boolean;
   readonly failSaveStatus?: CompositionSquadExecutionStatus;
+  readonly failSavePersistenceStatus?: CompositionSquadExecutionStatus;
+  readonly raceToCancellingAfterSaveStatus?: CompositionSquadExecutionStatus;
+  readonly raceToCancelledOnSaveStatus?: CompositionSquadExecutionStatus;
+  readonly raceConflictCode?:
+    | "squad_execution_revision_conflict"
+    | "squad_execution_status_conflict";
+  readonly afterClaim?: Effect.Effect<void>;
+  readonly pauseClaimedExecution?: boolean;
+  readonly beforeSave?: (execution: CompositionSquadExecution) => Effect.Effect<void>;
+  readonly afterSave?: (execution: CompositionSquadExecution) => Effect.Effect<void>;
   readonly events?: string[];
 }) => {
   let current: CompositionSquadExecution | undefined;
   const snapshots: CompositionSquadExecution[] = [];
   const events = options?.events ?? [];
+  let raceApplied = false;
+  const expectValidExecution = (execution: CompositionSquadExecution): void => {
+    expect(validateCompositionSquadExecution(execution)).toEqual([]);
+  };
+  const expectAllowedTransition = (
+    from: CompositionSquadExecution,
+    to: CompositionSquadExecution,
+  ): void => {
+    const pausedFromStatus =
+      to.status === "paused"
+        ? to.pausedFromStatus
+        : from.status === "paused"
+          ? from.pausedFromStatus
+          : undefined;
+    expect(
+      isCompositionSquadExecutionStatusTransitionAllowed({
+        from: from.status,
+        to: to.status,
+        ...(pausedFromStatus === undefined ? {} : { pausedFromStatus }),
+      }),
+    ).toBe(true);
+  };
   const store: RunnerExecutionStore = {
     claimExecution: (execution) =>
       Effect.gen(function* () {
         events.push(`store:claim:${execution.status}`);
+        expectValidExecution(execution);
         if (options?.failClaim === true) {
           return yield* makeStoreError(execution.executionId, "claim 写入失败");
         }
@@ -149,28 +201,95 @@ const makeExecutionStoreHarness = (options?: {
         }
         current = execution;
         snapshots.push(execution);
+        if (options?.pauseClaimedExecution === true) {
+          const paused: CompositionSquadExecution = {
+            ...execution,
+            status: "paused",
+            revision: execution.revision + 1,
+            pausedFromStatus: "queued",
+            pausedAtUnixMs: execution.updatedAtUnixMs,
+          };
+          expectAllowedTransition(execution, paused);
+          expectValidExecution(paused);
+          current = paused;
+          snapshots.push(paused);
+        }
+        if (options?.afterClaim !== undefined) {
+          yield* options.afterClaim;
+        }
         return {
           execution,
           claimed: true,
         } satisfies CompositionSquadExecutionClaimResult;
       }),
-    saveTransition: ({ execution, expectedRevision }) =>
-      Effect.suspend(() => {
+    saveTransition: ({
+      execution,
+      expectedRevision,
+    }): Effect.Effect<CompositionSquadExecution, CompositionSquadExecutionStoreError> =>
+      Effect.gen(function* () {
         events.push(`store:save:${execution.status}`);
+        expectValidExecution(execution);
+        if (current !== undefined) expectAllowedTransition(current, execution);
+        if (options?.failSavePersistenceStatus === execution.status) {
+          return yield* new PersistenceSqlError({
+            operation: "save interrupted squad cancellation",
+            detail: "interruption cancellation persistence unavailable",
+            cause: new Error("interruption-cancellation-persistence-failed"),
+          });
+        }
+        if (options?.raceToCancelledOnSaveStatus === execution.status && !raceApplied) {
+          raceApplied = true;
+          const competingCancelled: CompositionSquadExecution = {
+            ...execution,
+            status: "cancelled",
+            revision: execution.revision + 1,
+            finishedAtUnixMs: execution.updatedAtUnixMs,
+          };
+          expectAllowedTransition(execution, competingCancelled);
+          expectValidExecution(competingCancelled);
+          current = execution;
+          snapshots.push(execution);
+          current = competingCancelled;
+          snapshots.push(competingCancelled);
+          return yield* makeStoreError(execution.executionId, "execution 已被竞争写入者收口", {
+            code: options?.raceConflictCode ?? "squad_execution_revision_conflict",
+            expectedRevision,
+            actualRevision: competingCancelled.revision,
+          });
+        }
         if (options?.failSaveStatus === execution.status) {
-          return Effect.fail(
-            makeStoreError(execution.executionId, `${execution.status} 写入失败`, {
-              code: "squad_execution_revision_conflict",
-              expectedRevision,
-              actualRevision: expectedRevision + 10,
-            }),
-          );
+          return yield* makeStoreError(execution.executionId, `${execution.status} 写入失败`, {
+            code: "squad_execution_revision_conflict",
+            expectedRevision,
+            actualRevision: expectedRevision + 10,
+          });
+        }
+        if (options?.beforeSave !== undefined) {
+          yield* options.beforeSave(execution);
         }
         expect(current?.revision).toBe(expectedRevision);
         current = execution;
         snapshots.push(execution);
-        return Effect.succeed(execution);
+        if (options?.raceToCancellingAfterSaveStatus === execution.status && !raceApplied) {
+          raceApplied = true;
+          const competingCancelling: CompositionSquadExecution = {
+            ...execution,
+            status: "cancelling",
+            revision: execution.revision + 1,
+            pendingApprovals: [],
+            cancelRequestedAtUnixMs: execution.updatedAtUnixMs,
+          };
+          expectAllowedTransition(execution, competingCancelling);
+          expectValidExecution(competingCancelling);
+          current = competingCancelling;
+          snapshots.push(competingCancelling);
+        }
+        if (options?.afterSave !== undefined) {
+          yield* options.afterSave(execution);
+        }
+        return execution;
       }),
+    getExecution: () => Effect.succeed(Option.fromNullishOr(current)),
   };
   return {
     events,
@@ -224,6 +343,199 @@ const makeGraphResult = (
   },
   children: [],
 });
+
+const makeInterruptibleParallelExecutor = (
+  childrenReady: Deferred.Deferred<void>,
+  cancelled: string[],
+  dispatched: string[],
+  events?: string[],
+  options?: {
+    readonly failFirstCancellation?: boolean;
+    readonly failFirstChildAfterReady?: boolean;
+  },
+) => {
+  const tasks = new Map<string, CompositionTask>();
+  const runs = new Map<string, CompositionTaskRun>();
+  let childDispatchCount = 0;
+  let cancellationCount = 0;
+  let firstChildRunId: string | undefined;
+  return makeCompositionTaskGraphExecutor({
+    orchestrator: {
+      dispatchTask: (input) =>
+        Effect.gen(function* () {
+          const result = yield* Effect.sync(() => {
+            dispatched.push(`${input.taskId}/${input.runId}`);
+            const task: CompositionTask = {
+              taskId: input.taskId,
+              projectId: input.projectId,
+              ...(input.threadId === undefined ? {} : { threadId: input.threadId }),
+              ...(input.parentTaskId === undefined ? {} : { parentTaskId: input.parentTaskId }),
+              assigneeKind: input.assigneeKind,
+              assigneeId: input.assigneeId,
+              mode: input.mode,
+              status: "running",
+              promptDigest: input.promptDigest,
+              dependsOnTaskIds: [...input.dependsOnTaskIds],
+              createdAtUnixMs: 1,
+              updatedAtUnixMs: 1,
+            };
+            const run: CompositionTaskRun = {
+              runId: input.runId,
+              taskId: input.taskId,
+              agentId: input.assigneeId,
+              runtimeId: `runtime-${input.assigneeId}`,
+              status: "running",
+              attempt: 1,
+              capabilityGrantIds: [],
+            };
+            tasks.set(task.taskId, task);
+            runs.set(run.runId, run);
+            return { task, run } satisfies CompositionTaskDispatchResult;
+          });
+          if (input.mode === "parallel") {
+            firstChildRunId ??= input.runId;
+            childDispatchCount += 1;
+            if (childDispatchCount === 2) {
+              yield* Deferred.succeed(childrenReady, undefined);
+            }
+          }
+          return result;
+        }),
+      retryTask: () => Effect.die("中断取消测试不应重试"),
+      cancelTask: ({ taskId, runId }) => {
+        cancelled.push(`${taskId}/${runId}`);
+        events?.push(`executor:cancel:${taskId}/${runId}`);
+        cancellationCount += 1;
+        if (options?.failFirstCancellation === true && cancellationCount === 1) {
+          return Effect.fail(
+            new CompositionAgentDriverFailure({
+              code: "cancel_failed",
+              detail: "sensitive child driver cancellation detail",
+            }),
+          );
+        }
+        return Effect.sync(() => {
+          const task = tasks.get(taskId)!;
+          const run = runs.get(runId)!;
+          const cancelledTask = { ...task, status: "cancelled" as const };
+          const cancelledRun = { ...run, status: "cancelled" as const };
+          tasks.set(taskId, cancelledTask);
+          runs.set(runId, cancelledRun);
+          return {
+            task: cancelledTask,
+            run: cancelledRun,
+            status: "cancelled" as const,
+          };
+        });
+      },
+    },
+    store: {
+      getTask: (taskId) => Effect.succeed(Option.fromNullishOr(tasks.get(taskId))),
+      getRun: (runId) => Effect.succeed(Option.fromNullishOr(runs.get(runId))),
+    },
+    runtime: {
+      awaitTaskCompletion: ({ taskId, runId }) =>
+        options?.failFirstChildAfterReady === true && runId === firstChildRunId
+          ? Deferred.await(childrenReady).pipe(
+              Effect.flatMap(() =>
+                Effect.fail(
+                  new CompositionTaskRuntimeWaitError({
+                    taskId,
+                    runId,
+                    reason: "business runtime wait failed",
+                  }),
+                ),
+              ),
+            )
+          : Effect.never,
+    },
+  });
+};
+
+const makeRealPlannerHarness = (
+  planningStarted: Deferred.Deferred<void>,
+  options?: {
+    readonly cancelFails?: boolean;
+    readonly runtimeFails?: boolean;
+  },
+) => {
+  const tasks = new Map<string, CompositionTask>();
+  const runs = new Map<string, CompositionTaskRun>();
+  const cancelled: string[] = [];
+  const planner = makeCompositionSquadPlanner({
+    orchestrator: {
+      dispatchTask: (input) =>
+        Effect.sync(() => {
+          const task: CompositionTask = {
+            taskId: input.taskId,
+            projectId: input.projectId,
+            ...(input.threadId === undefined ? {} : { threadId: input.threadId }),
+            assigneeKind: input.assigneeKind,
+            assigneeId: input.assigneeId,
+            mode: input.mode,
+            status: "running",
+            promptDigest: input.promptDigest,
+            dependsOnTaskIds: [...input.dependsOnTaskIds],
+            createdAtUnixMs: 1,
+            updatedAtUnixMs: 1,
+          };
+          const run: CompositionTaskRun = {
+            runId: input.runId,
+            taskId: input.taskId,
+            agentId: input.assigneeId,
+            runtimeId: "runtime-planner",
+            status: "running",
+            attempt: 1,
+            capabilityGrantIds: [],
+          };
+          tasks.set(task.taskId, task);
+          runs.set(run.runId, run);
+          return { task, run } satisfies CompositionTaskDispatchResult;
+        }).pipe(Effect.tap(() => Deferred.succeed(planningStarted, undefined))),
+      cancelTask: ({ taskId, runId }) => {
+        cancelled.push(`${taskId}/${runId}`);
+        if (options?.cancelFails === true) {
+          return Effect.fail(
+            new CompositionAgentDriverFailure({
+              code: "planner_cancel_failed",
+              detail: "sensitive planner cancellation detail",
+            }),
+          );
+        }
+        return Effect.sync(() => {
+          const task = { ...tasks.get(taskId)!, status: "cancelled" as const };
+          const run = { ...runs.get(runId)!, status: "cancelled" as const };
+          tasks.set(taskId, task);
+          runs.set(runId, run);
+          return { task, run, status: "cancelled" as const };
+        });
+      },
+    },
+    store: {
+      getTask: (taskId) => Effect.succeed(Option.fromNullishOr(tasks.get(taskId))),
+      getRun: (runId) => Effect.succeed(Option.fromNullishOr(runs.get(runId))),
+      listEvents: () => Effect.succeed([]),
+    },
+    runtime: {
+      awaitTaskCompletion: ({ taskId, runId }) =>
+        Effect.suspend(() => {
+          if (options?.runtimeFails === true) {
+            return Effect.fail(
+              new CompositionTaskRuntimeWaitError({
+                taskId,
+                runId,
+                reason: "planner runtime wait failed",
+              }),
+            );
+          }
+          const run = runs.get(runId)!;
+          return run.status === "cancelled" ? Effect.succeed(run) : Effect.never;
+        }),
+    },
+    cancelTimeoutMs: 50,
+  });
+  return { planner, cancelled };
+};
 
 const compile = (
   collaborationMode: CompositionSquad["collaborationMode"],
@@ -652,6 +964,1026 @@ it.effect("Leader 完成时持久化结果摘要与终态时间", () =>
   }),
 );
 
+it.effect("claim 已落盘但 planning 尚未开始时中断仍收口 queued execution", () =>
+  Effect.gen(function* () {
+    const claimPersisted = yield* Deferred.make<void>();
+    const releaseClaim = yield* Deferred.make<void>();
+    const events: string[] = [];
+    const executionStore = makeExecutionStoreHarness({
+      events,
+      afterClaim: Deferred.succeed(claimPersisted, undefined).pipe(
+        Effect.andThen(Deferred.await(releaseClaim)),
+      ),
+    });
+    const times = [4_000, 4_100];
+    let timeIndex = 0;
+    const runner = makeCompositionSquadRunner({
+      squads: makeSquadLookup(baseSquad),
+      executions: executionStore.store,
+      now: () => times[timeIndex++] ?? 4_100,
+      planner: { plan: () => Effect.die("claim 后立即中断不应进入 Planner") },
+      executor: { execute: () => Effect.die("claim 后立即中断不应派发 Task Graph") },
+    });
+    const fiber = yield* Effect.forkChild(
+      runner.run({ ...baseInput, executionId: "execution-interrupted-after-claim" }),
+    );
+
+    yield* Deferred.await(claimPersisted);
+    const interruptFiber = yield* Effect.forkChild(Fiber.interrupt(fiber), {
+      startImmediately: true,
+    });
+    yield* Deferred.succeed(releaseClaim, undefined);
+    yield* Fiber.join(interruptFiber);
+    const exit = yield* Fiber.await(fiber);
+
+    expect(executionStore.snapshots.map((snapshot) => snapshot.status)).toEqual([
+      "queued",
+      "cancelled",
+    ]);
+    expect(executionStore.read()).toMatchObject({
+      status: "cancelled",
+      revision: 2,
+      cancelRequestedAtUnixMs: 4_100,
+      finishedAtUnixMs: 4_100,
+      updatedAtUnixMs: 4_100,
+    });
+    expect(events).not.toContain("store:save:planning");
+    expect(exit._tag).toBe("Failure");
+    if (exit._tag === "Failure") {
+      expect(Cause.hasFails(exit.cause)).toBe(false);
+      expect(Cause.hasDies(exit.cause)).toBe(false);
+      expect(Cause.interruptors(exit.cause).size).toBeGreaterThan(0);
+    }
+  }),
+);
+
+it.effect("pausedFromStatus=queued 中断时直接取消且不写入 startedAtUnixMs", () =>
+  Effect.gen(function* () {
+    const claimPersisted = yield* Deferred.make<void>();
+    const releaseClaim = yield* Deferred.make<void>();
+    const executionStore = makeExecutionStoreHarness({
+      pauseClaimedExecution: true,
+      afterClaim: Deferred.succeed(claimPersisted, undefined).pipe(
+        Effect.andThen(Deferred.await(releaseClaim)),
+      ),
+    });
+    const times = [4_200, 4_300];
+    let timeIndex = 0;
+    const runner = makeCompositionSquadRunner({
+      squads: makeSquadLookup(baseSquad),
+      executions: executionStore.store,
+      now: () => times[timeIndex++] ?? 4_300,
+      planner: { plan: () => Effect.die("paused queued execution 不应进入 Planner") },
+      executor: { execute: () => Effect.die("paused queued execution 不应派发 Task Graph") },
+    });
+    const fiber = yield* Effect.forkChild(
+      runner.run({ ...baseInput, executionId: "execution-paused-after-claim" }),
+    );
+
+    yield* Deferred.await(claimPersisted);
+    const interruptFiber = yield* Effect.forkChild(Fiber.interrupt(fiber), {
+      startImmediately: true,
+    });
+    yield* Deferred.succeed(releaseClaim, undefined);
+    yield* Fiber.join(interruptFiber);
+    const exit = yield* Fiber.await(fiber);
+
+    expect(executionStore.snapshots.map((snapshot) => snapshot.status)).toEqual([
+      "queued",
+      "paused",
+      "cancelled",
+    ]);
+    const finalExecution = executionStore.read();
+    expect(finalExecution).toMatchObject({
+      status: "cancelled",
+      revision: 3,
+      cancelRequestedAtUnixMs: 4_300,
+      finishedAtUnixMs: 4_300,
+      updatedAtUnixMs: 4_300,
+    });
+    expect(finalExecution).not.toHaveProperty("startedAtUnixMs");
+    expect(finalExecution).not.toHaveProperty("pausedFromStatus");
+    expect(finalExecution).not.toHaveProperty("pausedAtUnixMs");
+    expect(exit._tag).toBe("Failure");
+    if (exit._tag === "Failure") {
+      expect(Cause.hasFails(exit.cause)).toBe(false);
+      expect(Cause.hasDies(exit.cause)).toBe(false);
+      expect(Cause.interruptors(exit.cause).size).toBeGreaterThan(0);
+    }
+  }),
+);
+
+it.effect("running 已落盘但 v1 Executor 尚未获得派发权时可无回执安全取消", () =>
+  Effect.gen(function* () {
+    const runningPersisted = yield* Deferred.make<void>();
+    const releaseRunningSave = yield* Deferred.make<void>();
+    const executionStore = makeExecutionStoreHarness({
+      afterSave: (execution) =>
+        execution.status === "running"
+          ? Deferred.succeed(runningPersisted, undefined).pipe(
+              Effect.andThen(Deferred.await(releaseRunningSave)),
+            )
+          : Effect.void,
+    });
+    let executorCalled = false;
+    const runner = makeCompositionSquadRunner({
+      squads: makeSquadLookup(baseSquad),
+      executions: executionStore.store,
+      planner: { plan: () => Effect.die("显式计划不应调用 Planner") },
+      executor: {
+        cancellationScopeProtocol: "v1",
+        execute: () =>
+          Effect.sync(() => {
+            executorCalled = true;
+          }).pipe(Effect.andThen(Effect.die("取消应发生在 Executor 调用前"))),
+      },
+    });
+    const fiber = yield* Effect.forkChild(
+      runner.run({
+        ...baseInput,
+        executionId: "execution-v1-before-scope-ready",
+        plan: [
+          {
+            nodeId: "v1-pre-ready-worker",
+            agentId: "agent-worker",
+            prompt: "等待 Executor 获得派发权",
+            dependsOnNodeIds: [],
+          },
+        ],
+      }),
+    );
+
+    yield* Deferred.await(runningPersisted);
+    const interruptFiber = yield* Effect.forkChild(Fiber.interrupt(fiber), {
+      startImmediately: true,
+    });
+    yield* Deferred.succeed(releaseRunningSave, undefined);
+    yield* Fiber.join(interruptFiber);
+    const exit = yield* Fiber.await(fiber);
+
+    expect(executorCalled).toBe(false);
+    expect(executionStore.snapshots.map((snapshot) => snapshot.status)).toEqual([
+      "queued",
+      "planning",
+      "running",
+      "cancelling",
+      "cancelled",
+    ]);
+    expect(executionStore.read()).toMatchObject({ status: "cancelled", revision: 5 });
+    expect(exit._tag).toBe("Failure");
+    if (exit._tag === "Failure") {
+      expect(Cause.hasFails(exit.cause)).toBe(false);
+      expect(Cause.hasDies(exit.cause)).toBe(false);
+      expect(Cause.interruptors(exit.cause).size).toBeGreaterThan(0);
+    }
+  }),
+);
+
+it.effect("外部中断并行 Squad 时取消真实子 Run 并持久化 execution 终态", () =>
+  Effect.gen(function* () {
+    const childrenReady = yield* Deferred.make<void>();
+    const cancelled: string[] = [];
+    const dispatched: string[] = [];
+    const events: string[] = [];
+    const executionStore = makeExecutionStoreHarness({ events });
+    const squad: CompositionSquad = {
+      ...baseSquad,
+      memberAgentIds: [...baseSquad.memberAgentIds, "agent-worker-b"],
+      members: [
+        ...(baseSquad.members ?? []),
+        {
+          agentId: "agent-worker-b",
+          role: "worker",
+          order: 4,
+          required: true,
+          model: "provider/worker-model-b",
+          workspaceRoot: "C:/workspace/worker-b",
+          capabilityIds: ["t3.workspace.read_file"],
+          maxConcurrentTasks: 1,
+        },
+      ],
+      maxConcurrency: 2,
+    };
+    const times = [1_000, 1_100, 1_200, 1_300, 1_400];
+    let timeIndex = 0;
+    const runner = makeCompositionSquadRunner({
+      squads: makeSquadLookup(squad),
+      executions: executionStore.store,
+      now: () => times[timeIndex++] ?? 1_400,
+      planner: { plan: () => Effect.die("显式并行计划不应调用 Planner") },
+      executor: makeInterruptibleParallelExecutor(childrenReady, cancelled, dispatched, events),
+    });
+    const fiber = yield* Effect.forkChild(
+      runner.run({
+        ...baseInput,
+        executionId: "execution-interrupted-running",
+        plan: [
+          {
+            nodeId: "interrupt-worker-a",
+            agentId: "agent-worker",
+            prompt: "持续执行并行任务 A",
+            dependsOnNodeIds: [],
+          },
+          {
+            nodeId: "interrupt-worker-b",
+            agentId: "agent-worker-b",
+            prompt: "持续执行并行任务 B",
+            dependsOnNodeIds: [],
+          },
+        ],
+      }),
+    );
+
+    yield* Deferred.await(childrenReady);
+    yield* Fiber.interrupt(fiber);
+    yield* Fiber.interrupt(fiber);
+    const exit = yield* Fiber.await(fiber);
+
+    expect(dispatched).toHaveLength(2);
+    expect(cancelled.sort()).toEqual(dispatched.sort());
+    const cancellingSaveIndex = events.indexOf("store:save:cancelling");
+    const childCancelIndexes = events.flatMap((event, index) =>
+      event.startsWith("executor:cancel:") ? [index] : [],
+    );
+    expect(childCancelIndexes).toHaveLength(2);
+    expect(cancellingSaveIndex).toBeGreaterThan(Math.max(...childCancelIndexes));
+    expect(executionStore.snapshots.map((snapshot) => snapshot.status)).toEqual([
+      "queued",
+      "planning",
+      "running",
+      "cancelling",
+      "cancelled",
+    ]);
+    expect(executionStore.read()).toMatchObject({
+      status: "cancelled",
+      revision: 5,
+      cancelRequestedAtUnixMs: 1_300,
+      finishedAtUnixMs: 1_400,
+      updatedAtUnixMs: 1_400,
+    });
+    expect(executionStore.read()).not.toHaveProperty("failureCode");
+    expect(exit._tag).toBe("Failure");
+    if (exit._tag === "Failure") {
+      expect(Cause.hasFails(exit.cause)).toBe(false);
+      expect(Cause.hasDies(exit.cause)).toBe(false);
+      expect(Cause.interruptors(exit.cause).size).toBeGreaterThan(0);
+    }
+  }),
+);
+
+it.effect("运行态 Executor 未发布取消回执时失败关闭并停留在 cancelling", () =>
+  Effect.gen(function* () {
+    const executorStarted = yield* Deferred.make<void>();
+    const executionStore = makeExecutionStoreHarness();
+    const runner = makeCompositionSquadRunner({
+      squads: makeSquadLookup(baseSquad),
+      executions: executionStore.store,
+      now: (() => {
+        let current = 1_500;
+        return () => current++;
+      })(),
+      planner: {
+        plan: () =>
+          Effect.succeed([
+            {
+              nodeId: "missing-receipt-worker",
+              agentId: "agent-worker",
+              prompt: "等待外部中断",
+              dependsOnNodeIds: [],
+            },
+          ]),
+      },
+      executor: {
+        execute: () =>
+          Deferred.succeed(executorStarted, undefined).pipe(Effect.andThen(Effect.never)),
+      },
+    });
+    const fiber = yield* Effect.forkChild(
+      runner.run({ ...baseInput, executionId: "execution-missing-cancellation-receipt" }),
+    );
+
+    yield* Deferred.await(executorStarted);
+    yield* Fiber.interrupt(fiber);
+    const exit = yield* Fiber.await(fiber);
+
+    expect(executionStore.snapshots.map((snapshot) => snapshot.status)).toEqual([
+      "queued",
+      "planning",
+      "running",
+      "cancelling",
+    ]);
+    expect(executionStore.read()).toMatchObject({ status: "cancelling", revision: 4 });
+    expect(exit._tag).toBe("Failure");
+    if (exit._tag === "Failure") {
+      expect(Cause.hasFails(exit.cause)).toBe(true);
+      expect(Cause.hasDies(exit.cause)).toBe(false);
+      expect(Cause.interruptors(exit.cause).size).toBeGreaterThan(0);
+      expect(Option.getOrUndefined(Cause.findErrorOption(exit.cause))).toMatchObject({
+        code: "squad_execution_cancellation_receipt_missing",
+        detail: "Squad execution 中断后未收到子 Run 取消回执，已停留在 cancelling。",
+      });
+    }
+  }),
+);
+
+it.effect("v1 Executor 已发布 scope ready 但缺少取消回执时仍停留在 cancelling", () =>
+  Effect.gen(function* () {
+    const executorReady = yield* Deferred.make<void>();
+    const executionStore = makeExecutionStoreHarness();
+    const runner = makeCompositionSquadRunner({
+      squads: makeSquadLookup(baseSquad),
+      executions: executionStore.store,
+      planner: {
+        plan: () =>
+          Effect.succeed([
+            {
+              nodeId: "v1-ready-missing-receipt-worker",
+              agentId: "agent-worker",
+              prompt: "等待 scope ready 后中断",
+              dependsOnNodeIds: [],
+            },
+          ]),
+      },
+      executor: {
+        cancellationScopeProtocol: "v1",
+        execute: (_input, hooks) =>
+          (hooks?.onCancellationScopeReady?.() ?? Effect.void).pipe(
+            Effect.andThen(Deferred.succeed(executorReady, undefined)),
+            Effect.andThen(Effect.never),
+          ),
+      },
+    });
+    const fiber = yield* Effect.forkChild(
+      runner.run({ ...baseInput, executionId: "execution-v1-ready-missing-receipt" }),
+    );
+
+    yield* Deferred.await(executorReady);
+    yield* Fiber.interrupt(fiber);
+    const exit = yield* Fiber.await(fiber);
+
+    expect(executionStore.snapshots.map((snapshot) => snapshot.status)).toEqual([
+      "queued",
+      "planning",
+      "running",
+      "cancelling",
+    ]);
+    expect(executionStore.read()).toMatchObject({ status: "cancelling", revision: 4 });
+    expect(exit._tag).toBe("Failure");
+    if (exit._tag === "Failure") {
+      expect(Cause.hasFails(exit.cause)).toBe(true);
+      expect(Cause.interruptors(exit.cause).size).toBeGreaterThan(0);
+      expect(Option.getOrUndefined(Cause.findErrorOption(exit.cause))).toMatchObject({
+        code: "squad_execution_cancellation_receipt_missing",
+      });
+    }
+  }),
+);
+
+it.effect("真实 Executor 子 Run 取消失败时 parent 只收口到 cancelling 并保留 mixed Cause", () =>
+  Effect.gen(function* () {
+    const childrenReady = yield* Deferred.make<void>();
+    const cancelled: string[] = [];
+    const dispatched: string[] = [];
+    const events: string[] = [];
+    const executionStore = makeExecutionStoreHarness({ events });
+    const squad: CompositionSquad = {
+      ...baseSquad,
+      memberAgentIds: [...baseSquad.memberAgentIds, "agent-worker-b"],
+      members: [
+        ...(baseSquad.members ?? []),
+        {
+          agentId: "agent-worker-b",
+          role: "worker",
+          order: 4,
+          required: true,
+          model: "provider/worker-model-b",
+          workspaceRoot: "C:/workspace/worker-b",
+          capabilityIds: ["t3.workspace.read_file"],
+          maxConcurrentTasks: 1,
+        },
+      ],
+      maxConcurrency: 2,
+    };
+    const runner = makeCompositionSquadRunner({
+      squads: makeSquadLookup(squad),
+      executions: executionStore.store,
+      planner: { plan: () => Effect.die("显式计划不应调用 Planner") },
+      executor: makeInterruptibleParallelExecutor(childrenReady, cancelled, dispatched, events, {
+        failFirstCancellation: true,
+      }),
+    });
+    const fiber = yield* Effect.forkChild(
+      runner.run({
+        ...baseInput,
+        executionId: "execution-incomplete-child-cancellation",
+        plan: [
+          {
+            nodeId: "incomplete-worker-a",
+            agentId: "agent-worker",
+            prompt: "持续执行任务 A",
+            dependsOnNodeIds: [],
+          },
+          {
+            nodeId: "incomplete-worker-b",
+            agentId: "agent-worker-b",
+            prompt: "持续执行任务 B",
+            dependsOnNodeIds: [],
+          },
+        ],
+      }),
+    );
+
+    yield* Deferred.await(childrenReady);
+    yield* Fiber.interrupt(fiber);
+    const exit = yield* Fiber.await(fiber);
+
+    expect(cancelled.sort()).toEqual(dispatched.sort());
+    expect(executionStore.snapshots.map((snapshot) => snapshot.status)).toEqual([
+      "queued",
+      "planning",
+      "running",
+      "cancelling",
+    ]);
+    expect(executionStore.read()).toMatchObject({ status: "cancelling", revision: 4 });
+    expect(exit._tag).toBe("Failure");
+    if (exit._tag === "Failure") {
+      expect(Cause.hasFails(exit.cause)).toBe(true);
+      expect(Cause.hasDies(exit.cause)).toBe(false);
+      expect(Cause.interruptors(exit.cause).size).toBeGreaterThan(0);
+      expect(Option.getOrUndefined(Cause.findErrorOption(exit.cause))).toMatchObject({
+        code: "child_cancel_cleanup_incomplete",
+        detail: "Task Graph 中断清理未确认所有子 Run 已进入终态。",
+      });
+      expect(Cause.pretty(exit.cause)).not.toContain("sensitive child driver cancellation detail");
+    }
+  }),
+);
+
+it.effect("真实 Executor 业务失败且兄弟 Run 清理不完整时 parent 停留在 cancelling", () =>
+  Effect.gen(function* () {
+    const childrenReady = yield* Deferred.make<void>();
+    const cancelled: string[] = [];
+    const dispatched: string[] = [];
+    const executionStore = makeExecutionStoreHarness();
+    const squad: CompositionSquad = {
+      ...baseSquad,
+      memberAgentIds: [...baseSquad.memberAgentIds, "agent-worker-b"],
+      members: [
+        ...(baseSquad.members ?? []),
+        {
+          agentId: "agent-worker-b",
+          role: "worker",
+          order: 4,
+          required: true,
+          model: "provider/worker-model-b",
+          workspaceRoot: "C:/workspace/worker-b",
+          capabilityIds: ["t3.workspace.read_file"],
+          maxConcurrentTasks: 1,
+        },
+      ],
+      maxConcurrency: 2,
+    };
+    const runner = makeCompositionSquadRunner({
+      squads: makeSquadLookup(squad),
+      executions: executionStore.store,
+      planner: { plan: () => Effect.die("显式计划不应调用 Planner") },
+      executor: makeInterruptibleParallelExecutor(childrenReady, cancelled, dispatched, undefined, {
+        failFirstCancellation: true,
+        failFirstChildAfterReady: true,
+      }),
+    });
+
+    const exit = yield* Effect.exit(
+      runner.run({
+        ...baseInput,
+        executionId: "execution-business-failure-cleanup-incomplete",
+        plan: [
+          {
+            nodeId: "business-failure-worker-a",
+            agentId: "agent-worker",
+            prompt: "先失败以触发兄弟清理",
+            dependsOnNodeIds: [],
+          },
+          {
+            nodeId: "business-failure-worker-b",
+            agentId: "agent-worker-b",
+            prompt: "持续运行等待兄弟失败",
+            dependsOnNodeIds: [],
+          },
+        ],
+      }),
+    );
+
+    expect(cancelled.sort()).toEqual(dispatched.sort());
+    expect(executionStore.snapshots.map((snapshot) => snapshot.status)).toEqual([
+      "queued",
+      "planning",
+      "running",
+      "cancelling",
+    ]);
+    expect(executionStore.read()).toMatchObject({ status: "cancelling", revision: 4 });
+    expect(executionStore.read()).not.toHaveProperty("failureCode");
+    expect(exit._tag).toBe("Failure");
+    if (exit._tag === "Failure") {
+      const rendered = Cause.prettyErrors(exit.cause)
+        .map((error) => error.message)
+        .join("\n");
+      expect(rendered).toContain("business runtime wait failed");
+      expect(rendered).toContain("取消其他子任务未全部确认终态");
+      expect(rendered).not.toContain("sensitive child driver cancellation detail");
+    }
+  }),
+);
+
+it.effect("真实 Executor 业务失败且清理完整时仍持久化 failed 并保留原 Cause", () =>
+  Effect.gen(function* () {
+    const childrenReady = yield* Deferred.make<void>();
+    const executionStore = makeExecutionStoreHarness();
+    const squad: CompositionSquad = {
+      ...baseSquad,
+      memberAgentIds: [...baseSquad.memberAgentIds, "agent-worker-b"],
+      members: [
+        ...(baseSquad.members ?? []),
+        {
+          agentId: "agent-worker-b",
+          role: "worker",
+          order: 4,
+          required: true,
+          model: "provider/worker-model-b",
+          workspaceRoot: "C:/workspace/worker-b",
+          capabilityIds: ["t3.workspace.read_file"],
+          maxConcurrentTasks: 1,
+        },
+      ],
+      maxConcurrency: 2,
+    };
+    const runner = makeCompositionSquadRunner({
+      squads: makeSquadLookup(squad),
+      executions: executionStore.store,
+      planner: { plan: () => Effect.die("显式计划不应调用 Planner") },
+      executor: makeInterruptibleParallelExecutor(childrenReady, [], [], undefined, {
+        failFirstChildAfterReady: true,
+      }),
+    });
+
+    const exit = yield* Effect.exit(
+      runner.run({
+        ...baseInput,
+        executionId: "execution-business-failure-cleanup-complete",
+        plan: [
+          {
+            nodeId: "business-complete-worker-a",
+            agentId: "agent-worker",
+            prompt: "失败并完成清理",
+            dependsOnNodeIds: [],
+          },
+          {
+            nodeId: "business-complete-worker-b",
+            agentId: "agent-worker-b",
+            prompt: "等待被安全取消",
+            dependsOnNodeIds: [],
+          },
+        ],
+      }),
+    );
+
+    expect(executionStore.read()).toMatchObject({
+      status: "failed",
+      revision: 4,
+    });
+    expect(exit._tag).toBe("Failure");
+    if (exit._tag === "Failure") {
+      const rendered = Cause.prettyErrors(exit.cause)
+        .map((error) => error.message)
+        .join("\n");
+      expect(rendered).toContain("business runtime wait failed");
+      expect(rendered).not.toContain("取消其他子任务未全部确认终态");
+    }
+  }),
+);
+
+it.effect("终态落盘后立即中断不会把 completed 反向收口为 cancelled", () =>
+  Effect.gen(function* () {
+    const completedPersisted = yield* Deferred.make<void>();
+    const events: string[] = [];
+    const executionStore = makeExecutionStoreHarness({
+      events,
+      afterSave: (execution) =>
+        execution.status === "completed"
+          ? Deferred.succeed(completedPersisted, undefined).pipe(Effect.andThen(Effect.never))
+          : Effect.void,
+    });
+    const times = [5_000, 5_100, 5_200, 5_300];
+    let timeIndex = 0;
+    const runner = makeCompositionSquadRunner({
+      squads: makeSquadLookup(baseSquad),
+      executions: executionStore.store,
+      now: () => times[timeIndex++] ?? 5_300,
+      planner: {
+        plan: () =>
+          Effect.succeed([
+            {
+              nodeId: "completed-before-interrupt",
+              agentId: "agent-worker",
+              prompt: "完成后停在终态写入返回窗口",
+              dependsOnNodeIds: [],
+            },
+          ]),
+      },
+      executor: {
+        execute: (input) => Effect.succeed(makeGraphResult(input, "completed", "终态已落盘")),
+      },
+    });
+    const fiber = yield* Effect.forkChild(
+      runner.run({ ...baseInput, executionId: "execution-interrupted-after-completed" }),
+    );
+
+    yield* Deferred.await(completedPersisted);
+    yield* Fiber.interrupt(fiber);
+    const exit = yield* Fiber.await(fiber);
+
+    expect(executionStore.snapshots.map((snapshot) => snapshot.status)).toEqual([
+      "queued",
+      "planning",
+      "running",
+      "completed",
+    ]);
+    expect(executionStore.read()).toMatchObject({
+      status: "completed",
+      revision: 4,
+      resultSummary: "终态已落盘",
+      finishedAtUnixMs: 5_300,
+      updatedAtUnixMs: 5_300,
+    });
+    expect(events).not.toContain("store:save:cancelling");
+    expect(events).not.toContain("store:save:cancelled");
+    expect(exit._tag).toBe("Failure");
+    if (exit._tag === "Failure") {
+      expect(Cause.hasFails(exit.cause)).toBe(false);
+      expect(Cause.hasDies(exit.cause)).toBe(false);
+      expect(Cause.interruptors(exit.cause).size).toBeGreaterThan(0);
+    }
+  }),
+);
+
+it.effect("Executor 已 settled 但最终状态尚未落盘时中断不再要求取消回执", () =>
+  Effect.gen(function* () {
+    const finalSaveStarted = yield* Deferred.make<void>();
+    const releaseFinalSave = yield* Deferred.make<void>();
+    const executionStore = makeExecutionStoreHarness({
+      beforeSave: (execution) =>
+        execution.status === "completed"
+          ? Deferred.succeed(finalSaveStarted, undefined).pipe(
+              Effect.andThen(Deferred.await(releaseFinalSave)),
+            )
+          : Effect.void,
+    });
+    const runner = makeCompositionSquadRunner({
+      squads: makeSquadLookup(baseSquad),
+      executions: executionStore.store,
+      planner: {
+        plan: () =>
+          Effect.succeed([
+            {
+              nodeId: "settled-before-final-save",
+              agentId: "agent-worker",
+              prompt: "Executor 已完成，等待最终状态持久化",
+              dependsOnNodeIds: [],
+            },
+          ]),
+      },
+      executor: {
+        execute: (input) => Effect.succeed(makeGraphResult(input, "completed", "已完成")),
+      },
+    });
+    const fiber = yield* Effect.forkChild(
+      runner.run({ ...baseInput, executionId: "execution-settled-before-final-save" }),
+    );
+
+    yield* Deferred.await(finalSaveStarted);
+    const interruptFiber = yield* Effect.forkChild(Fiber.interrupt(fiber), {
+      startImmediately: true,
+    });
+    yield* Deferred.succeed(releaseFinalSave, undefined);
+    yield* Fiber.join(interruptFiber);
+    const exit = yield* Fiber.await(fiber);
+
+    expect(executionStore.snapshots.map((snapshot) => snapshot.status)).toEqual([
+      "queued",
+      "planning",
+      "running",
+      "cancelling",
+      "cancelled",
+    ]);
+    expect(executionStore.read()).toMatchObject({ status: "cancelled", revision: 5 });
+    expect(exit._tag).toBe("Failure");
+    if (exit._tag === "Failure") {
+      expect(Cause.hasFails(exit.cause)).toBe(false);
+      expect(Cause.hasDies(exit.cause)).toBe(false);
+      expect(Cause.interruptors(exit.cause).size).toBeGreaterThan(0);
+    }
+  }),
+);
+
+it.effect("真实 Planner 中断时先取消规划 Run 再把 parent 收口为 cancelled", () =>
+  Effect.gen(function* () {
+    const planningStarted = yield* Deferred.make<void>();
+    const executionStore = makeExecutionStoreHarness();
+    const plannerHarness = makeRealPlannerHarness(planningStarted);
+    const runner = makeCompositionSquadRunner({
+      squads: makeSquadLookup(baseSquad),
+      executions: executionStore.store,
+      planner: plannerHarness.planner,
+      executor: { execute: () => Effect.die("规划中断不应执行 Task Graph") },
+    });
+    const fiber = yield* Effect.forkChild(
+      runner.run({ ...baseInput, executionId: "execution-real-planner-interrupted" }),
+    );
+
+    yield* Deferred.await(planningStarted);
+    yield* Fiber.interrupt(fiber);
+    const exit = yield* Fiber.await(fiber);
+
+    expect(plannerHarness.cancelled).toHaveLength(1);
+    expect(plannerHarness.cancelled[0]).toContain("leader-plan");
+    expect(executionStore.snapshots.map((snapshot) => snapshot.status)).toEqual([
+      "queued",
+      "planning",
+      "cancelling",
+      "cancelled",
+    ]);
+    expect(executionStore.read()).toMatchObject({ status: "cancelled", revision: 4 });
+    expect(exit._tag).toBe("Failure");
+    if (exit._tag === "Failure") {
+      expect(Cause.hasFails(exit.cause)).toBe(false);
+      expect(Cause.hasDies(exit.cause)).toBe(false);
+      expect(Cause.interruptors(exit.cause).size).toBeGreaterThan(0);
+    }
+  }),
+);
+
+it.effect("真实 Planner 业务失败且规划 Run 清理不完整时 parent 停留在 cancelling", () =>
+  Effect.gen(function* () {
+    const planningStarted = yield* Deferred.make<void>();
+    const executionStore = makeExecutionStoreHarness();
+    const plannerHarness = makeRealPlannerHarness(planningStarted, {
+      cancelFails: true,
+      runtimeFails: true,
+    });
+    const runner = makeCompositionSquadRunner({
+      squads: makeSquadLookup(baseSquad),
+      executions: executionStore.store,
+      planner: plannerHarness.planner,
+      executor: { execute: () => Effect.die("规划失败不应执行 Task Graph") },
+    });
+
+    const exit = yield* Effect.exit(
+      runner.run({ ...baseInput, executionId: "execution-real-planner-cleanup-incomplete" }),
+    );
+
+    expect(plannerHarness.cancelled).toHaveLength(1);
+    expect(executionStore.snapshots.map((snapshot) => snapshot.status)).toEqual([
+      "queued",
+      "planning",
+      "cancelling",
+    ]);
+    expect(executionStore.read()).toMatchObject({ status: "cancelling", revision: 3 });
+    expect(executionStore.read()).not.toHaveProperty("failureCode");
+    expect(exit._tag).toBe("Failure");
+    if (exit._tag === "Failure") {
+      const rendered = Cause.prettyErrors(exit.cause)
+        .map((error) => error.message)
+        .join("\n");
+      expect(rendered).toContain("planner runtime wait failed");
+      expect(rendered).toContain("Leader 规划清理未确认关联 Run 已进入终态");
+      expect(rendered).not.toContain("sensitive planner cancellation detail");
+    }
+  }),
+);
+
+it.effect("自动 Planner 已进入但未发布取消回执时停留在 cancelling", () =>
+  Effect.gen(function* () {
+    const plannerStarted = yield* Deferred.make<void>();
+    const events: string[] = [];
+    const executionStore = makeExecutionStoreHarness({ events });
+    const times = [2_000, 2_100, 2_200, 2_300];
+    let timeIndex = 0;
+    const runner = makeCompositionSquadRunner({
+      squads: makeSquadLookup(baseSquad, events),
+      executions: executionStore.store,
+      now: () => times[timeIndex++] ?? 2_300,
+      planner: {
+        plan: () => Deferred.succeed(plannerStarted, undefined).pipe(Effect.andThen(Effect.never)),
+      },
+      executor: { execute: () => Effect.die("规划阶段中断不应派发 Task Graph") },
+    });
+    const fiber = yield* Effect.forkChild(
+      runner.run({ ...baseInput, executionId: "execution-interrupted-planning" }),
+    );
+
+    yield* Deferred.await(plannerStarted);
+    yield* Fiber.interrupt(fiber);
+    const exit = yield* Fiber.await(fiber);
+
+    expect(executionStore.snapshots.map((snapshot) => snapshot.status)).toEqual([
+      "queued",
+      "planning",
+      "cancelling",
+    ]);
+    expect(executionStore.snapshots[1]).toMatchObject({
+      status: "planning",
+      revision: 2,
+      startedAtUnixMs: 2_100,
+      updatedAtUnixMs: 2_100,
+    });
+    expect(executionStore.snapshots[1]?.nodes).toBeUndefined();
+    expect(executionStore.read()).toMatchObject({
+      status: "cancelling",
+      revision: 3,
+      cancelRequestedAtUnixMs: 2_200,
+      updatedAtUnixMs: 2_200,
+    });
+    expect(events).toEqual([
+      "squad:getRunnable",
+      "store:claim:queued",
+      "store:save:planning",
+      "squad:getRevision",
+      "store:save:cancelling",
+    ]);
+    expect(exit._tag).toBe("Failure");
+    if (exit._tag === "Failure") {
+      expect(Cause.hasFails(exit.cause)).toBe(true);
+      expect(Cause.hasDies(exit.cause)).toBe(false);
+      expect(Cause.interruptors(exit.cause).size).toBeGreaterThan(0);
+      expect(Option.getOrUndefined(Cause.findErrorOption(exit.cause))).toMatchObject({
+        code: "squad_execution_cancellation_receipt_missing",
+      });
+    }
+  }),
+);
+
+it.effect("Planner 已进入且竞态状态为 cancelling 时缺少回执仍保持失败关闭", () =>
+  Effect.gen(function* () {
+    const plannerStarted = yield* Deferred.make<void>();
+    const events: string[] = [];
+    const executionStore = makeExecutionStoreHarness({
+      events,
+      raceToCancellingAfterSaveStatus: "planning",
+    });
+    const times = [6_000, 6_100, 6_200];
+    let timeIndex = 0;
+    const runner = makeCompositionSquadRunner({
+      squads: makeSquadLookup(baseSquad, events),
+      executions: executionStore.store,
+      now: () => times[timeIndex++] ?? 6_200,
+      planner: {
+        plan: () => Deferred.succeed(plannerStarted, undefined).pipe(Effect.andThen(Effect.never)),
+      },
+      executor: { execute: () => Effect.die("pre-dispatch cancelling 不应派发 Task Graph") },
+    });
+    const fiber = yield* Effect.forkChild(
+      runner.run({ ...baseInput, executionId: "execution-resume-pre-dispatch-cancelling" }),
+    );
+
+    yield* Deferred.await(plannerStarted);
+    yield* Fiber.interrupt(fiber);
+    const exit = yield* Fiber.await(fiber);
+
+    expect(executionStore.snapshots.map((snapshot) => snapshot.status)).toEqual([
+      "queued",
+      "planning",
+      "cancelling",
+    ]);
+    expect(executionStore.snapshots[2]).toMatchObject({
+      status: "cancelling",
+      revision: 3,
+      startedAtUnixMs: 6_100,
+      cancelRequestedAtUnixMs: 6_100,
+    });
+    expect(executionStore.snapshots[2]?.nodes).toBeUndefined();
+    expect(executionStore.read()).toMatchObject({
+      status: "cancelling",
+      revision: 3,
+      startedAtUnixMs: 6_100,
+      cancelRequestedAtUnixMs: 6_100,
+      updatedAtUnixMs: 6_100,
+    });
+    expect(events).toEqual([
+      "squad:getRunnable",
+      "store:claim:queued",
+      "store:save:planning",
+      "squad:getRevision",
+    ]);
+    expect(exit._tag).toBe("Failure");
+    if (exit._tag === "Failure") {
+      expect(Cause.hasFails(exit.cause)).toBe(true);
+      expect(Cause.hasDies(exit.cause)).toBe(false);
+      expect(Cause.interruptors(exit.cause).size).toBeGreaterThan(0);
+      expect(Option.getOrUndefined(Cause.findErrorOption(exit.cause))).toMatchObject({
+        code: "squad_execution_cancellation_receipt_missing",
+      });
+    }
+  }),
+);
+
+it.effect("中断 finalizer 仅重试 revision/status conflict 且终态竞争保持幂等", () =>
+  Effect.gen(function* () {
+    for (const conflictCode of [
+      "squad_execution_revision_conflict",
+      "squad_execution_status_conflict",
+    ] as const) {
+      const plannerStarted = yield* Deferred.make<void>();
+      const executionStore = makeExecutionStoreHarness({
+        raceToCancelledOnSaveStatus: "cancelling",
+        raceConflictCode: conflictCode,
+      });
+      const times = [3_000, 3_100, 3_200];
+      let timeIndex = 0;
+      const runner = makeCompositionSquadRunner({
+        squads: makeSquadLookup(baseSquad),
+        executions: executionStore.store,
+        now: () => times[timeIndex++] ?? 3_200,
+        planner: {
+          plan: () =>
+            Deferred.succeed(plannerStarted, undefined).pipe(Effect.andThen(Effect.never)),
+        },
+        executor: { execute: () => Effect.die("竞争取消测试不应派发") },
+      });
+      const fiber = yield* Effect.forkChild(
+        runner.run({
+          ...baseInput,
+          executionId: `execution-interrupted-race-${conflictCode}`,
+        }),
+      );
+
+      yield* Deferred.await(plannerStarted);
+      yield* Fiber.interrupt(fiber);
+      const exit = yield* Fiber.await(fiber);
+
+      expect(executionStore.snapshots.map((snapshot) => snapshot.status)).toEqual([
+        "queued",
+        "planning",
+        "cancelling",
+        "cancelled",
+      ]);
+      expect(executionStore.read()).toMatchObject({
+        status: "cancelled",
+        revision: 4,
+        cancelRequestedAtUnixMs: 3_200,
+        finishedAtUnixMs: 3_200,
+      });
+      expect(exit._tag).toBe("Failure");
+      if (exit._tag === "Failure") {
+        expect(Cause.hasFails(exit.cause)).toBe(false);
+        expect(Cause.hasDies(exit.cause)).toBe(false);
+      }
+    }
+  }),
+);
+
+it.effect("中断取消状态持久化失败时在 interrupt Cause 中暴露脱敏错误", () =>
+  Effect.gen(function* () {
+    const plannerStarted = yield* Deferred.make<void>();
+    const events: string[] = [];
+    const executionStore = makeExecutionStoreHarness({
+      failSavePersistenceStatus: "cancelling",
+      events,
+    });
+    const runner = makeCompositionSquadRunner({
+      squads: makeSquadLookup(baseSquad),
+      executions: executionStore.store,
+      planner: {
+        plan: () => Deferred.succeed(plannerStarted, undefined).pipe(Effect.andThen(Effect.never)),
+      },
+      executor: { execute: () => Effect.die("取消持久化失败测试不应派发") },
+    });
+    const fiber = yield* Effect.forkChild(
+      runner.run({ ...baseInput, executionId: "execution-interrupted-persistence-failed" }),
+    );
+
+    yield* Deferred.await(plannerStarted);
+    yield* Fiber.interrupt(fiber);
+    const exit = yield* Fiber.await(fiber);
+
+    expect(executionStore.read()).toMatchObject({ status: "planning", revision: 2 });
+    expect(exit._tag).toBe("Failure");
+    if (exit._tag === "Failure") {
+      expect(Cause.hasFails(exit.cause)).toBe(true);
+      expect(Cause.hasDies(exit.cause)).toBe(false);
+      expect(Option.getOrUndefined(Cause.findErrorOption(exit.cause))).toMatchObject({
+        code: "squad_execution_persistence_failed",
+        detail: "Squad execution 状态暂时无法安全持久化，请稍后重试。",
+      });
+      const rendered = Cause.pretty(exit.cause);
+      expect(rendered).not.toContain("save interrupted squad cancellation");
+      expect(rendered).not.toContain("interruption cancellation persistence unavailable");
+      expect(rendered).not.toContain("interruption-cancellation-persistence-failed");
+    }
+    expect(events.filter((event) => event === "store:save:cancelling")).toHaveLength(1);
+    expect(events).not.toContain("store:save:cancelled");
+  }),
+);
+
 it.effect("未实现审批协调器时持久化失败并阻止 Planner 与 Executor", () =>
   Effect.gen(function* () {
     const events: string[] = [];
@@ -691,13 +2023,22 @@ it.effect("Planner 与 Graph 编译失败都从 planning 状态收口为 failed"
       squads: makeSquadLookup(baseSquad),
       executions: plannerStore.store,
       planner: {
-        plan: () =>
-          Effect.fail(
-            new CompositionSquadPlannerError({
-              code: "leader_plan_failed",
-              detail: "Leader 未生成有效计划",
-              squadId: baseSquad.squadId,
-            }),
+        plan: (_input, hooks) =>
+          (
+            hooks?.onCancellationReceipt?.({
+              trigger: "business_failure",
+              receipt: { complete: true, runs: [] },
+            }) ?? Effect.void
+          ).pipe(
+            Effect.andThen(
+              Effect.fail(
+                new CompositionSquadPlannerError({
+                  code: "leader_plan_failed",
+                  detail: "Leader 未生成有效计划",
+                  squadId: baseSquad.squadId,
+                }),
+              ),
+            ),
           ),
       },
       executor: { execute: () => Effect.die("规划失败时不应执行") },
@@ -1116,20 +2457,29 @@ it.effect("failed 状态保存失败时保留当前状态并写入脱敏审计",
     squads: makeSquadLookup(baseSquad, events),
     executions: executionStore.store,
     planner: {
-      plan: () =>
-        Effect.fail(
-          new CompositionSquadPlannerError({
-            code: "leader_planning_failed",
-            detail: "敏感规划失败详情 secret-plan",
-            squadId: baseSquad.squadId,
-          }),
+      plan: (_input, hooks) =>
+        (
+          hooks?.onCancellationReceipt?.({
+            trigger: "business_failure",
+            receipt: { complete: true, runs: [] },
+          }) ?? Effect.void
+        ).pipe(
+          Effect.andThen(
+            Effect.fail(
+              new CompositionSquadPlannerError({
+                code: "leader_planning_failed",
+                detail: "敏感规划失败详情 secret-plan",
+                squadId: baseSquad.squadId,
+              }),
+            ),
+          ),
         ),
     },
     executor: { execute: () => Effect.die("规划失败时不应执行") },
   });
 
   return Effect.gen(function* () {
-    const error = yield* Effect.flip(
+    const exit = yield* Effect.exit(
       runner.run({
         ...baseInput,
         executionId: "execution-failed-save-audit",
@@ -1137,11 +2487,24 @@ it.effect("failed 状态保存失败时保留当前状态并写入脱敏审计",
       }),
     );
 
-    expect(error).toMatchObject({
-      code: "squad_execution_revision_conflict",
-      expectedRevision: 2,
-      actualRevision: 12,
-    });
+    expect(exit._tag).toBe("Failure");
+    if (exit._tag === "Failure") {
+      const errors = Cause.prettyErrors(exit.cause);
+      expect(
+        errors.some((error) => "code" in error && error.code === "leader_planning_failed"),
+      ).toBe(true);
+      expect(
+        errors.some(
+          (error) =>
+            "code" in error &&
+            error.code === "squad_execution_revision_conflict" &&
+            "expectedRevision" in error &&
+            error.expectedRevision === 2 &&
+            "actualRevision" in error &&
+            error.actualRevision === 12,
+        ),
+      ).toBe(true);
+    }
     expect(executionStore.read()).toMatchObject({ status: "planning", revision: 2 });
     expect(events.at(-1)).toBe("store:save:failed");
     const audit = logs.find((entry) => entry.message.includes("失败状态持久化失败"));
@@ -1170,6 +2533,7 @@ it.effect("SQL 与解码类持久化错误对 RPC 返回稳定脱敏信息", () 
         squads: makeSquadLookup(baseSquad),
         executions: {
           claimExecution: () => Effect.fail(error),
+          getExecution: () => Effect.die("claim 失败后不应读取 execution"),
           saveTransition: () => Effect.die("claim 失败后不应保存状态"),
         },
         planner: { plan: () => Effect.die("claim 失败后不应规划") },

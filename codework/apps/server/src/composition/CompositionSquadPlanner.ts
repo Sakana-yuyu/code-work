@@ -7,6 +7,7 @@ import type {
   CompositionTaskRun,
   CompositionTaskStatus,
 } from "@codework/contracts";
+import * as Cause from "effect/Cause";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -15,6 +16,13 @@ import * as Schema from "effect/Schema";
 
 import type { CompositionOrchestrator } from "./CompositionOrchestrator.ts";
 import { CompositionOrchestratorService } from "./CompositionOrchestratorService.ts";
+import {
+  cancelCompositionRun,
+  makeCompositionCancellationReceipt,
+  type CompositionCancellationReport,
+  type CompositionCancellationReceipt,
+  type CompositionTerminalTaskStatus,
+} from "./CompositionRunCancellation.ts";
 import {
   compositionSquadExecutionScope,
   parseCompositionSquadPlanOutput,
@@ -53,9 +61,23 @@ export class CompositionSquadPlannerError extends Schema.TaggedErrorClass<Compos
   }
 }
 
+export type CompositionSquadPlanningCancellationReceipt = CompositionCancellationReceipt;
+export type CompositionSquadPlanningCancellationReport =
+  CompositionCancellationReport<CompositionSquadPlanningCancellationReceipt>;
+
+export interface CompositionSquadPlanningHooks {
+  readonly onCancellationReceipt?: (
+    report: CompositionSquadPlanningCancellationReport,
+  ) => Effect.Effect<void, never, never>;
+  readonly onInterruptedCancellation?: (
+    receipt: CompositionSquadPlanningCancellationReceipt,
+  ) => Effect.Effect<void, never, never>;
+}
+
 export interface CompositionSquadPlannerShape {
   readonly plan: (
     input: CompositionSquadPlanningInput,
+    hooks?: CompositionSquadPlanningHooks,
   ) => Effect.Effect<ReadonlyArray<CompositionSquadPlanNode>, CompositionSquadPlannerError>;
 }
 
@@ -65,9 +87,10 @@ export class CompositionSquadPlanner extends Context.Service<
 >()("codework/composition/CompositionSquadPlanner") {}
 
 export interface CompositionSquadPlannerOptions {
-  readonly orchestrator: Pick<CompositionOrchestrator, "dispatchTask">;
+  readonly orchestrator: Pick<CompositionOrchestrator, "dispatchTask" | "cancelTask">;
   readonly runtime: Pick<CompositionTaskRuntimeProjectionServiceShape, "awaitTaskCompletion">;
   readonly store: Pick<CompositionTaskStoreShape, "getTask" | "getRun" | "listEvents">;
+  readonly cancelTimeoutMs?: number;
 }
 
 const terminalStatuses: ReadonlySet<CompositionTaskStatus> = new Set([
@@ -196,16 +219,7 @@ const validatePersistedIdentity = (
   task: CompositionTask,
   run: CompositionTaskRun,
 ): Effect.Effect<void, CompositionSquadPlannerError> => {
-  const valid =
-    task.taskId === identity.taskId &&
-    task.projectId === input.projectId &&
-    task.assigneeKind === "agent" &&
-    task.assigneeId === identity.leaderAgentId &&
-    task.mode === "serial" &&
-    task.promptDigest === identity.promptDigest &&
-    run.runId === identity.runId &&
-    run.taskId === identity.taskId &&
-    run.agentId === identity.leaderAgentId;
+  const valid = matchesPersistedIdentity(input, identity, task, run);
   return valid
     ? Effect.void
     : Effect.fail(
@@ -217,124 +231,244 @@ const validatePersistedIdentity = (
       );
 };
 
-const make = (options: CompositionSquadPlannerOptions): CompositionSquadPlannerShape => ({
-  plan: Effect.fn("CompositionSquadPlanner.plan")(function* (input) {
-    const prompt = yield* makeCompositionSquadPlanningPrompt(input.squad, input.goal);
-    const identity = planningIdentity(input, prompt);
-    const leader = input.squad.members?.find(
-      (member) => member.agentId === identity.leaderAgentId && member.role === "leader",
-    );
-    if (leader === undefined) {
-      return yield* plannerError(
-        "squad_leader_missing",
-        "Squad 没有匹配 leaderAgentId 的 Leader 成员。",
-        input.squad.squadId,
-      );
-    }
+const matchesPersistedIdentity = (
+  input: CompositionSquadPlanningInput,
+  identity: PlanningIdentity,
+  task: CompositionTask,
+  run: CompositionTaskRun,
+): boolean =>
+  task.taskId === identity.taskId &&
+  task.projectId === input.projectId &&
+  task.assigneeKind === "agent" &&
+  task.assigneeId === identity.leaderAgentId &&
+  task.mode === "serial" &&
+  task.promptDigest === identity.promptDigest &&
+  run.runId === identity.runId &&
+  run.taskId === identity.taskId &&
+  run.agentId === identity.leaderAgentId;
 
-    const loadExisting = Effect.fn("CompositionSquadPlanner.loadExisting")(function* () {
-      const [taskOption, runOption] = yield* Effect.all([
-        options.store.getTask(identity.taskId),
-        options.store.getRun(identity.runId),
-      ]).pipe(
-        Effect.mapError((error) =>
-          plannerError(errorCode(error), errorDetail(error), input.squad.squadId),
-        ),
-      );
-      if (Option.isNone(taskOption) && Option.isNone(runOption)) return undefined;
-      if (Option.isNone(taskOption) || Option.isNone(runOption)) {
-        return yield* plannerError(
-          "squad_plan_state_inconsistent",
-          "Leader 规划 Task 与 Run 持久化状态不完整。",
-          input.squad.squadId,
-        );
-      }
-      yield* validatePersistedIdentity(input, identity, taskOption.value, runOption.value);
-      return { task: taskOption.value, run: runOption.value };
-    });
+const matchesRunIdentity = (actual: CompositionTaskRun, expected: CompositionTaskRun): boolean =>
+  actual.runId === expected.runId &&
+  actual.taskId === expected.taskId &&
+  actual.agentId === expected.agentId &&
+  actual.runtimeId === expected.runtimeId &&
+  actual.attempt === expected.attempt;
 
-    let dispatch = yield* loadExisting();
-    if (dispatch === undefined) {
-      const dispatched = yield* Effect.result(
-        options.orchestrator.dispatchTask({
-          taskId: identity.taskId,
-          runId: identity.runId,
-          projectId: input.projectId,
-          ...(input.threadId === undefined ? {} : { threadId: input.threadId }),
-          assigneeKind: "agent",
-          assigneeId: identity.leaderAgentId,
-          mode: "serial",
-          promptDigest: identity.promptDigest,
-          dependsOnTaskIds: [],
-          workspaceRoot: leader.workspaceRoot ?? input.workspaceRoot,
-          ...(input.workspaceRootDigest === undefined
-            ? {}
-            : { workspaceRootDigest: input.workspaceRootDigest }),
-          prompt: identity.prompt,
-          ...(leader.model === undefined ? {} : { model: leader.model }),
-          capabilityIds: [],
-        }),
-      );
-      if (dispatched._tag === "Failure") {
-        if (errorCode(dispatched.failure) !== "CompositionTaskAlreadyExistsError") {
-          return yield* plannerError(
-            errorCode(dispatched.failure),
-            errorDetail(dispatched.failure),
-            input.squad.squadId,
+const make = (options: CompositionSquadPlannerOptions): CompositionSquadPlannerShape => {
+  const cancelTimeoutMs = options.cancelTimeoutMs ?? 5_000;
+  const plan: CompositionSquadPlannerShape["plan"] = (input, hooks) =>
+    Effect.uninterruptibleMask((restore) =>
+      Effect.gen(function* () {
+        const prompt = yield* makeCompositionSquadPlanningPrompt(input.squad, input.goal);
+        const identity = planningIdentity(input, prompt);
+        let planningOwnership: "candidate" | "confirmed" = "candidate";
+        let knownTerminalStatus: CompositionTerminalTaskStatus | undefined;
+        const cleanupPlanning = (trigger: CompositionSquadPlanningCancellationReport["trigger"]) =>
+          Effect.gen(function* () {
+            const runReceipt =
+              knownTerminalStatus === undefined
+                ? yield* cancelCompositionRun({
+                    taskId: identity.taskId,
+                    runId: identity.runId,
+                    reason: "Squad Leader 规划被中断，取消规划 Run",
+                    timeoutMs: cancelTimeoutMs,
+                    ownership: planningOwnership,
+                    getTask: options.store.getTask,
+                    getRun: options.store.getRun,
+                    matchesPersistedIdentity: (task, run) =>
+                      matchesPersistedIdentity(input, identity, task, run),
+                    cancelTask: options.orchestrator.cancelTask,
+                    awaitTaskCompletion: options.runtime.awaitTaskCompletion,
+                  })
+                : ({
+                    taskId: identity.taskId,
+                    runId: identity.runId,
+                    outcome: "terminal",
+                    terminalStatus: knownTerminalStatus,
+                  } as const);
+            const receipt = makeCompositionCancellationReceipt([runReceipt]);
+            if (hooks?.onCancellationReceipt !== undefined) {
+              yield* hooks.onCancellationReceipt({ trigger, receipt });
+            }
+            if (trigger === "interrupted" && hooks?.onInterruptedCancellation !== undefined) {
+              yield* hooks.onInterruptedCancellation(receipt);
+            }
+            if (!receipt.complete) {
+              return yield* plannerError(
+                "squad_plan_cancel_cleanup_incomplete",
+                "Leader 规划清理未确认关联 Run 已进入终态。",
+                input.squad.squadId,
+              );
+            }
+          });
+
+        const program = Effect.gen(function* () {
+          const leader = input.squad.members?.find(
+            (member) => member.agentId === identity.leaderAgentId && member.role === "leader",
           );
-        }
-        dispatch = yield* loadExisting();
-        if (dispatch === undefined) {
-          return yield* plannerError(
-            "squad_plan_state_inconsistent",
-            "Leader 规划任务已被并发创建，但持久化状态尚不可读取。",
-            input.squad.squadId,
-          );
-        }
-      } else {
-        dispatch = dispatched.success;
-      }
-    }
+          if (leader === undefined) {
+            return yield* plannerError(
+              "squad_leader_missing",
+              "Squad 没有匹配 leaderAgentId 的 Leader 成员。",
+              input.squad.squadId,
+            );
+          }
 
-    const run = terminalStatuses.has(dispatch.run.status)
-      ? dispatch.run
-      : yield* options.runtime
-          .awaitTaskCompletion({ taskId: identity.taskId, runId: identity.runId })
-          .pipe(
+          const loadExisting = Effect.fn("CompositionSquadPlanner.loadExisting")(function* () {
+            const [taskOption, runOption] = yield* Effect.all([
+              options.store.getTask(identity.taskId),
+              options.store.getRun(identity.runId),
+            ]).pipe(
+              Effect.mapError((error) =>
+                plannerError(errorCode(error), errorDetail(error), input.squad.squadId),
+              ),
+            );
+            if (Option.isNone(taskOption) && Option.isNone(runOption)) return undefined;
+            if (Option.isNone(taskOption) || Option.isNone(runOption)) {
+              return yield* plannerError(
+                "squad_plan_state_inconsistent",
+                "Leader 规划 Task 与 Run 持久化状态不完整。",
+                input.squad.squadId,
+              );
+            }
+            yield* validatePersistedIdentity(input, identity, taskOption.value, runOption.value);
+            return { task: taskOption.value, run: runOption.value };
+          });
+
+          let dispatch = yield* loadExisting();
+          if (dispatch === undefined) {
+            const dispatched = yield* Effect.result(
+              options.orchestrator.dispatchTask({
+                taskId: identity.taskId,
+                runId: identity.runId,
+                projectId: input.projectId,
+                ...(input.threadId === undefined ? {} : { threadId: input.threadId }),
+                assigneeKind: "agent",
+                assigneeId: identity.leaderAgentId,
+                mode: "serial",
+                promptDigest: identity.promptDigest,
+                dependsOnTaskIds: [],
+                workspaceRoot: leader.workspaceRoot ?? input.workspaceRoot,
+                ...(input.workspaceRootDigest === undefined
+                  ? {}
+                  : { workspaceRootDigest: input.workspaceRootDigest }),
+                prompt: identity.prompt,
+                ...(leader.model === undefined ? {} : { model: leader.model }),
+                capabilityIds: [],
+              }),
+            );
+            if (dispatched._tag === "Failure") {
+              if (errorCode(dispatched.failure) !== "CompositionTaskAlreadyExistsError") {
+                return yield* plannerError(
+                  errorCode(dispatched.failure),
+                  errorDetail(dispatched.failure),
+                  input.squad.squadId,
+                );
+              }
+              dispatch = yield* loadExisting();
+              if (dispatch === undefined) {
+                return yield* plannerError(
+                  "squad_plan_state_inconsistent",
+                  "Leader 规划任务已被并发创建，但持久化状态尚不可读取。",
+                  input.squad.squadId,
+                );
+              }
+            } else {
+              dispatch = dispatched.success;
+            }
+          }
+
+          yield* validatePersistedIdentity(input, identity, dispatch.task, dispatch.run);
+          const dispatchTerminalStatus = terminalStatuses.has(dispatch.run.status)
+            ? (dispatch.run.status as CompositionTerminalTaskStatus)
+            : undefined;
+          if (dispatchTerminalStatus === undefined) {
+            planningOwnership = "confirmed";
+          } else {
+            knownTerminalStatus = dispatchTerminalStatus;
+          }
+
+          const run = terminalStatuses.has(dispatch.run.status)
+            ? dispatch.run
+            : yield* options.runtime
+                .awaitTaskCompletion({ taskId: identity.taskId, runId: identity.runId })
+                .pipe(
+                  Effect.mapError((error) =>
+                    plannerError(errorCode(error), errorDetail(error), input.squad.squadId),
+                  ),
+                );
+          yield* validatePersistedIdentity(input, identity, dispatch.task, run);
+          if (!matchesRunIdentity(run, dispatch.run)) {
+            return yield* plannerError(
+              "squad_plan_identity_conflict",
+              "Leader 规划等待返回了不匹配的 Run 身份。",
+              input.squad.squadId,
+            );
+          }
+          if (terminalStatuses.has(run.status)) {
+            knownTerminalStatus = run.status as CompositionTerminalTaskStatus;
+          }
+          if (run.status !== "completed") {
+            return yield* plannerError(
+              "squad_plan_execution_failed",
+              `Leader 规划未成功：${run.failureCode ?? run.status}；${run.resultSummary ?? "无结果摘要"}`,
+              input.squad.squadId,
+            );
+          }
+
+          const events = yield* options.store
+            .listEvents(identity.taskId, identity.runId)
+            .pipe(
+              Effect.mapError((error) =>
+                plannerError(errorCode(error), errorDetail(error), input.squad.squadId),
+              ),
+            );
+          const output =
+            recoverCompositionTaskOutput(events).trim() || run.resultSummary?.trim() || "";
+          if (output.trim().length === 0) {
+            return yield* plannerError(
+              "squad_plan_output_missing",
+              "Leader 规划运行已完成，但没有持久化助手文本输出。",
+              input.squad.squadId,
+            );
+          }
+          return yield* parseCompositionSquadPlanOutput({ squad: input.squad, output }).pipe(
             Effect.mapError((error) =>
-              plannerError(errorCode(error), errorDetail(error), input.squad.squadId),
+              plannerError(error.code, error.detail, input.squad.squadId, error.nodeId),
             ),
           );
-    if (run.status !== "completed") {
-      return yield* plannerError(
-        "squad_plan_execution_failed",
-        `Leader 规划未成功：${run.failureCode ?? run.status}；${run.resultSummary ?? "无结果摘要"}`,
-        input.squad.squadId,
-      );
-    }
+        });
 
-    const events = yield* options.store
-      .listEvents(identity.taskId, identity.runId)
-      .pipe(
-        Effect.mapError((error) =>
-          plannerError(errorCode(error), errorDetail(error), input.squad.squadId),
-        ),
-      );
-    const output = recoverCompositionTaskOutput(events).trim() || run.resultSummary?.trim() || "";
-    if (output.trim().length === 0) {
-      return yield* plannerError(
-        "squad_plan_output_missing",
-        "Leader 规划运行已完成，但没有持久化助手文本输出。",
-        input.squad.squadId,
-      );
-    }
-    return yield* parseCompositionSquadPlanOutput({ squad: input.squad, output }).pipe(
-      Effect.mapError((error) =>
-        plannerError(error.code, error.detail, input.squad.squadId, error.nodeId),
-      ),
+        let cleanupCause: Cause.Cause<CompositionSquadPlannerError> | undefined;
+        const exit = yield* Effect.exit(
+          restore(program).pipe(
+            Effect.onExit((programExit) => {
+              if (programExit._tag === "Success") return Effect.void;
+              const trigger =
+                Cause.interruptors(programExit.cause).size > 0
+                  ? ("interrupted" as const)
+                  : ("business_failure" as const);
+              return Effect.exit(cleanupPlanning(trigger)).pipe(
+                Effect.flatMap((cleanupExit) =>
+                  cleanupExit._tag === "Success"
+                    ? Effect.void
+                    : Effect.sync(() => {
+                        cleanupCause = cleanupExit.cause;
+                      }),
+                ),
+              );
+            }),
+          ),
+        );
+        if (exit._tag === "Success") return exit.value;
+        return yield* Effect.failCause(
+          cleanupCause === undefined ? exit.cause : Cause.combine(exit.cause, cleanupCause),
+        );
+      }),
     );
-  }),
-});
+
+  return { plan } satisfies CompositionSquadPlannerShape;
+};
 
 export const makeCompositionSquadPlanner = (
   options: CompositionSquadPlannerOptions,

@@ -26,6 +26,13 @@ import {
   type CompositionOrchestrator,
 } from "./CompositionOrchestrator.ts";
 import { CompositionOrchestratorService } from "./CompositionOrchestratorService.ts";
+import {
+  cancelCompositionRun,
+  makeCompositionCancellationReceipt,
+  type CompositionCancellationReceipt,
+  type CompositionCancellationReport,
+  type CompositionRunCancellationReceipt,
+} from "./CompositionRunCancellation.ts";
 import { parseCompositionSquadReviewDecision } from "./CompositionSquadReview.ts";
 import {
   CompositionTaskRuntimeProjectionService,
@@ -88,6 +95,26 @@ export type CompositionTaskGraphExecutionInput = {
   };
 };
 
+export type CompositionTaskGraphRunCancellationReceipt = CompositionRunCancellationReceipt & {
+  readonly nodeId: string;
+};
+
+export type CompositionTaskGraphCancellationReceipt =
+  CompositionCancellationReceipt<CompositionTaskGraphRunCancellationReceipt>;
+
+export type CompositionTaskGraphCancellationReport =
+  CompositionCancellationReport<CompositionTaskGraphCancellationReceipt>;
+
+export interface CompositionTaskGraphExecutionHooks {
+  readonly onCancellationScopeReady?: () => Effect.Effect<void, never, never>;
+  readonly onCancellationReceipt?: (
+    report: CompositionTaskGraphCancellationReport,
+  ) => Effect.Effect<void, never, never>;
+  readonly onInterruptedCancellation?: (
+    receipt: CompositionTaskGraphCancellationReceipt,
+  ) => Effect.Effect<void, never, never>;
+}
+
 export type CompositionTaskGraphNodeResult = {
   readonly nodeId: string;
   readonly task: CompositionTask;
@@ -112,8 +139,10 @@ export type CompositionTaskGraphExecutionResult = {
 };
 
 export interface CompositionTaskGraphExecutorShape {
+  readonly cancellationScopeProtocol?: "v1";
   readonly execute: (
     input: CompositionTaskGraphExecutionInput,
+    hooks?: CompositionTaskGraphExecutionHooks,
   ) => Effect.Effect<CompositionTaskGraphExecutionResult, CompositionTaskGraphExecutionError>;
 }
 
@@ -220,6 +249,13 @@ const matchesRetryIdentity = (
     run.attempt === previousRun.attempt + 1
   );
 };
+
+const matchesRunIdentity = (actual: CompositionTaskRun, expected: CompositionTaskRun): boolean =>
+  actual.runId === expected.runId &&
+  actual.taskId === expected.taskId &&
+  actual.agentId === expected.agentId &&
+  actual.runtimeId === expected.runtimeId &&
+  actual.attempt === expected.attempt;
 
 const graphError = (
   code: string,
@@ -501,7 +537,16 @@ const make = (options: GraphExecutorOptions): CompositionTaskGraphExecutorShape 
     }
 
     const dispatched = yield* Effect.result(options.orchestrator.dispatchTask(input));
-    if (dispatched._tag === "Success") return dispatched.success;
+    if (dispatched._tag === "Success") {
+      if (!matchesDispatchIdentity(dispatched.success.task, dispatched.success.run, input)) {
+        return yield* graphError(
+          "task_graph_identity_conflict",
+          `稳定任务 ${input.taskId}/${input.runId} 与派发成功返回的 Task/Run 身份冲突。`,
+          nodeId,
+        );
+      }
+      return dispatched.success;
+    }
     if (isTaskAlreadyExistsError(dispatched.failure)) {
       const winner = yield* readExistingDispatch(input, nodeId);
       if (Option.isSome(winner)) return winner.value;
@@ -546,7 +591,16 @@ const make = (options: GraphExecutorOptions): CompositionTaskGraphExecutorShape 
     if (Option.isSome(existing)) return existing.value;
 
     const retried = yield* Effect.result(options.orchestrator.retryTask(input));
-    if (retried._tag === "Success") return retried.success;
+    if (retried._tag === "Success") {
+      if (!matchesRetryIdentity(retried.success.task, retried.success.run, input, previousRun)) {
+        return yield* graphError(
+          "task_graph_retry_identity_conflict",
+          `稳定重试 Run ${input.runId} 与重试成功返回的 Task/Run 身份冲突。`,
+          nodeId,
+        );
+      }
+      return retried.success;
+    }
     if (isTaskRetryInvalidError(retried.failure)) {
       const winner = yield* readExistingRetry(input, previousRun, nodeId);
       if (Option.isSome(winner)) return winner.value;
@@ -570,12 +624,22 @@ const make = (options: GraphExecutorOptions): CompositionTaskGraphExecutorShape 
     readonly taskId: string;
     readonly runId: string;
     readonly nodeId: string;
+    readonly expectedRun: CompositionTaskRun;
   }) =>
-    options.runtime
-      .awaitTaskCompletion(input)
-      .pipe(
-        Effect.mapError((error) => graphError(errorCode(error), errorDetail(error), input.nodeId)),
-      );
+    options.runtime.awaitTaskCompletion(input).pipe(
+      Effect.mapError((error) => graphError(errorCode(error), errorDetail(error), input.nodeId)),
+      Effect.flatMap((run) =>
+        matchesRunIdentity(run, input.expectedRun)
+          ? Effect.succeed(run)
+          : Effect.fail(
+              graphError(
+                "task_graph_run_identity_conflict",
+                `等待 Run ${input.taskId}/${input.runId} 返回了不匹配的终态身份。`,
+                input.nodeId,
+              ),
+            ),
+      ),
+    );
 
   const startNode = (
     node: CompositionTaskGraphNodeInput,
@@ -654,6 +718,7 @@ const make = (options: GraphExecutorOptions): CompositionTaskGraphExecutorShape 
               taskId: dispatch.task.taskId,
               runId: dispatch.run.runId,
               nodeId: node.nodeId,
+              expectedRun: dispatch.run,
             });
         tracker.settle(run.runId);
         const settled = yield* getSettledTask(dispatch.task.taskId, run, node.nodeId);
@@ -768,9 +833,10 @@ const make = (options: GraphExecutorOptions): CompositionTaskGraphExecutorShape 
       }
     });
 
-  const execute: CompositionTaskGraphExecutorShape["execute"] = (input) => {
+  const execute: CompositionTaskGraphExecutorShape["execute"] = (input, hooks) => {
     const trackedRuns = new Map<string, TrackedRun>();
     const cancellingRunIds = new Set<string>();
+    const cancellationReceipts = new Map<string, CompositionTaskGraphRunCancellationReceipt>();
     const cancelTimeoutMs = options.cancelTimeoutMs ?? 5_000;
     const tracker: RunTracker = {
       register: (run) => {
@@ -793,51 +859,53 @@ const make = (options: GraphExecutorOptions): CompositionTaskGraphExecutorShape 
       },
       settle: (runId) => void trackedRuns.delete(runId),
     };
-    const ownsPersistedRun = (run: TrackedRun) =>
-      Effect.gen(function* () {
-        if (run.ownership === "confirmed") return true;
-        const getRun = options.store.getRun;
-        if (getRun === undefined) {
-          yield* Effect.logWarning(
-            `Task Graph 无法核验候选 Run 归属，跳过取消：${run.nodeId}/${run.taskId}/${run.runId}`,
-          );
-          return false;
-        }
-        const lookup = yield* Effect.exit(
-          Effect.all([options.store.getTask(run.taskId), getRun(run.runId)]),
-        );
-        if (lookup._tag === "Failure") {
-          yield* Effect.logWarning(
-            `Task Graph 核验候选 Run 归属失败，跳过取消：${run.nodeId}/${errorDetail(Cause.squash(lookup.cause))}`,
-          );
-          return false;
-        }
-        const [task, persistedRun] = lookup.value;
-        return (
-          Option.isSome(task) &&
-          Option.isSome(persistedRun) &&
-          run.matchesPersisted(task.value, persistedRun.value)
-        );
-      });
+    const receiptBase = (run: TrackedRun) => ({
+      nodeId: run.nodeId,
+      taskId: run.taskId,
+      runId: run.runId,
+    });
+    const recordCancellationReceipt = (receipt: CompositionTaskGraphRunCancellationReceipt) => {
+      cancellationReceipts.set(receipt.runId, receipt);
+      return receipt;
+    };
     const cancelTrackedRun = (run: TrackedRun, reason: string) =>
       Effect.suspend(() => {
-        if (cancellingRunIds.has(run.runId)) return Effect.succeed<string | null>(null);
+        const recorded = cancellationReceipts.get(run.runId);
+        if (recorded !== undefined) return Effect.succeed(recorded);
+        if (cancellingRunIds.has(run.runId)) {
+          return Effect.succeed(
+            recordCancellationReceipt({
+              ...receiptBase(run),
+              outcome: "pending",
+              failureCode: "cancel_already_in_progress",
+            }),
+          );
+        }
         cancellingRunIds.add(run.runId);
         trackedRuns.delete(run.runId);
-        return ownsPersistedRun(run).pipe(
-          Effect.flatMap((owned) =>
-            owned
-              ? options.orchestrator
-                  .cancelTask({ taskId: run.taskId, runId: run.runId, reason })
-                  .pipe(Effect.as(null))
-              : Effect.succeed(null),
+        return cancelCompositionRun({
+          taskId: run.taskId,
+          runId: run.runId,
+          reason,
+          timeoutMs: cancelTimeoutMs,
+          ownership: run.ownership,
+          getTask: options.store.getTask,
+          ...(options.store.getRun === undefined ? {} : { getRun: options.store.getRun }),
+          matchesPersistedIdentity: run.matchesPersisted,
+          cancelTask: options.orchestrator.cancelTask,
+          awaitTaskCompletion: options.runtime.awaitTaskCompletion,
+        }).pipe(
+          Effect.map(
+            (receipt): CompositionTaskGraphRunCancellationReceipt => ({
+              nodeId: run.nodeId,
+              ...receipt,
+            }),
           ),
-          Effect.timeout(cancelTimeoutMs),
-          Effect.exit,
-          Effect.map((exit) =>
-            exit._tag === "Failure"
-              ? `${run.nodeId}: ${errorDetail(Cause.squash(exit.cause))}`
-              : null,
+          Effect.map(recordCancellationReceipt),
+          Effect.ensuring(
+            Effect.sync(() => {
+              cancellingRunIds.delete(run.runId);
+            }),
           ),
           Effect.uninterruptible,
         );
@@ -848,23 +916,54 @@ const make = (options: GraphExecutorOptions): CompositionTaskGraphExecutorShape 
           [...trackedRuns.values()].filter((run) => nodeId === undefined || run.nodeId === nodeId),
           (run) => cancelTrackedRun(run, reason),
           { concurrency: "unbounded" },
-        ).pipe(
-          Effect.map((failures) =>
-            failures.filter((failure): failure is string => failure !== null),
-          ),
         ),
       );
-    const cancelInterruptedRuns = cancelTrackedRuns("Task Graph 执行被中断，取消仍运行的任务").pipe(
-      Effect.flatMap((failures) =>
-        Effect.forEach(
-          failures,
-          (failure) => Effect.logWarning(`Task Graph 中断清理取消失败：${failure}`),
-          { discard: true },
-        ),
-      ),
-    );
+    const collectCancellationReceipt = (): CompositionTaskGraphCancellationReceipt => {
+      const runs = [...cancellationReceipts.values()].sort(
+        (left, right) =>
+          left.nodeId.localeCompare(right.nodeId) ||
+          left.taskId.localeCompare(right.taskId) ||
+          left.runId.localeCompare(right.runId),
+      );
+      return makeCompositionCancellationReceipt(runs);
+    };
+    const publishCancellationReport = (
+      trigger: CompositionTaskGraphCancellationReport["trigger"],
+      receipt: CompositionTaskGraphCancellationReceipt,
+    ) =>
+      Effect.gen(function* () {
+        if (hooks?.onCancellationReceipt !== undefined) {
+          yield* hooks.onCancellationReceipt({ trigger, receipt });
+        }
+        if (trigger === "interrupted" && hooks?.onInterruptedCancellation !== undefined) {
+          yield* hooks.onInterruptedCancellation(receipt);
+        }
+      });
+    const cleanupTrackedRuns = (
+      trigger: CompositionTaskGraphCancellationReport["trigger"],
+      reason: string,
+      nodeId?: string,
+    ) =>
+      Effect.gen(function* () {
+        yield* cancelTrackedRuns(reason, nodeId);
+        const receipt = collectCancellationReceipt();
+        yield* publishCancellationReport(trigger, receipt);
+        return receipt;
+      });
+    const cancelInterruptedRuns = Effect.gen(function* () {
+      const receipt = yield* cleanupTrackedRuns(
+        "interrupted",
+        "Task Graph 执行被中断，取消仍运行的任务",
+      );
+      if (!receipt.complete) {
+        return yield* graphError(
+          "child_cancel_cleanup_incomplete",
+          "Task Graph 中断清理未确认所有子 Run 已进入终态。",
+        );
+      }
+    });
 
-    return Effect.gen(function* () {
+    const program = Effect.gen(function* () {
       const validationError = validateGraph(input);
       if (validationError !== undefined) return yield* validationError;
 
@@ -877,16 +976,20 @@ const make = (options: GraphExecutorOptions): CompositionTaskGraphExecutorShape 
 
       const failAfterCleanup = (failure: CompositionTaskGraphExecutionError) =>
         Effect.gen(function* () {
-          const cleanupFailures = yield* cancelTrackedRuns(
+          const receipt = yield* cleanupTrackedRuns(
+            "business_failure",
             failure.nodeId === undefined
               ? "Task Graph 启动失败，取消已启动的子任务"
               : `Task Graph 子任务 ${failure.nodeId} 失败，取消仍运行的并行子任务`,
           );
-          if (cleanupFailures.length > 0) {
-            return yield* graphError(
+          if (!receipt.complete) {
+            const cleanupError = graphError(
               "child_cancel_cleanup_failed",
-              `${failure.detail}；取消其他子任务失败：${cleanupFailures.join("；")}`,
+              "取消其他子任务未全部确认终态。",
               failure.nodeId,
+            );
+            return yield* Effect.failCause(
+              Cause.combine(Cause.fail(failure), Cause.fail(cleanupError)),
             );
           }
           return yield* failure;
@@ -895,22 +998,29 @@ const make = (options: GraphExecutorOptions): CompositionTaskGraphExecutorShape 
         nodeId: string,
         failure: CompositionTaskGraphExecutionError,
       ) =>
-        cancelTrackedRuns(
-          `Task Graph 子任务 ${nodeId} 无法继续，取消该节点仍运行的任务`,
-          nodeId,
-        ).pipe(
-          Effect.map(
-            (cleanupFailures): CompositionTaskGraphNodeFailure => ({
+        Effect.gen(function* () {
+          const receipt = yield* cleanupTrackedRuns(
+            "business_failure",
+            `Task Graph 子任务 ${nodeId} 无法继续，取消该节点仍运行的任务`,
+            nodeId,
+          );
+          if (!receipt.complete) {
+            const cleanupError = graphError(
+              "child_cancel_cleanup_failed",
+              "取消该节点任务未确认终态。",
               nodeId,
-              kind: "failed",
-              failureCode: failure.code,
-              detail:
-                cleanupFailures.length === 0
-                  ? failure.detail
-                  : `${failure.detail}；取消该节点任务失败：${cleanupFailures.join("；")}`,
-            }),
-          ),
-        );
+            );
+            return yield* Effect.failCause(
+              Cause.combine(Cause.fail(failure), Cause.fail(cleanupError)),
+            );
+          }
+          return {
+            nodeId,
+            kind: "failed",
+            failureCode: failure.code,
+            detail: failure.detail,
+          } satisfies CompositionTaskGraphNodeFailure;
+        });
 
       const runRevisionNodes = (
         nodeIds: ReadonlyArray<string>,
@@ -1169,7 +1279,9 @@ const make = (options: GraphExecutorOptions): CompositionTaskGraphExecutorShape 
         matchesPersisted: (task, run) => matchesDispatchIdentity(task, run, leaderDispatchInput),
       });
       if (leaderRegistrationError !== undefined) return yield* leaderRegistrationError;
-      const leader = yield* dispatchOrReuse(leaderDispatchInput, "leader");
+      const leader = yield* dispatchOrReuse(leaderDispatchInput, "leader").pipe(
+        Effect.catch(failAfterCleanup),
+      );
       if (terminalStatuses.has(leader.run.status)) {
         tracker.settle(leader.run.runId);
       } else {
@@ -1182,7 +1294,8 @@ const make = (options: GraphExecutorOptions): CompositionTaskGraphExecutorShape 
             taskId: input.leader.taskId,
             runId: leader.run.runId,
             nodeId: "leader",
-          });
+            expectedRun: leader.run,
+          }).pipe(Effect.catch(failAfterCleanup));
       tracker.settle(leaderRun.runId);
       const leaderTask = yield* getSettledTask(input.leader.taskId, leaderRun, "leader");
       if (leaderTask.run.status !== "in_review" && leaderTask.run.status !== "completed") {
@@ -1197,13 +1310,44 @@ const make = (options: GraphExecutorOptions): CompositionTaskGraphExecutorShape 
         children: childResults,
         ...(childFailures.length === 0 ? {} : { failures: childFailures }),
       } satisfies CompositionTaskGraphExecutionResult;
-    }).pipe(
-      Effect.onInterrupt(() => cancelInterruptedRuns),
-      Effect.mapError(normalizeError),
+    }).pipe(Effect.catchCause((cause) => Effect.failCause(Cause.map(cause, normalizeError))));
+
+    return Effect.uninterruptibleMask((restore) =>
+      Effect.gen(function* () {
+        if (hooks?.onCancellationScopeReady !== undefined) {
+          yield* hooks.onCancellationScopeReady();
+        }
+        let cleanupCause: Cause.Cause<CompositionTaskGraphExecutionError> | undefined;
+        const exit = yield* Effect.exit(
+          restore(program).pipe(
+            Effect.onExit((programExit) => {
+              if (
+                programExit._tag === "Success" ||
+                Cause.interruptors(programExit.cause).size === 0
+              ) {
+                return Effect.void;
+              }
+              return Effect.exit(cancelInterruptedRuns).pipe(
+                Effect.flatMap((cleanupExit) =>
+                  cleanupExit._tag === "Success"
+                    ? Effect.void
+                    : Effect.sync(() => {
+                        cleanupCause = cleanupExit.cause;
+                      }),
+                ),
+              );
+            }),
+          ),
+        );
+        if (exit._tag === "Success") return exit.value;
+        return yield* Effect.failCause(
+          cleanupCause === undefined ? exit.cause : Cause.combine(exit.cause, cleanupCause),
+        );
+      }),
     );
   };
 
-  return { execute } satisfies CompositionTaskGraphExecutorShape;
+  return { cancellationScopeProtocol: "v1", execute } satisfies CompositionTaskGraphExecutorShape;
 };
 
 export const makeCompositionTaskGraphExecutor = (
