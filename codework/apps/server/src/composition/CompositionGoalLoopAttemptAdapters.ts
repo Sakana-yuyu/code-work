@@ -11,7 +11,7 @@ import type {
   MulticaDaemonProtocolFailure,
 } from "./MulticaDaemonProtocol.ts";
 
-const composeRoundPrompt = (goal: string, round: number): string =>
+export const composeGoalLoopRoundPrompt = (goal: string, round: number): string =>
   `${goal}\n\n[Goal Loop 第 ${round} 轮] 请继续推进该目标；若目标已完全达成，在回复中输出 ` +
   `${GOAL_COMPLETE_MARKER} 或带原因的 [[GOAL_COMPLETE: 原因]]。`;
 
@@ -55,7 +55,7 @@ export const makeByokGoalLoopAttempt =
         runId: options.runId,
         agentId: options.agentId,
         workspaceRoot: options.workspaceRoot,
-        prompt: composeRoundPrompt(options.goal, round),
+        prompt: composeGoalLoopRoundPrompt(options.goal, round),
         capabilityGrantIds: options.capabilityGrantIds ?? [],
         tools: options.tools ?? [],
         maxRounds: options.maxRoundsPerAttempt ?? 4,
@@ -111,7 +111,7 @@ export const makeMulticaGoalLoopAttempt =
         ...(options.agentId === undefined ? {} : { agentId: options.agentId }),
         ...(options.squadId === undefined ? {} : { squadId: options.squadId }),
         ...(options.projectId === undefined ? {} : { projectId: options.projectId }),
-        prompt: composeRoundPrompt(options.goal, round),
+        prompt: composeGoalLoopRoundPrompt(options.goal, round),
       });
       const now = options.now ?? Date.now;
       const sleep = options.sleep ?? ((ms: number) => Effect.sleep(ms));
