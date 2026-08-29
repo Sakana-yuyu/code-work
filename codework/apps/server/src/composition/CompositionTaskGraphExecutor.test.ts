@@ -29,6 +29,7 @@ import {
 } from "./CompositionTaskGraphExecutor.ts";
 import {
   CompositionAgentDriverFailure,
+  CompositionTaskRetryInvalidError,
   makeCompositionOrchestrator,
   type CompositionOrchestrator,
 } from "./CompositionOrchestrator.ts";
@@ -323,6 +324,130 @@ describe("CompositionTaskGraphExecutor", () => {
       expect(second.children.map((child) => child.run.runId)).toEqual(["run-a", "run-b"]);
       expect(firstDispatchCount).toBe(3);
       expect(secondDispatchCount).toBe(firstDispatchCount);
+    }),
+  );
+
+  it.effect("服务重启后复用已完成的稳定重试 Run，避免重复重试副作用", () =>
+    Effect.gen(function* () {
+      const child = {
+        nodeId: "retry-recovery-child",
+        taskId: "retry-recovery-task",
+        runId: "retry-recovery-run",
+        projectId: "project-graph",
+        assigneeKind: "agent" as const,
+        assigneeId: "retry-recovery-agent",
+        mode: "parallel" as const,
+        promptDigest: "sha256:retry-recovery",
+        prompt: "恢复重启前已经完成的重试任务",
+        workspaceRoot: "C:/workspace",
+        capabilityIds: ["t3.workspace.read_file"],
+        maxAttempts: 2,
+      };
+      const retryRunId = `${child.runId}:retry:2`;
+      const childTask: CompositionTask = {
+        taskId: child.taskId,
+        projectId: child.projectId,
+        parentTaskId: baseLeader.taskId,
+        assigneeKind: child.assigneeKind,
+        assigneeId: child.assigneeId,
+        mode: child.mode,
+        status: "completed",
+        promptDigest: child.promptDigest,
+        dependsOnTaskIds: [],
+        createdAtUnixMs: 1,
+        updatedAtUnixMs: 3,
+        finishedAtUnixMs: 3,
+      };
+      const baseRun: CompositionTaskRun = {
+        runId: child.runId,
+        taskId: child.taskId,
+        agentId: child.assigneeId,
+        runtimeId: "runtime-retry-recovery",
+        status: "failed",
+        attempt: 1,
+        capabilityGrantIds: [],
+        failureCode: "rate_limited",
+        resultSummary: "首次执行触发瞬态限流",
+      };
+      const completedRetry: CompositionTaskRun = {
+        ...baseRun,
+        runId: retryRunId,
+        status: "completed",
+        attempt: 2,
+        resultSummary: "重启前的第二次尝试已经完成",
+        failureCode: undefined,
+      };
+      const tasks = new Map<string, CompositionTask>([[child.taskId, childTask]]);
+      const runs = new Map<string, CompositionTaskRun>([
+        [baseRun.runId, baseRun],
+        [completedRetry.runId, completedRetry],
+      ]);
+      let retryCalls = 0;
+      let leaderDispatches = 0;
+      const executor = makeCompositionTaskGraphExecutor({
+        orchestrator: {
+          dispatchTask: (input) =>
+            Effect.sync(() => {
+              if (input.taskId !== baseLeader.taskId) {
+                throw new Error(`不应重复派发已持久化的子任务：${input.taskId}`);
+              }
+              leaderDispatches += 1;
+              const task: CompositionTask = {
+                taskId: input.taskId,
+                projectId: input.projectId,
+                assigneeKind: input.assigneeKind,
+                assigneeId: input.assigneeId,
+                mode: input.mode,
+                status: "completed",
+                promptDigest: input.promptDigest,
+                dependsOnTaskIds: [...input.dependsOnTaskIds],
+                createdAtUnixMs: 4,
+                updatedAtUnixMs: 4,
+                finishedAtUnixMs: 4,
+              };
+              const run: CompositionTaskRun = {
+                runId: input.runId,
+                taskId: input.taskId,
+                agentId: input.assigneeId,
+                runtimeId: "runtime-leader",
+                status: "completed",
+                attempt: 1,
+                capabilityGrantIds: [],
+                resultSummary: "Leader 已汇总恢复结果",
+              };
+              tasks.set(task.taskId, task);
+              runs.set(run.runId, run);
+              return { task, run } satisfies CompositionTaskDispatchResult;
+            }),
+          retryTask: (input) => {
+            retryCalls += 1;
+            return Effect.fail(
+              new CompositionTaskRetryInvalidError({
+                taskId: input.taskId,
+                previousRunId: input.previousRunId,
+                reason: "run_id_conflict",
+              }),
+            );
+          },
+          cancelTask: () => Effect.die("恢复已完成重试时不应取消任务"),
+        },
+        store: {
+          getTask: (taskId) => Effect.succeed(Option.fromNullishOr(tasks.get(taskId))),
+          getRun: (runId) => Effect.succeed(Option.fromNullishOr(runs.get(runId))),
+        },
+        runtime: {
+          awaitTaskCompletion: () => Effect.die("已持久化的 Run 均为终态"),
+        },
+      });
+
+      const result = yield* executor.execute({ leader: baseLeader, children: [child] });
+
+      expect(retryCalls).toBe(0);
+      expect(leaderDispatches).toBe(1);
+      expect(result.children[0]).toMatchObject({
+        attempts: 2,
+        run: { runId: retryRunId, status: "completed" },
+      });
     }),
   );
 

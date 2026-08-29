@@ -4,6 +4,7 @@ import type {
   CompositionSquadFailurePolicy,
   CompositionSquadPartialSuccessPolicy,
   CompositionTask,
+  CompositionTaskRetryRequest,
   CompositionTaskRun,
   CompositionTaskStatus,
 } from "@codework/contracts";
@@ -19,6 +20,7 @@ import { CompositionTaskStore } from "../persistence/Services/CompositionTaskSto
 import { classifyCompositionFailure } from "./CompositionFailurePolicy.ts";
 import {
   CompositionTaskAlreadyExistsError,
+  CompositionTaskRetryInvalidError,
   type CompositionDispatchInput,
   type CompositionDispatchResult,
   type CompositionOrchestrator,
@@ -163,6 +165,7 @@ const errorCode = (error: unknown): string => {
 };
 
 const isTaskAlreadyExistsError = Schema.is(CompositionTaskAlreadyExistsError);
+const isTaskRetryInvalidError = Schema.is(CompositionTaskRetryInvalidError);
 
 const sameTaskIds = (left: ReadonlyArray<string>, right: ReadonlyArray<string>): boolean =>
   left.length === right.length && left.every((value, index) => value === right[index]);
@@ -476,6 +479,55 @@ const make = (options: GraphExecutorOptions): CompositionTaskGraphExecutorShape 
     );
   });
 
+  const readExistingRetry = Effect.fn("CompositionTaskGraphExecutor.readExistingRetry")(function* (
+    input: CompositionTaskRetryRequest,
+    previousRun: CompositionTaskRun,
+    nodeId: string,
+  ) {
+    const getRun = options.store.getRun;
+    if (getRun === undefined) return Option.none<CompositionDispatchResult>();
+    const run = yield* getRun(input.runId).pipe(
+      Effect.mapError((error) => graphError(errorCode(error), errorDetail(error), nodeId)),
+    );
+    if (Option.isNone(run)) return Option.none<CompositionDispatchResult>();
+    const task = yield* options.store
+      .getTask(input.taskId)
+      .pipe(Effect.mapError((error) => graphError(errorCode(error), errorDetail(error), nodeId)));
+    const expectedAgentId = input.agentId ?? previousRun.agentId;
+    if (
+      Option.isNone(task) ||
+      task.value.taskId !== input.taskId ||
+      task.value.assigneeId !== expectedAgentId ||
+      run.value.taskId !== input.taskId ||
+      run.value.agentId !== expectedAgentId ||
+      run.value.attempt !== previousRun.attempt + 1
+    ) {
+      return yield* graphError(
+        "task_graph_retry_identity_conflict",
+        `稳定重试 Run ${input.runId} 与任务、Agent 或 attempt 不匹配。`,
+        nodeId,
+      );
+    }
+    return Option.some({ task: task.value, run: run.value });
+  });
+
+  const retryOrReuse = Effect.fn("CompositionTaskGraphExecutor.retryOrReuse")(function* (
+    input: CompositionTaskRetryRequest,
+    previousRun: CompositionTaskRun,
+    nodeId: string,
+  ) {
+    const existing = yield* readExistingRetry(input, previousRun, nodeId);
+    if (Option.isSome(existing)) return existing.value;
+
+    const retried = yield* Effect.result(options.orchestrator.retryTask(input));
+    if (retried._tag === "Success") return retried.success;
+    if (isTaskRetryInvalidError(retried.failure)) {
+      const winner = yield* readExistingRetry(input, previousRun, nodeId);
+      if (Option.isSome(winner)) return winner.value;
+    }
+    return yield* graphError(errorCode(retried.failure), errorDetail(retried.failure), nodeId);
+  });
+
   const getSettledTask = (taskId: string, run: CompositionTaskRun, nodeId: string) =>
     options.store.getTask(taskId).pipe(
       Effect.mapError((error) => graphError(errorCode(error), errorDetail(error), nodeId)),
@@ -653,19 +705,17 @@ const make = (options: GraphExecutorOptions): CompositionTaskGraphExecutorShape 
 
         const nextAttempt = attemptsForAssignee + 1;
         const nextRunId = retryRunId(assignmentBaseRunId, nextAttempt);
-        const retry = yield* options.orchestrator
-          .retryTask({
+        const retry = yield* retryOrReuse(
+          {
             taskId: settled.task.taskId,
             previousRunId: settled.run.runId,
             runId: nextRunId,
             reason: `Task Graph 自动重试第 ${nextAttempt} 次`,
             capabilityIds: currentCapabilityIds,
-          })
-          .pipe(
-            Effect.mapError((error) =>
-              graphError(errorCode(error), errorDetail(error), node.nodeId),
-            ),
-          );
+          },
+          settled.run,
+          node.nodeId,
+        );
         dispatch = retry;
         started.currentDispatch = retry;
         dispatches.push(retry);
