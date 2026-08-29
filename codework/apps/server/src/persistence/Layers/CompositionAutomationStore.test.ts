@@ -270,6 +270,37 @@ layer("CompositionAutomationStore", (it) => {
     }),
   );
 
+  it.effect("并发领取 queued Run 执行权时忽略观测时间偏差且只有一个执行者获胜", () =>
+    Effect.gen(function* () {
+      const store = yield* CompositionAutomationStore;
+      const automation = makeAutomation("automation-execution-claim");
+      const queued = makeQueuedRun(automation.automationId, "automation-run-execution", 4_500);
+      const runningA: CompositionAutomationRun = {
+        ...queued,
+        status: "running",
+        startedAtUnixMs: 4_600,
+        compositionTaskId: "automation-task-execution",
+        compositionRunId: "automation-composition-run-execution",
+      };
+      const runningB: CompositionAutomationRun = {
+        ...runningA,
+        startedAtUnixMs: 4_601,
+      };
+      yield* store.createAutomation(automation);
+      yield* store.claimRun(queued);
+
+      const claims = yield* Effect.all(
+        [store.claimRunExecution(runningA), store.claimRunExecution(runningB)],
+        { concurrency: "unbounded" },
+      );
+
+      assert.equal(claims.filter((claim) => claim.claimed).length, 1);
+      assert.deepEqual(claims[0]?.run, claims[1]?.run);
+      assert.equal(claims[0]?.run.compositionTaskId, runningA.compositionTaskId);
+      assert.equal(claims[0]?.run.compositionRunId, runningA.compositionRunId);
+    }),
+  );
+
   it.effect("运行历史使用稳定复合 cursor 分页并拒绝损坏 cursor", () =>
     Effect.gen(function* () {
       const store = yield* CompositionAutomationStore;

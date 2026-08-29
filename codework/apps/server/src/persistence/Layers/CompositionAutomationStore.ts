@@ -274,6 +274,15 @@ const sameClaimIdentity = (
   existing.scheduledForUnixMs === requested.scheduledForUnixMs &&
   existing.idempotencyKey === requested.idempotencyKey;
 
+const sameRunExecutionBinding = (
+  existing: CompositionAutomationRun,
+  requested: CompositionAutomationRun,
+): boolean =>
+  sameRunIdentity(existing, requested) &&
+  existing.status === "running" &&
+  existing.compositionTaskId === requested.compositionTaskId &&
+  existing.compositionRunId === requested.compositionRunId;
+
 const sameAutomationConfiguration = (
   current: CompositionAutomation,
   next: CompositionAutomation,
@@ -1144,6 +1153,90 @@ const makeStore = Effect.gen(function* () {
   const claimRun: CompositionAutomationStoreShape["claimRun"] = (run) =>
     withTransaction(claimRunInTransaction(run));
 
+  const claimRunExecution: CompositionAutomationStoreShape["claimRunExecution"] = (run) => {
+    if (
+      run.status !== "running" ||
+      run.startedAtUnixMs === null ||
+      run.compositionTaskId === null ||
+      run.compositionRunId === null
+    ) {
+      return Effect.fail(
+        domainError(
+          "automation_run_conflict",
+          run.automationId,
+          "执行权目标必须是已绑定 Composition ID 的 running Run。",
+          { automationRunId: run.automationRunId },
+        ),
+      );
+    }
+
+    return withTransaction(
+      Effect.gen(function* () {
+        const current = yield* readRun(run.automationRunId);
+        if (Option.isNone(current)) {
+          return yield* domainError(
+            "automation_run_not_found",
+            run.automationId,
+            "Automation Run 不存在。",
+            { automationRunId: run.automationRunId },
+          );
+        }
+        if (sameRun(current.value, run)) {
+          return { run: current.value, claimed: false };
+        }
+        if (!sameRunIdentity(current.value, run)) {
+          return yield* domainError(
+            "automation_run_conflict",
+            run.automationId,
+            "执行权领取试图修改不可变 Run 身份。",
+            { automationRunId: run.automationRunId },
+          );
+        }
+        if (sameRunExecutionBinding(current.value, run)) {
+          return { run: current.value, claimed: false };
+        }
+        if (current.value.status !== "queued") {
+          return yield* domainError(
+            "automation_run_status_conflict",
+            run.automationId,
+            `预期状态 queued，实际为 ${current.value.status}。`,
+            {
+              automationRunId: run.automationRunId,
+              expectedStatus: "queued",
+              actualStatus: current.value.status,
+            },
+          );
+        }
+
+        const updated = yield* query(
+          "CompositionAutomationStore.claimRunExecution.update",
+          updateRunRow({ ...run, expectedStatus: "queued" }),
+        );
+        if (Option.isSome(updated)) {
+          const claimed = yield* decodeRunRow(
+            "CompositionAutomationStore.claimRunExecution.update",
+            updated.value,
+          );
+          return { run: claimed, claimed: true };
+        }
+        const latest = yield* readRun(run.automationRunId);
+        if (Option.isSome(latest) && sameRunExecutionBinding(latest.value, run)) {
+          return { run: latest.value, claimed: false };
+        }
+        return yield* domainError(
+          "automation_run_status_conflict",
+          run.automationId,
+          "Run 执行权已被其他 Scheduler 领取。",
+          {
+            automationRunId: run.automationRunId,
+            expectedStatus: "queued",
+            actualStatus: Option.isSome(latest) ? latest.value.status : "missing",
+          },
+        );
+      }),
+    );
+  };
+
   const claimScheduledRun: CompositionAutomationStoreShape["claimScheduledRun"] = (input) =>
     withTransaction(
       Effect.gen(function* () {
@@ -1345,6 +1438,7 @@ const makeStore = Effect.gen(function* () {
     },
     deleteAutomation,
     claimRun,
+    claimRunExecution,
     claimScheduledRun,
     saveRunTransition,
     getRun: readRun,

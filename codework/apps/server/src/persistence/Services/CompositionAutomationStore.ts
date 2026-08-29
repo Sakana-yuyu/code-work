@@ -118,6 +118,9 @@ export interface CompositionAutomationStoreShape {
   readonly claimRun: (
     run: CompositionAutomationRun,
   ) => Effect.Effect<CompositionAutomationRunClaimResult, CompositionAutomationStoreError>;
+  readonly claimRunExecution: (
+    run: CompositionAutomationRun,
+  ) => Effect.Effect<CompositionAutomationRunClaimResult, CompositionAutomationStoreError>;
   readonly claimScheduledRun: (
     input: CompositionAutomationScheduledRunClaimInput,
   ) => Effect.Effect<CompositionAutomationScheduledRunClaimResult, CompositionAutomationStoreError>;
