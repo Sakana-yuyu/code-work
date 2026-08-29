@@ -1,9 +1,13 @@
 import {
   type CompositionAutomation,
+  CompositionAutomationCreateRequest as CompositionAutomationCreateRequestSchema,
+  type CompositionAutomationCreateRequest,
   type CompositionAutomationListResult,
   type CompositionAutomationResult,
   CompositionAutomationStatus,
   type CompositionAutomationStatus as CompositionAutomationStatusType,
+  CompositionAutomationUpdateRequest as CompositionAutomationUpdateRequestSchema,
+  type CompositionAutomationUpdateRequest,
   TrimmedNonEmptyString,
   WS_METHODS,
 } from "@codework/contracts";
@@ -11,6 +15,7 @@ import * as Console from "effect/Console";
 import * as Data from "effect/Data";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
+import * as FileSystem from "effect/FileSystem";
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 import { Argument, Command, Flag } from "effect/unstable/cli";
@@ -30,7 +35,19 @@ export interface GetAutomationOptions extends ControlConnectionOptions {
   readonly automationId: string;
 }
 
+export interface CreateAutomationOptions extends ControlConnectionOptions {
+  readonly input: CompositionAutomationCreateRequest;
+}
+
+export interface UpdateAutomationOptions extends ControlConnectionOptions {
+  readonly input: CompositionAutomationUpdateRequest;
+}
+
 export class AutomationStatusInputError extends Data.TaggedError("AutomationStatusInputError")<{
+  readonly message: string;
+}> {}
+
+export class AutomationConfigInputError extends Data.TaggedError("AutomationConfigInputError")<{
   readonly message: string;
 }> {}
 
@@ -62,8 +79,44 @@ export const getAutomation = (
     (rpc) => rpc[WS_METHODS.serverGetCompositionAutomation]({ automationId: options.automationId }),
   );
 
+export const createAutomation = (
+  options: CreateAutomationOptions,
+  open: ControlClientOpen = openControlClient,
+) =>
+  open(
+    {
+      serverUrl: options.serverUrl,
+      ...(options.accessToken ? { accessToken: options.accessToken } : {}),
+    },
+    (rpc) => rpc[WS_METHODS.serverCreateCompositionAutomation](options.input),
+  );
+
+export const updateAutomation = (
+  options: UpdateAutomationOptions,
+  open: ControlClientOpen = openControlClient,
+) =>
+  open(
+    {
+      serverUrl: options.serverUrl,
+      ...(options.accessToken ? { accessToken: options.accessToken } : {}),
+    },
+    (rpc) => rpc[WS_METHODS.serverUpdateCompositionAutomation](options.input),
+  );
+
 const AutomationStatuses = Schema.Array(CompositionAutomationStatus);
 const decodeAutomationStatusesArray = Schema.decodeUnknownEffect(AutomationStatuses);
+const AutomationCreateConfigDocument = Schema.fromJsonString(
+  CompositionAutomationCreateRequestSchema,
+);
+const AutomationUpdateConfigDocument = Schema.fromJsonString(
+  CompositionAutomationUpdateRequestSchema,
+);
+const decodeAutomationCreateConfigDocument = Schema.decodeUnknownEffect(
+  AutomationCreateConfigDocument,
+);
+const decodeAutomationUpdateConfigDocument = Schema.decodeUnknownEffect(
+  AutomationUpdateConfigDocument,
+);
 
 export const decodeAutomationStatuses = (raw: string) =>
   decodeAutomationStatusesArray(
@@ -79,6 +132,40 @@ export const decodeAutomationStatuses = (raw: string) =>
         }),
     ),
   );
+
+export const decodeAutomationCreateConfigText = (raw: string) =>
+  decodeAutomationCreateConfigDocument(raw).pipe(
+    Effect.mapError(
+      () =>
+        new AutomationConfigInputError({
+          message: "Automation create config does not match the Code Work contract.",
+        }),
+    ),
+  );
+
+export const decodeAutomationUpdateConfigText = (raw: string) =>
+  decodeAutomationUpdateConfigDocument(raw).pipe(
+    Effect.mapError(
+      () =>
+        new AutomationConfigInputError({
+          message: "Automation update config does not match the Code Work contract.",
+        }),
+    ),
+  );
+
+const readAutomationConfigText = Effect.fn("cli.automation.readConfigFile")(function* (
+  path: string,
+) {
+  const fileSystem = yield* FileSystem.FileSystem;
+  return yield* fileSystem.readFileString(path).pipe(
+    Effect.mapError(
+      () =>
+        new AutomationConfigInputError({
+          message: `Could not read Automation config file: ${path}`,
+        }),
+    ),
+  );
+});
 
 const formatUnixMs = (unixMs: number): string => {
   const dateTime = DateTime.make(unixMs);
@@ -203,6 +290,11 @@ const automationIdArgument = Argument.string("automation-id").pipe(
   Argument.withDescription("Composition automation id."),
 );
 
+const configFileFlag = Flag.string("config").pipe(
+  Flag.withSchema(TrimmedNonEmptyString),
+  Flag.withDescription("JSON file validated against the Code Work Automation contract."),
+);
+
 const automationListCommand = Command.make("list", {
   server: serverFlag,
   accessToken: accessTokenFlag,
@@ -246,7 +338,56 @@ const automationGetCommand = Command.make("get", {
   ),
 );
 
+const automationCreateCommand = Command.make("create", {
+  config: configFileFlag,
+  server: serverFlag,
+  accessToken: accessTokenFlag,
+  json: jsonFlag,
+}).pipe(
+  Command.withDescription("Create a composition automation from a validated JSON config."),
+  Command.withHandler((flags) =>
+    Effect.gen(function* () {
+      const input = yield* readAutomationConfigText(flags.config).pipe(
+        Effect.flatMap(decodeAutomationCreateConfigText),
+      );
+      const result = yield* createAutomation({
+        serverUrl: flags.server,
+        ...(Option.isSome(flags.accessToken) ? { accessToken: flags.accessToken.value } : {}),
+        input,
+      });
+      yield* Console.log(formatAutomationDetails(result, flags.json));
+    }),
+  ),
+);
+
+const automationUpdateCommand = Command.make("update", {
+  config: configFileFlag,
+  server: serverFlag,
+  accessToken: accessTokenFlag,
+  json: jsonFlag,
+}).pipe(
+  Command.withDescription("Update a composition automation from a validated JSON config."),
+  Command.withHandler((flags) =>
+    Effect.gen(function* () {
+      const input = yield* readAutomationConfigText(flags.config).pipe(
+        Effect.flatMap(decodeAutomationUpdateConfigText),
+      );
+      const result = yield* updateAutomation({
+        serverUrl: flags.server,
+        ...(Option.isSome(flags.accessToken) ? { accessToken: flags.accessToken.value } : {}),
+        input,
+      });
+      yield* Console.log(formatAutomationDetails(result, flags.json));
+    }),
+  ),
+);
+
 export const automationCommand = Command.make("automation").pipe(
   Command.withDescription("Manage composition automations."),
-  Command.withSubcommands([automationListCommand, automationGetCommand]),
+  Command.withSubcommands([
+    automationListCommand,
+    automationGetCommand,
+    automationCreateCommand,
+    automationUpdateCommand,
+  ]),
 );

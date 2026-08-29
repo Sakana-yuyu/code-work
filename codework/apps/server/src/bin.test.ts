@@ -299,6 +299,22 @@ it.layer(NodeServices.layer)("bin cli parsing", (it) => {
     }),
   );
 
+  it.effect("exposes schema-validated Automation create and update commands", () =>
+    Effect.gen(function* () {
+      const create = yield* captureStdout(
+        runCli(["automation", "create", "--help"], noConnectCli),
+      );
+      const update = yield* captureStdout(
+        runCli(["automation", "update", "--help"], noConnectCli),
+      );
+
+      assert.include(create.output, "Create a composition automation from a validated JSON config.");
+      assert.include(create.output, "--config");
+      assert.include(update.output, "Update a composition automation from a validated JSON config.");
+      assert.include(update.output, "--config");
+    }),
+  );
+
   it.effect("reports fresh headless connect state without requiring local configuration", () =>
     Effect.gen(function* () {
       const baseDir = NodeFS.mkdtempSync(
