@@ -1463,6 +1463,34 @@ export const CompositionSquadExecutionListResult = Schema.Struct({
 });
 export type CompositionSquadExecutionListResult = typeof CompositionSquadExecutionListResult.Type;
 
+/** 历史摘要请求复用完整 execution 查询的安全过滤条件与数量上限。 */
+export const CompositionSquadExecutionSummaryListRequest = CompositionSquadExecutionListRequest;
+export type CompositionSquadExecutionSummaryListRequest = CompositionSquadExecutionListRequest;
+
+/** 远程历史页只接收可展示摘要，不传输内部 digest、Task/Run 或节点明细。 */
+export const CompositionSquadExecutionSummary = Schema.Struct({
+  executionId: TrimmedNonEmptyString,
+  squadId: TrimmedNonEmptyString,
+  squadDisplayName: TrimmedNonEmptyString,
+  projectId: TrimmedNonEmptyString,
+  status: CompositionSquadExecutionStatus,
+  squadRevision: PositiveInt,
+  nodeCount: NonNegativeInt,
+  pendingApprovalCount: NonNegativeInt,
+  createdAtUnixMs: NonNegativeInt,
+  resultSummary: Schema.optional(TrimmedNonEmptyString),
+  failureCode: Schema.optional(TrimmedNonEmptyString),
+});
+export type CompositionSquadExecutionSummary = typeof CompositionSquadExecutionSummary.Type;
+
+export const CompositionSquadExecutionSummaryListResult = Schema.Struct({
+  executions: Schema.Array(CompositionSquadExecutionSummary).check(
+    Schema.isMaxLength(COMPOSITION_SQUAD_EXECUTION_HISTORY_MAX_LIMIT),
+  ),
+});
+export type CompositionSquadExecutionSummaryListResult =
+  typeof CompositionSquadExecutionSummaryListResult.Type;
+
 const allowedCompositionSquadExecutionStatusTransitions = {
   queued: new Set<CompositionSquadExecutionStatus>(["planning", "paused", "cancelled"]),
   planning: new Set<CompositionSquadExecutionStatus>([

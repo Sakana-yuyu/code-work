@@ -258,6 +258,8 @@ import {
   CompositionSquadDuplicateRequest,
   CompositionSquadExecutionListRequest,
   CompositionSquadExecutionListResult,
+  CompositionSquadExecutionSummaryListRequest,
+  CompositionSquadExecutionSummaryListResult,
   CompositionSquadExecutionRequest,
   CompositionSquadExecutionResult,
   CompositionSquadGetRequest,
@@ -411,6 +413,7 @@ export const WS_METHODS = {
   serverGetCompositionSquad: "server.getCompositionSquad",
   serverListCompositionSquadRevisions: "server.listCompositionSquadRevisions",
   serverListCompositionSquadExecutions: "server.listCompositionSquadExecutions",
+  serverListCompositionSquadExecutionSummaries: "server.listCompositionSquadExecutionSummaries",
   serverCreateCompositionSquad: "server.createCompositionSquad",
   serverUpdateCompositionSquad: "server.updateCompositionSquad",
   serverDuplicateCompositionSquad: "server.duplicateCompositionSquad",
@@ -728,6 +731,15 @@ export const WsServerListCompositionSquadExecutionsRpc = Rpc.make(
   {
     payload: CompositionSquadExecutionListRequest,
     success: CompositionSquadExecutionListResult,
+    error: Schema.Union([CompositionSquadRpcError, EnvironmentAuthorizationError]),
+  },
+);
+
+export const WsServerListCompositionSquadExecutionSummariesRpc = Rpc.make(
+  WS_METHODS.serverListCompositionSquadExecutionSummaries,
+  {
+    payload: CompositionSquadExecutionSummaryListRequest,
+    success: CompositionSquadExecutionSummaryListResult,
     error: Schema.Union([CompositionSquadRpcError, EnvironmentAuthorizationError]),
   },
 );
@@ -1648,6 +1660,7 @@ export const WsRpcGroup = RpcGroup.make(
   WsServerGetCompositionSquadRpc,
   WsServerListCompositionSquadRevisionsRpc,
   WsServerListCompositionSquadExecutionsRpc,
+  WsServerListCompositionSquadExecutionSummariesRpc,
   WsServerCreateCompositionSquadRpc,
   WsServerUpdateCompositionSquadRpc,
   WsServerDuplicateCompositionSquadRpc,

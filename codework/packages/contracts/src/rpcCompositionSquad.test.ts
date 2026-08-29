@@ -3,8 +3,15 @@ import { describe, expect, it } from "vite-plus/test";
 import {
   CompositionSquadExecutionListRequest,
   CompositionSquadExecutionListResult,
+  CompositionSquadExecutionSummaryListRequest,
+  CompositionSquadExecutionSummaryListResult,
 } from "./composition.ts";
-import { WS_METHODS, WsRpcGroup, WsServerListCompositionSquadExecutionsRpc } from "./rpc.ts";
+import {
+  WS_METHODS,
+  WsRpcGroup,
+  WsServerListCompositionSquadExecutionSummariesRpc,
+  WsServerListCompositionSquadExecutionsRpc,
+} from "./rpc.ts";
 
 describe("Squad RPC contracts", () => {
   it("把 Squad 查询、生命周期和运行方法注册到 typed RPC group", () => {
@@ -13,6 +20,7 @@ describe("Squad RPC contracts", () => {
       WS_METHODS.serverGetCompositionSquad,
       WS_METHODS.serverListCompositionSquadRevisions,
       WS_METHODS.serverListCompositionSquadExecutions,
+      WS_METHODS.serverListCompositionSquadExecutionSummaries,
       WS_METHODS.serverCreateCompositionSquad,
       WS_METHODS.serverUpdateCompositionSquad,
       WS_METHODS.serverDuplicateCompositionSquad,
@@ -26,6 +34,7 @@ describe("Squad RPC contracts", () => {
       "server.getCompositionSquad",
       "server.listCompositionSquadRevisions",
       "server.listCompositionSquadExecutions",
+      "server.listCompositionSquadExecutionSummaries",
       "server.createCompositionSquad",
       "server.updateCompositionSquad",
       "server.duplicateCompositionSquad",
@@ -47,6 +56,18 @@ describe("Squad RPC contracts", () => {
     );
     expect(WsRpcGroup.requests.get(WS_METHODS.serverListCompositionSquadExecutions)).toBe(
       WsServerListCompositionSquadExecutionsRpc,
+    );
+  });
+
+  it("把有上限的 execution 摘要 Schema 绑定到独立只读 RPC", () => {
+    expect(WsServerListCompositionSquadExecutionSummariesRpc.payloadSchema).toBe(
+      CompositionSquadExecutionSummaryListRequest,
+    );
+    expect(WsServerListCompositionSquadExecutionSummariesRpc.successSchema).toBe(
+      CompositionSquadExecutionSummaryListResult,
+    );
+    expect(WsRpcGroup.requests.get(WS_METHODS.serverListCompositionSquadExecutionSummaries)).toBe(
+      WsServerListCompositionSquadExecutionSummariesRpc,
     );
   });
 });

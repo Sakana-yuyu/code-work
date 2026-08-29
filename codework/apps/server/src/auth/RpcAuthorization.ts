@@ -61,6 +61,7 @@ export const RPC_REQUIRED_SCOPES = {
   [WS_METHODS.serverGetCompositionSquad]: AuthOrchestrationReadScope,
   [WS_METHODS.serverListCompositionSquadRevisions]: AuthOrchestrationReadScope,
   [WS_METHODS.serverListCompositionSquadExecutions]: AuthOrchestrationReadScope,
+  [WS_METHODS.serverListCompositionSquadExecutionSummaries]: AuthOrchestrationReadScope,
   [WS_METHODS.serverCreateCompositionSquad]: AuthOrchestrationOperateScope,
   [WS_METHODS.serverUpdateCompositionSquad]: AuthOrchestrationOperateScope,
   [WS_METHODS.serverDuplicateCompositionSquad]: AuthOrchestrationOperateScope,

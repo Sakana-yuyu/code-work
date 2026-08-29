@@ -625,6 +625,7 @@ const buildAppUnderTest = (options?: {
       CompositionSquadExecutionService.CompositionSquadExecutionService,
     )({
       list: () => Effect.succeed([]),
+      listSummaries: () => Effect.succeed([]),
       ...options?.layers?.compositionSquadExecutionService,
     });
     const resourceTelemetryLayer = ResourceTelemetry.layer.pipe(
@@ -4657,6 +4658,69 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
             squadId: "squad-history",
             statuses: ["queued", "failed"],
             limit: 50,
+          },
+        ],
+      ]);
+    }).pipe(Effect.provide(NodeHttpServer.layerTest)),
+  );
+
+  it.effect("routes bounded Squad execution summaries through websocket rpc", () =>
+    Effect.gen(function* () {
+      const listSummaries = vi.fn<
+        CompositionSquadExecutionService.CompositionSquadExecutionService["Service"]["listSummaries"]
+      >(() =>
+        Effect.succeed([
+          {
+            executionId: "execution-history",
+            squadId: "squad-history",
+            squadDisplayName: "发布检查组",
+            projectId: "project-history",
+            status: "running",
+            squadRevision: 3,
+            nodeCount: 2,
+            pendingApprovalCount: 1,
+            createdAtUnixMs: 1_000,
+          },
+        ]),
+      );
+      yield* buildAppUnderTest({
+        layers: { compositionSquadExecutionService: { listSummaries } },
+      });
+
+      const wsUrl = yield* getWsServerUrl("/ws");
+      const response = yield* Effect.scoped(
+        withWsRpcClient(wsUrl, (client) =>
+          client[WS_METHODS.serverListCompositionSquadExecutionSummaries]({
+            projectId: "project-history",
+            squadId: "squad-history",
+            statuses: ["running"],
+            limit: 20,
+          }),
+        ),
+      );
+
+      assert.deepEqual(response, {
+        executions: [
+          {
+            executionId: "execution-history",
+            squadId: "squad-history",
+            squadDisplayName: "发布检查组",
+            projectId: "project-history",
+            status: "running",
+            squadRevision: 3,
+            nodeCount: 2,
+            pendingApprovalCount: 1,
+            createdAtUnixMs: 1_000,
+          },
+        ],
+      });
+      assert.deepEqual(listSummaries.mock.calls, [
+        [
+          {
+            projectId: "project-history",
+            squadId: "squad-history",
+            statuses: ["running"],
+            limit: 20,
           },
         ],
       ]);

@@ -2212,6 +2212,19 @@ const makeWsRpcLayer = (
                 ),
             { "rpc.aggregate": "composition" },
           ),
+        [WS_METHODS.serverListCompositionSquadExecutionSummaries]: (input) =>
+          observeRpcEffect(
+            WS_METHODS.serverListCompositionSquadExecutionSummaries,
+            Option.isNone(compositionSquadExecutionService)
+              ? Effect.fail(compositionSquadUnavailable(input.squadId ?? "*"))
+              : compositionSquadExecutionService.value.listSummaries(input).pipe(
+                  Effect.map((executions) => ({ executions })),
+                  Effect.mapError((error) =>
+                    toCompositionSquadRpcError(error, input.squadId ?? "*"),
+                  ),
+                ),
+            { "rpc.aggregate": "composition" },
+          ),
         [WS_METHODS.serverCreateCompositionSquad]: (input) =>
           observeRpcEffect(
             WS_METHODS.serverCreateCompositionSquad,

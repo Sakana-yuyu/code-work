@@ -507,6 +507,7 @@ const CompositionSquadExecutionStoreLayerLive = CompositionSquadExecutionStoreLi
 const CompositionSquadExecutionServiceLayerLive =
   CompositionSquadExecutionService.CompositionSquadExecutionServiceLive.pipe(
     Layer.provide(CompositionSquadExecutionStoreLayerLive),
+    Layer.provide(CompositionTaskStoreLayerLive),
   );
 
 const CompositionSquadRunnerLayerLive = CompositionSquadRunner.layer.pipe(

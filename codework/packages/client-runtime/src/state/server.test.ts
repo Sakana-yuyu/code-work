@@ -169,6 +169,7 @@ describe("Composition Squad environment atoms", () => {
       "compositionSquad",
       "compositionSquadRevisions",
       "compositionSquadExecutions",
+      "compositionSquadExecutionSummaries",
       "createCompositionSquad",
       "updateCompositionSquad",
       "duplicateCompositionSquad",
@@ -238,6 +239,28 @@ describe("Composition Squad environment atoms", () => {
       atoms.compositionSquadExecutions({
         environmentId,
         input: { squadId: "squad-1", statuses: ["queued"], limit: 50 },
+      }),
+    );
+    expect(
+      atoms.compositionSquadExecutionSummaries({
+        environmentId,
+        input: { squadId: "squad-1", statuses: ["queued"], limit: 20 },
+      }),
+    ).toBe(
+      atoms.compositionSquadExecutionSummaries({
+        environmentId,
+        input: { squadId: "squad-1", statuses: ["queued"], limit: 20 },
+      }),
+    );
+    expect(
+      atoms.compositionSquadExecutionSummaries({
+        environmentId,
+        input: { squadId: "squad-1", statuses: ["queued"], limit: 20 },
+      }),
+    ).not.toBe(
+      atoms.compositionSquadExecutionSummaries({
+        environmentId,
+        input: { squadId: "squad-2", statuses: ["queued"], limit: 20 },
       }),
     );
   });
