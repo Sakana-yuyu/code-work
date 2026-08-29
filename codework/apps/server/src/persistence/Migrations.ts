@@ -54,24 +54,25 @@ import Migration0038 from "./Migrations/038_ProjectionThreadsPinOrderKey.ts";
 import Migration0039 from "./Migrations/039_ProjectionProjectsDefaultThreadEnvMode.ts";
 import Migration0040 from "./Migrations/040_ProjectionProjectFaviconPath.ts";
 import Migration0041 from "./Migrations/041_AuthSessionClientConnection.ts";
-import Migration0042 from "./Migrations/042_CompositionTasks.ts";
-import Migration0043 from "./Migrations/043_CompositionTaskEventSourceId.ts";
-import Migration0044 from "./Migrations/044_CompositionTaskRunCapabilityGrants.ts";
-import Migration0045 from "./Migrations/045_CompositionCapabilityGrants.ts";
-import Migration0046 from "./Migrations/046_CompositionTaskRunCapabilityHandshake.ts";
-import Migration0047 from "./Migrations/047_CompositionTaskInputs.ts";
-import Migration0048 from "./Migrations/048_CompositionTaskRunRuntimeTaskIndex.ts";
-import Migration0049 from "./Migrations/049_CompositionTaskRunCancelRequestedAt.ts";
-import Migration0050 from "./Migrations/050_CompositionTaskRunLastRuntimeEventAt.ts";
-import Migration0051 from "./Migrations/051_CompositionMulticaQuickCreateIntents.ts";
-import Migration0052 from "./Migrations/052_CompositionMulticaQuickCreateIdempotencyKey.ts";
-import Migration0053 from "./Migrations/053_CompositionTaskOutputCheckpoints.ts";
-import Migration0054 from "./Migrations/054_ProjectionThreadLinkedPullRequest.ts";
-import Migration0055 from "./Migrations/055_ProjectionThreadsUnsettledAt.ts";
+import Migration0042 from "./Migrations/042_ProjectionThreadLinkedPullRequest.ts";
+import Migration0043 from "./Migrations/043_ProjectionThreadsUnsettledAt.ts";
+import Migration0044 from "./Migrations/044_CompositionTasks.ts";
+import Migration0045 from "./Migrations/045_CompositionTaskEventSourceId.ts";
+import Migration0046 from "./Migrations/046_CompositionTaskRunCapabilityGrants.ts";
+import Migration0047 from "./Migrations/047_CompositionCapabilityGrants.ts";
+import Migration0048 from "./Migrations/048_CompositionTaskRunCapabilityHandshake.ts";
+import Migration0049 from "./Migrations/049_CompositionTaskInputs.ts";
+import Migration0050 from "./Migrations/050_CompositionTaskRunRuntimeTaskIndex.ts";
+import Migration0051 from "./Migrations/051_CompositionTaskRunCancelRequestedAt.ts";
+import Migration0052 from "./Migrations/052_CompositionTaskRunLastRuntimeEventAt.ts";
+import Migration0053 from "./Migrations/053_CompositionMulticaQuickCreateIntents.ts";
+import Migration0054 from "./Migrations/054_CompositionMulticaQuickCreateIdempotencyKey.ts";
+import Migration0055 from "./Migrations/055_CompositionTaskOutputCheckpoints.ts";
 import Migration0056 from "./Migrations/056_CompositionSquadConfiguration.ts";
 import Migration0057 from "./Migrations/057_CompositionAutomations.ts";
 import Migration0058 from "./Migrations/058_CompositionAutomationOperations.ts";
 import Migration0059 from "./Migrations/059_WorkspaceScriptRuns.ts";
+import Migration0060 from "./Migrations/060_CompositionMigrationHistoryReconciliation.ts";
 
 /**
  * Migration loader with all migrations defined inline.
@@ -125,24 +126,28 @@ export const migrationEntries = [
   [39, "ProjectionProjectsDefaultThreadEnvMode", Migration0039],
   [40, "ProjectionProjectFaviconPath", Migration0040],
   [41, "AuthSessionClientConnection", Migration0041],
-  [42, "CompositionTasks", Migration0042],
-  [43, "CompositionTaskEventSourceId", Migration0043],
-  [44, "CompositionTaskRunCapabilityGrants", Migration0044],
-  [45, "CompositionCapabilityGrants", Migration0045],
-  [46, "CompositionTaskRunCapabilityHandshake", Migration0046],
-  [47, "CompositionTaskInputs", Migration0047],
-  [48, "CompositionTaskRunRuntimeTaskIndex", Migration0048],
-  [49, "CompositionTaskRunCancelRequestedAt", Migration0049],
-  [50, "CompositionTaskRunLastRuntimeEventAt", Migration0050],
-  [51, "CompositionMulticaQuickCreateIntents", Migration0051],
-  [52, "CompositionMulticaQuickCreateIdempotencyKey", Migration0052],
-  [53, "CompositionTaskOutputCheckpoints", Migration0053],
-  [54, "ProjectionThreadLinkedPullRequest", Migration0054],
-  [55, "ProjectionThreadsUnsettledAt", Migration0055],
+  // 规范历史让 upstream Projection 占用 42/43，Composition 顺延到 44-55。
+  // 已经记录 Composition-first 历史的数据库保留原记录，由 060 幂等补齐；
+  // 迁移 id 从此只允许追加，不能再次重编号。
+  [42, "ProjectionThreadLinkedPullRequest", Migration0042],
+  [43, "ProjectionThreadsUnsettledAt", Migration0043],
+  [44, "CompositionTasks", Migration0044],
+  [45, "CompositionTaskEventSourceId", Migration0045],
+  [46, "CompositionTaskRunCapabilityGrants", Migration0046],
+  [47, "CompositionCapabilityGrants", Migration0047],
+  [48, "CompositionTaskRunCapabilityHandshake", Migration0048],
+  [49, "CompositionTaskInputs", Migration0049],
+  [50, "CompositionTaskRunRuntimeTaskIndex", Migration0050],
+  [51, "CompositionTaskRunCancelRequestedAt", Migration0051],
+  [52, "CompositionTaskRunLastRuntimeEventAt", Migration0052],
+  [53, "CompositionMulticaQuickCreateIntents", Migration0053],
+  [54, "CompositionMulticaQuickCreateIdempotencyKey", Migration0054],
+  [55, "CompositionTaskOutputCheckpoints", Migration0055],
   [56, "CompositionSquadConfiguration", Migration0056],
   [57, "CompositionAutomations", Migration0057],
   [58, "CompositionAutomationOperations", Migration0058],
   [59, "WorkspaceScriptRuns", Migration0059],
+  [60, "CompositionMigrationHistoryReconciliation", Migration0060],
 ] as const;
 
 export const migrationManifest = migrationEntries.map(([id, name]) => [id, name] as const);

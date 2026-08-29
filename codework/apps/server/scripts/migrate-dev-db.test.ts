@@ -6,6 +6,7 @@ import * as Path from "effect/Path";
 import * as SqlClient from "effect/unstable/sql/SqlClient";
 
 import { runMigrations } from "../src/persistence/Migrations.ts";
+import { frozenLegacyCompositionMigrations } from "../src/persistence/Migrations/CompositionMigrationHistory.fixture.ts";
 import * as NodeSqliteClient from "../src/persistence/NodeSqliteClient.ts";
 import { runMigrateDevDb } from "./migrate-dev-db.ts";
 
@@ -61,6 +62,26 @@ const createFixtureSource = Effect.fn("createMigrateDevDbFixtureSource")(functio
     }),
   );
   return databasePath;
+});
+
+const rewriteCompositionHistoryAsLegacy = Effect.fn("rewriteCompositionHistoryAsLegacy")(function* (
+  databasePath: string,
+  throughId: number,
+) {
+  yield* withDatabase(
+    databasePath,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      for (const migration of frozenLegacyCompositionMigrations) {
+        if (migration.id > throughId || migration.id > 55) break;
+        yield* sql`
+            UPDATE effect_sql_migrations
+            SET name = ${migration.name}
+            WHERE migration_id = ${migration.id}
+          `;
+      }
+    }),
+  );
 });
 
 it.layer(NodeServices.layer)("migrate-dev-db", (it) => {
@@ -128,6 +149,117 @@ it.layer(NodeServices.layer)("migrate-dev-db", (it) => {
       if (error._tag === "MigrateDevDbSlotCollisionError") {
         assert.equal(error.slot, 1);
         assert.equal(error.appliedName, "SomebodyElsesMigration");
+      }
+    }),
+  );
+
+  it.effect("接受已经由 060 收敛的完整 Composition-first 历史", () =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem;
+      const sourceDir = yield* fs.makeTempDirectoryScoped({ prefix: "migrate-dev-db-legacy-" });
+      const destDir = yield* fs.makeTempDirectoryScoped({
+        prefix: "migrate-dev-db-legacy-dest-",
+      });
+      const source = yield* createFixtureSource(sourceDir);
+      yield* rewriteCompositionHistoryAsLegacy(source, 55);
+
+      const result = yield* runMigrateDevDb(
+        { baseDir: destDir, source, projects: 5, threadsPerProject: 10 },
+        { sharedHome: sourceDir },
+      );
+
+      assert.deepEqual(result.executedMigrations, []);
+    }),
+  );
+
+  it.effect("接受 legacy 前缀与 canonical 后缀组成的已收敛历史", () =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem;
+      const sourceDir = yield* fs.makeTempDirectoryScoped({
+        prefix: "migrate-dev-db-legacy-prefix-",
+      });
+      const destDir = yield* fs.makeTempDirectoryScoped({
+        prefix: "migrate-dev-db-legacy-prefix-dest-",
+      });
+      const source = yield* createFixtureSource(sourceDir);
+      yield* rewriteCompositionHistoryAsLegacy(source, 46);
+
+      const result = yield* runMigrateDevDb(
+        { baseDir: destDir, source, projects: 5, threadsPerProject: 10 },
+        { sharedHome: sourceDir },
+      );
+
+      assert.deepEqual(result.executedMigrations, []);
+    }),
+  );
+
+  it.effect("拒绝 canonical 槽位之后再次出现 legacy 名称", () =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem;
+      const sourceDir = yield* fs.makeTempDirectoryScoped({
+        prefix: "migrate-dev-db-invalid-mixed-",
+      });
+      const destDir = yield* fs.makeTempDirectoryScoped({
+        prefix: "migrate-dev-db-invalid-mixed-dest-",
+      });
+      const source = yield* createFixtureSource(sourceDir);
+      yield* withDatabase(
+        source,
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          yield* sql`
+            UPDATE effect_sql_migrations
+            SET name = 'CompositionTaskEventSourceId'
+            WHERE migration_id = 43
+          `;
+        }),
+      );
+
+      const error = yield* runMigrateDevDb(
+        { baseDir: destDir, source, projects: 5, threadsPerProject: 10 },
+        { sharedHome: sourceDir },
+      ).pipe(Effect.flip);
+
+      assert.equal(error._tag, "MigrateDevDbSlotCollisionError");
+      if (error._tag === "MigrateDevDbSlotCollisionError") {
+        assert.equal(error.slot, 43);
+        assert.equal(error.appliedName, "CompositionTaskEventSourceId");
+      }
+    }),
+  );
+
+  it.effect("缺少准确的 060 记录时不放行 legacy 历史", () =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem;
+      const sourceDir = yield* fs.makeTempDirectoryScoped({
+        prefix: "migrate-dev-db-missing-reconciliation-",
+      });
+      const destDir = yield* fs.makeTempDirectoryScoped({
+        prefix: "migrate-dev-db-missing-reconciliation-dest-",
+      });
+      const source = yield* createFixtureSource(sourceDir);
+      yield* rewriteCompositionHistoryAsLegacy(source, 55);
+      yield* withDatabase(
+        source,
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          yield* sql`DELETE FROM effect_sql_migrations WHERE migration_id = 60`;
+          yield* sql`
+            INSERT INTO effect_sql_migrations (migration_id, name)
+            VALUES (61, 'FutureMigrationWithoutReconciliation')
+          `;
+        }),
+      );
+
+      const error = yield* runMigrateDevDb(
+        { baseDir: destDir, source, projects: 5, threadsPerProject: 10 },
+        { sharedHome: sourceDir },
+      ).pipe(Effect.flip);
+
+      assert.equal(error._tag, "MigrateDevDbSlotCollisionError");
+      if (error._tag === "MigrateDevDbSlotCollisionError") {
+        assert.equal(error.slot, 42);
+        assert.equal(error.appliedName, "CompositionTasks");
       }
     }),
   );

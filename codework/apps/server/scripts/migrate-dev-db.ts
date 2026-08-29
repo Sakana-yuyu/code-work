@@ -333,6 +333,50 @@ const pruneSnapshot = Effect.fn("pruneDevDbSnapshot")(function* (input: RunMigra
   };
 });
 
+const reconciledCompositionMigrationName = "CompositionMigrationHistoryReconciliation";
+const legacyCompositionMigrationNames = [
+  [42, "CompositionTasks"],
+  [43, "CompositionTaskEventSourceId"],
+  [44, "CompositionTaskRunCapabilityGrants"],
+  [45, "CompositionCapabilityGrants"],
+  [46, "CompositionTaskRunCapabilityHandshake"],
+  [47, "CompositionTaskInputs"],
+  [48, "CompositionTaskRunRuntimeTaskIndex"],
+  [49, "CompositionTaskRunCancelRequestedAt"],
+  [50, "CompositionTaskRunLastRuntimeEventAt"],
+  [51, "CompositionMulticaQuickCreateIntents"],
+  [52, "CompositionMulticaQuickCreateIdempotencyKey"],
+  [53, "CompositionTaskOutputCheckpoints"],
+  [54, "ProjectionThreadLinkedPullRequest"],
+  [55, "ProjectionThreadsUnsettledAt"],
+] as const;
+
+const canonicalMigrationNamesById = new Map<number, string>(migrationManifest);
+const legacyCompositionMigrationNamesById = new Map<number, string>(
+  legacyCompositionMigrationNames,
+);
+
+const hasReconciledCompositionHistory = (appliedById: ReadonlyMap<number, string>): boolean => {
+  if (appliedById.get(60) !== reconciledCompositionMigrationName) return false;
+
+  // 旧版本可能在任意 042-055 节点停止；升级后只会形成 legacy 连续前缀，
+  // 后接 canonical 连续后缀。拒绝 canonical 之后再次出现 legacy 的拼接历史。
+  let canonicalTailStarted = false;
+  for (const [slot, legacyName] of legacyCompositionMigrationNames) {
+    const appliedName = appliedById.get(slot);
+    if (appliedName === legacyName) {
+      if (canonicalTailStarted) return false;
+      continue;
+    }
+    if (appliedName === canonicalMigrationNamesById.get(slot)) {
+      canonicalTailStarted = true;
+      continue;
+    }
+    return false;
+  }
+  return true;
+};
+
 /** Compare this checkout's migration registry against what the cloned
  * database recorded: same slot under a different name means the migration
  * was skipped, not applied. */
@@ -341,9 +385,16 @@ const verifyMigrationSlots = Effect.fn("verifyMigrationSlots")(function* () {
   const applied = yield* sql<{ migration_id: number; name: string }>`
     SELECT migration_id, name FROM effect_sql_migrations`;
   const appliedById = new Map(applied.map((row) => [Number(row.migration_id), row.name]));
+  const acceptsLegacyCompositionNames = hasReconciledCompositionHistory(appliedById);
   for (const [slot, codeName] of migrationManifest) {
     const appliedName = appliedById.get(slot);
     if (appliedName !== undefined && appliedName !== codeName) {
+      if (
+        acceptsLegacyCompositionNames &&
+        legacyCompositionMigrationNamesById.get(slot) === appliedName
+      ) {
+        continue;
+      }
       return yield* new MigrateDevDbSlotCollisionError({ slot, codeName, appliedName });
     }
   }

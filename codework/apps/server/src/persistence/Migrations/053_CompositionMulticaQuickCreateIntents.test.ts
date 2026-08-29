@@ -8,13 +8,13 @@ import * as NodeSqliteClient from "../NodeSqliteClient.ts";
 
 const layer = it.layer(Layer.mergeAll(NodeSqliteClient.layerMemory()));
 
-layer("051_CompositionMulticaQuickCreateIntents", (it) => {
+layer("053_CompositionMulticaQuickCreateIntents", (it) => {
   it.effect("为已有数据库添加不含 prompt 或凭据的 quick-create 发送账本", () =>
     Effect.gen(function* () {
       const sql = yield* SqlClient.SqlClient;
 
-      yield* runMigrations({ toMigrationInclusive: 50 });
-      yield* runMigrations({ toMigrationInclusive: 51 });
+      yield* runMigrations({ toMigrationInclusive: 52 });
+      yield* runMigrations({ toMigrationInclusive: 53 });
 
       const columns = yield* sql<{ readonly name: string; readonly notnull: number }>`
         PRAGMA table_info(composition_multica_quick_create_intents)
@@ -39,7 +39,7 @@ layer("051_CompositionMulticaQuickCreateIntents", (it) => {
           run_id, task_id, runtime_id, idempotency_key, state,
           created_at_unix_ms, updated_at_unix_ms
         ) VALUES (
-          'run-before-51', 'task-before-51', 'multica:runtime-1', 'run-before-51', 'prepared',
+          'run-before-53', 'task-before-53', 'multica:runtime-1', 'run-before-53', 'prepared',
           1, 1
         )
       `;
@@ -60,7 +60,7 @@ layer("051_CompositionMulticaQuickCreateIntents", (it) => {
           created_at_unix_ms, updated_at_unix_ms
         ) VALUES (
           'run-duplicate-key-51', 'task-duplicate-key-51',
-          'multica:runtime-1', 'run-before-51', 'prepared', 2, 2
+          'multica:runtime-1', 'run-before-53', 'prepared', 2, 2
         )
       `);
       assert.equal(duplicateRuntimeKey._tag, "Failure");
@@ -70,8 +70,8 @@ layer("051_CompositionMulticaQuickCreateIntents", (it) => {
           run_id, task_id, runtime_id, idempotency_key, state,
           created_at_unix_ms, updated_at_unix_ms
         ) VALUES (
-          'run-other-runtime-51', 'task-other-runtime-51',
-          'multica:runtime-2', 'run-before-51', 'prepared', 2, 2
+          'run-other-runtime-53', 'task-other-runtime-53',
+          'multica:runtime-2', 'run-before-53', 'prepared', 2, 2
         )
       `);
       assert.equal(sameKeyOtherRuntime._tag, "Success");
