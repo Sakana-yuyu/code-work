@@ -769,11 +769,12 @@ const makeOrchestrator = (
         yield* revokeRunCapabilities(driver, failedTask, failedRun);
         yield* store.upsertTask(failedTask);
         yield* store.upsertRun(failedRun);
+        const events = yield* store.listEvents(failedTask.taskId, failedRun.runId);
         yield* store.appendEvent(
           makeEvent({
             task: failedTask,
             run: failedRun,
-            sequence: 1,
+            sequence: events.length,
             status: "failed",
             eventType: "status",
             summary: "Agent Driver 不可用",

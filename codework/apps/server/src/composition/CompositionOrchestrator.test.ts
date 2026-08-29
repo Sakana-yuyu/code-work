@@ -1639,6 +1639,41 @@ layer("CompositionOrchestrator", (it) => {
       );
     }),
   );
+  it.effect("Driver 不可用时在 grant 投影之后继续递增事件序号", () =>
+    Effect.gen(function* () {
+      const store = yield* CompositionTaskStore;
+      const driverRegistry = makeCompositionAgentDriverRegistry();
+      const grantRegistry = makeCapabilityGrantRegistry({
+        capabilityRegistry: makeCompositionCapabilityRegistry(),
+      });
+      const orchestrator = makeCompositionOrchestrator(store, driverRegistry, grantRegistry);
+
+      const result = yield* orchestrator.dispatchTask({
+        taskId: "task-grant-driver-unavailable",
+        runId: "run-grant-driver-unavailable",
+        projectId: "project-grant-driver-unavailable",
+        assigneeKind: "agent",
+        assigneeId: "agent-driver-unavailable",
+        mode: "serial",
+        promptDigest: "sha256:grant-driver-unavailable",
+        prompt: "验证 grant 投影后的 Driver 不可用终态",
+        workspaceRoot: "C:/workspace/grant-driver-unavailable",
+        capabilityIds: ["t3.workspace.read_file"],
+        dependsOnTaskIds: [],
+      });
+
+      assert.equal(result.task.status, "failed");
+      assert.equal(result.run.failureCode, "agent_driver_unavailable");
+      const events = yield* store.listEvents(result.task.taskId, result.run.runId);
+      assert.deepEqual(
+        events.map((event) => event.sequence),
+        [0, 1, 2, 3],
+      );
+      assert.equal(events[1]?.sourceEventId?.endsWith(":issued"), true);
+      assert.equal(events[2]?.sourceEventId?.endsWith(":revoked"), true);
+      assert.equal(events[3]?.summary, "Agent Driver 不可用");
+    }),
+  );
   it.effect("旧 Run 的 grant 撤销在重试时投影为幂等事件", () =>
     Effect.gen(function* () {
       const store = yield* CompositionTaskStore;
