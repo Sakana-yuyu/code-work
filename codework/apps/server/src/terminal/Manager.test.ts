@@ -348,6 +348,69 @@ it.layer(
     }),
   );
 
+  it.effect("运行中的 on_exit 命令从内存返回最新历史且不会创建额外 PTY", () =>
+    Effect.gen(function* () {
+      const { manager, ptyAdapter, getEvents } = yield* createManager();
+      yield* manager.runCommand({
+        threadId: "run-history-live",
+        terminalId: "command-history-live",
+        cwd: process.cwd(),
+        command: "long-running-command",
+      });
+      const processHandle = ptyAdapter.processes[0];
+      expect(processHandle).toBeDefined();
+      if (!processHandle) return;
+
+      processHandle.emitData("live-output\n");
+      yield* waitFor(
+        Effect.map(getEvents, (events) =>
+          events.some(
+            (event) =>
+              event.type === "output" &&
+              event.threadId === "run-history-live" &&
+              event.terminalId === "command-history-live",
+          ),
+        ),
+      );
+
+      expect(
+        yield* manager.getHistory({
+          threadId: "run-history-live",
+          terminalId: "command-history-live",
+        }),
+      ).toBe("live-output\n");
+      expect(ptyAdapter.spawnInputs).toHaveLength(1);
+    }),
+  );
+
+  it.effect("无活动会话时读取持久化历史或空结果且不会创建 PTY", () =>
+    Effect.gen(function* () {
+      const { manager, logsDir, ptyAdapter } = yield* createManager();
+      const fs = yield* FileSystem.FileSystem;
+      const persistedPath = yield* multiTerminalHistoryLogPath(
+        logsDir,
+        "run-history-persisted",
+        "command-history-persisted",
+      );
+      yield* fs.makeDirectory(logsDir, { recursive: true });
+      yield* fs.writeFileString(persistedPath, "persisted-output\n");
+
+      expect(
+        yield* manager.getHistory({
+          threadId: "run-history-persisted",
+          terminalId: "command-history-persisted",
+        }),
+      ).toBe("persisted-output\n");
+      expect(
+        yield* manager.getHistory({
+          threadId: "run-history-missing",
+          terminalId: "command-history-missing",
+        }),
+      ).toBe("");
+      expect(ptyAdapter.spawnInputs).toHaveLength(0);
+    }),
+  );
+
   it.effect("kill 只终止进程并保留 handle，close 才释放 session", () =>
     Effect.gen(function* () {
       const { manager, ptyAdapter } = yield* createManager();

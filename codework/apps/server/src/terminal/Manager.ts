@@ -140,6 +140,11 @@ export class TerminalManager extends Context.Service<
       input: TerminalRunCommandInput,
     ) => Effect.Effect<TerminalSessionSnapshot, TerminalError>;
 
+    /** 读取活动会话的内存历史；无活动会话时回退到持久化日志。 */
+    readonly getHistory: (
+      input: TerminalHistoryInput,
+    ) => Effect.Effect<string, TerminalHistoryError>;
+
     /**
      * Attach to a terminal and stream its initial snapshot followed by live events.
      *
@@ -250,6 +255,11 @@ export interface TerminalRunCommandInput extends TerminalOpenInput {
 }
 
 export interface TerminalKillInput {
+  readonly threadId: string;
+  readonly terminalId: string;
+}
+
+export interface TerminalHistoryInput {
   readonly threadId: string;
   readonly terminalId: string;
 }
@@ -2371,6 +2381,16 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
   const runCommand: TerminalManager["Service"]["runCommand"] = (input) =>
     withThreadLock(input.threadId, runCommandLocked(input));
 
+  const getHistory: TerminalManager["Service"]["getHistory"] = (input) =>
+    withThreadLock(
+      input.threadId,
+      Effect.gen(function* () {
+        const session = yield* getSession(input.threadId, input.terminalId);
+        if (Option.isSome(session)) return session.value.history;
+        return yield* readHistory(input.threadId, input.terminalId);
+      }),
+    );
+
   const openOrAttachForStream = (input: TerminalAttachInput) =>
     withThreadLock(
       input.threadId,
@@ -2784,6 +2804,7 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
   return TerminalManager.of({
     open,
     runCommand,
+    getHistory,
     attachStream,
     write,
     resize,
