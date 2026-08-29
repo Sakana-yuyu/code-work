@@ -168,6 +168,7 @@ describe("Composition Squad environment atoms", () => {
       "compositionSquads",
       "compositionSquad",
       "compositionSquadRevisions",
+      "compositionSquadExecutions",
       "createCompositionSquad",
       "updateCompositionSquad",
       "duplicateCompositionSquad",
@@ -183,6 +184,61 @@ describe("Composition Squad environment atoms", () => {
     );
     expect(atoms.compositionSquad({ environmentId, input: { squadId: "squad-1" } })).not.toBe(
       atoms.compositionSquad({ environmentId, input: { squadId: "squad-2" } }),
+    );
+    expect(
+      atoms.compositionSquadExecutions({
+        environmentId,
+        input: { squadId: "squad-1", statuses: ["queued"], limit: 20 },
+      }),
+    ).toBe(
+      atoms.compositionSquadExecutions({
+        environmentId,
+        input: { squadId: "squad-1", statuses: ["queued"], limit: 20 },
+      }),
+    );
+    expect(
+      atoms.compositionSquadExecutions({
+        environmentId,
+        input: { squadId: "squad-1", statuses: ["queued"], limit: 20 },
+      }),
+    ).not.toBe(
+      atoms.compositionSquadExecutions({
+        environmentId: EnvironmentId.make("environment-2"),
+        input: { squadId: "squad-1", statuses: ["queued"], limit: 20 },
+      }),
+    );
+    expect(
+      atoms.compositionSquadExecutions({
+        environmentId,
+        input: { squadId: "squad-1", statuses: ["queued"], limit: 20 },
+      }),
+    ).not.toBe(
+      atoms.compositionSquadExecutions({
+        environmentId,
+        input: { squadId: "squad-2", statuses: ["queued"], limit: 20 },
+      }),
+    );
+    expect(
+      atoms.compositionSquadExecutions({
+        environmentId,
+        input: { squadId: "squad-1", statuses: ["queued"], limit: 20 },
+      }),
+    ).not.toBe(
+      atoms.compositionSquadExecutions({
+        environmentId,
+        input: { squadId: "squad-1", statuses: ["failed"], limit: 20 },
+      }),
+    );
+    expect(
+      atoms.compositionSquadExecutions({
+        environmentId,
+        input: { squadId: "squad-1", statuses: ["queued"], limit: 20 },
+      }),
+    ).not.toBe(
+      atoms.compositionSquadExecutions({
+        environmentId,
+        input: { squadId: "squad-1", statuses: ["queued"], limit: 50 },
+      }),
     );
   });
 

@@ -248,6 +248,12 @@ export function createCompositionSquadEnvironmentAtoms<R, E>(
       staleTimeMs: 2_000,
       idleTtlMs: 60_000,
     }),
+    compositionSquadExecutions: createEnvironmentRpcQueryAtomFamily(runtime, {
+      label: "environment-data:server:composition-squad-executions",
+      tag: WS_METHODS.serverListCompositionSquadExecutions,
+      staleTimeMs: 1_000,
+      idleTtlMs: 30_000,
+    }),
     createCompositionSquad: createEnvironmentRpcCommand(runtime, {
       label: "environment-data:server:create-composition-squad",
       tag: WS_METHODS.serverCreateCompositionSquad,
