@@ -6,9 +6,14 @@ import type {
 } from "@codework/contracts";
 import { ProjectId } from "@codework/contracts";
 import { assert, describe, it } from "@effect/vitest";
+import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
+import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 
+import { WorkspaceScriptStoreLive } from "../persistence/Layers/WorkspaceScriptStore.ts";
+import { SqlitePersistenceMemory } from "../persistence/Layers/Sqlite.ts";
+import { WorkspaceScriptStore } from "../persistence/Services/WorkspaceScriptStore.ts";
 import {
   makeWorkspaceScriptService,
   type WorkspaceScriptTerminalPort,
@@ -94,19 +99,26 @@ const makeFixture = () => {
       }),
   };
 
-  return Effect.map(
-    makeWorkspaceScriptService({
-      terminal,
-      resolveProject: (projectId) =>
-        Effect.succeed(projectId === PROJECT.id ? Option.some(PROJECT) : Option.none()),
-      resolveThreadProjectId: (threadId) =>
-        Effect.succeed(threadId === "thread-1" ? Option.some(PROJECT.id) : Option.none()),
-      platform: "win32",
-      windowsComSpec: "C:/Windows/System32/cmd.exe",
-      now: () => nowUnixMs++,
-    }),
-    (service) => ({ service, starts, kills, emit }),
-  );
+  const storeLayer = WorkspaceScriptStoreLive.pipe(Layer.provideMerge(SqlitePersistenceMemory));
+
+  return Effect.gen(function* () {
+    const storeContext = yield* Layer.build(storeLayer);
+    const store = Context.get(storeContext, WorkspaceScriptStore);
+    const makeService = () =>
+      makeWorkspaceScriptService({
+        store,
+        terminal,
+        resolveProject: (projectId) =>
+          Effect.succeed(projectId === PROJECT.id ? Option.some(PROJECT) : Option.none()),
+        resolveThreadProjectId: (threadId) =>
+          Effect.succeed(threadId === "thread-1" ? Option.some(PROJECT.id) : Option.none()),
+        platform: "win32",
+        windowsComSpec: "C:/Windows/System32/cmd.exe",
+        now: () => nowUnixMs++,
+      });
+    const service = yield* makeService();
+    return { service, starts, kills, emit, restartService: makeService };
+  });
 };
 
 const startRequest = {
@@ -166,8 +178,12 @@ describe("WorkspaceScriptService", () => {
       const { service, starts } = yield* makeFixture();
       yield* service.start(startRequest);
       const error = yield* service.start({ ...startRequest, scriptId: "test" }).pipe(Effect.flip);
+      const worktreeError = yield* service
+        .start({ ...startRequest, worktreePath: "E:/workspace/project-1-worktree" })
+        .pipe(Effect.flip);
 
       assert.equal(error.code, "workspace_script_idempotency_conflict");
+      assert.equal(worktreeError.code, "workspace_script_idempotency_conflict");
       assert.equal(starts.length, 1);
     }),
   );
@@ -216,6 +232,37 @@ describe("WorkspaceScriptService", () => {
     }),
   );
 
+  it.effect("并发终态事件只保留一个 CAS 赢家", () =>
+    Effect.gen(function* () {
+      const { service, emit } = yield* makeFixture();
+      const started = yield* service.start({ ...startRequest, operationId: "operation-race" });
+
+      yield* Effect.all(
+        [
+          emit({
+            type: "exited",
+            threadId: started.threadId,
+            terminalId: started.terminalId,
+            sequence: 2,
+            exitCode: 0,
+            exitSignal: null,
+          }),
+          emit({
+            type: "closed",
+            threadId: started.threadId,
+            terminalId: started.terminalId,
+            sequence: 3,
+          }),
+        ],
+        { concurrency: "unbounded" },
+      );
+
+      const settled = Option.getOrThrow(yield* service.get(started.workspaceScriptRunId));
+      assert.equal(settled.revision, started.revision + 1);
+      assert.isTrue(settled.status === "exited" || settled.status === "failed");
+    }),
+  );
+
   it.effect("stop 只终止 Run 自己持有的终端，同一 operationId 不重复 kill", () =>
     Effect.gen(function* () {
       const { service, kills } = yield* makeFixture();
@@ -252,6 +299,49 @@ describe("WorkspaceScriptService", () => {
         [run.workspaceScriptRunId],
       );
       assert.deepEqual(yield* service.list({ statuses: ["failed"] }), []);
+    }),
+  );
+
+  it.effect("新服务实例从持久化 Store 读取并收口旧实例的活跃 Run", () =>
+    Effect.gen(function* () {
+      const { service, restartService } = yield* makeFixture();
+      const started = yield* service.start({ ...startRequest, operationId: "operation-restart" });
+
+      const restarted = yield* restartService();
+      const recovered = Option.getOrThrow(yield* restarted.get(started.workspaceScriptRunId));
+
+      assert.equal(recovered.status, "failed");
+      assert.equal(recovered.errorCode, "workspace_script_server_restarted");
+      assert.deepEqual(
+        (yield* restarted.list({ statuses: ["failed"] })).map((run) => run.workspaceScriptRunId),
+        [started.workspaceScriptRunId],
+      );
+    }),
+  );
+
+  it.effect("停止 operation 跨服务实例重放时不会重复 kill", () =>
+    Effect.gen(function* () {
+      const { service, restartService, kills } = yield* makeFixture();
+      const started = yield* service.start({
+        ...startRequest,
+        operationId: "operation-stop-replay",
+      });
+      const stopped = yield* service.stop({
+        workspaceScriptRunId: started.workspaceScriptRunId,
+        operationId: "stop-operation-replay",
+        expectedRevision: started.revision,
+      });
+
+      const restarted = yield* restartService();
+      const repeated = yield* restarted.stop({
+        workspaceScriptRunId: started.workspaceScriptRunId,
+        operationId: "stop-operation-replay",
+        expectedRevision: started.revision,
+      });
+
+      assert.equal(kills.length, 1);
+      assert.equal(repeated.status, "stopped");
+      assert.equal(repeated.revision, stopped.revision);
     }),
   );
 });
