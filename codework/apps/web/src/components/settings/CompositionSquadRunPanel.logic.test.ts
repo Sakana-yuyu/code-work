@@ -1,15 +1,18 @@
 import type {
   CompositionSquad,
+  CompositionSquadExecution,
   CompositionTaskSnapshot,
   CompositionTaskStatus,
 } from "@codework/contracts";
-import { describe, expect, it } from "vite-plus/test";
+import { describe, expect, it, vi } from "vite-plus/test";
 
 import {
   advanceCompositionSquadRunDraft,
   buildCompositionSquadNodeActionRequest,
   buildCompositionSquadExecutionRequest,
   compositionSquadRunEnvironmentKey,
+  executeCompositionSquadNodeActionWithHistoryRefresh,
+  executeCompositionSquadRunWithHistoryRefresh,
   getCompositionSquadNodeActions,
   parseCompositionSquadExecutionTaskId,
   projectCompositionSquadExecutionHistory,
@@ -113,7 +116,70 @@ const taskSnapshot = (input: {
   },
 });
 
+const squadExecution = (
+  overrides: Partial<CompositionSquadExecution> = {},
+): CompositionSquadExecution => ({
+  executionId: "execution-record",
+  squadId: "squad-build",
+  squadRevision: 4,
+  projectId: "project-1",
+  goalDigest: "sha256:goal",
+  goalTaskId: "execution-record:squad:squad-build:r4:task:leader-plan",
+  workspaceRootDigest: "sha256:workspace",
+  status: "queued",
+  revision: 1,
+  leaderTaskId: "execution-record:squad:squad-build:r4:task:leader-finalize",
+  leaderRunId: "execution-record:squad:squad-build:r4:run:leader-finalize",
+  pendingApprovals: [],
+  createdAtUnixMs: 100,
+  updatedAtUnixMs: 100,
+  ...overrides,
+});
+
 describe("CompositionSquadRunPanel logic", () => {
+  it.each(["Success", "Failure"] as const)(
+    "运行命令返回 %s 时都刷新 execution 与 Task 历史",
+    async (_tag) => {
+      const result = { _tag };
+      const execute = vi.fn(async () => result);
+      const refreshExecutions = vi.fn();
+      const refreshTasks = vi.fn();
+
+      await expect(
+        executeCompositionSquadRunWithHistoryRefresh(execute, {
+          refreshExecutions,
+          refreshTasks,
+        }),
+      ).resolves.toBe(result);
+      expect(execute).toHaveBeenCalledOnce();
+      expect(refreshExecutions).toHaveBeenCalledOnce();
+      expect(refreshTasks).toHaveBeenCalledOnce();
+    },
+  );
+
+  it.each([
+    ["Success", 1],
+    ["Failure", 0],
+  ] as const)("节点操作返回 %s 时按结果刷新历史", async (_tag, refreshCount) => {
+    const result = { _tag };
+    const execute = vi.fn(async () => result);
+    const refreshExecutions = vi.fn();
+    const refreshTasks = vi.fn();
+    const refreshEvents = vi.fn();
+
+    await expect(
+      executeCompositionSquadNodeActionWithHistoryRefresh(execute, {
+        refreshExecutions,
+        refreshTasks,
+        refreshEvents,
+      }),
+    ).resolves.toBe(result);
+    expect(execute).toHaveBeenCalledOnce();
+    expect(refreshExecutions).toHaveBeenCalledTimes(refreshCount);
+    expect(refreshTasks).toHaveBeenCalledTimes(refreshCount);
+    expect(refreshEvents).toHaveBeenCalledTimes(refreshCount);
+  });
+
   it("将运行请求绑定到 executionId、Squad 和当前 revision，并修剪可选字段", () => {
     const result = buildCompositionSquadExecutionRequest(makeDraft(), dependencyGraphSquad);
 
@@ -313,47 +379,51 @@ describe("CompositionSquadRunPanel logic", () => {
   });
 
   it("从持久化 Task/Run 快照恢复 Squad execution 历史并按最新活动排序", () => {
-    const history = projectCompositionSquadExecutionHistory("squad-build", [
-      taskSnapshot({
-        taskId: "execution-old:squad:squad-build:r3:task:leader-finalize",
-        status: "completed",
-        updatedAtUnixMs: 100,
-        agentId: "agent-lead",
-        resultSummary: "旧运行已完成",
-      }),
-      taskSnapshot({
-        taskId: "execution-new:squad:squad-build:r4:task:review",
-        status: "failed",
-        updatedAtUnixMs: 220,
-        agentId: "agent-review",
-        failureCode: "provider_timeout",
-      }),
-      taskSnapshot({
-        taskId: "execution-new:squad:squad-build:r4:task:build",
-        status: "completed",
-        updatedAtUnixMs: 210,
-        agentId: "agent-build",
-        resultSummary: "实现完成",
-      }),
-      taskSnapshot({
-        taskId: "execution-new:squad:squad-build:r4:task:leader-finalize",
-        status: "in_review",
-        updatedAtUnixMs: 230,
-        agentId: "agent-lead",
-      }),
-      taskSnapshot({
-        taskId: "execution-new:squad:squad-build:r4:task:leader-plan",
-        status: "completed",
-        updatedAtUnixMs: 200,
-        agentId: "agent-lead",
-      }),
-      taskSnapshot({
-        taskId: "execution-other:squad:squad-other:r1:task:build",
-        status: "running",
-        updatedAtUnixMs: 999,
-        agentId: "agent-other",
-      }),
-    ]);
+    const history = projectCompositionSquadExecutionHistory(
+      "squad-build",
+      [],
+      [
+        taskSnapshot({
+          taskId: "execution-old:squad:squad-build:r3:task:leader-finalize",
+          status: "completed",
+          updatedAtUnixMs: 100,
+          agentId: "agent-lead",
+          resultSummary: "旧运行已完成",
+        }),
+        taskSnapshot({
+          taskId: "execution-new:squad:squad-build:r4:task:review",
+          status: "failed",
+          updatedAtUnixMs: 220,
+          agentId: "agent-review",
+          failureCode: "provider_timeout",
+        }),
+        taskSnapshot({
+          taskId: "execution-new:squad:squad-build:r4:task:build",
+          status: "completed",
+          updatedAtUnixMs: 210,
+          agentId: "agent-build",
+          resultSummary: "实现完成",
+        }),
+        taskSnapshot({
+          taskId: "execution-new:squad:squad-build:r4:task:leader-finalize",
+          status: "in_review",
+          updatedAtUnixMs: 230,
+          agentId: "agent-lead",
+        }),
+        taskSnapshot({
+          taskId: "execution-new:squad:squad-build:r4:task:leader-plan",
+          status: "completed",
+          updatedAtUnixMs: 200,
+          agentId: "agent-lead",
+        }),
+        taskSnapshot({
+          taskId: "execution-other:squad:squad-other:r1:task:build",
+          status: "running",
+          updatedAtUnixMs: 999,
+          agentId: "agent-other",
+        }),
+      ],
+    );
 
     expect(history.map((execution) => execution.executionId)).toEqual([
       "execution-new",
@@ -371,10 +441,111 @@ describe("CompositionSquadRunPanel logic", () => {
       "review",
       "leader-finalize",
     ]);
-    expect(history[0]?.nodes[2]?.snapshot.latestRun).toMatchObject({
+    expect(history[0]?.nodes[2]?.snapshot?.latestRun).toMatchObject({
       agentId: "agent-review",
       failureCode: "provider_timeout",
     });
+  });
+
+  it("以第一等 execution 为主源展示尚未创建 Task 的排队、规划和派发前失败记录", () => {
+    const history = projectCompositionSquadExecutionHistory(
+      "squad-build",
+      [
+        squadExecution(),
+        squadExecution({
+          executionId: "execution-planning",
+          goalTaskId: "execution-planning:squad:squad-build:r4:task:leader-plan",
+          leaderTaskId: "execution-planning:squad:squad-build:r4:task:leader-finalize",
+          leaderRunId: "execution-planning:squad:squad-build:r4:run:leader-finalize",
+          status: "planning",
+          revision: 2,
+          updatedAtUnixMs: 200,
+          startedAtUnixMs: 150,
+        }),
+        squadExecution({
+          executionId: "execution-failed-before-tasks",
+          goalTaskId: "execution-failed-before-tasks:squad:squad-build:r4:task:leader-plan",
+          leaderTaskId: "execution-failed-before-tasks:squad:squad-build:r4:task:leader-finalize",
+          leaderRunId: "execution-failed-before-tasks:squad:squad-build:r4:run:leader-finalize",
+          status: "failed",
+          revision: 3,
+          updatedAtUnixMs: 300,
+          startedAtUnixMs: 250,
+          finishedAtUnixMs: 300,
+          failureCode: "planner_unavailable",
+          failureDetail: "Leader planner unavailable.",
+        }),
+      ],
+      [],
+    );
+
+    expect(history.map((execution) => execution.executionId)).toEqual([
+      "execution-failed-before-tasks",
+      "execution-planning",
+      "execution-record",
+    ]);
+    expect(history[0]).toMatchObject({
+      source: "execution_record",
+      status: "failed",
+      failureCode: "planner_unavailable",
+      failureDetail: "Leader planner unavailable.",
+    });
+    expect(history[2]?.nodes.map((node) => node.nodeId)).toEqual([
+      "leader-plan",
+      "leader-finalize",
+    ]);
+    expect(history[2]?.nodes.every((node) => node.snapshot === undefined)).toBe(true);
+  });
+
+  it("按 execution 节点 binding 关联 Task snapshot，并只为未回填记录保留 legacy fallback", () => {
+    const buildTaskId = "opaque-task-binding-build-42";
+    const history = projectCompositionSquadExecutionHistory(
+      "squad-build",
+      [
+        squadExecution({
+          executionId: "execution-joined",
+          goalTaskId: "execution-joined:squad:squad-build:r4:task:leader-plan",
+          leaderTaskId: "execution-joined:squad:squad-build:r4:task:leader-finalize",
+          leaderRunId: "execution-joined:squad:squad-build:r4:run:leader-finalize",
+          status: "running",
+          revision: 4,
+          updatedAtUnixMs: 300,
+          nodes: [
+            {
+              nodeId: "build",
+              agentId: "agent-build",
+              taskId: buildTaskId,
+              runId: "run-build",
+              promptDigest: "sha256:build",
+              dependsOnNodeIds: [],
+            },
+          ],
+        }),
+      ],
+      [
+        taskSnapshot({
+          taskId: buildTaskId,
+          status: "running",
+          updatedAtUnixMs: 280,
+          agentId: "agent-build",
+        }),
+        taskSnapshot({
+          taskId: "execution-legacy:squad:squad-build:r3:task:leader-finalize",
+          status: "completed",
+          updatedAtUnixMs: 200,
+          agentId: "agent-lead",
+        }),
+      ],
+    );
+
+    expect(history.map((execution) => execution.executionId)).toEqual([
+      "execution-joined",
+      "execution-legacy",
+    ]);
+    expect(history[0]?.nodes.find((node) => node.nodeId === "build")?.snapshot?.task.taskId).toBe(
+      buildTaskId,
+    );
+    expect(history[1]).toMatchObject({ source: "legacy_tasks", status: "completed" });
   });
 
   it.each([

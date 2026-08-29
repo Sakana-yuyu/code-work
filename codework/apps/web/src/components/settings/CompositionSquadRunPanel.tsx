@@ -2,6 +2,7 @@
 
 import type {
   CompositionSquad,
+  CompositionSquadExecutionStatus,
   CompositionSquadExecutionResult,
   CompositionTaskEvent,
   CompositionTaskSnapshot,
@@ -44,6 +45,8 @@ import {
   buildCompositionSquadNodeActionRequest,
   buildCompositionSquadExecutionRequest,
   compositionSquadRunEnvironmentKey,
+  executeCompositionSquadNodeActionWithHistoryRefresh,
+  executeCompositionSquadRunWithHistoryRefresh,
   getCompositionSquadNodeActions,
   projectCompositionSquadExecutionHistory,
   type CompositionSquadExecutionHistoryItem,
@@ -55,8 +58,10 @@ import { SettingsSection } from "./settingsLayout";
 
 const EMPTY_SQUADS: ReadonlyArray<CompositionSquad> = [];
 
+type CompositionSquadRunStatus = CompositionTaskStatus | CompositionSquadExecutionStatus;
+
 const statusVariant = (
-  status: CompositionTaskStatus,
+  status: CompositionSquadRunStatus,
 ): "default" | "success" | "warning" | "error" | "secondary" | "outline" => {
   switch (status) {
     case "completed":
@@ -65,10 +70,14 @@ const statusVariant = (
     case "timed_out":
       return "error";
     case "cancelled":
+    case "paused":
       return "secondary";
+    case "awaiting_approval":
     case "in_review":
     case "waiting_approval":
       return "warning";
+    case "planning":
+    case "cancelling":
     case "running":
       return "default";
     default:
@@ -76,7 +85,7 @@ const statusVariant = (
   }
 };
 
-const statusLabel = (status: CompositionTaskStatus): string => t(`squadRun.status.${status}`);
+const statusLabel = (status: CompositionSquadRunStatus): string => t(`squadRun.status.${status}`);
 
 const issueLabel = (issue: CompositionSquadRunIssue): string =>
   t(`squadRun.validation.${issue.code}`, { path: issue.path });
@@ -131,7 +140,7 @@ function ResultRow({
 }: {
   readonly nodeId: string;
   readonly label: string;
-  readonly status: CompositionTaskStatus | "skipped";
+  readonly status: CompositionSquadRunStatus | "skipped";
   readonly attempts?: number;
   readonly agentId?: string;
   readonly summary?: string;
@@ -377,8 +386,36 @@ function CompositionSquadExecutionHistoryView({
               </span>
             </div>
           </summary>
+          {execution.failureCode === undefined && execution.failureDetail === undefined ? null : (
+            <div className="flex flex-col gap-1 border-t border-border/60 bg-destructive/5 px-3 py-2 sm:flex-row sm:items-start sm:justify-between sm:px-4">
+              {execution.failureDetail === undefined ? null : (
+                <p className="min-w-0 text-xs leading-relaxed text-destructive">
+                  {execution.failureDetail}
+                </p>
+              )}
+              {execution.failureCode === undefined ? null : (
+                <code className="max-w-full shrink-0 overflow-hidden text-ellipsis rounded bg-destructive/10 px-2 py-1 text-[11px] text-destructive">
+                  {execution.failureCode}
+                </code>
+              )}
+            </div>
+          )}
           <div className="border-t border-border/60">
-            {execution.nodes.map(({ nodeId, snapshot }) => {
+            {execution.nodes.map((node) => {
+              const { nodeId, snapshot } = node;
+              if (snapshot === undefined) {
+                return (
+                  <div key={`${nodeId}:${node.taskId}`} data-squad-history-node={nodeId}>
+                    <ResultRow
+                      nodeId={nodeId}
+                      label={historyNodeLabel(nodeId)}
+                      status={execution.status}
+                      {...(node.agentId === undefined ? {} : { agentId: node.agentId })}
+                      summary={node.taskId}
+                    />
+                  </div>
+                );
+              }
               const latestRun = snapshot.latestRun;
               const agentId = latestRun?.agentId ?? snapshot.task.assigneeId;
               const capabilityIds =
@@ -578,6 +615,18 @@ function CompositionSquadRunEnvironmentPanel({
           input: { projectId: draft.projectId },
         }),
   );
+  const executionsQuery = useEnvironmentQuery(
+    environmentId === null || draft.projectId.trim().length === 0 || selectedSquadId.length === 0
+      ? null
+      : serverEnvironment.compositionSquadExecutions({
+          environmentId,
+          input: {
+            projectId: draft.projectId,
+            squadId: selectedSquadId,
+            limit: 50,
+          },
+        }),
+  );
   const [pending, setPending] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
   const [nodeActionReason, setNodeActionReason] = useState("");
@@ -600,27 +649,33 @@ function CompositionSquadRunEnvironmentPanel({
         ? []
         : projectCompositionSquadExecutionHistory(
             selectedSquad.squadId,
+            executionsQuery.data?.executions ?? [],
             tasksQuery.data?.tasks ?? [],
           ),
-    [selectedSquad, tasksQuery.data?.tasks],
+    [executionsQuery.data?.executions, selectedSquad, tasksQuery.data?.tasks],
   );
   const selectedHistoryNode = useMemo(() => {
     const nodes = executionHistory.flatMap((execution) => execution.nodes);
     return (
-      nodes.find((node) => node.snapshot.task.taskId === selectedHistoryTaskId) ??
-      executionHistory[0]?.nodes.find((node) => node.nodeId === "leader-finalize") ??
-      executionHistory[0]?.nodes[0] ??
+      nodes.find((node) => node.snapshot?.task.taskId === selectedHistoryTaskId) ??
+      executionHistory[0]?.nodes.find(
+        (node) => node.nodeId === "leader-finalize" && node.snapshot !== undefined,
+      ) ??
+      executionHistory[0]?.nodes.find((node) => node.snapshot !== undefined) ??
       null
     );
   }, [executionHistory, selectedHistoryTaskId]);
-  const selectedHistoryRun = selectedHistoryNode?.snapshot.latestRun;
+  const selectedHistorySnapshot = selectedHistoryNode?.snapshot;
+  const selectedHistoryRun = selectedHistorySnapshot?.latestRun;
   const eventsQuery = useEnvironmentQuery(
-    environmentId === null || selectedHistoryNode === null || selectedHistoryRun === undefined
+    environmentId === null ||
+      selectedHistorySnapshot === undefined ||
+      selectedHistoryRun === undefined
       ? null
       : serverEnvironment.listCompositionTaskEvents({
           environmentId,
           input: {
-            taskId: selectedHistoryNode.snapshot.task.taskId,
+            taskId: selectedHistorySnapshot.task.taskId,
             runId: selectedHistoryRun.runId,
           },
         }),
@@ -662,14 +717,23 @@ function CompositionSquadRunEnvironmentPanel({
   };
 
   const run = async (): Promise<void> => {
-    if (environmentId === null || buildResult.request === null || pending) return;
+    const request = buildResult.request;
+    if (environmentId === null || request === null || pending) return;
     setPending(true);
     setActionError(null);
     setExecutionResult(null);
-    const result: AtomCommandResult<CompositionSquadExecutionResult, unknown> = await runSquad({
-      environmentId,
-      input: buildResult.request,
-    });
+    const result: AtomCommandResult<CompositionSquadExecutionResult, unknown> =
+      await executeCompositionSquadRunWithHistoryRefresh(
+        () =>
+          runSquad({
+            environmentId,
+            input: request,
+          }),
+        {
+          refreshExecutions: executionsQuery.refresh,
+          refreshTasks: tasksQuery.refresh,
+        },
+      );
     if (result._tag === "Failure") {
       const error = squashAtomCommandFailure(result);
       setActionError(error instanceof Error ? error.message : t("squadRun.actionFailed"));
@@ -677,7 +741,6 @@ function CompositionSquadRunEnvironmentPanel({
       setExecutionResult(result.value);
       setDraft((current) => advanceCompositionSquadRunDraft(current, randomUUID()));
     }
-    tasksQuery.refresh();
     setPending(false);
   };
 
@@ -711,20 +774,24 @@ function CompositionSquadRunEnvironmentPanel({
     const actionKey = `${action}:${snapshot.task.taskId}`;
     setPendingNodeAction(actionKey);
     setNodeActionError(null);
-    const result =
-      request.kind === "cancel"
-        ? await cancelTask({ environmentId, input: request.input })
-        : request.kind === "resume"
-          ? await resumeTask({ environmentId, input: request.input })
-          : request.kind === "review"
-            ? await reviewTask({ environmentId, input: request.input })
-            : await retryTask({ environmentId, input: request.input });
+    const result = await executeCompositionSquadNodeActionWithHistoryRefresh(
+      () =>
+        request.kind === "cancel"
+          ? cancelTask({ environmentId, input: request.input })
+          : request.kind === "resume"
+            ? resumeTask({ environmentId, input: request.input })
+            : request.kind === "review"
+              ? reviewTask({ environmentId, input: request.input })
+              : retryTask({ environmentId, input: request.input }),
+      {
+        refreshExecutions: executionsQuery.refresh,
+        refreshTasks: tasksQuery.refresh,
+        refreshEvents: eventsQuery.refresh,
+      },
+    );
     if (result._tag === "Failure") {
       const error = squashAtomCommandFailure(result);
       setNodeActionError(error instanceof Error ? error.message : t("squadRun.nodeActionFailed"));
-    } else {
-      tasksQuery.refresh();
-      eventsQuery.refresh();
     }
     setPendingNodeAction(null);
   };
@@ -746,6 +813,7 @@ function CompositionSquadRunEnvironmentPanel({
           onClick={() => {
             squadsQuery.refresh();
             revisionsQuery.refresh();
+            executionsQuery.refresh();
             tasksQuery.refresh();
             eventsQuery.refresh();
           }}
@@ -1001,19 +1069,26 @@ function CompositionSquadRunEnvironmentPanel({
               {nodeActionError ? (
                 <p className="text-xs text-destructive">{nodeActionError}</p>
               ) : null}
-              {tasksQuery.isPending ? (
-                <p className="text-xs text-muted-foreground">{t("squadRun.historyLoading")}</p>
-              ) : tasksQuery.error ? (
+              {executionsQuery.error ? (
                 <p className="text-xs text-destructive">
-                  {t("squadRun.historyFailed", { message: String(tasksQuery.error) })}
+                  {t("squadRun.historyFailed", { message: String(executionsQuery.error) })}
                 </p>
-              ) : executionHistory.length === 0 ? (
+              ) : null}
+              {tasksQuery.error ? (
+                <p className="text-xs text-destructive">
+                  {t("squadRun.historyEnrichmentFailed", { message: String(tasksQuery.error) })}
+                </p>
+              ) : null}
+              {executionsQuery.isPending && executionHistory.length === 0 ? (
+                <p className="text-xs text-muted-foreground">{t("squadRun.historyLoading")}</p>
+              ) : executionsQuery.error !== null &&
+                executionHistory.length === 0 ? null : executionHistory.length === 0 ? (
                 <p className="text-xs text-muted-foreground">{t("squadRun.noExecutionHistory")}</p>
               ) : (
                 <CompositionSquadExecutionHistoryView
                   executions={executionHistory}
                   squad={selectedSquad}
-                  selectedTaskId={selectedHistoryNode?.snapshot.task.taskId ?? null}
+                  selectedTaskId={selectedHistorySnapshot?.task.taskId ?? null}
                   pendingAction={pendingNodeAction}
                   onSelectLogs={(snapshot) => setSelectedHistoryTaskId(snapshot.task.taskId)}
                   onAction={(action, snapshot, capabilityIds, reassignAgentId) =>
@@ -1021,9 +1096,9 @@ function CompositionSquadRunEnvironmentPanel({
                   }
                 />
               )}
-              {selectedHistoryNode === null || selectedHistoryRun === undefined ? null : (
+              {selectedHistorySnapshot === undefined || selectedHistoryRun === undefined ? null : (
                 <div
-                  data-squad-event-task={selectedHistoryNode.snapshot.task.taskId}
+                  data-squad-event-task={selectedHistorySnapshot.task.taskId}
                   className="rounded-md border border-border/70 bg-background/40 p-3 sm:p-4"
                 >
                   <div className="mb-3 flex flex-wrap items-start justify-between gap-3">
@@ -1032,7 +1107,7 @@ function CompositionSquadRunEnvironmentPanel({
                         {t("squadRun.eventLog")}
                       </p>
                       <p className="mt-1 break-all font-mono text-[11px] text-muted-foreground">
-                        {selectedHistoryNode.snapshot.task.taskId}
+                        {selectedHistorySnapshot.task.taskId}
                       </p>
                       <p className="break-all font-mono text-[11px] text-muted-foreground">
                         {selectedHistoryRun.runId}

@@ -1,7 +1,9 @@
 import {
   ThreadId,
   type CompositionSquad,
+  type CompositionSquadExecution,
   type CompositionSquadExecutionRequest,
+  type CompositionSquadExecutionStatus,
   type CompositionSquadPlanNode,
   type CompositionTaskCancelRequest,
   type CompositionTaskResumeRequest,
@@ -54,15 +56,21 @@ export interface CompositionSquadExecutionTaskIdentity {
 
 export interface CompositionSquadExecutionHistoryNode {
   readonly nodeId: string;
-  readonly snapshot: CompositionTaskSnapshot;
+  readonly taskId: string;
+  readonly runId?: string;
+  readonly agentId?: string;
+  readonly snapshot?: CompositionTaskSnapshot;
 }
 
 export interface CompositionSquadExecutionHistoryItem {
+  readonly source: "execution_record" | "legacy_tasks";
   readonly executionId: string;
   readonly squadId: string;
   readonly squadRevision: number;
   readonly projectId: string;
-  readonly status: CompositionTaskStatus;
+  readonly status: CompositionSquadExecutionStatus | CompositionTaskStatus;
+  readonly failureCode?: string;
+  readonly failureDetail?: string;
   readonly updatedAtUnixMs: number;
   readonly nodes: ReadonlyArray<CompositionSquadExecutionHistoryNode>;
 }
@@ -88,6 +96,42 @@ export type CompositionSquadNodeActionRequest =
 
 export const compositionSquadRunEnvironmentKey = (environmentId: string | null): string =>
   environmentId === null ? "disconnected" : `environment:${environmentId}`;
+
+export interface CompositionSquadRunHistoryRefreshers {
+  readonly refreshExecutions: () => void;
+  readonly refreshTasks: () => void;
+}
+
+export interface CompositionSquadNodeActionHistoryRefreshers extends CompositionSquadRunHistoryRefreshers {
+  readonly refreshEvents: () => void;
+}
+
+export const executeCompositionSquadRunWithHistoryRefresh = async <Result>(
+  execute: () => Promise<Result>,
+  refreshers: CompositionSquadRunHistoryRefreshers,
+): Promise<Result> => {
+  try {
+    return await execute();
+  } finally {
+    refreshers.refreshExecutions();
+    refreshers.refreshTasks();
+  }
+};
+
+export const executeCompositionSquadNodeActionWithHistoryRefresh = async <
+  Result extends { readonly _tag: "Success" | "Failure" },
+>(
+  execute: () => Promise<Result>,
+  refreshers: CompositionSquadNodeActionHistoryRefreshers,
+): Promise<Result> => {
+  const result = await execute();
+  if (result._tag === "Success") {
+    refreshers.refreshExecutions();
+    refreshers.refreshTasks();
+    refreshers.refreshEvents();
+  }
+  return result;
+};
 
 export const advanceCompositionSquadRunDraft = (
   draft: CompositionSquadRunDraft,
@@ -127,9 +171,66 @@ const squadHistoryNodeOrder = (nodeId: string): number => {
 
 export const projectCompositionSquadExecutionHistory = (
   squadId: string,
+  executions: ReadonlyArray<CompositionSquadExecution>,
   snapshots: ReadonlyArray<CompositionTaskSnapshot>,
 ): ReadonlyArray<CompositionSquadExecutionHistoryItem> => {
-  const grouped = new Map<
+  const snapshotsByTaskId = new Map(
+    snapshots.map((snapshot) => [snapshot.task.taskId, snapshot] as const),
+  );
+  const executionKeys = new Set<string>();
+  const history: CompositionSquadExecutionHistoryItem[] = [];
+
+  const withSnapshot = (
+    node: Omit<CompositionSquadExecutionHistoryNode, "snapshot">,
+  ): CompositionSquadExecutionHistoryNode => {
+    const snapshot = snapshotsByTaskId.get(node.taskId);
+    if (snapshot === undefined) return node;
+    return {
+      ...node,
+      ...(node.runId === undefined && snapshot.latestRun !== undefined
+        ? { runId: snapshot.latestRun.runId }
+        : {}),
+      ...(node.agentId === undefined
+        ? { agentId: snapshot.latestRun?.agentId ?? snapshot.task.assigneeId }
+        : {}),
+      snapshot,
+    };
+  };
+
+  for (const execution of executions) {
+    if (execution.squadId !== squadId) continue;
+    const key = `${execution.executionId}\u0000${execution.squadRevision}`;
+    executionKeys.add(key);
+    history.push({
+      source: "execution_record",
+      executionId: execution.executionId,
+      squadId: execution.squadId,
+      squadRevision: execution.squadRevision,
+      projectId: execution.projectId,
+      status: execution.status,
+      ...(execution.failureCode === undefined ? {} : { failureCode: execution.failureCode }),
+      ...(execution.failureDetail === undefined ? {} : { failureDetail: execution.failureDetail }),
+      updatedAtUnixMs: execution.updatedAtUnixMs,
+      nodes: [
+        withSnapshot({ nodeId: "leader-plan", taskId: execution.goalTaskId }),
+        ...(execution.nodes ?? []).map((node) =>
+          withSnapshot({
+            nodeId: node.nodeId,
+            taskId: node.taskId,
+            runId: node.runId,
+            agentId: node.agentId,
+          }),
+        ),
+        withSnapshot({
+          nodeId: "leader-finalize",
+          taskId: execution.leaderTaskId,
+          runId: execution.leaderRunId,
+        }),
+      ],
+    });
+  }
+
+  const legacyGroups = new Map<
     string,
     {
       readonly executionId: string;
@@ -143,45 +244,61 @@ export const projectCompositionSquadExecutionHistory = (
     const identity = parseCompositionSquadExecutionTaskId(snapshot.task.taskId, squadId);
     if (identity === null) continue;
     const key = `${identity.executionId}\u0000${identity.squadRevision}`;
-    const execution = grouped.get(key) ?? {
+    if (executionKeys.has(key)) continue;
+    const execution = legacyGroups.get(key) ?? {
       executionId: identity.executionId,
       squadRevision: identity.squadRevision,
       projectId: snapshot.task.projectId,
       nodes: [],
     };
-    execution.nodes.push({ nodeId: identity.nodeId, snapshot });
-    grouped.set(key, execution);
+    execution.nodes.push({
+      nodeId: identity.nodeId,
+      taskId: snapshot.task.taskId,
+      ...(snapshot.latestRun === undefined ? {} : { runId: snapshot.latestRun.runId }),
+      agentId: snapshot.latestRun?.agentId ?? snapshot.task.assigneeId,
+      snapshot,
+    });
+    legacyGroups.set(key, execution);
   }
 
-  return [...grouped.values()]
-    .map((execution): CompositionSquadExecutionHistoryItem => {
+  history.push(
+    ...[...legacyGroups.values()].map((execution): CompositionSquadExecutionHistoryItem => {
       const nodes = [...execution.nodes].sort((left, right) => {
         const order = squadHistoryNodeOrder(left.nodeId) - squadHistoryNodeOrder(right.nodeId);
         if (order !== 0) return order;
-        const createdAt = left.snapshot.task.createdAtUnixMs - right.snapshot.task.createdAtUnixMs;
+        const createdAt =
+          left.snapshot!.task.createdAtUnixMs - right.snapshot!.task.createdAtUnixMs;
         return createdAt !== 0 ? createdAt : left.nodeId.localeCompare(right.nodeId);
       });
-      const updatedAtUnixMs = Math.max(...nodes.map((node) => node.snapshot.task.updatedAtUnixMs));
-      const status =
-        nodes.find((node) => node.nodeId === "leader-finalize")?.snapshot.task.status ??
+      const updatedAtUnixMs = Math.max(...nodes.map((node) => node.snapshot!.task.updatedAtUnixMs));
+      const statusNode =
+        nodes.find((node) => node.nodeId === "leader-finalize") ??
         [...nodes].sort(
-          (left, right) => right.snapshot.task.updatedAtUnixMs - left.snapshot.task.updatedAtUnixMs,
-        )[0]!.snapshot.task.status;
+          (left, right) =>
+            right.snapshot!.task.updatedAtUnixMs - left.snapshot!.task.updatedAtUnixMs ||
+            right.taskId.localeCompare(left.taskId),
+        )[0]!;
       return {
+        source: "legacy_tasks",
         executionId: execution.executionId,
         squadId,
         squadRevision: execution.squadRevision,
         projectId: execution.projectId,
-        status,
+        status: statusNode.snapshot!.task.status,
+        ...(statusNode.snapshot!.latestRun?.failureCode === undefined
+          ? {}
+          : { failureCode: statusNode.snapshot!.latestRun.failureCode }),
         updatedAtUnixMs,
         nodes,
       };
-    })
-    .sort(
-      (left, right) =>
-        right.updatedAtUnixMs - left.updatedAtUnixMs ||
-        right.executionId.localeCompare(left.executionId),
-    );
+    }),
+  );
+
+  return history.sort(
+    (left, right) =>
+      right.updatedAtUnixMs - left.updatedAtUnixMs ||
+      right.executionId.localeCompare(left.executionId),
+  );
 };
 
 const cancellableStatuses: ReadonlySet<CompositionTaskStatus> = new Set([

@@ -1,4 +1,6 @@
 import type {
+  CompositionSquadExecution,
+  CompositionSquadExecutionListResult,
   CompositionSquadExecutionResult,
   CompositionSquadListResult,
   CompositionSquadRevisionListResult,
@@ -19,6 +21,7 @@ const mocks = vi.hoisted(() => ({
   atoms: {
     squads: Symbol("squads"),
     revisions: Symbol("revisions"),
+    executions: Symbol("executions"),
     tasks: Symbol("tasks"),
     events: Symbol("events"),
     run: Symbol("run"),
@@ -40,6 +43,12 @@ const mocks = vi.hoisted(() => ({
       isPending: false,
       refresh: vi.fn(),
     },
+    executions: {
+      data: null as CompositionSquadExecutionListResult | null,
+      error: null as string | null,
+      isPending: false,
+      refresh: vi.fn(),
+    },
     tasks: {
       data: null as CompositionTaskListResult | null,
       error: null as string | null,
@@ -55,6 +64,7 @@ const mocks = vi.hoisted(() => ({
   },
   compositionSquads: vi.fn(),
   compositionSquadRevisions: vi.fn(),
+  compositionSquadExecutions: vi.fn(),
   listCompositionTasks: vi.fn(),
   listCompositionTaskEvents: vi.fn(),
   runCommand: vi.fn(),
@@ -73,6 +83,7 @@ vi.mock("~/state/query", () => ({
   useEnvironmentQuery: (atom: unknown) => {
     if (atom === mocks.atoms.squads) return mocks.queries.squads;
     if (atom === mocks.atoms.revisions) return mocks.queries.revisions;
+    if (atom === mocks.atoms.executions) return mocks.queries.executions;
     if (atom === mocks.atoms.tasks) return mocks.queries.tasks;
     if (atom === mocks.atoms.events) return mocks.queries.events;
     return {
@@ -93,6 +104,10 @@ vi.mock("~/state/server", () => ({
     compositionSquadRevisions: (...args: unknown[]) => {
       mocks.compositionSquadRevisions(...args);
       return mocks.atoms.revisions;
+    },
+    compositionSquadExecutions: (...args: unknown[]) => {
+      mocks.compositionSquadExecutions(...args);
+      return mocks.atoms.executions;
     },
     listCompositionTasks: (...args: unknown[]) => {
       mocks.listCompositionTasks(...args);
@@ -230,6 +245,26 @@ const executionResult: CompositionSquadExecutionResult = {
   },
 };
 
+const executionRecord = (
+  overrides: Partial<CompositionSquadExecution> = {},
+): CompositionSquadExecution => ({
+  executionId: "execution-record",
+  squadId: "squad-active",
+  squadRevision: 3,
+  projectId: "project-1",
+  goalDigest: "sha256:goal",
+  goalTaskId: "execution-record:squad:squad-active:r3:task:leader-plan",
+  workspaceRootDigest: "sha256:workspace",
+  status: "queued",
+  revision: 1,
+  leaderTaskId: "execution-record:squad:squad-active:r3:task:leader-finalize",
+  leaderRunId: "execution-record:squad:squad-active:r3:run:leader-finalize",
+  pendingApprovals: [],
+  createdAtUnixMs: 100,
+  updatedAtUnixMs: 100,
+  ...overrides,
+});
+
 describe("CompositionSquadRunPanel", () => {
   beforeEach(() => {
     mocks.environment = null;
@@ -240,6 +275,9 @@ describe("CompositionSquadRunPanel", () => {
     mocks.queries.revisions.data = null;
     mocks.queries.revisions.error = null;
     mocks.queries.revisions.isPending = false;
+    mocks.queries.executions.data = null;
+    mocks.queries.executions.error = null;
+    mocks.queries.executions.isPending = false;
     mocks.queries.tasks.data = null;
     mocks.queries.tasks.error = null;
     mocks.queries.tasks.isPending = false;
@@ -248,6 +286,7 @@ describe("CompositionSquadRunPanel", () => {
     mocks.queries.events.isPending = false;
     mocks.compositionSquads.mockReset();
     mocks.compositionSquadRevisions.mockReset();
+    mocks.compositionSquadExecutions.mockReset();
     mocks.listCompositionTasks.mockReset();
     mocks.listCompositionTaskEvents.mockReset();
     mocks.runCommand.mockReset();
@@ -288,6 +327,10 @@ describe("CompositionSquadRunPanel", () => {
       environmentId: "env-test",
       input: { squadId: "squad-active" },
     });
+    expect(mocks.compositionSquadExecutions).toHaveBeenCalledWith({
+      environmentId: "env-test",
+      input: { projectId: "project-1", squadId: "squad-active", limit: 50 },
+    });
     expect(mocks.useAtomCommand).toHaveBeenCalledWith(mocks.atoms.run, {
       reportFailure: false,
     });
@@ -327,6 +370,91 @@ describe("CompositionSquadRunPanel", () => {
     expect(html).toContain("Implementation completed");
     expect(html).toContain("provider_timeout");
     expect(html).toContain("Provider did not respond");
+  });
+
+  it("显示没有 Task 的排队、规划和派发前失败 execution", () => {
+    mocks.environment = { environmentId: EnvironmentId.make("env-test") };
+    mocks.projects = [project("env-test", "project-1", "Code Work")];
+    mocks.queries.squads.data = { squads: [activeSquad] };
+    mocks.queries.revisions.data = { revisions: [] };
+    mocks.queries.executions.data = {
+      executions: [
+        executionRecord(),
+        executionRecord({
+          executionId: "execution-planning",
+          goalTaskId: "execution-planning:squad:squad-active:r3:task:leader-plan",
+          leaderTaskId: "execution-planning:squad:squad-active:r3:task:leader-finalize",
+          leaderRunId: "execution-planning:squad:squad-active:r3:run:leader-finalize",
+          status: "planning",
+          revision: 2,
+          updatedAtUnixMs: 200,
+          startedAtUnixMs: 150,
+        }),
+        executionRecord({
+          executionId: "execution-failed-before-tasks",
+          goalTaskId: "execution-failed-before-tasks:squad:squad-active:r3:task:leader-plan",
+          leaderTaskId: "execution-failed-before-tasks:squad:squad-active:r3:task:leader-finalize",
+          leaderRunId: "execution-failed-before-tasks:squad:squad-active:r3:run:leader-finalize",
+          status: "failed",
+          revision: 3,
+          updatedAtUnixMs: 300,
+          startedAtUnixMs: 250,
+          finishedAtUnixMs: 300,
+          failureCode: "planner_unavailable",
+          failureDetail: "Leader planner unavailable.",
+        }),
+      ],
+    };
+    mocks.queries.tasks.data = { tasks: [] };
+
+    const html = renderToStaticMarkup(<CompositionSquadRunPanel />);
+
+    expect(mocks.compositionSquadExecutions).toHaveBeenCalledWith({
+      environmentId: "env-test",
+      input: { projectId: "project-1", squadId: "squad-active", limit: 50 },
+    });
+    expect(html).toContain('data-squad-history-execution="execution-record"');
+    expect(html).toContain('data-squad-history-execution="execution-planning"');
+    expect(html).toContain('data-squad-history-execution="execution-failed-before-tasks"');
+    expect(html).toContain("planner_unavailable");
+    expect(html).toContain("Leader planner unavailable.");
+    expect(html).not.toContain('data-squad-node-action="logs"');
+  });
+
+  it("execution 历史查询失败时仍保留运行表单", () => {
+    mocks.environment = { environmentId: EnvironmentId.make("env-test") };
+    mocks.projects = [project("env-test", "project-1", "Code Work")];
+    mocks.queries.squads.data = { squads: [activeSquad] };
+    mocks.queries.revisions.data = { revisions: [] };
+    mocks.queries.executions.error = "history offline";
+
+    const html = renderToStaticMarkup(<CompositionSquadRunPanel />);
+
+    expect(html).toContain('data-testid="squad-run"');
+    expect(html).toContain(
+      t("squadRun.historyFailed", {
+        message: "history offline",
+      }),
+    );
+    expect(html).not.toContain(t("squadRun.noExecutionHistory"));
+  });
+
+  it("Task enrich 查询失败时保留第一等 execution 历史", () => {
+    mocks.environment = { environmentId: EnvironmentId.make("env-test") };
+    mocks.projects = [project("env-test", "project-1", "Code Work")];
+    mocks.queries.squads.data = { squads: [activeSquad] };
+    mocks.queries.revisions.data = { revisions: [] };
+    mocks.queries.executions.data = { executions: [executionRecord()] };
+    mocks.queries.tasks.error = "task offline";
+
+    const html = renderToStaticMarkup(<CompositionSquadRunPanel />);
+
+    expect(html).toContain('data-squad-history-execution="execution-record"');
+    expect(html).toContain(
+      t("squadRun.historyEnrichmentFailed", {
+        message: "task offline",
+      }),
+    );
   });
 
   it("从 Composition 台账显示刷新后仍可恢复的 Squad execution 历史", () => {
