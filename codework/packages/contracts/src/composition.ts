@@ -1094,6 +1094,416 @@ export const CompositionSquadPlanNode = Schema.Struct({
 });
 export type CompositionSquadPlanNode = typeof CompositionSquadPlanNode.Type;
 
+export const CompositionSquadExecutionStatus = Schema.Literals([
+  "queued",
+  "planning",
+  "awaiting_approval",
+  "running",
+  "in_review",
+  "paused",
+  "cancelling",
+  "completed",
+  "failed",
+  "cancelled",
+]);
+export type CompositionSquadExecutionStatus = typeof CompositionSquadExecutionStatus.Type;
+
+export const CompositionSquadExecutionResumableStatus = Schema.Literals([
+  "queued",
+  "planning",
+  "awaiting_approval",
+  "running",
+  "in_review",
+]);
+export type CompositionSquadExecutionResumableStatus =
+  typeof CompositionSquadExecutionResumableStatus.Type;
+
+/** Execution 只保存节点索引与摘要；完整 prompt 继续由加密 TaskInputStore 承载。 */
+export const CompositionSquadExecutionNode = Schema.Struct({
+  nodeId: TrimmedNonEmptyString,
+  agentId: TrimmedNonEmptyString,
+  taskId: TrimmedNonEmptyString,
+  runId: TrimmedNonEmptyString,
+  promptDigest: TrimmedNonEmptyString,
+  dependsOnNodeIds: Schema.Array(TrimmedNonEmptyString),
+});
+export type CompositionSquadExecutionNode = typeof CompositionSquadExecutionNode.Type;
+
+export const CompositionSquadExecutionPendingApproval = Schema.Struct({
+  approvalRequestId: ApprovalRequestId,
+  stage: CompositionSquadApprovalStage,
+  nodeId: Schema.optional(TrimmedNonEmptyString),
+  taskId: Schema.optional(TrimmedNonEmptyString),
+  runId: Schema.optional(TrimmedNonEmptyString),
+  agentId: Schema.optional(TrimmedNonEmptyString),
+  capabilityId: Schema.optional(TrimmedNonEmptyString),
+  toolCallId: Schema.optional(TrimmedNonEmptyString),
+  requestedAtUnixMs: NonNegativeInt,
+});
+export type CompositionSquadExecutionPendingApproval =
+  typeof CompositionSquadExecutionPendingApproval.Type;
+
+const CompositionSquadExecutionFields = Schema.Struct({
+  executionId: TrimmedNonEmptyString,
+  squadId: TrimmedNonEmptyString,
+  squadRevision: PositiveInt,
+  projectId: TrimmedNonEmptyString,
+  threadId: Schema.optional(ThreadId),
+  goalDigest: TrimmedNonEmptyString,
+  goalTaskId: TrimmedNonEmptyString,
+  workspaceRootDigest: TrimmedNonEmptyString,
+  status: CompositionSquadExecutionStatus,
+  revision: PositiveInt,
+  nodes: Schema.optional(
+    Schema.Array(CompositionSquadExecutionNode)
+      .check(Schema.isMinLength(1))
+      .check(Schema.isMaxLength(64)),
+  ),
+  leaderTaskId: TrimmedNonEmptyString,
+  leaderRunId: TrimmedNonEmptyString,
+  pendingApprovals: Schema.Array(CompositionSquadExecutionPendingApproval).check(
+    Schema.isMaxLength(128),
+  ),
+  pausedFromStatus: Schema.optional(CompositionSquadExecutionResumableStatus),
+  resultSummary: Schema.optional(TrimmedNonEmptyString),
+  failureCode: Schema.optional(TrimmedNonEmptyString),
+  failureDetail: Schema.optional(TrimmedNonEmptyString),
+  createdAtUnixMs: NonNegativeInt,
+  updatedAtUnixMs: NonNegativeInt,
+  startedAtUnixMs: Schema.optional(NonNegativeInt),
+  pausedAtUnixMs: Schema.optional(NonNegativeInt),
+  cancelRequestedAtUnixMs: Schema.optional(NonNegativeInt),
+  finishedAtUnixMs: Schema.optional(NonNegativeInt),
+});
+
+type CompositionSquadExecutionUnchecked = typeof CompositionSquadExecutionFields.Type;
+
+export type CompositionSquadExecutionValidationIssueCode =
+  | "timestamp_order_invalid"
+  | "start_state_invalid"
+  | "paused_state_invalid"
+  | "approval_state_invalid"
+  | "approval_scope_invalid"
+  | "approval_projection_invalid"
+  | "duplicate_approval_request"
+  | "node_projection_invalid"
+  | "graph_identity_invalid"
+  | "cancellation_state_invalid"
+  | "terminal_state_invalid"
+  | "result_state_invalid"
+  | "failure_state_invalid";
+
+export type CompositionSquadExecutionValidationIssue = {
+  readonly code: CompositionSquadExecutionValidationIssueCode;
+  readonly path: string;
+};
+
+const squadExecutionStatusesRequiringStart = new Set<CompositionSquadExecutionStatus>([
+  "planning",
+  "awaiting_approval",
+  "running",
+  "in_review",
+  "completed",
+  "failed",
+  "cancelling",
+]);
+
+const squadExecutionStatusesRequiringNodes = new Set<CompositionSquadExecutionStatus>([
+  "awaiting_approval",
+  "running",
+  "in_review",
+  "completed",
+]);
+
+/** 持久化 execution 的状态与时间线必须能被重启恢复和控制面可靠解释。 */
+export const validateCompositionSquadExecution = (
+  input: CompositionSquadExecutionUnchecked,
+): ReadonlyArray<CompositionSquadExecutionValidationIssue> => {
+  const issues: CompositionSquadExecutionValidationIssue[] = [];
+  const add = (code: CompositionSquadExecutionValidationIssueCode, path: string): void => {
+    issues.push({ code, path });
+  };
+  const startedAtUnixMs = input.startedAtUnixMs ?? input.createdAtUnixMs;
+  const inTimeline = (value: number | undefined, lowerBound = input.createdAtUnixMs): boolean =>
+    value === undefined || (value >= lowerBound && value <= input.updatedAtUnixMs);
+
+  if (input.updatedAtUnixMs < input.createdAtUnixMs) {
+    add("timestamp_order_invalid", "updatedAtUnixMs");
+  }
+  if (!inTimeline(input.startedAtUnixMs)) {
+    add("timestamp_order_invalid", "startedAtUnixMs");
+  }
+  if (!inTimeline(input.pausedAtUnixMs, startedAtUnixMs)) {
+    add("timestamp_order_invalid", "pausedAtUnixMs");
+  }
+  if (!inTimeline(input.cancelRequestedAtUnixMs, startedAtUnixMs)) {
+    add("timestamp_order_invalid", "cancelRequestedAtUnixMs");
+  }
+  for (const [index, approval] of input.pendingApprovals.entries()) {
+    if (!inTimeline(approval.requestedAtUnixMs, startedAtUnixMs)) {
+      add("timestamp_order_invalid", `pendingApprovals.${index}.requestedAtUnixMs`);
+    }
+    if (
+      input.status === "paused" &&
+      input.pausedAtUnixMs !== undefined &&
+      approval.requestedAtUnixMs > input.pausedAtUnixMs
+    ) {
+      add("timestamp_order_invalid", `pendingApprovals.${index}.requestedAtUnixMs`);
+    }
+  }
+  const finishedLowerBound = Math.max(
+    startedAtUnixMs,
+    input.cancelRequestedAtUnixMs ?? input.createdAtUnixMs,
+    input.pausedAtUnixMs ?? input.createdAtUnixMs,
+  );
+  if (!inTimeline(input.finishedAtUnixMs, finishedLowerBound)) {
+    add("timestamp_order_invalid", "finishedAtUnixMs");
+  }
+
+  const paused = input.status === "paused";
+  const anyPausedFieldPresent =
+    input.pausedFromStatus !== undefined || input.pausedAtUnixMs !== undefined;
+  const allPausedFieldsPresent =
+    input.pausedFromStatus !== undefined && input.pausedAtUnixMs !== undefined;
+  if ((paused && !allPausedFieldsPresent) || (!paused && anyPausedFieldPresent)) {
+    add("paused_state_invalid", "pausedFromStatus");
+  }
+
+  const nodes = input.nodes ?? [];
+  const nodesById = new Map<string, (typeof nodes)[number]>();
+  const taskIds = new Set<string>();
+  const runIds = new Set<string>();
+  for (const [index, node] of nodes.entries()) {
+    if (nodesById.has(node.nodeId) || taskIds.has(node.taskId) || runIds.has(node.runId)) {
+      add("node_projection_invalid", `nodes.${index}`);
+    }
+    nodesById.set(node.nodeId, node);
+    taskIds.add(node.taskId);
+    runIds.add(node.runId);
+  }
+  for (const [index, node] of nodes.entries()) {
+    if (
+      hasDuplicates(node.dependsOnNodeIds) ||
+      node.dependsOnNodeIds.includes(node.nodeId) ||
+      node.dependsOnNodeIds.some((dependencyId) => !nodesById.has(dependencyId))
+    ) {
+      add("node_projection_invalid", `nodes.${index}.dependsOnNodeIds`);
+    }
+  }
+  const visitingNodeIds = new Set<string>();
+  const visitedNodeIds = new Set<string>();
+  const visitNode = (nodeId: string): boolean => {
+    if (visitingNodeIds.has(nodeId)) return false;
+    if (visitedNodeIds.has(nodeId)) return true;
+    const node = nodesById.get(nodeId);
+    if (node === undefined) return true;
+    visitingNodeIds.add(nodeId);
+    for (const dependencyId of node.dependsOnNodeIds) {
+      if (!visitNode(dependencyId)) return false;
+    }
+    visitingNodeIds.delete(nodeId);
+    visitedNodeIds.add(nodeId);
+    return true;
+  };
+  for (const [index, node] of nodes.entries()) {
+    if (!visitNode(node.nodeId)) {
+      add("node_projection_invalid", `nodes.${index}.dependsOnNodeIds`);
+      break;
+    }
+  }
+  if (input.goalTaskId === input.leaderTaskId || taskIds.has(input.goalTaskId)) {
+    add("graph_identity_invalid", "goalTaskId");
+  }
+  if (taskIds.has(input.leaderTaskId)) {
+    add("graph_identity_invalid", "leaderTaskId");
+  }
+  if (runIds.has(input.leaderRunId)) {
+    add("graph_identity_invalid", "leaderRunId");
+  }
+
+  const approvalIds = input.pendingApprovals.map((approval) => approval.approvalRequestId);
+  if (hasDuplicates(approvalIds)) {
+    add("duplicate_approval_request", "pendingApprovals.approvalRequestId");
+  }
+  for (const [index, approval] of input.pendingApprovals.entries()) {
+    const nodeIdentity = [
+      approval.nodeId,
+      approval.taskId,
+      approval.runId,
+      approval.agentId,
+      approval.capabilityId,
+      approval.toolCallId,
+    ];
+    const hasCompleteNodeIdentity = nodeIdentity.every((value) => value !== undefined);
+    const hasAnyNodeIdentity = nodeIdentity.some((value) => value !== undefined);
+    if (
+      (approval.stage === "before_mutating_tool" && !hasCompleteNodeIdentity) ||
+      (approval.stage !== "before_mutating_tool" && hasAnyNodeIdentity)
+    ) {
+      add("approval_scope_invalid", `pendingApprovals.${index}`);
+      continue;
+    }
+    if (approval.stage === "before_mutating_tool") {
+      const node = nodesById.get(approval.nodeId!);
+      if (node === undefined) {
+        add("approval_projection_invalid", `pendingApprovals.${index}.nodeId`);
+      } else if (node.agentId !== approval.agentId) {
+        add("approval_projection_invalid", `pendingApprovals.${index}.agentId`);
+      } else if (node.taskId !== approval.taskId) {
+        add("approval_projection_invalid", `pendingApprovals.${index}.taskId`);
+      } else if (node.runId !== approval.runId) {
+        add("approval_projection_invalid", `pendingApprovals.${index}.runId`);
+      }
+    }
+  }
+
+  const effectiveApprovalStatus = input.status === "paused" ? input.pausedFromStatus : input.status;
+  const globalApprovalStages = new Set(
+    input.pendingApprovals
+      .filter((approval) => approval.stage !== "before_mutating_tool")
+      .map((approval) => approval.stage),
+  );
+  const hasApprovalForInvalidStatus = input.pendingApprovals.some((approval) =>
+    approval.stage === "before_mutating_tool"
+      ? effectiveApprovalStatus !== "running" && effectiveApprovalStatus !== "in_review"
+      : effectiveApprovalStatus !== "awaiting_approval",
+  );
+  if (
+    (input.status === "awaiting_approval" && input.pendingApprovals.length === 0) ||
+    (input.status === "paused" &&
+      input.pausedFromStatus === "awaiting_approval" &&
+      input.pendingApprovals.length === 0) ||
+    hasApprovalForInvalidStatus ||
+    globalApprovalStages.size > 1
+  ) {
+    add("approval_state_invalid", "pendingApprovals");
+  }
+
+  const cancellationRequestRequired = input.status === "cancelling" || input.status === "cancelled";
+  const cancellationHistoryAllowed = cancellationRequestRequired || input.status === "failed";
+  if (
+    (cancellationRequestRequired && input.cancelRequestedAtUnixMs === undefined) ||
+    (!cancellationHistoryAllowed && input.cancelRequestedAtUnixMs !== undefined)
+  ) {
+    add("cancellation_state_invalid", "cancelRequestedAtUnixMs");
+  }
+
+  const terminal =
+    input.status === "completed" || input.status === "failed" || input.status === "cancelled";
+  if (terminal !== (input.finishedAtUnixMs !== undefined)) {
+    add("terminal_state_invalid", "finishedAtUnixMs");
+  }
+
+  if ((input.status === "completed") !== (input.resultSummary !== undefined)) {
+    add("result_state_invalid", "resultSummary");
+  }
+
+  const failureFieldsPresent = input.failureCode !== undefined && input.failureDetail !== undefined;
+  if (
+    (input.status === "failed") !== failureFieldsPresent ||
+    (input.failureCode === undefined) !== (input.failureDetail === undefined)
+  ) {
+    add("failure_state_invalid", "failureCode");
+  }
+
+  const requiresStart =
+    squadExecutionStatusesRequiringStart.has(input.status) ||
+    (input.status === "paused" && input.pausedFromStatus !== "queued");
+  if (
+    (requiresStart && input.startedAtUnixMs === undefined) ||
+    (input.status === "queued" && input.startedAtUnixMs !== undefined)
+  ) {
+    add("start_state_invalid", "startedAtUnixMs");
+  }
+
+  const requiresNodes =
+    squadExecutionStatusesRequiringNodes.has(input.status) ||
+    (input.status === "paused" &&
+      input.pausedFromStatus !== undefined &&
+      squadExecutionStatusesRequiringNodes.has(input.pausedFromStatus));
+  if (requiresNodes && input.nodes === undefined) {
+    add("graph_identity_invalid", "nodes");
+  }
+
+  return issues;
+};
+
+/** 第一等、可查询的 Squad execution；实际 Task/Run 仍由现有 Composition 引擎承载。 */
+export const CompositionSquadExecution = CompositionSquadExecutionFields.check(
+  Schema.makeFilter((input) => {
+    const issue = validateCompositionSquadExecution(input)[0];
+    return issue === undefined || `Invalid Squad execution: ${issue.code} at ${issue.path}`;
+  }),
+);
+export type CompositionSquadExecution = typeof CompositionSquadExecution.Type;
+
+const allowedCompositionSquadExecutionStatusTransitions = {
+  queued: new Set<CompositionSquadExecutionStatus>(["planning", "paused", "cancelled"]),
+  planning: new Set<CompositionSquadExecutionStatus>([
+    "awaiting_approval",
+    "running",
+    "paused",
+    "cancelling",
+    "failed",
+  ]),
+  awaiting_approval: new Set<CompositionSquadExecutionStatus>([
+    "planning",
+    "running",
+    "in_review",
+    "paused",
+    "cancelling",
+    "failed",
+  ]),
+  running: new Set<CompositionSquadExecutionStatus>([
+    "awaiting_approval",
+    "in_review",
+    "paused",
+    "cancelling",
+    "completed",
+    "failed",
+  ]),
+  in_review: new Set<CompositionSquadExecutionStatus>([
+    "awaiting_approval",
+    "running",
+    "paused",
+    "cancelling",
+    "completed",
+    "failed",
+  ]),
+  paused: new Set<CompositionSquadExecutionStatus>(["cancelling", "failed"]),
+  cancelling: new Set<CompositionSquadExecutionStatus>(["cancelled", "failed"]),
+  completed: new Set<CompositionSquadExecutionStatus>(),
+  failed: new Set<CompositionSquadExecutionStatus>(),
+  cancelled: new Set<CompositionSquadExecutionStatus>(),
+} satisfies Readonly<
+  Record<CompositionSquadExecutionStatus, ReadonlySet<CompositionSquadExecutionStatus>>
+>;
+
+export interface CompositionSquadExecutionStatusTransition {
+  readonly from: CompositionSquadExecutionStatus;
+  readonly to: CompositionSquadExecutionStatus;
+  readonly pausedFromStatus?: CompositionSquadExecutionResumableStatus;
+}
+
+/** 只判断真实跨状态转换；同状态重放由持久层核对完整记录和 revision。 */
+export const isCompositionSquadExecutionStatusTransitionAllowed = ({
+  from,
+  to,
+  pausedFromStatus,
+}: CompositionSquadExecutionStatusTransition): boolean => {
+  if (from === to) return false;
+  if (to === "paused") {
+    return (
+      pausedFromStatus === from && allowedCompositionSquadExecutionStatusTransitions[from].has(to)
+    );
+  }
+  if (from === "paused" && pausedFromStatus === "queued") {
+    return to === "queued" || to === "cancelled";
+  }
+  if (from === "paused" && to === pausedFromStatus) return true;
+  return allowedCompositionSquadExecutionStatusTransitions[from].has(to);
+};
+
 /** 运行请求固定绑定 Squad revision，防止编辑配置后静默改变已发起的执行。 */
 export const CompositionSquadExecutionRequest = Schema.Struct({
   executionId: TrimmedNonEmptyString,

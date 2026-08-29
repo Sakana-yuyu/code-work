@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vite-plus/test";
 import * as Schema from "effect/Schema";
 
+import { ApprovalRequestId } from "./baseSchemas.ts";
+
 import {
   CompositionAgentLoopRequest,
   CompositionAgentLoopRunRequest,
@@ -12,6 +14,7 @@ import {
   CompositionSquad,
   CompositionSquadCreateRequest,
   CompositionSquadDuplicateRequest,
+  CompositionSquadExecution,
   CompositionSquadExecutionRequest,
   CompositionSquadExecutionResult,
   CompositionSquadListRequest,
@@ -20,6 +23,7 @@ import {
   CompositionSquadRevisionMutationRequest,
   CompositionSquadUpdateRequest,
   validateCompositionSquadConfiguration,
+  validateCompositionSquadExecution,
   CompositionTaskCancelRequest,
   CompositionTaskDispatchRequest,
   CompositionTaskGraphExecutionRequest,
@@ -37,6 +41,7 @@ import {
   CompositionRuntimeToolInvocation,
   CompositionRuntimeToolCancellation,
   CompositionControlCenterTask,
+  isCompositionSquadExecutionStatusTransitionAllowed,
   isByokResumeRedispatchable,
   isByokDelegationControlTask,
 } from "./composition.ts";
@@ -49,6 +54,7 @@ const decodePolicyDecision = Schema.decodeUnknownSync(CompositionCapabilityPolic
 const decodeSquad = Schema.decodeUnknownSync(CompositionSquad);
 const decodeSquadCreate = Schema.decodeUnknownSync(CompositionSquadCreateRequest);
 const decodeSquadDuplicate = Schema.decodeUnknownSync(CompositionSquadDuplicateRequest);
+const decodePersistedSquadExecution = Schema.decodeUnknownSync(CompositionSquadExecution);
 const decodeSquadExecution = Schema.decodeUnknownSync(CompositionSquadExecutionRequest);
 const decodeSquadExecutionResult = Schema.decodeUnknownSync(CompositionSquadExecutionResult);
 const decodeSquadList = Schema.decodeUnknownSync(CompositionSquadListRequest);
@@ -76,6 +82,7 @@ const decodeRuntimeToolInvocation = Schema.decodeUnknownSync(CompositionRuntimeT
 const decodeRuntimeToolCancellation = Schema.decodeUnknownSync(CompositionRuntimeToolCancellation);
 const decodeAgentLoopRunRequest = Schema.decodeUnknownSync(CompositionAgentLoopRunRequest);
 const decodeAgentLoopRunResult = Schema.decodeUnknownSync(CompositionAgentLoopRunResult);
+const decodeApprovalRequestId = Schema.decodeUnknownSync(ApprovalRequestId);
 
 const validSquadConfiguration = {
   squadId: "squad-validation",
@@ -386,6 +393,647 @@ describe("composition contracts", () => {
     expect(revisions.revisions[0]?.configuration?.revision).toBe(1);
     expect(execution.plan?.[1]?.dependsOnNodeIds).toEqual(["contracts"]);
     expect(executionResult.graph.leader.run.status).toBe("completed");
+  });
+
+  it("定义可跨重启查询和恢复的 Squad execution 记录", () => {
+    const running = decodePersistedSquadExecution({
+      executionId: "execution-persisted-1",
+      squadId: "squad-validation",
+      squadRevision: 1,
+      projectId: "project-1",
+      threadId: "thread-1",
+      goalDigest: "sha256:execution-goal",
+      goalTaskId: "execution-persisted-1:task:leader-plan",
+      workspaceRoot: "E:/workspace",
+      workspaceRootDigest: "sha256:workspace",
+      status: "running",
+      revision: 3,
+      pendingApprovals: [
+        {
+          approvalRequestId: "approval-tool-contracts",
+          stage: "before_mutating_tool",
+          nodeId: "contracts",
+          taskId: "execution-persisted-1:task:contracts",
+          runId: "execution-persisted-1:run:contracts:1",
+          agentId: "agent-worker",
+          capabilityId: "t3.workspace.write_file",
+          toolCallId: "tool-contracts-1",
+          requestedAtUnixMs: 160,
+        },
+        {
+          approvalRequestId: "approval-tool-tests",
+          stage: "before_mutating_tool",
+          nodeId: "tests",
+          taskId: "execution-persisted-1:task:tests",
+          runId: "execution-persisted-1:run:tests:1",
+          agentId: "agent-reviewer",
+          capabilityId: "t3.workspace.write_file",
+          toolCallId: "tool-tests-1",
+          requestedAtUnixMs: 170,
+        },
+      ],
+      nodes: [
+        {
+          nodeId: "contracts",
+          agentId: "agent-worker",
+          taskId: "execution-persisted-1:task:contracts",
+          runId: "execution-persisted-1:run:contracts:1",
+          promptDigest: "sha256:contracts-prompt",
+          dependsOnNodeIds: [],
+        },
+        {
+          nodeId: "tests",
+          agentId: "agent-reviewer",
+          taskId: "execution-persisted-1:task:tests",
+          runId: "execution-persisted-1:run:tests:1",
+          promptDigest: "sha256:tests-prompt",
+          dependsOnNodeIds: ["contracts"],
+        },
+      ],
+      leaderTaskId: "execution-persisted-1:leader",
+      leaderRunId: "execution-persisted-1:leader:run:1",
+      createdAtUnixMs: 100,
+      startedAtUnixMs: 120,
+      updatedAtUnixMs: 180,
+    });
+    const paused = decodePersistedSquadExecution({
+      ...running,
+      status: "paused",
+      revision: 4,
+      pausedFromStatus: "running",
+      pausedAtUnixMs: 200,
+      updatedAtUnixMs: 200,
+    });
+    const awaitingApproval = decodePersistedSquadExecution({
+      ...running,
+      status: "awaiting_approval",
+      revision: 5,
+      pendingApprovals: [
+        {
+          approvalRequestId: "approval-before-finalize",
+          stage: "before_finalize",
+          requestedAtUnixMs: 210,
+        },
+      ],
+      updatedAtUnixMs: 210,
+    });
+    const completed = decodePersistedSquadExecution({
+      ...running,
+      status: "completed",
+      revision: 6,
+      pendingApprovals: [],
+      resultSummary: "合同、持久化和控制面均已完成。",
+      finishedAtUnixMs: 260,
+      updatedAtUnixMs: 260,
+    });
+
+    expect(running.nodes?.[0]).toMatchObject({
+      nodeId: "contracts",
+      runId: "execution-persisted-1:run:contracts:1",
+    });
+    expect(running).not.toHaveProperty("goal");
+    expect(running).not.toHaveProperty("workspaceRoot");
+    expect(running.nodes?.[0]).not.toHaveProperty("prompt");
+    expect(running.pendingApprovals).toHaveLength(2);
+    expect(paused.pausedFromStatus).toBe("running");
+    expect(awaitingApproval.pendingApprovals[0]?.stage).toBe("before_finalize");
+    expect(completed.resultSummary).toContain("控制面");
+  });
+
+  it("拒绝时间线、暂停、审批和终态字段不一致的 Squad execution", () => {
+    const base = {
+      executionId: "execution-invalid-1",
+      squadId: "squad-validation",
+      squadRevision: 1,
+      projectId: "project-1",
+      goalDigest: "sha256:invalid-goal",
+      goalTaskId: "execution-invalid-1:task:leader-plan",
+      workspaceRoot: "E:/workspace",
+      workspaceRootDigest: "sha256:invalid-workspace",
+      status: "running" as const,
+      revision: 2,
+      pendingApprovals: [],
+      nodes: [
+        {
+          nodeId: "contracts",
+          agentId: "agent-worker",
+          taskId: "execution-invalid-1:task:contracts",
+          runId: "execution-invalid-1:run:contracts:1",
+          promptDigest: "sha256:invalid-contracts-prompt",
+          dependsOnNodeIds: [],
+        },
+      ],
+      leaderTaskId: "execution-invalid-1:leader",
+      leaderRunId: "execution-invalid-1:leader:run:1",
+      createdAtUnixMs: 100,
+      startedAtUnixMs: 120,
+      updatedAtUnixMs: 180,
+    };
+
+    expect(() =>
+      decodePersistedSquadExecution({
+        ...base,
+        workspaceRootDigest: undefined,
+      }),
+    ).toThrow();
+    expect(() =>
+      decodePersistedSquadExecution({
+        ...base,
+        status: "paused",
+        pausedAtUnixMs: 170,
+      }),
+    ).toThrow();
+    expect(() =>
+      decodePersistedSquadExecution({
+        ...base,
+        status: "awaiting_approval",
+      }),
+    ).toThrow();
+    expect(() =>
+      decodePersistedSquadExecution({
+        ...base,
+        status: "completed",
+        finishedAtUnixMs: 180,
+      }),
+    ).toThrow();
+    expect(() =>
+      decodePersistedSquadExecution({
+        ...base,
+        status: "failed",
+        finishedAtUnixMs: 180,
+      }),
+    ).toThrow();
+    expect(() =>
+      decodePersistedSquadExecution({
+        ...base,
+        updatedAtUnixMs: 110,
+      }),
+    ).toThrow();
+    expect(() =>
+      decodePersistedSquadExecution({
+        ...base,
+        pendingApprovals: [
+          {
+            approvalRequestId: "approval-missing-node-identity",
+            stage: "before_mutating_tool",
+            requestedAtUnixMs: 150,
+          },
+        ],
+      }),
+    ).toThrow();
+    expect(() =>
+      decodePersistedSquadExecution({
+        ...base,
+        nodes: undefined,
+      }),
+    ).toThrow();
+    expect(() =>
+      decodePersistedSquadExecution({
+        ...base,
+        leaderTaskId: undefined,
+      }),
+    ).toThrow();
+    expect(() =>
+      decodePersistedSquadExecution({
+        ...base,
+        status: "completed",
+        resultSummary: "错误时间线",
+        finishedAtUnixMs: 110,
+      }),
+    ).toThrow();
+    expect(() =>
+      decodePersistedSquadExecution({
+        ...base,
+        status: "paused",
+        pausedFromStatus: "running",
+        pausedAtUnixMs: 110,
+      }),
+    ).toThrow();
+    const approvalBeforeStartIssues = validateCompositionSquadExecution({
+      ...base,
+      status: "awaiting_approval",
+      pendingApprovals: [
+        {
+          approvalRequestId: decodeApprovalRequestId("approval-before-start"),
+          stage: "before_finalize",
+          requestedAtUnixMs: 110,
+        },
+      ],
+    });
+    expect(() =>
+      decodePersistedSquadExecution({
+        ...base,
+        status: "cancelled",
+        cancelRequestedAtUnixMs: 170,
+        finishedAtUnixMs: 160,
+      }),
+    ).toThrow();
+    expect(() =>
+      decodePersistedSquadExecution({
+        executionId: "execution-cancelling-before-start",
+        squadId: "squad-validation",
+        squadRevision: 1,
+        projectId: "project-1",
+        goalDigest: "sha256:cancelling-before-start-goal",
+        goalTaskId: "execution-cancelling-before-start:task:goal-input",
+        workspaceRoot: "E:/workspace",
+        workspaceRootDigest: "sha256:cancelling-before-start-workspace",
+        status: "cancelling",
+        revision: 2,
+        leaderTaskId: "execution-cancelling-before-start:task:leader",
+        leaderRunId: "execution-cancelling-before-start:run:leader:1",
+        pendingApprovals: [],
+        createdAtUnixMs: 100,
+        cancelRequestedAtUnixMs: 120,
+        updatedAtUnixMs: 120,
+      }),
+    ).toThrow();
+
+    const runningWithGlobalApproval = validateCompositionSquadExecution({
+      ...base,
+      pendingApprovals: [
+        {
+          approvalRequestId: decodeApprovalRequestId("approval-before-dispatch-too-late"),
+          stage: "before_dispatch",
+          requestedAtUnixMs: 150,
+        },
+      ],
+    });
+    const orphanToolApproval = validateCompositionSquadExecution({
+      ...base,
+      pendingApprovals: [
+        {
+          approvalRequestId: decodeApprovalRequestId("approval-orphan-node"),
+          stage: "before_mutating_tool",
+          nodeId: "foreign-node",
+          taskId: "foreign-task",
+          runId: "foreign-run",
+          agentId: "foreign-agent",
+          capabilityId: "t3.workspace.write_file",
+          toolCallId: "foreign-tool-call",
+          requestedAtUnixMs: 150,
+        },
+      ],
+    });
+
+    expect(runningWithGlobalApproval).toContainEqual({
+      code: "approval_state_invalid",
+      path: "pendingApprovals",
+    });
+    expect(orphanToolApproval).toContainEqual({
+      code: "approval_projection_invalid",
+      path: "pendingApprovals.0.nodeId",
+    });
+    expect(approvalBeforeStartIssues).toContainEqual({
+      code: "timestamp_order_invalid",
+      path: "pendingApprovals.0.requestedAtUnixMs",
+    });
+  });
+
+  it("拒绝不可恢复的节点图、身份碰撞和跨 Run 审批", () => {
+    const running = decodePersistedSquadExecution({
+      executionId: "execution-contract-invariants",
+      squadId: "squad-validation",
+      squadRevision: 1,
+      projectId: "project-1",
+      goalDigest: "sha256:contract-invariants-goal",
+      goalTaskId: "execution-contract-invariants:task:goal-input",
+      workspaceRoot: "E:/workspace",
+      workspaceRootDigest: "sha256:contract-invariants-workspace",
+      status: "running",
+      revision: 3,
+      nodes: [
+        {
+          nodeId: "contracts",
+          agentId: "agent-worker",
+          taskId: "execution-contract-invariants:task:contracts",
+          runId: "execution-contract-invariants:run:contracts:1",
+          promptDigest: "sha256:contracts-prompt",
+          dependsOnNodeIds: [],
+        },
+        {
+          nodeId: "review",
+          agentId: "agent-reviewer",
+          taskId: "execution-contract-invariants:task:review",
+          runId: "execution-contract-invariants:run:review:1",
+          promptDigest: "sha256:review-prompt",
+          dependsOnNodeIds: ["contracts"],
+        },
+      ],
+      leaderTaskId: "execution-contract-invariants:task:leader",
+      leaderRunId: "execution-contract-invariants:run:leader:1",
+      pendingApprovals: [],
+      createdAtUnixMs: 100,
+      startedAtUnixMs: 120,
+      updatedAtUnixMs: 180,
+    });
+    const [contracts, review] = running.nodes ?? [];
+    expect(contracts).toBeDefined();
+    expect(review).toBeDefined();
+
+    const duplicateDependencyIssues = validateCompositionSquadExecution({
+      ...running,
+      nodes: [
+        { ...contracts!, dependsOnNodeIds: ["review", "review"] },
+        { ...review!, dependsOnNodeIds: [] },
+      ],
+    });
+    const dependencyCycleIssues = validateCompositionSquadExecution({
+      ...running,
+      nodes: [
+        { ...contracts!, dependsOnNodeIds: ["review"] },
+        { ...review!, dependsOnNodeIds: ["contracts"] },
+      ],
+    });
+    const foreignRunApprovalIssues = validateCompositionSquadExecution({
+      ...running,
+      pendingApprovals: [
+        {
+          approvalRequestId: decodeApprovalRequestId("approval-foreign-run"),
+          stage: "before_mutating_tool",
+          nodeId: "contracts",
+          taskId: "execution-contract-invariants:task:contracts",
+          runId: "foreign-execution:run:contracts:1",
+          agentId: "agent-worker",
+          capabilityId: "t3.workspace.write_file",
+          toolCallId: "tool-foreign-run",
+          requestedAtUnixMs: 150,
+        },
+      ],
+    });
+    const leaderTaskCollisionIssues = validateCompositionSquadExecution({
+      ...running,
+      leaderTaskId: "execution-contract-invariants:task:contracts",
+    });
+    const goalTaskCollisionIssues = validateCompositionSquadExecution({
+      ...running,
+      goalTaskId: "execution-contract-invariants:task:contracts",
+    });
+    const leaderRunCollisionIssues = validateCompositionSquadExecution({
+      ...running,
+      leaderRunId: "execution-contract-invariants:run:contracts:1",
+    });
+    const awaitingToolApprovalIssues = validateCompositionSquadExecution({
+      ...running,
+      status: "awaiting_approval",
+      pendingApprovals: [
+        {
+          approvalRequestId: decodeApprovalRequestId("approval-awaiting-tool"),
+          stage: "before_mutating_tool",
+          nodeId: "contracts",
+          taskId: "execution-contract-invariants:task:contracts",
+          runId: "execution-contract-invariants:run:contracts:1",
+          agentId: "agent-worker",
+          capabilityId: "t3.workspace.write_file",
+          toolCallId: "tool-awaiting",
+          requestedAtUnixMs: 150,
+        },
+      ],
+    });
+
+    expect(duplicateDependencyIssues).toContainEqual({
+      code: "node_projection_invalid",
+      path: "nodes.0.dependsOnNodeIds",
+    });
+    expect(dependencyCycleIssues).toContainEqual({
+      code: "node_projection_invalid",
+      path: "nodes.0.dependsOnNodeIds",
+    });
+    expect(foreignRunApprovalIssues).toContainEqual({
+      code: "approval_projection_invalid",
+      path: "pendingApprovals.0.runId",
+    });
+    expect(leaderTaskCollisionIssues).toContainEqual({
+      code: "graph_identity_invalid",
+      path: "leaderTaskId",
+    });
+    expect(goalTaskCollisionIssues).toContainEqual({
+      code: "graph_identity_invalid",
+      path: "goalTaskId",
+    });
+    expect(leaderRunCollisionIssues).toContainEqual({
+      code: "graph_identity_invalid",
+      path: "leaderRunId",
+    });
+    expect(awaitingToolApprovalIssues).toContainEqual({
+      code: "approval_state_invalid",
+      path: "pendingApprovals",
+    });
+  });
+
+  it("保留取消失败的请求事实并拒绝重复审批身份", () => {
+    const cancelledAsFailure = decodePersistedSquadExecution({
+      executionId: "execution-cancel-failed",
+      squadId: "squad-validation",
+      squadRevision: 1,
+      projectId: "project-1",
+      goalDigest: "sha256:cancel-failed-goal",
+      goalTaskId: "execution-cancel-failed:task:leader-plan",
+      workspaceRoot: "E:/workspace",
+      workspaceRootDigest: "sha256:cancel-failed-workspace",
+      status: "failed",
+      revision: 4,
+      pendingApprovals: [],
+      leaderTaskId: "execution-cancel-failed:leader",
+      leaderRunId: "execution-cancel-failed:leader:run:1",
+      failureCode: "squad_cancel_cleanup_failed",
+      failureDetail: "一个子任务未确认取消。",
+      createdAtUnixMs: 100,
+      startedAtUnixMs: 110,
+      cancelRequestedAtUnixMs: 160,
+      finishedAtUnixMs: 180,
+      updatedAtUnixMs: 180,
+    });
+
+    expect(cancelledAsFailure.cancelRequestedAtUnixMs).toBe(160);
+    expect(() =>
+      decodePersistedSquadExecution({
+        ...cancelledAsFailure,
+        status: "running",
+        revision: 5,
+        failureCode: undefined,
+        failureDetail: undefined,
+        finishedAtUnixMs: undefined,
+        cancelRequestedAtUnixMs: undefined,
+        nodes: [
+          {
+            nodeId: "contracts",
+            agentId: "agent-worker",
+            taskId: "execution-cancel-failed:task:contracts",
+            runId: "execution-cancel-failed:run:contracts:1",
+            promptDigest: "sha256:duplicate-approval-prompt",
+            dependsOnNodeIds: [],
+          },
+        ],
+        pendingApprovals: [
+          {
+            approvalRequestId: "approval-duplicate",
+            stage: "before_mutating_tool",
+            nodeId: "contracts",
+            taskId: "execution-cancel-failed:task:contracts",
+            runId: "execution-cancel-failed:run:contracts:1",
+            agentId: "agent-worker",
+            capabilityId: "t3.workspace.write_file",
+            toolCallId: "tool-duplicate-1",
+            requestedAtUnixMs: 150,
+          },
+          {
+            approvalRequestId: "approval-duplicate",
+            stage: "before_mutating_tool",
+            nodeId: "contracts",
+            taskId: "execution-cancel-failed:task:contracts",
+            runId: "execution-cancel-failed:run:contracts:2",
+            agentId: "agent-worker",
+            capabilityId: "t3.workspace.write_file",
+            toolCallId: "tool-duplicate-2",
+            requestedAtUnixMs: 155,
+          },
+        ],
+      }),
+    ).toThrow();
+
+    const duplicateIssues = validateCompositionSquadExecution({
+      ...cancelledAsFailure,
+      status: "running",
+      revision: 5,
+      failureCode: undefined,
+      failureDetail: undefined,
+      finishedAtUnixMs: undefined,
+      cancelRequestedAtUnixMs: undefined,
+      nodes: [
+        {
+          nodeId: "contracts",
+          agentId: "agent-worker",
+          taskId: "execution-cancel-failed:task:contracts",
+          runId: "execution-cancel-failed:run:contracts:1",
+          promptDigest: "sha256:duplicate-approval-prompt",
+          dependsOnNodeIds: [],
+        },
+      ],
+      pendingApprovals: [
+        {
+          approvalRequestId: decodeApprovalRequestId("approval-duplicate"),
+          stage: "before_mutating_tool",
+          nodeId: "contracts",
+          taskId: "execution-cancel-failed:task:contracts",
+          runId: "execution-cancel-failed:run:contracts:1",
+          agentId: "agent-worker",
+          capabilityId: "t3.workspace.write_file",
+          toolCallId: "tool-duplicate-1",
+          requestedAtUnixMs: 150,
+        },
+        {
+          approvalRequestId: decodeApprovalRequestId("approval-duplicate"),
+          stage: "before_mutating_tool",
+          nodeId: "contracts",
+          taskId: "execution-cancel-failed:task:contracts",
+          runId: "execution-cancel-failed:run:contracts:2",
+          agentId: "agent-worker",
+          capabilityId: "t3.workspace.write_file",
+          toolCallId: "tool-duplicate-2",
+          requestedAtUnixMs: 155,
+        },
+      ],
+    });
+    expect(duplicateIssues).toContainEqual({
+      code: "duplicate_approval_request",
+      path: "pendingApprovals.approvalRequestId",
+    });
+  });
+
+  it("只允许状态机声明的 Squad execution 状态迁移", () => {
+    expect(
+      isCompositionSquadExecutionStatusTransitionAllowed({ from: "queued", to: "planning" }),
+    ).toBe(true);
+    expect(
+      isCompositionSquadExecutionStatusTransitionAllowed({
+        from: "planning",
+        to: "awaiting_approval",
+      }),
+    ).toBe(true);
+    expect(
+      isCompositionSquadExecutionStatusTransitionAllowed({
+        from: "running",
+        to: "paused",
+        pausedFromStatus: "running",
+      }),
+    ).toBe(true);
+    expect(
+      isCompositionSquadExecutionStatusTransitionAllowed({
+        from: "queued",
+        to: "paused",
+        pausedFromStatus: "running",
+      }),
+    ).toBe(false);
+    expect(
+      isCompositionSquadExecutionStatusTransitionAllowed({ from: "running", to: "paused" }),
+    ).toBe(false);
+    expect(
+      isCompositionSquadExecutionStatusTransitionAllowed({
+        from: "paused",
+        to: "running",
+        pausedFromStatus: "running",
+      }),
+    ).toBe(true);
+    expect(
+      isCompositionSquadExecutionStatusTransitionAllowed({
+        from: "paused",
+        to: "awaiting_approval",
+        pausedFromStatus: "awaiting_approval",
+      }),
+    ).toBe(true);
+    expect(
+      isCompositionSquadExecutionStatusTransitionAllowed({ from: "running", to: "cancelling" }),
+    ).toBe(true);
+    expect(
+      isCompositionSquadExecutionStatusTransitionAllowed({ from: "cancelling", to: "cancelled" }),
+    ).toBe(true);
+    expect(
+      isCompositionSquadExecutionStatusTransitionAllowed({ from: "queued", to: "failed" }),
+    ).toBe(false);
+    expect(
+      isCompositionSquadExecutionStatusTransitionAllowed({ from: "queued", to: "cancelling" }),
+    ).toBe(false);
+    expect(
+      isCompositionSquadExecutionStatusTransitionAllowed({ from: "queued", to: "cancelled" }),
+    ).toBe(true);
+    expect(
+      isCompositionSquadExecutionStatusTransitionAllowed({
+        from: "paused",
+        to: "cancelled",
+        pausedFromStatus: "queued",
+      }),
+    ).toBe(true);
+    expect(
+      isCompositionSquadExecutionStatusTransitionAllowed({
+        from: "paused",
+        to: "cancelling",
+        pausedFromStatus: "queued",
+      }),
+    ).toBe(false);
+
+    expect(
+      isCompositionSquadExecutionStatusTransitionAllowed({
+        from: "paused",
+        to: "running",
+        pausedFromStatus: "awaiting_approval",
+      }),
+    ).toBe(false);
+    expect(
+      isCompositionSquadExecutionStatusTransitionAllowed({ from: "running", to: "running" }),
+    ).toBe(false);
+    expect(
+      isCompositionSquadExecutionStatusTransitionAllowed({ from: "running", to: "cancelled" }),
+    ).toBe(false);
+    expect(
+      isCompositionSquadExecutionStatusTransitionAllowed({ from: "paused", to: "completed" }),
+    ).toBe(false);
+    expect(
+      isCompositionSquadExecutionStatusTransitionAllowed({ from: "completed", to: "running" }),
+    ).toBe(false);
+    expect(
+      isCompositionSquadExecutionStatusTransitionAllowed({ from: "cancelled", to: "queued" }),
+    ).toBe(false);
   });
 
   it("定义 Leader、依赖节点和 retry 次数的 Task Graph RPC 合同", () => {
