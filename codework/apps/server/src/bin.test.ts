@@ -299,6 +299,24 @@ it.layer(NodeServices.layer)("bin cli parsing", (it) => {
     }),
   );
 
+  it.effect("exposes Workspace Script run list and detail commands", () =>
+    Effect.gen(function* () {
+      const list = yield* captureStdout(runCli(["script", "list", "--help"], noConnectCli));
+      const details = yield* captureStdout(runCli(["script", "get", "--help"], noConnectCli));
+
+      assert.include(list.output, "List workspace script runs.");
+      assert.include(list.output, "--project");
+      assert.include(list.output, "--thread");
+      assert.include(list.output, "--status");
+      assert.include(list.output, "--server");
+      assert.include(list.output, "--access-token");
+      assert.include(list.output, "--json");
+      assert.include(details.output, "Get one workspace script run.");
+      assert.include(details.output, "<run-id>");
+      assert.include(details.output, "run-id string    Workspace script run id.");
+    }),
+  );
+
   it.effect("exposes schema-validated Automation create and update commands", () =>
     Effect.gen(function* () {
       const create = yield* captureStdout(
