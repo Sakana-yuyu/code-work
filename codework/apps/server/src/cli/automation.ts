@@ -2,12 +2,14 @@ import {
   type CompositionAutomation,
   CompositionAutomationCreateRequest as CompositionAutomationCreateRequestSchema,
   type CompositionAutomationCreateRequest,
+  type CompositionAutomationDeleteResult,
   type CompositionAutomationListResult,
   type CompositionAutomationResult,
   CompositionAutomationStatus,
   type CompositionAutomationStatus as CompositionAutomationStatusType,
   CompositionAutomationUpdateRequest as CompositionAutomationUpdateRequestSchema,
   type CompositionAutomationUpdateRequest,
+  PositiveInt,
   TrimmedNonEmptyString,
   WS_METHODS,
 } from "@codework/contracts";
@@ -41,6 +43,11 @@ export interface CreateAutomationOptions extends ControlConnectionOptions {
 
 export interface UpdateAutomationOptions extends ControlConnectionOptions {
   readonly input: CompositionAutomationUpdateRequest;
+}
+
+export interface MutateAutomationRevisionOptions extends ControlConnectionOptions {
+  readonly automationId: string;
+  readonly expectedRevision: number;
 }
 
 export class AutomationStatusInputError extends Data.TaggedError("AutomationStatusInputError")<{
@@ -101,6 +108,54 @@ export const updateAutomation = (
       ...(options.accessToken ? { accessToken: options.accessToken } : {}),
     },
     (rpc) => rpc[WS_METHODS.serverUpdateCompositionAutomation](options.input),
+  );
+
+export const pauseAutomation = (
+  options: MutateAutomationRevisionOptions,
+  open: ControlClientOpen = openControlClient,
+) =>
+  open(
+    {
+      serverUrl: options.serverUrl,
+      ...(options.accessToken ? { accessToken: options.accessToken } : {}),
+    },
+    (rpc) =>
+      rpc[WS_METHODS.serverPauseCompositionAutomation]({
+        automationId: options.automationId,
+        expectedRevision: options.expectedRevision,
+      }),
+  );
+
+export const resumeAutomation = (
+  options: MutateAutomationRevisionOptions,
+  open: ControlClientOpen = openControlClient,
+) =>
+  open(
+    {
+      serverUrl: options.serverUrl,
+      ...(options.accessToken ? { accessToken: options.accessToken } : {}),
+    },
+    (rpc) =>
+      rpc[WS_METHODS.serverResumeCompositionAutomation]({
+        automationId: options.automationId,
+        expectedRevision: options.expectedRevision,
+      }),
+  );
+
+export const deleteAutomation = (
+  options: MutateAutomationRevisionOptions,
+  open: ControlClientOpen = openControlClient,
+) =>
+  open(
+    {
+      serverUrl: options.serverUrl,
+      ...(options.accessToken ? { accessToken: options.accessToken } : {}),
+    },
+    (rpc) =>
+      rpc[WS_METHODS.serverDeleteCompositionAutomation]({
+        automationId: options.automationId,
+        expectedRevision: options.expectedRevision,
+      }),
   );
 
 const AutomationStatuses = Schema.Array(CompositionAutomationStatus);
@@ -259,6 +314,15 @@ export function formatAutomationDetails(
   ].join("\n");
 }
 
+export function formatAutomationDeleteResult(
+  result: CompositionAutomationDeleteResult,
+  json: boolean,
+): string {
+  return json
+    ? JSON.stringify(result, null, 2)
+    : `Deleted ${result.automationId} at ${formatUnixMs(result.deletedAtUnixMs)}`;
+}
+
 const serverFlag = Flag.string("server").pipe(
   Flag.withDescription("Code Work server URL or pairing link."),
   Flag.withDefault("http://127.0.0.1:3773"),
@@ -293,6 +357,11 @@ const automationIdArgument = Argument.string("automation-id").pipe(
 const configFileFlag = Flag.string("config").pipe(
   Flag.withSchema(TrimmedNonEmptyString),
   Flag.withDescription("JSON file validated against the Code Work Automation contract."),
+);
+
+const expectedRevisionFlag = Flag.integer("expected-revision").pipe(
+  Flag.withSchema(PositiveInt),
+  Flag.withDescription("Current revision required for optimistic concurrency."),
 );
 
 const automationListCommand = Command.make("list", {
@@ -382,6 +451,65 @@ const automationUpdateCommand = Command.make("update", {
   ),
 );
 
+const makeAutomationRevisionCommand = (
+  name: "pause" | "resume",
+  description: string,
+  mutate: typeof pauseAutomation,
+) =>
+  Command.make(name, {
+    automationId: automationIdArgument,
+    expectedRevision: expectedRevisionFlag,
+    server: serverFlag,
+    accessToken: accessTokenFlag,
+    json: jsonFlag,
+  }).pipe(
+    Command.withDescription(description),
+    Command.withHandler((flags) =>
+      Effect.gen(function* () {
+        const result = yield* mutate({
+          serverUrl: flags.server,
+          ...(Option.isSome(flags.accessToken) ? { accessToken: flags.accessToken.value } : {}),
+          automationId: flags.automationId,
+          expectedRevision: flags.expectedRevision,
+        });
+        yield* Console.log(formatAutomationDetails(result, flags.json));
+      }),
+    ),
+  );
+
+const automationPauseCommand = makeAutomationRevisionCommand(
+  "pause",
+  "Pause a composition automation at an expected revision.",
+  pauseAutomation,
+);
+
+const automationResumeCommand = makeAutomationRevisionCommand(
+  "resume",
+  "Resume a composition automation at an expected revision.",
+  resumeAutomation,
+);
+
+const automationDeleteCommand = Command.make("delete", {
+  automationId: automationIdArgument,
+  expectedRevision: expectedRevisionFlag,
+  server: serverFlag,
+  accessToken: accessTokenFlag,
+  json: jsonFlag,
+}).pipe(
+  Command.withDescription("Delete a composition automation at an expected revision."),
+  Command.withHandler((flags) =>
+    Effect.gen(function* () {
+      const result = yield* deleteAutomation({
+        serverUrl: flags.server,
+        ...(Option.isSome(flags.accessToken) ? { accessToken: flags.accessToken.value } : {}),
+        automationId: flags.automationId,
+        expectedRevision: flags.expectedRevision,
+      });
+      yield* Console.log(formatAutomationDeleteResult(result, flags.json));
+    }),
+  ),
+);
+
 export const automationCommand = Command.make("automation").pipe(
   Command.withDescription("Manage composition automations."),
   Command.withSubcommands([
@@ -389,5 +517,8 @@ export const automationCommand = Command.make("automation").pipe(
     automationGetCommand,
     automationCreateCommand,
     automationUpdateCommand,
+    automationPauseCommand,
+    automationResumeCommand,
+    automationDeleteCommand,
   ]),
 );

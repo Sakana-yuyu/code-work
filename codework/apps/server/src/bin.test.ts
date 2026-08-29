@@ -315,6 +315,27 @@ it.layer(NodeServices.layer)("bin cli parsing", (it) => {
     }),
   );
 
+  it.effect("exposes optimistic Automation lifecycle commands", () =>
+    Effect.gen(function* () {
+      const pause = yield* captureStdout(
+        runCli(["automation", "pause", "--help"], noConnectCli),
+      );
+      const resume = yield* captureStdout(
+        runCli(["automation", "resume", "--help"], noConnectCli),
+      );
+      const remove = yield* captureStdout(
+        runCli(["automation", "delete", "--help"], noConnectCli),
+      );
+
+      assert.include(pause.output, "Pause a composition automation at an expected revision.");
+      assert.include(resume.output, "Resume a composition automation at an expected revision.");
+      assert.include(remove.output, "Delete a composition automation at an expected revision.");
+      assert.include(pause.output, "--expected-revision");
+      assert.include(resume.output, "--expected-revision");
+      assert.include(remove.output, "--expected-revision");
+    }),
+  );
+
   it.effect("reports fresh headless connect state without requiring local configuration", () =>
     Effect.gen(function* () {
       const baseDir = NodeFS.mkdtempSync(
