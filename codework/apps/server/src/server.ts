@@ -30,6 +30,7 @@ import * as PullRequestService from "./pullRequest/PullRequestService.ts";
 import { layerConfig as SqlitePersistenceLayerLive } from "./persistence/Layers/Sqlite.ts";
 import { CompositionTaskStoreLive } from "./persistence/Layers/CompositionTaskStore.ts";
 import { CompositionTaskInputStoreLive } from "./persistence/Layers/CompositionTaskInputStore.ts";
+import { CompositionAutomationStoreLive } from "./persistence/Layers/CompositionAutomationStore.ts";
 import * as ServerLifecycleEvents from "./serverLifecycleEvents.ts";
 import * as AnalyticsService from "./telemetry/AnalyticsService.ts";
 import { ProviderSessionDirectoryLive } from "./provider/Layers/ProviderSessionDirectory.ts";
@@ -77,6 +78,11 @@ import * as CompositionSquadRunner from "./composition/CompositionSquadRunner.ts
 import * as CompositionSquadService from "./composition/CompositionSquadService.ts";
 import * as CompositionTaskRuntimeProjectionService from "./composition/CompositionTaskRuntimeProjectionService.ts";
 import * as CompositionTaskGraphExecutor from "./composition/CompositionTaskGraphExecutor.ts";
+import * as CompositionAutomationBackgroundRunner from "./composition/CompositionAutomationBackgroundRunner.ts";
+import * as CompositionAutomationExecutionContext from "./composition/CompositionAutomationExecutionContext.ts";
+import * as CompositionAutomationRunExecutor from "./composition/CompositionAutomationRunExecutor.ts";
+import * as CompositionAutomationScheduler from "./composition/CompositionAutomationScheduler.ts";
+import * as CompositionAutomationRuntime from "./composition/CompositionAutomationRuntime.ts";
 import * as PreviewManager from "./preview/Manager.ts";
 import * as PortScanner from "./preview/PortScanner.ts";
 import * as ProcessRunner from "./processRunner.ts";
@@ -494,6 +500,42 @@ const CompositionSquadRunnerLayerLive = CompositionSquadRunner.layer.pipe(
   Layer.provide(CompositionTaskGraphExecutorLayerLive),
 );
 
+const CompositionAutomationStoreLayerLive = CompositionAutomationStoreLive.pipe(
+  Layer.provideMerge(PersistenceLayerLive),
+);
+
+const CompositionAutomationExecutionContextLayerLive =
+  CompositionAutomationExecutionContext.layer.pipe(Layer.provide(OrchestrationLayerLive));
+
+const CompositionAutomationBackgroundRunnerLayerLive =
+  CompositionAutomationBackgroundRunner.layer;
+
+const CompositionAutomationRunExecutorLayerLive = CompositionAutomationRunExecutor.layer.pipe(
+  Layer.provide(CompositionOrchestratorLayerLive),
+  Layer.provide(CompositionTaskStoreLayerLive),
+  Layer.provide(CompositionAutomationExecutionContextLayerLive),
+  Layer.provide(CompositionSquadRunnerLayerLive),
+  Layer.provide(CompositionAutomationBackgroundRunnerLayerLive),
+  Layer.provide(CompositionAutomationStoreLayerLive),
+);
+
+const CompositionAutomationSchedulerLayerLive =
+  CompositionAutomationScheduler.CompositionAutomationSchedulerLive.pipe(
+    Layer.provide(CompositionAutomationStoreLayerLive),
+    Layer.provide(CompositionAutomationRunExecutorLayerLive),
+  );
+
+const CompositionAutomationRuntimeLayerLive = CompositionAutomationRuntime.layer.pipe(
+  Layer.provide(CompositionAutomationSchedulerLayerLive),
+);
+
+const CompositionAutomationRuntimeStartLayerLive = Layer.effectDiscard(
+  Effect.gen(function* () {
+    const runtime = yield* CompositionAutomationRuntime.CompositionAutomationRuntime;
+    yield* runtime.start;
+  }),
+).pipe(Layer.provide(CompositionAutomationRuntimeLayerLive));
+
 const ProjectFaviconResolverLayerLive = ProjectFaviconResolver.layer.pipe(
   Layer.provide(WorkspacePaths.layer),
   Layer.provide(CodeworkProjectFileLoader.layer),
@@ -546,6 +588,7 @@ const RuntimeCoreDependenciesBaseLive = ReactorLayerLive.pipe(
       CompositionSquadServiceLayerLive,
       CompositionSquadPlannerLayerLive,
       CompositionSquadRunnerLayerLive,
+      CompositionAutomationRuntimeStartLayerLive,
     ),
   ),
   // Shared native/canonical NDJSON writers used by both the per-instance
