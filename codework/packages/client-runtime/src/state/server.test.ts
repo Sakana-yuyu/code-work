@@ -34,8 +34,11 @@ import type { WsRpcProtocolClient } from "../rpc/protocol.ts";
 import type { RpcSession } from "../rpc/session.ts";
 import {
   applyServerConfigProjection,
+  compositionAutomationLifecycleCommandKey,
+  compositionAutomationOperationCommandKey,
   compositionSquadLifecycleCommandKey,
   compositionSquadRunCommandKey,
+  createCompositionAutomationEnvironmentAtoms,
   createCompositionSquadEnvironmentAtoms,
   makeEnvironmentServerConfigState,
   isLegacyUpdateHandoffLoss,
@@ -48,6 +51,109 @@ import {
   serverUpdateStateForServerVersion,
   validateServerUpdateReadyEvent,
 } from "./server.ts";
+
+describe("Composition Automation environment atoms", () => {
+  it("暴露查询和命令原子，并按环境与查询输入隔离缓存", () => {
+    const runtime = Atom.runtime(Layer.empty) as unknown as Atom.AtomRuntime<
+      EnvironmentRegistry,
+      never
+    >;
+    const atoms = createCompositionAutomationEnvironmentAtoms(runtime);
+    const environmentId = EnvironmentId.make("environment-1");
+
+    expect(Object.keys(atoms)).toEqual([
+      "compositionAutomations",
+      "compositionAutomation",
+      "compositionAutomationRuns",
+      "createCompositionAutomation",
+      "updateCompositionAutomation",
+      "pauseCompositionAutomation",
+      "resumeCompositionAutomation",
+      "deleteCompositionAutomation",
+      "runCompositionAutomationOnce",
+      "retryCompositionAutomationRun",
+    ]);
+    expect(atoms.compositionAutomations({ environmentId, input: {} })).toBe(
+      atoms.compositionAutomations({ environmentId, input: {} }),
+    );
+    expect(atoms.compositionAutomations({ environmentId, input: {} })).not.toBe(
+      atoms.compositionAutomations({ environmentId, input: { projectId: "project-1" } }),
+    );
+    expect(
+      atoms.compositionAutomation({ environmentId, input: { automationId: "automation-1" } }),
+    ).not.toBe(
+      atoms.compositionAutomation({ environmentId, input: { automationId: "automation-2" } }),
+    );
+    expect(
+      atoms.compositionAutomationRuns({
+        environmentId,
+        input: { automationId: "automation-1" },
+      }),
+    ).not.toBe(
+      atoms.compositionAutomationRuns({
+        environmentId,
+        input: { automationId: "automation-1", cursor: "cursor-2" },
+      }),
+    );
+  });
+
+  it("为生命周期和人工运行生成稳定且隔离的 single-flight 键", () => {
+    const environmentId = EnvironmentId.make("environment-1");
+
+    expect(
+      compositionAutomationLifecycleCommandKey({
+        environmentId,
+        input: { automationId: "automation-1" },
+      }),
+    ).toBe(
+      compositionAutomationLifecycleCommandKey({
+        environmentId,
+        input: { automationId: "automation-1" },
+      }),
+    );
+    expect(
+      compositionAutomationLifecycleCommandKey({
+        environmentId,
+        input: { automationId: "automation-1" },
+      }),
+    ).not.toBe(
+      compositionAutomationLifecycleCommandKey({
+        environmentId,
+        input: { automationId: "automation-2" },
+      }),
+    );
+    expect(
+      compositionAutomationOperationCommandKey({
+        environmentId,
+        input: { automationId: "automation-1", operationId: "operation-1" },
+      }),
+    ).not.toBe(
+      compositionAutomationOperationCommandKey({
+        environmentId,
+        input: { automationId: "automation-1", operationId: "operation-2" },
+      }),
+    );
+    expect(
+      compositionAutomationOperationCommandKey({
+        environmentId,
+        input: {
+          automationId: "automation-1",
+          automationRunId: "run-1",
+          operationId: "operation-1",
+        },
+      }),
+    ).not.toBe(
+      compositionAutomationOperationCommandKey({
+        environmentId,
+        input: {
+          automationId: "automation-1",
+          automationRunId: "run-2",
+          operationId: "operation-1",
+        },
+      }),
+    );
+  });
+});
 
 describe("Composition Squad environment atoms", () => {
   it("暴露查询和命令原子，并按环境与查询输入隔离缓存", () => {

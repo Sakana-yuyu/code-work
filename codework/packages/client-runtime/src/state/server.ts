@@ -106,6 +106,105 @@ export function createByokEnvironmentAtoms<R, E>(
 
 export type ByokEnvironmentAtoms<R, E> = ReturnType<typeof createByokEnvironmentAtoms<R, E>>;
 
+export const compositionAutomationLifecycleCommandKey = (target: {
+  readonly environmentId: EnvironmentId;
+  readonly input: { readonly automationId: string };
+}): string => JSON.stringify([target.environmentId, target.input.automationId]);
+
+export const compositionAutomationOperationCommandKey = (target: {
+  readonly environmentId: EnvironmentId;
+  readonly input: {
+    readonly automationId: string;
+    readonly operationId: string;
+    readonly automationRunId?: string;
+  };
+}): string =>
+  JSON.stringify([
+    target.environmentId,
+    target.input.automationId,
+    target.input.operationId,
+    target.input.automationRunId ?? null,
+  ]);
+
+/** Web 与 Mobile 共用的 Automation 查询、生命周期、人工运行和历史入口。 */
+export function createCompositionAutomationEnvironmentAtoms<R, E>(
+  runtime: Atom.AtomRuntime<EnvironmentRegistry | R, E>,
+) {
+  const lifecycleScheduler = createAtomCommandScheduler();
+  const operationScheduler = createAtomCommandScheduler();
+  const lifecycleConcurrency = {
+    mode: "singleFlight" as const,
+    key: compositionAutomationLifecycleCommandKey,
+  };
+  const operationConcurrency = {
+    mode: "singleFlight" as const,
+    key: compositionAutomationOperationCommandKey,
+  };
+
+  return {
+    compositionAutomations: createEnvironmentRpcQueryAtomFamily(runtime, {
+      label: "environment-data:server:composition-automations",
+      tag: WS_METHODS.serverListCompositionAutomations,
+      staleTimeMs: 2_000,
+      idleTtlMs: 60_000,
+    }),
+    compositionAutomation: createEnvironmentRpcQueryAtomFamily(runtime, {
+      label: "environment-data:server:composition-automation",
+      tag: WS_METHODS.serverGetCompositionAutomation,
+      staleTimeMs: 2_000,
+      idleTtlMs: 60_000,
+    }),
+    compositionAutomationRuns: createEnvironmentRpcQueryAtomFamily(runtime, {
+      label: "environment-data:server:composition-automation-runs",
+      tag: WS_METHODS.serverListCompositionAutomationRuns,
+      staleTimeMs: 1_000,
+      idleTtlMs: 30_000,
+    }),
+    createCompositionAutomation: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:server:create-composition-automation",
+      tag: WS_METHODS.serverCreateCompositionAutomation,
+      scheduler: lifecycleScheduler,
+      concurrency: lifecycleConcurrency,
+    }),
+    updateCompositionAutomation: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:server:update-composition-automation",
+      tag: WS_METHODS.serverUpdateCompositionAutomation,
+      scheduler: lifecycleScheduler,
+      concurrency: lifecycleConcurrency,
+    }),
+    pauseCompositionAutomation: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:server:pause-composition-automation",
+      tag: WS_METHODS.serverPauseCompositionAutomation,
+      scheduler: lifecycleScheduler,
+      concurrency: lifecycleConcurrency,
+    }),
+    resumeCompositionAutomation: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:server:resume-composition-automation",
+      tag: WS_METHODS.serverResumeCompositionAutomation,
+      scheduler: lifecycleScheduler,
+      concurrency: lifecycleConcurrency,
+    }),
+    deleteCompositionAutomation: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:server:delete-composition-automation",
+      tag: WS_METHODS.serverDeleteCompositionAutomation,
+      scheduler: lifecycleScheduler,
+      concurrency: lifecycleConcurrency,
+    }),
+    runCompositionAutomationOnce: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:server:run-composition-automation-once",
+      tag: WS_METHODS.serverRunCompositionAutomationOnce,
+      scheduler: operationScheduler,
+      concurrency: operationConcurrency,
+    }),
+    retryCompositionAutomationRun: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:server:retry-composition-automation-run",
+      tag: WS_METHODS.serverRetryCompositionAutomationRun,
+      scheduler: operationScheduler,
+      concurrency: operationConcurrency,
+    }),
+  };
+}
+
 export const compositionSquadLifecycleCommandKey = (target: {
   readonly environmentId: EnvironmentId;
   readonly input: { readonly squadId: string };
@@ -864,6 +963,7 @@ export function createServerEnvironmentAtoms<R, E>(
       idleTtlMs: 60_000,
     }),
     ...createCompositionSquadEnvironmentAtoms(runtime),
+    ...createCompositionAutomationEnvironmentAtoms(runtime),
     listCompositionTasks: createEnvironmentRpcQueryAtomFamily(runtime, {
       label: "environment-data:server:list-composition-tasks",
       tag: WS_METHODS.serverListCompositionTasks,
