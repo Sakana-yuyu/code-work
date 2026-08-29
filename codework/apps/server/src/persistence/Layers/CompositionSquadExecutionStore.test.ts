@@ -142,7 +142,7 @@ const makeFileStoreLayer = (dbPath: string) =>
   );
 
 layer("CompositionSquadExecutionStore", (it) => {
-  it.effect("原子 claim、完整重放并拒绝身份漂移或不可恢复的 Squad revision", () =>
+  it.effect("原子 claim、稳定重领并拒绝身份漂移或不可恢复的 Squad revision", () =>
     Effect.gen(function* () {
       const store = yield* CompositionSquadExecutionStore;
       const sql = yield* SqlClient.SqlClient;
@@ -151,13 +151,39 @@ layer("CompositionSquadExecutionStore", (it) => {
 
       assert.deepEqual(yield* store.claimExecution(queued), { execution: queued, claimed: true });
       assert.deepEqual(yield* store.claimExecution(queued), { execution: queued, claimed: false });
-      assert.deepEqual(Option.getOrThrow(yield* store.getExecution(queued.executionId)), queued);
+      const laterRetry = {
+        ...queued,
+        createdAtUnixMs: 200,
+        updatedAtUnixMs: 200,
+      };
+      assert.deepEqual(yield* store.claimExecution(laterRetry), {
+        execution: queued,
+        claimed: false,
+      });
+
+      const planning = makePlanningExecution(queued);
+      yield* store.saveTransition({ execution: planning, expectedRevision: queued.revision });
+      assert.deepEqual(
+        yield* store.claimExecution({
+          ...queued,
+          createdAtUnixMs: 300,
+          updatedAtUnixMs: 300,
+        }),
+        { execution: planning, claimed: false },
+      );
+      assert.deepEqual(Option.getOrThrow(yield* store.getExecution(queued.executionId)), planning);
 
       const drift = yield* Effect.result(
         store.claimExecution({ ...queued, projectId: "project-drift" }),
       );
+      const goalDrift = yield* Effect.result(
+        store.claimExecution({ ...queued, goalDigest: "sha256:different-goal" }),
+      );
       const planDrift = yield* Effect.result(
         store.claimExecution({ ...queued, planDigest: "sha256:different-plan" }),
+      );
+      const workspaceDrift = yield* Effect.result(
+        store.claimExecution({ ...queued, workspaceRootDigest: "sha256:different-workspace" }),
       );
       const missingRevision = yield* Effect.result(
         store.claimExecution(
@@ -219,7 +245,9 @@ layer("CompositionSquadExecutionStore", (it) => {
       );
 
       assert.equal(failureCode(drift), "squad_execution_conflict");
+      assert.equal(failureCode(goalDrift), "squad_execution_conflict");
       assert.equal(failureCode(planDrift), "squad_execution_conflict");
+      assert.equal(failureCode(workspaceDrift), "squad_execution_conflict");
       assert.equal(failureCode(missingRevision), "squad_execution_squad_revision_invalid");
       assert.equal(failureCode(legacyRevision), "squad_execution_squad_revision_invalid");
       assert.equal(malformedRevision._tag, "Failure");

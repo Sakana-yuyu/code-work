@@ -227,7 +227,7 @@ const sameExecution = (
   right: CompositionSquadExecution,
 ): boolean => encodeExecution(left) === encodeExecution(right);
 
-const sameExecutionIdentity = (
+const sameExecutionClaimIdentity = (
   left: CompositionSquadExecution,
   right: CompositionSquadExecution,
 ): boolean =>
@@ -241,8 +241,13 @@ const sameExecutionIdentity = (
   left.goalTaskId === right.goalTaskId &&
   left.workspaceRootDigest === right.workspaceRootDigest &&
   left.leaderTaskId === right.leaderTaskId &&
-  left.leaderRunId === right.leaderRunId &&
-  left.createdAtUnixMs === right.createdAtUnixMs;
+  left.leaderRunId === right.leaderRunId;
+
+const sameExecutionIdentity = (
+  left: CompositionSquadExecution,
+  right: CompositionSquadExecution,
+): boolean =>
+  sameExecutionClaimIdentity(left, right) && left.createdAtUnixMs === right.createdAtUnixMs;
 
 const sameExecutionNodes = (
   left: CompositionSquadExecution["nodes"],
@@ -728,7 +733,7 @@ const makeStore = Effect.gen(function* () {
           }
 
           const current = yield* readExecution(execution.executionId);
-          if (Option.isSome(current) && sameExecution(current.value, execution)) {
+          if (Option.isSome(current) && sameExecutionClaimIdentity(current.value, execution)) {
             yield* reserveExecutionBindings(current.value);
             return {
               execution: current.value,
@@ -738,7 +743,7 @@ const makeStore = Effect.gen(function* () {
           return yield* domainError(
             "squad_execution_conflict",
             execution.executionId,
-            "executionId 或派生 Task/Run 身份已绑定到不同执行快照。",
+            "executionId 或派生 Task/Run 身份已绑定到不同执行请求。",
             { squadId: execution.squadId },
           );
         }),
