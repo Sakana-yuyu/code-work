@@ -75,7 +75,11 @@ const InvocationTerminalRequest = Schema.Struct({
   outcomeCode: Schema.NullOr(Schema.String),
   finishedAtUnixMs: Schema.Number,
 });
-const InvocationUnknownListRequest = Schema.Struct({ limit: Schema.Number });
+const InvocationListRequest = Schema.Struct({ limit: Schema.Number });
+const InvocationRecoveryRequest = Schema.Struct({
+  recoveredAtUnixMs: Schema.Number,
+  outcomeCode: Schema.String,
+});
 
 type InvocationRow = Schema.Schema.Type<typeof InvocationRowSchema>;
 
@@ -336,7 +340,7 @@ const makeStore = Effect.gen(function* () {
   });
 
   const listUnknownRows = SqlSchema.findAll({
-    Request: InvocationUnknownListRequest,
+    Request: InvocationListRequest,
     Result: InvocationRowSchema,
     execute: ({ limit }) => sql`
       SELECT
@@ -351,6 +355,31 @@ const makeStore = Effect.gen(function* () {
       WHERE status = 'unknown'
       ORDER BY updated_at_unix_ms ASC, idempotency_key ASC
       LIMIT ${limit}
+    `,
+  });
+
+  const recoverExecutingRows = SqlSchema.findAll({
+    Request: InvocationRecoveryRequest,
+    Result: InvocationRowSchema,
+    execute: ({ recoveredAtUnixMs, outcomeCode }) => sql`
+      UPDATE composition_tool_invocations
+      SET
+        status = 'unknown',
+        revision = revision + 1,
+        outcome_code = ${outcomeCode},
+        finished_at_unix_ms = MAX(${recoveredAtUnixMs}, updated_at_unix_ms),
+        updated_at_unix_ms = MAX(${recoveredAtUnixMs}, updated_at_unix_ms)
+      WHERE status = 'executing'
+        AND revision = 2
+        AND claimed_at_unix_ms IS NOT NULL
+      RETURNING
+        idempotency_key AS "idempotencyKey", task_id AS "taskId", run_id AS "runId",
+        agent_id AS "agentId", tool_call_id AS "toolCallId",
+        canonical_tool_name AS "canonicalToolName", operation,
+        arguments_digest AS "argumentsDigest", scope_digest AS "scopeDigest",
+        status, revision, outcome_code AS "outcomeCode",
+        created_at_unix_ms AS "createdAtUnixMs", updated_at_unix_ms AS "updatedAtUnixMs",
+        claimed_at_unix_ms AS "claimedAtUnixMs", finished_at_unix_ms AS "finishedAtUnixMs"
     `,
   });
 
@@ -599,12 +628,48 @@ const makeStore = Effect.gen(function* () {
           ),
         );
 
+  const recoverExecutingInvocations: CompositionToolInvocationStoreShape["recoverExecutingInvocations"] =
+    (input) =>
+      Effect.gen(function* () {
+        yield* validateTimestamp(
+          "recoverExecutingInvocations",
+          "startup-recovery",
+          input.recoveredAtUnixMs,
+        );
+        if (!hasTextWithin(input.outcomeCode, 128)) {
+          return yield* domainError(
+            "tool_invocation_input_invalid",
+            "recoverExecutingInvocations 的 outcomeCode 不能为空或超过 128 字符。",
+          );
+        }
+        const rows = yield* query(
+          "CompositionToolInvocationStore.recoverExecutingInvocations",
+          recoverExecutingRows(input),
+        );
+        const invocations = yield* Effect.forEach(rows, (row) =>
+          decodeRow("CompositionToolInvocationStore.recoverExecutingInvocations", row),
+        );
+        invocations.sort(
+          (left, right) =>
+            left.updatedAtUnixMs - right.updatedAtUnixMs ||
+            left.idempotencyKey.localeCompare(right.idempotencyKey),
+        );
+        return {
+          type: "composition.tool_invocations.recovered" as const,
+          recoveredAtUnixMs: input.recoveredAtUnixMs,
+          outcomeCode: input.outcomeCode,
+          recoveredCount: invocations.length,
+          invocations,
+        };
+      });
+
   return {
     prepareInvocation,
     claimPrepared,
     saveTerminal,
     getInvocation,
     listUnknownInvocations,
+    recoverExecutingInvocations,
   } satisfies CompositionToolInvocationStoreShape;
 });
 

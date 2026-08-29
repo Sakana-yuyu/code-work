@@ -110,6 +110,21 @@ export interface CompositionToolInvocationUnknownListInput {
   readonly limit: number;
 }
 
+export interface CompositionToolInvocationRecoveryInput {
+  readonly recoveredAtUnixMs: number;
+  readonly outcomeCode: string;
+}
+
+export const CompositionToolInvocationRecoveryReceipt = Schema.Struct({
+  type: Schema.Literal("composition.tool_invocations.recovered"),
+  recoveredAtUnixMs: Schema.Number,
+  outcomeCode: Schema.String,
+  recoveredCount: Schema.Number,
+  invocations: Schema.Array(CompositionToolInvocation),
+});
+export type CompositionToolInvocationRecoveryReceipt =
+  typeof CompositionToolInvocationRecoveryReceipt.Type;
+
 export interface CompositionToolInvocationStoreShape {
   readonly prepareInvocation: (
     input: CompositionToolInvocationPrepareInput,
@@ -126,6 +141,9 @@ export interface CompositionToolInvocationStoreShape {
   readonly listUnknownInvocations: (
     input: CompositionToolInvocationUnknownListInput,
   ) => Effect.Effect<ReadonlyArray<CompositionToolInvocation>, CompositionToolInvocationStoreError>;
+  readonly recoverExecutingInvocations: (
+    input: CompositionToolInvocationRecoveryInput,
+  ) => Effect.Effect<CompositionToolInvocationRecoveryReceipt, CompositionToolInvocationStoreError>;
 }
 
 export class CompositionToolInvocationStore extends Context.Service<

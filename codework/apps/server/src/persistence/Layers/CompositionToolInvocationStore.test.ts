@@ -138,8 +138,16 @@ layer("CompositionToolInvocationStore", (it) => {
       const newer = makePrepareInput("tool-invocation-unknown-newer", {
         createdAtUnixMs: 200,
       });
+      const preparedOnly = makePrepareInput("tool-invocation-recovery-prepared", {
+        createdAtUnixMs: 105,
+      });
+      const terminalBeforeRecovery = makePrepareInput("tool-invocation-recovery-terminal", {
+        createdAtUnixMs: 106,
+      });
       yield* store.prepareInvocation(older);
       yield* store.prepareInvocation(newer);
+      yield* store.prepareInvocation(preparedOnly);
+      yield* store.prepareInvocation(terminalBeforeRecovery);
       yield* store.claimPrepared({
         idempotencyKey: older.idempotencyKey,
         expectedRevision: 1,
@@ -150,26 +158,38 @@ layer("CompositionToolInvocationStore", (it) => {
         expectedRevision: 1,
         claimedAtUnixMs: 210,
       });
+      yield* store.claimPrepared({
+        idempotencyKey: terminalBeforeRecovery.idempotencyKey,
+        expectedRevision: 1,
+        claimedAtUnixMs: 116,
+      });
+      const succeededBeforeRecovery = yield* store.saveTerminal({
+        idempotencyKey: terminalBeforeRecovery.idempotencyKey,
+        expectedRevision: 2,
+        status: "succeeded",
+        outcomeCode: null,
+        finishedAtUnixMs: 119,
+      });
 
       const executingReplay = yield* store.claimPrepared({
         idempotencyKey: newer.idempotencyKey,
         expectedRevision: 1,
         claimedAtUnixMs: 220,
       });
-      const olderUnknown = yield* store.saveTerminal({
-        idempotencyKey: older.idempotencyKey,
-        expectedRevision: 2,
-        status: "unknown",
+      const recovery = yield* store.recoverExecutingInvocations({
+        recoveredAtUnixMs: 120,
         outcomeCode: "tool_result_indeterminate",
-        finishedAtUnixMs: 120,
       });
-      const newerUnknown = yield* store.saveTerminal({
-        idempotencyKey: newer.idempotencyKey,
-        expectedRevision: 2,
-        status: "unknown",
+      const repeatedRecovery = yield* store.recoverExecutingInvocations({
+        recoveredAtUnixMs: 300,
         outcomeCode: "tool_result_indeterminate",
-        finishedAtUnixMs: 220,
       });
+      const preparedAfterRecovery = Option.getOrThrow(
+        yield* store.getInvocation(preparedOnly.idempotencyKey),
+      );
+      const terminalAfterRecovery = Option.getOrThrow(
+        yield* store.getInvocation(terminalBeforeRecovery.idempotencyKey),
+      );
       const unknownReplay = yield* store.claimPrepared({
         idempotencyKey: older.idempotencyKey,
         expectedRevision: 1,
@@ -180,8 +200,18 @@ layer("CompositionToolInvocationStore", (it) => {
 
       assert.isFalse(executingReplay.claimed);
       assert.equal(executingReplay.invocation.status, "executing");
-      assert.equal(olderUnknown.status, "unknown");
-      assert.equal(newerUnknown.status, "unknown");
+      assert.deepEqual(
+        recovery.invocations.map((invocation) => invocation.idempotencyKey),
+        [older.idempotencyKey, newer.idempotencyKey],
+      );
+      assert.equal(recovery.type, "composition.tool_invocations.recovered");
+      assert.equal(recovery.recoveredCount, 2);
+      assert.equal(recovery.invocations[0]?.finishedAtUnixMs, 120);
+      assert.equal(recovery.invocations[1]?.finishedAtUnixMs, 210);
+      assert.equal(repeatedRecovery.recoveredCount, 0);
+      assert.equal(preparedAfterRecovery.status, "prepared");
+      assert.equal(preparedAfterRecovery.revision, 1);
+      assert.deepEqual(terminalAfterRecovery, succeededBeforeRecovery);
       assert.isFalse(unknownReplay.claimed);
       assert.equal(unknownReplay.invocation.status, "unknown");
       assert.deepEqual(
@@ -189,6 +219,27 @@ layer("CompositionToolInvocationStore", (it) => {
         [older.idempotencyKey, newer.idempotencyKey],
       );
       assert.equal(errorCode(invalidLimit), "tool_invocation_list_limit_invalid");
+    }),
+  );
+
+  it.effect("启动恢复拒绝非法时间与非受控结果码", () =>
+    Effect.gen(function* () {
+      const store = yield* CompositionToolInvocationStore;
+      const invalidTimestamp = yield* store
+        .recoverExecutingInvocations({
+          recoveredAtUnixMs: -1,
+          outcomeCode: "tool_result_indeterminate",
+        })
+        .pipe(Effect.flip);
+      const invalidOutcomeCode = yield* store
+        .recoverExecutingInvocations({
+          recoveredAtUnixMs: 120,
+          outcomeCode: "   ",
+        })
+        .pipe(Effect.flip);
+
+      assert.equal(errorCode(invalidTimestamp), "tool_invocation_input_invalid");
+      assert.equal(errorCode(invalidOutcomeCode), "tool_invocation_input_invalid");
     }),
   );
 
@@ -257,6 +308,110 @@ it.effect("同一 SQLite 文件重建 Layer 后 prepared 仍可 claim，双连�
     });
     assert.deepEqual(claims.map((claim) => claim.claimed).sort(), [false, true]);
     assert.isTrue(claims.every((claim) => claim.invocation.status === "executing"));
+  }).pipe(
+    Effect.ensuring(Effect.sync(() => NodeFS.rmSync(tempDir, { recursive: true, force: true }))),
+  );
+});
+
+it.effect("同一 SQLite 文件双连接并发恢复时仅一个原子收口 executing", () => {
+  const tempDir = NodeFS.mkdtempSync(
+    NodePath.join(NodeOS.tmpdir(), "codework-tool-invocation-recovery-"),
+  );
+  const dbPath = NodePath.join(tempDir, "state.sqlite");
+  const input = makePrepareInput("tool-invocation-file-recovery");
+  const recoverFromConnection = () =>
+    Effect.gen(function* () {
+      const store = yield* CompositionToolInvocationStore;
+      return yield* store.recoverExecutingInvocations({
+        recoveredAtUnixMs: 120,
+        outcomeCode: "process_restarted_result_indeterminate",
+      });
+    }).pipe(Effect.provide(makeFileStoreLayer(dbPath)));
+
+  return Effect.gen(function* () {
+    yield* Effect.gen(function* () {
+      const store = yield* CompositionToolInvocationStore;
+      yield* store.prepareInvocation(input);
+      yield* store.claimPrepared({
+        idempotencyKey: input.idempotencyKey,
+        expectedRevision: 1,
+        claimedAtUnixMs: 110,
+      });
+    }).pipe(Effect.provide(makeFileStoreLayer(dbPath)));
+
+    const receipts = yield* Effect.all([recoverFromConnection(), recoverFromConnection()], {
+      concurrency: "unbounded",
+    });
+    const restored = yield* Effect.gen(function* () {
+      const store = yield* CompositionToolInvocationStore;
+      return Option.getOrThrow(yield* store.getInvocation(input.idempotencyKey));
+    }).pipe(Effect.provide(makeFileStoreLayer(dbPath)));
+
+    assert.equal(
+      receipts.reduce((total, receipt) => total + receipt.recoveredCount, 0),
+      1,
+    );
+    assert.equal(restored.status, "unknown");
+    assert.equal(restored.revision, 3);
+  }).pipe(
+    Effect.ensuring(Effect.sync(() => NodeFS.rmSync(tempDir, { recursive: true, force: true }))),
+  );
+});
+
+it.effect("正常完成与启动恢复竞争时只有一个终态胜出且不会互相覆盖", () => {
+  const tempDir = NodeFS.mkdtempSync(
+    NodePath.join(NodeOS.tmpdir(), "codework-tool-invocation-terminal-race-"),
+  );
+  const dbPath = NodePath.join(tempDir, "state.sqlite");
+  const input = makePrepareInput("tool-invocation-terminal-race");
+
+  return Effect.gen(function* () {
+    yield* Effect.gen(function* () {
+      const store = yield* CompositionToolInvocationStore;
+      yield* store.prepareInvocation(input);
+      yield* store.claimPrepared({
+        idempotencyKey: input.idempotencyKey,
+        expectedRevision: 1,
+        claimedAtUnixMs: 110,
+      });
+    }).pipe(Effect.provide(makeFileStoreLayer(dbPath)));
+
+    const [terminal, recovery] = yield* Effect.all(
+      [
+        Effect.gen(function* () {
+          const store = yield* CompositionToolInvocationStore;
+          return yield* store.saveTerminal({
+            idempotencyKey: input.idempotencyKey,
+            expectedRevision: 2,
+            status: "succeeded",
+            outcomeCode: null,
+            finishedAtUnixMs: 120,
+          });
+        }).pipe(Effect.provide(makeFileStoreLayer(dbPath)), Effect.exit),
+        Effect.gen(function* () {
+          const store = yield* CompositionToolInvocationStore;
+          return yield* store.recoverExecutingInvocations({
+            recoveredAtUnixMs: 120,
+            outcomeCode: "process_restarted_result_indeterminate",
+          });
+        }).pipe(Effect.provide(makeFileStoreLayer(dbPath))),
+      ],
+      { concurrency: "unbounded" },
+    );
+    const restored = yield* Effect.gen(function* () {
+      const store = yield* CompositionToolInvocationStore;
+      return Option.getOrThrow(yield* store.getInvocation(input.idempotencyKey));
+    }).pipe(Effect.provide(makeFileStoreLayer(dbPath)));
+
+    assert.include(["succeeded", "unknown"], restored.status);
+    assert.equal(restored.revision, 3);
+    if (restored.status === "succeeded") {
+      assert.equal(terminal._tag, "Success");
+      assert.equal(recovery.recoveredCount, 0);
+    } else {
+      assert.equal(terminal._tag, "Failure");
+      assert.equal(recovery.recoveredCount, 1);
+    }
   }).pipe(
     Effect.ensuring(Effect.sync(() => NodeFS.rmSync(tempDir, { recursive: true, force: true }))),
   );
