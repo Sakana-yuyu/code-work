@@ -1,28 +1,29 @@
-# cursor-byok、Code Work 与 Multica 迁移矩阵
+# Paseo、cursor-byok、Code Work 与 Multica clean-room 迁移矩阵
 
 ## 文档目的
 
 本文把 `E:\MyProject\cursor-byok` 的能力盘点与 Code Work 当前实现对齐，回答两个问题：
 
-1. `cursor-byok` 已有但 Code Work 尚未移植、或只移植了底层零件的功能是什么。
-2. Code Work 是否可以作为统一 Web/Desktop/Mobile 壳，接入多个 Provider、BYOK API、CLI/IDE Runtime，并继续承载 Multica 的多 Agent 协同。
+1. Paseo、`cursor-byok` 与 Multica 已有，但 Code Work 尚未迁移、或只实现了底层零件的能力是什么。
+2. Code Work 是否可以作为统一 Web/Desktop/Mobile 壳，接入多个 Provider、BYOK API、CLI/IDE Runtime，并原生承载多 Agent 协同、Automation 与 Workspace Scripts。
 
 本文是架构和迁移边界文档，不把静态代码、fake transport 或类型检查描述成真实 Multica daemon、真实 IDE 或多端 E2E 已通过。
 
 ## 证据范围
 
 - 对比仓库：`E:\MyProject\cursor-byok`，本轮只读审计基线为 `c25ecc44`。该仓库存在用户未提交的前端修改，本文不修改其文件。
-- Code Work 仓库：`E:\MyProject\code-work\codework`，当前分支为 `tcode`。
-- Multica 官方仓库：`https://github.com/multica-ai/multica`。本轮先以只读源码快照 `C:\Users\Administrator\AppData\Local\Temp\multica-readonly-20260826034153` 的 `8442504201` 映射接口，再通过 `git ls-remote` 与浅抓取核验远端 `main` 已更新至 `76aada3a`（2026-08-27）；该次上游变动涉及 daemon、runtime 访问控制、CLI、skills 和 UI，真实 daemon 协议仍须在接入时以当前源码再次核验。
+- Code Work 仓库：`E:\MyProject\code-work\codework`，当前唯一工作分支为 `main`；2026-08-29 刷新时 HEAD 为 `731587aa8`，相对 `origin/main` 领先 77 个提交，并存在大量用户并行修改。
+- Paseo 参考仓库：`E:\MyProject\paseo`，固定提交 `ed628ff82e1777f6a46f5f8963db6b4ac3ee2ce3`；主体为 Apache-2.0，按 NOTICE 与第三方组件许可证要求只读研究 Workspace、Script、Schedule、Agent 与 heartbeat 语义。
+- Multica 参考仓库：`E:\MyProject\multica`，固定提交 `64ec7f54163d918d5d7fd4dcae857f241b7842d0`；其许可证附带商业嵌入、托管、品牌和归属限制，因此本项目只做 clean-room 架构研究，不复制、翻译或嵌入 Multica 源码、UI、品牌和受限制资产。
 - 对比材料：`cursor-byok` 的 `docs\feature-inventory.md`、`docs\cursor-capability-map.md`、`docs\goal-design.md`、`docs\subagent-smart-routing-design.md`、`docs\opencode-comparison-and-optimization.md` 及相关实现目录。
 - Code Work 依据：`apps\server\src\provider\byok`、`apps\server\src\composition`、`apps\server\src\provider`、`apps\web\src\components\settings` 及现有 contracts。
-- 结论更新时间：2026-08-27。
+- 结论更新时间：2026-08-29。
 
 ### 本轮刷新记录
 
-- 检索关键词：`Multica daemon runtime squad leader task graph MCP retry resume quick-create`、`cursor-byok delegation PendingExecs exec_id message_id provider_pass watchdog`。
-- 采用来源：本地 Code Work / cursor-byok 当前源码和测试、Multica 官方 Git 仓库及其只读快照。
-- 采用原因：Code Work 与 cursor-byok 的当前工作树是功能是否已移植的直接证据；Multica 官方仓库是 daemon、runtime、Squad 和 MCP 协议的权威来源。
+- 检索关键词：`Paseo workspace script schedule heartbeat`、`Multica daemon runtime squad leader task graph MCP retry resume quick-create`、`cursor-byok delegation PendingExecs exec_id message_id provider_pass watchdog`。
+- 采用来源：本地 Code Work、Paseo、Multica 与 cursor-byok 的固定源码和测试，以及三个参考仓库的 LICENSE/NOTICE。
+- 采用原因：Code Work 当前工作树和提交是“是否已经迁移”的直接证据；固定参考提交用于稳定描述架构语义，许可证用于限定只可自主重建的边界。
 - 不能由本轮证据得出的结论：未启动真实 Multica daemon、真实 Cursor、真实 VS Code，也未使用真实 BYOK 凭据，因此以下“本地跨进程 E2E”均不等同于对应真实产品 E2E。
 
 ## 状态定义
@@ -98,19 +99,19 @@ Code Work 当前不能通过“接入一个 API”自动获得 Cursor 客户端�
 
 ### 4. Delegation、Subagent、Goal 与 Multica 协同
 
-| cursor-byok / Multica 能力                                   | Code Work 当前状态         | Code Work 证据                                                                                        | 迁移结论                                                                                                                                                       |
-| ------------------------------------------------------------ | -------------------------- | ----------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 本地 delegated worker、并发队列、超时、取消、结果预览        | 部分迁移                   | `ByokDelegationService.ts`、`CompositionOrchestrator.ts`、`CompositionTaskStore.ts`                   | 需要统一 Byok delegation 与 Composition Task，而不是维护两套队列和状态。                                                                                       |
-| Provider/Model Group 绑定到 delegation                       | 部分迁移                   | `ByokDelegationService.ts` 的 model group 解析                                                        | 应投影成 Agent Driver 的 Provider Profile 选择策略。                                                                                                           |
-| Goal Loop：`/goal`、strict、完成标记、pass/时长/费用预算     | 未迁移                     | `cursor-byok\docs\goal-design.md` 及 `internal/backend/forwarder`                                     | 这是 Code Work 下一阶段的高价值能力，应以 Composition Goal/Run 持久化合同实现。                                                                                |
-| Goal 自动重试、idle/stale pivot、二次校验子代理              | 未迁移                     | `cursor-byok\docs\goal-design.md`、`internal/backend/delegation`                                      | 需要以预算、重试原因和验证结果事件化，不能只在 prompt 中约定。                                                                                                 |
-| Code Work Composition Task/Run/Event/Dependency/Lease        | 已有等价                   | `CompositionRuntimeLeaseLifecycle.ts`、`CompositionRuntimeAgentDriver.ts`、`CompositionTaskStore.ts`  | 作为统一任务控制面保留；提交 `31b8413f8` 已把 `probe online`、30 秒内新鲜 heartbeat、Runtime/Agent scope 与 capability handshake 组成领取前 fail-closed 门禁。 |
-| Provider Agent Driver                                        | 已有运行底座，授权未闭环   | `CompositionProviderAgentDriver.ts`、`CompositionProviderAgentDriverRegistry.ts`                      | Provider Session/Turn 继续通过 Code Work `ProviderService`；当前没有 Provider 原生工具的 Code Work grant handshake。                                           |
-| Multica daemon register/heartbeat/claim/status/complete/fail | 部分迁移                   | `MulticaDaemonProtocol.ts`、`MulticaDaemonRuntimeAdapter.ts`、`MulticaDualChannelProcess.e2e.test.ts` | 已有本地 Node 子进程的 control + task-event 双通道回流验证；真实 Multica daemon、身份、数据库与权限尚未启动验证。                                              |
-| Multica quick-create 创建任务                                | 已有协议接线，尚未真实 E2E | `MulticaDaemonProtocol.ts` 的 `quickCreateTask`、`MulticaDaemonRuntimeAdapter.test.ts`                | 使用 `/api/issues/quick-create`；返回 `task_id` 后由 daemon claim。真实服务端幂等键、重启恢复和权限仍缺。                                                      |
-| Multica Agent/Squad/Leader                                   | 部分迁移                   | `CompositionSquad`、`CompositionMulticaProbeResult`、`CompositionTaskGraphExecutor.ts`                | Code Work 已有本地 Leader + 子任务依赖图、并行、失败取消、有限重试和结果汇聚；尚未与真实 Multica Agent/Squad 查询和动态成员调度闭环。                          |
-| Multica 任务取消/恢复                                        | 部分迁移                   | `MulticaDaemonRuntimeAdapter.ts`、`CompositionTaskGraphExecutor.ts`                                   | 本地 Composition 图可传播取消和重试；外部 Multica 仅有窄协议 cancel-ack，远端 resume 仍未成为可验证的用户路径。                                                |
-| 多 Agent 监督、重试、恢复、结果合并                          | 部分迁移                   | `CompositionTaskGraphExecutor.ts`、`CompositionTaskGraphExecutor.test.ts`                             | 本地 Task Graph 已实现依赖调度、Leader 汇聚和子任务失败清理；Goal Loop、预算、跨重启 supervisor、真实 Multica 汇聚仍未迁移。                                   |
+| cursor-byok / Multica 能力                                   | Code Work 当前状态         | Code Work 证据                                                                                                  | 迁移结论                                                                                                                                                                                         |
+| ------------------------------------------------------------ | -------------------------- | --------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| 本地 delegated worker、并发队列、超时、取消、结果预览        | 部分迁移                   | `ByokDelegationService.ts`、`CompositionOrchestrator.ts`、`CompositionTaskStore.ts`                             | 需要统一 Byok delegation 与 Composition Task，而不是维护两套队列和状态。                                                                                                                         |
+| Provider/Model Group 绑定到 delegation                       | 部分迁移                   | `ByokDelegationService.ts` 的 model group 解析                                                                  | 应投影成 Agent Driver 的 Provider Profile 选择策略。                                                                                                                                             |
+| Goal Loop：strict 完成标记、轮数/成本/时限预算               | 部分迁移，后端闭环已存在   | `CompositionGoalLoop.ts`、`CompositionGoalLoopRunner.ts`、`CompositionGoalValidator.ts`                         | 已有 fail-closed 完成标记、独立验证、轮数/成本/截止时间和幂等事件台账；仍缺完整共享 UI、真实 Provider/Multica E2E 与产品级费用投影。                                                             |
+| Goal 自动重试、idle/stale pivot、二次校验子代理              | 部分迁移                   | `CompositionGoalLoopSupervisor.ts`、`CompositionGoalLoopRedispatch.ts`、`CompositionGoalLoopAttemptAdapters.ts` | 已有停滞 pivot、验证方、跨重启未收敛扫描与幂等 redispatch；仍需真实外部 Runtime 断线恢复、动态成员选择和多端可见性验证。                                                                         |
+| Code Work Composition Task/Run/Event/Dependency/Lease        | 已有等价                   | `CompositionRuntimeLeaseLifecycle.ts`、`CompositionRuntimeAgentDriver.ts`、`CompositionTaskStore.ts`            | 作为统一任务控制面保留；提交 `31b8413f8` 已把 `probe online`、30 秒内新鲜 heartbeat、Runtime/Agent scope 与 capability handshake 组成领取前 fail-closed 门禁。                                   |
+| Provider Agent Driver                                        | 已有运行底座，授权未闭环   | `CompositionProviderAgentDriver.ts`、`CompositionProviderAgentDriverRegistry.ts`                                | Provider Session/Turn 继续通过 Code Work `ProviderService`；当前没有 Provider 原生工具的 Code Work grant handshake。                                                                             |
+| Multica daemon register/heartbeat/claim/status/complete/fail | 部分迁移                   | `MulticaDaemonProtocol.ts`、`MulticaDaemonRuntimeAdapter.ts`、`MulticaDualChannelProcess.e2e.test.ts`           | 已有本地 Node 子进程的 control + task-event 双通道回流验证；真实 Multica daemon、身份、数据库与权限尚未启动验证。                                                                                |
+| Multica quick-create 创建任务                                | 已有协议接线，尚未真实 E2E | `MulticaDaemonProtocol.ts` 的 `quickCreateTask`、`MulticaDaemonRuntimeAdapter.test.ts`                          | 使用 `/api/issues/quick-create`；返回 `task_id` 后由 daemon claim。真实服务端幂等键、重启恢复和权限仍缺。                                                                                        |
+| Multica Agent/Squad/Leader                                   | 部分迁移                   | `CompositionSquad`、`CompositionMulticaProbeResult`、`CompositionTaskGraphExecutor.ts`                          | Code Work 已有本地 Leader + 子任务依赖图、并行、失败取消、有限重试和结果汇聚；尚未与真实 Multica Agent/Squad 查询和动态成员调度闭环。                                                            |
+| Multica 任务取消/恢复                                        | 部分迁移                   | `MulticaDaemonRuntimeAdapter.ts`、`CompositionTaskGraphExecutor.ts`                                             | 本地 Composition 图可传播取消和重试；外部 Multica 仅有窄协议 cancel-ack，远端 resume 仍未成为可验证的用户路径。                                                                                  |
+| 多 Agent 监督、重试、恢复、结果合并                          | 部分迁移                   | `CompositionTaskGraphExecutor.ts`、`CompositionTaskGraphExecutor.test.ts`                                       | 本地 Task Graph 已实现依赖调度、Leader 汇聚、失败清理和跨重启稳定 retry Run 复用；提交 `eaef6f6a8` 会校验 task/agent/attempt 身份并在并发竞争后复用胜出的持久化 Run。真实 Multica 汇聚仍未闭环。 |
 
 ### 5. Skills、MCP、Workspace、Terminal、Git、Browser、IDE
 
@@ -140,8 +141,8 @@ Code Work 当前不能通过“接入一个 API”自动获得 Cursor 客户端�
 按对“统一 Code Work 壳 + 多 Agent 协同”影响排序，当前真正缺失或不完整的功能是：
 
 1. 完整 Supplier/Profile/Account 控制中心：模型分组、权重路由、自动匹配、余额/价格/健康聚合、多账号切换与回滚。
-2. Goal Loop 完整闭环：严格完成标记、pass/时长/费用预算、自动重试、idle/stale pivot、校验子代理、跨重启持久化和 UI。
-3. Multica 真正 Squad/Leader 闭环：Code Work 已有本地 Task Graph 的子任务派发、依赖、并行、有限重试、失败取消和 Leader 汇聚；仍缺真实 Multica Agent/Squad 查询、动态成员调度、远端结果映射和跨重启监督。
+2. Goal Loop 产品闭环：后端已有严格完成标记、轮数/成本/时限预算、stale pivot、验证方和跨重启监督；仍缺完整共享 UI、真实 Provider/Multica 运行和产品级费用投影。
+3. Multica 真正 Squad/Leader 闭环：Code Work 已有本地 Task Graph 的子任务派发、依赖、并行、有限重试、失败取消、Leader 汇聚和稳定 retry Run 跨重启复用；仍缺真实 Multica Agent/Squad 查询、动态成员调度与远端结果映射。
 4. 外部 Runtime 的 task-scoped capability grant 实际注入：Code Work 已有统一 handshake 合同和 InMemory 验证闭环；Provider 原生 Session/Turn、Multica 窄协议和 IDE Adapter 仍需要真实协议授权、撤销、过期和审计回执。
 5. IDE Runtime 的真实接入：`cursor_ide`、`vscode_ide` 已有 TCode 自定义 JSON-RPC bridge 与本地子进程 fixture，但未完成真实 Cursor 或 VS Code 官方 Extension/IPC/API handshake。
 6. Request Lab 与通用请求镜像：Code Work 有诊断和 Provider Event，但没有等价的结构化重放/协议分析界面。
@@ -204,7 +205,7 @@ Composition Task / Run / Event Store
 ### 阶段 B：统一 Goal 与 Delegation
 
 - 把 `ByokDelegationService` 的队列状态投影进 Composition Task/Run。
-- 增加 Goal、预算、重试、校验子代理和跨重启状态。
+- 复用现有 Goal 预算、验证、stale pivot、跨重启监督与 redispatch，不建立第二套循环状态机。
 - 把 Goal 面板接入 Web/Desktop/Mobile 共享 RPC，移动端只消费稳定投影。
 
 ### 阶段 C：Multica Squad/Leader/Task Graph
@@ -231,6 +232,8 @@ Composition Task / Run / Event Store
 - Composition Runtime Adapter、Provider Agent Driver、Multica daemon protocol 和 runtime adapter 有定向测试。
 - Multica quick-create 的路径、请求体、`X-Workspace-ID` 和 `task_id` 归一化有 fake transport 测试。
 - 无显式 Agent/Squad 映射时会失败，不猜测远端 UUID。
+- 提交 `eaef6f6a8` 已验证 Task Graph 在服务重启后复用持久化的 `:retry:2`、`:retry:3` Run；身份冲突 fail-closed，并发重试竞争后重新读取稳定胜出 Run。
+- 提交 `731587aa8` 已验证 Automation 的 `retry_pending` Run 会在后续 tick 中周期恢复，且使用稳定 Automation/Composition 身份，不重复创建计划运行。
 - 已运行聚焦的 Composition Runtime、IDE event-stream、Multica 双通道与 ToolBroker 测试；本轮不把全量 `typecheck` 作为成功证据，当前已知全量检查存在既有 Effect / MCP / server 测试基线问题。
 
 ### 尚未宣称完成的证据
@@ -239,11 +242,11 @@ Composition Task / Run / Event Store
 - 未启动真实 Multica daemon，未验证真实数据库、登录身份、PAT/daemon token、Agent/Squad 查询与权限。
 - 未启动真实 Cursor/VSCode IDE，未验证官方 Extension/IPC/API handshake。
 - 未进行 Web/Desktop/Mobile 集成 E2E 或真实 BYOK API 请求。
-- 未做跨进程幂等、网络超时后重复提交、outbox 恢复和真实 WebSocket 断线重连演练。
+- 尚未完成真实 Multica daemon 的跨进程幂等、HTTP 成功但响应丢失后的 outbox 恢复，以及真实 WebSocket 断线重连演练；本地稳定 retry Run 和 Automation 周期自愈不能替代这些外部 E2E。
 
 ## 回滚与风险
 
-- 本文档和 Adapter 代码均为增量修改；代码节点可回滚到提交 `fc24a5d6`，quick-create 节点为提交 `57b888cd`。
+- 本文档和 Adapter 代码均为增量修改；代码节点可回滚到提交 `fc24a5d6`，quick-create 节点为提交 `57b888cd`，Task Graph 重试恢复节点为 `eaef6f6a8`，Automation 周期自愈节点为 `731587aa8`。
 - 当前没有修改 `cursor-byok`，没有启动真实服务，没有 push，也没有修改生产数据。
 - 若 Multica quick-create API 的权限或字段与只读源码快照不一致，应关闭该 Adapter 的 dispatch 能力，保留 probe/claim/status 只读路径；不能自动降级为猜测式 POST。
 - 若后续发现远端 quick-create 无法提供可靠幂等，应先增加持久化 outbox 和冲突恢复，再开放自动重试。
