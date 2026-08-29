@@ -297,6 +297,7 @@ describe("Composition Automation contracts", () => {
         scheduledForUnixMs: 3_000,
         idempotencyKey: "composition-automation:automation-1:3000",
         trigger: "run_once",
+        operationId: "operation-cancel-queued",
         status: "cancelled",
         attempt: 1,
         requestedAtUnixMs: 3_001,
@@ -309,6 +310,54 @@ describe("Composition Automation contracts", () => {
         errorDetail: null,
       }),
     ).toMatchObject({ status: "cancelled", startedAtUnixMs: null });
+  });
+
+  it("区分定时、立即运行和失败重试的持久化操作身份", () => {
+    const runOnce = {
+      automationRunId: "automation-run-once",
+      automationId: "automation-1",
+      automationRevision: 2,
+      scheduledForUnixMs: 3_000,
+      idempotencyKey: "composition-automation:automation-1:3000",
+      trigger: "run_once" as const,
+      operationId: "operation-run-once",
+      status: "queued" as const,
+      attempt: 1,
+      requestedAtUnixMs: 3_001,
+      startedAtUnixMs: null,
+      finishedAtUnixMs: null,
+      compositionTaskId: null,
+      compositionRunId: null,
+      outputSummary: null,
+      errorCode: null,
+      errorDetail: null,
+    };
+    const retry = {
+      ...runOnce,
+      automationRunId: "automation-retry",
+      scheduledForUnixMs: 3_002,
+      idempotencyKey: "composition-automation:automation-1:3002",
+      trigger: "retry" as const,
+      operationId: "operation-retry",
+      sourceAutomationRunId: "automation-run-failed",
+      attempt: 2,
+      requestedAtUnixMs: 3_003,
+    };
+
+    expect(decodeRun(runOnce)).toMatchObject({ operationId: "operation-run-once" });
+    expect(decodeRun(retry)).toMatchObject({
+      operationId: "operation-retry",
+      sourceAutomationRunId: "automation-run-failed",
+    });
+    expect(() => decodeRun({ ...runOnce, operationId: undefined })).toThrow();
+    expect(() =>
+      decodeRun({
+        ...runOnce,
+        trigger: "scheduled",
+        operationId: "operation-not-allowed",
+      }),
+    ).toThrow();
+    expect(() => decodeRun({ ...retry, sourceAutomationRunId: undefined })).toThrow();
   });
 
   it("定义查询、列表和 revision 保护的生命周期合同", () => {

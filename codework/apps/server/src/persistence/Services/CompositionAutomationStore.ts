@@ -68,6 +68,17 @@ export interface CompositionAutomationRunClaimResult {
   readonly claimed: boolean;
 }
 
+export interface CompositionAutomationManualRunClaimInput {
+  readonly automationRunId: string;
+  readonly automationId: string;
+  readonly automationRevision: number;
+  readonly operationId: string;
+  readonly trigger: "run_once" | "retry";
+  readonly sourceAutomationRunId?: string;
+  readonly requestedAtUnixMs: number;
+  readonly attempt: number;
+}
+
 export interface CompositionAutomationDueListInput {
   readonly nowUnixMs: number;
   readonly limit: number;
@@ -117,6 +128,9 @@ export interface CompositionAutomationStoreShape {
   ) => Effect.Effect<CompositionAutomationDeleteResult, CompositionAutomationStoreError>;
   readonly claimRun: (
     run: CompositionAutomationRun,
+  ) => Effect.Effect<CompositionAutomationRunClaimResult, CompositionAutomationStoreError>;
+  readonly claimManualRun: (
+    input: CompositionAutomationManualRunClaimInput,
   ) => Effect.Effect<CompositionAutomationRunClaimResult, CompositionAutomationStoreError>;
   readonly claimRunExecution: (
     run: CompositionAutomationRun,

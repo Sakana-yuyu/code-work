@@ -6,6 +6,7 @@ import {
   CompositionAutomationRunStatus,
   CompositionAutomationStatus,
   CompositionAutomationTarget,
+  makeCompositionAutomationRunIdempotencyKey,
   type CompositionAutomation,
   type CompositionAutomationRun,
 } from "@codework/contracts";
@@ -25,6 +26,7 @@ import {
 import {
   CompositionAutomationStore,
   CompositionAutomationStoreDomainError,
+  type CompositionAutomationManualRunClaimInput,
   type CompositionAutomationRunClaimResult,
   type CompositionAutomationScheduledRunClaimResult,
   type CompositionAutomationStoreErrorCode,
@@ -102,6 +104,8 @@ const AutomationRunRowSchema = Schema.Struct({
   scheduledForUnixMs: Schema.Number,
   idempotencyKey: Schema.String,
   trigger: Schema.Literals(["scheduled", "run_once", "retry", "recovery"]),
+  operationId: Schema.NullOr(Schema.String),
+  sourceAutomationRunId: Schema.NullOr(Schema.String),
   status: CompositionAutomationRunStatus,
   attempt: Schema.Number,
   requestedAtUnixMs: Schema.Number,
@@ -156,6 +160,15 @@ const AutomationRunIdentityRequest = Schema.Struct({
   automationId: Schema.String,
   scheduledForUnixMs: Schema.Number,
 });
+const AutomationRunOperationRequest = Schema.Struct({
+  automationId: Schema.String,
+  operationId: Schema.String,
+});
+const AutomationManualRunSlotRequest = Schema.Struct({
+  automationId: Schema.String,
+  requestedAtUnixMs: Schema.Number,
+});
+const AutomationManualRunSlotRow = Schema.Struct({ scheduledForUnixMs: Schema.Number });
 const AutomationRunTransitionRequest = Schema.Struct({
   ...AutomationRunRowSchema.fields,
   expectedStatus: CompositionAutomationRunStatus,
@@ -208,6 +221,10 @@ const toRunCandidate = (row: AutomationRunRow): CompositionAutomationRun => ({
   scheduledForUnixMs: row.scheduledForUnixMs,
   idempotencyKey: row.idempotencyKey,
   trigger: row.trigger,
+  ...(row.operationId === null ? {} : { operationId: row.operationId }),
+  ...(row.sourceAutomationRunId === null
+    ? {}
+    : { sourceAutomationRunId: row.sourceAutomationRunId }),
   status: row.status,
   attempt: row.attempt,
   requestedAtUnixMs: row.requestedAtUnixMs,
@@ -262,6 +279,8 @@ const sameRunIdentity = (
   left.scheduledForUnixMs === right.scheduledForUnixMs &&
   left.idempotencyKey === right.idempotencyKey &&
   left.trigger === right.trigger &&
+  left.operationId === right.operationId &&
+  left.sourceAutomationRunId === right.sourceAutomationRunId &&
   left.attempt === right.attempt &&
   left.requestedAtUnixMs === right.requestedAtUnixMs;
 
@@ -272,7 +291,21 @@ const sameClaimIdentity = (
   existing.automationId === requested.automationId &&
   existing.automationRevision === requested.automationRevision &&
   existing.scheduledForUnixMs === requested.scheduledForUnixMs &&
-  existing.idempotencyKey === requested.idempotencyKey;
+  existing.idempotencyKey === requested.idempotencyKey &&
+  existing.trigger === requested.trigger &&
+  existing.operationId === requested.operationId &&
+  existing.sourceAutomationRunId === requested.sourceAutomationRunId;
+
+const sameManualOperationIdentity = (
+  existing: CompositionAutomationRun,
+  requested: CompositionAutomationManualRunClaimInput,
+): boolean =>
+  existing.automationId === requested.automationId &&
+  existing.automationRevision === requested.automationRevision &&
+  existing.operationId === requested.operationId &&
+  existing.trigger === requested.trigger &&
+  existing.sourceAutomationRunId === requested.sourceAutomationRunId &&
+  existing.attempt === requested.attempt;
 
 const sameRunExecutionBinding = (
   existing: CompositionAutomationRun,
@@ -647,6 +680,8 @@ const makeStore = Effect.gen(function* () {
         scheduled_for_unix_ms AS "scheduledForUnixMs",
         idempotency_key AS "idempotencyKey",
         trigger,
+        operation_id AS "operationId",
+        source_automation_run_id AS "sourceAutomationRunId",
         status,
         attempt,
         requested_at_unix_ms AS "requestedAtUnixMs",
@@ -673,6 +708,8 @@ const makeStore = Effect.gen(function* () {
         scheduled_for_unix_ms AS "scheduledForUnixMs",
         idempotency_key AS "idempotencyKey",
         trigger,
+        operation_id AS "operationId",
+        source_automation_run_id AS "sourceAutomationRunId",
         status,
         attempt,
         requested_at_unix_ms AS "requestedAtUnixMs",
@@ -689,6 +726,70 @@ const makeStore = Effect.gen(function* () {
     `,
   });
 
+  const getRunByOperationRow = SqlSchema.findOneOption({
+    Request: AutomationRunOperationRequest,
+    Result: AutomationRunRowSchema,
+    execute: ({ automationId, operationId }) => sql`
+      SELECT
+        automation_run_id AS "automationRunId",
+        automation_id AS "automationId",
+        automation_revision AS "automationRevision",
+        scheduled_for_unix_ms AS "scheduledForUnixMs",
+        idempotency_key AS "idempotencyKey",
+        trigger,
+        operation_id AS "operationId",
+        source_automation_run_id AS "sourceAutomationRunId",
+        status,
+        attempt,
+        requested_at_unix_ms AS "requestedAtUnixMs",
+        started_at_unix_ms AS "startedAtUnixMs",
+        finished_at_unix_ms AS "finishedAtUnixMs",
+        composition_task_id AS "compositionTaskId",
+        composition_run_id AS "compositionRunId",
+        output_summary AS "outputSummary",
+        error_code AS "errorCode",
+        error_detail AS "errorDetail"
+      FROM composition_automation_runs
+      WHERE automation_id = ${automationId}
+        AND operation_id = ${operationId}
+    `,
+  });
+
+  const findManualRunSlotRow = SqlSchema.findOneOption({
+    Request: AutomationManualRunSlotRequest,
+    Result: AutomationManualRunSlotRow,
+    execute: ({ automationId, requestedAtUnixMs }) => sql`
+      SELECT "scheduledForUnixMs"
+      FROM (
+        SELECT COALESCE(
+          CASE
+            WHEN NOT EXISTS (
+              SELECT 1
+              FROM composition_automation_runs
+              WHERE automation_id = ${automationId}
+                AND scheduled_for_unix_ms = ${requestedAtUnixMs}
+            ) THEN ${requestedAtUnixMs}
+          END,
+          (
+            SELECT MAX(candidate.scheduled_for_unix_ms - 1)
+            FROM composition_automation_runs AS candidate
+            WHERE candidate.automation_id = ${automationId}
+              AND candidate.scheduled_for_unix_ms > 0
+              AND candidate.scheduled_for_unix_ms <= ${requestedAtUnixMs}
+              AND NOT EXISTS (
+                SELECT 1
+                FROM composition_automation_runs AS occupied
+                WHERE occupied.automation_id = ${automationId}
+                  AND occupied.scheduled_for_unix_ms = candidate.scheduled_for_unix_ms - 1
+              )
+          )
+        ) AS "scheduledForUnixMs"
+      )
+      WHERE "scheduledForUnixMs" IS NOT NULL
+        AND "scheduledForUnixMs" >= 0
+    `,
+  });
+
   const insertRunRow = SqlSchema.findOneOption({
     Request: AutomationRunRowSchema,
     Result: AutomationRunRowSchema,
@@ -698,13 +799,14 @@ const makeStore = Effect.gen(function* () {
         scheduled_for_unix_ms, idempotency_key, trigger, status, attempt,
         requested_at_unix_ms, started_at_unix_ms, finished_at_unix_ms,
         composition_task_id, composition_run_id, output_summary,
-        error_code, error_detail
+        error_code, error_detail, operation_id, source_automation_run_id
       ) VALUES (
         ${run.automationRunId}, ${run.automationId}, ${run.automationRevision},
         ${run.scheduledForUnixMs}, ${run.idempotencyKey}, ${run.trigger}, ${run.status},
         ${run.attempt}, ${run.requestedAtUnixMs}, ${run.startedAtUnixMs},
         ${run.finishedAtUnixMs}, ${run.compositionTaskId}, ${run.compositionRunId},
-        ${run.outputSummary}, ${run.errorCode}, ${run.errorDetail}
+        ${run.outputSummary}, ${run.errorCode}, ${run.errorDetail},
+        ${run.operationId ?? null}, ${run.sourceAutomationRunId ?? null}
       )
       ON CONFLICT DO NOTHING
       RETURNING
@@ -714,6 +816,8 @@ const makeStore = Effect.gen(function* () {
         scheduled_for_unix_ms AS "scheduledForUnixMs",
         idempotency_key AS "idempotencyKey",
         trigger,
+        operation_id AS "operationId",
+        source_automation_run_id AS "sourceAutomationRunId",
         status,
         attempt,
         requested_at_unix_ms AS "requestedAtUnixMs",
@@ -750,6 +854,8 @@ const makeStore = Effect.gen(function* () {
         scheduled_for_unix_ms AS "scheduledForUnixMs",
         idempotency_key AS "idempotencyKey",
         trigger,
+        operation_id AS "operationId",
+        source_automation_run_id AS "sourceAutomationRunId",
         status,
         attempt,
         requested_at_unix_ms AS "requestedAtUnixMs",
@@ -774,6 +880,8 @@ const makeStore = Effect.gen(function* () {
         scheduled_for_unix_ms AS "scheduledForUnixMs",
         idempotency_key AS "idempotencyKey",
         trigger,
+        operation_id AS "operationId",
+        source_automation_run_id AS "sourceAutomationRunId",
         status,
         attempt,
         requested_at_unix_ms AS "requestedAtUnixMs",
@@ -810,6 +918,8 @@ const makeStore = Effect.gen(function* () {
         scheduled_for_unix_ms AS "scheduledForUnixMs",
         idempotency_key AS "idempotencyKey",
         trigger,
+        operation_id AS "operationId",
+        source_automation_run_id AS "sourceAutomationRunId",
         status,
         attempt,
         requested_at_unix_ms AS "requestedAtUnixMs",
@@ -889,6 +999,22 @@ const makeStore = Effect.gen(function* () {
           onNone: () => Effect.succeed(Option.none<CompositionAutomationRun>()),
           onSome: (row) =>
             decodeRunRow("CompositionAutomationStore.getRunByIdentity", row).pipe(
+              Effect.map(Option.some),
+            ),
+        }),
+      ),
+    );
+
+  const readRunByOperation = (automationId: string, operationId: string) =>
+    query(
+      "CompositionAutomationStore.getRunByOperation",
+      getRunByOperationRow({ automationId, operationId }),
+    ).pipe(
+      Effect.flatMap(
+        Option.match({
+          onNone: () => Effect.succeed(Option.none<CompositionAutomationRun>()),
+          onSome: (row) =>
+            decodeRunRow("CompositionAutomationStore.getRunByOperation", row).pipe(
               Effect.map(Option.some),
             ),
         }),
@@ -1129,7 +1255,11 @@ const makeStore = Effect.gen(function* () {
 
       const inserted = yield* query(
         "CompositionAutomationStore.claimRun.insert",
-        insertRunRow(run),
+        insertRunRow({
+          ...run,
+          operationId: run.operationId ?? null,
+          sourceAutomationRunId: run.sourceAutomationRunId ?? null,
+        }),
       );
       if (Option.isSome(inserted)) {
         const decoded = yield* decodeRunRow(
@@ -1152,6 +1282,151 @@ const makeStore = Effect.gen(function* () {
 
   const claimRun: CompositionAutomationStoreShape["claimRun"] = (run) =>
     withTransaction(claimRunInTransaction(run));
+
+  const claimManualRun: CompositionAutomationStoreShape["claimManualRun"] = (input) => {
+    const invalidIdentity =
+      input.operationId.trim().length === 0 ||
+      input.automationRunId.trim().length === 0 ||
+      (input.trigger === "run_once" && input.sourceAutomationRunId !== undefined) ||
+      (input.trigger === "retry" && input.sourceAutomationRunId === undefined) ||
+      input.sourceAutomationRunId?.trim().length === 0;
+    if (
+      invalidIdentity ||
+      !Number.isSafeInteger(input.requestedAtUnixMs) ||
+      input.requestedAtUnixMs < 0 ||
+      !Number.isSafeInteger(input.attempt) ||
+      input.attempt < 1
+    ) {
+      return Effect.fail(
+        domainError(
+          "automation_run_conflict",
+          input.automationId,
+          "手动运行必须提供有效 operation、触发类型、重试来源和请求时间。",
+          { automationRunId: input.automationRunId },
+        ),
+      );
+    }
+
+    return withTransaction(
+      Effect.gen(function* () {
+        const existingByOperation = yield* readRunByOperation(
+          input.automationId,
+          input.operationId,
+        );
+        if (Option.isSome(existingByOperation)) {
+          if (sameManualOperationIdentity(existingByOperation.value, input)) {
+            return { run: existingByOperation.value, claimed: false };
+          }
+          return yield* domainError(
+            "automation_run_conflict",
+            input.automationId,
+            "operationId 已绑定到不同的手动运行请求。",
+            { automationRunId: existingByOperation.value.automationRunId },
+          );
+        }
+
+        const existingById = yield* readRun(input.automationRunId);
+        if (Option.isSome(existingById)) {
+          return yield* domainError(
+            "automation_run_conflict",
+            input.automationId,
+            "automationRunId 已被其他运行占用。",
+            { automationRunId: input.automationRunId },
+          );
+        }
+
+        const revision = yield* readRevision(input.automationId, input.automationRevision);
+        if (Option.isNone(revision)) {
+          return yield* domainError(
+            "automation_revision_invalid",
+            input.automationId,
+            `Automation revision ${input.automationRevision} 不存在。`,
+            { actualRevision: input.automationRevision },
+          );
+        }
+
+        for (let claimAttempt = 0; claimAttempt < 8; claimAttempt += 1) {
+          const slot = yield* query(
+            "CompositionAutomationStore.claimManualRun.findSlot",
+            findManualRunSlotRow({
+              automationId: input.automationId,
+              requestedAtUnixMs: input.requestedAtUnixMs,
+            }),
+          );
+          if (Option.isNone(slot)) {
+            return yield* domainError(
+              "automation_schedule_conflict",
+              input.automationId,
+              "无法为手动运行分配非负计划时间槽。",
+              { automationRunId: input.automationRunId },
+            );
+          }
+
+          const scheduledForUnixMs = slot.value.scheduledForUnixMs;
+          const run: CompositionAutomationRun = {
+            automationRunId: input.automationRunId,
+            automationId: input.automationId,
+            automationRevision: input.automationRevision,
+            scheduledForUnixMs,
+            idempotencyKey: makeCompositionAutomationRunIdempotencyKey({
+              automationId: input.automationId,
+              scheduledForUnixMs,
+            }),
+            trigger: input.trigger,
+            operationId: input.operationId,
+            ...(input.sourceAutomationRunId === undefined
+              ? {}
+              : { sourceAutomationRunId: input.sourceAutomationRunId }),
+            status: "queued",
+            attempt: input.attempt,
+            requestedAtUnixMs: input.requestedAtUnixMs,
+            startedAtUnixMs: null,
+            finishedAtUnixMs: null,
+            compositionTaskId: null,
+            compositionRunId: null,
+            outputSummary: null,
+            errorCode: null,
+            errorDetail: null,
+          };
+          const inserted = yield* query(
+            "CompositionAutomationStore.claimManualRun.insert",
+            insertRunRow({
+              ...run,
+              operationId: run.operationId ?? null,
+              sourceAutomationRunId: run.sourceAutomationRunId ?? null,
+            }),
+          );
+          if (Option.isSome(inserted)) {
+            const decoded = yield* decodeRunRow(
+              "CompositionAutomationStore.claimManualRun.insert",
+              inserted.value,
+            );
+            return { run: decoded, claimed: true } satisfies CompositionAutomationRunClaimResult;
+          }
+
+          const winner = yield* readRunByOperation(input.automationId, input.operationId);
+          if (Option.isSome(winner)) {
+            if (sameManualOperationIdentity(winner.value, input)) {
+              return { run: winner.value, claimed: false };
+            }
+            return yield* domainError(
+              "automation_run_conflict",
+              input.automationId,
+              "operationId 并发绑定到了不同请求。",
+              { automationRunId: winner.value.automationRunId },
+            );
+          }
+        }
+
+        return yield* domainError(
+          "automation_schedule_conflict",
+          input.automationId,
+          "手动运行时间槽发生连续并发冲突。",
+          { automationRunId: input.automationRunId },
+        );
+      }),
+    );
+  };
 
   const claimRunExecution: CompositionAutomationStoreShape["claimRunExecution"] = (run) => {
     if (
@@ -1210,7 +1485,12 @@ const makeStore = Effect.gen(function* () {
 
         const updated = yield* query(
           "CompositionAutomationStore.claimRunExecution.update",
-          updateRunRow({ ...run, expectedStatus: "queued" }),
+          updateRunRow({
+            ...run,
+            operationId: run.operationId ?? null,
+            sourceAutomationRunId: run.sourceAutomationRunId ?? null,
+            expectedStatus: "queued",
+          }),
         );
         if (Option.isSome(updated)) {
           const claimed = yield* decodeRunRow(
@@ -1364,7 +1644,12 @@ const makeStore = Effect.gen(function* () {
 
         const updated = yield* query(
           "CompositionAutomationStore.saveRunTransition.update",
-          updateRunRow({ ...input.run, expectedStatus: input.expectedStatus }),
+          updateRunRow({
+            ...input.run,
+            operationId: input.run.operationId ?? null,
+            sourceAutomationRunId: input.run.sourceAutomationRunId ?? null,
+            expectedStatus: input.expectedStatus,
+          }),
         );
         if (Option.isSome(updated)) {
           return yield* decodeRunRow(
@@ -1438,6 +1723,7 @@ const makeStore = Effect.gen(function* () {
     },
     deleteAutomation,
     claimRun,
+    claimManualRun,
     claimRunExecution,
     claimScheduledRun,
     saveRunTransition,

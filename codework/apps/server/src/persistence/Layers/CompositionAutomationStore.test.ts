@@ -237,6 +237,76 @@ layer("CompositionAutomationStore", (it) => {
     }),
   );
 
+  it.effect("并发 claim 同一手动 operation 只产生一个 Run，并为同毫秒操作分配不同槽位", () =>
+    Effect.gen(function* () {
+      const store = yield* CompositionAutomationStore;
+      const automation = makeAutomation("automation-manual-claim");
+      yield* store.createAutomation(automation);
+
+      const common = {
+        automationId: automation.automationId,
+        automationRevision: automation.revision,
+        operationId: "operation-manual-shared",
+        trigger: "run_once" as const,
+        requestedAtUnixMs: 5_000,
+        attempt: 1,
+      };
+      const claims = yield* Effect.all(
+        [
+          store.claimManualRun({ ...common, automationRunId: "manual-run-a" }),
+          store.claimManualRun({ ...common, automationRunId: "manual-run-b" }),
+        ],
+        { concurrency: "unbounded" },
+      );
+
+      assert.equal(claims.filter((claim) => claim.claimed).length, 1);
+      assert.deepEqual(claims[0]?.run, claims[1]?.run);
+      assert.equal(claims[0]?.run.operationId, common.operationId);
+      assert.ok((claims[0]?.run.scheduledForUnixMs ?? 5_001) <= common.requestedAtUnixMs);
+
+      const second = yield* store.claimManualRun({
+        ...common,
+        automationRunId: "manual-run-second",
+        operationId: "operation-manual-second",
+      });
+      assert.equal(second.claimed, true);
+      assert.notEqual(second.run.scheduledForUnixMs, claims[0]?.run.scheduledForUnixMs);
+      assert.equal(second.run.requestedAtUnixMs, common.requestedAtUnixMs);
+    }),
+  );
+
+  it.effect("手动 operation 重放必须保持触发类型与重试来源不变", () =>
+    Effect.gen(function* () {
+      const store = yield* CompositionAutomationStore;
+      const automation = makeAutomation("automation-manual-conflict");
+      yield* store.createAutomation(automation);
+      yield* store.claimManualRun({
+        automationRunId: "manual-conflict-first",
+        automationId: automation.automationId,
+        automationRevision: automation.revision,
+        operationId: "operation-conflict",
+        trigger: "run_once",
+        requestedAtUnixMs: 6_000,
+        attempt: 1,
+      });
+
+      const conflict = yield* Effect.result(
+        store.claimManualRun({
+          automationRunId: "manual-conflict-retry",
+          automationId: automation.automationId,
+          automationRevision: automation.revision,
+          operationId: "operation-conflict",
+          trigger: "retry",
+          sourceAutomationRunId: "failed-run",
+          requestedAtUnixMs: 6_100,
+          attempt: 2,
+        }),
+      );
+
+      assert.equal(failureCode(conflict), "automation_run_conflict");
+    }),
+  );
+
   it.effect("以期望状态原子推进 Run，并允许目标快照幂等重放", () =>
     Effect.gen(function* () {
       const store = yield* CompositionAutomationStore;

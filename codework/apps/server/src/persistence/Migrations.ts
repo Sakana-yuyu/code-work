@@ -70,6 +70,7 @@ import Migration0054 from "./Migrations/054_ProjectionThreadLinkedPullRequest.ts
 import Migration0055 from "./Migrations/055_ProjectionThreadsUnsettledAt.ts";
 import Migration0056 from "./Migrations/056_CompositionSquadConfiguration.ts";
 import Migration0057 from "./Migrations/057_CompositionAutomations.ts";
+import Migration0058 from "./Migrations/058_CompositionAutomationOperations.ts";
 
 /**
  * Migration loader with all migrations defined inline.
@@ -139,6 +140,7 @@ export const migrationEntries = [
   [55, "ProjectionThreadsUnsettledAt", Migration0055],
   [56, "CompositionSquadConfiguration", Migration0056],
   [57, "CompositionAutomations", Migration0057],
+  [58, "CompositionAutomationOperations", Migration0058],
 ] as const;
 
 export const migrationManifest = migrationEntries.map(([id, name]) => [id, name] as const);

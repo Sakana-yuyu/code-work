@@ -324,6 +324,8 @@ const CompositionAutomationRunFields = Schema.Struct({
   scheduledForUnixMs: NonNegativeInt,
   idempotencyKey: TrimmedNonEmptyString,
   trigger: CompositionAutomationRunTrigger,
+  operationId: Schema.optional(TrimmedNonEmptyString),
+  sourceAutomationRunId: Schema.optional(TrimmedNonEmptyString),
   status: CompositionAutomationRunStatus,
   attempt: PositiveInt,
   requestedAtUnixMs: NonNegativeInt,
@@ -340,6 +342,7 @@ type CompositionAutomationRunUnchecked = typeof CompositionAutomationRunFields.T
 
 export type CompositionAutomationRunValidationIssueCode =
   | "idempotency_key_invalid"
+  | "operation_identity_invalid"
   | "timestamp_order_invalid"
   | "queued_time_invalid"
   | "running_time_invalid"
@@ -370,6 +373,16 @@ export const validateCompositionAutomationRun = (
     })
   ) {
     add("idempotency_key_invalid", "idempotencyKey");
+  }
+  const manualTrigger = input.trigger === "run_once" || input.trigger === "retry";
+  if (
+    (manualTrigger && input.operationId === undefined) ||
+    (!manualTrigger &&
+      (input.operationId !== undefined || input.sourceAutomationRunId !== undefined)) ||
+    (input.trigger === "run_once" && input.sourceAutomationRunId !== undefined) ||
+    (input.trigger === "retry" && input.sourceAutomationRunId === undefined)
+  ) {
+    add("operation_identity_invalid", "operationId");
   }
   if (input.requestedAtUnixMs < input.scheduledForUnixMs) {
     add("timestamp_order_invalid", "requestedAtUnixMs");
