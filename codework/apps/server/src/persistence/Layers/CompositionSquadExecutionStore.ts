@@ -66,6 +66,7 @@ const ExecutionRowSchema = Schema.Struct({
   projectId: Schema.String,
   threadId: Schema.NullOr(Schema.String),
   goalDigest: Schema.String,
+  planDigest: Schema.NullOr(Schema.String),
   goalTaskId: Schema.String,
   workspaceRootDigest: Schema.String,
   status: CompositionSquadExecutionStatus,
@@ -93,6 +94,7 @@ const ExecutionWriteSchema = Schema.Struct({
   projectId: Schema.String,
   threadId: Schema.NullOr(Schema.String),
   goalDigest: Schema.String,
+  planDigest: Schema.NullOr(Schema.String),
   goalTaskId: Schema.String,
   workspaceRootDigest: Schema.String,
   status: CompositionSquadExecutionStatus,
@@ -165,6 +167,7 @@ const toExecutionCandidate = (row: ExecutionRow): CompositionSquadExecution => (
   projectId: row.projectId,
   ...(row.threadId === null ? {} : { threadId: ThreadId.make(row.threadId) }),
   goalDigest: row.goalDigest,
+  ...(row.planDigest === null ? {} : { planDigest: row.planDigest }),
   goalTaskId: row.goalTaskId,
   workspaceRootDigest: row.workspaceRootDigest,
   status: row.status,
@@ -198,6 +201,7 @@ const toExecutionWrite = (execution: CompositionSquadExecution) => ({
   projectId: execution.projectId,
   threadId: execution.threadId ?? null,
   goalDigest: execution.goalDigest,
+  planDigest: execution.planDigest ?? null,
   goalTaskId: execution.goalTaskId,
   workspaceRootDigest: execution.workspaceRootDigest,
   status: execution.status,
@@ -233,6 +237,7 @@ const sameExecutionIdentity = (
   left.projectId === right.projectId &&
   left.threadId === right.threadId &&
   left.goalDigest === right.goalDigest &&
+  left.planDigest === right.planDigest &&
   left.goalTaskId === right.goalTaskId &&
   left.workspaceRootDigest === right.workspaceRootDigest &&
   left.leaderTaskId === right.leaderTaskId &&
@@ -365,7 +370,7 @@ const makeStore = Effect.gen(function* () {
       SELECT
         execution_id AS "executionId", squad_id AS "squadId",
         squad_revision AS "squadRevision", project_id AS "projectId",
-        thread_id AS "threadId", goal_digest AS "goalDigest",
+        thread_id AS "threadId", goal_digest AS "goalDigest", plan_digest AS "planDigest",
         goal_task_id AS "goalTaskId", workspace_root_digest AS "workspaceRootDigest",
         status, revision, nodes_json AS nodes,
         leader_task_id AS "leaderTaskId", leader_run_id AS "leaderRunId",
@@ -399,7 +404,7 @@ const makeStore = Effect.gen(function* () {
     execute: (execution) => sql`
       INSERT INTO composition_squad_executions (
         execution_id, squad_id, squad_revision, project_id, thread_id,
-        goal_digest, goal_task_id, workspace_root_digest,
+        goal_digest, plan_digest, goal_task_id, workspace_root_digest,
         status, revision, nodes_json, leader_task_id, leader_run_id,
         pending_approvals_json, paused_from_status,
         result_summary, failure_code, failure_detail,
@@ -408,6 +413,7 @@ const makeStore = Effect.gen(function* () {
       ) VALUES (
         ${execution.executionId}, ${execution.squadId}, ${execution.squadRevision},
         ${execution.projectId}, ${execution.threadId}, ${execution.goalDigest},
+        ${execution.planDigest},
         ${execution.goalTaskId}, ${execution.workspaceRootDigest},
         ${execution.status}, ${execution.revision}, ${execution.nodesJson},
         ${execution.leaderTaskId}, ${execution.leaderRunId},
@@ -421,7 +427,7 @@ const makeStore = Effect.gen(function* () {
       RETURNING
         execution_id AS "executionId", squad_id AS "squadId",
         squad_revision AS "squadRevision", project_id AS "projectId",
-        thread_id AS "threadId", goal_digest AS "goalDigest",
+        thread_id AS "threadId", goal_digest AS "goalDigest", plan_digest AS "planDigest",
         goal_task_id AS "goalTaskId", workspace_root_digest AS "workspaceRootDigest",
         status, revision, nodes_json AS nodes,
         leader_task_id AS "leaderTaskId", leader_run_id AS "leaderRunId",
@@ -446,6 +452,7 @@ const makeStore = Effect.gen(function* () {
         project_id = ${execution.projectId},
         thread_id = ${execution.threadId},
         goal_digest = ${execution.goalDigest},
+        plan_digest = ${execution.planDigest},
         goal_task_id = ${execution.goalTaskId},
         workspace_root_digest = ${execution.workspaceRootDigest},
         status = ${execution.status},
@@ -470,7 +477,7 @@ const makeStore = Effect.gen(function* () {
       RETURNING
         execution_id AS "executionId", squad_id AS "squadId",
         squad_revision AS "squadRevision", project_id AS "projectId",
-        thread_id AS "threadId", goal_digest AS "goalDigest",
+        thread_id AS "threadId", goal_digest AS "goalDigest", plan_digest AS "planDigest",
         goal_task_id AS "goalTaskId", workspace_root_digest AS "workspaceRootDigest",
         status, revision, nodes_json AS nodes,
         leader_task_id AS "leaderTaskId", leader_run_id AS "leaderRunId",
@@ -525,7 +532,7 @@ const makeStore = Effect.gen(function* () {
       SELECT
         execution_id AS "executionId", squad_id AS "squadId",
         squad_revision AS "squadRevision", project_id AS "projectId",
-        thread_id AS "threadId", goal_digest AS "goalDigest",
+        thread_id AS "threadId", goal_digest AS "goalDigest", plan_digest AS "planDigest",
         goal_task_id AS "goalTaskId", workspace_root_digest AS "workspaceRootDigest",
         status, revision, nodes_json AS nodes,
         leader_task_id AS "leaderTaskId", leader_run_id AS "leaderRunId",
@@ -565,7 +572,7 @@ const makeStore = Effect.gen(function* () {
       SELECT
         execution_id AS "executionId", squad_id AS "squadId",
         squad_revision AS "squadRevision", project_id AS "projectId",
-        thread_id AS "threadId", goal_digest AS "goalDigest",
+        thread_id AS "threadId", goal_digest AS "goalDigest", plan_digest AS "planDigest",
         goal_task_id AS "goalTaskId", workspace_root_digest AS "workspaceRootDigest",
         status, revision, nodes_json AS nodes,
         leader_task_id AS "leaderTaskId", leader_run_id AS "leaderRunId",

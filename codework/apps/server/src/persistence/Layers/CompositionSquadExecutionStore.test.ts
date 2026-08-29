@@ -33,6 +33,7 @@ const makeQueuedExecution = (
   projectId: "project-execution",
   threadId: ThreadId.make(`thread-${executionId}`),
   goalDigest: `sha256:goal-${executionId}`,
+  planDigest: `sha256:plan-${executionId}`,
   goalTaskId: `goal-task-${executionId}`,
   workspaceRootDigest: "sha256:workspace-execution",
   status: "queued",
@@ -78,6 +79,11 @@ const makeRunningExecution = (
   updatedAtUnixMs: current.updatedAtUnixMs + 10,
   ...overrides,
 });
+
+const withoutPlanDigest = (execution: CompositionSquadExecution): CompositionSquadExecution => {
+  const { planDigest: _planDigest, ...legacyExecution } = execution;
+  return legacyExecution;
+};
 
 const isSquadExecutionStoreDomainError = Schema.is(CompositionSquadExecutionStoreDomainError);
 
@@ -150,6 +156,9 @@ layer("CompositionSquadExecutionStore", (it) => {
       const drift = yield* Effect.result(
         store.claimExecution({ ...queued, projectId: "project-drift" }),
       );
+      const planDrift = yield* Effect.result(
+        store.claimExecution({ ...queued, planDigest: "sha256:different-plan" }),
+      );
       const missingRevision = yield* Effect.result(
         store.claimExecution(
           makeQueuedExecution("execution-missing-revision", {
@@ -210,6 +219,7 @@ layer("CompositionSquadExecutionStore", (it) => {
       );
 
       assert.equal(failureCode(drift), "squad_execution_conflict");
+      assert.equal(failureCode(planDrift), "squad_execution_conflict");
       assert.equal(failureCode(missingRevision), "squad_execution_squad_revision_invalid");
       assert.equal(failureCode(legacyRevision), "squad_execution_squad_revision_invalid");
       assert.equal(malformedRevision._tag, "Failure");
@@ -290,6 +300,46 @@ layer("CompositionSquadExecutionStore", (it) => {
 
       assert.equal(failureCode(illegal), "squad_execution_status_conflict");
       assert.equal(failureCode(stale), "squad_execution_revision_conflict");
+    }),
+  );
+
+  it.effect("将 plan 摘要作为不可变执行身份并拒绝新增、删除或改变", () =>
+    Effect.gen(function* () {
+      const store = yield* CompositionSquadExecutionStore;
+      const sql = yield* SqlClient.SqlClient;
+      yield* seedSquadRevision(sql);
+
+      const queued = makeQueuedExecution("execution-plan-identity");
+      yield* store.claimExecution(queued);
+      const changed = yield* Effect.result(
+        store.saveTransition({
+          execution: makePlanningExecution(queued, {
+            planDigest: "sha256:changed-plan",
+          }),
+          expectedRevision: 1,
+        }),
+      );
+      const removed = yield* Effect.result(
+        store.saveTransition({
+          execution: withoutPlanDigest(makePlanningExecution(queued)),
+          expectedRevision: 1,
+        }),
+      );
+
+      const legacyQueued = withoutPlanDigest(makeQueuedExecution("execution-plan-identity-legacy"));
+      yield* store.claimExecution(legacyQueued);
+      const added = yield* Effect.result(
+        store.saveTransition({
+          execution: makePlanningExecution(legacyQueued, {
+            planDigest: "sha256:added-plan",
+          }),
+          expectedRevision: 1,
+        }),
+      );
+
+      assert.equal(failureCode(changed), "squad_execution_conflict");
+      assert.equal(failureCode(removed), "squad_execution_conflict");
+      assert.equal(failureCode(added), "squad_execution_conflict");
     }),
   );
 
@@ -969,6 +1019,47 @@ it.effect("使用同一 SQLite 文件重建 Layer 后仍可恢复未收敛 execu
         running,
       );
       assert.deepEqual(yield* store.listUnsettledExecutions({ limit: 10 }), [running]);
+    }).pipe(Effect.provide(makeFileStoreLayer(dbPath)));
+  }).pipe(
+    Effect.ensuring(Effect.sync(() => NodeFS.rmSync(tempDir, { recursive: true, force: true }))),
+  );
+});
+
+it.effect("旧 execution 缺失 plan 摘要时可跨重启读取、列出并继续推进", () => {
+  const tempDir = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "codework-squad-plan-legacy-"));
+  const dbPath = NodePath.join(tempDir, "state.sqlite");
+  const queued = withoutPlanDigest(makeQueuedExecution("execution-plan-legacy-store"));
+  const planning = makePlanningExecution(queued);
+
+  return Effect.gen(function* () {
+    yield* Effect.gen(function* () {
+      const store = yield* CompositionSquadExecutionStore;
+      const sql = yield* SqlClient.SqlClient;
+      yield* seedSquadRevision(sql);
+      yield* store.claimExecution(queued);
+
+      assert.deepEqual(Option.getOrThrow(yield* store.getExecution(queued.executionId)), queued);
+      assert.deepEqual(
+        yield* store.listExecutions({
+          projectId: queued.projectId,
+          squadId: queued.squadId,
+          limit: 10,
+        }),
+        [queued],
+      );
+      assert.deepEqual(yield* store.listUnsettledExecutions({ limit: 10 }), [queued]);
+    }).pipe(Effect.provide(makeFileStoreLayer(dbPath)));
+
+    yield* Effect.gen(function* () {
+      const store = yield* CompositionSquadExecutionStore;
+      const restored = Option.getOrThrow(yield* store.getExecution(queued.executionId));
+      assert.deepEqual(restored, queued);
+      assert.isFalse("planDigest" in restored);
+      assert.deepEqual(
+        yield* store.saveTransition({ execution: planning, expectedRevision: 1 }),
+        planning,
+      );
+      assert.deepEqual(yield* store.listUnsettledExecutions({ limit: 10 }), [planning]);
     }).pipe(Effect.provide(makeFileStoreLayer(dbPath)));
   }).pipe(
     Effect.ensuring(Effect.sync(() => NodeFS.rmSync(tempDir, { recursive: true, force: true }))),

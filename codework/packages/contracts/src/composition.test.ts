@@ -403,6 +403,7 @@ describe("composition contracts", () => {
       projectId: "project-1",
       threadId: "thread-1",
       goalDigest: "sha256:execution-goal",
+      planDigest: "sha256:execution-plan",
       goalTaskId: "execution-persisted-1:task:leader-plan",
       workspaceRoot: "E:/workspace",
       workspaceRootDigest: "sha256:workspace",
@@ -491,6 +492,7 @@ describe("composition contracts", () => {
       nodeId: "contracts",
       runId: "execution-persisted-1:run:contracts:1",
     });
+    expect(running.planDigest).toBe("sha256:execution-plan");
     expect(running).not.toHaveProperty("goal");
     expect(running).not.toHaveProperty("workspaceRoot");
     expect(running.nodes?.[0]).not.toHaveProperty("prompt");
@@ -534,6 +536,12 @@ describe("composition contracts", () => {
       decodePersistedSquadExecution({
         ...base,
         workspaceRootDigest: undefined,
+      }),
+    ).toThrow();
+    expect(() =>
+      decodePersistedSquadExecution({
+        ...base,
+        planDigest: "   ",
       }),
     ).toThrow();
     expect(() =>

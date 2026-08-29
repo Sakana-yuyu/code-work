@@ -1150,6 +1150,7 @@ const CompositionSquadExecutionFields = Schema.Struct({
   projectId: TrimmedNonEmptyString,
   threadId: Schema.optional(ThreadId),
   goalDigest: TrimmedNonEmptyString,
+  planDigest: Schema.optional(TrimmedNonEmptyString),
   goalTaskId: TrimmedNonEmptyString,
   workspaceRootDigest: TrimmedNonEmptyString,
   status: CompositionSquadExecutionStatus,
