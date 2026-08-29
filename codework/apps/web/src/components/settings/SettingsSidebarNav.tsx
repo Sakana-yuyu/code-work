@@ -18,6 +18,7 @@ import {
   PaletteIcon,
   SearchIcon,
   Settings2Icon,
+  TerminalIcon,
   UsersIcon,
   XIcon,
 } from "lucide-react";
@@ -59,6 +60,7 @@ const SETTINGS_SECTION_ICONS: Readonly<
   "/settings/integrations": BlocksIcon,
   "/settings/squads": UsersIcon,
   "/settings/automations": CalendarClockIcon,
+  "/settings/workspace-scripts": TerminalIcon,
   "/settings/source-control": GitBranchIcon,
   "/settings/connections": Link2Icon,
   "/settings/archived": ArchiveIcon,

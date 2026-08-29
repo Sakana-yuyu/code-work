@@ -9,6 +9,7 @@ export type SettingsPath =
   | "/settings/integrations"
   | "/settings/squads"
   | "/settings/automations"
+  | "/settings/workspace-scripts"
   | "/settings/source-control"
   | "/settings/connections"
   | "/settings/archived";
@@ -35,6 +36,7 @@ export const SETTINGS_SECTION_LABELS: Readonly<Record<SettingsPath, string>> = {
   "/settings/integrations": "settings.integrations",
   "/settings/squads": "settings.squads",
   "/settings/automations": "settings.automations",
+  "/settings/workspace-scripts": "settings.workspaceScripts",
   "/settings/source-control": "settings.sourceControl",
   "/settings/connections": "settings.connections",
   "/settings/archived": "settings.archive",
@@ -56,6 +58,11 @@ export const SETTINGS_SEARCH_ITEMS = [
     id: "composition-automations",
     title: "automationCenter.title",
     to: "/settings/automations",
+  },
+  {
+    id: "workspace-scripts",
+    title: "workspaceScripts.title",
+    to: "/settings/workspace-scripts",
   },
   {
     id: "color-scheme",

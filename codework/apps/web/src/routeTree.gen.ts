@@ -15,6 +15,7 @@ import { Route as PairRouteImport } from './routes/pair'
 import { Route as ConnectRouteImport } from './routes/connect'
 import { Route as ChatRouteImport } from './routes/_chat'
 import { Route as ChatIndexRouteImport } from './routes/_chat.index'
+import { Route as SettingsWorkspaceScriptsRouteImport } from './routes/settings.workspace-scripts'
 import { Route as SettingsSquadsRouteImport } from './routes/settings.squads'
 import { Route as SettingsSourceControlRouteImport } from './routes/settings.source-control'
 import { Route as SettingsProvidersRouteImport } from './routes/settings.providers'
@@ -61,6 +62,12 @@ const ChatIndexRoute = ChatIndexRouteImport.update({
   path: '/',
   getParentRoute: () => ChatRoute,
 } as any)
+const SettingsWorkspaceScriptsRoute =
+  SettingsWorkspaceScriptsRouteImport.update({
+    id: '/workspace-scripts',
+    path: '/workspace-scripts',
+    getParentRoute: () => SettingsRoute,
+  } as any)
 const SettingsSquadsRoute = SettingsSquadsRouteImport.update({
   id: '/squads',
   path: '/squads',
@@ -163,6 +170,7 @@ export interface FileRoutesByFullPath {
   '/settings/providers': typeof SettingsProvidersRoute
   '/settings/source-control': typeof SettingsSourceControlRoute
   '/settings/squads': typeof SettingsSquadsRoute
+  '/settings/workspace-scripts': typeof SettingsWorkspaceScriptsRoute
   '/$environmentId/$threadId': typeof ChatEnvironmentIdThreadIdRoute
   '/draft/$draftId': typeof ChatDraftDraftIdRoute
 }
@@ -185,6 +193,7 @@ export interface FileRoutesByTo {
   '/settings/providers': typeof SettingsProvidersRoute
   '/settings/source-control': typeof SettingsSourceControlRoute
   '/settings/squads': typeof SettingsSquadsRoute
+  '/settings/workspace-scripts': typeof SettingsWorkspaceScriptsRoute
   '/': typeof ChatIndexRoute
   '/$environmentId/$threadId': typeof ChatEnvironmentIdThreadIdRoute
   '/draft/$draftId': typeof ChatDraftDraftIdRoute
@@ -210,6 +219,7 @@ export interface FileRoutesById {
   '/settings/providers': typeof SettingsProvidersRoute
   '/settings/source-control': typeof SettingsSourceControlRoute
   '/settings/squads': typeof SettingsSquadsRoute
+  '/settings/workspace-scripts': typeof SettingsWorkspaceScriptsRoute
   '/_chat/': typeof ChatIndexRoute
   '/_chat/$environmentId/$threadId': typeof ChatEnvironmentIdThreadIdRoute
   '/_chat/draft/$draftId': typeof ChatDraftDraftIdRoute
@@ -236,6 +246,7 @@ export interface FileRouteTypes {
     | '/settings/providers'
     | '/settings/source-control'
     | '/settings/squads'
+    | '/settings/workspace-scripts'
     | '/$environmentId/$threadId'
     | '/draft/$draftId'
   fileRoutesByTo: FileRoutesByTo
@@ -258,6 +269,7 @@ export interface FileRouteTypes {
     | '/settings/providers'
     | '/settings/source-control'
     | '/settings/squads'
+    | '/settings/workspace-scripts'
     | '/'
     | '/$environmentId/$threadId'
     | '/draft/$draftId'
@@ -282,6 +294,7 @@ export interface FileRouteTypes {
     | '/settings/providers'
     | '/settings/source-control'
     | '/settings/squads'
+    | '/settings/workspace-scripts'
     | '/_chat/'
     | '/_chat/$environmentId/$threadId'
     | '/_chat/draft/$draftId'
@@ -340,6 +353,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/'
       preLoaderRoute: typeof ChatIndexRouteImport
       parentRoute: typeof ChatRoute
+    }
+    '/settings/workspace-scripts': {
+      id: '/settings/workspace-scripts'
+      path: '/workspace-scripts'
+      fullPath: '/settings/workspace-scripts'
+      preLoaderRoute: typeof SettingsWorkspaceScriptsRouteImport
+      parentRoute: typeof SettingsRoute
     }
     '/settings/squads': {
       id: '/settings/squads'
@@ -484,6 +504,7 @@ interface SettingsRouteChildren {
   SettingsProvidersRoute: typeof SettingsProvidersRoute
   SettingsSourceControlRoute: typeof SettingsSourceControlRoute
   SettingsSquadsRoute: typeof SettingsSquadsRoute
+  SettingsWorkspaceScriptsRoute: typeof SettingsWorkspaceScriptsRoute
 }
 
 const SettingsRouteChildren: SettingsRouteChildren = {
@@ -498,6 +519,7 @@ const SettingsRouteChildren: SettingsRouteChildren = {
   SettingsProvidersRoute: SettingsProvidersRoute,
   SettingsSourceControlRoute: SettingsSourceControlRoute,
   SettingsSquadsRoute: SettingsSquadsRoute,
+  SettingsWorkspaceScriptsRoute: SettingsWorkspaceScriptsRoute,
 }
 
 const SettingsRouteWithChildren = SettingsRoute._addFileChildren(
