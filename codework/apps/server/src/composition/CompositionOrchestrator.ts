@@ -1272,22 +1272,27 @@ const makeOrchestrator = (
           reason: "recovery_input_missing",
         });
       }
-      const driver = yield* driverRegistry.get(previousRun.agentId);
-      if (driver === undefined) {
+      const targetAgentId = input.agentId ?? previousRun.agentId;
+      const previousDriver = yield* driverRegistry.get(previousRun.agentId);
+      const targetDriver =
+        targetAgentId === previousRun.agentId
+          ? previousDriver
+          : yield* driverRegistry.get(targetAgentId);
+      if (targetDriver === undefined) {
         return yield* new CompositionAgentDriverFailure({
           code: "agent_driver_unavailable",
-          detail: `未找到 Agent Driver：${previousRun.agentId}`,
+          detail: `未找到目标 Agent Driver：${targetAgentId}`,
         });
       }
       // 先撤销旧 Run 的 grant，避免 CapabilityGrantRegistry 按 task/agent 复用旧授权。
-      yield* revokeRunCapabilities(driver, task, previousRun);
+      yield* revokeRunCapabilities(previousDriver, task, previousRun);
       yield* releaseRunLease(previousRun);
       const issuedGrants =
         grantRegistry === undefined
           ? []
           : yield* grantRegistry.issue({
               taskId: input.taskId,
-              agentId: previousRun.agentId,
+              agentId: targetAgentId,
               capabilityIds: input.capabilityIds,
             });
       const capabilityGrantIds = issuedGrants.map((grant) => grant.grantId);
@@ -1295,14 +1300,15 @@ const makeOrchestrator = (
       const { finishedAtUnixMs: _finishedAtUnixMs, ...taskWithoutFinishedAt } = task;
       const queuedTask: CompositionTask = {
         ...taskWithoutFinishedAt,
+        assigneeId: targetAgentId,
         status: "queued",
         updatedAtUnixMs: queuedAt,
       };
       const queuedRun: CompositionTaskRun = {
         runId: input.runId,
         taskId: input.taskId,
-        agentId: previousRun.agentId,
-        runtimeId: driver.runtimeId,
+        agentId: targetAgentId,
+        runtimeId: targetDriver.runtimeId,
         status: "queued",
         attempt: previousRun.attempt + 1,
         capabilityGrantIds,
@@ -1316,7 +1322,10 @@ const makeOrchestrator = (
           sequence: 0,
           status: "queued",
           eventType: "status",
-          summary: `任务已请求重试：${input.reason}`,
+          summary:
+            targetAgentId === previousRun.agentId
+              ? `任务已请求重试：${input.reason}`
+              : `任务已从 Agent ${previousRun.agentId} 重派至 ${targetAgentId}：${input.reason}`,
         }),
       );
       if (issuedGrants.length > 0) {
@@ -1337,7 +1346,7 @@ const makeOrchestrator = (
         return yield* persistFailedStart({
           task: queuedTask,
           run: queuedRun,
-          driver,
+          driver: targetDriver,
           failure: new CompositionAgentDriverFailure({
             code: "capacity_exceeded",
             detail: "工作区已有未过期的 Runtime 租约，拒绝重复派发。",
@@ -1349,7 +1358,7 @@ const makeOrchestrator = (
       const leasedRun = leasedRunOption.value;
 
       const startResult = yield* Effect.result(
-        driver.startTask({
+        targetDriver.startTask({
           task: queuedTask,
           run: leasedRun,
           prompt: recoveryInput.value.prompt,
@@ -1365,7 +1374,7 @@ const makeOrchestrator = (
         const failed = yield* persistFailedStart({
           task: queuedTask,
           run: leasedRun,
-          driver,
+          driver: targetDriver,
           failure: startResult.failure,
           summary: "重试任务启动失败",
           finishTask: true,
@@ -1377,7 +1386,7 @@ const makeOrchestrator = (
       return yield* persistStartedRun({
         task: queuedTask,
         run: leasedRun,
-        driver,
+        driver: targetDriver,
         startResult: startResult.success,
         summary: "重试任务已交给 Agent Driver 执行",
       });

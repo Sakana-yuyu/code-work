@@ -484,18 +484,29 @@ describe("composition contracts", () => {
     expect(rejected.decision).toBe("reject");
   });
 
-  it("要求重试使用新的 runId，并显式声明本次 capabilityIds", () => {
+  it("要求重试使用新的 runId，并可显式重派到目标 Agent", () => {
     const decoded = decodeTaskRetry({
       taskId: "task-retry",
       previousRunId: "run-old",
       runId: "run-retry-2",
+      agentId: "agent-replacement",
       reason: "修复审核反馈后重试",
       capabilityIds: ["t3.workspace.read_file"],
     });
 
     expect(decoded.previousRunId).toBe("run-old");
     expect(decoded.runId).toBe("run-retry-2");
+    expect(decoded.agentId).toBe("agent-replacement");
     expect(decoded.capabilityIds).toEqual(["t3.workspace.read_file"]);
+
+    const retriedWithOriginalAgent = decodeTaskRetry({
+      taskId: "task-retry",
+      previousRunId: "run-old",
+      runId: "run-retry-3",
+      reason: "继续使用原 Agent 重试",
+      capabilityIds: ["t3.workspace.read_file"],
+    });
+    expect(retriedWithOriginalAgent.agentId).toBeUndefined();
   });
 
   it("定义同一 Run 的 Runtime Resume 合同", () => {

@@ -498,6 +498,8 @@ export const CompositionTaskRetryRequest = Schema.Struct({
   taskId: TrimmedNonEmptyString,
   previousRunId: TrimmedNonEmptyString,
   runId: TrimmedNonEmptyString,
+  /** 指定时把新 Run 重派给该 Agent；缺省时继续使用上一 Run 的 Agent。 */
+  agentId: Schema.optional(TrimmedNonEmptyString),
   reason: TrimmedNonEmptyString,
   /** 本次重试重新申请的 capability，不继承旧 Run 的 grant。 */
   capabilityIds: Schema.Array(TrimmedNonEmptyString),

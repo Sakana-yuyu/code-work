@@ -337,10 +337,11 @@ layer("CompositionOrchestrator", (it) => {
       );
     }),
   );
-  it.effect("重试失败 Task 时创建新 Run、递增 attempt、恢复输入并重新签发 grant", () =>
+  it.effect("旧 Agent 离线时可把失败 Task 重派给新 Agent，并重新签发 grant", () =>
     Effect.gen(function* () {
       const store = yield* CompositionTaskStore;
       const started: Array<{
+        readonly agentId: string;
         readonly runId: string;
         readonly attempt: number;
         readonly prompt?: string;
@@ -349,11 +350,12 @@ layer("CompositionOrchestrator", (it) => {
       }> = [];
       const driverRegistry = makeCompositionAgentDriverRegistry();
       yield* driverRegistry.register({
-        agentId: "agent-retry",
-        runtimeId: "runtime-retry",
+        agentId: "agent-replacement",
+        runtimeId: "runtime-replacement",
         startTask: (input) =>
           Effect.sync(() => {
             started.push({
+              agentId: input.run.agentId,
               runId: input.run.runId,
               attempt: input.run.attempt,
               ...(input.prompt === undefined ? {} : { prompt: input.prompt }),
@@ -364,24 +366,32 @@ layer("CompositionOrchestrator", (it) => {
           }),
         cancelTask: () => Effect.succeed({ status: "cancelled" as const }),
       });
-      const issueCalls: Array<ReadonlyArray<string>> = [];
+      const issueCalls: Array<{
+        readonly agentId: string;
+        readonly capabilityIds: ReadonlyArray<string>;
+      }> = [];
+      const revokedGrantIds: Array<string> = [];
       const orchestrator = makeCompositionOrchestrator(
         store,
         driverRegistry,
         {
-          issue: ({ capabilityIds }) =>
+          issue: ({ agentId, capabilityIds }) =>
             Effect.sync(() => {
-              issueCalls.push([...capabilityIds]);
+              issueCalls.push({ agentId, capabilityIds: [...capabilityIds] });
               return [
                 {
                   grantId: "grant-retry-2",
                   taskId: "task-retry",
-                  agentId: "agent-retry",
+                  agentId,
                   capabilityId: "t3.workspace.read_file",
                   issuedAtUnixMs: 10,
                   expiresAtUnixMs: 1000,
                 },
               ];
+            }),
+          revoke: ({ grantId }) =>
+            Effect.sync(() => {
+              revokedGrantIds.push(grantId);
             }),
         },
         {
@@ -427,17 +437,27 @@ layer("CompositionOrchestrator", (it) => {
         taskId: "task-retry",
         previousRunId: "run-old",
         runId: "run-retry-2",
+        agentId: "agent-replacement",
         reason: "已修复审核反馈",
         capabilityIds: ["t3.workspace.read_file"],
       });
 
       assert.equal(result.task.status, "running");
+      assert.equal(result.task.assigneeId, "agent-replacement");
       assert.equal(result.run.runId, "run-retry-2");
+      assert.equal(result.run.agentId, "agent-replacement");
       assert.equal(result.run.attempt, 2);
       assert.equal(result.run.runtimeTaskId, "runtime-task-retry-2");
-      assert.deepEqual(issueCalls, [["t3.workspace.read_file"]]);
+      assert.deepEqual(issueCalls, [
+        {
+          agentId: "agent-replacement",
+          capabilityIds: ["t3.workspace.read_file"],
+        },
+      ]);
+      assert.deepEqual(revokedGrantIds, ["grant-old-revoked"]);
       assert.deepEqual(started, [
         {
+          agentId: "agent-replacement",
           runId: "run-retry-2",
           attempt: 2,
           prompt: "继续修复审核反馈",
@@ -446,6 +466,93 @@ layer("CompositionOrchestrator", (it) => {
         },
       ]);
       assert.equal((yield* store.getRun("run-old")).pipe(Option.getOrThrow).status, "failed");
+      const retryEvents = yield* store.listEvents("task-retry", "run-retry-2");
+      assert.equal(
+        retryEvents.some(
+          (event) =>
+            event.summary.includes("agent-retry") && event.summary.includes("agent-replacement"),
+        ),
+        true,
+      );
+    }),
+  );
+  it.effect("目标 Agent 不可用时拒绝重派且不回退旧 Agent", () =>
+    Effect.gen(function* () {
+      const store = yield* CompositionTaskStore;
+      let oldAgentStartCalls = 0;
+      const revokedGrantIds: Array<string> = [];
+      const driverRegistry = makeCompositionAgentDriverRegistry();
+      yield* driverRegistry.register({
+        agentId: "agent-old-online",
+        runtimeId: "runtime-old-online",
+        startTask: () =>
+          Effect.sync(() => {
+            oldAgentStartCalls += 1;
+            return { runtimeTaskId: "must-not-start" };
+          }),
+        cancelTask: () => Effect.succeed({ status: "cancelled" as const }),
+      });
+      const orchestrator = makeCompositionOrchestrator(
+        store,
+        driverRegistry,
+        {
+          issue: () => Effect.die("目标 Agent 不可用时不应签发 grant"),
+          revoke: ({ grantId }) => Effect.sync(() => revokedGrantIds.push(grantId)),
+        },
+        {
+          save: () => Effect.void,
+          get: () =>
+            Effect.succeed(
+              Option.some({
+                taskId: "task-reassign-unavailable",
+                prompt: "不得回退旧 Agent",
+                workspaceRoot: "C:/workspace/reassign-unavailable",
+              }),
+            ),
+          remove: () => Effect.void,
+        },
+      );
+      yield* store.upsertTask({
+        taskId: "task-reassign-unavailable",
+        projectId: "project-retry",
+        assigneeKind: "agent",
+        assigneeId: "agent-old-online",
+        mode: "serial",
+        status: "failed",
+        promptDigest: "sha256:reassign-unavailable",
+        dependsOnTaskIds: [],
+        createdAtUnixMs: 1,
+        updatedAtUnixMs: 2,
+        finishedAtUnixMs: 2,
+      });
+      yield* store.upsertRun({
+        taskId: "task-reassign-unavailable",
+        runId: "run-reassign-unavailable-old",
+        agentId: "agent-old-online",
+        runtimeId: "runtime-old-online",
+        status: "failed",
+        attempt: 1,
+        capabilityGrantIds: ["grant-old-still-valid"],
+      });
+
+      const error = yield* Effect.flip(
+        orchestrator.retryTask({
+          taskId: "task-reassign-unavailable",
+          previousRunId: "run-reassign-unavailable-old",
+          runId: "run-reassign-unavailable-new",
+          agentId: "agent-target-offline",
+          reason: "显式验证目标不可用",
+          capabilityIds: ["t3.workspace.read_file"],
+        }),
+      );
+
+      if (error._tag !== "CompositionAgentDriverFailure") {
+        assert.fail(`预期目标 Driver 不可用错误，实际为 ${error._tag}`);
+      }
+      assert.equal(error.code, "agent_driver_unavailable");
+      assert.equal(oldAgentStartCalls, 0);
+      assert.deepEqual(revokedGrantIds, []);
+      assert.isTrue(Option.isNone(yield* store.getRun("run-reassign-unavailable-new")));
     }),
   );
   it.effect("Code Work Squad Task 通过 Leader Driver 路由到 Multica 远端 Squad", () =>
