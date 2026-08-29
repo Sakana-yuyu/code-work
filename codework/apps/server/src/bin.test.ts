@@ -227,6 +227,20 @@ it.layer(NodeServices.layer)("bin cli parsing", (it) => {
     }),
   );
 
+  it.effect("exposes Squad detail and revision commands", () =>
+    Effect.gen(function* () {
+      const details = yield* captureStdout(runCli(["squad", "get", "--help"], noConnectCli));
+      const revisions = yield* captureStdout(
+        runCli(["squad", "revisions", "--help"], noConnectCli),
+      );
+
+      assert.include(details.output, "Get one composition squad.");
+      assert.include(details.output, "<squad-id>");
+      assert.include(revisions.output, "List immutable composition squad revisions.");
+      assert.include(revisions.output, "<squad-id>");
+    }),
+  );
+
   it.effect("reports fresh headless connect state without requiring local configuration", () =>
     Effect.gen(function* () {
       const baseDir = NodeFS.mkdtempSync(
