@@ -127,6 +127,7 @@ type GraphExecutorOptions = {
   readonly store: Pick<CompositionTaskStoreShape, "getTask"> &
     Partial<Pick<CompositionTaskStoreShape, "getRun">>;
   readonly runtime: Pick<CompositionTaskRuntimeProjectionServiceShape, "awaitTaskCompletion">;
+  readonly cancelTimeoutMs?: number;
 };
 
 type SettledTask = {
@@ -141,6 +142,22 @@ type RunningNode = {
   readonly dependencies: ReadonlyArray<CompositionTaskGraphNodeResult>;
   readonly leaderTaskId: string;
   currentDispatch: CompositionDispatchResult;
+};
+
+type TrackedRun = {
+  readonly nodeId: string;
+  readonly taskId: string;
+  readonly runId: string;
+  readonly ownership: "candidate" | "confirmed";
+  readonly matchesPersisted: (task: CompositionTask, run: CompositionTaskRun) => boolean;
+};
+
+type TrackedRunCandidate = Omit<TrackedRun, "ownership">;
+
+type RunTracker = {
+  readonly register: (run: TrackedRunCandidate) => CompositionTaskGraphExecutionError | undefined;
+  readonly confirm: (runId: string) => void;
+  readonly settle: (runId: string) => void;
 };
 
 const terminalStatuses: ReadonlySet<CompositionTaskStatus> = new Set([
@@ -186,6 +203,23 @@ const matchesDispatchIdentity = (
   sameTaskIds(task.dependsOnTaskIds, input.dependsOnTaskIds) &&
   run.runId === input.runId &&
   run.taskId === input.taskId;
+
+const matchesRetryIdentity = (
+  task: CompositionTask,
+  run: CompositionTaskRun,
+  input: CompositionTaskRetryRequest,
+  previousRun: CompositionTaskRun,
+): boolean => {
+  const expectedAgentId = input.agentId ?? previousRun.agentId;
+  return (
+    task.taskId === input.taskId &&
+    task.assigneeId === expectedAgentId &&
+    run.runId === input.runId &&
+    run.taskId === input.taskId &&
+    run.agentId === expectedAgentId &&
+    run.attempt === previousRun.attempt + 1
+  );
+};
 
 const graphError = (
   code: string,
@@ -493,15 +527,7 @@ const make = (options: GraphExecutorOptions): CompositionTaskGraphExecutorShape 
     const task = yield* options.store
       .getTask(input.taskId)
       .pipe(Effect.mapError((error) => graphError(errorCode(error), errorDetail(error), nodeId)));
-    const expectedAgentId = input.agentId ?? previousRun.agentId;
-    if (
-      Option.isNone(task) ||
-      task.value.taskId !== input.taskId ||
-      task.value.assigneeId !== expectedAgentId ||
-      run.value.taskId !== input.taskId ||
-      run.value.agentId !== expectedAgentId ||
-      run.value.attempt !== previousRun.attempt + 1
-    ) {
+    if (Option.isNone(task) || !matchesRetryIdentity(task.value, run.value, input, previousRun)) {
       return yield* graphError(
         "task_graph_retry_identity_conflict",
         `稳定重试 Run ${input.runId} 与任务、Agent 或 attempt 不匹配。`,
@@ -555,31 +581,42 @@ const make = (options: GraphExecutorOptions): CompositionTaskGraphExecutorShape 
     node: CompositionTaskGraphNodeInput,
     dependencies: ReadonlyArray<CompositionTaskGraphNodeResult>,
     leaderTaskId: string,
+    tracker: RunTracker,
   ): Effect.Effect<RunningNode, CompositionTaskGraphExecutionError> =>
     Effect.gen(function* () {
       const prompt = appendDependencyResults(node.prompt, dependencies);
-      const dispatch = yield* dispatchOrReuse(
-        {
-          taskId: node.taskId,
-          runId: node.runId,
-          projectId: node.projectId,
-          ...(node.threadId === undefined ? {} : { threadId: node.threadId }),
-          parentTaskId: leaderTaskId,
-          assigneeKind: node.assigneeKind,
-          assigneeId: node.assigneeId,
-          mode: node.mode,
-          promptDigest: dependencies.length === 0 ? node.promptDigest : sha256(prompt),
-          dependsOnTaskIds: dependencies.map((dependency) => dependency.task.taskId),
-          workspaceRoot: node.workspaceRoot,
-          ...(node.workspaceRootDigest === undefined
-            ? {}
-            : { workspaceRootDigest: node.workspaceRootDigest }),
-          prompt,
-          ...(node.model === undefined ? {} : { model: node.model }),
-          ...(node.capabilityIds === undefined ? {} : { capabilityIds: [...node.capabilityIds] }),
-        },
-        node.nodeId,
-      );
+      const dispatchInput: CompositionDispatchInput = {
+        taskId: node.taskId,
+        runId: node.runId,
+        projectId: node.projectId,
+        ...(node.threadId === undefined ? {} : { threadId: node.threadId }),
+        parentTaskId: leaderTaskId,
+        assigneeKind: node.assigneeKind,
+        assigneeId: node.assigneeId,
+        mode: node.mode,
+        promptDigest: dependencies.length === 0 ? node.promptDigest : sha256(prompt),
+        dependsOnTaskIds: dependencies.map((dependency) => dependency.task.taskId),
+        workspaceRoot: node.workspaceRoot,
+        ...(node.workspaceRootDigest === undefined
+          ? {}
+          : { workspaceRootDigest: node.workspaceRootDigest }),
+        prompt,
+        ...(node.model === undefined ? {} : { model: node.model }),
+        ...(node.capabilityIds === undefined ? {} : { capabilityIds: [...node.capabilityIds] }),
+      };
+      const registrationError = tracker.register({
+        nodeId: node.nodeId,
+        taskId: node.taskId,
+        runId: node.runId,
+        matchesPersisted: (task, run) => matchesDispatchIdentity(task, run, dispatchInput),
+      });
+      if (registrationError !== undefined) return yield* registrationError;
+      const dispatch = yield* dispatchOrReuse(dispatchInput, node.nodeId);
+      if (terminalStatuses.has(dispatch.run.status)) {
+        tracker.settle(dispatch.run.runId);
+      } else {
+        tracker.confirm(dispatch.run.runId);
+      }
       return {
         node,
         dispatch,
@@ -592,7 +629,7 @@ const make = (options: GraphExecutorOptions): CompositionTaskGraphExecutorShape 
 
   const settleNode = (
     started: RunningNode,
-    activeNodes: Set<RunningNode>,
+    tracker: RunTracker,
     continueOnFailure: boolean,
   ): Effect.Effect<
     CompositionTaskGraphNodeResult | CompositionTaskGraphNodeFailure,
@@ -618,12 +655,12 @@ const make = (options: GraphExecutorOptions): CompositionTaskGraphExecutorShape 
               runId: dispatch.run.runId,
               nodeId: node.nodeId,
             });
+        tracker.settle(run.runId);
         const settled = yield* getSettledTask(dispatch.task.taskId, run, node.nodeId);
         yield* Effect.logDebug(
           `Task Graph 收到子任务终态：${node.nodeId}/${settled.run.runId}/${settled.run.status}`,
         );
         if (settled.run.status === "completed") {
-          activeNodes.delete(started);
           return {
             nodeId: node.nodeId,
             task: settled.task,
@@ -661,6 +698,7 @@ const make = (options: GraphExecutorOptions): CompositionTaskGraphExecutorShape 
             failoverNode,
             started.dependencies,
             started.leaderTaskId,
+            tracker,
           );
           dispatch = failover.dispatch;
           started.currentDispatch = failover.dispatch;
@@ -675,7 +713,6 @@ const make = (options: GraphExecutorOptions): CompositionTaskGraphExecutorShape 
           failoverCandidates.length > 0 &&
           failoverIndex >= failoverCandidates.length
         ) {
-          activeNodes.delete(started);
           const detail = `子任务接管候选已耗尽：${failoverCandidates.map((candidate) => candidate.assigneeId).join(", ")}；最后失败码=${failure.code}；${settled.run.resultSummary ?? "无结果摘要"}`;
           return continueOnFailure
             ? ({
@@ -689,7 +726,6 @@ const make = (options: GraphExecutorOptions): CompositionTaskGraphExecutorShape 
             : yield* graphError("failover_candidates_exhausted", detail, node.nodeId);
         }
         if (attemptsForAssignee >= maxAttempts || !failure.retryable) {
-          activeNodes.delete(started);
           const detail = `子任务未完成：失败码=${failure.code}；失败分类=${failure.category}；恢复动作=${failure.recovery}；${settled.run.resultSummary ?? "无结果摘要"}`;
           return continueOnFailure
             ? ({
@@ -705,17 +741,26 @@ const make = (options: GraphExecutorOptions): CompositionTaskGraphExecutorShape 
 
         const nextAttempt = attemptsForAssignee + 1;
         const nextRunId = retryRunId(assignmentBaseRunId, nextAttempt);
-        const retry = yield* retryOrReuse(
-          {
-            taskId: settled.task.taskId,
-            previousRunId: settled.run.runId,
-            runId: nextRunId,
-            reason: `Task Graph 自动重试第 ${nextAttempt} 次`,
-            capabilityIds: currentCapabilityIds,
-          },
-          settled.run,
-          node.nodeId,
-        );
+        const retryInput: CompositionTaskRetryRequest = {
+          taskId: settled.task.taskId,
+          previousRunId: settled.run.runId,
+          runId: nextRunId,
+          reason: `Task Graph 自动重试第 ${nextAttempt} 次`,
+          capabilityIds: currentCapabilityIds,
+        };
+        const registrationError = tracker.register({
+          nodeId: node.nodeId,
+          taskId: settled.task.taskId,
+          runId: nextRunId,
+          matchesPersisted: (task, run) => matchesRetryIdentity(task, run, retryInput, settled.run),
+        });
+        if (registrationError !== undefined) return yield* registrationError;
+        const retry = yield* retryOrReuse(retryInput, settled.run, node.nodeId);
+        if (terminalStatuses.has(retry.run.status)) {
+          tracker.settle(retry.run.runId);
+        } else {
+          tracker.confirm(retry.run.runId);
+        }
         dispatch = retry;
         started.currentDispatch = retry;
         dispatches.push(retry);
@@ -723,8 +768,103 @@ const make = (options: GraphExecutorOptions): CompositionTaskGraphExecutorShape 
       }
     });
 
-  const execute: CompositionTaskGraphExecutorShape["execute"] = (input) =>
-    Effect.gen(function* () {
+  const execute: CompositionTaskGraphExecutorShape["execute"] = (input) => {
+    const trackedRuns = new Map<string, TrackedRun>();
+    const cancellingRunIds = new Set<string>();
+    const cancelTimeoutMs = options.cancelTimeoutMs ?? 5_000;
+    const tracker: RunTracker = {
+      register: (run) => {
+        const existing = trackedRuns.get(run.runId);
+        if (existing !== undefined || cancellingRunIds.has(run.runId)) {
+          return graphError(
+            "task_graph_run_id_collision",
+            existing === undefined
+              ? `Run ID ${run.runId} 正在取消，不能分配给节点 ${run.nodeId}。`
+              : `Run ID ${run.runId} 已由节点 ${existing.nodeId}/${existing.taskId} 使用，不能分配给节点 ${run.nodeId}/${run.taskId}。`,
+            run.nodeId,
+          );
+        }
+        trackedRuns.set(run.runId, { ...run, ownership: "candidate" });
+        return undefined;
+      },
+      confirm: (runId) => {
+        const run = trackedRuns.get(runId);
+        if (run !== undefined) trackedRuns.set(runId, { ...run, ownership: "confirmed" });
+      },
+      settle: (runId) => void trackedRuns.delete(runId),
+    };
+    const ownsPersistedRun = (run: TrackedRun) =>
+      Effect.gen(function* () {
+        if (run.ownership === "confirmed") return true;
+        const getRun = options.store.getRun;
+        if (getRun === undefined) {
+          yield* Effect.logWarning(
+            `Task Graph 无法核验候选 Run 归属，跳过取消：${run.nodeId}/${run.taskId}/${run.runId}`,
+          );
+          return false;
+        }
+        const lookup = yield* Effect.exit(
+          Effect.all([options.store.getTask(run.taskId), getRun(run.runId)]),
+        );
+        if (lookup._tag === "Failure") {
+          yield* Effect.logWarning(
+            `Task Graph 核验候选 Run 归属失败，跳过取消：${run.nodeId}/${errorDetail(Cause.squash(lookup.cause))}`,
+          );
+          return false;
+        }
+        const [task, persistedRun] = lookup.value;
+        return (
+          Option.isSome(task) &&
+          Option.isSome(persistedRun) &&
+          run.matchesPersisted(task.value, persistedRun.value)
+        );
+      });
+    const cancelTrackedRun = (run: TrackedRun, reason: string) =>
+      Effect.suspend(() => {
+        if (cancellingRunIds.has(run.runId)) return Effect.succeed<string | null>(null);
+        cancellingRunIds.add(run.runId);
+        trackedRuns.delete(run.runId);
+        return ownsPersistedRun(run).pipe(
+          Effect.flatMap((owned) =>
+            owned
+              ? options.orchestrator
+                  .cancelTask({ taskId: run.taskId, runId: run.runId, reason })
+                  .pipe(Effect.as(null))
+              : Effect.succeed(null),
+          ),
+          Effect.timeout(cancelTimeoutMs),
+          Effect.exit,
+          Effect.map((exit) =>
+            exit._tag === "Failure"
+              ? `${run.nodeId}: ${errorDetail(Cause.squash(exit.cause))}`
+              : null,
+          ),
+          Effect.uninterruptible,
+        );
+      });
+    const cancelTrackedRuns = (reason: string, nodeId?: string) =>
+      Effect.suspend(() =>
+        Effect.forEach(
+          [...trackedRuns.values()].filter((run) => nodeId === undefined || run.nodeId === nodeId),
+          (run) => cancelTrackedRun(run, reason),
+          { concurrency: "unbounded" },
+        ).pipe(
+          Effect.map((failures) =>
+            failures.filter((failure): failure is string => failure !== null),
+          ),
+        ),
+      );
+    const cancelInterruptedRuns = cancelTrackedRuns("Task Graph 执行被中断，取消仍运行的任务").pipe(
+      Effect.flatMap((failures) =>
+        Effect.forEach(
+          failures,
+          (failure) => Effect.logWarning(`Task Graph 中断清理取消失败：${failure}`),
+          { discard: true },
+        ),
+      ),
+    );
+
+    return Effect.gen(function* () {
       const validationError = validateGraph(input);
       if (validationError !== undefined) return yield* validationError;
 
@@ -732,50 +872,16 @@ const make = (options: GraphExecutorOptions): CompositionTaskGraphExecutorShape 
       const pending = new Set(input.children.map((node) => node.nodeId));
       const results = new Map<string, CompositionTaskGraphNodeResult>();
       const failures = new Map<string, CompositionTaskGraphNodeFailure>();
-      const activeNodes = new Set<RunningNode>();
       const failurePolicy = input.failurePolicy ?? "fail_fast";
       const partialSuccessPolicy = input.partialSuccessPolicy ?? "reject";
 
-      const cancelNodes = (nodes: ReadonlyArray<RunningNode>, failedNodeId?: string) =>
+      const failAfterCleanup = (failure: CompositionTaskGraphExecutionError) =>
         Effect.gen(function* () {
-          const candidates = nodes.filter(
-            (started) => failedNodeId === undefined || started.node.nodeId !== failedNodeId,
+          const cleanupFailures = yield* cancelTrackedRuns(
+            failure.nodeId === undefined
+              ? "Task Graph 启动失败，取消已启动的子任务"
+              : `Task Graph 子任务 ${failure.nodeId} 失败，取消仍运行的并行子任务`,
           );
-          const failures: string[] = [];
-          yield* Effect.forEach(
-            candidates,
-            (started) =>
-              Effect.exit(
-                options.orchestrator.cancelTask({
-                  taskId: started.currentDispatch.task.taskId,
-                  runId: started.currentDispatch.run.runId,
-                  reason:
-                    failedNodeId === undefined
-                      ? "Task Graph 启动失败，取消已启动的子任务"
-                      : `Task Graph 子任务 ${failedNodeId} 失败，取消仍运行的并行子任务`,
-                }),
-              ).pipe(
-                Effect.flatMap((exit) => {
-                  if (exit._tag === "Failure") {
-                    failures.push(
-                      `${started.node.nodeId}: ${errorDetail(Cause.squash(exit.cause))}`,
-                    );
-                  }
-                  return Effect.void;
-                }),
-              ),
-            { concurrency: "unbounded", discard: true },
-          );
-          for (const started of candidates) activeNodes.delete(started);
-          return failures;
-        });
-
-      const failAfterCleanup = (
-        failure: CompositionTaskGraphExecutionError,
-        nodes: ReadonlyArray<RunningNode>,
-      ) =>
-        Effect.gen(function* () {
-          const cleanupFailures = yield* cancelNodes(nodes, failure.nodeId);
           if (cleanupFailures.length > 0) {
             return yield* graphError(
               "child_cancel_cleanup_failed",
@@ -785,6 +891,26 @@ const make = (options: GraphExecutorOptions): CompositionTaskGraphExecutorShape 
           }
           return yield* failure;
         });
+      const settleIndependentFailure = (
+        nodeId: string,
+        failure: CompositionTaskGraphExecutionError,
+      ) =>
+        cancelTrackedRuns(
+          `Task Graph 子任务 ${nodeId} 无法继续，取消该节点仍运行的任务`,
+          nodeId,
+        ).pipe(
+          Effect.map(
+            (cleanupFailures): CompositionTaskGraphNodeFailure => ({
+              nodeId,
+              kind: "failed",
+              failureCode: failure.code,
+              detail:
+                cleanupFailures.length === 0
+                  ? failure.detail
+                  : `${failure.detail}；取消该节点任务失败：${cleanupFailures.join("；")}`,
+            }),
+          ),
+        );
 
       const runRevisionNodes = (
         nodeIds: ReadonlyArray<string>,
@@ -806,19 +932,19 @@ const make = (options: GraphExecutorOptions): CompositionTaskGraphExecutorShape 
             const dependencies = (baseNode.dependsOnNodeIds ?? []).map(
               (dependencyId) => results.get(dependencyId)!,
             );
-            const started = yield* startNode(revisionNode, dependencies, input.leader.taskId).pipe(
-              Effect.catch((failure) => failAfterCleanup(failure, startedBatch)),
-            );
+            const started = yield* startNode(
+              revisionNode,
+              dependencies,
+              input.leader.taskId,
+              tracker,
+            ).pipe(Effect.catch(failAfterCleanup));
             startedBatch.push(started);
-            if (!terminalStatuses.has(started.currentDispatch.run.status)) {
-              activeNodes.add(started);
-            }
           }
           const settled = yield* Effect.forEach(
             startedBatch,
-            (started) => settleNode(started, activeNodes, false),
+            (started) => settleNode(started, tracker, false),
             { concurrency: input.maxConcurrency ?? "unbounded" },
-          ).pipe(Effect.catch((failure) => failAfterCleanup(failure, [...activeNodes])));
+          ).pipe(Effect.catch(failAfterCleanup));
           for (const outcome of settled) {
             if ("kind" in outcome) {
               return yield* graphError("review_revision_failed", outcome.detail, outcome.nodeId);
@@ -881,60 +1007,44 @@ const make = (options: GraphExecutorOptions): CompositionTaskGraphExecutorShape 
             node,
             (node.dependsOnNodeIds ?? []).map((dependencyId) => results.get(dependencyId)!),
             input.leader.taskId,
+            tracker,
           );
         // 先顺序写入每个子任务的 Code Work 投影，再并行等待 Driver 运行结果。
         const startedBatch: RunningNode[] = [];
         for (const node of scheduled) {
           const started =
             failurePolicy === "fail_fast"
-              ? yield* runReady(node).pipe(
-                  Effect.catch((failure) => failAfterCleanup(failure, startedBatch)),
-                )
+              ? yield* runReady(node).pipe(Effect.catch(failAfterCleanup))
               : yield* Effect.result(runReady(node)).pipe(
                   Effect.flatMap((result) => {
                     if (result._tag === "Success") return Effect.succeed(result.success);
-                    failures.set(node.nodeId, {
-                      nodeId: node.nodeId,
-                      kind: "failed",
-                      failureCode: result.failure.code,
-                      detail: result.failure.detail,
-                    });
-                    pending.delete(node.nodeId);
-                    return Effect.void;
+                    return settleIndependentFailure(node.nodeId, result.failure).pipe(
+                      Effect.map((failure) => {
+                        failures.set(node.nodeId, failure);
+                        pending.delete(node.nodeId);
+                      }),
+                    );
                   }),
                 );
           if (started === undefined) continue;
           startedBatch.push(started);
-          if (!terminalStatuses.has(started.currentDispatch.run.status)) {
-            activeNodes.add(started);
-          }
         }
         const batch =
           failurePolicy === "fail_fast"
             ? yield* (
                 schedule === "parallel"
-                  ? Effect.forEach(
-                      startedBatch,
-                      (started) => settleNode(started, activeNodes, false),
-                      { concurrency: "unbounded" },
-                    )
-                  : Effect.forEach(startedBatch, (started) =>
-                      settleNode(started, activeNodes, false),
-                    )
-              ).pipe(Effect.catch((failure) => failAfterCleanup(failure, [...activeNodes])))
+                  ? Effect.forEach(startedBatch, (started) => settleNode(started, tracker, false), {
+                      concurrency: "unbounded",
+                    })
+                  : Effect.forEach(startedBatch, (started) => settleNode(started, tracker, false))
+              ).pipe(Effect.catch(failAfterCleanup))
             : yield* Effect.forEach(
                 startedBatch,
                 (started) =>
-                  settleNode(started, activeNodes, true).pipe(
-                    Effect.catch((failure) => {
-                      activeNodes.delete(started);
-                      return Effect.succeed({
-                        nodeId: started.node.nodeId,
-                        kind: "failed" as const,
-                        failureCode: failure.code,
-                        detail: failure.detail,
-                      });
-                    }),
+                  settleNode(started, tracker, true).pipe(
+                    Effect.catch((failure) =>
+                      settleIndependentFailure(started.node.nodeId, failure),
+                    ),
                   ),
                 schedule === "parallel" ? { concurrency: "unbounded" } : undefined,
               );
@@ -1032,29 +1142,39 @@ const make = (options: GraphExecutorOptions): CompositionTaskGraphExecutorShape 
         )
         .join("\n");
       const leaderPrompt = `${input.leader.prompt}\n\n子 Agent 执行结果：\n${childSummary || "（没有成功子任务）"}${failureSummary.length === 0 ? "" : `\n\n失败与跳过节点：\n${failureSummary}`}`;
-      const leader = yield* dispatchOrReuse(
-        {
-          taskId: input.leader.taskId,
-          runId: input.leader.runId,
-          projectId: input.leader.projectId,
-          ...(input.leader.threadId === undefined ? {} : { threadId: input.leader.threadId }),
-          assigneeKind: input.leader.assigneeKind,
-          assigneeId: input.leader.assigneeId,
-          mode: "review",
-          promptDigest: sha256(leaderPrompt),
-          dependsOnTaskIds: childResults.map((result) => result.task.taskId),
-          workspaceRoot: input.leader.workspaceRoot,
-          ...(input.leader.workspaceRootDigest === undefined
-            ? {}
-            : { workspaceRootDigest: input.leader.workspaceRootDigest }),
-          prompt: leaderPrompt,
-          ...(input.leader.model === undefined ? {} : { model: input.leader.model }),
-          ...(input.leader.capabilityIds === undefined
-            ? {}
-            : { capabilityIds: [...input.leader.capabilityIds] }),
-        },
-        "leader",
-      );
+      const leaderDispatchInput: CompositionDispatchInput = {
+        taskId: input.leader.taskId,
+        runId: input.leader.runId,
+        projectId: input.leader.projectId,
+        ...(input.leader.threadId === undefined ? {} : { threadId: input.leader.threadId }),
+        assigneeKind: input.leader.assigneeKind,
+        assigneeId: input.leader.assigneeId,
+        mode: "review",
+        promptDigest: sha256(leaderPrompt),
+        dependsOnTaskIds: childResults.map((result) => result.task.taskId),
+        workspaceRoot: input.leader.workspaceRoot,
+        ...(input.leader.workspaceRootDigest === undefined
+          ? {}
+          : { workspaceRootDigest: input.leader.workspaceRootDigest }),
+        prompt: leaderPrompt,
+        ...(input.leader.model === undefined ? {} : { model: input.leader.model }),
+        ...(input.leader.capabilityIds === undefined
+          ? {}
+          : { capabilityIds: [...input.leader.capabilityIds] }),
+      };
+      const leaderRegistrationError = tracker.register({
+        nodeId: "leader",
+        taskId: input.leader.taskId,
+        runId: input.leader.runId,
+        matchesPersisted: (task, run) => matchesDispatchIdentity(task, run, leaderDispatchInput),
+      });
+      if (leaderRegistrationError !== undefined) return yield* leaderRegistrationError;
+      const leader = yield* dispatchOrReuse(leaderDispatchInput, "leader");
+      if (terminalStatuses.has(leader.run.status)) {
+        tracker.settle(leader.run.runId);
+      } else {
+        tracker.confirm(leader.run.runId);
+      }
 
       const leaderRun = terminalStatuses.has(leader.run.status)
         ? leader.run
@@ -1063,6 +1183,7 @@ const make = (options: GraphExecutorOptions): CompositionTaskGraphExecutorShape 
             runId: leader.run.runId,
             nodeId: "leader",
           });
+      tracker.settle(leaderRun.runId);
       const leaderTask = yield* getSettledTask(input.leader.taskId, leaderRun, "leader");
       if (leaderTask.run.status !== "in_review" && leaderTask.run.status !== "completed") {
         return yield* graphError(
@@ -1076,7 +1197,11 @@ const make = (options: GraphExecutorOptions): CompositionTaskGraphExecutorShape 
         children: childResults,
         ...(childFailures.length === 0 ? {} : { failures: childFailures }),
       } satisfies CompositionTaskGraphExecutionResult;
-    }).pipe(Effect.mapError(normalizeError));
+    }).pipe(
+      Effect.onInterrupt(() => cancelInterruptedRuns),
+      Effect.mapError(normalizeError),
+    );
+  };
 
   return { execute } satisfies CompositionTaskGraphExecutorShape;
 };
