@@ -826,21 +826,23 @@ function CompositionSquadRunEnvironmentPanel({
                 <Input
                   size="compact"
                   value={draft.workspaceRoot}
-                  onChange={(event) =>
+                  onChange={(event) => {
+                    const value = event.currentTarget.value;
                     setDraft((current) => ({
                       ...current,
-                      workspaceRoot: event.currentTarget.value,
-                    }))
-                  }
+                      workspaceRoot: value,
+                    }));
+                  }}
                 />
               </FormField>
               <FormField label={t("squadRun.threadId")} description={t("squadRun.optional")}>
                 <Input
                   size="compact"
                   value={draft.threadId}
-                  onChange={(event) =>
-                    setDraft((current) => ({ ...current, threadId: event.currentTarget.value }))
-                  }
+                  onChange={(event) => {
+                    const value = event.currentTarget.value;
+                    setDraft((current) => ({ ...current, threadId: value }));
+                  }}
                 />
               </FormField>
               <FormField label={t("squadRun.executionId")}>
@@ -867,9 +869,10 @@ function CompositionSquadRunEnvironmentPanel({
               <Textarea
                 value={draft.goal}
                 placeholder={t("squadRun.goalPlaceholder")}
-                onChange={(event) =>
-                  setDraft((current) => ({ ...current, goal: event.currentTarget.value }))
-                }
+                onChange={(event) => {
+                  const value = event.currentTarget.value;
+                  setDraft((current) => ({ ...current, goal: value }));
+                }}
               />
             </FormField>
 
@@ -885,9 +888,10 @@ function CompositionSquadRunEnvironmentPanel({
                 className="min-h-52 font-mono text-xs"
                 value={draft.planText}
                 placeholder={t("squadRun.planPlaceholder")}
-                onChange={(event) =>
-                  setDraft((current) => ({ ...current, planText: event.currentTarget.value }))
-                }
+                onChange={(event) => {
+                  const value = event.currentTarget.value;
+                  setDraft((current) => ({ ...current, planText: value }));
+                }}
               />
             </FormField>
 

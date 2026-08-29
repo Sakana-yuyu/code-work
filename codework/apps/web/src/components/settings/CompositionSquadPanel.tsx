@@ -564,9 +564,10 @@ export function CompositionSquadPanel() {
                   size="compact"
                   value={draft.squadId}
                   disabled={isArchived || !isCreating}
-                  onChange={(event) =>
-                    setDraft((current) => ({ ...current, squadId: event.currentTarget.value }))
-                  }
+                  onChange={(event) => {
+                    const value = event.currentTarget.value;
+                    setDraft((current) => ({ ...current, squadId: value }));
+                  }}
                 />
               </FormField>
               <FormField label={t("squadBuilder.name")}>
@@ -574,9 +575,10 @@ export function CompositionSquadPanel() {
                   size="compact"
                   value={draft.name}
                   disabled={isArchived}
-                  onChange={(event) =>
-                    setDraft((current) => ({ ...current, name: event.currentTarget.value }))
-                  }
+                  onChange={(event) => {
+                    const value = event.currentTarget.value;
+                    setDraft((current) => ({ ...current, name: value }));
+                  }}
                 />
               </FormField>
               <FormField label={t("squadBuilder.mode")}>
@@ -600,12 +602,13 @@ export function CompositionSquadPanel() {
                   step={1}
                   value={draft.maxConcurrencyText}
                   disabled={isArchived}
-                  onChange={(event) =>
+                  onChange={(event) => {
+                    const value = event.currentTarget.value;
                     setDraft((current) => ({
                       ...current,
-                      maxConcurrencyText: event.currentTarget.value,
-                    }))
-                  }
+                      maxConcurrencyText: value,
+                    }));
+                  }}
                 />
               </FormField>
               <FormField label={t("squadBuilder.maxRetries")}>
@@ -617,12 +620,13 @@ export function CompositionSquadPanel() {
                   step={1}
                   value={draft.maxRetriesText}
                   disabled={isArchived}
-                  onChange={(event) =>
+                  onChange={(event) => {
+                    const value = event.currentTarget.value;
                     setDraft((current) => ({
                       ...current,
-                      maxRetriesText: event.currentTarget.value,
-                    }))
-                  }
+                      maxRetriesText: value,
+                    }));
+                  }}
                 />
               </FormField>
               <FormField label={t("squadBuilder.failurePolicy")}>
@@ -657,9 +661,10 @@ export function CompositionSquadPanel() {
                 value={draft.instructions}
                 disabled={isArchived}
                 placeholder={t("squadBuilder.instructionsPlaceholder")}
-                onChange={(event) =>
-                  setDraft((current) => ({ ...current, instructions: event.currentTarget.value }))
-                }
+                onChange={(event) => {
+                  const value = event.currentTarget.value;
+                  setDraft((current) => ({ ...current, instructions: value }));
+                }}
               />
             </FormField>
 
