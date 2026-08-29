@@ -866,6 +866,41 @@ layer("CompositionOrchestrator", (it) => {
       );
     }),
   );
+  it.effect("初次派发空 capabilityIds 时不创建 Capability Grant", () =>
+    Effect.gen(function* () {
+      const store = yield* CompositionTaskStore;
+      const driverRegistry = makeCompositionAgentDriverRegistry();
+      yield* driverRegistry.register({
+        agentId: "agent-without-capabilities",
+        runtimeId: "runtime-without-capabilities",
+        startTask: () => Effect.succeed({ runtimeTaskId: "runtime-task-without-capabilities" }),
+        cancelTask: () => Effect.succeed({ status: "cancelled" as const }),
+      });
+      let issueCalls = 0;
+      const orchestrator = makeCompositionOrchestrator(store, driverRegistry, {
+        issue: () =>
+          Effect.sync(() => {
+            issueCalls += 1;
+            return [];
+          }),
+      });
+
+      const result = yield* orchestrator.dispatchTask({
+        taskId: "task-without-capabilities",
+        runId: "run-without-capabilities",
+        projectId: "project-without-capabilities",
+        assigneeKind: "agent",
+        assigneeId: "agent-without-capabilities",
+        mode: "serial",
+        promptDigest: "sha256:without-capabilities",
+        capabilityIds: [],
+        dependsOnTaskIds: [],
+      });
+
+      assert.equal(issueCalls, 0);
+      assert.deepEqual(result.run.capabilityGrantIds, []);
+    }),
+  );
 
   it.effect("按 Squad 的 Leader Agent Driver 执行，并保留 Squad 任务归属", () =>
     Effect.gen(function* () {

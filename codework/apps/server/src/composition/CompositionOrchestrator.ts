@@ -684,7 +684,9 @@ const makeOrchestrator = (
         });
       }
       const issuedGrants =
-        grantRegistry === undefined || input.capabilityIds === undefined
+        grantRegistry === undefined ||
+        input.capabilityIds === undefined ||
+        input.capabilityIds.length === 0
           ? []
           : yield* grantRegistry.issue({
               taskId: input.taskId,
