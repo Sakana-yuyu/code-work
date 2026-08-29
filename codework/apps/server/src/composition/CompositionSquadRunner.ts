@@ -1,13 +1,28 @@
 import * as NodeCrypto from "node:crypto";
 
-import type { CompositionSquad, CompositionSquadMember } from "@codework/contracts";
+import {
+  ThreadId,
+  type CompositionSquad,
+  type CompositionSquadExecution,
+  type CompositionSquadExecutionNode,
+  type CompositionSquadMember,
+} from "@codework/contracts";
+import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Schema from "effect/Schema";
 
+import { PersistenceDecodeError, PersistenceSqlError } from "../persistence/Errors.ts";
+import {
+  CompositionSquadExecutionStore,
+  CompositionSquadExecutionStoreDomainError,
+  type CompositionSquadExecutionStoreError,
+  type CompositionSquadExecutionStoreShape,
+} from "../persistence/Services/CompositionSquadExecutionStore.ts";
 import {
   compositionSquadExecutionScope,
+  encodeCompositionSquadPlanOutput,
   validateCompositionSquadPlan,
   type CompositionSquadPlanNode,
 } from "./CompositionSquadPlan.ts";
@@ -18,6 +33,7 @@ import {
 import { composeCompositionSquadReviewPrompt } from "./CompositionSquadReview.ts";
 import {
   CompositionSquadService,
+  type CompositionSquadServiceError,
   type CompositionSquadServiceShape,
 } from "./CompositionSquadService.ts";
 import {
@@ -77,9 +93,14 @@ export class CompositionSquadRunner extends Context.Service<
 >()("codework/composition/CompositionSquadRunner") {}
 
 export interface CompositionSquadRunnerOptions {
-  readonly squads: Pick<CompositionSquadServiceShape, "getRunnable">;
+  readonly squads: Pick<CompositionSquadServiceShape, "getRunnable" | "getRevision">;
   readonly planner: Pick<CompositionSquadPlannerShape, "plan">;
   readonly executor: Pick<CompositionTaskGraphExecutorShape, "execute">;
+  readonly executions: Pick<
+    CompositionSquadExecutionStoreShape,
+    "claimExecution" | "saveTransition"
+  >;
+  readonly now?: () => number;
 }
 
 type CompileInput = {
@@ -90,6 +111,14 @@ type CompileInput = {
 type ResolvedPlanNode = CompositionSquadPlanNode & {
   readonly member: CompositionSquadMember;
 };
+
+type BoundRequestedPlan =
+  | { readonly kind: "automatic" }
+  | {
+      readonly kind: "explicit";
+      readonly plan: ReadonlyArray<CompositionSquadPlanNode>;
+      readonly planDigest: string;
+    };
 
 const canTakeOverRole = (
   source: CompositionSquadMember,
@@ -132,12 +161,192 @@ const sha256 = (value: string): string =>
 
 const revisionOf = (squad: CompositionSquad): number => squad.revision ?? 1;
 
+const isExecutionStoreDomainError = Schema.is(CompositionSquadExecutionStoreDomainError);
+const isPersistenceSqlError = Schema.is(PersistenceSqlError);
+const isPersistenceDecodeError = Schema.is(PersistenceDecodeError);
+
+const mapExecutionStoreError = (
+  error: CompositionSquadExecutionStoreError,
+  input: CompositionSquadExecutionInput,
+): CompositionSquadRunnerError => {
+  if (isExecutionStoreDomainError(error)) {
+    return runnerError(error.code, error.detail, input.squadId, {
+      ...(error.expectedRevision === undefined ? {} : { expectedRevision: error.expectedRevision }),
+      ...(error.actualRevision === undefined ? {} : { actualRevision: error.actualRevision }),
+    });
+  }
+  if (isPersistenceSqlError(error) || isPersistenceDecodeError(error)) {
+    return runnerError(
+      "squad_execution_persistence_failed",
+      "Squad execution 状态暂时无法安全持久化，请稍后重试。",
+      input.squadId,
+    );
+  }
+  return runnerError(
+    "squad_execution_persistence_failed",
+    "Squad execution 状态持久化失败。",
+    input.squadId,
+  );
+};
+
+const mapSquadServiceError = (
+  error: CompositionSquadServiceError,
+  squadId: string,
+): CompositionSquadRunnerError =>
+  runnerError(error.code, error.detail, squadId, {
+    ...(error.expectedRevision === undefined ? {} : { expectedRevision: error.expectedRevision }),
+    ...(error.actualRevision === undefined ? {} : { actualRevision: error.actualRevision }),
+  });
+
+const normalizedTime = (value: number, lowerBound = 0): number =>
+  Math.max(lowerBound, Math.max(0, Math.trunc(value)));
+
+const explicitPlanDigest = (plan: ReadonlyArray<CompositionSquadPlanNode>): string =>
+  sha256(`composition-squad-explicit-plan:v1\n${encodeCompositionSquadPlanOutput(plan)}`);
+
+const bindRequestedPlan = (
+  squad: CompositionSquad,
+  input: CompositionSquadExecutionInput,
+): Effect.Effect<BoundRequestedPlan, CompositionSquadRunnerError> => {
+  if (input.plan === undefined) return Effect.succeed({ kind: "automatic" });
+  return validateCompositionSquadPlan({ squad, plan: input.plan }).pipe(
+    Effect.map(
+      (plan): BoundRequestedPlan => ({
+        kind: "explicit",
+        plan,
+        planDigest: explicitPlanDigest(plan),
+      }),
+    ),
+    Effect.mapError((error) =>
+      runnerError(
+        error.code,
+        error.detail,
+        input.squadId,
+        error.nodeId === undefined ? undefined : { nodeId: error.nodeId },
+      ),
+    ),
+  );
+};
+
 const executionScope = (input: CompositionSquadExecutionInput): string =>
   compositionSquadExecutionScope({
     executionId: input.executionId,
     squadId: input.squadId,
     squadRevision: input.squadRevision,
   });
+
+const makeQueuedExecution = (
+  input: CompositionSquadExecutionInput,
+  boundPlan: BoundRequestedPlan,
+  now: number,
+): CompositionSquadExecution => {
+  const scope = executionScope(input);
+  return {
+    executionId: input.executionId,
+    squadId: input.squadId,
+    squadRevision: input.squadRevision,
+    projectId: input.projectId,
+    ...(input.threadId === undefined ? {} : { threadId: ThreadId.make(input.threadId) }),
+    goalDigest: sha256(input.goal),
+    ...(boundPlan.kind === "explicit" ? { planDigest: boundPlan.planDigest } : {}),
+    goalTaskId: `${scope}:task:leader-plan`,
+    workspaceRootDigest: input.workspaceRootDigest ?? sha256(input.workspaceRoot),
+    status: "queued",
+    revision: 1,
+    leaderTaskId: `${scope}:task:leader-finalize`,
+    leaderRunId: `${scope}:run:leader-finalize:1`,
+    pendingApprovals: [],
+    createdAtUnixMs: now,
+    updatedAtUnixMs: now,
+  };
+};
+
+const makePlanningExecution = (
+  current: CompositionSquadExecution,
+  now: number,
+): CompositionSquadExecution => {
+  const updatedAtUnixMs = normalizedTime(now, current.updatedAtUnixMs);
+  return {
+    ...current,
+    status: "planning",
+    revision: current.revision + 1,
+    startedAtUnixMs: normalizedTime(updatedAtUnixMs, current.createdAtUnixMs),
+    updatedAtUnixMs,
+  };
+};
+
+const toExecutionNodes = (
+  graph: CompositionTaskGraphExecutionInput,
+): ReadonlyArray<CompositionSquadExecutionNode> =>
+  graph.children.map((node) => ({
+    nodeId: node.nodeId,
+    agentId: node.assigneeId,
+    taskId: node.taskId,
+    runId: node.runId,
+    promptDigest: node.promptDigest,
+    dependsOnNodeIds: [...(node.dependsOnNodeIds ?? [])],
+  }));
+
+const makeRunningExecution = (
+  current: CompositionSquadExecution,
+  graph: CompositionTaskGraphExecutionInput,
+  now: number,
+): CompositionSquadExecution => ({
+  ...current,
+  status: "running",
+  revision: current.revision + 1,
+  nodes: toExecutionNodes(graph),
+  updatedAtUnixMs: normalizedTime(now, current.updatedAtUnixMs),
+});
+
+const makeFailedExecution = (
+  current: CompositionSquadExecution,
+  error: CompositionSquadRunnerError,
+  now: number,
+): CompositionSquadExecution => {
+  const updatedAtUnixMs = normalizedTime(now, current.updatedAtUnixMs);
+  return {
+    ...current,
+    status: "failed",
+    revision: current.revision + 1,
+    failureCode: error.code,
+    failureDetail: error.detail,
+    finishedAtUnixMs: normalizedTime(
+      updatedAtUnixMs,
+      current.startedAtUnixMs ?? current.createdAtUnixMs,
+    ),
+    updatedAtUnixMs,
+  };
+};
+
+const makeInReviewExecution = (
+  current: CompositionSquadExecution,
+  now: number,
+): CompositionSquadExecution => ({
+  ...current,
+  status: "in_review",
+  revision: current.revision + 1,
+  updatedAtUnixMs: normalizedTime(now, current.updatedAtUnixMs),
+});
+
+const makeCompletedExecution = (
+  current: CompositionSquadExecution,
+  resultSummary: string,
+  now: number,
+): CompositionSquadExecution => {
+  const updatedAtUnixMs = normalizedTime(now, current.updatedAtUnixMs);
+  return {
+    ...current,
+    status: "completed",
+    revision: current.revision + 1,
+    resultSummary,
+    finishedAtUnixMs: normalizedTime(
+      updatedAtUnixMs,
+      current.startedAtUnixMs ?? current.createdAtUnixMs,
+    ),
+    updatedAtUnixMs,
+  };
+};
 
 const defaultMemberPrompt = (
   squad: CompositionSquad,
@@ -381,30 +590,121 @@ export const compileCompositionSquadGraph = ({
 
 export const makeCompositionSquadRunner = (
   options: CompositionSquadRunnerOptions,
-): CompositionSquadRunnerShape => ({
-  run: Effect.fn("CompositionSquadRunner.run")(function* (input) {
-    const squad = yield* options.squads.getRunnable(input.squadId).pipe(
-      Effect.mapError((error) =>
-        runnerError(error.code, error.detail, input.squadId, {
-          ...(error.expectedRevision === undefined
-            ? {}
-            : { expectedRevision: error.expectedRevision }),
-          ...(error.actualRevision === undefined ? {} : { actualRevision: error.actualRevision }),
-        }),
-      ),
+): CompositionSquadRunnerShape => {
+  const readNow = () =>
+    (options.now === undefined ? Clock.currentTimeMillis : Effect.sync(options.now)).pipe(
+      Effect.map((value) => normalizedTime(value)),
     );
-    const actualRevision = revisionOf(squad);
-    if (actualRevision !== input.squadRevision) {
-      return yield* runnerError(
-        "squad_revision_conflict",
-        `预期 revision ${input.squadRevision}，实际为 ${actualRevision}。`,
-        input.squadId,
-        { expectedRevision: input.squadRevision, actualRevision },
+  const saveTransition = (
+    execution: CompositionSquadExecution,
+    expectedRevision: number,
+    input: CompositionSquadExecutionInput,
+  ) =>
+    options.executions
+      .saveTransition({ execution, expectedRevision })
+      .pipe(Effect.mapError((error) => mapExecutionStoreError(error, input)));
+  const persistBusinessFailure = (
+    current: CompositionSquadExecution,
+    error: CompositionSquadRunnerError,
+    input: CompositionSquadExecutionInput,
+  ): Effect.Effect<never, CompositionSquadRunnerError> =>
+    Effect.gen(function* () {
+      const now = yield* readNow();
+      const persisted = yield* Effect.result(
+        saveTransition(makeFailedExecution(current, error, now), current.revision, input),
       );
-    }
-    const plan =
-      input.plan === undefined
-        ? yield* options.planner
+      if (persisted._tag === "Failure") {
+        yield* Effect.logError("Composition Squad 失败状态持久化失败").pipe(
+          Effect.annotateLogs({
+            executionId: current.executionId,
+            currentStatus: current.status,
+            originalErrorCode: error.code,
+          }),
+        );
+        return yield* persisted.failure;
+      }
+      return yield* error;
+    });
+
+  return {
+    run: Effect.fn("CompositionSquadRunner.run")(function* (input) {
+      const runnableSquad = yield* options.squads
+        .getRunnable(input.squadId)
+        .pipe(Effect.mapError((error) => mapSquadServiceError(error, input.squadId)));
+      const runnableRevision = revisionOf(runnableSquad);
+      if (runnableRevision !== input.squadRevision) {
+        return yield* runnerError(
+          "squad_revision_conflict",
+          `预期 revision ${input.squadRevision}，实际为 ${runnableRevision}。`,
+          input.squadId,
+          { expectedRevision: input.squadRevision, actualRevision: runnableRevision },
+        );
+      }
+
+      const boundPlan = yield* bindRequestedPlan(runnableSquad, input);
+      const claimedAtUnixMs = yield* readNow();
+      const queued = makeQueuedExecution(input, boundPlan, claimedAtUnixMs);
+      const claim = yield* options.executions
+        .claimExecution(queued)
+        .pipe(Effect.mapError((error) => mapExecutionStoreError(error, input)));
+      if (!claim.claimed) {
+        return yield* runnerError(
+          "squad_execution_replay_unavailable",
+          `execution ${input.executionId} 已存在；当前节点拒绝重复规划或派发。`,
+          input.squadId,
+        );
+      }
+
+      const planningAtUnixMs = yield* readNow();
+      let current = yield* saveTransition(
+        makePlanningExecution(claim.execution, planningAtUnixMs),
+        claim.execution.revision,
+        input,
+      );
+
+      const revisionResult = yield* Effect.result(
+        options.squads
+          .getRevision(input.squadId, input.squadRevision)
+          .pipe(Effect.mapError((error) => mapSquadServiceError(error, input.squadId))),
+      );
+      if (revisionResult._tag === "Failure") {
+        return yield* persistBusinessFailure(current, revisionResult.failure, input);
+      }
+      const squad = revisionResult.success;
+      const fixedRevision = revisionOf(squad);
+      if (squad.squadId !== input.squadId || fixedRevision !== input.squadRevision) {
+        return yield* persistBusinessFailure(
+          current,
+          runnerError(
+            "squad_revision_unavailable",
+            `固定 Squad revision 无法恢复：${input.squadId}@${input.squadRevision}。`,
+            input.squadId,
+            {
+              expectedRevision: input.squadRevision,
+              actualRevision: fixedRevision,
+            },
+          ),
+          input,
+        );
+      }
+      if ((squad.approvalStages?.length ?? 0) > 0) {
+        return yield* persistBusinessFailure(
+          current,
+          runnerError(
+            "squad_approval_not_supported",
+            "Squad 配置了审批点，但 execution 审批协调器尚未接入，已停止派发。",
+            input.squadId,
+          ),
+          input,
+        );
+      }
+
+      let plan: ReadonlyArray<CompositionSquadPlanNode>;
+      if (boundPlan.kind === "explicit") {
+        plan = boundPlan.plan;
+      } else {
+        const planResult = yield* Effect.result(
+          options.planner
             .plan({
               executionId: input.executionId,
               squad,
@@ -425,38 +725,102 @@ export const makeCompositionSquadRunner = (
                   error.nodeId === undefined ? undefined : { nodeId: error.nodeId },
                 ),
               ),
-            )
-        : input.plan;
-    const graphInput = yield* compileCompositionSquadGraph({
-      squad,
-      input: { ...input, plan },
-    });
-    const graph = yield* options.executor
-      .execute(graphInput)
-      .pipe(
-        Effect.mapError((error) =>
-          runnerError(
-            error.code,
-            error.detail,
-            input.squadId,
-            error.nodeId === undefined ? undefined : { nodeId: error.nodeId },
-          ),
-        ),
+            ),
+        );
+        if (planResult._tag === "Failure") {
+          return yield* persistBusinessFailure(current, planResult.failure, input);
+        }
+        plan = planResult.success;
+      }
+
+      const graphResult = yield* Effect.result(
+        compileCompositionSquadGraph({
+          squad,
+          input: { ...input, plan },
+        }),
       );
-    return {
-      executionId: input.executionId,
-      squadId: input.squadId,
-      squadRevision: input.squadRevision,
-      graph,
-    } satisfies CompositionSquadExecutionResult;
-  }),
-});
+      if (graphResult._tag === "Failure") {
+        return yield* persistBusinessFailure(current, graphResult.failure, input);
+      }
+      const graphInput = graphResult.success;
+      const runningAtUnixMs = yield* readNow();
+      current = yield* saveTransition(
+        makeRunningExecution(current, graphInput, runningAtUnixMs),
+        current.revision,
+        input,
+      );
+
+      const executionResult = yield* Effect.result(
+        options.executor
+          .execute(graphInput)
+          .pipe(
+            Effect.mapError((error) =>
+              runnerError(
+                error.code,
+                error.detail,
+                input.squadId,
+                error.nodeId === undefined ? undefined : { nodeId: error.nodeId },
+              ),
+            ),
+          ),
+      );
+      if (executionResult._tag === "Failure") {
+        return yield* persistBusinessFailure(current, executionResult.failure, input);
+      }
+      const graph = executionResult.success;
+      const finalAtUnixMs = yield* readNow();
+      if (graph.leader.run.status === "completed") {
+        const resultSummary = graph.leader.run.resultSummary?.trim();
+        if (resultSummary === undefined || resultSummary.length === 0) {
+          return yield* persistBusinessFailure(
+            current,
+            runnerError(
+              "squad_execution_result_invalid",
+              "Leader 已完成但没有提供可持久化的结果摘要。",
+              input.squadId,
+            ),
+            input,
+          );
+        }
+        yield* saveTransition(
+          makeCompletedExecution(current, resultSummary, finalAtUnixMs),
+          current.revision,
+          input,
+        );
+      } else if (graph.leader.run.status === "in_review") {
+        yield* saveTransition(
+          makeInReviewExecution(current, finalAtUnixMs),
+          current.revision,
+          input,
+        );
+      } else {
+        return yield* persistBusinessFailure(
+          current,
+          runnerError(
+            "squad_execution_result_invalid",
+            `Leader 返回了不支持的终态：${graph.leader.run.status}。`,
+            input.squadId,
+          ),
+          input,
+        );
+      }
+
+      return {
+        executionId: input.executionId,
+        squadId: input.squadId,
+        squadRevision: input.squadRevision,
+        graph,
+      } satisfies CompositionSquadExecutionResult;
+    }),
+  };
+};
 
 const live = Effect.gen(function* () {
   const squads = yield* CompositionSquadService;
   const planner = yield* CompositionSquadPlanner;
   const executor = yield* CompositionTaskGraphExecutor;
-  return makeCompositionSquadRunner({ squads, planner, executor });
+  const executions = yield* CompositionSquadExecutionStore;
+  return makeCompositionSquadRunner({ squads, planner, executor, executions });
 });
 
 export const layer = Layer.effect(CompositionSquadRunner, live);

@@ -1,13 +1,33 @@
-import { expect, it } from "@effect/vitest";
-import type { CompositionSquad } from "@codework/contracts";
-import * as Effect from "effect/Effect";
+import * as NodeCrypto from "node:crypto";
 
+import { expect, it } from "@effect/vitest";
+import type {
+  CompositionSquad,
+  CompositionSquadExecution,
+  CompositionSquadExecutionStatus,
+} from "@codework/contracts";
+import * as Effect from "effect/Effect";
+import * as Logger from "effect/Logger";
+import * as References from "effect/References";
+
+import { PersistenceDecodeError, PersistenceSqlError } from "../persistence/Errors.ts";
+import {
+  type CompositionSquadExecutionClaimResult,
+  CompositionSquadExecutionStoreDomainError,
+  type CompositionSquadExecutionStoreShape,
+} from "../persistence/Services/CompositionSquadExecutionStore.ts";
+import { encodeCompositionSquadPlanOutput } from "./CompositionSquadPlan.ts";
+import { CompositionSquadPlannerError } from "./CompositionSquadPlanner.ts";
 import {
   compileCompositionSquadGraph,
   makeCompositionSquadRunner,
   type CompositionSquadExecutionInput,
 } from "./CompositionSquadRunner.ts";
-import type { CompositionTaskGraphExecutionInput } from "./CompositionTaskGraphExecutor.ts";
+import {
+  CompositionTaskGraphExecutionError,
+  type CompositionTaskGraphExecutionInput,
+  type CompositionTaskGraphExecutionResult,
+} from "./CompositionTaskGraphExecutor.ts";
 
 const baseSquad: CompositionSquad = {
   squadId: "squad-core",
@@ -63,7 +83,7 @@ const baseSquad: CompositionSquad = {
   maxRetries: 2,
   failurePolicy: "fail_fast",
   partialSuccessPolicy: "reject",
-  approvalStages: ["before_finalize"],
+  approvalStages: [],
   createdAtUnixMs: 100,
   updatedAtUnixMs: 300,
 };
@@ -77,6 +97,133 @@ const baseInput: CompositionSquadExecutionInput = {
   goal: "完成多 Agent 协同实现并给出验证证据",
   workspaceRoot: "C:/workspace/default",
 };
+
+const sha256 = (value: string): string =>
+  `sha256:${NodeCrypto.createHash("sha256").update(value, "utf8").digest("hex")}`;
+
+type RunnerExecutionStore = Pick<
+  CompositionSquadExecutionStoreShape,
+  "claimExecution" | "saveTransition"
+>;
+
+const makeStoreError = (
+  executionId: string,
+  detail: string,
+  options?: {
+    readonly code?: "squad_execution_conflict" | "squad_execution_revision_conflict";
+    readonly expectedRevision?: number;
+    readonly actualRevision?: number;
+  },
+) =>
+  new CompositionSquadExecutionStoreDomainError({
+    code: options?.code ?? "squad_execution_conflict",
+    detail,
+    executionId,
+    ...(options?.expectedRevision === undefined
+      ? {}
+      : { expectedRevision: options.expectedRevision }),
+    ...(options?.actualRevision === undefined ? {} : { actualRevision: options.actualRevision }),
+  });
+
+const makeExecutionStoreHarness = (options?: {
+  readonly forceClaimedFalse?: boolean;
+  readonly failClaim?: boolean;
+  readonly failSaveStatus?: CompositionSquadExecutionStatus;
+  readonly events?: string[];
+}) => {
+  let current: CompositionSquadExecution | undefined;
+  const snapshots: CompositionSquadExecution[] = [];
+  const events = options?.events ?? [];
+  const store: RunnerExecutionStore = {
+    claimExecution: (execution) =>
+      Effect.gen(function* () {
+        events.push(`store:claim:${execution.status}`);
+        if (options?.failClaim === true) {
+          return yield* makeStoreError(execution.executionId, "claim 写入失败");
+        }
+        if (options?.forceClaimedFalse === true) {
+          return {
+            execution,
+            claimed: false,
+          } satisfies CompositionSquadExecutionClaimResult;
+        }
+        current = execution;
+        snapshots.push(execution);
+        return {
+          execution,
+          claimed: true,
+        } satisfies CompositionSquadExecutionClaimResult;
+      }),
+    saveTransition: ({ execution, expectedRevision }) =>
+      Effect.suspend(() => {
+        events.push(`store:save:${execution.status}`);
+        if (options?.failSaveStatus === execution.status) {
+          return Effect.fail(
+            makeStoreError(execution.executionId, `${execution.status} 写入失败`, {
+              code: "squad_execution_revision_conflict",
+              expectedRevision,
+              actualRevision: expectedRevision + 10,
+            }),
+          );
+        }
+        expect(current?.revision).toBe(expectedRevision);
+        current = execution;
+        snapshots.push(execution);
+        return Effect.succeed(execution);
+      }),
+  };
+  return {
+    events,
+    snapshots,
+    store,
+    read: () => current,
+  };
+};
+
+const makeSquadLookup = (squad: CompositionSquad, events?: string[]) => ({
+  getRunnable: () =>
+    Effect.sync(() => {
+      events?.push("squad:getRunnable");
+      return squad;
+    }),
+  getRevision: (_squadId: string, _revision: number) =>
+    Effect.sync(() => {
+      events?.push("squad:getRevision");
+      return squad;
+    }),
+});
+
+const makeGraphResult = (
+  input: CompositionTaskGraphExecutionInput,
+  status: "completed" | "in_review" = "in_review",
+  resultSummary?: string,
+): CompositionTaskGraphExecutionResult => ({
+  leader: {
+    task: {
+      taskId: input.leader.taskId,
+      projectId: input.leader.projectId,
+      assigneeKind: input.leader.assigneeKind,
+      assigneeId: input.leader.assigneeId,
+      mode: "review",
+      status,
+      promptDigest: input.leader.promptDigest,
+      dependsOnTaskIds: [],
+      createdAtUnixMs: 1,
+      updatedAtUnixMs: 2,
+    },
+    run: {
+      runId: input.leader.runId,
+      taskId: input.leader.taskId,
+      agentId: baseSquad.leaderAgentId,
+      runtimeId: "runtime-leader",
+      status,
+      attempt: 1,
+      capabilityGrantIds: [],
+      ...(resultSummary === undefined ? {} : { resultSummary }),
+    },
+  },
+  children: [],
+});
 
 const compile = (
   collaborationMode: CompositionSquad["collaborationMode"],
@@ -334,49 +481,35 @@ it.effect("拒绝计划把任务分派给 Squad 之外的 Agent", () =>
 it.effect("Runner 固定 revision 后调用现有 TaskGraphExecutor", () =>
   Effect.gen(function* () {
     let captured: CompositionTaskGraphExecutionInput | undefined;
+    const events: string[] = [];
+    const executionStore = makeExecutionStoreHarness({ events });
     const runner = makeCompositionSquadRunner({
-      squads: { getRunnable: () => Effect.succeed(baseSquad) },
+      squads: makeSquadLookup(baseSquad, events),
+      executions: executionStore.store,
+      now: (() => {
+        let current = 1_000;
+        return () => current++;
+      })(),
       planner: {
         plan: () =>
-          Effect.succeed([
-            {
-              nodeId: "planned-worker",
-              agentId: "agent-worker",
-              prompt: "由 Leader 拆解后的实现任务",
-              dependsOnNodeIds: [],
-            },
-          ]),
+          Effect.sync(() => {
+            events.push("planner:plan");
+            return [
+              {
+                nodeId: "planned-worker",
+                agentId: "agent-worker",
+                prompt: "由 Leader 拆解后的实现任务",
+                dependsOnNodeIds: [],
+              },
+            ];
+          }),
       },
       executor: {
         execute: (input) =>
           Effect.sync(() => {
+            events.push("executor:execute");
             captured = input;
-            return {
-              leader: {
-                task: {
-                  taskId: input.leader.taskId,
-                  projectId: input.leader.projectId,
-                  assigneeKind: input.leader.assigneeKind,
-                  assigneeId: input.leader.assigneeId,
-                  mode: "review" as const,
-                  status: "in_review" as const,
-                  promptDigest: input.leader.promptDigest,
-                  dependsOnTaskIds: [],
-                  createdAtUnixMs: 1,
-                  updatedAtUnixMs: 2,
-                },
-                run: {
-                  runId: input.leader.runId,
-                  taskId: input.leader.taskId,
-                  agentId: baseSquad.leaderAgentId,
-                  runtimeId: "runtime-leader",
-                  status: "in_review" as const,
-                  attempt: 1,
-                  capabilityGrantIds: [],
-                },
-              },
-              children: [],
-            };
+            return makeGraphResult(input);
           }),
       },
     });
@@ -389,12 +522,39 @@ it.effect("Runner 固定 revision 后调用现有 TaskGraphExecutor", () =>
       nodeId: "planned-worker",
       assigneeId: "agent-worker",
     });
+    expect(executionStore.read()).toMatchObject({
+      status: "in_review",
+      revision: 4,
+      nodes: [
+        {
+          nodeId: "planned-worker",
+          agentId: "agent-worker",
+          taskId: captured?.children[0]?.taskId,
+          runId: captured?.children[0]?.runId,
+          promptDigest: captured?.children[0]?.promptDigest,
+          dependsOnNodeIds: [],
+        },
+      ],
+    });
+    expect(executionStore.read()).not.toHaveProperty("planDigest");
+    expect(executionStore.read()?.nodes?.[0]).not.toHaveProperty("prompt");
+    expect(events).toEqual([
+      "squad:getRunnable",
+      "store:claim:queued",
+      "store:save:planning",
+      "squad:getRevision",
+      "planner:plan",
+      "store:save:running",
+      "executor:execute",
+      "store:save:in_review",
+    ]);
   }),
 );
 
 it.effect("显式用户计划绕过 Leader 自动规划", () =>
   Effect.gen(function* () {
     let captured: CompositionTaskGraphExecutionInput | undefined;
+    const executionStore = makeExecutionStoreHarness();
     const explicitPlan = [
       {
         nodeId: "explicit-worker",
@@ -404,38 +564,14 @@ it.effect("显式用户计划绕过 Leader 自动规划", () =>
       },
     ];
     const runner = makeCompositionSquadRunner({
-      squads: { getRunnable: () => Effect.succeed(baseSquad) },
+      squads: makeSquadLookup(baseSquad),
+      executions: executionStore.store,
       planner: { plan: () => Effect.die("显式计划不应调用 Leader Planner") },
       executor: {
         execute: (graph) =>
           Effect.sync(() => {
             captured = graph;
-            return {
-              leader: {
-                task: {
-                  taskId: graph.leader.taskId,
-                  projectId: graph.leader.projectId,
-                  assigneeKind: graph.leader.assigneeKind,
-                  assigneeId: graph.leader.assigneeId,
-                  mode: "review" as const,
-                  status: "in_review" as const,
-                  promptDigest: graph.leader.promptDigest,
-                  dependsOnTaskIds: [],
-                  createdAtUnixMs: 1,
-                  updatedAtUnixMs: 2,
-                },
-                run: {
-                  runId: graph.leader.runId,
-                  taskId: graph.leader.taskId,
-                  agentId: baseSquad.leaderAgentId,
-                  runtimeId: "runtime-leader",
-                  status: "in_review" as const,
-                  attempt: 1,
-                  capabilityGrantIds: [],
-                },
-              },
-              children: [],
-            };
+            return makeGraphResult(graph);
           }),
       },
     });
@@ -446,13 +582,24 @@ it.effect("显式用户计划绕过 Leader 自动规划", () =>
       nodeId: "explicit-worker",
       assigneeId: "agent-worker",
     });
+    expect(executionStore.snapshots[0]?.planDigest).toBeDefined();
+    expect(executionStore.snapshots[0]?.goalTaskId).toBe(
+      "execution-1:squad:squad-core:r3:task:leader-plan",
+    );
+    expect(executionStore.snapshots[0]?.planDigest).toBe(
+      sha256(
+        `composition-squad-explicit-plan:v1\n${encodeCompositionSquadPlanOutput(explicitPlan)}`,
+      ),
+    );
   }),
 );
 
 it.effect("Runner 拒绝用陈旧 revision 启动运行", () =>
   Effect.gen(function* () {
+    const executionStore = makeExecutionStoreHarness();
     const runner = makeCompositionSquadRunner({
-      squads: { getRunnable: () => Effect.succeed(baseSquad) },
+      squads: makeSquadLookup(baseSquad),
+      executions: executionStore.store,
       planner: { plan: () => Effect.die("revision 冲突时不应规划") },
       executor: { execute: () => Effect.die("revision 冲突时不应执行") },
     });
@@ -464,5 +611,601 @@ it.effect("Runner 拒绝用陈旧 revision 启动运行", () =>
       expectedRevision: 2,
       actualRevision: 3,
     });
+  }),
+);
+
+it.effect("Leader 完成时持久化结果摘要与终态时间", () =>
+  Effect.gen(function* () {
+    const executionStore = makeExecutionStoreHarness();
+    const runner = makeCompositionSquadRunner({
+      squads: makeSquadLookup(baseSquad),
+      executions: executionStore.store,
+      now: (() => {
+        let current = 2_000;
+        return () => current++;
+      })(),
+      planner: {
+        plan: () =>
+          Effect.succeed([
+            {
+              nodeId: "completed-worker",
+              agentId: "agent-worker",
+              prompt: "完成实现并提供证据",
+              dependsOnNodeIds: [],
+            },
+          ]),
+      },
+      executor: {
+        execute: (input) =>
+          Effect.succeed(makeGraphResult(input, "completed", "全部节点已验证通过")),
+      },
+    });
+
+    yield* runner.run({ ...baseInput, executionId: "execution-completed" });
+
+    expect(executionStore.read()).toMatchObject({
+      status: "completed",
+      revision: 4,
+      resultSummary: "全部节点已验证通过",
+      finishedAtUnixMs: 2_003,
+    });
+  }),
+);
+
+it.effect("未实现审批协调器时持久化失败并阻止 Planner 与 Executor", () =>
+  Effect.gen(function* () {
+    const events: string[] = [];
+    const executionStore = makeExecutionStoreHarness({ events });
+    const squad = { ...baseSquad, approvalStages: ["before_finalize" as const] };
+    const runner = makeCompositionSquadRunner({
+      squads: makeSquadLookup(squad, events),
+      executions: executionStore.store,
+      planner: { plan: () => Effect.die("审批未实现时不应调用 Planner") },
+      executor: { execute: () => Effect.die("审批未实现时不应调用 Executor") },
+    });
+
+    const error = yield* Effect.flip(
+      runner.run({ ...baseInput, executionId: "execution-approval-unsupported" }),
+    );
+
+    expect(error).toMatchObject({ code: "squad_approval_not_supported" });
+    expect(executionStore.read()).toMatchObject({
+      status: "failed",
+      revision: 3,
+      failureCode: "squad_approval_not_supported",
+    });
+    expect(events).toEqual([
+      "squad:getRunnable",
+      "store:claim:queued",
+      "store:save:planning",
+      "squad:getRevision",
+      "store:save:failed",
+    ]);
+  }),
+);
+
+it.effect("Planner 与 Graph 编译失败都从 planning 状态收口为 failed", () =>
+  Effect.gen(function* () {
+    const plannerStore = makeExecutionStoreHarness();
+    const plannerRunner = makeCompositionSquadRunner({
+      squads: makeSquadLookup(baseSquad),
+      executions: plannerStore.store,
+      planner: {
+        plan: () =>
+          Effect.fail(
+            new CompositionSquadPlannerError({
+              code: "leader_plan_failed",
+              detail: "Leader 未生成有效计划",
+              squadId: baseSquad.squadId,
+            }),
+          ),
+      },
+      executor: { execute: () => Effect.die("规划失败时不应执行") },
+    });
+    const plannerError = yield* Effect.flip(
+      plannerRunner.run({ ...baseInput, executionId: "execution-planner-failed" }),
+    );
+    expect(plannerError).toMatchObject({ code: "leader_plan_failed" });
+    expect(plannerStore.read()).toMatchObject({
+      status: "failed",
+      revision: 3,
+      failureCode: "leader_plan_failed",
+    });
+
+    const compileStore = makeExecutionStoreHarness();
+    const compileRunner = makeCompositionSquadRunner({
+      squads: makeSquadLookup(baseSquad),
+      executions: compileStore.store,
+      planner: {
+        plan: () =>
+          Effect.succeed([
+            {
+              nodeId: "foreign-worker",
+              agentId: "agent-foreign",
+              prompt: "不应被派发",
+              dependsOnNodeIds: [],
+            },
+          ]),
+      },
+      executor: { execute: () => Effect.die("编译失败时不应执行") },
+    });
+    const compileError = yield* Effect.flip(
+      compileRunner.run({ ...baseInput, executionId: "execution-compile-failed" }),
+    );
+    expect(compileError).toMatchObject({ code: "squad_member_missing" });
+    expect(compileStore.read()).toMatchObject({
+      status: "failed",
+      revision: 3,
+      failureCode: "squad_member_missing",
+    });
+  }),
+);
+
+it.effect("Executor 失败从 running 状态收口并保留节点索引", () =>
+  Effect.gen(function* () {
+    const executionStore = makeExecutionStoreHarness();
+    const runner = makeCompositionSquadRunner({
+      squads: makeSquadLookup(baseSquad),
+      executions: executionStore.store,
+      planner: {
+        plan: () =>
+          Effect.succeed([
+            {
+              nodeId: "executor-worker",
+              agentId: "agent-worker",
+              prompt: "进入执行后失败",
+              dependsOnNodeIds: [],
+            },
+          ]),
+      },
+      executor: {
+        execute: () =>
+          Effect.fail(
+            new CompositionTaskGraphExecutionError({
+              code: "runtime_unavailable",
+              detail: "没有可用 Runtime",
+              nodeId: "executor-worker",
+            }),
+          ),
+      },
+    });
+
+    const error = yield* Effect.flip(
+      runner.run({ ...baseInput, executionId: "execution-executor-failed" }),
+    );
+
+    expect(error).toMatchObject({ code: "runtime_unavailable", nodeId: "executor-worker" });
+    expect(executionStore.read()).toMatchObject({
+      status: "failed",
+      revision: 4,
+      failureCode: "runtime_unavailable",
+      nodes: [{ nodeId: "executor-worker", agentId: "agent-worker" }],
+    });
+  }),
+);
+
+it.effect("claim 与状态 CAS 失败时停止后续派发", () =>
+  Effect.gen(function* () {
+    const claimEvents: string[] = [];
+    const claimStore = makeExecutionStoreHarness({ failClaim: true, events: claimEvents });
+    const claimRunner = makeCompositionSquadRunner({
+      squads: makeSquadLookup(baseSquad, claimEvents),
+      executions: claimStore.store,
+      planner: { plan: () => Effect.die("claim 失败时不应规划") },
+      executor: { execute: () => Effect.die("claim 失败时不应执行") },
+    });
+    const claimError = yield* Effect.flip(
+      claimRunner.run({ ...baseInput, executionId: "execution-claim-failed" }),
+    );
+    expect(claimError).toMatchObject({ code: "squad_execution_conflict" });
+    expect(claimEvents).toEqual(["squad:getRunnable", "store:claim:queued"]);
+
+    const planningEvents: string[] = [];
+    const planningStore = makeExecutionStoreHarness({
+      failSaveStatus: "planning",
+      events: planningEvents,
+    });
+    const planningRunner = makeCompositionSquadRunner({
+      squads: makeSquadLookup(baseSquad, planningEvents),
+      executions: planningStore.store,
+      planner: { plan: () => Effect.die("planning CAS 失败时不应规划") },
+      executor: { execute: () => Effect.die("planning CAS 失败时不应执行") },
+    });
+    const planningError = yield* Effect.flip(
+      planningRunner.run({ ...baseInput, executionId: "execution-planning-cas-failed" }),
+    );
+    expect(planningError).toMatchObject({
+      code: "squad_execution_revision_conflict",
+      expectedRevision: 1,
+      actualRevision: 11,
+    });
+    expect(planningEvents).toEqual([
+      "squad:getRunnable",
+      "store:claim:queued",
+      "store:save:planning",
+    ]);
+
+    const runningEvents: string[] = [];
+    const runningStore = makeExecutionStoreHarness({
+      failSaveStatus: "running",
+      events: runningEvents,
+    });
+    const runningRunner = makeCompositionSquadRunner({
+      squads: makeSquadLookup(baseSquad, runningEvents),
+      executions: runningStore.store,
+      planner: {
+        plan: () =>
+          Effect.sync(() => {
+            runningEvents.push("planner:plan");
+            return [
+              {
+                nodeId: "running-cas-worker",
+                agentId: "agent-worker",
+                prompt: "只允许规划，不允许派发",
+                dependsOnNodeIds: [],
+              },
+            ];
+          }),
+      },
+      executor: { execute: () => Effect.die("running CAS 失败时不应执行") },
+    });
+    const runningError = yield* Effect.flip(
+      runningRunner.run({ ...baseInput, executionId: "execution-running-cas-failed" }),
+    );
+    expect(runningError).toMatchObject({
+      code: "squad_execution_revision_conflict",
+      expectedRevision: 2,
+      actualRevision: 12,
+    });
+    expect(runningEvents).toEqual([
+      "squad:getRunnable",
+      "store:claim:queued",
+      "store:save:planning",
+      "squad:getRevision",
+      "planner:plan",
+      "store:save:running",
+    ]);
+  }),
+);
+
+it.effect("claim 返回 claimed:false 时失败关闭且不规划或派发", () =>
+  Effect.gen(function* () {
+    const events: string[] = [];
+    const executionStore = makeExecutionStoreHarness({ forceClaimedFalse: true, events });
+    const replayRunner = makeCompositionSquadRunner({
+      squads: makeSquadLookup(baseSquad, events),
+      executions: executionStore.store,
+      planner: { plan: () => Effect.die("重复 execution 不应重新规划") },
+      executor: { execute: () => Effect.die("重复 execution 不应重新派发") },
+    });
+    const error = yield* Effect.flip(
+      replayRunner.run({ ...baseInput, executionId: "execution-replay" }),
+    );
+
+    expect(error).toMatchObject({ code: "squad_execution_replay_unavailable" });
+    expect(events).toEqual(["squad:getRunnable", "store:claim:queued"]);
+  }),
+);
+
+it.effect("claim 后始终读取固定 revision 的历史 Squad 配置", () =>
+  Effect.gen(function* () {
+    const events: string[] = [];
+    const executionStore = makeExecutionStoreHarness({ events });
+    const historicalSquad = { ...baseSquad, instructions: "固定 revision 的历史协同说明" };
+    let plannedWithInstructions: string | undefined;
+    let revisionLookup: readonly [string, number] | undefined;
+    const runner = makeCompositionSquadRunner({
+      squads: {
+        getRunnable: () =>
+          Effect.sync(() => {
+            events.push("squad:getRunnable");
+            return baseSquad;
+          }),
+        getRevision: (squadId, revision) =>
+          Effect.sync(() => {
+            events.push("squad:getRevision");
+            revisionLookup = [squadId, revision];
+            return historicalSquad;
+          }),
+      },
+      executions: executionStore.store,
+      planner: {
+        plan: ({ squad }) =>
+          Effect.sync(() => {
+            plannedWithInstructions = squad.instructions;
+            return [
+              {
+                nodeId: "historical-worker",
+                agentId: "agent-worker",
+                prompt: "使用固定 revision 规划",
+                dependsOnNodeIds: [],
+              },
+            ];
+          }),
+      },
+      executor: { execute: (input) => Effect.succeed(makeGraphResult(input)) },
+    });
+
+    yield* runner.run({ ...baseInput, executionId: "execution-fixed-revision" });
+
+    expect(plannedWithInstructions).toBe("固定 revision 的历史协同说明");
+    expect(revisionLookup).toEqual([baseInput.squadId, baseInput.squadRevision]);
+    expect(events.slice(0, 4)).toEqual([
+      "squad:getRunnable",
+      "store:claim:queued",
+      "store:save:planning",
+      "squad:getRevision",
+    ]);
+  }),
+);
+
+it.effect("显式 plan 摘要基于规范编码且保留有业务意义的数组顺序", () =>
+  Effect.gen(function* () {
+    const digestFor = (
+      executionId: string,
+      plan: NonNullable<CompositionSquadExecutionInput["plan"]>,
+    ) => {
+      const executionStore = makeExecutionStoreHarness();
+      const runner = makeCompositionSquadRunner({
+        squads: makeSquadLookup(baseSquad),
+        executions: executionStore.store,
+        planner: { plan: () => Effect.die("显式计划不应自动规划") },
+        executor: { execute: (input) => Effect.succeed(makeGraphResult(input)) },
+      });
+      return runner
+        .run({ ...baseInput, executionId, plan })
+        .pipe(Effect.map(() => executionStore.snapshots[0]?.planDigest));
+    };
+    const canonicalPlan = [
+      {
+        nodeId: "worker",
+        agentId: "agent-worker",
+        prompt: "完成实现",
+        dependsOnNodeIds: [],
+      },
+      {
+        nodeId: "review",
+        agentId: "agent-reviewer",
+        prompt: "审查实现",
+        dependsOnNodeIds: ["worker"],
+      },
+    ];
+    const equivalentPlan = [
+      {
+        dependsOnNodeIds: [],
+        prompt: "  完成实现  ",
+        agentId: "  agent-worker  ",
+        nodeId: "  worker  ",
+      },
+      {
+        dependsOnNodeIds: ["  worker  "],
+        prompt: "  审查实现  ",
+        agentId: "agent-reviewer",
+        nodeId: "review",
+      },
+    ];
+    const changedPrompt = [
+      canonicalPlan[0]!,
+      { ...canonicalPlan[1]!, prompt: "审查实现与测试日志" },
+    ];
+    const reorderedNodes = [canonicalPlan[1]!, canonicalPlan[0]!];
+
+    const [canonical, equivalent, changed, reordered] = yield* Effect.all(
+      [
+        digestFor("execution-plan-canonical", canonicalPlan),
+        digestFor("execution-plan-equivalent", equivalentPlan),
+        digestFor("execution-plan-changed", changedPrompt),
+        digestFor("execution-plan-reordered", reorderedNodes),
+      ],
+      { concurrency: 1 },
+    );
+
+    expect(canonical).toBeDefined();
+    expect(equivalent).toBe(canonical);
+    expect(changed).not.toBe(canonical);
+    expect(reordered).not.toBe(canonical);
+  }),
+);
+
+it.effect("空显式计划在 claim 前被拒绝", () =>
+  Effect.gen(function* () {
+    const executionStore = makeExecutionStoreHarness();
+    const runner = makeCompositionSquadRunner({
+      squads: makeSquadLookup(baseSquad),
+      executions: executionStore.store,
+      planner: { plan: () => Effect.die("空显式计划不应自动规划") },
+      executor: { execute: () => Effect.die("空显式计划不应执行") },
+    });
+
+    const error = yield* Effect.flip(
+      runner.run({ ...baseInput, executionId: "execution-empty-plan", plan: [] }),
+    );
+
+    expect(error).toMatchObject({ code: "squad_plan_output_invalid" });
+    expect(executionStore.snapshots).toEqual([]);
+  }),
+);
+
+it.effect("Leader completed 缺少摘要时从 running 收口为 failed", () =>
+  Effect.gen(function* () {
+    const executionStore = makeExecutionStoreHarness();
+    const runner = makeCompositionSquadRunner({
+      squads: makeSquadLookup(baseSquad),
+      executions: executionStore.store,
+      planner: {
+        plan: () =>
+          Effect.succeed([
+            {
+              nodeId: "missing-summary-worker",
+              agentId: "agent-worker",
+              prompt: "执行完成但 Leader 未给摘要",
+              dependsOnNodeIds: [],
+            },
+          ]),
+      },
+      executor: { execute: (input) => Effect.succeed(makeGraphResult(input, "completed")) },
+    });
+
+    const error = yield* Effect.flip(
+      runner.run({ ...baseInput, executionId: "execution-missing-summary" }),
+    );
+
+    expect(error).toMatchObject({ code: "squad_execution_result_invalid" });
+    expect(executionStore.read()).toMatchObject({
+      status: "failed",
+      revision: 4,
+      failureCode: "squad_execution_result_invalid",
+      nodes: [{ nodeId: "missing-summary-worker" }],
+    });
+  }),
+);
+
+it.effect("最终 CAS 失败时保留 running 状态且不伪造 failed", () =>
+  Effect.gen(function* () {
+    const events: string[] = [];
+    const executionStore = makeExecutionStoreHarness({
+      failSaveStatus: "completed",
+      events,
+    });
+    const runner = makeCompositionSquadRunner({
+      squads: makeSquadLookup(baseSquad, events),
+      executions: executionStore.store,
+      planner: {
+        plan: () =>
+          Effect.succeed([
+            {
+              nodeId: "final-cas-worker",
+              agentId: "agent-worker",
+              prompt: "完成后触发最终 CAS 失败",
+              dependsOnNodeIds: [],
+            },
+          ]),
+      },
+      executor: {
+        execute: (input) => Effect.succeed(makeGraphResult(input, "completed", "已完成")),
+      },
+    });
+
+    const error = yield* Effect.flip(
+      runner.run({ ...baseInput, executionId: "execution-final-cas-failed" }),
+    );
+
+    expect(error).toMatchObject({
+      code: "squad_execution_revision_conflict",
+      expectedRevision: 3,
+      actualRevision: 13,
+    });
+    expect(executionStore.read()).toMatchObject({ status: "running", revision: 3 });
+    expect(events.at(-1)).toBe("store:save:completed");
+    expect(events).not.toContain("store:save:failed");
+  }),
+);
+
+it.effect("failed 状态保存失败时保留当前状态并写入脱敏审计", () => {
+  const logs: Array<{ readonly message: string; readonly annotations: Record<string, unknown> }> =
+    [];
+  const logger = Logger.make<unknown, void>(({ fiber, message }) => {
+    logs.push({
+      message: String(message),
+      annotations: { ...fiber.getRef(References.CurrentLogAnnotations) },
+    });
+  });
+  const events: string[] = [];
+  const executionStore = makeExecutionStoreHarness({ failSaveStatus: "failed", events });
+  const runner = makeCompositionSquadRunner({
+    squads: makeSquadLookup(baseSquad, events),
+    executions: executionStore.store,
+    planner: {
+      plan: () =>
+        Effect.fail(
+          new CompositionSquadPlannerError({
+            code: "leader_planning_failed",
+            detail: "敏感规划失败详情 secret-plan",
+            squadId: baseSquad.squadId,
+          }),
+        ),
+    },
+    executor: { execute: () => Effect.die("规划失败时不应执行") },
+  });
+
+  return Effect.gen(function* () {
+    const error = yield* Effect.flip(
+      runner.run({
+        ...baseInput,
+        executionId: "execution-failed-save-audit",
+        goal: "敏感目标 secret-goal",
+      }),
+    );
+
+    expect(error).toMatchObject({
+      code: "squad_execution_revision_conflict",
+      expectedRevision: 2,
+      actualRevision: 12,
+    });
+    expect(executionStore.read()).toMatchObject({ status: "planning", revision: 2 });
+    expect(events.at(-1)).toBe("store:save:failed");
+    const audit = logs.find((entry) => entry.message.includes("失败状态持久化失败"));
+    expect(audit?.annotations).toEqual({
+      executionId: "execution-failed-save-audit",
+      currentStatus: "planning",
+      originalErrorCode: "leader_planning_failed",
+    });
+    const loggedText = [
+      audit?.message ?? "",
+      ...Object.values(audit?.annotations ?? {}).map(String),
+    ].join("\n");
+    expect(loggedText).not.toContain("secret-goal");
+    expect(loggedText).not.toContain("secret-plan");
+    expect(loggedText).not.toContain("failed 写入失败");
+  }).pipe(Effect.provide(Logger.layer([logger], { mergeWithExisting: false })));
+});
+
+it.effect("SQL 与解码类持久化错误对 RPC 返回稳定脱敏信息", () =>
+  Effect.gen(function* () {
+    const runFailure = (
+      executionId: string,
+      error: PersistenceSqlError | PersistenceDecodeError,
+    ) => {
+      const runner = makeCompositionSquadRunner({
+        squads: makeSquadLookup(baseSquad),
+        executions: {
+          claimExecution: () => Effect.fail(error),
+          saveTransition: () => Effect.die("claim 失败后不应保存状态"),
+        },
+        planner: { plan: () => Effect.die("claim 失败后不应规划") },
+        executor: { execute: () => Effect.die("claim 失败后不应执行") },
+      });
+      return Effect.flip(runner.run({ ...baseInput, executionId }));
+    };
+    const errors = yield* Effect.all(
+      [
+        runFailure(
+          "execution-sql-redaction",
+          new PersistenceSqlError({
+            operation: "INSERT secret_execution_table",
+            detail: "SELECT token FROM private_credentials",
+            cause: new Error("plaintext-sql-secret"),
+          }),
+        ),
+        runFailure(
+          "execution-decode-redaction",
+          new PersistenceDecodeError({
+            operation: "DECODE secret_execution_payload",
+            issue: "secret-schema-issue",
+            cause: new Error("plaintext-decode-secret"),
+          }),
+        ),
+      ],
+      { concurrency: 1 },
+    );
+
+    for (const error of errors) {
+      expect(error).toMatchObject({ code: "squad_execution_persistence_failed" });
+      expect(error.detail).not.toContain("secret_execution");
+      expect(error.detail).not.toContain("private_credentials");
+      expect(error.detail).not.toContain("secret-schema-issue");
+      expect(error.detail).not.toContain("plaintext-sql-secret");
+      expect(error.detail).not.toContain("plaintext-decode-secret");
+    }
   }),
 );

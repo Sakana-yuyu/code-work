@@ -30,6 +30,7 @@ import * as PullRequestService from "./pullRequest/PullRequestService.ts";
 import { layerConfig as SqlitePersistenceLayerLive } from "./persistence/Layers/Sqlite.ts";
 import { CompositionTaskStoreLive } from "./persistence/Layers/CompositionTaskStore.ts";
 import { CompositionTaskInputStoreLive } from "./persistence/Layers/CompositionTaskInputStore.ts";
+import { CompositionSquadExecutionStoreLive } from "./persistence/Layers/CompositionSquadExecutionStore.ts";
 import { CompositionAutomationStoreLive } from "./persistence/Layers/CompositionAutomationStore.ts";
 import { WorkspaceScriptStoreLive } from "./persistence/Layers/WorkspaceScriptStore.ts";
 import * as ServerLifecycleEvents from "./serverLifecycleEvents.ts";
@@ -498,10 +499,15 @@ const CompositionSquadPlannerLayerLive = CompositionSquadPlanner.layer.pipe(
   Layer.provideMerge(CompositionRuntimeLayerLive),
 );
 
+const CompositionSquadExecutionStoreLayerLive = CompositionSquadExecutionStoreLive.pipe(
+  Layer.provideMerge(PersistenceLayerLive),
+);
+
 const CompositionSquadRunnerLayerLive = CompositionSquadRunner.layer.pipe(
   Layer.provide(CompositionSquadServiceLayerLive),
   Layer.provide(CompositionSquadPlannerLayerLive),
   Layer.provide(CompositionTaskGraphExecutorLayerLive),
+  Layer.provide(CompositionSquadExecutionStoreLayerLive),
 );
 
 const CompositionGoalLoopAutomationRunnerLayerLive = CompositionGoalLoopAutomationRunner.layer.pipe(
