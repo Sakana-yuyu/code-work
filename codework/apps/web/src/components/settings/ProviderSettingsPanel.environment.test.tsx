@@ -431,6 +431,7 @@ describe("EnvironmentProviderSettings routing", () => {
 
   it("设置刷新后仍使用编辑会话捕获的 Multica revision", async () => {
     const multicaId = ProviderInstanceId.make("multica_stale_session");
+    const renamedMulticaId = ProviderInstanceId.make("multica_stale_session_renamed");
     const versionOne = {
       driver: ProviderDriverKind.make("multica"),
       enabled: true,
@@ -490,6 +491,35 @@ describe("EnvironmentProviderSettings routing", () => {
           },
           multicaProviderInstancePreconditions: [
             { instanceId: multicaId, expectedRevision: "revision-v1" },
+          ],
+        },
+      },
+    });
+
+    await (runtimePanel.props.onSave as (request: Record<string, unknown>) => Promise<void>)({
+      originalInstanceId: multicaId,
+      expectedFingerprint: multicaRuntimeDraftFingerprint(draft!),
+      expectedRevision: "revision-v1",
+      instanceId: renamedMulticaId,
+      config: versionTwo.config,
+      environment: versionTwo.environment,
+    });
+
+    expect(commands.updateSettings).toHaveBeenLastCalledWith({
+      environmentId,
+      input: {
+        patch: {
+          providerInstances: {
+            [renamedMulticaId]: {
+              driver: ProviderDriverKind.make("multica"),
+              enabled: undefined,
+              config: versionTwo.config,
+              environment: versionTwo.environment,
+            },
+          },
+          multicaProviderInstancePreconditions: [
+            { instanceId: multicaId, expectedRevision: "revision-v1" },
+            { instanceId: renamedMulticaId, expectedRevision: null },
           ],
         },
       },
