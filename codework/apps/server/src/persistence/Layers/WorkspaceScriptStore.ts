@@ -115,7 +115,6 @@ const WorkspaceScriptListQuery = Schema.Struct({
   includeExited: Schema.Number,
   includeFailed: Schema.Number,
 });
-const WorkspaceScriptRecoveryRequest = Schema.Struct({ observedAtUnixMs: Schema.Number });
 
 type WorkspaceScriptRunRow = Schema.Schema.Type<typeof WorkspaceScriptRunRowSchema>;
 
@@ -556,41 +555,11 @@ const makeStore = Effect.gen(function* () {
     `,
   });
 
-  const recoverInterruptedRows = SqlSchema.findAll({
-    Request: WorkspaceScriptRecoveryRequest,
+  const listRecoveryCandidateRows = SqlSchema.findAll({
+    Request: Schema.Void,
     Result: WorkspaceScriptRunRowSchema,
-    execute: ({ observedAtUnixMs }) => sql`
-      UPDATE workspace_script_runs
-      SET
-        status = CASE WHEN stop_operation_id IS NULL THEN 'failed' ELSE 'running' END,
-        health_status = 'unknown',
-        health_checked_at_unix_ms = NULL,
-        health_detail = NULL,
-        revision = revision + 1,
-        finished_at_unix_ms = CASE
-          WHEN stop_operation_id IS NOT NULL THEN NULL
-          WHEN ${observedAtUnixMs} < COALESCE(started_at_unix_ms, requested_at_unix_ms)
-            THEN COALESCE(started_at_unix_ms, requested_at_unix_ms)
-          ELSE ${observedAtUnixMs}
-        END,
-        exit_code = NULL,
-        exit_signal = NULL,
-        error_code = CASE
-          WHEN stop_operation_id IS NULL THEN 'workspace_script_server_restarted'
-          ELSE NULL
-        END,
-        error_detail = CASE
-          WHEN stop_operation_id IS NULL THEN 'Code Work 服务重启，脚本运行未能正常收口。'
-          ELSE NULL
-        END,
-        updated_at_unix_ms = CASE
-          WHEN ${observedAtUnixMs} < updated_at_unix_ms THEN updated_at_unix_ms
-          ELSE ${observedAtUnixMs}
-        END
-      WHERE
-        (stop_operation_id IS NULL AND status IN ('starting', 'running', 'stopping')) OR
-        (stop_operation_id IS NOT NULL AND status = 'stopping')
-      RETURNING
+    execute: () => sql`
+      SELECT
         workspace_script_run_id AS "workspaceScriptRunId",
         idempotency_key AS "idempotencyKey",
         project_id AS "projectId",
@@ -617,6 +586,11 @@ const makeStore = Effect.gen(function* () {
         composition_run_id AS "compositionRunId",
         stop_operation_id AS "stopOperationId",
         updated_at_unix_ms AS "updatedAtUnixMs"
+      FROM workspace_script_runs
+      WHERE
+        (stop_operation_id IS NULL AND status IN ('starting', 'running', 'stopping')) OR
+        (stop_operation_id IS NOT NULL AND status = 'stopping')
+      ORDER BY requested_at_unix_ms ASC, workspace_script_run_id ASC
     `,
   });
 
@@ -973,34 +947,17 @@ const makeStore = Effect.gen(function* () {
         ),
       );
     },
-    recoverInterrupted: ({ observedAtUnixMs }) => {
-      if (!Number.isSafeInteger(observedAtUnixMs) || observedAtUnixMs < 0) {
-        return Effect.fail(
-          domainError("workspace_script_recovery_time_invalid", "恢复观察时间必须是非负安全整数。"),
-        );
-      }
-      return withTransaction(
-        query(
-          "WorkspaceScriptStore.recoverInterrupted",
-          recoverInterruptedRows({ observedAtUnixMs }),
-        ).pipe(
-          Effect.flatMap((rows) =>
-            Effect.forEach(rows, (row) =>
-              decodeStoredRow("WorkspaceScriptStore.recoverInterrupted", row).pipe(
-                Effect.map((stored) => stored.run),
-              ),
-            ),
-          ),
-          Effect.map((runs) =>
-            [...runs].sort(
-              (left, right) =>
-                left.requestedAtUnixMs - right.requestedAtUnixMs ||
-                left.workspaceScriptRunId.localeCompare(right.workspaceScriptRunId),
-            ),
+    listRecoveryCandidates: () =>
+      query(
+        "WorkspaceScriptStore.listRecoveryCandidates",
+        listRecoveryCandidateRows(undefined),
+      ).pipe(
+        Effect.flatMap((rows) =>
+          Effect.forEach(rows, (row) =>
+            decodeStoredRow("WorkspaceScriptStore.listRecoveryCandidates", row),
           ),
         ),
-      );
-    },
+      ),
   };
 
   return store;

@@ -427,13 +427,13 @@ it.layer(
         command: "workspace-script-command",
         owner: workspaceScriptOwner(11),
       });
-      const active = yield* manager.inspectSession({
+      const active = yield* manager.inspectSessionReceipt({
         threadId: "owner-inspect",
         terminalId,
         expectedOwner: workspaceScriptOwner(11),
       });
       const wrongGeneration = yield* manager
-        .inspectSession({
+        .inspectSessionReceipt({
           threadId: "owner-inspect",
           terminalId,
           expectedOwner: workspaceScriptOwner(12),
@@ -441,9 +441,25 @@ it.layer(
         .pipe(Effect.flip);
 
       assert.equal(first.pid, repeated.pid);
-      assert.equal(active, "active");
+      assert.equal(active.inspection, "active");
+      assert.deepEqual(active.snapshot, first);
       assert.equal(wrongGeneration._tag, "TerminalSessionOwnershipError");
       expect(ptyAdapter.spawnInputs).toHaveLength(1);
+    }),
+  );
+
+  it.effect("原子 inspection receipt 对缺失 session 返回空快照", () =>
+    Effect.gen(function* () {
+      const { manager } = yield* createManager();
+
+      assert.deepEqual(
+        yield* manager.inspectSessionReceipt({
+          threadId: "owner-inspect-missing",
+          terminalId: "workspace-script-missing",
+          expectedOwner: workspaceScriptOwner(31),
+        }),
+        { inspection: "missing", snapshot: null },
+      );
     }),
   );
 
