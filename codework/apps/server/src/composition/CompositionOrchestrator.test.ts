@@ -12,6 +12,7 @@ import {
   type CompositionCapabilityGrant,
   type CompositionTask,
   type CompositionTaskRun,
+  type CompositionTaskRunModelSnapshot,
 } from "@codework/contracts";
 
 import { makeCapabilityGrantRegistry } from "./CapabilityGrantRegistry.ts";
@@ -856,6 +857,13 @@ layer("CompositionOrchestrator", (it) => {
         runtimeId: "runtime-retry-start-failed",
         status: "failed",
         attempt: 1,
+        modelSnapshot: {
+          kind: "byok",
+          providerInstanceId: "byok-retry",
+          adapterId: "adapter-retry",
+          modelId: "model-retry",
+          adapterConfigDigest: "sha256:adapter-retry",
+        },
         capabilityGrantIds: ["grant-old-retry-start-failed"],
       });
 
@@ -869,6 +877,13 @@ layer("CompositionOrchestrator", (it) => {
       assert.equal(result.task.status, "failed");
       assert.equal(result.run.status, "failed");
       assert.equal(result.run.failureCode, "runtime_offline");
+      assert.deepEqual(result.run.modelSnapshot, {
+        kind: "byok",
+        providerInstanceId: "byok-retry",
+        adapterId: "adapter-retry",
+        modelId: "model-retry",
+        adapterConfigDigest: "sha256:adapter-retry",
+      });
       assert.deepEqual(revoked, ["grant-old-retry-start-failed", "grant-retry-start-failed"]);
       assert.equal(
         (yield* store.getRun("run-retry-start-failed-old")).pipe(Option.getOrThrow).status,
@@ -938,6 +953,7 @@ layer("CompositionOrchestrator", (it) => {
     Effect.gen(function* () {
       const store = yield* CompositionTaskStore;
       const started: string[] = [];
+      const modelSnapshots: Array<CompositionTaskRunModelSnapshot | undefined> = [];
       const driverRegistry = makeCompositionAgentDriverRegistry();
       yield* driverRegistry.register({
         agentId: "agent-1",
@@ -945,6 +961,7 @@ layer("CompositionOrchestrator", (it) => {
         startTask: (input) =>
           Effect.sync(() => {
             started.push(input.task.taskId);
+            modelSnapshots.push(input.run.modelSnapshot);
             return { runtimeTaskId: "runtime-task-1" };
           }),
         cancelTask: () => Effect.succeed({ status: "cancelled" as const }),
@@ -959,13 +976,23 @@ layer("CompositionOrchestrator", (it) => {
         assigneeId: "agent-1",
         mode: "serial",
         promptDigest: "sha256:prompt",
+        modelSnapshot: { kind: "runtime_native", modelId: "runtime-model-1" },
         capabilityIds: [],
         dependsOnTaskIds: [],
       });
 
       assert.deepEqual(started, ["task-1"]);
+      assert.deepEqual(modelSnapshots, [{ kind: "runtime_native", modelId: "runtime-model-1" }]);
       assert.equal(result.task.status, "running");
       assert.equal(result.run.runtimeTaskId, "runtime-task-1");
+      assert.deepEqual(result.run.modelSnapshot, {
+        kind: "runtime_native",
+        modelId: "runtime-model-1",
+      });
+      assert.deepEqual(
+        Option.getOrThrow(yield* store.getRun("run-1")).modelSnapshot,
+        result.run.modelSnapshot,
+      );
       const events = yield* store.listEvents("task-1", "run-1");
       assert.deepEqual(
         events.map((event) => event.status),
@@ -1352,7 +1379,11 @@ layer("CompositionOrchestrator", (it) => {
   it.effect("依赖完成后恢复有持久化输入的 blocked task", () =>
     Effect.gen(function* () {
       const store = yield* CompositionTaskStore;
-      const started: Array<{ readonly taskId: string; readonly prompt?: string }> = [];
+      const started: Array<{
+        readonly taskId: string;
+        readonly prompt?: string;
+        readonly modelSnapshot?: CompositionTaskRunModelSnapshot;
+      }> = [];
       const driverRegistry = makeCompositionAgentDriverRegistry();
       yield* driverRegistry.register({
         agentId: "agent-resume",
@@ -1362,6 +1393,9 @@ layer("CompositionOrchestrator", (it) => {
             started.push({
               taskId: input.task.taskId,
               ...(input.prompt === undefined ? {} : { prompt: input.prompt }),
+              ...(input.run.modelSnapshot === undefined
+                ? {}
+                : { modelSnapshot: input.run.modelSnapshot }),
             });
             return { runtimeTaskId: "runtime-task-resumed" };
           }),
@@ -1399,6 +1433,7 @@ layer("CompositionOrchestrator", (it) => {
         runtimeId: "runtime-resume",
         status: "blocked",
         attempt: 1,
+        modelSnapshot: { kind: "legacy", modelId: "legacy-resume-model" },
         capabilityGrantIds: [],
       });
 
@@ -1419,7 +1454,13 @@ layer("CompositionOrchestrator", (it) => {
 
       const resumed = yield* orchestrator.resumeReadyTasks();
 
-      assert.deepEqual(started, [{ taskId: "task-resume", prompt: "继续执行恢复任务" }]);
+      assert.deepEqual(started, [
+        {
+          taskId: "task-resume",
+          prompt: "继续执行恢复任务",
+          modelSnapshot: { kind: "legacy", modelId: "legacy-resume-model" },
+        },
+      ]);
       assert.deepEqual(
         resumed.map((item) => item.task.taskId),
         ["task-resume"],

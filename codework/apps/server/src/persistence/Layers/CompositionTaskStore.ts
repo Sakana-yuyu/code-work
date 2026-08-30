@@ -1,6 +1,7 @@
 import {
   ApprovalRequestId,
   CompositionSquad as CompositionSquadSchema,
+  CompositionTaskRunModelSnapshot,
   type CompositionRuntimeLease,
   type CompositionSquad,
   type CompositionSquadRevision,
@@ -28,6 +29,10 @@ const StringArrayJson = Schema.fromJsonString(Schema.Array(Schema.String));
 const encodeStringArray = Schema.encodeSync(StringArrayJson);
 const CompositionSquadJson = Schema.fromJsonString(CompositionSquadSchema);
 const encodeCompositionSquad = Schema.encodeSync(CompositionSquadJson);
+const CompositionTaskRunModelSnapshotJson = Schema.fromJsonString(CompositionTaskRunModelSnapshot);
+const encodeCompositionTaskRunModelSnapshot = Schema.encodeSync(
+  CompositionTaskRunModelSnapshotJson,
+);
 
 class CompositionSquadRevisionWriteError extends Schema.TaggedErrorClass<CompositionSquadRevisionWriteError>()(
   "CompositionSquadRevisionWriteError",
@@ -59,6 +64,7 @@ const RunRowSchema = Schema.Struct({
   capabilityHandshakeId: Schema.NullOr(Schema.String),
   status: Schema.String,
   attempt: Schema.Number,
+  modelSnapshot: Schema.NullOr(CompositionTaskRunModelSnapshotJson),
   capabilityGrantIds: StringArrayJson,
   leaseId: Schema.NullOr(Schema.String),
   startedAtUnixMs: Schema.NullOr(Schema.Number),
@@ -214,6 +220,7 @@ const toRun = (row: Schema.Schema.Type<typeof RunRowSchema>): CompositionTaskRun
     : { capabilityHandshakeId: row.capabilityHandshakeId }),
   status: row.status as CompositionTaskRun["status"],
   attempt: row.attempt,
+  ...(row.modelSnapshot === null ? {} : { modelSnapshot: row.modelSnapshot }),
   capabilityGrantIds: row.capabilityGrantIds,
   ...(row.leaseId === null ? {} : { leaseId: row.leaseId }),
   ...(row.startedAtUnixMs === null ? {} : { startedAtUnixMs: row.startedAtUnixMs }),
@@ -380,18 +387,22 @@ const makeStore = Effect.gen(function* () {
   const upsertRunRow = SqlSchema.void({
     Request: Schema.Struct({
       ...RunRowSchema.fields,
+      modelSnapshot: Schema.NullOr(CompositionTaskRunModelSnapshot),
       capabilityGrantIds: Schema.Array(Schema.String),
     }),
     execute: (run) => sql`
       INSERT INTO composition_task_runs (
         run_id, task_id, agent_id, runtime_id, runtime_task_id, capability_handshake_id, status, attempt,
-        capability_grant_ids_json, lease_id, started_at_unix_ms, last_runtime_event_at_unix_ms,
+        model_snapshot_json, capability_grant_ids_json, lease_id, started_at_unix_ms,
+        last_runtime_event_at_unix_ms,
         cancel_requested_at_unix_ms, finished_at_unix_ms,
         failure_code, result_summary
       ) VALUES (
         ${run.runId}, ${run.taskId}, ${run.agentId}, ${run.runtimeId}, ${run.runtimeTaskId},
         ${run.capabilityHandshakeId},
-        ${run.status}, ${run.attempt}, ${encodeStringArray(run.capabilityGrantIds)},
+        ${run.status}, ${run.attempt},
+        ${run.modelSnapshot === null ? null : encodeCompositionTaskRunModelSnapshot(run.modelSnapshot)},
+        ${encodeStringArray(run.capabilityGrantIds)},
         ${run.leaseId}, ${run.startedAtUnixMs}, ${run.lastRuntimeEventAtUnixMs},
         ${run.cancelRequestedAtUnixMs}, ${run.finishedAtUnixMs},
         ${run.failureCode}, ${run.resultSummary}
@@ -401,6 +412,7 @@ const makeStore = Effect.gen(function* () {
         runtime_task_id = excluded.runtime_task_id,
         capability_handshake_id = excluded.capability_handshake_id,
         status = excluded.status, attempt = excluded.attempt,
+        model_snapshot_json = excluded.model_snapshot_json,
         capability_grant_ids_json = excluded.capability_grant_ids_json,
         lease_id = excluded.lease_id, started_at_unix_ms = excluded.started_at_unix_ms,
         last_runtime_event_at_unix_ms = excluded.last_runtime_event_at_unix_ms,
@@ -417,7 +429,7 @@ const makeStore = Effect.gen(function* () {
       SELECT
         run_id AS "runId", task_id AS "taskId", agent_id AS "agentId", runtime_id AS "runtimeId",
         runtime_task_id AS "runtimeTaskId", capability_handshake_id AS "capabilityHandshakeId",
-        status, attempt,
+        status, attempt, model_snapshot_json AS "modelSnapshot",
         capability_grant_ids_json AS "capabilityGrantIds", lease_id AS "leaseId",
         started_at_unix_ms AS "startedAtUnixMs",
         last_runtime_event_at_unix_ms AS "lastRuntimeEventAtUnixMs",
@@ -435,7 +447,7 @@ const makeStore = Effect.gen(function* () {
       SELECT
         run_id AS "runId", task_id AS "taskId", agent_id AS "agentId", runtime_id AS "runtimeId",
         runtime_task_id AS "runtimeTaskId", capability_handshake_id AS "capabilityHandshakeId",
-        status, attempt,
+        status, attempt, model_snapshot_json AS "modelSnapshot",
         capability_grant_ids_json AS "capabilityGrantIds", lease_id AS "leaseId",
         started_at_unix_ms AS "startedAtUnixMs",
         last_runtime_event_at_unix_ms AS "lastRuntimeEventAtUnixMs",
@@ -456,7 +468,7 @@ const makeStore = Effect.gen(function* () {
       SELECT
         run_id AS "runId", task_id AS "taskId", agent_id AS "agentId", runtime_id AS "runtimeId",
         runtime_task_id AS "runtimeTaskId", capability_handshake_id AS "capabilityHandshakeId",
-        status, attempt,
+        status, attempt, model_snapshot_json AS "modelSnapshot",
         capability_grant_ids_json AS "capabilityGrantIds", lease_id AS "leaseId",
         started_at_unix_ms AS "startedAtUnixMs",
         last_runtime_event_at_unix_ms AS "lastRuntimeEventAtUnixMs",
@@ -983,6 +995,7 @@ const makeStore = Effect.gen(function* () {
           ...runValue,
           runtimeTaskId: runValue.runtimeTaskId ?? null,
           capabilityHandshakeId: runValue.capabilityHandshakeId ?? null,
+          modelSnapshot: runValue.modelSnapshot ?? null,
           capabilityGrantIds: [...(runValue.capabilityGrantIds ?? [])],
           leaseId: runValue.leaseId ?? null,
           startedAtUnixMs: runValue.startedAtUnixMs ?? null,

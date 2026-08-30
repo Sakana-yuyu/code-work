@@ -245,9 +245,17 @@ layer("CompositionTaskStore", (it) => {
         taskId: "task-1",
         agentId: "agent-1",
         runtimeId: "runtime-1",
+        runtimeTaskId: "runtime-task-1",
         capabilityHandshakeId: "handshake-1",
         status: "running" as const,
         attempt: 1,
+        modelSnapshot: {
+          kind: "byok" as const,
+          providerInstanceId: "byok-primary",
+          adapterId: "adapter-deepseek",
+          modelId: "deepseek-chat",
+          adapterConfigDigest: "sha256:adapter-config",
+        },
         capabilityGrantIds: [],
         startedAtUnixMs: 2,
         cancelRequestedAtUnixMs: 3,
@@ -315,6 +323,8 @@ layer("CompositionTaskStore", (it) => {
       const loadedTask = yield* store.getTask("task-1");
       const listedTasks = yield* store.listTasks("project-1");
       const loadedRun = yield* store.getRun("run-1");
+      const latestRun = yield* store.getLatestRun("task-1");
+      const runtimeRuns = yield* store.listRunsByRuntimeTask("runtime-1", "runtime-task-1");
       const events = yield* store.listEvents("task-1", "run-1");
       const dependencies = yield* store.listDependencies("task-1");
       const loadedLease = yield* store.getLease("lease-1");
@@ -330,6 +340,12 @@ layer("CompositionTaskStore", (it) => {
       assert.equal(Option.getOrThrow(loadedRun).attempt, 1);
       assert.equal(Option.getOrThrow(loadedRun).capabilityHandshakeId, "handshake-1");
       assert.equal(Option.getOrThrow(loadedRun).cancelRequestedAtUnixMs, 3);
+      assert.deepEqual(Option.getOrThrow(loadedRun).modelSnapshot, run.modelSnapshot);
+      assert.deepEqual(Option.getOrThrow(latestRun).modelSnapshot, run.modelSnapshot);
+      assert.deepEqual(
+        runtimeRuns.map((item) => item.modelSnapshot),
+        [run.modelSnapshot],
+      );
       assert.deepEqual(
         events.map((event) => event.sequence),
         [0, 1, 2],

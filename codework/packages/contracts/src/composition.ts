@@ -303,6 +303,26 @@ export const CompositionTask = Schema.Struct({
 });
 export type CompositionTask = typeof CompositionTask.Type;
 
+/** Run 固定实际模型选择；BYOK 仅保存稳定引用与非敏感配置摘要。 */
+export const CompositionTaskRunModelSnapshot = Schema.Union([
+  Schema.Struct({
+    kind: Schema.Literal("byok"),
+    providerInstanceId: TrimmedNonEmptyString,
+    adapterId: TrimmedNonEmptyString,
+    modelId: TrimmedNonEmptyString,
+    adapterConfigDigest: TrimmedNonEmptyString,
+  }),
+  Schema.Struct({
+    kind: Schema.Literal("runtime_native"),
+    modelId: Schema.optional(TrimmedNonEmptyString),
+  }),
+  Schema.Struct({
+    kind: Schema.Literal("legacy"),
+    modelId: TrimmedNonEmptyString,
+  }),
+]);
+export type CompositionTaskRunModelSnapshot = typeof CompositionTaskRunModelSnapshot.Type;
+
 /** 一次实际执行；重试必须创建新的 runId 和 attempt。 */
 export const CompositionTaskRun = Schema.Struct({
   runId: TrimmedNonEmptyString,
@@ -314,6 +334,8 @@ export const CompositionTaskRun = Schema.Struct({
   capabilityHandshakeId: Schema.optional(TrimmedNonEmptyString),
   status: CompositionTaskStatus,
   attempt: NonNegativeInt,
+  /** 首次派发时解析并固定；重试与恢复不得静默切换模型。 */
+  modelSnapshot: Schema.optional(CompositionTaskRunModelSnapshot),
   /** 本次 Run 已由服务端签发的短期 capability grant；不保存用户原始请求。 */
   capabilityGrantIds: Schema.Array(TrimmedNonEmptyString),
   leaseId: Schema.optional(TrimmedNonEmptyString),

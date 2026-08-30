@@ -36,6 +36,7 @@ import {
   CompositionTaskListRequest,
   CompositionTaskReviewRequest,
   CompositionTaskRetryRequest,
+  CompositionTaskRun,
   CompositionTaskResumeRequest,
   CompositionTaskResumeResult,
   CompositionTaskEvent,
@@ -81,6 +82,7 @@ const decodeTaskListResult = Schema.decodeUnknownSync(CompositionTaskListResult)
 const decodeTaskList = Schema.decodeUnknownSync(CompositionTaskListRequest);
 const decodeTaskReview = Schema.decodeUnknownSync(CompositionTaskReviewRequest);
 const decodeTaskRetry = Schema.decodeUnknownSync(CompositionTaskRetryRequest);
+const decodeTaskRun = Schema.decodeUnknownSync(CompositionTaskRun);
 const decodeTaskResume = Schema.decodeUnknownSync(CompositionTaskResumeRequest);
 const decodeTaskResumeResult = Schema.decodeUnknownSync(CompositionTaskResumeResult);
 const decodeToolInvocation = Schema.decodeUnknownSync(CompositionToolInvocation);
@@ -134,6 +136,70 @@ const validSquadConfiguration = {
 };
 
 describe("composition contracts", () => {
+  it("解码 Run 模型快照并保持旧 Run 兼容", () => {
+    const baseRun = {
+      runId: "run-model-snapshot",
+      taskId: "task-model-snapshot",
+      agentId: "agent-model-snapshot",
+      runtimeId: "runtime-model-snapshot",
+      status: "queued" as const,
+      attempt: 1,
+      capabilityGrantIds: [],
+    };
+
+    expect(
+      decodeTaskRun({
+        ...baseRun,
+        modelSnapshot: {
+          kind: "byok",
+          providerInstanceId: "byok-primary",
+          adapterId: "adapter-deepseek",
+          modelId: "deepseek-chat",
+          adapterConfigDigest: "sha256:adapter-config",
+        },
+      }).modelSnapshot,
+    ).toEqual({
+      kind: "byok",
+      providerInstanceId: "byok-primary",
+      adapterId: "adapter-deepseek",
+      modelId: "deepseek-chat",
+      adapterConfigDigest: "sha256:adapter-config",
+    });
+    expect(
+      decodeTaskRun({
+        ...baseRun,
+        modelSnapshot: { kind: "runtime_native", modelId: "runtime-model" },
+      }).modelSnapshot,
+    ).toEqual({ kind: "runtime_native", modelId: "runtime-model" });
+    expect(
+      decodeTaskRun({
+        ...baseRun,
+        modelSnapshot: { kind: "legacy", modelId: "legacy-model" },
+      }).modelSnapshot,
+    ).toEqual({ kind: "legacy", modelId: "legacy-model" });
+    expect(decodeTaskRun(baseRun)).not.toHaveProperty("modelSnapshot");
+  });
+
+  it("拒绝缺少配置摘要的 BYOK Run 模型快照", () => {
+    expect(() =>
+      decodeTaskRun({
+        runId: "run-invalid-model-snapshot",
+        taskId: "task-invalid-model-snapshot",
+        agentId: "agent-invalid-model-snapshot",
+        runtimeId: "runtime-invalid-model-snapshot",
+        status: "queued",
+        attempt: 1,
+        capabilityGrantIds: [],
+        modelSnapshot: {
+          kind: "byok",
+          providerInstanceId: "byok-primary",
+          adapterId: "adapter-deepseek",
+          modelId: "deepseek-chat",
+        },
+      }),
+    ).toThrow();
+  });
+
   it("保留可版本化 Squad 的成员角色、运行约束和审批配置", () => {
     const decoded = decodeSquad({
       squadId: "squad-native",

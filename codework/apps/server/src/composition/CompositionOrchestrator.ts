@@ -9,6 +9,7 @@ import type {
   CompositionTaskReviewRequest,
   CompositionTaskReviewResult,
   CompositionTaskRun,
+  CompositionTaskRunModelSnapshot,
   CompositionTaskStatus,
   ProviderRuntimeEvent,
 } from "@codework/contracts";
@@ -229,6 +230,8 @@ export type CompositionDispatchInput = {
   readonly workspaceRoot?: string;
   readonly prompt?: string;
   readonly model?: string;
+  /** 服务端已解析的不可变模型快照；不得包含 Provider 密钥。 */
+  readonly modelSnapshot?: CompositionTaskRunModelSnapshot;
   /** 用户请求的 capability ID；由 Orchestrator 转换为短期 grant。 */
   readonly capabilityIds?: ReadonlyArray<string>;
 };
@@ -715,6 +718,7 @@ const makeOrchestrator = (
         runtimeId,
         status: initialStatus,
         attempt: 1,
+        ...(input.modelSnapshot === undefined ? {} : { modelSnapshot: input.modelSnapshot }),
         capabilityGrantIds,
       };
 
@@ -1312,6 +1316,9 @@ const makeOrchestrator = (
         runtimeId: targetDriver.runtimeId,
         status: "queued",
         attempt: previousRun.attempt + 1,
+        ...(previousRun.modelSnapshot === undefined
+          ? {}
+          : { modelSnapshot: previousRun.modelSnapshot }),
         capabilityGrantIds,
       };
       yield* store.upsertTask(queuedTask);
