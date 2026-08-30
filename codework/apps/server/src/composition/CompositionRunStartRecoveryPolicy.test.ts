@@ -186,6 +186,41 @@ it.effect("单个 Driver defect 被隔离，后续可安全重放的意图仍会
   }),
 );
 
+it.effect("启动身份读取 defect 只延后当前候选，后续候选仍会规划", () =>
+  Effect.gen(function* () {
+    const broken = makeCandidate("identity-defect");
+    const healthy = makeCandidate("after-identity-defect");
+    const registry = makeCompositionAgentDriverRegistry();
+    yield* registry.register(
+      makeDriver(broken, {
+        getStartIdentity: () => {
+          throw new Error("identity secret must not escape");
+        },
+      }),
+    );
+    yield* registry.register(makeDriver(healthy));
+
+    const plans = yield* planCompositionRunStartRecoveries({
+      candidates: [broken, healthy],
+      driverRegistry: registry,
+      reconciled,
+    });
+
+    assert.deepEqual(
+      plans.map(({ runId, action, code }) => ({ runId, action, code })),
+      [
+        {
+          runId: broken.run.runId,
+          action: "defer",
+          code: "run_start_recovery_candidate_planning_failed",
+        },
+        { runId: healthy.run.runId, action: "replay", code: undefined },
+      ],
+    );
+    assert.notInclude(plans[0]?.detail ?? "", "identity secret");
+  }),
+);
+
 it.effect("Driver 被移除时只延后当前意图，不阻断其他 Driver", () =>
   Effect.gen(function* () {
     const removed = makeCandidate("removed");

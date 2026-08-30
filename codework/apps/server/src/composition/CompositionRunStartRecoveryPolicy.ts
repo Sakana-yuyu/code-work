@@ -1,4 +1,5 @@
 import type { CompositionTask, CompositionTaskRun } from "@codework/contracts";
+import * as Cause from "effect/Cause";
 import * as Effect from "effect/Effect";
 
 import type { CompositionRunStartIntent } from "../persistence/Services/CompositionRunStartStore.ts";
@@ -54,6 +55,16 @@ const requiredReconciliations = [
   readonly code: string;
   readonly detail: string;
 }>;
+
+const deferCandidatePlanningFailure = (
+  candidate: CompositionRunStartRecoveryCandidate,
+): CompositionRunStartRecoveryPlan => ({
+  taskId: candidate.task.taskId,
+  runId: candidate.run.runId,
+  action: "defer",
+  code: "run_start_recovery_candidate_planning_failed",
+  detail: "Run Start 恢复候选规划失败，已隔离当前 Run 并继续处理其他恢复项。",
+});
 
 const planFor = Effect.fn("planCompositionRunStartRecovery")(function* (
   candidate: CompositionRunStartRecoveryCandidate,
@@ -277,5 +288,11 @@ export const planCompositionRunStartRecoveries = (input: {
   readonly reconciled: ReadonlySet<CompositionRunStartRecoveryReconciliation>;
 }): Effect.Effect<ReadonlyArray<CompositionRunStartRecoveryPlan>> =>
   Effect.forEach(input.candidates, (candidate) =>
-    planFor(candidate, input.driverRegistry, input.reconciled),
+    planFor(candidate, input.driverRegistry, input.reconciled).pipe(
+      Effect.catchCause((cause) =>
+        Cause.hasInterruptsOnly(cause)
+          ? Effect.failCause(cause)
+          : Effect.succeed(deferCandidatePlanningFailure(candidate)),
+      ),
+    ),
   );
