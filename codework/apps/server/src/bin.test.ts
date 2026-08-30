@@ -279,6 +279,19 @@ it.layer(NodeServices.layer)("bin cli parsing", (it) => {
     }),
   );
 
+  it.effect("exposes event-driven Agent wait controls", () =>
+    Effect.gen(function* () {
+      const wait = yield* captureStdout(runCli(["wait", "--help"], noConnectCli));
+
+      assert.include(wait.output, "Wait for an agent's latest turn to reach a terminal state.");
+      assert.include(wait.output, "<agent-id>");
+      assert.include(wait.output, "--timeout-seconds");
+      assert.include(wait.output, "--server");
+      assert.include(wait.output, "--access-token");
+      assert.include(wait.output, "--json");
+    }),
+  );
+
   it.effect("exposes optimistic Squad lifecycle commands", () =>
     Effect.gen(function* () {
       const duplicate = yield* captureStdout(
