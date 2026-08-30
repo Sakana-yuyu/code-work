@@ -146,7 +146,10 @@ export class TerminalManager extends Context.Service<
       input: TerminalRunCommandInput,
     ) => Effect.Effect<TerminalSessionSnapshot, TerminalError>;
 
-    /** 读取活动会话的内存历史；无活动会话时回退到持久化日志。 */
+    /**
+     * 只读获取终端历史；允许 Workspace Script 专用日志链路读取 owned session，
+     * 但不得借此附加、输入或改变进程状态。
+     */
     readonly getHistory: (
       input: TerminalHistoryInput,
     ) => Effect.Effect<string, TerminalHistoryError>;
@@ -2437,6 +2440,7 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
     withThreadLock(
       input.threadId,
       Effect.gen(function* () {
+        // WorkspaceScriptService.getLogs 依赖此只读入口；owner 门禁只阻止进程与历史 mutation。
         const session = yield* getSession(input.threadId, input.terminalId);
         if (Option.isSome(session)) return session.value.history;
         return yield* readHistory(input.threadId, input.terminalId);
@@ -2466,6 +2470,7 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
         }
 
         const session = existing.value;
+        yield* assertSessionOwner(session, undefined);
         const targetCols = input.cols ?? session.cols;
         const targetRows = input.rows ?? session.rows;
 
@@ -2665,6 +2670,7 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
   const write: TerminalManager["Service"]["write"] = Effect.fn("terminal.write")(function* (input) {
     const terminalId = input.terminalId;
     const session = yield* requireSession(input.threadId, terminalId);
+    yield* assertSessionOwner(session, undefined);
     const process = session.process;
     if (!process || session.status !== "running") {
       if (session.status === "exited") return;
@@ -2691,6 +2697,7 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
     if (Option.isNone(session)) {
       return;
     }
+    yield* assertSessionOwner(session.value, undefined);
     const process = session.value.process;
     if (!process || session.value.status !== "running") {
       return;
@@ -2710,6 +2717,7 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
       Effect.gen(function* () {
         const terminalId = input.terminalId;
         const session = yield* requireSession(input.threadId, terminalId);
+        yield* assertSessionOwner(session, undefined);
         session.history = "";
         session.pendingHistoryControlSequence = "";
         session.pendingProcessEvents = [];
@@ -2819,13 +2827,21 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
         }
 
         const threadSessions = yield* sessionsForThread(input.threadId);
+        // 无 terminalId 的通用清理只处理普通终端；owned session 由对应服务按 owner 终止。
+        const ordinarySessions = threadSessions.filter((session) => session.owner === null);
+        const hasOwnedSessions = ordinarySessions.length !== threadSessions.length;
         yield* Effect.forEach(
-          threadSessions,
-          (session) => closeSession(input.threadId, session.terminalId, false),
+          ordinarySessions,
+          (session) =>
+            closeSession(
+              input.threadId,
+              session.terminalId,
+              input.deleteHistory === true && hasOwnedSessions,
+            ),
           { discard: true },
         );
 
-        if (input.deleteHistory) {
+        if (input.deleteHistory && !hasOwnedSessions) {
           yield* deleteAllHistoryForThread(input.threadId);
         }
       }),

@@ -487,6 +487,230 @@ it.layer(
     }),
   );
 
+  it.effect("普通 write 不得向受监督 session 注入输入", () =>
+    Effect.gen(function* () {
+      const { manager, ptyAdapter } = yield* createManager();
+      const terminalId = "workspace-script-operation-owner-write";
+      const owner = workspaceScriptOwner(21);
+      yield* manager.runCommand({
+        threadId: "owner-write",
+        terminalId,
+        cwd: process.cwd(),
+        command: "workspace-script-command",
+        owner,
+      });
+      const processHandle = ptyAdapter.processes[0];
+      expect(processHandle).toBeDefined();
+      if (!processHandle) return;
+
+      const error = yield* manager
+        .write({ threadId: "owner-write", terminalId, data: "\u0003dangerous-command\r" })
+        .pipe(Effect.flip);
+
+      assert.equal(error._tag, "TerminalSessionOwnershipError");
+      expect(processHandle.writes).toEqual([]);
+      assert.equal(
+        yield* manager.inspectSession({
+          threadId: "owner-write",
+          terminalId,
+          expectedOwner: owner,
+        }),
+        "active",
+      );
+    }),
+  );
+
+  it.effect("普通 resize 不得改变受监督 PTY 尺寸", () =>
+    Effect.gen(function* () {
+      const { manager, ptyAdapter } = yield* createManager();
+      const terminalId = "workspace-script-operation-owner-resize";
+      const owner = workspaceScriptOwner(22);
+      yield* manager.runCommand({
+        threadId: "owner-resize",
+        terminalId,
+        cwd: process.cwd(),
+        command: "workspace-script-command",
+        owner,
+      });
+      const processHandle = ptyAdapter.processes[0];
+      expect(processHandle).toBeDefined();
+      if (!processHandle) return;
+
+      const error = yield* manager
+        .resize({ threadId: "owner-resize", terminalId, cols: 180, rows: 60 })
+        .pipe(Effect.flip);
+
+      assert.equal(error._tag, "TerminalSessionOwnershipError");
+      expect(processHandle.resizeCalls).toEqual([]);
+      assert.equal(
+        yield* manager.inspectSession({
+          threadId: "owner-resize",
+          terminalId,
+          expectedOwner: owner,
+        }),
+        "active",
+      );
+    }),
+  );
+
+  it.effect("普通 clear 不得擦除受监督历史，getHistory 保持只读可用", () =>
+    Effect.gen(function* () {
+      const { manager, ptyAdapter, getEvents } = yield* createManager();
+      const terminalId = "workspace-script-operation-owner-clear";
+      const owner = workspaceScriptOwner(23);
+      yield* manager.runCommand({
+        threadId: "owner-clear",
+        terminalId,
+        cwd: process.cwd(),
+        command: "workspace-script-command",
+        owner,
+      });
+      const processHandle = ptyAdapter.processes[0];
+      expect(processHandle).toBeDefined();
+      if (!processHandle) return;
+      processHandle.emitData("owned-log\n");
+      yield* waitFor(
+        manager
+          .getHistory({ threadId: "owner-clear", terminalId })
+          .pipe(Effect.map((history) => history === "owned-log\n")),
+      );
+
+      const error = yield* manager.clear({ threadId: "owner-clear", terminalId }).pipe(Effect.flip);
+
+      assert.equal(error._tag, "TerminalSessionOwnershipError");
+      assert.equal(
+        yield* manager.getHistory({ threadId: "owner-clear", terminalId }),
+        "owned-log\n",
+      );
+      expect(
+        (yield* getEvents).filter(
+          (event) => event.type === "cleared" && event.terminalId === terminalId,
+        ),
+      ).toEqual([]);
+      assert.equal(
+        yield* manager.inspectSession({
+          threadId: "owner-clear",
+          terminalId,
+          expectedOwner: owner,
+        }),
+        "active",
+      );
+    }),
+  );
+
+  it.effect("generic attach 不得读取、resize 或重启受监督 session", () =>
+    Effect.gen(function* () {
+      const { manager, ptyAdapter } = yield* createManager();
+      const threadId = "owner-attach";
+      const terminalId = "workspace-script-operation-owner-attach";
+      const owner = workspaceScriptOwner(24);
+      yield* manager.runCommand({
+        threadId,
+        terminalId,
+        cwd: process.cwd(),
+        command: "workspace-script-command",
+        owner,
+      });
+      const processHandle = ptyAdapter.processes[0];
+      expect(processHandle).toBeDefined();
+      if (!processHandle) return;
+      let delivered = 0;
+
+      const activeError = yield* manager
+        .attachStream({ threadId, terminalId, cols: 180, rows: 60 }, () =>
+          Effect.sync(() => void (delivered += 1)),
+        )
+        .pipe(Effect.flip);
+
+      assert.equal(activeError._tag, "TerminalSessionOwnershipError");
+      assert.equal(delivered, 0);
+      expect(processHandle.resizeCalls).toEqual([]);
+      assert.equal(
+        yield* manager.inspectSession({ threadId, terminalId, expectedOwner: owner }),
+        "active",
+      );
+
+      processHandle.emitExit({ exitCode: 0, signal: 0 });
+      yield* waitFor(
+        manager
+          .inspectSession({ threadId, terminalId, expectedOwner: owner })
+          .pipe(Effect.map((inspection) => inspection === "inactive")),
+      );
+      const inactiveError = yield* manager
+        .attachStream(
+          {
+            threadId,
+            terminalId,
+            cwd: process.cwd(),
+            restartIfNotRunning: true,
+          },
+          () => Effect.sync(() => void (delivered += 1)),
+        )
+        .pipe(Effect.flip);
+
+      assert.equal(inactiveError._tag, "TerminalSessionOwnershipError");
+      assert.equal(delivered, 0);
+      expect(ptyAdapter.spawnInputs).toHaveLength(1);
+    }),
+  );
+
+  it.effect("close-all 跳过受监督 session 并继续关闭普通终端", () =>
+    Effect.gen(function* () {
+      const { manager, ptyAdapter } = yield* createManager();
+      const threadId = "owner-close-all";
+      const ownedTerminalId = "workspace-script-operation-owner-close-all";
+      const ordinaryTerminalId = "ordinary-terminal";
+      const owner = workspaceScriptOwner(25);
+      yield* manager.runCommand({
+        threadId,
+        terminalId: ownedTerminalId,
+        cwd: process.cwd(),
+        command: "workspace-script-command",
+        owner,
+      });
+      yield* manager.open(openInput({ threadId, terminalId: ordinaryTerminalId }));
+      const ownedProcess = ptyAdapter.processes[0];
+      const ordinaryProcess = ptyAdapter.processes[1];
+      expect(ownedProcess).toBeDefined();
+      expect(ordinaryProcess).toBeDefined();
+      if (!ownedProcess || !ordinaryProcess) return;
+      ownedProcess.emitData("owned-log\n");
+      ordinaryProcess.emitData("ordinary-log\n");
+      yield* waitFor(
+        manager
+          .getHistory({ threadId, terminalId: ownedTerminalId })
+          .pipe(Effect.map((history) => history === "owned-log\n")),
+      );
+      yield* waitFor(
+        manager
+          .getHistory({ threadId, terminalId: ordinaryTerminalId })
+          .pipe(Effect.map((history) => history === "ordinary-log\n")),
+      );
+
+      yield* manager.close({ threadId, deleteHistory: true });
+
+      assert.equal(
+        yield* manager.inspectSession({
+          threadId,
+          terminalId: ownedTerminalId,
+          expectedOwner: owner,
+        }),
+        "active",
+      );
+      assert.equal(
+        yield* manager.inspectSession({ threadId, terminalId: ordinaryTerminalId }),
+        "missing",
+      );
+      assert.equal(ownedProcess.killed, false);
+      assert.equal(ordinaryProcess.killed, true);
+      assert.equal(
+        yield* manager.getHistory({ threadId, terminalId: ownedTerminalId }),
+        "owned-log\n",
+      );
+      assert.equal(yield* manager.getHistory({ threadId, terminalId: ordinaryTerminalId }), "");
+    }),
+  );
+
   it.effect("运行中的 on_exit 命令从内存返回最新历史且不会创建额外 PTY", () =>
     Effect.gen(function* () {
       const { manager, ptyAdapter, getEvents } = yield* createManager();
