@@ -24,7 +24,7 @@ export const BYOK_DELEGATION_INTERRUPTED_FAILURE_CODE = "byok_delegation_interru
 
 export type ByokDelegationLedgerStorePort = Pick<
   CompositionTaskStoreShape,
-  "appendEventIfNew" | "getTask" | "getRun" | "upsertTask" | "upsertRun"
+  "appendEventIfNew" | "getTask" | "getRun" | "upsertTask" | "upsertRun" | "withTransaction"
 >;
 
 /** 单个委派在 Composition 台账中的稳定投影身份。 */
@@ -166,63 +166,67 @@ export const projectByokDelegationTransition = (options: {
   readonly transition: ByokDelegationProjectionTransition;
   readonly nowUnixMs: number;
 }): Effect.Effect<boolean, CompositionTaskStoreError> =>
-  Effect.gen(function* () {
-    const { store, scope, transition, nowUnixMs } = options;
-    const status = mapDelegationStatus(transition.status);
-    const inserted = yield* store.appendEventIfNew({
-      taskId: scope.taskId,
-      runId: scope.runId,
-      agentId: scope.agentId,
-      runtimeId: scope.runtimeId,
-      sourceEventId: `${byokDelegationEventPrefix(scope.taskId, scope.runId)}:${eventSuffix(transition.status)}`,
-      status,
-      sequence: 0,
-      eventType: "status",
-      summary: describeTransition(scope, transition),
-    });
-    if (!inserted) return false;
+  options.store.withTransaction(
+    Effect.gen(function* () {
+      const { store, scope, transition, nowUnixMs } = options;
+      const status = mapDelegationStatus(transition.status);
+      const inserted = yield* store.appendEventIfNew({
+        taskId: scope.taskId,
+        runId: scope.runId,
+        agentId: scope.agentId,
+        runtimeId: scope.runtimeId,
+        sourceEventId: `${byokDelegationEventPrefix(scope.taskId, scope.runId)}:${eventSuffix(transition.status)}`,
+        status,
+        sequence: 0,
+        eventType: "status",
+        summary: describeTransition(scope, transition),
+      });
+      if (!inserted) return false;
 
-    const rank = delegationRank(transition.status);
-    const existingRun = yield* store.getRun(scope.runId);
-    if (Option.isSome(existingRun) && compositionRank(existingRun.value.status) > rank) {
-      // 迟到的低阶状态只补事件行，不回退已推进的 Task/Run 状态。
+      const rank = delegationRank(transition.status);
+      const existingRun = yield* store.getRun(scope.runId);
+      if (Option.isSome(existingRun) && compositionRank(existingRun.value.status) > rank) {
+        // 迟到的低阶状态只补事件行，不回退已推进的 Task/Run 状态。
+        return true;
+      }
+      const existingTask = yield* store.getTask(scope.taskId);
+      const terminal = rank === 2;
+      const failureCode = failureCodeOf(transition);
+      const startedAtUnixMs =
+        Option.isSome(existingRun) && existingRun.value.startedAtUnixMs !== undefined
+          ? existingRun.value.startedAtUnixMs
+          : transition.status === "running"
+            ? nowUnixMs
+            : undefined;
+
+      yield* store.upsertRun({
+        runId: scope.runId,
+        taskId: scope.taskId,
+        agentId: scope.agentId,
+        runtimeId: scope.runtimeId,
+        runtimeTaskId: scope.delegationId,
+        status,
+        attempt: 1,
+        capabilityGrantIds: [],
+        ...(startedAtUnixMs === undefined ? {} : { startedAtUnixMs }),
+        ...(terminal ? { finishedAtUnixMs: nowUnixMs } : {}),
+        ...(failureCode === undefined ? {} : { failureCode }),
+      } satisfies CompositionTaskRun);
+      yield* store.upsertTask({
+        taskId: scope.taskId,
+        projectId: BYOK_DELEGATION_PROJECT_ID,
+        assigneeKind: "agent",
+        assigneeId: scope.agentId,
+        mode: "serial",
+        status,
+        promptDigest: scope.promptDigest,
+        dependsOnTaskIds: [],
+        createdAtUnixMs: Option.isSome(existingTask)
+          ? existingTask.value.createdAtUnixMs
+          : nowUnixMs,
+        updatedAtUnixMs: nowUnixMs,
+        ...(terminal ? { finishedAtUnixMs: nowUnixMs } : {}),
+      } satisfies CompositionTask);
       return true;
-    }
-    const existingTask = yield* store.getTask(scope.taskId);
-    const terminal = rank === 2;
-    const failureCode = failureCodeOf(transition);
-    const startedAtUnixMs =
-      Option.isSome(existingRun) && existingRun.value.startedAtUnixMs !== undefined
-        ? existingRun.value.startedAtUnixMs
-        : transition.status === "running"
-          ? nowUnixMs
-          : undefined;
-
-    yield* store.upsertRun({
-      runId: scope.runId,
-      taskId: scope.taskId,
-      agentId: scope.agentId,
-      runtimeId: scope.runtimeId,
-      runtimeTaskId: scope.delegationId,
-      status,
-      attempt: 1,
-      capabilityGrantIds: [],
-      ...(startedAtUnixMs === undefined ? {} : { startedAtUnixMs }),
-      ...(terminal ? { finishedAtUnixMs: nowUnixMs } : {}),
-      ...(failureCode === undefined ? {} : { failureCode }),
-    } satisfies CompositionTaskRun);
-    yield* store.upsertTask({
-      taskId: scope.taskId,
-      projectId: BYOK_DELEGATION_PROJECT_ID,
-      assigneeKind: "agent",
-      assigneeId: scope.agentId,
-      mode: "serial",
-      status,
-      promptDigest: scope.promptDigest,
-      dependsOnTaskIds: [],
-      createdAtUnixMs: Option.isSome(existingTask) ? existingTask.value.createdAtUnixMs : nowUnixMs,
-      updatedAtUnixMs: nowUnixMs,
-      ...(terminal ? { finishedAtUnixMs: nowUnixMs } : {}),
-    } satisfies CompositionTask);
-    return true;
-  });
+    }),
+  );

@@ -8,6 +8,7 @@ import {
   makeByokDelegationProjectionScope,
   projectByokDelegationTransition,
 } from "./CompositionByokDelegationProjection.ts";
+import { PersistenceSqlError } from "../persistence/Errors.ts";
 import { CompositionTaskStore } from "../persistence/Services/CompositionTaskStore.ts";
 import { CompositionTaskStoreLive } from "../persistence/Layers/CompositionTaskStore.ts";
 import { SqlitePersistenceMemory } from "../persistence/Layers/Sqlite.ts";
@@ -149,6 +150,55 @@ layer("projectByokDelegationTransition", (it) => {
       assert.equal(run.status, "completed");
       const events = yield* store.listEvents(scope.taskId, scope.runId);
       assert.equal(events.length, 2);
+    }),
+  );
+
+  it.effect("中途写入失败会回滚事件占位，并允许同一迁移安全重试", () =>
+    Effect.gen(function* () {
+      const store = yield* CompositionTaskStore;
+      const scope = makeScope("proj-transaction-retry");
+      let failNextRunWrite = true;
+      const flakyStore = {
+        appendEventIfNew: store.appendEventIfNew,
+        getTask: store.getTask,
+        getRun: store.getRun,
+        upsertTask: store.upsertTask,
+        upsertRun: (run: Parameters<typeof store.upsertRun>[0]) => {
+          if (!failNextRunWrite) return store.upsertRun(run);
+          failNextRunWrite = false;
+          return Effect.fail(
+            new PersistenceSqlError({
+              operation: "CompositionByokDelegationProjection.test.upsertRun",
+              detail: "注入一次 Run 写入失败",
+            }),
+          );
+        },
+        withTransaction: store.withTransaction,
+      };
+
+      const first = yield* Effect.result(
+        projectByokDelegationTransition({
+          store: flakyStore,
+          scope,
+          transition: { status: "running" },
+          nowUnixMs: 3_500,
+        }),
+      );
+      assert.equal(first._tag, "Failure");
+      assert.isEmpty(yield* store.listEvents(scope.taskId, scope.runId));
+      assert.isTrue(Option.isNone(yield* store.getRun(scope.runId)));
+      assert.isTrue(Option.isNone(yield* store.getTask(scope.taskId)));
+
+      const retried = yield* projectByokDelegationTransition({
+        store: flakyStore,
+        scope,
+        transition: { status: "running" },
+        nowUnixMs: 3_501,
+      });
+      assert.isTrue(retried);
+      assert.equal((yield* store.listEvents(scope.taskId, scope.runId)).length, 1);
+      assert.equal((yield* store.getRun(scope.runId)).pipe(Option.getOrThrow).status, "running");
+      assert.equal((yield* store.getTask(scope.taskId)).pipe(Option.getOrThrow).status, "running");
     }),
   );
 

@@ -8,12 +8,10 @@ import {
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
 
-import type {
-  CompositionTaskStoreError,
-  CompositionTaskStoreShape,
-} from "../persistence/Services/CompositionTaskStore.ts";
+import type { CompositionTaskStoreError } from "../persistence/Services/CompositionTaskStore.ts";
 import {
   projectByokDelegationTransition,
+  type ByokDelegationLedgerStorePort,
   type ByokDelegationProjectionScope,
   type ByokDelegationProjectionTransition,
 } from "./CompositionByokDelegationProjection.ts";
@@ -62,10 +60,7 @@ const resultStatusOf = (
  * 非委派 Task 返回 undefined，由调用方继续走通用 Composition Orchestrator。
  */
 export const cancelProjectedByokDelegationTask = (options: {
-  readonly store: Pick<
-    CompositionTaskStoreShape,
-    "appendEventIfNew" | "getTask" | "getRun" | "upsertTask" | "upsertRun"
-  >;
+  readonly store: ByokDelegationLedgerStorePort;
   readonly input: CompositionTaskCancelRequest;
   readonly cancelRuntime: ByokDelegationRuntimeCancelPort;
   readonly nowUnixMs: number;
