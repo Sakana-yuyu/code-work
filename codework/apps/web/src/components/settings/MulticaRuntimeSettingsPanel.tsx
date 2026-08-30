@@ -153,9 +153,11 @@ export function MulticaRuntimeSettingsPanel({
               draft={draft}
               disabled={controller.writesDisabled}
               deleting={controller.deletingId === instanceId}
-              deleteFailed={controller.deleteFailedId === instanceId}
+              deleteFailure={
+                controller.deleteFailedId === instanceId ? controller.deleteFailure : null
+              }
               onEdit={() => controller.openEdit(instanceId, instance)}
-               onDelete={() => controller.requestDelete(instanceId, instance)}
+              onDelete={() => controller.requestDelete(instanceId, instance)}
             />
           );
         })}

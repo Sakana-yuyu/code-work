@@ -1,4 +1,5 @@
 import type { ReactElement } from "react";
+import * as Cause from "effect/Cause";
 import {
   DEFAULT_UNIFIED_SETTINGS,
   EnvironmentId,
@@ -17,11 +18,13 @@ const atoms = vi.hoisted(() => ({
   providersAtom: Symbol("providers"),
   refreshProviders: Symbol("refreshProviders"),
   updateProvider: Symbol("updateProvider"),
+  updateSettings: Symbol("updateSettings"),
 }));
 
 const commands = vi.hoisted(() => ({
   refresh: vi.fn(),
   updateProvider: vi.fn(),
+  updateSettings: vi.fn(),
 }));
 
 const settingsState = vi.hoisted(() => ({
@@ -58,12 +61,17 @@ vi.mock("../../state/server", () => ({
     providersValueAtom: () => atoms.providersAtom,
     refreshProviders: atoms.refreshProviders,
     updateProvider: atoms.updateProvider,
+    updateSettings: atoms.updateSettings,
   },
 }));
 
 vi.mock("../../state/use-atom-command", () => ({
   useAtomCommand: (atom: symbol) =>
-    atom === atoms.refreshProviders ? commands.refresh : commands.updateProvider,
+    atom === atoms.refreshProviders
+      ? commands.refresh
+      : atom === atoms.updateSettings
+        ? commands.updateSettings
+        : commands.updateProvider,
 }));
 
 vi.mock("../../hooks/useSettings", () => ({
@@ -86,6 +94,11 @@ vi.mock("../../state/session", () => ({
 }));
 
 import { EnvironmentProviderSettings } from "./ProviderSettingsPanel";
+import {
+  formFromMulticaRuntimeInstance,
+  multicaRuntimeDraftFingerprint,
+} from "./MulticaRuntimeSettings.logic";
+import { persistMulticaRuntimeDraft } from "./MulticaRuntimeSettings.controller";
 import { t } from "~/i18n";
 
 const environmentId = EnvironmentId.make("remote-device");
@@ -143,6 +156,7 @@ describe("EnvironmentProviderSettings routing", () => {
     settingsState.updateSettings.mockReset();
     commands.refresh.mockReset().mockResolvedValue({ _tag: "Success" });
     commands.updateProvider.mockReset().mockResolvedValue({ _tag: "Success" });
+    commands.updateSettings.mockReset().mockResolvedValue({ _tag: "Success" });
   });
 
   it("coalesces a nullable provider snapshot before rendering array-backed UI", () => {
@@ -238,6 +252,182 @@ describe("EnvironmentProviderSettings routing", () => {
       (element) => element.props.id === "providers" && "headerAction" in element.props,
     );
     expect(providersSection?.props.headerAction).not.toBeNull();
+  });
+
+  it("将 Multica 保存的客户端版本随 settings RPC 一并发送", async () => {
+    const multicaId = ProviderInstanceId.make("multica_local");
+    const multicaInstance = {
+      driver: ProviderDriverKind.make("multica"),
+      enabled: true,
+      settingsRevision: "revision-v1",
+      environment: [{ name: "MULTICA_TOKEN", value: "", sensitive: true, valueRedacted: true }],
+      config: {
+        runtimeId: "multica:daemon-1:runtime-1",
+        daemonId: "daemon-1",
+        daemonRuntimeId: "runtime-1",
+        baseUrl: "http://127.0.0.1:9000",
+        headers: [{ headerName: "Private-Token", environmentVariable: "MULTICA_TOKEN" }],
+        assigneeRoutes: [],
+      },
+    };
+    settingsState.value = {
+      ...DEFAULT_UNIFIED_SETTINGS,
+      providerInstances: { [multicaId]: multicaInstance },
+    };
+    const panel = renderPanel();
+    const runtimePanel = visitElements(panel, (element) => {
+      const props = element.props as {
+        readonly state?: { readonly status?: string };
+        readonly onSave?: unknown;
+        readonly onDelete?: unknown;
+      };
+      return (
+        props.state?.status === "ready" &&
+        typeof props.onSave === "function" &&
+        typeof props.onDelete === "function"
+      );
+    });
+    expect(runtimePanel).not.toBeNull();
+    const expectedFingerprint = multicaRuntimeDraftFingerprint(
+      formFromMulticaRuntimeInstance(multicaId, multicaInstance)!,
+    );
+    const saveRuntime = runtimePanel?.props.onSave;
+    expect(saveRuntime).toBeTypeOf("function");
+
+    await (saveRuntime as (request: Record<string, unknown>) => Promise<void>)({
+      originalInstanceId: "multica_local",
+      expectedFingerprint,
+      instanceId: multicaId,
+      config: multicaInstance.config,
+      environment: multicaInstance.environment,
+    });
+
+    const {
+      settingsRevision: _serverOwnedRevision,
+      enabled: _enabled,
+      ...savedInstance
+    } = multicaInstance;
+
+    expect(commands.updateSettings).toHaveBeenCalledWith({
+      environmentId,
+      input: {
+        patch: {
+          providerInstances: { [multicaId]: { ...savedInstance, enabled: undefined } },
+          multicaProviderInstancePreconditions: [
+            { instanceId: multicaId, expectedRevision: "revision-v1" },
+          ],
+        },
+      },
+    });
+  });
+
+  it("将 settings RPC 的类型化失败映射为 Multica 保存冲突", async () => {
+    const multicaId = ProviderInstanceId.make("multica_local");
+    const multicaInstance = {
+      driver: ProviderDriverKind.make("multica"),
+      enabled: true,
+      settingsRevision: "revision-v1",
+      environment: [{ name: "MULTICA_TOKEN", value: "", sensitive: true, valueRedacted: true }],
+      config: {
+        runtimeId: "multica:daemon-1:runtime-1",
+        daemonId: "daemon-1",
+        daemonRuntimeId: "runtime-1",
+        baseUrl: "http://127.0.0.1:9000",
+        headers: [{ headerName: "Private-Token", environmentVariable: "MULTICA_TOKEN" }],
+        assigneeRoutes: [],
+      },
+    };
+    settingsState.value = {
+      ...DEFAULT_UNIFIED_SETTINGS,
+      providerInstances: { [multicaId]: multicaInstance },
+    };
+    commands.updateSettings.mockResolvedValue({
+      _tag: "Failure",
+      cause: Cause.fail({
+        _tag: "ServerSettingsConflictError",
+        providerInstanceId: multicaId,
+        message: "不应显示",
+      }),
+    });
+    const panel = renderPanel();
+    const runtimePanel = visitElements(
+      panel,
+      (element) =>
+        (element.props as { readonly state?: { readonly status?: string } }).state?.status ===
+          "ready" && typeof element.props.onSave === "function",
+    );
+    const draft = formFromMulticaRuntimeInstance(multicaId, multicaInstance);
+    expect(runtimePanel).not.toBeNull();
+    expect(draft).not.toBeNull();
+
+    const attempt = await persistMulticaRuntimeDraft(
+      draft!,
+      String(multicaId),
+      (request) =>
+        (
+          runtimePanel?.props.onSave as
+            | ((input: Record<string, unknown>) => Promise<void>)
+            | undefined
+        )?.({
+          ...request,
+          expectedFingerprint: multicaRuntimeDraftFingerprint(draft!),
+        }) ?? Promise.reject(new Error("missing Multica save callback")),
+    );
+
+    expect(attempt).toBe("conflict");
+    expect(commands.updateSettings).toHaveBeenCalledTimes(1);
+  });
+
+  it("本地快照过期时在调用 settings RPC 前返回保存冲突", async () => {
+    const multicaId = ProviderInstanceId.make("multica_local");
+    const versionOne = {
+      driver: ProviderDriverKind.make("multica"),
+      enabled: true,
+      settingsRevision: "revision-v1",
+      environment: [{ name: "MULTICA_TOKEN", value: "", sensitive: true, valueRedacted: true }],
+      config: {
+        runtimeId: "multica:daemon-1:runtime-1",
+        daemonId: "daemon-1",
+        daemonRuntimeId: "runtime-1",
+        baseUrl: "http://127.0.0.1:9000",
+        headers: [{ headerName: "Private-Token", environmentVariable: "MULTICA_TOKEN" }],
+        assigneeRoutes: [],
+      },
+    };
+    const versionTwo = {
+      ...versionOne,
+      settingsRevision: "revision-v2",
+      config: { ...versionOne.config, baseUrl: "http://127.0.0.1:9100" },
+    };
+    const staleDraft = formFromMulticaRuntimeInstance(multicaId, versionOne);
+    const staleFingerprint = multicaRuntimeDraftFingerprint(staleDraft!);
+    settingsState.value = {
+      ...DEFAULT_UNIFIED_SETTINGS,
+      providerInstances: { [multicaId]: versionTwo },
+    };
+    const panel = renderPanel();
+    const runtimePanel = visitElements(
+      panel,
+      (element) =>
+        (element.props as { readonly state?: { readonly status?: string } }).state?.status ===
+          "ready" && typeof element.props.onSave === "function",
+    );
+    expect(runtimePanel).not.toBeNull();
+
+    const attempt = await persistMulticaRuntimeDraft(
+      staleDraft!,
+      String(multicaId),
+      (request) =>
+        (
+          runtimePanel?.props.onSave as
+            | ((input: Record<string, unknown>) => Promise<void>)
+            | undefined
+        )?.({ ...request, expectedFingerprint: staleFingerprint }) ??
+        Promise.reject(new Error("missing Multica save callback")),
+    );
+
+    expect(attempt).toBe("conflict");
+    expect(commands.updateSettings).not.toHaveBeenCalled();
   });
 
   it("deletes and resets provider configuration without erasing shared preferences", () => {

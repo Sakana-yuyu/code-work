@@ -10,6 +10,8 @@
  *
  * @module ServerSettings
  */
+import * as NodeCrypto from "node:crypto";
+
 import {
   DEFAULT_TEXT_GENERATION_MODEL,
   DEFAULT_TEXT_GENERATION_MODEL_BY_PROVIDER,
@@ -21,11 +23,14 @@ import {
   isSafeMulticaRuntimeBaseUrl,
   isSafeMulticaTaskMcpEndpoint,
   type ModelSelection,
+  multicaProviderInstanceFingerprint,
+  multicaProviderInstanceRevision,
   type ProviderInstanceConfig,
   type ProviderInstanceEnvironmentVariable,
   ProviderDriverKind,
   ProviderInstanceId,
   ServerSettings,
+  ServerSettingsConflictError,
   ServerSettingsError,
   type ServerSettingsPatch,
 } from "@codework/contracts";
@@ -66,6 +71,8 @@ const decodeServerSettings = Schema.decodeUnknownEffect(ServerSettings);
 
 const textEncoder = new TextEncoder();
 const textDecoder = new TextDecoder();
+
+type ServerSettingsUpdateError = ServerSettingsError | ServerSettingsConflictError;
 
 /**
  * Fold the legacy in-config `enabled` flag into the envelope-level
@@ -209,19 +216,25 @@ function redactProviderEnvironmentVariable(
 }
 
 function multicaSecretEnvironmentNames(instance: ProviderInstanceConfig): ReadonlySet<string> {
-  if (instance.driver !== "multica" || instance.config === null || typeof instance.config !== "object") {
+  if (
+    instance.driver !== "multica" ||
+    instance.config === null ||
+    typeof instance.config !== "object"
+  ) {
     return new Set();
   }
   const headers = (instance.config as Record<string, unknown>)["headers"];
   if (!Array.isArray(headers)) return new Set();
   return new Set(
-    headers.flatMap((entry) => {
+    headers.flatMap((entry): ReadonlyArray<string> => {
       if (entry === null || typeof entry !== "object" || Array.isArray(entry)) return [];
       const binding = entry as Record<string, unknown>;
-      return typeof binding["headerName"] === "string" &&
-        typeof binding["environmentVariable"] === "string" &&
-        isMulticaSecretName(binding["headerName"])
-        ? [binding["environmentVariable"]]
+      const headerName = binding["headerName"];
+      const environmentVariable = binding["environmentVariable"];
+      return typeof headerName === "string" &&
+        typeof environmentVariable === "string" &&
+        isMulticaSecretName(headerName)
+        ? [environmentVariable]
         : [];
     }),
   );
@@ -244,8 +257,7 @@ function validateMulticaProviderInstancesForPersistence(
       typeof baseUrl !== "string" ||
       !isSafeMulticaRuntimeBaseUrl(baseUrl) ||
       (taskMcpEndpoint !== undefined &&
-        (typeof taskMcpEndpoint !== "string" ||
-          !isSafeMulticaTaskMcpEndpoint(taskMcpEndpoint)))
+        (typeof taskMcpEndpoint !== "string" || !isSafeMulticaTaskMcpEndpoint(taskMcpEndpoint)))
     ) {
       return Effect.fail(
         new ServerSettingsError({
@@ -258,6 +270,93 @@ function validateMulticaProviderInstancesForPersistence(
     }
     return Effect.void;
   }).pipe(Effect.asVoid);
+}
+
+function changedMulticaProviderInstanceIds(
+  current: ServerSettings,
+  next: ServerSettings,
+): ReadonlyArray<string> {
+  const instanceIds = new Set([
+    ...Object.keys(current.providerInstances),
+    ...Object.keys(next.providerInstances),
+  ]);
+  return [...instanceIds].filter((instanceId) => {
+    const providerInstanceId = ProviderInstanceId.make(instanceId);
+    const currentInstance = current.providerInstances[providerInstanceId];
+    const nextInstance = next.providerInstances[providerInstanceId];
+    if (currentInstance?.driver !== "multica" && nextInstance?.driver !== "multica") {
+      return false;
+    }
+    if (
+      multicaProviderInstanceFingerprint(instanceId, currentInstance) !==
+      multicaProviderInstanceFingerprint(instanceId, nextInstance)
+    ) {
+      return true;
+    }
+    if (nextInstance?.driver !== "multica") return false;
+    const secretNames = multicaSecretEnvironmentNames(nextInstance);
+    return (nextInstance.environment ?? []).some(
+      (variable) =>
+        secretNames.has(variable.name) &&
+        variable.valueRedacted !== true &&
+        variable.value.length > 0,
+    );
+  });
+}
+
+function validateMulticaProviderInstancePreconditions(
+  current: ServerSettings,
+  next: ServerSettings,
+  patch: ServerSettingsPatch,
+): Effect.Effect<ReadonlyArray<string>, ServerSettingsConflictError> {
+  const changedInstanceIds = changedMulticaProviderInstanceIds(current, next);
+  if (changedInstanceIds.length === 0) return Effect.succeed(changedInstanceIds);
+  const preconditions = new Map<string, string | null>();
+  for (const precondition of patch.multicaProviderInstancePreconditions ?? []) {
+    if (preconditions.has(precondition.instanceId)) {
+      return Effect.fail(
+        new ServerSettingsConflictError({ providerInstanceId: precondition.instanceId }),
+      );
+    }
+    preconditions.set(precondition.instanceId, precondition.expectedRevision);
+  }
+  for (const instanceId of changedInstanceIds) {
+    const expectedRevision = preconditions.get(instanceId);
+    const currentInstance = current.providerInstances[ProviderInstanceId.make(instanceId)];
+    const actualRevision = multicaProviderInstanceRevision(instanceId, currentInstance);
+    if (
+      !preconditions.has(instanceId) ||
+      (expectedRevision === null
+        ? currentInstance !== undefined
+        : expectedRevision !== actualRevision)
+    ) {
+      return Effect.fail(new ServerSettingsConflictError({ providerInstanceId: instanceId }));
+    }
+  }
+  return Effect.succeed(changedInstanceIds);
+}
+
+function assignMulticaProviderInstanceRevisions(
+  current: ServerSettings,
+  next: ServerSettings,
+  changedInstanceIds: ReadonlyArray<string>,
+): ServerSettings {
+  const providerInstances: Record<string, ProviderInstanceConfig> = { ...next.providerInstances };
+  const changed = new Set(changedInstanceIds);
+  for (const [instanceId, instance] of Object.entries(providerInstances)) {
+    if (instance?.driver !== "multica") continue;
+    const { settingsRevision: _clientRevision, ...unversionedInstance } = instance;
+    const currentInstance = current.providerInstances[ProviderInstanceId.make(instanceId)];
+    providerInstances[instanceId] = {
+      ...unversionedInstance,
+      ...(changed.has(instanceId)
+        ? { settingsRevision: NodeCrypto.randomUUID() }
+        : currentInstance?.driver === "multica" && currentInstance.settingsRevision !== undefined
+          ? { settingsRevision: currentInstance.settingsRevision }
+          : {}),
+    } satisfies ProviderInstanceConfig;
+  }
+  return { ...next, providerInstances: providerInstances as ServerSettings["providerInstances"] };
 }
 
 function redactMcpSecretValue(value: CompositionMcpSecretValue): CompositionMcpSecretValue {
@@ -329,7 +428,7 @@ export class ServerSettingsService extends Context.Service<
     /** Patch settings and persist. Returns the new full settings object. */
     readonly updateSettings: (
       patch: ServerSettingsPatch,
-    ) => Effect.Effect<ServerSettings, ServerSettingsError>;
+    ) => Effect.Effect<ServerSettings, ServerSettingsUpdateError>;
 
     /** Stream of settings change events. */
     readonly streamChanges: Stream.Stream<ServerSettings>;
@@ -1203,13 +1302,14 @@ const make = Effect.gen(function* () {
       };
 
       const nextSecretKeys = new Set<string>();
-      for (const [instanceId, instance] of Object.entries(next.providerInstances)) {
+      for (const [instanceId, instance] of Object.entries(next.providerInstances) as ReadonlyArray<
+        readonly [string, ProviderInstanceConfig]
+      >) {
         if (!instance.environment) continue;
         const legacyEnvironment = new Map(
-          (current.providerInstances[instanceId]?.environment ?? []).map((variable) => [
-            variable.name,
-            variable,
-          ]),
+          (current.providerInstances[ProviderInstanceId.make(instanceId)]?.environment ?? []).map(
+            (variable) => [variable.name, variable],
+          ),
         );
         const multicaSecretNames = multicaSecretEnvironmentNames(instance);
         const environment: ProviderInstanceEnvironmentVariable[] = [];
@@ -1429,10 +1529,20 @@ const make = Effect.gen(function* () {
         Effect.gen(function* () {
           const current = yield* getSettingsFromCache;
           const patched = applyServerSettingsPatch(current, patch);
-          yield* validateMulticaProviderInstancesForPersistence(settingsPath, patched);
-          const nextWithEnvironmentSecrets = yield* persistProviderEnvironmentSecrets(
+          const changedMulticaInstanceIds = yield* validateMulticaProviderInstancePreconditions(
             current,
             patched,
+            patch,
+          );
+          const versioned = assignMulticaProviderInstanceRevisions(
+            current,
+            patched,
+            changedMulticaInstanceIds,
+          );
+          yield* validateMulticaProviderInstancesForPersistence(settingsPath, versioned);
+          const nextWithEnvironmentSecrets = yield* persistProviderEnvironmentSecrets(
+            current,
+            versioned,
           );
           const nextWithMcpSecrets = yield* persistMcpServerSecrets(
             current,

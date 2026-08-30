@@ -2,6 +2,7 @@ import * as NodeServices from "@effect/platform-node/NodeServices";
 import {
   CompositionMcpServerId,
   DEFAULT_SERVER_SETTINGS,
+  multicaProviderInstanceRevision,
   ProviderDriverKind,
   ProviderInstanceId,
   resolveProviderInstanceEnabled,
@@ -1415,10 +1416,20 @@ it.layer(NodeServices.layer)("server settings", (it) => {
       assert.deepEqual(clientSnapshot.providerInstances[instanceId]?.environment, [
         { name: "MULTICA_TOKEN", value: "", sensitive: true, valueRedacted: true },
       ]);
+      // @effect-diagnostics-next-line preferSchemaOverJson:off
       assert.notInclude(JSON.stringify(clientSnapshot), "legacy-secret");
 
       const migrated = yield* serverSettings.updateSettings({
         providerInstances: clientSnapshot.providerInstances,
+        multicaProviderInstancePreconditions: [
+          {
+            instanceId,
+            expectedRevision: multicaProviderInstanceRevision(
+              instanceId,
+              clientSnapshot.providerInstances[instanceId],
+            ),
+          },
+        ],
       });
       assert.equal(
         migrated.providerInstances[instanceId]?.environment?.[0]?.value,
@@ -1444,6 +1455,15 @@ it.layer(NodeServices.layer)("server settings", (it) => {
             ),
           },
         },
+        multicaProviderInstancePreconditions: [
+          {
+            instanceId,
+            expectedRevision: multicaProviderInstanceRevision(
+              instanceId,
+              migrated.providerInstances[instanceId],
+            ),
+          },
+        ],
       });
       assert.deepEqual(cleared.providerInstances[instanceId]?.environment, [
         { name: "MULTICA_TOKEN", value: "", sensitive: true },
@@ -1475,13 +1495,12 @@ it.layer(NodeServices.layer)("server settings", (it) => {
               daemonId: "daemon-1",
               daemonRuntimeId: "runtime-1",
               baseUrl: "http://127.0.0.1:9000",
-              headers: [
-                { headerName: "Private-Token", environmentVariable: "MULTICA_TOKEN" },
-              ],
+              headers: [{ headerName: "Private-Token", environmentVariable: "MULTICA_TOKEN" }],
               assigneeRoutes: [],
             },
           },
         },
+        multicaProviderInstancePreconditions: [{ instanceId, expectedRevision: null }],
       });
 
       assert.deepEqual(next.providerInstances[instanceId]?.environment, [
@@ -1513,7 +1532,10 @@ it.layer(NodeServices.layer)("server settings", (it) => {
           assigneeRoutes: [],
         },
       };
-      yield* serverSettings.updateSettings({ providerInstances: { [instanceId]: instance } });
+      const persisted = yield* serverSettings.updateSettings({
+        providerInstances: { [instanceId]: instance },
+        multicaProviderInstancePreconditions: [{ instanceId, expectedRevision: null }],
+      });
       const before = yield* fileSystem.readFileString(serverConfig.settingsPath);
 
       for (const config of [
@@ -1532,11 +1554,215 @@ it.layer(NodeServices.layer)("server settings", (it) => {
         const error = yield* Effect.flip(
           serverSettings.updateSettings({
             providerInstances: { [instanceId]: { ...instance, config } },
+            multicaProviderInstancePreconditions: [
+              {
+                instanceId,
+                expectedRevision: multicaProviderInstanceRevision(
+                  instanceId,
+                  persisted.providerInstances[instanceId],
+                ),
+              },
+            ],
           }),
         );
+        if (error._tag !== "ServerSettingsError") {
+          throw new Error("不安全 URL 不应产生 Multica 并发冲突。");
+        }
         assert.equal(error.operation, "normalize");
         assert.equal(yield* fileSystem.readFileString(serverConfig.settingsPath), before);
       }
+    }).pipe(Effect.provide(makeServerSettingsLayer())),
+  );
+
+  it.effect("以服务端 revision 拒绝并发的 Multica 保存和删除", () =>
+    Effect.gen(function* () {
+      const serverSettings = yield* ServerSettingsModule.ServerSettingsService;
+      const instanceId = ProviderInstanceId.make("multica_concurrent");
+      const instance = {
+        driver: ProviderDriverKind.make("multica"),
+        config: {
+          runtimeId: "multica:daemon-1:runtime-1",
+          daemonId: "daemon-1",
+          daemonRuntimeId: "runtime-1",
+          baseUrl: "http://127.0.0.1:9000",
+          headers: [],
+          assigneeRoutes: [],
+          version: "v1",
+        },
+      };
+      const versionOne = yield* serverSettings.updateSettings({
+        providerInstances: { [instanceId]: instance },
+        multicaProviderInstancePreconditions: [{ instanceId, expectedRevision: null }],
+      });
+      const clientA = ServerSettingsModule.redactServerSettingsForClient(versionOne);
+      const clientB = ServerSettingsModule.redactServerSettingsForClient(versionOne);
+      const expectedVersionOne = multicaProviderInstanceRevision(
+        instanceId,
+        clientA.providerInstances[instanceId],
+      );
+
+      const versionTwo = yield* serverSettings.updateSettings({
+        providerInstances: {
+          [instanceId]: {
+            ...clientB.providerInstances[instanceId]!,
+            config: { ...instance.config, version: "v2" },
+          },
+        },
+        multicaProviderInstancePreconditions: [
+          {
+            instanceId,
+            expectedRevision: multicaProviderInstanceRevision(
+              instanceId,
+              clientB.providerInstances[instanceId],
+            ),
+          },
+        ],
+      });
+      assert.notEqual(
+        multicaProviderInstanceRevision(instanceId, versionTwo.providerInstances[instanceId]),
+        expectedVersionOne,
+      );
+
+      const staleSave = yield* Effect.flip(
+        serverSettings.updateSettings({
+          providerInstances: {
+            [instanceId]: {
+              ...clientA.providerInstances[instanceId]!,
+              config: { ...instance.config, version: "v3" },
+            },
+          },
+          multicaProviderInstancePreconditions: [
+            { instanceId, expectedRevision: expectedVersionOne },
+          ],
+        }),
+      );
+      assert.equal(staleSave._tag, "ServerSettingsConflictError");
+
+      const staleDelete = yield* Effect.flip(
+        serverSettings.updateSettings({
+          providerInstances: {},
+          multicaProviderInstancePreconditions: [
+            { instanceId, expectedRevision: expectedVersionOne },
+          ],
+        }),
+      );
+      assert.equal(staleDelete._tag, "ServerSettingsConflictError");
+
+      const missingPrecondition = yield* Effect.flip(
+        serverSettings.updateSettings({
+          providerInstances: {
+            [instanceId]: {
+              ...versionTwo.providerInstances[instanceId]!,
+              config: { ...instance.config, version: "v4" },
+            },
+          },
+        }),
+      );
+      assert.equal(missingPrecondition._tag, "ServerSettingsConflictError");
+
+      const revisionTwo = multicaProviderInstanceRevision(
+        instanceId,
+        versionTwo.providerInstances[instanceId],
+      );
+      const { settingsRevision: _ignoredRevision, ...legacyClientInstance } =
+        versionTwo.providerInstances[instanceId]!;
+      const revisionPreserved = yield* serverSettings.updateSettings({
+        providerInstances: {
+          [instanceId]: { ...legacyClientInstance, settingsRevision: "forged-by-client" },
+        },
+      });
+      assert.equal(
+        multicaProviderInstanceRevision(
+          instanceId,
+          revisionPreserved.providerInstances[instanceId],
+        ),
+        revisionTwo,
+      );
+
+      const unrelatedUpdate = yield* serverSettings.updateSettings({
+        enableAgentBrowserAccess: false,
+      });
+      assert.equal(
+        multicaProviderInstanceRevision(instanceId, unrelatedUpdate.providerInstances[instanceId]),
+        revisionTwo,
+      );
+
+      const current = yield* serverSettings.getSettings;
+      const currentInstance = current.providerInstances[instanceId]!;
+      assert.equal((currentInstance.config as { readonly version?: string }).version, "v2");
+    }).pipe(Effect.provide(makeServerSettingsLayer())),
+  );
+
+  it.effect("拒绝创建或重命名覆盖已存在的非 Multica 实例", () =>
+    Effect.gen(function* () {
+      const serverSettings = yield* ServerSettingsModule.ServerSettingsService;
+      const sourceId = ProviderInstanceId.make("multica_source");
+      const targetId = ProviderInstanceId.make("shared_target");
+      const multica = {
+        driver: ProviderDriverKind.make("multica"),
+        config: {
+          runtimeId: "multica:daemon-1:runtime-1",
+          daemonId: "daemon-1",
+          daemonRuntimeId: "runtime-1",
+          baseUrl: "http://127.0.0.1:9000",
+          headers: [],
+          assigneeRoutes: [],
+        },
+      };
+      const initial = yield* serverSettings.updateSettings({
+        providerInstances: {
+          [sourceId]: multica,
+          [targetId]: { driver: ProviderDriverKind.make("codex"), config: {} },
+        },
+        multicaProviderInstancePreconditions: [{ instanceId: sourceId, expectedRevision: null }],
+      });
+      const sourceRevision = multicaProviderInstanceRevision(
+        sourceId,
+        initial.providerInstances[sourceId],
+      );
+
+      const createConflict = yield* Effect.flip(
+        serverSettings.updateSettings({
+          providerInstances: {
+            [sourceId]: initial.providerInstances[sourceId]!,
+            [targetId]: multica,
+          },
+          multicaProviderInstancePreconditions: [{ instanceId: targetId, expectedRevision: null }],
+        }),
+      );
+      assert.equal(createConflict._tag, "ServerSettingsConflictError");
+
+      const renameConflict = yield* Effect.flip(
+        serverSettings.updateSettings({
+          providerInstances: { [targetId]: multica },
+          multicaProviderInstancePreconditions: [
+            { instanceId: sourceId, expectedRevision: sourceRevision },
+            { instanceId: targetId, expectedRevision: null },
+          ],
+        }),
+      );
+      assert.equal(renameConflict._tag, "ServerSettingsConflictError");
+
+      const duplicateConflict = yield* Effect.flip(
+        serverSettings.updateSettings({
+          providerInstances: {
+            [sourceId]: {
+              ...initial.providerInstances[sourceId]!,
+              config: { ...multica.config, version: "v2" },
+            },
+            [targetId]: initial.providerInstances[targetId]!,
+          },
+          multicaProviderInstancePreconditions: [
+            { instanceId: sourceId, expectedRevision: sourceRevision },
+            { instanceId: sourceId, expectedRevision: sourceRevision },
+          ],
+        }),
+      );
+      assert.equal(duplicateConflict._tag, "ServerSettingsConflictError");
+
+      const current = yield* serverSettings.getSettings;
+      assert.equal(current.providerInstances[sourceId]?.driver, "multica");
+      assert.equal(current.providerInstances[targetId]?.driver, "codex");
     }).pipe(Effect.provide(makeServerSettingsLayer())),
   );
 });

@@ -13,6 +13,7 @@ import {
   persistMulticaRuntimeDraft,
   type MulticaRuntimeSettingsText,
 } from "./MulticaRuntimeSettingsPanel";
+import { MulticaRuntimeInstanceRow } from "./MulticaRuntimeInstanceRow";
 
 const text: MulticaRuntimeSettingsText = (key) => `文案:${key}`;
 const noop = () => undefined;
@@ -42,7 +43,7 @@ const savedInstance = (secretValue: string): ProviderInstanceConfig => ({
 const renderEditor = (
   initialDraft: MulticaRuntimeDraft,
   draft: MulticaRuntimeDraft,
-  saveState: "idle" | "saving" | "error" = "idle",
+  saveState: "idle" | "saving" | "error" | "conflict" = "idle",
 ): string =>
   renderToStaticMarkup(
     <MulticaRuntimeSettingsEditor
@@ -219,6 +220,35 @@ describe("MulticaRuntimeSettingsPanel", () => {
     expect(isButtonDisabled(saveButtonMarkup(html))).toBe(false);
   });
 
+  it("保存冲突锁定草稿并显示稳定冲突文案", () => {
+    const initial = validDraft();
+    const draft = { ...initial, baseUrl: "http://127.0.0.1:9200" };
+    const html = renderEditor(initial, draft, "conflict");
+
+    expect(html).toContain("文案:saveConflict");
+    expect(html).not.toContain("raw persistence failure");
+    expect(isButtonDisabled(saveButtonMarkup(html))).toBe(true);
+  });
+
+  it("删除冲突显示稳定文案而不回显服务端错误", () => {
+    const html = renderToStaticMarkup(
+      <MulticaRuntimeInstanceRow
+        text={text}
+        instanceId="multica_local"
+        enabled
+        draft={validDraft()}
+        disabled={false}
+        deleting={false}
+        deleteFailure="conflict"
+        onEdit={noop}
+        onDelete={noop}
+      />,
+    );
+
+    expect(html).toContain("文案:deleteConflict");
+    expect(html).not.toContain("raw persistence failure");
+  });
+
   it("保存回调拒绝时返回稳定 error 结果", async () => {
     const onSave = vi.fn().mockRejectedValue(new Error("raw persistence failure"));
 
@@ -229,5 +259,35 @@ describe("MulticaRuntimeSettingsPanel", () => {
       instanceId: "multica_local",
       config: { runtimeId: "multica:daemon-1:runtime-1" },
     });
+  });
+
+  it("仅将 RPC 稳定 _tag 或 code 映射为保存冲突", async () => {
+    await expect(
+      persistMulticaRuntimeDraft(
+        validDraft(),
+        null,
+        vi.fn().mockRejectedValue({
+          _tag: "ServerSettingsConflictError",
+          message: "不应显示",
+        }),
+      ),
+    ).resolves.toBe("conflict");
+    await expect(
+      persistMulticaRuntimeDraft(
+        validDraft(),
+        null,
+        vi.fn().mockRejectedValue({
+          code: "ServerSettingsConflictError",
+          message: "不应显示",
+        }),
+      ),
+    ).resolves.toBe("conflict");
+    await expect(
+      persistMulticaRuntimeDraft(
+        validDraft(),
+        null,
+        vi.fn().mockRejectedValue(new Error("ServerSettingsConflictError")),
+      ),
+    ).resolves.toBe("error");
   });
 });

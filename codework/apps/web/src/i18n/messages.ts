@@ -3863,17 +3863,23 @@ export const en: Record<string, string> = {
   "multicaRuntime.loadFailedTitle": "Could not load Multica runtimes",
   "multicaRuntime.loadFailedDescription": "Try again after the environment reconnects.",
   "multicaRuntime.emptyTitle": "No Multica runtimes configured",
-  "multicaRuntime.emptyDescription": "Add a runtime to make Multica agents available in this environment.",
+  "multicaRuntime.emptyDescription":
+    "Add a runtime to make Multica agents available in this environment.",
   "multicaRuntime.invalidSavedTitle": "Saved Multica runtime is invalid",
-  "multicaRuntime.invalidSavedDescription": "This runtime cannot be edited until its configuration is repaired.",
+  "multicaRuntime.invalidSavedDescription":
+    "This runtime cannot be edited until its configuration is repaired.",
   "multicaRuntime.deleteConfirmTitle": "Delete this Multica runtime?",
-  "multicaRuntime.deleteConfirmDescription": "This removes the runtime configuration from the selected environment.",
+  "multicaRuntime.deleteConfirmDescription":
+    "This removes the runtime configuration from the selected environment.",
   "multicaRuntime.deleteFailed": "Could not delete this Multica runtime.",
+  "multicaRuntime.deleteConflict":
+    "This runtime changed on the environment. Reopen it before deleting.",
   "multicaRuntime.createTitle": "Add Multica runtime",
   "multicaRuntime.editTitle": "Edit Multica runtime",
   "multicaRuntime.unsavedChanges": "Unsaved changes",
   "multicaRuntime.saveFailed": "Could not save this Multica runtime.",
-  "multicaRuntime.saveConflict": "This runtime changed on the environment. Reopen it before saving.",
+  "multicaRuntime.saveConflict":
+    "This runtime changed on the environment. Reopen it before saving.",
   "multicaRuntime.connectionSection": "Connection",
   "multicaRuntime.credentialsSection": "Credentials",
   "multicaRuntime.routingSection": "Routing",
@@ -3921,14 +3927,20 @@ export const en: Record<string, string> = {
   "multicaRuntime.extensionCwd": "Working directory",
   "multicaRuntime.extensionTimeoutMs": "Timeout (ms)",
   "multicaRuntime.issue.invalidInstanceId": "Enter a valid instance ID.",
-  "multicaRuntime.issue.invalidRuntimeIdentity": "Runtime ID, daemon ID, and daemon runtime ID are required.",
-  "multicaRuntime.issue.invalidBaseUrl": "Enter an HTTP or HTTPS base URL without credentials, query parameters, or a fragment.",
+  "multicaRuntime.issue.invalidRuntimeIdentity":
+    "Runtime ID, daemon ID, and daemon runtime ID are required.",
+  "multicaRuntime.issue.invalidBaseUrl":
+    "Enter an HTTP or HTTPS base URL without credentials, query parameters, or a fragment.",
   "multicaRuntime.issue.invalidEnvironment": "Check environment variable names and values.",
-  "multicaRuntime.issue.invalidEnvironmentSecret": "Stored secrets cannot be renamed, made public, or cleared without entering a replacement.",
-  "multicaRuntime.issue.invalidHeaderBinding": "Each header needs a valid environment variable; credential headers require a sensitive value.",
-  "multicaRuntime.issue.invalidAssigneeRoute": "Check each assignee route and its MCP credential binding.",
+  "multicaRuntime.issue.invalidEnvironmentSecret":
+    "Stored secrets cannot be renamed, made public, or cleared without entering a replacement.",
+  "multicaRuntime.issue.invalidHeaderBinding":
+    "Each header needs a valid environment variable; credential headers require a sensitive value.",
+  "multicaRuntime.issue.invalidAssigneeRoute":
+    "Check each assignee route and its MCP credential binding.",
   "multicaRuntime.issue.invalidTaskMcpEndpoint": "Enter a safe HTTP or HTTPS Task MCP endpoint.",
-  "multicaRuntime.issue.invalidTaskExecutionExtension": "Check the execution extension command and timeout.",
+  "multicaRuntime.issue.invalidTaskExecutionExtension":
+    "Check the execution extension command and timeout.",
   "multicaRuntime.issue.invalidConfig": "This runtime configuration is invalid.",
   enabled: "Enabled",
   headers: "Headers",
@@ -7657,6 +7669,7 @@ export const zhCN: Record<string, string> = {
   "multicaRuntime.deleteConfirmTitle": "删除此 Multica 运行时？",
   "multicaRuntime.deleteConfirmDescription": "这会从所选环境移除该运行时配置。",
   "multicaRuntime.deleteFailed": "无法删除此 Multica 运行时。",
+  "multicaRuntime.deleteConflict": "此运行时已在环境中变更。请重新打开后再删除。",
   "multicaRuntime.createTitle": "添加 Multica 运行时",
   "multicaRuntime.editTitle": "编辑 Multica 运行时",
   "multicaRuntime.unsavedChanges": "有未保存的更改",
@@ -7709,11 +7722,15 @@ export const zhCN: Record<string, string> = {
   "multicaRuntime.extensionCwd": "工作目录",
   "multicaRuntime.extensionTimeoutMs": "超时（毫秒）",
   "multicaRuntime.issue.invalidInstanceId": "请输入有效的实例 ID。",
-  "multicaRuntime.issue.invalidRuntimeIdentity": "运行时 ID、Daemon ID 和 Daemon 运行时 ID 均为必填项。",
-  "multicaRuntime.issue.invalidBaseUrl": "请输入不包含凭据、查询参数或片段的 HTTP 或 HTTPS 基础 URL。",
+  "multicaRuntime.issue.invalidRuntimeIdentity":
+    "运行时 ID、Daemon ID 和 Daemon 运行时 ID 均为必填项。",
+  "multicaRuntime.issue.invalidBaseUrl":
+    "请输入不包含凭据、查询参数或片段的 HTTP 或 HTTPS 基础 URL。",
   "multicaRuntime.issue.invalidEnvironment": "请检查环境变量名称和值。",
-  "multicaRuntime.issue.invalidEnvironmentSecret": "已保存的 Secret 不能改名、公开或清空；请输入替换值。",
-  "multicaRuntime.issue.invalidHeaderBinding": "每个 Header 都需要有效环境变量；凭据 Header 必须绑定敏感值。",
+  "multicaRuntime.issue.invalidEnvironmentSecret":
+    "已保存的 Secret 不能改名、公开或清空；请输入替换值。",
+  "multicaRuntime.issue.invalidHeaderBinding":
+    "每个 Header 都需要有效环境变量；凭据 Header 必须绑定敏感值。",
   "multicaRuntime.issue.invalidAssigneeRoute": "请检查每个受派路由及其 MCP 凭据绑定。",
   "multicaRuntime.issue.invalidTaskMcpEndpoint": "请输入安全的 HTTP 或 HTTPS 任务 MCP 端点。",
   "multicaRuntime.issue.invalidTaskExecutionExtension": "请检查执行扩展的命令和超时。",

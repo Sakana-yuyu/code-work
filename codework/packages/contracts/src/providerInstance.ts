@@ -127,6 +127,8 @@ export const ProviderInstanceConfig = Schema.Struct({
   accentColor: Schema.optional(TrimmedNonEmptyString),
   environment: Schema.optionalKey(ProviderInstanceEnvironment),
   enabled: Schema.optionalKey(Schema.Boolean),
+  /** 服务端生成的设置版本，仅用于客户端的并发写入前置条件。 */
+  settingsRevision: Schema.optional(TrimmedNonEmptyString),
   config: Schema.optionalKey(Schema.Unknown),
 });
 export type ProviderInstanceConfig = typeof ProviderInstanceConfig.Type;

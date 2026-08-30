@@ -193,7 +193,12 @@ import {
   ResourceTelemetrySnapshot,
 } from "./resourceTelemetry.ts";
 import { UsageReadError, UsageSummary, UsageSummaryInput } from "./usage.ts";
-import { ServerSettings, ServerSettingsError, ServerSettingsPatch } from "./settings.ts";
+import {
+  ServerSettings,
+  ServerSettingsConflictError,
+  ServerSettingsError,
+  ServerSettingsPatch,
+} from "./settings.ts";
 import {
   ByokModelDiscoveryRequest,
   ByokModelDiscoveryResult,
@@ -570,7 +575,11 @@ export const WsServerGetSettingsRpc = Rpc.make(WS_METHODS.serverGetSettings, {
 export const WsServerUpdateSettingsRpc = Rpc.make(WS_METHODS.serverUpdateSettings, {
   payload: Schema.Struct({ patch: ServerSettingsPatch }),
   success: ServerSettings,
-  error: Schema.Union([ServerSettingsError, EnvironmentAuthorizationError]),
+  error: Schema.Union([
+    ServerSettingsError,
+    ServerSettingsConflictError,
+    EnvironmentAuthorizationError,
+  ]),
 });
 
 const CompositionMcpServerControlInput = Schema.Struct({
@@ -998,6 +1007,7 @@ export const WsServerSupplierSetInstanceEnabledRpc = Rpc.make(
     error: Schema.Union([
       SupplierAdminRpcError,
       ServerSettingsError,
+      ServerSettingsConflictError,
       EnvironmentAuthorizationError,
     ]),
   },
@@ -1011,6 +1021,7 @@ export const WsServerSupplierUpdateCredentialRpc = Rpc.make(
     error: Schema.Union([
       SupplierAdminRpcError,
       ServerSettingsError,
+      ServerSettingsConflictError,
       EnvironmentAuthorizationError,
     ]),
   },

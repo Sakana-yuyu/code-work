@@ -12,7 +12,7 @@ interface MulticaRuntimeInstanceRowProps {
   readonly draft: MulticaRuntimeDraft | null;
   readonly disabled: boolean;
   readonly deleting: boolean;
-  readonly deleteFailed: boolean;
+  readonly deleteFailure: "error" | "conflict" | null;
   readonly onEdit: () => void;
   readonly onDelete: () => void;
 }
@@ -24,7 +24,7 @@ export function MulticaRuntimeInstanceRow({
   draft,
   disabled,
   deleting,
-  deleteFailed,
+  deleteFailure,
   onEdit,
   onDelete,
 }: MulticaRuntimeInstanceRowProps) {
@@ -52,9 +52,9 @@ export function MulticaRuntimeInstanceRow({
             {baseUrlLabel === null ? null : ` · ${baseUrlLabel}`}
           </p>
         )}
-        {deleteFailed ? (
+        {deleteFailure !== null ? (
           <p className="text-xs text-destructive" role="alert">
-            {text("deleteFailed")}
+            {text(deleteFailure === "conflict" ? "deleteConflict" : "deleteFailed")}
           </p>
         ) : null}
       </div>

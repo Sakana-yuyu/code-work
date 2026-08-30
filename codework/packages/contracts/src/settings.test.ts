@@ -364,6 +364,23 @@ describe("ServerSettingsPatch.providerInstances", () => {
     );
   });
 
+  it("decodes Multica provider instance write preconditions", () => {
+    expect(
+      decodeServerSettingsPatch({
+        providerInstances: {
+          multica_local: { driver: "multica", config: {} },
+        },
+        multicaProviderInstancePreconditions: [
+          { instanceId: "multica_local", expectedRevision: "revision-1" },
+          { instanceId: "multica_next", expectedRevision: null },
+        ],
+      }).multicaProviderInstancePreconditions,
+    ).toEqual([
+      { instanceId: "multica_local", expectedRevision: "revision-1" },
+      { instanceId: "multica_next", expectedRevision: null },
+    ]);
+  });
+
   it("preserves a fork-defined driver entry through patch decoding", () => {
     const patch = decodeServerSettingsPatch({
       providerInstances: {

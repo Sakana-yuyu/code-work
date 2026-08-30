@@ -27,12 +27,11 @@ export type MulticaRuntimeSaveRequest = MulticaRuntimeSave & {
   readonly originalInstanceId: string | null;
   readonly expectedFingerprint: string | null;
 };
-type UnconfirmedMulticaRuntimeSaveRequest = Omit<
-  MulticaRuntimeSaveRequest,
-  "expectedFingerprint"
->;
+type UnconfirmedMulticaRuntimeSaveRequest = Omit<MulticaRuntimeSaveRequest, "expectedFingerprint">;
 
-export type MulticaRuntimeSaveAttempt = "saved" | "invalid" | "error";
+export type MulticaRuntimeSaveAttempt = "saved" | "invalid" | "error" | "conflict";
+
+type MulticaRuntimeOperationFailure = "error" | "conflict";
 
 interface ScopedRuntimeAction {
   readonly requestId: number;
@@ -40,6 +39,29 @@ interface ScopedRuntimeAction {
   readonly instanceId: string;
   readonly expectedFingerprint: string;
 }
+
+type FailedRuntimeAction = ScopedRuntimeAction & {
+  readonly failure: MulticaRuntimeOperationFailure;
+};
+
+export class MulticaRuntimeConflictError extends Error {
+  readonly _tag = "MulticaRuntimeConflictError";
+
+  constructor() {
+    super("Multica runtime configuration changed.");
+  }
+}
+
+/** 仅识别 RPC 的稳定错误标记，避免把服务端原始消息回显到设置界面。 */
+export const isMulticaRuntimeSettingsConflict = (cause: unknown): boolean => {
+  if (typeof cause !== "object" || cause === null) return false;
+  const error = cause as { readonly _tag?: unknown; readonly code?: unknown };
+  return (
+    error._tag === "ServerSettingsConflictError" ||
+    error._tag === "MulticaRuntimeConflictError" ||
+    error.code === "ServerSettingsConflictError"
+  );
+};
 
 export const isMulticaRuntimeActionCurrent = (
   action: Pick<ScopedRuntimeAction, "requestId" | "scopeKey">,
@@ -54,12 +76,19 @@ interface MulticaRuntimeSettingsControllerOptions {
   readonly onDelete: (instanceId: string) => Promise<void>;
 }
 
-const reconcileScopedRuntimeAction = (
-  action: ScopedRuntimeAction | null,
+const reconcileScopedRuntimeAction = <Action extends ScopedRuntimeAction>(
+  action: Action | null,
   scopeKey: string | null,
   readyInstances: Readonly<Record<string, ProviderInstanceConfig>> | undefined,
-): ScopedRuntimeAction | null => {
+): Action | null => {
   if (action === null || scopeKey === null || action.scopeKey !== scopeKey) return null;
+  if (readyInstances === undefined) return action;
+  const instance = readyInstances[action.instanceId];
+  const draft =
+    instance === undefined ? null : formFromMulticaRuntimeInstance(action.instanceId, instance);
+  if (draft === null || multicaRuntimeDraftFingerprint(draft) !== action.expectedFingerprint) {
+    return null;
+  }
   return action;
 };
 
@@ -73,8 +102,8 @@ export async function persistMulticaRuntimeDraft(
   try {
     await onSave({ originalInstanceId, ...validation.value });
     return "saved";
-  } catch {
-    return "error";
+  } catch (cause) {
+    return isMulticaRuntimeSettingsConflict(cause) ? "conflict" : "error";
   }
 }
 
@@ -87,7 +116,7 @@ export function useMulticaRuntimeSettingsController({
   const [editor, setEditor] = useState<MulticaRuntimeEditorSession | null>(null);
   const [pendingDelete, setPendingDelete] = useState<ScopedRuntimeAction | null>(null);
   const [deleting, setDeleting] = useState<ScopedRuntimeAction | null>(null);
-  const [deleteFailure, setDeleteFailure] = useState<ScopedRuntimeAction | null>(null);
+  const [deleteFailure, setDeleteFailure] = useState<FailedRuntimeAction | null>(null);
   const nextEditorSessionIdRef = useRef(0);
   const nextDeleteRequestIdRef = useRef(0);
   const activeDeleteRequestIdRef = useRef<number | null>(null);
@@ -190,9 +219,9 @@ export function useMulticaRuntimeSettingsController({
     );
     setEditor((current) => {
       if (current?.sessionId !== session.sessionId) return current;
-      return result === "saved"
-        ? null
-        : { ...current, saveState: result === "error" ? "error" : "idle" };
+      if (result === "saved") return null;
+      if (result === "conflict") return { ...current, conflict: true, saveState: "conflict" };
+      return { ...current, saveState: result === "error" ? "error" : "idle" };
     });
   };
 
@@ -223,9 +252,12 @@ export function useMulticaRuntimeSettingsController({
     setDeleteFailure(null);
     try {
       const instance = readyInstances?.[request.instanceId];
-      const draft = instance === undefined ? null : formFromMulticaRuntimeInstance(request.instanceId, instance);
+      const draft =
+        instance === undefined
+          ? null
+          : formFromMulticaRuntimeInstance(request.instanceId, instance);
       if (draft === null || multicaRuntimeDraftFingerprint(draft) !== request.expectedFingerprint) {
-        throw new Error("stale Multica runtime delete request");
+        throw new MulticaRuntimeConflictError();
       }
       await onDelete(request.instanceId);
       if (
@@ -243,7 +275,7 @@ export function useMulticaRuntimeSettingsController({
           ? null
           : current,
       );
-    } catch {
+    } catch (cause) {
       if (
         isMulticaRuntimeActionCurrent(
           request,
@@ -252,7 +284,10 @@ export function useMulticaRuntimeSettingsController({
         )
       ) {
         setPendingDelete((current) => (current?.requestId === request.requestId ? null : current));
-        setDeleteFailure(request);
+        setDeleteFailure({
+          ...request,
+          failure: isMulticaRuntimeSettingsConflict(cause) ? "conflict" : "error",
+        });
       }
     } finally {
       if (activeDeleteRequestIdRef.current === request.requestId) {
@@ -271,6 +306,7 @@ export function useMulticaRuntimeSettingsController({
       activeDeleting === null,
     closeEditor,
     confirmDelete,
+    deleteFailure: activeDeleteFailure?.failure ?? null,
     deleteFailedId: activeDeleteFailure?.instanceId ?? null,
     deleteInProgress: activeDeleting !== null,
     deletingId: activeDeleting?.instanceId ?? null,

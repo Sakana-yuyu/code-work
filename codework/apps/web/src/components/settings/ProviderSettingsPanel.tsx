@@ -8,6 +8,7 @@ import {
 import {
   defaultInstanceIdForDriver,
   type EnvironmentId,
+  multicaProviderInstanceRevision,
   PROVIDER_DISPLAY_NAMES,
   ProviderDriverKind,
   type ProviderInstanceConfig,
@@ -84,6 +85,7 @@ import {
   formFromMulticaRuntimeInstance,
   multicaRuntimeDraftFingerprint,
 } from "./MulticaRuntimeSettings.logic";
+import { MulticaRuntimeConflictError } from "./MulticaRuntimeSettings.controller";
 import { multicaRuntimeText } from "./MulticaRuntimeSettingsText";
 import { DRIVER_OPTIONS, getDriverOption } from "./providerDriverMeta";
 import { providerSettingsTabClassName } from "./providerSettingsTabs";
@@ -445,28 +447,25 @@ export function EnvironmentProviderSettings({
   const saveMulticaRuntime = useCallback(
     async (request: MulticaRuntimeSaveRequest) => {
       const instances: Record<ProviderInstanceId, ProviderInstanceConfig> = {
-        ...(settings.providerInstances ?? {}),
+        ...settings.providerInstances,
       };
       const originalInstanceId =
-        request.originalInstanceId === null ? null : ProviderInstanceId.make(request.originalInstanceId);
+        request.originalInstanceId === null
+          ? null
+          : ProviderInstanceId.make(request.originalInstanceId);
       const existing =
-        originalInstanceId === null
-          ? instances[request.instanceId]
-          : instances[originalInstanceId];
+        originalInstanceId === null ? instances[request.instanceId] : instances[originalInstanceId];
       const existingDraft =
         existing === undefined
           ? null
-          : formFromMulticaRuntimeInstance(
-              originalInstanceId ?? request.instanceId,
-              existing,
-            );
+          : formFromMulticaRuntimeInstance(originalInstanceId ?? request.instanceId, existing);
       if (
         (originalInstanceId === null && existing !== undefined) ||
         (originalInstanceId !== null &&
           (existingDraft === null ||
             multicaRuntimeDraftFingerprint(existingDraft) !== request.expectedFingerprint))
       ) {
-        throw new Error("Multica runtime configuration changed on this environment.");
+        throw new MulticaRuntimeConflictError();
       }
       const nextInstances: Record<ProviderInstanceId, ProviderInstanceConfig> = {
         ...instances,
@@ -480,9 +479,23 @@ export function EnvironmentProviderSettings({
       if (originalInstanceId !== null && originalInstanceId !== request.instanceId) {
         delete nextInstances[originalInstanceId];
       }
+      const multicaProviderInstancePreconditions =
+        originalInstanceId === null
+          ? [{ instanceId: request.instanceId, expectedRevision: null }]
+          : [
+              {
+                instanceId: originalInstanceId,
+                expectedRevision: multicaProviderInstanceRevision(originalInstanceId, existing),
+              },
+              ...(originalInstanceId !== request.instanceId
+                ? [{ instanceId: request.instanceId, expectedRevision: null }]
+                : []),
+            ];
       const result = await persistMulticaSettings({
         environmentId,
-        input: { patch: { providerInstances: nextInstances } },
+        input: {
+          patch: { providerInstances: nextInstances, multicaProviderInstancePreconditions },
+        },
       });
       if (result._tag === "Failure") {
         throw squashAtomCommandFailure(result);
@@ -494,17 +507,27 @@ export function EnvironmentProviderSettings({
     async (rawInstanceId: string) => {
       const instanceId = ProviderInstanceId.make(rawInstanceId);
       const instances: Record<ProviderInstanceId, ProviderInstanceConfig> = {
-        ...(settings.providerInstances ?? {}),
+        ...settings.providerInstances,
       };
       const instance = instances[instanceId];
       if (instance === undefined || instance.driver !== "multica") {
-        throw new Error("Multica runtime no longer exists on this environment.");
+        throw new MulticaRuntimeConflictError();
       }
       const nextInstances = { ...instances };
       delete nextInstances[instanceId];
       const result = await persistMulticaSettings({
         environmentId,
-        input: { patch: { providerInstances: nextInstances } },
+        input: {
+          patch: {
+            providerInstances: nextInstances,
+            multicaProviderInstancePreconditions: [
+              {
+                instanceId,
+                expectedRevision: multicaProviderInstanceRevision(instanceId, instance),
+              },
+            ],
+          },
+        },
       });
       if (result._tag === "Failure") {
         throw squashAtomCommandFailure(result);
