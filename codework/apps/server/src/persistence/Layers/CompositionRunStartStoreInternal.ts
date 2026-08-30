@@ -30,6 +30,9 @@ export const RunStartRowSchema = Schema.Struct({
   revision: Schema.Number,
   claimId: Schema.NullOr(Schema.String),
   claimedAtUnixMs: Schema.NullOr(Schema.Number),
+  lastReleaseClaimId: Schema.NullOr(Schema.String),
+  lastReleaseOperationId: Schema.NullOr(Schema.String),
+  lastReleasedAtUnixMs: Schema.NullOr(Schema.Number),
   runtimeTaskId: Schema.NullOr(Schema.String),
   capabilityHandshakeId: Schema.NullOr(Schema.String),
   acceptedAtUnixMs: Schema.NullOr(Schema.Number),
@@ -54,6 +57,7 @@ export const PrepareSchema = Schema.Struct({
 export const IdSchema = Schema.Struct({ runId: Schema.String });
 export const TaskAttemptSchema = Schema.Struct({ taskId: Schema.String, attempt: Schema.Number });
 export const ClaimIdSchema = Schema.Struct({ claimId: Schema.String });
+export const ReleaseOperationIdSchema = Schema.Struct({ releaseOperationId: Schema.String });
 export const RuntimeTaskSchema = Schema.Struct({
   runtimeId: Schema.String,
   runtimeTaskId: Schema.String,
@@ -68,6 +72,7 @@ export const ReleaseSchema = Schema.Struct({
   runId: Schema.String,
   expectedRevision: Schema.Number,
   claimId: Schema.String,
+  releaseOperationId: Schema.String,
   releasedAtUnixMs: Schema.Number,
 });
 export const AcceptedSchema = Schema.Struct({
@@ -88,6 +93,7 @@ export const IndeterminateSchema = Schema.Struct({
 export const SettleSchema = Schema.Struct({
   runId: Schema.String,
   expectedRevision: Schema.Number,
+  claimId: Schema.String,
   settledAtUnixMs: Schema.Number,
 });
 
@@ -162,6 +168,7 @@ export const validateRunStartRelease = (input: CompositionRunStartReleaseInput) 
   hasTextWithin(input.runId, 512) &&
   validRevision(input.expectedRevision) &&
   hasTextWithin(input.claimId, 512) &&
+  hasTextWithin(input.releaseOperationId, 512) &&
   validTimestamp(input.releasedAtUnixMs)
     ? Effect.succeed(input)
     : Effect.fail(
@@ -205,6 +212,7 @@ export const validateRunStartIndeterminate = (input: CompositionRunStartIndeterm
 export const validateRunStartSettle = (input: CompositionRunStartSettleInput) =>
   hasTextWithin(input.runId, 512) &&
   validRevision(input.expectedRevision) &&
+  hasTextWithin(input.claimId, 512) &&
   validTimestamp(input.settledAtUnixMs)
     ? Effect.succeed(input)
     : Effect.fail(
@@ -235,6 +243,13 @@ export const runStartStateConflict = (intent: CompositionRunStartIntent, expecte
 
 export const runStartClaimConflict = (intent: CompositionRunStartIntent) =>
   runStartDomainError("run_start_claim_conflict", "Run Start claim 属于其他 owner。", {
+    runId: intent.runId,
+    actualState: intent.state,
+    actualRevision: intent.revision,
+  });
+
+export const runStartReleaseConflict = (intent: CompositionRunStartIntent) =>
+  runStartDomainError("run_start_release_conflict", "releaseOperationId 已由其他 Run 占用。", {
     runId: intent.runId,
     actualState: intent.state,
     actualRevision: intent.revision,

@@ -37,6 +37,23 @@ export default Effect.gen(function* () {
           claimed_at_unix_ms >= 0 AND claimed_at_unix_ms <= 9007199254740991
         )
       ),
+      last_release_claim_id TEXT CHECK (
+        last_release_claim_id IS NULL OR
+        (length(trim(last_release_claim_id)) > 0 AND length(last_release_claim_id) <= 512)
+      ),
+      last_release_operation_id TEXT CHECK (
+        last_release_operation_id IS NULL OR
+        (
+          length(trim(last_release_operation_id)) > 0 AND
+          length(last_release_operation_id) <= 512
+        )
+      ),
+      last_released_at_unix_ms INTEGER CHECK (
+        last_released_at_unix_ms IS NULL OR (
+          typeof(last_released_at_unix_ms) = 'integer' AND
+          last_released_at_unix_ms >= 0 AND last_released_at_unix_ms <= 9007199254740991
+        )
+      ),
       runtime_task_id TEXT CHECK (
         runtime_task_id IS NULL OR
         (length(trim(runtime_task_id)) > 0 AND length(runtime_task_id) <= 2048)
@@ -76,6 +93,17 @@ export default Effect.gen(function* () {
         claimed_at_unix_ms IS NULL OR claimed_at_unix_ms >= created_at_unix_ms
       ),
       CHECK (
+        (
+          last_release_claim_id IS NULL AND
+          last_release_operation_id IS NULL AND last_released_at_unix_ms IS NULL
+        ) OR
+        (
+          last_release_claim_id IS NOT NULL AND
+          last_release_operation_id IS NOT NULL AND last_released_at_unix_ms IS NOT NULL AND
+          last_released_at_unix_ms >= created_at_unix_ms
+        )
+      ),
+      CHECK (
         accepted_at_unix_ms IS NULL OR
         (claimed_at_unix_ms IS NOT NULL AND accepted_at_unix_ms >= claimed_at_unix_ms)
       ),
@@ -85,6 +113,9 @@ export default Effect.gen(function* () {
       ),
       CHECK (
         updated_at_unix_ms >= COALESCE(claimed_at_unix_ms, created_at_unix_ms)
+      ),
+      CHECK (
+        updated_at_unix_ms >= COALESCE(last_released_at_unix_ms, created_at_unix_ms)
       ),
       CHECK (
         updated_at_unix_ms >= COALESCE(accepted_at_unix_ms, created_at_unix_ms)
@@ -129,6 +160,11 @@ export default Effect.gen(function* () {
     CREATE UNIQUE INDEX composition_run_start_intents_claim_id_unique
     ON composition_run_start_intents(claim_id)
     WHERE claim_id IS NOT NULL
+  `;
+  yield* sql`
+    CREATE UNIQUE INDEX composition_run_start_intents_release_operation_unique
+    ON composition_run_start_intents(last_release_operation_id)
+    WHERE last_release_operation_id IS NOT NULL
   `;
   yield* sql`
     CREATE UNIQUE INDEX composition_run_start_intents_runtime_task_unique

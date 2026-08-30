@@ -77,6 +77,9 @@ layer("CompositionRunStartStore", (it) => {
         revision: 1,
         claimId: null,
         claimedAtUnixMs: null,
+        lastReleaseClaimId: null,
+        lastReleaseOperationId: null,
+        lastReleasedAtUnixMs: null,
         runtimeTaskId: null,
         capabilityHandshakeId: null,
         acceptedAtUnixMs: null,
@@ -120,21 +123,23 @@ layer("CompositionRunStartStore", (it) => {
           runId: input.runId,
           expectedRevision: 2,
           claimId: "claim-other",
+          releaseOperationId: "release-wrong-owner",
           releasedAtUnixMs: 120,
         })
         .pipe(Effect.flip);
-      const released = yield* store.releaseStart({
+      const releaseInput = {
         runId: input.runId,
         expectedRevision: 2,
         claimId: "claim-owner",
+        releaseOperationId: "release-owner",
         releasedAtUnixMs: 120,
-      });
+      } as const;
+      const released = yield* store.releaseStart(releaseInput);
+      const replayedRelease = yield* store.releaseStart(releaseInput);
       const releasedClaimReplay = yield* store
         .releaseStart({
-          runId: input.runId,
-          expectedRevision: 2,
+          ...releaseInput,
           claimId: "claim-other",
-          releasedAtUnixMs: 120,
         })
         .pipe(Effect.flip);
       const staleClaim = yield* store
@@ -170,6 +175,10 @@ layer("CompositionRunStartStore", (it) => {
       assert.equal(released.state, "prepared");
       assert.equal(released.revision, 3);
       assert.isNull(released.claimId);
+      assert.equal(released.lastReleaseClaimId, releaseInput.claimId);
+      assert.equal(released.lastReleaseOperationId, releaseInput.releaseOperationId);
+      assert.equal(released.lastReleasedAtUnixMs, releaseInput.releasedAtUnixMs);
+      assert.deepEqual(replayedRelease, released);
       assert.equal(errorCode(releasedClaimReplay), "run_start_revision_conflict");
       assert.equal(errorCode(staleClaim), "run_start_revision_conflict");
       assert.equal(errorCode(staleTimestamp), "run_start_timestamp_conflict");
@@ -212,14 +221,24 @@ layer("CompositionRunStartStore", (it) => {
       const receiptDrift = yield* store
         .markAccepted({ ...acceptedInput, runtimeTaskId: "runtime-task-drift" })
         .pipe(Effect.flip);
+      const wrongSettleOwner = yield* store
+        .settleStart({
+          runId: input.runId,
+          expectedRevision: 3,
+          claimId: "claim-other",
+          settledAtUnixMs: 130,
+        })
+        .pipe(Effect.flip);
       const settled = yield* store.settleStart({
         runId: input.runId,
         expectedRevision: 3,
+        claimId: "claim-accepted",
         settledAtUnixMs: 130,
       });
       const settledReplay = yield* store.settleStart({
         runId: input.runId,
         expectedRevision: 3,
+        claimId: "claim-accepted",
         settledAtUnixMs: 130,
       });
       const acceptedReplayAfterSettle = yield* store.markAccepted(acceptedInput);
@@ -230,11 +249,57 @@ layer("CompositionRunStartStore", (it) => {
       assert.equal(accepted.claimId, "claim-accepted");
       assert.deepEqual(replayed, accepted);
       assert.equal(errorCode(receiptDrift), "run_start_receipt_conflict");
+      assert.equal(errorCode(wrongSettleOwner), "run_start_claim_conflict");
       assert.equal(settled.state, "settled");
       assert.equal(settled.revision, 4);
       assert.equal(settled.settledAtUnixMs, 130);
       assert.deepEqual(settledReplay, settled);
       assert.deepEqual(acceptedReplayAfterSettle, settled);
+    }),
+  );
+
+  it.effect("release receipt 在响应丢失后可幂等回读，且不能跨 Run 复用", () =>
+    Effect.gen(function* () {
+      const store = yield* CompositionRunStartStore;
+      const first = makePrepareInput("run-start-release-owner");
+      const second = makePrepareInput("run-start-release-contender");
+      yield* store.prepareStart(first);
+      yield* store.prepareStart(second);
+      yield* store.claimStart({
+        runId: first.runId,
+        expectedRevision: 1,
+        claimId: "claim-release-owner",
+        claimedAtUnixMs: 110,
+      });
+      yield* store.claimStart({
+        runId: second.runId,
+        expectedRevision: 1,
+        claimId: "claim-release-contender",
+        claimedAtUnixMs: 110,
+      });
+
+      const releaseInput = {
+        runId: first.runId,
+        expectedRevision: 2,
+        claimId: "claim-release-owner",
+        releaseOperationId: "release-operation-global",
+        releasedAtUnixMs: 120,
+      } as const;
+      const released = yield* store.releaseStart(releaseInput);
+      const replayed = yield* store.releaseStart(releaseInput);
+      const conflict = yield* store
+        .releaseStart({
+          runId: second.runId,
+          expectedRevision: 2,
+          claimId: "claim-release-contender",
+          releaseOperationId: "release-operation-global",
+          releasedAtUnixMs: 121,
+        })
+        .pipe(Effect.flip);
+
+      assert.deepEqual(replayed, released);
+      assert.equal(errorCode(conflict), "run_start_release_conflict");
+      assert.equal(Option.getOrThrow(yield* store.getStart(second.runId)).state, "dispatching");
     }),
   );
 
@@ -316,6 +381,9 @@ layer("CompositionRunStartStore", (it) => {
         outcomeCode: "driver_acceptance_unknown_after_restart",
         indeterminateAtUnixMs: 120,
       } as const;
+      const wrongOwner = yield* store
+        .markIndeterminate({ ...indeterminateInput, claimId: "claim-other" })
+        .pipe(Effect.flip);
       const indeterminate = yield* store.markIndeterminate(indeterminateInput);
       const replayed = yield* store.markIndeterminate(indeterminateInput);
       const release = yield* store
@@ -323,6 +391,7 @@ layer("CompositionRunStartStore", (it) => {
           runId: input.runId,
           expectedRevision: 3,
           claimId: "claim-indeterminate",
+          releaseOperationId: "release-indeterminate",
           releasedAtUnixMs: 130,
         })
         .pipe(Effect.flip);
@@ -338,6 +407,7 @@ layer("CompositionRunStartStore", (it) => {
         .settleStart({
           runId: input.runId,
           expectedRevision: 3,
+          claimId: "claim-indeterminate",
           settledAtUnixMs: 130,
         })
         .pipe(Effect.flip);
@@ -346,6 +416,7 @@ layer("CompositionRunStartStore", (it) => {
       assert.equal(indeterminate.revision, 3);
       assert.equal(indeterminate.outcomeCode, indeterminateInput.outcomeCode);
       assert.deepEqual(replayed, indeterminate);
+      assert.equal(errorCode(wrongOwner), "run_start_claim_conflict");
       assert.equal(errorCode(release), "run_start_state_conflict");
       assert.equal(errorCode(accepted), "run_start_state_conflict");
       assert.equal(errorCode(settled), "run_start_state_conflict");
@@ -467,6 +538,7 @@ it.effect("accepted 与 release 跨连接竞争时只允许一个 CAS 终态胜�
             runId: input.runId,
             expectedRevision: 2,
             claimId: "claim-terminal-race",
+            releaseOperationId: "release-terminal-race",
             releasedAtUnixMs: 120,
           });
         }).pipe(Effect.provide(makeFileStoreLayer(dbPath)), Effect.result),

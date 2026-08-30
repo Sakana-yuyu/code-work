@@ -39,6 +39,9 @@ export const CompositionRunStartIntent = Schema.Struct({
   revision: Schema.Number,
   claimId: Schema.NullOr(Schema.String),
   claimedAtUnixMs: Schema.NullOr(Schema.Number),
+  lastReleaseClaimId: Schema.NullOr(Schema.String),
+  lastReleaseOperationId: Schema.NullOr(Schema.String),
+  lastReleasedAtUnixMs: Schema.NullOr(Schema.Number),
   runtimeTaskId: Schema.NullOr(Schema.String),
   capabilityHandshakeId: Schema.NullOr(Schema.String),
   acceptedAtUnixMs: Schema.NullOr(Schema.Number),
@@ -56,6 +59,7 @@ export const CompositionRunStartStoreErrorCode = Schema.Literals([
   "run_start_revision_conflict",
   "run_start_state_conflict",
   "run_start_claim_conflict",
+  "run_start_release_conflict",
   "run_start_receipt_conflict",
   "run_start_timestamp_conflict",
 ]);
@@ -103,6 +107,7 @@ export interface CompositionRunStartReleaseInput {
   readonly runId: string;
   readonly expectedRevision: number;
   readonly claimId: string;
+  readonly releaseOperationId: string;
   readonly releasedAtUnixMs: number;
 }
 
@@ -126,6 +131,7 @@ export interface CompositionRunStartIndeterminateInput {
 export interface CompositionRunStartSettleInput {
   readonly runId: string;
   readonly expectedRevision: number;
+  readonly claimId: string;
   readonly settledAtUnixMs: number;
 }
 

@@ -21,6 +21,7 @@ import {
   type RunStartRow,
   runStartClaimConflict,
   runStartDomainError,
+  runStartReleaseConflict,
   runStartRevisionConflict,
   runStartStateConflict,
   runStartTimestampConflict,
@@ -129,6 +130,22 @@ const makeStore = Effect.gen(function* () {
       ),
     );
 
+  const readByReleaseOperation = (releaseOperationId: string) =>
+    query(
+      "CompositionRunStartStore.getByReleaseOperation",
+      statements.getByReleaseOperationRow({ releaseOperationId }),
+    ).pipe(
+      Effect.flatMap(
+        Option.match({
+          onNone: () => Effect.succeed(Option.none<CompositionRunStartIntent>()),
+          onSome: (row) =>
+            decodeRow("CompositionRunStartStore.getByReleaseOperation", row).pipe(
+              Effect.map(Option.some),
+            ),
+        }),
+      ),
+    );
+
   const getStart: CompositionRunStartStoreShape["getStart"] = readStart;
 
   const prepareStart: CompositionRunStartStoreShape["prepareStart"] = (input) =>
@@ -222,6 +239,15 @@ const makeStore = Effect.gen(function* () {
         }
 
         const current = yield* readRequired(valid.runId);
+        if (
+          current.state === "prepared" &&
+          current.revision === valid.expectedRevision + 1 &&
+          current.lastReleaseClaimId === valid.claimId &&
+          current.lastReleaseOperationId === valid.releaseOperationId &&
+          current.lastReleasedAtUnixMs === valid.releasedAtUnixMs
+        ) {
+          return current;
+        }
         if (current.revision !== valid.expectedRevision) {
           return yield* runStartRevisionConflict(current, valid.expectedRevision);
         }
@@ -229,7 +255,15 @@ const makeStore = Effect.gen(function* () {
           return yield* runStartStateConflict(current, "dispatching");
         }
         if (current.claimId !== valid.claimId) return yield* runStartClaimConflict(current);
-        return yield* runStartTimestampConflict(current);
+        if (valid.releasedAtUnixMs < current.updatedAtUnixMs) {
+          return yield* runStartTimestampConflict(current);
+        }
+        const releaseOwner = yield* readByReleaseOperation(valid.releaseOperationId);
+        if (Option.isSome(releaseOwner)) return yield* runStartReleaseConflict(current);
+        return yield* runStartStateConflict(
+          current,
+          "dispatching with available release operation identity",
+        );
       }),
     );
 
@@ -348,6 +382,7 @@ const makeStore = Effect.gen(function* () {
         if (
           current.state === "settled" &&
           current.revision === valid.expectedRevision + 1 &&
+          current.claimId === valid.claimId &&
           current.settledAtUnixMs === valid.settledAtUnixMs
         ) {
           return current;
@@ -358,6 +393,7 @@ const makeStore = Effect.gen(function* () {
         if (current.state !== "accepted") {
           return yield* runStartStateConflict(current, "accepted");
         }
+        if (current.claimId !== valid.claimId) return yield* runStartClaimConflict(current);
         return yield* runStartTimestampConflict(current);
       }),
     );

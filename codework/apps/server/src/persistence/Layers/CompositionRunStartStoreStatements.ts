@@ -9,6 +9,7 @@ import {
   IndeterminateSchema,
   PrepareSchema,
   ReleaseSchema,
+  ReleaseOperationIdSchema,
   RunStartRowSchema,
   RuntimeTaskSchema,
   SettleSchema,
@@ -25,6 +26,9 @@ export const makeCompositionRunStartStoreStatements = (sql: SqlClient.SqlClient)
         runtime_id AS "runtimeId", attempt, replay_policy AS "replayPolicy",
         payload_digest AS "payloadDigest", capability_digest AS "capabilityDigest",
         state, revision, claim_id AS "claimId", claimed_at_unix_ms AS "claimedAtUnixMs",
+        last_release_claim_id AS "lastReleaseClaimId",
+        last_release_operation_id AS "lastReleaseOperationId",
+        last_released_at_unix_ms AS "lastReleasedAtUnixMs",
         runtime_task_id AS "runtimeTaskId",
         capability_handshake_id AS "capabilityHandshakeId",
         accepted_at_unix_ms AS "acceptedAtUnixMs", outcome_code AS "outcomeCode",
@@ -45,6 +49,9 @@ export const makeCompositionRunStartStoreStatements = (sql: SqlClient.SqlClient)
         runtime_id AS "runtimeId", attempt, replay_policy AS "replayPolicy",
         payload_digest AS "payloadDigest", capability_digest AS "capabilityDigest",
         state, revision, claim_id AS "claimId", claimed_at_unix_ms AS "claimedAtUnixMs",
+        last_release_claim_id AS "lastReleaseClaimId",
+        last_release_operation_id AS "lastReleaseOperationId",
+        last_released_at_unix_ms AS "lastReleasedAtUnixMs",
         runtime_task_id AS "runtimeTaskId",
         capability_handshake_id AS "capabilityHandshakeId",
         accepted_at_unix_ms AS "acceptedAtUnixMs", outcome_code AS "outcomeCode",
@@ -65,6 +72,9 @@ export const makeCompositionRunStartStoreStatements = (sql: SqlClient.SqlClient)
         runtime_id AS "runtimeId", attempt, replay_policy AS "replayPolicy",
         payload_digest AS "payloadDigest", capability_digest AS "capabilityDigest",
         state, revision, claim_id AS "claimId", claimed_at_unix_ms AS "claimedAtUnixMs",
+        last_release_claim_id AS "lastReleaseClaimId",
+        last_release_operation_id AS "lastReleaseOperationId",
+        last_released_at_unix_ms AS "lastReleasedAtUnixMs",
         runtime_task_id AS "runtimeTaskId",
         capability_handshake_id AS "capabilityHandshakeId",
         accepted_at_unix_ms AS "acceptedAtUnixMs", outcome_code AS "outcomeCode",
@@ -72,6 +82,29 @@ export const makeCompositionRunStartStoreStatements = (sql: SqlClient.SqlClient)
         created_at_unix_ms AS "createdAtUnixMs", updated_at_unix_ms AS "updatedAtUnixMs"
       FROM composition_run_start_intents
       WHERE claim_id = ${claimId}
+      LIMIT 1
+    `,
+  });
+
+  const getByReleaseOperationRow = SqlSchema.findOneOption({
+    Request: ReleaseOperationIdSchema,
+    Result: RunStartRowSchema,
+    execute: ({ releaseOperationId }) => sql`
+      SELECT
+        run_id AS "runId", task_id AS "taskId", agent_id AS "agentId",
+        runtime_id AS "runtimeId", attempt, replay_policy AS "replayPolicy",
+        payload_digest AS "payloadDigest", capability_digest AS "capabilityDigest",
+        state, revision, claim_id AS "claimId", claimed_at_unix_ms AS "claimedAtUnixMs",
+        last_release_claim_id AS "lastReleaseClaimId",
+        last_release_operation_id AS "lastReleaseOperationId",
+        last_released_at_unix_ms AS "lastReleasedAtUnixMs",
+        runtime_task_id AS "runtimeTaskId",
+        capability_handshake_id AS "capabilityHandshakeId",
+        accepted_at_unix_ms AS "acceptedAtUnixMs", outcome_code AS "outcomeCode",
+        settled_at_unix_ms AS "settledAtUnixMs",
+        created_at_unix_ms AS "createdAtUnixMs", updated_at_unix_ms AS "updatedAtUnixMs"
+      FROM composition_run_start_intents
+      WHERE last_release_operation_id = ${releaseOperationId}
       LIMIT 1
     `,
   });
@@ -85,6 +118,9 @@ export const makeCompositionRunStartStoreStatements = (sql: SqlClient.SqlClient)
         runtime_id AS "runtimeId", attempt, replay_policy AS "replayPolicy",
         payload_digest AS "payloadDigest", capability_digest AS "capabilityDigest",
         state, revision, claim_id AS "claimId", claimed_at_unix_ms AS "claimedAtUnixMs",
+        last_release_claim_id AS "lastReleaseClaimId",
+        last_release_operation_id AS "lastReleaseOperationId",
+        last_released_at_unix_ms AS "lastReleasedAtUnixMs",
         runtime_task_id AS "runtimeTaskId",
         capability_handshake_id AS "capabilityHandshakeId",
         accepted_at_unix_ms AS "acceptedAtUnixMs", outcome_code AS "outcomeCode",
@@ -104,12 +140,13 @@ export const makeCompositionRunStartStoreStatements = (sql: SqlClient.SqlClient)
         run_id, task_id, agent_id, runtime_id, attempt,
         replay_policy, payload_digest, capability_digest,
         state, revision, claim_id, claimed_at_unix_ms,
+        last_release_claim_id, last_release_operation_id, last_released_at_unix_ms,
         runtime_task_id, capability_handshake_id, accepted_at_unix_ms,
         outcome_code, settled_at_unix_ms, created_at_unix_ms, updated_at_unix_ms
       ) VALUES (
         ${input.runId}, ${input.taskId}, ${input.agentId}, ${input.runtimeId}, ${input.attempt},
         ${input.replayPolicy}, ${input.payloadDigest}, ${input.capabilityDigest},
-        'prepared', 1, NULL, NULL, NULL, NULL, NULL, NULL, NULL,
+        'prepared', 1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL,
         ${input.createdAtUnixMs}, ${input.createdAtUnixMs}
       )
       ON CONFLICT DO NOTHING
@@ -118,6 +155,9 @@ export const makeCompositionRunStartStoreStatements = (sql: SqlClient.SqlClient)
         runtime_id AS "runtimeId", attempt, replay_policy AS "replayPolicy",
         payload_digest AS "payloadDigest", capability_digest AS "capabilityDigest",
         state, revision, claim_id AS "claimId", claimed_at_unix_ms AS "claimedAtUnixMs",
+        last_release_claim_id AS "lastReleaseClaimId",
+        last_release_operation_id AS "lastReleaseOperationId",
+        last_released_at_unix_ms AS "lastReleasedAtUnixMs",
         runtime_task_id AS "runtimeTaskId",
         capability_handshake_id AS "capabilityHandshakeId",
         accepted_at_unix_ms AS "acceptedAtUnixMs", outcome_code AS "outcomeCode",
@@ -142,6 +182,9 @@ export const makeCompositionRunStartStoreStatements = (sql: SqlClient.SqlClient)
         runtime_id AS "runtimeId", attempt, replay_policy AS "replayPolicy",
         payload_digest AS "payloadDigest", capability_digest AS "capabilityDigest",
         state, revision, claim_id AS "claimId", claimed_at_unix_ms AS "claimedAtUnixMs",
+        last_release_claim_id AS "lastReleaseClaimId",
+        last_release_operation_id AS "lastReleaseOperationId",
+        last_released_at_unix_ms AS "lastReleasedAtUnixMs",
         runtime_task_id AS "runtimeTaskId",
         capability_handshake_id AS "capabilityHandshakeId",
         accepted_at_unix_ms AS "acceptedAtUnixMs", outcome_code AS "outcomeCode",
@@ -154,9 +197,12 @@ export const makeCompositionRunStartStoreStatements = (sql: SqlClient.SqlClient)
     Request: ReleaseSchema,
     Result: RunStartRowSchema,
     execute: (input) => sql`
-      UPDATE composition_run_start_intents
+      UPDATE OR IGNORE composition_run_start_intents
       SET state = 'prepared', revision = revision + 1,
         claim_id = NULL, claimed_at_unix_ms = NULL,
+        last_release_claim_id = ${input.claimId},
+        last_release_operation_id = ${input.releaseOperationId},
+        last_released_at_unix_ms = ${input.releasedAtUnixMs},
         updated_at_unix_ms = ${input.releasedAtUnixMs}
       WHERE run_id = ${input.runId} AND state = 'dispatching'
         AND revision = ${input.expectedRevision} AND claim_id = ${input.claimId}
@@ -167,6 +213,9 @@ export const makeCompositionRunStartStoreStatements = (sql: SqlClient.SqlClient)
         runtime_id AS "runtimeId", attempt, replay_policy AS "replayPolicy",
         payload_digest AS "payloadDigest", capability_digest AS "capabilityDigest",
         state, revision, claim_id AS "claimId", claimed_at_unix_ms AS "claimedAtUnixMs",
+        last_release_claim_id AS "lastReleaseClaimId",
+        last_release_operation_id AS "lastReleaseOperationId",
+        last_released_at_unix_ms AS "lastReleasedAtUnixMs",
         runtime_task_id AS "runtimeTaskId",
         capability_handshake_id AS "capabilityHandshakeId",
         accepted_at_unix_ms AS "acceptedAtUnixMs", outcome_code AS "outcomeCode",
@@ -194,6 +243,9 @@ export const makeCompositionRunStartStoreStatements = (sql: SqlClient.SqlClient)
         runtime_id AS "runtimeId", attempt, replay_policy AS "replayPolicy",
         payload_digest AS "payloadDigest", capability_digest AS "capabilityDigest",
         state, revision, claim_id AS "claimId", claimed_at_unix_ms AS "claimedAtUnixMs",
+        last_release_claim_id AS "lastReleaseClaimId",
+        last_release_operation_id AS "lastReleaseOperationId",
+        last_released_at_unix_ms AS "lastReleasedAtUnixMs",
         runtime_task_id AS "runtimeTaskId",
         capability_handshake_id AS "capabilityHandshakeId",
         accepted_at_unix_ms AS "acceptedAtUnixMs", outcome_code AS "outcomeCode",
@@ -219,6 +271,9 @@ export const makeCompositionRunStartStoreStatements = (sql: SqlClient.SqlClient)
         runtime_id AS "runtimeId", attempt, replay_policy AS "replayPolicy",
         payload_digest AS "payloadDigest", capability_digest AS "capabilityDigest",
         state, revision, claim_id AS "claimId", claimed_at_unix_ms AS "claimedAtUnixMs",
+        last_release_claim_id AS "lastReleaseClaimId",
+        last_release_operation_id AS "lastReleaseOperationId",
+        last_released_at_unix_ms AS "lastReleasedAtUnixMs",
         runtime_task_id AS "runtimeTaskId",
         capability_handshake_id AS "capabilityHandshakeId",
         accepted_at_unix_ms AS "acceptedAtUnixMs", outcome_code AS "outcomeCode",
@@ -236,7 +291,7 @@ export const makeCompositionRunStartStoreStatements = (sql: SqlClient.SqlClient)
         settled_at_unix_ms = ${input.settledAtUnixMs},
         updated_at_unix_ms = ${input.settledAtUnixMs}
       WHERE run_id = ${input.runId} AND state = 'accepted'
-        AND revision = ${input.expectedRevision}
+        AND revision = ${input.expectedRevision} AND claim_id = ${input.claimId}
         AND ${input.settledAtUnixMs} >= accepted_at_unix_ms
         AND ${input.settledAtUnixMs} >= updated_at_unix_ms
       RETURNING
@@ -244,6 +299,9 @@ export const makeCompositionRunStartStoreStatements = (sql: SqlClient.SqlClient)
         runtime_id AS "runtimeId", attempt, replay_policy AS "replayPolicy",
         payload_digest AS "payloadDigest", capability_digest AS "capabilityDigest",
         state, revision, claim_id AS "claimId", claimed_at_unix_ms AS "claimedAtUnixMs",
+        last_release_claim_id AS "lastReleaseClaimId",
+        last_release_operation_id AS "lastReleaseOperationId",
+        last_released_at_unix_ms AS "lastReleasedAtUnixMs",
         runtime_task_id AS "runtimeTaskId",
         capability_handshake_id AS "capabilityHandshakeId",
         accepted_at_unix_ms AS "acceptedAtUnixMs", outcome_code AS "outcomeCode",
@@ -256,6 +314,7 @@ export const makeCompositionRunStartStoreStatements = (sql: SqlClient.SqlClient)
     getRow,
     getByTaskAttemptRow,
     getByClaimRow,
+    getByReleaseOperationRow,
     getByRuntimeTaskRow,
     insertRow,
     claimRow,

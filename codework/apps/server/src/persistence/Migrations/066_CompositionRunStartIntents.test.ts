@@ -44,6 +44,9 @@ layer("066_CompositionRunStartIntents", (it) => {
           "revision",
           "claim_id",
           "claimed_at_unix_ms",
+          "last_release_claim_id",
+          "last_release_operation_id",
+          "last_released_at_unix_ms",
           "runtime_task_id",
           "capability_handshake_id",
           "accepted_at_unix_ms",
@@ -63,6 +66,7 @@ layer("066_CompositionRunStartIntents", (it) => {
         indexes.map((index) => index.name),
         [
           "composition_run_start_intents_claim_id_unique",
+          "composition_run_start_intents_release_operation_unique",
           "composition_run_start_intents_runtime_task_unique",
           "composition_run_start_intents_task_attempt_unique",
         ],
@@ -119,6 +123,11 @@ layer("066_CompositionRunStartIntents", (it) => {
           runId: "run-invalid-revision-fraction",
           revision: 1.5,
         }),
+        insertIntent(sql, {
+          runId: "run-invalid-release-pair",
+          lastReleaseClaimId: "claim-release-without-time",
+          lastReleaseOperationId: "release-without-time",
+        }),
       ];
 
       for (const row of invalidRows) {
@@ -137,6 +146,26 @@ layer("066_CompositionRunStartIntents", (it) => {
         (yield* Effect.result(
           insertIntent(sql, {
             runId: "run-unique-task-attempt-conflict",
+          }),
+        ))._tag,
+        "Failure",
+      );
+
+      yield* insertIntent(sql, {
+        runId: "run-unique-release-owner",
+        taskId: "task-unique-release-owner",
+        lastReleaseClaimId: "claim-unique-release-owner",
+        lastReleaseOperationId: "release-operation-unique",
+        lastReleasedAtUnixMs: 120,
+      });
+      assert.equal(
+        (yield* Effect.result(
+          insertIntent(sql, {
+            runId: "run-unique-release-conflict",
+            taskId: "task-unique-release-conflict",
+            lastReleaseClaimId: "claim-unique-release-conflict",
+            lastReleaseOperationId: "release-operation-unique",
+            lastReleasedAtUnixMs: 120,
           }),
         ))._tag,
         "Failure",
@@ -239,6 +268,9 @@ const insertIntent = (
     readonly state?: string;
     readonly claimId?: string;
     readonly claimedAtUnixMs?: number;
+    readonly lastReleaseClaimId?: string;
+    readonly lastReleaseOperationId?: string;
+    readonly lastReleasedAtUnixMs?: number;
     readonly runtimeTaskId?: string;
     readonly acceptedAtUnixMs?: number;
     readonly outcomeCode?: string;
@@ -250,6 +282,7 @@ const insertIntent = (
       run_id, task_id, agent_id, runtime_id, attempt,
       replay_policy, payload_digest, capability_digest,
       state, revision, claim_id, claimed_at_unix_ms,
+      last_release_claim_id, last_release_operation_id, last_released_at_unix_ms,
       runtime_task_id, capability_handshake_id, accepted_at_unix_ms,
       outcome_code, settled_at_unix_ms, created_at_unix_ms, updated_at_unix_ms
     ) VALUES (
@@ -257,12 +290,15 @@ const insertIntent = (
       ${input.runtimeId ?? "runtime-run-start"}, ${input.attempt ?? 2},
       ${input.replayPolicy ?? "fail_closed"}, 'sha256:payload', 'sha256:capabilities',
       ${input.state ?? "prepared"}, ${input.revision ?? 1}, ${input.claimId ?? null},
-      ${input.claimedAtUnixMs ?? null}, ${input.runtimeTaskId ?? null}, NULL,
+      ${input.claimedAtUnixMs ?? null}, ${input.lastReleaseClaimId ?? null},
+      ${input.lastReleaseOperationId ?? null},
+      ${input.lastReleasedAtUnixMs ?? null}, ${input.runtimeTaskId ?? null}, NULL,
       ${input.acceptedAtUnixMs ?? null}, ${input.outcomeCode ?? null},
       ${input.settledAtUnixMs ?? null}, 100,
       ${Math.max(
         100,
         input.claimedAtUnixMs ?? 0,
+        input.lastReleasedAtUnixMs ?? 0,
         input.acceptedAtUnixMs ?? 0,
         input.settledAtUnixMs ?? 0,
       )}
