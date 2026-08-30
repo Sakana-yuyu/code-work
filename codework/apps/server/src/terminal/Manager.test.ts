@@ -11,6 +11,7 @@ import {
 } from "@codework/contracts";
 import { HostProcessPlatform } from "@codework/shared/hostProcess";
 import * as Data from "effect/Data";
+import * as Deferred from "effect/Deferred";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Encoding from "effect/Encoding";
@@ -46,10 +47,13 @@ class FakePtyProcess implements PtyAdapter.PtyProcess {
   resizeFailure: unknown | undefined;
   private readonly dataListeners = new Set<(data: string) => void>();
   private readonly exitListeners = new Set<(event: PtyAdapter.PtyExitEvent) => void>();
+  private readonly killListeners = new Set<(signal: string | undefined) => void>();
+  private readonly autoExitOnKill: boolean;
   killed = false;
 
-  constructor(pid: number) {
+  constructor(pid: number, autoExitOnKill: boolean) {
     this.pid = pid;
+    this.autoExitOnKill = autoExitOnKill;
   }
 
   write(data: string): void {
@@ -69,6 +73,15 @@ class FakePtyProcess implements PtyAdapter.PtyProcess {
   kill(signal?: string): void {
     this.killed = true;
     this.killSignals.push(signal);
+    for (const listener of this.killListeners) {
+      listener(signal);
+    }
+    if (this.autoExitOnKill) {
+      this.emitExit({
+        exitCode: signal === "SIGKILL" ? 137 : 0,
+        signal: signal === "SIGKILL" ? 9 : signal === "SIGTERM" ? 15 : null,
+      });
+    }
   }
 
   onData(callback: (data: string) => void): () => void {
@@ -82,6 +95,13 @@ class FakePtyProcess implements PtyAdapter.PtyProcess {
     this.exitListeners.add(callback);
     return () => {
       this.exitListeners.delete(callback);
+    };
+  }
+
+  onKill(callback: (signal: string | undefined) => void): () => void {
+    this.killListeners.add(callback);
+    return () => {
+      this.killListeners.delete(callback);
     };
   }
 
@@ -103,10 +123,12 @@ class FakePtyAdapter {
   readonly processes: FakePtyProcess[] = [];
   readonly spawnFailures: Error[] = [];
   private readonly mode: "sync" | "async";
+  private readonly autoExitOnKill: boolean;
   private nextPid = 9000;
 
-  constructor(mode: "sync" | "async" = "sync") {
+  constructor(mode: "sync" | "async" = "sync", autoExitOnKill = true) {
     this.mode = mode;
+    this.autoExitOnKill = autoExitOnKill;
   }
 
   spawn(
@@ -123,7 +145,7 @@ class FakePtyAdapter {
         }),
       );
     }
-    const process = new FakePtyProcess(this.nextPid++);
+    const process = new FakePtyProcess(this.nextPid++, this.autoExitOnKill);
     this.processes.push(process);
     if (this.mode === "async") {
       return Effect.tryPromise({
@@ -159,6 +181,16 @@ const waitFor = <E, R>(
       }),
     ),
   );
+
+const watchNextKill = (process: FakePtyProcess) =>
+  Effect.gen(function* () {
+    const observed = yield* Deferred.make<string | undefined>();
+    const unsubscribe = process.onKill((signal) => {
+      Deferred.doneUnsafe(observed, Effect.succeed(signal));
+    });
+    yield* Effect.addFinalizer(() => Effect.sync(unsubscribe));
+    return observed;
+  });
 
 function openInput(overrides: Partial<TerminalOpenInput> = {}): TerminalOpenInput {
   return {
@@ -727,6 +759,70 @@ it.layer(
     }),
   );
 
+  it.effect("disposeThread 同时终止受监督与普通 session 并删除历史", () =>
+    Effect.gen(function* () {
+      const { manager, ptyAdapter } = yield* createManager();
+      const threadId = "dispose-thread-owned-and-ordinary";
+      const ownedTerminalId = "workspace-script-dispose-thread";
+      const ordinaryTerminalId = "ordinary-dispose-thread";
+      const owner = workspaceScriptOwner(26);
+      yield* manager.runCommand({
+        threadId,
+        terminalId: ownedTerminalId,
+        cwd: process.cwd(),
+        command: "workspace-script-command",
+        owner,
+      });
+      yield* manager.open(openInput({ threadId, terminalId: ordinaryTerminalId }));
+      const ownedProcess = ptyAdapter.processes[0];
+      const ordinaryProcess = ptyAdapter.processes[1];
+      expect(ownedProcess).toBeDefined();
+      expect(ordinaryProcess).toBeDefined();
+      if (!ownedProcess || !ordinaryProcess) return;
+      ownedProcess.emitData("owned-log\n");
+      ordinaryProcess.emitData("ordinary-log\n");
+      yield* waitFor(
+        manager
+          .getHistory({ threadId, terminalId: ownedTerminalId })
+          .pipe(Effect.map((history) => history === "owned-log\n")),
+      );
+      yield* waitFor(
+        manager
+          .getHistory({ threadId, terminalId: ordinaryTerminalId })
+          .pipe(Effect.map((history) => history === "ordinary-log\n")),
+      );
+
+      const failures = yield* manager.disposeThread({ threadId, deleteHistory: true });
+
+      assert.deepEqual(failures, []);
+      assert.equal(
+        yield* manager.inspectSession({ threadId, terminalId: ownedTerminalId }),
+        "missing",
+      );
+      assert.equal(
+        yield* manager.inspectSession({ threadId, terminalId: ordinaryTerminalId }),
+        "missing",
+      );
+      assert.isTrue(ownedProcess.killed);
+      assert.isTrue(ordinaryProcess.killed);
+      assert.equal(yield* manager.getHistory({ threadId, terminalId: ownedTerminalId }), "");
+      assert.equal(yield* manager.getHistory({ threadId, terminalId: ordinaryTerminalId }), "");
+    }),
+  );
+
+  it.effect("disposeThread 在线程没有 session 且历史目录不存在时视为已清理", () =>
+    Effect.gen(function* () {
+      const { manager } = yield* createManager();
+
+      const failures = yield* manager.disposeThread({
+        threadId: "dispose-thread-without-session-or-history",
+        deleteHistory: true,
+      });
+
+      assert.deepEqual(failures, []);
+    }),
+  );
+
   it.effect("运行中的 on_exit 命令从内存返回最新历史且不会创建额外 PTY", () =>
     Effect.gen(function* () {
       const { manager, ptyAdapter, getEvents } = yield* createManager();
@@ -856,8 +952,22 @@ it.layer(
     Effect.gen(function* () {
       const { manager, ptyAdapter } = yield* createManager();
       const attachEvents = yield* Ref.make<ReadonlyArray<TerminalAttachStreamEvent>>([]);
+      const snapshotCount = yield* Ref.make(0);
+      const reopenedSnapshotObserved = yield* Deferred.make<void>();
       const unsubscribe = yield* manager.attachStream(openInput(), (event) =>
-        Ref.update(attachEvents, (events) => [...events, event]),
+        Ref.update(attachEvents, (events) => [...events, event]).pipe(
+          Effect.andThen(
+            event.type === "snapshot"
+              ? Ref.updateAndGet(snapshotCount, (count) => count + 1).pipe(
+                  Effect.flatMap((count) =>
+                    count === 2
+                      ? Deferred.succeed(reopenedSnapshotObserved, undefined).pipe(Effect.asVoid)
+                      : Effect.void,
+                  ),
+                )
+              : Effect.void,
+          ),
+        ),
       );
       yield* Effect.addFinalizer(() => Effect.sync(unsubscribe));
 
@@ -867,9 +977,20 @@ it.layer(
         deleteHistory: true,
       });
       yield* manager.open(openInput());
+      yield* Deferred.await(reopenedSnapshotObserved);
 
       const events = yield* Ref.get(attachEvents);
-      expect(events.map((event) => event.type)).toEqual(["snapshot", "closed", "snapshot"]);
+      expect(events.map((event) => event.type)).toEqual([
+        "snapshot",
+        "exited",
+        "closed",
+        "snapshot",
+      ]);
+      expect(
+        events
+          .filter((event) => event.type === "exited" || event.type === "closed")
+          .map((event) => event.sequence),
+      ).toEqual([2, 3]);
       expect(
         events.filter((event) => event.type === "snapshot").map((event) => event.snapshot.status),
       ).toEqual(["running", "running"]);
@@ -1283,12 +1404,26 @@ it.layer(
 
   it.effect("propagates explicit worktree metadata through snapshots and lifecycle events", () =>
     Effect.gen(function* () {
-      const { manager, getEvents, baseDir } = yield* createManager();
+      const { manager, baseDir } = yield* createManager();
       const path = yield* Path.Path;
       const firstWorktreePath = path.join(baseDir, "worktrees", "feature-a");
       const secondWorktreePath = path.join(baseDir, "worktrees", "feature-b");
       yield* makeDirectory(firstWorktreePath);
       yield* makeDirectory(secondWorktreePath);
+      const startedEventObserved =
+        yield* Deferred.make<Extract<TerminalEvent, { type: "started" }>>();
+      const restartedEventObserved =
+        yield* Deferred.make<Extract<TerminalEvent, { type: "restarted" }>>();
+      const unsubscribe = yield* manager.subscribe((event) => {
+        if (event.type === "started") {
+          return Deferred.succeed(startedEventObserved, event).pipe(Effect.asVoid);
+        }
+        if (event.type === "restarted") {
+          return Deferred.succeed(restartedEventObserved, event).pipe(Effect.asVoid);
+        }
+        return Effect.void;
+      });
+      yield* Effect.addFinalizer(() => Effect.sync(unsubscribe));
       const startedSnapshot = yield* manager.open(
         openInput({
           cwd: firstWorktreePath,
@@ -1305,17 +1440,11 @@ it.layer(
       assert.equal(startedSnapshot.worktreePath, firstWorktreePath);
       assert.equal(restartedSnapshot.worktreePath, secondWorktreePath);
 
-      const events = yield* getEvents;
-      const startedEvent = events.find(
-        (event): event is Extract<TerminalEvent, { type: "started" }> => event.type === "started",
-      );
-      const restartedEvent = events.find(
-        (event): event is Extract<TerminalEvent, { type: "restarted" }> =>
-          event.type === "restarted",
-      );
+      const startedEvent = yield* Deferred.await(startedEventObserved);
+      const restartedEvent = yield* Deferred.await(restartedEventObserved);
 
-      assert.equal(startedEvent?.snapshot.worktreePath, firstWorktreePath);
-      assert.equal(restartedEvent?.snapshot.worktreePath, secondWorktreePath);
+      assert.equal(startedEvent.snapshot.worktreePath, firstWorktreePath);
+      assert.equal(restartedEvent.snapshot.worktreePath, secondWorktreePath);
     }),
   );
 
@@ -1836,33 +1965,55 @@ it.layer(
 
   it.effect("escalates terminal shutdown to SIGKILL when process does not exit in time", () =>
     Effect.gen(function* () {
-      const { manager, ptyAdapter } = yield* createManager(5, { processKillGraceMs: 10 });
+      const ptyAdapter = new FakePtyAdapter("sync", false);
+      const { manager } = yield* createManager(5, {
+        processKillGraceMs: 10,
+        ptyAdapter,
+      });
       yield* manager.open(openInput());
       const process = ptyAdapter.processes[0];
       expect(process).toBeDefined();
       if (!process) return;
 
+      const firstKill = yield* watchNextKill(process);
       const closeFiber = yield* manager.close({ threadId: "thread-1" }).pipe(Effect.forkScoped);
+      assert.equal(yield* Deferred.await(firstKill), "SIGTERM");
       yield* Effect.yieldNow;
       yield* TestClock.adjust("10 millis");
-      yield* Fiber.join(closeFiber);
 
       assert.equal(process.killSignals[0], "SIGTERM");
       expect(process.killSignals).toContain("SIGKILL");
-    }).pipe(Effect.provide(TestClock.layer())),
+      process.emitExit({ exitCode: 137, signal: 9 });
+      yield* Fiber.join(closeFiber);
+    }).pipe(Effect.provide(Layer.merge(withHostPlatform("linux"), TestClock.layer()))),
   );
 
   it.effect("publishes closed events when terminals are explicitly closed", () =>
     Effect.gen(function* () {
-      const { manager, getEvents } = yield* createManager();
+      const { manager } = yield* createManager();
+      const closedEventsRef = yield* Ref.make<
+        ReadonlyArray<Extract<TerminalEvent, { type: "closed" }>>
+      >([]);
+      const allClosedObserved = yield* Deferred.make<void>();
+      const unsubscribe = yield* manager.subscribe((event) =>
+        event.type === "closed"
+          ? Ref.updateAndGet(closedEventsRef, (events) => [...events, event]).pipe(
+              Effect.flatMap((events) =>
+                events.length === 2
+                  ? Deferred.succeed(allClosedObserved, undefined).pipe(Effect.asVoid)
+                  : Effect.void,
+              ),
+            )
+          : Effect.void,
+      );
+      yield* Effect.addFinalizer(() => Effect.sync(unsubscribe));
       yield* manager.open(openInput({ terminalId: "default" }));
       yield* manager.open(openInput({ terminalId: "sidecar" }));
 
       yield* manager.close({ threadId: "thread-1" });
+      yield* Deferred.await(allClosedObserved);
 
-      const closedEvents = (yield* getEvents).filter(
-        (event): event is Extract<TerminalEvent, { type: "closed" }> => event.type === "closed",
-      );
+      const closedEvents = yield* Ref.get(closedEventsRef);
       expect(closedEvents.map((event) => event.terminalId).sort()).toEqual(["default", "sidecar"]);
     }),
   );
@@ -2394,22 +2545,27 @@ it.layer(
 
   it.effect("scoped runtime shutdown stops active terminals cleanly", () =>
     Effect.gen(function* () {
+      const ptyAdapter = new FakePtyAdapter("sync", false);
       const scope = yield* Scope.make("sequential");
-      const { manager, ptyAdapter } = yield* createManager(5, {
+      const { manager } = yield* createManager(5, {
         processKillGraceMs: 10,
+        ptyAdapter,
       }).pipe(Effect.provideService(Scope.Scope, scope));
       yield* manager.open(openInput());
       const process = ptyAdapter.processes[0];
       expect(process).toBeDefined();
       if (!process) return;
 
+      const firstKill = yield* watchNextKill(process);
       const closeScope = yield* Scope.close(scope, Exit.void).pipe(Effect.forkScoped);
+      assert.equal(yield* Deferred.await(firstKill), "SIGTERM");
       yield* Effect.yieldNow;
       yield* TestClock.adjust("10 millis");
-      yield* Fiber.join(closeScope);
 
       assert.equal(process.killSignals[0], "SIGTERM");
       expect(process.killSignals).toContain("SIGKILL");
-    }).pipe(Effect.provide(TestClock.layer())),
+      process.emitExit({ exitCode: 137, signal: 9 });
+      yield* Fiber.join(closeScope);
+    }).pipe(Effect.provide(Layer.merge(withHostPlatform("linux"), TestClock.layer()))),
   );
 });
