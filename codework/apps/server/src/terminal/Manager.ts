@@ -16,6 +16,7 @@ import {
   TerminalHistoryError,
   TerminalNotRunningError,
   TerminalResizeError,
+  TerminalSessionOwnershipError,
   TerminalSessionLookupError,
   TerminalWriteError,
   type TerminalAttachInput,
@@ -60,6 +61,10 @@ import {
 import * as ProcessRunner from "../processRunner.ts";
 import * as PortScanner from "../preview/PortScanner.ts";
 import * as PtyAdapter from "./PtyAdapter.ts";
+import {
+  terminalSessionOwnerEquals,
+  type TerminalSessionOwner,
+} from "./TerminalSessionOwnership.ts";
 
 export {
   TerminalCwdError,
@@ -70,6 +75,7 @@ export {
   TerminalHistoryError,
   TerminalNotRunningError,
   TerminalResizeError,
+  TerminalSessionOwnershipError,
   TerminalSessionLookupError,
   TerminalWriteError,
 };
@@ -188,6 +194,10 @@ export class TerminalManager extends Context.Service<
 
     readonly kill: (input: TerminalKillInput) => Effect.Effect<void, TerminalError>;
 
+    readonly inspectSession: (
+      input: TerminalInspectSessionInput,
+    ) => Effect.Effect<TerminalSessionInspection, TerminalError>;
+
     /**
      * Subscribe to terminal runtime events with a direct callback.
      *
@@ -252,12 +262,22 @@ export interface TerminalStartInput extends TerminalOpenInput {
 export interface TerminalRunCommandInput extends TerminalOpenInput {
   readonly command: string;
   readonly args?: ReadonlyArray<string>;
+  readonly owner?: TerminalSessionOwner;
 }
 
 export interface TerminalKillInput {
   readonly threadId: string;
   readonly terminalId: string;
+  readonly expectedOwner?: TerminalSessionOwner;
 }
+
+export interface TerminalInspectSessionInput {
+  readonly threadId: string;
+  readonly terminalId: string;
+  readonly expectedOwner?: TerminalSessionOwner;
+}
+
+export type TerminalSessionInspection = "active" | "inactive" | "missing";
 
 export interface TerminalHistoryInput {
   readonly threadId: string;
@@ -283,6 +303,7 @@ export interface TerminalSessionState {
   cols: number;
   rows: number;
   process: PtyAdapter.PtyProcess | null;
+  owner: TerminalSessionOwner | null;
   unsubscribeData: (() => void) | null;
   unsubscribeExit: (() => void) | null;
   hasRunningSubprocess: boolean;
@@ -1624,6 +1645,17 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
     );
   });
 
+  const assertSessionOwner = Effect.fn("terminal.assertSessionOwner")(function* (
+    session: TerminalSessionState,
+    expectedOwner: TerminalSessionOwner | undefined,
+  ) {
+    if (terminalSessionOwnerEquals(session.owner, expectedOwner)) return;
+    return yield* new TerminalSessionOwnershipError({
+      threadId: session.threadId,
+      terminalId: session.terminalId,
+    });
+  });
+
   const sessionsForThread = Effect.fn("terminal.sessionsForThread")(function* (threadId: string) {
     return yield* readManagerState.pipe(
       Effect.map((state) =>
@@ -2015,6 +2047,7 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
     const closedEventSequence = Option.isSome(session) ? session.value.eventSequence + 1 : 0;
 
     if (Option.isSome(session)) {
+      yield* assertSessionOwner(session.value, undefined);
       yield* stopProcess(session.value);
       yield* unregisterTerminal({ threadId, terminalId });
       if (session.value.persistenceMode === "on_exit") {
@@ -2223,6 +2256,7 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
         cols,
         rows,
         process: null,
+        owner: null,
         unsubscribeData: null,
         unsubscribeExit: null,
         hasRunningSubprocess: false,
@@ -2256,6 +2290,7 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
     }
 
     const liveSession = existing.value;
+    yield* assertSessionOwner(liveSession, undefined);
     const nextRuntimeEnv = normalizedRuntimeEnv(input.env);
     const currentRuntimeEnv = liveSession.runtimeEnv;
     const targetCols = input.cols ?? liveSession.cols;
@@ -2325,7 +2360,10 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
   ) {
     yield* assertValidCwd(input.cwd);
     const existing = yield* getSession(input.threadId, input.terminalId);
-    if (Option.isSome(existing)) return snapshot(existing.value);
+    if (Option.isSome(existing)) {
+      yield* assertSessionOwner(existing.value, input.owner);
+      return snapshot(existing.value);
+    }
 
     const cols = input.cols ?? DEFAULT_OPEN_COLS;
     const rows = input.rows ?? DEFAULT_OPEN_ROWS;
@@ -2348,6 +2386,7 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
       cols,
       rows,
       process: null,
+      owner: input.owner ?? null,
       unsubscribeData: null,
       unsubscribeExit: null,
       hasRunningSubprocess: false,
@@ -2380,6 +2419,19 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
 
   const runCommand: TerminalManager["Service"]["runCommand"] = (input) =>
     withThreadLock(input.threadId, runCommandLocked(input));
+
+  const inspectSession: TerminalManager["Service"]["inspectSession"] = (input) =>
+    withThreadLock(
+      input.threadId,
+      Effect.gen(function* () {
+        const session = yield* getSession(input.threadId, input.terminalId);
+        if (Option.isNone(session)) return "missing" as const;
+        yield* assertSessionOwner(session.value, input.expectedOwner);
+        return session.value.process !== null && session.value.status === "running"
+          ? ("active" as const)
+          : ("inactive" as const);
+      }),
+    );
 
   const getHistory: TerminalManager["Service"]["getHistory"] = (input) =>
     withThreadLock(
@@ -2707,6 +2759,7 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
             cols,
             rows,
             process: null,
+            owner: null,
             unsubscribeData: null,
             unsubscribeExit: null,
             hasRunningSubprocess: false,
@@ -2723,6 +2776,7 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
           yield* evictInactiveSessionsIfNeeded();
         } else {
           session = existingSession.value;
+          yield* assertSessionOwner(session, undefined);
           yield* stopProcess(session);
           session.cwd = input.cwd;
           session.worktreePath = input.worktreePath ?? null;
@@ -2782,6 +2836,7 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
       input.threadId,
       Effect.gen(function* () {
         const session = yield* requireSession(input.threadId, input.terminalId);
+        yield* assertSessionOwner(session, input.expectedOwner);
         if (!session.process) return;
         yield* stopProcess(session);
         const eventStamp = advanceEventSequence(session);
@@ -2812,6 +2867,7 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
     restart,
     close,
     kill,
+    inspectSession,
     subscribe,
     subscribeMetadata,
   });

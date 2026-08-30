@@ -14,6 +14,7 @@ import * as Option from "effect/Option";
 import { WorkspaceScriptStoreLive } from "../persistence/Layers/WorkspaceScriptStore.ts";
 import { SqlitePersistenceMemory } from "../persistence/Layers/Sqlite.ts";
 import { WorkspaceScriptStore } from "../persistence/Services/WorkspaceScriptStore.ts";
+import { makeWorkspaceScriptTerminalOwner } from "../terminal/TerminalSessionOwnership.ts";
 import {
   makeWorkspaceScriptService,
   WorkspaceScriptDependencyError,
@@ -104,6 +105,7 @@ const makeFixture = () => {
           exitSignal: 15,
         });
       }),
+    inspectSession: () => Effect.succeed("active"),
     getHistory: (input) =>
       Effect.gen(function* () {
         historyRequests.push(input);
@@ -204,6 +206,10 @@ describe("WorkspaceScriptService", () => {
         env: { T3CODE_PROJECT_ROOT: "E:/workspace/project-1" },
         command: "C:/Windows/System32/cmd.exe",
         args: ["/d", "/s", "/c", "pnpm dev"],
+        owner: makeWorkspaceScriptTerminalOwner({
+          workspaceScriptRunId: "workspace-script-run:operation-1",
+          generation: first.requestedAtUnixMs,
+        }),
       });
     }),
   );
@@ -313,7 +319,16 @@ describe("WorkspaceScriptService", () => {
         expectedRevision: started.revision,
       });
 
-      assert.deepEqual(kills, [{ threadId: "thread-1", terminalId: started.terminalId }]);
+      assert.deepEqual(kills, [
+        {
+          threadId: "thread-1",
+          terminalId: started.terminalId,
+          expectedOwner: makeWorkspaceScriptTerminalOwner({
+            workspaceScriptRunId: started.workspaceScriptRunId,
+            generation: started.requestedAtUnixMs,
+          }),
+        },
+      ]);
       assert.equal(stopped.status, "stopped");
       assert.equal(repeated.status, "stopped");
     }),
@@ -374,7 +389,7 @@ describe("WorkspaceScriptService", () => {
 
   it.effect("stop claim 持久化后服务崩溃，相同 operationId 可恢复执行", () =>
     Effect.gen(function* () {
-      const { service, restartService, store, kills } = yield* makeFixture();
+      const { service, restartService, store, starts, kills } = yield* makeFixture();
       const started = yield* service.start({
         ...startRequest,
         operationId: "operation-stop-crash",
@@ -401,6 +416,7 @@ describe("WorkspaceScriptService", () => {
       assert.isTrue(claimed.claimed);
       assert.equal(recovered.status, "running");
       assert.equal(kills.length, 1);
+      assert.deepEqual(kills[0]?.expectedOwner, starts[0]?.owner);
       assert.equal(stopped.status, "stopped");
     }),
   );
