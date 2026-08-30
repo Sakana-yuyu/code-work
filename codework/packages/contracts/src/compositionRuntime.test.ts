@@ -38,6 +38,9 @@ describe("composition runtime contracts", () => {
     expect(isMulticaSecretName("Private-Token")).toBe(true);
     expect(isMulticaSecretName("Client-Secret")).toBe(true);
     expect(isMulticaSecretName("X-Client-Secret")).toBe(true);
+    expect(isMulticaSecretName("Cookie")).toBe(true);
+    expect(isMulticaSecretName("X-Auth")).toBe(true);
+    expect(isMulticaSecretName("X-Authorization")).toBe(true);
     expect(isMulticaSecretName("Ocp-Apim-Subscription-Key")).toBe(true);
     expect(isMulticaSecretName("authorizationCode")).toBe(true);
     expect(isMulticaSecretName("subscriptionKey")).toBe(true);

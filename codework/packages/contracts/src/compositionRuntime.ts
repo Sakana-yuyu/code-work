@@ -283,6 +283,9 @@ export type CompositionMulticaProbeStatus = typeof CompositionMulticaProbeStatus
 const MULTICA_SECRET_NAME_EXACT = new Set([
   "authorization",
   "proxy-authorization",
+  "x-authorization",
+  "x-auth",
+  "cookie",
   "api-key",
   "api_key",
   "x-api-key",
