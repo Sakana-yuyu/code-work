@@ -798,6 +798,7 @@ inputStoreLayer("CompositionTaskInputStore", (it) => {
         workspaceRoot: "C:/workspace/project",
         workspaceRootDigest: "sha256:workspace",
         model: "provider/model",
+        capabilityIds: ["t3.workspace.read_file", "t3.workspace.write_file"],
       };
 
       yield* store.save(input);

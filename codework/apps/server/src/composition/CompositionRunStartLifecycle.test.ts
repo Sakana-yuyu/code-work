@@ -62,6 +62,25 @@ it.effect("capability 摘要使用与 locale 无关的固定排序", () =>
   }),
 );
 
+it.effect("未知 capability 身份使用独立固定摘要而不是空集合摘要", () =>
+  Effect.sync(() => {
+    const unknown = makeCompositionRunStartDigests({
+      ...identity,
+      capabilityIds: null,
+    });
+    const empty = makeCompositionRunStartDigests({
+      ...identity,
+      capabilityIds: [],
+    });
+
+    assert.notEqual(unknown.capabilityDigest, empty.capabilityDigest);
+    assert.equal(
+      unknown.capabilityDigest,
+      "sha256:6e49a45035ab8cd96322c08d2dde90872371eee1dc79660f265d9d2d719e420a",
+    );
+  }),
+);
+
 it.effect("持久错误截断不会留下半个 UTF-16 代理字符", () =>
   Effect.sync(() => {
     const normalized = normalizeCompositionRunStartRejectedOutcome({

@@ -1015,7 +1015,7 @@ layer("CompositionOrchestrator", (it) => {
       const startedBy: string[] = [];
       const driverRegistry = makeCompositionAgentDriverRegistry();
       yield* store.upsertSquad({
-        squadId: "squad-1",
+        squadId: "squad-leader-driver",
         name: "代码协同组",
         leaderAgentId: "agent-leader",
         memberAgentIds: ["agent-leader", "agent-worker"],
@@ -1037,14 +1037,14 @@ layer("CompositionOrchestrator", (it) => {
         runId: "run-squad",
         projectId: "project-1",
         assigneeKind: "squad",
-        assigneeId: "squad-1",
+        assigneeId: "squad-leader-driver",
         mode: "parallel",
         promptDigest: "sha256:squad",
         dependsOnTaskIds: [],
       });
 
       assert.deepEqual(startedBy, ["agent-leader"]);
-      assert.equal(result.task.assigneeId, "squad-1");
+      assert.equal(result.task.assigneeId, "squad-leader-driver");
       assert.equal(result.run.agentId, "agent-leader");
       assert.equal(result.run.runtimeId, "runtime-leader");
     }),
@@ -1307,6 +1307,7 @@ layer("CompositionOrchestrator", (it) => {
         readonly workspaceRoot: string;
         readonly workspaceRootDigest?: string;
         readonly model?: string;
+        readonly capabilityIds?: ReadonlyArray<string>;
       }> = [];
       const driverRegistry = makeCompositionAgentDriverRegistry();
       yield* driverRegistry.register({
@@ -1344,6 +1345,7 @@ layer("CompositionOrchestrator", (it) => {
           workspaceRoot: "C:/workspace/recovery",
           workspaceRootDigest: "sha256:workspace-recovery",
           model: "provider/model",
+          capabilityIds: [],
         },
       ]);
     }),

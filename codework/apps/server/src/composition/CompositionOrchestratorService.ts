@@ -8,13 +8,14 @@ import {
   type CompositionTaskStoreError,
   type CompositionTaskStoreShape,
 } from "../persistence/Services/CompositionTaskStore.ts";
+import { CompositionRunStartStore } from "../persistence/Services/CompositionRunStartStore.ts";
+import { CompositionTaskInputStore } from "../persistence/Services/CompositionTaskInputStore.ts";
 import { CompositionAgentDriverRegistryService } from "./CompositionAgentDriverRegistry.ts";
 import { CapabilityGrantRegistry } from "./CapabilityGrantRegistry.ts";
 import {
   makeCompositionOrchestrator,
   type CompositionOrchestrator,
 } from "./CompositionOrchestrator.ts";
-import { CompositionTaskInputStore } from "../persistence/Services/CompositionTaskInputStore.ts";
 
 export interface CompositionOrchestratorServiceShape {
   readonly dispatchTask: CompositionOrchestrator["dispatchTask"];
@@ -39,11 +40,13 @@ const live = Effect.gen(function* () {
   const driverRegistry = yield* CompositionAgentDriverRegistryService;
   const grantRegistry = yield* Effect.serviceOption(CapabilityGrantRegistry);
   const inputStore = yield* CompositionTaskInputStore;
+  const runStartStore = yield* CompositionRunStartStore;
   const orchestrator = makeCompositionOrchestrator(
     store,
     driverRegistry,
     grantRegistry._tag === "Some" ? grantRegistry.value : undefined,
     inputStore,
+    runStartStore,
   );
 
   return {

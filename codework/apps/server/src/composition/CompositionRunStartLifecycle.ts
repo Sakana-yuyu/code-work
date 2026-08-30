@@ -79,11 +79,14 @@ export const makeCompositionRunStartDigests = (input: {
   readonly promptDigest: string;
   readonly workspaceRootDigest?: string;
   readonly model?: string;
-  readonly capabilityIds: ReadonlyArray<string>;
+  readonly capabilityIds: ReadonlyArray<string> | null;
 }) => {
-  const capabilityIds = [
-    ...new Set(input.capabilityIds.map((id) => id.trim()).filter(Boolean)),
-  ].sort((left, right) => (left < right ? -1 : left > right ? 1 : 0));
+  const capabilityIds =
+    input.capabilityIds === null
+      ? null
+      : [...new Set(input.capabilityIds.map((id) => id.trim()).filter(Boolean))].sort(
+          (left, right) => (left < right ? -1 : left > right ? 1 : 0),
+        );
   return {
     payloadDigest: digest({
       schemaVersion: 1,

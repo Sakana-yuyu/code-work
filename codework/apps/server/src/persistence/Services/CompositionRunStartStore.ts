@@ -182,6 +182,11 @@ export interface CompositionRunStartStoreShape {
   ) => Effect.Effect<ReadonlyArray<CompositionRunStartIntent>, CompositionRunStartStoreError>;
 }
 
+export type CompositionRunStartExecutionStoreShape = Omit<
+  CompositionRunStartStoreShape,
+  "resetPreparationForRecovery" | "claimDispatchRecovery" | "listRecoverable"
+>;
+
 export class CompositionRunStartStore extends Context.Service<
   CompositionRunStartStore,
   CompositionRunStartStoreShape

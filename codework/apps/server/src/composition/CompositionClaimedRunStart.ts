@@ -3,12 +3,13 @@ import * as Effect from "effect/Effect";
 
 import type {
   CompositionRunStartIntent,
-  CompositionRunStartStoreShape,
+  CompositionRunStartExecutionStoreShape,
 } from "../persistence/Services/CompositionRunStartStore.ts";
 import {
   normalizeCompositionRunStartRejectedOutcome,
   validateCompositionRunStartReceipt,
   type CompositionRunStartReceipt,
+  type CompositionRunStartReceiptError,
   type CompositionRunStartRecoveryPolicy,
 } from "./CompositionRunStartLifecycle.ts";
 
@@ -18,7 +19,7 @@ type StartFailure = {
 };
 
 type CompositionRunStartDispatchInput<A, F extends StartFailure, EAccepted, ERejected> = {
-  readonly store: CompositionRunStartStoreShape;
+  readonly store: CompositionRunStartExecutionStoreShape;
   readonly intent: CompositionRunStartIntent;
   readonly policy: CompositionRunStartRecoveryPolicy;
   readonly capabilityGrantIds: ReadonlyArray<string>;
@@ -28,6 +29,7 @@ type CompositionRunStartDispatchInput<A, F extends StartFailure, EAccepted, ERej
   >;
   readonly onAccepted: (receipt: CompositionRunStartReceipt) => Effect.Effect<A, EAccepted>;
   readonly onRejected: (failure: F) => Effect.Effect<A, ERejected>;
+  readonly mapReceiptFailure: (failure: CompositionRunStartReceiptError) => F;
 };
 
 export const dispatchCompositionRunStart = <A, F extends StartFailure, EAccepted, ERejected>(
@@ -64,7 +66,7 @@ export const dispatchCompositionRunStart = <A, F extends StartFailure, EAccepted
         outcomeDetail: receiptResult.failure.detail,
         quarantinedAtUnixMs,
       });
-      return yield* receiptResult.failure;
+      return yield* Effect.fail(input.mapReceiptFailure(receiptResult.failure));
     }
 
     const acceptedAtUnixMs = yield* Clock.currentTimeMillis;

@@ -9,6 +9,8 @@ export type CompositionTaskRecoveryInput = {
   readonly workspaceRoot: string;
   readonly workspaceRootDigest?: string;
   readonly model?: string;
+  /** 缺失表示旧版密文无法证明原始 capability 身份；空数组表示已知无需 capability。 */
+  readonly capabilityIds?: ReadonlyArray<string>;
 };
 
 export class CompositionTaskInputStoreError extends Schema.TaggedErrorClass<CompositionTaskInputStoreError>()(
