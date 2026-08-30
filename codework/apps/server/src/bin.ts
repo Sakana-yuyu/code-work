@@ -7,6 +7,7 @@ import * as CliError from "effect/unstable/cli/CliError";
 
 import * as NetService from "@codework/shared/Net";
 import packageJson from "../package.json" with { type: "json" };
+import { agentCommand } from "./cli/agent.ts";
 import { automationCommand } from "./cli/automation.ts";
 import { authCommand } from "./cli/auth.ts";
 import { connectCommand } from "./cli/connect.ts";
@@ -57,6 +58,7 @@ export const makeCli = ({ cloudEnabled = hasCloudPublicConfig } = {}) =>
       serveCommand,
       pairCommand,
       authCommand,
+      agentCommand,
       projectCommand,
       scriptCommand,
       serviceCommand,

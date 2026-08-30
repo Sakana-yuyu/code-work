@@ -255,6 +255,18 @@ it.layer(NodeServices.layer)("bin cli parsing", (it) => {
     }),
   );
 
+  it.effect("exposes read-only Agent status controls", () =>
+    Effect.gen(function* () {
+      const status = yield* captureStdout(runCli(["agent", "status", "--help"], noConnectCli));
+
+      assert.include(status.output, "Read one agent's authoritative orchestration status.");
+      assert.include(status.output, "<agent-id>");
+      assert.include(status.output, "--server");
+      assert.include(status.output, "--access-token");
+      assert.include(status.output, "--json");
+    }),
+  );
+
   it.effect("exposes optimistic Squad lifecycle commands", () =>
     Effect.gen(function* () {
       const duplicate = yield* captureStdout(
