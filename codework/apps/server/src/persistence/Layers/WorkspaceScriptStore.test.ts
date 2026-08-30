@@ -323,12 +323,17 @@ recoveryLayer("WorkspaceScriptStore recovery", (it) => {
       const preserved = Option.getOrThrow(yield* store.getRun(exited.workspaceScriptRunId));
 
       assert.deepEqual(
-        recovered.map((run) => run.workspaceScriptRunId),
+        recovered.map(({ run }) => run.workspaceScriptRunId),
         [
           running.workspaceScriptRunId,
           starting.workspaceScriptRunId,
           stopping.workspaceScriptRunId,
         ],
+      );
+      assert.equal(
+        recovered.find(({ run }) => run.workspaceScriptRunId === stopping.workspaceScriptRunId)
+          ?.stopOperationId,
+        "stop-operation-recovery",
       );
       assert.deepEqual(repeated, []);
       assert.equal(failed.status, "failed");

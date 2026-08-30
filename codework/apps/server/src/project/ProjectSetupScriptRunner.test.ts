@@ -54,6 +54,7 @@ const makeTerminalManagerLayer = (
     ...overrides,
     runCommand: () => Effect.die(new Error("unused")),
     getHistory: () => Effect.die(new Error("unused")),
+    inspectSession: () => Effect.succeed("missing"),
     attachStream: () => Effect.die(new Error("unused")),
     resize: () => Effect.void,
     clear: () => Effect.void,
