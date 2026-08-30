@@ -1,4 +1,4 @@
-import { createHash } from "node:crypto";
+import * as NodeCrypto from "node:crypto";
 
 import type {
   CompositionRuntimeCapabilityHandshakeRequest,
@@ -225,6 +225,7 @@ const mapRuntimeStatus = (
 ): CompositionRuntimeProbeResult["status"] => {
   if (response.runtimeGone) return "offline";
   switch (response.status) {
+    case "ok":
     case "online":
     case "ready":
     case "running":
@@ -298,7 +299,9 @@ const eventIdForFrame = (frame: MulticaWebSocketFrame): EventId => {
     recordString(frame.payload, "event_id") ??
     recordString(frame.payload, "eventId");
   if (explicit !== undefined) return EventId.make(explicit);
-  const digest = createHash("sha256").update(encodeMulticaWebSocketFrame(frame)).digest("hex");
+  const digest = NodeCrypto.createHash("sha256")
+    .update(encodeMulticaWebSocketFrame(frame))
+    .digest("hex");
   return EventId.make(`multica:${digest}`);
 };
 
