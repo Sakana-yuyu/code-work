@@ -12,6 +12,18 @@ export type CompositionRunStartRecoveryPolicy = {
   readonly capabilityGrantReplay?: { readonly mode: "none" | "verified" };
 };
 
+/**
+ * 不含密钥的外部启动目标身份。只有 Driver 能提供这份事实时，恢复才可考虑自动化。
+ */
+export type CompositionRunStartExternalTargetIdentity = {
+  readonly runtimeKind: string;
+  readonly providerInstanceId: string | null;
+  readonly adapterId: string | null;
+  readonly modelIdentity: string | null;
+  readonly configDigest: string | null;
+  readonly sessionMode: string | null;
+};
+
 export type CompositionRunStartReconcileInput = {
   readonly task: CompositionTask;
   readonly run: CompositionTaskRun;
@@ -109,6 +121,7 @@ export const makeCompositionRunStartDigests = (input: {
   readonly promptDigest: string;
   readonly workspaceRootDigest?: string;
   readonly model?: string;
+  readonly externalTargetIdentity?: CompositionRunStartExternalTargetIdentity | null;
   readonly capabilityIds: ReadonlyArray<string> | null;
 }) => {
   const capabilityIds =
@@ -136,6 +149,7 @@ export const makeCompositionRunStartDigests = (input: {
       promptDigest: input.promptDigest,
       workspaceRootDigest: normalizeText(input.workspaceRootDigest),
       model: normalizeText(input.model),
+      externalTargetIdentity: input.externalTargetIdentity ?? null,
       capabilityIds,
     }),
     capabilityDigest: digest({ schemaVersion: 1, capabilityIds }),

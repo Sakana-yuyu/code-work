@@ -614,6 +614,14 @@ export const makeCompositionProviderAgentDriver = (
   return {
     agentId: options.agentId,
     runtimeId: options.runtimeId,
+    getStartIdentity: (input) => ({
+      runtimeKind: "provider",
+      providerInstanceId: String(options.providerInstanceId),
+      adapterId: options.runtimeId,
+      modelIdentity: input.model ?? options.model ?? null,
+      configDigest: null,
+      sessionMode: runtimeMode,
+    }),
     startRecoveryPolicy: {
       mode: "reconcile-only",
       requiredReceipt: "runtime-task",

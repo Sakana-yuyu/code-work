@@ -13,8 +13,9 @@ export type CompositionRunStartRecoveryCandidate = {
   readonly run: CompositionTaskRun;
   readonly intent: CompositionRunStartIntent;
   readonly capabilityIds: ReadonlyArray<string> | null;
-  readonly workspaceRootDigest?: string;
-  readonly model?: string;
+  /** 必须由解密后的 recovery input 或持久 Run snapshot 填充，不能信任 RPC 调用方。 */
+  readonly workspaceRootDigest: string | null;
+  readonly model: string | null;
 };
 
 export type CompositionRunStartRecoveryReconciliation =
@@ -97,6 +98,28 @@ const planFor = Effect.fn("planCompositionRunStartRecovery")(function* (
     };
   }
 
+  const driver = yield* driverRegistry.get(candidate.intent.agentId);
+  if (driver === undefined || driver.runtimeId !== candidate.intent.runtimeId) {
+    return {
+      taskId: candidate.task.taskId,
+      runId: candidate.run.runId,
+      action: "defer",
+      code: "run_start_agent_driver_unavailable",
+      detail: "Run Start 对应的 Agent Driver 不可用，恢复已延后。",
+    };
+  }
+  const externalTargetIdentity = driver.getStartIdentity?.({
+    ...(candidate.model === null ? {} : { model: candidate.model }),
+  });
+  if (externalTargetIdentity === undefined) {
+    return {
+      taskId: candidate.task.taskId,
+      runId: candidate.run.runId,
+      action: "manual",
+      code: "run_start_external_target_identity_unavailable",
+      detail: "Agent Driver 未提供可验证的外部启动目标身份，禁止自动重放。",
+    };
+  }
   const digests = makeCompositionRunStartDigests({
     taskId: candidate.task.taskId,
     projectId: candidate.task.projectId,
@@ -114,10 +137,9 @@ const planFor = Effect.fn("planCompositionRunStartRecovery")(function* (
     runtimeId: candidate.run.runtimeId,
     attempt: candidate.run.attempt,
     promptDigest: candidate.task.promptDigest,
-    ...(candidate.workspaceRootDigest === undefined
-      ? {}
-      : { workspaceRootDigest: candidate.workspaceRootDigest }),
-    ...(candidate.model === undefined ? {} : { model: candidate.model }),
+    workspaceRootDigest: candidate.workspaceRootDigest,
+    model: candidate.model,
+    externalTargetIdentity,
     capabilityIds: candidate.capabilityIds,
   });
   if (
@@ -130,17 +152,6 @@ const planFor = Effect.fn("planCompositionRunStartRecovery")(function* (
       action: "quarantine",
       code: "run_start_recovery_digest_mismatch",
       detail: "当前 Task/Run 启动身份与持久 Run Start 摘要不一致，已阻止自动外部启动。",
-    };
-  }
-
-  const driver = yield* driverRegistry.get(candidate.intent.agentId);
-  if (driver === undefined || driver.runtimeId !== candidate.intent.runtimeId) {
-    return {
-      taskId: candidate.task.taskId,
-      runId: candidate.run.runId,
-      action: "defer",
-      code: "run_start_agent_driver_unavailable",
-      detail: "Run Start 对应的 Agent Driver 不可用，恢复已延后。",
     };
   }
 

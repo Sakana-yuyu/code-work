@@ -15,21 +15,24 @@ import {
 
 export type CompositionRunStartSetup = {
   readonly taskId: string;
-  readonly projectId?: string;
-  readonly threadId?: string;
-  readonly parentTaskId?: string;
+  readonly projectId: string;
+  readonly threadId: string | null;
+  readonly parentTaskId: string | null;
   readonly runId: string;
   readonly previousRunId: string | null;
-  readonly assigneeKind?: string;
-  readonly assigneeId?: string;
-  readonly mode?: string;
-  readonly dependsOnTaskIds?: ReadonlyArray<string>;
+  readonly assigneeKind: string;
+  readonly assigneeId: string;
+  readonly mode: string;
+  readonly dependsOnTaskIds: ReadonlyArray<string>;
   readonly agentId: string;
   readonly runtimeId: string;
   readonly attempt: number;
   readonly promptDigest: string;
-  readonly workspaceRootDigest?: string;
-  readonly model?: string;
+  readonly workspaceRootDigest: string | null;
+  readonly model: string | null;
+  readonly externalTargetIdentity:
+    | import("./CompositionRunStartLifecycle.ts").CompositionRunStartExternalTargetIdentity
+    | null;
   readonly capabilityIds: ReadonlyArray<string> | null;
 };
 
@@ -75,23 +78,22 @@ export const claimCompositionRunStartSetup = (
     const preparedAtUnixMs = yield* Clock.currentTimeMillis;
     const digests = makeCompositionRunStartDigests({
       taskId: setup.taskId,
-      ...(setup.projectId === undefined ? {} : { projectId: setup.projectId }),
-      ...(setup.threadId === undefined ? {} : { threadId: setup.threadId }),
-      ...(setup.parentTaskId === undefined ? {} : { parentTaskId: setup.parentTaskId }),
+      projectId: setup.projectId,
+      threadId: setup.threadId ?? undefined,
+      parentTaskId: setup.parentTaskId ?? undefined,
       runId: setup.runId,
       previousRunId: setup.previousRunId,
-      ...(setup.assigneeKind === undefined ? {} : { assigneeKind: setup.assigneeKind }),
-      ...(setup.assigneeId === undefined ? {} : { assigneeId: setup.assigneeId }),
-      ...(setup.mode === undefined ? {} : { mode: setup.mode }),
-      ...(setup.dependsOnTaskIds === undefined ? {} : { dependsOnTaskIds: setup.dependsOnTaskIds }),
+      assigneeKind: setup.assigneeKind,
+      assigneeId: setup.assigneeId,
+      mode: setup.mode,
+      dependsOnTaskIds: setup.dependsOnTaskIds,
       agentId: setup.agentId,
       runtimeId: setup.runtimeId,
       attempt: setup.attempt,
       promptDigest: setup.promptDigest,
-      ...(setup.workspaceRootDigest === undefined
-        ? {}
-        : { workspaceRootDigest: setup.workspaceRootDigest }),
-      ...(setup.model === undefined ? {} : { model: setup.model }),
+      workspaceRootDigest: setup.workspaceRootDigest ?? undefined,
+      model: setup.model ?? undefined,
+      externalTargetIdentity: setup.externalTargetIdentity,
       capabilityIds: setup.capabilityIds,
     });
     const prepared = yield* store.prepareStart({

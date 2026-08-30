@@ -51,6 +51,7 @@ import type {
   CompositionRunStartReconcileDecision,
   CompositionRunStartReconcileInput,
   CompositionRunStartRecoveryPolicy,
+  CompositionRunStartExternalTargetIdentity,
 } from "./CompositionRunStartLifecycle.ts";
 
 export class CompositionTaskDependencyMissingError extends Schema.TaggedErrorClass<CompositionTaskDependencyMissingError>()(
@@ -167,6 +168,10 @@ export interface CompositionAgentDriver {
   readonly runtimeId: string;
   /** 跨进程恢复只依据 Driver 明确声明的重放策略，不从 runtimeId 或实现名称猜测。 */
   readonly startRecoveryPolicy?: CompositionRunStartRecoveryPolicy;
+  /** 缺失时仍允许首启，但跨进程恢复必须停在 manual，不能猜测外部目标。 */
+  readonly getStartIdentity?: (input: {
+    readonly model?: string;
+  }) => CompositionRunStartExternalTargetIdentity;
   /** 只核对外部启动事实；不得在此方法中创建新的外部任务。 */
   readonly reconcileStart?: (
     input: CompositionRunStartReconcileInput,
@@ -618,8 +623,8 @@ const makeOrchestrator = (
   }) => ({
     taskId: input.task.taskId,
     projectId: input.task.projectId,
-    ...(input.task.threadId === undefined ? {} : { threadId: input.task.threadId }),
-    ...(input.task.parentTaskId === undefined ? {} : { parentTaskId: input.task.parentTaskId }),
+    threadId: input.task.threadId ?? null,
+    parentTaskId: input.task.parentTaskId ?? null,
     runId: input.run.runId,
     previousRunId: input.previousRunId,
     assigneeKind: input.task.assigneeKind,
@@ -630,10 +635,9 @@ const makeOrchestrator = (
     runtimeId: input.driver.runtimeId,
     attempt: input.run.attempt,
     promptDigest: input.task.promptDigest,
-    ...(input.workspaceRootDigest === undefined
-      ? {}
-      : { workspaceRootDigest: input.workspaceRootDigest }),
-    ...(input.model === undefined ? {} : { model: input.model }),
+    workspaceRootDigest: input.workspaceRootDigest ?? null,
+    model: input.model ?? null,
+    externalTargetIdentity: input.driver.getStartIdentity?.({ model: input.model }) ?? null,
     capabilityIds: input.capabilityIds,
   });
 

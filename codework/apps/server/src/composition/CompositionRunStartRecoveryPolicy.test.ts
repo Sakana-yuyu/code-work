@@ -56,6 +56,14 @@ const makeCandidate = (
     runtimeId: run.runtimeId,
     attempt: run.attempt,
     promptDigest: task.promptDigest,
+    externalTargetIdentity: {
+      runtimeKind: "test",
+      providerInstanceId: "provider-test",
+      adapterId: run.runtimeId,
+      modelIdentity: null,
+      configDigest: "sha256:test-config",
+      sessionMode: null,
+    },
     capabilityIds: [],
   });
   const intent = {
@@ -81,6 +89,8 @@ const makeCandidate = (
     run,
     intent,
     capabilityIds: [],
+    workspaceRootDigest: null,
+    model: null,
     ...overrides,
   };
 };
@@ -96,6 +106,14 @@ const makeDriver = (
     requiredReceipt: "runtime-task",
     capabilityGrantReplay: { mode: "none" },
   },
+  getStartIdentity: () => ({
+    runtimeKind: "test",
+    providerInstanceId: "provider-test",
+    adapterId: candidate.intent.runtimeId,
+    modelIdentity: null,
+    configDigest: "sha256:test-config",
+    sessionMode: null,
+  }),
   startTask: () => Effect.succeed({ runtimeTaskId: `runtime-task-${candidate.intent.runId}` }),
   cancelTask: () => Effect.succeed({ status: "cancelled" as const }),
   ...overrides,
@@ -336,6 +354,89 @@ it.effect(
       assert.equal(plan?.action, "quarantine");
       assert.equal(plan?.code, "run_start_recovery_digest_mismatch");
       assert.equal(reconcileCalls, 0);
+    }),
+);
+
+it.effect(
+  "恢复逐字段重验启动身份，任一字段或 Driver 外部目标变化均 quarantine 且零 reconcile",
+  () =>
+    Effect.gen(function* () {
+      const original = makeCandidate("field-by-field");
+      const cases: ReadonlyArray<{
+        readonly name: string;
+        readonly candidate: CompositionRunStartRecoveryCandidate;
+        readonly changedDriverIdentity?: boolean;
+      }> = [
+        {
+          name: "projectId",
+          candidate: { ...original, task: { ...original.task, projectId: "project-next" } },
+        },
+        {
+          name: "threadId",
+          candidate: { ...original, task: { ...original.task, threadId: "thread-next" } },
+        },
+        {
+          name: "parentTaskId",
+          candidate: { ...original, task: { ...original.task, parentTaskId: "parent-next" } },
+        },
+        {
+          name: "assigneeKind",
+          candidate: { ...original, task: { ...original.task, assigneeKind: "squad" } },
+        },
+        {
+          name: "assigneeId",
+          candidate: { ...original, task: { ...original.task, assigneeId: "agent-next" } },
+        },
+        { name: "mode", candidate: { ...original, task: { ...original.task, mode: "parallel" } } },
+        {
+          name: "dependencies",
+          candidate: {
+            ...original,
+            task: { ...original.task, dependsOnTaskIds: ["dependency-next"] },
+          },
+        },
+        {
+          name: "workspaceRootDigest",
+          candidate: { ...original, workspaceRootDigest: "sha256:workspace-next" },
+        },
+        { name: "model", candidate: { ...original, model: "model-next" } },
+        { name: "capabilityIds", candidate: { ...original, capabilityIds: ["workspace.write"] } },
+        { name: "externalTarget", candidate: original, changedDriverIdentity: true },
+      ];
+
+      for (const testCase of cases) {
+        const registry = makeCompositionAgentDriverRegistry();
+        let reconcileCalls = 0;
+        yield* registry.register(
+          makeDriver(original, {
+            getStartIdentity: () => ({
+              runtimeKind: "test",
+              providerInstanceId: "provider-test",
+              adapterId: original.intent.runtimeId,
+              modelIdentity: null,
+              configDigest: testCase.changedDriverIdentity
+                ? "sha256:changed-external-config"
+                : "sha256:test-config",
+              sessionMode: null,
+            }),
+            reconcileStart: () =>
+              Effect.sync(() => {
+                reconcileCalls += 1;
+                return { action: "replay" as const };
+              }),
+          }),
+        );
+
+        const [plan] = yield* planCompositionRunStartRecoveries({
+          candidates: [testCase.candidate],
+          driverRegistry: registry,
+          reconciled,
+        });
+
+        assert.equal(plan?.action, "quarantine", testCase.name);
+        assert.equal(plan?.code, "run_start_recovery_digest_mismatch", testCase.name);
+        assert.equal(reconcileCalls, 0, testCase.name);
+      }
     }),
 );
 

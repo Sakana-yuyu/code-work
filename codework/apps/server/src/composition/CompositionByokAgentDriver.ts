@@ -636,6 +636,14 @@ export const makeCompositionByokAgentDriver = (
   return {
     agentId: options.agentId,
     runtimeId: options.runtimeId,
+    getStartIdentity: (input) => ({
+      runtimeKind: "byok",
+      providerInstanceId: String(options.providerInstanceId),
+      adapterId: options.runtimeId,
+      modelIdentity: input.model ?? options.defaultModel ?? null,
+      configDigest: null,
+      sessionMode: null,
+    }),
     startRecoveryPolicy: {
       mode: "manual",
       requiredReceipt: "runtime-task",
