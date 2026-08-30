@@ -6,6 +6,13 @@ import type {
   ProviderInstanceConfig,
   ProviderInstanceId,
 } from "@codework/contracts";
+import {
+  buildCompositionSquadByokProviderOptions,
+  compositionSquadModelBindingMode,
+  firstSelectableCompositionSquadByokBinding,
+  type CompositionSquadModelBindingMode,
+  type CompositionSquadModelBindingValue,
+} from "@codework/client-runtime/composition/squad-model-bindings";
 import { useMemo, type ReactNode } from "react";
 
 import { t } from "~/i18n";
@@ -14,13 +21,6 @@ import { cn } from "~/lib/utils";
 import { Input } from "../ui/input";
 import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from "../ui/select";
 import { CompositionSquadByokBindingFields } from "./CompositionSquadByokBindingFields";
-import {
-  buildCompositionSquadByokProviderOptions,
-  compositionSquadModelBindingMode,
-  firstSelectableCompositionSquadByokBinding,
-  type CompositionSquadModelBindingMode,
-  type CompositionSquadModelBindingValue,
-} from "./CompositionSquadModelBindingPicker.logic";
 
 interface SharedProps {
   readonly idPrefix: string;

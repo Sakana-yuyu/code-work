@@ -11,7 +11,7 @@ import {
   compositionSquadByokBindingForAdapter,
   compositionSquadByokBindingForProvider,
   firstSelectableCompositionSquadByokBinding,
-} from "./CompositionSquadModelBindingPicker.logic";
+} from "./squadModelBindings.js";
 
 const primaryId = ProviderInstanceId.make("byok-primary");
 const disabledId = ProviderInstanceId.make("byok-disabled");
@@ -59,7 +59,7 @@ const providerInstances: Readonly<Record<ProviderInstanceId, ProviderInstanceCon
   },
 };
 
-describe("CompositionSquadModelBindingPicker logic", () => {
+describe("Squad model bindings", () => {
   it("只投影 BYOK 稳定引用并剔除密钥", () => {
     const providers = buildCompositionSquadByokProviderOptions(providerInstances);
 

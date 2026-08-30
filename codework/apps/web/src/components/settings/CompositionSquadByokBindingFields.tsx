@@ -1,6 +1,12 @@
 "use client";
 
 import type { CompositionSquadModelBinding } from "@codework/contracts";
+import {
+  compositionSquadByokBindingAvailability,
+  compositionSquadByokBindingForAdapter,
+  compositionSquadByokBindingForProvider,
+  type CompositionSquadByokProviderOption,
+} from "@codework/client-runtime/composition/squad-model-bindings";
 import { RefreshCwIcon } from "lucide-react";
 import type { ReactNode } from "react";
 
@@ -10,13 +16,6 @@ import { cn } from "~/lib/utils";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from "../ui/select";
-import {
-  compositionSquadByokBindingAvailability,
-  compositionSquadByokBindingForAdapter,
-  compositionSquadByokBindingForProvider,
-  type CompositionSquadByokProviderOption,
-} from "./CompositionSquadModelBindingPicker.logic";
-
 type CompositionSquadByokBinding = Extract<CompositionSquadModelBinding, { kind: "byok" }>;
 
 function ByokBindingField({
