@@ -16,6 +16,7 @@ import * as PlatformError from "effect/PlatformError";
 import * as Ref from "effect/Ref";
 import * as Scope from "effect/Scope";
 import * as TestClock from "effect/testing/TestClock";
+import * as ChildProcessSpawner from "effect/unstable/process/ChildProcessSpawner";
 import { expect } from "vite-plus/test";
 
 import * as ProcessRunner from "../processRunner.ts";
@@ -33,10 +34,19 @@ class FakePtyProcess implements PtyAdapter.PtyProcess {
   private readonly exitListeners = new Set<(event: PtyAdapter.PtyExitEvent) => void>();
   private readonly killListeners = new Set<(signal: string | undefined) => void>();
   private readonly retainExitListenersOnUnsubscribe: boolean;
+  private readonly onDataFailure: unknown | undefined;
+  private onExitFailure: unknown | undefined;
 
-  constructor(pid: number, retainExitListenersOnUnsubscribe = false) {
+  constructor(
+    pid: number,
+    retainExitListenersOnUnsubscribe = false,
+    onDataFailure?: unknown,
+    onExitFailure?: unknown,
+  ) {
     this.pid = pid;
     this.retainExitListenersOnUnsubscribe = retainExitListenersOnUnsubscribe;
+    this.onDataFailure = onDataFailure;
+    this.onExitFailure = onExitFailure;
   }
 
   write(data: string): void {
@@ -57,6 +67,9 @@ class FakePtyProcess implements PtyAdapter.PtyProcess {
   }
 
   onData(callback: (data: string) => void): () => void {
+    if (this.onDataFailure !== undefined) {
+      throw this.onDataFailure;
+    }
     this.dataListeners.add(callback);
     return () => {
       this.dataListeners.delete(callback);
@@ -64,6 +77,11 @@ class FakePtyProcess implements PtyAdapter.PtyProcess {
   }
 
   onExit(callback: (event: PtyAdapter.PtyExitEvent) => void): () => void {
+    if (this.onExitFailure !== undefined) {
+      const failure = this.onExitFailure;
+      this.onExitFailure = undefined;
+      throw failure;
+    }
     this.exitListeners.add(callback);
     return () => {
       if (!this.retainExitListenersOnUnsubscribe) {
@@ -106,12 +124,18 @@ class FakePtyAdapter {
   private readonly options: {
     readonly fixedPid?: number;
     readonly retainExitListenersOnUnsubscribe?: boolean;
+    readonly onDataFailure?: unknown;
+    readonly onExitFailure?: unknown;
+    readonly afterSpawn?: (process: FakePtyProcess) => Effect.Effect<void>;
   };
 
   constructor(
     options: {
       readonly fixedPid?: number;
       readonly retainExitListenersOnUnsubscribe?: boolean;
+      readonly onDataFailure?: unknown;
+      readonly onExitFailure?: unknown;
+      readonly afterSpawn?: (process: FakePtyProcess) => Effect.Effect<void>;
     } = {},
   ) {
     this.options = options;
@@ -121,9 +145,13 @@ class FakePtyAdapter {
     const process = new FakePtyProcess(
       this.options.fixedPid ?? this.nextPid++,
       this.options.retainExitListenersOnUnsubscribe === true,
+      this.options.onDataFailure,
+      this.options.onExitFailure,
     );
     this.processes.push(process);
-    return Effect.succeed(process);
+    return this.options.afterSpawn === undefined
+      ? Effect.succeed(process)
+      : this.options.afterSpawn(process).pipe(Effect.as(process));
   }
 }
 
@@ -139,10 +167,25 @@ const createManager = (
     readonly maxRetainedInactiveSessions?: number;
     readonly logsDir?: string;
     readonly managerScope?: Scope.Scope;
+    readonly registerTerminalProcesses?: (input: {
+      readonly threadId: string;
+      readonly terminalId: string;
+      readonly processIds: ReadonlyArray<number>;
+    }) => Effect.Effect<void>;
     readonly unregisterTerminal?: (input: {
       readonly threadId: string;
       readonly terminalId: string;
     }) => Effect.Effect<void>;
+    readonly subprocessInspector?: (terminalPid: number) => Effect.Effect<{
+      readonly hasRunningSubprocess: boolean;
+      readonly childCommand: string | null;
+      readonly processIds: ReadonlyArray<number>;
+    }>;
+    readonly subprocessPollIntervalMs?: number;
+    readonly forceTerminateWindowsProcessTree?: (input: {
+      readonly terminalPid: number;
+      readonly processIds: ReadonlyArray<number>;
+    }) => Effect.Effect<void, TerminalManager.TerminalWindowsProcessTreeTerminationError>;
   } = {},
 ) =>
   Effect.gen(function* () {
@@ -165,7 +208,17 @@ const createManager = (
       ...(options.maxRetainedInactiveSessions !== undefined
         ? { maxRetainedInactiveSessions: options.maxRetainedInactiveSessions }
         : {}),
+      ...(options.registerTerminalProcesses
+        ? { registerTerminalProcesses: options.registerTerminalProcesses }
+        : {}),
       ...(options.unregisterTerminal ? { unregisterTerminal: options.unregisterTerminal } : {}),
+      ...(options.subprocessInspector ? { subprocessInspector: options.subprocessInspector } : {}),
+      ...(options.subprocessPollIntervalMs !== undefined
+        ? { subprocessPollIntervalMs: options.subprocessPollIntervalMs }
+        : {}),
+      ...(options.forceTerminateWindowsProcessTree
+        ? { forceTerminateWindowsProcessTree: options.forceTerminateWindowsProcessTree }
+        : {}),
     });
     const manager = yield* options.managerScope === undefined
       ? managerEffect
@@ -490,12 +543,245 @@ it.layer(
     }).pipe(Effect.provide(withHostPlatform("win32"))),
   );
 
-  it.effect("Manager scope 关闭会尝试全部会话并在单个终止失败后清空状态", () =>
+  it.effect("spawn 句柄返回前收到 interrupt 会终止同一 handle 并等待真实 exit", () =>
+    Effect.gen(function* () {
+      const spawned = yield* Deferred.make<FakePtyProcess>();
+      const releaseSpawn = yield* Deferred.make<void>();
+      const adapter = new FakePtyAdapter({
+        afterSpawn: (process) =>
+          Deferred.succeed(spawned, process).pipe(
+            Effect.ignore,
+            Effect.andThen(Deferred.await(releaseSpawn)),
+          ),
+      });
+      const { manager } = yield* createManager(adapter);
+      const openFiber = yield* openTerminal(manager, "spawn-interrupt").pipe(Effect.forkChild);
+      const process = yield* Deferred.await(spawned);
+      const exited = yield* Deferred.make<void>();
+      const unsubscribeKill = process.onKill(() => {
+        process.emitExit({ exitCode: 1, signal: null });
+        Deferred.doneUnsafe(exited, Effect.void);
+      });
+      yield* Effect.addFinalizer(() => Effect.sync(unsubscribeKill));
+
+      const interruptFiber = yield* Fiber.interrupt(openFiber).pipe(Effect.forkChild);
+      yield* Deferred.succeed(releaseSpawn, undefined).pipe(Effect.ignore);
+      yield* Fiber.join(interruptFiber);
+      const observedExit = yield* Deferred.await(exited).pipe(Effect.timeoutOption("100 millis"));
+
+      assert.isTrue(Option.isSome(observedExit));
+      expect(process.killSignals).toEqual([undefined]);
+      assert.equal(process.dataListenerCount, 0);
+      assert.equal(process.exitListenerCount, 0);
+    }).pipe(Effect.provide(withHostPlatform("win32"))),
+  );
+
+  it.effect("listener 注册 defect 会终止已 spawn 的 handle 并等待真实 exit", () =>
+    Effect.gen(function* () {
+      const adapter = new FakePtyAdapter({
+        onDataFailure: new Error("expected onData registration defect"),
+        afterSpawn: (process) =>
+          Effect.sync(() => {
+            process.onKill(() => process.emitExit({ exitCode: 1, signal: null }));
+          }),
+      });
+      const { manager } = yield* createManager(adapter);
+
+      yield* openTerminal(manager, "listener-registration-defect").pipe(Effect.exit);
+
+      const process = adapter.processes[0];
+      expect(process).toBeDefined();
+      if (!process) return;
+      expect(process.killSignals).toEqual([undefined]);
+      assert.equal(process.dataListenerCount, 0);
+      assert.equal(process.exitListenerCount, 0);
+    }).pipe(Effect.provide(withHostPlatform("win32"))),
+  );
+
+  it.effect("exit listener 首次注册 defect 仍由 acquisition release 终止同一 handle", () =>
+    Effect.gen(function* () {
+      const adapter = new FakePtyAdapter({
+        onExitFailure: new Error("expected onExit registration defect"),
+        afterSpawn: (process) =>
+          Effect.sync(() => {
+            process.onKill(() => process.emitExit({ exitCode: 1, signal: null }));
+          }),
+      });
+      const { manager } = yield* createManager(adapter);
+
+      yield* openTerminal(manager, "exit-listener-registration-defect").pipe(Effect.exit);
+
+      const process = adapter.processes[0];
+      expect(process).toBeDefined();
+      if (!process) return;
+      expect(process.killSignals).toEqual([undefined]);
+      assert.equal(process.dataListenerCount, 0);
+      assert.equal(process.exitListenerCount, 0);
+    }).pipe(Effect.provide(withHostPlatform("win32"))),
+  );
+
+  it.effect("acquisition 失败且 kill 抛错时保留同一 handle 监督直到真实 exit", () =>
+    Effect.gen(function* () {
+      const registeredProcessIds: ReadonlyArray<number>[] = [];
+      const unregisterCalls: string[] = [];
+      const adapter = new FakePtyAdapter({
+        onDataFailure: new Error("expected onData registration defect"),
+        afterSpawn: (process) =>
+          Effect.sync(() => {
+            process.killFailures.set(undefined, new Error("expected kill failure"));
+          }),
+      });
+      const { manager } = yield* createManager(adapter, {
+        registerTerminalProcesses: ({ processIds }) =>
+          Effect.sync(() => {
+            registeredProcessIds.push(processIds);
+          }),
+        unregisterTerminal: ({ terminalId }) =>
+          Effect.sync(() => {
+            unregisterCalls.push(terminalId);
+          }),
+      });
+
+      const snapshot = yield* openTerminal(manager, "acquisition-kill-failure");
+      const process = adapter.processes[0];
+      expect(process).toBeDefined();
+      if (!process) return;
+
+      assert.equal(snapshot.status, "error");
+      assert.equal(snapshot.pid, process.pid);
+      assert.equal(
+        yield* manager.inspectSession({
+          threadId: "acquisition-kill-failure",
+          terminalId: DEFAULT_TERMINAL_ID,
+        }),
+        "active",
+      );
+      expect(process.killSignals).toEqual([undefined]);
+      expect(registeredProcessIds).toEqual([[process.pid]]);
+      expect(unregisterCalls).toEqual([]);
+      assert.equal(process.dataListenerCount, 0);
+      assert.equal(process.exitListenerCount, 1);
+
+      yield* emitExitAndWait(manager, process, "acquisition-kill-failure", {
+        exitCode: 1,
+        signal: null,
+      });
+
+      expect(unregisterCalls).toEqual([DEFAULT_TERMINAL_ID]);
+      assert.equal(process.exitListenerCount, 0);
+      assert.equal(
+        yield* manager.inspectSession({
+          threadId: "acquisition-kill-failure",
+          terminalId: DEFAULT_TERMINAL_ID,
+        }),
+        "inactive",
+      );
+    }).pipe(Effect.provide(withHostPlatform("win32"))),
+  );
+
+  it.effect("acquisition 失败且等待 exit 超时时保留同一 handle 监督", () =>
+    Effect.gen(function* () {
+      const spawned = yield* Deferred.make<FakePtyProcess>();
+      const releaseSpawn = yield* Deferred.make<void>();
+      const unregisterCalls: string[] = [];
+      const adapter = new FakePtyAdapter({
+        onDataFailure: new Error("expected onData registration defect"),
+        afterSpawn: (process) =>
+          Deferred.succeed(spawned, process).pipe(
+            Effect.ignore,
+            Effect.andThen(Deferred.await(releaseSpawn)),
+          ),
+      });
+      const { manager } = yield* createManager(adapter, {
+        processExitTimeoutMs: 10,
+        unregisterTerminal: ({ terminalId }) =>
+          Effect.sync(() => {
+            unregisterCalls.push(terminalId);
+          }),
+      });
+      const openFiber = yield* openTerminal(manager, "acquisition-exit-timeout").pipe(
+        Effect.forkChild,
+      );
+      const process = yield* Deferred.await(spawned);
+      const nextKill = yield* watchNextKill(process);
+      yield* Deferred.succeed(releaseSpawn, undefined).pipe(Effect.ignore);
+      assert.isUndefined(yield* Deferred.await(nextKill));
+
+      yield* TestClock.adjust("10 millis");
+      const snapshot = yield* Fiber.join(openFiber);
+
+      assert.equal(snapshot.status, "error");
+      assert.equal(snapshot.pid, process.pid);
+      assert.equal(
+        yield* manager.inspectSession({
+          threadId: "acquisition-exit-timeout",
+          terminalId: DEFAULT_TERMINAL_ID,
+        }),
+        "active",
+      );
+      expect(unregisterCalls).toEqual([]);
+      assert.equal(process.dataListenerCount, 0);
+      assert.equal(process.exitListenerCount, 1);
+
+      yield* emitExitAndWait(manager, process, "acquisition-exit-timeout", {
+        exitCode: 1,
+        signal: null,
+      });
+
+      expect(unregisterCalls).toEqual([DEFAULT_TERMINAL_ID]);
+      assert.equal(
+        yield* manager.inspectSession({
+          threadId: "acquisition-exit-timeout",
+          terminalId: DEFAULT_TERMINAL_ID,
+        }),
+        "inactive",
+      );
+    }).pipe(Effect.provide(Layer.merge(withHostPlatform("win32"), TestClock.layer()))),
+  );
+
+  it.effect("重复 close 共享同一 handle 的终止并只发送一次信号", () =>
+    Effect.gen(function* () {
+      const { manager, ptyAdapter } = yield* createManager();
+      yield* openTerminal(manager, "duplicate-close");
+      const process = ptyAdapter.processes[0];
+      expect(process).toBeDefined();
+      if (!process) return;
+      const nextKill = yield* watchNextKill(process);
+      const firstClose = yield* manager
+        .close({ threadId: "duplicate-close", terminalId: DEFAULT_TERMINAL_ID })
+        .pipe(Effect.forkChild);
+      const secondClose = yield* manager
+        .close({ threadId: "duplicate-close", terminalId: DEFAULT_TERMINAL_ID })
+        .pipe(Effect.forkChild);
+
+      assert.isUndefined(yield* Deferred.await(nextKill));
+      process.emitExit({ exitCode: 0, signal: null });
+      yield* Fiber.join(firstClose);
+      yield* Fiber.join(secondClose);
+
+      expect(process.killSignals).toEqual([undefined]);
+      assert.equal(
+        yield* manager.inspectSession({
+          threadId: "duplicate-close",
+          terminalId: DEFAULT_TERMINAL_ID,
+        }),
+        "missing",
+      );
+    }).pipe(Effect.provide(withHostPlatform("win32"))),
+  );
+
+  it.effect("Manager scope 终止与宿主兜底均失败时保留失败会话的监督状态", () =>
     Effect.gen(function* () {
       const managerScope = yield* Scope.make("sequential");
-      const { manager, ptyAdapter } = yield* createManager().pipe(
-        Effect.provideService(Scope.Scope, managerScope),
-      );
+      const { manager, ptyAdapter } = yield* createManager(new FakePtyAdapter(), {
+        forceTerminateWindowsProcessTree: ({ terminalPid }) =>
+          Effect.fail(
+            new TerminalManager.TerminalWindowsProcessTreeTerminationError({
+              cause: "expected host fallback failure",
+              terminalPid,
+            }),
+          ),
+      }).pipe(Effect.provideService(Scope.Scope, managerScope));
       yield* openTerminal(manager, "shutdown-failure");
       yield* openTerminal(manager, "shutdown-success");
       const failingProcess = ptyAdapter.processes[0];
@@ -514,8 +800,8 @@ it.layer(
 
       expect(failingProcess.killSignals).toEqual([undefined]);
       expect(successfulProcess.killSignals).toEqual([undefined]);
-      assert.equal(failingProcess.dataListenerCount, 0);
-      assert.equal(failingProcess.exitListenerCount, 0);
+      assert.equal(failingProcess.dataListenerCount, 1);
+      assert.equal(failingProcess.exitListenerCount, 1);
       assert.equal(successfulProcess.dataListenerCount, 0);
       assert.equal(successfulProcess.exitListenerCount, 0);
       assert.equal(
@@ -523,7 +809,7 @@ it.layer(
           threadId: "shutdown-failure",
           terminalId: DEFAULT_TERMINAL_ID,
         }),
-        "missing",
+        "active",
       );
       assert.equal(
         yield* manager.inspectSession({
@@ -534,6 +820,112 @@ it.layer(
       );
     }).pipe(Effect.provide(withHostPlatform("win32"))),
   );
+
+  it.effect("Windows scope fallback 接收已观察到的 console process list", () =>
+    Effect.gen(function* () {
+      const managerScope = yield* Scope.make("sequential");
+      const inspectionObserved = yield* Deferred.make<void>();
+      const fallbackInput = yield* Ref.make<{
+        readonly terminalPid: number;
+        readonly processIds: ReadonlyArray<number>;
+      } | null>(null);
+      const adapter = new FakePtyAdapter();
+      const { manager } = yield* createManager(adapter, {
+        managerScope,
+        subprocessPollIntervalMs: 10,
+        subprocessInspector: (terminalPid) =>
+          Deferred.succeed(inspectionObserved, undefined).pipe(
+            Effect.ignore,
+            Effect.as({
+              hasRunningSubprocess: true,
+              childCommand: "child.exe",
+              processIds: [terminalPid, terminalPid + 1, terminalPid + 2],
+            }),
+          ),
+        forceTerminateWindowsProcessTree: (input) =>
+          Ref.set(fallbackInput, input).pipe(
+            Effect.andThen(
+              Effect.sync(() => {
+                adapter.processes[0]?.emitExit({ exitCode: 1, signal: null });
+              }),
+            ),
+          ),
+      });
+      yield* openTerminal(manager, "windows-process-list-fallback");
+      yield* Effect.yieldNow;
+      yield* TestClock.adjust("10 millis");
+      yield* Deferred.await(inspectionObserved);
+      const process = adapter.processes[0];
+      expect(process).toBeDefined();
+      if (!process) return;
+      process.killFailures.set(undefined, new Error("expected node-pty kill failure"));
+
+      yield* Scope.close(managerScope, Exit.void);
+
+      assert.deepEqual(yield* Ref.get(fallbackInput), {
+        terminalPid: process.pid,
+        processIds: [process.pid, process.pid + 1, process.pid + 2],
+      });
+      expect(process.killSignals).toEqual([undefined]);
+      assert.equal(process.dataListenerCount, 0);
+      assert.equal(process.exitListenerCount, 0);
+    }).pipe(Effect.provide(Layer.merge(withHostPlatform("win32"), TestClock.layer()))),
+  );
+
+  it.effect("Windows scope 默认 fallback 使用 taskkill 终止根 PID 进程树", () => {
+    const adapter = new FakePtyAdapter();
+    const runInputs: ProcessRunner.ProcessRunInput[] = [];
+    const processRunner = ProcessRunner.ProcessRunner.of({
+      run: (input) =>
+        Effect.sync(() => {
+          runInputs.push(input);
+          adapter.processes[0]?.emitExit({ exitCode: 1, signal: null });
+          return {
+            stdout: "",
+            stderr: "",
+            code: ChildProcessSpawner.ExitCode(0),
+            timedOut: false,
+            stdoutTruncated: false,
+            stderrTruncated: false,
+            stdoutInvalidUtf8: false,
+            stderrInvalidUtf8: false,
+          };
+        }),
+    });
+
+    return Effect.gen(function* () {
+      const managerScope = yield* Scope.make("sequential");
+      const { manager } = yield* createManager(adapter, { managerScope });
+      yield* openTerminal(manager, "windows-taskkill-fallback");
+      const process = adapter.processes[0];
+      expect(process).toBeDefined();
+      if (!process) return;
+      process.killFailures.set(undefined, new Error("expected node-pty kill failure"));
+
+      yield* Scope.close(managerScope, Exit.void);
+
+      expect(runInputs).toEqual([
+        {
+          command: "taskkill.exe",
+          args: ["/pid", String(process.pid), "/t", "/f"],
+          timeout: 1_000,
+          maxOutputBytes: 65_536,
+          outputMode: "truncate",
+          timeoutBehavior: "timedOutResult",
+        },
+      ]);
+      assert.equal(
+        yield* manager.inspectSession({
+          threadId: "windows-taskkill-fallback",
+          terminalId: DEFAULT_TERMINAL_ID,
+        }),
+        "missing",
+      );
+    }).pipe(
+      Effect.provideService(ProcessRunner.ProcessRunner, processRunner),
+      Effect.provide(withHostPlatform("win32")),
+    );
+  });
 
   it.effect("阻塞订阅者不得阻塞退出收口或其他观察者", () =>
     Effect.gen(function* () {
