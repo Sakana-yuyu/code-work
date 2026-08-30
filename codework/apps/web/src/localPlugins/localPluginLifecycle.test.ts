@@ -179,6 +179,33 @@ describe("LocalPluginLifecycle", () => {
     expect(runtime.failures.getSnapshot()).toEqual([]);
   });
 
+  it.each(["enable", "disable", "uninstall"] as const)(
+    "失败日志订阅者异常不让 %s 操作 reject",
+    async (operation) => {
+      const runtime = createRuntime();
+      const throwingListener = vi.fn(() => {
+        throw new Error("listener failed");
+      });
+      const healthyListener = vi.fn();
+      runtime.failures.subscribe(throwingListener);
+      runtime.failures.subscribe(healthyListener);
+
+      await expect(runtime.lifecycle[operation]("acme.missing")).resolves.toMatchObject({
+        ok: false,
+        error: { code: "plugin-not-found" },
+      });
+
+      expect(runtime.failures.getSnapshot()).toHaveLength(1);
+      expect(runtime.failures.getSnapshot()[0]).toMatchObject({
+        pluginId: "acme.missing",
+        phase: operation,
+        code: "plugin-not-found",
+      });
+      expect(throwingListener).toHaveBeenCalledTimes(1);
+      expect(healthyListener).toHaveBeenCalledTimes(1);
+    },
+  );
+
   it("拒绝权限不闭合的 manifest，且不污染注册表或持久化", async () => {
     const runtime = createRuntime();
     const invalid = { ...manifest("acme.invalid"), permissions: [] };

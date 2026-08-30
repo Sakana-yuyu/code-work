@@ -2,7 +2,7 @@ import type { LocalPluginManifest } from "@codework/contracts";
 // @effect-diagnostics nodeBuiltinImport:off - 静态约束测试必须读取规范 CSS 中的设计令牌。
 import * as NodeFS from "node:fs";
 import { renderToStaticMarkup } from "react-dom/server";
-import { beforeEach, describe, expect, it } from "vite-plus/test";
+import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
 import { LocalPluginFailureJournal } from "~/localPlugins/localPluginFailureJournal";
 import { LocalPluginLifecycle } from "~/localPlugins/localPluginLifecycle";
@@ -22,6 +22,8 @@ import { setCurrentLanguage } from "~/i18n/runtime";
 import { LocalPluginsSettings, installLocalPluginJson } from "./LocalPluginsSettings";
 
 class MemoryStorage implements LocalPluginStorage {
+  compareAndSwapError: Error | null = null;
+
   constructor(public value: string | null = null) {}
   read(): string | null {
     return this.value;
@@ -32,6 +34,7 @@ class MemoryStorage implements LocalPluginStorage {
   async compareAndSwap(
     input: LocalPluginStorageCompareAndSwapInput,
   ): Promise<LocalPluginStorageCompareAndSwapResult> {
+    if (this.compareAndSwapError) throw this.compareAndSwapError;
     const currentRevision =
       this.value === null ? 0 : (decodeLocalPluginStorageDocument(this.value).revision ?? 0);
     if (this.value !== input.expectedValue || currentRevision !== input.expectedRevision) {
@@ -75,7 +78,7 @@ const pluginManifest: LocalPluginManifest = {
   },
 };
 
-function createRuntime(): LocalPluginRuntime {
+function createRuntime(storage: LocalPluginStorage = new MemoryStorage()): LocalPluginRuntime {
   const registry = new LocalPluginRegistry();
   const failures = new LocalPluginFailureJournal({
     now: () => 1,
@@ -84,7 +87,7 @@ function createRuntime(): LocalPluginRuntime {
   const lifecycle = new LocalPluginLifecycle({
     registry,
     failures,
-    storage: new MemoryStorage(),
+    storage,
     now: () => 1,
   });
   return {
@@ -181,6 +184,37 @@ describe("LocalPluginsSettings", () => {
     expect(html).not.toContain("执行失败");
     expect(html).toContain("Clear failures");
   });
+
+  it.each(["enable", "disable", "uninstall"] as const)(
+    "失败日志订阅者异常不改变 %s 的类型化结果与本地化反馈",
+    async (operation) => {
+      const storage = new MemoryStorage();
+      const runtime = createRuntime(storage);
+      await runtime.lifecycle.install(pluginManifest);
+      if (operation === "enable") {
+        expect(await runtime.lifecycle.disable(pluginManifest.id)).toEqual({ ok: true });
+      }
+      const throwingListener = vi.fn(() => {
+        throw new Error("listener failed");
+      });
+      const healthyListener = vi.fn();
+      runtime.failures.subscribe(throwingListener);
+      runtime.failures.subscribe(healthyListener);
+      storage.compareAndSwapError = new Error("storage unavailable");
+
+      await expect(runtime.lifecycle[operation](pluginManifest.id)).resolves.toMatchObject({
+        ok: false,
+        error: { code: "storage-write-failed" },
+      });
+
+      const html = renderToStaticMarkup(<LocalPluginsSettings runtime={runtime} />);
+      expect(html).toContain('data-local-plugin-failure="failure-1"');
+      expect(html).toContain("Local plugin settings could not be saved.");
+      expect(html).not.toContain("storage unavailable");
+      expect(throwingListener).toHaveBeenCalledTimes(1);
+      expect(healthyListener).toHaveBeenCalledTimes(1);
+    },
+  );
 
   it("恢复失败只按类型化代码持续告警，清理 journal 不隐藏写保护", () => {
     const storage = new ObservableMemoryStorage();

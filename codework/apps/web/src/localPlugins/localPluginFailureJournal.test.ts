@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vite-plus/test";
 
-import { LocalPluginFailureJournal } from "./localPluginFailureJournal";
+import { type LocalPluginFailure, LocalPluginFailureJournal } from "./localPluginFailureJournal";
 import { runIsolatedLocalPluginContribution } from "./localPluginIsolation";
 
 describe("LocalPluginFailureJournal", () => {
@@ -40,6 +40,42 @@ describe("LocalPluginFailureJournal", () => {
     journal.clear("one");
     expect(journal.getSnapshot().map((failure) => failure.pluginId)).toEqual(["two"]);
     expect(listener).toHaveBeenCalledTimes(4);
+  });
+
+  it("隔离订阅者异常，并保持记录返回值与清理状态稳定", () => {
+    const journal = new LocalPluginFailureJournal({
+      now: () => 1,
+      makeId: (sequence) => `failure-${sequence}`,
+    });
+    const throwingListener = vi.fn(() => {
+      throw new Error("listener failed");
+    });
+    const healthyListener = vi.fn();
+    journal.subscribe(throwingListener);
+    journal.subscribe(healthyListener);
+    let recorded: LocalPluginFailure | undefined;
+
+    expect(() => {
+      recorded = journal.record({
+        pluginId: "one",
+        phase: "enable",
+        code: "storage-write-failed",
+        error: new Error("storage unavailable"),
+      });
+    }).not.toThrow();
+
+    expect(recorded).toMatchObject({
+      id: "failure-1",
+      pluginId: "one",
+      phase: "enable",
+      code: "storage-write-failed",
+      message: "storage unavailable",
+    });
+    expect(journal.getSnapshot()).toEqual([recorded]);
+    expect(() => journal.clear("one")).not.toThrow();
+    expect(journal.getSnapshot()).toEqual([]);
+    expect(throwingListener).toHaveBeenCalledTimes(2);
+    expect(healthyListener).toHaveBeenCalledTimes(2);
   });
 
   it("把同步异常转换为失败结果", async () => {

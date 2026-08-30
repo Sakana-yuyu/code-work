@@ -81,7 +81,7 @@ export class LocalPluginFailureJournal {
     };
     const maxEntries = this.options.maxEntries ?? 100;
     this.failures = [...this.failures, failure].slice(-maxEntries);
-    for (const listener of this.listeners) listener();
+    this.publish();
     return failure;
   }
 
@@ -92,6 +92,16 @@ export class LocalPluginFailureJournal {
         : this.failures.filter((failure) => failure.pluginId !== pluginId);
     if (next.length === this.failures.length) return;
     this.failures = next;
-    for (const listener of this.listeners) listener();
+    this.publish();
+  }
+
+  private publish(): void {
+    for (const listener of this.listeners) {
+      try {
+        listener();
+      } catch {
+        // 订阅者异常不能改变失败记录状态或中断其他订阅者。
+      }
+    }
   }
 }
