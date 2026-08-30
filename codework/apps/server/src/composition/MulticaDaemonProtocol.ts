@@ -273,20 +273,29 @@ const bodyFromQuickCreateInput = (input: MulticaQuickCreateTaskInput): Record<st
   return body;
 };
 
-const normalizeHeartbeatResponse = (body: unknown): MulticaHeartbeatResponse => {
+const normalizeHeartbeatResponse = (
+  body: unknown,
+  expectedRuntimeId: string,
+): MulticaHeartbeatResponse => {
   if (typeof body !== "object" || body === null) {
     throw new Error("heartbeat 响应必须是对象。");
   }
   const record = body as Record<string, unknown>;
-  if (typeof record.runtime_id !== "string" || typeof record.status !== "string") {
-    throw new Error("heartbeat 响应缺少 runtime_id 或 status。");
+  if (typeof record.status !== "string") {
+    throw new Error("heartbeat 响应缺少 status。");
+  }
+  if (record.runtime_id !== undefined && typeof record.runtime_id !== "string") {
+    throw new Error("heartbeat.runtime_id 必须是字符串。");
+  }
+  if (record.runtime_id !== undefined && record.runtime_id !== expectedRuntimeId) {
+    throw new Error("heartbeat.runtime_id 与请求的 runtimeId 不一致。");
   }
   const capabilities = record.server_capabilities;
   if (capabilities !== undefined && !Array.isArray(capabilities)) {
     throw new Error("heartbeat.server_capabilities 必须是数组。");
   }
   return {
-    runtimeId: record.runtime_id,
+    runtimeId: expectedRuntimeId,
     status: record.status,
     serverCapabilities: (capabilities ?? []).filter(
       (capability): capability is string => typeof capability === "string",
@@ -510,14 +519,16 @@ export const makeMulticaDaemonProtocol = (
         bodyFromRegisterRequest(input),
         normalizeRegisterResponse,
       ),
-    heartbeat: (runtimeId) =>
-      request(
+    heartbeat: (runtimeId) => {
+      const expectedRuntimeId = trimRequired(runtimeId, "runtimeId");
+      return request(
         "heartbeat",
         "POST",
         "/api/daemon/heartbeat",
-        { runtime_id: trimRequired(runtimeId, "runtimeId"), supports_batch_import: true },
-        normalizeHeartbeatResponse,
-      ),
+        { runtime_id: expectedRuntimeId, supports_batch_import: true },
+        (body) => normalizeHeartbeatResponse(body, expectedRuntimeId),
+      );
+    },
     claimTask: (runtimeId) =>
       request(
         "claimTask",
