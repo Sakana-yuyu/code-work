@@ -3,13 +3,18 @@ import * as Effect from "effect/Effect";
 
 import type { CompositionRunStartIntent } from "../persistence/Services/CompositionRunStartStore.ts";
 import type { CompositionAgentDriverRegistry } from "./CompositionAgentDriverRegistry.ts";
-import { validateCompositionRunStartReceipt } from "./CompositionRunStartLifecycle.ts";
+import {
+  makeCompositionRunStartDigests,
+  validateCompositionRunStartReceipt,
+} from "./CompositionRunStartLifecycle.ts";
 
 export type CompositionRunStartRecoveryCandidate = {
   readonly task: CompositionTask;
   readonly run: CompositionTaskRun;
   readonly intent: CompositionRunStartIntent;
   readonly capabilityIds: ReadonlyArray<string> | null;
+  readonly workspaceRootDigest?: string;
+  readonly model?: string;
 };
 
 export type CompositionRunStartRecoveryReconciliation =
@@ -89,6 +94,42 @@ const planFor = Effect.fn("planCompositionRunStartRecovery")(function* (
       action: "quarantine",
       code: "run_start_legacy_input_capabilities_unknown",
       detail: "旧加密输入无法确认 capabilityIds，已阻止自动外部启动。",
+    };
+  }
+
+  const digests = makeCompositionRunStartDigests({
+    taskId: candidate.task.taskId,
+    projectId: candidate.task.projectId,
+    ...(candidate.task.threadId === undefined ? {} : { threadId: candidate.task.threadId }),
+    ...(candidate.task.parentTaskId === undefined
+      ? {}
+      : { parentTaskId: candidate.task.parentTaskId }),
+    runId: candidate.run.runId,
+    previousRunId: candidate.intent.previousRunId,
+    assigneeKind: candidate.task.assigneeKind,
+    assigneeId: candidate.task.assigneeId,
+    mode: candidate.task.mode,
+    dependsOnTaskIds: candidate.task.dependsOnTaskIds,
+    agentId: candidate.run.agentId,
+    runtimeId: candidate.run.runtimeId,
+    attempt: candidate.run.attempt,
+    promptDigest: candidate.task.promptDigest,
+    ...(candidate.workspaceRootDigest === undefined
+      ? {}
+      : { workspaceRootDigest: candidate.workspaceRootDigest }),
+    ...(candidate.model === undefined ? {} : { model: candidate.model }),
+    capabilityIds: candidate.capabilityIds,
+  });
+  if (
+    digests.payloadDigest !== candidate.intent.payloadDigest ||
+    digests.capabilityDigest !== candidate.intent.capabilityDigest
+  ) {
+    return {
+      taskId: candidate.task.taskId,
+      runId: candidate.run.runId,
+      action: "quarantine",
+      code: "run_start_recovery_digest_mismatch",
+      detail: "当前 Task/Run 启动身份与持久 Run Start 摘要不一致，已阻止自动外部启动。",
     };
   }
 

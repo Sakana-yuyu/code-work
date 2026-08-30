@@ -617,8 +617,15 @@ const makeOrchestrator = (
     readonly capabilityIds: ReadonlyArray<string> | null;
   }) => ({
     taskId: input.task.taskId,
+    projectId: input.task.projectId,
+    ...(input.task.threadId === undefined ? {} : { threadId: input.task.threadId }),
+    ...(input.task.parentTaskId === undefined ? {} : { parentTaskId: input.task.parentTaskId }),
     runId: input.run.runId,
     previousRunId: input.previousRunId,
+    assigneeKind: input.task.assigneeKind,
+    assigneeId: input.task.assigneeId,
+    mode: input.task.mode,
+    dependsOnTaskIds: input.task.dependsOnTaskIds,
     agentId: input.run.agentId,
     runtimeId: input.driver.runtimeId,
     attempt: input.run.attempt,

@@ -94,8 +94,15 @@ export const normalizeCompositionRunStartRejectedOutcome = (failure: {
 
 export const makeCompositionRunStartDigests = (input: {
   readonly taskId: string;
+  readonly projectId?: string;
+  readonly threadId?: string;
+  readonly parentTaskId?: string;
   readonly runId: string;
   readonly previousRunId: string | null;
+  readonly assigneeKind?: string;
+  readonly assigneeId?: string;
+  readonly mode?: string;
+  readonly dependsOnTaskIds?: ReadonlyArray<string>;
   readonly agentId: string;
   readonly runtimeId: string;
   readonly attempt: number;
@@ -114,14 +121,22 @@ export const makeCompositionRunStartDigests = (input: {
     payloadDigest: digest({
       schemaVersion: 1,
       taskId: input.taskId,
+      projectId: normalizeText(input.projectId),
+      threadId: normalizeText(input.threadId),
+      parentTaskId: normalizeText(input.parentTaskId),
       runId: input.runId,
       previousRunId: input.previousRunId,
+      assigneeKind: normalizeText(input.assigneeKind),
+      assigneeId: normalizeText(input.assigneeId),
+      mode: normalizeText(input.mode),
+      dependsOnTaskIds: [...new Set(input.dependsOnTaskIds ?? [])].sort(),
       agentId: input.agentId,
       runtimeId: input.runtimeId,
       attempt: input.attempt,
       promptDigest: input.promptDigest,
       workspaceRootDigest: normalizeText(input.workspaceRootDigest),
       model: normalizeText(input.model),
+      capabilityIds,
     }),
     capabilityDigest: digest({ schemaVersion: 1, capabilityIds }),
   } as const;

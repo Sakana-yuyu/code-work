@@ -15,8 +15,15 @@ import {
 
 export type CompositionRunStartSetup = {
   readonly taskId: string;
+  readonly projectId?: string;
+  readonly threadId?: string;
+  readonly parentTaskId?: string;
   readonly runId: string;
   readonly previousRunId: string | null;
+  readonly assigneeKind?: string;
+  readonly assigneeId?: string;
+  readonly mode?: string;
+  readonly dependsOnTaskIds?: ReadonlyArray<string>;
   readonly agentId: string;
   readonly runtimeId: string;
   readonly attempt: number;
@@ -68,8 +75,15 @@ export const claimCompositionRunStartSetup = (
     const preparedAtUnixMs = yield* Clock.currentTimeMillis;
     const digests = makeCompositionRunStartDigests({
       taskId: setup.taskId,
+      ...(setup.projectId === undefined ? {} : { projectId: setup.projectId }),
+      ...(setup.threadId === undefined ? {} : { threadId: setup.threadId }),
+      ...(setup.parentTaskId === undefined ? {} : { parentTaskId: setup.parentTaskId }),
       runId: setup.runId,
       previousRunId: setup.previousRunId,
+      ...(setup.assigneeKind === undefined ? {} : { assigneeKind: setup.assigneeKind }),
+      ...(setup.assigneeId === undefined ? {} : { assigneeId: setup.assigneeId }),
+      ...(setup.mode === undefined ? {} : { mode: setup.mode }),
+      ...(setup.dependsOnTaskIds === undefined ? {} : { dependsOnTaskIds: setup.dependsOnTaskIds }),
       agentId: setup.agentId,
       runtimeId: setup.runtimeId,
       attempt: setup.attempt,

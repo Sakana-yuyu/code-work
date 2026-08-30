@@ -8,6 +8,7 @@ import {
   CompositionAgentDriverFailure,
   type CompositionAgentDriver,
 } from "./CompositionOrchestrator.ts";
+import { makeCompositionRunStartDigests } from "./CompositionRunStartLifecycle.ts";
 import {
   planCompositionRunStartRecoveries,
   type CompositionRunStartRecoveryCandidate,
@@ -40,6 +41,23 @@ const makeCandidate = (
     attempt: 1,
     capabilityGrantIds: [],
   } satisfies CompositionTaskRun;
+  const digests = makeCompositionRunStartDigests({
+    taskId: task.taskId,
+    projectId: task.projectId,
+    ...(task.threadId === undefined ? {} : { threadId: task.threadId }),
+    ...(task.parentTaskId === undefined ? {} : { parentTaskId: task.parentTaskId }),
+    runId: run.runId,
+    previousRunId: null,
+    assigneeKind: task.assigneeKind,
+    assigneeId: task.assigneeId,
+    mode: task.mode,
+    dependsOnTaskIds: task.dependsOnTaskIds,
+    agentId: run.agentId,
+    runtimeId: run.runtimeId,
+    attempt: run.attempt,
+    promptDigest: task.promptDigest,
+    capabilityIds: [],
+  });
   const intent = {
     taskId: task.taskId,
     runId: run.runId,
@@ -47,8 +65,7 @@ const makeCandidate = (
     agentId: run.agentId,
     runtimeId: run.runtimeId,
     attempt: run.attempt,
-    payloadDigest: `sha256:payload-${suffix}`,
-    capabilityDigest: `sha256:capability-${suffix}`,
+    ...digests,
     state: "dispatching" as const,
     revision: 3,
     claimId: `claim-${suffix}`,
@@ -277,6 +294,49 @@ it.effect("旧密文缺 capabilityIds 时稳定 quarantine，绝不按空授权�
       detail: "旧加密输入无法确认 capabilityIds，已阻止自动外部启动。",
     });
   }),
+);
+
+it.effect(
+  "恢复时 project、线程、受派人、模式、依赖或模型身份改变会 quarantine 且不调用 Driver",
+  () =>
+    Effect.gen(function* () {
+      const candidate = makeCandidate("full-identity-mismatch");
+      let reconcileCalls = 0;
+      const registry = makeCompositionAgentDriverRegistry();
+      yield* registry.register(
+        makeDriver(candidate, {
+          reconcileStart: () =>
+            Effect.sync(() => {
+              reconcileCalls += 1;
+              return { action: "replay" as const };
+            }),
+        }),
+      );
+
+      const [plan] = yield* planCompositionRunStartRecoveries({
+        candidates: [
+          {
+            ...candidate,
+            task: {
+              ...candidate.task,
+              projectId: "project-rebound",
+              threadId: "thread-rebound",
+              parentTaskId: "parent-rebound",
+              assigneeId: "agent-rebound",
+              mode: "parallel",
+              dependsOnTaskIds: ["dependency-rebound"],
+            },
+            model: "model-rebound",
+          },
+        ],
+        driverRegistry: registry,
+        reconciled,
+      });
+
+      assert.equal(plan?.action, "quarantine");
+      assert.equal(plan?.code, "run_start_recovery_digest_mismatch");
+      assert.equal(reconcileCalls, 0);
+    }),
 );
 
 it.effect("reconcile-only Driver 不能把未验证的 replay 决策升级为外部重放", () =>
