@@ -57,7 +57,7 @@ describe("MulticaDaemonProtocol fetch transport", () => {
 
   it.effect("无请求体时不发送 Content-Type，并保留普通配置 Header", () =>
     Effect.gen(function* () {
-      let capturedBody: BodyInit | null | undefined;
+      let capturedBody: RequestInit["body"];
       let capturedHeaders = new Headers();
       const transport = makeMulticaFetchHttpTransport({
         baseUrl: "https://multica.test",
