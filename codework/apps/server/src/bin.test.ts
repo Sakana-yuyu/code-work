@@ -267,6 +267,18 @@ it.layer(NodeServices.layer)("bin cli parsing", (it) => {
     }),
   );
 
+  it.effect("exposes read-only Agent log snapshots", () =>
+    Effect.gen(function* () {
+      const logs = yield* captureStdout(runCli(["logs", "--help"], noConnectCli));
+
+      assert.include(logs.output, "Read an agent message log snapshot.");
+      assert.include(logs.output, "<agent-id>");
+      assert.include(logs.output, "--server");
+      assert.include(logs.output, "--access-token");
+      assert.include(logs.output, "--json");
+    }),
+  );
+
   it.effect("exposes optimistic Squad lifecycle commands", () =>
     Effect.gen(function* () {
       const duplicate = yield* captureStdout(

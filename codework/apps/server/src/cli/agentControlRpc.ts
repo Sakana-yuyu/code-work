@@ -9,7 +9,7 @@ import {
   type ControlConnectionOptions,
   openControlClient,
 } from "./controlClient.ts";
-import { toAgentStatusSnapshot } from "./agentControlState.ts";
+import { toAgentLogsSnapshot, toAgentStatusSnapshot } from "./agentControlState.ts";
 
 export interface AgentTargetOptions extends ControlConnectionOptions {
   readonly agentId: string;
@@ -58,3 +58,8 @@ export const getAgentStatus = (
   options: AgentTargetOptions,
   open: ControlClientOpen = openControlClient,
 ) => getAgentThreadSnapshot(options, open).pipe(Effect.map(toAgentStatusSnapshot));
+
+export const getAgentLogs = (
+  options: AgentTargetOptions,
+  open: ControlClientOpen = openControlClient,
+) => getAgentThreadSnapshot(options, open).pipe(Effect.map(toAgentLogsSnapshot));

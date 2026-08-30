@@ -11,6 +11,7 @@ import { agentCommand } from "./cli/agent.ts";
 import { automationCommand } from "./cli/automation.ts";
 import { authCommand } from "./cli/auth.ts";
 import { connectCommand } from "./cli/connect.ts";
+import { logsCommand } from "./cli/logs.ts";
 import { pairCommand } from "./cli/pair.ts";
 import { hasCloudPublicConfig } from "./cloud/publicConfig.ts";
 import { sharedServerCommandFlags } from "./cli/config.ts";
@@ -59,6 +60,7 @@ export const makeCli = ({ cloudEnabled = hasCloudPublicConfig } = {}) =>
       pairCommand,
       authCommand,
       agentCommand,
+      logsCommand,
       projectCommand,
       scriptCommand,
       serviceCommand,

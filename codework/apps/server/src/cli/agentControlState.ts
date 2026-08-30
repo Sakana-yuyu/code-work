@@ -1,5 +1,6 @@
 import type {
   OrchestrationLatestTurnState,
+  OrchestrationMessage,
   OrchestrationSessionStatus,
   OrchestrationThread,
 } from "@codework/contracts";
@@ -25,6 +26,11 @@ export interface AgentStatusSnapshot {
   readonly model: string;
   readonly archivedAt: string | null;
   readonly updatedAt: string;
+}
+
+export interface AgentLogsSnapshot {
+  readonly agentId: string;
+  readonly messages: ReadonlyArray<OrchestrationMessage>;
 }
 
 export function deriveAgentStatus(thread: OrchestrationThread): AgentControlStatus {
@@ -73,5 +79,12 @@ export function toAgentStatusSnapshot(thread: OrchestrationThread): AgentStatusS
     model: thread.modelSelection.model,
     archivedAt: thread.archivedAt,
     updatedAt: thread.updatedAt,
+  };
+}
+
+export function toAgentLogsSnapshot(thread: OrchestrationThread): AgentLogsSnapshot {
+  return {
+    agentId: thread.id,
+    messages: thread.messages,
   };
 }
