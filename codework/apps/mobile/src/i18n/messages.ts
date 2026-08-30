@@ -972,6 +972,47 @@ export const en: Record<string, string> = {
   "squadBuilder.agentId": "Agent ID",
   "squadBuilder.role": "Role",
   "squadBuilder.modelField": "Model",
+  "squadBuilder.modelBinding.teamTitle": "Team default model",
+  "squadBuilder.modelBinding.teamDescription":
+    "Members can inherit this stable target or override it without copying provider credentials into the squad.",
+  "squadBuilder.modelBinding.source": "Model source",
+  "squadBuilder.modelBinding.mode.legacy": "Legacy setting",
+  "squadBuilder.modelBinding.mode.team_default": "Inherit team default",
+  "squadBuilder.modelBinding.mode.runtime_native": "Runtime native",
+  "squadBuilder.modelBinding.mode.byok": "BYOK provider",
+  "squadBuilder.modelBinding.legacyModel": "Legacy model",
+  "squadBuilder.modelBinding.legacyDescription":
+    "This saved member still uses the legacy free-text model. It is converted only when you choose another source.",
+  "squadBuilder.modelBinding.legacyTeamDescription":
+    "This saved squad has no structured team default. Choose Runtime native or a BYOK provider to migrate it.",
+  "squadBuilder.modelBinding.teamDefaultDescription":
+    "This member follows the team's default model snapshot.",
+  "squadBuilder.modelBinding.runtimeModel": "Runtime model ID",
+  "squadBuilder.modelBinding.runtimeDescription":
+    "Leave blank to let the selected Agent runtime use its own default model.",
+  "squadBuilder.modelBinding.provider": "Provider instance",
+  "squadBuilder.modelBinding.adapter": "Model adapter",
+  "squadBuilder.modelBinding.model": "Upstream model",
+  "squadBuilder.modelBinding.modelDescription":
+    "Derived from the selected adapter and saved in the run snapshot; credentials remain in server settings.",
+  "squadBuilder.modelBinding.availability.provider_missing":
+    "The saved BYOK provider no longer exists. Select an available provider before running this squad.",
+  "squadBuilder.modelBinding.availability.provider_disabled":
+    "The saved BYOK provider is disabled. Enable it or select another provider before running this squad.",
+  "squadBuilder.modelBinding.availability.adapter_missing":
+    "The saved model adapter no longer exists. Select an available adapter before running this squad.",
+  "squadBuilder.modelBinding.availability.model_changed":
+    "The adapter now points to a different upstream model. Accept the current model explicitly before using it.",
+  "squadBuilder.modelBinding.acceptCurrentModel": "Accept current model",
+  "squadBuilder.modelBinding.summary.teamLabel": "Team model",
+  "squadBuilder.modelBinding.summary.memberLabel": "Member model",
+  "squadBuilder.modelBinding.summary.legacy": "Legacy: {{model}}",
+  "squadBuilder.modelBinding.summary.teamUnset": "No structured team default",
+  "squadBuilder.modelBinding.summary.legacyUnset": "Legacy: runtime default",
+  "squadBuilder.modelBinding.summary.team_default": "Inherits team default",
+  "squadBuilder.modelBinding.summary.runtimeDefault": "Runtime native default",
+  "squadBuilder.modelBinding.summary.runtimeModel": "Runtime native: {{model}}",
+  "squadBuilder.modelBinding.summary.byok": "{{provider}} · {{adapter}} · {{model}}",
   "squadBuilder.memberConcurrency": "Member concurrency",
   "squadBuilder.workspaceRoot": "Workspace root",
   "squadBuilder.capabilityIds": "Capability IDs",
@@ -1968,6 +2009,45 @@ export const zhCN: Record<string, string> = {
   "squadBuilder.agentId": "Agent 标识",
   "squadBuilder.role": "角色",
   "squadBuilder.modelField": "模型",
+  "squadBuilder.modelBinding.teamTitle": "团队默认模型",
+  "squadBuilder.modelBinding.teamDescription":
+    "成员可以继承该稳定目标，也可以单独覆盖；供应商凭据不会复制到编队配置中。",
+  "squadBuilder.modelBinding.source": "模型来源",
+  "squadBuilder.modelBinding.mode.legacy": "旧版设置",
+  "squadBuilder.modelBinding.mode.team_default": "继承团队默认",
+  "squadBuilder.modelBinding.mode.runtime_native": "Runtime 原生",
+  "squadBuilder.modelBinding.mode.byok": "BYOK 供应商",
+  "squadBuilder.modelBinding.legacyModel": "旧版模型",
+  "squadBuilder.modelBinding.legacyDescription":
+    "该成员仍使用旧版自由文本模型；只有主动选择其他来源时才会转换。",
+  "squadBuilder.modelBinding.legacyTeamDescription":
+    "该编队尚无结构化团队默认模型；选择 Runtime 原生或 BYOK 供应商后才会迁移。",
+  "squadBuilder.modelBinding.teamDefaultDescription": "该成员跟随团队默认模型快照。",
+  "squadBuilder.modelBinding.runtimeModel": "Runtime 模型 ID",
+  "squadBuilder.modelBinding.runtimeDescription": "留空时由所选 Agent Runtime 使用自己的默认模型。",
+  "squadBuilder.modelBinding.provider": "供应商实例",
+  "squadBuilder.modelBinding.adapter": "模型适配器",
+  "squadBuilder.modelBinding.model": "上游模型",
+  "squadBuilder.modelBinding.modelDescription":
+    "模型由适配器确定并写入 Run 快照；凭据仍只保存在服务端设置中。",
+  "squadBuilder.modelBinding.availability.provider_missing":
+    "已保存的 BYOK 供应商已不存在；运行编队前请选择可用供应商。",
+  "squadBuilder.modelBinding.availability.provider_disabled":
+    "已保存的 BYOK 供应商已停用；运行编队前请启用它或选择其他供应商。",
+  "squadBuilder.modelBinding.availability.adapter_missing":
+    "已保存的模型适配器已不存在；运行编队前请选择可用适配器。",
+  "squadBuilder.modelBinding.availability.model_changed":
+    "该适配器现已指向其他上游模型；请明确接受当前模型后再使用。",
+  "squadBuilder.modelBinding.acceptCurrentModel": "接受当前模型",
+  "squadBuilder.modelBinding.summary.teamLabel": "团队模型",
+  "squadBuilder.modelBinding.summary.memberLabel": "成员模型",
+  "squadBuilder.modelBinding.summary.legacy": "旧版：{{model}}",
+  "squadBuilder.modelBinding.summary.teamUnset": "尚无结构化团队默认模型",
+  "squadBuilder.modelBinding.summary.legacyUnset": "旧版：Runtime 默认模型",
+  "squadBuilder.modelBinding.summary.team_default": "继承团队默认",
+  "squadBuilder.modelBinding.summary.runtimeDefault": "Runtime 原生默认模型",
+  "squadBuilder.modelBinding.summary.runtimeModel": "Runtime 原生：{{model}}",
+  "squadBuilder.modelBinding.summary.byok": "{{provider}} · {{adapter}} · {{model}}",
   "squadBuilder.memberConcurrency": "成员并发上限",
   "squadBuilder.workspaceRoot": "工作目录",
   "squadBuilder.capabilityIds": "能力 ID",
