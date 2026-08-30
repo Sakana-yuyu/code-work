@@ -74,6 +74,7 @@ const makeFixture = () => {
   const historyRequests: Array<{ threadId: string; terminalId: string }> = [];
   const histories = new Map<string, string>();
   const historyFailures: unknown[] = [];
+  const killFailures: unknown[] = [];
   let nowUnixMs = 1_000;
 
   const emit = (event: TerminalEvent) =>
@@ -88,6 +89,13 @@ const makeFixture = () => {
     kill: (input) =>
       Effect.gen(function* () {
         kills.push(input);
+        const failure = killFailures.shift();
+        if (failure !== undefined) {
+          return yield* new WorkspaceScriptDependencyError({
+            operation: "killTerminal",
+            cause: failure,
+          });
+        }
         yield* emit({
           type: "exited",
           ...input,
@@ -139,8 +147,10 @@ const makeFixture = () => {
       kills,
       histories,
       historyFailures,
+      killFailures,
       historyRequests,
       emit,
+      store,
       restartService: makeService,
     };
   });
@@ -306,6 +316,124 @@ describe("WorkspaceScriptService", () => {
       assert.deepEqual(kills, [{ threadId: "thread-1", terminalId: started.terminalId }]);
       assert.equal(stopped.status, "stopped");
       assert.equal(repeated.status, "stopped");
+    }),
+  );
+
+  it.effect("kill 失败后保留可重试状态，相同 operationId 可安全重试", () =>
+    Effect.gen(function* () {
+      const { service, kills, killFailures } = yield* makeFixture();
+      const started = yield* service.start({
+        ...startRequest,
+        operationId: "operation-stop-retry",
+      });
+      killFailures.push(new Error("kill temporarily unavailable"));
+
+      const firstError = yield* service
+        .stop({
+          workspaceScriptRunId: started.workspaceScriptRunId,
+          operationId: "stop-operation-retry",
+          expectedRevision: started.revision,
+        })
+        .pipe(Effect.flip);
+      const retryable = Option.getOrThrow(yield* service.get(started.workspaceScriptRunId));
+      const conflictingOperation = yield* service
+        .stop({
+          workspaceScriptRunId: started.workspaceScriptRunId,
+          operationId: "stop-operation-other",
+          expectedRevision: retryable.revision,
+        })
+        .pipe(Effect.flip);
+      const repeated = yield* Effect.all(
+        [
+          service.stop({
+            workspaceScriptRunId: started.workspaceScriptRunId,
+            operationId: "stop-operation-retry",
+            expectedRevision: started.revision,
+          }),
+          service.stop({
+            workspaceScriptRunId: started.workspaceScriptRunId,
+            operationId: "stop-operation-retry",
+            expectedRevision: started.revision,
+          }),
+        ],
+        { concurrency: "unbounded" },
+      );
+
+      assert.equal(firstError.code, "workspace_script_stop_failed");
+      assert.equal(conflictingOperation.code, "workspace_script_stop_idempotency_conflict");
+      assert.equal(retryable.status, "running");
+      assert.isNull(retryable.finishedAtUnixMs);
+      assert.isNull(retryable.errorCode);
+      assert.equal(kills.length, 2);
+      assert.deepEqual(
+        repeated.map((run) => run.status),
+        ["stopped", "stopped"],
+      );
+    }),
+  );
+
+  it.effect("stop claim 持久化后服务崩溃，相同 operationId 可恢复执行", () =>
+    Effect.gen(function* () {
+      const { service, restartService, store, kills } = yield* makeFixture();
+      const started = yield* service.start({
+        ...startRequest,
+        operationId: "operation-stop-crash",
+      });
+      const claimed = yield* store.claimStop({
+        run: {
+          ...started,
+          status: "stopping",
+          revision: started.revision + 1,
+          updatedAtUnixMs: started.updatedAtUnixMs + 1,
+        },
+        operationId: "stop-operation-crash",
+        expectedRevision: started.revision,
+      });
+
+      const restarted = yield* restartService();
+      const recovered = Option.getOrThrow(yield* restarted.get(started.workspaceScriptRunId));
+      const stopped = yield* restarted.stop({
+        workspaceScriptRunId: started.workspaceScriptRunId,
+        operationId: "stop-operation-crash",
+        expectedRevision: started.revision,
+      });
+
+      assert.isTrue(claimed.claimed);
+      assert.equal(recovered.status, "running");
+      assert.equal(kills.length, 1);
+      assert.equal(stopped.status, "stopped");
+    }),
+  );
+
+  it.effect("kill 报错后的迟到 exit 按已持久化 stop operation 收口", () =>
+    Effect.gen(function* () {
+      const { service, emit, killFailures } = yield* makeFixture();
+      const started = yield* service.start({
+        ...startRequest,
+        operationId: "operation-stop-late-exit",
+      });
+      killFailures.push(new Error("kill response lost"));
+      yield* service
+        .stop({
+          workspaceScriptRunId: started.workspaceScriptRunId,
+          operationId: "stop-operation-late-exit",
+          expectedRevision: started.revision,
+        })
+        .pipe(Effect.flip);
+
+      yield* emit({
+        type: "exited",
+        threadId: started.threadId,
+        terminalId: started.terminalId,
+        sequence: 3,
+        exitCode: null,
+        exitSignal: 15,
+      });
+
+      const settled = Option.getOrThrow(yield* service.get(started.workspaceScriptRunId));
+      assert.equal(settled.status, "stopped");
+      assert.equal(settled.exitSignal, 15);
+      assert.isNull(settled.errorCode);
     }),
   );
 
