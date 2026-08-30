@@ -1,11 +1,9 @@
 import {
-  buildCompositionSquadRetryRequest,
-  executeCompositionSquadNodeCommandWithRefresh,
   projectCompositionSquadRunBoard,
   resolveCompositionSquadNodeEventTarget,
+  type CompositionSquadReviewAction,
   type CompositionSquadRunBoardNode,
 } from "@codework/client-runtime/composition/squad-run-board";
-import { squashAtomCommandFailure } from "@codework/client-runtime/state/runtime";
 import type { CompositionSquad, CompositionTaskEvent } from "@codework/contracts";
 import { useNavigation } from "@react-navigation/native";
 import { useMemo, useState } from "react";
@@ -15,18 +13,17 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { AndroidScreenHeader } from "../../components/AndroidScreenHeader";
 import { AppText as Text } from "../../components/AppText";
 import { t } from "../../i18n";
-import { uuidv4 } from "../../lib/uuid";
 import { NativeStackScreenOptions } from "../../native/StackHeader";
 import { useEnvironments } from "../../state/environments";
 import { useProjects } from "../../state/entities";
 import { useEnvironmentQuery } from "../../state/query";
 import { serverEnvironment } from "../../state/server";
-import { useAtomCommand } from "../../state/use-atom-command";
 import {
   projectSquadRunBoardHistory,
   type SquadRunBoardHistoryItem,
 } from "./SettingsSquadExecutionHistoryRouteScreen.logic";
 import { SquadRunBoardExecutionCard } from "./SquadRunBoardExecutionCard";
+import { useSquadRunBoardNodeCommands } from "./useSquadRunBoardNodeCommands";
 
 /** 最近 Squad execution 的移动端控制看板，节点身份和事件均来自持久化服务端投影。 */
 export function SettingsSquadExecutionHistoryRouteScreen() {
@@ -56,15 +53,7 @@ export function SettingsSquadExecutionHistoryRouteScreen() {
           input: { includeArchived: true },
         }),
   );
-  const retryCompositionTask = useAtomCommand(serverEnvironment.retryCompositionTask, {
-    reportFailure: false,
-  });
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
-  const [pendingActionTaskId, setPendingActionTaskId] = useState<string | null>(null);
-  const [actionError, setActionError] = useState<{
-    readonly taskId: string;
-    readonly message: string;
-  } | null>(null);
   const environmentProjects = useMemo(
     () => projects.filter((project) => project.environmentId === environmentId),
     [environmentId, projects],
@@ -102,6 +91,14 @@ export function SettingsSquadExecutionHistoryRouteScreen() {
           input: eventTarget,
         }),
   );
+  const nodeCommands = useSquadRunBoardNodeCommands({
+    environmentId,
+    refreshers: {
+      refreshExecutions: executionsQuery.refresh,
+      refreshTasks: tasksQuery.refresh,
+      refreshEvents: eventsQuery.refresh,
+    },
+  });
   const queries = [executionsQuery, tasksQuery, squadsQuery] as const;
   const refreshing = queries.some((query) => query.isPending && query.data !== null);
   const initialPending = queries.some((query) => query.isPending && query.data === null);
@@ -117,45 +114,6 @@ export function SettingsSquadExecutionHistoryRouteScreen() {
 
   const toggleEvents = (taskId: string): void => {
     setSelectedTaskId((current) => (current === taskId ? null : taskId));
-  };
-
-  const retryNode = async (
-    node: CompositionSquadRunBoardNode,
-    capabilityIds: ReadonlyArray<string>,
-    reassignAgentId?: string,
-  ): Promise<void> => {
-    if (environmentId === null || pendingActionTaskId !== null) return;
-    const reassigning = reassignAgentId !== undefined;
-    const request = buildCompositionSquadRetryRequest({
-      node,
-      capabilityIds,
-      nextRunId: `mobile-squad-${reassigning ? "reassign" : "retry"}-${uuidv4()}`,
-      reason: t(
-        reassigning
-          ? "squadExecutionHistory.reassignReasonDefault"
-          : "squadExecutionHistory.retryReasonDefault",
-      ),
-      ...(reassignAgentId === undefined ? {} : { reassignAgentId }),
-    });
-    if (request === null) return;
-    setPendingActionTaskId(node.taskId);
-    setActionError(null);
-    const result = await executeCompositionSquadNodeCommandWithRefresh(
-      () => retryCompositionTask({ environmentId, input: request }),
-      {
-        refreshExecutions: executionsQuery.refresh,
-        refreshTasks: tasksQuery.refresh,
-        refreshEvents: eventsQuery.refresh,
-      },
-    );
-    if (result._tag === "Failure") {
-      const error = squashAtomCommandFailure(result);
-      setActionError({
-        taskId: node.taskId,
-        message: error instanceof Error ? error.message : t("squadExecutionHistory.retryFailed"),
-      });
-    }
-    setPendingActionTaskId(null);
   };
 
   return (
@@ -194,15 +152,16 @@ export function SettingsSquadExecutionHistoryRouteScreen() {
             staleError={staleError}
             squads={squadsQuery.data?.squads ?? []}
             selectedTaskId={selectedTaskId}
-            pendingActionTaskId={pendingActionTaskId}
-            actionError={actionError}
+            pendingActionTaskId={nodeCommands.pendingTaskId}
+            actionError={nodeCommands.error}
             events={eventsQuery.data?.events ?? []}
             eventsPending={eventsQuery.isPending}
             eventsError={eventsQuery.error}
             onToggleEvents={toggleEvents}
             onRetry={(node, capabilityIds, reassignAgentId) =>
-              void retryNode(node, capabilityIds, reassignAgentId)
+              void nodeCommands.retryNode(node, capabilityIds, reassignAgentId)
             }
+            onReview={(node, decision) => void nodeCommands.reviewNode(node, decision)}
           />
         )}
       </ScrollView>
@@ -226,6 +185,10 @@ function SquadRunBoardHistory(props: {
     capabilityIds: ReadonlyArray<string>,
     reassignAgentId?: string,
   ) => void;
+  readonly onReview: (
+    node: CompositionSquadRunBoardNode,
+    decision: CompositionSquadReviewAction,
+  ) => void;
 }) {
   return (
     <View className="gap-3">
@@ -247,6 +210,7 @@ function SquadRunBoardHistory(props: {
             eventsError={props.eventsError}
             onToggleEvents={props.onToggleEvents}
             onRetry={props.onRetry}
+            onReview={props.onReview}
           />
         );
       })}

@@ -3,6 +3,7 @@ import type {
   CompositionSquadExecutionStatus,
   CompositionTaskEventsRequest,
   CompositionTaskRetryRequest,
+  CompositionTaskReviewRequest,
   CompositionTaskSnapshot,
 } from "@codework/contracts";
 
@@ -50,6 +51,7 @@ export interface CompositionSquadNodeActionContext {
 }
 
 export type CompositionSquadFailedNodeAction = "retry" | "reassign";
+export type CompositionSquadReviewAction = "approve" | "reject";
 
 export interface CompositionSquadRunBoardRefreshers {
   readonly refreshExecutions: () => void;
@@ -219,4 +221,26 @@ export const executeCompositionSquadNodeCommandWithRefresh = async <
     refreshers.refreshEvents();
   }
   return result;
+};
+
+export const resolveCompositionSquadReviewActions = (
+  node: CompositionSquadRunBoardNode,
+): ReadonlyArray<CompositionSquadReviewAction> =>
+  node.snapshot?.latestRun?.status === "in_review" ? ["approve", "reject"] : [];
+
+/** 构造服务端现有 review RPC 输入；仅允许当前最新 Run 处于 in_review。 */
+export const buildCompositionSquadReviewRequest = (input: {
+  readonly node: CompositionSquadRunBoardNode;
+  readonly decision: CompositionSquadReviewAction;
+  readonly reason: string;
+}): CompositionTaskReviewRequest | null => {
+  const run = input.node.snapshot?.latestRun;
+  const reason = input.reason.trim();
+  if (run?.status !== "in_review" || reason.length === 0) return null;
+  return {
+    taskId: input.node.taskId,
+    runId: run.runId,
+    decision: input.decision,
+    reason,
+  };
 };

@@ -7,11 +7,13 @@ import { describe, expect, it, vi } from "vite-plus/test";
 
 import {
   buildCompositionSquadRetryRequest,
+  buildCompositionSquadReviewRequest,
   executeCompositionSquadNodeCommandWithRefresh,
   resolveCompositionSquadFailedNodeActions,
   resolveCompositionSquadNodeActionContext,
   projectCompositionSquadRunBoard,
   resolveCompositionSquadNodeEventTarget,
+  resolveCompositionSquadReviewActions,
 } from "./squadRunBoard.ts";
 
 const makeSnapshot = (input: {
@@ -243,5 +245,62 @@ describe("executeCompositionSquadNodeCommandWithRefresh", () => {
     expect(refreshExecutions).toHaveBeenCalledTimes(refreshCount);
     expect(refreshTasks).toHaveBeenCalledTimes(refreshCount);
     expect(refreshEvents).toHaveBeenCalledTimes(refreshCount);
+  });
+});
+
+describe("Squad review node actions", () => {
+  it("只为 in_review 最新 Run 开放通过与驳回", () => {
+    const reviewNode = {
+      nodeId: "leader-finalize",
+      taskId: "task-review",
+      snapshot: makeSnapshot({
+        taskId: "task-review",
+        runId: "run-review",
+        agentId: "agent-leader",
+        status: "in_review",
+      }),
+    };
+
+    expect(resolveCompositionSquadReviewActions(reviewNode)).toEqual(["approve", "reject"]);
+    expect(
+      resolveCompositionSquadReviewActions({
+        ...reviewNode,
+        snapshot: makeSnapshot({
+          taskId: "task-review",
+          runId: "run-review",
+          agentId: "agent-leader",
+          status: "waiting_approval",
+        }),
+      }),
+    ).toEqual([]);
+  });
+
+  it("构造绑定最新 Run 的人工通过与驳回请求", () => {
+    const node = {
+      nodeId: "leader-finalize",
+      taskId: "task-review",
+      snapshot: makeSnapshot({
+        taskId: "task-review",
+        runId: "run-review",
+        agentId: "agent-leader",
+        status: "in_review",
+      }),
+    };
+
+    expect(
+      buildCompositionSquadReviewRequest({
+        node,
+        decision: "approve",
+        reason: " 复核通过 ",
+      }),
+    ).toEqual({
+      taskId: "task-review",
+      runId: "run-review",
+      decision: "approve",
+      reason: "复核通过",
+    });
+    expect(
+      buildCompositionSquadReviewRequest({ node, decision: "reject", reason: " " }),
+    ).toBeNull();
   });
 });

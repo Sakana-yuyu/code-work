@@ -22,7 +22,9 @@ const mocks = vi.hoisted(() => {
     listCompositionTasks: vi.fn(),
     compositionSquads: vi.fn(),
     retryCompositionTaskAtom: Symbol("retryCompositionTask"),
+    reviewCompositionTaskAtom: Symbol("reviewCompositionTask"),
     retryCommand: vi.fn(),
+    reviewCommand: vi.fn(),
     pressHandlers: new Map<string, () => void>(),
     executionsQuery: {
       data: null as CompositionSquadExecutionListResult | null,
@@ -139,6 +141,7 @@ vi.mock("../../state/query", () => ({
 vi.mock("../../state/server", () => ({
   serverEnvironment: {
     retryCompositionTask: mocks.retryCompositionTaskAtom,
+    reviewCompositionTask: mocks.reviewCompositionTaskAtom,
     compositionSquadExecutions: (...args: unknown[]) => {
       mocks.compositionSquadExecutions(...args);
       return mocks.executionsAtom;
@@ -157,8 +160,9 @@ vi.mock("../../state/server", () => ({
 
 vi.mock("../../state/use-atom-command", () => ({
   useAtomCommand: (atom: unknown) => {
-    expect(atom).toBe(mocks.retryCompositionTaskAtom);
-    return mocks.retryCommand;
+    if (atom === mocks.retryCompositionTaskAtom) return mocks.retryCommand;
+    if (atom === mocks.reviewCompositionTaskAtom) return mocks.reviewCommand;
+    throw new Error("unexpected command atom");
   },
 }));
 
@@ -248,7 +252,9 @@ describe("SettingsSquadExecutionHistoryRouteScreen", () => {
     mocks.listCompositionTasks.mockReset();
     mocks.compositionSquads.mockReset();
     mocks.retryCommand.mockReset();
+    mocks.reviewCommand.mockReset();
     mocks.retryCommand.mockResolvedValue({ _tag: "Success", value: {} });
+    mocks.reviewCommand.mockResolvedValue({ _tag: "Success", value: {} });
     mocks.pressHandlers.clear();
     for (const query of [mocks.executionsQuery, mocks.tasksQuery, mocks.squadsQuery]) {
       query.data = null;
@@ -341,7 +347,7 @@ describe("SettingsSquadExecutionHistoryRouteScreen", () => {
     expect(mocks.squadsQuery.refresh).toHaveBeenCalledTimes(1);
   });
 
-  it("失败节点重试调用真实 retry RPC，并在成功后刷新读模型", async () => {
+  it("失败节点连续重试只调用一次真实 retry RPC，并在成功后刷新读模型", async () => {
     setProject();
     mocks.executionsQuery.data = { executions: [execution] };
     mocks.tasksQuery.data = {
@@ -377,7 +383,9 @@ describe("SettingsSquadExecutionHistoryRouteScreen", () => {
     mocks.squadsQuery.data = { squads: [squad] };
     renderToStaticMarkup(<SettingsSquadExecutionHistoryRouteScreen />);
 
-    mocks.pressHandlers.get("squadExecutionHistory.retryNode")?.();
+    const retryNode = mocks.pressHandlers.get("squadExecutionHistory.retryNode");
+    retryNode?.();
+    retryNode?.();
 
     await vi.waitFor(() => expect(mocks.retryCommand).toHaveBeenCalledTimes(1));
     expect(mocks.retryCommand).toHaveBeenCalledWith({
@@ -388,6 +396,55 @@ describe("SettingsSquadExecutionHistoryRouteScreen", () => {
         runId: "mobile-squad-retry-uuid-test",
         reason: "squadExecutionHistory.retryReasonDefault",
         capabilityIds: ["shell", "git"],
+      },
+    });
+    expect(mocks.executionsQuery.refresh).toHaveBeenCalledTimes(1);
+    expect(mocks.tasksQuery.refresh).toHaveBeenCalledTimes(1);
+  });
+
+  it("复核节点通过调用真实 review RPC，并在成功后刷新读模型", async () => {
+    setProject();
+    mocks.executionsQuery.data = { executions: [execution] };
+    mocks.tasksQuery.data = {
+      tasks: [
+        {
+          task: {
+            taskId: "task-worker",
+            projectId: "project-1",
+            assigneeKind: "agent",
+            assigneeId: "agent-worker",
+            mode: "review",
+            status: "in_review",
+            promptDigest: "prompt-digest",
+            dependsOnTaskIds: [],
+            createdAtUnixMs: 100,
+            updatedAtUnixMs: 200,
+          },
+          latestRun: {
+            runId: "run-worker",
+            taskId: "task-worker",
+            agentId: "agent-worker",
+            runtimeId: "runtime-1",
+            status: "in_review",
+            attempt: 1,
+            capabilityGrantIds: [],
+          },
+        },
+      ],
+    };
+    mocks.squadsQuery.data = { squads: [squad] };
+    renderToStaticMarkup(<SettingsSquadExecutionHistoryRouteScreen />);
+
+    mocks.pressHandlers.get("squadExecutionHistory.approveNode")?.();
+
+    await vi.waitFor(() => expect(mocks.reviewCommand).toHaveBeenCalledTimes(1));
+    expect(mocks.reviewCommand).toHaveBeenCalledWith({
+      environmentId: "env-test",
+      input: {
+        taskId: "task-worker",
+        runId: "run-worker",
+        decision: "approve",
+        reason: "squadExecutionHistory.approveReasonDefault",
       },
     });
     expect(mocks.executionsQuery.refresh).toHaveBeenCalledTimes(1);

@@ -1,5 +1,6 @@
 import {
   resolveCompositionSquadNodeActionContext,
+  type CompositionSquadReviewAction,
   type CompositionSquadRunBoardNode,
 } from "@codework/client-runtime/composition/squad-run-board";
 import type { CompositionSquad, CompositionTaskEvent } from "@codework/contracts";
@@ -10,6 +11,7 @@ import { t } from "../../i18n";
 import type { SquadRunBoardHistoryItem } from "./SettingsSquadExecutionHistoryRouteScreen.logic";
 import { SquadRunBoardFailedNodeActions } from "./SquadRunBoardFailedNodeActions";
 import { SquadRunBoardNodeCard } from "./SquadRunBoardNodeCard";
+import { SquadRunBoardReviewActions } from "./SquadRunBoardReviewActions";
 
 const EXECUTION_CREATED_AT_FORMATTER = new Intl.DateTimeFormat(undefined, {
   dateStyle: "medium",
@@ -30,6 +32,10 @@ export interface SquadRunBoardExecutionCardProps {
     node: CompositionSquadRunBoardNode,
     capabilityIds: ReadonlyArray<string>,
     reassignAgentId?: string,
+  ) => void;
+  readonly onReview: (
+    node: CompositionSquadRunBoardNode,
+    decision: CompositionSquadReviewAction,
   ) => void;
 }
 
@@ -106,12 +112,19 @@ export function SquadRunBoardExecutionCard(props: SquadRunBoardExecutionCardProp
               eventsPending={selected && props.eventsPending}
               eventsError={selected ? props.eventsError : null}
               actions={
-                <SquadRunBoardFailedNodeActions
-                  node={node}
-                  context={actionContext}
-                  disabled={props.pendingActionTaskId !== null}
-                  onRetry={props.onRetry}
-                />
+                <View className="gap-2">
+                  <SquadRunBoardFailedNodeActions
+                    node={node}
+                    context={actionContext}
+                    disabled={props.pendingActionTaskId !== null}
+                    onRetry={props.onRetry}
+                  />
+                  <SquadRunBoardReviewActions
+                    node={node}
+                    disabled={props.pendingActionTaskId !== null}
+                    onReview={props.onReview}
+                  />
+                </View>
               }
               actionError={
                 props.actionError?.taskId === node.taskId ? props.actionError.message : null
