@@ -3,6 +3,7 @@ import * as Schema from "effect/Schema";
 
 import {
   CompositionRunStartIntent as CompositionRunStartIntentSchema,
+  CompositionRunStartDigestPattern,
   CompositionRunStartReplayPolicy,
   CompositionRunStartState,
   CompositionRunStartStoreDomainError,
@@ -129,6 +130,7 @@ const hasTextWithin = (value: string, maxLength: number): boolean =>
   value.trim().length > 0 && value.length <= maxLength;
 const validTimestamp = (value: number): boolean => Number.isSafeInteger(value) && value >= 0;
 const validRevision = (value: number): boolean => Number.isSafeInteger(value) && value >= 1;
+const validDigest = (value: string): boolean => CompositionRunStartDigestPattern.test(value);
 
 export const validateRunStartPrepare = (input: CompositionRunStartPrepareInput) => {
   const valid =
@@ -138,8 +140,8 @@ export const validateRunStartPrepare = (input: CompositionRunStartPrepareInput) 
     hasTextWithin(input.runtimeId, 512) &&
     Number.isSafeInteger(input.attempt) &&
     input.attempt > 0 &&
-    hasTextWithin(input.payloadDigest, 512) &&
-    hasTextWithin(input.capabilityDigest, 512) &&
+    validDigest(input.payloadDigest) &&
+    validDigest(input.capabilityDigest) &&
     validTimestamp(input.createdAtUnixMs);
   return valid
     ? Effect.succeed(input)

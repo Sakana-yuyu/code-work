@@ -12,6 +12,7 @@ import * as Schema from "effect/Schema";
 import * as SqlClient from "effect/unstable/sql/SqlClient";
 
 import {
+  CompositionRunStartIdentity,
   CompositionRunStartStore,
   CompositionRunStartStoreDomainError,
   type CompositionRunStartPrepareInput,
@@ -23,6 +24,8 @@ const layer = it.layer(
   CompositionRunStartStoreLive.pipe(Layer.provideMerge(SqlitePersistenceMemory)),
 );
 
+const makeDigest = (hexCharacter: string): string => `sha256:${hexCharacter.repeat(64)}`;
+
 const makePrepareInput = (
   runId: string,
   overrides: Partial<CompositionRunStartPrepareInput> = {},
@@ -33,13 +36,14 @@ const makePrepareInput = (
   runtimeId: `runtime-${runId}`,
   attempt: 2,
   replayPolicy: "fail_closed",
-  payloadDigest: `sha256:payload-${runId}`,
-  capabilityDigest: `sha256:capabilities-${runId}`,
+  payloadDigest: makeDigest("a"),
+  capabilityDigest: makeDigest("b"),
   createdAtUnixMs: 100,
   ...overrides,
 });
 
 const isDomainError = Schema.is(CompositionRunStartStoreDomainError);
+const decodeRunStartIdentity = Schema.decodeUnknownEffect(CompositionRunStartIdentity);
 const errorCode = (error: unknown): string | undefined =>
   isDomainError(error) ? error.code : undefined;
 
@@ -57,10 +61,10 @@ layer("CompositionRunStartStore", (it) => {
       const prepared = yield* store.prepareStart(input);
       const replayed = yield* store.prepareStart({ ...input, createdAtUnixMs: 999 });
       const payloadDrift = yield* store
-        .prepareStart({ ...input, payloadDigest: "sha256:payload-drift" })
+        .prepareStart({ ...input, payloadDigest: makeDigest("c") })
         .pipe(Effect.flip);
       const capabilityDrift = yield* store
-        .prepareStart({ ...input, capabilityDigest: "sha256:capability-drift" })
+        .prepareStart({ ...input, capabilityDigest: makeDigest("d") })
         .pipe(Effect.flip);
       const taskAttemptDrift = yield* store
         .prepareStart(
@@ -91,6 +95,28 @@ layer("CompositionRunStartStore", (it) => {
       assert.equal(errorCode(payloadDrift), "run_start_identity_conflict");
       assert.equal(errorCode(capabilityDrift), "run_start_identity_conflict");
       assert.equal(errorCode(taskAttemptDrift), "run_start_identity_conflict");
+    }),
+  );
+
+  it.effect("Service Schema 与 store 同时拒绝明文或非规范摘要", () =>
+    Effect.gen(function* () {
+      const store = yield* CompositionRunStartStore;
+      const invalidInputs = [
+        { payloadDigest: "请执行这个原始 prompt" },
+        { capabilityDigest: '["filesystem.write"]' },
+        { payloadDigest: "sk-live-not-a-real-key" },
+        { payloadDigest: "sha256:payload" },
+        { payloadDigest: `sha256:${"A".repeat(64)}` },
+      ] as const;
+
+      for (const [index, invalidDigest] of invalidInputs.entries()) {
+        const input = makePrepareInput(`run-start-invalid-digest-${index}`, invalidDigest);
+        assert.equal((yield* Effect.result(decodeRunStartIdentity(input)))._tag, "Failure");
+        assert.equal(
+          errorCode(yield* store.prepareStart(input).pipe(Effect.flip)),
+          "run_start_input_invalid",
+        );
+      }
     }),
   );
 
@@ -428,8 +454,8 @@ layer("CompositionRunStartStore", (it) => {
       const store = yield* CompositionRunStartStore;
       const sql = yield* SqlClient.SqlClient;
       const input = makePrepareInput("run-start-redaction", {
-        payloadDigest: "sha256:redacted-payload",
-        capabilityDigest: "sha256:redacted-capabilities",
+        payloadDigest: makeDigest("e"),
+        capabilityDigest: makeDigest("f"),
       });
       yield* store.prepareStart(input);
 

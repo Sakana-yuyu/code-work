@@ -7,6 +7,7 @@ import { runMigrations } from "../Migrations.ts";
 import * as NodeSqliteClient from "../NodeSqliteClient.ts";
 
 const layer = it.layer(Layer.mergeAll(NodeSqliteClient.layerMemory()));
+const makeDigest = (hexCharacter: string): string => `sha256:${hexCharacter.repeat(64)}`;
 
 layer("066_CompositionRunStartIntents", (it) => {
   it.effect("以追加迁移建立带身份摘要和 CAS revision 的 Run Start 合同", () =>
@@ -81,6 +82,26 @@ layer("066_CompositionRunStartIntents", (it) => {
       yield* runMigrations({ toMigrationInclusive: 66 });
 
       const invalidRows = [
+        insertIntent(sql, {
+          runId: "run-invalid-raw-prompt",
+          payloadDigest: "请执行这个原始 prompt",
+        }),
+        insertIntent(sql, {
+          runId: "run-invalid-capability-json",
+          capabilityDigest: '["filesystem.write"]',
+        }),
+        insertIntent(sql, {
+          runId: "run-invalid-api-key",
+          payloadDigest: "sk-live-not-a-real-key",
+        }),
+        insertIntent(sql, {
+          runId: "run-invalid-digest-placeholder",
+          payloadDigest: "sha256:payload",
+        }),
+        insertIntent(sql, {
+          runId: "run-invalid-digest-uppercase",
+          payloadDigest: `sha256:${"A".repeat(64)}`,
+        }),
         insertIntent(sql, {
           runId: "run-invalid-prepared-claim",
           state: "prepared",
@@ -263,6 +284,8 @@ const insertIntent = (
     readonly taskId?: string;
     readonly runtimeId?: string;
     readonly replayPolicy?: string;
+    readonly payloadDigest?: string;
+    readonly capabilityDigest?: string;
     readonly attempt?: number;
     readonly revision?: number;
     readonly state?: string;
@@ -288,7 +311,8 @@ const insertIntent = (
     ) VALUES (
       ${input.runId}, ${input.taskId ?? "task-run-start"}, 'agent-run-start',
       ${input.runtimeId ?? "runtime-run-start"}, ${input.attempt ?? 2},
-      ${input.replayPolicy ?? "fail_closed"}, 'sha256:payload', 'sha256:capabilities',
+      ${input.replayPolicy ?? "fail_closed"}, ${input.payloadDigest ?? makeDigest("a")},
+      ${input.capabilityDigest ?? makeDigest("b")},
       ${input.state ?? "prepared"}, ${input.revision ?? 1}, ${input.claimId ?? null},
       ${input.claimedAtUnixMs ?? null}, ${input.lastReleaseClaimId ?? null},
       ${input.lastReleaseOperationId ?? null},

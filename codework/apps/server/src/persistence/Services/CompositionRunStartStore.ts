@@ -21,6 +21,12 @@ export const CompositionRunStartState = Schema.Literals([
 ]);
 export type CompositionRunStartState = typeof CompositionRunStartState.Type;
 
+export const CompositionRunStartDigestPattern = /^sha256:[0-9a-f]{64}$/;
+export const CompositionRunStartDigest = Schema.String.check(
+  Schema.isPattern(CompositionRunStartDigestPattern),
+);
+export type CompositionRunStartDigest = typeof CompositionRunStartDigest.Type;
+
 export const CompositionRunStartIdentity = Schema.Struct({
   runId: Schema.String,
   taskId: Schema.String,
@@ -28,8 +34,8 @@ export const CompositionRunStartIdentity = Schema.Struct({
   runtimeId: Schema.String,
   attempt: Schema.Number,
   replayPolicy: CompositionRunStartReplayPolicy,
-  payloadDigest: Schema.String,
-  capabilityDigest: Schema.String,
+  payloadDigest: CompositionRunStartDigest,
+  capabilityDigest: CompositionRunStartDigest,
 });
 export type CompositionRunStartIdentity = typeof CompositionRunStartIdentity.Type;
 

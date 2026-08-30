@@ -17,10 +17,12 @@ export default Effect.gen(function* () {
         replay_policy IN ('idempotent', 'reconcile', 'fail_closed')
       ),
       payload_digest TEXT NOT NULL CHECK (
-        length(trim(payload_digest)) > 0 AND length(payload_digest) <= 512
+        length(payload_digest) = 71 AND substr(payload_digest, 1, 7) = 'sha256:' AND
+        substr(payload_digest, 8) NOT GLOB '*[^0-9a-f]*'
       ),
       capability_digest TEXT NOT NULL CHECK (
-        length(trim(capability_digest)) > 0 AND length(capability_digest) <= 512
+        length(capability_digest) = 71 AND substr(capability_digest, 1, 7) = 'sha256:' AND
+        substr(capability_digest, 8) NOT GLOB '*[^0-9a-f]*'
       ),
       state TEXT NOT NULL CHECK (
         state IN ('prepared', 'dispatching', 'accepted', 'settled', 'indeterminate')
