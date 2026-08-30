@@ -15,6 +15,7 @@ import {
 import { forkParked } from "../../serverActivation.ts";
 
 type ThreadDeletedEvent = Extract<OrchestrationEvent, { type: "thread.deleted" }>;
+type ThreadTerminalDisposer = Pick<TerminalManager.TerminalManager["Service"], "disposeThread">;
 
 export const logCleanupCauseUnlessInterrupted = <R, E>({
   effect,
@@ -37,6 +38,25 @@ export const logCleanupCauseUnlessInterrupted = <R, E>({
     }),
   );
 
+export const disposeDeletedThreadTerminals = (
+  terminalManager: ThreadTerminalDisposer,
+  threadId: ThreadDeletedEvent["payload"]["threadId"],
+) =>
+  terminalManager.disposeThread({ threadId, deleteHistory: true }).pipe(
+    Effect.flatMap((failures) =>
+      Effect.forEach(
+        failures,
+        (failure) =>
+          Effect.logWarning("thread deletion terminal disposal failed", {
+            threadId,
+            terminalId: failure.terminalId,
+            cause: Cause.pretty(failure.cause),
+          }),
+        { discard: true },
+      ),
+    ),
+  );
+
 const make = Effect.gen(function* () {
   const orchestrationEngine = yield* OrchestrationEngineService;
   const providerService = yield* ProviderService;
@@ -51,8 +71,8 @@ const make = Effect.gen(function* () {
 
   const closeThreadTerminals = (threadId: ThreadDeletedEvent["payload"]["threadId"]) =>
     logCleanupCauseUnlessInterrupted({
-      effect: terminalManager.close({ threadId, deleteHistory: true }),
-      message: "thread deletion cleanup skipped terminal close",
+      effect: disposeDeletedThreadTerminals(terminalManager, threadId),
+      message: "thread deletion cleanup skipped terminal disposal",
       threadId,
     });
 
