@@ -8,11 +8,11 @@ import * as NodeSqliteClient from "../NodeSqliteClient.ts";
 
 const layer = it.layer(Layer.mergeAll(NodeSqliteClient.layerMemory()));
 
-layer("065_CompositionRunStartIntents", (it) => {
+layer("066_CompositionRunStartIntents", (it) => {
   it.effect("以追加迁移建立带身份摘要和 CAS revision 的 Run Start 合同", () =>
     Effect.gen(function* () {
       const sql = yield* SqlClient.SqlClient;
-      yield* runMigrations({ toMigrationInclusive: 64 });
+      yield* runMigrations({ toMigrationInclusive: 65 });
 
       assert.deepEqual(
         yield* sql<{ readonly name: string }>`
@@ -22,8 +22,8 @@ layer("065_CompositionRunStartIntents", (it) => {
         [],
       );
 
-      assert.deepEqual(yield* runMigrations({ toMigrationInclusive: 65 }), [
-        [65, "CompositionRunStartIntents"],
+      assert.deepEqual(yield* runMigrations({ toMigrationInclusive: 66 }), [
+        [66, "CompositionRunStartIntents"],
       ]);
 
       const columns = yield* sql<{ readonly name: string }>`
@@ -67,14 +67,14 @@ layer("065_CompositionRunStartIntents", (it) => {
           "composition_run_start_intents_task_attempt_unique",
         ],
       );
-      assert.deepEqual(yield* runMigrations({ toMigrationInclusive: 65 }), []);
+      assert.deepEqual(yield* runMigrations({ toMigrationInclusive: 66 }), []);
     }),
   );
 
   it.effect("数据库拒绝非法 state、claim、receipt 与时间组合", () =>
     Effect.gen(function* () {
       const sql = yield* SqlClient.SqlClient;
-      yield* runMigrations({ toMigrationInclusive: 65 });
+      yield* runMigrations({ toMigrationInclusive: 66 });
 
       const invalidRows = [
         insertIntent(sql, {
@@ -130,7 +130,7 @@ layer("065_CompositionRunStartIntents", (it) => {
   it.effect("数据库拒绝 task/attempt、claim 和 runtime receipt 的重复身份", () =>
     Effect.gen(function* () {
       const sql = yield* SqlClient.SqlClient;
-      yield* runMigrations({ toMigrationInclusive: 65 });
+      yield* runMigrations({ toMigrationInclusive: 66 });
 
       yield* insertIntent(sql, { runId: "run-unique-owner" });
       assert.equal(
@@ -190,6 +190,42 @@ layer("065_CompositionRunStartIntents", (it) => {
     }),
   );
 });
+
+it.effect("已记录旧 Goal Loop 065 的数据库仍会执行 Run Start 066", () =>
+  Effect.gen(function* () {
+    const sql = yield* SqlClient.SqlClient;
+    yield* runMigrations({ toMigrationInclusive: 64 });
+    yield* sql`
+      INSERT INTO effect_sql_migrations (migration_id, name)
+      VALUES (65, 'CompositionGoalLoopRetryIntents')
+    `;
+
+    assert.deepEqual(yield* runMigrations({ toMigrationInclusive: 66 }), [
+      [66, "CompositionRunStartIntents"],
+    ]);
+
+    assert.deepEqual(
+      yield* sql<{ readonly migrationId: number; readonly name: string }>`
+        SELECT migration_id AS "migrationId", name
+        FROM effect_sql_migrations
+        WHERE migration_id IN (65, 66)
+        ORDER BY migration_id ASC
+      `,
+      [
+        { migrationId: 65, name: "CompositionGoalLoopRetryIntents" },
+        { migrationId: 66, name: "CompositionRunStartIntents" },
+      ],
+    );
+
+    assert.deepEqual(
+      yield* sql<{ readonly name: string }>`
+        SELECT name FROM sqlite_master
+        WHERE type = 'table' AND name = 'composition_run_start_intents'
+      `,
+      [{ name: "composition_run_start_intents" }],
+    );
+  }).pipe(Effect.provide(NodeSqliteClient.layerMemory())),
+);
 
 const insertIntent = (
   sql: SqlClient.SqlClient,
