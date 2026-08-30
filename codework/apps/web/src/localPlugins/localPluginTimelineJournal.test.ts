@@ -142,6 +142,55 @@ describe("LocalPluginTimelineJournal", () => {
     expect(journal.getSnapshot().events.map((event) => event.message)).toEqual(["三", "四", "五"]);
   });
 
+  it("隔离发布订阅者异常，并保持追加返回值与恢复快照稳定", () => {
+    const storage = new MemoryStorage();
+    const journal = new LocalPluginTimelineJournal({
+      storage,
+      now: () => Date.parse("2026-08-30T03:00:00.000Z"),
+      makeId: () => "event-1",
+    });
+    const throwingListener = vi.fn(() => {
+      throw new Error("listener failed");
+    });
+    const healthyListener = vi.fn();
+    journal.subscribe(throwingListener);
+    journal.subscribe(healthyListener);
+    let appended: ReturnType<LocalPluginTimelineJournal["append"]> | undefined;
+
+    expect(() => {
+      appended = journal.append({
+        threadKey: "environment:thread",
+        pluginId: "acme.timeline",
+        timelineId: "checks",
+        title: "检查",
+        message: "已完成",
+        tone: "success",
+      });
+    }).not.toThrow();
+
+    expect(appended).toMatchObject({ id: "event-1", message: "已完成" });
+    expect(journal.getSnapshot().events).toEqual([appended]);
+    expect(throwingListener).toHaveBeenCalledTimes(1);
+    expect(healthyListener).toHaveBeenCalledTimes(1);
+
+    const restored = new LocalPluginTimelineJournal({
+      storage,
+      now: () => Date.parse("2026-08-30T03:00:01.000Z"),
+      makeId: () => "restored-event",
+    });
+    const restoredThrowingListener = vi.fn(() => {
+      throw new Error("restore listener failed");
+    });
+    const restoredHealthyListener = vi.fn();
+    restored.subscribe(restoredThrowingListener);
+    restored.subscribe(restoredHealthyListener);
+
+    expect(() => restored.restore()).not.toThrow();
+    expect(restored.getSnapshot().events).toEqual([appended]);
+    expect(restoredThrowingListener).toHaveBeenCalledTimes(1);
+    expect(restoredHealthyListener).toHaveBeenCalledTimes(1);
+  });
+
   it("持久化失败时不发布半写入事件", () => {
     const storage: LocalPluginTimelineStorage = {
       read: () => null,

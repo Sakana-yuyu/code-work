@@ -80,6 +80,12 @@ export class LocalPluginTimelineJournal {
 
   private publish(events: ReadonlyArray<StoredLocalPluginTimelineEvent>): void {
     this.snapshot = { events: [...events] };
-    for (const listener of this.listeners) listener();
+    for (const listener of this.listeners) {
+      try {
+        listener();
+      } catch {
+        // 订阅者异常不能改变 Timeline 快照或中断其他订阅者。
+      }
+    }
   }
 }
