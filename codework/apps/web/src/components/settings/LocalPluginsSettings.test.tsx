@@ -5,9 +5,13 @@ import { beforeEach, describe, expect, it } from "vite-plus/test";
 import { LocalPluginFailureJournal } from "~/localPlugins/localPluginFailureJournal";
 import { LocalPluginLifecycle } from "~/localPlugins/localPluginLifecycle";
 import { LocalPluginRegistry } from "~/localPlugins/localPluginRegistry";
-import type { LocalPluginRuntime } from "~/localPlugins/localPluginRuntime";
+import {
+  createLocalPluginRuntime,
+  type LocalPluginRuntime,
+} from "~/localPlugins/localPluginRuntime";
 import {
   decodeLocalPluginStorageDocument,
+  encodeLocalPluginStorageDocument,
   type LocalPluginStorage,
   type LocalPluginStorageCompareAndSwapInput,
   type LocalPluginStorageCompareAndSwapResult,
@@ -16,7 +20,7 @@ import { setCurrentLanguage } from "~/i18n/runtime";
 import { LocalPluginsSettings, installLocalPluginJson } from "./LocalPluginsSettings";
 
 class MemoryStorage implements LocalPluginStorage {
-  value: string | null = null;
+  constructor(public value: string | null = null) {}
   read(): string | null {
     return this.value;
   }
@@ -33,6 +37,21 @@ class MemoryStorage implements LocalPluginStorage {
     }
     this.write(input.nextValue);
     return { swapped: true, currentValue: this.value };
+  }
+}
+
+class ObservableMemoryStorage extends MemoryStorage {
+  private listener: (() => void) | null = null;
+
+  subscribe(listener: () => void): () => void {
+    this.listener = listener;
+    return () => {
+      this.listener = null;
+    };
+  }
+
+  emit(): void {
+    this.listener?.();
   }
 }
 
@@ -78,6 +97,15 @@ function createRuntime(): LocalPluginRuntime {
     },
     dispose: () => undefined,
   };
+}
+
+function storedPlugin(id: string) {
+  return {
+    manifest: { ...pluginManifest, id },
+    enabled: true,
+    installedAtUnixMs: 1,
+    updatedAtUnixMs: 1,
+  } as const;
 }
 
 describe("LocalPluginsSettings", () => {
@@ -126,28 +154,75 @@ describe("LocalPluginsSettings", () => {
     expect(html).toContain("Clear failures");
   });
 
-  it("展示冷启动恢复失败，并提供清理入口", () => {
-    const runtime = createRuntime();
-    runtime.failures.record({
-      pluginId: "unknown-plugin",
-      phase: "restore",
-      code: "storage-duplicate-id",
-      error: new Error("duplicate plugin acme.settings"),
-    });
-    const failedRuntime: LocalPluginRuntime = {
-      ...runtime,
-      restoreResult: {
-        ok: false,
-        error: { code: "storage-duplicate-id", message: "duplicate plugin acme.settings" },
-      },
-    };
+  it("恢复失败只按类型化代码持续告警，清理 journal 不隐藏写保护", () => {
+    const storage = new ObservableMemoryStorage();
+    const duplicate = storedPlugin("acme.raw-secret");
+    storage.value = JSON.stringify({ version: 1, plugins: [duplicate, duplicate] });
+    const runtime = createLocalPluginRuntime({ storage, now: () => 1, writerId: "writer-a" });
 
-    const html = renderToStaticMarkup(<LocalPluginsSettings runtime={failedRuntime} />);
+    let html = renderToStaticMarkup(<LocalPluginsSettings runtime={runtime} />);
 
-    expect(html).toContain('data-local-plugin-restore-failure="failure-1"');
+    expect(html).toContain('data-local-plugin-storage-failure="storage-duplicate-id"');
     expect(html).toContain("Stored local plugin data contains duplicate plugin IDs");
-    expect(html).toContain("duplicate plugin acme.settings");
-    expect(html).toContain("Dismiss restore warning");
+    expect(html).not.toContain("acme.raw-secret");
+
+    runtime.failures.clear();
+    html = renderToStaticMarkup(<LocalPluginsSettings runtime={runtime} />);
+    expect(html).toContain('data-local-plugin-storage-failure="storage-duplicate-id"');
+  });
+
+  it("有效外部文档修复后清除恢复告警", () => {
+    const storage = new ObservableMemoryStorage();
+    const duplicate = storedPlugin("acme.duplicate");
+    storage.value = JSON.stringify({ version: 1, plugins: [duplicate, duplicate] });
+    const runtime = createLocalPluginRuntime({ storage, now: () => 1, writerId: "writer-a" });
+    storage.value = encodeLocalPluginStorageDocument([], {
+      revision: 1,
+      writerId: "writer-b",
+    });
+
+    storage.emit();
+
+    const html = renderToStaticMarkup(<LocalPluginsSettings runtime={runtime} />);
+    expect(html).not.toContain("data-local-plugin-storage-failure");
+    expect(html).not.toContain("Stored local plugin data contains duplicate plugin IDs");
+  });
+
+  it("展示同步期非法文档与修订冲突的当前类型化状态", () => {
+    const invalidStorage = new ObservableMemoryStorage();
+    const invalidRuntime = createLocalPluginRuntime({
+      storage: invalidStorage,
+      now: () => 1,
+      writerId: "writer-a",
+    });
+    const duplicate = storedPlugin("acme.duplicate");
+    invalidStorage.value = JSON.stringify({ version: 1, plugins: [duplicate, duplicate] });
+    invalidStorage.emit();
+
+    const invalidHtml = renderToStaticMarkup(<LocalPluginsSettings runtime={invalidRuntime} />);
+    expect(invalidHtml).toContain('data-local-plugin-storage-phase="synchronize"');
+    expect(invalidHtml).toContain('data-local-plugin-storage-failure="storage-duplicate-id"');
+
+    const conflictStorage = new ObservableMemoryStorage(
+      encodeLocalPluginStorageDocument([storedPlugin("acme.one")], {
+        revision: 2,
+        writerId: "writer-a",
+      }),
+    );
+    const conflictRuntime = createLocalPluginRuntime({
+      storage: conflictStorage,
+      now: () => 1,
+      writerId: "writer-a",
+    });
+    conflictStorage.value = encodeLocalPluginStorageDocument([storedPlugin("acme.two")], {
+      revision: 1,
+      writerId: "writer-b",
+    });
+    conflictStorage.emit();
+
+    const conflictHtml = renderToStaticMarkup(<LocalPluginsSettings runtime={conflictRuntime} />);
+    expect(conflictHtml).toContain('data-local-plugin-storage-failure="storage-conflict"');
+    expect(conflictHtml).toContain("Local plugin settings changed in another tab");
   });
 
   it("导入函数区分非法 JSON 与策略拒绝", async () => {

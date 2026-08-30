@@ -100,12 +100,14 @@ export function LocalPluginsSettings({
     runtime.failures.getSnapshot,
     runtime.failures.getSnapshot,
   );
-  const restoreFailure = failures.findLast(
-    (failure) => failure.pluginId === "unknown-plugin" && failure.phase === "restore",
+  const storageStatus = useSyncExternalStore(
+    runtime.storageStatus.subscribe,
+    runtime.storageStatus.getSnapshot,
+    runtime.storageStatus.getSnapshot,
   );
-  const restoreErrorLabel = runtime.restoreResult.ok
+  const storageErrorLabel = storageStatus.result.ok
     ? null
-    : importErrorLabel(runtime.restoreResult.error.code);
+    : importErrorLabel(storageStatus.result.error.code);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [importStatus, setImportStatus] = useState<string | null>(null);
 
@@ -148,29 +150,11 @@ export function LocalPluginsSettings({
       }
     >
       {importStatus ? <SettingsRow title={importStatus} /> : null}
-      {restoreFailure && restoreErrorLabel ? (
+      {!storageStatus.result.ok && storageErrorLabel ? (
         <SettingsRow
-          data-local-plugin-restore-failure={restoreFailure.id}
-          title={<span className="text-destructive">{restoreErrorLabel}</span>}
-          description={restoreFailure.message}
-          control={
-            <Tooltip>
-              <TooltipTrigger
-                render={
-                  <Button
-                    type="button"
-                    size="icon-xs"
-                    variant="ghost"
-                    aria-label={t("localPlugins.clearRestoreFailure")}
-                    onClick={() => runtime.failures.clear("unknown-plugin")}
-                  >
-                    <XIcon />
-                  </Button>
-                }
-              />
-              <TooltipPopup>{t("localPlugins.clearRestoreFailure")}</TooltipPopup>
-            </Tooltip>
-          }
+          data-local-plugin-storage-phase={storageStatus.phase}
+          data-local-plugin-storage-failure={storageStatus.result.error.code}
+          title={<span className="text-destructive">{storageErrorLabel}</span>}
         />
       ) : null}
       {registry.plugins.length === 0 ? (
