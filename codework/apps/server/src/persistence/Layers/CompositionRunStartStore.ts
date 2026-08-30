@@ -495,15 +495,20 @@ const makeStore = Effect.gen(function* () {
       }
       yield* validateRevision("quarantine", input.runId, input.expectedRevision);
       yield* validateTimestamp("quarantine", input.runId, input.quarantinedAtUnixMs);
-      const owned = input.claimId !== undefined || input.ownerEpoch !== undefined;
-      if (owned && (input.claimId === undefined || input.ownerEpoch === undefined)) {
+      if ((input.claimId === undefined) !== (input.ownerEpoch === undefined)) {
         return yield* domainError(
           "run_start_input_invalid",
           "quarantine 的 claimId 与 ownerEpoch 必须同时提供。",
           { runId: input.runId },
         );
       }
-      if (owned) {
+      if (input.claimId === undefined) {
+        const quarantined = yield* runQuery(
+          "CompositionRunStartStore.quarantine",
+          statements.quarantinePreparedRow(input),
+        );
+        if (Option.isSome(quarantined)) return toIntent(quarantined.value);
+      } else {
         if (!hasTextWithin(input.claimId, 512)) {
           return yield* domainError(
             "run_start_input_invalid",
@@ -512,18 +517,16 @@ const makeStore = Effect.gen(function* () {
           );
         }
         yield* validateOwnerEpoch("quarantine", input.runId, input.ownerEpoch);
+        const quarantined = yield* runQuery(
+          "CompositionRunStartStore.quarantine",
+          statements.quarantineOwnedRow({
+            ...input,
+            claimId: input.claimId,
+            ownerEpoch: input.ownerEpoch,
+          }),
+        );
+        if (Option.isSome(quarantined)) return toIntent(quarantined.value);
       }
-      const quarantined = yield* runQuery(
-        "CompositionRunStartStore.quarantine",
-        owned
-          ? statements.quarantineOwnedRow({
-              ...input,
-              claimId: input.claimId,
-              ownerEpoch: input.ownerEpoch,
-            })
-          : statements.quarantinePreparedRow(input),
-      );
-      if (Option.isSome(quarantined)) return toIntent(quarantined.value);
       const current = yield* getRequired(input.runId);
       if (
         current.state === "quarantined" &&
