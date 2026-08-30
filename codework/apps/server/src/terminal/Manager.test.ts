@@ -411,6 +411,34 @@ it.layer(
     }),
   );
 
+  it.effect("区分活动、非活动和新建 Manager 中缺失的会话", () =>
+    Effect.gen(function* () {
+      const { manager, logsDir } = yield* createManager();
+      const identity = {
+        threadId: "run-inspect-1",
+        terminalId: "command-inspect-1",
+      };
+
+      expect(yield* manager.inspectSession(identity)).toBe("missing");
+      yield* manager.runCommand({
+        ...identity,
+        cwd: process.cwd(),
+        command: "long-running-command",
+      });
+      expect(yield* manager.inspectSession(identity)).toBe("active");
+
+      yield* manager.kill(identity);
+      expect(yield* manager.inspectSession(identity)).toBe("inactive");
+
+      const rebuilt = yield* TerminalManager.makeWithOptions({
+        logsDir,
+        ptyAdapter: new FakePtyAdapter(),
+        processKillGraceMs: 1,
+      });
+      expect(yield* rebuilt.inspectSession(identity)).toBe("missing");
+    }),
+  );
+
   it.effect("kill 只终止进程并保留 handle，close 才释放 session", () =>
     Effect.gen(function* () {
       const { manager, ptyAdapter } = yield* createManager();

@@ -81,7 +81,7 @@ export interface WorkspaceScriptStoreShape {
   ) => Effect.Effect<ReadonlyArray<WorkspaceScriptRun>, WorkspaceScriptStoreError>;
   readonly recoverInterrupted: (
     input: WorkspaceScriptRecoveryInput,
-  ) => Effect.Effect<ReadonlyArray<WorkspaceScriptRun>, WorkspaceScriptStoreError>;
+  ) => Effect.Effect<ReadonlyArray<StoredWorkspaceScriptRun>, WorkspaceScriptStoreError>;
 }
 
 export class WorkspaceScriptStore extends Context.Service<
