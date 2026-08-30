@@ -38,7 +38,6 @@ layer("066_CompositionRunStartIntents", (it) => {
           "agent_id",
           "runtime_id",
           "attempt",
-          "replay_policy",
           "payload_digest",
           "capability_digest",
           "state",
@@ -131,10 +130,6 @@ layer("066_CompositionRunStartIntents", (it) => {
           claimedAtUnixMs: 130,
           acceptedAtUnixMs: 120,
           settledAtUnixMs: 140,
-        }),
-        insertIntent(sql, {
-          runId: "run-invalid-policy",
-          replayPolicy: "unsafe",
         }),
         insertIntent(sql, {
           runId: "run-invalid-attempt-fraction",
@@ -283,7 +278,6 @@ const insertIntent = (
     readonly runId: string;
     readonly taskId?: string;
     readonly runtimeId?: string;
-    readonly replayPolicy?: string;
     readonly payloadDigest?: string;
     readonly capabilityDigest?: string;
     readonly attempt?: number;
@@ -303,7 +297,7 @@ const insertIntent = (
   sql`
     INSERT INTO composition_run_start_intents (
       run_id, task_id, agent_id, runtime_id, attempt,
-      replay_policy, payload_digest, capability_digest,
+      payload_digest, capability_digest,
       state, revision, claim_id, claimed_at_unix_ms,
       last_release_claim_id, last_release_operation_id, last_released_at_unix_ms,
       runtime_task_id, capability_handshake_id, accepted_at_unix_ms,
@@ -311,8 +305,7 @@ const insertIntent = (
     ) VALUES (
       ${input.runId}, ${input.taskId ?? "task-run-start"}, 'agent-run-start',
       ${input.runtimeId ?? "runtime-run-start"}, ${input.attempt ?? 2},
-      ${input.replayPolicy ?? "fail_closed"}, ${input.payloadDigest ?? makeDigest("a")},
-      ${input.capabilityDigest ?? makeDigest("b")},
+      ${input.payloadDigest ?? makeDigest("a")}, ${input.capabilityDigest ?? makeDigest("b")},
       ${input.state ?? "prepared"}, ${input.revision ?? 1}, ${input.claimId ?? null},
       ${input.claimedAtUnixMs ?? null}, ${input.lastReleaseClaimId ?? null},
       ${input.lastReleaseOperationId ?? null},

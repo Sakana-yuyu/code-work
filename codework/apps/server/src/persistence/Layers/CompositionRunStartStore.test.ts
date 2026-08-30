@@ -35,7 +35,6 @@ const makePrepareInput = (
   agentId: `agent-${runId}`,
   runtimeId: `runtime-${runId}`,
   attempt: 2,
-  replayPolicy: "fail_closed",
   payloadDigest: makeDigest("a"),
   capabilityDigest: makeDigest("b"),
   createdAtUnixMs: 100,
@@ -389,9 +388,7 @@ layer("CompositionRunStartStore", (it) => {
   it.effect("不确定结果以稳定结果码 fail-closed，不能再 release、accepted 或 settle", () =>
     Effect.gen(function* () {
       const store = yield* CompositionRunStartStore;
-      const input = makePrepareInput("run-start-indeterminate", {
-        replayPolicy: "reconcile",
-      });
+      const input = makePrepareInput("run-start-indeterminate");
       yield* store.prepareStart(input);
       yield* store.claimStart({
         runId: input.runId,

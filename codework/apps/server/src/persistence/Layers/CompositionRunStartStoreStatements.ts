@@ -23,7 +23,7 @@ export const makeCompositionRunStartStoreStatements = (sql: SqlClient.SqlClient)
     execute: ({ runId }) => sql`
       SELECT
         run_id AS "runId", task_id AS "taskId", agent_id AS "agentId",
-        runtime_id AS "runtimeId", attempt, replay_policy AS "replayPolicy",
+        runtime_id AS "runtimeId", attempt,
         payload_digest AS "payloadDigest", capability_digest AS "capabilityDigest",
         state, revision, claim_id AS "claimId", claimed_at_unix_ms AS "claimedAtUnixMs",
         last_release_claim_id AS "lastReleaseClaimId",
@@ -46,7 +46,7 @@ export const makeCompositionRunStartStoreStatements = (sql: SqlClient.SqlClient)
     execute: ({ taskId, attempt }) => sql`
       SELECT
         run_id AS "runId", task_id AS "taskId", agent_id AS "agentId",
-        runtime_id AS "runtimeId", attempt, replay_policy AS "replayPolicy",
+        runtime_id AS "runtimeId", attempt,
         payload_digest AS "payloadDigest", capability_digest AS "capabilityDigest",
         state, revision, claim_id AS "claimId", claimed_at_unix_ms AS "claimedAtUnixMs",
         last_release_claim_id AS "lastReleaseClaimId",
@@ -69,7 +69,7 @@ export const makeCompositionRunStartStoreStatements = (sql: SqlClient.SqlClient)
     execute: ({ claimId }) => sql`
       SELECT
         run_id AS "runId", task_id AS "taskId", agent_id AS "agentId",
-        runtime_id AS "runtimeId", attempt, replay_policy AS "replayPolicy",
+        runtime_id AS "runtimeId", attempt,
         payload_digest AS "payloadDigest", capability_digest AS "capabilityDigest",
         state, revision, claim_id AS "claimId", claimed_at_unix_ms AS "claimedAtUnixMs",
         last_release_claim_id AS "lastReleaseClaimId",
@@ -92,7 +92,7 @@ export const makeCompositionRunStartStoreStatements = (sql: SqlClient.SqlClient)
     execute: ({ releaseOperationId }) => sql`
       SELECT
         run_id AS "runId", task_id AS "taskId", agent_id AS "agentId",
-        runtime_id AS "runtimeId", attempt, replay_policy AS "replayPolicy",
+        runtime_id AS "runtimeId", attempt,
         payload_digest AS "payloadDigest", capability_digest AS "capabilityDigest",
         state, revision, claim_id AS "claimId", claimed_at_unix_ms AS "claimedAtUnixMs",
         last_release_claim_id AS "lastReleaseClaimId",
@@ -115,7 +115,7 @@ export const makeCompositionRunStartStoreStatements = (sql: SqlClient.SqlClient)
     execute: ({ runtimeId, runtimeTaskId }) => sql`
       SELECT
         run_id AS "runId", task_id AS "taskId", agent_id AS "agentId",
-        runtime_id AS "runtimeId", attempt, replay_policy AS "replayPolicy",
+        runtime_id AS "runtimeId", attempt,
         payload_digest AS "payloadDigest", capability_digest AS "capabilityDigest",
         state, revision, claim_id AS "claimId", claimed_at_unix_ms AS "claimedAtUnixMs",
         last_release_claim_id AS "lastReleaseClaimId",
@@ -138,21 +138,21 @@ export const makeCompositionRunStartStoreStatements = (sql: SqlClient.SqlClient)
     execute: (input) => sql`
       INSERT INTO composition_run_start_intents (
         run_id, task_id, agent_id, runtime_id, attempt,
-        replay_policy, payload_digest, capability_digest,
+        payload_digest, capability_digest,
         state, revision, claim_id, claimed_at_unix_ms,
         last_release_claim_id, last_release_operation_id, last_released_at_unix_ms,
         runtime_task_id, capability_handshake_id, accepted_at_unix_ms,
         outcome_code, settled_at_unix_ms, created_at_unix_ms, updated_at_unix_ms
       ) VALUES (
         ${input.runId}, ${input.taskId}, ${input.agentId}, ${input.runtimeId}, ${input.attempt},
-        ${input.replayPolicy}, ${input.payloadDigest}, ${input.capabilityDigest},
+        ${input.payloadDigest}, ${input.capabilityDigest},
         'prepared', 1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL,
         ${input.createdAtUnixMs}, ${input.createdAtUnixMs}
       )
       ON CONFLICT DO NOTHING
       RETURNING
         run_id AS "runId", task_id AS "taskId", agent_id AS "agentId",
-        runtime_id AS "runtimeId", attempt, replay_policy AS "replayPolicy",
+        runtime_id AS "runtimeId", attempt,
         payload_digest AS "payloadDigest", capability_digest AS "capabilityDigest",
         state, revision, claim_id AS "claimId", claimed_at_unix_ms AS "claimedAtUnixMs",
         last_release_claim_id AS "lastReleaseClaimId",
@@ -179,7 +179,7 @@ export const makeCompositionRunStartStoreStatements = (sql: SqlClient.SqlClient)
         AND ${input.claimedAtUnixMs} >= updated_at_unix_ms
       RETURNING
         run_id AS "runId", task_id AS "taskId", agent_id AS "agentId",
-        runtime_id AS "runtimeId", attempt, replay_policy AS "replayPolicy",
+        runtime_id AS "runtimeId", attempt,
         payload_digest AS "payloadDigest", capability_digest AS "capabilityDigest",
         state, revision, claim_id AS "claimId", claimed_at_unix_ms AS "claimedAtUnixMs",
         last_release_claim_id AS "lastReleaseClaimId",
@@ -210,7 +210,7 @@ export const makeCompositionRunStartStoreStatements = (sql: SqlClient.SqlClient)
         AND ${input.releasedAtUnixMs} >= updated_at_unix_ms
       RETURNING
         run_id AS "runId", task_id AS "taskId", agent_id AS "agentId",
-        runtime_id AS "runtimeId", attempt, replay_policy AS "replayPolicy",
+        runtime_id AS "runtimeId", attempt,
         payload_digest AS "payloadDigest", capability_digest AS "capabilityDigest",
         state, revision, claim_id AS "claimId", claimed_at_unix_ms AS "claimedAtUnixMs",
         last_release_claim_id AS "lastReleaseClaimId",
@@ -240,7 +240,7 @@ export const makeCompositionRunStartStoreStatements = (sql: SqlClient.SqlClient)
         AND ${input.acceptedAtUnixMs} >= updated_at_unix_ms
       RETURNING
         run_id AS "runId", task_id AS "taskId", agent_id AS "agentId",
-        runtime_id AS "runtimeId", attempt, replay_policy AS "replayPolicy",
+        runtime_id AS "runtimeId", attempt,
         payload_digest AS "payloadDigest", capability_digest AS "capabilityDigest",
         state, revision, claim_id AS "claimId", claimed_at_unix_ms AS "claimedAtUnixMs",
         last_release_claim_id AS "lastReleaseClaimId",
@@ -268,7 +268,7 @@ export const makeCompositionRunStartStoreStatements = (sql: SqlClient.SqlClient)
         AND ${input.indeterminateAtUnixMs} >= updated_at_unix_ms
       RETURNING
         run_id AS "runId", task_id AS "taskId", agent_id AS "agentId",
-        runtime_id AS "runtimeId", attempt, replay_policy AS "replayPolicy",
+        runtime_id AS "runtimeId", attempt,
         payload_digest AS "payloadDigest", capability_digest AS "capabilityDigest",
         state, revision, claim_id AS "claimId", claimed_at_unix_ms AS "claimedAtUnixMs",
         last_release_claim_id AS "lastReleaseClaimId",
@@ -296,7 +296,7 @@ export const makeCompositionRunStartStoreStatements = (sql: SqlClient.SqlClient)
         AND ${input.settledAtUnixMs} >= updated_at_unix_ms
       RETURNING
         run_id AS "runId", task_id AS "taskId", agent_id AS "agentId",
-        runtime_id AS "runtimeId", attempt, replay_policy AS "replayPolicy",
+        runtime_id AS "runtimeId", attempt,
         payload_digest AS "payloadDigest", capability_digest AS "capabilityDigest",
         state, revision, claim_id AS "claimId", claimed_at_unix_ms AS "claimedAtUnixMs",
         last_release_claim_id AS "lastReleaseClaimId",

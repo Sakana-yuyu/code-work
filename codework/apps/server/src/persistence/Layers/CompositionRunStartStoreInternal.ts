@@ -4,7 +4,6 @@ import * as Schema from "effect/Schema";
 import {
   CompositionRunStartIntent as CompositionRunStartIntentSchema,
   CompositionRunStartDigestPattern,
-  CompositionRunStartReplayPolicy,
   CompositionRunStartState,
   CompositionRunStartStoreDomainError,
   type CompositionRunStartAcceptedInput,
@@ -24,7 +23,6 @@ export const RunStartRowSchema = Schema.Struct({
   agentId: Schema.String,
   runtimeId: Schema.String,
   attempt: Schema.Number,
-  replayPolicy: CompositionRunStartReplayPolicy,
   payloadDigest: Schema.String,
   capabilityDigest: Schema.String,
   state: CompositionRunStartState,
@@ -50,7 +48,6 @@ export const PrepareSchema = Schema.Struct({
   agentId: Schema.String,
   runtimeId: Schema.String,
   attempt: Schema.Number,
-  replayPolicy: CompositionRunStartReplayPolicy,
   payloadDigest: Schema.String,
   capabilityDigest: Schema.String,
   createdAtUnixMs: Schema.Number,
@@ -109,7 +106,6 @@ export const sameRunStartIdentity = (
   left.agentId === right.agentId &&
   left.runtimeId === right.runtimeId &&
   left.attempt === right.attempt &&
-  left.replayPolicy === right.replayPolicy &&
   left.payloadDigest === right.payloadDigest &&
   left.capabilityDigest === right.capabilityDigest;
 

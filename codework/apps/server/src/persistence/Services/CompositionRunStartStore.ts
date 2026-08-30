@@ -5,13 +5,6 @@ import * as Schema from "effect/Schema";
 
 import type { PersistenceDecodeError, PersistenceSqlError } from "../Errors.ts";
 
-export const CompositionRunStartReplayPolicy = Schema.Literals([
-  "idempotent",
-  "reconcile",
-  "fail_closed",
-]);
-export type CompositionRunStartReplayPolicy = typeof CompositionRunStartReplayPolicy.Type;
-
 export const CompositionRunStartState = Schema.Literals([
   "prepared",
   "dispatching",
@@ -33,7 +26,6 @@ export const CompositionRunStartIdentity = Schema.Struct({
   agentId: Schema.String,
   runtimeId: Schema.String,
   attempt: Schema.Number,
-  replayPolicy: CompositionRunStartReplayPolicy,
   payloadDigest: CompositionRunStartDigest,
   capabilityDigest: CompositionRunStartDigest,
 });

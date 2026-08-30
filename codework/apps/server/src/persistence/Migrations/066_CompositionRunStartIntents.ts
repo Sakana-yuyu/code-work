@@ -13,9 +13,6 @@ export default Effect.gen(function* () {
       attempt INTEGER NOT NULL CHECK (
         typeof(attempt) = 'integer' AND attempt > 0 AND attempt <= 9007199254740991
       ),
-      replay_policy TEXT NOT NULL CHECK (
-        replay_policy IN ('idempotent', 'reconcile', 'fail_closed')
-      ),
       payload_digest TEXT NOT NULL CHECK (
         length(payload_digest) = 71 AND substr(payload_digest, 1, 7) = 'sha256:' AND
         substr(payload_digest, 8) NOT GLOB '*[^0-9a-f]*'
