@@ -97,6 +97,10 @@ export interface CompositionGoalLoopRetryStoreShape {
     Option.Option<CompositionGoalLoopRetryIntent>,
     CompositionGoalLoopRetryStoreError
   >;
+  readonly listPendingIntents: () => Effect.Effect<
+    ReadonlyArray<CompositionGoalLoopRetryIntent>,
+    CompositionGoalLoopRetryStoreError
+  >;
   readonly markSettled: (
     input: CompositionGoalLoopRetryAdvanceInput,
   ) => Effect.Effect<CompositionGoalLoopRetryIntent, CompositionGoalLoopRetryStoreError>;

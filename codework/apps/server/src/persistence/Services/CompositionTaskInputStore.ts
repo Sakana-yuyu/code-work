@@ -9,6 +9,7 @@ export type CompositionTaskRecoveryInput = {
   readonly workspaceRoot: string;
   readonly workspaceRootDigest?: string;
   readonly model?: string;
+  readonly capabilityIds?: ReadonlyArray<string>;
 };
 
 export class CompositionTaskInputStoreError extends Schema.TaggedErrorClass<CompositionTaskInputStoreError>()(

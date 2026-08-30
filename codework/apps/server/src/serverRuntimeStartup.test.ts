@@ -18,6 +18,10 @@ import {
   CompositionToolInvocationStartupRecovery,
   CompositionToolInvocationStartupRecoveryError,
 } from "./composition/CompositionToolInvocationStartupRecovery.ts";
+import {
+  CompositionGoalLoopRetryStartupRecovery,
+  CompositionGoalLoopRetryStartupRecoveryError,
+} from "./composition/CompositionGoalLoopRetryStartupRecovery.ts";
 import * as AnalyticsService from "./telemetry/AnalyticsService.ts";
 import * as ServerRuntimeStartup from "./serverRuntimeStartup.ts";
 
@@ -127,6 +131,75 @@ it.effect("tool invocation recovery failure fails command readiness and aborts s
       );
       if (Exit.isSuccess(startupExit)) {
         return assert.fail("expected tool invocation recovery to fail");
+      }
+
+      yield* ServerRuntimeStartup.settleStartupExit(startupExit, {
+        mode: "web",
+        host: "127.0.0.1",
+        port: 3773,
+        failCommandReady: commandGate.failCommandReady,
+        abort: (error) => Deferred.succeed(abortError, error).pipe(Effect.asVoid),
+      });
+
+      const readinessError = yield* commandGate.awaitCommandReady.pipe(Effect.flip);
+      const abortedWith = yield* Deferred.await(abortError);
+      assert.strictEqual(readinessError, abortedWith);
+      assert.equal(readinessError.cause, startupExit.cause);
+    }),
+  ),
+);
+
+it.effect("goal loop retry recovery gate waits for the shared startup recovery", () =>
+  Effect.gen(function* () {
+    const entered = yield* Deferred.make<void>();
+    const release = yield* Deferred.make<void>();
+    const completed = yield* Deferred.make<void>();
+    const recovery = CompositionGoalLoopRetryStartupRecovery.of({
+      awaitRecovered: Deferred.succeed(entered, undefined).pipe(
+        Effect.andThen(Deferred.await(release)),
+        Effect.as({
+          type: "composition.goal_loop_retries.recovered" as const,
+          recoveredAtUnixMs: 1,
+          recoveredCount: 0,
+          previousRunIds: [],
+        }),
+      ),
+    });
+
+    const gate = yield* ServerRuntimeStartup.awaitGoalLoopRetryRecovery.pipe(
+      Effect.ensuring(Deferred.succeed(completed, undefined).pipe(Effect.asVoid)),
+      Effect.provideService(CompositionGoalLoopRetryStartupRecovery, recovery),
+      Effect.forkChild,
+    );
+
+    yield* Deferred.await(entered);
+    assert.isFalse(yield* Deferred.isDone(completed));
+
+    yield* Deferred.succeed(release, undefined);
+    yield* Fiber.join(gate);
+    assert.isTrue(yield* Deferred.isDone(completed));
+  }),
+);
+
+it.effect("goal loop retry recovery failure fails command readiness and aborts startup", () =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      const commandGate = yield* ServerRuntimeStartup.makeCommandGate;
+      const abortError = yield* Deferred.make<ServerRuntimeStartup.ServerRuntimeStartupError>();
+      const recoveryFailure = new CompositionGoalLoopRetryStartupRecoveryError({
+        cause: new Error("goal loop retry recovery unavailable"),
+      });
+      const startupExit = yield* ServerRuntimeStartup.awaitGoalLoopRetryRecovery.pipe(
+        Effect.provideService(
+          CompositionGoalLoopRetryStartupRecovery,
+          CompositionGoalLoopRetryStartupRecovery.of({
+            awaitRecovered: Effect.fail(recoveryFailure),
+          }),
+        ),
+        Effect.exit,
+      );
+      if (Exit.isSuccess(startupExit)) {
+        return assert.fail("expected goal loop retry recovery to fail");
       }
 
       yield* ServerRuntimeStartup.settleStartupExit(startupExit, {

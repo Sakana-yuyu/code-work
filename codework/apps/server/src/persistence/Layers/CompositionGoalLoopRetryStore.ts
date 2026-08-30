@@ -49,6 +49,7 @@ const RetryIntentPrepareSchema = Schema.Struct({
 });
 const RetryIntentIdSchema = Schema.Struct({ previousRunId: Schema.String });
 const RetryIntentNewRunIdSchema = Schema.Struct({ newRunId: Schema.String });
+const RetryIntentPendingSchema = Schema.Struct({});
 const RetryIntentAdvanceSchema = Schema.Struct({
   previousRunId: Schema.String,
   updatedAtUnixMs: Schema.Number,
@@ -187,6 +188,21 @@ const makeStore = Effect.gen(function* () {
       LIMIT 1
     `,
   });
+  const listPendingIntentRows = SqlSchema.findAll({
+    Request: RetryIntentPendingSchema,
+    Result: RetryIntentRowSchema,
+    execute: () => sql`
+      SELECT
+        task_id AS "taskId", previous_run_id AS "previousRunId",
+        new_run_id AS "newRunId", phase, revision,
+        created_at_unix_ms AS "createdAtUnixMs", updated_at_unix_ms AS "updatedAtUnixMs",
+        dispatch_claim_id AS "dispatchClaimId",
+        dispatch_claimed_at_unix_ms AS "dispatchClaimedAtUnixMs"
+      FROM composition_goal_loop_retry_intents
+      WHERE phase IN ('prepared', 'settled')
+      ORDER BY created_at_unix_ms ASC, previous_run_id ASC
+    `,
+  });
   const insertIntentRow = SqlSchema.findOneOption({
     Request: RetryIntentPrepareSchema,
     Result: RetryIntentRowSchema,
@@ -308,6 +324,11 @@ const makeStore = Effect.gen(function* () {
 
   const getIntent: CompositionGoalLoopRetryStoreShape["getIntent"] = (previousRunId) =>
     getStoredIntent(previousRunId).pipe(Effect.map(Option.map(toIntent)));
+
+  const listPendingIntents: CompositionGoalLoopRetryStoreShape["listPendingIntents"] = () =>
+    run("CompositionGoalLoopRetryStore.listPendingIntents", listPendingIntentRows({})).pipe(
+      Effect.map((rows) => rows.map(toIntent)),
+    );
 
   const missingIntent = (previousRunId: string) =>
     domainError("goal_loop_retry_intent_missing", "Goal Loop retry 意图不存在。", {
@@ -466,6 +487,7 @@ const makeStore = Effect.gen(function* () {
   const store = CompositionGoalLoopRetryStore.of({
     prepareIntent,
     getIntent,
+    listPendingIntents,
     markSettled,
     claimDispatch,
     releaseDispatch,

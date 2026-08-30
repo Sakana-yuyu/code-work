@@ -24,6 +24,7 @@ import { HttpServer } from "effect/unstable/http";
 import * as EnvironmentAuth from "../src/auth/EnvironmentAuth.ts";
 import * as ServiceLauncherClient from "../src/cloud/serviceLauncherClient.ts";
 import * as CompositionMcpRuntimeService from "../src/composition/CompositionMcpRuntimeService.ts";
+import * as CompositionGoalLoopRetryStartupRecovery from "../src/composition/CompositionGoalLoopRetryStartupRecovery.ts";
 import * as CompositionToolInvocationStartupRecovery from "../src/composition/CompositionToolInvocationStartupRecovery.ts";
 import * as ServerConfig from "../src/config.ts";
 import * as ServerEnvironment from "../src/environment/ServerEnvironment.ts";
@@ -95,6 +96,17 @@ const makeStartupDependencies = (
       CompositionToolInvocationStartupRecovery.CompositionToolInvocationStartupRecovery,
       CompositionToolInvocationStartupRecovery.CompositionToolInvocationStartupRecovery.of({
         awaitRecovered,
+      }),
+    ),
+    Layer.succeed(
+      CompositionGoalLoopRetryStartupRecovery.CompositionGoalLoopRetryStartupRecovery,
+      CompositionGoalLoopRetryStartupRecovery.CompositionGoalLoopRetryStartupRecovery.of({
+        awaitRecovered: Effect.succeed({
+          type: "composition.goal_loop_retries.recovered" as const,
+          recoveredAtUnixMs: 0,
+          recoveredCount: 0,
+          previousRunIds: [],
+        }),
       }),
     ),
     Layer.succeed(ServerEnvironment.ServerEnvironment, {

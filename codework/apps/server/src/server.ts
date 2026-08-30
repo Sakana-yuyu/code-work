@@ -65,6 +65,7 @@ import * as CompositionCapabilityPolicy from "./composition/CapabilityPolicy.ts"
 import * as CompositionToolBroker from "./composition/ToolBroker.ts";
 import * as CompositionToolInvocationCoordinator from "./composition/CompositionToolInvocationCoordinator.ts";
 import * as CompositionToolInvocationStartupRecovery from "./composition/CompositionToolInvocationStartupRecovery.ts";
+import * as CompositionGoalLoopRetryStartupRecovery from "./composition/CompositionGoalLoopRetryStartupRecovery.ts";
 import * as CompositionIdeSessionRegistry from "./composition/CompositionIdeSessionRegistry.ts";
 import * as CompositionIdeAgentDriverProjection from "./composition/CompositionIdeAgentDriverProjection.ts";
 import * as CompositionMcpToolRegistry from "./composition/CompositionMcpToolRegistry.ts";
@@ -505,6 +506,13 @@ const CompositionOrchestratorLayerLive = CompositionOrchestratorService.layer.pi
   Layer.provideMerge(CompositionRuntimeDependenciesLive),
 );
 
+const CompositionGoalLoopRetryStartupRecoveryLayerLive =
+  CompositionGoalLoopRetryStartupRecovery.CompositionGoalLoopRetryStartupRecovery.layer.pipe(
+    Layer.provide(
+      Layer.mergeAll(CompositionOrchestratorLayerLive, CompositionRuntimeDependenciesLive),
+    ),
+  );
+
 const CompositionRuntimeLayerLive = CompositionTaskRuntimeProjectionService.layer.pipe(
   Layer.provideMerge(CompositionOrchestratorLayerLive),
   Layer.provideMerge(CompositionRuntimeDependenciesLive),
@@ -644,6 +652,7 @@ const RuntimeCoreDependenciesWithoutWorkspaceScriptLive = ReactorLayerLive.pipe(
   Layer.provideMerge(
     Layer.mergeAll(
       CompositionRuntimeLayerLive,
+      CompositionGoalLoopRetryStartupRecoveryLayerLive,
       CompositionRuntimeToolBridgeLayerLive,
       CompositionTaskGraphExecutorLayerLive,
       CompositionSquadServiceLayerLive,

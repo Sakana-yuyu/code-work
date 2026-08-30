@@ -99,6 +99,64 @@ layer("CompositionGoalLoopRetryStore", (it) => {
     }),
   );
 
+  it.effect("pending 列表只返回 prepared 与 settled intent，并按创建时间稳定排序", () =>
+    Effect.gen(function* () {
+      const store = yield* CompositionGoalLoopRetryStore;
+      yield* store.prepareIntent({
+        taskId: "task-retry-pending-prepared",
+        previousRunId: "run-retry-pending-prepared-old",
+        newRunId: "run-retry-pending-prepared-new",
+        createdAtUnixMs: 100,
+      });
+      yield* store.prepareIntent({
+        taskId: "task-retry-pending-settled",
+        previousRunId: "run-retry-pending-settled-old",
+        newRunId: "run-retry-pending-settled-new",
+        createdAtUnixMs: 200,
+      });
+      yield* store.markSettled({
+        previousRunId: "run-retry-pending-settled-old",
+        updatedAtUnixMs: 210,
+      });
+      yield* store.prepareIntent({
+        taskId: "task-retry-pending-dispatched",
+        previousRunId: "run-retry-pending-dispatched-old",
+        newRunId: "run-retry-pending-dispatched-new",
+        createdAtUnixMs: 300,
+      });
+      yield* store.markSettled({
+        previousRunId: "run-retry-pending-dispatched-old",
+        updatedAtUnixMs: 310,
+      });
+      yield* store.claimDispatch({
+        previousRunId: "run-retry-pending-dispatched-old",
+        claimId: "claim-retry-pending-dispatched",
+        claimedAtUnixMs: 320,
+      });
+      yield* store.markDispatched({
+        previousRunId: "run-retry-pending-dispatched-old",
+        claimId: "claim-retry-pending-dispatched",
+        updatedAtUnixMs: 330,
+      });
+
+      const pending = yield* store.listPendingIntents();
+
+      assert.equal(
+        pending.some((intent) => intent.phase === "dispatched"),
+        false,
+      );
+      assert.deepEqual(
+        pending
+          .filter((intent) => intent.previousRunId.startsWith("run-retry-pending-"))
+          .map((intent) => ({ previousRunId: intent.previousRunId, phase: intent.phase })),
+        [
+          { previousRunId: "run-retry-pending-prepared-old", phase: "prepared" },
+          { previousRunId: "run-retry-pending-settled-old", phase: "settled" },
+        ],
+      );
+    }),
+  );
+
   it.effect("禁止跳过 settled，并禁止不同旧 Run 复用同一 newRunId", () =>
     Effect.gen(function* () {
       const store = yield* CompositionGoalLoopRetryStore;

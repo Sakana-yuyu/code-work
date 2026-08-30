@@ -35,6 +35,7 @@ import * as AnalyticsService from "./telemetry/AnalyticsService.ts";
 import * as ServerEnvironment from "./environment/ServerEnvironment.ts";
 import * as EnvironmentAuth from "./auth/EnvironmentAuth.ts";
 import * as CompositionMcpRuntimeService from "./composition/CompositionMcpRuntimeService.ts";
+import * as CompositionGoalLoopRetryStartupRecovery from "./composition/CompositionGoalLoopRetryStartupRecovery.ts";
 import * as CompositionToolInvocationStartupRecovery from "./composition/CompositionToolInvocationStartupRecovery.ts";
 import * as ProviderService from "./provider/Services/ProviderService.ts";
 import * as ProviderSessionDirectory from "./provider/Services/ProviderSessionDirectory.ts";
@@ -301,6 +302,12 @@ export const awaitToolInvocationRecovery = Effect.gen(function* () {
   return yield* runStartupPhase("tool-invocations.recover", recovery.awaitRecovered);
 });
 
+export const awaitGoalLoopRetryRecovery = Effect.gen(function* () {
+  const recovery =
+    yield* CompositionGoalLoopRetryStartupRecovery.CompositionGoalLoopRetryStartupRecovery;
+  return yield* runStartupPhase("goal-loop-retries.recover", recovery.awaitRecovered);
+});
+
 const ORPHANED_PROVIDER_SESSION_ERROR =
   "Provider session did not survive a server restart. Send a new message to continue.";
 
@@ -439,6 +446,7 @@ export const make = (options?: StartupOptions) =>
 
     const startup = Effect.gen(function* () {
       yield* awaitToolInvocationRecovery;
+      yield* awaitGoalLoopRetryRecovery;
 
       yield* Effect.logDebug("startup phase: starting keybindings runtime");
       yield* runStartupPhase(
