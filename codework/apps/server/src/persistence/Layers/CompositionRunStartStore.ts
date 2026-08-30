@@ -528,7 +528,8 @@ const makeStore = Effect.gen(function* () {
       if (
         current.state === "quarantined" &&
         current.outcomeCode === input.outcomeCode &&
-        current.outcomeDetail === input.outcomeDetail
+        current.outcomeDetail === input.outcomeDetail &&
+        (input.ownerEpoch === undefined || current.ownerEpoch === input.ownerEpoch)
       ) {
         return current;
       }

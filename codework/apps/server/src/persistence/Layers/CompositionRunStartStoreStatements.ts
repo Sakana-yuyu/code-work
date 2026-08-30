@@ -410,7 +410,6 @@ export const makeCompositionRunStartStoreStatements = (sql: SqlClient.SqlClient)
         AND claim_id = ${input.claimId}
         AND owner_epoch = ${input.ownerEpoch}
         AND owner_lease_expires_at_unix_ms IS NOT NULL
-        AND owner_lease_expires_at_unix_ms > ${input.quarantinedAtUnixMs}
       RETURNING
         run_id AS "runId", task_id AS "taskId", previous_run_id AS "previousRunId",
         agent_id AS "agentId", runtime_id AS "runtimeId", attempt,

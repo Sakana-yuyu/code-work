@@ -466,6 +466,154 @@ layer("CompositionRunStartStore", (it) => {
     }),
   );
 
+  it.effect("owner lease 到期但尚未 takeover 时，原 owner 仍可 quarantine 最终结果", () =>
+    Effect.gen(function* () {
+      const store = yield* CompositionRunStartStore;
+      const identity = makeIdentity("quarantine-expired-owner");
+      const prepared = yield* store.prepareStart({ ...identity, createdAtUnixMs: 100 });
+      const setup = yield* store.claimPrepared({
+        runId: identity.runId,
+        expectedRevision: prepared.revision,
+        claimId: "claim-quarantine-expired-owner",
+        claimedAtUnixMs: 110,
+        leaseExpiresAtUnixMs: 120,
+      });
+      const dispatching = yield* store.markDispatching({
+        runId: identity.runId,
+        expectedRevision: setup.intent.revision,
+        claimId: setup.intent.claimId ?? "",
+        ownerEpoch: setup.intent.ownerEpoch,
+        dispatchedAtUnixMs: 115,
+      });
+
+      const quarantined = yield* store.quarantine({
+        runId: identity.runId,
+        expectedRevision: dispatching.revision,
+        claimId: dispatching.claimId ?? "",
+        ownerEpoch: dispatching.ownerEpoch,
+        outcomeCode: "run_start_invalid_receipt",
+        outcomeDetail: "Driver 已返回，但最终 receipt 无法验证。",
+        quarantinedAtUnixMs: 130,
+      });
+
+      assert.equal(quarantined.state, "quarantined");
+      assert.equal(quarantined.ownerEpoch, dispatching.ownerEpoch);
+    }),
+  );
+
+  it.effect("到期 quarantine 与 recovery takeover 并发时仅一个 CAS 写入赢家", () => {
+    const identity = makeIdentity("quarantine-recovery-race");
+    const claimRecovery = () =>
+      Effect.gen(function* () {
+        const store = yield* CompositionRunStartStore;
+        return yield* store.claimDispatchRecovery({
+          runId: identity.runId,
+          expectedRevision: 3,
+          claimId: "claim-quarantine-race-recovery",
+          claimedAtUnixMs: 121,
+          leaseExpiresAtUnixMs: 221,
+        });
+      });
+    const quarantine = () =>
+      Effect.gen(function* () {
+        const store = yield* CompositionRunStartStore;
+        return yield* store.quarantine({
+          runId: identity.runId,
+          expectedRevision: 3,
+          claimId: "claim-quarantine-race-original",
+          ownerEpoch: 1,
+          outcomeCode: "run_start_invalid_receipt",
+          outcomeDetail: "原 owner 已取得无法验证的 receipt。",
+          quarantinedAtUnixMs: 121,
+        });
+      });
+
+    return Effect.gen(function* () {
+      const store = yield* CompositionRunStartStore;
+      const prepared = yield* store.prepareStart({ ...identity, createdAtUnixMs: 100 });
+      const setup = yield* store.claimPrepared({
+        runId: identity.runId,
+        expectedRevision: prepared.revision,
+        claimId: "claim-quarantine-race-original",
+        claimedAtUnixMs: 110,
+        leaseExpiresAtUnixMs: 120,
+      });
+      yield* store.markDispatching({
+        runId: identity.runId,
+        expectedRevision: setup.intent.revision,
+        claimId: setup.intent.claimId ?? "",
+        ownerEpoch: setup.intent.ownerEpoch,
+        dispatchedAtUnixMs: 115,
+      });
+
+      const [recovery, quarantined] = yield* Effect.all(
+        [Effect.result(claimRecovery()), Effect.result(quarantine())],
+        { concurrency: "unbounded" },
+      );
+      const recoveryWon = recovery._tag === "Success" && recovery.success.claimed;
+      const quarantineWon = quarantined._tag === "Success";
+
+      assert.equal(Number(recoveryWon) + Number(quarantineWon), 1);
+      if (recoveryWon) assert.equal(quarantined._tag, "Failure");
+      if (quarantineWon) {
+        assert.equal(recovery._tag, "Success");
+        if (recovery._tag === "Success") assert.isFalse(recovery.success.claimed);
+      }
+    });
+  });
+
+  it.effect("新 owner quarantine 后，旧 epoch 的同结果回放仍必须失败", () =>
+    Effect.gen(function* () {
+      const store = yield* CompositionRunStartStore;
+      const identity = makeIdentity("quarantine-stale-replay");
+      const prepared = yield* store.prepareStart({ ...identity, createdAtUnixMs: 100 });
+      const setup = yield* store.claimPrepared({
+        runId: identity.runId,
+        expectedRevision: prepared.revision,
+        claimId: "claim-quarantine-stale-original",
+        claimedAtUnixMs: 110,
+        leaseExpiresAtUnixMs: 120,
+      });
+      const dispatching = yield* store.markDispatching({
+        runId: identity.runId,
+        expectedRevision: setup.intent.revision,
+        claimId: setup.intent.claimId ?? "",
+        ownerEpoch: setup.intent.ownerEpoch,
+        dispatchedAtUnixMs: 115,
+      });
+      const recovery = yield* store.claimDispatchRecovery({
+        runId: identity.runId,
+        expectedRevision: dispatching.revision,
+        claimId: "claim-quarantine-stale-recovery",
+        claimedAtUnixMs: 121,
+        leaseExpiresAtUnixMs: 221,
+      });
+      const quarantined = yield* store.quarantine({
+        runId: identity.runId,
+        expectedRevision: recovery.intent.revision,
+        claimId: recovery.intent.claimId ?? "",
+        ownerEpoch: recovery.intent.ownerEpoch,
+        outcomeCode: "run_start_invalid_receipt",
+        outcomeDetail: "新 owner 已确认 receipt 无效。",
+        quarantinedAtUnixMs: 130,
+      });
+
+      const oldReplay = yield* Effect.result(
+        store.quarantine({
+          runId: identity.runId,
+          expectedRevision: quarantined.revision,
+          claimId: dispatching.claimId ?? "",
+          ownerEpoch: dispatching.ownerEpoch,
+          outcomeCode: "run_start_invalid_receipt",
+          outcomeDetail: "新 owner 已确认 receipt 无效。",
+          quarantinedAtUnixMs: 131,
+        }),
+      );
+
+      assert.equal(oldReplay._tag, "Failure");
+    }),
+  );
+
   it.effect("零时长 owner lease 必须被拒绝", () =>
     Effect.gen(function* () {
       const store = yield* CompositionRunStartStore;
