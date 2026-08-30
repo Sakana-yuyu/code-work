@@ -88,6 +88,24 @@ const expectFetchCall = (
   }
 };
 
+const expectFormBody = (
+  calls: ReadonlyArray<FetchCall>,
+  index: number,
+  expected: Readonly<Record<string, string>>,
+): void => {
+  const body = calls[index - 1]?.[1].body;
+  const text =
+    typeof body === "string"
+      ? body
+      : body instanceof Uint8Array
+        ? new TextDecoder().decode(body)
+        : undefined;
+  if (text === undefined) {
+    throw new Error("Expected fetch form request body");
+  }
+  expect(Object.fromEntries(new URLSearchParams(text))).toEqual(expected);
+};
+
 describe("remote environment authorization", () => {
   it.effect("bootstraps bearer auth against a remote backend", () =>
     Effect.gen(function* () {
@@ -162,7 +180,15 @@ describe("remote environment authorization", () => {
         url: "https://remote.example.com/oauth/token",
         method: "POST",
         headers: { dpop: "token-proof", "content-type": "application/x-www-form-urlencoded" },
-        body: "grant_type=urn%3Aietf%3Aparams%3Aoauth%3Agrant-type%3Atoken-exchange&subject_token=one-time-credential&subject_token_type=urn%3At3%3Aparams%3Aoauth%3Atoken-type%3Aenvironment-bootstrap&requested_token_type=urn%3Aietf%3Aparams%3Aoauth%3Atoken-type%3Aaccess_token&client_label=Code Work+Code+Mobile&client_device_type=mobile&client_os=iOS",
+      });
+      expectFormBody(fetch.calls, 1, {
+        grant_type: "urn:ietf:params:oauth:grant-type:token-exchange",
+        subject_token: "one-time-credential",
+        subject_token_type: "urn:t3:params:oauth:token-type:environment-bootstrap",
+        requested_token_type: "urn:ietf:params:oauth:token-type:access_token",
+        client_label: "Code Work Mobile",
+        client_device_type: "mobile",
+        client_os: "iOS",
       });
       expectFetchCall(fetch.calls, 2, {
         url: "https://remote.example.com/api/auth/websocket-ticket",
@@ -204,7 +230,15 @@ describe("remote environment authorization", () => {
       expectFetchCall(fetch.calls, 1, {
         url: "https://remote.example.com/oauth/token",
         method: "POST",
-        body: "grant_type=urn%3Aietf%3Aparams%3Aoauth%3Agrant-type%3Atoken-exchange&subject_token=pairing-token&subject_token_type=urn%3At3%3Aparams%3Aoauth%3Atoken-type%3Aenvironment-bootstrap&requested_token_type=urn%3Aietf%3Aparams%3Aoauth%3Atoken-type%3Aaccess_token&client_label=Code Work+Code+Mobile&client_device_type=mobile&client_os=iOS",
+      });
+      expectFormBody(fetch.calls, 1, {
+        grant_type: "urn:ietf:params:oauth:grant-type:token-exchange",
+        subject_token: "pairing-token",
+        subject_token_type: "urn:t3:params:oauth:token-type:environment-bootstrap",
+        requested_token_type: "urn:ietf:params:oauth:token-type:access_token",
+        client_label: "Code Work Mobile",
+        client_device_type: "mobile",
+        client_os: "iOS",
       });
     }),
   );
