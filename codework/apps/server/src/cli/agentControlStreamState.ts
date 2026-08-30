@@ -43,7 +43,7 @@ export function reduceAgentStreamState(
 }
 
 export function isAgentWaitComplete(state: AgentStreamState): boolean {
-  if (state.thread === null) return false;
+  if (!state.synchronized || state.thread === null) return false;
   const status = deriveAgentStatus(state.thread);
   return (
     status === "completed" ||

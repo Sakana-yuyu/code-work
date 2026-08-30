@@ -149,18 +149,18 @@ export function reduceAgentAttachState(
   const messageFrames =
     thread === null ? [] : projectMessageFrames(state.stream.thread, thread, initialSnapshot);
   const status = thread === null ? null : deriveAgentStatus(thread);
-  const done = status !== null && isTerminalStatus(status);
-  const statusFrames: ReadonlyArray<AgentAttachStatusFrame> =
-    done && status !== state.lastStatus && thread !== null
-      ? [
-          {
-            kind: "status",
-            agentId: thread.id,
-            status,
-            snapshot: toAgentStatusSnapshot(thread),
-          },
-        ]
-      : [];
+  const done = stream.synchronized && status !== null && isTerminalStatus(status);
+  const emitTerminalStatus = done && status !== state.lastStatus && thread !== null;
+  const statusFrames: ReadonlyArray<AgentAttachStatusFrame> = emitTerminalStatus
+    ? [
+        {
+          kind: "status",
+          agentId: thread.id,
+          status,
+          snapshot: toAgentStatusSnapshot(thread),
+        },
+      ]
+    : [];
   const unavailableReason = stream.deleted
     ? "deleted"
     : item.kind !== "synchronized"
@@ -175,7 +175,7 @@ export function reduceAgentAttachState(
     state: {
       stream,
       initialized: state.initialized || thread !== null,
-      lastStatus: status,
+      lastStatus: emitTerminalStatus ? status : state.lastStatus,
     },
     frames: [...messageFrames, ...statusFrames],
     done,

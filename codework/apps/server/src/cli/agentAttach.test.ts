@@ -58,6 +58,74 @@ const completionEvent = {
   },
 };
 
+const makeCompletedAgentThread = () => {
+  const thread = makeAgentThread();
+  return {
+    ...thread,
+    latestTurn: {
+      ...thread.latestTurn!,
+      state: "completed" as const,
+      completedAt: "2026-08-30T00:01:00.000Z",
+    },
+    session: {
+      ...thread.session!,
+      status: "ready" as const,
+      activeTurnId: null,
+      updatedAt: "2026-08-30T00:01:00.000Z",
+    },
+  };
+};
+
+const secondTurnStartedEvent = {
+  eventId: EventId.make("event-second-turn-running"),
+  commandId: null,
+  causationEventId: null,
+  correlationId: null,
+  metadata: {},
+  sequence: 11,
+  occurredAt: "2026-08-30T00:02:00.000Z",
+  aggregateKind: "thread" as const,
+  aggregateId: ThreadId.make("thread-agent-1"),
+  type: "thread.session-set" as const,
+  payload: {
+    threadId: ThreadId.make("thread-agent-1"),
+    session: {
+      threadId: ThreadId.make("thread-agent-1"),
+      status: "running" as const,
+      providerName: "codex",
+      runtimeMode: "full-access" as const,
+      activeTurnId: TurnId.make("turn-2"),
+      lastError: null,
+      updatedAt: "2026-08-30T00:02:00.000Z",
+    },
+  },
+};
+
+const secondTurnCompletedEvent = {
+  eventId: EventId.make("event-second-turn-ready"),
+  commandId: null,
+  causationEventId: null,
+  correlationId: null,
+  metadata: {},
+  sequence: 12,
+  occurredAt: "2026-08-30T00:02:30.000Z",
+  aggregateKind: "thread" as const,
+  aggregateId: ThreadId.make("thread-agent-1"),
+  type: "thread.session-set" as const,
+  payload: {
+    threadId: ThreadId.make("thread-agent-1"),
+    session: {
+      threadId: ThreadId.make("thread-agent-1"),
+      status: "ready" as const,
+      providerName: "codex",
+      runtimeMode: "full-access" as const,
+      activeTurnId: null,
+      lastError: null,
+      updatedAt: "2026-08-30T00:02:30.000Z",
+    },
+  },
+};
+
 describe("Agent attach CLI", () => {
   it("纯投影从快照输出消息，并把后续流式内容压缩为 append 帧", () => {
     const snapshot = reduceAgentAttachState(initialAgentAttachState, {
@@ -83,6 +151,37 @@ describe("Agent attach CLI", () => {
         messageId: "message-assistant-1",
         text: "，已完成",
         streaming: true,
+      }),
+    ]);
+  });
+
+  it("同步前不输出旧终态，并在补发的新 turn 完成后只输出一次终态", () => {
+    const staleTerminal = reduceAgentAttachState(initialAgentAttachState, {
+      kind: "snapshot",
+      snapshot: { snapshotSequence: 10, thread: makeCompletedAgentThread() },
+    });
+    const runningSecondTurn = reduceAgentAttachState(staleTerminal.state, {
+      kind: "event",
+      event: secondTurnStartedEvent,
+    });
+    const synchronized = reduceAgentAttachState(runningSecondTurn.state, {
+      kind: "synchronized",
+    });
+    const completedSecondTurn = reduceAgentAttachState(synchronized.state, {
+      kind: "event",
+      event: secondTurnCompletedEvent,
+    });
+
+    expect(staleTerminal.done).toBe(false);
+    expect(staleTerminal.frames.some((frame) => frame.kind === "status")).toBe(false);
+    expect(runningSecondTurn.state.stream.thread?.latestTurn?.turnId).toBe("turn-2");
+    expect(synchronized.done).toBe(false);
+    expect(completedSecondTurn.done).toBe(true);
+    expect(completedSecondTurn.frames).toEqual([
+      expect.objectContaining({
+        kind: "status",
+        status: "completed",
+        snapshot: expect.objectContaining({ latestTurnId: "turn-2" }),
       }),
     ]);
   });
@@ -127,6 +226,38 @@ describe("Agent attach CLI", () => {
       expect(connections).toEqual([
         { serverUrl: "https://codework.example.test", accessToken: "session-token" },
       ]);
+    }),
+  );
+
+  it.effect("消费同步前补发的新 turn，并仅输出该 turn 的终态帧", () =>
+    Effect.gen(function* () {
+      const open: ControlClientOpen = (_connection, use) =>
+        use({
+          "orchestration.subscribeThread": () =>
+            Stream.fromIterable([
+              {
+                kind: "snapshot" as const,
+                snapshot: { snapshotSequence: 10, thread: makeCompletedAgentThread() },
+              },
+              { kind: "event" as const, event: secondTurnStartedEvent },
+              { kind: "synchronized" as const },
+              { kind: "event" as const, event: secondTurnCompletedEvent },
+            ]),
+        } as never);
+      const frames: Array<Parameters<typeof formatAgentAttachFrame>[0]> = [];
+
+      yield* attachToAgent(
+        { serverUrl: "http://127.0.0.1:3773", agentId: "thread-agent-1" },
+        (frame) => Effect.sync(() => frames.push(frame)),
+        open,
+      );
+
+      const statusFrames = frames.filter((frame) => frame.kind === "status");
+      expect(statusFrames).toHaveLength(1);
+      expect(statusFrames[0]).toMatchObject({
+        status: "completed",
+        snapshot: { latestTurnId: "turn-2", latestTurnState: "completed" },
+      });
     }),
   );
 
