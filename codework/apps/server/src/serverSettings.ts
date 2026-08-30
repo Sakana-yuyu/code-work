@@ -18,6 +18,8 @@ import {
   type CompositionMcpRuntimeServerConfig,
   type CompositionMcpSecretValue,
   isMulticaSecretName,
+  isSafeMulticaRuntimeBaseUrl,
+  isSafeMulticaTaskMcpEndpoint,
   type ModelSelection,
   type ProviderInstanceConfig,
   type ProviderInstanceEnvironmentVariable,
@@ -223,6 +225,39 @@ function multicaSecretEnvironmentNames(instance: ProviderInstanceConfig): Readon
         : [];
     }),
   );
+}
+
+function validateMulticaProviderInstancesForPersistence(
+  settingsPath: string,
+  settings: ServerSettings,
+): Effect.Effect<void, ServerSettingsError> {
+  return Effect.forEach(Object.entries(settings.providerInstances), ([instanceId, instance]) => {
+    if (instance.driver !== "multica") return Effect.void;
+    const config = instance.config;
+    const record =
+      config !== null && typeof config === "object" && !Array.isArray(config)
+        ? (config as Record<string, unknown>)
+        : null;
+    const baseUrl = record?.["baseUrl"];
+    const taskMcpEndpoint = record?.["taskMcpEndpoint"];
+    if (
+      typeof baseUrl !== "string" ||
+      !isSafeMulticaRuntimeBaseUrl(baseUrl) ||
+      (taskMcpEndpoint !== undefined &&
+        (typeof taskMcpEndpoint !== "string" ||
+          !isSafeMulticaTaskMcpEndpoint(taskMcpEndpoint)))
+    ) {
+      return Effect.fail(
+        new ServerSettingsError({
+          settingsPath,
+          operation: "normalize",
+          providerInstanceId: instanceId,
+          cause: new Error("Multica Runtime URL 配置不安全或无效。"),
+        }),
+      );
+    }
+    return Effect.void;
+  }).pipe(Effect.asVoid);
 }
 
 function redactMcpSecretValue(value: CompositionMcpSecretValue): CompositionMcpSecretValue {
@@ -1180,7 +1215,10 @@ const make = Effect.gen(function* () {
         const environment: ProviderInstanceEnvironmentVariable[] = [];
         for (const variable of instance.environment) {
           const secretName = providerEnvironmentSecretName({ instanceId, name: variable.name });
-          if (!variable.sensitive) {
+          const persistedVariable = multicaSecretNames.has(variable.name)
+            ? { ...variable, sensitive: true }
+            : variable;
+          if (!persistedVariable.sensitive) {
             yield* secretStore.remove(secretName).pipe(
               Effect.mapError(
                 (cause) =>
@@ -1193,14 +1231,14 @@ const make = Effect.gen(function* () {
                   }),
               ),
             );
-            environment.push(redactProviderEnvironmentVariable(variable));
+            environment.push(redactProviderEnvironmentVariable(persistedVariable));
             continue;
           }
 
           nextSecretKeys.add(secretName);
-          if (!variable.valueRedacted) {
-            if (variable.value.length > 0) {
-              yield* secretStore.set(secretName, textEncoder.encode(variable.value)).pipe(
+          if (!persistedVariable.valueRedacted) {
+            if (persistedVariable.value.length > 0) {
+              yield* secretStore.set(secretName, textEncoder.encode(persistedVariable.value)).pipe(
                 Effect.mapError(
                   (cause) =>
                     new ServerSettingsError({
@@ -1212,7 +1250,7 @@ const make = Effect.gen(function* () {
                     }),
                 ),
               );
-              environment.push({ ...variable, value: "", valueRedacted: true });
+              environment.push({ ...persistedVariable, value: "", valueRedacted: true });
             } else {
               yield* secretStore.remove(secretName).pipe(
                 Effect.mapError(
@@ -1226,7 +1264,7 @@ const make = Effect.gen(function* () {
                     }),
                 ),
               );
-              const { valueRedacted: _omit, ...rest } = variable;
+              const { valueRedacted: _omit, ...rest } = persistedVariable;
               environment.push(rest);
             }
             continue;
@@ -1251,7 +1289,7 @@ const make = Effect.gen(function* () {
               ),
             );
           }
-          environment.push(redactProviderEnvironmentVariable(variable));
+          environment.push(redactProviderEnvironmentVariable(persistedVariable));
         }
         providerInstances[instanceId] = {
           ...instance,
@@ -1390,9 +1428,11 @@ const make = Effect.gen(function* () {
       writeSemaphore.withPermits(1)(
         Effect.gen(function* () {
           const current = yield* getSettingsFromCache;
+          const patched = applyServerSettingsPatch(current, patch);
+          yield* validateMulticaProviderInstancesForPersistence(settingsPath, patched);
           const nextWithEnvironmentSecrets = yield* persistProviderEnvironmentSecrets(
             current,
-            applyServerSettingsPatch(current, patch),
+            patched,
           );
           const nextWithMcpSecrets = yield* persistMcpServerSecrets(
             current,

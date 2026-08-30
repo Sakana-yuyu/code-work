@@ -1402,24 +1402,11 @@ it.layer(NodeServices.layer)("server settings", (it) => {
       const fileSystem = yield* FileSystem.FileSystem;
       const instanceId = ProviderInstanceId.make("multica_legacy");
 
-      const legacySettings = yield* serverSettings.updateSettings({
-        providerInstances: {
-          [instanceId]: {
-            driver: ProviderDriverKind.make("multica"),
-            environment: [{ name: "MULTICA_TOKEN", value: "legacy-secret", sensitive: false }],
-            config: {
-              runtimeId: "multica:daemon-1:runtime-1",
-              daemonId: "daemon-1",
-              daemonRuntimeId: "runtime-1",
-              baseUrl: "http://127.0.0.1:9000",
-              headers: [
-                { headerName: "Private-Token", environmentVariable: "MULTICA_TOKEN" },
-              ],
-              assigneeRoutes: [],
-            },
-          },
-        },
-      });
+      yield* fileSystem.writeFileString(
+        serverConfig.settingsPath,
+        '{"providerInstances":{"multica_legacy":{"driver":"multica","environment":[{"name":"MULTICA_TOKEN","value":"legacy-secret","sensitive":false}],"config":{"runtimeId":"multica:daemon-1:runtime-1","daemonId":"daemon-1","daemonRuntimeId":"runtime-1","baseUrl":"http://127.0.0.1:9000","headers":[{"headerName":"Private-Token","environmentVariable":"MULTICA_TOKEN"}],"assigneeRoutes":[]}}}}',
+      );
+      const legacySettings = yield* serverSettings.getSettings;
 
       const rawLegacySettings = yield* fileSystem.readFileString(serverConfig.settingsPath);
       assert.include(rawLegacySettings, "legacy-secret");
@@ -1468,6 +1455,88 @@ it.layer(NodeServices.layer)("server settings", (it) => {
       assert.deepEqual(JSON.parse(rawAfterClear).providerInstances.multica_legacy.environment, [
         { name: "MULTICA_TOKEN", value: "", sensitive: true },
       ]);
+    }).pipe(Effect.provide(makeServerSettingsLayer())),
+  );
+
+  it.effect("将 Multica Secret Header 环境变量强制存入 secret store", () =>
+    Effect.gen(function* () {
+      const serverSettings = yield* ServerSettingsModule.ServerSettingsService;
+      const serverConfig = yield* ServerConfig.ServerConfig;
+      const fileSystem = yield* FileSystem.FileSystem;
+      const instanceId = ProviderInstanceId.make("multica_secret_header");
+
+      const next = yield* serverSettings.updateSettings({
+        providerInstances: {
+          [instanceId]: {
+            driver: ProviderDriverKind.make("multica"),
+            environment: [{ name: "MULTICA_TOKEN", value: "direct-secret", sensitive: false }],
+            config: {
+              runtimeId: "multica:daemon-1:runtime-1",
+              daemonId: "daemon-1",
+              daemonRuntimeId: "runtime-1",
+              baseUrl: "http://127.0.0.1:9000",
+              headers: [
+                { headerName: "Private-Token", environmentVariable: "MULTICA_TOKEN" },
+              ],
+              assigneeRoutes: [],
+            },
+          },
+        },
+      });
+
+      assert.deepEqual(next.providerInstances[instanceId]?.environment, [
+        { name: "MULTICA_TOKEN", value: "direct-secret", sensitive: true, valueRedacted: true },
+      ]);
+      const raw = yield* fileSystem.readFileString(serverConfig.settingsPath);
+      assert.notInclude(raw, "direct-secret");
+      // @effect-diagnostics-next-line preferSchemaOverJson:off
+      assert.deepEqual(JSON.parse(raw).providerInstances.multica_secret_header.environment, [
+        { name: "MULTICA_TOKEN", value: "", sensitive: true, valueRedacted: true },
+      ]);
+    }).pipe(Effect.provide(makeServerSettingsLayer())),
+  );
+
+  it.effect("在持久化前拒绝不安全的 Multica URL", () =>
+    Effect.gen(function* () {
+      const serverSettings = yield* ServerSettingsModule.ServerSettingsService;
+      const serverConfig = yield* ServerConfig.ServerConfig;
+      const fileSystem = yield* FileSystem.FileSystem;
+      const instanceId = ProviderInstanceId.make("multica_safe");
+      const instance = {
+        driver: ProviderDriverKind.make("multica"),
+        config: {
+          runtimeId: "multica:daemon-1:runtime-1",
+          daemonId: "daemon-1",
+          daemonRuntimeId: "runtime-1",
+          baseUrl: "http://127.0.0.1:9000",
+          headers: [],
+          assigneeRoutes: [],
+        },
+      };
+      yield* serverSettings.updateSettings({ providerInstances: { [instanceId]: instance } });
+      const before = yield* fileSystem.readFileString(serverConfig.settingsPath);
+
+      for (const config of [
+        { ...instance.config, baseUrl: "https://operator:secret@multica.test/api" },
+        { ...instance.config, baseUrl: "file:///tmp/multica" },
+        {
+          ...instance.config,
+          taskMcpEndpoint: "https://operator:secret@codework.test/mcp",
+        },
+        {
+          ...instance.config,
+          taskMcpEndpoint: "https://codework.test/mcp?authorizationCode=secret",
+        },
+        { ...instance.config, taskMcpEndpoint: "file:///tmp/mcp" },
+      ]) {
+        const error = yield* Effect.flip(
+          serverSettings.updateSettings({
+            providerInstances: { [instanceId]: { ...instance, config } },
+          }),
+        );
+        assert.equal(error.operation, "normalize");
+        assert.equal(yield* fileSystem.readFileString(serverConfig.settingsPath), before);
+      }
     }).pipe(Effect.provide(makeServerSettingsLayer())),
   );
 });
