@@ -307,6 +307,38 @@ export const isMulticaSecretName = (value: string): boolean => {
   return MULTICA_SECRET_NAME_COMPACT.test(compact);
 };
 
+const MULTICA_HTTP_PROTOCOLS = new Set(["http:", "https:"]);
+
+export const isSafeMulticaRuntimeBaseUrl = (value: string): boolean => {
+  try {
+    const url = new URL(value.trim());
+    return (
+      MULTICA_HTTP_PROTOCOLS.has(url.protocol) &&
+      url.username.length === 0 &&
+      url.password.length === 0 &&
+      url.search.length === 0 &&
+      url.hash.length === 0
+    );
+  } catch {
+    return false;
+  }
+};
+
+export const isSafeMulticaTaskMcpEndpoint = (value: string): boolean => {
+  try {
+    const url = new URL(value.trim());
+    return (
+      MULTICA_HTTP_PROTOCOLS.has(url.protocol) &&
+      url.username.length === 0 &&
+      url.password.length === 0 &&
+      url.hash.length === 0 &&
+      Array.from(url.searchParams.keys()).every((name) => !isMulticaSecretName(name))
+    );
+  } catch {
+    return false;
+  }
+};
+
 /** Multica HTTP Header 与 Code Work provider environment secret 的绑定。 */
 export const CompositionMulticaHeaderBinding = Schema.Struct({
   headerName: TrimmedNonEmptyString,

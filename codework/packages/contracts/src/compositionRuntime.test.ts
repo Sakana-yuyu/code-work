@@ -13,6 +13,9 @@ import {
   CompositionMcpRuntimeServerConfig,
   CompositionMcpServerId,
   CompositionRuntimeProbeResult,
+  isMulticaSecretName,
+  isSafeMulticaRuntimeBaseUrl,
+  isSafeMulticaTaskMcpEndpoint,
 } from "./compositionRuntime.ts";
 
 const decodeEnvelope = Schema.decodeUnknownSync(CompositionEventEnvelope);
@@ -31,6 +34,23 @@ const decodeMcpServerConfig = Schema.decodeUnknownSync(CompositionMcpRuntimeServ
 const decodeAgentDriverProfile = Schema.decodeUnknownSync(CompositionAgentDriverProfile);
 
 describe("composition runtime contracts", () => {
+  it("统一识别 Multica 凭据名称并在服务端可复用地拒绝 URL 凭据", () => {
+    expect(isMulticaSecretName("Private-Token")).toBe(true);
+    expect(isMulticaSecretName("Client-Secret")).toBe(true);
+    expect(isMulticaSecretName("X-Client-Secret")).toBe(true);
+    expect(isMulticaSecretName("Ocp-Apim-Subscription-Key")).toBe(true);
+    expect(isMulticaSecretName("authorizationCode")).toBe(true);
+    expect(isMulticaSecretName("subscriptionKey")).toBe(true);
+    expect(isMulticaSecretName("accessKeyId")).toBe(true);
+    expect(isMulticaSecretName("X-Trace-Label")).toBe(false);
+    expect(isSafeMulticaRuntimeBaseUrl("https://multica.test/api")).toBe(true);
+    expect(isSafeMulticaRuntimeBaseUrl("https://user:secret@multica.test/api")).toBe(false);
+    expect(isSafeMulticaTaskMcpEndpoint("https://codework.test/mcp?version=1")).toBe(true);
+    expect(isSafeMulticaTaskMcpEndpoint("https://codework.test/mcp?authorizationCode=secret")).toBe(false);
+    expect(isSafeMulticaTaskMcpEndpoint("https://codework.test/mcp?subscriptionKey=secret")).toBe(false);
+    expect(isSafeMulticaTaskMcpEndpoint("https://codework.test/mcp?accessKeyId=secret")).toBe(false);
+  });
+
   it("keeps the event envelope additive to task events", () => {
     const event = decodeEnvelope({
       schemaVersion: 1,

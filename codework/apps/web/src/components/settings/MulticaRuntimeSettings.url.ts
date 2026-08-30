@@ -1,4 +1,7 @@
-import { isMulticaSecretName } from "@codework/contracts";
+import {
+  isSafeMulticaRuntimeBaseUrl,
+  isSafeMulticaTaskMcpEndpoint,
+} from "@codework/contracts";
 
 const HTTP_PROTOCOLS = new Set(["http:", "https:"]);
 
@@ -11,21 +14,7 @@ const parseHttpUrl = (value: string): URL | null => {
   }
 };
 
-const hasEmbeddedCredentials = (url: URL): boolean =>
-  url.username.length > 0 || url.password.length > 0;
-
-export const isSafeMulticaRuntimeBaseUrl = (value: string): boolean => {
-  const url = parseHttpUrl(value);
-  return (
-    url !== null && !hasEmbeddedCredentials(url) && url.search.length === 0 && url.hash.length === 0
-  );
-};
-
-export const isSafeMulticaTaskMcpEndpoint = (value: string): boolean => {
-  const url = parseHttpUrl(value);
-  if (url === null || hasEmbeddedCredentials(url) || url.hash.length > 0) return false;
-  return Array.from(url.searchParams.keys()).every((name) => !isMulticaSecretName(name));
-};
+export { isSafeMulticaRuntimeBaseUrl, isSafeMulticaTaskMcpEndpoint };
 
 export const safeMulticaRuntimeUrlLabel = (value: string): string | null => {
   const url = parseHttpUrl(value);

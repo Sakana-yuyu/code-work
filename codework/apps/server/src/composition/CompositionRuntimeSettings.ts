@@ -4,6 +4,8 @@ import {
   CompositionIdeRuntimeConfig,
   CompositionMulticaRuntimeConfig,
   isMulticaSecretName,
+  isSafeMulticaRuntimeBaseUrl,
+  isSafeMulticaTaskMcpEndpoint,
 } from "@codework/contracts";
 import type { ProviderInstanceConfig, ProviderInstanceEnvironment } from "@codework/contracts";
 import * as Clock from "effect/Clock";
@@ -392,6 +394,19 @@ export const makeMulticaRuntimeAdapterFromSettings = (
   input: CompositionRuntimeSettingsFactoryInput,
 ): Effect.Effect<MulticaDaemonRuntimeAdapter, CompositionRuntimeSettingsError> =>
   Effect.gen(function* () {
+    if (!isSafeMulticaRuntimeBaseUrl(input.config.baseUrl)) {
+      return yield* new CompositionRuntimeSettingsError({
+        detail: "Multica baseUrl 必须是无凭据、无查询参数和片段的 HTTP(S) URL。",
+      });
+    }
+    if (
+      input.config.taskMcpEndpoint !== undefined &&
+      !isSafeMulticaTaskMcpEndpoint(input.config.taskMcpEndpoint)
+    ) {
+      return yield* new CompositionRuntimeSettingsError({
+        detail: "Multica taskMcpEndpoint 不能包含凭据查询参数或 URL 凭据。",
+      });
+    }
     const runtimeMcpTokens = yield* Effect.try({
       try: () =>
         input.config.taskMcpEndpoint === undefined
