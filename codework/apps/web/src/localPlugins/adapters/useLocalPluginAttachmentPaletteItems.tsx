@@ -5,6 +5,7 @@ import type { ComposerHandleRef } from "~/composerHandleContext";
 import { ITEM_ICON_CLASS, type CommandPaletteActionItem } from "~/components/CommandPalette.logic";
 import { stackedThreadToast, toastManager } from "~/components/ui/toast";
 import { t } from "~/i18n";
+import { localPluginFailureLabel } from "../localPluginFailurePresentation";
 import type { IsolatedLocalPluginResult } from "../localPluginIsolation";
 import { localPluginRuntime } from "../localPluginRuntime";
 import {
@@ -22,7 +23,7 @@ export function notifyLocalPluginAttachmentResult(
       stackedThreadToast({
         type: "error",
         title: t("localPlugins.attachmentFailed"),
-        description: result.failure.message,
+        description: localPluginFailureLabel(result.failure.code),
       }),
     );
     return;

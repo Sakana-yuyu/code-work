@@ -150,7 +150,8 @@ describe("LocalPluginsSettings", () => {
     const html = renderToStaticMarkup(<LocalPluginsSettings runtime={runtime} />);
 
     expect(html).toContain('data-local-plugin-failure="failure-1"');
-    expect(html).toContain("执行失败");
+    expect(html).toContain("The plugin action could not be completed");
+    expect(html).not.toContain("执行失败");
     expect(html).toContain("Clear failures");
   });
 

@@ -34,4 +34,27 @@ describe("本地插件附件 Palette 反馈", () => {
         "The files are already attached. Add the prompt manually instead of attaching them again.",
     });
   });
+
+  it("附件失败只按稳定错误码展示，不直出原始异常", () => {
+    notifyLocalPluginAttachmentResult({
+      ok: false,
+      failure: {
+        id: "failure-1",
+        pluginId: "acme.attachments",
+        phase: "invoke",
+        code: "contribution-invoke-failed",
+        message: "原始中文异常",
+        occurredAtUnixMs: 1,
+      },
+    });
+
+    expect(toastManager.add).toHaveBeenCalledWith({
+      type: "error",
+      title: "Plugin attachment failed",
+      description: "The plugin action could not be completed.",
+    });
+    expect(toastManager.add).not.toHaveBeenCalledWith(
+      expect.objectContaining({ description: "原始中文异常" }),
+    );
+  });
 });

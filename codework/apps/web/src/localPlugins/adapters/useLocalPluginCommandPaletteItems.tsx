@@ -9,11 +9,23 @@ import { stackedThreadToast, toastManager } from "~/components/ui/toast";
 import { writeTextToClipboard } from "~/hooks/useCopyToClipboard";
 import { t } from "~/i18n";
 import { useRightPanelStore } from "~/rightPanelStore";
+import type { LocalPluginFailure } from "../localPluginFailureJournal";
+import { localPluginFailureLabel } from "../localPluginFailurePresentation";
 import { localPluginRuntime } from "../localPluginRuntime";
 import type { LocalPluginWorkspaceContext } from "../localPluginTemplate";
 import { listEnabledLocalPluginCommands } from "./localPluginCommandAdapter";
 import { createLocalPluginTimelinePostPort } from "./localPluginTimelineAdapter";
 import { localPluginTimelineJournal } from "../localPluginTimelineRuntime";
+
+export function notifyLocalPluginCommandFailure(failure: LocalPluginFailure): void {
+  toastManager.add(
+    stackedThreadToast({
+      type: "error",
+      title: t("localPlugins.commandFailed"),
+      description: localPluginFailureLabel(failure.code),
+    }),
+  );
+}
 
 export function useLocalPluginCommandPaletteItems(input: {
   readonly composerHandleRef: ComposerHandleRef | null;
@@ -77,13 +89,7 @@ export function useLocalPluginCommandPaletteItems(input: {
       run: async () => {
         const result = await command.invoke();
         if (result.ok) return;
-        toastManager.add(
-          stackedThreadToast({
-            type: "error",
-            title: t("localPlugins.commandFailed"),
-            description: result.failure.message,
-          }),
-        );
+        notifyLocalPluginCommandFailure(result.failure);
       },
     }));
   }, [input.composerHandleRef, input.threadRef, input.workspace, registrySnapshot]);

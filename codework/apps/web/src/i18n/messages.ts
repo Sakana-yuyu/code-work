@@ -375,6 +375,8 @@ export const en: Record<string, string> = {
   "localPlugins.commandFailed": "Plugin command failed",
   "localPlugins.empty": "No local plugins installed",
   "localPlugins.error.apiIncompatible": "The plugin API is not compatible with this build.",
+  "localPlugins.error.contributionInvokeFailed": "The plugin action could not be completed.",
+  "localPlugins.error.contributionRenderFailed": "The plugin contribution could not be displayed.",
   "localPlugins.error.invalidJson": "The selected file is not valid JSON.",
   "localPlugins.error.manifestInvalid": "The plugin manifest violates contribution rules.",
   "localPlugins.error.notFound": "The plugin is no longer installed.",
@@ -388,6 +390,8 @@ export const en: Record<string, string> = {
   "localPlugins.error.storageConflict":
     "Local plugin settings changed in another tab. The latest stored state was loaded; retry the action if needed.",
   "localPlugins.error.storageWriteFailed": "Local plugin settings could not be saved.",
+  "localPlugins.error.timelineStorageRestoreFailed":
+    "The plugin timeline history could not be restored.",
   "localPlugins.error.unknown": "The local plugin operation failed.",
   "localPlugins.import": "Import manifest",
   "localPlugins.imported": "Local plugin imported",
@@ -4200,6 +4204,8 @@ export const zhCN: Record<string, string> = {
   "localPlugins.commandFailed": "插件命令执行失败",
   "localPlugins.empty": "尚未安装本地插件",
   "localPlugins.error.apiIncompatible": "插件 API 与当前版本不兼容。",
+  "localPlugins.error.contributionInvokeFailed": "无法完成插件操作。",
+  "localPlugins.error.contributionRenderFailed": "无法显示插件贡献内容。",
   "localPlugins.error.invalidJson": "所选文件不是有效 JSON。",
   "localPlugins.error.manifestInvalid": "插件 manifest 违反 contribution 规则。",
   "localPlugins.error.notFound": "插件已不在安装列表中。",
@@ -4212,6 +4218,7 @@ export const zhCN: Record<string, string> = {
   "localPlugins.error.storageConflict":
     "其他标签页同时修改了本地插件设置。已载入最终持久化状态，请按需重试刚才的操作。",
   "localPlugins.error.storageWriteFailed": "无法保存本地插件设置。",
+  "localPlugins.error.timelineStorageRestoreFailed": "无法恢复插件 Timeline 历史。",
   "localPlugins.error.unknown": "本地插件操作失败。",
   "localPlugins.import": "导入 manifest",
   "localPlugins.imported": "本地插件已导入",

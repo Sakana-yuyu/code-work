@@ -2,10 +2,8 @@ import { FileUpIcon, Trash2Icon, XIcon } from "lucide-react";
 import { useRef, useState, useSyncExternalStore, type ChangeEvent } from "react";
 
 import { t } from "~/i18n";
-import type {
-  LocalPluginLifecycleErrorCode,
-  LocalPluginLifecycleResult,
-} from "~/localPlugins/localPluginLifecycle";
+import { localPluginFailureLabel } from "~/localPlugins/localPluginFailurePresentation";
+import type { LocalPluginLifecycleResult } from "~/localPlugins/localPluginLifecycle";
 import { localPluginRuntime, type LocalPluginRuntime } from "~/localPlugins/localPluginRuntime";
 import { Button } from "../ui/button";
 import { Switch } from "../ui/switch";
@@ -18,7 +16,6 @@ export type LocalPluginImportResult =
       readonly ok: false;
       readonly error: { readonly code: "invalid-json"; readonly message: string };
     };
-type LocalPluginImportErrorCode = LocalPluginLifecycleErrorCode | "invalid-json";
 
 export function installLocalPluginJson(
   runtime: LocalPluginRuntime,
@@ -40,33 +37,6 @@ export function installLocalPluginJson(
     });
   }
   return runtime.lifecycle.install(parsed);
-}
-
-function importErrorLabel(code: LocalPluginImportErrorCode) {
-  switch (code) {
-    case "invalid-json":
-      return t("localPlugins.error.invalidJson");
-    case "schema-invalid":
-      return t("localPlugins.error.schemaInvalid");
-    case "api-incompatible":
-      return t("localPlugins.error.apiIncompatible");
-    case "manifest-invalid":
-      return t("localPlugins.error.manifestInvalid");
-    case "storage-write-failed":
-      return t("localPlugins.error.storageWriteFailed");
-    case "storage-duplicate-id":
-      return t("localPlugins.error.storageDuplicateId");
-    case "storage-lock-unavailable":
-      return t("localPlugins.error.storageLockUnavailable");
-    case "storage-conflict":
-      return t("localPlugins.error.storageConflict");
-    case "plugin-not-found":
-      return t("localPlugins.error.notFound");
-    case "storage-invalid":
-      return t("localPlugins.error.storageInvalid");
-    default:
-      return t("localPlugins.error.unknown");
-  }
 }
 
 function contributionCountLabel(input: {
@@ -107,7 +77,7 @@ export function LocalPluginsSettings({
   );
   const storageErrorLabel = storageStatus.result.ok
     ? null
-    : importErrorLabel(storageStatus.result.error.code);
+    : localPluginFailureLabel(storageStatus.result.error.code);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [importStatus, setImportStatus] = useState<string | null>(null);
 
@@ -117,7 +87,9 @@ export function LocalPluginsSettings({
     if (!file) return;
     try {
       const result = await installLocalPluginJson(runtime, await file.text());
-      setImportStatus(result.ok ? t("localPlugins.imported") : importErrorLabel(result.error.code));
+      setImportStatus(
+        result.ok ? t("localPlugins.imported") : localPluginFailureLabel(result.error.code),
+      );
     } catch (error) {
       runtime.failures.record({
         pluginId: "unknown-plugin",
@@ -212,7 +184,7 @@ export function LocalPluginsSettings({
                         : runtime.lifecycle.disable(manifest.id);
                       void result.then((completed) => {
                         if (!completed.ok) {
-                          setImportStatus(importErrorLabel(completed.error.code));
+                          setImportStatus(localPluginFailureLabel(completed.error.code));
                         }
                       });
                     }}
@@ -229,7 +201,7 @@ export function LocalPluginsSettings({
                           onClick={() => {
                             void runtime.lifecycle.uninstall(manifest.id).then((result) => {
                               if (!result.ok) {
-                                setImportStatus(importErrorLabel(result.error.code));
+                                setImportStatus(localPluginFailureLabel(result.error.code));
                               }
                             });
                           }}
@@ -248,7 +220,7 @@ export function LocalPluginsSettings({
                   data-local-plugin-failure={latestFailure.id}
                 >
                   <p className="min-w-0 break-words">
-                    {latestFailure.phase}: {latestFailure.message}
+                    {localPluginFailureLabel(latestFailure.code)}
                   </p>
                   <Tooltip>
                     <TooltipTrigger
