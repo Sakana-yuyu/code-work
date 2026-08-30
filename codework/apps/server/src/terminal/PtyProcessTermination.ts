@@ -167,6 +167,14 @@ const awaitExitWithin = (
 export const terminate = Effect.fn("PtyProcessTermination.terminate")(function* (
   input: PtyProcessTerminationInput,
 ): Effect.fn.Return<PtyProcessTerminationOutcome, PtyProcessTerminationError> {
+  const observedBeforeValidation = input.exitState.observedExit.current;
+  if (observedBeforeValidation !== null) {
+    return {
+      mode: "already-exited",
+      escalated: false,
+      exitEvent: observedBeforeValidation,
+    };
+  }
   yield* assertCurrent(input, "initial");
 
   if (input.platform === "win32") {

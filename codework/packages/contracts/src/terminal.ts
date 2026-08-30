@@ -353,6 +353,26 @@ export class TerminalSessionOwnershipError extends Schema.TaggedErrorClass<Termi
   }
 }
 
+export class TerminalManagerShutdownError extends Schema.TaggedErrorClass<TerminalManagerShutdownError>()(
+  "TerminalManagerShutdownError",
+  {
+    operation: Schema.Literals([
+      "open",
+      "attach",
+      "run-command",
+      "write",
+      "resize",
+      "clear",
+      "restart",
+      "close",
+    ]),
+  },
+) {
+  override get message() {
+    return `Terminal manager is shutting down; cannot ${this.operation}.`;
+  }
+}
+
 export class TerminalProcessTerminationError extends Schema.TaggedErrorClass<TerminalProcessTerminationError>()(
   "TerminalProcessTerminationError",
   {
@@ -364,6 +384,8 @@ export class TerminalProcessTerminationError extends Schema.TaggedErrorClass<Ter
       "exit-timeout",
       "force-signal-failed",
       "force-exit-timeout",
+      "exit-observer-failed",
+      "exit-observation-gap",
       "session-replaced",
     ]),
     signal: Schema.NullOr(Schema.Literals(["platform-default", "SIGTERM", "SIGKILL"])),
@@ -383,6 +405,7 @@ export const TerminalError = Schema.Union([
   TerminalWriteError,
   TerminalResizeError,
   TerminalSessionOwnershipError,
+  TerminalManagerShutdownError,
   TerminalProcessTerminationError,
 ]);
 export type TerminalError = typeof TerminalError.Type;

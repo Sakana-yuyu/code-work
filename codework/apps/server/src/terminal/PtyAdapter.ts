@@ -29,19 +29,54 @@ export class PtySpawnError extends Schema.TaggedErrorClass<PtySpawnError>()("Pty
   }
 }
 
+export class PtyProcessListenerRegistrationError extends Schema.TaggedErrorClass<PtyProcessListenerRegistrationError>()(
+  "PtyProcessListenerRegistrationError",
+  {
+    listener: Schema.Literals(["data", "exit"]),
+    terminalPid: Schema.Number,
+    cause: Schema.Defect(),
+  },
+) {
+  override get message(): string {
+    return `Failed to register terminal ${this.listener} listener for process ${this.terminalPid}`;
+  }
+}
+
+export class PtyProcessListenerDisposalError extends Schema.TaggedErrorClass<PtyProcessListenerDisposalError>()(
+  "PtyProcessListenerDisposalError",
+  {
+    listener: Schema.Literals(["data", "exit"]),
+    terminalPid: Schema.Number,
+    cause: Schema.Defect(),
+  },
+) {
+  override get message(): string {
+    return `Failed to dispose terminal ${this.listener} listener for process ${this.terminalPid}`;
+  }
+}
+
 export interface PtyExitEvent {
   exitCode: number;
   signal: number | null;
 }
 
+export type PtyExitObservation =
+  | { readonly status: "reliable" }
+  | { readonly status: "gap"; readonly cause: unknown };
+
 export interface PtyProcess {
   readonly pid: number;
+  /**
+   * `reliable` 表示观察覆盖整个 handle 生命周期或底层支持迟取重放；否则 acquisition
+   * 失败必须先暴露 `gap`。调用方必须隔离 gap handle，不能据超时推断进程仍存活或已退出。
+   */
+  readonly exitObservation: PtyExitObservation;
   write(data: string): void;
   resize(cols: number, rows: number): void;
   /** 无参数表示使用当前平台的默认终止方式；Windows 不支持 POSIX signal。 */
   kill(signal?: string): void;
   onData(callback: (data: string) => void): () => void;
-  /** 同一进程 handle 的权威退出通知；发送终止请求不等于进程已经退出。 */
+  /** `exitObservation` 为 reliable 时，退出后迟订阅必须同步重放同一 handle 的事件。 */
   onExit(callback: (event: PtyExitEvent) => void): () => void;
 }
 

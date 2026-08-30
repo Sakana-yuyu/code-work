@@ -3,8 +3,10 @@ import { HostProcessPlatform } from "@codework/shared/hostProcess";
 import * as Cause from "effect/Cause";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
+import { vi } from "vite-plus/test";
 
 import * as BunPtyAdapter from "./BunPtyAdapter.ts";
+import * as PtyAdapter from "./PtyAdapter.ts";
 
 it("describes unavailable Bun PTY operations structurally", () => {
   const error = new BunPtyAdapter.BunPtyOperationUnavailableError({
@@ -41,4 +43,98 @@ it.effect("reports unsupported platforms with a structured startup defect", () =
       );
     }
   }),
+);
+
+it.effect("replays a completed Bun subprocess exit to late subscribers", () =>
+  Effect.gen(function* () {
+    const { promise: exited, resolve: resolveExit } = Promise.withResolvers<number>();
+    const subprocess = {
+      pid: 43,
+      exited,
+      signalCode: null,
+      terminal: {
+        write: vi.fn(),
+        resize: vi.fn(),
+      },
+      kill: vi.fn(),
+    } as unknown as Bun.Subprocess;
+    vi.stubGlobal("Bun", { spawn: vi.fn(() => subprocess) });
+
+    const adapter = yield* BunPtyAdapter.make().pipe(
+      Effect.provideService(HostProcessPlatform, "linux"),
+    );
+    const process = yield* adapter.spawn({
+      shell: "/bin/sh",
+      cwd: "/workspace",
+      cols: 80,
+      rows: 24,
+      env: {},
+    });
+    resolveExit(7);
+    yield* Effect.promise(() => exited);
+    yield* Effect.yieldNow;
+
+    const observed: PtyAdapter.PtyExitEvent[] = [];
+    const unsubscribe = process.onExit((event) => observed.push(event));
+    expect(observed).toEqual([{ exitCode: 7, signal: null }]);
+    unsubscribe();
+  }).pipe(Effect.ensuring(Effect.sync(() => vi.unstubAllGlobals()))),
+);
+
+it.effect("retains the Bun subprocess when initial exit observation cannot be acquired", () =>
+  Effect.gen(function* () {
+    const acquisitionFailure = new Error("subprocess.exited unavailable");
+    const { promise: exited, resolve: resolveExit } = Promise.withResolvers<number>();
+    let exitedReads = 0;
+    const kill = vi.fn();
+    const subprocess = {
+      pid: 44,
+      get exited() {
+        exitedReads += 1;
+        if (exitedReads <= 2) {
+          throw acquisitionFailure;
+        }
+        return exited;
+      },
+      signalCode: null,
+      terminal: {
+        write: vi.fn(),
+        resize: vi.fn(),
+      },
+      kill,
+    } as unknown as Bun.Subprocess;
+    vi.stubGlobal("Bun", { spawn: vi.fn(() => subprocess) });
+
+    const adapter = yield* BunPtyAdapter.make().pipe(
+      Effect.provideService(HostProcessPlatform, "linux"),
+    );
+    const process = yield* adapter.spawn({
+      shell: "/bin/sh",
+      cwd: "/workspace",
+      cols: 80,
+      rows: 24,
+      env: {},
+    });
+
+    expect(() => process.onData(() => undefined)).toThrow(
+      PtyAdapter.PtyProcessListenerRegistrationError,
+    );
+    assert.equal(process.exitObservation.status, "gap");
+
+    const observed: PtyAdapter.PtyExitEvent[] = [];
+    expect(() => process.onExit((event) => observed.push(event))).toThrow(
+      PtyAdapter.PtyProcessListenerRegistrationError,
+    );
+    assert.equal(process.exitObservation.status, "gap");
+    const unsubscribe = process.onExit((event) => observed.push(event));
+    assert.equal(process.exitObservation.status, "reliable");
+    process.kill();
+    resolveExit(0);
+    yield* Effect.promise(() => exited);
+    yield* Effect.yieldNow;
+
+    expect(kill).toHaveBeenCalledOnce();
+    expect(observed).toEqual([{ exitCode: 0, signal: null }]);
+    unsubscribe();
+  }).pipe(Effect.ensuring(Effect.sync(() => vi.unstubAllGlobals()))),
 );

@@ -9,6 +9,7 @@ import * as PtyAdapter from "./PtyAdapter.ts";
 import * as PtyProcessTermination from "./PtyProcessTermination.ts";
 
 class FakePtyProcess implements PtyAdapter.PtyProcess {
+  readonly exitObservation: PtyAdapter.PtyExitObservation = { status: "reliable" };
   readonly killSignals: Array<string | undefined> = [];
   readonly killFailures = new Map<string | undefined, unknown>();
   readonly pid: number;
@@ -238,6 +239,23 @@ it.effect("首次信号前已观察到 raw exit 时不再发送终止信号", ()
       exitState,
       isCurrent,
     });
+
+    expect(process.killSignals).toEqual([]);
+    expect(outcome).toEqual({ mode: "already-exited", escalated: false, exitEvent });
+  }),
+);
+
+it.effect("同一 exit state 已观察退出时不再要求存活 session 身份", () =>
+  Effect.gen(function* () {
+    const process = new FakePtyProcess();
+    const exitState = yield* PtyProcessTermination.makeProcessExitState();
+    const current = yield* Ref.make(false);
+    const exitEvent = { exitCode: 0, signal: null } as const;
+    PtyProcessTermination.signalProcessExit(exitState, exitEvent);
+
+    const outcome = yield* PtyProcessTermination.terminate(
+      terminationInput({ process, platform: "win32", exitState, current }),
+    );
 
     expect(process.killSignals).toEqual([]);
     expect(outcome).toEqual({ mode: "already-exited", escalated: false, exitEvent });

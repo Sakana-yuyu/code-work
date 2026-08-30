@@ -39,6 +39,7 @@ class WaitForConditionError extends Data.TaggedError("WaitForConditionError")<{
 }> {}
 
 class FakePtyProcess implements PtyAdapter.PtyProcess {
+  exitObservation: PtyAdapter.PtyExitObservation = { status: "reliable" };
   readonly writes: string[] = [];
   readonly resizeCalls: Array<{ cols: number; rows: number }> = [];
   readonly killSignals: Array<string | undefined> = [];

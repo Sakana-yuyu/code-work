@@ -8,6 +8,7 @@ import * as Schema from "effect/Schema";
 import { HostProcessArchitecture, HostProcessPlatform } from "@codework/shared/hostProcess";
 
 import * as PtyAdapter from "./PtyAdapter.ts";
+import { PtyExitLatch } from "./PtyExitLatch.ts";
 
 export class NodePtyModuleLoadError extends Schema.TaggedErrorClass<NodePtyModuleLoadError>()(
   "NodePtyModuleLoadError",
@@ -25,6 +26,7 @@ export class NodePtyModuleLoadError extends Schema.TaggedErrorClass<NodePtyModul
 type NodePtyModuleLoader = () => Promise<typeof import("node-pty")>;
 
 let didEnsureSpawnHelperExecutable = false;
+const SYNC_EXIT_OBSERVER_ATTEMPTS = 2;
 
 const resolveNodePtySpawnHelperPath = Effect.gen(function* () {
   const requireForNodePty = NodeModule.createRequire(import.meta.url);
@@ -69,13 +71,40 @@ const ensureNodePtySpawnHelperExecutable = Effect.fn(function* () {
 
 class NodePtyProcess implements PtyAdapter.PtyProcess {
   private readonly process: import("node-pty").IPty;
+  private readonly exitLatch = new PtyExitLatch();
+  private exitObserverInstalled = false;
+  private exitObserverAcquisitionError: PtyAdapter.PtyProcessListenerRegistrationError | null =
+    null;
+  private exitObservationGapError: PtyAdapter.PtyProcessListenerRegistrationError | null = null;
 
   constructor(process: import("node-pty").IPty) {
     this.process = process;
+    for (let attempt = 0; attempt < SYNC_EXIT_OBSERVER_ATTEMPTS; attempt += 1) {
+      try {
+        this.installExitObserver();
+        return;
+      } catch (cause) {
+        if (!this.exitLatch.exited) {
+          this.exitObserverAcquisitionError = new PtyAdapter.PtyProcessListenerRegistrationError({
+            listener: "exit",
+            terminalPid: this.process.pid,
+            cause,
+          });
+        }
+      }
+    }
+    this.exitObservationGapError = this.exitObserverAcquisitionError;
   }
 
   get pid(): number {
     return this.process.pid;
+  }
+
+  get exitObservation(): PtyAdapter.PtyExitObservation {
+    if (this.exitLatch.exited || !this.exitObservationGapError) {
+      return { status: "reliable" };
+    }
+    return { status: "gap", cause: this.exitObservationGapError };
   }
 
   write(data: string): void {
@@ -91,6 +120,12 @@ class NodePtyProcess implements PtyAdapter.PtyProcess {
   }
 
   onData(callback: (data: string) => void): () => void {
+    if (this.exitObservation.status === "gap") {
+      throw this.exitObservation.cause;
+    }
+    if (this.exitObserverAcquisitionError) {
+      throw this.exitObserverAcquisitionError;
+    }
     const disposable = this.process.onData(callback);
     return () => {
       disposable.dispose();
@@ -98,15 +133,30 @@ class NodePtyProcess implements PtyAdapter.PtyProcess {
   }
 
   onExit(callback: (event: PtyAdapter.PtyExitEvent) => void): () => void {
-    const disposable = this.process.onExit((event) => {
-      callback({
+    if (!this.exitLatch.exited && !this.exitObserverInstalled) {
+      try {
+        this.installExitObserver();
+      } catch (cause) {
+        this.exitObserverAcquisitionError = new PtyAdapter.PtyProcessListenerRegistrationError({
+          listener: "exit",
+          terminalPid: this.process.pid,
+          cause,
+        });
+        throw this.exitObserverAcquisitionError;
+      }
+    }
+    return this.exitLatch.subscribe(callback);
+  }
+
+  private installExitObserver(): void {
+    this.process.onExit((event) => {
+      this.exitLatch.emit({
         exitCode: event.exitCode,
         signal: event.signal ?? null,
       });
     });
-    return () => {
-      disposable.dispose();
-    };
+    this.exitObserverInstalled = true;
+    this.exitObserverAcquisitionError = null;
   }
 }
 

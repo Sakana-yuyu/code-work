@@ -8,7 +8,9 @@ import {
   TerminalCloseInput,
   TerminalEvent,
   TerminalError,
+  TerminalManagerShutdownError,
   TerminalOpenInput,
+  TerminalProcessTerminationError,
   TerminalResizeInput,
   TerminalSessionSnapshot,
   TerminalThreadInput,
@@ -18,6 +20,8 @@ import {
 function decodeSync<S extends Schema.Top>(schema: S, input: unknown): Schema.Schema.Type<S> {
   return Schema.decodeUnknownSync(schema as never)(input) as Schema.Schema.Type<S>;
 }
+
+const encodeTerminalError = Schema.encodeSync(TerminalError);
 
 function decodes<S extends Schema.Top>(schema: S, input: unknown): boolean {
   try {
@@ -235,6 +239,72 @@ describe("TerminalError", () => {
         signal: "SIGKILL",
       }),
     ).toBe(false);
+  });
+
+  it("round-trips exit observer registration failures", () => {
+    const error = new TerminalProcessTerminationError({
+      threadId: "thread-1",
+      terminalId: DEFAULT_TERMINAL_ID,
+      terminalPid: 4242,
+      reason: "exit-observer-failed",
+      signal: null,
+      cause: new Error("listener registration failed"),
+    });
+
+    const encoded = encodeTerminalError(error);
+    const decoded = decodeSync(TerminalError, encoded);
+
+    expect(encoded).toMatchObject({
+      _tag: "TerminalProcessTerminationError",
+      reason: "exit-observer-failed",
+      signal: null,
+    });
+    expect(decoded).toMatchObject({
+      _tag: "TerminalProcessTerminationError",
+      reason: "exit-observer-failed",
+      signal: null,
+    });
+  });
+
+  it("round-trips indeterminate termination after an exit observation gap", () => {
+    const error = new TerminalProcessTerminationError({
+      threadId: "thread-1",
+      terminalId: DEFAULT_TERMINAL_ID,
+      terminalPid: 4242,
+      reason: "exit-observation-gap",
+      signal: "platform-default",
+      cause: new Error("native exit observer coverage was lost"),
+    });
+
+    const encoded = encodeTerminalError(error);
+    const decoded = decodeSync(TerminalError, encoded);
+
+    expect(encoded).toMatchObject({
+      _tag: "TerminalProcessTerminationError",
+      reason: "exit-observation-gap",
+      signal: "platform-default",
+    });
+    expect(decoded).toMatchObject({
+      _tag: "TerminalProcessTerminationError",
+      reason: "exit-observation-gap",
+      signal: "platform-default",
+    });
+  });
+
+  it("round-trips terminal manager shutdown failures", () => {
+    const error = new TerminalManagerShutdownError({ operation: "run-command" });
+
+    const encoded = encodeTerminalError(error);
+    const decoded = decodeSync(TerminalError, encoded);
+
+    expect(encoded).toEqual({
+      _tag: "TerminalManagerShutdownError",
+      operation: "run-command",
+    });
+    expect(decoded).toMatchObject({
+      _tag: "TerminalManagerShutdownError",
+      operation: "run-command",
+    });
   });
 });
 
