@@ -1,4 +1,4 @@
-import type { ProviderInstanceConfig } from "@codework/contracts";
+import { multicaProviderInstanceRevision, type ProviderInstanceConfig } from "@codework/contracts";
 
 import {
   formFromMulticaRuntimeInstance,
@@ -16,6 +16,8 @@ export interface MulticaRuntimeEditorSession {
   readonly initialDraft: MulticaRuntimeDraft;
   readonly draft: MulticaRuntimeDraft;
   readonly initialFingerprint: string;
+  /** 打开会话时的服务端版本，保存必须原样带回，不能由最新快照重算。 */
+  readonly expectedRevision: string | null;
   readonly conflict: boolean;
   readonly saveState: MulticaRuntimeSaveState;
 }
@@ -38,10 +40,17 @@ export const reconcileMulticaRuntimeEditorSession = (
       : { ...editor, conflict: true, saveState: "conflict" };
   }
   const instance =
-    editor.originalInstanceId === null ? undefined : scope.readyInstances[editor.originalInstanceId];
-  const liveDraft = instance === undefined ? null : formFromMulticaRuntimeInstance(editor.originalInstanceId!, instance);
+    editor.originalInstanceId === null
+      ? undefined
+      : scope.readyInstances[editor.originalInstanceId];
+  const liveDraft =
+    instance === undefined
+      ? null
+      : formFromMulticaRuntimeInstance(editor.originalInstanceId!, instance);
   if (liveDraft === null) return { ...editor, conflict: true, saveState: "conflict" };
-  return multicaRuntimeDraftFingerprint(liveDraft) === editor.initialFingerprint
+  return multicaRuntimeDraftFingerprint(liveDraft) === editor.initialFingerprint &&
+    multicaProviderInstanceRevision(editor.originalInstanceId!, instance) ===
+      editor.expectedRevision
     ? editor
     : { ...editor, conflict: true, saveState: "conflict" };
 };

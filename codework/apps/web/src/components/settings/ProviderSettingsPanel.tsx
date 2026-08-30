@@ -8,7 +8,6 @@ import {
 import {
   defaultInstanceIdForDriver,
   type EnvironmentId,
-  multicaProviderInstanceRevision,
   PROVIDER_DISPLAY_NAMES,
   ProviderDriverKind,
   type ProviderInstanceConfig,
@@ -79,6 +78,7 @@ import { AddProviderInstanceDialog } from "./AddProviderInstanceDialog";
 import { ProviderInstanceCard } from "./ProviderInstanceCard";
 import {
   MulticaRuntimeSettingsPanel,
+  type MulticaRuntimeDeleteRequest,
   type MulticaRuntimeSaveRequest,
 } from "./MulticaRuntimeSettingsPanel";
 import {
@@ -485,7 +485,7 @@ export function EnvironmentProviderSettings({
           : [
               {
                 instanceId: originalInstanceId,
-                expectedRevision: multicaProviderInstanceRevision(originalInstanceId, existing),
+                expectedRevision: request.expectedRevision,
               },
               ...(originalInstanceId !== request.instanceId
                 ? [{ instanceId: request.instanceId, expectedRevision: null }]
@@ -512,8 +512,8 @@ export function EnvironmentProviderSettings({
     [environmentId, persistMulticaSettings, settings.providerInstances],
   );
   const deleteMulticaRuntime = useCallback(
-    async (rawInstanceId: string) => {
-      const instanceId = ProviderInstanceId.make(rawInstanceId);
+    async (request: MulticaRuntimeDeleteRequest) => {
+      const instanceId = ProviderInstanceId.make(request.instanceId);
       const instances: Record<ProviderInstanceId, ProviderInstanceConfig> = {
         ...settings.providerInstances,
       };
@@ -521,8 +521,6 @@ export function EnvironmentProviderSettings({
       if (instance === undefined || instance.driver !== "multica") {
         throw new MulticaRuntimeConflictError();
       }
-      const nextInstances = { ...instances };
-      delete nextInstances[instanceId];
       const result = await persistMulticaSettings({
         environmentId,
         input: {
@@ -531,7 +529,7 @@ export function EnvironmentProviderSettings({
             multicaProviderInstancePreconditions: [
               {
                 instanceId,
-                expectedRevision: multicaProviderInstanceRevision(instanceId, instance),
+                expectedRevision: request.expectedRevision,
               },
             ],
           },

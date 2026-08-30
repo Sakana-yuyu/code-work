@@ -24,9 +24,13 @@ import {
 const scopeKey = "environment-a";
 const instanceId = "multica_local";
 
-const savedInstance = (baseUrl: string): ProviderInstanceConfig => ({
+const savedInstance = (
+  baseUrl: string,
+  settingsRevision = "revision-v1",
+): ProviderInstanceConfig => ({
   driver: ProviderDriverKind.make("multica"),
   enabled: true,
+  settingsRevision,
   config: {
     runtimeId: "multica:daemon-1:runtime-1",
     daemonId: "daemon-1",
@@ -95,5 +99,41 @@ describe("MulticaRuntimeSettings controller", () => {
     controller = renderController(savedInstance("http://127.0.0.1:9100"));
     expect(controller.deleteFailedId).toBeNull();
     expect(controller.deleteFailure).toBeNull();
+  });
+
+  it("编辑保存使用打开会话时捕获的 revision", async () => {
+    const versionOne = savedInstance("http://127.0.0.1:9000", "revision-v1");
+    onSave.mockResolvedValue(undefined);
+    let controller = renderController(versionOne);
+    controller.openEdit(instanceId, versionOne);
+
+    controller = renderController(versionOne);
+    await controller.saveEditor();
+
+    expect(onSave).toHaveBeenCalledWith(
+      expect.objectContaining({ expectedRevision: "revision-v1" }),
+    );
+  });
+
+  it("删除确认使用打开确认时捕获的 revision", async () => {
+    const versionOne = savedInstance("http://127.0.0.1:9000", "revision-v1");
+    let controller = renderController(versionOne);
+    controller.requestDelete(instanceId, versionOne);
+
+    controller = renderController(versionOne);
+    await controller.confirmDelete();
+
+    expect(onDelete).toHaveBeenCalledWith({ instanceId, expectedRevision: "revision-v1" });
+  });
+
+  it("服务端 revision 更新但草稿指纹未变时，编辑会话进入冲突态", () => {
+    const versionOne = savedInstance("http://127.0.0.1:9000", "revision-v1");
+    let controller = renderController(versionOne);
+    controller.openEdit(instanceId, versionOne);
+
+    controller = renderController(versionOne);
+    controller = renderController(savedInstance("http://127.0.0.1:9000", "revision-v2"));
+
+    expect(controller.activeEditor).toMatchObject({ conflict: true, saveState: "conflict" });
   });
 });

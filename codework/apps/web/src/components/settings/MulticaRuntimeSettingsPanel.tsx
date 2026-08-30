@@ -23,6 +23,7 @@ import { MulticaRuntimeSettingsEditor } from "./MulticaRuntimeSettingsEditor";
 import { MulticaRuntimeInstanceRow } from "./MulticaRuntimeInstanceRow";
 import {
   useMulticaRuntimeSettingsController,
+  type MulticaRuntimeDeleteRequest,
   type MulticaRuntimeSaveRequest,
   type MulticaRuntimeSettingsState,
 } from "./MulticaRuntimeSettings.controller";
@@ -30,6 +31,7 @@ import type { MulticaRuntimeSettingsText } from "./MulticaRuntimeSettingsText";
 
 export {
   persistMulticaRuntimeDraft,
+  type MulticaRuntimeDeleteRequest,
   type MulticaRuntimeSaveAttempt,
   type MulticaRuntimeSaveRequest,
   type MulticaRuntimeSettingsState,
@@ -43,7 +45,7 @@ export interface MulticaRuntimeSettingsPanelProps {
   readonly state: MulticaRuntimeSettingsState;
   readonly onRetryLoad: () => void;
   readonly onSave: (request: MulticaRuntimeSaveRequest) => Promise<void>;
-  readonly onDelete: (instanceId: string) => Promise<void>;
+  readonly onDelete: (request: MulticaRuntimeDeleteRequest) => Promise<void>;
 }
 
 export function MulticaRuntimeSettingsPanel({

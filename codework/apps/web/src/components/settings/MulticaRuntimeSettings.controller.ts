@@ -1,4 +1,4 @@
-import type { ProviderInstanceConfig } from "@codework/contracts";
+import { multicaProviderInstanceRevision, type ProviderInstanceConfig } from "@codework/contracts";
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import {
@@ -26,8 +26,17 @@ export type MulticaRuntimeSettingsState =
 export type MulticaRuntimeSaveRequest = MulticaRuntimeSave & {
   readonly originalInstanceId: string | null;
   readonly expectedFingerprint: string | null;
+  readonly expectedRevision: string | null;
 };
-type UnconfirmedMulticaRuntimeSaveRequest = Omit<MulticaRuntimeSaveRequest, "expectedFingerprint">;
+type UnconfirmedMulticaRuntimeSaveRequest = Omit<
+  MulticaRuntimeSaveRequest,
+  "expectedFingerprint" | "expectedRevision"
+>;
+
+export interface MulticaRuntimeDeleteRequest {
+  readonly instanceId: string;
+  readonly expectedRevision: string | null;
+}
 
 export type MulticaRuntimeSaveAttempt = "saved" | "invalid" | "error" | "conflict";
 
@@ -38,6 +47,7 @@ interface ScopedRuntimeAction {
   readonly scopeKey: string;
   readonly instanceId: string;
   readonly expectedFingerprint: string;
+  readonly expectedRevision: string | null;
 }
 
 type FailedRuntimeAction = ScopedRuntimeAction & {
@@ -73,7 +83,7 @@ interface MulticaRuntimeSettingsControllerOptions {
   readonly scopeKey: string | null;
   readonly state: MulticaRuntimeSettingsState;
   readonly onSave: (request: MulticaRuntimeSaveRequest) => Promise<void>;
-  readonly onDelete: (instanceId: string) => Promise<void>;
+  readonly onDelete: (request: MulticaRuntimeDeleteRequest) => Promise<void>;
 }
 
 const reconcileScopedRuntimeAction = <Action extends ScopedRuntimeAction>(
@@ -86,7 +96,11 @@ const reconcileScopedRuntimeAction = <Action extends ScopedRuntimeAction>(
   const instance = readyInstances[action.instanceId];
   const draft =
     instance === undefined ? null : formFromMulticaRuntimeInstance(action.instanceId, instance);
-  if (draft === null || multicaRuntimeDraftFingerprint(draft) !== action.expectedFingerprint) {
+  if (
+    draft === null ||
+    multicaRuntimeDraftFingerprint(draft) !== action.expectedFingerprint ||
+    multicaProviderInstanceRevision(action.instanceId, instance) !== action.expectedRevision
+  ) {
     return null;
   }
   return action;
@@ -172,6 +186,7 @@ export function useMulticaRuntimeSettingsController({
       initialDraft: draft,
       draft,
       initialFingerprint: multicaRuntimeDraftFingerprint(draft),
+      expectedRevision: null,
       conflict: false,
       saveState: "idle",
     });
@@ -189,6 +204,7 @@ export function useMulticaRuntimeSettingsController({
       initialDraft: draft,
       draft,
       initialFingerprint: multicaRuntimeDraftFingerprint(draft),
+      expectedRevision: multicaProviderInstanceRevision(instanceId, instance),
       conflict: false,
       saveState: "idle",
     });
@@ -215,7 +231,12 @@ export function useMulticaRuntimeSettingsController({
     const result = await persistMulticaRuntimeDraft(
       session.draft,
       session.originalInstanceId,
-      (request) => onSave({ ...request, expectedFingerprint: session.initialFingerprint }),
+      (request) =>
+        onSave({
+          ...request,
+          expectedFingerprint: session.initialFingerprint,
+          expectedRevision: session.expectedRevision,
+        }),
     );
     setEditor((current) => {
       if (current?.sessionId !== session.sessionId) return current;
@@ -234,6 +255,7 @@ export function useMulticaRuntimeSettingsController({
       scopeKey,
       instanceId,
       expectedFingerprint: multicaRuntimeDraftFingerprint(draft),
+      expectedRevision: multicaProviderInstanceRevision(instanceId, instance),
     });
   };
 
@@ -259,7 +281,10 @@ export function useMulticaRuntimeSettingsController({
       if (draft === null || multicaRuntimeDraftFingerprint(draft) !== request.expectedFingerprint) {
         throw new MulticaRuntimeConflictError();
       }
-      await onDelete(request.instanceId);
+      await onDelete({
+        instanceId: request.instanceId,
+        expectedRevision: request.expectedRevision,
+      });
       if (
         !isMulticaRuntimeActionCurrent(
           request,

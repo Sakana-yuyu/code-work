@@ -325,6 +325,7 @@ describe("EnvironmentProviderSettings routing", () => {
     await (saveRuntime as (request: Record<string, unknown>) => Promise<void>)({
       originalInstanceId: "multica_local",
       expectedFingerprint,
+      expectedRevision: "revision-v1",
       instanceId: multicaId,
       config: multicaInstance.config,
       environment: multicaInstance.environment,
@@ -385,6 +386,7 @@ describe("EnvironmentProviderSettings routing", () => {
     await (runtimePanel.props.onSave as (request: Record<string, unknown>) => Promise<void>)({
       originalInstanceId: sourceId,
       expectedFingerprint: multicaRuntimeDraftFingerprint(sourceDraft!),
+      expectedRevision: "revision-v1",
       instanceId: targetId,
       config: sourceInstance.config,
       environment: [],
@@ -410,7 +412,10 @@ describe("EnvironmentProviderSettings routing", () => {
       },
     });
 
-    await (runtimePanel.props.onDelete as (instanceId: string) => Promise<void>)(sourceId);
+    await (runtimePanel.props.onDelete as (request: Record<string, unknown>) => Promise<void>)({
+      instanceId: sourceId,
+      expectedRevision: "revision-v1",
+    });
     expect(commands.updateSettings).toHaveBeenLastCalledWith({
       environmentId,
       input: {
@@ -418,6 +423,89 @@ describe("EnvironmentProviderSettings routing", () => {
           providerInstances: {},
           multicaProviderInstancePreconditions: [
             { instanceId: sourceId, expectedRevision: "revision-v1" },
+          ],
+        },
+      },
+    });
+  });
+
+  it("设置刷新后仍使用编辑会话捕获的 Multica revision", async () => {
+    const multicaId = ProviderInstanceId.make("multica_stale_session");
+    const versionOne = {
+      driver: ProviderDriverKind.make("multica"),
+      enabled: true,
+      settingsRevision: "revision-v1",
+      environment: [{ name: "MULTICA_TOKEN", value: "", sensitive: true, valueRedacted: true }],
+      config: {
+        runtimeId: "multica:daemon-1:runtime-1",
+        daemonId: "daemon-1",
+        daemonRuntimeId: "runtime-1",
+        baseUrl: "http://127.0.0.1:9000",
+        headers: [{ headerName: "Authorization", environmentVariable: "MULTICA_TOKEN" }],
+        assigneeRoutes: [],
+      },
+    };
+    settingsState.value = {
+      ...DEFAULT_UNIFIED_SETTINGS,
+      providerInstances: { [multicaId]: versionOne },
+    };
+    const versionTwo = { ...versionOne, settingsRevision: "revision-v2" };
+    settingsState.value = {
+      ...DEFAULT_UNIFIED_SETTINGS,
+      providerInstances: { [multicaId]: versionTwo },
+    };
+    const panel = renderPanel();
+    const runtimePanel = visitElements(
+      panel,
+      (element) =>
+        (element.props as { readonly state?: { readonly status?: string } }).state?.status ===
+          "ready" &&
+        typeof element.props.onSave === "function" &&
+        typeof element.props.onDelete === "function",
+    );
+    const draft = formFromMulticaRuntimeInstance(multicaId, versionTwo);
+    expect(draft).not.toBeNull();
+    if (runtimePanel === null) throw new Error("missing Multica runtime panel");
+
+    await (runtimePanel.props.onSave as (request: Record<string, unknown>) => Promise<void>)({
+      originalInstanceId: multicaId,
+      expectedFingerprint: multicaRuntimeDraftFingerprint(draft!),
+      expectedRevision: "revision-v1",
+      instanceId: multicaId,
+      config: versionTwo.config,
+      environment: versionTwo.environment,
+    });
+
+    expect(commands.updateSettings).toHaveBeenLastCalledWith({
+      environmentId,
+      input: {
+        patch: {
+          providerInstances: {
+            [multicaId]: {
+              driver: ProviderDriverKind.make("multica"),
+              enabled: undefined,
+              config: versionTwo.config,
+              environment: versionTwo.environment,
+            },
+          },
+          multicaProviderInstancePreconditions: [
+            { instanceId: multicaId, expectedRevision: "revision-v1" },
+          ],
+        },
+      },
+    });
+
+    await (runtimePanel.props.onDelete as (request: Record<string, unknown>) => Promise<void>)({
+      instanceId: multicaId,
+      expectedRevision: "revision-v1",
+    });
+    expect(commands.updateSettings).toHaveBeenLastCalledWith({
+      environmentId,
+      input: {
+        patch: {
+          providerInstances: {},
+          multicaProviderInstancePreconditions: [
+            { instanceId: multicaId, expectedRevision: "revision-v1" },
           ],
         },
       },
