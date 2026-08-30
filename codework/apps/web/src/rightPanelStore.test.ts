@@ -218,6 +218,93 @@ describe("rightPanelStore", () => {
     expect(selectActiveRightPanel(useRightPanelStore.getState().byThreadKey, refB)).toBeNull();
   });
 
+  it("按插件与 contribution 打开独立面板，并清理已禁用或删除的 surface", () => {
+    useRightPanelStore.getState().openPluginPanel(refA, "acme.workspace", "overview");
+    useRightPanelStore.getState().openPluginPanel(refA, "acme.workspace", "details");
+
+    expect(selectThreadRightPanelState(useRightPanelStore.getState().byThreadKey, refA)).toEqual({
+      isOpen: true,
+      activeSurfaceId: "plugin:acme.workspace:details",
+      surfaces: [
+        {
+          id: "plugin:acme.workspace:overview",
+          kind: "plugin",
+          pluginId: "acme.workspace",
+          contributionId: "overview",
+        },
+        {
+          id: "plugin:acme.workspace:details",
+          kind: "plugin",
+          pluginId: "acme.workspace",
+          contributionId: "details",
+        },
+      ],
+    });
+
+    useRightPanelStore.getState().reconcilePluginSurfaces(refA, ["plugin:acme.workspace:overview"]);
+    expect(selectThreadRightPanelState(useRightPanelStore.getState().byThreadKey, refA)).toEqual({
+      isOpen: true,
+      activeSurfaceId: "plugin:acme.workspace:overview",
+      surfaces: [
+        {
+          id: "plugin:acme.workspace:overview",
+          kind: "plugin",
+          pluginId: "acme.workspace",
+          contributionId: "overview",
+        },
+      ],
+    });
+
+    useRightPanelStore.getState().reconcilePluginSurfaces(refA, []);
+    expect(selectThreadRightPanelState(useRightPanelStore.getState().byThreadKey, refA)).toEqual({
+      isOpen: false,
+      activeSurfaceId: null,
+      surfaces: [],
+    });
+  });
+
+  it("迁移时保留合法插件面板并丢弃伪造 surface", () => {
+    expect(
+      migratePersistedRightPanelState({
+        byThreadKey: {
+          "env-1:thread-A": {
+            isOpen: true,
+            activeSurfaceId: "plugin:acme.workspace:overview",
+            surfaces: [
+              {
+                id: "plugin:acme.workspace:overview",
+                kind: "plugin",
+                pluginId: "acme.workspace",
+                contributionId: "overview",
+              },
+              {
+                id: "plugin:acme.workspace:forged",
+                kind: "plugin",
+                pluginId: "Bad Plugin",
+                contributionId: "forged",
+              },
+            ],
+          },
+        },
+      }),
+    ).toEqual({
+      byThreadKey: {
+        "env-1:thread-A": {
+          isOpen: true,
+          activeSurfaceId: "plugin:acme.workspace:overview",
+          surfaces: [
+            {
+              id: "plugin:acme.workspace:overview",
+              kind: "plugin",
+              pluginId: "acme.workspace",
+              contributionId: "overview",
+            },
+          ],
+        },
+      },
+    });
+  });
+
   it("opening a different kind keeps both surfaces and activates the new one", () => {
     useRightPanelStore.getState().open(refA, "agents");
     useRightPanelStore.getState().open(refA, "preview");

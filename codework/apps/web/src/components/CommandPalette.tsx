@@ -162,6 +162,7 @@ import { ComposerHandleContext, useComposerHandleContext } from "../composerHand
 import type { ChatComposerHandle } from "./chat/ChatComposer";
 import { getProjectOrderKey, selectProjectGroupingSettings } from "../logicalProject";
 import { legacyProjectCwdPreferenceKey, useUiStateStore } from "../uiStateStore";
+import { useLocalPluginCommandPaletteItems } from "../localPlugins/adapters/useLocalPluginCommandPaletteItems";
 import {
   buildSidebarProjectPickerEntries,
   buildSidebarProjectSnapshots,
@@ -567,6 +568,7 @@ function OpenCommandPaletteDialog(props: {
   readonly clearOpenIntent: () => void;
 }) {
   const navigate = useNavigate();
+  const composerHandleRef = useComposerHandleContext();
   const { clearOpenIntent, openIntent, openOverlayMode, setOpen } = props;
   const [query, setQuery] = useState("");
   const deferredQuery = useDeferredValue(query);
@@ -888,6 +890,25 @@ function OpenCommandPaletteDialog(props: {
   const currentProjectCwd = currentProjectId
     ? (projectCwdById.get(currentProjectId) ?? null)
     : null;
+  const currentProjectTitle = currentProjectId
+    ? (projectTitleById.get(currentProjectId) ?? null)
+    : null;
+  const currentThreadRef = useMemo(
+    () => (activeThread ? scopeThreadRef(activeThread.environmentId, activeThread.id) : null),
+    [activeThread],
+  );
+  const localPluginWorkspace = useMemo(
+    () =>
+      currentProjectTitle && currentProjectCwd
+        ? { name: currentProjectTitle, root: currentProjectCwd }
+        : null,
+    [currentProjectCwd, currentProjectTitle],
+  );
+  const localPluginCommands = useLocalPluginCommandPaletteItems({
+    composerHandleRef,
+    threadRef: currentThreadRef,
+    workspace: localPluginWorkspace,
+  });
   const currentProjectCwdForBrowse =
     browseEnvironmentId && currentProjectEnvironmentId === browseEnvironmentId
       ? currentProjectCwd
@@ -1503,6 +1524,8 @@ function OpenCommandPaletteDialog(props: {
   ]);
 
   const actionItems: Array<CommandPaletteActionItem | CommandPaletteSubmenuItem> = [];
+
+  actionItems.push(...localPluginCommands);
 
   if (projects.length > 0) {
     const activeProjectTitle =

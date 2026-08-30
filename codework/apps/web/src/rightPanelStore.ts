@@ -18,6 +18,11 @@ import {
   type SynchronousStateStorage,
 } from "./persistenceStorage";
 import { resolveStorage } from "./lib/storage";
+import {
+  localPluginWorkspacePanelSurface,
+  parseLocalPluginWorkspacePanelSurface,
+  type LocalPluginWorkspacePanelSurface,
+} from "./localPlugins/adapters/localPluginWorkspacePanelSurface";
 
 function createRightPanelStorage() {
   const storage = resolveStorage(typeof window !== "undefined" ? window.localStorage : undefined);
@@ -44,6 +49,7 @@ export const RIGHT_PANEL_KINDS = [
   "terminal",
   "pull-request",
   "agents",
+  "plugin",
 ] as const;
 export type RightPanelKind = (typeof RIGHT_PANEL_KINDS)[number];
 
@@ -84,14 +90,16 @@ export type RightPanelSurface =
       repository: string;
       number: number;
     }
-  | { id: "agents"; kind: "agents" };
+  | { id: "agents"; kind: "agents" }
+  | LocalPluginWorkspacePanelSurface;
 
 const LEGACY_RIGHT_PANEL_STORAGE_KEY = "codework:right-panel-state:v2";
 const RIGHT_PANEL_STORAGE_KEY = canonicalStorageKey(LEGACY_RIGHT_PANEL_STORAGE_KEY);
 // v9 removed the "plan" surface kind (plans render inline in the transcript).
 // v10 keys pull-request surfaces by reference instead of a singleton tab.
 // v11 stops persisting the pull-request list's shared panel, so a restart opens the page fresh.
-const RIGHT_PANEL_STORAGE_VERSION = 11;
+// v12 adds validated local-plugin workspace panel surfaces.
+const RIGHT_PANEL_STORAGE_VERSION = 12;
 
 /**
  * The pull-request list's shared panel (see PULL_REQUESTS_PANEL_ID in the route) is session
@@ -109,7 +117,7 @@ interface RightPanelStoreState {
   byThreadKey: Record<string, ThreadRightPanelState>;
   open: (
     ref: ScopedThreadRef,
-    kind: Exclude<RightPanelKind, "file" | "terminal" | "pull-request">,
+    kind: Exclude<RightPanelKind, "file" | "terminal" | "pull-request" | "plugin">,
   ) => void;
   openBrowser: (ref: ScopedThreadRef, tabId: string | null) => void;
   openFile: (ref: ScopedThreadRef, relativePath: string, line?: number) => void;
@@ -118,6 +126,7 @@ interface RightPanelStoreState {
     target: { environmentId?: string; projectId: string; repository: string; number: number },
   ) => void;
   openTerminal: (ref: ScopedThreadRef, terminalId: string) => void;
+  openPluginPanel: (ref: ScopedThreadRef, pluginId: string, contributionId: string) => void;
   splitTerminal: (
     ref: ScopedThreadRef,
     surfaceId: string,
@@ -133,12 +142,13 @@ interface RightPanelStoreState {
   closeAllSurfaces: (ref: ScopedThreadRef) => void;
   reconcileBrowserSurfaces: (ref: ScopedThreadRef, tabIds: readonly string[]) => void;
   reconcileFileSurfaces: (ref: ScopedThreadRef, workspaceAvailable: boolean) => void;
+  reconcilePluginSurfaces: (ref: ScopedThreadRef, validSurfaceIds: readonly string[]) => void;
   show: (ref: ScopedThreadRef) => void;
   close: (ref: ScopedThreadRef) => void;
   toggleVisibility: (ref: ScopedThreadRef) => void;
   toggle: (
     ref: ScopedThreadRef,
-    kind: Exclude<RightPanelKind, "file" | "terminal" | "pull-request">,
+    kind: Exclude<RightPanelKind, "file" | "terminal" | "pull-request" | "plugin">,
   ) => void;
   removeThread: (ref: ScopedThreadRef) => void;
 }
@@ -150,7 +160,7 @@ const EMPTY_THREAD_STATE: ThreadRightPanelState = {
 };
 
 const singletonSurface = (
-  kind: Exclude<RightPanelKind, "file" | "preview" | "terminal" | "pull-request">,
+  kind: Exclude<RightPanelKind, "file" | "preview" | "terminal" | "pull-request" | "plugin">,
 ): RightPanelSurface => {
   switch (kind) {
     case "diff":
@@ -322,6 +332,10 @@ export function migratePersistedRightPanelState(persistedState: unknown): {
                         }),
                       ];
                     }
+                    if (surface.kind === "plugin") {
+                      const parsed = parseLocalPluginWorkspacePanelSurface(surface);
+                      return parsed === null ? [] : [parsed];
+                    }
                     if (surface.kind !== "terminal") return [surface];
                     if (
                       !("resourceId" in surface) ||
@@ -444,6 +458,12 @@ export const useRightPanelStore = create<RightPanelStoreState>()(
         set((state) => ({
           byThreadKey: updateThread(state.byThreadKey, scopedThreadKey(ref), (current) =>
             upsertSurface(current, terminalSurface(terminalId)),
+          ),
+        })),
+      openPluginPanel: (ref, pluginId, contributionId) =>
+        set((state) => ({
+          byThreadKey: updateThread(state.byThreadKey, scopedThreadKey(ref), (current) =>
+            upsertSurface(current, localPluginWorkspacePanelSurface(pluginId, contributionId)),
           ),
         })),
       splitTerminal: (ref, surfaceId, terminalId, direction = "horizontal") =>
@@ -650,6 +670,27 @@ export const useRightPanelStore = create<RightPanelStoreState>()(
             ...current,
             isOpen: !current.isOpen,
           })),
+        })),
+      reconcilePluginSurfaces: (ref, validSurfaceIds) =>
+        set((state) => ({
+          byThreadKey: updateThread(state.byThreadKey, scopedThreadKey(ref), (current) => {
+            const validIds = new Set(validSurfaceIds);
+            const surfaces = current.surfaces.filter(
+              (surface) => surface.kind !== "plugin" || validIds.has(surface.id),
+            );
+            if (surfaces.length === current.surfaces.length) return current;
+            const activeStillExists = surfaces.some(
+              (surface) => surface.id === current.activeSurfaceId,
+            );
+            return {
+              ...current,
+              isOpen: surfaces.length > 0 ? current.isOpen : false,
+              surfaces,
+              activeSurfaceId: activeStillExists
+                ? current.activeSurfaceId
+                : (surfaces.at(-1)?.id ?? null),
+            };
+          }),
         })),
       toggle: (ref, kind) =>
         set((state) => ({

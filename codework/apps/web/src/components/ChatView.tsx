@@ -164,6 +164,8 @@ import { PullRequestDetailGhost } from "./pullRequest/PullRequestGhosts";
 import { PullRequestsUnavailableState } from "./pullRequest/PullRequestsUnavailableState";
 import { RightPanelTabs, type PullRequestTabStatus } from "./RightPanelTabs";
 import { AgentsPanel } from "./AgentsPanel";
+import { LocalPluginWorkspacePanel } from "./localPlugins/LocalPluginWorkspacePanel";
+import { useEnabledLocalPluginWorkspacePanels } from "../localPlugins/useLocalPluginWorkspacePanels";
 import {
   deriveAgentPanelModel,
   foldSubagentActivities,
@@ -1707,6 +1709,7 @@ function ChatViewContent(props: ChatViewProps) {
   const activeRightPanelSurface = useRightPanelStore((state) =>
     selectActiveRightPanelSurface(state.byThreadKey, activeThreadRef),
   );
+  const localPluginWorkspacePanels = useEnabledLocalPluginWorkspacePanels();
   const [pullRequestTabStatuses, setPullRequestTabStatuses] = useState<
     Record<string, PullRequestTabStatus>
   >({});
@@ -1874,6 +1877,13 @@ function ChatViewContent(props: ChatViewProps) {
     if (!activeThreadRef || !activeEnvironmentBootstrapComplete) return;
     useRightPanelStore.getState().reconcileFileSurfaces(activeThreadRef, activeProject !== null);
   }, [activeEnvironmentBootstrapComplete, activeProject, activeThreadRef]);
+
+  useEffect(() => {
+    if (!activeThreadRef) return;
+    useRightPanelStore
+      .getState()
+      .reconcilePluginSurfaces(activeThreadRef, localPluginWorkspacePanels.surfaceIds);
+  }, [activeThreadRef, localPluginWorkspacePanels.surfaceIds]);
 
   // Compute the list of environments this logical project spans, used to
   // drive the environment picker in BranchToolbar.
@@ -6723,7 +6733,16 @@ function ChatViewContent(props: ChatViewProps) {
     </div>
   );
   const rightPanelContent = activeThreadRef ? (
-    activeRightPanelSurface?.kind === "preview" ? (
+    activeRightPanelSurface?.kind === "plugin" ? (
+      <LocalPluginWorkspacePanel
+        surface={activeRightPanelSurface}
+        workspace={
+          activeProject && activeWorkspaceRoot
+            ? { name: activeProject.title, root: activeWorkspaceRoot }
+            : null
+        }
+      />
+    ) : activeRightPanelSurface?.kind === "preview" ? (
       <Suspense fallback={null}>
         <PreviewPanel
           mode="embedded"
@@ -7271,6 +7290,7 @@ function ChatViewContent(props: ChatViewProps) {
           desktopByTabId={activePreviewState.desktopByTabId}
           previewRuntimeTabId={resolvePreviewRuntimeTabId}
           terminalLabelsById={activeTerminalLabelsById}
+          pluginPanelTitles={localPluginWorkspacePanels.titlesBySurfaceId}
           onActivate={activateRightPanelSurface}
           onCloseSurface={closeRightPanelSurface}
           onCloseOtherSurfaces={closeOtherRightPanelSurfaces}
@@ -7311,6 +7331,7 @@ function ChatViewContent(props: ChatViewProps) {
             desktopByTabId={activePreviewState.desktopByTabId}
             previewRuntimeTabId={resolvePreviewRuntimeTabId}
             terminalLabelsById={activeTerminalLabelsById}
+            pluginPanelTitles={localPluginWorkspacePanels.titlesBySurfaceId}
             onActivate={activateRightPanelSurface}
             onCloseSurface={closeRightPanelSurface}
             onCloseOtherSurfaces={closeOtherRightPanelSurfaces}

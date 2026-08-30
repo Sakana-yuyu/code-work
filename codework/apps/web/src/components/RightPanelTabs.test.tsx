@@ -1,13 +1,16 @@
 import type { DesktopPreviewFavicon, PreviewSessionSnapshot } from "@codework/contracts";
 import { renderToStaticMarkup } from "react-dom/server";
-import { describe, expect, it } from "vite-plus/test";
+import { beforeEach, describe, expect, it } from "vite-plus/test";
 
+import { setCurrentLanguage } from "~/i18n/runtime";
 import {
   RightPanelTabs,
   surfaceShortcutActionForKey,
   surfaceShortcutTargetsTypingContext,
   tabMuteMenuItem,
 } from "./RightPanelTabs";
+
+beforeEach(() => setCurrentLanguage("en", false));
 
 function shortcutEvent(
   key: string,
