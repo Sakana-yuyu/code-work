@@ -1,3 +1,5 @@
+import type { CompositionTaskRun } from "@codework/contracts";
+
 export type CompositionFailureCategory =
   | "cancelled"
   | "permission"
@@ -17,20 +19,7 @@ export type CompositionFailureDisposition = {
   readonly retryable: boolean;
 };
 
-type CompositionFailureInput = {
-  readonly status:
-    | "queued"
-    | "dispatched"
-    | "resuming"
-    | "running"
-    | "waiting_approval"
-    | "waiting_input"
-    | "blocked"
-    | "in_review"
-    | "completed"
-    | "failed"
-    | "cancelled"
-    | "timed_out";
+type CompositionFailureInput = Pick<CompositionTaskRun, "status"> & {
   readonly failureCode?: string;
 };
 
