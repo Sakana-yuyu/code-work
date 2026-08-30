@@ -23,7 +23,7 @@ import {
   Trash2Icon,
   UsersIcon,
 } from "lucide-react";
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 
 import { t } from "~/i18n";
 import { cn, randomUUID } from "~/lib/utils";
@@ -42,10 +42,10 @@ import {
   buildCompositionSquadCreateRequest,
   createEmptyCompositionSquadDraft,
   draftFromCompositionSquad,
-  type CompositionSquadDraft,
   type CompositionSquadDraftIssue,
   type CompositionSquadMemberDraft,
 } from "./CompositionSquadPanel.logic";
+import { useCompositionEditorState } from "./compositionEditorState";
 import { SettingsSection } from "./settingsLayout";
 
 const COLLABORATION_MODES: ReadonlyArray<CompositionSquadCollaborationMode> = [
@@ -75,6 +75,7 @@ const APPROVAL_STAGES: ReadonlyArray<CompositionSquadApprovalStage> = [
   "before_finalize",
 ];
 const EMPTY_SQUADS: ReadonlyArray<CompositionSquad> = [];
+const getSquadId = (squad: CompositionSquad): string => squad.squadId;
 
 const modeLabel = (mode: CompositionSquadCollaborationMode): string =>
   t(`squadBuilder.mode.${mode}`);
@@ -280,40 +281,44 @@ export function CompositionSquadPanel() {
   });
 
   const squads = squadsQuery.data?.squads ?? EMPTY_SQUADS;
-  const firstSquad = squads.find((squad) => squad.archivedAtUnixMs === undefined) ?? squads[0];
-  const [isCreating, setIsCreating] = useState(() => firstSquad === undefined);
-  const [selectedSquadId, setSelectedSquadId] = useState<string | null>(
-    () => firstSquad?.squadId ?? null,
+  const preferredSquads = useMemo(
+    () =>
+      squads.toSorted(
+        (left, right) =>
+          Number(left.archivedAtUnixMs !== undefined) -
+          Number(right.archivedAtUnixMs !== undefined),
+      ),
+    [squads],
   );
-  const selectedSquad = squads.find((squad) => squad.squadId === selectedSquadId) ?? null;
-  const [draft, setDraft] = useState<CompositionSquadDraft>(() =>
-    firstSquad === undefined
-      ? createEmptyCompositionSquadDraft()
-      : draftFromCompositionSquad(firstSquad),
-  );
+  const editor = useCompositionEditorState({
+    environmentId,
+    isPending: squadsQuery.isPending,
+    items: preferredSquads,
+    getItemId: getSquadId,
+    createDraft: createEmptyCompositionSquadDraft,
+    draftFromItem: draftFromCompositionSquad,
+  });
+  const {
+    draft,
+    isCreating,
+    isLoading: isEditorLoading,
+    selectedItem: selectedSquad,
+    selectedItemId: selectedSquadId,
+    setDraft,
+  } = editor;
   const [pendingAction, setPendingAction] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const buildResult = useMemo(() => buildCompositionSquadCreateRequest(draft), [draft]);
   const isArchived = selectedSquad?.archivedAtUnixMs !== undefined;
   const isBusy = pendingAction !== null;
 
-  useEffect(() => {
-    if (isCreating || selectedSquad !== null || firstSquad === undefined) return;
-    setSelectedSquadId(firstSquad.squadId);
-    setDraft(draftFromCompositionSquad(firstSquad));
-  }, [firstSquad, isCreating, selectedSquad]);
-
   const selectSquad = (squad: CompositionSquad): void => {
-    setIsCreating(false);
-    setSelectedSquadId(squad.squadId);
-    setDraft(draftFromCompositionSquad(squad));
+    editor.selectItem(squad);
     setActionError(null);
   };
 
   const startCreate = (): void => {
-    setIsCreating(true);
-    setSelectedSquadId(null);
-    setDraft(createEmptyCompositionSquadDraft());
+    editor.startCreate();
     setActionError(null);
   };
 
@@ -328,9 +333,7 @@ export function CompositionSquadPanel() {
       const error = squashAtomCommandFailure(result);
       setActionError(error instanceof Error ? error.message : t("squadBuilder.actionFailed"));
     } else {
-      setIsCreating(false);
-      setSelectedSquadId(result.value.squad.squadId);
-      setDraft(draftFromCompositionSquad(result.value.squad));
+      editor.selectItem(result.value.squad);
       squadsQuery.refresh();
     }
     setPendingAction(null);
@@ -456,7 +459,7 @@ export function CompositionSquadPanel() {
         <p className="px-3 py-6 text-sm text-muted-foreground sm:px-4">
           {t("squadBuilder.noEnvironment")}
         </p>
-      ) : squadsQuery.isPending ? (
+      ) : squadsQuery.isPending || isEditorLoading ? (
         <p className="px-3 py-6 text-sm text-muted-foreground sm:px-4">
           {t("squadBuilder.loading")}
         </p>

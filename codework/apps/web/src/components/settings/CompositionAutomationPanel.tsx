@@ -54,6 +54,7 @@ import { Checkbox } from "../ui/checkbox";
 import { Input } from "../ui/input";
 import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from "../ui/select";
 import { Textarea } from "../ui/textarea";
+import { useCompositionEditorState } from "./compositionEditorState";
 import { SettingsSection } from "./settingsLayout";
 
 const EMPTY_AUTOMATIONS: ReadonlyArray<CompositionAutomation> = [];
@@ -67,6 +68,7 @@ const INTERVAL_UNITS: ReadonlyArray<CompositionAutomationIntervalUnit> = [
 ];
 const TARGET_TYPES = ["agent", "squad", "goal_loop"] as const;
 const EXECUTION_MODES = ["isolated", "existing_thread"] as const;
+const getAutomationId = (automation: CompositionAutomation): string => automation.automationId;
 
 const formatTime = (unixMs: number | null): string =>
   unixMs === null
@@ -243,24 +245,28 @@ export function CompositionAutomationPanel() {
       : serverEnvironment.compositionAutomations({ environmentId, input: {} }),
   );
   const automations = automationsQuery.data?.automations ?? EMPTY_AUTOMATIONS;
-  const firstAutomation = automations[0];
   const firstProject = projects[0] ?? null;
   const makeCreateDraft = (): CompositionAutomationDraft => ({
     ...createEmptyCompositionAutomationDraft(),
     projectId: firstProject?.id ?? "",
     workspaceRoot: firstProject?.workspaceRoot ?? "",
   });
-  const [isCreating, setIsCreating] = useState(() => firstAutomation === undefined);
-  const [selectedAutomationId, setSelectedAutomationId] = useState<string | null>(
-    () => firstAutomation?.automationId ?? null,
-  );
-  const selectedAutomation =
-    automations.find((automation) => automation.automationId === selectedAutomationId) ?? null;
-  const [draft, setDraft] = useState<CompositionAutomationDraft>(() =>
-    firstAutomation === undefined
-      ? makeCreateDraft()
-      : draftFromCompositionAutomation(firstAutomation),
-  );
+  const editor = useCompositionEditorState({
+    environmentId,
+    isPending: automationsQuery.isPending,
+    items: automations,
+    getItemId: getAutomationId,
+    createDraft: makeCreateDraft,
+    draftFromItem: draftFromCompositionAutomation,
+  });
+  const {
+    draft,
+    isCreating,
+    isLoading: isEditorLoading,
+    selectedItem: selectedAutomation,
+    selectedItemId: selectedAutomationId,
+    setDraft,
+  } = editor;
   const [runCursor, setRunCursor] = useState<string | undefined>();
   const runsQuery = useEnvironmentQuery(
     environmentId === null || selectedAutomation === null
@@ -310,12 +316,6 @@ export function CompositionAutomationPanel() {
   });
 
   useEffect(() => {
-    if (isCreating || selectedAutomation !== null || firstAutomation === undefined) return;
-    setSelectedAutomationId(firstAutomation.automationId);
-    setDraft(draftFromCompositionAutomation(firstAutomation));
-  }, [firstAutomation, isCreating, selectedAutomation]);
-
-  useEffect(() => {
     if (selectedAutomation !== null || firstProject === null || draft.projectId !== "") return;
     setDraft((current) => ({
       ...current,
@@ -329,17 +329,13 @@ export function CompositionAutomationPanel() {
   };
 
   const selectAutomation = (automation: CompositionAutomation): void => {
-    setIsCreating(false);
-    setSelectedAutomationId(automation.automationId);
-    setDraft(draftFromCompositionAutomation(automation));
+    editor.selectItem(automation);
     setRunCursor(undefined);
     setActionError(null);
   };
 
   const startCreate = (): void => {
-    setIsCreating(true);
-    setSelectedAutomationId(null);
-    setDraft(makeCreateDraft());
+    editor.startCreate();
     setRunCursor(undefined);
     setActionError(null);
   };
@@ -362,9 +358,7 @@ export function CompositionAutomationPanel() {
   };
 
   const acceptAutomation = (automation: CompositionAutomation): void => {
-    setIsCreating(false);
-    setSelectedAutomationId(automation.automationId);
-    setDraft(draftFromCompositionAutomation(automation));
+    editor.selectItem(automation);
     setRunCursor(undefined);
     automationsQuery.refresh();
     runsQuery.refresh();
@@ -405,7 +399,7 @@ export function CompositionAutomationPanel() {
             },
           }),
         () => {
-          startCreate();
+          editor.markItemDeleted(selectedAutomation.automationId);
           automationsQuery.refresh();
         },
       );
@@ -511,7 +505,7 @@ export function CompositionAutomationPanel() {
           <p className="px-3 py-6 text-sm text-muted-foreground sm:px-4">
             {t("automationCenter.noEnvironment")}
           </p>
-        ) : automationsQuery.isPending ? (
+        ) : automationsQuery.isPending || isEditorLoading ? (
           <p className="px-3 py-6 text-sm text-muted-foreground sm:px-4">
             {t("automationCenter.loading")}
           </p>
