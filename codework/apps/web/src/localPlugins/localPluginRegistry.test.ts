@@ -41,4 +41,22 @@ describe("LocalPluginRegistry", () => {
     expect(registry.hasPermission("acme.disabled", "composer.prompt.write")).toBe(false);
     expect(listener).toHaveBeenCalledTimes(1);
   });
+
+  it("隔离订阅者异常，并继续发布已更新快照", () => {
+    const registry = new LocalPluginRegistry();
+    const throwingListener = vi.fn(() => {
+      throw new Error("listener failed");
+    });
+    const healthyListener = vi.fn();
+    registry.subscribe(throwingListener);
+    registry.subscribe(healthyListener);
+
+    expect(() => registry.replace([plugin("acme.enabled", true)])).not.toThrow();
+
+    expect(registry.getSnapshot().plugins.map((entry) => entry.manifest.id)).toEqual([
+      "acme.enabled",
+    ]);
+    expect(throwingListener).toHaveBeenCalledTimes(1);
+    expect(healthyListener).toHaveBeenCalledTimes(1);
+  });
 });

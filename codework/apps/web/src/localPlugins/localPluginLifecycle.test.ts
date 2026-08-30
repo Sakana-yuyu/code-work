@@ -138,6 +138,28 @@ describe("LocalPluginLifecycle", () => {
     expect(runtime.storage.value).toContain("acme.one");
   });
 
+  it("注册表订阅者异常不反转已完成的安装结果", async () => {
+    const runtime = createRuntime();
+    const compareAndSwap = vi.spyOn(runtime.storage, "compareAndSwap");
+    const throwingListener = vi.fn(() => {
+      throw new Error("listener failed");
+    });
+    const healthyListener = vi.fn();
+    runtime.registry.subscribe(throwingListener);
+    runtime.registry.subscribe(healthyListener);
+
+    const result = await runtime.lifecycle.install(manifest("acme.registry-observer"));
+
+    expect(result).toEqual({ ok: true });
+    expect(compareAndSwap).toHaveBeenCalledTimes(1);
+    expect(runtime.registry.getSnapshot().plugins.map((plugin) => plugin.manifest.id)).toEqual([
+      "acme.registry-observer",
+    ]);
+    expect(throwingListener).toHaveBeenCalledTimes(1);
+    expect(healthyListener).toHaveBeenCalledTimes(1);
+    expect(runtime.failures.getSnapshot()).toEqual([]);
+  });
+
   it("mutation 观察者异常不反转已完成的持久化结果", async () => {
     const onMutationResult = vi.fn(() => {
       throw new Error("observer failed");

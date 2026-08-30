@@ -47,7 +47,13 @@ export class LocalPluginRegistry {
 
   replace(plugins: ReadonlyArray<StoredLocalPlugin>): void {
     this.snapshot = { plugins: [...plugins] };
-    for (const listener of this.listeners) listener();
+    for (const listener of this.listeners) {
+      try {
+        listener();
+      } catch {
+        // 订阅者异常不能中断已完成的快照发布或其他订阅者。
+      }
+    }
   }
 
   get(pluginId: string): StoredLocalPlugin | null {
