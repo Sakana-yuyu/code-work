@@ -9,30 +9,24 @@ import {
   controlJsonFlag,
   controlServerFlag,
 } from "./agentControlFlags.ts";
-import { formatAgentStatus } from "./agentControlOutput.ts";
-import { getAgentStatus } from "./agentControlRpc.ts";
-import { agentKillCommand } from "./agentKill.ts";
+import { formatAgentKillResult } from "./agentControlKillOutput.ts";
+import { killAgent } from "./agentControlKillRpc.ts";
 
-const agentStatusCommand = Command.make("status", {
+export const agentKillCommand = Command.make("kill", {
   agentId: agentIdArgument,
   server: controlServerFlag,
   accessToken: controlAccessTokenFlag,
   json: controlJsonFlag,
 }).pipe(
-  Command.withDescription("Read one agent's authoritative orchestration status."),
+  Command.withDescription("Interrupt an agent's active orchestration turn."),
   Command.withHandler((flags) =>
     Effect.gen(function* () {
-      const status = yield* getAgentStatus({
+      const result = yield* killAgent({
         serverUrl: flags.server,
         ...(Option.isSome(flags.accessToken) ? { accessToken: flags.accessToken.value } : {}),
         agentId: flags.agentId,
       });
-      yield* Console.log(formatAgentStatus(status, flags.json));
+      yield* Console.log(formatAgentKillResult(result, flags.json));
     }),
   ),
-);
-
-export const agentCommand = Command.make("agent").pipe(
-  Command.withDescription("Inspect and control coding agents."),
-  Command.withSubcommands([agentStatusCommand, agentKillCommand]),
 );

@@ -267,6 +267,18 @@ it.layer(NodeServices.layer)("bin cli parsing", (it) => {
     }),
   );
 
+  it.effect("exposes precise Agent kill controls", () =>
+    Effect.gen(function* () {
+      const kill = yield* captureStdout(runCli(["agent", "kill", "--help"], noConnectCli));
+
+      assert.include(kill.output, "Interrupt an agent's active orchestration turn.");
+      assert.include(kill.output, "<agent-id>");
+      assert.include(kill.output, "--server");
+      assert.include(kill.output, "--access-token");
+      assert.include(kill.output, "--json");
+    }),
+  );
+
   it.effect("exposes read-only Agent log snapshots", () =>
     Effect.gen(function* () {
       const logs = yield* captureStdout(runCli(["logs", "--help"], noConnectCli));
