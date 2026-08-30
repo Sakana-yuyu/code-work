@@ -509,49 +509,6 @@ const makeStore = Effect.gen(function* () {
     `,
   });
 
-  const releaseStopClaimRow = SqlSchema.findOneOption({
-    Request: WorkspaceScriptStopTransitionSchema,
-    Result: WorkspaceScriptRunRowSchema,
-    execute: (run) => sql`
-      UPDATE workspace_script_runs
-      SET
-        status = ${run.status},
-        revision = ${run.revision},
-        stop_operation_id = NULL,
-        updated_at_unix_ms = ${run.updatedAtUnixMs}
-      WHERE workspace_script_run_id = ${run.workspaceScriptRunId}
-        AND revision = ${run.expectedRevision}
-        AND stop_operation_id = ${run.operationId}
-      RETURNING
-        workspace_script_run_id AS "workspaceScriptRunId",
-        idempotency_key AS "idempotencyKey",
-        project_id AS "projectId",
-        thread_id AS "threadId",
-        script_id AS "scriptId",
-        script_name AS "scriptName",
-        terminal_id AS "terminalId",
-        cwd,
-        worktree_path AS "worktreePath",
-        status,
-        health_status AS "healthStatus",
-        health_checked_at_unix_ms AS "healthCheckedAtUnixMs",
-        health_detail AS "healthDetail",
-        ports_json AS ports,
-        revision,
-        requested_at_unix_ms AS "requestedAtUnixMs",
-        started_at_unix_ms AS "startedAtUnixMs",
-        finished_at_unix_ms AS "finishedAtUnixMs",
-        exit_code AS "exitCode",
-        exit_signal AS "exitSignal",
-        error_code AS "errorCode",
-        error_detail AS "errorDetail",
-        composition_task_id AS "compositionTaskId",
-        composition_run_id AS "compositionRunId",
-        stop_operation_id AS "stopOperationId",
-        updated_at_unix_ms AS "updatedAtUnixMs"
-    `,
-  });
-
   const listRunRows = SqlSchema.findAll({
     Request: WorkspaceScriptListQuery,
     Result: WorkspaceScriptRunRowSchema,
@@ -918,93 +875,10 @@ const makeStore = Effect.gen(function* () {
       }),
     );
 
-  const releaseStopClaim: WorkspaceScriptStoreShape["releaseStopClaim"] = (input) =>
-    withTransaction(
-      Effect.gen(function* () {
-        const run = yield* validateRun("WorkspaceScriptStore.releaseStopClaim", input.run);
-        const current = yield* readStoredRun(run.workspaceScriptRunId);
-        if (Option.isNone(current)) {
-          return yield* domainError(
-            "workspace_script_run_not_found",
-            "Workspace Script Run 不存在。",
-            { workspaceScriptRunId: run.workspaceScriptRunId },
-          );
-        }
-        if (!sameRunIdentity(current.value.run, run)) {
-          return yield* domainError(
-            "workspace_script_run_conflict",
-            "释放停止领取时试图修改不可变身份字段。",
-            { workspaceScriptRunId: run.workspaceScriptRunId },
-          );
-        }
-        if (current.value.stopOperationId === null && sameRun(current.value.run, run)) {
-          return current.value.run;
-        }
-        if (current.value.stopOperationId !== input.operationId) {
-          return yield* domainError(
-            "workspace_script_stop_operation_conflict",
-            "停止 operationId 与当前领取者不一致。",
-            {
-              workspaceScriptRunId: run.workspaceScriptRunId,
-              operationId: input.operationId,
-            },
-          );
-        }
-        if (
-          current.value.run.status === "stopped" ||
-          current.value.run.status === "exited" ||
-          current.value.run.status === "failed"
-        ) {
-          return current.value.run;
-        }
-        if (
-          current.value.run.revision !== input.expectedRevision ||
-          run.revision !== input.expectedRevision + 1
-        ) {
-          return yield* revisionError(run, input.expectedRevision, current.value.run.revision);
-        }
-
-        const released = yield* query(
-          "WorkspaceScriptStore.releaseStopClaim.update",
-          releaseStopClaimRow({
-            ...toRunWrite(run),
-            expectedRevision: input.expectedRevision,
-            operationId: input.operationId,
-          }),
-        );
-        if (Option.isSome(released)) {
-          return (yield* decodeStoredRow(
-            "WorkspaceScriptStore.releaseStopClaim.update",
-            released.value,
-          )).run;
-        }
-
-        const latest = yield* readStoredRun(run.workspaceScriptRunId);
-        if (Option.isSome(latest)) {
-          if (latest.value.stopOperationId === null && sameRun(latest.value.run, run)) {
-            return latest.value.run;
-          }
-          if (
-            latest.value.run.status === "stopped" ||
-            latest.value.run.status === "exited" ||
-            latest.value.run.status === "failed"
-          ) {
-            return latest.value.run;
-          }
-        }
-        return yield* revisionError(
-          run,
-          input.expectedRevision,
-          Option.isSome(latest) ? latest.value.run.revision : 0,
-        );
-      }),
-    );
-
   const store: WorkspaceScriptStoreShape = {
     claimStart,
     saveTransition,
     claimStop,
-    releaseStopClaim,
     getRun: (workspaceScriptRunId) =>
       readStoredRun(workspaceScriptRunId).pipe(Effect.map(Option.map((stored) => stored.run))),
     getActiveRunByTerminal: (threadId, terminalId) =>
