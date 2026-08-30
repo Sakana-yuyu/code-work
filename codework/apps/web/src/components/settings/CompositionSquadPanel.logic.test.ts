@@ -19,6 +19,7 @@ describe("CompositionSquadPanel logic", () => {
       failurePolicy: "fail_fast",
       partialSuccessPolicy: "reject",
       approvalStages: [],
+      defaultModelBinding: { kind: "runtime_native" },
       members: [
         {
           clientId: "member-0",
@@ -26,6 +27,7 @@ describe("CompositionSquadPanel logic", () => {
           role: "leader",
           required: true,
           model: "",
+          modelBinding: { kind: "team_default" },
           workspaceRoot: "",
           capabilityIdsText: "",
           maxConcurrentTasksText: "1",
@@ -40,10 +42,12 @@ describe("CompositionSquadPanel logic", () => {
     draft.name = " Review Squad ";
     draft.instructions = " 先实现，再审查。 ";
     draft.approvalStages = ["before_finalize"];
+    draft.defaultModelBinding = null;
     draft.members[0] = {
       ...draft.members[0]!,
       agentId: " leader-codex ",
       model: " gpt-5 ",
+      modelBinding: null,
       workspaceRoot: " E:/repo ",
       capabilityIdsText: " fs.read, shell.exec , git.diff ",
     };
@@ -89,6 +93,7 @@ describe("CompositionSquadPanel logic", () => {
       role: "leader",
       required: true,
       model: "",
+      modelBinding: { kind: "team_default" },
       workspaceRoot: "",
       capabilityIdsText: "",
       maxConcurrentTasksText: "1",
@@ -153,6 +158,7 @@ describe("CompositionSquadPanel logic", () => {
       failurePolicy: "continue_independent",
       partialSuccessPolicy: "require_review",
       approvalStages: ["before_dispatch", "before_finalize"],
+      defaultModelBinding: null,
       members: [
         {
           clientId: "member-0-agent-lead",
@@ -160,6 +166,7 @@ describe("CompositionSquadPanel logic", () => {
           role: "leader",
           required: true,
           model: "gpt-5",
+          modelBinding: null,
           workspaceRoot: "E:/repo",
           capabilityIdsText: "fs.read, git.diff",
           maxConcurrentTasksText: "2",
@@ -170,11 +177,46 @@ describe("CompositionSquadPanel logic", () => {
           role: "reviewer",
           required: true,
           model: "",
+          modelBinding: null,
           workspaceRoot: "",
           capabilityIdsText: "fs.read",
           maxConcurrentTasksText: "1",
         },
       ],
+    });
+  });
+
+  it("结构化绑定在 Builder 中保持稳定往返且不复制密钥", () => {
+    const draft = createEmptyCompositionSquadDraft();
+    draft.squadId = "squad-byok";
+    draft.name = "BYOK Squad";
+    draft.defaultModelBinding = {
+      kind: "byok",
+      providerInstanceId: "byok-primary",
+      adapterId: "adapter-deepseek",
+      modelId: "deepseek-chat",
+    };
+    draft.members[0] = {
+      ...draft.members[0]!,
+      agentId: "provider:byok-primary",
+      modelBinding: { kind: "team_default" },
+    };
+
+    const result = buildCompositionSquadCreateRequest(draft);
+
+    expect(result.issues).toEqual([]);
+    expect(result.request?.defaultModelBinding).toEqual(draft.defaultModelBinding);
+    expect(result.request?.members[0]?.modelBinding).toEqual({ kind: "team_default" });
+    expect(JSON.stringify(result.request)).not.toContain("apiKey");
+    expect(
+      draftFromCompositionSquad({
+        ...result.request!,
+        revision: 1,
+        memberAgentIds: result.request!.members.map((member) => member.agentId),
+      }),
+    ).toMatchObject({
+      defaultModelBinding: draft.defaultModelBinding,
+      members: [expect.objectContaining({ modelBinding: { kind: "team_default" } })],
     });
   });
 });

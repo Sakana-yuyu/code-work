@@ -6,7 +6,9 @@ import {
   type CompositionSquadCreateRequest,
   type CompositionSquadFailurePolicy,
   type CompositionSquadMember,
+  type CompositionSquadMemberModelBinding,
   type CompositionSquadMemberRole,
+  type CompositionSquadModelBinding,
   type CompositionSquadPartialSuccessPolicy,
   type CompositionSquadValidationIssue,
 } from "@codework/contracts";
@@ -17,6 +19,7 @@ export interface CompositionSquadMemberDraft {
   role: CompositionSquadMemberRole;
   required: boolean;
   model: string;
+  modelBinding: CompositionSquadMemberModelBinding | null;
   workspaceRoot: string;
   capabilityIdsText: string;
   maxConcurrentTasksText: string;
@@ -32,6 +35,7 @@ export interface CompositionSquadDraft {
   failurePolicy: CompositionSquadFailurePolicy;
   partialSuccessPolicy: CompositionSquadPartialSuccessPolicy;
   approvalStages: CompositionSquadApprovalStage[];
+  defaultModelBinding: CompositionSquadModelBinding | null;
   members: CompositionSquadMemberDraft[];
 }
 
@@ -57,6 +61,7 @@ const emptyMemberDraft = (): CompositionSquadMemberDraft => ({
   role: "leader",
   required: true,
   model: "",
+  modelBinding: { kind: "team_default" },
   workspaceRoot: "",
   capabilityIdsText: "",
   maxConcurrentTasksText: "1",
@@ -72,6 +77,7 @@ export const createEmptyCompositionSquadDraft = (): CompositionSquadDraft => ({
   failurePolicy: "fail_fast",
   partialSuccessPolicy: "reject",
   approvalStages: [],
+  defaultModelBinding: { kind: "runtime_native" },
   members: [emptyMemberDraft()],
 });
 
@@ -131,6 +137,7 @@ export function buildCompositionSquadCreateRequest(
       role: member.role,
       order: index,
       required: member.required,
+      ...(member.modelBinding === null ? {} : { modelBinding: member.modelBinding }),
       ...(optionalTrimmed(member.model) === undefined
         ? {}
         : { model: optionalTrimmed(member.model) }),
@@ -156,6 +163,9 @@ export function buildCompositionSquadCreateRequest(
       : { instructions: optionalTrimmed(draft.instructions) }),
     collaborationMode: draft.collaborationMode,
     members,
+    ...(draft.defaultModelBinding === null
+      ? {}
+      : { defaultModelBinding: draft.defaultModelBinding }),
     maxConcurrency,
     maxRetries,
     failurePolicy: draft.failurePolicy,
@@ -194,6 +204,8 @@ export function draftFromCompositionSquad(squad: CompositionSquad): CompositionS
     failurePolicy: squad.failurePolicy ?? "fail_fast",
     partialSuccessPolicy: squad.partialSuccessPolicy ?? "reject",
     approvalStages: [...(squad.approvalStages ?? [])],
+    defaultModelBinding:
+      squad.defaultModelBinding === undefined ? null : { ...squad.defaultModelBinding },
     members:
       sourceMembers.length === 0
         ? [emptyMemberDraft()]
@@ -205,6 +217,7 @@ export function draftFromCompositionSquad(squad: CompositionSquad): CompositionS
               role: member.role,
               required: member.required,
               model: member.model ?? "",
+              modelBinding: member.modelBinding === undefined ? null : { ...member.modelBinding },
               workspaceRoot: member.workspaceRoot ?? "",
               capabilityIdsText: member.capabilityIds.join(", "),
               maxConcurrentTasksText: String(member.maxConcurrentTasks),

@@ -850,12 +850,36 @@ export const CompositionSquadApprovalStage = Schema.Literals([
 ]);
 export type CompositionSquadApprovalStage = typeof CompositionSquadApprovalStage.Type;
 
+/** Squad 可复用的模型目标只保存稳定引用，绝不复制供应商密钥。 */
+export const CompositionSquadModelBinding = Schema.Union([
+  Schema.Struct({
+    kind: Schema.Literal("byok"),
+    providerInstanceId: TrimmedNonEmptyString,
+    adapterId: TrimmedNonEmptyString,
+    modelId: TrimmedNonEmptyString,
+  }),
+  Schema.Struct({
+    kind: Schema.Literal("runtime_native"),
+    modelId: Schema.optional(TrimmedNonEmptyString),
+  }),
+]);
+export type CompositionSquadModelBinding = typeof CompositionSquadModelBinding.Type;
+
+/** 成员可以继承团队默认模型，也可以声明自己的稳定模型目标。 */
+export const CompositionSquadMemberModelBinding = Schema.Union([
+  Schema.Struct({ kind: Schema.Literal("team_default") }),
+  CompositionSquadModelBinding,
+]);
+export type CompositionSquadMemberModelBinding = typeof CompositionSquadMemberModelBinding.Type;
+
 /** Squad 成员模板只保存默认请求；每次运行仍签发 task-scoped capability grant。 */
 export const CompositionSquadMember = Schema.Struct({
   agentId: TrimmedNonEmptyString,
   role: CompositionSquadMemberRole,
   order: NonNegativeInt,
   required: Schema.Boolean,
+  modelBinding: Schema.optional(CompositionSquadMemberModelBinding),
+  /** 旧版自由文本模型字段，仅用于兼容既有持久化配置。 */
   model: Schema.optional(TrimmedNonEmptyString),
   workspaceRoot: Schema.optional(TrimmedNonEmptyString),
   capabilityIds: Schema.Array(TrimmedNonEmptyString),
@@ -873,6 +897,7 @@ const CompositionSquadFields = Schema.Struct({
   revision: Schema.optional(PositiveInt),
   collaborationMode: Schema.optional(CompositionSquadCollaborationMode),
   members: Schema.optional(Schema.Array(CompositionSquadMember)),
+  defaultModelBinding: Schema.optional(CompositionSquadModelBinding),
   maxConcurrency: Schema.optional(PositiveInt),
   maxRetries: Schema.optional(NonNegativeInt),
   failurePolicy: Schema.optional(CompositionSquadFailurePolicy),
@@ -890,6 +915,8 @@ export type CompositionSquadValidationIssueCode =
   | "duplicate_member"
   | "duplicate_order"
   | "duplicate_capability"
+  | "model_binding_conflict"
+  | "team_default_model_missing"
   | "leader_mismatch"
   | "member_projection_mismatch"
   | "missing_required_role"
@@ -918,6 +945,7 @@ export const validateCompositionSquadConfiguration = (
     input.revision !== undefined ||
     input.collaborationMode !== undefined ||
     members !== undefined ||
+    input.defaultModelBinding !== undefined ||
     input.maxConcurrency !== undefined ||
     input.maxRetries !== undefined ||
     input.failurePolicy !== undefined ||
@@ -948,6 +976,12 @@ export const validateCompositionSquadConfiguration = (
     for (const [index, member] of members.entries()) {
       if (hasDuplicates(member.capabilityIds)) {
         add("duplicate_capability", `members.${index}.capabilityIds`);
+      }
+      if (member.model !== undefined && member.modelBinding !== undefined) {
+        add("model_binding_conflict", `members.${index}.modelBinding`);
+      }
+      if (member.modelBinding?.kind === "team_default" && input.defaultModelBinding === undefined) {
+        add("team_default_model_missing", `members.${index}.modelBinding`);
       }
     }
 
@@ -1025,6 +1059,7 @@ const CompositionSquadWritableFields = {
   instructions: Schema.optional(TrimmedNonEmptyString),
   collaborationMode: CompositionSquadCollaborationMode,
   members: Schema.Array(CompositionSquadMember),
+  defaultModelBinding: Schema.optional(CompositionSquadModelBinding),
   maxConcurrency: PositiveInt,
   maxRetries: Schema.optional(NonNegativeInt),
   failurePolicy: CompositionSquadFailurePolicy,

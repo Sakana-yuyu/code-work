@@ -198,6 +198,83 @@ describe("composition contracts", () => {
     expect(decoded.approvalStages).toEqual(["before_mutating_tool", "before_finalize"]);
   });
 
+  it("保存结构化模型绑定并保持旧 model 字段兼容", () => {
+    const structured = decodeSquad({
+      ...validSquadConfiguration,
+      defaultModelBinding: {
+        kind: "byok",
+        providerInstanceId: "byok-primary",
+        adapterId: "adapter-deepseek",
+        modelId: "deepseek-chat",
+      },
+      members: validSquadConfiguration.members.map((member, index) => ({
+        ...member,
+        modelBinding:
+          index === 0
+            ? { kind: "team_default" }
+            : { kind: "runtime_native", modelId: `runtime-model-${index}` },
+      })),
+    });
+    const legacy = decodeSquad({
+      ...validSquadConfiguration,
+      members: validSquadConfiguration.members.map((member, index) =>
+        index === 0 ? { ...member, model: "legacy-model" } : member,
+      ),
+    });
+
+    expect(structured.defaultModelBinding).toEqual({
+      kind: "byok",
+      providerInstanceId: "byok-primary",
+      adapterId: "adapter-deepseek",
+      modelId: "deepseek-chat",
+    });
+    expect(structured.members?.[0]?.modelBinding).toEqual({ kind: "team_default" });
+    expect(structured.members?.[1]?.modelBinding).toEqual({
+      kind: "runtime_native",
+      modelId: "runtime-model-1",
+    });
+    expect(legacy.members?.[0]).toMatchObject({
+      model: "legacy-model",
+    });
+    expect(legacy.members?.[0]).not.toHaveProperty("modelBinding");
+  });
+
+  it("拒绝缺少团队默认值或同时声明旧新模型字段的成员绑定", () => {
+    expect(() =>
+      decodeSquad({
+        squadId: "squad-model-only",
+        name: "悬空模型绑定",
+        leaderAgentId: "agent-leader",
+        memberAgentIds: ["agent-leader"],
+        defaultModelBinding: { kind: "runtime_native" },
+      }),
+    ).toThrow();
+    expect(() =>
+      decodeSquad({
+        ...validSquadConfiguration,
+        members: validSquadConfiguration.members.map((member, index) => ({
+          ...member,
+          ...(index === 0 ? { modelBinding: { kind: "team_default" } } : {}),
+        })),
+      }),
+    ).toThrow();
+    expect(() =>
+      decodeSquad({
+        ...validSquadConfiguration,
+        defaultModelBinding: { kind: "runtime_native" },
+        members: validSquadConfiguration.members.map((member, index) => ({
+          ...member,
+          ...(index === 0
+            ? {
+                model: "legacy-model",
+                modelBinding: { kind: "runtime_native", modelId: "native-model" },
+              }
+            : {}),
+        })),
+      }),
+    ).toThrow();
+  });
+
   it("拒绝零并发的 Squad 配置", () => {
     expect(() =>
       decodeSquad({

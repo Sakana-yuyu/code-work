@@ -414,6 +414,7 @@ export function CompositionSquadPanel() {
           role: "worker",
           required: true,
           model: "",
+          modelBinding: { kind: "team_default" },
           workspaceRoot: "",
           capabilityIdsText: "",
           maxConcurrentTasksText: "1",
