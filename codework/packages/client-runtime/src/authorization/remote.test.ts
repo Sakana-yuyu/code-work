@@ -103,8 +103,28 @@ const expectFormBody = (
   if (text === undefined) {
     throw new Error("Expected fetch form request body");
   }
-  expect(Object.fromEntries(new URLSearchParams(text))).toEqual(expected);
+  const byKeyAndValue = (
+    [leftKey, leftValue]: readonly [string, string],
+    [rightKey, rightValue]: readonly [string, string],
+  ): number => leftKey.localeCompare(rightKey) || leftValue.localeCompare(rightValue);
+  expect(Array.from(new URLSearchParams(text).entries()).sort(byKeyAndValue)).toEqual(
+    Object.entries(expected).sort(byKeyAndValue),
+  );
 };
+
+describe("expectFormBody", () => {
+  it("拒绝重复的单值授权字段", () => {
+    const calls: ReadonlyArray<FetchCall> = [
+      ["https://example.test/token", { body: "client_label=wrong&client_label=Code+Work+Mobile" }],
+    ];
+
+    expect(() =>
+      expectFormBody(calls, 1, {
+        client_label: "Code Work Mobile",
+      }),
+    ).toThrow();
+  });
+});
 
 describe("remote environment authorization", () => {
   it.effect("bootstraps bearer auth against a remote backend", () =>
