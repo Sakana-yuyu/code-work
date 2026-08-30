@@ -35,7 +35,6 @@ import {
   isFinishedWorkspaceScriptRun,
   makeWorkspaceScriptClosed,
   makeWorkspaceScriptExited,
-  makeWorkspaceScriptStopping,
   makeWorkspaceScriptStopRetryable,
 } from "./WorkspaceScriptStopState.ts";
 import {
@@ -584,10 +583,12 @@ export const makeWorkspaceScriptService = Effect.fn("WorkspaceScriptService.make
         );
       }
 
-      const stopping = makeWorkspaceScriptStopping(
-        current.value,
-        Math.max(yield* currentTimeMillis, current.value.updatedAtUnixMs),
-      );
+      const stopping: WorkspaceScriptRun = {
+        ...current.value,
+        ...(isFinishedWorkspaceScriptRun(current.value) ? {} : { status: "stopping" as const }),
+        revision: current.value.revision + 1,
+        updatedAtUnixMs: Math.max(yield* currentTimeMillis, current.value.updatedAtUnixMs),
+      };
       const claim = yield* options.store
         .claimStop({
           run: stopping,

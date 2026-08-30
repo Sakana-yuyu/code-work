@@ -3,21 +3,6 @@ import type { WorkspaceScriptRun } from "@codework/contracts";
 export const isFinishedWorkspaceScriptRun = (run: WorkspaceScriptRun): boolean =>
   run.status === "stopped" || run.status === "exited" || run.status === "failed";
 
-export const makeWorkspaceScriptStopping = (
-  run: WorkspaceScriptRun,
-  observedAtUnixMs: number,
-): WorkspaceScriptRun => ({
-  ...run,
-  ...(isFinishedWorkspaceScriptRun(run)
-    ? {}
-    : {
-        status: "stopping" as const,
-        startedAtUnixMs: run.startedAtUnixMs ?? observedAtUnixMs,
-      }),
-  revision: run.revision + 1,
-  updatedAtUnixMs: observedAtUnixMs,
-});
-
 /** stop operation 身份始终保留；stopping 表示执行中，running 表示上次结果未知且可重试。 */
 export const makeWorkspaceScriptStopRetryable = (
   run: WorkspaceScriptRun,
