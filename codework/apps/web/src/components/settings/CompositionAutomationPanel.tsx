@@ -54,6 +54,7 @@ import { Checkbox } from "../ui/checkbox";
 import { Input } from "../ui/input";
 import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from "../ui/select";
 import { Textarea } from "../ui/textarea";
+import { resolveAsyncCollectionCreationMode } from "./asyncCollectionMode";
 import { SettingsSection } from "./settingsLayout";
 
 const EMPTY_AUTOMATIONS: ReadonlyArray<CompositionAutomation> = [];
@@ -250,7 +251,12 @@ export function CompositionAutomationPanel() {
     projectId: firstProject?.id ?? "",
     workspaceRoot: firstProject?.workspaceRoot ?? "",
   });
-  const [isCreating, setIsCreating] = useState(() => firstAutomation === undefined);
+  const [createRequested, setCreateRequested] = useState(false);
+  const isCreating = resolveAsyncCollectionCreationMode({
+    createRequested,
+    isPending: automationsQuery.isPending,
+    itemCount: automations.length,
+  });
   const [selectedAutomationId, setSelectedAutomationId] = useState<string | null>(
     () => firstAutomation?.automationId ?? null,
   );
@@ -329,7 +335,7 @@ export function CompositionAutomationPanel() {
   };
 
   const selectAutomation = (automation: CompositionAutomation): void => {
-    setIsCreating(false);
+    setCreateRequested(false);
     setSelectedAutomationId(automation.automationId);
     setDraft(draftFromCompositionAutomation(automation));
     setRunCursor(undefined);
@@ -337,7 +343,7 @@ export function CompositionAutomationPanel() {
   };
 
   const startCreate = (): void => {
-    setIsCreating(true);
+    setCreateRequested(true);
     setSelectedAutomationId(null);
     setDraft(makeCreateDraft());
     setRunCursor(undefined);
@@ -362,7 +368,7 @@ export function CompositionAutomationPanel() {
   };
 
   const acceptAutomation = (automation: CompositionAutomation): void => {
-    setIsCreating(false);
+    setCreateRequested(false);
     setSelectedAutomationId(automation.automationId);
     setDraft(draftFromCompositionAutomation(automation));
     setRunCursor(undefined);

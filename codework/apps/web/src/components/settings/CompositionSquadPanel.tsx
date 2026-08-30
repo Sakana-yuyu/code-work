@@ -46,6 +46,7 @@ import {
   type CompositionSquadDraftIssue,
   type CompositionSquadMemberDraft,
 } from "./CompositionSquadPanel.logic";
+import { resolveAsyncCollectionCreationMode } from "./asyncCollectionMode";
 import { SettingsSection } from "./settingsLayout";
 
 const COLLABORATION_MODES: ReadonlyArray<CompositionSquadCollaborationMode> = [
@@ -281,7 +282,12 @@ export function CompositionSquadPanel() {
 
   const squads = squadsQuery.data?.squads ?? EMPTY_SQUADS;
   const firstSquad = squads.find((squad) => squad.archivedAtUnixMs === undefined) ?? squads[0];
-  const [isCreating, setIsCreating] = useState(() => firstSquad === undefined);
+  const [createRequested, setCreateRequested] = useState(false);
+  const isCreating = resolveAsyncCollectionCreationMode({
+    createRequested,
+    isPending: squadsQuery.isPending,
+    itemCount: squads.length,
+  });
   const [selectedSquadId, setSelectedSquadId] = useState<string | null>(
     () => firstSquad?.squadId ?? null,
   );
@@ -304,14 +310,14 @@ export function CompositionSquadPanel() {
   }, [firstSquad, isCreating, selectedSquad]);
 
   const selectSquad = (squad: CompositionSquad): void => {
-    setIsCreating(false);
+    setCreateRequested(false);
     setSelectedSquadId(squad.squadId);
     setDraft(draftFromCompositionSquad(squad));
     setActionError(null);
   };
 
   const startCreate = (): void => {
-    setIsCreating(true);
+    setCreateRequested(true);
     setSelectedSquadId(null);
     setDraft(createEmptyCompositionSquadDraft());
     setActionError(null);
@@ -328,7 +334,7 @@ export function CompositionSquadPanel() {
       const error = squashAtomCommandFailure(result);
       setActionError(error instanceof Error ? error.message : t("squadBuilder.actionFailed"));
     } else {
-      setIsCreating(false);
+      setCreateRequested(false);
       setSelectedSquadId(result.value.squad.squadId);
       setDraft(draftFromCompositionSquad(result.value.squad));
       squadsQuery.refresh();
