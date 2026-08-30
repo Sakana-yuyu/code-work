@@ -341,6 +341,21 @@ it.layer(NodeServices.layer)("bin cli parsing", (it) => {
     }),
   );
 
+  it.effect("exposes Agent run controls", () =>
+    Effect.gen(function* () {
+      const run = yield* captureStdout(runCli(["run", "--help"], noConnectCli));
+
+      assert.include(run.output, "Create an agent thread and start its first turn.");
+      assert.include(run.output, "<prompt>");
+      assert.include(run.output, "--project");
+      assert.include(run.output, "--provider");
+      assert.include(run.output, "--model");
+      assert.include(run.output, "--server");
+      assert.include(run.output, "--access-token");
+      assert.include(run.output, "--json");
+    }),
+  );
+
   it.effect("exposes optimistic Squad lifecycle commands", () =>
     Effect.gen(function* () {
       const duplicate = yield* captureStdout(
