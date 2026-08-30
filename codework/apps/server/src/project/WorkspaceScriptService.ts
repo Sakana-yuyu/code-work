@@ -37,10 +37,6 @@ import {
   makeWorkspaceScriptExited,
   makeWorkspaceScriptStopRetryable,
 } from "./WorkspaceScriptStopState.ts";
-import {
-  settleRecoveredWorkspaceScriptStop,
-  type WorkspaceScriptTerminalInspection,
-} from "./WorkspaceScriptTerminalRecovery.ts";
 
 export type WorkspaceScriptTerminalRunCommandInput = TerminalOpenInput & {
   readonly command: string;
@@ -55,10 +51,6 @@ export interface WorkspaceScriptTerminalPort {
     readonly threadId: string;
     readonly terminalId: string;
   }) => Effect.Effect<void, WorkspaceScriptDependencyError>;
-  readonly inspectSession: (input: {
-    readonly threadId: string;
-    readonly terminalId: string;
-  }) => Effect.Effect<WorkspaceScriptTerminalInspection>;
   readonly getHistory: (input: {
     readonly threadId: string;
     readonly terminalId: string;
@@ -333,34 +325,12 @@ export const makeWorkspaceScriptService = Effect.fn("WorkspaceScriptService.make
       ),
     );
 
-  const unsubscribe = yield* options.terminal.subscribe(onTerminalEvent);
-  yield* Effect.addFinalizer(() => Effect.sync(unsubscribe));
-
-  const recovered = yield* options.store
+  yield* options.store
     .recoverInterrupted({ observedAtUnixMs: yield* currentTimeMillis })
     .pipe(Effect.mapError((cause) => persistenceError("恢复中断的 Workspace Script Run", cause)));
-  yield* Effect.forEach(
-    recovered,
-    (stored) => {
-      const stopOperationId = stored.stopOperationId;
-      if (stopOperationId === null) return Effect.void;
-      return Effect.gen(function* () {
-        const inspection = yield* options.terminal.inspectSession({
-          threadId: stored.run.threadId,
-          terminalId: stored.run.terminalId,
-        });
-        yield* updateRun(stored.run.workspaceScriptRunId, (run, observedAtUnixMs) =>
-          settleRecoveredWorkspaceScriptStop({
-            run,
-            stopOperationId,
-            inspection,
-            observedAtUnixMs,
-          }),
-        );
-      });
-    },
-    { discard: true },
-  );
+
+  const unsubscribe = yield* options.terminal.subscribe(onTerminalEvent);
+  yield* Effect.addFinalizer(() => Effect.sync(unsubscribe));
 
   const get: WorkspaceScriptServiceShape["get"] = readRun;
 
@@ -625,31 +595,8 @@ export const makeWorkspaceScriptService = Effect.fn("WorkspaceScriptService.make
         );
       }
 
-      const inspection = yield* options.terminal.inspectSession({
-        threadId: claim.run.threadId,
-        terminalId: claim.run.terminalId,
-      });
-      if (inspection === "active") {
-        yield* updateRun(input.workspaceScriptRunId, (run, observedAtUnixMs) =>
-          makeWorkspaceScriptStopRetryable(run, observedAtUnixMs),
-        );
-        return yield* operationError(
-          "workspace_script_stop_failed",
-          "终端停止调用返回后仍检测到活动进程。",
-          { workspaceScriptRunId: input.workspaceScriptRunId },
-        );
-      }
-
-      const stopped = yield* updateRun(input.workspaceScriptRunId, (run, observedAtUnixMs) =>
-        makeWorkspaceScriptExited({
-          run,
-          stopOperationId: input.operationId,
-          observedAtUnixMs,
-          exitCode: null,
-          exitSignal: null,
-        }),
-      );
-      return Option.getOrElse(stopped, () => claim.run);
+      const latest = yield* readRun(input.workspaceScriptRunId);
+      return Option.getOrElse(latest, () => claim.run);
     },
   );
 
@@ -680,7 +627,6 @@ export const make = Effect.gen(function* () {
               (cause) => new WorkspaceScriptDependencyError({ operation: "killTerminal", cause }),
             ),
           ),
-      inspectSession: terminalManager.inspectSession,
       getHistory: (input) =>
         terminalManager
           .getHistory(input)

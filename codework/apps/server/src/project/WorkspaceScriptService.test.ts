@@ -73,13 +73,9 @@ const makeFixture = () => {
   const kills: Array<Parameters<WorkspaceScriptTerminalPort["kill"]>[0]> = [];
   const historyRequests: Array<{ threadId: string; terminalId: string }> = [];
   const histories = new Map<string, string>();
-  const terminalInspections = new Map<string, "active" | "inactive" | "missing">();
   const historyFailures: unknown[] = [];
   const killFailures: unknown[] = [];
-  const silentKills: boolean[] = [];
   let nowUnixMs = 1_000;
-
-  const terminalKey = (threadId: string, terminalId: string) => `${threadId}\u0000${terminalId}`;
 
   const emit = (event: TerminalEvent) =>
     Effect.forEach([...listeners], (listener) => listener(event), { discard: true });
@@ -88,7 +84,6 @@ const makeFixture = () => {
     runCommand: (input) =>
       Effect.sync(() => {
         starts.push(input);
-        terminalInspections.set(terminalKey(input.threadId, input.terminalId), "active");
         return snapshot({ ...input, worktreePath: input.worktreePath ?? null });
       }),
     kill: (input) =>
@@ -101,8 +96,6 @@ const makeFixture = () => {
             cause: failure,
           });
         }
-        terminalInspections.set(terminalKey(input.threadId, input.terminalId), "inactive");
-        if (silentKills.shift() === true) return;
         yield* emit({
           type: "exited",
           ...input,
@@ -111,10 +104,6 @@ const makeFixture = () => {
           exitSignal: 15,
         });
       }),
-    inspectSession: (input) =>
-      Effect.succeed(
-        terminalInspections.get(terminalKey(input.threadId, input.terminalId)) ?? "missing",
-      ),
     getHistory: (input) =>
       Effect.gen(function* () {
         historyRequests.push(input);
@@ -159,8 +148,6 @@ const makeFixture = () => {
       histories,
       historyFailures,
       killFailures,
-      silentKills,
-      terminalInspections,
       historyRequests,
       emit,
       store,
@@ -385,28 +372,6 @@ describe("WorkspaceScriptService", () => {
     }),
   );
 
-  it.effect("kill 成功但终端不发 exited 时仍在返回前收口 stopped", () =>
-    Effect.gen(function* () {
-      const { service, silentKills } = yield* makeFixture();
-      const started = yield* service.start({
-        ...startRequest,
-        operationId: "operation-stop-silent-kill",
-      });
-      silentKills.push(true);
-
-      const stopped = yield* service.stop({
-        workspaceScriptRunId: started.workspaceScriptRunId,
-        operationId: "stop-operation-silent-kill",
-        expectedRevision: started.revision,
-      });
-      const persisted = Option.getOrThrow(yield* service.get(started.workspaceScriptRunId));
-
-      assert.equal(stopped.status, "stopped");
-      assert.equal(persisted.status, "stopped");
-      assert.isNotNull(stopped.finishedAtUnixMs);
-    }),
-  );
-
   it.effect("stop claim 持久化后服务崩溃，相同 operationId 可恢复执行", () =>
     Effect.gen(function* () {
       const { service, restartService, store, kills } = yield* makeFixture();
@@ -437,62 +402,6 @@ describe("WorkspaceScriptService", () => {
       assert.equal(recovered.status, "running");
       assert.equal(kills.length, 1);
       assert.equal(stopped.status, "stopped");
-    }),
-  );
-
-  it.effect("服务恢复时将已无进程的 stop claim 收口为 stopped", () =>
-    Effect.gen(function* () {
-      const { service, restartService, store, terminalInspections } = yield* makeFixture();
-      const started = yield* service.start({
-        ...startRequest,
-        operationId: "operation-stop-inactive-recovery",
-      });
-      yield* store.claimStop({
-        run: {
-          ...started,
-          status: "stopping",
-          revision: started.revision + 1,
-          updatedAtUnixMs: started.updatedAtUnixMs + 1,
-        },
-        operationId: "stop-operation-inactive-recovery",
-        expectedRevision: started.revision,
-      });
-      terminalInspections.set(`${started.threadId}\u0000${started.terminalId}`, "inactive");
-
-      const restarted = yield* restartService();
-      const recovered = Option.getOrThrow(yield* restarted.get(started.workspaceScriptRunId));
-
-      assert.equal(recovered.status, "stopped");
-      assert.isNotNull(recovered.finishedAtUnixMs);
-      assert.isNull(recovered.errorCode);
-    }),
-  );
-
-  it.effect("服务恢复时将监督状态丢失的 stop claim 收口为明确失败", () =>
-    Effect.gen(function* () {
-      const { service, restartService, store, terminalInspections } = yield* makeFixture();
-      const started = yield* service.start({
-        ...startRequest,
-        operationId: "operation-stop-missing-recovery",
-      });
-      yield* store.claimStop({
-        run: {
-          ...started,
-          status: "stopping",
-          revision: started.revision + 1,
-          updatedAtUnixMs: started.updatedAtUnixMs + 1,
-        },
-        operationId: "stop-operation-missing-recovery",
-        expectedRevision: started.revision,
-      });
-      terminalInspections.delete(`${started.threadId}\u0000${started.terminalId}`);
-
-      const restarted = yield* restartService();
-      const recovered = Option.getOrThrow(yield* restarted.get(started.workspaceScriptRunId));
-
-      assert.equal(recovered.status, "failed");
-      assert.equal(recovered.errorCode, "workspace_script_terminal_supervision_lost");
-      assert.isNotNull(recovered.finishedAtUnixMs);
     }),
   );
 

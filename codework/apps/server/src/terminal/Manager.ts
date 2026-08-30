@@ -145,10 +145,6 @@ export class TerminalManager extends Context.Service<
       input: TerminalHistoryInput,
     ) => Effect.Effect<string, TerminalHistoryError>;
 
-    readonly inspectSession: (
-      input: TerminalSessionIdentity,
-    ) => Effect.Effect<TerminalSessionInspection>;
-
     /**
      * Attach to a terminal and stream its initial snapshot followed by live events.
      *
@@ -262,13 +258,6 @@ export interface TerminalKillInput {
   readonly threadId: string;
   readonly terminalId: string;
 }
-
-export interface TerminalSessionIdentity {
-  readonly threadId: string;
-  readonly terminalId: string;
-}
-
-export type TerminalSessionInspection = "active" | "inactive" | "missing";
 
 export interface TerminalHistoryInput {
   readonly threadId: string;
@@ -1635,22 +1624,6 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
     );
   });
 
-  const inspectSession: TerminalManager["Service"]["inspectSession"] = (input) =>
-    withThreadLock(
-      input.threadId,
-      getSession(input.threadId, input.terminalId).pipe(
-        Effect.map(
-          Option.match({
-            onNone: () => "missing" as const,
-            onSome: (session) =>
-              session.process !== null && session.status === "running"
-                ? ("active" as const)
-                : ("inactive" as const),
-          }),
-        ),
-      ),
-    );
-
   const sessionsForThread = Effect.fn("terminal.sessionsForThread")(function* (threadId: string) {
     return yield* readManagerState.pipe(
       Effect.map((state) =>
@@ -2832,7 +2805,6 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
     open,
     runCommand,
     getHistory,
-    inspectSession,
     attachStream,
     write,
     resize,

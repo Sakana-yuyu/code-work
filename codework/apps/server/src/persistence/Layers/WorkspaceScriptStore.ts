@@ -986,14 +986,16 @@ const makeStore = Effect.gen(function* () {
         ).pipe(
           Effect.flatMap((rows) =>
             Effect.forEach(rows, (row) =>
-              decodeStoredRow("WorkspaceScriptStore.recoverInterrupted", row),
+              decodeStoredRow("WorkspaceScriptStore.recoverInterrupted", row).pipe(
+                Effect.map((stored) => stored.run),
+              ),
             ),
           ),
-          Effect.map((storedRuns) =>
-            [...storedRuns].sort(
+          Effect.map((runs) =>
+            [...runs].sort(
               (left, right) =>
-                left.run.requestedAtUnixMs - right.run.requestedAtUnixMs ||
-                left.run.workspaceScriptRunId.localeCompare(right.run.workspaceScriptRunId),
+                left.requestedAtUnixMs - right.requestedAtUnixMs ||
+                left.workspaceScriptRunId.localeCompare(right.workspaceScriptRunId),
             ),
           ),
         ),
