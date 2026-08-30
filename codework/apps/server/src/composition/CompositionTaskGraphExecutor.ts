@@ -17,7 +17,10 @@ import * as Schema from "effect/Schema";
 
 import type { CompositionTaskStoreShape } from "../persistence/Services/CompositionTaskStore.ts";
 import { CompositionTaskStore } from "../persistence/Services/CompositionTaskStore.ts";
-import { classifyCompositionFailure } from "./CompositionFailurePolicy.ts";
+import {
+  classifyCompositionFailure,
+  toCompositionFailureInput,
+} from "./CompositionFailurePolicy.ts";
 import {
   CompositionTaskAlreadyExistsError,
   CompositionTaskRetryInvalidError,
@@ -734,7 +737,9 @@ const make = (options: GraphExecutorOptions): CompositionTaskGraphExecutorShape 
             dispatches,
           } satisfies CompositionTaskGraphNodeResult;
         }
-        const failure = classifyCompositionFailure(settled.run);
+        const failure = classifyCompositionFailure(
+          toCompositionFailureInput(settled.run.status, settled.run.failureCode),
+        );
         const failoverEligible = canFailover(failure);
         const failoverCandidates = node.failoverCandidates ?? [];
         const failoverCandidate = failoverEligible ? failoverCandidates[failoverIndex] : undefined;
