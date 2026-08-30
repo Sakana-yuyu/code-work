@@ -238,6 +238,234 @@ it.effect("取消同一 scope 的在途 invocation 会中断 ToolBroker 调用",
   }),
 );
 
+it.effect("同 scope 同幂等键的第二次调用不替换原取消所有权", () =>
+  Effect.gen(function* () {
+    const entered = yield* Deferred.make<void>();
+    let invocations = 0;
+    const bridge = makeCompositionRuntimeToolBridge(
+      makeDependencies({
+        toolBroker: {
+          invoke: () => {
+            invocations += 1;
+            if (invocations > 1) {
+              return Effect.succeed({
+                invocationId: `invocation-${input.idempotencyKey}`,
+                taskId: task.taskId,
+                runId: run.runId,
+                toolCallId: input.toolCallId,
+                canonicalToolName: input.canonicalToolName,
+                status: "succeeded" as const,
+              });
+            }
+            return Effect.gen(function* () {
+              yield* Deferred.succeed(entered, undefined);
+              return yield* Effect.never;
+            });
+          },
+          cancel: () => Effect.die("Bridge 不应绕过 scope 所有权直接取消 Broker"),
+        },
+      }),
+    );
+
+    const first = yield* Effect.forkChild(bridge.invoke(input));
+    yield* Deferred.await(entered);
+
+    const duplicate = yield* bridge.invoke(input);
+    assert.equal(duplicate.status, "failed");
+    assert.equal(duplicate.errorCode, "tool_invocation_in_progress");
+    assert.equal(invocations, 1);
+
+    const cancelResult = yield* bridge.cancel(input);
+    assert.equal(cancelResult.status, "cancelled");
+    const firstResult = yield* Fiber.join(first);
+    assert.equal(firstResult.status, "cancelled");
+
+    const replayed = yield* bridge.invoke(input);
+    assert.equal(replayed.status, "succeeded");
+    assert.equal(invocations, 2);
+  }),
+);
+
+it.effect("workspace 查询期间被中断不会泄漏 active invocation", () =>
+  Effect.gen(function* () {
+    const inputLookupEntered = yield* Deferred.make<void>();
+    let inputLookups = 0;
+    const bridge = makeCompositionRuntimeToolBridge(
+      makeDependencies({
+        inputStore: {
+          get: () => {
+            inputLookups += 1;
+            if (inputLookups === 1) {
+              return Effect.gen(function* () {
+                yield* Deferred.succeed(inputLookupEntered, undefined);
+                return yield* Effect.never;
+              });
+            }
+            return Effect.succeed(
+              Option.some({
+                taskId: task.taskId,
+                prompt: "继续任务",
+                workspaceRoot: "C:/workspace/tool-bridge",
+              }),
+            );
+          },
+        },
+      }),
+    );
+
+    const interrupted = yield* Effect.forkChild(bridge.invoke(input));
+    yield* Deferred.await(inputLookupEntered);
+    yield* Fiber.interrupt(interrupted);
+
+    const replayed = yield* bridge.invoke(input);
+    assert.equal(replayed.status, "succeeded");
+    assert.equal(inputLookups, 2);
+  }),
+);
+
+it.effect("workspace 查询阶段取消会中断查询且不启动 ToolBroker", () =>
+  Effect.gen(function* () {
+    const inputLookupEntered = yield* Deferred.make<void>();
+    const inputLookupCleanupStarted = yield* Deferred.make<void>();
+    const releaseInputLookupCleanup = yield* Deferred.make<void>();
+    const cancellationCompleted = yield* Deferred.make<void>();
+    let brokerInvocations = 0;
+    const bridge = makeCompositionRuntimeToolBridge(
+      makeDependencies({
+        inputStore: {
+          get: () =>
+            Effect.gen(function* () {
+              yield* Deferred.succeed(inputLookupEntered, undefined);
+              return yield* Effect.never;
+            }).pipe(
+              Effect.onInterrupt(() =>
+                Effect.gen(function* () {
+                  yield* Deferred.succeed(inputLookupCleanupStarted, undefined);
+                  yield* Deferred.await(releaseInputLookupCleanup);
+                }),
+              ),
+            ),
+        },
+        toolBroker: {
+          invoke: () => {
+            brokerInvocations += 1;
+            return Effect.succeed({
+              invocationId: `invocation-${input.idempotencyKey}`,
+              taskId: task.taskId,
+              runId: run.runId,
+              toolCallId: input.toolCallId,
+              canonicalToolName: input.canonicalToolName,
+              status: "succeeded" as const,
+            });
+          },
+          cancel: () => Effect.die("Bridge 不应绕过 scope 所有权直接取消 Broker"),
+        },
+      }),
+    );
+
+    const invoked = yield* Effect.forkChild(bridge.invoke(input));
+    yield* Deferred.await(inputLookupEntered);
+    const cancellation = yield* Effect.forkChild(
+      bridge
+        .cancel(input)
+        .pipe(
+          Effect.ensuring(Deferred.succeed(cancellationCompleted, undefined).pipe(Effect.asVoid)),
+        ),
+    );
+    yield* Deferred.await(inputLookupCleanupStarted);
+
+    assert.isTrue(Option.isNone(yield* Deferred.poll(cancellationCompleted)));
+    assert.equal(brokerInvocations, 0);
+
+    yield* Deferred.succeed(releaseInputLookupCleanup, undefined);
+
+    const cancelResult = yield* Fiber.join(cancellation);
+    const invokeResult = yield* Fiber.join(invoked);
+    assert.deepEqual(cancelResult, invokeResult);
+    assert.equal(cancelResult.status, "cancelled");
+    assert.equal(brokerInvocations, 0);
+  }),
+);
+
+it.effect("非中断缺陷会原样传播并释放同 key 的 active invocation", () =>
+  Effect.gen(function* () {
+    let brokerInvocations = 0;
+    const bridge = makeCompositionRuntimeToolBridge(
+      makeDependencies({
+        toolBroker: {
+          invoke: (request) => {
+            brokerInvocations += 1;
+            if (brokerInvocations === 1) return Effect.die("tool-broker-defect");
+            return Effect.succeed({
+              invocationId: `invocation-${request.idempotencyKey}`,
+              taskId: request.taskId,
+              runId: request.runId,
+              toolCallId: request.toolCallId,
+              canonicalToolName: request.canonicalToolName,
+              status: "succeeded" as const,
+            });
+          },
+          cancel: () => Effect.die("Bridge 不应绕过 scope 所有权直接取消 Broker"),
+        },
+      }),
+    );
+
+    const first = yield* Effect.exit(bridge.invoke(input));
+    assert.equal(first._tag, "Failure");
+
+    const replayed = yield* bridge.invoke(input);
+    assert.equal(replayed.status, "succeeded");
+    assert.equal(brokerInvocations, 2);
+  }),
+);
+
+it.effect("cancel 等待 Broker 中断清理并与 invoke 共享终态", () =>
+  Effect.gen(function* () {
+    const entered = yield* Deferred.make<void>();
+    const cleanupStarted = yield* Deferred.make<void>();
+    const releaseCleanup = yield* Deferred.make<void>();
+    const cancellationCompleted = yield* Deferred.make<void>();
+    const bridge = makeCompositionRuntimeToolBridge(
+      makeDependencies({
+        toolBroker: {
+          invoke: () =>
+            Effect.gen(function* () {
+              yield* Deferred.succeed(entered, undefined);
+              return yield* Effect.never;
+            }).pipe(
+              Effect.onInterrupt(() =>
+                Effect.gen(function* () {
+                  yield* Deferred.succeed(cleanupStarted, undefined);
+                  yield* Deferred.await(releaseCleanup);
+                }),
+              ),
+            ),
+          cancel: () => Effect.die("Bridge 不应绕过 scope 所有权直接取消 Broker"),
+        },
+      }),
+    );
+
+    const invoked = yield* Effect.forkChild(bridge.invoke(input));
+    yield* Deferred.await(entered);
+    const cancellation = yield* Effect.forkChild(
+      bridge
+        .cancel(input)
+        .pipe(
+          Effect.ensuring(Deferred.succeed(cancellationCompleted, undefined).pipe(Effect.asVoid)),
+        ),
+    );
+    yield* Deferred.await(cleanupStarted);
+
+    assert.isTrue(Option.isNone(yield* Deferred.poll(cancellationCompleted)));
+
+    yield* Deferred.succeed(releaseCleanup, undefined);
+    const cancelResult = yield* Fiber.join(cancellation);
+    const invokeResult = yield* Fiber.join(invoked);
+    assert.deepEqual(cancelResult, invokeResult);
+    assert.equal(cancelResult.status, "cancelled");
+  }),
+);
+
 it.effect("不同 scope 不能取消另一个 Agent 的在途 invocation", () =>
   Effect.gen(function* () {
     const entered = yield* Deferred.make<void>();

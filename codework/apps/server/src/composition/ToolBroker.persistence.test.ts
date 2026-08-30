@@ -18,6 +18,7 @@ import * as CapabilityRegistry from "./CapabilityRegistry.ts";
 import {
   CompositionToolInvocationCoordinator,
   CompositionToolInvocationCoordinatorError,
+  makeCompositionToolInvocationCoordinator,
 } from "./CompositionToolInvocationCoordinator.ts";
 import {
   CompositionToolInvocationStartupRecovery,
@@ -320,6 +321,114 @@ it.effect("handler 已执行但终态保存失败时返回 outcome unknown", () 
     assert.equal(result.status, "failed");
     assert.equal(result.errorCode, "tool_invocation_outcome_unknown");
     assert.equal(executions, 1);
+  }),
+);
+
+it.effect("handler 被中断后以 CAS 保存 cancelled 终态", () =>
+  Effect.gen(function* () {
+    const entered = yield* Deferred.make<void>();
+    let executions = 0;
+    const workspaceFileSystem = makeWorkspaceFileSystem(() =>
+      Effect.gen(function* () {
+        executions += 1;
+        yield* Deferred.succeed(entered, undefined);
+        return yield* Effect.never;
+      }),
+    );
+    const storeLayer = CompositionToolInvocationStoreLive.pipe(
+      Layer.provideMerge(SqlitePersistenceMemory),
+    );
+    const recoveryLayer = CompositionToolInvocationStartupRecovery.layer.pipe(
+      Layer.provide(storeLayer),
+    );
+    const coordinatorLayer = CompositionToolInvocationCoordinator.layer.pipe(
+      Layer.provide(storeLayer),
+    );
+    const layer = Layer.mergeAll(
+      makeBrokerLayer({ workspaceFileSystem, coordinatorLayer, recoveryLayer }),
+      storeLayer,
+    );
+    const input = inputFor("persistent-interrupted");
+
+    yield* Effect.gen(function* () {
+      const broker = yield* ToolBroker.ToolBroker;
+      const store = yield* CompositionToolInvocationStore;
+      const fiber = yield* Effect.forkChild(broker.invoke(input));
+      yield* Deferred.await(entered);
+
+      yield* Fiber.interrupt(fiber);
+
+      const stored = Option.getOrThrow(yield* store.getInvocation(input.idempotencyKey));
+      assert.equal(stored.status, "cancelled");
+      assert.equal(stored.outcomeCode, "tool_cancelled");
+      assert.equal(stored.revision, 3);
+      assert.equal(executions, 1);
+    }).pipe(Effect.provide(layer));
+  }),
+);
+
+it.effect("handler 已完成时成功终态保存不被随后取消中断", () =>
+  Effect.gen(function* () {
+    const entered = yield* Deferred.make<void>();
+    const releaseHandler = yield* Deferred.make<void>();
+    const finishEntered = yield* Deferred.make<void>();
+    const releaseFinish = yield* Deferred.make<void>();
+    const interruptionStarted = yield* Deferred.make<void>();
+    const workspaceFileSystem = makeWorkspaceFileSystem(() =>
+      Effect.gen(function* () {
+        yield* Deferred.succeed(entered, undefined);
+        yield* Deferred.await(releaseHandler);
+        return readResult;
+      }),
+    );
+    const storeLayer = CompositionToolInvocationStoreLive.pipe(
+      Layer.provideMerge(SqlitePersistenceMemory),
+    );
+    const input = inputFor("persistent-success-owns-terminal");
+
+    yield* Effect.gen(function* () {
+      const store = yield* CompositionToolInvocationStore;
+      const coordinator = yield* makeCompositionToolInvocationCoordinator(store);
+      const gatedCoordinator = CompositionToolInvocationCoordinator.of({
+        begin: coordinator.begin,
+        finish: (finishInput) =>
+          finishInput.status !== "succeeded"
+            ? coordinator.finish(finishInput)
+            : Effect.gen(function* () {
+                yield* Deferred.succeed(finishEntered, undefined);
+                yield* Deferred.await(releaseFinish);
+                return yield* coordinator.finish(finishInput);
+              }),
+      });
+      const layer = makeBrokerLayer({
+        workspaceFileSystem,
+        coordinatorLayer: Layer.succeed(CompositionToolInvocationCoordinator, gatedCoordinator),
+        recoveryLayer: Layer.succeed(CompositionToolInvocationStartupRecovery, successRecovery),
+      });
+
+      yield* Effect.gen(function* () {
+        const broker = yield* ToolBroker.ToolBroker;
+        const fiber = yield* Effect.forkChild(broker.invoke(input));
+        yield* Deferred.await(entered);
+        yield* Deferred.succeed(releaseHandler, undefined);
+        yield* Deferred.await(finishEntered);
+
+        const interruption = yield* Effect.forkChild(
+          Deferred.succeed(interruptionStarted, undefined).pipe(
+            Effect.andThen(Fiber.interrupt(fiber)),
+          ),
+        );
+        yield* Deferred.await(interruptionStarted);
+        yield* Effect.yieldNow;
+        yield* Deferred.succeed(releaseFinish, undefined);
+        yield* Fiber.join(interruption);
+
+        const stored = Option.getOrThrow(yield* store.getInvocation(input.idempotencyKey));
+        assert.equal(stored.status, "succeeded");
+        assert.isNull(stored.outcomeCode);
+        assert.equal(stored.revision, 3);
+      }).pipe(Effect.provide(layer));
+    }).pipe(Effect.provide(storeLayer));
   }),
 );
 

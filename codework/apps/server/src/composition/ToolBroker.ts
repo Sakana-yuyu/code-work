@@ -848,7 +848,7 @@ const make = Effect.gen(function* () {
       invocationClaim = claim.success;
     }
 
-    const handlerResult = yield* resolvedHandler.execute(input).pipe(
+    const executeHandler = resolvedHandler.execute(input).pipe(
       Effect.flatMap((value) =>
         Effect.map(Clock.currentTimeMillis, (finishedAtUnixMs) => {
           return {
@@ -879,37 +879,68 @@ const make = Effect.gen(function* () {
       ),
     );
     if (Option.isNone(invocationPersistence) || invocationClaim === undefined) {
+      const handlerResult = yield* executeHandler;
       if (handlerResult.status === "succeeded") completed.add(input.idempotencyKey);
       return handlerResult;
     }
 
-    const finishedAtUnixMs = Math.max(
-      handlerResult.finishedAtUnixMs ?? invocationClaim.invocation.updatedAtUnixMs,
-      invocationClaim.invocation.updatedAtUnixMs,
-    );
-    const persisted = yield* Effect.result(
-      invocationPersistence.value.coordinator.finish({
-        idempotencyKey: input.idempotencyKey,
-        expectedRevision: invocationClaim.invocation.revision,
-        status: handlerResult.status,
-        outcomeCode:
-          handlerResult.status === "succeeded"
-            ? null
-            : "errorCode" in handlerResult
-              ? (handlerResult.errorCode ?? "tool_execution_failed")
-              : "tool_execution_failed",
-        finishedAtUnixMs,
+    const persistence = invocationPersistence.value;
+    const claimedInvocation = invocationClaim.invocation;
+    const persistCancellation = Effect.gen(function* () {
+      const finishedAtUnixMs = Math.max(
+        yield* Clock.currentTimeMillis,
+        claimedInvocation.updatedAtUnixMs,
+      );
+      const persisted = yield* Effect.result(
+        persistence.coordinator.finish({
+          idempotencyKey: input.idempotencyKey,
+          expectedRevision: claimedInvocation.revision,
+          status: "cancelled",
+          outcomeCode: "tool_cancelled",
+          finishedAtUnixMs,
+        }),
+      );
+      if (persisted._tag === "Failure") {
+        yield* Effect.logWarning("Tool Invocation 取消终态保存失败", {
+          code: persisted.failure.code,
+        });
+      }
+    }).pipe(Effect.uninterruptible);
+
+    return yield* Effect.uninterruptibleMask((restore) =>
+      Effect.gen(function* () {
+        const handlerResult = yield* restore(executeHandler).pipe(
+          Effect.onInterrupt(() => persistCancellation),
+        );
+        const finishedAtUnixMs = Math.max(
+          handlerResult.finishedAtUnixMs ?? claimedInvocation.updatedAtUnixMs,
+          claimedInvocation.updatedAtUnixMs,
+        );
+        const persisted = yield* Effect.result(
+          persistence.coordinator.finish({
+            idempotencyKey: input.idempotencyKey,
+            expectedRevision: claimedInvocation.revision,
+            status: handlerResult.status,
+            outcomeCode:
+              handlerResult.status === "succeeded"
+                ? null
+                : "errorCode" in handlerResult
+                  ? (handlerResult.errorCode ?? "tool_execution_failed")
+                  : "tool_execution_failed",
+            finishedAtUnixMs,
+          }),
+        );
+        if (persisted._tag === "Failure") {
+          return {
+            ...base,
+            status: "failed" as const,
+            errorCode: "tool_invocation_outcome_unknown",
+            finishedAtUnixMs,
+          };
+        }
+        return { ...handlerResult, finishedAtUnixMs };
       }),
     );
-    if (persisted._tag === "Failure") {
-      return {
-        ...base,
-        status: "failed" as const,
-        errorCode: "tool_invocation_outcome_unknown",
-        finishedAtUnixMs,
-      };
-    }
-    return { ...handlerResult, finishedAtUnixMs };
   });
 
   const invoke: ToolBroker["Service"]["invoke"] = (input) =>
