@@ -11,9 +11,12 @@ import {
 } from "@codework/contracts";
 import { createModelSelection } from "@codework/shared/model";
 import { assert, it } from "@effect/vitest";
+import * as Context from "effect/Context";
+import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import * as Duration from "effect/Duration";
 import * as FileSystem from "effect/FileSystem";
+import * as Fiber from "effect/Fiber";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as PlatformError from "effect/PlatformError";
@@ -29,6 +32,10 @@ import {
   setSupplierInstanceEnabled,
 } from "./provider/SupplierAdminCore.ts";
 import * as ServerSettingsModule from "./serverSettings.ts";
+import {
+  ServerSettingsOriginCommitHook,
+  type ServerSettingsOriginCommitHookFunction,
+} from "./serverSettingsOriginCas.ts";
 
 // Record 键是品牌化的 CompositionMcpServerId，普通字面量需显式收窄。
 const localToolsKey = "local_tools" as CompositionMcpServerId;
@@ -59,6 +66,53 @@ const makeFailingSecretStoreLayer = (cause: ServerSecretStore.SecretStoreError) 
       remove: () => Effect.void,
     }),
   );
+
+const buildSharedServerSettingsServices = (
+  runtimeAHook: ServerSettingsOriginCommitHookFunction = () => Effect.void,
+) =>
+  Effect.gen(function* () {
+    const serverConfig = yield* ServerConfig.ServerConfig;
+    const sql = yield* SqlClient.SqlClient;
+    const runtimeLayer = (hook: ServerSettingsOriginCommitHookFunction) =>
+      ServerSettingsModule.layer.pipe(
+        Layer.provide(ServerSecretStore.layer),
+        Layer.provideMerge(Layer.succeed(ServerSettingsOriginCommitHook, hook)),
+        Layer.provideMerge(Layer.succeed(SqlClient.SqlClient, sql)),
+        Layer.provideMerge(Layer.succeed(ServerConfig.ServerConfig, serverConfig)),
+      );
+    const contextA = yield* Layer.build(Layer.fresh(runtimeLayer(runtimeAHook)));
+    const contextB = yield* Layer.build(Layer.fresh(runtimeLayer(() => Effect.void)));
+    return {
+      runtimeA: Context.get(contextA, ServerSettingsModule.ServerSettingsService),
+      runtimeB: Context.get(contextB, ServerSettingsModule.ServerSettingsService),
+    };
+  });
+
+const multicaRuntimeInstance = (version: string) => ({
+  driver: ProviderDriverKind.make("multica"),
+  config: {
+    runtimeId: "multica:daemon-1:runtime-1",
+    daemonId: "daemon-1",
+    daemonRuntimeId: "runtime-1",
+    baseUrl: "http://127.0.0.1:9000",
+    headers: [],
+    assigneeRoutes: [],
+    version,
+  },
+});
+
+const providerEnvironmentSecretNameForTest = (instanceId: string, name: string) =>
+  `provider-env-${Buffer.from(instanceId, "utf8").toString("base64url")}-${Buffer.from(name, "utf8").toString("base64url")}`;
+
+const makeOriginCommitBarrier = Effect.gen(function* () {
+  const prepared = yield* Deferred.make<void>();
+  const release = yield* Deferred.make<void>();
+  return {
+    hook: () => Deferred.succeed(prepared, undefined).pipe(Effect.andThen(Deferred.await(release))),
+    awaitPrepared: Deferred.await(prepared),
+    release: Deferred.succeed(release, undefined),
+  };
+});
 
 const recordProviderUsage = (provider: string, instanceId: string | null = provider) =>
   Effect.gen(function* () {
@@ -1696,6 +1750,321 @@ it.layer(NodeServices.layer)("server settings", (it) => {
       const currentInstance = current.providerInstances[instanceId]!;
       assert.equal((currentInstance.config as { readonly version?: string }).version, "v2");
     }).pipe(Effect.provide(makeServerSettingsLayer())),
+  );
+
+  it.effect("以磁盘事实拒绝跨 Runtime 的陈旧 Multica 更新", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const barrier = yield* makeOriginCommitBarrier;
+        const { runtimeA, runtimeB } = yield* buildSharedServerSettingsServices(barrier.hook);
+        const serverConfig = yield* ServerConfig.ServerConfig;
+        const fileSystem = yield* FileSystem.FileSystem;
+        const instanceId = ProviderInstanceId.make("multica_cross_runtime_update");
+        yield* runtimeB.updateSettings({
+          providerInstances: { [instanceId]: multicaRuntimeInstance("v1") },
+          multicaProviderInstancePreconditions: [{ instanceId, expectedRevision: null }],
+        });
+        const snapshotA = yield* runtimeA.getSettings;
+        const snapshotB = yield* runtimeB.getSettings;
+        const revision = multicaProviderInstanceRevision(
+          instanceId,
+          snapshotA.providerInstances[instanceId],
+        );
+        assert.equal(
+          multicaProviderInstanceRevision(instanceId, snapshotB.providerInstances[instanceId]),
+          revision,
+        );
+
+        const staleUpdate = yield* Effect.forkScoped(
+          runtimeA.updateSettings({
+            providerInstances: { [instanceId]: multicaRuntimeInstance("v3") },
+            multicaProviderInstancePreconditions: [{ instanceId, expectedRevision: revision }],
+          }),
+        );
+        yield* barrier.awaitPrepared;
+        yield* runtimeB.updateSettings({
+          providerInstances: { [instanceId]: multicaRuntimeInstance("v2") },
+          multicaProviderInstancePreconditions: [{ instanceId, expectedRevision: revision }],
+        });
+        const winnerRaw = yield* fileSystem.readFileString(serverConfig.settingsPath);
+        yield* barrier.release;
+        const stale = yield* Fiber.join(staleUpdate).pipe(Effect.flip);
+
+        assert.equal(stale._tag, "ServerSettingsConflictError");
+        assert.equal(yield* fileSystem.readFileString(serverConfig.settingsPath), winnerRaw);
+      }),
+    ).pipe(Effect.provide(makeServerSettingsLayer())),
+  );
+
+  it.effect("以磁盘事实拒绝跨 Runtime 的陈旧 Multica 启停", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const barrier = yield* makeOriginCommitBarrier;
+        const { runtimeA, runtimeB } = yield* buildSharedServerSettingsServices(barrier.hook);
+        const serverConfig = yield* ServerConfig.ServerConfig;
+        const fileSystem = yield* FileSystem.FileSystem;
+        const instanceId = ProviderInstanceId.make("multica_cross_runtime_enable");
+        yield* runtimeB.updateSettings({
+          providerInstances: { [instanceId]: multicaRuntimeInstance("v1") },
+          multicaProviderInstancePreconditions: [{ instanceId, expectedRevision: null }],
+        });
+        const snapshotA = yield* runtimeA.getSettings;
+        const snapshotB = yield* runtimeB.getSettings;
+        const revision = multicaProviderInstanceRevision(
+          instanceId,
+          snapshotA.providerInstances[instanceId],
+        );
+        assert.equal(
+          multicaProviderInstanceRevision(instanceId, snapshotB.providerInstances[instanceId]),
+          revision,
+        );
+        const outcome = setSupplierInstanceEnabled(snapshotA.providerInstances, instanceId, false);
+        if (!outcome.ok) return yield* Effect.die("missing Multica instance in stale snapshot");
+        const staleUpdate = yield* Effect.forkScoped(
+          runtimeA.updateSettings(
+            buildSupplierProviderInstancePatch(
+              snapshotA.providerInstances,
+              outcome.value.providerInstances,
+              instanceId,
+            ),
+          ),
+        );
+        yield* barrier.awaitPrepared;
+        yield* runtimeB.updateSettings({
+          providerInstances: { [instanceId]: multicaRuntimeInstance("v2") },
+          multicaProviderInstancePreconditions: [
+            {
+              instanceId,
+              expectedRevision: revision,
+            },
+          ],
+        });
+        const winnerRaw = yield* fileSystem.readFileString(serverConfig.settingsPath);
+        yield* barrier.release;
+        const stale = yield* Fiber.join(staleUpdate).pipe(Effect.flip);
+        assert.equal(stale._tag, "ServerSettingsConflictError");
+        assert.equal(yield* fileSystem.readFileString(serverConfig.settingsPath), winnerRaw);
+      }),
+    ).pipe(Effect.provide(makeServerSettingsLayer())),
+  );
+
+  it.effect("以磁盘事实拒绝跨 Runtime 的陈旧 Multica 删除", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const barrier = yield* makeOriginCommitBarrier;
+        const { runtimeA, runtimeB } = yield* buildSharedServerSettingsServices(barrier.hook);
+        const serverConfig = yield* ServerConfig.ServerConfig;
+        const fileSystem = yield* FileSystem.FileSystem;
+        const instanceId = ProviderInstanceId.make("multica_cross_runtime_uninstall");
+        yield* runtimeB.updateSettings({
+          providerInstances: { [instanceId]: multicaRuntimeInstance("v1") },
+          multicaProviderInstancePreconditions: [{ instanceId, expectedRevision: null }],
+        });
+        const snapshotA = yield* runtimeA.getSettings;
+        const snapshotB = yield* runtimeB.getSettings;
+        const staleRevision = multicaProviderInstanceRevision(
+          instanceId,
+          snapshotA.providerInstances[instanceId],
+        );
+        const staleUpdate = yield* Effect.forkScoped(
+          runtimeA.updateSettings({
+            providerInstances: {},
+            multicaProviderInstancePreconditions: [{ instanceId, expectedRevision: staleRevision }],
+          }),
+        );
+        yield* barrier.awaitPrepared;
+        yield* runtimeB.updateSettings({
+          providerInstances: { [instanceId]: multicaRuntimeInstance("v2") },
+          multicaProviderInstancePreconditions: [
+            {
+              instanceId,
+              expectedRevision: multicaProviderInstanceRevision(
+                instanceId,
+                snapshotB.providerInstances[instanceId],
+              ),
+            },
+          ],
+        });
+        const winnerRaw = yield* fileSystem.readFileString(serverConfig.settingsPath);
+        yield* barrier.release;
+        const stale = yield* Fiber.join(staleUpdate).pipe(Effect.flip);
+
+        assert.equal(stale._tag, "ServerSettingsConflictError");
+        assert.equal(yield* fileSystem.readFileString(serverConfig.settingsPath), winnerRaw);
+      }),
+    ).pipe(Effect.provide(makeServerSettingsLayer())),
+  );
+
+  it.effect("以磁盘事实拒绝跨 Runtime 的陈旧 Multica 重命名", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const barrier = yield* makeOriginCommitBarrier;
+        const { runtimeA, runtimeB } = yield* buildSharedServerSettingsServices(barrier.hook);
+        const serverConfig = yield* ServerConfig.ServerConfig;
+        const fileSystem = yield* FileSystem.FileSystem;
+        const sourceId = ProviderInstanceId.make("multica_cross_runtime_source");
+        const targetId = ProviderInstanceId.make("multica_cross_runtime_target");
+        yield* runtimeB.updateSettings({
+          providerInstances: { [sourceId]: multicaRuntimeInstance("v1") },
+          multicaProviderInstancePreconditions: [{ instanceId: sourceId, expectedRevision: null }],
+        });
+        const snapshotA = yield* runtimeA.getSettings;
+        const snapshotB = yield* runtimeB.getSettings;
+        const staleRevision = multicaProviderInstanceRevision(
+          sourceId,
+          snapshotA.providerInstances[sourceId],
+        );
+        const staleUpdate = yield* Effect.forkScoped(
+          runtimeA.updateSettings({
+            providerInstances: { [targetId]: multicaRuntimeInstance("renamed") },
+            multicaProviderInstancePreconditions: [
+              { instanceId: sourceId, expectedRevision: staleRevision },
+              { instanceId: targetId, expectedRevision: null },
+            ],
+          }),
+        );
+        yield* barrier.awaitPrepared;
+        yield* runtimeB.updateSettings({
+          providerInstances: { [sourceId]: multicaRuntimeInstance("v2") },
+          multicaProviderInstancePreconditions: [
+            {
+              instanceId: sourceId,
+              expectedRevision: multicaProviderInstanceRevision(
+                sourceId,
+                snapshotB.providerInstances[sourceId],
+              ),
+            },
+          ],
+        });
+        const winnerRaw = yield* fileSystem.readFileString(serverConfig.settingsPath);
+        yield* barrier.release;
+        const stale = yield* Fiber.join(staleUpdate).pipe(Effect.flip);
+
+        assert.equal(stale._tag, "ServerSettingsConflictError");
+        assert.equal(yield* fileSystem.readFileString(serverConfig.settingsPath), winnerRaw);
+      }),
+    ).pipe(Effect.provide(makeServerSettingsLayer())),
+  );
+
+  it.effect("外部编辑抢占 CAS 时逐字恢复已变更的 Secret", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const serverConfig = yield* ServerConfig.ServerConfig;
+        const sql = yield* SqlClient.SqlClient;
+        const fileSystem = yield* FileSystem.FileSystem;
+        const secretContext = yield* Layer.build(
+          ServerSecretStore.layer.pipe(
+            Layer.provideMerge(Layer.succeed(ServerConfig.ServerConfig, serverConfig)),
+          ),
+        );
+        const baseSecretStore = Context.get(secretContext, ServerSecretStore.ServerSecretStore);
+        const buildRuntime = (store: ServerSecretStore.ServerSecretStore["Service"]) =>
+          Layer.build(
+            Layer.fresh(
+              ServerSettingsModule.layer.pipe(
+                Layer.provide(Layer.succeed(ServerSecretStore.ServerSecretStore, store)),
+                Layer.provideMerge(Layer.succeed(SqlClient.SqlClient, sql)),
+                Layer.provideMerge(Layer.succeed(ServerConfig.ServerConfig, serverConfig)),
+              ),
+            ),
+          ).pipe(
+            Effect.map((context) =>
+              Context.get(context, ServerSettingsModule.ServerSettingsService),
+            ),
+          );
+        const runtimeB = yield* buildRuntime(baseSecretStore);
+        const instanceId = ProviderInstanceId.make("multica_external_secret_conflict");
+        const environmentVariable = "MULTICA_API_TOKEN";
+        const oldSecret = "old-secret-bytes";
+        const initial = yield* runtimeB.updateSettings({
+          providerInstances: {
+            [instanceId]: {
+              ...multicaRuntimeInstance("v1"),
+              environment: [
+                {
+                  name: environmentVariable,
+                  value: oldSecret,
+                  sensitive: true,
+                },
+              ],
+            },
+          },
+          multicaProviderInstancePreconditions: [{ instanceId, expectedRevision: null }],
+        });
+        const initialRaw = yield* fileSystem.readFileString(serverConfig.settingsPath);
+        const initialRevision = multicaProviderInstanceRevision(
+          instanceId,
+          initial.providerInstances[instanceId],
+        );
+        const initialEnvironment = initial.providerInstances[instanceId]?.environment ?? [];
+        assert.strictEqual(initialEnvironment.length, 1);
+        yield* runtimeB.updateSettings({
+          providerInstances: {
+            [instanceId]: {
+              ...multicaRuntimeInstance("v2"),
+              environment: initialEnvironment,
+            },
+          },
+          multicaProviderInstancePreconditions: [{ instanceId, expectedRevision: initialRevision }],
+        });
+        const winnerRaw = yield* fileSystem.readFileString(serverConfig.settingsPath);
+        yield* fileSystem.writeFileString(serverConfig.settingsPath, initialRaw);
+
+        const targetSecretName = providerEnvironmentSecretNameForTest(
+          instanceId,
+          environmentVariable,
+        );
+        let injectedExternalWrite = false;
+        const wrappedSecretStore = ServerSecretStore.ServerSecretStore.of({
+          ...baseSecretStore,
+          set: (name, value) =>
+            Effect.gen(function* () {
+              yield* baseSecretStore.set(name, value);
+              if (name !== targetSecretName || injectedExternalWrite) return;
+              injectedExternalWrite = true;
+              yield* fileSystem
+                .writeFileString(serverConfig.settingsPath, winnerRaw)
+                .pipe(Effect.orDie);
+            }),
+        });
+        const runtimeA = yield* buildRuntime(wrappedSecretStore);
+        const snapshotA = yield* runtimeA.getSettings;
+        const stale = yield* runtimeA
+          .updateSettings({
+            providerInstances: {
+              [instanceId]: {
+                ...multicaRuntimeInstance("v3"),
+                environment: [
+                  {
+                    name: environmentVariable,
+                    value: "new-secret-bytes",
+                    sensitive: true,
+                  },
+                ],
+              },
+            },
+            multicaProviderInstancePreconditions: [
+              {
+                instanceId,
+                expectedRevision: multicaProviderInstanceRevision(
+                  instanceId,
+                  snapshotA.providerInstances[instanceId],
+                ),
+              },
+            ],
+          })
+          .pipe(Effect.flip);
+
+        assert.equal(stale._tag, "ServerSettingsConflictError");
+        assert.isTrue(injectedExternalWrite);
+        assert.equal(yield* fileSystem.readFileString(serverConfig.settingsPath), winnerRaw);
+        const restoredSecret = yield* baseSecretStore.get(targetSecretName);
+        assert.isTrue(Option.isSome(restoredSecret));
+        if (Option.isSome(restoredSecret)) {
+          assert.equal(new TextDecoder().decode(restoredSecret.value), oldSecret);
+        }
+      }),
+    ).pipe(Effect.provide(makeServerSettingsLayer())),
   );
 
   it.effect("逐条校验 Multica CAS precondition，不允许未变指纹绕过", () =>
