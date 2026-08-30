@@ -1268,6 +1268,49 @@ it.layer(
     }).pipe(Effect.provide(withHostPlatform("win32"))),
   );
 
+  it.effect("歧义旧编码文件不会被读取迁移、删除或在 Manager 重建后误认领", () =>
+    Effect.gen(function* () {
+      const fileSystem = yield* FileSystem.FileSystem;
+      const path = yield* Path.Path;
+      const logsDir = yield* createSharedLogsDir();
+      yield* fileSystem.makeDirectory(logsDir, { recursive: true });
+      const ambiguousEncodedHistory = path.join(logsDir, "terminal_YWE_YQ.log");
+      yield* fileSystem.writeFileString(ambiguousEncodedHistory, "ambiguous-encoded-history\n");
+
+      const firstScope = yield* Scope.make("sequential");
+      yield* Effect.addFinalizer(() => Scope.close(firstScope, Exit.void));
+      const first = yield* createManager(new FakePtyAdapter(), {
+        logsDir,
+        managerScope: firstScope,
+      });
+
+      assert.equal(
+        yield* first.manager.getHistory({ threadId: "aa?a", terminalId: DEFAULT_TERMINAL_ID }),
+        "",
+      );
+      assert.equal(yield* first.manager.getHistory({ threadId: "aa", terminalId: "a" }), "");
+      assert.isTrue(yield* fileSystem.exists(ambiguousEncodedHistory));
+      assert.deepEqual(
+        yield* first.manager.disposeThread({ threadId: "aa?a", deleteHistory: true }),
+        [],
+      );
+      assert.isTrue(yield* fileSystem.exists(ambiguousEncodedHistory));
+      yield* Scope.close(firstScope, Exit.void);
+
+      const second = yield* createManager(new FakePtyAdapter(), { logsDir });
+      assert.equal(
+        yield* second.manager.getHistory({ threadId: "aa?a", terminalId: DEFAULT_TERMINAL_ID }),
+        "",
+      );
+      assert.equal(yield* second.manager.getHistory({ threadId: "aa", terminalId: "a" }), "");
+      assert.isTrue(yield* fileSystem.exists(ambiguousEncodedHistory));
+      assert.equal(
+        yield* fileSystem.readFileString(ambiguousEncodedHistory),
+        "ambiguous-encoded-history\n",
+      );
+    }).pipe(Effect.provide(withHostPlatform("win32"))),
+  );
+
   it.effect("歧义 legacy sanitizer 文件不会被任一候选线程直接删除", () =>
     Effect.gen(function* () {
       const fileSystem = yield* FileSystem.FileSystem;

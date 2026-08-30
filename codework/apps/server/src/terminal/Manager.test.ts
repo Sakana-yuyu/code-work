@@ -2086,6 +2086,23 @@ it.layer(
     }),
   );
 
+  it.effect("migrates an unambiguous encoded default history into the thread directory", () =>
+    Effect.gen(function* () {
+      const { manager, logsDir } = yield* createManager();
+      const path = yield* Path.Path;
+      const legacyPath = path.join(logsDir, `terminal_${Encoding.encodeBase64Url("thread-1")}.log`);
+      const nextPath = yield* historyLogPath(logsDir);
+      yield* writeFileString(legacyPath, "encoded-legacy-line\n");
+
+      const snapshot = yield* manager.open(openInput());
+
+      assert.equal(snapshot.history, "encoded-legacy-line\n");
+      expect(yield* pathExists(nextPath)).toBe(true);
+      expect(yield* readFileString(nextPath)).toBe("encoded-legacy-line\n");
+      expect(yield* pathExists(legacyPath)).toBe(false);
+    }),
+  );
+
   it.effect("retries with fallback shells when preferred shell spawn fails", () =>
     Effect.gen(function* () {
       const platform = yield* HostProcessPlatform;

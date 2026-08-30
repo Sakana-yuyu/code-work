@@ -1369,6 +1369,9 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
   const canOwnSanitizedLegacyHistory = (threadId: string) =>
     legacySafeThreadId(threadId) === threadId && !threadId.includes("_");
 
+  const canOwnEncodedLegacyHistory = (threadId: string, terminalId: string) =>
+    terminalId === DEFAULT_TERMINAL_ID && !Encoding.encodeBase64Url(threadId).includes("_");
+
   const readManagerState = SynchronizedRef.get(managerStateRef);
 
   const modifyManagerState = <A>(
@@ -1644,6 +1647,16 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
     }
 
     const encodedLegacyPath = encodedLegacyHistoryPath(threadId, terminalId);
+    if (!canOwnEncodedLegacyHistory(threadId, terminalId)) {
+      if (yield* fileSystem.exists(encodedLegacyPath).pipe(Effect.orElseSucceed(() => false))) {
+        yield* Effect.logWarning("ignored ambiguous encoded terminal history", {
+          threadId,
+          terminalId,
+          encodedLegacyPath,
+        });
+      }
+      return "";
+    }
     if (
       yield* fileSystem
         .exists(encodedLegacyPath)
@@ -1736,8 +1749,14 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
     threadId: string,
     terminalId: string,
   ) {
+    const targets = [
+      historyPath(threadId, terminalId),
+      ...(canOwnEncodedLegacyHistory(threadId, terminalId)
+        ? [encodedLegacyHistoryPath(threadId, terminalId)]
+        : []),
+    ];
     yield* Effect.forEach(
-      [historyPath(threadId, terminalId), encodedLegacyHistoryPath(threadId, terminalId)],
+      targets,
       (targetPath) =>
         fileSystem.remove(targetPath, { force: true }).pipe(
           Effect.catch((error) =>
@@ -1780,7 +1799,9 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
         ),
       );
     yield* remove(historyPath(threadId, terminalId));
-    yield* remove(encodedLegacyHistoryPath(threadId, terminalId));
+    if (canOwnEncodedLegacyHistory(threadId, terminalId)) {
+      yield* remove(encodedLegacyHistoryPath(threadId, terminalId));
+    }
     if (terminalId === DEFAULT_TERMINAL_ID && canOwnSanitizedLegacyHistory(threadId)) {
       yield* remove(sanitizedLegacyHistoryPath(threadId));
     }
@@ -1790,7 +1811,9 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
     threadId: string,
   ) {
     const targets = [
-      encodedLegacyHistoryPath(threadId, DEFAULT_TERMINAL_ID),
+      ...(canOwnEncodedLegacyHistory(threadId, DEFAULT_TERMINAL_ID)
+        ? [encodedLegacyHistoryPath(threadId, DEFAULT_TERMINAL_ID)]
+        : []),
       ...(canOwnSanitizedLegacyHistory(threadId) ? [sanitizedLegacyHistoryPath(threadId)] : []),
       historyThreadDirectory(threadId),
     ];
@@ -1813,26 +1836,33 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
     function* (threadId: string) {
       const terminalId = "*";
       const targets = [
-        encodedLegacyHistoryPath(threadId, DEFAULT_TERMINAL_ID),
+        ...(canOwnEncodedLegacyHistory(threadId, DEFAULT_TERMINAL_ID)
+          ? [encodedLegacyHistoryPath(threadId, DEFAULT_TERMINAL_ID)]
+          : []),
         ...(canOwnSanitizedLegacyHistory(threadId) ? [sanitizedLegacyHistoryPath(threadId)] : []),
         historyThreadDirectory(threadId),
       ];
-      yield* Effect.forEach(
-        targets,
-        (targetPath) =>
-          fileSystem.remove(targetPath, { recursive: true, force: true }).pipe(
-            Effect.mapError(
-              (cause) =>
-                new TerminalHistoryError({
-                  operation: "delete",
-                  threadId,
-                  terminalId,
-                  cause,
-                }),
+      const remove = (targetPath: string) =>
+        fileSystem.remove(targetPath, { recursive: true, force: true }).pipe(
+          Effect.catch((cause) =>
+            fileSystem.exists(targetPath).pipe(
+              Effect.orElseSucceed(() => true),
+              Effect.flatMap((stillExists) =>
+                stillExists
+                  ? Effect.fail(
+                      new TerminalHistoryError({
+                        operation: "delete",
+                        threadId,
+                        terminalId,
+                        cause,
+                      }),
+                    )
+                  : Effect.void,
+              ),
             ),
           ),
-        { discard: true },
-      );
+        );
+      yield* Effect.forEach(targets, remove, { discard: true });
     },
   );
 
