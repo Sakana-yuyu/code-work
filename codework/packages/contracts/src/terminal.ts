@@ -341,6 +341,18 @@ export class TerminalResizeError extends Schema.TaggedErrorClass<TerminalResizeE
   }
 }
 
+export class TerminalSessionOwnershipError extends Schema.TaggedErrorClass<TerminalSessionOwnershipError>()(
+  "TerminalSessionOwnershipError",
+  {
+    threadId: Schema.String,
+    terminalId: Schema.String,
+  },
+) {
+  override get message() {
+    return `Terminal session owner mismatch for thread: ${this.threadId}, terminal: ${this.terminalId}`;
+  }
+}
+
 export const TerminalError = Schema.Union([
   TerminalCwdError,
   TerminalHistoryError,
@@ -348,5 +360,6 @@ export const TerminalError = Schema.Union([
   TerminalNotRunningError,
   TerminalWriteError,
   TerminalResizeError,
+  TerminalSessionOwnershipError,
 ]);
 export type TerminalError = typeof TerminalError.Type;

@@ -32,6 +32,10 @@ import {
 } from "../persistence/Services/WorkspaceScriptStore.ts";
 import * as TerminalManager from "../terminal/Manager.ts";
 import {
+  makeWorkspaceScriptTerminalOwner,
+  type TerminalSessionOwner,
+} from "../terminal/TerminalSessionOwnership.ts";
+import {
   isFinishedWorkspaceScriptRun,
   makeWorkspaceScriptClosed,
   makeWorkspaceScriptExited,
@@ -41,6 +45,7 @@ import {
 export type WorkspaceScriptTerminalRunCommandInput = TerminalOpenInput & {
   readonly command: string;
   readonly args?: ReadonlyArray<string>;
+  readonly owner: TerminalSessionOwner;
 };
 
 export interface WorkspaceScriptTerminalPort {
@@ -50,7 +55,13 @@ export interface WorkspaceScriptTerminalPort {
   readonly kill: (input: {
     readonly threadId: string;
     readonly terminalId: string;
+    readonly expectedOwner: TerminalSessionOwner;
   }) => Effect.Effect<void, WorkspaceScriptDependencyError>;
+  readonly inspectSession: (input: {
+    readonly threadId: string;
+    readonly terminalId: string;
+    readonly expectedOwner: TerminalSessionOwner;
+  }) => Effect.Effect<TerminalManager.TerminalSessionInspection, WorkspaceScriptDependencyError>;
   readonly getHistory: (input: {
     readonly threadId: string;
     readonly terminalId: string;
@@ -91,6 +102,7 @@ export class WorkspaceScriptDependencyError extends Data.TaggedError(
     | "resolveThread"
     | "runCommand"
     | "killTerminal"
+    | "inspectTerminal"
     | "getHistory";
   readonly cause: unknown;
 }> {}
@@ -184,6 +196,12 @@ const persistenceError = (
 
 const workspaceScriptTerminalId = (operationId: string): string =>
   `workspace-script-${operationId}`;
+
+const workspaceScriptTerminalOwner = (run: WorkspaceScriptRun): TerminalSessionOwner =>
+  makeWorkspaceScriptTerminalOwner({
+    workspaceScriptRunId: run.workspaceScriptRunId,
+    generation: run.requestedAtUnixMs,
+  });
 
 export const workspaceScriptShellInvocation = (input: {
   readonly platform: NodeJS.Platform;
@@ -502,6 +520,7 @@ export const makeWorkspaceScriptService = Effect.fn("WorkspaceScriptService.make
             worktreePath,
           }),
           ...invocation,
+          owner: workspaceScriptTerminalOwner(starting),
         })
         .pipe(Effect.result);
 
@@ -582,7 +601,11 @@ export const makeWorkspaceScriptService = Effect.fn("WorkspaceScriptService.make
       if (!claim.claimed || isFinishedWorkspaceScriptRun(claim.run)) return claim.run;
 
       const killResult = yield* options.terminal
-        .kill({ threadId: claim.run.threadId, terminalId: claim.run.terminalId })
+        .kill({
+          threadId: claim.run.threadId,
+          terminalId: claim.run.terminalId,
+          expectedOwner: workspaceScriptTerminalOwner(claim.run),
+        })
         .pipe(Effect.result);
       if (killResult._tag === "Failure") {
         yield* updateRun(input.workspaceScriptRunId, (run, observedAtUnixMs) =>
@@ -625,6 +648,15 @@ export const make = Effect.gen(function* () {
           .pipe(
             Effect.mapError(
               (cause) => new WorkspaceScriptDependencyError({ operation: "killTerminal", cause }),
+            ),
+          ),
+      inspectSession: (input) =>
+        terminalManager
+          .inspectSession(input)
+          .pipe(
+            Effect.mapError(
+              (cause) =>
+                new WorkspaceScriptDependencyError({ operation: "inspectTerminal", cause }),
             ),
           ),
       getHistory: (input) =>

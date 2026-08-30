@@ -31,6 +31,7 @@ import { expect } from "vite-plus/test";
 import * as ProcessRunner from "../processRunner.ts";
 import * as TerminalManager from "./Manager.ts";
 import * as PtyAdapter from "./PtyAdapter.ts";
+import { makeWorkspaceScriptTerminalOwner } from "./TerminalSessionOwnership.ts";
 
 class WaitForConditionError extends Data.TaggedError("WaitForConditionError")<{
   readonly message: string;
@@ -180,6 +181,12 @@ function restartInput(overrides: Partial<TerminalRestartInput> = {}): TerminalRe
     ...overrides,
   };
 }
+
+const workspaceScriptOwner = (generation = 1) =>
+  makeWorkspaceScriptTerminalOwner({
+    workspaceScriptRunId: "workspace-script-run:operation-owner",
+    generation,
+  });
 
 const historyLogPath = (logsDir: string, threadId = "thread-1") =>
   Effect.service(Path.Path).pipe(
@@ -345,6 +352,98 @@ it.layer(
         history: "command-output\n",
         exitCode: 7,
       });
+    }),
+  );
+
+  it.effect("受监督命令拒绝复用已被普通终端预占的 terminalId", () =>
+    Effect.gen(function* () {
+      const { manager, ptyAdapter } = yield* createManager();
+      const terminalId = "workspace-script-operation-owner";
+      yield* manager.open(openInput({ threadId: "owner-preempt", terminalId }));
+      const original = ptyAdapter.processes[0];
+      expect(original).toBeDefined();
+      if (!original) return;
+
+      const error = yield* manager
+        .runCommand({
+          threadId: "owner-preempt",
+          terminalId,
+          cwd: process.cwd(),
+          command: "workspace-script-command",
+          owner: workspaceScriptOwner(),
+        })
+        .pipe(Effect.flip);
+
+      assert.equal(error._tag, "TerminalSessionOwnershipError");
+      expect(ptyAdapter.spawnInputs).toHaveLength(1);
+      assert.equal(original.killed, false);
+    }),
+  );
+
+  it.effect("错误 owner generation 不得终止受监督命令", () =>
+    Effect.gen(function* () {
+      const { manager, ptyAdapter } = yield* createManager();
+      const terminalId = "workspace-script-operation-owner-kill";
+      yield* manager.runCommand({
+        threadId: "owner-kill",
+        terminalId,
+        cwd: process.cwd(),
+        command: "workspace-script-command",
+        owner: workspaceScriptOwner(7),
+      });
+      const processHandle = ptyAdapter.processes[0];
+      expect(processHandle).toBeDefined();
+      if (!processHandle) return;
+
+      const error = yield* manager
+        .kill({
+          threadId: "owner-kill",
+          terminalId,
+          expectedOwner: workspaceScriptOwner(8),
+        })
+        .pipe(Effect.flip);
+
+      assert.equal(error._tag, "TerminalSessionOwnershipError");
+      assert.equal(processHandle.killed, false);
+    }),
+  );
+
+  it.effect("owner generation 在重复访问中保持并约束 session inspection", () =>
+    Effect.gen(function* () {
+      const { manager, ptyAdapter } = yield* createManager();
+      const terminalId = "workspace-script-operation-owner-inspect";
+      const owner = workspaceScriptOwner(11);
+      const first = yield* manager.runCommand({
+        threadId: "owner-inspect",
+        terminalId,
+        cwd: process.cwd(),
+        command: "workspace-script-command",
+        owner,
+      });
+      const repeated = yield* manager.runCommand({
+        threadId: "owner-inspect",
+        terminalId,
+        cwd: process.cwd(),
+        command: "workspace-script-command",
+        owner: workspaceScriptOwner(11),
+      });
+      const active = yield* manager.inspectSession({
+        threadId: "owner-inspect",
+        terminalId,
+        expectedOwner: workspaceScriptOwner(11),
+      });
+      const wrongGeneration = yield* manager
+        .inspectSession({
+          threadId: "owner-inspect",
+          terminalId,
+          expectedOwner: workspaceScriptOwner(12),
+        })
+        .pipe(Effect.flip);
+
+      assert.equal(first.pid, repeated.pid);
+      assert.equal(active, "active");
+      assert.equal(wrongGeneration._tag, "TerminalSessionOwnershipError");
+      expect(ptyAdapter.spawnInputs).toHaveLength(1);
     }),
   );
 
