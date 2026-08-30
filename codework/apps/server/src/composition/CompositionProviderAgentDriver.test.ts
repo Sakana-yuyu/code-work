@@ -71,6 +71,21 @@ const makeAdapter = (options?: { readonly failTurn?: boolean }) => {
 };
 
 describe("CompositionProviderAgentDriver", () => {
+  it("Provider 仅允许在 orphan session 对账后恢复，不声明自动重放", () => {
+    const fake = makeAdapter();
+    const driver = makeCompositionProviderAgentDriver({
+      agentId: "agent-provider-recovery-policy",
+      runtimeId: "provider-recovery-policy",
+      providerInstanceId: ProviderInstanceId.make("provider-recovery-policy"),
+      adapter: fake.adapter,
+    });
+
+    expect(driver.startRecoveryPolicy).toEqual({
+      mode: "reconcile-only",
+      after: "provider-sessions.reconcile",
+    });
+  });
+
   it("仅在同一 thread 的 turn.started 后归属启动中 Provider Run", async () => {
     const fake = makeAdapter();
     const turnStarted = Effect.runSync(Deferred.make<void>());

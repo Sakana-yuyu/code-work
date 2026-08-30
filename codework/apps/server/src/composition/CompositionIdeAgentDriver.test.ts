@@ -77,6 +77,23 @@ const makeAdapter = (calls: string[]): CompositionIdeAdapter => ({
 });
 
 describe("CompositionIdeAgentDriver", () => {
+  it("IDE 每次握手和 task.start 都有外部副作用，因此启动恢复 fail-closed", () => {
+    const registry = makeCompositionIdeSessionRegistry();
+    const adapter = makeAdapter([]);
+    const driver = makeCompositionIdeAgentDriver({
+      registry,
+      sessionId: "vscode-session-1",
+      profile: "vscode_ide",
+      agentId: compositionIdeAgentId("vscode-session-1"),
+      eventStream: adapter.streamEvents,
+    });
+
+    expect(driver.startRecoveryPolicy).toEqual({
+      mode: "fail-closed",
+      reasonCode: "ide_start_replay_unsafe",
+    });
+  });
+
   it("把已验证的 IDE task bridge operation 投影为可派发 Driver", async () => {
     const calls: string[] = [];
     const registry = makeCompositionIdeSessionRegistry();

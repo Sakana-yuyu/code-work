@@ -6,6 +6,29 @@ import { makeCompositionRuntimeAgentDriver } from "./CompositionRuntimeAgentDriv
 import { makeInMemoryCompositionRuntimeAdapter } from "./CompositionRuntimeAdapter.ts";
 
 describe("CompositionRuntimeAgentDriver", () => {
+  it("仅 Multica Runtime 声明持久幂等启动重放", () => {
+    const multica = makeCompositionRuntimeAgentDriver({
+      adapter: makeInMemoryCompositionRuntimeAdapter({
+        runtimeId: "runtime-recovery-multica",
+        driverKind: "multica",
+      }),
+      agentId: "runtime-recovery-multica:agent",
+    });
+    const ide = makeCompositionRuntimeAgentDriver({
+      adapter: makeInMemoryCompositionRuntimeAdapter({
+        runtimeId: "runtime-recovery-ide",
+        driverKind: "ide",
+      }),
+      agentId: "runtime-recovery-ide:agent",
+    });
+
+    expect(multica.startRecoveryPolicy).toEqual({ mode: "idempotent-replay" });
+    expect(ide.startRecoveryPolicy).toEqual({
+      mode: "fail-closed",
+      reasonCode: "runtime_start_replay_not_verified",
+    });
+  });
+
   it("Runtime 心跳已过期时拒绝派发，不调用 capability handshake 或 dispatch", async () => {
     const adapter = makeInMemoryCompositionRuntimeAdapter({ runtimeId: "runtime-stale-heartbeat" });
     const handshakeCapabilities = adapter.handshakeCapabilities;

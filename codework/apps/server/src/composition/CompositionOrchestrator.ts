@@ -123,9 +123,22 @@ export {
   CompositionTaskRetryInvalidError,
 } from "./CompositionOrchestratorErrors.ts";
 
+export type CompositionAgentDriverStartRecoveryPolicy =
+  | { readonly mode: "idempotent-replay" }
+  | {
+      readonly mode: "reconcile-only";
+      readonly after: "provider-sessions.reconcile";
+    }
+  | {
+      readonly mode: "fail-closed";
+      readonly reasonCode: string;
+    };
+
 export interface CompositionAgentDriver {
   readonly agentId: string;
   readonly runtimeId: string;
+  /** 未声明时按 fail-closed 处理，禁止启动恢复路径猜测 Driver 能力。 */
+  readonly startRecoveryPolicy?: CompositionAgentDriverStartRecoveryPolicy;
   /** 返回当前 Driver 已经验证过的能力，不包含本次 Task 的授权结果。 */
   readonly getProfile?: () => Effect.Effect<CompositionAgentDriverProfile>;
   /** Driver 自己产生的运行时事件；用于不依赖 Provider Session 的本地 Agent Loop。 */

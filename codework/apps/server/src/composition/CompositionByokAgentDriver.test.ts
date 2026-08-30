@@ -96,6 +96,26 @@ const collectUntilTerminal = (driver: ReturnType<typeof makeCompositionByokAgent
   );
 
 describe("CompositionByokAgentDriver", () => {
+  it("BYOK 进程内 activeRuns 丢失后保持启动恢复 fail-closed", () => {
+    const checkpointLedger = makeCheckpointLedger();
+    const driver = makeCompositionByokAgentDriver({
+      agentId: "provider:byok-recovery-policy",
+      runtimeId: "provider:byok-recovery-policy",
+      providerInstanceId: "byok-recovery-policy",
+      providerKind: "byok",
+      agentService: {
+        run: () => Effect.die("恢复策略测试不应启动 Agent Loop"),
+      },
+      checkpointStore: checkpointLedger.store,
+      listTools: () => Effect.succeed(tools),
+    });
+
+    expect(driver.startRecoveryPolicy).toEqual({
+      mode: "fail-closed",
+      reasonCode: "byok_start_replay_unsafe",
+    });
+  });
+
   it("把 BYOK Agent Loop 投影成真实 Driver，并将终态事件归属到同一个 run", async () => {
     const calls: Array<Parameters<CompositionAgentServiceShape["run"]>[0]> = [];
     const service: CompositionAgentServiceShape = {

@@ -415,6 +415,13 @@ export const makeCompositionRuntimeAgentDriver = (
   return {
     agentId: options.agentId,
     runtimeId: options.adapter.runtimeId,
+    startRecoveryPolicy:
+      options.adapter.driverKind === "multica"
+        ? { mode: "idempotent-replay" }
+        : {
+            mode: "fail-closed",
+            reasonCode: "runtime_start_replay_not_verified",
+          },
     getProfile,
     startTask,
     revokeCapabilityHandshake,

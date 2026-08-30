@@ -552,6 +552,10 @@ export const makeCompositionProviderAgentDriver = (
   return {
     agentId: options.agentId,
     runtimeId: options.runtimeId,
+    startRecoveryPolicy: {
+      mode: "reconcile-only",
+      after: "provider-sessions.reconcile",
+    },
     getProfile,
     startTask,
     revokeCapabilityHandshake,
