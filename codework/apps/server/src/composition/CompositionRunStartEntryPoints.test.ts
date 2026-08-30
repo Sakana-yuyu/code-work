@@ -15,6 +15,7 @@ import {
   CompositionAgentDriverFailure,
   makeCompositionOrchestrator,
 } from "./CompositionOrchestrator.ts";
+import { makeCompositionRunStartDigests } from "./CompositionRunStartLifecycle.ts";
 
 const layer = it.layer(
   Layer.mergeAll(CompositionTaskStoreLive, CompositionRunStartStoreLive).pipe(
@@ -559,6 +560,123 @@ layer("Composition Run Start 统一入口", (it) => {
       const intent = Option.getOrThrow(
         yield* runStartStore.getStart("run-entry-legacy-capabilities"),
       );
+      assert.equal(intent.state, "quarantined");
+      assert.equal(intent.outcomeCode, "run_start_legacy_input_capabilities_unknown");
+    }),
+  );
+
+  it.effect("retry 的旧恢复输入缺少 capabilityIds 时使用持久 previousRunId 隔离", () =>
+    Effect.gen(function* () {
+      const store = yield* CompositionTaskStore;
+      const runStartStore = yield* CompositionRunStartStore;
+      const inputStore = makeInputStore();
+      const taskId = "task-entry-legacy-retry-capabilities";
+      const previousRunId = "run-entry-legacy-retry-capabilities-1";
+      const runId = "run-entry-legacy-retry-capabilities-2";
+      const agentId = "agent-entry-legacy-retry-capabilities";
+      const runtimeId = "runtime-entry-legacy-retry-capabilities";
+      const dependencyId = "task-entry-legacy-retry-capabilities-dependency";
+      yield* inputStore.save({
+        taskId,
+        prompt: "验证 retry 旧恢复输入 capability 身份边界",
+        workspaceRoot: "C:/workspace/entry-legacy-retry-capabilities",
+      });
+      yield* store.upsertTask({
+        taskId: dependencyId,
+        projectId: "project-entry-legacy-retry-capabilities",
+        assigneeKind: "agent",
+        assigneeId: agentId,
+        mode: "serial",
+        status: "completed",
+        promptDigest: "sha256:entry-legacy-retry-capabilities-dependency",
+        dependsOnTaskIds: [],
+        createdAtUnixMs: 1,
+        updatedAtUnixMs: 2,
+        finishedAtUnixMs: 2,
+      });
+      yield* store.upsertTask({
+        taskId,
+        projectId: "project-entry-legacy-retry-capabilities",
+        assigneeKind: "agent",
+        assigneeId: agentId,
+        mode: "serial",
+        status: "blocked",
+        promptDigest: "sha256:entry-legacy-retry-capabilities",
+        dependsOnTaskIds: [dependencyId],
+        createdAtUnixMs: 1,
+        updatedAtUnixMs: 2,
+      });
+      yield* store.upsertRun({
+        taskId,
+        runId: previousRunId,
+        agentId,
+        runtimeId,
+        status: "failed",
+        attempt: 1,
+        capabilityGrantIds: [],
+      });
+      yield* store.upsertRun({
+        taskId,
+        runId,
+        agentId,
+        runtimeId,
+        status: "blocked",
+        attempt: 2,
+        capabilityGrantIds: ["grant-entry-legacy-retry-capabilities"],
+      });
+      const digests = makeCompositionRunStartDigests({
+        taskId,
+        projectId: "project-entry-legacy-retry-capabilities",
+        runId,
+        previousRunId,
+        assigneeKind: "agent",
+        assigneeId: agentId,
+        mode: "serial",
+        dependsOnTaskIds: [dependencyId],
+        agentId,
+        runtimeId,
+        attempt: 2,
+        promptDigest: "sha256:entry-legacy-retry-capabilities",
+        capabilityIds: null,
+      });
+      yield* runStartStore.prepareStart({
+        taskId,
+        runId,
+        previousRunId,
+        agentId,
+        runtimeId,
+        attempt: 2,
+        ...digests,
+        createdAtUnixMs: 10,
+      });
+
+      let startCount = 0;
+      const driverRegistry = makeCompositionAgentDriverRegistry();
+      yield* driverRegistry.register({
+        agentId,
+        runtimeId,
+        startRecoveryPolicy: recoveryPolicy,
+        startTask: () =>
+          Effect.sync(() => {
+            startCount += 1;
+            return { runtimeTaskId: "runtime-task-entry-legacy-retry-capabilities" };
+          }),
+        cancelTask: () => Effect.succeed({ status: "cancelled" as const }),
+      });
+      const orchestrator = makeCompositionOrchestrator(
+        store,
+        driverRegistry,
+        undefined,
+        inputStore,
+        runStartStore,
+      );
+
+      const result = yield* orchestrator.resumeReadyTasks();
+
+      assert.deepEqual(result, []);
+      assert.equal(startCount, 0);
+      const intent = Option.getOrThrow(yield* runStartStore.getStart(runId));
+      assert.equal(intent.previousRunId, previousRunId);
       assert.equal(intent.state, "quarantined");
       assert.equal(intent.outcomeCode, "run_start_legacy_input_capabilities_unknown");
     }),

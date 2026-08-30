@@ -672,10 +672,20 @@ const makeOrchestrator = (
   }) =>
     runStartStore === undefined
       ? Effect.void
-      : quarantineCompositionRunStartUnknownCapabilities(
-          runStartStore,
-          makeRunStartSetup({ ...input, previousRunId: null, capabilityIds: null }),
-        );
+      : Effect.gen(function* () {
+          const existingIntent = yield* runStartStore.getStart(input.run.runId);
+          const previousRunId = Option.isSome(existingIntent)
+            ? existingIntent.value.previousRunId
+            : input.run.attempt === 1
+              ? null
+              : undefined;
+          // retry 缺少可核验的前序 Run 关系时只能保持阻塞，不能伪造 null 身份。
+          if (previousRunId === undefined) return;
+          return yield* quarantineCompositionRunStartUnknownCapabilities(
+            runStartStore,
+            makeRunStartSetup({ ...input, previousRunId, capabilityIds: null }),
+          );
+        });
 
   const startPersistedRun = (input: {
     readonly task: CompositionTask;
