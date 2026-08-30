@@ -1541,6 +1541,11 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
     }
   };
 
+  const shouldUseWindowsProcessTreeFallback = (
+    cause: Cause.Cause<TerminalProcessTerminationError>,
+  ): boolean =>
+    Option.exists(Cause.findErrorOption(cause), (error) => error.reason === "signal-failed");
+
   const removeTerminationRecord = (
     process: PtyAdapter.PtyProcess,
     record: TerminalProcessTerminationRecord,
@@ -3129,7 +3134,8 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
               Exit.isSuccess(primaryExit) ||
               platform !== "win32" ||
               process === null ||
-              processExit === null
+              processExit === null ||
+              !shouldUseWindowsProcessTreeFallback(primaryExit.cause)
             ) {
               return { session, exit: primaryExit, primaryCause: null };
             }

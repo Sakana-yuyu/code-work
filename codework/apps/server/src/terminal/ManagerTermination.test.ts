@@ -807,6 +807,44 @@ it.layer(
     }).pipe(Effect.provide(withHostPlatform("win32"))),
   );
 
+  it.effect("Windows scope 等待 exit 超时不得调用裸 PID fallback", () =>
+    Effect.gen(function* () {
+      const managerScope = yield* Scope.make("sequential");
+      const fallbackCalls = yield* Ref.make(0);
+      const { manager, ptyAdapter } = yield* createManager(new FakePtyAdapter(), {
+        managerScope,
+        processExitTimeoutMs: 10,
+        forceTerminateWindowsProcessTree: () => Ref.update(fallbackCalls, (count) => count + 1),
+      });
+      yield* openTerminal(manager, "windows-exit-timeout-no-fallback");
+      const process = ptyAdapter.processes[0];
+      expect(process).toBeDefined();
+      if (!process) return;
+
+      const nextKill = yield* watchNextKill(process);
+      const closeFiber = yield* Scope.close(managerScope, Exit.void).pipe(Effect.forkChild);
+      assert.isUndefined(yield* Deferred.await(nextKill));
+
+      yield* TestClock.adjust("10 millis");
+      yield* Effect.yieldNow;
+      const observedFallbackCalls = yield* Ref.get(fallbackCalls);
+      const observedStatus = yield* manager.inspectSession({
+        threadId: "windows-exit-timeout-no-fallback",
+        terminalId: DEFAULT_TERMINAL_ID,
+      });
+      const observedDataListenerCount = process.dataListenerCount;
+      const observedExitListenerCount = process.exitListenerCount;
+
+      process.emitExit({ exitCode: 1, signal: null });
+      yield* Fiber.join(closeFiber);
+
+      assert.equal(observedFallbackCalls, 0);
+      assert.equal(observedStatus, "active");
+      assert.equal(observedDataListenerCount, 1);
+      assert.equal(observedExitListenerCount, 1);
+    }).pipe(Effect.provide(Layer.merge(withHostPlatform("win32"), TestClock.layer()))),
+  );
+
   it.effect("Manager scope 终止与宿主兜底均失败时保留失败会话的监督状态", () =>
     Effect.gen(function* () {
       const managerScope = yield* Scope.make("sequential");
