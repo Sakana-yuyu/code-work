@@ -446,6 +446,18 @@ describe("MulticaRuntimeSettings validation", () => {
       path: "baseUrl",
     },
     {
+      name: "内嵌凭据的 baseUrl",
+      patch: { baseUrl: "https://operator:secret@multica.test/api" },
+      code: "invalid_base_url",
+      path: "baseUrl",
+    },
+    {
+      name: "携带查询参数的 baseUrl",
+      patch: { baseUrl: "https://multica.test/api?token=secret" },
+      code: "invalid_base_url",
+      path: "baseUrl",
+    },
+    {
       name: "Header 引用缺失环境变量",
       patch: {
         headers: [{ headerName: "Authorization", environmentVariable: "MISSING_TOKEN" }],
@@ -498,6 +510,18 @@ describe("MulticaRuntimeSettings validation", () => {
     {
       name: "非法 task MCP endpoint",
       patch: { taskMcpEndpoint: "file:///tmp/mcp" },
+      code: "invalid_task_mcp_endpoint",
+      path: "taskMcpEndpoint",
+    },
+    {
+      name: "内嵌凭据的 task MCP endpoint",
+      patch: { taskMcpEndpoint: "https://operator:secret@codework.test/mcp" },
+      code: "invalid_task_mcp_endpoint",
+      path: "taskMcpEndpoint",
+    },
+    {
+      name: "携带凭据查询的 task MCP endpoint",
+      patch: { taskMcpEndpoint: "https://codework.test/mcp?access_token=secret" },
       code: "invalid_task_mcp_endpoint",
       path: "taskMcpEndpoint",
     },

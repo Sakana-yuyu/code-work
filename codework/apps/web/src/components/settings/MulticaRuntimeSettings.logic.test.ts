@@ -112,6 +112,39 @@ describe("MulticaRuntimeSettings logic", () => {
     ).toBeNull();
   });
 
+  it("拒绝会把 URL 凭据带入设置界面的已保存 Runtime", () => {
+    const base = {
+      driver: ProviderDriverKind.make("multica"),
+      config: {
+        runtimeId: "multica:daemon-1:runtime-1",
+        daemonId: "daemon-1",
+        daemonRuntimeId: "runtime-1",
+        baseUrl: "https://multica.test/api",
+        headers: [],
+        assigneeRoutes: [],
+      },
+    };
+
+    expect(
+      formFromMulticaRuntimeInstance("multica_local", {
+        ...base,
+        config: {
+          ...base.config,
+          baseUrl: "https://operator:secret@multica.test/api",
+        },
+      }),
+    ).toBeNull();
+    expect(
+      formFromMulticaRuntimeInstance("multica_local", {
+        ...base,
+        config: {
+          ...base.config,
+          taskMcpEndpoint: "https://codework.test/mcp?access_token=secret",
+        },
+      }),
+    ).toBeNull();
+  });
+
   it("为新实例创建不冒充既有 Secret 身份的默认草稿", () => {
     expect(emptyMulticaRuntimeDraft()).toMatchObject({
       instanceId: "multica_local",

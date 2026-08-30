@@ -6,6 +6,10 @@ import {
 import * as Schema from "effect/Schema";
 
 import type { MulticaRuntimeDraft } from "./MulticaRuntimeSettings.model";
+import {
+  isSafeMulticaRuntimeBaseUrl,
+  isSafeMulticaTaskMcpEndpoint,
+} from "./MulticaRuntimeSettings.url";
 
 export * from "./MulticaRuntimeSettings.model";
 export { validateMulticaRuntimeDraft } from "./MulticaRuntimeSettings.validation";
@@ -21,6 +25,13 @@ export const formFromMulticaRuntimeInstance = (
   try {
     const normalizedInstanceId = decodeProviderInstanceId(instanceId);
     const config = decodeMulticaConfig(instance.config);
+    if (!isSafeMulticaRuntimeBaseUrl(config.baseUrl)) return null;
+    if (
+      config.taskMcpEndpoint !== undefined &&
+      !isSafeMulticaTaskMcpEndpoint(config.taskMcpEndpoint)
+    ) {
+      return null;
+    }
     return {
       instanceId: normalizedInstanceId,
       originalInstanceId: normalizedInstanceId,

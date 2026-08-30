@@ -9,9 +9,10 @@ import {
   validateMulticaRuntimeDraft,
   type MulticaRuntimeDraft,
 } from "./MulticaRuntimeSettings.logic";
+import type { MulticaRuntimeSaveState } from "./MulticaRuntimeSettings.session";
 import type { MulticaRuntimeSettingsText } from "./MulticaRuntimeSettingsText";
 
-export type MulticaRuntimeSaveState = "idle" | "saving" | "error";
+export type { MulticaRuntimeSaveState } from "./MulticaRuntimeSettings.session";
 
 export interface MulticaRuntimeSettingsEditorProps {
   readonly text: MulticaRuntimeSettingsText;

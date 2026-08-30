@@ -3,6 +3,7 @@ import { LoaderCircleIcon, PencilIcon, Trash2Icon } from "lucide-react";
 import { Button } from "../ui/button";
 import type { MulticaRuntimeDraft } from "./MulticaRuntimeSettings.model";
 import type { MulticaRuntimeSettingsText } from "./MulticaRuntimeSettingsText";
+import { safeMulticaRuntimeUrlLabel } from "./MulticaRuntimeSettings.url";
 
 interface MulticaRuntimeInstanceRowProps {
   readonly text: MulticaRuntimeSettingsText;
@@ -27,6 +28,7 @@ export function MulticaRuntimeInstanceRow({
   onEdit,
   onDelete,
 }: MulticaRuntimeInstanceRowProps) {
+  const baseUrlLabel = draft === null ? null : safeMulticaRuntimeUrlLabel(draft.baseUrl);
   return (
     <div
       className="grid gap-3 rounded-lg border border-border/60 px-3 py-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center sm:px-4"
@@ -46,7 +48,8 @@ export function MulticaRuntimeInstanceRow({
           </>
         ) : (
           <p className="break-all text-xs text-muted-foreground">
-            {draft.runtimeId} · {draft.baseUrl}
+            {draft.runtimeId}
+            {baseUrlLabel === null ? null : ` · ${baseUrlLabel}`}
           </p>
         )}
         {deleteFailed ? (

@@ -14,6 +14,10 @@ import type {
   MulticaRuntimeHeaderDraft,
   MulticaTaskExecutionExtensionDraft,
 } from "./MulticaRuntimeSettings.model";
+import {
+  isSafeMulticaRuntimeBaseUrl,
+  isSafeMulticaTaskMcpEndpoint,
+} from "./MulticaRuntimeSettings.url";
 
 type ValidationFailure = Extract<MulticaRuntimeDraftValidation, { readonly ok: false }>;
 type Normalization<T> = { readonly ok: true; readonly value: T } | ValidationFailure;
@@ -42,15 +46,6 @@ const normalizationSuccess = <T>(value: T): Normalization<T> => ({ ok: true, val
 const trimmedOptional = (value: string): string | undefined => {
   const trimmed = value.trim();
   return trimmed.length === 0 ? undefined : trimmed;
-};
-
-const isHttpUrl = (value: string): boolean => {
-  try {
-    const protocol = new URL(value).protocol;
-    return protocol === "http:" || protocol === "https:";
-  } catch {
-    return false;
-  }
 };
 
 const isCredentialHeader = (headerName: string): boolean =>
@@ -290,10 +285,12 @@ export const validateMulticaRuntimeDraft = (
   }
 
   const baseUrl = draft.baseUrl.trim();
-  if (!isHttpUrl(baseUrl)) return invalid("invalid_base_url", "baseUrl");
+  if (!isSafeMulticaRuntimeBaseUrl(baseUrl)) {
+    return invalid("invalid_base_url", "baseUrl");
+  }
 
   const taskMcpEndpoint = trimmedOptional(draft.taskMcpEndpoint);
-  if (taskMcpEndpoint !== undefined && !isHttpUrl(taskMcpEndpoint)) {
+  if (taskMcpEndpoint !== undefined && !isSafeMulticaTaskMcpEndpoint(taskMcpEndpoint)) {
     return invalid("invalid_task_mcp_endpoint", "taskMcpEndpoint");
   }
   if (taskMcpEndpoint !== undefined && !draft.supportsMcp) {

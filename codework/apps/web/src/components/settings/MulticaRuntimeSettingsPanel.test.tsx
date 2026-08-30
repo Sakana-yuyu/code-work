@@ -69,6 +69,7 @@ describe("MulticaRuntimeSettingsPanel", () => {
   it("明确展示加载中和加载失败重试状态", () => {
     const loadingHtml = renderToStaticMarkup(
       <MulticaRuntimeSettingsPanel
+        scopeKey="environment-1"
         text={text}
         state={{ status: "loading" }}
         onRetryLoad={noop}
@@ -78,6 +79,7 @@ describe("MulticaRuntimeSettingsPanel", () => {
     );
     const failedHtml = renderToStaticMarkup(
       <MulticaRuntimeSettingsPanel
+        scopeKey="environment-1"
         text={text}
         state={{ status: "error" }}
         onRetryLoad={noop}
@@ -107,6 +109,7 @@ describe("MulticaRuntimeSettingsPanel", () => {
   it("损坏的已保存配置只显示不可编辑告警而不回退假数据", () => {
     const html = renderToStaticMarkup(
       <MulticaRuntimeSettingsPanel
+        scopeKey="environment-1"
         text={text}
         state={{
           status: "ready",
@@ -127,6 +130,60 @@ describe("MulticaRuntimeSettingsPanel", () => {
     expect(html).toContain("文案:invalidSavedDescription");
     expect(html).not.toContain("http://127.0.0.1:9000");
     expect(html).toMatch(/aria-label="文案:edit multica_broken"[^>]*disabled/u);
+  });
+
+  it("使用已解码配置的 enabled 值展示旧 Runtime 的真实禁用状态", () => {
+    const instance = savedInstance("fixture-secret");
+    const { enabled: _ignoredEnabled, ...instanceWithoutEnvelopeEnabled } = instance;
+    const html = renderToStaticMarkup(
+      <MulticaRuntimeSettingsPanel
+        scopeKey="environment-1"
+        text={text}
+        state={{
+          status: "ready",
+          instances: {
+            multica_disabled: {
+              ...instanceWithoutEnvelopeEnabled,
+              config: { ...(instance.config as object), enabled: false },
+            },
+          },
+        }}
+        onRetryLoad={noop}
+        onSave={vi.fn()}
+        onDelete={vi.fn()}
+      />,
+    );
+
+    expect(html).toContain("文案:disabled");
+  });
+
+  it("已有 Runtime 的 URL 嵌入凭据时不在列表输出明文", () => {
+    const instance = savedInstance("fixture-secret");
+    const html = renderToStaticMarkup(
+      <MulticaRuntimeSettingsPanel
+        scopeKey="environment-1"
+        text={text}
+        state={{
+          status: "ready",
+          instances: {
+            multica_unsafe: {
+              ...instance,
+              config: {
+                ...(instance.config as object),
+                baseUrl: "https://operator:embedded-secret@multica.test/api?token=query-secret",
+              },
+            },
+          },
+        }}
+        onRetryLoad={noop}
+        onSave={vi.fn()}
+        onDelete={vi.fn()}
+      />,
+    );
+
+    expect(html).toContain("文案:invalidSavedTitle");
+    expect(html).not.toContain("embedded-secret");
+    expect(html).not.toContain("query-secret");
   });
 
   it("pristine 草稿禁用保存，发生有效修改后标记脏状态并允许保存", () => {
