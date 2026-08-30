@@ -50,6 +50,8 @@ function importErrorLabel(code: LocalPluginImportErrorCode) {
       return t("localPlugins.error.manifestInvalid");
     case "storage-write-failed":
       return t("localPlugins.error.storageWriteFailed");
+    case "storage-duplicate-id":
+      return t("localPlugins.error.storageDuplicateId");
     case "plugin-not-found":
       return t("localPlugins.error.notFound");
     case "storage-invalid":
@@ -90,6 +92,12 @@ export function LocalPluginsSettings({
     runtime.failures.getSnapshot,
     runtime.failures.getSnapshot,
   );
+  const restoreFailure = failures.findLast(
+    (failure) => failure.pluginId === "unknown-plugin" && failure.phase === "restore",
+  );
+  const restoreErrorLabel = runtime.restoreResult.ok
+    ? null
+    : importErrorLabel(runtime.restoreResult.error.code);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [importStatus, setImportStatus] = useState<string | null>(null);
 
@@ -127,6 +135,31 @@ export function LocalPluginsSettings({
       }
     >
       {importStatus ? <SettingsRow title={importStatus} /> : null}
+      {restoreFailure && restoreErrorLabel ? (
+        <SettingsRow
+          data-local-plugin-restore-failure={restoreFailure.id}
+          title={<span className="text-destructive">{restoreErrorLabel}</span>}
+          description={restoreFailure.message}
+          control={
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <Button
+                    type="button"
+                    size="icon-xs"
+                    variant="ghost"
+                    aria-label={t("localPlugins.clearRestoreFailure")}
+                    onClick={() => runtime.failures.clear("unknown-plugin")}
+                  >
+                    <XIcon />
+                  </Button>
+                }
+              />
+              <TooltipPopup>{t("localPlugins.clearRestoreFailure")}</TooltipPopup>
+            </Tooltip>
+          }
+        />
+      ) : null}
       {registry.plugins.length === 0 ? (
         <SettingsRow title={t("localPlugins.empty")} />
       ) : (

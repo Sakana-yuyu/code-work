@@ -18,6 +18,23 @@ export type LocalPluginStorageDocument = typeof LocalPluginStorageDocument.Type;
 
 const decodeStorageDocument = Schema.decodeUnknownSync(LocalPluginStorageDocument);
 
+export class LocalPluginStorageDuplicateIdError extends Error {
+  override readonly name = "LocalPluginStorageDuplicateIdError";
+
+  constructor(readonly pluginId: string) {
+    super(`本地插件存储包含重复 ID ${pluginId}。`);
+  }
+}
+
+function assertUniquePluginIds(plugins: ReadonlyArray<StoredLocalPlugin>): void {
+  const ids = new Set<string>();
+  for (const plugin of plugins) {
+    const pluginId = plugin.manifest.id;
+    if (ids.has(pluginId)) throw new LocalPluginStorageDuplicateIdError(pluginId);
+    ids.add(pluginId);
+  }
+}
+
 export interface LocalPluginStorage {
   read(): string | null;
   write(value: string): void;
@@ -39,11 +56,14 @@ export class BrowserLocalPluginStorage implements LocalPluginStorage {
 }
 
 export function decodeLocalPluginStorageDocument(value: string): LocalPluginStorageDocument {
-  return decodeStorageDocument(JSON.parse(value));
+  const document = decodeStorageDocument(JSON.parse(value));
+  assertUniquePluginIds(document.plugins);
+  return document;
 }
 
 export function encodeLocalPluginStorageDocument(
   plugins: ReadonlyArray<StoredLocalPlugin>,
 ): string {
+  assertUniquePluginIds(plugins);
   return JSON.stringify({ version: 1, plugins } satisfies LocalPluginStorageDocument);
 }

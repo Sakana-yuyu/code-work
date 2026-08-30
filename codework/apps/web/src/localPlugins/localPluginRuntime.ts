@@ -1,5 +1,5 @@
 import { LocalPluginFailureJournal } from "./localPluginFailureJournal";
-import { LocalPluginLifecycle } from "./localPluginLifecycle";
+import { LocalPluginLifecycle, type LocalPluginLifecycleResult } from "./localPluginLifecycle";
 import { LocalPluginRegistry } from "./localPluginRegistry";
 import { BrowserLocalPluginStorage, type LocalPluginStorage } from "./localPluginStorage";
 
@@ -7,6 +7,7 @@ export interface LocalPluginRuntime {
   readonly failures: LocalPluginFailureJournal;
   readonly lifecycle: LocalPluginLifecycle;
   readonly registry: LocalPluginRegistry;
+  readonly restoreResult: LocalPluginLifecycleResult;
 }
 
 class VolatileLocalPluginStorage implements LocalPluginStorage {
@@ -41,8 +42,8 @@ export function createLocalPluginRuntime(input?: {
   };
   const storage = input?.storage ?? browserStorage();
   const lifecycle = new LocalPluginLifecycle({ registry, failures, storage, now });
-  return { failures, lifecycle, registry };
+  const restoreResult = lifecycle.restore();
+  return { failures, lifecycle, registry, restoreResult };
 }
 
 export const localPluginRuntime = createLocalPluginRuntime();
-localPluginRuntime.lifecycle.restore();

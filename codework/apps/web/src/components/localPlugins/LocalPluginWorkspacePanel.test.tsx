@@ -52,7 +52,7 @@ function createRuntime(): LocalPluginRuntime {
     storage: new MemoryStorage(),
     now: () => 1,
   });
-  return { failures, lifecycle, registry };
+  return { failures, lifecycle, registry, restoreResult: { ok: true } };
 }
 
 describe("LocalPluginWorkspacePanel", () => {

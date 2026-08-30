@@ -50,7 +50,7 @@ function createRuntime(): LocalPluginRuntime {
     storage: new MemoryStorage(),
     now: () => 1,
   });
-  return { failures, lifecycle, registry };
+  return { failures, lifecycle, registry, restoreResult: { ok: true } };
 }
 
 describe("LocalPluginsSettings", () => {
@@ -96,6 +96,29 @@ describe("LocalPluginsSettings", () => {
     expect(html).toContain('data-local-plugin-failure="failure-1"');
     expect(html).toContain("执行失败");
     expect(html).toContain("Clear failures");
+  });
+
+  it("展示冷启动恢复失败，并提供清理入口", () => {
+    const runtime = createRuntime();
+    runtime.failures.record({
+      pluginId: "unknown-plugin",
+      phase: "restore",
+      error: new Error("duplicate plugin acme.settings"),
+    });
+    const failedRuntime: LocalPluginRuntime = {
+      ...runtime,
+      restoreResult: {
+        ok: false,
+        error: { code: "storage-duplicate-id", message: "duplicate plugin acme.settings" },
+      },
+    };
+
+    const html = renderToStaticMarkup(<LocalPluginsSettings runtime={failedRuntime} />);
+
+    expect(html).toContain('data-local-plugin-restore-failure="failure-1"');
+    expect(html).toContain("Stored local plugin data contains duplicate plugin IDs");
+    expect(html).toContain("duplicate plugin acme.settings");
+    expect(html).toContain("Dismiss restore warning");
   });
 
   it("导入函数区分非法 JSON 与策略拒绝", () => {

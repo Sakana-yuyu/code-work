@@ -5,7 +5,7 @@ import { LocalPluginFailureJournal } from "./localPluginFailureJournal";
 import { runIsolatedLocalPluginContribution } from "./localPluginIsolation";
 import { LocalPluginLifecycle } from "./localPluginLifecycle";
 import { LocalPluginRegistry } from "./localPluginRegistry";
-import type { LocalPluginStorage } from "./localPluginStorage";
+import type { LocalPluginStorage, StoredLocalPlugin } from "./localPluginStorage";
 
 const manifest = (id: string): LocalPluginManifest => ({
   manifestVersion: 1,
@@ -50,6 +50,13 @@ function createRuntime(storage = new MemoryStorage()) {
   const lifecycle = new LocalPluginLifecycle({ registry, failures, storage, now: () => 500 });
   return { failures, lifecycle, registry, storage };
 }
+
+const storedRegistration = (id: string): StoredLocalPlugin => ({
+  manifest: manifest(id),
+  enabled: true,
+  installedAtUnixMs: 100,
+  updatedAtUnixMs: 100,
+});
 
 describe("LocalPluginLifecycle", () => {
   it("安装通过策略校验的 manifest，并向订阅者发布快照", () => {
@@ -139,6 +146,47 @@ describe("LocalPluginLifecycle", () => {
     });
     expect(runtime.registry.listEnabled("commands")).toHaveLength(1);
     expect(runtime.failures.getSnapshot().at(-1)).toMatchObject({ phase: "restore" });
+  });
+
+  it("冷启动遇到重复 ID 时保留原存储，并阻止后续写入从空快照覆盖", () => {
+    const runtime = createRuntime();
+    const duplicate = storedRegistration("acme.duplicate");
+    runtime.storage.value = JSON.stringify({ version: 1, plugins: [duplicate, duplicate] });
+    const originalValue = runtime.storage.value;
+    const write = vi.spyOn(runtime.storage, "write");
+
+    expect(runtime.lifecycle.restore()).toMatchObject({
+      ok: false,
+      error: { code: "storage-duplicate-id" },
+    });
+    expect(runtime.registry.getSnapshot().plugins).toEqual([]);
+    expect(runtime.lifecycle.install(manifest("acme.new"))).toMatchObject({
+      ok: false,
+      error: { code: "storage-duplicate-id" },
+    });
+    expect(runtime.storage.value).toBe(originalValue);
+    expect(write).not.toHaveBeenCalled();
+    expect(runtime.failures.getSnapshot()).toHaveLength(1);
+    expect(runtime.failures.getSnapshot()[0]).toMatchObject({
+      pluginId: "unknown-plugin",
+      phase: "restore",
+    });
+  });
+
+  it("写入侧重复 ID 返回专用错误，不误报为存储写入失败", () => {
+    const runtime = createRuntime();
+    const duplicate = storedRegistration("acme.duplicate");
+    runtime.registry.replace([duplicate, duplicate]);
+
+    expect(runtime.lifecycle.install(manifest("acme.new"))).toMatchObject({
+      ok: false,
+      error: { code: "storage-duplicate-id" },
+    });
+    expect(runtime.storage.value).toBeNull();
+    expect(runtime.failures.getSnapshot().at(-1)).toMatchObject({
+      pluginId: "acme.new",
+      phase: "install",
+    });
   });
 
   it("持久化失败时回滚内存发布，不产生半安装状态", () => {
