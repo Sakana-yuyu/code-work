@@ -393,6 +393,7 @@ export interface TerminalSessionState {
   rows: number;
   process: PtyAdapter.PtyProcess | null;
   processGeneration: number;
+  processRegistrationIdentity: PortScanner.TerminalProcessRegistrationIdentity | null;
   processExit: PtyProcessTermination.PtyProcessExitState | null;
   processIds: ReadonlyArray<number>;
   owner: TerminalSessionOwner | null;
@@ -430,6 +431,7 @@ type DrainProcessEventAction =
   | {
       type: "exit";
       processExit: PtyProcessTermination.PtyProcessExitState | null;
+      registrationIdentity: PortScanner.TerminalProcessRegistrationIdentity | null;
       threadId: string;
       terminalId: string;
       sequence: number;
@@ -440,6 +442,7 @@ type DrainProcessEventAction =
 interface TerminalManagerState {
   sessions: Map<string, TerminalSessionState>;
   terminations: Map<PtyAdapter.PtyProcess, TerminalProcessTerminationRecord>;
+  nextProcessRegistrationRevision: number;
 }
 
 interface TerminalProcessTerminationRecord {
@@ -460,6 +463,7 @@ interface PendingTerminalProcessAcquisition {
   readonly process: PtyAdapter.PtyProcess;
   readonly processExit: PtyProcessTermination.PtyProcessExitState;
   readonly processGeneration: number;
+  readonly registrationIdentity: PortScanner.TerminalProcessRegistrationIdentity;
   readonly processPid: number;
   readonly owner: TerminalSessionOwner | null;
   readonly pendingBeforeActivation: Array<PendingProcessEvent>;
@@ -1327,11 +1331,13 @@ interface TerminalManagerOptions {
   registerTerminalProcesses?: (input: {
     readonly threadId: string;
     readonly terminalId: string;
+    readonly identity: PortScanner.TerminalProcessRegistrationIdentity;
     readonly processIds: ReadonlyArray<number>;
   }) => Effect.Effect<void>;
   unregisterTerminal?: (input: {
     readonly threadId: string;
     readonly terminalId: string;
+    readonly identity: PortScanner.TerminalProcessRegistrationIdentity;
   }) => Effect.Effect<void>;
   forceTerminateWindowsProcessTree?: (input: {
     readonly terminalPid: number;
@@ -1444,6 +1450,7 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
   const managerStateRef = yield* SynchronizedRef.make<TerminalManagerState>({
     sessions: new Map(),
     terminations: new Map(),
+    nextProcessRegistrationRevision: 1,
   });
   const managerLifecycle = { isClosing: false };
   const threadLocksRef = yield* SynchronizedRef.make(new Map<string, Semaphore.Semaphore>());
@@ -1487,6 +1494,25 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
   const modifyManagerState = <A>(
     f: (state: TerminalManagerState) => readonly [A, TerminalManagerState],
   ) => SynchronizedRef.modify(managerStateRef, f);
+
+  const allocateProcessRegistrationIdentity = (
+    processGeneration: number,
+    owner: TerminalSessionOwner | null,
+  ) =>
+    modifyManagerState((state) => {
+      const identity: PortScanner.TerminalProcessRegistrationIdentity = {
+        registrationRevision: state.nextProcessRegistrationRevision,
+        processGeneration,
+        owner,
+      };
+      return [
+        identity,
+        {
+          ...state,
+          nextProcessRegistrationRevision: state.nextProcessRegistrationRevision + 1,
+        },
+      ] as const;
+    });
 
   const getThreadSemaphore = (threadId: string) =>
     SynchronizedRef.modifyEffect(threadLocksRef, (current) => {
@@ -2183,9 +2209,11 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
         }
 
         const processExit = session.processExit;
+        const registrationIdentity = session.processRegistrationIdentity;
         cleanupProcessHandles(session);
         session.process = null;
         session.pid = null;
+        session.processRegistrationIdentity = null;
         session.processIds = [];
         session.hasRunningSubprocess = false;
         session.childCommandLabel = null;
@@ -2205,6 +2233,7 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
         return {
           type: "exit",
           processExit,
+          registrationIdentity,
           threadId: session.threadId,
           terminalId: session.terminalId,
           sequence: eventStamp.sequence,
@@ -2239,10 +2268,13 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
 
       const processExit = action.processExit;
       yield* Effect.gen(function* () {
-        yield* unregisterTerminal({
-          threadId: action.threadId,
-          terminalId: action.terminalId,
-        });
+        if (action.registrationIdentity !== null) {
+          yield* unregisterTerminal({
+            threadId: action.threadId,
+            terminalId: action.terminalId,
+            identity: action.registrationIdentity,
+          });
+        }
         if (session.persistenceMode === "on_exit" || managerLifecycle.isClosing) {
           yield* writeHistoryNow(action.threadId, action.terminalId, session.history);
         } else {
@@ -2433,6 +2465,7 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
       session.rows = input.rows;
       session.exitCode = null;
       session.exitSignal = null;
+      session.processRegistrationIdentity = null;
       session.processIds = [];
       session.hasRunningSubprocess = false;
       session.childCommandLabel = null;
@@ -2489,6 +2522,7 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
         registerTerminalProcesses({
           threadId: session.threadId,
           terminalId: session.terminalId,
+          identity: acquisition.registrationIdentity,
           processIds: [acquisition.processPid],
         }).pipe(
           Effect.tap(() =>
@@ -2504,6 +2538,7 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
         ? unregisterTerminal({
             threadId: session.threadId,
             terminalId: session.terminalId,
+            identity: acquisition.registrationIdentity,
           }).pipe(
             Effect.tap(() =>
               Effect.sync(() => {
@@ -2541,6 +2576,7 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
           session.process = acquisition.process;
           session.pid = acquisition.processPid;
           session.processGeneration = acquisition.processGeneration;
+          session.processRegistrationIdentity = acquisition.registrationIdentity;
           session.processExit = acquisition.processExit;
           session.processIds = [acquisition.processPid];
           session.status = "error";
@@ -2589,11 +2625,17 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
               const processHandle = spawnResult.acquisition.process;
               ptyProcess = processHandle;
               startedShell = spawnResult.shellLabel;
+              const processGeneration = session.processGeneration + 1;
+              const registrationIdentity = yield* allocateProcessRegistrationIdentity(
+                processGeneration,
+                session.owner,
+              );
 
               const acquisition: PendingTerminalProcessAcquisition = {
                 process: processHandle,
                 processExit: spawnResult.acquisition.processExit,
-                processGeneration: session.processGeneration + 1,
+                processGeneration,
+                registrationIdentity,
                 processPid: processHandle.pid,
                 owner: session.owner,
                 pendingBeforeActivation: [],
@@ -2691,6 +2733,7 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
                       session.process = acquisition.process;
                       session.pid = acquisition.processPid;
                       session.processGeneration = acquisition.processGeneration;
+                      session.processRegistrationIdentity = acquisition.registrationIdentity;
                       session.processExit = acquisition.processExit;
                       session.processIds = [acquisition.processPid];
                       session.status = "running";
@@ -2782,6 +2825,7 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
         session.status = "error";
         session.pid = null;
         session.process = null;
+        session.processRegistrationIdentity = null;
         session.processExit = null;
         session.processIds = [];
         session.hasRunningSubprocess = false;
@@ -2824,8 +2868,11 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
 
     if (Option.isSome(session)) {
       yield* assertSessionOwner(session.value, expectedOwner);
+      const registrationIdentity = session.value.processRegistrationIdentity;
       yield* stopProcess(session.value);
-      yield* unregisterTerminal({ threadId, terminalId });
+      if (registrationIdentity !== null) {
+        yield* unregisterTerminal({ threadId, terminalId, identity: registrationIdentity });
+      }
       if (session.value.persistenceMode === "on_exit") {
         yield* writeHistoryNow(threadId, terminalId, session.value.history);
       } else {
@@ -2994,10 +3041,15 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
     const runningSessions = [...state.sessions.values()].filter(
       (
         session,
-      ): session is TerminalSessionState & { pid: number; process: PtyAdapter.PtyProcess } =>
+      ): session is TerminalSessionState & {
+        pid: number;
+        process: PtyAdapter.PtyProcess;
+        processRegistrationIdentity: PortScanner.TerminalProcessRegistrationIdentity;
+      } =>
         isSupervisedProcessStatus(session.status) &&
         Number.isInteger(session.pid) &&
-        session.process !== null,
+        session.process !== null &&
+        session.processRegistrationIdentity !== null,
     );
 
     if (runningSessions.length === 0) {
@@ -3020,11 +3072,16 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
     const subprocessInspector = inspectorOption.value;
 
     const checkSubprocessActivity = Effect.fn("terminal.checkSubprocessActivity")(function* (
-      session: TerminalSessionState & { pid: number; process: PtyAdapter.PtyProcess },
+      session: TerminalSessionState & {
+        pid: number;
+        process: PtyAdapter.PtyProcess;
+        processRegistrationIdentity: PortScanner.TerminalProcessRegistrationIdentity;
+      },
     ) {
       const terminalPid = session.pid;
       const terminalProcess = session.process;
       const processGeneration = session.processGeneration;
+      const registrationIdentity = session.processRegistrationIdentity;
       const inspectResult = yield* subprocessInspector(terminalPid).pipe(
         Effect.map(Option.some),
         Effect.catch((reason) =>
@@ -3043,54 +3100,91 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
 
       const next = inspectResult.value;
       const nextProcessIds = [...new Set([terminalPid, ...next.processIds])];
-      yield* registerTerminalProcesses({
-        threadId: session.threadId,
-        terminalId: session.terminalId,
-        processIds: nextProcessIds,
-      });
       const nextChildLabel = next.hasRunningSubprocess ? next.childCommand : null;
-      const event = yield* modifyManagerState((state) => {
-        const liveSession: Option.Option<TerminalSessionState> = Option.fromNullishOr(
-          state.sessions.get(toSessionKey(session.threadId, session.terminalId)),
-        );
-        if (
-          Option.isNone(liveSession) ||
-          liveSession.value !== session ||
-          !isSupervisedProcessStatus(liveSession.value.status) ||
-          liveSession.value.pid !== terminalPid ||
-          liveSession.value.process !== terminalProcess ||
-          liveSession.value.processGeneration !== processGeneration
-        ) {
-          return [Option.none(), state] as const;
-        }
+      // 检查、注册和补偿注销保持不可中断，避免 exit 夹入后复活旧 PID。
+      const update = yield* Effect.uninterruptible(
+        Effect.gen(function* () {
+          const prepared = yield* modifyManagerState<
+            Option.Option<{ readonly event: TerminalEvent | null }>
+          >((state) => {
+            const liveSession: Option.Option<TerminalSessionState> = Option.fromNullishOr(
+              state.sessions.get(toSessionKey(session.threadId, session.terminalId)),
+            );
+            if (
+              Option.isNone(liveSession) ||
+              liveSession.value !== session ||
+              !isSupervisedProcessStatus(liveSession.value.status) ||
+              liveSession.value.pid !== terminalPid ||
+              liveSession.value.process !== terminalProcess ||
+              liveSession.value.processGeneration !== processGeneration ||
+              liveSession.value.processRegistrationIdentity !== registrationIdentity
+            ) {
+              return [Option.none(), state] as const;
+            }
 
-        liveSession.value.processIds = nextProcessIds;
-        if (
-          liveSession.value.hasRunningSubprocess === next.hasRunningSubprocess &&
-          liveSession.value.childCommandLabel === nextChildLabel
-        ) {
-          return [Option.none(), state] as const;
-        }
+            liveSession.value.processIds = nextProcessIds;
+            if (
+              liveSession.value.hasRunningSubprocess === next.hasRunningSubprocess &&
+              liveSession.value.childCommandLabel === nextChildLabel
+            ) {
+              return [Option.some({ event: null }), state] as const;
+            }
 
-        liveSession.value.hasRunningSubprocess = next.hasRunningSubprocess;
-        liveSession.value.childCommandLabel = nextChildLabel;
-        const eventStamp = advanceEventSequence(liveSession.value);
+            liveSession.value.hasRunningSubprocess = next.hasRunningSubprocess;
+            liveSession.value.childCommandLabel = nextChildLabel;
+            const eventStamp = advanceEventSequence(liveSession.value);
 
-        return [
-          Option.some({
-            type: "activity" as const,
-            threadId: liveSession.value.threadId,
-            terminalId: liveSession.value.terminalId,
-            sequence: eventStamp.sequence,
-            hasRunningSubprocess: next.hasRunningSubprocess,
-            label: terminalWireLabel(liveSession.value),
-          }),
-          state,
-        ] as const;
-      });
+            return [
+              Option.some({
+                event: {
+                  type: "activity",
+                  threadId: liveSession.value.threadId,
+                  terminalId: liveSession.value.terminalId,
+                  sequence: eventStamp.sequence,
+                  hasRunningSubprocess: next.hasRunningSubprocess,
+                  label: terminalWireLabel(liveSession.value),
+                },
+              }),
+              state,
+            ] as const;
+          });
+          if (Option.isNone(prepared)) return prepared;
 
-      if (Option.isSome(event)) {
-        yield* publishEvent(event.value);
+          yield* registerTerminalProcesses({
+            threadId: session.threadId,
+            terminalId: session.terminalId,
+            identity: registrationIdentity,
+            processIds: nextProcessIds,
+          });
+
+          const stillCurrent = yield* readManagerState.pipe(
+            Effect.map((state) => {
+              const liveSession = state.sessions.get(
+                toSessionKey(session.threadId, session.terminalId),
+              );
+              return (
+                liveSession === session &&
+                isSupervisedProcessStatus(liveSession.status) &&
+                liveSession.pid === terminalPid &&
+                liveSession.process === terminalProcess &&
+                liveSession.processGeneration === processGeneration &&
+                liveSession.processRegistrationIdentity === registrationIdentity
+              );
+            }),
+          );
+          if (stillCurrent) return prepared;
+
+          yield* unregisterTerminal({
+            threadId: session.threadId,
+            terminalId: session.terminalId,
+            identity: registrationIdentity,
+          });
+          return Option.none();
+        }),
+      );
+
+      if (Option.isSome(update) && update.value.event !== null) {
+        yield* publishEvent(update.value.event);
       }
     });
 
@@ -3237,6 +3331,7 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
         rows,
         process: null,
         processGeneration: 0,
+        processRegistrationIdentity: null,
         processExit: null,
         processIds: [],
         owner: null,
@@ -3377,6 +3472,7 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
       rows,
       process: null,
       processGeneration: 0,
+      processRegistrationIdentity: null,
       processExit: null,
       processIds: [],
       owner: input.owner ?? null,
@@ -3782,6 +3878,7 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
             rows,
             process: null,
             processGeneration: 0,
+            processRegistrationIdentity: null,
             processExit: null,
             processIds: [],
             owner: null,

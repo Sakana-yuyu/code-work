@@ -40,6 +40,16 @@ import { FetchHttpClient, HttpClient } from "effect/unstable/http";
 
 import * as ProcessRunner from "../processRunner.ts";
 
+export interface TerminalProcessRegistrationIdentity {
+  /** Manager 生命周期内单调递增，用于拒绝同一终端的旧异步写入。 */
+  readonly registrationRevision: number;
+  readonly processGeneration: number;
+  readonly owner: null | {
+    readonly workspaceScriptRunId: string;
+    readonly generation: number;
+  };
+}
+
 export class PortDiscovery extends Context.Service<
   PortDiscovery,
   {
@@ -57,11 +67,13 @@ export class PortDiscovery extends Context.Service<
     readonly registerTerminalProcesses: (input: {
       readonly threadId: string;
       readonly terminalId: string;
+      readonly identity: TerminalProcessRegistrationIdentity;
       readonly processIds: ReadonlyArray<number>;
     }) => Effect.Effect<void>;
     readonly unregisterTerminal: (input: {
       readonly threadId: string;
       readonly terminalId: string;
+      readonly identity: TerminalProcessRegistrationIdentity;
     }) => Effect.Effect<void>;
   }
 >()("codework/preview/PortScanner/PortDiscovery") {}
@@ -91,6 +103,7 @@ interface ScannerState {
     string,
     {
       readonly owner: TerminalProcessOwner;
+      readonly identity: TerminalProcessRegistrationIdentity;
       readonly processIds: ReadonlySet<number>;
     }
   >;
@@ -123,6 +136,38 @@ const terminalOwnerKey = (owner: {
   readonly threadId: string;
   readonly terminalId: string;
 }): string => `${owner.threadId}\u0000${owner.terminalId}`;
+
+const terminalRegistrationOwnerEquals = (
+  left: TerminalProcessRegistrationIdentity["owner"],
+  right: TerminalProcessRegistrationIdentity["owner"],
+): boolean =>
+  left === null
+    ? right === null
+    : right !== null &&
+      left.workspaceScriptRunId === right.workspaceScriptRunId &&
+      left.generation === right.generation;
+
+const terminalRegistrationIdentityEquals = (
+  left: TerminalProcessRegistrationIdentity,
+  right: TerminalProcessRegistrationIdentity,
+): boolean =>
+  left.registrationRevision === right.registrationRevision &&
+  left.processGeneration === right.processGeneration &&
+  terminalRegistrationOwnerEquals(left.owner, right.owner);
+
+const copyTerminalRegistrationIdentity = (
+  identity: TerminalProcessRegistrationIdentity,
+): TerminalProcessRegistrationIdentity => ({
+  registrationRevision: identity.registrationRevision,
+  processGeneration: identity.processGeneration,
+  owner:
+    identity.owner === null
+      ? null
+      : {
+          workspaceScriptRunId: identity.owner.workspaceScriptRunId,
+          generation: identity.owner.generation,
+        },
+});
 
 const parseConfiguredUrl = (raw: string): URL | null => {
   try {
@@ -627,16 +672,33 @@ export const make = Effect.gen(function* PortDiscoveryMake() {
         threadId: ThreadId.make(input.threadId),
         terminalId: input.terminalId,
       };
+      const identity = copyTerminalRegistrationIdentity(input.identity);
       const processIds = new Set(
         input.processIds.filter((processId) => Number.isInteger(processId) && processId > 0),
       );
       yield* Ref.update(stateRef, (state) => {
         const terminalProcesses = new Map(state.terminalProcesses);
         const key = terminalOwnerKey(owner);
+        const current = terminalProcesses.get(key);
+        if (
+          current !== undefined &&
+          (identity.registrationRevision < current.identity.registrationRevision ||
+            (identity.registrationRevision === current.identity.registrationRevision &&
+              !terminalRegistrationIdentityEquals(identity, current.identity)))
+        ) {
+          return state;
+        }
         if (processIds.size === 0) {
-          terminalProcesses.delete(key);
+          if (
+            current !== undefined &&
+            terminalRegistrationIdentityEquals(identity, current.identity)
+          ) {
+            terminalProcesses.delete(key);
+          } else {
+            return state;
+          }
         } else {
-          terminalProcesses.set(key, { owner, processIds });
+          terminalProcesses.set(key, { owner, identity, processIds });
         }
         return { ...state, terminalProcesses };
       });
@@ -647,7 +709,15 @@ export const make = Effect.gen(function* PortDiscoveryMake() {
   )(function* (input) {
     yield* Ref.update(stateRef, (state) => {
       const terminalProcesses = new Map(state.terminalProcesses);
-      terminalProcesses.delete(terminalOwnerKey(input));
+      const key = terminalOwnerKey(input);
+      const current = terminalProcesses.get(key);
+      if (
+        current === undefined ||
+        !terminalRegistrationIdentityEquals(current.identity, input.identity)
+      ) {
+        return state;
+      }
+      terminalProcesses.delete(key);
       return { ...state, terminalProcesses };
     });
   });

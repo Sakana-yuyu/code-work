@@ -19,6 +19,7 @@ import * as TestClock from "effect/testing/TestClock";
 import * as ChildProcessSpawner from "effect/unstable/process/ChildProcessSpawner";
 import { expect } from "vite-plus/test";
 
+import type * as PortScanner from "../preview/PortScanner.ts";
 import * as ProcessRunner from "../processRunner.ts";
 import * as TerminalManager from "./Manager.ts";
 import type * as PtyAdapter from "./PtyAdapter.ts";
@@ -178,11 +179,13 @@ const createManager = (
     readonly registerTerminalProcesses?: (input: {
       readonly threadId: string;
       readonly terminalId: string;
+      readonly identity: PortScanner.TerminalProcessRegistrationIdentity;
       readonly processIds: ReadonlyArray<number>;
     }) => Effect.Effect<void>;
     readonly unregisterTerminal?: (input: {
       readonly threadId: string;
       readonly terminalId: string;
+      readonly identity: PortScanner.TerminalProcessRegistrationIdentity;
     }) => Effect.Effect<void>;
     readonly subprocessInspector?: (terminalPid: number) => Effect.Effect<{
       readonly hasRunningSubprocess: boolean;
@@ -659,8 +662,14 @@ it.layer(
 
   it.effect("acquisition 失败且 kill 抛错时保留同一 handle 监督直到真实 exit", () =>
     Effect.gen(function* () {
-      const registeredProcessIds: ReadonlyArray<number>[] = [];
-      const unregisterCalls: string[] = [];
+      const registrations: Array<{
+        readonly identity: PortScanner.TerminalProcessRegistrationIdentity;
+        readonly processIds: ReadonlyArray<number>;
+      }> = [];
+      const unregisterCalls: Array<{
+        readonly identity: PortScanner.TerminalProcessRegistrationIdentity;
+        readonly terminalId: string;
+      }> = [];
       const adapter = new FakePtyAdapter({
         onDataFailure: new Error("expected onData registration defect"),
         afterSpawn: (process) =>
@@ -669,13 +678,13 @@ it.layer(
           }),
       });
       const { manager } = yield* createManager(adapter, {
-        registerTerminalProcesses: ({ processIds }) =>
+        registerTerminalProcesses: ({ identity, processIds }) =>
           Effect.sync(() => {
-            registeredProcessIds.push(processIds);
+            registrations.push({ identity, processIds });
           }),
-        unregisterTerminal: ({ terminalId }) =>
+        unregisterTerminal: ({ identity, terminalId }) =>
           Effect.sync(() => {
-            unregisterCalls.push(terminalId);
+            unregisterCalls.push({ identity, terminalId });
           }),
       });
 
@@ -694,7 +703,12 @@ it.layer(
         "active",
       );
       expect(process.killSignals).toEqual([undefined]);
-      expect(registeredProcessIds).toEqual([[process.pid]]);
+      expect(registrations).toEqual([
+        {
+          identity: { registrationRevision: 1, processGeneration: 1, owner: null },
+          processIds: [process.pid],
+        },
+      ]);
       expect(unregisterCalls).toEqual([]);
       assert.equal(process.dataListenerCount, 0);
       assert.equal(process.exitListenerCount, 1);
@@ -703,8 +717,9 @@ it.layer(
         exitCode: 1,
         signal: null,
       });
-
-      expect(unregisterCalls).toEqual([DEFAULT_TERMINAL_ID]);
+      expect(unregisterCalls).toEqual([
+        { identity: registrations[0]?.identity, terminalId: DEFAULT_TERMINAL_ID },
+      ]);
       assert.equal(process.exitListenerCount, 0);
       assert.equal(
         yield* manager.inspectSession({
@@ -944,6 +959,85 @@ it.layer(
       expect(process.killSignals).toEqual([undefined]);
       assert.equal(process.dataListenerCount, 0);
       assert.equal(process.exitListenerCount, 0);
+    }).pipe(Effect.provide(Layer.merge(withHostPlatform("win32"), TestClock.layer()))),
+  );
+
+  it.effect("旧 generation 的慢轮询不得在重启后重新注册", () =>
+    Effect.gen(function* () {
+      const inspectionStarted = yield* Deferred.make<void>();
+      const releaseInspection = yield* Deferred.make<void>();
+      const nextInspectionStarted = yield* Deferred.make<void>();
+      const registrations: Array<{
+        readonly identity: PortScanner.TerminalProcessRegistrationIdentity;
+        readonly processIds: ReadonlyArray<number>;
+      }> = [];
+      let inspectionCount = 0;
+      const adapter = new FakePtyAdapter({ fixedPid: 4_343 });
+      const { manager } = yield* createManager(adapter, {
+        subprocessPollIntervalMs: 10,
+        subprocessInspector: (terminalPid) => {
+          inspectionCount += 1;
+          return inspectionCount === 1
+            ? Deferred.succeed(inspectionStarted, undefined).pipe(
+                Effect.ignore,
+                Effect.andThen(Deferred.await(releaseInspection)),
+                Effect.as({
+                  hasRunningSubprocess: true,
+                  childCommand: "old-child.exe",
+                  processIds: [terminalPid, terminalPid + 100],
+                }),
+              )
+            : Deferred.succeed(nextInspectionStarted, undefined).pipe(
+                Effect.ignore,
+                Effect.andThen(Effect.never),
+              );
+        },
+        registerTerminalProcesses: (input) =>
+          Effect.sync(() => {
+            registrations.push({ identity: input.identity, processIds: input.processIds });
+          }),
+        unregisterTerminal: () => Effect.void,
+      });
+      yield* openTerminal(manager, "slow-poll-generation");
+      const firstProcess = adapter.processes[0];
+      expect(firstProcess).toBeDefined();
+      if (!firstProcess) return;
+
+      yield* Effect.yieldNow;
+      yield* TestClock.adjust("10 millis");
+      yield* Deferred.await(inspectionStarted);
+      const unsubscribeKill = firstProcess.onKill(() => {
+        firstProcess.emitExit({ exitCode: 0, signal: null });
+      });
+      yield* Effect.addFinalizer(() => Effect.sync(unsubscribeKill));
+
+      yield* manager.restart({
+        threadId: "slow-poll-generation",
+        terminalId: DEFAULT_TERMINAL_ID,
+        cwd: process.cwd(),
+        cols: 100,
+        rows: 24,
+      });
+      const secondProcess = adapter.processes[1];
+      expect(secondProcess).toBeDefined();
+      if (!secondProcess) return;
+      assert.equal(secondProcess.pid, firstProcess.pid);
+
+      yield* Deferred.succeed(releaseInspection, undefined);
+      yield* TestClock.adjust("10 millis");
+      yield* Deferred.await(nextInspectionStarted);
+      yield* emitExitAndWait(manager, secondProcess, "slow-poll-generation", {
+        exitCode: 0,
+        signal: null,
+      });
+
+      expect(registrations).toHaveLength(2);
+      expect(registrations.map(({ processIds }) => processIds)).toEqual([
+        [firstProcess.pid],
+        [secondProcess.pid],
+      ]);
+      expect(registrations.map(({ identity }) => identity.registrationRevision)).toEqual([1, 2]);
+      expect(registrations.map(({ identity }) => identity.processGeneration)).toEqual([1, 2]);
     }).pipe(Effect.provide(Layer.merge(withHostPlatform("win32"), TestClock.layer()))),
   );
 
@@ -1230,9 +1324,14 @@ it.layer(
 
   it.effect("disposeThread 终止失败后在真实 onExit 自动完成 session 与历史清理", () =>
     Effect.gen(function* () {
+      const registrationIdentities: PortScanner.TerminalProcessRegistrationIdentity[] = [];
       const { manager, ptyAdapter } = yield* createManager(new FakePtyAdapter(), {
         processExitTimeoutMs: 100,
         maxRetainedInactiveSessions: 0,
+        registerTerminalProcesses: ({ identity }) =>
+          Effect.sync(() => {
+            registrationIdentities.push(identity);
+          }),
       });
       const threadId = "dispose-thread-partial-failure";
       const ownedTerminalId = "workspace-script-dispose-partial";
@@ -1258,6 +1357,14 @@ it.layer(
       expect(ownedProcess).toBeDefined();
       expect(ordinaryProcess).toBeDefined();
       if (!ownedProcess || !ordinaryProcess) return;
+      expect(registrationIdentities).toEqual([
+        {
+          registrationRevision: 1,
+          processGeneration: 1,
+          owner: { workspaceScriptRunId: "workspace-script-run:dispose-partial", generation: 31 },
+        },
+        { registrationRevision: 2, processGeneration: 1, owner: null },
+      ]);
       const ownedOutputObserved = yield* Deferred.make<void>();
       const ownedClosedObserved = yield* Deferred.make<void>();
       const unsubscribeEvents = yield* manager.subscribe((event) => {
