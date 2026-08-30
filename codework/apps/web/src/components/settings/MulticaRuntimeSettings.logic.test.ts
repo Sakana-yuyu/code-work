@@ -73,6 +73,31 @@ describe("MulticaRuntimeSettings logic", () => {
     });
   });
 
+  it("已保存敏感值即使快照意外含明文也只生成脱敏占位", () => {
+    const draft = formFromMulticaRuntimeInstance("multica_local", {
+      driver: ProviderDriverKind.make("multica"),
+      enabled: true,
+      environment: [{ name: "MULTICA_TOKEN", value: "fixture-secret", sensitive: true }],
+      config: {
+        runtimeId: "multica:daemon-1:runtime-1",
+        daemonId: "daemon-1",
+        daemonRuntimeId: "runtime-1",
+        baseUrl: "http://127.0.0.1:9000",
+        headers: [{ headerName: "Authorization", environmentVariable: "MULTICA_TOKEN" }],
+        assigneeRoutes: [],
+      },
+    });
+
+    expect(draft?.environment[0]).toEqual({
+      name: "MULTICA_TOKEN",
+      value: "",
+      sensitive: true,
+      valueRedacted: true,
+      originalName: "MULTICA_TOKEN",
+    });
+    expect(JSON.stringify(draft)).not.toContain("fixture-secret");
+  });
+
   it("拒绝非 Multica 或无法解码的 provider instance", () => {
     expect(
       formFromMulticaRuntimeInstance("codex_local", {

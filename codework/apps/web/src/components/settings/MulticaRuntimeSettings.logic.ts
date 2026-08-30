@@ -29,10 +29,19 @@ export const formFromMulticaRuntimeInstance = (
       daemonRuntimeId: config.daemonRuntimeId,
       baseUrl: config.baseUrl,
       headers: config.headers.map((header) => ({ ...header })),
-      environment: (instance.environment ?? []).map((entry) => ({
-        ...entry,
-        ...(entry.valueRedacted === true ? { originalName: entry.name } : {}),
-      })),
+      environment: (instance.environment ?? []).map((entry) =>
+        entry.sensitive === true
+          ? {
+              ...entry,
+              value: "",
+              valueRedacted: true,
+              originalName: entry.name,
+            }
+          : {
+              ...entry,
+              ...(entry.valueRedacted === true ? { originalName: entry.name } : {}),
+            },
+      ),
       assigneeRoutes: config.assigneeRoutes.map((route) => ({
         codeworkAgentId: route.codeworkAgentId,
         codeworkSquadId: route.codeworkSquadId ?? "",
