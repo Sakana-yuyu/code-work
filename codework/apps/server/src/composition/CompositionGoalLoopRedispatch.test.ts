@@ -10,6 +10,7 @@ import {
   settleAndRedispatchInterruptedGoalLoop,
 } from "./CompositionGoalLoopRedispatch.ts";
 import { makeCompositionOrchestrator } from "./CompositionOrchestrator.ts";
+import { CompositionGoalLoopRetryStoreLive } from "../persistence/Layers/CompositionGoalLoopRetryStore.ts";
 import { CompositionRunStartStoreLive } from "../persistence/Layers/CompositionRunStartStore.ts";
 import { CompositionTaskStore } from "../persistence/Services/CompositionTaskStore.ts";
 import type { CompositionTaskStoreShape } from "../persistence/Services/CompositionTaskStore.ts";
@@ -19,11 +20,14 @@ import {
   CompositionRunStartStore,
   type CompositionRunStartStoreShape,
 } from "../persistence/Services/CompositionRunStartStore.ts";
+import { CompositionGoalLoopRetryStore } from "../persistence/Services/CompositionGoalLoopRetryStore.ts";
 
 const layer = it.layer(
-  Layer.mergeAll(CompositionTaskStoreLive, CompositionRunStartStoreLive).pipe(
-    Layer.provide(SqlitePersistenceMemory),
-  ),
+  Layer.mergeAll(
+    CompositionTaskStoreLive,
+    CompositionRunStartStoreLive,
+    CompositionGoalLoopRetryStoreLive,
+  ).pipe(Layer.provide(SqlitePersistenceMemory)),
 );
 
 const goalRowEffect = (input: {
@@ -77,12 +81,43 @@ const makeRedispatchable = (
     );
   });
 
+const persistStartedRetry = (
+  store: CompositionTaskStoreShape,
+  input: {
+    readonly taskId: string;
+    readonly previousRunId: string;
+    readonly newRunId: string;
+    readonly nowUnixMs: number;
+  },
+) =>
+  Effect.gen(function* () {
+    const task = Option.getOrThrow(yield* store.getTask(input.taskId));
+    const previousRun = Option.getOrThrow(yield* store.getRun(input.previousRunId));
+    const { finishedAtUnixMs: _finishedAtUnixMs, ...taskWithoutFinishedAt } = task;
+    yield* store.upsertTask({
+      ...taskWithoutFinishedAt,
+      status: "running",
+      updatedAtUnixMs: input.nowUnixMs,
+    });
+    yield* store.upsertRun({
+      taskId: input.taskId,
+      runId: input.newRunId,
+      agentId: previousRun.agentId,
+      runtimeId: previousRun.runtimeId,
+      status: "running",
+      attempt: previousRun.attempt + 1,
+      capabilityGrantIds: [],
+    });
+  });
+
 layer("CompositionGoalLoopRedispatch", (it) => {
   it.effect("未收敛循环结算后自动重派：陈旧 run/task 落 failed 并创建新 Run", () =>
     Effect.gen(function* () {
       const store = yield* CompositionTaskStore;
+      const retryStore = yield* CompositionGoalLoopRetryStore;
       const taskId = "task-goal-redispatch";
       const runId = "run-goal-redispatch-stale";
+      const newRunId = "run-goal-redispatch-next";
       yield* store.upsertTask({
         taskId,
         projectId: "project-goal-redispatch",
@@ -110,19 +145,31 @@ layer("CompositionGoalLoopRedispatch", (it) => {
       yield* goalRowEffect({ store, taskId, runId, suffix: "reject:1", summary: "被拒" });
 
       let redispatchArgs:
-        | { readonly previousRunId: string; readonly interruptedRounds: number }
+        | {
+            readonly previousRunId: string;
+            readonly newRunId: string;
+            readonly interruptedRounds: number;
+          }
         | undefined;
       const result = yield* settleAndRedispatchInterruptedGoalLoop({
         taskId,
         runId,
+        newRunId,
         agentId: "agent-goal-redispatch",
         runtimeId: "runtime-goal-redispatch",
         store,
+        retryStore,
         nowUnixMs: 5_000,
         note: "跨重启自动重派",
         redispatch: (args) =>
-          Effect.sync(() => {
+          Effect.gen(function* () {
             redispatchArgs = args;
+            yield* persistStartedRetry(store, {
+              taskId,
+              previousRunId: args.previousRunId,
+              newRunId: args.newRunId,
+              nowUnixMs: 5_001,
+            });
           }),
       });
 
@@ -130,7 +177,9 @@ layer("CompositionGoalLoopRedispatch", (it) => {
       assert.equal(result.run.status, "failed");
       assert.equal(result.run.failureCode, "goal_loop_interrupted");
       assert.equal(result.task.status, "failed");
-      assert.deepEqual(redispatchArgs, { previousRunId: runId, interruptedRounds: 2 });
+      assert.equal(result.newRunId, newRunId);
+      assert.deepEqual(redispatchArgs, { previousRunId: runId, newRunId, interruptedRounds: 2 });
+      assert.equal(Option.getOrThrow(yield* retryStore.getIntent(runId)).phase, "dispatched");
 
       const events = yield* store.listEvents(taskId, runId);
       const supervisorRow = events.find((event) =>
@@ -147,8 +196,10 @@ layer("CompositionGoalLoopRedispatch", (it) => {
     Effect.gen(function* () {
       const store = yield* CompositionTaskStore;
       const runStartStore = yield* CompositionRunStartStore;
+      const retryStore = yield* CompositionGoalLoopRetryStore;
       const taskId = "task-goal-redispatch-real";
       const runId = "run-goal-redispatch-real-stale";
+      const newRunId = "run-goal-redispatch-real-next";
       yield* store.upsertTask({
         taskId,
         projectId: "project-goal-redispatch",
@@ -177,23 +228,25 @@ layer("CompositionGoalLoopRedispatch", (it) => {
       yield* settleAndRedispatchInterruptedGoalLoop({
         taskId,
         runId,
+        newRunId,
         agentId: "agent-goal-redispatch",
         runtimeId: "runtime-goal-redispatch",
         store,
+        retryStore,
         nowUnixMs: 5_000,
         redispatch: (args) =>
           Effect.asVoid(
             orchestrator.retryTask({
               taskId,
               previousRunId: args.previousRunId,
-              runId: "run-goal-redispatch-real-next",
+              runId: args.newRunId,
               reason: "supervisor 自动重派",
               capabilityIds: ["t3.workspace.read_file"],
             }),
           ),
       });
 
-      const nextRun = yield* store.getRun("run-goal-redispatch-real-next");
+      const nextRun = yield* store.getRun(newRunId);
       assert.isTrue(Option.isSome(nextRun));
       const staleRun = (yield* store.getRun(runId)).pipe(Option.getOrThrow);
       assert.equal(staleRun.status, "failed");
@@ -201,12 +254,14 @@ layer("CompositionGoalLoopRedispatch", (it) => {
       const task = (yield* store.getTask(taskId)).pipe(Option.getOrThrow);
       // 重派成功后任务从 failed 回到进行态。
       assert.equal(task.status, "running");
+      assert.equal(Option.getOrThrow(yield* retryStore.getIntent(runId)).phase, "dispatched");
     }),
   );
 
   it.effect("已收敛循环拒绝自动重派且不落任何结算行", () =>
     Effect.gen(function* () {
       const store = yield* CompositionTaskStore;
+      const retryStore = yield* CompositionGoalLoopRetryStore;
       const taskId = "task-goal-redispatch-converged";
       const runId = "run-goal-redispatch-converged";
       yield* store.upsertTask({
@@ -244,8 +299,10 @@ layer("CompositionGoalLoopRedispatch", (it) => {
         settleAndRedispatchInterruptedGoalLoop({
           taskId,
           runId,
+          newRunId: "run-goal-redispatch-converged-new",
           agentId: "agent-goal-redispatch",
           store,
+          retryStore,
           nowUnixMs: 5_000,
           redispatch: () =>
             Effect.sync(() => {
@@ -258,6 +315,7 @@ layer("CompositionGoalLoopRedispatch", (it) => {
       }
       assert.equal(error.code, "goal_loop_supervisor_not_interrupted");
       assert.isFalse(invoked);
+      assert.isTrue(Option.isNone(yield* retryStore.getIntent(runId)));
       const events = yield* store.listEvents(taskId, runId);
       assert.equal(
         events.filter((event) => event.sourceEventId?.includes(":supervisor:")).length,
@@ -269,6 +327,7 @@ layer("CompositionGoalLoopRedispatch", (it) => {
   it.effect("不是最新 Run 时拒绝自动重派且不落结算行", () =>
     Effect.gen(function* () {
       const store = yield* CompositionTaskStore;
+      const retryStore = yield* CompositionGoalLoopRetryStore;
       const taskId = "task-goal-redispatch-stale-latest";
       const runId = "run-goal-redispatch-old";
       yield* store.upsertTask({
@@ -309,8 +368,10 @@ layer("CompositionGoalLoopRedispatch", (it) => {
         settleAndRedispatchInterruptedGoalLoop({
           taskId,
           runId,
+          newRunId: "run-goal-redispatch-old-new",
           agentId: "agent-goal-redispatch",
           store,
+          retryStore,
           nowUnixMs: 5_000,
           redispatch: () =>
             Effect.sync(() => {
@@ -323,6 +384,7 @@ layer("CompositionGoalLoopRedispatch", (it) => {
       }
       assert.equal(error.code, "goal_loop_redispatch_not_latest");
       assert.isFalse(invoked);
+      assert.isTrue(Option.isNone(yield* retryStore.getIntent(runId)));
       const events = yield* store.listEvents(taskId, runId);
       assert.equal(
         events.filter((event) => event.sourceEventId?.includes(":supervisor:")).length,

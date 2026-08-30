@@ -31,6 +31,7 @@ import { layerConfig as SqlitePersistenceLayerLive } from "./persistence/Layers/
 import { CompositionTaskStoreLive } from "./persistence/Layers/CompositionTaskStore.ts";
 import { CompositionTaskInputStoreLive } from "./persistence/Layers/CompositionTaskInputStore.ts";
 import { CompositionRunStartStoreLive } from "./persistence/Layers/CompositionRunStartStore.ts";
+import { CompositionGoalLoopRetryStoreLive } from "./persistence/Layers/CompositionGoalLoopRetryStore.ts";
 import { CompositionSquadExecutionStoreLive } from "./persistence/Layers/CompositionSquadExecutionStore.ts";
 import { CompositionAutomationStoreLive } from "./persistence/Layers/CompositionAutomationStore.ts";
 import { CompositionToolInvocationStoreLive } from "./persistence/Layers/CompositionToolInvocationStore.ts";
@@ -462,6 +463,10 @@ const CompositionRunStartStoreLayerLive = CompositionRunStartStoreLive.pipe(
   Layer.provideMerge(PersistenceLayerLive),
 );
 
+const CompositionGoalLoopRetryStoreLayerLive = CompositionGoalLoopRetryStoreLive.pipe(
+  Layer.provideMerge(PersistenceLayerLive),
+);
+
 const CompositionRuntimeSettingsLayerLive = CompositionRuntimeSettings.layer.pipe(
   Layer.provideMerge(ServerSettingsLayerLive),
   Layer.provideMerge(CompositionRuntimeAdapterRegistry.layer),
@@ -495,6 +500,7 @@ const CompositionRuntimeDependenciesLive = Layer.empty.pipe(
   ),
   Layer.provideMerge(CompositionTaskStoreLayerLive),
   Layer.provideMerge(CompositionRunStartStoreLayerLive),
+  Layer.provideMerge(CompositionGoalLoopRetryStoreLayerLive),
 );
 
 const CompositionRuntimeToolBridgeLayerLive = CompositionRuntimeToolBridge.layer.pipe(

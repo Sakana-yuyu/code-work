@@ -119,6 +119,7 @@ import * as CompositionSquadService from "./composition/CompositionSquadService.
 import * as CompositionSupplierRegistryProjection from "./composition/CompositionSupplierRegistryProjection.ts";
 import { CompositionTaskInputStore } from "./persistence/Services/CompositionTaskInputStore.ts";
 import { CompositionTaskStore } from "./persistence/Services/CompositionTaskStore.ts";
+import { CompositionGoalLoopRetryStore } from "./persistence/Services/CompositionGoalLoopRetryStore.ts";
 import * as CompositionTaskGraphExecutor from "./composition/CompositionTaskGraphExecutor.ts";
 import * as CompositionToolBroker from "./composition/ToolBroker.ts";
 import * as CompositionRuntimeToolBridge from "./composition/CompositionRuntimeToolBridge.ts";
@@ -540,6 +541,9 @@ const makeWsRpcLayer = (
         CompositionOrchestratorService.CompositionOrchestratorService,
       );
       const compositionTaskStore = yield* Effect.serviceOption(CompositionTaskStore);
+      const compositionGoalLoopRetryStore = yield* Effect.serviceOption(
+        CompositionGoalLoopRetryStore,
+      );
       const compositionTaskInputStore = yield* Effect.serviceOption(CompositionTaskInputStore);
       const compositionGrantRegistry = yield* Effect.serviceOption(
         CompositionCapabilityGrantRegistry.CapabilityGrantRegistry,
@@ -2611,31 +2615,37 @@ const makeWsRpcLayer = (
           observeRpcEffect(
             WS_METHODS.serverControlCenterRedispatch,
             Effect.gen(function* () {
-              if (Option.isNone(compositionTaskStore) || Option.isNone(compositionOrchestrator)) {
+              if (
+                Option.isNone(compositionTaskStore) ||
+                Option.isNone(compositionGoalLoopRetryStore) ||
+                Option.isNone(compositionOrchestrator)
+              ) {
                 return yield* compositionTaskUnavailable();
               }
               const nowUnixMs = yield* Clock.currentTimeMillis;
               return yield* CompositionGoalLoopRedispatch.settleAndRedispatchInterruptedGoalLoop({
                 taskId: input.taskId,
                 runId: input.runId,
+                newRunId: input.newRunId,
                 agentId: input.agentId,
                 store: compositionTaskStore.value,
+                retryStore: compositionGoalLoopRetryStore.value,
                 nowUnixMs,
-                redispatch: ({ previousRunId }) =>
+                redispatch: ({ previousRunId, newRunId }) =>
                   Effect.asVoid(
                     compositionOrchestrator.value.retryTask({
                       taskId: input.taskId,
                       previousRunId,
-                      runId: input.newRunId,
+                      runId: newRunId,
                       reason: input.note ?? "控制中心自动重派未收敛目标循环",
                       capabilityIds: input.capabilityIds,
                     }),
                   ),
               }).pipe(
-                Effect.map(({ scan }) => ({
+                Effect.map(({ scan, newRunId }) => ({
                   taskId: input.taskId,
                   previousRunId: input.runId,
-                  newRunId: input.newRunId,
+                  newRunId,
                   interruptedRounds: scan.completedRounds,
                 })),
                 Effect.mapError(compositionTaskError),
