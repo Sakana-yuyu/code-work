@@ -219,6 +219,10 @@ describe("MulticaRuntimeSettings validation", () => {
     "token",
     "X-Auth-Token",
     "X-Tenant-Key",
+    "Private-Token",
+    "Client-Secret",
+    "X-Client-Secret",
+    "Ocp-Apim-Subscription-Key",
   ])("要求凭据 Header %s 绑定 sensitive 环境变量", (headerName) => {
     const draft = validDraft();
     expect(

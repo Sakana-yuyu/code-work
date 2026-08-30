@@ -274,6 +274,39 @@ export type CompositionIdeRuntimeConfig = typeof CompositionIdeRuntimeConfig.Typ
 const CompositionMulticaProbeStatus = Schema.Literals(["online", "offline", "unstable"]);
 export type CompositionMulticaProbeStatus = typeof CompositionMulticaProbeStatus.Type;
 
+/**
+ * 识别 Multica 配置中承载凭据的 Header 与 URL 查询参数名称。
+ *
+ * 该规则由 Web 校验、客户端快照脱敏及服务端运行时共同使用；新增命名
+ * 只应在这里扩展，避免一端把凭据当作普通配置回传。
+ */
+const MULTICA_SECRET_NAME_EXACT = new Set([
+  "authorization",
+  "proxy-authorization",
+  "api-key",
+  "api_key",
+  "x-api-key",
+  "x_api_key",
+  "token",
+  "private-token",
+  "client-secret",
+  "x-client-secret",
+  "ocp-apim-subscription-key",
+  "authorizationcode",
+  "subscriptionkey",
+  "accesskeyid",
+]);
+const MULTICA_SECRET_NAME_COMPACT = /^(?:(?:access|api|auth|bearer|client|id|private|proxy|refresh|secret|session|subscription|x))*?(?:accesskeyid|apikey|authorizationcode|credential|key|password|passwd|secret|sig|signature|subscriptionkey|token)$/iu;
+const MULTICA_CUSTOM_SECRET_HEADER = /^x[-_].*(?:auth[-_]?token|[-_](?:key|token))$/iu;
+
+export const isMulticaSecretName = (value: string): boolean => {
+  const normalized = value.trim().toLowerCase();
+  if (MULTICA_SECRET_NAME_EXACT.has(normalized)) return true;
+  if (MULTICA_CUSTOM_SECRET_HEADER.test(normalized)) return true;
+  const compact = normalized.replace(/[^a-z0-9]/gu, "");
+  return MULTICA_SECRET_NAME_COMPACT.test(compact);
+};
+
 /** Multica HTTP Header 与 Code Work provider environment secret 的绑定。 */
 export const CompositionMulticaHeaderBinding = Schema.Struct({
   headerName: TrimmedNonEmptyString,

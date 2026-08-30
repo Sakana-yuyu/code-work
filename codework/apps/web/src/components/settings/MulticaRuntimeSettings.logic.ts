@@ -1,5 +1,6 @@
 import {
   CompositionMulticaRuntimeConfig,
+  isMulticaSecretName,
   ProviderInstanceId,
   type ProviderInstanceConfig,
 } from "@codework/contracts";
@@ -32,6 +33,11 @@ export const formFromMulticaRuntimeInstance = (
     ) {
       return null;
     }
+    const secretEnvironmentNames = new Set(
+      config.headers.flatMap((header) =>
+        isMulticaSecretName(header.headerName) ? [header.environmentVariable] : [],
+      ),
+    );
     return {
       instanceId: normalizedInstanceId,
       originalInstanceId: normalizedInstanceId,
@@ -41,10 +47,11 @@ export const formFromMulticaRuntimeInstance = (
       baseUrl: config.baseUrl,
       headers: config.headers.map((header) => ({ ...header })),
       environment: (instance.environment ?? []).map((entry) =>
-        entry.sensitive === true
+        entry.sensitive === true || secretEnvironmentNames.has(entry.name)
           ? {
-              ...entry,
-              value: "",
+            ...entry,
+            value: "",
+            ...(secretEnvironmentNames.has(entry.name) ? { sensitive: true } : {}),
               valueRedacted: true,
               originalName: entry.name,
             }

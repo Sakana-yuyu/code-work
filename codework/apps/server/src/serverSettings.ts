@@ -17,6 +17,7 @@ import {
   DEFAULT_SERVER_SETTINGS,
   type CompositionMcpRuntimeServerConfig,
   type CompositionMcpSecretValue,
+  isMulticaSecretName,
   type ModelSelection,
   type ProviderInstanceConfig,
   type ProviderInstanceEnvironmentVariable,
@@ -191,16 +192,37 @@ function redactByokConfig(config: unknown): unknown {
 
 function redactProviderEnvironmentVariable(
   variable: ProviderInstanceEnvironmentVariable,
+  forceSecret = false,
 ): ProviderInstanceEnvironmentVariable {
-  if (!variable.sensitive) {
+  if (!forceSecret && !variable.sensitive) {
     const { valueRedacted: _omit, ...rest } = variable;
     return rest;
   }
   return {
     ...variable,
+    ...(forceSecret ? { sensitive: true } : {}),
     value: "",
     ...(variable.value.length > 0 || variable.valueRedacted ? { valueRedacted: true } : {}),
   };
+}
+
+function multicaSecretEnvironmentNames(instance: ProviderInstanceConfig): ReadonlySet<string> {
+  if (instance.driver !== "multica" || instance.config === null || typeof instance.config !== "object") {
+    return new Set();
+  }
+  const headers = (instance.config as Record<string, unknown>)["headers"];
+  if (!Array.isArray(headers)) return new Set();
+  return new Set(
+    headers.flatMap((entry) => {
+      if (entry === null || typeof entry !== "object" || Array.isArray(entry)) return [];
+      const binding = entry as Record<string, unknown>;
+      return typeof binding["headerName"] === "string" &&
+        typeof binding["environmentVariable"] === "string" &&
+        isMulticaSecretName(binding["headerName"])
+        ? [binding["environmentVariable"]]
+        : [];
+    }),
+  );
 }
 
 function redactMcpSecretValue(value: CompositionMcpSecretValue): CompositionMcpSecretValue {
@@ -227,16 +249,26 @@ function redactMcpServerConfig(
 
 export function redactServerSettingsForClient(settings: ServerSettings): ServerSettings {
   const providerInstances = Object.fromEntries(
-    Object.entries(settings.providerInstances).map(([instanceId, instance]) => [
-      instanceId,
-      {
-        ...instance,
-        ...(instance.driver === "byok" ? { config: redactByokConfig(instance.config) } : {}),
-        ...(instance.environment
-          ? { environment: instance.environment.map(redactProviderEnvironmentVariable) }
-          : {}),
-      },
-    ]),
+    Object.entries(settings.providerInstances).map(([instanceId, instance]) => {
+      const secretEnvironmentNames = multicaSecretEnvironmentNames(instance);
+      return [
+        instanceId,
+        {
+          ...instance,
+          ...(instance.driver === "byok" ? { config: redactByokConfig(instance.config) } : {}),
+          ...(instance.environment
+            ? {
+                environment: instance.environment.map((variable) =>
+                  redactProviderEnvironmentVariable(
+                    variable,
+                    secretEnvironmentNames.has(variable.name),
+                  ),
+                ),
+              }
+            : {}),
+        },
+      ];
+    }),
   );
   const mcpServers = Object.fromEntries(
     Object.entries(settings.mcpServers).map(([serverId, config]) => [

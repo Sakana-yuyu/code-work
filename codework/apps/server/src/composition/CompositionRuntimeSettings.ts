@@ -1,6 +1,10 @@
 import * as NodeCrypto from "node:crypto";
 
-import { CompositionIdeRuntimeConfig, CompositionMulticaRuntimeConfig } from "@codework/contracts";
+import {
+  CompositionIdeRuntimeConfig,
+  CompositionMulticaRuntimeConfig,
+  isMulticaSecretName,
+} from "@codework/contracts";
 import type { ProviderInstanceConfig, ProviderInstanceEnvironment } from "@codework/contracts";
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
@@ -179,12 +183,7 @@ const makeHeaders = (
         `Header '${binding.headerName}' 依赖环境变量 '${binding.environmentVariable}'，但该变量没有物化值。`,
       );
     }
-    if (
-      /^(authorization|proxy-authorization|api[-_]?key|x[-_]?api[-_]?key|token)$/i.test(
-        binding.headerName,
-      ) &&
-      variable?.sensitive !== true
-    ) {
+    if (isMulticaSecretName(binding.headerName) && variable?.sensitive !== true) {
       throw new Error(
         `凭据 Header '${binding.headerName}' 必须绑定到 sensitive 环境变量 '${binding.environmentVariable}'。`,
       );
