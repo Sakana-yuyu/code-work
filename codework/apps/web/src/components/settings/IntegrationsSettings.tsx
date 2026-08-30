@@ -33,7 +33,6 @@ import { TaskGraphPanel } from "./TaskGraphPanel";
 import { CompositionControlCenterPanel } from "./CompositionControlCenterPanel";
 import { SupplierRegistryPanel } from "./SupplierRegistryPanel";
 import { ByokBalanceDashboardPanel } from "./ByokBalanceDashboardPanel";
-import { LocalPluginsSettings } from "./LocalPluginsSettings";
 
 import { Button } from "../ui/button";
 import { NumberField, NumberFieldGroup, NumberFieldInput } from "../ui/number-field";
@@ -486,7 +485,6 @@ export function IntegrationsSettingsPanel() {
           previewDefaults
         )}
       </SettingsSection>
-      <LocalPluginsSettings />
       <IdeSessionsSettings />
       <AgentDriversSettings />
       <CompositionControlCenterPanel />

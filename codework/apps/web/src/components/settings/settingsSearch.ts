@@ -7,6 +7,7 @@ export type SettingsPath =
   | "/settings/keybindings"
   | "/settings/providers"
   | "/settings/integrations"
+  | "/settings/local-plugins"
   | "/settings/squads"
   | "/settings/automations"
   | "/settings/workspace-scripts"
@@ -34,6 +35,7 @@ export const SETTINGS_SECTION_LABELS: Readonly<Record<SettingsPath, string>> = {
   "/settings/keybindings": "settings.keybindings",
   "/settings/providers": "settings.providers",
   "/settings/integrations": "settings.integrations",
+  "/settings/local-plugins": "localPlugins.title",
   "/settings/squads": "settings.squads",
   "/settings/automations": "settings.automations",
   "/settings/workspace-scripts": "settings.workspaceScripts",
@@ -229,6 +231,11 @@ export const SETTINGS_SEARCH_ITEMS = [
     id: "providers",
     title: "settings.providers",
     to: "/settings/providers",
+  },
+  {
+    id: "local-plugins",
+    title: "localPlugins.title",
+    to: "/settings/local-plugins",
   },
   {
     id: "agent-browser-access",

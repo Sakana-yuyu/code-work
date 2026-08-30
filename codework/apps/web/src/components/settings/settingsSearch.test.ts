@@ -4,6 +4,7 @@ import { t } from "~/i18n/runtime";
 import {
   searchableSetting,
   searchSettings,
+  SETTINGS_SECTION_LABELS,
   SETTINGS_SEARCH_ITEMS,
   type SettingsSearchItem,
 } from "./settingsSearch";
@@ -97,6 +98,19 @@ describe("searchSettings", () => {
       id: "composition-automations",
       title: "automationCenter.title",
       to: "/settings/automations",
+    });
+  });
+
+  it("indexes the standalone local plugins route", () => {
+    expect(SETTINGS_SECTION_LABELS["/settings/local-plugins"]).toBe("localPlugins.title");
+    expect(SETTINGS_SEARCH_ITEMS).toContainEqual({
+      id: "local-plugins",
+      title: "localPlugins.title",
+      to: "/settings/local-plugins",
+    });
+    expect(searchSettings("local plugins")[0]).toMatchObject({
+      id: "local-plugins",
+      to: "/settings/local-plugins",
     });
   });
 });
