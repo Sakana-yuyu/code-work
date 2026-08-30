@@ -122,6 +122,9 @@ npx t3 serve --tailscale-serve --tailscale-serve-port 8443
 Once paired, add projects normally: open the Command Palette and choose **Add Project**, then pick
 the environment the project lives on. Every saved environment is offered, not only the local one.
 
+To inspect, follow, and control agents from another terminal, see the [Agent CLI](./agent-cli.md)
+guide. Use the direct pairing URL printed by this server, not a hosted app wrapper URL.
+
 ### Option 3: Desktop-Managed SSH Launch
 
 Use this when you want the desktop app to start or reuse Code Work on another machine over SSH.
