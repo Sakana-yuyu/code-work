@@ -24,7 +24,8 @@ export class CompositionGoalLoopRedispatchError extends Data.TaggedError(
     | "goal_loop_redispatch_run_missing"
     | "goal_loop_redispatch_not_latest"
     | "goal_loop_redispatch_new_run_missing"
-    | "goal_loop_redispatch_new_run_conflict";
+    | "goal_loop_redispatch_new_run_conflict"
+    | "goal_loop_redispatch_new_run_not_started";
   readonly detail: string;
 }> {}
 

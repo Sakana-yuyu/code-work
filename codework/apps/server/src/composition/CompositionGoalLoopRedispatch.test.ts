@@ -129,7 +129,7 @@ layer("CompositionGoalLoopRedispatch", (it) => {
               runId: args.newRunId,
               agentId: "agent-goal-redispatch",
               runtimeId: "runtime-goal-redispatch",
-              status: "queued",
+              status: "running",
               attempt: 2,
               capabilityGrantIds: [],
             });
@@ -363,7 +363,7 @@ layer("CompositionGoalLoopRedispatch", (it) => {
                 runId: args.newRunId,
                 agentId: "agent-goal-redispatch",
                 runtimeId: "runtime-goal-redispatch",
-                status: "queued",
+                status: "running",
                 attempt: 2,
                 capabilityGrantIds: [],
               });
@@ -386,7 +386,7 @@ layer("CompositionGoalLoopRedispatch", (it) => {
     }),
   );
 
-  it.effect("新 Run 已创建但阶段未收口时，重启重入只确认原 Run 而不再次派发", () =>
+  it.effect("新 Run 已创建但仍 queued 时，重启重入会再次派发直到 Run 真正启动", () =>
     Effect.gen(function* () {
       const store = yield* CompositionTaskStore;
       const retryStore = yield* CompositionGoalLoopRetryStore;
@@ -445,6 +445,7 @@ layer("CompositionGoalLoopRedispatch", (it) => {
       assert.equal(firstFailure, "fault_after_new_run_before_phase_commit");
       assert.equal(Option.getOrThrow(yield* retryStore.getIntent(runId)).phase, "settled");
 
+      let resumeCalls = 0;
       const recovered = yield* settleAndRedispatchInterruptedGoalLoop({
         taskId,
         runId,
@@ -454,11 +455,23 @@ layer("CompositionGoalLoopRedispatch", (it) => {
         store,
         retryStore,
         nowUnixMs: 6_000,
-        redispatch: () => Effect.die("已存在稳定新 Run 时不应再次派发"),
+        redispatch: () =>
+          Effect.gen(function* () {
+            resumeCalls += 1;
+            const queuedRun = Option.getOrThrow(yield* store.getRun(newRunId));
+            assert.equal(queuedRun.status, "queued");
+            yield* store.upsertRun({
+              ...queuedRun,
+              status: "running",
+              startedAtUnixMs: 6_000,
+            });
+          }),
       });
 
       assert.equal(createCalls, 1);
+      assert.equal(resumeCalls, 1);
       assert.equal(recovered.newRunId, newRunId);
+      assert.equal(Option.getOrThrow(yield* store.getRun(newRunId)).status, "running");
       assert.isTrue(
         Option.isNone(yield* store.getRun("run-goal-redispatch-created-before-crash-ignored")),
       );

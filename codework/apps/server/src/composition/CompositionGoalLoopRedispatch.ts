@@ -91,6 +91,18 @@ const verifyNewRun = (
         );
   });
 
+const verifyNewRunStarted = (
+  run: CompositionTaskRun,
+): Effect.Effect<CompositionTaskRun, CompositionGoalLoopRedispatchError> =>
+  run.status === "queued"
+    ? Effect.fail(
+        new CompositionGoalLoopRedispatchError({
+          code: "goal_loop_redispatch_new_run_not_started",
+          detail: `新 Run ${run.runId} 仍停留在 queued，尚未完成 Agent Driver 派发。`,
+        }),
+      )
+    : Effect.succeed(run);
+
 /**
  * 持久 retry intent → 旧状态结算 → 稳定 newRunId 重派。
  * 任一阶段中断后都可由下一次调用按持久阶段恢复，不依赖进程内标志或轮询。
@@ -164,7 +176,9 @@ export const settleAndRedispatchInterruptedGoalLoop = <E>(
     }
 
     if (intent.phase === "dispatched") {
-      yield* verifyNewRun(options.store, intent, settled.run);
+      yield* verifyNewRun(options.store, intent, settled.run).pipe(
+        Effect.flatMap(verifyNewRunStarted),
+      );
       return {
         scan: settled.scan,
         run: settled.run,
@@ -180,7 +194,9 @@ export const settleAndRedispatchInterruptedGoalLoop = <E>(
       claimedAtUnixMs: options.nowUnixMs,
     });
     if (intent.phase === "dispatched") {
-      yield* verifyNewRun(options.store, intent, settled.run);
+      yield* verifyNewRun(options.store, intent, settled.run).pipe(
+        Effect.flatMap(verifyNewRunStarted),
+      );
       return {
         scan: settled.scan,
         run: settled.run,
@@ -192,14 +208,16 @@ export const settleAndRedispatchInterruptedGoalLoop = <E>(
     const dispatchExit = yield* Effect.exit(
       Effect.gen(function* () {
         const existingNewRun = yield* options.store.getRun(intent.newRunId);
-        if (Option.isNone(existingNewRun)) {
+        if (Option.isNone(existingNewRun) || existingNewRun.value.status === "queued") {
           yield* options.redispatch({
             previousRunId: options.runId,
             newRunId: intent.newRunId,
             interruptedRounds: settled.scan.completedRounds,
           });
         }
-        yield* verifyNewRun(options.store, intent, settled.run);
+        yield* verifyNewRun(options.store, intent, settled.run).pipe(
+          Effect.flatMap(verifyNewRunStarted),
+        );
         intent = yield* options.retryStore.markDispatched({
           previousRunId: options.runId,
           claimId,

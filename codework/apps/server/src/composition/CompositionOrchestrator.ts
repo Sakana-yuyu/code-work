@@ -23,6 +23,7 @@ import {
   type CompositionTaskStoreShape,
 } from "../persistence/Services/CompositionTaskStore.ts";
 import {
+  type CompositionTaskRecoveryInput,
   CompositionTaskInputStoreError,
   type CompositionTaskInputStoreShape,
 } from "../persistence/Services/CompositionTaskInputStore.ts";
@@ -356,6 +357,7 @@ const makeOrchestrator = (
 ): CompositionOrchestrator => {
   const resumingTaskIds = new Set<string>();
   const resumingRunIds = new Set<string>();
+  const retryingRunIds = new Set<string>();
 
   const prepareRunLease = (
     task: CompositionTask,
@@ -579,6 +581,88 @@ const makeOrchestrator = (
         yield* revokeRunCapabilities(input.driver, persisted.task, persisted.run);
       }
       return { task: persisted.task, run: persisted.run };
+    });
+
+  const acquireRetryRunLease = (input: {
+    readonly task: CompositionTask;
+    readonly run: CompositionTaskRun;
+    readonly recoveryInput: CompositionTaskRecoveryInput;
+  }) =>
+    Effect.gen(function* () {
+      if (input.recoveryInput.workspaceRootDigest === undefined) {
+        return Option.some(input.run);
+      }
+      if (input.run.leaseId === undefined) {
+        return yield* prepareRunLease(
+          input.task,
+          input.run,
+          input.recoveryInput.workspaceRootDigest,
+        );
+      }
+      const now = yield* Clock.currentTimeMillis;
+      return yield* recoverCompositionRuntimeLease(store, {
+        task: input.task,
+        run: input.run,
+        nowUnixMs: now,
+      });
+    });
+
+  const startRetryRun = (input: {
+    readonly task: CompositionTask;
+    readonly run: CompositionTaskRun;
+    readonly driver: CompositionAgentDriver;
+    readonly recoveryInput: CompositionTaskRecoveryInput;
+  }) =>
+    Effect.gen(function* () {
+      const leasedRunOption = yield* acquireRetryRunLease(input);
+      if (Option.isNone(leasedRunOption)) {
+        return yield* persistFailedStart({
+          task: input.task,
+          run: input.run,
+          driver: input.driver,
+          failure: new CompositionAgentDriverFailure({
+            code: "capacity_exceeded",
+            detail: "工作区已有未过期的 Runtime 租约，拒绝重复派发。",
+          }),
+          summary: "重试任务未获得工作区租约",
+          finishTask: true,
+        });
+      }
+      const leasedRun = leasedRunOption.value;
+
+      const startResult = yield* Effect.result(
+        input.driver.startTask({
+          task: input.task,
+          run: leasedRun,
+          prompt: input.recoveryInput.prompt,
+          workspaceRoot: input.recoveryInput.workspaceRoot,
+          ...(input.recoveryInput.workspaceRootDigest === undefined
+            ? {}
+            : { workspaceRootDigest: input.recoveryInput.workspaceRootDigest }),
+          ...(input.recoveryInput.model === undefined ? {} : { model: input.recoveryInput.model }),
+          capabilityGrantIds: leasedRun.capabilityGrantIds ?? [],
+        }),
+      );
+      if (startResult._tag === "Failure") {
+        const failed = yield* persistFailedStart({
+          task: input.task,
+          run: leasedRun,
+          driver: input.driver,
+          failure: startResult.failure,
+          summary: "重试任务启动失败",
+          finishTask: true,
+        });
+        yield* releaseRunLease(failed.run);
+        return failed;
+      }
+
+      return yield* persistStartedRun({
+        task: input.task,
+        run: leasedRun,
+        driver: input.driver,
+        startResult: startResult.success,
+        summary: "重试任务已交给 Agent Driver 执行",
+      });
     });
 
   const validateDependencies = (
@@ -1202,7 +1286,7 @@ const makeOrchestrator = (
       }).pipe(Effect.ensuring(Effect.sync(() => resumingRunIds.delete(input.runId))));
     });
 
-  const retryTask: CompositionOrchestrator["retryTask"] = (input) =>
+  const executeRetryTask: CompositionOrchestrator["retryTask"] = (input) =>
     Effect.gen(function* () {
       const taskOption = yield* store.getTask(input.taskId);
       const previousRunOption = yield* store.getRun(input.previousRunId);
@@ -1221,6 +1305,68 @@ const makeOrchestrator = (
           taskId: input.taskId,
           previousRunId: input.previousRunId,
           reason: "latest_run_missing",
+        });
+      }
+      if (Option.isSome(existingRunOption) && existingRunOption.value.status === "queued") {
+        const existingRun = existingRunOption.value;
+        const targetAgentId = input.agentId ?? previousRun.agentId;
+        const isMatchingQueuedRetry =
+          task.status === "queued" &&
+          previousRun.taskId === input.taskId &&
+          (previousRun.status === "failed" || previousRun.status === "timed_out") &&
+          latestRunOption.value.runId === input.runId &&
+          existingRun.taskId === input.taskId &&
+          existingRun.attempt === previousRun.attempt + 1 &&
+          existingRun.agentId === targetAgentId &&
+          task.assigneeId === targetAgentId;
+        if (!isMatchingQueuedRetry) {
+          return yield* new CompositionTaskRetryInvalidError({
+            taskId: input.taskId,
+            previousRunId: input.previousRunId,
+            reason: "run_id_conflict",
+          });
+        }
+        if (input.capabilityIds.length === 0) {
+          return yield* new CompositionTaskRetryInvalidError({
+            taskId: input.taskId,
+            previousRunId: input.previousRunId,
+            reason: "capability_ids_required",
+          });
+        }
+        if (inputStore === undefined) {
+          return yield* new CompositionTaskRetryInvalidError({
+            taskId: input.taskId,
+            previousRunId: input.previousRunId,
+            reason: "recovery_input_store_unavailable",
+          });
+        }
+        const recoveryInput = yield* inputStore.get(input.taskId);
+        if (Option.isNone(recoveryInput)) {
+          return yield* new CompositionTaskRetryInvalidError({
+            taskId: input.taskId,
+            previousRunId: input.previousRunId,
+            reason: "recovery_input_missing",
+          });
+        }
+        const targetDriver = yield* driverRegistry.get(targetAgentId);
+        if (targetDriver === undefined) {
+          return yield* new CompositionAgentDriverFailure({
+            code: "agent_driver_unavailable",
+            detail: `未找到目标 Agent Driver：${targetAgentId}`,
+          });
+        }
+        if (existingRun.runtimeId !== targetDriver.runtimeId) {
+          return yield* new CompositionTaskRetryInvalidError({
+            taskId: input.taskId,
+            previousRunId: input.previousRunId,
+            reason: "run_id_conflict",
+          });
+        }
+        return yield* startRetryRun({
+          task,
+          run: existingRun,
+          driver: targetDriver,
+          recoveryInput: recoveryInput.value,
         });
       }
       if (task.status !== "failed" && task.status !== "timed_out") {
@@ -1314,19 +1460,23 @@ const makeOrchestrator = (
         attempt: previousRun.attempt + 1,
         capabilityGrantIds,
       };
-      yield* store.upsertTask(queuedTask);
-      yield* store.upsertRun(queuedRun);
-      yield* store.appendEvent(
-        makeEvent({
-          task: queuedTask,
-          run: queuedRun,
-          sequence: 0,
-          status: "queued",
-          eventType: "status",
-          summary:
-            targetAgentId === previousRun.agentId
-              ? `任务已请求重试：${input.reason}`
-              : `任务已从 Agent ${previousRun.agentId} 重派至 ${targetAgentId}：${input.reason}`,
+      yield* store.withTransaction(
+        Effect.gen(function* () {
+          yield* store.upsertTask(queuedTask);
+          yield* store.upsertRun(queuedRun);
+          yield* store.appendEvent(
+            makeEvent({
+              task: queuedTask,
+              run: queuedRun,
+              sequence: 0,
+              status: "queued",
+              eventType: "status",
+              summary:
+                targetAgentId === previousRun.agentId
+                  ? `任务已请求重试：${input.reason}`
+                  : `任务已从 Agent ${previousRun.agentId} 重派至 ${targetAgentId}：${input.reason}`,
+            }),
+          );
         }),
       );
       if (issuedGrants.length > 0) {
@@ -1338,59 +1488,29 @@ const makeOrchestrator = (
         });
       }
 
-      const leasedRunOption = yield* prepareRunLease(
-        queuedTask,
-        queuedRun,
-        recoveryInput.value.workspaceRootDigest,
-      );
-      if (Option.isNone(leasedRunOption)) {
-        return yield* persistFailedStart({
-          task: queuedTask,
-          run: queuedRun,
-          driver: targetDriver,
-          failure: new CompositionAgentDriverFailure({
-            code: "capacity_exceeded",
-            detail: "工作区已有未过期的 Runtime 租约，拒绝重复派发。",
-          }),
-          summary: "重试任务未获得工作区租约",
-          finishTask: true,
-        });
-      }
-      const leasedRun = leasedRunOption.value;
-
-      const startResult = yield* Effect.result(
-        targetDriver.startTask({
-          task: queuedTask,
-          run: leasedRun,
-          prompt: recoveryInput.value.prompt,
-          workspaceRoot: recoveryInput.value.workspaceRoot,
-          ...(recoveryInput.value.workspaceRootDigest === undefined
-            ? {}
-            : { workspaceRootDigest: recoveryInput.value.workspaceRootDigest }),
-          ...(recoveryInput.value.model === undefined ? {} : { model: recoveryInput.value.model }),
-          capabilityGrantIds,
-        }),
-      );
-      if (startResult._tag === "Failure") {
-        const failed = yield* persistFailedStart({
-          task: queuedTask,
-          run: leasedRun,
-          driver: targetDriver,
-          failure: startResult.failure,
-          summary: "重试任务启动失败",
-          finishTask: true,
-        });
-        yield* releaseRunLease(failed.run);
-        return failed;
-      }
-
-      return yield* persistStartedRun({
+      return yield* startRetryRun({
         task: queuedTask,
-        run: leasedRun,
+        run: queuedRun,
         driver: targetDriver,
-        startResult: startResult.success,
-        summary: "重试任务已交给 Agent Driver 执行",
+        recoveryInput: recoveryInput.value,
       });
+    });
+
+  const retryTask: CompositionOrchestrator["retryTask"] = (input) =>
+    Effect.suspend(() => {
+      if (retryingRunIds.has(input.runId)) {
+        return Effect.fail(
+          new CompositionTaskRetryInvalidError({
+            taskId: input.taskId,
+            previousRunId: input.previousRunId,
+            reason: "retry_dispatch_in_progress",
+          }),
+        );
+      }
+      retryingRunIds.add(input.runId);
+      return executeRetryTask(input).pipe(
+        Effect.ensuring(Effect.sync(() => retryingRunIds.delete(input.runId))),
+      );
     });
 
   const resumeReadyTasks: CompositionOrchestrator["resumeReadyTasks"] = () =>
