@@ -8,6 +8,8 @@ import * as Schema from "effect/Schema";
 import { HostProcessArchitecture, HostProcessPlatform } from "@codework/shared/hostProcess";
 
 import * as PtyAdapter from "./PtyAdapter.ts";
+import * as PtyExitObservationReaper from "./PtyExitObservationReaper.ts";
+import * as PtyProcessTermination from "./PtyProcessTermination.ts";
 
 export class NodePtyModuleLoadError extends Schema.TaggedErrorClass<NodePtyModuleLoadError>()(
   "NodePtyModuleLoadError",
@@ -96,19 +98,30 @@ class NodePtyProcess implements PtyAdapter.PtyProcess {
       disposable.dispose();
     };
   }
-
-  onExit(callback: (event: PtyAdapter.PtyExitEvent) => void): () => void {
-    const disposable = this.process.onExit((event) => {
-      callback({
-        exitCode: event.exitCode,
-        signal: event.signal ?? null,
-      });
-    });
-    return () => {
-      disposable.dispose();
-    };
-  }
 }
+
+const registerProcessExitObservation = (
+  process: import("node-pty").IPty,
+  processExit: PtyProcessTermination.PtyProcessExitState,
+) =>
+  Effect.try({
+    try: () => {
+      const disposable = process.onExit((event) => {
+        PtyProcessTermination.signalProcessExit(processExit, {
+          exitCode: event.exitCode,
+          signal: event.signal ?? null,
+        });
+      });
+      return () => disposable.dispose();
+    },
+    catch: (cause) =>
+      PtyExitObservationReaper.operationError({
+        adapter: "node-pty",
+        cause,
+        operation: "register",
+        processPid: process.pid,
+      }),
+  });
 
 export const make = Effect.fn("NodePtyAdapter.make")(function* (
   loadNodePtyModule: NodePtyModuleLoader = () => import("node-pty"),
@@ -137,6 +150,7 @@ export const make = Effect.fn("NodePtyAdapter.make")(function* (
       Effect.orElseSucceed(() => undefined),
     ),
   );
+  const exitObservationReaper = yield* PtyExitObservationReaper.make();
 
   return PtyAdapter.PtyAdapter.of({
     spawn: Effect.fn("NodePtyAdapter.spawn")(function* (input) {
@@ -148,7 +162,7 @@ export const make = Effect.fn("NodePtyAdapter.make")(function* (
         platform === "win32" && input.env["TERM"] === undefined
           ? { ...input.env, TERM: "xterm-256color" }
           : input.env;
-      const ptyProcess = yield* Effect.try({
+      const spawnedProcess = yield* Effect.try({
         try: () =>
           nodePty.spawn(input.shell, input.args ?? [], {
             cwd: input.cwd,
@@ -164,7 +178,48 @@ export const make = Effect.fn("NodePtyAdapter.make")(function* (
             cause,
           }),
       });
-      return new NodePtyProcess(ptyProcess);
+      const process = new NodePtyProcess(spawnedProcess);
+      const processExit = yield* PtyProcessTermination.makeProcessExitState();
+      const exitRegistration = yield* registerProcessExitObservation(
+        spawnedProcess,
+        processExit,
+      ).pipe(Effect.result);
+      if (exitRegistration._tag === "Success") {
+        return {
+          process,
+          processExit,
+          releaseProcessExit: exitRegistration.success,
+        } satisfies PtyAdapter.PtyProcessAcquisition;
+      }
+
+      const reaperId = yield* exitObservationReaper.retain({
+        adapter: "node-pty",
+        processPid: spawnedProcess.pid,
+        processExit,
+        initialCause: exitRegistration.failure,
+        register: registerProcessExitObservation(spawnedProcess, processExit),
+      });
+      const cleanupResult = yield* Effect.try({
+        try: () => spawnedProcess.kill(),
+        catch: (cause) =>
+          PtyExitObservationReaper.operationError({
+            adapter: "node-pty",
+            cause,
+            operation: "terminate",
+            processPid: spawnedProcess.pid,
+          }),
+      }).pipe(Effect.result);
+      return yield* new PtyAdapter.PtySpawnError({
+        adapter: "node-pty",
+        shell: input.shell,
+        cause: new PtyExitObservationReaper.PtyExitObservationRetainedError({
+          adapter: "node-pty",
+          cause: exitRegistration.failure,
+          processPid: spawnedProcess.pid,
+          reaperId,
+          ...(cleanupResult._tag === "Failure" ? { cleanupCause: cleanupResult.failure } : {}),
+        }),
+      });
     }),
   });
 });

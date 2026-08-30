@@ -75,6 +75,29 @@ it.effect("原始退出与 Manager 处理完成可分别等待", () =>
   }),
 );
 
+it.effect("单个退出 listener defect 不得阻断其他订阅者或事后回放", () =>
+  Effect.gen(function* () {
+    const exitState = yield* PtyProcessTermination.makeProcessExitState();
+    const listenerFailure = new Error("expected exit listener failure");
+    const observed: PtyAdapter.PtyExitEvent[] = [];
+    PtyProcessTermination.subscribeProcessExit(exitState, () => {
+      throw listenerFailure;
+    });
+    PtyProcessTermination.subscribeProcessExit(exitState, (event) => {
+      observed.push(event);
+    });
+    const exitEvent = { exitCode: 17, signal: 9 } as const;
+
+    PtyProcessTermination.signalProcessExit(exitState, exitEvent);
+    PtyProcessTermination.subscribeProcessExit(exitState, (event) => {
+      observed.push(event);
+    });
+
+    expect(observed).toEqual([exitEvent, exitEvent]);
+    expect(exitState.listenerDefects).toEqual([listenerFailure]);
+  }),
+);
+
 it.effect("win32 使用无参数 kill 并等待同一 handle 的真实退出", () =>
   Effect.gen(function* () {
     const process = new FakePtyProcess();

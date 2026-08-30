@@ -64,6 +64,7 @@ import {
 import * as ProcessRunner from "../processRunner.ts";
 import * as PortScanner from "../preview/PortScanner.ts";
 import * as PtyAdapter from "./PtyAdapter.ts";
+import * as PtyExitObservationReaper from "./PtyExitObservationReaper.ts";
 import * as PtyProcessTermination from "./PtyProcessTermination.ts";
 import * as TerminalEventHub from "./TerminalEventHub.ts";
 import * as ThreadHistoryCleanupIntentStore from "./ThreadHistoryCleanupIntentStore.ts";
@@ -768,6 +769,10 @@ function resolveShellCandidates(
   ]);
 }
 
+const isPtyExitObservationRetainedError = Schema.is(
+  PtyExitObservationReaper.PtyExitObservationRetainedError,
+);
+
 function isRetryableShellSpawnError(error: PtyAdapter.PtySpawnError): boolean {
   const queue: unknown[] = [error];
   const seen = new Set<unknown>();
@@ -779,6 +784,10 @@ function isRetryableShellSpawnError(error: PtyAdapter.PtySpawnError): boolean {
       continue;
     }
     seen.add(current);
+
+    if (isPtyExitObservationRetainedError(current)) {
+      return false;
+    }
 
     if (typeof current === "string") {
       messages.push(current);
@@ -2345,7 +2354,7 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
     index = 0,
     lastError: PtyAdapter.PtySpawnError | null = null,
   ): Effect.fn.Return<
-    { process: PtyAdapter.PtyProcess; shellLabel: string },
+    { acquisition: PtyAdapter.PtyProcessAcquisition; shellLabel: string },
     PtyAdapter.PtySpawnError
   > {
     if (index >= shellCandidates.length) {
@@ -2380,7 +2389,7 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
 
     if (attempt._tag === "Success") {
       return {
-        process: attempt.success,
+        acquisition: attempt.success,
         shellLabel: formatShellCandidate(candidate),
       };
     }
@@ -2458,23 +2467,6 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
               }),
             ),
           );
-
-    const registerExitListener = (acquisition: PendingTerminalProcessAcquisition) =>
-      Effect.try({
-        try: () =>
-          acquisition.process.onExit((event) => {
-            PtyProcessTermination.signalProcessExit(acquisition.processExit, event);
-            acquisition.dispatchProcessEvent({ type: "exit", event });
-          }),
-        catch: (cause) =>
-          new TerminalProcessListenerRegistrationError({
-            cause,
-            listener: "exit",
-            threadId: session.threadId,
-            terminalId: session.terminalId,
-            terminalPid: acquisition.processPid,
-          }),
-      });
 
     const activateAcquisition = (acquisition: PendingTerminalProcessAcquisition): void => {
       acquisition.activated = true;
@@ -2586,14 +2578,13 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
               const spawnResult = yield* trySpawn(shellCandidates, terminalEnv, session).pipe(
                 Effect.uninterruptible,
               );
-              const processHandle = spawnResult.process;
+              const processHandle = spawnResult.acquisition.process;
               ptyProcess = processHandle;
               startedShell = spawnResult.shellLabel;
 
-              const processExit = yield* PtyProcessTermination.makeProcessExitState();
               const acquisition: PendingTerminalProcessAcquisition = {
                 process: processHandle,
-                processExit,
+                processExit: spawnResult.acquisition.processExit,
                 processGeneration: session.processGeneration + 1,
                 processPid: processHandle.pid,
                 owner: session.owner,
@@ -2632,15 +2623,18 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
                 committed: false,
                 registryRegistered: false,
               };
+              const unsubscribeManagerExit = PtyProcessTermination.subscribeProcessExit(
+                acquisition.processExit,
+                (event) => acquisition.dispatchProcessEvent({ type: "exit", event }),
+              );
+              acquisition.unsubscribeExit = () => {
+                unsubscribeManagerExit();
+                spawnResult.acquisition.releaseProcessExit();
+              };
               return acquisition;
             }),
             (acquisition) =>
               Effect.gen(function* () {
-                yield* Effect.uninterruptible(
-                  Effect.gen(function* () {
-                    acquisition.unsubscribeExit = yield* registerExitListener(acquisition);
-                  }),
-                );
                 yield* Effect.yieldNow;
                 acquisition.unsubscribeData = yield* Effect.try({
                   try: () =>
@@ -2721,22 +2715,6 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
                 return Effect.void;
               }
               return Effect.gen(function* () {
-                if (acquisition.unsubscribeExit === null) {
-                  const exitListener = yield* registerExitListener(acquisition).pipe(Effect.result);
-                  if (exitListener._tag === "Success") {
-                    acquisition.unsubscribeExit = exitListener.success;
-                  } else {
-                    yield* Effect.logWarning(
-                      "failed to register terminal exit listener during acquisition release",
-                      {
-                        cause: exitListener.failure,
-                        threadId: session.threadId,
-                        terminalId: session.terminalId,
-                        terminalPid: acquisition.processPid,
-                      },
-                    );
-                  }
-                }
                 yield* releaseListener("data", acquisition.process, acquisition.unsubscribeData);
                 acquisition.unsubscribeData = null;
 

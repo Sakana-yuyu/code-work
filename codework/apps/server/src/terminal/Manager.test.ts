@@ -33,6 +33,8 @@ import { expect } from "vite-plus/test";
 import * as ProcessRunner from "../processRunner.ts";
 import * as TerminalManager from "./Manager.ts";
 import * as PtyAdapter from "./PtyAdapter.ts";
+import * as PtyExitObservationReaper from "./PtyExitObservationReaper.ts";
+import * as PtyProcessTermination from "./PtyProcessTermination.ts";
 import { makeWorkspaceScriptTerminalOwner } from "./TerminalSessionOwnership.ts";
 
 class WaitForConditionError extends Data.TaggedError("WaitForConditionError")<{
@@ -44,17 +46,22 @@ class FakePtyProcess implements PtyAdapter.PtyProcess {
   readonly resizeCalls: Array<{ cols: number; rows: number }> = [];
   readonly killSignals: Array<string | undefined> = [];
   readonly pid: number;
+  readonly processExit: PtyProcessTermination.PtyProcessExitState;
   writeFailure: unknown | undefined;
   resizeFailure: unknown | undefined;
   private readonly dataListeners = new Set<(data: string) => void>();
-  private readonly exitListeners = new Set<(event: PtyAdapter.PtyExitEvent) => void>();
   private readonly killListeners = new Set<(signal: string | undefined) => void>();
   private readonly autoExitOnKill: boolean;
   killed = false;
 
-  constructor(pid: number, autoExitOnKill: boolean) {
+  constructor(
+    pid: number,
+    autoExitOnKill: boolean,
+    processExit: PtyProcessTermination.PtyProcessExitState,
+  ) {
     this.pid = pid;
     this.autoExitOnKill = autoExitOnKill;
+    this.processExit = processExit;
   }
 
   write(data: string): void {
@@ -92,13 +99,6 @@ class FakePtyProcess implements PtyAdapter.PtyProcess {
     };
   }
 
-  onExit(callback: (event: PtyAdapter.PtyExitEvent) => void): () => void {
-    this.exitListeners.add(callback);
-    return () => {
-      this.exitListeners.delete(callback);
-    };
-  }
-
   onKill(callback: (signal: string | undefined) => void): () => void {
     this.killListeners.add(callback);
     return () => {
@@ -113,9 +113,7 @@ class FakePtyProcess implements PtyAdapter.PtyProcess {
   }
 
   emitExit(event: PtyAdapter.PtyExitEvent): void {
-    for (const listener of this.exitListeners) {
-      listener(event);
-    }
+    PtyProcessTermination.signalProcessExit(this.processExit, event);
   }
 }
 
@@ -134,7 +132,7 @@ class FakePtyAdapter {
 
   spawn(
     input: PtyAdapter.PtySpawnInput,
-  ): Effect.Effect<PtyAdapter.PtyProcess, PtyAdapter.PtySpawnError> {
+  ): Effect.Effect<PtyAdapter.PtyProcessAcquisition, PtyAdapter.PtySpawnError> {
     this.spawnInputs.push(input);
     const failure = this.spawnFailures.shift();
     if (failure) {
@@ -146,20 +144,32 @@ class FakePtyAdapter {
         }),
       );
     }
-    const process = new FakePtyProcess(this.nextPid++, this.autoExitOnKill);
-    this.processes.push(process);
-    if (this.mode === "async") {
-      return Effect.tryPromise({
-        try: async () => process,
-        catch: (cause) =>
-          new PtyAdapter.PtySpawnError({
-            adapter: "fake",
-            shell: input.shell,
-            cause,
-          }),
-      });
-    }
-    return Effect.succeed(process);
+    const acquisition = PtyProcessTermination.makeProcessExitState().pipe(
+      Effect.map((processExit) => {
+        const process = new FakePtyProcess(this.nextPid++, this.autoExitOnKill, processExit);
+        this.processes.push(process);
+        return {
+          process,
+          processExit,
+          releaseProcessExit: () => {},
+        } satisfies PtyAdapter.PtyProcessAcquisition;
+      }),
+    );
+    return this.mode === "async"
+      ? acquisition.pipe(
+          Effect.flatMap((result) =>
+            Effect.tryPromise({
+              try: async () => result,
+              catch: (cause) =>
+                new PtyAdapter.PtySpawnError({
+                  adapter: "fake",
+                  shell: input.shell,
+                  cause,
+                }),
+            }),
+          ),
+        )
+      : acquisition;
   }
 }
 
@@ -2137,6 +2147,36 @@ it.layer(
             .some((input) => input.shell !== "/definitely/missing-shell"),
         ).toBe(true);
       }
+    }),
+  );
+
+  it.effect("exit observer reaper 已接管句柄时不得继续尝试 fallback shell", () =>
+    Effect.gen(function* () {
+      const ptyAdapter = new FakePtyAdapter();
+      const { manager } = yield* createManager(5, {
+        ptyAdapter,
+        shellResolver: () => "preferred-shell",
+      });
+      const observerFailure = PtyExitObservationReaper.operationError({
+        adapter: "node-pty",
+        cause: new Error("observer dependency ENOENT"),
+        operation: "register",
+        processPid: 9_000,
+      });
+      ptyAdapter.spawnFailures.push(
+        new PtyExitObservationReaper.PtyExitObservationRetainedError({
+          adapter: "node-pty",
+          cause: observerFailure,
+          processPid: 9_000,
+          reaperId: 1,
+        }),
+      );
+
+      const snapshot = yield* manager.open(openInput());
+
+      assert.equal(snapshot.status, "error");
+      expect(ptyAdapter.spawnInputs).toHaveLength(1);
+      assert.equal(ptyAdapter.spawnInputs[0]?.shell, "preferred-shell");
     }),
   );
 

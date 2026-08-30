@@ -22,6 +22,7 @@ import { expect } from "vite-plus/test";
 import * as ProcessRunner from "../processRunner.ts";
 import * as TerminalManager from "./Manager.ts";
 import type * as PtyAdapter from "./PtyAdapter.ts";
+import * as PtyProcessTermination from "./PtyProcessTermination.ts";
 import { makeWorkspaceScriptTerminalOwner } from "./TerminalSessionOwnership.ts";
 import * as ThreadHistoryCleanupIntentStore from "./ThreadHistoryCleanupIntentStore.ts";
 
@@ -30,21 +31,22 @@ class FakePtyProcess implements PtyAdapter.PtyProcess {
   readonly killSignals: Array<string | undefined> = [];
   readonly killFailures = new Map<string | undefined, unknown>();
   readonly pid: number;
+  readonly processExit: PtyProcessTermination.PtyProcessExitState;
   private readonly dataListeners = new Set<(data: string) => void>();
-  private readonly exitListeners = new Set<(event: PtyAdapter.PtyExitEvent) => void>();
   private readonly killListeners = new Set<(signal: string | undefined) => void>();
-  private readonly retainExitListenersOnUnsubscribe: boolean;
   private readonly onDataFailure: unknown | undefined;
   private onExitFailure: unknown | undefined;
+  private exitObserverReleased = false;
+  legacyOnExitCalls = 0;
 
   constructor(
     pid: number,
-    retainExitListenersOnUnsubscribe = false,
+    processExit: PtyProcessTermination.PtyProcessExitState,
     onDataFailure?: unknown,
     onExitFailure?: unknown,
   ) {
     this.pid = pid;
-    this.retainExitListenersOnUnsubscribe = retainExitListenersOnUnsubscribe;
+    this.processExit = processExit;
     this.onDataFailure = onDataFailure;
     this.onExitFailure = onExitFailure;
   }
@@ -77,17 +79,13 @@ class FakePtyProcess implements PtyAdapter.PtyProcess {
   }
 
   onExit(callback: (event: PtyAdapter.PtyExitEvent) => void): () => void {
+    this.legacyOnExitCalls += 1;
     if (this.onExitFailure !== undefined) {
       const failure = this.onExitFailure;
       this.onExitFailure = undefined;
       throw failure;
     }
-    this.exitListeners.add(callback);
-    return () => {
-      if (!this.retainExitListenersOnUnsubscribe) {
-        this.exitListeners.delete(callback);
-      }
-    };
+    return PtyProcessTermination.subscribeProcessExit(this.processExit, callback);
   }
 
   onKill(callback: (signal: string | undefined) => void): () => void {
@@ -104,9 +102,12 @@ class FakePtyProcess implements PtyAdapter.PtyProcess {
   }
 
   emitExit(event: PtyAdapter.PtyExitEvent): void {
-    for (const listener of this.exitListeners) {
-      listener(event);
-    }
+    if (this.exitObserverReleased) return;
+    PtyProcessTermination.signalProcessExit(this.processExit, event);
+  }
+
+  releaseExitObserver(): void {
+    this.exitObserverReleased = true;
   }
 
   get dataListenerCount(): number {
@@ -114,7 +115,7 @@ class FakePtyProcess implements PtyAdapter.PtyProcess {
   }
 
   get exitListenerCount(): number {
-    return this.exitListeners.size;
+    return this.processExit.listeners.size;
   }
 }
 
@@ -123,7 +124,6 @@ class FakePtyAdapter {
   private nextPid = 9_000;
   private readonly options: {
     readonly fixedPid?: number;
-    readonly retainExitListenersOnUnsubscribe?: boolean;
     readonly onDataFailure?: unknown;
     readonly onExitFailure?: unknown;
     readonly afterSpawn?: (process: FakePtyProcess) => Effect.Effect<void>;
@@ -132,7 +132,6 @@ class FakePtyAdapter {
   constructor(
     options: {
       readonly fixedPid?: number;
-      readonly retainExitListenersOnUnsubscribe?: boolean;
       readonly onDataFailure?: unknown;
       readonly onExitFailure?: unknown;
       readonly afterSpawn?: (process: FakePtyProcess) => Effect.Effect<void>;
@@ -141,17 +140,26 @@ class FakePtyAdapter {
     this.options = options;
   }
 
-  spawn(): Effect.Effect<PtyAdapter.PtyProcess, PtyAdapter.PtySpawnError> {
-    const process = new FakePtyProcess(
-      this.options.fixedPid ?? this.nextPid++,
-      this.options.retainExitListenersOnUnsubscribe === true,
-      this.options.onDataFailure,
-      this.options.onExitFailure,
+  spawn(): Effect.Effect<PtyAdapter.PtyProcessAcquisition, PtyAdapter.PtySpawnError> {
+    return PtyProcessTermination.makeProcessExitState().pipe(
+      Effect.flatMap((processExit) => {
+        const process = new FakePtyProcess(
+          this.options.fixedPid ?? this.nextPid++,
+          processExit,
+          this.options.onDataFailure,
+          this.options.onExitFailure,
+        );
+        this.processes.push(process);
+        const acquisition = {
+          process,
+          processExit,
+          releaseProcessExit: () => process.releaseExitObserver(),
+        } satisfies PtyAdapter.PtyProcessAcquisition;
+        return this.options.afterSpawn === undefined
+          ? Effect.succeed(acquisition)
+          : this.options.afterSpawn(process).pipe(Effect.as(acquisition));
+      }),
     );
-    this.processes.push(process);
-    return this.options.afterSpawn === undefined
-      ? Effect.succeed(process)
-      : this.options.afterSpawn(process).pipe(Effect.as(process));
   }
 }
 
@@ -458,7 +466,6 @@ it.layer(
     Effect.gen(function* () {
       const adapter = new FakePtyAdapter({
         fixedPid: 4_242,
-        retainExitListenersOnUnsubscribe: true,
       });
       const { manager } = yield* createManager(adapter);
       yield* openTerminal(manager, "same-pid-generation");
@@ -598,24 +605,54 @@ it.layer(
     }).pipe(Effect.provide(withHostPlatform("win32"))),
   );
 
-  it.effect("exit listener 首次注册 defect 仍由 acquisition release 终止同一 handle", () =>
+  it.effect("Manager 不再调用旧 process.onExit，并消费 adapter 提供的退出状态", () =>
     Effect.gen(function* () {
       const adapter = new FakePtyAdapter({
         onExitFailure: new Error("expected onExit registration defect"),
-        afterSpawn: (process) =>
-          Effect.sync(() => {
-            process.onKill(() => process.emitExit({ exitCode: 1, signal: null }));
-          }),
       });
       const { manager } = yield* createManager(adapter);
 
-      yield* openTerminal(manager, "exit-listener-registration-defect").pipe(Effect.exit);
+      const snapshot = yield* openTerminal(manager, "adapter-exit-state");
 
       const process = adapter.processes[0];
       expect(process).toBeDefined();
       if (!process) return;
-      expect(process.killSignals).toEqual([undefined]);
-      assert.equal(process.dataListenerCount, 0);
+      assert.equal(snapshot.status, "running");
+      assert.equal(process.legacyOnExitCalls, 0);
+      assert.equal(process.exitListenerCount, 1);
+
+      yield* emitExitAndWait(manager, process, "adapter-exit-state", {
+        exitCode: 0,
+        signal: null,
+      });
+
+      assert.equal(process.exitListenerCount, 0);
+    }).pipe(Effect.provide(withHostPlatform("win32"))),
+  );
+
+  it.effect("adapter 在 Manager 订阅前观察到 exit 时会立即回放并收口", () =>
+    Effect.gen(function* () {
+      const adapter = new FakePtyAdapter({
+        afterSpawn: (process) =>
+          Effect.sync(() => {
+            process.emitExit({ exitCode: 23, signal: null });
+          }),
+      });
+      const { manager } = yield* createManager(adapter);
+
+      const snapshot = yield* openTerminal(manager, "exit-before-manager-subscribe");
+      assert.equal(snapshot.status, "exited");
+      assert.equal(snapshot.exitCode, 23);
+      const process = adapter.processes[0];
+      expect(process).toBeDefined();
+      if (!process) return;
+      assert.equal(process.legacyOnExitCalls, 0);
+
+      const inactive = yield* manager.inspectSession({
+        threadId: "exit-before-manager-subscribe",
+        terminalId: DEFAULT_TERMINAL_ID,
+      });
+      assert.equal(inactive, "inactive");
       assert.equal(process.exitListenerCount, 0);
     }).pipe(Effect.provide(withHostPlatform("win32"))),
   );

@@ -10,6 +10,8 @@ import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
 
+import type * as PtyProcessTermination from "./PtyProcessTermination.ts";
+
 /**
  * PtySpawnError - Error type for PTY spawn failures.
  */
@@ -40,7 +42,13 @@ export interface PtyProcess {
   resize(cols: number, rows: number): void;
   kill(signal?: string): void;
   onData(callback: (data: string) => void): () => void;
-  onExit(callback: (event: PtyExitEvent) => void): () => void;
+}
+
+/** spawn 返回前已经建立退出观察，Manager 只消费可重放状态。 */
+export interface PtyProcessAcquisition {
+  readonly process: PtyProcess;
+  readonly processExit: PtyProcessTermination.PtyProcessExitState;
+  readonly releaseProcessExit: () => void;
 }
 
 export interface PtySpawnInput {
@@ -61,6 +69,6 @@ export class PtyAdapter extends Context.Service<
     /**
      * Spawn a PTY process for a terminal session.
      */
-    readonly spawn: (input: PtySpawnInput) => Effect.Effect<PtyProcess, PtySpawnError>;
+    readonly spawn: (input: PtySpawnInput) => Effect.Effect<PtyProcessAcquisition, PtySpawnError>;
   }
 >()("codework/terminal/PtyAdapter") {}

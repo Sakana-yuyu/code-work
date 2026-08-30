@@ -12,6 +12,8 @@ export interface PtyProcessExitState {
   readonly exit: Deferred.Deferred<PtyAdapter.PtyExitEvent>;
   readonly handled: Deferred.Deferred<void>;
   readonly observedExit: { current: PtyAdapter.PtyExitEvent | null };
+  readonly listeners: Set<(event: PtyAdapter.PtyExitEvent) => void>;
+  readonly listenerDefects: Array<unknown>;
 }
 
 export const makeProcessExitState = () =>
@@ -20,8 +22,22 @@ export const makeProcessExitState = () =>
       exit: yield* Deferred.make<PtyAdapter.PtyExitEvent>(),
       handled: yield* Deferred.make<void>(),
       observedExit: { current: null },
+      listeners: new Set(),
+      listenerDefects: [],
     } satisfies PtyProcessExitState;
   });
+
+const notifyProcessExitListener = (
+  state: PtyProcessExitState,
+  listener: (event: PtyAdapter.PtyExitEvent) => void,
+  event: PtyAdapter.PtyExitEvent,
+): void => {
+  try {
+    listener(event);
+  } catch (cause) {
+    state.listenerDefects.push(cause);
+  }
+};
 
 export const signalProcessExit = (
   state: PtyProcessExitState,
@@ -32,6 +48,24 @@ export const signalProcessExit = (
   }
   state.observedExit.current = event;
   Deferred.doneUnsafe(state.exit, Effect.succeed(event));
+  for (const listener of Array.from(state.listeners)) {
+    notifyProcessExitListener(state, listener, event);
+  }
+};
+
+export const subscribeProcessExit = (
+  state: PtyProcessExitState,
+  listener: (event: PtyAdapter.PtyExitEvent) => void,
+): (() => void) => {
+  const observedExit = state.observedExit.current;
+  if (observedExit !== null) {
+    notifyProcessExitListener(state, listener, observedExit);
+    return () => {};
+  }
+  state.listeners.add(listener);
+  return () => {
+    state.listeners.delete(listener);
+  };
 };
 
 export const awaitProcessExit = (state: PtyProcessExitState) => Deferred.await(state.exit);
