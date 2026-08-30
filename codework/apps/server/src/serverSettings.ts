@@ -297,7 +297,7 @@ function changedMulticaProviderInstanceIds(
     const secretNames = multicaSecretEnvironmentNames(nextInstance);
     return (nextInstance.environment ?? []).some(
       (variable) =>
-        secretNames.has(variable.name) &&
+        (variable.sensitive || secretNames.has(variable.name)) &&
         variable.valueRedacted !== true &&
         variable.value.length > 0,
     );
@@ -318,6 +318,14 @@ function applyMulticaProviderInstanceMutation(
   }
   const partialProviderInstances = patch.providerInstances;
   if (partialProviderInstances === undefined) {
+    return Effect.fail(
+      new ServerSettingsConflictError({ providerInstanceId: preconditions[0]!.instanceId }),
+    );
+  }
+  const unexpectedTopLevelKey = Object.keys(patch).find(
+    (key) => key !== "providerInstances" && key !== "multicaProviderInstancePreconditions",
+  );
+  if (unexpectedTopLevelKey !== undefined) {
     return Effect.fail(
       new ServerSettingsConflictError({ providerInstanceId: preconditions[0]!.instanceId }),
     );
@@ -345,7 +353,10 @@ function applyMulticaProviderInstanceMutation(
     const providerInstanceId = ProviderInstanceId.make(instanceId);
     const currentInstance = current.providerInstances[providerInstanceId];
     const nextInstance = partialProviderInstances[providerInstanceId];
-    if (currentInstance?.driver !== "multica" && nextInstance?.driver !== "multica") {
+    if (
+      (currentInstance !== undefined && currentInstance.driver !== "multica") ||
+      (nextInstance !== undefined && nextInstance.driver !== "multica")
+    ) {
       return Effect.fail(new ServerSettingsConflictError({ providerInstanceId: instanceId }));
     }
     if (nextInstance === undefined) {
