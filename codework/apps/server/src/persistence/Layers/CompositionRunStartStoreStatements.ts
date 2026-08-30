@@ -3,6 +3,7 @@ import * as SqlSchema from "effect/unstable/sql/SqlSchema";
 
 import {
   AcceptedSchema,
+  CapabilityHandshakeSchema,
   ClaimIdSchema,
   ClaimSchema,
   IdSchema,
@@ -10,6 +11,8 @@ import {
   PrepareSchema,
   ReleaseSchema,
   ReleaseOperationIdSchema,
+  ReleaseReceiptInsertSchema,
+  RunStartReleaseReceiptRowSchema,
   RunStartRowSchema,
   RuntimeTaskSchema,
   SettleSchema,
@@ -111,25 +114,15 @@ export const makeCompositionRunStartStoreStatements = (sql: SqlClient.SqlClient)
     `,
   });
 
-  const getByReleaseOperationRow = SqlSchema.findOneOption({
+  const getReleaseReceiptRow = SqlSchema.findOneOption({
     Request: ReleaseOperationIdSchema,
-    Result: RunStartRowSchema,
+    Result: RunStartReleaseReceiptRowSchema,
     execute: ({ releaseOperationId }) => sql`
       SELECT
-        run_id AS "runId", task_id AS "taskId", agent_id AS "agentId",
-        runtime_id AS "runtimeId", attempt,
-        payload_digest AS "payloadDigest", capability_digest AS "capabilityDigest",
-        state, revision, claim_id AS "claimId", claimed_at_unix_ms AS "claimedAtUnixMs",
-        last_release_claim_id AS "lastReleaseClaimId",
-        last_release_operation_id AS "lastReleaseOperationId",
-        last_released_at_unix_ms AS "lastReleasedAtUnixMs",
-        runtime_task_id AS "runtimeTaskId",
-        capability_handshake_id AS "capabilityHandshakeId",
-        accepted_at_unix_ms AS "acceptedAtUnixMs", outcome_code AS "outcomeCode",
-        settled_at_unix_ms AS "settledAtUnixMs",
-        created_at_unix_ms AS "createdAtUnixMs", updated_at_unix_ms AS "updatedAtUnixMs"
-      FROM composition_run_start_intents
-      WHERE last_release_operation_id = ${releaseOperationId}
+        release_operation_id AS "releaseOperationId", run_id AS "runId", claim_id AS "claimId",
+        released_at_unix_ms AS "releasedAtUnixMs", result_revision AS "resultRevision"
+      FROM composition_run_start_release_receipts
+      WHERE release_operation_id = ${releaseOperationId}
       LIMIT 1
     `,
   });
@@ -153,6 +146,29 @@ export const makeCompositionRunStartStoreStatements = (sql: SqlClient.SqlClient)
         created_at_unix_ms AS "createdAtUnixMs", updated_at_unix_ms AS "updatedAtUnixMs"
       FROM composition_run_start_intents
       WHERE runtime_id = ${runtimeId} AND runtime_task_id = ${runtimeTaskId}
+      LIMIT 1
+    `,
+  });
+
+  const getByCapabilityHandshakeRow = SqlSchema.findOneOption({
+    Request: CapabilityHandshakeSchema,
+    Result: RunStartRowSchema,
+    execute: ({ runtimeId, capabilityHandshakeId }) => sql`
+      SELECT
+        run_id AS "runId", task_id AS "taskId", agent_id AS "agentId",
+        runtime_id AS "runtimeId", attempt,
+        payload_digest AS "payloadDigest", capability_digest AS "capabilityDigest",
+        state, revision, claim_id AS "claimId", claimed_at_unix_ms AS "claimedAtUnixMs",
+        last_release_claim_id AS "lastReleaseClaimId",
+        last_release_operation_id AS "lastReleaseOperationId",
+        last_released_at_unix_ms AS "lastReleasedAtUnixMs",
+        runtime_task_id AS "runtimeTaskId",
+        capability_handshake_id AS "capabilityHandshakeId",
+        accepted_at_unix_ms AS "acceptedAtUnixMs", outcome_code AS "outcomeCode",
+        settled_at_unix_ms AS "settledAtUnixMs",
+        created_at_unix_ms AS "createdAtUnixMs", updated_at_unix_ms AS "updatedAtUnixMs"
+      FROM composition_run_start_intents
+      WHERE runtime_id = ${runtimeId} AND capability_handshake_id = ${capabilityHandshakeId}
       LIMIT 1
     `,
   });
@@ -249,6 +265,23 @@ export const makeCompositionRunStartStoreStatements = (sql: SqlClient.SqlClient)
     `,
   });
 
+  const insertReleaseReceiptRow = SqlSchema.findOneOption({
+    Request: ReleaseReceiptInsertSchema,
+    Result: RunStartReleaseReceiptRowSchema,
+    execute: (input) => sql`
+      INSERT INTO composition_run_start_release_receipts (
+        release_operation_id, run_id, claim_id, released_at_unix_ms, result_revision
+      ) VALUES (
+        ${input.releaseOperationId}, ${input.runId}, ${input.claimId},
+        ${input.releasedAtUnixMs}, ${input.resultRevision}
+      )
+      ON CONFLICT DO NOTHING
+      RETURNING
+        release_operation_id AS "releaseOperationId", run_id AS "runId", claim_id AS "claimId",
+        released_at_unix_ms AS "releasedAtUnixMs", result_revision AS "resultRevision"
+    `,
+  });
+
   const acceptRow = SqlSchema.findOneOption({
     Request: AcceptedSchema,
     Result: RunStartRowSchema,
@@ -340,11 +373,13 @@ export const makeCompositionRunStartStoreStatements = (sql: SqlClient.SqlClient)
     getByTaskAttemptRow,
     listUnsettledRows,
     getByClaimRow,
-    getByReleaseOperationRow,
+    getReleaseReceiptRow,
     getByRuntimeTaskRow,
+    getByCapabilityHandshakeRow,
     insertRow,
     claimRow,
     releaseRow,
+    insertReleaseReceiptRow,
     acceptRow,
     indeterminateRow,
     settleRow,

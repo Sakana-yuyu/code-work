@@ -9,11 +9,11 @@ import * as NodeSqliteClient from "../NodeSqliteClient.ts";
 const layer = it.layer(Layer.mergeAll(NodeSqliteClient.layerMemory()));
 const makeDigest = (hexCharacter: string): string => `sha256:${hexCharacter.repeat(64)}`;
 
-layer("066_CompositionRunStartIntents", (it) => {
+layer("065_066_CompositionRunStartIntents", (it) => {
   it.effect("以追加迁移建立带身份摘要和 CAS revision 的 Run Start 合同", () =>
     Effect.gen(function* () {
       const sql = yield* SqlClient.SqlClient;
-      yield* runMigrations({ toMigrationInclusive: 65 });
+      yield* runMigrations({ toMigrationInclusive: 64 });
 
       assert.deepEqual(
         yield* sql<{ readonly name: string }>`
@@ -23,8 +23,11 @@ layer("066_CompositionRunStartIntents", (it) => {
         [],
       );
 
+      assert.deepEqual(yield* runMigrations({ toMigrationInclusive: 65 }), [
+        [65, "CompositionRunStartIntents"],
+      ]);
       assert.deepEqual(yield* runMigrations({ toMigrationInclusive: 66 }), [
-        [66, "CompositionRunStartIntents"],
+        [66, "CompositionRunStartCompatibility"],
       ]);
 
       const columns = yield* sql<{ readonly name: string }>`
@@ -69,15 +72,17 @@ layer("066_CompositionRunStartIntents", (it) => {
           "composition_run_start_intents_release_operation_unique",
           "composition_run_start_intents_runtime_task_unique",
           "composition_run_start_intents_task_attempt_unique",
-          "composition_run_start_intents_unsettled_scan",
+          "composition_run_start_intents_capability_handshake_unique",
+          "composition_run_start_intents_active_scan",
+          "composition_run_start_intents_indeterminate_scan",
         ],
       );
-      const unsettledScanColumns = yield* sql<{ readonly name: string }>`
-        PRAGMA index_info('composition_run_start_intents_unsettled_scan')
+      const activeScanColumns = yield* sql<{ readonly name: string }>`
+        PRAGMA index_info('composition_run_start_intents_active_scan')
       `;
       assert.deepEqual(
-        unsettledScanColumns.map((column) => column.name),
-        ["state", "updated_at_unix_ms", "run_id"],
+        activeScanColumns.map((column) => column.name),
+        ["updated_at_unix_ms", "run_id"],
       );
       assert.deepEqual(yield* runMigrations({ toMigrationInclusive: 66 }), []);
     }),
@@ -254,7 +259,7 @@ it.effect("已记录旧 Goal Loop 065 的数据库仍会执行 Run Start 066", (
     `;
 
     assert.deepEqual(yield* runMigrations({ toMigrationInclusive: 66 }), [
-      [66, "CompositionRunStartIntents"],
+      [66, "CompositionRunStartCompatibility"],
     ]);
 
     assert.deepEqual(
@@ -266,7 +271,7 @@ it.effect("已记录旧 Goal Loop 065 的数据库仍会执行 Run Start 066", (
       `,
       [
         { migrationId: 65, name: "CompositionGoalLoopRetryIntents" },
-        { migrationId: 66, name: "CompositionRunStartIntents" },
+        { migrationId: 66, name: "CompositionRunStartCompatibility" },
       ],
     );
 

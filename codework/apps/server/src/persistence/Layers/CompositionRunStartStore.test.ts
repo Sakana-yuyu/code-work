@@ -328,6 +328,76 @@ layer("CompositionRunStartStore", (it) => {
     }),
   );
 
+  it.effect("release receipt 在同一 Run 后续 release 后仍永久保留", () =>
+    Effect.gen(function* () {
+      const store = yield* CompositionRunStartStore;
+      const sql = yield* SqlClient.SqlClient;
+      const owner = makePrepareInput("run-start-release-history-owner");
+      const contender = makePrepareInput("run-start-release-history-contender");
+      yield* store.prepareStart(owner);
+      yield* store.prepareStart(contender);
+      yield* store.claimStart({
+        runId: owner.runId,
+        expectedRevision: 1,
+        claimId: "claim-release-history-first",
+        claimedAtUnixMs: 110,
+      });
+
+      const firstRelease = {
+        runId: owner.runId,
+        expectedRevision: 2,
+        claimId: "claim-release-history-first",
+        releaseOperationId: "release-operation-history-first",
+        releasedAtUnixMs: 120,
+      } as const;
+      yield* store.releaseStart(firstRelease);
+      yield* store.claimStart({
+        runId: owner.runId,
+        expectedRevision: 3,
+        claimId: "claim-release-history-second",
+        claimedAtUnixMs: 130,
+      });
+      yield* store.releaseStart({
+        runId: owner.runId,
+        expectedRevision: 4,
+        claimId: "claim-release-history-second",
+        releaseOperationId: "release-operation-history-second",
+        releasedAtUnixMs: 140,
+      });
+
+      const replayedFirst = yield* store.releaseStart(firstRelease);
+      yield* store.claimStart({
+        runId: contender.runId,
+        expectedRevision: 1,
+        claimId: "claim-release-history-contender",
+        claimedAtUnixMs: 150,
+      });
+      const conflict = yield* store
+        .releaseStart({
+          runId: contender.runId,
+          expectedRevision: 2,
+          claimId: "claim-release-history-contender",
+          releaseOperationId: firstRelease.releaseOperationId,
+          releasedAtUnixMs: 160,
+        })
+        .pipe(Effect.flip);
+      const receipts = yield* sql<{ readonly releaseOperationId: string }>`
+        SELECT release_operation_id AS "releaseOperationId"
+        FROM composition_run_start_release_receipts
+        WHERE run_id = ${owner.runId}
+        ORDER BY result_revision ASC
+      `;
+
+      assert.equal(replayedFirst.runId, owner.runId);
+      assert.equal(replayedFirst.revision, 5);
+      assert.equal(errorCode(conflict), "run_start_release_conflict");
+      assert.deepEqual(
+        receipts.map((receipt) => receipt.releaseOperationId),
+        ["release-operation-history-first", "release-operation-history-second"],
+      );
+    }),
+  );
+
   it.effect("claimId 与 runtime receipt 不能跨 Run 复用，并返回稳定冲突码", () =>
     Effect.gen(function* () {
       const store = yield* CompositionRunStartStore;
@@ -381,6 +451,49 @@ layer("CompositionRunStartStore", (it) => {
       if (isDomainError(duplicateClaim)) assert.equal(duplicateClaim.runId, second.runId);
       assert.isTrue(secondClaim.claimed);
       assert.equal(errorCode(duplicateReceipt), "run_start_receipt_conflict");
+      assert.equal(Option.getOrThrow(yield* store.getStart(second.runId)).state, "dispatching");
+    }),
+  );
+
+  it.effect("capability handshake receipt 在同一 Runtime 内不能跨 Run 复用", () =>
+    Effect.gen(function* () {
+      const store = yield* CompositionRunStartStore;
+      const runtimeId = "runtime-shared-handshake";
+      const first = makePrepareInput("run-start-handshake-owner", { runtimeId });
+      const second = makePrepareInput("run-start-handshake-contender", { runtimeId });
+      yield* store.prepareStart(first);
+      yield* store.prepareStart(second);
+      yield* store.claimStart({
+        runId: first.runId,
+        expectedRevision: 1,
+        claimId: "claim-handshake-owner",
+        claimedAtUnixMs: 110,
+      });
+      yield* store.claimStart({
+        runId: second.runId,
+        expectedRevision: 1,
+        claimId: "claim-handshake-contender",
+        claimedAtUnixMs: 111,
+      });
+      yield* store.markAccepted({
+        runId: first.runId,
+        expectedRevision: 2,
+        claimId: "claim-handshake-owner",
+        capabilityHandshakeId: "handshake-global-unique",
+        acceptedAtUnixMs: 120,
+      });
+
+      const duplicateHandshake = yield* store
+        .markAccepted({
+          runId: second.runId,
+          expectedRevision: 2,
+          claimId: "claim-handshake-contender",
+          capabilityHandshakeId: "handshake-global-unique",
+          acceptedAtUnixMs: 121,
+        })
+        .pipe(Effect.flip);
+
+      assert.equal(errorCode(duplicateHandshake), "run_start_receipt_conflict");
       assert.equal(Option.getOrThrow(yield* store.getStart(second.runId)).state, "dispatching");
     }),
   );

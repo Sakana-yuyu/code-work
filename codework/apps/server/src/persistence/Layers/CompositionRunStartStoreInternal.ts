@@ -43,6 +43,15 @@ export const RunStartRowSchema = Schema.Struct({
 });
 export type RunStartRow = typeof RunStartRowSchema.Type;
 
+export const RunStartReleaseReceiptRowSchema = Schema.Struct({
+  releaseOperationId: Schema.String,
+  runId: Schema.String,
+  claimId: Schema.String,
+  releasedAtUnixMs: Schema.Number,
+  resultRevision: Schema.Number,
+});
+export type RunStartReleaseReceiptRow = typeof RunStartReleaseReceiptRowSchema.Type;
+
 export const PrepareSchema = Schema.Struct({
   runId: Schema.String,
   taskId: Schema.String,
@@ -62,6 +71,10 @@ export const RuntimeTaskSchema = Schema.Struct({
   runtimeId: Schema.String,
   runtimeTaskId: Schema.String,
 });
+export const CapabilityHandshakeSchema = Schema.Struct({
+  runtimeId: Schema.String,
+  capabilityHandshakeId: Schema.String,
+});
 export const ClaimSchema = Schema.Struct({
   runId: Schema.String,
   expectedRevision: Schema.Number,
@@ -74,6 +87,13 @@ export const ReleaseSchema = Schema.Struct({
   claimId: Schema.String,
   releaseOperationId: Schema.String,
   releasedAtUnixMs: Schema.Number,
+});
+export const ReleaseReceiptInsertSchema = Schema.Struct({
+  releaseOperationId: Schema.String,
+  runId: Schema.String,
+  claimId: Schema.String,
+  releasedAtUnixMs: Schema.Number,
+  resultRevision: Schema.Number,
 });
 export const AcceptedSchema = Schema.Struct({
   runId: Schema.String,

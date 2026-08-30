@@ -19,6 +19,7 @@ import {
 import {
   decodeRunStartIntent,
   type RunStartRow,
+  type RunStartReleaseReceiptRow,
   runStartClaimConflict,
   runStartDomainError,
   runStartReleaseConflict,
@@ -131,21 +132,39 @@ const makeStore = Effect.gen(function* () {
       ),
     );
 
-  const readByReleaseOperation = (releaseOperationId: string) =>
+  const readByCapabilityHandshake = (runtimeId: string, capabilityHandshakeId: string) =>
     query(
-      "CompositionRunStartStore.getByReleaseOperation",
-      statements.getByReleaseOperationRow({ releaseOperationId }),
+      "CompositionRunStartStore.getByCapabilityHandshake",
+      statements.getByCapabilityHandshakeRow({ runtimeId, capabilityHandshakeId }),
     ).pipe(
       Effect.flatMap(
         Option.match({
           onNone: () => Effect.succeed(Option.none<CompositionRunStartIntent>()),
           onSome: (row) =>
-            decodeRow("CompositionRunStartStore.getByReleaseOperation", row).pipe(
+            decodeRow("CompositionRunStartStore.getByCapabilityHandshake", row).pipe(
               Effect.map(Option.some),
             ),
         }),
       ),
     );
+
+  const readReleaseReceipt = (releaseOperationId: string) =>
+    query(
+      "CompositionRunStartStore.getReleaseReceipt",
+      statements.getReleaseReceiptRow({ releaseOperationId }),
+    );
+
+  const sameReleaseReceipt = (
+    receipt: RunStartReleaseReceiptRow,
+    input: {
+      readonly runId: string;
+      readonly claimId: string;
+      readonly releasedAtUnixMs: number;
+    },
+  ): boolean =>
+    receipt.runId === input.runId &&
+    receipt.claimId === input.claimId &&
+    receipt.releasedAtUnixMs === input.releasedAtUnixMs;
 
   const getStart: CompositionRunStartStoreShape["getStart"] = readStart;
 
@@ -243,23 +262,54 @@ const makeStore = Effect.gen(function* () {
     withTransaction(
       Effect.gen(function* () {
         const valid = yield* validateRunStartRelease(input);
+        const existingReceipt = yield* readReleaseReceipt(valid.releaseOperationId);
+        if (Option.isSome(existingReceipt)) {
+          if (!sameReleaseReceipt(existingReceipt.value, valid)) {
+            const current = yield* readRequired(valid.runId);
+            if (existingReceipt.value.runId !== valid.runId) {
+              return yield* runStartReleaseConflict(current);
+            }
+            if (current.revision !== valid.expectedRevision) {
+              return yield* runStartRevisionConflict(current, valid.expectedRevision);
+            }
+            return yield* runStartReleaseConflict(current);
+          }
+          return yield* readRequired(valid.runId);
+        }
+
         const updated = yield* query(
           "CompositionRunStartStore.releaseStart.update",
           statements.releaseRow(valid),
         );
         if (Option.isSome(updated)) {
-          return yield* decodeRow("CompositionRunStartStore.releaseStart.update", updated.value);
+          const intent = yield* decodeRow(
+            "CompositionRunStartStore.releaseStart.update",
+            updated.value,
+          );
+          const insertedReceipt = yield* query(
+            "CompositionRunStartStore.releaseStart.insertReceipt",
+            statements.insertReleaseReceiptRow({
+              releaseOperationId: valid.releaseOperationId,
+              runId: valid.runId,
+              claimId: valid.claimId,
+              releasedAtUnixMs: valid.releasedAtUnixMs,
+              resultRevision: intent.revision,
+            }),
+          );
+          if (Option.isSome(insertedReceipt)) return intent;
+
+          const racedReceipt = yield* readReleaseReceipt(valid.releaseOperationId);
+          if (Option.isSome(racedReceipt) && sameReleaseReceipt(racedReceipt.value, valid)) {
+            return intent;
+          }
+          return yield* runStartReleaseConflict(intent);
         }
 
         const current = yield* readRequired(valid.runId);
-        if (
-          current.state === "prepared" &&
-          current.revision === valid.expectedRevision + 1 &&
-          current.lastReleaseClaimId === valid.claimId &&
-          current.lastReleaseOperationId === valid.releaseOperationId &&
-          current.lastReleasedAtUnixMs === valid.releasedAtUnixMs
-        ) {
-          return current;
+        const racedReceipt = yield* readReleaseReceipt(valid.releaseOperationId);
+        if (Option.isSome(racedReceipt)) {
+          if (sameReleaseReceipt(racedReceipt.value, valid)) return current;
+          return yield* runStartReleaseConflict(current);
         }
         if (current.revision !== valid.expectedRevision) {
           return yield* runStartRevisionConflict(current, valid.expectedRevision);
@@ -271,8 +321,6 @@ const makeStore = Effect.gen(function* () {
         if (valid.releasedAtUnixMs < current.updatedAtUnixMs) {
           return yield* runStartTimestampConflict(current);
         }
-        const releaseOwner = yield* readByReleaseOperation(valid.releaseOperationId);
-        if (Option.isSome(releaseOwner)) return yield* runStartReleaseConflict(current);
         return yield* runStartStateConflict(
           current,
           "dispatching with available release operation identity",
@@ -336,6 +384,19 @@ const makeStore = Effect.gen(function* () {
             return yield* runStartDomainError(
               "run_start_receipt_conflict",
               "runtimeTaskId 已绑定到其他 Run Start receipt。",
+              { runId: current.runId, actualState: current.state },
+            );
+          }
+        }
+        if (normalized.capabilityHandshakeId !== null) {
+          const handshakeOwner = yield* readByCapabilityHandshake(
+            current.runtimeId,
+            normalized.capabilityHandshakeId,
+          );
+          if (Option.isSome(handshakeOwner)) {
+            return yield* runStartDomainError(
+              "run_start_receipt_conflict",
+              "capabilityHandshakeId 已绑定到其他 Run Start receipt。",
               { runId: current.runId, actualState: current.state },
             );
           }
