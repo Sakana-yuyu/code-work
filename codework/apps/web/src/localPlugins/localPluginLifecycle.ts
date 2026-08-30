@@ -40,6 +40,7 @@ type LocalPluginMutationPhase = Exclude<
 export interface LocalPluginLifecycleMutationResult {
   readonly phase: LocalPluginMutationPhase;
   readonly result: LocalPluginLifecycleResult;
+  readonly generation: number;
 }
 
 function storageErrorCode(
@@ -82,6 +83,7 @@ export class LocalPluginLifecycle {
       readonly storage: LocalPluginStorage;
       readonly now: () => number;
       readonly writerId?: string;
+      readonly onMutationStart?: (phase: LocalPluginMutationPhase) => number;
       readonly onMutationResult?: (input: LocalPluginLifecycleMutationResult) => void;
     },
   ) {
@@ -134,19 +136,24 @@ export class LocalPluginLifecycle {
   }
 
   async install(input: unknown): Promise<LocalPluginLifecycleResult> {
+    const generation = this.captureMutationGeneration("install");
     const pluginId = pluginIdFromUnknown(input);
     const blocked = this.blockedByRestoreFailure();
-    if (blocked) return this.publishMutationResult("install", blocked);
+    if (blocked) return this.publishMutationResult("install", blocked, generation);
     let manifest: LocalPluginManifest;
     try {
       manifest = decodeAllowedLocalPluginManifest(input);
     } catch (error) {
       const code = error instanceof LocalPluginPolicyError ? error.code : "schema-invalid";
-      return this.publishMutationResult("install", this.fail(pluginId, "install", code, error));
+      return this.publishMutationResult(
+        "install",
+        this.fail(pluginId, "install", code, error),
+        generation,
+      );
     }
 
     const prepared = this.prepareMutation(manifest.id, "install");
-    if (!prepared.ok) return this.publishMutationResult("install", prepared.result);
+    if (!prepared.ok) return this.publishMutationResult("install", prepared.result, generation);
     const current = prepared.snapshot.plugins;
     const existing = current.find((plugin) => plugin.manifest.id === manifest.id);
     const now = this.options.now();
@@ -162,6 +169,7 @@ export class LocalPluginLifecycle {
     return this.publishMutationResult(
       "install",
       await this.persistAndPublish(manifest.id, "install", prepared.snapshot, next),
+      generation,
     );
   }
 
@@ -174,15 +182,19 @@ export class LocalPluginLifecycle {
   }
 
   async uninstall(pluginId: string): Promise<LocalPluginLifecycleResult> {
+    const generation = this.captureMutationGeneration("uninstall");
     const blocked = this.blockedByRestoreFailure();
-    if (blocked) return this.publishMutationResult("uninstall", blocked);
+    if (blocked) return this.publishMutationResult("uninstall", blocked, generation);
     const prepared = this.prepareMutation(pluginId, "uninstall");
-    if (!prepared.ok) return this.publishMutationResult("uninstall", prepared.result);
+    if (!prepared.ok) {
+      return this.publishMutationResult("uninstall", prepared.result, generation);
+    }
     const current = prepared.snapshot.plugins;
     if (!current.some((plugin) => plugin.manifest.id === pluginId)) {
       return this.publishMutationResult(
         "uninstall",
         this.fail(pluginId, "uninstall", "plugin-not-found", new Error("插件不存在。")),
+        generation,
       );
     }
     return this.publishMutationResult(
@@ -193,6 +205,7 @@ export class LocalPluginLifecycle {
         prepared.snapshot,
         current.filter((plugin) => plugin.manifest.id !== pluginId),
       ),
+      generation,
     );
   }
 
@@ -201,15 +214,17 @@ export class LocalPluginLifecycle {
     enabled: boolean,
     phase: "enable" | "disable",
   ): Promise<LocalPluginLifecycleResult> {
+    const generation = this.captureMutationGeneration(phase);
     const blocked = this.blockedByRestoreFailure();
-    if (blocked) return this.publishMutationResult(phase, blocked);
+    if (blocked) return this.publishMutationResult(phase, blocked, generation);
     const prepared = this.prepareMutation(pluginId, phase);
-    if (!prepared.ok) return this.publishMutationResult(phase, prepared.result);
+    if (!prepared.ok) return this.publishMutationResult(phase, prepared.result, generation);
     const current = prepared.snapshot.plugins;
     if (!current.some((plugin) => plugin.manifest.id === pluginId)) {
       return this.publishMutationResult(
         phase,
         this.fail(pluginId, phase, "plugin-not-found", new Error("插件不存在。")),
+        generation,
       );
     }
     const next = current.map((plugin) =>
@@ -220,15 +235,25 @@ export class LocalPluginLifecycle {
     return this.publishMutationResult(
       phase,
       await this.persistAndPublish(pluginId, phase, prepared.snapshot, next),
+      generation,
     );
+  }
+
+  private captureMutationGeneration(phase: LocalPluginMutationPhase): number {
+    try {
+      return this.options.onMutationStart?.(phase) ?? 0;
+    } catch {
+      return 0;
+    }
   }
 
   private publishMutationResult(
     phase: LocalPluginMutationPhase,
     result: LocalPluginLifecycleResult,
+    generation: number,
   ): LocalPluginLifecycleResult {
     try {
-      this.options.onMutationResult?.({ phase, result });
+      this.options.onMutationResult?.({ phase, result, generation });
     } catch {
       // 观察者不能反转已经完成的领域操作结果。
     }

@@ -75,22 +75,33 @@ export class LocalPluginStorageSession {
       expectedRevision: base.revision,
       nextValue: value,
     });
-    let persisted: LocalPluginStorageSnapshot;
+    let exchanged: LocalPluginStorageSnapshot;
+    let latest: LocalPluginStorageSnapshot;
     try {
-      persisted = this.snapshotFromValue(result.currentValue);
+      exchanged = this.snapshotFromValue(result.currentValue);
+      latest = this.readSnapshot();
     } catch (error) {
       throw new LocalPluginStorageInvalidDocumentError(
         `本地插件设置写入后无法验证：${error instanceof Error ? error.message : String(error)}`,
         error,
       );
     }
-    this.observe(persisted);
-    return (
+    const monotonic = this.isMonotonic(latest);
+    if (monotonic) this.observe(latest);
+    const exchangedByThisRuntime =
       result.swapped &&
-      persisted.value === value &&
-      persisted.revision === revision &&
-      persisted.writerId === writerId
-    );
+      exchanged.value === value &&
+      exchanged.revision === revision &&
+      exchanged.writerId === writerId;
+    const latestContainsExchange =
+      latest.revision > revision ||
+      (latest.revision === revision && latest.value === value && latest.writerId === writerId);
+    return monotonic && exchangedByThisRuntime && latestContainsExchange;
+  }
+
+  private isMonotonic(snapshot: LocalPluginStorageSnapshot): boolean {
+    if (!this.observed || snapshot.revision > this.observedRevision) return true;
+    return snapshot.revision === this.observedRevision && snapshot.value === this.observedValue;
   }
 
   private readSnapshot(): LocalPluginStorageSnapshot {

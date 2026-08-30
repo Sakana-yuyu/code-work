@@ -147,7 +147,9 @@ describe("LocalPluginLifecycle", () => {
     const result = await runtime.lifecycle.install(manifest("acme.observer"));
 
     expect(result).toEqual({ ok: true });
-    expect(onMutationResult).toHaveBeenCalledWith({ phase: "install", result: { ok: true } });
+    expect(onMutationResult).toHaveBeenCalledWith(
+      expect.objectContaining({ phase: "install", result: { ok: true } }),
+    );
     expect(runtime.registry.getSnapshot().plugins.map((plugin) => plugin.manifest.id)).toEqual([
       "acme.observer",
     ]);

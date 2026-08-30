@@ -116,13 +116,16 @@ export function createLocalPluginRuntime(input?: {
     phase: "restore",
     result: { ok: true },
   });
+  let synchronizeGeneration = 0;
   const lifecycle = new LocalPluginLifecycle({
     registry,
     failures,
     storage,
     now,
     writerId,
-    onMutationResult: ({ phase, result }) => {
+    onMutationStart: () => synchronizeGeneration,
+    onMutationResult: ({ phase, result, generation }) => {
+      if (generation !== synchronizeGeneration) return;
       if (result.ok || isStorageFailureResult(result)) storageStatus.update({ phase, result });
     },
   });
@@ -130,6 +133,7 @@ export function createLocalPluginRuntime(input?: {
   storageStatus.update({ phase: "restore", result: restoreResult });
   let lastSynchronizeResult: LocalPluginLifecycleResult | null = null;
   const unsubscribe = storage.subscribe?.(() => {
+    synchronizeGeneration += 1;
     lastSynchronizeResult = lifecycle.synchronize();
     storageStatus.update({ phase: "synchronize", result: lastSynchronizeResult });
   });

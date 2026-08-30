@@ -63,6 +63,36 @@ class ObservableMemoryStorage implements LocalPluginStorage {
   }
 }
 
+class DeferredCasStorage extends ObservableMemoryStorage {
+  private pending:
+    | {
+        readonly result: LocalPluginStorageCompareAndSwapResult;
+        readonly resolve: (result: LocalPluginStorageCompareAndSwapResult) => void;
+      }
+    | undefined;
+
+  override compareAndSwap(
+    input: LocalPluginStorageCompareAndSwapInput,
+  ): Promise<LocalPluginStorageCompareAndSwapResult> {
+    const currentRevision =
+      this.value === null ? 0 : (decodeLocalPluginStorageDocument(this.value).revision ?? 0);
+    const swapped =
+      this.value === input.expectedValue && currentRevision === input.expectedRevision;
+    if (swapped) this.write(input.nextValue);
+    const result = { swapped, currentValue: this.value };
+    return new Promise((resolve) => {
+      this.pending = { result, resolve };
+    });
+  }
+
+  releaseCas(): void {
+    const pending = this.pending;
+    if (!pending) throw new Error("没有待恢复的 CAS continuation。");
+    this.pending = undefined;
+    pending.resolve(pending.result);
+  }
+}
+
 describe("createLocalPluginRuntime", () => {
   it("保留冷启动恢复结果，并记录可供设置页展示的全局失败", () => {
     const duplicate = storedPlugin("acme.duplicate");
@@ -140,6 +170,83 @@ describe("createLocalPluginRuntime", () => {
     expect(runtime.registry.getSnapshot().plugins.map((plugin) => plugin.manifest.id)).toEqual([
       "acme.observer",
     ]);
+  });
+
+  it("CAS continuation 不回退已同步的更高修订和状态", async () => {
+    const storage = new DeferredCasStorage(
+      encodeLocalPluginStorageDocument([storedPlugin("acme.seed")], {
+        revision: 7,
+        writerId: "seed-writer",
+      }),
+    );
+    const runtime = createLocalPluginRuntime({ storage, now: () => 1, writerId: "writer-a" });
+
+    const installPromise = runtime.lifecycle.install(storedPlugin("acme.a").manifest);
+    const afterA = decodeLocalPluginStorageDocument(storage.value ?? "");
+    expect(afterA.revision).toBe(8);
+    storage.value = encodeLocalPluginStorageDocument([...afterA.plugins, storedPlugin("acme.b")], {
+      revision: 9,
+      writerId: "writer-b",
+    });
+    storage.emit();
+
+    expect(runtime.storageStatus.getSnapshot()).toEqual({
+      phase: "synchronize",
+      result: { ok: true },
+    });
+    expect(runtime.registry.getSnapshot().plugins.map((plugin) => plugin.manifest.id)).toEqual([
+      "acme.seed",
+      "acme.a",
+      "acme.b",
+    ]);
+
+    storage.releaseCas();
+    expect(await installPromise).toEqual({ ok: true });
+    expect(runtime.registry.getSnapshot().plugins.map((plugin) => plugin.manifest.id)).toEqual([
+      "acme.seed",
+      "acme.a",
+      "acme.b",
+    ]);
+    expect(runtime.storageStatus.getSnapshot()).toEqual({
+      phase: "synchronize",
+      result: { ok: true },
+    });
+  });
+
+  it("旧 mutation completion 不覆盖更新的同步冲突", async () => {
+    const storage = new DeferredCasStorage(
+      encodeLocalPluginStorageDocument([storedPlugin("acme.seed")], {
+        revision: 7,
+        writerId: "seed-writer",
+      }),
+    );
+    const runtime = createLocalPluginRuntime({ storage, now: () => 1, writerId: "writer-a" });
+
+    const installPromise = runtime.lifecycle.install(storedPlugin("acme.a").manifest);
+    expect(decodeLocalPluginStorageDocument(storage.value ?? "").revision).toBe(8);
+    storage.value = encodeLocalPluginStorageDocument([storedPlugin("acme.rollback")], {
+      revision: 7,
+      writerId: "writer-b",
+    });
+    storage.emit();
+
+    expect(runtime.storageStatus.getSnapshot()).toMatchObject({
+      phase: "synchronize",
+      result: { ok: false, error: { code: "storage-conflict" } },
+    });
+
+    storage.releaseCas();
+    expect(await installPromise).toMatchObject({
+      ok: false,
+      error: { code: "storage-conflict" },
+    });
+    expect(runtime.registry.getSnapshot().plugins.map((plugin) => plugin.manifest.id)).toEqual([
+      "acme.rollback",
+    ]);
+    expect(runtime.storageStatus.getSnapshot()).toMatchObject({
+      phase: "synchronize",
+      result: { ok: false, error: { code: "storage-conflict" } },
+    });
   });
 
   it("有效外部文档修复冷启动失败后清除当前阻断状态", async () => {
