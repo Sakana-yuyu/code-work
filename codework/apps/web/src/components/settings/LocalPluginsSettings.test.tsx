@@ -1,4 +1,6 @@
 import type { LocalPluginManifest } from "@codework/contracts";
+// @effect-diagnostics nodeBuiltinImport:off - 静态约束测试必须读取规范 CSS 中的设计令牌。
+import * as NodeFS from "node:fs";
 import { renderToStaticMarkup } from "react-dom/server";
 import { beforeEach, describe, expect, it } from "vite-plus/test";
 
@@ -108,6 +110,22 @@ function storedPlugin(id: string) {
   } as const;
 }
 
+function resolveThemeRadiusPx(css: string, className: string): number {
+  const radiusName = className.match(/^rounded-(.+)$/)?.[1];
+  if (!radiusName) throw new Error(`无法从类名 ${className} 解析圆角 token。`);
+  const baseMatch = css.match(/--radius:\s*([\d.]+)rem;/);
+  if (!baseMatch) throw new Error("未找到基础圆角 token。");
+  const tokenMatch = css.match(new RegExp(`--radius-${radiusName}:\\s*([^;]+);`));
+  if (!tokenMatch) throw new Error(`未找到 --radius-${radiusName}。`);
+  const basePx = Number(baseMatch[1]) * 16;
+  const expression = tokenMatch[1]?.trim();
+  if (expression === "var(--radius)") return basePx;
+  const calculated = expression?.match(/^calc\(var\(--radius\) ([+-]) ([\d.]+)px\)$/);
+  if (!calculated) throw new Error(`无法计算 --radius-${radiusName}: ${expression ?? ""}。`);
+  const offset = Number(calculated[2]);
+  return calculated[1] === "+" ? basePx + offset : basePx - offset;
+}
+
 describe("LocalPluginsSettings", () => {
   beforeEach(() => setCurrentLanguage("en", false));
 
@@ -128,10 +146,14 @@ describe("LocalPluginsSettings", () => {
     const pluginCardClasses =
       html.match(/<div class="([^"]+)" data-local-plugin-id="acme\.settings"/)?.[1]?.split(" ") ??
       [];
+    const radiusClass = pluginCardClasses.find((className) =>
+      /^rounded-[a-z0-9]+$/.test(className),
+    );
+    const indexCss = NodeFS.readFileSync(new URL("../../index.css", import.meta.url), "utf8");
 
     expect(html).toContain('data-local-plugin-id="acme.settings"');
-    expect(pluginCardClasses).toContain("rounded-lg");
-    expect(pluginCardClasses).not.toContain("rounded-xl");
+    expect(radiusClass).toBeDefined();
+    expect(resolveThemeRadiusPx(indexCss, radiusClass ?? "")).toBeLessThanOrEqual(8);
     expect(html).toContain("设置插件");
     expect(html).toContain("1.0.0");
     expect(html).toContain("composer.prompt.write");

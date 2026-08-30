@@ -145,7 +145,7 @@ export function LocalPluginsSettings({
           return (
             <div
               key={manifest.id}
-              className="rounded-lg border border-border/60 px-3 py-3 sm:px-4"
+              className="rounded-md border border-border/60 px-3 py-3 sm:px-4"
               data-local-plugin-id={manifest.id}
             >
               <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
