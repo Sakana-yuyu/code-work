@@ -1424,7 +1424,7 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
         platform,
         gracefulTimeoutMs: processKillGraceMs,
         forceExitTimeoutMs: processExitTimeoutMs,
-        awaitExit: PtyProcessTermination.awaitProcessExit(processExit),
+        exitState: processExit,
         isCurrent: isCurrentTerminationTarget(session, process, processGeneration, owner),
       }).pipe(
         Effect.tap(() => PtyProcessTermination.awaitProcessExitHandling(processExit)),

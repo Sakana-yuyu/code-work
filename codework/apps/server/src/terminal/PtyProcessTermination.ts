@@ -11,6 +11,7 @@ export type PtyProcessTerminationSignal = "platform-default" | "SIGTERM" | "SIGK
 export interface PtyProcessExitState {
   readonly exit: Deferred.Deferred<PtyAdapter.PtyExitEvent>;
   readonly handled: Deferred.Deferred<void>;
+  readonly observedExit: { current: PtyAdapter.PtyExitEvent | null };
 }
 
 export const makeProcessExitState = () =>
@@ -18,6 +19,7 @@ export const makeProcessExitState = () =>
     return {
       exit: yield* Deferred.make<PtyAdapter.PtyExitEvent>(),
       handled: yield* Deferred.make<void>(),
+      observedExit: { current: null },
     } satisfies PtyProcessExitState;
   });
 
@@ -25,6 +27,10 @@ export const signalProcessExit = (
   state: PtyProcessExitState,
   event: PtyAdapter.PtyExitEvent,
 ): void => {
+  if (state.observedExit.current !== null) {
+    return;
+  }
+  state.observedExit.current = event;
   Deferred.doneUnsafe(state.exit, Effect.succeed(event));
 };
 
@@ -81,7 +87,7 @@ export type PtyProcessTerminationError =
   | PtyProcessIdentityChangedError;
 
 export interface PtyProcessTerminationOutcome {
-  readonly mode: "platform-default" | "graceful" | "forced";
+  readonly mode: "already-exited" | "platform-default" | "graceful" | "forced";
   readonly escalated: boolean;
   readonly exitEvent: PtyAdapter.PtyExitEvent;
 }
@@ -91,7 +97,7 @@ export interface PtyProcessTerminationInput {
   readonly platform: NodeJS.Platform;
   readonly gracefulTimeoutMs: number;
   readonly forceExitTimeoutMs: number;
-  readonly awaitExit: Effect.Effect<PtyAdapter.PtyExitEvent>;
+  readonly exitState: PtyProcessExitState;
   readonly isCurrent: Effect.Effect<boolean>;
 }
 
@@ -111,23 +117,28 @@ const assertCurrent = (
     Effect.asVoid,
   );
 
-const sendSignal = (
-  process: PtyAdapter.PtyProcess,
+const sendSignalUnlessExited = (
+  input: PtyProcessTerminationInput,
   signal: PtyProcessTerminationSignal,
-): Effect.Effect<void, PtyProcessSignalError> =>
+): Effect.Effect<PtyAdapter.PtyExitEvent | null, PtyProcessSignalError> =>
   Effect.try({
     try: () => {
-      if (signal === "platform-default") {
-        process.kill();
-        return;
+      const observedExit = input.exitState.observedExit.current;
+      if (observedExit !== null) {
+        return observedExit;
       }
-      process.kill(signal);
+      if (signal === "platform-default") {
+        input.process.kill();
+        return null;
+      }
+      input.process.kill(signal);
+      return null;
     },
     catch: (cause) =>
       new PtyProcessSignalError({
         cause,
         signal,
-        terminalPid: process.pid,
+        terminalPid: input.process.pid,
       }),
   });
 
@@ -136,7 +147,7 @@ const awaitExitWithin = (
   phase: "platform-default" | "forced",
   timeoutMs: number,
 ): Effect.Effect<PtyAdapter.PtyExitEvent, PtyProcessExitTimeoutError> =>
-  input.awaitExit.pipe(
+  awaitProcessExit(input.exitState).pipe(
     Effect.timeoutOption(timeoutMs),
     Effect.flatMap(
       Option.match({
@@ -159,19 +170,30 @@ export const terminate = Effect.fn("PtyProcessTermination.terminate")(function* 
   yield* assertCurrent(input, "initial");
 
   if (input.platform === "win32") {
-    yield* sendSignal(input.process, "platform-default");
+    const observedExit = yield* sendSignalUnlessExited(input, "platform-default");
+    if (observedExit !== null) {
+      return { mode: "already-exited", escalated: false, exitEvent: observedExit };
+    }
     const exitEvent = yield* awaitExitWithin(input, "platform-default", input.forceExitTimeoutMs);
     return { mode: "platform-default", escalated: false, exitEvent };
   }
 
-  yield* sendSignal(input.process, "SIGTERM");
-  const gracefulExit = yield* input.awaitExit.pipe(Effect.timeoutOption(input.gracefulTimeoutMs));
+  const observedExit = yield* sendSignalUnlessExited(input, "SIGTERM");
+  if (observedExit !== null) {
+    return { mode: "already-exited", escalated: false, exitEvent: observedExit };
+  }
+  const gracefulExit = yield* awaitProcessExit(input.exitState).pipe(
+    Effect.timeoutOption(input.gracefulTimeoutMs),
+  );
   if (Option.isSome(gracefulExit)) {
     return { mode: "graceful", escalated: false, exitEvent: gracefulExit.value };
   }
 
   yield* assertCurrent(input, "force");
-  yield* sendSignal(input.process, "SIGKILL");
+  const exitBeforeForce = yield* sendSignalUnlessExited(input, "SIGKILL");
+  if (exitBeforeForce !== null) {
+    return { mode: "graceful", escalated: false, exitEvent: exitBeforeForce };
+  }
   const exitEvent = yield* awaitExitWithin(input, "forced", input.forceExitTimeoutMs);
   return { mode: "forced", escalated: true, exitEvent };
 });
