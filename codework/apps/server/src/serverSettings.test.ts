@@ -1394,4 +1394,80 @@ it.layer(NodeServices.layer)("server settings", (it) => {
       );
     }).pipe(Effect.provide(makeServerSettingsLayer())),
   );
+
+  it.effect("迁移历史 Multica 非敏感凭据并保留显式清除语义", () =>
+    Effect.gen(function* () {
+      const serverSettings = yield* ServerSettingsModule.ServerSettingsService;
+      const serverConfig = yield* ServerConfig.ServerConfig;
+      const fileSystem = yield* FileSystem.FileSystem;
+      const instanceId = ProviderInstanceId.make("multica_legacy");
+
+      const legacySettings = yield* serverSettings.updateSettings({
+        providerInstances: {
+          [instanceId]: {
+            driver: ProviderDriverKind.make("multica"),
+            environment: [{ name: "MULTICA_TOKEN", value: "legacy-secret", sensitive: false }],
+            config: {
+              runtimeId: "multica:daemon-1:runtime-1",
+              daemonId: "daemon-1",
+              daemonRuntimeId: "runtime-1",
+              baseUrl: "http://127.0.0.1:9000",
+              headers: [
+                { headerName: "Private-Token", environmentVariable: "MULTICA_TOKEN" },
+              ],
+              assigneeRoutes: [],
+            },
+          },
+        },
+      });
+
+      const rawLegacySettings = yield* fileSystem.readFileString(serverConfig.settingsPath);
+      assert.include(rawLegacySettings, "legacy-secret");
+
+      const clientSnapshot = ServerSettingsModule.redactServerSettingsForClient(legacySettings);
+      assert.deepEqual(clientSnapshot.providerInstances[instanceId]?.environment, [
+        { name: "MULTICA_TOKEN", value: "", sensitive: true, valueRedacted: true },
+      ]);
+      assert.notInclude(JSON.stringify(clientSnapshot), "legacy-secret");
+
+      const migrated = yield* serverSettings.updateSettings({
+        providerInstances: clientSnapshot.providerInstances,
+      });
+      assert.equal(
+        migrated.providerInstances[instanceId]?.environment?.[0]?.value,
+        "legacy-secret",
+      );
+
+      const rawAfterMigration = yield* fileSystem.readFileString(serverConfig.settingsPath);
+      assert.notInclude(rawAfterMigration, "legacy-secret");
+      // @effect-diagnostics-next-line preferSchemaOverJson:off
+      assert.deepEqual(JSON.parse(rawAfterMigration).providerInstances.multica_legacy.environment, [
+        { name: "MULTICA_TOKEN", value: "", sensitive: true, valueRedacted: true },
+      ]);
+
+      const clientInstance = clientSnapshot.providerInstances[instanceId]!;
+      const cleared = yield* serverSettings.updateSettings({
+        providerInstances: {
+          [instanceId]: {
+            ...clientInstance,
+            environment: (clientInstance.environment ?? []).map((variable) =>
+              variable.name === "MULTICA_TOKEN"
+                ? { name: variable.name, value: "", sensitive: true }
+                : variable,
+            ),
+          },
+        },
+      });
+      assert.deepEqual(cleared.providerInstances[instanceId]?.environment, [
+        { name: "MULTICA_TOKEN", value: "", sensitive: true },
+      ]);
+
+      const rawAfterClear = yield* fileSystem.readFileString(serverConfig.settingsPath);
+      assert.notInclude(rawAfterClear, "legacy-secret");
+      // @effect-diagnostics-next-line preferSchemaOverJson:off
+      assert.deepEqual(JSON.parse(rawAfterClear).providerInstances.multica_legacy.environment, [
+        { name: "MULTICA_TOKEN", value: "", sensitive: true },
+      ]);
+    }).pipe(Effect.provide(makeServerSettingsLayer())),
+  );
 });

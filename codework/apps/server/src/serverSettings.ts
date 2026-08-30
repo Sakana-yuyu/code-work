@@ -1170,6 +1170,13 @@ const make = Effect.gen(function* () {
       const nextSecretKeys = new Set<string>();
       for (const [instanceId, instance] of Object.entries(next.providerInstances)) {
         if (!instance.environment) continue;
+        const legacyEnvironment = new Map(
+          (current.providerInstances[instanceId]?.environment ?? []).map((variable) => [
+            variable.name,
+            variable,
+          ]),
+        );
+        const multicaSecretNames = multicaSecretEnvironmentNames(instance);
         const environment: ProviderInstanceEnvironmentVariable[] = [];
         for (const variable of instance.environment) {
           const secretName = providerEnvironmentSecretName({ instanceId, name: variable.name });
@@ -1225,6 +1232,25 @@ const make = Effect.gen(function* () {
             continue;
           }
 
+          const legacyVariable = legacyEnvironment.get(variable.name);
+          if (
+            multicaSecretNames.has(variable.name) &&
+            legacyVariable?.sensitive === false &&
+            legacyVariable.value.length > 0
+          ) {
+            yield* secretStore.set(secretName, textEncoder.encode(legacyVariable.value)).pipe(
+              Effect.mapError(
+                (cause) =>
+                  new ServerSettingsError({
+                    settingsPath,
+                    operation: "write-secret",
+                    providerInstanceId: instanceId,
+                    environmentVariable: variable.name,
+                    cause,
+                  }),
+              ),
+            );
+          }
           environment.push(redactProviderEnvironmentVariable(variable));
         }
         providerInstances[instanceId] = {

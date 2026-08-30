@@ -98,6 +98,30 @@ describe("MulticaRuntimeSettings logic", () => {
     expect(JSON.stringify(draft)).not.toContain("fixture-secret");
   });
 
+  it("历史误标为非敏感的 Private-Token 也不会进入草稿", () => {
+    const draft = formFromMulticaRuntimeInstance("multica_local", {
+      driver: ProviderDriverKind.make("multica"),
+      environment: [{ name: "MULTICA_TOKEN", value: "legacy-fixture-secret", sensitive: false }],
+      config: {
+        runtimeId: "multica:daemon-1:runtime-1",
+        daemonId: "daemon-1",
+        daemonRuntimeId: "runtime-1",
+        baseUrl: "http://127.0.0.1:9000",
+        headers: [{ headerName: "Private-Token", environmentVariable: "MULTICA_TOKEN" }],
+        assigneeRoutes: [],
+      },
+    });
+
+    expect(draft?.environment[0]).toEqual({
+      name: "MULTICA_TOKEN",
+      value: "",
+      sensitive: true,
+      valueRedacted: true,
+      originalName: "MULTICA_TOKEN",
+    });
+    expect(JSON.stringify(draft)).not.toContain("legacy-fixture-secret");
+  });
+
   it("拒绝非 Multica 或无法解码的 provider instance", () => {
     expect(
       formFromMulticaRuntimeInstance("codex_local", {
