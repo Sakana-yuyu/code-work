@@ -15,10 +15,10 @@ Object.assign(process.env, repoEnv);
 
 const APP_VARIANT = resolveAppVariant(repoEnv.APP_VARIANT);
 const isIosPersonalTeamBuild =
-  (repoEnv.CODEWORK_IOS_PERSONAL_TEAM ?? repoEnv.CODEWORK_IOS_PERSONAL_TEAM) === "1";
+  (repoEnv.CODEWORK_IOS_PERSONAL_TEAM ?? repoEnv.T3CODE_IOS_PERSONAL_TEAM) === "1";
 
 const personalTeamBundleIdentifier = (
-  repoEnv.CODEWORK_IOS_PERSONAL_TEAM_BUNDLE_ID ?? repoEnv.CODEWORK_IOS_PERSONAL_TEAM_BUNDLE_ID
+  repoEnv.CODEWORK_IOS_PERSONAL_TEAM_BUNDLE_ID ?? repoEnv.T3CODE_IOS_PERSONAL_TEAM_BUNDLE_ID
 )?.trim();
 const IOS_BUNDLE_IDENTIFIER_PATTERN = /^[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+$/;
 
@@ -33,7 +33,7 @@ if (
     !IOS_BUNDLE_IDENTIFIER_PATTERN.test(personalTeamBundleIdentifier))
 ) {
   throw new Error(
-    "CODEWORK_IOS_PERSONAL_TEAM_BUNDLE_ID (or legacy CODEWORK_IOS_PERSONAL_TEAM_BUNDLE_ID) must be a reverse-DNS identifier when personal-team builds are enabled.",
+    "CODEWORK_IOS_PERSONAL_TEAM_BUNDLE_ID (or legacy T3CODE_IOS_PERSONAL_TEAM_BUNDLE_ID) must be a reverse-DNS identifier when personal-team builds are enabled.",
   );
 }
 
