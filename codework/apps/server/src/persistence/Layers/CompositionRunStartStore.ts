@@ -114,11 +114,14 @@ const sameReceipt = (intent: CompositionRunStartIntent, input: CompositionRunSta
   intent.runtimeTaskId === input.runtimeTaskId &&
   intent.capabilityHandshakeId === input.capabilityHandshakeId;
 
+const hasAcceptedOutcome = (intent: CompositionRunStartIntent): boolean =>
+  (intent.state === "accepted" || intent.state === "settled") && intent.outcomeCode === null;
+
 const makeStore = Effect.gen(function* () {
   const sql = yield* SqlClient.SqlClient;
   const statements = makeCompositionRunStartStoreStatements(sql);
-  const runQuery = <A>(operation: string, effect: Effect.Effect<A, unknown>) =>
-    effect.pipe(Effect.mapError(mapQueryError(operation)));
+  const runQuery = <A, E, R>(operation: string, effect: Effect.Effect<A, E, R>) =>
+    effect.pipe(Effect.mapError((cause) => mapQueryError(operation)(cause)));
 
   const getStart: CompositionRunStartStoreShape["getStart"] = (runId) =>
     hasTextWithin(runId, 512)
@@ -208,8 +211,7 @@ const makeStore = Effect.gen(function* () {
       const replayed =
         current.state === "preparing" &&
         current.claimId === input.claimId &&
-        current.revision === input.expectedRevision + 1 &&
-        current.updatedAtUnixMs === input.claimedAtUnixMs;
+        current.revision === input.expectedRevision + 1;
       return { intent: current, claimed: replayed } satisfies CompositionRunStartClaimResult;
     });
 
@@ -329,8 +331,7 @@ const makeStore = Effect.gen(function* () {
       const replayed =
         current.state === "dispatching" &&
         current.claimId === input.claimId &&
-        current.revision === input.expectedRevision + 1 &&
-        current.updatedAtUnixMs === input.claimedAtUnixMs;
+        current.revision === input.expectedRevision + 1;
       return { intent: current, claimed: replayed } satisfies CompositionRunStartClaimResult;
     });
 
@@ -358,10 +359,7 @@ const makeStore = Effect.gen(function* () {
       );
       if (Option.isSome(accepted)) return toIntent(accepted.value);
       const current = yield* getRequired(input.runId);
-      if (
-        (current.state === "accepted" || current.state === "settled") &&
-        sameReceipt(current, input)
-      ) {
+      if (hasAcceptedOutcome(current) && sameReceipt(current, input)) {
         return current;
       }
       return yield* domainError(
@@ -394,7 +392,7 @@ const makeStore = Effect.gen(function* () {
       );
       if (Option.isSome(settled)) return toIntent(settled.value);
       const current = yield* getRequired(input.runId);
-      if (current.state === "settled") return current;
+      if (current.state === "settled" && hasAcceptedOutcome(current)) return current;
       return yield* domainError("run_start_state_conflict", "只有 accepted 意图可以结算。", {
         runId: input.runId,
         expectedRevision: input.expectedRevision,

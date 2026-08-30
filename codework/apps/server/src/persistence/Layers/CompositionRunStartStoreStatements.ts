@@ -161,10 +161,9 @@ export const makeCompositionRunStartStoreStatements = (sql: SqlClient.SqlClient)
     execute: (input) => sql`
       UPDATE composition_run_start_intents
       SET state = 'preparing', revision = revision + 1, claim_id = ${input.claimId},
-        updated_at_unix_ms = ${input.claimedAtUnixMs}
+        updated_at_unix_ms = MAX(updated_at_unix_ms, ${input.claimedAtUnixMs})
       WHERE run_id = ${input.runId}
         AND state = 'prepared' AND revision = ${input.expectedRevision} AND claim_id IS NULL
-        AND ${input.claimedAtUnixMs} >= updated_at_unix_ms
       RETURNING
         run_id AS "runId", task_id AS "taskId", previous_run_id AS "previousRunId",
         agent_id AS "agentId", runtime_id AS "runtimeId", attempt,
@@ -182,10 +181,10 @@ export const makeCompositionRunStartStoreStatements = (sql: SqlClient.SqlClient)
     execute: (input) => sql`
       UPDATE composition_run_start_intents
       SET state = 'prepared', revision = revision + 1, claim_id = NULL,
-        updated_at_unix_ms = ${input.releasedAtUnixMs}
+        updated_at_unix_ms = MAX(updated_at_unix_ms, ${input.releasedAtUnixMs})
       WHERE run_id = ${input.runId}
         AND state = 'preparing' AND revision = ${input.expectedRevision}
-        AND claim_id = ${input.claimId} AND ${input.releasedAtUnixMs} >= updated_at_unix_ms
+        AND claim_id = ${input.claimId}
       RETURNING
         run_id AS "runId", task_id AS "taskId", previous_run_id AS "previousRunId",
         agent_id AS "agentId", runtime_id AS "runtimeId", attempt,
@@ -203,10 +202,9 @@ export const makeCompositionRunStartStoreStatements = (sql: SqlClient.SqlClient)
     execute: (input) => sql`
       UPDATE composition_run_start_intents
       SET state = 'prepared', revision = revision + 1, claim_id = NULL,
-        updated_at_unix_ms = ${input.resetAtUnixMs}
+        updated_at_unix_ms = MAX(updated_at_unix_ms, ${input.resetAtUnixMs})
       WHERE run_id = ${input.runId}
         AND state = 'preparing' AND revision = ${input.expectedRevision}
-        AND ${input.resetAtUnixMs} >= updated_at_unix_ms
       RETURNING
         run_id AS "runId", task_id AS "taskId", previous_run_id AS "previousRunId",
         agent_id AS "agentId", runtime_id AS "runtimeId", attempt,
@@ -224,10 +222,10 @@ export const makeCompositionRunStartStoreStatements = (sql: SqlClient.SqlClient)
     execute: (input) => sql`
       UPDATE composition_run_start_intents
       SET state = 'dispatching', revision = revision + 1,
-        updated_at_unix_ms = ${input.dispatchedAtUnixMs}
+        updated_at_unix_ms = MAX(updated_at_unix_ms, ${input.dispatchedAtUnixMs})
       WHERE run_id = ${input.runId}
         AND state = 'preparing' AND revision = ${input.expectedRevision}
-        AND claim_id = ${input.claimId} AND ${input.dispatchedAtUnixMs} >= updated_at_unix_ms
+        AND claim_id = ${input.claimId}
       RETURNING
         run_id AS "runId", task_id AS "taskId", previous_run_id AS "previousRunId",
         agent_id AS "agentId", runtime_id AS "runtimeId", attempt,
@@ -245,10 +243,9 @@ export const makeCompositionRunStartStoreStatements = (sql: SqlClient.SqlClient)
     execute: (input) => sql`
       UPDATE composition_run_start_intents
       SET revision = revision + 1, claim_id = ${input.claimId},
-        updated_at_unix_ms = ${input.claimedAtUnixMs}
+        updated_at_unix_ms = MAX(updated_at_unix_ms, ${input.claimedAtUnixMs})
       WHERE run_id = ${input.runId}
         AND state = 'dispatching' AND revision = ${input.expectedRevision}
-        AND ${input.claimedAtUnixMs} >= updated_at_unix_ms
       RETURNING
         run_id AS "runId", task_id AS "taskId", previous_run_id AS "previousRunId",
         agent_id AS "agentId", runtime_id AS "runtimeId", attempt,
@@ -268,10 +265,10 @@ export const makeCompositionRunStartStoreStatements = (sql: SqlClient.SqlClient)
       SET state = 'accepted', revision = revision + 1, claim_id = NULL,
         runtime_task_id = ${input.runtimeTaskId},
         capability_handshake_id = ${input.capabilityHandshakeId},
-        updated_at_unix_ms = ${input.acceptedAtUnixMs}
+        updated_at_unix_ms = MAX(updated_at_unix_ms, ${input.acceptedAtUnixMs})
       WHERE run_id = ${input.runId}
         AND state = 'dispatching' AND revision = ${input.expectedRevision}
-        AND claim_id = ${input.claimId} AND ${input.acceptedAtUnixMs} >= updated_at_unix_ms
+        AND claim_id = ${input.claimId}
       RETURNING
         run_id AS "runId", task_id AS "taskId", previous_run_id AS "previousRunId",
         agent_id AS "agentId", runtime_id AS "runtimeId", attempt,
@@ -289,10 +286,9 @@ export const makeCompositionRunStartStoreStatements = (sql: SqlClient.SqlClient)
     execute: (input) => sql`
       UPDATE composition_run_start_intents
       SET state = 'settled', revision = revision + 1,
-        updated_at_unix_ms = ${input.settledAtUnixMs}
+        updated_at_unix_ms = MAX(updated_at_unix_ms, ${input.settledAtUnixMs})
       WHERE run_id = ${input.runId}
         AND state = 'accepted' AND revision = ${input.expectedRevision}
-        AND ${input.settledAtUnixMs} >= updated_at_unix_ms
       RETURNING
         run_id AS "runId", task_id AS "taskId", previous_run_id AS "previousRunId",
         agent_id AS "agentId", runtime_id AS "runtimeId", attempt,
@@ -311,10 +307,10 @@ export const makeCompositionRunStartStoreStatements = (sql: SqlClient.SqlClient)
       UPDATE composition_run_start_intents
       SET state = 'settled', revision = revision + 1, claim_id = NULL,
         outcome_code = ${input.outcomeCode}, outcome_detail = ${input.outcomeDetail},
-        updated_at_unix_ms = ${input.settledAtUnixMs}
+        updated_at_unix_ms = MAX(updated_at_unix_ms, ${input.settledAtUnixMs})
       WHERE run_id = ${input.runId}
         AND state = 'dispatching' AND revision = ${input.expectedRevision}
-        AND claim_id = ${input.claimId} AND ${input.settledAtUnixMs} >= updated_at_unix_ms
+        AND claim_id = ${input.claimId}
       RETURNING
         run_id AS "runId", task_id AS "taskId", previous_run_id AS "previousRunId",
         agent_id AS "agentId", runtime_id AS "runtimeId", attempt,
@@ -333,11 +329,10 @@ export const makeCompositionRunStartStoreStatements = (sql: SqlClient.SqlClient)
       UPDATE composition_run_start_intents
       SET state = 'quarantined', revision = revision + 1, claim_id = NULL,
         outcome_code = ${input.outcomeCode}, outcome_detail = ${input.outcomeDetail},
-        updated_at_unix_ms = ${input.quarantinedAtUnixMs}
+        updated_at_unix_ms = MAX(updated_at_unix_ms, ${input.quarantinedAtUnixMs})
       WHERE run_id = ${input.runId}
         AND state IN ('prepared', 'preparing', 'dispatching')
         AND revision = ${input.expectedRevision}
-        AND ${input.quarantinedAtUnixMs} >= updated_at_unix_ms
       RETURNING
         run_id AS "runId", task_id AS "taskId", previous_run_id AS "previousRunId",
         agent_id AS "agentId", runtime_id AS "runtimeId", attempt,
