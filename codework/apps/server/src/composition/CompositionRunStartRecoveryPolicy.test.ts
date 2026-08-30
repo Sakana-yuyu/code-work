@@ -20,7 +20,7 @@ const makeCandidate = (
   suffix: string,
   overrides: Partial<CompositionRunStartRecoveryCandidate> = {},
 ): CompositionRunStartRecoveryCandidate => {
-  const task = {
+  const task: CompositionTask = {
     taskId: `task-${suffix}`,
     projectId: "project-run-start-recovery",
     assigneeKind: "agent" as const,
@@ -31,7 +31,7 @@ const makeCandidate = (
     dependsOnTaskIds: [],
     createdAtUnixMs: 1,
     updatedAtUnixMs: 1,
-  } satisfies CompositionTask;
+  };
   const run = {
     runId: `run-${suffix}`,
     taskId: task.taskId,

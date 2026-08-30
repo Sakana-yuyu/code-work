@@ -2,12 +2,15 @@ import { it } from "@effect/vitest";
 import { expect } from "vite-plus/test";
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
+import type { CompositionTask, CompositionTaskRun } from "@codework/contracts";
 
+import type { CompositionRunStartIntent } from "../persistence/Services/CompositionRunStartStore.ts";
 import {
   makeMulticaDaemonRuntimeAdapter,
   type MulticaDaemonRuntimeAdapterOptions,
 } from "./MulticaDaemonRuntimeAdapter.ts";
 import type { MulticaDaemonProtocol } from "./MulticaDaemonProtocol.ts";
+import type { CompositionRunStartReconcileInput } from "./CompositionRunStartLifecycle.ts";
 
 const runtimeId = "multica:daemon-recovery:runtime-recovery";
 const daemonRuntimeId = "runtime-recovery";
@@ -129,8 +132,8 @@ const makeOptions = (
   ],
 });
 
-const makeInput = (suffix: string) => {
-  const task = {
+const makeInput = (suffix: string): CompositionRunStartReconcileInput => {
+  const task: CompositionTask = {
     taskId: `task-${suffix}`,
     projectId: "project-multica-recovery",
     assigneeKind: "agent" as const,
@@ -142,7 +145,7 @@ const makeInput = (suffix: string) => {
     createdAtUnixMs: 1,
     updatedAtUnixMs: 1,
   };
-  const run = {
+  const run: CompositionTaskRun = {
     runId: `run-${suffix}`,
     taskId: task.taskId,
     agentId: task.assigneeId,
@@ -151,28 +154,31 @@ const makeInput = (suffix: string) => {
     attempt: 1,
     capabilityGrantIds: [],
   };
+  const intent: CompositionRunStartIntent = {
+    taskId: task.taskId,
+    runId: run.runId,
+    previousRunId: null,
+    agentId: run.agentId,
+    runtimeId,
+    attempt: run.attempt,
+    payloadDigest: `sha256:payload-${suffix}`,
+    capabilityDigest: `sha256:capability-${suffix}`,
+    state: "dispatching",
+    revision: 2,
+    claimId: `claim-${suffix}`,
+    ownerEpoch: 1,
+    ownerLeaseExpiresAtUnixMs: 60_000,
+    runtimeTaskId: null,
+    capabilityHandshakeId: null,
+    outcomeCode: null,
+    outcomeDetail: null,
+    createdAtUnixMs: 1,
+    updatedAtUnixMs: 2,
+  };
   return {
     task,
     run,
-    intent: {
-      taskId: task.taskId,
-      runId: run.runId,
-      previousRunId: null,
-      agentId: run.agentId,
-      runtimeId,
-      attempt: run.attempt,
-      payloadDigest: `sha256:payload-${suffix}`,
-      capabilityDigest: `sha256:capability-${suffix}`,
-      state: "dispatching" as const,
-      revision: 2,
-      claimId: `claim-${suffix}`,
-      runtimeTaskId: null,
-      capabilityHandshakeId: null,
-      outcomeCode: null,
-      outcomeDetail: null,
-      createdAtUnixMs: 1,
-      updatedAtUnixMs: 2,
-    },
+    intent,
     capabilityIds: [],
   };
 };
