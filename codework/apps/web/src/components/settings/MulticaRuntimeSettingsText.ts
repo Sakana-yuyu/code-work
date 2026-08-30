@@ -23,6 +23,7 @@ export type MulticaRuntimeSettingsTextKey =
   | "editTitle"
   | "unsavedChanges"
   | "saveFailed"
+  | "saveConflict"
   | "cancel"
   | "save"
   | "saving"

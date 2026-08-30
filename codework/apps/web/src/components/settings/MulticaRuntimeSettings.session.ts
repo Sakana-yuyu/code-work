@@ -1,8 +1,12 @@
 import type { ProviderInstanceConfig } from "@codework/contracts";
 
+import {
+  formFromMulticaRuntimeInstance,
+  multicaRuntimeDraftFingerprint,
+} from "./MulticaRuntimeSettings.logic";
 import type { MulticaRuntimeDraft } from "./MulticaRuntimeSettings.model";
 
-export type MulticaRuntimeSaveState = "idle" | "saving" | "error";
+export type MulticaRuntimeSaveState = "idle" | "saving" | "error" | "conflict";
 
 export interface MulticaRuntimeEditorSession {
   readonly sessionId: number;
@@ -11,6 +15,8 @@ export interface MulticaRuntimeEditorSession {
   readonly originalInstanceId: string | null;
   readonly initialDraft: MulticaRuntimeDraft;
   readonly draft: MulticaRuntimeDraft;
+  readonly initialFingerprint: string;
+  readonly conflict: boolean;
   readonly saveState: MulticaRuntimeSaveState;
 }
 
@@ -25,10 +31,17 @@ export const reconcileMulticaRuntimeEditorSession = (
 ): MulticaRuntimeEditorSession | null => {
   if (editor === null) return null;
   if (scope.scopeKey === null || editor.scopeKey !== scope.scopeKey) return null;
-  if (editor.mode !== "edit" || scope.readyInstances === undefined) return editor;
+  if (scope.readyInstances === undefined) return editor;
+  if (editor.mode === "create") {
+    return scope.readyInstances[editor.draft.instanceId] === undefined
+      ? editor
+      : { ...editor, conflict: true, saveState: "conflict" };
+  }
   const instance =
-    editor.originalInstanceId === null
-      ? undefined
-      : scope.readyInstances[editor.originalInstanceId];
-  return instance?.driver === "multica" ? editor : null;
+    editor.originalInstanceId === null ? undefined : scope.readyInstances[editor.originalInstanceId];
+  const liveDraft = instance === undefined ? null : formFromMulticaRuntimeInstance(editor.originalInstanceId!, instance);
+  if (liveDraft === null) return { ...editor, conflict: true, saveState: "conflict" };
+  return multicaRuntimeDraftFingerprint(liveDraft) === editor.initialFingerprint
+    ? editor
+    : { ...editor, conflict: true, saveState: "conflict" };
 };

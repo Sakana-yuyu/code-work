@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import {
   emptyMulticaRuntimeDraft,
   formFromMulticaRuntimeInstance,
+  multicaRuntimeDraftFingerprint,
   nextMulticaRuntimeInstanceId,
   validateMulticaRuntimeDraft,
   type MulticaRuntimeDraft,
@@ -24,7 +25,12 @@ export type MulticaRuntimeSettingsState =
 
 export type MulticaRuntimeSaveRequest = MulticaRuntimeSave & {
   readonly originalInstanceId: string | null;
+  readonly expectedFingerprint: string | null;
 };
+type UnconfirmedMulticaRuntimeSaveRequest = Omit<
+  MulticaRuntimeSaveRequest,
+  "expectedFingerprint"
+>;
 
 export type MulticaRuntimeSaveAttempt = "saved" | "invalid" | "error";
 
@@ -32,6 +38,7 @@ interface ScopedRuntimeAction {
   readonly requestId: number;
   readonly scopeKey: string;
   readonly instanceId: string;
+  readonly expectedFingerprint: string;
 }
 
 export const isMulticaRuntimeActionCurrent = (
@@ -53,14 +60,13 @@ const reconcileScopedRuntimeAction = (
   readyInstances: Readonly<Record<string, ProviderInstanceConfig>> | undefined,
 ): ScopedRuntimeAction | null => {
   if (action === null || scopeKey === null || action.scopeKey !== scopeKey) return null;
-  if (readyInstances === undefined) return action;
-  return readyInstances[action.instanceId]?.driver === "multica" ? action : null;
+  return action;
 };
 
 export async function persistMulticaRuntimeDraft(
   draft: MulticaRuntimeDraft,
   originalInstanceId: string | null,
-  onSave: MulticaRuntimeSettingsControllerOptions["onSave"],
+  onSave: (request: UnconfirmedMulticaRuntimeSaveRequest) => Promise<void>,
 ): Promise<MulticaRuntimeSaveAttempt> {
   const validation = validateMulticaRuntimeDraft(draft);
   if (!validation.ok) return "invalid";
@@ -136,6 +142,8 @@ export function useMulticaRuntimeSettingsController({
       originalInstanceId: null,
       initialDraft: draft,
       draft,
+      initialFingerprint: multicaRuntimeDraftFingerprint(draft),
+      conflict: false,
       saveState: "idle",
     });
   };
@@ -151,13 +159,17 @@ export function useMulticaRuntimeSettingsController({
       originalInstanceId: instanceId,
       initialDraft: draft,
       draft,
+      initialFingerprint: multicaRuntimeDraftFingerprint(draft),
+      conflict: false,
       saveState: "idle",
     });
   };
 
   const updateEditorDraft = (sessionId: number, draft: MulticaRuntimeDraft) => {
     setEditor((current) =>
-      current?.sessionId === sessionId ? { ...current, draft, saveState: "idle" } : current,
+      current?.sessionId === sessionId
+        ? { ...current, draft, saveState: current.conflict ? "conflict" : "idle" }
+        : current,
     );
   };
 
@@ -167,14 +179,14 @@ export function useMulticaRuntimeSettingsController({
 
   const saveEditor = async () => {
     const session = activeEditor;
-    if (session === null || session.saveState === "saving") return;
+    if (session === null || session.saveState === "saving" || session.conflict) return;
     setEditor((current) =>
       current?.sessionId === session.sessionId ? { ...current, saveState: "saving" } : current,
     );
     const result = await persistMulticaRuntimeDraft(
       session.draft,
       session.originalInstanceId,
-      onSave,
+      (request) => onSave({ ...request, expectedFingerprint: session.initialFingerprint }),
     );
     setEditor((current) => {
       if (current?.sessionId !== session.sessionId) return current;
@@ -184,12 +196,15 @@ export function useMulticaRuntimeSettingsController({
     });
   };
 
-  const requestDelete = (instanceId: string) => {
+  const requestDelete = (instanceId: string, instance: ProviderInstanceConfig) => {
     if (scopeKey === null) return;
+    const draft = formFromMulticaRuntimeInstance(instanceId, instance);
+    if (draft === null) return;
     setPendingDelete({
       requestId: ++nextDeleteRequestIdRef.current,
       scopeKey,
       instanceId,
+      expectedFingerprint: multicaRuntimeDraftFingerprint(draft),
     });
   };
 
@@ -207,6 +222,11 @@ export function useMulticaRuntimeSettingsController({
     setDeleting(request);
     setDeleteFailure(null);
     try {
+      const instance = readyInstances?.[request.instanceId];
+      const draft = instance === undefined ? null : formFromMulticaRuntimeInstance(request.instanceId, instance);
+      if (draft === null || multicaRuntimeDraftFingerprint(draft) !== request.expectedFingerprint) {
+        throw new Error("stale Multica runtime delete request");
+      }
       await onDelete(request.instanceId);
       if (
         !isMulticaRuntimeActionCurrent(

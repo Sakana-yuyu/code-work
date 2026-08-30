@@ -155,7 +155,7 @@ export function MulticaRuntimeSettingsPanel({
               deleting={controller.deletingId === instanceId}
               deleteFailed={controller.deleteFailedId === instanceId}
               onEdit={() => controller.openEdit(instanceId, instance)}
-              onDelete={() => controller.requestDelete(instanceId)}
+               onDelete={() => controller.requestDelete(instanceId, instance)}
             />
           );
         })}

@@ -6,6 +6,7 @@ import { MulticaRuntimeConnectionFields } from "./MulticaRuntimeConnectionFields
 import { MulticaRuntimeCredentialFields } from "./MulticaRuntimeCredentialFields";
 import { MulticaRuntimeRoutingFields } from "./MulticaRuntimeRoutingFields";
 import {
+  multicaRuntimeDraftEquals,
   validateMulticaRuntimeDraft,
   type MulticaRuntimeDraft,
 } from "./MulticaRuntimeSettings.logic";
@@ -25,8 +26,6 @@ export interface MulticaRuntimeSettingsEditorProps {
   readonly onSave: () => void;
 }
 
-const draftFingerprint = (draft: MulticaRuntimeDraft): string => JSON.stringify(draft);
-
 export function MulticaRuntimeSettingsEditor({
   text,
   mode,
@@ -38,10 +37,10 @@ export function MulticaRuntimeSettingsEditor({
   onSave,
 }: MulticaRuntimeSettingsEditorProps) {
   const validation = validateMulticaRuntimeDraft(draft);
-  const dirty = draftFingerprint(initialDraft) !== draftFingerprint(draft);
+  const dirty = !multicaRuntimeDraftEquals(initialDraft, draft);
   const saving = saveState === "saving";
   const issue = validation.ok ? null : validation.issue;
-  const saveDisabled = saving || !dirty || !validation.ok;
+  const saveDisabled = saving || saveState === "conflict" || !dirty || !validation.ok;
 
   return (
     <div
@@ -102,6 +101,12 @@ export function MulticaRuntimeSettingsEditor({
         <p className="flex items-center gap-1.5 text-xs text-destructive" role="alert">
           <AlertCircleIcon className="size-3.5" />
           {text("saveFailed")}
+        </p>
+      ) : null}
+      {saveState === "conflict" ? (
+        <p className="flex items-center gap-1.5 text-xs text-destructive" role="alert">
+          <AlertCircleIcon className="size-3.5" />
+          {text("saveConflict")}
         </p>
       ) : null}
 
