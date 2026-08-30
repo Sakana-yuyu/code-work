@@ -100,6 +100,7 @@ const THREAD_HISTORY_CLEANUP_RETRY_MAX_DELAY_MS =
   ThreadHistoryCleanupIntentStore.MAX_RETRY_DELAY_MS;
 const DEFAULT_OPEN_COLS = 120;
 const DEFAULT_OPEN_ROWS = 30;
+const TERMINAL_HISTORY_LAYOUT_DIRECTORY = ".terminal-history-v2";
 const TERMINAL_ENV_BLOCKLIST = new Set(["PORT", "ELECTRON_RENDERER_PORT", "ELECTRON_RUN_AS_NODE"]);
 const nowIso = Effect.map(DateTime.now, DateTime.formatIso);
 const MAX_TERMINAL_LABEL_LENGTH = 128;
@@ -1346,16 +1347,27 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
   const terminalEventHub = yield* TerminalEventHub.make(terminalEventSubscriberQueueCapacity);
   const publishEvent = terminalEventHub.publish;
 
-  const historyPath = (threadId: string, terminalId: string) => {
+  const historyRoot = path.join(logsDir, TERMINAL_HISTORY_LAYOUT_DIRECTORY);
+  const historyThreadDirectory = (threadId: string) =>
+    path.join(historyRoot, Encoding.encodeBase64Url(threadId));
+  const historyPath = (threadId: string, terminalId: string) =>
+    path.join(historyThreadDirectory(threadId), `${toSafeTerminalId(terminalId)}.log`);
+
+  const encodedLegacyHistoryPath = (threadId: string, terminalId: string) => {
     const threadPart = toSafeThreadId(threadId);
-    if (terminalId === DEFAULT_TERMINAL_ID) {
-      return path.join(logsDir, `${threadPart}.log`);
-    }
-    return path.join(logsDir, `${threadPart}_${toSafeTerminalId(terminalId)}.log`);
+    return path.join(
+      logsDir,
+      terminalId === DEFAULT_TERMINAL_ID
+        ? `${threadPart}.log`
+        : `${threadPart}_${toSafeTerminalId(terminalId)}.log`,
+    );
   };
 
-  const legacyHistoryPath = (threadId: string) =>
+  const sanitizedLegacyHistoryPath = (threadId: string) =>
     path.join(logsDir, `${legacySafeThreadId(threadId)}.log`);
+
+  const canOwnSanitizedLegacyHistory = (threadId: string) =>
+    legacySafeThreadId(threadId) === threadId && !threadId.includes("_");
 
   const readManagerState = SynchronizedRef.get(managerStateRef);
 
@@ -1528,7 +1540,10 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
     terminalId: string,
     history: string,
   ) {
-    yield* fileSystem.writeFileString(historyPath(threadId, terminalId), history).pipe(
+    yield* Effect.gen(function* () {
+      yield* fileSystem.makeDirectory(historyThreadDirectory(threadId), { recursive: true });
+      yield* fileSystem.writeFileString(historyPath(threadId, terminalId), history);
+    }).pipe(
       Effect.catch((error) =>
         Effect.logWarning("failed to persist terminal history", {
           threadId,
@@ -1628,11 +1643,57 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
       return capped;
     }
 
-    if (terminalId !== DEFAULT_TERMINAL_ID) {
-      return "";
+    const encodedLegacyPath = encodedLegacyHistoryPath(threadId, terminalId);
+    if (
+      yield* fileSystem
+        .exists(encodedLegacyPath)
+        .pipe(
+          Effect.mapError(
+            (cause) =>
+              new TerminalHistoryError({ operation: "migrate", threadId, terminalId, cause }),
+          ),
+        )
+    ) {
+      const raw = yield* fileSystem
+        .readFileString(encodedLegacyPath)
+        .pipe(
+          Effect.mapError(
+            (cause) =>
+              new TerminalHistoryError({ operation: "migrate", threadId, terminalId, cause }),
+          ),
+        );
+      const capped = capHistory(raw, historyLineLimit);
+      yield* fileSystem.makeDirectory(historyThreadDirectory(threadId), { recursive: true }).pipe(
+        Effect.andThen(fileSystem.writeFileString(nextPath, capped)),
+        Effect.mapError(
+          (cause) =>
+            new TerminalHistoryError({ operation: "migrate", threadId, terminalId, cause }),
+        ),
+      );
+      yield* fileSystem.remove(encodedLegacyPath, { force: true }).pipe(
+        Effect.catch((cleanupError) =>
+          Effect.logWarning("failed to remove encoded legacy terminal history", {
+            threadId,
+            terminalId,
+            error: cleanupError,
+          }),
+        ),
+      );
+      return capped;
     }
 
-    const legacyPath = legacyHistoryPath(threadId);
+    if (terminalId !== DEFAULT_TERMINAL_ID) return "";
+
+    const legacyPath = sanitizedLegacyHistoryPath(threadId);
+    if (!canOwnSanitizedLegacyHistory(threadId)) {
+      if (yield* fileSystem.exists(legacyPath).pipe(Effect.orElseSucceed(() => false))) {
+        yield* Effect.logWarning("ignored ambiguous legacy terminal history", {
+          threadId,
+          legacyPath,
+        });
+      }
+      return "";
+    }
     if (
       !(yield* fileSystem
         .exists(legacyPath)
@@ -1645,7 +1706,6 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
     ) {
       return "";
     }
-
     const raw = yield* fileSystem
       .readFileString(legacyPath)
       .pipe(
@@ -1655,14 +1715,12 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
         ),
       );
     const capped = capHistory(raw, historyLineLimit);
-    yield* fileSystem
-      .writeFileString(nextPath, capped)
-      .pipe(
-        Effect.mapError(
-          (cause) =>
-            new TerminalHistoryError({ operation: "migrate", threadId, terminalId, cause }),
-        ),
-      );
+    yield* fileSystem.makeDirectory(historyThreadDirectory(threadId), { recursive: true }).pipe(
+      Effect.andThen(fileSystem.writeFileString(nextPath, capped)),
+      Effect.mapError(
+        (cause) => new TerminalHistoryError({ operation: "migrate", threadId, terminalId, cause }),
+      ),
+    );
     yield* fileSystem.remove(legacyPath, { force: true }).pipe(
       Effect.catch((cleanupError) =>
         Effect.logWarning("failed to remove legacy terminal history", {
@@ -1678,17 +1736,22 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
     threadId: string,
     terminalId: string,
   ) {
-    yield* fileSystem.remove(historyPath(threadId, terminalId), { force: true }).pipe(
-      Effect.catch((error) =>
-        Effect.logWarning("failed to delete terminal history", {
-          threadId,
-          terminalId,
-          error,
-        }),
-      ),
+    yield* Effect.forEach(
+      [historyPath(threadId, terminalId), encodedLegacyHistoryPath(threadId, terminalId)],
+      (targetPath) =>
+        fileSystem.remove(targetPath, { force: true }).pipe(
+          Effect.catch((error) =>
+            Effect.logWarning("failed to delete terminal history", {
+              threadId,
+              terminalId,
+              error,
+            }),
+          ),
+        ),
+      { discard: true },
     );
-    if (terminalId === DEFAULT_TERMINAL_ID) {
-      yield* fileSystem.remove(legacyHistoryPath(threadId), { force: true }).pipe(
+    if (terminalId === DEFAULT_TERMINAL_ID && canOwnSanitizedLegacyHistory(threadId)) {
+      yield* fileSystem.remove(sanitizedLegacyHistoryPath(threadId), { force: true }).pipe(
         Effect.catch((error) =>
           Effect.logWarning("failed to delete terminal history", {
             threadId,
@@ -1717,27 +1780,24 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
         ),
       );
     yield* remove(historyPath(threadId, terminalId));
-    if (terminalId === DEFAULT_TERMINAL_ID) {
-      yield* remove(legacyHistoryPath(threadId));
+    yield* remove(encodedLegacyHistoryPath(threadId, terminalId));
+    if (terminalId === DEFAULT_TERMINAL_ID && canOwnSanitizedLegacyHistory(threadId)) {
+      yield* remove(sanitizedLegacyHistoryPath(threadId));
     }
   });
 
   const deleteAllHistoryForThread = Effect.fn("terminal.deleteAllHistoryForThread")(function* (
     threadId: string,
   ) {
-    const threadPrefix = `${toSafeThreadId(threadId)}_`;
-    const entries = yield* fileSystem
-      .readDirectory(logsDir, { recursive: false })
-      .pipe(Effect.orElseSucceed(() => [] as Array<string>));
+    const targets = [
+      encodedLegacyHistoryPath(threadId, DEFAULT_TERMINAL_ID),
+      ...(canOwnSanitizedLegacyHistory(threadId) ? [sanitizedLegacyHistoryPath(threadId)] : []),
+      historyThreadDirectory(threadId),
+    ];
     yield* Effect.forEach(
-      entries.filter(
-        (name) =>
-          name === `${toSafeThreadId(threadId)}.log` ||
-          name === `${legacySafeThreadId(threadId)}.log` ||
-          name.startsWith(threadPrefix),
-      ),
-      (name) =>
-        fileSystem.remove(path.join(logsDir, name), { force: true }).pipe(
+      targets,
+      (targetPath) =>
+        fileSystem.remove(targetPath, { recursive: true, force: true }).pipe(
           Effect.catch((error) =>
             Effect.logWarning("failed to delete terminal histories for thread", {
               threadId,
@@ -1752,27 +1812,15 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
   const deleteAllHistoryForThreadStrict = Effect.fn("terminal.deleteAllHistoryForThreadStrict")(
     function* (threadId: string) {
       const terminalId = "*";
-      const entries = yield* fileSystem.readDirectory(logsDir, { recursive: false }).pipe(
-        Effect.mapError(
-          (cause) =>
-            new TerminalHistoryError({
-              operation: "delete",
-              threadId,
-              terminalId,
-              cause,
-            }),
-        ),
-      );
-      const threadPrefix = `${toSafeThreadId(threadId)}_`;
+      const targets = [
+        encodedLegacyHistoryPath(threadId, DEFAULT_TERMINAL_ID),
+        ...(canOwnSanitizedLegacyHistory(threadId) ? [sanitizedLegacyHistoryPath(threadId)] : []),
+        historyThreadDirectory(threadId),
+      ];
       yield* Effect.forEach(
-        entries.filter(
-          (name) =>
-            name === `${toSafeThreadId(threadId)}.log` ||
-            name === `${legacySafeThreadId(threadId)}.log` ||
-            name.startsWith(threadPrefix),
-        ),
-        (name) =>
-          fileSystem.remove(path.join(logsDir, name), { force: true }).pipe(
+        targets,
+        (targetPath) =>
+          fileSystem.remove(targetPath, { recursive: true, force: true }).pipe(
             Effect.mapError(
               (cause) =>
                 new TerminalHistoryError({

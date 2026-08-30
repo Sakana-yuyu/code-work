@@ -223,7 +223,14 @@ const workspaceScriptOwner = (generation = 1) =>
 
 const historyLogPath = (logsDir: string, threadId = "thread-1") =>
   Effect.service(Path.Path).pipe(
-    Effect.map(({ join }) => join(logsDir, `terminal_${Encoding.encodeBase64Url(threadId)}.log`)),
+    Effect.map(({ join }) =>
+      join(
+        logsDir,
+        ".terminal-history-v2",
+        Encoding.encodeBase64Url(threadId),
+        `${Encoding.encodeBase64Url(DEFAULT_TERMINAL_ID)}.log`,
+      ),
+    ),
   );
 
 const multiTerminalHistoryLogPath = (
@@ -232,15 +239,14 @@ const multiTerminalHistoryLogPath = (
   terminalId = DEFAULT_TERMINAL_ID,
 ) =>
   Effect.service(Path.Path).pipe(
-    Effect.map(({ join }) => {
-      const threadPart = `terminal_${Encoding.encodeBase64Url(threadId)}`;
-      return join(
+    Effect.map(({ join }) =>
+      join(
         logsDir,
-        terminalId === DEFAULT_TERMINAL_ID
-          ? `${threadPart}.log`
-          : `${threadPart}_${Encoding.encodeBase64Url(terminalId)}.log`,
-      );
-    }),
+        ".terminal-history-v2",
+        Encoding.encodeBase64Url(threadId),
+        `${Encoding.encodeBase64Url(terminalId)}.log`,
+      ),
+    ),
   );
 
 interface CreateManagerOptions {
@@ -868,7 +874,8 @@ it.layer(
         "run-history-persisted",
         "command-history-persisted",
       );
-      yield* fs.makeDirectory(logsDir, { recursive: true });
+      const path = yield* Path.Path;
+      yield* fs.makeDirectory(path.dirname(persistedPath), { recursive: true });
       yield* fs.writeFileString(persistedPath, "persisted-output\n");
 
       expect(
