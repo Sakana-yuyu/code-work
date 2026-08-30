@@ -49,11 +49,13 @@ import * as WorkspaceEntries from "../workspace/WorkspaceEntries.ts";
 import * as WorkspaceFileSystem from "../workspace/WorkspaceFileSystem.ts";
 import * as WorkspacePaths from "../workspace/WorkspacePaths.ts";
 import { PersistenceSqlError } from "../persistence/Errors.ts";
+import { CompositionRunStartStore } from "../persistence/Services/CompositionRunStartStore.ts";
 import { CompositionTaskStore } from "../persistence/Services/CompositionTaskStore.ts";
 import type {
   CompositionTaskInputStoreShape,
   CompositionTaskRecoveryInput,
 } from "../persistence/Services/CompositionTaskInputStore.ts";
+import { CompositionRunStartStoreLive } from "../persistence/Layers/CompositionRunStartStore.ts";
 import { CompositionTaskStoreLive } from "../persistence/Layers/CompositionTaskStore.ts";
 import { SqlitePersistenceMemory } from "../persistence/Layers/Sqlite.ts";
 import * as CapabilityGrantRegistry from "./CapabilityGrantRegistry.ts";
@@ -81,7 +83,9 @@ const TestLayer = Layer.mergeAll(
   WorkspaceFileLayer,
   WorkspaceEntries.layer.pipe(Layer.provide(WorkspacePaths.layer)),
   WorkspacePaths.layer,
-  CompositionTaskStoreLive.pipe(Layer.provideMerge(SqlitePersistenceMemory)),
+  Layer.mergeAll(CompositionTaskStoreLive, CompositionRunStartStoreLive).pipe(
+    Layer.provideMerge(SqlitePersistenceMemory),
+  ),
 ).pipe(Layer.provideMerge(NodeServices.layer));
 
 const baseLeader = {
@@ -1357,6 +1361,7 @@ describe("CompositionTaskGraphExecutor", () => {
               Effect.succeed(models.get(providerInstanceId)!),
           });
           const store = yield* CompositionTaskStore;
+          const runStartStore = yield* CompositionRunStartStore;
           const drivers = [
             makeCompositionByokAgentDriver({
               agentId: "agent-a",
@@ -1448,6 +1453,7 @@ describe("CompositionTaskGraphExecutor", () => {
             driverRegistry,
             makeGrantRegistry(),
             makeInputStore(),
+            runStartStore,
           );
           const executor = makeCompositionTaskGraphExecutor({ orchestrator, store, runtime });
 

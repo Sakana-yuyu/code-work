@@ -14,16 +14,25 @@ import {
   settleAndRedispatchRecoveredByokRun,
 } from "./CompositionByokResumeRedispatch.ts";
 import { makeCompositionOrchestrator } from "./CompositionOrchestrator.ts";
+import { CompositionRunStartStoreLive } from "../persistence/Layers/CompositionRunStartStore.ts";
 import { CompositionTaskStore } from "../persistence/Services/CompositionTaskStore.ts";
 import type { CompositionTaskStoreShape } from "../persistence/Services/CompositionTaskStore.ts";
 import { CompositionTaskStoreLive } from "../persistence/Layers/CompositionTaskStore.ts";
 import { SqlitePersistenceMemory } from "../persistence/Layers/Sqlite.ts";
+import {
+  CompositionRunStartStore,
+  type CompositionRunStartStoreShape,
+} from "../persistence/Services/CompositionRunStartStore.ts";
 import type {
   CompositionTaskInputStoreShape,
   CompositionTaskRecoveryInput,
 } from "../persistence/Services/CompositionTaskInputStore.ts";
 
-const layer = it.layer(CompositionTaskStoreLive.pipe(Layer.provideMerge(SqlitePersistenceMemory)));
+const layer = it.layer(
+  Layer.mergeAll(CompositionTaskStoreLive, CompositionRunStartStoreLive).pipe(
+    Layer.provide(SqlitePersistenceMemory),
+  ),
+);
 
 const AGENT_ID = "agent-byok-redispatch";
 const RUNTIME_ID = "runtime-byok-redispatch";
@@ -113,6 +122,7 @@ const makeMemoryInputStore = () => {
 const makeCapturingOrchestrator = (
   store: CompositionTaskStoreShape,
   inputStore: CompositionTaskInputStoreShape,
+  runStartStore: CompositionRunStartStoreShape,
 ) =>
   Effect.gen(function* () {
     const prompts: string[] = [];
@@ -127,7 +137,13 @@ const makeCapturingOrchestrator = (
         }),
       cancelTask: () => Effect.succeed({ status: "cancelled" as const }),
     });
-    const orchestrator = makeCompositionOrchestrator(store, driverRegistry, undefined, inputStore);
+    const orchestrator = makeCompositionOrchestrator(
+      store,
+      driverRegistry,
+      undefined,
+      inputStore,
+      runStartStore,
+    );
     return { orchestrator, prompts };
   });
 
@@ -135,6 +151,7 @@ layer("CompositionByokResumeRedispatch", (it) => {
   it.effect("恢复校验通过后结算并经真实 retryTask 创建新 Run，prompt 注入恢复上下文", () =>
     Effect.gen(function* () {
       const store = yield* CompositionTaskStore;
+      const runStartStore = yield* CompositionRunStartStore;
       const taskId = "task-byok-redispatch";
       const runId = "run-byok-redispatch-stale";
       yield* seedTaskAndRun({ store, taskId, runId });
@@ -150,7 +167,11 @@ layer("CompositionByokResumeRedispatch", (it) => {
         prompt: "原始任务目标：完成迁移报告",
         workspaceRoot: "C:/workspace/byok-redispatch",
       });
-      const { orchestrator, prompts } = yield* makeCapturingOrchestrator(store, memory.store);
+      const { orchestrator, prompts } = yield* makeCapturingOrchestrator(
+        store,
+        memory.store,
+        runStartStore,
+      );
 
       const result = yield* settleAndRedispatchRecoveredByokRun({
         taskId,

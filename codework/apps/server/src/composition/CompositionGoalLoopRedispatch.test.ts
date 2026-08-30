@@ -10,12 +10,21 @@ import {
   settleAndRedispatchInterruptedGoalLoop,
 } from "./CompositionGoalLoopRedispatch.ts";
 import { makeCompositionOrchestrator } from "./CompositionOrchestrator.ts";
+import { CompositionRunStartStoreLive } from "../persistence/Layers/CompositionRunStartStore.ts";
 import { CompositionTaskStore } from "../persistence/Services/CompositionTaskStore.ts";
 import type { CompositionTaskStoreShape } from "../persistence/Services/CompositionTaskStore.ts";
 import { CompositionTaskStoreLive } from "../persistence/Layers/CompositionTaskStore.ts";
 import { SqlitePersistenceMemory } from "../persistence/Layers/Sqlite.ts";
+import {
+  CompositionRunStartStore,
+  type CompositionRunStartStoreShape,
+} from "../persistence/Services/CompositionRunStartStore.ts";
 
-const layer = it.layer(CompositionTaskStoreLive.pipe(Layer.provideMerge(SqlitePersistenceMemory)));
+const layer = it.layer(
+  Layer.mergeAll(CompositionTaskStoreLive, CompositionRunStartStoreLive).pipe(
+    Layer.provide(SqlitePersistenceMemory),
+  ),
+);
 
 const goalRowEffect = (input: {
   readonly store: CompositionTaskStoreShape;
@@ -36,7 +45,10 @@ const goalRowEffect = (input: {
     summary: input.summary,
   });
 
-const makeRedispatchable = (store: CompositionTaskStoreShape) =>
+const makeRedispatchable = (
+  store: CompositionTaskStoreShape,
+  runStartStore: CompositionRunStartStoreShape,
+) =>
   Effect.gen(function* () {
     const driverRegistry = makeCompositionAgentDriverRegistry();
     yield* driverRegistry.register({
@@ -45,18 +57,24 @@ const makeRedispatchable = (store: CompositionTaskStoreShape) =>
       startTask: () => Effect.succeed({ runtimeTaskId: "runtime-task-goal-redispatch" }),
       cancelTask: () => Effect.succeed({ status: "cancelled" as const }),
     });
-    return makeCompositionOrchestrator(store, driverRegistry, undefined, {
-      save: () => Effect.void,
-      get: () =>
-        Effect.succeed(
-          Option.some({
-            taskId: "task-goal-redispatch",
-            prompt: "跨重启自动重派目标",
-            workspaceRoot: "C:/workspace/goal-redispatch",
-          }),
-        ),
-      remove: () => Effect.void,
-    });
+    return makeCompositionOrchestrator(
+      store,
+      driverRegistry,
+      undefined,
+      {
+        save: () => Effect.void,
+        get: () =>
+          Effect.succeed(
+            Option.some({
+              taskId: "task-goal-redispatch",
+              prompt: "跨重启自动重派目标",
+              workspaceRoot: "C:/workspace/goal-redispatch",
+            }),
+          ),
+        remove: () => Effect.void,
+      },
+      runStartStore,
+    );
   });
 
 layer("CompositionGoalLoopRedispatch", (it) => {
@@ -128,6 +146,7 @@ layer("CompositionGoalLoopRedispatch", (it) => {
   it.effect("重派回调接入真实 orchestrator.retryTask 时能创建新 Run 并重新派发", () =>
     Effect.gen(function* () {
       const store = yield* CompositionTaskStore;
+      const runStartStore = yield* CompositionRunStartStore;
       const taskId = "task-goal-redispatch-real";
       const runId = "run-goal-redispatch-real-stale";
       yield* store.upsertTask({
@@ -154,7 +173,7 @@ layer("CompositionGoalLoopRedispatch", (it) => {
       yield* goalRowEffect({ store, taskId, runId, suffix: "start", summary: "目标循环开始" });
       yield* goalRowEffect({ store, taskId, runId, suffix: "round:3", summary: "第 3 轮" });
 
-      const orchestrator = yield* makeRedispatchable(store);
+      const orchestrator = yield* makeRedispatchable(store, runStartStore);
       yield* settleAndRedispatchInterruptedGoalLoop({
         taskId,
         runId,

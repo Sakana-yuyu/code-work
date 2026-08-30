@@ -26,9 +26,19 @@ import {
   CompositionTaskInputStoreError,
   type CompositionTaskInputStoreShape,
 } from "../persistence/Services/CompositionTaskInputStore.ts";
+import type {
+  CompositionRunStartStoreError,
+  CompositionRunStartStoreShape,
+} from "../persistence/Services/CompositionRunStartStore.ts";
 import type { CompositionAgentDriverRegistry } from "./CompositionAgentDriverRegistry.ts";
 import type * as CapabilityGrantRegistry from "./CapabilityGrantRegistry.ts";
 import * as CapabilityRegistry from "./CapabilityRegistry.ts";
+import {
+  CompositionAgentDriverFailure,
+  CompositionTaskNotFoundError,
+  CompositionTaskRetryInvalidError,
+} from "./CompositionOrchestratorErrors.ts";
+import { makeCompositionRetryTask } from "./CompositionRetryTask.ts";
 import {
   claimCompositionRuntimeLease,
   recoverCompositionRuntimeLease,
@@ -81,18 +91,6 @@ export class CompositionSquadNotFoundError extends Schema.TaggedErrorClass<Compo
   }
 }
 
-export class CompositionTaskNotFoundError extends Schema.TaggedErrorClass<CompositionTaskNotFoundError>()(
-  "CompositionTaskNotFoundError",
-  {
-    taskId: Schema.String,
-    runId: Schema.String,
-  },
-) {
-  override get message(): string {
-    return `任务 ${this.taskId} 或运行 ${this.runId} 不存在。`;
-  }
-}
-
 export class CompositionTaskNotInReviewError extends Schema.TaggedErrorClass<CompositionTaskNotInReviewError>()(
   "CompositionTaskNotInReviewError",
   {
@@ -103,19 +101,6 @@ export class CompositionTaskNotInReviewError extends Schema.TaggedErrorClass<Com
 ) {
   override get message(): string {
     return `任务 ${this.taskId}/${this.runId} 当前状态为 ${this.status}，不是待审核状态。`;
-  }
-}
-
-export class CompositionTaskRetryInvalidError extends Schema.TaggedErrorClass<CompositionTaskRetryInvalidError>()(
-  "CompositionTaskRetryInvalidError",
-  {
-    taskId: Schema.String,
-    previousRunId: Schema.String,
-    reason: Schema.String,
-  },
-) {
-  override get message(): string {
-    return `任务 ${this.taskId}/${this.previousRunId} 不允许重试：${this.reason}`;
   }
 }
 
@@ -132,17 +117,11 @@ export class CompositionTaskResumeInvalidError extends Schema.TaggedErrorClass<C
   }
 }
 
-export class CompositionAgentDriverFailure extends Schema.TaggedErrorClass<CompositionAgentDriverFailure>()(
-  "CompositionAgentDriverFailure",
-  {
-    code: Schema.String,
-    detail: Schema.String,
-  },
-) {
-  override get message(): string {
-    return `Agent Driver 启动失败：${this.code}: ${this.detail}`;
-  }
-}
+export {
+  CompositionAgentDriverFailure,
+  CompositionTaskNotFoundError,
+  CompositionTaskRetryInvalidError,
+} from "./CompositionOrchestratorErrors.ts";
 
 export interface CompositionAgentDriver {
   readonly agentId: string;
@@ -328,6 +307,7 @@ export interface CompositionOrchestrator {
     | CapabilityGrantRegistry.CapabilityGrantPersistenceError
     | CapabilityRegistry.CapabilityScopeNotFoundError
     | CapabilityRegistry.CapabilityRegistryUnavailableError
+    | CompositionRunStartStoreError
   >;
   readonly resumeTask: (
     input: CompositionTaskResumeRequest,
@@ -353,6 +333,7 @@ const makeOrchestrator = (
   grantRegistry?: Pick<CapabilityGrantRegistry.CapabilityGrantRegistryShape, "issue"> &
     Partial<Pick<CapabilityGrantRegistry.CapabilityGrantRegistryShape, "revoke">>,
   inputStore?: CompositionTaskInputStoreShape,
+  runStartStore?: CompositionRunStartStoreShape,
 ): CompositionOrchestrator => {
   const resumingTaskIds = new Set<string>();
   const resumingRunIds = new Set<string>();
@@ -445,7 +426,7 @@ const makeOrchestrator = (
   const persistStartedRun = (input: {
     readonly task: CompositionTask;
     readonly run: CompositionTaskRun;
-    readonly driver: CompositionAgentDriver;
+    readonly runtimeId: string;
     readonly startResult: CompositionAgentDriverStartResult;
     readonly summary: string;
   }): Effect.Effect<CompositionDispatchResult, CompositionTaskStoreError> =>
@@ -458,6 +439,18 @@ const makeOrchestrator = (
         }
         const currentTask = currentTaskOption.value;
         const currentRun = currentRunOption.value;
+        const acceptedReceiptAlreadyProjected =
+          currentTask.status === "running" &&
+          currentRun.status === "running" &&
+          currentRun.runtimeId === input.runtimeId &&
+          currentRun.startedAtUnixMs !== undefined &&
+          (input.startResult.runtimeTaskId === undefined ||
+            currentRun.runtimeTaskId === input.startResult.runtimeTaskId) &&
+          (input.startResult.capabilityHandshakeId === undefined ||
+            currentRun.capabilityHandshakeId === input.startResult.capabilityHandshakeId);
+        if (acceptedReceiptAlreadyProjected) {
+          return { task: currentTask, run: currentRun };
+        }
         if (currentTask.status !== input.task.status || currentRun.status !== input.run.status) {
           if (
             terminalStatuses.has(currentTask.status) ||
@@ -470,7 +463,7 @@ const makeOrchestrator = (
           const startedAt = currentRun.startedAtUnixMs ?? (yield* Clock.currentTimeMillis);
           const synchronizedRun: CompositionTaskRun = {
             ...currentRun,
-            runtimeId: input.driver.runtimeId,
+            runtimeId: input.runtimeId,
             ...(currentRun.runtimeTaskId === undefined &&
             input.startResult.runtimeTaskId !== undefined
               ? { runtimeTaskId: input.startResult.runtimeTaskId }
@@ -493,7 +486,7 @@ const makeOrchestrator = (
         };
         const runningRun: CompositionTaskRun = {
           ...currentRun,
-          runtimeId: input.driver.runtimeId,
+          runtimeId: input.runtimeId,
           runtimeTaskId: input.startResult.runtimeTaskId,
           ...(input.startResult.capabilityHandshakeId === undefined
             ? {}
@@ -828,7 +821,7 @@ const makeOrchestrator = (
       return yield* persistStartedRun({
         task,
         run: leasedRun,
-        driver,
+        runtimeId: driver.runtimeId,
         startResult: startResult.success,
         summary: "任务已交给 Agent Driver 执行",
       });
@@ -1202,197 +1195,22 @@ const makeOrchestrator = (
       }).pipe(Effect.ensuring(Effect.sync(() => resumingRunIds.delete(input.runId))));
     });
 
-  const retryTask: CompositionOrchestrator["retryTask"] = (input) =>
-    Effect.gen(function* () {
-      const taskOption = yield* store.getTask(input.taskId);
-      const previousRunOption = yield* store.getRun(input.previousRunId);
-      if (Option.isNone(taskOption) || Option.isNone(previousRunOption)) {
-        return yield* new CompositionTaskNotFoundError({
-          taskId: input.taskId,
-          runId: input.previousRunId,
-        });
-      }
-      const task = taskOption.value;
-      const previousRun = previousRunOption.value;
-      const latestRunOption = yield* store.getLatestRun(input.taskId);
-      const existingRunOption = yield* store.getRun(input.runId);
-      if (Option.isNone(latestRunOption)) {
-        return yield* new CompositionTaskRetryInvalidError({
-          taskId: input.taskId,
-          previousRunId: input.previousRunId,
-          reason: "latest_run_missing",
-        });
-      }
-      if (task.status !== "failed" && task.status !== "timed_out") {
-        return yield* new CompositionTaskRetryInvalidError({
-          taskId: input.taskId,
-          previousRunId: input.previousRunId,
-          reason: `task_status_${task.status}`,
-        });
-      }
-      if (previousRun.status !== "failed" && previousRun.status !== "timed_out") {
-        return yield* new CompositionTaskRetryInvalidError({
-          taskId: input.taskId,
-          previousRunId: input.previousRunId,
-          reason: `run_status_${previousRun.status}`,
-        });
-      }
-      if (latestRunOption.value.runId !== input.previousRunId) {
-        return yield* new CompositionTaskRetryInvalidError({
-          taskId: input.taskId,
-          previousRunId: input.previousRunId,
-          reason: "previous_run_is_not_latest",
-        });
-      }
-      if (input.runId === input.previousRunId || Option.isSome(existingRunOption)) {
-        return yield* new CompositionTaskRetryInvalidError({
-          taskId: input.taskId,
-          previousRunId: input.previousRunId,
-          reason: "run_id_conflict",
-        });
-      }
-      if (input.capabilityIds.length === 0) {
-        return yield* new CompositionTaskRetryInvalidError({
-          taskId: input.taskId,
-          previousRunId: input.previousRunId,
-          reason: "capability_ids_required",
-        });
-      }
-      if (inputStore === undefined) {
-        return yield* new CompositionTaskRetryInvalidError({
-          taskId: input.taskId,
-          previousRunId: input.previousRunId,
-          reason: "recovery_input_store_unavailable",
-        });
-      }
-      const recoveryInput = yield* inputStore.get(input.taskId);
-      if (Option.isNone(recoveryInput)) {
-        return yield* new CompositionTaskRetryInvalidError({
-          taskId: input.taskId,
-          previousRunId: input.previousRunId,
-          reason: "recovery_input_missing",
-        });
-      }
-      const targetAgentId = input.agentId ?? previousRun.agentId;
-      const previousDriver = yield* driverRegistry.get(previousRun.agentId);
-      const targetDriver =
-        targetAgentId === previousRun.agentId
-          ? previousDriver
-          : yield* driverRegistry.get(targetAgentId);
-      if (targetDriver === undefined) {
-        return yield* new CompositionAgentDriverFailure({
-          code: "agent_driver_unavailable",
-          detail: `未找到目标 Agent Driver：${targetAgentId}`,
-        });
-      }
-      // 先撤销旧 Run 的 grant，避免 CapabilityGrantRegistry 按 task/agent 复用旧授权。
-      yield* revokeRunCapabilities(previousDriver, task, previousRun);
-      yield* releaseRunLease(previousRun);
-      const issuedGrants =
-        grantRegistry === undefined
-          ? []
-          : yield* grantRegistry.issue({
-              taskId: input.taskId,
-              agentId: targetAgentId,
-              capabilityIds: input.capabilityIds,
-            });
-      const capabilityGrantIds = issuedGrants.map((grant) => grant.grantId);
-      const queuedAt = yield* Clock.currentTimeMillis;
-      const { finishedAtUnixMs: _finishedAtUnixMs, ...taskWithoutFinishedAt } = task;
-      const queuedTask: CompositionTask = {
-        ...taskWithoutFinishedAt,
-        assigneeId: targetAgentId,
-        status: "queued",
-        updatedAtUnixMs: queuedAt,
-      };
-      const queuedRun: CompositionTaskRun = {
-        runId: input.runId,
-        taskId: input.taskId,
-        agentId: targetAgentId,
-        runtimeId: targetDriver.runtimeId,
-        status: "queued",
-        attempt: previousRun.attempt + 1,
-        capabilityGrantIds,
-      };
-      yield* store.upsertTask(queuedTask);
-      yield* store.upsertRun(queuedRun);
-      yield* store.appendEvent(
-        makeEvent({
-          task: queuedTask,
-          run: queuedRun,
-          sequence: 0,
-          status: "queued",
-          eventType: "status",
-          summary:
-            targetAgentId === previousRun.agentId
-              ? `任务已请求重试：${input.reason}`
-              : `任务已从 Agent ${previousRun.agentId} 重派至 ${targetAgentId}：${input.reason}`,
-        }),
-      );
-      if (issuedGrants.length > 0) {
-        yield* persistCapabilityGrantProjection({
-          task: queuedTask,
-          run: queuedRun,
-          sourceEventId: `capgrant:${queuedTask.taskId}:${queuedRun.runId}:issued`,
-          summary: describeIssuedGrants(issuedGrants),
-        });
-      }
-
-      const leasedRunOption = yield* prepareRunLease(
-        queuedTask,
-        queuedRun,
-        recoveryInput.value.workspaceRootDigest,
-      );
-      if (Option.isNone(leasedRunOption)) {
-        return yield* persistFailedStart({
-          task: queuedTask,
-          run: queuedRun,
-          driver: targetDriver,
-          failure: new CompositionAgentDriverFailure({
-            code: "capacity_exceeded",
-            detail: "工作区已有未过期的 Runtime 租约，拒绝重复派发。",
-          }),
-          summary: "重试任务未获得工作区租约",
-          finishTask: true,
-        });
-      }
-      const leasedRun = leasedRunOption.value;
-
-      const startResult = yield* Effect.result(
-        targetDriver.startTask({
-          task: queuedTask,
-          run: leasedRun,
-          prompt: recoveryInput.value.prompt,
-          workspaceRoot: recoveryInput.value.workspaceRoot,
-          ...(recoveryInput.value.workspaceRootDigest === undefined
-            ? {}
-            : { workspaceRootDigest: recoveryInput.value.workspaceRootDigest }),
-          ...(recoveryInput.value.model === undefined ? {} : { model: recoveryInput.value.model }),
-          capabilityGrantIds,
-        }),
-      );
-      if (startResult._tag === "Failure") {
-        const failed = yield* persistFailedStart({
-          task: queuedTask,
-          run: leasedRun,
-          driver: targetDriver,
-          failure: startResult.failure,
-          summary: "重试任务启动失败",
-          finishTask: true,
-        });
-        yield* releaseRunLease(failed.run);
-        return failed;
-      }
-
-      return yield* persistStartedRun({
-        task: queuedTask,
-        run: leasedRun,
-        driver: targetDriver,
-        startResult: startResult.success,
-        summary: "重试任务已交给 Agent Driver 执行",
-      });
-    });
-
+  const retryTask: CompositionOrchestrator["retryTask"] = makeCompositionRetryTask({
+    store,
+    driverRegistry,
+    ...(grantRegistry === undefined ? {} : { grantRegistry }),
+    ...(inputStore === undefined ? {} : { inputStore }),
+    ...(runStartStore === undefined ? {} : { runStartStore }),
+    operations: {
+      prepareRunLease,
+      releaseRunLease,
+      revokeRunCapabilities,
+      persistCapabilityGrantProjection,
+      describeIssuedGrants,
+      persistStartedRun,
+      persistFailedStart,
+    },
+  });
   const resumeReadyTasks: CompositionOrchestrator["resumeReadyTasks"] = () =>
     Effect.gen(function* () {
       if (inputStore === undefined) return [];
@@ -1463,7 +1281,7 @@ const makeOrchestrator = (
           return yield* persistStartedRun({
             task,
             run: leasedRun,
-            driver,
+            runtimeId: driver.runtimeId,
             startResult: startResult.success,
             summary: "依赖完成后已恢复任务",
           });
@@ -1483,4 +1301,6 @@ export const makeCompositionOrchestrator = (
   grantRegistry?: Pick<CapabilityGrantRegistry.CapabilityGrantRegistryShape, "issue"> &
     Partial<Pick<CapabilityGrantRegistry.CapabilityGrantRegistryShape, "revoke">>,
   inputStore?: CompositionTaskInputStoreShape,
-): CompositionOrchestrator => makeOrchestrator(store, driverRegistry, grantRegistry, inputStore);
+  runStartStore?: CompositionRunStartStoreShape,
+): CompositionOrchestrator =>
+  makeOrchestrator(store, driverRegistry, grantRegistry, inputStore, runStartStore);

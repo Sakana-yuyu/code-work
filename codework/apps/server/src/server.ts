@@ -30,6 +30,7 @@ import * as PullRequestService from "./pullRequest/PullRequestService.ts";
 import { layerConfig as SqlitePersistenceLayerLive } from "./persistence/Layers/Sqlite.ts";
 import { CompositionTaskStoreLive } from "./persistence/Layers/CompositionTaskStore.ts";
 import { CompositionTaskInputStoreLive } from "./persistence/Layers/CompositionTaskInputStore.ts";
+import { CompositionRunStartStoreLive } from "./persistence/Layers/CompositionRunStartStore.ts";
 import { CompositionSquadExecutionStoreLive } from "./persistence/Layers/CompositionSquadExecutionStore.ts";
 import { CompositionAutomationStoreLive } from "./persistence/Layers/CompositionAutomationStore.ts";
 import { CompositionToolInvocationStoreLive } from "./persistence/Layers/CompositionToolInvocationStore.ts";
@@ -457,6 +458,10 @@ const CompositionTaskStoreLayerLive = CompositionTaskStoreLive.pipe(
   Layer.provideMerge(PersistenceLayerLive),
 );
 
+const CompositionRunStartStoreLayerLive = CompositionRunStartStoreLive.pipe(
+  Layer.provideMerge(PersistenceLayerLive),
+);
+
 const CompositionRuntimeSettingsLayerLive = CompositionRuntimeSettings.layer.pipe(
   Layer.provideMerge(ServerSettingsLayerLive),
   Layer.provideMerge(CompositionRuntimeAdapterRegistry.layer),
@@ -489,6 +494,7 @@ const CompositionRuntimeDependenciesLive = Layer.empty.pipe(
     ),
   ),
   Layer.provideMerge(CompositionTaskStoreLayerLive),
+  Layer.provideMerge(CompositionRunStartStoreLayerLive),
 );
 
 const CompositionRuntimeToolBridgeLayerLive = CompositionRuntimeToolBridge.layer.pipe(
