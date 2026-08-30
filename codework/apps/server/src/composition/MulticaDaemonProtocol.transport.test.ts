@@ -55,6 +55,51 @@ describe("MulticaDaemonProtocol fetch transport", () => {
     }),
   );
 
+  it.effect("对象展开包装器追加 Header 后不丢失协议和配置 Header", () =>
+    Effect.gen(function* () {
+      let capturedHeaders = new Headers();
+      const downstreamFetch = asFetch(async (_input, init) => {
+        capturedHeaders = new Headers(init?.headers);
+        return jsonResponse(202, { task_id: "multica-task-1" });
+      });
+      const spreadHeadersWrapper = asFetch((input, init) => {
+        const headers = (init?.headers ?? {}) as Record<string, string>;
+        return downstreamFetch(input, {
+          ...init,
+          headers: { ...headers, "x-wrapper-added": "1" },
+        });
+      });
+      const transport = makeMulticaFetchHttpTransport({
+        baseUrl: "https://multica.test",
+        headers: {
+          Authorization: "Bearer fixture-token",
+          "X-Custom-Trace": "trace-from-settings",
+        },
+        fetchImpl: spreadHeadersWrapper,
+      });
+      const protocol = makeMulticaDaemonProtocol({
+        baseUrl: "https://multica.test",
+        transport,
+      });
+
+      const result = yield* protocol.quickCreateTask({
+        workspaceId: "workspace-from-request",
+        agentId: "agent-1",
+        prompt: "创建任务",
+        idempotencyKey: "idempotency-from-request",
+      });
+
+      expect(result).toEqual({ taskId: "multica-task-1" });
+      expect(capturedHeaders.get("authorization")).toBe("Bearer fixture-token");
+      expect(capturedHeaders.get("accept")).toBe("application/json");
+      expect(capturedHeaders.get("content-type")).toBe("application/json");
+      expect(capturedHeaders.get("x-workspace-id")).toBe("workspace-from-request");
+      expect(capturedHeaders.get("x-idempotency-key")).toBe("idempotency-from-request");
+      expect(capturedHeaders.get("x-custom-trace")).toBe("trace-from-settings");
+      expect(capturedHeaders.get("x-wrapper-added")).toBe("1");
+    }),
+  );
+
   it.effect("无请求体时不发送 Content-Type，并保留普通配置 Header", () =>
     Effect.gen(function* () {
       let capturedBody: RequestInit["body"];

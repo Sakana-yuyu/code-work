@@ -623,7 +623,7 @@ export type MulticaFetchHttpTransportOptions = {
 const makeMulticaFetchHeaders = (
   optionsHeaders: MulticaFetchHttpTransportOptions["headers"],
   request: MulticaHttpRequest,
-): Headers => {
+): Readonly<Record<string, string>> => {
   const headers = new Headers(optionsHeaders);
   headers.delete("accept");
   headers.delete("content-type");
@@ -638,7 +638,12 @@ const makeMulticaFetchHeaders = (
   } else {
     headers.set("content-type", "application/json");
   }
-  return headers;
+
+  const normalizedHeaders: Record<string, string> = {};
+  headers.forEach((value, name) => {
+    normalizedHeaders[name] = value;
+  });
+  return normalizedHeaders;
 };
 
 export const makeMulticaFetchHttpTransport = (
