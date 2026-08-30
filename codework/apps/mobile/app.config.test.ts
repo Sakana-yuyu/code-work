@@ -58,4 +58,15 @@ describe("iOS 个人团队配置", () => {
     expect(config.ios?.bundleIdentifier).toBe("dev.codework.canonical");
     expect(config.extra?.iosPersonalTeamBuild).toBe(true);
   });
+
+  it("canonical 禁用标志优先于 legacy 启用标志", async () => {
+    const config = await loadConfig({
+      CODEWORK_IOS_PERSONAL_TEAM: "0",
+      T3CODE_IOS_PERSONAL_TEAM: "1",
+      T3CODE_IOS_PERSONAL_TEAM_BUNDLE_ID: "dev.codework.legacy",
+    });
+
+    expect(config.ios?.bundleIdentifier).toBe("com.codework.mobile");
+    expect(config.extra?.iosPersonalTeamBuild).toBe(false);
+  });
 });
