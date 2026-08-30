@@ -481,70 +481,70 @@ const makeOrchestrator = (
     readonly summary: string;
   }): Effect.Effect<CompositionDispatchResult, CompositionTaskStoreError> =>
     Effect.gen(function* () {
-        const currentTaskOption = yield* store.getTask(input.task.taskId);
-        const currentRunOption = yield* store.getRun(input.run.runId);
-        if (Option.isNone(currentTaskOption) || Option.isNone(currentRunOption)) {
-          return { task: input.task, run: input.run };
+      const currentTaskOption = yield* store.getTask(input.task.taskId);
+      const currentRunOption = yield* store.getRun(input.run.runId);
+      if (Option.isNone(currentTaskOption) || Option.isNone(currentRunOption)) {
+        return { task: input.task, run: input.run };
+      }
+      const currentTask = currentTaskOption.value;
+      const currentRun = currentRunOption.value;
+      if (currentTask.status !== input.task.status || currentRun.status !== input.run.status) {
+        if (
+          terminalStatuses.has(currentTask.status) ||
+          terminalStatuses.has(currentRun.status) ||
+          currentTask.status === "in_review" ||
+          currentRun.status === "in_review"
+        ) {
+          return { task: currentTask, run: currentRun };
         }
-        const currentTask = currentTaskOption.value;
-        const currentRun = currentRunOption.value;
-        if (currentTask.status !== input.task.status || currentRun.status !== input.run.status) {
-          if (
-            terminalStatuses.has(currentTask.status) ||
-            terminalStatuses.has(currentRun.status) ||
-            currentTask.status === "in_review" ||
-            currentRun.status === "in_review"
-          ) {
-            return { task: currentTask, run: currentRun };
-          }
-          const startedAt = currentRun.startedAtUnixMs ?? (yield* Clock.currentTimeMillis);
-          const synchronizedRun: CompositionTaskRun = {
-            ...currentRun,
-            runtimeId: input.driver.runtimeId,
-            ...(currentRun.runtimeTaskId === undefined &&
-            input.startResult.runtimeTaskId !== undefined
-              ? { runtimeTaskId: input.startResult.runtimeTaskId }
-              : {}),
-            ...(currentRun.capabilityHandshakeId === undefined &&
-            input.startResult.capabilityHandshakeId !== undefined
-              ? { capabilityHandshakeId: input.startResult.capabilityHandshakeId }
-              : {}),
-            ...(currentRun.startedAtUnixMs === undefined ? { startedAtUnixMs: startedAt } : {}),
-          };
-          yield* store.upsertRun(synchronizedRun);
-          return { task: currentTask, run: synchronizedRun };
-        }
-
-        const startedAt = yield* Clock.currentTimeMillis;
-        const runningTask: CompositionTask = {
-          ...currentTask,
-          status: "running",
-          updatedAtUnixMs: startedAt,
-        };
-        const runningRun: CompositionTaskRun = {
+        const startedAt = currentRun.startedAtUnixMs ?? (yield* Clock.currentTimeMillis);
+        const synchronizedRun: CompositionTaskRun = {
           ...currentRun,
           runtimeId: input.driver.runtimeId,
-          runtimeTaskId: input.startResult.runtimeTaskId,
-          ...(input.startResult.capabilityHandshakeId === undefined
-            ? {}
-            : { capabilityHandshakeId: input.startResult.capabilityHandshakeId }),
-          status: "running",
-          startedAtUnixMs: startedAt,
+          ...(currentRun.runtimeTaskId === undefined &&
+          input.startResult.runtimeTaskId !== undefined
+            ? { runtimeTaskId: input.startResult.runtimeTaskId }
+            : {}),
+          ...(currentRun.capabilityHandshakeId === undefined &&
+          input.startResult.capabilityHandshakeId !== undefined
+            ? { capabilityHandshakeId: input.startResult.capabilityHandshakeId }
+            : {}),
+          ...(currentRun.startedAtUnixMs === undefined ? { startedAtUnixMs: startedAt } : {}),
         };
-        yield* store.upsertTask(runningTask);
-        yield* store.upsertRun(runningRun);
-        const events = yield* store.listEvents(runningTask.taskId, runningRun.runId);
-        yield* store.appendEvent(
-          makeEvent({
-            task: runningTask,
-            run: runningRun,
-            sequence: events.length,
-            status: "running",
-            eventType: "status",
-            summary: input.summary,
-          }),
-        );
-        return { task: runningTask, run: runningRun };
+        yield* store.upsertRun(synchronizedRun);
+        return { task: currentTask, run: synchronizedRun };
+      }
+
+      const startedAt = yield* Clock.currentTimeMillis;
+      const runningTask: CompositionTask = {
+        ...currentTask,
+        status: "running",
+        updatedAtUnixMs: startedAt,
+      };
+      const runningRun: CompositionTaskRun = {
+        ...currentRun,
+        runtimeId: input.driver.runtimeId,
+        runtimeTaskId: input.startResult.runtimeTaskId,
+        ...(input.startResult.capabilityHandshakeId === undefined
+          ? {}
+          : { capabilityHandshakeId: input.startResult.capabilityHandshakeId }),
+        status: "running",
+        startedAtUnixMs: startedAt,
+      };
+      yield* store.upsertTask(runningTask);
+      yield* store.upsertRun(runningRun);
+      const events = yield* store.listEvents(runningTask.taskId, runningRun.runId);
+      yield* store.appendEvent(
+        makeEvent({
+          task: runningTask,
+          run: runningRun,
+          sequence: events.length,
+          status: "running",
+          eventType: "status",
+          summary: input.summary,
+        }),
+      );
+      return { task: runningTask, run: runningRun };
     });
 
   const persistStartedRun = (input: Parameters<typeof persistStartedRunInTransaction>[0]) =>

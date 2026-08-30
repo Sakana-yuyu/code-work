@@ -349,8 +349,7 @@ layer("Composition Run Start 统一入口", (it) => {
         agentId: "agent-entry-accepted-atomic",
         runtimeId: "runtime-entry-accepted-atomic",
         startRecoveryPolicy: recoveryPolicy,
-        startTask: () =>
-          Effect.succeed({ runtimeTaskId: "runtime-task-entry-accepted-atomic" }),
+        startTask: () => Effect.succeed({ runtimeTaskId: "runtime-task-entry-accepted-atomic" }),
         cancelTask: () => Effect.succeed({ status: "cancelled" as const }),
       });
       const failingStore = {
@@ -390,11 +389,15 @@ layer("Composition Run Start 统一入口", (it) => {
       );
 
       assert.equal(result._tag, "Failure");
-      assert.equal(Option.getOrThrow(yield* store.getTask("task-entry-accepted-atomic")).status, "queued");
-      assert.equal(Option.getOrThrow(yield* store.getRun("run-entry-accepted-atomic")).status, "queued");
-      const intent = Option.getOrThrow(
-        yield* runStartStore.getStart("run-entry-accepted-atomic"),
+      assert.equal(
+        Option.getOrThrow(yield* store.getTask("task-entry-accepted-atomic")).status,
+        "queued",
       );
+      assert.equal(
+        Option.getOrThrow(yield* store.getRun("run-entry-accepted-atomic")).status,
+        "queued",
+      );
+      const intent = Option.getOrThrow(yield* runStartStore.getStart("run-entry-accepted-atomic"));
       assert.equal(intent.state, "dispatching");
       assert.equal(intent.runtimeTaskId, null);
     }),
