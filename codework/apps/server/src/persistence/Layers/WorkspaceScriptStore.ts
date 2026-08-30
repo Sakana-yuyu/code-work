@@ -20,6 +20,7 @@ import {
 import {
   WorkspaceScriptStore,
   WorkspaceScriptStoreDomainError,
+  type StoredWorkspaceScriptRun,
   type WorkspaceScriptRunClaimResult,
   type WorkspaceScriptStoreErrorCode,
   type WorkspaceScriptStoreShape,
@@ -117,10 +118,6 @@ const WorkspaceScriptListQuery = Schema.Struct({
 const WorkspaceScriptRecoveryRequest = Schema.Struct({ observedAtUnixMs: Schema.Number });
 
 type WorkspaceScriptRunRow = Schema.Schema.Type<typeof WorkspaceScriptRunRowSchema>;
-type StoredWorkspaceScriptRun = {
-  readonly run: WorkspaceScriptRun;
-  readonly stopOperationId: string | null;
-};
 
 const toRunCandidate = (row: WorkspaceScriptRunRow): WorkspaceScriptRun => ({
   workspaceScriptRunId: row.workspaceScriptRunId,
@@ -478,7 +475,10 @@ const makeStore = Effect.gen(function* () {
         updated_at_unix_ms = ${run.updatedAtUnixMs}
       WHERE workspace_script_run_id = ${run.workspaceScriptRunId}
         AND revision = ${run.expectedRevision}
-        AND stop_operation_id IS NULL
+        AND (
+          stop_operation_id IS NULL OR
+          (stop_operation_id = ${run.operationId} AND status = 'running')
+        )
       RETURNING
         workspace_script_run_id AS "workspaceScriptRunId",
         idempotency_key AS "idempotencyKey",
@@ -562,25 +562,34 @@ const makeStore = Effect.gen(function* () {
     execute: ({ observedAtUnixMs }) => sql`
       UPDATE workspace_script_runs
       SET
-        status = 'failed',
+        status = CASE WHEN stop_operation_id IS NULL THEN 'failed' ELSE 'running' END,
         health_status = 'unknown',
         health_checked_at_unix_ms = NULL,
         health_detail = NULL,
         revision = revision + 1,
         finished_at_unix_ms = CASE
+          WHEN stop_operation_id IS NOT NULL THEN NULL
           WHEN ${observedAtUnixMs} < COALESCE(started_at_unix_ms, requested_at_unix_ms)
             THEN COALESCE(started_at_unix_ms, requested_at_unix_ms)
           ELSE ${observedAtUnixMs}
         END,
         exit_code = NULL,
         exit_signal = NULL,
-        error_code = 'workspace_script_server_restarted',
-        error_detail = 'Code Work 服务重启，脚本运行未能正常收口。',
+        error_code = CASE
+          WHEN stop_operation_id IS NULL THEN 'workspace_script_server_restarted'
+          ELSE NULL
+        END,
+        error_detail = CASE
+          WHEN stop_operation_id IS NULL THEN 'Code Work 服务重启，脚本运行未能正常收口。'
+          ELSE NULL
+        END,
         updated_at_unix_ms = CASE
           WHEN ${observedAtUnixMs} < updated_at_unix_ms THEN updated_at_unix_ms
           ELSE ${observedAtUnixMs}
         END
-      WHERE status IN ('starting', 'running', 'stopping')
+      WHERE
+        (stop_operation_id IS NULL AND status IN ('starting', 'running', 'stopping')) OR
+        (stop_operation_id IS NOT NULL AND status = 'stopping')
       RETURNING
         workspace_script_run_id AS "workspaceScriptRunId",
         idempotency_key AS "idempotencyKey",
@@ -794,6 +803,49 @@ const makeStore = Effect.gen(function* () {
               { workspaceScriptRunId: run.workspaceScriptRunId },
             );
           }
+          if (operationWinner.value.run.status === "running") {
+            if (
+              run.status !== "stopping" ||
+              run.revision !== operationWinner.value.run.revision + 1
+            ) {
+              return yield* revisionError(
+                run,
+                operationWinner.value.run.revision,
+                operationWinner.value.run.revision,
+              );
+            }
+            const reclaimed = yield* query(
+              "WorkspaceScriptStore.claimStop.reclaim",
+              claimStopRow({
+                ...toRunWrite(run),
+                expectedRevision: operationWinner.value.run.revision,
+                operationId: input.operationId,
+              }),
+            );
+            if (Option.isSome(reclaimed)) {
+              const stored = yield* decodeStoredRow(
+                "WorkspaceScriptStore.claimStop.reclaim",
+                reclaimed.value,
+              );
+              return { run: stored.run, claimed: true } satisfies WorkspaceScriptRunClaimResult;
+            }
+            const latest = yield* readStoredRunByOperation(input.operationId);
+            if (
+              Option.isSome(latest) &&
+              latest.value.run.workspaceScriptRunId === run.workspaceScriptRunId &&
+              sameRunIdentity(latest.value.run, run)
+            ) {
+              return {
+                run: latest.value.run,
+                claimed: false,
+              } satisfies WorkspaceScriptRunClaimResult;
+            }
+            return yield* revisionError(
+              run,
+              operationWinner.value.run.revision,
+              Option.isSome(latest) ? latest.value.run.revision : 0,
+            );
+          }
           return {
             run: operationWinner.value.run,
             claimed: false,
@@ -888,10 +940,10 @@ const makeStore = Effect.gen(function* () {
       ).pipe(
         Effect.flatMap(
           Option.match({
-            onNone: () => Effect.succeed(Option.none<WorkspaceScriptRun>()),
+            onNone: () => Effect.succeed(Option.none<StoredWorkspaceScriptRun>()),
             onSome: (row) =>
               decodeStoredRow("WorkspaceScriptStore.getActiveRunByTerminal", row).pipe(
-                Effect.map((stored) => Option.some(stored.run)),
+                Effect.map(Option.some),
               ),
           }),
         ),

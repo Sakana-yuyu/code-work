@@ -31,6 +31,12 @@ import {
   type WorkspaceScriptStoreShape,
 } from "../persistence/Services/WorkspaceScriptStore.ts";
 import * as TerminalManager from "../terminal/Manager.ts";
+import {
+  isFinishedWorkspaceScriptRun,
+  makeWorkspaceScriptClosed,
+  makeWorkspaceScriptExited,
+  makeWorkspaceScriptStopRetryable,
+} from "./WorkspaceScriptStopState.ts";
 
 export type WorkspaceScriptTerminalRunCommandInput = TerminalOpenInput & {
   readonly command: string;
@@ -194,9 +200,6 @@ export const workspaceScriptShellInvocation = (input: {
         args: ["-lc", input.command],
       };
 
-const isFinished = (run: WorkspaceScriptRun): boolean =>
-  run.status === "stopped" || run.status === "exited" || run.status === "failed";
-
 export const makeWorkspaceScriptService = Effect.fn("WorkspaceScriptService.make")(function* (
   options: WorkspaceScriptServiceOptions,
 ) {
@@ -256,11 +259,12 @@ export const makeWorkspaceScriptService = Effect.fn("WorkspaceScriptService.make
           ),
         );
       if (Option.isNone(owned)) return;
+      const ownedRun = owned.value.run;
 
       switch (event.type) {
         case "started":
         case "restarted":
-          yield* updateRun(owned.value.workspaceScriptRunId, (run, observedAtUnixMs) =>
+          yield* updateRun(ownedRun.workspaceScriptRunId, (run, observedAtUnixMs) =>
             run.status !== "starting"
               ? run
               : {
@@ -273,27 +277,19 @@ export const makeWorkspaceScriptService = Effect.fn("WorkspaceScriptService.make
           );
           return;
         case "exited":
-          yield* updateRun(owned.value.workspaceScriptRunId, (run, observedAtUnixMs) =>
-            isFinished(run)
-              ? run
-              : {
-                  ...run,
-                  status: run.status === "stopping" ? "stopped" : "exited",
-                  healthStatus: "unknown",
-                  healthCheckedAtUnixMs: null,
-                  healthDetail: null,
-                  revision: run.revision + 1,
-                  startedAtUnixMs: run.startedAtUnixMs ?? observedAtUnixMs,
-                  finishedAtUnixMs: observedAtUnixMs,
-                  exitCode: event.exitCode,
-                  exitSignal: event.exitSignal,
-                  updatedAtUnixMs: observedAtUnixMs,
-                },
+          yield* updateRun(ownedRun.workspaceScriptRunId, (run, observedAtUnixMs) =>
+            makeWorkspaceScriptExited({
+              run,
+              stopOperationId: owned.value.stopOperationId,
+              observedAtUnixMs,
+              exitCode: event.exitCode,
+              exitSignal: event.exitSignal,
+            }),
           );
           return;
         case "error":
-          yield* updateRun(owned.value.workspaceScriptRunId, (run, observedAtUnixMs) =>
-            isFinished(run)
+          yield* updateRun(ownedRun.workspaceScriptRunId, (run, observedAtUnixMs) =>
+            isFinishedWorkspaceScriptRun(run)
               ? run
               : {
                   ...run,
@@ -310,25 +306,12 @@ export const makeWorkspaceScriptService = Effect.fn("WorkspaceScriptService.make
           );
           return;
         case "closed":
-          yield* updateRun(owned.value.workspaceScriptRunId, (run, observedAtUnixMs) =>
-            isFinished(run)
-              ? run
-              : {
-                  ...run,
-                  status: run.status === "stopping" ? "stopped" : "failed",
-                  healthStatus: "unknown",
-                  healthCheckedAtUnixMs: null,
-                  healthDetail: null,
-                  revision: run.revision + 1,
-                  finishedAtUnixMs: observedAtUnixMs,
-                  ...(run.status === "stopping"
-                    ? {}
-                    : {
-                        errorCode: "workspace_script_terminal_closed",
-                        errorDetail: "受监督终端在脚本完成前被关闭。",
-                      }),
-                  updatedAtUnixMs: observedAtUnixMs,
-                },
+          yield* updateRun(ownedRun.workspaceScriptRunId, (run, observedAtUnixMs) =>
+            makeWorkspaceScriptClosed({
+              run,
+              stopOperationId: owned.value.stopOperationId,
+              observedAtUnixMs,
+            }),
           );
           return;
         case "activity":
@@ -524,7 +507,7 @@ export const makeWorkspaceScriptService = Effect.fn("WorkspaceScriptService.make
 
       if (startResult._tag === "Failure") {
         const failed = yield* updateRun(workspaceScriptRunId, (run, observedAtUnixMs) =>
-          isFinished(run)
+          isFinishedWorkspaceScriptRun(run)
             ? run
             : {
                 ...run,
@@ -572,7 +555,7 @@ export const makeWorkspaceScriptService = Effect.fn("WorkspaceScriptService.make
 
       const stopping: WorkspaceScriptRun = {
         ...current.value,
-        ...(isFinished(current.value) ? {} : { status: "stopping" as const }),
+        ...(isFinishedWorkspaceScriptRun(current.value) ? {} : { status: "stopping" as const }),
         revision: current.value.revision + 1,
         updatedAtUnixMs: Math.max(yield* currentTimeMillis, current.value.updatedAtUnixMs),
       };
@@ -596,29 +579,18 @@ export const makeWorkspaceScriptService = Effect.fn("WorkspaceScriptService.make
                 }),
           ),
         );
-      if (!claim.claimed || isFinished(claim.run)) return claim.run;
+      if (!claim.claimed || isFinishedWorkspaceScriptRun(claim.run)) return claim.run;
 
       const killResult = yield* options.terminal
         .kill({ threadId: claim.run.threadId, terminalId: claim.run.terminalId })
         .pipe(Effect.result);
       if (killResult._tag === "Failure") {
-        const failed = yield* updateRun(input.workspaceScriptRunId, (run, observedAtUnixMs) =>
-          isFinished(run)
-            ? run
-            : {
-                ...run,
-                status: "failed",
-                revision: run.revision + 1,
-                finishedAtUnixMs: observedAtUnixMs,
-                errorCode: "workspace_script_stop_failed",
-                errorDetail: detailFromUnknown(killResult.failure),
-                updatedAtUnixMs: observedAtUnixMs,
-              },
+        yield* updateRun(input.workspaceScriptRunId, (run, observedAtUnixMs) =>
+          makeWorkspaceScriptStopRetryable(run, observedAtUnixMs),
         );
         return yield* operationError(
           "workspace_script_stop_failed",
-          (Option.isSome(failed) ? failed.value.errorDetail : null) ??
-            detailFromUnknown(killResult.failure),
+          detailFromUnknown(killResult.failure),
           { workspaceScriptRunId: input.workspaceScriptRunId },
         );
       }

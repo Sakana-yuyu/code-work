@@ -180,6 +180,60 @@ layer("WorkspaceScriptStore", (it) => {
     }),
   );
 
+  it.effect("同一 stop operation 只从持久化可重试状态原子重领一次", () =>
+    Effect.gen(function* () {
+      const store = yield* WorkspaceScriptStore;
+      const running = makeRun("run-stop-retry", {
+        status: "running",
+        revision: 2,
+        startedAtUnixMs: 1_100,
+        updatedAtUnixMs: 1_100,
+      });
+      yield* store.claimStart(running);
+      const first = yield* store.claimStop({
+        operationId: "stop-operation-retry",
+        expectedRevision: 2,
+        run: {
+          ...running,
+          status: "stopping",
+          revision: 3,
+          updatedAtUnixMs: 1_200,
+        },
+      });
+      const retryable = yield* store.saveTransition({
+        expectedRevision: first.run.revision,
+        run: {
+          ...first.run,
+          status: "running",
+          revision: first.run.revision + 1,
+          updatedAtUnixMs: 1_300,
+        },
+      });
+      const retryRequest = {
+        operationId: "stop-operation-retry",
+        expectedRevision: 2,
+        run: {
+          ...retryable,
+          status: "stopping" as const,
+          revision: retryable.revision + 1,
+          updatedAtUnixMs: 1_400,
+        },
+      };
+
+      const [retry, concurrentReplay] = yield* Effect.all(
+        [store.claimStop(retryRequest), store.claimStop(retryRequest)],
+        { concurrency: "unbounded" },
+      );
+
+      assert.isTrue(retry.claimed || concurrentReplay.claimed);
+      assert.isFalse(retry.claimed && concurrentReplay.claimed);
+      assert.equal(retry.run.status, "stopping");
+      assert.equal(concurrentReplay.run.status, "stopping");
+      assert.equal(retry.run.revision, 5);
+      assert.equal(concurrentReplay.run.revision, 5);
+    }),
+  );
+
   it.effect("查询按终端和筛选条件返回持久化投影", () =>
     Effect.gen(function* () {
       const store = yield* WorkspaceScriptStore;
@@ -206,7 +260,7 @@ layer("WorkspaceScriptStore", (it) => {
         run.terminalId,
       );
       assert.equal(
-        Option.getOrThrow(yield* store.getActiveRunByTerminal(run.threadId, run.terminalId))
+        Option.getOrThrow(yield* store.getActiveRunByTerminal(run.threadId, run.terminalId)).run
           .workspaceScriptRunId,
         run.workspaceScriptRunId,
       );
@@ -223,7 +277,7 @@ layer("WorkspaceScriptStore", (it) => {
 });
 
 recoveryLayer("WorkspaceScriptStore recovery", (it) => {
-  it.effect("服务重启将未收敛 Run 原子标记为失败，并保持终态不变", () =>
+  it.effect("服务重启恢复已领取 stop，并将其他未收敛 Run 原子标记为失败", () =>
     Effect.gen(function* () {
       const store = yield* WorkspaceScriptStore;
       const starting = makeRun("run-recover-starting");
@@ -234,10 +288,10 @@ recoveryLayer("WorkspaceScriptStore recovery", (it) => {
         updatedAtUnixMs: 1_100,
       });
       const stopping = makeRun("run-recover-stopping", {
-        status: "stopping",
-        revision: 3,
+        status: "running",
+        revision: 2,
         startedAtUnixMs: 1_100,
-        updatedAtUnixMs: 1_200,
+        updatedAtUnixMs: 1_100,
       });
       const exited = makeRun("run-recover-exited", {
         status: "exited",
@@ -251,10 +305,21 @@ recoveryLayer("WorkspaceScriptStore recovery", (it) => {
       yield* store.claimStart(running);
       yield* store.claimStart(stopping);
       yield* store.claimStart(exited);
+      yield* store.claimStop({
+        operationId: "stop-operation-recovery",
+        expectedRevision: stopping.revision,
+        run: {
+          ...stopping,
+          status: "stopping",
+          revision: stopping.revision + 1,
+          updatedAtUnixMs: 1_200,
+        },
+      });
 
       const recovered = yield* store.recoverInterrupted({ observedAtUnixMs: 2_000 });
       const repeated = yield* store.recoverInterrupted({ observedAtUnixMs: 2_100 });
       const failed = Option.getOrThrow(yield* store.getRun(starting.workspaceScriptRunId));
+      const retryable = Option.getOrThrow(yield* store.getRun(stopping.workspaceScriptRunId));
       const preserved = Option.getOrThrow(yield* store.getRun(exited.workspaceScriptRunId));
 
       assert.deepEqual(
@@ -268,6 +333,9 @@ recoveryLayer("WorkspaceScriptStore recovery", (it) => {
       assert.deepEqual(repeated, []);
       assert.equal(failed.status, "failed");
       assert.equal(failed.errorCode, "workspace_script_server_restarted");
+      assert.equal(retryable.status, "running");
+      assert.isNull(retryable.finishedAtUnixMs);
+      assert.isNull(retryable.errorCode);
       assert.equal(preserved.status, "exited");
     }),
   );

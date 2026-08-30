@@ -41,6 +41,11 @@ export interface WorkspaceScriptRunClaimResult {
   readonly claimed: boolean;
 }
 
+export interface StoredWorkspaceScriptRun {
+  readonly run: WorkspaceScriptRun;
+  readonly stopOperationId: string | null;
+}
+
 export interface WorkspaceScriptRunTransitionInput {
   readonly run: WorkspaceScriptRun;
   readonly expectedRevision: number;
@@ -70,7 +75,7 @@ export interface WorkspaceScriptStoreShape {
   readonly getActiveRunByTerminal: (
     threadId: string,
     terminalId: string,
-  ) => Effect.Effect<Option.Option<WorkspaceScriptRun>, WorkspaceScriptStoreError>;
+  ) => Effect.Effect<Option.Option<StoredWorkspaceScriptRun>, WorkspaceScriptStoreError>;
   readonly listRuns: (
     request: WorkspaceScriptListRequest,
   ) => Effect.Effect<ReadonlyArray<WorkspaceScriptRun>, WorkspaceScriptStoreError>;
