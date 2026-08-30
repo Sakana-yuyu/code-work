@@ -317,6 +317,18 @@ it.layer(NodeServices.layer)("bin cli parsing", (it) => {
     }),
   );
 
+  it.effect("exposes Agent archive controls", () =>
+    Effect.gen(function* () {
+      const archive = yield* captureStdout(runCli(["archive", "--help"], noConnectCli));
+
+      assert.include(archive.output, "Archive an agent thread through orchestration.");
+      assert.include(archive.output, "<agent-id>");
+      assert.include(archive.output, "--server");
+      assert.include(archive.output, "--access-token");
+      assert.include(archive.output, "--json");
+    }),
+  );
+
   it.effect("exposes optimistic Squad lifecycle commands", () =>
     Effect.gen(function* () {
       const duplicate = yield* captureStdout(
