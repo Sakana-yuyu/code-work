@@ -1,8 +1,10 @@
 import type { ServerSettingsPatch } from "@codework/contracts";
 import { fromJsonStringPretty, fromLenientJson } from "@codework/shared/schemaJson";
+import * as Cause from "effect/Cause";
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
 import * as Crypto from "effect/Crypto";
+import * as Data from "effect/Data";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Encoding from "effect/Encoding";
@@ -68,6 +70,20 @@ export class ServerSettingsOriginError extends Schema.TaggedErrorClass<ServerSet
     cause: Schema.Defect(),
   },
 ) {}
+
+export class ServerSettingsOriginConflict extends Data.TaggedError("ServerSettingsOriginConflict")<{
+  readonly settingsPath: string;
+  readonly expectedToken: string;
+  readonly actualToken: string;
+}> {}
+
+export class ServerSettingsOriginCompensationError extends Data.TaggedError(
+  "ServerSettingsOriginCompensationError",
+)<{
+  readonly settingsPath: string;
+  readonly primaryFailure: ServerSettingsOriginError | ServerSettingsOriginConflict;
+  readonly compensationFailure: unknown;
+}> {}
 
 interface ServerSettingsOriginLockLease {
   readonly settingsPath: string;
@@ -311,7 +327,7 @@ export const commitServerSettingsOriginCas = <A, E, R>(input: {
   readonly prepare: Effect.Effect<ServerSettingsOriginCommitPlan<A, E, R>, E, R>;
 }): Effect.Effect<
   ServerSettingsOriginCommitResult<A>,
-  E | ServerSettingsOriginError,
+  E | ServerSettingsOriginError | ServerSettingsOriginCompensationError,
   R | Crypto.Crypto | FileSystem.FileSystem | Path.Path
 > =>
   withServerSettingsOriginLock(
@@ -325,14 +341,47 @@ export const commitServerSettingsOriginCas = <A, E, R>(input: {
       const plan = yield* input.prepare;
       const beforeReplace = yield* readServerSettingsOriginSnapshot(input.settingsPath);
       if (beforeReplace.token !== lockedSnapshot.token) {
-        yield* plan.compensate;
-        return { _tag: "Conflict", snapshot: beforeReplace } as const;
+        const primaryFailure = new ServerSettingsOriginConflict({
+          settingsPath: input.settingsPath,
+          expectedToken: lockedSnapshot.token,
+          actualToken: beforeReplace.token,
+        });
+        return yield* Effect.uninterruptible(plan.compensate).pipe(
+          Effect.matchCauseEffect({
+            onFailure: (compensationCause) =>
+              Effect.fail(
+                new ServerSettingsOriginCompensationError({
+                  settingsPath: input.settingsPath,
+                  primaryFailure,
+                  compensationFailure: Cause.squash(compensationCause),
+                }),
+              ),
+            onSuccess: () => Effect.succeed({ _tag: "Conflict", snapshot: beforeReplace } as const),
+          }),
+        );
       }
 
       yield* writeFileStringAtomically({
         filePath: input.settingsPath,
         contents: plan.contents,
-      }).pipe(Effect.mapError((cause) => originError(input.settingsPath, "write-origin", cause)));
+      }).pipe(
+        Effect.mapError((cause) => originError(input.settingsPath, "write-origin", cause)),
+        Effect.catch((primaryFailure) =>
+          Effect.uninterruptible(plan.compensate).pipe(
+            Effect.matchCauseEffect({
+              onFailure: (compensationCause) =>
+                Effect.fail(
+                  new ServerSettingsOriginCompensationError({
+                    settingsPath: input.settingsPath,
+                    primaryFailure,
+                    compensationFailure: Cause.squash(compensationCause),
+                  }),
+                ),
+              onSuccess: () => Effect.fail(primaryFailure),
+            }),
+          ),
+        ),
+      );
       return {
         _tag: "Committed",
         value: plan.value,

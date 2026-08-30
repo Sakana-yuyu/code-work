@@ -1290,36 +1290,52 @@ const make = Effect.gen(function* () {
     versioned: ServerSettings,
   ) {
     const secretTransaction = makeServerSettingsSecretTransaction(secretStore);
-    const nextWithEnvironmentSecrets = yield* persistProviderEnvironmentSecrets(
-      current,
-      versioned,
-      secretTransaction.store,
-    );
-    const nextWithMcpSecrets = yield* persistMcpServerSecrets(
-      current,
-      nextWithEnvironmentSecrets,
-      secretTransaction.store,
-    );
-    const nextPersisted = yield* persistByokSecrets(
-      current,
-      nextWithMcpSecrets,
-      secretTransaction.store,
-    );
-    const next = yield* normalizeServerSettings(nextPersisted, settingsPath);
-    return {
-      contents: yield* serializeSettings(next),
-      value: next,
-      compensate: secretTransaction.compensate.pipe(
-        Effect.mapError(
-          (cause) =>
+    return yield* secretTransaction
+      .withCompensationOnFailure(
+        Effect.gen(function* () {
+          const nextWithEnvironmentSecrets = yield* persistProviderEnvironmentSecrets(
+            current,
+            versioned,
+            secretTransaction.store,
+          );
+          const nextWithMcpSecrets = yield* persistMcpServerSecrets(
+            current,
+            nextWithEnvironmentSecrets,
+            secretTransaction.store,
+          );
+          const nextPersisted = yield* persistByokSecrets(
+            current,
+            nextWithMcpSecrets,
+            secretTransaction.store,
+          );
+          const next = yield* normalizeServerSettings(nextPersisted, settingsPath);
+          return {
+            contents: yield* serializeSettings(next),
+            value: next,
+            compensate: secretTransaction.compensate.pipe(
+              Effect.mapError(
+                (cause) =>
+                  new ServerSettingsError({
+                    settingsPath,
+                    operation: "compensate-secret",
+                    cause,
+                  }),
+              ),
+            ),
+          };
+        }),
+      )
+      .pipe(
+        Effect.catchTag("ServerSettingsSecretCompensationError", (cause) =>
+          Effect.fail(
             new ServerSettingsError({
               settingsPath,
-              operation: "write-secret",
+              operation: "compensate-secret",
               cause,
             }),
+          ),
         ),
-      ),
-    };
+      );
   });
 
   const revalidateAndEmit = writeSemaphore.withPermits(1)(
@@ -1416,15 +1432,24 @@ const make = Effect.gen(function* () {
               Effect.provideService(Crypto.Crypto, crypto),
               Effect.provideService(FileSystem.FileSystem, fs),
               Effect.provideService(Path.Path, pathService),
-              Effect.catchTag("ServerSettingsOriginError", (cause) =>
-                Effect.fail(
-                  new ServerSettingsError({
-                    settingsPath,
-                    operation: "write-file",
-                    cause,
-                  }),
-                ),
-              ),
+              Effect.catchTags({
+                ServerSettingsOriginError: (cause) =>
+                  Effect.fail(
+                    new ServerSettingsError({
+                      settingsPath,
+                      operation: "write-file",
+                      cause,
+                    }),
+                  ),
+                ServerSettingsOriginCompensationError: (cause) =>
+                  Effect.fail(
+                    new ServerSettingsError({
+                      settingsPath,
+                      operation: "compensate-secret",
+                      cause,
+                    }),
+                  ),
+              }),
             );
             if (committed._tag === "Conflict") {
               currentSnapshot = yield* hydrateSettingsOrigin(committed.snapshot);

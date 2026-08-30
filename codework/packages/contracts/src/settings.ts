@@ -886,6 +886,7 @@ export const ServerSettingsOperation = Schema.Literals([
   "remove-secret",
   "remove-stale-secret",
   "write-secret",
+  "compensate-secret",
   "write-file",
   "prepare-directory",
 ]);

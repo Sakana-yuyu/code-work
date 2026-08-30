@@ -181,7 +181,9 @@ it.effect("检测到死亡 owner 时 fail-closed 且不改写磁盘", () =>
       }),
     }).pipe(Effect.flip);
 
-    assert.equal(error._tag, "ServerSettingsOriginError");
+    if (error._tag !== "ServerSettingsOriginError") {
+      throw new Error("死亡 owner 应返回 ServerSettingsOriginError。", { cause: error });
+    }
     assert.equal(error.operation, "acquire-lock");
     assert.equal(yield* fileSystem.readFileString(settingsPath), "{}\n");
     assert.isTrue(yield* fileSystem.exists(lockPath));
