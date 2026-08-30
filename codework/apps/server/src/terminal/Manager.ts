@@ -66,6 +66,7 @@ import * as PortScanner from "../preview/PortScanner.ts";
 import * as PtyAdapter from "./PtyAdapter.ts";
 import * as PtyProcessTermination from "./PtyProcessTermination.ts";
 import * as TerminalEventHub from "./TerminalEventHub.ts";
+import * as ThreadHistoryCleanupIntentStore from "./ThreadHistoryCleanupIntentStore.ts";
 import {
   terminalSessionOwnerEquals,
   type TerminalSessionOwner,
@@ -93,8 +94,10 @@ const DEFAULT_PROCESS_KILL_GRACE_MS = 1_000;
 const DEFAULT_PROCESS_EXIT_TIMEOUT_MS = 5_000;
 const DEFAULT_MAX_RETAINED_INACTIVE_SESSIONS = 128;
 const DEFAULT_TERMINAL_EVENT_SUBSCRIBER_QUEUE_CAPACITY = DEFAULT_HISTORY_LINE_LIMIT;
-const THREAD_HISTORY_CLEANUP_RETRY_INITIAL_DELAY_MS = 1_000;
-const THREAD_HISTORY_CLEANUP_RETRY_MAX_DELAY_MS = 30_000;
+const THREAD_HISTORY_CLEANUP_RETRY_INITIAL_DELAY_MS =
+  ThreadHistoryCleanupIntentStore.MIN_RETRY_DELAY_MS;
+const THREAD_HISTORY_CLEANUP_RETRY_MAX_DELAY_MS =
+  ThreadHistoryCleanupIntentStore.MAX_RETRY_DELAY_MS;
 const DEFAULT_OPEN_COLS = 120;
 const DEFAULT_OPEN_ROWS = 30;
 const TERMINAL_ENV_BLOCKLIST = new Set(["PORT", "ELECTRON_RENDERER_PORT", "ELECTRON_RUN_AS_NODE"]);
@@ -1326,6 +1329,7 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
   const unregisterTerminal = options.unregisterTerminal ?? (() => Effect.void);
 
   yield* fileSystem.makeDirectory(logsDir, { recursive: true }).pipe(Effect.orDie);
+  const threadHistoryCleanupIntentStore = yield* ThreadHistoryCleanupIntentStore.make({ logsDir });
 
   const managerStateRef = yield* SynchronizedRef.make<TerminalManagerState>({
     sessions: new Map(),
@@ -1781,6 +1785,57 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
           ),
         { discard: true },
       );
+    },
+  );
+
+  const threadHistoryCleanupRetryDelayMs = (attempt: number): number =>
+    Math.min(
+      THREAD_HISTORY_CLEANUP_RETRY_INITIAL_DELAY_MS * 2 ** Math.min(attempt, 5),
+      THREAD_HISTORY_CLEANUP_RETRY_MAX_DELAY_MS,
+    );
+
+  const makeThreadHistoryCleanupIntent = (
+    threadId: string,
+    attempt: number,
+  ): ThreadHistoryCleanupIntentStore.ThreadHistoryCleanupIntent => ({
+    version: 1,
+    threadId,
+    attempt,
+    nextRetryDelayMs: threadHistoryCleanupRetryDelayMs(attempt),
+  });
+
+  const nextThreadHistoryCleanupIntent = (
+    intent: ThreadHistoryCleanupIntentStore.ThreadHistoryCleanupIntent,
+  ): ThreadHistoryCleanupIntentStore.ThreadHistoryCleanupIntent => ({
+    version: 1,
+    threadId: intent.threadId,
+    attempt: Math.min(intent.attempt + 1, Number.MAX_SAFE_INTEGER - 1),
+    nextRetryDelayMs: threadHistoryCleanupRetryDelayMs(intent.attempt),
+  });
+
+  const mapThreadHistoryCleanupIntentError = (threadId: string, cause: unknown) =>
+    new TerminalHistoryError({
+      operation: "delete",
+      threadId,
+      terminalId: "*",
+      cause,
+    });
+
+  const persistThreadHistoryCleanupIntent = Effect.fn("terminal.persistThreadHistoryCleanupIntent")(
+    function* (intent: ThreadHistoryCleanupIntentStore.ThreadHistoryCleanupIntent) {
+      yield* threadHistoryCleanupIntentStore
+        .write(intent)
+        .pipe(
+          Effect.mapError((cause) => mapThreadHistoryCleanupIntentError(intent.threadId, cause)),
+        );
+    },
+  );
+
+  const removeThreadHistoryCleanupIntent = Effect.fn("terminal.removeThreadHistoryCleanupIntent")(
+    function* (threadId: string) {
+      yield* threadHistoryCleanupIntentStore
+        .remove(threadId)
+        .pipe(Effect.mapError((cause) => mapThreadHistoryCleanupIntentError(threadId, cause)));
     },
   );
 
@@ -2342,15 +2397,9 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
           const pending = session.pendingThreadDisposal;
           if (pending === null || session.process !== null || session.status === "running") return;
 
-          yield* closeSession(
-            threadId,
-            terminalId,
-            pending.deleteHistory,
-            session.owner ?? undefined,
-            "strict",
-          );
+          yield* closeSession(threadId, terminalId, false, session.owner ?? undefined, "strict");
           if (pending.deleteHistory && (yield* sessionsForThread(threadId)).length === 0) {
-            yield* deleteAllHistoryForThreadStrict(threadId);
+            yield* cleanupThreadHistoryWithIntent(threadId);
           }
         }),
       );
@@ -2371,30 +2420,47 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
     );
   };
 
-  const threadHistoryCleanupRetryDelayMs = (attempt: number): number =>
-    Math.min(
-      THREAD_HISTORY_CLEANUP_RETRY_INITIAL_DELAY_MS * 2 ** Math.min(attempt, 5),
-      THREAD_HISTORY_CLEANUP_RETRY_MAX_DELAY_MS,
+  const attemptThreadHistoryCleanup = Effect.fn("terminal.attemptThreadHistoryCleanup")(function* (
+    threadId: string,
+    intent: ThreadHistoryCleanupIntentStore.ThreadHistoryCleanupIntent,
+  ) {
+    const cleanup = yield* deleteAllHistoryForThreadStrict(threadId).pipe(
+      Effect.andThen(removeThreadHistoryCleanupIntent(threadId)),
+      Effect.exit,
     );
+    if (Exit.isSuccess(cleanup)) return;
+    if (Cause.hasInterruptsOnly(cleanup.cause)) return yield* Effect.interrupt;
+
+    const nextIntent = nextThreadHistoryCleanupIntent(intent);
+    const persisted = yield* persistThreadHistoryCleanupIntent(nextIntent).pipe(Effect.exit);
+    if (Exit.isFailure(persisted)) {
+      yield* Effect.logWarning("failed to update pending thread terminal history cleanup intent", {
+        threadId,
+        attempt: nextIntent.attempt,
+        nextRetryDelayMs: nextIntent.nextRetryDelayMs,
+        cause: Cause.pretty(persisted.cause),
+      });
+    }
+    return yield* Effect.failCause(cleanup.cause);
+  });
 
   const retryPendingThreadHistoryCleanup = Effect.fn("terminal.retryPendingThreadHistoryCleanup")(
-    function* (threadId: string) {
-      let attempt = 0;
+    function* (intent: ThreadHistoryCleanupIntentStore.ThreadHistoryCleanupIntent) {
+      let currentIntent = intent;
       while (true) {
-        const retryDelayMs = threadHistoryCleanupRetryDelayMs(attempt);
-        yield* Effect.sleep(retryDelayMs);
+        yield* Effect.sleep(currentIntent.nextRetryDelayMs);
         const cleanup = yield* withThreadLock(
-          threadId,
-          deleteAllHistoryForThreadStrict(threadId),
+          currentIntent.threadId,
+          attemptThreadHistoryCleanup(currentIntent.threadId, currentIntent),
         ).pipe(Effect.exit);
         if (Exit.isSuccess(cleanup)) return;
         if (Cause.hasInterruptsOnly(cleanup.cause)) return yield* Effect.interrupt;
 
-        attempt += 1;
+        currentIntent = nextThreadHistoryCleanupIntent(currentIntent);
         yield* Effect.logWarning("pending thread terminal history cleanup failed", {
-          threadId,
-          attempt,
-          nextRetryDelayMs: threadHistoryCleanupRetryDelayMs(attempt),
+          threadId: currentIntent.threadId,
+          attempt: currentIntent.attempt,
+          nextRetryDelayMs: currentIntent.nextRetryDelayMs,
           cause: Cause.pretty(cleanup.cause),
         });
       }
@@ -2403,18 +2469,39 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
 
   const schedulePendingThreadHistoryCleanup = Effect.fn(
     "terminal.schedulePendingThreadHistoryCleanup",
-  )(function* (threadId: string) {
-    if (pendingThreadHistoryCleanupFibers.has(threadId)) return;
-    const worker = yield* retryPendingThreadHistoryCleanup(threadId).pipe(
+  )(function* (intent: ThreadHistoryCleanupIntentStore.ThreadHistoryCleanupIntent) {
+    if (pendingThreadHistoryCleanupFibers.has(intent.threadId)) return;
+    const worker = yield* retryPendingThreadHistoryCleanup(intent).pipe(
       Effect.ensuring(
         Effect.sync(() => {
-          pendingThreadHistoryCleanupFibers.delete(threadId);
+          pendingThreadHistoryCleanupFibers.delete(intent.threadId);
         }),
       ),
       Effect.forkIn(workerScope),
     );
-    pendingThreadHistoryCleanupFibers.set(threadId, worker);
+    pendingThreadHistoryCleanupFibers.set(intent.threadId, worker);
   });
+
+  const recoverPendingThreadHistoryCleanup = Effect.fn(
+    "terminal.recoverPendingThreadHistoryCleanup",
+  )(function* () {
+    const intents = yield* threadHistoryCleanupIntentStore
+      .readAll()
+      .pipe(Effect.mapError((cause) => mapThreadHistoryCleanupIntentError("*", cause)));
+    yield* Effect.forEach(intents, schedulePendingThreadHistoryCleanup, { discard: true });
+  });
+
+  const cleanupThreadHistoryWithIntent = Effect.fn("terminal.cleanupThreadHistoryWithIntent")(
+    function* (threadId: string) {
+      const initialIntent = makeThreadHistoryCleanupIntent(threadId, 0);
+      yield* persistThreadHistoryCleanupIntent(initialIntent);
+      const cleanup = yield* attemptThreadHistoryCleanup(threadId, initialIntent).pipe(Effect.exit);
+      if (Exit.isSuccess(cleanup)) return;
+      if (Cause.hasInterruptsOnly(cleanup.cause)) return yield* Effect.interrupt;
+      yield* schedulePendingThreadHistoryCleanup(nextThreadHistoryCleanupIntent(initialIntent));
+      return yield* Effect.failCause(cleanup.cause);
+    },
+  );
 
   const pollSubprocessActivity = Effect.fn("terminal.pollSubprocessActivity")(function* () {
     const state = yield* readManagerState;
@@ -3262,7 +3349,7 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
           schedulePendingThreadDisposal(input.threadId, outcome.terminalId);
         }
         if (input.deleteHistory === true && failures.length === 0) {
-          const historyCleanup = yield* deleteAllHistoryForThreadStrict(input.threadId).pipe(
+          const historyCleanup = yield* cleanupThreadHistoryWithIntent(input.threadId).pipe(
             Effect.exit,
           );
           if (Exit.isFailure(historyCleanup)) {
@@ -3270,7 +3357,6 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
               return yield* Effect.interrupt;
             }
             failures.push({ terminalId: "*", cause: historyCleanup.cause });
-            yield* schedulePendingThreadHistoryCleanup(input.threadId);
           }
         }
         return failures;
@@ -3287,6 +3373,8 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
         yield* stopProcess(session);
       }),
     );
+
+  yield* recoverPendingThreadHistoryCleanup();
 
   return TerminalManager.of({
     open,

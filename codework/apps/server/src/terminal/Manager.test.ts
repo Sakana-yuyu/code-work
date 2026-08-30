@@ -8,6 +8,7 @@ import {
   type TerminalOpenInput,
   type TerminalRestartInput,
   type TerminalSessionSnapshot,
+  TerminalHistoryError,
 } from "@codework/contracts";
 import { HostProcessPlatform } from "@codework/shared/hostProcess";
 import * as Data from "effect/Data";
@@ -269,7 +270,7 @@ const createManager = (
   options: CreateManagerOptions = {},
 ): Effect.Effect<
   ManagerFixture,
-  PlatformError.PlatformError,
+  PlatformError.PlatformError | TerminalHistoryError,
   FileSystem.FileSystem | Path.Path | Scope.Scope | ProcessRunner.ProcessRunner
 > =>
   Effect.flatMap(Effect.service(FileSystem.FileSystem), (fs) =>

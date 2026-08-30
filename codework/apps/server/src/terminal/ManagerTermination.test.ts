@@ -21,6 +21,7 @@ import * as ProcessRunner from "../processRunner.ts";
 import * as TerminalManager from "./Manager.ts";
 import type * as PtyAdapter from "./PtyAdapter.ts";
 import { makeWorkspaceScriptTerminalOwner } from "./TerminalSessionOwnership.ts";
+import * as ThreadHistoryCleanupIntentStore from "./ThreadHistoryCleanupIntentStore.ts";
 
 class FakePtyProcess implements PtyAdapter.PtyProcess {
   readonly writes: string[] = [];
@@ -135,6 +136,8 @@ const createManager = (
     readonly processExitTimeoutMs?: number;
     readonly terminalEventSubscriberQueueCapacity?: number;
     readonly maxRetainedInactiveSessions?: number;
+    readonly logsDir?: string;
+    readonly managerScope?: Scope.Scope;
     readonly unregisterTerminal?: (input: {
       readonly threadId: string;
       readonly terminalId: string;
@@ -144,9 +147,13 @@ const createManager = (
   Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem;
     const path = yield* Path.Path;
-    const baseDir = yield* fs.makeTempDirectoryScoped({ prefix: "codework-terminal-stop-" });
-    const manager = yield* TerminalManager.makeWithOptions({
-      logsDir: path.join(baseDir, "userdata", "logs", "terminals"),
+    const baseDir =
+      options.logsDir === undefined
+        ? yield* fs.makeTempDirectoryScoped({ prefix: "codework-terminal-stop-" })
+        : null;
+    const logsDir = options.logsDir ?? path.join(baseDir ?? "", "userdata", "logs", "terminals");
+    const managerEffect = TerminalManager.makeWithOptions({
+      logsDir,
       historyLineLimit: 5,
       ptyAdapter,
       processKillGraceMs: options.processKillGraceMs ?? 1_000,
@@ -159,7 +166,10 @@ const createManager = (
         : {}),
       ...(options.unregisterTerminal ? { unregisterTerminal: options.unregisterTerminal } : {}),
     });
-    return { manager, ptyAdapter };
+    const manager = yield* options.managerScope === undefined
+      ? managerEffect
+      : managerEffect.pipe(Effect.provideService(Scope.Scope, options.managerScope));
+    return { manager, ptyAdapter, logsDir };
   });
 
 const openTerminal = (manager: TerminalManager.TerminalManager["Service"], threadId: string) =>
@@ -200,6 +210,30 @@ const watchNextKill = (process: FakePtyProcess) =>
     yield* Effect.addFinalizer(() => Effect.sync(unsubscribe));
     return observed;
   });
+
+const createExitedTerminalHistory = Effect.fn("test.createExitedTerminalHistory")(function* (
+  manager: TerminalManager.TerminalManager["Service"],
+  ptyAdapter: FakePtyAdapter,
+  threadId: string,
+  history: string,
+) {
+  yield* openTerminal(manager, threadId);
+  const process = ptyAdapter.processes.at(-1);
+  if (!process) return yield* Effect.die("expected terminal process");
+  process.emitData(history);
+  yield* emitExitAndWait(manager, process, threadId, { exitCode: 0, signal: null });
+  yield* manager.close({ threadId, terminalId: DEFAULT_TERMINAL_ID });
+  return process;
+});
+
+const createSharedLogsDir = Effect.fn("test.createSharedLogsDir")(function* () {
+  const fileSystem = yield* FileSystem.FileSystem;
+  const path = yield* Path.Path;
+  const baseDir = yield* fileSystem.makeTempDirectoryScoped({
+    prefix: "codework-terminal-shared-",
+  });
+  return path.join(baseDir, "userdata", "logs", "terminals");
+});
 
 it.layer(
   Layer.merge(NodeServices.layer, ProcessRunner.layer.pipe(Layer.provide(NodeServices.layer))),
@@ -809,12 +843,84 @@ it.layer(
     }).pipe(Effect.provide(withHostPlatform("win32"))),
   );
 
+  it.effect("pending-disposal 在 onExit 历史清理失败后会在 Manager 重启后恢复", () =>
+    Effect.gen(function* () {
+      const fileSystem = yield* FileSystem.FileSystem;
+      const logsDir = yield* createSharedLogsDir();
+      const threadId = "pending-disposal-persisted-history-cleanup";
+      const store = yield* ThreadHistoryCleanupIntentStore.make({ logsDir });
+      const firstScope = yield* Scope.make("sequential");
+      yield* Effect.addFinalizer(() => Scope.close(firstScope, Exit.void));
+      let failHistoryEnumeration = false;
+      const cleanupFailureObserved = yield* Deferred.make<void>();
+      const firstAdapter = new FakePtyAdapter();
+      const first = yield* createManager(firstAdapter, {
+        logsDir,
+        managerScope: firstScope,
+        processExitTimeoutMs: 100,
+      }).pipe(
+        Effect.provideService(FileSystem.FileSystem, {
+          ...fileSystem,
+          readDirectory: (path, options) =>
+            failHistoryEnumeration && String(path) === logsDir
+              ? Effect.gen(function* () {
+                  yield* Deferred.succeed(cleanupFailureObserved, undefined).pipe(Effect.ignore);
+                  return yield* PlatformError.systemError({
+                    _tag: "PermissionDenied",
+                    module: "FileSystem",
+                    method: "readDirectory",
+                    pathOrDescriptor: String(path),
+                    description: "pending disposal history enumeration denied in test",
+                  });
+                })
+              : fileSystem.readDirectory(path, options),
+        }),
+      );
+      const outputObserved = yield* Deferred.make<void>();
+      const unsubscribe = yield* first.manager.subscribe((event) =>
+        event.type === "output" && event.threadId === threadId
+          ? Deferred.succeed(outputObserved, undefined).pipe(Effect.asVoid)
+          : Effect.void,
+      );
+      yield* Effect.addFinalizer(() => Effect.sync(unsubscribe));
+      yield* openTerminal(first.manager, threadId);
+      const process = firstAdapter.processes[0];
+      expect(process).toBeDefined();
+      if (!process) return;
+      process.emitData("pending-disposal-history\n");
+      yield* Deferred.await(outputObserved);
+      yield* TestClock.adjust("1 second");
+      process.killFailures.set(undefined, new Error("initial terminal termination failed"));
+
+      const failures = yield* first.manager.disposeThread({ threadId, deleteHistory: true });
+
+      assert.equal(failures[0]?.terminalId, DEFAULT_TERMINAL_ID);
+      failHistoryEnumeration = true;
+      process.killFailures.delete(undefined);
+      process.emitExit({ exitCode: 0, signal: null });
+      yield* Effect.yieldNow;
+      yield* Deferred.await(cleanupFailureObserved);
+      assert.isTrue(yield* fileSystem.exists(store.intentPath(threadId)));
+      yield* Scope.close(firstScope, Exit.void);
+
+      const secondAdapter = new FakePtyAdapter();
+      const second = yield* createManager(secondAdapter, { logsDir });
+      yield* Effect.yieldNow;
+      yield* TestClock.adjust("30 seconds");
+      assert.equal(
+        yield* second.manager.getHistory({ threadId, terminalId: DEFAULT_TERMINAL_ID }),
+        "",
+      );
+      assert.deepEqual(yield* store.readAll(), []);
+      assert.equal(process.killSignals.length, 1);
+      assert.equal(secondAdapter.processes.length, 0);
+    }).pipe(Effect.provide(Layer.merge(withHostPlatform("win32"), TestClock.layer()))),
+  );
+
   it.effect("disposeThread 在线程没有 session 的历史删除失败后自动重试清理", () =>
     Effect.gen(function* () {
       const fileSystem = yield* FileSystem.FileSystem;
       let failRemove = false;
-      let failingRemoveCalls = 0;
-      const retryFailureObserved = yield* Deferred.make<void>();
       const historyDeleted = yield* Deferred.make<void>();
       const fixture = yield* createManager(new FakePtyAdapter(), {
         processExitTimeoutMs: 100,
@@ -822,12 +928,8 @@ it.layer(
         Effect.provideService(FileSystem.FileSystem, {
           ...fileSystem,
           remove: (path, options) =>
-            failRemove
+            failRemove && String(path).endsWith(".log")
               ? Effect.gen(function* () {
-                  failingRemoveCalls += 1;
-                  if (failingRemoveCalls === 2) {
-                    yield* Deferred.succeed(retryFailureObserved, undefined);
-                  }
                   return yield* PlatformError.systemError({
                     _tag: "PermissionDenied",
                     module: "FileSystem",
@@ -876,9 +978,9 @@ it.layer(
 
       yield* Effect.yieldNow;
       yield* TestClock.adjust("1 second");
-      yield* Deferred.await(retryFailureObserved);
       failRemove = false;
-      yield* TestClock.adjust("2 seconds");
+      yield* Effect.yieldNow;
+      yield* TestClock.adjust("30 seconds");
       yield* Deferred.await(historyDeleted);
       assert.equal(yield* manager.getHistory({ threadId, terminalId: DEFAULT_TERMINAL_ID }), "");
       expect(process.killSignals).toEqual(killCallsBeforeRetry);
@@ -889,8 +991,6 @@ it.layer(
     Effect.gen(function* () {
       const fileSystem = yield* FileSystem.FileSystem;
       let failReadDirectory = false;
-      let failingReadDirectoryCalls = 0;
-      const retryFailureObserved = yield* Deferred.make<void>();
       const historyDeleted = yield* Deferred.make<void>();
       const fixture = yield* createManager(new FakePtyAdapter()).pipe(
         Effect.provideService(FileSystem.FileSystem, {
@@ -898,10 +998,6 @@ it.layer(
           readDirectory: (path, options) =>
             failReadDirectory
               ? Effect.gen(function* () {
-                  failingReadDirectoryCalls += 1;
-                  if (failingReadDirectoryCalls === 2) {
-                    yield* Deferred.succeed(retryFailureObserved, undefined);
-                  }
                   return yield* PlatformError.systemError({
                     _tag: "PermissionDenied",
                     module: "FileSystem",
@@ -944,11 +1040,9 @@ it.layer(
         "stale-history\n",
       );
 
-      yield* Effect.yieldNow;
-      yield* TestClock.adjust("1 second");
-      yield* Deferred.await(retryFailureObserved);
       failReadDirectory = false;
-      yield* TestClock.adjust("2 seconds");
+      yield* Effect.yieldNow;
+      yield* TestClock.adjust("30 seconds");
       yield* Deferred.await(historyDeleted);
       assert.equal(yield* manager.getHistory({ threadId, terminalId: DEFAULT_TERMINAL_ID }), "");
       expect(process.killSignals).toEqual(killCallsBeforeRetry);
@@ -1062,6 +1156,426 @@ it.layer(
       yield* Effect.yieldNow;
       assert.equal(failingReadDirectoryCalls, 3);
       yield* Deferred.succeed(unblockRetry, undefined).pipe(Effect.ignore);
+    }).pipe(Effect.provide(Layer.merge(withHostPlatform("win32"), TestClock.layer()))),
+  );
+
+  it.effect("Manager 重启后会恢复持久化的线程历史清理 intent", () =>
+    Effect.gen(function* () {
+      const fileSystem = yield* FileSystem.FileSystem;
+      const logsDir = yield* createSharedLogsDir();
+      const firstScope = yield* Scope.make("sequential");
+      yield* Effect.addFinalizer(() => Scope.close(firstScope, Exit.void));
+      let failHistoryEnumeration = false;
+      const firstAdapter = new FakePtyAdapter();
+      const first = yield* createManager(firstAdapter, {
+        logsDir,
+        managerScope: firstScope,
+      }).pipe(
+        Effect.provideService(FileSystem.FileSystem, {
+          ...fileSystem,
+          readDirectory: (path, options) =>
+            failHistoryEnumeration && String(path) === logsDir
+              ? Effect.fail(
+                  PlatformError.systemError({
+                    _tag: "PermissionDenied",
+                    module: "FileSystem",
+                    method: "readDirectory",
+                    pathOrDescriptor: String(path),
+                    description: "terminal history enumeration denied in test",
+                  }),
+                )
+              : fileSystem.readDirectory(path, options),
+        }),
+      );
+      const threadId = "persisted-history-cleanup-restart";
+      const firstProcess = yield* createExitedTerminalHistory(
+        first.manager,
+        firstAdapter,
+        threadId,
+        "persisted-history\n",
+      );
+      const store = yield* ThreadHistoryCleanupIntentStore.make({ logsDir });
+      failHistoryEnumeration = true;
+
+      assert.equal(
+        (yield* first.manager.disposeThread({ threadId, deleteHistory: true }))[0]?.terminalId,
+        "*",
+      );
+      assert.isTrue(yield* fileSystem.exists(store.intentPath(threadId)));
+      yield* Scope.close(firstScope, Exit.void);
+
+      const historyDeleted = yield* Deferred.make<void>();
+      const secondAdapter = new FakePtyAdapter();
+      const second = yield* createManager(secondAdapter, { logsDir }).pipe(
+        Effect.provideService(FileSystem.FileSystem, {
+          ...fileSystem,
+          remove: (path, options) =>
+            fileSystem
+              .remove(path, options)
+              .pipe(
+                Effect.tap(() =>
+                  String(path).endsWith(".log")
+                    ? Deferred.succeed(historyDeleted, undefined).pipe(Effect.ignore)
+                    : Effect.void,
+                ),
+              ),
+        }),
+      );
+
+      yield* Effect.yieldNow;
+      yield* TestClock.adjust("30 seconds");
+      yield* Deferred.await(historyDeleted);
+      assert.equal(
+        yield* second.manager.getHistory({ threadId, terminalId: DEFAULT_TERMINAL_ID }),
+        "",
+      );
+      assert.deepEqual(yield* store.readAll(), []);
+      expect(firstProcess.killSignals).toEqual([]);
+      assert.equal(secondAdapter.processes.length, 0);
+    }).pipe(Effect.provide(Layer.merge(withHostPlatform("win32"), TestClock.layer()))),
+  );
+
+  it.effect("两个 Manager 重复恢复时 marker 的 NotFound 移除可幂等收敛", () =>
+    Effect.gen(function* () {
+      const fileSystem = yield* FileSystem.FileSystem;
+      const logsDir = yield* createSharedLogsDir();
+      const threadId = "concurrent-marker-remove-not-found";
+      const store = yield* ThreadHistoryCleanupIntentStore.make({ logsDir });
+      const historyScope = yield* Scope.make("sequential");
+      yield* Effect.addFinalizer(() => Scope.close(historyScope, Exit.void));
+      const historyAdapter = new FakePtyAdapter();
+      const historyManager = yield* createManager(historyAdapter, {
+        logsDir,
+        managerScope: historyScope,
+      });
+      yield* createExitedTerminalHistory(
+        historyManager.manager,
+        historyAdapter,
+        threadId,
+        "concurrent-cleanup\n",
+      );
+      yield* Scope.close(historyScope, Exit.void);
+      yield* store.write({
+        version: 1,
+        threadId,
+        attempt: 0,
+        nextRetryDelayMs: 1_000,
+      });
+
+      const firstAdapter = new FakePtyAdapter();
+      const first = yield* createManager(firstAdapter, { logsDir });
+      let markerNotFoundObserved = false;
+      const secondAdapter = new FakePtyAdapter();
+      const second = yield* createManager(secondAdapter, { logsDir }).pipe(
+        Effect.provideService(FileSystem.FileSystem, {
+          ...fileSystem,
+          remove: (path, options) =>
+            String(path) === store.intentPath(threadId)
+              ? fileSystem.remove(path, options).pipe(
+                  Effect.andThen(
+                    Effect.sync(() => {
+                      markerNotFoundObserved = true;
+                    }),
+                  ),
+                  Effect.andThen(
+                    Effect.fail(
+                      PlatformError.systemError({
+                        _tag: "NotFound",
+                        module: "FileSystem",
+                        method: "remove",
+                        pathOrDescriptor: String(path),
+                        description: "marker already removed by another Manager in test",
+                      }),
+                    ),
+                  ),
+                )
+              : fileSystem.remove(path, options),
+        }),
+      );
+
+      yield* Effect.yieldNow;
+      yield* TestClock.adjust("30 seconds");
+      assert.equal(
+        yield* first.manager.getHistory({ threadId, terminalId: DEFAULT_TERMINAL_ID }),
+        "",
+      );
+      assert.equal(
+        yield* second.manager.getHistory({ threadId, terminalId: DEFAULT_TERMINAL_ID }),
+        "",
+      );
+      assert.deepEqual(yield* store.readAll(), []);
+      assert.isTrue(markerNotFoundObserved);
+      assert.equal(firstAdapter.processes.length, 0);
+      assert.equal(secondAdapter.processes.length, 0);
+    }).pipe(Effect.provide(Layer.merge(withHostPlatform("win32"), TestClock.layer()))),
+  );
+
+  it.effect("没有 cleanup intent 的正常线程历史在 Manager 重启后保留", () =>
+    Effect.gen(function* () {
+      const logsDir = yield* createSharedLogsDir();
+      const firstScope = yield* Scope.make("sequential");
+      yield* Effect.addFinalizer(() => Scope.close(firstScope, Exit.void));
+      const firstAdapter = new FakePtyAdapter();
+      const first = yield* createManager(firstAdapter, {
+        logsDir,
+        managerScope: firstScope,
+      });
+      const threadId = "normal-history-without-intent";
+      yield* createExitedTerminalHistory(
+        first.manager,
+        firstAdapter,
+        threadId,
+        "ordinary-history\n",
+      );
+      yield* Scope.close(firstScope, Exit.void);
+
+      const second = yield* createManager(new FakePtyAdapter(), { logsDir });
+      yield* Effect.yieldNow;
+      yield* TestClock.adjust("30 seconds");
+      assert.equal(
+        yield* second.manager.getHistory({ threadId, terminalId: DEFAULT_TERMINAL_ID }),
+        "ordinary-history\n",
+      );
+      const store = yield* ThreadHistoryCleanupIntentStore.make({ logsDir });
+      assert.deepEqual(yield* store.readAll(), []);
+    }).pipe(Effect.provide(Layer.merge(withHostPlatform("win32"), TestClock.layer()))),
+  );
+
+  it.effect("历史删除成功但 marker 移除失败后会在重启后完成清理", () =>
+    Effect.gen(function* () {
+      const fileSystem = yield* FileSystem.FileSystem;
+      const logsDir = yield* createSharedLogsDir();
+      const threadId = "marker-remove-failure-restart";
+      const store = yield* ThreadHistoryCleanupIntentStore.make({ logsDir });
+      const firstScope = yield* Scope.make("sequential");
+      yield* Effect.addFinalizer(() => Scope.close(firstScope, Exit.void));
+      let failIntentRemoval = false;
+      const firstAdapter = new FakePtyAdapter();
+      const first = yield* createManager(firstAdapter, {
+        logsDir,
+        managerScope: firstScope,
+      }).pipe(
+        Effect.provideService(FileSystem.FileSystem, {
+          ...fileSystem,
+          remove: (path, options) =>
+            failIntentRemoval && String(path) === store.intentPath(threadId)
+              ? Effect.fail(
+                  PlatformError.systemError({
+                    _tag: "PermissionDenied",
+                    module: "FileSystem",
+                    method: "remove",
+                    pathOrDescriptor: String(path),
+                    description: "terminal history cleanup intent removal denied in test",
+                  }),
+                )
+              : fileSystem.remove(path, options),
+        }),
+      );
+      const process = yield* createExitedTerminalHistory(
+        first.manager,
+        firstAdapter,
+        threadId,
+        "marker-remove-failure\n",
+      );
+      failIntentRemoval = true;
+
+      assert.equal(
+        (yield* first.manager.disposeThread({ threadId, deleteHistory: true }))[0]?.terminalId,
+        "*",
+      );
+      assert.equal(
+        yield* first.manager.getHistory({ threadId, terminalId: DEFAULT_TERMINAL_ID }),
+        "",
+      );
+      assert.isTrue(yield* fileSystem.exists(store.intentPath(threadId)));
+      yield* Scope.close(firstScope, Exit.void);
+
+      const second = yield* createManager(new FakePtyAdapter(), { logsDir });
+      yield* Effect.yieldNow;
+      yield* TestClock.adjust("30 seconds");
+      assert.equal(
+        yield* second.manager.getHistory({ threadId, terminalId: DEFAULT_TERMINAL_ID }),
+        "",
+      );
+      assert.deepEqual(yield* store.readAll(), []);
+      expect(process.killSignals).toEqual([]);
+    }).pipe(Effect.provide(Layer.merge(withHostPlatform("win32"), TestClock.layer()))),
+  );
+
+  it.effect("cleanup marker 首次持久化失败时不会先删除线程历史", () =>
+    Effect.gen(function* () {
+      const fileSystem = yield* FileSystem.FileSystem;
+      const logsDir = yield* createSharedLogsDir();
+      const threadId = "marker-persist-failure";
+      const store = yield* ThreadHistoryCleanupIntentStore.make({ logsDir });
+      let failIntentPersist = false;
+      const adapter = new FakePtyAdapter();
+      const fixture = yield* createManager(adapter, { logsDir }).pipe(
+        Effect.provideService(FileSystem.FileSystem, {
+          ...fileSystem,
+          rename: (sourcePath, targetPath) =>
+            failIntentPersist && String(targetPath) === store.intentPath(threadId)
+              ? Effect.fail(
+                  PlatformError.systemError({
+                    _tag: "PermissionDenied",
+                    module: "FileSystem",
+                    method: "rename",
+                    pathOrDescriptor: String(targetPath),
+                    description: "terminal history cleanup intent persistence denied in test",
+                  }),
+                )
+              : fileSystem.rename(sourcePath, targetPath),
+        }),
+      );
+      const process = yield* createExitedTerminalHistory(
+        fixture.manager,
+        adapter,
+        threadId,
+        "marker-persist-failure\n",
+      );
+      failIntentPersist = true;
+
+      assert.equal(
+        (yield* fixture.manager.disposeThread({ threadId, deleteHistory: true }))[0]?.terminalId,
+        "*",
+      );
+      assert.equal(
+        yield* fixture.manager.getHistory({ threadId, terminalId: DEFAULT_TERMINAL_ID }),
+        "marker-persist-failure\n",
+      );
+      assert.isFalse(yield* fileSystem.exists(store.intentPath(threadId)));
+      yield* Effect.yieldNow;
+      yield* TestClock.adjust("30 seconds");
+      assert.equal(
+        yield* fixture.manager.getHistory({ threadId, terminalId: DEFAULT_TERMINAL_ID }),
+        "marker-persist-failure\n",
+      );
+      expect(process.killSignals).toEqual([]);
+    }).pipe(Effect.provide(Layer.merge(withHostPlatform("win32"), TestClock.layer()))),
+  );
+
+  it.effect("Manager 启动首次读取 cleanup intent 失败会 fail-closed 而不遗忘 marker", () =>
+    Effect.gen(function* () {
+      const fileSystem = yield* FileSystem.FileSystem;
+      const logsDir = yield* createSharedLogsDir();
+      const threadId = "intent-directory-read-failure";
+      const store = yield* ThreadHistoryCleanupIntentStore.make({ logsDir });
+      const firstScope = yield* Scope.make("sequential");
+      yield* Effect.addFinalizer(() => Scope.close(firstScope, Exit.void));
+      const firstAdapter = new FakePtyAdapter();
+      const first = yield* createManager(firstAdapter, {
+        logsDir,
+        managerScope: firstScope,
+      });
+      yield* createExitedTerminalHistory(
+        first.manager,
+        firstAdapter,
+        threadId,
+        "intent-directory-read-failure\n",
+      );
+      yield* Scope.close(firstScope, Exit.void);
+      yield* store.write({
+        version: 1,
+        threadId,
+        attempt: 0,
+        nextRetryDelayMs: 1_000,
+      });
+      let failIntentRead = true;
+
+      const failedStartup = yield* createManager(new FakePtyAdapter(), { logsDir }).pipe(
+        Effect.provideService(FileSystem.FileSystem, {
+          ...fileSystem,
+          readDirectory: (path, options) =>
+            failIntentRead && String(path) === store.intentsDir
+              ? Effect.fail(
+                  PlatformError.systemError({
+                    _tag: "PermissionDenied",
+                    module: "FileSystem",
+                    method: "readDirectory",
+                    pathOrDescriptor: String(path),
+                    description: "cleanup intent directory denied in test",
+                  }),
+                )
+              : fileSystem.readDirectory(path, options),
+        }),
+        Effect.exit,
+      );
+      assert.isTrue(Exit.isFailure(failedStartup));
+      assert.isTrue(yield* fileSystem.exists(store.intentPath(threadId)));
+
+      failIntentRead = false;
+      const recovered = yield* createManager(new FakePtyAdapter(), { logsDir });
+      yield* Effect.yieldNow;
+      yield* TestClock.adjust("30 seconds");
+      assert.equal(
+        yield* recovered.manager.getHistory({ threadId, terminalId: DEFAULT_TERMINAL_ID }),
+        "",
+      );
+      assert.deepEqual(yield* store.readAll(), []);
+    }).pipe(Effect.provide(Layer.merge(withHostPlatform("win32"), TestClock.layer()))),
+  );
+
+  it.effect("损坏或文件名不匹配的 cleanup marker 不会删除任意线程历史", () =>
+    Effect.gen(function* () {
+      const fileSystem = yield* FileSystem.FileSystem;
+      const path = yield* Path.Path;
+      const logsDir = yield* createSharedLogsDir();
+      const protectedThreadId = "corrupt-marker-protected-history";
+      const mismatchedThreadId = "mismatched-marker-protected-history";
+      const store = yield* ThreadHistoryCleanupIntentStore.make({ logsDir });
+      const firstScope = yield* Scope.make("sequential");
+      yield* Effect.addFinalizer(() => Scope.close(firstScope, Exit.void));
+      const firstAdapter = new FakePtyAdapter();
+      const first = yield* createManager(firstAdapter, {
+        logsDir,
+        managerScope: firstScope,
+      });
+      yield* createExitedTerminalHistory(
+        first.manager,
+        firstAdapter,
+        protectedThreadId,
+        "protected-history\n",
+      );
+      yield* createExitedTerminalHistory(
+        first.manager,
+        firstAdapter,
+        mismatchedThreadId,
+        "mismatched-history\n",
+      );
+      yield* Scope.close(firstScope, Exit.void);
+      yield* store.write({
+        version: 1,
+        threadId: mismatchedThreadId,
+        attempt: 0,
+        nextRetryDelayMs: 1_000,
+      });
+      yield* fileSystem.rename(
+        store.intentPath(mismatchedThreadId),
+        path.join(store.intentsDir, "mismatch.json"),
+      );
+      yield* fileSystem.writeFileString(path.join(store.intentsDir, "corrupt.json"), "not-json");
+
+      const second = yield* createManager(new FakePtyAdapter(), { logsDir });
+      yield* Effect.yieldNow;
+      yield* TestClock.adjust("30 seconds");
+      assert.equal(
+        yield* second.manager.getHistory({
+          threadId: protectedThreadId,
+          terminalId: DEFAULT_TERMINAL_ID,
+        }),
+        "protected-history\n",
+      );
+      assert.equal(
+        yield* second.manager.getHistory({
+          threadId: mismatchedThreadId,
+          terminalId: DEFAULT_TERMINAL_ID,
+        }),
+        "mismatched-history\n",
+      );
+      assert.deepEqual(yield* store.readAll(), []);
+      assert.isFalse(yield* fileSystem.exists(path.join(store.intentsDir, "mismatch.json")));
+      assert.isFalse(yield* fileSystem.exists(path.join(store.intentsDir, "corrupt.json")));
+      assert.isTrue(yield* fileSystem.exists(store.quarantineDir));
     }).pipe(Effect.provide(Layer.merge(withHostPlatform("win32"), TestClock.layer()))),
   );
 
