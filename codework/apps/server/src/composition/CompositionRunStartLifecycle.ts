@@ -1,13 +1,36 @@
 import * as NodeCrypto from "node:crypto";
 
+import type { CompositionTask, CompositionTaskRun } from "@codework/contracts";
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
+
+import type { CompositionRunStartIntent } from "../persistence/Services/CompositionRunStartStore.ts";
 
 export type CompositionRunStartRecoveryPolicy = {
   readonly mode: "idempotent-replay" | "reconcile-only" | "manual";
   readonly requiredReceipt: "none" | "runtime-task";
   readonly capabilityGrantReplay?: { readonly mode: "none" | "verified" };
 };
+
+export type CompositionRunStartReconcileInput = {
+  readonly task: CompositionTask;
+  readonly run: CompositionTaskRun;
+  readonly intent: CompositionRunStartIntent;
+  readonly capabilityIds: ReadonlyArray<string>;
+};
+
+export type CompositionRunStartReconcileDecision =
+  | { readonly action: "replay" }
+  | {
+      readonly action: "accepted";
+      readonly runtimeTaskId?: string;
+      readonly capabilityHandshakeId?: string;
+    }
+  | {
+      readonly action: "defer" | "manual" | "quarantine";
+      readonly code: string;
+      readonly detail: string;
+    };
 
 export type CompositionRunStartReceipt = {
   readonly runtimeTaskId: string | null;

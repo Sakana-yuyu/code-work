@@ -47,7 +47,11 @@ import {
   runCompositionWithPersistedStart,
   type CompositionRunStartDriverResult,
 } from "./CompositionRunStartCoordinator.ts";
-import type { CompositionRunStartRecoveryPolicy } from "./CompositionRunStartLifecycle.ts";
+import type {
+  CompositionRunStartReconcileDecision,
+  CompositionRunStartReconcileInput,
+  CompositionRunStartRecoveryPolicy,
+} from "./CompositionRunStartLifecycle.ts";
 
 export class CompositionTaskDependencyMissingError extends Schema.TaggedErrorClass<CompositionTaskDependencyMissingError>()(
   "CompositionTaskDependencyMissingError",
@@ -163,6 +167,10 @@ export interface CompositionAgentDriver {
   readonly runtimeId: string;
   /** 跨进程恢复只依据 Driver 明确声明的重放策略，不从 runtimeId 或实现名称猜测。 */
   readonly startRecoveryPolicy?: CompositionRunStartRecoveryPolicy;
+  /** 只核对外部启动事实；不得在此方法中创建新的外部任务。 */
+  readonly reconcileStart?: (
+    input: CompositionRunStartReconcileInput,
+  ) => Effect.Effect<CompositionRunStartReconcileDecision, CompositionAgentDriverFailure>;
   /** 返回当前 Driver 已经验证过的能力，不包含本次 Task 的授权结果。 */
   readonly getProfile?: () => Effect.Effect<CompositionAgentDriverProfile>;
   /** Driver 自己产生的运行时事件；用于不依赖 Provider Session 的本地 Agent Loop。 */

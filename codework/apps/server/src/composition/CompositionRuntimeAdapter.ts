@@ -11,6 +11,12 @@ import * as PubSub from "effect/PubSub";
 import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
 
+import type {
+  CompositionRunStartReconcileDecision,
+  CompositionRunStartReconcileInput,
+  CompositionRunStartRecoveryPolicy,
+} from "./CompositionRunStartLifecycle.ts";
+
 export class CompositionRuntimeAdapterFailure extends Schema.TaggedErrorClass<CompositionRuntimeAdapterFailure>()(
   "CompositionRuntimeAdapterFailure",
   {
@@ -87,6 +93,10 @@ export type CompositionRuntimeEventFilter = {
 export interface CompositionRuntimeAdapter {
   readonly runtimeId: string;
   readonly driverKind: CompositionRuntimeDriverKind;
+  readonly startRecoveryPolicy?: CompositionRunStartRecoveryPolicy;
+  readonly reconcileStart?: (
+    input: CompositionRunStartReconcileInput,
+  ) => Effect.Effect<CompositionRunStartReconcileDecision, CompositionRuntimeAdapterFailure>;
   readonly probe: () => Effect.Effect<
     CompositionRuntimeProbeResult,
     CompositionRuntimeAdapterFailure
@@ -402,6 +412,11 @@ export const makeInMemoryCompositionRuntimeAdapter = (
   return {
     runtimeId,
     driverKind,
+    startRecoveryPolicy: {
+      mode: "manual",
+      requiredReceipt: "runtime-task",
+      capabilityGrantReplay: { mode: "verified" },
+    },
     probe,
     listAgents,
     heartbeat,
