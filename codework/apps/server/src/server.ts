@@ -33,6 +33,7 @@ import { CompositionTaskInputStoreLive } from "./persistence/Layers/CompositionT
 import { CompositionSquadExecutionStoreLive } from "./persistence/Layers/CompositionSquadExecutionStore.ts";
 import { CompositionAutomationStoreLive } from "./persistence/Layers/CompositionAutomationStore.ts";
 import { CompositionToolInvocationStoreLive } from "./persistence/Layers/CompositionToolInvocationStore.ts";
+import { CompositionGoalLoopRetryStoreLive } from "./persistence/Layers/CompositionGoalLoopRetryStore.ts";
 import { WorkspaceScriptStoreLive } from "./persistence/Layers/WorkspaceScriptStore.ts";
 import * as ServerLifecycleEvents from "./serverLifecycleEvents.ts";
 import * as AnalyticsService from "./telemetry/AnalyticsService.ts";
@@ -456,6 +457,9 @@ const CompositionRuntimeMcpSessionRegistryLayerLive = CompositionRuntimeMcpSessi
 const CompositionTaskStoreLayerLive = CompositionTaskStoreLive.pipe(
   Layer.provideMerge(PersistenceLayerLive),
 );
+const CompositionGoalLoopRetryStoreLayerLive = CompositionGoalLoopRetryStoreLive.pipe(
+  Layer.provideMerge(PersistenceLayerLive),
+);
 
 const CompositionRuntimeSettingsLayerLive = CompositionRuntimeSettings.layer.pipe(
   Layer.provideMerge(ServerSettingsLayerLive),
@@ -489,6 +493,7 @@ const CompositionRuntimeDependenciesLive = Layer.empty.pipe(
     ),
   ),
   Layer.provideMerge(CompositionTaskStoreLayerLive),
+  Layer.provideMerge(CompositionGoalLoopRetryStoreLayerLive),
 );
 
 const CompositionRuntimeToolBridgeLayerLive = CompositionRuntimeToolBridge.layer.pipe(
