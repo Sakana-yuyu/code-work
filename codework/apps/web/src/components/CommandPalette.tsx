@@ -163,6 +163,7 @@ import type { ChatComposerHandle } from "./chat/ChatComposer";
 import { getProjectOrderKey, selectProjectGroupingSettings } from "../logicalProject";
 import { legacyProjectCwdPreferenceKey, useUiStateStore } from "../uiStateStore";
 import { useLocalPluginCommandPaletteItems } from "../localPlugins/adapters/useLocalPluginCommandPaletteItems";
+import { useLocalPluginAttachmentPaletteItems } from "../localPlugins/adapters/useLocalPluginAttachmentPaletteItems";
 import {
   buildSidebarProjectPickerEntries,
   buildSidebarProjectSnapshots,
@@ -909,6 +910,9 @@ function OpenCommandPaletteDialog(props: {
     threadRef: currentThreadRef,
     workspace: localPluginWorkspace,
   });
+  const localPluginAttachments = useLocalPluginAttachmentPaletteItems({
+    composerHandleRef: activeThread || activeDraftThread ? composerHandleRef : null,
+  });
   const currentProjectCwdForBrowse =
     browseEnvironmentId && currentProjectEnvironmentId === browseEnvironmentId
       ? currentProjectCwd
@@ -1525,7 +1529,7 @@ function OpenCommandPaletteDialog(props: {
 
   const actionItems: Array<CommandPaletteActionItem | CommandPaletteSubmenuItem> = [];
 
-  actionItems.push(...localPluginCommands);
+  actionItems.push(...localPluginCommands, ...localPluginAttachments);
 
   if (projects.length > 0) {
     const activeProjectTitle =
