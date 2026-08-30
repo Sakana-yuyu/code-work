@@ -48,6 +48,7 @@ import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Path from "effect/Path";
+import * as Queue from "effect/Queue";
 import * as Schema from "effect/Schema";
 import * as Scope from "effect/Scope";
 import * as Semaphore from "effect/Semaphore";
@@ -1265,13 +1266,29 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
   const terminalEventListeners = new Set<(event: TerminalEvent) => Effect.Effect<void>>();
   const workerScope = yield* Scope.make("sequential");
   yield* Effect.addFinalizer(() => Scope.close(workerScope, Exit.void));
+  const terminalEventQueue = yield* Queue.unbounded<{
+    readonly event: TerminalEvent;
+    readonly listeners: ReadonlyArray<(event: TerminalEvent) => Effect.Effect<void>>;
+  }>();
+
+  const deliverEvent = Effect.fn("terminal.deliverEvent")(function* (delivery: {
+    readonly event: TerminalEvent;
+    readonly listeners: ReadonlyArray<(event: TerminalEvent) => Effect.Effect<void>>;
+  }) {
+    for (const listener of delivery.listeners) {
+      yield* listener(delivery.event).pipe(Effect.ignoreCause({ log: true }));
+    }
+  });
+
+  yield* Effect.forever(Queue.take(terminalEventQueue).pipe(Effect.flatMap(deliverEvent))).pipe(
+    Effect.forkIn(workerScope),
+  );
 
   const publishEvent = (event: TerminalEvent) =>
-    Effect.gen(function* () {
-      for (const listener of terminalEventListeners) {
-        yield* listener(event).pipe(Effect.ignoreCause({ log: true }));
-      }
-    });
+    Queue.offer(terminalEventQueue, {
+      event,
+      listeners: [...terminalEventListeners],
+    }).pipe(Effect.asVoid);
 
   const historyPath = (threadId: string, terminalId: string) => {
     const threadPart = toSafeThreadId(threadId);
@@ -2285,10 +2302,23 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
         yield* stopProcess(session);
       });
 
-      yield* Effect.forEach(sessions, cleanupSession, {
-        concurrency: "unbounded",
-        discard: true,
-      });
+      yield* Effect.forEach(
+        sessions,
+        (session) =>
+          cleanupSession(session).pipe(
+            Effect.catchCause((cause) =>
+              Effect.logWarning("failed to terminate terminal during manager shutdown", {
+                threadId: session.threadId,
+                terminalId: session.terminalId,
+                cause,
+              }),
+            ),
+          ),
+        {
+          concurrency: "unbounded",
+          discard: true,
+        },
+      );
       yield* modifyManagerState((state) => [
         undefined,
         { ...state, sessions: new Map(), terminations: new Map() },
@@ -2605,6 +2635,30 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
     return Effect.gen(function* () {
       const bufferedEvents: TerminalEvent[] = [];
       let deliverLive = false;
+      let synchronizedSnapshot: TerminalSessionSnapshot | null = null;
+      let snapshotBoundaryActive = true;
+
+      const shouldSkipSynchronizedEvent = (event: TerminalEvent) => {
+        if (
+          snapshotBoundaryActive &&
+          synchronizedSnapshot !== null &&
+          isDuplicateAttachSnapshotEvent(event, synchronizedSnapshot)
+        ) {
+          return true;
+        }
+
+        if (
+          synchronizedSnapshot !== null &&
+          (event.type === "exited" ||
+            event.type === "closed" ||
+            (typeof event.sequence === "number" &&
+              typeof synchronizedSnapshot.sequence === "number" &&
+              event.sequence > synchronizedSnapshot.sequence))
+        ) {
+          snapshotBoundaryActive = false;
+        }
+        return false;
+      };
 
       unsubscribe = yield* subscribe((event) => {
         if (event.threadId !== input.threadId || event.terminalId !== input.terminalId) {
@@ -2613,6 +2667,10 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
 
         if (!deliverLive) {
           bufferedEvents.push(event);
+          return Effect.void;
+        }
+
+        if (shouldSkipSynchronizedEvent(event)) {
           return Effect.void;
         }
 
@@ -2626,9 +2684,10 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
         type: "snapshot",
         snapshot: initialSnapshot,
       });
+      synchronizedSnapshot = initialSnapshot;
 
       for (const event of bufferedEvents) {
-        if (isDuplicateAttachSnapshotEvent(event, initialSnapshot)) {
+        if (shouldSkipSynchronizedEvent(event)) {
           continue;
         }
 
@@ -2903,16 +2962,22 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
         // 无 terminalId 的通用清理只处理普通终端；owned session 由对应服务按 owner 终止。
         const ordinarySessions = threadSessions.filter((session) => session.owner === null);
         const hasOwnedSessions = ordinarySessions.length !== threadSessions.length;
-        yield* Effect.forEach(
+        const closeResults = yield* Effect.forEach(
           ordinarySessions,
           (session) =>
             closeSession(
               input.threadId,
               session.terminalId,
               input.deleteHistory === true && hasOwnedSessions,
-            ),
-          { discard: true },
+            ).pipe(Effect.exit),
+          { concurrency: "unbounded" },
         );
+
+        for (const result of closeResults) {
+          if (Exit.isFailure(result)) {
+            return yield* Effect.failCause(result.cause);
+          }
+        }
 
         if (input.deleteHistory && !hasOwnedSessions) {
           yield* deleteAllHistoryForThread(input.threadId);

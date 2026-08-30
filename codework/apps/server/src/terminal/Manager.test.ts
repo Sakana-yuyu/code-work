@@ -1092,6 +1092,17 @@ it.layer(
       });
       yield* manager.open(openInput());
 
+      yield* waitFor(
+        Ref.get(attachEvents).pipe(
+          Effect.map(
+            (events) =>
+              events.length >= 4 &&
+              events.at(-1)?.type === "snapshot" &&
+              events.some((event) => event.type === "closed"),
+          ),
+        ),
+      );
+
       const events = yield* Ref.get(attachEvents);
       expect(events.map((event) => event.type)).toEqual([
         "snapshot",
@@ -1532,6 +1543,10 @@ it.layer(
 
       assert.equal(startedSnapshot.worktreePath, firstWorktreePath);
       assert.equal(restartedSnapshot.worktreePath, secondWorktreePath);
+
+      yield* waitFor(
+        Effect.map(getEvents, (events) => events.some((event) => event.type === "restarted")),
+      );
 
       const events = yield* getEvents;
       const startedEvent = events.find(
@@ -2088,6 +2103,13 @@ it.layer(
       yield* manager.open(openInput({ terminalId: "sidecar" }));
 
       yield* manager.close({ threadId: "thread-1" });
+
+      yield* waitFor(
+        Effect.map(
+          getEvents,
+          (events) => events.filter((event) => event.type === "closed").length === 2,
+        ),
+      );
 
       const closedEvents = (yield* getEvents).filter(
         (event): event is Extract<TerminalEvent, { type: "closed" }> => event.type === "closed",
