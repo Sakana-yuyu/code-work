@@ -46,6 +46,7 @@ import * as Encoding from "effect/Encoding";
 import * as Equal from "effect/Equal";
 import * as Exit from "effect/Exit";
 import * as FileSystem from "effect/FileSystem";
+import * as Fiber from "effect/Fiber";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Path from "effect/Path";
@@ -92,6 +93,8 @@ const DEFAULT_PROCESS_KILL_GRACE_MS = 1_000;
 const DEFAULT_PROCESS_EXIT_TIMEOUT_MS = 5_000;
 const DEFAULT_MAX_RETAINED_INACTIVE_SESSIONS = 128;
 const DEFAULT_TERMINAL_EVENT_SUBSCRIBER_QUEUE_CAPACITY = DEFAULT_HISTORY_LINE_LIMIT;
+const THREAD_HISTORY_CLEANUP_RETRY_INITIAL_DELAY_MS = 1_000;
+const THREAD_HISTORY_CLEANUP_RETRY_MAX_DELAY_MS = 30_000;
 const DEFAULT_OPEN_COLS = 120;
 const DEFAULT_OPEN_ROWS = 30;
 const TERMINAL_ENV_BLOCKLIST = new Set(["PORT", "ELECTRON_RENDERER_PORT", "ELECTRON_RUN_AS_NODE"]);
@@ -1330,7 +1333,12 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
   });
   const threadLocksRef = yield* SynchronizedRef.make(new Map<string, Semaphore.Semaphore>());
   const workerScope = yield* Scope.make("sequential");
-  yield* Effect.addFinalizer(() => Scope.close(workerScope, Exit.void));
+  const pendingThreadHistoryCleanupFibers = new Map<string, Fiber.Fiber<void, never>>();
+  yield* Effect.addFinalizer(() =>
+    Scope.close(workerScope, Exit.void).pipe(
+      Effect.ensuring(Effect.sync(() => pendingThreadHistoryCleanupFibers.clear())),
+    ),
+  );
   const terminalEventHub = yield* TerminalEventHub.make(terminalEventSubscriberQueueCapacity);
   const publishEvent = terminalEventHub.publish;
 
@@ -2363,6 +2371,51 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
     );
   };
 
+  const threadHistoryCleanupRetryDelayMs = (attempt: number): number =>
+    Math.min(
+      THREAD_HISTORY_CLEANUP_RETRY_INITIAL_DELAY_MS * 2 ** Math.min(attempt, 5),
+      THREAD_HISTORY_CLEANUP_RETRY_MAX_DELAY_MS,
+    );
+
+  const retryPendingThreadHistoryCleanup = Effect.fn("terminal.retryPendingThreadHistoryCleanup")(
+    function* (threadId: string) {
+      let attempt = 0;
+      while (true) {
+        const retryDelayMs = threadHistoryCleanupRetryDelayMs(attempt);
+        yield* Effect.sleep(retryDelayMs);
+        const cleanup = yield* withThreadLock(
+          threadId,
+          deleteAllHistoryForThreadStrict(threadId),
+        ).pipe(Effect.exit);
+        if (Exit.isSuccess(cleanup)) return;
+        if (Cause.hasInterruptsOnly(cleanup.cause)) return yield* Effect.interrupt;
+
+        attempt += 1;
+        yield* Effect.logWarning("pending thread terminal history cleanup failed", {
+          threadId,
+          attempt,
+          nextRetryDelayMs: threadHistoryCleanupRetryDelayMs(attempt),
+          cause: Cause.pretty(cleanup.cause),
+        });
+      }
+    },
+  );
+
+  const schedulePendingThreadHistoryCleanup = Effect.fn(
+    "terminal.schedulePendingThreadHistoryCleanup",
+  )(function* (threadId: string) {
+    if (pendingThreadHistoryCleanupFibers.has(threadId)) return;
+    const worker = yield* retryPendingThreadHistoryCleanup(threadId).pipe(
+      Effect.ensuring(
+        Effect.sync(() => {
+          pendingThreadHistoryCleanupFibers.delete(threadId);
+        }),
+      ),
+      Effect.forkIn(workerScope),
+    );
+    pendingThreadHistoryCleanupFibers.set(threadId, worker);
+  });
+
   const pollSubprocessActivity = Effect.fn("terminal.pollSubprocessActivity")(function* () {
     const state = yield* readManagerState;
     const runningSessions = [...state.sessions.values()].filter(
@@ -3217,6 +3270,7 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
               return yield* Effect.interrupt;
             }
             failures.push({ terminalId: "*", cause: historyCleanup.cause });
+            yield* schedulePendingThreadHistoryCleanup(input.threadId);
           }
         }
         return failures;

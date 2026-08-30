@@ -809,10 +809,13 @@ it.layer(
     }).pipe(Effect.provide(withHostPlatform("win32"))),
   );
 
-  it.effect("disposeThread 将历史删除失败纳入 receipt 且保留可重试清理状态", () =>
+  it.effect("disposeThread 在线程没有 session 的历史删除失败后自动重试清理", () =>
     Effect.gen(function* () {
       const fileSystem = yield* FileSystem.FileSystem;
       let failRemove = false;
+      let failingRemoveCalls = 0;
+      const retryFailureObserved = yield* Deferred.make<void>();
+      const historyDeleted = yield* Deferred.make<void>();
       const fixture = yield* createManager(new FakePtyAdapter(), {
         processExitTimeoutMs: 100,
       }).pipe(
@@ -820,16 +823,26 @@ it.layer(
           ...fileSystem,
           remove: (path, options) =>
             failRemove
-              ? Effect.fail(
-                  PlatformError.systemError({
+              ? Effect.gen(function* () {
+                  failingRemoveCalls += 1;
+                  if (failingRemoveCalls === 2) {
+                    yield* Deferred.succeed(retryFailureObserved, undefined);
+                  }
+                  return yield* PlatformError.systemError({
                     _tag: "PermissionDenied",
                     module: "FileSystem",
                     method: "remove",
                     pathOrDescriptor: String(path),
                     description: "terminal history removal denied in test",
-                  }),
-                )
-              : fileSystem.remove(path, options),
+                  });
+                })
+              : fileSystem
+                  .remove(path, options)
+                  .pipe(
+                    Effect.tap(() =>
+                      Deferred.succeed(historyDeleted, undefined).pipe(Effect.ignore),
+                    ),
+                  ),
         }),
       );
       const { manager, ptyAdapter } = fixture;
@@ -845,56 +858,65 @@ it.layer(
           : Effect.void,
       );
       yield* Effect.addFinalizer(() => Effect.sync(unsubscribeEvents));
-      const unsubscribeKill = process.onKill(() => {
-        process.emitExit({ exitCode: 0, signal: null });
-      });
-      yield* Effect.addFinalizer(() => Effect.sync(unsubscribeKill));
       process.emitData("private-history\n");
       yield* Deferred.await(outputObserved);
+      yield* emitExitAndWait(manager, process, threadId, { exitCode: 0, signal: null });
+      yield* manager.close({ threadId, terminalId: DEFAULT_TERMINAL_ID });
+      const killCallsBeforeRetry = [...process.killSignals];
       failRemove = true;
 
       const failures = yield* manager.disposeThread({ threadId, deleteHistory: true });
 
       assert.equal(failures.length, 1);
-      assert.equal(failures[0]?.terminalId, DEFAULT_TERMINAL_ID);
-      assert.equal(
-        yield* manager.inspectSession({ threadId, terminalId: DEFAULT_TERMINAL_ID }),
-        "inactive",
-      );
+      assert.equal(failures[0]?.terminalId, "*");
       assert.equal(
         yield* manager.getHistory({ threadId, terminalId: DEFAULT_TERMINAL_ID }),
         "private-history\n",
       );
 
+      yield* Effect.yieldNow;
+      yield* TestClock.adjust("1 second");
+      yield* Deferred.await(retryFailureObserved);
       failRemove = false;
-      assert.deepEqual(yield* manager.disposeThread({ threadId, deleteHistory: true }), []);
-      assert.equal(
-        yield* manager.inspectSession({ threadId, terminalId: DEFAULT_TERMINAL_ID }),
-        "missing",
-      );
+      yield* TestClock.adjust("2 seconds");
+      yield* Deferred.await(historyDeleted);
       assert.equal(yield* manager.getHistory({ threadId, terminalId: DEFAULT_TERMINAL_ID }), "");
-    }).pipe(Effect.provide(withHostPlatform("win32"))),
+      expect(process.killSignals).toEqual(killCallsBeforeRetry);
+    }).pipe(Effect.provide(Layer.merge(withHostPlatform("win32"), TestClock.layer()))),
   );
 
-  it.effect("disposeThread 将线程历史枚举失败纳入 receipt", () =>
+  it.effect("disposeThread 在线程没有 session 的历史枚举失败后自动重试清理", () =>
     Effect.gen(function* () {
       const fileSystem = yield* FileSystem.FileSystem;
       let failReadDirectory = false;
+      let failingReadDirectoryCalls = 0;
+      const retryFailureObserved = yield* Deferred.make<void>();
+      const historyDeleted = yield* Deferred.make<void>();
       const fixture = yield* createManager(new FakePtyAdapter()).pipe(
         Effect.provideService(FileSystem.FileSystem, {
           ...fileSystem,
           readDirectory: (path, options) =>
             failReadDirectory
-              ? Effect.fail(
-                  PlatformError.systemError({
+              ? Effect.gen(function* () {
+                  failingReadDirectoryCalls += 1;
+                  if (failingReadDirectoryCalls === 2) {
+                    yield* Deferred.succeed(retryFailureObserved, undefined);
+                  }
+                  return yield* PlatformError.systemError({
                     _tag: "PermissionDenied",
                     module: "FileSystem",
                     method: "readDirectory",
                     pathOrDescriptor: String(path),
                     description: "terminal history enumeration denied in test",
-                  }),
-                )
+                  });
+                })
               : fileSystem.readDirectory(path, options),
+          remove: (path, options) =>
+            fileSystem
+              .remove(path, options)
+              .pipe(
+                Effect.tap(() => Deferred.succeed(historyDeleted, undefined).pipe(Effect.ignore)),
+              ),
         }),
       );
       const { manager, ptyAdapter } = fixture;
@@ -906,6 +928,7 @@ it.layer(
       process.emitData("stale-history\n");
       yield* emitExitAndWait(manager, process, threadId, { exitCode: 0, signal: null });
       yield* manager.close({ threadId, terminalId: DEFAULT_TERMINAL_ID });
+      const killCallsBeforeRetry = [...process.killSignals];
       assert.equal(
         yield* manager.getHistory({ threadId, terminalId: DEFAULT_TERMINAL_ID }),
         "stale-history\n",
@@ -921,10 +944,125 @@ it.layer(
         "stale-history\n",
       );
 
+      yield* Effect.yieldNow;
+      yield* TestClock.adjust("1 second");
+      yield* Deferred.await(retryFailureObserved);
       failReadDirectory = false;
-      assert.deepEqual(yield* manager.disposeThread({ threadId, deleteHistory: true }), []);
+      yield* TestClock.adjust("2 seconds");
+      yield* Deferred.await(historyDeleted);
       assert.equal(yield* manager.getHistory({ threadId, terminalId: DEFAULT_TERMINAL_ID }), "");
-    }).pipe(Effect.provide(withHostPlatform("win32"))),
+      expect(process.killSignals).toEqual(killCallsBeforeRetry);
+    }).pipe(Effect.provide(Layer.merge(withHostPlatform("win32"), TestClock.layer()))),
+  );
+
+  it.effect("Manager scope 退出会取消待重试的线程历史清理 worker", () =>
+    Effect.gen(function* () {
+      const fileSystem = yield* FileSystem.FileSystem;
+      let failReadDirectory = false;
+      const historyDeleted = yield* Deferred.make<void>();
+      const managerScope = yield* Scope.make("sequential");
+      yield* Effect.addFinalizer(() => Scope.close(managerScope, Exit.void));
+      const fixture = yield* createManager(new FakePtyAdapter()).pipe(
+        Effect.provideService(FileSystem.FileSystem, {
+          ...fileSystem,
+          readDirectory: (path, options) =>
+            failReadDirectory
+              ? Effect.fail(
+                  PlatformError.systemError({
+                    _tag: "PermissionDenied",
+                    module: "FileSystem",
+                    method: "readDirectory",
+                    pathOrDescriptor: String(path),
+                    description: "terminal history enumeration denied in test",
+                  }),
+                )
+              : fileSystem.readDirectory(path, options),
+          remove: (path, options) =>
+            fileSystem
+              .remove(path, options)
+              .pipe(
+                Effect.tap(() => Deferred.succeed(historyDeleted, undefined).pipe(Effect.ignore)),
+              ),
+        }),
+        Effect.provideService(Scope.Scope, managerScope),
+      );
+      const { manager, ptyAdapter } = fixture;
+      const threadId = "dispose-thread-history-retry-scope-exit";
+      yield* openTerminal(manager, threadId);
+      const process = ptyAdapter.processes[0];
+      expect(process).toBeDefined();
+      if (!process) return;
+      process.emitData("stale-history\n");
+      yield* emitExitAndWait(manager, process, threadId, { exitCode: 0, signal: null });
+      yield* manager.close({ threadId, terminalId: DEFAULT_TERMINAL_ID });
+      failReadDirectory = true;
+
+      const failures = yield* manager.disposeThread({ threadId, deleteHistory: true });
+      assert.equal(failures[0]?.terminalId, "*");
+
+      yield* Scope.close(managerScope, Exit.void);
+      failReadDirectory = false;
+      yield* TestClock.adjust("30 seconds");
+      assert.isTrue(Option.isNone(yield* Deferred.poll(historyDeleted)));
+    }).pipe(Effect.provide(Layer.merge(withHostPlatform("win32"), TestClock.layer()))),
+  );
+
+  it.effect("同一线程的历史清理重试 worker 只登记一次", () =>
+    Effect.gen(function* () {
+      const fileSystem = yield* FileSystem.FileSystem;
+      let failReadDirectory = false;
+      let failingReadDirectoryCalls = 0;
+      const retryStarted = yield* Deferred.make<void>();
+      const unblockRetry = yield* Deferred.make<void>();
+      const fixture = yield* createManager(new FakePtyAdapter()).pipe(
+        Effect.provideService(FileSystem.FileSystem, {
+          ...fileSystem,
+          readDirectory: (path, options) =>
+            failReadDirectory
+              ? Effect.gen(function* () {
+                  failingReadDirectoryCalls += 1;
+                  if (failingReadDirectoryCalls >= 3) {
+                    yield* Deferred.succeed(retryStarted, undefined).pipe(Effect.ignore);
+                    yield* Deferred.await(unblockRetry);
+                  }
+                  return yield* PlatformError.systemError({
+                    _tag: "PermissionDenied",
+                    module: "FileSystem",
+                    method: "readDirectory",
+                    pathOrDescriptor: String(path),
+                    description: "terminal history enumeration denied in test",
+                  });
+                })
+              : fileSystem.readDirectory(path, options),
+        }),
+      );
+      const { manager, ptyAdapter } = fixture;
+      const threadId = "dispose-thread-history-retry-deduplicate";
+      yield* openTerminal(manager, threadId);
+      const process = ptyAdapter.processes[0];
+      expect(process).toBeDefined();
+      if (!process) return;
+      process.emitData("stale-history\\n");
+      yield* emitExitAndWait(manager, process, threadId, { exitCode: 0, signal: null });
+      yield* manager.close({ threadId, terminalId: DEFAULT_TERMINAL_ID });
+      failReadDirectory = true;
+
+      assert.equal(
+        (yield* manager.disposeThread({ threadId, deleteHistory: true }))[0]?.terminalId,
+        "*",
+      );
+      assert.equal(
+        (yield* manager.disposeThread({ threadId, deleteHistory: true }))[0]?.terminalId,
+        "*",
+      );
+
+      yield* Effect.yieldNow;
+      yield* TestClock.adjust("1 second");
+      yield* Deferred.await(retryStarted);
+      yield* Effect.yieldNow;
+      assert.equal(failingReadDirectoryCalls, 3);
+      yield* Deferred.succeed(unblockRetry, undefined).pipe(Effect.ignore);
+    }).pipe(Effect.provide(Layer.merge(withHostPlatform("win32"), TestClock.layer()))),
   );
 
   it.effect("attachStream barrier 满时稳定断流且不残留订阅", () =>
