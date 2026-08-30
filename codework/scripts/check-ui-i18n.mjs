@@ -240,6 +240,14 @@ function isStringRecordLiteral(ts, node) {
 }
 
 function isExplicitStringValue(ts, node) {
+  if (
+    (ts.isAsExpression(node) ||
+      ts.isSatisfiesExpression(node) ||
+      ts.isTypeAssertionExpression(node)) &&
+    node.type.kind === ts.SyntaxKind.StringKeyword
+  ) {
+    return true;
+  }
   const parent = node.parent;
   const typeNode =
     ts.isVariableDeclaration(parent) || ts.isPropertyDeclaration(parent)
@@ -273,7 +281,12 @@ export function expressionStrings(ts, node, output, allowNullishFallback = false
     ts.isNonNullExpression(node) ||
     ts.isSatisfiesExpression(node)
   ) {
-    expressionStrings(ts, node.expression, output, allowNullishFallback);
+    expressionStrings(
+      ts,
+      node.expression,
+      output,
+      allowNullishFallback || isExplicitStringValue(ts, node),
+    );
     return;
   }
   if (ts.isConditionalExpression(node)) {

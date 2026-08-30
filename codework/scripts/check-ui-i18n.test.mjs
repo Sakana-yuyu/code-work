@@ -40,6 +40,12 @@ describe("UI i18n AST 可见文案提取", () => {
     expect(
       initializerStrings('const buttonLabel: string = labels[action] ?? "Check for Updates";'),
     ).toEqual(["Check for Updates"]);
+    expect(
+      initializerStrings('const buttonLabel: string = (labels[action] ?? "Check for Updates");'),
+    ).toEqual(["Check for Updates"]);
+    expect(
+      initializerStrings('const buttonLabel = (labels[action] ?? "Check for Updates") as string;'),
+    ).toEqual(["Check for Updates"]);
   });
 
   it("忽略未显式声明为可见字符串的内部结构", () => {
