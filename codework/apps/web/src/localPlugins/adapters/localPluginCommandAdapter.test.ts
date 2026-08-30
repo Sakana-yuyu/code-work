@@ -75,20 +75,28 @@ describe("localPluginCommandAdapter", () => {
     const openWorkspacePanel = vi.fn();
     const writeClipboard = vi.fn(async () => undefined);
     const insertPrompt = vi.fn(() => true);
+    const postTimeline = vi.fn(async () => undefined);
 
     const commands = listEnabledLocalPluginCommands({
       runtime,
       workspace: { name: "Code Work", root: "C:\\workspace\\code-work" },
-      ports: { openWorkspacePanel, writeClipboard, insertPrompt },
+      ports: { openWorkspacePanel, writeClipboard, insertPrompt, postTimeline },
     });
 
-    expect(commands.map((command) => command.contributionId)).toEqual(["open", "copy", "insert"]);
+    expect(commands.map((command) => command.contributionId)).toEqual([
+      "open",
+      "copy",
+      "insert",
+      "timeline",
+    ]);
     expect(await commands[0]!.invoke()).toEqual({ ok: true, value: undefined });
     expect(await commands[1]!.invoke()).toEqual({ ok: true, value: undefined });
     expect(await commands[2]!.invoke()).toEqual({ ok: true, value: undefined });
+    expect(await commands[3]!.invoke()).toEqual({ ok: true, value: undefined });
     expect(openWorkspacePanel).toHaveBeenCalledWith("acme.commands", "overview");
     expect(writeClipboard).toHaveBeenCalledWith("Code Work: C:\\workspace\\code-work");
     expect(insertPrompt).toHaveBeenCalledWith("检查当前改动");
+    expect(postTimeline).toHaveBeenCalledWith("acme.commands", "checks", "完成");
   });
 
   it("上下文或宿主端口缺失时不暴露无法形成闭环的命令", () => {
@@ -133,6 +141,32 @@ describe("localPluginCommandAdapter", () => {
     });
     expect(await healthyCommand.invoke()).toEqual({ ok: true, value: undefined });
     expect(insertPrompt).toHaveBeenCalledTimes(1);
+    expect(runtime.failures.getSnapshot()).toHaveLength(1);
+  });
+
+  it("Timeline 宿主写入失败时只隔离当前命令", async () => {
+    const runtime = createRuntime();
+    runtime.lifecycle.install(manifest("acme.timeline"));
+    const commands = listEnabledLocalPluginCommands({
+      runtime,
+      workspace: null,
+      ports: {
+        postTimeline: async () => {
+          throw new Error("timeline storage unavailable");
+        },
+      },
+    });
+
+    expect(await commands[0]!.invoke()).toMatchObject({
+      ok: false,
+      failure: {
+        pluginId: "acme.timeline",
+        contributionId: "timeline",
+        contributionKind: "commands",
+        phase: "invoke",
+        message: "timeline storage unavailable",
+      },
+    });
     expect(runtime.failures.getSnapshot()).toHaveLength(1);
   });
 });

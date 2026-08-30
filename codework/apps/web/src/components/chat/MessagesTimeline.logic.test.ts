@@ -1,3 +1,4 @@
+import { MessageId } from "@codework/contracts";
 import { describe, expect, it } from "vite-plus/test";
 import { setCurrentLanguage } from "~/i18n/runtime";
 
@@ -208,6 +209,66 @@ describe("computeMessageDurationStart", () => {
 
   it("returns empty map for empty input", () => {
     expect(computeMessageDurationStart([])).toEqual(new Map());
+  });
+});
+
+describe("本地插件 Timeline 行", () => {
+  it("按时间插入独立插件行且不改变消息行语义", () => {
+    const rows = deriveMessagesTimelineRows({
+      timelineEntries: [
+        {
+          id: "user-entry",
+          kind: "message" as const,
+          createdAt: "2026-08-30T05:00:00.000Z",
+          message: {
+            id: MessageId.make("user-message"),
+            role: "user" as const,
+            text: "开始检查",
+            turnId: null,
+            createdAt: "2026-08-30T05:00:00.000Z",
+            updatedAt: "2026-08-30T05:00:00.000Z",
+            streaming: false,
+          },
+        },
+        {
+          id: "assistant-entry",
+          kind: "message" as const,
+          createdAt: "2026-08-30T05:00:02.000Z",
+          message: {
+            id: MessageId.make("assistant-message"),
+            role: "assistant" as const,
+            text: "检查结束",
+            turnId: null,
+            createdAt: "2026-08-30T05:00:02.000Z",
+            updatedAt: "2026-08-30T05:00:02.000Z",
+            streaming: false,
+          },
+        },
+      ],
+      localPluginTimelineEntries: [
+        {
+          id: "local-plugin-timeline:event-1",
+          pluginId: "acme.timeline",
+          pluginName: "检查插件",
+          contributionId: "checks",
+          title: "检查结果",
+          message: "类型检查通过",
+          tone: "success",
+          createdAt: "2026-08-30T05:00:01.000Z",
+        },
+      ],
+      isWorking: false,
+      activeTurnStartedAt: null,
+      turnDiffSummaryByAssistantMessageId: new Map(),
+      revertTurnCountByUserMessageId: new Map(),
+    });
+
+    expect(rows.map((row) => row.kind)).toEqual(["message", "local-plugin-timeline", "message"]);
+    expect(rows[1]).toMatchObject({
+      id: "local-plugin-timeline:event-1",
+      kind: "local-plugin-timeline",
+      entry: { message: "类型检查通过", tone: "success" },
+    });
   });
 });
 

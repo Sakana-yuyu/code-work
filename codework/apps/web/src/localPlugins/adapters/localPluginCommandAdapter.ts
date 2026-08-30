@@ -11,11 +11,13 @@ import {
   renderLocalPluginTemplate,
   type LocalPluginWorkspaceContext,
 } from "../localPluginTemplate";
+import type { LocalPluginTimelinePostPort } from "./localPluginTimelineAdapter";
 
 export interface LocalPluginCommandPorts {
   readonly openWorkspacePanel?: (pluginId: string, contributionId: string) => void;
   readonly writeClipboard?: (text: string) => Promise<void>;
   readonly insertPrompt?: (text: string) => boolean;
+  readonly postTimeline?: LocalPluginTimelinePostPort;
 }
 
 export interface EnabledLocalPluginCommand {
@@ -54,7 +56,7 @@ function commandCanCloseLoop(input: {
     case "composer.prompt.insert":
       return input.ports.insertPrompt !== undefined;
     case "timeline.post":
-      return false;
+      return input.ports.postTimeline !== undefined;
   }
 }
 
@@ -110,8 +112,18 @@ async function invokeCurrentCommand(input: {
       }
       return;
     }
-    case "timeline.post":
-      throw new Error("Timeline contribution adapter 尚未接入当前命令宿主。");
+    case "timeline.post": {
+      const postTimeline = input.ports.postTimeline;
+      if (postTimeline === undefined) throw new Error("当前没有可用的 Timeline 宿主。");
+      assertPermission(input.runtime, input.pluginId, "timeline.write");
+      const timelineId = command.action.timelineId;
+      const timelineExists = plugin.manifest.contributions.timeline?.some(
+        (timeline) => timeline.id === timelineId,
+      );
+      if (!timelineExists) throw new Error("Timeline 贡献不存在。");
+      await postTimeline(input.pluginId, timelineId, command.action.message);
+      return;
+    }
   }
 }
 

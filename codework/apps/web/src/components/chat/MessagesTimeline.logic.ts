@@ -11,6 +11,7 @@ import {
 import { type ChatMessage, type ProposedPlan, type TurnDiffSummary } from "../../types";
 import { type MessageId, type OrchestrationLatestTurn, type TurnId } from "@codework/contracts";
 import { t } from "~/i18n/runtime";
+import type { EnabledLocalPluginTimelineEntry } from "~/localPlugins/adapters/localPluginTimelineAdapter";
 
 export const MAX_VISIBLE_WORK_LOG_ENTRIES = 1;
 export const TIMELINE_MINIMAP_ITEM_SPACING = 8;
@@ -239,6 +240,12 @@ export type MessagesTimelineRow =
       id: string;
       createdAt: string;
       turnPlan: TurnPlanEntry;
+    }
+  | {
+      kind: "local-plugin-timeline";
+      id: string;
+      createdAt: string;
+      entry: EnabledLocalPluginTimelineEntry;
     }
   | {
       kind: "working";
@@ -660,6 +667,7 @@ function deriveTurnFolds(input: {
 
 export function deriveMessagesTimelineRows(input: {
   timelineEntries: ReadonlyArray<TimelineEntry>;
+  localPluginTimelineEntries?: ReadonlyArray<EnabledLocalPluginTimelineEntry>;
   latestTurn?: TimelineLatestTurn | null;
   runningTurnId?: TurnId | null;
   expandedTurnIds?: ReadonlySet<TurnId>;
@@ -1038,7 +1046,32 @@ export function deriveMessagesTimelineRows(input: {
     appendWorkingRow();
   }
 
-  return nextRows;
+  return mergeLocalPluginTimelineRows(nextRows, input.localPluginTimelineEntries ?? []);
+}
+
+function mergeLocalPluginTimelineRows(
+  rows: ReadonlyArray<MessagesTimelineRow>,
+  entries: ReadonlyArray<EnabledLocalPluginTimelineEntry>,
+): MessagesTimelineRow[] {
+  const result = [...rows];
+  for (const entry of entries.toSorted((a, b) => a.createdAt.localeCompare(b.createdAt))) {
+    const row: MessagesTimelineRow = {
+      kind: "local-plugin-timeline",
+      id: entry.id,
+      createdAt: entry.createdAt,
+      entry,
+    };
+    const insertionIndex = result.findIndex(
+      (candidate) =>
+        candidate.createdAt === null || candidate.createdAt.localeCompare(entry.createdAt) > 0,
+    );
+    if (insertionIndex < 0) {
+      result.push(row);
+    } else {
+      result.splice(insertionIndex, 0, row);
+    }
+  }
+  return result;
 }
 
 export function computeStableMessagesTimelineRows(
@@ -1085,6 +1118,9 @@ function isRowUnchanged(a: MessagesTimelineRow, b: MessagesTimelineRow): boolean
       // unchanged plan keeps its row reference (virtualization stability).
       return a.createdAt === bp.createdAt && a.turnPlan.plan === bp.turnPlan.plan;
     }
+
+    case "local-plugin-timeline":
+      return a.entry === (b as typeof a).entry;
 
     case "work": {
       const bw = b as typeof a;

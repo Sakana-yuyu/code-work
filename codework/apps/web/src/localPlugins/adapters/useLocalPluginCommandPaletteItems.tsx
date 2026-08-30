@@ -1,4 +1,5 @@
 import type { ScopedThreadRef } from "@codework/contracts";
+import { scopedThreadKey } from "@codework/client-runtime/environment";
 import { PuzzleIcon } from "lucide-react";
 import { useMemo, useSyncExternalStore } from "react";
 
@@ -11,6 +12,8 @@ import { useRightPanelStore } from "~/rightPanelStore";
 import { localPluginRuntime } from "../localPluginRuntime";
 import type { LocalPluginWorkspaceContext } from "../localPluginTemplate";
 import { listEnabledLocalPluginCommands } from "./localPluginCommandAdapter";
+import { createLocalPluginTimelinePostPort } from "./localPluginTimelineAdapter";
+import { localPluginTimelineJournal } from "../localPluginTimelineRuntime";
 
 export function useLocalPluginCommandPaletteItems(input: {
   readonly composerHandleRef: ComposerHandleRef | null;
@@ -47,6 +50,15 @@ export function useLocalPluginCommandPaletteItems(input: {
                 composerHandleRef.current?.insertTextAtEnd(text, {
                   ensureLeadingBoundary: true,
                 }) ?? false,
+            }),
+        ...(threadRef === null
+          ? {}
+          : {
+              postTimeline: createLocalPluginTimelinePostPort({
+                registry: localPluginRuntime.registry,
+                journal: localPluginTimelineJournal,
+                threadKey: scopedThreadKey(threadRef),
+              }),
             }),
       },
     }).map((command) => ({

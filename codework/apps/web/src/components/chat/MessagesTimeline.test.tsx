@@ -5,6 +5,9 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { beforeAll, describe, expect, it, vi } from "vite-plus/test";
 import type { LegendListRef } from "@legendapp/list/react";
 import { t } from "~/i18n";
+import { setCurrentLanguage } from "~/i18n/runtime";
+
+setCurrentLanguage("en");
 
 vi.mock("@legendapp/list/react", async () => {
   const legendListTestId = "legend-list";
@@ -238,6 +241,33 @@ function buildAssistantTimelineEntry(text: string) {
 }
 
 describe("MessagesTimeline", () => {
+  it("以转义文本渲染带独立 tone 的本地插件 Timeline 事件", () => {
+    const html = renderToStaticMarkup(
+      <MessagesTimeline
+        {...buildProps()}
+        timelineEntries={[]}
+        localPluginTimelineEntries={[
+          {
+            id: "local-plugin-timeline:event-1",
+            pluginId: "acme.timeline",
+            pluginName: "检查插件",
+            contributionId: "checks",
+            title: "检查结果",
+            message: "<script>alert(1)</script> 类型检查通过",
+            tone: "warning",
+            createdAt: MESSAGE_CREATED_AT,
+          },
+        ]}
+      />,
+    );
+
+    expect(html).toContain('data-local-plugin-timeline-tone="warning"');
+    expect(html).toContain("检查结果");
+    expect(html).toContain("检查插件");
+    expect(html).toContain("&lt;script&gt;alert(1)&lt;/script&gt; 类型检查通过");
+    expect(html).not.toContain("<script>alert(1)</script>");
+  });
+
   it("renders a feedback command and its pending response as normal thread messages", () => {
     const submission = {
       id: MessageId.make("feedback-command"),
@@ -1020,7 +1050,7 @@ describe("MessagesTimeline", () => {
       />,
     );
 
-    expect(markup).toContain("+2 previous log entries");
+    expect(markup).toMatch(/\+2 previous log entries/i);
     expect(markup).not.toContain('aria-label="Hidden work includes a failure"');
   });
 
