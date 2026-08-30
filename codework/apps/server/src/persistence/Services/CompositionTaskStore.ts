@@ -76,6 +76,11 @@ export interface CompositionTaskStoreShape {
   readonly getLatestRun: (
     taskId: string,
   ) => Effect.Effect<Option.Option<CompositionTaskRun>, CompositionTaskStoreError>;
+  /** 按 Task 与 attempt 查询全部候选 Run；多命中时调用方必须拒绝猜测。 */
+  readonly listRunsByTaskAttempt: (
+    taskId: string,
+    attempt: number,
+  ) => Effect.Effect<ReadonlyArray<CompositionTaskRun>, CompositionTaskStoreError>;
   /** 按外部 Runtime 的稳定任务标识查询所有候选 Run；多命中时调用方必须拒绝猜测。 */
   readonly listRunsByRuntimeTask: (
     runtimeId: string,

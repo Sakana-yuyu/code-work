@@ -139,6 +139,7 @@ const MulticaQuickCreateIntentRowSchema = Schema.Struct({
 
 const IdRequest = Schema.Struct({ id: Schema.String });
 const TaskRequest = Schema.Struct({ taskId: Schema.String });
+const TaskAttemptRequest = Schema.Struct({ taskId: Schema.String, attempt: Schema.Number });
 const RuntimeTaskRequest = Schema.Struct({
   runtimeId: Schema.String,
   runtimeTaskId: Schema.String,
@@ -446,6 +447,26 @@ const makeStore = Effect.gen(function* () {
       WHERE task_id = ${taskId}
       ORDER BY attempt DESC, rowid DESC
       LIMIT 1
+    `,
+  });
+
+  const listRunsByTaskAttemptRows = SqlSchema.findAll({
+    Request: TaskAttemptRequest,
+    Result: RunRowSchema,
+    execute: ({ taskId, attempt }) => sql`
+      SELECT
+        run_id AS "runId", task_id AS "taskId", agent_id AS "agentId", runtime_id AS "runtimeId",
+        runtime_task_id AS "runtimeTaskId", capability_handshake_id AS "capabilityHandshakeId",
+        status, attempt,
+        capability_grant_ids_json AS "capabilityGrantIds", lease_id AS "leaseId",
+        started_at_unix_ms AS "startedAtUnixMs",
+        last_runtime_event_at_unix_ms AS "lastRuntimeEventAtUnixMs",
+        cancel_requested_at_unix_ms AS "cancelRequestedAtUnixMs",
+        finished_at_unix_ms AS "finishedAtUnixMs",
+        failure_code AS "failureCode", result_summary AS "resultSummary"
+      FROM composition_task_runs
+      WHERE task_id = ${taskId} AND attempt = ${attempt}
+      ORDER BY run_id ASC
     `,
   });
 
@@ -1002,6 +1023,11 @@ const makeStore = Effect.gen(function* () {
       run(
         "CompositionTaskStore.getLatestRun",
         getLatestRunRow({ taskId }).pipe(Effect.map(Option.map(toRun))),
+      ),
+    listRunsByTaskAttempt: (taskId, attempt) =>
+      run(
+        "CompositionTaskStore.listRunsByTaskAttempt",
+        listRunsByTaskAttemptRows({ taskId, attempt }).pipe(Effect.map((rows) => rows.map(toRun))),
       ),
     listRunsByRuntimeTask: (runtimeId, runtimeTaskId) =>
       run(

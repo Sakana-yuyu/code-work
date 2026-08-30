@@ -614,6 +614,40 @@ layer("CompositionTaskStore", (it) => {
     }),
   );
 
+  it.effect("按 taskId 和 attempt 返回全部候选 Run 并保持稳定顺序", () =>
+    Effect.gen(function* () {
+      const store = yield* CompositionTaskStore;
+      const firstRun = {
+        runId: "run-task-attempt-b",
+        taskId: "task-attempt-lookup",
+        agentId: "agent-1",
+        runtimeId: "runtime-attempt-lookup",
+        status: "failed" as const,
+        attempt: 2,
+        capabilityGrantIds: [],
+      };
+      const secondRun = {
+        ...firstRun,
+        runId: "run-task-attempt-a",
+      };
+      const otherAttempt = {
+        ...firstRun,
+        runId: "run-task-attempt-other",
+        attempt: 3,
+      };
+
+      yield* store.upsertRun(firstRun);
+      yield* store.upsertRun(secondRun);
+      yield* store.upsertRun(otherAttempt);
+
+      const runs = yield* store.listRunsByTaskAttempt(firstRun.taskId, firstRun.attempt);
+      assert.deepEqual(
+        runs.map((run) => run.runId),
+        [secondRun.runId, firstRun.runId],
+      );
+    }),
+  );
+
   it.effect("持久化 Multica quick-create intent，并只允许 prepared 到 sending 再到 accepted", () =>
     Effect.gen(function* () {
       const store = yield* CompositionTaskStore;
