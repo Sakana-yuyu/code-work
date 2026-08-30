@@ -614,12 +614,9 @@ export const makeWorkspaceScriptService = Effect.fn("WorkspaceScriptService.make
         .kill({ threadId: claim.run.threadId, terminalId: claim.run.terminalId })
         .pipe(Effect.result);
       if (killResult._tag === "Failure") {
-        const recovered = yield* updateRun(input.workspaceScriptRunId, (run, observedAtUnixMs) =>
+        yield* updateRun(input.workspaceScriptRunId, (run, observedAtUnixMs) =>
           makeWorkspaceScriptStopRetryable(run, observedAtUnixMs),
         );
-        if (Option.isSome(recovered) && isFinishedWorkspaceScriptRun(recovered.value)) {
-          return recovered.value;
-        }
         return yield* operationError(
           "workspace_script_stop_failed",
           detailFromUnknown(killResult.failure),

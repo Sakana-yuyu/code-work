@@ -76,7 +76,6 @@ const makeFixture = () => {
   const terminalInspections = new Map<string, "active" | "inactive" | "missing">();
   const historyFailures: unknown[] = [];
   const killFailures: unknown[] = [];
-  const killFailureEvents: Array<"exited" | "closed"> = [];
   const silentKills: boolean[] = [];
   let nowUnixMs = 1_000;
 
@@ -97,18 +96,6 @@ const makeFixture = () => {
         kills.push(input);
         const failure = killFailures.shift();
         if (failure !== undefined) {
-          const event = killFailureEvents.shift();
-          if (event === "exited") {
-            yield* emit({
-              type: "exited",
-              ...input,
-              sequence: 2,
-              exitCode: null,
-              exitSignal: 15,
-            });
-          } else if (event === "closed") {
-            yield* emit({ type: "closed", ...input, sequence: 2 });
-          }
           return yield* new WorkspaceScriptDependencyError({
             operation: "killTerminal",
             cause: failure,
@@ -172,7 +159,6 @@ const makeFixture = () => {
       histories,
       historyFailures,
       killFailures,
-      killFailureEvents,
       silentKills,
       terminalInspections,
       historyRequests,
@@ -396,50 +382,6 @@ describe("WorkspaceScriptService", () => {
         repeated.map((run) => run.status),
         ["stopped", "stopped"],
       );
-    }),
-  );
-
-  it.effect("kill 失败返回前 exited 已赢得 CAS 时返回真实 stopped 终态", () =>
-    Effect.gen(function* () {
-      const { service, killFailures, killFailureEvents } = yield* makeFixture();
-      const started = yield* service.start({
-        ...startRequest,
-        operationId: "operation-stop-exit-race",
-      });
-      killFailures.push(new Error("kill response lost"));
-      killFailureEvents.push("exited");
-
-      const stopped = yield* service.stop({
-        workspaceScriptRunId: started.workspaceScriptRunId,
-        operationId: "stop-operation-exit-race",
-        expectedRevision: started.revision,
-      });
-
-      assert.equal(stopped.status, "stopped");
-      assert.equal(stopped.exitSignal, 15);
-      assert.isNull(stopped.errorCode);
-    }),
-  );
-
-  it.effect("kill 失败返回前 closed 已赢得 CAS 时返回真实 stopped 终态", () =>
-    Effect.gen(function* () {
-      const { service, killFailures, killFailureEvents } = yield* makeFixture();
-      const started = yield* service.start({
-        ...startRequest,
-        operationId: "operation-stop-closed-race",
-      });
-      killFailures.push(new Error("kill response lost"));
-      killFailureEvents.push("closed");
-
-      const stopped = yield* service.stop({
-        workspaceScriptRunId: started.workspaceScriptRunId,
-        operationId: "stop-operation-closed-race",
-        expectedRevision: started.revision,
-      });
-
-      assert.equal(stopped.status, "stopped");
-      assert.isNull(stopped.exitCode);
-      assert.isNull(stopped.errorCode);
     }),
   );
 
