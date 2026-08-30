@@ -125,8 +125,13 @@ describe("LocalPluginsSettings", () => {
     await runtime.lifecycle.install(pluginManifest);
 
     const html = renderToStaticMarkup(<LocalPluginsSettings runtime={runtime} />);
+    const pluginCardClasses =
+      html.match(/<div class="([^"]+)" data-local-plugin-id="acme\.settings"/)?.[1]?.split(" ") ??
+      [];
 
     expect(html).toContain('data-local-plugin-id="acme.settings"');
+    expect(pluginCardClasses).toContain("rounded-lg");
+    expect(pluginCardClasses).not.toContain("rounded-xl");
     expect(html).toContain("设置插件");
     expect(html).toContain("1.0.0");
     expect(html).toContain("composer.prompt.write");
