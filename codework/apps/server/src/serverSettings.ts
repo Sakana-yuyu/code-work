@@ -10,8 +10,6 @@
  *
  * @module ServerSettings
  */
-import * as NodeCrypto from "node:crypto";
-
 import {
   DEFAULT_TEXT_GENERATION_MODEL,
   DEFAULT_TEXT_GENERATION_MODEL_BY_PROVIDER,
@@ -19,12 +17,7 @@ import {
   DEFAULT_SERVER_SETTINGS,
   type CompositionMcpRuntimeServerConfig,
   type CompositionMcpSecretValue,
-  isMulticaSecretName,
-  isSafeMulticaRuntimeBaseUrl,
-  isSafeMulticaTaskMcpEndpoint,
   type ModelSelection,
-  multicaProviderInstanceFingerprint,
-  multicaProviderInstanceRevision,
   type ProviderInstanceConfig,
   type ProviderInstanceEnvironmentVariable,
   ProviderDriverKind,
@@ -62,6 +55,13 @@ import {
   isModelSelectionProviderEnabled,
 } from "@codework/shared/serverSettings";
 import * as ServerSecretStore from "./auth/ServerSecretStore.ts";
+import {
+  applyMulticaProviderInstanceMutation,
+  assignMulticaProviderInstanceRevisions,
+  multicaSecretEnvironmentNames,
+  normalizeMulticaProviderInstances,
+  validateMulticaProviderInstancePreconditions,
+} from "./serverSettingsMulticaCas.ts";
 
 export { resolveSourceControlWriterModelSelection } from "@codework/shared/serverSettings";
 
@@ -74,68 +74,21 @@ const textDecoder = new TextDecoder();
 
 type ServerSettingsUpdateError = ServerSettingsError | ServerSettingsConflictError;
 
-/**
- * Fold the legacy in-config `enabled` flag into the envelope-level
- * `ProviderInstanceConfig.enabled` and strip it from the config blob, so
- * explicit provider instances carry exactly one enabled flag. Old settings
- * files can hold both flags with conflicting values; an explicit false on
- * either side wins so a user's disable is never silently undone. Runs on
- * every load and update — the file converges on the next write.
- */
-const foldProviderInstanceEnabledFlags = (settings: ServerSettings): ServerSettings => {
-  let changed = false;
-  const providerInstances: Record<string, ProviderInstanceConfig> = {};
-  for (const [instanceId, instance] of Object.entries(settings.providerInstances)) {
-    const config = instance.config;
-    // Only fold boolean flags: a malformed `enabled` (e.g. `"false"`) must
-    // stay in the blob so driver schema validation flags it instead of the
-    // fold silently repairing the config.
-    if (
-      config === null ||
-      typeof config !== "object" ||
-      Array.isArray(config) ||
-      typeof (config as { readonly enabled?: unknown }).enabled !== "boolean"
-    ) {
-      providerInstances[instanceId] = instance;
-      continue;
-    }
-    const { enabled: configEnabled, ...restConfig } = config as Record<string, unknown> & {
-      readonly enabled: boolean;
-    };
-    const resolved =
-      instance.enabled === false || configEnabled === false
-        ? false
-        : (instance.enabled ?? configEnabled);
-    changed = true;
-    providerInstances[instanceId] = {
-      ...instance,
-      enabled: resolved,
-      config: restConfig,
-    } satisfies ProviderInstanceConfig;
-  }
-  if (!changed) {
-    return settings;
-  }
-  return {
-    ...settings,
-    providerInstances: providerInstances as ServerSettings["providerInstances"],
-  };
-};
-
 const normalizeServerSettings = (
   settings: ServerSettings,
+  settingsPath = "<memory>",
 ): Effect.Effect<ServerSettings, ServerSettingsError> =>
   encodeServerSettings(settings).pipe(
     Effect.flatMap(decodeServerSettings),
-    Effect.map(foldProviderInstanceEnabledFlags),
     Effect.mapError(
       (cause) =>
         new ServerSettingsError({
-          settingsPath: "<memory>",
+          settingsPath,
           operation: "normalize",
           cause,
         }),
     ),
+    Effect.flatMap((normalized) => normalizeMulticaProviderInstances(settingsPath, normalized)),
   );
 
 function providerEnvironmentSecretName(input: {
@@ -213,224 +166,6 @@ function redactProviderEnvironmentVariable(
     value: "",
     ...(variable.value.length > 0 || variable.valueRedacted ? { valueRedacted: true } : {}),
   };
-}
-
-function multicaSecretEnvironmentNames(instance: ProviderInstanceConfig): ReadonlySet<string> {
-  if (
-    instance.driver !== "multica" ||
-    instance.config === null ||
-    typeof instance.config !== "object"
-  ) {
-    return new Set();
-  }
-  const headers = (instance.config as Record<string, unknown>)["headers"];
-  if (!Array.isArray(headers)) return new Set();
-  return new Set(
-    headers.flatMap((entry): ReadonlyArray<string> => {
-      if (entry === null || typeof entry !== "object" || Array.isArray(entry)) return [];
-      const binding = entry as Record<string, unknown>;
-      const headerName = binding["headerName"];
-      const environmentVariable = binding["environmentVariable"];
-      return typeof headerName === "string" &&
-        typeof environmentVariable === "string" &&
-        isMulticaSecretName(headerName)
-        ? [environmentVariable]
-        : [];
-    }),
-  );
-}
-
-function validateMulticaProviderInstancesForPersistence(
-  settingsPath: string,
-  settings: ServerSettings,
-): Effect.Effect<void, ServerSettingsError> {
-  return Effect.forEach(Object.entries(settings.providerInstances), ([instanceId, instance]) => {
-    if (instance.driver !== "multica") return Effect.void;
-    const config = instance.config;
-    const record =
-      config !== null && typeof config === "object" && !Array.isArray(config)
-        ? (config as Record<string, unknown>)
-        : null;
-    const baseUrl = record?.["baseUrl"];
-    const taskMcpEndpoint = record?.["taskMcpEndpoint"];
-    if (
-      typeof baseUrl !== "string" ||
-      !isSafeMulticaRuntimeBaseUrl(baseUrl) ||
-      (taskMcpEndpoint !== undefined &&
-        (typeof taskMcpEndpoint !== "string" || !isSafeMulticaTaskMcpEndpoint(taskMcpEndpoint)))
-    ) {
-      return Effect.fail(
-        new ServerSettingsError({
-          settingsPath,
-          operation: "normalize",
-          providerInstanceId: instanceId,
-          cause: new Error("Multica Runtime URL 配置不安全或无效。"),
-        }),
-      );
-    }
-    return Effect.void;
-  }).pipe(Effect.asVoid);
-}
-
-function changedMulticaProviderInstanceIds(
-  current: ServerSettings,
-  next: ServerSettings,
-): ReadonlyArray<string> {
-  const instanceIds = new Set([
-    ...Object.keys(current.providerInstances),
-    ...Object.keys(next.providerInstances),
-  ]);
-  return [...instanceIds].filter((instanceId) => {
-    const providerInstanceId = ProviderInstanceId.make(instanceId);
-    const currentInstance = current.providerInstances[providerInstanceId];
-    const nextInstance = next.providerInstances[providerInstanceId];
-    if (currentInstance?.driver !== "multica" && nextInstance?.driver !== "multica") {
-      return false;
-    }
-    if (
-      multicaProviderInstanceFingerprint(instanceId, currentInstance) !==
-      multicaProviderInstanceFingerprint(instanceId, nextInstance)
-    ) {
-      return true;
-    }
-    if (nextInstance?.driver !== "multica") return false;
-    const secretNames = multicaSecretEnvironmentNames(nextInstance);
-    return (nextInstance.environment ?? []).some(
-      (variable) =>
-        (variable.sensitive || secretNames.has(variable.name)) &&
-        variable.valueRedacted !== true &&
-        variable.value.length > 0,
-    );
-  });
-}
-
-/**
- * 非空 Multica precondition 表示局部 mutation，而不是整张 providerInstances 图替换。
- * 这样专用写入在锁内只修改声明的 Multica 实例，不能用过期快照回滚其它驱动。
- */
-function applyMulticaProviderInstanceMutation(
-  current: ServerSettings,
-  patch: ServerSettingsPatch,
-): Effect.Effect<ServerSettings, ServerSettingsConflictError> {
-  const preconditions = patch.multicaProviderInstancePreconditions ?? [];
-  if (preconditions.length === 0) {
-    return Effect.succeed(applyServerSettingsPatch(current, patch));
-  }
-  const partialProviderInstances = patch.providerInstances;
-  if (partialProviderInstances === undefined) {
-    return Effect.fail(
-      new ServerSettingsConflictError({ providerInstanceId: preconditions[0]!.instanceId }),
-    );
-  }
-  const unexpectedTopLevelKey = Object.keys(patch).find(
-    (key) => key !== "providerInstances" && key !== "multicaProviderInstancePreconditions",
-  );
-  if (unexpectedTopLevelKey !== undefined) {
-    return Effect.fail(
-      new ServerSettingsConflictError({ providerInstanceId: preconditions[0]!.instanceId }),
-    );
-  }
-
-  const listedIds = new Set<string>();
-  for (const precondition of preconditions) {
-    if (listedIds.has(precondition.instanceId)) {
-      return Effect.fail(
-        new ServerSettingsConflictError({ providerInstanceId: precondition.instanceId }),
-      );
-    }
-    listedIds.add(precondition.instanceId);
-  }
-  for (const instanceId of Object.keys(partialProviderInstances)) {
-    if (!listedIds.has(instanceId)) {
-      return Effect.fail(new ServerSettingsConflictError({ providerInstanceId: instanceId }));
-    }
-  }
-
-  const providerInstances: Record<string, ProviderInstanceConfig> = {
-    ...current.providerInstances,
-  };
-  for (const instanceId of listedIds) {
-    const providerInstanceId = ProviderInstanceId.make(instanceId);
-    const currentInstance = current.providerInstances[providerInstanceId];
-    const nextInstance = partialProviderInstances[providerInstanceId];
-    if (
-      (currentInstance !== undefined && currentInstance.driver !== "multica") ||
-      (nextInstance !== undefined && nextInstance.driver !== "multica")
-    ) {
-      return Effect.fail(new ServerSettingsConflictError({ providerInstanceId: instanceId }));
-    }
-    if (nextInstance === undefined) {
-      delete providerInstances[instanceId];
-    } else {
-      providerInstances[instanceId] = nextInstance;
-    }
-  }
-
-  return Effect.succeed(
-    applyServerSettingsPatch(current, {
-      ...patch,
-      providerInstances: providerInstances as ServerSettings["providerInstances"],
-    }),
-  );
-}
-
-function validateMulticaProviderInstancePreconditions(
-  current: ServerSettings,
-  next: ServerSettings,
-  patch: ServerSettingsPatch,
-): Effect.Effect<ReadonlyArray<string>, ServerSettingsConflictError> {
-  const preconditions = new Map<string, string | null>();
-  for (const precondition of patch.multicaProviderInstancePreconditions ?? []) {
-    if (preconditions.has(precondition.instanceId)) {
-      return Effect.fail(
-        new ServerSettingsConflictError({ providerInstanceId: precondition.instanceId }),
-      );
-    }
-    preconditions.set(precondition.instanceId, precondition.expectedRevision);
-  }
-
-  for (const [instanceId, expectedRevision] of preconditions) {
-    const currentInstance = current.providerInstances[ProviderInstanceId.make(instanceId)];
-    const actualRevision = multicaProviderInstanceRevision(instanceId, currentInstance);
-    if (
-      expectedRevision === null
-        ? currentInstance !== undefined
-        : expectedRevision !== actualRevision
-    ) {
-      return Effect.fail(new ServerSettingsConflictError({ providerInstanceId: instanceId }));
-    }
-  }
-
-  const changedInstanceIds = changedMulticaProviderInstanceIds(current, next);
-  for (const instanceId of changedInstanceIds) {
-    if (!preconditions.has(instanceId)) {
-      return Effect.fail(new ServerSettingsConflictError({ providerInstanceId: instanceId }));
-    }
-  }
-  return Effect.succeed(changedInstanceIds);
-}
-
-function assignMulticaProviderInstanceRevisions(
-  current: ServerSettings,
-  next: ServerSettings,
-  changedInstanceIds: ReadonlyArray<string>,
-): ServerSettings {
-  const providerInstances: Record<string, ProviderInstanceConfig> = { ...next.providerInstances };
-  const changed = new Set(changedInstanceIds);
-  for (const [instanceId, instance] of Object.entries(providerInstances)) {
-    if (instance?.driver !== "multica") continue;
-    const { settingsRevision: _clientRevision, ...unversionedInstance } = instance;
-    const currentInstance = current.providerInstances[ProviderInstanceId.make(instanceId)];
-    providerInstances[instanceId] = {
-      ...unversionedInstance,
-      ...(changed.has(instanceId)
-        ? { settingsRevision: NodeCrypto.randomUUID() }
-        : currentInstance?.driver === "multica" && currentInstance.settingsRevision !== undefined
-          ? { settingsRevision: currentInstance.settingsRevision }
-          : {}),
-    } satisfies ProviderInstanceConfig;
-  }
-  return { ...next, providerInstances: providerInstances as ServerSettings["providerInstances"] };
 }
 
 function redactMcpSecretValue(value: CompositionMcpSecretValue): CompositionMcpSecretValue {
@@ -786,8 +521,9 @@ const make = Effect.gen(function* () {
       ),
     );
 
-    return foldProviderInstanceEnabledFlags(
+    return yield* normalizeServerSettings(
       restoreUsedProviders(settings, persisted, providerHistory),
+      settingsPath,
     );
   });
 
@@ -1603,17 +1339,17 @@ const make = Effect.gen(function* () {
         Effect.gen(function* () {
           const current = yield* getSettingsFromCache;
           const patched = yield* applyMulticaProviderInstanceMutation(current, patch);
+          const normalizedPatched = yield* normalizeServerSettings(patched, settingsPath);
           const changedMulticaInstanceIds = yield* validateMulticaProviderInstancePreconditions(
             current,
-            patched,
+            normalizedPatched,
             patch,
           );
           const versioned = assignMulticaProviderInstanceRevisions(
             current,
-            patched,
+            normalizedPatched,
             changedMulticaInstanceIds,
           );
-          yield* validateMulticaProviderInstancesForPersistence(settingsPath, versioned);
           const nextWithEnvironmentSecrets = yield* persistProviderEnvironmentSecrets(
             current,
             versioned,
@@ -1623,7 +1359,7 @@ const make = Effect.gen(function* () {
             nextWithEnvironmentSecrets,
           );
           const nextPersisted = yield* persistByokSecrets(current, nextWithMcpSecrets);
-          const next = yield* normalizeServerSettings(nextPersisted);
+          const next = yield* normalizeServerSettings(nextPersisted, settingsPath);
           yield* writeSettingsAtomically(next);
           yield* Cache.set(settingsCache, cacheKey, next);
           yield* emitChange(next);

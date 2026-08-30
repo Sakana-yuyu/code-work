@@ -1105,6 +1105,8 @@ export const multicaProviderInstanceFingerprint = (
     accentColor: instance.accentColor ?? "",
     enabled: instance.enabled ?? null,
     config: {
+      schemaVersion: config["schemaVersion"] ?? null,
+      enabled: typeof config["enabled"] === "boolean" ? config["enabled"] : null,
       runtimeId: typeof config["runtimeId"] === "string" ? config["runtimeId"] : "",
       daemonId: typeof config["daemonId"] === "string" ? config["daemonId"] : "",
       daemonRuntimeId:

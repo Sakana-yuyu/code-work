@@ -1793,6 +1793,118 @@ it.layer(NodeServices.layer)("server settings", (it) => {
     }).pipe(Effect.provide(makeServerSettingsLayer())),
   );
 
+  it.effect("在 CAS 前规范化 Multica 完整 schema，并按最终语义推进 revision", () =>
+    Effect.gen(function* () {
+      const serverSettings = yield* ServerSettingsModule.ServerSettingsService;
+      const instanceId = ProviderInstanceId.make("multica_canonical_cas");
+      const baseConfig = {
+        runtimeId: "multica:daemon-1:runtime-1",
+        daemonId: "daemon-1",
+        daemonRuntimeId: "runtime-1",
+        baseUrl: "http://127.0.0.1:9000",
+      };
+
+      const created = yield* serverSettings.updateSettings({
+        providerInstances: {
+          [instanceId]: {
+            driver: ProviderDriverKind.make("multica"),
+            config: baseConfig,
+          },
+        },
+        multicaProviderInstancePreconditions: [{ instanceId, expectedRevision: null }],
+      });
+      const createdInstance = created.providerInstances[instanceId];
+      if (createdInstance === undefined) return yield* Effect.die("missing canonical instance");
+      const createdConfig = createdInstance.config as Record<string, unknown>;
+      const createdRevision = multicaProviderInstanceRevision(instanceId, createdInstance);
+      assert.equal(createdInstance.enabled, true);
+      assert.equal(createdConfig["schemaVersion"], 1);
+      assert.equal(createdConfig["enabled"], undefined);
+      assert.deepEqual(createdConfig["headers"], []);
+      assert.deepEqual(createdConfig["assigneeRoutes"], []);
+      assert.deepEqual(createdConfig["capabilities"], []);
+      assert.equal(createdConfig["supportsResume"], false);
+      assert.equal(createdConfig["supportsMcp"], false);
+      assert.equal(createdConfig["supportsSquad"], false);
+      assert.equal(createdConfig["supportsLeader"], false);
+      assert.equal(createdConfig["supportsTaskGraph"], false);
+
+      const missingPrecondition = yield* Effect.flip(
+        serverSettings.updateSettings({
+          providerInstances: {
+            [instanceId]: {
+              ...createdInstance,
+              config: { ...createdConfig, enabled: false },
+            },
+          },
+        }),
+      );
+      assert.equal(missingPrecondition._tag, "ServerSettingsConflictError");
+
+      const equivalent = yield* serverSettings.updateSettings({
+        providerInstances: {
+          [instanceId]: {
+            ...createdInstance,
+            config: { ...createdConfig, enabled: true },
+          },
+        },
+        multicaProviderInstancePreconditions: [{ instanceId, expectedRevision: createdRevision }],
+      });
+      const equivalentInstance = equivalent.providerInstances[instanceId];
+      if (equivalentInstance === undefined) return yield* Effect.die("missing equivalent instance");
+      assert.equal(
+        multicaProviderInstanceRevision(instanceId, equivalentInstance),
+        createdRevision,
+      );
+
+      const disabled = yield* serverSettings.updateSettings({
+        providerInstances: {
+          [instanceId]: {
+            ...equivalentInstance,
+            config: { ...(equivalentInstance.config as Record<string, unknown>), enabled: false },
+          },
+        },
+        multicaProviderInstancePreconditions: [{ instanceId, expectedRevision: createdRevision }],
+      });
+      const disabledInstance = disabled.providerInstances[instanceId];
+      if (disabledInstance === undefined) return yield* Effect.die("missing disabled instance");
+      assert.equal(disabledInstance.enabled, false);
+      assert.equal((disabledInstance.config as Record<string, unknown>)["enabled"], undefined);
+      assert.notEqual(
+        multicaProviderInstanceRevision(instanceId, disabledInstance),
+        createdRevision,
+      );
+
+      const beforeInvalidSchema = yield* serverSettings.getSettings;
+      const invalidSchema = yield* Effect.flip(
+        serverSettings.updateSettings({
+          providerInstances: {
+            [instanceId]: {
+              ...disabledInstance,
+              config: {
+                ...(disabledInstance.config as Record<string, unknown>),
+                schemaVersion: 2,
+              },
+            },
+          },
+          multicaProviderInstancePreconditions: [
+            {
+              instanceId,
+              expectedRevision: multicaProviderInstanceRevision(instanceId, disabledInstance),
+            },
+          ],
+        }),
+      );
+      if (invalidSchema._tag !== "ServerSettingsError") {
+        return yield* Effect.die("invalid schema should fail during normalization");
+      }
+      assert.equal(invalidSchema.operation, "normalize");
+
+      const afterInvalidSchema = yield* serverSettings.getSettings;
+      assert.deepEqual(afterInvalidSchema, beforeInvalidSchema);
+    }).pipe(Effect.provide(makeServerSettingsLayer())),
+  );
+
   it.effect("拒绝创建或重命名覆盖已存在的非 Multica 实例", () =>
     Effect.gen(function* () {
       const serverSettings = yield* ServerSettingsModule.ServerSettingsService;

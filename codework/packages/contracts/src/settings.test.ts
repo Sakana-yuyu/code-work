@@ -407,6 +407,36 @@ describe("ServerSettingsPatch.providerInstances", () => {
     expect(JSON.stringify(rpcPreconditions)).not.toContain(sentinel);
   });
 
+  it("includes legacy Multica schema and enabled flags in the compatibility fingerprint", () => {
+    const instanceId = ProviderInstanceId.make("multica_legacy_behavior_fields");
+    const base = {
+      driver: ProviderDriverKind.make("multica"),
+      config: {
+        schemaVersion: 1,
+        enabled: true,
+        runtimeId: "multica:daemon-1:runtime-1",
+        daemonId: "daemon-1",
+        daemonRuntimeId: "runtime-1",
+        baseUrl: "http://127.0.0.1:9000",
+        headers: [],
+        assigneeRoutes: [],
+      },
+    };
+
+    expect(
+      multicaProviderInstanceFingerprint(instanceId, {
+        ...base,
+        config: { ...base.config, enabled: false },
+      }),
+    ).not.toBe(multicaProviderInstanceFingerprint(instanceId, base));
+    expect(
+      multicaProviderInstanceFingerprint(instanceId, {
+        ...base,
+        config: { ...base.config, schemaVersion: 2 },
+      }),
+    ).not.toBe(multicaProviderInstanceFingerprint(instanceId, base));
+  });
+
   it("preserves a fork-defined driver entry through patch decoding", () => {
     const patch = decodeServerSettingsPatch({
       providerInstances: {
