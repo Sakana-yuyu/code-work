@@ -907,6 +907,7 @@ const makeStore = Effect.gen(function* () {
     claimStop,
     getRun: (workspaceScriptRunId) =>
       readStoredRun(workspaceScriptRunId).pipe(Effect.map(Option.map((stored) => stored.run))),
+    getStoredRun: readStoredRun,
     getActiveRunByTerminal: (threadId, terminalId) =>
       query(
         "WorkspaceScriptStore.getActiveRunByTerminal",

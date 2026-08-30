@@ -38,8 +38,10 @@ import {
 } from "../terminal/TerminalSessionOwnership.ts";
 import {
   isFinishedWorkspaceScriptRun,
+  isWorkspaceScriptStartCancelled,
   makeWorkspaceScriptClosed,
   makeWorkspaceScriptExited,
+  makeWorkspaceScriptStartCancelled,
   makeWorkspaceScriptStopRetryable,
 } from "./WorkspaceScriptStopState.ts";
 
@@ -70,9 +72,9 @@ export interface WorkspaceScriptTerminalPort {
     readonly threadId: string;
     readonly terminalId: string;
   }) => Effect.Effect<string, WorkspaceScriptDependencyError>;
-  readonly subscribe: (
+  readonly subscribeLifecycle: (
     listener: (event: TerminalEvent) => Effect.Effect<void>,
-  ) => Effect.Effect<() => void>;
+  ) => Effect.Effect<TerminalManager.TerminalLifecycleSubscription>;
 }
 
 export interface WorkspaceScriptServiceShape {
@@ -250,6 +252,15 @@ export const makeWorkspaceScriptService = Effect.fn("WorkspaceScriptService.make
         ),
       );
 
+  const readStoredRun = (workspaceScriptRunId: string) =>
+    options.store
+      .getStoredRun(workspaceScriptRunId)
+      .pipe(
+        Effect.mapError((cause) =>
+          persistenceError("读取 Workspace Script 停止状态", cause, { workspaceScriptRunId }),
+        ),
+      );
+
   const updateRun = Effect.fn("WorkspaceScriptService.updateRun")(function* (
     workspaceScriptRunId: string,
     update: (run: WorkspaceScriptRun, observedAtUnixMs: number) => WorkspaceScriptRun,
@@ -360,8 +371,8 @@ export const makeWorkspaceScriptService = Effect.fn("WorkspaceScriptService.make
       ),
     );
 
-  const unsubscribe = yield* options.terminal.subscribe(onTerminalEvent);
-  yield* Effect.addFinalizer(() => Effect.sync(unsubscribe));
+  const lifecycleSubscription = yield* options.terminal.subscribeLifecycle(onTerminalEvent);
+  yield* Effect.addFinalizer(() => Effect.sync(lifecycleSubscription.unsubscribe));
 
   const saveRecoveryTransition = Effect.fn("WorkspaceScriptService.saveRecoveryTransition")(
     function* (
@@ -609,6 +620,11 @@ export const makeWorkspaceScriptService = Effect.fn("WorkspaceScriptService.make
         );
       if (!claim.claimed) return claim.run;
 
+      const beforeSpawn = yield* readStoredRun(workspaceScriptRunId);
+      if (Option.isSome(beforeSpawn) && beforeSpawn.value.stopOperationId !== null) {
+        return beforeSpawn.value.run;
+      }
+
       const invocation = workspaceScriptShellInvocation({
         platform: options.platform,
         command: script.command,
@@ -651,6 +667,49 @@ export const makeWorkspaceScriptService = Effect.fn("WorkspaceScriptService.make
         );
       }
 
+      const afterSpawn = yield* readStoredRun(workspaceScriptRunId);
+      if (
+        Option.isSome(afterSpawn) &&
+        afterSpawn.value.stopOperationId !== null &&
+        isWorkspaceScriptStartCancelled(afterSpawn.value.run)
+      ) {
+        const stopping = yield* updateRun(workspaceScriptRunId, (run, observedAtUnixMs) =>
+          isWorkspaceScriptStartCancelled(run)
+            ? {
+                ...run,
+                status: "stopping",
+                revision: run.revision + 1,
+                startedAtUnixMs: observedAtUnixMs,
+                finishedAtUnixMs: null,
+                errorCode: null,
+                errorDetail: null,
+                updatedAtUnixMs: observedAtUnixMs,
+              }
+            : run,
+        );
+        if (Option.isSome(stopping) && stopping.value.status === "stopping") {
+          const killResult = yield* options.terminal
+            .kill({
+              threadId: stopping.value.threadId,
+              terminalId: stopping.value.terminalId,
+              expectedOwner: workspaceScriptTerminalOwner(stopping.value),
+            })
+            .pipe(Effect.result);
+          if (killResult._tag === "Failure") {
+            yield* updateRun(workspaceScriptRunId, (run, observedAtUnixMs) =>
+              makeWorkspaceScriptStopRetryable(run, observedAtUnixMs),
+            );
+            return yield* operationError(
+              "workspace_script_stop_failed",
+              detailFromUnknown(killResult.failure),
+              { workspaceScriptRunId },
+            );
+          }
+          yield* lifecycleSubscription.awaitPending();
+          return yield* reconcileStop(stopping.value, afterSpawn.value.stopOperationId, true);
+        }
+      }
+
       const running = yield* updateRun(workspaceScriptRunId, (run, observedAtUnixMs) =>
         run.status !== "starting"
           ? run
@@ -666,6 +725,83 @@ export const makeWorkspaceScriptService = Effect.fn("WorkspaceScriptService.make
     },
   );
 
+  const reconcileStop = Effect.fn("WorkspaceScriptService.reconcileStop")(function* (
+    run: WorkspaceScriptRun,
+    operationId: string,
+    makeActiveRetryable: boolean,
+  ) {
+    const latest = yield* readRun(run.workspaceScriptRunId);
+    if (Option.isNone(latest)) {
+      return yield* operationError(
+        "workspace_script_run_not_found",
+        `Workspace Script Run 不存在：${run.workspaceScriptRunId}`,
+        { workspaceScriptRunId: run.workspaceScriptRunId },
+      );
+    }
+    if (isFinishedWorkspaceScriptRun(latest.value)) return latest.value;
+
+    const inspection = yield* options.terminal
+      .inspectSessionReceipt({
+        threadId: run.threadId,
+        terminalId: run.terminalId,
+        expectedOwner: workspaceScriptTerminalOwner(run),
+      })
+      .pipe(Effect.result);
+    if (
+      inspection._tag === "Success" &&
+      inspection.success.inspection === "inactive" &&
+      inspection.success.snapshot !== null
+    ) {
+      const terminalSnapshot = inspection.success.snapshot;
+      const settled = yield* updateRun(run.workspaceScriptRunId, (current, observedAtUnixMs) =>
+        makeWorkspaceScriptExited({
+          run: current,
+          stopOperationId: operationId,
+          observedAtUnixMs,
+          exitCode: terminalSnapshot.exitCode,
+          exitSignal: terminalSnapshot.exitSignal,
+        }),
+      );
+      if (Option.isSome(settled)) return settled.value;
+      return yield* operationError(
+        "workspace_script_run_not_found",
+        `Workspace Script Run 不存在：${run.workspaceScriptRunId}`,
+        { workspaceScriptRunId: run.workspaceScriptRunId },
+      );
+    }
+    if (inspection._tag === "Success" && inspection.success.inspection === "missing") {
+      const settled = yield* updateRun(run.workspaceScriptRunId, (current, observedAtUnixMs) =>
+        makeWorkspaceScriptClosed({
+          run: current,
+          stopOperationId: operationId,
+          observedAtUnixMs,
+        }),
+      );
+      if (Option.isSome(settled)) return settled.value;
+      return yield* operationError(
+        "workspace_script_run_not_found",
+        `Workspace Script Run 不存在：${run.workspaceScriptRunId}`,
+        { workspaceScriptRunId: run.workspaceScriptRunId },
+      );
+    }
+
+    if (makeActiveRetryable) {
+      const retryable = yield* updateRun(run.workspaceScriptRunId, (current, observedAtUnixMs) =>
+        makeWorkspaceScriptStopRetryable(current, observedAtUnixMs),
+      );
+      if (Option.isSome(retryable) && isFinishedWorkspaceScriptRun(retryable.value)) {
+        return retryable.value;
+      }
+    }
+    return yield* operationError(
+      "workspace_script_stop_failed",
+      inspection._tag === "Failure"
+        ? detailFromUnknown(inspection.failure)
+        : "终端终止结果尚未确认，请使用相同 operationId 重试。",
+      { workspaceScriptRunId: run.workspaceScriptRunId },
+    );
+  });
+
   const stop: WorkspaceScriptServiceShape["stop"] = Effect.fn("WorkspaceScriptService.stop")(
     function* (input) {
       const current = yield* readRun(input.workspaceScriptRunId);
@@ -677,12 +813,18 @@ export const makeWorkspaceScriptService = Effect.fn("WorkspaceScriptService.make
         );
       }
 
-      const stopping: WorkspaceScriptRun = {
-        ...current.value,
-        ...(isFinishedWorkspaceScriptRun(current.value) ? {} : { status: "stopping" as const }),
-        revision: current.value.revision + 1,
-        updatedAtUnixMs: Math.max(yield* currentTimeMillis, current.value.updatedAtUnixMs),
-      };
+      const observedAtUnixMs = Math.max(yield* currentTimeMillis, current.value.updatedAtUnixMs);
+      const stopping: WorkspaceScriptRun =
+        current.value.status === "starting"
+          ? makeWorkspaceScriptStartCancelled(current.value, observedAtUnixMs)
+          : {
+              ...current.value,
+              ...(isFinishedWorkspaceScriptRun(current.value)
+                ? {}
+                : { status: "stopping" as const }),
+              revision: current.value.revision + 1,
+              updatedAtUnixMs: observedAtUnixMs,
+            };
       const claim = yield* options.store
         .claimStop({
           run: stopping,
@@ -703,7 +845,12 @@ export const makeWorkspaceScriptService = Effect.fn("WorkspaceScriptService.make
                 }),
           ),
         );
-      if (!claim.claimed || isFinishedWorkspaceScriptRun(claim.run)) return claim.run;
+      if (isFinishedWorkspaceScriptRun(claim.run)) return claim.run;
+      if (!claim.claimed) {
+        if (claim.run.status !== "stopping") return claim.run;
+        yield* lifecycleSubscription.awaitPending();
+        return yield* reconcileStop(claim.run, input.operationId, false);
+      }
 
       const killResult = yield* options.terminal
         .kill({
@@ -723,8 +870,8 @@ export const makeWorkspaceScriptService = Effect.fn("WorkspaceScriptService.make
         );
       }
 
-      const latest = yield* readRun(input.workspaceScriptRunId);
-      return Option.getOrElse(latest, () => claim.run);
+      yield* lifecycleSubscription.awaitPending();
+      return yield* reconcileStop(claim.run, input.operationId, true);
     },
   );
 
@@ -772,7 +919,7 @@ export const make = Effect.gen(function* () {
               (cause) => new WorkspaceScriptDependencyError({ operation: "getHistory", cause }),
             ),
           ),
-      subscribe: terminalManager.subscribe,
+      subscribeLifecycle: terminalManager.subscribeLifecycle,
     },
     resolveProject: (projectId) =>
       projectionSnapshotQuery

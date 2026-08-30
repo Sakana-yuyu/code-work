@@ -108,9 +108,13 @@ export const validateWorkspaceScriptRun = (
   if (
     (input.status === "starting" &&
       (input.startedAtUnixMs !== null || input.finishedAtUnixMs !== null)) ||
-    ((input.status === "running" || input.status === "stopping") &&
+    (input.status === "running" &&
       (input.startedAtUnixMs === null || input.finishedAtUnixMs !== null)) ||
-    ((input.status === "stopped" || input.status === "exited") &&
+    (input.status === "stopping" &&
+      (input.startedAtUnixMs === null || input.finishedAtUnixMs !== null)) ||
+    (input.status === "stopped" &&
+      (input.startedAtUnixMs === null || input.finishedAtUnixMs === null)) ||
+    (input.status === "exited" &&
       (input.startedAtUnixMs === null || input.finishedAtUnixMs === null)) ||
     (input.status === "failed" && input.finishedAtUnixMs === null)
   ) {

@@ -67,6 +67,10 @@ export interface WorkspaceScriptStoreShape {
   readonly getRun: (
     workspaceScriptRunId: string,
   ) => Effect.Effect<Option.Option<WorkspaceScriptRun>, WorkspaceScriptStoreError>;
+  /** 仅服务端协调路径读取 stop operation；RPC 投影仍只暴露 Run。 */
+  readonly getStoredRun: (
+    workspaceScriptRunId: string,
+  ) => Effect.Effect<Option.Option<StoredWorkspaceScriptRun>, WorkspaceScriptStoreError>;
   readonly getActiveRunByTerminal: (
     threadId: string,
     terminalId: string,

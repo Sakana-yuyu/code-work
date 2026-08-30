@@ -6,6 +6,7 @@ import type {
 } from "@codework/contracts";
 import {
   ProjectId,
+  TerminalSessionLookupError,
   TerminalSessionOwnershipError,
   WORKSPACE_SCRIPT_LOG_MAX_BYTES,
 } from "@codework/contracts";
@@ -15,6 +16,7 @@ import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
+import * as Ref from "effect/Ref";
 import * as Scope from "effect/Scope";
 
 import { PersistenceSqlError } from "../persistence/Errors.ts";
@@ -85,7 +87,11 @@ const snapshot = (input: {
 
 const makeFixture = () => {
   const listeners = new Set<(event: TerminalEvent) => Effect.Effect<void>>();
+  const pendingLifecycleEvents: TerminalEvent[] = [];
   const starts: Array<Parameters<WorkspaceScriptTerminalPort["runCommand"]>[0]> = [];
+  const beforeStartSpawns: Array<
+    (input: Parameters<WorkspaceScriptTerminalPort["runCommand"]>[0]) => Effect.Effect<void>
+  > = [];
   const beforeStartReturns: Array<
     (input: Parameters<WorkspaceScriptTerminalPort["runCommand"]>[0]) => Effect.Effect<void>
   > = [];
@@ -102,6 +108,8 @@ const makeFixture = () => {
   const historyFailures: unknown[] = [];
   const killFailures: unknown[] = [];
   const getRunFailures: Array<WorkspaceScriptStoreError | undefined> = [];
+  const getActiveRunFailures: Array<WorkspaceScriptStoreError | undefined> = [];
+  const saveTransitionFailures: Array<WorkspaceScriptStoreError | undefined> = [];
   let nowUnixMs = 1_000;
 
   const emit = (event: TerminalEvent) =>
@@ -148,6 +156,8 @@ const makeFixture = () => {
           return existingSnapshot;
         }
         starts.push(input);
+        const beforeSpawn = beforeStartSpawns.shift();
+        if (beforeSpawn !== undefined) yield* beforeSpawn(input);
         const created = snapshot({ ...input, worktreePath: input.worktreePath ?? null });
         sessionSnapshots.set(sessionKey, created);
         sessionOwners.set(sessionKey, input.owner);
@@ -165,7 +175,26 @@ const makeFixture = () => {
             cause: failure,
           });
         }
-        yield* emit({
+        const sessionKey = `${input.threadId}\u0000${input.terminalId}`;
+        const currentSnapshot = sessionSnapshots.get(sessionKey);
+        if (currentSnapshot === undefined) {
+          return yield* new WorkspaceScriptDependencyError({
+            operation: "killTerminal",
+            cause: new TerminalSessionLookupError({
+              threadId: input.threadId,
+              terminalId: input.terminalId,
+            }),
+          });
+        }
+        sessionSnapshots.set(sessionKey, {
+          ...currentSnapshot,
+          status: "exited",
+          pid: null,
+          exitCode: null,
+          exitSignal: 15,
+          sequence: (currentSnapshot.sequence ?? 0) + 1,
+        });
+        pendingLifecycleEvents.push({
           type: "exited",
           ...input,
           sequence: 2,
@@ -215,10 +244,19 @@ const makeFixture = () => {
         }
         return histories.get(`${input.threadId}\u0000${input.terminalId}`) ?? "";
       }),
-    subscribe: (listener) =>
+    subscribeLifecycle: (listener) =>
       Effect.sync(() => {
         listeners.add(listener);
-        return () => listeners.delete(listener);
+        return {
+          unsubscribe: () => listeners.delete(listener),
+          awaitPending: () =>
+            Effect.gen(function* () {
+              while (pendingLifecycleEvents.length > 0) {
+                const event = pendingLifecycleEvents.shift();
+                if (event !== undefined) yield* listener(event);
+              }
+            }),
+        };
       }),
   };
 
@@ -239,6 +277,16 @@ const makeFixture = () => {
       getRun: (workspaceScriptRunId) => {
         const failure = getRunFailures.shift();
         return failure === undefined ? store.getRun(workspaceScriptRunId) : Effect.fail(failure);
+      },
+      getActiveRunByTerminal: (threadId, terminalId) => {
+        const failure = getActiveRunFailures.shift();
+        return failure === undefined
+          ? store.getActiveRunByTerminal(threadId, terminalId)
+          : Effect.fail(failure);
+      },
+      saveTransition: (input) => {
+        const failure = saveTransitionFailures.shift();
+        return failure === undefined ? store.saveTransition(input) : Effect.fail(failure);
       },
     };
     let currentServiceScope: Scope.Closeable | null = null;
@@ -276,6 +324,7 @@ const makeFixture = () => {
     return {
       service,
       starts,
+      beforeStartSpawns,
       beforeStartReturns,
       afterStartClaims,
       kills,
@@ -285,6 +334,8 @@ const makeFixture = () => {
       historyFailures,
       killFailures,
       getRunFailures,
+      getActiveRunFailures,
+      saveTransitionFailures,
       historyRequests,
       emit,
       seedTerminalSession,
@@ -396,6 +447,77 @@ describe("WorkspaceScriptService", () => {
       assert.isNull(readTerminalOwner(startRequest.threadId, terminalId));
       assert.equal(starts.length, 0);
       assert.equal(kills.length, 0);
+    }),
+  );
+
+  it.effect("stop 在 spawn 前获胜时不创建晚到 PTY，并记录启动已取消", () =>
+    Effect.gen(function* () {
+      const { service, afterStartClaims, starts, kills, readTerminalSession } =
+        yield* makeFixture();
+      const operationId = "operation-stop-before-spawn";
+      const workspaceScriptRunId = `workspace-script-run:${operationId}`;
+      const stopResult = yield* Ref.make(Option.none<WorkspaceScriptRun>());
+      afterStartClaims.push(() =>
+        service
+          .stop({
+            workspaceScriptRunId,
+            operationId: "stop-before-spawn",
+            expectedRevision: 1,
+          })
+          .pipe(
+            Effect.tap((run) => Ref.set(stopResult, Option.some(run))),
+            Effect.asVoid,
+            Effect.orDie,
+          ),
+      );
+
+      const startResult = yield* service.start({ ...startRequest, operationId });
+      const cancelled = Option.getOrThrow(yield* Ref.get(stopResult));
+
+      assert.equal(startResult.status, "failed");
+      assert.equal(startResult.errorCode, "workspace_script_start_cancelled");
+      assert.equal(cancelled.status, "failed");
+      assert.equal(starts.length, 0);
+      assert.equal(kills.length, 0);
+      assert.isNull(readTerminalSession(startRequest.threadId, `workspace-script-${operationId}`));
+    }),
+  );
+
+  it.effect("stop 在 spawn 注册前获胜时终止晚到 PTY，并在创建后收口为 stopped", () =>
+    Effect.gen(function* () {
+      const { service, beforeStartSpawns, starts, kills, readTerminalSession } =
+        yield* makeFixture();
+      const operationId = "operation-stop-during-spawn";
+      const workspaceScriptRunId = `workspace-script-run:${operationId}`;
+      const stopResult = yield* Ref.make(Option.none<WorkspaceScriptRun>());
+      beforeStartSpawns.push(() =>
+        service
+          .stop({
+            workspaceScriptRunId,
+            operationId: "stop-during-spawn",
+            expectedRevision: 1,
+          })
+          .pipe(
+            Effect.tap((run) => Ref.set(stopResult, Option.some(run))),
+            Effect.asVoid,
+            Effect.orDie,
+          ),
+      );
+
+      const startResult = yield* service.start({ ...startRequest, operationId });
+      const terminal = readTerminalSession(
+        startRequest.threadId,
+        `workspace-script-${operationId}`,
+      );
+      const cancelled = Option.getOrThrow(yield* Ref.get(stopResult));
+
+      assert.equal(startResult.status, "stopped");
+      assert.equal(cancelled.status, "failed");
+      assert.equal(cancelled.errorCode, "workspace_script_start_cancelled");
+      assert.equal(starts.length, 1);
+      assert.equal(kills.length, 1);
+      assert.equal(terminal?.status, "exited");
+      assert.isNull(terminal?.pid ?? null);
     }),
   );
 
@@ -745,6 +867,80 @@ describe("WorkspaceScriptService", () => {
       assert.equal(settled.status, "stopped");
       assert.equal(settled.exitSignal, 15);
       assert.isNull(settled.errorCode);
+    }),
+  );
+
+  it.effect("终态 listener 一次持久化失败后 stop 通过 owner-bound inspection 收口", () =>
+    Effect.gen(function* () {
+      const { service, getActiveRunFailures, inspectionRequests } = yield* makeFixture();
+      const started = yield* service.start({
+        ...startRequest,
+        operationId: "operation-stop-listener-persistence-failure",
+      });
+      getActiveRunFailures.push(
+        new PersistenceSqlError({
+          operation: "WorkspaceScriptService.test.lifecycleLookup",
+          detail: "temporary lifecycle lookup failure",
+        }),
+      );
+
+      const stopped = yield* service.stop({
+        workspaceScriptRunId: started.workspaceScriptRunId,
+        operationId: "stop-operation-listener-persistence-failure",
+        expectedRevision: started.revision,
+      });
+
+      assert.equal(stopped.status, "stopped");
+      assert.equal(stopped.exitSignal, 15);
+      assert.deepEqual(
+        inspectionRequests.at(-1)?.expectedOwner,
+        makeWorkspaceScriptTerminalOwner({
+          workspaceScriptRunId: started.workspaceScriptRunId,
+          generation: started.requestedAtUnixMs,
+        }),
+      );
+    }),
+  );
+
+  it.effect("fallback 落库失败后相同 stop operation 重放不重复 kill 并收口", () =>
+    Effect.gen(function* () {
+      const { service, getActiveRunFailures, saveTransitionFailures, kills } = yield* makeFixture();
+      const started = yield* service.start({
+        ...startRequest,
+        operationId: "operation-stop-fallback-persistence-failure",
+      });
+      getActiveRunFailures.push(
+        new PersistenceSqlError({
+          operation: "WorkspaceScriptService.test.lifecycleLookup",
+          detail: "temporary lifecycle lookup failure",
+        }),
+      );
+      saveTransitionFailures.push(
+        new PersistenceSqlError({
+          operation: "WorkspaceScriptService.test.fallbackTransition",
+          detail: "temporary fallback transition failure",
+        }),
+      );
+
+      const firstError = yield* service
+        .stop({
+          workspaceScriptRunId: started.workspaceScriptRunId,
+          operationId: "stop-operation-fallback-persistence-failure",
+          expectedRevision: started.revision,
+        })
+        .pipe(Effect.flip);
+      const stopping = Option.getOrThrow(yield* service.get(started.workspaceScriptRunId));
+      const replayed = yield* service.stop({
+        workspaceScriptRunId: started.workspaceScriptRunId,
+        operationId: "stop-operation-fallback-persistence-failure",
+        expectedRevision: started.revision,
+      });
+
+      assert.equal(firstError.code, "workspace_script_persistence_failed");
+      assert.equal(stopping.status, "stopping");
+      assert.equal(replayed.status, "stopped");
+      assert.equal(replayed.exitSignal, 15);
+      assert.equal(kills.length, 1);
     }),
   );
 
