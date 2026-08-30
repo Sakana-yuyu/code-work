@@ -41,6 +41,34 @@ export const LocalPluginWorkspaceContextField = Schema.Literals([
 ]);
 export type LocalPluginWorkspaceContextField = typeof LocalPluginWorkspaceContextField.Type;
 
+export interface LocalPluginWorkspaceTemplateInspection {
+  readonly fields: ReadonlyArray<LocalPluginWorkspaceContextField>;
+  readonly unsupportedTokens: ReadonlyArray<string>;
+}
+
+const LOCAL_PLUGIN_WORKSPACE_TEMPLATE_PATTERN = /\{\{workspace\.([^{}]+)\}\}/g;
+const LOCAL_PLUGIN_WORKSPACE_CONTEXT_FIELDS = new Set<LocalPluginWorkspaceContextField>([
+  "workspace.name",
+  "workspace.root",
+]);
+
+export function inspectLocalPluginWorkspaceTemplate(
+  text: string,
+): LocalPluginWorkspaceTemplateInspection {
+  const fields = new Set<LocalPluginWorkspaceContextField>();
+  const unsupportedTokens = new Set<string>();
+  for (const match of text.matchAll(LOCAL_PLUGIN_WORKSPACE_TEMPLATE_PATTERN)) {
+    const token = match[0];
+    const field = `workspace.${match[1]}`;
+    if (LOCAL_PLUGIN_WORKSPACE_CONTEXT_FIELDS.has(field as LocalPluginWorkspaceContextField)) {
+      fields.add(field as LocalPluginWorkspaceContextField);
+    } else {
+      unsupportedTokens.add(token);
+    }
+  }
+  return { fields: [...fields], unsupportedTokens: [...unsupportedTokens] };
+}
+
 export const LocalPluginWorkspacePanelContribution = Schema.Struct({
   id: LocalPluginId,
   title: LocalPluginDisplayText,
@@ -170,7 +198,9 @@ export type LocalPluginManifestIssueCode =
   | "duplicate-contribution-id"
   | "missing-permission"
   | "missing-workspace-panel"
-  | "missing-timeline-contribution";
+  | "missing-timeline-contribution"
+  | "undeclared-workspace-context"
+  | "unsupported-workspace-context";
 
 export interface LocalPluginManifestIssue {
   readonly code: LocalPluginManifestIssueCode;
@@ -259,6 +289,64 @@ export function validateLocalPluginManifest(
         code: "duplicate-contribution-id",
         path: `contributions.${kind}`,
         message: `${kind} 贡献 ID ${id} 重复。`,
+      });
+    }
+  }
+
+  for (const panel of manifest.contributions.workspacePanels ?? []) {
+    const declaredContext = new Set(panel.context ?? []);
+    const templateTexts = [
+      ...(panel.description === undefined
+        ? []
+        : [
+            {
+              path: `contributions.workspacePanels.${panel.id}.description`,
+              text: panel.description,
+            },
+          ]),
+      ...panel.sections.flatMap((section, index) => [
+        ...(section.heading === undefined
+          ? []
+          : [
+              {
+                path: `contributions.workspacePanels.${panel.id}.sections.${index}.heading`,
+                text: section.heading,
+              },
+            ]),
+        {
+          path: `contributions.workspacePanels.${panel.id}.sections.${index}.body`,
+          text: section.body,
+        },
+      ]),
+    ];
+    for (const template of templateTexts) {
+      const inspection = inspectLocalPluginWorkspaceTemplate(template.text);
+      for (const token of inspection.unsupportedTokens) {
+        issues.push({
+          code: "unsupported-workspace-context",
+          path: template.path,
+          message: `工作区面板使用了不支持的模板标记 ${token}。`,
+        });
+      }
+      for (const field of inspection.fields) {
+        if (declaredContext.has(field)) continue;
+        issues.push({
+          code: "undeclared-workspace-context",
+          path: template.path,
+          message: `工作区面板模板字段 ${field} 未在 context 中声明。`,
+        });
+      }
+    }
+  }
+
+  for (const command of manifest.contributions.commands ?? []) {
+    if (command.action.type !== "clipboard.write") continue;
+    const inspection = inspectLocalPluginWorkspaceTemplate(command.action.text);
+    for (const token of inspection.unsupportedTokens) {
+      issues.push({
+        code: "unsupported-workspace-context",
+        path: `contributions.commands.${command.id}.action.text`,
+        message: `命令使用了不支持的工作区模板标记 ${token}。`,
       });
     }
   }

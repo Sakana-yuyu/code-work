@@ -4,6 +4,7 @@ import { describe, expect, it } from "vite-plus/test";
 import {
   LOCAL_PLUGIN_HOST_API_VERSION,
   LocalPluginManifest,
+  inspectLocalPluginWorkspaceTemplate,
   negotiateLocalPluginApiVersion,
   validateLocalPluginManifest,
 } from "./localPlugin.ts";
@@ -137,6 +138,39 @@ describe("LocalPluginManifest", () => {
         "missing-workspace-panel",
         "missing-timeline-contribution",
       ]),
+    );
+  });
+
+  it("只接受已声明且受支持的工作区模板字段", () => {
+    expect(
+      inspectLocalPluginWorkspaceTemplate(
+        "{{workspace.name}} 位于 {{workspace.root}}，忽略 {{workspace.secret}}。",
+      ),
+    ).toEqual({
+      fields: ["workspace.name", "workspace.root"],
+      unsupportedTokens: ["{{workspace.secret}}"],
+    });
+
+    const manifest = decodeManifest({
+      ...validManifest,
+      contributions: {
+        workspacePanels: [
+          {
+            id: "overview",
+            title: "工作区概览",
+            description: "{{workspace.secret}}",
+            sections: [{ body: "{{workspace.root}}" }],
+            context: ["workspace.name"],
+          },
+        ],
+        commands: [],
+        timeline: [],
+        attachments: [],
+      },
+    });
+
+    expect(validateLocalPluginManifest(manifest).map((issue) => issue.code)).toEqual(
+      expect.arrayContaining(["unsupported-workspace-context", "undeclared-workspace-context"]),
     );
   });
 
