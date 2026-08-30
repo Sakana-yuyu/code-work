@@ -304,6 +304,19 @@ it.layer(NodeServices.layer)("bin cli parsing", (it) => {
     }),
   );
 
+  it.effect("exposes Agent send controls", () =>
+    Effect.gen(function* () {
+      const send = yield* captureStdout(runCli(["send", "--help"], noConnectCli));
+
+      assert.include(send.output, "Send a new prompt to an idle agent thread.");
+      assert.include(send.output, "<agent-id>");
+      assert.include(send.output, "<prompt>");
+      assert.include(send.output, "--server");
+      assert.include(send.output, "--access-token");
+      assert.include(send.output, "--json");
+    }),
+  );
+
   it.effect("exposes optimistic Squad lifecycle commands", () =>
     Effect.gen(function* () {
       const duplicate = yield* captureStdout(
