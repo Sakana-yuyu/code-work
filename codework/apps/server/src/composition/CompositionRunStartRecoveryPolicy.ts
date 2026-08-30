@@ -4,6 +4,7 @@ import * as Effect from "effect/Effect";
 
 import type { CompositionRunStartIntent } from "../persistence/Services/CompositionRunStartStore.ts";
 import type { CompositionAgentDriverRegistry } from "./CompositionAgentDriverRegistry.ts";
+import type { CompositionAgentDriverFailure } from "./CompositionOrchestrator.ts";
 import {
   makeCompositionRunStartDigests,
   validateCompositionRunStartReceipt,
@@ -70,7 +71,7 @@ const planFor = Effect.fn("planCompositionRunStartRecovery")(function* (
   candidate: CompositionRunStartRecoveryCandidate,
   driverRegistry: CompositionAgentDriverRegistry,
   reconciled: ReadonlySet<CompositionRunStartRecoveryReconciliation>,
-): Effect.fn.Return<CompositionRunStartRecoveryPlan> {
+): Effect.fn.Return<CompositionRunStartRecoveryPlan, CompositionAgentDriverFailure> {
   const pendingReconciliation = requiredReconciliations.find(({ key }) => !reconciled.has(key));
   if (pendingReconciliation !== undefined) {
     return {
@@ -213,6 +214,9 @@ const planFor = Effect.fn("planCompositionRunStartRecovery")(function* (
     }),
   );
   if (reconciliation._tag === "Failure") {
+    if (Cause.interruptors(reconciliation.cause).size > 0) {
+      return yield* Effect.failCause(reconciliation.cause);
+    }
     return {
       taskId: candidate.task.taskId,
       runId: candidate.run.runId,
@@ -286,11 +290,11 @@ export const planCompositionRunStartRecoveries = (input: {
   readonly candidates: ReadonlyArray<CompositionRunStartRecoveryCandidate>;
   readonly driverRegistry: CompositionAgentDriverRegistry;
   readonly reconciled: ReadonlySet<CompositionRunStartRecoveryReconciliation>;
-}): Effect.Effect<ReadonlyArray<CompositionRunStartRecoveryPlan>> =>
+}): Effect.Effect<ReadonlyArray<CompositionRunStartRecoveryPlan>, CompositionAgentDriverFailure> =>
   Effect.forEach(input.candidates, (candidate) =>
     planFor(candidate, input.driverRegistry, input.reconciled).pipe(
       Effect.catchCause((cause) =>
-        Cause.hasInterruptsOnly(cause)
+        Cause.interruptors(cause).size > 0
           ? Effect.failCause(cause)
           : Effect.succeed(deferCandidatePlanningFailure(candidate)),
       ),

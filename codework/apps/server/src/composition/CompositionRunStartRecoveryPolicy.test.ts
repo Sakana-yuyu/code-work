@@ -1,5 +1,6 @@
 import type { CompositionTask, CompositionTaskRun } from "@codework/contracts";
 import { assert, it } from "@effect/vitest";
+import * as Cause from "effect/Cause";
 import * as Effect from "effect/Effect";
 
 import type { CompositionRunStartIntent } from "../persistence/Services/CompositionRunStartStore.ts";
@@ -218,6 +219,36 @@ it.effect("启动身份读取 defect 只延后当前候选，后续候选仍会�
       ],
     );
     assert.notInclude(plans[0]?.detail ?? "", "identity secret");
+  }),
+);
+
+it.effect("中断与 Driver defect 混合时必须传播中断", () =>
+  Effect.gen(function* () {
+    const candidate = makeCandidate("mixed-interrupt");
+    const mixedCause = Cause.fromReasons<CompositionAgentDriverFailure>([
+      Cause.makeInterruptReason(1),
+      Cause.makeDieReason(new Error("finalizer defect")),
+    ]);
+    assert.isTrue(Cause.interruptors(mixedCause).size > 0);
+    const registry = makeCompositionAgentDriverRegistry();
+    yield* registry.register(
+      makeDriver(candidate, {
+        reconcileStart: () => Effect.failCause(mixedCause),
+      }),
+    );
+
+    const exit = yield* Effect.exit(
+      planCompositionRunStartRecoveries({
+        candidates: [candidate],
+        driverRegistry: registry,
+        reconciled,
+      }),
+    );
+
+    assert.equal(exit._tag, "Failure");
+    if (exit._tag === "Failure") {
+      assert.isTrue(Cause.interruptors(exit.cause).size > 0);
+    }
   }),
 );
 
