@@ -143,13 +143,23 @@ export interface CompositionRunStartRejectedInput {
   readonly ownerEpoch: number;
 }
 
-export interface CompositionRunStartQuarantineInput {
+interface CompositionRunStartQuarantineBaseInput {
   readonly runId: string;
   readonly expectedRevision: number;
   readonly outcomeCode: string;
   readonly outcomeDetail: string | null;
   readonly quarantinedAtUnixMs: number;
 }
+
+export type CompositionRunStartQuarantineInput =
+  | (CompositionRunStartQuarantineBaseInput & {
+      readonly claimId?: undefined;
+      readonly ownerEpoch?: undefined;
+    })
+  | (CompositionRunStartQuarantineBaseInput & {
+      readonly claimId: string;
+      readonly ownerEpoch: number;
+    });
 
 export interface CompositionRunStartRecoverableListInput {
   readonly limit: number;

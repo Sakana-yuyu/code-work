@@ -208,11 +208,11 @@ const makeStore = Effect.gen(function* () {
         input.leaseExpiresAtUnixMs ?? input.claimedAtUnixMs + DEFAULT_OWNER_LEASE_MS;
       if (
         !Number.isSafeInteger(leaseExpiresAtUnixMs) ||
-        leaseExpiresAtUnixMs < input.claimedAtUnixMs
+        leaseExpiresAtUnixMs <= input.claimedAtUnixMs
       ) {
         return yield* domainError(
           "run_start_input_invalid",
-          `${operation} 的 owner lease 必须是不早于 claim 时间的安全整数。`,
+          `${operation} 的 owner lease 必须晚于 claim 时间且为安全整数。`,
           { runId: input.runId },
         );
       }
@@ -495,9 +495,33 @@ const makeStore = Effect.gen(function* () {
       }
       yield* validateRevision("quarantine", input.runId, input.expectedRevision);
       yield* validateTimestamp("quarantine", input.runId, input.quarantinedAtUnixMs);
+      const owned = input.claimId !== undefined || input.ownerEpoch !== undefined;
+      if (owned && (input.claimId === undefined || input.ownerEpoch === undefined)) {
+        return yield* domainError(
+          "run_start_input_invalid",
+          "quarantine 的 claimId 与 ownerEpoch 必须同时提供。",
+          { runId: input.runId },
+        );
+      }
+      if (owned) {
+        if (!hasTextWithin(input.claimId, 512)) {
+          return yield* domainError(
+            "run_start_input_invalid",
+            "quarantine 的 claimId 不能为空或超长。",
+            { runId: input.runId },
+          );
+        }
+        yield* validateOwnerEpoch("quarantine", input.runId, input.ownerEpoch);
+      }
       const quarantined = yield* runQuery(
         "CompositionRunStartStore.quarantine",
-        statements.quarantineRow(input),
+        owned
+          ? statements.quarantineOwnedRow({
+              ...input,
+              claimId: input.claimId,
+              ownerEpoch: input.ownerEpoch,
+            })
+          : statements.quarantinePreparedRow(input),
       );
       if (Option.isSome(quarantined)) return toIntent(quarantined.value);
       const current = yield* getRequired(input.runId);

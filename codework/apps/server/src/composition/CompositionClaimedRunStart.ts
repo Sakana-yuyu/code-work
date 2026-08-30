@@ -63,6 +63,8 @@ export const dispatchCompositionRunStart = <A, F extends StartFailure, EAccepted
       yield* input.store.quarantine({
         runId: input.intent.runId,
         expectedRevision: input.intent.revision,
+        claimId: input.intent.claimId ?? "",
+        ownerEpoch: input.intent.ownerEpoch,
         outcomeCode: receiptResult.failure.code,
         outcomeDetail: receiptResult.failure.detail,
         quarantinedAtUnixMs,

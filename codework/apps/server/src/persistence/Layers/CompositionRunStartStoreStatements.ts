@@ -90,9 +90,18 @@ const RejectedRequest = Schema.Struct({
   settledAtUnixMs: Schema.Number,
   ownerEpoch: Schema.Number,
 });
-const QuarantineRequest = Schema.Struct({
+const QuarantineBaseRequest = Schema.Struct({
   runId: Schema.String,
   expectedRevision: Schema.Number,
+  outcomeCode: Schema.String,
+  outcomeDetail: Schema.NullOr(Schema.String),
+  quarantinedAtUnixMs: Schema.Number,
+});
+const QuarantineOwnedRequest = Schema.Struct({
+  runId: Schema.String,
+  expectedRevision: Schema.Number,
+  claimId: Schema.String,
+  ownerEpoch: Schema.Number,
   outcomeCode: Schema.String,
   outcomeDetail: Schema.NullOr(Schema.String),
   quarantinedAtUnixMs: Schema.Number,
@@ -360,8 +369,8 @@ export const makeCompositionRunStartStoreStatements = (sql: SqlClient.SqlClient)
     `,
   });
 
-  const quarantineRow = SqlSchema.findOneOption({
-    Request: QuarantineRequest,
+  const quarantinePreparedRow = SqlSchema.findOneOption({
+    Request: QuarantineBaseRequest,
     Result: RunStartRowSchema,
     execute: (input) => sql`
       UPDATE composition_run_start_intents
@@ -370,8 +379,38 @@ export const makeCompositionRunStartStoreStatements = (sql: SqlClient.SqlClient)
         outcome_code = ${input.outcomeCode}, outcome_detail = ${input.outcomeDetail},
         updated_at_unix_ms = MAX(updated_at_unix_ms, ${input.quarantinedAtUnixMs})
       WHERE run_id = ${input.runId}
-        AND state IN ('prepared', 'preparing', 'dispatching')
+        AND state = 'prepared'
         AND revision = ${input.expectedRevision}
+        AND claim_id IS NULL
+        AND owner_lease_expires_at_unix_ms IS NULL
+      RETURNING
+        run_id AS "runId", task_id AS "taskId", previous_run_id AS "previousRunId",
+        agent_id AS "agentId", runtime_id AS "runtimeId", attempt,
+        payload_digest AS "payloadDigest", capability_digest AS "capabilityDigest",
+        state, revision, claim_id AS "claimId", owner_epoch AS "ownerEpoch",
+        owner_lease_expires_at_unix_ms AS "ownerLeaseExpiresAtUnixMs", runtime_task_id AS "runtimeTaskId",
+        capability_handshake_id AS "capabilityHandshakeId",
+        outcome_code AS "outcomeCode", outcome_detail AS "outcomeDetail",
+        created_at_unix_ms AS "createdAtUnixMs", updated_at_unix_ms AS "updatedAtUnixMs"
+    `,
+  });
+
+  const quarantineOwnedRow = SqlSchema.findOneOption({
+    Request: QuarantineOwnedRequest,
+    Result: RunStartRowSchema,
+    execute: (input) => sql`
+      UPDATE composition_run_start_intents
+      SET state = 'quarantined', revision = revision + 1, claim_id = NULL,
+        owner_lease_expires_at_unix_ms = NULL,
+        outcome_code = ${input.outcomeCode}, outcome_detail = ${input.outcomeDetail},
+        updated_at_unix_ms = MAX(updated_at_unix_ms, ${input.quarantinedAtUnixMs})
+      WHERE run_id = ${input.runId}
+        AND state IN ('preparing', 'dispatching')
+        AND revision = ${input.expectedRevision}
+        AND claim_id = ${input.claimId}
+        AND owner_epoch = ${input.ownerEpoch}
+        AND owner_lease_expires_at_unix_ms IS NOT NULL
+        AND owner_lease_expires_at_unix_ms > ${input.quarantinedAtUnixMs}
       RETURNING
         run_id AS "runId", task_id AS "taskId", previous_run_id AS "previousRunId",
         agent_id AS "agentId", runtime_id AS "runtimeId", attempt,
@@ -416,7 +455,8 @@ export const makeCompositionRunStartStoreStatements = (sql: SqlClient.SqlClient)
     recordAcceptedRow,
     settleAcceptedRow,
     settleRejectedRow,
-    quarantineRow,
+    quarantinePreparedRow,
+    quarantineOwnedRow,
     listRecoverableRows,
   };
 };

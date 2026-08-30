@@ -155,6 +155,8 @@ export const quarantineCompositionRunStartUnknownCapabilities = (
     return yield* store.quarantine({
       runId: setupClaim.intent.runId,
       expectedRevision: setupClaim.intent.revision,
+      claimId: setupClaim.intent.claimId ?? "",
+      ownerEpoch: setupClaim.intent.ownerEpoch,
       outcomeCode: "run_start_legacy_input_capabilities_unknown",
       outcomeDetail: "旧加密输入无法确认 capabilityIds，已阻止自动外部启动。",
       quarantinedAtUnixMs,

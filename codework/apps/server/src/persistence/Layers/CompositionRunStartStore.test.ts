@@ -356,6 +356,136 @@ layer("CompositionRunStartStore", (it) => {
     }),
   );
 
+  it.effect("活跃 owner 的 quarantine 必须由当前 claim、epoch 和未到期 lease 共同围栏", () =>
+    Effect.gen(function* () {
+      const store = yield* CompositionRunStartStore;
+      const identity = makeIdentity("quarantine-owner-fencing");
+      const prepared = yield* store.prepareStart({ ...identity, createdAtUnixMs: 100 });
+      const setup = yield* store.claimPrepared({
+        runId: identity.runId,
+        expectedRevision: prepared.revision,
+        claimId: "claim-quarantine-original",
+        claimedAtUnixMs: 110,
+        leaseExpiresAtUnixMs: 1_000,
+      });
+      const dispatching = yield* store.markDispatching({
+        runId: identity.runId,
+        expectedRevision: setup.intent.revision,
+        claimId: setup.intent.claimId ?? "",
+        ownerEpoch: setup.intent.ownerEpoch,
+        dispatchedAtUnixMs: 120,
+      });
+
+      const attempts = yield* Effect.all(
+        [
+          Effect.result(
+            store.quarantine({
+              runId: identity.runId,
+              expectedRevision: dispatching.revision,
+              claimId: "claim-quarantine-wrong",
+              ownerEpoch: dispatching.ownerEpoch,
+              outcomeCode: "run_start_manual_recovery_required",
+              outcomeDetail: "错误 claim 不得终止活跃 owner。",
+              quarantinedAtUnixMs: 130,
+            }),
+          ),
+          Effect.result(
+            store.quarantine({
+              runId: identity.runId,
+              expectedRevision: dispatching.revision,
+              claimId: dispatching.claimId ?? "",
+              ownerEpoch: dispatching.ownerEpoch + 1,
+              outcomeCode: "run_start_manual_recovery_required",
+              outcomeDetail: "错误 epoch 不得终止活跃 owner。",
+              quarantinedAtUnixMs: 130,
+            }),
+          ),
+        ],
+        { concurrency: "unbounded" },
+      );
+
+      assert.deepEqual(
+        attempts.map((attempt) => attempt._tag),
+        ["Failure", "Failure"],
+      );
+      assert.deepEqual(Option.getOrThrow(yield* store.getStart(identity.runId)), dispatching);
+    }),
+  );
+
+  it.effect("到期后只有 recovery 新 owner 可以 quarantine，旧 owner 的迟到终止必须失败", () =>
+    Effect.gen(function* () {
+      const store = yield* CompositionRunStartStore;
+      const identity = makeIdentity("quarantine-recovery-owner");
+      const prepared = yield* store.prepareStart({ ...identity, createdAtUnixMs: 100 });
+      const setup = yield* store.claimPrepared({
+        runId: identity.runId,
+        expectedRevision: prepared.revision,
+        claimId: "claim-quarantine-expired-original",
+        claimedAtUnixMs: 110,
+        leaseExpiresAtUnixMs: 120,
+      });
+      const dispatching = yield* store.markDispatching({
+        runId: identity.runId,
+        expectedRevision: setup.intent.revision,
+        claimId: setup.intent.claimId ?? "",
+        ownerEpoch: setup.intent.ownerEpoch,
+        dispatchedAtUnixMs: 115,
+      });
+      const recovery = yield* store.claimDispatchRecovery({
+        runId: identity.runId,
+        expectedRevision: dispatching.revision,
+        claimId: "claim-quarantine-expired-recovery",
+        claimedAtUnixMs: 121,
+        leaseExpiresAtUnixMs: 221,
+      });
+
+      const lateOriginal = yield* Effect.result(
+        store.quarantine({
+          runId: identity.runId,
+          expectedRevision: recovery.intent.revision,
+          claimId: dispatching.claimId ?? "",
+          ownerEpoch: dispatching.ownerEpoch,
+          outcomeCode: "run_start_manual_recovery_required",
+          outcomeDetail: "旧 owner 不能终止 recovery owner。",
+          quarantinedAtUnixMs: 130,
+        }),
+      );
+      const quarantined = yield* store.quarantine({
+        runId: identity.runId,
+        expectedRevision: recovery.intent.revision,
+        claimId: recovery.intent.claimId ?? "",
+        ownerEpoch: recovery.intent.ownerEpoch,
+        outcomeCode: "run_start_manual_recovery_required",
+        outcomeDetail: "新 owner 已确认需要人工恢复。",
+        quarantinedAtUnixMs: 130,
+      });
+
+      assert.equal(lateOriginal._tag, "Failure");
+      assert.equal(quarantined.state, "quarantined");
+      assert.equal(quarantined.ownerEpoch, recovery.intent.ownerEpoch);
+    }),
+  );
+
+  it.effect("零时长 owner lease 必须被拒绝", () =>
+    Effect.gen(function* () {
+      const store = yield* CompositionRunStartStore;
+      const identity = makeIdentity("zero-duration-lease");
+      const prepared = yield* store.prepareStart({ ...identity, createdAtUnixMs: 100 });
+      const zeroLease = yield* Effect.result(
+        store.claimPrepared({
+          runId: identity.runId,
+          expectedRevision: prepared.revision,
+          claimId: "claim-zero-duration",
+          claimedAtUnixMs: 110,
+          leaseExpiresAtUnixMs: 110,
+        }),
+      );
+
+      assert.equal(zeroLease._tag, "Failure");
+      assert.deepEqual(Option.getOrThrow(yield* store.getStart(identity.runId)), prepared);
+    }),
+  );
+
   it.effect("Driver 明确拒绝时以稳定结果码结算而不是进入 quarantine", () =>
     Effect.gen(function* () {
       const store = yield* CompositionRunStartStore;
@@ -565,7 +695,7 @@ layer("CompositionRunStartStore", (it) => {
         expectedRevision: released.revision,
         claimId: "claim-clock-rollback-reset",
         claimedAtUnixMs: 500,
-        leaseExpiresAtUnixMs: 500,
+        leaseExpiresAtUnixMs: 501,
       });
       const reset = yield* store.resetPreparationForRecovery({
         runId: identity.runId,
