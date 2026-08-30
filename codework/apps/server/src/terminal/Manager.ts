@@ -1445,6 +1445,7 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
     sessions: new Map(),
     terminations: new Map(),
   });
+  const managerLifecycle = { isClosing: false };
   const threadLocksRef = yield* SynchronizedRef.make(new Map<string, Semaphore.Semaphore>());
   const workerScope = yield* Scope.make("sequential");
   const pendingThreadHistoryCleanupFibers = new Map<string, Fiber.Fiber<void, never>>();
@@ -1637,7 +1638,7 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
               }
             }),
           );
-          yield* restore(worker).pipe(Effect.forkIn(workerScope));
+          runFork(restore(worker));
         }
         return selected;
       }),
@@ -2221,7 +2222,9 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
 
       if (action.type === "output") {
         if (action.history !== null) {
-          yield* queuePersist(action.threadId, action.terminalId, action.history);
+          yield* managerLifecycle.isClosing
+            ? writeHistoryNow(action.threadId, action.terminalId, action.history)
+            : queuePersist(action.threadId, action.terminalId, action.history);
         }
 
         yield* publishEvent({
@@ -2240,7 +2243,7 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
           threadId: action.threadId,
           terminalId: action.terminalId,
         });
-        if (session.persistenceMode === "on_exit") {
+        if (session.persistenceMode === "on_exit" || managerLifecycle.isClosing) {
           yield* writeHistoryNow(action.threadId, action.terminalId, session.history);
         } else {
           yield* persistHistory(action.threadId, action.terminalId, session.history);
@@ -3119,6 +3122,7 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
 
   yield* Effect.addFinalizer(() =>
     Effect.gen(function* () {
+      managerLifecycle.isClosing = true;
       const sessions = [...(yield* readManagerState).sessions.values()];
 
       const cleanupResults = yield* Effect.forEach(
