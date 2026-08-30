@@ -1,5 +1,7 @@
 import { assert, it } from "@effect/vitest";
+import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
+import * as Fiber from "effect/Fiber";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 
@@ -10,7 +12,10 @@ import {
   settleAndRedispatchInterruptedGoalLoop,
 } from "./CompositionGoalLoopRedispatch.ts";
 import { makeCompositionOrchestrator } from "./CompositionOrchestrator.ts";
-import { CompositionGoalLoopRetryStore } from "../persistence/Services/CompositionGoalLoopRetryStore.ts";
+import {
+  CompositionGoalLoopRetryStore,
+  CompositionGoalLoopRetryStoreDomainError,
+} from "../persistence/Services/CompositionGoalLoopRetryStore.ts";
 import { CompositionTaskStore } from "../persistence/Services/CompositionTaskStore.ts";
 import type { CompositionTaskStoreShape } from "../persistence/Services/CompositionTaskStore.ts";
 import { CompositionGoalLoopRetryStoreLive } from "../persistence/Layers/CompositionGoalLoopRetryStore.ts";
@@ -299,6 +304,85 @@ layer("CompositionGoalLoopRedispatch", (it) => {
       });
       assert.equal(replayed.newRunId, newRunId);
       assert.equal(Option.getOrThrow(yield* retryStore.getIntent(runId)).phase, "dispatched");
+    }),
+  );
+
+  it.effect("同一 settled retry 并发调用时只有一个调用执行重派回调", () =>
+    Effect.gen(function* () {
+      const store = yield* CompositionTaskStore;
+      const retryStore = yield* CompositionGoalLoopRetryStore;
+      const taskId = "task-goal-redispatch-concurrent";
+      const runId = "run-goal-redispatch-concurrent-old";
+      const newRunId = "run-goal-redispatch-concurrent-new";
+      yield* store.upsertTask({
+        taskId,
+        projectId: "project-goal-redispatch",
+        assigneeKind: "agent",
+        assigneeId: "agent-goal-redispatch",
+        mode: "serial",
+        status: "running",
+        promptDigest: "sha256:goal-redispatch-concurrent",
+        dependsOnTaskIds: [],
+        createdAtUnixMs: 1,
+        updatedAtUnixMs: 2,
+      });
+      yield* store.upsertRun({
+        taskId,
+        runId,
+        agentId: "agent-goal-redispatch",
+        runtimeId: "runtime-goal-redispatch",
+        status: "running",
+        attempt: 1,
+        capabilityGrantIds: [],
+      });
+      yield* goalRowEffect({ store, taskId, runId, suffix: "start", summary: "目标循环开始" });
+      yield* goalRowEffect({ store, taskId, runId, suffix: "round:1", summary: "第 1 轮" });
+
+      const firstEntered = yield* Deferred.make<void>();
+      const releaseFirst = yield* Deferred.make<void>();
+      let redispatchCalls = 0;
+      const retry = (waitForRelease: boolean) =>
+        settleAndRedispatchInterruptedGoalLoop({
+          taskId,
+          runId,
+          newRunId,
+          agentId: "agent-goal-redispatch",
+          runtimeId: "runtime-goal-redispatch",
+          store,
+          retryStore,
+          nowUnixMs: 5_000,
+          redispatch: (args) =>
+            Effect.gen(function* () {
+              redispatchCalls += 1;
+              if (waitForRelease) {
+                yield* Deferred.succeed(firstEntered, undefined);
+                yield* Deferred.await(releaseFirst);
+              }
+              yield* store.upsertRun({
+                taskId,
+                runId: args.newRunId,
+                agentId: "agent-goal-redispatch",
+                runtimeId: "runtime-goal-redispatch",
+                status: "queued",
+                attempt: 2,
+                capabilityGrantIds: [],
+              });
+            }),
+        });
+
+      const first = yield* Effect.forkChild(retry(true));
+      yield* Deferred.await(firstEntered);
+      const concurrent = yield* Effect.result(retry(false));
+      yield* Deferred.succeed(releaseFirst, undefined);
+      const completed = yield* Fiber.join(first);
+
+      assert.equal(completed.newRunId, newRunId);
+      assert.equal(concurrent._tag, "Failure");
+      if (concurrent._tag === "Failure") {
+        assert.instanceOf(concurrent.failure, CompositionGoalLoopRetryStoreDomainError);
+        assert.equal(concurrent.failure.code, "goal_loop_retry_dispatch_in_progress");
+      }
+      assert.equal(redispatchCalls, 1);
     }),
   );
 

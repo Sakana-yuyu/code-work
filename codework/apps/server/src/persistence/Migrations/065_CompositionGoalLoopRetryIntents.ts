@@ -19,11 +19,22 @@ export default Effect.gen(function* () {
       revision INTEGER NOT NULL CHECK (revision BETWEEN 1 AND 3),
       created_at_unix_ms INTEGER NOT NULL CHECK (created_at_unix_ms >= 0),
       updated_at_unix_ms INTEGER NOT NULL CHECK (updated_at_unix_ms >= created_at_unix_ms),
+      dispatch_claim_id TEXT,
+      dispatch_claimed_at_unix_ms INTEGER,
       CHECK (previous_run_id <> new_run_id),
       CHECK (
         (phase = 'prepared' AND revision = 1 AND updated_at_unix_ms = created_at_unix_ms) OR
         (phase = 'settled' AND revision = 2) OR
         (phase = 'dispatched' AND revision = 3)
+      ),
+      CHECK (
+        (dispatch_claim_id IS NULL AND dispatch_claimed_at_unix_ms IS NULL) OR
+        (
+          phase = 'settled' AND
+          dispatch_claim_id IS NOT NULL AND dispatch_claimed_at_unix_ms IS NOT NULL AND
+          length(trim(dispatch_claim_id)) > 0 AND length(dispatch_claim_id) <= 512 AND
+          dispatch_claimed_at_unix_ms >= updated_at_unix_ms
+        )
       )
     )
   `;

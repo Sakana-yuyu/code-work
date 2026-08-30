@@ -1,5 +1,10 @@
+// @effect-diagnostics nodeBuiltinImport:off
+import * as NodeCrypto from "node:crypto";
+
 import type { CompositionTask, CompositionTaskRun } from "@codework/contracts";
+import * as Cause from "effect/Cause";
 import * as Effect from "effect/Effect";
+import * as Exit from "effect/Exit";
 import * as Option from "effect/Option";
 
 import type {
@@ -25,7 +30,12 @@ export type { CompositionGoalLoopRedispatchStorePort } from "./CompositionGoalLo
 
 export type CompositionGoalLoopRetryStorePort = Pick<
   CompositionGoalLoopRetryStoreShape,
-  "prepareIntent" | "getIntent" | "markSettled" | "markDispatched"
+  | "prepareIntent"
+  | "getIntent"
+  | "markSettled"
+  | "claimDispatch"
+  | "releaseDispatch"
+  | "markDispatched"
 >;
 
 export type CompositionGoalLoopRedispatchOptions<E> = {
@@ -153,13 +163,8 @@ export const settleAndRedispatchInterruptedGoalLoop = <E>(
       });
     }
 
-    const existingNewRun = yield* options.store.getRun(intent.newRunId);
-    if (Option.isSome(existingNewRun)) {
+    if (intent.phase === "dispatched") {
       yield* verifyNewRun(options.store, intent, settled.run);
-      intent = yield* options.retryStore.markDispatched({
-        previousRunId: options.runId,
-        updatedAtUnixMs: options.nowUnixMs,
-      });
       return {
         scan: settled.scan,
         run: settled.run,
@@ -167,29 +172,62 @@ export const settleAndRedispatchInterruptedGoalLoop = <E>(
         newRunId: intent.newRunId,
       };
     }
+
+    const claimId = `goal-loop-retry:${NodeCrypto.randomUUID()}`;
+    intent = yield* options.retryStore.claimDispatch({
+      previousRunId: options.runId,
+      claimId,
+      claimedAtUnixMs: options.nowUnixMs,
+    });
     if (intent.phase === "dispatched") {
-      return yield* new CompositionGoalLoopRedispatchError({
-        code: "goal_loop_redispatch_new_run_missing",
-        detail: `retry intent 已标记 dispatched，但新 Run ${intent.newRunId} 不存在。`,
-      });
+      yield* verifyNewRun(options.store, intent, settled.run);
+      return {
+        scan: settled.scan,
+        run: settled.run,
+        task: settled.task,
+        newRunId: intent.newRunId,
+      };
     }
 
-    yield* options.redispatch({
-      previousRunId: options.runId,
-      newRunId: intent.newRunId,
-      interruptedRounds: settled.scan.completedRounds,
-    });
-    yield* verifyNewRun(options.store, intent, settled.run);
-    intent = yield* options.retryStore.markDispatched({
-      previousRunId: options.runId,
-      updatedAtUnixMs: options.nowUnixMs,
-    });
-    return {
-      scan: settled.scan,
-      run: settled.run,
-      task: settled.task,
-      newRunId: intent.newRunId,
-    };
+    const dispatchExit = yield* Effect.exit(
+      Effect.gen(function* () {
+        const existingNewRun = yield* options.store.getRun(intent.newRunId);
+        if (Option.isNone(existingNewRun)) {
+          yield* options.redispatch({
+            previousRunId: options.runId,
+            newRunId: intent.newRunId,
+            interruptedRounds: settled.scan.completedRounds,
+          });
+        }
+        yield* verifyNewRun(options.store, intent, settled.run);
+        intent = yield* options.retryStore.markDispatched({
+          previousRunId: options.runId,
+          claimId,
+          updatedAtUnixMs: options.nowUnixMs,
+        });
+        return {
+          scan: settled.scan,
+          run: settled.run,
+          task: settled.task,
+          newRunId: intent.newRunId,
+        };
+      }),
+    );
+    const releaseExit = yield* Effect.exit(
+      options.retryStore.releaseDispatch({
+        previousRunId: options.runId,
+        claimId,
+      }),
+    );
+    if (Exit.isSuccess(dispatchExit)) {
+      if (Exit.isFailure(releaseExit)) return yield* Effect.failCause(releaseExit.cause);
+      return dispatchExit.value;
+    }
+    return yield* Effect.failCause(
+      Exit.isSuccess(releaseExit)
+        ? dispatchExit.cause
+        : Cause.combine(dispatchExit.cause, releaseExit.cause),
+    );
   });
 
 /** 放弃结算的入参：与自动重派一致，但无需 retry intent 与 redispatch 回调。 */

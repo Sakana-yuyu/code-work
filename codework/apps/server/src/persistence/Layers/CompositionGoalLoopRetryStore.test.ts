@@ -69,9 +69,15 @@ layer("CompositionGoalLoopRetryStore", (it) => {
         settled,
       );
 
+      yield* store.claimDispatch({
+        previousRunId: "run-retry-phase-old",
+        claimId: "claim-retry-phase",
+        claimedAtUnixMs: 130,
+      });
       const dispatched = yield* store.markDispatched({
         previousRunId: "run-retry-phase-old",
-        updatedAtUnixMs: 130,
+        claimId: "claim-retry-phase",
+        updatedAtUnixMs: 140,
       });
       assert.equal(dispatched.phase, "dispatched");
       assert.equal(dispatched.revision, 3);
@@ -85,7 +91,8 @@ layer("CompositionGoalLoopRetryStore", (it) => {
       assert.deepEqual(
         yield* store.markDispatched({
           previousRunId: "run-retry-phase-old",
-          updatedAtUnixMs: 150,
+          claimId: "claim-retry-phase-replay",
+          updatedAtUnixMs: 160,
         }),
         dispatched,
       );
@@ -105,6 +112,7 @@ layer("CompositionGoalLoopRetryStore", (it) => {
       const phaseFailure = yield* store
         .markDispatched({
           previousRunId: "run-retry-conflict-old",
+          claimId: "claim-retry-conflict",
           updatedAtUnixMs: 110,
         })
         .pipe(Effect.flip);
@@ -121,6 +129,87 @@ layer("CompositionGoalLoopRetryStore", (it) => {
         .pipe(Effect.flip);
       assert.instanceOf(identityFailure, CompositionGoalLoopRetryStoreDomainError);
       assert.equal(identityFailure.code, "goal_loop_retry_identity_conflict");
+    }),
+  );
+
+  it.effect("settled intent 的 dispatch claim 只有一个赢家，owner 可释放并由下一调用接管", () =>
+    Effect.gen(function* () {
+      const store = yield* CompositionGoalLoopRetryStore;
+      yield* store.prepareIntent({
+        taskId: "task-retry-claim",
+        previousRunId: "run-retry-claim-old",
+        newRunId: "run-retry-claim-new",
+        createdAtUnixMs: 100,
+      });
+      yield* store.markSettled({
+        previousRunId: "run-retry-claim-old",
+        updatedAtUnixMs: 110,
+      });
+
+      const claimed = yield* store.claimDispatch({
+        previousRunId: "run-retry-claim-old",
+        claimId: "claim-retry-a",
+        claimedAtUnixMs: 120,
+      });
+      const concurrent = yield* store
+        .claimDispatch({
+          previousRunId: "run-retry-claim-old",
+          claimId: "claim-retry-b",
+          claimedAtUnixMs: 120,
+        })
+        .pipe(Effect.flip);
+
+      assert.equal(claimed.phase, "settled");
+      assert.instanceOf(concurrent, CompositionGoalLoopRetryStoreDomainError);
+      assert.equal(concurrent.code, "goal_loop_retry_dispatch_in_progress");
+
+      yield* store.releaseDispatch({
+        previousRunId: "run-retry-claim-old",
+        claimId: "claim-retry-a",
+      });
+      yield* store.claimDispatch({
+        previousRunId: "run-retry-claim-old",
+        claimId: "claim-retry-b",
+        claimedAtUnixMs: 130,
+      });
+      const dispatched = yield* store.markDispatched({
+        previousRunId: "run-retry-claim-old",
+        claimId: "claim-retry-b",
+        updatedAtUnixMs: 140,
+      });
+      assert.equal(dispatched.phase, "dispatched");
+    }),
+  );
+
+  it.effect("启动恢复会释放进程崩溃遗留的 dispatch claim", () =>
+    Effect.gen(function* () {
+      const store = yield* CompositionGoalLoopRetryStore;
+      yield* store.prepareIntent({
+        taskId: "task-retry-claim-recovery",
+        previousRunId: "run-retry-claim-recovery-old",
+        newRunId: "run-retry-claim-recovery-new",
+        createdAtUnixMs: 100,
+      });
+      yield* store.markSettled({
+        previousRunId: "run-retry-claim-recovery-old",
+        updatedAtUnixMs: 110,
+      });
+      yield* store.claimDispatch({
+        previousRunId: "run-retry-claim-recovery-old",
+        claimId: "claim-retry-before-restart",
+        claimedAtUnixMs: 120,
+      });
+
+      const receipt = yield* store.recoverInterruptedDispatches({ recoveredAtUnixMs: 130 });
+      assert.equal(receipt.recoveredCount, 1);
+      assert.equal(receipt.recoveredAtUnixMs, 130);
+
+      const recovered = yield* store.claimDispatch({
+        previousRunId: "run-retry-claim-recovery-old",
+        claimId: "claim-retry-after-restart",
+        claimedAtUnixMs: 140,
+      });
+      assert.equal(recovered.phase, "settled");
     }),
   );
 });

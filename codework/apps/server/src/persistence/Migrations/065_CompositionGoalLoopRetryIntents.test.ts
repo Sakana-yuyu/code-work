@@ -37,6 +37,8 @@ layer("065_CompositionGoalLoopRetryIntents", (it) => {
           "revision",
           "created_at_unix_ms",
           "updated_at_unix_ms",
+          "dispatch_claim_id",
+          "dispatch_claimed_at_unix_ms",
         ],
       );
 
@@ -73,10 +75,29 @@ layer("065_CompositionGoalLoopRetryIntents", (it) => {
       const sameRun = yield* Effect.result(
         insertIntent(sql, { previousRunId: "run-same", newRunId: "run-same" }),
       );
+      const incompleteClaim = yield* Effect.result(
+        insertIntent(sql, {
+          previousRunId: "run-old-incomplete-claim",
+          newRunId: "run-new-incomplete-claim",
+          phase: "settled",
+          revision: 2,
+          dispatchClaimId: "claim-incomplete",
+        }),
+      );
+      const preparedClaim = yield* Effect.result(
+        insertIntent(sql, {
+          previousRunId: "run-old-prepared-claim",
+          newRunId: "run-new-prepared-claim",
+          dispatchClaimId: "claim-prepared",
+          dispatchClaimedAtUnixMs: 100,
+        }),
+      );
 
       assert.equal(duplicateNewRun._tag, "Failure");
       assert.equal(invalidSettled._tag, "Failure");
       assert.equal(sameRun._tag, "Failure");
+      assert.equal(incompleteClaim._tag, "Failure");
+      assert.equal(preparedClaim._tag, "Failure");
     }),
   );
 });
@@ -88,14 +109,18 @@ const insertIntent = (
     readonly newRunId: string;
     readonly phase?: string;
     readonly revision?: number;
+    readonly dispatchClaimId?: string;
+    readonly dispatchClaimedAtUnixMs?: number;
   },
 ) =>
   sql`
     INSERT INTO composition_goal_loop_retry_intents (
       previous_run_id, task_id, new_run_id, phase, revision,
-      created_at_unix_ms, updated_at_unix_ms
+      created_at_unix_ms, updated_at_unix_ms,
+      dispatch_claim_id, dispatch_claimed_at_unix_ms
     ) VALUES (
       ${input.previousRunId}, 'task-goal-loop-retry', ${input.newRunId},
-      ${input.phase ?? "prepared"}, ${input.revision ?? 1}, 100, 100
+      ${input.phase ?? "prepared"}, ${input.revision ?? 1}, 100, 100,
+      ${input.dispatchClaimId ?? null}, ${input.dispatchClaimedAtUnixMs ?? null}
     )
   `;

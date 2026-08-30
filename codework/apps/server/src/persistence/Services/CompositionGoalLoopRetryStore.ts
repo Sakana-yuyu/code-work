@@ -24,6 +24,7 @@ export const CompositionGoalLoopRetryStoreErrorCode = Schema.Literals([
   "goal_loop_retry_intent_missing",
   "goal_loop_retry_identity_conflict",
   "goal_loop_retry_phase_conflict",
+  "goal_loop_retry_dispatch_in_progress",
 ]);
 export type CompositionGoalLoopRetryStoreErrorCode =
   typeof CompositionGoalLoopRetryStoreErrorCode.Type;
@@ -60,6 +61,32 @@ export interface CompositionGoalLoopRetryAdvanceInput {
   readonly updatedAtUnixMs: number;
 }
 
+export interface CompositionGoalLoopRetryDispatchClaimInput {
+  readonly previousRunId: string;
+  readonly claimId: string;
+  readonly claimedAtUnixMs: number;
+}
+
+export interface CompositionGoalLoopRetryDispatchReleaseInput {
+  readonly previousRunId: string;
+  readonly claimId: string;
+}
+
+export interface CompositionGoalLoopRetryDispatchCompleteInput extends CompositionGoalLoopRetryAdvanceInput {
+  readonly claimId: string;
+}
+
+export interface CompositionGoalLoopRetryRecoveryInput {
+  readonly recoveredAtUnixMs: number;
+}
+
+export interface CompositionGoalLoopRetryRecoveryReceipt {
+  readonly type: "composition.goal_loop_retry_dispatches.recovered";
+  readonly recoveredAtUnixMs: number;
+  readonly recoveredCount: number;
+  readonly previousRunIds: ReadonlyArray<string>;
+}
+
 export interface CompositionGoalLoopRetryStoreShape {
   readonly prepareIntent: (
     input: CompositionGoalLoopRetryPrepareInput,
@@ -73,9 +100,18 @@ export interface CompositionGoalLoopRetryStoreShape {
   readonly markSettled: (
     input: CompositionGoalLoopRetryAdvanceInput,
   ) => Effect.Effect<CompositionGoalLoopRetryIntent, CompositionGoalLoopRetryStoreError>;
-  readonly markDispatched: (
-    input: CompositionGoalLoopRetryAdvanceInput,
+  readonly claimDispatch: (
+    input: CompositionGoalLoopRetryDispatchClaimInput,
   ) => Effect.Effect<CompositionGoalLoopRetryIntent, CompositionGoalLoopRetryStoreError>;
+  readonly releaseDispatch: (
+    input: CompositionGoalLoopRetryDispatchReleaseInput,
+  ) => Effect.Effect<void, CompositionGoalLoopRetryStoreError>;
+  readonly markDispatched: (
+    input: CompositionGoalLoopRetryDispatchCompleteInput,
+  ) => Effect.Effect<CompositionGoalLoopRetryIntent, CompositionGoalLoopRetryStoreError>;
+  readonly recoverInterruptedDispatches: (
+    input: CompositionGoalLoopRetryRecoveryInput,
+  ) => Effect.Effect<CompositionGoalLoopRetryRecoveryReceipt, CompositionGoalLoopRetryStoreError>;
 }
 
 export class CompositionGoalLoopRetryStore extends Context.Service<
