@@ -5,7 +5,12 @@ import { LocalPluginFailureJournal } from "../localPluginFailureJournal";
 import { LocalPluginLifecycle } from "../localPluginLifecycle";
 import { LocalPluginRegistry } from "../localPluginRegistry";
 import type { LocalPluginRuntime } from "../localPluginRuntime";
-import type { LocalPluginStorage } from "../localPluginStorage";
+import {
+  decodeLocalPluginStorageDocument,
+  type LocalPluginStorage,
+  type LocalPluginStorageCompareAndSwapInput,
+  type LocalPluginStorageCompareAndSwapResult,
+} from "../localPluginStorage";
 import {
   listEnabledLocalPluginAttachments,
   type LocalPluginAttachmentCommitResult,
@@ -20,6 +25,18 @@ class MemoryStorage implements LocalPluginStorage {
 
   write(value: string): void {
     this.value = value;
+  }
+
+  async compareAndSwap(
+    input: LocalPluginStorageCompareAndSwapInput,
+  ): Promise<LocalPluginStorageCompareAndSwapResult> {
+    const revision =
+      this.value === null ? 0 : (decodeLocalPluginStorageDocument(this.value).revision ?? 0);
+    if (this.value !== input.expectedValue || revision !== input.expectedRevision) {
+      return { swapped: false, currentValue: this.value };
+    }
+    this.write(input.nextValue);
+    return { swapped: true, currentValue: this.value };
   }
 }
 
@@ -56,7 +73,13 @@ function createRuntime(): LocalPluginRuntime {
     storage: new MemoryStorage(),
     now: () => 1,
   });
-  return { failures, lifecycle, registry, restoreResult: { ok: true } };
+  return {
+    failures,
+    lifecycle,
+    registry,
+    restoreResult: { ok: true },
+    dispose: () => undefined,
+  };
 }
 
 function file(name: string, type: string, sizeBytes: number): File {
@@ -66,7 +89,7 @@ function file(name: string, type: string, sizeBytes: number): File {
 describe("localPluginAttachmentAdapter", () => {
   it("只枚举具备完整宿主端口的启用贡献，并逐文件应用 MIME 与大小限制", async () => {
     const runtime = createRuntime();
-    runtime.lifecycle.install(manifest("acme.attachments"));
+    await runtime.lifecycle.install(manifest("acme.attachments"));
     const files = [
       file("diagram.png", "image/png", 3),
       file("large.jpg", "image/jpeg", 5),
@@ -115,7 +138,7 @@ describe("localPluginAttachmentAdapter", () => {
 
   it("取消选择或全部文件被拒时写入失败 journal，且不调用 Composer", async () => {
     const runtime = createRuntime();
-    runtime.lifecycle.install(manifest("acme.cancelled"));
+    await runtime.lifecycle.install(manifest("acme.cancelled"));
     const commitAttachment = vi.fn(
       async (): Promise<LocalPluginAttachmentCommitResult> => ({ status: "complete" }),
     );
@@ -154,7 +177,7 @@ describe("localPluginAttachmentAdapter", () => {
 
   it("调用时重新检查启用状态、权限与 contribution", async () => {
     const runtime = createRuntime();
-    runtime.lifecycle.install(manifest("acme.stale"));
+    await runtime.lifecycle.install(manifest("acme.stale"));
     const ports = {
       pickFiles: vi.fn(async () => [file("diagram.png", "image/png", 3)]),
       commitAttachment: vi.fn(
@@ -163,7 +186,7 @@ describe("localPluginAttachmentAdapter", () => {
     };
     const stale = listEnabledLocalPluginAttachments({ runtime, ports })[0]!;
 
-    runtime.lifecycle.disable("acme.stale");
+    await runtime.lifecycle.disable("acme.stale");
     expect(await stale.invoke()).toMatchObject({
       ok: false,
       failure: { message: "插件已禁用。" },
@@ -199,8 +222,8 @@ describe("localPluginAttachmentAdapter", () => {
 
   it("Composer 写入失败只隔离当前插件，其他附件贡献仍可完成", async () => {
     const runtime = createRuntime();
-    runtime.lifecycle.install(manifest("acme.failed"));
-    runtime.lifecycle.install(manifest("acme.healthy"));
+    await runtime.lifecycle.install(manifest("acme.failed"));
+    await runtime.lifecycle.install(manifest("acme.healthy"));
     const commitAttachment = vi
       .fn<() => Promise<LocalPluginAttachmentCommitResult>>()
       .mockResolvedValueOnce({ status: "rejected" })
@@ -230,7 +253,7 @@ describe("localPluginAttachmentAdapter", () => {
 
   it("提示词写入失败时返回附件已写入的部分成功结果", async () => {
     const runtime = createRuntime();
-    runtime.lifecycle.install(manifest("acme.partial"));
+    await runtime.lifecycle.install(manifest("acme.partial"));
     const attachment = listEnabledLocalPluginAttachments({
       runtime,
       ports: {

@@ -4,7 +4,12 @@ import { describe, expect, it } from "vite-plus/test";
 import { LocalPluginLifecycle } from "../localPluginLifecycle";
 import { LocalPluginFailureJournal } from "../localPluginFailureJournal";
 import { LocalPluginRegistry } from "../localPluginRegistry";
-import type { LocalPluginStorage } from "../localPluginStorage";
+import {
+  decodeLocalPluginStorageDocument,
+  type LocalPluginStorage,
+  type LocalPluginStorageCompareAndSwapInput,
+  type LocalPluginStorageCompareAndSwapResult,
+} from "../localPluginStorage";
 import { LocalPluginTimelineJournal } from "../localPluginTimelineJournal";
 import type { LocalPluginTimelineStorage } from "../localPluginTimelineStorage";
 import {
@@ -21,6 +26,18 @@ class MemoryStorage implements LocalPluginStorage, LocalPluginTimelineStorage {
 
   write(value: string): void {
     this.value = value;
+  }
+
+  async compareAndSwap(
+    input: LocalPluginStorageCompareAndSwapInput,
+  ): Promise<LocalPluginStorageCompareAndSwapResult> {
+    const revision =
+      this.value === null ? 0 : (decodeLocalPluginStorageDocument(this.value).revision ?? 0);
+    if (this.value !== input.expectedValue || revision !== input.expectedRevision) {
+      return { swapped: false, currentValue: this.value };
+    }
+    this.write(input.nextValue);
+    return { swapped: true, currentValue: this.value };
   }
 }
 
@@ -66,8 +83,8 @@ function createHarness() {
 describe("localPluginTimelineAdapter", () => {
   it("把已启用插件的事件投影为当前线程的独立 Timeline 条目", async () => {
     const harness = createHarness();
-    harness.lifecycle.install(manifest("acme.enabled"));
-    harness.lifecycle.install(manifest("acme.disabled"));
+    await harness.lifecycle.install(manifest("acme.enabled"));
+    await harness.lifecycle.install(manifest("acme.disabled"));
     const post = createLocalPluginTimelinePostPort({
       registry: harness.registry,
       journal: harness.timeline,
@@ -76,7 +93,7 @@ describe("localPluginTimelineAdapter", () => {
 
     await post("acme.enabled", "checks", "启用插件事件");
     await post("acme.disabled", "checks", "禁用前事件");
-    harness.lifecycle.disable("acme.disabled");
+    await harness.lifecycle.disable("acme.disabled");
 
     expect(
       listEnabledLocalPluginTimelineEntries({
@@ -97,7 +114,7 @@ describe("localPluginTimelineAdapter", () => {
       },
     ]);
 
-    harness.lifecycle.enable("acme.disabled");
+    await harness.lifecycle.enable("acme.disabled");
     expect(
       listEnabledLocalPluginTimelineEntries({
         registry: harness.registry,
@@ -109,14 +126,14 @@ describe("localPluginTimelineAdapter", () => {
 
   it("写入时重新检查启用状态、权限与 contribution", async () => {
     const harness = createHarness();
-    harness.lifecycle.install(manifest("acme.timeline"));
+    await harness.lifecycle.install(manifest("acme.timeline"));
     const stalePost = createLocalPluginTimelinePostPort({
       registry: harness.registry,
       journal: harness.timeline,
       threadKey: "environment:thread-1",
     });
 
-    harness.lifecycle.disable("acme.timeline");
+    await harness.lifecycle.disable("acme.timeline");
     await expect(stalePost("acme.timeline", "checks", "不会写入")).rejects.toThrow("插件已禁用");
 
     harness.registry.replace([

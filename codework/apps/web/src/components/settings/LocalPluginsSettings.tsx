@@ -23,7 +23,7 @@ type LocalPluginImportErrorCode = LocalPluginLifecycleErrorCode | "invalid-json"
 export function installLocalPluginJson(
   runtime: LocalPluginRuntime,
   contents: string,
-): LocalPluginImportResult {
+): Promise<LocalPluginImportResult> {
   let parsed: unknown;
   try {
     parsed = JSON.parse(contents);
@@ -33,7 +33,10 @@ export function installLocalPluginJson(
       phase: "install",
       error,
     });
-    return { ok: false, error: { code: "invalid-json", message: failure.message } };
+    return Promise.resolve({
+      ok: false,
+      error: { code: "invalid-json", message: failure.message },
+    });
   }
   return runtime.lifecycle.install(parsed);
 }
@@ -52,6 +55,10 @@ function importErrorLabel(code: LocalPluginImportErrorCode) {
       return t("localPlugins.error.storageWriteFailed");
     case "storage-duplicate-id":
       return t("localPlugins.error.storageDuplicateId");
+    case "storage-lock-unavailable":
+      return t("localPlugins.error.storageLockUnavailable");
+    case "storage-conflict":
+      return t("localPlugins.error.storageConflict");
     case "plugin-not-found":
       return t("localPlugins.error.notFound");
     case "storage-invalid":
@@ -106,10 +113,14 @@ export function LocalPluginsSettings({
     event.currentTarget.value = "";
     if (!file) return;
     try {
-      const result = installLocalPluginJson(runtime, await file.text());
+      const result = await installLocalPluginJson(runtime, await file.text());
       setImportStatus(result.ok ? t("localPlugins.imported") : importErrorLabel(result.error.code));
     } catch (error) {
-      runtime.failures.record({ pluginId: "unknown-plugin", phase: "install", error });
+      runtime.failures.record({
+        pluginId: "unknown-plugin",
+        phase: "install",
+        error,
+      });
       setImportStatus(t("localPlugins.error.readFailed"));
     }
   };
@@ -213,7 +224,11 @@ export function LocalPluginsSettings({
                       const result = enabled
                         ? runtime.lifecycle.enable(manifest.id)
                         : runtime.lifecycle.disable(manifest.id);
-                      if (!result.ok) setImportStatus(importErrorLabel(result.error.code));
+                      void result.then((completed) => {
+                        if (!completed.ok) {
+                          setImportStatus(importErrorLabel(completed.error.code));
+                        }
+                      });
                     }}
                   />
                   <Tooltip>
@@ -226,8 +241,11 @@ export function LocalPluginsSettings({
                           data-local-plugin-remove={manifest.id}
                           aria-label={t("localPlugins.remove", { name: manifest.name })}
                           onClick={() => {
-                            const result = runtime.lifecycle.uninstall(manifest.id);
-                            if (!result.ok) setImportStatus(importErrorLabel(result.error.code));
+                            void runtime.lifecycle.uninstall(manifest.id).then((result) => {
+                              if (!result.ok) {
+                                setImportStatus(importErrorLabel(result.error.code));
+                              }
+                            });
                           }}
                         >
                           <Trash2Icon />

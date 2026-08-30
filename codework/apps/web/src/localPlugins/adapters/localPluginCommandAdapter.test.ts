@@ -5,7 +5,12 @@ import { LocalPluginFailureJournal } from "../localPluginFailureJournal";
 import { LocalPluginLifecycle } from "../localPluginLifecycle";
 import { LocalPluginRegistry } from "../localPluginRegistry";
 import type { LocalPluginRuntime } from "../localPluginRuntime";
-import type { LocalPluginStorage } from "../localPluginStorage";
+import {
+  decodeLocalPluginStorageDocument,
+  type LocalPluginStorage,
+  type LocalPluginStorageCompareAndSwapInput,
+  type LocalPluginStorageCompareAndSwapResult,
+} from "../localPluginStorage";
 import { listEnabledLocalPluginCommands } from "./localPluginCommandAdapter";
 
 class MemoryStorage implements LocalPluginStorage {
@@ -15,6 +20,17 @@ class MemoryStorage implements LocalPluginStorage {
   }
   write(value: string): void {
     this.value = value;
+  }
+  async compareAndSwap(
+    input: LocalPluginStorageCompareAndSwapInput,
+  ): Promise<LocalPluginStorageCompareAndSwapResult> {
+    const revision =
+      this.value === null ? 0 : (decodeLocalPluginStorageDocument(this.value).revision ?? 0);
+    if (this.value !== input.expectedValue || revision !== input.expectedRevision) {
+      return { swapped: false, currentValue: this.value };
+    }
+    this.write(input.nextValue);
+    return { swapped: true, currentValue: this.value };
   }
 }
 
@@ -65,13 +81,19 @@ function createRuntime(): LocalPluginRuntime {
     storage: new MemoryStorage(),
     now: () => 1,
   });
-  return { failures, lifecycle, registry, restoreResult: { ok: true } };
+  return {
+    failures,
+    lifecycle,
+    registry,
+    restoreResult: { ok: true },
+    dispose: () => undefined,
+  };
 }
 
 describe("localPluginCommandAdapter", () => {
   it("只枚举已有安全宿主端口的动作，并通过端口完成调用", async () => {
     const runtime = createRuntime();
-    runtime.lifecycle.install(manifest("acme.commands"));
+    await runtime.lifecycle.install(manifest("acme.commands"));
     const openWorkspacePanel = vi.fn();
     const writeClipboard = vi.fn(async () => undefined);
     const insertPrompt = vi.fn(() => true);
@@ -99,9 +121,9 @@ describe("localPluginCommandAdapter", () => {
     expect(postTimeline).toHaveBeenCalledWith("acme.commands", "checks", "完成");
   });
 
-  it("上下文或宿主端口缺失时不暴露无法形成闭环的命令", () => {
+  it("上下文或宿主端口缺失时不暴露无法形成闭环的命令", async () => {
     const runtime = createRuntime();
-    runtime.lifecycle.install(manifest("acme.commands"));
+    await runtime.lifecycle.install(manifest("acme.commands"));
 
     const commands = listEnabledLocalPluginCommands({
       runtime,
@@ -114,8 +136,8 @@ describe("localPluginCommandAdapter", () => {
 
   it("调用时重新检查启用状态，并把单插件失败写入 journal", async () => {
     const runtime = createRuntime();
-    runtime.lifecycle.install(manifest("acme.one"));
-    runtime.lifecycle.install(manifest("acme.two"));
+    await runtime.lifecycle.install(manifest("acme.one"));
+    await runtime.lifecycle.install(manifest("acme.two"));
     const insertPrompt = vi.fn(() => true);
     const commands = listEnabledLocalPluginCommands({
       runtime,
@@ -133,7 +155,7 @@ describe("localPluginCommandAdapter", () => {
       (command) => command.pluginId === "acme.two" && command.contributionId === "insert",
     )!;
 
-    runtime.lifecycle.disable("acme.one");
+    await runtime.lifecycle.disable("acme.one");
 
     expect(await staleCommand.invoke()).toMatchObject({
       ok: false,
@@ -146,7 +168,7 @@ describe("localPluginCommandAdapter", () => {
 
   it("Timeline 宿主写入失败时只隔离当前命令", async () => {
     const runtime = createRuntime();
-    runtime.lifecycle.install(manifest("acme.timeline"));
+    await runtime.lifecycle.install(manifest("acme.timeline"));
     const commands = listEnabledLocalPluginCommands({
       runtime,
       workspace: null,

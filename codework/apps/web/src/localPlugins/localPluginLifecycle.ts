@@ -7,12 +7,18 @@ import type {
 import { decodeAllowedLocalPluginManifest, LocalPluginPolicyError } from "./localPluginPolicy";
 import type { LocalPluginRegistry } from "./localPluginRegistry";
 import {
-  decodeLocalPluginStorageDocument,
   encodeLocalPluginStorageDocument,
   LocalPluginStorageDuplicateIdError,
+  LocalPluginStorageInvalidDocumentError,
+  LocalPluginStorageLockUnavailableError,
   type LocalPluginStorage,
   type StoredLocalPlugin,
 } from "./localPluginStorage";
+import {
+  LocalPluginStorageSession,
+  type LocalPluginStorageConflict,
+  type LocalPluginStorageSnapshot,
+} from "./localPluginStorageSession";
 
 export type LocalPluginLifecycleErrorCode =
   | "schema-invalid"
@@ -21,6 +27,8 @@ export type LocalPluginLifecycleErrorCode =
   | "plugin-not-found"
   | "storage-invalid"
   | "storage-duplicate-id"
+  | "storage-lock-unavailable"
+  | "storage-conflict"
   | "storage-write-failed";
 
 export interface LocalPluginLifecycleError {
@@ -31,6 +39,28 @@ export interface LocalPluginLifecycleError {
 export type LocalPluginLifecycleResult =
   | { readonly ok: true }
   | { readonly ok: false; readonly error: LocalPluginLifecycleError };
+
+type LocalPluginMutationPhase = Exclude<
+  LocalPluginFailurePhase,
+  "restore" | "synchronize" | "invoke" | "render"
+>;
+
+function storageErrorCode(
+  error: unknown,
+  fallback: "storage-invalid" | "storage-write-failed",
+): LocalPluginLifecycleErrorCode {
+  let current = error;
+  let invalidDocument = false;
+  while (current instanceof Error) {
+    if (current instanceof LocalPluginStorageDuplicateIdError) return "storage-duplicate-id";
+    if (current instanceof LocalPluginStorageLockUnavailableError) {
+      return "storage-lock-unavailable";
+    }
+    if (current instanceof LocalPluginStorageInvalidDocumentError) invalidDocument = true;
+    current = current.cause;
+  }
+  return invalidDocument ? "storage-invalid" : fallback;
+}
 
 function pluginIdFromUnknown(input: unknown): string {
   if (
@@ -46,6 +76,7 @@ function pluginIdFromUnknown(input: unknown): string {
 
 export class LocalPluginLifecycle {
   private restoreFailure: LocalPluginLifecycleError | null = null;
+  private readonly storageSession: LocalPluginStorageSession;
 
   constructor(
     private readonly options: {
@@ -53,30 +84,26 @@ export class LocalPluginLifecycle {
       readonly failures: LocalPluginFailureJournal;
       readonly storage: LocalPluginStorage;
       readonly now: () => number;
+      readonly writerId?: string;
     },
-  ) {}
+  ) {
+    this.storageSession = new LocalPluginStorageSession({
+      registry: options.registry,
+      storage: options.storage,
+      writerId: options.writerId ?? "local-plugin-runtime",
+    });
+  }
 
   restore(): LocalPluginLifecycleResult {
     try {
-      const value = this.options.storage.read();
-      if (value === null) {
-        this.options.registry.replace([]);
-        return { ok: true };
-      }
-      const document = decodeLocalPluginStorageDocument(value);
-      for (const plugin of document.plugins) {
-        decodeAllowedLocalPluginManifest(plugin.manifest);
-      }
-      this.options.registry.replace(document.plugins);
+      this.storageSession.restore();
       this.restoreFailure = null;
       return { ok: true };
     } catch (error) {
       const result = this.fail(
         "unknown-plugin",
         "restore",
-        error instanceof LocalPluginStorageDuplicateIdError
-          ? "storage-duplicate-id"
-          : "storage-invalid",
+        storageErrorCode(error, "storage-invalid"),
         error,
       );
       if (!result.ok) this.restoreFailure = result.error;
@@ -84,7 +111,31 @@ export class LocalPluginLifecycle {
     }
   }
 
-  install(input: unknown): LocalPluginLifecycleResult {
+  synchronize(): LocalPluginLifecycleResult {
+    let conflict: LocalPluginStorageConflict | null;
+    try {
+      conflict = this.storageSession.synchronize();
+    } catch (error) {
+      return this.fail(
+        "unknown-plugin",
+        "synchronize",
+        storageErrorCode(error, "storage-invalid"),
+        error,
+      );
+    }
+    this.restoreFailure = null;
+    if (!conflict) return { ok: true };
+    return this.fail(
+      "unknown-plugin",
+      "synchronize",
+      "storage-conflict",
+      new Error(
+        `检测到本地插件存储修订冲突（原修订 ${conflict.previousRevision}，原写入者 ${conflict.previousWriterId ?? "legacy"}，当前修订 ${conflict.currentRevision}，当前写入者 ${conflict.currentWriterId ?? "legacy"}），已采用最终持久化状态。`,
+      ),
+    );
+  }
+
+  async install(input: unknown): Promise<LocalPluginLifecycleResult> {
     const pluginId = pluginIdFromUnknown(input);
     const blocked = this.blockedByRestoreFailure();
     if (blocked) return blocked;
@@ -96,7 +147,9 @@ export class LocalPluginLifecycle {
       return this.fail(pluginId, "install", code, error);
     }
 
-    const current = this.options.registry.getSnapshot().plugins;
+    const prepared = this.prepareMutation(manifest.id, "install");
+    if (!prepared.ok) return prepared.result;
+    const current = prepared.snapshot.plugins;
     const existing = current.find((plugin) => plugin.manifest.id === manifest.id);
     const now = this.options.now();
     const nextRegistration: StoredLocalPlugin = {
@@ -108,39 +161,44 @@ export class LocalPluginLifecycle {
     const next = existing
       ? current.map((plugin) => (plugin.manifest.id === manifest.id ? nextRegistration : plugin))
       : [...current, nextRegistration];
-    return this.persistAndPublish(manifest.id, "install", next);
+    return this.persistAndPublish(manifest.id, "install", prepared.snapshot, next);
   }
 
-  enable(pluginId: string): LocalPluginLifecycleResult {
+  enable(pluginId: string): Promise<LocalPluginLifecycleResult> {
     return this.setEnabled(pluginId, true, "enable");
   }
 
-  disable(pluginId: string): LocalPluginLifecycleResult {
+  disable(pluginId: string): Promise<LocalPluginLifecycleResult> {
     return this.setEnabled(pluginId, false, "disable");
   }
 
-  uninstall(pluginId: string): LocalPluginLifecycleResult {
+  async uninstall(pluginId: string): Promise<LocalPluginLifecycleResult> {
     const blocked = this.blockedByRestoreFailure();
     if (blocked) return blocked;
-    const current = this.options.registry.getSnapshot().plugins;
+    const prepared = this.prepareMutation(pluginId, "uninstall");
+    if (!prepared.ok) return prepared.result;
+    const current = prepared.snapshot.plugins;
     if (!current.some((plugin) => plugin.manifest.id === pluginId)) {
       return this.fail(pluginId, "uninstall", "plugin-not-found", new Error("插件不存在。"));
     }
     return this.persistAndPublish(
       pluginId,
       "uninstall",
+      prepared.snapshot,
       current.filter((plugin) => plugin.manifest.id !== pluginId),
     );
   }
 
-  private setEnabled(
+  private async setEnabled(
     pluginId: string,
     enabled: boolean,
     phase: "enable" | "disable",
-  ): LocalPluginLifecycleResult {
+  ): Promise<LocalPluginLifecycleResult> {
     const blocked = this.blockedByRestoreFailure();
     if (blocked) return blocked;
-    const current = this.options.registry.getSnapshot().plugins;
+    const prepared = this.prepareMutation(pluginId, phase);
+    if (!prepared.ok) return prepared.result;
+    const current = prepared.snapshot.plugins;
     if (!current.some((plugin) => plugin.manifest.id === pluginId)) {
       return this.fail(pluginId, phase, "plugin-not-found", new Error("插件不存在。"));
     }
@@ -149,33 +207,46 @@ export class LocalPluginLifecycle {
         ? { ...plugin, enabled, updatedAtUnixMs: this.options.now() }
         : plugin,
     );
-    return this.persistAndPublish(pluginId, phase, next);
+    return this.persistAndPublish(pluginId, phase, prepared.snapshot, next);
   }
 
-  private persistAndPublish(
+  private prepareMutation(
     pluginId: string,
-    phase: Exclude<LocalPluginFailurePhase, "restore" | "invoke" | "render">,
-    next: ReadonlyArray<StoredLocalPlugin>,
-  ): LocalPluginLifecycleResult {
-    let value: string;
+    phase: LocalPluginMutationPhase,
+  ):
+    | { readonly ok: true; readonly snapshot: LocalPluginStorageSnapshot }
+    | { readonly ok: false; readonly result: LocalPluginLifecycleResult } {
     try {
-      value = encodeLocalPluginStorageDocument(next);
+      encodeLocalPluginStorageDocument(this.options.registry.getSnapshot().plugins);
+      return { ok: true, snapshot: this.storageSession.readLatest() };
     } catch (error) {
+      return {
+        ok: false,
+        result: this.fail(pluginId, phase, storageErrorCode(error, "storage-invalid"), error),
+      };
+    }
+  }
+
+  private async persistAndPublish(
+    pluginId: string,
+    phase: LocalPluginMutationPhase,
+    base: LocalPluginStorageSnapshot,
+    next: ReadonlyArray<StoredLocalPlugin>,
+  ): Promise<LocalPluginLifecycleResult> {
+    let persistedByThisRuntime: boolean;
+    try {
+      persistedByThisRuntime = await this.storageSession.persist(base, next);
+    } catch (error) {
+      return this.fail(pluginId, phase, storageErrorCode(error, "storage-write-failed"), error);
+    }
+    if (!persistedByThisRuntime) {
       return this.fail(
         pluginId,
         phase,
-        error instanceof LocalPluginStorageDuplicateIdError
-          ? "storage-duplicate-id"
-          : "storage-write-failed",
-        error,
+        "storage-conflict",
+        new Error("本地插件设置写入时被其他标签页覆盖，已采用最终持久化状态。"),
       );
     }
-    try {
-      this.options.storage.write(value);
-    } catch (error) {
-      return this.fail(pluginId, phase, "storage-write-failed", error);
-    }
-    this.options.registry.replace(next);
     return { ok: true };
   }
 

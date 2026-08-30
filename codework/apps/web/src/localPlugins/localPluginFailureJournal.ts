@@ -1,5 +1,6 @@
 export type LocalPluginFailurePhase =
   | "restore"
+  | "synchronize"
   | "install"
   | "enable"
   | "disable"

@@ -1,13 +1,22 @@
+import { randomUUID } from "~/lib/utils";
+
 import { LocalPluginFailureJournal } from "./localPluginFailureJournal";
 import { LocalPluginLifecycle, type LocalPluginLifecycleResult } from "./localPluginLifecycle";
 import { LocalPluginRegistry } from "./localPluginRegistry";
-import { BrowserLocalPluginStorage, type LocalPluginStorage } from "./localPluginStorage";
+import {
+  BrowserLocalPluginStorage,
+  decodeLocalPluginStorageDocument,
+  type LocalPluginStorage,
+  type LocalPluginStorageCompareAndSwapInput,
+  type LocalPluginStorageCompareAndSwapResult,
+} from "./localPluginStorage";
 
 export interface LocalPluginRuntime {
   readonly failures: LocalPluginFailureJournal;
   readonly lifecycle: LocalPluginLifecycle;
   readonly registry: LocalPluginRegistry;
   readonly restoreResult: LocalPluginLifecycleResult;
+  readonly dispose: () => void;
 }
 
 class VolatileLocalPluginStorage implements LocalPluginStorage {
@@ -20,11 +29,24 @@ class VolatileLocalPluginStorage implements LocalPluginStorage {
   write(value: string): void {
     this.value = value;
   }
+
+  async compareAndSwap(
+    input: LocalPluginStorageCompareAndSwapInput,
+  ): Promise<LocalPluginStorageCompareAndSwapResult> {
+    const currentRevision =
+      this.value === null ? 0 : (decodeLocalPluginStorageDocument(this.value).revision ?? 0);
+    if (this.value !== input.expectedValue || currentRevision !== input.expectedRevision) {
+      return { swapped: false, currentValue: this.value };
+    }
+    this.write(input.nextValue);
+    return { swapped: true, currentValue: this.value };
+  }
 }
 
 export function createLocalPluginRuntime(input?: {
   readonly storage?: LocalPluginStorage;
   readonly now?: () => number;
+  readonly writerId?: string;
 }): LocalPluginRuntime {
   const registry = new LocalPluginRegistry();
   const now = input?.now ?? Date.now;
@@ -41,9 +63,24 @@ export function createLocalPluginRuntime(input?: {
     }
   };
   const storage = input?.storage ?? browserStorage();
-  const lifecycle = new LocalPluginLifecycle({ registry, failures, storage, now });
+  const writerId = input?.writerId ?? `local-plugin:${randomUUID()}`;
+  const lifecycle = new LocalPluginLifecycle({ registry, failures, storage, now, writerId });
+  const unsubscribe = storage.subscribe?.(() => {
+    lifecycle.synchronize();
+  });
   const restoreResult = lifecycle.restore();
-  return { failures, lifecycle, registry, restoreResult };
+  let disposed = false;
+  return {
+    failures,
+    lifecycle,
+    registry,
+    restoreResult,
+    dispose: () => {
+      if (disposed) return;
+      disposed = true;
+      unsubscribe?.();
+    },
+  };
 }
 
 export const localPluginRuntime = createLocalPluginRuntime();

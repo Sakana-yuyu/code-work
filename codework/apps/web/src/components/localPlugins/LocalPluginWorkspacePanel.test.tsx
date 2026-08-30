@@ -6,7 +6,12 @@ import { LocalPluginFailureJournal } from "~/localPlugins/localPluginFailureJour
 import { LocalPluginLifecycle } from "~/localPlugins/localPluginLifecycle";
 import { LocalPluginRegistry } from "~/localPlugins/localPluginRegistry";
 import type { LocalPluginRuntime } from "~/localPlugins/localPluginRuntime";
-import type { LocalPluginStorage } from "~/localPlugins/localPluginStorage";
+import {
+  decodeLocalPluginStorageDocument,
+  type LocalPluginStorage,
+  type LocalPluginStorageCompareAndSwapInput,
+  type LocalPluginStorageCompareAndSwapResult,
+} from "~/localPlugins/localPluginStorage";
 import { localPluginWorkspacePanelSurface } from "~/localPlugins/adapters/localPluginWorkspacePanelSurface";
 import { LocalPluginWorkspacePanel } from "./LocalPluginWorkspacePanel";
 
@@ -17,6 +22,17 @@ class MemoryStorage implements LocalPluginStorage {
   }
   write(value: string): void {
     this.value = value;
+  }
+  async compareAndSwap(
+    input: LocalPluginStorageCompareAndSwapInput,
+  ): Promise<LocalPluginStorageCompareAndSwapResult> {
+    const revision =
+      this.value === null ? 0 : (decodeLocalPluginStorageDocument(this.value).revision ?? 0);
+    if (this.value !== input.expectedValue || revision !== input.expectedRevision) {
+      return { swapped: false, currentValue: this.value };
+    }
+    this.write(input.nextValue);
+    return { swapped: true, currentValue: this.value };
   }
 }
 
@@ -52,13 +68,19 @@ function createRuntime(): LocalPluginRuntime {
     storage: new MemoryStorage(),
     now: () => 1,
   });
-  return { failures, lifecycle, registry, restoreResult: { ok: true } };
+  return {
+    failures,
+    lifecycle,
+    registry,
+    restoreResult: { ok: true },
+    dispose: () => undefined,
+  };
 }
 
 describe("LocalPluginWorkspacePanel", () => {
-  it("只以文本渲染声明式面板，不解释插件提供的 HTML", () => {
+  it("只以文本渲染声明式面板，不解释插件提供的 HTML", async () => {
     const runtime = createRuntime();
-    runtime.lifecycle.install({
+    await runtime.lifecycle.install({
       ...manifest,
       contributions: {
         workspacePanels: [

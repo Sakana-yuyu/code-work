@@ -381,8 +381,12 @@ export const en: Record<string, string> = {
   "localPlugins.error.readFailed": "The plugin manifest could not be read.",
   "localPlugins.error.schemaInvalid": "The plugin manifest schema is invalid.",
   "localPlugins.error.storageInvalid": "Stored local plugin data is invalid.",
+  "localPlugins.error.storageLockUnavailable":
+    "This browser cannot safely coordinate local plugin settings across tabs.",
   "localPlugins.error.storageDuplicateId":
     "Stored local plugin data contains duplicate plugin IDs.",
+  "localPlugins.error.storageConflict":
+    "Local plugin settings changed in another tab. The latest stored state was loaded; retry the action if needed.",
   "localPlugins.error.storageWriteFailed": "Local plugin settings could not be saved.",
   "localPlugins.error.unknown": "The local plugin operation failed.",
   "localPlugins.import": "Import manifest",
@@ -4202,7 +4206,11 @@ export const zhCN: Record<string, string> = {
   "localPlugins.error.readFailed": "无法读取插件 manifest。",
   "localPlugins.error.schemaInvalid": "插件 manifest schema 无效。",
   "localPlugins.error.storageInvalid": "已保存的本地插件数据无效。",
+  "localPlugins.error.storageLockUnavailable":
+    "当前浏览器无法在多个标签页之间安全协调本地插件设置。",
   "localPlugins.error.storageDuplicateId": "已保存的本地插件数据包含重复插件 ID。",
+  "localPlugins.error.storageConflict":
+    "其他标签页同时修改了本地插件设置。已载入最终持久化状态，请按需重试刚才的操作。",
   "localPlugins.error.storageWriteFailed": "无法保存本地插件设置。",
   "localPlugins.error.unknown": "本地插件操作失败。",
   "localPlugins.import": "导入 manifest",

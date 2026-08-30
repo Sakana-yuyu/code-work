@@ -6,7 +6,12 @@ import { LocalPluginFailureJournal } from "~/localPlugins/localPluginFailureJour
 import { LocalPluginLifecycle } from "~/localPlugins/localPluginLifecycle";
 import { LocalPluginRegistry } from "~/localPlugins/localPluginRegistry";
 import type { LocalPluginRuntime } from "~/localPlugins/localPluginRuntime";
-import type { LocalPluginStorage } from "~/localPlugins/localPluginStorage";
+import {
+  decodeLocalPluginStorageDocument,
+  type LocalPluginStorage,
+  type LocalPluginStorageCompareAndSwapInput,
+  type LocalPluginStorageCompareAndSwapResult,
+} from "~/localPlugins/localPluginStorage";
 import { setCurrentLanguage } from "~/i18n/runtime";
 import { LocalPluginsSettings, installLocalPluginJson } from "./LocalPluginsSettings";
 
@@ -17,6 +22,17 @@ class MemoryStorage implements LocalPluginStorage {
   }
   write(value: string): void {
     this.value = value;
+  }
+  async compareAndSwap(
+    input: LocalPluginStorageCompareAndSwapInput,
+  ): Promise<LocalPluginStorageCompareAndSwapResult> {
+    const currentRevision =
+      this.value === null ? 0 : (decodeLocalPluginStorageDocument(this.value).revision ?? 0);
+    if (this.value !== input.expectedValue || currentRevision !== input.expectedRevision) {
+      return { swapped: false, currentValue: this.value };
+    }
+    this.write(input.nextValue);
+    return { swapped: true, currentValue: this.value };
   }
 }
 
@@ -50,7 +66,13 @@ function createRuntime(): LocalPluginRuntime {
     storage: new MemoryStorage(),
     now: () => 1,
   });
-  return { failures, lifecycle, registry, restoreResult: { ok: true } };
+  return {
+    failures,
+    lifecycle,
+    registry,
+    restoreResult: { ok: true },
+    dispose: () => undefined,
+  };
 }
 
 describe("LocalPluginsSettings", () => {
@@ -65,9 +87,9 @@ describe("LocalPluginsSettings", () => {
     expect(html).toContain('accept=".json,application/json"');
   });
 
-  it("渲染插件版本、权限、贡献计数、启停和删除入口", () => {
+  it("渲染插件版本、权限、贡献计数、启停和删除入口", async () => {
     const runtime = createRuntime();
-    runtime.lifecycle.install(pluginManifest);
+    await runtime.lifecycle.install(pluginManifest);
 
     const html = renderToStaticMarkup(<LocalPluginsSettings runtime={runtime} />);
 
@@ -80,9 +102,9 @@ describe("LocalPluginsSettings", () => {
     expect(html).toContain('data-local-plugin-remove="acme.settings"');
   });
 
-  it("展示单插件最新失败，并允许清理失败记录", () => {
+  it("展示单插件最新失败，并允许清理失败记录", async () => {
     const runtime = createRuntime();
-    runtime.lifecycle.install(pluginManifest);
+    await runtime.lifecycle.install(pluginManifest);
     runtime.failures.record({
       pluginId: "acme.settings",
       phase: "invoke",
@@ -121,16 +143,18 @@ describe("LocalPluginsSettings", () => {
     expect(html).toContain("Dismiss restore warning");
   });
 
-  it("导入函数区分非法 JSON 与策略拒绝", () => {
+  it("导入函数区分非法 JSON 与策略拒绝", async () => {
     const runtime = createRuntime();
 
-    expect(installLocalPluginJson(runtime, "not-json")).toMatchObject({
+    expect(await installLocalPluginJson(runtime, "not-json")).toMatchObject({
       ok: false,
       error: { code: "invalid-json" },
     });
     expect(
-      installLocalPluginJson(runtime, JSON.stringify({ ...pluginManifest, permissions: [] })),
+      await installLocalPluginJson(runtime, JSON.stringify({ ...pluginManifest, permissions: [] })),
     ).toMatchObject({ ok: false, error: { code: "manifest-invalid" } });
-    expect(installLocalPluginJson(runtime, JSON.stringify(pluginManifest))).toEqual({ ok: true });
+    expect(await installLocalPluginJson(runtime, JSON.stringify(pluginManifest))).toEqual({
+      ok: true,
+    });
   });
 });
