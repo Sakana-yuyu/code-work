@@ -475,6 +475,192 @@ layer("CompositionRunStartStore", (it) => {
       assert.notInclude(serialized, "E:/private/workspace");
     }),
   );
+
+  it.effect("未收口列表覆盖全部恢复态，排除 settled，并按更新时间和 runId 有界排序", () =>
+    Effect.gen(function* () {
+      const store = yield* CompositionRunStartStore;
+      const sql = yield* SqlClient.SqlClient;
+      yield* sql`DELETE FROM composition_run_start_intents`;
+      const preparedA = makePrepareInput("run-list-a");
+      const preparedC = makePrepareInput("run-list-c");
+      const dispatching = makePrepareInput("run-list-b");
+      const accepted = makePrepareInput("run-list-d");
+      const indeterminate = makePrepareInput("run-list-e");
+      const settled = makePrepareInput("run-list-z");
+
+      for (const input of [preparedC, preparedA, dispatching, accepted, indeterminate, settled]) {
+        yield* store.prepareStart(input);
+      }
+      yield* store.claimStart({
+        runId: dispatching.runId,
+        expectedRevision: 1,
+        claimId: "claim-list-b",
+        claimedAtUnixMs: 110,
+      });
+      yield* store.claimStart({
+        runId: accepted.runId,
+        expectedRevision: 1,
+        claimId: "claim-list-d",
+        claimedAtUnixMs: 110,
+      });
+      yield* store.markAccepted({
+        runId: accepted.runId,
+        expectedRevision: 2,
+        claimId: "claim-list-d",
+        runtimeTaskId: "runtime-task-list-d",
+        acceptedAtUnixMs: 120,
+      });
+      yield* store.claimStart({
+        runId: indeterminate.runId,
+        expectedRevision: 1,
+        claimId: "claim-list-e",
+        claimedAtUnixMs: 110,
+      });
+      yield* store.markIndeterminate({
+        runId: indeterminate.runId,
+        expectedRevision: 2,
+        claimId: "claim-list-e",
+        outcomeCode: "driver_result_unknown",
+        indeterminateAtUnixMs: 130,
+      });
+      yield* store.claimStart({
+        runId: settled.runId,
+        expectedRevision: 1,
+        claimId: "claim-list-z",
+        claimedAtUnixMs: 110,
+      });
+      yield* store.markAccepted({
+        runId: settled.runId,
+        expectedRevision: 2,
+        claimId: "claim-list-z",
+        runtimeTaskId: "runtime-task-list-z",
+        acceptedAtUnixMs: 120,
+      });
+      yield* store.settleStart({
+        runId: settled.runId,
+        expectedRevision: 3,
+        claimId: "claim-list-z",
+        settledAtUnixMs: 140,
+      });
+
+      const all = yield* store.listUnsettledStarts({ limit: 200 });
+      const limited = yield* store.listUnsettledStarts({ limit: 3 });
+      assert.deepEqual(
+        all.map((intent) => [intent.runId, intent.state]),
+        [
+          ["run-list-a", "prepared"],
+          ["run-list-c", "prepared"],
+          ["run-list-b", "dispatching"],
+          ["run-list-d", "accepted"],
+          ["run-list-e", "indeterminate"],
+        ],
+      );
+      assert.deepEqual(
+        limited.map((intent) => intent.runId),
+        ["run-list-a", "run-list-c", "run-list-b"],
+      );
+
+      for (const limit of [0, 201, 1.5, Number.NaN, Number.POSITIVE_INFINITY]) {
+        const invalid = yield* store.listUnsettledStarts({ limit }).pipe(Effect.flip);
+        assert.equal(errorCode(invalid), "run_start_input_invalid");
+      }
+    }),
+  );
+});
+
+it.effect("未收口列表在 SQLite Layer 真实释放文件句柄后可跨连接恢复", () => {
+  const tempDir = NodeFS.mkdtempSync(
+    NodePath.join(NodeOS.tmpdir(), "codework-run-start-recovery-list-"),
+  );
+  const dbPath = NodePath.join(tempDir, "state.sqlite");
+  const movedPath = NodePath.join(tempDir, "state-moved.sqlite");
+  const prepared = makePrepareInput("run-recovery-list-prepared");
+  const accepted = makePrepareInput("run-recovery-list-accepted");
+
+  return Effect.gen(function* () {
+    yield* Effect.gen(function* () {
+      const store = yield* CompositionRunStartStore;
+      yield* store.prepareStart(prepared);
+      yield* store.prepareStart(accepted);
+      yield* store.claimStart({
+        runId: accepted.runId,
+        expectedRevision: 1,
+        claimId: "claim-recovery-list",
+        claimedAtUnixMs: 110,
+      });
+      yield* store.markAccepted({
+        runId: accepted.runId,
+        expectedRevision: 2,
+        claimId: "claim-recovery-list",
+        runtimeTaskId: "runtime-task-recovery-list",
+        acceptedAtUnixMs: 120,
+      });
+    }).pipe(Effect.provide(makeFileStoreLayer(dbPath)));
+
+    yield* Effect.sync(() => {
+      NodeFS.renameSync(dbPath, movedPath);
+      NodeFS.renameSync(movedPath, dbPath);
+    });
+
+    const restored = yield* Effect.gen(function* () {
+      const store = yield* CompositionRunStartStore;
+      return yield* store.listUnsettledStarts({ limit: 200 });
+    }).pipe(Effect.provide(makeFileStoreLayer(dbPath)));
+    assert.deepEqual(
+      restored.map((intent) => [intent.runId, intent.state]),
+      [
+        ["run-recovery-list-prepared", "prepared"],
+        ["run-recovery-list-accepted", "accepted"],
+      ],
+    );
+  }).pipe(
+    Effect.ensuring(Effect.sync(() => NodeFS.rmSync(tempDir, { recursive: true, force: true }))),
+  );
+});
+
+it.effect("两个独立连接并发 prepare 同一 task attempt 时只允许一个身份落库", () => {
+  const tempDir = NodeFS.mkdtempSync(
+    NodePath.join(NodeOS.tmpdir(), "codework-run-start-prepare-race-"),
+  );
+  const dbPath = NodePath.join(tempDir, "state.sqlite");
+  const taskId = "task-prepare-race";
+  const prepareFromConnection = (runId: string) =>
+    Effect.gen(function* () {
+      const store = yield* CompositionRunStartStore;
+      return yield* store.prepareStart(makePrepareInput(runId, { taskId, attempt: 7 })).pipe(
+        Effect.map((intent) => ({ _tag: "Success" as const, runId: intent.runId })),
+        Effect.catch((error) =>
+          Effect.succeed({ _tag: "Failure" as const, code: errorCode(error) }),
+        ),
+      );
+    }).pipe(Effect.provide(makeFileStoreLayer(dbPath)));
+
+  return Effect.gen(function* () {
+    yield* Effect.gen(function* () {
+      const store = yield* CompositionRunStartStore;
+      yield* store.getStart("run-prepare-race-bootstrap");
+    }).pipe(Effect.provide(makeFileStoreLayer(dbPath)));
+
+    const outcomes = yield* Effect.all(
+      [prepareFromConnection("run-prepare-race-a"), prepareFromConnection("run-prepare-race-b")],
+      { concurrency: "unbounded" },
+    );
+    assert.equal(outcomes.filter((outcome) => outcome._tag === "Success").length, 1);
+    assert.deepEqual(
+      outcomes.filter((outcome) => outcome._tag === "Failure").map((outcome) => outcome.code),
+      ["run_start_identity_conflict"],
+    );
+
+    const restored = yield* Effect.gen(function* () {
+      const store = yield* CompositionRunStartStore;
+      return yield* store.listUnsettledStarts({ limit: 200 });
+    }).pipe(Effect.provide(makeFileStoreLayer(dbPath)));
+    assert.equal(restored.length, 1);
+    assert.equal(restored[0]?.taskId, taskId);
+    assert.include(["run-prepare-race-a", "run-prepare-race-b"], restored[0]?.runId);
+  }).pipe(
+    Effect.ensuring(Effect.sync(() => NodeFS.rmSync(tempDir, { recursive: true, force: true }))),
+  );
 });
 
 it.effect("同一 SQLite 文件重建 Layer 后保持 claim，双连接并发只有一个赢家", () => {

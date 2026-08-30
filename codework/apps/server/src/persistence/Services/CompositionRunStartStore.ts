@@ -133,6 +133,10 @@ export interface CompositionRunStartSettleInput {
   readonly settledAtUnixMs: number;
 }
 
+export interface CompositionRunStartUnsettledListInput {
+  readonly limit: number;
+}
+
 export interface CompositionRunStartStoreShape {
   readonly prepareStart: (
     input: CompositionRunStartPrepareInput,
@@ -140,6 +144,9 @@ export interface CompositionRunStartStoreShape {
   readonly getStart: (
     runId: string,
   ) => Effect.Effect<Option.Option<CompositionRunStartIntent>, CompositionRunStartStoreError>;
+  readonly listUnsettledStarts: (
+    input: CompositionRunStartUnsettledListInput,
+  ) => Effect.Effect<ReadonlyArray<CompositionRunStartIntent>, CompositionRunStartStoreError>;
   readonly claimStart: (
     input: CompositionRunStartClaimInput,
   ) => Effect.Effect<CompositionRunStartClaimResult, CompositionRunStartStoreError>;

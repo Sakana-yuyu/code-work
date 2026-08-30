@@ -69,7 +69,15 @@ layer("066_CompositionRunStartIntents", (it) => {
           "composition_run_start_intents_release_operation_unique",
           "composition_run_start_intents_runtime_task_unique",
           "composition_run_start_intents_task_attempt_unique",
+          "composition_run_start_intents_unsettled_scan",
         ],
+      );
+      const unsettledScanColumns = yield* sql<{ readonly name: string }>`
+        PRAGMA index_info('composition_run_start_intents_unsettled_scan')
+      `;
+      assert.deepEqual(
+        unsettledScanColumns.map((column) => column.name),
+        ["state", "updated_at_unix_ms", "run_id"],
       );
       assert.deepEqual(yield* runMigrations({ toMigrationInclusive: 66 }), []);
     }),

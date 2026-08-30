@@ -170,4 +170,8 @@ export default Effect.gen(function* () {
     ON composition_run_start_intents(runtime_id, runtime_task_id)
     WHERE runtime_task_id IS NOT NULL
   `;
+  yield* sql`
+    CREATE INDEX composition_run_start_intents_unsettled_scan
+    ON composition_run_start_intents(state, updated_at_unix_ms, run_id)
+  `;
 });

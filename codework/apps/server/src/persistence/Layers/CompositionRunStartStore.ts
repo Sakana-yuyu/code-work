@@ -32,6 +32,7 @@ import {
   validateRunStartPrepare,
   validateRunStartRelease,
   validateRunStartSettle,
+  validateRunStartUnsettledList,
 } from "./CompositionRunStartStoreInternal.ts";
 import { makeCompositionRunStartStoreStatements } from "./CompositionRunStartStoreStatements.ts";
 
@@ -147,6 +148,18 @@ const makeStore = Effect.gen(function* () {
     );
 
   const getStart: CompositionRunStartStoreShape["getStart"] = readStart;
+
+  const listUnsettledStarts: CompositionRunStartStoreShape["listUnsettledStarts"] = (input) =>
+    Effect.gen(function* () {
+      const valid = yield* validateRunStartUnsettledList(input);
+      const rows = yield* query(
+        "CompositionRunStartStore.listUnsettledStarts",
+        statements.listUnsettledRows(valid),
+      );
+      return yield* Effect.forEach(rows, (row) =>
+        decodeRow("CompositionRunStartStore.listUnsettledStarts", row),
+      );
+    });
 
   const prepareStart: CompositionRunStartStoreShape["prepareStart"] = (input) =>
     withTransaction(
@@ -401,6 +414,7 @@ const makeStore = Effect.gen(function* () {
   return CompositionRunStartStore.of({
     prepareStart,
     getStart,
+    listUnsettledStarts,
     claimStart,
     releaseStart,
     markAccepted,
