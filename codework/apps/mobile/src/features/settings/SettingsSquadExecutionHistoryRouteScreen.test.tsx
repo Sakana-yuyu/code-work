@@ -1,7 +1,10 @@
 import type { EnvironmentProject } from "@codework/client-runtime/state/shell";
 import type {
-  CompositionSquadExecutionSummary,
-  CompositionSquadExecutionSummaryListResult,
+  CompositionSquad,
+  CompositionSquadExecution,
+  CompositionSquadExecutionListResult,
+  CompositionSquadListResult,
+  CompositionTaskListResult,
 } from "@codework/contracts";
 import { EnvironmentId, ProjectId } from "@codework/contracts";
 import type { ReactNode } from "react";
@@ -12,10 +15,26 @@ import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
 const mocks = vi.hoisted(() => {
   vi.stubGlobal("__DEV__", false);
   return {
-    summariesAtom: Symbol("summaries"),
-    compositionSquadExecutionSummaries: vi.fn(),
-    summariesQuery: {
-      data: null as CompositionSquadExecutionSummaryListResult | null,
+    executionsAtom: Symbol("executions"),
+    tasksAtom: Symbol("tasks"),
+    squadsAtom: Symbol("squads"),
+    compositionSquadExecutions: vi.fn(),
+    listCompositionTasks: vi.fn(),
+    compositionSquads: vi.fn(),
+    executionsQuery: {
+      data: null as CompositionSquadExecutionListResult | null,
+      error: null as string | null,
+      isPending: false,
+      refresh: vi.fn(),
+    },
+    tasksQuery: {
+      data: null as CompositionTaskListResult | null,
+      error: null as string | null,
+      isPending: false,
+      refresh: vi.fn(),
+    },
+    squadsQuery: {
+      data: null as CompositionSquadListResult | null,
       error: null as string | null,
       isPending: false,
       refresh: vi.fn(),
@@ -31,6 +50,7 @@ vi.mock("@react-navigation/native", () => ({
 
 vi.mock("react-native", () => ({
   Platform: { OS: "ios" },
+  Pressable: ({ children }: { readonly children: ReactNode }) => <button>{children}</button>,
   RefreshControl: ({
     refreshing,
     onRefresh,
@@ -92,38 +112,69 @@ vi.mock("../../state/entities", () => ({
 
 vi.mock("../../state/query", () => ({
   useEnvironmentQuery: (atom: unknown) => {
-    expect(atom).toBe(mocks.summariesAtom);
-    return mocks.summariesQuery;
+    if (atom === mocks.executionsAtom) return mocks.executionsQuery;
+    if (atom === mocks.tasksAtom) return mocks.tasksQuery;
+    if (atom === mocks.squadsAtom) return mocks.squadsQuery;
+    if (atom === null) {
+      return { data: null, error: null, isPending: false, refresh: vi.fn() };
+    }
+    throw new Error("unexpected query atom");
   },
 }));
 
 vi.mock("../../state/server", () => ({
   serverEnvironment: {
-    compositionSquadExecutionSummaries: (...args: unknown[]) => {
-      mocks.compositionSquadExecutionSummaries(...args);
-      return mocks.summariesAtom;
+    compositionSquadExecutions: (...args: unknown[]) => {
+      mocks.compositionSquadExecutions(...args);
+      return mocks.executionsAtom;
     },
+    listCompositionTasks: (...args: unknown[]) => {
+      mocks.listCompositionTasks(...args);
+      return mocks.tasksAtom;
+    },
+    compositionSquads: (...args: unknown[]) => {
+      mocks.compositionSquads(...args);
+      return mocks.squadsAtom;
+    },
+    listCompositionTaskEvents: vi.fn(() => null),
   },
 }));
 
 import { SettingsSquadExecutionHistoryRouteScreen } from "./SettingsSquadExecutionHistoryRouteScreen";
 
-const makeSummary = (
-  overrides: Partial<CompositionSquadExecutionSummary> = {},
-): CompositionSquadExecutionSummary => ({
+const execution: CompositionSquadExecution = {
   executionId: "execution-mobile-1",
   squadId: "squad-build",
-  squadDisplayName: "Build Squad",
   squadRevision: 4,
   projectId: "project-1",
-  status: "failed",
-  nodeCount: 1,
-  pendingApprovalCount: 0,
-  resultSummary: "实现完成，复核失败。",
-  failureCode: "review_rejected",
+  goalDigest: "goal-digest",
+  planDigest: "plan-digest",
+  goalTaskId: "task-plan",
+  workspaceRootDigest: "workspace-digest",
+  status: "running",
+  revision: 2,
+  nodes: [
+    {
+      nodeId: "implement",
+      agentId: "agent-worker",
+      taskId: "task-worker",
+      runId: "run-worker",
+      promptDigest: "prompt-digest",
+      dependsOnNodeIds: [],
+    },
+  ],
+  leaderTaskId: "task-finalize",
+  leaderRunId: "run-finalize",
+  pendingApprovals: [],
   createdAtUnixMs: 1_788_000_000_000,
-  ...overrides,
-});
+  updatedAtUnixMs: 1_788_000_000_100,
+  startedAtUnixMs: 1_788_000_000_010,
+};
+
+const squad = {
+  squadId: "squad-build",
+  name: "Build Squad",
+} as CompositionSquad;
 
 const setProject = (): void => {
   mocks.projects = [
@@ -142,100 +193,97 @@ const setProject = (): void => {
 
 describe("SettingsSquadExecutionHistoryRouteScreen", () => {
   beforeEach(() => {
-    mocks.compositionSquadExecutionSummaries.mockReset();
-    mocks.summariesQuery.data = null;
-    mocks.summariesQuery.error = null;
-    mocks.summariesQuery.isPending = false;
-    mocks.summariesQuery.refresh.mockReset();
+    mocks.compositionSquadExecutions.mockReset();
+    mocks.listCompositionTasks.mockReset();
+    mocks.compositionSquads.mockReset();
+    for (const query of [mocks.executionsQuery, mocks.tasksQuery, mocks.squadsQuery]) {
+      query.data = null;
+      query.error = null;
+      query.isPending = false;
+      query.refresh.mockReset();
+    }
     mocks.projects = [];
     mocks.refreshControlOnRefresh = null;
   });
 
-  it("只查询安全摘要并显示最近 execution", () => {
+  it("查询完整 execution、Task 快照和 Squad，并显示真实节点身份", () => {
     setProject();
-    const summary = makeSummary();
-    mocks.summariesQuery.data = { executions: [summary] };
+    mocks.executionsQuery.data = { executions: [execution] };
+    mocks.tasksQuery.data = {
+      tasks: [
+        {
+          task: {
+            taskId: "task-worker",
+            projectId: "project-1",
+            assigneeKind: "agent",
+            assigneeId: "agent-worker",
+            mode: "parallel",
+            status: "running",
+            promptDigest: "prompt-digest",
+            dependsOnTaskIds: [],
+            createdAtUnixMs: 100,
+            updatedAtUnixMs: 200,
+          },
+          latestRun: {
+            runId: "run-worker",
+            taskId: "task-worker",
+            agentId: "agent-worker",
+            runtimeId: "runtime-1",
+            status: "running",
+            attempt: 1,
+            capabilityGrantIds: [],
+          },
+        },
+      ],
+    };
+    mocks.squadsQuery.data = { squads: [squad] };
 
     const html = renderToStaticMarkup(<SettingsSquadExecutionHistoryRouteScreen />);
 
-    expect(mocks.compositionSquadExecutionSummaries).toHaveBeenCalledTimes(1);
-    expect(mocks.compositionSquadExecutionSummaries).toHaveBeenCalledWith({
+    expect(mocks.compositionSquadExecutions).toHaveBeenCalledWith({
       environmentId: "env-test",
       input: { limit: 20 },
     });
-    expect(Object.keys(summary).sort()).toEqual(
-      [
-        "createdAtUnixMs",
-        "executionId",
-        "failureCode",
-        "nodeCount",
-        "pendingApprovalCount",
-        "projectId",
-        "resultSummary",
-        "squadDisplayName",
-        "squadId",
-        "squadRevision",
-        "status",
-      ].sort(),
-    );
-    expect(summary).not.toHaveProperty("goalDigest");
-    expect(summary).not.toHaveProperty("planDigest");
-    expect(summary).not.toHaveProperty("workspaceRootDigest");
-    expect(summary).not.toHaveProperty("taskId");
-    expect(summary).not.toHaveProperty("runId");
-    expect(summary).not.toHaveProperty("nodes");
-    expect(summary).not.toHaveProperty("pendingApprovals");
+    expect(mocks.listCompositionTasks).toHaveBeenCalledWith({
+      environmentId: "env-test",
+      input: {},
+    });
+    expect(mocks.compositionSquads).toHaveBeenCalledWith({
+      environmentId: "env-test",
+      input: { includeArchived: true },
+    });
     expect(html).toContain("execution-mobile-1");
     expect(html).toContain("Build Squad");
     expect(html).toContain("Code Work");
-    expect(html).toContain("review_rejected");
-    expect(html).toContain("实现完成，复核失败。");
-    expect(html).not.toContain("goalDigest");
-    expect(html).not.toContain("taskId");
-    expect(html).not.toContain("runId");
-    expect(html).not.toContain("approvalRequestId");
-    expect(html).not.toContain("requestedAtUnixMs");
+    expect(html).toContain("implement");
+    expect(html).toContain("task-worker");
+    expect(html).toContain("run-worker");
   });
 
   it("首次加载时显示加载状态", () => {
-    mocks.summariesQuery.isPending = true;
-
+    mocks.executionsQuery.isPending = true;
     const html = renderToStaticMarkup(<SettingsSquadExecutionHistoryRouteScreen />);
-
     expect(html).toContain("squadExecutionHistory.pending");
-    expect(html).not.toContain("squadExecutionHistory.empty");
-    expect(html).not.toContain("squadExecutionHistory.error");
-  });
-
-  it("无旧数据且查询失败时显示错误状态", () => {
-    mocks.summariesQuery.error = "network unavailable";
-
-    const html = renderToStaticMarkup(<SettingsSquadExecutionHistoryRouteScreen />);
-
-    expect(html).toContain("squadExecutionHistory.error");
-    expect(html).not.toContain("squadExecutionHistory.empty");
   });
 
   it("查询成功但没有 execution 时显示空态", () => {
-    mocks.summariesQuery.data = { executions: [] };
-
+    mocks.executionsQuery.data = { executions: [] };
+    mocks.tasksQuery.data = { tasks: [] };
+    mocks.squadsQuery.data = { squads: [] };
     const html = renderToStaticMarkup(<SettingsSquadExecutionHistoryRouteScreen />);
-
     expect(html).toContain("squadExecutionHistory.empty");
-    expect(html).not.toContain("squadExecutionHistory.error");
   });
 
-  it("刷新失败时保留旧列表与错误提示，并只刷新摘要查询", () => {
-    setProject();
-    mocks.summariesQuery.data = { executions: [makeSummary()] };
-    mocks.summariesQuery.error = "refresh failed";
+  it("下拉刷新完整 Run Board 的三个数据源", () => {
+    mocks.executionsQuery.data = { executions: [] };
+    mocks.tasksQuery.data = { tasks: [] };
+    mocks.squadsQuery.data = { squads: [] };
+    renderToStaticMarkup(<SettingsSquadExecutionHistoryRouteScreen />);
 
-    const html = renderToStaticMarkup(<SettingsSquadExecutionHistoryRouteScreen />);
-
-    expect(html).toContain("squadExecutionHistory.error");
-    expect(html).toContain("execution-mobile-1");
-    expect(mocks.refreshControlOnRefresh).not.toBeNull();
     mocks.refreshControlOnRefresh?.();
-    expect(mocks.summariesQuery.refresh).toHaveBeenCalledTimes(1);
+
+    expect(mocks.executionsQuery.refresh).toHaveBeenCalledTimes(1);
+    expect(mocks.tasksQuery.refresh).toHaveBeenCalledTimes(1);
+    expect(mocks.squadsQuery.refresh).toHaveBeenCalledTimes(1);
   });
 });

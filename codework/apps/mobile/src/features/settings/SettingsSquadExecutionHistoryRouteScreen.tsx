@@ -1,5 +1,10 @@
+import {
+  projectCompositionSquadRunBoard,
+  resolveCompositionSquadNodeEventTarget,
+} from "@codework/client-runtime/composition/squad-run-board";
+import type { CompositionTaskEvent } from "@codework/contracts";
 import { useNavigation } from "@react-navigation/native";
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { Platform, RefreshControl, ScrollView, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -12,44 +17,92 @@ import { useProjects } from "../../state/entities";
 import { useEnvironmentQuery } from "../../state/query";
 import { serverEnvironment } from "../../state/server";
 import {
-  projectSquadExecutionHistory,
-  type SquadExecutionHistoryItem,
+  projectSquadRunBoardHistory,
+  type SquadRunBoardHistoryItem,
 } from "./SettingsSquadExecutionHistoryRouteScreen.logic";
+import { SquadRunBoardExecutionCard } from "./SquadRunBoardExecutionCard";
 
-const EXECUTION_CREATED_AT_FORMATTER = new Intl.DateTimeFormat(undefined, {
-  dateStyle: "medium",
-  timeStyle: "short",
-});
-
-/** 最近 Squad execution 的只读移动端视图，数据以服务端安全摘要投影为准。 */
+/** 最近 Squad execution 的移动端控制看板，节点身份和事件均来自持久化服务端投影。 */
 export function SettingsSquadExecutionHistoryRouteScreen() {
   const navigation = useNavigation();
   const insets = useSafeAreaInsets();
   const { environments } = useEnvironments();
   const projects = useProjects();
   const environmentId = environments[0]?.environmentId ?? null;
-  const summariesQuery = useEnvironmentQuery(
+  const executionsQuery = useEnvironmentQuery(
     environmentId === null
       ? null
-      : serverEnvironment.compositionSquadExecutionSummaries({
+      : serverEnvironment.compositionSquadExecutions({
           environmentId,
           input: { limit: 20 },
         }),
   );
+  const tasksQuery = useEnvironmentQuery(
+    environmentId === null
+      ? null
+      : serverEnvironment.listCompositionTasks({ environmentId, input: {} }),
+  );
+  const squadsQuery = useEnvironmentQuery(
+    environmentId === null
+      ? null
+      : serverEnvironment.compositionSquads({
+          environmentId,
+          input: { includeArchived: true },
+        }),
+  );
+  const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
   const environmentProjects = useMemo(
     () => projects.filter((project) => project.environmentId === environmentId),
     [environmentId, projects],
   );
+  const runBoards = useMemo(
+    () =>
+      projectCompositionSquadRunBoard(
+        executionsQuery.data?.executions ?? [],
+        tasksQuery.data?.tasks ?? [],
+      ),
+    [executionsQuery.data?.executions, tasksQuery.data?.tasks],
+  );
   const history = useMemo(() => {
+    const squadTitlesById = new Map(
+      (squadsQuery.data?.squads ?? []).map((squad) => [squad.squadId, squad.name]),
+    );
     const projectTitlesById = new Map(
       environmentProjects.map((project) => [project.id, project.title]),
     );
-    return projectSquadExecutionHistory(summariesQuery.data?.executions ?? [], projectTitlesById);
-  }, [environmentProjects, summariesQuery.data]);
-  const refreshing = summariesQuery.isPending && summariesQuery.data !== null;
+    return projectSquadRunBoardHistory(runBoards, squadTitlesById, projectTitlesById);
+  }, [environmentProjects, runBoards, squadsQuery.data?.squads]);
+  const selectedNode = useMemo(
+    () =>
+      history
+        .flatMap((execution) => execution.nodes)
+        .find((node) => node.taskId === selectedTaskId) ?? null,
+    [history, selectedTaskId],
+  );
+  const eventTarget = resolveCompositionSquadNodeEventTarget(selectedNode);
+  const eventsQuery = useEnvironmentQuery(
+    environmentId === null || eventTarget === null
+      ? null
+      : serverEnvironment.listCompositionTaskEvents({
+          environmentId,
+          input: eventTarget,
+        }),
+  );
+  const queries = [executionsQuery, tasksQuery, squadsQuery] as const;
+  const refreshing = queries.some((query) => query.isPending && query.data !== null);
+  const initialPending = queries.some((query) => query.isPending && query.data === null);
+  const initialError = queries.some((query) => query.error !== null && query.data === null);
+  const staleError = queries.some((query) => query.error !== null);
 
   const refresh = (): void => {
-    summariesQuery.refresh();
+    executionsQuery.refresh();
+    tasksQuery.refresh();
+    squadsQuery.refresh();
+    if (eventTarget !== null) eventsQuery.refresh();
+  };
+
+  const toggleEvents = (taskId: string): void => {
+    setSelectedTaskId((current) => (current === taskId ? null : taskId));
   };
 
   return (
@@ -73,89 +126,56 @@ export function SettingsSquadExecutionHistoryRouteScreen() {
       >
         {environmentId === null ? (
           <StatusMessage text={t("squadExecutionHistory.noEnvironment")} />
-        ) : summariesQuery.data === null && summariesQuery.isPending ? (
+        ) : initialPending ? (
           <StatusMessage text={t("squadExecutionHistory.pending")} />
-        ) : summariesQuery.data === null && summariesQuery.error !== null ? (
+        ) : initialError ? (
           <StatusMessage text={t("squadExecutionHistory.error")} tone="danger" />
-        ) : summariesQuery.data === null || history.length === 0 ? (
+        ) : history.length === 0 ? (
           <StatusMessage
-            text={t(
-              summariesQuery.error === null
-                ? "squadExecutionHistory.empty"
-                : "squadExecutionHistory.error",
-            )}
-            tone={summariesQuery.error === null ? undefined : "danger"}
+            text={t(staleError ? "squadExecutionHistory.error" : "squadExecutionHistory.empty")}
+            tone={staleError ? "danger" : undefined}
           />
         ) : (
-          <View className="gap-3">
-            {summariesQuery.error === null ? null : (
-              <StatusMessage text={t("squadExecutionHistory.error")} tone="danger" />
-            )}
-            {history.map((item) => (
-              <SquadExecutionHistoryCard key={item.executionId} item={item} />
-            ))}
-          </View>
+          <SquadRunBoardHistory
+            history={history}
+            staleError={staleError}
+            selectedTaskId={selectedTaskId}
+            events={eventsQuery.data?.events ?? []}
+            eventsPending={eventsQuery.isPending}
+            eventsError={eventsQuery.error}
+            onToggleEvents={toggleEvents}
+          />
         )}
       </ScrollView>
     </View>
   );
 }
 
-function SquadExecutionHistoryCard(props: { readonly item: SquadExecutionHistoryItem }) {
-  const { item } = props;
+function SquadRunBoardHistory(props: {
+  readonly history: ReadonlyArray<SquadRunBoardHistoryItem>;
+  readonly staleError: boolean;
+  readonly selectedTaskId: string | null;
+  readonly events: ReadonlyArray<CompositionTaskEvent>;
+  readonly eventsPending: boolean;
+  readonly eventsError: string | null;
+  readonly onToggleEvents: (taskId: string) => void;
+}) {
   return (
-    <View className="gap-3 rounded-[24px] border-continuous bg-card p-4">
-      <View className="gap-1">
-        <View className="flex-row flex-wrap items-center gap-2">
-          <Text
-            className="min-w-0 flex-1 text-base font-t3-medium text-foreground"
-            numberOfLines={1}
-          >
-            {item.squadDisplayName}
-          </Text>
-          <BadgePill label={t(item.statusLabelKey)} emphasized />
-        </View>
-        <Text className="font-mono text-xs text-foreground-muted" numberOfLines={1}>
-          {item.executionId}
-        </Text>
-      </View>
-
-      <View className="flex-row flex-wrap gap-2">
-        <BadgePill label={t("squadExecutionHistory.revision", { revision: item.revision })} />
-        <BadgePill label={t("squadExecutionHistory.nodes", { count: item.nodeCount })} />
-        <BadgePill
-          label={t("squadExecutionHistory.pendingApprovals", {
-            count: item.pendingApprovalCount,
-          })}
+    <View className="gap-3">
+      {props.staleError ? (
+        <StatusMessage text={t("squadExecutionHistory.error")} tone="danger" />
+      ) : null}
+      {props.history.map((item) => (
+        <SquadRunBoardExecutionCard
+          key={item.executionId}
+          item={item}
+          selectedTaskId={props.selectedTaskId}
+          events={props.events}
+          eventsPending={props.eventsPending}
+          eventsError={props.eventsError}
+          onToggleEvents={props.onToggleEvents}
         />
-      </View>
-
-      <View className="gap-1 border-t border-border-subtle pt-3">
-        <Text className="text-sm text-foreground" numberOfLines={1}>
-          {`${t("squadExecutionHistory.project")}: ${item.projectTitle}`}
-        </Text>
-        <Text className="text-xs text-foreground-muted">
-          {EXECUTION_CREATED_AT_FORMATTER.format(new Date(item.createdAtUnixMs))}
-        </Text>
-      </View>
-
-      {item.resultSummary === undefined ? null : (
-        <View className="gap-1 border-t border-border-subtle pt-3">
-          <Text className="text-xs font-t3-medium text-foreground-muted">
-            {t("squadExecutionHistory.resultSummary")}
-          </Text>
-          <Text className="text-sm text-foreground">{item.resultSummary}</Text>
-        </View>
-      )}
-
-      {item.failureCode === undefined ? null : (
-        <View className="gap-1 border-t border-border-subtle pt-3">
-          <Text className="text-xs font-t3-medium text-foreground-muted">
-            {t("squadExecutionHistory.failureCode")}
-          </Text>
-          <Text className="font-mono text-sm text-danger-foreground">{item.failureCode}</Text>
-        </View>
-      )}
+      ))}
     </View>
   );
 }
@@ -172,20 +192,6 @@ function StatusMessage(props: { readonly text: string; readonly tone?: "danger" 
       >
         {props.text}
       </Text>
-    </View>
-  );
-}
-
-function BadgePill(props: { readonly label: string; readonly emphasized?: boolean }) {
-  return (
-    <View
-      className={
-        props.emphasized
-          ? "rounded-full bg-subtle-strong px-2.5 py-0.5"
-          : "rounded-full bg-subtle px-2.5 py-0.5"
-      }
-    >
-      <Text className="text-xs text-foreground">{props.label}</Text>
     </View>
   );
 }

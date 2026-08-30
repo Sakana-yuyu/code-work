@@ -1,29 +1,12 @@
-import type {
-  CompositionSquadExecutionStatus,
-  CompositionSquadExecutionSummary,
-} from "@codework/contracts";
+import type { CompositionSquadRunBoardExecution } from "@codework/client-runtime/composition/squad-run-board";
+import type { CompositionSquadExecutionStatus } from "@codework/contracts";
 import { describe, expect, it } from "vite-plus/test";
 
 import {
-  projectSquadExecutionHistory,
+  projectSquadRunBoardHistory,
   SQUAD_EXECUTION_HISTORY_STATUS_LABEL_KEYS,
   squadExecutionHistoryStatusLabelKey,
 } from "./SettingsSquadExecutionHistoryRouteScreen.logic";
-
-const makeSummary = (
-  overrides: Partial<CompositionSquadExecutionSummary> = {},
-): CompositionSquadExecutionSummary => ({
-  executionId: "execution-1",
-  squadId: "squad-1",
-  squadDisplayName: "移动端协同组",
-  squadRevision: 3,
-  projectId: "project-1",
-  status: "running",
-  nodeCount: 1,
-  pendingApprovalCount: 0,
-  createdAtUnixMs: 1_000,
-  ...overrides,
-});
 
 describe("Squad execution history status labels", () => {
   it("maps all ten persisted statuses to stable i18n keys", () => {
@@ -56,104 +39,40 @@ describe("Squad execution history status labels", () => {
   });
 });
 
-describe("projectSquadExecutionHistory", () => {
-  it("preserves server order and projects display-ready safe fields", () => {
-    const first = makeSummary({
-      executionId: "execution-first",
-      squadRevision: 4,
-      status: "awaiting_approval",
-      nodeCount: 5,
-      pendingApprovalCount: 2,
-      resultSummary: "已完成规划，等待审批。",
-      createdAtUnixMs: 9_000,
-    });
-    const second = makeSummary({
-      executionId: "execution-second",
-      squadId: "squad-2",
-      squadDisplayName: "故障恢复组",
-      projectId: "project-2",
-      status: "failed",
-      nodeCount: 0,
-      pendingApprovalCount: 0,
-      failureCode: "leader_dispatch_failed",
-      createdAtUnixMs: 1_000,
-    });
-
-    const projected = projectSquadExecutionHistory(
-      [first, second],
-      new Map([
-        ["project-1", "Code Work"],
-        ["project-2", "移动端验收"],
-      ]),
-    );
-
-    expect(projected.map((item) => item.executionId)).toEqual([
-      "execution-first",
-      "execution-second",
-    ]);
-    expect(projected[0]).toEqual({
-      executionId: "execution-first",
+describe("projectSquadRunBoardHistory", () => {
+  it("为完整 execution 投影补充 Squad 与项目展示名，不丢失节点快照", () => {
+    const board = {
+      executionId: "execution-board",
       squadId: "squad-1",
-      squadDisplayName: "移动端协同组",
+      squadRevision: 5,
       projectId: "project-1",
-      projectTitle: "Code Work",
-      status: "awaiting_approval",
-      statusLabelKey: "squadExecutionHistory.status.awaitingApproval",
-      revision: 4,
-      nodeCount: 5,
-      pendingApprovalCount: 2,
-      createdAtUnixMs: 9_000,
-      resultSummary: "已完成规划，等待审批。",
-    });
-    expect(projected[1]).toEqual({
-      executionId: "execution-second",
-      squadId: "squad-2",
-      squadDisplayName: "故障恢复组",
-      projectId: "project-2",
-      projectTitle: "移动端验收",
-      status: "failed",
-      statusLabelKey: "squadExecutionHistory.status.failed",
-      revision: 3,
-      nodeCount: 0,
+      status: "running",
       pendingApprovalCount: 0,
       createdAtUnixMs: 1_000,
-      failureCode: "leader_dispatch_failed",
-    });
-  });
-
-  it("falls back to the project id and never forwards unexpected internal fields", () => {
-    const summaryWithUnexpectedInternals = {
-      ...makeSummary({
-        squadId: "toString",
-        squadDisplayName: "服务端协同组",
-        projectId: "__proto__",
-        nodeCount: 7,
-      }),
-      goalDigest: "private goal digest",
-      workspaceRootDigest: "private workspace digest",
-      planDigest: "private plan digest",
-      failureDetail: "private failure detail",
+      updatedAtUnixMs: 2_000,
       nodes: [
         {
-          taskId: "other-execution:squad:other-squad:r99:task:misleading",
-          promptDigest: "private prompt digest",
+          nodeId: "worker",
+          taskId: "task-worker",
+          runId: "run-worker",
+          agentId: "agent-worker",
         },
       ],
-    };
-    const [item] = projectSquadExecutionHistory([summaryWithUnexpectedInternals], new Map());
+    } satisfies CompositionSquadRunBoardExecution;
+
+    const [item] = projectSquadRunBoardHistory(
+      [board],
+      new Map([["squad-1", "移动协作组"]]),
+      new Map([["project-1", "Code Work"]]),
+    );
 
     expect(item).toMatchObject({
-      squadDisplayName: "服务端协同组",
-      projectTitle: "__proto__",
-      nodeCount: 7,
+      executionId: "execution-board",
+      squadDisplayName: "移动协作组",
+      projectTitle: "Code Work",
+      statusLabelKey: "squadExecutionHistory.status.running",
+      revision: 5,
+      nodes: board.nodes,
     });
-    expect(item).not.toHaveProperty("resultSummary");
-    expect(item).not.toHaveProperty("failureCode");
-    expect(item).not.toHaveProperty("failureDetail");
-    expect(item).not.toHaveProperty("goalDigest");
-    expect(item).not.toHaveProperty("workspaceRootDigest");
-    expect(item).not.toHaveProperty("planDigest");
-    expect(item).not.toHaveProperty("nodes");
-    expect(item).not.toHaveProperty("promptDigest");
   });
 });
