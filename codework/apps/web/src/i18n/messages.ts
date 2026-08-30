@@ -364,6 +364,9 @@ export const en: Record<string, string> = {
     "{{count}} selected file did not match this plugin's type or size limits.",
   "localPlugins.attachmentPartiallyRejectedDescription_plural":
     "{{count}} selected files did not match this plugin's type or size limits.",
+  "localPlugins.attachmentPromptNotApplied": "Attachment added without plugin prompt",
+  "localPlugins.attachmentPromptNotAppliedDescription":
+    "The files are already attached. Add the prompt manually instead of attaching them again.",
   "localPlugins.clearFailures": "Clear failures",
   "localPlugins.clearFailuresFor": "Clear failures for {{name}}",
   "localPlugins.commandCount": "{{count}} command",
@@ -4179,6 +4182,9 @@ export const zhCN: Record<string, string> = {
     "{{count}} 个所选文件不符合此插件的类型或大小限制。",
   "localPlugins.attachmentPartiallyRejectedDescription_plural":
     "{{count}} 个所选文件不符合此插件的类型或大小限制。",
+  "localPlugins.attachmentPromptNotApplied": "附件已添加，但插件提示词未插入",
+  "localPlugins.attachmentPromptNotAppliedDescription":
+    "文件已经在输入框中，请手动补充提示词，不要重新附加这些文件。",
   "localPlugins.clearFailures": "清除失败记录",
   "localPlugins.clearFailuresFor": "清除 {{name}} 的失败记录",
   "localPlugins.commandCount": "{{count}} 个命令",

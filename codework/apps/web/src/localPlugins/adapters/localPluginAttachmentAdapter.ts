@@ -9,23 +9,52 @@ export interface LocalPluginAttachmentPickRequest {
   readonly multiple: true;
 }
 
+export interface LocalPluginAttachmentCommitRequest {
+  readonly files: ReadonlyArray<File>;
+  readonly promptPrefix?: string;
+}
+
+export type LocalPluginAttachmentPromptFailure = "prompt-rejected" | "prompt-error";
+
+export type LocalPluginAttachmentCommitResult =
+  | { readonly status: "complete" }
+  | {
+      readonly status: "attachment-only";
+      readonly reason: "prompt-rejected";
+    }
+  | {
+      readonly status: "attachment-only";
+      readonly reason: "prompt-error";
+      readonly error: unknown;
+    }
+  | { readonly status: "rejected" }
+  | { readonly status: "rejected"; readonly error: unknown };
+
 export interface LocalPluginAttachmentPorts {
   readonly pickFiles?: (
     input: LocalPluginAttachmentPickRequest,
   ) => Promise<ReadonlyArray<File> | null>;
-  readonly addFiles?: (files: ReadonlyArray<File>) => boolean | Promise<boolean>;
-  readonly insertPrompt?: (text: string) => boolean;
+  readonly commitAttachment?: (
+    input: LocalPluginAttachmentCommitRequest,
+  ) => Promise<LocalPluginAttachmentCommitResult>;
 }
 
 export type LocalPluginAttachmentRejectionReason = "mime-not-accepted" | "too-large";
 
-export interface LocalPluginAttachmentInvocation {
+interface LocalPluginAttachmentInvocationBase {
   readonly acceptedFiles: ReadonlyArray<string>;
   readonly rejectedFiles: ReadonlyArray<{
     readonly fileName: string;
     readonly reason: LocalPluginAttachmentRejectionReason;
   }>;
 }
+
+export type LocalPluginAttachmentInvocation =
+  | (LocalPluginAttachmentInvocationBase & { readonly status: "complete" })
+  | (LocalPluginAttachmentInvocationBase & {
+      readonly status: "attachment-only";
+      readonly promptFailure: LocalPluginAttachmentPromptFailure;
+    });
 
 export interface EnabledLocalPluginAttachment {
   readonly id: `local-plugin-attachment:${string}:${string}`;
@@ -47,15 +76,8 @@ function assertPermission(
   }
 }
 
-function attachmentCanCloseLoop(input: {
-  readonly attachment: LocalPluginAttachmentContribution;
-  readonly ports: LocalPluginAttachmentPorts;
-}): boolean {
-  return (
-    input.ports.pickFiles !== undefined &&
-    input.ports.addFiles !== undefined &&
-    (input.attachment.promptPrefix === undefined || input.ports.insertPrompt !== undefined)
-  );
+function attachmentCanCloseLoop(input: { readonly ports: LocalPluginAttachmentPorts }): boolean {
+  return input.ports.pickFiles !== undefined && input.ports.commitAttachment !== undefined;
 }
 
 function partitionAttachmentFiles(
@@ -102,13 +124,9 @@ async function invokeCurrentAttachment(input: {
   }
 
   const pickFiles = input.ports.pickFiles;
-  const addFiles = input.ports.addFiles;
+  const commitAttachment = input.ports.commitAttachment;
   if (pickFiles === undefined) throw new Error("当前没有可用的文件选择宿主。");
-  if (addFiles === undefined) throw new Error("当前没有可用的附件输入框宿主。");
-  const insertPrompt = input.ports.insertPrompt;
-  if (attachment.promptPrefix !== undefined && insertPrompt === undefined) {
-    throw new Error("当前没有可用的提示词输入框宿主。");
-  }
+  if (commitAttachment === undefined) throw new Error("当前没有可用的附件输入框宿主。");
 
   const selectedFiles = await pickFiles({ accept: attachment.accept, multiple: true });
   if (selectedFiles === null || selectedFiles.length === 0) {
@@ -118,17 +136,26 @@ async function invokeCurrentAttachment(input: {
   if (accepted.length === 0) {
     throw new Error("所选文件均不符合此附件贡献的类型或大小限制。");
   }
-  if (!(await addFiles(accepted))) {
+  const commitResult = await commitAttachment({
+    files: accepted,
+    ...(attachment.promptPrefix === undefined ? {} : { promptPrefix: attachment.promptPrefix }),
+  });
+  if (commitResult.status === "rejected") {
+    if ("error" in commitResult) throw commitResult.error;
     throw new Error("当前输入框暂时不能接受插件附件。");
   }
-  if (attachment.promptPrefix !== undefined && !insertPrompt?.(attachment.promptPrefix)) {
-    throw new Error("当前输入框暂时不能接受插件提示词。");
-  }
 
-  return {
+  const invocation = {
     acceptedFiles: accepted.map((file) => file.name),
     rejectedFiles: rejected,
   };
+  return commitResult.status === "complete"
+    ? { ...invocation, status: "complete" }
+    : {
+        ...invocation,
+        status: "attachment-only",
+        promptFailure: commitResult.reason,
+      };
 }
 
 export function listEnabledLocalPluginAttachments(input: {
@@ -137,9 +164,7 @@ export function listEnabledLocalPluginAttachments(input: {
 }): ReadonlyArray<EnabledLocalPluginAttachment> {
   return input.runtime.registry
     .listEnabled("attachments")
-    .filter(({ contribution }) =>
-      attachmentCanCloseLoop({ attachment: contribution, ports: input.ports }),
-    )
+    .filter(() => attachmentCanCloseLoop({ ports: input.ports }))
     .map(({ pluginId, pluginName, contribution }) => ({
       id: `local-plugin-attachment:${pluginId}:${contribution.id}`,
       pluginId,

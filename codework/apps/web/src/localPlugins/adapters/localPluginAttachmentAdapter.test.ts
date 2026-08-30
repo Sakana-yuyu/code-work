@@ -6,7 +6,10 @@ import { LocalPluginLifecycle } from "../localPluginLifecycle";
 import { LocalPluginRegistry } from "../localPluginRegistry";
 import type { LocalPluginRuntime } from "../localPluginRuntime";
 import type { LocalPluginStorage } from "../localPluginStorage";
-import { listEnabledLocalPluginAttachments } from "./localPluginAttachmentAdapter";
+import {
+  listEnabledLocalPluginAttachments,
+  type LocalPluginAttachmentCommitResult,
+} from "./localPluginAttachmentAdapter";
 
 class MemoryStorage implements LocalPluginStorage {
   value: string | null = null;
@@ -70,25 +73,29 @@ describe("localPluginAttachmentAdapter", () => {
       file("notes.txt", "text/plain", 2),
     ];
     const pickFiles = vi.fn(async () => files);
-    const addFiles = vi.fn(async () => true);
-    const insertPrompt = vi.fn(() => true);
+    const commitAttachment = vi.fn(
+      async (): Promise<LocalPluginAttachmentCommitResult> => ({
+        status: "complete",
+      }),
+    );
 
     expect(
       listEnabledLocalPluginAttachments({
         runtime,
-        ports: { pickFiles, addFiles },
+        ports: { pickFiles },
       }),
     ).toEqual([]);
 
     const attachments = listEnabledLocalPluginAttachments({
       runtime,
-      ports: { pickFiles, addFiles, insertPrompt },
+      ports: { pickFiles, commitAttachment },
     });
 
     expect(attachments.map((attachment) => attachment.contributionId)).toEqual(["design"]);
     expect(await attachments[0]!.invoke()).toEqual({
       ok: true,
       value: {
+        status: "complete",
         acceptedFiles: ["diagram.png"],
         rejectedFiles: [
           { fileName: "large.jpg", reason: "too-large" },
@@ -100,21 +107,23 @@ describe("localPluginAttachmentAdapter", () => {
       accept: ["image/png", "image/jpeg"],
       multiple: true,
     });
-    expect(addFiles).toHaveBeenCalledWith([files[0]]);
-    expect(insertPrompt).toHaveBeenCalledWith("请结合附件分析：");
+    expect(commitAttachment).toHaveBeenCalledWith({
+      files: [files[0]],
+      promptPrefix: "请结合附件分析：",
+    });
   });
 
   it("取消选择或全部文件被拒时写入失败 journal，且不调用 Composer", async () => {
     const runtime = createRuntime();
     runtime.lifecycle.install(manifest("acme.cancelled"));
-    const addFiles = vi.fn(async () => true);
-    const insertPrompt = vi.fn(() => true);
+    const commitAttachment = vi.fn(
+      async (): Promise<LocalPluginAttachmentCommitResult> => ({ status: "complete" }),
+    );
     const cancelled = listEnabledLocalPluginAttachments({
       runtime,
       ports: {
         pickFiles: async () => null,
-        addFiles,
-        insertPrompt,
+        commitAttachment,
       },
     })[0]!;
 
@@ -132,16 +141,14 @@ describe("localPluginAttachmentAdapter", () => {
       runtime,
       ports: {
         pickFiles: async () => [file("notes.txt", "text/plain", 2)],
-        addFiles,
-        insertPrompt,
+        commitAttachment,
       },
     })[0]!;
     expect(await rejected.invoke()).toMatchObject({
       ok: false,
       failure: { message: "所选文件均不符合此附件贡献的类型或大小限制。" },
     });
-    expect(addFiles).not.toHaveBeenCalled();
-    expect(insertPrompt).not.toHaveBeenCalled();
+    expect(commitAttachment).not.toHaveBeenCalled();
     expect(runtime.failures.getSnapshot()).toHaveLength(2);
   });
 
@@ -150,8 +157,9 @@ describe("localPluginAttachmentAdapter", () => {
     runtime.lifecycle.install(manifest("acme.stale"));
     const ports = {
       pickFiles: vi.fn(async () => [file("diagram.png", "image/png", 3)]),
-      addFiles: vi.fn(async () => true),
-      insertPrompt: vi.fn(() => true),
+      commitAttachment: vi.fn(
+        async (): Promise<LocalPluginAttachmentCommitResult> => ({ status: "complete" }),
+      ),
     };
     const stale = listEnabledLocalPluginAttachments({ runtime, ports })[0]!;
 
@@ -193,16 +201,15 @@ describe("localPluginAttachmentAdapter", () => {
     const runtime = createRuntime();
     runtime.lifecycle.install(manifest("acme.failed"));
     runtime.lifecycle.install(manifest("acme.healthy"));
-    const addFiles = vi
-      .fn<(files: ReadonlyArray<File>) => Promise<boolean>>()
-      .mockResolvedValueOnce(false)
-      .mockResolvedValueOnce(true);
+    const commitAttachment = vi
+      .fn<() => Promise<LocalPluginAttachmentCommitResult>>()
+      .mockResolvedValueOnce({ status: "rejected" })
+      .mockResolvedValueOnce({ status: "complete" });
     const attachments = listEnabledLocalPluginAttachments({
       runtime,
       ports: {
         pickFiles: async () => [file("diagram.png", "image/png", 3)],
-        addFiles,
-        insertPrompt: () => true,
+        commitAttachment,
       },
     });
 
@@ -219,5 +226,31 @@ describe("localPluginAttachmentAdapter", () => {
       value: { acceptedFiles: ["diagram.png"] },
     });
     expect(runtime.failures.getSnapshot()).toHaveLength(1);
+  });
+
+  it("提示词写入失败时返回附件已写入的部分成功结果", async () => {
+    const runtime = createRuntime();
+    runtime.lifecycle.install(manifest("acme.partial"));
+    const attachment = listEnabledLocalPluginAttachments({
+      runtime,
+      ports: {
+        pickFiles: async () => [file("diagram.png", "image/png", 3)],
+        commitAttachment: async () => ({
+          status: "attachment-only",
+          reason: "prompt-rejected",
+        }),
+      },
+    })[0]!;
+
+    expect(await attachment.invoke()).toEqual({
+      ok: true,
+      value: {
+        status: "attachment-only",
+        promptFailure: "prompt-rejected",
+        acceptedFiles: ["diagram.png"],
+        rejectedFiles: [],
+      },
+    });
+    expect(runtime.failures.getSnapshot()).toEqual([]);
   });
 });

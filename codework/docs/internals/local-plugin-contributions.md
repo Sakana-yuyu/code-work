@@ -127,10 +127,11 @@ Command Center 中的 Attachment 动作按以下顺序执行：
 1. 重新检查插件、启用状态、contribution 和权限。
 2. 用 contribution 的 `accept` 创建一次性原生文件选择器。
 3. 按文件检查 MIME 和 `maxBytes`，无效文件不会进入 Composer。
-4. 至少有一个有效文件时，等待 `ChatComposerHandle.addDroppedFiles` 的 `Promise<boolean>` 结果，并复用现有压缩、附件数量限制、草稿状态和上传队列。
-5. `promptPrefix` 通过独立的 `insertTextAtEnd` 端口插入，不直接操作 Composer Store。
+4. 至少有一个有效文件时，相邻 Composer port 固定当前 `ChatComposerHandle`，等待 `addDroppedFiles` 的 `Promise<boolean>` 结果，并复用现有压缩、附件数量限制、草稿状态和上传队列。
+5. 附件写入成功后，可选 `promptPrefix` 仍通过同一个 handle 的 `insertTextAtEnd` 插入，不直接操作 Composer Store，也不会因线程切换改写另一个 Composer。
+6. 附件宿主拒绝或抛错返回 `rejected`；附件已写入但提示词被拒绝或抛错返回 `attachment-only`，不能再报告为完整失败。
 
-用户取消选择、全部文件被拒、原生选择器失败、Composer 不可用或端口抛错都会成为该插件的一条调用失败。部分文件被拒时，有效文件仍会附加，Command Center 显示本地化警告。
+用户取消选择、全部文件被拒、原生选择器失败、Composer 不可用或附件写入失败都会成为该插件的一条调用失败。提示词失败时，Command Center 明确提示附件已经添加并要求用户手动补充提示词，避免重试造成重复附件；部分文件被拒时，有效文件仍会附加并显示本地化警告。
 
 ## 失败隔离与可观察性
 
@@ -186,7 +187,7 @@ Timeline journal 与插件注册 storage 的恢复错误也会被记录。宿主
 - `adapters/localPluginWorkspacePanelAdapter.test.ts`：面板解析与权限重检。
 - `adapters/localPluginCommandAdapter.test.ts`：受限命令端口和调用隔离。
 - `localPluginTimelineJournal.test.ts`、`adapters/localPluginTimelineAdapter.test.ts`：Timeline 持久化、投影和失效隐藏。
-- `adapters/localPluginAttachmentAdapter.test.ts`、`localPluginAttachmentPicker.test.ts`、`localPluginAttachmentComposerPort.test.ts`：附件过滤、取消、陈旧动作、文件选择和 Composer 异步失败隔离。
+- `adapters/localPluginAttachmentAdapter.test.ts`、`localPluginAttachmentPicker.test.ts`、`localPluginAttachmentComposerPort.test.ts`、`useLocalPluginAttachmentPaletteItems.test.tsx`：附件过滤、取消、陈旧动作、同句柄提交、部分成功和用户警告。
 - `LocalPluginWorkspacePanel.test.tsx`、`LocalPluginTimelineRow.test.tsx`：局部渲染错误边界。
 - `LocalPluginsSettings.test.tsx`：管理入口、计数、权限和失败展示。
 
