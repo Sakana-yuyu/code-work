@@ -7,7 +7,9 @@ import {
   byokDelegationEventPrefix,
   makeByokDelegationProjectionScope,
   projectByokDelegationTransition,
+  type ByokDelegationLedgerStorePort,
 } from "./CompositionByokDelegationProjection.ts";
+import { PersistenceSqlError } from "../persistence/Errors.ts";
 import { CompositionTaskStore } from "../persistence/Services/CompositionTaskStore.ts";
 import { CompositionTaskStoreLive } from "../persistence/Layers/CompositionTaskStore.ts";
 import { SqlitePersistenceMemory } from "../persistence/Layers/Sqlite.ts";
@@ -149,6 +151,53 @@ layer("projectByokDelegationTransition", (it) => {
       assert.equal(run.status, "completed");
       const events = yield* store.listEvents(scope.taskId, scope.runId);
       assert.equal(events.length, 2);
+    }),
+  );
+
+  it.effect("事件已落账但 Run 写入失败时，重放会补齐 Task/Run 且不重复事件", () =>
+    Effect.gen(function* () {
+      const store = yield* CompositionTaskStore;
+      const scope = makeScope("proj-repair-partial");
+      let failNextRunUpsert = true;
+      const flakyStore = {
+        ...store,
+        upsertRun: (run) => {
+          if (!failNextRunUpsert) return store.upsertRun(run);
+          failNextRunUpsert = false;
+          return Effect.fail(
+            new PersistenceSqlError({
+              operation: "CompositionTaskStore.upsertRun",
+              detail: "测试首次 Run 投影失败",
+            }),
+          );
+        },
+      } satisfies ByokDelegationLedgerStorePort;
+
+      const firstError = yield* projectByokDelegationTransition({
+        store: flakyStore,
+        scope,
+        transition: { status: "running" },
+        nowUnixMs: 3_100,
+      }).pipe(Effect.flip);
+      assert.equal(firstError.operation, "CompositionTaskStore.upsertRun");
+      assert.equal((yield* store.listEvents(scope.taskId, scope.runId)).length, 1);
+      assert.isTrue(Option.isNone(yield* store.getRun(scope.runId)));
+      assert.isTrue(Option.isNone(yield* store.getTask(scope.taskId)));
+
+      const insertedOnReplay = yield* projectByokDelegationTransition({
+        store: flakyStore,
+        scope,
+        transition: { status: "running" },
+        nowUnixMs: 3_101,
+      });
+
+      assert.isFalse(insertedOnReplay);
+      assert.equal((yield* store.listEvents(scope.taskId, scope.runId)).length, 1);
+      const repairedRun = (yield* store.getRun(scope.runId)).pipe(Option.getOrThrow);
+      const repairedTask = (yield* store.getTask(scope.taskId)).pipe(Option.getOrThrow);
+      assert.equal(repairedRun.status, "running");
+      assert.equal(repairedRun.startedAtUnixMs, 3_101);
+      assert.equal(repairedTask.status, "running");
     }),
   );
 

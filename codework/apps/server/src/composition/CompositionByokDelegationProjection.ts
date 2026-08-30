@@ -155,8 +155,8 @@ const describeTransition = (
  * 任务台账，并把 Task/Run 状态收敛为可查询的单一状态源：
  * - 事件行 sourceEventId 形如 `byok-delegation:<taskId>:<runId>:<queued|running|terminal:*>`，
  *   重复投影（重放）不重复落行；
- * - 事件行首次落账后才 upsert Task/Run；迟到的低阶状态（如终态后重放 queued）
- *   不会把 Task/Run 回退到早期状态；
+ * - 事件行落账后 upsert Task/Run；若首次投影中途失败，重复事件会补齐缺失投影；
+ * - 迟到的低阶状态（如终态后重放 queued）不会把 Task/Run 回退到早期状态；
  * - 摘要只含委派 ID、状态、错误码与输出字符数；委派原文与输出文本不进台账。
  * 返回 true 表示本次迁移为首次投影。
  */
@@ -180,15 +180,14 @@ export const projectByokDelegationTransition = (options: {
       eventType: "status",
       summary: describeTransition(scope, transition),
     });
-    if (!inserted) return false;
-
     const rank = delegationRank(transition.status);
     const existingRun = yield* store.getRun(scope.runId);
+    const existingTask = yield* store.getTask(scope.taskId);
+    if (!inserted && Option.isSome(existingRun) && Option.isSome(existingTask)) return false;
     if (Option.isSome(existingRun) && compositionRank(existingRun.value.status) > rank) {
       // 迟到的低阶状态只补事件行，不回退已推进的 Task/Run 状态。
-      return true;
+      return inserted;
     }
-    const existingTask = yield* store.getTask(scope.taskId);
     const terminal = rank === 2;
     const failureCode = failureCodeOf(transition);
     const startedAtUnixMs =
@@ -224,5 +223,5 @@ export const projectByokDelegationTransition = (options: {
       updatedAtUnixMs: nowUnixMs,
       ...(terminal ? { finishedAtUnixMs: nowUnixMs } : {}),
     } satisfies CompositionTask);
-    return true;
+    return inserted;
   });
