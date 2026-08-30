@@ -1,4 +1,5 @@
 import {
+  buildCompositionSquadCancelRequest,
   buildCompositionSquadRetryRequest,
   buildCompositionSquadReviewRequest,
   executeCompositionSquadNodeCommandWithRefresh,
@@ -35,6 +36,7 @@ export interface SquadRunBoardNodeCommands {
     node: CompositionSquadRunBoardNode,
     decision: CompositionSquadReviewAction,
   ) => Promise<void>;
+  readonly cancelNode: (node: CompositionSquadRunBoardNode) => Promise<void>;
 }
 
 /** 管理 Run Board 节点命令的单飞、错误归属和成功刷新，不承担展示职责。 */
@@ -46,6 +48,9 @@ export function useSquadRunBoardNodeCommands(input: {
     reportFailure: false,
   });
   const reviewCompositionTask = useAtomCommand(serverEnvironment.reviewCompositionTask, {
+    reportFailure: false,
+  });
+  const cancelCompositionTask = useAtomCommand(serverEnvironment.cancelCompositionTask, {
     reportFailure: false,
   });
   const [pendingTaskId, setPendingTaskId] = useState<string | null>(null);
@@ -97,9 +102,10 @@ export function useSquadRunBoardNodeCommands(input: {
       ),
       ...(reassignAgentId === undefined ? {} : { reassignAgentId }),
     });
-    if (request === null || input.environmentId === null) return;
+    const environmentId = input.environmentId;
+    if (request === null || environmentId === null) return;
     await executeNodeCommand(node.taskId, "squadExecutionHistory.retryFailed", () =>
-      retryCompositionTask({ environmentId: input.environmentId!, input: request }),
+      retryCompositionTask({ environmentId, input: request }),
     );
   };
 
@@ -116,11 +122,24 @@ export function useSquadRunBoardNodeCommands(input: {
           : "squadExecutionHistory.rejectReasonDefault",
       ),
     });
-    if (request === null || input.environmentId === null) return;
+    const environmentId = input.environmentId;
+    if (request === null || environmentId === null) return;
     await executeNodeCommand(node.taskId, "squadExecutionHistory.reviewFailed", () =>
-      reviewCompositionTask({ environmentId: input.environmentId!, input: request }),
+      reviewCompositionTask({ environmentId, input: request }),
     );
   };
 
-  return { pendingTaskId, error, retryNode, reviewNode };
+  const cancelNode = async (node: CompositionSquadRunBoardNode): Promise<void> => {
+    const request = buildCompositionSquadCancelRequest({
+      node,
+      reason: t("squadExecutionHistory.cancelReasonDefault"),
+    });
+    const environmentId = input.environmentId;
+    if (request === null || environmentId === null) return;
+    await executeNodeCommand(node.taskId, "squadExecutionHistory.cancelFailed", () =>
+      cancelCompositionTask({ environmentId, input: request }),
+    );
+  };
+
+  return { pendingTaskId, error, retryNode, reviewNode, cancelNode };
 }

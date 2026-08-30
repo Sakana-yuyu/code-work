@@ -6,10 +6,12 @@ import type {
 import { describe, expect, it, vi } from "vite-plus/test";
 
 import {
+  buildCompositionSquadCancelRequest,
   buildCompositionSquadRetryRequest,
   buildCompositionSquadReviewRequest,
   executeCompositionSquadNodeCommandWithRefresh,
   resolveCompositionSquadFailedNodeActions,
+  resolveCompositionSquadNodeCancellable,
   resolveCompositionSquadNodeActionContext,
   projectCompositionSquadRunBoard,
   resolveCompositionSquadNodeEventTarget,
@@ -302,5 +304,48 @@ describe("Squad review node actions", () => {
     expect(
       buildCompositionSquadReviewRequest({ node, decision: "reject", reason: " " }),
     ).toBeNull();
+  });
+});
+
+describe("Squad node cancellation", () => {
+  it.each([
+    ["running", true],
+    ["waiting_approval", true],
+    ["in_review", true],
+    ["completed", false],
+    ["failed", false],
+    ["cancelled", false],
+  ] as const)("最新 Run 为 %s 时可取消=%s", (status, expected) => {
+    const node = {
+      nodeId: "implement",
+      taskId: "task-worker",
+      snapshot: makeSnapshot({
+        taskId: "task-worker",
+        runId: "run-worker",
+        agentId: "agent-worker",
+        status,
+      }),
+    };
+    expect(resolveCompositionSquadNodeCancellable(node)).toBe(expected);
+  });
+
+  it("构造绑定最新 Run 的取消请求并拒绝空理由", () => {
+    const node = {
+      nodeId: "implement",
+      taskId: "task-worker",
+      snapshot: makeSnapshot({
+        taskId: "task-worker",
+        runId: "run-worker",
+        agentId: "agent-worker",
+        status: "running",
+      }),
+    };
+
+    expect(buildCompositionSquadCancelRequest({ node, reason: " 停止当前节点 " })).toEqual({
+      taskId: "task-worker",
+      runId: "run-worker",
+      reason: "停止当前节点",
+    });
+    expect(buildCompositionSquadCancelRequest({ node, reason: " " })).toBeNull();
   });
 });

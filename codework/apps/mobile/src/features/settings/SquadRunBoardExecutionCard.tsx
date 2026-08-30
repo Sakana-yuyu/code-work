@@ -9,6 +9,7 @@ import { View } from "react-native";
 import { AppText as Text } from "../../components/AppText";
 import { t } from "../../i18n";
 import type { SquadRunBoardHistoryItem } from "./SettingsSquadExecutionHistoryRouteScreen.logic";
+import { SquadRunBoardCancelAction } from "./SquadRunBoardCancelAction";
 import { SquadRunBoardFailedNodeActions } from "./SquadRunBoardFailedNodeActions";
 import { SquadRunBoardNodeCard } from "./SquadRunBoardNodeCard";
 import { SquadRunBoardReviewActions } from "./SquadRunBoardReviewActions";
@@ -37,6 +38,7 @@ export interface SquadRunBoardExecutionCardProps {
     node: CompositionSquadRunBoardNode,
     decision: CompositionSquadReviewAction,
   ) => void;
+  readonly onCancel: (node: CompositionSquadRunBoardNode) => void;
 }
 
 /** 一个 Squad execution 的摘要和节点列表；命令编排由路由层负责。 */
@@ -123,6 +125,11 @@ export function SquadRunBoardExecutionCard(props: SquadRunBoardExecutionCardProp
                     node={node}
                     disabled={props.pendingActionTaskId !== null}
                     onReview={props.onReview}
+                  />
+                  <SquadRunBoardCancelAction
+                    node={node}
+                    disabled={props.pendingActionTaskId !== null}
+                    onCancel={props.onCancel}
                   />
                 </View>
               }

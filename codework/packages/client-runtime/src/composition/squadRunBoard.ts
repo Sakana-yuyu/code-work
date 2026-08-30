@@ -1,10 +1,12 @@
 import type {
   CompositionSquadExecution,
   CompositionSquadExecutionStatus,
+  CompositionTaskCancelRequest,
   CompositionTaskEventsRequest,
   CompositionTaskRetryRequest,
   CompositionTaskReviewRequest,
   CompositionTaskSnapshot,
+  CompositionTaskStatus,
 } from "@codework/contracts";
 
 export interface CompositionSquadRunBoardNode {
@@ -243,4 +245,39 @@ export const buildCompositionSquadReviewRequest = (input: {
     decision: input.decision,
     reason,
   };
+};
+
+const cancellableCompositionTaskStatuses: ReadonlySet<CompositionTaskStatus> = new Set([
+  "queued",
+  "dispatched",
+  "resuming",
+  "running",
+  "waiting_approval",
+  "waiting_input",
+  "blocked",
+  "in_review",
+]);
+
+export const resolveCompositionSquadNodeCancellable = (
+  node: CompositionSquadRunBoardNode,
+): boolean => {
+  const status = node.snapshot?.latestRun?.status;
+  return status !== undefined && cancellableCompositionTaskStatuses.has(status);
+};
+
+/** 构造服务端现有 cancel RPC 输入；终态和空理由不会生成请求。 */
+export const buildCompositionSquadCancelRequest = (input: {
+  readonly node: CompositionSquadRunBoardNode;
+  readonly reason: string;
+}): CompositionTaskCancelRequest | null => {
+  const run = input.node.snapshot?.latestRun;
+  const reason = input.reason.trim();
+  if (
+    run === undefined ||
+    !resolveCompositionSquadNodeCancellable(input.node) ||
+    reason.length === 0
+  ) {
+    return null;
+  }
+  return { taskId: input.node.taskId, runId: run.runId, reason };
 };

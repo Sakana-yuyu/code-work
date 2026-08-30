@@ -162,6 +162,7 @@ export function SettingsSquadExecutionHistoryRouteScreen() {
               void nodeCommands.retryNode(node, capabilityIds, reassignAgentId)
             }
             onReview={(node, decision) => void nodeCommands.reviewNode(node, decision)}
+            onCancel={(node) => void nodeCommands.cancelNode(node)}
           />
         )}
       </ScrollView>
@@ -189,6 +190,7 @@ function SquadRunBoardHistory(props: {
     node: CompositionSquadRunBoardNode,
     decision: CompositionSquadReviewAction,
   ) => void;
+  readonly onCancel: (node: CompositionSquadRunBoardNode) => void;
 }) {
   return (
     <View className="gap-3">
@@ -211,6 +213,7 @@ function SquadRunBoardHistory(props: {
             onToggleEvents={props.onToggleEvents}
             onRetry={props.onRetry}
             onReview={props.onReview}
+            onCancel={props.onCancel}
           />
         );
       })}

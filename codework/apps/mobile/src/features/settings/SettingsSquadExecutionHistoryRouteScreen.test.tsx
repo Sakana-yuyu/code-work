@@ -23,8 +23,10 @@ const mocks = vi.hoisted(() => {
     compositionSquads: vi.fn(),
     retryCompositionTaskAtom: Symbol("retryCompositionTask"),
     reviewCompositionTaskAtom: Symbol("reviewCompositionTask"),
+    cancelCompositionTaskAtom: Symbol("cancelCompositionTask"),
     retryCommand: vi.fn(),
     reviewCommand: vi.fn(),
+    cancelCommand: vi.fn(),
     pressHandlers: new Map<string, () => void>(),
     executionsQuery: {
       data: null as CompositionSquadExecutionListResult | null,
@@ -40,6 +42,12 @@ const mocks = vi.hoisted(() => {
     },
     squadsQuery: {
       data: null as CompositionSquadListResult | null,
+      error: null as string | null,
+      isPending: false,
+      refresh: vi.fn(),
+    },
+    eventsQuery: {
+      data: null,
       error: null as string | null,
       isPending: false,
       refresh: vi.fn(),
@@ -131,9 +139,7 @@ vi.mock("../../state/query", () => ({
     if (atom === mocks.executionsAtom) return mocks.executionsQuery;
     if (atom === mocks.tasksAtom) return mocks.tasksQuery;
     if (atom === mocks.squadsAtom) return mocks.squadsQuery;
-    if (atom === null) {
-      return { data: null, error: null, isPending: false, refresh: vi.fn() };
-    }
+    if (atom === null) return mocks.eventsQuery;
     throw new Error("unexpected query atom");
   },
 }));
@@ -142,6 +148,7 @@ vi.mock("../../state/server", () => ({
   serverEnvironment: {
     retryCompositionTask: mocks.retryCompositionTaskAtom,
     reviewCompositionTask: mocks.reviewCompositionTaskAtom,
+    cancelCompositionTask: mocks.cancelCompositionTaskAtom,
     compositionSquadExecutions: (...args: unknown[]) => {
       mocks.compositionSquadExecutions(...args);
       return mocks.executionsAtom;
@@ -162,6 +169,7 @@ vi.mock("../../state/use-atom-command", () => ({
   useAtomCommand: (atom: unknown) => {
     if (atom === mocks.retryCompositionTaskAtom) return mocks.retryCommand;
     if (atom === mocks.reviewCompositionTaskAtom) return mocks.reviewCommand;
+    if (atom === mocks.cancelCompositionTaskAtom) return mocks.cancelCommand;
     throw new Error("unexpected command atom");
   },
 }));
@@ -253,8 +261,14 @@ describe("SettingsSquadExecutionHistoryRouteScreen", () => {
     mocks.compositionSquads.mockReset();
     mocks.retryCommand.mockReset();
     mocks.reviewCommand.mockReset();
+    mocks.cancelCommand.mockReset();
     mocks.retryCommand.mockResolvedValue({ _tag: "Success", value: {} });
     mocks.reviewCommand.mockResolvedValue({ _tag: "Success", value: {} });
+    mocks.cancelCommand.mockResolvedValue({ _tag: "Success", value: {} });
+    mocks.eventsQuery.data = null;
+    mocks.eventsQuery.error = null;
+    mocks.eventsQuery.isPending = false;
+    mocks.eventsQuery.refresh.mockReset();
     mocks.pressHandlers.clear();
     for (const query of [mocks.executionsQuery, mocks.tasksQuery, mocks.squadsQuery]) {
       query.data = null;
@@ -449,5 +463,54 @@ describe("SettingsSquadExecutionHistoryRouteScreen", () => {
     });
     expect(mocks.executionsQuery.refresh).toHaveBeenCalledTimes(1);
     expect(mocks.tasksQuery.refresh).toHaveBeenCalledTimes(1);
+  });
+
+  it("运行中节点取消调用真实 cancel RPC，并刷新 execution、Task 与事件", async () => {
+    setProject();
+    mocks.executionsQuery.data = { executions: [execution] };
+    mocks.tasksQuery.data = {
+      tasks: [
+        {
+          task: {
+            taskId: "task-worker",
+            projectId: "project-1",
+            assigneeKind: "agent",
+            assigneeId: "agent-worker",
+            mode: "parallel",
+            status: "running",
+            promptDigest: "prompt-digest",
+            dependsOnTaskIds: [],
+            createdAtUnixMs: 100,
+            updatedAtUnixMs: 200,
+          },
+          latestRun: {
+            runId: "run-worker",
+            taskId: "task-worker",
+            agentId: "agent-worker",
+            runtimeId: "runtime-1",
+            status: "running",
+            attempt: 1,
+            capabilityGrantIds: [],
+          },
+        },
+      ],
+    };
+    mocks.squadsQuery.data = { squads: [squad] };
+    renderToStaticMarkup(<SettingsSquadExecutionHistoryRouteScreen />);
+
+    mocks.pressHandlers.get("squadExecutionHistory.cancelNode")?.();
+
+    await vi.waitFor(() => expect(mocks.cancelCommand).toHaveBeenCalledTimes(1));
+    expect(mocks.cancelCommand).toHaveBeenCalledWith({
+      environmentId: "env-test",
+      input: {
+        taskId: "task-worker",
+        runId: "run-worker",
+        reason: "squadExecutionHistory.cancelReasonDefault",
+      },
+    });
+    expect(mocks.executionsQuery.refresh).toHaveBeenCalledTimes(1);
+    expect(mocks.tasksQuery.refresh).toHaveBeenCalledTimes(1);
+    expect(mocks.eventsQuery.refresh).toHaveBeenCalledTimes(1);
   });
 });
