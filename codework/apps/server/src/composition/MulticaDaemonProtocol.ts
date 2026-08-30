@@ -620,6 +620,27 @@ export type MulticaFetchHttpTransportOptions = {
   readonly fetchImpl?: typeof fetch;
 };
 
+const makeMulticaFetchHeaders = (
+  optionsHeaders: MulticaFetchHttpTransportOptions["headers"],
+  request: MulticaHttpRequest,
+): Headers => {
+  const headers = new Headers(optionsHeaders);
+  headers.delete("accept");
+  headers.delete("content-type");
+  headers.delete("x-workspace-id");
+  headers.delete("x-idempotency-key");
+  for (const [name, value] of Object.entries(request.headers ?? {})) {
+    headers.set(name, value);
+  }
+  headers.set("accept", "application/json");
+  if (request.body === undefined) {
+    headers.delete("content-type");
+  } else {
+    headers.set("content-type", "application/json");
+  }
+  return headers;
+};
+
 export const makeMulticaFetchHttpTransport = (
   options: MulticaFetchHttpTransportOptions,
 ): MulticaHttpTransport => {
@@ -633,12 +654,7 @@ export const makeMulticaFetchHttpTransport = (
         try: async () => {
           const response = await fetchImpl(`${baseUrl}${request.path}`, {
             method: request.method,
-            headers: {
-              accept: "application/json",
-              ...(request.body === undefined ? {} : { "content-type": "application/json" }),
-              ...request.headers,
-              ...options.headers,
-            },
+            headers: makeMulticaFetchHeaders(options.headers, request),
             ...(request.body === undefined ? {} : { body: encodeUnknownJson(request.body) }),
           });
           const text = await response.text();
