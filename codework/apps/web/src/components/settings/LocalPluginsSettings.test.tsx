@@ -216,7 +216,7 @@ describe("LocalPluginsSettings", () => {
     expect(html).not.toContain("Stored local plugin data contains duplicate plugin IDs");
   });
 
-  it("展示同步期非法文档与修订冲突的当前类型化状态", () => {
+  it("展示同步期类型化状态，并在同标签成功重试后清除告警", async () => {
     const invalidStorage = new ObservableMemoryStorage();
     const invalidRuntime = createLocalPluginRuntime({
       storage: invalidStorage,
@@ -251,6 +251,12 @@ describe("LocalPluginsSettings", () => {
     const conflictHtml = renderToStaticMarkup(<LocalPluginsSettings runtime={conflictRuntime} />);
     expect(conflictHtml).toContain('data-local-plugin-storage-failure="storage-conflict"');
     expect(conflictHtml).toContain("Local plugin settings changed in another tab");
+    expect(conflictHtml).not.toContain("检测到本地插件存储修订冲突");
+
+    expect(await conflictRuntime.lifecycle.install(pluginManifest)).toEqual({ ok: true });
+    const recoveredHtml = renderToStaticMarkup(<LocalPluginsSettings runtime={conflictRuntime} />);
+    expect(recoveredHtml).not.toContain("data-local-plugin-storage-failure");
+    expect(recoveredHtml).not.toContain("Local plugin settings changed in another tab");
   });
 
   it("导入函数区分非法 JSON 与策略拒绝", async () => {

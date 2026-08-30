@@ -37,6 +37,11 @@ type LocalPluginMutationPhase = Exclude<
   "restore" | "synchronize" | "invoke" | "render"
 >;
 
+export interface LocalPluginLifecycleMutationResult {
+  readonly phase: LocalPluginMutationPhase;
+  readonly result: LocalPluginLifecycleResult;
+}
+
 function storageErrorCode(
   error: unknown,
   fallback: "storage-invalid" | "storage-write-failed",
@@ -77,6 +82,7 @@ export class LocalPluginLifecycle {
       readonly storage: LocalPluginStorage;
       readonly now: () => number;
       readonly writerId?: string;
+      readonly onMutationResult?: (input: LocalPluginLifecycleMutationResult) => void;
     },
   ) {
     this.storageSession = new LocalPluginStorageSession({
@@ -130,17 +136,17 @@ export class LocalPluginLifecycle {
   async install(input: unknown): Promise<LocalPluginLifecycleResult> {
     const pluginId = pluginIdFromUnknown(input);
     const blocked = this.blockedByRestoreFailure();
-    if (blocked) return blocked;
+    if (blocked) return this.publishMutationResult("install", blocked);
     let manifest: LocalPluginManifest;
     try {
       manifest = decodeAllowedLocalPluginManifest(input);
     } catch (error) {
       const code = error instanceof LocalPluginPolicyError ? error.code : "schema-invalid";
-      return this.fail(pluginId, "install", code, error);
+      return this.publishMutationResult("install", this.fail(pluginId, "install", code, error));
     }
 
     const prepared = this.prepareMutation(manifest.id, "install");
-    if (!prepared.ok) return prepared.result;
+    if (!prepared.ok) return this.publishMutationResult("install", prepared.result);
     const current = prepared.snapshot.plugins;
     const existing = current.find((plugin) => plugin.manifest.id === manifest.id);
     const now = this.options.now();
@@ -153,7 +159,10 @@ export class LocalPluginLifecycle {
     const next = existing
       ? current.map((plugin) => (plugin.manifest.id === manifest.id ? nextRegistration : plugin))
       : [...current, nextRegistration];
-    return this.persistAndPublish(manifest.id, "install", prepared.snapshot, next);
+    return this.publishMutationResult(
+      "install",
+      await this.persistAndPublish(manifest.id, "install", prepared.snapshot, next),
+    );
   }
 
   enable(pluginId: string): Promise<LocalPluginLifecycleResult> {
@@ -166,18 +175,24 @@ export class LocalPluginLifecycle {
 
   async uninstall(pluginId: string): Promise<LocalPluginLifecycleResult> {
     const blocked = this.blockedByRestoreFailure();
-    if (blocked) return blocked;
+    if (blocked) return this.publishMutationResult("uninstall", blocked);
     const prepared = this.prepareMutation(pluginId, "uninstall");
-    if (!prepared.ok) return prepared.result;
+    if (!prepared.ok) return this.publishMutationResult("uninstall", prepared.result);
     const current = prepared.snapshot.plugins;
     if (!current.some((plugin) => plugin.manifest.id === pluginId)) {
-      return this.fail(pluginId, "uninstall", "plugin-not-found", new Error("插件不存在。"));
+      return this.publishMutationResult(
+        "uninstall",
+        this.fail(pluginId, "uninstall", "plugin-not-found", new Error("插件不存在。")),
+      );
     }
-    return this.persistAndPublish(
-      pluginId,
+    return this.publishMutationResult(
       "uninstall",
-      prepared.snapshot,
-      current.filter((plugin) => plugin.manifest.id !== pluginId),
+      await this.persistAndPublish(
+        pluginId,
+        "uninstall",
+        prepared.snapshot,
+        current.filter((plugin) => plugin.manifest.id !== pluginId),
+      ),
     );
   }
 
@@ -187,19 +202,33 @@ export class LocalPluginLifecycle {
     phase: "enable" | "disable",
   ): Promise<LocalPluginLifecycleResult> {
     const blocked = this.blockedByRestoreFailure();
-    if (blocked) return blocked;
+    if (blocked) return this.publishMutationResult(phase, blocked);
     const prepared = this.prepareMutation(pluginId, phase);
-    if (!prepared.ok) return prepared.result;
+    if (!prepared.ok) return this.publishMutationResult(phase, prepared.result);
     const current = prepared.snapshot.plugins;
     if (!current.some((plugin) => plugin.manifest.id === pluginId)) {
-      return this.fail(pluginId, phase, "plugin-not-found", new Error("插件不存在。"));
+      return this.publishMutationResult(
+        phase,
+        this.fail(pluginId, phase, "plugin-not-found", new Error("插件不存在。")),
+      );
     }
     const next = current.map((plugin) =>
       plugin.manifest.id === pluginId
         ? { ...plugin, enabled, updatedAtUnixMs: this.options.now() }
         : plugin,
     );
-    return this.persistAndPublish(pluginId, phase, prepared.snapshot, next);
+    return this.publishMutationResult(
+      phase,
+      await this.persistAndPublish(pluginId, phase, prepared.snapshot, next),
+    );
+  }
+
+  private publishMutationResult(
+    phase: LocalPluginMutationPhase,
+    result: LocalPluginLifecycleResult,
+  ): LocalPluginLifecycleResult {
+    this.options.onMutationResult?.({ phase, result });
+    return result;
   }
 
   private prepareMutation(

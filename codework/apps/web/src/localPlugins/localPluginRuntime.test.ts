@@ -185,4 +185,114 @@ describe("createLocalPluginRuntime", () => {
       result: { ok: false, error: { code: "storage-conflict" } },
     });
   });
+
+  it.each([
+    {
+      name: "安装",
+      phase: "install",
+      stored: [storedPlugin("acme.target")],
+      mutate: (runtime: ReturnType<typeof createLocalPluginRuntime>) =>
+        runtime.lifecycle.install(storedPlugin("acme.new").manifest),
+    },
+    {
+      name: "更新",
+      phase: "install",
+      stored: [storedPlugin("acme.target")],
+      mutate: (runtime: ReturnType<typeof createLocalPluginRuntime>) =>
+        runtime.lifecycle.install({
+          ...storedPlugin("acme.target").manifest,
+          version: "2.0.0",
+        }),
+    },
+    {
+      name: "启用",
+      phase: "enable",
+      stored: [{ ...storedPlugin("acme.target"), enabled: false }],
+      mutate: (runtime: ReturnType<typeof createLocalPluginRuntime>) =>
+        runtime.lifecycle.enable("acme.target"),
+    },
+    {
+      name: "禁用",
+      phase: "disable",
+      stored: [storedPlugin("acme.target")],
+      mutate: (runtime: ReturnType<typeof createLocalPluginRuntime>) =>
+        runtime.lifecycle.disable("acme.target"),
+    },
+    {
+      name: "卸载",
+      phase: "uninstall",
+      stored: [storedPlugin("acme.target")],
+      mutate: (runtime: ReturnType<typeof createLocalPluginRuntime>) =>
+        runtime.lifecycle.uninstall("acme.target"),
+    },
+  ] as const)("同标签成功$name后清除旧同步冲突", async ({ phase, stored, mutate }) => {
+    const storage = new ObservableMemoryStorage(
+      encodeLocalPluginStorageDocument(stored, { revision: 2, writerId: "writer-a" }),
+    );
+    const runtime = createLocalPluginRuntime({ storage, now: () => 1, writerId: "writer-a" });
+    storage.value = encodeLocalPluginStorageDocument(stored, {
+      revision: 1,
+      writerId: "writer-b",
+    });
+    storage.emit();
+    const statusListener = vi.fn();
+    runtime.storageStatus.subscribe(statusListener);
+
+    expect(runtime.storageStatus.getSnapshot()).toMatchObject({
+      phase: "synchronize",
+      result: { ok: false, error: { code: "storage-conflict" } },
+    });
+    expect(await mutate(runtime)).toEqual({ ok: true });
+    expect(runtime.storageStatus.getSnapshot()).toEqual({
+      phase,
+      result: { ok: true },
+    });
+    expect(statusListener).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([
+    {
+      name: "安装",
+      mutate: (runtime: ReturnType<typeof createLocalPluginRuntime>) =>
+        runtime.lifecycle.install(storedPlugin("acme.new").manifest),
+    },
+    {
+      name: "更新",
+      mutate: (runtime: ReturnType<typeof createLocalPluginRuntime>) =>
+        runtime.lifecycle.install({
+          ...storedPlugin("acme.duplicate").manifest,
+          version: "2.0.0",
+        }),
+    },
+    {
+      name: "启用",
+      mutate: (runtime: ReturnType<typeof createLocalPluginRuntime>) =>
+        runtime.lifecycle.enable("acme.duplicate"),
+    },
+    {
+      name: "禁用",
+      mutate: (runtime: ReturnType<typeof createLocalPluginRuntime>) =>
+        runtime.lifecycle.disable("acme.duplicate"),
+    },
+    {
+      name: "卸载",
+      mutate: (runtime: ReturnType<typeof createLocalPluginRuntime>) =>
+        runtime.lifecycle.uninstall("acme.duplicate"),
+    },
+  ] as const)("恢复失败继续阻止$name且保留稳定存储错误码", async ({ mutate }) => {
+    const duplicate = storedPlugin("acme.duplicate");
+    const originalValue = JSON.stringify({ version: 1, plugins: [duplicate, duplicate] });
+    const storage = new ObservableMemoryStorage(originalValue);
+    const runtime = createLocalPluginRuntime({ storage, now: () => 1, writerId: "writer-a" });
+
+    expect(await mutate(runtime)).toMatchObject({
+      ok: false,
+      error: { code: "storage-duplicate-id" },
+    });
+    expect(runtime.storageStatus.getSnapshot()).toMatchObject({
+      result: { ok: false, error: { code: "storage-duplicate-id" } },
+    });
+    expect(storage.value).toBe(originalValue);
+    expect(storage.write).not.toHaveBeenCalled();
+  });
 });

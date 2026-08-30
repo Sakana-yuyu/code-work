@@ -1,5 +1,6 @@
 import { randomUUID } from "~/lib/utils";
 
+import type { LocalPluginFailurePhase } from "./localPluginFailureJournal";
 import { LocalPluginFailureJournal } from "./localPluginFailureJournal";
 import { LocalPluginLifecycle, type LocalPluginLifecycleResult } from "./localPluginLifecycle";
 import { LocalPluginRegistry } from "./localPluginRegistry";
@@ -22,7 +23,7 @@ export interface LocalPluginRuntime {
 }
 
 export interface LocalPluginRuntimeStorageStatusSnapshot {
-  readonly phase: "restore" | "synchronize";
+  readonly phase: Exclude<LocalPluginFailurePhase, "invoke" | "render">;
   readonly result: LocalPluginLifecycleResult;
 }
 
@@ -73,6 +74,17 @@ class VolatileLocalPluginStorage implements LocalPluginStorage {
   }
 }
 
+function isStorageFailureResult(result: LocalPluginLifecycleResult): boolean {
+  if (result.ok) return false;
+  return (
+    result.error.code === "storage-invalid" ||
+    result.error.code === "storage-duplicate-id" ||
+    result.error.code === "storage-lock-unavailable" ||
+    result.error.code === "storage-conflict" ||
+    result.error.code === "storage-write-failed"
+  );
+}
+
 export function createLocalPluginRuntime(input?: {
   readonly storage?: LocalPluginStorage;
   readonly now?: () => number;
@@ -94,12 +106,22 @@ export function createLocalPluginRuntime(input?: {
   };
   const storage = input?.storage ?? browserStorage();
   const writerId = input?.writerId ?? `local-plugin:${randomUUID()}`;
-  const lifecycle = new LocalPluginLifecycle({ registry, failures, storage, now, writerId });
-  const restoreResult = lifecycle.restore();
   const storageStatus = new LocalPluginRuntimeStorageStatusStore({
     phase: "restore",
-    result: restoreResult,
+    result: { ok: true },
   });
+  const lifecycle = new LocalPluginLifecycle({
+    registry,
+    failures,
+    storage,
+    now,
+    writerId,
+    onMutationResult: ({ phase, result }) => {
+      if (result.ok || isStorageFailureResult(result)) storageStatus.update({ phase, result });
+    },
+  });
+  const restoreResult = lifecycle.restore();
+  storageStatus.update({ phase: "restore", result: restoreResult });
   let lastSynchronizeResult: LocalPluginLifecycleResult | null = null;
   const unsubscribe = storage.subscribe?.(() => {
     lastSynchronizeResult = lifecycle.synchronize();
