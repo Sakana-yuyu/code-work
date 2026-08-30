@@ -447,6 +447,46 @@ it.layer(
     }),
   );
 
+  it.effect("普通终端操作不得接管或关闭受监督 session", () =>
+    Effect.gen(function* () {
+      const { manager, ptyAdapter } = yield* createManager();
+      const terminalId = "workspace-script-operation-owner-guard";
+      const owner = workspaceScriptOwner(13);
+      yield* manager.runCommand({
+        threadId: "owner-guard",
+        terminalId,
+        cwd: process.cwd(),
+        command: "workspace-script-command",
+        owner,
+      });
+      const processHandle = ptyAdapter.processes[0];
+      expect(processHandle).toBeDefined();
+      if (!processHandle) return;
+
+      const openError = yield* manager
+        .open(openInput({ threadId: "owner-guard", terminalId }))
+        .pipe(Effect.flip);
+      const restartError = yield* manager
+        .restart(restartInput({ threadId: "owner-guard", terminalId }))
+        .pipe(Effect.flip);
+      const closeError = yield* manager
+        .close({ threadId: "owner-guard", terminalId })
+        .pipe(Effect.flip);
+      const inspection = yield* manager.inspectSession({
+        threadId: "owner-guard",
+        terminalId,
+        expectedOwner: owner,
+      });
+
+      assert.equal(openError._tag, "TerminalSessionOwnershipError");
+      assert.equal(restartError._tag, "TerminalSessionOwnershipError");
+      assert.equal(closeError._tag, "TerminalSessionOwnershipError");
+      assert.equal(inspection, "active");
+      assert.equal(processHandle.killed, false);
+      expect(ptyAdapter.spawnInputs).toHaveLength(1);
+    }),
+  );
+
   it.effect("运行中的 on_exit 命令从内存返回最新历史且不会创建额外 PTY", () =>
     Effect.gen(function* () {
       const { manager, ptyAdapter, getEvents } = yield* createManager();
