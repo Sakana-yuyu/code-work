@@ -589,7 +589,7 @@ layer("CompositionRunStartStore", (it) => {
     }),
   );
 
-  it.effect("未收口列表覆盖全部恢复态，排除 settled，并按更新时间和 runId 有界排序", () =>
+  it.effect("active 与 indeterminate 使用独立 keyset 游标稳定分页", () =>
     Effect.gen(function* () {
       const store = yield* CompositionRunStartStore;
       const sql = yield* SqlClient.SqlClient;
@@ -656,32 +656,127 @@ layer("CompositionRunStartStore", (it) => {
         settledAtUnixMs: 140,
       });
 
-      const all = yield* store.listUnsettledStarts({ limit: 200 });
-      const limited = yield* store.listUnsettledStarts({ limit: 3 });
+      const activeFirstPage = yield* store.listActiveStarts({ limit: 2 });
+      const activeSecondPage = yield* store.listActiveStarts({
+        limit: 2,
+        after: {
+          updatedAtUnixMs: activeFirstPage[1]?.updatedAtUnixMs ?? -1,
+          runId: activeFirstPage[1]?.runId ?? "",
+        },
+      });
+      const auditPage = yield* store.listIndeterminateStarts({ limit: 2 });
       assert.deepEqual(
-        all.map((intent) => [intent.runId, intent.state]),
+        activeFirstPage.map((intent) => [intent.runId, intent.state]),
         [
           ["run-list-a", "prepared"],
           ["run-list-c", "prepared"],
-          ["run-list-b", "dispatching"],
-          ["run-list-d", "accepted"],
-          ["run-list-e", "indeterminate"],
         ],
       );
       assert.deepEqual(
-        limited.map((intent) => intent.runId),
-        ["run-list-a", "run-list-c", "run-list-b"],
+        activeSecondPage.map((intent) => [intent.runId, intent.state]),
+        [
+          ["run-list-b", "dispatching"],
+          ["run-list-d", "accepted"],
+        ],
+      );
+      assert.deepEqual(
+        auditPage.map((intent) => [intent.runId, intent.state]),
+        [["run-list-e", "indeterminate"]],
       );
 
       for (const limit of [0, 201, 1.5, Number.NaN, Number.POSITIVE_INFINITY]) {
-        const invalid = yield* store.listUnsettledStarts({ limit }).pipe(Effect.flip);
-        assert.equal(errorCode(invalid), "run_start_input_invalid");
+        for (const list of [store.listActiveStarts, store.listIndeterminateStarts]) {
+          const invalid = yield* list({ limit }).pipe(Effect.flip);
+          assert.equal(errorCode(invalid), "run_start_input_invalid");
+        }
       }
+      const invalidCursor = yield* store
+        .listActiveStarts({ limit: 10, after: { updatedAtUnixMs: -1, runId: "" } })
+        .pipe(Effect.flip);
+      assert.equal(errorCode(invalidCursor), "run_start_input_invalid");
+    }),
+  );
+
+  it.effect("201 条 indeterminate 不会饿死 active，且查询命中各自 partial index", () =>
+    Effect.gen(function* () {
+      const store = yield* CompositionRunStartStore;
+      const sql = yield* SqlClient.SqlClient;
+      yield* sql`DELETE FROM composition_run_start_intents`;
+      yield* sql`
+        WITH RECURSIVE sequence(value) AS (
+          SELECT 0
+          UNION ALL
+          SELECT value + 1 FROM sequence WHERE value < 200
+        )
+        INSERT INTO composition_run_start_intents (
+          run_id, task_id, agent_id, runtime_id, attempt,
+          payload_digest, capability_digest,
+          state, revision, claim_id, claimed_at_unix_ms,
+          last_release_claim_id, last_release_operation_id, last_released_at_unix_ms,
+          runtime_task_id, capability_handshake_id, accepted_at_unix_ms,
+          outcome_code, settled_at_unix_ms, created_at_unix_ms, updated_at_unix_ms
+        )
+        SELECT
+          'run-audit-' || printf('%03d', value),
+          'task-audit-' || printf('%03d', value),
+          'agent-audit', 'runtime-audit-' || printf('%03d', value), 1,
+          ${makeDigest("a")}, ${makeDigest("b")},
+          'indeterminate', 3, 'claim-audit-' || printf('%03d', value), 110 + value,
+          NULL, NULL, NULL, NULL, NULL, NULL,
+          'legacy_driver_unknown', NULL, 100 + value, 200 + value
+        FROM sequence
+      `;
+      yield* store.prepareStart(
+        makePrepareInput("run-active-after-audit-backlog", { createdAtUnixMs: 1_000 }),
+      );
+
+      const active = yield* store.listActiveStarts({ limit: 1 });
+      const firstAuditPage = yield* store.listIndeterminateStarts({ limit: 200 });
+      const lastAudit = firstAuditPage.at(-1);
+      const secondAuditPage = yield* store.listIndeterminateStarts({
+        limit: 200,
+        after: {
+          updatedAtUnixMs: lastAudit?.updatedAtUnixMs ?? -1,
+          runId: lastAudit?.runId ?? "",
+        },
+      });
+      assert.deepEqual(
+        active.map((intent) => intent.runId),
+        ["run-active-after-audit-backlog"],
+      );
+      assert.equal(firstAuditPage.length, 200);
+      assert.deepEqual(
+        secondAuditPage.map((intent) => intent.runId),
+        ["run-audit-200"],
+      );
+
+      const activePlan = yield* sql<{ readonly detail: string }>`
+        EXPLAIN QUERY PLAN
+        SELECT run_id FROM composition_run_start_intents
+        WHERE state IN ('prepared', 'dispatching', 'accepted')
+          AND (updated_at_unix_ms, run_id) > (100, '')
+        ORDER BY updated_at_unix_ms ASC, run_id ASC
+        LIMIT 50
+      `;
+      const auditPlan = yield* sql<{ readonly detail: string }>`
+        EXPLAIN QUERY PLAN
+        SELECT run_id FROM composition_run_start_intents
+        WHERE state = 'indeterminate'
+          AND (updated_at_unix_ms, run_id) > (100, '')
+        ORDER BY updated_at_unix_ms ASC, run_id ASC
+        LIMIT 50
+      `;
+      const activeDetails = activePlan.map((row) => row.detail).join("\n");
+      const auditDetails = auditPlan.map((row) => row.detail).join("\n");
+      assert.include(activeDetails, "composition_run_start_intents_active_scan");
+      assert.include(auditDetails, "composition_run_start_intents_indeterminate_scan");
+      assert.notInclude(activeDetails, "USE TEMP B-TREE");
+      assert.notInclude(auditDetails, "USE TEMP B-TREE");
     }),
   );
 });
 
-it.effect("未收口列表在 SQLite Layer 真实释放文件句柄后可跨连接恢复", () => {
+it.effect("active 列表在 SQLite Layer 真实释放文件句柄后可跨连接恢复", () => {
   const tempDir = NodeFS.mkdtempSync(
     NodePath.join(NodeOS.tmpdir(), "codework-run-start-recovery-list-"),
   );
@@ -717,7 +812,7 @@ it.effect("未收口列表在 SQLite Layer 真实释放文件句柄后可跨连�
 
     const restored = yield* Effect.gen(function* () {
       const store = yield* CompositionRunStartStore;
-      return yield* store.listUnsettledStarts({ limit: 200 });
+      return yield* store.listActiveStarts({ limit: 200 });
     }).pipe(Effect.provide(makeFileStoreLayer(dbPath)));
     assert.deepEqual(
       restored.map((intent) => [intent.runId, intent.state]),
@@ -766,7 +861,7 @@ it.effect("两个独立连接并发 prepare 同一 task attempt 时只允许一�
 
     const restored = yield* Effect.gen(function* () {
       const store = yield* CompositionRunStartStore;
-      return yield* store.listUnsettledStarts({ limit: 200 });
+      return yield* store.listActiveStarts({ limit: 200 });
     }).pipe(Effect.provide(makeFileStoreLayer(dbPath)));
     assert.equal(restored.length, 1);
     assert.equal(restored[0]?.taskId, taskId);

@@ -30,10 +30,10 @@ import {
   validateRunStartAccepted,
   validateRunStartClaim,
   validateRunStartIndeterminate,
+  validateRunStartPage,
   validateRunStartPrepare,
   validateRunStartRelease,
   validateRunStartSettle,
-  validateRunStartUnsettledList,
 } from "./CompositionRunStartStoreInternal.ts";
 import { makeCompositionRunStartStoreStatements } from "./CompositionRunStartStoreStatements.ts";
 
@@ -168,15 +168,41 @@ const makeStore = Effect.gen(function* () {
 
   const getStart: CompositionRunStartStoreShape["getStart"] = readStart;
 
-  const listUnsettledStarts: CompositionRunStartStoreShape["listUnsettledStarts"] = (input) =>
+  const listActiveStarts: CompositionRunStartStoreShape["listActiveStarts"] = (input) =>
     Effect.gen(function* () {
-      const valid = yield* validateRunStartUnsettledList(input);
+      const valid = yield* validateRunStartPage(input);
       const rows = yield* query(
-        "CompositionRunStartStore.listUnsettledStarts",
-        statements.listUnsettledRows(valid),
+        "CompositionRunStartStore.listActiveStarts",
+        valid.after === undefined
+          ? statements.listActiveRows({ limit: valid.limit })
+          : statements.listActiveRowsAfter({
+              limit: valid.limit,
+              afterUpdatedAtUnixMs: valid.after.updatedAtUnixMs,
+              afterRunId: valid.after.runId,
+            }),
       );
       return yield* Effect.forEach(rows, (row) =>
-        decodeRow("CompositionRunStartStore.listUnsettledStarts", row),
+        decodeRow("CompositionRunStartStore.listActiveStarts", row),
+      );
+    });
+
+  const listIndeterminateStarts: CompositionRunStartStoreShape["listIndeterminateStarts"] = (
+    input,
+  ) =>
+    Effect.gen(function* () {
+      const valid = yield* validateRunStartPage(input);
+      const rows = yield* query(
+        "CompositionRunStartStore.listIndeterminateStarts",
+        valid.after === undefined
+          ? statements.listIndeterminateRows({ limit: valid.limit })
+          : statements.listIndeterminateRowsAfter({
+              limit: valid.limit,
+              afterUpdatedAtUnixMs: valid.after.updatedAtUnixMs,
+              afterRunId: valid.after.runId,
+            }),
+      );
+      return yield* Effect.forEach(rows, (row) =>
+        decodeRow("CompositionRunStartStore.listIndeterminateStarts", row),
       );
     });
 
@@ -475,7 +501,8 @@ const makeStore = Effect.gen(function* () {
   return CompositionRunStartStore.of({
     prepareStart,
     getStart,
-    listUnsettledStarts,
+    listActiveStarts,
+    listIndeterminateStarts,
     claimStart,
     releaseStart,
     markAccepted,

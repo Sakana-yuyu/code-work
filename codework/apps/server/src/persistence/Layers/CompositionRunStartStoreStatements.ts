@@ -8,6 +8,8 @@ import {
   ClaimSchema,
   IdSchema,
   IndeterminateSchema,
+  PageAfterSchema,
+  PageLimitSchema,
   PrepareSchema,
   ReleaseSchema,
   ReleaseOperationIdSchema,
@@ -17,7 +19,6 @@ import {
   RuntimeTaskSchema,
   SettleSchema,
   TaskAttemptSchema,
-  UnsettledListSchema,
 } from "./CompositionRunStartStoreInternal.ts";
 
 export const makeCompositionRunStartStoreStatements = (sql: SqlClient.SqlClient) => {
@@ -67,8 +68,8 @@ export const makeCompositionRunStartStoreStatements = (sql: SqlClient.SqlClient)
     `,
   });
 
-  const listUnsettledRows = SqlSchema.findAll({
-    Request: UnsettledListSchema,
+  const listActiveRows = SqlSchema.findAll({
+    Request: PageLimitSchema,
     Result: RunStartRowSchema,
     execute: ({ limit }) => sql`
       SELECT
@@ -85,7 +86,81 @@ export const makeCompositionRunStartStoreStatements = (sql: SqlClient.SqlClient)
         settled_at_unix_ms AS "settledAtUnixMs",
         created_at_unix_ms AS "createdAtUnixMs", updated_at_unix_ms AS "updatedAtUnixMs"
       FROM composition_run_start_intents
-      WHERE state IN ('prepared', 'dispatching', 'accepted', 'indeterminate')
+      WHERE state IN ('prepared', 'dispatching', 'accepted')
+      ORDER BY updated_at_unix_ms ASC, run_id ASC
+      LIMIT ${limit}
+    `,
+  });
+
+  const listActiveRowsAfter = SqlSchema.findAll({
+    Request: PageAfterSchema,
+    Result: RunStartRowSchema,
+    execute: ({ limit, afterUpdatedAtUnixMs, afterRunId }) => sql`
+      SELECT
+        run_id AS "runId", task_id AS "taskId", agent_id AS "agentId",
+        runtime_id AS "runtimeId", attempt,
+        payload_digest AS "payloadDigest", capability_digest AS "capabilityDigest",
+        state, revision, claim_id AS "claimId", claimed_at_unix_ms AS "claimedAtUnixMs",
+        last_release_claim_id AS "lastReleaseClaimId",
+        last_release_operation_id AS "lastReleaseOperationId",
+        last_released_at_unix_ms AS "lastReleasedAtUnixMs",
+        runtime_task_id AS "runtimeTaskId",
+        capability_handshake_id AS "capabilityHandshakeId",
+        accepted_at_unix_ms AS "acceptedAtUnixMs", outcome_code AS "outcomeCode",
+        settled_at_unix_ms AS "settledAtUnixMs",
+        created_at_unix_ms AS "createdAtUnixMs", updated_at_unix_ms AS "updatedAtUnixMs"
+      FROM composition_run_start_intents
+      WHERE state IN ('prepared', 'dispatching', 'accepted')
+        AND (updated_at_unix_ms, run_id) > (${afterUpdatedAtUnixMs}, ${afterRunId})
+      ORDER BY updated_at_unix_ms ASC, run_id ASC
+      LIMIT ${limit}
+    `,
+  });
+
+  const listIndeterminateRows = SqlSchema.findAll({
+    Request: PageLimitSchema,
+    Result: RunStartRowSchema,
+    execute: ({ limit }) => sql`
+      SELECT
+        run_id AS "runId", task_id AS "taskId", agent_id AS "agentId",
+        runtime_id AS "runtimeId", attempt,
+        payload_digest AS "payloadDigest", capability_digest AS "capabilityDigest",
+        state, revision, claim_id AS "claimId", claimed_at_unix_ms AS "claimedAtUnixMs",
+        last_release_claim_id AS "lastReleaseClaimId",
+        last_release_operation_id AS "lastReleaseOperationId",
+        last_released_at_unix_ms AS "lastReleasedAtUnixMs",
+        runtime_task_id AS "runtimeTaskId",
+        capability_handshake_id AS "capabilityHandshakeId",
+        accepted_at_unix_ms AS "acceptedAtUnixMs", outcome_code AS "outcomeCode",
+        settled_at_unix_ms AS "settledAtUnixMs",
+        created_at_unix_ms AS "createdAtUnixMs", updated_at_unix_ms AS "updatedAtUnixMs"
+      FROM composition_run_start_intents
+      WHERE state = 'indeterminate'
+      ORDER BY updated_at_unix_ms ASC, run_id ASC
+      LIMIT ${limit}
+    `,
+  });
+
+  const listIndeterminateRowsAfter = SqlSchema.findAll({
+    Request: PageAfterSchema,
+    Result: RunStartRowSchema,
+    execute: ({ limit, afterUpdatedAtUnixMs, afterRunId }) => sql`
+      SELECT
+        run_id AS "runId", task_id AS "taskId", agent_id AS "agentId",
+        runtime_id AS "runtimeId", attempt,
+        payload_digest AS "payloadDigest", capability_digest AS "capabilityDigest",
+        state, revision, claim_id AS "claimId", claimed_at_unix_ms AS "claimedAtUnixMs",
+        last_release_claim_id AS "lastReleaseClaimId",
+        last_release_operation_id AS "lastReleaseOperationId",
+        last_released_at_unix_ms AS "lastReleasedAtUnixMs",
+        runtime_task_id AS "runtimeTaskId",
+        capability_handshake_id AS "capabilityHandshakeId",
+        accepted_at_unix_ms AS "acceptedAtUnixMs", outcome_code AS "outcomeCode",
+        settled_at_unix_ms AS "settledAtUnixMs",
+        created_at_unix_ms AS "createdAtUnixMs", updated_at_unix_ms AS "updatedAtUnixMs"
+      FROM composition_run_start_intents
+      WHERE state = 'indeterminate'
+        AND (updated_at_unix_ms, run_id) > (${afterUpdatedAtUnixMs}, ${afterRunId})
       ORDER BY updated_at_unix_ms ASC, run_id ASC
       LIMIT ${limit}
     `,
@@ -371,7 +446,10 @@ export const makeCompositionRunStartStoreStatements = (sql: SqlClient.SqlClient)
   return {
     getRow,
     getByTaskAttemptRow,
-    listUnsettledRows,
+    listActiveRows,
+    listActiveRowsAfter,
+    listIndeterminateRows,
+    listIndeterminateRowsAfter,
     getByClaimRow,
     getReleaseReceiptRow,
     getByRuntimeTaskRow,

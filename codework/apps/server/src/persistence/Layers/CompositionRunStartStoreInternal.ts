@@ -11,11 +11,11 @@ import {
   type CompositionRunStartIdentity,
   type CompositionRunStartIndeterminateInput,
   type CompositionRunStartIntent,
+  type CompositionRunStartPageInput,
   type CompositionRunStartPrepareInput,
   type CompositionRunStartReleaseInput,
   type CompositionRunStartSettleInput,
   type CompositionRunStartStoreErrorCode,
-  type CompositionRunStartUnsettledListInput,
 } from "../Services/CompositionRunStartStore.ts";
 
 export const RunStartRowSchema = Schema.Struct({
@@ -63,7 +63,12 @@ export const PrepareSchema = Schema.Struct({
   createdAtUnixMs: Schema.Number,
 });
 export const IdSchema = Schema.Struct({ runId: Schema.String });
-export const UnsettledListSchema = Schema.Struct({ limit: Schema.Number });
+export const PageLimitSchema = Schema.Struct({ limit: Schema.Number });
+export const PageAfterSchema = Schema.Struct({
+  limit: Schema.Number,
+  afterUpdatedAtUnixMs: Schema.Number,
+  afterRunId: Schema.String,
+});
 export const TaskAttemptSchema = Schema.Struct({ taskId: Schema.String, attempt: Schema.Number });
 export const ClaimIdSchema = Schema.Struct({ claimId: Schema.String });
 export const ReleaseOperationIdSchema = Schema.Struct({ releaseOperationId: Schema.String });
@@ -149,7 +154,7 @@ const hasTextWithin = (value: string, maxLength: number): boolean =>
 const validTimestamp = (value: number): boolean => Number.isSafeInteger(value) && value >= 0;
 const validRevision = (value: number): boolean => Number.isSafeInteger(value) && value >= 1;
 const validDigest = (value: string): boolean => CompositionRunStartDigestPattern.test(value);
-const RUN_START_UNSETTLED_LIST_MAX = 200;
+const RUN_START_PAGE_MAX = 200;
 
 export const validateRunStartPrepare = (input: CompositionRunStartPrepareInput) => {
   const valid =
@@ -243,15 +248,17 @@ export const validateRunStartSettle = (input: CompositionRunStartSettleInput) =>
         }),
       );
 
-export const validateRunStartUnsettledList = (input: CompositionRunStartUnsettledListInput) =>
+export const validateRunStartPage = (input: CompositionRunStartPageInput) =>
   Number.isSafeInteger(input.limit) &&
   input.limit >= 1 &&
-  input.limit <= RUN_START_UNSETTLED_LIST_MAX
+  input.limit <= RUN_START_PAGE_MAX &&
+  (input.after === undefined ||
+    (validTimestamp(input.after.updatedAtUnixMs) && hasTextWithin(input.after.runId, 512)))
     ? Effect.succeed(input)
     : Effect.fail(
         runStartDomainError(
           "run_start_input_invalid",
-          `Run Start 未收口列表 limit 必须是 1 到 ${RUN_START_UNSETTLED_LIST_MAX} 的安全整数。`,
+          `Run Start 分页 limit 必须是 1 到 ${RUN_START_PAGE_MAX} 的安全整数，游标必须完整有效。`,
         ),
       );
 
