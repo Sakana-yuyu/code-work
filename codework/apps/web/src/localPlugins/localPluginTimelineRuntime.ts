@@ -47,6 +47,7 @@ export function createLocalPluginTimelineRuntime(input: {
     input.failures.record({
       pluginId: "local-plugin-timeline",
       phase: "restore",
+      code: "timeline-storage-restore-failed",
       contributionKind: "timeline",
       error,
     });

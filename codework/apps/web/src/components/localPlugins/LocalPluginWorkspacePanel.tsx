@@ -41,6 +41,7 @@ export function LocalPluginWorkspacePanel(props: {
     runtime.failures.record({
       pluginId: props.surface.pluginId,
       phase: "render",
+      code: "contribution-render-failed",
       contributionKind: "workspacePanels",
       contributionId: props.surface.contributionId,
       error: resolution.error,

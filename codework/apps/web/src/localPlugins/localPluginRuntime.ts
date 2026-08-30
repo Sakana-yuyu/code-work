@@ -16,7 +16,37 @@ export interface LocalPluginRuntime {
   readonly lifecycle: LocalPluginLifecycle;
   readonly registry: LocalPluginRegistry;
   readonly restoreResult: LocalPluginLifecycleResult;
+  readonly lastSynchronizeResult: LocalPluginLifecycleResult | null;
+  readonly storageStatus: LocalPluginRuntimeStorageStatus;
   readonly dispose: () => void;
+}
+
+export interface LocalPluginRuntimeStorageStatusSnapshot {
+  readonly phase: "restore" | "synchronize";
+  readonly result: LocalPluginLifecycleResult;
+}
+
+export interface LocalPluginRuntimeStorageStatus {
+  readonly getSnapshot: () => LocalPluginRuntimeStorageStatusSnapshot;
+  readonly subscribe: (listener: () => void) => () => void;
+}
+
+class LocalPluginRuntimeStorageStatusStore implements LocalPluginRuntimeStorageStatus {
+  private readonly listeners = new Set<() => void>();
+
+  constructor(private snapshot: LocalPluginRuntimeStorageStatusSnapshot) {}
+
+  readonly getSnapshot = (): LocalPluginRuntimeStorageStatusSnapshot => this.snapshot;
+
+  readonly subscribe = (listener: () => void): (() => void) => {
+    this.listeners.add(listener);
+    return () => this.listeners.delete(listener);
+  };
+
+  update(snapshot: LocalPluginRuntimeStorageStatusSnapshot): void {
+    this.snapshot = snapshot;
+    for (const listener of this.listeners) listener();
+  }
 }
 
 class VolatileLocalPluginStorage implements LocalPluginStorage {
@@ -65,16 +95,26 @@ export function createLocalPluginRuntime(input?: {
   const storage = input?.storage ?? browserStorage();
   const writerId = input?.writerId ?? `local-plugin:${randomUUID()}`;
   const lifecycle = new LocalPluginLifecycle({ registry, failures, storage, now, writerId });
-  const unsubscribe = storage.subscribe?.(() => {
-    lifecycle.synchronize();
-  });
   const restoreResult = lifecycle.restore();
+  const storageStatus = new LocalPluginRuntimeStorageStatusStore({
+    phase: "restore",
+    result: restoreResult,
+  });
+  let lastSynchronizeResult: LocalPluginLifecycleResult | null = null;
+  const unsubscribe = storage.subscribe?.(() => {
+    lastSynchronizeResult = lifecycle.synchronize();
+    storageStatus.update({ phase: "synchronize", result: lastSynchronizeResult });
+  });
   let disposed = false;
   return {
     failures,
     lifecycle,
     registry,
     restoreResult,
+    get lastSynchronizeResult() {
+      return lastSynchronizeResult;
+    },
+    storageStatus,
     dispose: () => {
       if (disposed) return;
       disposed = true;

@@ -71,6 +71,11 @@ function createRuntime(): LocalPluginRuntime {
     lifecycle,
     registry,
     restoreResult: { ok: true },
+    lastSynchronizeResult: null,
+    storageStatus: {
+      getSnapshot: () => ({ phase: "restore", result: { ok: true } }),
+      subscribe: () => () => undefined,
+    },
     dispose: () => undefined,
   };
 }
@@ -108,6 +113,7 @@ describe("LocalPluginsSettings", () => {
     runtime.failures.record({
       pluginId: "acme.settings",
       phase: "invoke",
+      code: "contribution-invoke-failed",
       contributionKind: "commands",
       contributionId: "insert",
       error: new Error("执行失败"),
@@ -125,6 +131,7 @@ describe("LocalPluginsSettings", () => {
     runtime.failures.record({
       pluginId: "unknown-plugin",
       phase: "restore",
+      code: "storage-duplicate-id",
       error: new Error("duplicate plugin acme.settings"),
     });
     const failedRuntime: LocalPluginRuntime = {

@@ -31,6 +31,7 @@ export function installLocalPluginJson(
     const failure = runtime.failures.record({
       pluginId: "unknown-plugin",
       phase: "install",
+      code: "invalid-json",
       error,
     });
     return Promise.resolve({
@@ -119,6 +120,7 @@ export function LocalPluginsSettings({
       runtime.failures.record({
         pluginId: "unknown-plugin",
         phase: "install",
+        code: "manifest-read-failed",
         error,
       });
       setImportStatus(t("localPlugins.error.readFailed"));

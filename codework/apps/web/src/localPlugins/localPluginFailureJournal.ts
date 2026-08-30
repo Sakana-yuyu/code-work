@@ -8,10 +8,30 @@ export type LocalPluginFailurePhase =
   | "invoke"
   | "render";
 
+export type LocalPluginManagementFailureCode =
+  | "schema-invalid"
+  | "api-incompatible"
+  | "manifest-invalid"
+  | "plugin-not-found"
+  | "storage-invalid"
+  | "storage-duplicate-id"
+  | "storage-lock-unavailable"
+  | "storage-conflict"
+  | "storage-write-failed";
+
+export type LocalPluginFailureCode =
+  | LocalPluginManagementFailureCode
+  | "invalid-json"
+  | "manifest-read-failed"
+  | "contribution-invoke-failed"
+  | "contribution-render-failed"
+  | "timeline-storage-restore-failed";
+
 export interface LocalPluginFailure {
   readonly id: string;
   readonly pluginId: string;
   readonly phase: LocalPluginFailurePhase;
+  readonly code: LocalPluginFailureCode;
   readonly contributionKind?: string;
   readonly contributionId?: string;
   readonly message: string;
@@ -43,6 +63,7 @@ export class LocalPluginFailureJournal {
   record(input: {
     readonly pluginId: string;
     readonly phase: LocalPluginFailurePhase;
+    readonly code: LocalPluginFailureCode;
     readonly contributionKind?: string;
     readonly contributionId?: string;
     readonly error: unknown;
@@ -52,6 +73,7 @@ export class LocalPluginFailureJournal {
       id: this.options.makeId(this.sequence),
       pluginId: input.pluginId,
       phase: input.phase,
+      code: input.code,
       ...(input.contributionKind === undefined ? {} : { contributionKind: input.contributionKind }),
       ...(input.contributionId === undefined ? {} : { contributionId: input.contributionId }),
       message: input.error instanceof Error ? input.error.message : String(input.error),

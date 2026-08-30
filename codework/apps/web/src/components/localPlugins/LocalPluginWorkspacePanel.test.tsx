@@ -73,6 +73,11 @@ function createRuntime(): LocalPluginRuntime {
     lifecycle,
     registry,
     restoreResult: { ok: true },
+    lastSynchronizeResult: null,
+    storageStatus: {
+      getSnapshot: () => ({ phase: "restore", result: { ok: true } }),
+      subscribe: () => () => undefined,
+    },
     dispose: () => undefined,
   };
 }

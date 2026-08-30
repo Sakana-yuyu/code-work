@@ -13,11 +13,30 @@ describe("LocalPluginFailureJournal", () => {
     });
     journal.subscribe(listener);
 
-    journal.record({ pluginId: "one", phase: "invoke", error: new Error("first") });
-    journal.record({ pluginId: "two", phase: "invoke", error: new Error("second") });
-    journal.record({ pluginId: "one", phase: "render", error: new Error("third") });
+    journal.record({
+      pluginId: "one",
+      phase: "invoke",
+      code: "contribution-invoke-failed",
+      error: new Error("first"),
+    });
+    journal.record({
+      pluginId: "two",
+      phase: "invoke",
+      code: "contribution-invoke-failed",
+      error: new Error("second"),
+    });
+    journal.record({
+      pluginId: "one",
+      phase: "render",
+      code: "contribution-render-failed",
+      error: new Error("third"),
+    });
 
     expect(journal.getSnapshot().map((failure) => failure.message)).toEqual(["second", "third"]);
+    expect(journal.getSnapshot().map((failure) => failure.code)).toEqual([
+      "contribution-invoke-failed",
+      "contribution-render-failed",
+    ]);
     journal.clear("one");
     expect(journal.getSnapshot().map((failure) => failure.pluginId)).toEqual(["two"]);
     expect(listener).toHaveBeenCalledTimes(4);
@@ -42,7 +61,11 @@ describe("LocalPluginFailureJournal", () => {
 
     expect(result).toMatchObject({
       ok: false,
-      failure: { phase: "render", message: "render failed" },
+      failure: {
+        phase: "render",
+        code: "contribution-render-failed",
+        message: "render failed",
+      },
     });
   });
 });

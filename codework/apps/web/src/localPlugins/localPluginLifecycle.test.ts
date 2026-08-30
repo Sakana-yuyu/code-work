@@ -421,6 +421,7 @@ describe("LocalPluginLifecycle", () => {
     expect(runtime.failures.getSnapshot()[0]).toMatchObject({
       pluginId: "unknown-plugin",
       phase: "restore",
+      code: "storage-duplicate-id",
     });
   });
 
@@ -437,6 +438,7 @@ describe("LocalPluginLifecycle", () => {
     expect(runtime.failures.getSnapshot().at(-1)).toMatchObject({
       pluginId: "acme.new",
       phase: "install",
+      code: "storage-duplicate-id",
     });
   });
 

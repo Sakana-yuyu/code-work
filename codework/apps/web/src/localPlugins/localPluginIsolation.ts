@@ -12,6 +12,7 @@ export async function runIsolatedLocalPluginContribution<A>(input: {
   readonly phase?: "invoke" | "render";
   readonly run: () => A | Promise<A>;
 }): Promise<IsolatedLocalPluginResult<A>> {
+  const phase = input.phase ?? "invoke";
   try {
     return { ok: true, value: await input.run() };
   } catch (error) {
@@ -19,7 +20,8 @@ export async function runIsolatedLocalPluginContribution<A>(input: {
       ok: false,
       failure: input.failures.record({
         pluginId: input.pluginId,
-        phase: input.phase ?? "invoke",
+        phase,
+        code: phase === "render" ? "contribution-render-failed" : "contribution-invoke-failed",
         contributionKind: input.contributionKind,
         contributionId: input.contributionId,
         error,

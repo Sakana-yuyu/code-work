@@ -33,6 +33,7 @@ describe("LocalPluginTimelineRow", () => {
         id: "failure-1",
         pluginId: "acme.timeline",
         phase: "render",
+        code: "contribution-render-failed",
         contributionKind: "timeline",
         contributionId: "checks",
         message: "render failed",

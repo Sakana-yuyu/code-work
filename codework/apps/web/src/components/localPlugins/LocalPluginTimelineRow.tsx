@@ -22,6 +22,7 @@ export function recordLocalPluginTimelineRenderFailure(input: {
   input.failures.record({
     pluginId: input.entry.pluginId,
     phase: "render",
+    code: "contribution-render-failed",
     contributionKind: "timeline",
     contributionId: input.entry.contributionId,
     error: input.error,

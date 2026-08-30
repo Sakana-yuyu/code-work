@@ -3,6 +3,7 @@ import type { LocalPluginManifest } from "@codework/contracts";
 import type {
   LocalPluginFailureJournal,
   LocalPluginFailurePhase,
+  LocalPluginManagementFailureCode,
 } from "./localPluginFailureJournal";
 import { decodeAllowedLocalPluginManifest, LocalPluginPolicyError } from "./localPluginPolicy";
 import type { LocalPluginRegistry } from "./localPluginRegistry";
@@ -20,16 +21,7 @@ import {
   type LocalPluginStorageSnapshot,
 } from "./localPluginStorageSession";
 
-export type LocalPluginLifecycleErrorCode =
-  | "schema-invalid"
-  | "api-incompatible"
-  | "manifest-invalid"
-  | "plugin-not-found"
-  | "storage-invalid"
-  | "storage-duplicate-id"
-  | "storage-lock-unavailable"
-  | "storage-conflict"
-  | "storage-write-failed";
+export type LocalPluginLifecycleErrorCode = LocalPluginManagementFailureCode;
 
 export interface LocalPluginLifecycleError {
   readonly code: LocalPluginLifecycleErrorCode;
@@ -260,7 +252,7 @@ export class LocalPluginLifecycle {
     code: LocalPluginLifecycleErrorCode,
     error: unknown,
   ): LocalPluginLifecycleResult {
-    const failure = this.options.failures.record({ pluginId, phase, error });
+    const failure = this.options.failures.record({ pluginId, phase, code, error });
     return { ok: false, error: { code, message: failure.message } };
   }
 }
