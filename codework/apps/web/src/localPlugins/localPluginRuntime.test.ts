@@ -121,6 +121,27 @@ describe("createLocalPluginRuntime", () => {
     ]);
   });
 
+  it("隔离 storageStatus 订阅者异常并继续通知其他订阅者", async () => {
+    const storage = new ObservableMemoryStorage();
+    const runtime = createLocalPluginRuntime({ storage, now: () => 1, writerId: "writer-a" });
+    const throwingListener = vi.fn(() => {
+      throw new Error("listener failed");
+    });
+    const healthyListener = vi.fn();
+    runtime.storageStatus.subscribe(throwingListener);
+    runtime.storageStatus.subscribe(healthyListener);
+
+    const result = await runtime.lifecycle.install(storedPlugin("acme.observer").manifest);
+
+    expect(result).toEqual({ ok: true });
+    expect(throwingListener).toHaveBeenCalledTimes(1);
+    expect(healthyListener).toHaveBeenCalledTimes(1);
+    expect(storage.write).toHaveBeenCalledTimes(1);
+    expect(runtime.registry.getSnapshot().plugins.map((plugin) => plugin.manifest.id)).toEqual([
+      "acme.observer",
+    ]);
+  });
+
   it("有效外部文档修复冷启动失败后清除当前阻断状态", async () => {
     const duplicate = storedPlugin("acme.duplicate");
     const storage = new ObservableMemoryStorage(

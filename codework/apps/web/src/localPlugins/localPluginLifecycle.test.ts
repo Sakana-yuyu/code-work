@@ -3,7 +3,10 @@ import { describe, expect, it, vi } from "vite-plus/test";
 
 import { LocalPluginFailureJournal } from "./localPluginFailureJournal";
 import { runIsolatedLocalPluginContribution } from "./localPluginIsolation";
-import { LocalPluginLifecycle } from "./localPluginLifecycle";
+import {
+  LocalPluginLifecycle,
+  type LocalPluginLifecycleMutationResult,
+} from "./localPluginLifecycle";
 import { LocalPluginRegistry } from "./localPluginRegistry";
 import {
   decodeLocalPluginStorageDocument,
@@ -88,7 +91,11 @@ class CoordinatedMemoryStorage extends MemoryStorage {
   }
 }
 
-function createRuntime(storage = new MemoryStorage(), writerId = "writer-a") {
+function createRuntime(
+  storage = new MemoryStorage(),
+  writerId = "writer-a",
+  onMutationResult?: (input: LocalPluginLifecycleMutationResult) => void,
+) {
   const registry = new LocalPluginRegistry();
   const failures = new LocalPluginFailureJournal({
     now: () => 1_000,
@@ -100,6 +107,7 @@ function createRuntime(storage = new MemoryStorage(), writerId = "writer-a") {
     storage,
     now: () => 500,
     writerId,
+    ...(onMutationResult === undefined ? {} : { onMutationResult }),
   });
   return { failures, lifecycle, registry, storage };
 }
@@ -128,6 +136,23 @@ describe("LocalPluginLifecycle", () => {
     });
     expect(listener).toHaveBeenCalledTimes(1);
     expect(runtime.storage.value).toContain("acme.one");
+  });
+
+  it("mutation 观察者异常不反转已完成的持久化结果", async () => {
+    const onMutationResult = vi.fn(() => {
+      throw new Error("observer failed");
+    });
+    const runtime = createRuntime(new MemoryStorage(), "writer-a", onMutationResult);
+
+    const result = await runtime.lifecycle.install(manifest("acme.observer"));
+
+    expect(result).toEqual({ ok: true });
+    expect(onMutationResult).toHaveBeenCalledWith({ phase: "install", result: { ok: true } });
+    expect(runtime.registry.getSnapshot().plugins.map((plugin) => plugin.manifest.id)).toEqual([
+      "acme.observer",
+    ]);
+    expect(decodeLocalPluginStorageDocument(runtime.storage.value ?? "").plugins).toHaveLength(1);
+    expect(runtime.failures.getSnapshot()).toEqual([]);
   });
 
   it("拒绝权限不闭合的 manifest，且不污染注册表或持久化", async () => {

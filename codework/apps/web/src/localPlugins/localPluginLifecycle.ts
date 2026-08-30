@@ -227,7 +227,11 @@ export class LocalPluginLifecycle {
     phase: LocalPluginMutationPhase,
     result: LocalPluginLifecycleResult,
   ): LocalPluginLifecycleResult {
-    this.options.onMutationResult?.({ phase, result });
+    try {
+      this.options.onMutationResult?.({ phase, result });
+    } catch {
+      // 观察者不能反转已经完成的领域操作结果。
+    }
     return result;
   }
 

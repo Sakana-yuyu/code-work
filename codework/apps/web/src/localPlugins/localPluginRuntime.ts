@@ -46,7 +46,13 @@ class LocalPluginRuntimeStorageStatusStore implements LocalPluginRuntimeStorageS
 
   update(snapshot: LocalPluginRuntimeStorageStatusSnapshot): void {
     this.snapshot = snapshot;
-    for (const listener of this.listeners) listener();
+    for (const listener of this.listeners) {
+      try {
+        listener();
+      } catch {
+        // 单个界面订阅者不能阻断其他观察者或领域操作。
+      }
+    }
   }
 }
 
