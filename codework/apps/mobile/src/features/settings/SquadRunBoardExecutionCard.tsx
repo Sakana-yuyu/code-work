@@ -1,9 +1,14 @@
-import type { CompositionTaskEvent } from "@codework/contracts";
+import {
+  resolveCompositionSquadNodeActionContext,
+  type CompositionSquadRunBoardNode,
+} from "@codework/client-runtime/composition/squad-run-board";
+import type { CompositionSquad, CompositionTaskEvent } from "@codework/contracts";
 import { View } from "react-native";
 
 import { AppText as Text } from "../../components/AppText";
 import { t } from "../../i18n";
 import type { SquadRunBoardHistoryItem } from "./SettingsSquadExecutionHistoryRouteScreen.logic";
+import { SquadRunBoardFailedNodeActions } from "./SquadRunBoardFailedNodeActions";
 import { SquadRunBoardNodeCard } from "./SquadRunBoardNodeCard";
 
 const EXECUTION_CREATED_AT_FORMATTER = new Intl.DateTimeFormat(undefined, {
@@ -13,11 +18,19 @@ const EXECUTION_CREATED_AT_FORMATTER = new Intl.DateTimeFormat(undefined, {
 
 export interface SquadRunBoardExecutionCardProps {
   readonly item: SquadRunBoardHistoryItem;
+  readonly squad: CompositionSquad | null;
   readonly selectedTaskId: string | null;
+  readonly pendingActionTaskId: string | null;
+  readonly actionError: { readonly taskId: string; readonly message: string } | null;
   readonly events: ReadonlyArray<CompositionTaskEvent>;
   readonly eventsPending: boolean;
   readonly eventsError: string | null;
   readonly onToggleEvents: (taskId: string) => void;
+  readonly onRetry: (
+    node: CompositionSquadRunBoardNode,
+    capabilityIds: ReadonlyArray<string>,
+    reassignAgentId?: string,
+  ) => void;
 }
 
 /** 一个 Squad execution 的摘要和节点列表；命令编排由路由层负责。 */
@@ -83,6 +96,7 @@ export function SquadRunBoardExecutionCard(props: SquadRunBoardExecutionCardProp
       <View className="gap-2 border-t border-border-subtle pt-3">
         {item.nodes.map((node) => {
           const selected = props.selectedTaskId === node.taskId;
+          const actionContext = resolveCompositionSquadNodeActionContext(node, props.squad);
           return (
             <SquadRunBoardNodeCard
               key={node.taskId}
@@ -91,6 +105,17 @@ export function SquadRunBoardExecutionCard(props: SquadRunBoardExecutionCardProp
               events={selected ? props.events : []}
               eventsPending={selected && props.eventsPending}
               eventsError={selected ? props.eventsError : null}
+              actions={
+                <SquadRunBoardFailedNodeActions
+                  node={node}
+                  context={actionContext}
+                  disabled={props.pendingActionTaskId !== null}
+                  onRetry={props.onRetry}
+                />
+              }
+              actionError={
+                props.actionError?.taskId === node.taskId ? props.actionError.message : null
+              }
               onToggleEvents={() => props.onToggleEvents(node.taskId)}
             />
           );

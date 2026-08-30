@@ -1,5 +1,6 @@
 import type { CompositionSquadRunBoardNode } from "@codework/client-runtime/composition/squad-run-board";
 import type { CompositionTaskEvent } from "@codework/contracts";
+import type { ReactNode } from "react";
 import { Pressable, View } from "react-native";
 
 import { AppText as Text } from "../../components/AppText";
@@ -11,6 +12,8 @@ export interface SquadRunBoardNodeCardProps {
   readonly events: ReadonlyArray<CompositionTaskEvent>;
   readonly eventsPending: boolean;
   readonly eventsError: string | null;
+  readonly actions?: ReactNode;
+  readonly actionError?: string | null;
   readonly onToggleEvents: () => void;
 }
 
@@ -46,6 +49,10 @@ export function SquadRunBoardNodeCard(props: SquadRunBoardNodeCardProps) {
       )}
       {run?.failureCode === undefined ? null : (
         <Text className="font-mono text-xs text-danger-foreground">{run.failureCode}</Text>
+      )}
+      {props.actions}
+      {props.actionError === undefined || props.actionError === null ? null : (
+        <Text className="text-sm text-danger-foreground">{props.actionError}</Text>
       )}
       {run === undefined ? null : (
         <View className="items-start pt-1">

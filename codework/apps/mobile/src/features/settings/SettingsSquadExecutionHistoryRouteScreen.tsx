@@ -1,8 +1,12 @@
 import {
+  buildCompositionSquadRetryRequest,
+  executeCompositionSquadNodeCommandWithRefresh,
   projectCompositionSquadRunBoard,
   resolveCompositionSquadNodeEventTarget,
+  type CompositionSquadRunBoardNode,
 } from "@codework/client-runtime/composition/squad-run-board";
-import type { CompositionTaskEvent } from "@codework/contracts";
+import { squashAtomCommandFailure } from "@codework/client-runtime/state/runtime";
+import type { CompositionSquad, CompositionTaskEvent } from "@codework/contracts";
 import { useNavigation } from "@react-navigation/native";
 import { useMemo, useState } from "react";
 import { Platform, RefreshControl, ScrollView, View } from "react-native";
@@ -11,11 +15,13 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { AndroidScreenHeader } from "../../components/AndroidScreenHeader";
 import { AppText as Text } from "../../components/AppText";
 import { t } from "../../i18n";
+import { uuidv4 } from "../../lib/uuid";
 import { NativeStackScreenOptions } from "../../native/StackHeader";
 import { useEnvironments } from "../../state/environments";
 import { useProjects } from "../../state/entities";
 import { useEnvironmentQuery } from "../../state/query";
 import { serverEnvironment } from "../../state/server";
+import { useAtomCommand } from "../../state/use-atom-command";
 import {
   projectSquadRunBoardHistory,
   type SquadRunBoardHistoryItem,
@@ -50,7 +56,15 @@ export function SettingsSquadExecutionHistoryRouteScreen() {
           input: { includeArchived: true },
         }),
   );
+  const retryCompositionTask = useAtomCommand(serverEnvironment.retryCompositionTask, {
+    reportFailure: false,
+  });
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
+  const [pendingActionTaskId, setPendingActionTaskId] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<{
+    readonly taskId: string;
+    readonly message: string;
+  } | null>(null);
   const environmentProjects = useMemo(
     () => projects.filter((project) => project.environmentId === environmentId),
     [environmentId, projects],
@@ -105,6 +119,45 @@ export function SettingsSquadExecutionHistoryRouteScreen() {
     setSelectedTaskId((current) => (current === taskId ? null : taskId));
   };
 
+  const retryNode = async (
+    node: CompositionSquadRunBoardNode,
+    capabilityIds: ReadonlyArray<string>,
+    reassignAgentId?: string,
+  ): Promise<void> => {
+    if (environmentId === null || pendingActionTaskId !== null) return;
+    const reassigning = reassignAgentId !== undefined;
+    const request = buildCompositionSquadRetryRequest({
+      node,
+      capabilityIds,
+      nextRunId: `mobile-squad-${reassigning ? "reassign" : "retry"}-${uuidv4()}`,
+      reason: t(
+        reassigning
+          ? "squadExecutionHistory.reassignReasonDefault"
+          : "squadExecutionHistory.retryReasonDefault",
+      ),
+      ...(reassignAgentId === undefined ? {} : { reassignAgentId }),
+    });
+    if (request === null) return;
+    setPendingActionTaskId(node.taskId);
+    setActionError(null);
+    const result = await executeCompositionSquadNodeCommandWithRefresh(
+      () => retryCompositionTask({ environmentId, input: request }),
+      {
+        refreshExecutions: executionsQuery.refresh,
+        refreshTasks: tasksQuery.refresh,
+        refreshEvents: eventsQuery.refresh,
+      },
+    );
+    if (result._tag === "Failure") {
+      const error = squashAtomCommandFailure(result);
+      setActionError({
+        taskId: node.taskId,
+        message: error instanceof Error ? error.message : t("squadExecutionHistory.retryFailed"),
+      });
+    }
+    setPendingActionTaskId(null);
+  };
+
   return (
     <View collapsable={false} className="flex-1 bg-sheet">
       {Platform.OS === "android" ? (
@@ -139,11 +192,17 @@ export function SettingsSquadExecutionHistoryRouteScreen() {
           <SquadRunBoardHistory
             history={history}
             staleError={staleError}
+            squads={squadsQuery.data?.squads ?? []}
             selectedTaskId={selectedTaskId}
+            pendingActionTaskId={pendingActionTaskId}
+            actionError={actionError}
             events={eventsQuery.data?.events ?? []}
             eventsPending={eventsQuery.isPending}
             eventsError={eventsQuery.error}
             onToggleEvents={toggleEvents}
+            onRetry={(node, capabilityIds, reassignAgentId) =>
+              void retryNode(node, capabilityIds, reassignAgentId)
+            }
           />
         )}
       </ScrollView>
@@ -154,28 +213,43 @@ export function SettingsSquadExecutionHistoryRouteScreen() {
 function SquadRunBoardHistory(props: {
   readonly history: ReadonlyArray<SquadRunBoardHistoryItem>;
   readonly staleError: boolean;
+  readonly squads: ReadonlyArray<CompositionSquad>;
   readonly selectedTaskId: string | null;
+  readonly pendingActionTaskId: string | null;
+  readonly actionError: { readonly taskId: string; readonly message: string } | null;
   readonly events: ReadonlyArray<CompositionTaskEvent>;
   readonly eventsPending: boolean;
   readonly eventsError: string | null;
   readonly onToggleEvents: (taskId: string) => void;
+  readonly onRetry: (
+    node: CompositionSquadRunBoardNode,
+    capabilityIds: ReadonlyArray<string>,
+    reassignAgentId?: string,
+  ) => void;
 }) {
   return (
     <View className="gap-3">
       {props.staleError ? (
         <StatusMessage text={t("squadExecutionHistory.error")} tone="danger" />
       ) : null}
-      {props.history.map((item) => (
-        <SquadRunBoardExecutionCard
-          key={item.executionId}
-          item={item}
-          selectedTaskId={props.selectedTaskId}
-          events={props.events}
-          eventsPending={props.eventsPending}
-          eventsError={props.eventsError}
-          onToggleEvents={props.onToggleEvents}
-        />
-      ))}
+      {props.history.map((item) => {
+        const squad = props.squads.find((candidate) => candidate.squadId === item.squadId) ?? null;
+        return (
+          <SquadRunBoardExecutionCard
+            key={item.executionId}
+            item={item}
+            squad={squad}
+            selectedTaskId={props.selectedTaskId}
+            pendingActionTaskId={props.pendingActionTaskId}
+            actionError={props.actionError}
+            events={props.events}
+            eventsPending={props.eventsPending}
+            eventsError={props.eventsError}
+            onToggleEvents={props.onToggleEvents}
+            onRetry={props.onRetry}
+          />
+        );
+      })}
     </View>
   );
 }

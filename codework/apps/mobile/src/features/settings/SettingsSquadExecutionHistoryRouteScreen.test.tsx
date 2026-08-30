@@ -21,6 +21,9 @@ const mocks = vi.hoisted(() => {
     compositionSquadExecutions: vi.fn(),
     listCompositionTasks: vi.fn(),
     compositionSquads: vi.fn(),
+    retryCompositionTaskAtom: Symbol("retryCompositionTask"),
+    retryCommand: vi.fn(),
+    pressHandlers: new Map<string, () => void>(),
     executionsQuery: {
       data: null as CompositionSquadExecutionListResult | null,
       error: null as string | null,
@@ -50,7 +53,18 @@ vi.mock("@react-navigation/native", () => ({
 
 vi.mock("react-native", () => ({
   Platform: { OS: "ios" },
-  Pressable: ({ children }: { readonly children: ReactNode }) => <button>{children}</button>,
+  Pressable: ({
+    accessibilityLabel,
+    children,
+    onPress,
+  }: {
+    readonly accessibilityLabel: string;
+    readonly children: ReactNode;
+    readonly onPress: () => void;
+  }) => {
+    mocks.pressHandlers.set(accessibilityLabel, onPress);
+    return <button>{children}</button>;
+  },
   RefreshControl: ({
     refreshing,
     onRefresh,
@@ -124,6 +138,7 @@ vi.mock("../../state/query", () => ({
 
 vi.mock("../../state/server", () => ({
   serverEnvironment: {
+    retryCompositionTask: mocks.retryCompositionTaskAtom,
     compositionSquadExecutions: (...args: unknown[]) => {
       mocks.compositionSquadExecutions(...args);
       return mocks.executionsAtom;
@@ -138,6 +153,17 @@ vi.mock("../../state/server", () => ({
     },
     listCompositionTaskEvents: vi.fn(() => null),
   },
+}));
+
+vi.mock("../../state/use-atom-command", () => ({
+  useAtomCommand: (atom: unknown) => {
+    expect(atom).toBe(mocks.retryCompositionTaskAtom);
+    return mocks.retryCommand;
+  },
+}));
+
+vi.mock("../../lib/uuid", () => ({
+  uuidv4: () => "uuid-test",
 }));
 
 import { SettingsSquadExecutionHistoryRouteScreen } from "./SettingsSquadExecutionHistoryRouteScreen";
@@ -174,7 +200,32 @@ const execution: CompositionSquadExecution = {
 const squad = {
   squadId: "squad-build",
   name: "Build Squad",
-} as CompositionSquad;
+  leaderAgentId: "agent-worker",
+  memberAgentIds: ["agent-worker", "agent-backup"],
+  revision: 1,
+  collaborationMode: "leader_workers",
+  maxConcurrency: 2,
+  failurePolicy: "fail_fast",
+  partialSuccessPolicy: "reject",
+  members: [
+    {
+      agentId: "agent-worker",
+      role: "leader",
+      order: 0,
+      required: true,
+      capabilityIds: ["shell", "git"],
+      maxConcurrentTasks: 1,
+    },
+    {
+      agentId: "agent-backup",
+      role: "worker",
+      order: 1,
+      required: true,
+      capabilityIds: ["shell"],
+      maxConcurrentTasks: 1,
+    },
+  ],
+} satisfies CompositionSquad;
 
 const setProject = (): void => {
   mocks.projects = [
@@ -196,6 +247,9 @@ describe("SettingsSquadExecutionHistoryRouteScreen", () => {
     mocks.compositionSquadExecutions.mockReset();
     mocks.listCompositionTasks.mockReset();
     mocks.compositionSquads.mockReset();
+    mocks.retryCommand.mockReset();
+    mocks.retryCommand.mockResolvedValue({ _tag: "Success", value: {} });
+    mocks.pressHandlers.clear();
     for (const query of [mocks.executionsQuery, mocks.tasksQuery, mocks.squadsQuery]) {
       query.data = null;
       query.error = null;
@@ -285,5 +339,58 @@ describe("SettingsSquadExecutionHistoryRouteScreen", () => {
     expect(mocks.executionsQuery.refresh).toHaveBeenCalledTimes(1);
     expect(mocks.tasksQuery.refresh).toHaveBeenCalledTimes(1);
     expect(mocks.squadsQuery.refresh).toHaveBeenCalledTimes(1);
+  });
+
+  it("失败节点重试调用真实 retry RPC，并在成功后刷新读模型", async () => {
+    setProject();
+    mocks.executionsQuery.data = { executions: [execution] };
+    mocks.tasksQuery.data = {
+      tasks: [
+        {
+          task: {
+            taskId: "task-worker",
+            projectId: "project-1",
+            assigneeKind: "agent",
+            assigneeId: "agent-worker",
+            mode: "parallel",
+            status: "failed",
+            promptDigest: "prompt-digest",
+            dependsOnTaskIds: [],
+            createdAtUnixMs: 100,
+            updatedAtUnixMs: 200,
+            finishedAtUnixMs: 200,
+          },
+          latestRun: {
+            runId: "run-worker",
+            taskId: "task-worker",
+            agentId: "agent-worker",
+            runtimeId: "runtime-1",
+            status: "failed",
+            attempt: 1,
+            capabilityGrantIds: [],
+            finishedAtUnixMs: 200,
+            failureCode: "worker_failed",
+          },
+        },
+      ],
+    };
+    mocks.squadsQuery.data = { squads: [squad] };
+    renderToStaticMarkup(<SettingsSquadExecutionHistoryRouteScreen />);
+
+    mocks.pressHandlers.get("squadExecutionHistory.retryNode")?.();
+
+    await vi.waitFor(() => expect(mocks.retryCommand).toHaveBeenCalledTimes(1));
+    expect(mocks.retryCommand).toHaveBeenCalledWith({
+      environmentId: "env-test",
+      input: {
+        taskId: "task-worker",
+        previousRunId: "run-worker",
+        runId: "mobile-squad-retry-uuid-test",
+        reason: "squadExecutionHistory.retryReasonDefault",
+        capabilityIds: ["shell", "git"],
+      },
+    });
+    expect(mocks.executionsQuery.refresh).toHaveBeenCalledTimes(1);
+    expect(mocks.tasksQuery.refresh).toHaveBeenCalledTimes(1);
   });
 });

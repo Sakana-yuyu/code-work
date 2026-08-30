@@ -1,7 +1,15 @@
-import type { CompositionSquadExecution, CompositionTaskSnapshot } from "@codework/contracts";
-import { describe, expect, it } from "vite-plus/test";
+import type {
+  CompositionSquadExecution,
+  CompositionTaskSnapshot,
+  CompositionTaskStatus,
+} from "@codework/contracts";
+import { describe, expect, it, vi } from "vite-plus/test";
 
 import {
+  buildCompositionSquadRetryRequest,
+  executeCompositionSquadNodeCommandWithRefresh,
+  resolveCompositionSquadFailedNodeActions,
+  resolveCompositionSquadNodeActionContext,
   projectCompositionSquadRunBoard,
   resolveCompositionSquadNodeEventTarget,
 } from "./squadRunBoard.ts";
@@ -10,7 +18,7 @@ const makeSnapshot = (input: {
   readonly taskId: string;
   readonly runId: string;
   readonly agentId: string;
-  readonly status?: "running" | "completed";
+  readonly status?: CompositionTaskStatus;
 }): CompositionTaskSnapshot => ({
   task: {
     taskId: input.taskId,
@@ -120,5 +128,120 @@ describe("resolveCompositionSquadNodeEventTarget", () => {
         runId: "run-finalize",
       }),
     ).toBeNull();
+  });
+});
+
+describe("Squad failed node actions", () => {
+  it("仅为失败节点开放原成员重试和具备能力的其他成员重派", () => {
+    const failedNode = projectCompositionSquadRunBoard(
+      [execution],
+      [
+        makeSnapshot({
+          taskId: "task-worker",
+          runId: "run-worker",
+          agentId: "agent-worker",
+          status: "failed",
+        }),
+      ],
+    )[0]!.nodes[1]!;
+    const squad = {
+      members: [
+        {
+          agentId: "agent-worker",
+          capabilityIds: ["shell", "git"],
+          maxConcurrentTasks: 1,
+        },
+        {
+          agentId: "agent-backup",
+          capabilityIds: ["shell"],
+          maxConcurrentTasks: 1,
+        },
+        {
+          agentId: "agent-disabled",
+          capabilityIds: ["shell"],
+          maxConcurrentTasks: 0,
+        },
+      ],
+    };
+
+    const context = resolveCompositionSquadNodeActionContext(failedNode, squad);
+
+    expect(context).toEqual({
+      retryCapabilityIds: ["shell", "git"],
+      reassignTargets: [{ agentId: "agent-backup", capabilityIds: ["shell"] }],
+    });
+    expect(resolveCompositionSquadFailedNodeActions(failedNode, context)).toEqual([
+      "retry",
+      "reassign",
+    ]);
+    expect(
+      resolveCompositionSquadFailedNodeActions(
+        {
+          ...failedNode,
+          snapshot: makeSnapshot({ ...failedNode.snapshot!.latestRun!, status: "running" }),
+        },
+        context,
+      ),
+    ).toEqual([]);
+  });
+
+  it("构造去重 capability 的新 Run 重试或指定 Agent 重派请求", () => {
+    const failedNode = {
+      nodeId: "implement",
+      taskId: "task-worker",
+      runId: "run-worker",
+      snapshot: makeSnapshot({
+        taskId: "task-worker",
+        runId: "run-worker",
+        agentId: "agent-worker",
+        status: "failed",
+      }),
+    };
+
+    expect(
+      buildCompositionSquadRetryRequest({
+        node: failedNode,
+        capabilityIds: [" shell ", "git", "shell", ""],
+        nextRunId: " run-next ",
+        reason: " 重试失败节点 ",
+      }),
+    ).toEqual({
+      taskId: "task-worker",
+      previousRunId: "run-worker",
+      runId: "run-next",
+      reason: "重试失败节点",
+      capabilityIds: ["shell", "git"],
+    });
+    expect(
+      buildCompositionSquadRetryRequest({
+        node: failedNode,
+        capabilityIds: ["shell"],
+        nextRunId: "run-reassign",
+        reason: "重新分派",
+        reassignAgentId: "agent-backup",
+      }),
+    ).toMatchObject({ runId: "run-reassign", agentId: "agent-backup" });
+  });
+});
+
+describe("executeCompositionSquadNodeCommandWithRefresh", () => {
+  it.each([
+    ["Success", 1],
+    ["Failure", 0],
+  ] as const)("命令返回 %s 时刷新次数为 %s", async (_tag, refreshCount) => {
+    const refreshExecutions = vi.fn();
+    const refreshTasks = vi.fn();
+    const refreshEvents = vi.fn();
+
+    const result = await executeCompositionSquadNodeCommandWithRefresh(async () => ({ _tag }), {
+      refreshExecutions,
+      refreshTasks,
+      refreshEvents,
+    });
+
+    expect(result).toEqual({ _tag });
+    expect(refreshExecutions).toHaveBeenCalledTimes(refreshCount);
+    expect(refreshTasks).toHaveBeenCalledTimes(refreshCount);
+    expect(refreshEvents).toHaveBeenCalledTimes(refreshCount);
   });
 });
