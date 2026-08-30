@@ -4,6 +4,7 @@ import * as Effect from "effect/Effect";
 import type {
   CompositionRunStartIntent,
   CompositionRunStartExecutionStoreShape,
+  CompositionRunStartStoreError,
 } from "../persistence/Services/CompositionRunStartStore.ts";
 import {
   normalizeCompositionRunStartRejectedOutcome,
@@ -18,6 +19,11 @@ type StartFailure = {
   readonly detail: string;
 };
 
+type CompositionRunStartAcceptedProjection<A> = {
+  readonly accepted: CompositionRunStartIntent;
+  readonly result: A;
+};
+
 type CompositionRunStartDispatchInput<A, F extends StartFailure, EAccepted, ERejected> = {
   readonly store: CompositionRunStartExecutionStoreShape;
   readonly intent: CompositionRunStartIntent;
@@ -28,6 +34,11 @@ type CompositionRunStartDispatchInput<A, F extends StartFailure, EAccepted, ERej
     F
   >;
   readonly onAccepted: (receipt: CompositionRunStartReceipt) => Effect.Effect<A, EAccepted>;
+  /** 将 receipt 记录与业务投影置于同一持久化事务；未提供时沿用兼容路径。 */
+  readonly onAcceptedWithReceipt?: (
+    receipt: CompositionRunStartReceipt,
+    recordAccepted: Effect.Effect<CompositionRunStartIntent, CompositionRunStartStoreError>,
+  ) => Effect.Effect<CompositionRunStartAcceptedProjection<A>, EAccepted>;
   readonly onRejected: (failure: F) => Effect.Effect<A, ERejected>;
   readonly mapReceiptFailure: (failure: CompositionRunStartReceiptError) => F;
 };
@@ -73,7 +84,7 @@ export const dispatchCompositionRunStart = <A, F extends StartFailure, EAccepted
     }
 
     const acceptedAtUnixMs = yield* Clock.currentTimeMillis;
-    const accepted = yield* input.store.recordAccepted({
+    const recordAccepted = input.store.recordAccepted({
       runId: input.intent.runId,
       expectedRevision: input.intent.revision,
       claimId: input.intent.claimId ?? "",
@@ -82,12 +93,19 @@ export const dispatchCompositionRunStart = <A, F extends StartFailure, EAccepted
       acceptedAtUnixMs,
       ownerEpoch: input.intent.ownerEpoch,
     });
-    const projected = yield* input.onAccepted(receiptResult.success);
+    const atomicProjection = input.onAcceptedWithReceipt;
+    const acceptedProjection =
+      atomicProjection === undefined
+        ? {
+            accepted: yield* recordAccepted,
+            result: yield* input.onAccepted(receiptResult.success),
+          }
+        : yield* atomicProjection(receiptResult.success, recordAccepted);
     const settledAtUnixMs = yield* Clock.currentTimeMillis;
     yield* input.store.settleAccepted({
-      runId: accepted.runId,
-      expectedRevision: accepted.revision,
+      runId: acceptedProjection.accepted.runId,
+      expectedRevision: acceptedProjection.accepted.revision,
       settledAtUnixMs,
     });
-    return projected;
+    return acceptedProjection.result;
   });

@@ -3,6 +3,7 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 
+import { PersistenceSqlError } from "../persistence/Errors.ts";
 import { CompositionRunStartStoreLive } from "../persistence/Layers/CompositionRunStartStore.ts";
 import { CompositionTaskStoreLive } from "../persistence/Layers/CompositionTaskStore.ts";
 import { SqlitePersistenceMemory } from "../persistence/Layers/Sqlite.ts";
@@ -335,6 +336,66 @@ layer("Composition Run Start 统一入口", (it) => {
       );
       assert.equal(intent.state, "quarantined");
       assert.equal(intent.outcomeCode, "run_start_runtime_task_receipt_invalid");
+    }),
+  );
+
+  it.effect("running 投影失败时不得单独持久化 accepted receipt", () =>
+    Effect.gen(function* () {
+      const store = yield* CompositionTaskStore;
+      const runStartStore = yield* CompositionRunStartStore;
+      const driverRegistry = makeCompositionAgentDriverRegistry();
+      yield* driverRegistry.register({
+        agentId: "agent-entry-accepted-atomic",
+        runtimeId: "runtime-entry-accepted-atomic",
+        startRecoveryPolicy: recoveryPolicy,
+        startTask: () =>
+          Effect.succeed({ runtimeTaskId: "runtime-task-entry-accepted-atomic" }),
+        cancelTask: () => Effect.succeed({ status: "cancelled" as const }),
+      });
+      const failingStore = {
+        ...store,
+        appendEvent: (event: Parameters<typeof store.appendEvent>[0]) =>
+          event.status === "running"
+            ? Effect.fail(
+                new PersistenceSqlError({
+                  operation: "CompositionRunStartEntryPoints.test",
+                  detail: "模拟 running 投影失败，验证 receipt 与 Task/Run 的原子边界。",
+                }),
+              )
+            : store.appendEvent(event),
+      };
+      const orchestrator = makeCompositionOrchestrator(
+        failingStore,
+        driverRegistry,
+        undefined,
+        makeInputStore(),
+        runStartStore,
+      );
+
+      const result = yield* Effect.result(
+        orchestrator.dispatchTask({
+          taskId: "task-entry-accepted-atomic",
+          runId: "run-entry-accepted-atomic",
+          projectId: "project-entry-accepted-atomic",
+          assigneeKind: "agent",
+          assigneeId: "agent-entry-accepted-atomic",
+          mode: "serial",
+          promptDigest: "sha256:entry-accepted-atomic",
+          dependsOnTaskIds: [],
+          workspaceRoot: "C:/workspace/entry-accepted-atomic",
+          prompt: "验证 accepted receipt 与运行投影原子性",
+          capabilityIds: [],
+        }),
+      );
+
+      assert.equal(result._tag, "Failure");
+      assert.equal(Option.getOrThrow(yield* store.getTask("task-entry-accepted-atomic")).status, "queued");
+      assert.equal(Option.getOrThrow(yield* store.getRun("run-entry-accepted-atomic")).status, "queued");
+      const intent = Option.getOrThrow(
+        yield* runStartStore.getStart("run-entry-accepted-atomic"),
+      );
+      assert.equal(intent.state, "dispatching");
+      assert.equal(intent.runtimeTaskId, null);
     }),
   );
 

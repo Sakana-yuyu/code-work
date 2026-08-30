@@ -6,6 +6,7 @@ import * as Effect from "effect/Effect";
 import type {
   CompositionRunStartExecutionStoreShape,
   CompositionRunStartIntent,
+  CompositionRunStartStoreError,
 } from "../persistence/Services/CompositionRunStartStore.ts";
 import { dispatchCompositionRunStart } from "./CompositionClaimedRunStart.ts";
 import {
@@ -178,6 +179,13 @@ export const runCompositionWithPersistedStart = <
   readonly onAccepted: (
     startResult: CompositionRunStartDriverResult,
   ) => Effect.Effect<A, EAccepted>;
+  readonly onAcceptedWithReceipt?: (
+    startResult: CompositionRunStartDriverResult,
+    recordAccepted: Effect.Effect<CompositionRunStartIntent, CompositionRunStartStoreError>,
+  ) => Effect.Effect<
+    { readonly accepted: CompositionRunStartIntent; readonly result: A },
+    EAccepted
+  >;
   readonly onRejected: (failure: F) => Effect.Effect<A, ERejected>;
   readonly makeFailure: (failure: StartFailure) => F;
 }) =>
@@ -190,6 +198,7 @@ export const runCompositionWithPersistedStart = <
     }
 
     const store = input.store;
+    const onAcceptedWithReceipt = input.onAcceptedWithReceipt;
     return yield* Effect.uninterruptibleMask((restore) =>
       Effect.gen(function* () {
         let intent = input.intent;
@@ -260,6 +269,22 @@ export const runCompositionWithPersistedStart = <
                   ? {}
                   : { capabilityHandshakeId: receipt.capabilityHandshakeId }),
               }),
+            ...(onAcceptedWithReceipt === undefined
+              ? {}
+              : {
+                  onAcceptedWithReceipt: (receipt, recordAccepted) =>
+                    onAcceptedWithReceipt(
+                      {
+                        ...(receipt.runtimeTaskId === null
+                          ? {}
+                          : { runtimeTaskId: receipt.runtimeTaskId }),
+                        ...(receipt.capabilityHandshakeId === null
+                          ? {}
+                          : { capabilityHandshakeId: receipt.capabilityHandshakeId }),
+                      },
+                      recordAccepted,
+                    ),
+                }),
             onRejected: input.onRejected,
             mapReceiptFailure: (failure) =>
               input.makeFailure({ code: failure.code, detail: failure.detail }),

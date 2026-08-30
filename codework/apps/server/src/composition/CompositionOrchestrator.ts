@@ -473,15 +473,14 @@ const makeOrchestrator = (
    * Provider 可能在 startTask 返回前推送运行时事件。只有 Task/Run 仍处于本次
    * 启动前的原始状态时才写入 running，避免早到终态被后续启动确认复活。
    */
-  const persistStartedRun = (input: {
+  const persistStartedRunInTransaction = (input: {
     readonly task: CompositionTask;
     readonly run: CompositionTaskRun;
     readonly driver: CompositionAgentDriver;
     readonly startResult: CompositionRunStartDriverResult;
     readonly summary: string;
   }): Effect.Effect<CompositionDispatchResult, CompositionTaskStoreError> =>
-    store.withTransaction(
-      Effect.gen(function* () {
+    Effect.gen(function* () {
         const currentTaskOption = yield* store.getTask(input.task.taskId);
         const currentRunOption = yield* store.getRun(input.run.runId);
         if (Option.isNone(currentTaskOption) || Option.isNone(currentRunOption)) {
@@ -546,8 +545,10 @@ const makeOrchestrator = (
           }),
         );
         return { task: runningTask, run: runningRun };
-      }),
-    );
+    });
+
+  const persistStartedRun = (input: Parameters<typeof persistStartedRunInTransaction>[0]) =>
+    store.withTransaction(persistStartedRunInTransaction(input));
 
   const persistFailedStart = (input: {
     readonly task: CompositionTask;
@@ -711,6 +712,23 @@ const makeOrchestrator = (
         startResult,
         summary: input.startedSummary,
       });
+    const persistAcceptedWithReceipt = (
+      startResult: CompositionRunStartDriverResult,
+      recordAccepted: Effect.Effect<CompositionRunStartIntent, CompositionRunStartStoreError>,
+    ) =>
+      store.withTransaction(
+        Effect.gen(function* () {
+          const accepted = yield* recordAccepted;
+          const result = yield* persistStartedRunInTransaction({
+            task: input.task,
+            run: input.run,
+            driver: input.driver,
+            startResult,
+            summary: input.startedSummary,
+          });
+          return { accepted, result };
+        }),
+      );
     return runCompositionWithPersistedStart({
       ...(runStartStore === undefined ? {} : { store: runStartStore }),
       setup: makeRunStartSetup(input),
@@ -721,6 +739,7 @@ const makeOrchestrator = (
       capabilityGrantIds: input.run.capabilityGrantIds ?? [],
       start: input.start,
       onAccepted: persistAccepted,
+      onAcceptedWithReceipt: persistAcceptedWithReceipt,
       onRejected: persistRejected,
       makeFailure: (failure) => new CompositionAgentDriverFailure(failure),
     });
