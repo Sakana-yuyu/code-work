@@ -382,14 +382,17 @@ function AboutVersionSection() {
       ? !canCheckForUpdate(updateState)
       : isDesktopUpdateButtonDisabled(updateState);
 
-  const actionLabel: Record<string, string> = { download: "Download", install: "Install" };
-  const statusLabel: Record<string, string> = {
-    checking: "Checking…",
-    downloading: "Downloading…",
-    "up-to-date": "Up to Date",
+  const actionLabel: Record<string, string> = {
+    download: t("desktopUpdateDownloadAction"),
+    install: t("desktopUpdateInstallAction"),
   };
-  const buttonLabel =
-    actionLabel[action] ?? statusLabel[updateState?.status ?? ""] ?? "Check for Updates";
+  const statusLabel: Record<string, string> = {
+    checking: t("desktopUpdateCheckingAction"),
+    downloading: t("desktopUpdateDownloadingAction"),
+    "up-to-date": t("upToDate"),
+  };
+  const buttonLabel: string =
+    actionLabel[action] ?? statusLabel[updateState?.status ?? ""] ?? t("desktopUpdateCheckAction");
   const description =
     action === "download" || action === "install"
       ? t("interface.update-available")
