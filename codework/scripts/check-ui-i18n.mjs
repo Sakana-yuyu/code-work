@@ -221,7 +221,36 @@ function isModuleLevel(ts, node, source) {
   return true;
 }
 
-function expressionStrings(ts, node, output) {
+function isStringRecordLiteral(ts, node) {
+  const parent = node.parent;
+  const typeNode =
+    ts.isVariableDeclaration(parent) || ts.isPropertyDeclaration(parent)
+      ? parent.type
+      : ts.isSatisfiesExpression(parent) || ts.isAsExpression(parent)
+        ? parent.type
+        : undefined;
+  return Boolean(
+    typeNode &&
+    ts.isTypeReferenceNode(typeNode) &&
+    ts.isIdentifier(typeNode.typeName) &&
+    typeNode.typeName.text === "Record" &&
+    typeNode.typeArguments?.length === 2 &&
+    typeNode.typeArguments.every((argument) => argument.kind === ts.SyntaxKind.StringKeyword),
+  );
+}
+
+function isExplicitStringValue(ts, node) {
+  const parent = node.parent;
+  const typeNode =
+    ts.isVariableDeclaration(parent) || ts.isPropertyDeclaration(parent)
+      ? parent.type
+      : ts.isSatisfiesExpression(parent) || ts.isAsExpression(parent)
+        ? parent.type
+        : undefined;
+  return typeNode?.kind === ts.SyntaxKind.StringKeyword;
+}
+
+export function expressionStrings(ts, node, output, allowNullishFallback = false) {
   if (isInsideTranslation(ts, node)) return;
   if (ts.isStringLiteral(node) || ts.isNoSubstitutionTemplateLiteral(node)) {
     output.push({ node, text: node.text });
@@ -244,12 +273,36 @@ function expressionStrings(ts, node, output) {
     ts.isNonNullExpression(node) ||
     ts.isSatisfiesExpression(node)
   ) {
-    expressionStrings(ts, node.expression, output);
+    expressionStrings(ts, node.expression, output, allowNullishFallback);
     return;
   }
   if (ts.isConditionalExpression(node)) {
-    expressionStrings(ts, node.whenTrue, output);
-    expressionStrings(ts, node.whenFalse, output);
+    expressionStrings(ts, node.whenTrue, output, allowNullishFallback);
+    expressionStrings(ts, node.whenFalse, output, allowNullishFallback);
+    return;
+  }
+  if (ts.isObjectLiteralExpression(node) && isStringRecordLiteral(ts, node)) {
+    for (const property of node.properties) {
+      if (ts.isPropertyAssignment(property)) {
+        if (
+          !ts.isObjectLiteralExpression(property.initializer) &&
+          !ts.isArrayLiteralExpression(property.initializer)
+        ) {
+          expressionStrings(ts, property.initializer, output, true);
+        }
+      } else if (ts.isSpreadAssignment(property)) {
+        expressionStrings(ts, property.expression, output, true);
+      }
+    }
+    return;
+  }
+  if (
+    ts.isBinaryExpression(node) &&
+    node.operatorToken.kind === ts.SyntaxKind.QuestionQuestionToken &&
+    (allowNullishFallback || isExplicitStringValue(ts, node))
+  ) {
+    expressionStrings(ts, node.left, output, true);
+    expressionStrings(ts, node.right, output, true);
   }
 }
 

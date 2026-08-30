@@ -686,6 +686,11 @@ export const zhCN: Record<string, string> = {
   "Could not install update": "无法安装更新",
   "Could not check for updates": "无法检查更新",
   "Could not start update download": "无法开始下载更新",
+  "Check for updates": "检查更新",
+  "Checking…": "检查中…",
+  Download: "下载",
+  "Downloading…": "下载中…",
+  Install: "安装",
 
   // ── 确认对话框 / 线程操作 ───────────────────────────────────
   Confirm: "确认",
