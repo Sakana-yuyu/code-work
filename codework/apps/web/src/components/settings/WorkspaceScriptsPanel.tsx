@@ -32,6 +32,7 @@ import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
 import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from "../ui/select";
 import { SettingsSection } from "./settingsLayout";
+import { createWorkspaceScriptStopRequest } from "./workspaceScriptStopRequest";
 
 const EMPTY_RUNS: ReadonlyArray<WorkspaceScriptRun> = [];
 
@@ -191,11 +192,7 @@ export function WorkspaceScriptsPanel() {
     await settle(action, () =>
       stopWorkspaceScript({
         environmentId,
-        input: {
-          workspaceScriptRunId: run.workspaceScriptRunId,
-          operationId: `workspace-script-stop-${randomUUID()}`,
-          expectedRevision: run.revision,
-        },
+        input: createWorkspaceScriptStopRequest(run),
       }),
     );
   };
