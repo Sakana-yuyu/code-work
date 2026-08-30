@@ -446,6 +446,28 @@ export const make = Effect.gen(function* () {
           Effect.catch(() => Effect.void),
         );
 
+  /** 入队前拒绝也创建唯一台账身份，避免固定错误快照互相覆盖。 */
+  const rejectBeforeEnqueue = (
+    input: ByokDelegationSubmitRequest,
+    errorCode: string,
+    errorMessage: string,
+  ) =>
+    Effect.gen(function* () {
+      const uniqueKey = NodeCrypto.randomUUID();
+      const delegationId = `delegation-rejected-${uniqueKey}`;
+      const scope = makeByokDelegationProjectionScope({
+        instanceId: input.instanceId,
+        delegationId,
+        uniqueKey,
+        taskText: input.task,
+      });
+      yield* projectTransition(scope, { status: "failed", errorCode });
+      return {
+        ...failedSnapshot(input, errorCode, errorMessage),
+        id: delegationId,
+      } satisfies ByokDelegationSnapshot;
+    });
+
   /** Submit to the scheduler, projecting each observed transition in order. */
   const runDelegationToTerminal = (
     input: ByokDelegationSubmitRequest,
@@ -507,14 +529,14 @@ export const make = Effect.gen(function* () {
       const settings = yield* serverSettings.getSettings;
       const config = configOf(settings, input.instanceId);
       if (!config.enabled) {
-        return failedSnapshot(
+        return yield* rejectBeforeEnqueue(
           input,
           "DELEGATION_DISABLED",
           "Delegation is disabled for this BYOK instance.",
         );
       }
       if (config.executorCommand.trim().length === 0) {
-        return failedSnapshot(
+        return yield* rejectBeforeEnqueue(
           input,
           "DELEGATION_NOT_CONFIGURED",
           "No delegation executor command is configured.",
@@ -522,7 +544,11 @@ export const make = Effect.gen(function* () {
       }
       const outcome = yield* Effect.result(runDelegationToTerminal(input, config));
       if (outcome._tag === "Failure") {
-        return failedSnapshot(input, "DELEGATION_SUBMIT_FAILED", outcome.failure.message);
+        return yield* rejectBeforeEnqueue(
+          input,
+          "DELEGATION_SUBMIT_FAILED",
+          outcome.failure.message,
+        );
       }
       return toSnapshot(outcome.success);
     }).pipe(
