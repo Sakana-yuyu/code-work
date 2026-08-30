@@ -385,6 +385,51 @@ describe("WorkspaceScriptService", () => {
     }),
   );
 
+  it.effect("starting Run 可直接停止且生成合法的 startedAt 时间", () =>
+    Effect.gen(function* () {
+      const { service, store, kills } = yield* makeFixture();
+      const starting: WorkspaceScriptRun = {
+        workspaceScriptRunId: "workspace-script-run:operation-stop-starting",
+        idempotencyKey: "workspace-script:project-1:thread-1:serve:operation-stop-starting",
+        projectId: "project-1",
+        threadId: "thread-1",
+        scriptId: "serve",
+        scriptName: "启动开发服务",
+        terminalId: "workspace-script-operation-stop-starting",
+        cwd: "E:/workspace/project-1",
+        worktreePath: null,
+        status: "starting",
+        healthStatus: "unknown",
+        healthCheckedAtUnixMs: null,
+        healthDetail: null,
+        ports: [],
+        revision: 1,
+        requestedAtUnixMs: 1_000,
+        startedAtUnixMs: null,
+        finishedAtUnixMs: null,
+        exitCode: null,
+        exitSignal: null,
+        errorCode: null,
+        errorDetail: null,
+        compositionTaskId: null,
+        compositionRunId: null,
+        updatedAtUnixMs: 1_000,
+      };
+      yield* store.claimStart(starting);
+
+      const stopped = yield* service.stop({
+        workspaceScriptRunId: starting.workspaceScriptRunId,
+        operationId: "stop-operation-starting",
+        expectedRevision: starting.revision,
+      });
+
+      assert.deepEqual(kills, [{ threadId: starting.threadId, terminalId: starting.terminalId }]);
+      assert.equal(stopped.status, "stopped");
+      assert.isNotNull(stopped.startedAtUnixMs);
+      assert.isAtLeast(stopped.startedAtUnixMs!, starting.requestedAtUnixMs);
+    }),
+  );
+
   it.effect("kill 成功但终端不发 exited 时仍在返回前收口 stopped", () =>
     Effect.gen(function* () {
       const { service, silentKills } = yield* makeFixture();
