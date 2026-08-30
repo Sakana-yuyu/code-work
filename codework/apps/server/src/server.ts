@@ -32,6 +32,7 @@ import { CompositionTaskStoreLive } from "./persistence/Layers/CompositionTaskSt
 import { CompositionTaskInputStoreLive } from "./persistence/Layers/CompositionTaskInputStore.ts";
 import { CompositionSquadExecutionStoreLive } from "./persistence/Layers/CompositionSquadExecutionStore.ts";
 import { CompositionAutomationStoreLive } from "./persistence/Layers/CompositionAutomationStore.ts";
+import { CompositionToolInvocationStoreLive } from "./persistence/Layers/CompositionToolInvocationStore.ts";
 import { WorkspaceScriptStoreLive } from "./persistence/Layers/WorkspaceScriptStore.ts";
 import * as ServerLifecycleEvents from "./serverLifecycleEvents.ts";
 import * as AnalyticsService from "./telemetry/AnalyticsService.ts";
@@ -61,6 +62,8 @@ import * as CompositionCapabilityRegistry from "./composition/CapabilityRegistry
 import * as CompositionCapabilityGrantRegistry from "./composition/CapabilityGrantRegistry.ts";
 import * as CompositionCapabilityPolicy from "./composition/CapabilityPolicy.ts";
 import * as CompositionToolBroker from "./composition/ToolBroker.ts";
+import * as CompositionToolInvocationCoordinator from "./composition/CompositionToolInvocationCoordinator.ts";
+import * as CompositionToolInvocationStartupRecovery from "./composition/CompositionToolInvocationStartupRecovery.ts";
 import * as CompositionIdeSessionRegistry from "./composition/CompositionIdeSessionRegistry.ts";
 import * as CompositionIdeAgentDriverProjection from "./composition/CompositionIdeAgentDriverProjection.ts";
 import * as CompositionMcpToolRegistry from "./composition/CompositionMcpToolRegistry.ts";
@@ -416,7 +419,21 @@ const CompositionCapabilityPolicyLayerLive = CompositionCapabilityPolicy.layer.p
 
 const CompositionIdeSessionRegistryLayerLive = CompositionIdeSessionRegistry.layer;
 
-const CompositionToolBrokerLayerLive = CompositionToolBroker.layer.pipe(
+const CompositionToolInvocationStoreLayerLive = CompositionToolInvocationStoreLive.pipe(
+  Layer.provideMerge(PersistenceLayerLive),
+);
+const CompositionToolInvocationStartupRecoveryLayerLive =
+  CompositionToolInvocationStartupRecovery.CompositionToolInvocationStartupRecovery.layer.pipe(
+    Layer.provide(CompositionToolInvocationStoreLayerLive),
+  );
+const CompositionToolInvocationCoordinatorLayerLive =
+  CompositionToolInvocationCoordinator.CompositionToolInvocationCoordinator.layer.pipe(
+    Layer.provide(CompositionToolInvocationStoreLayerLive),
+  );
+
+const CompositionToolBrokerLayerLive = CompositionToolBroker.persistentLayer.pipe(
+  Layer.provideMerge(CompositionToolInvocationStartupRecoveryLayerLive),
+  Layer.provideMerge(CompositionToolInvocationCoordinatorLayerLive),
   Layer.provideMerge(CompositionIdeSessionRegistryLayerLive),
   Layer.provideMerge(CompositionMcpToolRegistryLayerLive),
   Layer.provideMerge(CompositionCapabilityPolicyLayerLive),

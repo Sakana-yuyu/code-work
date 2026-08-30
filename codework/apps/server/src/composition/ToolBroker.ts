@@ -39,6 +39,12 @@ import * as TerminalManager from "../terminal/Manager.ts";
 import { compositionToolCapabilityId } from "./CompositionToolRegistry.ts";
 import * as CompositionIdeSessionRegistry from "./CompositionIdeSessionRegistry.ts";
 import * as CompositionMcpToolRegistry from "./CompositionMcpToolRegistry.ts";
+import * as CompositionToolInvocationCoordinator from "./CompositionToolInvocationCoordinator.ts";
+import * as CompositionToolInvocationStartupRecovery from "./CompositionToolInvocationStartupRecovery.ts";
+import type {
+  CompositionToolInvocation,
+  CompositionToolInvocationClaimResult,
+} from "../persistence/Services/CompositionToolInvocationStore.ts";
 
 const WorkspaceReadArguments = Schema.Struct({
   cwd: Schema.String,
@@ -187,7 +193,18 @@ type ToolHandler = {
   readonly execute: (input: ToolBrokerInput) => Effect.Effect<unknown, Error, never>;
 };
 
+type ToolInvocationPersistence = {
+  readonly coordinator: CompositionToolInvocationCoordinator.CompositionToolInvocationCoordinatorShape;
+  readonly recovery: CompositionToolInvocationStartupRecovery.CompositionToolInvocationStartupRecoveryShape;
+};
+
+class ToolInvocationPersistenceContext extends Context.Service<
+  ToolInvocationPersistenceContext,
+  ToolInvocationPersistence
+>()("codework/composition/ToolBroker/ToolInvocationPersistenceContext") {}
+
 const make = Effect.gen(function* () {
+  const invocationPersistence = yield* Effect.serviceOption(ToolInvocationPersistenceContext);
   const policy = yield* CapabilityPolicy.CapabilityPolicy;
   const registry = yield* CapabilityRegistry.CapabilityRegistry;
   const grantRegistry = yield* Effect.serviceOption(
@@ -638,6 +655,53 @@ const make = Effect.gen(function* () {
     startedAtUnixMs,
   });
 
+  const persistedInvocationResult = (
+    input: ToolBrokerInput,
+    invocation: CompositionToolInvocation,
+    observedAtUnixMs: number,
+  ): ToolBrokerResult => {
+    const base = resultBase(input, invocation.createdAtUnixMs);
+    const finishedAtUnixMs = invocation.finishedAtUnixMs ?? observedAtUnixMs;
+    switch (invocation.status) {
+      case "prepared":
+      case "executing":
+        return {
+          ...base,
+          status: "failed",
+          errorCode: "tool_invocation_in_progress",
+          finishedAtUnixMs,
+        };
+      case "succeeded":
+        return {
+          ...base,
+          status: "denied",
+          errorCode: "tool_invocation_succeeded_result_unavailable",
+          finishedAtUnixMs,
+        };
+      case "failed":
+        return {
+          ...base,
+          status: "failed",
+          errorCode: invocation.outcomeCode ?? "tool_execution_failed",
+          finishedAtUnixMs,
+        };
+      case "cancelled":
+        return {
+          ...base,
+          status: "cancelled",
+          errorCode: "tool_cancelled",
+          finishedAtUnixMs,
+        };
+      case "unknown":
+        return {
+          ...base,
+          status: "failed",
+          errorCode: "tool_invocation_outcome_unknown",
+          finishedAtUnixMs,
+        };
+    }
+  };
+
   const invokeInternal = Effect.fn("ToolBroker.invokeInternal")(function* (input: ToolBrokerInput) {
     const startedAtUnixMs = yield* Clock.currentTimeMillis;
     const base = resultBase(input, startedAtUnixMs);
@@ -650,7 +714,7 @@ const make = Effect.gen(function* () {
         finishedAtUnixMs: yield* Clock.currentTimeMillis,
       };
     }
-    if (completed.has(input.idempotencyKey)) {
+    if (Option.isNone(invocationPersistence) && completed.has(input.idempotencyKey)) {
       return {
         ...base,
         status: "denied" as const,
@@ -735,10 +799,58 @@ const make = Effect.gen(function* () {
       };
     }
 
-    return yield* resolvedHandler.execute(input).pipe(
+    let invocationClaim: CompositionToolInvocationClaimResult | undefined;
+    if (Option.isSome(invocationPersistence)) {
+      const recovery = yield* Effect.result(invocationPersistence.value.recovery.awaitRecovered);
+      if (recovery._tag === "Failure") {
+        return {
+          ...base,
+          status: "failed" as const,
+          errorCode: "tool_invocation_store_unavailable",
+          finishedAtUnixMs: yield* Clock.currentTimeMillis,
+        };
+      }
+      const claim = yield* Effect.result(
+        invocationPersistence.value.coordinator.begin({
+          idempotencyKey: input.idempotencyKey,
+          taskId: input.taskId,
+          runId: input.runId,
+          agentId: input.agentId,
+          toolCallId: input.toolCallId,
+          canonicalToolName: input.canonicalToolName,
+          operation: resolvedHandler.operation,
+          arguments: input.arguments,
+          workspaceRoot: input.workspaceRoot,
+          capabilityGrantIds: input.capabilityGrantIds,
+          ...(input.runtimeId === undefined ? {} : { runtimeId: input.runtimeId }),
+          ...(input.threadId === undefined ? {} : { threadId: input.threadId }),
+          ...(input.providerInstanceId === undefined
+            ? {}
+            : { providerInstanceId: input.providerInstanceId }),
+          startedAtUnixMs,
+        }),
+      );
+      if (claim._tag === "Failure") {
+        return {
+          ...base,
+          status: "failed" as const,
+          errorCode: claim.failure.code,
+          finishedAtUnixMs: yield* Clock.currentTimeMillis,
+        };
+      }
+      if (!claim.success.claimed) {
+        return persistedInvocationResult(
+          input,
+          claim.success.invocation,
+          yield* Clock.currentTimeMillis,
+        );
+      }
+      invocationClaim = claim.success;
+    }
+
+    const handlerResult = yield* resolvedHandler.execute(input).pipe(
       Effect.flatMap((value) =>
         Effect.map(Clock.currentTimeMillis, (finishedAtUnixMs) => {
-          completed.add(input.idempotencyKey);
           return {
             ...base,
             status: "succeeded" as const,
@@ -766,6 +878,38 @@ const make = Effect.gen(function* () {
         })),
       ),
     );
+    if (Option.isNone(invocationPersistence) || invocationClaim === undefined) {
+      if (handlerResult.status === "succeeded") completed.add(input.idempotencyKey);
+      return handlerResult;
+    }
+
+    const finishedAtUnixMs = Math.max(
+      handlerResult.finishedAtUnixMs ?? invocationClaim.invocation.updatedAtUnixMs,
+      invocationClaim.invocation.updatedAtUnixMs,
+    );
+    const persisted = yield* Effect.result(
+      invocationPersistence.value.coordinator.finish({
+        idempotencyKey: input.idempotencyKey,
+        expectedRevision: invocationClaim.invocation.revision,
+        status: handlerResult.status,
+        outcomeCode:
+          handlerResult.status === "succeeded"
+            ? null
+            : "errorCode" in handlerResult
+              ? (handlerResult.errorCode ?? "tool_execution_failed")
+              : "tool_execution_failed",
+        finishedAtUnixMs,
+      }),
+    );
+    if (persisted._tag === "Failure") {
+      return {
+        ...base,
+        status: "failed" as const,
+        errorCode: "tool_invocation_outcome_unknown",
+        finishedAtUnixMs,
+      };
+    }
+    return { ...handlerResult, finishedAtUnixMs };
   });
 
   const invoke: ToolBroker["Service"]["invoke"] = (input) =>
@@ -823,3 +967,19 @@ const make = Effect.gen(function* () {
 });
 
 export const layer = Layer.effect(ToolBroker, make);
+
+export const persistentLayer = Layer.effect(
+  ToolBroker,
+  Effect.gen(function* () {
+    const recovery =
+      yield* CompositionToolInvocationStartupRecovery.CompositionToolInvocationStartupRecovery;
+    const coordinator =
+      yield* CompositionToolInvocationCoordinator.CompositionToolInvocationCoordinator;
+    return yield* make.pipe(
+      Effect.provideService(
+        ToolInvocationPersistenceContext,
+        ToolInvocationPersistenceContext.of({ coordinator, recovery }),
+      ),
+    );
+  }),
+);
