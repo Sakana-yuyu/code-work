@@ -7,6 +7,7 @@ import {
   TerminalClearInput,
   TerminalCloseInput,
   TerminalEvent,
+  TerminalError,
   TerminalOpenInput,
   TerminalResizeInput,
   TerminalSessionSnapshot,
@@ -206,6 +207,34 @@ describe("TerminalCloseInput", () => {
         deleteHistory: true,
       }),
     ).toBe(true);
+  });
+});
+
+describe("TerminalError", () => {
+  it("accepts structured terminal process termination failures", () => {
+    expect(
+      decodes(TerminalError, {
+        _tag: "TerminalProcessTerminationError",
+        threadId: "thread-1",
+        terminalId: DEFAULT_TERMINAL_ID,
+        terminalPid: 4242,
+        reason: "force-exit-timeout",
+        signal: "SIGKILL",
+      }),
+    ).toBe(true);
+  });
+
+  it("rejects unknown terminal process termination reasons", () => {
+    expect(
+      decodes(TerminalError, {
+        _tag: "TerminalProcessTerminationError",
+        threadId: "thread-1",
+        terminalId: DEFAULT_TERMINAL_ID,
+        terminalPid: 4242,
+        reason: "unknown",
+        signal: "SIGKILL",
+      }),
+    ).toBe(false);
   });
 });
 

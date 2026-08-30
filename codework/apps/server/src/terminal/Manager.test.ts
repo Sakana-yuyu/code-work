@@ -11,6 +11,7 @@ import {
 } from "@codework/contracts";
 import { HostProcessPlatform } from "@codework/shared/hostProcess";
 import * as Data from "effect/Data";
+import * as Deferred from "effect/Deferred";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Encoding from "effect/Encoding";
@@ -42,6 +43,9 @@ class FakePtyProcess implements PtyAdapter.PtyProcess {
   readonly resizeCalls: Array<{ cols: number; rows: number }> = [];
   readonly killSignals: Array<string | undefined> = [];
   readonly pid: number;
+  readonly killFailures = new Map<string | undefined, unknown>();
+  exitOnKillSignals = new Set<string | undefined>([undefined, "SIGTERM", "SIGKILL"]);
+  onKill: ((signal: string | undefined) => void) | null = null;
   writeFailure: unknown | undefined;
   resizeFailure: unknown | undefined;
   private readonly dataListeners = new Set<(data: string) => void>();
@@ -69,6 +73,17 @@ class FakePtyProcess implements PtyAdapter.PtyProcess {
   kill(signal?: string): void {
     this.killed = true;
     this.killSignals.push(signal);
+    this.onKill?.(signal);
+    const failure = this.killFailures.get(signal);
+    if (failure !== undefined) {
+      throw failure;
+    }
+    if (this.exitOnKillSignals.has(signal)) {
+      this.emitExit({
+        exitCode: signal === "SIGKILL" ? 137 : 0,
+        signal: signal === "SIGKILL" ? 9 : signal === "SIGTERM" ? 15 : null,
+      });
+    }
   }
 
   onData(callback: (data: string) => void): () => void {
@@ -95,6 +110,14 @@ class FakePtyProcess implements PtyAdapter.PtyProcess {
     for (const listener of this.exitListeners) {
       listener(event);
     }
+  }
+
+  get dataListenerCount(): number {
+    return this.dataListeners.size;
+  }
+
+  get exitListenerCount(): number {
+    return this.exitListeners.size;
   }
 }
 
@@ -220,6 +243,7 @@ interface CreateManagerOptions {
   }>;
   subprocessPollIntervalMs?: number;
   processKillGraceMs?: number;
+  processExitTimeoutMs?: number;
   maxRetainedInactiveSessions?: number;
   ptyAdapter?: FakePtyAdapter;
 }
@@ -260,6 +284,7 @@ const createManager = (
           ? { subprocessPollIntervalMs: options.subprocessPollIntervalMs }
           : {}),
         processKillGraceMs: options.processKillGraceMs ?? 1,
+        processExitTimeoutMs: options.processExitTimeoutMs ?? 1_000,
         ...(options.maxRetainedInactiveSessions !== undefined
           ? { maxRetainedInactiveSessions: options.maxRetainedInactiveSessions }
           : {}),
@@ -810,6 +835,221 @@ it.layer(
     }),
   );
 
+  it.effect("win32 kill 使用无参数信号并在真实退出前保留 supervision", () =>
+    Effect.gen(function* () {
+      const { manager, ptyAdapter } = yield* createManager(5, { processKillGraceMs: 1_000 });
+      const threadId = "run-kill-win32";
+      const terminalId = "command-kill-win32";
+      yield* manager.runCommand({
+        threadId,
+        terminalId,
+        cwd: process.cwd(),
+        command: "long-running-command",
+      });
+      const processHandle = ptyAdapter.processes[0];
+      expect(processHandle).toBeDefined();
+      if (!processHandle) return;
+      processHandle.exitOnKillSignals.clear();
+      const signaled = yield* Deferred.make<string | undefined>();
+      processHandle.onKill = (signal) => {
+        Deferred.doneUnsafe(signaled, Effect.succeed(signal));
+      };
+
+      const killFiber = yield* manager.kill({ threadId, terminalId }).pipe(Effect.forkChild);
+      yield* Deferred.await(signaled);
+      processHandle.onKill = null;
+
+      assert.equal(processHandle.killSignals.length, 1);
+      assert.equal(processHandle.killSignals[0], undefined);
+      assert.equal(processHandle.dataListenerCount, 1);
+      assert.equal(processHandle.exitListenerCount, 1);
+
+      processHandle.emitExit({ exitCode: 0, signal: null });
+      yield* Fiber.join(killFiber);
+
+      assert.equal(yield* manager.inspectSession({ threadId, terminalId }), "inactive");
+      assert.equal(processHandle.dataListenerCount, 0);
+      assert.equal(processHandle.exitListenerCount, 0);
+    }).pipe(Effect.provide(withHostPlatform("win32"))),
+  );
+
+  it.effect("Unix TERM 后自然退出会取消延迟强杀", () =>
+    Effect.gen(function* () {
+      const { manager, ptyAdapter } = yield* createManager(5, { processKillGraceMs: 1_000 });
+      const threadId = "run-kill-unix-graceful";
+      const terminalId = "command-kill-unix-graceful";
+      yield* manager.runCommand({
+        threadId,
+        terminalId,
+        cwd: process.cwd(),
+        command: "long-running-command",
+      });
+      const processHandle = ptyAdapter.processes[0];
+      expect(processHandle).toBeDefined();
+      if (!processHandle) return;
+      processHandle.exitOnKillSignals.clear();
+      const signaled = yield* Deferred.make<string | undefined>();
+      processHandle.onKill = (signal) => {
+        Deferred.doneUnsafe(signaled, Effect.succeed(signal));
+      };
+
+      const killFiber = yield* manager.kill({ threadId, terminalId }).pipe(Effect.forkChild);
+      yield* Deferred.await(signaled);
+      processHandle.onKill = null;
+      expect(processHandle.killSignals).toEqual(["SIGTERM"]);
+      processHandle.emitExit({ exitCode: 0, signal: 15 });
+      yield* Fiber.join(killFiber);
+      yield* TestClock.adjust("1 second");
+
+      expect(processHandle.killSignals).toEqual(["SIGTERM"]);
+      assert.equal(yield* manager.inspectSession({ threadId, terminalId }), "inactive");
+    }).pipe(Effect.provide(Layer.merge(withHostPlatform("linux"), TestClock.layer()))),
+  );
+
+  it.effect("并发重复 kill 共享同一次终止且不重复发信号", () =>
+    Effect.gen(function* () {
+      const { manager, ptyAdapter } = yield* createManager(5, { processKillGraceMs: 1_000 });
+      const threadId = "run-kill-shared";
+      const terminalId = "command-kill-shared";
+      yield* manager.runCommand({
+        threadId,
+        terminalId,
+        cwd: process.cwd(),
+        command: "long-running-command",
+      });
+      const processHandle = ptyAdapter.processes[0];
+      expect(processHandle).toBeDefined();
+      if (!processHandle) return;
+      processHandle.exitOnKillSignals.clear();
+      const signaled = yield* Deferred.make<string | undefined>();
+      processHandle.onKill = (signal) => {
+        Deferred.doneUnsafe(signaled, Effect.succeed(signal));
+      };
+
+      const first = yield* manager.kill({ threadId, terminalId }).pipe(Effect.forkChild);
+      const second = yield* manager.kill({ threadId, terminalId }).pipe(Effect.forkChild);
+      yield* Deferred.await(signaled);
+      processHandle.onKill = null;
+
+      assert.equal(processHandle.killSignals.length, 1);
+      assert.equal(processHandle.killSignals[0], undefined);
+      processHandle.emitExit({ exitCode: 0, signal: null });
+      yield* Fiber.join(first);
+      yield* Fiber.join(second);
+      assert.equal(processHandle.killSignals.length, 1);
+      assert.equal(processHandle.killSignals[0], undefined);
+    }).pipe(Effect.provide(withHostPlatform("win32"))),
+  );
+
+  it.effect("kill signal 失败时返回 typed error 且不脱管", () =>
+    Effect.gen(function* () {
+      const { manager, ptyAdapter } = yield* createManager();
+      const threadId = "run-kill-signal-failure";
+      const terminalId = "command-kill-signal-failure";
+      yield* manager.runCommand({
+        threadId,
+        terminalId,
+        cwd: process.cwd(),
+        command: "long-running-command",
+      });
+      const processHandle = ptyAdapter.processes[0];
+      expect(processHandle).toBeDefined();
+      if (!processHandle) return;
+      processHandle.exitOnKillSignals.clear();
+      processHandle.killFailures.set(undefined, new Error("kill failed"));
+
+      const error = yield* manager.kill({ threadId, terminalId }).pipe(Effect.flip);
+
+      assert.equal(error._tag, "TerminalProcessTerminationError");
+      if (error._tag === "TerminalProcessTerminationError") {
+        assert.equal(error.reason, "signal-failed");
+        assert.equal(error.signal, "platform-default");
+      }
+      assert.equal(processHandle.killSignals.length, 1);
+      assert.equal(processHandle.killSignals[0], undefined);
+      assert.equal(yield* manager.inspectSession({ threadId, terminalId }), "active");
+      assert.equal(processHandle.dataListenerCount, 1);
+      assert.equal(processHandle.exitListenerCount, 1);
+    }).pipe(Effect.provide(withHostPlatform("win32"))),
+  );
+
+  it.effect("Unix 强杀 signal 失败时返回 typed error 且不脱管", () =>
+    Effect.gen(function* () {
+      const { manager, ptyAdapter } = yield* createManager(5, { processKillGraceMs: 10 });
+      const threadId = "run-kill-force-signal-failure";
+      const terminalId = "command-kill-force-signal-failure";
+      yield* manager.runCommand({
+        threadId,
+        terminalId,
+        cwd: process.cwd(),
+        command: "long-running-command",
+      });
+      const processHandle = ptyAdapter.processes[0];
+      expect(processHandle).toBeDefined();
+      if (!processHandle) return;
+      processHandle.exitOnKillSignals.clear();
+      processHandle.killFailures.set("SIGKILL", new Error("force kill failed"));
+
+      const killFiber = yield* manager.kill({ threadId, terminalId }).pipe(Effect.forkChild);
+      yield* Effect.yieldNow;
+      yield* TestClock.adjust("10 millis");
+      const error = yield* Fiber.join(killFiber).pipe(Effect.flip);
+
+      assert.equal(error._tag, "TerminalProcessTerminationError");
+      if (error._tag === "TerminalProcessTerminationError") {
+        assert.equal(error.reason, "force-signal-failed");
+        assert.equal(error.signal, "SIGKILL");
+      }
+      expect(processHandle.killSignals).toEqual(["SIGTERM", "SIGKILL"]);
+      assert.equal(yield* manager.inspectSession({ threadId, terminalId }), "active");
+      assert.equal(processHandle.dataListenerCount, 1);
+      assert.equal(processHandle.exitListenerCount, 1);
+
+      processHandle.killFailures.delete("SIGKILL");
+      processHandle.exitOnKillSignals.add("SIGTERM");
+      yield* manager.kill({ threadId, terminalId });
+    }).pipe(Effect.provide(Layer.merge(withHostPlatform("linux"), TestClock.layer()))),
+  );
+
+  it.effect("Unix 强杀后退出超时返回 typed error 且不脱管", () =>
+    Effect.gen(function* () {
+      const { manager, ptyAdapter } = yield* createManager(5, {
+        processKillGraceMs: 10,
+        processExitTimeoutMs: 20,
+      });
+      const threadId = "run-kill-force-exit-timeout";
+      const terminalId = "command-kill-force-exit-timeout";
+      yield* manager.runCommand({
+        threadId,
+        terminalId,
+        cwd: process.cwd(),
+        command: "long-running-command",
+      });
+      const processHandle = ptyAdapter.processes[0];
+      expect(processHandle).toBeDefined();
+      if (!processHandle) return;
+      processHandle.exitOnKillSignals.clear();
+
+      const killFiber = yield* manager.kill({ threadId, terminalId }).pipe(Effect.forkChild);
+      yield* Effect.yieldNow;
+      yield* TestClock.adjust("30 millis");
+      const error = yield* Fiber.join(killFiber).pipe(Effect.flip);
+
+      assert.equal(error._tag, "TerminalProcessTerminationError");
+      if (error._tag === "TerminalProcessTerminationError") {
+        assert.equal(error.reason, "force-exit-timeout");
+        assert.equal(error.signal, "SIGKILL");
+      }
+      expect(processHandle.killSignals).toEqual(["SIGTERM", "SIGKILL"]);
+      assert.equal(yield* manager.inspectSession({ threadId, terminalId }), "active");
+      assert.equal(processHandle.dataListenerCount, 1);
+      assert.equal(processHandle.exitListenerCount, 1);
+
+      processHandle.exitOnKillSignals.add("SIGTERM");
+      yield* manager.kill({ threadId, terminalId });
+    }).pipe(Effect.provide(Layer.merge(withHostPlatform("linux"), TestClock.layer()))),
+  );
+
   it.effect("attaches to running sessions without restarting them", () =>
     Effect.gen(function* () {
       const { manager, ptyAdapter } = yield* createManager();
@@ -853,7 +1093,12 @@ it.layer(
       yield* manager.open(openInput());
 
       const events = yield* Ref.get(attachEvents);
-      expect(events.map((event) => event.type)).toEqual(["snapshot", "closed", "snapshot"]);
+      expect(events.map((event) => event.type)).toEqual([
+        "snapshot",
+        "exited",
+        "closed",
+        "snapshot",
+      ]);
       expect(
         events.filter((event) => event.type === "snapshot").map((event) => event.snapshot.status),
       ).toEqual(["running", "running"]);
@@ -869,7 +1114,6 @@ it.layer(
       const process = ptyAdapter.processes[0];
       expect(process).toBeDefined();
       if (!process) return;
-
       process.emitExit({ exitCode: 0, signal: 0 });
 
       yield* waitFor(
@@ -1825,6 +2069,7 @@ it.layer(
       const process = ptyAdapter.processes[0];
       expect(process).toBeDefined();
       if (!process) return;
+      process.exitOnKillSignals = new Set(["SIGKILL"]);
 
       const closeFiber = yield* manager.close({ threadId: "thread-1" }).pipe(Effect.forkScoped);
       yield* Effect.yieldNow;
@@ -1833,7 +2078,7 @@ it.layer(
 
       assert.equal(process.killSignals[0], "SIGTERM");
       expect(process.killSignals).toContain("SIGKILL");
-    }).pipe(Effect.provide(TestClock.layer())),
+    }).pipe(Effect.provide(Layer.merge(withHostPlatform("linux"), TestClock.layer()))),
   );
 
   it.effect("publishes closed events when terminals are explicitly closed", () =>
@@ -2389,11 +2634,10 @@ it.layer(
 
       const closeScope = yield* Scope.close(scope, Exit.void).pipe(Effect.forkScoped);
       yield* Effect.yieldNow;
-      yield* TestClock.adjust("10 millis");
       yield* Fiber.join(closeScope);
 
       assert.equal(process.killSignals[0], "SIGTERM");
-      expect(process.killSignals).toContain("SIGKILL");
-    }).pipe(Effect.provide(TestClock.layer())),
+      expect(process.killSignals).toEqual(["SIGTERM"]);
+    }).pipe(Effect.provide(withHostPlatform("linux"))),
   );
 });

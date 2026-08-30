@@ -38,8 +38,10 @@ export interface PtyProcess {
   readonly pid: number;
   write(data: string): void;
   resize(cols: number, rows: number): void;
+  /** 无参数表示使用当前平台的默认终止方式；Windows 不支持 POSIX signal。 */
   kill(signal?: string): void;
   onData(callback: (data: string) => void): () => void;
+  /** 同一进程 handle 的权威退出通知；发送终止请求不等于进程已经退出。 */
   onExit(callback: (event: PtyExitEvent) => void): () => void;
 }
 
