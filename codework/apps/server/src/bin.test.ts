@@ -329,15 +329,21 @@ it.layer(NodeServices.layer)("bin cli parsing", (it) => {
     }),
   );
 
-  it.effect("exposes Agent archive controls", () =>
+  it.effect("exposes Agent archive and unarchive controls", () =>
     Effect.gen(function* () {
       const archive = yield* captureStdout(runCli(["archive", "--help"], noConnectCli));
+      const unarchive = yield* captureStdout(runCli(["unarchive", "--help"], noConnectCli));
 
       assert.include(archive.output, "Archive an agent thread through orchestration.");
       assert.include(archive.output, "<agent-id>");
       assert.include(archive.output, "--server");
       assert.include(archive.output, "--access-token");
       assert.include(archive.output, "--json");
+      assert.include(unarchive.output, "Unarchive an agent thread through orchestration.");
+      assert.include(unarchive.output, "<agent-id>");
+      assert.include(unarchive.output, "--server");
+      assert.include(unarchive.output, "--access-token");
+      assert.include(unarchive.output, "--json");
     }),
   );
 

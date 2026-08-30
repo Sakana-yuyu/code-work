@@ -11,9 +11,17 @@ import {
   type ControlConnectionOptions,
   openControlClient,
 } from "./controlClient.ts";
-import { planAgentArchiveCommand, type AgentArchiveResult } from "./agentControlArchiveState.ts";
+import {
+  planAgentArchiveCommand,
+  planAgentUnarchiveCommand,
+  type AgentArchiveResult,
+} from "./agentControlArchiveState.ts";
 
 export interface AgentArchiveOptions extends ControlConnectionOptions {
+  readonly agentId: string;
+}
+
+export interface AgentUnarchiveOptions extends ControlConnectionOptions {
   readonly agentId: string;
 }
 
@@ -29,6 +37,12 @@ export class AgentArchiveSnapshotUnavailableError extends Data.TaggedError(
 export class AgentArchiveRejectedError extends Data.TaggedError("AgentArchiveRejectedError")<{
   readonly agentId: string;
   readonly reason: "already-archived";
+  readonly message: string;
+}> {}
+
+export class AgentUnarchiveRejectedError extends Data.TaggedError("AgentUnarchiveRejectedError")<{
+  readonly agentId: string;
+  readonly reason: "not-archived";
   readonly message: string;
 }> {}
 
@@ -70,6 +84,48 @@ export const archiveAgent = (
         const plan = planAgentArchiveCommand(thread, commandId);
         if (!plan.ok) {
           return yield* new AgentArchiveRejectedError({
+            agentId: options.agentId,
+            reason: plan.reason,
+            message: plan.message,
+          });
+        }
+
+        const receipt = yield* rpc[ORCHESTRATION_WS_METHODS.dispatchCommand](plan.command);
+        return {
+          agentId: options.agentId,
+          commandId,
+          sequence: receipt.sequence,
+        } satisfies AgentArchiveResult;
+      }),
+  );
+
+export const unarchiveAgent = (
+  options: AgentUnarchiveOptions,
+  open: ControlClientOpen = openControlClient,
+  commandIdFactory: AgentArchiveCommandIdFactory = makeCommandId,
+) =>
+  open(
+    {
+      serverUrl: options.serverUrl,
+      ...(options.accessToken ? { accessToken: options.accessToken } : {}),
+    },
+    (rpc) =>
+      Effect.gen(function* () {
+        const archivedSnapshot = yield* rpc[ORCHESTRATION_WS_METHODS.getArchivedShellSnapshot]({});
+        const thread = archivedSnapshot.threads.find(
+          (candidate) => candidate.id === options.agentId,
+        );
+        if (!thread) {
+          return yield* new AgentUnarchiveRejectedError({
+            agentId: options.agentId,
+            reason: "not-archived",
+            message: `Agent '${options.agentId}' is not archived.`,
+          });
+        }
+        const commandId = commandIdFactory();
+        const plan = planAgentUnarchiveCommand(thread, commandId);
+        if (!plan.ok) {
+          return yield* new AgentUnarchiveRejectedError({
             agentId: options.agentId,
             reason: plan.reason,
             message: plan.message,

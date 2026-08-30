@@ -27,6 +27,7 @@ import { serviceCommand } from "./cli/service.ts";
 import { servicePreflightCommand } from "./cli/servicePreflight.ts";
 import { squadCommand } from "./cli/squad.ts";
 import { triageCommand } from "./cli/triage.ts";
+import { unarchiveCommand } from "./cli/unarchive.ts";
 import { waitCommand } from "./cli/wait.ts";
 
 const CliRuntimeLayer = Layer.mergeAll(NodeServices.layer, NetService.layer);
@@ -66,6 +67,7 @@ export const makeCli = ({ cloudEnabled = hasCloudPublicConfig } = {}) =>
       authCommand,
       agentCommand,
       archiveCommand,
+      unarchiveCommand,
       attachCommand,
       logsCommand,
       waitCommand,
