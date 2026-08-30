@@ -351,8 +351,10 @@ export const makeCompositionProviderAgentDriver = (
           };
         }
         return {
-          action: "accepted" as const,
-          runtimeTaskId: `${options.runtimeId}:${threadId}:${session.activeTurnId}`,
+          action: "manual" as const,
+          code: "run_start_provider_receipt_unverifiable",
+          detail:
+            "Provider session 的 activeTurnId 未绑定当前 Run、启动摘要、能力授权或 claim，不能伪造启动 receipt。",
         };
       }),
     );

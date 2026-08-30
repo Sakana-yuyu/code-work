@@ -86,7 +86,7 @@ const makeDriver = (sessions: ReadonlyArray<ProviderSession>) =>
     },
   });
 
-it.effect("Provider 仅凭同实例、同 thread 的 activeTurnId 恢复 runtime receipt", () =>
+it.effect("Provider 预存同实例、同 thread 的 activeTurnId 不得伪造当前 Run receipt", () =>
   Effect.gen(function* () {
     const driver = makeDriver([activeSession]);
 
@@ -100,8 +100,10 @@ it.effect("Provider 仅凭同实例、同 thread 的 activeTurnId 恢复 runtime
     }
 
     expect(yield* driver.reconcileStart(reconcileInput)).toEqual({
-      action: "accepted",
-      runtimeTaskId: "provider:codex-recovery:thread-provider-recovery:turn-provider-recovery",
+      action: "manual",
+      code: "run_start_provider_receipt_unverifiable",
+      detail:
+        "Provider session 的 activeTurnId 未绑定当前 Run、启动摘要、能力授权或 claim，不能伪造启动 receipt。",
     });
   }),
 );
