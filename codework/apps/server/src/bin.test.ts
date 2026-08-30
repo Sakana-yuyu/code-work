@@ -292,6 +292,18 @@ it.layer(NodeServices.layer)("bin cli parsing", (it) => {
     }),
   );
 
+  it.effect("exposes streaming Agent attach controls", () =>
+    Effect.gen(function* () {
+      const attach = yield* captureStdout(runCli(["attach", "--help"], noConnectCli));
+
+      assert.include(attach.output, "Attach to an agent and stream message updates until terminal state.");
+      assert.include(attach.output, "<agent-id>");
+      assert.include(attach.output, "--server");
+      assert.include(attach.output, "--access-token");
+      assert.include(attach.output, "--json");
+    }),
+  );
+
   it.effect("exposes optimistic Squad lifecycle commands", () =>
     Effect.gen(function* () {
       const duplicate = yield* captureStdout(
