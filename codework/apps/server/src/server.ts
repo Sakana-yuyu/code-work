@@ -79,6 +79,7 @@ import * as CompositionRuntimeAgentDriverProjection from "./composition/Composit
 import * as CompositionRuntimeSettings from "./composition/CompositionRuntimeSettings.ts";
 import * as CompositionOrchestratorService from "./composition/CompositionOrchestratorService.ts";
 import * as CompositionGoalLoopAutomationRunner from "./composition/CompositionGoalLoopAutomationRunner.ts";
+import * as CompositionSquadModelBindingResolver from "./composition/CompositionSquadModelBindingResolver.ts";
 import * as CompositionSquadPlanner from "./composition/CompositionSquadPlanner.ts";
 import * as CompositionSquadRunner from "./composition/CompositionSquadRunner.ts";
 import * as CompositionSquadExecutionService from "./composition/CompositionSquadExecutionService.ts";
@@ -479,9 +480,14 @@ const CompositionAgentDriverProjectionLayerLive = Layer.mergeAll(
   Layer.provideMerge(CompositionMcpToolRegistryLayerLive),
 );
 
+const CompositionSquadModelBindingResolverLayerLive =
+  CompositionSquadModelBindingResolver.layer.pipe(
+    Layer.provideMerge(CompositionAgentDriverProjectionLayerLive),
+  );
+
 const CompositionRuntimeDependenciesLive = Layer.empty.pipe(
   Layer.provideMerge(CompositionCapabilityGrantLayerLive),
-  Layer.provideMerge(CompositionAgentDriverProjectionLayerLive),
+  Layer.provideMerge(CompositionSquadModelBindingResolverLayerLive),
   Layer.provideMerge(
     CompositionTaskInputStoreLive.pipe(
       Layer.provideMerge(PersistenceLayerLive),
@@ -532,6 +538,7 @@ const CompositionSquadRunnerLayerLive = CompositionSquadRunner.layer.pipe(
   Layer.provide(CompositionSquadPlannerLayerLive),
   Layer.provide(CompositionTaskGraphExecutorLayerLive),
   Layer.provide(CompositionSquadExecutionStoreLayerLive),
+  Layer.provideMerge(CompositionSquadModelBindingResolverLayerLive),
 );
 
 const CompositionGoalLoopAutomationRunnerLayerLive = CompositionGoalLoopAutomationRunner.layer.pipe(

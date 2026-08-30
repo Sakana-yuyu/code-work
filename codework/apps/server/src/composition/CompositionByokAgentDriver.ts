@@ -6,6 +6,7 @@ import {
   ProviderInstanceId,
   RuntimeTaskId,
   type CompositionAgentDriverProfile,
+  type CompositionTaskRunModelSnapshot,
   type ProviderRuntimeEvent,
   ThreadId,
   TurnId,
@@ -48,6 +49,12 @@ export type CompositionByokAgentDriverOptions = {
    * resume 语义 = 校验并恢复已持久化输出，不是续跑中断的模型流。
    */
   readonly checkpointHistory?: Pick<CompositionTaskStoreShape, "listEvents">;
+  readonly validateRunModel?: (input: {
+    readonly agentId: string;
+    readonly providerInstanceId: ProviderInstanceId | string;
+    readonly model?: string;
+    readonly modelSnapshot?: CompositionTaskRunModelSnapshot;
+  }) => Effect.Effect<void, CompositionAgentDriverFailure>;
   readonly listTools: () => Effect.Effect<ReadonlyArray<ByokAgentTool>, Error>;
 };
 
@@ -258,6 +265,16 @@ export const makeCompositionByokAgentDriver = (
         return yield* new CompositionAgentDriverFailure({
           code: "workspace_root_missing",
           detail: "BYOK Agent Driver 需要可信 workspaceRoot。",
+        });
+      }
+      if (options.validateRunModel !== undefined) {
+        yield* options.validateRunModel({
+          agentId: options.agentId,
+          providerInstanceId: options.providerInstanceId,
+          model: modelId,
+          ...(input.run.modelSnapshot === undefined
+            ? {}
+            : { modelSnapshot: input.run.modelSnapshot }),
         });
       }
 
@@ -539,6 +556,15 @@ export const makeCompositionByokAgentDriver = (
     Effect.gen(function* () {
       if (activeRuns.has(input.run.runId)) return { status: "already_running" as const };
       if (completedRuns.has(input.run.runId)) return { status: "already_terminal" as const };
+      if (options.validateRunModel !== undefined) {
+        yield* options.validateRunModel({
+          agentId: options.agentId,
+          providerInstanceId: options.providerInstanceId,
+          ...(input.run.modelSnapshot === undefined
+            ? {}
+            : { modelSnapshot: input.run.modelSnapshot }),
+        });
+      }
       const history = options.checkpointHistory;
       if (history === undefined) {
         return yield* new CompositionAgentDriverFailure({

@@ -50,6 +50,12 @@ import {
   type CompositionTaskGraphExecutorShape,
   type CompositionTaskGraphNodeInput,
 } from "./CompositionTaskGraphExecutor.ts";
+import {
+  CompositionSquadModelBindingResolver,
+  resolveCompositionSquadMemberModel,
+  type CompositionSquadModelBindingResolverShape,
+  type ResolvedCompositionSquadMemberModel,
+} from "./CompositionSquadModelBindingResolver.ts";
 
 export type { CompositionSquadPlanNode } from "./CompositionSquadPlan.ts";
 
@@ -110,12 +116,14 @@ export interface CompositionSquadRunnerOptions {
     CompositionSquadExecutionStoreShape,
     "claimExecution" | "getExecution" | "saveTransition"
   >;
+  readonly modelBindings?: Pick<CompositionSquadModelBindingResolverShape, "resolveMember">;
   readonly now?: () => number;
 }
 
 type CompileInput = {
   readonly squad: CompositionSquad;
   readonly input: CompositionSquadExecutionInput;
+  readonly modelBindings?: Pick<CompositionSquadModelBindingResolverShape, "resolveMember">;
 };
 
 type ResolvedPlanNode = CompositionSquadPlanNode & {
@@ -469,6 +477,7 @@ const applyModeDependencies = (
 export const compileCompositionSquadGraph = ({
   squad,
   input,
+  modelBindings,
 }: CompileInput): Effect.Effect<CompositionTaskGraphExecutionInput, CompositionSquadRunnerError> =>
   Effect.gen(function* () {
     const revision = revisionOf(squad);
@@ -518,6 +527,18 @@ export const compileCompositionSquadGraph = ({
     }
 
     const membersById = new Map(members.map((member) => [member.agentId, member] as const));
+    const resolvedModels = new Map<string, ResolvedCompositionSquadMemberModel>();
+    for (const member of members) {
+      const resolved = yield* resolveCompositionSquadMemberModel(modelBindings, {
+        squad,
+        member,
+      }).pipe(
+        Effect.mapError((error) =>
+          runnerError(error.code, error.detail, input.squadId, { nodeId: member.agentId }),
+        ),
+      );
+      resolvedModels.set(member.agentId, resolved);
+    }
     const defaultPlan: ReadonlyArray<CompositionSquadPlanNode> = members
       .filter((member) => member.role !== "leader")
       .map((member) => ({
@@ -583,6 +604,7 @@ export const compileCompositionSquadGraph = ({
     }
     const children: CompositionTaskGraphNodeInput[] = modeNodes.map((node) => {
       const workspaceRoot = node.member.workspaceRoot ?? input.workspaceRoot;
+      const resolvedModel = resolvedModels.get(node.member.agentId)!;
       const failoverCandidates = members
         .filter(
           (candidate) =>
@@ -591,12 +613,18 @@ export const compileCompositionSquadGraph = ({
             hasCapabilities(candidate, node.member.capabilityIds) &&
             (assignedNodeCounts.get(candidate.agentId) ?? 0) < candidate.maxConcurrentTasks,
         )
-        .map((candidate) => ({
-          assigneeId: candidate.agentId,
-          workspaceRoot: candidate.workspaceRoot ?? input.workspaceRoot,
-          ...(candidate.model === undefined ? {} : { model: candidate.model }),
-          capabilityIds: [...node.member.capabilityIds],
-        }));
+        .map((candidate) => {
+          const candidateModel = resolvedModels.get(candidate.agentId)!;
+          return {
+            assigneeId: candidate.agentId,
+            workspaceRoot: candidate.workspaceRoot ?? input.workspaceRoot,
+            ...(candidateModel.model === undefined ? {} : { model: candidateModel.model }),
+            ...(candidateModel.modelSnapshot === undefined
+              ? {}
+              : { modelSnapshot: candidateModel.modelSnapshot }),
+            capabilityIds: [...node.member.capabilityIds],
+          };
+        });
       return {
         nodeId: node.nodeId,
         taskId: `${scope}:task:${node.nodeId}`,
@@ -612,7 +640,10 @@ export const compileCompositionSquadGraph = ({
         ...(input.workspaceRootDigest === undefined
           ? {}
           : { workspaceRootDigest: input.workspaceRootDigest }),
-        ...(node.member.model === undefined ? {} : { model: node.member.model }),
+        ...(resolvedModel.model === undefined ? {} : { model: resolvedModel.model }),
+        ...(resolvedModel.modelSnapshot === undefined
+          ? {}
+          : { modelSnapshot: resolvedModel.modelSnapshot }),
         capabilityIds: [...node.member.capabilityIds],
         dependsOnNodeIds: [...node.dependsOnNodeIds],
         maxAttempts: node.member.capabilityIds.length === 0 ? 1 : maxAttempts,
@@ -620,6 +651,7 @@ export const compileCompositionSquadGraph = ({
       };
     });
     const finalPrompt = leaderPrompt(squad, input.goal);
+    const leaderModel = resolvedModels.get(leader.agentId)!;
     return {
       leader: {
         taskId: `${scope}:task:leader-finalize`,
@@ -634,7 +666,10 @@ export const compileCompositionSquadGraph = ({
         ...(input.workspaceRootDigest === undefined
           ? {}
           : { workspaceRootDigest: input.workspaceRootDigest }),
-        ...(leader.model === undefined ? {} : { model: leader.model }),
+        ...(leaderModel.model === undefined ? {} : { model: leaderModel.model }),
+        ...(leaderModel.modelSnapshot === undefined
+          ? {}
+          : { modelSnapshot: leaderModel.modelSnapshot }),
         capabilityIds: [...leader.capabilityIds],
         mode: "review",
       },
@@ -997,6 +1032,9 @@ export const makeCompositionSquadRunner = (
               compileCompositionSquadGraph({
                 squad,
                 input: { ...input, plan },
+                ...(options.modelBindings === undefined
+                  ? {}
+                  : { modelBindings: options.modelBindings }),
               }),
             );
             if (graphResult._tag === "Failure") {
@@ -1163,7 +1201,8 @@ const live = Effect.gen(function* () {
   const planner = yield* CompositionSquadPlanner;
   const executor = yield* CompositionTaskGraphExecutor;
   const executions = yield* CompositionSquadExecutionStore;
-  return makeCompositionSquadRunner({ squads, planner, executor, executions });
+  const modelBindings = yield* CompositionSquadModelBindingResolver;
+  return makeCompositionSquadRunner({ squads, planner, executor, executions, modelBindings });
 });
 
 export const layer = Layer.effect(CompositionSquadRunner, live);

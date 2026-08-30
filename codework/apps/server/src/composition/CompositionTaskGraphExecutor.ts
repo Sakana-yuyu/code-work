@@ -240,6 +240,12 @@ const sameModelSnapshot = (
   }
 };
 
+const compatiblePersistedModelSnapshot = (
+  actual: CompositionTaskRunModelSnapshot | undefined,
+  expected: CompositionTaskRunModelSnapshot | undefined,
+): boolean =>
+  sameModelSnapshot(actual, expected) || (actual === undefined && expected?.kind === "legacy");
+
 const matchesDispatchIdentity = (
   task: CompositionTask,
   run: CompositionTaskRun,
@@ -256,7 +262,7 @@ const matchesDispatchIdentity = (
   sameTaskIds(task.dependsOnTaskIds, input.dependsOnTaskIds) &&
   run.runId === input.runId &&
   run.taskId === input.taskId &&
-  sameModelSnapshot(run.modelSnapshot, input.modelSnapshot);
+  compatiblePersistedModelSnapshot(run.modelSnapshot, input.modelSnapshot);
 
 const matchesRetryIdentity = (
   task: CompositionTask,
@@ -1304,6 +1310,9 @@ const make = (options: GraphExecutorOptions): CompositionTaskGraphExecutorShape 
           : { workspaceRootDigest: input.leader.workspaceRootDigest }),
         prompt: leaderPrompt,
         ...(input.leader.model === undefined ? {} : { model: input.leader.model }),
+        ...(input.leader.modelSnapshot === undefined
+          ? {}
+          : { modelSnapshot: input.leader.modelSnapshot }),
         ...(input.leader.capabilityIds === undefined
           ? {}
           : { capabilityIds: [...input.leader.capabilityIds] }),

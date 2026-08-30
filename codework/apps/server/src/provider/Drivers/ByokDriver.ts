@@ -22,7 +22,10 @@ import { ServerSettingsService } from "../../serverSettings.ts";
 import { makeByokTextGeneration } from "../../textGeneration/ByokTextGeneration.ts";
 import { makeByokModelDriver } from "../../composition/OpenAiByokModelDriver.ts";
 import { CompositionAgentServiceError } from "../../composition/CompositionAgentService.ts";
-import { byokAdapterForModel } from "../Layers/byokChatClient.ts";
+import {
+  byokCompositionAdapterForModel,
+  listByokCompositionModelDescriptors,
+} from "../byok/ByokCompositionModel.ts";
 import { ProviderDriverError } from "../Errors.ts";
 import { makeByokAdapter } from "../Layers/ByokAdapter.ts";
 import {
@@ -150,9 +153,10 @@ export const ByokDriver: ProviderDriver<ByokSettings, ByokDriverEnv> = {
         adapter,
         textGeneration,
         composition: {
+          modelDescriptors: listByokCompositionModelDescriptors(effectiveConfig),
           defaultModelId: effectiveConfig.adapters[0]?.id,
           resolveModelDriver: ({ modelId, signal }) => {
-            const modelAdapter = byokAdapterForModel(effectiveConfig, modelId);
+            const modelAdapter = byokCompositionAdapterForModel(effectiveConfig, modelId);
             if (modelAdapter === undefined) {
               return Effect.fail(
                 new CompositionAgentServiceError({

@@ -853,6 +853,17 @@ describe("CompositionTaskGraphExecutor", () => {
           },
         ],
       };
+      const leader = {
+        ...baseLeader,
+        model: "adapter-leader",
+        modelSnapshot: {
+          kind: "byok" as const,
+          providerInstanceId: "byok-leader",
+          adapterId: "adapter-leader",
+          modelId: "leader-model",
+          adapterConfigDigest: "sha256:adapter-leader",
+        },
+      };
       const executor = makeCompositionTaskGraphExecutor({
         orchestrator: {
           dispatchTask: (input) =>
@@ -931,12 +942,12 @@ describe("CompositionTaskGraphExecutor", () => {
         },
       });
 
-      const result = yield* executor.execute({ leader: baseLeader, children: [child] });
+      const result = yield* executor.execute({ leader, children: [child] });
 
       expect(dispatches.map((dispatch) => [dispatch.taskId, dispatch.assigneeId])).toEqual([
         [child.taskId, "agent-primary"],
         [`${child.taskId}:failover:1`, "agent-backup"],
-        [baseLeader.taskId, baseLeader.assigneeId],
+        [leader.taskId, leader.assigneeId],
       ]);
       const failover = dispatches[1]!;
       expect(failover.prompt).toContain("主成员 Driver 未注册");
@@ -950,6 +961,13 @@ describe("CompositionTaskGraphExecutor", () => {
         adapterId: "adapter-backup",
         modelId: "backup-model",
         adapterConfigDigest: "sha256:adapter-backup",
+      });
+      expect(dispatches[2]?.modelSnapshot).toEqual({
+        kind: "byok",
+        providerInstanceId: "byok-leader",
+        adapterId: "adapter-leader",
+        modelId: "leader-model",
+        adapterConfigDigest: "sha256:adapter-leader",
       });
       expect(failover.capabilityIds).toEqual(["t3.workspace.read_file"]);
       expect(result.children[0]).toMatchObject({
