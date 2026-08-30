@@ -53,12 +53,12 @@ export class LocalPluginLifecycle {
   ) {}
 
   restore(): LocalPluginLifecycleResult {
-    const value = this.options.storage.read();
-    if (value === null) {
-      this.options.registry.replace([]);
-      return { ok: true };
-    }
     try {
+      const value = this.options.storage.read();
+      if (value === null) {
+        this.options.registry.replace([]);
+        return { ok: true };
+      }
       const document = decodeLocalPluginStorageDocument(value);
       for (const plugin of document.plugins) {
         decodeAllowedLocalPluginManifest(plugin.manifest);

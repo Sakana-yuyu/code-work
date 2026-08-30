@@ -31,17 +31,19 @@ export function decodeAllowedLocalPluginManifest(input: unknown): LocalPluginMan
   try {
     manifest = decodeManifest(input);
   } catch {
+    const code = "schema-invalid" as const;
     throw new LocalPluginPolicyError({
-      code: "schema-invalid",
-      message: "插件 manifest 不符合受支持的 schema。",
+      code,
+      message: code,
     });
   }
 
   const compatibility = negotiateLocalPluginApiVersion(manifest.apiVersion);
   if (!compatibility.compatible) {
+    const code = "api-incompatible" as const;
     throw new LocalPluginPolicyError({
-      code: "api-incompatible",
-      message: "插件 contribution API 与当前宿主不兼容。",
+      code,
+      message: code,
     });
   }
 

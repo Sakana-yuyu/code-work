@@ -27,9 +27,11 @@ const manifest = (id: string): LocalPluginManifest => ({
 
 class MemoryStorage implements LocalPluginStorage {
   value: string | null = null;
+  readError: Error | null = null;
   writeError: Error | null = null;
 
   read(): string | null {
+    if (this.readError) throw this.readError;
     return this.value;
   }
 
@@ -124,6 +126,19 @@ describe("LocalPluginLifecycle", () => {
       error: { code: "storage-invalid" },
     });
     expect(restored.registry.listEnabled("commands")).toHaveLength(1);
+  });
+
+  it("读取存储失败时保留当前快照并记录恢复失败", () => {
+    const runtime = createRuntime();
+    runtime.lifecycle.install(manifest("acme.one"));
+    runtime.storage.readError = new Error("storage blocked");
+
+    expect(runtime.lifecycle.restore()).toMatchObject({
+      ok: false,
+      error: { code: "storage-invalid" },
+    });
+    expect(runtime.registry.listEnabled("commands")).toHaveLength(1);
+    expect(runtime.failures.getSnapshot().at(-1)).toMatchObject({ phase: "restore" });
   });
 
   it("持久化失败时回滚内存发布，不产生半安装状态", () => {
