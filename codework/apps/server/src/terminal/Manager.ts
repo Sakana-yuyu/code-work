@@ -201,6 +201,10 @@ export class TerminalManager extends Context.Service<
       input: TerminalInspectSessionInput,
     ) => Effect.Effect<TerminalSessionInspection, TerminalError>;
 
+    readonly inspectSessionReceipt: (
+      input: TerminalInspectSessionInput,
+    ) => Effect.Effect<TerminalSessionInspectionReceipt, TerminalError>;
+
     /**
      * Subscribe to terminal runtime events with a direct callback.
      *
@@ -281,6 +285,11 @@ export interface TerminalInspectSessionInput {
 }
 
 export type TerminalSessionInspection = "active" | "inactive" | "missing";
+
+export interface TerminalSessionInspectionReceipt {
+  readonly inspection: TerminalSessionInspection;
+  readonly snapshot: TerminalSessionSnapshot | null;
+}
 
 export interface TerminalHistoryInput {
   readonly threadId: string;
@@ -2423,18 +2432,27 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
   const runCommand: TerminalManager["Service"]["runCommand"] = (input) =>
     withThreadLock(input.threadId, runCommandLocked(input));
 
-  const inspectSession: TerminalManager["Service"]["inspectSession"] = (input) =>
+  const inspectSessionReceipt: TerminalManager["Service"]["inspectSessionReceipt"] = (input) =>
     withThreadLock(
       input.threadId,
       Effect.gen(function* () {
         const session = yield* getSession(input.threadId, input.terminalId);
-        if (Option.isNone(session)) return "missing" as const;
+        if (Option.isNone(session)) {
+          return { inspection: "missing", snapshot: null } as const;
+        }
         yield* assertSessionOwner(session.value, input.expectedOwner);
-        return session.value.process !== null && session.value.status === "running"
-          ? ("active" as const)
-          : ("inactive" as const);
+        return {
+          inspection:
+            session.value.process !== null && session.value.status === "running"
+              ? ("active" as const)
+              : ("inactive" as const),
+          snapshot: snapshot(session.value),
+        };
       }),
     );
+
+  const inspectSession: TerminalManager["Service"]["inspectSession"] = (input) =>
+    inspectSessionReceipt(input).pipe(Effect.map((receipt) => receipt.inspection));
 
   const getHistory: TerminalManager["Service"]["getHistory"] = (input) =>
     withThreadLock(
@@ -2884,6 +2902,7 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
     close,
     kill,
     inspectSession,
+    inspectSessionReceipt,
     subscribe,
     subscribeMetadata,
   });

@@ -277,7 +277,7 @@ layer("WorkspaceScriptStore", (it) => {
 });
 
 recoveryLayer("WorkspaceScriptStore recovery", (it) => {
-  it.effect("服务重启恢复已领取 stop，并将其他未收敛 Run 原子标记为失败", () =>
+  it.effect("列出未收敛 Run 及 stop intent，且读取本身不改写状态", () =>
     Effect.gen(function* () {
       const store = yield* WorkspaceScriptStore;
       const starting = makeRun("run-recover-starting");
@@ -316,26 +316,34 @@ recoveryLayer("WorkspaceScriptStore recovery", (it) => {
         },
       });
 
-      const recovered = yield* store.recoverInterrupted({ observedAtUnixMs: 2_000 });
-      const repeated = yield* store.recoverInterrupted({ observedAtUnixMs: 2_100 });
-      const failed = Option.getOrThrow(yield* store.getRun(starting.workspaceScriptRunId));
-      const retryable = Option.getOrThrow(yield* store.getRun(stopping.workspaceScriptRunId));
+      const recovered = yield* store.listRecoveryCandidates();
+      const repeated = yield* store.listRecoveryCandidates();
+      const preservedStarting = Option.getOrThrow(
+        yield* store.getRun(starting.workspaceScriptRunId),
+      );
+      const preservedRunning = Option.getOrThrow(yield* store.getRun(running.workspaceScriptRunId));
+      const preservedStopping = Option.getOrThrow(
+        yield* store.getRun(stopping.workspaceScriptRunId),
+      );
       const preserved = Option.getOrThrow(yield* store.getRun(exited.workspaceScriptRunId));
 
       assert.deepEqual(
-        recovered.map((run) => run.workspaceScriptRunId),
+        recovered.map(({ run }) => run.workspaceScriptRunId).sort(),
         [
           running.workspaceScriptRunId,
           starting.workspaceScriptRunId,
           stopping.workspaceScriptRunId,
-        ],
+        ].sort(),
       );
-      assert.deepEqual(repeated, []);
-      assert.equal(failed.status, "failed");
-      assert.equal(failed.errorCode, "workspace_script_server_restarted");
-      assert.equal(retryable.status, "running");
-      assert.isNull(retryable.finishedAtUnixMs);
-      assert.isNull(retryable.errorCode);
+      assert.deepEqual(repeated, recovered);
+      assert.equal(
+        recovered.find(({ run }) => run.workspaceScriptRunId === stopping.workspaceScriptRunId)
+          ?.stopOperationId,
+        "stop-operation-recovery",
+      );
+      assert.equal(preservedStarting.status, "starting");
+      assert.equal(preservedRunning.status, "running");
+      assert.equal(preservedStopping.status, "stopping");
       assert.equal(preserved.status, "exited");
     }),
   );

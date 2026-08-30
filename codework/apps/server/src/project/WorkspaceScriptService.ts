@@ -27,6 +27,7 @@ import * as Option from "effect/Option";
 import * as ProjectionSnapshotQuery from "../orchestration/Services/ProjectionSnapshotQuery.ts";
 import {
   WorkspaceScriptStore,
+  type StoredWorkspaceScriptRun,
   type WorkspaceScriptStoreError,
   type WorkspaceScriptStoreShape,
 } from "../persistence/Services/WorkspaceScriptStore.ts";
@@ -57,11 +58,14 @@ export interface WorkspaceScriptTerminalPort {
     readonly terminalId: string;
     readonly expectedOwner: TerminalSessionOwner;
   }) => Effect.Effect<void, WorkspaceScriptDependencyError>;
-  readonly inspectSession: (input: {
+  readonly inspectSessionReceipt: (input: {
     readonly threadId: string;
     readonly terminalId: string;
     readonly expectedOwner: TerminalSessionOwner;
-  }) => Effect.Effect<TerminalManager.TerminalSessionInspection, WorkspaceScriptDependencyError>;
+  }) => Effect.Effect<
+    TerminalManager.TerminalSessionInspectionReceipt,
+    WorkspaceScriptDependencyError
+  >;
   readonly getHistory: (input: {
     readonly threadId: string;
     readonly terminalId: string;
@@ -203,6 +207,19 @@ const workspaceScriptTerminalOwner = (run: WorkspaceScriptRun): TerminalSessionO
     generation: run.requestedAtUnixMs,
   });
 
+const recoveredTerminalMatchesRun = (
+  run: WorkspaceScriptRun,
+  receipt: TerminalManager.TerminalSessionInspectionReceipt,
+): boolean =>
+  receipt.inspection === "active" &&
+  receipt.snapshot !== null &&
+  receipt.snapshot.threadId === run.threadId &&
+  receipt.snapshot.terminalId === run.terminalId &&
+  receipt.snapshot.cwd === run.cwd &&
+  receipt.snapshot.worktreePath === run.worktreePath &&
+  receipt.snapshot.status === "running" &&
+  receipt.snapshot.pid !== null;
+
 export const workspaceScriptShellInvocation = (input: {
   readonly platform: NodeJS.Platform;
   readonly command: string;
@@ -343,12 +360,100 @@ export const makeWorkspaceScriptService = Effect.fn("WorkspaceScriptService.make
       ),
     );
 
-  yield* options.store
-    .recoverInterrupted({ observedAtUnixMs: yield* currentTimeMillis })
-    .pipe(Effect.mapError((cause) => persistenceError("恢复中断的 Workspace Script Run", cause)));
-
   const unsubscribe = yield* options.terminal.subscribe(onTerminalEvent);
   yield* Effect.addFinalizer(() => Effect.sync(unsubscribe));
+
+  const saveRecoveryTransition = Effect.fn("WorkspaceScriptService.saveRecoveryTransition")(
+    function* (
+      candidate: StoredWorkspaceScriptRun,
+      update: (run: WorkspaceScriptRun, observedAtUnixMs: number) => WorkspaceScriptRun,
+    ) {
+      const next = update(
+        candidate.run,
+        Math.max(yield* currentTimeMillis, candidate.run.updatedAtUnixMs),
+      );
+      if (next === candidate.run || next.revision === candidate.run.revision) return;
+
+      const saved = yield* options.store
+        .saveTransition({ run: next, expectedRevision: candidate.run.revision })
+        .pipe(Effect.result);
+      if (saved._tag === "Success") return;
+      if (
+        saved.failure._tag === "WorkspaceScriptStoreDomainError" &&
+        saved.failure.code === "workspace_script_revision_conflict"
+      ) {
+        return;
+      }
+      return yield* persistenceError("恢复 Workspace Script Run", saved.failure, {
+        workspaceScriptRunId: candidate.run.workspaceScriptRunId,
+        expectedRevision: candidate.run.revision,
+      });
+    },
+  );
+
+  const recoverCandidate = Effect.fn("WorkspaceScriptService.recoverCandidate")(function* (
+    candidate: StoredWorkspaceScriptRun,
+  ) {
+    if (candidate.stopOperationId !== null) {
+      yield* saveRecoveryTransition(candidate, (run, observedAtUnixMs) =>
+        makeWorkspaceScriptStopRetryable(run, observedAtUnixMs),
+      );
+      return;
+    }
+
+    const receipt = yield* options.terminal
+      .inspectSessionReceipt({
+        threadId: candidate.run.threadId,
+        terminalId: candidate.run.terminalId,
+        expectedOwner: workspaceScriptTerminalOwner(candidate.run),
+      })
+      .pipe(Effect.result);
+    const receiptMatches =
+      receipt._tag === "Success" && recoveredTerminalMatchesRun(candidate.run, receipt.success);
+
+    yield* saveRecoveryTransition(candidate, (run, observedAtUnixMs) => {
+      if (isFinishedWorkspaceScriptRun(run)) return run;
+      if (receiptMatches && (run.status === "starting" || run.status === "running")) {
+        return run.status === "running"
+          ? run
+          : {
+              ...run,
+              status: "running",
+              revision: run.revision + 1,
+              startedAtUnixMs: run.startedAtUnixMs ?? observedAtUnixMs,
+              finishedAtUnixMs: null,
+              errorCode: null,
+              errorDetail: null,
+              updatedAtUnixMs: observedAtUnixMs,
+            };
+      }
+
+      const inspectionFailed = receipt._tag === "Failure";
+      return {
+        ...run,
+        status: "failed",
+        healthStatus: "unknown",
+        healthCheckedAtUnixMs: null,
+        healthDetail: null,
+        revision: run.revision + 1,
+        finishedAtUnixMs: observedAtUnixMs,
+        exitCode: null,
+        exitSignal: null,
+        errorCode: inspectionFailed
+          ? "workspace_script_start_failed"
+          : "workspace_script_server_restarted",
+        errorDetail: inspectionFailed
+          ? detailFromUnknown(receipt.failure)
+          : "Code Work 服务重启，未找到与 Run 身份一致的活跃脚本终端。",
+        updatedAtUnixMs: observedAtUnixMs,
+      };
+    });
+  });
+
+  const recoveryCandidates = yield* options.store
+    .listRecoveryCandidates()
+    .pipe(Effect.mapError((cause) => persistenceError("查询 Workspace Script 恢复候选", cause)));
+  yield* Effect.forEach(recoveryCandidates, recoverCandidate, { discard: true });
 
   const get: WorkspaceScriptServiceShape["get"] = readRun;
 
@@ -650,9 +755,9 @@ export const make = Effect.gen(function* () {
               (cause) => new WorkspaceScriptDependencyError({ operation: "killTerminal", cause }),
             ),
           ),
-      inspectSession: (input) =>
+      inspectSessionReceipt: (input) =>
         terminalManager
-          .inspectSession(input)
+          .inspectSessionReceipt(input)
           .pipe(
             Effect.mapError(
               (cause) =>

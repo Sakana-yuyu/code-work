@@ -11,7 +11,6 @@ export const WorkspaceScriptStoreErrorCode = Schema.Literals([
   "workspace_script_run_conflict",
   "workspace_script_revision_conflict",
   "workspace_script_stop_operation_conflict",
-  "workspace_script_recovery_time_invalid",
 ]);
 export type WorkspaceScriptStoreErrorCode = typeof WorkspaceScriptStoreErrorCode.Type;
 
@@ -55,10 +54,6 @@ export interface WorkspaceScriptStopClaimInput extends WorkspaceScriptRunTransit
   readonly operationId: string;
 }
 
-export interface WorkspaceScriptRecoveryInput {
-  readonly observedAtUnixMs: number;
-}
-
 export interface WorkspaceScriptStoreShape {
   readonly claimStart: (
     run: WorkspaceScriptRun,
@@ -79,9 +74,10 @@ export interface WorkspaceScriptStoreShape {
   readonly listRuns: (
     request: WorkspaceScriptListRequest,
   ) => Effect.Effect<ReadonlyArray<WorkspaceScriptRun>, WorkspaceScriptStoreError>;
-  readonly recoverInterrupted: (
-    input: WorkspaceScriptRecoveryInput,
-  ) => Effect.Effect<ReadonlyArray<WorkspaceScriptRun>, WorkspaceScriptStoreError>;
+  readonly listRecoveryCandidates: () => Effect.Effect<
+    ReadonlyArray<StoredWorkspaceScriptRun>,
+    WorkspaceScriptStoreError
+  >;
 }
 
 export class WorkspaceScriptStore extends Context.Service<
