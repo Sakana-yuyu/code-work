@@ -50,6 +50,10 @@ export interface WorkspaceScriptStopClaimInput extends WorkspaceScriptRunTransit
   readonly operationId: string;
 }
 
+export interface WorkspaceScriptStopReleaseInput extends WorkspaceScriptRunTransitionInput {
+  readonly operationId: string;
+}
+
 export interface WorkspaceScriptRecoveryInput {
   readonly observedAtUnixMs: number;
 }
@@ -64,6 +68,9 @@ export interface WorkspaceScriptStoreShape {
   readonly claimStop: (
     input: WorkspaceScriptStopClaimInput,
   ) => Effect.Effect<WorkspaceScriptRunClaimResult, WorkspaceScriptStoreError>;
+  readonly releaseStopClaim: (
+    input: WorkspaceScriptStopReleaseInput,
+  ) => Effect.Effect<WorkspaceScriptRun, WorkspaceScriptStoreError>;
   readonly getRun: (
     workspaceScriptRunId: string,
   ) => Effect.Effect<Option.Option<WorkspaceScriptRun>, WorkspaceScriptStoreError>;

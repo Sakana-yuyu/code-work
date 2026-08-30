@@ -602,23 +602,29 @@ export const makeWorkspaceScriptService = Effect.fn("WorkspaceScriptService.make
         .kill({ threadId: claim.run.threadId, terminalId: claim.run.terminalId })
         .pipe(Effect.result);
       if (killResult._tag === "Failure") {
-        const failed = yield* updateRun(input.workspaceScriptRunId, (run, observedAtUnixMs) =>
-          isFinished(run)
-            ? run
-            : {
-                ...run,
-                status: "failed",
-                revision: run.revision + 1,
-                finishedAtUnixMs: observedAtUnixMs,
-                errorCode: "workspace_script_stop_failed",
-                errorDetail: detailFromUnknown(killResult.failure),
-                updatedAtUnixMs: observedAtUnixMs,
-              },
-        );
+        const observedAtUnixMs = Math.max(yield* currentTimeMillis, claim.run.updatedAtUnixMs);
+        yield* options.store
+          .releaseStopClaim({
+            run: {
+              ...claim.run,
+              status: current.value.status === "starting" ? "starting" : "running",
+              revision: claim.run.revision + 1,
+              updatedAtUnixMs: observedAtUnixMs,
+            },
+            operationId: input.operationId,
+            expectedRevision: claim.run.revision,
+          })
+          .pipe(
+            Effect.mapError((cause) =>
+              persistenceError("释放 Workspace Script 停止领取", cause, {
+                workspaceScriptRunId: input.workspaceScriptRunId,
+                expectedRevision: claim.run.revision,
+              }),
+            ),
+          );
         return yield* operationError(
           "workspace_script_stop_failed",
-          (Option.isSome(failed) ? failed.value.errorDetail : null) ??
-            detailFromUnknown(killResult.failure),
+          detailFromUnknown(killResult.failure),
           { workspaceScriptRunId: input.workspaceScriptRunId },
         );
       }

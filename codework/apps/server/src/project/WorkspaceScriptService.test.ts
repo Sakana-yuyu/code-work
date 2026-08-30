@@ -74,6 +74,7 @@ const makeFixture = () => {
   const historyRequests: Array<{ threadId: string; terminalId: string }> = [];
   const histories = new Map<string, string>();
   const historyFailures: unknown[] = [];
+  const killFailures: unknown[] = [];
   let nowUnixMs = 1_000;
 
   const emit = (event: TerminalEvent) =>
@@ -88,6 +89,13 @@ const makeFixture = () => {
     kill: (input) =>
       Effect.gen(function* () {
         kills.push(input);
+        const failure = killFailures.shift();
+        if (failure !== undefined) {
+          return yield* new WorkspaceScriptDependencyError({
+            operation: "killTerminal",
+            cause: failure,
+          });
+        }
         yield* emit({
           type: "exited",
           ...input,
@@ -139,6 +147,7 @@ const makeFixture = () => {
       kills,
       histories,
       historyFailures,
+      killFailures,
       historyRequests,
       emit,
       restartService: makeService,
@@ -306,6 +315,36 @@ describe("WorkspaceScriptService", () => {
       assert.deepEqual(kills, [{ threadId: "thread-1", terminalId: started.terminalId }]);
       assert.equal(stopped.status, "stopped");
       assert.equal(repeated.status, "stopped");
+    }),
+  );
+
+  it.effect("kill 失败后释放停止领取，刷新 revision 后可用同一 operationId 重试", () =>
+    Effect.gen(function* () {
+      const { service, kills, killFailures } = yield* makeFixture();
+      const started = yield* service.start(startRequest);
+      killFailures.push(new Error("终端拒绝停止"));
+
+      const failed = yield* service
+        .stop({
+          workspaceScriptRunId: started.workspaceScriptRunId,
+          operationId: "stop-operation-retry",
+          expectedRevision: started.revision,
+        })
+        .pipe(Effect.flip);
+      assert.equal(failed.code, "workspace_script_stop_failed");
+
+      const retryable = Option.getOrThrow(yield* service.get(started.workspaceScriptRunId));
+      assert.equal(retryable.status, "running");
+      assert.isNull(retryable.finishedAtUnixMs);
+      assert.isNull(retryable.errorCode);
+
+      const stopped = yield* service.stop({
+        workspaceScriptRunId: started.workspaceScriptRunId,
+        operationId: "stop-operation-retry",
+        expectedRevision: retryable.revision,
+      });
+      assert.equal(stopped.status, "stopped");
+      assert.equal(kills.length, 2);
     }),
   );
 
