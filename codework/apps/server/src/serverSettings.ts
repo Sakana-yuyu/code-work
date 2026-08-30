@@ -379,8 +379,6 @@ function validateMulticaProviderInstancePreconditions(
   next: ServerSettings,
   patch: ServerSettingsPatch,
 ): Effect.Effect<ReadonlyArray<string>, ServerSettingsConflictError> {
-  const changedInstanceIds = changedMulticaProviderInstanceIds(current, next);
-  if (changedInstanceIds.length === 0) return Effect.succeed(changedInstanceIds);
   const preconditions = new Map<string, string | null>();
   for (const precondition of patch.multicaProviderInstancePreconditions ?? []) {
     if (preconditions.has(precondition.instanceId)) {
@@ -390,16 +388,22 @@ function validateMulticaProviderInstancePreconditions(
     }
     preconditions.set(precondition.instanceId, precondition.expectedRevision);
   }
-  for (const instanceId of changedInstanceIds) {
-    const expectedRevision = preconditions.get(instanceId);
+
+  for (const [instanceId, expectedRevision] of preconditions) {
     const currentInstance = current.providerInstances[ProviderInstanceId.make(instanceId)];
     const actualRevision = multicaProviderInstanceRevision(instanceId, currentInstance);
     if (
-      !preconditions.has(instanceId) ||
-      (expectedRevision === null
+      expectedRevision === null
         ? currentInstance !== undefined
-        : expectedRevision !== actualRevision)
+        : expectedRevision !== actualRevision
     ) {
+      return Effect.fail(new ServerSettingsConflictError({ providerInstanceId: instanceId }));
+    }
+  }
+
+  const changedInstanceIds = changedMulticaProviderInstanceIds(current, next);
+  for (const instanceId of changedInstanceIds) {
+    if (!preconditions.has(instanceId)) {
       return Effect.fail(new ServerSettingsConflictError({ providerInstanceId: instanceId }));
     }
   }

@@ -1698,6 +1698,101 @@ it.layer(NodeServices.layer)("server settings", (it) => {
     }).pipe(Effect.provide(makeServerSettingsLayer())),
   );
 
+  it.effect("逐条校验 Multica CAS precondition，不允许未变指纹绕过", () =>
+    Effect.gen(function* () {
+      const serverSettings = yield* ServerSettingsModule.ServerSettingsService;
+      const noOpId = ProviderInstanceId.make("multica_stale_noop");
+      const sourceId = ProviderInstanceId.make("multica_same_fingerprint_source");
+      const targetId = ProviderInstanceId.make("multica_same_fingerprint_target");
+      const multica = (version: string) => ({
+        driver: ProviderDriverKind.make("multica"),
+        config: {
+          runtimeId: "multica:daemon-1:runtime-1",
+          daemonId: "daemon-1",
+          daemonRuntimeId: "runtime-1",
+          baseUrl: "http://127.0.0.1:9000",
+          headers: [],
+          assigneeRoutes: [],
+          version,
+        },
+      });
+
+      const versionOne = yield* serverSettings.updateSettings({
+        providerInstances: { [noOpId]: multica("v1") },
+        multicaProviderInstancePreconditions: [{ instanceId: noOpId, expectedRevision: null }],
+      });
+      const revisionOne = multicaProviderInstanceRevision(
+        noOpId,
+        versionOne.providerInstances[noOpId],
+      );
+      const versionTwo = yield* serverSettings.updateSettings({
+        providerInstances: { [noOpId]: multica("v2") },
+        multicaProviderInstancePreconditions: [
+          { instanceId: noOpId, expectedRevision: revisionOne },
+        ],
+      });
+      const revisionTwo = multicaProviderInstanceRevision(
+        noOpId,
+        versionTwo.providerInstances[noOpId],
+      );
+
+      const staleNoOp = yield* Effect.flip(
+        serverSettings.updateSettings({
+          providerInstances: { [noOpId]: versionTwo.providerInstances[noOpId]! },
+          multicaProviderInstancePreconditions: [
+            { instanceId: noOpId, expectedRevision: revisionOne },
+          ],
+        }),
+      );
+      assert.equal(staleNoOp._tag, "ServerSettingsConflictError");
+
+      yield* serverSettings.updateSettings({
+        providerInstances: {},
+        multicaProviderInstancePreconditions: [
+          { instanceId: noOpId, expectedRevision: revisionTwo },
+        ],
+      });
+      const staleDelete = yield* Effect.flip(
+        serverSettings.updateSettings({
+          providerInstances: {},
+          multicaProviderInstancePreconditions: [
+            { instanceId: noOpId, expectedRevision: revisionTwo },
+          ],
+        }),
+      );
+      assert.equal(staleDelete._tag, "ServerSettingsConflictError");
+
+      const source = yield* serverSettings.updateSettings({
+        providerInstances: { [sourceId]: multica("same") },
+        multicaProviderInstancePreconditions: [{ instanceId: sourceId, expectedRevision: null }],
+      });
+      yield* serverSettings.updateSettings({
+        providerInstances: { [targetId]: multica("same") },
+        multicaProviderInstancePreconditions: [{ instanceId: targetId, expectedRevision: null }],
+      });
+      const renameConflict = yield* Effect.flip(
+        serverSettings.updateSettings({
+          providerInstances: { [targetId]: multica("same") },
+          multicaProviderInstancePreconditions: [
+            {
+              instanceId: sourceId,
+              expectedRevision: multicaProviderInstanceRevision(
+                sourceId,
+                source.providerInstances[sourceId],
+              ),
+            },
+            { instanceId: targetId, expectedRevision: null },
+          ],
+        }),
+      );
+      assert.equal(renameConflict._tag, "ServerSettingsConflictError");
+
+      const current = yield* serverSettings.getSettings;
+      assert.equal(current.providerInstances[sourceId]?.driver, "multica");
+      assert.equal(current.providerInstances[targetId]?.driver, "multica");
+    }).pipe(Effect.provide(makeServerSettingsLayer())),
+  );
+
   it.effect("拒绝创建或重命名覆盖已存在的非 Multica 实例", () =>
     Effect.gen(function* () {
       const serverSettings = yield* ServerSettingsModule.ServerSettingsService;
