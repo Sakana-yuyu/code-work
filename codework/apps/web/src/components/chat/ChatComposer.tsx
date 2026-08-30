@@ -511,7 +511,7 @@ const ComposerFooterPrimaryActions = memo(function ComposerFooterPrimaryActions(
 export interface ChatComposerHandle {
   focusAtEnd: () => void;
   focusAt: (cursor: number) => void;
-  addDroppedFiles: (files: File[]) => void;
+  addDroppedFiles: (files: File[]) => Promise<boolean>;
   insertTextAtEnd: (text: string, options?: { ensureLeadingBoundary?: boolean }) => boolean;
   openModelPicker: () => void;
   toggleModelPicker: () => void;
@@ -2592,14 +2592,14 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   // ------------------------------------------------------------------
   // Callbacks: images
   // ------------------------------------------------------------------
-  const addComposerImages = async (files: File[]) => {
-    if (!activeThreadId || files.length === 0) return;
+  const addComposerImages = async (files: File[]): Promise<boolean> => {
+    if (!activeThreadId || files.length === 0) return false;
     if (pendingUserInputs.length > 0) {
       toastManager.add({
         type: "error",
         title: t("attachImagesAfterAnsweringPlanQuestions"),
       });
-      return;
+      return false;
     }
     // Captured before the awaits below: the user may switch threads while a
     // large image is being compressed, and the attachments and errors belong
@@ -2631,7 +2631,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       reservedCount += 1;
     }
     setThreadError(threadId, error);
-    if (acceptedFiles.length === 0) return;
+    if (acceptedFiles.length === 0) return false;
 
     pendingImageCompressionsRef.current.set(threadId, pendingCount + acceptedFiles.length);
     try {
@@ -2675,6 +2675,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       if (compressionError !== null) {
         setThreadError(threadId, compressionError);
       }
+      return nextImages.length > 0;
     } finally {
       const remaining =
         (pendingImageCompressionsRef.current.get(threadId) ?? 0) - acceptedFiles.length;
@@ -2826,9 +2827,12 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       focusAt: (cursor: number) => {
         composerEditorRef.current?.focusAt(cursor);
       },
-      addDroppedFiles: (files: File[]) => {
-        void addComposerImages(files);
-        focusComposer();
+      addDroppedFiles: async (files: File[]) => {
+        try {
+          return await addComposerImages(files);
+        } finally {
+          focusComposer();
+        }
       },
       insertTextAtEnd: insertComposerTextAtEnd,
       openModelPicker: () => {

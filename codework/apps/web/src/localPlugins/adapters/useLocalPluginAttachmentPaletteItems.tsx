@@ -7,6 +7,7 @@ import { stackedThreadToast, toastManager } from "~/components/ui/toast";
 import { t } from "~/i18n";
 import { localPluginRuntime } from "../localPluginRuntime";
 import { listEnabledLocalPluginAttachments } from "./localPluginAttachmentAdapter";
+import { addFilesToLocalPluginComposer } from "./localPluginAttachmentComposerPort";
 import { pickLocalPluginAttachmentFiles } from "./localPluginAttachmentPicker";
 
 export function useLocalPluginAttachmentPaletteItems(input: {
@@ -25,12 +26,7 @@ export function useLocalPluginAttachmentPaletteItems(input: {
       runtime: localPluginRuntime,
       ports: {
         pickFiles: pickLocalPluginAttachmentFiles,
-        addFiles: (files) => {
-          const composer = composerHandleRef.current;
-          if (composer === null) return false;
-          composer.addDroppedFiles([...files]);
-          return true;
-        },
+        addFiles: (files) => addFilesToLocalPluginComposer(composerHandleRef, files),
         insertPrompt: (text) =>
           composerHandleRef.current?.insertTextAtEnd(text, {
             ensureLeadingBoundary: true,

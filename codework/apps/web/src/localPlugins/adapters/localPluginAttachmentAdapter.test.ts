@@ -195,7 +195,7 @@ describe("localPluginAttachmentAdapter", () => {
     runtime.lifecycle.install(manifest("acme.healthy"));
     const addFiles = vi
       .fn<(files: ReadonlyArray<File>) => Promise<boolean>>()
-      .mockRejectedValueOnce(new Error("composer unavailable"))
+      .mockResolvedValueOnce(false)
       .mockResolvedValueOnce(true);
     const attachments = listEnabledLocalPluginAttachments({
       runtime,
@@ -211,7 +211,7 @@ describe("localPluginAttachmentAdapter", () => {
       failure: {
         pluginId: "acme.failed",
         contributionId: "design",
-        message: "composer unavailable",
+        message: "当前输入框暂时不能接受插件附件。",
       },
     });
     expect(await attachments[1]!.invoke()).toMatchObject({
