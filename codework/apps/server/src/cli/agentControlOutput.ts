@@ -23,19 +23,21 @@ export const sanitizeAgentOutputText = (value: string): string =>
 export function formatAgentStatus(status: AgentStatusSnapshot, json: boolean): string {
   if (json) return JSON.stringify(status, null, 2);
 
+  const safeText = (value: string | null): string => sanitizeAgentOutputText(value ?? "none");
+
   return [
-    `Agent: ${status.agentId}`,
-    `Project: ${status.projectId}`,
-    `Title: ${status.title}`,
-    `Status: ${status.status}`,
-    `Session: ${status.sessionStatus ?? "none"}`,
-    `Active turn: ${status.activeTurnId ?? "none"}`,
-    `Latest turn: ${status.latestTurnId ?? "none"}`,
-    `Latest turn state: ${status.latestTurnState ?? "none"}`,
-    `Provider: ${status.providerInstanceId}`,
-    `Model: ${status.model}`,
-    `Archived at: ${status.archivedAt ?? "none"}`,
-    `Updated at: ${status.updatedAt}`,
+    `Agent: ${safeText(status.agentId)}`,
+    `Project: ${safeText(status.projectId)}`,
+    `Title: ${safeText(status.title)}`,
+    `Status: ${safeText(status.status)}`,
+    `Session: ${safeText(status.sessionStatus)}`,
+    `Active turn: ${safeText(status.activeTurnId)}`,
+    `Latest turn: ${safeText(status.latestTurnId)}`,
+    `Latest turn state: ${safeText(status.latestTurnState)}`,
+    `Provider: ${safeText(status.providerInstanceId)}`,
+    `Model: ${safeText(status.model)}`,
+    `Archived at: ${safeText(status.archivedAt)}`,
+    `Updated at: ${safeText(status.updatedAt)}`,
   ].join("\n");
 }
 

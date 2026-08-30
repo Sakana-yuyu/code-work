@@ -13,7 +13,7 @@ import { describe, expect, vi } from "vite-plus/test";
 import type { ControlClientOpen } from "./controlClient.ts";
 import { getAgentStatus } from "./agentControlRpc.ts";
 import { formatAgentStatus } from "./agentControlOutput.ts";
-import { deriveAgentStatus } from "./agentControlState.ts";
+import { deriveAgentStatus, type AgentStatusSnapshot } from "./agentControlState.ts";
 
 const thread: OrchestrationThread = {
   id: ThreadId.make("thread-agent-1"),
@@ -137,5 +137,40 @@ describe("Agent status CLI", () => {
     expect(formatAgentStatus(status, false)).toContain("Agent: thread-agent-1");
     expect(formatAgentStatus(status, false)).toContain("Status: running");
     expect(formatAgentStatus(status, false)).toContain("Active turn: turn-1");
+  });
+
+  it("文本输出清理全部字符串字段中的 ANSI、C0 和 C1，JSON 保留原值", () => {
+    const status = {
+      agentId: "\u001b[31mthread-agent-1\u001b[0m",
+      projectId: "project\u0000-1",
+      title: "修复\u0085 CLI",
+      status: "run\u0007ning" as AgentStatusSnapshot["status"],
+      sessionStatus: "\u001b[2mrunning\u001b[0m" as AgentStatusSnapshot["sessionStatus"],
+      activeTurnId: "turn\u009b-1",
+      latestTurnId: "turn\u0001-1",
+      latestTurnState: "run\u001fning" as AgentStatusSnapshot["latestTurnState"],
+      providerInstanceId: "\u001b[36mcodex\u001b[0m",
+      model: "gpt-\u009f5.6",
+      archivedAt: "2026-08-30T00:00:00.000Z\u0000",
+      updatedAt: "\u001b[33m2026-08-30T00:00:01.000Z\u001b[0m",
+    } satisfies AgentStatusSnapshot;
+
+    expect(formatAgentStatus(status, false)).toBe(
+      [
+        "Agent: thread-agent-1",
+        "Project: project-1",
+        "Title: 修复 CLI",
+        "Status: running",
+        "Session: running",
+        "Active turn: turn-1",
+        "Latest turn: turn-1",
+        "Latest turn state: running",
+        "Provider: codex",
+        "Model: gpt-5.6",
+        "Archived at: 2026-08-30T00:00:00.000Z",
+        "Updated at: 2026-08-30T00:00:01.000Z",
+      ].join("\n"),
+    );
+    expect(JSON.parse(formatAgentStatus(status, true))).toEqual(status);
   });
 });
