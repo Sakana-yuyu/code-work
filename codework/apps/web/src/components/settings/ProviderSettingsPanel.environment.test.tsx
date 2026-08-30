@@ -254,6 +254,34 @@ describe("EnvironmentProviderSettings routing", () => {
     expect(providersSection?.props.headerAction).not.toBeNull();
   });
 
+  it("不在通用 Provider 卡片中重复渲染 Multica Runtime", () => {
+    const multicaId = ProviderInstanceId.make("multica_local");
+    settingsState.value = {
+      ...DEFAULT_UNIFIED_SETTINGS,
+      providerInstances: {
+        [multicaId]: {
+          driver: ProviderDriverKind.make("multica"),
+          config: {
+            runtimeId: "multica:daemon-1:runtime-1",
+            daemonId: "daemon-1",
+            daemonRuntimeId: "runtime-1",
+            baseUrl: "http://127.0.0.1:9000",
+            headers: [],
+            assigneeRoutes: [],
+          },
+        },
+      },
+    };
+    const panel = renderPanel();
+
+    expect(
+      visitElements(
+        panel,
+        (element) => element.props.instanceId === multicaId && element.props.mode === "list",
+      ),
+    ).toBeNull();
+  });
+
   it("将 Multica 保存的客户端版本随 settings RPC 一并发送", async () => {
     const multicaId = ProviderInstanceId.make("multica_local");
     const multicaInstance = {
@@ -315,6 +343,81 @@ describe("EnvironmentProviderSettings routing", () => {
           providerInstances: { [multicaId]: { ...savedInstance, enabled: undefined } },
           multicaProviderInstancePreconditions: [
             { instanceId: multicaId, expectedRevision: "revision-v1" },
+          ],
+        },
+      },
+    });
+  });
+
+  it("将 Multica 重命名和删除编码为局部 CAS mutation", async () => {
+    const sourceId = ProviderInstanceId.make("multica_source");
+    const targetId = ProviderInstanceId.make("multica_target");
+    const sourceInstance = {
+      driver: ProviderDriverKind.make("multica"),
+      enabled: true,
+      settingsRevision: "revision-v1",
+      config: {
+        runtimeId: "multica:daemon-1:runtime-1",
+        daemonId: "daemon-1",
+        daemonRuntimeId: "runtime-1",
+        baseUrl: "http://127.0.0.1:9000",
+        headers: [],
+        assigneeRoutes: [],
+      },
+    };
+    settingsState.value = {
+      ...DEFAULT_UNIFIED_SETTINGS,
+      providerInstances: { [sourceId]: sourceInstance },
+    };
+    const panel = renderPanel();
+    const runtimePanel = visitElements(
+      panel,
+      (element) =>
+        (element.props as { readonly state?: { readonly status?: string } }).state?.status ===
+          "ready" &&
+        typeof element.props.onSave === "function" &&
+        typeof element.props.onDelete === "function",
+    );
+    const sourceDraft = formFromMulticaRuntimeInstance(sourceId, sourceInstance);
+    expect(sourceDraft).not.toBeNull();
+    if (runtimePanel === null) throw new Error("missing Multica runtime panel");
+
+    await (runtimePanel.props.onSave as (request: Record<string, unknown>) => Promise<void>)({
+      originalInstanceId: sourceId,
+      expectedFingerprint: multicaRuntimeDraftFingerprint(sourceDraft!),
+      instanceId: targetId,
+      config: sourceInstance.config,
+      environment: [],
+    });
+
+    expect(commands.updateSettings).toHaveBeenLastCalledWith({
+      environmentId,
+      input: {
+        patch: {
+          providerInstances: {
+            [targetId]: {
+              driver: ProviderDriverKind.make("multica"),
+              enabled: undefined,
+              config: sourceInstance.config,
+              environment: [],
+            },
+          },
+          multicaProviderInstancePreconditions: [
+            { instanceId: sourceId, expectedRevision: "revision-v1" },
+            { instanceId: targetId, expectedRevision: null },
+          ],
+        },
+      },
+    });
+
+    await (runtimePanel.props.onDelete as (instanceId: string) => Promise<void>)(sourceId);
+    expect(commands.updateSettings).toHaveBeenLastCalledWith({
+      environmentId,
+      input: {
+        patch: {
+          providerInstances: {},
+          multicaProviderInstancePreconditions: [
+            { instanceId: sourceId, expectedRevision: "revision-v1" },
           ],
         },
       },

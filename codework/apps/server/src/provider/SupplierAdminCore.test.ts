@@ -8,11 +8,13 @@ import { describe, expect, it } from "vite-plus/test";
 
 import {
   applySupplierCredentialUpdate,
+  buildSupplierProviderInstancePatch,
   setSupplierInstanceEnabled,
 } from "./SupplierAdminCore.ts";
 
 const byokId = ProviderInstanceId.make("byok-main");
 const codexId = ProviderInstanceId.make("codex-work");
+const multicaId = ProviderInstanceId.make("multica-work");
 const missingId = ProviderInstanceId.make("missing");
 
 const makeMap = (): ProviderInstanceConfigMap => ({
@@ -81,6 +83,44 @@ describe("setSupplierInstanceEnabled", () => {
   });
 });
 
+describe("buildSupplierProviderInstancePatch", () => {
+  it("Multica 写入使用局部 CAS mutation，普通实例仍保留整图兼容路径", () => {
+    const sentinel = "supplier-secret-must-not-enter-revision";
+    const current = {
+      ...makeMap(),
+      [multicaId]: {
+        driver: ProviderDriverKind.make("multica"),
+        environment: [{ name: "UNBOUND_SECRET", value: sentinel, sensitive: true }],
+        config: {
+          runtimeId: "multica:daemon-1:runtime-1",
+          daemonId: "daemon-1",
+          daemonRuntimeId: "runtime-1",
+          baseUrl: "http://127.0.0.1:9000",
+          headers: [],
+          assigneeRoutes: [],
+        },
+      },
+    } satisfies ProviderInstanceConfigMap;
+    const enabled = setSupplierInstanceEnabled(current, multicaId, false);
+    if (!enabled.ok) throw new Error(enabled.code);
+    const multicaPatch = buildSupplierProviderInstancePatch(
+      current,
+      enabled.value.providerInstances,
+      multicaId,
+    );
+
+    expect(Object.keys(multicaPatch.providerInstances ?? {})).toEqual([multicaId]);
+    expect(multicaPatch.multicaProviderInstancePreconditions).toHaveLength(1);
+    expect(JSON.stringify(multicaPatch.multicaProviderInstancePreconditions)).not.toContain(
+      sentinel,
+    );
+
+    const codexPatch = buildSupplierProviderInstancePatch(current, current, codexId);
+    expect(codexPatch.providerInstances).toBe(current);
+    expect(codexPatch.multicaProviderInstancePreconditions).toBeUndefined();
+  });
+});
+
 describe("applySupplierCredentialUpdate", () => {
   it("更新 BYOK 适配器 apiKey 并清掉 redacted 标志，结果不回显凭据值", () => {
     const outcome = applySupplierCredentialUpdate(makeMap(), byokId, {
@@ -89,8 +129,10 @@ describe("applySupplierCredentialUpdate", () => {
       apiKey: "sk-new-secret",
     });
     if (!outcome.ok) throw new Error(outcome.code);
+    const updatedInstance = outcome.value.providerInstances[byokId];
+    if (updatedInstance === undefined) throw new Error("missing updated instance");
     const adapters = (
-      outcome.value.providerInstances[byokId]?.config as {
+      updatedInstance.config as {
         adapters: ReadonlyArray<Record<string, unknown>>;
       }
     ).adapters;

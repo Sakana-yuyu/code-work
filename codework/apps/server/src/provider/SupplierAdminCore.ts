@@ -16,13 +16,40 @@ import type {
   ProviderInstanceConfig,
   ProviderInstanceConfigMap,
   ProviderInstanceId,
+  ServerSettingsPatch,
   SupplierAdminErrorCode,
   SupplierCredentialUpdate,
 } from "@codework/contracts";
+import { multicaProviderInstanceRevision } from "@codework/contracts";
 
 export type SupplierAdminOutcome<T> =
   | { readonly ok: true; readonly value: T }
   | { readonly ok: false; readonly code: SupplierAdminErrorCode; readonly detail: string };
+
+/**
+ * Supplier 的 Multica 修改走局部 CAS mutation，避免 materialized 全图快照覆盖其它实例。
+ * 非 Multica 保持既有整图写入合同，兼容旧设置调用方。
+ */
+export const buildSupplierProviderInstancePatch = (
+  current: ProviderInstanceConfigMap,
+  next: ProviderInstanceConfigMap,
+  instanceId: ProviderInstanceId,
+): Pick<ServerSettingsPatch, "providerInstances" | "multicaProviderInstancePreconditions"> => {
+  const currentInstance = current[instanceId];
+  const nextInstance = next[instanceId];
+  if (currentInstance?.driver !== "multica" && nextInstance?.driver !== "multica") {
+    return { providerInstances: next };
+  }
+  return {
+    providerInstances: nextInstance === undefined ? {} : { [instanceId]: nextInstance },
+    multicaProviderInstancePreconditions: [
+      {
+        instanceId,
+        expectedRevision: multicaProviderInstanceRevision(instanceId, currentInstance),
+      },
+    ],
+  };
+};
 
 const instanceNotFound = (instanceId: string) =>
   ({

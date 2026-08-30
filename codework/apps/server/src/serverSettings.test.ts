@@ -23,6 +23,11 @@ import * as SqlClient from "effect/unstable/sql/SqlClient";
 import * as ServerSecretStore from "./auth/ServerSecretStore.ts";
 import * as ServerConfig from "./config.ts";
 import { SqlitePersistenceMemory } from "./persistence/Layers/Sqlite.ts";
+import {
+  applySupplierCredentialUpdate,
+  buildSupplierProviderInstancePatch,
+  setSupplierInstanceEnabled,
+} from "./provider/SupplierAdminCore.ts";
 import * as ServerSettingsModule from "./serverSettings.ts";
 
 // Record 键是品牌化的 CompositionMcpServerId，普通字面量需显式收窄。
@@ -1709,11 +1714,13 @@ it.layer(NodeServices.layer)("server settings", (it) => {
           assigneeRoutes: [],
         },
       };
-      const initial = yield* serverSettings.updateSettings({
+      yield* serverSettings.updateSettings({
         providerInstances: {
-          [sourceId]: multica,
           [targetId]: { driver: ProviderDriverKind.make("codex"), config: {} },
         },
+      });
+      const initial = yield* serverSettings.updateSettings({
+        providerInstances: { [sourceId]: multica },
         multicaProviderInstancePreconditions: [{ instanceId: sourceId, expectedRevision: null }],
       });
       const sourceRevision = multicaProviderInstanceRevision(
@@ -1724,7 +1731,6 @@ it.layer(NodeServices.layer)("server settings", (it) => {
       const createConflict = yield* Effect.flip(
         serverSettings.updateSettings({
           providerInstances: {
-            [sourceId]: initial.providerInstances[sourceId]!,
             [targetId]: multica,
           },
           multicaProviderInstancePreconditions: [{ instanceId: targetId, expectedRevision: null }],
@@ -1750,7 +1756,6 @@ it.layer(NodeServices.layer)("server settings", (it) => {
               ...initial.providerInstances[sourceId]!,
               config: { ...multica.config, version: "v2" },
             },
-            [targetId]: initial.providerInstances[targetId]!,
           },
           multicaProviderInstancePreconditions: [
             { instanceId: sourceId, expectedRevision: sourceRevision },
@@ -1763,6 +1768,207 @@ it.layer(NodeServices.layer)("server settings", (it) => {
       const current = yield* serverSettings.getSettings;
       assert.equal(current.providerInstances[sourceId]?.driver, "multica");
       assert.equal(current.providerInstances[targetId]?.driver, "codex");
+    }).pipe(Effect.provide(makeServerSettingsLayer())),
+  );
+
+  it.effect("Multica 局部 CAS mutation 保留并发实例更新并拒绝混合整图意图", () =>
+    Effect.gen(function* () {
+      const serverSettings = yield* ServerSettingsModule.ServerSettingsService;
+      const codexId = ProviderInstanceId.make("codex_parallel");
+      const firstMulticaId = ProviderInstanceId.make("multica_first");
+      const secondMulticaId = ProviderInstanceId.make("multica_second");
+      const multica = (version: string) => ({
+        driver: ProviderDriverKind.make("multica"),
+        config: {
+          runtimeId: `multica:daemon-1:runtime-${version}`,
+          daemonId: "daemon-1",
+          daemonRuntimeId: `runtime-${version}`,
+          baseUrl: "http://127.0.0.1:9000",
+          headers: [],
+          assigneeRoutes: [],
+          version,
+        },
+      });
+
+      yield* serverSettings.updateSettings({
+        providerInstances: {
+          [codexId]: { driver: ProviderDriverKind.make("codex"), config: { version: "v1" } },
+        },
+      });
+      yield* serverSettings.updateSettings({
+        providerInstances: { [firstMulticaId]: multica("v1") },
+        multicaProviderInstancePreconditions: [
+          { instanceId: firstMulticaId, expectedRevision: null },
+        ],
+      });
+      const before = yield* serverSettings.updateSettings({
+        providerInstances: { [secondMulticaId]: multica("v1") },
+        multicaProviderInstancePreconditions: [
+          { instanceId: secondMulticaId, expectedRevision: null },
+        ],
+      });
+      const firstRevision = multicaProviderInstanceRevision(
+        firstMulticaId,
+        before.providerInstances[firstMulticaId],
+      );
+      const secondRevision = multicaProviderInstanceRevision(
+        secondMulticaId,
+        before.providerInstances[secondMulticaId],
+      );
+
+      const concurrentCodex = yield* serverSettings.updateSettings({
+        providerInstances: {
+          ...before.providerInstances,
+          [codexId]: { driver: ProviderDriverKind.make("codex"), config: { version: "v2" } },
+        },
+      });
+      const saved = yield* serverSettings.updateSettings({
+        providerInstances: { [firstMulticaId]: multica("v2") },
+        multicaProviderInstancePreconditions: [
+          { instanceId: firstMulticaId, expectedRevision: firstRevision },
+        ],
+      });
+      const savedCodex = saved.providerInstances[codexId];
+      const savedSecondMultica = saved.providerInstances[secondMulticaId];
+      if (savedCodex === undefined || savedSecondMultica === undefined) {
+        return yield* Effect.die("missing saved provider instance");
+      }
+      assert.equal((savedCodex.config as { readonly version?: string }).version, "v2");
+      assert.equal((savedSecondMultica.config as { readonly version?: string }).version, "v1");
+      assert.equal(
+        multicaProviderInstanceRevision(secondMulticaId, savedSecondMultica),
+        secondRevision,
+      );
+      const concurrentCodexInstance = concurrentCodex.providerInstances[codexId];
+      if (concurrentCodexInstance === undefined) {
+        return yield* Effect.die("missing concurrent Codex instance");
+      }
+      assert.equal((concurrentCodexInstance.config as { readonly version?: string }).version, "v2");
+
+      const mixedIntent = yield* Effect.flip(
+        serverSettings.updateSettings({
+          providerInstances: {
+            [firstMulticaId]: multica("v3"),
+            [codexId]: { driver: ProviderDriverKind.make("codex"), config: { version: "v3" } },
+          },
+          multicaProviderInstancePreconditions: [
+            {
+              instanceId: firstMulticaId,
+              expectedRevision: multicaProviderInstanceRevision(
+                firstMulticaId,
+                saved.providerInstances[firstMulticaId],
+              ),
+            },
+          ],
+        }),
+      );
+      assert.equal(mixedIntent._tag, "ServerSettingsConflictError");
+
+      const nonMulticaMutation = yield* Effect.flip(
+        serverSettings.updateSettings({
+          providerInstances: {
+            [codexId]: { driver: ProviderDriverKind.make("codex"), config: { version: "v3" } },
+          },
+          multicaProviderInstancePreconditions: [{ instanceId: codexId, expectedRevision: null }],
+        }),
+      );
+      assert.equal(nonMulticaMutation._tag, "ServerSettingsConflictError");
+    }).pipe(Effect.provide(makeServerSettingsLayer())),
+  );
+
+  it.effect("Supplier 的 Multica enable 与凭据写入保留其它实例并拒绝同实例并发", () =>
+    Effect.gen(function* () {
+      const serverSettings = yield* ServerSettingsModule.ServerSettingsService;
+      const codexId = ProviderInstanceId.make("codex_supplier_parallel");
+      const multicaId = ProviderInstanceId.make("multica_supplier_parallel");
+      const multica = (version: string) => ({
+        driver: ProviderDriverKind.make("multica"),
+        enabled: true,
+        environment: [{ name: "MULTICA_TOKEN", value: "supplier-secret-v1", sensitive: true }],
+        config: {
+          runtimeId: "multica:daemon-1:runtime-1",
+          daemonId: "daemon-1",
+          daemonRuntimeId: "runtime-1",
+          baseUrl: "http://127.0.0.1:9000",
+          headers: [{ headerName: "Private-Token", environmentVariable: "MULTICA_TOKEN" }],
+          assigneeRoutes: [],
+          version,
+        },
+      });
+
+      yield* serverSettings.updateSettings({
+        providerInstances: {
+          [codexId]: { driver: ProviderDriverKind.make("codex"), config: { version: "v1" } },
+        },
+      });
+      yield* serverSettings.updateSettings({
+        providerInstances: { [multicaId]: multica("v1") },
+        multicaProviderInstancePreconditions: [{ instanceId: multicaId, expectedRevision: null }],
+      });
+      const beforeEnable = yield* serverSettings.getSettings;
+      const enableOutcome = setSupplierInstanceEnabled(
+        beforeEnable.providerInstances,
+        multicaId,
+        false,
+      );
+      if (!enableOutcome.ok) return yield* Effect.die(enableOutcome.code);
+      const enablePatch = buildSupplierProviderInstancePatch(
+        beforeEnable.providerInstances,
+        enableOutcome.value.providerInstances,
+        multicaId,
+      );
+      yield* serverSettings.updateSettings({
+        providerInstances: {
+          ...beforeEnable.providerInstances,
+          [codexId]: { driver: ProviderDriverKind.make("codex"), config: { version: "v2" } },
+        },
+      });
+      const enabled = yield* serverSettings.updateSettings(enablePatch);
+      const enabledMultica = enabled.providerInstances[multicaId];
+      const enabledCodex = enabled.providerInstances[codexId];
+      if (enabledMultica === undefined || enabledCodex === undefined) {
+        return yield* Effect.die("missing enabled provider instance");
+      }
+      assert.equal(enabledMultica.enabled, false);
+      assert.equal((enabledCodex.config as { readonly version?: string }).version, "v2");
+
+      const beforeCredential = yield* serverSettings.getSettings;
+      const credentialOutcome = applySupplierCredentialUpdate(
+        beforeCredential.providerInstances,
+        multicaId,
+        { kind: "environment_variable", name: "MULTICA_TOKEN", value: "supplier-secret-v2" },
+      );
+      if (!credentialOutcome.ok) return yield* Effect.die(credentialOutcome.code);
+      const credentialPatch = buildSupplierProviderInstancePatch(
+        beforeCredential.providerInstances,
+        credentialOutcome.value.providerInstances,
+        multicaId,
+      );
+      yield* serverSettings.updateSettings({
+        providerInstances: {
+          [multicaId]: {
+            ...beforeCredential.providerInstances[multicaId]!,
+            config: { ...multica("v1").config, version: "v2" },
+          },
+        },
+        multicaProviderInstancePreconditions: [
+          {
+            instanceId: multicaId,
+            expectedRevision: multicaProviderInstanceRevision(
+              multicaId,
+              beforeCredential.providerInstances[multicaId],
+            ),
+          },
+        ],
+      });
+      const credentialConflict = yield* Effect.flip(serverSettings.updateSettings(credentialPatch));
+      assert.equal(credentialConflict._tag, "ServerSettingsConflictError");
+      const current = yield* serverSettings.getSettings;
+      const currentMultica = current.providerInstances[multicaId];
+      if (currentMultica === undefined)
+        return yield* Effect.die("missing current Multica instance");
+      assert.equal((currentMultica.config as { readonly version?: string }).version, "v2");
+      assert.equal(currentMultica.environment?.[0]?.value, "supplier-secret-v1");
     }).pipe(Effect.provide(makeServerSettingsLayer())),
   );
 });

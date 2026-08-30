@@ -494,7 +494,15 @@ export function EnvironmentProviderSettings({
       const result = await persistMulticaSettings({
         environmentId,
         input: {
-          patch: { providerInstances: nextInstances, multicaProviderInstancePreconditions },
+          patch: {
+            providerInstances: Object.fromEntries(
+              multicaProviderInstancePreconditions.flatMap(({ instanceId }) => {
+                const instance = nextInstances[instanceId];
+                return instance === undefined ? [] : [[instanceId, instance]];
+              }),
+            ),
+            multicaProviderInstancePreconditions,
+          },
         },
       });
       if (result._tag === "Failure") {
@@ -519,7 +527,7 @@ export function EnvironmentProviderSettings({
         environmentId,
         input: {
           patch: {
-            providerInstances: nextInstances,
+            providerInstances: {},
             multicaProviderInstancePreconditions: [
               {
                 instanceId,
@@ -717,6 +725,7 @@ export function EnvironmentProviderSettings({
     }
   }
   for (const [driver, list] of instancesByDriver) {
+    if (driver === "multica") continue;
     if (visibleDriverKinds.has(driver)) continue;
     for (const [id, instance] of list) {
       rows.push({

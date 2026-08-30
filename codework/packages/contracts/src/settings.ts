@@ -1039,7 +1039,11 @@ export const ServerSettingsPatch = Schema.Struct({
   // patches risk leaving driver-specific config in a half-merged state.
   // The web UI sends a fully-formed map every time it edits this field.
   providerInstances: Schema.optionalKey(Schema.Record(ProviderInstanceId, ProviderInstanceConfig)),
-  /** Multica 整图替换中每个变更实例的客户端可见版本；null 表示必须尚不存在。 */
+  /**
+   * 非空时启用 Multica 局部 mutation 模式：`providerInstances` 只能携带 listed 的
+   * Multica 实例；listed 但省略的实例表示删除，任何其它实例条目都会被服务端拒绝。
+   * null 表示目标实例必须尚不存在。
+   */
   multicaProviderInstancePreconditions: Schema.optionalKey(
     Schema.Array(
       Schema.Struct({
@@ -1082,7 +1086,7 @@ export const multicaProviderInstanceFingerprint = (
     ),
   );
   const environment = (instance.environment ?? []).map((variable) =>
-    secretEnvironmentNames.has(variable.name)
+    variable.sensitive || secretEnvironmentNames.has(variable.name)
       ? {
           name: variable.name,
           sensitive: true,

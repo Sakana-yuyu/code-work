@@ -304,6 +304,65 @@ function changedMulticaProviderInstanceIds(
   });
 }
 
+/**
+ * 非空 Multica precondition 表示局部 mutation，而不是整张 providerInstances 图替换。
+ * 这样专用写入在锁内只修改声明的 Multica 实例，不能用过期快照回滚其它驱动。
+ */
+function applyMulticaProviderInstanceMutation(
+  current: ServerSettings,
+  patch: ServerSettingsPatch,
+): Effect.Effect<ServerSettings, ServerSettingsConflictError> {
+  const preconditions = patch.multicaProviderInstancePreconditions ?? [];
+  if (preconditions.length === 0) {
+    return Effect.succeed(applyServerSettingsPatch(current, patch));
+  }
+  const partialProviderInstances = patch.providerInstances;
+  if (partialProviderInstances === undefined) {
+    return Effect.fail(
+      new ServerSettingsConflictError({ providerInstanceId: preconditions[0]!.instanceId }),
+    );
+  }
+
+  const listedIds = new Set<string>();
+  for (const precondition of preconditions) {
+    if (listedIds.has(precondition.instanceId)) {
+      return Effect.fail(
+        new ServerSettingsConflictError({ providerInstanceId: precondition.instanceId }),
+      );
+    }
+    listedIds.add(precondition.instanceId);
+  }
+  for (const instanceId of Object.keys(partialProviderInstances)) {
+    if (!listedIds.has(instanceId)) {
+      return Effect.fail(new ServerSettingsConflictError({ providerInstanceId: instanceId }));
+    }
+  }
+
+  const providerInstances: Record<string, ProviderInstanceConfig> = {
+    ...current.providerInstances,
+  };
+  for (const instanceId of listedIds) {
+    const providerInstanceId = ProviderInstanceId.make(instanceId);
+    const currentInstance = current.providerInstances[providerInstanceId];
+    const nextInstance = partialProviderInstances[providerInstanceId];
+    if (currentInstance?.driver !== "multica" && nextInstance?.driver !== "multica") {
+      return Effect.fail(new ServerSettingsConflictError({ providerInstanceId: instanceId }));
+    }
+    if (nextInstance === undefined) {
+      delete providerInstances[instanceId];
+    } else {
+      providerInstances[instanceId] = nextInstance;
+    }
+  }
+
+  return Effect.succeed(
+    applyServerSettingsPatch(current, {
+      ...patch,
+      providerInstances: providerInstances as ServerSettings["providerInstances"],
+    }),
+  );
+}
+
 function validateMulticaProviderInstancePreconditions(
   current: ServerSettings,
   next: ServerSettings,
@@ -1528,7 +1587,7 @@ const make = Effect.gen(function* () {
       writeSemaphore.withPermits(1)(
         Effect.gen(function* () {
           const current = yield* getSettingsFromCache;
-          const patched = applyServerSettingsPatch(current, patch);
+          const patched = yield* applyMulticaProviderInstanceMutation(current, patch);
           const changedMulticaInstanceIds = yield* validateMulticaProviderInstancePreconditions(
             current,
             patched,

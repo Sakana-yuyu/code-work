@@ -9,6 +9,8 @@ import {
   ClaudeSettings,
   DEFAULT_SERVER_SETTINGS,
   defaultEnabledForDriver,
+  multicaProviderInstanceFingerprint,
+  multicaProviderInstanceRevision,
   resolveProviderInstanceEnabled,
   ServerSettings,
   ServerSettingsPatch,
@@ -379,6 +381,30 @@ describe("ServerSettingsPatch.providerInstances", () => {
       { instanceId: "multica_local", expectedRevision: "revision-1" },
       { instanceId: "multica_next", expectedRevision: null },
     ]);
+  });
+
+  it("legacy Multica revision never serializes explicitly sensitive environment values", () => {
+    const instanceId = ProviderInstanceId.make("multica_sensitive_legacy");
+    const sentinel = "sensitive-value-must-not-enter-revision";
+    const instance = {
+      driver: ProviderDriverKind.make("multica"),
+      environment: [{ name: "UNBOUND_SECRET", value: sentinel, sensitive: true }],
+      config: {
+        runtimeId: "multica:daemon-1:runtime-1",
+        daemonId: "daemon-1",
+        daemonRuntimeId: "runtime-1",
+        baseUrl: "http://127.0.0.1:9000",
+        headers: [],
+        assigneeRoutes: [],
+      },
+    };
+    const fingerprint = multicaProviderInstanceFingerprint(instanceId, instance);
+    const revision = multicaProviderInstanceRevision(instanceId, instance);
+    const rpcPreconditions = [{ instanceId, expectedRevision: revision }];
+
+    expect(fingerprint).not.toContain(sentinel);
+    expect(revision).not.toContain(sentinel);
+    expect(JSON.stringify(rpcPreconditions)).not.toContain(sentinel);
   });
 
   it("preserves a fork-defined driver entry through patch decoding", () => {
