@@ -45,9 +45,10 @@ layer("065_CompositionGoalLoopRetryIntents", (it) => {
         FROM sqlite_master
         WHERE type = 'index' AND name = 'uq_composition_goal_loop_retry_new_run'
       `;
-      assert.deepEqual(indexes.map((index) => index.name), [
-        "uq_composition_goal_loop_retry_new_run",
-      ]);
+      assert.deepEqual(
+        indexes.map((index) => index.name),
+        ["uq_composition_goal_loop_retry_new_run"],
+      );
       assert.deepEqual(yield* runMigrations({ toMigrationInclusive: 65 }), []);
     }),
   );

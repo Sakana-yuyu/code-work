@@ -4,6 +4,7 @@ import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 import * as SqlClient from "effect/unstable/sql/SqlClient";
 import * as SqlSchema from "effect/unstable/sql/SqlSchema";
+import type { SqlError } from "effect/unstable/sql/SqlError";
 
 import {
   toPersistenceDecodeError,
@@ -12,7 +13,6 @@ import {
   type PersistenceSqlError,
 } from "../Errors.ts";
 import {
-  CompositionGoalLoopRetryIntent as CompositionGoalLoopRetryIntentSchema,
   CompositionGoalLoopRetryPhase,
   CompositionGoalLoopRetryStore,
   CompositionGoalLoopRetryStoreDomainError,
@@ -44,8 +44,6 @@ const RetryIntentAdvanceSchema = Schema.Struct({
   previousRunId: Schema.String,
   updatedAtUnixMs: Schema.Number,
 });
-
-const decodeIntent = Schema.decodeUnknownEffect(CompositionGoalLoopRetryIntentSchema);
 
 const domainError = (
   code: CompositionGoalLoopRetryStoreErrorCode,
@@ -165,7 +163,7 @@ const makeStore = Effect.gen(function* () {
 
   const run = <A>(
     operation: string,
-    effect: Effect.Effect<A, SqlClient.SqlClient.Error | Schema.SchemaError>,
+    effect: Effect.Effect<A, SqlError | Schema.SchemaError>,
   ): Effect.Effect<A, PersistenceSqlError | PersistenceDecodeError> =>
     effect.pipe(
       Effect.mapError((cause) =>
@@ -176,12 +174,7 @@ const makeStore = Effect.gen(function* () {
     );
 
   const getIntent: CompositionGoalLoopRetryStoreShape["getIntent"] = (previousRunId) =>
-    run("CompositionGoalLoopRetryStore.getIntent", getIntentRow({ previousRunId })).pipe(
-      Effect.flatMap(Option.match({
-        onNone: () => Effect.succeed(Option.none()),
-        onSome: (row) => Effect.map(decodeIntent(row), Option.some),
-      })),
-    );
+    run("CompositionGoalLoopRetryStore.getIntent", getIntentRow({ previousRunId }));
 
   const prepareIntent: CompositionGoalLoopRetryStoreShape["prepareIntent"] = (input) =>
     Effect.gen(function* () {
@@ -190,7 +183,7 @@ const makeStore = Effect.gen(function* () {
         "CompositionGoalLoopRetryStore.prepareIntent",
         insertIntentRow(input),
       );
-      if (Option.isSome(inserted)) return yield* decodeIntent(inserted.value);
+      if (Option.isSome(inserted)) return inserted.value;
 
       const existing = yield* getIntent(input.previousRunId);
       if (Option.isSome(existing)) {
@@ -248,7 +241,7 @@ const makeStore = Effect.gen(function* () {
         settleIntentRow(input),
       );
       return Option.isSome(updated)
-        ? yield* decodeIntent(updated.value)
+        ? updated.value
         : yield* readAfterAdvance(input, new Set(["settled", "dispatched"]));
     });
 
@@ -260,7 +253,7 @@ const makeStore = Effect.gen(function* () {
         dispatchIntentRow(input),
       );
       return Option.isSome(updated)
-        ? yield* decodeIntent(updated.value)
+        ? updated.value
         : yield* readAfterAdvance(input, new Set(["dispatched"]));
     });
 

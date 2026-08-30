@@ -5,11 +5,7 @@ import * as Schema from "effect/Schema";
 
 import type { PersistenceDecodeError, PersistenceSqlError } from "../Errors.ts";
 
-export const CompositionGoalLoopRetryPhase = Schema.Literals([
-  "prepared",
-  "settled",
-  "dispatched",
-]);
+export const CompositionGoalLoopRetryPhase = Schema.Literals(["prepared", "settled", "dispatched"]);
 export type CompositionGoalLoopRetryPhase = typeof CompositionGoalLoopRetryPhase.Type;
 
 export const CompositionGoalLoopRetryIntent = Schema.Struct({
@@ -70,7 +66,10 @@ export interface CompositionGoalLoopRetryStoreShape {
   ) => Effect.Effect<CompositionGoalLoopRetryIntent, CompositionGoalLoopRetryStoreError>;
   readonly getIntent: (
     previousRunId: string,
-  ) => Effect.Effect<Option.Option<CompositionGoalLoopRetryIntent>, CompositionGoalLoopRetryStoreError>;
+  ) => Effect.Effect<
+    Option.Option<CompositionGoalLoopRetryIntent>,
+    CompositionGoalLoopRetryStoreError
+  >;
   readonly markSettled: (
     input: CompositionGoalLoopRetryAdvanceInput,
   ) => Effect.Effect<CompositionGoalLoopRetryIntent, CompositionGoalLoopRetryStoreError>;

@@ -41,10 +41,7 @@ layer("CompositionGoalLoopRetryStore", (it) => {
         createdAtUnixMs: 100,
         updatedAtUnixMs: 100,
       });
-      assert.deepEqual(
-        Option.getOrThrow(yield* store.getIntent("run-retry-stable-old")),
-        prepared,
-      );
+      assert.deepEqual(Option.getOrThrow(yield* store.getIntent("run-retry-stable-old")), prepared);
     }),
   );
 
