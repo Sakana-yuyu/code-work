@@ -35,6 +35,7 @@ import * as AnalyticsService from "./telemetry/AnalyticsService.ts";
 import * as ServerEnvironment from "./environment/ServerEnvironment.ts";
 import * as EnvironmentAuth from "./auth/EnvironmentAuth.ts";
 import * as CompositionMcpRuntimeService from "./composition/CompositionMcpRuntimeService.ts";
+import * as CompositionToolInvocationStartupRecovery from "./composition/CompositionToolInvocationStartupRecovery.ts";
 import * as ProviderService from "./provider/Services/ProviderService.ts";
 import * as ProviderSessionDirectory from "./provider/Services/ProviderSessionDirectory.ts";
 import * as ProviderSessionReaper from "./provider/Services/ProviderSessionReaper.ts";
@@ -294,6 +295,12 @@ const runStartupPhase = <A, E, R>(phase: string, effect: Effect.Effect<A, E, R>)
     Effect.withSpan(`server.startup.${phase}`),
   );
 
+export const awaitToolInvocationRecovery = Effect.gen(function* () {
+  const recovery =
+    yield* CompositionToolInvocationStartupRecovery.CompositionToolInvocationStartupRecovery;
+  return yield* runStartupPhase("tool-invocations.recover", recovery.awaitRecovered);
+});
+
 const ORPHANED_PROVIDER_SESSION_ERROR =
   "Provider session did not survive a server restart. Send a new message to continue.";
 
@@ -383,6 +390,34 @@ interface StartupOptions {
   readonly abort?: (error: ServerRuntimeStartupError) => Effect.Effect<void>;
 }
 
+interface StartupExitOptions {
+  readonly mode: ServerConfig.RuntimeMode;
+  readonly host: string | null;
+  readonly port: number;
+  readonly failCommandReady: (error: ServerRuntimeStartupError) => Effect.Effect<void>;
+  readonly abort?: (error: ServerRuntimeStartupError) => Effect.Effect<void>;
+}
+
+export const settleStartupExit = <A, E>(
+  startupExit: Exit.Exit<A, E>,
+  options: StartupExitOptions,
+) => {
+  if (Exit.isSuccess(startupExit)) return Effect.void;
+
+  const error = new ServerRuntimeStartupError({
+    mode: options.mode,
+    host: options.host,
+    port: options.port,
+    cause: startupExit.cause,
+  });
+  return Effect.logError("server runtime startup failed", {
+    cause: startupExit.cause,
+  }).pipe(
+    Effect.andThen(options.failCommandReady(error)),
+    Effect.andThen(options.abort?.(error) ?? Effect.void),
+  );
+};
+
 export const make = (options?: StartupOptions) =>
   Effect.gen(function* () {
     const serverConfig = yield* ServerConfig.ServerConfig;
@@ -403,6 +438,8 @@ export const make = (options?: StartupOptions) =>
     yield* Effect.addFinalizer(() => Scope.close(reactorScope, Exit.void));
 
     const startup = Effect.gen(function* () {
+      yield* awaitToolInvocationRecovery;
+
       yield* Effect.logDebug("startup phase: starting keybindings runtime");
       yield* runStartupPhase(
         "keybindings.start",
@@ -561,21 +598,15 @@ export const make = (options?: StartupOptions) =>
 
     yield* Effect.forkScoped(
       Effect.exit(startup).pipe(
-        Effect.flatMap((startupExit) => {
-          if (Exit.isSuccess(startupExit)) return Effect.void;
-          const error = new ServerRuntimeStartupError({
+        Effect.flatMap((startupExit) =>
+          settleStartupExit(startupExit, {
             mode: serverConfig.mode,
             host: serverConfig.host ?? null,
             port: serverConfig.port,
-            cause: startupExit.cause,
-          });
-          return Effect.logError("server runtime startup failed", {
-            cause: startupExit.cause,
-          }).pipe(
-            Effect.andThen(commandGate.failCommandReady(error)),
-            Effect.andThen(options?.abort?.(error) ?? Effect.void),
-          );
-        }),
+            failCommandReady: commandGate.failCommandReady,
+            ...(options?.abort === undefined ? {} : { abort: options.abort }),
+          }),
+        ),
       ),
     );
 

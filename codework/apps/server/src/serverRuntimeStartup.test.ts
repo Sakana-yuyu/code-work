@@ -4,6 +4,7 @@ import { assert, it } from "@effect/vitest";
 import * as Crypto from "effect/Crypto";
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
+import * as Exit from "effect/Exit";
 import * as Fiber from "effect/Fiber";
 import * as Option from "effect/Option";
 import * as PlatformError from "effect/PlatformError";
@@ -13,6 +14,10 @@ import * as Stream from "effect/Stream";
 import * as ServerConfig from "./config.ts";
 import * as OrchestrationEngine from "./orchestration/Services/OrchestrationEngine.ts";
 import * as ProjectionSnapshotQuery from "./orchestration/Services/ProjectionSnapshotQuery.ts";
+import {
+  CompositionToolInvocationStartupRecovery,
+  CompositionToolInvocationStartupRecoveryError,
+} from "./composition/CompositionToolInvocationStartupRecovery.ts";
 import * as AnalyticsService from "./telemetry/AnalyticsService.ts";
 import * as ServerRuntimeStartup from "./serverRuntimeStartup.ts";
 
@@ -66,6 +71,76 @@ it.effect("enqueueCommand fails queued work when readiness fails", () =>
 
       const error = yield* Effect.flip(Fiber.join(queuedCommandFiber));
       assert.equal(error.message, "Server runtime startup failed before command readiness.");
+    }),
+  ),
+);
+
+it.effect("tool invocation recovery gate waits for the shared startup recovery", () =>
+  Effect.gen(function* () {
+    const entered = yield* Deferred.make<void>();
+    const release = yield* Deferred.make<void>();
+    const completed = yield* Deferred.make<void>();
+    const recovery = CompositionToolInvocationStartupRecovery.of({
+      awaitRecovered: Deferred.succeed(entered, undefined).pipe(
+        Effect.andThen(Deferred.await(release)),
+        Effect.as({
+          type: "composition.tool_invocations.recovered" as const,
+          recoveredAtUnixMs: 1,
+          outcomeCode: "process_restarted_result_indeterminate",
+          recoveredCount: 0,
+          invocations: [],
+        }),
+      ),
+    });
+
+    const gate = yield* ServerRuntimeStartup.awaitToolInvocationRecovery.pipe(
+      Effect.ensuring(Deferred.succeed(completed, undefined).pipe(Effect.asVoid)),
+      Effect.provideService(CompositionToolInvocationStartupRecovery, recovery),
+      Effect.forkChild,
+    );
+
+    yield* Deferred.await(entered);
+    assert.isFalse(yield* Deferred.isDone(completed));
+
+    yield* Deferred.succeed(release, undefined);
+    yield* Fiber.join(gate);
+    assert.isTrue(yield* Deferred.isDone(completed));
+  }),
+);
+
+it.effect("tool invocation recovery failure fails command readiness and aborts startup", () =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      const commandGate = yield* ServerRuntimeStartup.makeCommandGate;
+      const abortError = yield* Deferred.make<ServerRuntimeStartup.ServerRuntimeStartupError>();
+      const recoveryFailure = new CompositionToolInvocationStartupRecoveryError({
+        cause: new Error("recovery unavailable"),
+      });
+      const startupExit = yield* ServerRuntimeStartup.awaitToolInvocationRecovery.pipe(
+        Effect.provideService(
+          CompositionToolInvocationStartupRecovery,
+          CompositionToolInvocationStartupRecovery.of({
+            awaitRecovered: Effect.fail(recoveryFailure),
+          }),
+        ),
+        Effect.exit,
+      );
+      if (Exit.isSuccess(startupExit)) {
+        return assert.fail("expected tool invocation recovery to fail");
+      }
+
+      yield* ServerRuntimeStartup.settleStartupExit(startupExit, {
+        mode: "web",
+        host: "127.0.0.1",
+        port: 3773,
+        failCommandReady: commandGate.failCommandReady,
+        abort: (error) => Deferred.succeed(abortError, error).pipe(Effect.asVoid),
+      });
+
+      const readinessError = yield* commandGate.awaitCommandReady.pipe(Effect.flip);
+      const abortedWith = yield* Deferred.await(abortError);
+      assert.strictEqual(readinessError, abortedWith);
+      assert.equal(readinessError.cause, startupExit.cause);
     }),
   ),
 );

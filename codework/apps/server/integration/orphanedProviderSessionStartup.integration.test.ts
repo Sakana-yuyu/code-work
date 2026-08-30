@@ -11,8 +11,10 @@ import {
 } from "@codework/contracts";
 import { assert, it } from "@effect/vitest";
 import * as DateTime from "effect/DateTime";
+import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
+import * as Fiber from "effect/Fiber";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Stream from "effect/Stream";
@@ -22,6 +24,7 @@ import { HttpServer } from "effect/unstable/http";
 import * as EnvironmentAuth from "../src/auth/EnvironmentAuth.ts";
 import * as ServiceLauncherClient from "../src/cloud/serviceLauncherClient.ts";
 import * as CompositionMcpRuntimeService from "../src/composition/CompositionMcpRuntimeService.ts";
+import * as CompositionToolInvocationStartupRecovery from "../src/composition/CompositionToolInvocationStartupRecovery.ts";
 import * as ServerConfig from "../src/config.ts";
 import * as ServerEnvironment from "../src/environment/ServerEnvironment.ts";
 import * as Keybindings from "../src/keybindings.ts";
@@ -65,80 +68,91 @@ const makePersistedRuntimeLayer = (dbPath: string) => {
   return Layer.mergeAll(orchestration, directory);
 };
 
-const startupDependencies = Layer.mergeAll(
-  Layer.mock(Keybindings.Keybindings)({
-    start: Effect.void,
-  }),
-  ServerSettings.layerTest(),
-  Layer.succeed(OrchestrationReactor.OrchestrationReactor, {
-    start: () => Effect.void,
-  }),
-  Layer.succeed(ProviderSessionReaper.ProviderSessionReaper, {
-    start: () => Effect.void,
-  }),
-  ServerLifecycleEvents.layer,
-  Layer.succeed(CompositionMcpRuntimeService.CompositionMcpRuntimeService, {
-    reconcile: () => Effect.void,
-    start: Effect.void,
-    listServers: () => Effect.succeed([]),
-    connectServer: () => Effect.die("unused"),
-    disconnectServer: () => Effect.succeed(false),
-    refreshServer: () => Effect.die("unused"),
-  }),
-  Layer.succeed(ServerEnvironment.ServerEnvironment, {
-    getEnvironmentId: Effect.succeed(EnvironmentId.make("environment-startup-orphan")),
-    getDescriptor: Effect.succeed({
-      environmentId: EnvironmentId.make("environment-startup-orphan"),
-      label: "Startup orphan test",
-      version: "test",
-      platform: { os: "linux", arch: "x64" },
-      capabilities: {},
-    } as never),
-  }),
-  Layer.mock(EnvironmentAuth.EnvironmentAuth)({
-    issueStartupPairingUrl: (baseUrl: string) => Effect.succeed(`${baseUrl}/pair`),
-  }),
-  Layer.mock(ExternalLauncher.ExternalLauncher)({
-    launchBrowser: () => Effect.void,
-  }),
-  Layer.succeed(ServiceLauncherClient.ServiceLauncherClient, {
-    managed: false,
-    requestUpdate: () => Effect.die("unused"),
-    prepareTrial: Effect.sync(() => undefined),
-  }),
-  Layer.succeed(
-    HttpServer.HttpServer,
-    HttpServer.HttpServer.of({
-      address: { _tag: "TcpAddress", hostname: "127.0.0.1", port: 3773 },
-      serve: (() => Effect.void) as HttpServer.HttpServer["Service"]["serve"],
+const makeStartupDependencies = (
+  awaitRecovered: CompositionToolInvocationStartupRecovery.CompositionToolInvocationStartupRecoveryShape["awaitRecovered"],
+) =>
+  Layer.mergeAll(
+    Layer.mock(Keybindings.Keybindings)({
+      start: Effect.void,
     }),
-  ),
-  AnalyticsService.layerTest,
-  Layer.succeed(ProviderService.ProviderService, {
-    startSession: () => Effect.die("unused"),
-    sendTurn: () => Effect.die("unused"),
-    interruptTurn: () => Effect.die("unused"),
-    respondToRequest: () => Effect.die("unused"),
-    respondToUserInput: () => Effect.die("unused"),
-    stopSession: () => Effect.die("unused"),
-    listSessions: () => Effect.succeed([]),
-    getCapabilities: () => Effect.die("unused"),
-    getInstanceInfo: () => Effect.die("unused"),
-    handshakeCapabilities: () => Effect.die("unused"),
-    revokeCapabilityHandshake: () => Effect.die("unused"),
-    configureToolBroker: () => Effect.die("unused"),
-    clearToolBroker: () => Effect.die("unused"),
-    rollbackConversation: () => Effect.die("unused"),
-    uploadFeedback: () => Effect.die("unused"),
-    streamEvents: Stream.empty,
-  }),
-);
+    ServerSettings.layerTest(),
+    Layer.succeed(OrchestrationReactor.OrchestrationReactor, {
+      start: () => Effect.void,
+    }),
+    Layer.succeed(ProviderSessionReaper.ProviderSessionReaper, {
+      start: () => Effect.void,
+    }),
+    ServerLifecycleEvents.layer,
+    Layer.succeed(CompositionMcpRuntimeService.CompositionMcpRuntimeService, {
+      reconcile: () => Effect.void,
+      start: Effect.void,
+      listServers: () => Effect.succeed([]),
+      connectServer: () => Effect.die("unused"),
+      disconnectServer: () => Effect.succeed(false),
+      refreshServer: () => Effect.die("unused"),
+    }),
+    Layer.succeed(
+      CompositionToolInvocationStartupRecovery.CompositionToolInvocationStartupRecovery,
+      CompositionToolInvocationStartupRecovery.CompositionToolInvocationStartupRecovery.of({
+        awaitRecovered,
+      }),
+    ),
+    Layer.succeed(ServerEnvironment.ServerEnvironment, {
+      getEnvironmentId: Effect.succeed(EnvironmentId.make("environment-startup-orphan")),
+      getDescriptor: Effect.succeed({
+        environmentId: EnvironmentId.make("environment-startup-orphan"),
+        label: "Startup orphan test",
+        version: "test",
+        platform: { os: "linux", arch: "x64" },
+        capabilities: {},
+      } as never),
+    }),
+    Layer.mock(EnvironmentAuth.EnvironmentAuth)({
+      issueStartupPairingUrl: (baseUrl: string) => Effect.succeed(`${baseUrl}/pair`),
+    }),
+    Layer.mock(ExternalLauncher.ExternalLauncher)({
+      launchBrowser: () => Effect.void,
+    }),
+    Layer.succeed(ServiceLauncherClient.ServiceLauncherClient, {
+      managed: false,
+      requestUpdate: () => Effect.die("unused"),
+      prepareTrial: Effect.sync(() => undefined),
+    }),
+    Layer.succeed(
+      HttpServer.HttpServer,
+      HttpServer.HttpServer.of({
+        address: { _tag: "TcpAddress", hostname: "127.0.0.1", port: 3773 },
+        serve: (() => Effect.void) as HttpServer.HttpServer["Service"]["serve"],
+      }),
+    ),
+    AnalyticsService.layerTest,
+    Layer.succeed(ProviderService.ProviderService, {
+      startSession: () => Effect.die("unused"),
+      sendTurn: () => Effect.die("unused"),
+      interruptTurn: () => Effect.die("unused"),
+      respondToRequest: () => Effect.die("unused"),
+      respondToUserInput: () => Effect.die("unused"),
+      stopSession: () => Effect.die("unused"),
+      listSessions: () => Effect.succeed([]),
+      getCapabilities: () => Effect.die("unused"),
+      getInstanceInfo: () => Effect.die("unused"),
+      handshakeCapabilities: () => Effect.die("unused"),
+      revokeCapabilityHandshake: () => Effect.die("unused"),
+      configureToolBroker: () => Effect.die("unused"),
+      clearToolBroker: () => Effect.die("unused"),
+      rollbackConversation: () => Effect.die("unused"),
+      uploadFeedback: () => Effect.die("unused"),
+      streamEvents: Stream.empty,
+    }),
+  );
 
 it.effect(
   "recovers a persisted starting session before opening the command gate after restart",
   () =>
     Effect.gen(function* () {
       const config = yield* ServerConfig.ServerConfig;
+      const recoveryEntered = yield* Deferred.make<void>();
+      const releaseRecovery = yield* Deferred.make<void>();
       const firstRuntime = makePersistedRuntimeLayer(config.dbPath);
       const now = yield* DateTime.now;
       const createdAt = DateTime.formatIso(now);
@@ -265,7 +279,20 @@ it.effect(
       const secondRuntime = makePersistedRuntimeLayer(config.dbPath);
       const startupLayer = ServerRuntimeStartup.layer.pipe(
         Layer.provideMerge(secondRuntime),
-        Layer.provideMerge(startupDependencies),
+        Layer.provideMerge(
+          makeStartupDependencies(
+            Deferred.succeed(recoveryEntered, undefined).pipe(
+              Effect.andThen(Deferred.await(releaseRecovery)),
+              Effect.as({
+                type: "composition.tool_invocations.recovered" as const,
+                recoveredAtUnixMs: 1,
+                outcomeCode: "process_restarted_result_indeterminate",
+                recoveredCount: 0,
+                invocations: [],
+              }),
+            ),
+          ),
+        ),
       );
 
       const result = yield* Effect.gen(function* () {
@@ -276,7 +303,17 @@ it.effect(
         const sql = yield* SqlClient.SqlClient;
 
         yield* startup.markHttpListening;
-        yield* startup.awaitCommandReady;
+        const commandReadyCompleted = yield* Deferred.make<void>();
+        const commandReadyFiber = yield* startup.awaitCommandReady.pipe(
+          Effect.ensuring(Deferred.succeed(commandReadyCompleted, undefined).pipe(Effect.asVoid)),
+          Effect.forkChild,
+        );
+        yield* Deferred.await(recoveryEntered);
+        assert.isFalse(yield* Deferred.isDone(commandReadyCompleted));
+
+        yield* Deferred.succeed(releaseRecovery, undefined);
+        yield* Fiber.join(commandReadyFiber);
+        assert.isTrue(yield* Deferred.isDone(commandReadyCompleted));
 
         const restartedThread = Option.getOrThrow(yield* query.getThreadDetailById(threadId));
         const restartedStoppedBindingThread = Option.getOrThrow(
