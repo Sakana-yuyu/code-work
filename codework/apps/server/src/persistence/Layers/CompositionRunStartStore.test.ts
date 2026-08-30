@@ -1,13 +1,24 @@
+// @effect-diagnostics nodeBuiltinImport:off
+import * as NodeFS from "node:fs";
+import * as NodeOS from "node:os";
+import * as NodePath from "node:path";
+
+import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 
 import { CompositionRunStartStoreLive } from "./CompositionRunStartStore.ts";
-import { SqlitePersistenceMemory } from "./Sqlite.ts";
+import { makeSqlitePersistenceLive, SqlitePersistenceMemory } from "./Sqlite.ts";
 import { CompositionRunStartStore } from "../Services/CompositionRunStartStore.ts";
 
 const layer = it.layer(CompositionRunStartStoreLive.pipe(Layer.provide(SqlitePersistenceMemory)));
+
+const makeFileStoreLayer = (dbPath: string) =>
+  CompositionRunStartStoreLive.pipe(
+    Layer.provideMerge(makeSqlitePersistenceLive(dbPath).pipe(Layer.provide(NodeServices.layer))),
+  );
 
 const makeIdentity = (suffix: string) => ({
   taskId: `task-run-start-store-${suffix}`,
@@ -94,6 +105,7 @@ layer("CompositionRunStartStore", (it) => {
         runId: identity.runId,
         expectedRevision: first.intent.revision,
         claimId: "claim-setup-a",
+        ownerEpoch: first.intent.ownerEpoch,
         releasedAtUnixMs: 120,
       });
 
@@ -108,7 +120,7 @@ layer("CompositionRunStartStore", (it) => {
     }),
   );
 
-  it.effect("dispatch recovery 通过 CAS 选出单一 owner，迟到者采用已结算赢家", () =>
+  it.effect("活跃 dispatching owner 不得被 recovery takeover", () =>
     Effect.gen(function* () {
       const store = yield* CompositionRunStartStore;
       const identity = makeIdentity("dispatch-recovery");
@@ -118,11 +130,13 @@ layer("CompositionRunStartStore", (it) => {
         expectedRevision: prepared.revision,
         claimId: "claim-dispatch-original",
         claimedAtUnixMs: 110,
+        leaseExpiresAtUnixMs: 1_000,
       });
       const dispatching = yield* store.markDispatching({
         runId: identity.runId,
         expectedRevision: setup.intent.revision,
         claimId: "claim-dispatch-original",
+        ownerEpoch: setup.intent.ownerEpoch,
         dispatchedAtUnixMs: 120,
       });
       const firstRecovery = yield* store.claimDispatchRecovery({
@@ -130,17 +144,20 @@ layer("CompositionRunStartStore", (it) => {
         expectedRevision: dispatching.revision,
         claimId: "claim-dispatch-recovery-a",
         claimedAtUnixMs: 130,
+        leaseExpiresAtUnixMs: 1_130,
       });
       const secondRecovery = yield* store.claimDispatchRecovery({
         runId: identity.runId,
         expectedRevision: dispatching.revision,
         claimId: "claim-dispatch-recovery-b",
         claimedAtUnixMs: 130,
+        leaseExpiresAtUnixMs: 1_130,
       });
       const accepted = yield* store.recordAccepted({
         runId: identity.runId,
-        expectedRevision: firstRecovery.intent.revision,
-        claimId: "claim-dispatch-recovery-a",
+        expectedRevision: dispatching.revision,
+        claimId: "claim-dispatch-original",
+        ownerEpoch: dispatching.ownerEpoch,
         runtimeTaskId: "runtime-task-run-start-store",
         capabilityHandshakeId: null,
         acceptedAtUnixMs: 140,
@@ -154,17 +171,165 @@ layer("CompositionRunStartStore", (it) => {
         runId: identity.runId,
         expectedRevision: dispatching.revision,
         claimId: "claim-dispatch-original",
+        ownerEpoch: dispatching.ownerEpoch,
         runtimeTaskId: "runtime-task-run-start-store",
         capabilityHandshakeId: null,
         acceptedAtUnixMs: 140,
       });
 
-      assert.isTrue(firstRecovery.claimed);
+      assert.isFalse(firstRecovery.claimed);
       assert.isFalse(secondRecovery.claimed);
-      assert.equal(secondRecovery.intent.claimId, "claim-dispatch-recovery-a");
+      assert.equal(secondRecovery.intent.claimId, "claim-dispatch-original");
       assert.equal(settled.state, "settled");
       assert.equal(settled.runtimeTaskId, "runtime-task-run-start-store");
       assert.deepEqual(lateReceipt, settled);
+    }),
+  );
+
+  it.effect(
+    "到期 dispatch owner 只有一个 recovery claimant 获得新 epoch，旧 receipt 不能覆盖它",
+    () =>
+      Effect.gen(function* () {
+        const store = yield* CompositionRunStartStore;
+        const identity = makeIdentity("dispatch-recovery-expired");
+        const prepared = yield* store.prepareStart({ ...identity, createdAtUnixMs: 100 });
+        const setup = yield* store.claimPrepared({
+          runId: identity.runId,
+          expectedRevision: prepared.revision,
+          claimId: "claim-dispatch-expired-original",
+          claimedAtUnixMs: 110,
+          leaseExpiresAtUnixMs: 120,
+        });
+        const dispatching = yield* store.markDispatching({
+          runId: identity.runId,
+          expectedRevision: setup.intent.revision,
+          claimId: setup.intent.claimId ?? "",
+          ownerEpoch: setup.intent.ownerEpoch,
+          dispatchedAtUnixMs: 115,
+        });
+        const firstRecovery = yield* store.claimDispatchRecovery({
+          runId: identity.runId,
+          expectedRevision: dispatching.revision,
+          claimId: "claim-dispatch-expired-recovery-a",
+          claimedAtUnixMs: 121,
+          leaseExpiresAtUnixMs: 221,
+        });
+        const secondRecovery = yield* store.claimDispatchRecovery({
+          runId: identity.runId,
+          expectedRevision: dispatching.revision,
+          claimId: "claim-dispatch-expired-recovery-b",
+          claimedAtUnixMs: 121,
+          leaseExpiresAtUnixMs: 221,
+        });
+        const lateAccepted = yield* Effect.result(
+          store.recordAccepted({
+            runId: identity.runId,
+            expectedRevision: dispatching.revision,
+            claimId: dispatching.claimId ?? "",
+            ownerEpoch: dispatching.ownerEpoch,
+            runtimeTaskId: "runtime-task-stale-owner",
+            capabilityHandshakeId: null,
+            acceptedAtUnixMs: 122,
+          }),
+        );
+        const lateRejected = yield* Effect.result(
+          store.settleRejected({
+            runId: identity.runId,
+            expectedRevision: dispatching.revision,
+            claimId: dispatching.claimId ?? "",
+            ownerEpoch: dispatching.ownerEpoch,
+            outcomeCode: "runtime_offline",
+            outcomeDetail: "旧 owner 的迟到拒绝。",
+            settledAtUnixMs: 122,
+          }),
+        );
+
+        assert.isTrue(firstRecovery.claimed);
+        assert.isFalse(secondRecovery.claimed);
+        assert.equal(firstRecovery.intent.ownerEpoch, dispatching.ownerEpoch + 1);
+        assert.equal(firstRecovery.intent.claimId, "claim-dispatch-expired-recovery-a");
+        assert.equal(secondRecovery.intent.ownerEpoch, firstRecovery.intent.ownerEpoch);
+        assert.equal(lateAccepted._tag, "Failure");
+        assert.equal(lateRejected._tag, "Failure");
+        assert.deepEqual(
+          Option.getOrThrow(yield* store.getStart(identity.runId)),
+          firstRecovery.intent,
+        );
+        const accepted = yield* store.recordAccepted({
+          runId: identity.runId,
+          expectedRevision: firstRecovery.intent.revision,
+          claimId: firstRecovery.intent.claimId ?? "",
+          ownerEpoch: firstRecovery.intent.ownerEpoch,
+          runtimeTaskId: "runtime-task-new-owner",
+          capabilityHandshakeId: null,
+          acceptedAtUnixMs: 123,
+        });
+        const repeatedOldAccepted = yield* Effect.result(
+          store.recordAccepted({
+            runId: identity.runId,
+            expectedRevision: dispatching.revision,
+            claimId: dispatching.claimId ?? "",
+            ownerEpoch: dispatching.ownerEpoch,
+            runtimeTaskId: "runtime-task-new-owner",
+            capabilityHandshakeId: null,
+            acceptedAtUnixMs: 124,
+          }),
+        );
+        assert.equal(accepted.ownerEpoch, firstRecovery.intent.ownerEpoch);
+        assert.equal(repeatedOldAccepted._tag, "Failure");
+      }),
+  );
+
+  it.effect("新 owner 已拒绝后旧 epoch 的同值 rejected receipt 仍必须失败", () =>
+    Effect.gen(function* () {
+      const store = yield* CompositionRunStartStore;
+      const identity = makeIdentity("dispatch-recovery-rejected-receipt");
+      const prepared = yield* store.prepareStart({ ...identity, createdAtUnixMs: 100 });
+      const setup = yield* store.claimPrepared({
+        runId: identity.runId,
+        expectedRevision: prepared.revision,
+        claimId: "claim-rejected-original",
+        claimedAtUnixMs: 110,
+        leaseExpiresAtUnixMs: 120,
+      });
+      const dispatching = yield* store.markDispatching({
+        runId: identity.runId,
+        expectedRevision: setup.intent.revision,
+        claimId: setup.intent.claimId ?? "",
+        ownerEpoch: setup.intent.ownerEpoch,
+        dispatchedAtUnixMs: 115,
+      });
+      const recovery = yield* store.claimDispatchRecovery({
+        runId: identity.runId,
+        expectedRevision: dispatching.revision,
+        claimId: "claim-rejected-recovery",
+        claimedAtUnixMs: 121,
+        leaseExpiresAtUnixMs: 221,
+      });
+      const rejected = yield* store.settleRejected({
+        runId: identity.runId,
+        expectedRevision: recovery.intent.revision,
+        claimId: recovery.intent.claimId ?? "",
+        ownerEpoch: recovery.intent.ownerEpoch,
+        outcomeCode: "runtime_offline",
+        outcomeDetail: "新 owner 的拒绝。",
+        settledAtUnixMs: 122,
+      });
+      const repeatedOldRejected = yield* Effect.result(
+        store.settleRejected({
+          runId: identity.runId,
+          expectedRevision: dispatching.revision,
+          claimId: dispatching.claimId ?? "",
+          ownerEpoch: dispatching.ownerEpoch,
+          outcomeCode: "runtime_offline",
+          outcomeDetail: "新 owner 的拒绝。",
+          settledAtUnixMs: 123,
+        }),
+      );
+
+      assert.equal(rejected.ownerEpoch, recovery.intent.ownerEpoch);
+      assert.equal(repeatedOldRejected._tag, "Failure");
+      assert.deepEqual(Option.getOrThrow(yield* store.getStart(identity.runId)), rejected);
     }),
   );
 
@@ -206,12 +371,14 @@ layer("CompositionRunStartStore", (it) => {
         runId: identity.runId,
         expectedRevision: setup.intent.revision,
         claimId: "claim-rejected",
+        ownerEpoch: setup.intent.ownerEpoch,
         dispatchedAtUnixMs: 120,
       });
       const settled = yield* store.settleRejected({
         runId: identity.runId,
         expectedRevision: dispatching.revision,
         claimId: "claim-rejected",
+        ownerEpoch: dispatching.ownerEpoch,
         outcomeCode: "runtime_offline",
         outcomeDetail: "Runtime 当前离线。",
         settledAtUnixMs: 130,
@@ -242,12 +409,14 @@ layer("CompositionRunStartStore", (it) => {
         runId: identity.runId,
         expectedRevision: setup.intent.revision,
         claimId: "claim-late-accepted-after-rejected",
+        ownerEpoch: setup.intent.ownerEpoch,
         dispatchedAtUnixMs: 120,
       });
       const rejected = yield* store.settleRejected({
         runId: identity.runId,
         expectedRevision: dispatching.revision,
         claimId: "claim-late-accepted-after-rejected",
+        ownerEpoch: dispatching.ownerEpoch,
         outcomeCode: "runtime_offline",
         outcomeDetail: "Runtime 当前离线。",
         settledAtUnixMs: 130,
@@ -259,6 +428,7 @@ layer("CompositionRunStartStore", (it) => {
             runId: identity.runId,
             expectedRevision: dispatching.revision,
             claimId: "claim-late-accepted-after-rejected",
+            ownerEpoch: dispatching.ownerEpoch,
             runtimeTaskId: null,
             capabilityHandshakeId: null,
             acceptedAtUnixMs: 140,
@@ -299,12 +469,14 @@ layer("CompositionRunStartStore", (it) => {
         runId: identity.runId,
         expectedRevision: setup.intent.revision,
         claimId: "claim-settle-accepted-after-rejected",
+        ownerEpoch: setup.intent.ownerEpoch,
         dispatchedAtUnixMs: 120,
       });
       const rejected = yield* store.settleRejected({
         runId: identity.runId,
         expectedRevision: dispatching.revision,
         claimId: "claim-settle-accepted-after-rejected",
+        ownerEpoch: dispatching.ownerEpoch,
         outcomeCode: "runtime_offline",
         outcomeDetail: "Runtime 当前离线。",
         settledAtUnixMs: 130,
@@ -343,18 +515,14 @@ layer("CompositionRunStartStore", (it) => {
         runId: identity.runId,
         expectedRevision: setup.intent.revision,
         claimId: "claim-clock-rollback-original",
+        ownerEpoch: setup.intent.ownerEpoch,
         dispatchedAtUnixMs: 800,
-      });
-      const recovery = yield* store.claimDispatchRecovery({
-        runId: identity.runId,
-        expectedRevision: dispatching.revision,
-        claimId: "claim-clock-rollback-recovery",
-        claimedAtUnixMs: 700,
       });
       const accepted = yield* store.recordAccepted({
         runId: identity.runId,
-        expectedRevision: recovery.intent.revision,
-        claimId: "claim-clock-rollback-recovery",
+        expectedRevision: dispatching.revision,
+        claimId: "claim-clock-rollback-original",
+        ownerEpoch: dispatching.ownerEpoch,
         runtimeTaskId: "runtime-task-clock-rollback",
         capabilityHandshakeId: null,
         acceptedAtUnixMs: 600,
@@ -365,10 +533,8 @@ layer("CompositionRunStartStore", (it) => {
         settledAtUnixMs: 500,
       });
 
-      assert.isTrue(recovery.claimed);
       assert.equal(setup.intent.updatedAtUnixMs, 1_000);
       assert.equal(dispatching.updatedAtUnixMs, 1_000);
-      assert.equal(recovery.intent.updatedAtUnixMs, 1_000);
       assert.equal(accepted.updatedAtUnixMs, 1_000);
       assert.equal(settled.updatedAtUnixMs, 1_000);
       assert.equal(settled.state, "settled");
@@ -391,17 +557,20 @@ layer("CompositionRunStartStore", (it) => {
         runId: identity.runId,
         expectedRevision: firstSetup.intent.revision,
         claimId: "claim-clock-rollback-release",
+        ownerEpoch: firstSetup.intent.ownerEpoch,
         releasedAtUnixMs: 800,
       });
       const secondSetup = yield* store.claimPrepared({
         runId: identity.runId,
         expectedRevision: released.revision,
         claimId: "claim-clock-rollback-reset",
-        claimedAtUnixMs: 700,
+        claimedAtUnixMs: 500,
+        leaseExpiresAtUnixMs: 500,
       });
       const reset = yield* store.resetPreparationForRecovery({
         runId: identity.runId,
         expectedRevision: secondSetup.intent.revision,
+        ownerEpoch: secondSetup.intent.ownerEpoch,
         resetAtUnixMs: 600,
       });
       const thirdSetup = yield* store.claimPrepared({
@@ -414,12 +583,14 @@ layer("CompositionRunStartStore", (it) => {
         runId: identity.runId,
         expectedRevision: thirdSetup.intent.revision,
         claimId: "claim-clock-rollback-rejected",
+        ownerEpoch: thirdSetup.intent.ownerEpoch,
         dispatchedAtUnixMs: 400,
       });
       const rejected = yield* store.settleRejected({
         runId: identity.runId,
         expectedRevision: dispatching.revision,
         claimId: "claim-clock-rollback-rejected",
+        ownerEpoch: dispatching.ownerEpoch,
         outcomeCode: "runtime_offline",
         outcomeDetail: "Runtime 当前离线。",
         settledAtUnixMs: 300,
@@ -446,5 +617,69 @@ layer("CompositionRunStartStore", (it) => {
       assert.equal(quarantined.updatedAtUnixMs, 1_000);
       assert.equal(quarantined.state, "quarantined");
     }),
+  );
+});
+
+it.effect("两个 SQLite 连接竞争到期 dispatch owner 时仅一个新 epoch 获得 claim", () => {
+  const tempDir = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "codework-run-start-fencing-"));
+  const dbPath = NodePath.join(tempDir, "state.sqlite");
+  const identity = makeIdentity("dispatch-recovery-sqlite-race");
+  const claimFromConnection = (claimId: string) =>
+    Effect.gen(function* () {
+      const store = yield* CompositionRunStartStore;
+      return yield* store.claimDispatchRecovery({
+        runId: identity.runId,
+        expectedRevision: 3,
+        claimId,
+        claimedAtUnixMs: 121,
+        leaseExpiresAtUnixMs: 221,
+      });
+    }).pipe(Effect.provide(makeFileStoreLayer(dbPath)));
+
+  return Effect.gen(function* () {
+    yield* Effect.gen(function* () {
+      const store = yield* CompositionRunStartStore;
+      const prepared = yield* store.prepareStart({ ...identity, createdAtUnixMs: 100 });
+      const setup = yield* store.claimPrepared({
+        runId: identity.runId,
+        expectedRevision: prepared.revision,
+        claimId: "claim-sqlite-original",
+        claimedAtUnixMs: 110,
+        leaseExpiresAtUnixMs: 120,
+      });
+      yield* store.markDispatching({
+        runId: identity.runId,
+        expectedRevision: setup.intent.revision,
+        claimId: setup.intent.claimId ?? "",
+        ownerEpoch: setup.intent.ownerEpoch,
+        dispatchedAtUnixMs: 115,
+      });
+    }).pipe(Effect.provide(makeFileStoreLayer(dbPath)));
+
+    const claims = yield* Effect.all(
+      [
+        Effect.result(claimFromConnection("claim-sqlite-recovery-a")),
+        Effect.result(claimFromConnection("claim-sqlite-recovery-b")),
+      ],
+      { concurrency: "unbounded" },
+    );
+    assert.equal(
+      claims.filter((claim) => claim._tag === "Success" && claim.success.claimed).length,
+      1,
+    );
+    assert.equal(
+      claims.filter((claim) => claim._tag === "Success" && !claim.success.claimed).length,
+      1,
+    );
+
+    const persisted = yield* Effect.gen(function* () {
+      const store = yield* CompositionRunStartStore;
+      return Option.getOrThrow(yield* store.getStart(identity.runId));
+    }).pipe(Effect.provide(makeFileStoreLayer(dbPath)));
+    assert.equal(persisted.ownerEpoch, 2);
+    assert.include(["claim-sqlite-recovery-a", "claim-sqlite-recovery-b"], persisted.claimId);
+    assert.equal(persisted.ownerLeaseExpiresAtUnixMs, 221);
+  }).pipe(
+    Effect.ensuring(Effect.sync(() => NodeFS.rmSync(tempDir, { recursive: true, force: true }))),
   );
 });

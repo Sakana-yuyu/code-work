@@ -957,6 +957,7 @@ const makeOrchestrator = (
                         runId: claimedIntent.runId,
                         expectedRevision: claimedIntent.revision,
                         claimId: claimedIntent.claimId ?? "",
+                        ownerEpoch: claimedIntent.ownerEpoch,
                         dispatchedAtUnixMs: Math.max(
                           yield* Clock.currentTimeMillis,
                           claimedIntent.updatedAtUnixMs,
@@ -1726,6 +1727,7 @@ const makeOrchestrator = (
                             runId: claimedIntent.runId,
                             expectedRevision: claimedIntent.revision,
                             claimId: claimedIntent.claimId ?? "",
+                            ownerEpoch: claimedIntent.ownerEpoch,
                             dispatchedAtUnixMs: Math.max(
                               yield* Clock.currentTimeMillis,
                               claimedIntent.updatedAtUnixMs,

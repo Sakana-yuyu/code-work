@@ -77,6 +77,8 @@ const makeCandidate = (
     state: "dispatching" as const,
     revision: 3,
     claimId: `claim-${suffix}`,
+    ownerEpoch: 1,
+    ownerLeaseExpiresAtUnixMs: 60_000,
     runtimeTaskId: null,
     capabilityHandshakeId: null,
     outcomeCode: null,

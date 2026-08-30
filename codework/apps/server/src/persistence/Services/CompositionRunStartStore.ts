@@ -32,6 +32,8 @@ export const CompositionRunStartIntent = Schema.Struct({
   state: CompositionRunStartState,
   revision: Schema.Number,
   claimId: Schema.NullOr(Schema.String),
+  ownerEpoch: Schema.Number,
+  ownerLeaseExpiresAtUnixMs: Schema.NullOr(Schema.Number),
   runtimeTaskId: Schema.NullOr(Schema.String),
   capabilityHandshakeId: Schema.NullOr(Schema.String),
   outcomeCode: Schema.NullOr(Schema.String),
@@ -84,6 +86,7 @@ export interface CompositionRunStartClaimInput {
   readonly expectedRevision: number;
   readonly claimId: string;
   readonly claimedAtUnixMs: number;
+  readonly leaseExpiresAtUnixMs?: number;
 }
 
 export interface CompositionRunStartClaimResult {
@@ -96,6 +99,7 @@ export interface CompositionRunStartReleaseInput {
   readonly expectedRevision: number;
   readonly claimId: string;
   readonly releasedAtUnixMs: number;
+  readonly ownerEpoch: number;
 }
 
 export interface CompositionRunStartDispatchInput {
@@ -103,6 +107,7 @@ export interface CompositionRunStartDispatchInput {
   readonly expectedRevision: number;
   readonly claimId: string;
   readonly dispatchedAtUnixMs: number;
+  readonly ownerEpoch: number;
 }
 
 export interface CompositionRunStartAcceptedInput {
@@ -112,12 +117,20 @@ export interface CompositionRunStartAcceptedInput {
   readonly runtimeTaskId: string | null;
   readonly capabilityHandshakeId: string | null;
   readonly acceptedAtUnixMs: number;
+  readonly ownerEpoch: number;
 }
 
 export interface CompositionRunStartSettledInput {
   readonly runId: string;
   readonly expectedRevision: number;
   readonly settledAtUnixMs: number;
+}
+
+export interface CompositionRunStartRecoveryResetInput {
+  readonly runId: string;
+  readonly expectedRevision: number;
+  readonly ownerEpoch: number;
+  readonly resetAtUnixMs: number;
 }
 
 export interface CompositionRunStartRejectedInput {
@@ -127,6 +140,7 @@ export interface CompositionRunStartRejectedInput {
   readonly outcomeCode: string;
   readonly outcomeDetail: string | null;
   readonly settledAtUnixMs: number;
+  readonly ownerEpoch: number;
 }
 
 export interface CompositionRunStartQuarantineInput {
@@ -155,9 +169,7 @@ export interface CompositionRunStartStoreShape {
     input: CompositionRunStartReleaseInput,
   ) => Effect.Effect<CompositionRunStartIntent, CompositionRunStartStoreError>;
   readonly resetPreparationForRecovery: (
-    input: Omit<CompositionRunStartSettledInput, "settledAtUnixMs"> & {
-      readonly resetAtUnixMs: number;
-    },
+    input: CompositionRunStartRecoveryResetInput,
   ) => Effect.Effect<CompositionRunStartIntent, CompositionRunStartStoreError>;
   readonly markDispatching: (
     input: CompositionRunStartDispatchInput,

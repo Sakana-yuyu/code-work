@@ -13,6 +13,8 @@ import {
   type CompositionRunStartRecoveryPolicy,
 } from "./CompositionRunStartLifecycle.ts";
 
+export const COMPOSITION_RUN_START_OWNER_LEASE_MS = 60_000;
+
 export type CompositionRunStartSetup = {
   readonly taskId: string;
   readonly projectId: string;
@@ -112,6 +114,7 @@ export const claimCompositionRunStartSetup = (
       expectedRevision: prepared.revision,
       claimId: NodeCrypto.randomUUID(),
       claimedAtUnixMs,
+      leaseExpiresAtUnixMs: claimedAtUnixMs + COMPOSITION_RUN_START_OWNER_LEASE_MS,
     });
   });
 
@@ -131,6 +134,7 @@ export const releaseCompositionRunStartPreparation = (
       expectedRevision: current.revision,
       claimId: current.claimId,
       releasedAtUnixMs,
+      ownerEpoch: current.ownerEpoch,
     });
   });
 
@@ -221,6 +225,7 @@ export const runCompositionWithPersistedStart = <
               runId: intent.runId,
               expectedRevision: intent.revision,
               claimId: intent.claimId ?? "",
+              ownerEpoch: intent.ownerEpoch,
               dispatchedAtUnixMs: Math.max(yield* Clock.currentTimeMillis, intent.updatedAtUnixMs),
             }),
           );

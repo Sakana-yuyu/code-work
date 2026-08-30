@@ -44,6 +44,7 @@ export const dispatchCompositionRunStart = <A, F extends StartFailure, EAccepted
         runId: input.intent.runId,
         expectedRevision: input.intent.revision,
         claimId: input.intent.claimId ?? "",
+        ownerEpoch: input.intent.ownerEpoch,
         ...rejected,
         settledAtUnixMs,
       });
@@ -77,6 +78,7 @@ export const dispatchCompositionRunStart = <A, F extends StartFailure, EAccepted
       runtimeTaskId: receiptResult.success.runtimeTaskId,
       capabilityHandshakeId: receiptResult.success.capabilityHandshakeId,
       acceptedAtUnixMs,
+      ownerEpoch: input.intent.ownerEpoch,
     });
     const projected = yield* input.onAccepted(receiptResult.success);
     const settledAtUnixMs = yield* Clock.currentTimeMillis;

@@ -33,6 +33,7 @@ import {
 } from "./CompositionRunStartStoreStatements.ts";
 
 const LIST_LIMIT_MAX = 200;
+const DEFAULT_OWNER_LEASE_MS = 60_000;
 
 const domainError = (
   code: CompositionRunStartStoreErrorCode,
@@ -74,6 +75,15 @@ const validateRevision = (operation: string, runId: string, value: number) =>
         domainError("run_start_input_invalid", `${operation} 的 revision 必须是正安全整数。`, {
           runId,
           expectedRevision: value,
+        }),
+      );
+
+const validateOwnerEpoch = (operation: string, runId: string, value: number) =>
+  Number.isSafeInteger(value) && value >= 1
+    ? Effect.succeed(value)
+    : Effect.fail(
+        domainError("run_start_input_invalid", `${operation} 的 owner epoch 必须是正安全整数。`, {
+          runId,
         }),
       );
 
@@ -194,15 +204,27 @@ const makeStore = Effect.gen(function* () {
       }
       yield* validateRevision(operation, input.runId, input.expectedRevision);
       yield* validateTimestamp(operation, input.runId, input.claimedAtUnixMs);
-      return input;
+      const leaseExpiresAtUnixMs =
+        input.leaseExpiresAtUnixMs ?? input.claimedAtUnixMs + DEFAULT_OWNER_LEASE_MS;
+      if (
+        !Number.isSafeInteger(leaseExpiresAtUnixMs) ||
+        leaseExpiresAtUnixMs < input.claimedAtUnixMs
+      ) {
+        return yield* domainError(
+          "run_start_input_invalid",
+          `${operation} 的 owner lease 必须是不早于 claim 时间的安全整数。`,
+          { runId: input.runId },
+        );
+      }
+      return { ...input, leaseExpiresAtUnixMs };
     });
 
   const claimPrepared: CompositionRunStartStoreShape["claimPrepared"] = (input) =>
     Effect.gen(function* () {
-      yield* validateClaim("claimPrepared", input);
+      const claim = yield* validateClaim("claimPrepared", input);
       const claimed = yield* runQuery(
         "CompositionRunStartStore.claimPrepared",
-        statements.claimPreparedRow(input),
+        statements.claimPreparedRow(claim),
       );
       if (Option.isSome(claimed)) {
         return { intent: toIntent(claimed.value), claimed: true };
@@ -228,6 +250,7 @@ const makeStore = Effect.gen(function* () {
       }
       yield* validateRevision("releasePreparation", input.runId, input.expectedRevision);
       yield* validateTimestamp("releasePreparation", input.runId, input.releasedAtUnixMs);
+      yield* validateOwnerEpoch("releasePreparation", input.runId, input.ownerEpoch);
       const released = yield* runQuery(
         "CompositionRunStartStore.releasePreparation",
         statements.releasePreparationRow(input),
@@ -258,6 +281,7 @@ const makeStore = Effect.gen(function* () {
         }
         yield* validateRevision("resetPreparationForRecovery", input.runId, input.expectedRevision);
         yield* validateTimestamp("resetPreparationForRecovery", input.runId, input.resetAtUnixMs);
+        yield* validateOwnerEpoch("resetPreparationForRecovery", input.runId, input.ownerEpoch);
         const reset = yield* runQuery(
           "CompositionRunStartStore.resetPreparationForRecovery",
           statements.resetPreparationRow(input),
@@ -291,6 +315,7 @@ const makeStore = Effect.gen(function* () {
       }
       yield* validateRevision("markDispatching", input.runId, input.expectedRevision);
       yield* validateTimestamp("markDispatching", input.runId, input.dispatchedAtUnixMs);
+      yield* validateOwnerEpoch("markDispatching", input.runId, input.ownerEpoch);
       const dispatching = yield* runQuery(
         "CompositionRunStartStore.markDispatching",
         statements.markDispatchingRow(input),
@@ -319,10 +344,10 @@ const makeStore = Effect.gen(function* () {
 
   const claimDispatchRecovery: CompositionRunStartStoreShape["claimDispatchRecovery"] = (input) =>
     Effect.gen(function* () {
-      yield* validateClaim("claimDispatchRecovery", input);
+      const claim = yield* validateClaim("claimDispatchRecovery", input);
       const claimed = yield* runQuery(
         "CompositionRunStartStore.claimDispatchRecovery",
-        statements.claimDispatchRecoveryRow(input),
+        statements.claimDispatchRecoveryRow(claim),
       );
       if (Option.isSome(claimed)) {
         return { intent: toIntent(claimed.value), claimed: true };
@@ -353,13 +378,18 @@ const makeStore = Effect.gen(function* () {
       }
       yield* validateRevision("recordAccepted", input.runId, input.expectedRevision);
       yield* validateTimestamp("recordAccepted", input.runId, input.acceptedAtUnixMs);
+      yield* validateOwnerEpoch("recordAccepted", input.runId, input.ownerEpoch);
       const accepted = yield* runQuery(
         "CompositionRunStartStore.recordAccepted",
         statements.recordAcceptedRow(input),
       );
       if (Option.isSome(accepted)) return toIntent(accepted.value);
       const current = yield* getRequired(input.runId);
-      if (hasAcceptedOutcome(current) && sameReceipt(current, input)) {
+      if (
+        hasAcceptedOutcome(current) &&
+        current.ownerEpoch === input.ownerEpoch &&
+        sameReceipt(current, input)
+      ) {
         return current;
       }
       return yield* domainError(
@@ -420,6 +450,7 @@ const makeStore = Effect.gen(function* () {
       }
       yield* validateRevision("settleRejected", input.runId, input.expectedRevision);
       yield* validateTimestamp("settleRejected", input.runId, input.settledAtUnixMs);
+      yield* validateOwnerEpoch("settleRejected", input.runId, input.ownerEpoch);
       const settled = yield* runQuery(
         "CompositionRunStartStore.settleRejected",
         statements.settleRejectedRow(input),
@@ -428,6 +459,7 @@ const makeStore = Effect.gen(function* () {
       const current = yield* getRequired(input.runId);
       if (
         current.state === "settled" &&
+        current.ownerEpoch === input.ownerEpoch &&
         current.outcomeCode === input.outcomeCode &&
         current.outcomeDetail === input.outcomeDetail
       ) {
