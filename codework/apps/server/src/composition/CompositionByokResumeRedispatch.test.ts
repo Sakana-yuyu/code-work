@@ -166,6 +166,7 @@ layer("CompositionByokResumeRedispatch", (it) => {
         taskId,
         prompt: "原始任务目标：完成迁移报告",
         workspaceRoot: "C:/workspace/byok-redispatch",
+        capabilityIds: ["t3.workspace.read_file"],
       });
       const { orchestrator, prompts } = yield* makeCapturingOrchestrator(
         store,
@@ -211,6 +212,7 @@ layer("CompositionByokResumeRedispatch", (it) => {
       assert.isTrue(prompt.includes(BYOK_RESUME_CONTEXT_BEGIN_MARKER));
       assert.isTrue(prompt.includes("SECRET-RESUME-PAYLOAD 结尾片段"));
       assert.isTrue(prompt.includes(runId));
+      assert.deepEqual(memory.records.get(taskId)?.capabilityIds, ["t3.workspace.read_file"]);
 
       // 结算行幂等落账，摘要只含段数/字节数，恢复正文不进台账。
       const events = yield* store.listEvents(taskId, runId);

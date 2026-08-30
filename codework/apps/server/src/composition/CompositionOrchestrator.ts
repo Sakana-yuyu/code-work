@@ -687,6 +687,7 @@ const makeOrchestrator = (
             ? {}
             : { workspaceRootDigest: input.workspaceRootDigest }),
           ...(input.model === undefined ? {} : { model: input.model }),
+          ...(input.capabilityIds === undefined ? {} : { capabilityIds: [...input.capabilityIds] }),
         });
       }
       const issuedGrants =

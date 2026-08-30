@@ -1384,6 +1384,7 @@ layer("CompositionOrchestrator", (it) => {
         readonly workspaceRoot: string;
         readonly workspaceRootDigest?: string;
         readonly model?: string;
+        readonly capabilityIds?: ReadonlyArray<string>;
       }> = [];
       const driverRegistry = makeCompositionAgentDriverRegistry();
       yield* driverRegistry.register({
@@ -1411,6 +1412,7 @@ layer("CompositionOrchestrator", (it) => {
         workspaceRoot: "C:/workspace/recovery",
         workspaceRootDigest: "sha256:workspace-recovery",
         model: "provider/model",
+        capabilityIds: ["t3.workspace.read_file", "t3.git.status"],
       });
 
       assert.equal(result.task.promptDigest, "sha256:recovery");
@@ -1421,6 +1423,7 @@ layer("CompositionOrchestrator", (it) => {
           workspaceRoot: "C:/workspace/recovery",
           workspaceRootDigest: "sha256:workspace-recovery",
           model: "provider/model",
+          capabilityIds: ["t3.workspace.read_file", "t3.git.status"],
         },
       ]);
     }),

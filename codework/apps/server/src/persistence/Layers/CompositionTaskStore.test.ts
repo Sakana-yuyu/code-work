@@ -798,6 +798,7 @@ inputStoreLayer("CompositionTaskInputStore", (it) => {
         workspaceRoot: "C:/workspace/project",
         workspaceRootDigest: "sha256:workspace",
         model: "provider/model",
+        capabilityIds: ["t3.workspace.read_file", "t3.git.status"],
       };
 
       yield* store.save(input);
@@ -805,6 +806,26 @@ inputStoreLayer("CompositionTaskInputStore", (it) => {
 
       assert.ok(Option.isSome(loaded));
       assert.deepEqual(Option.getOrThrow(loaded), input);
+    }),
+  );
+
+  it.effect("继续解密缺少 capabilityIds 的旧版输入而不猜测为空能力集", () =>
+    Effect.gen(function* () {
+      const store = yield* CompositionTaskInputStore;
+      yield* store.save({
+        taskId: "task-input-legacy",
+        prompt: "旧版加密输入",
+        workspaceRoot: "C:/workspace/legacy",
+      });
+
+      const loaded = Option.getOrThrow(yield* store.get("task-input-legacy"));
+
+      assert.deepEqual(loaded, {
+        taskId: "task-input-legacy",
+        prompt: "旧版加密输入",
+        workspaceRoot: "C:/workspace/legacy",
+      });
+      assert.isFalse("capabilityIds" in loaded);
     }),
   );
 
