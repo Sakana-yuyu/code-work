@@ -102,6 +102,42 @@ describe("LocalPluginManifest", () => {
     expect(() => decodeManifest({ ...validManifest, version: "latest" })).toThrow();
   });
 
+  it("只接受精确 SemVer 插件版本", () => {
+    for (const version of [
+      "0.0.0",
+      "1.2.3",
+      "1.2.3-alpha",
+      "1.2.3-alpha.1",
+      "1.2.3-0",
+      "1.2.3-x.7.z.92",
+      "1.2.3+001",
+      "1.2.3-beta+exp.sha.5114f85",
+    ]) {
+      expect(decodeManifest({ ...validManifest, version }).version).toBe(version);
+    }
+
+    for (const version of [
+      "1",
+      "1.2",
+      "v1.2.3",
+      "=1.2.3",
+      " 1.2.3 ",
+      "01.2.3",
+      "1.02.3",
+      "1.2.03",
+      "1.2.3-01",
+      "1.2.3-",
+      "1.2.3-alpha..1",
+      "1.2.3-alpha_1",
+      "1.2.3+",
+      "1.2.3+build..1",
+      "1.2.3-alpha.α",
+      "１.２.３",
+    ]) {
+      expect(() => decodeManifest({ ...validManifest, version }), version).toThrow();
+    }
+  });
+
   it("报告缺失权限、重复贡献和悬空目标", () => {
     const manifest = decodeManifest({
       ...validManifest,

@@ -24,6 +24,8 @@ manifest 中的显示文本始终作为 React 文本节点渲染。宿主不执�
 - `manifestVersion: 1`：控制 manifest 外层存储和字段结构。
 - `apiVersion: { major: 1, minor: 0 }`：控制 contribution 语义和宿主能力协商。
 
+插件自身的 `version` 必须是精确 SemVer 2.0.0 字符串，例如 `1.2.3`、`1.2.3-rc.1` 或 `1.2.3+build.7`。宿主拒绝范围、dist-tag、前导 `v`、首尾空白、核心版本前导零和纯数字 prerelease 前导零。
+
 版本协商遵循以下规则：
 
 - major 不同，拒绝安装。

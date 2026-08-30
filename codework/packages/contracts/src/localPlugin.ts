@@ -8,8 +8,13 @@ export const LOCAL_PLUGIN_HOST_API_VERSION = { major: 1, minor: 0 } as const;
 const LOCAL_PLUGIN_MAX_CONTRIBUTIONS_PER_KIND = 32;
 const LOCAL_PLUGIN_MAX_ATTACHMENT_BYTES = 20_000_000;
 const LOCAL_PLUGIN_ID_PATTERN = /^[a-z0-9][a-z0-9.-]*$/;
-const LOCAL_PLUGIN_VERSION_PATTERN =
-  /^\d+\.\d+\.\d+(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/;
+const LOCAL_PLUGIN_SEMVER_NUMBER = "(?:0|[1-9][0-9]*)";
+const LOCAL_PLUGIN_SEMVER_PRERELEASE = `(?:${LOCAL_PLUGIN_SEMVER_NUMBER}|[0-9]*[A-Za-z-][0-9A-Za-z-]*)`;
+const LOCAL_PLUGIN_VERSION_PATTERN = new RegExp(
+  `^${LOCAL_PLUGIN_SEMVER_NUMBER}\\.${LOCAL_PLUGIN_SEMVER_NUMBER}\\.${LOCAL_PLUGIN_SEMVER_NUMBER}` +
+    `(?:-${LOCAL_PLUGIN_SEMVER_PRERELEASE}(?:\\.${LOCAL_PLUGIN_SEMVER_PRERELEASE})*)?` +
+    "(?:\\+[0-9A-Za-z-]+(?:\\.[0-9A-Za-z-]+)*)?$",
+);
 
 const LocalPluginId = TrimmedNonEmptyString.check(
   Schema.isMaxLength(96),
@@ -149,7 +154,7 @@ export const LocalPluginManifest = Schema.Struct({
   apiVersion: LocalPluginApiVersion,
   id: LocalPluginId,
   name: LocalPluginDisplayText,
-  version: TrimmedNonEmptyString.check(
+  version: Schema.String.check(
     Schema.isMaxLength(96),
     Schema.isPattern(LOCAL_PLUGIN_VERSION_PATTERN),
   ),
