@@ -359,6 +359,11 @@ layer("CompositionOrchestrator", (it) => {
       yield* driverRegistry.register({
         agentId: "agent-replacement",
         runtimeId: "runtime-replacement",
+        startRecoveryPolicy: {
+          mode: "fail-closed",
+          reasonCode: "test_start_replay_unsafe",
+          requiredReceipt: "runtime-task",
+        },
         startTask: (input) =>
           Effect.sync(() => {
             started.push({
@@ -1763,6 +1768,11 @@ layer("CompositionOrchestrator", (it) => {
       yield* driverRegistry.register({
         agentId: "agent-revoke-projection",
         runtimeId: "runtime-revoke-projection",
+        startRecoveryPolicy: {
+          mode: "fail-closed",
+          reasonCode: "test_start_replay_unsafe",
+          requiredReceipt: "runtime-task",
+        },
         startTask: (input) =>
           Effect.succeed({ runtimeTaskId: `runtime-task-${input.run.attempt}` }),
         cancelTask: () => Effect.succeed({ status: "cancelled" as const }),

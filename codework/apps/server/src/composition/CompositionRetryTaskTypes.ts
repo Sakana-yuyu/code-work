@@ -83,6 +83,7 @@ export interface CompositionRetryTaskOperations {
     readonly runtimeId: string;
     readonly startResult: CompositionAgentDriverStartResult;
     readonly summary: string;
+    readonly expectedPreStartStatus?: CompositionTask["status"];
   }) => Effect.Effect<CompositionTaskRetryResult, CompositionTaskStoreError>;
   readonly persistFailedStart: (input: {
     readonly task: CompositionTask;

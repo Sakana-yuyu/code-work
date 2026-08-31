@@ -66,6 +66,7 @@ import * as CompositionCapabilityPolicy from "./composition/CapabilityPolicy.ts"
 import * as CompositionToolBroker from "./composition/ToolBroker.ts";
 import * as CompositionToolInvocationCoordinator from "./composition/CompositionToolInvocationCoordinator.ts";
 import * as CompositionToolInvocationStartupRecovery from "./composition/CompositionToolInvocationStartupRecovery.ts";
+import * as CompositionRunStartStartupRecovery from "./composition/CompositionRunStartStartupRecovery.ts";
 import * as CompositionIdeSessionRegistry from "./composition/CompositionIdeSessionRegistry.ts";
 import * as CompositionIdeAgentDriverProjection from "./composition/CompositionIdeAgentDriverProjection.ts";
 import * as CompositionMcpToolRegistry from "./composition/CompositionMcpToolRegistry.ts";
@@ -517,6 +518,11 @@ const CompositionRuntimeLayerLive = CompositionTaskRuntimeProjectionService.laye
   Layer.provideMerge(CompositionRuntimeDependenciesLive),
 );
 
+const CompositionRunStartStartupRecoveryLayerLive =
+  CompositionRunStartStartupRecovery.CompositionRunStartStartupRecovery.layer.pipe(
+    Layer.provideMerge(CompositionRuntimeLayerLive),
+  );
+
 const CompositionTaskGraphExecutorLayerLive = CompositionTaskGraphExecutor.layer.pipe(
   Layer.provideMerge(CompositionRuntimeLayerLive),
 );
@@ -659,6 +665,9 @@ const RuntimeCoreDependenciesWithoutWorkspaceScriptLive = ReactorLayerLive.pipe(
       CompositionSquadRunnerLayerLive,
       CompositionAutomationServiceLayerLive,
       CompositionAutomationRuntimeStartLayerLive,
+      // Run Start 启动恢复与 Orchestrator 共享持久依赖；ServerRuntimeStartup
+      // 的 run-start 恢复阶段从这里取得已注入完整依赖的服务实例。
+      CompositionRunStartStartupRecoveryLayerLive,
     ),
   ),
   // Shared native/canonical NDJSON writers used by both the per-instance
@@ -956,7 +965,10 @@ export const makeServerLayer = Layer.unwrap(
         ],
         { concurrency: "unbounded" },
       ).pipe(Effect.asVoid),
-    }).pipe(Layer.provideMerge(RuntimeDependenciesLive), Layer.provide(launcherLayer));
+    }).pipe(
+      Layer.provideMerge(RuntimeDependenciesLive),
+      Layer.provide(launcherLayer),
+    );
 
     const routesLayer = HttpRouter.serve(makeRoutesLayer.pipe(Layer.provide(launcherLayer)), {
       disableLogger: !config.logWebSocketEvents,

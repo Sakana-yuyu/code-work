@@ -639,6 +639,7 @@ export const makeCompositionByokAgentDriver = (
     startRecoveryPolicy: {
       mode: "fail-closed",
       reasonCode: "byok_start_replay_unsafe",
+      requiredReceipt: "runtime-task",
     },
     getProfile: profile,
     startTask,

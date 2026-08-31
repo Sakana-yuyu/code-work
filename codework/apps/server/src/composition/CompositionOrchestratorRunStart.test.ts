@@ -18,6 +18,12 @@ import { makeCompositionRunStartDigests } from "./CompositionRunStartLifecycle.t
 
 const layer = it.layer(compositionOrchestratorRunStartTestLayer);
 
+const runtimeTaskPolicy = {
+  mode: "idempotent-replay" as const,
+  capabilityGrantReplay: { mode: "verified" as const },
+  requiredReceipt: "runtime-task" as const,
+};
+
 layer("CompositionOrchestrator Run Start Ownership", (it) => {
   it.effect("两个 Orchestrator 共享 SQLite 时只有持久 claim 赢家启动 Driver", () =>
     Effect.gen(function* () {
@@ -39,6 +45,7 @@ layer("CompositionOrchestrator Run Start Ownership", (it) => {
       yield* driverRegistry.register({
         agentId,
         runtimeId,
+        startRecoveryPolicy: runtimeTaskPolicy,
         startTask: () =>
           Effect.gen(function* () {
             startCalls += 1;

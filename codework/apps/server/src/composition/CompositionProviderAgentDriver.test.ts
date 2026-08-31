@@ -83,6 +83,7 @@ describe("CompositionProviderAgentDriver", () => {
     expect(driver.startRecoveryPolicy).toEqual({
       mode: "reconcile-only",
       after: "provider-sessions.reconcile",
+      requiredReceipt: "runtime-task-and-handshake-when-granted",
     });
   });
 

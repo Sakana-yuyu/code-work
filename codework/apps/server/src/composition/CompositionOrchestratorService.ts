@@ -23,6 +23,7 @@ export interface CompositionOrchestratorServiceShape {
   readonly resumeTask: CompositionOrchestrator["resumeTask"];
   readonly reviewTask: CompositionOrchestrator["reviewTask"];
   readonly retryTask: CompositionOrchestrator["retryTask"];
+  readonly recoverRunStart: CompositionOrchestrator["recoverRunStart"];
   readonly resumeReadyTasks: CompositionOrchestrator["resumeReadyTasks"];
   readonly listTaskSnapshots: (
     projectId?: string,
@@ -55,6 +56,7 @@ const live = Effect.gen(function* () {
     resumeTask: orchestrator.resumeTask,
     reviewTask: orchestrator.reviewTask,
     retryTask: orchestrator.retryTask,
+    recoverRunStart: orchestrator.recoverRunStart,
     resumeReadyTasks: orchestrator.resumeReadyTasks,
     listTaskSnapshots: (projectId) =>
       Effect.gen(function* () {

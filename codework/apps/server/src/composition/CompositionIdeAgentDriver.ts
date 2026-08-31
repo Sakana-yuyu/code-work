@@ -372,6 +372,7 @@ export const makeCompositionIdeAgentDriver = (
     startRecoveryPolicy: {
       mode: "fail-closed",
       reasonCode: "ide_start_replay_unsafe",
+      requiredReceipt: "runtime-task-and-handshake",
     },
     getProfile,
     ...(streamEvents === undefined ? {} : { streamEvents }),

@@ -1,4 +1,4 @@
-import type { CompositionTask, CompositionTaskRun } from "@codework/contracts";
+import type { CompositionTask, CompositionTaskRun, CompositionTaskStatus } from "@codework/contracts";
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
 
@@ -56,6 +56,19 @@ const RETRY_PHASE_ORDER: Record<CompositionGoalLoopRetryPhase, number> = {
   settled: 1,
   dispatched: 2,
 };
+
+/**
+ * 目标循环"已启动"的 Run 投影：进入活动状态或完整跑完（completed）。
+ * queued/blocked 说明从未启动；failed/cancelled/timed_out 说明重派回调
+ * 未真正拉起循环就落定终态，两者都不得推进账本到 dispatched。
+ */
+const GOAL_LOOP_STARTED_RUN_STATUSES: ReadonlySet<CompositionTaskStatus> = new Set([
+  "running",
+  "waiting_approval",
+  "waiting_input",
+  "in_review",
+  "completed",
+] satisfies ReadonlyArray<CompositionTaskStatus>);
 
 const advanceIntentOrAdoptWinner = (
   retryStore: Pick<
@@ -116,7 +129,9 @@ const findStartedRetryRun = (
         detail: `稳定新 Run ${options.newRunId} 的 taskId/attempt 与旧 Run 不匹配。`,
       });
     }
-    return run.status === "queued" ? Option.none() : Option.some(run);
+    // 只有进入启动后活动投影的 Run 才能证明重派已启动；queued/blocked 与
+    // 终态早到失败都说明重派回调未真正启动循环，账本必须保持 settled。
+    return GOAL_LOOP_STARTED_RUN_STATUSES.has(run.status) ? Option.some(run) : Option.none();
   });
 
 const requireStartedRetryRun = (

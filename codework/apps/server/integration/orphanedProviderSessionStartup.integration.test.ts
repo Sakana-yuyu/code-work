@@ -14,6 +14,7 @@ import * as DateTime from "effect/DateTime";
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
+import * as Scope from "effect/Scope";
 import * as Fiber from "effect/Fiber";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
@@ -24,6 +25,7 @@ import { HttpServer } from "effect/unstable/http";
 import * as EnvironmentAuth from "../src/auth/EnvironmentAuth.ts";
 import * as ServiceLauncherClient from "../src/cloud/serviceLauncherClient.ts";
 import * as CompositionMcpRuntimeService from "../src/composition/CompositionMcpRuntimeService.ts";
+import * as CompositionRunStartStartupRecovery from "../src/composition/CompositionRunStartStartupRecovery.ts";
 import * as CompositionToolInvocationStartupRecovery from "../src/composition/CompositionToolInvocationStartupRecovery.ts";
 import * as ServerConfig from "../src/config.ts";
 import * as ServerEnvironment from "../src/environment/ServerEnvironment.ts";
@@ -70,6 +72,7 @@ const makePersistedRuntimeLayer = (dbPath: string) => {
 
 const makeStartupDependencies = (
   awaitRecovered: CompositionToolInvocationStartupRecovery.CompositionToolInvocationStartupRecoveryShape["awaitRecovered"],
+  awaitRunStartsRecovered: CompositionRunStartStartupRecovery.CompositionRunStartStartupRecoveryShape["awaitRecovered"],
 ) =>
   Layer.mergeAll(
     Layer.mock(Keybindings.Keybindings)({
@@ -95,6 +98,12 @@ const makeStartupDependencies = (
       CompositionToolInvocationStartupRecovery.CompositionToolInvocationStartupRecovery,
       CompositionToolInvocationStartupRecovery.CompositionToolInvocationStartupRecovery.of({
         awaitRecovered,
+      }),
+    ),
+    Layer.succeed(
+      CompositionRunStartStartupRecovery.CompositionRunStartStartupRecovery,
+      CompositionRunStartStartupRecovery.CompositionRunStartStartupRecovery.of({
+        awaitRecovered: awaitRunStartsRecovered,
       }),
     ),
     Layer.succeed(ServerEnvironment.ServerEnvironment, {
@@ -153,6 +162,8 @@ it.effect(
       const config = yield* ServerConfig.ServerConfig;
       const recoveryEntered = yield* Deferred.make<void>();
       const releaseRecovery = yield* Deferred.make<void>();
+      const runStartRecoveryObserved = yield* Deferred.make<string>();
+      const releaseRunStartRecovery = yield* Deferred.make<void>();
       const firstRuntime = makePersistedRuntimeLayer(config.dbPath);
       const now = yield* DateTime.now;
       const createdAt = DateTime.formatIso(now);
@@ -277,6 +288,32 @@ it.effect(
       }).pipe(Effect.provide(firstRuntime));
 
       const secondRuntime = makePersistedRuntimeLayer(config.dbPath);
+      // 回执 mock 必须以 R=never 的纯服务注入；提前构建一份独立 Runtime 供其
+      // 在启动阶段读取已提交的投影（与 startupLayer 的实例共用同一 sqlite 文件）。
+      // 使用专用 Scope 在启动断言结束后立即释放，避免 Windows 下 sqlite 句柄
+      // 阻塞临时目录清理。
+      const secondRuntimeScope = yield* Scope.make();
+      const secondRuntimeServices = yield* Layer.build(secondRuntime).pipe(
+        Scope.provide(secondRuntimeScope),
+      );
+      const awaitRunStartsRecovered = Effect.gen(function* () {
+        const query = yield* ProjectionSnapshotQuery.ProjectionSnapshotQuery;
+        // 模拟恢复回执不允许失败：投影读取异常按缺陷处理，保持回执形状纯净。
+        const restartedThread = Option.getOrThrow(
+          yield* query.getThreadDetailById(threadId).pipe(Effect.orDie),
+        );
+        yield* Deferred.succeed(
+          runStartRecoveryObserved,
+          restartedThread.session?.status ?? "missing",
+        );
+        yield* Deferred.await(releaseRunStartRecovery);
+        return {
+          type: "composition.run_starts.recovered" as const,
+          recoveredAtUnixMs: 2,
+          recoveredCount: 0,
+          runIds: [],
+        };
+      }).pipe(Effect.provideContext(secondRuntimeServices));
       const startupLayer = ServerRuntimeStartup.layer.pipe(
         Layer.provideMerge(secondRuntime),
         Layer.provideMerge(
@@ -291,6 +328,7 @@ it.effect(
                 invocations: [],
               }),
             ),
+            awaitRunStartsRecovered,
           ),
         ),
       );
@@ -312,6 +350,18 @@ it.effect(
         assert.isFalse(yield* Deferred.isDone(commandReadyCompleted));
 
         yield* Deferred.succeed(releaseRecovery, undefined);
+        const boundary = yield* Effect.race(
+          Deferred.await(runStartRecoveryObserved).pipe(
+            Effect.map((status) => ({ _tag: "Recovery" as const, status })),
+          ),
+          Fiber.join(commandReadyFiber).pipe(Effect.as({ _tag: "CommandReady" as const })),
+        );
+        assert.equal(boundary._tag, "Recovery");
+        if (boundary._tag === "Recovery") {
+          assert.equal(boundary.status, "error");
+        }
+        assert.isFalse(yield* Deferred.isDone(commandReadyCompleted));
+        yield* Deferred.succeed(releaseRunStartRecovery, undefined);
         yield* Fiber.join(commandReadyFiber);
         assert.isTrue(yield* Deferred.isDone(commandReadyCompleted));
 
@@ -378,7 +428,11 @@ it.effect(
           stoppedBindingResumeCursor: stoppedBinding.resumeCursor,
           stoppedBindingRuntimePayload: stoppedBinding.runtimePayload,
         };
-      }).pipe(Effect.provide(startupLayer));
+      }).pipe(
+        Effect.provide(startupLayer),
+        // 启动断言完成后立即释放 mock 专用 Runtime，保证临时目录可被清理。
+        Effect.ensuring(Scope.close(secondRuntimeScope, Exit.void)),
+      );
 
       assert.deepStrictEqual(result, {
         sessionStatus: "error",

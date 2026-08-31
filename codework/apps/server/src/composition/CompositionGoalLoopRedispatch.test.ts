@@ -58,6 +58,11 @@ const makeRedispatchable = (
     yield* driverRegistry.register({
       agentId: "agent-goal-redispatch",
       runtimeId: "runtime-goal-redispatch",
+      startRecoveryPolicy: {
+        mode: "fail-closed",
+        reasonCode: "goal_loop_start_replay_unsafe",
+        requiredReceipt: "runtime-task",
+      },
       startTask: () => Effect.succeed({ runtimeTaskId: "runtime-task-goal-redispatch" }),
       cancelTask: () => Effect.succeed({ status: "cancelled" as const }),
     });

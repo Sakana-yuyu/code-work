@@ -130,6 +130,11 @@ const makeCapturingOrchestrator = (
     yield* driverRegistry.register({
       agentId: AGENT_ID,
       runtimeId: RUNTIME_ID,
+      startRecoveryPolicy: {
+        mode: "fail-closed",
+        reasonCode: "byok_start_replay_unsafe",
+        requiredReceipt: "runtime-task",
+      },
       startTask: (input) =>
         Effect.sync(() => {
           if (input.prompt !== undefined) prompts.push(input.prompt);

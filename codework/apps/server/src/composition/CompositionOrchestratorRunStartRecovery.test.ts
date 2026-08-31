@@ -22,6 +22,12 @@ import {
 
 const layer = it.layer(compositionOrchestratorRunStartTestLayer);
 
+const runtimeTaskPolicy = {
+  mode: "idempotent-replay" as const,
+  capabilityGrantReplay: { mode: "verified" as const },
+  requiredReceipt: "runtime-task" as const,
+};
+
 layer("CompositionOrchestrator Run Start Recovery", (it) => {
   it.effect("启动前投影失败会回滚并允许同一 runId 安全重试", () =>
     Effect.gen(function* () {
@@ -39,6 +45,7 @@ layer("CompositionOrchestrator Run Start Recovery", (it) => {
       yield* driverRegistry.register({
         agentId,
         runtimeId,
+        startRecoveryPolicy: runtimeTaskPolicy,
         startTask: () =>
           Effect.sync(() => {
             startCalls += 1;
@@ -120,6 +127,7 @@ layer("CompositionOrchestrator Run Start Recovery", (it) => {
       yield* driverRegistry.register({
         agentId,
         runtimeId,
+        startRecoveryPolicy: runtimeTaskPolicy,
         startTask: () =>
           Effect.sync(() => {
             startCalls += 1;
@@ -161,11 +169,19 @@ layer("CompositionOrchestrator Run Start Recovery", (it) => {
         inputStore,
         runStartStore,
       );
+      const recoveryRegistry = makeCompositionAgentDriverRegistry();
+      yield* recoveryRegistry.register({
+        agentId,
+        runtimeId,
+        startRecoveryPolicy: runtimeTaskPolicy,
+        startTask: () => Effect.die("accepted intent 恢复不得再次启动 Driver"),
+        cancelTask: () => Effect.succeed({ status: "cancelled" as const }),
+      });
       const second = makeCompositionOrchestrator(
         store,
-        makeCompositionAgentDriverRegistry(),
+        recoveryRegistry,
         undefined,
-        undefined,
+        inputStore,
         runStartStore,
       );
       const request = makeRunStartRetryRequest(taskId, previousRunId, runId);
@@ -202,6 +218,7 @@ layer("CompositionOrchestrator Run Start Recovery", (it) => {
       yield* driverRegistry.register({
         agentId,
         runtimeId,
+        startRecoveryPolicy: runtimeTaskPolicy,
         startTask: () =>
           Effect.sync(() => {
             startCalls += 1;
@@ -276,6 +293,7 @@ layer("CompositionOrchestrator Run Start Recovery", (it) => {
       yield* driverRegistry.register({
         agentId,
         runtimeId,
+        startRecoveryPolicy: runtimeTaskPolicy,
         startTask: () =>
           Effect.sync(() => {
             startCalls += 1;
@@ -317,11 +335,19 @@ layer("CompositionOrchestrator Run Start Recovery", (it) => {
         inputStore,
         failingRunStartStore,
       );
+      const recoveryRegistry = makeCompositionAgentDriverRegistry();
+      yield* recoveryRegistry.register({
+        agentId,
+        runtimeId,
+        startRecoveryPolicy: runtimeTaskPolicy,
+        startTask: () => Effect.die("accepted intent 恢复不得再次启动 Driver"),
+        cancelTask: () => Effect.succeed({ status: "cancelled" as const }),
+      });
       const second = makeCompositionOrchestrator(
         store,
-        makeCompositionAgentDriverRegistry(),
+        recoveryRegistry,
         undefined,
-        undefined,
+        inputStore,
         runStartStore,
       );
       const request = makeRunStartRetryRequest(taskId, previousRunId, runId);

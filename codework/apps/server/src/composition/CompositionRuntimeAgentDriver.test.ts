@@ -22,10 +22,14 @@ describe("CompositionRuntimeAgentDriver", () => {
       agentId: "runtime-recovery-ide:agent",
     });
 
-    expect(multica.startRecoveryPolicy).toEqual({ mode: "idempotent-replay" });
+    expect(multica.startRecoveryPolicy).toEqual({
+      mode: "idempotent-replay",
+      requiredReceipt: "runtime-task-and-handshake-when-granted",
+    });
     expect(ide.startRecoveryPolicy).toEqual({
       mode: "fail-closed",
       reasonCode: "runtime_start_replay_not_verified",
+      requiredReceipt: "runtime-task-and-handshake-when-granted",
     });
   });
 

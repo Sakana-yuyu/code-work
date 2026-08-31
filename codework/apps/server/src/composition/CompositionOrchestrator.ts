@@ -18,6 +18,7 @@ import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 import type * as Stream from "effect/Stream";
 
+import { PersistenceSqlError } from "../persistence/Errors.ts";
 import {
   type CompositionTaskStoreError,
   type CompositionTaskStoreShape,
@@ -27,6 +28,7 @@ import {
   type CompositionTaskInputStoreShape,
 } from "../persistence/Services/CompositionTaskInputStore.ts";
 import type {
+  CompositionRunStartIntent,
   CompositionRunStartStoreError,
   CompositionRunStartStoreShape,
 } from "../persistence/Services/CompositionRunStartStore.ts";
@@ -39,6 +41,14 @@ import {
   CompositionTaskRetryInvalidError,
 } from "./CompositionOrchestratorErrors.ts";
 import { makeCompositionRetryTask } from "./CompositionRetryTask.ts";
+import type { CompositionRetryTask } from "./CompositionRetryTaskTypes.ts";
+import { isCompositionRunStartedProjectionStatus } from "./CompositionRunStartProjectionStatus.ts";
+import {
+  makeCompositionRunStartDigests,
+  makeCompositionRunStartLifecycle,
+  type CompositionRunStartLifecycle,
+} from "./CompositionRunStartLifecycle.ts";
+import { validateCompositionRunStartReceipt } from "./CompositionRunStartReceiptPolicy.ts";
 import {
   claimCompositionRuntimeLease,
   recoverCompositionRuntimeLease,
@@ -123,16 +133,33 @@ export {
   CompositionTaskRetryInvalidError,
 } from "./CompositionOrchestratorErrors.ts";
 
+export type CompositionAgentDriverStartReceiptRequirement =
+  | "runtime-task"
+  | "runtime-task-and-handshake"
+  | "runtime-task-and-handshake-when-granted";
+
+type CompositionAgentDriverStartRecoveryReceiptPolicy = {
+  readonly requiredReceipt: CompositionAgentDriverStartReceiptRequirement;
+};
+
 export type CompositionAgentDriverStartRecoveryPolicy =
-  | { readonly mode: "idempotent-replay" }
-  | {
+  | (CompositionAgentDriverStartRecoveryReceiptPolicy & {
+      readonly mode: "idempotent-replay";
+      readonly capabilityGrantReplay?:
+        | { readonly mode: "verified" }
+        | {
+            readonly mode: "fail-closed";
+            readonly reasonCode: string;
+          };
+    })
+  | (CompositionAgentDriverStartRecoveryReceiptPolicy & {
       readonly mode: "reconcile-only";
       readonly after: "provider-sessions.reconcile";
-    }
-  | {
+    })
+  | (CompositionAgentDriverStartRecoveryReceiptPolicy & {
       readonly mode: "fail-closed";
       readonly reasonCode: string;
-    };
+    });
 
 export interface CompositionAgentDriver {
   readonly agentId: string;
@@ -289,6 +316,7 @@ export interface CompositionOrchestrator {
     | CapabilityGrantRegistry.CapabilityGrantPersistenceError
     | CapabilityRegistry.CapabilityScopeNotFoundError
     | CapabilityRegistry.CapabilityRegistryUnavailableError
+    | CompositionRunStartStoreError
   >;
   readonly cancelTask: (input: {
     readonly taskId: string;
@@ -322,6 +350,8 @@ export interface CompositionOrchestrator {
     | CapabilityRegistry.CapabilityRegistryUnavailableError
     | CompositionRunStartStoreError
   >;
+  /** 仅由启动恢复阶段调用；允许按 Driver 的持久恢复策略处理遗留 dispatching。 */
+  readonly recoverRunStart: CompositionRetryTask;
   readonly resumeTask: (
     input: CompositionTaskResumeRequest,
   ) => Effect.Effect<
@@ -337,6 +367,7 @@ export interface CompositionOrchestrator {
     | CompositionAgentDriverFailure
     | CompositionTaskInputStoreError
     | CapabilityGrantRegistry.CapabilityGrantPersistenceError
+    | CompositionRunStartStoreError
   >;
 }
 
@@ -350,6 +381,90 @@ const makeOrchestrator = (
 ): CompositionOrchestrator => {
   const resumingTaskIds = new Set<string>();
   const resumingRunIds = new Set<string>();
+  const runStartLifecycle: CompositionRunStartLifecycle | undefined =
+    runStartStore === undefined ? undefined : makeCompositionRunStartLifecycle(runStartStore);
+
+  /**
+   * 统一 Run Start 入口：为一次即将发生的 Driver 启动准备并持有持久所有权。
+   * 返回 undefined 表示当前入口没有启用 Run Start 账本（历史调用方）。
+   */
+  const prepareClaimedRunStart = (input: {
+    readonly taskId: string;
+    readonly runId: string;
+    readonly agentId: string;
+    readonly runtimeId: string;
+    readonly attempt: number;
+    readonly payload: {
+      readonly prompt: string;
+      readonly workspaceRoot: string;
+      readonly workspaceRootDigest?: string;
+      readonly model?: string;
+      readonly capabilityIds: ReadonlyArray<string>;
+    };
+  }): Effect.Effect<
+    CompositionRunStartIntent | undefined,
+    | CompositionRunStartStoreError
+    | CompositionAgentDriverFailure
+  > =>
+    Effect.gen(function* () {
+      if (runStartStore === undefined || runStartLifecycle === undefined) return undefined;
+      const digests = makeCompositionRunStartDigests(input.payload);
+      const preparedAtUnixMs = yield* Clock.currentTimeMillis;
+      const preparedIntent = yield* runStartStore.prepareStart({
+        runId: input.runId,
+        taskId: input.taskId,
+        agentId: input.agentId,
+        runtimeId: input.runtimeId,
+        attempt: input.attempt,
+        payloadDigest: digests.payloadDigest,
+        capabilityDigest: digests.capabilityDigest,
+        createdAtUnixMs: preparedAtUnixMs,
+      });
+      const claimResult = yield* runStartLifecycle.claim(preparedIntent);
+      if (!claimResult.claimed) {
+        return yield* new CompositionAgentDriverFailure({
+          code: "run_start_claim_conflict",
+          detail: `Run Start ${input.runId} 已被其他所有者接管，拒绝重复启动。`,
+        });
+      }
+      return claimResult.intent;
+    });
+
+  /**
+   * Driver 返回后先校验 receipt，再按 accept → persist → settle 的顺序落定启动；
+   * receipt 不满足恢复策略时保持 pre-start 投影并隔离为 indeterminate。
+   */
+  const settleClaimedRunStart = (input: {
+    readonly intent: CompositionRunStartIntent | undefined;
+    readonly driver: CompositionAgentDriver;
+    readonly capabilityGrantIds: ReadonlyArray<string>;
+    readonly startResult: CompositionAgentDriverStartResult;
+    readonly persist: () => Effect.Effect<CompositionDispatchResult, CompositionTaskStoreError>;
+  }): Effect.Effect<
+    CompositionDispatchResult,
+    CompositionTaskStoreError | CompositionRunStartStoreError | CompositionAgentDriverFailure
+  > =>
+    Effect.gen(function* () {
+      if (input.intent === undefined || runStartLifecycle === undefined) {
+        return yield* input.persist();
+      }
+      const receiptError = validateCompositionRunStartReceipt({
+        policy: input.driver.startRecoveryPolicy,
+        capabilityGrantIds: input.capabilityGrantIds,
+        receipt: input.startResult,
+      });
+      if (receiptError !== undefined) {
+        yield* runStartLifecycle.markIndeterminate(input.intent, receiptError);
+        return yield* new CompositionAgentDriverFailure({
+          code: receiptError,
+          detail: `Agent Driver 返回的 Run Start receipt 不满足恢复策略：${receiptError}`,
+        });
+      }
+      const acceptedIntent = yield* runStartLifecycle.accept(input.intent, input.startResult);
+      const persisted = yield* input.persist();
+      yield* runStartLifecycle.settle(acceptedIntent);
+      return persisted;
+    });
 
   const prepareRunLease = (
     task: CompositionTask,
@@ -442,53 +557,92 @@ const makeOrchestrator = (
     readonly runtimeId: string;
     readonly startResult: CompositionAgentDriverStartResult;
     readonly summary: string;
+    readonly expectedPreStartStatus?: CompositionTaskStatus;
   }): Effect.Effect<CompositionDispatchResult, CompositionTaskStoreError> =>
     store.withTransaction(
       Effect.gen(function* () {
         const currentTaskOption = yield* store.getTask(input.task.taskId);
         const currentRunOption = yield* store.getRun(input.run.runId);
         if (Option.isNone(currentTaskOption) || Option.isNone(currentRunOption)) {
-          return { task: input.task, run: input.run };
+          return yield* new PersistenceSqlError({
+            operation: "CompositionOrchestrator.persistStartedRun",
+            detail: "Driver accepted 后 Task 或 Run 投影缺失，拒绝结算 Run Start。",
+          });
         }
         const currentTask = currentTaskOption.value;
         const currentRun = currentRunOption.value;
-        const acceptedReceiptAlreadyProjected =
-          currentTask.status === "running" &&
-          currentRun.status === "running" &&
+        if (
+          currentTask.taskId !== input.task.taskId ||
+          currentTask.assigneeKind !== input.task.assigneeKind ||
+          currentTask.assigneeId !== input.task.assigneeId ||
+          currentRun.taskId !== input.run.taskId ||
+          currentRun.agentId !== input.run.agentId ||
+          currentRun.runtimeId !== input.run.runtimeId ||
+          currentRun.attempt !== input.run.attempt
+        ) {
+          return yield* new PersistenceSqlError({
+            operation: "CompositionOrchestrator.persistStartedRun",
+            detail: "Driver accepted 后 Task 或 Run 投影身份漂移，拒绝结算 Run Start。",
+          });
+        }
+        if (
+          (currentRun.runtimeTaskId !== undefined &&
+            input.startResult.runtimeTaskId !== undefined &&
+            currentRun.runtimeTaskId !== input.startResult.runtimeTaskId) ||
+          (currentRun.capabilityHandshakeId !== undefined &&
+            input.startResult.capabilityHandshakeId !== undefined &&
+            currentRun.capabilityHandshakeId !== input.startResult.capabilityHandshakeId)
+        ) {
+          return yield* new PersistenceSqlError({
+            operation: "CompositionOrchestrator.persistStartedRun",
+            detail: "Driver accepted receipt 与现有 Run 投影冲突，拒绝结算 Run Start。",
+          });
+        }
+        if (currentTask.status !== currentRun.status) {
+          return yield* new PersistenceSqlError({
+            operation: "CompositionOrchestrator.persistStartedRun",
+            detail: "Driver accepted 后 Task 与 Run 状态不一致，拒绝结算 Run Start。",
+          });
+        }
+
+        const synchronizeReceipt = (run: CompositionTaskRun, startedAtUnixMs: number) => ({
+          ...run,
+          ...(run.runtimeTaskId === undefined && input.startResult.runtimeTaskId !== undefined
+            ? { runtimeTaskId: input.startResult.runtimeTaskId }
+            : {}),
+          ...(run.capabilityHandshakeId === undefined &&
+          input.startResult.capabilityHandshakeId !== undefined
+            ? { capabilityHandshakeId: input.startResult.capabilityHandshakeId }
+            : {}),
+          ...(run.startedAtUnixMs === undefined ? { startedAtUnixMs } : {}),
+        });
+        const receiptAlreadyProjected =
           currentRun.runtimeId === input.runtimeId &&
           currentRun.startedAtUnixMs !== undefined &&
           (input.startResult.runtimeTaskId === undefined ||
             currentRun.runtimeTaskId === input.startResult.runtimeTaskId) &&
           (input.startResult.capabilityHandshakeId === undefined ||
             currentRun.capabilityHandshakeId === input.startResult.capabilityHandshakeId);
-        if (acceptedReceiptAlreadyProjected) {
-          return { task: currentTask, run: currentRun };
-        }
-        if (currentTask.status !== input.task.status || currentRun.status !== input.run.status) {
-          if (
-            terminalStatuses.has(currentTask.status) ||
-            terminalStatuses.has(currentRun.status) ||
-            currentTask.status === "in_review" ||
-            currentRun.status === "in_review"
-          ) {
+        if (isCompositionRunStartedProjectionStatus(currentTask.status)) {
+          if (receiptAlreadyProjected) {
             return { task: currentTask, run: currentRun };
           }
-          const startedAt = currentRun.startedAtUnixMs ?? (yield* Clock.currentTimeMillis);
-          const synchronizedRun: CompositionTaskRun = {
-            ...currentRun,
-            runtimeId: input.runtimeId,
-            ...(currentRun.runtimeTaskId === undefined &&
-            input.startResult.runtimeTaskId !== undefined
-              ? { runtimeTaskId: input.startResult.runtimeTaskId }
-              : {}),
-            ...(currentRun.capabilityHandshakeId === undefined &&
-            input.startResult.capabilityHandshakeId !== undefined
-              ? { capabilityHandshakeId: input.startResult.capabilityHandshakeId }
-              : {}),
-            ...(currentRun.startedAtUnixMs === undefined ? { startedAtUnixMs: startedAt } : {}),
-          };
+          const synchronizedRun = synchronizeReceipt(
+            currentRun,
+            currentRun.startedAtUnixMs ?? (yield* Clock.currentTimeMillis),
+          );
           yield* store.upsertRun(synchronizedRun);
           return { task: currentTask, run: synchronizedRun };
+        }
+        const expectedPreStartStatus = input.expectedPreStartStatus ?? input.task.status;
+        if (
+          currentTask.status !== expectedPreStartStatus ||
+          currentRun.status !== expectedPreStartStatus
+        ) {
+          return yield* new PersistenceSqlError({
+            operation: "CompositionOrchestrator.persistStartedRun",
+            detail: "Driver accepted 后 Task 或 Run 离开预期启动前状态，拒绝结算 Run Start。",
+          });
         }
 
         const startedAt = yield* Clock.currentTimeMillis;
@@ -806,6 +960,23 @@ const makeOrchestrator = (
       }
       const leasedRun = leasedRunOption.value;
 
+      const claimedStartIntent = yield* prepareClaimedRunStart({
+        taskId: input.taskId,
+        runId: input.runId,
+        agentId,
+        runtimeId: driver.runtimeId,
+        attempt: 1,
+        payload: {
+          prompt: input.prompt ?? "",
+          workspaceRoot: input.workspaceRoot ?? "",
+          ...(input.workspaceRootDigest === undefined
+            ? {}
+            : { workspaceRootDigest: input.workspaceRootDigest }),
+          ...(input.model === undefined ? {} : { model: input.model }),
+          capabilityIds: input.capabilityIds ?? [],
+        },
+      });
+
       const startResult = yield* Effect.result(
         driver.startTask({
           task,
@@ -820,6 +991,13 @@ const makeOrchestrator = (
         }),
       );
       if (startResult._tag === "Failure") {
+        if (claimedStartIntent !== undefined && runStartLifecycle !== undefined) {
+          // Driver 明确返回失败：启动结果已知（未启动），直接隔离所有权。
+          yield* runStartLifecycle.markIndeterminate(
+            claimedStartIntent,
+            "driver_start_result_indeterminate",
+          );
+        }
         const failed = yield* persistFailedStart({
           task,
           run: leasedRun,
@@ -832,12 +1010,19 @@ const makeOrchestrator = (
         return failed;
       }
 
-      return yield* persistStartedRun({
-        task,
-        run: leasedRun,
-        runtimeId: driver.runtimeId,
+      return yield* settleClaimedRunStart({
+        intent: claimedStartIntent,
+        driver,
+        capabilityGrantIds: leasedRun.capabilityGrantIds ?? [],
         startResult: startResult.success,
-        summary: "任务已交给 Agent Driver 执行",
+        persist: () =>
+          persistStartedRun({
+            task,
+            run: leasedRun,
+            runtimeId: driver.runtimeId,
+            startResult: startResult.success,
+            summary: "任务已交给 Agent Driver 执行",
+          }),
       });
     });
 
@@ -1209,7 +1394,7 @@ const makeOrchestrator = (
       }).pipe(Effect.ensuring(Effect.sync(() => resumingRunIds.delete(input.runId))));
     });
 
-  const retryTask: CompositionOrchestrator["retryTask"] = makeCompositionRetryTask({
+  const retryTaskOptions = {
     store,
     driverRegistry,
     ...(grantRegistry === undefined ? {} : { grantRegistry }),
@@ -1224,7 +1409,13 @@ const makeOrchestrator = (
       persistStartedRun,
       persistFailedStart,
     },
-  });
+  } satisfies Parameters<typeof makeCompositionRetryTask>[0];
+  const retryTask: CompositionOrchestrator["retryTask"] =
+    makeCompositionRetryTask(retryTaskOptions);
+  const recoverRunStart: CompositionOrchestrator["recoverRunStart"] = makeCompositionRetryTask(
+    retryTaskOptions,
+    "recover-only",
+  );
   const resumeReadyTasks: CompositionOrchestrator["resumeReadyTasks"] = () =>
     Effect.gen(function* () {
       if (inputStore === undefined) return [];
@@ -1264,6 +1455,24 @@ const makeOrchestrator = (
 
         resumingTaskIds.add(task.taskId);
         const result = yield* Effect.gen(function* () {
+          const claimedStartIntent = yield* prepareClaimedRunStart({
+            taskId: task.taskId,
+            runId: run.runId,
+            agentId: run.agentId,
+            runtimeId: driver.runtimeId,
+            attempt: run.attempt,
+            payload: {
+              prompt: recoveryInput.value.prompt,
+              workspaceRoot: recoveryInput.value.workspaceRoot,
+              ...(recoveryInput.value.workspaceRootDigest === undefined
+                ? {}
+                : { workspaceRootDigest: recoveryInput.value.workspaceRootDigest }),
+              ...(recoveryInput.value.model === undefined
+                ? {}
+                : { model: recoveryInput.value.model }),
+              capabilityIds: recoveryInput.value.capabilityIds ?? [],
+            },
+          });
           const startResult = yield* Effect.result(
             driver.startTask({
               task,
@@ -1280,6 +1489,13 @@ const makeOrchestrator = (
             }),
           );
           if (startResult._tag === "Failure") {
+            if (claimedStartIntent !== undefined && runStartLifecycle !== undefined) {
+              // Driver 明确返回失败：启动结果已知（未启动），直接隔离所有权。
+              yield* runStartLifecycle.markIndeterminate(
+                claimedStartIntent,
+                "driver_start_result_indeterminate",
+              );
+            }
             const failed = yield* persistFailedStart({
               task,
               run: leasedRun,
@@ -1292,12 +1508,19 @@ const makeOrchestrator = (
             return failed;
           }
 
-          return yield* persistStartedRun({
-            task,
-            run: leasedRun,
-            runtimeId: driver.runtimeId,
+          return yield* settleClaimedRunStart({
+            intent: claimedStartIntent,
+            driver,
+            capabilityGrantIds: leasedRun.capabilityGrantIds ?? [],
             startResult: startResult.success,
-            summary: "依赖完成后已恢复任务",
+            persist: () =>
+              persistStartedRun({
+                task,
+                run: leasedRun,
+                runtimeId: driver.runtimeId,
+                startResult: startResult.success,
+                summary: "依赖完成后已恢复任务",
+              }),
           });
         }).pipe(Effect.ensuring(Effect.sync(() => resumingTaskIds.delete(task.taskId))));
         resumed.push(result);
@@ -1306,7 +1529,15 @@ const makeOrchestrator = (
       return resumed;
     });
 
-  return { dispatchTask, cancelTask, resumeTask, reviewTask, retryTask, resumeReadyTasks };
+  return {
+    dispatchTask,
+    cancelTask,
+    resumeTask,
+    reviewTask,
+    retryTask,
+    recoverRunStart,
+    resumeReadyTasks,
+  };
 };
 
 export const makeCompositionOrchestrator = (

@@ -113,6 +113,7 @@ describe("CompositionByokAgentDriver", () => {
     expect(driver.startRecoveryPolicy).toEqual({
       mode: "fail-closed",
       reasonCode: "byok_start_replay_unsafe",
+      requiredReceipt: "runtime-task",
     });
   });
 

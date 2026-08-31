@@ -36,6 +36,7 @@ import * as ServerEnvironment from "./environment/ServerEnvironment.ts";
 import * as EnvironmentAuth from "./auth/EnvironmentAuth.ts";
 import * as CompositionMcpRuntimeService from "./composition/CompositionMcpRuntimeService.ts";
 import * as CompositionToolInvocationStartupRecovery from "./composition/CompositionToolInvocationStartupRecovery.ts";
+import * as CompositionRunStartStartupRecovery from "./composition/CompositionRunStartStartupRecovery.ts";
 import * as ProviderService from "./provider/Services/ProviderService.ts";
 import * as ProviderSessionDirectory from "./provider/Services/ProviderSessionDirectory.ts";
 import * as ProviderSessionReaper from "./provider/Services/ProviderSessionReaper.ts";
@@ -301,6 +302,15 @@ export const awaitToolInvocationRecovery = Effect.gen(function* () {
   return yield* runStartupPhase("tool-invocations.recover", recovery.awaitRecovered);
 });
 
+/**
+ * 重启后扫描遗留的持久 Run Start 意图：已被取代的旧启动意图必须先通过
+ * receipt 校验，才能在 command ready 之前恢复或隔离，防止旧启动复活。
+ */
+export const awaitRunStartRecovery = Effect.gen(function* () {
+  const recovery = yield* CompositionRunStartStartupRecovery.CompositionRunStartStartupRecovery;
+  return yield* runStartupPhase("composition.run-starts.recover", recovery.awaitRecovered);
+});
+
 const ORPHANED_PROVIDER_SESSION_ERROR =
   "Provider session did not survive a server restart. Send a new message to continue.";
 
@@ -482,6 +492,10 @@ export const make = (options?: StartupOptions) =>
       );
 
       yield* runStartupPhase("provider-sessions.reconcile", reconcileProviderSessions);
+
+      // 在对账把遗留 provider 会话收口为 error 之后、command ready 之前，
+      // 完成持久 Run Start 意图的恢复扫描；该阶段失败会阻断 command ready。
+      yield* awaitRunStartRecovery;
 
       const welcomeBase = yield* resolveWelcomeBase;
       const environment = yield* serverEnvironment.getDescriptor;

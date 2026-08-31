@@ -555,6 +555,7 @@ export const makeCompositionProviderAgentDriver = (
     startRecoveryPolicy: {
       mode: "reconcile-only",
       after: "provider-sessions.reconcile",
+      requiredReceipt: "runtime-task-and-handshake-when-granted",
     },
     getProfile,
     startTask,

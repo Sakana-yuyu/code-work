@@ -91,6 +91,7 @@ describe("CompositionIdeAgentDriver", () => {
     expect(driver.startRecoveryPolicy).toEqual({
       mode: "fail-closed",
       reasonCode: "ide_start_replay_unsafe",
+      requiredReceipt: "runtime-task-and-handshake",
     });
   });
 
