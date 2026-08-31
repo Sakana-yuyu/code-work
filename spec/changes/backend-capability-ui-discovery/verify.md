@@ -317,3 +317,14 @@
 - `git fetch origin --prune` 与 `git fetch t3code --prune` 后执行 `git rev-parse`、`git merge-base --is-ancestor`、`git merge-base` 与 `git rev-list --count origin/main..main`（=201）。
 - 两个 detached 工作树 `git status` 干净，无独有提交。
 - 本轮无代码改动；仅更新本台账与任务清单，文档单独提交。
+
+## Round 23 - 15.3 发布暂停与产品线核对
+
+| ID | Lens | Severity | Status | Finding | Evidence | Resolution |
+| --- | --- | --- | --- | --- | --- | --- |
+| V-64 | scope | major | open | 15.3 的"既有工作流"（`build.yml` + `build/config.yml` + NSIS）发布的是根目录 Go+Wails+Vue 应用（安装名"Cursor助手"，原 cursor-byok），而非 `codework/` 子树的 T3 Code 系 Electron 桌面端（`@codework/desktop`）。用户确认预期不符，发布在推送 tag 前主动中止。 | 2026-08-31 已完成 0.0.99 版本号升级、release-notes 重写、Taskfile 命名链修复并本地构建出 `bin/cursor-byok-windows-x64-installer.exe`（安装验证发现既有安装位于 `D:\Cursor助手`，未被覆盖）；经用户确认后全部未提交改动已回滚、构建产物已删除。 | 15.3 保持未勾选。后续若发布 Wails 应用，需先重做三件事：① Taskfile 命名链修复（`code-work-windows-*` → `cursor-byok-windows-*`，涉及 Taskfile.yml、build/windows/Taskfile.yml、project.nsi、project-386.nsi，否则 CI 断言/签名/上传/release copy 全部失败）；② `build/windows/info.json` 版本号仍停在 0.0.98，需随版本升级同步；③ 与用户确认发布目标产品线（Wails 应用 vs codework 桌面端各有独立发布链路）。 |
+
+本轮证据：
+
+- 版本自检 `go run ./scripts/release version -config ./build/config.yml`=0.0.99 通过；`task build:windows:amd64` + `task build:windows:installer` 本地构建成功（Go 二进制内嵌 `buildinfo.Version=0.0.99`）。
+- 本轮全部未提交改动已回滚（`git checkout --`），`bin/` 构建产物已删除；已提交内容仅限 Round 21/22 文档。
