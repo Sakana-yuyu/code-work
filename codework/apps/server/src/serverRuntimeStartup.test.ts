@@ -10,6 +10,7 @@ import * as Option from "effect/Option";
 import * as PlatformError from "effect/PlatformError";
 import * as Ref from "effect/Ref";
 import * as Stream from "effect/Stream";
+import * as TestClock from "effect/testing/TestClock";
 
 import * as ServerConfig from "./config.ts";
 import * as OrchestrationEngine from "./orchestration/Services/OrchestrationEngine.ts";
@@ -18,6 +19,22 @@ import {
   CompositionToolInvocationStartupRecovery,
   CompositionToolInvocationStartupRecoveryError,
 } from "./composition/CompositionToolInvocationStartupRecovery.ts";
+import {
+  CompositionAgentDriverRegistryService,
+  makeCompositionAgentDriverRegistry,
+} from "./composition/CompositionAgentDriverRegistry.ts";
+import {
+  CompositionIdeSessionRegistryService,
+  makeCompositionIdeSessionRegistry,
+} from "./composition/CompositionIdeSessionRegistry.ts";
+import { makeInMemoryCompositionRuntimeAdapter } from "./composition/CompositionRuntimeAdapter.ts";
+import {
+  CompositionRuntimeAdapterRegistryService,
+  makeCompositionRuntimeAdapterRegistry,
+} from "./composition/CompositionRuntimeAdapterRegistry.ts";
+import { CompositionRunStartStartupRecovery } from "./composition/CompositionRunStartStartupRecovery.ts";
+import { CompositionRunStartStartupReconciliation } from "./composition/CompositionRunStartStartupRecovery.ts";
+import type { CompositionRunStartRecoveryReconciliation } from "./composition/CompositionRunStartRecoveryPolicy.ts";
 import * as AnalyticsService from "./telemetry/AnalyticsService.ts";
 import * as ServerRuntimeStartup from "./serverRuntimeStartup.ts";
 
@@ -105,6 +122,218 @@ it.effect("tool invocation recovery gate waits for the shared startup recovery",
     yield* Deferred.succeed(release, undefined);
     yield* Fiber.join(gate);
     assert.isTrue(yield* Deferred.isDone(completed));
+  }),
+);
+
+it.effect("Run Start recovery gate waits for the shared startup recovery", () =>
+  Effect.gen(function* () {
+    const entered = yield* Deferred.make<void>();
+    const release = yield* Deferred.make<void>();
+    const completed = yield* Deferred.make<void>();
+    const recovery = CompositionRunStartStartupRecovery.of({
+      awaitRecovered: Deferred.succeed(entered, undefined).pipe(
+        Effect.andThen(Deferred.await(release)),
+        Effect.as({
+          type: "composition.run_starts.recovered" as const,
+          recoveredAtUnixMs: 1,
+          plans: [],
+        }),
+      ),
+    });
+
+    const gate = yield* ServerRuntimeStartup.awaitRunStartRecovery.pipe(
+      Effect.ensuring(Deferred.succeed(completed, undefined).pipe(Effect.asVoid)),
+      Effect.provideService(CompositionRunStartStartupRecovery, recovery),
+      Effect.forkChild,
+    );
+
+    yield* Deferred.await(entered);
+    assert.isFalse(yield* Deferred.isDone(completed));
+
+    yield* Deferred.succeed(release, undefined);
+    yield* Fiber.join(gate);
+    assert.isTrue(yield* Deferred.isDone(completed));
+  }),
+);
+
+it.effect("Run Start watcher 补扫订阅窗口并串行响应后续 Driver 变化", () =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      const drivers = makeCompositionAgentDriverRegistry();
+      const firstRecovery = yield* Deferred.make<void>();
+      const secondRecovery = yield* Deferred.make<void>();
+      const reconciliations: Array<ReadonlySet<string>> = [];
+      let recoveries = 0;
+      const makeDriver = (suffix: string) => ({
+        agentId: `agent-startup-watch-${suffix}`,
+        runtimeId: `runtime-startup-watch-${suffix}`,
+        startTask: () => Effect.succeed({ runtimeTaskId: `runtime-task-startup-watch-${suffix}` }),
+        cancelTask: () => Effect.succeed({ status: "cancelled" as const }),
+      });
+
+      // 模拟首次扫描结束后、Registry 订阅安装前发生且不会被 PubSub 重放的变化。
+      yield* drivers.register(makeDriver("before-subscribe"));
+      yield* ServerRuntimeStartup.watchRunStartRecoveryTargets(
+        {
+          type: "composition.run_starts.recovered",
+          recoveredAtUnixMs: 1,
+          plans: [],
+        },
+        Effect.succeed(true),
+      ).pipe(
+        Effect.provideService(CompositionAgentDriverRegistryService, drivers),
+        Effect.provideService(
+          CompositionRunStartStartupReconciliation,
+          CompositionRunStartStartupReconciliation.of({
+            get: Effect.succeed(new Set()),
+            replace: (value) =>
+              Effect.sync(() => {
+                reconciliations.push(new Set(value));
+              }),
+          }),
+        ),
+        Effect.provideService(
+          CompositionRunStartStartupRecovery,
+          CompositionRunStartStartupRecovery.of({
+            awaitRecovered: Effect.gen(function* () {
+              recoveries += 1;
+              yield* Deferred.succeed(recoveries === 1 ? firstRecovery : secondRecovery, undefined);
+              return {
+                type: "composition.run_starts.recovered" as const,
+                recoveredAtUnixMs: recoveries + 1,
+                plans: [],
+              };
+            }),
+          }),
+        ),
+      );
+
+      yield* Deferred.await(firstRecovery);
+      yield* drivers.register(makeDriver("after-subscribe"));
+      yield* Deferred.await(secondRecovery);
+
+      assert.equal(recoveries, 2);
+      assert.equal(reconciliations.length, 2);
+      assert.isTrue(reconciliations.every((value) => value.has("provider-sessions")));
+    }),
+  ),
+);
+
+it.effect("Run Start 启动阶段严格先完成 Provider orphan 对账再恢复意图", () =>
+  Effect.gen(function* () {
+    const phases: string[] = [];
+    const providerResults: boolean[] = [];
+
+    const receipt = yield* ServerRuntimeStartup.runCompositionRunStartStartupSequence({
+      reconcileProviderSessions: Effect.sync(() => {
+        phases.push("provider");
+        return true;
+      }),
+      reconcileTargets: (providerSessionsReconciled) =>
+        Effect.sync(() => {
+          phases.push("targets");
+          providerResults.push(providerSessionsReconciled);
+        }),
+      recover: Effect.sync(() => {
+        phases.push("recover");
+        return {
+          type: "composition.run_starts.recovered" as const,
+          recoveredAtUnixMs: 1,
+          plans: [],
+        };
+      }),
+    });
+
+    assert.deepEqual(phases, ["provider", "targets", "recover"]);
+    assert.deepEqual(providerResults, [true]);
+    assert.equal(receipt.type, "composition.run_starts.recovered");
+  }),
+);
+
+it.effect("Provider orphan 对账失败时不得授予 Run Start provider-sessions 门禁", () =>
+  Effect.gen(function* () {
+    const reconciliation = yield* Ref.make<ReadonlySet<CompositionRunStartRecoveryReconciliation>>(
+      new Set(),
+    );
+    const receipt = yield* ServerRuntimeStartup.runCompositionRunStartStartupSequence({
+      reconcileProviderSessions: Effect.succeed(false),
+      reconcileTargets: (providerSessionsReconciled) =>
+        ServerRuntimeStartup.reconcileCompositionRunStartTargets(providerSessionsReconciled),
+      recover: Effect.succeed({
+        type: "composition.run_starts.recovered" as const,
+        recoveredAtUnixMs: 1,
+        plans: [],
+      }),
+    }).pipe(
+      Effect.provideService(
+        CompositionRunStartStartupReconciliation,
+        CompositionRunStartStartupReconciliation.of({
+          get: Ref.get(reconciliation),
+          replace: (value) => Ref.set(reconciliation, new Set(value)),
+        }),
+      ),
+    );
+
+    assert.equal(receipt.type, "composition.run_starts.recovered");
+    assert.isFalse((yield* Ref.get(reconciliation)).has("provider-sessions"));
+  }),
+);
+
+it.effect("悬挂的 IDE 与 Runtime Adapter 探测不会阻塞其他启动目标", () =>
+  Effect.gen(function* () {
+    const ideSessions = makeCompositionIdeSessionRegistry();
+    const runtimeAdapters = makeCompositionRuntimeAdapterRegistry();
+    const healthyRuntime = makeInMemoryCompositionRuntimeAdapter({
+      runtimeId: "runtime-startup-probe-healthy",
+    });
+    const hangingRuntime = {
+      ...makeInMemoryCompositionRuntimeAdapter({ runtimeId: "runtime-startup-probe-hanging" }),
+      probe: () => Effect.never,
+    };
+    yield* runtimeAdapters.register(healthyRuntime);
+    yield* runtimeAdapters.register(hangingRuntime);
+    yield* ideSessions.register({
+      sessionId: "ide-startup-probe-healthy",
+      profile: "cursor_ide",
+      probe: () =>
+        Effect.succeed({
+          sessionId: "ide-startup-probe-healthy",
+          profile: "cursor_ide" as const,
+          verifiedOperations: [],
+          status: "ready" as const,
+        }),
+      handshake: () => Effect.die("unused"),
+      invoke: () => Effect.die("unused"),
+    });
+    yield* ideSessions.register({
+      sessionId: "ide-startup-probe-hanging",
+      profile: "cursor_ide",
+      probe: () => Effect.never,
+      handshake: () => Effect.die("unused"),
+      invoke: () => Effect.die("unused"),
+    });
+
+    const reconcileFiber = yield* ServerRuntimeStartup.reconcileCompositionRunStartTargets(
+      true,
+    ).pipe(
+      Effect.provideService(CompositionIdeSessionRegistryService, ideSessions),
+      Effect.provideService(CompositionRuntimeAdapterRegistryService, runtimeAdapters),
+      Effect.forkChild,
+    );
+    yield* Effect.yieldNow;
+    yield* TestClock.adjust("5 seconds");
+    yield* Effect.yieldNow;
+    yield* TestClock.adjust("5 seconds");
+    const reconciled = yield* Fiber.join(reconcileFiber);
+
+    assert.isTrue(reconciled.has("ide-session-known:ide-startup-probe-healthy"));
+    assert.isTrue(reconciled.has("ide-session-ready:ide-startup-probe-healthy"));
+    assert.isTrue(reconciled.has("ide-session-known:ide-startup-probe-hanging"));
+    assert.isFalse(reconciled.has("ide-session-ready:ide-startup-probe-hanging"));
+    assert.isTrue(reconciled.has("runtime-adapter-known:runtime-startup-probe-healthy"));
+    assert.isTrue(reconciled.has("runtime-adapter-ready:runtime-startup-probe-healthy"));
+    assert.isTrue(reconciled.has("runtime-adapter-known:runtime-startup-probe-hanging"));
+    assert.isFalse(reconciled.has("runtime-adapter-ready:runtime-startup-probe-hanging"));
   }),
 );
 

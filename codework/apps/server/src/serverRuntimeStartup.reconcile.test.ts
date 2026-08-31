@@ -138,8 +138,9 @@ it.effect("reconciles multiple active and archived orphans but skips live sessio
     dispatch: (command) =>
       Effect.sync(() => dispatched.push(command)).pipe(Effect.as({ sequence: dispatched.length })),
   }).pipe(
-    Effect.tap(() =>
+    Effect.tap((reconciled) =>
       Effect.sync(() => {
+        assert.isTrue(reconciled);
         const orphanIds = [starting.id, running.id, staleActiveTurn.id, archived.id];
         assert.deepStrictEqual(bindingReads, orphanIds);
         assert.deepStrictEqual(
@@ -168,57 +169,104 @@ it.effect("reconciles multiple active and archived orphans but skips live sessio
   );
 });
 
-it.effect(
-  "settles projections when directory bindings are absent, corrupt, or fail to upsert",
-  () => {
-    const absent = makeThread("thread-binding-absent", "starting");
-    const corrupt = makeThread("thread-binding-corrupt", "running");
-    const upsertFailure = makeThread("thread-binding-upsert-failure", "running");
-    const dispatched: OrchestrationCommand[] = [];
-    const corruptFailure = new ProviderSessionDirectoryPersistenceError({
-      operation: "ProviderSessionDirectory.getBinding",
-      detail: "corrupt persisted binding",
-    });
+it.effect("目录绑定读取或写入失败时保留 orphan 投影并返回未完成", () => {
+  const absent = makeThread("thread-binding-absent", "starting");
+  const corrupt = makeThread("thread-binding-corrupt", "running");
+  const upsertFailure = makeThread("thread-binding-upsert-failure", "running");
+  const dispatched: OrchestrationCommand[] = [];
+  const corruptFailure = new ProviderSessionDirectoryPersistenceError({
+    operation: "ProviderSessionDirectory.getBinding",
+    detail: "corrupt persisted binding",
+  });
+  const writeFailure = new ProviderSessionDirectoryPersistenceError({
+    operation: "ProviderSessionDirectory.upsert",
+    detail: "failed binding write",
+  });
+
+  return runReconciliation({
+    threads: [absent, corrupt, upsertFailure],
+    directory: {
+      getBinding: (candidate) =>
+        candidate === absent.id
+          ? Effect.succeed(Option.none())
+          : candidate === corrupt.id
+            ? Effect.fail(corruptFailure)
+            : Effect.succeed(
+                Option.some({
+                  threadId: candidate,
+                  provider: ProviderDriverKind.make("codex"),
+                  providerInstanceId,
+                }),
+              ),
+      upsert: () => Effect.fail(writeFailure),
+      getProvider: () => Effect.die("unused"),
+      listThreadIds: () => Effect.die("unused"),
+      listBindings: () => Effect.die("unused"),
+    },
+    dispatch: (command) =>
+      Effect.sync(() => dispatched.push(command)).pipe(Effect.as({ sequence: dispatched.length })),
+  }).pipe(
+    Effect.tap((reconciled) =>
+      Effect.sync(() => {
+        assert.isFalse(reconciled);
+        assert.deepStrictEqual(
+          dispatched.map((command) => command.type === "thread.session.set" && command.threadId),
+          [absent.id],
+        );
+      }),
+    ),
+  );
+});
+
+it.effect("目录修复失败后下一轮仍会重试同一 orphan 而不会提前开放门禁", () =>
+  Effect.gen(function* () {
+    const thread = makeThread("thread-binding-retry", "running");
     const writeFailure = new ProviderSessionDirectoryPersistenceError({
       operation: "ProviderSessionDirectory.upsert",
       detail: "failed binding write",
     });
-
-    return runReconciliation({
-      threads: [absent, corrupt, upsertFailure],
-      directory: {
-        getBinding: (candidate) =>
-          candidate === absent.id
-            ? Effect.succeed(Option.none())
-            : candidate === corrupt.id
-              ? Effect.fail(corruptFailure)
-              : Effect.succeed(
-                  Option.some({
-                    threadId: candidate,
-                    provider: ProviderDriverKind.make("codex"),
-                    providerInstanceId,
-                  }),
-                ),
-        upsert: () => Effect.fail(writeFailure),
-        getProvider: () => Effect.die("unused"),
-        listThreadIds: () => Effect.die("unused"),
-        listBindings: () => Effect.die("unused"),
-      },
-      dispatch: (command) =>
-        Effect.sync(() => dispatched.push(command)).pipe(
-          Effect.as({ sequence: dispatched.length }),
+    const dispatched: OrchestrationCommand[] = [];
+    let failDirectoryWrite = true;
+    const directory: ProviderSessionDirectory.ProviderSessionDirectory["Service"] = {
+      getBinding: () =>
+        Effect.succeed(
+          Option.some({
+            threadId: thread.id,
+            provider: ProviderDriverKind.make("codex"),
+            providerInstanceId,
+            status: "running" as const,
+          }),
         ),
-    }).pipe(
-      Effect.tap(() =>
-        Effect.sync(() => {
-          assert.deepStrictEqual(
-            dispatched.map((command) => command.type === "thread.session.set" && command.threadId),
-            [absent.id, corrupt.id, upsertFailure.id],
-          );
-        }),
-      ),
+      upsert: () => (failDirectoryWrite ? Effect.fail(writeFailure) : Effect.void),
+      getProvider: () => Effect.die("unused"),
+      listThreadIds: () => Effect.die("unused"),
+      listBindings: () => Effect.die("unused"),
+    };
+    const dispatch: OrchestrationEngine.OrchestrationEngineService["Service"]["dispatch"] = (
+      command,
+    ) =>
+      Effect.sync(() => dispatched.push(command)).pipe(Effect.as({ sequence: dispatched.length }));
+
+    const first = yield* runReconciliation({
+      threads: [thread],
+      directory,
+      dispatch,
+    });
+    assert.isFalse(first);
+    assert.deepStrictEqual(dispatched, []);
+
+    failDirectoryWrite = false;
+    const second = yield* runReconciliation({
+      threads: [thread],
+      directory,
+      dispatch,
+    });
+    assert.isTrue(second);
+    assert.deepStrictEqual(
+      dispatched.map((command) => command.type === "thread.session.set" && command.threadId),
+      [thread.id],
     );
-  },
+  }),
 );
 
 it.effect("retries failed projections and continues after a persistent failure", () => {
@@ -254,16 +302,17 @@ it.effect("retries failed projections and continues after a persistent failure",
         : Effect.succeed({ sequence: attempted.length });
     },
   }).pipe(
-    Effect.tap(() =>
-      Effect.sync(() =>
+    Effect.tap((reconciled) =>
+      Effect.sync(() => {
+        assert.isFalse(reconciled);
         assert.deepStrictEqual(attempted, [
           transient.id,
           transient.id,
           persistent.id,
           persistent.id,
           later.id,
-        ]),
-      ),
+        ]);
+      }),
     ),
   );
 });
@@ -296,6 +345,11 @@ it.effect("does not fail startup when the live provider session inventory cannot
       latestSequence: Effect.succeed(0),
     }),
     Effect.provide(NodeServices.layer),
-    Effect.tap(() => Effect.sync(() => assert.equal(queried, false))),
+    Effect.tap((reconciled) =>
+      Effect.sync(() => {
+        assert.isFalse(reconciled);
+        assert.equal(queried, false);
+      }),
+    ),
   );
 });
