@@ -64,6 +64,11 @@ export type CompositionRunStartResourcesCompareAndSetInput = {
   readonly nextCapabilityGrantIds: ReadonlyArray<string>;
 };
 
+export type CompositionRunLeaseCompareAndSetInput = {
+  readonly run: CompositionTaskRun;
+  readonly nextLeaseId: string | null;
+};
+
 export interface CompositionTaskStoreShape {
   readonly upsertTask: (
     task: CompositionTask,
@@ -89,6 +94,10 @@ export interface CompositionTaskStoreShape {
    */
   readonly compareAndSetRunStartResources: (
     input: CompositionRunStartResourcesCompareAndSetInput,
+  ) => Effect.Effect<Option.Option<CompositionTaskRun>, CompositionTaskStoreError>;
+  /** 仅当 Run 的完整可变快照未变化时原子替换 lease，供已有运行态恢复使用。 */
+  readonly compareAndSetRunLease: (
+    input: CompositionRunLeaseCompareAndSetInput,
   ) => Effect.Effect<Option.Option<CompositionTaskRun>, CompositionTaskStoreError>;
   /** 按外部 Runtime 的稳定任务标识查询所有候选 Run；多命中时调用方必须拒绝猜测。 */
   readonly listRunsByRuntimeTask: (

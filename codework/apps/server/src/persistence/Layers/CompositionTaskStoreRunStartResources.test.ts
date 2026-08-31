@@ -72,6 +72,12 @@ const compareAndSet = (
     nextCapabilityGrantIds,
   });
 
+const compareAndSetRunLease = (
+  store: CompositionTaskStore["Service"],
+  run: CompositionTaskRun,
+  nextLeaseId: string,
+) => store.compareAndSetRunLease({ run, nextLeaseId });
+
 taskStoreLayer("CompositionTaskStore Run Start 资源 CAS", (it) => {
   it.effect("原子更新 lease 与 grants，并拒绝陈旧 lease 或 grants 快照", () =>
     Effect.gen(function* () {
@@ -145,6 +151,34 @@ taskStoreLayer("CompositionTaskStore Run Start 资源 CAS", (it) => {
       ]);
 
       assert.isTrue(results.every(Option.isNone));
+    }),
+  );
+
+  it.effect("已有运行态 Run 仅在完整快照未变化时原子替换 lease", () =>
+    Effect.gen(function* () {
+      const fixture = makeFixture("running");
+      const runningTask = { ...fixture.task, status: "running" as const };
+      const runningRun: CompositionTaskRun = {
+        ...fixture.run,
+        status: "running",
+        runtimeTaskId: "runtime-task-running",
+        capabilityHandshakeId: "handshake-running",
+        startedAtUnixMs: 200,
+        lastRuntimeEventAtUnixMs: 250,
+      };
+      const store = yield* CompositionTaskStore;
+      yield* store.upsertTask(runningTask);
+      yield* store.upsertRun(runningRun);
+
+      const updated = yield* compareAndSetRunLease(store, runningRun, "lease-next");
+      assert.deepEqual(Option.getOrThrow(updated), { ...runningRun, leaseId: "lease-next" });
+
+      const stale = yield* compareAndSetRunLease(store, runningRun, "lease-stale");
+      assert.isTrue(Option.isNone(stale));
+      assert.deepEqual(Option.getOrThrow(yield* store.getRun(runningRun.runId)), {
+        ...runningRun,
+        leaseId: "lease-next",
+      });
     }),
   );
 });
