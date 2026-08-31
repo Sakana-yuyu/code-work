@@ -120,9 +120,9 @@ const planFor = Effect.fn("planCompositionRunStartRecovery")(function* (
       detail: "Run Start 对应的 Agent Driver 不可用，恢复已延后。",
     };
   }
-  const externalTargetIdentity = driver.getStartIdentity?.({
-    ...(candidate.model === null ? {} : { model: candidate.model }),
-  });
+  const externalTargetIdentity = driver.getStartIdentity?.(
+    candidate.model === null ? {} : { model: candidate.model },
+  );
   if (externalTargetIdentity === undefined) {
     return {
       taskId: candidate.task.taskId,
@@ -149,8 +149,10 @@ const planFor = Effect.fn("planCompositionRunStartRecovery")(function* (
     runtimeId: candidate.run.runtimeId,
     attempt: candidate.run.attempt,
     promptDigest: candidate.task.promptDigest,
-    workspaceRootDigest: candidate.workspaceRootDigest,
-    model: candidate.model,
+    ...(candidate.workspaceRootDigest === null
+      ? {}
+      : { workspaceRootDigest: candidate.workspaceRootDigest }),
+    ...(candidate.model === null ? {} : { model: candidate.model }),
     externalTargetIdentity,
     capabilityIds: candidate.capabilityIds,
   });

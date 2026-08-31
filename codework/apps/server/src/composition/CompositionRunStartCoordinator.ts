@@ -82,8 +82,8 @@ export const claimCompositionRunStartSetup = (
     const digests = makeCompositionRunStartDigests({
       taskId: setup.taskId,
       projectId: setup.projectId,
-      threadId: setup.threadId ?? undefined,
-      parentTaskId: setup.parentTaskId ?? undefined,
+      ...(setup.threadId == null ? {} : { threadId: setup.threadId }),
+      ...(setup.parentTaskId == null ? {} : { parentTaskId: setup.parentTaskId }),
       runId: setup.runId,
       previousRunId: setup.previousRunId,
       assigneeKind: setup.assigneeKind,
@@ -94,8 +94,10 @@ export const claimCompositionRunStartSetup = (
       runtimeId: setup.runtimeId,
       attempt: setup.attempt,
       promptDigest: setup.promptDigest,
-      workspaceRootDigest: setup.workspaceRootDigest ?? undefined,
-      model: setup.model ?? undefined,
+      ...(setup.workspaceRootDigest === null
+        ? {}
+        : { workspaceRootDigest: setup.workspaceRootDigest }),
+      ...(setup.model === null ? {} : { model: setup.model }),
       externalTargetIdentity: setup.externalTargetIdentity,
       capabilityIds: setup.capabilityIds,
     });

@@ -51,6 +51,8 @@ const reconcileInput = {
     state: "dispatching" as const,
     revision: 2,
     claimId: "claim-provider-recovery",
+    ownerEpoch: 1,
+    ownerLeaseExpiresAtUnixMs: 1_000,
     runtimeTaskId: null,
     capabilityHandshakeId: null,
     outcomeCode: null,

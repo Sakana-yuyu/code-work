@@ -638,7 +638,9 @@ const makeOrchestrator = (
     promptDigest: input.task.promptDigest,
     workspaceRootDigest: input.workspaceRootDigest ?? null,
     model: input.model ?? null,
-    externalTargetIdentity: input.driver.getStartIdentity?.({ model: input.model }) ?? null,
+    externalTargetIdentity:
+      input.driver.getStartIdentity?.(input.model === undefined ? {} : { model: input.model }) ??
+      null,
     capabilityIds: input.capabilityIds,
   });
 

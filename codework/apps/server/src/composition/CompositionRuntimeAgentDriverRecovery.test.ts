@@ -42,6 +42,8 @@ const makeReconcileInput = (runtimeId: string, agentId: string) => {
       state: "dispatching" as const,
       revision: 2,
       claimId: "claim-runtime-recovery",
+      ownerEpoch: 1,
+      ownerLeaseExpiresAtUnixMs: 1_000,
       runtimeTaskId: null,
       capabilityHandshakeId: null,
       outcomeCode: null,
