@@ -96,5 +96,5 @@
 
 - [ ] 15. 交付与发布准备
   - [x] 15.1 已对协议读取、MITM 与前端记录验证证据；真实 Cursor 已覆盖的上下行、流式、MCP、Shell、子代理与终态范围沿用 `verify.md`，后台化、等待与 ComputerUse 等未触发分支继续明确标记为未验证。
-  - [ ] 15.2 单独提交协议历史功能，随后核对 detached 工作树、`main`、`fork/main` 与 `upstream/main` 的共同祖先，只并入可验证且兼容的改动。
+  - [x] 15.2 协议历史功能已完整在 `main` HEAD（历史重构根提交吸收，工作树无残留）；detached 工作树、`main`、fork/main、upstream/main 四方共同祖先核对完成，并入集合为空（见 Round 22/V-62、V-63）。
   - [ ] 15.3 将版本升级为下一个 patch，按既有工作流构建并验证 Windows 安装包，推送 tag 并核验 GitHub Actions/Release 资产。

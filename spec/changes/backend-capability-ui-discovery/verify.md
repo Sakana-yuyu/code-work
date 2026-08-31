@@ -304,3 +304,16 @@
 - 2026-08-31 只读核查：无隔离实例运行、无剩余时间线文件、隔离启动器 `cmd/isolated-cursor-e2e`（main.go、main_test.go）仍在。
 - 本轮无代码改动；仅更新本台账与任务清单，文档单独提交。
 - 未新增测试文件，遵循 `IMPROVEMENT_TASKS.md`；未关闭或重启任何既有 Cursor 实例。
+
+## Round 22 - 协议历史提交核对与交付分支并入
+
+| ID | Lens | Severity | Status | Finding | Evidence | Resolution |
+| --- | --- | --- | --- | --- | --- | --- |
+| V-62 | delivery | minor | fixed(r22) | 任务 13/14 的协议历史功能已全部在 `main` HEAD 上：`GetCursorProtocolSessions`（`internal/bridge/proxy.go`、生成 bindings、前端服务层）、历史页协议视图与 `frontend/e2e/history-settings-layout.spec.mjs` 均存在，工作树对这些文件无未提交改动。原独立提交在仓库历史重构根提交 `8934524b7`（initialize Code Work workbench）中被吸收，历史不可重拆也不需要重拆。 | `git status` 显示仅 codework 子树的无关文件改动；`git log -S GetCursorProtocolSessions main` 命中 `8934524b7`；Round 20 已有该功能的完整验证记录（V-55~V-58）。 | 15.2 的"单独提交协议历史功能"以"功能完整、单独可核、无未提交残留"为准达成；不做破坏性历史重写。 |
+| V-63 | delivery | minor | fixed(r22) | detached 工作树、`main`、fork/main、upstream/main 四方核对完成，无可验证且兼容的并入项，并入集合为空。 | 本仓库无字面 `fork`/`upstream` remote：fork=origin（Sakana-yuyu/code-work），upstream=t3code（pingdotgg/t3code）。2026-08-31 fetch 后核验：两个 detached 工作树（`8427`、`88a8`）均停在 `4ed7a7ec4` 且干净，该提交是 main 严格祖先（`merge-base --is-ancestor` 通过）；`origin/main`=`e5e615534` 是 main 严格祖先（main 领先 201 提交）；`merge-base main t3code/main` 为空，无共同祖先。 | upstream 与 main 无共同祖先，沿用 Round 19/V-54 判例：禁止 `--allow-unrelated-histories`，不做无验证能力的合并；detached 工作树与 fork 均无 main 缺失的提交。 |
+
+本轮证据：
+
+- `git fetch origin --prune` 与 `git fetch t3code --prune` 后执行 `git rev-parse`、`git merge-base --is-ancestor`、`git merge-base` 与 `git rev-list --count origin/main..main`（=201）。
+- 两个 detached 工作树 `git status` 干净，无独有提交。
+- 本轮无代码改动；仅更新本台账与任务清单，文档单独提交。
