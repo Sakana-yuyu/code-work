@@ -15,6 +15,7 @@ import { useEffect, useState } from "react";
 
 import { t } from "~/i18n";
 import { cn } from "~/lib/utils";
+import { ComposerControl, ComposerControlIcon } from "./ComposerControl";
 import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
@@ -24,10 +25,40 @@ export interface ThreadGoalStatusBarProps {
   readonly goal: ThreadGoal | null;
   readonly isPending: boolean;
   readonly errorMessage: string | null;
+  readonly initialEditing?: boolean;
+  readonly onEmptyEditorClose?: () => void;
   readonly onSetGoal: (objective: string) => Promise<boolean>;
   readonly onPause: () => Promise<boolean>;
   readonly onResume: () => Promise<boolean>;
   readonly onClear: () => Promise<boolean>;
+}
+
+export function ThreadGoalComposerControl({
+  disabled,
+  onClick,
+}: {
+  readonly disabled: boolean;
+  readonly onClick: () => void;
+}) {
+  return (
+    <Tooltip>
+      <TooltipTrigger
+        render={
+          <ComposerControl
+            type="button"
+            disabled={disabled}
+            aria-label={t("threadGoal.set")}
+            data-thread-goal-composer-control="true"
+            onClick={onClick}
+          />
+        }
+      >
+        <ComposerControlIcon icon={FlagIcon} />
+        <span className="sr-only sm:not-sr-only">{t("threadGoal.set")}</span>
+      </TooltipTrigger>
+      <TooltipPopup side="top">{t("threadGoal.set")}</TooltipPopup>
+    </Tooltip>
+  );
 }
 
 const statusVariant: Record<
@@ -64,12 +95,14 @@ export function ThreadGoalStatusBar({
   goal,
   isPending,
   errorMessage,
+  initialEditing = false,
+  onEmptyEditorClose,
   onSetGoal,
   onPause,
   onResume,
   onClear,
 }: ThreadGoalStatusBarProps) {
-  const [editing, setEditing] = useState(false);
+  const [editing, setEditing] = useState(initialEditing);
   const [objective, setObjective] = useState(goal?.objective ?? "");
   const [isSaving, setIsSaving] = useState(false);
   const [localError, setLocalError] = useState<string | null>(null);
@@ -90,6 +123,7 @@ export function ThreadGoalStatusBar({
     try {
       if (await onSetGoal(nextObjective)) {
         setEditing(false);
+        if (goal === null) onEmptyEditorClose?.();
       } else {
         setLocalError(t("threadGoal.error.failed"));
       }
@@ -154,7 +188,10 @@ export function ThreadGoalStatusBar({
               variant="ghost"
               aria-label={t("threadGoal.cancel")}
               disabled={disabled}
-              onClick={() => setEditing(false)}
+              onClick={() => {
+                setEditing(false);
+                if (goal === null) onEmptyEditorClose?.();
+              }}
             >
               <XIcon />
             </Button>

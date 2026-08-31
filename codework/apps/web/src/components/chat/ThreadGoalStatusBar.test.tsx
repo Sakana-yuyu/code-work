@@ -3,7 +3,11 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vite-plus/test";
 
 import { t } from "~/i18n";
-import { ThreadGoalStatusBar, formatThreadGoalDuration } from "./ThreadGoalStatusBar";
+import {
+  ThreadGoalComposerControl,
+  ThreadGoalStatusBar,
+  formatThreadGoalDuration,
+} from "./ThreadGoalStatusBar";
 
 const goal = (status: ThreadGoal["status"] = "active"): ThreadGoal => ({
   threadId: "thread-1" as ThreadGoal["threadId"],
@@ -18,6 +22,15 @@ const goal = (status: ThreadGoal["status"] = "active"): ThreadGoal => ({
 });
 
 describe("ThreadGoalStatusBar", () => {
+  it("renders an accessible compact Composer control for an empty goal", () => {
+    const markup = renderToStaticMarkup(
+      <ThreadGoalComposerControl disabled={false} onClick={() => undefined} />,
+    );
+
+    expect(markup).toContain('aria-label="' + t("threadGoal.set") + '"');
+    expect(markup).toContain("sr-only");
+  });
+
   it("formats persisted goal duration without a live client timer", () => {
     expect(formatThreadGoalDuration(65)).toBe("1m 05s");
     expect(formatThreadGoalDuration(3_725)).toBe("1h 02m");
