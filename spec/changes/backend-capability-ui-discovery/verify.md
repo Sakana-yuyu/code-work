@@ -290,3 +290,17 @@
 | V-58 | i18n | minor | fixed(r20) | 新增中文可见文案必须同步所有现有 locale，不能依赖中文回退。 | `npm run build` 完成静态扫描；随后校验 `zh-CN`、`en-US`、`ja-JP`、`ru-RU` 的键集、空值和占位符差异均为 0。`npm run lint -- --quiet` 与 `npm run test:unit`（29/29）退出码 0。 | 新增协议视图文案已提供英日俄翻译，构建产物断言通过。 |
 
 本轮仅实现历史 UI 对安全时间线的读取与展示；没有启动、修改或登录已安装 Cursor，没有对官方请求做回放，也没有把临时抓包或生成 bindings 产物加入 Git。真实协议覆盖范围仍以 V-29 至 V-45 为准：后台化、等待、ComputerUse 与部分专属审批 oneof 继续保持未触发验证。
+
+## Round 21 - 真实矩阵验收收口（隔离实例过期核查）
+
+| ID | Lens | Severity | Status | Finding | Evidence | Resolution |
+| --- | --- | --- | --- | --- | --- | --- |
+| V-59 | runtime-evidence | minor | fixed(r21) | 10.1 的"保持当前隔离实例运行"前提已失效：2026-08-31 核查时没有任何隔离 Cursor 实例在运行，2026-08-12 隔离会话的抓包数据已被临时目录清理，无法继续真实操作捕获或重跑零泄漏扫描。 | Win32_Process 只读核查显示全部 Cursor.exe 的 `--user-data-dir` 均为真实 `AppData\Roaming\Cursor`；Temp 下 14 个 `cursor-byok-e2e-*` 目录仅剩空骨架（`find -type f` 为 0 个文件），最新目录 mtime 为 2026-08-12 08:00，全 Temp 不存在 `protocol.timeline.jsonl`。 | 按约束"隔离实例异常时记录并跳过该分支"处置；不伪造、不重放、不以真实环境冒充隔离环境。未来真实触发需用户在新隔离实例（`CURSOR_E2E_MIRROR_CAPTURE=1`，启动器仍在）中自行登录并自然操作后复核。 |
+| V-60 | coverage | minor | fixed(r21) | 10.1 原文口径滞后：`*_allowlist_precheck_*`（MCP/Shell 审批预检）实际已在 Round 13 由真实会话验证，真正保持未验证的仅有 `force_background_subagent_*`、`subagent_await_*`、`computer_use_*` 三族。 | Round 13/V-33 已记录 `mcp_allowlist_precheck_args/result=10/10`、`shell_allowlist_precheck_args/result=10/10` 的真实闭环；V-35/V-43/V-48 一致确认后台化、等待、ComputerUse 三族未被真实调度器触发。 | 三族分支的本地生命周期投影与终态语义已由 Round 17/18（V-46~V-50）单元与定向集成覆盖；运行时验证以 V-48 口径继续开放，不因本变更交付而宣称已验证。 |
+| V-61 | data-protection | major | fixed(r21) | 本轮无法在已清理的时间线上重跑零泄漏扫描，但核查过程本身不产生新的泄漏面。 | 本轮仅读取目录存在性、文件 mtime 与进程命令行中的 user-data-dir 参数；未读取、未输出、未提交任何正文、凭据、路径内容或抓包数据。 | 最终零泄漏结论沿用 Round 12/V-32 与 Round 16/V-45 对最后有效时间线（约 11,498 条记录）的扫描结果；数据过期后无从复核，如实记录为证据边界。 |
+
+本轮证据：
+
+- 2026-08-31 只读核查：无隔离实例运行、无剩余时间线文件、隔离启动器 `cmd/isolated-cursor-e2e`（main.go、main_test.go）仍在。
+- 本轮无代码改动；仅更新本台账与任务清单，文档单独提交。
+- 未新增测试文件，遵循 `IMPROVEMENT_TASKS.md`；未关闭或重启任何既有 Cursor 实例。
