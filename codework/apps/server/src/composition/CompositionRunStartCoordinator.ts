@@ -58,6 +58,17 @@ export const compositionRunStartWinnerFailure = (
   winner: CompositionRunStartIntent,
   inProgressDetail: string,
 ): StartFailure => {
+  if (winner.cancelRequestedAtUnixMs != null) {
+    const cancellationSettled = winner.state === "settled" && winner.cancelTerminalStatus != null;
+    return {
+      code: cancellationSettled
+        ? "run_start_cancellation_settled"
+        : "run_start_cancellation_pending",
+      detail: cancellationSettled
+        ? `持久化启动赢家已按取消屏障收口为 ${winner.cancelTerminalStatus}。`
+        : "持久化启动赢家已有取消屏障，不能再次投影 accepted。",
+    };
+  }
   if (winner.state === "settled" && winner.outcomeCode !== null) {
     return {
       code: winner.outcomeCode,
@@ -212,7 +223,8 @@ export const runCompositionWithPersistedStart = <
             const winner = claimed.intent;
             if (
               (winner.state === "accepted" || winner.state === "settled") &&
-              winner.outcomeCode === null
+              winner.outcomeCode === null &&
+              winner.cancelRequestedAtUnixMs == null
             ) {
               return yield* input.onAccepted({
                 ...(winner.runtimeTaskId === null ? {} : { runtimeTaskId: winner.runtimeTaskId }),
