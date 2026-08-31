@@ -5,12 +5,18 @@ import * as Option from "effect/Option";
 import type { CompositionTask, CompositionTaskRun } from "@codework/contracts";
 
 import type { CompositionRunStartIntent } from "../persistence/Services/CompositionRunStartStore.ts";
+import { makeCompositionAgentDriverRegistry } from "./CompositionAgentDriverRegistry.ts";
+import { makeCompositionRuntimeAgentDriver } from "./CompositionRuntimeAgentDriver.ts";
 import {
   makeMulticaDaemonRuntimeAdapter,
   type MulticaDaemonRuntimeAdapterOptions,
 } from "./MulticaDaemonRuntimeAdapter.ts";
 import type { MulticaDaemonProtocol } from "./MulticaDaemonProtocol.ts";
-import type { CompositionRunStartReconcileInput } from "./CompositionRunStartLifecycle.ts";
+import {
+  makeCompositionRunStartDigests,
+  type CompositionRunStartReconcileInput,
+} from "./CompositionRunStartLifecycle.ts";
+import { planCompositionRunStartRecoveries } from "./CompositionRunStartRecoveryPolicy.ts";
 
 const runtimeId = "multica:daemon-recovery:runtime-recovery";
 const daemonRuntimeId = "runtime-recovery";
@@ -240,6 +246,74 @@ it.effect("Multica 按 quick-create 持久账本规划 replay、manual 与 accep
       runtimeTaskId: "multica-remote-accepted",
     });
     expect(quickCreateCalls).toBe(0);
+  }),
+);
+
+it.effect("真实 Multica Adapter 身份穿透 Runtime Driver 并可规划幂等重放", () =>
+  Effect.gen(function* () {
+    const adapter = makeMulticaDaemonRuntimeAdapter(makeOptions(makeLedger(), makeProtocol()));
+    const driver = makeCompositionRuntimeAgentDriver({
+      adapter,
+      agentId: "multica-agent-recovery",
+    });
+    if (driver.getStartIdentity === undefined) {
+      return yield* Effect.die("Runtime Agent Driver 必须转接 Multica Adapter 启动身份。");
+    }
+    const model = "multica-recovery-model";
+    const externalTargetIdentity = driver.getStartIdentity({ model });
+    expect(externalTargetIdentity).toMatchObject({
+      runtimeKind: "multica",
+      providerInstanceId: null,
+      adapterId: runtimeId,
+      modelIdentity: model,
+      sessionMode: "daemon",
+    });
+    expect(externalTargetIdentity.configDigest).toMatch(/^sha256:[0-9a-f]{64}$/);
+
+    const input = makeInput("wrapped-driver");
+    const intent: CompositionRunStartIntent = {
+      ...input.intent,
+      ...makeCompositionRunStartDigests({
+        taskId: input.task.taskId,
+        projectId: input.task.projectId,
+        runId: input.run.runId,
+        previousRunId: input.intent.previousRunId,
+        assigneeKind: input.task.assigneeKind,
+        assigneeId: input.task.assigneeId,
+        mode: input.task.mode,
+        dependsOnTaskIds: input.task.dependsOnTaskIds,
+        agentId: input.run.agentId,
+        runtimeId: input.run.runtimeId,
+        attempt: input.run.attempt,
+        promptDigest: input.task.promptDigest,
+        model,
+        externalTargetIdentity,
+        capabilityIds: [],
+      }),
+    };
+    const registry = makeCompositionAgentDriverRegistry();
+    yield* registry.register(driver);
+
+    const [plan] = yield* planCompositionRunStartRecoveries({
+      candidates: [
+        {
+          task: input.task,
+          run: input.run,
+          intent,
+          capabilityIds: [],
+          workspaceRootDigest: null,
+          model,
+        },
+      ],
+      driverRegistry: registry,
+      reconciled: new Set([
+        "runtime-adapters",
+        `runtime-adapter-known:${runtimeId}`,
+        `runtime-adapter-ready:${runtimeId}`,
+      ]),
+    });
+
+    expect(plan?.action).toBe("replay");
   }),
 );
 

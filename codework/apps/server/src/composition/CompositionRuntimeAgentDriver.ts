@@ -74,6 +74,12 @@ export const makeCompositionRuntimeAgentDriver = (
               makeFailure("runtime_start_reconciliation_failed", failure),
             ),
           )) satisfies NonNullable<CompositionAgentDriver["reconcileStart"]>);
+  const getStartIdentity =
+    options.adapter.getStartIdentity === undefined
+      ? undefined
+      : (((input) => options.adapter.getStartIdentity!(input)) satisfies NonNullable<
+          CompositionAgentDriver["getStartIdentity"]
+        >);
 
   const hasHistoricalBindingConflict = (run: ActiveRun): boolean => {
     const existing = historicalRuns.get(run.runtimeTaskId);
@@ -430,6 +436,7 @@ export const makeCompositionRuntimeAgentDriver = (
     agentId: options.agentId,
     runtimeId: options.adapter.runtimeId,
     startRecoveryPolicy,
+    ...(getStartIdentity === undefined ? {} : { getStartIdentity }),
     ...(reconcileStart === undefined ? {} : { reconcileStart }),
     getProfile,
     startTask,

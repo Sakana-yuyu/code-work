@@ -466,7 +466,7 @@ export const makeMulticaDaemonRuntimeAdapter = (
   const runtimeId = nonEmpty(options.runtimeId, "runtimeId");
   const daemonId = nonEmpty(options.daemonId, "daemonId");
   const daemonRuntimeId = nonEmpty(options.daemonRuntimeId, "daemonRuntimeId");
-  nonEmpty(options.baseUrl, "baseUrl");
+  const baseUrl = nonEmpty(options.baseUrl, "baseUrl").replace(/\/+$/, "");
   const now = options.now ?? Date.now;
   const configuredCapabilities = [...(options.capabilities ?? [])];
   const configuredAgents = options.agents.map((agent) => {
@@ -516,6 +516,35 @@ export const makeMulticaDaemonRuntimeAdapter = (
       taskAssigneeRoutes.set(codeworkAgentId, normalizedRoute);
     }
   }
+  const startConfigDigest = `sha256:${NodeCrypto.createHash("sha256")
+    .update(
+      JSON.stringify({
+        schemaVersion: 1,
+        runtimeId,
+        daemonId,
+        daemonRuntimeId,
+        baseUrl,
+        routes: [...taskAssigneeRoutes.values(), ...taskSquadRoutes.values()].sort((left, right) =>
+          `${left.codeworkSquadId ?? ""}\u0000${left.codeworkAgentId}`.localeCompare(
+            `${right.codeworkSquadId ?? ""}\u0000${right.codeworkAgentId}`,
+          ),
+        ),
+      }),
+      "utf8",
+    )
+    .digest("hex")}`;
+  const getStartIdentity: NonNullable<CompositionRuntimeAdapter["getStartIdentity"]> = (input) => {
+    const modelIdentity = input.model?.trim();
+    return {
+      runtimeKind: "multica",
+      providerInstanceId: null,
+      adapterId: runtimeId,
+      modelIdentity:
+        modelIdentity === undefined || modelIdentity.length === 0 ? null : modelIdentity,
+      configDigest: startConfigDigest,
+      sessionMode: "daemon",
+    };
+  };
   const activeTaskIds = new Set<string>();
   const startedTaskIds = new Set<string>();
   const dispatchedTasks = new Map<
@@ -1334,6 +1363,7 @@ export const makeMulticaDaemonRuntimeAdapter = (
       requiredReceipt: "runtime-task",
       capabilityGrantReplay: { mode: "verified" },
     },
+    getStartIdentity,
     reconcileStart,
     daemonId,
     daemonRuntimeId,

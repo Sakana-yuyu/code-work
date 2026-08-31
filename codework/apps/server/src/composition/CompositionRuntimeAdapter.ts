@@ -12,6 +12,7 @@ import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
 
 import type {
+  CompositionRunStartExternalTargetIdentity,
   CompositionRunStartReconcileDecision,
   CompositionRunStartReconcileInput,
   CompositionRunStartRecoveryPolicy,
@@ -94,6 +95,10 @@ export interface CompositionRuntimeAdapter {
   readonly runtimeId: string;
   readonly driverKind: CompositionRuntimeDriverKind;
   readonly startRecoveryPolicy?: CompositionRunStartRecoveryPolicy;
+  /** 只有 Adapter 能给出稳定外部目标身份时，通用 Driver 才允许自动跨进程恢复。 */
+  readonly getStartIdentity?: (input: {
+    readonly model?: string;
+  }) => CompositionRunStartExternalTargetIdentity;
   readonly reconcileStart?: (
     input: CompositionRunStartReconcileInput,
   ) => Effect.Effect<CompositionRunStartReconcileDecision, CompositionRuntimeAdapterFailure>;
