@@ -137,7 +137,7 @@ import {
   submitComposerDraft,
 } from "./composerSubmission";
 import { ComposerPromptLengthValidation } from "./ComposerPromptLengthValidation";
-import { ThreadGoalStatusBar } from "./ThreadGoalStatusBar";
+import { ThreadGoalComposerControl, ThreadGoalStatusBar } from "./ThreadGoalStatusBar";
 import { threadGoalEnvironment, useThreadGoal } from "../../state/threadGoal";
 import { useAtomCommand } from "../../state/use-atom-command";
 
@@ -773,6 +773,10 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   const threadGoalState = useThreadGoal(
     activeThreadId === null ? null : { environmentId, threadId: activeThreadId },
   );
+  const [threadGoalEditorOpen, setThreadGoalEditorOpen] = useState(false);
+  useEffect(() => {
+    setThreadGoalEditorOpen(false);
+  }, [activeThreadId]);
   const setThreadGoalCommand = useAtomCommand(threadGoalEnvironment.set, {
     reportFailure: false,
   });
@@ -3053,11 +3057,15 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       className={cn("mx-auto w-full min-w-0 max-w-3xl", hasShoulderTab && "pt-7")}
       data-chat-composer-form="true"
     >
-      {!isComposerCollapsedMobile && activeThreadId !== null ? (
+      {!isComposerCollapsedMobile &&
+      activeThreadId !== null &&
+      (threadGoalState.goal !== null || threadGoalEditorOpen) ? (
         <ThreadGoalStatusBar
           goal={threadGoalState.goal}
           isPending={threadGoalState.isPending}
           errorMessage={threadGoalErrorMessage}
+          initialEditing={threadGoalEditorOpen && threadGoalState.goal === null}
+          onEmptyEditorClose={() => setThreadGoalEditorOpen(false)}
           onSetGoal={onSetThreadGoal}
           onPause={onPauseThreadGoal}
           onResume={onResumeThreadGoal}
@@ -3565,6 +3573,14 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                 )}
               >
                 <div className="-m-1 -ms-3.5 flex min-w-0 flex-1 items-center gap-1 overflow-x-auto p-1 ps-3.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+                  {threadGoalState.goal === null && !threadGoalEditorOpen ? (
+                    <ThreadGoalComposerControl
+                      disabled={
+                        threadGoalState.isPending || isConnecting || projectSelectionRequired
+                      }
+                      onClick={() => setThreadGoalEditorOpen(true)}
+                    />
+                  ) : null}
                   {noProviderAvailable ? (
                     <Button
                       type="button"
