@@ -24,6 +24,8 @@ export interface CompositionOrchestratorServiceShape {
   readonly reviewTask: CompositionOrchestrator["reviewTask"];
   readonly retryTask: CompositionOrchestrator["retryTask"];
   readonly resumeReadyTasks: CompositionOrchestrator["resumeReadyTasks"];
+  readonly recoverPersistedRunStart: CompositionOrchestrator["recoverPersistedRunStart"];
+  readonly recordPersistedRunStartRecoveryProblem: CompositionOrchestrator["recordPersistedRunStartRecoveryProblem"];
   readonly listTaskSnapshots: (
     projectId?: string,
   ) => Effect.Effect<ReadonlyArray<CompositionTaskSnapshot>, CompositionTaskStoreError>;
@@ -56,6 +58,8 @@ const live = Effect.gen(function* () {
     reviewTask: orchestrator.reviewTask,
     retryTask: orchestrator.retryTask,
     resumeReadyTasks: orchestrator.resumeReadyTasks,
+    recoverPersistedRunStart: orchestrator.recoverPersistedRunStart,
+    recordPersistedRunStartRecoveryProblem: orchestrator.recordPersistedRunStartRecoveryProblem,
     listTaskSnapshots: (projectId) =>
       Effect.gen(function* () {
         const tasks = yield* store.listTasks(projectId);

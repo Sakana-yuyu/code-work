@@ -13,7 +13,10 @@ import {
   CompositionRunStartStore,
   type CompositionRunStartStoreShape,
 } from "../persistence/Services/CompositionRunStartStore.ts";
-import type { CompositionTaskInputStoreShape } from "../persistence/Services/CompositionTaskInputStore.ts";
+import type {
+  CompositionTaskInputStoreShape,
+  CompositionTaskRecoveryInput,
+} from "../persistence/Services/CompositionTaskInputStore.ts";
 import {
   CompositionTaskStore,
   type CompositionTaskStoreShape,
@@ -40,6 +43,38 @@ const inputStore: CompositionTaskInputStoreShape = {
       }),
     ),
   remove: () => Effect.void,
+};
+
+const makeMutableInputStore = (
+  taskId: string,
+  capabilityIds: ReadonlyArray<string>,
+): {
+  readonly store: CompositionTaskInputStoreShape;
+  readonly read: () => CompositionTaskRecoveryInput;
+} => {
+  let current: CompositionTaskRecoveryInput = {
+    taskId,
+    prompt: "恢复持久 Run Start setup",
+    workspaceRoot: "C:/workspace/run-start-setup",
+    workspaceRootDigest: `sha256:workspace-run-start-setup:${taskId}`,
+    model: "provider/model",
+    capabilityIds: [...capabilityIds],
+  };
+  return {
+    store: {
+      save: (next) =>
+        Effect.sync(() => {
+          current = {
+            ...next,
+            ...(next.capabilityIds === undefined ? {} : { capabilityIds: [...next.capabilityIds] }),
+          };
+        }),
+      get: (requestedTaskId) =>
+        Effect.succeed(requestedTaskId === taskId ? Option.some(current) : Option.none()),
+      remove: () => Effect.void,
+    },
+    read: () => current,
+  };
 };
 
 const makeRetryInput = (suffix: string) => ({
@@ -116,7 +151,7 @@ const guardRecoveryClaim = (store: CompositionRunStartStoreShape) => {
 };
 
 layer("Composition Run Start setup owner", (it) => {
-  it.effect("并发 retry 在首个 owner 等待 grant 时不得重复签发或启动", () =>
+  it.effect("并发 retry 在首个原子 setup 提交后拒绝第二请求且不重复副作用", () =>
     Effect.gen(function* () {
       const retryInput = makeRetryInput("concurrent");
       const store = yield* CompositionTaskStore;
@@ -170,9 +205,9 @@ layer("Composition Run Start setup owner", (it) => {
       const second = yield* Effect.forkChild(
         Effect.result(secondOrchestrator.retryTask(retryInput)),
       );
-      const secondResult = yield* Fiber.join(second);
       yield* Deferred.succeed(releaseFirstIssue, undefined);
       const firstResult = yield* Fiber.join(first);
+      const secondResult = yield* Fiber.join(second);
 
       assert.equal(issueCount, 1);
       assert.equal(recoveryClaim.readCount(), 0);
@@ -183,10 +218,7 @@ layer("Composition Run Start setup owner", (it) => {
       }
       assert.equal(secondResult._tag, "Failure");
       if (secondResult._tag === "Failure") {
-        assert.equal(secondResult.failure._tag, "CompositionAgentDriverFailure");
-        if (secondResult.failure._tag === "CompositionAgentDriverFailure") {
-          assert.equal(secondResult.failure.code, "run_start_in_progress");
-        }
+        assert.equal(secondResult.failure._tag, "CompositionTaskRetryInvalidError");
       }
     }),
   );
@@ -215,9 +247,7 @@ layer("Composition Run Start setup owner", (it) => {
       const exit = yield* Effect.exit(orchestrator.retryTask(retryInput));
 
       assert.equal(exit._tag, "Failure");
-      const intent = Option.getOrThrow(yield* runStartStore.getStart(retryInput.runId));
-      assert.equal(intent.state, "prepared");
-      assert.equal(intent.claimId, null);
+      assert.isTrue(Option.isNone(yield* runStartStore.getStart(retryInput.runId)));
       assert.isTrue(Option.isNone(yield* store.getRun(retryInput.runId)));
       assert.deepEqual(started, []);
     }),
@@ -272,9 +302,7 @@ layer("Composition Run Start setup owner", (it) => {
       yield* Deferred.succeed(releaseClaimReturn, undefined);
       yield* Fiber.join(interruptFiber);
 
-      const intent = Option.getOrThrow(yield* runStartStore.getStart(retryInput.runId));
-      assert.equal(intent.state, "prepared");
-      assert.equal(intent.claimId, null);
+      assert.isTrue(Option.isNone(yield* runStartStore.getStart(retryInput.runId)));
       assert.equal(issueCount, 0);
       assert.deepEqual(started, []);
     }),
@@ -289,6 +317,7 @@ layer("Composition Run Start setup owner", (it) => {
       const started: string[] = [];
       const revoked: string[] = [];
       const driverRegistry = yield* makeDriverRegistry(started, retryInput);
+      const mutableInputStore = makeMutableInputStore(retryInput.taskId, ["capability.old"]);
       const failingStore: CompositionTaskStoreShape = {
         ...store,
         appendEvent: (event) =>
@@ -318,7 +347,7 @@ layer("Composition Run Start setup owner", (it) => {
             ]),
           revoke: ({ grantId }) => Effect.sync(() => void revoked.push(grantId)),
         },
-        inputStore,
+        mutableInputStore.store,
         runStartStore,
       );
 
@@ -329,9 +358,46 @@ layer("Composition Run Start setup owner", (it) => {
       assert.isTrue(Option.isNone(yield* store.getRun(retryInput.runId)));
       assert.deepEqual(started, []);
       assert.include(revoked, "grant-run-start-setup-new");
-      const intent = Option.getOrThrow(yield* runStartStore.getStart(retryInput.runId));
-      assert.equal(intent.state, "prepared");
-      assert.equal(intent.claimId, null);
+      assert.isTrue(Option.isNone(yield* runStartStore.getStart(retryInput.runId)));
+      assert.deepEqual(mutableInputStore.read().capabilityIds, ["capability.old"]);
+    }),
+  );
+
+  it.effect("retry 原子 setup 会持久化本次 capabilityIds 供重启恢复复用", () =>
+    Effect.gen(function* () {
+      const retryInput = makeRetryInput("capability-identity");
+      const store = yield* CompositionTaskStore;
+      const runStartStore = yield* CompositionRunStartStore;
+      yield* seedFailedRun(store, retryInput);
+      const started: string[] = [];
+      const driverRegistry = yield* makeDriverRegistry(started, retryInput);
+      const mutableInputStore = makeMutableInputStore(retryInput.taskId, ["capability.old"]);
+      const orchestrator = makeCompositionOrchestrator(
+        store,
+        driverRegistry,
+        {
+          issue: ({ taskId, agentId }) =>
+            Effect.succeed([
+              {
+                grantId: "grant-run-start-setup-capability-identity",
+                taskId,
+                agentId,
+                capabilityId: retryInput.capabilityIds[0]!,
+                issuedAtUnixMs: 10,
+                expiresAtUnixMs: 1_000,
+              },
+            ]),
+          revoke: () => Effect.void,
+        },
+        mutableInputStore.store,
+        runStartStore,
+      );
+
+      const result = yield* orchestrator.retryTask(retryInput);
+
+      assert.equal(result.run.runId, retryInput.runId);
+      assert.deepEqual(started, [retryInput.runId]);
+      assert.deepEqual(mutableInputStore.read().capabilityIds, retryInput.capabilityIds);
     }),
   );
 });
