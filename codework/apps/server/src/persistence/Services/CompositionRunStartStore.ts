@@ -11,10 +11,37 @@ export const CompositionRunStartState = Schema.Literals([
   "dispatching",
   "accepted",
   "manual_pending",
+  "cancel_pending",
   "settled",
   "quarantined",
 ]);
 export type CompositionRunStartState = typeof CompositionRunStartState.Type;
+
+export const CompositionRunStartCancellationSourceState = Schema.Literals([
+  "dispatching",
+  "accepted",
+  "manual_pending",
+  "accepted_settled",
+]);
+export type CompositionRunStartCancellationSourceState =
+  typeof CompositionRunStartCancellationSourceState.Type;
+
+export const CompositionRunStartCancellationStartOutcome = Schema.Literals([
+  "pending",
+  "accepted",
+  "rejected",
+]);
+export type CompositionRunStartCancellationStartOutcome =
+  typeof CompositionRunStartCancellationStartOutcome.Type;
+
+export const CompositionRunStartCancellationTerminalStatus = Schema.Literals([
+  "completed",
+  "failed",
+  "cancelled",
+  "timed_out",
+]);
+export type CompositionRunStartCancellationTerminalStatus =
+  typeof CompositionRunStartCancellationTerminalStatus.Type;
 
 export const CompositionRunStartIdentity = Schema.Struct({
   taskId: Schema.String,
@@ -39,6 +66,18 @@ export const CompositionRunStartIntent = Schema.Struct({
   capabilityHandshakeId: Schema.NullOr(Schema.String),
   outcomeCode: Schema.NullOr(Schema.String),
   outcomeDetail: Schema.NullOr(Schema.String),
+  cancelRequestedAtUnixMs: Schema.optional(Schema.NullOr(Schema.Number)),
+  cancelReason: Schema.optional(Schema.NullOr(Schema.String)),
+  cancelSourceState: Schema.optional(Schema.NullOr(CompositionRunStartCancellationSourceState)),
+  cancelSourceRevision: Schema.optional(Schema.NullOr(Schema.Number)),
+  cancelSourceClaimId: Schema.optional(Schema.NullOr(Schema.String)),
+  cancelSourceOwnerEpoch: Schema.optional(Schema.NullOr(Schema.Number)),
+  cancelStartOutcome: Schema.optional(Schema.NullOr(CompositionRunStartCancellationStartOutcome)),
+  cancelTerminalStatus: Schema.optional(
+    Schema.NullOr(CompositionRunStartCancellationTerminalStatus),
+  ),
+  cancelTerminalSourceEventId: Schema.optional(Schema.NullOr(Schema.String)),
+  cancelTerminalObservedAtUnixMs: Schema.optional(Schema.NullOr(Schema.Number)),
   createdAtUnixMs: Schema.Number,
   updatedAtUnixMs: Schema.Number,
 });
@@ -202,6 +241,57 @@ export interface CompositionRunStartRejectedInput {
   readonly ownerEpoch: number;
 }
 
+export interface CompositionRunStartCancellationRequestInput {
+  readonly runId: string;
+  readonly expectedRevision: number;
+  readonly requestedAtUnixMs: number;
+  readonly reason: string;
+}
+
+export interface CompositionRunStartCancellationReleaseInput {
+  readonly runId: string;
+  readonly expectedRevision: number;
+  readonly claimId: string;
+  readonly ownerEpoch: number;
+  readonly releasedAtUnixMs: number;
+}
+
+export interface CompositionRunStartCancellationSourceFence {
+  readonly runId: string;
+  readonly sourceRevision: number;
+  readonly sourceClaimId: string | null;
+  readonly sourceOwnerEpoch: number;
+}
+
+export interface CompositionRunStartCancellationStartAcceptedInput extends CompositionRunStartCancellationSourceFence {
+  readonly runtimeTaskId: string | null;
+  readonly capabilityHandshakeId: string | null;
+  readonly acceptedAtUnixMs: number;
+}
+
+export interface CompositionRunStartCancellationStartRejectedInput extends CompositionRunStartCancellationSourceFence {
+  readonly outcomeCode: string;
+  readonly outcomeDetail: string | null;
+  readonly rejectedAtUnixMs: number;
+}
+
+export interface CompositionRunStartCancellationTerminalInput extends CompositionRunStartCancellationSourceFence {
+  readonly expectedRevision: number;
+  readonly runtimeTaskId: string | null;
+  readonly capabilityHandshakeId: string | null;
+  readonly terminalStatus: CompositionRunStartCancellationTerminalStatus;
+  readonly sourceEventId: string;
+  readonly observedAtUnixMs: number;
+}
+
+export interface CompositionRunStartCancellationSettledInput {
+  readonly runId: string;
+  readonly expectedRevision: number;
+  readonly claimId: string;
+  readonly ownerEpoch: number;
+  readonly settledAtUnixMs: number;
+}
+
 interface CompositionRunStartQuarantineBaseInput {
   readonly runId: string;
   readonly expectedRevision: number;
@@ -229,6 +319,8 @@ export interface CompositionRunStartRecoverableListInput {
 }
 
 export type CompositionRunStartManualRecoveryListInput = CompositionRunStartRecoverableListInput;
+export type CompositionRunStartCancellationRecoveryListInput =
+  CompositionRunStartRecoverableListInput;
 
 export interface CompositionRunStartStoreShape {
   readonly prepareStart: (
@@ -285,6 +377,27 @@ export interface CompositionRunStartStoreShape {
   readonly settleRejected: (
     input: CompositionRunStartRejectedInput,
   ) => Effect.Effect<CompositionRunStartIntent, CompositionRunStartStoreError>;
+  readonly requestCancellation: (
+    input: CompositionRunStartCancellationRequestInput,
+  ) => Effect.Effect<CompositionRunStartIntent, CompositionRunStartStoreError>;
+  readonly claimCancellationRecovery: (
+    input: CompositionRunStartClaimInput,
+  ) => Effect.Effect<CompositionRunStartClaimResult, CompositionRunStartStoreError>;
+  readonly releaseCancellationRecovery: (
+    input: CompositionRunStartCancellationReleaseInput,
+  ) => Effect.Effect<CompositionRunStartIntent, CompositionRunStartStoreError>;
+  readonly recordCancellationStartAccepted: (
+    input: CompositionRunStartCancellationStartAcceptedInput,
+  ) => Effect.Effect<CompositionRunStartIntent, CompositionRunStartStoreError>;
+  readonly recordCancellationStartRejected: (
+    input: CompositionRunStartCancellationStartRejectedInput,
+  ) => Effect.Effect<CompositionRunStartIntent, CompositionRunStartStoreError>;
+  readonly markCancellationTerminalObserved: (
+    input: CompositionRunStartCancellationTerminalInput,
+  ) => Effect.Effect<CompositionRunStartIntent, CompositionRunStartStoreError>;
+  readonly settleCancellation: (
+    input: CompositionRunStartCancellationSettledInput,
+  ) => Effect.Effect<CompositionRunStartIntent, CompositionRunStartStoreError>;
   readonly quarantine: (
     input: CompositionRunStartQuarantineInput,
   ) => Effect.Effect<CompositionRunStartIntent, CompositionRunStartStoreError>;
@@ -302,6 +415,13 @@ export interface CompositionRunStartStoreShape {
   readonly listManualRecoveries: (
     input: CompositionRunStartManualRecoveryListInput,
   ) => Effect.Effect<ReadonlyArray<CompositionRunStartIntent>, CompositionRunStartStoreError>;
+  readonly getCancellationRecoveryScanUpperBound: Effect.Effect<
+    Option.Option<string>,
+    CompositionRunStartStoreError
+  >;
+  readonly listCancellationRecoveries: (
+    input: CompositionRunStartCancellationRecoveryListInput,
+  ) => Effect.Effect<ReadonlyArray<CompositionRunStartIntent>, CompositionRunStartStoreError>;
 }
 
 export type CompositionRunStartExecutionStoreShape = Omit<
@@ -315,10 +435,19 @@ export type CompositionRunStartExecutionStoreShape = Omit<
   | "releaseManualRecovery"
   | "resumeManualRecoveryToAccepted"
   | "settleManualRecovery"
+  | "requestCancellation"
+  | "claimCancellationRecovery"
+  | "releaseCancellationRecovery"
+  | "recordCancellationStartAccepted"
+  | "recordCancellationStartRejected"
+  | "markCancellationTerminalObserved"
+  | "settleCancellation"
   | "getRecoverableScanUpperBound"
   | "listRecoverable"
   | "getManualRecoveryScanUpperBound"
   | "listManualRecoveries"
+  | "getCancellationRecoveryScanUpperBound"
+  | "listCancellationRecoveries"
 >;
 
 export class CompositionRunStartStore extends Context.Service<

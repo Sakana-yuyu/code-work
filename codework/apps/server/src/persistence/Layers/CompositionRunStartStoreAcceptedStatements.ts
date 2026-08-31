@@ -52,7 +52,7 @@ export const makeCompositionRunStartAcceptedStatements = (sql: SqlClient.SqlClie
       SET owner_lease_expires_at_unix_ms = ${input.leaseExpiresAtUnixMs},
         updated_at_unix_ms = MAX(updated_at_unix_ms, ${input.renewedAtUnixMs})
       WHERE run_id = ${input.runId}
-        AND state IN ('dispatching', 'accepted', 'manual_pending')
+        AND state IN ('dispatching', 'accepted', 'manual_pending', 'cancel_pending')
         AND revision = ${input.expectedRevision}
         AND claim_id = ${input.claimId}
         AND owner_epoch = ${input.ownerEpoch}
@@ -68,6 +68,15 @@ export const makeCompositionRunStartAcceptedStatements = (sql: SqlClient.SqlClie
         owner_lease_expires_at_unix_ms AS "ownerLeaseExpiresAtUnixMs", runtime_task_id AS "runtimeTaskId",
         capability_handshake_id AS "capabilityHandshakeId",
         outcome_code AS "outcomeCode", outcome_detail AS "outcomeDetail",
+        cancel_requested_at_unix_ms AS "cancelRequestedAtUnixMs",
+        cancel_reason AS "cancelReason", cancel_source_state AS "cancelSourceState",
+        cancel_source_revision AS "cancelSourceRevision",
+        cancel_source_claim_id AS "cancelSourceClaimId",
+        cancel_source_owner_epoch AS "cancelSourceOwnerEpoch",
+        cancel_start_outcome AS "cancelStartOutcome",
+        cancel_terminal_status AS "cancelTerminalStatus",
+        cancel_terminal_source_event_id AS "cancelTerminalSourceEventId",
+        cancel_terminal_observed_at_unix_ms AS "cancelTerminalObservedAtUnixMs",
         created_at_unix_ms AS "createdAtUnixMs", updated_at_unix_ms AS "updatedAtUnixMs"
     `,
   });

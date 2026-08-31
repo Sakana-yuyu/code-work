@@ -35,6 +35,8 @@ import {
   makeCompositionRunStartStoreStatements,
   type RunStartRow,
 } from "./CompositionRunStartStoreStatements.ts";
+import { makeCompositionRunStartStoreCancellation } from "./CompositionRunStartStoreCancellation.ts";
+import { toCompositionRunStartIntent } from "./CompositionRunStartStoreRow.ts";
 
 const LIST_LIMIT_MAX = 200;
 const DEFAULT_OWNER_LEASE_MS = 60_000;
@@ -58,7 +60,7 @@ const mapQueryError =
       ? toPersistenceDecodeError(`${operation}:decode`)(cause)
       : toPersistenceSqlError(`${operation}:query`)(cause);
 
-const toIntent = (row: RunStartRow): CompositionRunStartIntent => ({ ...row });
+const toIntent = (row: RunStartRow): CompositionRunStartIntent => toCompositionRunStartIntent(row);
 
 const hasTextWithin = (value: string, maxLength: number): boolean =>
   value.trim().length > 0 && value.length <= maxLength;
@@ -140,11 +142,14 @@ const sameManualRecoverySnapshot = (
   intent.outcomeDetail === input.outcomeDetail;
 
 const hasAcceptedOutcome = (intent: CompositionRunStartIntent): boolean =>
-  (intent.state === "accepted" || intent.state === "settled") && intent.outcomeCode === null;
+  (intent.state === "accepted" || intent.state === "settled") &&
+  intent.outcomeCode === null &&
+  intent.cancelRequestedAtUnixMs == null;
 
 const makeStore = Effect.gen(function* () {
   const sql = yield* SqlClient.SqlClient;
   const statements = makeCompositionRunStartStoreStatements(sql);
+  const cancellation = makeCompositionRunStartStoreCancellation(sql);
   const runQuery = <A, E, R>(operation: string, effect: Effect.Effect<A, E, R>) =>
     effect.pipe(Effect.mapError((cause) => mapQueryError(operation)(cause)));
 
@@ -446,7 +451,8 @@ const makeStore = Effect.gen(function* () {
       if (
         (current.state === "dispatching" ||
           current.state === "accepted" ||
-          current.state === "manual_pending") &&
+          current.state === "manual_pending" ||
+          current.state === "cancel_pending") &&
         current.revision === input.expectedRevision &&
         current.claimId === input.claimId &&
         current.ownerEpoch === input.ownerEpoch &&
@@ -458,11 +464,11 @@ const makeStore = Effect.gen(function* () {
       }
       return yield* domainError(
         "run_start_claim_conflict",
-        "只有租约未到期的当前 dispatch、accepted 或 manual owner 可以续租。",
+        "只有租约未到期的当前 dispatch、accepted、manual 或 cancel owner 可以续租。",
         {
           runId: input.runId,
           actualRevision: current.revision,
-          expectedState: "dispatching|accepted|manual_pending",
+          expectedState: "dispatching|accepted|manual_pending|cancel_pending",
           actualState: current.state,
         },
       );
@@ -718,6 +724,7 @@ const makeStore = Effect.gen(function* () {
       const current = yield* getRequired(input.runId);
       if (
         current.state === "settled" &&
+        current.cancelRequestedAtUnixMs == null &&
         current.revision === input.expectedRevision + 1 &&
         current.claimId === input.claimId &&
         current.ownerEpoch === input.ownerEpoch &&
@@ -817,6 +824,7 @@ const makeStore = Effect.gen(function* () {
       const current = yield* getRequired(input.runId);
       if (
         current.state === "settled" &&
+        current.cancelRequestedAtUnixMs == null &&
         current.ownerEpoch === input.ownerEpoch &&
         current.outcomeCode === input.outcomeCode &&
         current.outcomeDetail === input.outcomeDetail
@@ -983,6 +991,7 @@ const makeStore = Effect.gen(function* () {
     settleManualRecovery,
     settleAccepted,
     settleRejected,
+    ...cancellation,
     quarantine,
     getRecoverableScanUpperBound,
     listRecoverable,

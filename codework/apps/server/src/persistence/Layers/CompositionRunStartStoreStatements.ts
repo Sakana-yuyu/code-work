@@ -91,6 +91,15 @@ export const makeCompositionRunStartStoreStatements = (sql: SqlClient.SqlClient)
         owner_lease_expires_at_unix_ms AS "ownerLeaseExpiresAtUnixMs", runtime_task_id AS "runtimeTaskId",
         capability_handshake_id AS "capabilityHandshakeId",
         outcome_code AS "outcomeCode", outcome_detail AS "outcomeDetail",
+        cancel_requested_at_unix_ms AS "cancelRequestedAtUnixMs",
+        cancel_reason AS "cancelReason", cancel_source_state AS "cancelSourceState",
+        cancel_source_revision AS "cancelSourceRevision",
+        cancel_source_claim_id AS "cancelSourceClaimId",
+        cancel_source_owner_epoch AS "cancelSourceOwnerEpoch",
+        cancel_start_outcome AS "cancelStartOutcome",
+        cancel_terminal_status AS "cancelTerminalStatus",
+        cancel_terminal_source_event_id AS "cancelTerminalSourceEventId",
+        cancel_terminal_observed_at_unix_ms AS "cancelTerminalObservedAtUnixMs",
         created_at_unix_ms AS "createdAtUnixMs", updated_at_unix_ms AS "updatedAtUnixMs"
       FROM composition_run_start_intents
       WHERE run_id = ${runId}
@@ -110,6 +119,15 @@ export const makeCompositionRunStartStoreStatements = (sql: SqlClient.SqlClient)
         owner_lease_expires_at_unix_ms AS "ownerLeaseExpiresAtUnixMs", runtime_task_id AS "runtimeTaskId",
         capability_handshake_id AS "capabilityHandshakeId",
         outcome_code AS "outcomeCode", outcome_detail AS "outcomeDetail",
+        cancel_requested_at_unix_ms AS "cancelRequestedAtUnixMs",
+        cancel_reason AS "cancelReason", cancel_source_state AS "cancelSourceState",
+        cancel_source_revision AS "cancelSourceRevision",
+        cancel_source_claim_id AS "cancelSourceClaimId",
+        cancel_source_owner_epoch AS "cancelSourceOwnerEpoch",
+        cancel_start_outcome AS "cancelStartOutcome",
+        cancel_terminal_status AS "cancelTerminalStatus",
+        cancel_terminal_source_event_id AS "cancelTerminalSourceEventId",
+        cancel_terminal_observed_at_unix_ms AS "cancelTerminalObservedAtUnixMs",
         created_at_unix_ms AS "createdAtUnixMs", updated_at_unix_ms AS "updatedAtUnixMs"
       FROM composition_run_start_intents
       WHERE task_id = ${taskId} AND attempt = ${attempt}
