@@ -276,13 +276,6 @@ const planFor = Effect.fn("planCompositionRunStartRecovery")(function* (
     retryAtUnixMs: (yield* Clock.currentTimeMillis) + TRANSIENT_RECONCILIATION_RETRY_MS,
   });
   if (pendingReconciliation !== undefined) return pendingReconciliation;
-  if (candidate.intent.state === "prepared" || candidate.intent.state === "preparing") {
-    return {
-      taskId: candidate.task.taskId,
-      runId: candidate.run.runId,
-      action: "start",
-    };
-  }
   if (policy.mode === "manual") {
     return {
       taskId: candidate.task.taskId,
@@ -290,6 +283,13 @@ const planFor = Effect.fn("planCompositionRunStartRecovery")(function* (
       action: "manual",
       code: "run_start_manual_recovery_required",
       detail: "Agent Driver 声明该启动只能人工核对，禁止自动重放。",
+    };
+  }
+  if (candidate.intent.state === "prepared" || candidate.intent.state === "preparing") {
+    return {
+      taskId: candidate.task.taskId,
+      runId: candidate.run.runId,
+      action: "start",
     };
   }
 

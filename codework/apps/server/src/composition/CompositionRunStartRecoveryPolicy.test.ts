@@ -515,6 +515,40 @@ it.effect("prepared 与 preparing 尚未触发外部启动时规划为一次安�
   }),
 );
 
+it.effect("手动恢复策略不得把尚未派发的 prepared Run 自动规划为 start", () =>
+  Effect.gen(function* () {
+    const candidate = withIntent(makeCandidate("manual-pre-dispatch"), {
+      state: "prepared",
+      claimId: null,
+      ownerLeaseExpiresAtUnixMs: null,
+    });
+    const registry = makeCompositionAgentDriverRegistry();
+    yield* registry.register(
+      makeDriver(candidate, {
+        startRecoveryPolicy: {
+          mode: "manual",
+          requiredReceipt: "runtime-task",
+          capabilityGrantReplay: { mode: "verified" },
+        },
+      }),
+    );
+
+    const [plan] = yield* planCompositionRunStartRecoveries({
+      candidates: [candidate],
+      driverRegistry: registry,
+      reconciled,
+    });
+
+    assert.deepEqual(plan, {
+      taskId: candidate.task.taskId,
+      runId: candidate.run.runId,
+      action: "manual",
+      code: "run_start_manual_recovery_required",
+      detail: "Agent Driver 声明该启动只能人工核对，禁止自动重放。",
+    });
+  }),
+);
+
 it.effect("accepted receipt 不依赖目标在线即可直接验证为接受事实", () =>
   Effect.gen(function* () {
     const candidate = withIntent(makeCandidate("accepted-offline-target"), {
