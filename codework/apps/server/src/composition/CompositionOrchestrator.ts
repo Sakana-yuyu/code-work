@@ -9,9 +9,9 @@ import type {
   CompositionTaskReviewRequest,
   CompositionTaskReviewResult,
   CompositionTaskRun,
-  CompositionTaskRunModelSnapshot,
   CompositionTaskStatus,
   ProviderRuntimeEvent,
+  CompositionTaskRunModelSnapshot,
 } from "@codework/contracts";
 import * as Clock from "effect/Clock";
 import * as Effect from "effect/Effect";
@@ -29,7 +29,6 @@ import type {
   CompositionRunStartStoreError,
 } from "../persistence/Services/CompositionRunStartStore.ts";
 import {
-  type CompositionTaskRecoveryInput,
   CompositionTaskInputStoreError,
   type CompositionTaskInputStoreShape,
 } from "../persistence/Services/CompositionTaskInputStore.ts";
@@ -416,7 +415,6 @@ const makeOrchestrator = (
 ): CompositionOrchestrator => {
   const resumingTaskIds = new Set<string>();
   const resumingRunIds = new Set<string>();
-  const retryingRunIds = new Set<string>();
 
   const prepareRunLease = (
     task: CompositionTask,
@@ -1011,6 +1009,7 @@ const makeOrchestrator = (
         runtimeId,
         status: initialStatus,
         attempt: 1,
+        ...(input.modelSnapshot === undefined ? {} : { modelSnapshot: input.modelSnapshot }),
         capabilityGrantIds: [],
       };
 
@@ -1716,7 +1715,7 @@ const makeOrchestrator = (
       }).pipe(Effect.ensuring(Effect.sync(() => resumingRunIds.delete(input.runId))));
     });
 
-  const executeRetryTask: CompositionOrchestrator["retryTask"] = (input) =>
+  const retryTask: CompositionOrchestrator["retryTask"] = (input) =>
     Effect.gen(function* () {
       const taskOption = yield* store.getTask(input.taskId);
       const previousRunOption = yield* store.getRun(input.previousRunId);
@@ -1735,68 +1734,6 @@ const makeOrchestrator = (
           taskId: input.taskId,
           previousRunId: input.previousRunId,
           reason: "latest_run_missing",
-        });
-      }
-      if (Option.isSome(existingRunOption) && existingRunOption.value.status === "queued") {
-        const existingRun = existingRunOption.value;
-        const targetAgentId = input.agentId ?? previousRun.agentId;
-        const isMatchingQueuedRetry =
-          task.status === "queued" &&
-          previousRun.taskId === input.taskId &&
-          (previousRun.status === "failed" || previousRun.status === "timed_out") &&
-          latestRunOption.value.runId === input.runId &&
-          existingRun.taskId === input.taskId &&
-          existingRun.attempt === previousRun.attempt + 1 &&
-          existingRun.agentId === targetAgentId &&
-          task.assigneeId === targetAgentId;
-        if (!isMatchingQueuedRetry) {
-          return yield* new CompositionTaskRetryInvalidError({
-            taskId: input.taskId,
-            previousRunId: input.previousRunId,
-            reason: "run_id_conflict",
-          });
-        }
-        if (input.capabilityIds.length === 0) {
-          return yield* new CompositionTaskRetryInvalidError({
-            taskId: input.taskId,
-            previousRunId: input.previousRunId,
-            reason: "capability_ids_required",
-          });
-        }
-        if (inputStore === undefined) {
-          return yield* new CompositionTaskRetryInvalidError({
-            taskId: input.taskId,
-            previousRunId: input.previousRunId,
-            reason: "recovery_input_store_unavailable",
-          });
-        }
-        const recoveryInput = yield* inputStore.get(input.taskId);
-        if (Option.isNone(recoveryInput)) {
-          return yield* new CompositionTaskRetryInvalidError({
-            taskId: input.taskId,
-            previousRunId: input.previousRunId,
-            reason: "recovery_input_missing",
-          });
-        }
-        const targetDriver = yield* driverRegistry.get(targetAgentId);
-        if (targetDriver === undefined) {
-          return yield* new CompositionAgentDriverFailure({
-            code: "agent_driver_unavailable",
-            detail: `未找到目标 Agent Driver：${targetAgentId}`,
-          });
-        }
-        if (existingRun.runtimeId !== targetDriver.runtimeId) {
-          return yield* new CompositionTaskRetryInvalidError({
-            taskId: input.taskId,
-            previousRunId: input.previousRunId,
-            reason: "run_id_conflict",
-          });
-        }
-        return yield* startRetryRun({
-          task,
-          run: existingRun,
-          driver: targetDriver,
-          recoveryInput: recoveryInput.value,
         });
       }
       if (task.status !== "failed" && task.status !== "timed_out") {
@@ -1877,6 +1814,9 @@ const makeOrchestrator = (
         runtimeId: targetDriver.runtimeId,
         status: "queued",
         attempt: previousRun.attempt + 1,
+        ...(previousRun.modelSnapshot === undefined
+          ? {}
+          : { modelSnapshot: previousRun.modelSnapshot }),
         capabilityGrantIds: [],
       };
       const previousRecoveryInput = {
@@ -2069,23 +2009,6 @@ const makeOrchestrator = (
             }),
           );
         }),
-      );
-    });
-
-  const retryTask: CompositionOrchestrator["retryTask"] = (input) =>
-    Effect.suspend(() => {
-      if (retryingRunIds.has(input.runId)) {
-        return Effect.fail(
-          new CompositionTaskRetryInvalidError({
-            taskId: input.taskId,
-            previousRunId: input.previousRunId,
-            reason: "retry_dispatch_in_progress",
-          }),
-        );
-      }
-      retryingRunIds.add(input.runId);
-      return executeRetryTask(input).pipe(
-        Effect.ensuring(Effect.sync(() => retryingRunIds.delete(input.runId))),
       );
     });
 

@@ -533,6 +533,8 @@ const CompositionGoalLoopRetryStartupRecoveryLayerLive =
     Layer.provide(
       Layer.mergeAll(CompositionOrchestratorLayerLive, CompositionRuntimeDependenciesLive),
     ),
+  );
+
 const CompositionRunStartStartupRecoveryLayerLive =
   CompositionRunStartStartupRecovery.CompositionRunStartStartupRecovery.layer.pipe(
     Layer.provideMerge(

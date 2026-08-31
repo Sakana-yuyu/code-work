@@ -23,6 +23,7 @@ import {
   CompositionGoalLoopRetryStartupRecovery,
   CompositionGoalLoopRetryStartupRecoveryError,
 } from "./composition/CompositionGoalLoopRetryStartupRecovery.ts";
+import {
   CompositionAgentDriverRegistryService,
   makeCompositionAgentDriverRegistry,
 } from "./composition/CompositionAgentDriverRegistry.ts";
