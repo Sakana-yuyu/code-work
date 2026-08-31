@@ -1,5 +1,6 @@
 import {
   CompositionToolResult,
+  TrimmedNonEmptyString,
   PreviewAutomationClickInput,
   PreviewAutomationEvaluateInput,
   PreviewAutomationNavigateInput,
@@ -29,6 +30,7 @@ import * as Schema from "effect/Schema";
 import * as ServerEnvironment from "../environment/ServerEnvironment.ts";
 import * as PreviewAutomationBroker from "../mcp/PreviewAutomationBroker.ts";
 import { normalizePreviewOpenInput } from "../mcp/toolkits/preview/handlers.ts";
+import * as ByokDelegationService from "../provider/byok/ByokDelegationService.ts";
 import * as CapabilityPolicy from "./CapabilityPolicy.ts";
 import * as CapabilityRegistry from "./CapabilityRegistry.ts";
 import * as CapabilityGrantRegistry from "./CapabilityGrantRegistry.ts";
@@ -39,6 +41,7 @@ import * as TerminalManager from "../terminal/Manager.ts";
 import { compositionToolCapabilityId } from "./CompositionToolRegistry.ts";
 import * as CompositionIdeSessionRegistry from "./CompositionIdeSessionRegistry.ts";
 import * as CompositionMcpToolRegistry from "./CompositionMcpToolRegistry.ts";
+import { PROVIDER_AGENT_PREFIX } from "./CompositionProviderAgentDriverRegistry.ts";
 import * as CompositionToolInvocationCoordinator from "./CompositionToolInvocationCoordinator.ts";
 import * as CompositionToolInvocationStartupRecovery from "./CompositionToolInvocationStartupRecovery.ts";
 import type {
@@ -51,6 +54,12 @@ const WorkspaceReadArguments = Schema.Struct({
   relativePath: Schema.String,
 });
 type WorkspaceReadArguments = typeof WorkspaceReadArguments.Type;
+
+const DelegateTaskArguments = Schema.Struct({
+  task: TrimmedNonEmptyString,
+  subagentType: Schema.optional(Schema.String),
+});
+type DelegateTaskArguments = typeof DelegateTaskArguments.Type;
 
 const WorkspaceWriteArguments = Schema.Struct({
   cwd: Schema.String,
@@ -218,6 +227,9 @@ const make = Effect.gen(function* () {
   const serverEnvironment = yield* Effect.serviceOption(ServerEnvironment.ServerEnvironment);
   const ideSessionRegistry = yield* Effect.serviceOption(
     CompositionIdeSessionRegistry.CompositionIdeSessionRegistryService,
+  );
+  const byokDelegation = yield* Effect.serviceOption(
+    ByokDelegationService.ByokDelegationServiceTag,
   );
   const mcpToolRegistry = yield* Effect.serviceOption(
     CompositionMcpToolRegistry.CompositionMcpToolRegistry,
@@ -642,6 +654,42 @@ const make = Effect.gen(function* () {
             operation: args.operation,
             arguments: args.arguments,
           });
+        }),
+    });
+  }
+
+  if (Option.isSome(byokDelegation)) {
+    // Model-invoked delegation (original cursor-byok Task-tool parity): the
+    // loop's agent id carries the BYOK provider instance, and the call blocks
+    // until the external executor reaches a terminal state. The delegated
+    // worker is an external CLI without access to this ToolBroker, so unlike
+    // cursor-byok no runtime Task-tool filter is needed to prevent nesting.
+    handlers.set("delegate_task", {
+      operation: "execute",
+      execute: (input) =>
+        Effect.gen(function* () {
+          const args = yield* Schema.decodeUnknownEffect(DelegateTaskArguments)(
+            input.arguments,
+          ).pipe(Effect.mapError(() => new ToolArgumentsInvalidError(input)));
+          if (!input.agentId.startsWith(PROVIDER_AGENT_PREFIX)) {
+            return yield* new ToolScopeMissingError({ canonicalToolName: "delegate_task" });
+          }
+          const instanceId = input.agentId.slice(PROVIDER_AGENT_PREFIX.length);
+          const snapshot = yield* byokDelegation.value.submit({
+            instanceId,
+            task: args.task,
+            ...(args.subagentType === undefined ? {} : { subagentType: args.subagentType }),
+          });
+          // Always a succeeded tool result: a failed delegation is still a
+          // successful tool observation, and the bounded previews keep the
+          // model's re-injection small.
+          return {
+            delegationId: snapshot.id,
+            delegationStatus: snapshot.status,
+            ...(snapshot.resultPreview === undefined ? {} : { result: snapshot.resultPreview }),
+            ...(snapshot.errorCode === undefined ? {} : { errorCode: snapshot.errorCode }),
+            ...(snapshot.errorMessage === undefined ? {} : { errorMessage: snapshot.errorMessage }),
+          };
         }),
     });
   }

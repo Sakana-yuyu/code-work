@@ -56,5 +56,5 @@ rsvg-convert -w 432 -h 432 \
   apps/mobile/assets/android-icon-foreground.svg
 ```
 
-The foreground must remain transparent and keep the T3 mark inside Android's adaptive-icon safe
+The foreground must remain transparent and keep the CW monogram inside Android's adaptive-icon safe
 zone. `android-icon-mark.png` remains a flat silhouette for Android's monochrome themed icon.

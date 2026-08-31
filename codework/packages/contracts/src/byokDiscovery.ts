@@ -54,6 +54,19 @@ export const ByokModelDiscoveryRequest = Schema.Struct({
 });
 export type ByokModelDiscoveryRequest = typeof ByokModelDiscoveryRequest.Type;
 
+/**
+ * One-shot model discovery for an adapter that has not been saved yet.
+ * The API key is request-only: it must never appear in the result, cache, or
+ * persisted BYOK settings.
+ */
+export const ByokDraftModelDiscoveryRequest = Schema.Struct({
+  protocol: ByokDiscoveryProtocol,
+  baseURL: TrimmedNonEmptyString,
+  apiKey: TrimmedNonEmptyString,
+  supplierID: Schema.optional(TrimmedString),
+});
+export type ByokDraftModelDiscoveryRequest = typeof ByokDraftModelDiscoveryRequest.Type;
+
 export const ByokDiscoveredModel = Schema.Struct({
   id: TrimmedNonEmptyString,
   ownedBy: Schema.optional(TrimmedString),
@@ -96,3 +109,47 @@ export const ByokModelDiscoveryResult = Schema.Struct({
   error: Schema.optional(ByokModelDiscoveryError),
 });
 export type ByokModelDiscoveryResult = typeof ByokModelDiscoveryResult.Type;
+
+/**
+ * A context-window diagnosis never returns credentials. The server evaluates
+ * saved relay settings and the client decides whether to persist the suggested
+ * values through its normal settings update path.
+ */
+export const ByokContextWindowMatchRequest = Schema.Struct({
+  instanceId: TrimmedNonEmptyString,
+  /** A representative model adapter for the relay being diagnosed. */
+  adapterId: TrimmedNonEmptyString,
+});
+export type ByokContextWindowMatchRequest = typeof ByokContextWindowMatchRequest.Type;
+
+export const ByokContextWindowMatchSource = Schema.Literals(["catalog", "probe", "unchanged"]);
+export type ByokContextWindowMatchSource = typeof ByokContextWindowMatchSource.Type;
+
+export const ByokContextWindowMatchDetail = Schema.Struct({
+  adapterId: TrimmedNonEmptyString,
+  modelId: TrimmedNonEmptyString,
+  source: ByokContextWindowMatchSource,
+  before: NonNegativeInt,
+  after: NonNegativeInt,
+});
+export type ByokContextWindowMatchDetail = typeof ByokContextWindowMatchDetail.Type;
+
+export const ByokContextWindowMatchResult = Schema.Struct({
+  adapterId: TrimmedNonEmptyString,
+  total: NonNegativeInt,
+  fromCatalog: NonNegativeInt,
+  fromProbe: NonNegativeInt,
+  unchanged: NonNegativeInt,
+  details: Schema.Array(ByokContextWindowMatchDetail),
+});
+export type ByokContextWindowMatchResult = typeof ByokContextWindowMatchResult.Type;
+
+/** Result shape for draft discovery. It deliberately has no adapter identity or cache state. */
+export const ByokDraftModelDiscoveryResult = Schema.Struct({
+  status: Schema.Literals(["ready", "empty", "failed"]),
+  models: Schema.Array(ByokDiscoveredModel),
+  source: TrimmedNonEmptyString,
+  fetchedAt: Schema.optional(TrimmedNonEmptyString),
+  error: Schema.optional(ByokModelDiscoveryError),
+});
+export type ByokDraftModelDiscoveryResult = typeof ByokDraftModelDiscoveryResult.Type;

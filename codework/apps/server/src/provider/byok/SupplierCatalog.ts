@@ -825,7 +825,7 @@ const catalogRows: SupplierCatalogRow[] = [
     "https://platform.deepseek.com",
     "https://platform.deepseek.com/api_keys",
     "https://api.deepseek.com/v1",
-    ["deepseek-chat", "deepseek-reasoner"],
+    ["deepseek-v4-flash", "deepseek-v4-pro"],
     {
       usageStatus: "fixed",
       usageProvider: "deepseek",

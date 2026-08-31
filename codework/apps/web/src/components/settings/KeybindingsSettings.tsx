@@ -62,6 +62,8 @@ import {
   keybindingConflictLabels,
   keybindingFromKeyboardEvent,
   localizedCommandLabel,
+  localizedWhenExpression,
+  localizedWhenVariableLabel,
   parseWhenExpressionDraft,
   type KeybindingCommandOption,
   type KeybindingRow,
@@ -310,8 +312,15 @@ function WhenVariableSelect({
 
   return (
     <Select value={value} onValueChange={(nextValue) => nextValue && onChange(nextValue)}>
-      <SelectTrigger size="compact" className="min-w-0 flex-1 font-mono">
-        <SelectValue placeholder={t("condition")} className="leading-7" />
+      <SelectTrigger
+        size="compact"
+        className="min-w-0 flex-1"
+        aria-label={localizedWhenVariableLabel(value)}
+      >
+        <span className="flex min-w-0 flex-1 items-baseline gap-2 truncate leading-7">
+          <span className="truncate">{localizedWhenVariableLabel(value)}</span>
+          <span className="shrink-0 font-mono text-[11px] text-muted-foreground">{value}</span>
+        </span>
         {unknownIdentifiers && unknownIdentifiers.length > 0 ? (
           <UnknownWhenVariableWarning identifiers={unknownIdentifiers} focusable={false} />
         ) : null}
@@ -326,9 +335,12 @@ function WhenVariableSelect({
           <SelectItem
             key={option}
             value={option}
-            className="min-h-7 w-full py-1 font-mono text-[12px]"
+            className="min-h-7 w-full py-1 text-[12px]"
           >
-            <span className="truncate">{option}</span>
+            <span className="flex min-w-0 items-baseline gap-2">
+              <span className="truncate">{localizedWhenVariableLabel(option)}</span>
+              <span className="shrink-0 font-mono text-[11px] text-muted-foreground">{option}</span>
+            </span>
           </SelectItem>
         ))}
       </SelectContent>
@@ -361,7 +373,9 @@ function WhenExpressionNodeEditor({
         <Toggle
           pressed={condition.negated}
           onPressedChange={(pressed) => onChange(setConditionNegated(node, pressed))}
-          aria-label={t("keybindings.negateVariable", { name: condition.identifier })}
+          aria-label={t("keybindings.negateVariable", {
+            name: localizedWhenVariableLabel(condition.identifier),
+          })}
           variant="outline"
           size="compact"
           className="min-w-10"
@@ -592,6 +606,9 @@ function WhenExpressionBuilder({
   const parseResult = useMemo(() => parseWhenExpressionDraft(expressionDraft), [expressionDraft]);
   const parseError = parseResult.ok ? null : parseResult.message;
   const unknownIdentifiers = parseResult.ok ? unknownWhenVariables(parseResult.value) : [];
+  const readableExpression = parseResult.ok
+    ? localizedWhenExpression(parseResult.value)
+    : null;
 
   const updateExpressionDraft = (nextExpression: string) => {
     setExpressionDraft(nextExpression);
@@ -667,6 +684,10 @@ function WhenExpressionBuilder({
           <div className="flex items-center gap-1.5 text-[11px] text-destructive">
             <CircleXIcon className="size-3.5" />
             {parseError}
+          </div>
+        ) : readableExpression ? (
+          <div className="px-0.5 text-[11px] text-muted-foreground">
+            {t("keybindings.whenExpressionPreview", { expression: readableExpression })}
           </div>
         ) : null}
       </div>
@@ -754,6 +775,7 @@ function KeybindingTableRow({
   const [draft, setDraft] = useReducer(keybindingRowDraftReducer, row, createKeybindingRowDraft);
   const { keyDraft, whenDraft, isRecording, isWhenDraftValid } = draft;
   const whenDraftExpression = whenAstToExpression(whenDraft);
+  const whenDraftLabel = localizedWhenExpression(whenDraft);
   const isDirty = keyDraft !== row.key || whenDraftExpression !== row.when;
   const displayShortcut = formatShortcutLabel(row.binding.shortcut);
   const canReset = row.source === "Custom" && row.defaultKey !== null;
@@ -854,14 +876,16 @@ function KeybindingTableRow({
         <Popover>
           <PopoverTrigger
             className={cn(
-              "inline-flex h-7 w-full items-center justify-between gap-2 rounded-md border border-input bg-background px-2.5 text-left font-mono text-[12px] text-foreground shadow-xs/5 outline-none transition-colors hover:bg-accent focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/24",
+              "inline-flex h-7 w-full items-center justify-between gap-2 rounded-md border border-input bg-background px-2.5 text-left text-[12px] text-foreground shadow-xs/5 outline-none transition-colors hover:bg-accent focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/24",
               !whenDraftExpression && "text-muted-foreground",
             )}
             aria-label={t("keybindings.editWhenFor", {
               command: localizedCommandLabel(row.command),
             })}
           >
-            <span className="truncate">{whenDraftExpression || t("always")}</span>
+            <span className="truncate" title={whenDraftExpression || undefined}>
+              {whenDraftLabel}
+            </span>
             <ChevronDownIcon className="size-3.5 shrink-0 opacity-60" />
           </PopoverTrigger>
           <PopoverContent align="start" sideOffset={6}>
@@ -938,6 +962,7 @@ function NewKeybindingTableRow({
   });
   const { keyDraft, whenDraft, isRecording, isWhenDraftValid } = draft;
   const whenDraftExpression = whenAstToExpression(whenDraft);
+  const whenDraftLabel = localizedWhenExpression(whenDraft);
   const conflictLabels = keybindingConflictLabels(allRows, {
     rowId: "new",
     key: keyDraft,
@@ -1016,12 +1041,14 @@ function NewKeybindingTableRow({
         <Popover>
           <PopoverTrigger
             className={cn(
-              "inline-flex h-7 w-full items-center justify-between gap-2 rounded-md border border-input bg-background px-2.5 text-left font-mono text-[12px] text-foreground shadow-xs/5 outline-none transition-colors hover:bg-accent focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/24",
+              "inline-flex h-7 w-full items-center justify-between gap-2 rounded-md border border-input bg-background px-2.5 text-left text-[12px] text-foreground shadow-xs/5 outline-none transition-colors hover:bg-accent focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/24",
               !whenDraftExpression && "text-muted-foreground",
             )}
             aria-label={t("keybindings.editWhenFor", { command: commandLabelText })}
           >
-            <span className="truncate">{whenDraftExpression || t("always")}</span>
+            <span className="truncate" title={whenDraftExpression || undefined}>
+              {whenDraftLabel}
+            </span>
             <ChevronDownIcon className="size-3.5 shrink-0 opacity-60" />
           </PopoverTrigger>
           <PopoverContent align="start" sideOffset={6}>

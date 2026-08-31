@@ -23,8 +23,7 @@ const personalTeamBundleIdentifier = (
 const IOS_BUNDLE_IDENTIFIER_PATTERN = /^[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+$/;
 
 const fromRepoRoot = (relativePath: string) => `../../${relativePath}`;
-// Universal exports already contain their own rounded-square silhouette. Using one as an adaptive
-// foreground makes Android draw an icon shape inside the launcher's mask.
+// Android 自适应图标使用独立透明前景，避免把全尺寸圆角底图重复叠加到系统蒙版中。
 const androidAdaptiveForeground = "./assets/android-icon-foreground.png";
 
 if (

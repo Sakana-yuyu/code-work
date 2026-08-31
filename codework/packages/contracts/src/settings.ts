@@ -561,6 +561,8 @@ export type OpenCodeSettings = typeof OpenCodeSettings.Type;
 export const ByokModelAdapter = Schema.Struct({
   id: Schema.String,
   displayName: TrimmedString,
+  // 用于在同一 BYOK 实例内组织多个中转与模型的非敏感名称。
+  groupName: Schema.optional(TrimmedString),
   protocol: Schema.Literals(["openai", "anthropic", "gemini"]),
   baseURL: TrimmedString,
   apiKey: Schema.String.pipe(Schema.withDecodingDefault(Effect.succeed(""))),
@@ -628,6 +630,78 @@ export const ByokDelegationModelGroup = Schema.Struct({
 });
 export type ByokDelegationModelGroup = typeof ByokDelegationModelGroup.Type;
 
+/**
+ * Vision delegation forwards image attachments to a dedicated "vision" model
+ * adapter when the target model cannot read images, then injects the returned
+ * description/OCR text back into the conversation. The vision model id
+ * references a configured adapter; like the other delegation fields no
+ * connection info or keys are duplicated here.
+ */
+export const ByokVisionDelegationConfig = Schema.Struct({
+  enabled: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
+  visionModelId: TrimmedString.pipe(Schema.withDecodingDefault(Effect.succeed(""))),
+  // "auto" = description + OCR, "describe" = scene description only,
+  // "ocr" = verbatim text transcription only.
+  mode: Schema.Literals(["auto", "describe", "ocr"]).pipe(
+    Schema.withDecodingDefault(Effect.succeed("auto" as const)),
+  ),
+});
+export type ByokVisionDelegationConfig = typeof ByokVisionDelegationConfig.Type;
+
+/**
+ * Supervision policy for delegated tasks (original cursor-byok parity): a
+ * stronger "supervisor" model reviews each finished delegation result and
+ * decides accept / retry / reassign / escalate within bounded budgets.
+ * Model ids reference configured adapters; no keys are duplicated here.
+ */
+export const ByokDelegationSupervisionConfig = Schema.Struct({
+  enabled: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
+  supervisorModelId: TrimmedString.pipe(Schema.withDecodingDefault(Effect.succeed(""))),
+  // Optional second-pass reviewer; defaults to the supervisor adapter.
+  reviewerModelId: TrimmedString.pipe(Schema.withDecodingDefault(Effect.succeed(""))),
+  maxCorrections: Schema.Number.pipe(Schema.withDecodingDefault(Effect.succeed(2))),
+  maxRetries: Schema.Number.pipe(Schema.withDecodingDefault(Effect.succeed(1))),
+  maxRounds: Schema.Number.pipe(Schema.withDecodingDefault(Effect.succeed(8))),
+  allowReassign: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
+  allowEscalate: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
+  // When the supervisor is unavailable: fail the task instead of accepting it unreviewed.
+  strictUnavailable: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
+});
+export type ByokDelegationSupervisionConfig = typeof ByokDelegationSupervisionConfig.Type;
+
+/**
+ * Role fragment injected into the delegated task for a subagent type
+ * (original SubagentProfiles parity). Fragments are plain prompt text; empty
+ * values disable injection for that type.
+ */
+export const ByokDelegationSubagentProfile = Schema.Struct({
+  subagentType: TrimmedString,
+  promptFragment: Schema.String.pipe(Schema.withDecodingDefault(Effect.succeed(""))),
+});
+export type ByokDelegationSubagentProfile = typeof ByokDelegationSubagentProfile.Type;
+
+/**
+ * One delegation executor candidate (original executor registry parity). The
+ * command is the full command line spawned without a shell; environment
+ * variables are referenced by name only (values resolve server-side, secrets
+ * never persist). Candidates run in priority order (smaller first) with
+ * failover on switchable failures. `probeArguments` is an optional cheap
+ * availability check (e.g. `--version`); when empty the probe only resolves
+ * the executable on PATH without running anything.
+ */
+export const ByokDelegationExecutor = Schema.Struct({
+  id: TrimmedString,
+  name: TrimmedString.pipe(Schema.withDecodingDefault(Effect.succeed(""))),
+  enabled: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
+  priority: Schema.Number.pipe(Schema.withDecodingDefault(Effect.succeed(100))),
+  command: TrimmedString.pipe(Schema.withDecodingDefault(Effect.succeed(""))),
+  environmentVariables: Schema.Array(ByokDelegationEnvVarName).pipe(
+    Schema.withDecodingDefault(Effect.succeed([])),
+  ),
+  probeArguments: TrimmedString.pipe(Schema.withDecodingDefault(Effect.succeed(""))),
+});
+export type ByokDelegationExecutor = typeof ByokDelegationExecutor.Type;
+
 export const ByokDelegationConfig = Schema.Struct({
   enabled: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
   maxConcurrency: Schema.Number.pipe(Schema.withDecodingDefault(Effect.succeed(4))),
@@ -638,6 +712,20 @@ export const ByokDelegationConfig = Schema.Struct({
   ),
   executorCommand: TrimmedString.pipe(Schema.withDecodingDefault(Effect.succeed(""))),
   executorEnvironmentVariables: Schema.Array(ByokDelegationEnvVarName).pipe(
+    Schema.withDecodingDefault(Effect.succeed([])),
+  ),
+  executors: Schema.Array(ByokDelegationExecutor).pipe(
+    Schema.withDecodingDefault(Effect.succeed([])),
+  ),
+  // How many executor candidates one delegation may try before failing.
+  executorFailoverLimit: Schema.Number.pipe(Schema.withDecodingDefault(Effect.succeed(3))),
+  visionDelegation: ByokVisionDelegationConfig.pipe(
+    Schema.withDecodingDefault(Effect.succeed({})),
+  ),
+  supervision: ByokDelegationSupervisionConfig.pipe(
+    Schema.withDecodingDefault(Effect.succeed({})),
+  ),
+  subagentProfiles: Schema.Array(ByokDelegationSubagentProfile).pipe(
     Schema.withDecodingDefault(Effect.succeed([])),
   ),
 });

@@ -7,10 +7,13 @@ export type SettingsPath =
   | "/settings/keybindings"
   | "/settings/providers"
   | "/settings/integrations"
+  | "/settings/runtime"
+  | "/settings/delegation"
   | "/settings/local-plugins"
   | "/settings/squads"
   | "/settings/automations"
   | "/settings/workspace-scripts"
+  | "/settings/byok"
   | "/settings/source-control"
   | "/settings/connections"
   | "/settings/archived";
@@ -35,10 +38,13 @@ export const SETTINGS_SECTION_LABELS: Readonly<Record<SettingsPath, string>> = {
   "/settings/keybindings": "settings.keybindings",
   "/settings/providers": "settings.providers",
   "/settings/integrations": "settings.integrations",
+  "/settings/runtime": "settings.runtime",
+  "/settings/delegation": "settings.delegation",
   "/settings/local-plugins": "localPlugins.title",
   "/settings/squads": "settings.squads",
   "/settings/automations": "settings.automations",
   "/settings/workspace-scripts": "settings.workspaceScripts",
+  "/settings/byok": "settings.byok",
   "/settings/source-control": "settings.sourceControl",
   "/settings/connections": "settings.connections",
   "/settings/archived": "settings.archive",
@@ -231,6 +237,21 @@ export const SETTINGS_SEARCH_ITEMS = [
     id: "providers",
     title: "settings.providers",
     to: "/settings/providers",
+  },
+  {
+    id: "facility-runtime",
+    title: "settings.runtime",
+    to: "/settings/runtime",
+  },
+  {
+    id: "facility-delegation",
+    title: "settings.delegation",
+    to: "/settings/delegation",
+  },
+  {
+    id: "facility-byok",
+    title: "settings.byok",
+    to: "/settings/byok",
   },
   {
     id: "local-plugins",

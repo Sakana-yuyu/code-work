@@ -233,6 +233,48 @@ export function parseNewAPIQuota(payload: unknown): NormalizedBalanceResult | un
   };
 }
 
+export function parseDeepSeekBalance(payload: unknown): NormalizedBalanceResult | undefined {
+  if (payload === null || typeof payload !== "object" || Array.isArray(payload)) return undefined;
+  const root = payload as Readonly<Record<string, unknown>>;
+  const rawBalances = root["balance_infos"];
+  if (!Array.isArray(rawBalances)) return undefined;
+
+  const balances = new Map<string, number>();
+  const currencyOrder: string[] = [];
+  for (const entry of rawBalances) {
+    const totalBalance = parseNumericField(entry, ["total_balance"]);
+    if (!totalBalance) continue;
+    const record = entry as Readonly<Record<string, unknown>>;
+    const currency =
+      typeof record["currency"] === "string" && record["currency"].trim()
+        ? record["currency"].trim().toUpperCase()
+        : "CNY";
+    if (!balances.has(currency)) currencyOrder.push(currency);
+    balances.set(currency, (balances.get(currency) ?? 0) + totalBalance.value);
+  }
+  if (currencyOrder.length === 0) return undefined;
+
+  const currency = currencyOrder.find((entry) => entry === "CNY") ?? currencyOrder[0]!;
+  const remaining = balances.get(currency);
+  if (remaining === undefined) return undefined;
+  const available = root["is_available"];
+  return {
+    supported: true,
+    source: "deepseek",
+    currency,
+    unlimited: false,
+    remaining,
+    windows: [],
+    message:
+      available === false
+        ? "余额不足"
+        : currencyOrder.length > 1
+          ? `查询成功（多币种，仅显示 ${currency}）`
+          : "查询成功",
+    transient: false,
+  };
+}
+
 export function parseOpenAIBilling(
   subscription: unknown,
   usage?: unknown,

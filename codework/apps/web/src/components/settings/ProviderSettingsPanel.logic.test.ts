@@ -1,9 +1,10 @@
-import { AuthOrchestrationOperateScope, EnvironmentId } from "@codework/contracts";
+import { AuthOrchestrationOperateScope, EnvironmentId, ProviderDriverKind } from "@codework/contracts";
 import { describe, expect, it } from "vite-plus/test";
 
 import {
   buildProviderEnvironmentOptions,
   classifyProviderEnvironmentAccess,
+  isProviderInstanceVisible,
   resolvePrimaryOperateAccess,
   resolveRemoteOperateAccess,
   resolveSelectedProviderEnvironmentId,
@@ -43,6 +44,14 @@ describe("provider environment selection", () => {
       relayId,
     );
     expect(resolveSelectedProviderEnvironmentId([], null, primaryId)).toBeNull();
+  });
+});
+
+describe("provider instance presentation", () => {
+  it("hides team runtime instances while retaining ordinary and unknown drivers", () => {
+    expect(isProviderInstanceVisible({ driver: ProviderDriverKind.make("codex") })).toBe(true);
+    expect(isProviderInstanceVisible({ driver: ProviderDriverKind.make("fork_driver") })).toBe(true);
+    expect(isProviderInstanceVisible({ driver: ProviderDriverKind.make("multica") })).toBe(false);
   });
 });
 

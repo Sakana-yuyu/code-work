@@ -1,5 +1,14 @@
 import type { CompositionAgentDriverProfile } from "@codework/contracts";
-import { BotIcon, RefreshCwIcon, ShieldCheckIcon } from "lucide-react";
+import { Link } from "@tanstack/react-router";
+import {
+  ArrowRightIcon,
+  BotIcon,
+  CircleAlertIcon,
+  CircleCheckIcon,
+  CircleXIcon,
+  RefreshCwIcon,
+  ShieldCheckIcon,
+} from "lucide-react";
 
 import { usePrimaryEnvironment } from "~/state/environments";
 import { useEnvironmentQuery } from "~/state/query";
@@ -34,72 +43,180 @@ const statusClassName = (status: CompositionAgentDriverProfile["status"]): strin
 };
 
 const surfaceLabels: ReadonlyArray<readonly [keyof CompositionAgentDriverProfile, string]> = [
-  ["supportsToolBroker", "ToolBroker"],
-  ["supportsWorkspace", "Workspace"],
-  ["supportsTerminal", "Terminal"],
-  ["supportsGit", "Git"],
-  ["supportsMcp", "MCP"],
-  ["supportsBrowser", "Browser"],
-  ["supportsIde", "IDE API"],
-  ["supportsProviderApi", "Provider API"],
-  ["supportsCapabilityHandshake", "Capability handshake"],
-  ["supportsResume", "Resume"],
-  ["supportsSquad", "Squad"],
-  ["supportsLeader", "Leader"],
-  ["supportsTaskGraph", "Task Graph"],
+  ["supportsWorkspace", "runtimeGuide.surfaceWorkspace"],
+  ["supportsTerminal", "runtimeGuide.surfaceTerminal"],
+  ["supportsGit", "runtimeGuide.surfaceGit"],
+  ["supportsMcp", "runtimeGuide.surfaceMcp"],
+  ["supportsBrowser", "runtimeGuide.surfaceBrowser"],
+  ["supportsIde", "runtimeGuide.surfaceIde"],
+  ["supportsProviderApi", "runtimeGuide.surfaceProviderApi"],
+  ["supportsResume", "runtimeGuide.surfaceResume"],
+  ["supportsSquad", "runtimeGuide.surfaceSquad"],
+  ["supportsLeader", "runtimeGuide.surfaceLeader"],
+  ["supportsTaskGraph", "runtimeGuide.surfaceTaskGraph"],
 ];
+
+const statusDescription = (status: CompositionAgentDriverProfile["status"]): string => {
+  switch (status) {
+    case "available":
+      return t("runtimeGuide.statusAvailableDescription");
+    case "degraded":
+      return t("runtimeGuide.statusDegradedDescription");
+    case "unavailable":
+      return t("runtimeGuide.statusUnavailableDescription");
+  }
+};
+
+const statusIcon = (status: CompositionAgentDriverProfile["status"]) => {
+  switch (status) {
+    case "available":
+      return <CircleCheckIcon className="size-3.5" />;
+    case "degraded":
+      return <CircleAlertIcon className="size-3.5" />;
+    case "unavailable":
+      return <CircleXIcon className="size-3.5" />;
+  }
+};
+
+export function displayDriverName(profile: CompositionAgentDriverProfile): string {
+  const generatedName = `${profile.driverKind}${
+    profile.providerKind === undefined ? "" : `:${profile.providerKind}`
+  }`;
+  const customName = profile.displayName?.trim();
+  if (customName && customName !== profile.agentId && customName !== generatedName) {
+    return customName;
+  }
+
+  switch (profile.providerKind) {
+    case "byok":
+      return t("runtimeGuide.driverByok");
+    case "codex":
+      return t("runtimeGuide.driverCodex");
+    case "claudeAgent":
+      return t("runtimeGuide.driverClaude");
+    case "cursor":
+      return t("runtimeGuide.driverCursor");
+    case "grok":
+      return t("runtimeGuide.driverGrok");
+    case "opencode":
+      return t("runtimeGuide.driverOpenCode");
+    default:
+      return customName ?? profile.agentId;
+  }
+}
+
+function RuntimeStartGuide({ profiles }: { readonly profiles: ReadonlyArray<CompositionAgentDriverProfile> }) {
+  const availableProfiles = profiles.filter((profile) => profile.status === "available");
+  const hasAvailableByok = availableProfiles.some((profile) => profile.providerKind === "byok");
+  const title =
+    profiles.length === 0
+      ? t("runtimeGuide.emptyTitle")
+      : hasAvailableByok
+        ? t("runtimeGuide.byokReadyTitle")
+        : availableProfiles.length > 0
+          ? t("runtimeGuide.readyTitle", { count: availableProfiles.length })
+          : t("runtimeGuide.setupTitle");
+  const description =
+    profiles.length === 0
+      ? t("runtimeGuide.emptyDescription")
+      : hasAvailableByok
+        ? t("runtimeGuide.byokReadyDescription")
+        : availableProfiles.length > 0
+          ? t("runtimeGuide.readyDescription")
+          : t("runtimeGuide.setupDescription");
+
+  return (
+    <SettingsRow
+      data-runtime-guide
+      title={title}
+      description={description}
+      control={
+        <div className="flex flex-wrap gap-2">
+          {availableProfiles.length > 0 ? (
+            <Button render={<Link to="/settings/delegation" />} size="xs">
+              {t("runtimeGuide.openDelegation")}
+              <ArrowRightIcon />
+            </Button>
+          ) : null}
+          <Button
+            render={<Link to={hasAvailableByok ? "/settings/byok" : "/settings/providers"} />}
+            size="xs"
+            variant={availableProfiles.length > 0 ? "outline" : "default"}
+          >
+            {hasAvailableByok ? t("runtimeGuide.openByok") : t("runtimeGuide.openProviders")}
+          </Button>
+        </div>
+      }
+    />
+  );
+}
 
 function DriverProfileRow({ profile }: { readonly profile: CompositionAgentDriverProfile }) {
   const activeSurfaces = surfaceLabels.filter(([key]) => profile[key] === true);
+  const isByok = profile.providerKind === "byok";
 
   return (
-    <div className="rounded-xl border border-border/60 px-3 py-3 sm:px-4">
+    <article className="rounded-lg border border-border/60 bg-muted/10 px-3 py-3 sm:px-4">
       <div className="flex flex-col gap-2">
         <div className="flex flex-wrap items-center gap-2">
           <h3 className="text-sm font-medium text-foreground">
-            {profile.displayName ?? profile.agentId}
+            {displayDriverName(profile)}
           </h3>
-          <span className="rounded-md bg-muted px-1.5 py-0.5 font-mono text-[11px] text-muted-foreground">
-            {profile.driverKind}
-            {profile.providerKind === undefined ? "" : `:${profile.providerKind}`}
-          </span>
-          <span className={`text-xs ${statusClassName(profile.status)}`}>
+          <span className={`inline-flex items-center gap-1 text-xs ${statusClassName(profile.status)}`}>
+            {statusIcon(profile.status)}
             {statusLabel(profile.status)}
           </span>
         </div>
-        <p className="break-all font-mono text-[11px] text-muted-foreground">
-          {profile.agentId} · {profile.runtimeId}
-        </p>
+        <p className="text-xs text-muted-foreground">{statusDescription(profile.status)}</p>
         <div className="flex flex-wrap gap-1.5 text-[11px] text-muted-foreground">
           {activeSurfaces.length === 0 ? (
             <span>{t("agentDrivers.noVerifiedSharedSurfaces")}</span>
           ) : (
-            activeSurfaces.map(([key, label]) => (
+            activeSurfaces.map(([key, labelKey]) => (
               <span key={String(key)} className="rounded bg-muted px-1.5 py-0.5">
-                {label}
+                {t(labelKey)}
               </span>
             ))
           )}
         </div>
-        {profile.capabilities.length > 0 ? (
-          <div className="flex flex-wrap gap-1.5">
-            {profile.capabilities.map((capability) => (
-              <code
-                key={capability}
-                className="rounded bg-muted px-1.5 py-0.5 text-[11px] text-muted-foreground"
-              >
-                {capability}
-              </code>
-            ))}
-          </div>
-        ) : null}
-        {profile.reasonCode ? (
-          <p className="text-xs text-muted-foreground">
-            {t("agentDrivers.reason")}: <code>{profile.reasonCode}</code>
-          </p>
-        ) : null}
+        <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border/50 pt-2">
+          <details className="min-w-0 text-xs text-muted-foreground">
+            <summary className="cursor-pointer select-none text-foreground hover:text-muted-foreground">
+              {t("runtimeGuide.technicalDetails")}
+            </summary>
+            <div className="mt-2 grid gap-2 border-l border-border/70 pl-3">
+              <p>{t("runtimeGuide.technicalDetailsDescription")}</p>
+              <p className="break-all font-mono text-[11px]">
+                {profile.agentId} · {profile.runtimeId}
+              </p>
+              {profile.capabilities.length > 0 ? (
+                <div className="flex flex-wrap gap-1.5">
+                  {profile.capabilities.map((capability) => (
+                    <code key={capability} className="rounded bg-muted px-1.5 py-0.5 text-[11px]">
+                      {capability}
+                    </code>
+                  ))}
+                </div>
+              ) : null}
+              {profile.reasonCode ? (
+                <p>
+                  {t("agentDrivers.reason")}: <code>{profile.reasonCode}</code>
+                </p>
+              ) : null}
+            </div>
+          </details>
+          {isByok ? (
+            <Button render={<Link to="/settings/byok" />} size="xs" variant="outline">
+              {t("runtimeGuide.openByok")}
+            </Button>
+          ) : profile.status !== "available" ? (
+            <Button render={<Link to="/settings/providers" />} size="xs" variant="outline">
+              {t("runtimeGuide.manageProvider")}
+            </Button>
+          ) : null}
+        </div>
       </div>
-    </div>
+    </article>
   );
 }
 
@@ -131,9 +248,10 @@ export function AgentDriversSettings() {
         </Button>
       }
     >
+      <RuntimeStartGuide profiles={profiles} />
       <SettingsRow
-        title={t("agentDrivers.projectionTitle")}
-        description={t("agentDrivers.projectionDescription")}
+        title={t("runtimeGuide.driverStatusTitle")}
+        description={t("runtimeGuide.driverStatusDescription")}
         status={query.error ?? (query.isPending ? t("loading") : undefined)}
       />
       {profiles.length === 0 ? (

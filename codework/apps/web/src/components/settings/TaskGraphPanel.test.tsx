@@ -7,6 +7,8 @@ import { EnvironmentId } from "@codework/contracts";
 import { renderToStaticMarkup } from "react-dom/server";
 import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
+import { t } from "~/i18n";
+
 const mocks = vi.hoisted(() => ({
   environment: null as { readonly environmentId: string } | null,
   driverAtom: Symbol("drivers"),
@@ -167,8 +169,8 @@ describe("TaskGraphPanel", () => {
   it("does not crash without a connected environment", () => {
     const html = renderPanel();
 
-    expect(html).toContain("Task Graph");
-    expect(html).toContain("暂无可用 Driver");
+    expect(html).toContain(t("taskGraph.title"));
+    expect(html).toContain(t("taskGraph.noAvailableDriver"));
   });
 
   it("shows the authorization downgrade when the Driver has no verified handshake", () => {
@@ -178,8 +180,8 @@ describe("TaskGraphPanel", () => {
 
     const html = renderPanel();
 
-    expect(html).toContain("此 Driver 没有报告经过验证的 Code Work ToolBroker 握手");
-    expect(html).not.toContain("此 Driver 已报告经过验证的 Code Work ToolBroker 握手能力面");
+    expect(html).toContain(t("taskGraph.unverifiedToolBroker"));
+    expect(html).not.toContain(t("taskGraph.verifiedToolBroker"));
   });
 
   it("exposes review actions for an in-review task", () => {
@@ -235,7 +237,7 @@ describe("TaskGraphPanel", () => {
 
     const html = renderPanel();
 
-    expect(html).toContain("重试任务");
-    expect(html).toContain('placeholder="用逗号分隔能力 ID"');
+    expect(html).toContain(t("taskGraph.retryTask"));
+    expect(html).toContain(`placeholder="${t("taskGraph.retryCapabilityIdsPlaceholder")}"`);
   });
 });

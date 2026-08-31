@@ -57,12 +57,24 @@ import {
 import { type ByokAdapterShape } from "../Services/ByokAdapter.ts";
 import {
   byokAdapterForModel,
+  collectChatText,
   type ByokChatMessage,
   type ByokContentPart,
   runChatEvents,
   streamChat,
 } from "./byokChatClient.ts";
 import { applyPromptTemplate, renderPromptTemplate } from "../byok/PromptTemplate.ts";
+import {
+  buildVisionPrompt,
+  isImagePart,
+  messageImageCount,
+  messageTextContext,
+  messagesContainImages,
+  modelLikelySupportsVision,
+  replaceMessageImagesWithTexts,
+  VISION_FAILURE_PREFIX,
+  VISION_RESULT_PREFIX,
+} from "../byok/VisionDelegation.ts";
 
 const PROVIDER = ProviderDriverKind.make("byok");
 
@@ -73,6 +85,9 @@ const BYOK_HISTORY_CHARS_PER_TOKEN = 4;
 
 /** Rough replay cost of one inline image (≈1k tokens) for history fitting. */
 const BYOK_IMAGE_CHARS_ESTIMATE = 4_000;
+
+/** Per-image budget for one vision delegation completion. */
+const BYOK_VISION_IMAGE_TIMEOUT_MS = 120_000;
 
 /** Image mime types all three BYOK transports accept inline. */
 const BYOK_SUPPORTED_IMAGE_MIME_TYPES: ReadonlySet<string> = new Set([
@@ -271,6 +286,65 @@ export function makeByokAdapter(byokSettings: ByokSettings, options?: ByokAdapte
     );
 
     /**
+     * Vision delegation (original cursor-byok behavior): when the target
+     * model likely cannot read images and a vision model adapter is
+     * configured, forward every inline image to it and replace the image
+     * parts with the returned description/OCR text. Rewrites are written back
+     * into the session history so later turns reuse the text instead of
+     * re-delegating the same images.
+     */
+    const applyVisionDelegation = Effect.fn("byokApplyVisionDelegation")(function* (
+      ctx: ByokSessionContext,
+      targetAdapter: ByokModelAdapter,
+      messages: ReadonlyArray<ByokChatMessage>,
+    ) {
+      const vision = byokSettings.delegation?.visionDelegation;
+      if (vision?.enabled !== true || vision.visionModelId.trim().length === 0) return messages;
+      if (!messagesContainImages(messages)) return messages;
+      if (modelLikelySupportsVision(targetAdapter.modelId, targetAdapter.displayName)) {
+        return messages;
+      }
+      const visionAdapter = byokAdapterForModel(byokSettings, vision.visionModelId);
+      if (visionAdapter === undefined || visionAdapter.id === targetAdapter.id) return messages;
+
+      const next = [...messages];
+      for (let index = 0; index < next.length; index += 1) {
+        const message = next[index]!;
+        const images = (typeof message.content === "string" ? [] : message.content).filter(
+          isImagePart,
+        );
+        if (images.length === 0) continue;
+        const prompt = buildVisionPrompt(vision.mode, messageTextContext(message));
+        const texts: string[] = [];
+        for (const image of images) {
+          const stream = streamChat(httpClient, {
+            protocol: visionAdapter.protocol,
+            baseURL: visionAdapter.baseURL,
+            apiKey: visionAdapter.apiKey,
+            modelId: visionAdapter.modelId,
+            messages: [{ role: "user", content: [{ type: "text", text: prompt }, image] }],
+          });
+          const description = yield* collectChatText(stream).pipe(
+            Effect.timeoutOption(BYOK_VISION_IMAGE_TIMEOUT_MS),
+            Effect.map((outcome) => (Option.isSome(outcome) ? outcome.value.trim() : "")),
+            Effect.catch(() => Effect.succeed("")),
+          );
+          texts.push(
+            description.length === 0
+              ? `${VISION_FAILURE_PREFIX} 识图请求失败或超时。请改用支持视觉的模型或检查视觉委派配置。`
+              : `${VISION_RESULT_PREFIX} ${description}`,
+          );
+        }
+        next[index] = replaceMessageImagesWithTexts(message, texts);
+      }
+
+      // `messages` is fitHistory's suffix of ctx.history in the same order.
+      const offset = Math.max(0, ctx.history.length - messages.length);
+      ctx.history.splice(offset, messages.length, ...next);
+      return next;
+    });
+
+    /**
      * Stream one turn: consume `streamChat` events, emit them as runtime
      * `content.delta`s, and settle the turn when the stream ends.
      */
@@ -283,12 +357,13 @@ export function makeByokAdapter(byokSettings: ByokSettings, options?: ByokAdapte
     ) {
       let assistantText = "";
       let reasoningText = "";
+      const effectiveMessages = yield* applyVisionDelegation(ctx, adapter, messages);
       const stream = streamChat(httpClient, {
         protocol: adapter.protocol,
         baseURL: adapter.baseURL,
         apiKey: adapter.apiKey,
         modelId: adapter.modelId,
-        messages,
+        messages: effectiveMessages,
         ...(systemPrompt.trim().length > 0 ? { systemPrompt } : {}),
       });
       const outcome = yield* Effect.exit(

@@ -10,6 +10,8 @@ import {
   keybindingConflictLabels,
   keybindingFromKeyboardEvent,
   localizedCommandLabel,
+  localizedWhenExpression,
+  localizedWhenVariableLabel,
   parseWhenExpressionDraft,
   shortcutToKeybindingInput,
   unknownWhenVariables,
@@ -144,6 +146,25 @@ describe("KeybindingsSettings.logic", () => {
       expect.arrayContaining(["terminalFocus", "terminalOpen", "modelPickerOpen", "true", "false"]),
     );
     expect(options).not.toContain("customModeActive");
+  });
+
+  it("localizes known when variables and preserves unknown identifiers in readable expressions", () => {
+    expect(localizedWhenVariableLabel("terminalFocus")).toBe(
+      t("keybindings.whenVariable.terminalFocus"),
+    );
+    expect(localizedWhenVariableLabel("customModeActive")).toBe("customModeActive");
+    expect(
+      localizedWhenExpression({
+        type: "and",
+        left: {
+          type: "not",
+          node: { type: "identifier", name: "terminalFocus" },
+        },
+        right: { type: "identifier", name: "customModeActive" },
+      }),
+    ).toBe(
+      `${t("keybindings.not")} ${t("keybindings.whenVariable.terminalFocus")}${t("and")}customModeActive`,
+    );
   });
 
   it("builds command options from built-in commands and resolved project bindings", () => {

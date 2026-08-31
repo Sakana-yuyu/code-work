@@ -18,13 +18,16 @@ import { Route as ChatIndexRouteImport } from './routes/_chat.index'
 import { Route as SettingsWorkspaceScriptsRouteImport } from './routes/settings.workspace-scripts'
 import { Route as SettingsSquadsRouteImport } from './routes/settings.squads'
 import { Route as SettingsSourceControlRouteImport } from './routes/settings.source-control'
+import { Route as SettingsRuntimeRouteImport } from './routes/settings.runtime'
 import { Route as SettingsProvidersRouteImport } from './routes/settings.providers'
 import { Route as SettingsLocalPluginsRouteImport } from './routes/settings.local-plugins'
 import { Route as SettingsKeybindingsRouteImport } from './routes/settings.keybindings'
 import { Route as SettingsIntegrationsRouteImport } from './routes/settings.integrations'
 import { Route as SettingsGeneralRouteImport } from './routes/settings.general'
 import { Route as SettingsDiagnosticsRouteImport } from './routes/settings.diagnostics'
+import { Route as SettingsDelegationRouteImport } from './routes/settings.delegation'
 import { Route as SettingsConnectionsRouteImport } from './routes/settings.connections'
+import { Route as SettingsByokRouteImport } from './routes/settings.byok'
 import { Route as SettingsAutomationsRouteImport } from './routes/settings.automations'
 import { Route as SettingsArchivedRouteImport } from './routes/settings.archived'
 import { Route as SettingsAppearanceRouteImport } from './routes/settings.appearance'
@@ -79,6 +82,11 @@ const SettingsSourceControlRoute = SettingsSourceControlRouteImport.update({
   path: '/source-control',
   getParentRoute: () => SettingsRoute,
 } as any)
+const SettingsRuntimeRoute = SettingsRuntimeRouteImport.update({
+  id: '/runtime',
+  path: '/runtime',
+  getParentRoute: () => SettingsRoute,
+} as any)
 const SettingsProvidersRoute = SettingsProvidersRouteImport.update({
   id: '/providers',
   path: '/providers',
@@ -109,9 +117,19 @@ const SettingsDiagnosticsRoute = SettingsDiagnosticsRouteImport.update({
   path: '/diagnostics',
   getParentRoute: () => SettingsRoute,
 } as any)
+const SettingsDelegationRoute = SettingsDelegationRouteImport.update({
+  id: '/delegation',
+  path: '/delegation',
+  getParentRoute: () => SettingsRoute,
+} as any)
 const SettingsConnectionsRoute = SettingsConnectionsRouteImport.update({
   id: '/connections',
   path: '/connections',
+  getParentRoute: () => SettingsRoute,
+} as any)
+const SettingsByokRoute = SettingsByokRouteImport.update({
+  id: '/byok',
+  path: '/byok',
   getParentRoute: () => SettingsRoute,
 } as any)
 const SettingsAutomationsRoute = SettingsAutomationsRouteImport.update({
@@ -168,13 +186,16 @@ export interface FileRoutesByFullPath {
   '/settings/appearance': typeof SettingsAppearanceRoute
   '/settings/archived': typeof SettingsArchivedRoute
   '/settings/automations': typeof SettingsAutomationsRoute
+  '/settings/byok': typeof SettingsByokRoute
   '/settings/connections': typeof SettingsConnectionsRoute
+  '/settings/delegation': typeof SettingsDelegationRoute
   '/settings/diagnostics': typeof SettingsDiagnosticsRoute
   '/settings/general': typeof SettingsGeneralRoute
   '/settings/integrations': typeof SettingsIntegrationsRoute
   '/settings/keybindings': typeof SettingsKeybindingsRoute
   '/settings/local-plugins': typeof SettingsLocalPluginsRoute
   '/settings/providers': typeof SettingsProvidersRoute
+  '/settings/runtime': typeof SettingsRuntimeRoute
   '/settings/source-control': typeof SettingsSourceControlRoute
   '/settings/squads': typeof SettingsSquadsRoute
   '/settings/workspace-scripts': typeof SettingsWorkspaceScriptsRoute
@@ -192,13 +213,16 @@ export interface FileRoutesByTo {
   '/settings/appearance': typeof SettingsAppearanceRoute
   '/settings/archived': typeof SettingsArchivedRoute
   '/settings/automations': typeof SettingsAutomationsRoute
+  '/settings/byok': typeof SettingsByokRoute
   '/settings/connections': typeof SettingsConnectionsRoute
+  '/settings/delegation': typeof SettingsDelegationRoute
   '/settings/diagnostics': typeof SettingsDiagnosticsRoute
   '/settings/general': typeof SettingsGeneralRoute
   '/settings/integrations': typeof SettingsIntegrationsRoute
   '/settings/keybindings': typeof SettingsKeybindingsRoute
   '/settings/local-plugins': typeof SettingsLocalPluginsRoute
   '/settings/providers': typeof SettingsProvidersRoute
+  '/settings/runtime': typeof SettingsRuntimeRoute
   '/settings/source-control': typeof SettingsSourceControlRoute
   '/settings/squads': typeof SettingsSquadsRoute
   '/settings/workspace-scripts': typeof SettingsWorkspaceScriptsRoute
@@ -219,13 +243,16 @@ export interface FileRoutesById {
   '/settings/appearance': typeof SettingsAppearanceRoute
   '/settings/archived': typeof SettingsArchivedRoute
   '/settings/automations': typeof SettingsAutomationsRoute
+  '/settings/byok': typeof SettingsByokRoute
   '/settings/connections': typeof SettingsConnectionsRoute
+  '/settings/delegation': typeof SettingsDelegationRoute
   '/settings/diagnostics': typeof SettingsDiagnosticsRoute
   '/settings/general': typeof SettingsGeneralRoute
   '/settings/integrations': typeof SettingsIntegrationsRoute
   '/settings/keybindings': typeof SettingsKeybindingsRoute
   '/settings/local-plugins': typeof SettingsLocalPluginsRoute
   '/settings/providers': typeof SettingsProvidersRoute
+  '/settings/runtime': typeof SettingsRuntimeRoute
   '/settings/source-control': typeof SettingsSourceControlRoute
   '/settings/squads': typeof SettingsSquadsRoute
   '/settings/workspace-scripts': typeof SettingsWorkspaceScriptsRoute
@@ -247,13 +274,16 @@ export interface FileRouteTypes {
     | '/settings/appearance'
     | '/settings/archived'
     | '/settings/automations'
+    | '/settings/byok'
     | '/settings/connections'
+    | '/settings/delegation'
     | '/settings/diagnostics'
     | '/settings/general'
     | '/settings/integrations'
     | '/settings/keybindings'
     | '/settings/local-plugins'
     | '/settings/providers'
+    | '/settings/runtime'
     | '/settings/source-control'
     | '/settings/squads'
     | '/settings/workspace-scripts'
@@ -271,13 +301,16 @@ export interface FileRouteTypes {
     | '/settings/appearance'
     | '/settings/archived'
     | '/settings/automations'
+    | '/settings/byok'
     | '/settings/connections'
+    | '/settings/delegation'
     | '/settings/diagnostics'
     | '/settings/general'
     | '/settings/integrations'
     | '/settings/keybindings'
     | '/settings/local-plugins'
     | '/settings/providers'
+    | '/settings/runtime'
     | '/settings/source-control'
     | '/settings/squads'
     | '/settings/workspace-scripts'
@@ -297,13 +330,16 @@ export interface FileRouteTypes {
     | '/settings/appearance'
     | '/settings/archived'
     | '/settings/automations'
+    | '/settings/byok'
     | '/settings/connections'
+    | '/settings/delegation'
     | '/settings/diagnostics'
     | '/settings/general'
     | '/settings/integrations'
     | '/settings/keybindings'
     | '/settings/local-plugins'
     | '/settings/providers'
+    | '/settings/runtime'
     | '/settings/source-control'
     | '/settings/squads'
     | '/settings/workspace-scripts'
@@ -387,6 +423,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof SettingsSourceControlRouteImport
       parentRoute: typeof SettingsRoute
     }
+    '/settings/runtime': {
+      id: '/settings/runtime'
+      path: '/runtime'
+      fullPath: '/settings/runtime'
+      preLoaderRoute: typeof SettingsRuntimeRouteImport
+      parentRoute: typeof SettingsRoute
+    }
     '/settings/providers': {
       id: '/settings/providers'
       path: '/providers'
@@ -429,11 +472,25 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof SettingsDiagnosticsRouteImport
       parentRoute: typeof SettingsRoute
     }
+    '/settings/delegation': {
+      id: '/settings/delegation'
+      path: '/delegation'
+      fullPath: '/settings/delegation'
+      preLoaderRoute: typeof SettingsDelegationRouteImport
+      parentRoute: typeof SettingsRoute
+    }
     '/settings/connections': {
       id: '/settings/connections'
       path: '/connections'
       fullPath: '/settings/connections'
       preLoaderRoute: typeof SettingsConnectionsRouteImport
+      parentRoute: typeof SettingsRoute
+    }
+    '/settings/byok': {
+      id: '/settings/byok'
+      path: '/byok'
+      fullPath: '/settings/byok'
+      preLoaderRoute: typeof SettingsByokRouteImport
       parentRoute: typeof SettingsRoute
     }
     '/settings/automations': {
@@ -515,13 +572,16 @@ interface SettingsRouteChildren {
   SettingsAppearanceRoute: typeof SettingsAppearanceRoute
   SettingsArchivedRoute: typeof SettingsArchivedRoute
   SettingsAutomationsRoute: typeof SettingsAutomationsRoute
+  SettingsByokRoute: typeof SettingsByokRoute
   SettingsConnectionsRoute: typeof SettingsConnectionsRoute
+  SettingsDelegationRoute: typeof SettingsDelegationRoute
   SettingsDiagnosticsRoute: typeof SettingsDiagnosticsRoute
   SettingsGeneralRoute: typeof SettingsGeneralRoute
   SettingsIntegrationsRoute: typeof SettingsIntegrationsRoute
   SettingsKeybindingsRoute: typeof SettingsKeybindingsRoute
   SettingsLocalPluginsRoute: typeof SettingsLocalPluginsRoute
   SettingsProvidersRoute: typeof SettingsProvidersRoute
+  SettingsRuntimeRoute: typeof SettingsRuntimeRoute
   SettingsSourceControlRoute: typeof SettingsSourceControlRoute
   SettingsSquadsRoute: typeof SettingsSquadsRoute
   SettingsWorkspaceScriptsRoute: typeof SettingsWorkspaceScriptsRoute
@@ -531,13 +591,16 @@ const SettingsRouteChildren: SettingsRouteChildren = {
   SettingsAppearanceRoute: SettingsAppearanceRoute,
   SettingsArchivedRoute: SettingsArchivedRoute,
   SettingsAutomationsRoute: SettingsAutomationsRoute,
+  SettingsByokRoute: SettingsByokRoute,
   SettingsConnectionsRoute: SettingsConnectionsRoute,
+  SettingsDelegationRoute: SettingsDelegationRoute,
   SettingsDiagnosticsRoute: SettingsDiagnosticsRoute,
   SettingsGeneralRoute: SettingsGeneralRoute,
   SettingsIntegrationsRoute: SettingsIntegrationsRoute,
   SettingsKeybindingsRoute: SettingsKeybindingsRoute,
   SettingsLocalPluginsRoute: SettingsLocalPluginsRoute,
   SettingsProvidersRoute: SettingsProvidersRoute,
+  SettingsRuntimeRoute: SettingsRuntimeRoute,
   SettingsSourceControlRoute: SettingsSourceControlRoute,
   SettingsSquadsRoute: SettingsSquadsRoute,
   SettingsWorkspaceScriptsRoute: SettingsWorkspaceScriptsRoute,

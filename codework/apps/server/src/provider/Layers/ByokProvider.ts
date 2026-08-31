@@ -39,6 +39,14 @@ export const EMPTY_BYOK_MODEL_CAPABILITIES: ModelCapabilities = createModelCapab
 
 const BYOK_KEY_PROBE_TIMEOUT_MS = 6_000;
 
+const normalizedRelayURL = (baseURL: string): string => baseURL.trim().replace(/\/+$/u, "");
+
+const relayKey = (adapter: ByokSettings["adapters"][number]): string =>
+  `${adapter.protocol}\u0000${normalizedRelayURL(adapter.baseURL)}`;
+
+const authenticatedRelayKey = (adapter: ByokSettings["adapters"][number]): string =>
+  `${relayKey(adapter)}\u0000${adapter.apiKey}`;
+
 // ── model snapshots ────────────────────────────────────────────────
 
 /** Map configured model adapters to provider model entries (slug = adapter id). */
@@ -164,14 +172,22 @@ export const checkByokProviderStatus = Effect.fn("checkByokProviderStatus")(func
     return yield* buildInitialByokProviderSnapshot(byokSettings);
   }
 
-  // Lightweight key validation: probe every openai-protocol adapter once.
-  // Failures only downgrade the message; the engine stays available.
+  // 同一中转的模型通道共用一次目录探测，避免重复请求和重复模型快照。
   const failures: Array<string> = [];
   const discoveredModels: ServerProviderModel[] = [];
+  const configuredModelsByRelay = new Set(
+    byokSettings.adapters.map((adapter) => `${relayKey(adapter)}\u0000${adapter.modelId.trim()}`),
+  );
+  const discoveredModelsByRelay = new Set<string>();
+  const probedRelays = new Set<string>();
   for (const adapter of byokSettings.adapters) {
     if (adapter.protocol !== "openai" || adapter.baseURL.trim().length === 0) {
       continue;
     }
+    const connectionKey = authenticatedRelayKey(adapter);
+    if (probedRelays.has(connectionKey)) continue;
+    probedRelays.add(connectionKey);
+
     const probeExit = yield* Effect.exit(
       probeOpenaiAdapter(httpClient, { baseURL: adapter.baseURL, apiKey: adapter.apiKey }),
     );
@@ -181,10 +197,19 @@ export const checkByokProviderStatus = Effect.fn("checkByokProviderStatus")(func
       failures.push(`${adapter.displayName}: ${detail}`);
     } else {
       for (const modelId of probeExit.value) {
-        if (modelId === adapter.modelId) continue;
+        const normalizedModelId = modelId.trim();
+        if (normalizedModelId.length === 0) continue;
+        const modelRelayKey = `${relayKey(adapter)}\u0000${normalizedModelId}`;
+        if (
+          configuredModelsByRelay.has(modelRelayKey) ||
+          discoveredModelsByRelay.has(modelRelayKey)
+        ) {
+          continue;
+        }
+        discoveredModelsByRelay.add(modelRelayKey);
         discoveredModels.push({
-          slug: `${adapter.id}/${modelId}`,
-          name: modelId,
+          slug: `${adapter.id}/${normalizedModelId}`,
+          name: normalizedModelId,
           subProvider: adapter.displayName,
           isCustom: false,
           capabilities: EMPTY_BYOK_MODEL_CAPABILITIES,

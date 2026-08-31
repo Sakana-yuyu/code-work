@@ -105,7 +105,13 @@ export const buildResumeInput = (input: {
   reason: input.reason,
 });
 
-export function CompositionControlCenterPanel() {
+interface CompositionControlCenterPanelProps {
+  readonly scope?: "all" | "byok-delegation";
+}
+
+export function CompositionControlCenterPanel({
+  scope = "all",
+}: CompositionControlCenterPanelProps) {
   const primaryEnvironment = usePrimaryEnvironment();
   const environmentId = primaryEnvironment?.environmentId ?? null;
   const projectionQuery = useEnvironmentQuery(
@@ -137,8 +143,15 @@ export function CompositionControlCenterPanel() {
   const [actionError, setActionError] = useState<string | null>(null);
 
   const projection: CompositionControlCenterResult | null = projectionQuery.data ?? null;
-  const humanActionTasks =
+  const isByokDelegationScope = scope === "byok-delegation";
+  const visibleTasks =
     projection === null
+      ? []
+      : isByokDelegationScope
+        ? projection.tasks.filter(isByokDelegationControlTask)
+        : projection.tasks;
+  const humanActionTasks =
+    projection === null || isByokDelegationScope
       ? []
       : projection.tasks.filter(
           (task) => task.humanAction !== undefined && !isByokDelegationControlTask(task),
@@ -262,7 +275,12 @@ export function CompositionControlCenterPanel() {
     );
 
   return (
-    <SettingsSection id="composition-control-center" title={t("controlCenter.title")}>
+    <SettingsSection
+      id="composition-control-center"
+      title={
+        isByokDelegationScope ? t("delegationWorkspace.ledgerTitle") : t("controlCenter.title")
+      }
+    >
       <div className="flex items-center justify-between gap-2">
         <h3 className="text-sm font-medium text-foreground">{t("controlCenter.tasks")}</h3>
         <Button
@@ -281,8 +299,12 @@ export function CompositionControlCenterPanel() {
         <p className="text-xs text-muted-foreground">{t("controlCenter.pending")}</p>
       ) : projectionQuery.error !== null ? (
         <p className="text-xs text-destructive">{t("controlCenter.error")}</p>
-      ) : projection === null || projection.tasks.length === 0 ? (
-        <p className="text-xs text-muted-foreground">{t("controlCenter.noTasks")}</p>
+      ) : projection === null || visibleTasks.length === 0 ? (
+        <p className="text-xs text-muted-foreground">
+          {isByokDelegationScope
+            ? t("delegationWorkspace.noLedgerTasks")
+            : t("controlCenter.noTasks")}
+        </p>
       ) : (
         <>
           {humanActionTasks.length === 0 ? null : (
@@ -378,7 +400,7 @@ export function CompositionControlCenterPanel() {
               </ul>
             </section>
           )}
-          {projection.tasks.some(
+          {visibleTasks.some(
             (task) =>
               (task.latestRun !== undefined &&
                 task.goalLoop !== undefined &&
@@ -402,7 +424,7 @@ export function CompositionControlCenterPanel() {
             </div>
           ) : null}
           <ul className="space-y-2">
-            {projection.tasks.map((task) => {
+            {visibleTasks.map((task) => {
               const delegationRow = isByokDelegationControlTask(task);
               const redispatchable =
                 !delegationRow &&
@@ -583,7 +605,7 @@ export function CompositionControlCenterPanel() {
           )}
         </>
       )}
-      {projection === null || projection.squads.length === 0 ? null : (
+      {isByokDelegationScope || projection === null || projection.squads.length === 0 ? null : (
         <div className="space-y-1">
           <h3 className="text-sm font-medium text-foreground">{t("controlCenter.squads")}</h3>
           <ul className="space-y-1">

@@ -93,6 +93,28 @@ describe("searchSettings", () => {
     });
   });
 
+  it("indexes each facilities sidebar destination", () => {
+    expect(SETTINGS_SEARCH_ITEMS).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: "facility-runtime", to: "/settings/runtime" }),
+        expect.objectContaining({ id: "facility-delegation", to: "/settings/delegation" }),
+        expect.objectContaining({ id: "facility-byok", to: "/settings/byok" }),
+      ]),
+    );
+  });
+
+  it("用“团队”搜索到团队页面", () => {
+    expect(searchSettings("团队")).toContainEqual({
+      id: "composition-squads",
+      title: "团队",
+      to: "/settings/squads",
+    });
+    expect(searchableSetting("composition-squads")).toEqual({
+      id: "composition-squads",
+      title: "团队",
+    });
+  });
+
   it("indexes the Automation Center route", () => {
     expect(SETTINGS_SEARCH_ITEMS).toContainEqual({
       id: "composition-automations",

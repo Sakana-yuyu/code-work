@@ -45,7 +45,7 @@ BYOK 真实 API E2E 是主线**唯一非代码阻塞项**，需要用户提供�
 - Delegation 台账投影 `byok-delegation:*`（prompt 只落 sha256，原文不进台账）。
 - 控制中心展示委派行：可选字段 `byokDelegation`，独立徽标，**不套 Goal Loop 五态**。
 - 重启收口：`scanByokDelegationRun` / `recoverInterruptedByokDelegations`，boot + `ByokDelegationService.make` 首次调用。
-- Mobile：`SettingsControlCenter`、`SettingsSupplierRegistry`；Desktop 走共享 Web `/settings/integrations`。
+- Mobile：`SettingsControlCenter`、`SettingsSupplierRegistry`；Desktop 走共享 Web 的设施入口：`/settings/delegation` 与 `/settings/byok`（`/settings/integrations` 仅保留 Browser 与 MCP）。
 - server 包 typecheck 已从约 520 错清到 0；`server.test.ts` 路由层 133 通过（含本轮新 handler）。
 - `node scripts/check-ui-i18n.mjs` 应对 web/mobile/desktop 全绿。
 - 会话 cookie 品牌改名兼容：写入 `codework_session_*`，读取同时接受 `t3_session_*`（同 scope），HTTP 层把旧 cookie 静默迁到新名并 expire 旧名。`getSessionState` 与 environment-authenticated 请求都会迁移。auth 测试 28 通过。

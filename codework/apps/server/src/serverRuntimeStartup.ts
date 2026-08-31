@@ -440,48 +440,60 @@ export const make = (options?: StartupOptions) =>
     const startup = Effect.gen(function* () {
       yield* awaitToolInvocationRecovery;
 
-      yield* Effect.logDebug("startup phase: starting keybindings runtime");
-      yield* runStartupPhase(
-        "keybindings.start",
-        keybindings.start.pipe(
-          Effect.catch((error) =>
-            Effect.logWarning("failed to start keybindings runtime", {
-              path: error.configPath,
-              detail: error.detail,
-              cause: error.cause,
-            }),
+      // 五个互不依赖的运行时根并行启动：任何一个失败都照旧中止启动序列
+      // （Effect.all 默认 fail-fast），只是不再互相拖长串行等待。
+      yield* Effect.all(
+        [
+          Effect.logDebug("startup phase: starting keybindings runtime").pipe(
+            Effect.andThen(
+              runStartupPhase(
+                "keybindings.start",
+                keybindings.start.pipe(
+                  Effect.catch((error) =>
+                    Effect.logWarning("failed to start keybindings runtime", {
+                      path: error.configPath,
+                      detail: error.detail,
+                      cause: error.cause,
+                    }),
+                  ),
+                ),
+              ),
+            ),
           ),
-        ),
-      );
-
-      yield* Effect.logDebug("startup phase: starting server settings runtime");
-      yield* runStartupPhase(
-        "settings.start",
-        serverSettings.start.pipe(
-          Effect.catch((error) =>
-            Effect.logWarning("failed to start server settings runtime", {
-              path: error.settingsPath,
-              operation: error.operation,
-              providerInstanceId: error.providerInstanceId,
-              environmentVariable: error.environmentVariable,
-              cause: error.cause,
-            }),
+          Effect.logDebug("startup phase: starting server settings runtime").pipe(
+            Effect.andThen(
+              runStartupPhase(
+                "settings.start",
+                serverSettings.start.pipe(
+                  Effect.catch((error) =>
+                    Effect.logWarning("failed to start server settings runtime", {
+                      path: error.settingsPath,
+                      operation: error.operation,
+                      providerInstanceId: error.providerInstanceId,
+                      environmentVariable: error.environmentVariable,
+                      cause: error.cause,
+                    }),
+                  ),
+                ),
+              ),
+            ),
           ),
-        ),
+          runStartupPhase("mcp-runtime.start", mcpRuntime.start),
+          Effect.logDebug("startup phase: parking orchestration roots at activation").pipe(
+            Effect.andThen(
+              runStartupPhase(
+                "reactors.start",
+                Effect.gen(function* () {
+                  yield* orchestrationReactor.start().pipe(Scope.provide(reactorScope));
+                  yield* providerSessionReaper.start().pipe(Scope.provide(reactorScope));
+                }),
+              ),
+            ),
+          ),
+          runStartupPhase("provider-sessions.reconcile", reconcileProviderSessions),
+        ],
+        { concurrency: "unbounded" },
       );
-
-      yield* runStartupPhase("mcp-runtime.start", mcpRuntime.start);
-
-      yield* Effect.logDebug("startup phase: parking orchestration roots at activation");
-      yield* runStartupPhase(
-        "reactors.start",
-        Effect.gen(function* () {
-          yield* orchestrationReactor.start().pipe(Scope.provide(reactorScope));
-          yield* providerSessionReaper.start().pipe(Scope.provide(reactorScope));
-        }),
-      );
-
-      yield* runStartupPhase("provider-sessions.reconcile", reconcileProviderSessions);
 
       const welcomeBase = yield* resolveWelcomeBase;
       const environment = yield* serverEnvironment.getDescriptor;

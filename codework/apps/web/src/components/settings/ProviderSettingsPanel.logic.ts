@@ -3,12 +3,17 @@ import {
   AuthOrchestrationOperateScope,
   type AuthSessionState,
   type EnvironmentId,
+  type ProviderInstanceConfig,
 } from "@codework/contracts";
 
 export interface ProviderEnvironmentOptionLike {
   readonly environmentId: EnvironmentId;
   readonly label: string;
 }
+
+export const isProviderInstanceVisible = (
+  instance: Pick<ProviderInstanceConfig, "driver">,
+): boolean => instance.driver !== "multica";
 
 export function buildProviderEnvironmentOptions<T extends ProviderEnvironmentOptionLike>(
   environments: ReadonlyArray<T>,

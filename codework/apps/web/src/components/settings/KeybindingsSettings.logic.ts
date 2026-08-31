@@ -69,6 +69,42 @@ export function whenAstToExpression(node: KeybindingWhenNode | undefined): strin
   }
 }
 
+const WHEN_VARIABLE_LABEL_KEYS: Readonly<Record<string, string>> = {
+  terminalFocus: "keybindings.whenVariable.terminalFocus",
+  terminalOpen: "keybindings.whenVariable.terminalOpen",
+  previewFocus: "keybindings.whenVariable.previewFocus",
+  modelPickerOpen: "keybindings.whenVariable.modelPickerOpen",
+  true: "keybindings.whenVariable.true",
+  false: "keybindings.whenVariable.false",
+};
+
+/**
+ * 条件 token 是持久化协议的一部分；此处只将已知 token 转为界面标签，未知值保持原样。
+ */
+export function localizedWhenVariableLabel(identifier: string): string {
+  const key = WHEN_VARIABLE_LABEL_KEYS[identifier];
+  return key ? t(key) : identifier;
+}
+
+export function localizedWhenExpression(node: KeybindingWhenNode | undefined): string {
+  if (!node) return t("always");
+  switch (node.type) {
+    case "identifier":
+      return localizedWhenVariableLabel(node.name);
+    case "not":
+      return `${t("keybindings.not")} ${wrapLocalizedWhenExpression(node.node)}`;
+    case "and":
+      return `${wrapLocalizedWhenExpression(node.left)}${t("and")}${wrapLocalizedWhenExpression(node.right)}`;
+    case "or":
+      return `${wrapLocalizedWhenExpression(node.left)}${t("or")}${wrapLocalizedWhenExpression(node.right)}`;
+  }
+}
+
+function wrapLocalizedWhenExpression(node: KeybindingWhenNode): string {
+  if (node.type === "identifier" || node.type === "not") return localizedWhenExpression(node);
+  return `(${localizedWhenExpression(node)})`;
+}
+
 function wrapWhenExpression(node: KeybindingWhenNode): string {
   if (node.type === "identifier" || node.type === "not") return whenAstToExpression(node);
   return `(${whenAstToExpression(node)})`;

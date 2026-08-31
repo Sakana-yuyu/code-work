@@ -27,12 +27,6 @@ import type { ReactNode } from "react";
 import { ScreenRotationIcon } from "~/browser/ScreenRotationIcon";
 import { isElectron } from "../../env";
 import { McpServersSettings } from "./McpServersSettings";
-import { AgentDriversSettings } from "./AgentDriversSettings";
-import { IdeSessionsSettings } from "./IdeSessionsSettings";
-import { TaskGraphPanel } from "./TaskGraphPanel";
-import { CompositionControlCenterPanel } from "./CompositionControlCenterPanel";
-import { SupplierRegistryPanel } from "./SupplierRegistryPanel";
-import { ByokBalanceDashboardPanel } from "./ByokBalanceDashboardPanel";
 
 import { Button } from "../ui/button";
 import { NumberField, NumberFieldGroup, NumberFieldInput } from "../ui/number-field";
@@ -485,12 +479,6 @@ export function IntegrationsSettingsPanel() {
           previewDefaults
         )}
       </SettingsSection>
-      <IdeSessionsSettings />
-      <AgentDriversSettings />
-      <CompositionControlCenterPanel />
-      <SupplierRegistryPanel />
-      <ByokBalanceDashboardPanel />
-      <TaskGraphPanel />
       <McpServersSettings />
     </SettingsPageContainer>
   );

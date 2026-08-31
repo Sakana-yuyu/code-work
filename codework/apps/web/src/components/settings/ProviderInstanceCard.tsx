@@ -6,6 +6,7 @@ import {
   DownloadIcon,
   LoaderIcon,
   PlusIcon,
+  SaveIcon,
   Trash2Icon,
   XIcon,
 } from "lucide-react";
@@ -15,8 +16,6 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import {
   isProviderDriverKind,
   resolveProviderInstanceEnabled,
-  type ByokDelegationConfig,
-  type ByokPromptTemplateConfig,
   type ProviderInstanceConfig,
   type ProviderInstanceEnvironmentVariable,
   type ProviderInstanceId,
@@ -47,7 +46,6 @@ import {
   readByokModelAdapters,
   type ByokModelAdapter,
 } from "./ByokModelAdaptersSection";
-import { ByokFeaturesSection } from "./ByokFeaturesSection";
 import { ProviderInstanceIcon, providerInstanceInitials } from "../chat/ProviderInstanceIcon";
 import { ProviderAccentColorPicker } from "./ProviderAccentColorPicker";
 import {
@@ -71,6 +69,39 @@ type EnvironmentDraftRow = {
   readonly sensitive: boolean;
   readonly valueRedacted?: boolean;
 };
+
+export function normalizeProviderEnvironmentDraftRows(
+  rows: ReadonlyArray<{
+    readonly name: string;
+    readonly value: string;
+    readonly sensitive: boolean;
+    readonly valueRedacted?: boolean;
+  }>,
+): ReadonlyArray<ProviderInstanceEnvironmentVariable> | null {
+  const normalized: ProviderInstanceEnvironmentVariable[] = [];
+
+  for (const row of rows) {
+    const name = row.name.trim();
+    if (!ENVIRONMENT_VARIABLE_NAME_PATTERN.test(name)) {
+      const isEmptyDraft =
+        name.length === 0 &&
+        row.value.length === 0 &&
+        row.sensitive === true &&
+        row.valueRedacted === undefined;
+      if (isEmptyDraft) continue;
+      return null;
+    }
+
+    normalized.push({
+      name,
+      value: row.value,
+      sensitive: row.sensitive,
+      ...(row.valueRedacted === undefined ? {} : { valueRedacted: row.valueRedacted }),
+    });
+  }
+
+  return normalized;
+}
 
 function makeEnvironmentDraftRow(
   variable: ProviderInstanceEnvironmentVariable,
@@ -136,22 +167,6 @@ function nextConfigBlobWithValue(
   return base;
 }
 
-/**
- * Read a structured (object) value off the opaque byok config blob, falling
- * back to the empty object for absent or malformed entries.
- */
-function readByokFeatureConfig(
-  config: unknown,
-  key: "promptTemplate" | "delegation",
-): ByokPromptTemplateConfig | ByokDelegationConfig {
-  if (config === null || typeof config !== "object") return {} as ByokPromptTemplateConfig;
-  const value = (config as Record<string, unknown>)[key];
-  if (value === null || typeof value !== "object" || Array.isArray(value)) {
-    return {} as ByokPromptTemplateConfig;
-  }
-  return value as ByokPromptTemplateConfig;
-}
-
 export function deriveProviderModelsForDisplay(input: {
   readonly liveModels: ReadonlyArray<ServerProviderModel> | undefined;
   readonly customModels: ReadonlyArray<string>;
@@ -181,10 +196,17 @@ function ProviderEnvironmentSection(props: {
   const [rows, setRows] = useState<ReadonlyArray<EnvironmentDraftRow>>(() =>
     props.environment.map(makeEnvironmentDraftRow),
   );
+  const rowsRef = useRef(rows);
+  const [showValidationErrors, setShowValidationErrors] = useState(false);
   const previousEnvironmentRef = useRef(props.environment);
   const lastPublishedEnvironmentRef = useRef<
     ReadonlyArray<ProviderInstanceEnvironmentVariable> | undefined
   >(undefined);
+
+  const replaceRows = (nextRows: ReadonlyArray<EnvironmentDraftRow>) => {
+    rowsRef.current = nextRows;
+    setRows(nextRows);
+  };
 
   useEffect(() => {
     const previousEnvironment = previousEnvironmentRef.current;
@@ -199,33 +221,27 @@ function ProviderEnvironmentSection(props: {
     ) {
       return;
     }
-    setRows(props.environment.map(makeEnvironmentDraftRow));
+    const nextRows = props.environment.map(makeEnvironmentDraftRow);
+    rowsRef.current = nextRows;
+    setRows(nextRows);
+    setShowValidationErrors(false);
   }, [props.environment]);
 
-  const publishRows = (nextRows: ReadonlyArray<EnvironmentDraftRow>) => {
-    const published: ProviderInstanceEnvironmentVariable[] = [];
-    for (const row of nextRows) {
-      const name = row.name.trim();
-      if (!ENVIRONMENT_VARIABLE_NAME_PATTERN.test(name)) {
-        if (
-          name.length > 0 ||
-          row.value.length > 0 ||
-          row.sensitive !== true ||
-          row.valueRedacted !== undefined
-        ) {
-          return;
-        }
-        continue;
-      }
-      const { id: _id, ...rest } = row;
-      published.push({ ...rest, name });
+  const saveRows = () => {
+    const published = normalizeProviderEnvironmentDraftRows(rowsRef.current);
+    if (published === null) {
+      setShowValidationErrors(true);
+      return;
     }
+
     lastPublishedEnvironmentRef.current = published;
     props.onChange(published);
+    setShowValidationErrors(false);
+    toastManager.add({ type: "success", title: t("yourChangesAreSaved") });
   };
 
   const updateVariable = (id: string, patch: Partial<Omit<EnvironmentDraftRow, "id">>) => {
-    const nextRows = rows.map((row) =>
+    const nextRows = rowsRef.current.map((row) =>
       row.id === id
         ? {
             ...row,
@@ -234,40 +250,51 @@ function ProviderEnvironmentSection(props: {
           }
         : row,
     );
-    setRows(nextRows);
-    publishRows(nextRows);
+    replaceRows(nextRows);
+    setShowValidationErrors(false);
   };
 
   const removeVariable = (id: string) => {
-    const nextRows = rows.filter((row) => row.id !== id);
-    setRows(nextRows);
-    publishRows(nextRows);
+    replaceRows(rowsRef.current.filter((row) => row.id !== id));
+    setShowValidationErrors(false);
   };
 
   return (
     <div className="grid gap-2">
       <div className="flex items-center justify-between gap-3">
         <span className="text-xs font-medium text-foreground">{t("environmentVariables")}</span>
-        <Button
-          type="button"
-          size="sm"
-          variant="outline"
-          className="h-7 gap-1.5 px-2 text-xs"
-          onClick={() =>
-            setRows([
-              ...rows,
-              {
-                id: nextEnvironmentVariableDraftId(),
-                name: "",
-                value: "",
-                sensitive: true,
-              },
-            ])
-          }
-        >
-          <PlusIcon className="size-3" />
-          {t("add")}
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            type="button"
+            size="sm"
+            className="h-6 gap-1 px-1.5 text-[11px]"
+            onClick={saveRows}
+          >
+            <SaveIcon className="size-2.5" />
+            {t("save")}
+          </Button>
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            className="h-6 gap-1 px-1.5 text-[11px]"
+            onClick={() => {
+              replaceRows([
+                ...rowsRef.current,
+                {
+                  id: nextEnvironmentVariableDraftId(),
+                  name: "",
+                  value: "",
+                  sensitive: true,
+                },
+              ]);
+              setShowValidationErrors(false);
+            }}
+          >
+            <PlusIcon className="size-2.5" />
+            {t("add")}
+          </Button>
+        </div>
       </div>
       {rows.length === 0 ? (
         <p className="text-xs text-muted-foreground">
@@ -287,72 +314,84 @@ function ProviderEnvironmentSection(props: {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {rows.map((variable, index) => (
-                <TableRow
-                  key={variable.id}
-                  className="border-border/60 odd:bg-muted/20 even:bg-background/20"
-                >
-                  <TableCell>
-                    <DraftInput
-                      value={variable.name}
-                      onCommit={(name) => updateVariable(variable.id, { name: name.trim() })}
-                      placeholder={t("variableName")}
-                      spellCheck={false}
-                      aria-label={t("environmentVariableName", { value1: index + 1 })}
-                    />
-                  </TableCell>
-                  <TableCell>
-                    <DraftInput
-                      value={variable.valueRedacted ? "" : variable.value}
-                      onCommit={(value) => updateVariable(variable.id, { value })}
-                      type={variable.sensitive ? "password" : undefined}
-                      autoComplete="off"
-                      placeholder={
-                        variable.valueRedacted
-                          ? t("storedSecretEnterANewValueToReplace")
-                          : t("value")
-                      }
-                      spellCheck={false}
-                      aria-label={t("environmentVariableValue", { value1: index + 1 })}
-                    />
-                  </TableCell>
-                  <TableCell className="w-20">
-                    <div className="flex h-8 items-center justify-center">
-                      <Checkbox
-                        checked={variable.sensitive}
-                        onCheckedChange={(checked) => {
-                          const sensitive = Boolean(checked);
-                          updateVariable(variable.id, {
-                            sensitive,
-                            ...(sensitive && variable.valueRedacted === undefined
-                              ? {}
-                              : { valueRedacted: sensitive ? variable.valueRedacted : false }),
-                          });
-                        }}
-                        aria-label={t("markEnvironmentVariableAsSensitive", {
-                          value1: variable.name || index + 1,
-                        })}
+              {rows.map((variable, index) => {
+                const name = variable.name.trim();
+                const hasInvalidName =
+                  showValidationErrors &&
+                  (name.length > 0
+                    ? !ENVIRONMENT_VARIABLE_NAME_PATTERN.test(name)
+                    : variable.value.length > 0 ||
+                      variable.sensitive !== true ||
+                      variable.valueRedacted !== undefined);
+
+                return (
+                  <TableRow
+                    key={variable.id}
+                    className="border-border/60 odd:bg-muted/20 even:bg-background/20"
+                  >
+                    <TableCell>
+                      <DraftInput
+                        value={variable.name}
+                        onCommit={(name) => updateVariable(variable.id, { name: name.trim() })}
+                        placeholder={t("variableName")}
+                        spellCheck={false}
+                        aria-label={t("environmentVariableName", { value1: index + 1 })}
+                        aria-invalid={hasInvalidName || undefined}
                       />
-                    </div>
-                  </TableCell>
-                  <TableCell className="w-12">
-                    <div className="flex justify-end">
-                      <Button
-                        type="button"
-                        size="icon-sm"
-                        variant="ghost"
-                        className="size-8 text-muted-foreground hover:text-destructive"
-                        onClick={() => removeVariable(variable.id)}
-                        aria-label={t("removeEnvironmentVariable", {
-                          value1: variable.name || index + 1,
-                        })}
-                      >
-                        <XIcon className="size-3.5" />
-                      </Button>
-                    </div>
-                  </TableCell>
-                </TableRow>
-              ))}
+                    </TableCell>
+                    <TableCell>
+                      <DraftInput
+                        value={variable.valueRedacted ? "" : variable.value}
+                        onCommit={(value) => updateVariable(variable.id, { value })}
+                        type={variable.sensitive ? "password" : undefined}
+                        autoComplete="off"
+                        placeholder={
+                          variable.valueRedacted
+                            ? t("storedSecretEnterANewValueToReplace")
+                            : t("value")
+                        }
+                        spellCheck={false}
+                        aria-label={t("environmentVariableValue", { value1: index + 1 })}
+                      />
+                    </TableCell>
+                    <TableCell className="w-20">
+                      <div className="flex h-8 items-center justify-center">
+                        <Checkbox
+                          checked={variable.sensitive}
+                          onCheckedChange={(checked) => {
+                            const sensitive = Boolean(checked);
+                            updateVariable(variable.id, {
+                              sensitive,
+                              ...(sensitive && variable.valueRedacted === undefined
+                                ? {}
+                                : { valueRedacted: sensitive ? variable.valueRedacted : false }),
+                            });
+                          }}
+                          aria-label={t("markEnvironmentVariableAsSensitive", {
+                            value1: variable.name || index + 1,
+                          })}
+                        />
+                      </div>
+                    </TableCell>
+                    <TableCell className="w-12">
+                      <div className="flex justify-end">
+                        <Button
+                          type="button"
+                          size="icon-sm"
+                          variant="ghost"
+                          className="size-8 text-muted-foreground hover:text-destructive"
+                          onClick={() => removeVariable(variable.id)}
+                          aria-label={t("removeEnvironmentVariable", {
+                            value1: variable.name || index + 1,
+                          })}
+                        >
+                          <XIcon className="size-3.5" />
+                        </Button>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                );
+              })}
             </TableBody>
           </Table>
         </div>
@@ -496,6 +535,12 @@ export function ProviderInstanceCard({
     customModels,
   });
 
+  // Provider 卡片与独立 BYOK 页面共用 config.adapters，两个入口编辑后保持同步。
+  const byokAdapters =
+    driverKind !== null && String(driverKind) === "byok"
+      ? readByokModelAdapters(instance.config)
+      : null;
+
   const updateDisplayName = (value: string) => {
     const trimmed = value.trim();
     const { displayName: _omit, ...rest } = instance;
@@ -529,27 +574,15 @@ export function ProviderInstanceCard({
     );
   };
 
-  const byokAdapters =
-    driverKind !== null && String(driverKind) === "byok"
-      ? readByokModelAdapters(instance.config)
-      : null;
+  const updateCustomModels = (next: ReadonlyArray<string>) => {
+    const nextConfig = nextConfigBlobWithValue(instance.config, "customModels", [...next]);
+    const { config: _omit, ...rest } = instance;
+    onUpdate({ ...rest, config: nextConfig } as ProviderInstanceConfig);
+  };
 
   const updateByokAdapters = (next: ReadonlyArray<ByokModelAdapter>) => {
     if (byokAdapters === null) return;
     const nextConfig = nextConfigBlobWithValue(instance.config, "adapters", [...next]);
-    const { config: _omit, ...rest } = instance;
-    onUpdate({ ...rest, config: nextConfig } as ProviderInstanceConfig);
-  };
-
-  const updateByokFeatureConfig = (key: "promptTemplate" | "delegation", value: unknown) => {
-    if (byokAdapters === null) return;
-    const nextConfig = nextConfigBlobWithValue(instance.config, key, value);
-    const { config: _omit, ...rest } = instance;
-    onUpdate({ ...rest, config: nextConfig } as ProviderInstanceConfig);
-  };
-
-  const updateCustomModels = (next: ReadonlyArray<string>) => {
-    const nextConfig = nextConfigBlobWithValue(instance.config, "customModels", [...next]);
     const { config: _omit, ...rest } = instance;
     onUpdate({ ...rest, config: nextConfig } as ProviderInstanceConfig);
   };
@@ -866,6 +899,16 @@ export function ProviderInstanceCard({
             />
           </div>
 
+          {byokAdapters !== null ? (
+            <ByokModelAdaptersSection
+              environmentId={environmentId}
+              instanceId={String(instanceId)}
+              adapters={byokAdapters}
+              presentation="provider"
+              onChange={updateByokAdapters}
+            />
+          ) : null}
+
           {driverOption ? (
             <ProviderSettingsForm
               definition={driverOption}
@@ -873,31 +916,6 @@ export function ProviderInstanceCard({
               idPrefix={`provider-instance-${instanceId}`}
               variant="card"
               onChange={updateConfig}
-            />
-          ) : null}
-
-          {byokAdapters !== null ? (
-            <ByokModelAdaptersSection
-              environmentId={environmentId}
-              instanceId={String(instanceId)}
-              adapters={byokAdapters}
-              onChange={updateByokAdapters}
-            />
-          ) : null}
-
-          {byokAdapters !== null ? (
-            <ByokFeaturesSection
-              environmentId={environmentId}
-              instanceId={String(instanceId)}
-              adapters={byokAdapters}
-              promptTemplate={
-                readByokFeatureConfig(instance.config, "promptTemplate") as ByokPromptTemplateConfig
-              }
-              delegation={
-                readByokFeatureConfig(instance.config, "delegation") as ByokDelegationConfig
-              }
-              onPromptTemplateChange={(next) => updateByokFeatureConfig("promptTemplate", next)}
-              onDelegationChange={(next) => updateByokFeatureConfig("delegation", next)}
             />
           ) : null}
 

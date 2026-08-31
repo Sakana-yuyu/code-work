@@ -43,6 +43,18 @@ describe("RPC authorization scopes", () => {
     );
   });
 
+  it("requires operate scope for draft model discovery because it carries a request-only API key", () => {
+    expect(requiredScopeForRpcMethod(WS_METHODS.serverDiscoverByokDraftModels)).toBe(
+      AuthOrchestrationOperateScope,
+    );
+  });
+
+  it("reads saved-relay context diagnostics without exposing a credential mutation path", () => {
+    expect(requiredScopeForRpcMethod(WS_METHODS.serverMatchByokContextWindows)).toBe(
+      AuthOrchestrationReadScope,
+    );
+  });
+
   it("separates Squad reads from lifecycle and execution operations", () => {
     for (const method of [
       WS_METHODS.serverListCompositionSquads,

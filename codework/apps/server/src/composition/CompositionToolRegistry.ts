@@ -190,6 +190,21 @@ const descriptors = [
     approval: "on_first_use",
     source: "t3",
   },
+  {
+    // Model-invoked delegation (original cursor-byok Task-tool parity). The
+    // handler only exists when the BYOK delegation service is layered in; the
+    // delegated worker is an external CLI with no access to this ToolBroker,
+    // so delegated tasks cannot nest further delegation.
+    // Approval must stay "never": approval-required tools are hard-denied
+    // inside the BYOK agent loop, which has no interactive approval path.
+    capabilityId: "t3.delegate_task",
+    kind: "tool",
+    version: "1",
+    status: "available",
+    grants: { read: false, execute: true, mutate: false },
+    approval: "never",
+    source: "t3",
+  },
 ] satisfies ReadonlyArray<CompositionCapabilityDescriptor>;
 
 export const listCompositionToolDescriptors = (): CompositionCapabilityDescriptor[] =>

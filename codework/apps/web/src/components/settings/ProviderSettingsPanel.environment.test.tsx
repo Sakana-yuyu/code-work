@@ -179,6 +179,51 @@ describe("EnvironmentProviderSettings routing", () => {
     });
   });
 
+  it("将当前环境传给 BYOK 提供商卡片", () => {
+    const byokId = ProviderInstanceId.make("cursor_byok");
+    settingsState.value = {
+      ...DEFAULT_UNIFIED_SETTINGS,
+      providerInstances: {
+        [byokId]: {
+          driver: ProviderDriverKind.make("byok"),
+          enabled: true,
+          config: {
+            adapters: [
+              {
+                id: "openai-compatible",
+                displayName: "Provider A",
+                protocol: "openai",
+                baseURL: "https://provider-a.example/v1",
+                apiKey: "secret",
+                modelId: "model-a",
+                contextWindowTokens: 128_000,
+              },
+              {
+                id: "anthropic-compatible",
+                displayName: "Provider B",
+                protocol: "anthropic",
+                baseURL: "https://provider-b.example",
+                apiKey: "secret",
+                modelId: "model-b",
+                contextWindowTokens: 200_000,
+              },
+            ],
+          },
+        },
+      },
+    };
+
+    const panel = renderPanel();
+    const providerCard = visitElements(
+      panel,
+      (element) =>
+        element.props.instanceId === byokId &&
+        element.props.environmentId === String(environmentId),
+    );
+
+    expect(providerCard).not.toBeNull();
+  });
+
   it("keeps provider selection available while write controls are read only", () => {
     settingsState.value = {
       ...DEFAULT_UNIFIED_SETTINGS,

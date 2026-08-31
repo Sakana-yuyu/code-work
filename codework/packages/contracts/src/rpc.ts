@@ -205,6 +205,10 @@ import {
 import { UsageReadError, UsageSummary, UsageSummaryInput } from "./usage.ts";
 import { ServerSettings, ServerSettingsError, ServerSettingsPatch } from "./settings.ts";
 import {
+  ByokContextWindowMatchRequest,
+  ByokContextWindowMatchResult,
+  ByokDraftModelDiscoveryRequest,
+  ByokDraftModelDiscoveryResult,
   ByokModelDiscoveryRequest,
   ByokModelDiscoveryResult,
   ByokSupplierCatalogEntry,
@@ -225,6 +229,8 @@ import {
 import {
   ByokAdaptersImportRequest,
   ByokAdaptersImportResult,
+  ByokDelegationCancelRequest,
+  ByokDelegationExecutorProbe,
   ByokDelegationListRequest,
   ByokDelegationSnapshot,
   ByokDelegationSubmitRequest,
@@ -407,10 +413,14 @@ export const WS_METHODS = {
   serverRefreshMcpServer: "server.refreshMcpServer",
   serverGetByokSupplierCatalog: "server.getByokSupplierCatalog",
   serverDiscoverByokModels: "server.discoverByokModels",
+  serverMatchByokContextWindows: "server.matchByokContextWindows",
+  serverDiscoverByokDraftModels: "server.discoverByokDraftModels",
   serverGetByokBalance: "server.getByokBalance",
   serverByokBalanceDashboard: "server.byokBalanceDashboard",
   serverSubmitByokDelegation: "server.submitByokDelegation",
   serverListByokDelegations: "server.listByokDelegations",
+  serverCancelByokDelegation: "server.cancelByokDelegation",
+  serverProbeByokDelegationExecutor: "server.probeByokDelegationExecutor",
   serverImportByokAdapters: "server.importByokAdapters",
   serverRunCompositionAgent: "server.runCompositionAgent",
   serverListCompositionAgentDrivers: "server.listCompositionAgentDrivers",
@@ -623,6 +633,24 @@ export const WsServerDiscoverByokModelsRpc = Rpc.make(WS_METHODS.serverDiscoverB
   error: EnvironmentAuthorizationError,
 });
 
+export const WsServerMatchByokContextWindowsRpc = Rpc.make(
+  WS_METHODS.serverMatchByokContextWindows,
+  {
+    payload: ByokContextWindowMatchRequest,
+    success: ByokContextWindowMatchResult,
+    error: EnvironmentAuthorizationError,
+  },
+);
+
+export const WsServerDiscoverByokDraftModelsRpc = Rpc.make(
+  WS_METHODS.serverDiscoverByokDraftModels,
+  {
+    payload: ByokDraftModelDiscoveryRequest,
+    success: ByokDraftModelDiscoveryResult,
+    error: EnvironmentAuthorizationError,
+  },
+);
+
 export const WsServerGetByokBalanceRpc = Rpc.make(WS_METHODS.serverGetByokBalance, {
   payload: ByokBalanceRequest,
   success: ByokBalanceResult,
@@ -648,6 +676,28 @@ export const WsServerListByokDelegationsRpc = Rpc.make(WS_METHODS.serverListByok
   }),
   error: EnvironmentAuthorizationError,
 });
+
+export const WsServerCancelByokDelegationRpc = Rpc.make(WS_METHODS.serverCancelByokDelegation, {
+  payload: ByokDelegationCancelRequest,
+  success: Schema.Struct({
+    snapshot: Schema.NullOr(ByokDelegationSnapshot),
+  }),
+  error: EnvironmentAuthorizationError,
+});
+
+export const WsServerProbeByokDelegationExecutorRpc = Rpc.make(
+  WS_METHODS.serverProbeByokDelegationExecutor,
+  {
+    payload: Schema.Struct({
+      instanceId: Schema.String,
+      executorId: Schema.String,
+    }),
+    success: Schema.Struct({
+      probe: Schema.NullOr(ByokDelegationExecutorProbe),
+    }),
+    error: EnvironmentAuthorizationError,
+  },
+);
 
 export const WsServerImportByokAdaptersRpc = Rpc.make(WS_METHODS.serverImportByokAdapters, {
   payload: ByokAdaptersImportRequest,
@@ -1692,10 +1742,14 @@ export const WsRpcGroup = RpcGroup.make(
   WsServerRefreshMcpServerRpc,
   WsServerGetByokSupplierCatalogRpc,
   WsServerDiscoverByokModelsRpc,
+  WsServerMatchByokContextWindowsRpc,
+  WsServerDiscoverByokDraftModelsRpc,
   WsServerGetByokBalanceRpc,
   WsServerByokBalanceDashboardRpc,
   WsServerSubmitByokDelegationRpc,
   WsServerListByokDelegationsRpc,
+  WsServerCancelByokDelegationRpc,
+  WsServerProbeByokDelegationExecutorRpc,
   WsServerImportByokAdaptersRpc,
   WsServerRunCompositionAgentRpc,
   WsServerListCompositionAgentDriversRpc,

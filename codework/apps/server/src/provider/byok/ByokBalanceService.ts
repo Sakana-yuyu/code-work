@@ -18,6 +18,7 @@ import * as ServerSettings from "../../serverSettings.ts";
 import {
   balanceCacheGet,
   balanceCacheSet,
+  parseDeepSeekBalance,
   parseNewAPIQuota,
   parseOpenAIBilling,
   resolveBalanceProfile,
@@ -198,6 +199,23 @@ const attemptsFor = (
   ];
 };
 
+const usesOfficialDeepSeekEndpoint = (baseURL: string): boolean => {
+  try {
+    const url = new URL(baseURL);
+    return url.protocol === "https:" && url.hostname.toLowerCase() === "api.deepseek.com";
+  } catch {
+    return false;
+  }
+};
+
+const deepSeekAttempts = (adapter: ByokModelAdapter): readonly BalanceAttempt[] => [
+  {
+    endpoint: "https://api.deepseek.com/user/balance",
+    headers: { authorization: `Bearer ${adapter.apiKey}`, accept: "application/json" },
+    parse: (payload) => parseDeepSeekBalance(payload),
+  },
+];
+
 const toResult = (
   input: ByokBalanceRequest,
   normalized: NormalizedBalanceResult,
@@ -297,56 +315,57 @@ export const make = Effect.gen(function* () {
       }
       const profiles: readonly ("general" | "newapi")[] =
         profile === "auto" ? ["general", "newapi"] : [profile];
+      const attempts = usesOfficialDeepSeekEndpoint(adapter.baseURL)
+        ? deepSeekAttempts(adapter)
+        : profiles.flatMap((candidateProfile) => attemptsFor(adapter, candidateProfile));
       let lastError: ByokBalanceResult | undefined;
-      for (const candidateProfile of profiles) {
-        for (const attempt of attemptsFor(adapter, candidateProfile)) {
-          const response = yield* Effect.result(
-            fetchByokCatalog({ url: attempt.endpoint, headers: attempt.headers }),
+      for (const attempt of attempts) {
+        const response = yield* Effect.result(
+          fetchByokCatalog({ url: attempt.endpoint, headers: attempt.headers }),
+        );
+        if (response._tag === "Failure") {
+          lastError = failure(
+            input,
+            new URL(attempt.endpoint).origin,
+            mapHttpError(response.failure),
+            response.failure.code === "timeout",
           );
-          if (response._tag === "Failure") {
-            lastError = failure(
-              input,
-              new URL(attempt.endpoint).origin,
-              mapHttpError(response.failure),
-              response.failure.code === "timeout",
-            );
-            continue;
-          }
-          if (response.success.status === 401 || response.success.status === 403) {
-            lastError = failure(input, new URL(attempt.endpoint).origin, "upstream_http");
-            continue;
-          }
-          if (response.success.status < 200 || response.success.status >= 300) {
-            lastError = failure(input, new URL(attempt.endpoint).origin, "upstream_http");
-            continue;
-          }
-          let usagePayload: unknown;
-          if (attempt.usageEndpoint !== undefined) {
-            const usageResponse = yield* Effect.result(
-              fetchByokCatalog({ url: attempt.usageEndpoint, headers: attempt.headers }),
-            );
-            usagePayload =
-              usageResponse._tag === "Success" &&
-              usageResponse.success.status >= 200 &&
-              usageResponse.success.status < 300
-                ? parseJson(usageResponse.success.body)
-                : undefined;
-          }
-          const parsed = attempt.parse(parseJson(response.success.body), usagePayload);
-          if (parsed === undefined || !parsed.supported) {
-            lastError = failure(input, new URL(attempt.endpoint).origin, "invalid_payload");
-            continue;
-          }
-          const result = toResult(input, parsed, DateTime.formatIso(yield* DateTime.now));
-          const cacheKind = shouldCacheBalanceResult(parsed);
-          if (cacheKind !== undefined) {
-            const fetchedAt = yield* Clock.currentTimeMillis;
-            yield* Ref.update(cacheRef, (cache) =>
-              balanceCacheSet(cache, cacheKey, { fingerprint, result }, cacheKind, fetchedAt),
-            );
-          }
-          return result;
+          continue;
         }
+        if (response.success.status === 401 || response.success.status === 403) {
+          lastError = failure(input, new URL(attempt.endpoint).origin, "upstream_http");
+          continue;
+        }
+        if (response.success.status < 200 || response.success.status >= 300) {
+          lastError = failure(input, new URL(attempt.endpoint).origin, "upstream_http");
+          continue;
+        }
+        let usagePayload: unknown;
+        if (attempt.usageEndpoint !== undefined) {
+          const usageResponse = yield* Effect.result(
+            fetchByokCatalog({ url: attempt.usageEndpoint, headers: attempt.headers }),
+          );
+          usagePayload =
+            usageResponse._tag === "Success" &&
+            usageResponse.success.status >= 200 &&
+            usageResponse.success.status < 300
+              ? parseJson(usageResponse.success.body)
+              : undefined;
+        }
+        const parsed = attempt.parse(parseJson(response.success.body), usagePayload);
+        if (parsed === undefined || !parsed.supported) {
+          lastError = failure(input, new URL(attempt.endpoint).origin, "invalid_payload");
+          continue;
+        }
+        const result = toResult(input, parsed, DateTime.formatIso(yield* DateTime.now));
+        const cacheKind = shouldCacheBalanceResult(parsed);
+        if (cacheKind !== undefined) {
+          const fetchedAt = yield* Clock.currentTimeMillis;
+          yield* Ref.update(cacheRef, (cache) =>
+            balanceCacheSet(cache, cacheKey, { fingerprint, result }, cacheKind, fetchedAt),
+          );
+        }
+        return result;
       }
       return lastError ?? failure(input, "balance", "invalid_payload");
     }).pipe(Effect.catch(() => Effect.succeed(failure(input, "service", "invalid_payload"))));
@@ -368,9 +387,7 @@ export const make = Effect.gen(function* () {
                 balance({
                   instanceId,
                   adapterId: adapter.id,
-                  ...(input.forceRefresh === undefined
-                    ? {}
-                    : { forceRefresh: input.forceRefresh }),
+                  ...(input.forceRefresh === undefined ? {} : { forceRefresh: input.forceRefresh }),
                 }).pipe(
                   Effect.map(
                     (result): ByokBalanceDashboardAdapterInput => ({
@@ -389,9 +406,7 @@ export const make = Effect.gen(function* () {
             );
             return {
               instanceId,
-              ...(instance.displayName === undefined
-                ? {}
-                : { displayName: instance.displayName }),
+              ...(instance.displayName === undefined ? {} : { displayName: instance.displayName }),
               enabled: resolveProviderInstanceEnabled(instance),
               adapters: adapterEntries,
             } satisfies ByokBalanceDashboardInstanceInput;

@@ -7,6 +7,7 @@ import { t } from "~/i18n";
 
 const mocks = vi.hoisted(() => ({
   environment: null as { readonly environmentId: string } | null,
+  settings: { providerInstances: {} } as never,
   squadsAtom: Symbol("squads"),
   squadsQuery: {
     data: null as CompositionSquadListResult | null,
@@ -32,6 +33,10 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock("~/state/environments", () => ({
   usePrimaryEnvironment: () => mocks.environment,
+}));
+
+vi.mock("~/hooks/useSettings", () => ({
+  usePrimarySettings: () => mocks.settings,
 }));
 
 vi.mock("~/state/query", () => ({
@@ -64,6 +69,7 @@ import { CompositionSquadPanel } from "./CompositionSquadPanel";
 describe("CompositionSquadPanel", () => {
   beforeEach(() => {
     mocks.environment = null;
+    mocks.settings = { providerInstances: {} } as never;
     mocks.squadsQuery.data = null;
     mocks.squadsQuery.error = null;
     mocks.squadsQuery.isPending = false;
@@ -167,5 +173,62 @@ describe("CompositionSquadPanel", () => {
     expect(t("squadBuilder.leader")).toBe("队长");
     expect(t("squadBuilder.agentId")).toBe("Agent 标识");
     expect(t("squadBuilder.role.leader")).toBe("队长");
+  });
+
+  it("将已配置的 BYOK adapter 暴露为成员模型候选，同时保留手动模型值", () => {
+    mocks.environment = { environmentId: EnvironmentId.make("env-test") };
+    mocks.settings = {
+      providerInstances: {
+        "byok-primary": {
+          driver: "byok",
+          config: {
+            adapters: [
+              {
+                id: "adapter-deepseek",
+                displayName: "DeepSeek",
+                protocol: "openai",
+                baseURL: "https://api.example.test/v1",
+                apiKey: "",
+                modelId: "deepseek-chat",
+                contextWindowTokens: 128000,
+              },
+            ],
+          },
+        },
+      },
+    } as never;
+    mocks.squadsQuery.data = {
+      squads: [
+        {
+          squadId: "squad-byok",
+          name: "BYOK Team",
+          leaderAgentId: "agent-lead",
+          memberAgentIds: ["agent-lead"],
+          revision: 1,
+          collaborationMode: "serial",
+          members: [
+            {
+              agentId: "agent-lead",
+              role: "leader",
+              order: 0,
+              required: true,
+              model: "legacy-model",
+              capabilityIds: [],
+              maxConcurrentTasks: 1,
+            },
+          ],
+          maxConcurrency: 1,
+          maxRetries: 0,
+          failurePolicy: "fail_fast",
+          partialSuccessPolicy: "reject",
+        },
+      ],
+    };
+
+    const html = renderToStaticMarkup(<CompositionSquadPanel />);
+
+    expect(html).toContain('value="legacy-model"');
+    expect(html).toContain('value="adapter-deepseek"');
+    expect(html).toContain('label="DeepSeek · deepseek-chat"');
   });
 });

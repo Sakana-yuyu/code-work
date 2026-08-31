@@ -65,6 +65,80 @@ const runDiscover = async (
     ),
   );
 
+const runContextWindowMatch = async (
+  settings: typeof DEFAULT_SERVER_SETTINGS,
+  fetchImplementation: typeof globalThis.fetch,
+  input: { instanceId: string; adapterId: string },
+) =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const service = yield* make;
+      return yield* service.matchContextWindows(input);
+    }).pipe(
+      Effect.provide(
+        Layer.merge(
+          Layer.succeed(ServerSettings.ServerSettingsService, {
+            start: Effect.void,
+            ready: Effect.void,
+            getSettings: Effect.succeed(settings),
+            updateSettings: () => Effect.succeed(settings),
+            streamChanges: Stream.empty,
+            subscribeChanges: Effect.succeed(Stream.empty),
+          }),
+          FetchHttpClient.layer.pipe(
+            Layer.provide(Layer.succeed(FetchHttpClient.Fetch, fetchImplementation)),
+          ),
+        ),
+      ),
+    ),
+  );
+
+const runDraftDiscover = async (
+  fetchImplementation: typeof globalThis.fetch,
+  input: {
+    protocol: "openai" | "anthropic" | "gemini";
+    baseURL: string;
+    apiKey: string;
+    supplierID?: string;
+  },
+) => {
+  let getSettingsCalls = 0;
+  let updateSettingsCalls = 0;
+  const settings = DEFAULT_SERVER_SETTINGS;
+  const result = await Effect.runPromise(
+    Effect.gen(function* () {
+      const service = yield* make;
+      const first = yield* service.discoverDraft(input);
+      const second = yield* service.discoverDraft(input);
+      return { first, second };
+    }).pipe(
+      Effect.provide(
+        Layer.merge(
+          Layer.succeed(ServerSettings.ServerSettingsService, {
+            start: Effect.void,
+            ready: Effect.void,
+            getSettings: Effect.sync(() => {
+              getSettingsCalls += 1;
+              return settings;
+            }),
+            updateSettings: () =>
+              Effect.sync(() => {
+                updateSettingsCalls += 1;
+                return settings;
+              }),
+            streamChanges: Stream.empty,
+            subscribeChanges: Effect.succeed(Stream.empty),
+          }),
+          FetchHttpClient.layer.pipe(
+            Layer.provide(Layer.succeed(FetchHttpClient.Fetch, fetchImplementation)),
+          ),
+        ),
+      ),
+    ),
+  );
+  return { ...result, getSettingsCalls, updateSettingsCalls };
+};
+
 const adapter = (overrides: Partial<Adapter> = {}): Adapter => ({
   id: "adapter-success",
   displayName: "Example model",
@@ -168,5 +242,142 @@ describe("ByokModelDiscoveryService", () => {
     );
     expect(isolated.status).toBe("failed");
     expect(isolated.models).toEqual([]);
+  });
+
+  it("probes a relay once for manual context matching and never returns its API key", async () => {
+    let requestCount = 0;
+    const fetch = asFetch(async () => {
+      requestCount += 1;
+      return new Response(
+        JSON.stringify({
+          data: [
+            { id: "private-one", context_window: 64_000 },
+            { id: "private-two", context_window: 32_000 },
+          ],
+        }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      );
+    });
+    const result = await runContextWindowMatch(
+      makeSettings("instance-context-match", [
+        adapter({ id: "context-one", modelId: "private-one", contextWindowTokens: 128_000 }),
+        adapter({ id: "context-two", modelId: "private-two", contextWindowTokens: 128_000 }),
+      ]),
+      fetch,
+      { instanceId: "instance-context-match", adapterId: "context-one" },
+    );
+
+    expect(requestCount).toBe(1);
+    expect(result).toMatchObject({
+      adapterId: "context-one",
+      total: 2,
+      fromCatalog: 0,
+      fromProbe: 2,
+      unchanged: 0,
+      details: [
+        { adapterId: "context-one", source: "probe", before: 128_000, after: 64_000 },
+        { adapterId: "context-two", source: "probe", before: 128_000, after: 32_000 },
+      ],
+    });
+    expect(JSON.stringify(result)).not.toContain("sk-test-key");
+    expect(JSON.stringify(result).toLowerCase()).not.toContain("apikey");
+  });
+
+  it("uses explicit relay metadata to correct a catalog-known DeepSeek model", async () => {
+    let requestCount = 0;
+    const fetch = asFetch(async () => {
+      requestCount += 1;
+      return new Response(
+        JSON.stringify({ data: [{ id: "deepseek-v3", context_window: 1_000_000 }] }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      );
+    });
+
+    const result = await runContextWindowMatch(
+      makeSettings("instance-deepseek-context", [
+        adapter({
+          id: "deepseek-v3",
+          modelId: "deepseek-v3",
+          contextWindowTokens: 128_000,
+        }),
+      ]),
+      fetch,
+      { instanceId: "instance-deepseek-context", adapterId: "deepseek-v3" },
+    );
+
+    expect(requestCount).toBe(1);
+    expect(result).toMatchObject({
+      total: 1,
+      fromCatalog: 0,
+      fromProbe: 1,
+      unchanged: 0,
+      details: [
+        {
+          adapterId: "deepseek-v3",
+          modelId: "deepseek-v3",
+          source: "probe",
+          before: 128_000,
+          after: 1_000_000,
+        },
+      ],
+    });
+  });
+
+  it("discovers a draft without persisting, caching, or returning its API key", async () => {
+    const requests: Request[] = [];
+    const fetch = asFetch(async (input, init) => {
+      requests.push(new Request(String(input), init));
+      return new Response(
+        JSON.stringify({ data: [{ id: "draft-model", context_window: 32000 }] }),
+        {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        },
+      );
+    });
+
+    const { first, second, getSettingsCalls, updateSettingsCalls } = await runDraftDiscover(fetch, {
+      protocol: "openai",
+      baseURL: "https://draft-discovery.test/v1",
+      apiKey: "sk-draft-discovery-key",
+      supplierID: "custom",
+    });
+
+    expect(first.status).toBe("ready");
+    expect(first.models).toEqual([{ id: "draft-model", contextWindowTokens: 32000 }]);
+    expect(second.status).toBe("ready");
+    expect(requests).toHaveLength(2);
+    expect(requests.map((request) => request.url)).toEqual([
+      "https://draft-discovery.test/v1/models",
+      "https://draft-discovery.test/v1/models",
+    ]);
+    expect(
+      requests.every(
+        (request) => request.headers.get("authorization") === "Bearer sk-draft-discovery-key",
+      ),
+    ).toBe(true);
+    expect(getSettingsCalls).toBe(0);
+    expect(updateSettingsCalls).toBe(0);
+    const serialized = JSON.stringify({ first, second }).toLowerCase();
+    expect(serialized).not.toContain("sk-draft-discovery-key");
+    expect(serialized).not.toContain("apikey");
+  });
+
+  it("rejects an invalid draft endpoint before sending its request-only API key", async () => {
+    const fetch = asFetch(async () => {
+      throw new Error("The invalid endpoint must not reach fetch.");
+    });
+
+    const { first, second, getSettingsCalls, updateSettingsCalls } = await runDraftDiscover(fetch, {
+      protocol: "openai",
+      baseURL: "not-an-absolute-url",
+      apiKey: "sk-invalid-endpoint-key",
+    });
+
+    expect(first.error?.code).toBe("invalid_endpoint");
+    expect(second.error?.code).toBe("invalid_endpoint");
+    expect(getSettingsCalls).toBe(0);
+    expect(updateSettingsCalls).toBe(0);
+    expect(JSON.stringify({ first, second })).not.toContain("sk-invalid-endpoint-key");
   });
 });

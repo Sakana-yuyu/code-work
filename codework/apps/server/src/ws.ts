@@ -2097,6 +2097,18 @@ const makeWsRpcLayer = (
             byokModelDiscovery.discover(input),
             { "rpc.aggregate": "server" },
           ),
+        [WS_METHODS.serverMatchByokContextWindows]: (input) =>
+          observeRpcEffect(
+            WS_METHODS.serverMatchByokContextWindows,
+            byokModelDiscovery.matchContextWindows(input),
+            { "rpc.aggregate": "server" },
+          ),
+        [WS_METHODS.serverDiscoverByokDraftModels]: (input) =>
+          observeRpcEffect(
+            WS_METHODS.serverDiscoverByokDraftModels,
+            byokModelDiscovery.discoverDraft(input),
+            { "rpc.aggregate": "server" },
+          ),
         [WS_METHODS.serverGetByokBalance]: (input) =>
           observeRpcEffect(WS_METHODS.serverGetByokBalance, byokBalance.balance(input), {
             "rpc.aggregate": "server",
@@ -2115,6 +2127,18 @@ const makeWsRpcLayer = (
             byokDelegation
               .list(input.instanceId)
               .pipe(Effect.map((delegations) => ({ delegations }))),
+            { "rpc.aggregate": "server" },
+          ),
+        [WS_METHODS.serverCancelByokDelegation]: (input) =>
+          observeRpcEffect(
+            WS_METHODS.serverCancelByokDelegation,
+            byokDelegation.cancel(input).pipe(Effect.map((snapshot) => ({ snapshot }))),
+            { "rpc.aggregate": "server" },
+          ),
+        [WS_METHODS.serverProbeByokDelegationExecutor]: (input) =>
+          observeRpcEffect(
+            WS_METHODS.serverProbeByokDelegationExecutor,
+            byokDelegation.probeExecutor(input).pipe(Effect.map((probe) => ({ probe }))),
             { "rpc.aggregate": "server" },
           ),
         [WS_METHODS.serverImportByokAdapters]: (input) =>

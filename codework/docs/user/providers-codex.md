@@ -112,6 +112,9 @@ This is useful when a Codex-compatible setup needs account-specific variables. A
 the provider instance that should receive them, and mark API keys or tokens as sensitive. Sensitive
 values are stored as server secrets and are not sent back to the app after saving.
 
+Select **Save** after adding or editing variables and before choosing another provider. A newly added
+blank row is only a local draft, so it is not stored until it has a valid variable name and you save it.
+
 ## Can I Switch Accounts In An Existing Thread?
 
 Yes, when both Codex providers share the same `CODEX_HOME path`.

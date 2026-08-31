@@ -2,6 +2,8 @@ import { describe, expect, it } from "vite-plus/test";
 import * as Schema from "effect/Schema";
 
 import {
+  ByokDraftModelDiscoveryRequest,
+  ByokDraftModelDiscoveryResult,
   ByokModelDiscoveryRequest,
   ByokModelDiscoveryResult,
   ByokSupplierCatalogEntry,
@@ -9,6 +11,8 @@ import {
 
 const decodeRequest = Schema.decodeUnknownSync(ByokModelDiscoveryRequest);
 const decodeResult = Schema.decodeUnknownSync(ByokModelDiscoveryResult);
+const decodeDraftRequest = Schema.decodeUnknownSync(ByokDraftModelDiscoveryRequest);
+const decodeDraftResult = Schema.decodeUnknownSync(ByokDraftModelDiscoveryResult);
 const decodeCatalog = Schema.decodeUnknownSync(ByokSupplierCatalogEntry);
 
 describe("BYOK discovery contracts", () => {
@@ -55,6 +59,37 @@ describe("BYOK discovery contracts", () => {
     expect(serialized).not.toContain("cookie");
     expect(serialized).not.toContain("apiKey".toLowerCase());
     expect(result.stale).toBe(true);
+  });
+
+  it("accepts request-only draft credentials without exposing them in discovery results", () => {
+    expect(
+      decodeDraftRequest({
+        protocol: "openai",
+        baseURL: "https://provider.test/v1",
+        apiKey: "sk-draft-request-only",
+        supplierID: "openai",
+        headers: { authorization: "Bearer must-not-be-accepted" },
+      }),
+    ).toEqual({
+      protocol: "openai",
+      baseURL: "https://provider.test/v1",
+      apiKey: "sk-draft-request-only",
+      supplierID: "openai",
+    });
+
+    const result = decodeDraftResult({
+      status: "ready",
+      models: [{ id: "gpt-draft" }],
+      source: "https://provider.test",
+      apiKey: "sk-must-not-be-returned",
+    });
+    expect(result).toEqual({
+      status: "ready",
+      models: [{ id: "gpt-draft" }],
+      source: "https://provider.test",
+    });
+    expect(JSON.stringify(result).toLowerCase()).not.toContain("apikey");
+    expect(JSON.stringify(result)).not.toContain("sk-");
   });
 
   it("allows public key-page metadata but not secret values in supplier catalog entries", () => {

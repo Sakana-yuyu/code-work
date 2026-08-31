@@ -154,6 +154,59 @@ describe("ByokBalanceService", () => {
     expect(seenUserID).toBe("42");
   });
 
+  it("queries DeepSeek's official balance endpoint for an official DeepSeek base URL", async () => {
+    let seenURL = "";
+    let seenAuthorization = "";
+    const result = await runBalance(
+      makeSettings("instance-deepseek", [
+        adapter({
+          baseURL: "https://api.deepseek.com/v1",
+          modelId: "deepseek-chat",
+          apiKey: "deepseek-test-key",
+        }),
+      ]),
+      asFetch(async (input, init) => {
+        seenURL = String(input);
+        seenAuthorization = new Headers(init?.headers).get("authorization") ?? "";
+        return jsonResponse({
+          is_available: true,
+          balance_infos: [{ currency: "CNY", total_balance: "18.25" }],
+        });
+      }),
+      { instanceId: "instance-deepseek", adapterId: "adapter-balance" },
+    );
+
+    expect(seenURL).toBe("https://api.deepseek.com/user/balance");
+    expect(seenAuthorization).toBe("Bearer deepseek-test-key");
+    expect(result).toMatchObject({
+      supported: true,
+      source: "deepseek",
+      currency: "CNY",
+      remaining: 18.25,
+    });
+    expect(JSON.stringify(result)).not.toContain("deepseek-test-key");
+  });
+
+  it("does not route a lookalike host to DeepSeek's official balance endpoint", async () => {
+    const requestedURLs: string[] = [];
+    await runBalance(
+      makeSettings("instance-lookalike", [
+        adapter({ baseURL: "https://api.deepseek.com.example.test/v1" }),
+      ]),
+      asFetch(async (input) => {
+        requestedURLs.push(String(input));
+        if (String(input).endsWith("/v1/dashboard/billing/subscription")) {
+          return jsonResponse({ hard_limit_usd: 10 });
+        }
+        if (String(input).includes("billing/usage")) return jsonResponse({ total_usage: 0 });
+        return jsonResponse({ error: "not found" }, 404);
+      }),
+      { instanceId: "instance-lookalike", adapterId: "adapter-balance" },
+    );
+
+    expect(requestedURLs).not.toContain("https://api.deepseek.com/user/balance");
+  });
+
   it("reports native gemini adapters as unsupported without any request", async () => {
     const result = await runBalance(
       makeSettings("instance-3", [
@@ -216,7 +269,11 @@ describe("ByokBalanceService", () => {
                 protocol: "gemini",
                 baseURL: "https://generativelanguage.googleapis.com/v1beta",
               }),
-              adapter({ id: "adapter-broken", displayName: "坏端点", baseURL: "https://broken.test/v1" }),
+              adapter({
+                id: "adapter-broken",
+                displayName: "坏端点",
+                baseURL: "https://broken.test/v1",
+              }),
             ],
           },
         },

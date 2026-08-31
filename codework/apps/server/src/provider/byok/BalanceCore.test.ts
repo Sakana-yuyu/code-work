@@ -10,6 +10,7 @@ import {
   classifyBalanceFailure,
   lookupDotPath,
   normalizeBalanceWindow,
+  parseDeepSeekBalance,
   parseNewAPIQuota,
   parseNumericDotPath,
   parseNumericField,
@@ -84,6 +85,25 @@ describe("BalanceCore", () => {
     expect(unlimited).toMatchObject({ unlimited: true, planName: "默认套餐" });
     expect(unlimited).not.toHaveProperty("remaining");
     expect(parseNewAPIQuota({ success: false, data: { quota: 1 } })).toBeUndefined();
+  });
+
+  it("parses DeepSeek balances and prefers CNY when multiple currencies are present", () => {
+    expect(
+      parseDeepSeekBalance({
+        is_available: true,
+        balance_infos: [
+          { currency: "USD", total_balance: "1.25" },
+          { currency: "CNY", total_balance: "20" },
+          { currency: "CNY", total_balance: "0.5" },
+        ],
+      }),
+    ).toMatchObject({
+      source: "deepseek",
+      currency: "CNY",
+      remaining: 20.5,
+      unlimited: false,
+    });
+    expect(parseDeepSeekBalance({ balance_infos: [] })).toBeUndefined();
   });
 
   it("converts OpenAI total_usage cents and recognizes unlimited totals", () => {

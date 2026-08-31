@@ -1,5 +1,5 @@
 import * as NodeServices from "@effect/platform-node/NodeServices";
-import { EnvironmentId } from "@codework/contracts";
+import { EnvironmentId, type ByokDelegationSnapshot } from "@codework/contracts";
 import { it, describe, expect } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
@@ -22,6 +22,7 @@ import * as CapabilityGrantRegistry from "./CapabilityGrantRegistry.ts";
 import * as CompositionIdeSessionRegistry from "./CompositionIdeSessionRegistry.ts";
 import * as CompositionMcpToolRegistry from "./CompositionMcpToolRegistry.ts";
 import * as ToolBroker from "./ToolBroker.ts";
+import * as ByokDelegationService from "../provider/byok/ByokDelegationService.ts";
 
 const previewInvocations: PreviewAutomationBroker.PreviewAutomationInvokeInput[] = [];
 const ideInvocations: CompositionIdeSessionRegistry.CompositionIdeInvocation[] = [];
@@ -583,6 +584,7 @@ it.layer(TestLayer, { excludeTestServices: true })("ToolBrokerLive", (it) => {
           "t3.preview_evaluate",
           "t3.preview_wait_for",
           "t3.ide.invoke",
+          "t3.delegate_task",
           "t3.mcp.preview",
           "t3.runtime.provider",
         ]);
@@ -833,6 +835,159 @@ it.layer(TestLayer, { excludeTestServices: true })("ToolBrokerLive", (it) => {
         runId: "run-1",
         agentId: "agent-1",
       });
+    }),
+  );
+});
+
+const delegationSubmits: Array<{
+  instanceId: string;
+  task: string;
+  subagentType?: string | undefined;
+}> = [];
+let nextDelegationSnapshot: ByokDelegationSnapshot = {
+  id: "delegation-tool-1",
+  status: "succeeded",
+  taskPreview: "子任务文本",
+  resultPreview: "delegated result",
+  submittedAt: 1,
+};
+
+const FakeByokDelegationLayer = Layer.succeed(ByokDelegationService.ByokDelegationServiceTag, {
+  submit: (input) =>
+    Effect.sync(() => {
+      delegationSubmits.push(input);
+      return nextDelegationSnapshot;
+    }),
+  list: () => Effect.succeed([]),
+  cancel: () => Effect.succeed(null),
+  cancelCompositionTask: () => Effect.succeed(undefined),
+  probeExecutor: () => Effect.succeed(null),
+} satisfies ByokDelegationService.ByokDelegationService);
+
+// Replicates TestLayer's ToolBroker wiring but provides the fake delegation
+// service INTO the broker layer — merging it alongside would not inject the
+// service into an already-constructed broker.
+const DelegateTestLayer = Layer.mergeAll(
+  ToolBroker.layer.pipe(
+    Layer.provide(CapabilityPolicyLayer.pipe(Layer.provideMerge(CapabilityGrantLayer))),
+    Layer.provideMerge(CapabilityGrantLayer),
+    Layer.provide(CapabilityRegistryLayer),
+    Layer.provide(McpToolRegistryLayer),
+    Layer.provide(WorkspaceFileLayer),
+    Layer.provide(ToolTestServicesLayer),
+    Layer.provideMerge(FakeByokDelegationLayer),
+  ),
+  CapabilityPolicyLayer,
+  CapabilityGrantLayer,
+  CapabilityRegistryLayer,
+  WorkspaceFileLayer,
+  ToolTestServicesLayer,
+  McpToolRegistryLayer,
+  ServerConfig.ServerConfig.layerTest(process.cwd(), {
+    prefix: "t3-composition-delegate-tool-test-",
+  }),
+).pipe(Layer.provideMerge(NodeServices.layer));
+
+it.layer(DelegateTestLayer, { excludeTestServices: true })("delegate_task tool", (it) => {
+  it.effect("routes delegate_task to the instance delegation service and waits for terminal", () =>
+    Effect.gen(function* () {
+      const broker = yield* ToolBroker.ToolBroker;
+      const result = yield* broker.invoke({
+        ...baseInput("C:/trusted/workspace"),
+        agentId: "provider:instance-1",
+        canonicalToolName: "delegate_task",
+        arguments: { task: "子任务文本", subagentType: "explore" },
+        idempotencyKey: "delegate-route-1",
+        capabilityGrantIds: ["t3.delegate_task"],
+      });
+
+      expect(result.status).toBe("succeeded");
+      expect(result.result).toMatchObject({
+        delegationId: "delegation-tool-1",
+        delegationStatus: "succeeded",
+        result: "delegated result",
+      });
+      expect(delegationSubmits).toEqual([
+        { instanceId: "instance-1", task: "子任务文本", subagentType: "explore" },
+      ]);
+    }),
+  );
+
+  it.effect("carries a failed delegation as a succeeded tool observation", () =>
+    Effect.gen(function* () {
+      nextDelegationSnapshot = {
+        id: "delegation-tool-2",
+        status: "failed",
+        taskPreview: "failing task",
+        errorCode: "EXECUTOR_EXIT",
+        errorMessage: "Executor exited with code 3.",
+        submittedAt: 2,
+      };
+      const broker = yield* ToolBroker.ToolBroker;
+      const result = yield* broker.invoke({
+        ...baseInput("C:/trusted/workspace"),
+        agentId: "provider:instance-1",
+        canonicalToolName: "delegate_task",
+        arguments: { task: "failing task" },
+        idempotencyKey: "delegate-fail-1",
+        capabilityGrantIds: ["t3.delegate_task"],
+      });
+
+      expect(result.status).toBe("succeeded");
+      expect(result.result).toMatchObject({
+        delegationStatus: "failed",
+        errorCode: "EXECUTOR_EXIT",
+        errorMessage: "Executor exited with code 3.",
+      });
+    }),
+  );
+
+  it.effect("denies delegate_task without a capability grant", () =>
+    Effect.gen(function* () {
+      const broker = yield* ToolBroker.ToolBroker;
+      const result = yield* broker.invoke({
+        ...baseInput("C:/trusted/workspace"),
+        agentId: "provider:instance-1",
+        canonicalToolName: "delegate_task",
+        arguments: { task: "子任务文本" },
+        idempotencyKey: "delegate-ungranted-1",
+        capabilityGrantIds: [],
+      });
+
+      expect(result.status).toBe("denied");
+    }),
+  );
+
+  it.effect("rejects invalid arguments with tool_arguments_invalid", () =>
+    Effect.gen(function* () {
+      const broker = yield* ToolBroker.ToolBroker;
+      const result = yield* broker.invoke({
+        ...baseInput("C:/trusted/workspace"),
+        agentId: "provider:instance-1",
+        canonicalToolName: "delegate_task",
+        arguments: {},
+        idempotencyKey: "delegate-invalid-1",
+        capabilityGrantIds: ["t3.delegate_task"],
+      });
+
+      expect(result.status).toBe("failed");
+      expect(result.errorCode).toBe("tool_arguments_invalid");
+    }),
+  );
+
+  it.effect("rejects delegate_task for agents outside the provider prefix", () =>
+    Effect.gen(function* () {
+      const broker = yield* ToolBroker.ToolBroker;
+      const result = yield* broker.invoke({
+        ...baseInput("C:/trusted/workspace"),
+        canonicalToolName: "delegate_task",
+        arguments: { task: "子任务文本" },
+        idempotencyKey: "delegate-scope-1",
+        capabilityGrantIds: ["t3.delegate_task"],
+      });
+
+      expect(result.status).toBe("failed");
+      expect(result.errorCode).toBe("tool_scope_missing");
     }),
   );
 });

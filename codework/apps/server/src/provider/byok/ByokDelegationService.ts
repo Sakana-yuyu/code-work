@@ -1,19 +1,29 @@
 // @effect-diagnostics nodeBuiltinImport:off - The scheduler owns cancellable child processes directly.
 import * as NodeChildProcess from "node:child_process";
 import * as NodeCrypto from "node:crypto";
+import * as NodeFs from "node:fs";
+import * as NodePath from "node:path";
 
 import type {
+  ByokDelegationCancelRequest,
   ByokDelegationConfig,
+  ByokDelegationExecutor,
+  ByokDelegationExecutorAttempt,
+  ByokDelegationExecutorProbe,
   ByokDelegationSnapshot,
   ByokDelegationSubmitRequest,
+  ByokSettings,
   CompositionTaskCancelRequest,
   CompositionTaskCancelResult,
   ServerSettings as ServerSettingsContract,
 } from "@codework/contracts";
 import * as Clock from "effect/Clock";
+import * as Context from "effect/Context";
 import * as Data from "effect/Data";
 import * as Effect from "effect/Effect";
+import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
+import { HttpClient } from "effect/unstable/http";
 
 import * as ServerSettings from "../../serverSettings.ts";
 import {
@@ -39,6 +49,35 @@ import {
   type DelegationSnapshot,
   type DelegationStatus,
 } from "../../orchestration/byokDelegation/DelegationScheduler.ts";
+import {
+  byokAdapterForModel,
+  collectChatText,
+  streamChat,
+  type ByokEngineError,
+} from "../Layers/byokChatClient.ts";
+import {
+  applySubagentPromptFragment,
+  buildSupervisorReviewPrompt,
+  INITIAL_SUPERVISION_COUNTERS,
+  nextSupervisionAction,
+  parseSupervisionDecision,
+  resolveSubagentPromptFragment,
+  type SupervisionCounters,
+} from "./DelegationSupervision.ts";
+import {
+  clampFailoverLimit,
+  ExecutorAttemptError,
+  ExecutorProbeRegistry,
+  type ExecutorProbeOutcome,
+  diagnosticPreview,
+  effectiveExecutorList,
+  isExecutorCancellation,
+  isSwitchableExecutorFailure,
+  EXECUTOR_PROBE_TIMEOUT_MS,
+  MAX_EXECUTOR_ATTEMPT_ROWS,
+  probeFromVersionRun,
+  resolveExecutablePath,
+} from "./DelegationExecutors.ts";
 
 /** Executor stdout is capped so a runaway command cannot exhaust memory. */
 const DELEGATION_MAX_OUTPUT_BYTES = 4 * 1024 * 1024;
@@ -47,6 +86,10 @@ const TASK_PREVIEW_MAX_CHARS = 200;
 const RESULT_PREVIEW_MAX_CHARS = 2_000;
 /** How many terminal snapshots the live scheduler retains per instance. */
 const RETAINED_DELEGATIONS = 50;
+/** Failover attempt chains retained for run-history lookups. */
+const RETAINED_ATTEMPT_CHAINS = 500;
+/** Metadata key threading the attempt-chain bucket through the scheduler. */
+const ATTEMPT_KEY_METADATA = "byokDelegationAttemptKey";
 
 interface SchedulerEntry {
   readonly fingerprint: string;
@@ -64,6 +107,112 @@ const schedulers = new Map<string, SchedulerEntry>();
 const liveProjectedDelegations = new Map<string, LiveProjectedDelegation>();
 let interruptSweepStarted = false;
 
+/**
+ * Failover attempt chains, keyed by the per-submission attempt key and
+ * mirrored to delegation ids for run-history lookups. Both maps stay bounded
+ * by FIFO eviction; rows themselves are capped by MAX_EXECUTOR_ATTEMPT_ROWS.
+ */
+const executorAttemptsByKey = new Map<string, ByokDelegationExecutorAttempt[]>();
+const attemptKeysByDelegationId = new Map<string, string>();
+
+const rememberAttemptChain = (delegationId: string, attemptKey: string): void => {
+  attemptKeysByDelegationId.set(delegationId, attemptKey);
+  while (attemptKeysByDelegationId.size > RETAINED_ATTEMPT_CHAINS) {
+    const oldest = attemptKeysByDelegationId.keys().next().value;
+    if (oldest === undefined) break;
+    const key = attemptKeysByDelegationId.get(oldest);
+    attemptKeysByDelegationId.delete(oldest);
+    if (key !== undefined) executorAttemptsByKey.delete(key);
+  }
+};
+
+const attemptsForDelegation = (delegationId: string): ByokDelegationExecutorAttempt[] | undefined => {
+  const key = attemptKeysByDelegationId.get(delegationId);
+  return key === undefined ? undefined : executorAttemptsByKey.get(key);
+};
+
+/** Per-instance probe registries: cache, single-flight and failure cooldown. */
+const probeRegistries = new Map<string, ExecutorProbeRegistry>();
+
+const probeRegistryFor = (instanceId: string): ExecutorProbeRegistry => {
+  const existing = probeRegistries.get(instanceId);
+  if (existing !== undefined) return existing;
+  const registry = new ExecutorProbeRegistry(probeExecutorCandidate);
+  probeRegistries.set(instanceId, registry);
+  return registry;
+};
+
+/**
+ * Availability probe for one candidate (cursor-byok probe parity). With
+ * `probeArguments` a short version command runs (5s timeout); without them
+ * the executable is only resolved on PATH — nothing is executed.
+ */
+const probeExecutorCandidate = async (
+  executor: ByokDelegationExecutor,
+): Promise<ExecutorProbeOutcome> => {
+  const tokens = parseExecutorCommand(executor.command);
+  if (tokens.length === 0) {
+    return { state: "unhealthy", diagnosticCode: "empty_command" };
+  }
+  const probeArguments = parseExecutorCommand(executor.probeArguments);
+  if (probeArguments.length === 0) {
+    const resolved = resolveExecutablePath(tokens[0]!, {
+      platform: process.platform,
+      paths: (process.env["PATH"] ?? "").split(NodePath.delimiter).filter((part) => part.length > 0),
+      pathExt: (process.env["PATHEXT"] ?? "")
+        .split(NodePath.delimiter)
+        .filter((part) => part.length > 0),
+      exists: (path) => {
+        try {
+          return NodeFs.statSync(path).isFile();
+        } catch {
+          return false;
+        }
+      },
+    });
+    return resolved !== undefined ? { state: "ready" } : { state: "not_installed" };
+  }
+  return new Promise((resolve) => {
+    // spawn 的内建 timeout 到点强杀进程：close 事件带信号到达，等价于探测超时。
+    const child = NodeChildProcess.spawn(tokens[0]!, [...tokens.slice(1), ...probeArguments], {
+      env: buildChildEnv(executor.environmentVariables),
+      stdio: ["ignore", "pipe", "pipe"],
+      windowsHide: true,
+      timeout: EXECUTOR_PROBE_TIMEOUT_MS,
+    });
+    let stdout = "";
+    let stderr = "";
+    let settled = false;
+    const settle = (outcome: ExecutorProbeOutcome) => {
+      if (settled) return;
+      settled = true;
+      resolve(outcome);
+    };
+    child.stdout.on("data", (chunk: Buffer) => {
+      stdout += chunk.toString("utf8");
+    });
+    child.stderr.on("data", (chunk: Buffer) => {
+      stderr += chunk.toString("utf8");
+    });
+    child.on("error", (error: NodeJS.ErrnoException) => {
+      settle(
+        probeFromVersionRun({
+          failureKind: error.code === "ENOENT" ? "not_found" : "spawn_failed",
+          stdout: "",
+          stderr: "",
+        }),
+      );
+    });
+    child.on("close", (code, signal) => {
+      if (signal !== null) {
+        settle({ state: "unhealthy", diagnosticCode: "probe_timeout" });
+        return;
+      }
+      settle(probeFromVersionRun({ exitCode: code ?? -1, stdout, stderr }));
+    });
+  });
+};
+
 const DEFAULT_DELEGATION_CONFIG: ByokDelegationConfig = {
   enabled: false,
   maxConcurrency: 4,
@@ -72,6 +221,21 @@ const DEFAULT_DELEGATION_CONFIG: ByokDelegationConfig = {
   modelGroups: [],
   executorCommand: "",
   executorEnvironmentVariables: [],
+  executors: [],
+  executorFailoverLimit: 3,
+  visionDelegation: { enabled: false, visionModelId: "", mode: "auto" },
+  supervision: {
+    enabled: false,
+    supervisorModelId: "",
+    reviewerModelId: "",
+    maxCorrections: 2,
+    maxRetries: 1,
+    maxRounds: 8,
+    allowReassign: true,
+    allowEscalate: true,
+    strictUnavailable: false,
+  },
+  subagentProfiles: [],
 };
 
 const configOf = (settings: ServerSettingsContract, instanceId: string): ByokDelegationConfig => {
@@ -89,6 +253,24 @@ const configOf = (settings: ServerSettingsContract, instanceId: string): ByokDel
   return { ...DEFAULT_DELEGATION_CONFIG, ...(delegation as ByokDelegationConfig) };
 };
 
+/**
+ * The instance's model adapters, used to resolve supervision/review adapters.
+ * Only the adapter list is read — the supervisor sees bounded task/result
+ * text, never credentials.
+ */
+const adaptersOf = (
+  settings: ServerSettingsContract,
+  instanceId: string,
+): ByokSettings["adapters"] => {
+  const instance =
+    settings.providerInstances[instanceId as keyof typeof settings.providerInstances];
+  if (instance?.driver !== "byok") return [];
+  const config = instance.config;
+  if (config === null || typeof config !== "object" || Array.isArray(config)) return [];
+  const adapters = (config as Record<string, unknown>)["adapters"];
+  return Array.isArray(adapters) ? (adapters as ByokSettings["adapters"]) : [];
+};
+
 const fingerprintOf = (config: ByokDelegationConfig): string =>
   JSON.stringify([
     config.enabled,
@@ -97,6 +279,8 @@ const fingerprintOf = (config: ByokDelegationConfig): string =>
     config.executionTimeoutMs,
     config.executorCommand,
     config.executorEnvironmentVariables,
+    config.executors,
+    config.executorFailoverLimit,
   ]);
 
 /**
@@ -117,7 +301,9 @@ const parseExecutorCommand = (command: string): readonly string[] => {
 /**
  * Build the child environment from the allowlist: only variables the user
  * explicitly named, resolved from the server process environment. Values from
- * settings never reach this map — settings only ever stores the names.
+ * settings never reach this map — settings only ever stores the names. A
+ * supervision reassign round overrides the routed model per delegation via
+ * the scheduler request metadata (still just a model id, never a secret).
  */
 const buildChildEnv = (names: readonly string[]): NodeJS.ProcessEnv => {
   const env: NodeJS.ProcessEnv = {};
@@ -139,19 +325,24 @@ export function resolveDelegationModel(config: ByokDelegationConfig): string | u
   return group.defaultModelId ?? group.modelIds[0];
 }
 
-const runExecutor = (
+const runExecutorCandidate = (
   request: DelegationRequest<string>,
   context: DelegationExecutionContext,
+  candidate: ByokDelegationExecutor,
   config: ByokDelegationConfig,
 ): Promise<string> =>
   new Promise((resolve, reject) => {
-    const tokens = parseExecutorCommand(config.executorCommand);
+    const tokens = parseExecutorCommand(candidate.command);
     if (tokens.length === 0) {
-      reject(new Error("No executor command is configured."));
+      reject(new ExecutorAttemptError("spawn_failed", "No executor command is configured."));
       return;
     }
-    const childEnv = buildChildEnv(config.executorEnvironmentVariables);
-    const delegationModel = resolveDelegationModel(config);
+    const childEnv = buildChildEnv(candidate.environmentVariables);
+    const metadataModel = request.metadata?.["byokDelegationModel"];
+    const delegationModel =
+      typeof metadataModel === "string" && metadataModel.trim().length > 0
+        ? metadataModel.trim()
+        : resolveDelegationModel(config);
     if (delegationModel !== undefined) {
       childEnv["BYOK_DELEGATION_MODEL"] = delegationModel;
     }
@@ -180,23 +371,33 @@ const runExecutor = (
         stderr += chunk.toString("utf8").slice(0, TASK_PREVIEW_MAX_CHARS - stderr.length);
       }
     });
-    child.on("error", (error) => {
+    child.on("error", (error: NodeJS.ErrnoException) => {
       context.signal.removeEventListener("abort", onAbort);
-      reject(error);
+      reject(
+        new ExecutorAttemptError(
+          error.code === "ENOENT" ? "not_found" : "spawn_failed",
+          `Executor "${candidate.id}" failed to start: ${error.message}`,
+        ),
+      );
     });
     child.on("close", (code) => {
       context.signal.removeEventListener("abort", onAbort);
       if (killed || context.signal.aborted) {
-        reject(new Error("Executor was cancelled."));
+        reject(new ExecutorAttemptError("cancelled", "Executor was cancelled."));
         return;
       }
       if (code === 0) {
         resolve(stdout);
         return;
       }
+      const diagnostic = stderr.trim();
       reject(
-        new Error(
-          `Executor exited with code ${code ?? "unknown"}.${stderr.trim().length > 0 ? ` ${stderr.trim()}` : ""}`,
+        new ExecutorAttemptError(
+          "exit_nonzero",
+          `Executor "${candidate.id}" exited with code ${code ?? "unknown"}.${
+            diagnostic.length > 0 ? ` ${diagnostic}` : ""
+          }`,
+          code ?? undefined,
         ),
       );
     });
@@ -207,6 +408,81 @@ const runExecutor = (
     });
     child.stdin.end(request.input);
   });
+
+/**
+ * Run one delegation across the enabled executor candidates: candidates in
+ * priority order, probing availability first (skipping not-installed /
+ * cooling-down ones without consuming the budget), and failing over to the
+ * next candidate on switchable failures — up to `executorFailoverLimit`
+ * executions per delegation (original failover parity). Cancellations and
+ * timeouts are terminal: they never switch executors.
+ */
+const runExecutorWithFailover = async (
+  request: DelegationRequest<string>,
+  context: DelegationExecutionContext,
+  config: ByokDelegationConfig,
+  registry: ExecutorProbeRegistry,
+  instanceId: string,
+): Promise<string> => {
+  const candidates = effectiveExecutorList(config);
+  if (candidates.length === 0) {
+    throw new Error("No executor command is configured.");
+  }
+  const budget = Math.min(clampFailoverLimit(config.executorFailoverLimit), candidates.length);
+  const attempts: ByokDelegationExecutorAttempt[] = [];
+  let lastError: unknown;
+  let executions = 0;
+  for (const candidate of candidates) {
+    if (executions >= budget) break;
+    if (registry.isCoolingDown(candidate)) {
+      attempts.push({
+        executorId: candidate.id,
+        status: "skipped",
+        diagnosticPreview: "cooldown",
+      });
+      continue;
+    }
+    const probe = await registry.probe(candidate).catch(() => undefined);
+    if (probe !== undefined && (probe.state === "not_installed" || probe.state === "unhealthy")) {
+      attempts.push({
+        executorId: candidate.id,
+        status: "skipped",
+        diagnosticPreview: probe.diagnosticCode ?? probe.state,
+      });
+      continue;
+    }
+    executions += 1;
+    try {
+      const result = await runExecutorCandidate(request, context, candidate, config);
+      registry.recordSuccess(candidate);
+      attempts.push({ executorId: candidate.id, status: "completed" });
+      executorAttemptsByKey.set(String(request.metadata?.[ATTEMPT_KEY_METADATA] ?? ""), [
+        ...attempts.slice(-MAX_EXECUTOR_ATTEMPT_ROWS),
+      ]);
+      return result;
+    } catch (error) {
+      lastError = error;
+      if (isExecutorCancellation(error)) throw error;
+      if (isSwitchableExecutorFailure(error)) {
+        registry.recordFailure(candidate);
+        attempts.push({
+          executorId: candidate.id,
+          status: "failed",
+          diagnosticPreview: diagnosticPreview(
+            error instanceof Error ? error.message : String(error),
+          ),
+        });
+        continue;
+      }
+      throw error;
+    }
+  }
+  executorAttemptsByKey.set(String(request.metadata?.[ATTEMPT_KEY_METADATA] ?? ""), [
+    ...attempts.slice(-MAX_EXECUTOR_ATTEMPT_ROWS),
+  ]);
+  if (lastError instanceof Error) throw lastError;
+  throw new Error(`No eligible delegation executor for instance "${instanceId}".`);
+};
 
 const preview = (text: string, max: number): string =>
   text.length <= max ? text : `${text.slice(0, max)}…`;
@@ -240,7 +516,18 @@ const toSnapshot = (snapshot: DelegationSnapshot<string, string>): ByokDelegatio
   submittedAt: snapshot.submittedAt,
   ...(snapshot.startedAt !== undefined ? { startedAt: snapshot.startedAt } : {}),
   ...(snapshot.finishedAt !== undefined ? { finishedAt: snapshot.finishedAt } : {}),
+  ...attemptsToSnapshot(snapshot.id),
 });
+
+/** Attach the recorded failover attempt chain, when one exists. */
+const attemptsToSnapshot = (
+  delegationId: string,
+): { readonly executorAttempts: readonly ByokDelegationExecutorAttempt[] } | {} => {
+  const attempts = attemptsForDelegation(delegationId);
+  return attempts === undefined || attempts.length === 0
+    ? {}
+    : { executorAttempts: [...attempts] };
+};
 
 const delegationTransitionOf = (
   snapshot: DelegationSnapshot<string, string>,
@@ -300,9 +587,21 @@ const cancelRuntimeDelegation = (input: {
 export interface ByokDelegationService {
   readonly submit: (input: ByokDelegationSubmitRequest) => Effect.Effect<ByokDelegationSnapshot>;
   readonly list: (instanceId: string) => Effect.Effect<ReadonlyArray<ByokDelegationSnapshot>>;
+  readonly cancel: (
+    input: ByokDelegationCancelRequest,
+  ) => Effect.Effect<ByokDelegationSnapshot | null>;
   readonly cancelCompositionTask: (
     input: CompositionTaskCancelRequest,
   ) => Effect.Effect<CompositionTaskCancelResult | undefined, CompositionTaskStoreError>;
+  /** Probe one configured executor candidate's availability on demand. */
+  readonly probeExecutor: (
+    input: ByokDelegationExecutorProbeRequest,
+  ) => Effect.Effect<ByokDelegationExecutorProbe | null>;
+}
+
+export interface ByokDelegationExecutorProbeRequest {
+  readonly instanceId: string;
+  readonly executorId: string;
 }
 
 export class DelegationNotConfiguredError extends Data.TaggedError("DelegationNotConfiguredError")<{
@@ -338,7 +637,8 @@ export function resolveScheduler(
   let terminalRetained = 0;
   const scheduler = new DelegationScheduler<string, string>(
     {
-      execute: (request, context) => runExecutor(request, context, config),
+      execute: (request, context) =>
+        runExecutorWithFailover(request, context, config, probeRegistryFor(instanceId), instanceId),
     },
     {
       maxConcurrency: config.maxConcurrency,
@@ -406,22 +706,28 @@ const watchDelegationTransitions = (scheduler: DelegationScheduler<string, strin
 
 export const make = Effect.gen(function* () {
   const serverSettings = yield* ServerSettings.ServerSettingsService;
+  const httpClient = yield* HttpClient.HttpClient;
   // Composition 台账为可选依赖：注入后每次委派状态迁移都会投影成幂等事件行，
   // 使 Composition Task/Run 成为委派状态的可查询单一状态源。
   const taskStore = yield* Effect.serviceOption(CompositionTaskStore);
 
   if (Option.isSome(taskStore) && !interruptSweepStarted) {
     interruptSweepStarted = true;
-    yield* Clock.currentTimeMillis.pipe(
-      Effect.flatMap((nowUnixMs) =>
-        recoverInterruptedByokDelegations({
-          store: taskStore.value,
-          liveDelegationIds: listInFlightDelegationIds(),
-          nowUnixMs,
-        }),
-      ),
-      Effect.catchCause((cause) =>
-        Effect.logError("BYOK 委派跨重启收口失败", { cause }).pipe(Effect.as([])),
+    // 跨重启收口是全表扫描，fork 成后台 fiber：Layer 构造发生在 HTTP 监听
+    // 之前，同步执行会把新连接的可用时间推迟一个扫描周期。fiber 绑定在
+    // Layer scope 上，server 退出时随作用域收口；错误已在 fiber 内兜住。
+    yield* Effect.forkScoped(
+      Clock.currentTimeMillis.pipe(
+        Effect.flatMap((nowUnixMs) =>
+          recoverInterruptedByokDelegations({
+            store: taskStore.value,
+            liveDelegationIds: listInFlightDelegationIds(),
+            nowUnixMs,
+          }),
+        ),
+        Effect.catchCause((cause) =>
+          Effect.logError("BYOK 委派跨重启收口失败", { cause }).pipe(Effect.as([])),
+        ),
       ),
     );
   }
@@ -468,10 +774,16 @@ export const make = Effect.gen(function* () {
       } satisfies ByokDelegationSnapshot;
     });
 
-  /** Submit to the scheduler, projecting each observed transition in order. */
+  /**
+   * Submit to the scheduler, projecting each observed transition in order.
+   * `taskText` is the (role-fragment-applied) task body and `modelOverride`
+   * threads a supervision reassign round's model through the executor env.
+   */
   const runDelegationToTerminal = (
     input: ByokDelegationSubmitRequest,
     config: ByokDelegationConfig,
+    taskText: string,
+    modelOverride: string | undefined,
   ) =>
     Effect.gen(function* () {
       const scheduler = resolveScheduler(config, input.instanceId);
@@ -479,11 +791,19 @@ export const make = Effect.gen(function* () {
       // 既不在返回快照里也不在订阅缓冲里，终态等待就会悬挂。
       const { submitted, feed } = yield* Effect.try({
         try: () => {
+          // The attempt key buckets the failover attempt chain recorded by the
+          // execute callback; it carries no user content.
+          const attemptKey = NodeCrypto.randomUUID();
           const submitted = scheduler.submit({
-            input: input.task,
+            input: taskText,
             queueTimeoutMs: config.queueTimeoutMs,
             executionTimeoutMs: config.executionTimeoutMs,
+            metadata: {
+              [ATTEMPT_KEY_METADATA]: attemptKey,
+              ...(modelOverride === undefined ? {} : { byokDelegationModel: modelOverride }),
+            },
           });
+          rememberAttemptChain(submitted.id, attemptKey);
           return { submitted, feed: watchDelegationTransitions(scheduler, submitted.id) };
         },
         catch: (cause) =>
@@ -495,7 +815,7 @@ export const make = Effect.gen(function* () {
         instanceId: input.instanceId,
         delegationId: submitted.id,
         uniqueKey: NodeCrypto.randomUUID(),
-        taskText: input.task,
+        taskText,
       });
       const unregisterLive = registerLiveProjectedDelegation(scope, scheduler);
       return yield* Effect.gen(function* () {
@@ -524,6 +844,27 @@ export const make = Effect.gen(function* () {
       );
     });
 
+  /** One supervisor/reviewer chat completion returning the raw model text. */
+  const runSupervisorReview = (
+    adapter: ByokSettings["adapters"][number],
+    prompt: string,
+  ): Effect.Effect<string, ByokEngineError> =>
+    collectChatText(
+      streamChat(httpClient, {
+        protocol: adapter.protocol,
+        baseURL: adapter.baseURL,
+        apiKey: adapter.apiKey,
+        modelId: adapter.modelId,
+        messages: [{ role: "user", content: prompt }],
+      }),
+    );
+
+  const withSupervisionSummary = (
+    snapshot: ByokDelegationSnapshot,
+    counters: SupervisionCounters | undefined,
+  ): ByokDelegationSnapshot =>
+    counters === undefined ? snapshot : { ...snapshot, supervision: counters };
+
   const submit = (input: ByokDelegationSubmitRequest) =>
     Effect.gen(function* () {
       const settings = yield* serverSettings.getSettings;
@@ -535,22 +876,113 @@ export const make = Effect.gen(function* () {
           "Delegation is disabled for this BYOK instance.",
         );
       }
-      if (config.executorCommand.trim().length === 0) {
+      if (effectiveExecutorList(config).length === 0) {
         return yield* rejectBeforeEnqueue(
           input,
           "DELEGATION_NOT_CONFIGURED",
           "No delegation executor command is configured.",
         );
       }
-      const outcome = yield* Effect.result(runDelegationToTerminal(input, config));
-      if (outcome._tag === "Failure") {
-        return yield* rejectBeforeEnqueue(
-          input,
-          "DELEGATION_SUBMIT_FAILED",
-          outcome.failure.message,
+      const taskText = applySubagentPromptFragment(
+        input.task,
+        resolveSubagentPromptFragment(config.subagentProfiles, input.subagentType),
+      );
+      const supervision = config.supervision;
+      const supervisionActive =
+        supervision.enabled === true && supervision.supervisorModelId.trim().length > 0;
+      if (!supervisionActive) {
+        const outcome = yield* Effect.result(
+          runDelegationToTerminal(input, config, taskText, undefined),
         );
+        if (outcome._tag === "Failure") {
+          return yield* rejectBeforeEnqueue(
+            input,
+            "DELEGATION_SUBMIT_FAILED",
+            outcome.failure.message,
+          );
+        }
+        return toSnapshot(outcome.success);
       }
-      return toSnapshot(outcome.success);
+
+      // Supervision path (original cursor-byok parity): the supervisor model
+      // reviews each finished round and bounded accept/retry/reassign/escalate
+      // decisions drive at most maxRounds worker submissions. Ledger rows stay
+      // one-per-scheduler-run; the returned snapshot carries the counters.
+      const instanceAdapters = adaptersOf(settings, input.instanceId);
+      const supervisorAdapter = byokAdapterForModel(
+        { adapters: instanceAdapters } as ByokSettings,
+        supervision.supervisorModelId,
+      );
+      const reviewerAdapter =
+        supervision.reviewerModelId.trim().length === 0
+          ? supervisorAdapter
+          : (byokAdapterForModel(
+              { adapters: instanceAdapters } as ByokSettings,
+              supervision.reviewerModelId,
+            ) ?? supervisorAdapter);
+      let counters = INITIAL_SUPERVISION_COUNTERS;
+      let currentTask = taskText;
+      let modelOverride: string | undefined;
+      let last: ByokDelegationSnapshot | undefined;
+      for (;;) {
+        const outcome = yield* Effect.result(
+          runDelegationToTerminal(input, config, currentTask, modelOverride),
+        );
+        if (outcome._tag === "Failure") {
+          return yield* rejectBeforeEnqueue(
+            input,
+            "DELEGATION_SUBMIT_FAILED",
+            outcome.failure.message,
+          );
+        }
+        last = toSnapshot(outcome.success);
+        // 取消与超时不进入监督循环：终局语义由调度器决定。
+        if (last.status !== "succeeded" && last.status !== "failed") {
+          return withSupervisionSummary(last, counters);
+        }
+        if (supervisorAdapter === undefined || reviewerAdapter === undefined) {
+          // 监督模型未配置成功：不重试（严格模式下不可审查的结果不驱动重试）。
+          return withSupervisionSummary(last, counters);
+        }
+        const reviewText = yield* Effect.result(
+          runSupervisorReview(
+            reviewerAdapter,
+            buildSupervisorReviewPrompt({
+              task: currentTask,
+              result: last.resultPreview ?? "",
+              errorMessage: last.errorMessage,
+              counters,
+              config: supervision,
+            }),
+          ),
+        );
+        const decision =
+          reviewText._tag === "Success" ? parseSupervisionDecision(reviewText.success) : undefined;
+        if (decision === undefined) {
+          // 监督不可用或返回无法解析：保留本轮结果，不再驱动额外轮次。
+          return withSupervisionSummary(last, counters);
+        }
+        const action = nextSupervisionAction({
+          decision,
+          counters,
+          config: supervision,
+          candidateModelIds: config.modelGroups.find((group) => group.enabled)?.modelIds ?? [],
+          currentModelId: modelOverride ?? resolveDelegationModel(config),
+          lastTask: currentTask,
+        });
+        if (action.kind === "done") {
+          return withSupervisionSummary(last, action.counters);
+        }
+        if (action.kind === "fail") {
+          // 执行成功时保留成果，仅携带监督计数；失败终局照常返回。
+          return withSupervisionSummary(last, action.counters);
+        }
+        counters = action.counters;
+        if (action.taskOverride !== undefined && action.taskOverride.trim().length > 0) {
+          currentTask = action.taskOverride;
+        }
+        modelOverride = action.modelOverride;
+      }
     }).pipe(
       Effect.catch(() =>
         Effect.succeed(
@@ -574,6 +1006,22 @@ export const make = Effect.gen(function* () {
       return entry.scheduler.list().map(toSnapshot);
     }).pipe(Effect.catch(() => Effect.succeed([] as ReadonlyArray<ByokDelegationSnapshot>)));
 
+  /**
+   * Per-task cancel (original cursor-byok parity): abort the executor and
+   * report the post-cancel snapshot, or `null` when the id is unknown or was
+   * dropped after a config change. Ledger settlement for the cancelled state
+   * is owned by the submit fiber's transition watch, which projects every
+   * status change idempotently until terminal.
+   */
+  const cancel = (input: ByokDelegationCancelRequest) =>
+    Effect.sync(() => {
+      const entry = schedulers.get(input.instanceId);
+      const snapshot = entry?.scheduler.get(input.delegationId);
+      if (entry === undefined || snapshot === undefined) return null;
+      if (!isTerminalStatus(snapshot.status)) entry.scheduler.cancel(input.delegationId);
+      return toSnapshot(entry.scheduler.get(input.delegationId) ?? snapshot);
+    }).pipe(Effect.catch(() => Effect.succeed(null)));
+
   const cancelCompositionTask: ByokDelegationService["cancelCompositionTask"] = (input) =>
     Option.isNone(taskStore)
       ? Effect.succeed(undefined)
@@ -588,7 +1036,36 @@ export const make = Effect.gen(function* () {
           ),
         );
 
-  return { submit, list, cancelCompositionTask } satisfies ByokDelegationService;
+  /** On-demand availability probe for the settings page (bypasses the cache). */
+  const probeExecutor: ByokDelegationService["probeExecutor"] = (input) =>
+    Effect.gen(function* () {
+      const settings = yield* serverSettings.getSettings;
+      const config = configOf(settings, input.instanceId);
+      const candidate = effectiveExecutorList(config).find(
+        (executor) => executor.id === input.executorId,
+      );
+      if (candidate === undefined) return null;
+      const registry = probeRegistryFor(input.instanceId);
+      const outcome = yield* Effect.promise(() => registry.probe(candidate, { force: true }));
+      const probedAt = yield* Clock.currentTimeMillis;
+      return {
+        executorId: candidate.id,
+        state: outcome.state,
+        ...(outcome.diagnosticCode === undefined ? {} : { diagnosticCode: outcome.diagnosticCode }),
+        ...(outcome.diagnosticPreview === undefined
+          ? {}
+          : { diagnosticPreview: outcome.diagnosticPreview }),
+        probedAt,
+      } satisfies ByokDelegationExecutorProbe;
+    }).pipe(Effect.catch(() => Effect.succeed(null)));
+
+  return {
+    submit,
+    list,
+    cancel,
+    cancelCompositionTask,
+    probeExecutor,
+  } satisfies ByokDelegationService;
 });
 
 export const __testables = {
@@ -596,4 +1073,21 @@ export const __testables = {
   buildChildEnv,
   preview,
   registerLiveProjectedDelegation,
+  effectiveExecutorList,
+  rememberAttemptChain,
+  executorAttemptsByKey,
+  attemptKeysByDelegationId,
 };
+
+/**
+ * Context tag so in-process consumers (the `delegate_task` tool handler in the
+ * composition ToolBroker) can reach the delegation service through layers
+ * instead of importing module state directly. `make` already resolves its own
+ * dependencies; the layer simply publishes the service instance.
+ */
+export class ByokDelegationServiceTag extends Context.Service<
+  ByokDelegationServiceTag,
+  ByokDelegationService
+>()("codework/provider/byok/ByokDelegationService/ByokDelegationServiceTag") {}
+
+export const layer = Layer.effect(ByokDelegationServiceTag, make);

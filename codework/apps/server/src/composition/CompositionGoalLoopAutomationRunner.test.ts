@@ -156,7 +156,7 @@ describe("CompositionGoalLoopAutomationRunner", () => {
       const runner = makeCompositionGoalLoopAutomationRunner({
         ...harness.options,
         threadGoalStore: {
-          setStatus: (update) =>
+          setStatus: (update: { readonly threadId: string; readonly status: ThreadGoalStatus }) =>
             Effect.sync(() => {
               updates.push(update);
               return {} as ThreadGoal;
@@ -164,7 +164,8 @@ describe("CompositionGoalLoopAutomationRunner", () => {
         },
       } as unknown as CompositionGoalLoopAutomationRunnerOptions);
 
-      yield* runner.run({ ...input, reviewerAgentId: undefined });
+      const { reviewerAgentId: _reviewerAgentId, ...inputWithoutReviewer } = input;
+      yield* runner.run(inputWithoutReviewer);
 
       assert.deepEqual(updates, [{ threadId: input.threadId, status: "complete" }]);
     }),

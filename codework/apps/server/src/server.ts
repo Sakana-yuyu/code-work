@@ -5,6 +5,8 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Schedule from "effect/Schedule";
 import { FetchHttpClient, HttpRouter, HttpServer } from "effect/unstable/http";
+import * as HttpServerResponse from "effect/unstable/http/HttpServerResponse";
+import * as HttpServerRequest from "effect/unstable/http/HttpServerRequest";
 import * as HttpApiBuilder from "effect/unstable/httpapi/HttpApiBuilder";
 
 import * as BackgroundPolicy from "./background/BackgroundPolicy.ts";
@@ -108,6 +110,7 @@ import * as AgentAwarenessRelay from "./relay/AgentAwarenessRelay.ts";
 import { hasCloudPublicConfig } from "./cloud/publicConfig.ts";
 import { ProviderRegistryLive } from "./provider/Layers/ProviderRegistry.ts";
 import * as ServerSettings from "./serverSettings.ts";
+import * as ByokDelegationService from "./provider/byok/ByokDelegationService.ts";
 import * as ProjectFaviconResolver from "./project/ProjectFaviconResolver.ts";
 import * as CodeworkProjectFileLoader from "./project/CodeworkProjectFileLoader.ts";
 import * as RepositoryIdentityResolver from "./project/RepositoryIdentityResolver.ts";
@@ -434,6 +437,11 @@ const CompositionToolInvocationCoordinatorLayerLive =
     Layer.provide(CompositionToolInvocationStoreLayerLive),
   );
 
+const ByokDelegationServiceLayerLive = ByokDelegationService.layer.pipe(
+  Layer.provideMerge(ServerSettingsLayerLive),
+  Layer.provideMerge(FetchHttpClient.layer),
+);
+
 const CompositionToolBrokerLayerLive = CompositionToolBroker.persistentLayer.pipe(
   Layer.provideMerge(CompositionToolInvocationStartupRecoveryLayerLive),
   Layer.provideMerge(CompositionToolInvocationCoordinatorLayerLive),
@@ -443,6 +451,8 @@ const CompositionToolBrokerLayerLive = CompositionToolBroker.persistentLayer.pip
   Layer.provideMerge(CompositionCapabilityGrantLayerLive),
   Layer.provideMerge(CompositionCapabilityRegistryLayerLive),
   Layer.provideMerge(WorkspaceFileSystemLayerLive),
+  // 启用 delegate_task 工具处理器：BYOK Agent Loop 内模型可自发委派子任务。
+  Layer.provideMerge(ByokDelegationServiceLayerLive),
 );
 
 const ProviderLayerForCompositionAgentDriversLive = ProviderLayerLive.pipe(
@@ -707,12 +717,31 @@ const RuntimeDependenciesLive = RuntimeCoreDependenciesLive.pipe(
   Layer.provide(NetService.layer),
 );
 
+/**
+ * 探活路径豁免 command-ready 门：桌面端/浏览器在启动竞态期靠探活判断后端是否
+ * 存活，若探活也 awaitCommandReady，"后端未就绪"与"后端已死"无法区分，连接
+ * 只会悬挂。/healthz 在门之前放行，永远即时返回。
+ */
+const COMMAND_READY_BYPASS_PATHS: ReadonlySet<string> = new Set(["/healthz"]);
+
 const commandReadinessLayer = HttpRouter.middleware(
   (httpEffect) =>
-    Effect.flatMap(ServerRuntimeStartup.ServerRuntimeStartup, (startup) =>
-      startup.awaitCommandReady.pipe(Effect.orDie, Effect.andThen(httpEffect)),
-    ),
+    Effect.gen(function* () {
+      const request = yield* HttpServerRequest.HttpServerRequest;
+      if (COMMAND_READY_BYPASS_PATHS.has(request.url.split("?")[0] ?? "")) {
+        return yield* httpEffect;
+      }
+      const startup = yield* ServerRuntimeStartup.ServerRuntimeStartup;
+      yield* startup.awaitCommandReady.pipe(Effect.orDie);
+      return yield* httpEffect;
+    }),
   { global: true },
+);
+
+const healthzRouteLayer = HttpRouter.add(
+  "GET",
+  "/healthz",
+  Effect.succeed(HttpServerResponse.text("ok")),
 );
 
 const PullRequestServiceLive = PullRequestService.layer.pipe(
@@ -734,6 +763,7 @@ export const makeRoutesLayer = Layer.mergeAll(
       Layer.provide(environmentAuthenticatedAuthLayer),
     ),
     otlpTracesProxyRouteLayer,
+    healthzRouteLayer,
     assetRouteLayer,
     attachmentUploadRouteLayer,
     CompositionRuntimeToolBridgeHttp.makeRouteLayer(

@@ -50,6 +50,8 @@ export function createByokEnvironmentAtoms<R, E>(
   runtime: Atom.AtomRuntime<EnvironmentRegistry | R, E>,
 ) {
   const discoveryScheduler = createAtomCommandScheduler();
+  const contextWindowMatchScheduler = createAtomCommandScheduler();
+  const draftDiscoveryScheduler = createAtomCommandScheduler();
   const balanceScheduler = createAtomCommandScheduler();
   return {
     supplierCatalog: createEnvironmentRpcQueryAtomFamily(runtime, {
@@ -71,6 +73,27 @@ export function createByokEnvironmentAtoms<R, E>(
             input.adapterId,
             input.forceRefresh === true,
           ]),
+      },
+    }),
+    matchContextWindows: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:byok:match-context-windows",
+      tag: WS_METHODS.serverMatchByokContextWindows,
+      scheduler: contextWindowMatchScheduler,
+      concurrency: {
+        mode: "singleFlight",
+        key: ({ environmentId, input }) =>
+          JSON.stringify([environmentId, input.instanceId, input.adapterId]),
+      },
+    }),
+    discoverDraftModels: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:byok:discover-draft-models",
+      tag: WS_METHODS.serverDiscoverByokDraftModels,
+      scheduler: draftDiscoveryScheduler,
+      concurrency: {
+        mode: "singleFlight",
+        // API keys are deliberately excluded from the scheduler identity.
+        key: ({ environmentId, input }) =>
+          JSON.stringify([environmentId, input.protocol, input.baseURL, input.supplierID ?? ""]),
       },
     }),
     balance: createEnvironmentRpcCommand(runtime, {
@@ -96,6 +119,16 @@ export function createByokEnvironmentAtoms<R, E>(
     listDelegations: createEnvironmentRpcCommand(runtime, {
       label: "environment-data:byok:list-delegations",
       tag: WS_METHODS.serverListByokDelegations,
+      scheduler: balanceScheduler,
+    }),
+    cancelDelegation: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:byok:cancel-delegation",
+      tag: WS_METHODS.serverCancelByokDelegation,
+      scheduler: balanceScheduler,
+    }),
+    probeDelegationExecutor: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:byok:probe-delegation-executor",
+      tag: WS_METHODS.serverProbeByokDelegationExecutor,
       scheduler: balanceScheduler,
     }),
     importAdapters: createEnvironmentRpcCommand(runtime, {

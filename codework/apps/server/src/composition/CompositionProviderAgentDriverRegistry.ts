@@ -22,7 +22,7 @@ import {
   type CompositionAgentDriverRegistry,
 } from "./CompositionAgentDriverRegistry.ts";
 
-const PROVIDER_AGENT_PREFIX = "provider:";
+export const PROVIDER_AGENT_PREFIX = "provider:";
 
 export const compositionProviderAgentId = (instanceId: ProviderInstanceId | string): string =>
   `${PROVIDER_AGENT_PREFIX}${instanceId}`;

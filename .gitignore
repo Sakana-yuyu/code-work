@@ -79,6 +79,8 @@ prompt/native/
 
 # Local tool settings and generated test artifacts
 .claude/settings.local.json
+.codex-runtime/
+**/.playwright-cli/
 coverage/
 frontend/coverage/
 frontend/.vite/

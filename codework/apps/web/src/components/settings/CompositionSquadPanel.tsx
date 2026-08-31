@@ -28,6 +28,7 @@ import { useMemo, useState, type ReactNode } from "react";
 import { t } from "~/i18n";
 import { cn, randomUUID } from "~/lib/utils";
 import { usePrimaryEnvironment } from "~/state/environments";
+import { usePrimarySettings } from "~/hooks/useSettings";
 import { useEnvironmentQuery } from "~/state/query";
 import { serverEnvironment } from "~/state/server";
 import { useAtomCommand } from "~/state/use-atom-command";
@@ -47,6 +48,7 @@ import {
 } from "./CompositionSquadPanel.logic";
 import { useCompositionEditorState } from "./compositionEditorState";
 import { SettingsSection } from "./settingsLayout";
+import { readByokModelAdapters } from "./ByokModelAdaptersSection";
 
 const COLLABORATION_MODES: ReadonlyArray<CompositionSquadCollaborationMode> = [
   "serial",
@@ -110,6 +112,29 @@ function FormField({
   );
 }
 
+type SquadModelOption = {
+  readonly value: string;
+  readonly label: string;
+};
+
+function byokModelOptionsFromSettings(
+  providerInstances: Readonly<Record<string, { readonly driver: string; readonly config?: unknown }>>,
+): ReadonlyArray<SquadModelOption> {
+  const options: SquadModelOption[] = [];
+  const seen = new Set<string>();
+  for (const instance of Object.values(providerInstances)) {
+    if (instance.driver !== "byok") continue;
+    for (const adapter of readByokModelAdapters(instance.config)) {
+      const value = adapter.id.trim();
+      if (value.length === 0 || seen.has(value)) continue;
+      seen.add(value);
+      const displayName = adapter.displayName.trim() || adapter.modelId.trim() || value;
+      options.push({ value, label: `${displayName} · ${adapter.modelId}` });
+    }
+  }
+  return options;
+}
+
 function EnumSelect<T extends string>({
   value,
   values,
@@ -144,6 +169,7 @@ function EnumSelect<T extends string>({
 function SquadMemberEditor({
   member,
   index,
+  modelOptions,
   disabled,
   canRemove,
   onChange,
@@ -151,6 +177,7 @@ function SquadMemberEditor({
 }: {
   readonly member: CompositionSquadMemberDraft;
   readonly index: number;
+  readonly modelOptions: ReadonlyArray<SquadModelOption>;
   readonly disabled: boolean;
   readonly canRemove: boolean;
   readonly onChange: (patch: Partial<CompositionSquadMemberDraft>) => void;
@@ -201,11 +228,17 @@ function SquadMemberEditor({
         <FormField label={t("squadBuilder.model")}>
           <Input
             size="compact"
+            list={`squad-model-options-${member.clientId}`}
             value={member.model}
             disabled={disabled}
             placeholder={t("squadBuilder.optional")}
             onChange={(event) => onChange({ model: event.currentTarget.value })}
           />
+          <datalist id={`squad-model-options-${member.clientId}`}>
+            {modelOptions.map((option) => (
+              <option key={option.value} value={option.value} label={option.label} />
+            ))}
+          </datalist>
         </FormField>
         <FormField label={t("squadBuilder.workspaceRoot")}>
           <Input
@@ -255,7 +288,12 @@ function SquadMemberEditor({
 
 export function CompositionSquadPanel() {
   const primaryEnvironment = usePrimaryEnvironment();
+  const settings = usePrimarySettings();
   const environmentId = primaryEnvironment?.environmentId ?? null;
+  const modelOptions = useMemo(
+    () => byokModelOptionsFromSettings(settings.providerInstances),
+    [settings.providerInstances],
+  );
   const squadsQuery = useEnvironmentQuery(
     environmentId === null
       ? null
@@ -692,6 +730,7 @@ export function CompositionSquadPanel() {
                     key={member.clientId}
                     member={member}
                     index={index}
+                    modelOptions={modelOptions}
                     disabled={isArchived}
                     canRemove={draft.members.length > 1}
                     onChange={(patch) => patchMember(index, patch)}

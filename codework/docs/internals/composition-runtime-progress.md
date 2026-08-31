@@ -8,6 +8,35 @@
 
 ## 当前快照
 
+### 2026-08-28：BYOK 中转连接层与上下文窗口诊断
+
+- 模型通道列表继续按“分组名称 → 中转连接 → 模型”显示，但同一个 Base URL 且协议不同的通道不会再被视觉合并。分组默认折叠，并在标题中显示所属 Base URL；展开后中转以可点击卡片呈现，卡片详情弹窗集中显示协议、脱敏密钥状态、模型数、发现模型、上下文诊断以及紧凑模型行。
+- 已保存连接的“发现模型”只从该中转的代表通道发起；发现结果、勾选和“添加所选模型”统一附着在中转下方，避免每个模型通道重复出现发现按钮。该动作仍须用户主动点击，页面加载不请求 API。
+- 新增 `server.matchByokContextWindows` 四层接线（contracts、WebSocket、授权、client runtime、Web）。服务端迁入 `cursor-byok` 的 74 条上下文窗口目录规则，但只消费 `pattern` 和 `contextWindowTokens`；返回结果不含 API 密钥，也不直接写设置。
+- 诊断策略与原版一致：目录命中只在原值缺失或大于真实窗口时下调，保留用户主动设定的更小窗口；目录未知的模型才会按当前中转连接单次调用已有 `/models` 发现链路，并按规范化模型 ID 回填窗口。探测失败或响应缺少窗口时保持原值。Web 仅把有差异的建议通过原有设置更新链路回写。
+- 验证：`ContextWindowMatcher`、`ByokModelDiscoveryService`、`RpcAuthorization`、`ByokModelAdaptersSection` 聚焦测试共 28 项通过；`@codework/contracts`、`codework`、`@codework/web` typecheck 无错误，UI i18n、格式与 `git diff --check` 通过。
+
+### 2026-08-28：BYOK 发现模型单通道选择
+
+- Provider 内新增模型通道的“发现模型”结果从长下拉改为可搜索弹窗；列表使用互斥勾选，每次仅允许回填一个模型。
+- 选择动作只更新当前草稿，仍须显式点击“添加通道”才会写入 `config.adapters`，因此不会自动或批量创建通道。
+- 未改动已保存通道的“添加所选模型”批量导入能力；该能力与新增通道表单的单通道保存是不同入口。
+
+### 2026-08-28：BYOK 模型通道分组
+
+- `ByokModelAdapter` 新增可选、非敏感的 `groupName` 配置字段；读取既有配置时保留非空分组名，新增和编辑通道时可在弹窗中维护，留空不写入历史配置。
+- Provider 与 BYOK 工作台复用同一模型通道组件，列表统一按“分组名称 → Base URL 中转 → 模型通道”三级展示；模型添加顺序、发现模型与密钥脱敏语义不变。
+
+### 2026-08-28：BYOK 模型通道弹窗编辑
+
+- Provider 和 BYOK 页面共用的模型通道新增/编辑表单从内联展开改为共享 Dialog；表单主体可滚动，操作栏固定在底部，避免长配置区挤占 Provider 页面。
+- 表单内的“发现模型”仍使用独立的二级选择弹窗，保存动作和单通道新增语义不变。
+
+### 2026-08-28：DeepSeek 官方余额查询
+
+- `ByokBalanceService` 补回 `cursor-byok` 已有的 DeepSeek 官方余额路由：仅当 Base URL 的 HTTPS 主机名精确为 `api.deepseek.com` 时，调用 `GET /user/balance` 并解析 `balance_infos[].total_balance`。
+- 官方路由优先于 OpenAI Billing/NewAPI 通用试探链；相似域名和自定义中转不会触发官方 DeepSeek 请求，避免 API Key 跨服务商发送。
+
 | 项目     | 当前值                                                                                                                                                                     |
 | -------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | 更新时间 | 2026-08-28                                                                                                                                                                 |
@@ -133,7 +162,7 @@ CapabilityRegistry + ToolBroker
 
 - 使用真实 OpenAI/Anthropic/Gemini 兼容 API 的断线、重试、限流和凭据轮换 E2E（唯一阻塞项：需要真实 API 凭据，非代码缺口）。
 - Provider 原生 Session/Turn 的真实 capability grant 注入、撤销回执和审计闭环。
-- 模型分组、权重路由、自动匹配和 failover 状态机（Supplier/Profile 控制面见第 6 节，本节点已补齐只读看板与启停/凭据操作面）。
+- 权重路由、自动匹配和 failover 状态机（Supplier/Profile 控制面见第 6 节，本节点已补齐只读看板与启停/凭据操作面）。
 
 已清偿（本节点）：Mobile 控制中心接通 BYOK 恢复重派入口；门槛与 Web 共用 `@codework/contracts` 的 `isByokResumeRedispatchable`（存在最新 Run、排除 `redispatchSettled`，接受 `byok_resume_interrupted` 或可恢复 checkpoint 链）。Desktop 经共享 Web 设置页天然可达。
 
@@ -226,12 +255,17 @@ CapabilityRegistry + ToolBroker
 - BYOK 余额/用量/健康统一看板（本节点）：contracts 新增 `serverByokBalanceDashboard` 方法与请求/结果 schema——适配器健康四态 `ok/empty/unsupported/error`，其中 **`empty` 仅在查询成功且余额耗尽时出现、`error` 一律保留原始错误码与消息，两态严格区分不吞错误**；实例级聚合五态含 `degraded/failed`。服务端新增纯聚合投影 `ByokBalanceDashboardCore` 与 `ByokBalanceService.dashboard`（枚举全部 byok 实例适配器、复用既有 balance 查询与正负缓存）；授权 `AuthOrchestrationReadScope`；client-runtime 新增 `byokBalanceDashboard` 查询原子（30s stale）；Web 设置"集成"页在 Supplier 注册表下新增 BYOK 余额看板区块（总计行 + 实例卡片 + 适配器行：健康徽标/余额摘要/错误消息/缓存标记），i18n 双语 `byokBalance.*` 齐全；投影 6 用例 + 服务聚合用例（含密钥零泄漏断言）+ 面板 5 用例通过。
 - Supplier 管理操作入口（本节点，第一切片：启用态与凭据生命周期）：contracts 新增 `serverSupplierSetInstanceEnabled`/`serverSupplierUpdateCredential` 与 `SupplierAdminRpcError`（五类稳定失败码）；服务端新增纯函数 `SupplierAdminCore`，在 `providerInstances` 整图上切换 envelope enabled（`resolveProviderInstanceEnabled` 最严格优先语义，同步 config 旧 enabled 标志）、轮换 BYOK 适配器 apiKey/balanceAccessToken 与实例敏感环境变量（写入即清除 `*Redacted` 占位标志，避免持久化层把新密钥误判为占位符），经 `ServerSettingsService.updateSettings` 落盘并复用既有 registry 热加载，无需改 `ProviderInstanceRegistry`；授权 `AuthOrchestrationOperateScope`；**敏感字段合同：结果与错误 detail 只含定位信息（实例/适配器/变量名/字段名），凭据值零回显、不进投影不入日志**（专门测试断言）；client-runtime 新增两个命令原子（按 instanceId singleFlight）；Web Supplier 注册表面板每行新增启用/禁用切换与懒展开凭据表单（password 输入），面板扩至 7 用例；核心 6 用例 + RpcAuthorization 6 用例通过。
 - 控制中心与 Supplier 注册表 Mobile 面板复用（本节点）：移动端设置主屏新增"集成"分组入口，`SettingsContentStack` 注册 `SettingsControlCenter`/`SettingsSupplierRegistry` 两个路由屏（linking `settings/control-center`、`settings/supplier-registry`），复用 client-runtime 既有 `controlCenterProjection`/`supplierRegistry` 查询原子与 `controlCenterRedispatch`/`cancelCompositionTask`/`reviewCompositionTask`/`controlCenterAbandon` 命令原子，无新增服务端接口；任务行含状态/Goal Loop 五态徽标/轮次/拒绝/grant 摘要与 Squad 名册，Supplier 条目含名称/驱动/启用态/continuationKey 账号锚点/默认模型/档案摘要与孤儿档案警示，四态空错与下拉刷新齐全；五个操作入口全部接通，行渲染门槛与 Web 一致并抽成 `*.logic.ts` 纯函数（重派在移动端不暴露 capabilityIds 输入，固定空数组，不重发 capability grant）；i18n 新增 `integrations`/`controlCenter.*`/`supplierRegistry.*` 键组，en/zh-CN 双语齐全；logic 测试 23/23 通过。Desktop 经共享 web 设置"集成"页天然可达（`/settings/integrations` 为侧栏无条件导航项，页内唯一 `isElectron` 分支只影响浏览器预览默认值），无需单写面板。
+- 设施导航与 BYOK 工作台重组（2026-08-28，当前工作区未提交）：Web/Desktop 共享设置侧栏新增"设施"分组，将 Provider、运行时、委派和 BYOK 拆为独立入口；`/settings/integrations` 收敛为 Browser 与 MCP。运行时页承载 Agent Driver 与 IDE Session；委派页以同一工作台的分段控件切换任务图和任务账本；BYOK 页集中模型通道、提示词、委派配置、余额/健康看板与 Supplier 操作面，Provider 卡片不再重复嵌入这些控制。此次仅调整 Web/Desktop 信息架构与控件呈现，不改 RPC、凭据存储或任务状态机。已完成 Web 类型检查、生产构建、32 个设置聚焦测试和本机开发页路由核验；Mobile 维持现有独立设置入口，后续如需同构导航应单列移动端切片。
+- 委派工作台向 cursor-byok 运行视图对齐（2026-08-28，当前工作区未提交）：`/settings/delegation` 默认页签由任务图改为"委派"，以已配置的 BYOK Provider Instance 为驱动选择器，直接提交多行任务；任务发出后前端独立查询真实 `server.listByokDelegations` 快照，在存在派发请求或 queued/running Run 时每 2 秒刷新一次，因而不必等待 `server.submitByokDelegation` 的终态响应才能看到排队/运行状态。运行列表只展示服务端已脱敏的任务、结果和错误摘要；下方复用 Composition 控制中心且过滤为 `projectId=byok-delegation`，提供持久状态与活跃 Run 取消。任务图与完整控制中心仍保留为后两个页签，Squad/Goal Loop 不混入默认委派面。原版 Cursor 特有的 Task→子会话 RunSSE 注入、向运行子会话追加消息及实际 IDE 工作区感知没有冒充为已支持能力。新增面板与控制中心聚焦测试共 18/18 通过，`@codework/web` 类型检查、UI i18n 检查和 `git diff --check` 均通过；真实 BYOK/IDE API 和真实 Cursor 子会话 E2E 仍未验证。
+- 新增通道草稿模型发现（2026-08-28，当前工作区未提交）：`server.discoverByokDraftModels` 接收仅用于本次请求的协议、Base URL、API 密钥和可选供应商标识，复用既有目录 URL 推导、认证头、15 秒超时、4 MB 响应上限与跨域重定向剥离敏感头；草稿路径不读取或写入 `ServerSettings`，不进入 60 秒 adapter 缓存，结果不含密钥、adapter ID 或缓存状态。该 RPC 因携带请求期密钥要求 `AuthOrchestrationOperateScope`；client-runtime 的单飞键不包含密钥。Web 新增通道表单在模型 ID 旁提供"发现模型"，可从结果下拉选择并回填模型 ID、显示名称和目录给出的上下文窗口；协议、端点、密钥或供应商模板变化时清空旧结果，原有已保存通道的批量导入能力不变。contracts/服务/授权/Web 21 个聚焦测试、Contracts/Server/Web 类型检查、UI i18n 扫描与补丁空白检查通过；独立浏览器仅验证到本机 BYOK 路由加载，真实供应商目录请求仍需用户自行以实际凭据验收。
+- Provider 内模型通道卡片恢复（2026-08-28，当前工作区未提交）：`/settings/providers` 的 Cursor BYOK Provider Instance 在显示名称、强调色和环境变量之后恢复展示模型通道；它与 `/settings/byok` 共用当前实例 `config.adapters`，因此两处新增、编辑、删除或发现模型后写回同一份服务端配置，不存在重复保存或前端密钥缓存。Provider 入口使用更清晰的通道卡片呈现显示名称、协议、模型 ID、Base URL 和密钥已保存/脱敏状态，保留新增、编辑、删除及模型发现；余额、提示模板与委派等高级控制仍集中在独立 BYOK 工作台，避免设置页重复。
+- 运行时页使用引导（2026-08-28，当前工作区未提交）：运行时页不再默认将 `provider:*`、runtime ID、能力 ID 与 ToolBroker 术语作为主要内容；它依据真实 Agent Driver 投影给出下一步——无可用驱动时前往 Provider，BYOK 可用时前往委派并提供模型通道入口。驱动卡片保留可用/降级/不可用的可读结论和已验证常用能力，原始 ID、API 能力与诊断原因收进默认折叠的技术详情；只改变展示与站内导航，不改变 Driver 注册、授权、ToolBroker、任务调度或凭据逻辑。新增用户文档说明 Provider → BYOK → 运行时确认 → 委派的实际使用顺序。
 
 仍缺（本次范围，按对 BYOK 闭环的价值排序）：
 
 - BYOK 真实 API 生产验证（真实 key 走通模型循环、resume、余额查询的 E2E）——**当前唯一的非代码阻塞项，需要真实凭据**。
 - 多账号与账号级凭据回滚：本节点已补启用态与凭据轮换，但账号级 profile 回滚未实现——Code Work 没有独立 Account Profile 存储（迁移矩阵第 1、6 节明确 Provider Instance ≠ Cursor 账户），回滚需先落"凭据版本历史/账号快照"持久化合同（建议 secret store 侧保留上一版本 + `rollbackCredential` RPC，以 `updatedFields` 审计行为依据），记为独立切片。
-- 模型分组、权重路由、自动使用匹配与 failover 状态机（仍为"只有底层零件"）。
+- 权重路由、自动使用匹配与 failover 状态机（仍为"只有底层零件"）。
 - Request Lab、通用请求镜像、脱敏回放和协议对比界面。
 - 多端真实集成 E2E（Web/Desktop/Mobile 面板已接通，真实多端刷新与凭据链路验证未做）。
 

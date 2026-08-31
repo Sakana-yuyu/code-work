@@ -102,6 +102,7 @@ import {
   resolvePrimaryOperateAccess,
   resolveRemoteOperateAccess,
   resolveSelectedProviderEnvironmentId,
+  isProviderInstanceVisible,
 } from "./ProviderSettingsPanel.logic";
 import { t } from "~/i18n";
 
@@ -543,6 +544,7 @@ export function EnvironmentProviderSettings({
     Array<[ProviderInstanceId, ProviderInstanceConfig]>
   >();
   for (const [rawId, instance] of Object.entries(settings.providerInstances ?? {})) {
+    if (!isProviderInstanceVisible(instance)) continue;
     const driver = instance.driver;
     const list = instancesByDriver.get(driver) ?? [];
     list.push([rawId as ProviderInstanceId, instance]);

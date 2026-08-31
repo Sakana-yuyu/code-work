@@ -14,7 +14,7 @@ describe("brand-assets", () => {
   it("pins the verified sakana-yuyu source asset", () => {
     expect(SAKANA_YUYU_ICON_SOURCE).toEqual({
       relativePath: "assets/source/sakana-yuyu-agent-icon-256.png",
-      sha256: "42f8ec01736d92a769fbfcabc3c6b632e412a954f0b7f9a075c3841fe72df57c",
+      sha256: "77aec011e492518015fb6924cab4111d4f5f1239a985217f00b5c35bd1d9ac03",
       width: 256,
       height: 256,
     });

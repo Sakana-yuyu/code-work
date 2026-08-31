@@ -7,6 +7,7 @@ import { assert, it as effectIt } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
+import { FetchHttpClient } from "effect/unstable/http";
 import { describe, expect, it } from "vite-plus/test";
 
 import {
@@ -35,6 +36,21 @@ const config = (overrides: Record<string, unknown> = {}) => ({
   modelGroups: [],
   executorCommand: "",
   executorEnvironmentVariables: [],
+  executors: [],
+  executorFailoverLimit: 3,
+  visionDelegation: { enabled: false, visionModelId: "", mode: "auto" as const },
+  supervision: {
+    enabled: false,
+    supervisorModelId: "",
+    reviewerModelId: "",
+    maxCorrections: 2,
+    maxRetries: 1,
+    maxRounds: 8,
+    allowReassign: true,
+    allowEscalate: true,
+    strictUnavailable: false,
+  },
+  subagentProfiles: [],
   ...overrides,
 });
 
@@ -186,6 +202,7 @@ const ledgerLayer = effectIt.layer(
   Layer.mergeAll(
     CompositionTaskStoreLive.pipe(Layer.provideMerge(SqlitePersistenceMemory)),
     delegationSettingsLayer,
+    FetchHttpClient.layer,
   ),
 );
 
@@ -275,6 +292,21 @@ const cancellationConfig: ByokDelegationConfig = {
   modelGroups: [],
   executorCommand: `"${process.execPath}" -e setTimeout(()=>{},60000)`,
   executorEnvironmentVariables: [],
+  executors: [],
+  executorFailoverLimit: 3,
+  visionDelegation: { enabled: false, visionModelId: "", mode: "auto" },
+  supervision: {
+    enabled: false,
+    supervisorModelId: "",
+    reviewerModelId: "",
+    maxCorrections: 2,
+    maxRetries: 1,
+    maxRounds: 8,
+    allowReassign: true,
+    allowEscalate: true,
+    strictUnavailable: false,
+  },
+  subagentProfiles: [],
 };
 const cancellationLayer = effectIt.layer(
   Layer.mergeAll(
@@ -287,6 +319,7 @@ const cancellationLayer = effectIt.layer(
         },
       },
     }),
+    FetchHttpClient.layer,
   ),
 );
 
@@ -333,6 +366,132 @@ cancellationLayer("delegation composition cancel bridge", (it) => {
 
         unregisterLive();
         scheduler.cancel(blocker.id);
+      }),
+    20_000,
+  );
+
+  it.effect(
+    "service.cancel 按 instanceId+delegationId 取消委派并返回快照，未知 id 返回 null",
+    () =>
+      Effect.gen(function* () {
+        const scheduler = resolveScheduler(cancellationConfig, CANCEL_INSTANCE_ID);
+        const blocker = scheduler.submit({ input: "blocker" });
+        const queued = scheduler.submit({ input: "cancel-target-task" });
+
+        const service = yield* make;
+        const cancelled = yield* service.cancel({
+          instanceId: CANCEL_INSTANCE_ID,
+          delegationId: queued.id,
+        });
+        assert.equal(cancelled?.status, "cancelled");
+        assert.equal(scheduler.get(queued.id)?.status, "cancelled");
+
+        const unknown = yield* service.cancel({
+          instanceId: CANCEL_INSTANCE_ID,
+          delegationId: "delegation-unknown",
+        });
+        assert.equal(unknown, null);
+
+        scheduler.cancel(blocker.id);
+      }),
+    20_000,
+  );
+});
+
+const FAILOVER_INSTANCE_ID = "byok-failover";
+const rescueExecutor = {
+  id: "rescue",
+  name: "",
+  enabled: true,
+  priority: 100,
+  command: `"${process.execPath}" -e process.stdout.write("rescued-ok")`,
+  environmentVariables: [],
+  probeArguments: "",
+};
+
+const failoverSettingsLayer = ServerSettings.layerTest({
+  providerInstances: {
+    [ProviderInstanceId.make(FAILOVER_INSTANCE_ID)]: {
+      driver: ProviderDriverKind.make("byok"),
+      config: {
+        delegation: {
+          enabled: true,
+          maxConcurrency: 1,
+          queueTimeoutMs: 10_000,
+          executionTimeoutMs: 20_000,
+          executorCommand: `"${process.execPath}" -e process.stderr.write("primary_down");process.exit(3)`,
+          executors: [rescueExecutor],
+        },
+      },
+    },
+  },
+});
+
+const failoverLayer = effectIt.layer(
+  Layer.mergeAll(failoverSettingsLayer, FetchHttpClient.layer),
+);
+
+failoverLayer("delegation executor failover (original registry parity)", (it) => {
+  it.effect(
+    "switchable failure fails over to the next candidate and records the attempt chain",
+    () =>
+      Effect.gen(function* () {
+        const service = yield* make;
+        const snapshot = yield* service.submit({
+          instanceId: FAILOVER_INSTANCE_ID,
+          task: "failover-task",
+        });
+        assert.equal(snapshot.status, "succeeded");
+        assert.equal(snapshot.resultPreview, "rescued-ok");
+        assert.deepEqual(
+          snapshot.executorAttempts?.map((row) => [row.executorId, row.status]),
+          [
+            ["default", "failed"],
+            ["rescue", "completed"],
+          ],
+        );
+        assert.include(snapshot.executorAttempts?.[0]?.diagnosticPreview ?? "", "primary_down");
+      }),
+    20_000,
+  );
+
+  it.effect(
+    "not-installed candidates are probed away without consuming the budget",
+    () =>
+      Effect.gen(function* () {
+        const settings = yield* ServerSettings.ServerSettingsService;
+        yield* settings.updateSettings({
+          providerInstances: {
+            [ProviderInstanceId.make(FAILOVER_INSTANCE_ID)]: {
+              driver: ProviderDriverKind.make("byok"),
+              config: {
+                delegation: {
+                  enabled: true,
+                  maxConcurrency: 1,
+                  queueTimeoutMs: 10_000,
+                  executionTimeoutMs: 20_000,
+                  executorCommand: "definitely-not-installed-executor-xyz --run",
+                  executors: [rescueExecutor],
+                },
+              },
+            },
+          },
+        });
+        const service = yield* make;
+        const snapshot = yield* service.submit({
+          instanceId: FAILOVER_INSTANCE_ID,
+          task: "probe-skip-task",
+        });
+        assert.equal(snapshot.status, "succeeded");
+        assert.equal(snapshot.resultPreview, "rescued-ok");
+        assert.deepEqual(
+          snapshot.executorAttempts?.map((row) => [row.executorId, row.status]),
+          [
+            ["default", "skipped"],
+            ["rescue", "completed"],
+          ],
+        );
+        assert.equal(snapshot.executorAttempts?.[0]?.diagnosticPreview, "not_installed");
       }),
     20_000,
   );
