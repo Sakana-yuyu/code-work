@@ -93,6 +93,46 @@ describe("ThreadGoalStatusBar", () => {
     expect(markup.match(/disabled=""/g)?.length).toBeGreaterThanOrEqual(3);
   });
 
+  it("maps every persisted status to its label and legal controls", () => {
+    const statuses: Array<ThreadGoal["status"]> = [
+      "active",
+      "paused",
+      "blocked",
+      "usageLimited",
+      "budgetLimited",
+      "complete",
+    ];
+    const statusLabels: Record<ThreadGoal["status"], string> = {
+      active: t("threadGoal.status.active"),
+      paused: t("threadGoal.status.paused"),
+      blocked: t("threadGoal.status.blocked"),
+      usageLimited: t("threadGoal.status.usageLimited"),
+      budgetLimited: t("threadGoal.status.budgetLimited"),
+      complete: t("threadGoal.status.complete"),
+    };
+
+    for (const status of statuses) {
+      const markup = renderToStaticMarkup(
+        <ThreadGoalStatusBar
+          goal={goal(status)}
+          isPending={false}
+          errorMessage={null}
+          onSetGoal={() => Promise.resolve(true)}
+          onPause={() => Promise.resolve(true)}
+          onResume={() => Promise.resolve(true)}
+          onClear={() => Promise.resolve(true)}
+        />,
+      );
+      expect(markup).toContain(`data-thread-goal-status="${status}"`);
+      expect(markup).toContain(statusLabels[status]);
+      expect(markup).toContain(`aria-label="${t("threadGoal.details")}"`);
+      expect(markup).toContain(`aria-label="${t("threadGoal.clear")}"`);
+      expect(markup).toContain(
+        `aria-label="${t(status === "active" ? "threadGoal.pause" : status === "paused" ? "threadGoal.resume" : "threadGoal.clear")}"`,
+      );
+    }
+  });
+
   it("does not offer editing for a completed goal", () => {
     const markup = renderToStaticMarkup(
       <ThreadGoalStatusBar
