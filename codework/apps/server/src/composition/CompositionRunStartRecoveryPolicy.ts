@@ -1,6 +1,9 @@
 import type { CompositionTask, CompositionTaskRun } from "@codework/contracts";
 import * as Cause from "effect/Cause";
+import * as Clock from "effect/Clock";
+import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
+import * as Option from "effect/Option";
 
 import type { CompositionRunStartIntent } from "../persistence/Services/CompositionRunStartStore.ts";
 import type { CompositionAgentDriverRegistry } from "./CompositionAgentDriverRegistry.ts";
@@ -23,39 +26,101 @@ export type CompositionRunStartRecoveryCandidate = {
 export type CompositionRunStartRecoveryReconciliation =
   | "provider-sessions"
   | "ide-sessions"
-  | "runtime-adapters";
+  | "runtime-adapters"
+  | `ide-session-known:${string}`
+  | `ide-session-ready:${string}`
+  | `runtime-adapter-known:${string}`
+  | `runtime-adapter-ready:${string}`;
 
 export type CompositionRunStartRecoveryPlan = {
   readonly taskId: string;
   readonly runId: string;
-  readonly action: "replay" | "accept" | "defer" | "manual" | "quarantine";
+  readonly action: "start" | "replay" | "accept" | "defer" | "manual" | "quarantine";
   readonly code?: string;
   readonly detail?: string;
   readonly runtimeTaskId?: string;
   readonly capabilityHandshakeId?: string | null;
+  readonly retryAtUnixMs?: number;
 };
 
-const requiredReconciliations = [
-  {
-    key: "provider-sessions",
-    code: "run_start_provider_sessions_reconciliation_pending",
-    detail: "Provider session 启动收口尚未完成，Run Start 恢复已延后。",
-  },
-  {
-    key: "ide-sessions",
-    code: "run_start_ide_sessions_reconciliation_pending",
-    detail: "IDE session 启动收口尚未完成，Run Start 恢复已延后。",
-  },
-  {
-    key: "runtime-adapters",
-    code: "run_start_runtime_adapters_reconciliation_pending",
-    detail: "Runtime Adapter 启动收口尚未完成，Run Start 恢复已延后。",
-  },
-] as const satisfies ReadonlyArray<{
-  readonly key: CompositionRunStartRecoveryReconciliation;
-  readonly code: string;
-  readonly detail: string;
-}>;
+const DRIVER_RECONCILIATION_TIMEOUT = Duration.seconds(5);
+const TRANSIENT_RECONCILIATION_RETRY_MS = 30_000;
+
+const pendingReconciliationForTarget = (input: {
+  readonly candidate: CompositionRunStartRecoveryCandidate;
+  readonly runtimeKind: string;
+  readonly reconciled: ReadonlySet<CompositionRunStartRecoveryReconciliation>;
+  readonly retryAtUnixMs: number;
+}): CompositionRunStartRecoveryPlan | undefined => {
+  if (input.runtimeKind === "provider" || input.runtimeKind === "byok") {
+    return input.reconciled.has("provider-sessions")
+      ? undefined
+      : {
+          taskId: input.candidate.task.taskId,
+          runId: input.candidate.run.runId,
+          action: "defer",
+          code: "run_start_provider_sessions_reconciliation_pending",
+          detail: "Provider session 启动收口尚未完成，Run Start 恢复已延后。",
+          retryAtUnixMs: input.retryAtUnixMs,
+        };
+  }
+
+  const ideSessionId = input.candidate.run.runtimeId.startsWith("ide:")
+    ? input.candidate.run.runtimeId.slice("ide:".length)
+    : undefined;
+  if (ideSessionId !== undefined) {
+    if (!input.reconciled.has("ide-sessions")) {
+      return {
+        taskId: input.candidate.task.taskId,
+        runId: input.candidate.run.runId,
+        action: "defer",
+        code: "run_start_ide_sessions_reconciliation_pending",
+        detail: "IDE session 启动收口尚未完成，Run Start 恢复已延后。",
+        retryAtUnixMs: input.retryAtUnixMs,
+      };
+    }
+    return input.reconciled.has(`ide-session-ready:${ideSessionId}`)
+      ? undefined
+      : {
+          taskId: input.candidate.task.taskId,
+          runId: input.candidate.run.runId,
+          action: "defer",
+          code: "run_start_ide_session_target_reconciliation_pending",
+          detail: "目标 IDE session 未完成可用性核对，Run Start 恢复已延后。",
+          retryAtUnixMs: input.retryAtUnixMs,
+        };
+  }
+
+  if (!input.reconciled.has("runtime-adapters")) {
+    return {
+      taskId: input.candidate.task.taskId,
+      runId: input.candidate.run.runId,
+      action: "defer",
+      code: "run_start_runtime_adapters_reconciliation_pending",
+      detail: "Runtime Adapter 启动收口尚未完成，Run Start 恢复已延后。",
+      retryAtUnixMs: input.retryAtUnixMs,
+    };
+  }
+  if (!input.reconciled.has(`runtime-adapter-known:${input.candidate.run.runtimeId}`)) {
+    return {
+      taskId: input.candidate.task.taskId,
+      runId: input.candidate.run.runId,
+      action: "manual",
+      code: "run_start_runtime_adapter_target_unknown",
+      detail: "持久 Run Start 指向的 Runtime Adapter 已不存在，需要人工核对。",
+    };
+  }
+  return input.reconciled.has(`runtime-adapter-ready:${input.candidate.run.runtimeId}`)
+    ? undefined
+    : {
+        taskId: input.candidate.task.taskId,
+        runId: input.candidate.run.runId,
+        action: "defer",
+        code: "run_start_runtime_adapter_target_unavailable",
+        detail: "目标 Runtime Adapter 已登记但尚未在线，Run Start 恢复已延后。",
+        retryAtUnixMs: input.retryAtUnixMs,
+      };
+};
 
 const deferCandidatePlanningFailure = (
   candidate: CompositionRunStartRecoveryCandidate,
@@ -72,17 +137,6 @@ const planFor = Effect.fn("planCompositionRunStartRecovery")(function* (
   driverRegistry: CompositionAgentDriverRegistry,
   reconciled: ReadonlySet<CompositionRunStartRecoveryReconciliation>,
 ): Effect.fn.Return<CompositionRunStartRecoveryPlan, CompositionAgentDriverFailure> {
-  const pendingReconciliation = requiredReconciliations.find(({ key }) => !reconciled.has(key));
-  if (pendingReconciliation !== undefined) {
-    return {
-      taskId: candidate.task.taskId,
-      runId: candidate.run.runId,
-      action: "defer",
-      code: pendingReconciliation.code,
-      detail: pendingReconciliation.detail,
-    };
-  }
-
   if (
     candidate.task.taskId !== candidate.run.taskId ||
     candidate.run.taskId !== candidate.intent.taskId ||
@@ -179,6 +233,56 @@ const planFor = Effect.fn("planCompositionRunStartRecovery")(function* (
       detail: "Agent Driver 未声明跨进程启动恢复策略，需要人工核对。",
     };
   }
+  if (candidate.intent.state === "accepted") {
+    const receipt = yield* validateCompositionRunStartReceipt({
+      policy,
+      startResult: {
+        ...(candidate.intent.runtimeTaskId === null
+          ? {}
+          : { runtimeTaskId: candidate.intent.runtimeTaskId }),
+        ...(candidate.intent.capabilityHandshakeId === null
+          ? {}
+          : { capabilityHandshakeId: candidate.intent.capabilityHandshakeId }),
+      },
+      capabilityGrantIds: [...(candidate.run.capabilityGrantIds ?? [])],
+    }).pipe(
+      Effect.matchEffect({
+        onFailure: (failure) => Effect.succeed({ _tag: "Failure" as const, failure }),
+        onSuccess: (value) => Effect.succeed({ _tag: "Success" as const, value }),
+      }),
+    );
+    return receipt._tag === "Failure"
+      ? {
+          taskId: candidate.task.taskId,
+          runId: candidate.run.runId,
+          action: "manual",
+          code: receipt.failure.code,
+          detail: receipt.failure.detail,
+        }
+      : {
+          taskId: candidate.task.taskId,
+          runId: candidate.run.runId,
+          action: "accept",
+          ...(receipt.value.runtimeTaskId === null
+            ? {}
+            : { runtimeTaskId: receipt.value.runtimeTaskId }),
+          capabilityHandshakeId: receipt.value.capabilityHandshakeId,
+        };
+  }
+  const pendingReconciliation = pendingReconciliationForTarget({
+    candidate,
+    runtimeKind: externalTargetIdentity.runtimeKind,
+    reconciled,
+    retryAtUnixMs: (yield* Clock.currentTimeMillis) + TRANSIENT_RECONCILIATION_RETRY_MS,
+  });
+  if (pendingReconciliation !== undefined) return pendingReconciliation;
+  if (candidate.intent.state === "prepared" || candidate.intent.state === "preparing") {
+    return {
+      taskId: candidate.task.taskId,
+      runId: candidate.run.runId,
+      action: "start",
+    };
+  }
   if (policy.mode === "manual") {
     return {
       taskId: candidate.task.taskId,
@@ -207,14 +311,12 @@ const planFor = Effect.fn("planCompositionRunStartRecovery")(function* (
     };
   }
 
-  const reconciliation = yield* Effect.exit(
-    reconcileStart({
-      task: candidate.task,
-      run: candidate.run,
-      intent: candidate.intent,
-      capabilityIds: candidate.capabilityIds,
-    }),
-  );
+  const reconciliation = yield* reconcileStart({
+    task: candidate.task,
+    run: candidate.run,
+    intent: candidate.intent,
+    capabilityIds: candidate.capabilityIds,
+  }).pipe(Effect.timeoutOption(DRIVER_RECONCILIATION_TIMEOUT), Effect.exit);
   if (reconciliation._tag === "Failure") {
     if (Cause.interruptors(reconciliation.cause).size > 0) {
       return yield* Effect.failCause(reconciliation.cause);
@@ -225,10 +327,22 @@ const planFor = Effect.fn("planCompositionRunStartRecovery")(function* (
       action: "defer",
       code: "run_start_driver_reconciliation_failed",
       detail: "Agent Driver 启动事实核对失败，已隔离当前 Run 并继续处理其他恢复项。",
+      retryAtUnixMs: (yield* Clock.currentTimeMillis) + TRANSIENT_RECONCILIATION_RETRY_MS,
     };
   }
 
-  const decision = reconciliation.value;
+  if (Option.isNone(reconciliation.value)) {
+    return {
+      taskId: candidate.task.taskId,
+      runId: candidate.run.runId,
+      action: "defer",
+      code: "run_start_driver_reconciliation_timeout",
+      detail: "Agent Driver 启动事实核对超时，已延后当前 Run 并继续处理其他恢复项。",
+      retryAtUnixMs: (yield* Clock.currentTimeMillis) + TRANSIENT_RECONCILIATION_RETRY_MS,
+    };
+  }
+
+  const decision = reconciliation.value.value;
   if (decision.action === "replay") {
     return policy.mode === "idempotent-replay"
       ? {
@@ -285,6 +399,11 @@ const planFor = Effect.fn("planCompositionRunStartRecovery")(function* (
     action: decision.action,
     code: decision.code,
     detail: decision.detail,
+    ...(decision.action === "defer"
+      ? {
+          retryAtUnixMs: (yield* Clock.currentTimeMillis) + TRANSIENT_RECONCILIATION_RETRY_MS,
+        }
+      : {}),
   };
 });
 

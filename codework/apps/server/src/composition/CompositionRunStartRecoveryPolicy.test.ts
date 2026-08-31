@@ -2,6 +2,8 @@ import type { CompositionTask, CompositionTaskRun } from "@codework/contracts";
 import { assert, it } from "@effect/vitest";
 import * as Cause from "effect/Cause";
 import * as Effect from "effect/Effect";
+import * as Fiber from "effect/Fiber";
+import * as TestClock from "effect/testing/TestClock";
 
 import type { CompositionRunStartIntent } from "../persistence/Services/CompositionRunStartStore.ts";
 import { makeCompositionAgentDriverRegistry } from "./CompositionAgentDriverRegistry.ts";
@@ -58,7 +60,7 @@ const makeCandidate = (
     attempt: run.attempt,
     promptDigest: task.promptDigest,
     externalTargetIdentity: {
-      runtimeKind: "test",
+      runtimeKind: "provider",
       providerInstanceId: "provider-test",
       adapterId: run.runtimeId,
       modelIdentity: null,
@@ -110,7 +112,7 @@ const makeDriver = (
     capabilityGrantReplay: { mode: "none" },
   },
   getStartIdentity: () => ({
-    runtimeKind: "test",
+    runtimeKind: "provider",
     providerInstanceId: "provider-test",
     adapterId: candidate.intent.runtimeId,
     modelIdentity: null,
@@ -120,6 +122,48 @@ const makeDriver = (
   startTask: () => Effect.succeed({ runtimeTaskId: `runtime-task-${candidate.intent.runId}` }),
   cancelTask: () => Effect.succeed({ status: "cancelled" as const }),
   ...overrides,
+});
+
+const withIntent = (
+  candidate: CompositionRunStartRecoveryCandidate,
+  overrides: Partial<CompositionRunStartIntent>,
+): CompositionRunStartRecoveryCandidate => ({
+  ...candidate,
+  intent: { ...candidate.intent, ...overrides },
+});
+
+const withExternalTargetIdentity = (
+  candidate: CompositionRunStartRecoveryCandidate,
+  externalTargetIdentity: ReturnType<NonNullable<CompositionAgentDriver["getStartIdentity"]>>,
+): CompositionRunStartRecoveryCandidate => ({
+  ...candidate,
+  intent: {
+    ...candidate.intent,
+    ...makeCompositionRunStartDigests({
+      taskId: candidate.task.taskId,
+      projectId: candidate.task.projectId,
+      ...(candidate.task.threadId === undefined ? {} : { threadId: candidate.task.threadId }),
+      ...(candidate.task.parentTaskId === undefined
+        ? {}
+        : { parentTaskId: candidate.task.parentTaskId }),
+      runId: candidate.run.runId,
+      previousRunId: candidate.intent.previousRunId,
+      assigneeKind: candidate.task.assigneeKind,
+      assigneeId: candidate.task.assigneeId,
+      mode: candidate.task.mode,
+      dependsOnTaskIds: candidate.task.dependsOnTaskIds,
+      agentId: candidate.run.agentId,
+      runtimeId: candidate.run.runtimeId,
+      attempt: candidate.run.attempt,
+      promptDigest: candidate.task.promptDigest,
+      ...(candidate.workspaceRootDigest === null
+        ? {}
+        : { workspaceRootDigest: candidate.workspaceRootDigest }),
+      ...(candidate.model === null ? {} : { model: candidate.model }),
+      externalTargetIdentity,
+      capabilityIds: candidate.capabilityIds,
+    }),
+  },
 });
 
 it.effect("所有启动恢复决策都等待 Provider、IDE 与 Runtime reconcile 门禁", () =>
@@ -143,13 +187,25 @@ it.effect("所有启动恢复决策都等待 Provider、IDE 与 Runtime reconcil
       reconciled: new Set(["ide-sessions", "runtime-adapters"] as const),
     });
 
-    assert.deepEqual(plan, {
-      taskId: candidate.task.taskId,
-      runId: candidate.run.runId,
-      action: "defer",
-      code: "run_start_provider_sessions_reconciliation_pending",
-      detail: "Provider session 启动收口尚未完成，Run Start 恢复已延后。",
-    });
+    assert.deepEqual(
+      plan === undefined
+        ? undefined
+        : {
+            taskId: plan.taskId,
+            runId: plan.runId,
+            action: plan.action,
+            code: plan.code,
+            detail: plan.detail,
+          },
+      {
+        taskId: candidate.task.taskId,
+        runId: candidate.run.runId,
+        action: "defer",
+        code: "run_start_provider_sessions_reconciliation_pending",
+        detail: "Provider session 启动收口尚未完成，Run Start 恢复已延后。",
+      },
+    );
+    assert.equal(plan?.retryAtUnixMs, 30_000);
     assert.equal(reconcileCalls, 0);
   }),
 );
@@ -184,6 +240,42 @@ it.effect("单个 Driver defect 被隔离，后续可安全重放的意图仍会
       ],
     );
     assert.notInclude(plans[0]?.detail ?? "", "driver secret");
+  }),
+);
+
+it.effect("单个 Driver 核对悬挂会有界延后，后续候选仍会完成规划", () =>
+  Effect.gen(function* () {
+    const hanging = makeCandidate("hanging-reconciliation");
+    const healthy = makeCandidate("after-hanging-reconciliation");
+    const registry = makeCompositionAgentDriverRegistry();
+    yield* registry.register(
+      makeDriver(hanging, {
+        reconcileStart: () => Effect.never,
+      }),
+    );
+    yield* registry.register(makeDriver(healthy));
+
+    const plansFiber = yield* planCompositionRunStartRecoveries({
+      candidates: [hanging, healthy],
+      driverRegistry: registry,
+      reconciled,
+    }).pipe(Effect.forkChild);
+    yield* Effect.yieldNow;
+    yield* TestClock.adjust("5 seconds");
+    const plans = yield* Fiber.join(plansFiber);
+
+    assert.deepEqual(
+      plans.map(({ runId, action, code }) => ({ runId, action, code })),
+      [
+        {
+          runId: hanging.run.runId,
+          action: "defer",
+          code: "run_start_driver_reconciliation_timeout",
+        },
+        { runId: healthy.run.runId, action: "replay", code: undefined },
+      ],
+    );
+    assert.equal(plans[0]?.retryAtUnixMs, 35_000);
   }),
 );
 
@@ -382,6 +474,99 @@ it.effect("旧密文缺 capabilityIds 时稳定 quarantine，绝不按空授权�
   }),
 );
 
+it.effect("prepared 与 preparing 尚未触发外部启动时规划为一次安全新启动", () =>
+  Effect.gen(function* () {
+    for (const state of ["prepared", "preparing"] as const) {
+      const candidate = withIntent(makeCandidate(`pre-dispatch-${state}`), {
+        state,
+        ...(state === "prepared"
+          ? { claimId: null, ownerLeaseExpiresAtUnixMs: null }
+          : { claimId: `claim-pre-dispatch-${state}`, ownerLeaseExpiresAtUnixMs: 60_000 }),
+      });
+      let reconcileCalls = 0;
+      const registry = makeCompositionAgentDriverRegistry();
+      yield* registry.register(
+        makeDriver(candidate, {
+          reconcileStart: () =>
+            Effect.sync(() => {
+              reconcileCalls += 1;
+              return {
+                action: "manual" as const,
+                code: "unused",
+                detail: "该 pre-dispatch 测试不应调用 reconcileStart。",
+              };
+            }),
+        }),
+      );
+
+      const [plan] = yield* planCompositionRunStartRecoveries({
+        candidates: [candidate],
+        driverRegistry: registry,
+        reconciled,
+      });
+
+      assert.deepEqual(plan, {
+        taskId: candidate.task.taskId,
+        runId: candidate.run.runId,
+        action: "start",
+      });
+      assert.equal(reconcileCalls, 0);
+    }
+  }),
+);
+
+it.effect("accepted receipt 不依赖目标在线即可直接验证为接受事实", () =>
+  Effect.gen(function* () {
+    const candidate = withIntent(makeCandidate("accepted-offline-target"), {
+      state: "accepted",
+      runtimeTaskId: "runtime-task-accepted-offline-target",
+    });
+    const registry = makeCompositionAgentDriverRegistry();
+    yield* registry.register(makeDriver(candidate));
+
+    const [plan] = yield* planCompositionRunStartRecoveries({
+      candidates: [candidate],
+      driverRegistry: registry,
+      reconciled: new Set(),
+    });
+
+    assert.equal(plan?.action, "accept");
+    assert.equal(plan?.runtimeTaskId, "runtime-task-accepted-offline-target");
+  }),
+);
+
+it.effect("全局核对完成后仍不存在的 Runtime Adapter 必须转人工处置", () =>
+  Effect.gen(function* () {
+    const externalTargetIdentity = {
+      runtimeKind: "runtime-adapter",
+      providerInstanceId: null,
+      adapterId: "runtime-unknown-runtime-target",
+      modelIdentity: null,
+      configDigest: "sha256:test-config",
+      sessionMode: null,
+    };
+    const candidate = withExternalTargetIdentity(
+      makeCandidate("unknown-runtime-target"),
+      externalTargetIdentity,
+    );
+    const registry = makeCompositionAgentDriverRegistry();
+    yield* registry.register(
+      makeDriver(candidate, {
+        getStartIdentity: () => externalTargetIdentity,
+      }),
+    );
+
+    const [plan] = yield* planCompositionRunStartRecoveries({
+      candidates: [candidate],
+      driverRegistry: registry,
+      reconciled: new Set(["runtime-adapters"]),
+    });
+
+    assert.equal(plan?.action, "manual");
+    assert.equal(plan?.code, "run_start_runtime_adapter_target_unknown");
+  }),
+);
+
 it.effect(
   "恢复时 project、线程、受派人、模式、依赖或模型身份改变会 quarantine 且不调用 Driver",
   () =>
@@ -478,7 +663,7 @@ it.effect(
         yield* registry.register(
           makeDriver(original, {
             getStartIdentity: () => ({
-              runtimeKind: "test",
+              runtimeKind: "provider",
               providerInstanceId: "provider-test",
               adapterId: original.intent.runtimeId,
               modelIdentity: null,
