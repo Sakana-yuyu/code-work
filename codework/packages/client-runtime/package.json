@@ -151,6 +151,10 @@
       "types": "./src/state/threadReducer.ts",
       "default": "./src/state/threadReducer.ts"
     },
+    "./state/thread-goal": {
+      "types": "./src/state/threadGoal.ts",
+      "default": "./src/state/threadGoal.ts"
+    },
     "./state/subagentRuntime": {
       "types": "./src/state/subagentRuntime.ts",
       "default": "./src/state/subagentRuntime.ts"
