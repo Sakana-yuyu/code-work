@@ -102,6 +102,7 @@ import * as ByokDelegation from "./provider/byok/ByokDelegationService.ts";
 import * as ByokAdaptersImport from "./provider/byok/ByokAdaptersImport.ts";
 import {
   applySupplierCredentialUpdate,
+  buildSupplierProviderInstancePatch,
   setSupplierInstanceEnabled,
 } from "./provider/SupplierAdminCore.ts";
 import * as CompositionAgentService from "./composition/CompositionAgentService.ts";
@@ -2920,9 +2921,13 @@ const makeWsRpcLayer = (
                   detail: outcome.detail,
                 });
               }
-              yield* serverSettings.updateSettings({
-                providerInstances: outcome.value.providerInstances,
-              });
+              yield* serverSettings.updateSettings(
+                buildSupplierProviderInstancePatch(
+                  settings.providerInstances,
+                  outcome.value.providerInstances,
+                  input.instanceId,
+                ),
+              );
               return { instanceId: input.instanceId, enabled: input.enabled };
             }),
             { "rpc.aggregate": "server" },
@@ -2944,9 +2949,13 @@ const makeWsRpcLayer = (
                   detail: outcome.detail,
                 });
               }
-              yield* serverSettings.updateSettings({
-                providerInstances: outcome.value.providerInstances,
-              });
+              yield* serverSettings.updateSettings(
+                buildSupplierProviderInstancePatch(
+                  settings.providerInstances,
+                  outcome.value.providerInstances,
+                  input.instanceId,
+                ),
+              );
               return {
                 instanceId: input.instanceId,
                 kind: input.credential.kind,

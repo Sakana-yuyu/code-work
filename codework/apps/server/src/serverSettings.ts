@@ -23,12 +23,14 @@ import {
   ProviderDriverKind,
   ProviderInstanceId,
   ServerSettings,
+  ServerSettingsConflictError,
   ServerSettingsError,
   type ServerSettingsPatch,
 } from "@codework/contracts";
 import * as Cache from "effect/Cache";
 import * as Cause from "effect/Cause";
 import * as Context from "effect/Context";
+import * as Crypto from "effect/Crypto";
 import * as Deferred from "effect/Deferred";
 import * as Duration from "effect/Duration";
 import * as Equal from "effect/Equal";
@@ -45,7 +47,6 @@ import * as Semaphore from "effect/Semaphore";
 import * as Scope from "effect/Scope";
 import * as Stream from "effect/Stream";
 import * as SqlClient from "effect/unstable/sql/SqlClient";
-import { writeFileStringAtomically } from "./atomicWrite.ts";
 import * as ServerConfig from "./config.ts";
 import { type DeepPartial, deepMerge } from "@codework/shared/Struct";
 import { fromJsonStringPretty, fromLenientJson } from "@codework/shared/schemaJson";
@@ -54,6 +55,20 @@ import {
   isModelSelectionProviderEnabled,
 } from "@codework/shared/serverSettings";
 import * as ServerSecretStore from "./auth/ServerSecretStore.ts";
+import {
+  applyMulticaProviderInstanceMutation,
+  assignMulticaProviderInstanceRevisions,
+  multicaSecretEnvironmentNames,
+  normalizeMulticaProviderInstances,
+  validateMulticaProviderInstancePreconditions,
+} from "./serverSettingsMulticaCas.ts";
+import {
+  commitServerSettingsOriginCas,
+  readServerSettingsOriginSnapshot,
+  ServerSettingsOriginCommitHook,
+  type ServerSettingsOriginSnapshot,
+} from "./serverSettingsOriginCas.ts";
+import { makeServerSettingsSecretTransaction } from "./serverSettingsSecretTransaction.ts";
 
 export { resolveSourceControlWriterModelSelection } from "@codework/shared/serverSettings";
 
@@ -64,68 +79,26 @@ const decodeServerSettings = Schema.decodeUnknownEffect(ServerSettings);
 const textEncoder = new TextEncoder();
 const textDecoder = new TextDecoder();
 
-/**
- * Fold the legacy in-config `enabled` flag into the envelope-level
- * `ProviderInstanceConfig.enabled` and strip it from the config blob, so
- * explicit provider instances carry exactly one enabled flag. Old settings
- * files can hold both flags with conflicting values; an explicit false on
- * either side wins so a user's disable is never silently undone. Runs on
- * every load and update — the file converges on the next write.
- */
-const foldProviderInstanceEnabledFlags = (settings: ServerSettings): ServerSettings => {
-  let changed = false;
-  const providerInstances: Record<string, ProviderInstanceConfig> = {};
-  for (const [instanceId, instance] of Object.entries(settings.providerInstances)) {
-    const config = instance.config;
-    // Only fold boolean flags: a malformed `enabled` (e.g. `"false"`) must
-    // stay in the blob so driver schema validation flags it instead of the
-    // fold silently repairing the config.
-    if (
-      config === null ||
-      typeof config !== "object" ||
-      Array.isArray(config) ||
-      typeof (config as { readonly enabled?: unknown }).enabled !== "boolean"
-    ) {
-      providerInstances[instanceId] = instance;
-      continue;
-    }
-    const { enabled: configEnabled, ...restConfig } = config as Record<string, unknown> & {
-      readonly enabled: boolean;
-    };
-    const resolved =
-      instance.enabled === false || configEnabled === false
-        ? false
-        : (instance.enabled ?? configEnabled);
-    changed = true;
-    providerInstances[instanceId] = {
-      ...instance,
-      enabled: resolved,
-      config: restConfig,
-    } satisfies ProviderInstanceConfig;
-  }
-  if (!changed) {
-    return settings;
-  }
-  return {
-    ...settings,
-    providerInstances: providerInstances as ServerSettings["providerInstances"],
-  };
+type ServerSettingsUpdateError = ServerSettingsError | ServerSettingsConflictError;
+type ServerSettingsDiskSnapshot = ServerSettingsOriginSnapshot & {
+  readonly settings: ServerSettings;
 };
 
 const normalizeServerSettings = (
   settings: ServerSettings,
+  settingsPath = "<memory>",
 ): Effect.Effect<ServerSettings, ServerSettingsError> =>
   encodeServerSettings(settings).pipe(
     Effect.flatMap(decodeServerSettings),
-    Effect.map(foldProviderInstanceEnabledFlags),
     Effect.mapError(
       (cause) =>
         new ServerSettingsError({
-          settingsPath: "<memory>",
+          settingsPath,
           operation: "normalize",
           cause,
         }),
     ),
+    Effect.flatMap((normalized) => normalizeMulticaProviderInstances(settingsPath, normalized)),
   );
 
 function providerEnvironmentSecretName(input: {
@@ -191,13 +164,15 @@ function redactByokConfig(config: unknown): unknown {
 
 function redactProviderEnvironmentVariable(
   variable: ProviderInstanceEnvironmentVariable,
+  forceSecret = false,
 ): ProviderInstanceEnvironmentVariable {
-  if (!variable.sensitive) {
+  if (!forceSecret && !variable.sensitive) {
     const { valueRedacted: _omit, ...rest } = variable;
     return rest;
   }
   return {
     ...variable,
+    ...(forceSecret ? { sensitive: true } : {}),
     value: "",
     ...(variable.value.length > 0 || variable.valueRedacted ? { valueRedacted: true } : {}),
   };
@@ -227,16 +202,26 @@ function redactMcpServerConfig(
 
 export function redactServerSettingsForClient(settings: ServerSettings): ServerSettings {
   const providerInstances = Object.fromEntries(
-    Object.entries(settings.providerInstances).map(([instanceId, instance]) => [
-      instanceId,
-      {
-        ...instance,
-        ...(instance.driver === "byok" ? { config: redactByokConfig(instance.config) } : {}),
-        ...(instance.environment
-          ? { environment: instance.environment.map(redactProviderEnvironmentVariable) }
-          : {}),
-      },
-    ]),
+    Object.entries(settings.providerInstances).map(([instanceId, instance]) => {
+      const secretEnvironmentNames = multicaSecretEnvironmentNames(instance);
+      return [
+        instanceId,
+        {
+          ...instance,
+          ...(instance.driver === "byok" ? { config: redactByokConfig(instance.config) } : {}),
+          ...(instance.environment
+            ? {
+                environment: instance.environment.map((variable) =>
+                  redactProviderEnvironmentVariable(
+                    variable,
+                    secretEnvironmentNames.has(variable.name),
+                  ),
+                ),
+              }
+            : {}),
+        },
+      ];
+    }),
   );
   const mcpServers = Object.fromEntries(
     Object.entries(settings.mcpServers).map(([serverId, config]) => [
@@ -262,7 +247,7 @@ export class ServerSettingsService extends Context.Service<
     /** Patch settings and persist. Returns the new full settings object. */
     readonly updateSettings: (
       patch: ServerSettingsPatch,
-    ) => Effect.Effect<ServerSettings, ServerSettingsError>;
+    ) => Effect.Effect<ServerSettings, ServerSettingsUpdateError>;
 
     /** Stream of settings change events. */
     readonly streamChanges: Stream.Stream<ServerSettings>;
@@ -458,10 +443,12 @@ function stripDefaultServerSettings(current: unknown, defaults: unknown): unknow
 
 const make = Effect.gen(function* () {
   const { settingsPath } = yield* ServerConfig.ServerConfig;
+  const crypto = yield* Crypto.Crypto;
   const fs = yield* FileSystem.FileSystem;
   const pathService = yield* Path.Path;
   const secretStore = yield* ServerSecretStore.ServerSecretStore;
   const sql = yield* SqlClient.SqlClient;
+  const originCommitHook = yield* ServerSettingsOriginCommitHook;
   const writeSemaphore = yield* Semaphore.make(1);
   const cacheKey = "settings" as const;
   const changesPubSub = yield* PubSub.unbounded<ServerSettings>();
@@ -473,36 +460,13 @@ const make = Effect.gen(function* () {
   const emitChange = (settings: ServerSettings) =>
     PubSub.publish(changesPubSub, settings).pipe(Effect.asVoid);
 
-  const readConfigExists = fs.exists(settingsPath).pipe(
-    Effect.mapError(
-      (cause) =>
-        new ServerSettingsError({
-          settingsPath,
-          operation: "check-exists",
-          cause,
-        }),
-    ),
-  );
-
-  const readRawConfig = fs.readFileString(settingsPath).pipe(
-    Effect.mapError(
-      (cause) =>
-        new ServerSettingsError({
-          settingsPath,
-          operation: "read-file",
-          cause,
-        }),
-    ),
-  );
-
-  const loadSettingsFromDisk = Effect.gen(function* () {
+  const hydrateSettingsOrigin = Effect.fnUntraced(function* (origin: ServerSettingsOriginSnapshot) {
     let settings = DEFAULT_SERVER_SETTINGS;
     let persisted: typeof PersistedOptionalProviderSettings.Type = {};
 
-    if (yield* readConfigExists) {
-      const raw = yield* readRawConfig;
-      const decoded = decodeServerSettingsJsonExit(raw);
-      const persistedSettings = decodePersistedOptionalProviderSettingsJsonExit(raw);
+    if (origin.raw !== null) {
+      const decoded = decodeServerSettingsJsonExit(origin.raw);
+      const persistedSettings = decodePersistedOptionalProviderSettingsJsonExit(origin.raw);
       if (persistedSettings._tag === "Success") {
         persisted = persistedSettings.value;
       }
@@ -546,17 +510,38 @@ const make = Effect.gen(function* () {
       ),
     );
 
-    return foldProviderInstanceEnabledFlags(
+    const normalized = yield* normalizeServerSettings(
       restoreUsedProviders(settings, persisted, providerHistory),
+      settingsPath,
     );
+    return { ...origin, settings: normalized } satisfies ServerSettingsDiskSnapshot;
   });
 
-  const settingsCache = yield* Cache.make<typeof cacheKey, ServerSettings, ServerSettingsError>({
-    capacity: 1,
-    lookup: () => loadSettingsFromDisk,
-  });
+  const loadSettingsFromDisk = readServerSettingsOriginSnapshot(settingsPath).pipe(
+    Effect.provideService(Crypto.Crypto, crypto),
+    Effect.provideService(FileSystem.FileSystem, fs),
+    Effect.catchTag("ServerSettingsOriginError", (cause) =>
+      Effect.fail(
+        new ServerSettingsError({
+          settingsPath,
+          operation: "read-file",
+          cause,
+        }),
+      ),
+    ),
+    Effect.flatMap(hydrateSettingsOrigin),
+  );
 
-  const getSettingsFromCache = Cache.get(settingsCache, cacheKey);
+  const settingsCache = yield* Cache.make<
+    typeof cacheKey,
+    ServerSettingsDiskSnapshot,
+    ServerSettingsError
+  >({ capacity: 1, lookup: () => loadSettingsFromDisk });
+
+  const getSettingsSnapshotFromCache = Cache.get(settingsCache, cacheKey);
+  const getSettingsFromCache = getSettingsSnapshotFromCache.pipe(
+    Effect.map((snapshot) => snapshot.settings),
+  );
 
   const materializeMcpSecretValues = (
     serverId: string,
@@ -606,13 +591,14 @@ const make = Effect.gen(function* () {
     kind: "header" | "environment",
     values: ReadonlyArray<CompositionMcpSecretValue>,
     nextSecretNames: Set<string>,
+    writeSecretStore: ServerSecretStore.ServerSecretStore["Service"],
   ): Effect.Effect<ReadonlyArray<CompositionMcpSecretValue>, ServerSettingsError> =>
     Effect.gen(function* () {
       const persisted: CompositionMcpSecretValue[] = [];
       for (const value of values) {
         const secretName = mcpSecretName({ serverId, kind, name: value.name });
         if (!value.sensitive) {
-          yield* secretStore.remove(secretName).pipe(
+          yield* writeSecretStore.remove(secretName).pipe(
             Effect.mapError(
               (cause) =>
                 new ServerSettingsError({
@@ -633,7 +619,7 @@ const make = Effect.gen(function* () {
           continue;
         }
         if (value.value.length > 0) {
-          yield* secretStore.set(secretName, textEncoder.encode(value.value)).pipe(
+          yield* writeSecretStore.set(secretName, textEncoder.encode(value.value)).pipe(
             Effect.mapError(
               (cause) =>
                 new ServerSettingsError({
@@ -646,7 +632,7 @@ const make = Effect.gen(function* () {
           );
           persisted.push({ ...value, value: "", valueRedacted: true });
         } else {
-          yield* secretStore.remove(secretName).pipe(
+          yield* writeSecretStore.remove(secretName).pipe(
             Effect.mapError(
               (cause) =>
                 new ServerSettingsError({
@@ -667,6 +653,7 @@ const make = Effect.gen(function* () {
   const persistMcpServerSecrets = (
     current: ServerSettings,
     next: ServerSettings,
+    writeSecretStore: ServerSecretStore.ServerSecretStore["Service"],
   ): Effect.Effect<ServerSettings, ServerSettingsError> =>
     Effect.gen(function* () {
       const mcpServers: Record<string, CompositionMcpRuntimeServerConfig> = {};
@@ -679,12 +666,14 @@ const make = Effect.gen(function* () {
             "header",
             config.headers,
             nextSecretNames,
+            writeSecretStore,
           ),
           environment: yield* persistMcpSecretValues(
             serverId,
             "environment",
             config.environment,
             nextSecretNames,
+            writeSecretStore,
           ),
         };
       }
@@ -694,7 +683,7 @@ const make = Effect.gen(function* () {
           for (const value of config[kind === "header" ? "headers" : "environment"]) {
             const secretName = mcpSecretName({ serverId, kind, name: value.name });
             if (value.sensitive && !nextSecretNames.has(secretName)) {
-              yield* secretStore.remove(secretName).pipe(
+              yield* writeSecretStore.remove(secretName).pipe(
                 Effect.mapError(
                   (cause) =>
                     new ServerSettingsError({
@@ -893,6 +882,7 @@ const make = Effect.gen(function* () {
   const persistByokSecrets = (
     current: ServerSettings,
     next: ServerSettings,
+    writeSecretStore: ServerSecretStore.ServerSecretStore["Service"],
   ): Effect.Effect<ServerSettings, ServerSettingsError> =>
     Effect.gen(function* () {
       const providerInstances: Record<string, ProviderInstanceConfig> = {
@@ -938,7 +928,7 @@ const make = Effect.gen(function* () {
               sourceAdapterId !== adapterId &&
               adapterIDs.has(sourceAdapterId)
             ) {
-              const ownSecret = yield* secretStore.get(secretName).pipe(
+              const ownSecret = yield* writeSecretStore.get(secretName).pipe(
                 Effect.mapError(
                   (cause) =>
                     new ServerSettingsError({
@@ -951,7 +941,7 @@ const make = Effect.gen(function* () {
                 ),
               );
               if (Option.isNone(ownSecret)) {
-                const sourceSecret = yield* secretStore
+                const sourceSecret = yield* writeSecretStore
                   .get(byokApiKeySecretName({ instanceId, adapterId: sourceAdapterId }))
                   .pipe(
                     Effect.mapError(
@@ -966,7 +956,7 @@ const make = Effect.gen(function* () {
                     ),
                   );
                 if (Option.isSome(sourceSecret)) {
-                  yield* secretStore.set(secretName, sourceSecret.value).pipe(
+                  yield* writeSecretStore.set(secretName, sourceSecret.value).pipe(
                     Effect.mapError(
                       (cause) =>
                         new ServerSettingsError({
@@ -984,7 +974,7 @@ const make = Effect.gen(function* () {
           }
           if (adapter["apiKeyRedacted"] !== true) {
             if (apiKey.length > 0) {
-              yield* secretStore.set(secretName, textEncoder.encode(apiKey)).pipe(
+              yield* writeSecretStore.set(secretName, textEncoder.encode(apiKey)).pipe(
                 Effect.mapError(
                   (cause) =>
                     new ServerSettingsError({
@@ -998,7 +988,7 @@ const make = Effect.gen(function* () {
               );
               adapters.push({ ...adapter, apiKey: "", apiKeyRedacted: true });
             } else {
-              yield* secretStore.remove(secretName).pipe(
+              yield* writeSecretStore.remove(secretName).pipe(
                 Effect.mapError(
                   (cause) =>
                     new ServerSettingsError({
@@ -1024,7 +1014,7 @@ const make = Effect.gen(function* () {
           const balanceToken =
             typeof adapter["balanceAccessToken"] === "string" ? adapter["balanceAccessToken"] : "";
           if (adapter["balanceAccessTokenRedacted"] !== true && balanceToken.length > 0) {
-            yield* secretStore.set(balanceTokenName, textEncoder.encode(balanceToken)).pipe(
+            yield* writeSecretStore.set(balanceTokenName, textEncoder.encode(balanceToken)).pipe(
               Effect.mapError(
                 (cause) =>
                   new ServerSettingsError({
@@ -1043,7 +1033,7 @@ const make = Effect.gen(function* () {
             balanceToken.length === 0 &&
             Object.prototype.hasOwnProperty.call(adapter, "balanceAccessToken")
           ) {
-            yield* secretStore.remove(balanceTokenName).pipe(
+            yield* writeSecretStore.remove(balanceTokenName).pipe(
               Effect.mapError(
                 (cause) =>
                   new ServerSettingsError({
@@ -1078,7 +1068,7 @@ const make = Effect.gen(function* () {
           if (typeof adapterId !== "string" || adapterId.length === 0) continue;
           const balanceTokenName = byokBalanceTokenSecretName({ instanceId, adapterId });
           if (nextSecretNames.has(balanceTokenName)) continue;
-          yield* secretStore.remove(balanceTokenName).pipe(
+          yield* writeSecretStore.remove(balanceTokenName).pipe(
             Effect.mapError(
               (cause) =>
                 new ServerSettingsError({
@@ -1105,7 +1095,7 @@ const make = Effect.gen(function* () {
           if (typeof adapterId !== "string" || adapterId.length === 0) continue;
           const secretName = byokApiKeySecretName({ instanceId, adapterId });
           if (nextSecretNames.has(secretName)) continue;
-          yield* secretStore.remove(secretName).pipe(
+          yield* writeSecretStore.remove(secretName).pipe(
             Effect.mapError(
               (cause) =>
                 new ServerSettingsError({
@@ -1129,6 +1119,7 @@ const make = Effect.gen(function* () {
   const persistProviderEnvironmentSecrets = (
     current: ServerSettings,
     next: ServerSettings,
+    writeSecretStore: ServerSecretStore.ServerSecretStore["Service"],
   ): Effect.Effect<ServerSettings, ServerSettingsError> =>
     Effect.gen(function* () {
       const providerInstances: Record<string, ProviderInstanceConfig> = {
@@ -1136,13 +1127,24 @@ const make = Effect.gen(function* () {
       };
 
       const nextSecretKeys = new Set<string>();
-      for (const [instanceId, instance] of Object.entries(next.providerInstances)) {
+      for (const [instanceId, instance] of Object.entries(next.providerInstances) as ReadonlyArray<
+        readonly [string, ProviderInstanceConfig]
+      >) {
         if (!instance.environment) continue;
+        const legacyEnvironment = new Map(
+          (current.providerInstances[ProviderInstanceId.make(instanceId)]?.environment ?? []).map(
+            (variable) => [variable.name, variable],
+          ),
+        );
+        const multicaSecretNames = multicaSecretEnvironmentNames(instance);
         const environment: ProviderInstanceEnvironmentVariable[] = [];
         for (const variable of instance.environment) {
           const secretName = providerEnvironmentSecretName({ instanceId, name: variable.name });
-          if (!variable.sensitive) {
-            yield* secretStore.remove(secretName).pipe(
+          const persistedVariable = multicaSecretNames.has(variable.name)
+            ? { ...variable, sensitive: true }
+            : variable;
+          if (!persistedVariable.sensitive) {
+            yield* writeSecretStore.remove(secretName).pipe(
               Effect.mapError(
                 (cause) =>
                   new ServerSettingsError({
@@ -1154,28 +1156,30 @@ const make = Effect.gen(function* () {
                   }),
               ),
             );
-            environment.push(redactProviderEnvironmentVariable(variable));
+            environment.push(redactProviderEnvironmentVariable(persistedVariable));
             continue;
           }
 
           nextSecretKeys.add(secretName);
-          if (!variable.valueRedacted) {
-            if (variable.value.length > 0) {
-              yield* secretStore.set(secretName, textEncoder.encode(variable.value)).pipe(
-                Effect.mapError(
-                  (cause) =>
-                    new ServerSettingsError({
-                      settingsPath,
-                      operation: "write-secret",
-                      providerInstanceId: instanceId,
-                      environmentVariable: variable.name,
-                      cause,
-                    }),
-                ),
-              );
-              environment.push({ ...variable, value: "", valueRedacted: true });
+          if (!persistedVariable.valueRedacted) {
+            if (persistedVariable.value.length > 0) {
+              yield* writeSecretStore
+                .set(secretName, textEncoder.encode(persistedVariable.value))
+                .pipe(
+                  Effect.mapError(
+                    (cause) =>
+                      new ServerSettingsError({
+                        settingsPath,
+                        operation: "write-secret",
+                        providerInstanceId: instanceId,
+                        environmentVariable: variable.name,
+                        cause,
+                      }),
+                  ),
+                );
+              environment.push({ ...persistedVariable, value: "", valueRedacted: true });
             } else {
-              yield* secretStore.remove(secretName).pipe(
+              yield* writeSecretStore.remove(secretName).pipe(
                 Effect.mapError(
                   (cause) =>
                     new ServerSettingsError({
@@ -1187,13 +1191,32 @@ const make = Effect.gen(function* () {
                     }),
                 ),
               );
-              const { valueRedacted: _omit, ...rest } = variable;
+              const { valueRedacted: _omit, ...rest } = persistedVariable;
               environment.push(rest);
             }
             continue;
           }
 
-          environment.push(redactProviderEnvironmentVariable(variable));
+          const legacyVariable = legacyEnvironment.get(variable.name);
+          if (
+            multicaSecretNames.has(variable.name) &&
+            legacyVariable?.sensitive === false &&
+            legacyVariable.value.length > 0
+          ) {
+            yield* writeSecretStore.set(secretName, textEncoder.encode(legacyVariable.value)).pipe(
+              Effect.mapError(
+                (cause) =>
+                  new ServerSettingsError({
+                    settingsPath,
+                    operation: "write-secret",
+                    providerInstanceId: instanceId,
+                    environmentVariable: variable.name,
+                    cause,
+                  }),
+              ),
+            );
+          }
+          environment.push(redactProviderEnvironmentVariable(persistedVariable));
         }
         providerInstances[instanceId] = {
           ...instance,
@@ -1206,7 +1229,7 @@ const make = Effect.gen(function* () {
           if (!variable.sensitive) continue;
           const secretName = providerEnvironmentSecretName({ instanceId, name: variable.name });
           if (nextSecretKeys.has(secretName)) continue;
-          yield* secretStore.remove(secretName).pipe(
+          yield* writeSecretStore.remove(secretName).pipe(
             Effect.mapError(
               (cause) =>
                 new ServerSettingsError({
@@ -1227,19 +1250,12 @@ const make = Effect.gen(function* () {
       };
     });
 
-  const writeSettingsAtomically = Effect.fnUntraced(
+  const serializeSettings = Effect.fnUntraced(
     function* (settings: ServerSettings) {
       const sparseSettingsJson = yield* encodeServerSettingsJson(
         stripDefaultServerSettings(settings, PERSISTED_SERVER_SETTINGS_DEFAULTS) ?? {},
       );
-
-      return yield* writeFileStringAtomically({
-        filePath: settingsPath,
-        contents: `${sparseSettingsJson}\n`,
-      }).pipe(
-        Effect.provideService(FileSystem.FileSystem, fs),
-        Effect.provideService(Path.Path, pathService),
-      );
+      return `${sparseSettingsJson}\n`;
     },
     Effect.mapError(
       (cause) =>
@@ -1250,6 +1266,77 @@ const make = Effect.gen(function* () {
         }),
     ),
   );
+
+  const prepareSettingsUpdate = Effect.fnUntraced(function* (
+    current: ServerSettings,
+    patch: ServerSettingsPatch,
+  ) {
+    const patched = yield* applyMulticaProviderInstanceMutation(current, patch);
+    const normalizedPatched = yield* normalizeServerSettings(patched, settingsPath);
+    const changedMulticaInstanceIds = yield* validateMulticaProviderInstancePreconditions(
+      current,
+      normalizedPatched,
+      patch,
+    );
+    return assignMulticaProviderInstanceRevisions(
+      current,
+      normalizedPatched,
+      changedMulticaInstanceIds,
+    );
+  });
+
+  const buildOriginCommitPlan = Effect.fnUntraced(function* (
+    current: ServerSettings,
+    versioned: ServerSettings,
+  ) {
+    const secretTransaction = makeServerSettingsSecretTransaction(secretStore);
+    return yield* secretTransaction
+      .withCompensationOnFailure(
+        Effect.gen(function* () {
+          const nextWithEnvironmentSecrets = yield* persistProviderEnvironmentSecrets(
+            current,
+            versioned,
+            secretTransaction.store,
+          );
+          const nextWithMcpSecrets = yield* persistMcpServerSecrets(
+            current,
+            nextWithEnvironmentSecrets,
+            secretTransaction.store,
+          );
+          const nextPersisted = yield* persistByokSecrets(
+            current,
+            nextWithMcpSecrets,
+            secretTransaction.store,
+          );
+          const next = yield* normalizeServerSettings(nextPersisted, settingsPath);
+          return {
+            contents: yield* serializeSettings(next),
+            value: next,
+            compensate: secretTransaction.compensate.pipe(
+              Effect.mapError(
+                (cause) =>
+                  new ServerSettingsError({
+                    settingsPath,
+                    operation: "compensate-secret",
+                    cause,
+                  }),
+              ),
+            ),
+          };
+        }),
+      )
+      .pipe(
+        Effect.catchTag("ServerSettingsSecretCompensationError", (cause) =>
+          Effect.fail(
+            new ServerSettingsError({
+              settingsPath,
+              operation: "compensate-secret",
+              cause,
+            }),
+          ),
+        ),
+      );
+  });
 
   const revalidateAndEmit = writeSemaphore.withPermits(1)(
     Effect.gen(function* () {
@@ -1331,24 +1418,57 @@ const make = Effect.gen(function* () {
     updateSettings: (patch) =>
       writeSemaphore.withPermits(1)(
         Effect.gen(function* () {
-          const current = yield* getSettingsFromCache;
-          const nextWithEnvironmentSecrets = yield* persistProviderEnvironmentSecrets(
-            current,
-            applyServerSettingsPatch(current, patch),
-          );
-          const nextWithMcpSecrets = yield* persistMcpServerSecrets(
-            current,
-            nextWithEnvironmentSecrets,
-          );
-          const nextPersisted = yield* persistByokSecrets(current, nextWithMcpSecrets);
-          const next = yield* normalizeServerSettings(nextPersisted);
-          yield* writeSettingsAtomically(next);
-          yield* Cache.set(settingsCache, cacheKey, next);
-          yield* emitChange(next);
-          const materializedEnvironment = yield* materializeProviderEnvironmentSecrets(next);
-          const materializedMcp = yield* materializeMcpServerSecrets(materializedEnvironment);
-          const materialized = yield* materializeByokSecrets(materializedMcp);
-          return resolveTextGenerationProvider(materialized);
+          let currentSnapshot = yield* loadSettingsFromDisk;
+          yield* Cache.set(settingsCache, cacheKey, currentSnapshot);
+          let prepared = yield* prepareSettingsUpdate(currentSnapshot.settings, patch);
+          yield* originCommitHook({ settingsPath, patch, token: currentSnapshot.token });
+
+          while (true) {
+            const committed = yield* commitServerSettingsOriginCas({
+              settingsPath,
+              expectedToken: currentSnapshot.token,
+              prepare: buildOriginCommitPlan(currentSnapshot.settings, prepared),
+            }).pipe(
+              Effect.provideService(Crypto.Crypto, crypto),
+              Effect.provideService(FileSystem.FileSystem, fs),
+              Effect.provideService(Path.Path, pathService),
+              Effect.catchTags({
+                ServerSettingsOriginError: (cause) =>
+                  Effect.fail(
+                    new ServerSettingsError({
+                      settingsPath,
+                      operation: "write-file",
+                      cause,
+                    }),
+                  ),
+                ServerSettingsOriginCompensationError: (cause) =>
+                  Effect.fail(
+                    new ServerSettingsError({
+                      settingsPath,
+                      operation: "compensate-secret",
+                      cause,
+                    }),
+                  ),
+              }),
+            );
+            if (committed._tag === "Conflict") {
+              currentSnapshot = yield* hydrateSettingsOrigin(committed.snapshot);
+              yield* Cache.set(settingsCache, cacheKey, currentSnapshot);
+              prepared = yield* prepareSettingsUpdate(currentSnapshot.settings, patch);
+              continue;
+            }
+
+            const next = committed.value;
+            yield* Cache.set(settingsCache, cacheKey, {
+              ...committed.snapshot,
+              settings: next,
+            });
+            yield* emitChange(next);
+            const materializedEnvironment = yield* materializeProviderEnvironmentSecrets(next);
+            const materializedMcp = yield* materializeMcpServerSecrets(materializedEnvironment);
+            const materialized = yield* materializeByokSecrets(materializedMcp);
+            return resolveTextGenerationProvider(materialized);
+          }
         }),
       ),
     get streamChanges() {

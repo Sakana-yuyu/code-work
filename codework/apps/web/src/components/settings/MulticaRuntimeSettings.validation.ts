@@ -1,4 +1,5 @@
 import {
+  isMulticaSecretName,
   CompositionMulticaRuntimeConfig,
   ProviderInstanceEnvironment,
   ProviderInstanceId,
@@ -14,6 +15,10 @@ import type {
   MulticaRuntimeHeaderDraft,
   MulticaTaskExecutionExtensionDraft,
 } from "./MulticaRuntimeSettings.model";
+import {
+  isSafeMulticaRuntimeBaseUrl,
+  isSafeMulticaTaskMcpEndpoint,
+} from "./MulticaRuntimeSettings.url";
 
 type ValidationFailure = Extract<MulticaRuntimeDraftValidation, { readonly ok: false }>;
 type Normalization<T> = { readonly ok: true; readonly value: T } | ValidationFailure;
@@ -24,9 +29,6 @@ const RESERVED_PROTOCOL_HEADERS = new Set([
   "x-workspace-id",
   "x-idempotency-key",
 ]);
-const SERVER_CREDENTIAL_HEADER_PATTERN =
-  /^(authorization|proxy-authorization|api[-_]?key|x[-_]?api[-_]?key|token)$/iu;
-const EXTENDED_CREDENTIAL_HEADER_PATTERN = /^x[-_].*(?:auth[-_]?token|[-_](?:key|token))$/iu;
 
 const decodeMulticaConfig = Schema.decodeUnknownSync(CompositionMulticaRuntimeConfig);
 const decodeProviderEnvironment = Schema.decodeUnknownSync(ProviderInstanceEnvironment);
@@ -43,20 +45,6 @@ const trimmedOptional = (value: string): string | undefined => {
   const trimmed = value.trim();
   return trimmed.length === 0 ? undefined : trimmed;
 };
-
-const isHttpUrl = (value: string): boolean => {
-  try {
-    const protocol = new URL(value).protocol;
-    return protocol === "http:" || protocol === "https:";
-  } catch {
-    return false;
-  }
-};
-
-const isCredentialHeader = (headerName: string): boolean =>
-  SERVER_CREDENTIAL_HEADER_PATTERN.test(headerName) ||
-  // 覆盖 Server 最小正则之外的常见自定义凭据名，避免 UI 将 token/key 明文持久化。
-  EXTENDED_CREDENTIAL_HEADER_PATTERN.test(headerName);
 
 const normalizeEnvironment = (
   values: MulticaRuntimeDraft["environment"],
@@ -131,7 +119,7 @@ const normalizeHeaders = (
     if (variable.value.length === 0 && variable.valueRedacted !== true) {
       return invalid("invalid_header_binding", `headers.${index}.environmentVariable`);
     }
-    if (isCredentialHeader(headerName) && variable.sensitive !== true) {
+    if (isMulticaSecretName(headerName) && variable.sensitive !== true) {
       return invalid("invalid_header_binding", `headers.${index}.environmentVariable`);
     }
     names.add(normalizedName);
@@ -290,10 +278,12 @@ export const validateMulticaRuntimeDraft = (
   }
 
   const baseUrl = draft.baseUrl.trim();
-  if (!isHttpUrl(baseUrl)) return invalid("invalid_base_url", "baseUrl");
+  if (!isSafeMulticaRuntimeBaseUrl(baseUrl)) {
+    return invalid("invalid_base_url", "baseUrl");
+  }
 
   const taskMcpEndpoint = trimmedOptional(draft.taskMcpEndpoint);
-  if (taskMcpEndpoint !== undefined && !isHttpUrl(taskMcpEndpoint)) {
+  if (taskMcpEndpoint !== undefined && !isSafeMulticaTaskMcpEndpoint(taskMcpEndpoint)) {
     return invalid("invalid_task_mcp_endpoint", "taskMcpEndpoint");
   }
   if (taskMcpEndpoint !== undefined && !draft.supportsMcp) {

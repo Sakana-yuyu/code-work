@@ -9,6 +9,8 @@ import {
   ClaudeSettings,
   DEFAULT_SERVER_SETTINGS,
   defaultEnabledForDriver,
+  multicaProviderInstanceFingerprint,
+  multicaProviderInstanceRevision,
   resolveProviderInstanceEnabled,
   ServerSettings,
   ServerSettingsPatch,
@@ -362,6 +364,77 @@ describe("ServerSettingsPatch.providerInstances", () => {
     expect(replacement.providerInstances?.[ProviderInstanceId.make("codex_personal")]?.driver).toBe(
       "codex",
     );
+  });
+
+  it("decodes Multica provider instance write preconditions", () => {
+    expect(
+      decodeServerSettingsPatch({
+        providerInstances: {
+          multica_local: { driver: "multica", config: {} },
+        },
+        multicaProviderInstancePreconditions: [
+          { instanceId: "multica_local", expectedRevision: "revision-1" },
+          { instanceId: "multica_next", expectedRevision: null },
+        ],
+      }).multicaProviderInstancePreconditions,
+    ).toEqual([
+      { instanceId: "multica_local", expectedRevision: "revision-1" },
+      { instanceId: "multica_next", expectedRevision: null },
+    ]);
+  });
+
+  it("legacy Multica revision never serializes explicitly sensitive environment values", () => {
+    const instanceId = ProviderInstanceId.make("multica_sensitive_legacy");
+    const sentinel = "sensitive-value-must-not-enter-revision";
+    const instance = {
+      driver: ProviderDriverKind.make("multica"),
+      environment: [{ name: "UNBOUND_SECRET", value: sentinel, sensitive: true }],
+      config: {
+        runtimeId: "multica:daemon-1:runtime-1",
+        daemonId: "daemon-1",
+        daemonRuntimeId: "runtime-1",
+        baseUrl: "http://127.0.0.1:9000",
+        headers: [],
+        assigneeRoutes: [],
+      },
+    };
+    const fingerprint = multicaProviderInstanceFingerprint(instanceId, instance);
+    const revision = multicaProviderInstanceRevision(instanceId, instance);
+    const rpcPreconditions = [{ instanceId, expectedRevision: revision }];
+
+    expect(fingerprint).not.toContain(sentinel);
+    expect(revision).not.toContain(sentinel);
+    expect(JSON.stringify(rpcPreconditions)).not.toContain(sentinel);
+  });
+
+  it("includes legacy Multica schema and enabled flags in the compatibility fingerprint", () => {
+    const instanceId = ProviderInstanceId.make("multica_legacy_behavior_fields");
+    const base = {
+      driver: ProviderDriverKind.make("multica"),
+      config: {
+        schemaVersion: 1,
+        enabled: true,
+        runtimeId: "multica:daemon-1:runtime-1",
+        daemonId: "daemon-1",
+        daemonRuntimeId: "runtime-1",
+        baseUrl: "http://127.0.0.1:9000",
+        headers: [],
+        assigneeRoutes: [],
+      },
+    };
+
+    expect(
+      multicaProviderInstanceFingerprint(instanceId, {
+        ...base,
+        config: { ...base.config, enabled: false },
+      }),
+    ).not.toBe(multicaProviderInstanceFingerprint(instanceId, base));
+    expect(
+      multicaProviderInstanceFingerprint(instanceId, {
+        ...base,
+        config: { ...base.config, schemaVersion: 2 },
+      }),
+    ).not.toBe(multicaProviderInstanceFingerprint(instanceId, base));
   });
 
   it("preserves a fork-defined driver entry through patch decoding", () => {

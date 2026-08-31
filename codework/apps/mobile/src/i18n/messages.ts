@@ -1072,6 +1072,9 @@ export const en: Record<string, string> = {
   "supplierRegistry.orphanProfiles": "Orphaned agent profiles",
   "supplierRegistry.enabled": "Enabled",
   "supplierRegistry.disabled": "Disabled",
+  "multicaRuntime.title": "Multica runtimes",
+  "multicaRuntime.mobileReadOnly": "Multica runtime configuration",
+  "multicaRuntime.mobileReadOnlyValue": "Manage securely on Web or Desktop",
 };
 
 export const zhCN: Record<string, string> = {
@@ -2101,4 +2104,7 @@ export const zhCN: Record<string, string> = {
   "supplierRegistry.orphanProfiles": "孤儿 Agent 档案",
   "supplierRegistry.enabled": "已启用",
   "supplierRegistry.disabled": "已停用",
+  "multicaRuntime.title": "Multica 运行时",
+  "multicaRuntime.mobileReadOnly": "Multica 运行时配置",
+  "multicaRuntime.mobileReadOnlyValue": "请在 Web 或桌面端安全管理",
 };

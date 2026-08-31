@@ -23,7 +23,11 @@ import {
   ProviderInstanceId,
   type ProviderDriverKind,
 } from "./providerInstance.ts";
-import { CompositionMcpRuntimeServerConfig, CompositionMcpServerId } from "./compositionRuntime.ts";
+import {
+  CompositionMcpRuntimeServerConfig,
+  CompositionMcpServerId,
+  isMulticaSecretName,
+} from "./compositionRuntime.ts";
 
 // ── Client Settings (local-only) ───────────────────────────────
 
@@ -970,6 +974,7 @@ export const ServerSettingsOperation = Schema.Literals([
   "remove-secret",
   "remove-stale-secret",
   "write-secret",
+  "compensate-secret",
   "write-file",
   "prepare-directory",
 ]);
@@ -993,6 +998,18 @@ export class ServerSettingsError extends Schema.TaggedErrorClass<ServerSettingsE
         ? ""
         : ` and environment variable ${this.environmentVariable}`;
     return `Server settings ${this.operation} failed${provider}${variable} at ${this.settingsPath}.`;
+  }
+}
+
+/** Multica 并发写入的稳定冲突结果，不包含设置内容或凭据。 */
+export class ServerSettingsConflictError extends Schema.TaggedErrorClass<ServerSettingsConflictError>()(
+  "ServerSettingsConflictError",
+  {
+    providerInstanceId: Schema.String,
+  },
+) {
+  override get message(): string {
+    return `Multica Provider 实例 ${this.providerInstanceId} 已在服务端变更。`;
   }
 }
 
@@ -1111,11 +1128,107 @@ export const ServerSettingsPatch = Schema.Struct({
   // patches risk leaving driver-specific config in a half-merged state.
   // The web UI sends a fully-formed map every time it edits this field.
   providerInstances: Schema.optionalKey(Schema.Record(ProviderInstanceId, ProviderInstanceConfig)),
+  /**
+   * 非空时启用 Multica 局部 mutation 模式：`providerInstances` 只能携带 listed 的
+   * Multica 实例；listed 但省略的实例表示删除，任何其它实例条目都会被服务端拒绝。
+   * null 表示目标实例必须尚不存在。
+   */
+  multicaProviderInstancePreconditions: Schema.optionalKey(
+    Schema.Array(
+      Schema.Struct({
+        instanceId: ProviderInstanceId,
+        expectedRevision: Schema.NullOr(TrimmedNonEmptyString),
+      }),
+    ),
+  ),
   mcpServers: Schema.optionalKey(
     Schema.Record(CompositionMcpServerId, CompositionMcpRuntimeServerConfig),
   ),
 });
 export type ServerSettingsPatch = typeof ServerSettingsPatch.Type;
+
+/** 客户端可见的 Multica 指纹，私密环境变量只包含身份与脱敏状态。 */
+export const multicaProviderInstanceFingerprint = (
+  instanceId: string,
+  instance: ProviderInstanceConfig | undefined,
+): string | null => {
+  if (instance?.driver !== "multica") return null;
+  const config =
+    instance.config !== null &&
+    typeof instance.config === "object" &&
+    !Array.isArray(instance.config)
+      ? (instance.config as Record<string, unknown>)
+      : {};
+  const headers: ReadonlyArray<readonly [string, string]> = Array.isArray(config["headers"])
+    ? config["headers"].flatMap((header) => {
+        if (header === null || typeof header !== "object" || Array.isArray(header)) return [];
+        const value = header as Record<string, unknown>;
+        return typeof value["headerName"] === "string" &&
+          typeof value["environmentVariable"] === "string"
+          ? [[value["headerName"], value["environmentVariable"]] as const]
+          : [];
+      })
+    : [];
+  const secretEnvironmentNames = new Set(
+    headers.flatMap(([headerName, environmentVariable]) =>
+      isMulticaSecretName(headerName) ? [environmentVariable] : [],
+    ),
+  );
+  const environment = (instance.environment ?? []).map((variable) =>
+    variable.sensitive || secretEnvironmentNames.has(variable.name)
+      ? {
+          name: variable.name,
+          sensitive: true,
+          valueRedacted: variable.value.length > 0 || variable.valueRedacted === true,
+        }
+      : {
+          name: variable.name,
+          value: variable.value,
+          sensitive: variable.sensitive,
+          valueRedacted: variable.valueRedacted === true,
+        },
+  );
+  return JSON.stringify({
+    instanceId,
+    displayName: instance.displayName ?? "",
+    accentColor: instance.accentColor ?? "",
+    enabled: instance.enabled ?? null,
+    config: {
+      schemaVersion: config["schemaVersion"] ?? null,
+      enabled: typeof config["enabled"] === "boolean" ? config["enabled"] : null,
+      runtimeId: typeof config["runtimeId"] === "string" ? config["runtimeId"] : "",
+      daemonId: typeof config["daemonId"] === "string" ? config["daemonId"] : "",
+      daemonRuntimeId:
+        typeof config["daemonRuntimeId"] === "string" ? config["daemonRuntimeId"] : "",
+      baseUrl: typeof config["baseUrl"] === "string" ? config["baseUrl"] : "",
+      headers,
+      assigneeRoutes: Array.isArray(config["assigneeRoutes"]) ? config["assigneeRoutes"] : [],
+      version: typeof config["version"] === "string" ? config["version"] : "",
+      capabilities: Array.isArray(config["capabilities"]) ? config["capabilities"] : [],
+      supportsResume: config["supportsResume"] === true,
+      supportsMcp: config["supportsMcp"] === true,
+      taskMcpEndpoint:
+        typeof config["taskMcpEndpoint"] === "string" ? config["taskMcpEndpoint"] : "",
+      taskExecutionExtension:
+        config["taskExecutionExtension"] !== null &&
+        typeof config["taskExecutionExtension"] === "object" &&
+        !Array.isArray(config["taskExecutionExtension"])
+          ? config["taskExecutionExtension"]
+          : null,
+      supportsSquad: config["supportsSquad"] === true,
+      supportsLeader: config["supportsLeader"] === true,
+      supportsTaskGraph: config["supportsTaskGraph"] === true,
+    },
+    environment,
+  });
+};
+
+/** 优先使用服务端版本；旧配置使用同一份脱敏指纹作为兼容版本。 */
+export const multicaProviderInstanceRevision = (
+  instanceId: string,
+  instance: ProviderInstanceConfig | undefined,
+): string | null =>
+  instance?.settingsRevision ?? multicaProviderInstanceFingerprint(instanceId, instance);
 
 export const ClientSettingsPatch = Schema.Struct({
   appearanceContrast: Schema.optionalKey(AppearanceContrast),

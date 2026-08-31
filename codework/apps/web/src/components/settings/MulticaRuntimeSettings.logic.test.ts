@@ -73,6 +73,55 @@ describe("MulticaRuntimeSettings logic", () => {
     });
   });
 
+  it("已保存敏感值即使快照意外含明文也只生成脱敏占位", () => {
+    const draft = formFromMulticaRuntimeInstance("multica_local", {
+      driver: ProviderDriverKind.make("multica"),
+      enabled: true,
+      environment: [{ name: "MULTICA_TOKEN", value: "fixture-secret", sensitive: true }],
+      config: {
+        runtimeId: "multica:daemon-1:runtime-1",
+        daemonId: "daemon-1",
+        daemonRuntimeId: "runtime-1",
+        baseUrl: "http://127.0.0.1:9000",
+        headers: [{ headerName: "Authorization", environmentVariable: "MULTICA_TOKEN" }],
+        assigneeRoutes: [],
+      },
+    });
+
+    expect(draft?.environment[0]).toEqual({
+      name: "MULTICA_TOKEN",
+      value: "",
+      sensitive: true,
+      valueRedacted: true,
+      originalName: "MULTICA_TOKEN",
+    });
+    expect(JSON.stringify(draft)).not.toContain("fixture-secret");
+  });
+
+  it("历史误标为非敏感的 Private-Token 也不会进入草稿", () => {
+    const draft = formFromMulticaRuntimeInstance("multica_local", {
+      driver: ProviderDriverKind.make("multica"),
+      environment: [{ name: "MULTICA_TOKEN", value: "legacy-fixture-secret", sensitive: false }],
+      config: {
+        runtimeId: "multica:daemon-1:runtime-1",
+        daemonId: "daemon-1",
+        daemonRuntimeId: "runtime-1",
+        baseUrl: "http://127.0.0.1:9000",
+        headers: [{ headerName: "Private-Token", environmentVariable: "MULTICA_TOKEN" }],
+        assigneeRoutes: [],
+      },
+    });
+
+    expect(draft?.environment[0]).toEqual({
+      name: "MULTICA_TOKEN",
+      value: "",
+      sensitive: true,
+      valueRedacted: true,
+      originalName: "MULTICA_TOKEN",
+    });
+    expect(JSON.stringify(draft)).not.toContain("legacy-fixture-secret");
+  });
+
   it("拒绝非 Multica 或无法解码的 provider instance", () => {
     expect(
       formFromMulticaRuntimeInstance("codex_local", {
@@ -83,6 +132,39 @@ describe("MulticaRuntimeSettings logic", () => {
       formFromMulticaRuntimeInstance("multica_local", {
         driver: ProviderDriverKind.make("multica"),
         config: { runtimeId: "" },
+      }),
+    ).toBeNull();
+  });
+
+  it("拒绝会把 URL 凭据带入设置界面的已保存 Runtime", () => {
+    const base = {
+      driver: ProviderDriverKind.make("multica"),
+      config: {
+        runtimeId: "multica:daemon-1:runtime-1",
+        daemonId: "daemon-1",
+        daemonRuntimeId: "runtime-1",
+        baseUrl: "https://multica.test/api",
+        headers: [],
+        assigneeRoutes: [],
+      },
+    };
+
+    expect(
+      formFromMulticaRuntimeInstance("multica_local", {
+        ...base,
+        config: {
+          ...base.config,
+          baseUrl: "https://operator:secret@multica.test/api",
+        },
+      }),
+    ).toBeNull();
+    expect(
+      formFromMulticaRuntimeInstance("multica_local", {
+        ...base,
+        config: {
+          ...base.config,
+          taskMcpEndpoint: "https://codework.test/mcp?access_token=secret",
+        },
       }),
     ).toBeNull();
   });

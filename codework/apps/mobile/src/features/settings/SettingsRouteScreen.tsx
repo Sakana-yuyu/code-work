@@ -128,6 +128,8 @@ function LocalSettingsRouteScreen() {
 
         <GeneralSettingsSection />
 
+        <MulticaRuntimeMobileBoundarySection />
+
         <CompositionSettingsSection />
 
         <SettingsSection title={t("appearance")}>
@@ -519,6 +521,8 @@ function ConfiguredSettingsRouteScreen() {
 
         <GeneralSettingsSection />
 
+        <MulticaRuntimeMobileBoundarySection />
+
         <CompositionSettingsSection />
 
         <SettingsSection title={t("appearance")}>
@@ -558,6 +562,24 @@ function CompositionSettingsSection() {
         icon="server.rack"
         label={t("supplierRegistry.title")}
         target="SettingsSupplierRegistry"
+      />
+    </SettingsSection>
+  );
+}
+
+/**
+ * Multica runtime credentials are server-owned secrets. Mobile intentionally
+ * exposes no editor until it can wait for the server settings receipt and
+ * preserve the same conflict and redaction guarantees as Web.
+ */
+function MulticaRuntimeMobileBoundarySection() {
+  return (
+    <SettingsSection title={t("multicaRuntime.title")}>
+      <SettingsRow
+        disabled
+        icon="server.rack"
+        label={t("multicaRuntime.mobileReadOnly")}
+        value={t("multicaRuntime.mobileReadOnlyValue")}
       />
     </SettingsSection>
   );
