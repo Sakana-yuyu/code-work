@@ -545,6 +545,9 @@ const makeStore = Effect.gen(function* () {
             AND task.finished_at_unix_ms IS NULL
         )
       RETURNING
+        status,
+        attempt,
+        model_snapshot_json AS "modelSnapshot",
         run_id AS "runId", task_id AS "taskId", agent_id AS "agentId", runtime_id AS "runtimeId",
         runtime_task_id AS "runtimeTaskId", capability_handshake_id AS "capabilityHandshakeId",
         status, attempt,
@@ -580,6 +583,9 @@ const makeStore = Effect.gen(function* () {
         AND failure_code IS ${input.failureCode}
         AND result_summary IS ${input.resultSummary}
       RETURNING
+        status,
+        attempt,
+        model_snapshot_json AS "modelSnapshot",
         run_id AS "runId", task_id AS "taskId", agent_id AS "agentId", runtime_id AS "runtimeId",
         runtime_task_id AS "runtimeTaskId", capability_handshake_id AS "capabilityHandshakeId",
         status, attempt,

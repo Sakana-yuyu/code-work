@@ -1736,6 +1736,84 @@ const makeOrchestrator = (
           reason: "latest_run_missing",
         });
       }
+      // 恢复语义：runId 指向既有 queued retry Run（服务重启恢复场景）时，
+      // 复用该 Run、其已签发授权与工作区租约直接续跑，而不是再创建新 Run。
+      if (
+        task.status === "queued" &&
+        Option.isSome(existingRunOption) &&
+        existingRunOption.value.status === "queued" &&
+        existingRunOption.value.attempt === previousRun.attempt + 1 &&
+        latestRunOption.value.runId === input.runId
+      ) {
+        if (inputStore === undefined) {
+          return yield* new CompositionTaskRetryInvalidError({
+            taskId: input.taskId,
+            previousRunId: input.previousRunId,
+            reason: "recovery_input_store_unavailable",
+          });
+        }
+        const recoveryInput = yield* inputStore.get(input.taskId);
+        if (Option.isNone(recoveryInput)) {
+          return yield* new CompositionTaskRetryInvalidError({
+            taskId: input.taskId,
+            previousRunId: input.previousRunId,
+            reason: "recovery_input_missing",
+          });
+        }
+        const existingRun = existingRunOption.value;
+        const targetAgentId = input.agentId ?? existingRun.agentId;
+        const targetDriver =
+          targetAgentId === existingRun.agentId
+            ? yield* driverRegistry.get(existingRun.agentId)
+            : yield* driverRegistry.get(targetAgentId);
+        if (targetDriver === undefined) {
+          return yield* new CompositionAgentDriverFailure({
+            code: "agent_driver_unavailable",
+            detail: `未找到目标 Agent Driver：${targetAgentId}`,
+          });
+        }
+        const leasedRunOption = yield* prepareRunLease(
+          task,
+          existingRun,
+          recoveryInput.value.workspaceRootDigest,
+        );
+        if (Option.isNone(leasedRunOption)) {
+          // 工作区租约被并发调用领取：同一 Run 只允许一次派发在途。
+          return yield* new CompositionTaskRetryInvalidError({
+            taskId: input.taskId,
+            previousRunId: input.previousRunId,
+            reason: "retry_dispatch_in_progress",
+          });
+        }
+        const leasedRun = leasedRunOption.value;
+        return yield* startPersistedRun({
+          task,
+          run: leasedRun,
+          previousRunId: input.previousRunId,
+          driver: targetDriver,
+          ...(recoveryInput.value.workspaceRootDigest === undefined
+            ? {}
+            : { workspaceRootDigest: recoveryInput.value.workspaceRootDigest }),
+          capabilityIds: input.capabilityIds,
+          start: targetDriver.startTask({
+            task,
+            run: leasedRun,
+            ...(recoveryInput.value.workspaceRootDigest === undefined
+              ? {}
+              : { workspaceRootDigest: recoveryInput.value.workspaceRootDigest }),
+            ...(recoveryInput.value.workspaceRoot === undefined
+              ? {}
+              : { workspaceRoot: recoveryInput.value.workspaceRoot }),
+            ...(recoveryInput.value.prompt === undefined
+              ? {}
+              : { prompt: recoveryInput.value.prompt }),
+            capabilityGrantIds: leasedRun.capabilityGrantIds ?? [],
+          }),
+          startedSummary: "已恢复 queued retry Run 并交给 Agent Driver 执行",
+          failedSummary: "queued retry Run 恢复启动失败",
+          finishTaskOnFailure: false,
+        });
+      }
       if (task.status !== "failed" && task.status !== "timed_out") {
         return yield* new CompositionTaskRetryInvalidError({
           taskId: input.taskId,
