@@ -479,7 +479,7 @@ export const makeCompositionByokAgentDriver = (
                 const detail = errorDetail(failure);
                 const failureCode = stableErrorCode(failure);
                 const classification = classifyCompositionFailure({
-                  status: "failed",
+                  status: "failed" as const,
                   ...(failureCode === undefined ? {} : { failureCode }),
                 });
                 completedRuns.set(input.run.runId, completed);

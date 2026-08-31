@@ -269,7 +269,7 @@ export const makeInMemoryCompositionRuntimeAdapter = (
       const runId = yield* requireId(input.runId, "runId");
       const agentId = yield* requireId(input.agentId, "agentId");
       const grantIds = [
-        ...new Set(input.capabilityGrantIds.map((grantId) => grantId.trim())),
+        ...new Set(input.capabilityGrantIds.map((grantId: string) => grantId.trim())),
       ].filter(Boolean);
       if (grantIds.length === 0) {
         return yield* error(runtimeId, "invalid_input", "capabilityGrantIds 不能为空。");
