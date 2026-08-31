@@ -15,6 +15,10 @@
       "types": "./src/composition/squadBuilder.ts",
       "default": "./src/composition/squadBuilder.ts"
     },
+    "./composition/squad-model-bindings": {
+      "types": "./src/composition/squadModelBindings.ts",
+      "default": "./src/composition/squadModelBindings.ts"
+    },
     "./composition/squad-run-board": {
       "types": "./src/composition/squadRunBoard.ts",
       "default": "./src/composition/squadRunBoard.ts"

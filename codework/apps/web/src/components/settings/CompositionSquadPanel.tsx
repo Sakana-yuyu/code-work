@@ -8,6 +8,8 @@ import type {
   CompositionSquadMemberRole,
   CompositionSquadPartialSuccessPolicy,
   CompositionSquadResult,
+  ProviderInstanceConfig,
+  ProviderInstanceId,
 } from "@codework/contracts";
 import {
   squashAtomCommandFailure,
@@ -46,9 +48,9 @@ import {
   type CompositionSquadDraftIssue,
   type CompositionSquadMemberDraft,
 } from "./CompositionSquadPanel.logic";
+import { CompositionSquadModelBindingPicker } from "./CompositionSquadModelBindingPicker";
 import { useCompositionEditorState } from "./compositionEditorState";
 import { SettingsSection } from "./settingsLayout";
-import { readByokModelAdapters } from "./ByokModelAdaptersSection";
 
 const COLLABORATION_MODES: ReadonlyArray<CompositionSquadCollaborationMode> = [
   "serial",
@@ -112,29 +114,6 @@ function FormField({
   );
 }
 
-type SquadModelOption = {
-  readonly value: string;
-  readonly label: string;
-};
-
-function byokModelOptionsFromSettings(
-  providerInstances: Readonly<Record<string, { readonly driver: string; readonly config?: unknown }>>,
-): ReadonlyArray<SquadModelOption> {
-  const options: SquadModelOption[] = [];
-  const seen = new Set<string>();
-  for (const instance of Object.values(providerInstances)) {
-    if (instance.driver !== "byok") continue;
-    for (const adapter of readByokModelAdapters(instance.config)) {
-      const value = adapter.id.trim();
-      if (value.length === 0 || seen.has(value)) continue;
-      seen.add(value);
-      const displayName = adapter.displayName.trim() || adapter.modelId.trim() || value;
-      options.push({ value, label: `${displayName} · ${adapter.modelId}` });
-    }
-  }
-  return options;
-}
-
 function EnumSelect<T extends string>({
   value,
   values,
@@ -169,7 +148,7 @@ function EnumSelect<T extends string>({
 function SquadMemberEditor({
   member,
   index,
-  modelOptions,
+  providerInstances,
   disabled,
   canRemove,
   onChange,
@@ -177,7 +156,7 @@ function SquadMemberEditor({
 }: {
   readonly member: CompositionSquadMemberDraft;
   readonly index: number;
-  readonly modelOptions: ReadonlyArray<SquadModelOption>;
+  readonly providerInstances: Readonly<Record<ProviderInstanceId, ProviderInstanceConfig>>;
   readonly disabled: boolean;
   readonly canRemove: boolean;
   readonly onChange: (patch: Partial<CompositionSquadMemberDraft>) => void;
@@ -225,21 +204,17 @@ function SquadMemberEditor({
             onChange={(role) => onChange({ role })}
           />
         </FormField>
-        <FormField label={t("squadBuilder.model")}>
-          <Input
-            size="compact"
-            list={`squad-model-options-${member.clientId}`}
-            value={member.model}
-            disabled={disabled}
-            placeholder={t("squadBuilder.optional")}
-            onChange={(event) => onChange({ model: event.currentTarget.value })}
-          />
-          <datalist id={`squad-model-options-${member.clientId}`}>
-            {modelOptions.map((option) => (
-              <option key={option.value} value={option.value} label={option.label} />
-            ))}
-          </datalist>
-        </FormField>
+        <CompositionSquadModelBindingPicker
+          scope="member"
+          idPrefix={`squad-member-${member.clientId}`}
+          className="sm:col-span-2"
+          providerInstances={providerInstances}
+          value={member.modelBinding}
+          legacyModel={member.model}
+          disabled={disabled}
+          onChange={(modelBinding) => onChange({ modelBinding })}
+          onLegacyModelChange={(model) => onChange({ model })}
+        />
         <FormField label={t("squadBuilder.workspaceRoot")}>
           <Input
             size="compact"
@@ -290,10 +265,7 @@ export function CompositionSquadPanel() {
   const primaryEnvironment = usePrimaryEnvironment();
   const settings = usePrimarySettings();
   const environmentId = primaryEnvironment?.environmentId ?? null;
-  const modelOptions = useMemo(
-    () => byokModelOptionsFromSettings(settings.providerInstances),
-    [settings.providerInstances],
-  );
+  const providerInstances = settings.providerInstances;
   const squadsQuery = useEnvironmentQuery(
     environmentId === null
       ? null
@@ -452,6 +424,7 @@ export function CompositionSquadPanel() {
           role: "worker",
           required: true,
           model: "",
+          modelBinding: { kind: "team_default" },
           workspaceRoot: "",
           capabilityIdsText: "",
           maxConcurrentTasksText: "1",
@@ -709,6 +682,27 @@ export function CompositionSquadPanel() {
               />
             </FormField>
 
+            <div className="space-y-2 border-t border-border/60 pt-4">
+              <div>
+                <h4 className="text-xs font-semibold text-foreground">
+                  {t("squadBuilder.modelBinding.teamTitle")}
+                </h4>
+                <p className="mt-0.5 text-xs leading-snug text-muted-foreground">
+                  {t("squadBuilder.modelBinding.teamDescription")}
+                </p>
+              </div>
+              <CompositionSquadModelBindingPicker
+                scope="team"
+                idPrefix="squad-team-default-model"
+                providerInstances={providerInstances}
+                value={draft.defaultModelBinding}
+                disabled={isArchived}
+                onChange={(defaultModelBinding) =>
+                  setDraft((current) => ({ ...current, defaultModelBinding }))
+                }
+              />
+            </div>
+
             <div className="space-y-2">
               <div className="flex items-center justify-between gap-3">
                 <div>
@@ -730,7 +724,7 @@ export function CompositionSquadPanel() {
                     key={member.clientId}
                     member={member}
                     index={index}
-                    modelOptions={modelOptions}
+                    providerInstances={providerInstances}
                     disabled={isArchived}
                     canRemove={draft.members.length > 1}
                     onChange={(patch) => patchMember(index, patch)}

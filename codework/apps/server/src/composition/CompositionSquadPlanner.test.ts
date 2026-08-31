@@ -17,6 +17,7 @@ import * as TestClock from "effect/testing/TestClock";
 import { PersistenceSqlError } from "../persistence/Errors.ts";
 import {
   CompositionAgentDriverFailure,
+  type CompositionDispatchInput,
   CompositionTaskAlreadyExistsError,
 } from "./CompositionOrchestrator.ts";
 import {
@@ -30,6 +31,7 @@ import {
   type CompositionSquadPlanningInput,
 } from "./CompositionSquadPlanner.ts";
 import { CompositionTaskRuntimeWaitError } from "./CompositionTaskRuntimeProjectionService.ts";
+import type { CompositionSquadModelBindingResolverShape } from "./CompositionSquadModelBindingResolver.ts";
 
 const squad: CompositionSquad = {
   squadId: "squad-planner",
@@ -204,18 +206,16 @@ const invalidCases: ReadonlyArray<{
   },
 ];
 
-const makeHarness = (output = completedPlanJson) => {
+const makeHarness = (
+  output = completedPlanJson,
+  options?: {
+    readonly modelBindings?: Pick<CompositionSquadModelBindingResolverShape, "resolveMember">;
+  },
+) => {
   const tasks = new Map<string, CompositionTask>();
   const runs = new Map<string, CompositionTaskRun>();
   const events = new Map<string, ReadonlyArray<CompositionTaskEvent>>();
-  const dispatches: Array<{
-    readonly taskId: string;
-    readonly runId: string;
-    readonly assigneeKind: "agent" | "squad";
-    readonly assigneeId: string;
-    readonly prompt?: string;
-    readonly capabilityIds?: ReadonlyArray<string>;
-  }> = [];
+  const dispatches: CompositionDispatchInput[] = [];
 
   const planner = makeCompositionSquadPlanner({
     orchestrator: {
@@ -242,6 +242,9 @@ const makeHarness = (output = completedPlanJson) => {
             runtimeId: "runtime-leader",
             status: "running",
             attempt: 1,
+            ...(dispatch.modelSnapshot === undefined
+              ? {}
+              : { modelSnapshot: dispatch.modelSnapshot }),
             capabilityGrantIds: [],
           };
           tasks.set(task.taskId, task);
@@ -305,6 +308,7 @@ const makeHarness = (output = completedPlanJson) => {
       getRun: (runId) => Effect.succeed(Option.fromNullishOr(runs.get(runId))),
       listEvents: (taskId, runId) => Effect.succeed(events.get(`${taskId}\u0000${runId}`) ?? []),
     },
+    ...(options?.modelBindings === undefined ? {} : { modelBindings: options.modelBindings }),
   });
 
   return { planner, tasks, runs, events, dispatches };
@@ -336,6 +340,77 @@ it.effect("重复规划请求复用已完成的稳定运行，不重复调用外
     const second = yield* harness.planner.plan(input);
 
     expect(second).toEqual(first);
+    expect(harness.dispatches).toHaveLength(1);
+  }),
+);
+
+it.effect("Leader 规划携带结构化模型快照，并拒绝配置漂移后的稳定身份重放", () =>
+  Effect.gen(function* () {
+    let configurationDigest = "sha256:leader-v1";
+    const byokLeaderId = "provider:byok-planner";
+    const structuredSquad: CompositionSquad = {
+      ...squad,
+      leaderAgentId: byokLeaderId,
+      memberAgentIds: squad.memberAgentIds.map((agentId) =>
+        agentId === squad.leaderAgentId ? byokLeaderId : agentId,
+      ),
+      members: squad.members?.map((item) =>
+        item.role === "leader"
+          ? {
+              ...item,
+              agentId: byokLeaderId,
+              model: undefined,
+              modelBinding: {
+                kind: "byok" as const,
+                providerInstanceId: "byok-planner",
+                adapterId: "adapter-leader",
+                modelId: "leader-model",
+              },
+            }
+          : item,
+      ),
+      defaultModelBinding: {
+        kind: "byok",
+        providerInstanceId: "byok-planner",
+        adapterId: "adapter-leader",
+        modelId: "leader-model",
+      },
+    };
+    const harness = makeHarness(completedPlanJson, {
+      modelBindings: {
+        resolveMember: () =>
+          Effect.succeed({
+            model: "adapter-leader",
+            modelSnapshot: {
+              kind: "byok" as const,
+              providerInstanceId: "byok-planner",
+              adapterId: "adapter-leader",
+              modelId: "leader-model",
+              adapterConfigDigest: configurationDigest,
+            },
+          }),
+      },
+    });
+    const structuredInput = { ...input, squad: structuredSquad };
+
+    yield* harness.planner.plan(structuredInput);
+
+    expect(harness.dispatches[0]).toMatchObject({
+      assigneeId: byokLeaderId,
+      model: "adapter-leader",
+      modelSnapshot: {
+        kind: "byok",
+        providerInstanceId: "byok-planner",
+        adapterId: "adapter-leader",
+        modelId: "leader-model",
+        adapterConfigDigest: "sha256:leader-v1",
+      },
+    });
+
+    configurationDigest = "sha256:leader-v2";
+    const error = yield* Effect.flip(harness.planner.plan(structuredInput));
+
+    expect(error.code).toBe("squad_plan_identity_conflict");
     expect(harness.dispatches).toHaveLength(1);
   }),
 );

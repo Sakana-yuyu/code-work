@@ -6,6 +6,7 @@ import type {
   CompositionTask,
   CompositionTaskRetryRequest,
   CompositionTaskRun,
+  CompositionTaskRunModelSnapshot,
   CompositionTaskStatus,
 } from "@codework/contracts";
 import * as Cause from "effect/Cause";
@@ -74,6 +75,7 @@ export type CompositionTaskGraphFailoverCandidate = {
   readonly assigneeId: string;
   readonly workspaceRoot: string;
   readonly model?: string;
+  readonly modelSnapshot?: CompositionTaskRunModelSnapshot;
   readonly capabilityIds: ReadonlyArray<string>;
 };
 
@@ -216,6 +218,34 @@ const isTaskRetryInvalidError = Schema.is(CompositionTaskRetryInvalidError);
 const sameTaskIds = (left: ReadonlyArray<string>, right: ReadonlyArray<string>): boolean =>
   left.length === right.length && left.every((value, index) => value === right[index]);
 
+const sameModelSnapshot = (
+  left: CompositionTaskRunModelSnapshot | undefined,
+  right: CompositionTaskRunModelSnapshot | undefined,
+): boolean => {
+  if (left === undefined || right === undefined) return left === right;
+  if (left.kind !== right.kind) return false;
+  switch (left.kind) {
+    case "byok":
+      return (
+        right.kind === "byok" &&
+        left.providerInstanceId === right.providerInstanceId &&
+        left.adapterId === right.adapterId &&
+        left.modelId === right.modelId &&
+        left.adapterConfigDigest === right.adapterConfigDigest
+      );
+    case "runtime_native":
+      return right.kind === "runtime_native" && left.modelId === right.modelId;
+    case "legacy":
+      return right.kind === "legacy" && left.modelId === right.modelId;
+  }
+};
+
+const compatiblePersistedModelSnapshot = (
+  actual: CompositionTaskRunModelSnapshot | undefined,
+  expected: CompositionTaskRunModelSnapshot | undefined,
+): boolean =>
+  sameModelSnapshot(actual, expected) || (actual === undefined && expected?.kind === "legacy");
+
 const matchesDispatchIdentity = (
   task: CompositionTask,
   run: CompositionTaskRun,
@@ -231,7 +261,8 @@ const matchesDispatchIdentity = (
   task.promptDigest === input.promptDigest &&
   sameTaskIds(task.dependsOnTaskIds, input.dependsOnTaskIds) &&
   run.runId === input.runId &&
-  run.taskId === input.taskId;
+  run.taskId === input.taskId &&
+  compatiblePersistedModelSnapshot(run.modelSnapshot, input.modelSnapshot);
 
 const matchesRetryIdentity = (
   task: CompositionTask,
@@ -246,7 +277,8 @@ const matchesRetryIdentity = (
     run.runId === input.runId &&
     run.taskId === input.taskId &&
     run.agentId === expectedAgentId &&
-    run.attempt === previousRun.attempt + 1
+    run.attempt === previousRun.attempt + 1 &&
+    sameModelSnapshot(run.modelSnapshot, previousRun.modelSnapshot)
   );
 };
 
@@ -255,7 +287,8 @@ const matchesRunIdentity = (actual: CompositionTaskRun, expected: CompositionTas
   actual.taskId === expected.taskId &&
   actual.agentId === expected.agentId &&
   actual.runtimeId === expected.runtimeId &&
-  actual.attempt === expected.attempt;
+  actual.attempt === expected.attempt &&
+  sameModelSnapshot(actual.modelSnapshot, expected.modelSnapshot);
 
 const graphError = (
   code: string,
@@ -666,6 +699,7 @@ const make = (options: GraphExecutorOptions): CompositionTaskGraphExecutorShape 
           : { workspaceRootDigest: node.workspaceRootDigest }),
         prompt,
         ...(node.model === undefined ? {} : { model: node.model }),
+        ...(node.modelSnapshot === undefined ? {} : { modelSnapshot: node.modelSnapshot }),
         ...(node.capabilityIds === undefined ? {} : { capabilityIds: [...node.capabilityIds] }),
       };
       const registrationError = tracker.register({
@@ -740,7 +774,12 @@ const make = (options: GraphExecutorOptions): CompositionTaskGraphExecutorShape 
         const failoverCandidate = failoverEligible ? failoverCandidates[failoverIndex] : undefined;
         if (failoverCandidate !== undefined) {
           failoverIndex += 1;
-          const { model: _model, failoverCandidates: _failoverCandidates, ...nodeBase } = node;
+          const {
+            model: _model,
+            modelSnapshot: _modelSnapshot,
+            failoverCandidates: _failoverCandidates,
+            ...nodeBase
+          } = node;
           const failoverPrompt = [
             node.prompt,
             `接管说明：原成员 ${settled.run.agentId} 因 ${failure.code} 无法继续，现由 ${failoverCandidate.assigneeId} 接管。`,
@@ -757,6 +796,9 @@ const make = (options: GraphExecutorOptions): CompositionTaskGraphExecutorShape 
             promptDigest: sha256(failoverPrompt),
             workspaceRoot: failoverCandidate.workspaceRoot,
             ...(failoverCandidate.model === undefined ? {} : { model: failoverCandidate.model }),
+            ...(failoverCandidate.modelSnapshot === undefined
+              ? {}
+              : { modelSnapshot: failoverCandidate.modelSnapshot }),
             capabilityIds: [...(node.capabilityIds ?? [])],
           };
           const failover = yield* startNode(
@@ -1268,6 +1310,9 @@ const make = (options: GraphExecutorOptions): CompositionTaskGraphExecutorShape 
           : { workspaceRootDigest: input.leader.workspaceRootDigest }),
         prompt: leaderPrompt,
         ...(input.leader.model === undefined ? {} : { model: input.leader.model }),
+        ...(input.leader.modelSnapshot === undefined
+          ? {}
+          : { modelSnapshot: input.leader.modelSnapshot }),
         ...(input.leader.capabilityIds === undefined
           ? {}
           : { capabilityIds: [...input.leader.capabilityIds] }),

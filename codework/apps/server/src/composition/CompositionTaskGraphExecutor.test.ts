@@ -821,6 +821,7 @@ describe("CompositionTaskGraphExecutor", () => {
         readonly taskId: string;
         readonly assigneeId: string;
         readonly prompt: string | undefined;
+        readonly modelSnapshot: CompositionTaskRun["modelSnapshot"];
         readonly capabilityIds: ReadonlyArray<string> | undefined;
       }> = [];
       const child = {
@@ -834,15 +835,34 @@ describe("CompositionTaskGraphExecutor", () => {
         promptDigest: "sha256:offline-worker",
         prompt: "完成离线接管测试",
         workspaceRoot: "C:/workspace/primary",
+        modelSnapshot: { kind: "runtime_native" as const, modelId: "primary-model" },
         capabilityIds: ["t3.workspace.read_file"],
         failoverCandidates: [
           {
             assigneeId: "agent-backup",
             model: "provider/backup-model",
+            modelSnapshot: {
+              kind: "byok" as const,
+              providerInstanceId: "byok-backup",
+              adapterId: "adapter-backup",
+              modelId: "backup-model",
+              adapterConfigDigest: "sha256:adapter-backup",
+            },
             workspaceRoot: "C:/workspace/backup",
             capabilityIds: ["t3.workspace.read_file", "t3.git.status"],
           },
         ],
+      };
+      const leader = {
+        ...baseLeader,
+        model: "adapter-leader",
+        modelSnapshot: {
+          kind: "byok" as const,
+          providerInstanceId: "byok-leader",
+          adapterId: "adapter-leader",
+          modelId: "leader-model",
+          adapterConfigDigest: "sha256:adapter-leader",
+        },
       };
       const executor = makeCompositionTaskGraphExecutor({
         orchestrator: {
@@ -852,6 +872,7 @@ describe("CompositionTaskGraphExecutor", () => {
                 taskId: input.taskId,
                 assigneeId: input.assigneeId,
                 prompt: input.prompt,
+                modelSnapshot: input.modelSnapshot,
                 capabilityIds: input.capabilityIds,
               });
               const primary = input.assigneeId === child.assigneeId;
@@ -882,6 +903,9 @@ describe("CompositionTaskGraphExecutor", () => {
                 runtimeId: `runtime-${input.assigneeId}`,
                 status,
                 attempt: 1,
+                ...(input.modelSnapshot === undefined
+                  ? {}
+                  : { modelSnapshot: input.modelSnapshot }),
                 capabilityGrantIds: [],
                 ...(primary
                   ? {
@@ -918,15 +942,33 @@ describe("CompositionTaskGraphExecutor", () => {
         },
       });
 
-      const result = yield* executor.execute({ leader: baseLeader, children: [child] });
+      const result = yield* executor.execute({ leader, children: [child] });
 
       expect(dispatches.map((dispatch) => [dispatch.taskId, dispatch.assigneeId])).toEqual([
         [child.taskId, "agent-primary"],
         [`${child.taskId}:failover:1`, "agent-backup"],
-        [baseLeader.taskId, baseLeader.assigneeId],
+        [leader.taskId, leader.assigneeId],
       ]);
       const failover = dispatches[1]!;
       expect(failover.prompt).toContain("主成员 Driver 未注册");
+      expect(dispatches[0]?.modelSnapshot).toEqual({
+        kind: "runtime_native",
+        modelId: "primary-model",
+      });
+      expect(failover.modelSnapshot).toEqual({
+        kind: "byok",
+        providerInstanceId: "byok-backup",
+        adapterId: "adapter-backup",
+        modelId: "backup-model",
+        adapterConfigDigest: "sha256:adapter-backup",
+      });
+      expect(dispatches[2]?.modelSnapshot).toEqual({
+        kind: "byok",
+        providerInstanceId: "byok-leader",
+        adapterId: "adapter-leader",
+        modelId: "leader-model",
+        adapterConfigDigest: "sha256:adapter-leader",
+      });
       expect(failover.capabilityIds).toEqual(["t3.workspace.read_file"]);
       expect(result.children[0]).toMatchObject({
         attempts: 2,
@@ -2288,6 +2330,74 @@ describe("CompositionTaskGraphExecutor", () => {
         nodeId: child.nodeId,
       });
       expect(cancelCalls).toBe(0);
+    }),
+  );
+
+  it.effect("稳定 ID 模型快照冲突时拒绝复用既有 Run", () =>
+    Effect.gen(function* () {
+      const child: CompositionTaskGraphExecutionInput["children"][number] = {
+        nodeId: "model-snapshot-conflict-child",
+        taskId: "model-snapshot-conflict-task",
+        runId: "model-snapshot-conflict-run",
+        projectId: "project-graph",
+        assigneeKind: "agent",
+        assigneeId: "agent-model-snapshot",
+        mode: "parallel",
+        promptDigest: "sha256:model-snapshot",
+        prompt: "验证模型快照重放身份",
+        workspaceRoot: "C:/workspace",
+        modelSnapshot: { kind: "runtime_native", modelId: "expected-model" },
+      };
+      const persistedTask: CompositionTask = {
+        taskId: child.taskId,
+        projectId: child.projectId,
+        parentTaskId: baseLeader.taskId,
+        assigneeKind: child.assigneeKind,
+        assigneeId: child.assigneeId,
+        mode: child.mode,
+        status: "running",
+        promptDigest: child.promptDigest,
+        dependsOnTaskIds: [],
+        createdAtUnixMs: 1,
+        updatedAtUnixMs: 1,
+      };
+      const persistedRun: CompositionTaskRun = {
+        runId: child.runId,
+        taskId: child.taskId,
+        agentId: child.assigneeId,
+        runtimeId: "runtime-model-snapshot",
+        status: "running",
+        attempt: 1,
+        modelSnapshot: { kind: "runtime_native", modelId: "other-model" },
+        capabilityGrantIds: [],
+      };
+      const executor = makeCompositionTaskGraphExecutor({
+        orchestrator: {
+          dispatchTask: () => Effect.die("模型快照冲突时不应重新派发"),
+          retryTask: () => Effect.die("模型快照冲突测试不应重试"),
+          cancelTask: () => Effect.die("模型快照冲突时不应取消既有 Run"),
+        },
+        store: {
+          getTask: (taskId) =>
+            Effect.succeed(
+              taskId === persistedTask.taskId ? Option.some(persistedTask) : Option.none(),
+            ),
+          getRun: (runId) =>
+            Effect.succeed(
+              runId === persistedRun.runId ? Option.some(persistedRun) : Option.none(),
+            ),
+        },
+        runtime: {
+          awaitTaskCompletion: () => Effect.die("模型快照冲突时不应等待任务终态"),
+        },
+      });
+
+      const error = yield* Effect.flip(executor.execute({ leader: baseLeader, children: [child] }));
+
+      expect(error).toMatchObject({
+        code: "task_graph_identity_conflict",
+        nodeId: child.nodeId,
+      });
     }),
   );
 

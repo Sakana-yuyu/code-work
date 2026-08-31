@@ -54,6 +54,15 @@ export interface ProviderDriverMetadata {
   readonly supportsMultipleInstances?: boolean;
 }
 
+/** Composition 运行时可读取的非敏感模型描述。 */
+export interface ProviderCompositionModelDescriptor {
+  readonly adapterId: string;
+  readonly modelId: string;
+  readonly protocol: "openai" | "anthropic" | "gemini";
+  readonly baseURL: string;
+  readonly configurationDigest: string;
+}
+
 /**
  * One materialized provider instance. Held by the registry, looked up by
  * `instanceId`, torn down by closing the scope it was created in.
@@ -74,6 +83,7 @@ export interface ProviderInstance {
   readonly adapter: ProviderAdapterShape<ProviderAdapterError>;
   readonly textGeneration: TextGeneration.TextGeneration["Service"];
   readonly composition?: {
+    readonly modelDescriptors: ReadonlyArray<ProviderCompositionModelDescriptor>;
     readonly resolveModelDriver: (input: {
       readonly modelId: string;
       readonly signal?: AbortSignal | undefined;

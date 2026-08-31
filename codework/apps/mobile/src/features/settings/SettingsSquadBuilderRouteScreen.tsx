@@ -1,4 +1,5 @@
 import { useNavigation } from "@react-navigation/native";
+import { useAtomValue } from "@effect/atom-react";
 import {
   buildCompositionSquadCreateRequest,
   createEmptyCompositionSquadDraft,
@@ -13,10 +14,14 @@ import type {
   CompositionSquad,
   CompositionSquadMember,
   CompositionSquadResult,
+  ProviderInstanceConfig,
+  ProviderInstanceId,
+  ServerSettings,
 } from "@codework/contracts";
 import { useMemo, useRef, useState } from "react";
 import { Platform, Pressable, RefreshControl, ScrollView, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { Atom } from "effect/unstable/reactivity";
 
 import { AndroidScreenHeader } from "../../components/AndroidScreenHeader";
 import { AppText as Text } from "../../components/AppText";
@@ -28,6 +33,7 @@ import { useEnvironmentQuery } from "../../state/query";
 import { serverEnvironment } from "../../state/server";
 import { useAtomCommand } from "../../state/use-atom-command";
 import { SettingsSquadBuilderForm } from "./SettingsSquadBuilderForm";
+import { SettingsSquadModelBindingSummary } from "./SettingsSquadModelBindingSummary";
 import {
   buildSquadBuilderDuplicateRequest,
   buildSquadBuilderRevisionMutationRequest,
@@ -39,12 +45,23 @@ import {
   summarizeSquadBuilderConfiguration,
 } from "./SettingsSquadBuilderRouteScreen.logic";
 
+const EMPTY_SERVER_SETTINGS_ATOM = Atom.make<ServerSettings | null>(null).pipe(
+  Atom.withLabel("mobile-squad-builder:settings:empty"),
+);
+const EMPTY_PROVIDER_INSTANCES: Readonly<Record<ProviderInstanceId, ProviderInstanceConfig>> = {};
+
 /** Mobile Squad Builder 管理入口，直接读写服务端持久化配置。 */
 export function SettingsSquadBuilderRouteScreen() {
   const navigation = useNavigation();
   const insets = useSafeAreaInsets();
   const { environments } = useEnvironments();
   const environmentId = environments[0]?.environmentId ?? null;
+  const settings = useAtomValue(
+    environmentId === null
+      ? EMPTY_SERVER_SETTINGS_ATOM
+      : serverEnvironment.settingsValueAtom(environmentId),
+  );
+  const providerInstances = settings?.providerInstances ?? EMPTY_PROVIDER_INSTANCES;
   const squadsQuery = useEnvironmentQuery(
     environmentId === null
       ? null
@@ -225,6 +242,7 @@ export function SettingsSquadBuilderRouteScreen() {
             variant={editorMode}
             draft={draft}
             issues={activeBuildResult.issues}
+            providerInstances={providerInstances}
             pending={actionPending}
             onDraftChange={setDraft}
             onSubmit={() => void submitEditor()}
@@ -252,6 +270,7 @@ export function SettingsSquadBuilderRouteScreen() {
             <SquadConfigurationCard
               key={squad.squadId}
               squad={squad}
+              providerInstances={providerInstances}
               actionsDisabled={actionPending || editorMode !== null}
               onEdit={() => startEdit(squad)}
               onDuplicate={() => void duplicateSelectedSquad(squad)}
@@ -266,6 +285,7 @@ export function SettingsSquadBuilderRouteScreen() {
 
 function SquadConfigurationCard(props: {
   readonly squad: CompositionSquad;
+  readonly providerInstances: Readonly<Record<ProviderInstanceId, ProviderInstanceConfig>>;
   readonly actionsDisabled: boolean;
   readonly onEdit: () => void;
   readonly onDuplicate: () => void;
@@ -317,6 +337,12 @@ function SquadConfigurationCard(props: {
         </Text>
       </View>
 
+      <SettingsSquadModelBindingSummary
+        scope="team"
+        providerInstances={props.providerInstances}
+        binding={squad.defaultModelBinding ?? null}
+      />
+
       {squad.instructions === undefined ? null : (
         <View className="gap-1">
           <Text className="text-xs font-t3-medium text-foreground-muted">
@@ -329,7 +355,11 @@ function SquadConfigurationCard(props: {
       <View className="gap-2 border-t border-border-subtle pt-3">
         <Text className="text-sm font-t3-medium text-foreground">{t("squadBuilder.members")}</Text>
         {members.map((member) => (
-          <SquadMemberRow key={`${member.order}:${member.agentId}`} member={member} />
+          <SquadMemberRow
+            key={`${member.order}:${member.agentId}`}
+            member={member}
+            providerInstances={props.providerInstances}
+          />
         ))}
       </View>
       <View className="flex-row flex-wrap justify-end gap-2 border-t border-border-subtle pt-3">
@@ -355,7 +385,10 @@ function SquadConfigurationCard(props: {
   );
 }
 
-function SquadMemberRow(props: { readonly member: CompositionSquadMember }) {
+function SquadMemberRow(props: {
+  readonly member: CompositionSquadMember;
+  readonly providerInstances: Readonly<Record<ProviderInstanceId, ProviderInstanceConfig>>;
+}) {
   const { member } = props;
   const roleLabelKey = squadMemberRoleLabelKey(member.role);
   return (
@@ -370,11 +403,12 @@ function SquadMemberRow(props: { readonly member: CompositionSquadMember }) {
         />
         <BadgePill label={t(member.required ? "squadBuilder.required" : "squadBuilder.optional")} />
       </View>
-      {member.model === undefined ? null : (
-        <Text className="text-xs text-foreground-muted">
-          {t("squadBuilder.model", { model: member.model })}
-        </Text>
-      )}
+      <SettingsSquadModelBindingSummary
+        scope="member"
+        providerInstances={props.providerInstances}
+        binding={member.modelBinding ?? null}
+        legacyModel={member.model}
+      />
       {member.workspaceRoot === undefined ? null : (
         <Text className="font-mono text-xs text-foreground-muted" numberOfLines={1}>
           {t("squadBuilder.workspace", { workspace: member.workspaceRoot })}

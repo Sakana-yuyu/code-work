@@ -9,12 +9,15 @@ import type {
   CompositionSquadFailurePolicy,
   CompositionSquadMemberRole,
   CompositionSquadPartialSuccessPolicy,
+  ProviderInstanceConfig,
+  ProviderInstanceId,
 } from "@codework/contracts";
 import { Pressable, View } from "react-native";
 
 import { AppText as Text, AppTextInput as TextInput } from "../../components/AppText";
 import { t } from "../../i18n";
 import { uuidv4 } from "../../lib/uuid";
+import { SettingsSquadModelBindingFields } from "./SettingsSquadModelBindingFields";
 import {
   addSquadBuilderMember,
   patchSquadBuilderMember,
@@ -59,6 +62,7 @@ export function SettingsSquadBuilderForm(props: {
   readonly variant: "create" | "edit";
   readonly draft: CompositionSquadDraft;
   readonly issues: ReadonlyArray<CompositionSquadDraftIssue>;
+  readonly providerInstances: Readonly<Record<ProviderInstanceId, ProviderInstanceConfig>>;
   readonly pending: boolean;
   readonly onDraftChange: (draft: CompositionSquadDraft) => void;
   readonly onSubmit: () => void;
@@ -193,6 +197,24 @@ export function SettingsSquadBuilderForm(props: {
       </View>
 
       <View className="gap-3 border-t border-border-subtle pt-4">
+        <View className="gap-1">
+          <Text className="text-base font-t3-medium text-foreground">
+            {t("squadBuilder.modelBinding.teamTitle")}
+          </Text>
+          <Text className="text-sm leading-5 text-foreground-muted">
+            {t("squadBuilder.modelBinding.teamDescription")}
+          </Text>
+        </View>
+        <SettingsSquadModelBindingFields
+          scope="team"
+          providerInstances={props.providerInstances}
+          value={draft.defaultModelBinding}
+          disabled={props.pending}
+          onChange={(defaultModelBinding) => patchDraft({ defaultModelBinding })}
+        />
+      </View>
+
+      <View className="gap-3 border-t border-border-subtle pt-4">
         <View className="flex-row items-center justify-between gap-3">
           <Text className="text-base font-t3-medium text-foreground">
             {t("squadBuilder.members")}
@@ -208,6 +230,7 @@ export function SettingsSquadBuilderForm(props: {
             key={member.clientId}
             index={index}
             member={member}
+            providerInstances={props.providerInstances}
             canRemove={draft.members.length > 1}
             disabled={props.pending}
             onPatch={(patch) => props.onDraftChange(patchSquadBuilderMember(draft, index, patch))}
@@ -250,6 +273,7 @@ export function SettingsSquadBuilderForm(props: {
 function MemberEditor(props: {
   readonly index: number;
   readonly member: CompositionSquadMemberDraft;
+  readonly providerInstances: Readonly<Record<ProviderInstanceId, ProviderInstanceConfig>>;
   readonly canRemove: boolean;
   readonly disabled: boolean;
   readonly onPatch: (patch: Partial<CompositionSquadMemberDraft>) => void;
@@ -289,29 +313,28 @@ function MemberEditor(props: {
         disabled={props.disabled}
         onSelect={(role) => props.onPatch({ role })}
       />
-      <View className="flex-row gap-3">
-        <View className="min-w-0 flex-1">
-          <FormField label={t("squadBuilder.modelField")}>
-            <TextInput
-              value={member.model}
-              onChangeText={(model) => props.onPatch({ model })}
-              editable={!props.disabled}
-              autoCapitalize="none"
-              autoCorrect={false}
-            />
-          </FormField>
-        </View>
-        <View className="min-w-0 flex-1">
-          <FormField label={t("squadBuilder.memberConcurrency")}>
-            <TextInput
-              value={member.maxConcurrentTasksText}
-              onChangeText={(maxConcurrentTasksText) => props.onPatch({ maxConcurrentTasksText })}
-              editable={!props.disabled}
-              keyboardType="number-pad"
-            />
-          </FormField>
-        </View>
-      </View>
+      <SettingsSquadModelBindingFields
+        scope="member"
+        providerInstances={props.providerInstances}
+        value={member.modelBinding}
+        legacyModel={member.model}
+        disabled={props.disabled}
+        onChange={(modelBinding) =>
+          props.onPatch({
+            modelBinding,
+            ...(modelBinding === null ? {} : { model: "" }),
+          })
+        }
+        onLegacyModelChange={(model) => props.onPatch({ model })}
+      />
+      <FormField label={t("squadBuilder.memberConcurrency")}>
+        <TextInput
+          value={member.maxConcurrentTasksText}
+          onChangeText={(maxConcurrentTasksText) => props.onPatch({ maxConcurrentTasksText })}
+          editable={!props.disabled}
+          keyboardType="number-pad"
+        />
+      </FormField>
       <FormField label={t("squadBuilder.workspaceRoot")}>
         <TextInput
           value={member.workspaceRoot}

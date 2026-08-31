@@ -44,6 +44,10 @@ import {
 } from "./CompositionTaskGraphExecutor.ts";
 import { CompositionAgentDriverFailure } from "./CompositionOrchestrator.ts";
 import { CompositionTaskRuntimeWaitError } from "./CompositionTaskRuntimeProjectionService.ts";
+import type {
+  CompositionSquadModelBindingResolverShape,
+  ResolvedCompositionSquadMemberModel,
+} from "./CompositionSquadModelBindingResolver.ts";
 
 const baseSquad: CompositionSquad = {
   squadId: "squad-core",
@@ -571,6 +575,118 @@ it.effect("把 Squad 成员模型、工作目录、能力和重试策略编译�
       workspaceRoot: "C:/workspace/worker",
       capabilityIds: ["t3.workspace.read_file", "t3.workspace.write_file"],
       maxAttempts: 3,
+    });
+  }),
+);
+
+it.effect("把团队默认、成员覆盖和接管候选的结构化模型快照编译进 Graph", () =>
+  Effect.gen(function* () {
+    const structuredSquad: CompositionSquad = {
+      ...baseSquad,
+      defaultModelBinding: {
+        kind: "byok",
+        providerInstanceId: "byok-team",
+        adapterId: "adapter-leader",
+        modelId: "leader-model",
+      },
+      members: baseSquad.members?.map((item) => {
+        if (item.role === "leader") {
+          return { ...item, model: undefined, modelBinding: { kind: "team_default" as const } };
+        }
+        if (item.agentId === "agent-reviewer") {
+          return {
+            ...item,
+            model: undefined,
+            modelBinding: { kind: "runtime_native" as const, modelId: "review-model" },
+          };
+        }
+        if (item.agentId === "agent-critic") {
+          return {
+            ...item,
+            model: undefined,
+            modelBinding: { kind: "runtime_native" as const, modelId: "critic-model" },
+          };
+        }
+        return item;
+      }),
+    };
+    const resolvedByAgent = new Map<string, ResolvedCompositionSquadMemberModel>([
+      [
+        "agent-leader",
+        {
+          model: "adapter-leader",
+          modelSnapshot: {
+            kind: "byok",
+            providerInstanceId: "byok-team",
+            adapterId: "adapter-leader",
+            modelId: "leader-model",
+            adapterConfigDigest: "sha256:leader-v1",
+          },
+        },
+      ],
+      [
+        "agent-worker",
+        {
+          model: "provider/worker-model",
+          modelSnapshot: { kind: "legacy", modelId: "provider/worker-model" },
+        },
+      ],
+      [
+        "agent-reviewer",
+        {
+          model: "review-model",
+          modelSnapshot: { kind: "runtime_native", modelId: "review-model" },
+        },
+      ],
+      [
+        "agent-critic",
+        {
+          model: "critic-model",
+          modelSnapshot: { kind: "runtime_native", modelId: "critic-model" },
+        },
+      ],
+    ]);
+    const modelBindings: Pick<CompositionSquadModelBindingResolverShape, "resolveMember"> = {
+      resolveMember: ({ member }) => Effect.succeed(resolvedByAgent.get(member.agentId) ?? {}),
+    };
+
+    const graph = yield* compileCompositionSquadGraph({
+      squad: { ...structuredSquad, collaborationMode: "review_critic" },
+      input: {
+        ...baseInput,
+        plan: [
+          {
+            nodeId: "review-only",
+            agentId: "agent-reviewer",
+            prompt: "审查实现证据",
+            dependsOnNodeIds: [],
+          },
+        ],
+      },
+      modelBindings,
+    });
+
+    expect(graph.leader).toMatchObject({
+      model: "adapter-leader",
+      modelSnapshot: {
+        kind: "byok",
+        providerInstanceId: "byok-team",
+        adapterId: "adapter-leader",
+        modelId: "leader-model",
+        adapterConfigDigest: "sha256:leader-v1",
+      },
+    });
+    expect(graph.children[0]).toMatchObject({
+      assigneeId: "agent-reviewer",
+      model: "review-model",
+      modelSnapshot: { kind: "runtime_native", modelId: "review-model" },
+      failoverCandidates: [
+        {
+          assigneeId: "agent-critic",
+          model: "critic-model",
+          modelSnapshot: { kind: "runtime_native", modelId: "critic-model" },
+        },
+      ],
     });
   }),
 );

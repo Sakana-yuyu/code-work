@@ -29,6 +29,7 @@ const mocks = vi.hoisted(() => ({
     archive: vi.fn(),
     restore: vi.fn(),
   },
+  providerInstances: {} as Record<string, unknown>,
 }));
 
 vi.mock("~/state/environments", () => ({
@@ -74,6 +75,7 @@ describe("CompositionSquadPanel", () => {
     mocks.squadsQuery.error = null;
     mocks.squadsQuery.isPending = false;
     mocks.squadsQuery.refresh.mockReset();
+    mocks.providerInstances = {};
     Object.values(mocks.commands).forEach((command) => command.mockReset());
   });
 
@@ -175,22 +177,21 @@ describe("CompositionSquadPanel", () => {
     expect(t("squadBuilder.role.leader")).toBe("队长");
   });
 
-  it("将已配置的 BYOK adapter 暴露为成员模型候选，同时保留手动模型值", () => {
+  it("从服务端设置显示 BYOK 团队默认模型且不渲染密钥", () => {
     mocks.environment = { environmentId: EnvironmentId.make("env-test") };
     mocks.settings = {
       providerInstances: {
         "byok-primary": {
           driver: "byok",
+          displayName: "主 BYOK",
+          enabled: true,
           config: {
             adapters: [
               {
                 id: "adapter-deepseek",
-                displayName: "DeepSeek",
-                protocol: "openai",
-                baseURL: "https://api.example.test/v1",
-                apiKey: "",
+                displayName: "DeepSeek Chat",
                 modelId: "deepseek-chat",
-                contextWindowTokens: 128000,
+                apiKey: "sk-never-render",
               },
             ],
           },
@@ -201,18 +202,24 @@ describe("CompositionSquadPanel", () => {
       squads: [
         {
           squadId: "squad-byok",
-          name: "BYOK Team",
-          leaderAgentId: "agent-lead",
-          memberAgentIds: ["agent-lead"],
+          name: "BYOK Squad",
+          leaderAgentId: "provider:byok-primary",
+          memberAgentIds: ["provider:byok-primary"],
           revision: 1,
           collaborationMode: "serial",
+          defaultModelBinding: {
+            kind: "byok",
+            providerInstanceId: "byok-primary",
+            adapterId: "adapter-deepseek",
+            modelId: "deepseek-chat",
+          },
           members: [
             {
-              agentId: "agent-lead",
+              agentId: "provider:byok-primary",
               role: "leader",
               order: 0,
               required: true,
-              model: "legacy-model",
+              modelBinding: { kind: "team_default" },
               capabilityIds: [],
               maxConcurrentTasks: 1,
             },
@@ -227,8 +234,10 @@ describe("CompositionSquadPanel", () => {
 
     const html = renderToStaticMarkup(<CompositionSquadPanel />);
 
-    expect(html).toContain('value="legacy-model"');
-    expect(html).toContain('value="adapter-deepseek"');
-    expect(html).toContain('label="DeepSeek · deepseek-chat"');
+    expect(html).toContain(t("squadBuilder.modelBinding.teamTitle"));
+    expect(html).toContain("主 BYOK");
+    expect(html).toContain("DeepSeek Chat");
+    expect(html).toContain("deepseek-chat");
+    expect(html).not.toContain("sk-never-render");
   });
 });

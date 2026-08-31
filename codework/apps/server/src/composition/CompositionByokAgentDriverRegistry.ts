@@ -11,11 +11,13 @@ import {
 } from "./CompositionAgentService.ts";
 import {
   CompositionAgentDriverAlreadyRegisteredError,
+  type CompositionAgentDriverRegistry,
   CompositionAgentDriverInvalidError,
   makeCompositionAgentDriverRegistry,
-  type CompositionAgentDriverRegistry,
 } from "./CompositionAgentDriverRegistry.ts";
 import { makeCompositionByokAgentDriver } from "./CompositionByokAgentDriver.ts";
+import { CompositionAgentDriverFailure } from "./CompositionOrchestrator.ts";
+import { makeCompositionSquadModelBindingResolver } from "./CompositionSquadModelBindingResolver.ts";
 import { listCompositionToolDescriptors } from "./CompositionToolRegistry.ts";
 import {
   CompositionMcpToolRegistry,
@@ -102,6 +104,18 @@ export const makeCompositionByokAgentDriverProjection = (
   options: CompositionByokAgentDriverProjectionOptions,
 ): CompositionByokAgentDriverProjection => {
   const registry = options.registry ?? makeCompositionAgentDriverRegistry();
+  const modelBindings = makeCompositionSquadModelBindingResolver({
+    providerRegistry: {
+      getInstance: (instanceId) =>
+        options.providerRegistry.listInstances.pipe(
+          Effect.map((instances) =>
+            instances.find((instance) => instance.instanceId === instanceId),
+          ),
+        ),
+      listInstances: options.providerRegistry.listInstances,
+    },
+    agentDrivers: registry,
+  });
   const projectedAgentIds = new Set<string>();
 
   const refresh = Effect.gen(function* () {
@@ -128,6 +142,16 @@ export const makeCompositionByokAgentDriverProjection = (
         ...(options.checkpointHistory === undefined
           ? {}
           : { checkpointHistory: options.checkpointHistory }),
+        validateRunModel: (input) =>
+          modelBindings.validateByokRun(input).pipe(
+            Effect.mapError(
+              (error) =>
+                new CompositionAgentDriverFailure({
+                  code: error.code,
+                  detail: error.detail,
+                }),
+            ),
+          ),
         listTools: () =>
           Effect.gen(function* () {
             const dynamicTools =

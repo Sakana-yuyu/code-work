@@ -5,6 +5,7 @@ import type {
   CompositionTask,
   CompositionTaskEvent,
   CompositionTaskRun,
+  CompositionTaskRunModelSnapshot,
   CompositionTaskStatus,
 } from "@codework/contracts";
 import * as Cause from "effect/Cause";
@@ -36,6 +37,12 @@ import {
   CompositionTaskStore,
   type CompositionTaskStoreShape,
 } from "../persistence/Services/CompositionTaskStore.ts";
+import {
+  CompositionSquadModelBindingResolver,
+  resolveCompositionSquadMemberModel,
+  sameCompositionTaskRunModelSnapshot,
+  type CompositionSquadModelBindingResolverShape,
+} from "./CompositionSquadModelBindingResolver.ts";
 
 export interface CompositionSquadPlanningInput {
   readonly executionId: string;
@@ -90,6 +97,7 @@ export interface CompositionSquadPlannerOptions {
   readonly orchestrator: Pick<CompositionOrchestrator, "dispatchTask" | "cancelTask">;
   readonly runtime: Pick<CompositionTaskRuntimeProjectionServiceShape, "awaitTaskCompletion">;
   readonly store: Pick<CompositionTaskStoreShape, "getTask" | "getRun" | "listEvents">;
+  readonly modelBindings?: Pick<CompositionSquadModelBindingResolverShape, "resolveMember">;
   readonly cancelTimeoutMs?: number;
 }
 
@@ -192,11 +200,13 @@ type PlanningIdentity = {
   readonly prompt: string;
   readonly promptDigest: string;
   readonly leaderAgentId: string;
+  readonly modelSnapshot?: CompositionTaskRunModelSnapshot;
 };
 
 const planningIdentity = (
   input: CompositionSquadPlanningInput,
   prompt: string,
+  modelSnapshot: CompositionTaskRunModelSnapshot | undefined,
 ): PlanningIdentity => {
   const revision = revisionOf(input.squad);
   const scope = compositionSquadExecutionScope({
@@ -210,6 +220,7 @@ const planningIdentity = (
     prompt,
     promptDigest: sha256(prompt),
     leaderAgentId: input.squad.leaderAgentId,
+    ...(modelSnapshot === undefined ? {} : { modelSnapshot }),
   };
 };
 
@@ -245,14 +256,17 @@ const matchesPersistedIdentity = (
   task.promptDigest === identity.promptDigest &&
   run.runId === identity.runId &&
   run.taskId === identity.taskId &&
-  run.agentId === identity.leaderAgentId;
+  run.agentId === identity.leaderAgentId &&
+  (sameCompositionTaskRunModelSnapshot(run.modelSnapshot, identity.modelSnapshot) ||
+    (run.modelSnapshot === undefined && identity.modelSnapshot?.kind === "legacy"));
 
 const matchesRunIdentity = (actual: CompositionTaskRun, expected: CompositionTaskRun): boolean =>
   actual.runId === expected.runId &&
   actual.taskId === expected.taskId &&
   actual.agentId === expected.agentId &&
   actual.runtimeId === expected.runtimeId &&
-  actual.attempt === expected.attempt;
+  actual.attempt === expected.attempt &&
+  sameCompositionTaskRunModelSnapshot(actual.modelSnapshot, expected.modelSnapshot);
 
 const make = (options: CompositionSquadPlannerOptions): CompositionSquadPlannerShape => {
   const cancelTimeoutMs = options.cancelTimeoutMs ?? 5_000;
@@ -260,7 +274,23 @@ const make = (options: CompositionSquadPlannerOptions): CompositionSquadPlannerS
     Effect.uninterruptibleMask((restore) =>
       Effect.gen(function* () {
         const prompt = yield* makeCompositionSquadPlanningPrompt(input.squad, input.goal);
-        const identity = planningIdentity(input, prompt);
+        const leader = input.squad.members?.find(
+          (member) => member.agentId === input.squad.leaderAgentId && member.role === "leader",
+        );
+        if (leader === undefined) {
+          return yield* plannerError(
+            "squad_leader_missing",
+            "Squad 没有匹配 leaderAgentId 的 Leader 成员。",
+            input.squad.squadId,
+          );
+        }
+        const resolvedLeaderModel = yield* resolveCompositionSquadMemberModel(
+          options.modelBindings,
+          { squad: input.squad, member: leader },
+        ).pipe(
+          Effect.mapError((error) => plannerError(error.code, error.detail, input.squad.squadId)),
+        );
+        const identity = planningIdentity(input, prompt, resolvedLeaderModel.modelSnapshot);
         let planningOwnership: "candidate" | "confirmed" = "candidate";
         let knownTerminalStatus: CompositionTerminalTaskStatus | undefined;
         const cleanupPlanning = (trigger: CompositionSquadPlanningCancellationReport["trigger"]) =>
@@ -303,17 +333,6 @@ const make = (options: CompositionSquadPlannerOptions): CompositionSquadPlannerS
           });
 
         const program = Effect.gen(function* () {
-          const leader = input.squad.members?.find(
-            (member) => member.agentId === identity.leaderAgentId && member.role === "leader",
-          );
-          if (leader === undefined) {
-            return yield* plannerError(
-              "squad_leader_missing",
-              "Squad 没有匹配 leaderAgentId 的 Leader 成员。",
-              input.squad.squadId,
-            );
-          }
-
           const loadExisting = Effect.fn("CompositionSquadPlanner.loadExisting")(function* () {
             const [taskOption, runOption] = yield* Effect.all([
               options.store.getTask(identity.taskId),
@@ -353,7 +372,12 @@ const make = (options: CompositionSquadPlannerOptions): CompositionSquadPlannerS
                   ? {}
                   : { workspaceRootDigest: input.workspaceRootDigest }),
                 prompt: identity.prompt,
-                ...(leader.model === undefined ? {} : { model: leader.model }),
+                ...(resolvedLeaderModel.model === undefined
+                  ? {}
+                  : { model: resolvedLeaderModel.model }),
+                ...(resolvedLeaderModel.modelSnapshot === undefined
+                  ? {}
+                  : { modelSnapshot: resolvedLeaderModel.modelSnapshot }),
                 capabilityIds: [],
               }),
             );
@@ -478,7 +502,8 @@ const live = Effect.gen(function* () {
   const orchestrator = yield* CompositionOrchestratorService;
   const runtime = yield* CompositionTaskRuntimeProjectionService;
   const store = yield* CompositionTaskStore;
-  return makeCompositionSquadPlanner({ orchestrator, runtime, store });
+  const modelBindings = yield* CompositionSquadModelBindingResolver;
+  return makeCompositionSquadPlanner({ orchestrator, runtime, store, modelBindings });
 });
 
 export const layer = Layer.effect(CompositionSquadPlanner, live);
