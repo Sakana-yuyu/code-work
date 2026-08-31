@@ -328,3 +328,14 @@
 
 - 版本自检 `go run ./scripts/release version -config ./build/config.yml`=0.0.99 通过；`task build:windows:amd64` + `task build:windows:installer` 本地构建成功（Go 二进制内嵌 `buildinfo.Version=0.0.99`）。
 - 本轮全部未提交改动已回滚（`git checkout --`），`bin/` 构建产物已删除；已提交内容仅限 Round 21/22 文档。
+
+## Round 24 - Wails 产物命名链修复与本地错误产物清理
+
+| ID | Lens | Severity | Status | Finding | Evidence | Resolution |
+| --- | --- | --- | --- | --- | --- | --- |
+| V-65 | build | minor | fixed(r24) | Wails 线任务链同一中间 exe 存在三套命名（`windows-x64.exe`/`code-work-windows-x64.exe`/`{{RELEASE_BASE_NAME}}-windows-x64.exe`），清理逻辑按 `windows-x64.exe` 匹配导致 61MB 裸 exe 与 NSIS 中间副本（`app-windows-amd64.exe`）长期残留；安装包名 `code-work-windows-*` 与 CI 断言/签名/上传/历史发布资产要求的 `cursor-byok-windows-*` 不一致。 | 2026-08-31 用户确认清理后，提交 `37350dbb8`：RELEASE_BASE_NAME 与 NSIS OUTPUT_INSTALLER、386 OutFile、release 拷贝路径统一为 `cursor-byok-*`；中间 exe 统一为 `windows-<arch>.exe` 并与既有清理模式对齐；NSIS 任务新增 `app-windows-*.exe` 用后即删。本地重建验证：`bin/` 仅剩 `cursor-byok-windows-x64-installer.exe`（21,254,380 字节），无 `code-work-*` 残留。 | V-64 的雷点①已消除；②（info.json 版本停 0.0.98）与③（发布目标产品线待确认）仍开放。本修复只影响本地与未来 Wails 线发布，未推 tag、未创建 Release。 |
+
+本轮证据：
+
+- 重建前后 `bin/`、`build/windows/nsis/` 清单对比；`grep -rn code-work-windows Taskfile.yml build/windows/` 归零。
+- 修复提交 `37350dbb8` 仅含 Taskfile 与 NSIS 脚本 4 个文件；文档单独提交。
