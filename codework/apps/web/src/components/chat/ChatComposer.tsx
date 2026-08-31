@@ -137,6 +137,9 @@ import {
   submitComposerDraft,
 } from "./composerSubmission";
 import { ComposerPromptLengthValidation } from "./ComposerPromptLengthValidation";
+import { ThreadGoalStatusBar } from "./ThreadGoalStatusBar";
+import { threadGoalEnvironment, useThreadGoal } from "../../state/threadGoal";
+import { useAtomCommand } from "../../state/use-atom-command";
 
 type ComposerCommandMenuPosition = {
   bottom: number;
@@ -766,6 +769,68 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   const sendDisabledReason =
     externalSendDisabledReason ?? (activePendingProgress ? null : attachmentBlockReason);
   const isSendDisabled = sendDisabledReason !== null;
+
+  const threadGoalState = useThreadGoal(
+    activeThreadId === null ? null : { environmentId, threadId: activeThreadId },
+  );
+  const setThreadGoalCommand = useAtomCommand(threadGoalEnvironment.set, {
+    reportFailure: false,
+  });
+  const pauseThreadGoalCommand = useAtomCommand(threadGoalEnvironment.pause, {
+    reportFailure: false,
+  });
+  const resumeThreadGoalCommand = useAtomCommand(threadGoalEnvironment.resume, {
+    reportFailure: false,
+  });
+  const clearThreadGoalCommand = useAtomCommand(threadGoalEnvironment.clear, {
+    reportFailure: false,
+  });
+  const threadGoalErrorMessage =
+    threadGoalState.errorCode === null ? null : t("threadGoal.error.failed");
+
+  const onSetThreadGoal = useCallback(
+    async (objective: string) => {
+      if (activeThreadId === null) return false;
+      const result = await setThreadGoalCommand({
+        environmentId,
+        input: { threadId: activeThreadId, objective },
+      });
+      if (result._tag !== "Success") return false;
+      threadGoalState.refresh();
+      return true;
+    },
+    [activeThreadId, environmentId, setThreadGoalCommand, threadGoalState],
+  );
+  const onPauseThreadGoal = useCallback(async () => {
+    if (activeThreadId === null) return false;
+    const result = await pauseThreadGoalCommand({
+      environmentId,
+      input: { threadId: activeThreadId },
+    });
+    if (result._tag !== "Success") return false;
+    threadGoalState.refresh();
+    return true;
+  }, [activeThreadId, environmentId, pauseThreadGoalCommand, threadGoalState]);
+  const onResumeThreadGoal = useCallback(async () => {
+    if (activeThreadId === null) return false;
+    const result = await resumeThreadGoalCommand({
+      environmentId,
+      input: { threadId: activeThreadId },
+    });
+    if (result._tag !== "Success") return false;
+    threadGoalState.refresh();
+    return true;
+  }, [activeThreadId, environmentId, resumeThreadGoalCommand, threadGoalState]);
+  const onClearThreadGoal = useCallback(async () => {
+    if (activeThreadId === null) return false;
+    const result = await clearThreadGoalCommand({
+      environmentId,
+      input: { threadId: activeThreadId },
+    });
+    if (result._tag !== "Success") return false;
+    threadGoalState.refresh();
+    return true;
+  }, [activeThreadId, clearThreadGoalCommand, environmentId, threadGoalState]);
 
   const setComposerDraftPrompt = useComposerDraftStore((store) => store.setPrompt);
   const addComposerDraftImage = useComposerDraftStore((store) => store.addImage);
@@ -2988,6 +3053,17 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       className={cn("mx-auto w-full min-w-0 max-w-3xl", hasShoulderTab && "pt-7")}
       data-chat-composer-form="true"
     >
+      {!isComposerCollapsedMobile && activeThreadId !== null ? (
+        <ThreadGoalStatusBar
+          goal={threadGoalState.goal}
+          isPending={threadGoalState.isPending}
+          errorMessage={threadGoalErrorMessage}
+          onSetGoal={onSetThreadGoal}
+          onPause={onPauseThreadGoal}
+          onResume={onResumeThreadGoal}
+          onClear={onClearThreadGoal}
+        />
+      ) : null}
       {showComposerTopDrawer && (!isTasksDrawerOpen || hasBlockingComposerTopDrawer) ? (
         <div
           className="chat-composer-top-drawer"
