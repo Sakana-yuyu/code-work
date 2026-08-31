@@ -41,6 +41,7 @@ export interface CompositionProviderSessionAdapter {
     readonly context: ProviderToolBrokerContext;
   }) => Effect.Effect<void, ProviderServiceError>;
   readonly clearToolBroker?: (threadId: ThreadId) => Effect.Effect<void, ProviderServiceError>;
+  readonly listSessions?: () => Effect.Effect<ReadonlyArray<ProviderSession>, ProviderServiceError>;
   readonly startSession: (
     input: ProviderSessionStartInput,
   ) => Effect.Effect<ProviderSession, ProviderServiceError>;
@@ -293,6 +294,69 @@ export const makeCompositionProviderAgentDriver = (
             reasonCode: "provider_profile_failed",
           }) satisfies CompositionAgentDriverProfile,
       ),
+    );
+  };
+
+  const reconcileStart: NonNullable<CompositionAgentDriver["reconcileStart"]> = (input) => {
+    const listSessions = options.adapter.listSessions;
+    if (listSessions === undefined) {
+      return Effect.succeed({
+        action: "manual" as const,
+        code: "run_start_provider_session_query_unsupported",
+        detail: "Provider Driver 未接入活动 session 查询，不能自动判断外部启动结果。",
+      });
+    }
+    const threadId = taskThreadId(input.task.taskId, input.run.runId, input.task.threadId);
+    const sessionsEffect: Effect.Effect<
+      ReadonlyArray<ProviderSession>,
+      CompositionAgentDriverFailure
+    > = listSessions().pipe(
+      Effect.mapError((error: ProviderServiceError) =>
+        makeFailure("provider_session_reconciliation_failed", error),
+      ),
+    );
+    return sessionsEffect.pipe(
+      Effect.map((sessions) => {
+        const matchingThread = sessions.filter((session) => session.threadId === threadId);
+        const owned = matchingThread.filter(
+          (session) => session.providerInstanceId === options.providerInstanceId,
+        );
+        if (matchingThread.length !== owned.length || owned.length > 1) {
+          return {
+            action: "manual" as const,
+            code: "run_start_provider_session_scope_conflict",
+            detail: "Provider thread 的活动 session 归属不唯一，拒绝猜测 Run Start receipt。",
+          };
+        }
+        const session = owned[0];
+        if (session === undefined) {
+          return {
+            action: "manual" as const,
+            code: "run_start_provider_session_missing",
+            detail: "Provider 未报告对应 thread 的活动 session，需要人工核对外部启动结果。",
+          };
+        }
+        if (session.activeTurnId === undefined) {
+          return {
+            action: "manual" as const,
+            code: "run_start_provider_active_turn_missing",
+            detail: "Provider session 存在但没有可证明的 activeTurnId，需要人工核对外部启动结果。",
+          };
+        }
+        if (session.status !== "running") {
+          return {
+            action: "manual" as const,
+            code: "run_start_provider_session_not_running",
+            detail: "Provider session 当前不是 running，不能把残留 activeTurnId 当作启动 receipt。",
+          };
+        }
+        return {
+          action: "manual" as const,
+          code: "run_start_provider_receipt_unverifiable",
+          detail:
+            "Provider session 的 activeTurnId 未绑定当前 Run、启动摘要、能力授权或 claim，不能伪造启动 receipt。",
+        };
+      }),
     );
   };
 
@@ -552,6 +616,20 @@ export const makeCompositionProviderAgentDriver = (
   return {
     agentId: options.agentId,
     runtimeId: options.runtimeId,
+    getStartIdentity: (input) => ({
+      runtimeKind: "provider",
+      providerInstanceId: String(options.providerInstanceId),
+      adapterId: options.runtimeId,
+      modelIdentity: input.model ?? options.model ?? null,
+      configDigest: null,
+      sessionMode: runtimeMode,
+    }),
+    startRecoveryPolicy: {
+      mode: "reconcile-only",
+      requiredReceipt: "runtime-task",
+      capabilityGrantReplay: { mode: "verified" },
+    },
+    reconcileStart,
     getProfile,
     startTask,
     revokeCapabilityHandshake,

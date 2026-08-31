@@ -32,6 +32,7 @@ import * as PullRequestService from "./pullRequest/PullRequestService.ts";
 import { layerConfig as SqlitePersistenceLayerLive } from "./persistence/Layers/Sqlite.ts";
 import { CompositionTaskStoreLive } from "./persistence/Layers/CompositionTaskStore.ts";
 import { CompositionTaskInputStoreLive } from "./persistence/Layers/CompositionTaskInputStore.ts";
+import { CompositionRunStartStoreLive } from "./persistence/Layers/CompositionRunStartStore.ts";
 import { CompositionSquadExecutionStoreLive } from "./persistence/Layers/CompositionSquadExecutionStore.ts";
 import { CompositionAutomationStoreLive } from "./persistence/Layers/CompositionAutomationStore.ts";
 import { CompositionToolInvocationStoreLive } from "./persistence/Layers/CompositionToolInvocationStore.ts";
@@ -69,6 +70,7 @@ import * as CompositionToolBroker from "./composition/ToolBroker.ts";
 import * as CompositionToolInvocationCoordinator from "./composition/CompositionToolInvocationCoordinator.ts";
 import * as CompositionToolInvocationStartupRecovery from "./composition/CompositionToolInvocationStartupRecovery.ts";
 import * as CompositionGoalLoopRetryStartupRecovery from "./composition/CompositionGoalLoopRetryStartupRecovery.ts";
+import * as CompositionRunStartStartupRecovery from "./composition/CompositionRunStartStartupRecovery.ts";
 import * as CompositionIdeSessionRegistry from "./composition/CompositionIdeSessionRegistry.ts";
 import * as CompositionIdeAgentDriverProjection from "./composition/CompositionIdeAgentDriverProjection.ts";
 import * as CompositionMcpToolRegistry from "./composition/CompositionMcpToolRegistry.ts";
@@ -512,6 +514,7 @@ const CompositionRuntimeDependenciesLive = Layer.empty.pipe(
       Layer.provide(ServerSecretStore.layer),
     ),
   ),
+  Layer.provideMerge(CompositionRunStartStoreLive.pipe(Layer.provide(PersistenceLayerLive))),
   Layer.provideMerge(CompositionTaskStoreLayerLive),
   Layer.provideMerge(CompositionGoalLoopRetryStoreLayerLive),
 );
@@ -530,6 +533,12 @@ const CompositionGoalLoopRetryStartupRecoveryLayerLive =
     Layer.provide(
       Layer.mergeAll(CompositionOrchestratorLayerLive, CompositionRuntimeDependenciesLive),
     ),
+const CompositionRunStartStartupRecoveryLayerLive =
+  CompositionRunStartStartupRecovery.CompositionRunStartStartupRecovery.layer.pipe(
+    Layer.provideMerge(
+      CompositionRunStartStartupRecovery.CompositionRunStartStartupReconciliationLive,
+    ),
+    Layer.provide(CompositionOrchestratorLayerLive),
   );
 
 const CompositionRuntimeLayerLive = CompositionTaskRuntimeProjectionService.layer.pipe(
@@ -673,6 +682,7 @@ const RuntimeCoreDependenciesWithoutWorkspaceScriptLive = ReactorLayerLive.pipe(
     Layer.mergeAll(
       CompositionRuntimeLayerLive,
       CompositionGoalLoopRetryStartupRecoveryLayerLive,
+      CompositionRunStartStartupRecoveryLayerLive,
       CompositionRuntimeToolBridgeLayerLive,
       CompositionTaskGraphExecutorLayerLive,
       CompositionSquadServiceLayerLive,

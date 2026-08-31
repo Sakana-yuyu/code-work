@@ -79,7 +79,57 @@ export type CapabilityGrantIssueInput = {
   readonly agentId: string;
   readonly capabilityIds: ReadonlyArray<string>;
   readonly ttlMs?: number;
+  /** 仅复用在该时长之后仍有效的 grant，避免恢复流程拿到即将过期的授权。 */
+  readonly minimumRemainingMs?: number;
 };
+
+type NormalizedCapabilityGrantIssueInput = {
+  readonly taskId: string;
+  readonly agentId: string;
+  readonly capabilityIds: ReadonlyArray<string>;
+  readonly issuedAtUnixMs: number;
+  readonly expiresAtUnixMs: number;
+  readonly minimumRemainingMs: number;
+};
+
+const normalizeCapabilityGrantIssueInput = Effect.fn("normalizeCapabilityGrantIssueInput")(
+  function* (
+    input: CapabilityGrantIssueInput,
+    issuedAtUnixMs: number,
+  ): Effect.fn.Return<NormalizedCapabilityGrantIssueInput, CapabilityGrantInvalidError> {
+    const taskId = input.taskId.trim();
+    const agentId = input.agentId.trim();
+    const capabilityIds = input.capabilityIds.map((capabilityId) => capabilityId.trim());
+    const ttlMs = input.ttlMs ?? DEFAULT_GRANT_TTL_MS;
+    const minimumRemainingMs = input.minimumRemainingMs ?? 0;
+    const expiresAtUnixMs = issuedAtUnixMs + ttlMs;
+    if (
+      taskId.length === 0 ||
+      agentId.length === 0 ||
+      capabilityIds.length === 0 ||
+      capabilityIds.some((capabilityId) => capabilityId.length === 0) ||
+      new Set(capabilityIds).size !== capabilityIds.length ||
+      !Number.isSafeInteger(issuedAtUnixMs) ||
+      issuedAtUnixMs < 0 ||
+      !Number.isSafeInteger(ttlMs) ||
+      ttlMs <= 0 ||
+      !Number.isSafeInteger(minimumRemainingMs) ||
+      minimumRemainingMs < 0 ||
+      ttlMs <= minimumRemainingMs ||
+      !Number.isSafeInteger(expiresAtUnixMs)
+    ) {
+      return yield* new CapabilityGrantInvalidError({ reason: "grant_input_invalid" });
+    }
+    return {
+      taskId,
+      agentId,
+      capabilityIds,
+      issuedAtUnixMs,
+      expiresAtUnixMs,
+      minimumRemainingMs,
+    };
+  },
+);
 
 export type CapabilityGrantValidationInput = {
   readonly grantId: string;
@@ -104,7 +154,10 @@ export type CapabilityGrantAuditIfNewInput = CapabilityGrantAuditInput & {
 };
 
 export type CapabilityGrantRegistryOptions = {
-  readonly capabilityRegistry: Pick<CapabilityRegistry.CapabilityRegistry["Service"], "list">;
+  readonly capabilityRegistry: Pick<
+    CapabilityRegistry.CapabilityRegistry["Service"],
+    "resolveRequired"
+  >;
   readonly now?: () => number;
 };
 
@@ -127,6 +180,20 @@ export interface CapabilityGrantRegistryShape {
     | CapabilityGrantExpiredError
     | CapabilityGrantRevokedError
     | CapabilityGrantPersistenceError
+  >;
+  /** 恢复路径除 grant 本身外，还会重新核验当前 capability descriptor。 */
+  readonly validateForRecovery: (
+    input: CapabilityGrantValidationInput,
+  ) => Effect.Effect<
+    CompositionCapabilityGrant,
+    | CapabilityGrantNotFoundError
+    | CapabilityGrantScopeMismatchError
+    | CapabilityGrantExpiredError
+    | CapabilityGrantRevokedError
+    | CapabilityGrantPersistenceError
+    | CapabilityRegistry.CapabilityScopeNotFoundError
+    | CapabilityRegistry.CapabilityRegistryUnavailableError
+    | CapabilityRegistry.CapabilityNotAvailableError
   >;
   readonly revoke: (input: {
     readonly grantId: string;
@@ -167,35 +234,21 @@ export const makeCapabilityGrantRegistry = (
 
   const issue: CapabilityGrantRegistryShape["issue"] = Effect.fn("CapabilityGrantRegistry.issue")(
     function* (input) {
-      const taskId = input.taskId.trim();
-      const agentId = input.agentId.trim();
-      const capabilityIds = [...new Set(input.capabilityIds.map((id) => id.trim()))].filter(
-        Boolean,
-      );
-      const ttlMs = input.ttlMs ?? DEFAULT_GRANT_TTL_MS;
-      if (taskId.length === 0 || agentId.length === 0 || capabilityIds.length === 0 || ttlMs <= 0) {
-        return yield* new CapabilityGrantInvalidError({ reason: "grant_input_invalid" });
-      }
+      const normalized = yield* normalizeCapabilityGrantIssueInput(input, now());
+      const { taskId, agentId, capabilityIds, issuedAtUnixMs, expiresAtUnixMs } = normalized;
 
-      const descriptors = yield* options.capabilityRegistry.list({
-        scope: "task",
-        scopeId: taskId,
-      });
-      const descriptorIds = new Set(
-        descriptors
-          .filter((descriptor) => descriptor.status !== "unavailable")
-          .map((descriptor) => descriptor.capabilityId),
-      );
-      for (const capabilityId of capabilityIds) {
-        if (!descriptorIds.has(capabilityId)) {
-          return yield* new CapabilityGrantInvalidError({
-            reason: `capability_not_available:${capabilityId}`,
-          });
-        }
-      }
+      yield* options.capabilityRegistry
+        .resolveRequired({ scope: "task", scopeId: taskId, capabilityIds })
+        .pipe(
+          Effect.catchTag("CapabilityNotAvailableError", (error) =>
+            Effect.fail(
+              new CapabilityGrantInvalidError({
+                reason: `capability_not_available:${error.capabilityId}`,
+              }),
+            ),
+          ),
+        );
 
-      const issuedAtUnixMs = now();
-      const expiresAtUnixMs = issuedAtUnixMs + ttlMs;
       const result: CompositionCapabilityGrant[] = [];
       for (const capabilityId of capabilityIds) {
         const existing = [...grants.values()].find(
@@ -204,7 +257,7 @@ export const makeCapabilityGrantRegistry = (
             grant.agentId === agentId &&
             grant.capabilityId === capabilityId &&
             grant.revokedAtUnixMs === undefined &&
-            grant.expiresAtUnixMs > issuedAtUnixMs,
+            grant.expiresAtUnixMs > issuedAtUnixMs + normalized.minimumRemainingMs,
         );
         if (existing !== undefined) {
           result.push(existing);
@@ -246,6 +299,18 @@ export const makeCapabilityGrantRegistry = (
     if (grant.expiresAtUnixMs <= now()) {
       return yield* new CapabilityGrantExpiredError({ grantId: input.grantId });
     }
+    return grant;
+  });
+
+  const validateForRecovery: CapabilityGrantRegistryShape["validateForRecovery"] = Effect.fn(
+    "CapabilityGrantRegistry.validateForRecovery",
+  )(function* (input) {
+    const grant = yield* validate(input);
+    yield* options.capabilityRegistry.resolveRequired({
+      scope: "task",
+      scopeId: input.taskId,
+      capabilityIds: [input.capabilityId],
+    });
     return grant;
   });
 
@@ -304,6 +369,7 @@ export const makeCapabilityGrantRegistry = (
   return {
     issue,
     validate,
+    validateForRecovery,
     revoke,
     recordAudit,
     recordAuditIfNew,
@@ -399,10 +465,10 @@ export const makeSqliteCapabilityGrantRegistry = (
       taskId: Schema.String,
       agentId: Schema.String,
       capabilityId: Schema.String,
-      nowUnixMs: Schema.Number,
+      minimumExpiresAtUnixMs: Schema.Number,
     }),
     Result: GrantRowSchema,
-    execute: ({ taskId, agentId, capabilityId, nowUnixMs }) => sql`
+    execute: ({ taskId, agentId, capabilityId, minimumExpiresAtUnixMs }) => sql`
       SELECT
         grant_id AS "grantId", task_id AS "taskId", agent_id AS "agentId",
         capability_id AS "capabilityId", issued_at_unix_ms AS "issuedAtUnixMs",
@@ -412,7 +478,7 @@ export const makeSqliteCapabilityGrantRegistry = (
         AND agent_id = ${agentId}
         AND capability_id = ${capabilityId}
         AND revoked_at_unix_ms IS NULL
-        AND expires_at_unix_ms > ${nowUnixMs}
+        AND expires_at_unix_ms > ${minimumExpiresAtUnixMs}
       ORDER BY issued_at_unix_ms DESC, grant_id ASC
       LIMIT 1
     `,
@@ -531,30 +597,21 @@ export const makeSqliteCapabilityGrantRegistry = (
   const issue: CapabilityGrantRegistryShape["issue"] = Effect.fn(
     "CapabilityGrantRegistry.sqliteIssue",
   )(function* (input) {
-    const taskId = input.taskId.trim();
-    const agentId = input.agentId.trim();
-    const capabilityIds = [...new Set(input.capabilityIds.map((id) => id.trim()))].filter(Boolean);
-    const ttlMs = input.ttlMs ?? DEFAULT_GRANT_TTL_MS;
-    if (taskId.length === 0 || agentId.length === 0 || capabilityIds.length === 0 || ttlMs <= 0) {
-      return yield* new CapabilityGrantInvalidError({ reason: "grant_input_invalid" });
-    }
+    const normalized = yield* normalizeCapabilityGrantIssueInput(input, now());
+    const { taskId, agentId, capabilityIds, issuedAtUnixMs, expiresAtUnixMs } = normalized;
 
-    const descriptors = yield* options.capabilityRegistry.list({ scope: "task", scopeId: taskId });
-    const descriptorIds = new Set(
-      descriptors
-        .filter((descriptor) => descriptor.status !== "unavailable")
-        .map((descriptor) => descriptor.capabilityId),
-    );
-    for (const capabilityId of capabilityIds) {
-      if (!descriptorIds.has(capabilityId)) {
-        return yield* new CapabilityGrantInvalidError({
-          reason: `capability_not_available:${capabilityId}`,
-        });
-      }
-    }
+    yield* options.capabilityRegistry
+      .resolveRequired({ scope: "task", scopeId: taskId, capabilityIds })
+      .pipe(
+        Effect.catchTag("CapabilityNotAvailableError", (error) =>
+          Effect.fail(
+            new CapabilityGrantInvalidError({
+              reason: `capability_not_available:${error.capabilityId}`,
+            }),
+          ),
+        ),
+      );
 
-    const issuedAtUnixMs = now();
-    const expiresAtUnixMs = issuedAtUnixMs + ttlMs;
     return yield* sql
       .withTransaction(
         Effect.gen(function* () {
@@ -564,7 +621,7 @@ export const makeSqliteCapabilityGrantRegistry = (
               taskId,
               agentId,
               capabilityId,
-              nowUnixMs: issuedAtUnixMs,
+              minimumExpiresAtUnixMs: issuedAtUnixMs + normalized.minimumRemainingMs,
             }).pipe(Effect.mapError((cause) => persistenceError("findActiveGrant", cause)));
             if (existing._tag === "Some") {
               result.push(toGrant(existing.value));
@@ -618,6 +675,18 @@ export const makeSqliteCapabilityGrantRegistry = (
     if (grant.expiresAtUnixMs <= now()) {
       return yield* new CapabilityGrantExpiredError({ grantId: input.grantId });
     }
+    return grant;
+  });
+
+  const validateForRecovery: CapabilityGrantRegistryShape["validateForRecovery"] = Effect.fn(
+    "CapabilityGrantRegistry.validateForRecovery",
+  )(function* (input) {
+    const grant = yield* validate(input);
+    yield* options.capabilityRegistry.resolveRequired({
+      scope: "task",
+      scopeId: input.taskId,
+      capabilityIds: [input.capabilityId],
+    });
     return grant;
   });
 
@@ -676,6 +745,7 @@ export const makeSqliteCapabilityGrantRegistry = (
   return {
     issue,
     validate,
+    validateForRecovery,
     revoke,
     recordAudit,
     recordAuditIfNew,

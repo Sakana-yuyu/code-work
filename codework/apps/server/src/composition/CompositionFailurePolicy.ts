@@ -19,6 +19,18 @@ export type CompositionFailureDisposition = {
   readonly retryable: boolean;
 };
 
+type CompositionFailureInput = Pick<CompositionTaskRun, "status"> & {
+  readonly failureCode?: string;
+};
+
+export const toCompositionFailureInput = (
+  status: CompositionFailureInput["status"],
+  failureCode: string | undefined,
+): CompositionFailureInput => ({
+  status,
+  ...(failureCode === undefined ? {} : { failureCode }),
+});
+
 const retryableCapacityCodes: ReadonlySet<string> = new Set([
   "rate_limit",
   "rate_limited",
@@ -53,7 +65,7 @@ const containsAny = (code: string, fragments: ReadonlyArray<string>): boolean =>
   fragments.some((fragment) => code.includes(fragment));
 
 const categoryOf = (
-  run: Pick<CompositionTaskRun, "status">,
+  run: Pick<CompositionFailureInput, "status">,
   normalizedCode: string,
 ): CompositionFailureCategory => {
   if (
@@ -139,7 +151,7 @@ const categoryOf = (
 };
 
 export const classifyCompositionFailure = (
-  run: Pick<CompositionTaskRun, "status" | "failureCode">,
+  run: CompositionFailureInput,
 ): CompositionFailureDisposition => {
   const code = run.failureCode?.trim() || run.status;
   const normalizedCode = normalizeCode(code);

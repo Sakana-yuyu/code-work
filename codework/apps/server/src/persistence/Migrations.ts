@@ -79,6 +79,10 @@ import Migration0063 from "./Migrations/063_CompositionSquadExecutionPlanDigest.
 import Migration0064 from "./Migrations/064_CompositionToolInvocations.ts";
 import Migration0065 from "./Migrations/065_CompositionGoalLoopRetryIntents.ts";
 import Migration0066 from "./Migrations/066_CompositionTaskRunModelSnapshot.ts";
+import Migration0070 from "./Migrations/070_CompositionRunStartIntents.ts";
+import Migration0071 from "./Migrations/071_CompositionRunStartFencing.ts";
+import Migration0072 from "./Migrations/072_CompositionRunStartAcceptedOwnership.ts";
+import Migration0073 from "./Migrations/073_CompositionRunStartCancellationBarrier.ts";
 import Migration0069 from "./Migrations/069_ThreadGoals.ts";
 
 /**
@@ -161,6 +165,10 @@ export const migrationEntries = [
   [64, "CompositionToolInvocations", Migration0064],
   [65, "CompositionGoalLoopRetryIntents", Migration0065],
   [66, "CompositionTaskRunModelSnapshot", Migration0066],
+  [70, "CompositionRunStartIntents", Migration0070],
+  [71, "CompositionRunStartFencing", Migration0071],
+  [72, "CompositionRunStartAcceptedOwnership", Migration0072],
+  [73, "CompositionRunStartCancellationBarrier", Migration0073],
   [69, "ThreadGoals", Migration0069],
 ] as const;
 

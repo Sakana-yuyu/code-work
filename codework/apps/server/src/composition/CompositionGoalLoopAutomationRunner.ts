@@ -17,8 +17,13 @@ import {
   CompositionTaskStore,
   type CompositionTaskStoreShape,
 } from "../persistence/Services/CompositionTaskStore.ts";
-import { CompositionAgentDriverRegistryService } from "./CompositionAgentDriverRegistry.ts";
-import { classifyCompositionFailure } from "./CompositionFailurePolicy.ts";
+import {
+  CompositionAgentDriverRegistryService,
+} from "./CompositionAgentDriverRegistry.ts";
+import {
+  classifyCompositionFailure,
+  toCompositionFailureInput,
+} from "./CompositionFailurePolicy.ts";
 import { composeGoalLoopRoundPrompt } from "./CompositionGoalLoopAttemptAdapters.ts";
 import {
   describeGoalLoopTerminal,
@@ -524,7 +529,9 @@ export const makeCompositionGoalLoopAutomationRunner = (
             ),
           );
     if (run.status !== "completed") {
-      const failure = classifyCompositionFailure(run);
+      const failure = classifyCompositionFailure(
+        toCompositionFailureInput(run.status, run.failureCode),
+      );
       return yield* runnerError(
         run.failureCode ?? `goal_loop_${input.kind}_${run.status}`,
         run.resultSummary ?? `Goal Loop ${input.kind} 子任务以状态 ${run.status} 终止。`,

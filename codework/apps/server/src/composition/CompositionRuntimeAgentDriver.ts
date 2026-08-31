@@ -60,6 +60,26 @@ export const makeCompositionRuntimeAgentDriver = (
   // 活动表只负责当前生命周期；历史表用于终态后迟到事件的只读归属解析。
   // 设上限避免长期运行的 Runtime 因事件审计绑定无限增长。
   const historicalRuns = new Map<string, ActiveRun | null>();
+  const startRecoveryPolicy = options.adapter.startRecoveryPolicy ?? {
+    mode: "manual" as const,
+    requiredReceipt: "runtime-task" as const,
+    capabilityGrantReplay: { mode: "verified" as const },
+  };
+  const reconcileStart =
+    options.adapter.reconcileStart === undefined
+      ? undefined
+      : (((input) =>
+          options.adapter.reconcileStart!(input).pipe(
+            Effect.mapError((failure) =>
+              makeFailure("runtime_start_reconciliation_failed", failure),
+            ),
+          )) satisfies NonNullable<CompositionAgentDriver["reconcileStart"]>);
+  const getStartIdentity =
+    options.adapter.getStartIdentity === undefined
+      ? undefined
+      : (((input) => options.adapter.getStartIdentity!(input)) satisfies NonNullable<
+          CompositionAgentDriver["getStartIdentity"]
+        >);
 
   const hasHistoricalBindingConflict = (run: ActiveRun): boolean => {
     const existing = historicalRuns.get(run.runtimeTaskId);
@@ -415,6 +435,9 @@ export const makeCompositionRuntimeAgentDriver = (
   return {
     agentId: options.agentId,
     runtimeId: options.adapter.runtimeId,
+    startRecoveryPolicy,
+    ...(getStartIdentity === undefined ? {} : { getStartIdentity }),
+    ...(reconcileStart === undefined ? {} : { reconcileStart }),
     getProfile,
     startTask,
     revokeCapabilityHandshake,

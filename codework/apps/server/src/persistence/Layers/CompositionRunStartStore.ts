@@ -1,0 +1,1003 @@
+import * as Effect from "effect/Effect";
+import * as Layer from "effect/Layer";
+import * as Option from "effect/Option";
+import * as Schema from "effect/Schema";
+import * as SqlClient from "effect/unstable/sql/SqlClient";
+
+import {
+  toPersistenceDecodeError,
+  toPersistenceSqlError,
+  type PersistenceDecodeError,
+  type PersistenceSqlError,
+} from "../Errors.ts";
+import {
+  CompositionRunStartStore,
+  CompositionRunStartStoreDomainError,
+  type CompositionRunStartAcceptedManualPendingInput,
+  type CompositionRunStartAcceptedReleaseInput,
+  type CompositionRunStartAcceptedInput,
+  type CompositionRunStartClaimInput,
+  type CompositionRunStartClaimResult,
+  type CompositionRunStartDispatchInput,
+  type CompositionRunStartIdentity,
+  type CompositionRunStartIntent,
+  type CompositionRunStartManualRecoverySnapshot,
+  type CompositionRunStartOwnerLeaseRenewInput,
+  type CompositionRunStartPrepareInput,
+  type CompositionRunStartQuarantineInput,
+  type CompositionRunStartRejectedInput,
+  type CompositionRunStartReleaseInput,
+  type CompositionRunStartSettledInput,
+  type CompositionRunStartStoreErrorCode,
+  type CompositionRunStartStoreShape,
+} from "../Services/CompositionRunStartStore.ts";
+import {
+  makeCompositionRunStartStoreStatements,
+  type RunStartRow,
+} from "./CompositionRunStartStoreStatements.ts";
+import { makeCompositionRunStartStoreCancellation } from "./CompositionRunStartStoreCancellation.ts";
+import { toCompositionRunStartIntent } from "./CompositionRunStartStoreRow.ts";
+
+const LIST_LIMIT_MAX = 200;
+const DEFAULT_OWNER_LEASE_MS = 60_000;
+
+const domainError = (
+  code: CompositionRunStartStoreErrorCode,
+  detail: string,
+  metadata: {
+    readonly runId?: string;
+    readonly expectedRevision?: number;
+    readonly actualRevision?: number;
+    readonly expectedState?: string;
+    readonly actualState?: string;
+  } = {},
+) => new CompositionRunStartStoreDomainError({ code, detail, ...metadata });
+
+const mapQueryError =
+  (operation: string): ((cause: unknown) => PersistenceSqlError | PersistenceDecodeError) =>
+  (cause) =>
+    Schema.isSchemaError(cause)
+      ? toPersistenceDecodeError(`${operation}:decode`)(cause)
+      : toPersistenceSqlError(`${operation}:query`)(cause);
+
+const toIntent = (row: RunStartRow): CompositionRunStartIntent => toCompositionRunStartIntent(row);
+
+const hasTextWithin = (value: string, maxLength: number): boolean =>
+  value.trim().length > 0 && value.length <= maxLength;
+
+const validateTimestamp = (operation: string, runId: string, value: number) =>
+  Number.isSafeInteger(value) && value >= 0
+    ? Effect.succeed(value)
+    : Effect.fail(
+        domainError("run_start_input_invalid", `${operation} 的时间必须是非负安全整数。`, {
+          runId,
+        }),
+      );
+
+const validateRevision = (operation: string, runId: string, value: number) =>
+  Number.isSafeInteger(value) && value >= 1
+    ? Effect.succeed(value)
+    : Effect.fail(
+        domainError("run_start_input_invalid", `${operation} 的 revision 必须是正安全整数。`, {
+          runId,
+          expectedRevision: value,
+        }),
+      );
+
+const validateOwnerEpoch = (operation: string, runId: string, value: number) =>
+  Number.isSafeInteger(value) && value >= 1
+    ? Effect.succeed(value)
+    : Effect.fail(
+        domainError("run_start_input_invalid", `${operation} 的 owner epoch 必须是正安全整数。`, {
+          runId,
+        }),
+      );
+
+const validateIdentity = <A extends CompositionRunStartIdentity>(operation: string, input: A) => {
+  const valid =
+    hasTextWithin(input.taskId, 512) &&
+    hasTextWithin(input.runId, 512) &&
+    (input.previousRunId === null || hasTextWithin(input.previousRunId, 512)) &&
+    hasTextWithin(input.agentId, 512) &&
+    hasTextWithin(input.runtimeId, 512) &&
+    Number.isSafeInteger(input.attempt) &&
+    input.attempt >= 1 &&
+    hasTextWithin(input.payloadDigest, 512) &&
+    hasTextWithin(input.capabilityDigest, 512);
+  return valid
+    ? Effect.succeed(input)
+    : Effect.fail(
+        domainError("run_start_input_invalid", `${operation} 的身份或摘要字段非法。`, {
+          runId: input.runId,
+        }),
+      );
+};
+
+const sameIdentity = (
+  left: CompositionRunStartIdentity,
+  right: CompositionRunStartIdentity,
+): boolean =>
+  left.taskId === right.taskId &&
+  left.runId === right.runId &&
+  left.previousRunId === right.previousRunId &&
+  left.agentId === right.agentId &&
+  left.runtimeId === right.runtimeId &&
+  left.attempt === right.attempt &&
+  left.payloadDigest === right.payloadDigest &&
+  left.capabilityDigest === right.capabilityDigest;
+
+const sameReceipt = (
+  intent: CompositionRunStartIntent,
+  input: Pick<CompositionRunStartAcceptedInput, "runtimeTaskId" | "capabilityHandshakeId">,
+) =>
+  intent.runtimeTaskId === input.runtimeTaskId &&
+  intent.capabilityHandshakeId === input.capabilityHandshakeId;
+
+const sameManualRecoverySnapshot = (
+  intent: CompositionRunStartIntent,
+  input: CompositionRunStartManualRecoverySnapshot,
+): boolean =>
+  sameReceipt(intent, input) &&
+  intent.outcomeCode === input.outcomeCode &&
+  intent.outcomeDetail === input.outcomeDetail;
+
+const hasAcceptedOutcome = (intent: CompositionRunStartIntent): boolean =>
+  (intent.state === "accepted" || intent.state === "settled") &&
+  intent.outcomeCode === null &&
+  intent.cancelRequestedAtUnixMs == null;
+
+const makeStore = Effect.gen(function* () {
+  const sql = yield* SqlClient.SqlClient;
+  const statements = makeCompositionRunStartStoreStatements(sql);
+  const cancellation = makeCompositionRunStartStoreCancellation(sql);
+  const runQuery = <A, E, R>(operation: string, effect: Effect.Effect<A, E, R>) =>
+    effect.pipe(Effect.mapError((cause) => mapQueryError(operation)(cause)));
+
+  const getStart: CompositionRunStartStoreShape["getStart"] = (runId) =>
+    hasTextWithin(runId, 512)
+      ? runQuery("CompositionRunStartStore.getStart", statements.getRow({ runId })).pipe(
+          Effect.map(Option.map(toIntent)),
+        )
+      : Effect.fail(
+          domainError("run_start_input_invalid", "getStart 的 runId 不能为空或超长。", {
+            runId,
+          }),
+        );
+
+  const getRequired = (runId: string) =>
+    getStart(runId).pipe(
+      Effect.flatMap(
+        Option.match({
+          onNone: () =>
+            Effect.fail(domainError("run_start_not_found", "Run Start 意图不存在。", { runId })),
+          onSome: Effect.succeed,
+        }),
+      ),
+    );
+
+  const validateManualRecoverySnapshot = (
+    operation: string,
+    runId: string,
+    input: CompositionRunStartManualRecoverySnapshot,
+  ) =>
+    (input.runtimeTaskId === null || hasTextWithin(input.runtimeTaskId, 1024)) &&
+    (input.capabilityHandshakeId === null || hasTextWithin(input.capabilityHandshakeId, 1024)) &&
+    hasTextWithin(input.outcomeCode, 128) &&
+    (input.outcomeDetail === null || hasTextWithin(input.outcomeDetail, 1024))
+      ? Effect.void
+      : Effect.fail(
+          domainError("run_start_input_invalid", `${operation} 的 receipt 或稳定结果字段非法。`, {
+            runId,
+          }),
+        );
+
+  const validateManualOwnerFence = (
+    operation: string,
+    input: CompositionRunStartManualRecoverySnapshot & {
+      readonly runId: string;
+      readonly expectedRevision: number;
+      readonly claimId: string;
+      readonly ownerEpoch: number;
+    },
+    operatedAtUnixMs: number,
+  ) =>
+    Effect.gen(function* () {
+      if (!hasTextWithin(input.runId, 512) || !hasTextWithin(input.claimId, 512)) {
+        return yield* domainError(
+          "run_start_input_invalid",
+          `${operation} 的 runId/claimId 不能为空或超长。`,
+          { runId: input.runId },
+        );
+      }
+      yield* validateRevision(operation, input.runId, input.expectedRevision);
+      yield* validateOwnerEpoch(operation, input.runId, input.ownerEpoch);
+      yield* validateTimestamp(operation, input.runId, operatedAtUnixMs);
+      yield* validateManualRecoverySnapshot(operation, input.runId, input);
+    });
+
+  const prepareStart: CompositionRunStartStoreShape["prepareStart"] = (
+    input: CompositionRunStartPrepareInput,
+  ) =>
+    Effect.gen(function* () {
+      yield* validateIdentity("prepareStart", input);
+      yield* validateTimestamp("prepareStart", input.runId, input.createdAtUnixMs);
+      const inserted = yield* runQuery(
+        "CompositionRunStartStore.prepareStart",
+        statements.insertPreparedRow(input),
+      );
+      if (Option.isSome(inserted)) return toIntent(inserted.value);
+      const currentByRunId = yield* getStart(input.runId);
+      const currentByTaskAttempt = Option.isSome(currentByRunId)
+        ? Option.none<RunStartRow>()
+        : yield* runQuery(
+            "CompositionRunStartStore.prepareStart.getTaskAttemptWinner",
+            statements.getRowByTaskAttempt({ taskId: input.taskId, attempt: input.attempt }),
+          );
+      const current = Option.isSome(currentByRunId)
+        ? currentByRunId.value
+        : Option.isSome(currentByTaskAttempt)
+          ? toIntent(currentByTaskAttempt.value)
+          : undefined;
+      if (current === undefined) {
+        return yield* domainError(
+          "run_start_identity_conflict",
+          "Run Start 插入发生唯一键冲突，但未能读取既有赢家。",
+          { runId: input.runId },
+        );
+      }
+      if (sameIdentity(current, input)) return current;
+      return yield* domainError(
+        "run_start_identity_conflict",
+        "同一 runId 或 task/attempt 已绑定到不同启动摘要，拒绝覆盖。",
+        { runId: input.runId, actualRevision: current.revision },
+      );
+    });
+
+  const validateClaim = (operation: string, input: CompositionRunStartClaimInput) =>
+    Effect.gen(function* () {
+      if (!hasTextWithin(input.runId, 512) || !hasTextWithin(input.claimId, 512)) {
+        return yield* domainError(
+          "run_start_input_invalid",
+          `${operation} 的 runId/claimId 不能为空或超长。`,
+          { runId: input.runId },
+        );
+      }
+      yield* validateRevision(operation, input.runId, input.expectedRevision);
+      yield* validateTimestamp(operation, input.runId, input.claimedAtUnixMs);
+      const leaseExpiresAtUnixMs =
+        input.leaseExpiresAtUnixMs ?? input.claimedAtUnixMs + DEFAULT_OWNER_LEASE_MS;
+      if (
+        !Number.isSafeInteger(leaseExpiresAtUnixMs) ||
+        leaseExpiresAtUnixMs <= input.claimedAtUnixMs
+      ) {
+        return yield* domainError(
+          "run_start_input_invalid",
+          `${operation} 的 owner lease 必须晚于 claim 时间且为安全整数。`,
+          { runId: input.runId },
+        );
+      }
+      return { ...input, leaseExpiresAtUnixMs };
+    });
+
+  const claimPrepared: CompositionRunStartStoreShape["claimPrepared"] = (input) =>
+    Effect.gen(function* () {
+      const claim = yield* validateClaim("claimPrepared", input);
+      const claimed = yield* runQuery(
+        "CompositionRunStartStore.claimPrepared",
+        statements.claimPreparedRow(claim),
+      );
+      if (Option.isSome(claimed)) {
+        return { intent: toIntent(claimed.value), claimed: true };
+      }
+      const current = yield* getRequired(input.runId);
+      const replayed =
+        current.state === "preparing" &&
+        current.claimId === input.claimId &&
+        current.revision === input.expectedRevision + 1;
+      return { intent: current, claimed: replayed } satisfies CompositionRunStartClaimResult;
+    });
+
+  const releasePreparation: CompositionRunStartStoreShape["releasePreparation"] = (
+    input: CompositionRunStartReleaseInput,
+  ) =>
+    Effect.gen(function* () {
+      if (!hasTextWithin(input.runId, 512) || !hasTextWithin(input.claimId, 512)) {
+        return yield* domainError(
+          "run_start_input_invalid",
+          "releasePreparation 的 runId/claimId 不能为空或超长。",
+          { runId: input.runId },
+        );
+      }
+      yield* validateRevision("releasePreparation", input.runId, input.expectedRevision);
+      yield* validateTimestamp("releasePreparation", input.runId, input.releasedAtUnixMs);
+      yield* validateOwnerEpoch("releasePreparation", input.runId, input.ownerEpoch);
+      const released = yield* runQuery(
+        "CompositionRunStartStore.releasePreparation",
+        statements.releasePreparationRow(input),
+      );
+      if (Option.isSome(released)) return toIntent(released.value);
+      const current = yield* getRequired(input.runId);
+      if (current.state === "prepared" && current.claimId === null) return current;
+      return yield* domainError(
+        "run_start_claim_conflict",
+        "只有当前 setup owner 可以释放准备阶段。",
+        {
+          runId: input.runId,
+          expectedRevision: input.expectedRevision,
+          actualRevision: current.revision,
+          expectedState: "preparing",
+          actualState: current.state,
+        },
+      );
+    });
+
+  const resetPreparationForRecovery: CompositionRunStartStoreShape["resetPreparationForRecovery"] =
+    (input) =>
+      Effect.gen(function* () {
+        if (!hasTextWithin(input.runId, 512)) {
+          return yield* domainError("run_start_input_invalid", "reset 的 runId 不能为空或超长。", {
+            runId: input.runId,
+          });
+        }
+        yield* validateRevision("resetPreparationForRecovery", input.runId, input.expectedRevision);
+        yield* validateTimestamp("resetPreparationForRecovery", input.runId, input.resetAtUnixMs);
+        yield* validateOwnerEpoch("resetPreparationForRecovery", input.runId, input.ownerEpoch);
+        const reset = yield* runQuery(
+          "CompositionRunStartStore.resetPreparationForRecovery",
+          statements.resetPreparationRow(input),
+        );
+        if (Option.isSome(reset)) return toIntent(reset.value);
+        const current = yield* getRequired(input.runId);
+        if (current.state === "prepared" && current.claimId === null) return current;
+        return yield* domainError(
+          "run_start_state_conflict",
+          "只有 preparing 意图可以在启动恢复时重置。",
+          {
+            runId: input.runId,
+            expectedRevision: input.expectedRevision,
+            actualRevision: current.revision,
+            expectedState: "preparing",
+            actualState: current.state,
+          },
+        );
+      });
+
+  const markDispatching: CompositionRunStartStoreShape["markDispatching"] = (
+    input: CompositionRunStartDispatchInput,
+  ) =>
+    Effect.gen(function* () {
+      if (!hasTextWithin(input.runId, 512) || !hasTextWithin(input.claimId, 512)) {
+        return yield* domainError(
+          "run_start_input_invalid",
+          "markDispatching 的 runId/claimId 不能为空或超长。",
+          { runId: input.runId },
+        );
+      }
+      yield* validateRevision("markDispatching", input.runId, input.expectedRevision);
+      yield* validateTimestamp("markDispatching", input.runId, input.dispatchedAtUnixMs);
+      yield* validateOwnerEpoch("markDispatching", input.runId, input.ownerEpoch);
+      const dispatching = yield* runQuery(
+        "CompositionRunStartStore.markDispatching",
+        statements.markDispatchingRow(input),
+      );
+      if (Option.isSome(dispatching)) return toIntent(dispatching.value);
+      const current = yield* getRequired(input.runId);
+      if (
+        current.state === "dispatching" &&
+        current.claimId === input.claimId &&
+        current.revision === input.expectedRevision + 1
+      ) {
+        return current;
+      }
+      return yield* domainError(
+        "run_start_claim_conflict",
+        "只有当前 setup owner 可以进入 dispatching。",
+        {
+          runId: input.runId,
+          expectedRevision: input.expectedRevision,
+          actualRevision: current.revision,
+          expectedState: "preparing",
+          actualState: current.state,
+        },
+      );
+    });
+
+  const claimDispatchRecovery: CompositionRunStartStoreShape["claimDispatchRecovery"] = (input) =>
+    Effect.gen(function* () {
+      const claim = yield* validateClaim("claimDispatchRecovery", input);
+      const claimed = yield* runQuery(
+        "CompositionRunStartStore.claimDispatchRecovery",
+        statements.claimDispatchRecoveryRow(claim),
+      );
+      if (Option.isSome(claimed)) {
+        return { intent: toIntent(claimed.value), claimed: true };
+      }
+      const current = yield* getRequired(input.runId);
+      const replayed =
+        current.state === "dispatching" &&
+        current.claimId === input.claimId &&
+        current.revision === input.expectedRevision + 1;
+      return { intent: current, claimed: replayed } satisfies CompositionRunStartClaimResult;
+    });
+
+  const renewOwnerLease: CompositionRunStartStoreShape["renewOwnerLease"] = (
+    input: CompositionRunStartOwnerLeaseRenewInput,
+  ) =>
+    Effect.gen(function* () {
+      if (!hasTextWithin(input.runId, 512) || !hasTextWithin(input.claimId, 512)) {
+        return yield* domainError(
+          "run_start_input_invalid",
+          "renewOwnerLease 的 runId/claimId 不能为空或超长。",
+          { runId: input.runId },
+        );
+      }
+      yield* validateRevision("renewOwnerLease", input.runId, input.expectedRevision);
+      yield* validateOwnerEpoch("renewOwnerLease", input.runId, input.ownerEpoch);
+      yield* validateTimestamp("renewOwnerLease", input.runId, input.renewedAtUnixMs);
+      yield* validateTimestamp("renewOwnerLease", input.runId, input.leaseExpiresAtUnixMs);
+      if (input.leaseExpiresAtUnixMs <= input.renewedAtUnixMs) {
+        return yield* domainError(
+          "run_start_input_invalid",
+          "renewOwnerLease 的 lease 到期时间必须晚于续租时间。",
+          { runId: input.runId },
+        );
+      }
+      const renewed = yield* runQuery(
+        "CompositionRunStartStore.renewOwnerLease",
+        statements.renewOwnerLeaseRow(input),
+      );
+      if (Option.isSome(renewed)) return toIntent(renewed.value);
+      const current = yield* getRequired(input.runId);
+      if (
+        (current.state === "dispatching" ||
+          current.state === "accepted" ||
+          current.state === "manual_pending" ||
+          current.state === "cancel_pending") &&
+        current.revision === input.expectedRevision &&
+        current.claimId === input.claimId &&
+        current.ownerEpoch === input.ownerEpoch &&
+        current.ownerLeaseExpiresAtUnixMs !== null &&
+        current.ownerLeaseExpiresAtUnixMs > input.renewedAtUnixMs &&
+        current.ownerLeaseExpiresAtUnixMs >= input.leaseExpiresAtUnixMs
+      ) {
+        return current;
+      }
+      return yield* domainError(
+        "run_start_claim_conflict",
+        "只有租约未到期的当前 dispatch、accepted、manual 或 cancel owner 可以续租。",
+        {
+          runId: input.runId,
+          actualRevision: current.revision,
+          expectedState: "dispatching|accepted|manual_pending|cancel_pending",
+          actualState: current.state,
+        },
+      );
+    });
+
+  const recordAccepted: CompositionRunStartStoreShape["recordAccepted"] = (
+    input: CompositionRunStartAcceptedInput,
+  ) =>
+    Effect.gen(function* () {
+      if (
+        !hasTextWithin(input.runId, 512) ||
+        !hasTextWithin(input.claimId, 512) ||
+        (input.runtimeTaskId !== null && !hasTextWithin(input.runtimeTaskId, 1024)) ||
+        (input.capabilityHandshakeId !== null && !hasTextWithin(input.capabilityHandshakeId, 1024))
+      ) {
+        return yield* domainError(
+          "run_start_input_invalid",
+          "recordAccepted 的身份或 receipt 字段非法。",
+          { runId: input.runId },
+        );
+      }
+      yield* validateRevision("recordAccepted", input.runId, input.expectedRevision);
+      yield* validateTimestamp("recordAccepted", input.runId, input.acceptedAtUnixMs);
+      yield* validateOwnerEpoch("recordAccepted", input.runId, input.ownerEpoch);
+      const accepted = yield* runQuery(
+        "CompositionRunStartStore.recordAccepted",
+        statements.recordAcceptedRow(input),
+      );
+      if (Option.isSome(accepted)) return toIntent(accepted.value);
+      const current = yield* getRequired(input.runId);
+      if (
+        hasAcceptedOutcome(current) &&
+        current.claimId === input.claimId &&
+        current.ownerEpoch === input.ownerEpoch &&
+        sameReceipt(current, input)
+      ) {
+        return current;
+      }
+      return yield* domainError(
+        "run_start_receipt_conflict",
+        "迟到 receipt 与当前持久赢家不一致。",
+        {
+          runId: input.runId,
+          expectedRevision: input.expectedRevision,
+          actualRevision: current.revision,
+          expectedState: "dispatching",
+          actualState: current.state,
+        },
+      );
+    });
+
+  const claimAcceptedRecovery: CompositionRunStartStoreShape["claimAcceptedRecovery"] = (input) =>
+    Effect.gen(function* () {
+      const claim = yield* validateClaim("claimAcceptedRecovery", input);
+      const claimed = yield* runQuery(
+        "CompositionRunStartStore.claimAcceptedRecovery",
+        statements.claimAcceptedRecoveryRow(claim),
+      );
+      if (Option.isSome(claimed)) {
+        return { intent: toIntent(claimed.value), claimed: true };
+      }
+      const current = yield* getRequired(input.runId);
+      const replayed =
+        current.state === "accepted" &&
+        current.claimId === input.claimId &&
+        current.revision === input.expectedRevision + 1;
+      return { intent: current, claimed: replayed } satisfies CompositionRunStartClaimResult;
+    });
+
+  const releaseAcceptedRecovery: CompositionRunStartStoreShape["releaseAcceptedRecovery"] = (
+    input: CompositionRunStartAcceptedReleaseInput,
+  ) =>
+    Effect.gen(function* () {
+      if (!hasTextWithin(input.runId, 512) || !hasTextWithin(input.claimId, 512)) {
+        return yield* domainError(
+          "run_start_input_invalid",
+          "releaseAcceptedRecovery 的 runId/claimId 不能为空或超长。",
+          { runId: input.runId },
+        );
+      }
+      yield* validateRevision("releaseAcceptedRecovery", input.runId, input.expectedRevision);
+      yield* validateOwnerEpoch("releaseAcceptedRecovery", input.runId, input.ownerEpoch);
+      yield* validateTimestamp("releaseAcceptedRecovery", input.runId, input.releasedAtUnixMs);
+      const released = yield* runQuery(
+        "CompositionRunStartStore.releaseAcceptedRecovery",
+        statements.releaseAcceptedRecoveryRow(input),
+      );
+      if (Option.isSome(released)) return toIntent(released.value);
+      const current = yield* getRequired(input.runId);
+      if (
+        current.state === "accepted" &&
+        current.revision === input.expectedRevision + 1 &&
+        current.claimId === null &&
+        current.ownerEpoch === input.ownerEpoch &&
+        current.ownerLeaseExpiresAtUnixMs === null
+      ) {
+        return current;
+      }
+      return yield* domainError(
+        "run_start_claim_conflict",
+        "只有当前 accepted recovery owner 可以释放本地恢复所有权。",
+        {
+          runId: input.runId,
+          expectedRevision: input.expectedRevision,
+          actualRevision: current.revision,
+          expectedState: "accepted",
+          actualState: current.state,
+        },
+      );
+    });
+
+  const markAcceptedManualPending: CompositionRunStartStoreShape["markAcceptedManualPending"] = (
+    input: CompositionRunStartAcceptedManualPendingInput,
+  ) =>
+    Effect.gen(function* () {
+      yield* validateManualOwnerFence("markAcceptedManualPending", input, input.manualAtUnixMs);
+      const manualPending = yield* runQuery(
+        "CompositionRunStartStore.markAcceptedManualPending",
+        statements.markAcceptedManualPendingRow(input),
+      );
+      if (Option.isSome(manualPending)) return toIntent(manualPending.value);
+      const current = yield* getRequired(input.runId);
+      if (
+        current.state === "manual_pending" &&
+        current.revision === input.expectedRevision + 1 &&
+        current.claimId === null &&
+        current.ownerEpoch === input.ownerEpoch &&
+        current.ownerLeaseExpiresAtUnixMs === null &&
+        sameManualRecoverySnapshot(current, input)
+      ) {
+        return current;
+      }
+      return yield* domainError(
+        "run_start_claim_conflict",
+        "只有租约未到期的当前 accepted owner 可以转入人工补偿。",
+        {
+          runId: input.runId,
+          expectedRevision: input.expectedRevision,
+          actualRevision: current.revision,
+          expectedState: "accepted",
+          actualState: current.state,
+        },
+      );
+    });
+
+  const claimManualRecovery: CompositionRunStartStoreShape["claimManualRecovery"] = (input) =>
+    Effect.gen(function* () {
+      const claim = yield* validateClaim("claimManualRecovery", input);
+      yield* validateOwnerEpoch("claimManualRecovery", input.runId, input.expectedOwnerEpoch);
+      yield* validateManualRecoverySnapshot("claimManualRecovery", input.runId, input);
+      const claimed = yield* runQuery(
+        "CompositionRunStartStore.claimManualRecovery",
+        statements.claimManualRecoveryRow({
+          ...input,
+          ...claim,
+          expectedOwnerEpoch: input.expectedOwnerEpoch,
+        }),
+      );
+      if (Option.isSome(claimed)) {
+        return { intent: toIntent(claimed.value), claimed: true };
+      }
+      const current = yield* getRequired(input.runId);
+      const replayed =
+        current.state === "manual_pending" &&
+        current.revision === input.expectedRevision + 1 &&
+        current.claimId === input.claimId &&
+        current.ownerEpoch === input.expectedOwnerEpoch + 1 &&
+        current.ownerLeaseExpiresAtUnixMs !== null &&
+        current.ownerLeaseExpiresAtUnixMs >= claim.leaseExpiresAtUnixMs &&
+        sameManualRecoverySnapshot(current, input);
+      return { intent: current, claimed: replayed } satisfies CompositionRunStartClaimResult;
+    });
+
+  const releaseManualRecovery: CompositionRunStartStoreShape["releaseManualRecovery"] = (input) =>
+    Effect.gen(function* () {
+      yield* validateManualOwnerFence("releaseManualRecovery", input, input.releasedAtUnixMs);
+      const released = yield* runQuery(
+        "CompositionRunStartStore.releaseManualRecovery",
+        statements.releaseManualRecoveryRow(input),
+      );
+      if (Option.isSome(released)) return toIntent(released.value);
+      const current = yield* getRequired(input.runId);
+      if (
+        current.state === "manual_pending" &&
+        current.revision === input.expectedRevision + 1 &&
+        current.claimId === null &&
+        current.ownerEpoch === input.ownerEpoch &&
+        current.ownerLeaseExpiresAtUnixMs === null &&
+        sameManualRecoverySnapshot(current, input)
+      ) {
+        return current;
+      }
+      return yield* domainError(
+        "run_start_claim_conflict",
+        "只有租约未到期的当前 manual owner 可以释放人工补偿 claim。",
+        {
+          runId: input.runId,
+          expectedRevision: input.expectedRevision,
+          actualRevision: current.revision,
+          expectedState: "manual_pending",
+          actualState: current.state,
+        },
+      );
+    });
+
+  const resumeManualRecoveryToAccepted: CompositionRunStartStoreShape["resumeManualRecoveryToAccepted"] =
+    (input) =>
+      Effect.gen(function* () {
+        yield* validateManualOwnerFence(
+          "resumeManualRecoveryToAccepted",
+          input,
+          input.resumedAtUnixMs,
+        );
+        const resumed = yield* runQuery(
+          "CompositionRunStartStore.resumeManualRecoveryToAccepted",
+          statements.resumeManualRecoveryToAcceptedRow(input),
+        );
+        if (Option.isSome(resumed)) return toIntent(resumed.value);
+        const current = yield* getRequired(input.runId);
+        if (
+          current.state === "accepted" &&
+          current.revision === input.expectedRevision + 1 &&
+          current.claimId === null &&
+          current.ownerEpoch === input.ownerEpoch &&
+          current.ownerLeaseExpiresAtUnixMs === null &&
+          sameReceipt(current, input) &&
+          current.outcomeCode === null &&
+          current.outcomeDetail === null
+        ) {
+          return current;
+        }
+        return yield* domainError(
+          "run_start_claim_conflict",
+          "只有租约未到期的当前 manual owner 可以恢复 accepted receipt 对账。",
+          {
+            runId: input.runId,
+            expectedRevision: input.expectedRevision,
+            actualRevision: current.revision,
+            expectedState: "manual_pending",
+            actualState: current.state,
+          },
+        );
+      });
+
+  const settleManualRecovery: CompositionRunStartStoreShape["settleManualRecovery"] = (input) =>
+    Effect.gen(function* () {
+      yield* validateManualOwnerFence("settleManualRecovery", input, input.settledAtUnixMs);
+      const settled = yield* runQuery(
+        "CompositionRunStartStore.settleManualRecovery",
+        statements.settleManualRecoveryRow(input),
+      );
+      if (Option.isSome(settled)) return toIntent(settled.value);
+      const current = yield* getRequired(input.runId);
+      if (
+        current.state === "settled" &&
+        current.cancelRequestedAtUnixMs == null &&
+        current.revision === input.expectedRevision + 1 &&
+        current.claimId === input.claimId &&
+        current.ownerEpoch === input.ownerEpoch &&
+        current.ownerLeaseExpiresAtUnixMs === null &&
+        sameManualRecoverySnapshot(current, input)
+      ) {
+        return current;
+      }
+      return yield* domainError(
+        "run_start_claim_conflict",
+        "只有租约未到期的当前 manual owner 可以结算 receipt-bound 补偿结果。",
+        {
+          runId: input.runId,
+          expectedRevision: input.expectedRevision,
+          actualRevision: current.revision,
+          expectedState: "manual_pending",
+          actualState: current.state,
+        },
+      );
+    });
+
+  const settleAccepted: CompositionRunStartStoreShape["settleAccepted"] = (
+    input: CompositionRunStartSettledInput,
+  ) =>
+    Effect.gen(function* () {
+      if (!hasTextWithin(input.runId, 512) || !hasTextWithin(input.claimId, 512)) {
+        return yield* domainError(
+          "run_start_input_invalid",
+          "settleAccepted 的 runId/claimId 不能为空或超长。",
+          { runId: input.runId },
+        );
+      }
+      yield* validateRevision("settleAccepted", input.runId, input.expectedRevision);
+      yield* validateOwnerEpoch("settleAccepted", input.runId, input.ownerEpoch);
+      yield* validateTimestamp("settleAccepted", input.runId, input.settledAtUnixMs);
+      const settled = yield* runQuery(
+        "CompositionRunStartStore.settleAccepted",
+        statements.settleAcceptedRow(input),
+      );
+      if (Option.isSome(settled)) return toIntent(settled.value);
+      const current = yield* getRequired(input.runId);
+      if (
+        current.state === "settled" &&
+        hasAcceptedOutcome(current) &&
+        current.claimId === input.claimId &&
+        current.ownerEpoch === input.ownerEpoch &&
+        current.revision === input.expectedRevision + 1
+      ) {
+        return current;
+      }
+      if (current.state === "accepted") {
+        return yield* domainError(
+          "run_start_claim_conflict",
+          "只有当前 accepted owner 可以结算 receipt。",
+          {
+            runId: input.runId,
+            expectedRevision: input.expectedRevision,
+            actualRevision: current.revision,
+            expectedState: "accepted",
+            actualState: current.state,
+          },
+        );
+      }
+      return yield* domainError("run_start_state_conflict", "只有 accepted 意图可以结算。", {
+        runId: input.runId,
+        expectedRevision: input.expectedRevision,
+        actualRevision: current.revision,
+        expectedState: "accepted",
+        actualState: current.state,
+      });
+    });
+
+  const settleRejected: CompositionRunStartStoreShape["settleRejected"] = (
+    input: CompositionRunStartRejectedInput,
+  ) =>
+    Effect.gen(function* () {
+      if (
+        !hasTextWithin(input.runId, 512) ||
+        !hasTextWithin(input.claimId, 512) ||
+        !hasTextWithin(input.outcomeCode, 128) ||
+        (input.outcomeDetail !== null && !hasTextWithin(input.outcomeDetail, 1024))
+      ) {
+        return yield* domainError(
+          "run_start_input_invalid",
+          "settleRejected 的身份或稳定结果字段非法。",
+          { runId: input.runId },
+        );
+      }
+      yield* validateRevision("settleRejected", input.runId, input.expectedRevision);
+      yield* validateTimestamp("settleRejected", input.runId, input.settledAtUnixMs);
+      yield* validateOwnerEpoch("settleRejected", input.runId, input.ownerEpoch);
+      const settled = yield* runQuery(
+        "CompositionRunStartStore.settleRejected",
+        statements.settleRejectedRow(input),
+      );
+      if (Option.isSome(settled)) return toIntent(settled.value);
+      const current = yield* getRequired(input.runId);
+      if (
+        current.state === "settled" &&
+        current.cancelRequestedAtUnixMs == null &&
+        current.ownerEpoch === input.ownerEpoch &&
+        current.outcomeCode === input.outcomeCode &&
+        current.outcomeDetail === input.outcomeDetail
+      ) {
+        return current;
+      }
+      return yield* domainError(
+        "run_start_state_conflict",
+        "只有当前 dispatch owner 可以结算明确启动失败。",
+        {
+          runId: input.runId,
+          expectedRevision: input.expectedRevision,
+          actualRevision: current.revision,
+          expectedState: "dispatching",
+          actualState: current.state,
+        },
+      );
+    });
+
+  const quarantine: CompositionRunStartStoreShape["quarantine"] = (
+    input: CompositionRunStartQuarantineInput,
+  ) =>
+    Effect.gen(function* () {
+      if (
+        !hasTextWithin(input.runId, 512) ||
+        !hasTextWithin(input.outcomeCode, 128) ||
+        (input.outcomeDetail !== null && !hasTextWithin(input.outcomeDetail, 1024))
+      ) {
+        return yield* domainError(
+          "run_start_input_invalid",
+          "quarantine 的 runId 或稳定结果字段非法。",
+          { runId: input.runId },
+        );
+      }
+      yield* validateRevision("quarantine", input.runId, input.expectedRevision);
+      yield* validateTimestamp("quarantine", input.runId, input.quarantinedAtUnixMs);
+      if ((input.claimId === undefined) !== (input.ownerEpoch === undefined)) {
+        return yield* domainError(
+          "run_start_input_invalid",
+          "quarantine 的 claimId 与 ownerEpoch 必须同时提供。",
+          { runId: input.runId },
+        );
+      }
+      if (input.claimId === undefined) {
+        const quarantined = yield* runQuery(
+          "CompositionRunStartStore.quarantine",
+          statements.quarantinePreparedRow(input),
+        );
+        if (Option.isSome(quarantined)) return toIntent(quarantined.value);
+      } else {
+        if (!hasTextWithin(input.claimId, 512)) {
+          return yield* domainError(
+            "run_start_input_invalid",
+            "quarantine 的 claimId 不能为空或超长。",
+            { runId: input.runId },
+          );
+        }
+        yield* validateOwnerEpoch("quarantine", input.runId, input.ownerEpoch);
+        const quarantined = yield* runQuery(
+          "CompositionRunStartStore.quarantine",
+          statements.quarantineOwnedRow({
+            ...input,
+            claimId: input.claimId,
+            ownerEpoch: input.ownerEpoch,
+          }),
+        );
+        if (Option.isSome(quarantined)) return toIntent(quarantined.value);
+      }
+      const current = yield* getRequired(input.runId);
+      if (
+        current.state === "quarantined" &&
+        current.outcomeCode === input.outcomeCode &&
+        current.outcomeDetail === input.outcomeDetail &&
+        (input.ownerEpoch === undefined || current.ownerEpoch === input.ownerEpoch)
+      ) {
+        return current;
+      }
+      return yield* domainError(
+        "run_start_state_conflict",
+        "当前意图不能被本次 quarantine 覆盖。",
+        {
+          runId: input.runId,
+          expectedRevision: input.expectedRevision,
+          actualRevision: current.revision,
+          actualState: current.state,
+        },
+      );
+    });
+
+  const getRecoverableScanUpperBound: CompositionRunStartStoreShape["getRecoverableScanUpperBound"] =
+    runQuery(
+      "CompositionRunStartStore.getRecoverableScanUpperBound",
+      statements
+        .getRecoverableScanUpperBoundRow(undefined)
+        .pipe(Effect.map(Option.map((row) => row.runId))),
+    );
+
+  const listRecoverable: CompositionRunStartStoreShape["listRecoverable"] = ({
+    limit,
+    after,
+    throughRunId,
+  }) =>
+    Number.isSafeInteger(limit) && limit >= 1 && limit <= LIST_LIMIT_MAX
+      ? runQuery(
+          "CompositionRunStartStore.listRecoverable",
+          statements.listRecoverableRows({
+            limit,
+            afterRunId: after?.runId ?? null,
+            throughRunId: throughRunId ?? null,
+          }),
+        ).pipe(Effect.map((rows) => rows.map(toIntent)))
+      : Effect.fail(
+          domainError(
+            "run_start_list_limit_invalid",
+            `listRecoverable limit 必须位于 1..${LIST_LIMIT_MAX}。`,
+          ),
+        );
+
+  const getManualRecoveryScanUpperBound: CompositionRunStartStoreShape["getManualRecoveryScanUpperBound"] =
+    runQuery(
+      "CompositionRunStartStore.getManualRecoveryScanUpperBound",
+      statements
+        .getManualRecoveryScanUpperBoundRow(undefined)
+        .pipe(Effect.map(Option.map((row) => row.runId))),
+    );
+
+  const listManualRecoveries: CompositionRunStartStoreShape["listManualRecoveries"] = ({
+    limit,
+    after,
+    throughRunId,
+  }) =>
+    Number.isSafeInteger(limit) && limit >= 1 && limit <= LIST_LIMIT_MAX
+      ? runQuery(
+          "CompositionRunStartStore.listManualRecoveries",
+          statements.listManualRecoveryRows({
+            limit,
+            afterRunId: after?.runId ?? null,
+            throughRunId: throughRunId ?? null,
+          }),
+        ).pipe(Effect.map((rows) => rows.map(toIntent)))
+      : Effect.fail(
+          domainError(
+            "run_start_list_limit_invalid",
+            `listManualRecoveries limit 必须位于 1..${LIST_LIMIT_MAX}。`,
+          ),
+        );
+
+  return {
+    prepareStart,
+    getStart,
+    claimPrepared,
+    releasePreparation,
+    resetPreparationForRecovery,
+    markDispatching,
+    renewOwnerLease,
+    claimDispatchRecovery,
+    recordAccepted,
+    claimAcceptedRecovery,
+    releaseAcceptedRecovery,
+    markAcceptedManualPending,
+    claimManualRecovery,
+    releaseManualRecovery,
+    resumeManualRecoveryToAccepted,
+    settleManualRecovery,
+    settleAccepted,
+    settleRejected,
+    ...cancellation,
+    quarantine,
+    getRecoverableScanUpperBound,
+    listRecoverable,
+    getManualRecoveryScanUpperBound,
+    listManualRecoveries,
+  } satisfies CompositionRunStartStoreShape;
+});
+
+export const CompositionRunStartStoreLive = Layer.effect(CompositionRunStartStore, makeStore);

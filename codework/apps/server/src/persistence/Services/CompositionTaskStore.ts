@@ -57,6 +57,18 @@ export type CompositionRuntimeLeaseReclaimInput = {
   readonly nowUnixMs: number;
 };
 
+export type CompositionRunStartResourcesCompareAndSetInput = {
+  readonly task: CompositionTask;
+  readonly run: CompositionTaskRun;
+  readonly nextLeaseId: string | null;
+  readonly nextCapabilityGrantIds: ReadonlyArray<string>;
+};
+
+export type CompositionRunLeaseCompareAndSetInput = {
+  readonly run: CompositionTaskRun;
+  readonly nextLeaseId: string | null;
+};
+
 export interface CompositionTaskStoreShape {
   readonly upsertTask: (
     task: CompositionTask,
@@ -75,6 +87,17 @@ export interface CompositionTaskStoreShape {
   ) => Effect.Effect<Option.Option<CompositionTaskRun>, CompositionTaskStoreError>;
   readonly getLatestRun: (
     taskId: string,
+  ) => Effect.Effect<Option.Option<CompositionTaskRun>, CompositionTaskStoreError>;
+  /**
+   * 仅当 Task/Run 仍是最新 queued 启动快照且没有取消或 receipt 时，原子更新
+   * lease_id 与 capability_grant_ids_json，避免恢复阶段用旧 Run 对象覆盖并发状态。
+   */
+  readonly compareAndSetRunStartResources: (
+    input: CompositionRunStartResourcesCompareAndSetInput,
+  ) => Effect.Effect<Option.Option<CompositionTaskRun>, CompositionTaskStoreError>;
+  /** 仅当 Run 的完整可变快照未变化时原子替换 lease，供已有运行态恢复使用。 */
+  readonly compareAndSetRunLease: (
+    input: CompositionRunLeaseCompareAndSetInput,
   ) => Effect.Effect<Option.Option<CompositionTaskRun>, CompositionTaskStoreError>;
   /** 按外部 Runtime 的稳定任务标识查询所有候选 Run；多命中时调用方必须拒绝猜测。 */
   readonly listRunsByRuntimeTask: (

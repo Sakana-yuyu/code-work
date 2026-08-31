@@ -50,7 +50,8 @@ export interface CompositionProviderAgentDriverProjectionOptions {
     | "revokeCapabilityHandshake"
     | "configureToolBroker"
     | "clearToolBroker"
-  >;
+  > &
+    Partial<Pick<ProviderServiceShape, "listSessions">>;
   readonly toolBrokerBridge?: CompositionRuntimeToolBridgeShape;
   readonly registry?: CompositionAgentDriverRegistry;
 }
@@ -140,6 +141,9 @@ export const makeCompositionProviderAgentDriverProjection = (
                 clearToolBroker: (threadId) =>
                   options.providerService.clearToolBroker(instance.instanceId, threadId),
               }),
+          ...(options.providerService.listSessions === undefined
+            ? {}
+            : { listSessions: options.providerService.listSessions }),
           startSession: (input) => options.providerService.startSession(input.threadId, input),
           sendTurn: (input) => options.providerService.sendTurn(input),
           interruptTurn: (threadId, turnId) =>

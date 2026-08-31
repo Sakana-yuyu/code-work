@@ -2,6 +2,7 @@ import { describe, expect, it } from "vite-plus/test";
 
 import {
   classifyCompositionFailure,
+  toCompositionFailureInput,
   type CompositionFailureDisposition,
 } from "./CompositionFailurePolicy.ts";
 
@@ -163,4 +164,17 @@ describe("CompositionFailurePolicy", () => {
       expect(classifyCompositionFailure(testCase.run)).toEqual(testCase.expected);
     });
   }
+
+  it("持久化 Run 未记录 failureCode 时按终态回退", () => {
+    const failureCode: string | undefined = undefined;
+
+    expect(classifyCompositionFailure(toCompositionFailureInput("timed_out", failureCode))).toEqual(
+      {
+        code: "timed_out",
+        category: "transport",
+        recovery: "manual",
+        retryable: false,
+      },
+    );
+  });
 });

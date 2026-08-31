@@ -13,10 +13,12 @@ import * as Context from "effect/Context";
 import * as Crypto from "effect/Crypto";
 import * as DateTime from "effect/DateTime";
 import * as Deferred from "effect/Deferred";
+import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
+import * as PubSub from "effect/PubSub";
 import * as Path from "effect/Path";
 import * as Queue from "effect/Queue";
 import * as Ref from "effect/Ref";
@@ -37,6 +39,11 @@ import * as EnvironmentAuth from "./auth/EnvironmentAuth.ts";
 import * as CompositionMcpRuntimeService from "./composition/CompositionMcpRuntimeService.ts";
 import * as CompositionGoalLoopRetryStartupRecovery from "./composition/CompositionGoalLoopRetryStartupRecovery.ts";
 import * as CompositionToolInvocationStartupRecovery from "./composition/CompositionToolInvocationStartupRecovery.ts";
+import * as CompositionRunStartStartupRecovery from "./composition/CompositionRunStartStartupRecovery.ts";
+import { runCompositionRunStartRecoveryScheduler } from "./composition/CompositionRunStartRecoveryScheduler.ts";
+import * as CompositionAgentDriverRegistry from "./composition/CompositionAgentDriverRegistry.ts";
+import * as CompositionIdeSessionRegistry from "./composition/CompositionIdeSessionRegistry.ts";
+import * as CompositionRuntimeAdapterRegistry from "./composition/CompositionRuntimeAdapterRegistry.ts";
 import * as ProviderService from "./provider/Services/ProviderService.ts";
 import * as ProviderSessionDirectory from "./provider/Services/ProviderSessionDirectory.ts";
 import * as ProviderSessionReaper from "./provider/Services/ProviderSessionReaper.ts";
@@ -308,6 +315,178 @@ export const awaitGoalLoopRetryRecovery = Effect.gen(function* () {
   return yield* runStartupPhase("goal-loop-retries.recover", recovery.awaitRecovered);
 });
 
+const RUN_START_TARGET_PROBE_TIMEOUT = Duration.seconds(5);
+const RUN_START_TARGET_PROBE_CONCURRENCY = 4;
+
+const probeRunStartTarget = <A, E, R>(input: {
+  readonly targetType: "ide-session" | "runtime-adapter";
+  readonly targetId: string;
+  readonly probe: () => Effect.Effect<A, E, R>;
+  readonly isReady: (result: A) => boolean;
+}): Effect.Effect<boolean, E, R> =>
+  Effect.suspend(input.probe).pipe(
+    Effect.timeoutOption(RUN_START_TARGET_PROBE_TIMEOUT),
+    Effect.exit,
+    Effect.flatMap((exit) => {
+      if (Exit.isFailure(exit)) {
+        if (Cause.hasInterrupts(exit.cause)) return Effect.failCause(exit.cause);
+        return Effect.logWarning("Run Start 启动目标探测失败，相关恢复项将延后", {
+          targetType: input.targetType,
+          targetId: input.targetId,
+          cause: exit.cause,
+        }).pipe(Effect.as(false));
+      }
+      if (Option.isNone(exit.value)) {
+        return Effect.logWarning("Run Start 启动目标探测超时，相关恢复项将延后", {
+          targetType: input.targetType,
+          targetId: input.targetId,
+        }).pipe(Effect.as(false));
+      }
+      return Effect.succeed(input.isReady(exit.value.value));
+    }),
+  );
+
+export const reconcileCompositionRunStartTargets = (providerSessionsReconciled: boolean) =>
+  Effect.gen(function* () {
+    const reconciliation = yield* Effect.serviceOption(
+      CompositionRunStartStartupRecovery.CompositionRunStartStartupReconciliation,
+    );
+    const reconciled = new Set<
+      import("./composition/CompositionRunStartRecoveryPolicy.ts").CompositionRunStartRecoveryReconciliation
+    >();
+    if (providerSessionsReconciled) reconciled.add("provider-sessions");
+    const ideSessions = yield* Effect.serviceOption(
+      CompositionIdeSessionRegistry.CompositionIdeSessionRegistryService,
+    );
+    if (Option.isSome(ideSessions)) {
+      const adapters = yield* ideSessions.value.list;
+      reconciled.add("ide-sessions");
+      const statuses = yield* Effect.forEach(
+        adapters,
+        (adapter) =>
+          probeRunStartTarget({
+            targetType: "ide-session",
+            targetId: adapter.sessionId,
+            probe: adapter.probe,
+            isReady: (status) => status.status === "ready",
+          }).pipe(Effect.map((ready) => ({ sessionId: adapter.sessionId, ready }))),
+        { concurrency: RUN_START_TARGET_PROBE_CONCURRENCY },
+      );
+      for (const status of statuses) {
+        reconciled.add(`ide-session-known:${status.sessionId}`);
+        if (status.ready) reconciled.add(`ide-session-ready:${status.sessionId}`);
+      }
+    }
+    const runtimeAdapters = yield* Effect.serviceOption(
+      CompositionRuntimeAdapterRegistry.CompositionRuntimeAdapterRegistryService,
+    );
+    if (Option.isSome(runtimeAdapters)) {
+      const adapters = yield* runtimeAdapters.value.list;
+      reconciled.add("runtime-adapters");
+      const statuses = yield* Effect.forEach(
+        adapters,
+        (adapter) =>
+          probeRunStartTarget({
+            targetType: "runtime-adapter",
+            targetId: adapter.runtimeId,
+            probe: adapter.probe,
+            isReady: (status) => status.status === "online",
+          }).pipe(Effect.map((ready) => ({ runtimeId: adapter.runtimeId, ready }))),
+        { concurrency: RUN_START_TARGET_PROBE_CONCURRENCY },
+      );
+      for (const status of statuses) {
+        reconciled.add(`runtime-adapter-known:${status.runtimeId}`);
+        if (status.ready) reconciled.add(`runtime-adapter-ready:${status.runtimeId}`);
+      }
+    }
+    if (Option.isSome(reconciliation)) yield* reconciliation.value.replace(reconciled);
+    return reconciled;
+  });
+
+export const awaitRunStartRecovery = Effect.gen(function* () {
+  const recovery = yield* Effect.serviceOption(
+    CompositionRunStartStartupRecovery.CompositionRunStartStartupRecovery,
+  );
+  if (Option.isNone(recovery)) return;
+  return yield* runStartupPhase("composition-run-starts.recover", recovery.value.awaitRecovered);
+});
+
+export const runCompositionRunStartStartupSequence = <
+  A,
+  EProvider,
+  RProvider,
+  ETargets,
+  RTargets,
+  ERecovery,
+  RRecovery,
+>(input: {
+  readonly reconcileProviderSessions: Effect.Effect<boolean, EProvider, RProvider>;
+  readonly reconcileTargets: (
+    providerSessionsReconciled: boolean,
+  ) => Effect.Effect<unknown, ETargets, RTargets>;
+  readonly recover: Effect.Effect<A, ERecovery, RRecovery>;
+}) =>
+  Effect.gen(function* () {
+    const providerSessionsReconciled = yield* input.reconcileProviderSessions;
+    yield* input.reconcileTargets(providerSessionsReconciled);
+    return yield* input.recover;
+  });
+
+export const watchRunStartRecoveryTargets = <EProvider, RProvider>(
+  initialReceipt:
+    | CompositionRunStartStartupRecovery.CompositionRunStartStartupRecoveryReceipt
+    | undefined,
+  reconcileProviderSessionsEffect: Effect.Effect<boolean, EProvider, RProvider>,
+) =>
+  Effect.gen(function* () {
+    const recovery = yield* Effect.serviceOption(
+      CompositionRunStartStartupRecovery.CompositionRunStartStartupRecovery,
+    );
+    const reconciliation = yield* Effect.serviceOption(
+      CompositionRunStartStartupRecovery.CompositionRunStartStartupReconciliation,
+    );
+    const drivers = yield* Effect.serviceOption(
+      CompositionAgentDriverRegistry.CompositionAgentDriverRegistryService,
+    );
+    if (Option.isNone(recovery) || Option.isNone(reconciliation) || Option.isNone(drivers)) return;
+
+    const ideSessions = yield* Effect.serviceOption(
+      CompositionIdeSessionRegistry.CompositionIdeSessionRegistryService,
+    );
+    const runtimeAdapters = yield* Effect.serviceOption(
+      CompositionRuntimeAdapterRegistry.CompositionRuntimeAdapterRegistryService,
+    );
+    const changes = yield* Queue.sliding<void>(1);
+    const subscriptions = [yield* drivers.value.subscribeChanges];
+    if (Option.isSome(ideSessions)) subscriptions.push(yield* ideSessions.value.subscribeChanges);
+    if (Option.isSome(runtimeAdapters)) {
+      subscriptions.push(yield* runtimeAdapters.value.subscribeChanges);
+    }
+    for (const subscription of subscriptions) {
+      yield* Effect.forkScoped(
+        Effect.forever(
+          PubSub.take(subscription).pipe(
+            Effect.flatMap(() => Queue.offer(changes, undefined)),
+            Effect.asVoid,
+          ),
+        ),
+      );
+    }
+
+    yield* runCompositionRunStartRecoveryScheduler({
+      ...(initialReceipt === undefined ? {} : { initialReceipt }),
+      changes,
+      recover: runCompositionRunStartStartupSequence({
+        reconcileProviderSessions: reconcileProviderSessionsEffect,
+        reconcileTargets: reconcileCompositionRunStartTargets,
+        recover: recovery.value.awaitRecovered,
+      }),
+    }).pipe(Effect.forkScoped);
+
+    // 覆盖首次扫描完成到 Registry 订阅安装之间发生的目标变化。
+    yield* Queue.offer(changes, undefined);
+  });
+
 const ORPHANED_PROVIDER_SESSION_ERROR =
   "Provider session did not survive a server restart. Send a new message to continue.";
 
@@ -330,64 +509,75 @@ export const reconcileProviderSessions = Effect.gen(function* () {
         thread.session.activeTurnId !== null) &&
       !liveThreadIds.has(thread.id),
   );
+  let reconciled = true;
 
   for (const thread of orphanedThreads) {
     const session = thread.session;
     if (session === null) {
       continue;
     }
-    yield* Effect.gen(function* () {
-      const binding = yield* directory.getBinding(thread.id);
-      if (Option.isSome(binding)) {
-        yield* directory.upsert({
-          ...binding.value,
-          status: "stopped",
-          runtimePayload: { activeTurnId: null },
-        });
+    const directoryExit = yield* Effect.exit(
+      Effect.gen(function* () {
+        const binding = yield* directory.getBinding(thread.id);
+        if (Option.isSome(binding)) {
+          yield* directory.upsert({
+            ...binding.value,
+            status: "stopped",
+            runtimePayload: { activeTurnId: null },
+          });
+        }
+      }),
+    );
+    if (Exit.isFailure(directoryExit)) {
+      if (Cause.hasInterrupts(directoryExit.cause)) {
+        return yield* Effect.failCause(directoryExit.cause);
       }
-    }).pipe(
-      Effect.catchCause((cause) =>
-        Cause.hasInterrupts(cause)
-          ? Effect.failCause(cause)
-          : Effect.logWarning("failed to reconcile orphaned provider session directory binding", {
-              threadId: thread.id,
-              cause,
-            }),
-      ),
-    );
-
-    yield* Effect.gen(function* () {
-      const reconciledAt = DateTime.formatIso(yield* DateTime.now);
-      yield* orchestrationEngine.dispatch({
-        type: "thread.session.set",
-        commandId: CommandId.make(yield* crypto.randomUUIDv4),
+      reconciled = false;
+      yield* Effect.logWarning("failed to reconcile orphaned provider session directory binding", {
         threadId: thread.id,
-        session: {
-          ...session,
-          status: "error",
-          activeTurnId: null,
-          lastError: ORPHANED_PROVIDER_SESSION_ERROR,
-          updatedAt: reconciledAt,
-        },
-        createdAt: reconciledAt,
+        cause: directoryExit.cause,
       });
-    }).pipe(
-      Effect.retry({ times: 1 }),
-      Effect.catchCause((cause) =>
-        Cause.hasInterrupts(cause)
-          ? Effect.failCause(cause)
-          : Effect.logWarning("failed to settle orphaned provider session projection", {
-              threadId: thread.id,
-              cause,
-            }),
-      ),
+      // 保留投影中的 orphan 状态，确保下一轮仍会重试目录修复。
+      continue;
+    }
+
+    const projectionExit = yield* Effect.exit(
+      Effect.gen(function* () {
+        const reconciledAt = DateTime.formatIso(yield* DateTime.now);
+        yield* orchestrationEngine.dispatch({
+          type: "thread.session.set",
+          commandId: CommandId.make(yield* crypto.randomUUIDv4),
+          threadId: thread.id,
+          session: {
+            ...session,
+            status: "error",
+            activeTurnId: null,
+            lastError: ORPHANED_PROVIDER_SESSION_ERROR,
+            updatedAt: reconciledAt,
+          },
+          createdAt: reconciledAt,
+        });
+      }).pipe(Effect.retry({ times: 1 })),
     );
+    if (Exit.isFailure(projectionExit)) {
+      if (Cause.hasInterrupts(projectionExit.cause)) {
+        return yield* Effect.failCause(projectionExit.cause);
+      }
+      reconciled = false;
+      yield* Effect.logWarning("failed to settle orphaned provider session projection", {
+        threadId: thread.id,
+        cause: projectionExit.cause,
+      });
+    }
   }
+  return reconciled;
 }).pipe(
   Effect.catchCause((cause) =>
     Cause.hasInterrupts(cause)
       ? Effect.failCause(cause)
-      : Effect.logWarning("provider session startup reconciliation failed", { cause }),
+      : Effect.logWarning("provider session startup reconciliation failed", { cause }).pipe(
+          Effect.as(false),
+        ),
   ),
 );
 
@@ -502,6 +692,31 @@ export const make = (options?: StartupOptions) =>
         ],
         { concurrency: "unbounded" },
       );
+
+      yield* runStartupPhase("mcp-runtime.start", mcpRuntime.start);
+
+      yield* Effect.logDebug("startup phase: parking orchestration roots at activation");
+      yield* runStartupPhase(
+        "reactors.start",
+        Effect.gen(function* () {
+          yield* orchestrationReactor.start().pipe(Scope.provide(reactorScope));
+          yield* providerSessionReaper.start().pipe(Scope.provide(reactorScope));
+        }),
+      );
+
+      const runStartRecoveryReceipt = yield* runCompositionRunStartStartupSequence({
+        reconcileProviderSessions: runStartupPhase(
+          "provider-sessions.reconcile",
+          reconcileProviderSessions,
+        ),
+        reconcileTargets: (providerSessionsReconciled) =>
+          runStartupPhase(
+            "composition-run-start-targets.reconcile",
+            reconcileCompositionRunStartTargets(providerSessionsReconciled),
+          ),
+        recover: awaitRunStartRecovery,
+      });
+      yield* watchRunStartRecoveryTargets(runStartRecoveryReceipt, reconcileProviderSessions);
 
       const welcomeBase = yield* resolveWelcomeBase;
       const environment = yield* serverEnvironment.getDescriptor;

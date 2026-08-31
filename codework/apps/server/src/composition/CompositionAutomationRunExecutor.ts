@@ -30,7 +30,10 @@ import {
   type CompositionAutomationRunExecutionInput,
   type CompositionAutomationRunExecutorShape,
 } from "./CompositionAutomationScheduler.ts";
-import { classifyCompositionFailure } from "./CompositionFailurePolicy.ts";
+import {
+  classifyCompositionFailure,
+  toCompositionFailureInput,
+} from "./CompositionFailurePolicy.ts";
 import {
   CompositionGoalLoopAutomationRunner,
   type CompositionGoalLoopAutomationRunnerShape,
@@ -141,7 +144,9 @@ const terminalRunError = (
   run: CompositionTaskRun,
 ): CompositionAutomationRunExecutorError | undefined => {
   if (!terminalFailureStatuses.has(run.status)) return undefined;
-  const failure = classifyCompositionFailure(run);
+  const failure = classifyCompositionFailure(
+    toCompositionFailureInput(run.status, run.failureCode),
+  );
   return executorError(
     failure.code,
     run.resultSummary ?? `Composition Run 以状态 ${run.status} 终止。`,
@@ -256,7 +261,9 @@ export const makeCompositionAutomationRunExecutor = (
               break;
             case "failed":
             case "timed_out": {
-              const failure = classifyCompositionFailure(compositionRun);
+              const failure = classifyCompositionFailure(
+                toCompositionFailureInput(compositionRun.status, compositionRun.failureCode),
+              );
               run = {
                 ...input.run,
                 status: "failed",

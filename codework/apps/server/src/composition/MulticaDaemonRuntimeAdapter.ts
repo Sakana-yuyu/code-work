@@ -467,7 +467,7 @@ export const makeMulticaDaemonRuntimeAdapter = (
   const runtimeId = nonEmpty(options.runtimeId, "runtimeId");
   const daemonId = nonEmpty(options.daemonId, "daemonId");
   const daemonRuntimeId = nonEmpty(options.daemonRuntimeId, "daemonRuntimeId");
-  nonEmpty(options.baseUrl, "baseUrl");
+  const baseUrl = nonEmpty(options.baseUrl, "baseUrl").replace(/\/+$/, "");
   const now = options.now ?? Date.now;
   const configuredCapabilities = [...(options.capabilities ?? [])];
   const configuredAgents = options.agents.map((agent) => {
@@ -517,6 +517,35 @@ export const makeMulticaDaemonRuntimeAdapter = (
       taskAssigneeRoutes.set(codeworkAgentId, normalizedRoute);
     }
   }
+  const startConfigDigest = `sha256:${NodeCrypto.createHash("sha256")
+    .update(
+      JSON.stringify({
+        schemaVersion: 1,
+        runtimeId,
+        daemonId,
+        daemonRuntimeId,
+        baseUrl,
+        routes: [...taskAssigneeRoutes.values(), ...taskSquadRoutes.values()].sort((left, right) =>
+          `${left.codeworkSquadId ?? ""}\u0000${left.codeworkAgentId}`.localeCompare(
+            `${right.codeworkSquadId ?? ""}\u0000${right.codeworkAgentId}`,
+          ),
+        ),
+      }),
+      "utf8",
+    )
+    .digest("hex")}`;
+  const getStartIdentity: NonNullable<CompositionRuntimeAdapter["getStartIdentity"]> = (input) => {
+    const modelIdentity = input.model?.trim();
+    return {
+      runtimeKind: "multica",
+      providerInstanceId: null,
+      adapterId: runtimeId,
+      modelIdentity:
+        modelIdentity === undefined || modelIdentity.length === 0 ? null : modelIdentity,
+      configDigest: startConfigDigest,
+      sessionMode: "daemon",
+    };
+  };
   const activeTaskIds = new Set<string>();
   const startedTaskIds = new Set<string>();
   const dispatchedTasks = new Map<
@@ -737,6 +766,66 @@ export const makeMulticaDaemonRuntimeAdapter = (
       }),
       Effect.mapError((failure) => mapProtocolFailure(runtimeId, failure)),
     );
+
+  const reconcileStart: NonNullable<CompositionRuntimeAdapter["reconcileStart"]> = (input) =>
+    Effect.gen(function* () {
+      const runtime = yield* probe();
+      if (runtime.status !== "online") {
+        return {
+          action: "defer" as const,
+          code: `run_start_multica_runtime_${runtime.status}`,
+          detail:
+            runtime.status === "offline"
+              ? "Multica Runtime 当前离线，Run Start 恢复已延后。"
+              : "Multica Runtime 当前不稳定，Run Start 恢复已延后。",
+        };
+      }
+
+      const store = options.quickCreateIntentStore;
+      if (store === undefined) {
+        return {
+          action: "manual" as const,
+          code: "run_start_multica_quick_create_ledger_unavailable",
+          detail: "Multica quick-create 持久账本不可用，不能自动判断外部启动结果。",
+        };
+      }
+      const intent = Option.getOrUndefined(
+        yield* store
+          .getMulticaQuickCreateIntent(input.run.runId)
+          .pipe(Effect.mapError((cause) => mapQuickCreatePersistenceFailure(runtimeId, cause))),
+      );
+      if (intent === undefined) return { action: "replay" as const };
+      if (
+        intent.taskId !== input.task.taskId ||
+        intent.runtimeId !== runtimeId ||
+        intent.idempotencyKey !== input.run.runId
+      ) {
+        return {
+          action: "quarantine" as const,
+          code: "run_start_multica_quick_create_intent_conflict",
+          detail: "Multica quick-create intent 与当前 Task/Run/Runtime 归属不一致，已阻止恢复。",
+        };
+      }
+      if (intent.state === "prepared") return { action: "replay" as const };
+      if (intent.state === "sending") {
+        return {
+          action: "manual" as const,
+          code: "run_start_multica_quick_create_result_unknown",
+          detail: "Multica quick-create 可能已被远端接受但本地未取得 task ID，需要人工核对。",
+        };
+      }
+      if (intent.remoteTaskId === undefined || intent.remoteTaskId.trim().length === 0) {
+        return {
+          action: "manual" as const,
+          code: "run_start_multica_quick_create_receipt_missing",
+          detail: "Multica quick-create intent 已接受但缺少远端 task ID，需要人工核对。",
+        };
+      }
+      return {
+        action: "accepted" as const,
+        runtimeTaskId: intent.remoteTaskId,
+      };
+    });
 
   const listAgents: CompositionRuntimeAdapter["listAgents"] = () =>
     Effect.succeed(
@@ -1270,6 +1359,13 @@ export const makeMulticaDaemonRuntimeAdapter = (
   return {
     runtimeId,
     driverKind: "multica",
+    startRecoveryPolicy: {
+      mode: "idempotent-replay",
+      requiredReceipt: "runtime-task",
+      capabilityGrantReplay: { mode: "verified" },
+    },
+    getStartIdentity,
+    reconcileStart,
     daemonId,
     daemonRuntimeId,
     probe,

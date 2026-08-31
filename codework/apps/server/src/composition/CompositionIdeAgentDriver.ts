@@ -221,6 +221,26 @@ export const makeCompositionIdeAgentDriver = (
       } satisfies CompositionAgentDriverProfile;
     });
 
+  const reconcileStart: NonNullable<CompositionAgentDriver["reconcileStart"]> = () =>
+    Effect.gen(function* () {
+      const resolved = yield* options.registry.resolve({
+        sessionId,
+        requestedProfile: options.profile,
+      });
+      if (resolved.status !== "ready") {
+        return {
+          action: "defer" as const,
+          code: "run_start_ide_session_unavailable",
+          detail: "IDE session 尚未连接或探测未就绪，Run Start 恢复已延后。",
+        };
+      }
+      return {
+        action: "manual" as const,
+        code: "run_start_ide_task_query_unsupported",
+        detail: "IDE session 已连接，但当前 bridge 没有旧任务查询协议，禁止盲目重放 task.start。",
+      };
+    });
+
   const startTask: CompositionAgentDriver["startTask"] = (input) =>
     Effect.gen(function* () {
       const handshake = yield* options.registry.handshake({
@@ -369,6 +389,12 @@ export const makeCompositionIdeAgentDriver = (
   return {
     agentId,
     runtimeId,
+    startRecoveryPolicy: {
+      mode: "reconcile-only",
+      requiredReceipt: "runtime-task",
+      capabilityGrantReplay: { mode: "verified" },
+    },
+    reconcileStart,
     getProfile,
     ...(streamEvents === undefined ? {} : { streamEvents }),
     startTask,
