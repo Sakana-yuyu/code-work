@@ -4,7 +4,6 @@ import { SERVICE_CONSOLE_PATH, WORKBENCH_LAUNCH_PATH } from "@/utils/workbenchRo
 
 // Keep feature views lazy: the Workbench chrome remains fast while legacy operational
 // modules load only when the user opens their corresponding tab.
-const WorkbenchWelcome = () => import("@/views/WorkbenchWelcome.vue");
 const LegacyHome = () => import("@/views/Home.vue");
 const ModelConfig = () => import("@/views/ModelConfig.vue");
 const ModelEditor = () => import("@/views/ModelEditor.vue");
@@ -17,7 +16,6 @@ const StatsOverlay = () => import("@/views/StatsOverlay.vue");
 const Diagnostics = () => import("@/views/Diagnostics.vue");
 const Settings = () => import("@/views/Settings.vue");
 const ControlCenter = () => import("@/views/ControlCenter.vue");
-const IdeWorkspace = () => import("@/views/IdeWorkspace.vue");
 
 const router = createRouter({
   history: isBrowserPreview ? createWebHistory() : createWebHashHistory(),
@@ -25,11 +23,6 @@ const router = createRouter({
     {
       path: "/",
       redirect: WORKBENCH_LAUNCH_PATH,
-    },
-    {
-      path: "/workbench",
-      component: WorkbenchWelcome,
-      meta: { showIcon: false, title: "Code Work", workbenchLabel: "开始", workbenchIcon: "workbench", directlyClose: false },
     },
     {
       path: "/service",
@@ -95,11 +88,6 @@ const router = createRouter({
       path: "/control-center",
       component: ControlCenter,
       meta: { showIcon: false, title: "控制中心", workbenchIcon: "panel", directlyClose: false },
-    },
-    {
-      path: "/ide",
-      component: IdeWorkspace,
-      meta: { showIcon: false, title: "工作区", workbenchLabel: "工作区", workbenchIcon: "folder", directlyClose: false },
     },
   ],
 });

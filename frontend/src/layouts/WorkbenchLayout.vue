@@ -1,100 +1,25 @@
 <script setup>
-import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
+import { computed, nextTick, onBeforeUnmount, onMounted, ref } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { appState } from "@/state/appState";
-import {
-  readLayout,
-  removeWorkbenchTab,
-  resetWorkbenchLayout,
-  selectWorkbenchActivity,
-  syncWorkbenchTab,
-  toggleWorkbenchSidebar,
-  toggleWorkbenchTaskPanel,
-  workbenchActivities,
-  workbenchState,
-} from "@/state/workbenchState";
-import { isWorkbenchSurfacePath } from "@/utils/workbenchRoutes.js";
-import { ideWorkspaceSession } from "@/utils/ideWorkspaceSession.js";
-import ActivityRail from "@/components/workbench/ActivityRail.vue";
-import AgentChatPanel from "@/components/workbench/AgentChatPanel.vue";
 import CommandPalette from "@/components/workbench/CommandPalette.vue";
-import PrimarySidebar from "@/components/workbench/PrimarySidebar.vue";
 import StatusBar from "@/components/workbench/StatusBar.vue";
-import TabStrip from "@/components/workbench/TabStrip.vue";
 import TitleBar from "@/components/workbench/TitleBar.vue";
 
 const route = useRoute();
 const router = useRouter();
 const commandPaletteVisible = ref(false);
-const compactLayout = ref(false);
 let paletteOpener = null;
 
-const onWorkbenchSurface = computed(() => isWorkbenchSurfacePath(route.path));
-const sidebarOnSurface = computed(() => onWorkbenchSurface.value && workbenchState.sidebarVisible);
-const taskPanelOnSurface = computed(() => onWorkbenchSurface.value && workbenchState.taskPanelVisible);
-const workbenchStyle = computed(() => ({
-  "--cw-sidebar-current": sidebarOnSurface.value ? "var(--cw-sidebar-width)" : "0px",
-  "--cw-task-current": taskPanelOnSurface.value ? "var(--cw-task-width)" : "0px",
-}));
 const currentTitle = computed(() => String(route.meta?.workbenchLabel || route.meta?.title || "Code Work").split(/[｜|]/)[0].trim() || "Code Work");
 const serviceRunning = computed(() => Boolean(appState.serviceRunning));
 
 const commands = computed(() => [
-  { id: "open-ide", label: "打开工作区", detail: "注册并浏览已授权工作区", shortcut: "" },
   { id: "open-service", label: "打开服务设置", detail: "管理本地服务与运行状态", shortcut: "" },
   { id: "open-model-config", label: "打开模型配置", detail: "管理模型与供应商", shortcut: "" },
   { id: "open-control-center", label: "打开控制中心", detail: "路由、实验与 Agent 运行台", shortcut: "" },
   { id: "open-settings", label: "打开设置", detail: "调整应用与集成偏好", shortcut: "" },
-  { id: "toggle-sidebar", label: "切换主侧栏", detail: "显示或隐藏左侧功能入口", shortcut: "Ctrl+B" },
-  { id: "toggle-task", label: "切换 AI 栏", detail: "显示或隐藏委派活动面板", shortcut: "Ctrl+J" },
-  { id: "focus-explorer", label: "聚焦资源管理器", detail: "选择工作区导航", shortcut: "" },
-  { id: "open-welcome", label: "打开开始页面", detail: "返回 Workbench 欢迎页", shortcut: "" },
-  { id: "reset-layout", label: "重置 Workbench 布局", detail: "恢复默认侧栏和任务面板", shortcut: "" },
 ]);
-
-watch(
-  () => route.fullPath,
-  () => {
-    syncWorkbenchTab(route);
-    if (!isWorkbenchSurfacePath(route.path) || compactLayout.value) return;
-    const layout = readLayout();
-    if (!workbenchState.sidebarVisible) workbenchState.sidebarVisible = layout.sidebarVisible;
-    if (!workbenchState.taskPanelVisible) workbenchState.taskPanelVisible = layout.taskPanelVisible;
-  },
-  { immediate: true },
-);
-
-function toggleSidebar() {
-  if (!onWorkbenchSurface.value) return;
-  toggleWorkbenchSidebar();
-}
-
-function toggleTaskPanel() {
-  if (!onWorkbenchSurface.value) return;
-  toggleWorkbenchTaskPanel();
-}
-
-function navigate(path) {
-  if (compactLayout.value) {
-    workbenchState.sidebarVisible = false;
-    workbenchState.taskPanelVisible = false;
-  }
-  void router.push(path);
-}
-
-function onSelectActivity(activityID) {
-  selectWorkbenchActivity(activityID);
-  if (activityID === "source-control") navigate("/ide");
-}
-
-function updateCompactLayout() {
-  const nextCompact = window.innerWidth <= 800;
-  if (nextCompact && !compactLayout.value) {
-    workbenchState.sidebarVisible = false;
-    workbenchState.taskPanelVisible = false;
-  }
-  compactLayout.value = nextCompact;
-}
 
 function openCommandPalette() {
   if (typeof document !== "undefined") paletteOpener = document.activeElement;
@@ -111,46 +36,22 @@ function runCommand(command) {
     case "open-command":
       openCommandPalette();
       return;
-    case "open-ide":
-      navigate("/ide");
-      break;
     case "open-service":
-      navigate("/settings?category=cursor-service");
+      void router.push("/settings?category=cursor-service");
       break;
     case "open-model-config":
-      navigate("/model-config");
+      void router.push("/model-config");
       break;
     case "open-control-center":
-      navigate("/control-center");
+      void router.push("/control-center");
       break;
     case "open-settings":
-      navigate("/settings");
-      break;
-    case "toggle-sidebar":
-      toggleSidebar();
-      break;
-    case "toggle-task":
-      toggleTaskPanel();
-      break;
-    case "focus-explorer":
-      selectWorkbenchActivity("explorer");
-      navigate("/ide");
-      break;
-    case "open-welcome":
-      navigate("/workbench");
-      break;
-    case "reset-layout":
-      resetWorkbenchLayout();
+      void router.push("/settings");
       break;
     default:
       break;
   }
   closeCommandPalette();
-}
-
-function closeTab(id) {
-  const fallback = removeWorkbenchTab(id);
-  if (route.path === id) navigate(fallback);
 }
 
 function isEditableTarget(target) {
@@ -166,65 +67,34 @@ function handleGlobalKeydown(event) {
   }
   if (isEditableTarget(event.target)) return;
   if (!(event.ctrlKey || event.metaKey) || event.altKey) return;
-  const key = event.key.toLowerCase();
-  if (key === "b") {
-    event.preventDefault();
-    toggleSidebar();
-  } else if (key === "j") {
-    event.preventDefault();
-    toggleTaskPanel();
-  } else if (key === "l" && !event.shiftKey) {
-    event.preventDefault();
-    toggleTaskPanel();
-  } else if (key === "p" && event.shiftKey) {
+  if (event.key.toLowerCase() === "p" && event.shiftKey) {
     event.preventDefault();
     openCommandPalette();
   }
 }
 
 onMounted(() => {
-  updateCompactLayout();
-  window.addEventListener("resize", updateCompactLayout);
   window.addEventListener("keydown", handleGlobalKeydown);
 });
 onBeforeUnmount(() => {
-  window.removeEventListener("resize", updateCompactLayout);
   window.removeEventListener("keydown", handleGlobalKeydown);
 });
 </script>
 
 <template>
-  <div class="workbench-shell" :style="workbenchStyle" :class="{ 'sidebar-hidden': !sidebarOnSurface, 'task-hidden': !taskPanelOnSurface }">
+  <div class="workbench-shell">
     <TitleBar :title="currentTitle" @command="runCommand" />
     <div class="workbench-body">
-      <ActivityRail :activities="workbenchActivities" :active-activity="workbenchState.activeActivity" @select="onSelectActivity" />
-      <div class="workbench-main-row">
-        <PrimarySidebar
-          v-if="sidebarOnSurface"
-          :active-activity="workbenchState.activeActivity"
-          :current-path="route.path"
-          @navigate="navigate"
-          @close="toggleSidebar"
-        />
-        <main class="workbench-content" aria-label="Code Work 主工作区">
-          <TabStrip :tabs="workbenchState.tabs" :active-id="route.path" @select="navigate" @close="closeTab" />
-          <div class="workbench-page" role="tabpanel" :aria-label="currentTitle">
-            <router-view />
-          </div>
-        </main>
-        <AgentChatPanel
-          v-if="taskPanelOnSurface"
-          :workspace-id="route.path === '/ide' ? ideWorkspaceSession.workspaceID : ''"
-          @close="toggleTaskPanel"
-        />
-      </div>
+      <main class="workbench-content" aria-label="Code Work 主工作区">
+        <div class="workbench-page" role="tabpanel" :aria-label="currentTitle">
+          <router-view />
+        </div>
+      </main>
     </div>
     <StatusBar
       :service-running="serviceRunning"
-      :sidebar-visible="sidebarOnSurface"
-      :task-panel-visible="taskPanelOnSurface"
-      @toggle-sidebar="toggleSidebar"
-      @toggle-task="toggleTaskPanel"
+      :sidebar-visible="false"
+      :task-panel-visible="false"
       @open-command="openCommandPalette"
     />
     <CommandPalette :visible="commandPaletteVisible" :commands="commands" @close="closeCommandPalette" @run="runCommand" />
@@ -234,26 +104,9 @@ onBeforeUnmount(() => {
 <style scoped>
 .workbench-shell { display: grid; width: 100vw; height: 100vh; overflow: hidden; grid-template-rows: var(--cw-titlebar-height) minmax(0, 1fr) var(--cw-statusbar-height); background: var(--cw-surface-workbench); color: var(--cw-text-primary); font-family: var(--cw-font-ui); }
 .workbench-body { display: flex; min-width: 0; min-height: 0; flex: 1; overflow: hidden; }
-.workbench-main-row { position: relative; display: grid; width: 100%; height: 100%; min-width: 0; min-height: 0; flex: 1; grid-template-columns: var(--cw-sidebar-current) minmax(0, 1fr) var(--cw-task-current); overflow: hidden; transition: grid-template-columns 150ms ease; }
-.workbench-main-row :deep(.primary-sidebar) { grid-column: 1; }
-.workbench-content { display: grid; grid-column: 2; min-width: 0; min-height: 0; grid-template-rows: auto minmax(0, 1fr); overflow: hidden; background: var(--cw-surface-workbench); }
-.workbench-main-row :deep(.task-panel) { grid-column: 3; }
+.workbench-content { display: grid; min-width: 0; min-height: 0; flex: 1; overflow: hidden; background: var(--cw-surface-workbench); }
 .workbench-page { display: flex; min-width: 0; min-height: 0; overflow: auto; }
 .workbench-page :deep(> *) { min-width: 0; min-height: 0; flex: 1; }
 .workbench-page :deep(.w-screen) { width: 100% !important; }
 .workbench-page :deep(.h-screen) { height: 100% !important; }
-
-@media (max-width: 1199px) {
-  .workbench-main-row { grid-template-columns: var(--cw-sidebar-current) minmax(0, 1fr); }
-  .workbench-main-row :deep(.task-panel) { position: absolute; z-index: 8; top: 0; right: 0; bottom: 0; width: min(var(--cw-task-width), calc(100vw - var(--cw-activity-width) - 28px)); box-shadow: -14px 0 36px rgba(0,0,0,.32); }
-}
-
-@media (max-width: 800px) {
-  .workbench-shell { grid-template-rows: var(--cw-titlebar-height) minmax(0, 1fr) var(--cw-statusbar-height); }
-  .workbench-body { flex-direction: column; }
-  .workbench-main-row { width: 100%; flex: 1; grid-template-columns: minmax(0, 1fr); }
-  .workbench-content { grid-column: 1; }
-  .workbench-main-row :deep(.primary-sidebar) { position: absolute; z-index: 9; top: 0; bottom: 0; left: 0; width: min(310px, calc(100vw - 32px)); box-shadow: 14px 0 36px rgba(0,0,0,.34); }
-  .workbench-main-row :deep(.task-panel) { width: min(352px, calc(100vw - 22px)); }
-}
 </style>

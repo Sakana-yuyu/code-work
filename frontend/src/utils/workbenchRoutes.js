@@ -1,9 +1,5 @@
-export const WORKBENCH_LAUNCH_PATH = "/ide";
+export const WORKBENCH_LAUNCH_PATH = "/console";
 export const SERVICE_CONSOLE_PATH = "/console";
-
-export function isWorkbenchSurfacePath(path) {
-  return path === "/ide" || path === "/workbench";
-}
 
 export function currentLocationPath() {
   if (typeof window === "undefined") return "";
@@ -14,10 +10,6 @@ export function currentLocationPath() {
   return String(window.location.pathname || "").split("?")[0] || "/";
 }
 
-export function isCurrentWorkbenchSurface() {
-  return isWorkbenchSurfacePath(currentLocationPath());
-}
-
 export function settingsReturnPath() {
-  return WORKBENCH_LAUNCH_PATH;
+  return SERVICE_CONSOLE_PATH;
 }

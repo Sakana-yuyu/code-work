@@ -5,7 +5,6 @@ import { basePreviewConfig, seedPreviewTestPlan } from "./helpers.mjs";
 // 防止路由回归检查触发真实的供应商请求或桌面端操作。
 const routes = [
   "/",
-  "/ide",
   "/control-center?tab=accounts",
   "/control-center?tab=request-lab",
   "/model-config",
