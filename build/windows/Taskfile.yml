@@ -92,13 +92,13 @@ tasks:
       - |
         {{if eq OS "windows"}}
         powershell -NoProfile -Command "Copy-Item -Force '{{.PROJECT_ROOT}}/{{.OUTPUT}}' 'app-windows-{{.ARCH}}.exe'; Copy-Item -Force '{{.PROJECT_ROOT}}/THIRD_PARTY_NOTICES.md' 'THIRD_PARTY_NOTICES.md'"
-        makensis -DINFO_PRODUCTVERSION="{{.APP_VERSION}}" -DOUTPUT_INSTALLER="code-work-windows-{{.INSTALLER_ARCH}}-installer.exe" -DARG_WAILS_{{.ARG_FLAG}}_BINARY="app-windows-{{.ARCH}}.exe" project.nsi
-        powershell -NoProfile -Command "Remove-Item -Force -ErrorAction SilentlyContinue 'THIRD_PARTY_NOTICES.md'"
+        makensis -DINFO_PRODUCTVERSION="{{.APP_VERSION}}" -DOUTPUT_INSTALLER="cursor-byok-windows-{{.INSTALLER_ARCH}}-installer.exe" -DARG_WAILS_{{.ARG_FLAG}}_BINARY="app-windows-{{.ARCH}}.exe" project.nsi
+        powershell -NoProfile -Command "Remove-Item -Force -ErrorAction SilentlyContinue 'THIRD_PARTY_NOTICES.md','app-windows-{{.ARCH}}.exe'"
         {{else}}
         cp -f '{{.PROJECT_ROOT}}/{{.OUTPUT}}' 'app-windows-{{.ARCH}}.exe'
         cp -f '{{.PROJECT_ROOT}}/THIRD_PARTY_NOTICES.md' 'THIRD_PARTY_NOTICES.md'
-        makensis -DINFO_PRODUCTVERSION="{{.APP_VERSION}}" -DOUTPUT_INSTALLER="code-work-windows-{{.INSTALLER_ARCH}}-installer.exe" -DARG_WAILS_{{.ARG_FLAG}}_BINARY="app-windows-{{.ARCH}}.exe" project.nsi
-        rm -f 'THIRD_PARTY_NOTICES.md'
+        makensis -DINFO_PRODUCTVERSION="{{.APP_VERSION}}" -DOUTPUT_INSTALLER="cursor-byok-windows-{{.INSTALLER_ARCH}}-installer.exe" -DARG_WAILS_{{.ARG_FLAG}}_BINARY="app-windows-{{.ARCH}}.exe" project.nsi
+        rm -f 'THIRD_PARTY_NOTICES.md' 'app-windows-{{.ARCH}}.exe'
         {{end}}
     vars:
       PROJECT_ROOT: '{{.TASKFILE_DIR}}/../..'
@@ -127,12 +127,12 @@ tasks:
         {{if eq OS "windows"}}
         powershell -NoProfile -Command "Copy-Item -Force '{{.PROJECT_ROOT}}/{{.OUTPUT}}' 'app-windows-x32.exe'; Copy-Item -Force '{{.PROJECT_ROOT}}/THIRD_PARTY_NOTICES.md' 'THIRD_PARTY_NOTICES.md'"
         makensis -DINFO_PRODUCTVERSION="{{.APP_VERSION}}" -DARG_WAILS_386_BINARY="app-windows-x32.exe" project-386.nsi
-        powershell -NoProfile -Command "Remove-Item -Force -ErrorAction SilentlyContinue 'THIRD_PARTY_NOTICES.md'"
+        powershell -NoProfile -Command "Remove-Item -Force -ErrorAction SilentlyContinue 'THIRD_PARTY_NOTICES.md','app-windows-x32.exe'"
         {{else}}
         cp -f '{{.PROJECT_ROOT}}/{{.OUTPUT}}' 'app-windows-x32.exe'
         cp -f '{{.PROJECT_ROOT}}/THIRD_PARTY_NOTICES.md' 'THIRD_PARTY_NOTICES.md'
         makensis -DINFO_PRODUCTVERSION="{{.APP_VERSION}}" -DARG_WAILS_386_BINARY="app-windows-x32.exe" project-386.nsi
-        rm -f 'THIRD_PARTY_NOTICES.md'
+        rm -f 'THIRD_PARTY_NOTICES.md' 'app-windows-x32.exe'
         {{end}}
     vars:
       PROJECT_ROOT: '{{.TASKFILE_DIR}}/../..'

@@ -4,7 +4,7 @@ Unicode true
 # wails_tools.nsh only supports AMD64/ARM64; this script handles 32-bit directly.
 #
 # Usage:
-#   makensis -DARG_WAILS_386_BINARY=..\..\bin\code-work-windows-x32.exe project-386.nsi
+#   makensis -DARG_WAILS_386_BINARY=..\..\bin\windows-x32.exe project-386.nsi
 
 !define INFO_PROJECTNAME "Code Work"
 !define INFO_COMPANYNAME "Sakana"
@@ -58,7 +58,7 @@ ManifestDPIAware true
 !insertmacro MUI_LANGUAGE "SimpChinese"
 
 Name "${INFO_PRODUCTNAME}"
-OutFile "..\..\..\bin\code-work-windows-x32-installer.exe"
+OutFile "..\..\..\bin\cursor-byok-windows-x32-installer.exe"
 InstallDir "$PROGRAMFILES32\${INFO_COMPANYNAME}\${INFO_PRODUCTNAME}"
 InstallDirRegKey HKLM "${UNINST_KEY}" "InstallLocation"
 SetOverwrite on

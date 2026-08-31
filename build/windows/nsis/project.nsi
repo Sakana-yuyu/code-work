@@ -88,7 +88,7 @@ ManifestDPIAware true
 
 Name "${INFO_PRODUCTNAME}"
 !ifndef OUTPUT_INSTALLER
-!define OUTPUT_INSTALLER "code-work-windows-${ARCH}-installer.exe"
+!define OUTPUT_INSTALLER "cursor-byok-windows-${ARCH}-installer.exe"
 !endif
 OutFile "..\..\..\bin\${OUTPUT_INSTALLER}" # Name of the installer's file.
 InstallDir "$PROGRAMFILES64\${INFO_COMPANYNAME}\${INFO_PRODUCTNAME}" # Default installing folder ($PROGRAMFILES is Program Files folder).

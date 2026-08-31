@@ -14,7 +14,7 @@ vars:
   GIT_COMMIT:
     sh: 'git rev-parse --short HEAD 2>/dev/null || echo unknown'
   RELEASE_REPO: "Sakana-yuyu/code-work"
-  RELEASE_BASE_NAME: "code-work"
+  RELEASE_BASE_NAME: "cursor-byok"
   RELEASE_SOURCE_PATH: "release-notes.md"
   RELEASE_DIR: '{{.BIN_DIR}}/release/{{.APP_VERSION}}'
   RELEASE_NOTES_PATH: '{{.RELEASE_DIR}}/.release-notes.md'
@@ -140,7 +140,7 @@ tasks:
       - task: windows:create:nsis:installer
         vars:
           ARCH: amd64
-          OUTPUT: '{{.BIN_DIR}}/code-work-windows-x64.exe'
+          OUTPUT: "{{.BIN_DIR}}/windows-x64.exe"
           SCAN: '{{.SCAN}}'
 
   build:windows:installer:386:
@@ -149,7 +149,7 @@ tasks:
       - task: windows:create:nsis:installer:386
         vars:
           ARCH: 386
-          OUTPUT: '{{.BIN_DIR}}/code-work-windows-x32.exe'
+          OUTPUT: "{{.BIN_DIR}}/windows-x32.exe"
           SCAN: '{{.SCAN}}'
 
   build:windows:installer:arm64:
@@ -158,7 +158,7 @@ tasks:
       - task: windows:create:nsis:installer
         vars:
           ARCH: arm64
-          OUTPUT: '{{.BIN_DIR}}/code-work-windows-arm64.exe'
+          OUTPUT: "{{.BIN_DIR}}/windows-arm64.exe"
           SCAN: '{{.SCAN}}'
 
   build:linux:current:
@@ -224,7 +224,7 @@ tasks:
         platforms: [windows]
       - cmd: mkdir -p "{{.BIN_DIR}}"
         platforms: [darwin, linux]
-      - cmd: powershell -NoProfile -Command "Remove-Item -Force -ErrorAction SilentlyContinue '{{.BIN_DIR}}/*.dmg','{{.BIN_DIR}}/*.zip','{{.BIN_DIR}}/*.tar.gz','{{.BIN_DIR}}/{{.APP_NAME}}*','{{.BIN_DIR}}/code-work-windows-*'"
+      - cmd: powershell -NoProfile -Command "Remove-Item -Force -ErrorAction SilentlyContinue '{{.BIN_DIR}}/*.dmg','{{.BIN_DIR}}/*.zip','{{.BIN_DIR}}/*.tar.gz','{{.BIN_DIR}}/{{.APP_NAME}}*','{{.BIN_DIR}}/cursor-byok-windows-*'"
         platforms: [windows]
       - cmd: rm -f "{{.BIN_DIR}}/macos-arm64.dmg" "{{.BIN_DIR}}/macos-x64.dmg" "{{.BIN_DIR}}/windows-x32.zip" "{{.BIN_DIR}}/windows-x64.zip" "{{.BIN_DIR}}/windows-arm64.zip" "{{.BIN_DIR}}/linux-x64.tar.gz"
         platforms: [darwin, linux]
@@ -390,9 +390,9 @@ tasks:
           ARCH: amd64
           OUTPUT: '{{.BIN_DIR}}/{{.RELEASE_BASE_NAME}}-windows-x64.exe'
           SCAN: '{{.SCAN}}'
-      - cmd: powershell -NoProfile -Command "New-Item -ItemType Directory -Force -Path '{{.RELEASE_DIR}}' | Out-Null; Copy-Item -Force '{{.BIN_DIR}}/code-work-windows-x64-installer.exe' '{{.RELEASE_DIR}}/{{.RELEASE_BASE_NAME}}-{{.APP_VERSION}}-windows-x64-installer.exe'"
+      - cmd: powershell -NoProfile -Command "New-Item -ItemType Directory -Force -Path '{{.RELEASE_DIR}}' | Out-Null; Copy-Item -Force '{{.BIN_DIR}}/cursor-byok-windows-x64-installer.exe' '{{.RELEASE_DIR}}/{{.RELEASE_BASE_NAME}}-{{.APP_VERSION}}-windows-x64-installer.exe'"
         platforms: [windows]
-      - cmd: mkdir -p '{{.RELEASE_DIR}}' && cp -f '{{.BIN_DIR}}/code-work-windows-x64-installer.exe' '{{.RELEASE_DIR}}/{{.RELEASE_BASE_NAME}}-{{.APP_VERSION}}-windows-x64-installer.exe'
+      - cmd: mkdir -p '{{.RELEASE_DIR}}' && cp -f '{{.BIN_DIR}}/cursor-byok-windows-x64-installer.exe' '{{.RELEASE_DIR}}/{{.RELEASE_BASE_NAME}}-{{.APP_VERSION}}-windows-x64-installer.exe'
         platforms: [darwin, linux]
 
   release:build:windows:installer:386:
@@ -403,9 +403,9 @@ tasks:
           ARCH: 386
           OUTPUT: '{{.BIN_DIR}}/{{.RELEASE_BASE_NAME}}-windows-x32.exe'
           SCAN: '{{.SCAN}}'
-      - cmd: powershell -NoProfile -Command "New-Item -ItemType Directory -Force -Path '{{.RELEASE_DIR}}' | Out-Null; Copy-Item -Force '{{.BIN_DIR}}/code-work-windows-x32-installer.exe' '{{.RELEASE_DIR}}/{{.RELEASE_BASE_NAME}}-{{.APP_VERSION}}-windows-x32-installer.exe'"
+      - cmd: powershell -NoProfile -Command "New-Item -ItemType Directory -Force -Path '{{.RELEASE_DIR}}' | Out-Null; Copy-Item -Force '{{.BIN_DIR}}/cursor-byok-windows-x32-installer.exe' '{{.RELEASE_DIR}}/{{.RELEASE_BASE_NAME}}-{{.APP_VERSION}}-windows-x32-installer.exe'"
         platforms: [windows]
-      - cmd: mkdir -p '{{.RELEASE_DIR}}' && cp -f '{{.BIN_DIR}}/code-work-windows-x32-installer.exe' '{{.RELEASE_DIR}}/{{.RELEASE_BASE_NAME}}-{{.APP_VERSION}}-windows-x32-installer.exe'
+      - cmd: mkdir -p '{{.RELEASE_DIR}}' && cp -f '{{.BIN_DIR}}/cursor-byok-windows-x32-installer.exe' '{{.RELEASE_DIR}}/{{.RELEASE_BASE_NAME}}-{{.APP_VERSION}}-windows-x32-installer.exe'
         platforms: [darwin, linux]
 
   release:build:windows:installer:arm64:
@@ -416,9 +416,9 @@ tasks:
           ARCH: arm64
           OUTPUT: '{{.BIN_DIR}}/{{.RELEASE_BASE_NAME}}-windows-arm64.exe'
           SCAN: '{{.SCAN}}'
-      - cmd: powershell -NoProfile -Command "New-Item -ItemType Directory -Force -Path '{{.RELEASE_DIR}}' | Out-Null; Copy-Item -Force '{{.BIN_DIR}}/code-work-windows-arm64-installer.exe' '{{.RELEASE_DIR}}/{{.RELEASE_BASE_NAME}}-{{.APP_VERSION}}-windows-arm64-installer.exe'"
+      - cmd: powershell -NoProfile -Command "New-Item -ItemType Directory -Force -Path '{{.RELEASE_DIR}}' | Out-Null; Copy-Item -Force '{{.BIN_DIR}}/cursor-byok-windows-arm64-installer.exe' '{{.RELEASE_DIR}}/{{.RELEASE_BASE_NAME}}-{{.APP_VERSION}}-windows-arm64-installer.exe'"
         platforms: [windows]
-      - cmd: mkdir -p '{{.RELEASE_DIR}}' && cp -f '{{.BIN_DIR}}/code-work-windows-arm64-installer.exe' '{{.RELEASE_DIR}}/{{.RELEASE_BASE_NAME}}-{{.APP_VERSION}}-windows-arm64-installer.exe'
+      - cmd: mkdir -p '{{.RELEASE_DIR}}' && cp -f '{{.BIN_DIR}}/cursor-byok-windows-arm64-installer.exe' '{{.RELEASE_DIR}}/{{.RELEASE_BASE_NAME}}-{{.APP_VERSION}}-windows-arm64-installer.exe'
         platforms: [darwin, linux]
 
   release:build:linux:amd64:
