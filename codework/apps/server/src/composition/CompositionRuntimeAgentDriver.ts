@@ -415,6 +415,7 @@ export const makeCompositionRuntimeAgentDriver = (
   return {
     agentId: options.agentId,
     runtimeId: options.adapter.runtimeId,
+    startReplayPolicy: "idempotent",
     getProfile,
     startTask,
     revokeCapabilityHandshake,

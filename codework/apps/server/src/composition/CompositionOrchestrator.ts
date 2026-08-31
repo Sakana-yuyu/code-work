@@ -1,3 +1,6 @@
+// @effect-diagnostics nodeBuiltinImport:off
+import * as NodeCrypto from "node:crypto";
+
 import type {
   CompositionAgentDriverProfile,
   CompositionCapabilityGrant,
@@ -18,6 +21,16 @@ import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 import type * as Stream from "effect/Stream";
 
+import {
+  toPersistenceSqlError,
+  type PersistenceSqlError,
+} from "../persistence/Errors.ts";
+import {
+  CompositionRunStartStoreDomainError,
+  type CompositionRunStartIntent,
+  type CompositionRunStartReplayPolicy,
+  type CompositionRunStartStoreShape,
+} from "../persistence/Services/CompositionRunStartStore.ts";
 import {
   type CompositionTaskStoreError,
   type CompositionTaskStoreShape,
@@ -148,6 +161,8 @@ export class CompositionAgentDriverFailure extends Schema.TaggedErrorClass<Compo
 export interface CompositionAgentDriver {
   readonly agentId: string;
   readonly runtimeId: string;
+  /** 未声明的 Driver 默认不能在进程重启后安全重放 startTask。 */
+  readonly startReplayPolicy?: CompositionRunStartReplayPolicy;
   /** 返回当前 Driver 已经验证过的能力，不包含本次 Task 的授权结果。 */
   readonly getProfile?: () => Effect.Effect<CompositionAgentDriverProfile>;
   /** Driver 自己产生的运行时事件；用于不依赖 Provider Session 的本地 Agent Loop。 */
@@ -254,6 +269,11 @@ type CompositionAgentDriverStartResult = {
   readonly capabilityHandshakeId?: string;
 };
 
+type CompositionRunStartAcceptance = {
+  readonly startResult: CompositionAgentDriverStartResult;
+  readonly receiptUpdatedAtUnixMs?: number;
+};
+
 const terminalStatuses: ReadonlySet<CompositionTaskStatus> = new Set([
   "completed",
   "failed",
@@ -354,6 +374,7 @@ const makeOrchestrator = (
   grantRegistry?: Pick<CapabilityGrantRegistry.CapabilityGrantRegistryShape, "issue"> &
     Partial<Pick<CapabilityGrantRegistry.CapabilityGrantRegistryShape, "revoke">>,
   inputStore?: CompositionTaskInputStoreShape,
+  startStore?: CompositionRunStartStoreShape,
 ): CompositionOrchestrator => {
   const resumingTaskIds = new Set<string>();
   const resumingRunIds = new Set<string>();
@@ -607,6 +628,200 @@ const makeOrchestrator = (
       });
     });
 
+  const acceptanceFromIntent = (
+    intent: CompositionRunStartIntent,
+  ): CompositionRunStartAcceptance => ({
+    startResult: {
+      ...(intent.runtimeTaskId === undefined ? {} : { runtimeTaskId: intent.runtimeTaskId }),
+      ...(intent.capabilityHandshakeId === undefined
+        ? {}
+        : { capabilityHandshakeId: intent.capabilityHandshakeId }),
+    },
+    ...(intent.state === "accepted"
+      ? { receiptUpdatedAtUnixMs: intent.updatedAtUnixMs }
+      : {}),
+  });
+
+  const indeterminateStart = (intent: CompositionRunStartIntent) =>
+    new CompositionRunStartStoreDomainError({
+      code: "run_start_phase_conflict",
+      detail: "Driver 是否已接受 startTask 无法确定，拒绝自动重放。",
+      runId: intent.runId,
+      actualState: "indeterminate",
+    });
+
+  const invalidStartPhase = (intent: CompositionRunStartIntent) =>
+    new CompositionRunStartStoreDomainError({
+      code: "run_start_phase_conflict",
+      detail: `Run Start 当前状态 ${intent.state} 不能调用 Driver。`,
+      runId: intent.runId,
+      actualState: intent.state,
+    });
+
+  const missingStartIntent = (runId: string) =>
+    new CompositionRunStartStoreDomainError({
+      code: "run_start_phase_conflict",
+      detail: "旧 queued Run 缺少持久启动声明，Driver 是否已接受任务无法确定。",
+      runId,
+      actualState: "indeterminate",
+    });
+
+  const prepareRunStartIntent = (input: {
+    readonly taskId: string;
+    readonly runId: string;
+    readonly agentId: string;
+    readonly runtimeId: string;
+    readonly attempt: number;
+    readonly replayPolicy: CompositionRunStartReplayPolicy;
+  }): Effect.Effect<
+    CompositionRunStartIntent | undefined,
+    CompositionRunStartStoreDomainError | PersistenceSqlError
+  > => {
+    if (startStore === undefined) return Effect.succeed(undefined);
+    const receiptStore = startStore;
+    return Effect.gen(function* () {
+      const createdAtUnixMs = yield* Clock.currentTimeMillis;
+      return yield* receiptStore.prepareStart({ ...input, createdAtUnixMs });
+    }).pipe(
+      Effect.catchTag("PersistenceDecodeError", (cause) =>
+        Effect.fail(toPersistenceSqlError("CompositionOrchestrator.prepareRunStartIntent")(cause)),
+      ),
+    );
+  };
+
+  const startRunWithReceipt = (input: {
+    readonly driver: CompositionAgentDriver;
+    readonly task: CompositionTask;
+    readonly run: CompositionTaskRun;
+    readonly driverInput: Parameters<CompositionAgentDriver["startTask"]>[0];
+  }): Effect.Effect<
+    CompositionRunStartAcceptance,
+    CompositionAgentDriverFailure | CompositionRunStartStoreDomainError | PersistenceSqlError
+  > => {
+    if (startStore === undefined) {
+      return input.driver.startTask(input.driverInput).pipe(
+        Effect.map((startResult) => ({ startResult })),
+      );
+    }
+    const receiptStore = startStore;
+    return Effect.gen(function* () {
+      const replayPolicy = input.driver.startReplayPolicy ?? "fail_closed";
+      const existing = yield* receiptStore.getStart(input.run.runId);
+      if (Option.isNone(existing) && replayPolicy === "fail_closed") {
+        return yield* missingStartIntent(input.run.runId);
+      }
+      const prepared = yield* prepareRunStartIntent({
+        runId: input.run.runId,
+        taskId: input.task.taskId,
+        agentId: input.run.agentId,
+        runtimeId: input.driver.runtimeId,
+        attempt: input.run.attempt,
+        replayPolicy,
+      });
+      if (prepared === undefined) {
+        return yield* missingStartIntent(input.run.runId);
+      }
+      if (prepared.state === "accepted" || prepared.state === "completed") {
+        return acceptanceFromIntent(prepared);
+      }
+      if (prepared.state === "indeterminate") return yield* indeterminateStart(prepared);
+
+      const claimId = `composition-run-start:${NodeCrypto.randomUUID()}`;
+      const claimedAtUnixMs = Math.max(
+        yield* Clock.currentTimeMillis,
+        prepared.updatedAtUnixMs,
+      );
+      const claimed = yield* receiptStore.claimStart({
+        runId: input.run.runId,
+        claimId,
+        claimedAtUnixMs,
+      });
+      if (claimed.state === "accepted" || claimed.state === "completed") {
+        return acceptanceFromIntent(claimed);
+      }
+      if (claimed.state === "indeterminate") return yield* indeterminateStart(claimed);
+      if (claimed.state !== "dispatching") return yield* invalidStartPhase(claimed);
+
+      const driverResult = yield* Effect.result(input.driver.startTask(input.driverInput));
+      if (driverResult._tag === "Failure") {
+        yield* receiptStore.releaseStart({ runId: input.run.runId, claimId });
+        return yield* driverResult.failure;
+      }
+
+      const acceptedAtUnixMs = Math.max(yield* Clock.currentTimeMillis, claimedAtUnixMs);
+      const accepted = yield* receiptStore.markAccepted({
+        runId: input.run.runId,
+        claimId,
+        ...(driverResult.success.runtimeTaskId === undefined
+          ? {}
+          : { runtimeTaskId: driverResult.success.runtimeTaskId }),
+        ...(driverResult.success.capabilityHandshakeId === undefined
+          ? {}
+          : { capabilityHandshakeId: driverResult.success.capabilityHandshakeId }),
+        acceptedAtUnixMs,
+      });
+      return acceptanceFromIntent(accepted);
+    }).pipe(
+      Effect.catchTag("PersistenceDecodeError", (cause) =>
+        Effect.fail(toPersistenceSqlError("CompositionOrchestrator.runStartReceipt")(cause)),
+      ),
+    );
+  };
+
+  const completeRunStartReceipt = (
+    runId: string,
+    acceptance: CompositionRunStartAcceptance,
+  ) => {
+    if (startStore === undefined || acceptance.receiptUpdatedAtUnixMs === undefined) {
+      return Effect.void;
+    }
+    const receiptStore = startStore;
+    return Effect.gen(function* () {
+      const completedAtUnixMs = Math.max(
+        yield* Clock.currentTimeMillis,
+        acceptance.receiptUpdatedAtUnixMs!,
+      );
+      yield* receiptStore.markCompleted({ runId, completedAtUnixMs });
+    }).pipe(
+      Effect.catchTags({
+        CompositionRunStartStoreDomainError: (cause) =>
+          Effect.fail(
+            toPersistenceSqlError("CompositionOrchestrator.completeRunStartReceipt")(cause),
+          ),
+        PersistenceDecodeError: (cause) =>
+          Effect.fail(
+            toPersistenceSqlError("CompositionOrchestrator.completeRunStartReceipt")(cause),
+          ),
+      }),
+    );
+  };
+
+  const retryRunStartDomainError = (
+    input: { readonly taskId: string; readonly previousRunId: string },
+    failure: CompositionRunStartStoreDomainError,
+  ) =>
+    new CompositionTaskRetryInvalidError({
+      taskId: input.taskId,
+      previousRunId: input.previousRunId,
+      reason:
+        failure.code === "run_start_in_progress"
+          ? "retry_dispatch_in_progress"
+          : failure.actualState === "indeterminate"
+            ? "start_result_indeterminate"
+            : failure.code,
+    });
+
+  const driverRunStartDomainError = (failure: CompositionRunStartStoreDomainError) =>
+    new CompositionAgentDriverFailure({
+      code:
+        failure.actualState === "indeterminate"
+          ? "start_result_indeterminate"
+          : failure.code === "run_start_in_progress"
+            ? "start_dispatch_in_progress"
+            : failure.code,
+      detail: failure.detail,
+    });
+
   const startRetryRun = (input: {
     readonly task: CompositionTask;
     readonly run: CompositionTaskRun;
@@ -631,19 +846,35 @@ const makeOrchestrator = (
       const leasedRun = leasedRunOption.value;
 
       const startResult = yield* Effect.result(
-        input.driver.startTask({
+        startRunWithReceipt({
+          driver: input.driver,
           task: input.task,
           run: leasedRun,
-          prompt: input.recoveryInput.prompt,
-          workspaceRoot: input.recoveryInput.workspaceRoot,
-          ...(input.recoveryInput.workspaceRootDigest === undefined
-            ? {}
-            : { workspaceRootDigest: input.recoveryInput.workspaceRootDigest }),
-          ...(input.recoveryInput.model === undefined ? {} : { model: input.recoveryInput.model }),
-          capabilityGrantIds: leasedRun.capabilityGrantIds ?? [],
+          driverInput: {
+            task: input.task,
+            run: leasedRun,
+            prompt: input.recoveryInput.prompt,
+            workspaceRoot: input.recoveryInput.workspaceRoot,
+            ...(input.recoveryInput.workspaceRootDigest === undefined
+              ? {}
+              : { workspaceRootDigest: input.recoveryInput.workspaceRootDigest }),
+            ...(input.recoveryInput.model === undefined
+              ? {}
+              : { model: input.recoveryInput.model }),
+            capabilityGrantIds: leasedRun.capabilityGrantIds ?? [],
+          },
         }),
       );
       if (startResult._tag === "Failure") {
+        if (startResult.failure._tag === "CompositionRunStartStoreDomainError") {
+          return yield* retryRunStartDomainError(
+            { taskId: input.task.taskId, previousRunId: input.run.runId },
+            startResult.failure,
+          );
+        }
+        if (startResult.failure._tag !== "CompositionAgentDriverFailure") {
+          return yield* startResult.failure;
+        }
         const failed = yield* persistFailedStart({
           task: input.task,
           run: leasedRun,
@@ -656,13 +887,15 @@ const makeOrchestrator = (
         return failed;
       }
 
-      return yield* persistStartedRun({
+      const persisted = yield* persistStartedRun({
         task: input.task,
         run: leasedRun,
         driver: input.driver,
-        startResult: startResult.success,
+        startResult: startResult.success.startResult,
         summary: "重试任务已交给 Agent Driver 执行",
       });
+      yield* completeRunStartReceipt(leasedRun.runId, startResult.success);
+      return persisted;
     });
 
   const validateDependencies = (
@@ -752,6 +985,24 @@ const makeOrchestrator = (
       });
       const driver = yield* driverRegistry.get(agentId);
       const runtimeId = driver?.runtimeId ?? "unresolved";
+      if (driver !== undefined) {
+        const preparedStart = yield* Effect.result(
+          prepareRunStartIntent({
+            taskId: input.taskId,
+            runId: input.runId,
+            agentId,
+            runtimeId: driver.runtimeId,
+            attempt: 1,
+            replayPolicy: driver.startReplayPolicy ?? "fail_closed",
+          }),
+        );
+        if (preparedStart._tag === "Failure") {
+          if (preparedStart.failure._tag === "CompositionRunStartStoreDomainError") {
+            return yield* driverRunStartDomainError(preparedStart.failure);
+          }
+          return yield* preparedStart.failure;
+        }
+      }
       if (
         inputStore !== undefined &&
         input.prompt !== undefined &&
@@ -885,19 +1136,30 @@ const makeOrchestrator = (
       const leasedRun = leasedRunOption.value;
 
       const startResult = yield* Effect.result(
-        driver.startTask({
+        startRunWithReceipt({
+          driver,
           task,
           run: leasedRun,
-          ...(input.workspaceRootDigest === undefined
-            ? {}
-            : { workspaceRootDigest: input.workspaceRootDigest }),
-          ...(input.workspaceRoot === undefined ? {} : { workspaceRoot: input.workspaceRoot }),
-          ...(input.prompt === undefined ? {} : { prompt: input.prompt }),
-          ...(input.model === undefined ? {} : { model: input.model }),
-          capabilityGrantIds: leasedRun.capabilityGrantIds ?? [],
+          driverInput: {
+            task,
+            run: leasedRun,
+            ...(input.workspaceRootDigest === undefined
+              ? {}
+              : { workspaceRootDigest: input.workspaceRootDigest }),
+            ...(input.workspaceRoot === undefined ? {} : { workspaceRoot: input.workspaceRoot }),
+            ...(input.prompt === undefined ? {} : { prompt: input.prompt }),
+            ...(input.model === undefined ? {} : { model: input.model }),
+            capabilityGrantIds: leasedRun.capabilityGrantIds ?? [],
+          },
         }),
       );
       if (startResult._tag === "Failure") {
+        if (startResult.failure._tag === "CompositionRunStartStoreDomainError") {
+          return yield* driverRunStartDomainError(startResult.failure);
+        }
+        if (startResult.failure._tag !== "CompositionAgentDriverFailure") {
+          return yield* startResult.failure;
+        }
         const failed = yield* persistFailedStart({
           task,
           run: leasedRun,
@@ -910,13 +1172,15 @@ const makeOrchestrator = (
         return failed;
       }
 
-      return yield* persistStartedRun({
+      const persisted = yield* persistStartedRun({
         task,
         run: leasedRun,
         driver,
-        startResult: startResult.success,
+        startResult: startResult.success.startResult,
         summary: "任务已交给 Agent Driver 执行",
       });
+      yield* completeRunStartReceipt(leasedRun.runId, startResult.success);
+      return persisted;
     });
 
   const cancelTask: CompositionOrchestrator["cancelTask"] = (input) =>
@@ -1432,6 +1696,22 @@ const makeOrchestrator = (
           detail: `未找到目标 Agent Driver：${targetAgentId}`,
         });
       }
+      const preparedStart = yield* Effect.result(
+        prepareRunStartIntent({
+          taskId: input.taskId,
+          runId: input.runId,
+          agentId: targetAgentId,
+          runtimeId: targetDriver.runtimeId,
+          attempt: previousRun.attempt + 1,
+          replayPolicy: targetDriver.startReplayPolicy ?? "fail_closed",
+        }),
+      );
+      if (preparedStart._tag === "Failure") {
+        if (preparedStart.failure._tag === "CompositionRunStartStoreDomainError") {
+          return yield* retryRunStartDomainError(input, preparedStart.failure);
+        }
+        return yield* preparedStart.failure;
+      }
       // 先撤销旧 Run 的 grant，避免 CapabilityGrantRegistry 按 task/agent 复用旧授权。
       yield* revokeRunCapabilities(previousDriver, task, previousRun);
       yield* releaseRunLease(previousRun);
@@ -1554,21 +1834,32 @@ const makeOrchestrator = (
         resumingTaskIds.add(task.taskId);
         const result = yield* Effect.gen(function* () {
           const startResult = yield* Effect.result(
-            driver.startTask({
+            startRunWithReceipt({
+              driver,
               task,
               run: leasedRun,
-              prompt: recoveryInput.value.prompt,
-              workspaceRoot: recoveryInput.value.workspaceRoot,
-              ...(recoveryInput.value.workspaceRootDigest === undefined
-                ? {}
-                : { workspaceRootDigest: recoveryInput.value.workspaceRootDigest }),
-              ...(recoveryInput.value.model === undefined
-                ? {}
-                : { model: recoveryInput.value.model }),
-              capabilityGrantIds: leasedRun.capabilityGrantIds,
+              driverInput: {
+                task,
+                run: leasedRun,
+                prompt: recoveryInput.value.prompt,
+                workspaceRoot: recoveryInput.value.workspaceRoot,
+                ...(recoveryInput.value.workspaceRootDigest === undefined
+                  ? {}
+                  : { workspaceRootDigest: recoveryInput.value.workspaceRootDigest }),
+                ...(recoveryInput.value.model === undefined
+                  ? {}
+                  : { model: recoveryInput.value.model }),
+                capabilityGrantIds: leasedRun.capabilityGrantIds,
+              },
             }),
           );
           if (startResult._tag === "Failure") {
+            if (startResult.failure._tag === "CompositionRunStartStoreDomainError") {
+              return yield* driverRunStartDomainError(startResult.failure);
+            }
+            if (startResult.failure._tag !== "CompositionAgentDriverFailure") {
+              return yield* startResult.failure;
+            }
             const failed = yield* persistFailedStart({
               task,
               run: leasedRun,
@@ -1581,13 +1872,15 @@ const makeOrchestrator = (
             return failed;
           }
 
-          return yield* persistStartedRun({
+          const persisted = yield* persistStartedRun({
             task,
             run: leasedRun,
             driver,
-            startResult: startResult.success,
+            startResult: startResult.success.startResult,
             summary: "依赖完成后已恢复任务",
           });
+          yield* completeRunStartReceipt(leasedRun.runId, startResult.success);
+          return persisted;
         }).pipe(Effect.ensuring(Effect.sync(() => resumingTaskIds.delete(task.taskId))));
         resumed.push(result);
       }
@@ -1604,4 +1897,6 @@ export const makeCompositionOrchestrator = (
   grantRegistry?: Pick<CapabilityGrantRegistry.CapabilityGrantRegistryShape, "issue"> &
     Partial<Pick<CapabilityGrantRegistry.CapabilityGrantRegistryShape, "revoke">>,
   inputStore?: CompositionTaskInputStoreShape,
-): CompositionOrchestrator => makeOrchestrator(store, driverRegistry, grantRegistry, inputStore);
+  startStore?: CompositionRunStartStoreShape,
+): CompositionOrchestrator =>
+  makeOrchestrator(store, driverRegistry, grantRegistry, inputStore, startStore);

@@ -78,6 +78,7 @@ import Migration0062 from "./Migrations/062_CompositionSquadExecutionBindings.ts
 import Migration0063 from "./Migrations/063_CompositionSquadExecutionPlanDigest.ts";
 import Migration0064 from "./Migrations/064_CompositionToolInvocations.ts";
 import Migration0065 from "./Migrations/065_CompositionGoalLoopRetryIntents.ts";
+import Migration0066 from "./Migrations/066_CompositionRunStartIntents.ts";
 
 /**
  * Migration loader with all migrations defined inline.
@@ -158,6 +159,7 @@ export const migrationEntries = [
   [63, "CompositionSquadExecutionPlanDigest", Migration0063],
   [64, "CompositionToolInvocations", Migration0064],
   [65, "CompositionGoalLoopRetryIntents", Migration0065],
+  [66, "CompositionRunStartIntents", Migration0066],
 ] as const;
 
 export const migrationManifest = migrationEntries.map(([id, name]) => [id, name] as const);
