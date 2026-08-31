@@ -75,6 +75,16 @@ import {
   OrchestrationGetWorkflowScriptError,
 } from "./orchestration.ts";
 import {
+  ThreadGoal,
+  ThreadGoalClearInput,
+  ThreadGoalEvent,
+  ThreadGoalGetInput,
+  ThreadGoalPauseInput,
+  ThreadGoalResumeInput,
+  ThreadGoalRpcError,
+  ThreadGoalSetInput,
+} from "./goal.ts";
+import {
   ProviderUploadFeedbackError,
   ProviderUploadFeedbackInput,
   ProviderUploadFeedbackResult,
@@ -1579,6 +1589,43 @@ export const WsOrchestrationSubscribeThreadRpc = Rpc.make(
   },
 );
 
+export const WsThreadGoalGetRpc = Rpc.make(ORCHESTRATION_WS_METHODS.getThreadGoal, {
+  payload: ThreadGoalGetInput,
+  success: Schema.NullOr(ThreadGoal),
+  error: Schema.Union([ThreadGoalRpcError, EnvironmentAuthorizationError]),
+});
+
+export const WsThreadGoalSetRpc = Rpc.make(ORCHESTRATION_WS_METHODS.setThreadGoal, {
+  payload: ThreadGoalSetInput,
+  success: ThreadGoal,
+  error: Schema.Union([ThreadGoalRpcError, EnvironmentAuthorizationError]),
+});
+
+export const WsThreadGoalPauseRpc = Rpc.make(ORCHESTRATION_WS_METHODS.pauseThreadGoal, {
+  payload: ThreadGoalPauseInput,
+  success: ThreadGoal,
+  error: Schema.Union([ThreadGoalRpcError, EnvironmentAuthorizationError]),
+});
+
+export const WsThreadGoalResumeRpc = Rpc.make(ORCHESTRATION_WS_METHODS.resumeThreadGoal, {
+  payload: ThreadGoalResumeInput,
+  success: ThreadGoal,
+  error: Schema.Union([ThreadGoalRpcError, EnvironmentAuthorizationError]),
+});
+
+export const WsThreadGoalClearRpc = Rpc.make(ORCHESTRATION_WS_METHODS.clearThreadGoal, {
+  payload: ThreadGoalClearInput,
+  success: ThreadGoalEvent,
+  error: Schema.Union([ThreadGoalRpcError, EnvironmentAuthorizationError]),
+});
+
+export const WsThreadGoalSubscribeRpc = Rpc.make(ORCHESTRATION_WS_METHODS.subscribeThreadGoal, {
+  payload: ThreadGoalGetInput,
+  success: ThreadGoalEvent,
+  error: Schema.Union([ThreadGoalRpcError, EnvironmentAuthorizationError]),
+  stream: true,
+});
+
 export const WsSubscribeTerminalEventsRpc = Rpc.make(WS_METHODS.subscribeTerminalEvents, {
   payload: Schema.Struct({}),
   success: TerminalEvent,
@@ -1787,4 +1834,10 @@ export const WsRpcGroup = RpcGroup.make(
   WsOrchestrationGetArchivedShellSnapshotRpc,
   WsOrchestrationSubscribeShellRpc,
   WsOrchestrationSubscribeThreadRpc,
+  WsThreadGoalGetRpc,
+  WsThreadGoalSetRpc,
+  WsThreadGoalPauseRpc,
+  WsThreadGoalResumeRpc,
+  WsThreadGoalClearRpc,
+  WsThreadGoalSubscribeRpc,
 ).add(WsServerInvokeCompositionRuntimeToolRpc);

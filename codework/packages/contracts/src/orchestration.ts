@@ -33,6 +33,12 @@ export const ORCHESTRATION_WS_METHODS = {
   getArchivedShellSnapshot: "orchestration.getArchivedShellSnapshot",
   subscribeShell: "orchestration.subscribeShell",
   subscribeThread: "orchestration.subscribeThread",
+  getThreadGoal: "thread/goal/get",
+  setThreadGoal: "thread/goal/set",
+  pauseThreadGoal: "thread/goal/pause",
+  resumeThreadGoal: "thread/goal/resume",
+  clearThreadGoal: "thread/goal/clear",
+  subscribeThreadGoal: "thread/goal/subscribe",
 } as const;
 
 export const ProviderApprovalPolicy = Schema.Literals([
