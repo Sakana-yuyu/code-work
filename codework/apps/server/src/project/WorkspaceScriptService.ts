@@ -1,13 +1,11 @@
+import * as NodeCrypto from "node:crypto";
+
 import {
-  makeWorkspaceScriptRunId,
-  makeWorkspaceScriptRunIdempotencyKey,
   ProjectId,
   ThreadId,
   WORKSPACE_SCRIPT_LOG_MAX_BYTES,
   type OrchestrationProjectShell,
   type TerminalEvent,
-  type TerminalOpenInput,
-  type TerminalSessionSnapshot,
   type WorkspaceScriptListRequest,
   type WorkspaceScriptLogsResult,
   type WorkspaceScriptRun,
@@ -16,10 +14,8 @@ import {
   WorkspaceScriptRpcError,
 } from "@codework/contracts";
 import { HostProcessPlatform } from "@codework/shared/hostProcess";
-import { projectScriptCwd, projectScriptRuntimeEnv } from "@codework/shared/projectScripts";
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
-import * as Data from "effect/Data";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
@@ -28,54 +24,42 @@ import * as ProjectionSnapshotQuery from "../orchestration/Services/ProjectionSn
 import {
   WorkspaceScriptStore,
   type StoredWorkspaceScriptRun,
-  type WorkspaceScriptStoreError,
   type WorkspaceScriptStoreShape,
+  type WorkspaceScriptStopTransitionInput,
 } from "../persistence/Services/WorkspaceScriptStore.ts";
 import * as TerminalManager from "../terminal/Manager.ts";
+import { makeWorkspaceScriptTerminalOwner } from "../terminal/TerminalSessionOwnership.ts";
 import {
-  makeWorkspaceScriptTerminalOwner,
-  type TerminalSessionOwner,
-} from "../terminal/TerminalSessionOwnership.ts";
+  assessWorkspaceScriptStart,
+  isWorkspaceScriptStartTerminationOperationId,
+  makeWorkspaceScriptStartFailed,
+  WORKSPACE_SCRIPT_START_FAILED_DETAIL,
+} from "./WorkspaceScriptStartState.ts";
 import {
   isFinishedWorkspaceScriptRun,
-  isWorkspaceScriptStartCancelled,
   makeWorkspaceScriptClosed,
   makeWorkspaceScriptExited,
-  makeWorkspaceScriptStartCancelled,
-  makeWorkspaceScriptStopRetryable,
 } from "./WorkspaceScriptStopState.ts";
+import { executeWorkspaceScriptStop } from "./WorkspaceScriptStopExecution.ts";
+import {
+  recoverWorkspaceScriptStop,
+  type WorkspaceScriptStopRecoveryOutcome,
+} from "./WorkspaceScriptStopRecovery.ts";
+import {
+  detailFromUnknown,
+  operationError,
+  persistenceError,
+  WorkspaceScriptDependencyError,
+} from "./WorkspaceScriptErrors.ts";
+import { makeWorkspaceScriptStart } from "./WorkspaceScriptStartExecution.ts";
+import type { WorkspaceScriptTerminalPort } from "./WorkspaceScriptTerminalPort.ts";
 
-export type WorkspaceScriptTerminalRunCommandInput = TerminalOpenInput & {
-  readonly command: string;
-  readonly args?: ReadonlyArray<string>;
-  readonly owner: TerminalSessionOwner;
-};
-
-export interface WorkspaceScriptTerminalPort {
-  readonly runCommand: (
-    input: WorkspaceScriptTerminalRunCommandInput,
-  ) => Effect.Effect<TerminalSessionSnapshot, WorkspaceScriptDependencyError>;
-  readonly kill: (input: {
-    readonly threadId: string;
-    readonly terminalId: string;
-    readonly expectedOwner: TerminalSessionOwner;
-  }) => Effect.Effect<void, WorkspaceScriptDependencyError>;
-  readonly inspectSessionReceipt: (input: {
-    readonly threadId: string;
-    readonly terminalId: string;
-    readonly expectedOwner: TerminalSessionOwner;
-  }) => Effect.Effect<
-    TerminalManager.TerminalSessionInspectionReceipt,
-    WorkspaceScriptDependencyError
-  >;
-  readonly getHistory: (input: {
-    readonly threadId: string;
-    readonly terminalId: string;
-  }) => Effect.Effect<string, WorkspaceScriptDependencyError>;
-  readonly subscribeLifecycle: (
-    listener: (event: TerminalEvent) => Effect.Effect<void>,
-  ) => Effect.Effect<TerminalManager.TerminalLifecycleSubscription>;
-}
+export { WorkspaceScriptDependencyError } from "./WorkspaceScriptErrors.ts";
+export { workspaceScriptShellInvocation } from "./WorkspaceScriptStartExecution.ts";
+export type {
+  WorkspaceScriptTerminalPort,
+  WorkspaceScriptTerminalRunCommandInput,
+} from "./WorkspaceScriptTerminalPort.ts";
 
 export interface WorkspaceScriptServiceShape {
   readonly start: (
@@ -100,19 +84,6 @@ export class WorkspaceScriptService extends Context.Service<
   WorkspaceScriptServiceShape
 >()("codework/project/WorkspaceScriptService") {}
 
-export class WorkspaceScriptDependencyError extends Data.TaggedError(
-  "WorkspaceScriptDependencyError",
-)<{
-  readonly operation:
-    | "resolveProject"
-    | "resolveThread"
-    | "runCommand"
-    | "killTerminal"
-    | "inspectTerminal"
-    | "getHistory";
-  readonly cause: unknown;
-}> {}
-
 export interface WorkspaceScriptServiceOptions {
   readonly store: WorkspaceScriptStoreShape;
   readonly terminal: WorkspaceScriptTerminalPort;
@@ -125,24 +96,10 @@ export interface WorkspaceScriptServiceOptions {
   readonly platform: NodeJS.Platform;
   readonly windowsComSpec?: string;
   readonly now?: () => number;
+  readonly makeStopClaimOwnerId?: () => string;
+  readonly stopClaimTtlMs?: number;
+  readonly waitForStopClaimExpiry?: (retryAtUnixMs: number) => Effect.Effect<void>;
 }
-
-const detailFromUnknown = (cause: unknown): string => {
-  if (cause instanceof WorkspaceScriptDependencyError) return detailFromUnknown(cause.cause);
-  if (cause instanceof Error && cause.message.trim().length > 0) return cause.message.trim();
-  const detail = String(cause).trim();
-  return detail.length > 0 ? detail : "未知错误";
-};
-
-const operationError = (
-  code: string,
-  detail: string,
-  correlation: {
-    readonly workspaceScriptRunId?: string;
-    readonly expectedRevision?: number;
-    readonly actualRevision?: number;
-  } = {},
-): WorkspaceScriptRpcError => new WorkspaceScriptRpcError({ code, detail, ...correlation });
 
 const capWorkspaceScriptHistory = (
   history: string,
@@ -162,86 +119,14 @@ const capWorkspaceScriptHistory = (
   };
 };
 
-const persistenceError = (
-  operation: string,
-  cause: WorkspaceScriptStoreError,
-  correlation: {
-    readonly workspaceScriptRunId?: string;
-    readonly expectedRevision?: number;
-    readonly actualRevision?: number;
-  } = {},
-): WorkspaceScriptRpcError => {
-  if (cause._tag === "WorkspaceScriptStoreDomainError") {
-    if (cause.code === "workspace_script_run_not_found") {
-      return operationError(cause.code, cause.detail, {
-        ...correlation,
-        ...(cause.workspaceScriptRunId === undefined
-          ? {}
-          : { workspaceScriptRunId: cause.workspaceScriptRunId }),
-      });
-    }
-    if (cause.code === "workspace_script_revision_conflict") {
-      return operationError(cause.code, cause.detail, {
-        ...correlation,
-        ...(cause.workspaceScriptRunId === undefined
-          ? {}
-          : { workspaceScriptRunId: cause.workspaceScriptRunId }),
-        ...(cause.expectedRevision === undefined
-          ? {}
-          : { expectedRevision: cause.expectedRevision }),
-        ...(cause.actualRevision === undefined ? {} : { actualRevision: cause.actualRevision }),
-      });
-    }
-  }
-  return operationError(
-    "workspace_script_persistence_failed",
-    `${operation}失败：${cause.message}`,
-    correlation,
-  );
-};
-
-const workspaceScriptTerminalId = (operationId: string): string =>
-  `workspace-script-${operationId}`;
-
-const workspaceScriptTerminalOwner = (run: WorkspaceScriptRun): TerminalSessionOwner =>
-  makeWorkspaceScriptTerminalOwner({
-    workspaceScriptRunId: run.workspaceScriptRunId,
-    generation: run.requestedAtUnixMs,
-  });
-
-const recoveredTerminalMatchesRun = (
-  run: WorkspaceScriptRun,
-  receipt: TerminalManager.TerminalSessionInspectionReceipt,
-): boolean =>
-  receipt.inspection === "active" &&
-  receipt.snapshot !== null &&
-  receipt.snapshot.threadId === run.threadId &&
-  receipt.snapshot.terminalId === run.terminalId &&
-  receipt.snapshot.cwd === run.cwd &&
-  receipt.snapshot.worktreePath === run.worktreePath &&
-  receipt.snapshot.status === "running" &&
-  receipt.snapshot.pid !== null;
-
-export const workspaceScriptShellInvocation = (input: {
-  readonly platform: NodeJS.Platform;
-  readonly command: string;
-  readonly windowsComSpec?: string;
-}): { readonly command: string; readonly args: ReadonlyArray<string> } =>
-  input.platform === "win32"
-    ? {
-        command: input.windowsComSpec?.trim() || process.env.ComSpec?.trim() || "cmd.exe",
-        args: ["/d", "/s", "/c", input.command],
-      }
-    : {
-        command: "/bin/sh",
-        args: ["-lc", input.command],
-      };
-
 export const makeWorkspaceScriptService = Effect.fn("WorkspaceScriptService.make")(function* (
   options: WorkspaceScriptServiceOptions,
 ) {
+  const serviceScope = yield* Effect.scope;
   const currentTimeMillis =
     options.now === undefined ? Clock.currentTimeMillis : Effect.sync(options.now);
+  const makeStopClaimOwnerId = options.makeStopClaimOwnerId ?? NodeCrypto.randomUUID;
+  const stopClaimTtlMs = options.stopClaimTtlMs ?? 30_000;
 
   const readRun = (workspaceScriptRunId: string) =>
     options.store
@@ -252,14 +137,123 @@ export const makeWorkspaceScriptService = Effect.fn("WorkspaceScriptService.make
         ),
       );
 
-  const readStoredRun = (workspaceScriptRunId: string) =>
+  const getActiveRunByTerminal = (threadId: string, terminalId: string) =>
     options.store
-      .getStoredRun(workspaceScriptRunId)
+      .getActiveRunByTerminal(threadId, terminalId)
       .pipe(
-        Effect.mapError((cause) =>
-          persistenceError("读取 Workspace Script 停止状态", cause, { workspaceScriptRunId }),
-        ),
+        Effect.mapError((cause) => persistenceError("读取终端对应的 Workspace Script Run", cause)),
       );
+
+  const saveStopTransition = (input: WorkspaceScriptStopTransitionInput) =>
+    options.store.saveStopTransition(input).pipe(
+      Effect.mapError((cause) =>
+        persistenceError("保存 Workspace Script 停止结果", cause, {
+          workspaceScriptRunId: input.run.workspaceScriptRunId,
+          expectedRevision: input.expectedRevision,
+        }),
+      ),
+    );
+
+  const makeStopClaimInput = Effect.fn("WorkspaceScriptService.makeStopClaimInput")(function* (
+    run: WorkspaceScriptRun,
+    _operationId: string,
+  ) {
+    const claimedAtUnixMs = Math.max(yield* currentTimeMillis, run.updatedAtUnixMs);
+    const claimExpiresAtUnixMs = claimedAtUnixMs + stopClaimTtlMs;
+    if (
+      !Number.isSafeInteger(stopClaimTtlMs) ||
+      stopClaimTtlMs <= 0 ||
+      !Number.isSafeInteger(claimExpiresAtUnixMs)
+    ) {
+      return yield* operationError(
+        "workspace_script_stop_claim_config_invalid",
+        "Workspace Script 停止 claim 有效期配置无效。",
+        { workspaceScriptRunId: run.workspaceScriptRunId },
+      );
+    }
+    return {
+      claimOwnerId: makeStopClaimOwnerId(),
+      claimedAtUnixMs,
+      claimExpiresAtUnixMs,
+    };
+  });
+
+  const stopRecoveryOptions = {
+    currentTimeMillis,
+    getActiveRunByTerminal,
+    readRun,
+    makeStopClaimInput,
+    claimStop: options.store.claimStop,
+    saveStopTransition,
+    terminal: options.terminal,
+    retryDelayMillis: stopClaimTtlMs,
+  } as const;
+
+  const waitForStopClaimExpiry = (retryAtUnixMs: number) =>
+    options.waitForStopClaimExpiry?.(retryAtUnixMs) ??
+    currentTimeMillis.pipe(
+      Effect.flatMap((nowUnixMs) => Effect.sleep(Math.max(0, retryAtUnixMs - nowUnixMs))),
+    );
+
+  const continueStopRecovery: (
+    stored: StoredWorkspaceScriptRun,
+    retryAtUnixMs: number,
+  ) => Effect.Effect<void> = (stored, retryAtUnixMs) =>
+    Effect.gen(function* () {
+      yield* waitForStopClaimExpiry(retryAtUnixMs);
+      const latestResult = yield* getActiveRunByTerminal(
+        stored.run.threadId,
+        stored.run.terminalId,
+      ).pipe(Effect.result);
+      if (latestResult._tag === "Failure") {
+        const nowUnixMs = yield* currentTimeMillis;
+        const nextRetryAt =
+          stored.stopClaim !== null && stored.stopClaim.expiresAtUnixMs > nowUnixMs
+            ? stored.stopClaim.expiresAtUnixMs
+            : Math.max(nowUnixMs, stored.run.updatedAtUnixMs) + stopClaimTtlMs;
+        yield* Effect.logWarning("Workspace Script 延迟停止恢复读取失败", {
+          workspaceScriptRunId: stored.run.workspaceScriptRunId,
+          retryAtUnixMs: nextRetryAt,
+          cause: latestResult.failure,
+        });
+        yield* continueStopRecovery(stored, nextRetryAt);
+        return;
+      }
+      const latest = latestResult.success;
+      if (
+        Option.isNone(latest) ||
+        latest.value.run.workspaceScriptRunId !== stored.run.workspaceScriptRunId ||
+        latest.value.stopOperationId !== stored.stopOperationId
+      ) {
+        return;
+      }
+
+      const outcomeResult = yield* recoverWorkspaceScriptStop(
+        latest.value,
+        stopRecoveryOptions,
+      ).pipe(Effect.result);
+      if (outcomeResult._tag === "Failure") {
+        yield* Effect.logWarning("Workspace Script 延迟停止恢复失败", {
+          workspaceScriptRunId: stored.run.workspaceScriptRunId,
+          cause: outcomeResult.failure,
+        });
+        return;
+      }
+      if (outcomeResult.success._tag === "Deferred") {
+        yield* continueStopRecovery(latest.value, outcomeResult.success.retryAtUnixMs);
+      }
+    });
+
+  const scheduleStopRecovery = (
+    stored: StoredWorkspaceScriptRun,
+    outcome: WorkspaceScriptStopRecoveryOutcome,
+  ) =>
+    outcome._tag === "Completed"
+      ? Effect.void
+      : continueStopRecovery(stored, outcome.retryAtUnixMs).pipe(
+          Effect.forkIn(serviceScope),
+          Effect.asVoid,
+        );
 
   const updateRun = Effect.fn("WorkspaceScriptService.updateRun")(function* (
     workspaceScriptRunId: string,
@@ -295,6 +289,27 @@ export const makeWorkspaceScriptService = Effect.fn("WorkspaceScriptService.make
     return Option.none<WorkspaceScriptRun>();
   });
 
+  const rejectUnconfirmedStart = Effect.fn("WorkspaceScriptService.rejectUnconfirmedStart")(
+    function* (workspaceScriptRunId: string, logContext: Readonly<Record<string, unknown>>) {
+      yield* Effect.logError("Workspace Script 启动确认失败", {
+        workspaceScriptRunId,
+        ...logContext,
+      });
+      const failed = yield* updateRun(workspaceScriptRunId, (run, observedAtUnixMs) =>
+        makeWorkspaceScriptStartFailed(run, observedAtUnixMs),
+      );
+      if (Option.isSome(failed) && failed.value.status !== "failed") {
+        return failed.value;
+      }
+      return yield* operationError(
+        "workspace_script_start_failed",
+        (Option.isSome(failed) ? failed.value.errorDetail : null) ??
+          WORKSPACE_SCRIPT_START_FAILED_DETAIL,
+        { workspaceScriptRunId },
+      );
+    },
+  );
+
   const onTerminalEvent = (event: TerminalEvent): Effect.Effect<void> =>
     Effect.gen(function* () {
       const owned = yield* options.store
@@ -306,58 +321,60 @@ export const makeWorkspaceScriptService = Effect.fn("WorkspaceScriptService.make
         );
       if (Option.isNone(owned)) return;
       const ownedRun = owned.value.run;
+      const startTerminationClaimed = isWorkspaceScriptStartTerminationOperationId(
+        ownedRun.workspaceScriptRunId,
+        owned.value.stopOperationId,
+      );
+      const stopClaimed = owned.value.stopOperationId !== null;
 
       switch (event.type) {
         case "started":
         case "restarted":
-          yield* updateRun(ownedRun.workspaceScriptRunId, (run, observedAtUnixMs) =>
-            run.status !== "starting"
-              ? run
-              : {
-                  ...run,
-                  status: "running",
-                  revision: run.revision + 1,
-                  startedAtUnixMs: observedAtUnixMs,
-                  updatedAtUnixMs: observedAtUnixMs,
-                },
-          );
           return;
         case "exited":
           yield* updateRun(ownedRun.workspaceScriptRunId, (run, observedAtUnixMs) =>
-            makeWorkspaceScriptExited({
-              run,
-              stopOperationId: owned.value.stopOperationId,
-              observedAtUnixMs,
-              exitCode: event.exitCode,
-              exitSignal: event.exitSignal,
-            }),
+            startTerminationClaimed && run.status === "starting"
+              ? run
+              : makeWorkspaceScriptExited({
+                  run,
+                  stopOperationId: owned.value.stopOperationId,
+                  observedAtUnixMs,
+                  exitCode: event.exitCode,
+                  exitSignal: event.exitSignal,
+                }),
           );
           return;
         case "error":
           yield* updateRun(ownedRun.workspaceScriptRunId, (run, observedAtUnixMs) =>
-            isFinishedWorkspaceScriptRun(run)
+            stopClaimed || run.status === "starting" || run.status === "stopping"
               ? run
-              : {
-                  ...run,
-                  status: "failed",
-                  healthStatus: "unknown",
-                  healthCheckedAtUnixMs: null,
-                  healthDetail: null,
-                  revision: run.revision + 1,
-                  finishedAtUnixMs: observedAtUnixMs,
-                  errorCode: "workspace_script_terminal_error",
-                  errorDetail: event.message,
-                  updatedAtUnixMs: observedAtUnixMs,
-                },
+              : isFinishedWorkspaceScriptRun(run)
+                ? run
+                : {
+                    ...run,
+                    status: "failed",
+                    healthStatus: "unknown",
+                    healthCheckedAtUnixMs: null,
+                    healthDetail: null,
+                    revision: run.revision + 1,
+                    finishedAtUnixMs: observedAtUnixMs,
+                    errorCode: "workspace_script_terminal_error",
+                    errorDetail: event.message,
+                    updatedAtUnixMs: observedAtUnixMs,
+                  },
           );
           return;
         case "closed":
           yield* updateRun(ownedRun.workspaceScriptRunId, (run, observedAtUnixMs) =>
-            makeWorkspaceScriptClosed({
-              run,
-              stopOperationId: owned.value.stopOperationId,
-              observedAtUnixMs,
-            }),
+            startTerminationClaimed && run.status === "starting"
+              ? run
+              : run.status === "starting"
+                ? makeWorkspaceScriptStartFailed(run, observedAtUnixMs)
+                : makeWorkspaceScriptClosed({
+                    run,
+                    stopOperationId: owned.value.stopOperationId,
+                    observedAtUnixMs,
+                  }),
           );
           return;
         case "activity":
@@ -371,100 +388,86 @@ export const makeWorkspaceScriptService = Effect.fn("WorkspaceScriptService.make
       ),
     );
 
-  const lifecycleSubscription = yield* options.terminal.subscribeLifecycle(onTerminalEvent);
-  yield* Effect.addFinalizer(() => Effect.sync(lifecycleSubscription.unsubscribe));
+  const unsubscribe = yield* options.terminal.subscribe(onTerminalEvent);
+  yield* Effect.addFinalizer(() => Effect.sync(unsubscribe));
 
-  const saveRecoveryTransition = Effect.fn("WorkspaceScriptService.saveRecoveryTransition")(
-    function* (
-      candidate: StoredWorkspaceScriptRun,
-      update: (run: WorkspaceScriptRun, observedAtUnixMs: number) => WorkspaceScriptRun,
-    ) {
-      const next = update(
-        candidate.run,
-        Math.max(yield* currentTimeMillis, candidate.run.updatedAtUnixMs),
-      );
-      if (next === candidate.run || next.revision === candidate.run.revision) return;
+  const recovered = yield* options.store
+    .recoverInterrupted({ observedAtUnixMs: yield* currentTimeMillis })
+    .pipe(Effect.mapError((cause) => persistenceError("恢复中断的 Workspace Script Run", cause)));
 
-      const saved = yield* options.store
-        .saveTransition({ run: next, expectedRevision: candidate.run.revision })
+  /** 服务重启后按原 owner 回读终端回执：会话仍活跃则复活为 running，真实退出则收口为 exited。 */
+  const reviveRecoveredRun = (stored: StoredWorkspaceScriptRun) =>
+    Effect.gen(function* () {
+      const run = stored.run;
+      const receiptResult = yield* options.terminal
+        .inspectSessionReceipt({
+          threadId: run.threadId,
+          terminalId: run.terminalId,
+          expectedOwner: makeWorkspaceScriptTerminalOwner({
+            workspaceScriptRunId: run.workspaceScriptRunId,
+            generation: run.requestedAtUnixMs,
+          }),
+        })
         .pipe(Effect.result);
-      if (saved._tag === "Success") return;
-      if (
-        saved.failure._tag === "WorkspaceScriptStoreDomainError" &&
-        saved.failure.code === "workspace_script_revision_conflict"
-      ) {
-        return;
-      }
-      return yield* persistenceError("恢复 Workspace Script Run", saved.failure, {
-        workspaceScriptRunId: candidate.run.workspaceScriptRunId,
-        expectedRevision: candidate.run.revision,
-      });
-    },
-  );
-
-  const recoverCandidate = Effect.fn("WorkspaceScriptService.recoverCandidate")(function* (
-    candidate: StoredWorkspaceScriptRun,
-  ) {
-    if (candidate.stopOperationId !== null) {
-      yield* saveRecoveryTransition(candidate, (run, observedAtUnixMs) =>
-        makeWorkspaceScriptStopRetryable(run, observedAtUnixMs),
-      );
-      return;
-    }
-
-    const receipt = yield* options.terminal
-      .inspectSessionReceipt({
-        threadId: candidate.run.threadId,
-        terminalId: candidate.run.terminalId,
-        expectedOwner: workspaceScriptTerminalOwner(candidate.run),
-      })
-      .pipe(Effect.result);
-    const receiptMatches =
-      receipt._tag === "Success" && recoveredTerminalMatchesRun(candidate.run, receipt.success);
-
-    yield* saveRecoveryTransition(candidate, (run, observedAtUnixMs) => {
-      if (isFinishedWorkspaceScriptRun(run)) return run;
-      if (receiptMatches && (run.status === "starting" || run.status === "running")) {
-        return run.status === "running"
-          ? run
-          : {
+      if (receiptResult._tag === "Failure") return;
+      const assessment = assessWorkspaceScriptStart(receiptResult.success);
+      if (assessment._tag !== "Ready" && assessment._tag !== "Settled") return;
+      const observedAtUnixMs = Math.max(yield* currentTimeMillis, run.updatedAtUnixMs);
+      const revived: WorkspaceScriptRun =
+        assessment._tag === "Ready"
+          ? {
               ...run,
               status: "running",
+              healthCheckedAtUnixMs: null,
+              healthDetail: null,
               revision: run.revision + 1,
               startedAtUnixMs: run.startedAtUnixMs ?? observedAtUnixMs,
               finishedAtUnixMs: null,
+              exitCode: null,
+              exitSignal: null,
+              errorCode: null,
+              errorDetail: null,
+              updatedAtUnixMs: observedAtUnixMs,
+            }
+          : {
+              ...run,
+              status: "exited",
+              healthStatus: "unknown",
+              healthCheckedAtUnixMs: null,
+              healthDetail: null,
+              revision: run.revision + 1,
+              startedAtUnixMs: run.startedAtUnixMs ?? observedAtUnixMs,
+              finishedAtUnixMs: observedAtUnixMs,
+              exitCode: assessment.exitCode,
+              exitSignal: assessment.exitSignal,
               errorCode: null,
               errorDetail: null,
               updatedAtUnixMs: observedAtUnixMs,
             };
+      const saved = yield* options.store
+        .saveTransition({ run: revived, expectedRevision: run.revision })
+        .pipe(Effect.result);
+      if (saved._tag === "Failure") {
+        yield* Effect.logWarning("Workspace Script 重启恢复回写失败", {
+          workspaceScriptRunId: run.workspaceScriptRunId,
+          cause: saved.failure,
+        });
       }
-
-      const inspectionFailed = receipt._tag === "Failure";
-      return {
-        ...run,
-        status: "failed",
-        healthStatus: "unknown",
-        healthCheckedAtUnixMs: null,
-        healthDetail: null,
-        revision: run.revision + 1,
-        finishedAtUnixMs: observedAtUnixMs,
-        exitCode: null,
-        exitSignal: null,
-        errorCode: inspectionFailed
-          ? "workspace_script_start_failed"
-          : "workspace_script_server_restarted",
-        errorDetail: inspectionFailed
-          ? detailFromUnknown(receipt.failure)
-          : "Code Work 服务重启，未找到与 Run 身份一致的活跃脚本终端。",
-        updatedAtUnixMs: observedAtUnixMs,
-      };
     });
-  });
 
-  const recoveryCandidates = yield* options.store
-    .listRecoveryCandidates()
-    .pipe(Effect.mapError((cause) => persistenceError("查询 Workspace Script 恢复候选", cause)));
-  yield* Effect.forEach(recoveryCandidates, recoverCandidate, { discard: true });
+  yield* Effect.forEach(
+    recovered,
+    (stored) =>
+      Effect.gen(function* () {
+        if (stored.stopOperationId === null) {
+          yield* reviveRecoveredRun(stored);
+          return;
+        }
+        const outcome = yield* recoverWorkspaceScriptStop(stored, stopRecoveryOptions);
+        yield* scheduleStopRecovery(stored, outcome);
+      }),
+    { discard: true },
+  );
 
   const get: WorkspaceScriptServiceShape["get"] = readRun;
 
@@ -505,301 +508,22 @@ export const makeWorkspaceScriptService = Effect.fn("WorkspaceScriptService.make
     } satisfies WorkspaceScriptLogsResult;
   });
 
-  const start: WorkspaceScriptServiceShape["start"] = Effect.fn("WorkspaceScriptService.start")(
-    function* (input) {
-      const workspaceScriptRunId = makeWorkspaceScriptRunId(input.operationId);
-      const idempotencyKey = makeWorkspaceScriptRunIdempotencyKey(input);
-      const earlyExisting = yield* readRun(workspaceScriptRunId);
-      if (Option.isSome(earlyExisting)) {
-        if (
-          earlyExisting.value.idempotencyKey !== idempotencyKey ||
-          earlyExisting.value.worktreePath !== (input.worktreePath ?? null) ||
-          earlyExisting.value.compositionTaskId !== (input.compositionTaskId ?? null) ||
-          earlyExisting.value.compositionRunId !== (input.compositionRunId ?? null)
-        ) {
-          return yield* operationError(
-            "workspace_script_idempotency_conflict",
-            "同一 operationId 已绑定到其他项目、线程或脚本。",
-            { workspaceScriptRunId },
-          );
-        }
-        return earlyExisting.value;
-      }
-
-      const projectResult = yield* options.resolveProject(input.projectId).pipe(Effect.result);
-      if (projectResult._tag === "Failure") {
-        return yield* operationError(
-          "workspace_script_project_lookup_failed",
-          detailFromUnknown(projectResult.failure),
-          { workspaceScriptRunId },
-        );
-      }
-      if (Option.isNone(projectResult.success)) {
-        return yield* operationError(
-          "workspace_script_project_not_found",
-          `项目不存在：${input.projectId}`,
-          { workspaceScriptRunId },
-        );
-      }
-
-      const threadProjectResult = yield* options
-        .resolveThreadProjectId(input.threadId)
-        .pipe(Effect.result);
-      if (threadProjectResult._tag === "Failure") {
-        return yield* operationError(
-          "workspace_script_thread_lookup_failed",
-          detailFromUnknown(threadProjectResult.failure),
-          { workspaceScriptRunId },
-        );
-      }
-      if (
-        Option.isNone(threadProjectResult.success) ||
-        threadProjectResult.success.value !== input.projectId
-      ) {
-        return yield* operationError(
-          "workspace_script_thread_project_mismatch",
-          "线程不存在，或不属于请求中的项目。",
-          { workspaceScriptRunId },
-        );
-      }
-
-      const project = projectResult.success.value;
-      const script = project.scripts.find((candidate) => candidate.id === input.scriptId);
-      if (script === undefined) {
-        return yield* operationError(
-          "workspace_script_not_found",
-          `项目 ${input.projectId} 中不存在脚本 ${input.scriptId}。`,
-          { workspaceScriptRunId },
-        );
-      }
-
-      const worktreePath = input.worktreePath ?? null;
-      const cwd = projectScriptCwd({ project: { cwd: project.workspaceRoot }, worktreePath });
-      const requestedAtUnixMs = yield* currentTimeMillis;
-      const starting: WorkspaceScriptRun = {
-        workspaceScriptRunId,
-        idempotencyKey,
-        projectId: input.projectId,
-        threadId: input.threadId,
-        scriptId: script.id,
-        scriptName: script.name,
-        terminalId: workspaceScriptTerminalId(input.operationId),
-        cwd,
-        worktreePath,
-        status: "starting",
-        healthStatus: "unknown",
-        healthCheckedAtUnixMs: null,
-        healthDetail: null,
-        ports: [],
-        revision: 1,
-        requestedAtUnixMs,
-        startedAtUnixMs: null,
-        finishedAtUnixMs: null,
-        exitCode: null,
-        exitSignal: null,
-        errorCode: null,
-        errorDetail: null,
-        compositionTaskId: input.compositionTaskId ?? null,
-        compositionRunId: input.compositionRunId ?? null,
-        updatedAtUnixMs: requestedAtUnixMs,
-      };
-
-      const claim = yield* options.store
-        .claimStart(starting)
-        .pipe(
-          Effect.mapError((cause) =>
-            cause._tag === "WorkspaceScriptStoreDomainError" &&
-            cause.code === "workspace_script_run_conflict"
-              ? operationError(
-                  "workspace_script_idempotency_conflict",
-                  "同一 operationId 已绑定到其他项目、线程或脚本。",
-                  { workspaceScriptRunId },
-                )
-              : persistenceError("领取 Workspace Script 启动", cause, { workspaceScriptRunId }),
-          ),
-        );
-      if (!claim.claimed) return claim.run;
-
-      const beforeSpawn = yield* readStoredRun(workspaceScriptRunId);
-      if (Option.isSome(beforeSpawn) && beforeSpawn.value.stopOperationId !== null) {
-        return beforeSpawn.value.run;
-      }
-
-      const invocation = workspaceScriptShellInvocation({
-        platform: options.platform,
-        command: script.command,
-        ...(options.windowsComSpec === undefined ? {} : { windowsComSpec: options.windowsComSpec }),
-      });
-      const startResult = yield* options.terminal
-        .runCommand({
-          threadId: input.threadId,
-          terminalId: starting.terminalId,
-          cwd,
-          ...(worktreePath === null ? {} : { worktreePath }),
-          env: projectScriptRuntimeEnv({
-            project: { cwd: project.workspaceRoot },
-            worktreePath,
-          }),
-          ...invocation,
-          owner: workspaceScriptTerminalOwner(starting),
-        })
-        .pipe(Effect.result);
-
-      if (startResult._tag === "Failure") {
-        const failed = yield* updateRun(workspaceScriptRunId, (run, observedAtUnixMs) =>
-          isFinishedWorkspaceScriptRun(run)
-            ? run
-            : {
-                ...run,
-                status: "failed",
-                revision: run.revision + 1,
-                finishedAtUnixMs: observedAtUnixMs,
-                errorCode: "workspace_script_start_failed",
-                errorDetail: detailFromUnknown(startResult.failure),
-                updatedAtUnixMs: observedAtUnixMs,
-              },
-        );
-        return yield* operationError(
-          "workspace_script_start_failed",
-          (Option.isSome(failed) ? failed.value.errorDetail : null) ??
-            detailFromUnknown(startResult.failure),
-          { workspaceScriptRunId },
-        );
-      }
-
-      const afterSpawn = yield* readStoredRun(workspaceScriptRunId);
-      if (
-        Option.isSome(afterSpawn) &&
-        afterSpawn.value.stopOperationId !== null &&
-        isWorkspaceScriptStartCancelled(afterSpawn.value.run)
-      ) {
-        const stopping = yield* updateRun(workspaceScriptRunId, (run, observedAtUnixMs) =>
-          isWorkspaceScriptStartCancelled(run)
-            ? {
-                ...run,
-                status: "stopping",
-                revision: run.revision + 1,
-                startedAtUnixMs: observedAtUnixMs,
-                finishedAtUnixMs: null,
-                errorCode: null,
-                errorDetail: null,
-                updatedAtUnixMs: observedAtUnixMs,
-              }
-            : run,
-        );
-        if (Option.isSome(stopping) && stopping.value.status === "stopping") {
-          const killResult = yield* options.terminal
-            .kill({
-              threadId: stopping.value.threadId,
-              terminalId: stopping.value.terminalId,
-              expectedOwner: workspaceScriptTerminalOwner(stopping.value),
-            })
-            .pipe(Effect.result);
-          if (killResult._tag === "Failure") {
-            yield* updateRun(workspaceScriptRunId, (run, observedAtUnixMs) =>
-              makeWorkspaceScriptStopRetryable(run, observedAtUnixMs),
-            );
-            return yield* operationError(
-              "workspace_script_stop_failed",
-              detailFromUnknown(killResult.failure),
-              { workspaceScriptRunId },
-            );
-          }
-          yield* lifecycleSubscription.awaitPending();
-          return yield* reconcileStop(stopping.value, afterSpawn.value.stopOperationId, true);
-        }
-      }
-
-      const running = yield* updateRun(workspaceScriptRunId, (run, observedAtUnixMs) =>
-        run.status !== "starting"
-          ? run
-          : {
-              ...run,
-              status: "running",
-              revision: run.revision + 1,
-              startedAtUnixMs: observedAtUnixMs,
-              updatedAtUnixMs: observedAtUnixMs,
-            },
-      );
-      return Option.getOrElse(running, () => claim.run);
-    },
-  );
-
-  const reconcileStop = Effect.fn("WorkspaceScriptService.reconcileStop")(function* (
-    run: WorkspaceScriptRun,
-    operationId: string,
-    makeActiveRetryable: boolean,
-  ) {
-    const latest = yield* readRun(run.workspaceScriptRunId);
-    if (Option.isNone(latest)) {
-      return yield* operationError(
-        "workspace_script_run_not_found",
-        `Workspace Script Run 不存在：${run.workspaceScriptRunId}`,
-        { workspaceScriptRunId: run.workspaceScriptRunId },
-      );
-    }
-    if (isFinishedWorkspaceScriptRun(latest.value)) return latest.value;
-
-    const inspection = yield* options.terminal
-      .inspectSessionReceipt({
-        threadId: run.threadId,
-        terminalId: run.terminalId,
-        expectedOwner: workspaceScriptTerminalOwner(run),
-      })
-      .pipe(Effect.result);
-    if (
-      inspection._tag === "Success" &&
-      inspection.success.inspection === "inactive" &&
-      inspection.success.snapshot !== null
-    ) {
-      const terminalSnapshot = inspection.success.snapshot;
-      const settled = yield* updateRun(run.workspaceScriptRunId, (current, observedAtUnixMs) =>
-        makeWorkspaceScriptExited({
-          run: current,
-          stopOperationId: operationId,
-          observedAtUnixMs,
-          exitCode: terminalSnapshot.exitCode,
-          exitSignal: terminalSnapshot.exitSignal,
-        }),
-      );
-      if (Option.isSome(settled)) return settled.value;
-      return yield* operationError(
-        "workspace_script_run_not_found",
-        `Workspace Script Run 不存在：${run.workspaceScriptRunId}`,
-        { workspaceScriptRunId: run.workspaceScriptRunId },
-      );
-    }
-    if (inspection._tag === "Success" && inspection.success.inspection === "missing") {
-      const settled = yield* updateRun(run.workspaceScriptRunId, (current, observedAtUnixMs) =>
-        makeWorkspaceScriptClosed({
-          run: current,
-          stopOperationId: operationId,
-          observedAtUnixMs,
-        }),
-      );
-      if (Option.isSome(settled)) return settled.value;
-      return yield* operationError(
-        "workspace_script_run_not_found",
-        `Workspace Script Run 不存在：${run.workspaceScriptRunId}`,
-        { workspaceScriptRunId: run.workspaceScriptRunId },
-      );
-    }
-
-    if (makeActiveRetryable) {
-      const retryable = yield* updateRun(run.workspaceScriptRunId, (current, observedAtUnixMs) =>
-        makeWorkspaceScriptStopRetryable(current, observedAtUnixMs),
-      );
-      if (Option.isSome(retryable) && isFinishedWorkspaceScriptRun(retryable.value)) {
-        return retryable.value;
-      }
-    }
-    return yield* operationError(
-      "workspace_script_stop_failed",
-      inspection._tag === "Failure"
-        ? detailFromUnknown(inspection.failure)
-        : "终端终止结果尚未确认，请使用相同 operationId 重试。",
-      { workspaceScriptRunId: run.workspaceScriptRunId },
-    );
+  const start: WorkspaceScriptServiceShape["start"] = makeWorkspaceScriptStart({
+    store: options.store,
+    terminal: options.terminal,
+    resolveProject: options.resolveProject,
+    resolveThreadProjectId: options.resolveThreadProjectId,
+    platform: options.platform,
+    ...(options.windowsComSpec === undefined ? {} : { windowsComSpec: options.windowsComSpec }),
+    currentTimeMillis,
+    readRun,
+    getActiveRunByTerminal,
+    updateRun,
+    rejectUnconfirmedStart,
+    makeStopClaimInput,
+    saveStopTransition,
+    recoverStop: (stored) => recoverWorkspaceScriptStop(stored, stopRecoveryOptions),
+    scheduleStopRecovery,
   });
 
   const stop: WorkspaceScriptServiceShape["stop"] = Effect.fn("WorkspaceScriptService.stop")(
@@ -813,23 +537,20 @@ export const makeWorkspaceScriptService = Effect.fn("WorkspaceScriptService.make
         );
       }
 
-      const observedAtUnixMs = Math.max(yield* currentTimeMillis, current.value.updatedAtUnixMs);
-      const stopping: WorkspaceScriptRun =
-        current.value.status === "starting"
-          ? makeWorkspaceScriptStartCancelled(current.value, observedAtUnixMs)
-          : {
-              ...current.value,
-              ...(isFinishedWorkspaceScriptRun(current.value)
-                ? {}
-                : { status: "stopping" as const }),
-              revision: current.value.revision + 1,
-              updatedAtUnixMs: observedAtUnixMs,
-            };
+      const stopClaimInput = yield* makeStopClaimInput(current.value, input.operationId);
+      const stopping: WorkspaceScriptRun = {
+        ...current.value,
+        ...(isFinishedWorkspaceScriptRun(current.value) ? {} : { status: "stopping" as const }),
+        startedAtUnixMs: current.value.startedAtUnixMs ?? current.value.requestedAtUnixMs,
+        revision: current.value.revision + 1,
+        updatedAtUnixMs: stopClaimInput.claimedAtUnixMs,
+      };
       const claim = yield* options.store
         .claimStop({
           run: stopping,
           operationId: input.operationId,
           expectedRevision: input.expectedRevision,
+          ...stopClaimInput,
         })
         .pipe(
           Effect.mapError((cause) =>
@@ -845,33 +566,44 @@ export const makeWorkspaceScriptService = Effect.fn("WorkspaceScriptService.make
                 }),
           ),
         );
-      if (isFinishedWorkspaceScriptRun(claim.run)) return claim.run;
-      if (!claim.claimed) {
-        if (claim.run.status !== "stopping") return claim.run;
-        yield* lifecycleSubscription.awaitPending();
-        return yield* reconcileStop(claim.run, input.operationId, false);
+      if (!claim.claimed || isFinishedWorkspaceScriptRun(claim.run)) {
+        if (!claim.claimed && claim.stopClaim !== null) {
+          yield* scheduleStopRecovery(
+            {
+              run: claim.run,
+              stopOperationId: input.operationId,
+              stopClaim: claim.stopClaim,
+            },
+            { _tag: "Deferred", retryAtUnixMs: claim.stopClaim.expiresAtUnixMs },
+          );
+        }
+        return claim.run;
       }
-
-      const killResult = yield* options.terminal
-        .kill({
-          threadId: claim.run.threadId,
-          terminalId: claim.run.terminalId,
-          expectedOwner: workspaceScriptTerminalOwner(claim.run),
-        })
-        .pipe(Effect.result);
-      if (killResult._tag === "Failure") {
-        yield* updateRun(input.workspaceScriptRunId, (run, observedAtUnixMs) =>
-          makeWorkspaceScriptStopRetryable(run, observedAtUnixMs),
-        );
+      if (claim.stopClaim === null) {
         return yield* operationError(
-          "workspace_script_stop_failed",
-          detailFromUnknown(killResult.failure),
+          "workspace_script_stop_claim_missing",
+          "Workspace Script 停止执行缺少持久 claim。",
           { workspaceScriptRunId: input.workspaceScriptRunId },
         );
       }
 
-      yield* lifecycleSubscription.awaitPending();
-      return yield* reconcileStop(claim.run, input.operationId, true);
+      const outcome = yield* executeWorkspaceScriptStop({
+        run: claim.run,
+        stopOperationId: input.operationId,
+        stopClaim: claim.stopClaim,
+        currentTimeMillis,
+        readRun,
+        saveStopTransition,
+        terminal: options.terminal,
+      });
+      if (outcome._tag === "Settled") return outcome.run;
+      return yield* operationError(
+        "workspace_script_stop_failed",
+        outcome.killFailure === null
+          ? "终端停止结果未获得同一 owner 会话的确定性退出回执。"
+          : detailFromUnknown(outcome.killFailure),
+        { workspaceScriptRunId: input.workspaceScriptRunId },
+      );
     },
   );
 
@@ -919,7 +651,7 @@ export const make = Effect.gen(function* () {
               (cause) => new WorkspaceScriptDependencyError({ operation: "getHistory", cause }),
             ),
           ),
-      subscribeLifecycle: terminalManager.subscribeLifecycle,
+      subscribe: terminalManager.subscribe,
     },
     resolveProject: (projectId) =>
       projectionSnapshotQuery

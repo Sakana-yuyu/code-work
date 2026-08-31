@@ -10,6 +10,7 @@ export const WorkspaceScriptStoreErrorCode = Schema.Literals([
   "workspace_script_run_not_found",
   "workspace_script_run_conflict",
   "workspace_script_revision_conflict",
+  "workspace_script_recovery_time_invalid",
   "workspace_script_stop_operation_conflict",
 ]);
 export type WorkspaceScriptStoreErrorCode = typeof WorkspaceScriptStoreErrorCode.Type;
@@ -40,9 +41,20 @@ export interface WorkspaceScriptRunClaimResult {
   readonly claimed: boolean;
 }
 
+export interface WorkspaceScriptStopClaim {
+  readonly ownerId: string;
+  readonly epoch: number;
+  readonly expiresAtUnixMs: number;
+}
+
+export interface WorkspaceScriptStopClaimResult extends WorkspaceScriptRunClaimResult {
+  readonly stopClaim: WorkspaceScriptStopClaim | null;
+}
+
 export interface StoredWorkspaceScriptRun {
   readonly run: WorkspaceScriptRun;
   readonly stopOperationId: string | null;
+  readonly stopClaim: WorkspaceScriptStopClaim | null;
 }
 
 export interface WorkspaceScriptRunTransitionInput {
@@ -52,6 +64,19 @@ export interface WorkspaceScriptRunTransitionInput {
 
 export interface WorkspaceScriptStopClaimInput extends WorkspaceScriptRunTransitionInput {
   readonly operationId: string;
+  readonly claimOwnerId: string;
+  readonly claimedAtUnixMs: number;
+  readonly claimExpiresAtUnixMs: number;
+}
+
+export interface WorkspaceScriptStopTransitionInput extends WorkspaceScriptRunTransitionInput {
+  readonly operationId: string;
+  readonly claimOwnerId: string;
+  readonly claimEpoch: number;
+}
+
+export interface WorkspaceScriptRecoveryInput {
+  readonly observedAtUnixMs: number;
 }
 
 export interface WorkspaceScriptStoreShape {
@@ -63,7 +88,10 @@ export interface WorkspaceScriptStoreShape {
   ) => Effect.Effect<WorkspaceScriptRun, WorkspaceScriptStoreError>;
   readonly claimStop: (
     input: WorkspaceScriptStopClaimInput,
-  ) => Effect.Effect<WorkspaceScriptRunClaimResult, WorkspaceScriptStoreError>;
+  ) => Effect.Effect<WorkspaceScriptStopClaimResult, WorkspaceScriptStoreError>;
+  readonly saveStopTransition: (
+    input: WorkspaceScriptStopTransitionInput,
+  ) => Effect.Effect<Option.Option<WorkspaceScriptRun>, WorkspaceScriptStoreError>;
   readonly getRun: (
     workspaceScriptRunId: string,
   ) => Effect.Effect<Option.Option<WorkspaceScriptRun>, WorkspaceScriptStoreError>;
@@ -78,10 +106,9 @@ export interface WorkspaceScriptStoreShape {
   readonly listRuns: (
     request: WorkspaceScriptListRequest,
   ) => Effect.Effect<ReadonlyArray<WorkspaceScriptRun>, WorkspaceScriptStoreError>;
-  readonly listRecoveryCandidates: () => Effect.Effect<
-    ReadonlyArray<StoredWorkspaceScriptRun>,
-    WorkspaceScriptStoreError
-  >;
+  readonly recoverInterrupted: (
+    input: WorkspaceScriptRecoveryInput,
+  ) => Effect.Effect<ReadonlyArray<StoredWorkspaceScriptRun>, WorkspaceScriptStoreError>;
 }
 
 export class WorkspaceScriptStore extends Context.Service<

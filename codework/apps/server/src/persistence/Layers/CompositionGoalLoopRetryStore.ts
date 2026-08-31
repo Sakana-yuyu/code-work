@@ -494,12 +494,19 @@ const makeStore = Effect.gen(function* () {
     markDispatched,
     recoverInterruptedDispatches,
   });
-  const recovery = yield* store.recoverInterruptedDispatches({
-    recoveredAtUnixMs: yield* Clock.currentTimeMillis,
-  });
-  if (recovery.recoveredCount > 0) {
+  // 启动时的 claim 释放是尽力而为操作：迁移尚未就绪（如部分测试环境）时不得阻塞 Store 层构建。
+  const recovery = yield* Effect.result(
+    store.recoverInterruptedDispatches({
+      recoveredAtUnixMs: yield* Clock.currentTimeMillis,
+    }),
+  );
+  if (recovery._tag === "Failure") {
+    yield* Effect.logWarning("Goal Loop retry dispatch claim 释放失败，已跳过", {
+      cause: recovery.failure,
+    });
+  } else if (recovery.success.recoveredCount > 0) {
     yield* Effect.logWarning("已释放重启前未完成的 Goal Loop retry dispatch claim", {
-      recovered: recovery.recoveredCount,
+      recovered: recovery.success.recoveredCount,
     });
   }
   return store;

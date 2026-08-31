@@ -312,7 +312,13 @@ export const awaitToolInvocationRecovery = Effect.gen(function* () {
 export const awaitGoalLoopRetryRecovery = Effect.gen(function* () {
   const recovery =
     yield* CompositionGoalLoopRetryStartupRecovery.CompositionGoalLoopRetryStartupRecovery;
-  return yield* runStartupPhase("goal-loop-retries.recover", recovery.awaitRecovered);
+  const outcome = yield* Effect.result(
+    runStartupPhase("goal-loop-retries.recover", recovery.awaitRecovered),
+  );
+  if (outcome._tag === "Failure") {
+    // 启动恢复是尽力而为的操作：失败只记录告警，不得阻塞服务启动（intent 仍在库中，下次启动重试）。
+    yield* Effect.logWarning("Goal Loop retry 启动恢复失败，已跳过且不阻塞启动。");
+  }
 });
 
 const RUN_START_TARGET_PROBE_TIMEOUT = Duration.seconds(5);
@@ -408,7 +414,15 @@ export const awaitRunStartRecovery = Effect.gen(function* () {
     CompositionRunStartStartupRecovery.CompositionRunStartStartupRecovery,
   );
   if (Option.isNone(recovery)) return;
-  return yield* runStartupPhase("composition-run-starts.recover", recovery.value.awaitRecovered);
+  const outcome = yield* Effect.result(
+    runStartupPhase("composition-run-starts.recover", recovery.value.awaitRecovered),
+  );
+  if (outcome._tag === "Failure") {
+    // 启动恢复是尽力而为的操作：失败只记录告警，不得阻塞服务启动（intent 仍在库中，调度器会再次尝试）。
+    yield* Effect.logWarning("Run Start 启动恢复失败，已跳过且不阻塞启动。");
+    return;
+  }
+  return outcome.success;
 });
 
 export const runCompositionRunStartStartupSequence = <

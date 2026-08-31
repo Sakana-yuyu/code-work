@@ -254,6 +254,7 @@ export class TerminalManager extends Context.Service<
       input: TerminalInspectSessionInput,
     ) => Effect.Effect<TerminalSessionInspection, TerminalError>;
 
+    /** 原子读取 owner-bound 会话状态，供 Workspace Script 状态确认使用。 */
     readonly inspectSessionReceipt: (
       input: TerminalInspectSessionInput,
     ) => Effect.Effect<TerminalSessionInspectionReceipt, TerminalError>;
@@ -361,7 +362,12 @@ export interface TerminalInspectSessionInput {
   readonly expectedOwner?: TerminalSessionOwner;
 }
 
-export type TerminalSessionInspection = "active" | "inactive" | "missing";
+export type TerminalSessionInspection = "active" | "inactive" | "missing" | "quarantined";
+
+export interface TerminalSessionInspectionReceipt {
+  readonly inspection: TerminalSessionInspection;
+  readonly snapshot: TerminalSessionSnapshot | null;
+}
 
 export interface TerminalSessionInspectionReceipt {
   readonly inspection: TerminalSessionInspection;
@@ -3510,6 +3516,13 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
   const runCommand: TerminalManager["Service"]["runCommand"] = (input) =>
     withThreadLock(input.threadId, runCommandLocked(input));
 
+  const sessionInspection = (session: TerminalSessionState): TerminalSessionInspection =>
+    session.process !== null && !isSupervisedProcessStatus(session.status)
+      ? "quarantined"
+      : session.process !== null
+        ? "active"
+        : "inactive";
+
   const inspectSessionReceipt: TerminalManager["Service"]["inspectSessionReceipt"] = (input) =>
     withThreadLock(
       input.threadId,
@@ -3520,10 +3533,7 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
         }
         yield* assertSessionOwner(session.value, input.expectedOwner);
         return {
-          inspection:
-            session.value.process !== null && isSupervisedProcessStatus(session.value.status)
-              ? ("active" as const)
-              : ("inactive" as const),
+          inspection: sessionInspection(session.value),
           snapshot: snapshot(session.value),
         };
       }),
