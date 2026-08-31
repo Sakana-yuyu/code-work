@@ -1,5 +1,6 @@
 import * as Clock from "effect/Clock";
 import * as Effect from "effect/Effect";
+import type * as Result from "effect/Result";
 
 import type {
   CompositionRunStartIntent,
@@ -29,7 +30,7 @@ type CompositionRunStartDispatchInput<A, F extends StartFailure, EAccepted, ERej
   readonly intent: CompositionRunStartIntent;
   readonly policy: CompositionRunStartRecoveryPolicy;
   readonly capabilityGrantIds: ReadonlyArray<string>;
-  readonly start: Effect.Effect<
+  readonly startResult: Result.Result<
     { readonly runtimeTaskId?: string; readonly capabilityHandshakeId?: string },
     F
   >;
@@ -40,6 +41,19 @@ type CompositionRunStartDispatchInput<A, F extends StartFailure, EAccepted, ERej
     recordAccepted: Effect.Effect<CompositionRunStartIntent, CompositionRunStartStoreError>,
   ) => Effect.Effect<CompositionRunStartAcceptedProjection<A>, EAccepted>;
   readonly onRejected: (failure: F) => Effect.Effect<A, ERejected>;
+  /** 将 rejected 结果与业务失败投影置于同一持久化事务。 */
+  readonly onRejectedWithOutcome?: (
+    failure: F,
+    settleRejected: Effect.Effect<CompositionRunStartIntent, CompositionRunStartStoreError>,
+  ) => Effect.Effect<
+    { readonly rejected: CompositionRunStartIntent; readonly result: A },
+    ERejected
+  >;
+  /** receipt 无效时先原子落业务失败投影，再向调用方返回原始校验失败。 */
+  readonly onReceiptFailureWithQuarantine?: (
+    failure: F,
+    quarantine: Effect.Effect<CompositionRunStartIntent, CompositionRunStartStoreError>,
+  ) => Effect.Effect<void, ERejected>;
   readonly mapReceiptFailure: (failure: CompositionRunStartReceiptError) => F;
 };
 
@@ -47,11 +61,11 @@ export const dispatchCompositionRunStart = <A, F extends StartFailure, EAccepted
   input: CompositionRunStartDispatchInput<A, F, EAccepted, ERejected>,
 ) =>
   Effect.gen(function* () {
-    const startResult = yield* Effect.result(input.start);
+    const startResult = input.startResult;
     if (startResult._tag === "Failure") {
       const settledAtUnixMs = yield* Clock.currentTimeMillis;
       const rejected = normalizeCompositionRunStartRejectedOutcome(startResult.failure);
-      yield* input.store.settleRejected({
+      const settleRejected = input.store.settleRejected({
         runId: input.intent.runId,
         expectedRevision: input.intent.revision,
         claimId: input.intent.claimId ?? "",
@@ -59,7 +73,12 @@ export const dispatchCompositionRunStart = <A, F extends StartFailure, EAccepted
         ...rejected,
         settledAtUnixMs,
       });
-      return yield* input.onRejected(startResult.failure);
+      const atomicProjection = input.onRejectedWithOutcome;
+      if (atomicProjection === undefined) {
+        yield* settleRejected;
+        return yield* input.onRejected(startResult.failure);
+      }
+      return (yield* atomicProjection(startResult.failure, settleRejected)).result;
     }
 
     const receiptResult = yield* Effect.result(
@@ -71,7 +90,7 @@ export const dispatchCompositionRunStart = <A, F extends StartFailure, EAccepted
     );
     if (receiptResult._tag === "Failure") {
       const quarantinedAtUnixMs = yield* Clock.currentTimeMillis;
-      yield* input.store.quarantine({
+      const quarantine = input.store.quarantine({
         runId: input.intent.runId,
         expectedRevision: input.intent.revision,
         claimId: input.intent.claimId ?? "",
@@ -80,7 +99,13 @@ export const dispatchCompositionRunStart = <A, F extends StartFailure, EAccepted
         outcomeDetail: receiptResult.failure.detail,
         quarantinedAtUnixMs,
       });
-      return yield* Effect.fail(input.mapReceiptFailure(receiptResult.failure));
+      const mappedFailure = input.mapReceiptFailure(receiptResult.failure);
+      if (input.onReceiptFailureWithQuarantine === undefined) {
+        yield* quarantine;
+      } else {
+        yield* input.onReceiptFailureWithQuarantine(mappedFailure, quarantine);
+      }
+      return yield* Effect.fail(mappedFailure);
     }
 
     const acceptedAtUnixMs = yield* Clock.currentTimeMillis;

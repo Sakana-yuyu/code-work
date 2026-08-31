@@ -13,8 +13,10 @@ import {
   makeCompositionRunStartDigests,
   type CompositionRunStartRecoveryPolicy,
 } from "./CompositionRunStartLifecycle.ts";
-
-export const COMPOSITION_RUN_START_OWNER_LEASE_MS = 60_000;
+import {
+  COMPOSITION_RUN_START_OWNER_LEASE_MS,
+  withCompositionRunStartOwnerLease,
+} from "./CompositionRunStartOwnerLease.ts";
 
 export type CompositionRunStartSetup = {
   readonly taskId: string;
@@ -200,6 +202,17 @@ export const runCompositionWithPersistedStart = <
     EAccepted
   >;
   readonly onRejected: (failure: F) => Effect.Effect<A, ERejected>;
+  readonly onRejectedWithOutcome?: (
+    failure: F,
+    settleRejected: Effect.Effect<CompositionRunStartIntent, CompositionRunStartStoreError>,
+  ) => Effect.Effect<
+    { readonly rejected: CompositionRunStartIntent; readonly result: A },
+    ERejected
+  >;
+  readonly onReceiptFailureWithQuarantine?: (
+    failure: F,
+    quarantine: Effect.Effect<CompositionRunStartIntent, CompositionRunStartStoreError>,
+  ) => Effect.Effect<void, ERejected>;
   readonly makeFailure: (failure: StartFailure) => F;
 }) =>
   Effect.gen(function* () {
@@ -269,13 +282,16 @@ export const runCompositionWithPersistedStart = <
           );
         }
 
+        const startResult = yield* restore(
+          withCompositionRunStartOwnerLease(store, intent, input.start),
+        );
         return yield* restore(
           dispatchCompositionRunStart({
             store,
             intent,
             policy: input.policy ?? DEFAULT_COMPOSITION_RUN_START_RECOVERY_POLICY,
             capabilityGrantIds: input.capabilityGrantIds,
-            start: input.start,
+            startResult,
             onAccepted: (receipt) =>
               input.onAccepted({
                 ...(receipt.runtimeTaskId === null ? {} : { runtimeTaskId: receipt.runtimeTaskId }),
@@ -300,6 +316,12 @@ export const runCompositionWithPersistedStart = <
                     ),
                 }),
             onRejected: input.onRejected,
+            ...(input.onRejectedWithOutcome === undefined
+              ? {}
+              : { onRejectedWithOutcome: input.onRejectedWithOutcome }),
+            ...(input.onReceiptFailureWithQuarantine === undefined
+              ? {}
+              : { onReceiptFailureWithQuarantine: input.onReceiptFailureWithQuarantine }),
             mapReceiptFailure: (failure) =>
               input.makeFailure({ code: failure.code, detail: failure.detail }),
           }),
