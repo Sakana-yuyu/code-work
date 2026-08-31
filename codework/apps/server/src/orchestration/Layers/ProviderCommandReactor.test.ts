@@ -38,6 +38,8 @@ import { ProviderAdapterRequestError } from "../../provider/Errors.ts";
 import { OrchestrationEventStoreLive } from "../../persistence/Layers/OrchestrationEventStore.ts";
 import { OrchestrationCommandReceiptRepositoryLive } from "../../persistence/Layers/OrchestrationCommandReceipts.ts";
 import { SqlitePersistenceMemory } from "../../persistence/Layers/Sqlite.ts";
+import { ThreadGoalStoreLive } from "../../persistence/Layers/ThreadGoalStore.ts";
+import { ThreadGoalStore } from "../../persistence/Services/ThreadGoalStore.ts";
 import {
   ProviderService,
   type ProviderServiceShape,
@@ -93,7 +95,7 @@ async function waitFor(
 
 describe("ProviderCommandReactor", () => {
   let runtime: ManagedRuntime.ManagedRuntime<
-    OrchestrationEngineService | ProviderCommandReactor | ProjectionSnapshotQuery,
+    OrchestrationEngineService | ProviderCommandReactor | ProjectionSnapshotQuery | ThreadGoalStore,
     unknown
   > | null = null;
   let scope: Scope.Closeable | null = null;
@@ -406,6 +408,12 @@ describe("ProviderCommandReactor", () => {
     const layer = ProviderCommandReactorLive.pipe(
       Layer.provideMerge(reactorOrchestrationLayer),
       Layer.provideMerge(projectionSnapshotLayer),
+      Layer.provideMerge(
+        ThreadGoalStoreLive.pipe(
+          Layer.provideMerge(SqlitePersistenceMemory),
+          Layer.provide(NodeServices.layer),
+        ),
+      ),
       Layer.provideMerge(Layer.succeed(ProviderService, service)),
       Layer.provideMerge(makeProviderRegistryLayer(providerSnapshots as never)),
       Layer.provideMerge(
@@ -439,6 +447,7 @@ describe("ProviderCommandReactor", () => {
     const engine = await runtime.runPromise(Effect.service(OrchestrationEngineService));
     const snapshotQuery = await runtime.runPromise(Effect.service(ProjectionSnapshotQuery));
     const reactor = await runtime.runPromise(Effect.service(ProviderCommandReactor));
+    const goalStore = await runtime.runPromise(Effect.service(ThreadGoalStore));
     const runEffect = <A, E>(effect: Effect.Effect<A, E>) => runtime!.runPromise(effect);
 
     await Effect.runPromise(
@@ -526,6 +535,7 @@ describe("ProviderCommandReactor", () => {
       stateDir,
       drain,
       runEffect,
+      goalStore,
       get titleRegenerationCompletionDispatchAttempts() {
         return titleRegenerationCompletionDispatchAttempts;
       },
@@ -570,6 +580,53 @@ describe("ProviderCommandReactor", () => {
     expect(thread?.session?.threadId).toBe("thread-1");
     expect(thread?.session?.status).toBe("starting");
     expect(thread?.session?.runtimeMode).toBe("approval-required");
+  });
+
+  it("injects the active thread Goal into the provider request without changing history", async () => {
+    const harness = await createHarness();
+    const now = "2026-01-01T00:00:00.000Z";
+    const threadId = ThreadId.make("thread-1");
+
+    await harness.runEffect(
+      harness.goalStore.set({
+        threadId,
+        objective: "Keep the migration reversible",
+        tokenBudget: null,
+      }),
+    );
+    await Effect.runPromise(
+      harness.engine.dispatch({
+        type: "thread.turn.start",
+        commandId: CommandId.make("cmd-turn-start-goal"),
+        threadId,
+        message: {
+          messageId: asMessageId("user-message-goal"),
+          role: "user",
+          text: "show the next safe step",
+          attachments: [],
+        },
+        interactionMode: DEFAULT_PROVIDER_INTERACTION_MODE,
+        runtimeMode: "approval-required",
+        createdAt: now,
+      }),
+    );
+
+    await waitFor(() => harness.sendTurn.mock.calls.length === 1);
+    const providerRequest = harness.sendTurn.mock.calls[0]?.[0];
+    const providerInput =
+      typeof providerRequest === "object" &&
+      providerRequest !== null &&
+      "input" in providerRequest &&
+      typeof providerRequest.input === "string"
+        ? providerRequest.input
+        : undefined;
+    expect(providerInput).toContain("Keep the migration reversible");
+    expect(providerInput).toContain("show the next safe step");
+
+    const thread = (await harness.readModel()).threads.find((entry) => entry.id === threadId);
+    expect(
+      thread?.messages.some((message) => message.text.includes("Keep the migration reversible")),
+    ).toBe(false);
   });
 
   effectIt.effect("projects starting before a slow provider session finishes", () =>
@@ -3133,7 +3190,7 @@ describe("ProviderCommandReactor", () => {
       }),
     );
 
-    await Effect.runPromise(
+    await harness.runEffect(
       harness.engine.dispatch({
         type: "thread.user-input.respond",
         commandId: CommandId.make("cmd-user-input-respond-stale"),

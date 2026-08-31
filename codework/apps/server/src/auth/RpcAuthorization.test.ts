@@ -86,6 +86,20 @@ describe("RPC authorization scopes", () => {
     }
   });
 
+  it("keeps thread Goal reads separate from lifecycle mutations", () => {
+    for (const method of ["thread/goal/get", "thread/goal/subscribe"]) {
+      expect(requiredScopeForRpcMethod(method)).toBe(AuthOrchestrationReadScope);
+    }
+    for (const method of [
+      "thread/goal/set",
+      "thread/goal/pause",
+      "thread/goal/resume",
+      "thread/goal/clear",
+    ]) {
+      expect(requiredScopeForRpcMethod(method)).toBe(AuthOrchestrationOperateScope);
+    }
+  });
+
   it("reads the reviewer menu under the same scope as the pull request it belongs to", () => {
     // The candidate list is a read like the detail beside it, and asking somebody for a review is
     // a write like every other pull request operation.

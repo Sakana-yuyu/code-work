@@ -10,6 +10,7 @@ import {
   ThreadId,
   type ProviderSession,
   type RuntimeMode,
+  type ThreadGoal,
   type TurnId,
 } from "@codework/contracts";
 import { isTemporaryWorktreeBranch, WORKTREE_BRANCH_PREFIX } from "@codework/shared/git";
@@ -47,6 +48,7 @@ import {
 } from "../../serverSettings.ts";
 import { VcsStatusBroadcaster } from "../../vcs/VcsStatusBroadcaster.ts";
 import { GitWorkflowService } from "../../git/GitWorkflowService.ts";
+import { ThreadGoalStore } from "../../persistence/Services/ThreadGoalStore.ts";
 const isProviderAdapterRequestError = Schema.is(ProviderAdapterRequestError);
 const isProviderDriverKind = Schema.is(ProviderDriverKind);
 
@@ -67,6 +69,10 @@ type ProviderIntentEvent = Extract<
 function toNonEmptyProviderInput(value: string | undefined): string | undefined {
   const normalized = value?.trim();
   return normalized && normalized.length > 0 ? normalized : undefined;
+}
+
+function formatThreadGoalProviderInput(objective: string, userInput: string | undefined): string {
+  return ["[Thread Goal]", objective, "", "[User Request]", userInput ?? ""].join("\n");
 }
 
 function mapProviderSessionStatusToOrchestrationStatus(
@@ -306,6 +312,7 @@ const make = Effect.gen(function* () {
   const orchestrationEngine = yield* OrchestrationEngineService;
   const projectionSnapshotQuery = yield* ProjectionSnapshotQuery;
   const providerService = yield* ProviderService;
+  const threadGoalStore = yield* Effect.serviceOption(ThreadGoalStore);
   const providerRegistry = yield* ProviderRegistry;
   const gitWorkflow = yield* GitWorkflowService;
   const fileSystem = yield* FileSystem.FileSystem;
@@ -794,6 +801,25 @@ const make = Effect.gen(function* () {
     }
     const normalizedInput = toNonEmptyProviderInput(input.messageText);
     const normalizedAttachments = input.attachments ?? [];
+    const providerInput = Option.isNone(threadGoalStore)
+      ? normalizedInput
+      : yield* threadGoalStore.value.get(input.threadId).pipe(
+          Effect.catchCause((cause) =>
+            Effect.logWarning("provider command reactor failed to read thread Goal", {
+              threadId: input.threadId,
+              cause: Cause.pretty(cause),
+            }).pipe(Effect.as(Option.none<ThreadGoal>())),
+          ),
+          Effect.map(
+            Option.match({
+              onNone: () => normalizedInput,
+              onSome: (goal) =>
+                goal.status === "complete"
+                  ? normalizedInput
+                  : formatThreadGoalProviderInput(goal.objective, normalizedInput),
+            }),
+          ),
+        );
     const activeSession = yield* providerService
       .listSessions()
       .pipe(
@@ -824,7 +850,7 @@ const make = Effect.gen(function* () {
 
     return {
       threadId: input.threadId,
-      ...(normalizedInput ? { input: normalizedInput } : {}),
+      ...(providerInput ? { input: providerInput } : {}),
       ...(normalizedAttachments.length > 0 ? { attachments: normalizedAttachments } : {}),
       ...(modelForTurn !== undefined ? { modelSelection: modelForTurn } : {}),
       ...(input.interactionMode !== undefined ? { interactionMode: input.interactionMode } : {}),
