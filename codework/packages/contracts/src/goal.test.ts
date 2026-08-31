@@ -13,6 +13,7 @@ import {
 import { ThreadId } from "./baseSchemas.ts";
 
 const decodeThreadGoal = Schema.decodeUnknownSync(ThreadGoal);
+const decodeThreadGoalSetInput = Schema.decodeUnknownSync(ThreadGoalSetInput);
 const decodeThreadGoalStatus = Schema.decodeUnknownSync(ThreadGoalStatus);
 const decodeThreadGoalEvent = Schema.decodeUnknownSync(ThreadGoalEvent);
 
@@ -44,6 +45,30 @@ describe("Thread Goal contracts", () => {
     expect(Object.keys(ThreadGoalPauseInput.fields)).toEqual(["threadId"]);
     expect(Object.keys(ThreadGoalResumeInput.fields)).toEqual(["threadId"]);
     expect(Object.keys(ThreadGoalClearInput.fields)).toEqual(["threadId"]);
+  });
+
+  it("enforces objective boundaries at the write contract", () => {
+    const valid = decodeThreadGoalSetInput({
+      threadId: ThreadId.make("thread-1"),
+      objective: "Ship it",
+      tokenBudget: null,
+    });
+    expect(valid.objective).toBe("Ship it");
+    expect(() =>
+      decodeThreadGoalSetInput({ threadId: "thread-1", objective: "   ", tokenBudget: null }),
+    ).toThrow();
+    expect(() =>
+      decodeThreadGoalSetInput({
+        threadId: "thread-1",
+        objective: `line${String.fromCharCode(10)}break`,
+      }),
+    ).toThrow();
+    expect(() =>
+      decodeThreadGoalSetInput({ threadId: "thread-1", objective: "a".repeat(4_001) }),
+    ).toThrow();
+    expect(
+      decodeThreadGoalSetInput({ threadId: "thread-1", objective: "a".repeat(4_000) }).objective,
+    ).toHaveLength(4_000);
   });
 
   it("exposes the canonical states and update/clear events", () => {
