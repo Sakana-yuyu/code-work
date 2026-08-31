@@ -35,6 +35,7 @@ import { CompositionSquadExecutionStoreLive } from "./persistence/Layers/Composi
 import { CompositionAutomationStoreLive } from "./persistence/Layers/CompositionAutomationStore.ts";
 import { CompositionToolInvocationStoreLive } from "./persistence/Layers/CompositionToolInvocationStore.ts";
 import { WorkspaceScriptStoreLive } from "./persistence/Layers/WorkspaceScriptStore.ts";
+import { ThreadGoalStoreLive } from "./persistence/Layers/ThreadGoalStore.ts";
 import * as ServerLifecycleEvents from "./serverLifecycleEvents.ts";
 import * as AnalyticsService from "./telemetry/AnalyticsService.ts";
 import { ProviderSessionDirectoryLive } from "./provider/Layers/ProviderSessionDirectory.ts";
@@ -315,6 +316,8 @@ const ProviderLayerLive = ProviderServiceLive.pipe(
 );
 
 const PersistenceLayerLive = Layer.empty.pipe(Layer.provideMerge(SqlitePersistenceLayerLive));
+
+const ThreadGoalStoreLayerLive = ThreadGoalStoreLive.pipe(Layer.provideMerge(PersistenceLayerLive));
 
 const VcsDriverRegistryLayerLive = VcsDriverRegistry.layer.pipe(
   Layer.provide(VcsProjectConfig.layer),
@@ -637,7 +640,7 @@ const RuntimeCoreDependenciesWithoutWorkspaceScriptLive = ReactorLayerLive.pipe(
   Layer.provideMerge(Layer.mergeAll(TerminalLayerLive, PreviewLayerLive)),
   Layer.provideMerge(PreviewAutomationBrokerLayerLive),
   Layer.provideMerge(CompositionMcpRuntimeServiceLayerLive),
-  Layer.provideMerge(PersistenceLayerLive),
+  Layer.provideMerge(Layer.mergeAll(PersistenceLayerLive, ThreadGoalStoreLayerLive)),
   Layer.provideMerge(Keybindings.layer),
   Layer.provideMerge(ProviderRegistryLive),
   // The instance registry is the new routing keystone — text generation,

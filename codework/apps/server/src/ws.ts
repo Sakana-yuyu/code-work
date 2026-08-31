@@ -60,6 +60,7 @@ import {
   CompositionMcpRuntimeRpcError,
   CompositionTaskRpcError,
   SupplierAdminRpcError,
+  ThreadGoalRpcError,
   ThreadId,
   type TerminalAttachStreamEvent,
   type TerminalError,
@@ -119,6 +120,7 @@ import * as CompositionSquadService from "./composition/CompositionSquadService.
 import * as CompositionSupplierRegistryProjection from "./composition/CompositionSupplierRegistryProjection.ts";
 import { CompositionTaskInputStore } from "./persistence/Services/CompositionTaskInputStore.ts";
 import { CompositionTaskStore } from "./persistence/Services/CompositionTaskStore.ts";
+import { ThreadGoalStore } from "./persistence/Services/ThreadGoalStore.ts";
 import * as CompositionTaskGraphExecutor from "./composition/CompositionTaskGraphExecutor.ts";
 import * as CompositionToolBroker from "./composition/ToolBroker.ts";
 import * as CompositionRuntimeToolBridge from "./composition/CompositionRuntimeToolBridge.ts";
@@ -175,6 +177,7 @@ import * as RelayClient from "@codework/shared/relayClient";
 const isOrchestrationDispatchCommandError = Schema.is(OrchestrationDispatchCommandError);
 const isCompositionTaskRpcError = Schema.is(CompositionTaskRpcError);
 const isCompositionMcpRuntimeRpcError = Schema.is(CompositionMcpRuntimeRpcError);
+const isThreadGoalRpcError = Schema.is(ThreadGoalRpcError);
 
 const nowIso = Effect.map(DateTime.now, DateTime.formatIso);
 const CONFIG_DISCOVERY_TIMEOUT = Duration.seconds(5);
@@ -562,6 +565,7 @@ const makeWsRpcLayer = (
       const workspaceScriptService = yield* Effect.serviceOption(
         WorkspaceScriptService.WorkspaceScriptService,
       );
+      const threadGoalStore = yield* Effect.serviceOption(ThreadGoalStore);
       const compositionAgentDrivers = yield* Effect.serviceOption(
         CompositionAgentDriverRegistry.CompositionAgentDriverRegistryService,
       );
@@ -612,6 +616,64 @@ const makeWsRpcLayer = (
           detail: "Workspace Script 运行记录不存在。",
           workspaceScriptRunId,
         });
+      const threadGoalUnavailable = () =>
+        new ThreadGoalRpcError({
+          code: "persistence-failed",
+          message: "当前运行时未提供线程 Goal 能力。",
+        });
+      const threadGoalError = (error: unknown) => {
+        if (isThreadGoalRpcError(error)) return error;
+        const code =
+          typeof error === "object" && error !== null && "code" in error
+            ? (error as { readonly code?: unknown }).code
+            : undefined;
+        const supportedCodes = new Set([
+          "thread-not-found",
+          "goal-not-found",
+          "invalid-input",
+          "invalid-transition",
+          "persistence-failed",
+          "stale-version",
+        ] as const);
+        const normalizedCode =
+          typeof code === "string" && supportedCodes.has(code as never)
+            ? (code as
+                | "thread-not-found"
+                | "goal-not-found"
+                | "invalid-input"
+                | "invalid-transition"
+                | "persistence-failed"
+                | "stale-version")
+            : "persistence-failed";
+        const messageByCode = {
+          "thread-not-found": "线程不存在。",
+          "goal-not-found": "线程没有可操作的 Goal。",
+          "invalid-input": "线程 Goal 输入无效。",
+          "invalid-transition": "线程 Goal 状态迁移无效。",
+          "stale-version": "线程 Goal 已被其他操作更新，请刷新后重试。",
+          "persistence-failed": "线程 Goal 持久化失败。",
+        } as const;
+        return new ThreadGoalRpcError({
+          code: normalizedCode,
+          message: messageByCode[normalizedCode],
+        });
+      };
+      const ensureThreadGoalThread = (threadId: ThreadId) =>
+        projectionSnapshotQuery.getThreadShellById(threadId).pipe(
+          Effect.mapError(threadGoalError),
+          Effect.flatMap(
+            Option.match({
+              onNone: () =>
+                Effect.fail(
+                  new ThreadGoalRpcError({
+                    code: "thread-not-found",
+                    message: "线程不存在。",
+                  }),
+                ),
+              onSome: () => Effect.succeed(undefined),
+            }),
+          ),
+        );
       const compositionTaskError = (error: unknown) => {
         if (isCompositionTaskRpcError(error)) return error;
         if (typeof error === "object" && error !== null) {
@@ -1791,6 +1853,78 @@ const makeWsRpcLayer = (
                 afterSnapshot,
               );
             }),
+            { "rpc.aggregate": "orchestration" },
+          ),
+        [ORCHESTRATION_WS_METHODS.getThreadGoal]: (input) =>
+          observeRpcEffect(
+            ORCHESTRATION_WS_METHODS.getThreadGoal,
+            Option.isNone(threadGoalStore)
+              ? Effect.fail(threadGoalUnavailable())
+              : ensureThreadGoalThread(input.threadId).pipe(
+                  Effect.andThen(threadGoalStore.value.get(input.threadId)),
+                  Effect.map(
+                    Option.match({
+                      onNone: () => null,
+                      onSome: (goal) => goal,
+                    }),
+                  ),
+                  Effect.mapError(threadGoalError),
+                ),
+            { "rpc.aggregate": "orchestration" },
+          ),
+        [ORCHESTRATION_WS_METHODS.setThreadGoal]: (input) =>
+          observeRpcEffect(
+            ORCHESTRATION_WS_METHODS.setThreadGoal,
+            Option.isNone(threadGoalStore)
+              ? Effect.fail(threadGoalUnavailable())
+              : ensureThreadGoalThread(input.threadId).pipe(
+                  Effect.andThen(threadGoalStore.value.set(input)),
+                  Effect.mapError(threadGoalError),
+                ),
+            { "rpc.aggregate": "orchestration" },
+          ),
+        [ORCHESTRATION_WS_METHODS.pauseThreadGoal]: (input) =>
+          observeRpcEffect(
+            ORCHESTRATION_WS_METHODS.pauseThreadGoal,
+            Option.isNone(threadGoalStore)
+              ? Effect.fail(threadGoalUnavailable())
+              : ensureThreadGoalThread(input.threadId).pipe(
+                  Effect.andThen(threadGoalStore.value.pause(input.threadId)),
+                  Effect.mapError(threadGoalError),
+                ),
+            { "rpc.aggregate": "orchestration" },
+          ),
+        [ORCHESTRATION_WS_METHODS.resumeThreadGoal]: (input) =>
+          observeRpcEffect(
+            ORCHESTRATION_WS_METHODS.resumeThreadGoal,
+            Option.isNone(threadGoalStore)
+              ? Effect.fail(threadGoalUnavailable())
+              : ensureThreadGoalThread(input.threadId).pipe(
+                  Effect.andThen(threadGoalStore.value.resume(input.threadId)),
+                  Effect.mapError(threadGoalError),
+                ),
+            { "rpc.aggregate": "orchestration" },
+          ),
+        [ORCHESTRATION_WS_METHODS.clearThreadGoal]: (input) =>
+          observeRpcEffect(
+            ORCHESTRATION_WS_METHODS.clearThreadGoal,
+            Option.isNone(threadGoalStore)
+              ? Effect.fail(threadGoalUnavailable())
+              : ensureThreadGoalThread(input.threadId).pipe(
+                  Effect.andThen(threadGoalStore.value.clear(input)),
+                  Effect.mapError(threadGoalError),
+                ),
+            { "rpc.aggregate": "orchestration" },
+          ),
+        [ORCHESTRATION_WS_METHODS.subscribeThreadGoal]: (input) =>
+          observeRpcStreamEffect(
+            ORCHESTRATION_WS_METHODS.subscribeThreadGoal,
+            Option.isNone(threadGoalStore)
+              ? Effect.fail(threadGoalUnavailable())
+              : ensureThreadGoalThread(input.threadId).pipe(
+                  Effect.andThen(threadGoalStore.value.subscribe(input.threadId)),
+                  Effect.mapError(threadGoalError),
+                ),
             { "rpc.aggregate": "orchestration" },
           ),
         [WS_METHODS.serverProbe]: (_input) =>
