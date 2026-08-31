@@ -6,13 +6,17 @@ import {
   TerminalAttachInput,
   TerminalClearInput,
   TerminalCloseInput,
+  TerminalError,
   TerminalEvent,
   TerminalOpenInput,
+  TerminalProcessTerminationError,
   TerminalResizeInput,
   TerminalSessionSnapshot,
   TerminalThreadInput,
   TerminalWriteInput,
 } from "./terminal.ts";
+
+const encodeTerminalError = Schema.encodeSync(TerminalError);
 
 function decodeSync<S extends Schema.Top>(schema: S, input: unknown): Schema.Schema.Type<S> {
   return Schema.decodeUnknownSync(schema as never)(input) as Schema.Schema.Type<S>;
@@ -206,6 +210,27 @@ describe("TerminalCloseInput", () => {
         deleteHistory: true,
       }),
     ).toBe(true);
+  });
+});
+
+describe("TerminalProcessTerminationError", () => {
+  it("只编码稳定终止原因，不暴露底层 signal cause", () => {
+    const encoded = encodeTerminalError(
+      new TerminalProcessTerminationError({
+        threadId: "thread-1",
+        terminalId: DEFAULT_TERMINAL_ID,
+        terminalPid: 4_242,
+        reason: "force-exit-timeout",
+      }),
+    );
+
+    expect(encoded).toEqual({
+      _tag: "TerminalProcessTerminationError",
+      threadId: "thread-1",
+      terminalId: DEFAULT_TERMINAL_ID,
+      terminalPid: 4_242,
+      reason: "force-exit-timeout",
+    });
   });
 });
 

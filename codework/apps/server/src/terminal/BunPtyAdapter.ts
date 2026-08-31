@@ -6,6 +6,8 @@ import * as Schema from "effect/Schema";
 import { HostProcessPlatform } from "@codework/shared/hostProcess";
 
 import * as PtyAdapter from "./PtyAdapter.ts";
+import * as PtyExitObservationReaper from "./PtyExitObservationReaper.ts";
+import * as PtyProcessTermination from "./PtyProcessTermination.ts";
 
 export class BunPtyUnsupportedPlatformError extends Schema.TaggedErrorClass<BunPtyUnsupportedPlatformError>()(
   "BunPtyUnsupportedPlatformError",
@@ -32,23 +34,12 @@ export class BunPtyOperationUnavailableError extends Schema.TaggedErrorClass<Bun
 
 class BunPtyProcess implements PtyAdapter.PtyProcess {
   private readonly dataListeners = new Set<(data: string) => void>();
-  private readonly exitListeners = new Set<(event: PtyAdapter.PtyExitEvent) => void>();
   private readonly decoder = new TextDecoder();
   private readonly process: Bun.Subprocess;
   private didExit = false;
 
   constructor(process: Bun.Subprocess) {
     this.process = process;
-    void this.process.exited
-      .then((exitCode) => {
-        this.emitExit({
-          exitCode: Number.isInteger(exitCode) ? exitCode : 0,
-          signal: typeof this.process.signalCode === "number" ? this.process.signalCode : null,
-        });
-      })
-      .catch(() => {
-        this.emitExit({ exitCode: 1, signal: null });
-      });
   }
 
   get pid(): number {
@@ -84,13 +75,6 @@ class BunPtyProcess implements PtyAdapter.PtyProcess {
     };
   }
 
-  onExit(callback: (event: PtyAdapter.PtyExitEvent) => void): () => void {
-    this.exitListeners.add(callback);
-    return () => {
-      this.exitListeners.delete(callback);
-    };
-  }
-
   emitData(data: Uint8Array): void {
     if (this.didExit) return;
     const text = this.decoder.decode(data, { stream: true });
@@ -100,7 +84,10 @@ class BunPtyProcess implements PtyAdapter.PtyProcess {
     }
   }
 
-  private emitExit(event: PtyAdapter.PtyExitEvent): void {
+  emitExit(
+    event: PtyAdapter.PtyExitEvent,
+    processExit: PtyProcessTermination.PtyProcessExitState,
+  ): void {
     if (this.didExit) return;
     this.didExit = true;
 
@@ -111,24 +98,55 @@ class BunPtyProcess implements PtyAdapter.PtyProcess {
       }
     }
 
-    for (const listener of this.exitListeners) {
-      listener(event);
-    }
+    PtyProcessTermination.signalProcessExit(processExit, event);
   }
 }
+
+const registerProcessExitObservation = (
+  process: Bun.Subprocess,
+  processHandle: BunPtyProcess,
+  processExit: PtyProcessTermination.PtyProcessExitState,
+) =>
+  Effect.try({
+    try: () => {
+      void process.exited
+        .then((exitCode) => {
+          processHandle.emitExit(
+            {
+              exitCode: Number.isInteger(exitCode) ? exitCode : 0,
+              signal: typeof process.signalCode === "number" ? process.signalCode : null,
+            },
+            processExit,
+          );
+        })
+        .catch(() => {
+          processHandle.emitExit({ exitCode: 1, signal: null }, processExit);
+        });
+      return () => {};
+    },
+    catch: (cause) =>
+      PtyExitObservationReaper.operationError({
+        adapter: "bun",
+        cause,
+        operation: "register",
+        processPid: process.pid,
+      }),
+  });
 
 export const make = Effect.fn("BunPtyAdapter.make")(function* () {
   const platform = yield* HostProcessPlatform;
   if (platform === "win32") {
     return yield* Effect.die(new BunPtyUnsupportedPlatformError({ platform }));
   }
+  const exitObservationReaper = yield* PtyExitObservationReaper.make();
   return PtyAdapter.PtyAdapter.of({
-    spawn: (input) =>
-      Effect.try({
+    spawn: Effect.fn("BunPtyAdapter.spawn")(function* (input) {
+      const processExit = yield* PtyProcessTermination.makeProcessExitState();
+      let processHandle: BunPtyProcess | null = null;
+      const subprocess = yield* Effect.try({
         try: () => {
-          let processHandle: BunPtyProcess | null = null;
           const command = [input.shell, ...(input.args ?? [])];
-          const subprocess = Bun.spawn(command, {
+          return Bun.spawn(command, {
             cwd: input.cwd,
             env: input.env,
             terminal: {
@@ -139,8 +157,6 @@ export const make = Effect.fn("BunPtyAdapter.make")(function* () {
               },
             },
           });
-          processHandle = new BunPtyProcess(subprocess);
-          return processHandle;
         },
         catch: (cause) =>
           new PtyAdapter.PtySpawnError({
@@ -148,7 +164,50 @@ export const make = Effect.fn("BunPtyAdapter.make")(function* () {
             shell: input.shell,
             cause,
           }),
-      }),
+      });
+      processHandle = new BunPtyProcess(subprocess);
+      const exitRegistration = yield* registerProcessExitObservation(
+        subprocess,
+        processHandle,
+        processExit,
+      ).pipe(Effect.result);
+      if (exitRegistration._tag === "Success") {
+        return {
+          process: processHandle,
+          processExit,
+          releaseProcessExit: exitRegistration.success,
+        } satisfies PtyAdapter.PtyProcessAcquisition;
+      }
+
+      const reaperId = yield* exitObservationReaper.retain({
+        adapter: "bun",
+        processPid: subprocess.pid,
+        processExit,
+        initialCause: exitRegistration.failure,
+        register: registerProcessExitObservation(subprocess, processHandle, processExit),
+      });
+      const cleanupResult = yield* Effect.try({
+        try: () => subprocess.kill(),
+        catch: (cause) =>
+          PtyExitObservationReaper.operationError({
+            adapter: "bun",
+            cause,
+            operation: "terminate",
+            processPid: subprocess.pid,
+          }),
+      }).pipe(Effect.result);
+      return yield* new PtyAdapter.PtySpawnError({
+        adapter: "bun",
+        shell: input.shell,
+        cause: new PtyExitObservationReaper.PtyExitObservationRetainedError({
+          adapter: "bun",
+          cause: exitRegistration.failure,
+          processPid: subprocess.pid,
+          reaperId,
+          ...(cleanupResult._tag === "Failure" ? { cleanupCause: cleanupResult.failure } : {}),
+        }),
+      });
+    }),
   });
 });
 

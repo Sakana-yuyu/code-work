@@ -3,6 +3,31 @@ import type { WorkspaceScriptRun } from "@codework/contracts";
 export const isFinishedWorkspaceScriptRun = (run: WorkspaceScriptRun): boolean =>
   run.status === "stopped" || run.status === "exited" || run.status === "failed";
 
+export const isWorkspaceScriptStartCancelled = (run: WorkspaceScriptRun): boolean =>
+  run.status === "failed" && run.errorCode === "workspace_script_start_cancelled";
+
+/** PTY 尚未创建时，停止请求只能取消启动，不得伪造已经停止的进程状态。 */
+export const makeWorkspaceScriptStartCancelled = (
+  run: WorkspaceScriptRun,
+  observedAtUnixMs: number,
+): WorkspaceScriptRun =>
+  run.status !== "starting"
+    ? run
+    : {
+        ...run,
+        status: "failed",
+        healthStatus: "unknown",
+        healthCheckedAtUnixMs: null,
+        healthDetail: null,
+        revision: run.revision + 1,
+        finishedAtUnixMs: observedAtUnixMs,
+        exitCode: null,
+        exitSignal: null,
+        errorCode: "workspace_script_start_cancelled",
+        errorDetail: "脚本进程尚未创建，停止操作已取消启动。",
+        updatedAtUnixMs: observedAtUnixMs,
+      };
+
 /** stop operation 身份始终保留；stopping 表示执行中，running 表示上次结果未知且可重试。 */
 export const makeWorkspaceScriptStopRetryable = (
   run: WorkspaceScriptRun,
@@ -62,6 +87,7 @@ export const makeWorkspaceScriptClosed = (input: {
     healthCheckedAtUnixMs: null,
     healthDetail: null,
     revision: input.run.revision + 1,
+    startedAtUnixMs: input.run.startedAtUnixMs ?? input.observedAtUnixMs,
     finishedAtUnixMs: input.observedAtUnixMs,
     ...(stopped
       ? { errorCode: null, errorDetail: null }

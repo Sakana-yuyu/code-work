@@ -129,6 +129,37 @@ describe("Workspace Script contracts", () => {
     ).toThrow();
   });
 
+  it("拒绝尚未启动的 Run 进入 stopping 和 stopped", () => {
+    const startingRun = {
+      ...runningRun,
+      status: "starting" as const,
+      healthStatus: "unknown" as const,
+      healthCheckedAtUnixMs: null,
+      ports: [],
+      revision: 1,
+      startedAtUnixMs: null,
+      updatedAtUnixMs: 1_000,
+    };
+
+    expect(() =>
+      decodeRun({
+        ...startingRun,
+        status: "stopping",
+        revision: 2,
+        updatedAtUnixMs: 1_001,
+      }),
+    ).toThrow();
+    expect(() =>
+      decodeRun({
+        ...startingRun,
+        status: "stopped",
+        revision: 3,
+        finishedAtUnixMs: 1_002,
+        updatedAtUnixMs: 1_002,
+      }),
+    ).toThrow();
+  });
+
   it("失败终态必须有成对错误信息，非失败状态不得伪装错误", () => {
     expect(() =>
       decodeRun({

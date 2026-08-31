@@ -276,7 +276,7 @@ export type TerminalCwdError = typeof TerminalCwdError.Type;
 export class TerminalHistoryError extends Schema.TaggedErrorClass<TerminalHistoryError>()(
   "TerminalHistoryError",
   {
-    operation: Schema.Literals(["read", "truncate", "migrate"]),
+    operation: Schema.Literals(["read", "truncate", "migrate", "delete"]),
     threadId: Schema.String,
     terminalId: Schema.String,
     cause: Schema.optional(Schema.Defect()),
@@ -353,6 +353,26 @@ export class TerminalSessionOwnershipError extends Schema.TaggedErrorClass<Termi
   }
 }
 
+export class TerminalProcessTerminationError extends Schema.TaggedErrorClass<TerminalProcessTerminationError>()(
+  "TerminalProcessTerminationError",
+  {
+    threadId: Schema.String,
+    terminalId: Schema.String,
+    terminalPid: Schema.Number,
+    reason: Schema.Literals([
+      "signal-failed",
+      "exit-timeout",
+      "force-signal-failed",
+      "force-exit-timeout",
+      "session-replaced",
+    ]),
+  },
+) {
+  override get message() {
+    return `Failed to confirm terminal process exit for thread: ${this.threadId}, terminal: ${this.terminalId}, PID: ${this.terminalPid} (${this.reason})`;
+  }
+}
+
 export const TerminalError = Schema.Union([
   TerminalCwdError,
   TerminalHistoryError,
@@ -361,5 +381,6 @@ export const TerminalError = Schema.Union([
   TerminalWriteError,
   TerminalResizeError,
   TerminalSessionOwnershipError,
+  TerminalProcessTerminationError,
 ]);
 export type TerminalError = typeof TerminalError.Type;
