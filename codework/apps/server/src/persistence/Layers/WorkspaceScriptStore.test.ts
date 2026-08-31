@@ -3,7 +3,9 @@ import { assert, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
+import * as SqlClient from "effect/unstable/sql/SqlClient";
 
+import { PersistenceDecodeError } from "../Errors.ts";
 import {
   WorkspaceScriptStore,
   WorkspaceScriptStoreDomainError,
@@ -15,11 +17,24 @@ const layer = it.layer(WorkspaceScriptStoreLive.pipe(Layer.provideMerge(SqlitePe
 const recoveryLayer = it.layer(
   WorkspaceScriptStoreLive.pipe(Layer.provideMerge(SqlitePersistenceMemory)),
 );
+const corruptionLayer = it.layer(
+  WorkspaceScriptStoreLive.pipe(Layer.provideMerge(SqlitePersistenceMemory)),
+);
 
 const assertDomainError = (error: unknown): WorkspaceScriptStoreDomainError => {
   assert.instanceOf(error, WorkspaceScriptStoreDomainError);
   return error as WorkspaceScriptStoreDomainError;
 };
+
+const claimAttempt = (
+  ownerId: string,
+  claimedAtUnixMs: number,
+  claimExpiresAtUnixMs = claimedAtUnixMs + 30_000,
+) => ({
+  claimOwnerId: ownerId,
+  claimedAtUnixMs,
+  claimExpiresAtUnixMs,
+});
 
 const makeRun = (
   workspaceScriptRunId: string,
@@ -148,17 +163,20 @@ layer("WorkspaceScriptStore", (it) => {
         operationId: "stop-operation-1",
         expectedRevision: 2,
         run: stopping,
+        ...claimAttempt("service-a:attempt-1", 1_200),
       });
       const repeated = yield* store.claimStop({
         operationId: "stop-operation-1",
         expectedRevision: 2,
         run: stopping,
+        ...claimAttempt("service-b:attempt-1", 1_200),
       });
       const conflict = yield* store
         .claimStop({
           operationId: "stop-operation-1",
           expectedRevision: 1,
           run: { ...stopping, workspaceScriptRunId: "other-run" },
+          ...claimAttempt("service-c:attempt-1", 1_200),
         })
         .pipe(Effect.flip);
       const competingStop = yield* store
@@ -166,6 +184,7 @@ layer("WorkspaceScriptStore", (it) => {
           operationId: "stop-operation-2",
           expectedRevision: 3,
           run: { ...stopping, revision: 4, updatedAtUnixMs: 1_300 },
+          ...claimAttempt("service-d:attempt-1", 1_300),
         })
         .pipe(Effect.flip);
 
@@ -199,6 +218,7 @@ layer("WorkspaceScriptStore", (it) => {
           revision: 3,
           updatedAtUnixMs: 1_200,
         },
+        ...claimAttempt("service-a:attempt-1", 1_200),
       });
       const retryable = yield* store.saveTransition({
         expectedRevision: first.run.revision,
@@ -218,6 +238,7 @@ layer("WorkspaceScriptStore", (it) => {
           revision: retryable.revision + 1,
           updatedAtUnixMs: 1_400,
         },
+        ...claimAttempt("service-b:attempt-1", 31_201),
       };
 
       const [retry, concurrentReplay] = yield* Effect.all(
@@ -276,8 +297,49 @@ layer("WorkspaceScriptStore", (it) => {
   );
 });
 
+corruptionLayer("WorkspaceScriptStore corruption guard", (it) => {
+  it.effect("破损停止 claim 必须 fail-closed，不能按过期 claim 静默接管", () =>
+    Effect.gen(function* () {
+      const store = yield* WorkspaceScriptStore;
+      const sql = yield* SqlClient.SqlClient;
+      const running = makeRun("run-stop-corrupt-claim", {
+        status: "running",
+        revision: 2,
+        startedAtUnixMs: 1_100,
+        updatedAtUnixMs: 1_100,
+      });
+      yield* store.claimStart(running);
+      yield* store.claimStop({
+        operationId: "stop-operation-corrupt-claim",
+        expectedRevision: running.revision,
+        run: {
+          ...running,
+          status: "stopping",
+          revision: running.revision + 1,
+          updatedAtUnixMs: 1_200,
+        },
+        ...claimAttempt("service-a:corrupt", 1_200),
+      });
+      yield* sql`DROP TRIGGER trg_workspace_script_stop_claim_update`;
+      yield* sql`
+        UPDATE workspace_script_runs
+        SET stop_claim_expires_at_unix_ms = NULL
+        WHERE workspace_script_run_id = ${running.workspaceScriptRunId}
+      `;
+
+      const error = yield* store
+        .getActiveRunByTerminal(running.threadId, running.terminalId)
+        .pipe(Effect.flip);
+
+      assert.instanceOf(error, PersistenceDecodeError);
+      assert.equal(error.operation, "WorkspaceScriptStore.getActiveRunByTerminal:stopClaim");
+      assert.equal(error.issue, "InvalidClaimExpiry");
+    }),
+  );
+});
+
 recoveryLayer("WorkspaceScriptStore recovery", (it) => {
-  it.effect("服务重启恢复已领取 stop，并将其他未收敛 Run 原子标记为失败", () =>
+  it.effect("服务重启返回 stopping 与 running stop intent，并将其他未收敛 Run 原子标记为失败", () =>
     Effect.gen(function* () {
       const store = yield* WorkspaceScriptStore;
       const starting = makeRun("run-recover-starting");
@@ -288,6 +350,12 @@ recoveryLayer("WorkspaceScriptStore recovery", (it) => {
         updatedAtUnixMs: 1_100,
       });
       const stopping = makeRun("run-recover-stopping", {
+        status: "running",
+        revision: 2,
+        startedAtUnixMs: 1_100,
+        updatedAtUnixMs: 1_100,
+      });
+      const retryableRun = makeRun("run-recover-retryable", {
         status: "running",
         revision: 2,
         startedAtUnixMs: 1_100,
@@ -304,6 +372,7 @@ recoveryLayer("WorkspaceScriptStore recovery", (it) => {
       yield* store.claimStart(starting);
       yield* store.claimStart(running);
       yield* store.claimStart(stopping);
+      yield* store.claimStart(retryableRun);
       yield* store.claimStart(exited);
       yield* store.claimStop({
         operationId: "stop-operation-recovery",
@@ -314,6 +383,27 @@ recoveryLayer("WorkspaceScriptStore recovery", (it) => {
           revision: stopping.revision + 1,
           updatedAtUnixMs: 1_200,
         },
+        ...claimAttempt("service-a:recovery", 1_200),
+      });
+      const retryableClaim = yield* store.claimStop({
+        operationId: "stop-operation-retryable-recovery",
+        expectedRevision: retryableRun.revision,
+        run: {
+          ...retryableRun,
+          status: "stopping",
+          revision: retryableRun.revision + 1,
+          updatedAtUnixMs: 1_200,
+        },
+        ...claimAttempt("service-a:retryable", 1_200),
+      });
+      yield* store.saveTransition({
+        expectedRevision: retryableClaim.run.revision,
+        run: {
+          ...retryableClaim.run,
+          status: "running",
+          revision: retryableClaim.run.revision + 1,
+          updatedAtUnixMs: 1_300,
+        },
       });
 
       const recovered = yield* store.recoverInterrupted({ observedAtUnixMs: 2_000 });
@@ -323,17 +413,31 @@ recoveryLayer("WorkspaceScriptStore recovery", (it) => {
       const preserved = Option.getOrThrow(yield* store.getRun(exited.workspaceScriptRunId));
 
       assert.deepEqual(
-        recovered.map((run) => run.workspaceScriptRunId),
+        recovered.map(({ run }) => run.workspaceScriptRunId),
         [
+          retryableRun.workspaceScriptRunId,
           running.workspaceScriptRunId,
           starting.workspaceScriptRunId,
           stopping.workspaceScriptRunId,
         ],
       );
-      assert.deepEqual(repeated, []);
+      assert.equal(
+        recovered.find(({ run }) => run.workspaceScriptRunId === stopping.workspaceScriptRunId)
+          ?.stopOperationId,
+        "stop-operation-recovery",
+      );
+      assert.equal(
+        recovered.find(({ run }) => run.workspaceScriptRunId === retryableRun.workspaceScriptRunId)
+          ?.stopOperationId,
+        "stop-operation-retryable-recovery",
+      );
+      assert.deepEqual(
+        repeated.map(({ run }) => run.workspaceScriptRunId),
+        [retryableRun.workspaceScriptRunId, stopping.workspaceScriptRunId],
+      );
       assert.equal(failed.status, "failed");
       assert.equal(failed.errorCode, "workspace_script_server_restarted");
-      assert.equal(retryable.status, "running");
+      assert.equal(retryable.status, "stopping");
       assert.isNull(retryable.finishedAtUnixMs);
       assert.isNull(retryable.errorCode);
       assert.equal(preserved.status, "exited");

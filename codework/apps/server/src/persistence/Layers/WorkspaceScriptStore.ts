@@ -12,9 +12,9 @@ import * as SqlClient from "effect/unstable/sql/SqlClient";
 import * as SqlSchema from "effect/unstable/sql/SqlSchema";
 
 import {
+  PersistenceDecodeError,
   toPersistenceDecodeError,
   toPersistenceSqlError,
-  type PersistenceDecodeError,
   type PersistenceSqlError,
 } from "../Errors.ts";
 import {
@@ -22,6 +22,7 @@ import {
   WorkspaceScriptStoreDomainError,
   type StoredWorkspaceScriptRun,
   type WorkspaceScriptRunClaimResult,
+  type WorkspaceScriptStopClaimResult,
   type WorkspaceScriptStoreErrorCode,
   type WorkspaceScriptStoreShape,
 } from "../Services/WorkspaceScriptStore.ts";
@@ -58,6 +59,9 @@ const WorkspaceScriptRunRowSchema = Schema.Struct({
   compositionTaskId: Schema.NullOr(Schema.String),
   compositionRunId: Schema.NullOr(Schema.String),
   stopOperationId: Schema.NullOr(Schema.String),
+  stopClaimOwnerId: Schema.NullOr(Schema.String),
+  stopClaimEpoch: Schema.Number,
+  stopClaimExpiresAtUnixMs: Schema.NullOr(Schema.Number),
   updatedAtUnixMs: Schema.Number,
 });
 
@@ -96,6 +100,15 @@ const WorkspaceScriptRunTransitionSchema = Schema.Struct({
 const WorkspaceScriptStopTransitionSchema = Schema.Struct({
   ...WorkspaceScriptRunTransitionSchema.fields,
   operationId: Schema.String,
+  claimOwnerId: Schema.String,
+  claimedAtUnixMs: Schema.Number,
+  claimExpiresAtUnixMs: Schema.Number,
+});
+const WorkspaceScriptFencedStopTransitionSchema = Schema.Struct({
+  ...WorkspaceScriptRunTransitionSchema.fields,
+  operationId: Schema.String,
+  claimOwnerId: Schema.String,
+  claimEpoch: Schema.Number,
 });
 const WorkspaceScriptRunIdRequest = Schema.Struct({ workspaceScriptRunId: Schema.String });
 const WorkspaceScriptIdempotencyRequest = Schema.Struct({ idempotencyKey: Schema.String });
@@ -152,8 +165,47 @@ const toRunWrite = (run: WorkspaceScriptRun) => ({
   portsJson: encodePorts(run.ports),
 });
 
+const decodeStopClaim = (
+  operation: string,
+  row: WorkspaceScriptRunRow,
+): Effect.Effect<StoredWorkspaceScriptRun["stopClaim"], PersistenceDecodeError> => {
+  const invalid = (issue: string) =>
+    Effect.fail(
+      new PersistenceDecodeError({
+        operation: `${operation}:stopClaim`,
+        issue,
+      }),
+    );
+  if (!Number.isSafeInteger(row.stopClaimEpoch) || row.stopClaimEpoch < 0) {
+    return invalid("InvalidClaimEpoch");
+  }
+  if (row.stopClaimOwnerId === null) {
+    return row.stopClaimExpiresAtUnixMs === null
+      ? Effect.succeed(null)
+      : invalid("ClaimExpiryWithoutOwner");
+  }
+  if (row.stopClaimOwnerId.trim().length === 0) return invalid("EmptyClaimOwner");
+  if (row.stopOperationId === null) return invalid("ClaimOwnerWithoutOperation");
+  if (row.stopClaimEpoch === 0) return invalid("InvalidClaimEpoch");
+  if (
+    row.stopClaimExpiresAtUnixMs === null ||
+    !Number.isSafeInteger(row.stopClaimExpiresAtUnixMs) ||
+    row.stopClaimExpiresAtUnixMs <= 0
+  ) {
+    return invalid("InvalidClaimExpiry");
+  }
+  return Effect.succeed({
+    ownerId: row.stopClaimOwnerId,
+    epoch: row.stopClaimEpoch,
+    expiresAtUnixMs: row.stopClaimExpiresAtUnixMs,
+  });
+};
+
 const sameRun = (left: WorkspaceScriptRun, right: WorkspaceScriptRun): boolean =>
   encodeRun(left) === encodeRun(right);
+
+const isFinishedRun = (run: WorkspaceScriptRun): boolean =>
+  run.status === "stopped" || run.status === "exited" || run.status === "failed";
 
 const sameRunIdentity = (left: WorkspaceScriptRun, right: WorkspaceScriptRun): boolean =>
   left.workspaceScriptRunId === right.workspaceScriptRunId &&
@@ -234,6 +286,9 @@ const makeStore = Effect.gen(function* () {
         composition_task_id AS "compositionTaskId",
         composition_run_id AS "compositionRunId",
         stop_operation_id AS "stopOperationId",
+        stop_claim_owner_id AS "stopClaimOwnerId",
+        stop_claim_epoch AS "stopClaimEpoch",
+        stop_claim_expires_at_unix_ms AS "stopClaimExpiresAtUnixMs",
         updated_at_unix_ms AS "updatedAtUnixMs"
       FROM workspace_script_runs
       WHERE workspace_script_run_id = ${workspaceScriptRunId}
@@ -270,6 +325,9 @@ const makeStore = Effect.gen(function* () {
         composition_task_id AS "compositionTaskId",
         composition_run_id AS "compositionRunId",
         stop_operation_id AS "stopOperationId",
+        stop_claim_owner_id AS "stopClaimOwnerId",
+        stop_claim_epoch AS "stopClaimEpoch",
+        stop_claim_expires_at_unix_ms AS "stopClaimExpiresAtUnixMs",
         updated_at_unix_ms AS "updatedAtUnixMs"
       FROM workspace_script_runs
       WHERE idempotency_key = ${idempotencyKey}
@@ -306,6 +364,9 @@ const makeStore = Effect.gen(function* () {
         composition_task_id AS "compositionTaskId",
         composition_run_id AS "compositionRunId",
         stop_operation_id AS "stopOperationId",
+        stop_claim_owner_id AS "stopClaimOwnerId",
+        stop_claim_epoch AS "stopClaimEpoch",
+        stop_claim_expires_at_unix_ms AS "stopClaimExpiresAtUnixMs",
         updated_at_unix_ms AS "updatedAtUnixMs"
       FROM workspace_script_runs
       WHERE stop_operation_id = ${operationId}
@@ -342,6 +403,9 @@ const makeStore = Effect.gen(function* () {
         composition_task_id AS "compositionTaskId",
         composition_run_id AS "compositionRunId",
         stop_operation_id AS "stopOperationId",
+        stop_claim_owner_id AS "stopClaimOwnerId",
+        stop_claim_epoch AS "stopClaimEpoch",
+        stop_claim_expires_at_unix_ms AS "stopClaimExpiresAtUnixMs",
         updated_at_unix_ms AS "updatedAtUnixMs"
       FROM workspace_script_runs
       WHERE thread_id = ${threadId}
@@ -398,6 +462,9 @@ const makeStore = Effect.gen(function* () {
         composition_task_id AS "compositionTaskId",
         composition_run_id AS "compositionRunId",
         stop_operation_id AS "stopOperationId",
+        stop_claim_owner_id AS "stopClaimOwnerId",
+        stop_claim_epoch AS "stopClaimEpoch",
+        stop_claim_expires_at_unix_ms AS "stopClaimExpiresAtUnixMs",
         updated_at_unix_ms AS "updatedAtUnixMs"
     `,
   });
@@ -420,6 +487,11 @@ const makeStore = Effect.gen(function* () {
         exit_signal = ${run.exitSignal},
         error_code = ${run.errorCode},
         error_detail = ${run.errorDetail},
+        stop_claim_owner_id = CASE WHEN ${run.status} = 'stopping' THEN stop_claim_owner_id ELSE NULL END,
+        stop_claim_expires_at_unix_ms = CASE
+          WHEN ${run.status} = 'stopping' THEN stop_claim_expires_at_unix_ms
+          ELSE NULL
+        END,
         updated_at_unix_ms = ${run.updatedAtUnixMs}
       WHERE workspace_script_run_id = ${run.workspaceScriptRunId}
         AND revision = ${run.expectedRevision}
@@ -449,6 +521,9 @@ const makeStore = Effect.gen(function* () {
         composition_task_id AS "compositionTaskId",
         composition_run_id AS "compositionRunId",
         stop_operation_id AS "stopOperationId",
+        stop_claim_owner_id AS "stopClaimOwnerId",
+        stop_claim_epoch AS "stopClaimEpoch",
+        stop_claim_expires_at_unix_ms AS "stopClaimExpiresAtUnixMs",
         updated_at_unix_ms AS "updatedAtUnixMs"
     `,
   });
@@ -472,12 +547,23 @@ const makeStore = Effect.gen(function* () {
         error_code = ${run.errorCode},
         error_detail = ${run.errorDetail},
         stop_operation_id = ${run.operationId},
+        stop_claim_owner_id = ${run.claimOwnerId},
+        stop_claim_epoch = stop_claim_epoch + 1,
+        stop_claim_expires_at_unix_ms = ${run.claimExpiresAtUnixMs},
         updated_at_unix_ms = ${run.updatedAtUnixMs}
       WHERE workspace_script_run_id = ${run.workspaceScriptRunId}
         AND revision = ${run.expectedRevision}
+        AND ${run.claimExpiresAtUnixMs} > ${run.claimedAtUnixMs}
         AND (
-          stop_operation_id IS NULL OR
-          (stop_operation_id = ${run.operationId} AND status = 'running')
+          (stop_operation_id IS NULL AND stop_claim_owner_id IS NULL) OR
+          (
+            stop_operation_id = ${run.operationId}
+            AND status IN ('starting', 'running', 'stopping')
+            AND (
+              stop_claim_owner_id IS NULL OR
+              stop_claim_expires_at_unix_ms <= ${run.claimedAtUnixMs}
+            )
+          )
         )
       RETURNING
         workspace_script_run_id AS "workspaceScriptRunId",
@@ -505,6 +591,68 @@ const makeStore = Effect.gen(function* () {
         composition_task_id AS "compositionTaskId",
         composition_run_id AS "compositionRunId",
         stop_operation_id AS "stopOperationId",
+        stop_claim_owner_id AS "stopClaimOwnerId",
+        stop_claim_epoch AS "stopClaimEpoch",
+        stop_claim_expires_at_unix_ms AS "stopClaimExpiresAtUnixMs",
+        updated_at_unix_ms AS "updatedAtUnixMs"
+    `,
+  });
+
+  const saveFencedStopTransitionRow = SqlSchema.findOneOption({
+    Request: WorkspaceScriptFencedStopTransitionSchema,
+    Result: WorkspaceScriptRunRowSchema,
+    execute: (run) => sql`
+      UPDATE workspace_script_runs
+      SET
+        status = ${run.status},
+        health_status = ${run.healthStatus},
+        health_checked_at_unix_ms = ${run.healthCheckedAtUnixMs},
+        health_detail = ${run.healthDetail},
+        ports_json = ${run.portsJson},
+        revision = ${run.revision},
+        started_at_unix_ms = ${run.startedAtUnixMs},
+        finished_at_unix_ms = ${run.finishedAtUnixMs},
+        exit_code = ${run.exitCode},
+        exit_signal = ${run.exitSignal},
+        error_code = ${run.errorCode},
+        error_detail = ${run.errorDetail},
+        stop_claim_owner_id = NULL,
+        stop_claim_expires_at_unix_ms = NULL,
+        updated_at_unix_ms = ${run.updatedAtUnixMs}
+      WHERE workspace_script_run_id = ${run.workspaceScriptRunId}
+        AND revision = ${run.expectedRevision}
+        AND stop_operation_id = ${run.operationId}
+        AND stop_claim_owner_id = ${run.claimOwnerId}
+        AND stop_claim_epoch = ${run.claimEpoch}
+      RETURNING
+        workspace_script_run_id AS "workspaceScriptRunId",
+        idempotency_key AS "idempotencyKey",
+        project_id AS "projectId",
+        thread_id AS "threadId",
+        script_id AS "scriptId",
+        script_name AS "scriptName",
+        terminal_id AS "terminalId",
+        cwd,
+        worktree_path AS "worktreePath",
+        status,
+        health_status AS "healthStatus",
+        health_checked_at_unix_ms AS "healthCheckedAtUnixMs",
+        health_detail AS "healthDetail",
+        ports_json AS ports,
+        revision,
+        requested_at_unix_ms AS "requestedAtUnixMs",
+        started_at_unix_ms AS "startedAtUnixMs",
+        finished_at_unix_ms AS "finishedAtUnixMs",
+        exit_code AS "exitCode",
+        exit_signal AS "exitSignal",
+        error_code AS "errorCode",
+        error_detail AS "errorDetail",
+        composition_task_id AS "compositionTaskId",
+        composition_run_id AS "compositionRunId",
+        stop_operation_id AS "stopOperationId",
+        stop_claim_owner_id AS "stopClaimOwnerId",
+        stop_claim_epoch AS "stopClaimEpoch",
+        stop_claim_expires_at_unix_ms AS "stopClaimExpiresAtUnixMs",
         updated_at_unix_ms AS "updatedAtUnixMs"
     `,
   });
@@ -539,6 +687,9 @@ const makeStore = Effect.gen(function* () {
         composition_task_id AS "compositionTaskId",
         composition_run_id AS "compositionRunId",
         stop_operation_id AS "stopOperationId",
+        stop_claim_owner_id AS "stopClaimOwnerId",
+        stop_claim_epoch AS "stopClaimEpoch",
+        stop_claim_expires_at_unix_ms AS "stopClaimExpiresAtUnixMs",
         updated_at_unix_ms AS "updatedAtUnixMs"
       FROM workspace_script_runs
       WHERE (${request.projectId} IS NULL OR project_id = ${request.projectId})
@@ -562,34 +713,25 @@ const makeStore = Effect.gen(function* () {
     execute: ({ observedAtUnixMs }) => sql`
       UPDATE workspace_script_runs
       SET
-        status = CASE WHEN stop_operation_id IS NULL THEN 'failed' ELSE 'running' END,
+        status = 'failed',
         health_status = 'unknown',
         health_checked_at_unix_ms = NULL,
         health_detail = NULL,
         revision = revision + 1,
         finished_at_unix_ms = CASE
-          WHEN stop_operation_id IS NOT NULL THEN NULL
           WHEN ${observedAtUnixMs} < COALESCE(started_at_unix_ms, requested_at_unix_ms)
             THEN COALESCE(started_at_unix_ms, requested_at_unix_ms)
           ELSE ${observedAtUnixMs}
         END,
         exit_code = NULL,
         exit_signal = NULL,
-        error_code = CASE
-          WHEN stop_operation_id IS NULL THEN 'workspace_script_server_restarted'
-          ELSE NULL
-        END,
-        error_detail = CASE
-          WHEN stop_operation_id IS NULL THEN 'Code Work 服务重启，脚本运行未能正常收口。'
-          ELSE NULL
-        END,
+        error_code = 'workspace_script_server_restarted',
+        error_detail = 'Code Work 服务重启，脚本运行未能正常收口。',
         updated_at_unix_ms = CASE
           WHEN ${observedAtUnixMs} < updated_at_unix_ms THEN updated_at_unix_ms
           ELSE ${observedAtUnixMs}
         END
-      WHERE
-        (stop_operation_id IS NULL AND status IN ('starting', 'running', 'stopping')) OR
-        (stop_operation_id IS NOT NULL AND status = 'stopping')
+      WHERE stop_operation_id IS NULL AND status IN ('starting', 'running', 'stopping')
       RETURNING
         workspace_script_run_id AS "workspaceScriptRunId",
         idempotency_key AS "idempotencyKey",
@@ -616,7 +758,49 @@ const makeStore = Effect.gen(function* () {
         composition_task_id AS "compositionTaskId",
         composition_run_id AS "compositionRunId",
         stop_operation_id AS "stopOperationId",
+        stop_claim_owner_id AS "stopClaimOwnerId",
+        stop_claim_epoch AS "stopClaimEpoch",
+        stop_claim_expires_at_unix_ms AS "stopClaimExpiresAtUnixMs",
         updated_at_unix_ms AS "updatedAtUnixMs"
+    `,
+  });
+
+  const listInterruptedStopRows = SqlSchema.findAll({
+    Request: Schema.Void,
+    Result: WorkspaceScriptRunRowSchema,
+    execute: () => sql`
+      SELECT
+        workspace_script_run_id AS "workspaceScriptRunId",
+        idempotency_key AS "idempotencyKey",
+        project_id AS "projectId",
+        thread_id AS "threadId",
+        script_id AS "scriptId",
+        script_name AS "scriptName",
+        terminal_id AS "terminalId",
+        cwd,
+        worktree_path AS "worktreePath",
+        status,
+        health_status AS "healthStatus",
+        health_checked_at_unix_ms AS "healthCheckedAtUnixMs",
+        health_detail AS "healthDetail",
+        ports_json AS ports,
+        revision,
+        requested_at_unix_ms AS "requestedAtUnixMs",
+        started_at_unix_ms AS "startedAtUnixMs",
+        finished_at_unix_ms AS "finishedAtUnixMs",
+        exit_code AS "exitCode",
+        exit_signal AS "exitSignal",
+        error_code AS "errorCode",
+        error_detail AS "errorDetail",
+        composition_task_id AS "compositionTaskId",
+        composition_run_id AS "compositionRunId",
+        stop_operation_id AS "stopOperationId",
+        stop_claim_owner_id AS "stopClaimOwnerId",
+        stop_claim_epoch AS "stopClaimEpoch",
+        stop_claim_expires_at_unix_ms AS "stopClaimExpiresAtUnixMs",
+        updated_at_unix_ms AS "updatedAtUnixMs"
+      FROM workspace_script_runs
+      WHERE stop_operation_id IS NOT NULL AND status IN ('starting', 'running', 'stopping')
     `,
   });
 
@@ -632,11 +816,20 @@ const makeStore = Effect.gen(function* () {
         ),
       );
 
-  const decodeStoredRow = (operation: string, row: WorkspaceScriptRunRow) =>
-    decodeRun(toRunCandidate(row)).pipe(
-      Effect.map((run) => ({ run, stopOperationId: row.stopOperationId })),
+  const decodeStoredRow = Effect.fn("WorkspaceScriptStore.decodeStoredRow")(function* (
+    operation: string,
+    row: WorkspaceScriptRunRow,
+  ) {
+    const run = yield* decodeRun(toRunCandidate(row)).pipe(
       Effect.mapError(toPersistenceDecodeError(`${operation}:run`)),
     );
+    const stopClaim = yield* decodeStopClaim(operation, row);
+    return {
+      run,
+      stopOperationId: row.stopOperationId,
+      stopClaim,
+    };
+  });
 
   const validateRun = (operation: string, run: WorkspaceScriptRun) =>
     decodeRun(run).pipe(Effect.mapError(toPersistenceDecodeError(`${operation}:input`)));
@@ -784,6 +977,28 @@ const makeStore = Effect.gen(function* () {
     withTransaction(
       Effect.gen(function* () {
         const run = yield* validateRun("WorkspaceScriptStore.claimStop", input.run);
+        if (
+          input.claimOwnerId.trim().length === 0 ||
+          !Number.isSafeInteger(input.claimedAtUnixMs) ||
+          input.claimedAtUnixMs < 0 ||
+          !Number.isSafeInteger(input.claimExpiresAtUnixMs) ||
+          input.claimExpiresAtUnixMs <= input.claimedAtUnixMs
+        ) {
+          return yield* domainError(
+            "workspace_script_recovery_time_invalid",
+            "停止执行 claim 的 owner 与有效期必须合法。",
+            { workspaceScriptRunId: run.workspaceScriptRunId, operationId: input.operationId },
+          );
+        }
+
+        const toClaimResult = (
+          stored: StoredWorkspaceScriptRun,
+          claimed: boolean,
+        ): WorkspaceScriptStopClaimResult => ({
+          run: stored.run,
+          claimed,
+          stopClaim: stored.stopClaim,
+        });
         const operationWinner = yield* readStoredRunByOperation(input.operationId);
         if (Option.isSome(operationWinner)) {
           if (operationWinner.value.run.workspaceScriptRunId !== run.workspaceScriptRunId) {
@@ -803,53 +1018,54 @@ const makeStore = Effect.gen(function* () {
               { workspaceScriptRunId: run.workspaceScriptRunId },
             );
           }
-          if (operationWinner.value.run.status === "running") {
-            if (
-              run.status !== "stopping" ||
-              run.revision !== operationWinner.value.run.revision + 1
-            ) {
-              return yield* revisionError(
-                run,
-                operationWinner.value.run.revision,
-                operationWinner.value.run.revision,
-              );
-            }
-            const reclaimed = yield* query(
-              "WorkspaceScriptStore.claimStop.reclaim",
-              claimStopRow({
-                ...toRunWrite(run),
-                expectedRevision: operationWinner.value.run.revision,
-                operationId: input.operationId,
-              }),
-            );
-            if (Option.isSome(reclaimed)) {
-              const stored = yield* decodeStoredRow(
-                "WorkspaceScriptStore.claimStop.reclaim",
-                reclaimed.value,
-              );
-              return { run: stored.run, claimed: true } satisfies WorkspaceScriptRunClaimResult;
-            }
-            const latest = yield* readStoredRunByOperation(input.operationId);
-            if (
-              Option.isSome(latest) &&
-              latest.value.run.workspaceScriptRunId === run.workspaceScriptRunId &&
-              sameRunIdentity(latest.value.run, run)
-            ) {
-              return {
-                run: latest.value.run,
-                claimed: false,
-              } satisfies WorkspaceScriptRunClaimResult;
-            }
+          if (
+            isFinishedRun(operationWinner.value.run) ||
+            (operationWinner.value.stopClaim !== null &&
+              operationWinner.value.stopClaim.expiresAtUnixMs > input.claimedAtUnixMs)
+          ) {
+            return toClaimResult(operationWinner.value, false);
+          }
+          if (
+            run.revision !== operationWinner.value.run.revision + 1 ||
+            (run.status !== "stopping" &&
+              !(operationWinner.value.run.status === "starting" && run.status === "starting"))
+          ) {
             return yield* revisionError(
               run,
               operationWinner.value.run.revision,
-              Option.isSome(latest) ? latest.value.run.revision : 0,
+              operationWinner.value.run.revision,
             );
           }
-          return {
-            run: operationWinner.value.run,
-            claimed: false,
-          } satisfies WorkspaceScriptRunClaimResult;
+          const reclaimed = yield* query(
+            "WorkspaceScriptStore.claimStop.reclaim",
+            claimStopRow({
+              ...toRunWrite(run),
+              expectedRevision: operationWinner.value.run.revision,
+              operationId: input.operationId,
+              claimOwnerId: input.claimOwnerId,
+              claimedAtUnixMs: input.claimedAtUnixMs,
+              claimExpiresAtUnixMs: input.claimExpiresAtUnixMs,
+            }),
+          );
+          if (Option.isSome(reclaimed)) {
+            return toClaimResult(
+              yield* decodeStoredRow("WorkspaceScriptStore.claimStop.reclaim", reclaimed.value),
+              true,
+            );
+          }
+          const latest = yield* readStoredRunByOperation(input.operationId);
+          if (
+            Option.isSome(latest) &&
+            latest.value.run.workspaceScriptRunId === run.workspaceScriptRunId &&
+            sameRunIdentity(latest.value.run, run)
+          ) {
+            return toClaimResult(latest.value, false);
+          }
+          return yield* revisionError(
+            run,
+            operationWinner.value.run.revision,
+            Option.isSome(latest) ? latest.value.run.revision : 0,
+          );
         }
 
         const current = yield* readStoredRun(run.workspaceScriptRunId);
@@ -883,6 +1099,9 @@ const makeStore = Effect.gen(function* () {
         ) {
           return yield* revisionError(run, input.expectedRevision, current.value.run.revision);
         }
+        if (isFinishedRun(current.value.run)) {
+          return toClaimResult(current.value, false);
+        }
 
         const claimed = yield* query(
           "WorkspaceScriptStore.claimStop.update",
@@ -890,14 +1109,16 @@ const makeStore = Effect.gen(function* () {
             ...toRunWrite(run),
             expectedRevision: input.expectedRevision,
             operationId: input.operationId,
+            claimOwnerId: input.claimOwnerId,
+            claimedAtUnixMs: input.claimedAtUnixMs,
+            claimExpiresAtUnixMs: input.claimExpiresAtUnixMs,
           }),
         );
         if (Option.isSome(claimed)) {
-          const stored = yield* decodeStoredRow(
-            "WorkspaceScriptStore.claimStop.update",
-            claimed.value,
+          return toClaimResult(
+            yield* decodeStoredRow("WorkspaceScriptStore.claimStop.update", claimed.value),
+            true,
           );
-          return { run: stored.run, claimed: true } satisfies WorkspaceScriptRunClaimResult;
         }
 
         const winner = yield* readStoredRunByOperation(input.operationId);
@@ -906,7 +1127,7 @@ const makeStore = Effect.gen(function* () {
           winner.value.run.workspaceScriptRunId === run.workspaceScriptRunId &&
           sameRunIdentity(winner.value.run, run)
         ) {
-          return { run: winner.value.run, claimed: false } satisfies WorkspaceScriptRunClaimResult;
+          return toClaimResult(winner.value, false);
         }
         const latest = yield* readStoredRun(run.workspaceScriptRunId);
         if (Option.isSome(latest) && latest.value.stopOperationId !== null) {
@@ -927,10 +1148,42 @@ const makeStore = Effect.gen(function* () {
       }),
     );
 
+  const saveStopTransition: WorkspaceScriptStoreShape["saveStopTransition"] = (input) =>
+    withTransaction(
+      Effect.gen(function* () {
+        const run = yield* validateRun("WorkspaceScriptStore.saveStopTransition", input.run);
+        if (
+          input.claimOwnerId.trim().length === 0 ||
+          !Number.isSafeInteger(input.claimEpoch) ||
+          input.claimEpoch <= 0 ||
+          run.revision !== input.expectedRevision + 1
+        ) {
+          return Option.none<WorkspaceScriptRun>();
+        }
+        const updated = yield* query(
+          "WorkspaceScriptStore.saveStopTransition.update",
+          saveFencedStopTransitionRow({
+            ...toRunWrite(run),
+            expectedRevision: input.expectedRevision,
+            operationId: input.operationId,
+            claimOwnerId: input.claimOwnerId,
+            claimEpoch: input.claimEpoch,
+          }),
+        );
+        if (Option.isNone(updated)) return Option.none<WorkspaceScriptRun>();
+        const stored = yield* decodeStoredRow(
+          "WorkspaceScriptStore.saveStopTransition.update",
+          updated.value,
+        );
+        return Option.some(stored.run);
+      }),
+    );
+
   const store: WorkspaceScriptStoreShape = {
     claimStart,
     saveTransition,
     claimStop,
+    saveStopTransition,
     getRun: (workspaceScriptRunId) =>
       readStoredRun(workspaceScriptRunId).pipe(Effect.map(Option.map((stored) => stored.run))),
     getActiveRunByTerminal: (threadId, terminalId) =>
@@ -980,22 +1233,23 @@ const makeStore = Effect.gen(function* () {
         );
       }
       return withTransaction(
-        query(
-          "WorkspaceScriptStore.recoverInterrupted",
-          recoverInterruptedRows({ observedAtUnixMs }),
-        ).pipe(
-          Effect.flatMap((rows) =>
-            Effect.forEach(rows, (row) =>
-              decodeStoredRow("WorkspaceScriptStore.recoverInterrupted", row).pipe(
-                Effect.map((stored) => stored.run),
-              ),
+        Effect.all([
+          query(
+            "WorkspaceScriptStore.recoverInterrupted.failActive",
+            recoverInterruptedRows({ observedAtUnixMs }),
+          ),
+          query("WorkspaceScriptStore.recoverInterrupted.listStops", listInterruptedStopRows()),
+        ]).pipe(
+          Effect.flatMap(([failedRows, stopRows]) =>
+            Effect.forEach([...failedRows, ...stopRows], (row) =>
+              decodeStoredRow("WorkspaceScriptStore.recoverInterrupted", row),
             ),
           ),
-          Effect.map((runs) =>
-            [...runs].sort(
+          Effect.map((storedRuns) =>
+            [...storedRuns].sort(
               (left, right) =>
-                left.requestedAtUnixMs - right.requestedAtUnixMs ||
-                left.workspaceScriptRunId.localeCompare(right.workspaceScriptRunId),
+                left.run.requestedAtUnixMs - right.run.requestedAtUnixMs ||
+                left.run.workspaceScriptRunId.localeCompare(right.run.workspaceScriptRunId),
             ),
           ),
         ),

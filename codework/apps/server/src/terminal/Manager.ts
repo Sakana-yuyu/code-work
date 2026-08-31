@@ -199,6 +199,11 @@ export class TerminalManager extends Context.Service<
       input: TerminalInspectSessionInput,
     ) => Effect.Effect<TerminalSessionInspection, TerminalError>;
 
+    /** 原子读取 owner-bound 会话状态，供 Workspace Script 状态确认使用。 */
+    readonly inspectSessionReceipt: (
+      input: TerminalInspectSessionInput,
+    ) => Effect.Effect<TerminalSessionInspectionReceipt, TerminalError>;
+
     /**
      * Subscribe to terminal runtime events with a direct callback.
      *
@@ -279,6 +284,11 @@ export interface TerminalInspectSessionInput {
 }
 
 export type TerminalSessionInspection = "active" | "inactive" | "missing" | "quarantined";
+
+export interface TerminalSessionInspectionReceipt {
+  readonly inspection: TerminalSessionInspection;
+  readonly snapshot: TerminalSessionSnapshot | null;
+}
 
 export interface TerminalHistoryInput {
   readonly threadId: string;
@@ -2896,6 +2906,13 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
   const runCommand: TerminalManager["Service"]["runCommand"] = (input) =>
     withThreadLock(input.threadId, runCommandLocked(input));
 
+  const sessionInspection = (session: TerminalSessionState): TerminalSessionInspection =>
+    session.process?.exitObservation.status === "gap"
+      ? "quarantined"
+      : session.process !== null
+        ? "active"
+        : "inactive";
+
   const inspectSession: TerminalManager["Service"]["inspectSession"] = (input) =>
     withThreadLock(
       input.threadId,
@@ -2903,10 +2920,39 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
         const session = yield* getSession(input.threadId, input.terminalId);
         if (Option.isNone(session)) return "missing" as const;
         yield* assertSessionOwner(session.value, input.expectedOwner);
-        if (session.value.process?.exitObservation.status === "gap") {
-          return "quarantined" as const;
+        return sessionInspection(session.value);
+      }),
+    );
+
+  const inspectSessionReceipt: TerminalManager["Service"]["inspectSessionReceipt"] = (input) =>
+    withThreadLock(
+      input.threadId,
+      Effect.gen(function* () {
+        const observed = yield* modifyManagerState<TerminalSessionInspectionReceipt | null>(
+          (state) => {
+            const session = state.sessions.get(toSessionKey(input.threadId, input.terminalId));
+            if (!session) {
+              return [{ inspection: "missing" as const, snapshot: null }, state] as const;
+            }
+            if (!terminalSessionOwnerEquals(session.owner, input.expectedOwner)) {
+              return [null, state] as const;
+            }
+            return [
+              {
+                inspection: sessionInspection(session),
+                snapshot: snapshot(session),
+              },
+              state,
+            ] as const;
+          },
+        );
+        if (observed === null) {
+          return yield* new TerminalSessionOwnershipError({
+            threadId: input.threadId,
+            terminalId: input.terminalId,
+          });
         }
-        return session.value.process !== null ? ("active" as const) : ("inactive" as const);
+        return observed;
       }),
     );
 
@@ -3387,6 +3433,7 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
     close,
     kill,
     inspectSession,
+    inspectSessionReceipt,
     subscribe,
     subscribeMetadata,
   });

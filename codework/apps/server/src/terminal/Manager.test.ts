@@ -246,6 +246,10 @@ interface CreateManagerOptions {
   processKillGraceMs?: number;
   processExitTimeoutMs?: number;
   maxRetainedInactiveSessions?: number;
+  unregisterTerminal?: (input: {
+    readonly threadId: string;
+    readonly terminalId: string;
+  }) => Effect.Effect<void>;
   ptyAdapter?: FakePtyAdapter;
 }
 
@@ -288,6 +292,9 @@ const createManager = (
         processExitTimeoutMs: options.processExitTimeoutMs ?? 1_000,
         ...(options.maxRetainedInactiveSessions !== undefined
           ? { maxRetainedInactiveSessions: options.maxRetainedInactiveSessions }
+          : {}),
+        ...(options.unregisterTerminal !== undefined
+          ? { unregisterTerminal: options.unregisterTerminal }
           : {}),
       });
       const eventsRef = yield* Ref.make<ReadonlyArray<TerminalEvent>>([]);
@@ -458,8 +465,20 @@ it.layer(
         terminalId,
         expectedOwner: workspaceScriptOwner(11),
       });
+      const receipt = yield* manager.inspectSessionReceipt({
+        threadId: "owner-inspect",
+        terminalId,
+        expectedOwner: workspaceScriptOwner(11),
+      });
       const wrongGeneration = yield* manager
         .inspectSession({
+          threadId: "owner-inspect",
+          terminalId,
+          expectedOwner: workspaceScriptOwner(12),
+        })
+        .pipe(Effect.flip);
+      const wrongReceiptGeneration = yield* manager
+        .inspectSessionReceipt({
           threadId: "owner-inspect",
           terminalId,
           expectedOwner: workspaceScriptOwner(12),
@@ -468,8 +487,59 @@ it.layer(
 
       assert.equal(first.pid, repeated.pid);
       assert.equal(active, "active");
+      assert.equal(receipt.inspection, "active");
+      expect(receipt.snapshot).toMatchObject({ status: "running", pid: first.pid });
       assert.equal(wrongGeneration._tag, "TerminalSessionOwnershipError");
+      assert.equal(wrongReceiptGeneration._tag, "TerminalSessionOwnershipError");
       expect(ptyAdapter.spawnInputs).toHaveLength(1);
+    }),
+  );
+
+  it.effect("退出状态已落入 Manager 而事件尚未发布时 receipt 保留真实退出结果", () =>
+    Effect.gen(function* () {
+      const unregisterStarted = yield* Deferred.make<void>();
+      const releaseUnregister = yield* Deferred.make<void>();
+      const { manager, ptyAdapter, getEvents } = yield* createManager(5, {
+        unregisterTerminal: () =>
+          Deferred.succeed(unregisterStarted, undefined).pipe(
+            Effect.andThen(Deferred.await(releaseUnregister)),
+          ),
+      });
+      const threadId = "owner-exit-receipt";
+      const terminalId = "workspace-script-operation-owner-exit-receipt";
+      const owner = workspaceScriptOwner(14);
+      yield* manager.runCommand({
+        threadId,
+        terminalId,
+        cwd: process.cwd(),
+        command: "workspace-script-command",
+        owner,
+      });
+      const processHandle = ptyAdapter.processes[0];
+      expect(processHandle).toBeDefined();
+      if (!processHandle) return;
+
+      processHandle.emitExit({ exitCode: 17, signal: null });
+      yield* Deferred.await(unregisterStarted);
+      const receipt = yield* manager.inspectSessionReceipt({
+        threadId,
+        terminalId,
+        expectedOwner: owner,
+      });
+
+      assert.equal(receipt.inspection, "inactive");
+      expect(receipt.snapshot).toMatchObject({
+        status: "exited",
+        pid: null,
+        exitCode: 17,
+        exitSignal: null,
+      });
+      expect((yield* getEvents).filter((event) => event.type === "exited")).toEqual([]);
+
+      yield* Deferred.succeed(releaseUnregister, undefined);
+      yield* waitFor(
+        getEvents.pipe(Effect.map((events) => events.some((event) => event.type === "exited"))),
+      );
     }),
   );
 
