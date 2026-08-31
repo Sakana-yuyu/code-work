@@ -798,6 +798,7 @@ inputStoreLayer("CompositionTaskInputStore", (it) => {
         workspaceRoot: "C:/workspace/project",
         workspaceRootDigest: "sha256:workspace",
         model: "provider/model",
+        capabilityIds: ["t3.workspace.read_file", "t3.workspace.write_file"],
       };
 
       yield* store.save(input);
@@ -805,6 +806,21 @@ inputStoreLayer("CompositionTaskInputStore", (it) => {
 
       assert.ok(Option.isSome(loaded));
       assert.deepEqual(Option.getOrThrow(loaded), input);
+    }),
+  );
+
+  it.effect("旧加密输入缺少 capabilityIds 时仍可兼容读取", () =>
+    Effect.gen(function* () {
+      const store = yield* CompositionTaskInputStore;
+      const legacyInput = {
+        taskId: "task-input-legacy",
+        prompt: "兼容旧版恢复输入",
+        workspaceRoot: "C:/workspace/legacy",
+      };
+
+      yield* store.save(legacyInput);
+
+      assert.deepEqual(Option.getOrThrow(yield* store.get(legacyInput.taskId)), legacyInput);
     }),
   );
 

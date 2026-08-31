@@ -77,6 +77,7 @@ import Migration0061 from "./Migrations/061_CompositionSquadExecutions.ts";
 import Migration0062 from "./Migrations/062_CompositionSquadExecutionBindings.ts";
 import Migration0063 from "./Migrations/063_CompositionSquadExecutionPlanDigest.ts";
 import Migration0064 from "./Migrations/064_CompositionToolInvocations.ts";
+import Migration0065 from "./Migrations/065_CompositionGoalLoopRetryIntents.ts";
 import Migration0069 from "./Migrations/069_ThreadGoals.ts";
 
 /**
@@ -157,6 +158,7 @@ export const migrationEntries = [
   [62, "CompositionSquadExecutionBindings", Migration0062],
   [63, "CompositionSquadExecutionPlanDigest", Migration0063],
   [64, "CompositionToolInvocations", Migration0064],
+  [65, "CompositionGoalLoopRetryIntents", Migration0065],
   [69, "ThreadGoals", Migration0069],
 ] as const;
 

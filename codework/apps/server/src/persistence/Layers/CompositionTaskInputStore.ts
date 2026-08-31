@@ -26,6 +26,7 @@ const InputPayloadSchema = Schema.Struct({
   workspaceRoot: Schema.String,
   workspaceRootDigest: Schema.optional(Schema.String),
   model: Schema.optional(Schema.String),
+  capabilityIds: Schema.optional(Schema.Array(Schema.String)),
 });
 
 const EncryptedPayloadSchema = Schema.Struct({
@@ -92,6 +93,7 @@ const decryptPayload = (
       ? {}
       : { workspaceRootDigest: input.workspaceRootDigest }),
     ...(input.model === undefined ? {} : { model: input.model }),
+    ...(input.capabilityIds === undefined ? {} : { capabilityIds: [...input.capabilityIds] }),
   };
 };
 
