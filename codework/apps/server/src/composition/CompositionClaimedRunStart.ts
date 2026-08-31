@@ -105,6 +105,8 @@ export const dispatchCompositionRunStart = <A, F extends StartFailure, EAccepted
     yield* input.store.settleAccepted({
       runId: acceptedProjection.accepted.runId,
       expectedRevision: acceptedProjection.accepted.revision,
+      claimId: acceptedProjection.accepted.claimId ?? input.intent.claimId ?? "",
+      ownerEpoch: acceptedProjection.accepted.ownerEpoch,
       settledAtUnixMs,
     });
     return acceptedProjection.result;

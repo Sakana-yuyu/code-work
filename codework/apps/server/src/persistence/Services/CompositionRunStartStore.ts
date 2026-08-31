@@ -10,6 +10,7 @@ export const CompositionRunStartState = Schema.Literals([
   "preparing",
   "dispatching",
   "accepted",
+  "manual_pending",
   "settled",
   "quarantined",
 ]);
@@ -110,6 +111,15 @@ export interface CompositionRunStartDispatchInput {
   readonly ownerEpoch: number;
 }
 
+export interface CompositionRunStartOwnerLeaseRenewInput {
+  readonly runId: string;
+  readonly expectedRevision: number;
+  readonly claimId: string;
+  readonly ownerEpoch: number;
+  readonly renewedAtUnixMs: number;
+  readonly leaseExpiresAtUnixMs: number;
+}
+
 export interface CompositionRunStartAcceptedInput {
   readonly runId: string;
   readonly expectedRevision: number;
@@ -123,6 +133,55 @@ export interface CompositionRunStartAcceptedInput {
 export interface CompositionRunStartSettledInput {
   readonly runId: string;
   readonly expectedRevision: number;
+  readonly claimId: string;
+  readonly ownerEpoch: number;
+  readonly settledAtUnixMs: number;
+}
+
+export interface CompositionRunStartAcceptedReleaseInput {
+  readonly runId: string;
+  readonly expectedRevision: number;
+  readonly claimId: string;
+  readonly ownerEpoch: number;
+  readonly releasedAtUnixMs: number;
+}
+
+export interface CompositionRunStartManualRecoverySnapshot {
+  readonly runtimeTaskId: string | null;
+  readonly capabilityHandshakeId: string | null;
+  readonly outcomeCode: string;
+  readonly outcomeDetail: string | null;
+}
+
+export interface CompositionRunStartAcceptedManualPendingInput extends CompositionRunStartManualRecoverySnapshot {
+  readonly runId: string;
+  readonly expectedRevision: number;
+  readonly claimId: string;
+  readonly ownerEpoch: number;
+  readonly manualAtUnixMs: number;
+}
+
+export interface CompositionRunStartManualClaimInput
+  extends CompositionRunStartClaimInput, CompositionRunStartManualRecoverySnapshot {
+  readonly expectedOwnerEpoch: number;
+}
+
+export interface CompositionRunStartManualReleaseInput
+  extends CompositionRunStartAcceptedReleaseInput, CompositionRunStartManualRecoverySnapshot {}
+
+export interface CompositionRunStartManualResumeInput extends CompositionRunStartManualRecoverySnapshot {
+  readonly runId: string;
+  readonly expectedRevision: number;
+  readonly claimId: string;
+  readonly ownerEpoch: number;
+  readonly resumedAtUnixMs: number;
+}
+
+export interface CompositionRunStartManualSettledInput extends CompositionRunStartManualRecoverySnapshot {
+  readonly runId: string;
+  readonly expectedRevision: number;
+  readonly claimId: string;
+  readonly ownerEpoch: number;
   readonly settledAtUnixMs: number;
 }
 
@@ -163,7 +222,13 @@ export type CompositionRunStartQuarantineInput =
 
 export interface CompositionRunStartRecoverableListInput {
   readonly limit: number;
+  readonly after?: {
+    readonly runId: string;
+  };
+  readonly throughRunId?: string;
 }
+
+export type CompositionRunStartManualRecoveryListInput = CompositionRunStartRecoverableListInput;
 
 export interface CompositionRunStartStoreShape {
   readonly prepareStart: (
@@ -184,9 +249,33 @@ export interface CompositionRunStartStoreShape {
   readonly markDispatching: (
     input: CompositionRunStartDispatchInput,
   ) => Effect.Effect<CompositionRunStartIntent, CompositionRunStartStoreError>;
+  readonly renewOwnerLease: (
+    input: CompositionRunStartOwnerLeaseRenewInput,
+  ) => Effect.Effect<CompositionRunStartIntent, CompositionRunStartStoreError>;
   readonly claimDispatchRecovery: (
     input: CompositionRunStartClaimInput,
   ) => Effect.Effect<CompositionRunStartClaimResult, CompositionRunStartStoreError>;
+  readonly claimAcceptedRecovery: (
+    input: CompositionRunStartClaimInput,
+  ) => Effect.Effect<CompositionRunStartClaimResult, CompositionRunStartStoreError>;
+  readonly releaseAcceptedRecovery: (
+    input: CompositionRunStartAcceptedReleaseInput,
+  ) => Effect.Effect<CompositionRunStartIntent, CompositionRunStartStoreError>;
+  readonly markAcceptedManualPending: (
+    input: CompositionRunStartAcceptedManualPendingInput,
+  ) => Effect.Effect<CompositionRunStartIntent, CompositionRunStartStoreError>;
+  readonly claimManualRecovery: (
+    input: CompositionRunStartManualClaimInput,
+  ) => Effect.Effect<CompositionRunStartClaimResult, CompositionRunStartStoreError>;
+  readonly releaseManualRecovery: (
+    input: CompositionRunStartManualReleaseInput,
+  ) => Effect.Effect<CompositionRunStartIntent, CompositionRunStartStoreError>;
+  readonly resumeManualRecoveryToAccepted: (
+    input: CompositionRunStartManualResumeInput,
+  ) => Effect.Effect<CompositionRunStartIntent, CompositionRunStartStoreError>;
+  readonly settleManualRecovery: (
+    input: CompositionRunStartManualSettledInput,
+  ) => Effect.Effect<CompositionRunStartIntent, CompositionRunStartStoreError>;
   readonly recordAccepted: (
     input: CompositionRunStartAcceptedInput,
   ) => Effect.Effect<CompositionRunStartIntent, CompositionRunStartStoreError>;
@@ -199,14 +288,37 @@ export interface CompositionRunStartStoreShape {
   readonly quarantine: (
     input: CompositionRunStartQuarantineInput,
   ) => Effect.Effect<CompositionRunStartIntent, CompositionRunStartStoreError>;
+  readonly getRecoverableScanUpperBound: Effect.Effect<
+    Option.Option<string>,
+    CompositionRunStartStoreError
+  >;
   readonly listRecoverable: (
     input: CompositionRunStartRecoverableListInput,
+  ) => Effect.Effect<ReadonlyArray<CompositionRunStartIntent>, CompositionRunStartStoreError>;
+  readonly getManualRecoveryScanUpperBound: Effect.Effect<
+    Option.Option<string>,
+    CompositionRunStartStoreError
+  >;
+  readonly listManualRecoveries: (
+    input: CompositionRunStartManualRecoveryListInput,
   ) => Effect.Effect<ReadonlyArray<CompositionRunStartIntent>, CompositionRunStartStoreError>;
 }
 
 export type CompositionRunStartExecutionStoreShape = Omit<
   CompositionRunStartStoreShape,
-  "resetPreparationForRecovery" | "claimDispatchRecovery" | "listRecoverable"
+  | "resetPreparationForRecovery"
+  | "claimDispatchRecovery"
+  | "claimAcceptedRecovery"
+  | "releaseAcceptedRecovery"
+  | "markAcceptedManualPending"
+  | "claimManualRecovery"
+  | "releaseManualRecovery"
+  | "resumeManualRecoveryToAccepted"
+  | "settleManualRecovery"
+  | "getRecoverableScanUpperBound"
+  | "listRecoverable"
+  | "getManualRecoveryScanUpperBound"
+  | "listManualRecoveries"
 >;
 
 export class CompositionRunStartStore extends Context.Service<

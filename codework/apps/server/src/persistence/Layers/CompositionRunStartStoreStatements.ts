@@ -2,30 +2,12 @@ import * as Schema from "effect/Schema";
 import * as SqlClient from "effect/unstable/sql/SqlClient";
 import * as SqlSchema from "effect/unstable/sql/SqlSchema";
 
-import { CompositionRunStartState } from "../Services/CompositionRunStartStore.ts";
+import { makeCompositionRunStartAcceptedStatements } from "./CompositionRunStartStoreAcceptedStatements.ts";
+import { makeCompositionRunStartManualStatements } from "./CompositionRunStartStoreManualStatements.ts";
+import { RunStartRowSchema } from "./CompositionRunStartStoreRow.ts";
+import { makeCompositionRunStartScanStatements } from "./CompositionRunStartStoreScanStatements.ts";
 
-export const RunStartRowSchema = Schema.Struct({
-  runId: Schema.String,
-  taskId: Schema.String,
-  previousRunId: Schema.NullOr(Schema.String),
-  agentId: Schema.String,
-  runtimeId: Schema.String,
-  attempt: Schema.Number,
-  payloadDigest: Schema.String,
-  capabilityDigest: Schema.String,
-  state: CompositionRunStartState,
-  revision: Schema.Number,
-  claimId: Schema.NullOr(Schema.String),
-  ownerEpoch: Schema.Number,
-  ownerLeaseExpiresAtUnixMs: Schema.NullOr(Schema.Number),
-  runtimeTaskId: Schema.NullOr(Schema.String),
-  capabilityHandshakeId: Schema.NullOr(Schema.String),
-  outcomeCode: Schema.NullOr(Schema.String),
-  outcomeDetail: Schema.NullOr(Schema.String),
-  createdAtUnixMs: Schema.Number,
-  updatedAtUnixMs: Schema.Number,
-});
-export type RunStartRow = typeof RunStartRowSchema.Type;
+export type { RunStartRow } from "./CompositionRunStartStoreRow.ts";
 
 const PrepareRequest = Schema.Struct({
   runId: Schema.String,
@@ -67,20 +49,6 @@ const DispatchRequest = Schema.Struct({
   dispatchedAtUnixMs: Schema.Number,
   ownerEpoch: Schema.Number,
 });
-const AcceptedRequest = Schema.Struct({
-  runId: Schema.String,
-  expectedRevision: Schema.Number,
-  claimId: Schema.String,
-  runtimeTaskId: Schema.NullOr(Schema.String),
-  capabilityHandshakeId: Schema.NullOr(Schema.String),
-  acceptedAtUnixMs: Schema.Number,
-  ownerEpoch: Schema.Number,
-});
-const SettledRequest = Schema.Struct({
-  runId: Schema.String,
-  expectedRevision: Schema.Number,
-  settledAtUnixMs: Schema.Number,
-});
 const RejectedRequest = Schema.Struct({
   runId: Schema.String,
   expectedRevision: Schema.Number,
@@ -106,9 +74,11 @@ const QuarantineOwnedRequest = Schema.Struct({
   outcomeDetail: Schema.NullOr(Schema.String),
   quarantinedAtUnixMs: Schema.Number,
 });
-const ListRequest = Schema.Struct({ limit: Schema.Number });
-
 export const makeCompositionRunStartStoreStatements = (sql: SqlClient.SqlClient) => {
+  const acceptedStatements = makeCompositionRunStartAcceptedStatements(sql);
+  const manualStatements = makeCompositionRunStartManualStatements(sql);
+  const scanStatements = makeCompositionRunStartScanStatements(sql);
+
   const getRow = SqlSchema.findOneOption({
     Request: IdRequest,
     Result: RunStartRowSchema,
@@ -297,53 +267,6 @@ export const makeCompositionRunStartStoreStatements = (sql: SqlClient.SqlClient)
     `,
   });
 
-  const recordAcceptedRow = SqlSchema.findOneOption({
-    Request: AcceptedRequest,
-    Result: RunStartRowSchema,
-    execute: (input) => sql`
-      UPDATE composition_run_start_intents
-      SET state = 'accepted', revision = revision + 1, claim_id = NULL,
-        owner_lease_expires_at_unix_ms = NULL,
-        runtime_task_id = ${input.runtimeTaskId},
-        capability_handshake_id = ${input.capabilityHandshakeId},
-        updated_at_unix_ms = MAX(updated_at_unix_ms, ${input.acceptedAtUnixMs})
-      WHERE run_id = ${input.runId}
-        AND state = 'dispatching' AND revision = ${input.expectedRevision}
-        AND claim_id = ${input.claimId}
-        AND owner_epoch = ${input.ownerEpoch}
-      RETURNING
-        run_id AS "runId", task_id AS "taskId", previous_run_id AS "previousRunId",
-        agent_id AS "agentId", runtime_id AS "runtimeId", attempt,
-        payload_digest AS "payloadDigest", capability_digest AS "capabilityDigest",
-        state, revision, claim_id AS "claimId", owner_epoch AS "ownerEpoch",
-        owner_lease_expires_at_unix_ms AS "ownerLeaseExpiresAtUnixMs", runtime_task_id AS "runtimeTaskId",
-        capability_handshake_id AS "capabilityHandshakeId",
-        outcome_code AS "outcomeCode", outcome_detail AS "outcomeDetail",
-        created_at_unix_ms AS "createdAtUnixMs", updated_at_unix_ms AS "updatedAtUnixMs"
-    `,
-  });
-
-  const settleAcceptedRow = SqlSchema.findOneOption({
-    Request: SettledRequest,
-    Result: RunStartRowSchema,
-    execute: (input) => sql`
-      UPDATE composition_run_start_intents
-      SET state = 'settled', revision = revision + 1,
-        updated_at_unix_ms = MAX(updated_at_unix_ms, ${input.settledAtUnixMs})
-      WHERE run_id = ${input.runId}
-        AND state = 'accepted' AND revision = ${input.expectedRevision}
-      RETURNING
-        run_id AS "runId", task_id AS "taskId", previous_run_id AS "previousRunId",
-        agent_id AS "agentId", runtime_id AS "runtimeId", attempt,
-        payload_digest AS "payloadDigest", capability_digest AS "capabilityDigest",
-        state, revision, claim_id AS "claimId", owner_epoch AS "ownerEpoch",
-        owner_lease_expires_at_unix_ms AS "ownerLeaseExpiresAtUnixMs", runtime_task_id AS "runtimeTaskId",
-        capability_handshake_id AS "capabilityHandshakeId",
-        outcome_code AS "outcomeCode", outcome_detail AS "outcomeDetail",
-        created_at_unix_ms AS "createdAtUnixMs", updated_at_unix_ms AS "updatedAtUnixMs"
-    `,
-  });
-
   const settleRejectedRow = SqlSchema.findOneOption({
     Request: RejectedRequest,
     Result: RunStartRowSchema,
@@ -422,26 +345,6 @@ export const makeCompositionRunStartStoreStatements = (sql: SqlClient.SqlClient)
     `,
   });
 
-  const listRecoverableRows = SqlSchema.findAll({
-    Request: ListRequest,
-    Result: RunStartRowSchema,
-    execute: ({ limit }) => sql`
-      SELECT
-        run_id AS "runId", task_id AS "taskId", previous_run_id AS "previousRunId",
-        agent_id AS "agentId", runtime_id AS "runtimeId", attempt,
-        payload_digest AS "payloadDigest", capability_digest AS "capabilityDigest",
-        state, revision, claim_id AS "claimId", owner_epoch AS "ownerEpoch",
-        owner_lease_expires_at_unix_ms AS "ownerLeaseExpiresAtUnixMs", runtime_task_id AS "runtimeTaskId",
-        capability_handshake_id AS "capabilityHandshakeId",
-        outcome_code AS "outcomeCode", outcome_detail AS "outcomeDetail",
-        created_at_unix_ms AS "createdAtUnixMs", updated_at_unix_ms AS "updatedAtUnixMs"
-      FROM composition_run_start_intents
-      WHERE state IN ('prepared', 'preparing', 'dispatching', 'accepted')
-      ORDER BY updated_at_unix_ms ASC, run_id ASC
-      LIMIT ${limit}
-    `,
-  });
-
   return {
     getRow,
     getRowByTaskAttempt,
@@ -451,11 +354,11 @@ export const makeCompositionRunStartStoreStatements = (sql: SqlClient.SqlClient)
     resetPreparationRow,
     markDispatchingRow,
     claimDispatchRecoveryRow,
-    recordAcceptedRow,
-    settleAcceptedRow,
     settleRejectedRow,
     quarantinePreparedRow,
     quarantineOwnedRow,
-    listRecoverableRows,
+    ...acceptedStatements,
+    ...manualStatements,
+    ...scanStatements,
   };
 };

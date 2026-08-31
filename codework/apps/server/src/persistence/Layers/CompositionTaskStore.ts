@@ -143,6 +143,25 @@ const RuntimeTaskRequest = Schema.Struct({
   runtimeId: Schema.String,
   runtimeTaskId: Schema.String,
 });
+const RunStartResourcesCompareAndSetRequest = Schema.Struct({
+  taskId: Schema.String,
+  projectId: Schema.String,
+  threadId: Schema.NullOr(Schema.String),
+  parentTaskId: Schema.NullOr(Schema.String),
+  assigneeKind: Schema.Literals(["agent", "squad"]),
+  assigneeId: Schema.String,
+  mode: Schema.Literals(["serial", "parallel", "review"]),
+  promptDigest: Schema.String,
+  dependsOnTaskIds: Schema.Array(Schema.String),
+  runId: Schema.String,
+  agentId: Schema.String,
+  runtimeId: Schema.String,
+  attempt: Schema.Number,
+  capabilityGrantIds: Schema.Array(Schema.String),
+  expectedLeaseId: Schema.NullOr(Schema.String),
+  nextLeaseId: Schema.NullOr(Schema.String),
+  nextCapabilityGrantIds: Schema.Array(Schema.String),
+});
 const TaskListRequest = Schema.Struct({ projectId: Schema.NullOr(Schema.String) });
 const EventListRequest = Schema.Struct({ taskId: Schema.String, runId: Schema.String });
 const EventSourceRequest = Schema.Struct({
@@ -446,6 +465,64 @@ const makeStore = Effect.gen(function* () {
       WHERE task_id = ${taskId}
       ORDER BY attempt DESC, rowid DESC
       LIMIT 1
+    `,
+  });
+
+  const compareAndSetRunStartResourcesRow = SqlSchema.findOneOption({
+    Request: RunStartResourcesCompareAndSetRequest,
+    Result: RunRowSchema,
+    execute: (input) => sql`
+      UPDATE composition_task_runs
+      SET lease_id = ${input.nextLeaseId},
+        capability_grant_ids_json = ${encodeStringArray(input.nextCapabilityGrantIds)}
+      WHERE run_id = ${input.runId}
+        AND task_id = ${input.taskId}
+        AND agent_id = ${input.agentId}
+        AND runtime_id = ${input.runtimeId}
+        AND attempt = ${input.attempt}
+        AND status = 'queued'
+        AND runtime_task_id IS NULL
+        AND capability_handshake_id IS NULL
+        AND cancel_requested_at_unix_ms IS NULL
+        AND finished_at_unix_ms IS NULL
+        AND failure_code IS NULL
+        AND capability_grant_ids_json = ${encodeStringArray(input.capabilityGrantIds)}
+        AND (
+          (${input.expectedLeaseId} IS NULL AND lease_id IS NULL) OR
+          lease_id = ${input.expectedLeaseId}
+        )
+        AND run_id = (
+          SELECT latest.run_id
+          FROM composition_task_runs AS latest
+          WHERE latest.task_id = ${input.taskId}
+          ORDER BY latest.attempt DESC, latest.rowid DESC
+          LIMIT 1
+        )
+        AND EXISTS (
+          SELECT 1
+          FROM composition_tasks AS task
+          WHERE task.task_id = ${input.taskId}
+            AND task.project_id = ${input.projectId}
+            AND task.thread_id IS ${input.threadId}
+            AND task.parent_task_id IS ${input.parentTaskId}
+            AND task.assignee_kind = ${input.assigneeKind}
+            AND task.assignee_id = ${input.assigneeId}
+            AND task.mode = ${input.mode}
+            AND task.prompt_digest = ${input.promptDigest}
+            AND task.depends_on_task_ids_json = ${encodeStringArray(input.dependsOnTaskIds)}
+            AND task.status = 'queued'
+            AND task.finished_at_unix_ms IS NULL
+        )
+      RETURNING
+        run_id AS "runId", task_id AS "taskId", agent_id AS "agentId", runtime_id AS "runtimeId",
+        runtime_task_id AS "runtimeTaskId", capability_handshake_id AS "capabilityHandshakeId",
+        status, attempt,
+        capability_grant_ids_json AS "capabilityGrantIds", lease_id AS "leaseId",
+        started_at_unix_ms AS "startedAtUnixMs",
+        last_runtime_event_at_unix_ms AS "lastRuntimeEventAtUnixMs",
+        cancel_requested_at_unix_ms AS "cancelRequestedAtUnixMs",
+        finished_at_unix_ms AS "finishedAtUnixMs",
+        failure_code AS "failureCode", result_summary AS "resultSummary"
     `,
   });
 
@@ -1002,6 +1079,29 @@ const makeStore = Effect.gen(function* () {
       run(
         "CompositionTaskStore.getLatestRun",
         getLatestRunRow({ taskId }).pipe(Effect.map(Option.map(toRun))),
+      ),
+    compareAndSetRunStartResources: (input) =>
+      run(
+        "CompositionTaskStore.compareAndSetRunStartResources",
+        compareAndSetRunStartResourcesRow({
+          taskId: input.task.taskId,
+          projectId: input.task.projectId,
+          threadId: input.task.threadId ?? null,
+          parentTaskId: input.task.parentTaskId ?? null,
+          assigneeKind: input.task.assigneeKind,
+          assigneeId: input.task.assigneeId,
+          mode: input.task.mode,
+          promptDigest: input.task.promptDigest,
+          dependsOnTaskIds: [...input.task.dependsOnTaskIds],
+          runId: input.run.runId,
+          agentId: input.run.agentId,
+          runtimeId: input.run.runtimeId,
+          attempt: input.run.attempt,
+          capabilityGrantIds: [...(input.run.capabilityGrantIds ?? [])],
+          expectedLeaseId: input.run.leaseId ?? null,
+          nextLeaseId: input.nextLeaseId,
+          nextCapabilityGrantIds: [...input.nextCapabilityGrantIds],
+        }).pipe(Effect.map(Option.map(toRun))),
       ),
     listRunsByRuntimeTask: (runtimeId, runtimeTaskId) =>
       run(
