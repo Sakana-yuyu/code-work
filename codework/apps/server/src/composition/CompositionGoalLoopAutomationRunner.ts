@@ -4,6 +4,7 @@ import type {
   CompositionTask,
   CompositionTaskRun,
   CompositionTaskStatus,
+  ThreadGoalStatus,
 } from "@codework/contracts";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
@@ -16,9 +17,7 @@ import {
   CompositionTaskStore,
   type CompositionTaskStoreShape,
 } from "../persistence/Services/CompositionTaskStore.ts";
-import {
-  CompositionAgentDriverRegistryService,
-} from "./CompositionAgentDriverRegistry.ts";
+import { CompositionAgentDriverRegistryService } from "./CompositionAgentDriverRegistry.ts";
 import { classifyCompositionFailure } from "./CompositionFailurePolicy.ts";
 import { composeGoalLoopRoundPrompt } from "./CompositionGoalLoopAttemptAdapters.ts";
 import {
@@ -43,6 +42,10 @@ import {
   CompositionTaskRuntimeProjectionService,
   type CompositionTaskRuntimeProjectionServiceShape,
 } from "./CompositionTaskRuntimeProjectionService.ts";
+import {
+  ThreadGoalStore,
+  type ThreadGoalStoreShape,
+} from "../persistence/Services/ThreadGoalStore.ts";
 
 export class CompositionGoalLoopAutomationRunnerError extends Schema.TaggedErrorClass<CompositionGoalLoopAutomationRunnerError>()(
   "CompositionGoalLoopAutomationRunnerError",
@@ -123,6 +126,7 @@ export interface CompositionGoalLoopAutomationRunnerOptions {
   readonly orchestrator: Pick<CompositionOrchestrator, "dispatchTask">;
   readonly runtime: Pick<CompositionTaskRuntimeProjectionServiceShape, "awaitTaskCompletion">;
   readonly store: GoalLoopStore;
+  readonly threadGoalStore?: Pick<ThreadGoalStoreShape, "setStatus">;
   readonly now?: () => number;
 }
 
@@ -191,6 +195,20 @@ const automationStatusFor = (
 ): CompositionGoalLoopAutomationRunResult["automationStatus"] =>
   status === "completed" ? "succeeded" : status === "cancelled" ? "cancelled" : "failed";
 
+const threadGoalStatusFor = (status: CompositionGoalLoopStatus): ThreadGoalStatus => {
+  switch (status) {
+    case "completed":
+      return "complete";
+    case "budget_exhausted":
+      return "budgetLimited";
+    case "cancelled":
+      return "paused";
+    case "deadline_exceeded":
+    case "pivot_required":
+      return "blocked";
+  }
+};
+
 const goalStatusFromParent = (run: CompositionTaskRun): CompositionGoalLoopStatus | undefined => {
   if (run.status === "completed") return "completed";
   switch (run.failureCode) {
@@ -220,6 +238,18 @@ const resultFromParent = (
     ...(errorCode === undefined ? {} : { errorCode }),
   };
 };
+
+const syncThreadGoalStatus = (
+  input: CompositionGoalLoopAutomationRunInput,
+  status: CompositionGoalLoopStatus,
+  store: CompositionGoalLoopAutomationRunnerOptions["threadGoalStore"],
+): Effect.Effect<void, CompositionGoalLoopAutomationRunnerError> =>
+  input.threadId === undefined || store === undefined
+    ? Effect.void
+    : store.setStatus({ threadId: input.threadId, status: threadGoalStatusFor(status) }).pipe(
+        Effect.asVoid,
+        Effect.mapError((cause) => persistenceError("同步线程 Goal 终态", cause)),
+      );
 
 const sameIds = (left: ReadonlyArray<string>, right: ReadonlyArray<string>): boolean =>
   left.length === right.length && left.every((value, index) => value === right[index]);
@@ -286,7 +316,11 @@ const validateInput = (
     return runnerError("goal_loop_input_invalid", "deadlineDurationMs 必须为正整数。", false);
   }
   if (input.reviewerAgentId !== undefined && input.reviewerAgentId === input.agentId) {
-    return runnerError("goal_loop_reviewer_invalid", "reviewerAgentId 必须与执行 Agent 不同。", false);
+    return runnerError(
+      "goal_loop_reviewer_invalid",
+      "reviewerAgentId 必须与执行 Agent 不同。",
+      false,
+    );
   }
   return undefined;
 };
@@ -296,34 +330,27 @@ export const makeCompositionGoalLoopAutomationRunner = (
 ): CompositionGoalLoopAutomationRunnerShape => {
   const now = options.now ?? Date.now;
 
-  const loadPersistedParent = Effect.fn(
-    "CompositionGoalLoopAutomationRunner.loadPersistedParent",
-  )(function* (input: CompositionGoalLoopAutomationRunInput) {
-    const [taskOption, runOption] = yield* Effect.all([
-      options.store.getTask(input.taskId),
-      options.store.getRun(input.runId),
-    ]).pipe(
-      Effect.mapError((cause) => persistenceError("读取 Goal Loop 父身份", cause)),
-    );
-    if (Option.isNone(taskOption) && Option.isNone(runOption)) return undefined;
-    if (
-      Option.isNone(taskOption) ||
-      Option.isNone(runOption) ||
-      !matchesParentIdentity(
-        taskOption.value,
-        runOption.value,
-        input,
-        runOption.value.runtimeId,
-      )
-    ) {
-      return yield* runnerError(
-        "goal_loop_parent_identity_conflict",
-        `Goal Loop 稳定身份 ${input.taskId}/${input.runId} 与既有记录冲突。`,
-        false,
-      );
-    }
-    return { task: taskOption.value, run: runOption.value };
-  });
+  const loadPersistedParent = Effect.fn("CompositionGoalLoopAutomationRunner.loadPersistedParent")(
+    function* (input: CompositionGoalLoopAutomationRunInput) {
+      const [taskOption, runOption] = yield* Effect.all([
+        options.store.getTask(input.taskId),
+        options.store.getRun(input.runId),
+      ]).pipe(Effect.mapError((cause) => persistenceError("读取 Goal Loop 父身份", cause)));
+      if (Option.isNone(taskOption) && Option.isNone(runOption)) return undefined;
+      if (
+        Option.isNone(taskOption) ||
+        Option.isNone(runOption) ||
+        !matchesParentIdentity(taskOption.value, runOption.value, input, runOption.value.runtimeId)
+      ) {
+        return yield* runnerError(
+          "goal_loop_parent_identity_conflict",
+          `Goal Loop 稳定身份 ${input.taskId}/${input.runId} 与既有记录冲突。`,
+          false,
+        );
+      }
+      return { task: taskOption.value, run: runOption.value };
+    },
+  );
 
   const resolveAgent = Effect.fn("CompositionGoalLoopAutomationRunner.resolveAgent")(function* (
     agentId: string,
@@ -409,29 +436,27 @@ export const makeCompositionGoalLoopAutomationRunner = (
       );
   });
 
-  const loadExistingChild = Effect.fn(
-    "CompositionGoalLoopAutomationRunner.loadExistingChild",
-  )(function* (dispatch: CompositionDispatchInput) {
-    const [taskOption, runOption] = yield* Effect.all([
-      options.store.getTask(dispatch.taskId),
-      options.store.getRun(dispatch.runId),
-    ]).pipe(
-      Effect.mapError((cause) => persistenceError("读取 Goal Loop 子任务", cause)),
-    );
-    if (Option.isNone(taskOption) && Option.isNone(runOption)) return undefined;
-    if (
-      Option.isNone(taskOption) ||
-      Option.isNone(runOption) ||
-      !matchesChildIdentity(taskOption.value, runOption.value, dispatch)
-    ) {
-      return yield* runnerError(
-        "goal_loop_child_identity_conflict",
-        `Goal Loop 子任务 ${dispatch.taskId}/${dispatch.runId} 与既有记录冲突。`,
-        false,
-      );
-    }
-    return { task: taskOption.value, run: runOption.value } satisfies CompositionDispatchResult;
-  });
+  const loadExistingChild = Effect.fn("CompositionGoalLoopAutomationRunner.loadExistingChild")(
+    function* (dispatch: CompositionDispatchInput) {
+      const [taskOption, runOption] = yield* Effect.all([
+        options.store.getTask(dispatch.taskId),
+        options.store.getRun(dispatch.runId),
+      ]).pipe(Effect.mapError((cause) => persistenceError("读取 Goal Loop 子任务", cause)));
+      if (Option.isNone(taskOption) && Option.isNone(runOption)) return undefined;
+      if (
+        Option.isNone(taskOption) ||
+        Option.isNone(runOption) ||
+        !matchesChildIdentity(taskOption.value, runOption.value, dispatch)
+      ) {
+        return yield* runnerError(
+          "goal_loop_child_identity_conflict",
+          `Goal Loop 子任务 ${dispatch.taskId}/${dispatch.runId} 与既有记录冲突。`,
+          false,
+        );
+      }
+      return { task: taskOption.value, run: runOption.value } satisfies CompositionDispatchResult;
+    },
+  );
 
   const dispatchOrReuse = Effect.fn("CompositionGoalLoopAutomationRunner.dispatchOrReuse")(
     function* (dispatch: CompositionDispatchInput) {
@@ -487,15 +512,17 @@ export const makeCompositionGoalLoopAutomationRunner = (
     const dispatched = yield* dispatchOrReuse(dispatch);
     const run = childTerminalStatuses.has(dispatched.run.status)
       ? dispatched.run
-      : yield* options.runtime.awaitTaskCompletion({ taskId, runId }).pipe(
-          Effect.mapError((cause) =>
-            runnerError(
-              taggedErrorCode(cause, "goal_loop_child_wait_failed"),
-              errorDetail(cause),
-              true,
+      : yield* options.runtime
+          .awaitTaskCompletion({ taskId, runId })
+          .pipe(
+            Effect.mapError((cause) =>
+              runnerError(
+                taggedErrorCode(cause, "goal_loop_child_wait_failed"),
+                errorDetail(cause),
+                true,
+              ),
             ),
-          ),
-        );
+          );
     if (run.status !== "completed") {
       const failure = classifyCompositionFailure(run);
       return yield* runnerError(
@@ -629,7 +656,10 @@ export const makeCompositionGoalLoopAutomationRunner = (
     const persistedParent = yield* loadPersistedParent(input);
     if (persistedParent !== undefined && parentTerminalStatuses.has(persistedParent.run.status)) {
       const existing = resultFromParent(persistedParent.run);
-      if (existing !== undefined) return existing;
+      if (existing !== undefined) {
+        yield* syncThreadGoalStatus(input, existing.goalStatus, options.threadGoalStore);
+        return existing;
+      }
       return yield* runnerError(
         "goal_loop_parent_terminal_unknown",
         `Goal Loop 父 Run 已终止，但无法识别终态：${persistedParent.run.status}/${persistedParent.run.failureCode ?? "none"}。`,
@@ -643,7 +673,10 @@ export const makeCompositionGoalLoopAutomationRunner = (
     const parent = yield* ensureParent(input, agent);
     if (parentTerminalStatuses.has(parent.run.status)) {
       const existing = resultFromParent(parent.run);
-      if (existing !== undefined) return existing;
+      if (existing !== undefined) {
+        yield* syncThreadGoalStatus(input, existing.goalStatus, options.threadGoalStore);
+        return existing;
+      }
       return yield* runnerError(
         "goal_loop_parent_terminal_unknown",
         `Goal Loop 父 Run 已终止，但无法识别终态：${parent.run.status}/${parent.run.failureCode ?? "none"}。`,
@@ -651,46 +684,46 @@ export const makeCompositionGoalLoopAutomationRunner = (
       );
     }
 
-    const loop = runCompositionGoalLoopWithLedger<string, CompositionGoalLoopAutomationRunnerError>({
-      taskId: input.taskId,
-      runId: input.runId,
-      agentId: input.agentId,
-      runtimeId: agent.runtimeId,
-      store: options.store,
-      maxAttempts: input.maxAttempts,
-      ...(input.maxCostUnits === undefined ? {} : { maxCostUnits: input.maxCostUnits }),
-      ...(input.stalePivotRounds === undefined
-        ? {}
-        : { stalePivotRounds: input.stalePivotRounds }),
-      ...(input.deadlineDurationMs === undefined
-        ? {}
-        : { deadlineUnixMs: input.startedAtUnixMs + input.deadlineDurationMs }),
-      now,
-      attempt: (round) =>
-        runChild({
-          parent: input,
-          kind: "attempt",
-          round,
-          agentId: input.agentId,
-          prompt: composeGoalLoopRoundPrompt(input.goal, round),
-          capabilityIds: input.capabilityIds,
-        }).pipe(
-          Effect.map((output) => ({ value: output, outputText: output, costUnits: 1 })),
-        ),
-      ...(input.reviewerAgentId === undefined
-        ? {}
-        : {
-            validateCompletion: (claim) =>
-              runChild({
-                parent: input,
-                kind: "review",
-                round: claim.round,
-                agentId: input.reviewerAgentId!,
-                prompt: composeGoalValidatorPrompt({ goal: input.goal, claim }),
-                capabilityIds: [],
-              }).pipe(Effect.map(parseGoalValidatorVerdict)),
-          }),
-    }).pipe(
+    const loop = runCompositionGoalLoopWithLedger<string, CompositionGoalLoopAutomationRunnerError>(
+      {
+        taskId: input.taskId,
+        runId: input.runId,
+        agentId: input.agentId,
+        runtimeId: agent.runtimeId,
+        store: options.store,
+        maxAttempts: input.maxAttempts,
+        ...(input.maxCostUnits === undefined ? {} : { maxCostUnits: input.maxCostUnits }),
+        ...(input.stalePivotRounds === undefined
+          ? {}
+          : { stalePivotRounds: input.stalePivotRounds }),
+        ...(input.deadlineDurationMs === undefined
+          ? {}
+          : { deadlineUnixMs: input.startedAtUnixMs + input.deadlineDurationMs }),
+        now,
+        attempt: (round) =>
+          runChild({
+            parent: input,
+            kind: "attempt",
+            round,
+            agentId: input.agentId,
+            prompt: composeGoalLoopRoundPrompt(input.goal, round),
+            capabilityIds: input.capabilityIds,
+          }).pipe(Effect.map((output) => ({ value: output, outputText: output, costUnits: 1 }))),
+        ...(input.reviewerAgentId === undefined
+          ? {}
+          : {
+              validateCompletion: (claim) =>
+                runChild({
+                  parent: input,
+                  kind: "review",
+                  round: claim.round,
+                  agentId: input.reviewerAgentId!,
+                  prompt: composeGoalValidatorPrompt({ goal: input.goal, claim }),
+                  capabilityIds: [],
+                }).pipe(Effect.map(parseGoalValidatorVerdict)),
+            }),
+      },
+    ).pipe(
       Effect.mapError((cause) =>
         isGoalLoopAutomationRunnerError(cause)
           ? cause
@@ -712,7 +745,9 @@ export const makeCompositionGoalLoopAutomationRunner = (
       const trimmed = text.trim();
       return trimmed.length > 120 ? `${trimmed.slice(0, 120)}…` : trimmed;
     });
-    return yield* persistParentTerminal(input, outcome.success.status, terminal.summary);
+    const result = yield* persistParentTerminal(input, outcome.success.status, terminal.summary);
+    yield* syncThreadGoalStatus(input, result.goalStatus, options.threadGoalStore);
+    return result;
   });
 
   return { run };
@@ -722,6 +757,7 @@ const live = Effect.gen(function* () {
   const orchestrator = yield* CompositionOrchestratorService;
   const runtime = yield* CompositionTaskRuntimeProjectionService;
   const store = yield* CompositionTaskStore;
+  const threadGoalStore = yield* Effect.serviceOption(ThreadGoalStore);
   const drivers = yield* CompositionAgentDriverRegistryService;
   const agents: AgentResolver = {
     resolve: (agentId) =>
@@ -741,6 +777,7 @@ const live = Effect.gen(function* () {
     orchestrator,
     runtime,
     store,
+    ...(Option.isNone(threadGoalStore) ? {} : { threadGoalStore: threadGoalStore.value }),
   });
 });
 

@@ -2,6 +2,8 @@ import type {
   CompositionTask,
   CompositionTaskEvent,
   CompositionTaskRun,
+  ThreadGoal,
+  ThreadGoalStatus,
 } from "@codework/contracts";
 import { assert, describe, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
@@ -147,6 +149,27 @@ const input = {
 } as const;
 
 describe("CompositionGoalLoopAutomationRunner", () => {
+  it.effect("Goal Loop 成功后把同线程 Goal 持久化为 complete", () =>
+    Effect.gen(function* () {
+      const harness = makeHarness(() => "修复完成 [[GOAL_COMPLETE: 已验证]]");
+      const updates: Array<{ readonly threadId: string; readonly status: ThreadGoalStatus }> = [];
+      const runner = makeCompositionGoalLoopAutomationRunner({
+        ...harness.options,
+        threadGoalStore: {
+          setStatus: (update) =>
+            Effect.sync(() => {
+              updates.push(update);
+              return {} as ThreadGoal;
+            }),
+        },
+      } as unknown as CompositionGoalLoopAutomationRunnerOptions);
+
+      yield* runner.run({ ...input, reviewerAgentId: undefined });
+
+      assert.deepEqual(updates, [{ threadId: input.threadId, status: "complete" }]);
+    }),
+  );
+
   it.effect("用稳定子任务执行 attempt，并由独立 reviewer 验证完成声明", () =>
     Effect.gen(function* () {
       const harness = makeHarness((dispatch) => {
@@ -229,11 +252,15 @@ describe("CompositionGoalLoopAutomationRunner", () => {
 
       assert.equal(result.goalStatus, "completed");
       assert.deepEqual(
-        harness.events.flatMap((event) => event.sourceEventId ?? []).filter((id) => id.includes(":reject:")),
+        harness.events
+          .flatMap((event) => event.sourceEventId ?? [])
+          .filter((id) => id.includes(":reject:")),
         ["goalloop:automation-goal:task:automation-goal:run:reject:1"],
       );
       assert.deepEqual(
-        harness.dispatches.filter((dispatch) => dispatch.taskId.includes(":review:")).map((dispatch) => dispatch.assigneeId),
+        harness.dispatches
+          .filter((dispatch) => dispatch.taskId.includes(":review:"))
+          .map((dispatch) => dispatch.assigneeId),
         ["agent-reviewer", "agent-reviewer"],
       );
     }),
