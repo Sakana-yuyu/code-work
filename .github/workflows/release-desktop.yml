@@ -80,8 +80,10 @@ jobs:
         uses: voidzero-dev/setup-vp@v1
         with:
           working-directory: codework
-          node-version-file: codework/package.json
+          # node-version-file 相对 working-directory 解析。
+          node-version-file: package.json
           cache: false
+          run-install: false
 
       - name: Resolve Windows package cache path
         id: package_cache_path
