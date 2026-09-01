@@ -1,6 +1,6 @@
 {
   "name": "@codework/desktop",
-  "version": "0.0.34",
+  "version": "0.0.38",
   "private": true,
   "type": "module",
   "main": "dist-electron/main.cjs",
