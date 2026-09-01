@@ -26,6 +26,8 @@ export interface ThreadGoalStatusBarProps {
   readonly isPending: boolean;
   readonly errorMessage: string | null;
   readonly initialEditing?: boolean;
+  readonly presentation?: "bar" | "menu";
+  readonly className?: string;
   readonly onEmptyEditorClose?: () => void;
   readonly onSetGoal: (objective: string) => Promise<boolean>;
   readonly onPause: () => Promise<boolean>;
@@ -96,6 +98,8 @@ export function ThreadGoalStatusBar({
   isPending,
   errorMessage,
   initialEditing = false,
+  presentation = "bar",
+  className,
   onEmptyEditorClose,
   onSetGoal,
   onPause,
@@ -147,7 +151,12 @@ export function ThreadGoalStatusBar({
 
   return (
     <div
-      className="mb-2 flex min-w-0 flex-wrap items-center gap-2 rounded-[var(--control-radius)] border border-border/70 bg-background/92 px-3 py-2 text-xs shadow-sm backdrop-blur-sm sm:px-3.5"
+      className={cn(
+        presentation === "menu"
+          ? "flex min-w-0 flex-wrap items-center gap-2 rounded-xl border border-border/55 bg-background/45 px-2.5 py-2 text-xs"
+          : "mb-2 flex min-w-0 flex-wrap items-center gap-2 rounded-[var(--control-radius)] border border-border/70 bg-background/92 px-3 py-2 text-xs shadow-sm backdrop-blur-sm sm:px-3.5",
+        className,
+      )}
       data-thread-goal-bar="true"
       data-thread-goal-status={goal?.status ?? "empty"}
     >

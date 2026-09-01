@@ -117,6 +117,7 @@ import { ComposerPendingApprovalPanel } from "./ComposerPendingApprovalPanel";
 import { ComposerPendingUserInputPanel } from "./ComposerPendingUserInputPanel";
 import { ComposerPlanFollowUpBanner } from "./ComposerPlanFollowUpBanner";
 import { ComposerControl, ComposerControlIcon, ComposerSelectControl } from "./ComposerControl";
+import { ComposerAddMenu } from "./ComposerAddMenu";
 import { resolveComposerMenuActiveItemId } from "./composerMenuHighlight";
 import { searchSlashCommandItems } from "./composerSlashCommandSearch";
 import {
@@ -137,9 +138,9 @@ import {
   submitComposerDraft,
 } from "./composerSubmission";
 import { ComposerPromptLengthValidation } from "./ComposerPromptLengthValidation";
-import { ThreadGoalComposerControl, ThreadGoalStatusBar } from "./ThreadGoalStatusBar";
 import { threadGoalEnvironment, useThreadGoal } from "../../state/threadGoal";
 import { useAtomCommand } from "../../state/use-atom-command";
+import { useLocalPluginAttachmentPaletteItems } from "../../localPlugins/adapters/useLocalPluginAttachmentPaletteItems";
 
 type ComposerCommandMenuPosition = {
   bottom: number;
@@ -758,6 +759,9 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   const composerPreviewAnnotations = composerDraft.previewAnnotations;
   const composerReviewComments = composerDraft.reviewComments;
   const nonPersistedComposerImageIds = composerDraft.nonPersistedImageIds;
+  const composerPluginAttachmentItems = useLocalPluginAttachmentPaletteItems({
+    composerHandleRef: activeThreadId !== null || routeKind === "draft" ? composerRef : null,
+  });
   const uploadsByImageId = useAttachmentUploadStore((state) => state.uploadsByImageId);
   const attachmentBlockReason = supportsAttachmentUploads
     ? attachmentUploadBlockReason({
@@ -773,10 +777,6 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   const threadGoalState = useThreadGoal(
     activeThreadId === null ? null : { environmentId, threadId: activeThreadId },
   );
-  const [threadGoalEditorOpen, setThreadGoalEditorOpen] = useState(false);
-  useEffect(() => {
-    setThreadGoalEditorOpen(false);
-  }, [activeThreadId]);
   const setThreadGoalCommand = useAtomCommand(threadGoalEnvironment.set, {
     reportFailure: false,
   });
@@ -3057,21 +3057,6 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       className={cn("mx-auto w-full min-w-0 max-w-3xl", hasShoulderTab && "pt-7")}
       data-chat-composer-form="true"
     >
-      {!isComposerCollapsedMobile &&
-      activeThreadId !== null &&
-      (threadGoalState.goal !== null || threadGoalEditorOpen) ? (
-        <ThreadGoalStatusBar
-          goal={threadGoalState.goal}
-          isPending={threadGoalState.isPending}
-          errorMessage={threadGoalErrorMessage}
-          initialEditing={threadGoalEditorOpen && threadGoalState.goal === null}
-          onEmptyEditorClose={() => setThreadGoalEditorOpen(false)}
-          onSetGoal={onSetThreadGoal}
-          onPause={onPauseThreadGoal}
-          onResume={onResumeThreadGoal}
-          onClear={onClearThreadGoal}
-        />
-      ) : null}
       {showComposerTopDrawer && (!isTasksDrawerOpen || hasBlockingComposerTopDrawer) ? (
         <div
           className="chat-composer-top-drawer"
@@ -3573,14 +3558,32 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                 )}
               >
                 <div className="-m-1 -ms-3.5 flex min-w-0 flex-1 items-center gap-1 overflow-x-auto p-1 ps-3.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-                  {threadGoalState.goal === null && !threadGoalEditorOpen ? (
-                    <ThreadGoalComposerControl
-                      disabled={
-                        threadGoalState.isPending || isConnecting || projectSelectionRequired
-                      }
-                      onClick={() => setThreadGoalEditorOpen(true)}
-                    />
-                  ) : null}
+                  <ComposerAddMenu
+                    disabled={
+                      isConnecting ||
+                      isComposerApprovalState ||
+                      pendingUserInputs.length > 0 ||
+                      projectSelectionRequired
+                    }
+                    interactionMode={interactionMode}
+                    planModeEnabled={planModeUiEnabled}
+                    canEditGoal={routeKind === "server" && activeThreadId !== null}
+                    goal={threadGoalState.goal}
+                    goalIsPending={threadGoalState.isPending}
+                    goalErrorMessage={threadGoalErrorMessage}
+                    pluginItems={composerPluginAttachmentItems}
+                    onAddFileReference={() =>
+                      insertComposerTextAtEnd("@", { ensureLeadingBoundary: true })
+                    }
+                    onAddSkillReference={() =>
+                      insertComposerTextAtEnd("$", { ensureLeadingBoundary: true })
+                    }
+                    onTogglePlanMode={toggleInteractionMode}
+                    onSetGoal={onSetThreadGoal}
+                    onPauseGoal={onPauseThreadGoal}
+                    onResumeGoal={onResumeThreadGoal}
+                    onClearGoal={onClearThreadGoal}
+                  />
                   {noProviderAvailable ? (
                     <Button
                       type="button"
