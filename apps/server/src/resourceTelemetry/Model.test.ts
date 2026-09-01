@@ -136,7 +136,7 @@ describe("resource telemetry process model", () => {
     expect(result.groups.backend.processCount).toBe(4);
     expect(result.groups.monitor.processCount).toBe(1);
     expect(result.groups.monitor.processStarts).toBe(1);
-    expect(result.groups.allT3.processStarts).toBe(5);
+    expect(result.groups.allCodework.processStarts).toBe(5);
   });
 
   it("deduplicates Electron metrics and classifies Electron descendants", () => {

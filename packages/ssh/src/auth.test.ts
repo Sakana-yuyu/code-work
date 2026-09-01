@@ -34,7 +34,7 @@ describe("ssh auth", () => {
     Effect.gen(function* () {
       const fs = yield* FileSystem.FileSystem;
       const path = yield* Path.Path;
-      const directory = yield* fs.makeTempDirectoryScoped({ prefix: "t3-ssh-askpass-test-" });
+      const directory = yield* fs.makeTempDirectoryScoped({ prefix: "codework-ssh-askpass-test-" });
       const env = yield* buildSshChildEnvironment({
         authSecret: "super-secret",
         interactiveAuth: true,
@@ -48,7 +48,10 @@ describe("ssh auth", () => {
       assert.equal(env.CODEWORK_SSH_AUTH_SECRET, "super-secret");
       assert.equal(env.DISPLAY, "codework");
       assert.equal(yield* fs.exists(askpassPath), true);
-      assert.include(yield* fs.readFileString(askpassPath), 'printf "%s\\n" "$CODEWORK_SSH_AUTH_SECRET"');
+      assert.include(
+        yield* fs.readFileString(askpassPath),
+        'printf "%s\\n" "$CODEWORK_SSH_AUTH_SECRET"',
+      );
     }).pipe(
       Effect.provide(Layer.merge(NodeServices.layer, Layer.succeed(HostProcessPlatform, "linux"))),
       Effect.scoped,

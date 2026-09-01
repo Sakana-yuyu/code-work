@@ -19,7 +19,7 @@ describe("resolveGrokAcpBaseModelId", () => {
 });
 
 describe("grokAcpSpawnArgs", () => {
-  it("inherits the Grok CLI config when no T3 runtime mode is set", () => {
+  it("inherits the Grok CLI config when no Code Work runtime mode is set", () => {
     expect(grokAcpSpawnArgs()).toEqual(["agent", "stdio"]);
   });
 

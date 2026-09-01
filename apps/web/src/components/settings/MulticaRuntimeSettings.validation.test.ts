@@ -22,8 +22,8 @@ const validDraft = (): MulticaRuntimeDraft => ({
       valueRedacted: true,
     },
     {
-      name: "MULTICA_AGENT_1_T3_MCP_TOKEN",
-      originalName: "MULTICA_AGENT_1_T3_MCP_TOKEN",
+      name: "MULTICA_AGENT_1_CODEWORK_MCP_TOKEN",
+      originalName: "MULTICA_AGENT_1_CODEWORK_MCP_TOKEN",
       value: "",
       sensitive: true,
       valueRedacted: true,
@@ -36,7 +36,7 @@ const validDraft = (): MulticaRuntimeDraft => ({
       workspaceId: " workspace-1 ",
       multicaAgentId: " remote-agent-1 ",
       multicaSquadId: "",
-      codeworkMcpCredentialEnvironmentVariable: " MULTICA_AGENT_1_T3_MCP_TOKEN ",
+      codeworkMcpCredentialEnvironmentVariable: " MULTICA_AGENT_1_CODEWORK_MCP_TOKEN ",
     },
   ],
   version: " 1.2.3 ",
@@ -79,7 +79,7 @@ describe("MulticaRuntimeSettings validation", () => {
           valueRedacted: true,
         },
         {
-          name: "MULTICA_AGENT_1_T3_MCP_TOKEN",
+          name: "MULTICA_AGENT_1_CODEWORK_MCP_TOKEN",
           value: "",
           sensitive: true,
           valueRedacted: true,
@@ -98,7 +98,7 @@ describe("MulticaRuntimeSettings validation", () => {
             codeworkAgentId: "agent-1",
             workspaceId: "workspace-1",
             multicaAgentId: "remote-agent-1",
-            codeworkMcpCredentialEnvironmentVariable: "MULTICA_AGENT_1_T3_MCP_TOKEN",
+            codeworkMcpCredentialEnvironmentVariable: "MULTICA_AGENT_1_CODEWORK_MCP_TOKEN",
           },
         ],
         version: "1.2.3",
@@ -268,7 +268,7 @@ describe("MulticaRuntimeSettings validation", () => {
     const result = validateMulticaRuntimeDraft({
       ...draft,
       environment: draft.environment.map((entry) => {
-        if (entry.name !== "MULTICA_AGENT_1_T3_MCP_TOKEN") return entry;
+        if (entry.name !== "MULTICA_AGENT_1_CODEWORK_MCP_TOKEN") return entry;
         return {
           name: entry.name,
           value: "plaintext-token",
@@ -291,7 +291,7 @@ describe("MulticaRuntimeSettings validation", () => {
     const result = validateMulticaRuntimeDraft({
       ...draft,
       environment: draft.environment.map((entry) =>
-        entry.name === "MULTICA_AGENT_1_T3_MCP_TOKEN"
+        entry.name === "MULTICA_AGENT_1_CODEWORK_MCP_TOKEN"
           ? { name: entry.name, value: "", sensitive: true }
           : entry,
       ),
@@ -318,7 +318,7 @@ describe("MulticaRuntimeSettings validation", () => {
           workspaceId: "workspace-1",
           multicaAgentId: "remote-agent-2",
           multicaSquadId: "",
-          codeworkMcpCredentialEnvironmentVariable: "MULTICA_AGENT_1_T3_MCP_TOKEN",
+          codeworkMcpCredentialEnvironmentVariable: "MULTICA_AGENT_1_CODEWORK_MCP_TOKEN",
         },
       ],
     });
@@ -351,7 +351,7 @@ describe("MulticaRuntimeSettings validation", () => {
           workspaceId: "workspace-1",
           multicaAgentId: "",
           multicaSquadId: "remote-squad-1",
-          codeworkMcpCredentialEnvironmentVariable: "MULTICA_AGENT_1_T3_MCP_TOKEN",
+          codeworkMcpCredentialEnvironmentVariable: "MULTICA_AGENT_1_CODEWORK_MCP_TOKEN",
         },
         {
           codeworkAgentId: "agent-1",

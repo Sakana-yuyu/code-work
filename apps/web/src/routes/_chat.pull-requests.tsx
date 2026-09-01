@@ -1334,7 +1334,7 @@ function PullRequestsRouteView() {
       ) : !pullRequestsSupported ? (
         <PullRequestsUnavailableState
           title={t("pullRequestsUnavailable")}
-          error={t("updateYourT3CodeServersToBrowsePullRequests")}
+          error={t("updateYourCodeworkServersToBrowsePullRequests")}
         />
       ) : firstLoad ? (
         <PullRequestListGhost rows={7} />

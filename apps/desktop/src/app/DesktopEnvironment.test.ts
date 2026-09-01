@@ -40,7 +40,7 @@ describe("DesktopEnvironment", () => {
       const environment = yield* makeEnvironment(
         {},
         {
-          CODEWORK_HOME: " /tmp/t3 ",
+          CODEWORK_HOME: " /tmp/codework ",
           CODEWORK_COMMIT_HASH: " 0123456789abcdef ",
           CODEWORK_PORT: "4949",
           VITE_DEV_SERVER_URL: "http://localhost:5173",
@@ -52,17 +52,17 @@ describe("DesktopEnvironment", () => {
 
       assert.equal(environment.isDevelopment, true);
       assert.equal(environment.appDataDirectory, "/Users/alice/Library/Application Support");
-      assert.equal(environment.baseDir, "/tmp/t3");
-      assert.equal(environment.stateDir, "/tmp/t3/userdata");
-      assert.equal(environment.desktopSettingsPath, "/tmp/t3/userdata/desktop-settings.json");
-      assert.equal(environment.clientSettingsPath, "/tmp/t3/userdata/client-settings.json");
+      assert.equal(environment.baseDir, "/tmp/codework");
+      assert.equal(environment.stateDir, "/tmp/codework/userdata");
+      assert.equal(environment.desktopSettingsPath, "/tmp/codework/userdata/desktop-settings.json");
+      assert.equal(environment.clientSettingsPath, "/tmp/codework/userdata/client-settings.json");
       assert.equal(
         environment.savedEnvironmentRegistryPath,
-        "/tmp/t3/userdata/saved-environments.json",
+        "/tmp/codework/userdata/saved-environments.json",
       );
-      assert.equal(environment.serverSettingsPath, "/tmp/t3/userdata/settings.json");
-      assert.equal(environment.logDir, "/tmp/t3/userdata/logs");
-      assert.equal(environment.browserArtifactsDir, "/tmp/t3/userdata/browser-artifacts");
+      assert.equal(environment.serverSettingsPath, "/tmp/codework/userdata/settings.json");
+      assert.equal(environment.logDir, "/tmp/codework/userdata/logs");
+      assert.equal(environment.browserArtifactsDir, "/tmp/codework/userdata/browser-artifacts");
       assert.equal(environment.rootDir, "/repo");
       assert.equal(environment.appRoot, "/repo");
       assert.equal(environment.serverRoot, "/repo");
@@ -74,7 +74,10 @@ describe("DesktopEnvironment", () => {
         Option.map(environment.devServerUrl, (url) => url.href),
         Option.some("http://localhost:5173/"),
       );
-      assert.deepEqual(environment.devRemoteCodeworkServerEntryPath, Option.some("/remote/server.mjs"));
+      assert.deepEqual(
+        environment.devRemoteCodeworkServerEntryPath,
+        Option.some("/remote/server.mjs"),
+      );
       assert.deepEqual(environment.configuredBackendPort, Option.some(4949));
       assert.deepEqual(environment.commitHashOverride, Option.some("0123456789abcdef"));
       assert.deepEqual(environment.otlpTracesUrl, Option.some("http://127.0.0.1:4318/v1/traces"));
@@ -87,15 +90,15 @@ describe("DesktopEnvironment", () => {
       const environment = yield* makeEnvironment(
         {},
         {
-          CODEWORK_HOME: "/tmp/t3",
+          CODEWORK_HOME: "/tmp/codework",
         },
       );
 
       assert.equal(environment.isDevelopment, false);
-      assert.equal(environment.stateDir, "/tmp/t3/userdata");
-      assert.equal(environment.logDir, "/tmp/t3/userdata/logs");
-      assert.equal(environment.browserArtifactsDir, "/tmp/t3/userdata/browser-artifacts");
-      assert.equal(environment.serverSettingsPath, "/tmp/t3/userdata/settings.json");
+      assert.equal(environment.stateDir, "/tmp/codework/userdata");
+      assert.equal(environment.logDir, "/tmp/codework/userdata/logs");
+      assert.equal(environment.browserArtifactsDir, "/tmp/codework/userdata/browser-artifacts");
+      assert.equal(environment.serverSettingsPath, "/tmp/codework/userdata/settings.json");
     }),
   );
 

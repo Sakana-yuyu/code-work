@@ -1,0 +1,17 @@
+{
+  "name": "@codework/mobile-review-diff-native",
+  "version": "0.0.0",
+  "private": true,
+  "expo-module": {
+    "ios": {
+      "modules": [
+        "CodeworkReviewDiffModule"
+      ]
+    },
+    "android": {
+      "modules": [
+        "expo.modules.codeworkreviewdiff.CodeworkReviewDiffModule"
+      ]
+    }
+  }
+}

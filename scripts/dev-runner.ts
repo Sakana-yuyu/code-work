@@ -67,7 +67,7 @@ export function isProxiableBindHost(host: string): boolean {
   );
 }
 
-export const DEFAULT_T3_HOME = Effect.map(Effect.service(Path.Path), (path) =>
+export const DEFAULT_CODEWORK_HOME = Effect.map(Effect.service(Path.Path), (path) =>
   path.join(NodeOS.homedir(), ".t3"),
 );
 
@@ -286,7 +286,7 @@ function resolveBaseDir(baseDir: string | undefined): Effect.Effect<string, neve
       return path.resolve(configured);
     }
 
-    return yield* DEFAULT_T3_HOME;
+    return yield* DEFAULT_CODEWORK_HOME;
   });
 }
 
@@ -681,7 +681,7 @@ export function runDevRunnerWithInput(input: DevRunnerCliInput) {
     // Trim before choosing: `--home-dir ""` is not a selection, and treating it
     // as one would skip the worktree default and land on the shared home —
     // exactly the outcome this precedence exists to prevent.
-    const resolvedT3Home =
+    const resolvedCodeworkHome =
       (input.codeworkHome?.trim() || undefined) ??
       worktreeHome ??
       (hostEnvironment.CODEWORK_HOME?.trim() || undefined);
@@ -690,7 +690,7 @@ export function runDevRunnerWithInput(input: DevRunnerCliInput) {
       baseEnv: hostEnvironment,
       serverOffset,
       webOffset,
-      codeworkHome: resolvedT3Home,
+      codeworkHome: resolvedCodeworkHome,
       browser: input.browser,
       autoBootstrapProjectFromCwd: input.autoBootstrapProjectFromCwd,
       logWebSocketEvents: input.logWebSocketEvents,
@@ -703,7 +703,7 @@ export function runDevRunnerWithInput(input: DevRunnerCliInput) {
       serverOffset !== offset || webOffset !== offset
         ? ` selectedOffset(server=${serverOffset},web=${webOffset})`
         : "";
-    const baseDir = env.CODEWORK_HOME ?? (yield* DEFAULT_T3_HOME);
+    const baseDir = env.CODEWORK_HOME ?? (yield* DEFAULT_CODEWORK_HOME);
 
     yield* Effect.logInfo(
       `[dev-runner] mode=${input.mode} source=${source}${selectionSuffix} serverPort=${String(env.CODEWORK_PORT)} webPort=${String(env.PORT)} baseDir=${baseDir}`,

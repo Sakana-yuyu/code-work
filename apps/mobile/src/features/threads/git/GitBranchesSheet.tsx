@@ -70,7 +70,7 @@ export function GitBranchesSheet(_props: GitBranchesSheetProps) {
         contentContainerClassName="gap-4 px-5 pt-2"
       >
         <View className="gap-2 rounded-[18px] border border-border bg-card px-4 py-4">
-          <Text className="text-foreground-secondary text-2xs font-t3-bold tracking-[1px] uppercase">
+          <Text className="text-foreground-secondary text-2xs font-codework-bold tracking-[1px] uppercase">
             {t("newBranch")}
           </Text>
           <TextInput
@@ -96,7 +96,7 @@ export function GitBranchesSheet(_props: GitBranchesSheetProps) {
         </View>
 
         <View className="gap-2 rounded-[18px] border border-border bg-card px-4 py-4">
-          <Text className="text-foreground-secondary text-2xs font-t3-bold tracking-[1px] uppercase">
+          <Text className="text-foreground-secondary text-2xs font-codework-bold tracking-[1px] uppercase">
             {t("threadModeNewWorktree")}
           </Text>
           <TextInput
@@ -133,7 +133,7 @@ export function GitBranchesSheet(_props: GitBranchesSheetProps) {
         </View>
 
         <View className="gap-2">
-          <Text className="text-foreground-secondary text-2xs font-t3-bold tracking-[1px] uppercase">
+          <Text className="text-foreground-secondary text-2xs font-codework-bold tracking-[1px] uppercase">
             {t("existingBranches")}
           </Text>
           {branchesLoading ? (
@@ -171,7 +171,7 @@ export function GitBranchesSheet(_props: GitBranchesSheetProps) {
                 }}
               >
                 <View className="absolute inset-0 rounded-[18px] bg-card" />
-                <Text className="text-foreground text-base font-t3-bold">{branch.name}</Text>
+                <Text className="text-foreground text-base font-codework-bold">{branch.name}</Text>
                 <Text className="text-foreground-secondary text-xs font-medium">{subtitle}</Text>
               </Pressable>
             );

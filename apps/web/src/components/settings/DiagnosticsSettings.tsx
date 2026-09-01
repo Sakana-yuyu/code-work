@@ -1122,7 +1122,7 @@ export function DiagnosticsSettingsPanel() {
           <StatBlock
             label={t("cpuTime")}
             value={resourceData ? formatCpuTime(resourceData.totalCpuSecondsApprox) : "..."}
-            tooltip={t("approximateActiveCpuTimeForTheT3ServerRootProcessAndItsDesce")}
+            tooltip={t("approximateActiveCpuTimeForTheCodeworkServerRootProcessAndItsDesce")}
           />
           <StatBlock
             label={t("samples")}

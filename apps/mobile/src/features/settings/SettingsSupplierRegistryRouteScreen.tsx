@@ -79,7 +79,10 @@ export function SettingsSupplierRegistryRouteScreen() {
                 className="gap-2 rounded-[24px] border-continuous bg-card p-4"
               >
                 <View className="flex-row flex-wrap items-center gap-2">
-                  <Text className="text-base font-t3-medium text-foreground" numberOfLines={1}>
+                  <Text
+                    className="text-base font-codework-medium text-foreground"
+                    numberOfLines={1}
+                  >
                     {supplierDisplayName(supplier)}
                   </Text>
                   <BadgePill label={supplier.driverKind} />

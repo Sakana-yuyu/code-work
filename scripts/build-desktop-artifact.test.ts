@@ -111,7 +111,7 @@ const makeWindowsPayloadFixture = Effect.fn("test.makeWindowsPayloadFixture")(fu
   const fs = yield* FileSystem.FileSystem;
   const path = yield* Path.Path;
   const tempDir = yield* fs.makeTempDirectoryScoped({
-    prefix: "t3-windows-payload-test-",
+    prefix: "codework-windows-payload-test-",
   });
   const sourceDir = path.join(tempDir, "server-source");
   const serverEntryPath = path.join(sourceDir, "apps/server/dist/bin.mjs");
@@ -608,7 +608,7 @@ it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
           const fs = yield* FileSystem.FileSystem;
           const path = yield* Path.Path;
           const tempDir = yield* fs.makeTempDirectoryScoped({
-            prefix: "t3-windows-architecture-test-",
+            prefix: "codework-windows-architecture-test-",
           });
           const sourceDir = path.join(tempDir, "server");
           const nativeFiles = [

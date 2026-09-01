@@ -27,7 +27,7 @@ const TestLayer = Layer.empty.pipe(
   Layer.provideMerge(VcsProcess.layer),
   Layer.provide(
     ServerConfig.ServerConfig.layerTest(process.cwd(), {
-      prefix: "t3-workspace-entries-test-",
+      prefix: "codework-workspace-entries-test-",
     }),
   ),
   Layer.provideMerge(NodeServices.layer),

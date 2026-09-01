@@ -864,11 +864,13 @@ export function NewTaskDraftScreen(props: {
   const hero = (
     <View className="items-center gap-6 px-6" testID="new-task-hero">
       <View className="w-full items-center gap-1.5">
-        <Text className="text-center text-2xl font-t3-medium tracking-tight text-foreground">
+        <Text className="text-center text-2xl font-codework-medium tracking-tight text-foreground">
           {t("whatShouldWeBuild")}
         </Text>
         <View className="max-w-full flex-row items-center justify-center">
-          <Text className="text-2xl font-t3-medium tracking-tight text-foreground">{t("in")} </Text>
+          <Text className="text-2xl font-codework-medium tracking-tight text-foreground">
+            {t("in")}{" "}
+          </Text>
           <Pressable
             accessibilityHint={t("opensTheProjectPicker")}
             accessibilityLabel={t("changeProjectFrom", { title: selectedProject.title })}
@@ -882,13 +884,13 @@ export function NewTaskDraftScreen(props: {
             }}
           >
             <Text
-              className="text-2xl font-t3-medium tracking-tight text-foreground"
+              className="text-2xl font-codework-medium tracking-tight text-foreground"
               numberOfLines={1}
             >
               {selectedProject.title}
             </Text>
           </Pressable>
-          <Text className="text-2xl font-t3-medium tracking-tight text-foreground">?</Text>
+          <Text className="text-2xl font-codework-medium tracking-tight text-foreground">?</Text>
         </View>
       </View>
 

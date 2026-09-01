@@ -16,7 +16,7 @@ export function SquadModelField(props: {
 }) {
   return (
     <View className="gap-2">
-      <Text className="text-sm font-t3-medium text-foreground">{props.label}</Text>
+      <Text className="text-sm font-codework-medium text-foreground">{props.label}</Text>
       {props.children}
       {props.description === undefined ? null : (
         <Text className="text-xs leading-5 text-foreground-muted">{props.description}</Text>
@@ -34,7 +34,7 @@ export function SquadModelOptionGroup<T extends string>(props: {
 }) {
   return (
     <View className="gap-2">
-      <Text className="text-sm font-t3-medium text-foreground">{props.label}</Text>
+      <Text className="text-sm font-codework-medium text-foreground">{props.label}</Text>
       <View className="flex-row flex-wrap gap-2">
         {props.options.map((option) => {
           const disabled = props.disabled || option.disabled === true;
@@ -82,7 +82,7 @@ export function SquadModelActionButton(props: {
           : "self-start rounded-full bg-subtle-strong px-3 py-1.5"
       }
     >
-      <Text className="text-sm font-t3-medium text-foreground">{props.label}</Text>
+      <Text className="text-sm font-codework-medium text-foreground">{props.label}</Text>
     </Pressable>
   );
 }

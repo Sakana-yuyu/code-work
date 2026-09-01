@@ -28,7 +28,9 @@ export function SquadRunBoardNodeCard(props: SquadRunBoardNodeCardProps) {
   return (
     <View className="gap-2 rounded-[16px] bg-subtle px-3 py-3">
       <View className="flex-row flex-wrap items-center gap-2">
-        <Text className="min-w-0 flex-1 text-sm font-t3-medium text-foreground">{node.nodeId}</Text>
+        <Text className="min-w-0 flex-1 text-sm font-codework-medium text-foreground">
+          {node.nodeId}
+        </Text>
         {status === undefined ? null : <BadgePill label={status} />}
       </View>
       <Text className="font-mono text-xs text-foreground-muted" numberOfLines={1}>
@@ -66,7 +68,7 @@ export function SquadRunBoardNodeCard(props: SquadRunBoardNodeCardProps) {
             onPress={props.onToggleEvents}
             className="rounded-full bg-subtle-strong px-3 py-1.5"
           >
-            <Text className="text-sm font-t3-medium text-foreground">
+            <Text className="text-sm font-codework-medium text-foreground">
               {t(
                 props.eventsExpanded
                   ? "controlCenter.hideTaskEvents"
@@ -78,7 +80,7 @@ export function SquadRunBoardNodeCard(props: SquadRunBoardNodeCardProps) {
       )}
       {props.eventsExpanded ? (
         <View className="gap-2 border-t border-border-subtle pt-3">
-          <Text className="text-sm font-t3-medium text-foreground">
+          <Text className="text-sm font-codework-medium text-foreground">
             {t("controlCenter.taskEvents")}
           </Text>
           {props.eventsError !== null ? (

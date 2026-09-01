@@ -99,7 +99,7 @@ export interface CompositionIdeAdapter {
   readonly invoke: (
     input: CompositionIdeInvocation,
   ) => Effect.Effect<unknown, CompositionIdeAdapterFailure>;
-  /** T3 IDE bridge 可选的任务事件流；没有明确实现时不得推断任务已完成。 */
+  /** Code Work IDE bridge 可选的任务事件流；没有明确实现时不得推断任务已完成。 */
   readonly streamEvents?: () => Stream.Stream<
     import("@codework/contracts").ProviderRuntimeEvent,
     CompositionIdeAdapterFailure

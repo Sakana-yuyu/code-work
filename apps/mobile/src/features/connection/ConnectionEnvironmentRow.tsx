@@ -76,7 +76,10 @@ export function ConnectionEnvironmentRow(props: {
         />
 
         <View className="flex-1 gap-0.5">
-          <Text className="text-base font-t3-bold leading-snug text-foreground" numberOfLines={1}>
+          <Text
+            className="text-base font-codework-bold leading-snug text-foreground"
+            numberOfLines={1}
+          >
             {props.environment.environmentLabel}
           </Text>
           <Text className="text-xs text-foreground-muted" numberOfLines={1}>
@@ -139,7 +142,7 @@ export function ConnectionEnvironmentRow(props: {
           ) : (
             <>
               <View className="gap-1.5">
-                <Text className="text-2xs font-t3-bold tracking-[0.8px] uppercase text-foreground-muted">
+                <Text className="text-2xs font-codework-bold tracking-[0.8px] uppercase text-foreground-muted">
                   {t("label")}
                 </Text>
                 <TextInput
@@ -153,7 +156,7 @@ export function ConnectionEnvironmentRow(props: {
               </View>
 
               <View className="gap-1.5">
-                <Text className="text-2xs font-t3-bold tracking-[0.8px] uppercase text-foreground-muted">
+                <Text className="text-2xs font-codework-bold tracking-[0.8px] uppercase text-foreground-muted">
                   URL
                 </Text>
                 <TextInput
@@ -176,7 +179,7 @@ export function ConnectionEnvironmentRow(props: {
                 onPress={handleSave}
               >
                 <SymbolView name="checkmark" size={13} tintColor={primaryFg} type="monochrome" />
-                <Text className="text-xs font-t3-bold tracking-[0.8px] uppercase text-primary-foreground">
+                <Text className="text-xs font-codework-bold tracking-[0.8px] uppercase text-primary-foreground">
                   {t("save")}
                 </Text>
               </Pressable>

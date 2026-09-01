@@ -83,7 +83,7 @@ export function GitCommitSheet(_props: GitCommitSheetProps) {
             <Text className="text-foreground-muted text-sm font-medium">
               {t("gitCommit.branch")}
             </Text>
-            <Text className="text-foreground text-base font-t3-bold">
+            <Text className="text-foreground text-base font-codework-bold">
               {gitStatus.data?.refName ?? t("detachedHead")}
             </Text>
           </View>
@@ -97,7 +97,9 @@ export function GitCommitSheet(_props: GitCommitSheetProps) {
         <View className="gap-3 rounded-[22px] border border-border bg-card px-4 py-4">
           <View className="flex-row items-center justify-between gap-3">
             <View className="gap-1">
-              <Text className="text-foreground text-base font-t3-bold">{t("surface.files")}</Text>
+              <Text className="text-foreground text-base font-codework-bold">
+                {t("surface.files")}
+              </Text>
               <Text className="text-foreground-muted text-xs leading-normal">
                 {selectedFiles.length} {t("selected")}
                 {selectedInsertions} / -{selectedDeletions}
@@ -109,7 +111,7 @@ export function GitCommitSheet(_props: GitCommitSheetProps) {
                   className="bg-subtle rounded-full px-3 py-2"
                   onPress={() => setExcludedFiles(new Set())}
                 >
-                  <Text className="text-foreground text-2xs font-t3-bold uppercase">
+                  <Text className="text-foreground text-2xs font-codework-bold uppercase">
                     {t("reset")}
                   </Text>
                 </Pressable>
@@ -118,7 +120,7 @@ export function GitCommitSheet(_props: GitCommitSheetProps) {
                 className="bg-subtle rounded-full px-3 py-2"
                 onPress={() => setIsEditingFiles((current) => !current)}
               >
-                <Text className="text-foreground text-2xs font-t3-bold uppercase">
+                <Text className="text-foreground text-2xs font-codework-bold uppercase">
                   {isEditingFiles ? t("done") : t("edit")}
                 </Text>
               </Pressable>
@@ -136,8 +138,12 @@ export function GitCommitSheet(_props: GitCommitSheetProps) {
                   <Text className="text-foreground flex-1 text-sm font-medium" numberOfLines={1}>
                     {file.path}
                   </Text>
-                  <Text className="text-xs font-t3-bold text-emerald-500">+{file.insertions}</Text>
-                  <Text className="text-xs font-t3-bold text-rose-500">-{file.deletions}</Text>
+                  <Text className="text-xs font-codework-bold text-emerald-500">
+                    +{file.insertions}
+                  </Text>
+                  <Text className="text-xs font-codework-bold text-rose-500">
+                    -{file.deletions}
+                  </Text>
                 </View>
               ))}
               {selectedFiles.length > selectedFilePreview.length ? (
@@ -176,7 +182,7 @@ export function GitCommitSheet(_props: GitCommitSheetProps) {
                       <View className="flex-1 gap-1">
                         <Text
                           selectable
-                          className={`text-sm font-t3-bold ${included ? "text-foreground" : "text-foreground-muted"}`}
+                          className={`text-sm font-codework-bold ${included ? "text-foreground" : "text-foreground-muted"}`}
                         >
                           {file.path}
                         </Text>
@@ -187,10 +193,10 @@ export function GitCommitSheet(_props: GitCommitSheetProps) {
                         ) : null}
                       </View>
                       <View className="items-end gap-1">
-                        <Text className="text-xs font-t3-bold text-emerald-500">
+                        <Text className="text-xs font-codework-bold text-emerald-500">
                           +{file.insertions}
                         </Text>
-                        <Text className="text-xs font-t3-bold text-rose-500">
+                        <Text className="text-xs font-codework-bold text-rose-500">
                           -{file.deletions}
                         </Text>
                       </View>
@@ -203,7 +209,7 @@ export function GitCommitSheet(_props: GitCommitSheetProps) {
         </View>
 
         <View className="gap-2">
-          <Text className="text-foreground text-sm font-t3-bold">{t("commitMessage")}</Text>
+          <Text className="text-foreground text-sm font-codework-bold">{t("commitMessage")}</Text>
           <TextInput
             multiline
             value={dialogCommitMessage}

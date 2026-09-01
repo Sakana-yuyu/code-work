@@ -24,7 +24,7 @@ const sourceControlProviderRegistryTestLayer = (input: {
     Layer.provide(
       Layer.mergeAll(
         ServerConfig.layerTest(process.cwd(), {
-          prefix: "t3-source-control-registry-test-",
+          prefix: "codework-source-control-registry-test-",
         }).pipe(Layer.provide(NodeServices.layer)),
         Layer.mock(AzureDevOpsCli.AzureDevOpsCli)({}),
         Layer.mock(BitbucketApi.BitbucketApi)(input.bitbucket),
@@ -92,7 +92,7 @@ it.effect("reports implemented tools separately from locally available executabl
   const testLayer = SourceControlDiscovery.layer.pipe(
     Layer.provide(
       ServerConfig.layerTest(process.cwd(), {
-        prefix: "t3-source-control-discovery-",
+        prefix: "codework-source-control-discovery-",
       }),
     ),
     Layer.provide(Layer.mock(VcsProcess.VcsProcess)(processMock)),
@@ -221,7 +221,7 @@ Logged in to gitlab.com as gitlab-user
   const testLayer = SourceControlDiscovery.layer.pipe(
     Layer.provide(
       ServerConfig.layerTest(process.cwd(), {
-        prefix: "t3-source-control-auth-discovery-",
+        prefix: "codework-source-control-auth-discovery-",
       }),
     ),
     Layer.provide(Layer.mock(VcsProcess.VcsProcess)(processMock)),

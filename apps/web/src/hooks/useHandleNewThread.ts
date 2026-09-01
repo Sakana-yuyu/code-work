@@ -25,7 +25,7 @@ import {
 import { resolveDefaultThreadEnvMode } from "@codework/shared/threadEnvMode";
 import { readThreadShell, useProjects, useThread } from "../state/entities";
 import { resolveNewDraftStartFromOrigin } from "../lib/chatThreadActions";
-import { readT3ProjectFileDefaultThreadEnvMode } from "../lib/codeworkProjectFileDefaults";
+import { readCodeworkProjectFileDefaultThreadEnvMode } from "../lib/codeworkProjectFileDefaults";
 import { primaryServerSettingsAtom } from "../state/server";
 import { resolveThreadRouteTarget } from "../threadRoutes";
 import { legacyProjectCwdPreferenceKey, useUiStateStore } from "../uiStateStore";
@@ -169,7 +169,7 @@ export function useNewThreadHandler() {
         return resolveDefaultThreadEnvMode({
           projectSetting: project?.defaultThreadEnvMode,
           projectFile: consultProjectFile
-            ? await readT3ProjectFileDefaultThreadEnvMode(
+            ? await readCodeworkProjectFileDefaultThreadEnvMode(
                 project.environmentId,
                 project.workspaceRoot,
               )

@@ -18,9 +18,9 @@ const workspaceFiles = [
   "apps/web/package.json",
   "apps/mobile/package.json",
   "apps/mobile/deps/react-native-nitro-markdown-0.5.0.tgz",
-  "apps/mobile/modules/t3-markdown-text/package.json",
-  "apps/mobile/modules/t3-review-diff/package.json",
-  "apps/mobile/modules/t3-terminal/package.json",
+  "apps/mobile/modules/codework-markdown-text/package.json",
+  "apps/mobile/modules/codework-review-diff/package.json",
+  "apps/mobile/modules/codework-terminal/package.json",
   "apps/marketing/package.json",
   "infra/relay/package.json",
   "oxlint-plugin-codework/package.json",
@@ -185,7 +185,7 @@ function assertMissing(path: string, message: string): void {
   }
 }
 
-const tempRoot = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "t3-release-smoke-"));
+const tempRoot = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "codework-release-smoke-"));
 
 try {
   copyWorkspaceManifestFixture(tempRoot);

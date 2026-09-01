@@ -1,120 +1,79 @@
-# Code Work
+<div align="center">
 
-Code Work is an "agent harness control surface". It enables control of the agents on your machine with a best-in-class mobile app ([iOS](https://apps.apple.com/us/app/code-work-remote-claude-more/id6787819824), [Android](https://play.google.com/store/apps/details?id=com.t3tools.codework)), [web app](https://app.t3.codes) and [Electron-based desktop app](https://t3.codes).
+<img src="docs/assets/logo.png" width="128" alt="CodexWork" />
 
-Works with your subscriptions on Claude Code, Codex, Cursor, Grok Build, and OpenCode. If they're set up on your computer, Code Work can control them.
+# CodexWork
 
-## "Wait, what are you selling me?"
+一个独立的桌面 AI 开发工作台：现代工作台界面壳 + 可自持密钥（BYOK）的多模型运行时。
 
-Nothing. We built Code Work because we wanted the best possible development experience with agents. We were inspired by existing solutions like the Codex desktop app, Conductor, Claude Desktop and Cursor Glass, but none met our bar.
+</div>
 
-We wanted something performant, remote-ready, and truly open. If we ever go the wrong direction, we want you to have everything you need to fork and build the editor that you want.
+## 项目定位
 
-## Installation
+CodexWork 面向需要长时间使用编码代理的开发者，提供统一的 Web、桌面和移动端工作台。它连接你本机已有的 Codex、Claude、Cursor、Grok Build 与 OpenCode 订阅，让代码、终端、任务委派和远程控制保持在同一个工作流中。
 
-> [!WARNING]
-> Code Work currently supports Codex, Claude, Cursor, Grok Build and OpenCode. Install and authenticate at least one provider before use:
->
-> - Codex: install [Codex CLI](https://developers.openai.com/codex/cli) and run `codex login`
-> - Claude: install [Claude Code](https://claude.com/product/claude-code) and run `claude auth login`
-> - Cursor: install [Cursor CLI](https://cursor.com/cli) and run `agent login`
-> - Grok Build: install [Grok Build CLI](https://x.ai/cli) and run `grok login`
-> - OpenCode: install [OpenCode](https://opencode.ai) and run `opencode auth login`
+## 项目结构
 
-### Try it out (install-free)
+这是一个 TypeScript / Effect-TS monorepo：
 
-The easiest way to test Code Work is to run the server in your terminal (requires Node.js 22.16+, 23.11+, or 24.10+):
+| 目录           | 说明                                                        |
+| -------------- | ----------------------------------------------------------- |
+| `apps/server`  | WebSocket 服务、任务编排、Provider 适配器、持久化与远程连接 |
+| `apps/web`     | 浏览器工作台与设置界面                                      |
+| `apps/desktop` | Electron 桌面端及本地服务启动器                             |
+| `apps/mobile`  | iOS 与 Android 移动端                                       |
+| `packages/`    | 契约、客户端运行时、共享工具、SSH 和连接能力                |
+| `docs/`        | 用户文档、内部架构说明和运维记录                            |
 
-```bash
-npx t3@latest
-```
+## 核心能力
 
-This will launch Code Work's backend on your machine as well as the local web app to control your agents.
+- **BYOK 多供应商**：自带密钥接入 OpenAI、Anthropic、Gemini 及兼容中转，支持模型目录发现、上下文窗口匹配、余额查询与仪表盘。
+- **任务委派**：内置执行器注册表、可用性探测、优先级与故障转移，支持审查、重试、改派、预算升级、视觉委派和子代理角色片段。
+- **组合运行时**：任务图编排、工具代理（ToolBroker）、能力授予审批，以及跨重启委派收口与台账投影。
+- **多端协同**：Web、桌面和移动端共享同一套契约与运行时，可从另一台机器或手机远程控制开发环境。
 
-Tip: Use `npx t3@latest --help` for the full CLI reference.
-
-### Desktop app
-
-Install the latest version of the desktop app from [GitHub Releases](https://github.com/Sakana-yuyu/code-work/releases), or from your favorite package registry:
-
-#### Windows (`winget`)
+## 快速开始
 
 ```bash
-winget install T3Tools.T3Code
+pnpm install
+pnpm dev          # 并行启动 contracts / server / web
+pnpm dev:desktop  # 启动桌面端开发环境
+pnpm tc           # 全仓类型检查
+pnpm test         # 全仓测试
 ```
 
-#### macOS (Homebrew)
+要求 Node.js 24+。BYOK 与委派配置说明见 [`docs/user/`](./docs/user/)，内部设计文档见 [`docs/internals/`](./docs/internals/)。
 
-```bash
-brew install --cask code-work
-```
+## 文档
 
-#### Arch Linux (AUR)
+- [安装与首次运行](./docs/user/install.md)
+- [权限模式](./docs/user/permission-modes.md)
+- [键盘快捷键](./docs/user/keybindings.md)
+- [项目图标设置](./docs/user/project-settings.md)
+- [从手机或另一台机器远程访问](./docs/user/remote-access.md)
+- [应用与服务端同步](./docs/user/updating.md)
+- [源码控制集成](./docs/user/source-control.md)
+- [Codex Provider](./docs/user/providers-codex.md)
+- [Claude Provider](./docs/user/providers-claude.md)
+- [Linux 后台服务](./docs/user/background-service.md)
 
-Stable:
+## 贡献
 
-```bash
-yay -S code-work-bin
-```
-
-Nightly:
-
-```bash
-yay -S code-work-nightly-bin
-```
-
-The AUR packaging is maintained in this repository under [`packaging/aur`](./packaging/aur).
-
-## Some notes
-
-We are very very early in this project. Expect bugs.
-
-We are (mostly) not accepting contributions yet. Small fixes may be considered. Big features will not be.
-
-## Documentation
-
-Full docs live in [docs/](./docs). There's no docs site yet.
-
-- [Install and first run](./docs/user/install.md)
-- [Permission modes](./docs/user/permission-modes.md)
-- [Keyboard shortcuts](./docs/user/keybindings.md)
-- [Customize a project icon](./docs/user/project-settings.md)
-- [Remote access from a phone or another machine](./docs/user/remote-access.md)
-- [Keeping app and server in sync](./docs/user/updating.md)
-- [Source control integrations](./docs/user/source-control.md)
-- Multiple accounts: [Codex](./docs/user/providers-codex.md) · [Claude](./docs/user/providers-claude.md)
-- Linux: [run Code Work as a background service](./docs/user/background-service.md)
-
-Building from source? Start at [docs/internals/overview.md](./docs/internals/overview.md).
-
-## If you REALLY want to contribute still.... read this first
-
-### Install `vp`
-
-Code Work uses Vite+ so you'll need to install the global `vp` command-line tool.
-
-#### macOS / Linux
-
-```bash
-curl -fsSL https://vite.plus | bash
-```
-
-#### Windows
-
-```bash
-irm https://vite.plus/ps1 | iex
-```
-
-Checkout their getting started guide for more information: https://viteplus.dev/guide/
-
-### Install dependencies
+请先阅读 [`CONTRIBUTING.md`](./CONTRIBUTING.md)。本地开发需要 Vite+：
 
 ```bash
 vp i
 ```
 
-Read [CONTRIBUTING.md](./CONTRIBUTING.md) before reporting a bug or opening a PR.
+功能建议请提交 [Ideas 讨论](https://github.com/Sakana-yuyu/code-work/discussions/categories/ideas)，问题反馈请提交 Issue。
 
-Have a feature request? Start an [Ideas discussion](https://github.com/Sakana-yuyu/code-work/discussions/categories/ideas).
+## 兼容性说明
 
-Need support? Join the [Discord](https://discord.gg/jn4EGJjrvv).
+仓库中的 `t3.json`、`t3.codes`、`npx t3`、`.t3` 和部分移动原生模块标识属于既有配置、发布或运行时兼容契约，不是产品名称；修改这些值会破坏已有项目配置、构建脚本或已发布客户端，因此保留在兼容边界内。
+
+## License
+
+[MIT](LICENSE)
+
+<!-- contributors-start -->
+<!-- contributors-end -->

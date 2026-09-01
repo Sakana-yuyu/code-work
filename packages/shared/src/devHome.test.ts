@@ -20,7 +20,7 @@ const makeRepo = (
 ) =>
   Effect.acquireRelease(
     Effect.sync(() => {
-      const root = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "t3-devhome-"));
+      const root = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "codework-devhome-"));
       if (kind === "worktree") {
         NodeFS.writeFileSync(NodePath.join(root, ".git"), "gitdir: /elsewhere/.git/worktrees/x\n");
       } else if (kind === "bare-repo-worktree") {

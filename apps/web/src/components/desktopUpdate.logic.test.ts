@@ -251,7 +251,7 @@ describe("desktop update UI helpers", () => {
     };
 
     expect(getArm64IntelBuildWarningDescription(state)).toContain(
-      t("thisMacHasAppleSiliconButT3CodeIsStillRunningTheIntelBuildUn"),
+      t("thisMacHasAppleSiliconButCodeworkIsStillRunningTheIntelBuildUn"),
     );
   });
 

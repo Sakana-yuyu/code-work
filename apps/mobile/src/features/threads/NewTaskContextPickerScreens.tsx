@@ -66,7 +66,7 @@ function SelectionRow(props: {
         <SymbolView name={props.icon} size={17} tintColor={iconColor} type="monochrome" />
       ) : null}
       <View className="min-w-0 flex-1 gap-0.5">
-        <Text className="text-base font-t3-medium text-foreground" numberOfLines={1}>
+        <Text className="text-base font-codework-medium text-foreground" numberOfLines={1}>
           {props.title}
         </Text>
         {props.subtitle ? (
@@ -95,7 +95,10 @@ function ToggleRow(props: {
 }) {
   return (
     <View className="min-h-14 flex-row items-center gap-3 bg-card px-4 py-3">
-      <Text className="min-w-0 flex-1 text-base font-t3-medium text-foreground" numberOfLines={1}>
+      <Text
+        className="min-w-0 flex-1 text-base font-codework-medium text-foreground"
+        numberOfLines={1}
+      >
         {props.title}
       </Text>
       <ThemedSwitch
@@ -375,7 +378,7 @@ export function NewTaskBranchPickerRouteScreen() {
               className="rounded-full bg-card px-4 py-2 active:opacity-70"
               onPress={flow.loadBranches}
             >
-              <Text className="text-sm font-t3-medium text-foreground">{t("tryAgain2")}</Text>
+              <Text className="text-sm font-codework-medium text-foreground">{t("tryAgain2")}</Text>
             </Pressable>
           ) : null}
         </View>

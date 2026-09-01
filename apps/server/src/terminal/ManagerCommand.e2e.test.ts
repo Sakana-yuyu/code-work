@@ -25,7 +25,7 @@ const TestLayer = Layer.mergeAll(HostLayer, ProcessRunner.layer.pipe(Layer.provi
 it.effect("真实 PTY 命令进程保留输出和退出码直到显式 release", () =>
   Effect.gen(function* () {
     const baseDir = yield* Effect.promise(() =>
-      NodeFSP.mkdtemp(NodePath.join(NodeOS.tmpdir(), "t3-terminal-command-e2e-")),
+      NodeFSP.mkdtemp(NodePath.join(NodeOS.tmpdir(), "codework-terminal-command-e2e-")),
     );
     const scriptPath = NodePath.join(baseDir, "command.cjs");
     yield* Effect.promise(() =>

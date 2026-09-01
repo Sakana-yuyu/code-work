@@ -114,8 +114,8 @@ const browserSessionLayer = Layer.succeed(
 const environmentLayer = Layer.succeed(
   DesktopEnvironment.DesktopEnvironment,
   DesktopEnvironment.DesktopEnvironment.of({
-    browserArtifactsDir: "/tmp/t3/dev/browser-artifacts",
-    dirname: "/tmp/t3/desktop",
+    browserArtifactsDir: "/tmp/codework/dev/browser-artifacts",
+    dirname: "/tmp/codework/desktop",
     path: {
       join: (...parts: ReadonlyArray<string>) => parts.join("/"),
     },
@@ -1769,7 +1769,7 @@ describe("PreviewManager", () => {
         const artifact = yield* manager.captureScreenshot("tab_1");
 
         expect(capturePage).toHaveBeenCalledOnce();
-        expect(mkdir).toHaveBeenCalledWith("/tmp/t3/dev/browser-artifacts");
+        expect(mkdir).toHaveBeenCalledWith("/tmp/codework/dev/browser-artifacts");
         expect(writeFile).toHaveBeenCalledWith(artifact.path, png);
         expect(artifact).toMatchObject({
           tabId: "tab_1",
@@ -2405,7 +2405,7 @@ describe("PreviewManager", () => {
             show: false,
             skipTaskbar: true,
             webPreferences: expect.objectContaining({
-              preload: "/tmp/t3/desktop/preview-pip-preload.cjs",
+              preload: "/tmp/codework/desktop/preview-pip-preload.cjs",
               backgroundThrottling: false,
             }),
           }),
@@ -2841,19 +2841,21 @@ describe("PreviewManager", () => {
   effectIt.effect("reveals only files inside the configured browser artifact directory", () =>
     withManager((manager) =>
       Effect.gen(function* () {
-        yield* manager.revealArtifact("/tmp/t3/dev/browser-artifacts/browser-screenshot-test.png");
+        yield* manager.revealArtifact(
+          "/tmp/codework/dev/browser-artifacts/browser-screenshot-test.png",
+        );
 
         expect(showItemInFolder).toHaveBeenCalledWith(
-          "/tmp/t3/dev/browser-artifacts/browser-screenshot-test.png",
+          "/tmp/codework/dev/browser-artifacts/browser-screenshot-test.png",
         );
-        const exit = yield* Effect.exit(manager.revealArtifact("/tmp/t3/dev/settings.json"));
+        const exit = yield* Effect.exit(manager.revealArtifact("/tmp/codework/dev/settings.json"));
         expect(Exit.isFailure(exit)).toBe(true);
         if (Exit.isSuccess(exit)) return;
         const error = Option.getOrThrow(Cause.findErrorOption(exit.cause));
         expect(error).toMatchObject({
           _tag: "PreviewArtifactPathOutsideDirectoryError",
-          artifactPath: "/tmp/t3/dev/settings.json",
-          artifactDirectory: "/tmp/t3/dev/browser-artifacts",
+          artifactPath: "/tmp/codework/dev/settings.json",
+          artifactDirectory: "/tmp/codework/dev/browser-artifacts",
         });
         expect("cause" in error).toBe(false);
       }),
@@ -2863,22 +2865,22 @@ describe("PreviewManager", () => {
   effectIt.effect("copies screenshot artifacts to the system clipboard", () =>
     withManager((manager) =>
       Effect.gen(function* () {
-        const artifactPath = "/tmp/t3/dev/browser-artifacts/browser-screenshot-test.png";
+        const artifactPath = "/tmp/codework/dev/browser-artifacts/browser-screenshot-test.png";
 
         yield* manager.copyArtifactToClipboard(artifactPath);
 
         expect(createFromPath).toHaveBeenCalledWith(artifactPath);
         expect(writeImage).toHaveBeenCalledOnce();
         const exit = yield* Effect.exit(
-          manager.copyArtifactToClipboard("/tmp/t3/dev/settings.json"),
+          manager.copyArtifactToClipboard("/tmp/codework/dev/settings.json"),
         );
         expect(Exit.isFailure(exit)).toBe(true);
         if (Exit.isSuccess(exit)) return;
         const error = Option.getOrThrow(Cause.findErrorOption(exit.cause));
         expect(error).toMatchObject({
           _tag: "PreviewArtifactPathOutsideDirectoryError",
-          artifactPath: "/tmp/t3/dev/settings.json",
-          artifactDirectory: "/tmp/t3/dev/browser-artifacts",
+          artifactPath: "/tmp/codework/dev/settings.json",
+          artifactDirectory: "/tmp/codework/dev/browser-artifacts",
         });
         expect("cause" in error).toBe(false);
 

@@ -99,7 +99,7 @@ const CursorAdapterLayer = Layer.effect(
 ).pipe(
   Layer.provideMerge(ServerSettingsService.layerTest()),
   Layer.provideMerge(
-    ServerConfig.layerTest(process.cwd(), { prefix: "t3-cursor-toolbroker-e2e-" }),
+    ServerConfig.layerTest(process.cwd(), { prefix: "codework-cursor-toolbroker-e2e-" }),
   ),
   Layer.provide(NodeServices.layer),
 );

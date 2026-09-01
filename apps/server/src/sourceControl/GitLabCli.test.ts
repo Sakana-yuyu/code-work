@@ -194,7 +194,7 @@ layer("GitLabCli.layer", (it) => {
         baseBranch: "main",
         headSelector: "owner:feature/provider",
         title: "Provider MR",
-        bodyFile: "/tmp/t3-mr-body.md",
+        bodyFile: "/tmp/codework-mr-body.md",
       });
 
       expect(mockedRun).toHaveBeenCalledWith(
@@ -213,7 +213,7 @@ layer("GitLabCli.layer", (it) => {
             "--raw-field",
             "title=Provider MR",
             "--field",
-            "description=@/tmp/t3-mr-body.md",
+            "description=@/tmp/codework-mr-body.md",
           ],
         }),
       );

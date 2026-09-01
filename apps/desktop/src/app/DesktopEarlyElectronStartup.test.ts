@@ -12,11 +12,11 @@ describe("DesktopEarlyElectronStartup", () => {
 
   it("reads the persisted linux password-store preference before Electron is ready", () => {
     const preference = resolveEarlyLinuxPasswordStorePreference({
-      env: { CODEWORK_HOME: "/home/user/.t3-test" },
+      env: { CODEWORK_HOME: "/home/user/.codework-test" },
       homeDirectory: "/home/user",
       joinPath,
       readFileString: (path) => {
-        assert.equal(path, "/home/user/.t3-test/userdata/desktop-settings.json");
+        assert.equal(path, "/home/user/.codework-test/userdata/desktop-settings.json");
         return JSON.stringify({ linuxPasswordStore: "kwallet6" });
       },
     });
@@ -26,7 +26,7 @@ describe("DesktopEarlyElectronStartup", () => {
 
   it("accepts JSONC in the early desktop settings file", () => {
     const preference = resolveEarlyLinuxPasswordStorePreference({
-      env: { CODEWORK_HOME: "/home/user/.t3-test" },
+      env: { CODEWORK_HOME: "/home/user/.codework-test" },
       homeDirectory: "/home/user",
       joinPath,
       readFileString: () => `{
@@ -69,7 +69,7 @@ describe("DesktopEarlyElectronStartup", () => {
     const options = resolveEarlyLinuxElectronOptions({
       env: {
         CODEWORK_HOME: "/home/user/.code-work-test",
-        T3CODE_HOME: "/home/user/.t3-test",
+        T3CODE_HOME: "/home/user/.codework-test",
         XDG_CURRENT_DESKTOP: "niri",
         VITE_DEV_SERVER_URL: "http://127.0.0.1:5173",
       },

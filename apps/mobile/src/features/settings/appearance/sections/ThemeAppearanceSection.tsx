@@ -169,7 +169,7 @@ function ThemeCard(props: {
         {choice("dark", props.darkSelected)}
       </View>
       <View className="min-h-8 flex-row items-center" pointerEvents="none">
-        <Text className="min-w-0 flex-1 text-lg font-t3-medium" numberOfLines={1}>
+        <Text className="min-w-0 flex-1 text-lg font-codework-medium" numberOfLines={1}>
           {props.label}
         </Text>
       </View>
@@ -301,7 +301,7 @@ function ModeCard(props: {
       <Text
         className={
           props.selected
-            ? "text-center text-base font-t3-bold text-foreground"
+            ? "text-center text-base font-codework-bold text-foreground"
             : "text-center text-base text-foreground-muted"
         }
       >
@@ -312,7 +312,9 @@ function ModeCard(props: {
 }
 
 function SectionLabel({ children }: { readonly children: string }) {
-  return <Text className="px-2 text-sm font-t3-medium text-foreground-muted">{children}</Text>;
+  return (
+    <Text className="px-2 text-sm font-codework-medium text-foreground-muted">{children}</Text>
+  );
 }
 
 export function ThemeAppearanceSection() {

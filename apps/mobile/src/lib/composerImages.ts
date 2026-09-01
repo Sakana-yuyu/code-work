@@ -26,7 +26,7 @@ export function toUploadChatImageAttachments(
   }));
 }
 
-const OWNED_PASTED_IMAGE_DIRECTORY = "t3-composer-paste";
+const OWNED_PASTED_IMAGE_DIRECTORY = "codework-composer-paste";
 
 async function loadImagePicker() {
   try {

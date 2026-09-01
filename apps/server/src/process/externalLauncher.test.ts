@@ -119,7 +119,7 @@ it.effect("launches an installed editor with platform-safe arguments", () =>
   Effect.gen(function* () {
     const fileSystem = yield* FileSystem.FileSystem;
     const path = yield* Path.Path;
-    const binDir = yield* fileSystem.makeTempDirectoryScoped({ prefix: "t3-editors-" });
+    const binDir = yield* fileSystem.makeTempDirectoryScoped({ prefix: "codework-editors-" });
     yield* fileSystem.writeFileString(path.join(binDir, "code.CMD"), "@echo off\r\n");
 
     let spawned: ChildProcess.StandardCommand | undefined;
@@ -157,7 +157,7 @@ it.effect("reveals a file in Finder with open -R on macOS", () =>
   Effect.gen(function* () {
     const fileSystem = yield* FileSystem.FileSystem;
     const path = yield* Path.Path;
-    const binDir = yield* fileSystem.makeTempDirectoryScoped({ prefix: "t3-editors-" });
+    const binDir = yield* fileSystem.makeTempDirectoryScoped({ prefix: "codework-editors-" });
     const openPath = path.join(binDir, "open");
     yield* fileSystem.writeFileString(openPath, "#!/bin/sh\n");
     yield* fileSystem.chmod(openPath, 0o755);
@@ -192,7 +192,7 @@ it.effect("reveals a file in File Explorer through PowerShell on Windows", () =>
   Effect.gen(function* () {
     const fileSystem = yield* FileSystem.FileSystem;
     const path = yield* Path.Path;
-    const binDir = yield* fileSystem.makeTempDirectoryScoped({ prefix: "t3-editors-" });
+    const binDir = yield* fileSystem.makeTempDirectoryScoped({ prefix: "codework-editors-" });
     yield* fileSystem.writeFileString(path.join(binDir, "explorer.CMD"), "@echo off\r\n");
     // resolvePowerShellPath builds `${SYSTEMROOT}\System32\...` with Windows
     // separators, which on the posix test filesystem is one file name.
@@ -255,7 +255,7 @@ it.skipIf(process.platform !== "win32")(
   "delivers the raw /select switch for spaced paths through real PowerShell",
   { timeout: 60_000 },
   async () => {
-    const tempDir = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "t3-reveal-smoke-"));
+    const tempDir = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "codework-reveal-smoke-"));
     try {
       const recorderPath = NodePath.join(tempDir, "recorder.cmd");
       const outputPath = NodePath.join(tempDir, "argv.txt");
@@ -301,7 +301,7 @@ it.effect("does not advertise reveal on Windows when PowerShell is missing", () 
   Effect.gen(function* () {
     const fileSystem = yield* FileSystem.FileSystem;
     const path = yield* Path.Path;
-    const binDir = yield* fileSystem.makeTempDirectoryScoped({ prefix: "t3-editors-" });
+    const binDir = yield* fileSystem.makeTempDirectoryScoped({ prefix: "codework-editors-" });
     yield* fileSystem.writeFileString(path.join(binDir, "explorer.CMD"), "@echo off\r\n");
 
     const result = yield* Effect.gen(function* () {
@@ -334,7 +334,7 @@ it.effect("reveals a WSL file in Windows File Explorer through its UNC path", ()
   Effect.gen(function* () {
     const fileSystem = yield* FileSystem.FileSystem;
     const path = yield* Path.Path;
-    const binDir = yield* fileSystem.makeTempDirectoryScoped({ prefix: "t3-editors-" });
+    const binDir = yield* fileSystem.makeTempDirectoryScoped({ prefix: "codework-editors-" });
     for (const name of ["explorer.exe", "powershell.exe", "xdg-open"]) {
       const filePath = path.join(binDir, name);
       yield* fileSystem.writeFileString(filePath, "#!/bin/sh\n");
@@ -387,7 +387,7 @@ it.effect("does not advertise reveal from WSL when interop PowerShell is missing
   Effect.gen(function* () {
     const fileSystem = yield* FileSystem.FileSystem;
     const path = yield* Path.Path;
-    const binDir = yield* fileSystem.makeTempDirectoryScoped({ prefix: "t3-editors-" });
+    const binDir = yield* fileSystem.makeTempDirectoryScoped({ prefix: "codework-editors-" });
     const explorerPath = path.join(binDir, "explorer.exe");
     yield* fileSystem.writeFileString(explorerPath, "");
     yield* fileSystem.chmod(explorerPath, 0o755);
@@ -423,7 +423,7 @@ it.effect("reveals through the Linux file manager when WSL lacks interop PowerSh
   Effect.gen(function* () {
     const fileSystem = yield* FileSystem.FileSystem;
     const path = yield* Path.Path;
-    const binDir = yield* fileSystem.makeTempDirectoryScoped({ prefix: "t3-editors-" });
+    const binDir = yield* fileSystem.makeTempDirectoryScoped({ prefix: "codework-editors-" });
     for (const name of ["explorer.exe", "xdg-open", "xdg-mime"]) {
       const filePath = path.join(binDir, name);
       yield* fileSystem.writeFileString(filePath, "#!/bin/sh\n");
@@ -474,7 +474,7 @@ it.effect("falls back to the Linux file manager when WSL lacks the Explorer brid
   Effect.gen(function* () {
     const fileSystem = yield* FileSystem.FileSystem;
     const path = yield* Path.Path;
-    const binDir = yield* fileSystem.makeTempDirectoryScoped({ prefix: "t3-editors-" });
+    const binDir = yield* fileSystem.makeTempDirectoryScoped({ prefix: "codework-editors-" });
     for (const name of ["xdg-open", "xdg-mime"]) {
       const filePath = path.join(binDir, name);
       yield* fileSystem.writeFileString(filePath, "#!/bin/sh\n");
@@ -525,7 +525,7 @@ it.effect(
     Effect.gen(function* () {
       const fileSystem = yield* FileSystem.FileSystem;
       const path = yield* Path.Path;
-      const binDir = yield* fileSystem.makeTempDirectoryScoped({ prefix: "t3-editors-" });
+      const binDir = yield* fileSystem.makeTempDirectoryScoped({ prefix: "codework-editors-" });
       for (const name of ["explorer.exe", "powershell.exe"]) {
         const filePath = path.join(binDir, name);
         yield* fileSystem.writeFileString(filePath, "#!/bin/sh\n");
@@ -568,7 +568,7 @@ it.effect("reveals by opening the containing directory on Linux", () =>
   Effect.gen(function* () {
     const fileSystem = yield* FileSystem.FileSystem;
     const path = yield* Path.Path;
-    const binDir = yield* fileSystem.makeTempDirectoryScoped({ prefix: "t3-editors-" });
+    const binDir = yield* fileSystem.makeTempDirectoryScoped({ prefix: "codework-editors-" });
     for (const name of ["xdg-open", "xdg-mime"]) {
       const filePath = path.join(binDir, name);
       yield* fileSystem.writeFileString(filePath, "#!/bin/sh\n");
@@ -607,7 +607,7 @@ it.effect("does not advertise a Linux file manager without a graphical session",
   Effect.gen(function* () {
     const fileSystem = yield* FileSystem.FileSystem;
     const path = yield* Path.Path;
-    const binDir = yield* fileSystem.makeTempDirectoryScoped({ prefix: "t3-editors-" });
+    const binDir = yield* fileSystem.makeTempDirectoryScoped({ prefix: "codework-editors-" });
     const xdgOpenPath = path.join(binDir, "xdg-open");
     yield* fileSystem.writeFileString(xdgOpenPath, "#!/bin/sh\n");
     yield* fileSystem.chmod(xdgOpenPath, 0o755);
@@ -625,7 +625,7 @@ it.effect("advertises a Linux file manager when a directory handler is installed
   Effect.gen(function* () {
     const fileSystem = yield* FileSystem.FileSystem;
     const path = yield* Path.Path;
-    const binDir = yield* fileSystem.makeTempDirectoryScoped({ prefix: "t3-editors-" });
+    const binDir = yield* fileSystem.makeTempDirectoryScoped({ prefix: "codework-editors-" });
     for (const name of ["xdg-open", "xdg-mime"]) {
       const filePath = path.join(binDir, name);
       yield* fileSystem.writeFileString(filePath, "#!/bin/sh\n");
@@ -664,7 +664,7 @@ it.effect("does not advertise a Linux file manager without a directory handler",
   Effect.gen(function* () {
     const fileSystem = yield* FileSystem.FileSystem;
     const path = yield* Path.Path;
-    const binDir = yield* fileSystem.makeTempDirectoryScoped({ prefix: "t3-editors-" });
+    const binDir = yield* fileSystem.makeTempDirectoryScoped({ prefix: "codework-editors-" });
     for (const name of ["xdg-open", "xdg-mime"]) {
       const filePath = path.join(binDir, name);
       yield* fileSystem.writeFileString(filePath, "#!/bin/sh\n");
@@ -692,7 +692,7 @@ it.effect("does not advertise a Linux file manager when the handler query fails"
   Effect.gen(function* () {
     const fileSystem = yield* FileSystem.FileSystem;
     const path = yield* Path.Path;
-    const binDir = yield* fileSystem.makeTempDirectoryScoped({ prefix: "t3-editors-" });
+    const binDir = yield* fileSystem.makeTempDirectoryScoped({ prefix: "codework-editors-" });
     for (const name of ["xdg-open", "xdg-mime"]) {
       const filePath = path.join(binDir, name);
       yield* fileSystem.writeFileString(filePath, "#!/bin/sh\n");
@@ -727,7 +727,7 @@ it.live("a stalled handler probe drops only the file manager", () =>
   Effect.gen(function* () {
     const fileSystem = yield* FileSystem.FileSystem;
     const path = yield* Path.Path;
-    const binDir = yield* fileSystem.makeTempDirectoryScoped({ prefix: "t3-editors-" });
+    const binDir = yield* fileSystem.makeTempDirectoryScoped({ prefix: "codework-editors-" });
     for (const name of ["xdg-open", "xdg-mime", "code"]) {
       const filePath = path.join(binDir, name);
       yield* fileSystem.writeFileString(filePath, "#!/bin/sh\n");
@@ -756,7 +756,7 @@ it.effect("does not advertise a Linux file manager when xdg-mime is missing", ()
   Effect.gen(function* () {
     const fileSystem = yield* FileSystem.FileSystem;
     const path = yield* Path.Path;
-    const binDir = yield* fileSystem.makeTempDirectoryScoped({ prefix: "t3-editors-" });
+    const binDir = yield* fileSystem.makeTempDirectoryScoped({ prefix: "codework-editors-" });
     const xdgOpenPath = path.join(binDir, "xdg-open");
     yield* fileSystem.writeFileString(xdgOpenPath, "#!/bin/sh\n");
     yield* fileSystem.chmod(xdgOpenPath, 0o755);
@@ -774,7 +774,7 @@ it.effect("discovers editors through the service API", () =>
   Effect.gen(function* () {
     const fileSystem = yield* FileSystem.FileSystem;
     const path = yield* Path.Path;
-    const binDir = yield* fileSystem.makeTempDirectoryScoped({ prefix: "t3-editors-" });
+    const binDir = yield* fileSystem.makeTempDirectoryScoped({ prefix: "codework-editors-" });
     yield* fileSystem.writeFileString(path.join(binDir, "code.CMD"), "@echo off\r\n");
     yield* fileSystem.writeFileString(path.join(binDir, "explorer.CMD"), "@echo off\r\n");
 
@@ -844,7 +844,7 @@ it.effect("memoizes editor discovery and refreshes after the cache window", () =
         ConfigProvider.layer(
           ConfigProvider.fromEnv({
             env: {
-              PATH: "C:\\t3-editor-discovery-cache-test",
+              PATH: "C:\\codework-editor-discovery-cache-test",
               PATHEXT: ".COM;.EXE;.BAT;.CMD",
             },
           }),
@@ -909,7 +909,7 @@ it.effect("rescans after an interrupted discovery instead of caching the interru
         ConfigProvider.layer(
           ConfigProvider.fromEnv({
             env: {
-              PATH: "C:\\t3-editor-discovery-interrupt-test",
+              PATH: "C:\\codework-editor-discovery-interrupt-test",
               PATHEXT: ".COM;.EXE;.BAT;.CMD",
             },
           }),

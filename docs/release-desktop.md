@@ -1,15 +1,15 @@
 # Code Work 桌面端发布（云端打包）
 
-codework/ 子树（T3 Code 线）的桌面端发布已迁移到 GitHub Actions 云端打包，
+CodexWork 桌面端发布已迁移到 GitHub Actions 云端打包，
 工作流位于仓库根目录 `.github/workflows/release-desktop.yml`。本地上传 138 MB 安装包的流程不再需要。
 
 ## 触发方式
 
-| 方式 | 操作 | 结果 |
-| --- | --- | --- |
-| 正式发布 | 推送 tag `desktop-v<版本>`（如 `desktop-v0.0.39`） | 构建 Windows x64 安装包并自动创建 GitHub Release |
-| 演练 | Actions 页手动触发 `Code Work Desktop Release`，publish 不勾选 | 只构建，产物保存在 workflow artifact 里供下载验证，不发布 |
-| 手动发布 | 手动触发并勾选 `publish`，填版本号（留空取 desktop package.json） | 等价于推 tag |
+| 方式     | 操作                                                              | 结果                                                      |
+| -------- | ----------------------------------------------------------------- | --------------------------------------------------------- |
+| 正式发布 | 推送 tag `desktop-v<版本>`（如 `desktop-v0.0.39`）                | 构建 Windows x64 安装包并自动创建 GitHub Release          |
+| 演练     | Actions 页手动触发 `Code Work Desktop Release`，publish 不勾选    | 只构建，产物保存在 workflow artifact 里供下载验证，不发布 |
+| 手动发布 | 手动触发并勾选 `publish`，填版本号（留空取 desktop package.json） | 等价于推 tag                                              |
 
 ```bash
 # 正式发布示例

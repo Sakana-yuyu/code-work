@@ -43,7 +43,7 @@ export interface VcsDriverContractSuiteInput<R, E> {
 
 export function runVcsDriverContractSuite<R, E>(input: VcsDriverContractSuiteInput<R, E>) {
   const makeTmpDir = (
-    prefix = `t3-${input.kind}-vcs-contract-`,
+    prefix = `codework-${input.kind}-vcs-contract-`,
   ): Effect.Effect<string, PlatformError.PlatformError, FileSystem.FileSystem | Scope.Scope> =>
     Effect.gen(function* () {
       const fileSystem = yield* FileSystem.FileSystem;

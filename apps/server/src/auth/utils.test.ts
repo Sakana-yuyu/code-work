@@ -65,14 +65,14 @@ describe("session cookie isolation", () => {
       mode: "web",
       port: 5775,
       host: "127.0.0.1",
-      instanceKey: "/tmp/t3-agent-one",
+      instanceKey: "/tmp/codework-agent-one",
       development: true,
     });
     const second = resolveSessionCookieName({
       mode: "web",
       port: 5775,
       host: "127.0.0.1",
-      instanceKey: "/tmp/t3-agent-two",
+      instanceKey: "/tmp/codework-agent-two",
       development: true,
     });
 
@@ -120,7 +120,7 @@ describe("session cookie isolation", () => {
         mode: "web",
         port: 5775,
         host: "0.0.0.0",
-        instanceKey: "/tmp/t3-wildcard-dev",
+        instanceKey: "/tmp/codework-wildcard-dev",
         development: true,
       }),
     ).toMatch(/^codework_session_5775_[a-f0-9]{12}$/);

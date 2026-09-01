@@ -68,12 +68,12 @@ export function getArm64IntelBuildWarningDescription(state: DesktopUpdateState):
 
   const action = resolveDesktopUpdateButtonAction(state);
   if (action === "download") {
-    return t("thisMacHasAppleSiliconButT3CodeIsStillRunningTheIntelBuildUn");
+    return t("thisMacHasAppleSiliconButCodeworkIsStillRunningTheIntelBuildUn");
   }
   if (action === "install") {
-    return t("thisMacHasAppleSiliconButT3CodeIsStillRunningTheIntelBuildUn2");
+    return t("thisMacHasAppleSiliconButCodeworkIsStillRunningTheIntelBuildUn2");
   }
-  return t("thisMacHasAppleSiliconButT3CodeIsStillRunningTheIntelBuildUn23");
+  return t("thisMacHasAppleSiliconButCodeworkIsStillRunningTheIntelBuildUn23");
 }
 
 export function getDesktopUpdateButtonTooltip(state: DesktopUpdateState): string {

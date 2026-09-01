@@ -14,7 +14,7 @@ import * as VcsProcess from "./VcsProcess.ts";
 import { runVcsDriverContractSuite } from "./testing/VcsDriverContractHarness.ts";
 
 const ServerConfigLayer = ServerConfig.layerTest(process.cwd(), {
-  prefix: "t3-git-vcs-contract-",
+  prefix: "codework-git-vcs-contract-",
 });
 const GitContractLayer = Layer.mergeAll(GitVcsDriver.vcsLayer, GitVcsDriver.layer).pipe(
   Layer.provide(ServerConfigLayer),
@@ -77,13 +77,13 @@ it.effect("GitVcsDriver forwards execute env to the VCS process", () => {
       cwd: "/repo",
       args: ["status"],
       env: {
-        GIT_INDEX_FILE: "/tmp/t3-index",
+        GIT_INDEX_FILE: "/tmp/codework-index",
       },
       appendTruncationMarker: true,
     });
 
     assert.deepStrictEqual(observedEnv, {
-      GIT_INDEX_FILE: "/tmp/t3-index",
+      GIT_INDEX_FILE: "/tmp/codework-index",
     });
     assert.strictEqual(observedAppendTruncationMarker, true);
   }).pipe(

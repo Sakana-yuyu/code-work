@@ -130,7 +130,7 @@ export function ServerUpdateAction({
       toastManager.add({
         type: "success",
         title: t("updated3", { serverLabel: serverLabel }),
-        description: t("reconnectedOnT3", { targetVersion: result.value.targetVersion }),
+        description: t("reconnectedOnCodework", { targetVersion: result.value.targetVersion }),
       });
     } finally {
       pendingUpdateEnvironmentIds.delete(environmentId);

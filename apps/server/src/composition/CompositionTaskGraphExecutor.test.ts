@@ -1335,7 +1335,7 @@ describe("CompositionTaskGraphExecutor", () => {
           const fileSystem = yield* FileSystem.FileSystem;
           const path = yield* Path.Path;
           const workspaceRoot = yield* fileSystem.makeTempDirectoryScoped({
-            prefix: "t3-task-graph-",
+            prefix: "codework-task-graph-",
           });
           yield* fileSystem.writeFileString(path.join(workspaceRoot, "README.md"), "graph proof\n");
 

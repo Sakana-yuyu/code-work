@@ -8,7 +8,8 @@ import { describe, expect, it } from "vite-plus/test";
 
 import { isEntrypoint } from "./entrypoint.ts";
 
-const makeTempDir = () => NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "t3-entrypoint-test-"));
+const makeTempDir = () =>
+  NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "codework-entrypoint-test-"));
 
 describe("isEntrypoint", () => {
   it("uses the runtime answer when Node provides one", () => {

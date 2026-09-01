@@ -32,10 +32,10 @@ export function PendingApprovalCard(props: PendingApprovalCardProps) {
   // behind this card, so a translucent surface bleeds messages through it.
   return (
     <View className="gap-2.5 rounded-[20px] border border-neutral-200 bg-neutral-100 p-4 dark:border-white/6 dark:bg-neutral-900">
-      <Text className="font-t3-bold text-2xs uppercase tracking-[1.1px] text-sky-700 dark:text-sky-300">
+      <Text className="font-codework-bold text-2xs uppercase tracking-[1.1px] text-sky-700 dark:text-sky-300">
         {t("approvalNeeded")}
       </Text>
-      <Text className="font-t3-bold text-lg text-neutral-950 dark:text-neutral-50">
+      <Text className="font-codework-bold text-lg text-neutral-950 dark:text-neutral-50">
         {props.approval.appName ?? props.approval.requestKind}
       </Text>
       {props.approval.detail ? (
@@ -60,10 +60,10 @@ export function PendingApprovalCard(props: PendingApprovalCardProps) {
             <Text
               className={`text-sm ${
                 option.decision === "accept"
-                  ? "font-t3-extrabold text-white"
+                  ? "font-codework-extrabold text-white"
                   : option.decision === "decline"
-                    ? "font-t3-bold text-rose-700 dark:text-rose-300"
-                    : "font-t3-bold text-neutral-950 dark:text-neutral-50"
+                    ? "font-codework-bold text-rose-700 dark:text-rose-300"
+                    : "font-codework-bold text-neutral-950 dark:text-neutral-50"
               }`}
             >
               {option.label}

@@ -39,7 +39,7 @@ it.layer(NodeServices.layer)("RepositoryIdentityResolverLive", (it) => {
     Effect.gen(function* () {
       const fileSystem = yield* FileSystem.FileSystem;
       const cwd = yield* fileSystem.makeTempDirectoryScoped({
-        prefix: "t3-repository-identity-test-",
+        prefix: "codework-repository-identity-test-",
       });
 
       yield* git(cwd, ["init"]);
@@ -66,13 +66,18 @@ it.layer(NodeServices.layer)("RepositoryIdentityResolverLive", (it) => {
       const fileSystem = yield* FileSystem.FileSystem;
       const path = yield* Path.Path;
       const repoRoot = yield* fileSystem.makeTempDirectoryScoped({
-        prefix: "t3-repository-identity-nested-root-test-",
+        prefix: "codework-repository-identity-nested-root-test-",
       });
       const nestedWorkspace = path.join(repoRoot, "packages", "web");
 
       yield* fileSystem.makeDirectory(nestedWorkspace, { recursive: true });
       yield* git(repoRoot, ["init"]);
-      yield* git(repoRoot, ["remote", "add", "origin", "git@github.com:CodeworkTools/codework.git"]);
+      yield* git(repoRoot, [
+        "remote",
+        "add",
+        "origin",
+        "git@github.com:CodeworkTools/codework.git",
+      ]);
 
       const resolver = yield* RepositoryIdentityResolver.RepositoryIdentityResolver;
       const identity = yield* resolver.resolve(nestedWorkspace);
@@ -92,10 +97,10 @@ it.layer(NodeServices.layer)("RepositoryIdentityResolverLive", (it) => {
     Effect.gen(function* () {
       const fileSystem = yield* FileSystem.FileSystem;
       const nonGitDir = yield* fileSystem.makeTempDirectoryScoped({
-        prefix: "t3-repository-identity-non-git-",
+        prefix: "codework-repository-identity-non-git-",
       });
       const gitDir = yield* fileSystem.makeTempDirectoryScoped({
-        prefix: "t3-repository-identity-no-remote-",
+        prefix: "codework-repository-identity-no-remote-",
       });
 
       yield* git(gitDir, ["init"]);
@@ -113,7 +118,7 @@ it.layer(NodeServices.layer)("RepositoryIdentityResolverLive", (it) => {
     Effect.gen(function* () {
       const fileSystem = yield* FileSystem.FileSystem;
       const cwd = yield* fileSystem.makeTempDirectoryScoped({
-        prefix: "t3-repository-identity-upstream-test-",
+        prefix: "codework-repository-identity-upstream-test-",
       });
 
       yield* git(cwd, ["init"]);
@@ -134,11 +139,16 @@ it.layer(NodeServices.layer)("RepositoryIdentityResolverLive", (it) => {
     Effect.gen(function* () {
       const fileSystem = yield* FileSystem.FileSystem;
       const cwd = yield* fileSystem.makeTempDirectoryScoped({
-        prefix: "t3-repository-identity-nested-group-test-",
+        prefix: "codework-repository-identity-nested-group-test-",
       });
 
       yield* git(cwd, ["init"]);
-      yield* git(cwd, ["remote", "add", "origin", "git@gitlab.com:CodeworkTools/platform/codework.git"]);
+      yield* git(cwd, [
+        "remote",
+        "add",
+        "origin",
+        "git@gitlab.com:CodeworkTools/platform/codework.git",
+      ]);
 
       const resolver = yield* RepositoryIdentityResolver.RepositoryIdentityResolver;
       const identity = yield* resolver.resolve(cwd);
@@ -157,7 +167,7 @@ it.layer(NodeServices.layer)("RepositoryIdentityResolverLive", (it) => {
       Effect.gen(function* () {
         const fileSystem = yield* FileSystem.FileSystem;
         const cwd = yield* fileSystem.makeTempDirectoryScoped({
-          prefix: "t3-repository-identity-late-remote-test-",
+          prefix: "codework-repository-identity-late-remote-test-",
         });
 
         yield* git(cwd, ["init"]);
@@ -196,7 +206,7 @@ it.layer(NodeServices.layer)("RepositoryIdentityResolverLive", (it) => {
     Effect.gen(function* () {
       const fileSystem = yield* FileSystem.FileSystem;
       const cwd = yield* fileSystem.makeTempDirectoryScoped({
-        prefix: "t3-repository-identity-remote-change-test-",
+        prefix: "codework-repository-identity-remote-change-test-",
       });
 
       yield* git(cwd, ["init"]);
@@ -207,7 +217,12 @@ it.layer(NodeServices.layer)("RepositoryIdentityResolverLive", (it) => {
       expect(initialIdentity).not.toBeNull();
       expect(initialIdentity?.canonicalKey).toBe("github.com/codeworktools/codework");
 
-      yield* git(cwd, ["remote", "set-url", "origin", "git@github.com:CodeworkTools/codework-next.git"]);
+      yield* git(cwd, [
+        "remote",
+        "set-url",
+        "origin",
+        "git@github.com:CodeworkTools/codework-next.git",
+      ]);
 
       const cachedIdentity = yield* resolver.resolve(cwd);
       expect(cachedIdentity).not.toBeNull();

@@ -79,7 +79,7 @@ export const ThreadListV2SectionDivider = memo(function ThreadListV2SectionDivid
         props.pane === "sidebar" ? "px-3" : "px-5",
       )}
     >
-      <Text className="text-xs font-t3-medium text-foreground-tertiary">{props.label}</Text>
+      <Text className="text-xs font-codework-medium text-foreground-tertiary">{props.label}</Text>
       <View className="h-px flex-1" style={{ backgroundColor: borderColor }} />
     </View>
   );
@@ -114,7 +114,7 @@ export const ThreadListV2SnoozedShelfHeader = memo(function ThreadListV2SnoozedS
       onPress={props.onToggle}
       style={({ pressed }) => ({ opacity: pressed ? 0.6 : 1 })}
     >
-      <Text className="text-xs font-t3-medium text-blue-600 dark:text-blue-400">
+      <Text className="text-xs font-codework-medium text-blue-600 dark:text-blue-400">
         {props.expanded ? t("snoozed") : t("snoozedThreadsCount", { count: props.count })}
       </Text>
       <View className="h-px flex-1 bg-blue-500/20 dark:bg-blue-400/15" />
@@ -155,7 +155,7 @@ export const ThreadListV2SettledShelfHeader = memo(function ThreadListV2SettledS
       onPress={props.onToggle}
       style={({ pressed }) => ({ opacity: pressed ? 0.6 : 1 })}
     >
-      <Text className="text-xs font-t3-medium text-foreground-tertiary">
+      <Text className="text-xs font-codework-medium text-foreground-tertiary">
         {props.expanded ? t("settled") : t("settled2", { count: props.count })}
       </Text>
       <View className="h-px flex-1 bg-border" />
@@ -221,7 +221,10 @@ export const ThreadListV2PendingRow = memo(function ThreadListV2PendingRow(props
             workspaceRoot={props.project.workspaceRoot}
           />
         ) : null}
-        <Text className="flex-1 text-sm font-t3-medium text-foreground-muted" numberOfLines={1}>
+        <Text
+          className="flex-1 text-sm font-codework-medium text-foreground-muted"
+          numberOfLines={1}
+        >
           {projectTitle}
         </Text>
         <Text className="text-xs text-foreground-tertiary">{t("queued")}</Text>
@@ -229,7 +232,7 @@ export const ThreadListV2PendingRow = memo(function ThreadListV2PendingRow(props
       {/* One line, unlike the two an active row allows: a queued title is
           derived from the whole prompt rather than written as a title, so the
           second line is usually a stray word or emoji rather than meaning. */}
-      <Text className="mt-1 text-base font-t3-medium text-foreground" numberOfLines={1}>
+      <Text className="mt-1 text-base font-codework-medium text-foreground" numberOfLines={1}>
         {pendingTask.title}
       </Text>
       {branch || props.environmentLabel ? (
@@ -685,7 +688,7 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
         ) : null}
         <Text
           className={cn(
-            "flex-1 text-sm font-t3-medium",
+            "flex-1 text-sm font-codework-medium",
             selected ? "text-user-bubble-foreground-muted" : "text-foreground-muted",
           )}
           numberOfLines={1}
@@ -708,7 +711,7 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
       </View>
       <Text
         className={cn(
-          "mt-1 text-base font-t3-medium",
+          "mt-1 text-base font-codework-medium",
           selected ? "text-user-bubble-foreground" : "text-foreground",
         )}
         numberOfLines={2}

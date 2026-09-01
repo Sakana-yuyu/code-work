@@ -137,7 +137,7 @@ function FileContent(props: {
     <View className="flex-1 bg-sheet">
       {props.truncated ? (
         <View className="border-b border-amber-200 bg-amber-50 px-4 py-2 dark:border-amber-900/60 dark:bg-amber-950/40">
-          <Text className="text-2xs font-t3-bold uppercase text-amber-700 dark:text-amber-300">
+          <Text className="text-2xs font-codework-bold uppercase text-amber-700 dark:text-amber-300">
             {t("partialFile")}
           </Text>
           <Text className="text-xs leading-snug text-amber-800 dark:text-amber-200">

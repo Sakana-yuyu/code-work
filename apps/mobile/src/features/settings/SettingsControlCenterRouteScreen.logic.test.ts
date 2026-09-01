@@ -557,14 +557,14 @@ describe("buildRedispatchInput", () => {
         taskId: "task-1",
         runId: "run-1",
         agentId: "agent-1",
-        newRunId: "t3-redispatch-abc",
+        newRunId: "codework-redispatch-abc",
         capabilityIdsText: " shell.exec , fs.write ,, ",
       }),
     ).toEqual({
       taskId: "task-1",
       runId: "run-1",
       agentId: "agent-1",
-      newRunId: "t3-redispatch-abc",
+      newRunId: "codework-redispatch-abc",
       capabilityIds: ["shell.exec", "fs.write"],
     });
   });
@@ -575,7 +575,7 @@ describe("buildRedispatchInput", () => {
         taskId: "task-1",
         runId: "run-1",
         agentId: "agent-1",
-        newRunId: "t3-redispatch-abc",
+        newRunId: "codework-redispatch-abc",
         capabilityIdsText: "",
       }).capabilityIds,
     ).toEqual([]);
@@ -711,14 +711,14 @@ describe("buildByokResumeRedispatchInput", () => {
         taskId: "task-1",
         runId: "run-1",
         agentId: "agent-1",
-        newRunId: "t3-byok-resume-abc",
+        newRunId: "codework-byok-resume-abc",
         note: "recover",
       }),
     ).toEqual({
       taskId: "task-1",
       runId: "run-1",
       agentId: "agent-1",
-      newRunId: "t3-byok-resume-abc",
+      newRunId: "codework-byok-resume-abc",
       capabilityIds: [],
       note: "recover",
     });

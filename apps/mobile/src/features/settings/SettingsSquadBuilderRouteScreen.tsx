@@ -300,7 +300,7 @@ function SquadConfigurationCard(props: {
     <View className="gap-3 rounded-[24px] border-continuous bg-card p-4">
       <View className="gap-1">
         <View className="flex-row flex-wrap items-center gap-2">
-          <Text className="min-w-0 flex-1 text-base font-t3-medium text-foreground">
+          <Text className="min-w-0 flex-1 text-base font-codework-medium text-foreground">
             {squad.name}
           </Text>
           <BadgePill
@@ -345,7 +345,7 @@ function SquadConfigurationCard(props: {
 
       {squad.instructions === undefined ? null : (
         <View className="gap-1">
-          <Text className="text-xs font-t3-medium text-foreground-muted">
+          <Text className="text-xs font-codework-medium text-foreground-muted">
             {t("squadBuilder.instructions")}
           </Text>
           <Text className="text-sm text-foreground">{squad.instructions}</Text>
@@ -353,7 +353,9 @@ function SquadConfigurationCard(props: {
       )}
 
       <View className="gap-2 border-t border-border-subtle pt-3">
-        <Text className="text-sm font-t3-medium text-foreground">{t("squadBuilder.members")}</Text>
+        <Text className="text-sm font-codework-medium text-foreground">
+          {t("squadBuilder.members")}
+        </Text>
         {members.map((member) => (
           <SquadMemberRow
             key={`${member.order}:${member.agentId}`}
@@ -477,7 +479,7 @@ function ActionButton(props: {
             : "rounded-full bg-subtle px-3 py-1.5"
       }
     >
-      <Text className="text-sm font-t3-medium text-foreground">{props.label}</Text>
+      <Text className="text-sm font-codework-medium text-foreground">{props.label}</Text>
     </Pressable>
   );
 }

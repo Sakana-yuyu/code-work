@@ -80,6 +80,7 @@ overrides:
 packageExtensionsChecksum: sha256-CUzzeefpj3gNFrCKNBhV9FOaniNbrLdKyIhWQyXuaiE=
 
 patchedDependencies:
+  '@clerk/electron@0.0.37': e2bdca4bfa2b5ad9dcde197b0b05b6f5b1da7c8c976c94123e00f65b3278a32d
   '@clerk/expo@4.2.0': 72e426f44fc1cde16fc2cbba3d1e96cdca7c6d957faa73d0fe6b43948608a6c1
   '@effect/vitest@4.0.0-beta.103': a16b1e870d8c29e4a98b17cc4c638a4ff471753d8ca3487f78a22b759caf951b
   '@expo/metro-config@56.0.14': 8cb08b5bb7051ed9d2dbe46a2c293c5a1e17f1bd6ddf30de27909e18c921ff46
@@ -123,7 +124,7 @@ importers:
     dependencies:
       '@clerk/electron':
         specifier: 0.0.37
-        version: 0.0.37(@clerk/electron-passkeys@0.0.3)(electron-store@8.2.0)(electron@41.5.0)(react-dom@19.2.6(react@19.2.6))(react@19.2.6)
+        version: 0.0.37(patch_hash=e2bdca4bfa2b5ad9dcde197b0b05b6f5b1da7c8c976c94123e00f65b3278a32d)(@clerk/electron-passkeys@0.0.3)(electron-store@8.2.0)(electron@41.5.0)(react-dom@19.2.6(react@19.2.6))(react@19.2.6)
       '@clerk/electron-passkeys':
         specifier: 0.0.3
         version: 0.0.3
@@ -217,14 +218,14 @@ importers:
         specifier: workspace:*
         version: link:../../packages/contracts
       '@codework/mobile-markdown-text':
-        specifier: file:./modules/t3-markdown-text
-        version: file:apps/mobile/modules/t3-markdown-text(ed3009b8f2424467288a00b38bef28fe)
+        specifier: file:./modules/codework-markdown-text
+        version: file:apps/mobile/modules/codework-markdown-text(ed3009b8f2424467288a00b38bef28fe)
       '@codework/mobile-review-diff-native':
-        specifier: file:./modules/t3-review-diff
-        version: file:apps/mobile/modules/t3-review-diff
+        specifier: file:./modules/codework-review-diff
+        version: file:apps/mobile/modules/codework-review-diff
       '@codework/mobile-terminal-native':
-        specifier: file:./modules/t3-terminal
-        version: file:apps/mobile/modules/t3-terminal
+        specifier: file:./modules/codework-terminal
+        version: file:apps/mobile/modules/codework-terminal
       '@codework/shared':
         specifier: workspace:*
         version: link:../../packages/shared
@@ -541,7 +542,7 @@ importers:
         version: 1.5.0(@types/react@19.2.16)(react-dom@19.2.6(react@19.2.6))(react@19.2.6)
       '@clerk/electron':
         specifier: 0.0.37
-        version: 0.0.37(@clerk/electron-passkeys@0.0.3)(electron-store@8.2.0)(electron@41.5.0)(react-dom@19.2.6(react@19.2.6))(react@19.2.6)
+        version: 0.0.37(patch_hash=e2bdca4bfa2b5ad9dcde197b0b05b6f5b1da7c8c976c94123e00f65b3278a32d)(@clerk/electron-passkeys@0.0.3)(electron-store@8.2.0)(electron@41.5.0)(react-dom@19.2.6(react@19.2.6))(react@19.2.6)
       '@clerk/react':
         specifier: 6.14.7
         version: 6.14.7(react-dom@19.2.6(react@19.2.6))(react@19.2.6)
@@ -1847,8 +1848,8 @@ packages:
   '@cloudflare/workers-types@5.20260726.1':
     resolution: {integrity: sha512-fKgRSm3sDmOdak1LGWehS4vSPSj7/zeu0NfmE62VPjBMqWgODcOGljYvq6A75sL+7YfY3iGFGb0jVEDYq+hlmw==}
 
-  '@codework/mobile-markdown-text@file:apps/mobile/modules/t3-markdown-text':
-    resolution: {directory: apps/mobile/modules/t3-markdown-text, type: directory}
+  '@codework/mobile-markdown-text@file:apps/mobile/modules/codework-markdown-text':
+    resolution: {directory: apps/mobile/modules/codework-markdown-text, type: directory}
     peerDependencies:
       expo-asset: '*'
       expo-clipboard: '*'
@@ -1858,11 +1859,11 @@ packages:
       react-native: '*'
       react-native-nitro-markdown: '*'
 
-  '@codework/mobile-review-diff-native@file:apps/mobile/modules/t3-review-diff':
-    resolution: {directory: apps/mobile/modules/t3-review-diff, type: directory}
+  '@codework/mobile-review-diff-native@file:apps/mobile/modules/codework-review-diff':
+    resolution: {directory: apps/mobile/modules/codework-review-diff, type: directory}
 
-  '@codework/mobile-terminal-native@file:apps/mobile/modules/t3-terminal':
-    resolution: {directory: apps/mobile/modules/t3-terminal, type: directory}
+  '@codework/mobile-terminal-native@file:apps/mobile/modules/codework-terminal':
+    resolution: {directory: apps/mobile/modules/codework-terminal, type: directory}
 
   '@distilled.cloud/aws@0.30.2':
     resolution: {integrity: sha512-Uw2yZf7PJ2ienrKG49HN1ajnke65mTtHBUrSb/3ykeZ/8cLaSgwVhPscHxSzGByY0TEtYcYKNNmfUVISgGQl9g==}
@@ -11575,7 +11576,7 @@ snapshots:
       '@clerk/electron-passkeys-win32-arm64-msvc': 0.0.3
       '@clerk/electron-passkeys-win32-x64-msvc': 0.0.3
 
-  '@clerk/electron@0.0.37(@clerk/electron-passkeys@0.0.3)(electron-store@8.2.0)(electron@41.5.0)(react-dom@19.2.6(react@19.2.6))(react@19.2.6)':
+  '@clerk/electron@0.0.37(patch_hash=e2bdca4bfa2b5ad9dcde197b0b05b6f5b1da7c8c976c94123e00f65b3278a32d)(@clerk/electron-passkeys@0.0.3)(electron-store@8.2.0)(electron@41.5.0)(react-dom@19.2.6(react@19.2.6))(react@19.2.6)':
     dependencies:
       '@clerk/clerk-js': 6.30.1(react-dom@19.2.6(react@19.2.6))(react@19.2.6)
       '@clerk/react': 6.14.7(react-dom@19.2.6(react@19.2.6))(react@19.2.6)
@@ -11670,7 +11671,7 @@ snapshots:
 
   '@cloudflare/workers-types@5.20260726.1': {}
 
-  '@codework/mobile-markdown-text@file:apps/mobile/modules/t3-markdown-text(ed3009b8f2424467288a00b38bef28fe)':
+  '@codework/mobile-markdown-text@file:apps/mobile/modules/codework-markdown-text(ed3009b8f2424467288a00b38bef28fe)':
     dependencies:
       expo-asset: 56.0.17(expo@56.0.12)(react-native@0.85.3(@babel/core@7.29.7)(@react-native/metro-config@0.85.3(@babel/core@7.29.7)(bufferutil@4.1.0)(utf-8-validate@6.0.6))(@types/react@19.2.16)(bufferutil@4.1.0)(react@19.2.3)(utf-8-validate@6.0.6))(react@19.2.3)(typescript@6.0.3)
       expo-clipboard: 56.0.4(expo@56.0.12)(react-native@0.85.3(@babel/core@7.29.7)(@react-native/metro-config@0.85.3(@babel/core@7.29.7)(bufferutil@4.1.0)(utf-8-validate@6.0.6))(@types/react@19.2.16)(bufferutil@4.1.0)(react@19.2.3)(utf-8-validate@6.0.6))(react@19.2.3)
@@ -11680,9 +11681,9 @@ snapshots:
       react-native: 0.85.3(@babel/core@7.29.7)(@react-native/metro-config@0.85.3(@babel/core@7.29.7)(bufferutil@4.1.0)(utf-8-validate@6.0.6))(@types/react@19.2.16)(bufferutil@4.1.0)(react@19.2.3)(utf-8-validate@6.0.6)
       react-native-nitro-markdown: 0.5.8(react-native-nitro-modules@0.35.9(patch_hash=825622aae63a8fb5b904f3c77908a0e216261d727ea171709f2c0b6088422675)(react-native@0.85.3(@babel/core@7.29.7)(@react-native/metro-config@0.85.3(@babel/core@7.29.7)(bufferutil@4.1.0)(utf-8-validate@6.0.6))(@types/react@19.2.16)(bufferutil@4.1.0)(react@19.2.3)(utf-8-validate@6.0.6))(react@19.2.3))(react-native-svg@15.15.4(react-native@0.85.3(@babel/core@7.29.7)(@react-native/metro-config@0.85.3(@babel/core@7.29.7)(bufferutil@4.1.0)(utf-8-validate@6.0.6))(@types/react@19.2.16)(bufferutil@4.1.0)(react@19.2.3)(utf-8-validate@6.0.6))(react@19.2.3))(react-native@0.85.3(@babel/core@7.29.7)(@react-native/metro-config@0.85.3(@babel/core@7.29.7)(bufferutil@4.1.0)(utf-8-validate@6.0.6))(@types/react@19.2.16)(bufferutil@4.1.0)(react@19.2.3)(utf-8-validate@6.0.6))(react@19.2.3)
 
-  '@codework/mobile-review-diff-native@file:apps/mobile/modules/t3-review-diff': {}
+  '@codework/mobile-review-diff-native@file:apps/mobile/modules/codework-review-diff': {}
 
-  '@codework/mobile-terminal-native@file:apps/mobile/modules/t3-terminal': {}
+  '@codework/mobile-terminal-native@file:apps/mobile/modules/codework-terminal': {}
 
   '@distilled.cloud/aws@0.30.2(effect@4.0.0-beta.103(patch_hash=af36b7948b6f9c56623074662b51dade5699880c1a7c71245de73e13c3185fb6))':
     dependencies:

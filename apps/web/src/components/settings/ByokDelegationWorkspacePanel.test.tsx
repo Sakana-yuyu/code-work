@@ -127,13 +127,13 @@ describe("ByokDelegationWorkspacePanel", () => {
           },
         ],
         executorCommand: " node worker.mjs ",
-        executorEnvironmentVariables: ["OPENAI_API_KEY", "bad-name", "T3_HOME"],
+        executorEnvironmentVariables: ["OPENAI_API_KEY", "bad-name", "CODEWORK_HOME"],
       },
     });
 
     expect(config.maxConcurrency).toBe(16);
     expect(config.executorCommand).toBe("node worker.mjs");
-    expect(config.executorEnvironmentVariables).toEqual(["OPENAI_API_KEY", "T3_HOME"]);
+    expect(config.executorEnvironmentVariables).toEqual(["OPENAI_API_KEY", "CODEWORK_HOME"]);
     expect(config.modelGroups[0]?.defaultModelId).toBeUndefined();
     expect(config.modelGroups[0]?.name).toBe(
       t("delegationSettings.defaultGroupName", { index: 1 }),
@@ -193,7 +193,9 @@ describe("ByokDelegationWorkspacePanel", () => {
     expect(config.supervision.maxRounds).toBe(1);
     expect(config.supervision.allowReassign).toBe(false);
     expect(config.supervision.allowEscalate).toBe(true);
-    expect(config.subagentProfiles).toEqual([{ subagentType: "explore", promptFragment: "只读探索" }]);
+    expect(config.subagentProfiles).toEqual([
+      { subagentType: "explore", promptFragment: "只读探索" },
+    ]);
   });
 
   it("切换模型时会保留有效默认模型并在必要时清空默认模型", () => {

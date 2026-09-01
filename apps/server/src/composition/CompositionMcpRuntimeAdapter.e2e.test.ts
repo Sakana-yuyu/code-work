@@ -14,7 +14,7 @@ import {
 } from "@modelcontextprotocol/sdk/types.js";
 
 const server = new Server(
-  { name: "t3-local-test-server", version: "1.0.0" },
+  { name: "codework-local-test-server", version: "1.0.0" },
   { capabilities: { tools: {} } },
 );
 

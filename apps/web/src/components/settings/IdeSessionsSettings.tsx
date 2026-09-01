@@ -318,7 +318,7 @@ function IdeSessionEditor({
         <Input
           value={draft.url}
           onChange={(event) => update("url", event.target.value)}
-          placeholder={t("ws1270014111T3Ide")}
+          placeholder={t("ws1270014111CodeworkIde")}
           spellCheck={false}
         />
       </label>

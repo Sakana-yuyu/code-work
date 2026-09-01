@@ -97,7 +97,8 @@ export function ConnectionsRouteScreen() {
             <Text className="text-center text-sm leading-normal text-foreground-muted">
               {t("noEnvironmentsConnectedYet")}
               {"\n"}
-              {t("tap")} <Text className="font-t3-bold text-foreground">+</Text> {t("toAddOne")}
+              {t("tap")} <Text className="font-codework-bold text-foreground">+</Text>{" "}
+              {t("toAddOne")}
             </Text>
           </View>
         )}

@@ -7,14 +7,14 @@ const relayClientTracingConfig = resolveRelayClientTracingConfig();
 export const headlessRelayClientTracingLayer = makeRelayClientTracingLayer(
   relayClientTracingConfig,
   {
-    serviceName: "t3-headless-relay-client",
+    serviceName: "codework-headless-relay-client",
     runtime: "node",
     client: "headless-cli",
   },
 );
 
 export const serverRelayBrokerTracingLayer = makeRelayClientTracingLayer(relayClientTracingConfig, {
-  serviceName: "t3-server",
+  serviceName: "codework-server",
   runtime: "node",
   client: "environment-server",
   component: "relay-broker",

@@ -99,8 +99,8 @@ const NATIVE_REVIEW_DIFF_VISIBLE_OVERSCAN_ROWS = 160;
 const NATIVE_REVIEW_DIFF_VISIBLE_MAX_ROWS = 360;
 
 const NATIVE_REVIEW_DIFF_THEME_NAME_BY_SCHEME = {
-  dark: "t3-pierre-dark",
-  light: "t3-pierre-light",
+  dark: "codework-pierre-dark",
+  light: "codework-pierre-light",
 } as const;
 
 const PIERRE_LIGHT_SHIKI_THEME = {

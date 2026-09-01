@@ -1,4 +1,8 @@
-import { CODEWORK_PROJECT_FILE_NAME, type EnvironmentId, type ThreadEnvMode } from "@codework/contracts";
+import {
+  CODEWORK_PROJECT_FILE_NAME,
+  type EnvironmentId,
+  type ThreadEnvMode,
+} from "@codework/contracts";
 import { parseCodeworkProjectFile } from "@codework/shared/codeworkProjectFile";
 import { executeAtomQuery } from "@codework/client-runtime/state/runtime";
 
@@ -18,7 +22,7 @@ import { appAtomRegistry } from "~/rpc/atomRegistry";
  * `useProjectFileQuery` renders. Missing, truncated, or invalid files
  * resolve to null.
  */
-export async function readT3ProjectFileDefaultThreadEnvMode(
+export async function readCodeworkProjectFileDefaultThreadEnvMode(
   environmentId: EnvironmentId,
   workspaceRoot: string,
 ): Promise<ThreadEnvMode | null> {

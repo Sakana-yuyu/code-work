@@ -84,7 +84,7 @@ function LanguageSettingsSection() {
               <Text
                 className={
                   checked
-                    ? "text-center text-sm font-t3-medium text-foreground"
+                    ? "text-center text-sm font-codework-medium text-foreground"
                     : "text-center text-sm text-foreground-muted"
                 }
               >

@@ -460,7 +460,7 @@ describe("CompositionRuntimeSettings", () => {
           });
 
           yield* adapter.dispatchTask({
-            taskId: "t3-task-1",
+            taskId: "codework-task-1",
             runId: "run-1",
             agentId: "agent-1",
             prompt: "执行扩展",
@@ -481,7 +481,7 @@ describe("CompositionRuntimeSettings", () => {
           });
           expect(processInputs[0]?.timeout).toBeDefined();
           expect(processInputs[0]?.stdin).toContain('"type":"multica.task.start"');
-          expect(processInputs[0]?.stdin).toContain('"taskId":"t3-task-1"');
+          expect(processInputs[0]?.stdin).toContain('"taskId":"codework-task-1"');
         }),
       );
     } finally {
@@ -662,7 +662,7 @@ describe("CompositionRuntimeSettings", () => {
                   codeworkAgentId: "agent-1",
                   workspaceId: "workspace-1",
                   multicaAgentId: "remote-agent-1",
-                  codeworkMcpCredentialEnvironmentVariable: "MULTICA_AGENT_1_T3_MCP_TOKEN",
+                  codeworkMcpCredentialEnvironmentVariable: "MULTICA_AGENT_1_CODEWORK_MCP_TOKEN",
                 },
               ],
             }).config,
@@ -673,7 +673,7 @@ describe("CompositionRuntimeSettings", () => {
             environment: [
               { name: "MULTICA_TOKEN", value: "secret-token", sensitive: true },
               {
-                name: "MULTICA_AGENT_1_T3_MCP_TOKEN",
+                name: "MULTICA_AGENT_1_CODEWORK_MCP_TOKEN",
                 value: "agent-1-runtime-token",
                 sensitive: true,
               },

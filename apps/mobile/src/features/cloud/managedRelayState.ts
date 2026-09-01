@@ -40,7 +40,7 @@ export function useManagedRelayEnvironments() {
   const snapshot = readManagedRelaySnapshotState(result);
   useEffect(() => {
     if (snapshot.error) {
-      console.error("[t3-cloud] Relay environment listing failed", {
+      console.error("[codework-cloud] Relay environment listing failed", {
         message: snapshot.error,
         traceId: snapshot.errorTraceId,
       });
@@ -69,7 +69,7 @@ export function useManagedRelayEnvironmentStatus(environment: RelayClientEnviron
   const snapshot = readManagedRelaySnapshotState(result);
   useEffect(() => {
     if (snapshot.error) {
-      console.error("[t3-cloud] Relay environment status failed", {
+      console.error("[codework-cloud] Relay environment status failed", {
         environmentId: environment.environmentId,
         message: snapshot.error,
         traceId: snapshot.errorTraceId,

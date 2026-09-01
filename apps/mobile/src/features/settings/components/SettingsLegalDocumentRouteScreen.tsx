@@ -100,7 +100,7 @@ export function SettingsLegalDocumentRouteScreen({
           weight="regular"
         />
         <View className="items-center gap-2">
-          <Text className="text-center font-t3-bold text-lg text-foreground">
+          <Text className="text-center font-codework-bold text-lg text-foreground">
             {t("couldnAposTLoadThe")} {documentName.toLowerCase()}
           </Text>
           <Text selectable className="text-center text-sm leading-normal text-foreground-muted">
@@ -116,14 +116,14 @@ export function SettingsLegalDocumentRouteScreen({
             }}
             className="items-center rounded-xl bg-foreground px-4 py-3 active:opacity-80"
           >
-            <Text className="font-t3-bold text-base text-sheet">{t("tryAgain")}</Text>
+            <Text className="font-codework-bold text-base text-sheet">{t("tryAgain")}</Text>
           </Pressable>
           <Pressable
             accessibilityRole="link"
             onPress={() => openExternalUrl(documentUrl)}
             className="items-center rounded-xl px-4 py-3 active:bg-foreground/5"
           >
-            <Text className="font-t3-medium text-base text-foreground-muted">
+            <Text className="font-codework-medium text-base text-foreground-muted">
               {t("openInBrowser")}
             </Text>
           </Pressable>

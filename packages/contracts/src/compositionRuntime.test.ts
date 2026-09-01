@@ -49,9 +49,15 @@ describe("composition runtime contracts", () => {
     expect(isSafeMulticaRuntimeBaseUrl("https://multica.test/api")).toBe(true);
     expect(isSafeMulticaRuntimeBaseUrl("https://user:secret@multica.test/api")).toBe(false);
     expect(isSafeMulticaTaskMcpEndpoint("https://codework.test/mcp?version=1")).toBe(true);
-    expect(isSafeMulticaTaskMcpEndpoint("https://codework.test/mcp?authorizationCode=secret")).toBe(false);
-    expect(isSafeMulticaTaskMcpEndpoint("https://codework.test/mcp?subscriptionKey=secret")).toBe(false);
-    expect(isSafeMulticaTaskMcpEndpoint("https://codework.test/mcp?accessKeyId=secret")).toBe(false);
+    expect(isSafeMulticaTaskMcpEndpoint("https://codework.test/mcp?authorizationCode=secret")).toBe(
+      false,
+    );
+    expect(isSafeMulticaTaskMcpEndpoint("https://codework.test/mcp?subscriptionKey=secret")).toBe(
+      false,
+    );
+    expect(isSafeMulticaTaskMcpEndpoint("https://codework.test/mcp?accessKeyId=secret")).toBe(
+      false,
+    );
   });
 
   it("keeps the event envelope additive to task events", () => {
@@ -214,7 +220,7 @@ describe("composition runtime contracts", () => {
           codeworkSquadId: "squad-1",
           workspaceId: "workspace-1",
           multicaAgentId: "agent-remote-1",
-          codeworkMcpCredentialEnvironmentVariable: "MULTICA_AGENT_1_T3_MCP_TOKEN",
+          codeworkMcpCredentialEnvironmentVariable: "MULTICA_AGENT_1_CODEWORK_MCP_TOKEN",
         },
       ],
     });
@@ -225,7 +231,7 @@ describe("composition runtime contracts", () => {
     expect(decoded.assigneeRoutes[0]?.multicaAgentId).toBe("agent-remote-1");
     expect(decoded.assigneeRoutes[0]?.codeworkSquadId).toBe("squad-1");
     expect(decoded.assigneeRoutes[0]?.codeworkMcpCredentialEnvironmentVariable).toBe(
-      "MULTICA_AGENT_1_T3_MCP_TOKEN",
+      "MULTICA_AGENT_1_CODEWORK_MCP_TOKEN",
     );
     expect((decoded as Record<string, unknown>).token).toBeUndefined();
   });

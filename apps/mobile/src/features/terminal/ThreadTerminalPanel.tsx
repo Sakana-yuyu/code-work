@@ -220,7 +220,7 @@ export const ThreadTerminalPanel = memo(function ThreadTerminalPanel(
     <View className="absolute inset-x-3 bottom-28 top-28 overflow-hidden rounded-[8px] border border-border bg-screen shadow-2xl">
       <View className="flex-row items-center justify-between border-b border-border px-3 py-2">
         <View className="min-w-0 flex-1">
-          <Text className="font-t3-bold text-sm text-foreground" numberOfLines={1}>
+          <Text className="font-codework-bold text-sm text-foreground" numberOfLines={1}>
             {t("surface.terminal")}
           </Text>
           <Text className="text-2xs text-foreground-muted" numberOfLines={1}>

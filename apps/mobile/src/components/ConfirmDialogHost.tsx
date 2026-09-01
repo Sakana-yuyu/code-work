@@ -67,7 +67,7 @@ export function ConfirmDialogHost() {
       {request === null ? null : (
         <View className="flex-1 items-center justify-center bg-backdrop px-8">
           <View className="w-full rounded-[24px] bg-card px-6 pb-4 pt-5">
-            <AppText className="text-lg font-t3-medium">{request.title}</AppText>
+            <AppText className="text-lg font-codework-medium">{request.title}</AppText>
             {request.message === undefined ? null : (
               <AppText className="mt-2 text-sm text-foreground-secondary">
                 {request.message}
@@ -81,7 +81,7 @@ export function ConfirmDialogHost() {
                   android_ripple={{ color: pressedOverlay }}
                   onPress={handleCancel}
                 >
-                  <AppText className="text-base font-t3-medium">
+                  <AppText className="text-base font-codework-medium">
                     {request.cancelText ?? t("cancel")}
                   </AppText>
                 </Pressable>
@@ -95,7 +95,7 @@ export function ConfirmDialogHost() {
                 >
                   <AppText
                     className={cn(
-                      "text-base font-t3-medium",
+                      "text-base font-codework-medium",
                       request.destructive && "text-danger-foreground",
                     )}
                   >

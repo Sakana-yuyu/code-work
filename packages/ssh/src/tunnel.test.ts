@@ -138,16 +138,16 @@ describe("ssh tunnel scripts", () => {
 
   it("shell-quotes package specs in the remote t3 runner", () => {
     const script = buildRemoteCodeworkRunnerScript({
-      packageSpec: "t3@nightly; touch /tmp/t3-owned",
+      packageSpec: "t3@nightly; touch /tmp/codework-owned",
     });
 
-    assert.include(script, "exec npx --yes 't3@nightly; touch /tmp/t3-owned' \"$@\"");
-    assert.include(script, "exec npm exec --yes 't3@nightly; touch /tmp/t3-owned' -- \"$@\"");
+    assert.include(script, "exec npx --yes 't3@nightly; touch /tmp/codework-owned' \"$@\"");
+    assert.include(script, "exec npm exec --yes 't3@nightly; touch /tmp/codework-owned' -- \"$@\"");
     assert.include(
       script,
-      "require_installed_t3_cli npx --yes --package 't3@nightly; touch /tmp/t3-owned'",
+      "require_installed_t3_cli npx --yes --package 't3@nightly; touch /tmp/codework-owned'",
     );
-    assert.notInclude(script, "exec npx --yes t3@nightly; touch /tmp/t3-owned");
+    assert.notInclude(script, "exec npx --yes t3@nightly; touch /tmp/codework-owned");
   });
 
   it("builds the remote t3 runner with a node script override", () => {

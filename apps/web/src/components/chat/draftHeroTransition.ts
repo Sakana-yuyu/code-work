@@ -1,4 +1,4 @@
-export const DRAFT_HERO_TRANSITION_ANIMATION_ID = "t3-draft-hero-transition";
+export const DRAFT_HERO_TRANSITION_ANIMATION_ID = "codework-draft-hero-transition";
 export const DRAFT_HERO_TRANSITION_DURATION_MS = 180;
 export const DRAFT_HERO_TRANSITION_EASING = "cubic-bezier(0.4, 0, 0.2, 1)";
 export const MOBILE_COMPOSER_VIEW_TRANSITION_NAME = "t3-mobile-composer";

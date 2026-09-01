@@ -132,7 +132,7 @@ function makeHarness(options: UpdatesHarnessOptions = {}) {
 
   const environmentLayer = DesktopEnvironment.layer({
     dirname: "/repo/apps/desktop/src",
-    homeDirectory: `/tmp/t3-desktop-updates-home-${process.pid}`,
+    homeDirectory: `/tmp/codework-desktop-updates-home-${process.pid}`,
     platform: "darwin",
     processArch: "x64",
     appVersion: "1.2.3",
@@ -145,7 +145,7 @@ function makeHarness(options: UpdatesHarnessOptions = {}) {
       Layer.mergeAll(
         NodeServices.layer,
         DesktopConfig.layerTest({
-          CODEWORK_HOME: `/tmp/t3-desktop-updates-test-${process.pid}`,
+          CODEWORK_HOME: `/tmp/codework-desktop-updates-test-${process.pid}`,
           CODEWORK_DESKTOP_MOCK_UPDATES: "true",
           CODEWORK_DESKTOP_MOCK_UPDATE_SERVER_PORT: "4141",
           ...options.env,
@@ -198,7 +198,7 @@ function makeHarness(options: UpdatesHarnessOptions = {}) {
     Layer.provideMerge(settingsLayer),
     Layer.provideMerge(
       DesktopConfig.layerTest({
-        CODEWORK_HOME: `/tmp/t3-desktop-updates-test-${process.pid}`,
+        CODEWORK_HOME: `/tmp/codework-desktop-updates-test-${process.pid}`,
         CODEWORK_DESKTOP_MOCK_UPDATES: "true",
         CODEWORK_DESKTOP_MOCK_UPDATE_SERVER_PORT: "4141",
         ...options.env,

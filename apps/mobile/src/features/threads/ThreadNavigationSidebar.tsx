@@ -984,7 +984,7 @@ function ThreadNavigationSidebarPane(
               className="mx-4 mt-2 items-center rounded-lg border border-dashed border-border py-2.5"
               style={({ pressed }) => ({ opacity: pressed ? 0.6 : 1 })}
             >
-              <Text className="text-xs font-t3-medium text-foreground-muted">
+              <Text className="text-xs font-codework-medium text-foreground-muted">
                 {t("showMore")}
                 {item.hiddenCount} {t("settledHidden")}
               </Text>

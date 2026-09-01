@@ -258,7 +258,7 @@ export function AndroidAnchoredMenu(props: AndroidAnchoredMenuProps) {
                       className="px-3.5 pb-1 pt-2.5"
                       onPress={() => setPath((current) => current.slice(0, -1))}
                     >
-                      <Text className="text-xs font-t3-bold text-foreground-muted">
+                      <Text className="text-xs font-codework-bold text-foreground-muted">
                         {parent.title}
                       </Text>
                     </Pressable>
@@ -291,7 +291,7 @@ export function AndroidAnchoredMenu(props: AndroidAnchoredMenuProps) {
                           <Text
                             className={cn(
                               // Same face as the pill labels that open these menus.
-                              "text-sm font-t3-bold",
+                              "text-sm font-codework-bold",
                               destructive && "text-danger-foreground",
                             )}
                           >

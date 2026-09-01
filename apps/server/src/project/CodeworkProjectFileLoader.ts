@@ -19,7 +19,7 @@ import * as Schema from "effect/Schema";
 import { CODEWORK_PROJECT_FILE_NAME, type CodeworkProjectFile } from "@codework/contracts";
 import { CodeworkProjectFileFromJson } from "@codework/shared/codeworkProjectFile";
 
-const decodeT3ProjectFileJson = Schema.decodeEffect(CodeworkProjectFileFromJson);
+const decodeCodeworkProjectFileJson = Schema.decodeEffect(CodeworkProjectFileFromJson);
 
 export class CodeworkProjectFileLoadError extends Schema.TaggedErrorClass<CodeworkProjectFileLoadError>()(
   "CodeworkProjectFileLoadError",
@@ -49,7 +49,7 @@ export class CodeworkProjectFileLoader extends Context.Service<
   }
 >()("codework/project/CodeworkProjectFileLoader") {}
 
-const logT3ProjectFileLoadError = (error: CodeworkProjectFileLoadError) =>
+const logCodeworkProjectFileLoadError = (error: CodeworkProjectFileLoadError) =>
   Effect.logWarning(error).pipe(
     Effect.annotateLogs({
       operation: error.operation,
@@ -63,44 +63,44 @@ export const make = Effect.gen(function* () {
   const fileSystem = yield* FileSystem.FileSystem;
   const path = yield* Path.Path;
 
-  const load: CodeworkProjectFileLoader["Service"]["load"] = Effect.fn("CodeworkProjectFileLoader.load")(
-    function* (workspaceRoot) {
-      const filePath = path.join(workspaceRoot, CODEWORK_PROJECT_FILE_NAME);
-      const raw = yield* fileSystem.readFileString(filePath).pipe(
-        Effect.map(Option.some),
-        Effect.catchTags({
-          PlatformError: (error) =>
-            error.reason._tag === "NotFound"
-              ? Effect.succeed(Option.none<string>())
-              : logT3ProjectFileLoadError(
-                  new CodeworkProjectFileLoadError({
-                    operation: "read",
-                    workspaceRoot,
-                    filePath,
-                    cause: error,
-                  }),
-                ).pipe(Effect.as(Option.none<string>())),
-        }),
-      );
-      if (Option.isNone(raw)) {
-        return Option.none<CodeworkProjectFile>();
-      }
-      return yield* decodeT3ProjectFileJson(raw.value).pipe(
-        Effect.map(Option.some),
-        Effect.catchTags({
-          SchemaError: (error) =>
-            logT3ProjectFileLoadError(
-              new CodeworkProjectFileLoadError({
-                operation: "decode",
-                workspaceRoot,
-                filePath,
-                cause: error,
-              }),
-            ).pipe(Effect.as(Option.none<CodeworkProjectFile>())),
-        }),
-      );
-    },
-  );
+  const load: CodeworkProjectFileLoader["Service"]["load"] = Effect.fn(
+    "CodeworkProjectFileLoader.load",
+  )(function* (workspaceRoot) {
+    const filePath = path.join(workspaceRoot, CODEWORK_PROJECT_FILE_NAME);
+    const raw = yield* fileSystem.readFileString(filePath).pipe(
+      Effect.map(Option.some),
+      Effect.catchTags({
+        PlatformError: (error) =>
+          error.reason._tag === "NotFound"
+            ? Effect.succeed(Option.none<string>())
+            : logCodeworkProjectFileLoadError(
+                new CodeworkProjectFileLoadError({
+                  operation: "read",
+                  workspaceRoot,
+                  filePath,
+                  cause: error,
+                }),
+              ).pipe(Effect.as(Option.none<string>())),
+      }),
+    );
+    if (Option.isNone(raw)) {
+      return Option.none<CodeworkProjectFile>();
+    }
+    return yield* decodeCodeworkProjectFileJson(raw.value).pipe(
+      Effect.map(Option.some),
+      Effect.catchTags({
+        SchemaError: (error) =>
+          logCodeworkProjectFileLoadError(
+            new CodeworkProjectFileLoadError({
+              operation: "decode",
+              workspaceRoot,
+              filePath,
+              cause: error,
+            }),
+          ).pipe(Effect.as(Option.none<CodeworkProjectFile>())),
+      }),
+    );
+  });
 
   return CodeworkProjectFileLoader.of({ load });
 });

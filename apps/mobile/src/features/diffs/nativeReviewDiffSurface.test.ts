@@ -99,7 +99,7 @@ describe("isPendingNativeViewRegistration", () => {
     expect(
       isPendingNativeViewRegistration(
         new Error(
-          "Unable to find the class expo.modules.t3reviewdiff.CodeworkReviewDiffView view with tag 1150",
+          "Unable to find the class expo.modules.codeworkreviewdiff.CodeworkReviewDiffView view with tag 1150",
         ),
       ),
     ).toBe(true);

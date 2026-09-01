@@ -81,7 +81,10 @@ function makeEnvironmentLayer(baseDir: string, env: Record<string, string | unde
     runningUnderArm64Translation: false,
   }).pipe(
     Layer.provide(
-      Layer.mergeAll(NodeServices.layer, DesktopConfig.layerTest({ CODEWORK_HOME: baseDir, ...env })),
+      Layer.mergeAll(
+        NodeServices.layer,
+        DesktopConfig.layerTest({ CODEWORK_HOME: baseDir, ...env }),
+      ),
     ),
   );
 }
@@ -128,7 +131,7 @@ const withHarness = <A, E, R>(
   Effect.gen(function* () {
     const fileSystem = yield* FileSystem.FileSystem;
     const baseDir = yield* fileSystem.makeTempDirectoryScoped({
-      prefix: "t3-desktop-server-exposure-test-",
+      prefix: "codework-desktop-server-exposure-test-",
     });
     return yield* effect.pipe(
       Effect.provide(

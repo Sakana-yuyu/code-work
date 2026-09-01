@@ -44,7 +44,7 @@ it.layer(NodeServices.layer)("Claude capability probe SDK boundary", (it) => {
     Effect.gen(function* () {
       const fs = yield* FileSystem.FileSystem;
       const path = yield* Path.Path;
-      const tempDir = yield* fs.makeTempDirectoryScoped({ prefix: "t3-claude-probe-sdk-" });
+      const tempDir = yield* fs.makeTempDirectoryScoped({ prefix: "codework-claude-probe-sdk-" });
       const executablePath = path.join(tempDir, "fake-claude.mjs");
       const invocationPath = path.join(tempDir, "invocation.json");
       const workspaceCwd = path.join(tempDir, "workspace");

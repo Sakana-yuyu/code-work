@@ -115,7 +115,7 @@ Default Grafana login:
 ```bash
 export CODEWORK_OTLP_TRACES_URL=http://localhost:4318/v1/traces
 export CODEWORK_OTLP_METRICS_URL=http://localhost:4318/v1/metrics
-export CODEWORK_OTLP_SERVICE_NAME=t3-local
+export CODEWORK_OTLP_SERVICE_NAME=codework-local
 ```
 
 Optional:
@@ -154,7 +154,7 @@ macOS app bundle example:
 ```bash
 CODEWORK_OTLP_TRACES_URL=http://localhost:4318/v1/traces \
 CODEWORK_OTLP_METRICS_URL=http://localhost:4318/v1/metrics \
-CODEWORK_OTLP_SERVICE_NAME=t3-desktop \
+CODEWORK_OTLP_SERVICE_NAME=codework-desktop \
 "/Applications/Code Work.app/Contents/MacOS/Code Work"
 ```
 
@@ -163,7 +163,7 @@ Direct binary example:
 ```bash
 CODEWORK_OTLP_TRACES_URL=http://localhost:4318/v1/traces \
 CODEWORK_OTLP_METRICS_URL=http://localhost:4318/v1/metrics \
-CODEWORK_OTLP_SERVICE_NAME=t3-desktop \
+CODEWORK_OTLP_SERVICE_NAME=codework-desktop \
 ./path/to/your/desktop-app-binary
 ```
 
@@ -299,7 +299,7 @@ Recommended flow in Grafana:
 
 Good first searches:
 
-- service name such as `t3-local`, `t3-dev`, or `t3-desktop`
+- service name such as `codework-local`, `codework-dev`, or `codework-desktop`
 - span names like `sendTurn` or a Git operation such as `GitVcsDriver.statusDetails.status`
 - Git spans whose `git.operation` attribute identifies the operation
 - orchestration spans with attributes like `orchestration.command_type`
@@ -521,7 +521,7 @@ OTLP export:
 - `CODEWORK_OTLP_TRACES_URL`: OTLP trace endpoint
 - `CODEWORK_OTLP_METRICS_URL`: OTLP metric endpoint
 - `CODEWORK_OTLP_EXPORT_INTERVAL_MS`: export interval, default `10000`
-- `CODEWORK_OTLP_SERVICE_NAME`: service name, default `t3-server`
+- `CODEWORK_OTLP_SERVICE_NAME`: service name, default `codework-server`
 
 If the OTLP URLs are unset, local tracing still works and metrics stay in-process only.
 

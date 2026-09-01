@@ -926,7 +926,7 @@ export function ResourceTelemetryDiagnostics() {
   primaryEnvironmentIdRef.current = primaryEnvironment?.environmentId;
   const [isRetrying, setIsRetrying] = useState(false);
   const snapshot = telemetry.data;
-  const allT3 = snapshot?.groups.allT3;
+  const allCodework = snapshot?.groups.allCodework;
 
   const signalProcess = useCallback(
     async (process: ResourceTelemetryProcess, signal: ServerProcessSignal) => {
@@ -1095,21 +1095,23 @@ export function ResourceTelemetryDiagnostics() {
             <IconStat
               icon={<CpuIcon className="size-3.5" />}
               label={t("currentCpu")}
-              value={allT3 ? `${allT3.currentCpuPercent.toFixed(1)}%` : "..."}
+              value={allCodework ? `${allCodework.currentCpuPercent.toFixed(1)}%` : "..."}
               detail={
-                allT3
-                  ? t("diagnostics.observedCpuTime", { value: formatCpuTime(allT3.cpuTimeMs) })
+                allCodework
+                  ? t("diagnostics.observedCpuTime", {
+                      value: formatCpuTime(allCodework.cpuTimeMs),
+                    })
                   : undefined
               }
             />
             <IconStat
               icon={<MemoryStickIcon className="size-3.5" />}
               label={t("residentMemory")}
-              value={allT3 ? formatBytes(allT3.currentRssBytes) : "..."}
+              value={allCodework ? formatBytes(allCodework.currentRssBytes) : "..."}
               detail={
-                allT3
+                allCodework
                   ? t("diagnostics.combinedProcessPeaks", {
-                      value: formatBytes(allT3.peakRssBytes),
+                      value: formatBytes(allCodework.peakRssBytes),
                     })
                   : undefined
               }
@@ -1117,12 +1119,12 @@ export function ResourceTelemetryDiagnostics() {
             <IconStat
               icon={<ActivityIcon className="size-3.5" />}
               label={t("processCount")}
-              value={allT3 ? String(allT3.processCount) : "..."}
+              value={allCodework ? String(allCodework.processCount) : "..."}
               detail={
-                allT3
+                allCodework
                   ? t("diagnostics.startsExits", {
-                      starts: allT3.processStarts,
-                      exits: allT3.processExits,
+                      starts: allCodework.processStarts,
+                      exits: allCodework.processExits,
                     })
                   : undefined
               }
@@ -1130,26 +1132,26 @@ export function ResourceTelemetryDiagnostics() {
             <IconStat
               icon={<HardDriveIcon className="size-3.5" />}
               label={t("readThroughput")}
-              value={allT3 ? formatRate(allT3.ioReadBytesPerSecond) : "..."}
+              value={allCodework ? formatRate(allCodework.ioReadBytesPerSecond) : "..."}
               detail={
-                allT3
-                  ? t("diagnostics.bytesObserved", { value: formatBytes(allT3.ioReadBytes) })
+                allCodework
+                  ? t("diagnostics.bytesObserved", { value: formatBytes(allCodework.ioReadBytes) })
                   : undefined
               }
             />
             <IconStat
               icon={<DatabaseIcon className="size-3.5" />}
               label={t("writeThroughput")}
-              value={allT3 ? formatRate(allT3.ioWriteBytesPerSecond) : "..."}
+              value={allCodework ? formatRate(allCodework.ioWriteBytesPerSecond) : "..."}
               detail={
-                allT3
-                  ? t("diagnostics.bytesObserved", { value: formatBytes(allT3.ioWriteBytes) })
+                allCodework
+                  ? t("diagnostics.bytesObserved", { value: formatBytes(allCodework.ioWriteBytes) })
                   : undefined
               }
               tone={
-                allT3 && allT3.ioWriteBytesPerSecond >= 10 * 1_024 * 1_024
+                allCodework && allCodework.ioWriteBytesPerSecond >= 10 * 1_024 * 1_024
                   ? "danger"
-                  : allT3 && allT3.ioWriteBytesPerSecond >= 1_024 * 1_024
+                  : allCodework && allCodework.ioWriteBytesPerSecond >= 1_024 * 1_024
                     ? "warning"
                     : "default"
               }

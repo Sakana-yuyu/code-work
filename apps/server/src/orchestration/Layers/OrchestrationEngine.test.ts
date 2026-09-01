@@ -48,7 +48,7 @@ const asCheckpointRef = (value: string): CheckpointRef => CheckpointRef.make(val
 
 async function createOrchestrationSystem() {
   const ServerConfigLayer = ServerConfig.layerTest(process.cwd(), {
-    prefix: "t3-orchestration-engine-test-",
+    prefix: "codework-orchestration-engine-test-",
   });
   const orchestrationLayer = Layer.mergeAll(
     OrchestrationEngineLive.pipe(
@@ -815,7 +815,7 @@ describe("OrchestrationEngine", () => {
     };
 
     const ServerConfigLayer = ServerConfig.layerTest(process.cwd(), {
-      prefix: "t3-orchestration-engine-test-",
+      prefix: "codework-orchestration-engine-test-",
     });
 
     const runtime = ManagedRuntime.make(

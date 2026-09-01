@@ -40,7 +40,7 @@ import { Textarea } from "../ui/textarea";
 import { Input } from "../ui/input";
 import { SettingsRow, SettingsSection } from "./settingsLayout";
 
-const TASK_GRAPH_PROJECT_ID = "t3-settings-task-graph";
+const TASK_GRAPH_PROJECT_ID = "codework-settings-task-graph";
 const TERMINAL_STATUSES: ReadonlySet<CompositionTaskStatus> = new Set([
   "completed",
   "failed",
@@ -375,8 +375,8 @@ export function TaskGraphPanel() {
     }
 
     const graphId = randomUUID();
-    const leaderTaskId = `t3-leader-${graphId}`;
-    const leaderRunId = `t3-run-${graphId}`;
+    const leaderTaskId = `codework-leader-${graphId}`;
+    const leaderRunId = `codework-run-${graphId}`;
     const request: CompositionTaskGraphExecutionRequest = {
       leader: {
         taskId: leaderTaskId,
@@ -390,8 +390,8 @@ export function TaskGraphPanel() {
       },
       children: effectiveChildren.map((child, index) => ({
         nodeId: child.nodeId,
-        taskId: `t3-child-${graphId}-${index + 1}`,
-        runId: `t3-child-run-${graphId}-${index + 1}`,
+        taskId: `codework-child-${graphId}-${index + 1}`,
+        runId: `codework-child-run-${graphId}-${index + 1}`,
         projectId: projectId.trim(),
         assigneeKind: "agent",
         assigneeId: child.driverId,
@@ -452,7 +452,7 @@ export function TaskGraphPanel() {
     await runCommand("retry", retryTask, {
       taskId: selectedSnapshot.task.taskId,
       previousRunId: selectedRunId,
-      runId: `t3-retry-${randomUUID()}`,
+      runId: `codework-retry-${randomUUID()}`,
       reason,
       capabilityIds: retryCapabilityIds
         .split(",")

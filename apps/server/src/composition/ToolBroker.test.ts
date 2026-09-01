@@ -213,14 +213,14 @@ const TestLayer = Layer.mergeAll(
   McpToolRegistryLayer,
   VcsDriverRegistry.layer.pipe(Layer.provide(VcsProcess.layer)),
   ServerConfig.ServerConfig.layerTest(process.cwd(), {
-    prefix: "t3-composition-tool-broker-test-",
+    prefix: "codework-composition-tool-broker-test-",
   }),
 ).pipe(Layer.provideMerge(NodeServices.layer));
 
 const makeTempDir = Effect.gen(function* () {
   const fileSystem = yield* FileSystem.FileSystem;
   return yield* fileSystem.makeTempDirectoryScoped({
-    prefix: "t3-composition-tool-broker-",
+    prefix: "codework-composition-tool-broker-",
   });
 });
 
@@ -884,7 +884,7 @@ const DelegateTestLayer = Layer.mergeAll(
   ToolTestServicesLayer,
   McpToolRegistryLayer,
   ServerConfig.ServerConfig.layerTest(process.cwd(), {
-    prefix: "t3-composition-delegate-tool-test-",
+    prefix: "codework-composition-delegate-tool-test-",
   }),
 ).pipe(Layer.provideMerge(NodeServices.layer));
 

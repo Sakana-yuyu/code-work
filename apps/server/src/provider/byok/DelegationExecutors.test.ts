@@ -26,9 +26,7 @@ const executor = (overrides: Partial<ByokDelegationExecutor> = {}): ByokDelegati
   ...overrides,
 });
 
-const delegationConfig = (
-  overrides: Partial<ByokDelegationConfig> = {},
-): ByokDelegationConfig => ({
+const delegationConfig = (overrides: Partial<ByokDelegationConfig> = {}): ByokDelegationConfig => ({
   enabled: true,
   maxConcurrency: 4,
   queueTimeoutMs: 30_000,
@@ -71,10 +69,10 @@ describe("normalizeExecutors", () => {
 
   it("keeps enabled=true by default and filters empty env names", () => {
     const rows = normalizeExecutors([
-      executor({ id: "gamma", environmentVariables: ["OPENAI_API_KEY", " ", "T3_HOME"] }),
+      executor({ id: "gamma", environmentVariables: ["OPENAI_API_KEY", " ", "CODEWORK_HOME"] }),
     ]);
     expect(rows[0]?.enabled).toBe(true);
-    expect(rows[0]?.environmentVariables).toEqual(["OPENAI_API_KEY", "T3_HOME"]);
+    expect(rows[0]?.environmentVariables).toEqual(["OPENAI_API_KEY", "CODEWORK_HOME"]);
   });
 });
 
@@ -269,7 +267,10 @@ describe("ExecutorProbeRegistry", () => {
 
   it("applies and clears the cooldown around switchable failures", async () => {
     let clock = 1_000;
-    const registry = new ExecutorProbeRegistry(async () => ({ state: "ready" as const }), () => clock);
+    const registry = new ExecutorProbeRegistry(
+      async () => ({ state: "ready" as const }),
+      () => clock,
+    );
     const candidate = executor({ id: "probe-c", command: "node a.mjs" });
     expect(registry.isCoolingDown(candidate)).toBe(false);
     registry.recordFailure(candidate);

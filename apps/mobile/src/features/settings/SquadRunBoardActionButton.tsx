@@ -23,7 +23,7 @@ export function SquadRunBoardActionButton(props: {
             : "rounded-full bg-subtle px-3 py-1.5"
       }
     >
-      <Text className="text-sm font-t3-medium text-foreground">
+      <Text className="text-sm font-codework-medium text-foreground">
         {props.label}
         {props.detail === undefined ? null : ` · ${props.detail}`}
       </Text>

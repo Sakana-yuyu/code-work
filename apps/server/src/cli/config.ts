@@ -78,7 +78,9 @@ export const tailscaleServePortFlag = Flag.integer("tailscale-serve-port").pipe(
 const EnvServerConfig = Config.all({
   logLevel: Config.logLevel("CODEWORK_LOG_LEVEL").pipe(Config.withDefault("Info")),
   traceMinLevel: Config.logLevel("CODEWORK_TRACE_MIN_LEVEL").pipe(Config.withDefault("Info")),
-  traceTimingEnabled: Config.boolean("CODEWORK_TRACE_TIMING_ENABLED").pipe(Config.withDefault(true)),
+  traceTimingEnabled: Config.boolean("CODEWORK_TRACE_TIMING_ENABLED").pipe(
+    Config.withDefault(true),
+  ),
   traceFile: Config.string("CODEWORK_TRACE_FILE").pipe(
     Config.option,
     Config.map(Option.getOrUndefined),
@@ -97,14 +99,19 @@ const EnvServerConfig = Config.all({
   otlpExportIntervalMs: Config.int("CODEWORK_OTLP_EXPORT_INTERVAL_MS").pipe(
     Config.withDefault(10_000),
   ),
-  otlpServiceName: Config.string("CODEWORK_OTLP_SERVICE_NAME").pipe(Config.withDefault("t3-server")),
+  otlpServiceName: Config.string("CODEWORK_OTLP_SERVICE_NAME").pipe(
+    Config.withDefault("codework-server"),
+  ),
   mode: Config.schema(ServerConfig.RuntimeMode, "CODEWORK_MODE").pipe(
     Config.option,
     Config.map(Option.getOrUndefined),
   ),
   port: Config.port("CODEWORK_PORT").pipe(Config.option, Config.map(Option.getOrUndefined)),
   host: Config.string("CODEWORK_HOST").pipe(Config.option, Config.map(Option.getOrUndefined)),
-  codeworkHome: Config.string("CODEWORK_HOME").pipe(Config.option, Config.map(Option.getOrUndefined)),
+  codeworkHome: Config.string("CODEWORK_HOME").pipe(
+    Config.option,
+    Config.map(Option.getOrUndefined),
+  ),
   devUrl: Config.url("VITE_DEV_SERVER_URL").pipe(Config.option, Config.map(Option.getOrUndefined)),
   devAllowedOrigins: Config.string("CODEWORK_DEV_ALLOWED_ORIGINS").pipe(
     Config.withDefault(""),

@@ -246,7 +246,7 @@ export function NewTaskRouteScreen({ route }: StaticScreenProps<NewTaskRoutePara
         {projectScopes.length === 0 ? (
           <View collapsable={false} className="items-center gap-3 rounded-[24px] bg-card px-6 py-8">
             {projectEmptyState.loading ? <ActivityIndicator color={accentColor} /> : null}
-            <Text className="text-center text-lg font-t3-bold text-foreground">
+            <Text className="text-center text-lg font-codework-bold text-foreground">
               {projectEmptyState.title}
             </Text>
             <Text className="text-center text-sm leading-normal text-foreground-muted">
@@ -257,7 +257,7 @@ export function NewTaskRouteScreen({ route }: StaticScreenProps<NewTaskRoutePara
                 className="mt-1 rounded-full bg-primary px-4 py-2.5 active:opacity-70"
                 onPress={() => navigation.navigate("ConnectionsNew")}
               >
-                <Text className="text-sm font-t3-bold text-primary-foreground">
+                <Text className="text-sm font-codework-bold text-primary-foreground">
                   {t("addEnvironment")}
                 </Text>
               </Pressable>
@@ -266,7 +266,7 @@ export function NewTaskRouteScreen({ route }: StaticScreenProps<NewTaskRoutePara
                 className="mt-1 rounded-full bg-primary px-4 py-2.5 active:opacity-70"
                 onPress={() => navigation.dispatch(StackActions.push("AddProject"))}
               >
-                <Text className="text-sm font-t3-bold text-primary-foreground">
+                <Text className="text-sm font-codework-bold text-primary-foreground">
                   {t("addNewProject")}
                 </Text>
               </Pressable>
@@ -297,7 +297,9 @@ export function NewTaskRouteScreen({ route }: StaticScreenProps<NewTaskRoutePara
                       />
                     </View>
                     <View className="min-w-0 flex-1">
-                      <Text className="text-base leading-snug font-t3-bold">{scope.title}</Text>
+                      <Text className="text-base leading-snug font-codework-bold">
+                        {scope.title}
+                      </Text>
                       <Text
                         className="text-xs leading-snug text-foreground-muted"
                         ellipsizeMode="middle"

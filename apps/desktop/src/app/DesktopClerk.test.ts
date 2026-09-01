@@ -31,7 +31,7 @@ import * as DesktopEnvironment from "./DesktopEnvironment.ts";
 
 const makeDesktopClerkLayer = (isDevelopment = true, events: string[] = []) => {
   const environment = DesktopEnvironment.DesktopEnvironment.of({
-    stateDir: "/tmp/t3-state",
+    stateDir: "/tmp/codework-state",
     isDevelopment,
     appDataDirectory: "/tmp/app-data",
     userDataDirName: isDevelopment ? "codework-dev" : "codework",
@@ -99,7 +99,10 @@ describe("DesktopClerk", () => {
       // The bridge acquires Electron's single-instance lock at creation, and
       // the lock both lives in and creates the userData directory — so the
       // real path must be set before the bridge exists.
-      assert.deepEqual(events, ["setPath:userData:/tmp/app-data/codework-dev", "createClerkBridge"]);
+      assert.deepEqual(events, [
+        "setPath:userData:/tmp/app-data/codework-dev",
+        "createClerkBridge",
+      ]);
       storageMock.mockClear();
       createClerkBridgeMock.mockClear();
     });
@@ -116,12 +119,12 @@ describe("DesktopClerk", () => {
       const error = yield* Effect.scoped(Layer.build(makeDesktopClerkLayer())).pipe(Effect.flip);
 
       assert.instanceOf(error, DesktopClerk.DesktopClerkBridgeInitializationError);
-      assert.equal(error.stateDir, "/tmp/t3-state");
+      assert.equal(error.stateDir, "/tmp/codework-state");
       assert.equal(error.isDevelopment, true);
       assert.strictEqual(error.cause, cause);
       assert.equal(
         error.message,
-        'Failed to initialize the desktop Clerk bridge for state directory "/tmp/t3-state" (development: true).',
+        'Failed to initialize the desktop Clerk bridge for state directory "/tmp/codework-state" (development: true).',
       );
     });
   });
@@ -142,12 +145,12 @@ describe("DesktopClerk", () => {
       if (exit._tag === "Failure") {
         const error = Cause.squash(exit.cause);
         assert.instanceOf(error, DesktopClerk.DesktopClerkBridgeCleanupError);
-        assert.equal(error.stateDir, "/tmp/t3-state");
+        assert.equal(error.stateDir, "/tmp/codework-state");
         assert.equal(error.isDevelopment, false);
         assert.strictEqual(error.cause, cause);
         assert.equal(
           error.message,
-          'Failed to clean up the desktop Clerk bridge for state directory "/tmp/t3-state" (development: false).',
+          'Failed to clean up the desktop Clerk bridge for state directory "/tmp/codework-state" (development: false).',
         );
       }
     });
@@ -217,8 +220,11 @@ describe("DesktopClerk", () => {
     storageMock.mockReturnValue(storageAdapter);
     createClerkBridgeMock.mockReturnValue(bridge);
 
-    assert.equal(DesktopClerk.createDesktopClerkBridge("/tmp/t3-state", isDevelopment), bridge);
-    assert.deepEqual(storageMock.mock.calls, [[{ path: "/tmp/t3-state" }]]);
+    assert.equal(
+      DesktopClerk.createDesktopClerkBridge("/tmp/codework-state", isDevelopment),
+      bridge,
+    );
+    assert.deepEqual(storageMock.mock.calls, [[{ path: "/tmp/codework-state" }]]);
     assert.deepEqual(createClerkBridgeMock.mock.calls, [
       [
         {

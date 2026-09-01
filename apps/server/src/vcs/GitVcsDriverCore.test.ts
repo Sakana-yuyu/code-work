@@ -20,7 +20,7 @@ import { makeGitVcsDriverCore, splitNullSeparatedGitStdoutPaths } from "./GitVcs
 import * as GitVcsDriver from "./GitVcsDriver.ts";
 
 const ServerConfigLayer = ServerConfig.layerTest(process.cwd(), {
-  prefix: "t3-git-vcs-driver-test-",
+  prefix: "codework-git-vcs-driver-test-",
 });
 const TestLayer = GitVcsDriver.layer.pipe(
   Layer.provide(ServerConfigLayer),
@@ -1548,7 +1548,12 @@ it.layer(TestLayer)("GitVcsDriver core integration", (it) => {
         yield* initRepoWithCommit(cwd);
         const driver = yield* GitVcsDriver.GitVcsDriver;
 
-        yield* git(cwd, ["remote", "add", "origin", "https://github.com/Sakana-yuyu/code-work.git"]);
+        yield* git(cwd, [
+          "remote",
+          "add",
+          "origin",
+          "https://github.com/Sakana-yuyu/code-work.git",
+        ]);
 
         const reusedForSsh = yield* driver.ensureRemote({
           cwd,
@@ -1698,7 +1703,10 @@ it.layer(TestLayer)("GitVcsDriver core integration", (it) => {
 
         assert.equal(yield* git(worktreePath, ["rev-parse", "HEAD"]), remoteHead);
         assert.equal(
-          yield* driver.readConfigValue(worktreePath, "branch.codework/fetched-origin.gh-merge-base"),
+          yield* driver.readConfigValue(
+            worktreePath,
+            "branch.codework/fetched-origin.gh-merge-base",
+          ),
           initialBranch,
         );
         assert.equal(

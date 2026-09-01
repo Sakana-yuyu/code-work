@@ -237,15 +237,15 @@
 }
 
 /* ─── Custom utilities ──────────────────────────────────────────────── */
-@utility font-t3-medium {
+@utility font-codework-medium {
   font-family: var(--font-medium);
 }
 
-@utility font-t3-bold {
+@utility font-codework-bold {
   font-family: var(--font-bold);
 }
 
-@utility font-t3-extrabold {
+@utility font-codework-extrabold {
   font-family: var(--font-bold);
   font-weight: 800;
 }

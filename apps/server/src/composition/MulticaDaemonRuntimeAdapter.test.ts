@@ -275,7 +275,7 @@ describe("MulticaDaemonRuntimeAdapter", () => {
     await expect(
       Effect.runPromise(
         adapter.dispatchTask({
-          taskId: "t3-task-1",
+          taskId: "codework-task-1",
           runId: "run-1",
           agentId: "agent-1",
           projectId: "project-1",
@@ -296,7 +296,7 @@ describe("MulticaDaemonRuntimeAdapter", () => {
     await expect(
       Effect.runPromise(
         adapter.dispatchTask({
-          taskId: "t3-task-1",
+          taskId: "codework-task-1",
           runId: "run-1",
           agentId: "agent-1",
           prompt: "执行任务",
@@ -554,7 +554,7 @@ describe("MulticaDaemonRuntimeAdapter", () => {
     await expect(
       Effect.runPromise(
         adapter.dispatchTask({
-          taskId: "t3-task-2",
+          taskId: "codework-task-2",
           runId: "run-2",
           agentId: "agent-1",
           prompt: "执行任务",
@@ -991,7 +991,7 @@ describe("MulticaDaemonRuntimeAdapter", () => {
     await expect(
       Effect.runPromise(
         adapter.dispatchTask({
-          taskId: "t3-task-cancel",
+          taskId: "codework-task-cancel",
           runId: "run-cancel",
           agentId: "agent-1",
           prompt: "执行可取消任务",
@@ -1003,7 +1003,7 @@ describe("MulticaDaemonRuntimeAdapter", () => {
     await expect(
       Effect.runPromise(
         adapter.cancelTask({
-          taskId: "t3-task-cancel",
+          taskId: "codework-task-cancel",
           runId: "run-cancel",
           runtimeTaskId: "created-task-1",
         }),
@@ -1037,7 +1037,7 @@ describe("MulticaDaemonRuntimeAdapter", () => {
     await expect(
       Effect.runPromise(
         adapter.dispatchTask({
-          taskId: "t3-task-grant",
+          taskId: "codework-task-grant",
           runId: "run-grant",
           agentId: "agent-1",
           prompt: "执行任务",
@@ -1185,7 +1185,7 @@ describe("MulticaDaemonRuntimeAdapter", () => {
     const executionTask: MulticaTask = { ...task, id: "remote-task-execution" };
     const lease = {
       runtimeId,
-      taskId: "t3-task-execution",
+      taskId: "codework-task-execution",
       runId: "run-execution",
       agentId: "agent-1",
       capabilityGrantIds: ["grant-execution"],
@@ -1195,7 +1195,7 @@ describe("MulticaDaemonRuntimeAdapter", () => {
       rawToken: "test-only-token",
       binding: {
         runtimeId,
-        taskId: "t3-task-execution",
+        taskId: "codework-task-execution",
         runId: "run-execution",
         agentId: "agent-1",
         capabilityGrantIds: ["grant-execution"],
@@ -1246,7 +1246,7 @@ describe("MulticaDaemonRuntimeAdapter", () => {
       Effect.runPromise(
         adapter.handshakeCapabilities!({
           runtimeId,
-          taskId: "t3-task-execution",
+          taskId: "codework-task-execution",
           runId: "run-execution",
           agentId: "agent-1",
           capabilityGrantIds: ["grant-execution"],
@@ -1255,7 +1255,7 @@ describe("MulticaDaemonRuntimeAdapter", () => {
     ).resolves.toMatchObject({ status: "accepted", handshakeId: "handshake-execution" });
     await Effect.runPromise(
       adapter.dispatchTask({
-        taskId: "t3-task-execution",
+        taskId: "codework-task-execution",
         runId: "run-execution",
         agentId: "agent-1",
         prompt: "执行带 task-local MCP 的任务",
@@ -1269,7 +1269,7 @@ describe("MulticaDaemonRuntimeAdapter", () => {
 
     expect(injected).toHaveLength(1);
     expect(injected[0]).toMatchObject({
-      taskId: "t3-task-execution",
+      taskId: "codework-task-execution",
       runId: "run-execution",
       agentId: "agent-1",
       runtimeTaskId: executionTask.id,
@@ -1342,7 +1342,7 @@ describe("MulticaDaemonRuntimeAdapter", () => {
     await Effect.runPromise(
       adapter.handshakeCapabilities!({
         runtimeId,
-        taskId: "t3-task-expired",
+        taskId: "codework-task-expired",
         runId: "run-expired",
         agentId: "agent-1",
         capabilityGrantIds: ["grant-1"],
@@ -1350,7 +1350,7 @@ describe("MulticaDaemonRuntimeAdapter", () => {
     ).then(() => undefined);
     await Effect.runPromise(
       adapter.dispatchTask({
-        taskId: "t3-task-expired",
+        taskId: "codework-task-expired",
         runId: "run-expired",
         agentId: "agent-1",
         prompt: "执行",

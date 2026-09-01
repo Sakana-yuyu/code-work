@@ -77,7 +77,7 @@ export function SettingsSquadModelBindingSummary(props: {
 
   return (
     <View className="gap-1">
-      <Text className="text-xs font-t3-medium text-foreground-muted">{label}</Text>
+      <Text className="text-xs font-codework-medium text-foreground-muted">{label}</Text>
       <Text className="text-xs text-foreground">
         {t("squadBuilder.modelBinding.summary.byok", {
           provider: provider?.displayName ?? binding.providerInstanceId,
@@ -97,7 +97,7 @@ export function SettingsSquadModelBindingSummary(props: {
 function SummaryFrame(props: { readonly label: string; readonly children: string }) {
   return (
     <View className="gap-1">
-      <Text className="text-xs font-t3-medium text-foreground-muted">{props.label}</Text>
+      <Text className="text-xs font-codework-medium text-foreground-muted">{props.label}</Text>
       <Text className="text-xs text-foreground">{props.children}</Text>
     </View>
   );

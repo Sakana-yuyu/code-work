@@ -15,7 +15,9 @@ import * as ServerSecretStore from "../../auth/ServerSecretStore.ts";
 
 const layer = it.layer(CompositionTaskStoreLive.pipe(Layer.provideMerge(SqlitePersistenceMemory)));
 const secretStoreLayer = ServerSecretStore.layer.pipe(
-  Layer.provide(ServerConfig.layerTest(process.cwd(), { prefix: "t3-composition-input-test-" })),
+  Layer.provide(
+    ServerConfig.layerTest(process.cwd(), { prefix: "codework-composition-input-test-" }),
+  ),
   Layer.provide(NodeServices.layer),
 );
 const inputStoreLayer = it.layer(

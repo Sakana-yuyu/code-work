@@ -338,7 +338,7 @@ describe("releaseManagedTunnelOnShutdown", () => {
         // The release consults the launcher state file under the configured
         // baseDir, so every harness run gets a scoped temp baseDir.
         Effect.provide(
-          ServerConfigModule.layerTest("/", { prefix: "t3-http-release-test-" }).pipe(
+          ServerConfigModule.layerTest("/", { prefix: "codework-http-release-test-" }).pipe(
             Layer.provideMerge(NodeServices.layer),
           ),
         ),

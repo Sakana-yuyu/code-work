@@ -18,7 +18,7 @@ describe("electron development launcher", () => {
       environment: {
         VITE_DEV_SERVER_URL: "http://127.0.0.1:8526",
         CODEWORK_PORT: "16566",
-        CODEWORK_HOME: "/tmp/t3",
+        CODEWORK_HOME: "/tmp/codework",
       },
     });
 

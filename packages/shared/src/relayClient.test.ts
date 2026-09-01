@@ -68,7 +68,7 @@ describe("RelayClient", () => {
     Effect.gen(function* () {
       const fileSystem = yield* FileSystem.FileSystem;
       const baseDir = yield* fileSystem.makeTempDirectoryScoped({
-        prefix: "t3-cloudflared-test-",
+        prefix: "codework-cloudflared-test-",
       });
       const overridePath = `${baseDir}/override-cloudflared`;
       yield* fileSystem.writeFileString(overridePath, "override");
@@ -110,7 +110,7 @@ describe("RelayClient", () => {
       const fileSystem = yield* FileSystem.FileSystem;
       const path = yield* Path.Path;
       const baseDir = yield* fileSystem.makeTempDirectoryScoped({
-        prefix: "t3-cloudflared-test-",
+        prefix: "codework-cloudflared-test-",
       });
       const bytes = new TextEncoder().encode("test-cloudflared-binary");
       const manager = yield* makeCloudflaredRelayClient({
@@ -174,7 +174,7 @@ describe("RelayClient", () => {
     Effect.gen(function* () {
       const fileSystem = yield* FileSystem.FileSystem;
       const baseDir = yield* fileSystem.makeTempDirectoryScoped({
-        prefix: "t3-cloudflared-test-",
+        prefix: "codework-cloudflared-test-",
       });
       const manager = yield* makeCloudflaredRelayClient({
         baseDir,
@@ -207,7 +207,7 @@ describe("RelayClient", () => {
     return Effect.gen(function* () {
       const fileSystem = yield* FileSystem.FileSystem;
       const baseDir = yield* fileSystem.makeTempDirectoryScoped({
-        prefix: "t3-cloudflared-test-",
+        prefix: "codework-cloudflared-test-",
       });
       const manager = yield* makeCloudflaredRelayClient({
         baseDir,
@@ -242,7 +242,7 @@ describe("RelayClient", () => {
       const fileSystem = yield* FileSystem.FileSystem;
       const path = yield* Path.Path;
       const baseDir = yield* fileSystem.makeTempDirectoryScoped({
-        prefix: "t3-cloudflared-test-",
+        prefix: "codework-cloudflared-test-",
       });
       const binDir = path.join(baseDir, "bin");
       const executablePath = path.join(binDir, "cloudflared");

@@ -111,7 +111,7 @@ const makeHarness = Effect.fn("test.make_boot_service_harness")(function* (
 ) {
   const fs = yield* FileSystem.FileSystem;
   const path = yield* Path.Path;
-  const home = yield* fs.makeTempDirectoryScoped({ prefix: "t3-boot-service-test-" });
+  const home = yield* fs.makeTempDirectoryScoped({ prefix: "codework-boot-service-test-" });
   const baseDir = path.join(home, ".t3");
   const sourceLauncher = path.join(home, "service-launcher.mjs");
   const statePath = path.join(baseDir, "runtime", "service-state.json");
@@ -280,9 +280,9 @@ it.layer(NodeServices.layer)("boot service install", (it) => {
       const { service, fs, statePath, commands, timeouts } = yield* makeHarness("darwin");
       const plan = yield* service.install;
 
-      expect(plan.unitPath.endsWith("Library/LaunchAgents/com.t3tools.codework.service.plist")).toBe(
-        true,
-      );
+      expect(
+        plan.unitPath.endsWith("Library/LaunchAgents/com.t3tools.codework.service.plist"),
+      ).toBe(true);
       expect(yield* fs.readFileString(plan.unitPath)).toContain(
         `    <key>PATH</key>\n    <string>${macInstallerPath}:/usr/local/bin:/usr/sbin:/sbin</string>`,
       );

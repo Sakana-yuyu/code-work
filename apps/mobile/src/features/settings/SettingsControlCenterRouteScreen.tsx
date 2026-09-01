@@ -156,7 +156,7 @@ export function SettingsControlCenterRouteScreen() {
           taskId: task.taskId,
           runId: task.latestRun?.runId ?? "",
           agentId: task.agentId,
-          newRunId: `t3-redispatch-${uuidv4()}`,
+          newRunId: `codework-redispatch-${uuidv4()}`,
           // 移动端不提供能力 ID 输入：重派不重发 capability grant。
           capabilityIdsText: "",
         }),
@@ -228,7 +228,7 @@ export function SettingsControlCenterRouteScreen() {
           taskId: task.taskId,
           runId: task.latestRun?.runId ?? "",
           agentId: task.agentId,
-          newRunId: `t3-byok-resume-${uuidv4()}`,
+          newRunId: `codework-byok-resume-${uuidv4()}`,
           note: t("controlCenter.byokResumeReasonDefault"),
         }),
       }),
@@ -327,7 +327,7 @@ export function SettingsControlCenterRouteScreen() {
         }
       >
         <View className="gap-3">
-          <Text className="px-2 text-sm font-t3-medium text-foreground-muted">
+          <Text className="px-2 text-sm font-codework-medium text-foreground-muted">
             {t("controlCenter.tasks")}
           </Text>
           {environmentId === null ? (
@@ -373,7 +373,7 @@ export function SettingsControlCenterRouteScreen() {
         </View>
         {environmentId === null ? null : (
           <View className="gap-3">
-            <Text className="px-2 text-sm font-t3-medium text-foreground-muted">
+            <Text className="px-2 text-sm font-codework-medium text-foreground-muted">
               {t("controlCenter.squads")}
             </Text>
             {squadsQuery.data === null && squadsQuery.isPending ? (
@@ -416,7 +416,7 @@ export function SettingsControlCenterRouteScreen() {
               </View>
             )}
             <View className="gap-3 rounded-[24px] border-continuous bg-card p-4">
-              <Text className="text-base font-t3-medium text-foreground">
+              <Text className="text-base font-codework-medium text-foreground">
                 {t("controlCenter.runSquad")}
               </Text>
               <View className="gap-2">
@@ -447,7 +447,7 @@ export function SettingsControlCenterRouteScreen() {
               {selectedSquad?.collaborationMode === "dependency_graph" ? (
                 <View className="gap-3 border-t border-border-subtle pt-3">
                   <View className="gap-1">
-                    <Text className="text-sm font-t3-medium text-foreground">
+                    <Text className="text-sm font-codework-medium text-foreground">
                       {t("controlCenter.dependencyPlan")}
                     </Text>
                     <Text className="text-sm text-foreground-muted">
@@ -465,7 +465,7 @@ export function SettingsControlCenterRouteScreen() {
                         className={`${index === 0 ? "" : "border-t border-border-subtle pt-3 "}gap-3`}
                       >
                         <View className="flex-row items-center justify-between gap-3">
-                          <Text className="text-sm font-t3-medium text-foreground">
+                          <Text className="text-sm font-codework-medium text-foreground">
                             {t("controlCenter.dependencyPlanNode", { index: index + 1 })}
                           </Text>
                           <ActionButton
@@ -754,7 +754,7 @@ function ControlCenterTaskCard(props: {
       ) : null}
       {props.eventLogSelected ? (
         <View className="gap-2 border-t border-border-subtle pt-3">
-          <Text className="text-sm font-t3-medium text-foreground">
+          <Text className="text-sm font-codework-medium text-foreground">
             {t("controlCenter.taskEvents")}
           </Text>
           {props.eventLogError !== null ? (
@@ -850,7 +850,7 @@ function ActionButton(props: {
             : "rounded-full bg-subtle px-3 py-1.5"
       }
     >
-      <Text className="text-sm font-t3-medium text-foreground">{props.label}</Text>
+      <Text className="text-sm font-codework-medium text-foreground">{props.label}</Text>
     </Pressable>
   );
 }

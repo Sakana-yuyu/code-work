@@ -82,7 +82,7 @@ const SHOWCASE_ENABLED = process.env.EXPO_PUBLIC_SHOWCASE === "1";
 const ReviewNotice = memo(function ReviewNotice(props: { readonly notice: string }) {
   return (
     <View className="border-b border-amber-200 bg-amber-50 px-4 py-3 dark:border-amber-900/60 dark:bg-amber-950/40">
-      <Text className="text-xs font-t3-bold uppercase text-amber-700 dark:text-amber-300">
+      <Text className="text-xs font-codework-bold uppercase text-amber-700 dark:text-amber-300">
         {t("partialDiff")}
       </Text>
       <Text className="text-xs leading-normal text-amber-800 dark:text-amber-200">
@@ -111,7 +111,7 @@ function ReviewSelectionActionBar(props: {
         tintColor={foreground}
         type="monochrome"
       />
-      <Text className="text-base font-t3-bold text-primary-foreground">{props.title}</Text>
+      <Text className="text-base font-codework-bold text-primary-foreground">{props.title}</Text>
     </>
   );
 
@@ -183,16 +183,16 @@ const ReviewFileNavigatorRow = memo(function ReviewFileNavigatorRow(props: {
       <Text
         className={
           selected
-            ? "text-xs font-t3-bold text-foreground"
-            : "text-xs font-t3-medium text-foreground-secondary"
+            ? "text-xs font-codework-bold text-foreground"
+            : "text-xs font-codework-medium text-foreground-secondary"
         }
         numberOfLines={2}
       >
         {file.path}
       </Text>
       <View className="mt-1 flex-row gap-2">
-        <Text className="text-2xs font-t3-bold text-emerald-600">+{file.additions}</Text>
-        <Text className="text-2xs font-t3-bold text-rose-600">-{file.deletions}</Text>
+        <Text className="text-2xs font-codework-bold text-emerald-600">+{file.additions}</Text>
+        <Text className="text-2xs font-codework-bold text-rose-600">-{file.deletions}</Text>
       </View>
     </Pressable>
   );
@@ -325,7 +325,7 @@ function ReviewFileNavigator({
     <View className="flex-1 border-l border-border bg-sheet">
       <View className="border-b border-border" style={{ paddingTop: headerInset }}>
         <View className="px-4 py-3">
-          <Text className="text-sm font-t3-bold text-foreground">{t("changedFiles")}</Text>
+          <Text className="text-sm font-codework-bold text-foreground">{t("changedFiles")}</Text>
           <Text className="text-xs text-foreground-muted">
             {files.length} {files.length === 1 ? t("file") : t("files")}
           </Text>
@@ -612,7 +612,9 @@ export function ReviewSheet(props: ReviewSheetProps) {
     if (error) {
       children.push(
         <View key="review-error" className="border-b border-border bg-card px-4 py-3">
-          <Text className="text-sm font-t3-bold text-foreground">{t("reviewUnavailable")}</Text>
+          <Text className="text-sm font-codework-bold text-foreground">
+            {t("reviewUnavailable")}
+          </Text>
           <Text className="text-xs leading-normal text-foreground-muted">{error}</Text>
         </View>,
       );
@@ -842,7 +844,9 @@ export function ReviewSheet(props: ReviewSheetProps) {
             {listHeader}
             {!selectedSection ? (
               <View className="border-b border-border bg-card px-4 py-5">
-                <Text className="text-sm font-t3-bold text-foreground">{t("noReviewDiffs")}</Text>
+                <Text className="text-sm font-codework-bold text-foreground">
+                  {t("noReviewDiffs")}
+                </Text>
                 <Text className="text-xs leading-normal text-foreground-muted">
                   {t("thisThreadHasNoReadyTurnDiffsAndTheWorktreeDiffIsEmpty")}
                 </Text>
@@ -854,7 +858,7 @@ export function ReviewSheet(props: ReviewSheetProps) {
               </View>
             ) : parsedDiff.kind === "empty" ? (
               <View className="border-b border-border bg-card px-4 py-5">
-                <Text className="text-sm font-t3-bold text-foreground">{t("noChanges")}</Text>
+                <Text className="text-sm font-codework-bold text-foreground">{t("noChanges")}</Text>
                 <Text className="text-xs leading-normal text-foreground-muted">
                   {selectedSection.subtitle ?? t("thisDiffIsEmpty")}
                 </Text>

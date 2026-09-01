@@ -6,7 +6,7 @@
 
 ## Task
 
-继续 `tcode` 分支上的 BYOK / Composition 收口。优先做**代码能独立完成**的缺口；不要把「需要真实 API key / 真实 Cursor / 真实 Multica daemon」的工作伪装成已完成。
+继续 `main` 分支上的 BYOK / Composition 收口。优先做**代码能独立完成**的缺口；不要把「需要真实 API key / 真实 Cursor / 真实 Multica daemon」的工作伪装成已完成。
 
 当前最高价值、可编码的下一刀（按顺序，做完再开下一刀）：
 
@@ -19,16 +19,16 @@ BYOK 真实 API E2E 是主线**唯一非代码阻塞项**，需要用户提供�
 
 ## Context
 
-仓库：`E:\MyProject\code-work`，应用在子目录 `codework/`（pnpm + Effect TS v4 + vite-plus）。分支：`tcode`。上游 `t3code` 以 subtree 合入 `codework/`，最近一次是 v0.0.35（合并提交 `05d694cfa`）。本地品牌是 `@codework/`，不是 `@t3tools/`。
+仓库：`E:\MyProject\code-work`（pnpm + Effect TS v4 + vite-plus），当前为扁平单仓库；主分支：`main`。历史上曾从 `t3code` subtree 同步代码，现已完成仓库扁平化。本地品牌是 `@codework/`，不是 `@t3tools/`。
 
 上一会话完成了两批 BYOK 缺口：
 
-| 提交 | 内容 |
-| --- | --- |
-| `cfb79999e` | 余额看板、Supplier 启停/凭据轮换、resume 自动重派 RPC+Web 按钮、delegation 台账投影、Mobile 控制中心/注册表面板、上游 20 处 i18n |
-| `02d01f440` | Mobile 恢复重派按钮；控制中心消费 `byok-delegation:*`；进程重启后 in-flight 委派收口为 `byok_delegation_interrupted` |
-| `c1d029843` | 本交接文档 |
-| `6d6a6f65` `feat(auth): 兼容读取旧 t3_session cookie 并静默迁移` | 读 `t3_session_*`、写 `codework_session_*`、过期旧 cookie；升级后不掉线 |
+| 提交                                                             | 内容                                                                                                                             |
+| ---------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
+| `cfb79999e`                                                      | 余额看板、Supplier 启停/凭据轮换、resume 自动重派 RPC+Web 按钮、delegation 台账投影、Mobile 控制中心/注册表面板、上游 20 处 i18n |
+| `02d01f440`                                                      | Mobile 恢复重派按钮；控制中心消费 `byok-delegation:*`；进程重启后 in-flight 委派收口为 `byok_delegation_interrupted`             |
+| `c1d029843`                                                      | 本交接文档                                                                                                                       |
+| `6d6a6f65` `feat(auth): 兼容读取旧 t3_session cookie 并静默迁移` | 读 `t3_session_*`、写 `codework_session_*`、过期旧 cookie；升级后不掉线                                                          |
 
 相对 `origin/tcode` 领先约 107+ 提交，**尚未 push**。不要擅自 push。
 
@@ -73,7 +73,7 @@ BYOK 真实 API E2E 是主线**唯一非代码阻塞项**，需要用户提供�
 
 **不要去修的既有噪音：**
 
-- Mobile typecheck 约 17 处：用户并行的 `T3ComposerEditor` / `CodeworkComposerEditor` 改名级联。不要改那些文件。
+- Mobile typecheck 约 17 处：用户并行的 ComposerEditor 改名级联。不要改那些文件。
 - `bootService.test.ts` Windows EPERM fsync。
 - `ServerSecretStore.test.ts` Windows chmod。
 - `build-desktop-artifact.test.ts` 若干 Windows 失败。
@@ -109,32 +109,32 @@ BYOK 真实 API E2E 是主线**唯一非代码阻塞项**，需要用户提供�
 
 ## Relevant files
 
-| 路径 | 为什么重要 |
-| --- | --- |
-| `docs/internals/composition-runtime-progress.md` | 进度与「仍缺」；做完节点必须更新 |
-| `docs/internals/byok-multica-migration-matrix.md` | 迁移边界；Provider Instance ≠ Account |
-| `packages/contracts/src/composition.ts` | `byokResume`、`byokDelegation`、`isByokResumeRedispatchable`、resume RPC schema |
-| `packages/contracts/src/byokBalance.ts` | 余额看板合同 |
-| `packages/contracts/src/supplierAdmin.ts` | 启停/凭据轮换合同 |
-| `packages/contracts/src/rpc.ts` | WS 方法注册 |
-| `packages/client-runtime/src/state/server.ts` | 查询/命令原子（singleFlight） |
-| `apps/server/src/ws.ts` | handler；改前确认服务依赖（如 `CompositionTaskInputStore`） |
-| `apps/server/src/auth/RpcAuthorization.ts` | ReadScope / OperateScope |
-| `apps/server/src/auth/utils.ts` / `http.ts` | cookie 名解析、legacy 读取、静默迁移 |
-| `apps/server/src/composition/CompositionByokResumeRedispatch.ts` | resume 结算+重派 |
-| `apps/server/src/composition/CompositionByokDelegationProjection.ts` | 委派台账投影 |
-| `apps/server/src/composition/CompositionByokDelegationSupervisor.ts` | 重启收口 |
-| `apps/server/src/composition/CompositionControlCenterProjection.ts` | 控制中心只读聚合 |
-| `apps/server/src/composition/CompositionTaskRuntimeProjectionService.ts` | boot 扫描入口 |
-| `apps/server/src/provider/byok/ByokDelegationService.ts` | 调度器 + 投影注入；内存仍是 list 权威 |
-| `apps/server/src/provider/byok/ByokBalanceDashboardCore.ts` | 余额聚合 |
-| `apps/server/src/provider/SupplierAdminCore.ts` | 启停/凭据纯函数 |
-| `apps/web/src/components/settings/CompositionControlCenterPanel.tsx` | Web 控制中心 |
-| `apps/web/src/components/settings/ByokBalanceDashboardPanel.tsx` | 余额看板 |
-| `apps/web/src/components/settings/SupplierRegistryPanel.tsx` | Supplier 操作面 |
-| `apps/mobile/src/features/settings/SettingsControlCenterRouteScreen*` | Mobile 控制中心 + `*.logic.ts` 纯函数 |
-| `apps/mobile/src/features/settings/SettingsSupplierRegistryRouteScreen*` | Mobile 注册表 |
-| `apps/web/src/i18n/messages.ts` 与 `apps/mobile/src/i18n/messages.ts` | 双语；改 UI 文案必须走 `t()` |
+| 路径                                                                     | 为什么重要                                                                      |
+| ------------------------------------------------------------------------ | ------------------------------------------------------------------------------- |
+| `docs/internals/composition-runtime-progress.md`                         | 进度与「仍缺」；做完节点必须更新                                                |
+| `docs/internals/byok-multica-migration-matrix.md`                        | 迁移边界；Provider Instance ≠ Account                                           |
+| `packages/contracts/src/composition.ts`                                  | `byokResume`、`byokDelegation`、`isByokResumeRedispatchable`、resume RPC schema |
+| `packages/contracts/src/byokBalance.ts`                                  | 余额看板合同                                                                    |
+| `packages/contracts/src/supplierAdmin.ts`                                | 启停/凭据轮换合同                                                               |
+| `packages/contracts/src/rpc.ts`                                          | WS 方法注册                                                                     |
+| `packages/client-runtime/src/state/server.ts`                            | 查询/命令原子（singleFlight）                                                   |
+| `apps/server/src/ws.ts`                                                  | handler；改前确认服务依赖（如 `CompositionTaskInputStore`）                     |
+| `apps/server/src/auth/RpcAuthorization.ts`                               | ReadScope / OperateScope                                                        |
+| `apps/server/src/auth/utils.ts` / `http.ts`                              | cookie 名解析、legacy 读取、静默迁移                                            |
+| `apps/server/src/composition/CompositionByokResumeRedispatch.ts`         | resume 结算+重派                                                                |
+| `apps/server/src/composition/CompositionByokDelegationProjection.ts`     | 委派台账投影                                                                    |
+| `apps/server/src/composition/CompositionByokDelegationSupervisor.ts`     | 重启收口                                                                        |
+| `apps/server/src/composition/CompositionControlCenterProjection.ts`      | 控制中心只读聚合                                                                |
+| `apps/server/src/composition/CompositionTaskRuntimeProjectionService.ts` | boot 扫描入口                                                                   |
+| `apps/server/src/provider/byok/ByokDelegationService.ts`                 | 调度器 + 投影注入；内存仍是 list 权威                                           |
+| `apps/server/src/provider/byok/ByokBalanceDashboardCore.ts`              | 余额聚合                                                                        |
+| `apps/server/src/provider/SupplierAdminCore.ts`                          | 启停/凭据纯函数                                                                 |
+| `apps/web/src/components/settings/CompositionControlCenterPanel.tsx`     | Web 控制中心                                                                    |
+| `apps/web/src/components/settings/ByokBalanceDashboardPanel.tsx`         | 余额看板                                                                        |
+| `apps/web/src/components/settings/SupplierRegistryPanel.tsx`             | Supplier 操作面                                                                 |
+| `apps/mobile/src/features/settings/SettingsControlCenterRouteScreen*`    | Mobile 控制中心 + `*.logic.ts` 纯函数                                           |
+| `apps/mobile/src/features/settings/SettingsSupplierRegistryRouteScreen*` | Mobile 注册表                                                                   |
+| `apps/web/src/i18n/messages.ts` 与 `apps/mobile/src/i18n/messages.ts`    | 双语；改 UI 文案必须走 `t()`                                                    |
 
 对照实现时只读 `E:\MyProject\cursor-byok`，不要改那个仓库。
 

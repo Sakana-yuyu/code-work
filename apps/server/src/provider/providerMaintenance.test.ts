@@ -203,7 +203,7 @@ it.layer(NodeServices.layer)("providerMaintenance", (it) => {
     "switches package-managed providers to vite-plus updates when the resolved binary lives in vite-plus global bin",
     () =>
       Effect.gen(function* () {
-        const tempDir = yield* makeTempDir("t3-vite-plus-capabilities");
+        const tempDir = yield* makeTempDir("codework-vite-plus-capabilities");
         const vitePlusBinDir = NodePath.join(tempDir, ".vite-plus", "bin");
         NodeFS.mkdirSync(vitePlusBinDir, { recursive: true });
         const packageToolPath = NodePath.join(vitePlusBinDir, "package-tool");
@@ -240,7 +240,7 @@ it.layer(NodeServices.layer)("providerMaintenance", (it) => {
     "switches package-managed providers to bun updates when the resolved binary lives in bun's global bin",
     () =>
       Effect.gen(function* () {
-        const tempDir = yield* makeTempDir("t3-bun-capabilities");
+        const tempDir = yield* makeTempDir("codework-bun-capabilities");
         const bunBinDir = NodePath.join(tempDir, ".bun", "bin");
         NodeFS.mkdirSync(bunBinDir, { recursive: true });
         NodeFS.writeFileSync(NodePath.join(bunBinDir, "native-package-tool.exe"), "MZ");
@@ -276,7 +276,7 @@ it.layer(NodeServices.layer)("providerMaintenance", (it) => {
     "switches package-managed providers to pnpm updates when the resolved binary lives in pnpm's global bin",
     () =>
       Effect.gen(function* () {
-        const tempDir = yield* makeTempDir("t3-pnpm-capabilities");
+        const tempDir = yield* makeTempDir("codework-pnpm-capabilities");
         const pnpmHomeDir = NodePath.join(tempDir, ".local", "share", "pnpm");
         NodeFS.mkdirSync(pnpmHomeDir, { recursive: true });
         const scopedPackageToolPath = NodePath.join(pnpmHomeDir, "scoped-package-tool");
@@ -336,7 +336,7 @@ it.layer(NodeServices.layer)("providerMaintenance", (it) => {
     "switches native-package-tool to native updates when the binary resolves through the native installer",
     () =>
       Effect.gen(function* () {
-        const tempDir = yield* makeTempDir("t3-native-package-tool-native-capabilities");
+        const tempDir = yield* makeTempDir("codework-native-package-tool-native-capabilities");
         const nativeBinDir = NodePath.join(tempDir, ".local", "bin");
         NodeFS.mkdirSync(nativeBinDir, { recursive: true });
         const nativePackageToolPath = NodePath.join(nativeBinDir, "native-package-tool");
@@ -373,7 +373,7 @@ it.layer(NodeServices.layer)("providerMaintenance", (it) => {
     "switches scoped-package-tool to native upgrades when the binary resolves through the standalone installer",
     () =>
       Effect.gen(function* () {
-        const tempDir = yield* makeTempDir("t3-scoped-package-tool-native-capabilities");
+        const tempDir = yield* makeTempDir("codework-scoped-package-tool-native-capabilities");
         const nativeBinDir = NodePath.join(tempDir, ".scoped-package-tool", "bin");
         NodeFS.mkdirSync(nativeBinDir, { recursive: true });
         const scopedPackageToolPath = NodePath.join(nativeBinDir, "scoped-package-tool");
@@ -454,7 +454,7 @@ it.layer(NodeServices.layer)("providerMaintenance", (it) => {
 
   it.effect("keeps npm updates for binaries symlinked into npm's global node_modules tree", () =>
     Effect.gen(function* () {
-      const tempDir = yield* makeTempDir("t3-npm-capabilities");
+      const tempDir = yield* makeTempDir("codework-npm-capabilities");
       const binDir = NodePath.join(tempDir, "bin");
       const packageBinDir = NodePath.join(
         tempDir,
@@ -503,7 +503,7 @@ it.layer(NodeServices.layer)("providerMaintenance", (it) => {
 
   it.effect("uses Effect FileSystem realPath when detecting pnpm global symlinks", () =>
     Effect.gen(function* () {
-      const tempDir = yield* makeTempDir("t3-pnpm-realpath-capabilities");
+      const tempDir = yield* makeTempDir("codework-pnpm-realpath-capabilities");
       const binDir = NodePath.join(tempDir, "bin");
       const packageBinDir = NodePath.join(
         tempDir,

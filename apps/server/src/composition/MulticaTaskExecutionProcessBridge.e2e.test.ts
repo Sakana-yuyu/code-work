@@ -20,7 +20,7 @@ const context: MulticaDaemonTaskExecutionContext = {
   daemonId: "daemon-1",
   daemonRuntimeId: "runtime-1",
   runtimeTaskId: "remote-task-1",
-  taskId: "t3-task-1",
+  taskId: "codework-task-1",
   runId: "run-1",
   agentId: "agent-1",
   capabilityGrantIds: ["grant-1"],

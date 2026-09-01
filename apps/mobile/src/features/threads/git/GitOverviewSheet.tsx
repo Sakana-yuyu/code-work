@@ -396,10 +396,10 @@ export function GitOverviewSheet(props: GitOverviewSheetProps) {
               weight="medium"
             />
           </Pressable>
-          <Text className="text-xs font-t3-bold tracking-[1px] uppercase text-foreground-muted">
+          <Text className="text-xs font-codework-bold tracking-[1px] uppercase text-foreground-muted">
             {t("commandPalette.repository")}
           </Text>
-          <Text className="pr-10 text-xl font-t3-bold">{currentBranchLabel}</Text>
+          <Text className="pr-10 text-xl font-codework-bold">{currentBranchLabel}</Text>
           <Text className="text-foreground-secondary text-sm font-medium leading-normal">
             {currentStatusSummary}
           </Text>

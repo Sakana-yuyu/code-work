@@ -19,7 +19,7 @@ import { cleanupFailedUploadedAttachments, normalizeDispatchCommand } from "./No
 
 const testLayer = Layer.mergeAll(
   WorkspacePaths.layer,
-  ServerConfig.layerTest(process.cwd(), { prefix: "t3-normalizer-attachments-" }),
+  ServerConfig.layerTest(process.cwd(), { prefix: "codework-normalizer-attachments-" }),
 ).pipe(Layer.provideMerge(NodeServices.layer));
 
 const attachmentUuid = "00000000-0000-4000-8000-0000000000aa";

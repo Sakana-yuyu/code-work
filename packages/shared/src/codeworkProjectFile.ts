@@ -11,7 +11,7 @@ import { fromLenientJson } from "./schemaJson.ts";
  */
 export const CodeworkProjectFileFromJson = fromLenientJson(CodeworkProjectFile);
 
-const decodeT3ProjectFile = Schema.decodeExit(CodeworkProjectFileFromJson);
+const decodeCodeworkProjectFile = Schema.decodeExit(CodeworkProjectFileFromJson);
 
 /**
  * Decode raw `t3.json` contents, treating invalid or malformed files as
@@ -19,7 +19,7 @@ const decodeT3ProjectFile = Schema.decodeExit(CodeworkProjectFileFromJson);
  * mode) without surfacing decode errors to the user.
  */
 export function parseCodeworkProjectFile(contents: string): CodeworkProjectFile | null {
-  const decoded = decodeT3ProjectFile(contents);
+  const decoded = decodeCodeworkProjectFile(contents);
   return Exit.isSuccess(decoded) ? decoded.value : null;
 }
 

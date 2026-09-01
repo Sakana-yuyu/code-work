@@ -28,7 +28,9 @@ const makeServerConfigLayer = (overrides?: Partial<ServerConfig.ServerConfig["Se
         port: TEST_SERVER_PORT,
       } satisfies ServerConfig.ServerConfig["Service"];
     }),
-  ).pipe(Layer.provide(ServerConfig.layerTest(process.cwd(), { prefix: "t3-auth-server-test-" })));
+  ).pipe(
+    Layer.provide(ServerConfig.layerTest(process.cwd(), { prefix: "codework-auth-server-test-" })),
+  );
 
 const makeEnvironmentAuthLayer = (overrides?: Partial<ServerConfig.ServerConfig["Service"]>) =>
   EnvironmentAuth.layer.pipe(
@@ -121,9 +123,7 @@ it.layer(NodeServices.layer)("EnvironmentAuth.layer", (it) => {
       );
 
       const legacyCookieName = sessions.legacyCookieNames[0];
-      expect(legacyCookieName).toBe(
-        sessions.cookieName.replace(/^codework_session/, "t3_session"),
-      );
+      expect(legacyCookieName).toBe(sessions.cookieName.replace(/^codework_session/, "t3_session"));
 
       const verified = yield* serverAuth.authenticateHttpRequest(
         makeCookieRequest(legacyCookieName ?? "", exchanged.sessionToken),

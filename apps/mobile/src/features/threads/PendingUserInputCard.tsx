@@ -175,7 +175,7 @@ export function PendingUserInputCard(props: PendingUserInputCardProps) {
         onPress={props.onToggleCollapsed}
         className="min-h-10 flex-1 flex-row items-center gap-2 active:opacity-70"
       >
-        <Text className="font-t3-bold text-2xs uppercase tracking-[1.1px] text-sky-700 dark:text-sky-300">
+        <Text className="font-codework-bold text-2xs uppercase tracking-[1.1px] text-sky-700 dark:text-sky-300">
           {t("userInputNeeded")}
         </Text>
         <Text className="font-sans text-xs text-neutral-500 dark:text-neutral-400">
@@ -230,10 +230,10 @@ export function PendingUserInputCard(props: PendingUserInputCardProps) {
         className="flex-row items-start gap-2"
       >
         <View className="flex-1 gap-2.5">
-          <Text className="font-t3-bold text-2xs uppercase tracking-[1.1px] text-sky-700 dark:text-sky-300">
+          <Text className="font-codework-bold text-2xs uppercase tracking-[1.1px] text-sky-700 dark:text-sky-300">
             {t("userInputNeeded")}
           </Text>
-          <Text className="font-t3-bold text-lg text-neutral-950 dark:text-neutral-50">
+          <Text className="font-codework-bold text-lg text-neutral-950 dark:text-neutral-50">
             {t("fillInThePendingAnswers")}
           </Text>
         </View>
@@ -254,7 +254,7 @@ export function PendingUserInputCard(props: PendingUserInputCardProps) {
           const draft = props.drafts[question.id];
           return (
             <View key={question.id} className="gap-2 pt-1">
-              <Text className="font-t3-bold text-xs uppercase tracking-[1px] text-neutral-500 dark:text-neutral-500">
+              <Text className="font-codework-bold text-xs uppercase tracking-[1px] text-neutral-500 dark:text-neutral-500">
                 {question.header}
               </Text>
               <Text className="font-sans text-base leading-snug text-neutral-950 dark:text-neutral-50">
@@ -285,7 +285,7 @@ export function PendingUserInputCard(props: PendingUserInputCardProps) {
                       <View className="min-w-0 flex-1 gap-0.5">
                         <Text
                           className={cn(
-                            "font-t3-bold text-sm",
+                            "font-codework-bold text-sm",
                             selected
                               ? "text-sky-700 dark:text-sky-300"
                               : "text-neutral-700 dark:text-neutral-200",
@@ -327,7 +327,7 @@ export function PendingUserInputCard(props: PendingUserInputCardProps) {
         }
         onPress={() => void props.onSubmit()}
       >
-        <Text className="font-t3-extrabold text-sm text-white">{t("submitAnswers")}</Text>
+        <Text className="font-codework-extrabold text-sm text-white">{t("submitAnswers")}</Text>
       </Pressable>
     </Animated.View>
   ) : null;

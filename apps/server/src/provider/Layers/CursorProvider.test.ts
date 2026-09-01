@@ -305,7 +305,7 @@ const cursorAcpDiscoveryFailedMessage = [
   "See https://cursor.com/docs/cli/installation.",
   "Check server logs for ACP details.",
 ].join(" ");
-const missingCursorBinaryPath = "/definitely/not/installed/t3-cursor-agent";
+const missingCursorBinaryPath = "/definitely/not/installed/codework-cursor-agent";
 const cursorCliCommandMissingMessage = [
   `Cursor CLI command \`${missingCursorBinaryPath}\` was not found.`,
   `Install or enable the Cursor CLI, make sure \`${missingCursorBinaryPath}\` is on PATH, then restart Code Work.`,

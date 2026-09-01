@@ -27,8 +27,8 @@ import {
 } from "./GuestProtocol.ts";
 const OVERLAY_ATTRIBUTE = "data-codework-annotation-ui";
 const Z_INDEX_OVERLAY = 2147483646;
-const PRIMARY = "var(--t3-primary)";
-const PRIMARY_FILL = "color-mix(in srgb, var(--t3-primary) 10%, transparent)";
+const PRIMARY = "var(--codework-primary)";
+const PRIMARY_FILL = "color-mix(in srgb, var(--codework-primary) 10%, transparent)";
 const MAX_MARQUEE_ELEMENTS = 20;
 const CONTENT_LAYER_Z_INDEX = 1;
 const CHROME_LAYER_Z_INDEX = 10;
@@ -59,20 +59,20 @@ const applyAnnotationTheme = (
   if (!theme) return;
   host.style.colorScheme = theme.colorScheme;
   const variables = {
-    "--t3-radius": theme.radius,
-    "--t3-background": theme.background,
-    "--t3-foreground": theme.foreground,
-    "--t3-popover": theme.popover,
-    "--t3-popover-foreground": theme.popoverForeground,
-    "--t3-primary": theme.primary,
-    "--t3-primary-foreground": theme.primaryForeground,
-    "--t3-muted": theme.muted,
-    "--t3-muted-foreground": theme.mutedForeground,
-    "--t3-accent": theme.accent,
-    "--t3-accent-foreground": theme.accentForeground,
-    "--t3-border": theme.border,
-    "--t3-input": theme.input,
-    "--t3-ring": theme.ring,
+    "--codework-radius": theme.radius,
+    "--codework-background": theme.background,
+    "--codework-foreground": theme.foreground,
+    "--codework-popover": theme.popover,
+    "--codework-popover-foreground": theme.popoverForeground,
+    "--codework-primary": theme.primary,
+    "--codework-primary-foreground": theme.primaryForeground,
+    "--codework-muted": theme.muted,
+    "--codework-muted-foreground": theme.mutedForeground,
+    "--codework-accent": theme.accent,
+    "--codework-accent-foreground": theme.accentForeground,
+    "--codework-border": theme.border,
+    "--codework-input": theme.input,
+    "--codework-ring": theme.ring,
     "--codework-font-sans": theme.fontSans,
     "--codework-font-mono": theme.fontMono,
   };
@@ -1133,7 +1133,7 @@ function startAnnotation(): void {
           regions.push(region);
           const regionBox = createBox(
             PRIMARY,
-            "color-mix(in srgb, var(--t3-primary) 6%, transparent)",
+            "color-mix(in srgb, var(--codework-primary) 6%, transparent)",
           );
           regionBox.setAttribute("data-region-id", region.id);
           positionBox(regionBox, rect);

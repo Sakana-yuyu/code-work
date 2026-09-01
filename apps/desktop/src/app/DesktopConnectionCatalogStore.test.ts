@@ -88,7 +88,7 @@ const withStore = <A, E, R>(
   Effect.gen(function* () {
     const fileSystem = yield* FileSystem.FileSystem;
     const baseDir = yield* fileSystem.makeTempDirectoryScoped({
-      prefix: "t3-desktop-connection-catalog-test-",
+      prefix: "codework-desktop-connection-catalog-test-",
     });
     return yield* effect.pipe(Effect.provide(makeLayer(baseDir, encryptionAvailable)));
   }).pipe(Effect.provide(NodeServices.layer), Effect.scoped);
@@ -249,7 +249,7 @@ describe("DesktopConnectionCatalogStore", () => {
     Effect.gen(function* () {
       const baseFileSystem = yield* FileSystem.FileSystem;
       const baseDir = yield* baseFileSystem.makeTempDirectoryScoped({
-        prefix: "t3-desktop-connection-catalog-test-",
+        prefix: "codework-desktop-connection-catalog-test-",
       });
       const permissionError = PlatformError.systemError({
         _tag: "PermissionDenied",
@@ -286,7 +286,7 @@ describe("DesktopConnectionCatalogStore", () => {
     Effect.gen(function* () {
       const baseFileSystem = yield* FileSystem.FileSystem;
       const baseDir = yield* baseFileSystem.makeTempDirectoryScoped({
-        prefix: "t3-desktop-connection-catalog-test-",
+        prefix: "codework-desktop-connection-catalog-test-",
       });
       const permissionError = PlatformError.systemError({
         _tag: "PermissionDenied",
@@ -383,7 +383,7 @@ describe("DesktopConnectionCatalogStore", () => {
     Effect.gen(function* () {
       const fileSystem = yield* FileSystem.FileSystem;
       const baseDir = yield* fileSystem.makeTempDirectoryScoped({
-        prefix: "t3-desktop-connection-catalog-test-",
+        prefix: "codework-desktop-connection-catalog-test-",
       });
       const failDecrypt = yield* Ref.make(false);
       const layer = makeLayer(baseDir, true, failDecrypt);

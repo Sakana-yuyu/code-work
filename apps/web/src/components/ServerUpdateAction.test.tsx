@@ -4,6 +4,7 @@ import type { EnvironmentId } from "@codework/contracts";
 import * as Cause from "effect/Cause";
 import { AsyncResult } from "effect/unstable/reactivity";
 import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { t } from "~/i18n";
 
 const testState = vi.hoisted(() => ({
   updateServer: vi.fn(),
@@ -63,8 +64,8 @@ describe("ServerUpdateAction", () => {
     });
     expect(testState.toast).toHaveBeenCalledWith({
       type: "success",
-      title: "Test server updated",
-      description: "Reconnected on t3@0.0.31.",
+      title: t("updated3", { serverLabel: "Test server" }),
+      description: t("reconnectedOnCodework", { targetVersion: "0.0.31" }),
     });
   });
 

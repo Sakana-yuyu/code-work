@@ -1,0 +1,10 @@
+{
+  "platforms": ["apple", "android"],
+  "apple": {
+    "modules": ["CodeworkReviewDiffModule"],
+    "podspecPath": "CodeworkReviewDiffNative.podspec"
+  },
+  "android": {
+    "modules": ["expo.modules.codeworkreviewdiff.CodeworkReviewDiffModule"]
+  }
+}

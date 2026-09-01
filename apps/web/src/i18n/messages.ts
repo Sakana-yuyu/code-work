@@ -45,7 +45,7 @@ export const en: Record<string, string> = {
   appearance: "Appearance",
   approval: "Approval",
   approved: "Approved",
-  approximateActiveCpuTimeForTheT3ServerRootProcessAndItsDesce:
+  approximateActiveCpuTimeForTheCodeworkServerRootProcessAndItsDesce:
     "Approximate active CPU time for the Code Work server root process and its descendants during the selected window. It grows only while sampled processes use CPU and older samples leave as the window moves.",
   archive: "Archive",
   archiveConfirmation: "archive confirmation",
@@ -866,11 +866,11 @@ export const en: Record<string, string> = {
     "This environment isn’t connected — try again once it reconnects.",
   thisHostCouldNotBeRead: "This host could not be read.",
   thisInstallIsUsingTheCorrectArchitecture: "This install is using the correct architecture.",
-  thisMacHasAppleSiliconButT3CodeIsStillRunningTheIntelBuildUn:
+  thisMacHasAppleSiliconButCodeworkIsStillRunningTheIntelBuildUn:
     "This Mac has Apple Silicon, but Code Work is still running the Intel build under Rosetta. Download the available update to switch to the native Apple Silicon build.",
-  thisMacHasAppleSiliconButT3CodeIsStillRunningTheIntelBuildUn2:
+  thisMacHasAppleSiliconButCodeworkIsStillRunningTheIntelBuildUn2:
     "This Mac has Apple Silicon, but Code Work is still running the Intel build under Rosetta. Restart to install the downloaded Apple Silicon build.",
-  thisMacHasAppleSiliconButT3CodeIsStillRunningTheIntelBuildUn23:
+  thisMacHasAppleSiliconButCodeworkIsStillRunningTheIntelBuildUn23:
     "This Mac has Apple Silicon, but Code Work is still running the Intel build under Rosetta. The next app update will replace it with the native Apple Silicon build.",
   thisThreadDoesNotHaveAWorkspacePathToCopy: "This thread does not have a workspace path to copy.",
   thisThreadWokeFromSnooze: "This thread woke from snooze",
@@ -932,7 +932,7 @@ export const en: Record<string, string> = {
   updatesAvailable: "Updates Available:",
   updateTimedOutTryAgain: "Update timed out — try again.",
   updateTrack: "Update track",
-  updateYourT3CodeServersToBrowsePullRequests:
+  updateYourCodeworkServersToBrowsePullRequests:
     "Update your Code Work servers to browse pull requests.",
   updating: "Updating",
   updating2: "Updating…",
@@ -1348,7 +1348,7 @@ export const en: Record<string, string> = {
   "delegationSettings.executorProbeArgumentsDescription":
     "Probe arguments run a cheap availability check (e.g. --version, 5s timeout). Leave empty to only resolve the executable on PATH without running anything.",
   "delegationSettings.executorEnvNames": "Environment variables (names, comma separated)",
-  "delegationSettings.executorEnvNamesPlaceholder": "OPENAI_API_KEY, T3_HOME",
+  "delegationSettings.executorEnvNamesPlaceholder": "OPENAI_API_KEY, CODEWORK_HOME",
   "delegationSettings.executorFailoverLimit": "Failover limit",
   "delegationSettings.executorFailoverLimitDescription":
     "How many executor candidates one delegation may try (1-5).",
@@ -2474,7 +2474,7 @@ export const en: Record<string, string> = {
   noActivityInThisWindow: "No activity in this window.",
   noActivityYet: "No activity yet.",
   noAgentsYet: "No agents yet",
-  noAuthorizationCodeWasReturnedReRunT3ConnectInYourTerminalAndTryAgain:
+  noAuthorizationCodeWasReturnedReRunCodeworkConnectInYourTerminalAndTryAgain:
     "No authorization code was returned. Re-run `t3 connect` in your terminal and try again.",
   nobodyElseHasAccessToThisRepository: "Nobody else has access to this repository.",
   nobodyWithAccessMatchesThat: "Nobody with access matches that.",
@@ -2927,7 +2927,7 @@ export const en: Record<string, string> = {
   workingFor: "Working for",
   workingTree: "Working tree",
   writeCustomAnswer: "Write custom answer",
-  ws1270014111T3Ide: "ws://127.0.0.1:4111/t3/ide",
+  ws1270014111CodeworkIde: "ws://127.0.0.1:4111/t3/ide",
   wslBackendCouldnTStart: "WSL backend couldn't start:",
   youCanBringItBackAnytimeByImportingItsJsonFile:
     "You can bring it back anytime by importing its JSON file.",
@@ -3187,7 +3187,7 @@ export const en: Record<string, string> = {
   raisedSurface: "Raised surface",
   reAddItIfYouWantThatTerminalOutputIncluded:
     "Re-add it if you want that terminal output included.",
-  reconnectedOnT3: "Reconnected on t3@{{targetVersion}}.",
+  reconnectedOnCodework: "Reconnected on Code Work@{{targetVersion}}.",
   recordingSaved: "Recording saved",
   regenerateTitle: "Regenerate title",
   regenerateTitles: "Regenerate titles ({{actionableCount}})",
@@ -3303,7 +3303,7 @@ export const en: Record<string, string> = {
   theComposerIsBusyTryAgainOnceItIsReady: "The composer is busy; try again once it is ready.",
   theIntegratedBrowserIsUnavailableInThisRuntime:
     "The integrated browser is unavailable in this runtime.",
-  theLinkIsMissingItsAuthorizationRequestReRunT3ConnectInYourTerminalAndOp:
+  theLinkIsMissingItsAuthorizationRequestReRunCodeworkConnectInYourTerminalAndOp:
     "The link is missing its authorization request. Re-run `t3 connect` in your terminal and open the freshly printed URL.",
   theManagedTunnelWasRemovedAgentActivityPublishingStaysOn:
     "The managed tunnel was removed. Agent activity publishing stays on.",
@@ -4373,7 +4373,7 @@ export const zhCN: Record<string, string> = {
   appearance: "外观",
   approval: "待审批",
   approved: "已批准",
-  approximateActiveCpuTimeForTheT3ServerRootProcessAndItsDesce:
+  approximateActiveCpuTimeForTheCodeworkServerRootProcessAndItsDesce:
     "所选时间窗口内 Code Work 服务器根进程及其子进程的近似活动 CPU 时间。仅在被采样的进程使用 CPU 时增长，随着窗口移动，较旧的样本会移出。",
   archive: "归档",
   archiveConfirmation: "归档确认",
@@ -5144,11 +5144,11 @@ export const zhCN: Record<string, string> = {
   thisEnvironmentIsnTConnectedTryAgainOnceItReconnects: "此环境未连接——请在其重新连接后重试。",
   thisHostCouldNotBeRead: "无法读取此托管平台。",
   thisInstallIsUsingTheCorrectArchitecture: "当前安装使用的架构正确。",
-  thisMacHasAppleSiliconButT3CodeIsStillRunningTheIntelBuildUn:
+  thisMacHasAppleSiliconButCodeworkIsStillRunningTheIntelBuildUn:
     "此 Mac 使用 Apple Silicon 芯片，但 Code Work 仍在 Rosetta 下运行 Intel 版本。请下载可用更新以切换到原生 Apple Silicon 版本。",
-  thisMacHasAppleSiliconButT3CodeIsStillRunningTheIntelBuildUn2:
+  thisMacHasAppleSiliconButCodeworkIsStillRunningTheIntelBuildUn2:
     "此 Mac 使用 Apple Silicon 芯片，但 Code Work 仍在 Rosetta 下运行 Intel 版本。重启即可安装已下载的 Apple Silicon 版本。",
-  thisMacHasAppleSiliconButT3CodeIsStillRunningTheIntelBuildUn23:
+  thisMacHasAppleSiliconButCodeworkIsStillRunningTheIntelBuildUn23:
     "此 Mac 使用 Apple Silicon 芯片，但 Code Work 仍在 Rosetta 下运行 Intel 版本。下次应用更新将替换为原生 Apple Silicon 版本。",
   thisThreadDoesNotHaveAWorkspacePathToCopy: "此线程没有可复制的工作区路径。",
   thisThreadWokeFromSnooze: "此线程已从暂缓中唤醒",
@@ -5209,7 +5209,7 @@ export const zhCN: Record<string, string> = {
   updatesAvailable: "有多个可用更新：",
   updateTimedOutTryAgain: "更新超时——请重试。",
   updateTrack: "更新通道",
-  updateYourT3CodeServersToBrowsePullRequests: "更新你的 Code Work 服务器后才能浏览拉取请求。",
+  updateYourCodeworkServersToBrowsePullRequests: "更新你的 Code Work 服务器后才能浏览拉取请求。",
   updating: "正在更新",
   updating2: "更新中…",
   updatingProvider: "正在更新提供商",
@@ -5613,7 +5613,7 @@ export const zhCN: Record<string, string> = {
   "delegationSettings.executorProbeArgumentsDescription":
     "探测参数用于轻量可用性检查（如 --version，5 秒超时）。留空则只在 PATH 中解析可执行文件，不会实际运行。",
   "delegationSettings.executorEnvNames": "环境变量（仅名称，逗号分隔）",
-  "delegationSettings.executorEnvNamesPlaceholder": "如 OPENAI_API_KEY, T3_HOME",
+  "delegationSettings.executorEnvNamesPlaceholder": "如 OPENAI_API_KEY, CODEWORK_HOME",
   "delegationSettings.executorFailoverLimit": "失败转移上限",
   "delegationSettings.executorFailoverLimitDescription":
     "单次委派最多尝试多少个执行器候选（1-5）。",
@@ -6703,7 +6703,7 @@ export const zhCN: Record<string, string> = {
   noActivityInThisWindow: "此窗口中没有活动。",
   noActivityYet: "还没有活动。",
   noAgentsYet: "还没有 Agent",
-  noAuthorizationCodeWasReturnedReRunT3ConnectInYourTerminalAndTryAgain:
+  noAuthorizationCodeWasReturnedReRunCodeworkConnectInYourTerminalAndTryAgain:
     "没有返回授权码。在终端中重新运行“t3 connect”并重试。",
   nobodyElseHasAccessToThisRepository: "其他人无法访问此仓库。",
   nobodyWithAccessMatchesThat: "没有人可以与此相匹配。",
@@ -7146,7 +7146,7 @@ export const zhCN: Record<string, string> = {
   workingFor: "工作于",
   workingTree: "工作树",
   writeCustomAnswer: "编写自定义答案",
-  ws1270014111T3Ide: "ws://127.0.0.1:4111/t3/ide",
+  ws1270014111CodeworkIde: "ws://127.0.0.1:4111/t3/ide",
   wslBackendCouldnTStart: "WSL 后端无法启动：",
   youCanBringItBackAnytimeByImportingItsJsonFile: "您可以随时通过导入其 JSON 文件将其恢复。",
   youHaveUncommittedChangesTheyLlCarryOverToTheOtherBranchOrBlockTheSwitch:
@@ -7404,7 +7404,7 @@ export const zhCN: Record<string, string> = {
   pycharm: "皮查姆",
   raisedSurface: "凸起表面",
   reAddItIfYouWantThatTerminalOutputIncluded: "如果您希望包含终端输出，请重新添加它。",
-  reconnectedOnT3: "在 t3@{{targetVersion}} 上重新连接。",
+  reconnectedOnCodework: "在 Code Work@{{targetVersion}} 上重新连接。",
   recordingSaved: "录音已保存",
   regenerateTitle: "重新生成标题",
   regenerateTitles: "重新生成标题（{{actionableCount}}）",
@@ -7514,7 +7514,7 @@ export const zhCN: Record<string, string> = {
   theCodeWorkConnectSessionIsUnavailable: "Code Work Connect 会话不可用。",
   theComposerIsBusyTryAgainOnceItIsReady: "作曲家很忙；准备好后重试。",
   theIntegratedBrowserIsUnavailableInThisRuntime: "集成浏览器在此运行时不可用。",
-  theLinkIsMissingItsAuthorizationRequestReRunT3ConnectInYourTerminalAndOp:
+  theLinkIsMissingItsAuthorizationRequestReRunCodeworkConnectInYourTerminalAndOp:
     "该链接缺少其授权请求。在终端中重新运行 `t3 connect` 并打开新打印的 URL。",
   theManagedTunnelWasRemovedAgentActivityPublishingStaysOn:
     "受管理的隧道已被删除。 Agent 活动发布继续。",

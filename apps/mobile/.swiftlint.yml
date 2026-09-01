@@ -1,14 +1,14 @@
 included:
   - ios/CodeworkCode
-  - modules/t3-composer-editor/ios
-  - modules/t3-native-controls/ios
-  - modules/t3-terminal/ios
-  - modules/t3-review-diff/ios
+  - modules/codework-composer-editor/ios
+  - modules/codework-native-controls/ios
+  - modules/codework-terminal/ios
+  - modules/codework-review-diff/ios
 
 excluded:
   - ios/Pods
   - ios/build
-  - modules/t3-terminal/Vendor
+  - modules/codework-terminal/Vendor
 
 reporter: xcode
 

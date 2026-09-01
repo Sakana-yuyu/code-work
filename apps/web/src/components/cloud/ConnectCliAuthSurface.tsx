@@ -46,7 +46,7 @@ const invalidLinkMessage = {
     return t("thisConnectLinkIsIncomplete");
   },
   get description() {
-    return t("theLinkIsMissingItsAuthorizationRequestReRunT3ConnectInYourTerminalAndOp");
+    return t("theLinkIsMissingItsAuthorizationRequestReRunCodeworkConnectInYourTerminalAndOp");
   },
 } as const;
 
@@ -148,7 +148,9 @@ export function ConnectCliCallbackSurface() {
         <ConnectCliAuthMessage
           eyebrow={t("interface.step-2-of-2-terminal-handoff")}
           title={t("authorizationDidNotComplete")}
-          description={t("noAuthorizationCodeWasReturnedReRunT3ConnectInYourTerminalAndTryAgain")}
+          description={t(
+            "noAuthorizationCodeWasReturnedReRunCodeworkConnectInYourTerminalAndTryAgain",
+          )}
         />
       </AuthSurfaceShell>
     );

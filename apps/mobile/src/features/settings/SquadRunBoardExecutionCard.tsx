@@ -49,7 +49,7 @@ export function SquadRunBoardExecutionCard(props: SquadRunBoardExecutionCardProp
       <View className="gap-1">
         <View className="flex-row flex-wrap items-center gap-2">
           <Text
-            className="min-w-0 flex-1 text-base font-t3-medium text-foreground"
+            className="min-w-0 flex-1 text-base font-codework-medium text-foreground"
             numberOfLines={1}
           >
             {item.squadDisplayName}
@@ -82,7 +82,7 @@ export function SquadRunBoardExecutionCard(props: SquadRunBoardExecutionCardProp
 
       {item.resultSummary === undefined ? null : (
         <View className="gap-1 border-t border-border-subtle pt-3">
-          <Text className="text-xs font-t3-medium text-foreground-muted">
+          <Text className="text-xs font-codework-medium text-foreground-muted">
             {t("squadExecutionHistory.resultSummary")}
           </Text>
           <Text className="text-sm text-foreground">{item.resultSummary}</Text>
@@ -91,7 +91,7 @@ export function SquadRunBoardExecutionCard(props: SquadRunBoardExecutionCardProp
 
       {item.failureCode === undefined ? null : (
         <View className="gap-1 border-t border-border-subtle pt-3">
-          <Text className="text-xs font-t3-medium text-foreground-muted">
+          <Text className="text-xs font-codework-medium text-foreground-muted">
             {t("squadExecutionHistory.failureCode")}
           </Text>
           <Text className="font-mono text-sm text-danger-foreground">{item.failureCode}</Text>

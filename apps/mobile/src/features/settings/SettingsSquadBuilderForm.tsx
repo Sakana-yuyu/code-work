@@ -76,7 +76,7 @@ export function SettingsSquadBuilderForm(props: {
   return (
     <View className="gap-5 border-b border-border-subtle pb-5">
       <View className="flex-row items-center justify-between gap-3">
-        <Text className="text-lg font-t3-semibold text-foreground">
+        <Text className="text-lg font-codework-semibold text-foreground">
           {t(props.variant === "create" ? "squadBuilder.createTitle" : "squadBuilder.editTitle")}
         </Text>
         <ActionButton
@@ -172,7 +172,7 @@ export function SettingsSquadBuilderForm(props: {
       />
 
       <View className="gap-2">
-        <Text className="text-sm font-t3-medium text-foreground">
+        <Text className="text-sm font-codework-medium text-foreground">
           {t("squadBuilder.approvalStages")}
         </Text>
         <View className="flex-row flex-wrap gap-2">
@@ -198,7 +198,7 @@ export function SettingsSquadBuilderForm(props: {
 
       <View className="gap-3 border-t border-border-subtle pt-4">
         <View className="gap-1">
-          <Text className="text-base font-t3-medium text-foreground">
+          <Text className="text-base font-codework-medium text-foreground">
             {t("squadBuilder.modelBinding.teamTitle")}
           </Text>
           <Text className="text-sm leading-5 text-foreground-muted">
@@ -216,7 +216,7 @@ export function SettingsSquadBuilderForm(props: {
 
       <View className="gap-3 border-t border-border-subtle pt-4">
         <View className="flex-row items-center justify-between gap-3">
-          <Text className="text-base font-t3-medium text-foreground">
+          <Text className="text-base font-codework-medium text-foreground">
             {t("squadBuilder.members")}
           </Text>
           <ActionButton
@@ -240,7 +240,7 @@ export function SettingsSquadBuilderForm(props: {
       </View>
 
       <View className="gap-1 border-t border-border-subtle pt-4">
-        <Text className="text-sm font-t3-medium text-foreground">
+        <Text className="text-sm font-codework-medium text-foreground">
           {t("squadBuilder.validationTitle")}
         </Text>
         {props.issues.length === 0 ? (
@@ -283,7 +283,7 @@ function MemberEditor(props: {
   return (
     <View className="gap-3 border-t border-border-subtle pt-3 first:border-t-0 first:pt-0">
       <View className="flex-row items-center justify-between gap-3">
-        <Text className="text-sm font-t3-medium text-foreground">
+        <Text className="text-sm font-codework-medium text-foreground">
           {t("squadBuilder.member", { index: props.index + 1 })}
         </Text>
         {props.canRemove ? (
@@ -367,7 +367,7 @@ function MemberEditor(props: {
 function FormField(props: { readonly label: string; readonly children: React.ReactNode }) {
   return (
     <View className="gap-2">
-      <Text className="text-sm font-t3-medium text-foreground">{props.label}</Text>
+      <Text className="text-sm font-codework-medium text-foreground">{props.label}</Text>
       {props.children}
     </View>
   );
@@ -382,7 +382,7 @@ function OptionGroup<T extends string>(props: {
 }) {
   return (
     <View className="gap-2">
-      <Text className="text-sm font-t3-medium text-foreground">{props.label}</Text>
+      <Text className="text-sm font-codework-medium text-foreground">{props.label}</Text>
       <View className="flex-row flex-wrap gap-2">
         {props.options.map((option) => (
           <ChoiceButton
@@ -444,7 +444,7 @@ function ActionButton(props: {
             : "rounded-full bg-subtle px-3 py-1.5"
       }
     >
-      <Text className="text-sm font-t3-medium text-foreground">{props.label}</Text>
+      <Text className="text-sm font-codework-medium text-foreground">{props.label}</Text>
     </Pressable>
   );
 }

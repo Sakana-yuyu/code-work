@@ -454,7 +454,7 @@ describe("CompositionControlCenterPanel", () => {
         taskId: "task-1",
         runId: "run-1",
         agentId: "agent-1",
-        newRunId: "t3-byok-resume-abc",
+        newRunId: "codework-byok-resume-abc",
         capabilityIdsText: " shell.exec , fs.write ,, ",
         note: "恢复说明",
       }),
@@ -462,7 +462,7 @@ describe("CompositionControlCenterPanel", () => {
       taskId: "task-1",
       runId: "run-1",
       agentId: "agent-1",
-      newRunId: "t3-byok-resume-abc",
+      newRunId: "codework-byok-resume-abc",
       capabilityIds: ["shell.exec", "fs.write"],
       note: "恢复说明",
     });
@@ -474,14 +474,14 @@ describe("CompositionControlCenterPanel", () => {
         taskId: "task-1",
         runId: "run-1",
         agentId: "agent-1",
-        newRunId: "t3-redispatch-abc",
+        newRunId: "codework-redispatch-abc",
         capabilityIdsText: " shell.exec , fs.write ,, ",
       }),
     ).toEqual({
       taskId: "task-1",
       runId: "run-1",
       agentId: "agent-1",
-      newRunId: "t3-redispatch-abc",
+      newRunId: "codework-redispatch-abc",
       capabilityIds: ["shell.exec", "fs.write"],
     });
   });

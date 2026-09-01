@@ -54,7 +54,7 @@ const withTempDir = <A, E, R>(
   Effect.gen(function* () {
     const fileSystem = yield* FileSystem.FileSystem;
     const tempDir = yield* fileSystem.makeTempDirectoryScoped({
-      prefix: "t3-wsl-server-tree-test-",
+      prefix: "codework-wsl-server-tree-test-",
     });
     return yield* run(tempDir);
   }).pipe(Effect.scoped);

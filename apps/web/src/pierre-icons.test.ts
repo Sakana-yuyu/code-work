@@ -17,19 +17,22 @@ describe("Pierre file icons", () => {
   it("extends Pierre with Code Work-specific exact filename icons", () => {
     assert.equal(
       resolvePierreIconForEntry("package.json", "file")?.name,
-      "t3-file-icon-package-json",
+      "codework-file-icon-package-json",
     );
     assert.equal(
       resolvePierreIconForEntry("config/tsconfig.json", "file")?.name,
-      "t3-file-icon-tsconfig",
+      "codework-file-icon-tsconfig",
     );
-    assert.equal(resolvePierreIconForEntry("AGENTS.md", "file")?.name, "t3-file-icon-agents");
-    assert.equal(resolvePierreIconForEntry("CLAUDE.md", "file")?.name, "t3-file-icon-claude");
-    assert.equal(resolvePierreIconForEntry("README.md", "file")?.name, "t3-file-icon-readme");
-    assert.equal(resolvePierreIconForEntry("pnpm-lock.yaml", "file")?.name, "t3-file-icon-pnpm");
+    assert.equal(resolvePierreIconForEntry("AGENTS.md", "file")?.name, "codework-file-icon-agents");
+    assert.equal(resolvePierreIconForEntry("CLAUDE.md", "file")?.name, "codework-file-icon-claude");
+    assert.equal(resolvePierreIconForEntry("README.md", "file")?.name, "codework-file-icon-readme");
+    assert.equal(
+      resolvePierreIconForEntry("pnpm-lock.yaml", "file")?.name,
+      "codework-file-icon-pnpm",
+    );
     assert.equal(
       resolvePierreIconForEntry("pnpm-workspace.yaml", "file")?.name,
-      "t3-file-icon-pnpm",
+      "codework-file-icon-pnpm",
     );
   });
 

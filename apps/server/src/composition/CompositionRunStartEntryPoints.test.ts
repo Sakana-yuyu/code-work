@@ -33,7 +33,9 @@ import { makeCompositionRunStartDigests } from "./CompositionRunStartLifecycle.t
 import type { CompositionRunStartRecoveryCandidate } from "./CompositionRunStartRecoveryPolicy.ts";
 
 const secretStoreLayer = ServerSecretStore.layer.pipe(
-  Layer.provide(ServerConfig.layerTest(process.cwd(), { prefix: "t3-run-start-entry-test-" })),
+  Layer.provide(
+    ServerConfig.layerTest(process.cwd(), { prefix: "codework-run-start-entry-test-" }),
+  ),
   Layer.provide(NodeServices.layer),
 );
 
