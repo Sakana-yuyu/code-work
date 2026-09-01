@@ -153,6 +153,10 @@ export function registerDesktopSchemePrivilegesSync(): void {
         secure: true,
         supportFetchAPI: true,
         corsEnabled: true,
+        // @clerk/electron 的 renderer 传输需要 stream 特权；它自己的注册在
+        // app ready 后会被跳过（见 @clerk/electron 的 pnpm patch），所以这里
+        // 必须一次性带上完整特权集。
+        stream: true,
       },
     })),
   );

@@ -64,6 +64,12 @@ import * as DesktopWslBackend from "./wsl/DesktopWslBackend.ts";
 import * as DesktopWslEnvironment from "./wsl/DesktopWslEnvironment.ts";
 import * as DesktopWslServerTree from "./wsl/DesktopWslServerTree.ts";
 
+// Electron 规定 registerSchemesAsPrivileged 只能在 ready 事件前调用。打包态下
+// Effect 分层构建包含真实 I/O（如 userData 探测），ready 可能抢在任何 Layer
+// 之前触发（@clerk/electron 的桥也因此可能 post-ready 才创建，其重复注册已被
+// pnpm patch 跳过）。这里在模块加载期同步注册，保证特权集无条件先于 ready 存在。
+ElectronProtocol.registerDesktopSchemePrivilegesSync();
+
 const desktopEnvironmentLayer = Layer.unwrap(
   Effect.gen(function* () {
     const metadata = yield* Effect.service(ElectronApp.ElectronApp).pipe(

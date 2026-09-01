@@ -1,0 +1,78 @@
+diff --git a/dist/cjs/index.js b/dist/cjs/index.js
+index 42df91d204c1e941656c720a636748b1671a978d..8491c15933766d1f1152c01540772a86ebac1c10 100644
+--- a/dist/cjs/index.js
++++ b/dist/cjs/index.js
+@@ -291,17 +291,23 @@ function createClerkBridge(options) {
+ 		}
+ 		if (options.userAgent) electron.app.userAgentFallback = buildUserAgentFallback(electron.app.userAgentFallback, options.userAgent);
+ 		if (options.renderer) {
+-			electron.protocol.registerSchemesAsPrivileged([{
+-				scheme: options.renderer.scheme,
+-				privileges: {
+-					standard: true,
+-					secure: true,
+-					supportFetchAPI: true,
+-					corsEnabled: true,
+-					stream: true,
+-					...options.renderer.privileges
+-				}
+-			}]);
++			// Electron only allows registerSchemesAsPrivileged before the app is
++			// ready. The host application registers the same scheme (with matching
++			// privileges) synchronously during module bootstrap, so a late bridge
++			// creation must skip the duplicate call instead of throwing.
++			if (!electron.app.isReady()) {
++				electron.protocol.registerSchemesAsPrivileged([{
++					scheme: options.renderer.scheme,
++					privileges: {
++						standard: true,
++						secure: true,
++						supportFetchAPI: true,
++						corsEnabled: true,
++						stream: true,
++						...options.renderer.privileges
++					}
++				}]);
++			}
+ 			teardowns.push(setupOAuthTransportIpcHandlers({ renderer: options.renderer }));
+ 		}
+ 		return {
+diff --git a/dist/esm/index.js b/dist/esm/index.js
+index 3068cc844564b8c4391348245cb7a9ecaaad6c7d..23ed5a6c87a196197cae954791e017dec44b077e 100644
+--- a/dist/esm/index.js
++++ b/dist/esm/index.js
+@@ -290,17 +290,23 @@ function createClerkBridge(options) {
+ 		}
+ 		if (options.userAgent) app.userAgentFallback = buildUserAgentFallback(app.userAgentFallback, options.userAgent);
+ 		if (options.renderer) {
+-			protocol.registerSchemesAsPrivileged([{
+-				scheme: options.renderer.scheme,
+-				privileges: {
+-					standard: true,
+-					secure: true,
+-					supportFetchAPI: true,
+-					corsEnabled: true,
+-					stream: true,
+-					...options.renderer.privileges
+-				}
+-			}]);
++			// Electron only allows registerSchemesAsPrivileged before the app is
++			// ready. The host application registers the same scheme (with matching
++			// privileges) synchronously during module bootstrap, so a late bridge
++			// creation must skip the duplicate call instead of throwing.
++			if (!app.isReady()) {
++				protocol.registerSchemesAsPrivileged([{
++					scheme: options.renderer.scheme,
++					privileges: {
++						standard: true,
++						secure: true,
++						supportFetchAPI: true,
++						corsEnabled: true,
++						stream: true,
++						...options.renderer.privileges
++					}
++				}]);
++			}
+ 			teardowns.push(setupOAuthTransportIpcHandlers({ renderer: options.renderer }));
+ 		}
+ 		return {
