@@ -1,12 +1,47 @@
-# Documentation index
+# Code Work docs
 
-This repository keeps **two** markdown-heavy areas with different roles:
+## Using Code Work
 
-| Location | Role |
-| --- | --- |
-| [`spec/changes/`](spec/changes/) | **Active change specs** — proposals, designs, tasks, and verification notes for in-flight work. Start here for current feature intent. |
-| [`docs/superpowers/`](docs/superpowers/) | **Historical / workflow plans** — brainstorming and execution plans from earlier iterations. Treat as archive unless a plan explicitly says it is still authoritative. |
-| [`docs/cursor-capability-map.md`](docs/cursor-capability-map.md) | Generated capability map (run `go run ./cmd/sync-tool-catalog --write`). |
-| [`release-notes.md`](release-notes.md) | User-facing release notes for shipped versions. |
+- [Install and first run](./user/install.md)
+- [Permission modes](./user/permission-modes.md)
+- [Keyboard shortcuts](./user/keybindings.md)
+- [Organizing threads](./user/thread-sidebar.md)
+- [Review usage](./user/usage.md)
+- [Customize a project icon](./user/project-settings.md)
+- [Mobile appearance](./user/mobile-appearance.md)
+- [Remote access](./user/remote-access.md)
+- [Agent CLI](./user/agent-cli.md)
+- [Keeping app and server in sync](./user/updating.md)
+- [Source control integrations](./user/source-control.md)
+- [Background service (Linux)](./user/background-service.md)
+- Providers: [Codex](./user/providers-codex.md) · [Claude](./user/providers-claude.md)
 
-When adding new documentation for a feature, prefer `spec/changes/<feature>/` with `proposal.md`, `design.md`, and `tasks.md`. Do not duplicate the same spec under `docs/superpowers/`.
+Mobile app: [apps/mobile/README.md](../apps/mobile/README.md)
+
+---
+
+## Working on Code Work
+
+Everything below is for maintainers. Setup lives in the [root README](../README.md);
+policy in [CONTRIBUTING.md](../CONTRIBUTING.md); agent rules in [AGENTS.md](../AGENTS.md).
+
+- [Architecture overview](./internals/overview.md)
+- [Workspace layout](./internals/workspace-layout.md)
+- [Glossary](./internals/glossary.md)
+- [Scripts](./internals/scripts.md)
+- [Connection runtime](./internals/connection-runtime.md)
+- [Providers](./internals/providers.md)
+- [Remote environments](./internals/remote.md)
+- [Server updates](./internals/server-updates.md)
+- [Resource telemetry](./internals/resource-telemetry.md)
+- [Environment auth](./internals/environment-auth.md)
+- [Code Work Connect](./internals/connect.md)
+- [CI gates](./internals/ci.md)
+- [Engineering work artifacts](./internals/work-artifacts.md)
+
+### Runbooks
+
+- [Release](./operations/release.md)
+- [Observability](./operations/observability.md)
+- [Relay observability](./operations/relay-observability.md)
+- [Mobile app store screenshots](./operations/mobile-app-store-screenshots.md)

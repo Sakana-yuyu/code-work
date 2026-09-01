@@ -1,56 +1,120 @@
-<div align="center">
-
-<img src="docs/assets/logo.png" width="128" alt="Code Work" />
-
 # Code Work
 
-一个独立的桌面 AI 开发工作台：现代工作台界面壳 + 可自持密钥（BYOK）的多模型运行时。
+Code Work is an "agent harness control surface". It enables control of the agents on your machine with a best-in-class mobile app ([iOS](https://apps.apple.com/us/app/code-work-remote-claude-more/id6787819824), [Android](https://play.google.com/store/apps/details?id=com.t3tools.codework)), [web app](https://app.t3.codes) and [Electron-based desktop app](https://t3.codes).
 
-</div>
+Works with your subscriptions on Claude Code, Codex, Cursor, Grok Build, and OpenCode. If they're set up on your computer, Code Work can control them.
 
-## 项目结构
+## "Wait, what are you selling me?"
 
-仓库包含两条产品线：
+Nothing. We built Code Work because we wanted the best possible development experience with agents. We were inspired by existing solutions like the Codex desktop app, Conductor, Claude Desktop and Cursor Glass, but none met our bar.
 
-| 目录 | 说明 |
-| --- | --- |
-| `codework/` | 主线（TypeScript / Effect-TS monorepo）：`apps/server` 组合运行时、`apps/web` 工作台前端、`apps/desktop` 桌面端、`apps/mobile`，以及 `packages/contracts`、`packages/client-runtime` 等共享包 |
-| `internal/` + `frontend/` | 早期 Go + Wails 桌面工作台线（现作为参考与工具线维护） |
+We wanted something performant, remote-ready, and truly open. If we ever go the wrong direction, we want you to have everything you need to fork and build the editor that you want.
 
-## 核心能力
+## Installation
 
-- **BYOK 多供应商**：自带密钥接入 OpenAI / Anthropic / Gemini 及各类兼容中转，模型目录发现、上下文窗口匹配、余额查询与仪表盘。
-- **任务委派**：内置执行器注册表（多执行器候选、可用性探测、优先级与故障转移）、监督委派（审查 / 重试 / 改派 / 升级预算）、视觉委派、子代理角色片段，以及 Agent Loop 内的模型自发 `delegate_task` 子代理委派。
-- **组合运行时**：任务图编排、工具代理（ToolBroker）与能力授予审批、跨重启委派收口与台账投影。
-- **多端**：Web、桌面（Electron）、移动端共享同一套契约与运行时。
+> [!WARNING]
+> Code Work currently supports Codex, Claude, Cursor, Grok Build and OpenCode. Install and authenticate at least one provider before use:
+>
+> - Codex: install [Codex CLI](https://developers.openai.com/codex/cli) and run `codex login`
+> - Claude: install [Claude Code](https://claude.com/product/claude-code) and run `claude auth login`
+> - Cursor: install [Cursor CLI](https://cursor.com/cli) and run `agent login`
+> - Grok Build: install [Grok Build CLI](https://x.ai/cli) and run `grok login`
+> - OpenCode: install [OpenCode](https://opencode.ai) and run `opencode auth login`
 
-## 快速开始
+### Try it out (install-free)
+
+The easiest way to test Code Work is to run the server in your terminal (requires Node.js 22.16+, 23.11+, or 24.10+):
 
 ```bash
-pnpm install
-pnpm dev          # 并行启动 contracts / server / web
-pnpm dev:desktop  # 桌面端
-pnpm tc           # 全仓类型检查
-pnpm test         # 全仓测试
+npx t3@latest
 ```
 
-要求 Node.js 24+（服务端以 Node 直跑 TS 源码）。BYOK 与委派的配置说明见 `codework/docs/user/byok.md`，更多内部设计文档见 `codework/docs/`。
+This will launch Code Work's backend on your machine as well as the local web app to control your agents.
 
-## 当前状态
+Tip: Use `npx t3@latest --help` for the full CLI reference.
 
-- 底层基线：`cursor-byok` 提交 `9ac2f25ea77b7db666b5dbcf2ca2ea4dd4538edc`。
-- 产品数据与现有 cursor-byok 隔离；不会自动读取、迁移或删除其配置、账号、证书和历史记录。
-- VS Code 与 OpenAI Codex 仅作为本地参考源码，用于研究信息架构、交互与可访问性；其源码和品牌资产不进入本项目的产品代码或构建产物。
+### Desktop app
 
-详细的参考来源记录见 `docs/reference-provenance.md`。
+Install the latest version of the desktop app from [GitHub Releases](https://github.com/Sakana-yuyu/code-work/releases), or from your favorite package registry:
 
-## License
+#### Windows (`winget`)
 
-[MIT](LICENSE)。`codework/` 子树保留其上游版权声明（见 `codework/LICENSE`）。
+```bash
+winget install T3Tools.T3Code
+```
 
-<!-- contributors-start -->
-<table><tr>
-<td><a href="https://github.com/Sakana-yuyu/code-work"><img src="https://secure.gravatar.com/avatar/e91e20e8d5f83234900a3878086e1fe7?d=identicon&s=80" width="48" height="48" alt="呆呆可达鸭鸭" title="呆呆可达鸭鸭 (3387 次提交)"/></a></td>
-<td><a href="https://github.com/Sakana-yuyu/code-work"><img src="https://avatars.githubusercontent.com/u/41898282?v=4&s=80" width="48" height="48" alt="github-actions[bot]" title="github-actions[bot] (3 次提交)"/></a></td>
-</tr></table>
-<!-- contributors-end -->
+#### macOS (Homebrew)
+
+```bash
+brew install --cask code-work
+```
+
+#### Arch Linux (AUR)
+
+Stable:
+
+```bash
+yay -S code-work-bin
+```
+
+Nightly:
+
+```bash
+yay -S code-work-nightly-bin
+```
+
+The AUR packaging is maintained in this repository under [`packaging/aur`](./packaging/aur).
+
+## Some notes
+
+We are very very early in this project. Expect bugs.
+
+We are (mostly) not accepting contributions yet. Small fixes may be considered. Big features will not be.
+
+## Documentation
+
+Full docs live in [docs/](./docs). There's no docs site yet.
+
+- [Install and first run](./docs/user/install.md)
+- [Permission modes](./docs/user/permission-modes.md)
+- [Keyboard shortcuts](./docs/user/keybindings.md)
+- [Customize a project icon](./docs/user/project-settings.md)
+- [Remote access from a phone or another machine](./docs/user/remote-access.md)
+- [Keeping app and server in sync](./docs/user/updating.md)
+- [Source control integrations](./docs/user/source-control.md)
+- Multiple accounts: [Codex](./docs/user/providers-codex.md) · [Claude](./docs/user/providers-claude.md)
+- Linux: [run Code Work as a background service](./docs/user/background-service.md)
+
+Building from source? Start at [docs/internals/overview.md](./docs/internals/overview.md).
+
+## If you REALLY want to contribute still.... read this first
+
+### Install `vp`
+
+Code Work uses Vite+ so you'll need to install the global `vp` command-line tool.
+
+#### macOS / Linux
+
+```bash
+curl -fsSL https://vite.plus | bash
+```
+
+#### Windows
+
+```bash
+irm https://vite.plus/ps1 | iex
+```
+
+Checkout their getting started guide for more information: https://viteplus.dev/guide/
+
+### Install dependencies
+
+```bash
+vp i
+```
+
+Read [CONTRIBUTING.md](./CONTRIBUTING.md) before reporting a bug or opening a PR.
+
+Have a feature request? Start an [Ideas discussion](https://github.com/Sakana-yuyu/code-work/discussions/categories/ideas).
+
+Need support? Join the [Discord](https://discord.gg/jn4EGJjrvv).
