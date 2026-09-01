@@ -13,9 +13,11 @@ export const DESKTOP_HOST = "app";
 export const DESKTOP_PRODUCTION_SCHEME = "codework";
 export const DESKTOP_DEVELOPMENT_SCHEME = "codework-dev";
 export const DESKTOP_PREVIEW_SCHEME = "codework-preview";
-export const DESKTOP_LEGACY_PRODUCTION_SCHEME = "codework";
-export const DESKTOP_LEGACY_DEVELOPMENT_SCHEME = "codework-dev";
-export const DESKTOP_LEGACY_PREVIEW_SCHEME = "codework-preview";
+// 去品牌前的历史 deep-link scheme；必须保留旧值，让既有安装的 t3code:// 链接
+// 继续路由到本应用，且不能与 canonical scheme 同名（protocol.handle 不允许重复）。
+export const DESKTOP_LEGACY_PRODUCTION_SCHEME = "t3code";
+export const DESKTOP_LEGACY_DEVELOPMENT_SCHEME = "t3code-dev";
+export const DESKTOP_LEGACY_PREVIEW_SCHEME = "t3code-preview";
 
 export function getDesktopScheme(isDevelopment: boolean): string {
   return isDevelopment ? DESKTOP_DEVELOPMENT_SCHEME : DESKTOP_PRODUCTION_SCHEME;
