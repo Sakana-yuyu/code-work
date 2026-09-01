@@ -44,9 +44,12 @@ const recoveryInput = (taskId: string): CompositionTaskRecoveryInput => ({
 });
 
 const makeInputStore = (
-  inputs: ReadonlyMap<string, CompositionTaskRecoveryInput>,
+  inputs: Map<string, CompositionTaskRecoveryInput>,
 ): CompositionTaskInputStoreShape => ({
-  save: () => Effect.die("unused"),
+  save: (input) =>
+    Effect.sync(() => {
+      inputs.set(input.taskId, input);
+    }),
   get: (taskId) => Effect.succeed(Option.fromNullishOr(inputs.get(taskId))),
   remove: () => Effect.void,
 });
@@ -106,7 +109,7 @@ const seedInterruptedGoalLoop = (input: {
 const makeRecoveryOptions = (
   store: CompositionTaskStoreShape,
   retryStore: CompositionGoalLoopRetryStartupRecoveryOptions["retryStore"],
-  inputs: ReadonlyMap<string, CompositionTaskRecoveryInput>,
+  inputs: Map<string, CompositionTaskRecoveryInput>,
 ) =>
   Effect.gen(function* () {
     const starts: Array<{

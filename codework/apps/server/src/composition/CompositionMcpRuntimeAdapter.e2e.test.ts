@@ -1,8 +1,6 @@
 import { describe, expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
-// 该用例为普通 async 测试，无法接入 Effect 的 Path 服务；cwd 拼接保持 node:path。
-// @effect-diagnostics-next-line nodeBuiltinImport:off
-import { join } from "node:path";
+// stdio 子进程直接继承当前工作目录（与测试进程一致，依赖必然可解析），不做 cwd 假设。
 
 import { makeCompositionMcpRuntimeAdapter } from "./CompositionMcpRuntimeAdapter.ts";
 import { makeCompositionMcpToolRegistry } from "./CompositionMcpToolRegistry.ts";
@@ -60,7 +58,6 @@ describe("CompositionMcpRuntimeAdapter 本地 stdio E2E", () => {
         transport: "stdio",
         command: process.execPath,
         args: ["--input-type=module", "-e", localServerScript],
-        cwd: join(process.cwd(), "apps/server"),
         trusted: true,
       }),
     );

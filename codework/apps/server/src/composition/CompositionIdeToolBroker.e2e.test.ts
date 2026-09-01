@@ -183,9 +183,14 @@ describe("Composition IDE -> ToolBroker 本地跨进程 E2E", () => {
               });
             }).pipe(Effect.provide(makeTestLayer(registry, grantRegistry)));
             const audit = yield* grantRegistry.listAudit({ taskId: "task-toolbroker-1" });
-            expect(audit).toHaveLength(2);
-            expect(audit.map((event) => event.grantId)).toEqual([grant.grantId, grant.grantId]);
-            expect(audit.map((event) => event.outcome)).toEqual(["approval_required", "allowed"]);
+            // 审批生命周期：requested -> broker denied -> approved -> consumed -> broker allowed。
+            expect(audit.map((event) => [event.outcome, event.errorCode])).toEqual([
+              ["approval_required", "capability_approval_requested"],
+              ["approval_required", "tool_approval_required"],
+              ["allowed", "capability_approval_approved"],
+              ["allowed", "capability_approval_consumed"],
+              ["allowed", undefined],
+            ]);
             yield* registry.unregister("vscode-session-fixture");
           }),
         (fixture) => Effect.promise(() => stopFixture(fixture)),
