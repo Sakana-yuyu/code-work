@@ -12,7 +12,7 @@ migrationLayer("073_CompositionRunStartCancellationBarrier", (it) => {
   it.effect("升级 067 行并补齐取消屏障列、accepted owner 与独立扫描索引", () =>
     Effect.gen(function* () {
       const sql = yield* SqlClient.SqlClient;
-      yield* runMigrations({ toMigrationInclusive: 67 });
+      yield* runMigrations({ toMigrationInclusive: 72 });
       yield* sql`
         INSERT INTO composition_run_start_intents (
           run_id, task_id, previous_run_id, agent_id, runtime_id, attempt,
@@ -38,7 +38,7 @@ migrationLayer("073_CompositionRunStartCancellationBarrier", (it) => {
           )
       `;
 
-      const executed = yield* runMigrations({ toMigrationInclusive: 68 });
+      const executed = yield* runMigrations({ toMigrationInclusive: 73 });
       const columns = yield* sql<{ readonly name: string }>`
         SELECT name FROM pragma_table_info('composition_run_start_intents')
       `;
@@ -75,7 +75,7 @@ migrationLayer("073_CompositionRunStartCancellationBarrier", (it) => {
         WHERE type = 'index' AND name = 'idx_composition_run_start_cancellation_recovery'
       `;
 
-      assert.deepEqual(executed, [[68, "CompositionRunStartCancellationBarrier"]]);
+      assert.deepEqual(executed, [[73, "CompositionRunStartCancellationBarrier"]]);
       assert.deepEqual(
         columns.map((column) => column.name).filter((name) => name.startsWith("cancel_")),
         [
@@ -137,14 +137,14 @@ migrationLayer("073_CompositionRunStartCancellationBarrier", (it) => {
       ]);
       assert.equal(indexes.length, 1);
       assert.isTrue(indexes[0]?.sql.includes("WHERE state = 'cancel_pending'"));
-      assert.deepEqual(yield* runMigrations({ toMigrationInclusive: 68 }), []);
+      assert.deepEqual(yield* runMigrations({ toMigrationInclusive: 73 }), []);
     }),
   );
 
   it.effect("CHECK 拒绝未绑定来源、未决 receipt、半套终态和取消完成后丢失审计字段", () =>
     Effect.gen(function* () {
       const sql = yield* SqlClient.SqlClient;
-      yield* runMigrations({ toMigrationInclusive: 68 });
+      yield* runMigrations({ toMigrationInclusive: 73 });
       yield* sql`
         INSERT INTO composition_run_start_intents (
           run_id, task_id, agent_id, runtime_id, attempt,

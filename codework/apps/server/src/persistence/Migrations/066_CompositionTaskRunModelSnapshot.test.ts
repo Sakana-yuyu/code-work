@@ -13,7 +13,7 @@ layer("066_CompositionTaskRunModelSnapshot", (it) => {
     Effect.gen(function* () {
       const sql = yield* SqlClient.SqlClient;
 
-      yield* runMigrations({ toMigrationInclusive: 64 });
+      yield* runMigrations({ toMigrationInclusive: 65 });
       yield* sql`
         INSERT INTO composition_task_runs (
           run_id, task_id, agent_id, runtime_id, status, attempt, capability_grant_ids_json
@@ -23,8 +23,8 @@ layer("066_CompositionTaskRunModelSnapshot", (it) => {
         )
       `;
 
-      const executed = yield* runMigrations({ toMigrationInclusive: 65 });
-      assert.deepEqual(executed, [[65, "CompositionTaskRunModelSnapshot"]]);
+      const executed = yield* runMigrations({ toMigrationInclusive: 66 });
+      assert.deepEqual(executed, [[66, "CompositionTaskRunModelSnapshot"]]);
 
       const columns = yield* sql<{ readonly name: string; readonly notnull: number }>`
         PRAGMA table_info(composition_task_runs)
@@ -42,7 +42,7 @@ layer("066_CompositionTaskRunModelSnapshot", (it) => {
       assert.equal(modelSnapshot?.name, "model_snapshot_json");
       assert.equal(modelSnapshot?.notnull, 0);
       assert.deepEqual(runs, [{ runId: "run-before-65", modelSnapshotJson: null }]);
-      assert.deepEqual(yield* runMigrations({ toMigrationInclusive: 65 }), []);
+      assert.deepEqual(yield* runMigrations({ toMigrationInclusive: 66 }), []);
     }),
   );
 });

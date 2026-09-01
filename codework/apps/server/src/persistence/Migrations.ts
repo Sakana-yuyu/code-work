@@ -83,6 +83,7 @@ import Migration0070 from "./Migrations/070_CompositionRunStartIntents.ts";
 import Migration0071 from "./Migrations/071_CompositionRunStartFencing.ts";
 import Migration0072 from "./Migrations/072_CompositionRunStartAcceptedOwnership.ts";
 import Migration0073 from "./Migrations/073_CompositionRunStartCancellationBarrier.ts";
+import Migration0074 from "./Migrations/074_WorkspaceScriptStopClaimFencing.ts";
 import Migration0069 from "./Migrations/069_ThreadGoals.ts";
 
 /**
@@ -169,6 +170,7 @@ export const migrationEntries = [
   [71, "CompositionRunStartFencing", Migration0071],
   [72, "CompositionRunStartAcceptedOwnership", Migration0072],
   [73, "CompositionRunStartCancellationBarrier", Migration0073],
+  [74, "WorkspaceScriptStopClaimFencing", Migration0074],
   [69, "ThreadGoals", Migration0069],
 ] as const;
 

@@ -12,7 +12,7 @@ legacyStateLayer("072_CompositionRunStartAcceptedOwnership 历史状态", (it) =
   it.effect("归一化 065/066 历史状态并阻止无围栏 dispatch 自动重放", () =>
     Effect.gen(function* () {
       const sql = yield* SqlClient.SqlClient;
-      yield* runMigrations({ toMigrationInclusive: 66 });
+      yield* runMigrations({ toMigrationInclusive: 71 });
       yield* sql`
         INSERT INTO composition_run_start_intents (
           run_id, task_id, previous_run_id, agent_id, runtime_id, attempt,
@@ -75,8 +75,8 @@ legacyStateLayer("072_CompositionRunStartAcceptedOwnership 历史状态", (it) =
           )
       `;
 
-      const executed = yield* runMigrations({ toMigrationInclusive: 67 });
-      assert.deepEqual(executed, [[67, "CompositionRunStartAcceptedOwnership"]]);
+      const executed = yield* runMigrations({ toMigrationInclusive: 72 });
+      assert.deepEqual(executed, [[72, "CompositionRunStartAcceptedOwnership"]]);
 
       const rows = yield* sql<{
         readonly runId: string;
@@ -208,7 +208,7 @@ acceptedOwnershipLayer("072_CompositionRunStartAcceptedOwnership accepted owner"
   it.effect("保留旧 accepted 行并允许持久 owner 围栏 receipt 收口", () =>
     Effect.gen(function* () {
       const sql = yield* SqlClient.SqlClient;
-      yield* runMigrations({ toMigrationInclusive: 66 });
+      yield* runMigrations({ toMigrationInclusive: 71 });
       yield* sql`
         INSERT INTO composition_run_start_intents (
           run_id, task_id, previous_run_id, agent_id, runtime_id, attempt,
@@ -225,8 +225,8 @@ acceptedOwnershipLayer("072_CompositionRunStartAcceptedOwnership accepted owner"
         )
       `;
 
-      const executed = yield* runMigrations({ toMigrationInclusive: 67 });
-      assert.deepEqual(executed, [[67, "CompositionRunStartAcceptedOwnership"]]);
+      const executed = yield* runMigrations({ toMigrationInclusive: 72 });
+      assert.deepEqual(executed, [[72, "CompositionRunStartAcceptedOwnership"]]);
       const preserved = yield* sql<{
         readonly state: string;
         readonly runtimeTaskId: string;
@@ -281,7 +281,7 @@ acceptedOwnershipLayer("072_CompositionRunStartAcceptedOwnership accepted owner"
           ownerLeaseExpiresAtUnixMs: null,
         },
       ]);
-      assert.deepEqual(yield* runMigrations({ toMigrationInclusive: 67 }), []);
+      assert.deepEqual(yield* runMigrations({ toMigrationInclusive: 72 }), []);
     }),
   );
 });
@@ -292,7 +292,7 @@ manualPendingLayer("072_CompositionRunStartAcceptedOwnership manual pending", (i
   it.effect("约束 manual_pending owner/结果并提供相互隔离的 keyset 索引", () =>
     Effect.gen(function* () {
       const sql = yield* SqlClient.SqlClient;
-      yield* runMigrations({ toMigrationInclusive: 67 });
+      yield* runMigrations({ toMigrationInclusive: 72 });
 
       yield* sql`
         INSERT INTO composition_run_start_intents (

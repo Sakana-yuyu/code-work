@@ -12,7 +12,7 @@ layer("071_CompositionRunStartFencing", (it) => {
   it.effect("以追加迁移为 Run Start 持久 owner epoch 与 lease", () =>
     Effect.gen(function* () {
       const sql = yield* SqlClient.SqlClient;
-      yield* runMigrations({ toMigrationInclusive: 65 });
+      yield* runMigrations({ toMigrationInclusive: 70 });
 
       const before = yield* sql<{ readonly name: string }>`
         PRAGMA table_info('composition_run_start_intents')
@@ -22,8 +22,8 @@ layer("071_CompositionRunStartFencing", (it) => {
         before.map((column) => column.name).includes("owner_lease_expires_at_unix_ms"),
       );
 
-      const executed = yield* runMigrations({ toMigrationInclusive: 66 });
-      assert.deepEqual(executed, [[66, "CompositionRunStartFencing"]]);
+      const executed = yield* runMigrations({ toMigrationInclusive: 71 });
+      assert.deepEqual(executed, [[71, "CompositionRunStartFencing"]]);
 
       const columns = yield* sql<{ readonly name: string }>`
         PRAGMA table_info('composition_run_start_intents')
@@ -32,7 +32,7 @@ layer("071_CompositionRunStartFencing", (it) => {
         columns.slice(-2).map((column) => column.name),
         ["owner_epoch", "owner_lease_expires_at_unix_ms"],
       );
-      assert.deepEqual(yield* runMigrations({ toMigrationInclusive: 66 }), []);
+      assert.deepEqual(yield* runMigrations({ toMigrationInclusive: 71 }), []);
     }),
   );
 });

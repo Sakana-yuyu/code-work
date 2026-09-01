@@ -12,7 +12,7 @@ layer("070_CompositionRunStartIntents", (it) => {
   it.effect("以追加迁移建立只保存摘要与稳定 receipt 的 Run Start 台账", () =>
     Effect.gen(function* () {
       const sql = yield* SqlClient.SqlClient;
-      yield* runMigrations({ toMigrationInclusive: 64 });
+      yield* runMigrations({ toMigrationInclusive: 69 });
 
       const before = yield* sql<{ readonly name: string }>`
         SELECT name FROM sqlite_master
@@ -20,8 +20,8 @@ layer("070_CompositionRunStartIntents", (it) => {
       `;
       assert.deepEqual(before, []);
 
-      const executed = yield* runMigrations({ toMigrationInclusive: 65 });
-      assert.deepEqual(executed, [[65, "CompositionRunStartIntents"]]);
+      const executed = yield* runMigrations({ toMigrationInclusive: 70 });
+      assert.deepEqual(executed, [[70, "CompositionRunStartIntents"]]);
 
       const columns = yield* sql<{ readonly name: string }>`
         PRAGMA table_info('composition_run_start_intents')
@@ -67,7 +67,7 @@ layer("070_CompositionRunStartIntents", (it) => {
       assert.isFalse(names.includes("prompt"));
       assert.isFalse(names.includes("workspace_root"));
       assert.isFalse(names.includes("capability_ids"));
-      assert.deepEqual(yield* runMigrations({ toMigrationInclusive: 65 }), []);
+      assert.deepEqual(yield* runMigrations({ toMigrationInclusive: 70 }), []);
     }),
   );
 });
