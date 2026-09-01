@@ -415,6 +415,7 @@ const makeOrchestrator = (
 ): CompositionOrchestrator => {
   const resumingTaskIds = new Set<string>();
   const resumingRunIds = new Set<string>();
+  const retryingRunIds = new Set<string>();
 
   const prepareRunLease = (
     task: CompositionTask,
@@ -1716,6 +1717,25 @@ const makeOrchestrator = (
     });
 
   const retryTask: CompositionOrchestrator["retryTask"] = (input) =>
+    Effect.suspend(() => {
+      // 同一 Run 的 retry 派发窗口内（含 Driver startTask 在途）只允许一次进入，
+      // 并发重入立即失败，避免重复调用 Driver 或重复签发授权。
+      if (retryingRunIds.has(input.runId)) {
+        return Effect.fail(
+          new CompositionTaskRetryInvalidError({
+            taskId: input.taskId,
+            previousRunId: input.previousRunId,
+            reason: "retry_dispatch_in_progress",
+          }),
+        );
+      }
+      retryingRunIds.add(input.runId);
+      return executeRetryTask(input).pipe(
+        Effect.ensuring(Effect.sync(() => retryingRunIds.delete(input.runId))),
+      );
+    });
+
+  const executeRetryTask = (input: CompositionTaskRetryRequest) =>
     Effect.gen(function* () {
       const taskOption = yield* store.getTask(input.taskId);
       const previousRunOption = yield* store.getRun(input.previousRunId);
