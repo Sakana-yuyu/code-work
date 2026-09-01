@@ -339,3 +339,17 @@
 
 - 重建前后 `bin/`、`build/windows/nsis/` 清单对比；`grep -rn code-work-windows Taskfile.yml build/windows/` 归零。
 - 修复提交 `37350dbb8` 仅含 Taskfile 与 NSIS 脚本 4 个文件；文档单独提交。
+
+## Round 25 - 15.3 改定发布 codework 桌面端（v0.0.38 本地构建 + tag，Release 交由用户 Action）
+
+| ID | Lens | Severity | Status | Finding | Evidence | Resolution |
+| --- | --- | --- | --- | --- | --- | --- |
+| V-68 | scope | major | fixed(r25) | V-64 雷点③已由用户裁决：15.3 的发布对象是 `codework/` 子树 T3 Code 系桌面端（`@codework/desktop`），不是 Wails 线。该线在本 fork 的既有工作流为本地 `scripts/build-desktop-artifact.ts`（上游 `release.yml` 未随 fork 保留），版本号唯一事实来源为各 workspace `package.json`（0.0.34）。tag 命名空间中 `v0.0.35` 已被上游历史占用（远端最高稳定 tag），故"下一个 patch"取 `v0.0.38`（本地/远端均空闲，接续上游 nightly 已用的 0.0.38 base）。 | `codework/docs/operations/release.md`；`git ls-remote --tags origin` 稳定 tag 最高 v0.0.35、无任何 Release；`git tag -l` 无裸 v0.0.38。 | 版本升级提交 `8e163f15f`（desktop/server/web 0.0.34→0.0.38）；`git push origin main`（e5e615534..8e163f15f，fast-forward）+ 推送 annotated tag `v0.0.38`。 |
+| V-69 | build | minor | fixed(r25) | Windows NSIS 安装包本地构建成功并通过脚本内置全部 Windows 不变量校验；两处环境坑已定位：① 版本旗标是 `--build-version`（`--version` 会被 Effect CLI 当作打印版本直接退出）；② `apps/desktop/node_modules/.bin` 缺失 electron-builder 启动 shim（包体经符号链接在 `apps/desktop/.tmp/node_modules`），需手工补 `.CMD`/sh shim，且 `vp` 需在 PATH。 | 构建命令 `node scripts/build-desktop-artifact.ts --platform win --target nsis --arch x64 --build-version 0.0.38 --verbose`（PATH 前置 `.tmp/node_modules/.bin`）；产物 `codework/release/Code-Work-0.0.38-x64.exe`（144,878,223 字节，sha256 `fe69dc86…b94f6a3`）+ blockmap；内置校验日志 "Validated Windows payload (60 files, 26 sidecar natives)"，sidecar 自检 `t3 v0.0.38`。 | 本地保留 exe/blockmap/手工生成的 `latest.yml`（sha512 base64，electron-updater 格式）；`codework/release/` 已被 gitignore，不入库。 |
+| V-70 | delivery | major | open | 15.3 的"推送 tag 并核验 GitHub Actions/Release 资产"由用户接管：用户在我手工 `gh release create`（草稿态，已传 latest.yml 与 blockmap、exe 上传中）时叫停，明确"不上传 release 了，在创建 action 了"。草稿 Release 已删除（避免与 Action 创建的同 tag Release 冲突），tag `v0.0.38` 保留在远端。 | `gh release list` 为空；`git ls-remote --tags origin v0.0.38` 命中 `ded6d57f`。 | 15.3 保持未勾选。用户 Action 就绪后按其流水线发布资产；验收要点沿用上游契约：安装包 + blockmap + `latest*.yml` 通道元数据齐全，stable 纯 `X.Y.Z` 标记 latest。 |
+
+本轮证据：
+
+- `git log --oneline -1`=`8e163f15f`（release 提交仅含 3 个 package.json）；tag `v0.0.38` 指向该提交并已推送。
+- 构建日志关键行：`t3 v0.0.38`、`Validated Windows payload (60 files, 26 sidecar natives)`、产物清单三项。
+- 本轮代码/发布改动（版本升级提交）与文档提交（本台账）分开；未勾选 15.3。
