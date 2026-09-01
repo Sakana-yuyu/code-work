@@ -154,9 +154,9 @@ function RedactedAccount(props: { readonly account: string | null }) {
   return (
     <RedactedSensitiveText
       value={props.account}
-      ariaLabel="Toggle source control account visibility"
-      revealTooltip="Click to reveal account"
-      hideTooltip="Click to hide account"
+      ariaLabel={t("sourceControl.toggleAccountVisibility")}
+      revealTooltip={t("sourceControl.clickToReveal")}
+      hideTooltip={t("sourceControl.clickToHide")}
     />
   );
 }

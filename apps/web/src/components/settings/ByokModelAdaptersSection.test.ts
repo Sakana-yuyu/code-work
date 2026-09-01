@@ -24,8 +24,6 @@ describe("filterSupplierTemplates", () => {
       label: "DeepSeek",
       protocol: "openai",
       baseURL: "https://api.deepseek.com/v1",
-      modelId: "deepseek-chat",
-      displayName: "DeepSeek Chat",
       iconURL: "/supplier-icons/deepseek.svg",
       iconLight: false,
     },
@@ -34,18 +32,16 @@ describe("filterSupplierTemplates", () => {
       label: "火山Agent Plan",
       protocol: "openai",
       baseURL: "https://ark.cn-beijing.volces.com/api/v3",
-      modelId: "doubao-seed-code",
-      displayName: "doubao-seed-code",
       iconURL: "/supplier-icons/huoshan.png",
       iconLight: false,
     },
   ] as const;
 
-  it("matches supplier cards by label, id, URL, or starter model", () => {
+  it("matches supplier cards by label, id, or URL without using a starter model", () => {
     expect(filterSupplierTemplates(templates, "火山")).toEqual([templates[1]]);
     expect(filterSupplierTemplates(templates, "volcengine")).toEqual([templates[1]]);
     expect(filterSupplierTemplates(templates, "deepseek.com")).toEqual([templates[0]]);
-    expect(filterSupplierTemplates(templates, "deepseek-chat")).toEqual([templates[0]]);
+    expect(filterSupplierTemplates(templates, "deepseek-chat")).toEqual([]);
   });
 
   it("returns the original supplier order when the search box is empty", () => {

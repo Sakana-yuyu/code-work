@@ -218,7 +218,7 @@ function SkillSourceBadge(props: { kind: ProviderSkillSourceKind; showSkillSuffi
     <Badge className="ms-auto" variant="secondary">
       <Icon aria-hidden="true" className="text-current" />
       {SKILL_SOURCE_LABEL_BY_KIND[props.kind]}
-      {props.showSkillSuffix ? t("skill") : null}
+      {props.showSkillSuffix ? ` ${t("skill")}` : null}
     </Badge>
   );
 }

@@ -90,7 +90,7 @@ export function PullRequestReviewerPicker({
           : t("couldNotAskForAReview", { login: candidate.login }),
         description: readableFailure(
           squashAtomCommandFailure(result),
-          "The host refused it. Check that you have write access on this repository, and that they still have access to it.",
+          t("pullRequests.hintReviewerAccessRefused"),
         ),
       });
       return;

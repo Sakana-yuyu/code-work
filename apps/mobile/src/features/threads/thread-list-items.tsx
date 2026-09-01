@@ -204,10 +204,10 @@ export const ThreadListShowMoreRow = memo(function ThreadListShowMoreRow(props: 
     [groupKey, onGroupAction],
   );
 
-  const button = (label: string, icon: "chevron.down" | "chevron.up", onPress: () => void) => (
+  const button = (showMore: boolean, icon: "chevron.down" | "chevron.up", onPress: () => void) => (
     <Pressable
       accessibilityRole="button"
-      accessibilityLabel={label === "Show more" ? t("showMoreThreads") : t("showFewerThreads")}
+      accessibilityLabel={showMore ? t("showMoreThreads") : t("showFewerThreads")}
       className="rounded-full bg-subtle"
       hitSlop={6}
       onPress={onPress}
@@ -233,7 +233,7 @@ export const ThreadListShowMoreRow = memo(function ThreadListShowMoreRow(props: 
               : "text-xs font-codework-medium text-foreground-muted"
           }
         >
-          {label}
+          {showMore ? t("interface.show-more") : t("interface.show-less")}
         </Text>
       </View>
     </Pressable>
@@ -250,8 +250,8 @@ export const ThreadListShowMoreRow = memo(function ThreadListShowMoreRow(props: 
         paddingVertical: compact ? 12 : 8,
       }}
     >
-      {showsMore ? button("Show more", "chevron.down", handleShowMore) : null}
-      {props.canShowLess ? button("Show less", "chevron.up", handleShowLess) : null}
+      {showsMore ? button(true, "chevron.down", handleShowMore) : null}
+      {props.canShowLess ? button(false, "chevron.up", handleShowLess) : null}
     </View>
   );
 });

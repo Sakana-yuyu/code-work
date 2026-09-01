@@ -9,6 +9,7 @@ import { t } from "~/i18n/runtime";
  */
 export type ThreadActionMenuId =
   | "new-thread-on-branch"
+  | "open-in-split"
   | "pin"
   | "unpin"
   | "settle"
@@ -53,6 +54,11 @@ export function buildThreadActionMenuItems(
   state: ThreadActionMenuState,
 ): ReadonlyArray<ContextMenuItem<ThreadActionMenuId>> {
   return [
+    {
+      id: "open-in-split",
+      label: t("openThreadBeside"),
+      icon: "message-square-plus",
+    },
     ...(state.branch
       ? [
           {
@@ -90,7 +96,7 @@ export function buildThreadActionMenuItems(
                 disabled: !state.canSnoozeNow,
                 children: state.snoozePresets.map((preset) => ({
                   id: `snooze:${preset.id}` as const,
-                  label: `${preset.label} (${preset.whenLabel})`,
+                  label: `${t(preset.labelKey)} (${preset.whenLabel})`,
                 })),
               },
         ]

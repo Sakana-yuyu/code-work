@@ -11,6 +11,7 @@ import {
   EventId,
   isToolLifecycleItemType,
   ThreadId,
+  type ThreadGoal,
   type ThreadTokenUsageSnapshot,
   TurnId,
   type OrchestrationCheckpointSummary,
@@ -32,6 +33,7 @@ import { makeDrainableWorker } from "@codework/shared/DrainableWorker";
 import { ProviderService } from "../../provider/Services/ProviderService.ts";
 import { ProjectionTurnRepository } from "../../persistence/Services/ProjectionTurns.ts";
 import { ProjectionTurnRepositoryLive } from "../../persistence/Layers/ProjectionTurns.ts";
+import { scanGoalMarkers } from "../../composition/CompositionGoalLoop.ts";
 import { isGitRepository } from "../../git/Utils.ts";
 import { OrchestrationEngineService } from "../Services/OrchestrationEngine.ts";
 import { ThreadBackgroundLivenessService } from "../ThreadBackgroundLiveness.ts";
@@ -45,6 +47,7 @@ import { projectActivityPayload } from "../ActivityPayloadProjection.ts";
 import { forkParked } from "../../serverActivation.ts";
 import { ServerSettingsService } from "../../serverSettings.ts";
 import { canReplaceThreadTitle } from "../threadTitles.ts";
+import { ThreadGoalStore } from "../../persistence/Services/ThreadGoalStore.ts";
 
 const providerTurnKey = (threadId: ThreadId, turnId: TurnId) => `${threadId}:${turnId}`;
 const providerTaskKey = (threadId: ThreadId, taskId: string) => `${threadId}:${taskId}`;
@@ -99,7 +102,8 @@ const BUFFERED_PROPOSED_PLAN_BY_ID_TTL = Duration.minutes(120);
 const TASK_DESCRIPTION_BY_TASK_CACHE_CAPACITY = 10_000;
 const TASK_DESCRIPTION_BY_TASK_TTL = Duration.minutes(120);
 const MAX_BUFFERED_ASSISTANT_CHARS = 24_000;
-const STRICT_PROVIDER_LIFECYCLE_GUARD = process.env.CODEWORK_STRICT_PROVIDER_LIFECYCLE_GUARD !== "0";
+const STRICT_PROVIDER_LIFECYCLE_GUARD =
+  process.env.CODEWORK_STRICT_PROVIDER_LIFECYCLE_GUARD !== "0";
 
 type TurnStartRequestedDomainEvent = Extract<
   OrchestrationEvent,
@@ -896,6 +900,7 @@ const make = Effect.gen(function* () {
   const providerService = yield* ProviderService;
   const projectionTurnRepository = yield* ProjectionTurnRepository;
   const serverSettingsService = yield* ServerSettingsService;
+  const threadGoalStore = yield* Effect.serviceOption(ThreadGoalStore);
   const providerCommandId = (event: ProviderRuntimeEvent, tag: string) =>
     crypto.randomUUIDv4.pipe(
       Effect.map((uuid) => CommandId.make(`provider:${event.eventId}:${tag}:${uuid}`)),
@@ -1141,6 +1146,109 @@ const make = Effect.gen(function* () {
   const clearAssistantMessageState = (messageId: MessageId) =>
     clearBufferedAssistantText(messageId);
 
+  // Goal 自动收敛：终帧完整文本出现显式标记时报告 Goal 终态并剥离标记（聊天流
+  // 不暴露内部标记）。已流式发出的前缀不回改；complete 优先于取消。
+  type AssistantGoalTermination = {
+    readonly cleanText: string;
+    readonly status: "complete" | "paused";
+  };
+  const resolveAssistantGoalTermination = (
+    threadId: ThreadId,
+    text: string,
+  ): Effect.Effect<Option.Option<AssistantGoalTermination>> => {
+    if (Option.isNone(threadGoalStore)) {
+      return Effect.succeed(Option.none());
+    }
+    return threadGoalStore.value.get(threadId).pipe(
+      Effect.catchCause((cause) =>
+        Effect.logWarning("provider runtime ingestion failed to read thread Goal", {
+          threadId,
+          cause: Cause.pretty(cause),
+        }).pipe(Effect.as(Option.none<ThreadGoal>())),
+      ),
+      Effect.flatMap(
+        Option.match({
+          onNone: () => Effect.succeed(Option.none<AssistantGoalTermination>()),
+          onSome: (goal) => {
+            if (goal.status === "complete") {
+              return Effect.succeed(Option.none<AssistantGoalTermination>());
+            }
+            const scan = scanGoalMarkers(text);
+            if (!scan.complete && !scan.cancelled) {
+              return Effect.succeed(Option.none<AssistantGoalTermination>());
+            }
+            return Effect.succeed(
+              Option.some({
+                cleanText: scan.text,
+                status: scan.complete ? ("complete" as const) : ("paused" as const),
+              }),
+            );
+          },
+        }),
+      ),
+    );
+  };
+
+  const applyAssistantGoalTermination = (
+    threadId: ThreadId,
+    termination: AssistantGoalTermination,
+  ) => {
+    if (Option.isNone(threadGoalStore)) return Effect.void;
+    return threadGoalStore.value.get(threadId).pipe(
+      Effect.flatMap(
+        Option.match({
+          onNone: () => Effect.void,
+          onSome: (goal) =>
+            goal.status === termination.status
+              ? Effect.void
+              : threadGoalStore.value
+                  .setStatus({
+                    threadId,
+                    status: termination.status,
+                  })
+                  .pipe(Effect.asVoid),
+        }),
+      ),
+      Effect.catchCause((cause) => {
+        if (Cause.hasInterruptsOnly(cause)) return Effect.failCause(cause);
+        return Effect.logWarning("provider runtime ingestion failed to settle thread Goal", {
+          threadId,
+          status: termination.status,
+          cause: Cause.pretty(cause),
+        });
+      }),
+    );
+  };
+
+  // 回合正常结束时 goal 若仍为 active（本轮未声明完成/取消）则转为 paused，
+  // 使目标条与 agent 实际运行状态一致；下一回合开始时由 reactor 自动恢复。
+  const pauseThreadGoalIfActive = (threadId: ThreadId) => {
+    if (Option.isNone(threadGoalStore)) {
+      return Effect.void;
+    }
+    return threadGoalStore.value.get(threadId).pipe(
+      Effect.flatMap(
+        Option.match({
+          onNone: () => Effect.void,
+          onSome: (goal) =>
+            goal.status === "active"
+              ? threadGoalStore.value.pause(threadId).pipe(Effect.asVoid)
+              : Effect.void,
+        }),
+      ),
+      Effect.catchCause((cause) => {
+        if (Cause.hasInterruptsOnly(cause)) return Effect.failCause(cause);
+        return Effect.logWarning(
+          "provider runtime ingestion failed to pause thread Goal on turn end",
+          {
+            threadId,
+            cause: Cause.pretty(cause),
+          },
+        );
+      }),
+    );
+  };
+
   const flushBufferedAssistantMessage = (input: {
     event: ProviderRuntimeEvent;
     threadId: ThreadId;
@@ -1213,12 +1321,14 @@ const make = Effect.gen(function* () {
   }) =>
     Effect.gen(function* () {
       const bufferedText = yield* takeBufferedAssistantText(input.messageId);
-      const text =
+      const finalText =
         bufferedText.length > 0
           ? bufferedText
           : (input.fallbackText?.trim().length ?? 0) > 0
             ? input.fallbackText!
             : "";
+      const goalTermination = yield* resolveAssistantGoalTermination(input.threadId, finalText);
+      const text = Option.isSome(goalTermination) ? goalTermination.value.cleanText : finalText;
       const hasRenderableText = hasRenderableAssistantText(text);
 
       if (hasRenderableText) {
@@ -1244,6 +1354,9 @@ const make = Effect.gen(function* () {
         });
       }
       yield* clearAssistantMessageState(input.messageId);
+      if (Option.isSome(goalTermination)) {
+        yield* applyAssistantGoalTermination(input.threadId, goalTermination.value);
+      }
     });
 
   const finalizeActiveAssistantSegmentForTurn = (input: {
@@ -1546,6 +1659,7 @@ const make = Effect.gen(function* () {
           case "turn.started":
             return !conflictsWithActiveTurn || conflictingTurnStartIsPendingTurnStart;
           case "turn.completed":
+          case "turn.aborted":
             if (conflictsWithActiveTurn || missingTurnForActiveTurn) {
               return false;
             }
@@ -1576,7 +1690,8 @@ const make = Effect.gen(function* () {
         event.type === "session.exited" ||
         event.type === "thread.started" ||
         event.type === "turn.started" ||
-        event.type === "turn.completed"
+        event.type === "turn.completed" ||
+        event.type === "turn.aborted"
       ) {
         const status = (() => {
           switch (event.type) {
@@ -1592,6 +1707,8 @@ const make = Effect.gen(function* () {
               return normalizeRuntimeTurnState(event.payload.state) === "failed"
                 ? "error"
                 : "ready";
+            case "turn.aborted":
+              return "interrupted";
             case "session.started":
             case "thread.started":
               // Provider thread/session start notifications can arrive during an
@@ -1602,7 +1719,9 @@ const make = Effect.gen(function* () {
         const nextActiveTurnId =
           event.type === "turn.started"
             ? (eventTurnId ?? null)
-            : event.type === "turn.completed" || event.type === "session.exited"
+            : event.type === "turn.completed" ||
+                event.type === "turn.aborted" ||
+                event.type === "session.exited"
               ? null
               : event.type === "session.state.changed" &&
                   !sessionStatusAllowsActiveTurn(
@@ -1754,6 +1873,10 @@ const make = Effect.gen(function* () {
           flushedMessageIds,
         });
       }
+      if (event.type === "request.opened" || event.type === "user-input.requested") {
+        // 审批或补充信息会让本轮停下来；目标也必须同步进入可恢复的暂停态。
+        yield* pauseThreadGoalIfActive(thread.id);
+      }
 
       if (proposedPlanDelta && proposedPlanDelta.length > 0) {
         const planId = proposedPlanIdFromEvent(event, thread.id);
@@ -1820,6 +1943,16 @@ const make = Effect.gen(function* () {
               : {}),
           });
 
+          if (existingAssistantMessage?.text) {
+            const goalTermination = yield* resolveAssistantGoalTermination(
+              thread.id,
+              existingAssistantMessage.text,
+            );
+            if (Option.isSome(goalTermination)) {
+              yield* applyAssistantGoalTermination(thread.id, goalTermination.value);
+            }
+          }
+
           if (turnId) {
             yield* forgetAssistantMessageId(thread.id, turnId, assistantMessageId);
           }
@@ -1853,15 +1986,29 @@ const make = Effect.gen(function* () {
           yield* Effect.forEach(
             assistantMessageIds,
             (assistantMessageId) =>
-              finalizeAssistantMessage({
-                event,
-                threadId: thread.id,
-                messageId: assistantMessageId,
-                turnId,
-                createdAt: now,
-                commandTag: "assistant-complete-finalize",
-                finalDeltaCommandTag: "assistant-delta-finalize-fallback",
-                hasProjectedMessage: findMessageById(messages, assistantMessageId) !== undefined,
+              Effect.gen(function* () {
+                const existingAssistantMessage = findMessageById(messages, assistantMessageId);
+                yield* finalizeAssistantMessage({
+                  event,
+                  threadId: thread.id,
+                  messageId: assistantMessageId,
+                  turnId,
+                  createdAt: now,
+                  commandTag: "assistant-complete-finalize",
+                  finalDeltaCommandTag: "assistant-delta-finalize-fallback",
+                  hasProjectedMessage: existingAssistantMessage !== undefined,
+                });
+                // 流式模式下最终文本已经投影，不再重复发送 delta，但仍扫描已投影文本，
+                // 让 Goal 不依赖 provider 是否额外提供 item.completed.detail。
+                if (existingAssistantMessage?.text) {
+                  const goalTermination = yield* resolveAssistantGoalTermination(
+                    thread.id,
+                    existingAssistantMessage.text,
+                  );
+                  if (Option.isSome(goalTermination)) {
+                    yield* applyAssistantGoalTermination(thread.id, goalTermination.value);
+                  }
+                }
               }),
             { concurrency: 1 },
           ).pipe(Effect.asVoid);
@@ -1876,11 +2023,17 @@ const make = Effect.gen(function* () {
             turnId,
             updatedAt: now,
           });
+          yield* pauseThreadGoalIfActive(thread.id);
         }
+      }
+
+      if (event.type === "turn.aborted") {
+        yield* pauseThreadGoalIfActive(thread.id);
       }
 
       if (event.type === "session.exited") {
         yield* clearTurnStateForSession(thread.id);
+        yield* pauseThreadGoalIfActive(thread.id);
       }
 
       if (event.type === "runtime.error") {
@@ -1909,6 +2062,7 @@ const make = Effect.gen(function* () {
             },
             createdAt: now,
           });
+          yield* pauseThreadGoalIfActive(thread.id);
         }
       }
 

@@ -49,7 +49,7 @@ export class ThreadArchiveBlockedError extends Schema.TaggedErrorClass<ThreadArc
   },
 ) {
   override get message(): string {
-    return "Cannot archive a running thread.";
+    return t("threads.cannotArchiveRunningThread");
   }
 }
 
@@ -61,7 +61,7 @@ export class ThreadSettlementUnsupportedError extends Schema.TaggedErrorClass<Th
   },
 ) {
   override get message(): string {
-    return "This environment's server does not support settling yet. Update the server to use Settle.";
+    return t("threads.settleUnsupported");
   }
 }
 
@@ -73,7 +73,7 @@ export class ThreadSettleBlockedError extends Schema.TaggedErrorClass<ThreadSett
   },
 ) {
   override get message(): string {
-    return "This thread still needs attention. Resolve or interrupt it first, then try again.";
+    return t("threads.settleBlockedNeedsAttention");
   }
 }
 
@@ -85,7 +85,7 @@ export class ThreadSnoozeUnsupportedError extends Schema.TaggedErrorClass<Thread
   },
 ) {
   override get message(): string {
-    return "This environment's server does not support snoozing yet. Update the server to use Snooze.";
+    return t("threads.snoozeUnsupported");
   }
 }
 
@@ -97,7 +97,7 @@ export class ThreadSnoozeBlockedError extends Schema.TaggedErrorClass<ThreadSnoo
   },
 ) {
   override get message(): string {
-    return "This thread is waiting on you. Respond to the pending request before snoozing it.";
+    return t("threads.snoozeBlockedWaitingOnYou");
   }
 }
 
@@ -121,7 +121,7 @@ export class ThreadPinningUnsupportedError extends Schema.TaggedErrorClass<Threa
   },
 ) {
   override get message(): string {
-    return "This environment's server does not support pinning yet. Update the server to use Pin.";
+    return t("threads.pinUnsupported");
   }
 }
 
@@ -133,7 +133,7 @@ export class ThreadPinReorderUnsupportedError extends Schema.TaggedErrorClass<Th
   },
 ) {
   override get message(): string {
-    return "This environment's server does not support reordering pinned threads yet. Update the server to reorder pins.";
+    return t("threads.pinReorderUnsupported");
   }
 }
 
@@ -321,10 +321,10 @@ export function useThreadActions() {
         const confirmationResult = await settlePromise(() =>
           localApi.dialogs.confirm(
             [
-              "This thread is the only one linked to this worktree:",
+              t("threads.worktreeOnlyLinkedLine"),
               displayWorktreePath ?? orphanedWorktreePath,
               "",
-              "Delete the worktree too?",
+              t("threads.deleteWorktreeToo"),
             ].join("\n"),
             { variant: "destructive" },
           ),
@@ -679,12 +679,12 @@ export function useThreadActions() {
       const resolved = resolveThreadTarget(target);
 
       if (confirmThreadDelete && localApi) {
-        const title = resolved?.thread.title ?? "this thread";
+        const title = resolved?.thread.title ?? t("deleteThreadFallbackTitle");
         const confirmationResult = await settlePromise(() =>
           localApi.dialogs.confirm(
             [
-              `Delete thread "${title}"?`,
-              "This permanently clears conversation history for this thread.",
+              t("deleteThreadConfirm", { threadTitle: title }),
+              t("deleteThreadConfirmDescription"),
             ].join("\n"),
             { variant: "destructive" },
           ),

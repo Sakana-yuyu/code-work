@@ -22,6 +22,7 @@ import { AsyncResult, Atom } from "effect/unstable/reactivity";
 import { useCallback, useMemo } from "react";
 
 import { appAtomRegistry } from "./atom-registry";
+import { t } from "../i18n/runtime";
 import { environmentPresentations } from "./presentation";
 import { serverEnvironment } from "./server";
 
@@ -52,7 +53,7 @@ const usageByWindowAtom = Atom.family((windowKey: string) =>
         environmentId,
         label: presentation.entry.target.label,
         isPending: result.waiting,
-        error: result._tag === "Failure" ? "This environment could not report usage." : null,
+        error: result._tag === "Failure" ? t("usage.reportFailed") : null,
         summary: Option.getOrNull(AsyncResult.value(result)),
       });
     }

@@ -1,3 +1,7 @@
+import { setCurrentLanguage } from "~/i18n/runtime";
+
+setCurrentLanguage("en");
+
 import type { EnvironmentId } from "@codework/contracts";
 import type { RelayClientEnvironmentRecord } from "@codework/contracts/relay";
 import { renderToStaticMarkup } from "react-dom/server";

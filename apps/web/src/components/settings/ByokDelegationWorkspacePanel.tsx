@@ -185,7 +185,9 @@ const normalizeExecutors = (value: unknown): ByokDelegationConfig["executors"] =
   const rows: ByokDelegationExecutor[] = [];
   for (const item of value) {
     if (!isRecord(item)) continue;
-    const id = String(item["id"] ?? "").trim().toLowerCase();
+    const id = String(item["id"] ?? "")
+      .trim()
+      .toLowerCase();
     if (!EXECUTOR_ID_PATTERN.test(id) || seen.has(id)) continue;
     const command = String(item["command"] ?? "").trim();
     if (command.length === 0) continue;
@@ -1232,9 +1234,7 @@ function ExecutorsEditor({
             max={5}
             value={failoverLimit}
             aria-label={t("delegationSettings.executorFailoverLimit")}
-            onChange={(event) =>
-              onFailoverLimitChange(boundedInteger(event.target.value, 3, 1, 5))
-            }
+            onChange={(event) => onFailoverLimitChange(boundedInteger(event.target.value, 3, 1, 5))}
           />
         </label>
         <span className="pb-1 text-[11px] text-muted-foreground/80">
@@ -1298,10 +1298,9 @@ export function ByokDelegationWorkspacePanel() {
   const cancelDelegationCommand = useAtomCommand(byokEnvironment.cancelDelegation, {
     reportFailure: false,
   });
-  const probeDelegationExecutorCommand = useAtomCommand(
-    byokEnvironment.probeDelegationExecutor,
-    { reportFailure: false },
-  );
+  const probeDelegationExecutorCommand = useAtomCommand(byokEnvironment.probeDelegationExecutor, {
+    reportFailure: false,
+  });
   const [task, setTask] = useState("");
   const [subagentType, setSubagentType] = useState("");
   const [delegations, setDelegations] = useState<ReadonlyArray<ByokDelegationSnapshot>>([]);
@@ -1310,9 +1309,9 @@ export function ByokDelegationWorkspacePanel() {
   const [cancellingIds, setCancellingIds] = useState<ReadonlySet<string>>(() => new Set());
   const [actionError, setActionError] = useState<string | null>(null);
   const [executorDialogOpen, setExecutorDialogOpen] = useState(false);
-  const [probeResults, setProbeResults] = useState<ReadonlyMap<string, ByokDelegationExecutorProbe>>(
-    () => new Map(),
-  );
+  const [probeResults, setProbeResults] = useState<
+    ReadonlyMap<string, ByokDelegationExecutorProbe>
+  >(() => new Map());
   const [probingIds, setProbingIds] = useState<ReadonlySet<string>>(() => new Set());
   const [expandedGroupIds, setExpandedGroupIds] = useState<ReadonlySet<string>>(() => new Set());
 
@@ -1520,6 +1519,7 @@ export function ByokDelegationWorkspacePanel() {
     <div className="space-y-8" aria-label={t("delegationWorkspace.title")}>
       <SettingsSection
         id="byok-delegation-settings"
+        data-facilities-guide-target="delegation-config"
         title={t("delegationSettings.globalTitle")}
         icon={<WorkflowIcon className="size-4 text-muted-foreground" />}
       >
@@ -1607,6 +1607,7 @@ export function ByokDelegationWorkspacePanel() {
 
       <SettingsSection
         id="byok-delegation-executors"
+        data-facilities-guide-target="delegation-executor"
         title={t("delegationSettings.executorsTitle")}
         icon={<WrenchIcon className="size-4 text-muted-foreground" />}
       >
@@ -1703,6 +1704,7 @@ export function ByokDelegationWorkspacePanel() {
               </span>
               <Textarea
                 id="byok-delegation-task-input"
+                data-facilities-guide-target="delegation-task-input"
                 className="min-h-32"
                 value={task}
                 placeholder={t("delegationWorkspace.taskPlaceholder")}
@@ -1777,7 +1779,10 @@ export function ByokDelegationWorkspacePanel() {
             </div>
           </aside>
         </div>
-        <div className="border-t border-border/60 px-3 pt-5 pb-3 sm:px-4">
+        <div
+          className="border-t border-border/60 px-3 pt-5 pb-3 sm:px-4"
+          data-facilities-guide-target="delegation-runs"
+        >
           <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
             <div className="flex items-center gap-2">
               <ListRestartIcon className="size-4 text-muted-foreground" />
@@ -1872,28 +1877,30 @@ export function ByokDelegationWorkspacePanel() {
         </div>
       </SettingsSection>
 
-      <CollapsibleSettingsBlock
-        title={t("delegationSettings.advancedTitle")}
-        description={t("delegationSettings.advancedDescription")}
-        icon={<ShieldCheckIcon className="size-3.5" />}
-      >
-        <SupervisionCard
-          adapters={selectedInstance.adapters}
-          config={delegation.supervision}
-          onChange={(patch) =>
-            patchDelegation({ supervision: { ...delegation.supervision, ...patch } })
-          }
-        />
-        <VisionDelegationCard
-          adapters={selectedInstance.adapters}
-          config={delegation.visionDelegation}
-          onChange={(patch) =>
-            patchDelegation({
-              visionDelegation: { ...delegation.visionDelegation, ...patch },
-            })
-          }
-        />
-      </CollapsibleSettingsBlock>
+      <div data-facilities-guide-target="delegation-advanced">
+        <CollapsibleSettingsBlock
+          title={t("delegationSettings.advancedTitle")}
+          description={t("delegationSettings.advancedDescription")}
+          icon={<ShieldCheckIcon className="size-3.5" />}
+        >
+          <SupervisionCard
+            adapters={selectedInstance.adapters}
+            config={delegation.supervision}
+            onChange={(patch) =>
+              patchDelegation({ supervision: { ...delegation.supervision, ...patch } })
+            }
+          />
+          <VisionDelegationCard
+            adapters={selectedInstance.adapters}
+            config={delegation.visionDelegation}
+            onChange={(patch) =>
+              patchDelegation({
+                visionDelegation: { ...delegation.visionDelegation, ...patch },
+              })
+            }
+          />
+        </CollapsibleSettingsBlock>
+      </div>
 
       <CollapsibleSettingsBlock
         title={t("delegationSettings.modelGroupsTitle")}

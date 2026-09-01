@@ -1,6 +1,8 @@
 import { EnvironmentId, ProjectId } from "@codework/contracts";
 import * as Schema from "effect/Schema";
 
+import { t } from "../../i18n/runtime";
+
 export class ProjectThreadTaskRequiredError extends Schema.TaggedErrorClass<ProjectThreadTaskRequiredError>()(
   "ProjectThreadTaskRequiredError",
   {
@@ -10,7 +12,7 @@ export class ProjectThreadTaskRequiredError extends Schema.TaggedErrorClass<Proj
   },
 ) {
   override get message(): string {
-    return "Enter a task before starting the thread.";
+    return t("newTask.taskRequired");
   }
 }
 
@@ -22,7 +24,7 @@ export class ProjectThreadBaseBranchRequiredError extends Schema.TaggedErrorClas
   },
 ) {
   override get message(): string {
-    return "Select a base branch before creating a worktree.";
+    return t("newTask.baseBranchRequired");
   }
 }
 

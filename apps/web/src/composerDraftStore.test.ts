@@ -60,6 +60,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test"
 import {
   COMPOSER_DRAFT_STORAGE_KEY,
   clearComposerDraftsEnvironment,
+  composerDraftHasUserContent,
   finalizePromotedDraftThreadByRef,
   markPromotedDraftThread,
   markPromotedDraftThreadByRef,
@@ -170,6 +171,27 @@ function draftFor(threadId: ThreadId, environmentId: EnvironmentId = LEGACY_TEST
 function draftByKey(key: string) {
   return useComposerDraftStore.getState().draftsByThreadKey[key] ?? undefined;
 }
+
+describe("composerDraftStore goal objective", () => {
+  const draftId = DraftId.make("draft-goal");
+
+  beforeEach(() => {
+    resetComposerDraftStore();
+  });
+
+  it("stores a trimmed objective as draft content and clears it", () => {
+    const store = useComposerDraftStore.getState();
+
+    store.setGoalObjective(draftId, "  修复登录流程  ");
+
+    expect(store.getComposerDraft(draftId)?.goalObjective).toBe("修复登录流程");
+    expect(composerDraftHasUserContent(store.getComposerDraft(draftId))).toBe(true);
+
+    store.setGoalObjective(draftId, "   ");
+
+    expect(store.getComposerDraft(draftId)).toBeNull();
+  });
+});
 
 describe("composerDraftStore addImages", () => {
   const threadId = ThreadId.make("thread-dedupe");

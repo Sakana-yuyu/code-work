@@ -273,8 +273,12 @@ describe("resolveSnoozePresets", () => {
     expect(presets.find((preset) => preset.id === "three-hours")?.snoozedUntil).toBe(
       localDate(2026, 4, 8, 13).toISOString(),
     );
-    expect(presets.find((preset) => preset.id === "three-hours")?.label).toBe("In 3 hours");
-    expect(presets.find((preset) => preset.id === "evening")?.label).toBe("This evening");
+    expect(presets.find((preset) => preset.id === "three-hours")?.labelKey).toBe(
+      "snoozePreset.threeHours",
+    );
+    expect(presets.find((preset) => preset.id === "evening")?.labelKey).toBe(
+      "snoozePreset.evening",
+    );
     expect(
       new Date(presets.find((preset) => preset.id === "tomorrow")!.snoozedUntil).getHours(),
     ).toBe(9);

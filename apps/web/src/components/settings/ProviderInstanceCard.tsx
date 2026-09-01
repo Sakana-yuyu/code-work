@@ -412,6 +412,7 @@ interface ProviderInstanceCardProps {
   readonly mode: "list" | "editor";
   readonly selected?: boolean | undefined;
   readonly onSelect?: (() => void) | undefined;
+  readonly guideTarget?: string | undefined;
   readonly readOnly?: boolean | undefined;
   readonly onUpdate: (nextInstance: ProviderInstanceConfig) => void;
   /**
@@ -467,6 +468,7 @@ export function ProviderInstanceCard({
   mode,
   selected = false,
   onSelect,
+  guideTarget,
   readOnly = false,
   onUpdate,
   onDelete,
@@ -676,6 +678,7 @@ export function ProviderInstanceCard({
   if (mode === "list") {
     return (
       <div
+        data-facilities-guide-target={guideTarget}
         className={cn(
           "group relative flex min-h-16 items-center gap-3 border-b border-border/60 px-3 py-2.5 transition-colors last:border-b-0",
           selected ? "bg-muted/50" : "hover:bg-muted/25",
@@ -709,6 +712,7 @@ export function ProviderInstanceCard({
           </span>
         </button>
         <Switch
+          data-facilities-guide-target={driverKind === "byok" ? "providers-enable" : undefined}
           checked={enabled}
           disabled={readOnly}
           onCheckedChange={(checked) => updateEnabled(Boolean(checked))}
@@ -842,6 +846,9 @@ export function ProviderInstanceCard({
         {driverOption !== undefined ? (
           <button
             type="button"
+            data-facilities-guide-target={
+              driverKind === "byok" ? "providers-models-tab" : undefined
+            }
             aria-pressed={visibleTab === "models"}
             className={providerSettingsTabClassName(visibleTab === "models")}
             onClick={() => setActiveTab("models")}
@@ -851,6 +858,9 @@ export function ProviderInstanceCard({
         ) : null}
         <button
           type="button"
+          data-facilities-guide-target={
+            driverKind === "byok" ? "providers-configuration-tab" : undefined
+          }
           aria-pressed={visibleTab === "configuration"}
           className={providerSettingsTabClassName(visibleTab === "configuration")}
           onClick={() => setActiveTab("configuration")}

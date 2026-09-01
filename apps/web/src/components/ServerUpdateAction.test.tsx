@@ -5,6 +5,9 @@ import * as Cause from "effect/Cause";
 import { AsyncResult } from "effect/unstable/reactivity";
 import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { t } from "~/i18n";
+import { setCurrentLanguage } from "~/i18n/runtime";
+
+setCurrentLanguage("en");
 
 const testState = vi.hoisted(() => ({
   updateServer: vi.fn(),

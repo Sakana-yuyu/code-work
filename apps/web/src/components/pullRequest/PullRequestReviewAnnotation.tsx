@@ -101,7 +101,7 @@ export function ReviewThreadCard({
   reference,
   pending,
   fixPending,
-  fixLabel = "Fix in a thread",
+  fixLabel = t("pullRequests.fixInAThread"),
   onFix,
   onReply,
   onLoadMore,

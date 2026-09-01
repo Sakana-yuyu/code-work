@@ -1,5 +1,7 @@
 import * as Schema from "effect/Schema";
 
+import { t } from "~/i18n/runtime";
+
 import {
   EnvironmentId,
   PullRequestListEntry,
@@ -55,9 +57,15 @@ export const pullRequestViewerKey = (entry: ScopedEntry): string =>
   `${entry.environmentId ?? ""} ${entry.host}`;
 
 const GROUP_LABELS: Record<PullRequestGroupKey, string> = {
-  reviewRequested: "Review requested",
-  authored: "Authored",
-  others: "Others",
+  get reviewRequested() {
+    return t("pullRequests.reviewRequested");
+  },
+  get authored() {
+    return t("pullRequests.authored");
+  },
+  get others() {
+    return t("pullRequests.others");
+  },
 };
 
 function normalize(value: string | null | undefined): string | null {

@@ -3,6 +3,7 @@ import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
 import { Atom } from "effect/unstable/reactivity";
 
+import { t } from "~/i18n/runtime";
 import { appAtomRegistry } from "~/rpc/atomRegistry";
 
 const DESKTOP_WSL_STATE_STALE_TIME_MS = 30_000;
@@ -14,7 +15,7 @@ class DesktopWslStateUnavailableError extends Schema.TaggedErrorClass<DesktopWsl
   {},
 ) {
   override get message(): string {
-    return "Desktop WSL state is unavailable.";
+    return t("desktop.wslStateUnavailable");
   }
 }
 
@@ -23,7 +24,7 @@ class DesktopWslStateLoadError extends Schema.TaggedErrorClass<DesktopWslStateLo
   { cause: Schema.Defect() },
 ) {
   override get message(): string {
-    return "Failed to load WSL state.";
+    return t("desktop.wslStateLoadFailed");
   }
 }
 

@@ -1,3 +1,7 @@
+import { setCurrentLanguage } from "~/i18n/runtime";
+
+setCurrentLanguage("en");
+
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vite-plus/test";
 
@@ -62,7 +66,7 @@ describe("ComposerStashMenu", () => {
 
     expect(markup).toContain('src="data:image/png;base64,AA=="');
     expect(markup).toContain("1 image dropped");
-    expect(markup).toContain("saving 1 image");
+    expect(markup).toContain("Saving 1 image");
     expect(markup).not.toContain("absolute top-1/2 right-2");
     expect(markup).toContain("pointer-events-none");
     expect(markup).toContain("pointer-coarse:pointer-events-auto");

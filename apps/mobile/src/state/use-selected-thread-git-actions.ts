@@ -199,7 +199,7 @@ export function useSelectedThreadGitActions() {
     async (branch: string) => {
       await runSelectedThreadGitMutation(
         "switch_ref",
-        "Switching branch",
+        t("git.switchingBranch"),
         async ({ thread, cwd }) => {
           const result = await switchRef({
             environmentId: thread.environmentId,
@@ -232,7 +232,7 @@ export function useSelectedThreadGitActions() {
     async (branch: string) => {
       await runSelectedThreadGitMutation(
         "create_ref",
-        "Creating branch",
+        t("git.creatingBranch"),
         async ({ thread, cwd }) => {
           const result = await createRef({
             environmentId: thread.environmentId,
@@ -265,7 +265,7 @@ export function useSelectedThreadGitActions() {
     async (nextWorktree: { readonly baseBranch: string; readonly newBranch: string }) => {
       await runSelectedThreadGitMutation(
         "create_worktree",
-        "Creating worktree",
+        t("git.creatingWorktree"),
         async ({ thread, project }) => {
           const result = await createWorktree({
             environmentId: thread.environmentId,
@@ -295,28 +295,24 @@ export function useSelectedThreadGitActions() {
   );
 
   const onPullSelectedThreadBranch = useCallback(async () => {
-    await runSelectedThreadGitMutation(
-      "pull",
-      "Pulling latest changes",
-      async ({ thread, cwd }) => {
-        const result = await pull({
-          environmentId: thread.environmentId,
-          input: { cwd },
-        });
-        if (AsyncResult.isFailure(result)) {
-          return result;
-        }
-        await refreshSelectedThreadGitStatus({ quiet: true, cwd });
-        showGitActionResult({
-          type: "success",
-          title:
-            result.value.status === "skipped_up_to_date"
-              ? t("gitHint.alreadyUpToDate")
-              : t("pulledLatestOn", { refName: result.value.refName }),
-        });
+    await runSelectedThreadGitMutation("pull", t("git.pullingLatest"), async ({ thread, cwd }) => {
+      const result = await pull({
+        environmentId: thread.environmentId,
+        input: { cwd },
+      });
+      if (AsyncResult.isFailure(result)) {
         return result;
-      },
-    );
+      }
+      await refreshSelectedThreadGitStatus({ quiet: true, cwd });
+      showGitActionResult({
+        type: "success",
+        title:
+          result.value.status === "skipped_up_to_date"
+            ? t("gitHint.alreadyUpToDate")
+            : t("pulledLatestOn", { refName: result.value.refName }),
+      });
+      return result;
+    });
   }, [pull, refreshSelectedThreadGitStatus, runSelectedThreadGitMutation]);
 
   const onRunSelectedThreadGitAction = useCallback(
@@ -324,7 +320,7 @@ export function useSelectedThreadGitActions() {
       const actionId = uuidv4();
       return await runSelectedThreadGitMutation(
         "run_change_request",
-        "Running source control action",
+        t("git.runningAction"),
         async ({ thread, cwd }) => {
           const result = await runStackedAction({
             actionId,

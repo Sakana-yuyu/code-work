@@ -164,9 +164,7 @@ function deriveEmptyState(props: {
   ) {
     return {
       title: t("commandPalette.environmentUnavailable"),
-      detail:
-        catalogState.connectionError ??
-        "The saved environment is offline. Check the URL or start the environment, then retry.",
+      detail: catalogState.connectionError ?? t("connection.savedEnvironmentOffline"),
       loading: false,
     };
   }
@@ -1083,7 +1081,7 @@ export function HomeScreen(props: HomeScreenProps) {
           <EmptyState
             title={emptyState.title}
             detail={emptyState.detail}
-            actionLabel={!props.catalogState.hasReadyEnvironment ? "Add environment" : undefined}
+            actionLabel={!props.catalogState.hasReadyEnvironment ? t("addEnvironment") : undefined}
             onAction={!props.catalogState.hasReadyEnvironment ? props.onAddConnection : undefined}
             variant="plain"
           />

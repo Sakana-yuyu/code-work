@@ -1,3 +1,7 @@
+import { setCurrentLanguage } from "~/i18n/runtime";
+
+setCurrentLanguage("en");
+
 import type { RelayClientDeviceRecord } from "@codework/contracts/relay";
 import { describe, expect, it } from "vite-plus/test";
 

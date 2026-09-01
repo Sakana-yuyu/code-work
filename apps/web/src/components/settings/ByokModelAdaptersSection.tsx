@@ -66,11 +66,8 @@ export type ByokSupplierTemplate = {
   readonly label: string;
   readonly protocol: ByokModelAdapter["protocol"];
   readonly baseURL: string;
-  readonly modelId: string;
-  readonly displayName: string;
   readonly iconURL?: string;
   readonly iconLight?: boolean;
-  readonly contextWindowTokens?: number;
   readonly supplierID?: string;
   readonly modelCatalogURL?: string;
   readonly modelCatalogURLs?: ReadonlyArray<string>;
@@ -87,8 +84,6 @@ const CUSTOM_SUPPLIER_TEMPLATE: ByokSupplierTemplate = {
   iconLight: true,
   protocol: "openai",
   baseURL: "",
-  modelId: "",
-  displayName: "",
 };
 
 export const BYOK_SUPPLIER_TEMPLATES: ReadonlyArray<ByokSupplierTemplate> = [
@@ -258,14 +253,9 @@ export function filterSupplierTemplates(
   const normalizedQuery = query.trim().toLocaleLowerCase();
   if (!normalizedQuery) return templates;
   return templates.filter((template) =>
-    [
-      template.id,
-      supplierTemplateLabel(template),
-      template.protocol,
-      template.baseURL,
-      template.modelId,
-      template.displayName,
-    ].some((value) => value.toLocaleLowerCase().includes(normalizedQuery)),
+    [template.id, supplierTemplateLabel(template), template.protocol, template.baseURL].some(
+      (value) => value.toLocaleLowerCase().includes(normalizedQuery),
+    ),
   );
 }
 
@@ -402,19 +392,13 @@ export function ByokModelAdaptersSection({
     return [
       CUSTOM_SUPPLIER_TEMPLATE,
       ...catalog.map((entry: ByokSupplierCatalogEntry) => {
-        const primaryModel = entry.models[0];
         return {
           id: entry.id,
           label: entry.label,
           protocol: entry.protocol,
           baseURL: entry.defaultBaseURL,
-          modelId: primaryModel?.modelId ?? "",
-          displayName: primaryModel?.displayName ?? primaryModel?.modelId ?? "",
           ...(entry.iconURL ? { iconURL: entry.iconURL } : {}),
           iconLight: entry.iconLight,
-          ...(primaryModel?.contextWindowTokens !== undefined
-            ? { contextWindowTokens: primaryModel.contextWindowTokens }
-            : {}),
           supplierID: entry.id,
           ...(entry.modelCatalogURLs.length > 0
             ? { modelCatalogURLs: entry.modelCatalogURLs }
@@ -449,6 +433,8 @@ export function ByokModelAdaptersSection({
   const [discoveringDraft, setDiscoveringDraft] = useState(false);
   const [draftModelPickerOpen, setDraftModelPickerOpen] = useState(false);
   const [draftModelPickerSearch, setDraftModelPickerSearch] = useState("");
+  const [manualModelDialogOpen, setManualModelDialogOpen] = useState(false);
+  const [manualModelInput, setManualModelInput] = useState("");
   const filteredDraftModels = useMemo(
     () => filterDiscoveredModels(draftDiscovery?.models ?? [], draftModelPickerSearch),
     [draftDiscovery?.models, draftModelPickerSearch],
@@ -475,6 +461,8 @@ export function ByokModelAdaptersSection({
     setSelectedDraftModelId("");
     setDraftModelPickerOpen(false);
     setDraftModelPickerSearch("");
+    setManualModelDialogOpen(false);
+    setManualModelInput("");
     setSupplierTemplateSearch("");
     setEditing("new");
   };
@@ -486,6 +474,8 @@ export function ByokModelAdaptersSection({
     setSelectedDraftModelId("");
     setDraftModelPickerOpen(false);
     setDraftModelPickerSearch("");
+    setManualModelDialogOpen(false);
+    setManualModelInput("");
     setEditing(adapter.id);
   };
 
@@ -496,6 +486,8 @@ export function ByokModelAdaptersSection({
     setSelectedDraftModelId("");
     setDraftModelPickerOpen(false);
     setDraftModelPickerSearch("");
+    setManualModelDialogOpen(false);
+    setManualModelInput("");
     setSupplierTemplateSearch("");
   };
 
@@ -522,18 +514,28 @@ export function ByokModelAdaptersSection({
       supplier,
       protocol: template.protocol,
       baseURL: template.baseURL,
-      modelId: template.modelId,
-      displayName: template.displayName,
-      contextWindowTokens: String(template.contextWindowTokens ?? DEFAULT_CONTEXT_WINDOW_TOKENS),
+      modelId: "",
+      displayName: "",
+      contextWindowTokens: String(DEFAULT_CONTEXT_WINDOW_TOKENS),
     });
   };
 
-  const handleSave = () => {
-    const displayName = form.displayName.trim();
-    if (!displayName) {
-      setError(t("byokAdapters.displayNameRequired"));
+  const openManualModelDialog = () => {
+    setManualModelInput(form.modelId);
+    setManualModelDialogOpen(true);
+  };
+
+  const applyManualModel = () => {
+    const modelId = manualModelInput.trim();
+    if (!modelId) {
+      setError(t("byokAdapters.modelIdRequired"));
       return;
     }
+    patchForm({ modelId, displayName: modelId });
+    setManualModelDialogOpen(false);
+  };
+
+  const handleSave = () => {
     const baseURL = form.baseURL.trim();
     if (!baseURL) {
       setError(t("byokAdapters.baseURLRequired"));
@@ -567,7 +569,7 @@ export function ByokModelAdaptersSection({
 
     const next: ByokModelAdapter = {
       id: editing === "new" || editing === null ? randomUUID() : editing,
-      displayName,
+      displayName: form.displayName.trim() || modelId,
       ...(groupName ? { groupName } : {}),
       protocol: form.protocol,
       baseURL,
@@ -776,7 +778,6 @@ export function ByokModelAdaptersSection({
                   const label = supplierTemplateLabel(template);
                   const selected = form.supplier === template.id;
                   const baseURL = template.baseURL.trim();
-                  const modelId = template.modelId.trim();
                   return (
                     <button
                       key={template.id}
@@ -805,7 +806,7 @@ export function ByokModelAdaptersSection({
                             {t(PROTOCOL_LABEL_KEYS[template.protocol])}
                           </Badge>
                           <span className="min-w-0 truncate text-[10px] text-muted-foreground">
-                            {modelId || t("byokAdapters.supplierTemplateManualModel")}
+                            {t("byokAdapters.supplierTemplateModelDiscovery")}
                           </span>
                         </span>
                         <code
@@ -826,19 +827,6 @@ export function ByokModelAdaptersSection({
             )}
           </div>
         ) : null}
-        <label htmlFor={`${formId}-display-name`} className="block">
-          <span className="text-xs font-medium text-foreground">
-            {t("byokAdapters.displayName")}
-          </span>
-          <Input
-            id={`${formId}-display-name`}
-            className="mt-1"
-            value={form.displayName}
-            onChange={(event) => patchForm({ displayName: event.target.value })}
-            placeholder={t("deepseekChat")}
-            spellCheck={false}
-          />
-        </label>
         <label htmlFor={`${formId}-group-name`} className="block">
           <span className="text-xs font-medium text-foreground">{t("byokAdapters.groupName")}</span>
           <Input
@@ -880,6 +868,7 @@ export function ByokModelAdaptersSection({
           <span className="text-xs font-medium text-foreground">{t("byokAdapters.baseURL")}</span>
           <Input
             id={`${formId}-base-url`}
+            data-facilities-guide-target="providers-base-url"
             className="mt-1"
             value={form.baseURL}
             onChange={(event) => patchForm({ baseURL: event.target.value })}
@@ -891,6 +880,7 @@ export function ByokModelAdaptersSection({
           <span className="text-xs font-medium text-foreground">{t("byokAdapters.apiKey")}</span>
           <Input
             id={`${formId}-api-key`}
+            data-facilities-guide-target="providers-api-key"
             className="mt-1"
             type="password"
             autoComplete="off"
@@ -909,46 +899,47 @@ export function ByokModelAdaptersSection({
             </span>
           ) : null}
         </label>
-        <div className="block">
-          <label htmlFor={`${formId}-model-id`} className="block">
-            <span className="text-xs font-medium text-foreground">{t("byokAdapters.modelId")}</span>
-            <Input
-              id={`${formId}-model-id`}
-              className="mt-1"
-              value={form.modelId}
-              onChange={(event) => patchForm({ modelId: event.target.value })}
-              placeholder={t("deepseekChat2")}
-              spellCheck={false}
-            />
-          </label>
-          {!isEdit ? (
-            <Button
-              type="button"
-              size="sm"
-              variant="outline"
-              className="mt-2 h-7 w-full gap-1.5 px-2 text-xs"
-              onClick={() => void discoverDraftModels()}
-              disabled={discoveringDraft}
-            >
-              <SearchIcon className="size-3" />
-              {discoveringDraft ? t("byokAdapters.discovering") : t("byokAdapters.discoverModels")}
-            </Button>
-          ) : null}
-        </div>
-        <label htmlFor={`${formId}-context-window`} className="block">
+        <div className="block sm:col-span-2" data-facilities-guide-target="providers-request-model">
           <span className="text-xs font-medium text-foreground">
-            {t("byokAdapters.contextWindow")}
+            {t("byokAdapters.requestModel")}
           </span>
-          <Input
-            id={`${formId}-context-window`}
-            className="mt-1"
-            type="number"
-            min={1}
-            step={1000}
-            value={form.contextWindowTokens}
-            onChange={(event) => patchForm({ contextWindowTokens: event.target.value })}
-          />
-        </label>
+          <div className="mt-1 flex min-w-0 flex-wrap items-center gap-2 rounded-md border border-border/70 bg-muted/15 px-3 py-2">
+            <code className="min-w-0 flex-1 truncate text-xs text-foreground" title={form.modelId}>
+              {form.modelId || t("byokAdapters.modelNotSelected")}
+            </code>
+            <div className="flex shrink-0 flex-wrap items-center gap-1.5">
+              {!isEdit ? (
+                <Button
+                  type="button"
+                  data-facilities-guide-target="providers-discover-models"
+                  size="sm"
+                  variant="outline"
+                  className="h-7 gap-1.5 px-2 text-xs"
+                  onClick={() => void discoverDraftModels()}
+                  disabled={discoveringDraft}
+                >
+                  <SearchIcon className="size-3" />
+                  {discoveringDraft
+                    ? t("byokAdapters.discovering")
+                    : t("byokAdapters.discoverModels")}
+                </Button>
+              ) : null}
+              <Button
+                type="button"
+                data-facilities-guide-target="providers-manual-model"
+                size="sm"
+                variant="ghost-muted"
+                className="h-7 px-2 text-xs"
+                onClick={openManualModelDialog}
+              >
+                {t("byokAdapters.supplierTemplateManualModel")}
+              </Button>
+            </div>
+          </div>
+          <span className="mt-1 block text-xs text-muted-foreground">
+            {t("byokAdapters.requestModelDescription")}
+          </span>
+        </div>
         <label htmlFor={`${formId}-balance-profile`} className="block">
           <span className="text-xs font-medium text-foreground">
             {t("byokAdapters.balanceProfile")}
@@ -1039,6 +1030,7 @@ export function ByokModelAdaptersSection({
               <>
                 <Button
                   type="button"
+                  data-facilities-guide-target="providers-select-model"
                   size="sm"
                   variant="outline"
                   className="mt-1 h-8 w-full justify-start px-2 text-xs"
@@ -1286,6 +1278,9 @@ export function ByokModelAdaptersSection({
         <span className="text-xs font-medium text-foreground">{t("byokAdapters.title")}</span>
         <Button
           type="button"
+          data-facilities-guide-target={
+            presentation === "provider" ? "providers-add-channel" : undefined
+          }
           size="sm"
           variant="outline"
           className="h-7 gap-1.5 px-2 text-xs"
@@ -1548,8 +1543,58 @@ export function ByokModelAdaptersSection({
             <Button type="button" size="sm" variant="ghost-muted" onClick={closeForm}>
               {t("cancel")}
             </Button>
-            <Button type="button" size="sm" onClick={handleSave}>
+            <Button
+              type="button"
+              size="sm"
+              data-facilities-guide-target="providers-save-channel"
+              onClick={handleSave}
+            >
               {editing === "new" ? t("byokAdapters.addAdapter") : t("save")}
+            </Button>
+          </DialogFooter>
+        </DialogPopup>
+      </Dialog>
+
+      <Dialog
+        open={manualModelDialogOpen}
+        onOpenChange={(open) => {
+          setManualModelDialogOpen(open);
+          if (!open) setManualModelInput("");
+        }}
+      >
+        <DialogPopup className="w-full max-w-lg">
+          <DialogHeader>
+            <DialogTitle>{t("byokAdapters.manualModelDialogTitle")}</DialogTitle>
+            <DialogDescription>{t("byokAdapters.manualModelDialogDescription")}</DialogDescription>
+          </DialogHeader>
+          <div className="px-6 pb-4">
+            <label htmlFor={`byok-adapter-${instanceId}-manual-model`} className="block">
+              <span className="text-xs font-medium text-foreground">
+                {t("byokAdapters.modelId")}
+              </span>
+              <Input
+                id={`byok-adapter-${instanceId}-manual-model`}
+                data-facilities-guide-target="providers-manual-model-input"
+                className="mt-1"
+                value={manualModelInput}
+                onChange={(event) => setManualModelInput(event.target.value)}
+                placeholder={t("byokAdapters.manualModelPlaceholder")}
+                spellCheck={false}
+                autoFocus
+              />
+            </label>
+          </div>
+          <DialogFooter>
+            <Button
+              type="button"
+              size="sm"
+              variant="ghost-muted"
+              onClick={() => setManualModelDialogOpen(false)}
+            >
+              {t("cancel")}
+            </Button>
+            <Button type="button" size="sm" onClick={applyManualModel}>
+              {t("byokAdapters.useManualModel")}
             </Button>
           </DialogFooter>
         </DialogPopup>

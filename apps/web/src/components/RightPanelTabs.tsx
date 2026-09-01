@@ -4,6 +4,8 @@ import type {
   PullRequestState,
 } from "@codework/contracts";
 import { getTerminalLabel } from "@codework/shared/terminalLabels";
+
+import { terminalDisplayLabel } from "../terminal/displayLabel";
 import {
   Bot,
   FileDiff,
@@ -501,20 +503,20 @@ function surfaceTitle(
 ): string {
   switch (surface.kind) {
     case "diff":
-      return "Diff";
+      return t("surface.diff");
     case "files":
-      return "Files";
+      return t("surface.files");
     case "file":
       return surface.relativePath.slice(surface.relativePath.lastIndexOf("/") + 1);
     case "terminal":
-      return (
+      return terminalDisplayLabel(
         terminalLabelsById.get(surface.activeTerminalId) ??
-        getTerminalLabel(surface.activeTerminalId)
+          getTerminalLabel(surface.activeTerminalId),
       );
     case "pull-request":
       return `#${surface.number}`;
     case "agents":
-      return "Agents";
+      return t("surface.agents");
     case "plugin":
       return pluginPanelTitles?.[surface.id] ?? surface.contributionId;
     case "preview": {

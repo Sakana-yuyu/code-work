@@ -285,8 +285,12 @@ function ConfiguredConnectOnboardingDialog() {
 }
 
 const STEP_LABELS: Record<OnboardingStep, string> = {
-  publish: "Publish",
-  devices: "Connect devices",
+  get publish() {
+    return t("cloud.onboardingPublish");
+  },
+  get devices() {
+    return t("cloud.onboardingConnectDevices");
+  },
 };
 
 function OnboardingStepper({

@@ -6,6 +6,7 @@ export type MulticaRuntimeSettingsTextKey =
   | "add"
   | "loadingTitle"
   | "loadingDescription"
+  | "setupDescription"
   | "loadFailedTitle"
   | "loadFailedDescription"
   | "retry"
@@ -30,10 +31,15 @@ export type MulticaRuntimeSettingsTextKey =
   | "save"
   | "saving"
   | "connectionSection"
+  | "connectionDescription"
   | "credentialsSection"
+  | "credentialsDescription"
   | "routingSection"
+  | "routingDescription"
   | "capabilitiesSection"
+  | "capabilitiesDescription"
   | "executionSection"
+  | "executionDescription"
   | "instanceId"
   | "runtimeId"
   | "daemonId"
@@ -92,6 +98,7 @@ export const multicaRuntimeText: MulticaRuntimeSettingsText = (key) => {
     add: t("multicaRuntime.add"),
     loadingTitle: t("multicaRuntime.loadingTitle"),
     loadingDescription: t("multicaRuntime.loadingDescription"),
+    setupDescription: t("multicaRuntime.setupDescription"),
     loadFailedTitle: t("multicaRuntime.loadFailedTitle"),
     loadFailedDescription: t("multicaRuntime.loadFailedDescription"),
     retry: t("retry"),
@@ -116,10 +123,15 @@ export const multicaRuntimeText: MulticaRuntimeSettingsText = (key) => {
     save: t("save"),
     saving: t("saving"),
     connectionSection: t("multicaRuntime.connectionSection"),
+    connectionDescription: t("multicaRuntime.connectionDescription"),
     credentialsSection: t("multicaRuntime.credentialsSection"),
+    credentialsDescription: t("multicaRuntime.credentialsDescription"),
     routingSection: t("multicaRuntime.routingSection"),
+    routingDescription: t("multicaRuntime.routingDescription"),
     capabilitiesSection: t("multicaRuntime.capabilitiesSection"),
+    capabilitiesDescription: t("multicaRuntime.capabilitiesDescription"),
     executionSection: t("multicaRuntime.executionSection"),
+    executionDescription: t("multicaRuntime.executionDescription"),
     instanceId: t("multicaRuntime.instanceId"),
     runtimeId: t("multicaRuntime.runtimeId"),
     daemonId: t("multicaRuntime.daemonId"),

@@ -141,17 +141,32 @@ import {
 type DetailTab = "summary" | "timeline" | "code";
 
 const ACTION_SUCCESS_LABELS: Record<PullRequestAction, string> = {
-  merge: "Pull request merged",
-  ready: "Marked ready for review",
-  draft: "Converted to draft",
-  close: "Pull request closed",
-  reopen: "Pull request reopened",
-  "update-branch": "Branch updated with the base branch",
+  get merge() {
+    return t("pullRequestMerged");
+  },
+  get ready() {
+    return t("pullRequests.markedReadyForReview");
+  },
+  get draft() {
+    return t("pullRequests.convertedToDraft");
+  },
+  get close() {
+    return t("pullRequestClosed");
+  },
+  get reopen() {
+    return t("pullRequests.reopened");
+  },
+  get "update-branch"() {
+    return t("pullRequests.branchUpdatedWithBase");
+  },
   // True whichever it did: a pull request that was already mergeable merges the moment this is
   // armed, and the client has no way to tell that apart from one still waiting on something.
-  "enable-auto-merge":
-    "Auto-merge turned on — merges as soon as this is ready, sooner if it already is",
-  "disable-auto-merge": "Auto-merge turned off",
+  get "enable-auto-merge"() {
+    return t("pullRequests.autoMergeEnabled");
+  },
+  get "disable-auto-merge"() {
+    return t("pullRequests.autoMergeDisabled");
+  },
 };
 
 const MERGE_METHOD_LABELS: Record<PullRequestMergeMethod, string> = {
@@ -162,35 +177,62 @@ const MERGE_METHOD_LABELS: Record<PullRequestMergeMethod, string> = {
 
 /** Said as the thing that did not happen, rather than as the operation that returned an error. */
 const ACTION_FAILURE_LABELS: Record<PullRequestAction, string> = {
-  merge: "Could not merge this pull request",
-  ready: "Could not mark this ready for review",
-  draft: "Could not convert this to a draft",
-  close: "Could not close this pull request",
-  reopen: "Could not reopen this pull request",
-  "update-branch": "Could not update this branch",
-  "enable-auto-merge": "Could not turn on auto-merge",
-  "disable-auto-merge": "Could not turn off auto-merge",
+  get merge() {
+    return t("pullRequests.failureMerge");
+  },
+  get ready() {
+    return t("pullRequests.failureReady");
+  },
+  get draft() {
+    return t("pullRequests.failureDraft");
+  },
+  get close() {
+    return t("pullRequests.failureClose");
+  },
+  get reopen() {
+    return t("pullRequests.failureReopen");
+  },
+  get "update-branch"() {
+    return t("pullRequests.failureUpdateBranch");
+  },
+  get "enable-auto-merge"() {
+    return t("pullRequests.failureEnableAutoMerge");
+  },
+  get "disable-auto-merge"() {
+    return t("pullRequests.failureDisableAutoMerge");
+  },
 };
 
 /** What to try, for the times the host says only that it refused. */
 const ACTION_FAILURE_HINTS: Record<PullRequestAction, string> = {
-  merge:
-    "The host refused the merge. Check that you have write access, that the checks it requires have passed, and that the branch is not conflicting.",
-  ready: "The host refused it. Check that you have write access to this repository.",
-  draft: "The host refused it. Check that you have write access to this repository.",
-  close: "The host refused it. Check that you have write access, or that you opened it.",
-  reopen:
-    "The host refused it. Check that you have write access, and that the branch still exists.",
+  get merge() {
+    return t("pullRequests.hintMergeRefused");
+  },
+  get ready() {
+    return t("pullRequests.hintNeedsWriteAccess");
+  },
+  get draft() {
+    return t("pullRequests.hintNeedsWriteAccess");
+  },
+  get close() {
+    return t("pullRequests.hintCloseRefused");
+  },
+  get reopen() {
+    return t("pullRequests.hintReopenRefused");
+  },
   // Said for the merge commit, which is what an update is unless a rebase was asked for. The
   // rebase has its own reasons to fail and its own sentence below.
-  "update-branch":
-    "The host refused it. Check that you have write access to the branch — one from a fork also needs its author to allow edits from maintainers — and that it does not conflict with the base.",
+  get "update-branch"() {
+    return t("pullRequests.hintUpdateBranchRefused");
+  },
   // The one refusal that is usually a repository setting rather than anything about this branch:
   // GitHub will not arm an auto-merge at all unless the repository has the feature switched on.
-  "enable-auto-merge":
-    "The host refused it. Check that this repository allows auto-merge, that you have write access, and that there is something left for it to wait on.",
-  "disable-auto-merge":
-    "The host refused it. Check that you have write access, and that the merge has not already happened.",
+  get "enable-auto-merge"() {
+    return t("pullRequests.hintEnableAutoMergeRefused");
+  },
+  get "disable-auto-merge"() {
+    return t("pullRequests.hintDisableAutoMergeRefused");
+  },
 };
 
 /**
@@ -198,8 +240,7 @@ const ACTION_FAILURE_HINTS: Record<PullRequestAction, string> = {
  * its own merits, because GitHub replays the commits and stops at the first that does not apply.
  * Offering the merge commit only makes sense to somebody who did not already choose it.
  */
-const UPDATE_BRANCH_REBASE_FAILURE_HINT =
-  "The host refused it. A rebase stops at the first commit that does not apply cleanly; updating with a merge commit may still work.";
+const UPDATE_BRANCH_REBASE_FAILURE_HINT = () => t("pullRequests.hintRebaseRefused");
 
 const TABS: ReadonlyArray<{ value: DetailTab; label: string }> = [
   {
@@ -667,7 +708,7 @@ export function PullRequestDetailPanel({
       // told to check their access, not offered the merge commit they already chose.
       const hint =
         updateMethod === "rebase"
-          ? UPDATE_BRANCH_REBASE_FAILURE_HINT
+          ? UPDATE_BRANCH_REBASE_FAILURE_HINT()
           : ACTION_FAILURE_HINTS[action];
       toastManager.add({
         type: "error",
@@ -708,7 +749,7 @@ export function PullRequestDetailPanel({
         title: t("theTitleCouldNotBeSaved"),
         description: readableFailure(
           squashAtomCommandFailure(result),
-          "The host refused the new title.",
+          t("pullRequests.hostRefusedNewTitle"),
         ),
       });
       return;

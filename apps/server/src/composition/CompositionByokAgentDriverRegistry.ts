@@ -4,7 +4,6 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as PubSub from "effect/PubSub";
 
-import type { ByokAgentTool } from "./ByokAgentLoop.ts";
 import {
   CompositionAgentService,
   type CompositionAgentServiceShape,
@@ -18,7 +17,7 @@ import {
 import { makeCompositionByokAgentDriver } from "./CompositionByokAgentDriver.ts";
 import { CompositionAgentDriverFailure } from "./CompositionOrchestrator.ts";
 import { makeCompositionSquadModelBindingResolver } from "./CompositionSquadModelBindingResolver.ts";
-import { listCompositionToolDescriptors } from "./CompositionToolRegistry.ts";
+import { listCompositionAgentTools } from "./CompositionToolRegistry.ts";
 import {
   CompositionMcpToolRegistry,
   type CompositionMcpToolRegistryShape,
@@ -62,43 +61,6 @@ export class CompositionByokAgentDriverProjectionService extends Context.Service
 >()(
   "codework/composition/CompositionByokAgentDriverRegistry/CompositionByokAgentDriverProjectionService",
 ) {}
-
-/**
- * Model-facing signatures for core tools whose bare capability id is not
- * self-explanatory. Only listed tools are overridden; the rest keep the
- * minimal descriptor-derived shape.
- */
-const CORE_TOOL_SIGNATURES: ReadonlyMap<
-  string,
-  { readonly description: string; readonly parameters: Record<string, unknown> }
-> = new Map([
-  [
-    "delegate_task",
-    {
-      description:
-        "Delegate a self-contained subtask to this instance's configured delegation executor " +
-        "and block until it reaches a terminal state. Arguments: task (string, required — a " +
-        "full standalone prompt with all context the worker needs), subagentType (string, " +
-        "optional — a configured subagent role profile id).",
-      parameters: {
-        type: "object",
-        properties: { task: { type: "string" }, subagentType: { type: "string" } },
-        required: ["task"],
-      },
-    },
-  ],
-]);
-
-const coreTools = (): ReadonlyArray<ByokAgentTool> =>
-  listCompositionToolDescriptors().map((descriptor) => {
-    const canonicalToolName = descriptor.capabilityId.slice("t3.".length);
-    const signature = CORE_TOOL_SIGNATURES.get(canonicalToolName);
-    return {
-      canonicalToolName,
-      description: signature?.description ?? `${descriptor.capabilityId} (${descriptor.status})`,
-      parameters: signature?.parameters ?? { type: "object" },
-    };
-  });
 
 export const makeCompositionByokAgentDriverProjection = (
   options: CompositionByokAgentDriverProjectionOptions,
@@ -161,7 +123,7 @@ export const makeCompositionByokAgentDriverProjection = (
                     (tool) => tool.trusted && tool.status === "available",
                   );
             return [
-              ...coreTools(),
+              ...listCompositionAgentTools(),
               ...dynamicTools.map((tool) => ({
                 canonicalToolName: tool.canonicalToolName,
                 description: tool.description,

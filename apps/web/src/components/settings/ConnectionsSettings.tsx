@@ -290,7 +290,7 @@ function parseManualDesktopSshTarget(input: {
 }): DesktopSshEnvironmentTarget {
   const rawHost = input.host.trim();
   if (rawHost.length === 0) {
-    throw new Error("SSH host or alias is required.");
+    throw new Error(t("connections.sshHostRequired"));
   }
 
   let hostname = rawHost;
@@ -326,11 +326,11 @@ function parseManualDesktopSshTarget(input: {
   }
 
   if (hostname.length === 0) {
-    throw new Error("SSH host or alias is required.");
+    throw new Error(t("connections.sshHostRequired"));
   }
 
   if (port !== null && (!Number.isInteger(port) || port <= 0 || port > 65_535)) {
-    throw new Error("SSH port must be between 1 and 65535.");
+    throw new Error(t("connections.sshPortRange"));
   }
 
   return {
@@ -382,16 +382,16 @@ function parseRemotePairingFields(input: { readonly host: string; readonly pairi
   const host = input.host.trim();
   const pairingCode = input.pairingCode.trim();
   if (!host) {
-    throw new Error("Enter a backend host.");
+    throw new Error(t("connections.enterBackendHost"));
   }
   if (!pairingCode) {
-    throw new Error("Enter a pairing code.");
+    throw new Error(t("connections.enterPairingCode"));
   }
   return { host, pairingCode };
 }
 
 function formatDesktopSshConnectionError(error: unknown): string {
-  const fallback = "Failed to connect SSH host.";
+  const fallback = t("connections.sshConnectFailed");
   const rawMessage = error instanceof Error ? error.message : fallback;
   const withoutIpcPrefix = rawMessage.replace(
     /^Error invoking remote method 'desktop:ensure-ssh-environment':\s*/u,
@@ -533,17 +533,17 @@ function isHostedAppPairingUrl(value: string): boolean {
 
 function endpointShareHint(endpoint: AdvertisedEndpoint, url: string): string {
   if (isHostedAppPairingUrl(url)) {
-    return "Opens the hosted app, no install needed";
+    return t("connections.endpointHintHostedApp");
   }
   switch (endpoint.reachability) {
     case "lan":
-      return "Devices on the same network";
+      return t("connections.endpointHintLan");
     case "private-network":
-      return "Devices on your private network";
+      return t("connections.endpointHintPrivateNetwork");
     case "public":
-      return "Reachable from anywhere";
+      return t("connections.endpointHintPublic");
     case "loopback":
-      return "Clients on this machine";
+      return t("connections.endpointHintLoopback");
   }
 }
 
@@ -699,7 +699,7 @@ const PairingLinkListRow = memo(function PairingLinkListRow({
 
   const expiresAbsolute = formatAccessTimestamp(pairingLink.expiresAt);
 
-  const primaryLabel = pairingLink.label ?? "Pairing link";
+  const primaryLabel = pairingLink.label ?? t("pairingLink");
   const selectedQrOption = selectQrEndpointOption(
     endpointCopyOptions,
     qrEndpointId,
@@ -720,7 +720,9 @@ const PairingLinkListRow = memo(function PairingLinkListRow({
         <div className="min-w-0 flex-1 space-y-1">
           <div className="flex min-h-5 items-center gap-1.5">
             <ConnectionStatusDot
-              tooltipText={`Link created at ${formatAccessTimestamp(pairingLink.createdAt)}`}
+              tooltipText={t("connections.linkCreatedAt", {
+                timestamp: formatAccessTimestamp(pairingLink.createdAt),
+              })}
               dotClassName="bg-amber-400"
             />
             <h3 className="text-sm font-medium text-foreground">{primaryLabel}</h3>
@@ -1663,9 +1665,9 @@ function ConfiguredCloudLinkRow({ canManageRelay }: { readonly canManageRelay: b
   const [isUpdatingPreference, setIsUpdatingPreference] = useState(false);
 
   const disabledReason = !isSignedIn
-    ? "Sign in to Code Work Connect to manage this environment."
+    ? t("connections.signInToManageCloud")
     : !canManageRelay
-      ? "Your session does not have permission to manage Code Work Connect access."
+      ? t("connections.noRelayPermission")
       : null;
   const isBusy = isUpdating || isUpdatingPreference;
 
@@ -1733,7 +1735,7 @@ function ConfiguredCloudLinkRow({ canManageRelay }: { readonly canManageRelay: b
         description={t("sendActivityFromThisEnvironmentToYourMobileClientsForPushNot")}
         control={
           <CloudLinkSwitch
-            ariaLabel="Publish agent activity to mobile clients"
+            ariaLabel={t("connections.publishAgentActivityAria")}
             checked={publishAgentActivity}
             disabled={!canManageRelay || !isSignedIn || primaryCloudLinkState.isPending || isBusy}
             disabledReason={disabledReason}
@@ -3021,10 +3023,12 @@ export function ConnectionsSettings() {
             onToggleExpanded={() => setIsAdvertisedEndpointListExpanded((expanded) => !expanded)}
             fallback={
               desktopServerExposureState?.endpointUrl
-                ? `Reachable at ${desktopServerExposureState.endpointUrl}`
+                ? t("connections.reachableAt", { url: desktopServerExposureState.endpointUrl })
                 : desktopServerExposureState?.advertisedHost
-                  ? `Exposed on all interfaces. Pairing links use ${desktopServerExposureState.advertisedHost}.`
-                  : "Exposed on all interfaces."
+                  ? t("connections.exposedOnAllInterfacesWithHost", {
+                      host: desktopServerExposureState.advertisedHost,
+                    })
+                  : t("connections.exposedOnAllInterfaces")
             }
           />
         ) : desktopServerExposureState ? (

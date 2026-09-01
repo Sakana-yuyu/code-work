@@ -6,6 +6,7 @@ import { t } from "~/i18n";
 import {
   ThreadGoalComposerControl,
   ThreadGoalStatusBar,
+  displayedThreadGoalSeconds,
   formatThreadGoalDuration,
 } from "./ThreadGoalStatusBar";
 
@@ -31,9 +32,14 @@ describe("ThreadGoalStatusBar", () => {
     expect(markup).toContain("sr-only");
   });
 
-  it("formats persisted goal duration without a live client timer", () => {
+  it("formats goal duration", () => {
     expect(formatThreadGoalDuration(65)).toBe("1m 05s");
     expect(formatThreadGoalDuration(3_725)).toBe("1h 02m");
+  });
+
+  it("adds live elapsed time only while the goal is active", () => {
+    expect(displayedThreadGoalSeconds(goal(), 5_000, 2_000)).toBe(6);
+    expect(displayedThreadGoalSeconds(goal("paused"), 5_000, 2_000)).toBe(3);
   });
 
   it("renders the active goal and exposes pause/edit/clear controls", () => {
@@ -56,6 +62,10 @@ describe("ThreadGoalStatusBar", () => {
     expect(markup).toContain(`aria-label="${t("threadGoal.clear")}"`);
     expect(markup).toContain("0m 03s");
     expect(markup).toContain(`aria-label="${t("threadGoal.details")}"`);
+    expect(markup).toContain("flex-nowrap");
+    expect(markup).toContain("lucide-goal");
+    expect(markup).toContain("lucide-maximize-2");
+    expect(markup).not.toContain("lucide-pencil");
     expect(markup.match(/<form/g) ?? []).toHaveLength(0);
   });
 

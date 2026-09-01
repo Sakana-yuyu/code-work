@@ -1300,6 +1300,27 @@ const makeWsRpcLayer = (
                 createdAt: bootstrap.createThread.createdAt,
               });
               createdThread = true;
+              if (bootstrap.createThread.goalObjective) {
+                if (Option.isNone(threadGoalStore)) {
+                  return yield* new OrchestrationDispatchCommandError({
+                    message: "Thread Goal service is unavailable.",
+                  });
+                }
+                yield* threadGoalStore.value
+                  .set({
+                    threadId: command.threadId,
+                    objective: bootstrap.createThread.goalObjective,
+                  })
+                  .pipe(
+                    Effect.mapError(
+                      (error) =>
+                        new OrchestrationDispatchCommandError({
+                          message: error.message,
+                          cause: error,
+                        }),
+                    ),
+                  );
+              }
             }
 
             if (bootstrap?.prepareWorktree) {

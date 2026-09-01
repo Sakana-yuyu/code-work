@@ -8,6 +8,7 @@ import {
   type ProviderInstanceEntry,
 } from "../../providerInstances";
 import { getTriggerDisplayModelName, type ModelEsque } from "./providerIconUtils";
+import { t } from "~/i18n/runtime";
 
 export const CLAUDE_RESUME_COMPACTION_MINUTES = 70;
 export const CLAUDE_RESUME_COMPACTION_TOKENS = 100_000;
@@ -96,9 +97,11 @@ export function formatContextWindowCompactionMessage(
   autoCompactThreshold?: number | null,
 ): string {
   if (typeof autoCompactThreshold === "number" && autoCompactThreshold > 0) {
-    return `Compacts automatically at ${autoCompactThreshold.toLocaleString("en-US")} tokens.`;
+    return t("contextWindow.compactsAtThreshold", {
+      tokens: autoCompactThreshold.toLocaleString("en-US"),
+    });
   }
   return modelDisplayName
-    ? `Context for ${modelDisplayName} compacts automatically when needed.`
-    : "Context compacts automatically when needed.";
+    ? t("contextWindow.compactsAutomaticallyForModel", { model: modelDisplayName })
+    : t("contextWindow.compactsAutomatically");
 }

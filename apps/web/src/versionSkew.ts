@@ -105,11 +105,11 @@ export function serverUpdateGuidance(
   switch (capability) {
     case "boot-service":
     case "respawn":
-      return `Update the ${serverLabel} so they stay in sync.`;
+      return t("versionSkew.updateServer", { serverLabel });
     case "desktop-managed":
-      return `Update the desktop app that runs the ${serverLabel}.`;
+      return t("versionSkew.updateDesktopApp", { serverLabel });
     default:
-      return `Relaunch the ${serverLabel} with the copied command to sync them.`;
+      return t("versionSkew.relaunchServer", { serverLabel });
   }
 }
 

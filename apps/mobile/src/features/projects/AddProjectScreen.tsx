@@ -88,7 +88,7 @@ function platformFromOs(os: string | null | undefined): string {
 function errorMessage(error: unknown): string {
   return error instanceof Error && error.message.trim().length > 0
     ? error.message
-    : "An error occurred.";
+    : t("commandPalette.anErrorOccurred");
 }
 
 function stringParam(value: string | string[] | undefined): string | null {

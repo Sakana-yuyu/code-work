@@ -1,6 +1,10 @@
 import { describe, expect, it, vi } from "@effect/vitest";
 import type { SharePayload } from "expo-sharing";
 
+import { setCurrentLanguage } from "../../i18n/runtime";
+
+setCurrentLanguage("en");
+
 import type { IncomingShareDraft } from "./incoming-share-model";
 import { IncomingShareInbox, type IncomingShareInboxDependencies } from "./incoming-share-inbox";
 

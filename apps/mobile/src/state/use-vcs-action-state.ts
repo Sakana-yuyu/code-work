@@ -5,6 +5,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 import { appAtomRegistry } from "./atom-registry";
 import { vcsActionManager } from "./vcs";
+import { t } from "../i18n/runtime";
 
 export function useVcsActionState(target: VcsActionTarget): VcsActionState {
   return useAtomValue(vcsActionManager.stateAtom(target));
@@ -71,7 +72,7 @@ function formatElapsedSeconds(ms: number | null): string | null {
   if (ms === null) return null;
   const elapsed = Math.max(0, Math.floor((Date.now() - ms) / 1000));
   if (elapsed < 2) return null;
-  return `Running for ${elapsed}s`;
+  return t("git.runningFor", { seconds: elapsed });
 }
 
 export function useGitActionProgress(target: VcsActionTarget): GitActionProgress {

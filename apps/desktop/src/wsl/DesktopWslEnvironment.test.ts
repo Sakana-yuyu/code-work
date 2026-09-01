@@ -1,3 +1,5 @@
+process.env.CODEWORK_DESKTOP_LANGUAGE = "en";
+
 import { describe, it } from "@effect/vitest";
 import { expect } from "vite-plus/test";
 import * as Duration from "effect/Duration";

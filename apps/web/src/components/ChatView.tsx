@@ -81,6 +81,7 @@ import {
 import * as Cause from "effect/Cause";
 import * as Schema from "effect/Schema";
 import { AsyncResult } from "effect/unstable/reactivity";
+import { terminalDisplayLabel } from "../terminal/displayLabel";
 import { isElectron } from "../env";
 import { readLocalApi } from "../localApi";
 import { useDiffPanelStore } from "../diffPanelStore";
@@ -123,6 +124,7 @@ import {
   DEFAULT_THREAD_TERMINAL_ID,
   MAX_TERMINALS_PER_GROUP,
   type ChatMessage,
+  type ChatMessagePresentation,
   type SessionPhase,
   type Thread,
   type TurnDiffSummary,
@@ -1248,7 +1250,7 @@ type LocalThreadErrorEntry = {
 };
 
 function chatActionErrorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : "An error occurred.";
+  return error instanceof Error ? error.message : t("anErrorOccurred");
 }
 
 /**
@@ -1384,6 +1386,9 @@ function ChatViewContent(props: ChatViewProps) {
   const composerInteractionMode = useComposerDraftStore(
     (store) => store.getComposerDraft(composerDraftTarget)?.interactionMode ?? null,
   );
+  const composerGoalObjective = useComposerDraftStore(
+    (store) => store.getComposerDraft(composerDraftTarget)?.goalObjective ?? null,
+  );
   const composerActiveProvider = useComposerDraftStore(
     (store) => store.getComposerDraft(composerDraftTarget)?.activeProvider ?? null,
   );
@@ -1426,6 +1431,9 @@ function ChatViewContent(props: ChatViewProps) {
   const [showScrollToBottom, setShowScrollToBottom] = useState(false);
   const [expandedImage, setExpandedImage] = useState<ExpandedImagePreview | null>(null);
   const [optimisticUserMessages, setOptimisticUserMessages] = useState<ChatMessage[]>([]);
+  const [localMessagePresentations, setLocalMessagePresentations] = useState<
+    Record<string, ChatMessagePresentation>
+  >({});
   const [feedbackSubmissionsByThreadKey, setFeedbackSubmissionsByThreadKey] = useState<
     Record<string, ReadonlyArray<CodexFeedbackSubmission>>
   >({});
@@ -1639,13 +1647,8 @@ function ChatViewContent(props: ChatViewProps) {
   // the branch mismatch banner.
   const [, setThreadErrorBannerDismissTick] = useState(0);
   const runtimeMode = composerRuntimeMode ?? activeThread?.runtimeMode ?? DEFAULT_RUNTIME_MODE;
-  // Plan mode is legacy (Settings → Beta). With the flag off the effective
-  // mode is forced to "default" — even for threads with a stored plan mode —
-  // so nobody is trapped in plan mode while its toggle is hidden. The next
-  // send persists "default" back to the thread.
-  const interactionMode = settings.planModeEnabled
-    ? (composerInteractionMode ?? activeThread?.interactionMode ?? DEFAULT_INTERACTION_MODE)
-    : DEFAULT_INTERACTION_MODE;
+  const interactionMode =
+    composerInteractionMode ?? activeThread?.interactionMode ?? DEFAULT_INTERACTION_MODE;
   const isLocalDraftThread = !isServerThread && localDraftThread !== undefined;
   const canCheckoutPullRequestIntoThread = isLocalDraftThread;
   const activeThreadId = activeThread?.id ?? null;
@@ -2687,6 +2690,11 @@ function ChatViewContent(props: ChatViewProps) {
             return changed ? { ...message, attachments } : message;
           });
 
+    const serverMessagesWithPresentation = serverMessagesWithPreviewHandoff.map((message) => {
+      const localPresentation = localMessagePresentations[message.id];
+      return localPresentation ? { ...message, localPresentation } : message;
+    });
+
     const localMessages = [
       ...optimisticUserMessages,
       ...feedbackSubmissions.flatMap((submission) =>
@@ -2696,18 +2704,19 @@ function ChatViewContent(props: ChatViewProps) {
       ),
     ];
     if (localMessages.length === 0) {
-      return serverMessagesWithPreviewHandoff;
+      return serverMessagesWithPresentation;
     }
-    const serverIds = new Set(serverMessagesWithPreviewHandoff.map((message) => message.id));
+    const serverIds = new Set(serverMessagesWithPresentation.map((message) => message.id));
     const pendingMessages = localMessages.filter((message) => !serverIds.has(message.id));
     if (pendingMessages.length === 0) {
-      return serverMessagesWithPreviewHandoff;
+      return serverMessagesWithPresentation;
     }
-    return [...serverMessagesWithPreviewHandoff, ...pendingMessages];
+    return [...serverMessagesWithPresentation, ...pendingMessages];
   }, [
     attachmentPreviewHandoffByMessageId,
     displayServerMessages,
     feedbackSubmissions,
+    localMessagePresentations,
     optimisticUserMessages,
   ]);
   const timelineEntries = useMemo(
@@ -3251,7 +3260,9 @@ function ChatViewContent(props: ChatViewProps) {
           const error = squashAtomCommandFailure(openResult);
           setThreadError(
             activeThreadId,
-            error instanceof Error ? error.message : `Failed to run script "${script.name}".`,
+            error instanceof Error
+              ? error.message
+              : t("scripts.failedToRunScript", { name: script.name }),
           );
         }
         return;
@@ -3269,7 +3280,9 @@ function ChatViewContent(props: ChatViewProps) {
         const error = squashAtomCommandFailure(writeResult);
         setThreadError(
           activeThreadId,
-          error instanceof Error ? error.message : `Failed to run script "${script.name}".`,
+          error instanceof Error
+            ? error.message
+            : t("scripts.failedToRunScript", { name: script.name }),
         );
       }
     },
@@ -3375,7 +3388,7 @@ function ChatViewContent(props: ChatViewProps) {
       }
       const existingScript = activeProject.scripts.find((script) => script.id === scriptId);
       if (!existingScript) {
-        return AsyncResult.failure(Cause.fail(new Error("Script not found.")));
+        return AsyncResult.failure(Cause.fail(new Error(t("scripts.scriptNotFound"))));
       }
 
       const updatedScript = buildProjectScript(existingScript.id, input);
@@ -3664,7 +3677,9 @@ function ChatViewContent(props: ChatViewProps) {
   );
   const requestCloseTerminal = useCallback(
     (terminalId: string) => {
-      const label = activeTerminalLabelsById.get(terminalId) ?? getTerminalLabel(terminalId);
+      const label = terminalDisplayLabel(
+        activeTerminalLabelsById.get(terminalId) ?? getTerminalLabel(terminalId),
+      );
       void confirmTerminalClose([label]).then((confirmed) => {
         if (confirmed) closeTerminal(terminalId);
       });
@@ -3673,7 +3688,9 @@ function ChatViewContent(props: ChatViewProps) {
   );
   const requestClosePanelTerminal = useCallback(
     (terminalId: string) => {
-      const label = activeTerminalLabelsById.get(terminalId) ?? getTerminalLabel(terminalId);
+      const label = terminalDisplayLabel(
+        activeTerminalLabelsById.get(terminalId) ?? getTerminalLabel(terminalId),
+      );
       void confirmTerminalClose([label]).then((confirmed) => {
         if (confirmed) closePanelTerminal(terminalId);
       });
@@ -3763,13 +3780,16 @@ function ChatViewContent(props: ChatViewProps) {
         finishClose();
         return;
       }
-      const activeLabel =
+      const activeLabel = terminalDisplayLabel(
         activeTerminalLabelsById.get(surface.activeTerminalId) ??
-        getTerminalLabel(surface.activeTerminalId);
+          getTerminalLabel(surface.activeTerminalId),
+      );
       const otherLabels = surface.terminalIds
         .filter((terminalId) => terminalId !== surface.activeTerminalId)
-        .map(
-          (terminalId) => activeTerminalLabelsById.get(terminalId) ?? getTerminalLabel(terminalId),
+        .map((terminalId) =>
+          terminalDisplayLabel(
+            activeTerminalLabelsById.get(terminalId) ?? getTerminalLabel(terminalId),
+          ),
         );
       void confirmTerminalClose([activeLabel, ...otherLabels]).then((confirmed) => {
         if (confirmed) finishClose();
@@ -4310,6 +4330,10 @@ function ChatViewContent(props: ChatViewProps) {
   }, [activeThread?.id]);
 
   useEffect(() => {
+    setLocalMessagePresentations({});
+  }, [activeThread?.id]);
+
+  useEffect(() => {
     setIsRevertingCheckpoint(false);
   }, [activeThread?.id]);
 
@@ -4730,7 +4754,7 @@ function ChatViewContent(props: ChatViewProps) {
         const error = squashAtomCommandFailure(result);
         setThreadError(
           activeThread.id,
-          error instanceof Error ? error.message : "Failed to stop background work.",
+          error instanceof Error ? error.message : t("backgroundWork.failedToStop"),
         );
       }
     }
@@ -4865,12 +4889,12 @@ function ChatViewContent(props: ChatViewProps) {
     composerHasUnsentContent;
   const compactDisabledReason = compactDisabled
     ? composerHasUnsentContent
-      ? "Send or clear your draft before compacting"
+      ? t("compact.reasonSendOrClearDraft")
       : !activeProject
-        ? "Choose a project before compacting"
+        ? t("compact.reasonChooseProject")
         : !compactionProviderAvailable
-          ? "Enable a Claude provider before compacting"
-          : "Compacting is unavailable right now"
+          ? t("compact.reasonEnableClaudeProvider")
+          : t("compact.reasonUnavailable")
     : null;
   const resumeCompactionBannerItem = useMemo<ComposerBannerStackItem | null>(() => {
     if (
@@ -5342,7 +5366,7 @@ function ChatViewContent(props: ChatViewProps) {
         const error = squashAtomCommandFailure(result);
         setThreadError(
           activeThread.id,
-          error instanceof Error ? error.message : "Failed to revert thread state.",
+          error instanceof Error ? error.message : t("checkpoint.failedToRevert"),
         );
       }
       setIsRevertingCheckpoint(false);
@@ -5368,6 +5392,7 @@ function ChatViewContent(props: ChatViewProps) {
       annotation: PreviewAnnotationPayload;
       image: ComposerImageAttachment | null;
     },
+    directPrompt?: string,
   ) => {
     e?.preventDefault();
     const notifyDirectAnnotationAttached = () => {
@@ -5446,7 +5471,7 @@ function ChatViewContent(props: ChatViewProps) {
             },
           ]
         : sendContextPreviewAnnotations;
-    const promptForSend = promptRef.current;
+    const promptForSend = directPrompt ?? promptRef.current;
     const {
       trimmedPrompt: trimmed,
       sendableTerminalContexts: sendableComposerTerminalContexts,
@@ -5461,6 +5486,10 @@ function ChatViewContent(props: ChatViewProps) {
         composerPreviewAnnotations.length +
         composerReviewComments.length,
     });
+    const hasDraftGoalObjective =
+      isLocalDraftThread && (composerGoalObjective?.trim().length ?? 0) > 0;
+    const goalOnlyTurn =
+      hasDraftGoalObjective && (trimmed.length === 0 || trimmed === composerGoalObjective?.trim());
     const feedbackCommand =
       ctxSelectedProvider === "codex" &&
       composerImages.length === 0 &&
@@ -5539,7 +5568,7 @@ function ChatViewContent(props: ChatViewProps) {
           actionProps: {
             children: t("copyId"),
             onClick: () => {
-              void writeTextToClipboard(feedbackId, "Codex feedback thread ID").catch(
+              void writeTextToClipboard(feedbackId, t("feedback.codexThreadIdCopyTarget")).catch(
                 (error: unknown) => {
                   toastManager.add(
                     stackedThreadToast({
@@ -5580,10 +5609,7 @@ function ChatViewContent(props: ChatViewProps) {
       });
       return;
     }
-    // Legacy plan mode: /plan and /default only act when the beta flag is on;
-    // otherwise they send as plain text like any other message.
     const standaloneSlashCommand =
-      settings.planModeEnabled &&
       composerImages.length === 0 &&
       sendableComposerTerminalContexts.length === 0 &&
       composerElementContexts.length === 0 &&
@@ -5598,7 +5624,7 @@ function ChatViewContent(props: ChatViewProps) {
       composerRef.current?.resetCursorState();
       return;
     }
-    if (!hasSendableContent) {
+    if (!hasSendableContent && !hasDraftGoalObjective) {
       if (expiredTerminalContextCount > 0) {
         const toastCopy = buildExpiredTerminalContextToastCopy(
           expiredTerminalContextCount,
@@ -5636,7 +5662,7 @@ function ChatViewContent(props: ChatViewProps) {
     const shouldCreateWorktree =
       isFirstMessage && sendEnvMode === "worktree" && !activeThread.worktreePath;
     if (shouldCreateWorktree && !activeThreadBranch) {
-      setThreadError(threadIdForSend, "Select a base branch before sending in New worktree mode.");
+      setThreadError(threadIdForSend, t("composer.selectBaseBranchForWorktree"));
       return;
     }
 
@@ -5657,12 +5683,23 @@ function ChatViewContent(props: ChatViewProps) {
       messageTextWithPreviewAnnotations,
       composerReviewCommentsSnapshot,
     );
+    const localPresentation: ChatMessagePresentation | undefined = goalOnlyTurn
+      ? {
+          kind: "goal",
+          summary: composerGoalObjective?.trim() || trimmed,
+        }
+      : phase === "running"
+        ? {
+            kind: "queue",
+            summary: messageTextForSend.trim() || trimmed,
+          }
+        : undefined;
     const outgoingMessageText = formatOutgoingPrompt({
       provider: ctxSelectedProvider,
       model: ctxSelectedModel,
       models: ctxSelectedProviderModels,
       effort: ctxSelectedPromptEffort,
-      text: messageTextForSend || IMAGE_ONLY_BOOTSTRAP_PROMPT,
+      text: goalOnlyTurn ? "" : messageTextForSend || IMAGE_ONLY_BOOTSTRAP_PROMPT,
     });
     if (composerRef.current?.validateProviderInput(outgoingMessageText) === false) {
       return;
@@ -5676,7 +5713,7 @@ function ChatViewContent(props: ChatViewProps) {
       await awaitAttachmentUploads(composerImagesSnapshot.map((image) => image.id));
       if (getUploadedAttachments({ environmentId, images: composerImagesSnapshot }) === null) {
         sendInFlightRef.current = false;
-        setThreadError(threadIdForSend, "Retry or remove failed image uploads before sending.");
+        setThreadError(threadIdForSend, t("composer.retryOrRemoveFailedUploads"));
         return;
       }
     }
@@ -5717,7 +5754,7 @@ function ChatViewContent(props: ChatViewProps) {
         if (supportsAttachmentUploads) {
           const uploaded = getUploadedAttachments({ environmentId, images: [image] })?.[0];
           if (!uploaded) {
-            throw new Error(`Image '${image.name}' did not finish uploading.`);
+            throw new Error(t("composer.imageDidNotFinishUploading", { name: image.name }));
           }
           return uploaded;
         }
@@ -5763,6 +5800,7 @@ function ChatViewContent(props: ChatViewProps) {
         id: messageIdForSend,
         role: "user",
         text: outgoingMessageText,
+        ...(localPresentation ? { localPresentation } : {}),
         ...(optimisticAttachments.length > 0 ? { attachments: optimisticAttachments } : {}),
         turnId: null,
         createdAt: messageCreatedAt,
@@ -5770,6 +5808,12 @@ function ChatViewContent(props: ChatViewProps) {
         streaming: false,
       },
     ]);
+    if (localPresentation) {
+      setLocalMessagePresentations((existing) => ({
+        ...existing,
+        [messageIdForSend]: localPresentation,
+      }));
+    }
     setThreadError(threadIdForSend, null);
     if (expiredTerminalContextCount > 0) {
       const toastCopy = buildExpiredTerminalContextToastCopy(
@@ -5865,6 +5909,7 @@ function ChatViewContent(props: ChatViewProps) {
                       interactionMode,
                       branch: activeThreadBranch,
                       worktreePath: activeThread.worktreePath,
+                      ...(composerGoalObjective ? { goalObjective: composerGoalObjective } : {}),
                       createdAt: activeThread.createdAt,
                     },
                   }
@@ -5988,6 +6033,12 @@ function ChatViewContent(props: ChatViewProps) {
           const next = existing.filter((message) => message.id !== messageIdForSend);
           return next.length === existing.length ? existing : next;
         });
+        setLocalMessagePresentations((existing) => {
+          if (!(messageIdForSend in existing)) return existing;
+          const next = { ...existing };
+          delete next[messageIdForSend];
+          return next;
+        });
         promptRef.current = promptForSend;
         const retryComposerImages = composerImagesSnapshot.map(cloneComposerImageForRetry);
         composerImagesRef.current = retryComposerImages;
@@ -6023,7 +6074,7 @@ function ChatViewContent(props: ChatViewProps) {
         }
         setThreadError(
           threadIdForSend,
-          error instanceof Error ? error.message : "Failed to send message.",
+          error instanceof Error ? error.message : t("composer.failedToSendMessage"),
         );
       }
     }
@@ -6036,8 +6087,8 @@ function ChatViewContent(props: ChatViewProps) {
     }
   };
 
-  const onInterrupt = async () => {
-    if (!activeThread) return;
+  const onInterrupt = useCallback(async (): Promise<boolean> => {
+    if (!activeThread) return false;
     const result = await interruptThreadTurn({
       environmentId,
       input: buildThreadTurnInterruptInput(activeThread),
@@ -6046,10 +6097,12 @@ function ChatViewContent(props: ChatViewProps) {
       const error = squashAtomCommandFailure(result);
       setThreadError(
         activeThread.id,
-        error instanceof Error ? error.message : "Failed to interrupt the current turn.",
+        error instanceof Error ? error.message : t("composer.failedToInterruptTurn"),
       );
+      return false;
     }
-  };
+    return true;
+  }, [activeThread, environmentId, interruptThreadTurn, setThreadError]);
 
   const onRespondToApproval = useCallback(
     async (requestId: ApprovalRequestId, decision: ProviderApprovalDecision) => {
@@ -6070,7 +6123,7 @@ function ChatViewContent(props: ChatViewProps) {
         const error = squashAtomCommandFailure(result);
         setThreadError(
           activeThreadId,
-          error instanceof Error ? error.message : "Failed to submit approval decision.",
+          error instanceof Error ? error.message : t("composer.failedToSubmitApproval"),
         );
       }
       setRespondingRequestIds((existing) => existing.filter((id) => id !== requestId));
@@ -6098,7 +6151,7 @@ function ChatViewContent(props: ChatViewProps) {
         const error = squashAtomCommandFailure(result);
         setThreadError(
           activeThreadId,
-          error instanceof Error ? error.message : "Failed to submit user input.",
+          error instanceof Error ? error.message : t("composer.failedToSubmitUserInput"),
         );
       }
       setRespondingUserInputRequestIds((existing) => existing.filter((id) => id !== requestId));
@@ -6340,7 +6393,7 @@ function ChatViewContent(props: ChatViewProps) {
         const error = squashAtomCommandFailure(failure);
         setThreadError(
           threadIdForSend,
-          error instanceof Error ? error.message : "Failed to send plan follow-up.",
+          error instanceof Error ? error.message : t("composer.failedToSendPlanFollowUp"),
         );
       }
       sendInFlightRef.current = false;
@@ -6539,7 +6592,9 @@ function ChatViewContent(props: ChatViewProps) {
         currentProviderInstanceId: activeThread.session?.providerInstanceId ?? null,
         nextModelSelection: { instanceId, model },
       });
-      return reason ? `${reason.description} Start a new thread to use this model.` : null;
+      return reason
+        ? t("modelPicker.startNewThreadToUseModel", { reason: reason.description })
+        : null;
     },
     [activeThread, providerStatuses],
   );
@@ -6789,7 +6844,7 @@ function ChatViewContent(props: ChatViewProps) {
     ) : activeRightPanelSurface?.kind === "pull-request" && !supportsPullRequests ? (
       <PullRequestsUnavailableState
         title={t("pullRequestsUnavailable")}
-        error="Update this environment's Code Work server to browse pull requests."
+        error={t("pullRequests.updateEnvironmentServer")}
       />
     ) : activeRightPanelSurface?.kind === "pull-request" ? (
       // No onClose: the surface tab's own X owns closing here, and a second X in the header
@@ -7087,9 +7142,9 @@ function ChatViewContent(props: ChatViewProps) {
                             isSendBusy={isSendBusy}
                             sendDisabledReason={
                               feedbackUploading
-                                ? "Sending feedback"
+                                ? t("composer.sendingFeedback")
                                 : threadDetailLoading
-                                  ? "Messages loading"
+                                  ? t("composer.messagesLoading")
                                   : null
                             }
                             isPreparingWorktree={isPreparingWorktree}

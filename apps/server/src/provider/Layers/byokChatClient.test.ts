@@ -757,7 +757,7 @@ describe("byokChatClient OpenAI tool calls", () => {
         {
           type: "function",
           function: {
-            name: "workspace.read_file",
+            name: "workspace_read_file",
             description: "Read a text file",
             parameters: { type: "object", properties: { cwd: { type: "string" } } },
           },
@@ -765,6 +765,72 @@ describe("byokChatClient OpenAI tool calls", () => {
       ],
       stream: true,
     });
+  });
+
+  it("sanitizes dotted tool names for restrictive OpenAI gateways and restores canonical names on the way back", async () => {
+    // DeepSeek 风格网关：function.name 只允许 ^[a-zA-Z0-9_-]+$，请求里的点号
+    // 会被替换为下划线；模型回显净化名时，事件里还原为规范名。
+    const { client, captured } = makeClient(
+      [
+        'data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call-9","function":{"name":"workspace_read_file","arguments":"{\\"cwd\\":\\"C:/w\\"}"}}]},"finish_reason":"tool_calls"}]}',
+        "",
+        "data: [DONE]",
+        "",
+      ].join("\n"),
+    );
+    const tools: ReadonlyArray<ByokToolDescriptor> = [
+      {
+        canonicalToolName: "workspace.read_file",
+        description: "Read a text file",
+        parameters: { type: "object", properties: { cwd: { type: "string" } } },
+      },
+    ];
+
+    const events = await runEvents(client, {
+      protocol: "openai",
+      baseURL: "https://api.deepseek.com/v1",
+      apiKey: "k",
+      modelId: "deepseek-v4-flash",
+      messages: [
+        { role: "user", content: "read README" },
+        {
+          role: "assistant",
+          content: "",
+          toolCalls: [
+            {
+              toolCallId: "call-8",
+              canonicalToolName: "workspace.read_file",
+              arguments: { cwd: "C:/w" },
+            },
+          ],
+        },
+        { role: "tool", toolCallId: "call-8", content: "{}" },
+      ],
+      tools,
+    });
+
+    // 请求侧：tools 广播与历史回放的 function.name 都已净化。
+    expect(captured[0]?.body).toMatchObject({
+      tools: [{ type: "function", function: { name: "workspace_read_file" } }],
+      messages: [
+        { role: "user", content: "read README" },
+        {
+          role: "assistant",
+          tool_calls: [{ function: { name: "workspace_read_file" } }],
+        },
+        { role: "tool", tool_call_id: "call-8" },
+      ],
+    });
+    // 响应侧：模型回显的净化名还原为规范名。
+    expect(events).toEqual([
+      {
+        type: "tool_call",
+        toolCallId: "call-9",
+        canonicalToolName: "workspace.read_file",
+        arguments: { cwd: "C:/w" },
+      },
+      { type: "completed", finishReason: "tool_calls" },
+    ]);
   });
 
   it("replays assistant tool calls and tool results using the OpenAI message shape", async () => {
@@ -812,7 +878,7 @@ describe("byokChatClient OpenAI tool calls", () => {
               id: "call-1",
               type: "function",
               function: {
-                name: "workspace.read_file",
+                name: "workspace_read_file",
                 arguments: '{"cwd":"C:/workspace","relativePath":"README.md"}',
               },
             },

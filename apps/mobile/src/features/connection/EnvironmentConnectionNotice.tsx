@@ -13,15 +13,15 @@ import { t } from "../../i18n";
 function noticeTitle(phase: EnvironmentConnectionPhase, environmentLabel: string): string {
   switch (phase) {
     case "offline":
-      return "You are offline";
+      return t("youAreOffline");
     case "connecting":
-      return `Connecting to ${environmentLabel}...`;
+      return t("connection.connectingTo", { environmentLabel });
     case "reconnecting":
-      return `Reconnecting to ${environmentLabel}...`;
+      return t("connection.reconnectingTo", { environmentLabel });
     case "error":
-      return `${environmentLabel} is unavailable`;
+      return t("connection.environmentUnavailable", { environmentLabel });
     case "available":
-      return `${environmentLabel} is disconnected`;
+      return t("connection.environmentDisconnected", { environmentLabel });
     case "connected":
       return "";
   }
@@ -33,18 +33,18 @@ function noticeDetail(
   error: string | null,
 ): string {
   if (error) {
-    return `The app will keep retrying automatically. ${error}`;
+    return t("connection.retryingAutomatically", { error });
   }
 
   switch (phase) {
     case "offline":
-      return `Cached data remains available. The ${resourceName} will load when your connection returns.`;
+      return t("connection.offlineCachedDetail", { resourceName });
     case "connecting":
     case "reconnecting":
-      return `The ${resourceName} will load as soon as the environment is ready.`;
+      return t("connection.loadingWhenReadyDetail", { resourceName });
     case "available":
     case "error":
-      return `Reconnect the environment to load the ${resourceName}.`;
+      return t("connection.reconnectToLoadDetail", { resourceName });
     case "connected":
       return "";
   }

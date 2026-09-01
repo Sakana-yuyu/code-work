@@ -16,10 +16,9 @@
  *   - `interruptTurn` interrupts the active streaming fiber and emits
  *     `turn.aborted`.
  *
- * There is no structured tool input/output or permission flow in the engine,
- * so those adapter methods surface "unsupported" errors; agentic tool use
- * goes through the BYOK delegation executor instead. Rollback is local:
- * the history is truncated by N turns.
+ * Text-only project turns reuse the shared BYOK Agent Loop and ToolBroker for
+ * read-only repository inspection. Image turns retain the legacy multimodal
+ * stream. Rollback is local: the history is truncated by N turns.
  *
  * @module provider/Layers/ByokAdapter
  */
@@ -49,6 +48,13 @@ import { HttpClient } from "effect/unstable/http";
 
 import { ServerConfig } from "../../config.ts";
 import { resolveAttachmentPath } from "../../attachmentStore.ts";
+import { runByokAgentLoop } from "../../composition/ByokAgentLoop.ts";
+import { makeByokModelDriver } from "../../composition/OpenAiByokModelDriver.ts";
+import {
+  compositionToolCapabilityId,
+  listCompositionAgentTools,
+} from "../../composition/CompositionToolRegistry.ts";
+import type { ToolBroker } from "../../composition/ToolBroker.ts";
 import {
   ProviderAdapterRequestError,
   ProviderAdapterSessionNotFoundError,
@@ -67,7 +73,6 @@ import { applyPromptTemplate, renderPromptTemplate } from "../byok/PromptTemplat
 import {
   buildVisionPrompt,
   isImagePart,
-  messageImageCount,
   messageTextContext,
   messagesContainImages,
   modelLikelySupportsVision,
@@ -113,7 +118,22 @@ interface ByokSessionContext {
 
 export interface ByokAdapterLiveOptions {
   readonly instanceId?: ProviderInstanceId;
+  readonly toolBroker?: ToolBroker["Service"];
 }
+
+const BYOK_PROJECT_TOOL_NAMES: ReadonlySet<string> = new Set([
+  "workspace.read_file",
+  "git.status",
+  "git.diff",
+]);
+
+const renderAgentConversation = (messages: ReadonlyArray<ByokChatMessage>): string =>
+  messages
+    .map(
+      (message) =>
+        `${message.role === "assistant" ? "助手" : "用户"}: ${messageTextContext(message)}`,
+    )
+    .join("\n\n");
 
 /** Rough char cost of a message, estimating inline images at a fixed budget. */
 const messageHistoryChars = (message: ByokChatMessage): number =>
@@ -149,6 +169,12 @@ export function makeByokAdapter(byokSettings: ByokSettings, options?: ByokAdapte
     const crypto = yield* Crypto.Crypto;
     const httpClient = yield* HttpClient.HttpClient;
     const fileSystem = yield* FileSystem.FileSystem;
+    const projectTools = listCompositionAgentTools().filter((tool) =>
+      BYOK_PROJECT_TOOL_NAMES.has(tool.canonicalToolName),
+    );
+    const projectCapabilityGrantIds = projectTools.map((tool) =>
+      compositionToolCapabilityId(tool.canonicalToolName),
+    );
 
     // Fibers forked into this scope are interrupted when the adapter layer
     // shuts down, so a streaming turn can never outlive its instance.
@@ -459,6 +485,99 @@ export function makeByokAdapter(byokSettings: ByokSettings, options?: ByokAdapte
       });
     });
 
+    const runAgentTurn = Effect.fn("byokRunAgentTurn")(function* (
+      ctx: ByokSessionContext,
+      turnId: TurnId,
+      adapter: ByokModelAdapter,
+      messages: ReadonlyArray<ByokChatMessage>,
+      systemPrompt: string,
+      toolBroker: ToolBroker["Service"],
+    ) {
+      const effectiveMessages = yield* applyVisionDelegation(ctx, adapter, messages);
+      const agentSystemPrompt = [
+        systemPrompt,
+        `当前项目工作区根目录是：${ctx.cwd}`,
+        "当用户要求审查、读取或分析代码时，先使用可用的工作区工具取得证据，不要声称没有项目上下文。",
+      ]
+        .filter((part) => part.trim().length > 0)
+        .join("\n\n");
+      const outcome = yield* Effect.exit(
+        runByokAgentLoop(
+          {
+            taskId: String(ctx.session.threadId),
+            runId: String(turnId),
+            agentId: `provider:${boundInstanceId}`,
+            runtimeId: `byok:${boundInstanceId}`,
+            threadId: String(ctx.session.threadId),
+            workspaceRoot: ctx.cwd,
+            prompt: renderAgentConversation(effectiveMessages),
+            capabilityGrantIds: projectCapabilityGrantIds,
+            tools: projectTools,
+            onTextCheckpoint: (checkpoint) =>
+              Effect.gen(function* () {
+                appendTurnItem(ctx, turnId, { type: "text", text: checkpoint.delta });
+                yield* emit({
+                  ...(yield* makeEventStamp()),
+                  type: "content.delta",
+                  provider: PROVIDER,
+                  threadId: ctx.session.threadId,
+                  turnId,
+                  payload: { streamKind: "assistant_text", delta: checkpoint.delta },
+                });
+              }).pipe(Effect.orDie),
+          },
+          makeByokModelDriver(httpClient, {
+            protocol: adapter.protocol,
+            baseURL: adapter.baseURL,
+            apiKey: adapter.apiKey,
+            modelId: adapter.modelId,
+            systemPrompt: agentSystemPrompt,
+          }),
+          toolBroker,
+        ),
+      );
+
+      if (sessions.get(ctx.session.threadId) !== ctx) return;
+      ctx.activeTurnId = undefined;
+      ctx.activeTurnFiber = undefined;
+      yield* updateSession(ctx, { status: "ready" }, true);
+
+      if (Exit.isFailure(outcome)) {
+        if (Cause.hasInterruptsOnly(outcome.cause)) return;
+        const detail =
+          Option.getOrUndefined(Cause.findErrorOption(outcome.cause))?.message ??
+          "BYOK agent turn failed.";
+        yield* emit({
+          ...(yield* makeEventStamp()),
+          type: "runtime.error",
+          provider: PROVIDER,
+          threadId: ctx.session.threadId,
+          turnId,
+          payload: { message: detail, class: "provider_error" },
+        });
+        yield* emit({
+          ...(yield* makeEventStamp()),
+          type: "turn.completed",
+          provider: PROVIDER,
+          threadId: ctx.session.threadId,
+          turnId,
+          payload: { state: "failed", errorMessage: detail },
+        });
+        return;
+      }
+
+      ctx.history.push({ role: "assistant", content: outcome.value.text });
+      ctx.history = fitHistory(ctx.history, adapter.contextWindowTokens);
+      yield* emit({
+        ...(yield* makeEventStamp()),
+        type: "turn.completed",
+        provider: PROVIDER,
+        threadId: ctx.session.threadId,
+        turnId,
+        payload: { state: "completed" },
+      });
+    });
+
     const sendTurn: ByokAdapterShape["sendTurn"] = Effect.fn("byokSendTurn")(function* (input) {
       const ctx = yield* requireSession(input.threadId);
       const text = input.input?.trim() ?? "";
@@ -570,7 +689,11 @@ export function makeByokAdapter(byokSettings: ByokSettings, options?: ByokAdapte
         adapter.modelId,
       );
 
-      const fiber = yield* runTurn(ctx, turnId, adapter, messages, systemPrompt).pipe(
+      const turnEffect =
+        options?.toolBroker !== undefined && text.length > 0 && attachments.length === 0
+          ? runAgentTurn(ctx, turnId, adapter, messages, systemPrompt, options.toolBroker)
+          : runTurn(ctx, turnId, adapter, messages, systemPrompt);
+      const fiber = yield* turnEffect.pipe(
         Effect.catchCause((cause) =>
           Effect.gen(function* () {
             const detail =

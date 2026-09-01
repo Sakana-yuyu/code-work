@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { defaultAnimateLayoutChanges, type AnimateLayoutChanges } from "@dnd-kit/sortable";
+import { scopedThreadKey, scopeThreadRef } from "@codework/client-runtime/environment";
 import { t } from "~/i18n/runtime";
 import {
   animatePinnedLayoutChanges,
@@ -9,6 +10,7 @@ import {
   createThreadJumpHintVisibilityController,
   getSidebarThreadIdsToPrewarm,
   getVisibleSidebarThreadIds,
+  projectLabelVisibilityByThreadKey,
   resolveAdjacentThreadId,
   getFallbackThreadIdAfterDelete,
   getVisibleThreadsForProject,
@@ -1722,5 +1724,35 @@ describe("sortLogicalProjectsForSidebar", () => {
         (project) => project.projectKey,
       ),
     ).toEqual(["logical-newer", "logical-older"]);
+  });
+});
+
+describe("projectLabelVisibilityByThreadKey", () => {
+  const shell = (environmentId: string, projectId: string, id: string) => ({
+    environmentId: EnvironmentId.make(environmentId),
+    projectId: ProjectId.make(projectId),
+    id: ThreadId.make(id),
+  });
+  const keyOf = (environmentId: string, projectId: string, id: string) =>
+    scopedThreadKey(scopeThreadRef(EnvironmentId.make(environmentId), ThreadId.make(id)));
+
+  it("hides the label when the row above has the same project and shows it on a change", () => {
+    const visibility = projectLabelVisibilityByThreadKey([
+      [shell("env", "p1", "t1"), shell("env", "p1", "t2"), shell("env", "p2", "t3")],
+    ]);
+
+    expect(visibility.get(keyOf("env", "p1", "t1"))).toBe(true);
+    expect(visibility.get(keyOf("env", "p1", "t2"))).toBe(false);
+    expect(visibility.get(keyOf("env", "p2", "t3"))).toBe(true);
+  });
+
+  it("starts a fresh chain per section so the first row always shows the label", () => {
+    const visibility = projectLabelVisibilityByThreadKey([
+      [shell("env", "p1", "t1")],
+      [shell("env", "p1", "t2")],
+    ]);
+
+    expect(visibility.get(keyOf("env", "p1", "t1"))).toBe(true);
+    expect(visibility.get(keyOf("env", "p1", "t2"))).toBe(true);
   });
 });

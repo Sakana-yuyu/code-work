@@ -8,12 +8,13 @@ import {
   type RuntimeMode,
 } from "@codework/contracts";
 
+import { t } from "../i18n/runtime";
 import { toUploadChatImageAttachments, type DraftComposerImageAttachment } from "./composerImages";
 
 export function deriveThreadTitleFromPrompt(value: string): string {
   const trimmed = value.trim();
   if (trimmed.length === 0) {
-    return "New thread";
+    return t("threads.newThreadFallback");
   }
 
   const compact = trimmed.replace(/\s+/g, " ");

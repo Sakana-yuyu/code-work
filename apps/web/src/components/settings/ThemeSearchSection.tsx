@@ -168,7 +168,7 @@ export function ThemeSearchSection({
         if (!controller.signal.aborted) {
           setResults(null);
           lastSearchKeyRef.current = null;
-          setError(cause instanceof Error ? cause.message : "Open VSX search failed.");
+          setError(cause instanceof Error ? cause.message : t("themeSearch.searchFailed"));
         }
       }
       if (requestRef.current === controller) {
@@ -247,7 +247,7 @@ export function ThemeSearchSection({
       try {
         installedCollection = getStoredCustomThemeCollection(extension.collectionId);
       } catch (cause) {
-        setError(cause instanceof Error ? cause.message : "Installed themes could not be read.");
+        setError(cause instanceof Error ? cause.message : t("themeSearch.installedReadFailed"));
         return;
       }
       const updated = installedCollection.length > 0;
@@ -271,7 +271,7 @@ export function ThemeSearchSection({
         }
       } catch (cause) {
         if (!controller.signal.aborted) {
-          setError(cause instanceof Error ? cause.message : "That theme could not be added.");
+          setError(cause instanceof Error ? cause.message : t("themeSearch.addFailed"));
         }
       }
       if (requestRef.current === controller) {

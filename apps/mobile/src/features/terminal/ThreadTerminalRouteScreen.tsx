@@ -20,6 +20,7 @@ import {
   ComposerToolbarScroller,
 } from "../../components/ComposerToolbar";
 import { ControlPillMenu } from "../../components/ControlPill";
+import { terminalDisplayLabel } from "./terminalDisplayLabel";
 import { EmptyState } from "../../components/EmptyState";
 import { GlassSurface } from "../../components/GlassSurface";
 import { LoadingScreen } from "../../components/LoadingScreen";
@@ -533,7 +534,9 @@ export function ThreadTerminalRouteScreen(props: ThreadTerminalRouteScreenProps)
           cwd: cwd ?? null,
           status: terminal.status,
           hasRunningSubprocess: terminal.hasRunningSubprocess,
-          displayLabel: resolveTerminalSessionLabel(terminalId, terminal.summary),
+          displayLabel: terminalDisplayLabel(
+            resolveTerminalSessionLabel(terminalId, terminal.summary),
+          ),
           updatedAt: terminal.updatedAt,
         },
       }),
@@ -1175,7 +1178,7 @@ export function ThreadTerminalRouteScreen(props: ThreadTerminalRouteScreenProps)
               <NativeHeaderToolbar.Label>{t("textSize")}</NativeHeaderToolbar.Label>
               <NativeHeaderToolbar.MenuAction
                 disabled={fontSize <= MIN_TERMINAL_FONT_SIZE}
-                discoverabilityLabel="Decrease terminal text size"
+                discoverabilityLabel={t("terminal.decreaseTextSize")}
                 onPress={handleDecreaseFontSize}
               >
                 <NativeHeaderToolbar.Label>
@@ -1189,7 +1192,7 @@ export function ThreadTerminalRouteScreen(props: ThreadTerminalRouteScreenProps)
               </NativeHeaderToolbar.MenuAction>
               <NativeHeaderToolbar.MenuAction
                 disabled={fontSize >= MAX_TERMINAL_FONT_SIZE}
-                discoverabilityLabel="Increase terminal text size"
+                discoverabilityLabel={t("terminal.increaseTextSize")}
                 onPress={handleIncreaseFontSize}
               >
                 <NativeHeaderToolbar.Label>

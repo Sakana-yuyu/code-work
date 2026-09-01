@@ -4,6 +4,7 @@ import { Pressable, View } from "react-native";
 import { useThemeColor } from "../../../lib/useThemeColor";
 import { AppText as Text } from "../../../components/AppText";
 import { cn } from "../../../lib/cn";
+import { t } from "../../../i18n";
 
 /* ─── Shared sheet components ──────────────────────────────────────── */
 
@@ -115,28 +116,32 @@ export function statusSummary(
   } | null,
 ): string {
   if (!gitStatus) {
-    return "Loading branch status\u2026";
+    return t("git.loadingBranchStatus");
   }
 
   if (!gitStatus.isRepo) {
-    return "Not a git repository";
+    return t("git.notGitRepository");
   }
 
   const parts: string[] = [];
   if (gitStatus.hasWorkingTreeChanges) {
     const fileCount = gitStatus.workingTree?.files.length ?? 0;
-    parts.push(`${fileCount} file${fileCount === 1 ? "" : "s"} changed`);
+    parts.push(
+      fileCount === 1
+        ? t("git.fileChanged", { count: fileCount })
+        : t("git.filesChanged", { count: fileCount }),
+    );
   } else {
-    parts.push("Clean");
+    parts.push(t("git.clean"));
   }
   if ((gitStatus.aheadCount ?? 0) > 0) {
-    parts.push(`${gitStatus.aheadCount} ahead`);
+    parts.push(t("git.aheadCount", { count: gitStatus.aheadCount ?? 0 }));
   }
   if ((gitStatus.behindCount ?? 0) > 0) {
-    parts.push(`${gitStatus.behindCount} behind`);
+    parts.push(t("git.behindCount", { count: gitStatus.behindCount ?? 0 }));
   }
   if (gitStatus.pr?.state === "open") {
-    parts.push(`PR #${gitStatus.pr.number} open`);
+    parts.push(t("git.prOpen", { number: gitStatus.pr.number }));
   }
 
   return parts.join(" \u00b7 ");

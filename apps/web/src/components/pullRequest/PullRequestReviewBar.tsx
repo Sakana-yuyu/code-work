@@ -32,7 +32,9 @@ const VERDICTS: ReadonlyArray<{
     get label() {
       return t("comment2");
     },
-    sent: "Review submitted",
+    get sent() {
+      return t("pullRequests.reviewSubmitted");
+    },
     icon: <MessageSquareIcon className="size-3" />,
   },
   {
@@ -40,7 +42,9 @@ const VERDICTS: ReadonlyArray<{
     get label() {
       return t("approve");
     },
-    sent: "Pull request approved",
+    get sent() {
+      return t("pullRequests.pullRequestApproved");
+    },
     icon: <CheckIcon className="size-3" />,
   },
   {
@@ -48,7 +52,9 @@ const VERDICTS: ReadonlyArray<{
     get label() {
       return t("requestChanges");
     },
-    sent: "Changes requested",
+    get sent() {
+      return t("changesRequested");
+    },
     icon: <XCircleIcon className="size-3" />,
   },
 ];

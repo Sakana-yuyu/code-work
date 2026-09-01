@@ -21,6 +21,7 @@ import {
   ProviderItemId,
   type ServerSettings,
   ThreadId,
+  type ThreadGoal,
   TurnId,
 } from "@codework/contracts";
 import * as Clock from "effect/Clock";
@@ -28,6 +29,7 @@ import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
 import * as Layer from "effect/Layer";
 import * as ManagedRuntime from "effect/ManagedRuntime";
+import * as Option from "effect/Option";
 import * as PubSub from "effect/PubSub";
 import * as Scope from "effect/Scope";
 import * as Stream from "effect/Stream";
@@ -37,6 +39,8 @@ import { afterEach, describe, expect, it } from "vite-plus/test";
 import { OrchestrationEventStoreLive } from "../../persistence/Layers/OrchestrationEventStore.ts";
 import { OrchestrationCommandReceiptRepositoryLive } from "../../persistence/Layers/OrchestrationCommandReceipts.ts";
 import { SqlitePersistenceMemory } from "../../persistence/Layers/Sqlite.ts";
+import { ThreadGoalStoreLive } from "../../persistence/Layers/ThreadGoalStore.ts";
+import { ThreadGoalStore } from "../../persistence/Services/ThreadGoalStore.ts";
 import {
   ProviderService,
   type ProviderServiceShape,
@@ -199,9 +203,29 @@ async function waitForThread(
   return poll();
 }
 
+async function waitForGoalStatus(
+  getGoal: () => Promise<Option.Option<ThreadGoal>>,
+  expected: ThreadGoal["status"],
+): Promise<ThreadGoal> {
+  const deadline = (await Effect.runPromise(Clock.currentTimeMillis)) + 2000;
+  for (;;) {
+    const goal = await getGoal();
+    if (Option.isSome(goal) && goal.value.status === expected) {
+      return goal.value;
+    }
+    if ((await Effect.runPromise(Clock.currentTimeMillis)) >= deadline) {
+      throw new Error(`Timed out waiting for Goal status ${expected}`);
+    }
+    await Effect.runPromise(Effect.yieldNow);
+  }
+}
+
 describe("ProviderRuntimeIngestion", () => {
   let runtime: ManagedRuntime.ManagedRuntime<
-    OrchestrationEngineService | ProviderRuntimeIngestionService | ProjectionSnapshotQuery,
+    | OrchestrationEngineService
+    | ProviderRuntimeIngestionService
+    | ProjectionSnapshotQuery
+    | ThreadGoalStore,
     unknown
   > | null = null;
   let scope: Scope.Closeable | null = null;
@@ -254,6 +278,12 @@ describe("ProviderRuntimeIngestion", () => {
       Layer.provideMerge(ThreadBackgroundLiveness.layer),
       Layer.provideMerge(ThreadPlanProgress.layer),
       Layer.provideMerge(SqlitePersistenceMemory),
+      Layer.provideMerge(
+        ThreadGoalStoreLive.pipe(
+          Layer.provideMerge(SqlitePersistenceMemory),
+          Layer.provide(NodeServices.layer),
+        ),
+      ),
       Layer.provideMerge(Layer.succeed(ProviderService, provider.service)),
       Layer.provideMerge(makeTestServerSettingsLayer(options?.serverSettings)),
       Layer.provideMerge(ServerConfig.layerTest(process.cwd(), process.cwd())),
@@ -263,6 +293,7 @@ describe("ProviderRuntimeIngestion", () => {
     const engine = await runtime.runPromise(Effect.service(OrchestrationEngineService));
     const snapshotQuery = await runtime.runPromise(Effect.service(ProjectionSnapshotQuery));
     const ingestion = await runtime.runPromise(Effect.service(ProviderRuntimeIngestionService));
+    const goalStore = await runtime.runPromise(Effect.service(ThreadGoalStore));
     scope = await Effect.runPromise(Scope.make("sequential"));
     await Effect.runPromise(ingestion.start().pipe(Scope.provide(scope)));
     const drain = () => Effect.runPromise(ingestion.drain);
@@ -327,6 +358,7 @@ describe("ProviderRuntimeIngestion", () => {
       readModel: () => Effect.runPromise(snapshotQuery.getSnapshot()),
       emit: provider.emit,
       setProviderSession: provider.setSession,
+      goalStore,
       drain,
     };
   }
@@ -1959,6 +1991,305 @@ describe("ProviderRuntimeIngestion", () => {
     );
     expect(message?.text).toBe("buffer me");
     expect(message?.streaming).toBe(false);
+  });
+
+  it("pauses an active Goal when a turn completes without a completion marker", async () => {
+    const harness = await createHarness();
+    const now = "2026-01-01T00:00:00.000Z";
+    await Effect.runPromise(
+      harness.goalStore.set({
+        threadId: asThreadId("thread-1"),
+        objective: "Keep the migration reversible",
+        tokenBudget: null,
+      }),
+    );
+
+    harness.emit({
+      type: "turn.started",
+      eventId: asEventId("evt-goal-pause-turn-started"),
+      provider: ProviderDriverKind.make("codex"),
+      createdAt: now,
+      threadId: asThreadId("thread-1"),
+      turnId: asTurnId("turn-goal-pause"),
+    });
+    await waitForThread(
+      harness.readModel,
+      (thread) =>
+        thread.session?.status === "running" && thread.session?.activeTurnId === "turn-goal-pause",
+    );
+
+    harness.emit({
+      type: "turn.completed",
+      eventId: asEventId("evt-goal-pause-turn-completed"),
+      provider: ProviderDriverKind.make("codex"),
+      createdAt: now,
+      threadId: asThreadId("thread-1"),
+      turnId: asTurnId("turn-goal-pause"),
+      payload: { state: "completed" },
+    });
+
+    const goal = await waitForGoalStatus(
+      () => Effect.runPromise(harness.goalStore.get(asThreadId("thread-1"))),
+      "paused",
+    );
+    expect(goal.status).toBe("paused");
+  });
+
+  it("settles the thread and Goal together when a turn is aborted", async () => {
+    const harness = await createHarness();
+    const now = "2026-01-01T00:00:00.000Z";
+    const threadId = asThreadId("thread-1");
+    const turnId = asTurnId("turn-goal-aborted");
+    await Effect.runPromise(
+      harness.goalStore.set({
+        threadId,
+        objective: "Keep the migration reversible",
+        tokenBudget: null,
+      }),
+    );
+
+    harness.emit({
+      type: "turn.started",
+      eventId: asEventId("evt-goal-aborted-turn-started"),
+      provider: ProviderDriverKind.make("codex"),
+      createdAt: now,
+      threadId,
+      turnId,
+    });
+    await waitForThread(
+      harness.readModel,
+      (thread) => thread.session?.status === "running" && thread.session.activeTurnId === turnId,
+    );
+
+    harness.emit({
+      type: "turn.aborted",
+      eventId: asEventId("evt-goal-aborted"),
+      provider: ProviderDriverKind.make("codex"),
+      createdAt: now,
+      threadId,
+      turnId,
+      payload: { reason: "Interrupted by user." },
+    });
+
+    const thread = await waitForThread(
+      harness.readModel,
+      (entry) => entry.session?.status === "interrupted" && entry.session.activeTurnId === null,
+    );
+    expect(thread.latestTurn?.state).toBe("interrupted");
+    expect(
+      (await waitForGoalStatus(() => Effect.runPromise(harness.goalStore.get(threadId)), "paused"))
+        .status,
+    ).toBe("paused");
+  });
+
+  it("completes the Goal and strips the marker when the final text declares completion", async () => {
+    const harness = await createHarness();
+    const now = "2026-01-01T00:00:00.000Z";
+    await Effect.runPromise(
+      harness.goalStore.set({
+        threadId: asThreadId("thread-1"),
+        objective: "Keep the migration reversible",
+        tokenBudget: null,
+      }),
+    );
+
+    harness.emit({
+      type: "turn.started",
+      eventId: asEventId("evt-goal-marker-turn-started"),
+      provider: ProviderDriverKind.make("codex"),
+      createdAt: now,
+      threadId: asThreadId("thread-1"),
+      turnId: asTurnId("turn-goal-marker"),
+    });
+    await waitForThread(
+      harness.readModel,
+      (thread) =>
+        thread.session?.status === "running" && thread.session?.activeTurnId === "turn-goal-marker",
+    );
+
+    harness.emit({
+      type: "content.delta",
+      eventId: asEventId("evt-goal-marker-delta"),
+      provider: ProviderDriverKind.make("codex"),
+      createdAt: now,
+      threadId: asThreadId("thread-1"),
+      turnId: asTurnId("turn-goal-marker"),
+      itemId: asItemId("item-goal-marker"),
+      payload: {
+        streamKind: "assistant_text",
+        delta: "迁移完成 [[GOAL_COMPLETE: 全部测试通过]]",
+      },
+    });
+    harness.emit({
+      type: "item.completed",
+      eventId: asEventId("evt-goal-marker-item-completed"),
+      provider: ProviderDriverKind.make("codex"),
+      createdAt: now,
+      threadId: asThreadId("thread-1"),
+      turnId: asTurnId("turn-goal-marker"),
+      itemId: asItemId("item-goal-marker"),
+      payload: {
+        itemType: "assistant_message",
+        status: "completed",
+      },
+    });
+
+    const thread = await waitForThread(harness.readModel, (entry) =>
+      entry.messages.some(
+        (message: ProviderRuntimeTestMessage) =>
+          message.id === "assistant:item-goal-marker" && !message.streaming,
+      ),
+    );
+    const message = thread.messages.find(
+      (entry: ProviderRuntimeTestMessage) => entry.id === "assistant:item-goal-marker",
+    );
+    expect(message?.text).toBe("迁移完成");
+
+    const goal = await waitForGoalStatus(
+      () => Effect.runPromise(harness.goalStore.get(asThreadId("thread-1"))),
+      "complete",
+    );
+    expect(goal.status).toBe("complete");
+  });
+
+  it("pauses an active Goal when the provider requests approval or user input", async () => {
+    const harness = await createHarness();
+    const now = "2026-01-01T00:00:00.000Z";
+    const threadId = asThreadId("thread-1");
+    await Effect.runPromise(
+      harness.goalStore.set({
+        threadId,
+        objective: "Keep the migration reversible",
+        tokenBudget: null,
+      }),
+    );
+
+    harness.emit({
+      type: "turn.started",
+      eventId: asEventId("evt-goal-request-started-approval"),
+      provider: ProviderDriverKind.make("codex"),
+      createdAt: now,
+      threadId,
+      turnId: asTurnId("turn-goal-request-approval"),
+    });
+    await waitForThread(
+      harness.readModel,
+      (thread) => thread.session?.activeTurnId === "turn-goal-request-approval",
+    );
+    harness.emit({
+      type: "request.opened",
+      eventId: asEventId("evt-goal-request-opened"),
+      provider: ProviderDriverKind.make("codex"),
+      createdAt: now,
+      threadId,
+      turnId: asTurnId("turn-goal-request-approval"),
+      requestId: ApprovalRequestId.make("req-goal-request-approval"),
+      payload: { requestType: "command_execution_approval", detail: "pwd" },
+    });
+    expect(
+      (await waitForGoalStatus(() => Effect.runPromise(harness.goalStore.get(threadId)), "paused"))
+        .status,
+    ).toBe("paused");
+
+    harness.emit({
+      type: "turn.completed",
+      eventId: asEventId("evt-goal-request-completed-approval"),
+      provider: ProviderDriverKind.make("codex"),
+      createdAt: now,
+      threadId,
+      turnId: asTurnId("turn-goal-request-approval"),
+      payload: { state: "completed" },
+    });
+    await waitForThread(harness.readModel, (thread) => thread.session?.activeTurnId === null);
+
+    await Effect.runPromise(harness.goalStore.resume(threadId));
+    harness.emit({
+      type: "turn.started",
+      eventId: asEventId("evt-goal-request-started-user-input"),
+      provider: ProviderDriverKind.make("codex"),
+      createdAt: now,
+      threadId,
+      turnId: asTurnId("turn-goal-request-user-input"),
+    });
+    await waitForThread(
+      harness.readModel,
+      (thread) => thread.session?.activeTurnId === "turn-goal-request-user-input",
+    );
+    harness.emit({
+      type: "user-input.requested",
+      eventId: asEventId("evt-goal-user-input-requested"),
+      provider: ProviderDriverKind.make("codex"),
+      createdAt: now,
+      threadId,
+      turnId: asTurnId("turn-goal-request-user-input"),
+      requestId: ApprovalRequestId.make("req-goal-request-user-input"),
+      payload: {
+        questions: [
+          {
+            id: "choice",
+            header: "Choice",
+            question: "Pick one",
+            options: [{ label: "A", description: "Option A" }],
+          },
+        ],
+      },
+    });
+    expect(
+      (await waitForGoalStatus(() => Effect.runPromise(harness.goalStore.get(threadId)), "paused"))
+        .status,
+    ).toBe("paused");
+  });
+
+  it("scans a completion marker from already-projected streaming text", async () => {
+    const harness = await createHarness({ serverSettings: { enableLegacyTokenStreaming: true } });
+    const now = "2026-01-01T00:00:00.000Z";
+    await Effect.runPromise(
+      harness.goalStore.set({
+        threadId: asThreadId("thread-1"),
+        objective: "Keep the migration reversible",
+        tokenBudget: null,
+      }),
+    );
+    harness.emit({
+      type: "turn.started",
+      eventId: asEventId("evt-goal-streaming-started"),
+      provider: ProviderDriverKind.make("codex"),
+      createdAt: now,
+      threadId: asThreadId("thread-1"),
+      turnId: asTurnId("turn-goal-streaming"),
+    });
+    await waitForThread(
+      harness.readModel,
+      (thread) => thread.session?.activeTurnId === "turn-goal-streaming",
+    );
+    harness.emit({
+      type: "content.delta",
+      eventId: asEventId("evt-goal-streaming-delta"),
+      provider: ProviderDriverKind.make("codex"),
+      createdAt: now,
+      threadId: asThreadId("thread-1"),
+      turnId: asTurnId("turn-goal-streaming"),
+      itemId: asItemId("item-goal-streaming"),
+      payload: {
+        streamKind: "assistant_text",
+        delta: "迁移完成 [[GOAL_COMPLETE: 已验证]]",
+      },
+    });
+    harness.emit({
+      type: "turn.completed",
+      eventId: asEventId("evt-goal-streaming-completed"),
+      provider: ProviderDriverKind.make("codex"),
+      createdAt: now,
+      threadId: asThreadId("thread-1"),
+      turnId: asTurnId("turn-goal-streaming"),
+      payload: { state: "completed" },
+    });
+
+    const goal = await waitForGoalStatus(
+      () => Effect.runPromise(harness.goalStore.get(asThreadId("thread-1"))),
+      "complete",
+    );
+    expect(goal.status).toBe("complete");
   });
 
   it("flushes and completes buffered assistant text when an approval request opens", async () => {

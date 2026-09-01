@@ -1,6 +1,8 @@
 import { parsePatchFiles } from "@pierre/diffs/utils/parsePatchFiles";
 import type { FileDiffMetadata } from "@pierre/diffs/types";
 
+import { t } from "~/i18n/runtime";
+
 export const DIFF_THEME_NAMES = {
   light: "pierre-light",
   dark: "pierre-dark",
@@ -132,13 +134,13 @@ export function getRenderablePatch(
     return {
       kind: "raw",
       text: normalizedPatch,
-      reason: "Unsupported diff format. Showing raw patch.",
+      reason: t("diff.unsupportedFormatShowingRaw"),
     };
   } catch {
     return {
       kind: "raw",
       text: normalizedPatch,
-      reason: "Failed to parse patch. Showing raw patch.",
+      reason: t("diff.parseFailedShowingRaw"),
     };
   }
 }

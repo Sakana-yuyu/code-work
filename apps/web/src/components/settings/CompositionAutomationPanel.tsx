@@ -558,7 +558,10 @@ export function CompositionAutomationPanel() {
               </div>
             </aside>
 
-            <div className="min-w-0 space-y-5 p-3 sm:p-4">
+            <div
+              className="min-w-0 space-y-5 p-3 sm:p-4"
+              data-facilities-guide-target="automation-editor"
+            >
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
                   <h3 className="text-sm font-semibold text-foreground">
@@ -675,7 +678,10 @@ export function CompositionAutomationPanel() {
                 </div>
               </div>
 
-              <div className="space-y-3 border-t border-border/60 pt-4">
+              <div
+                className="space-y-3 border-t border-border/60 pt-4"
+                data-facilities-guide-target="automation-trigger"
+              >
                 <div className="flex items-center gap-2 text-xs font-semibold text-foreground">
                   <Clock3Icon className="size-3.5 text-muted-foreground" />
                   {t("automationCenter.schedule")}
@@ -766,7 +772,10 @@ export function CompositionAutomationPanel() {
                 </div>
               </div>
 
-              <div className="space-y-3 border-t border-border/60 pt-4">
+              <div
+                className="space-y-3 border-t border-border/60 pt-4"
+                data-facilities-guide-target="automation-context"
+              >
                 <div className="flex items-center gap-2 text-xs font-semibold text-foreground">
                   {draft.targetType === "squad" ? (
                     <UsersIcon className="size-3.5 text-muted-foreground" />
@@ -1011,6 +1020,7 @@ export function CompositionAutomationPanel() {
 
       <SettingsSection
         id="composition-automation-runs"
+        data-facilities-guide-target="automation-history"
         title={t("automationCenter.historyTitle")}
         icon={<HistoryIcon className="size-4 text-muted-foreground" />}
         headerAction={

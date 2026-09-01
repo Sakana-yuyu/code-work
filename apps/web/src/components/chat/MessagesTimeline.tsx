@@ -37,7 +37,7 @@ import {
   workEntryDisplayIndicatesToolFailure,
   workLogEntryIsToolLike,
 } from "../../session-logic";
-import { type TurnDiffSummary } from "../../types";
+import { type ChatMessagePresentation, type TurnDiffSummary } from "../../types";
 import {
   getRenderablePatch,
   resolveDiffThemeName,
@@ -63,6 +63,8 @@ import {
   WrenchIcon,
   XIcon,
   ZapIcon,
+  FlagIcon,
+  Clock3Icon,
 } from "lucide-react";
 import { Button } from "../ui/button";
 import { LocalPluginTimelineRow } from "../localPlugins/LocalPluginTimelineRow";
@@ -806,7 +808,7 @@ function TimelineMinimap({
     >
       <div className="relative h-full w-full select-none">
         <button
-          aria-label={t("jumpToMessage", { value1: activeItem?.userText ?? "User message" })}
+          aria-label={t("jumpToMessage", { value1: activeItem?.userText ?? t("userMessage") })}
           className={cn(
             "absolute top-1/2 left-3 -translate-y-1/2 cursor-pointer bg-transparent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/70",
             // The strip is width-capped to the side gutter so it never overlays
@@ -996,7 +998,10 @@ const TimelineRowContent = memo(function TimelineRowContent({ row }: { row: Time
 function UserTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "message" }> }) {
   const ctx = use(TimelineRowCtx);
   const userImages = row.message.attachments ?? [];
-  const displayedUserMessage = deriveDisplayedUserMessageState(row.message.text);
+  const presentation = row.message.localPresentation;
+  const displayedUserMessage = deriveDisplayedUserMessageState(
+    presentation?.kind === "goal" ? presentation.summary : row.message.text,
+  );
   const terminalContexts = displayedUserMessage.contexts;
   const previewAnnotations: ParsedPreviewAnnotation[] = [];
   let visibleText = displayedUserMessage.visibleText;
@@ -1014,66 +1019,84 @@ function UserTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "message" 
   const previewImages = userImages.filter((image) => image.name.startsWith("preview-annotation-"));
   const regularImages = userImages.filter((image) => !image.name.startsWith("preview-annotation-"));
   const canRevertAgentWork = typeof row.revertTurnCount === "number";
+  const messageContent = (
+    <>
+      {regularImages.length > 0 && (
+        <div className="mb-2 grid max-w-[420px] grid-cols-2 gap-2">
+          {regularImages.map((image: NonNullable<TimelineMessage["attachments"]>[number]) => (
+            <div
+              key={image.id}
+              className="overflow-hidden rounded-lg border border-border/80 bg-background/70"
+            >
+              {image.previewUrl ? (
+                <button
+                  type="button"
+                  className="h-full w-full cursor-zoom-in"
+                  aria-label={t("preview", { name: image.name })}
+                  onClick={() => {
+                    const preview = buildExpandedImagePreview(regularImages, image.id);
+                    if (!preview) return;
+                    ctx.onImageExpand(preview);
+                  }}
+                >
+                  <img
+                    src={image.previewUrl}
+                    alt={image.name}
+                    className="block h-auto max-h-[220px] w-full object-cover"
+                  />
+                </button>
+              ) : (
+                <div className="flex min-h-[72px] items-center justify-center px-2 py-3 text-center text-secondary-label text-[11px]">
+                  {image.name}
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+      {previewAnnotations.map((annotation, index) => (
+        <UserMessagePreviewAnnotationCard
+          key={annotation.id}
+          annotation={annotation}
+          image={previewImages[index] ?? null}
+        />
+      ))}
+      {elementContexts.length > 0 ? (
+        <div className="mb-2 flex flex-wrap gap-1.5">
+          {elementContexts.map((context) => (
+            <UserMessageElementContextChip
+              key={`${context.header}:${context.body}`}
+              context={context}
+            />
+          ))}
+        </div>
+      ) : null}
+      <CollapsibleUserMessageBody
+        text={elementContextState.promptText}
+        terminalContexts={terminalContexts}
+        skills={ctx.skills}
+        markdownCwd={ctx.markdownCwd}
+      />
+    </>
+  );
+
+  if (presentation) {
+    return (
+      <TimelineMessageCard
+        presentation={presentation}
+        createdAt={row.message.createdAt}
+        timestampFormat={ctx.timestampFormat}
+        copyText={displayedUserMessage.copyText}
+      >
+        {messageContent}
+      </TimelineMessageCard>
+    );
+  }
 
   return (
     <div className="group flex flex-col items-end gap-1">
       <div className="relative max-w-[80%] rounded-2xl bg-message p-3 text-message-foreground">
-        {regularImages.length > 0 && (
-          <div className="mb-2 grid max-w-[420px] grid-cols-2 gap-2">
-            {regularImages.map((image: NonNullable<TimelineMessage["attachments"]>[number]) => (
-              <div
-                key={image.id}
-                className="overflow-hidden rounded-lg border border-border/80 bg-background/70"
-              >
-                {image.previewUrl ? (
-                  <button
-                    type="button"
-                    className="h-full w-full cursor-zoom-in"
-                    aria-label={t("preview", { name: image.name })}
-                    onClick={() => {
-                      const preview = buildExpandedImagePreview(regularImages, image.id);
-                      if (!preview) return;
-                      ctx.onImageExpand(preview);
-                    }}
-                  >
-                    <img
-                      src={image.previewUrl}
-                      alt={image.name}
-                      className="block h-auto max-h-[220px] w-full object-cover"
-                    />
-                  </button>
-                ) : (
-                  <div className="flex min-h-[72px] items-center justify-center px-2 py-3 text-center text-secondary-label text-[11px]">
-                    {image.name}
-                  </div>
-                )}
-              </div>
-            ))}
-          </div>
-        )}
-        {previewAnnotations.map((annotation, index) => (
-          <UserMessagePreviewAnnotationCard
-            key={annotation.id}
-            annotation={annotation}
-            image={previewImages[index] ?? null}
-          />
-        ))}
-        {elementContexts.length > 0 ? (
-          <div className="mb-2 flex flex-wrap gap-1.5">
-            {elementContexts.map((context) => (
-              <UserMessageElementContextChip
-                key={`${context.header}:${context.body}`}
-                context={context}
-              />
-            ))}
-          </div>
-        ) : null}
-        <CollapsibleUserMessageBody
-          text={elementContextState.promptText}
-          terminalContexts={terminalContexts}
-          skills={ctx.skills}
-          markdownCwd={ctx.markdownCwd}
-        />
+        {messageContent}
       </div>
       <div className="flex w-full max-w-[80%] items-center justify-end pe-1 text-xs tabular-nums opacity-0 transition-opacity duration-200 focus-within:opacity-100 group-hover:opacity-100">
         <div className="flex shrink-0 items-center gap-2">
@@ -1091,6 +1114,56 @@ function UserTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "message" 
               <MessageCopyButton text={displayedUserMessage.copyText} variant="ghost" />
             )}
           </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function TimelineMessageCard(props: {
+  readonly presentation: ChatMessagePresentation;
+  readonly createdAt: string;
+  readonly timestampFormat: TimestampFormat;
+  readonly copyText: string | null;
+  readonly children: ReactNode;
+}) {
+  const isGoal = props.presentation.kind === "goal";
+  const Icon = isGoal ? FlagIcon : Clock3Icon;
+  const title = isGoal ? t("threadGoal.title") : t("delegationWorkspace.statusQueued");
+  const accent = isGoal
+    ? "border-orange-400/45 bg-background/80 dark:bg-background/55"
+    : "border-sky-400/35 border-dashed bg-background/80 dark:bg-background/55";
+  const iconClass = isGoal ? "text-orange-400" : "text-sky-400";
+
+  return (
+    <div className="group flex min-w-0 flex-col items-stretch gap-1">
+      <div
+        className={cn(
+          "relative w-full min-w-0 overflow-hidden rounded-[22px] border shadow-sm backdrop-blur-sm",
+          accent,
+        )}
+        data-timeline-message-card={props.presentation.kind}
+      >
+        <div className="flex min-w-0 items-center justify-between gap-3 border-b border-border/55 px-4 py-3">
+          <div className="flex min-w-0 items-center gap-2 text-sm font-medium text-foreground">
+            <Icon className={cn("size-4 shrink-0", iconClass)} aria-hidden="true" />
+            <span className="truncate">{title}</span>
+          </div>
+          <span
+            className={cn(
+              "shrink-0 rounded-full border px-2 py-0.5 text-[10px] font-medium",
+              isGoal ? "border-orange-400/35 text-orange-300" : "border-sky-400/30 text-sky-300",
+            )}
+          >
+            {isGoal ? t("threadGoal.status.active") : t("delegationWorkspace.statusQueued")}
+          </span>
+        </div>
+        <div className="min-w-0 px-4 py-4 text-message-foreground">{props.children}</div>
+        <div className="flex min-w-0 items-center justify-end gap-2 border-t border-border/55 px-4 py-2.5 text-xs text-muted-foreground">
+          <span className="ms-auto shrink-0 tabular-nums">
+            {formatDayAwareTimestamp(props.createdAt, props.timestampFormat)}
+          </span>
+          {props.copyText ? <MessageCopyButton text={props.copyText} variant="ghost" /> : null}
         </div>
       </div>
     </div>
@@ -2427,8 +2500,8 @@ function liveWorkEntryLabel(
     // This row describes the active parent turn, not the command lifecycle.
     // Keep its live "Running" copy until the turn or contiguous tool run settles.
     const program = commandProgramName(command);
-    if (program) return `Running ${program}`;
-    return "Running command";
+    if (program) return t("timeline.runningProgram", { program });
+    return t("timeline.runningCommand");
   }
 
   return workEntryPreview(workEntry, workspaceRoot) ?? toolWorkEntryHeading(workEntry);
@@ -2568,17 +2641,20 @@ const AgentSpawnCtaRow = memo(function AgentSpawnCtaRow(props: { workEntry: Time
   const working = running + waiting;
   const dotClass = live ? "bg-info" : failed > 0 ? "bg-destructive" : "bg-success";
   const lead = live
-    ? `Kicked off ${agentCount} subagent${agentCount === 1 ? "" : "s"}`
-    : `Ran ${agentCount} subagent${agentCount === 1 ? "" : "s"}`;
+    ? t("timeline.kickedOffSubagents", { count: agentCount, countValue: agentCount })
+    : t("timeline.ranSubagents", { count: agentCount, countValue: agentCount });
   const status = live
     ? livePhase
-      ? `${livePhase.title} · ${livePhase.activeCount} working`
+      ? t("timeline.subagentsWorking", {
+          title: livePhase.title,
+          countValue: livePhase.activeCount,
+        })
       : working > 0
-        ? `${working} working`
-        : "working"
+        ? t("timeline.countWorking", { countValue: working })
+        : t("timeline.working")
     : failed > 0
-      ? `${failed} failed`
-      : "✓ completed";
+      ? t("timeline.countFailed", { countValue: failed })
+      : t("timeline.completed");
 
   return (
     <button

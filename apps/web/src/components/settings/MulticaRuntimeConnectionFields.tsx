@@ -29,6 +29,7 @@ export function MulticaRuntimeConnectionFields({
   return (
     <section className="grid gap-3 border-t border-border/60 pt-4">
       <h4 className="text-sm font-medium text-foreground">{text("connectionSection")}</h4>
+      <p className="text-xs leading-5 text-muted-foreground">{text("connectionDescription")}</p>
       <div className="grid gap-3 sm:grid-cols-2">
         <label className="grid min-w-0 gap-1.5 text-xs font-medium text-foreground">
           {text("instanceId")}

@@ -166,9 +166,9 @@ function ConfiguredSettingsRouteScreen() {
   const connections = useMemo(() => Object.values(savedConnectionsById), [savedConnectionsById]);
   const environmentCount = connections.length;
   const accountLabel = useMemo(() => {
-    if (!isLoaded) return "Checking";
-    if (!isSignedIn) return "Sign in";
-    return user?.primaryEmailAddress?.emailAddress ?? "Signed in";
+    if (!isLoaded) return t("settings.checking");
+    if (!isSignedIn) return t("settings.signIn");
+    return user?.primaryEmailAddress?.emailAddress ?? t("settings.signedIn");
   }, [isLoaded, isSignedIn, user?.primaryEmailAddress?.emailAddress]);
 
   const refreshNotifications = useCallback(async () => {

@@ -19,6 +19,8 @@ import {
   type ThreadId,
 } from "@codework/contracts";
 import { getTerminalLabel } from "@codework/shared/terminalLabels";
+
+import { terminalDisplayLabel } from "../terminal/displayLabel";
 import * as Schema from "effect/Schema";
 import {
   type PointerEvent as ReactPointerEvent,
@@ -438,7 +440,10 @@ export function TerminalViewport({
         hasHandledExitRef.current = false;
       } else if (shouldHandleTerminalExit(status, synchronized, hasHandledExitRef.current)) {
         hasHandledExitRef.current = true;
-        writeSystemMessage(terminal, status === "closed" ? "Terminal closed" : "Process exited");
+        writeSystemMessage(
+          terminal,
+          status === "closed" ? t("terminal.terminalClosed") : t("terminal.processExited"),
+        );
         window.setTimeout(() => {
           if (hasHandledExitRef.current) {
             handleSessionExited();
@@ -601,7 +606,7 @@ export function TerminalViewport({
         try {
           await writeTextToClipboard(text, "terminal selection");
         } catch (error) {
-          reportIfCurrent(requestId, error, "Unable to copy terminal selection");
+          reportIfCurrent(requestId, error, t("terminal.unableToCopySelection"));
         }
         focusIfCurrent(requestId);
       };
@@ -618,7 +623,7 @@ export function TerminalViewport({
             () => requestId === selectionActionRequestIdRef.current,
           );
         } catch (error) {
-          reportIfCurrent(requestId, error, "Unable to read the clipboard");
+          reportIfCurrent(requestId, error, t("terminal.unableToReadClipboard"));
           return;
         }
         focusIfCurrent(requestId);
@@ -641,7 +646,7 @@ export function TerminalViewport({
             { x: event.clientX, y: event.clientY },
           );
         } catch (error) {
-          reportIfCurrent(requestId, error, "Unable to open the terminal context menu");
+          reportIfCurrent(requestId, error, t("terminal.unableToOpenContextMenu"));
           focusIfCurrent(requestId);
           return;
         }
@@ -729,7 +734,7 @@ export function TerminalViewport({
         if (navigationData !== null) {
           event.preventDefault();
           event.stopPropagation();
-          void sendTerminalInput(navigationData, "Failed to move cursor");
+          void sendTerminalInput(navigationData, t("terminal.failedToMoveCursor"));
           return false;
         }
 
@@ -737,14 +742,14 @@ export function TerminalViewport({
         if (deleteData !== null) {
           event.preventDefault();
           event.stopPropagation();
-          void sendTerminalInput(deleteData, "Failed to delete terminal input");
+          void sendTerminalInput(deleteData, t("terminal.failedToDeleteInput"));
           return false;
         }
 
         if (!isTerminalClearShortcut(event)) return true;
         event.preventDefault();
         event.stopPropagation();
-        void sendTerminalInput("\u000c", "Failed to clear terminal");
+        void sendTerminalInput("\u000c", t("terminal.failedToClear"));
         return false;
       }
 
@@ -754,14 +759,14 @@ export function TerminalViewport({
         if (!latestTerminal) return;
         if (isTerminalUrl(text)) {
           if (!localApi) {
-            writeSystemMessage(latestTerminal, "Opening links is unavailable in this browser.");
+            writeSystemMessage(latestTerminal, t("terminal.linkOpeningUnavailable"));
             return;
           }
           const fallbackToBrowser = () => {
             void localApi.shell.openExternal(text).catch((error: unknown) => {
               writeSystemMessage(
                 latestTerminal,
-                error instanceof Error ? error.message : "Unable to open link",
+                error instanceof Error ? error.message : t("terminal.unableToOpenLink"),
               );
             });
           };
@@ -784,7 +789,7 @@ export function TerminalViewport({
           const error = squashAtomCommandFailure(result);
           writeSystemMessage(
             latestTerminal,
-            error instanceof Error ? error.message : "Unable to open path",
+            error instanceof Error ? error.message : t("terminal.unableToOpenPath"),
           );
         })();
       }
@@ -796,7 +801,7 @@ export function TerminalViewport({
           const error = squashAtomCommandFailure(result);
           writeSystemMessage(
             terminal,
-            error instanceof Error ? error.message : "Terminal write failed",
+            error instanceof Error ? error.message : t("terminal.writeFailed"),
           );
         })();
       }
@@ -1237,7 +1242,10 @@ export default function ThreadTerminalDrawer({
   const terminalLabelById = useMemo(() => {
     const next = new Map<string, string>();
     for (const terminalId of normalizedTerminalIds) {
-      next.set(terminalId, terminalLabelsById?.get(terminalId) ?? getTerminalLabel(terminalId));
+      next.set(
+        terminalId,
+        terminalDisplayLabel(terminalLabelsById?.get(terminalId) ?? getTerminalLabel(terminalId)),
+      );
     }
     return next;
   }, [normalizedTerminalIds, terminalLabelsById]);
@@ -1282,7 +1290,8 @@ export default function ThreadTerminalDrawer({
   }, [onNewTerminal]);
   const confirmCloseTerminal = useCallback(
     (terminalId: string) => {
-      const label = terminalLabelById.get(terminalId) ?? getTerminalLabel(terminalId);
+      const label =
+        terminalLabelById.get(terminalId) ?? terminalDisplayLabel(getTerminalLabel(terminalId));
       void confirmTerminalClose([label]).then((confirmed) => {
         if (confirmed) onCloseTerminal(terminalId);
       });
@@ -1535,7 +1544,7 @@ export default function ThreadTerminalDrawer({
                           threadRef={threadRef}
                           threadId={threadId}
                           terminalId={terminalId}
-                          terminalLabel={terminalLabelById.get(terminalId) ?? "Terminal"}
+                          terminalLabel={terminalLabelById.get(terminalId) ?? t("surface.terminal")}
                           cwd={terminalLaunchLocation.cwd}
                           {...(terminalLaunchLocation.worktreePath !== undefined
                             ? { worktreePath: terminalLaunchLocation.worktreePath }
@@ -1564,7 +1573,9 @@ export default function ThreadTerminalDrawer({
                   threadRef={threadRef}
                   threadId={threadId}
                   terminalId={resolvedActiveTerminalId}
-                  terminalLabel={terminalLabelById.get(resolvedActiveTerminalId) ?? "Terminal"}
+                  terminalLabel={
+                    terminalLabelById.get(resolvedActiveTerminalId) ?? t("surface.terminal")
+                  }
                   cwd={activeTerminalLaunchLocation.cwd}
                   {...(activeTerminalLaunchLocation.worktreePath !== undefined
                     ? { worktreePath: activeTerminalLaunchLocation.worktreePath }
@@ -1670,7 +1681,8 @@ export default function ThreadTerminalDrawer({
                       <div className="flex flex-col gap-0.5">
                         {terminalGroup.terminalIds.map((terminalId) => {
                           const isActive = terminalId === resolvedActiveTerminalId;
-                          const terminalLabel = terminalLabelById.get(terminalId) ?? "Terminal";
+                          const terminalLabel =
+                            terminalLabelById.get(terminalId) ?? t("surface.terminal");
                           const closeTerminalLabel = t("interface.close-value-value", {
                             value1: terminalLabel,
                             value2:

@@ -116,8 +116,9 @@ import { ComposerPrimaryActions } from "./ComposerPrimaryActions";
 import { ComposerPendingApprovalPanel } from "./ComposerPendingApprovalPanel";
 import { ComposerPendingUserInputPanel } from "./ComposerPendingUserInputPanel";
 import { ComposerPlanFollowUpBanner } from "./ComposerPlanFollowUpBanner";
-import { ComposerControl, ComposerControlIcon, ComposerSelectControl } from "./ComposerControl";
-import { ComposerAddMenu } from "./ComposerAddMenu";
+import { ComposerControlIcon, ComposerSelectControl } from "./ComposerControl";
+import { ComposerAddMenu, ComposerGoalControl } from "./ComposerAddMenu";
+import { ThreadGoalStatusBar } from "./ThreadGoalStatusBar";
 import { resolveComposerMenuActiveItemId } from "./composerMenuHighlight";
 import { searchSlashCommandItems } from "./composerSlashCommandSearch";
 import {
@@ -243,9 +244,7 @@ import { Select, SelectItem, SelectPopup, SelectValue } from "../ui/select";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { toastManager } from "../ui/toast";
 import {
-  BotIcon,
   CircleAlertIcon,
-  PencilRulerIcon,
   type LucideIcon,
   LockIcon,
   LockOpenIcon,
@@ -350,51 +349,11 @@ function isInsideComposerFloatingLayer(element: Element): boolean {
 }
 
 const ComposerFooterModeControls = memo(function ComposerFooterModeControls(props: {
-  showInteractionModeToggle: boolean;
-  interactionMode: ProviderInteractionMode;
   runtimeMode: RuntimeMode;
-  onToggleInteractionMode: () => void;
   onRuntimeModeChange: (mode: RuntimeMode) => void;
 }) {
   const runtimeModeOption = runtimeModeConfig[props.runtimeMode];
   const RuntimeModeIcon = runtimeModeOption.icon;
-  const interactionModeTooltip =
-    props.interactionMode === "plan"
-      ? t("interface.plan-mode-click-to-return-to-normal-build-mode")
-      : t("interface.default-mode-click-to-enter-plan-mode");
-
-  const interactionModeToggle = props.showInteractionModeToggle ? (
-    <>
-      <Separator orientation="vertical" className="mx-0.5 hidden h-4 sm:block" />
-      <Tooltip>
-        <TooltipTrigger
-          render={
-            <ComposerControl
-              className={cn(
-                "shrink-0 whitespace-nowrap",
-                props.interactionMode === "plan"
-                  ? "bg-accent text-accent-foreground hover:bg-accent/80"
-                  : "text-secondary-label hover:text-foreground",
-              )}
-              type="button"
-              onClick={props.onToggleInteractionMode}
-              aria-label={interactionModeTooltip}
-            />
-          }
-        >
-          {props.interactionMode === "plan" ? (
-            <ComposerControlIcon icon={PencilRulerIcon} className="text-current opacity-100" />
-          ) : (
-            <ComposerControlIcon icon={BotIcon} opticalSize="large" />
-          )}
-          <span className="sr-only sm:not-sr-only">
-            {props.interactionMode === "plan" ? t("chat.plan") : t("projectScript.iconBuild")}
-          </span>
-        </TooltipTrigger>
-        <TooltipPopup side="top">{interactionModeTooltip}</TooltipPopup>
-      </Tooltip>
-    </>
-  ) : null;
 
   return (
     <>
@@ -437,8 +396,6 @@ const ComposerFooterModeControls = memo(function ComposerFooterModeControls(prop
         </Select>
         <TooltipPopup side="top">{t(runtimeModeOption.descriptionKey)}</TooltipPopup>
       </Tooltip>
-
-      {interactionModeToggle}
     </>
   );
 });
@@ -466,7 +423,7 @@ const ComposerFooterPrimaryActions = memo(function ComposerFooterPrimaryActions(
   preserveComposerFocusOnPointerDown?: boolean;
   showSendWhileRunning?: boolean;
   onPreviousPendingQuestion: () => void;
-  onInterrupt: () => void;
+  onInterrupt: () => Promise<boolean> | boolean;
   onImplementPlanInNewThread: () => void;
   onCompactContext?: (() => void) | undefined;
   compactDisabled: boolean;
@@ -642,8 +599,16 @@ export interface ChatComposerProps {
   composerRef: React.RefObject<ChatComposerHandle | null>;
 
   // Callbacks
-  onSend: (e?: { preventDefault: () => void }, intent?: ComposerSubmissionIntent) => void;
-  onInterrupt: () => void;
+  onSend: (
+    e?: { preventDefault: () => void },
+    intent?: ComposerSubmissionIntent,
+    directAnnotation?: {
+      annotation: PreviewAnnotationPayload;
+      image: ComposerImageAttachment | null;
+    },
+    directPrompt?: string,
+  ) => void;
+  onInterrupt: () => Promise<boolean> | boolean;
   onImplementPlanInNewThread: () => void;
   onRespondToApproval: (
     requestId: ApprovalRequestId,
@@ -775,7 +740,9 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   const isSendDisabled = sendDisabledReason !== null;
 
   const threadGoalState = useThreadGoal(
-    activeThreadId === null ? null : { environmentId, threadId: activeThreadId },
+    routeKind === "server" && activeThreadId !== null
+      ? { environmentId, threadId: activeThreadId }
+      : null,
   );
   const setThreadGoalCommand = useAtomCommand(threadGoalEnvironment.set, {
     reportFailure: false,
@@ -791,9 +758,18 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   });
   const threadGoalErrorMessage =
     threadGoalState.errorCode === null ? null : t("threadGoal.error.failed");
+  const draftGoalObjective = composerDraft.goalObjective;
+  const [isGoalComposerActive, setIsGoalComposerActive] = useState(false);
+  const [goalComposerText, setGoalComposerText] = useState("");
+  const setComposerDraftGoalObjective = useComposerDraftStore((store) => store.setGoalObjective);
+  const setComposerDraftPrompt = useComposerDraftStore((store) => store.setPrompt);
 
   const onSetThreadGoal = useCallback(
     async (objective: string) => {
+      if (routeKind === "draft") {
+        setComposerDraftGoalObjective(composerDraftTarget, objective);
+        return true;
+      }
       if (activeThreadId === null) return false;
       const result = await setThreadGoalCommand({
         environmentId,
@@ -803,10 +779,23 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       threadGoalState.refresh();
       return true;
     },
-    [activeThreadId, environmentId, setThreadGoalCommand, threadGoalState],
+    [
+      activeThreadId,
+      composerDraftTarget,
+      environmentId,
+      routeKind,
+      setComposerDraftGoalObjective,
+      setThreadGoalCommand,
+      threadGoalState,
+    ],
   );
   const onPauseThreadGoal = useCallback(async () => {
-    if (activeThreadId === null) return false;
+    if (routeKind !== "server" || activeThreadId === null) return false;
+    if (phase === "running") {
+      if (!(await onInterrupt())) return false;
+      threadGoalState.refresh();
+      return true;
+    }
     const result = await pauseThreadGoalCommand({
       environmentId,
       input: { threadId: activeThreadId },
@@ -814,29 +803,61 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     if (result._tag !== "Success") return false;
     threadGoalState.refresh();
     return true;
-  }, [activeThreadId, environmentId, pauseThreadGoalCommand, threadGoalState]);
+  }, [
+    activeThreadId,
+    environmentId,
+    onInterrupt,
+    pauseThreadGoalCommand,
+    phase,
+    routeKind,
+    threadGoalState,
+  ]);
   const onResumeThreadGoal = useCallback(async () => {
-    if (activeThreadId === null) return false;
+    if (routeKind !== "server" || activeThreadId === null) return false;
+    const objective = threadGoalState.goal?.objective.trim();
+    if (!objective) return false;
     const result = await resumeThreadGoalCommand({
       environmentId,
       input: { threadId: activeThreadId },
     });
     if (result._tag !== "Success") return false;
     threadGoalState.refresh();
+    // 恢复目标必须同时启动一个真实回合，不能只把状态改成 active。
+    void onSend(undefined, "foreground", undefined, objective);
     return true;
-  }, [activeThreadId, environmentId, resumeThreadGoalCommand, threadGoalState]);
+  }, [activeThreadId, environmentId, onSend, resumeThreadGoalCommand, routeKind, threadGoalState]);
   const onClearThreadGoal = useCallback(async () => {
+    if (routeKind === "draft") {
+      setComposerDraftGoalObjective(composerDraftTarget, null);
+      setIsGoalComposerActive(false);
+      setGoalComposerText("");
+      return true;
+    }
     if (activeThreadId === null) return false;
+    if (phase === "running" && !(await onInterrupt())) return false;
     const result = await clearThreadGoalCommand({
       environmentId,
       input: { threadId: activeThreadId },
     });
     if (result._tag !== "Success") return false;
     threadGoalState.refresh();
+    setComposerDraftGoalObjective(composerDraftTarget, null);
+    setIsGoalComposerActive(false);
+    setGoalComposerText("");
     return true;
-  }, [activeThreadId, clearThreadGoalCommand, environmentId, threadGoalState]);
+  }, [
+    activeThreadId,
+    clearThreadGoalCommand,
+    composerDraftTarget,
+    environmentId,
+    onInterrupt,
+    phase,
+    routeKind,
+    setComposerDraftGoalObjective,
+    threadGoalState,
+    setGoalComposerText,
+  ]);
 
-  const setComposerDraftPrompt = useComposerDraftStore((store) => store.setPrompt);
   const addComposerDraftImage = useComposerDraftStore((store) => store.addImage);
   const addComposerDraftImages = useComposerDraftStore((store) => store.addImages);
   const removeComposerDraftImage = useComposerDraftStore((store) => store.removeImage);
@@ -998,7 +1019,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   );
   const noProviderAvailable = selectedProviderEntry === undefined;
   const resolvedCompactDisabledReason =
-    compactDisabledReason ?? (noProviderAvailable ? "Compacting is unavailable right now" : null);
+    compactDisabledReason ?? (noProviderAvailable ? t("compact.reasonUnavailable") : null);
   // The driver kind follows the instance that will actually run the turn,
   // which can differ from the persisted selection when that selection is
   // disabled.
@@ -1035,7 +1056,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
         models: selectedProviderModels,
         promptInjectionState: composerPromptInjectionState,
         modelOptions: composerModelOptions?.[selectedInstanceId],
-        planModeEnabled: settings.planModeEnabled,
+        planModeEnabled: true,
       }),
     [
       composerModelOptions,
@@ -1044,7 +1065,6 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       selectedModel,
       selectedProvider,
       selectedProviderModels,
-      settings.planModeEnabled,
     ],
   );
 
@@ -1053,7 +1073,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   // Plan mode is a legacy feature behind Settings → Beta. With the flag off,
   // ChatView forces the effective mode to "default", so hiding the toggle
   // can't trap anyone in plan mode.
-  const planModeUiEnabled = settings.planModeEnabled;
+  const planModeUiEnabled = true;
   const composerProviderControls = useMemo(
     () => ({
       showInteractionModeToggle:
@@ -1159,6 +1179,50 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
    */
   const pendingImageCompressionsRef = useRef<Map<ThreadId, number>>(new Map());
 
+  const selectGoalComposer = useCallback(() => {
+    const objective =
+      promptRef.current.trim() ||
+      draftGoalObjective?.trim() ||
+      threadGoalState.goal?.objective.trim() ||
+      "";
+    setGoalComposerText(objective);
+    setIsGoalComposerActive(true);
+    setComposerDraftGoalObjective(composerDraftTarget, objective || null);
+    if (promptRef.current.length > 0) {
+      promptRef.current = "";
+      setComposerDraftPrompt(composerDraftTarget, "");
+      setComposerCursor(0);
+      setComposerTrigger(null);
+    }
+    scheduleComposerFocus();
+  }, [
+    composerDraftTarget,
+    draftGoalObjective,
+    scheduleComposerFocus,
+    setComposerDraftGoalObjective,
+    setComposerDraftPrompt,
+    threadGoalState.goal?.objective,
+  ]);
+
+  const editGoalInComposer = useCallback(() => {
+    const objective = draftGoalObjective?.trim() || threadGoalState.goal?.objective.trim() || "";
+    setGoalComposerText(objective);
+    setIsGoalComposerActive(true);
+    setComposerDraftGoalObjective(composerDraftTarget, objective || null);
+    if (objective) {
+      const nextCursor = collapseExpandedComposerCursor(objective, objective.length);
+      setComposerCursor(nextCursor);
+      setComposerTrigger(null);
+    }
+    scheduleComposerFocus();
+  }, [
+    composerDraftTarget,
+    draftGoalObjective,
+    scheduleComposerFocus,
+    setComposerDraftGoalObjective,
+    threadGoalState.goal?.objective,
+  ]);
+
   // ------------------------------------------------------------------
   // Derived: composer send state
   // ------------------------------------------------------------------
@@ -1182,6 +1246,11 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       prompt,
     ],
   );
+  const hasDraftGoalObjective =
+    routeKind === "draft" && (draftGoalObjective?.trim().length ?? 0) > 0;
+  const hasGoalComposerContent = isGoalComposerActive && goalComposerText.trim().length > 0;
+  const hasSendableComposerContent =
+    composerSendState.hasSendableContent || hasDraftGoalObjective || hasGoalComposerContent;
 
   // ------------------------------------------------------------------
   // Derived: composer trigger / menu
@@ -1248,7 +1317,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
         provider: selectedProvider,
         command,
         label: `/${command.name}`,
-        description: command.description ?? command.input?.hint ?? "Run provider command",
+        description: command.description ?? command.input?.hint ?? t("composer.runProviderCommand"),
       }));
       const query = composerTrigger.query.trim().toLowerCase();
       const skillItems = slashMenuSkills.map((skill) => ({
@@ -1280,7 +1349,9 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
           description:
             skill.shortDescription ??
             skill.description ??
-            (skill.scope ? `${skill.scope} skill` : "Run provider skill"),
+            (skill.scope
+              ? t("composer.scopedSkill", { scope: skill.scope })
+              : t("composer.runProviderSkill")),
         }),
       );
     }
@@ -1342,11 +1413,11 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     if (showPlanFollowUpPrompt) {
       return prompt.trim().length > 0 ? "plan:refine" : "plan:implement";
     }
-    return `idle:${composerSendState.hasSendableContent}:${isSendBusy}:${isConnecting}:${isPreparingWorktree}`;
+    return `idle:${hasSendableComposerContent}:${isSendBusy}:${isConnecting}:${isPreparingWorktree}`;
   }, [
     activePendingIsResponding,
     activePendingProgress,
-    composerSendState.hasSendableContent,
+    hasSendableComposerContent,
     isConnecting,
     isPreparingWorktree,
     isSendBusy,
@@ -1359,11 +1430,11 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     composerTriggerKind === "path" && pathTriggerQuery.length > 0 && workspaceEntries.isPending;
   const composerMenuEmptyState = useMemo(() => {
     if (composerTriggerKind === "skill") {
-      return "No skills found. Try / to browse provider commands.";
+      return t("composer.noSkillsFound");
     }
     return composerTriggerKind === "path"
-      ? "No matching files or folders."
-      : "No matching command.";
+      ? t("composer.noMatchingFilesOrFolders")
+      : t("composer.noMatchingCommand");
   }, [composerTriggerKind]);
 
   // ------------------------------------------------------------------
@@ -1395,7 +1466,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     modelOptions: composerModelOptions?.[selectedInstanceId],
     prompt,
     onPromptChange: setPromptFromTraits,
-    planModeEnabled: settings.planModeEnabled,
+    planModeEnabled: true,
   });
   const providerTraitsPicker = renderProviderTraitsPicker({
     provider: selectedProvider,
@@ -1407,7 +1478,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     modelOptions: composerModelOptions?.[selectedInstanceId],
     prompt,
     onPromptChange: setPromptFromTraits,
-    planModeEnabled: settings.planModeEnabled,
+    planModeEnabled: true,
   });
   const pendingPrimaryAction = useMemo(
     () =>
@@ -1430,7 +1501,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     noProviderAvailable ||
     projectSelectionRequired ||
     environmentUnavailable !== null ||
-    !composerSendState.hasSendableContent;
+    !hasSendableComposerContent;
   const collapsedComposerPrimaryActionLabel = t("sendMessage");
   const showMobilePendingAnswerActions =
     isMobileViewport && !isComposerCollapsedMobile && pendingPrimaryAction !== null;
@@ -1440,9 +1511,19 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   // ------------------------------------------------------------------
   const setPrompt = useCallback(
     (nextPrompt: string) => {
+      if (isGoalComposerActive) {
+        setGoalComposerText(nextPrompt);
+        setComposerDraftGoalObjective(composerDraftTarget, nextPrompt);
+        return;
+      }
       setComposerDraftPrompt(composerDraftTarget, nextPrompt);
     },
-    [composerDraftTarget, setComposerDraftPrompt],
+    [
+      composerDraftTarget,
+      isGoalComposerActive,
+      setComposerDraftGoalObjective,
+      setComposerDraftPrompt,
+    ],
   );
 
   const addComposerImage = useCallback(
@@ -1612,10 +1693,28 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     setComposerHighlightedItemId(null);
     setComposerSubmissionError(null);
     setProviderInputSubmissionError(null);
+    setIsGoalComposerActive(false);
+    setGoalComposerText("");
     setComposerCursor(collapseExpandedComposerCursor(promptRef.current, promptRef.current.length));
     setComposerTrigger(detectComposerTrigger(promptRef.current, promptRef.current.length));
     setIsDragOverComposer(false);
   }, [draftId, activeThreadId, promptRef]);
+
+  useEffect(() => {
+    if (routeKind !== "draft" || isGoalComposerActive) return;
+    const objective = draftGoalObjective?.trim();
+    if (!objective || prompt.trim() !== objective) return;
+    promptRef.current = "";
+    setComposerDraftPrompt(composerDraftTarget, "");
+  }, [
+    composerDraftTarget,
+    draftGoalObjective,
+    isGoalComposerActive,
+    prompt,
+    promptRef,
+    routeKind,
+    setComposerDraftPrompt,
+  ]);
 
   // ------------------------------------------------------------------
   // Footer compact layout observation
@@ -1756,6 +1855,13 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
         );
         return;
       }
+      if (isGoalComposerActive) {
+        setGoalComposerText(nextPrompt);
+        setComposerDraftGoalObjective(composerDraftTarget, nextPrompt);
+        setComposerCursor(nextCursor);
+        setComposerTrigger(null);
+        return;
+      }
       promptRef.current = nextPrompt;
       setPrompt(nextPrompt);
       if (!terminalContextIdListsEqual(composerTerminalContexts, terminalContextIds)) {
@@ -1776,6 +1882,9 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       promptRef,
       setPrompt,
       composerDraftTarget,
+      isGoalComposerActive,
+      setComposerDraftGoalObjective,
+      setGoalComposerText,
       composerTerminalContexts,
       setComposerDraftTerminalContexts,
     ],
@@ -2004,11 +2113,11 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     if (activePendingProgress) {
       return activePendingProgress.isLastQuestion && Boolean(activePendingResolvedAnswers);
     }
-    return showPlanFollowUpPrompt || composerSendState.hasSendableContent;
+    return showPlanFollowUpPrompt || hasSendableComposerContent;
   }, [
     activePendingProgress,
     activePendingResolvedAnswers,
-    composerSendState.hasSendableContent,
+    hasSendableComposerContent,
     environmentUnavailable,
     isConnecting,
     isMobileViewport,
@@ -2038,8 +2147,37 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
         });
         return;
       }
+      const promptForSubmission = isGoalComposerActive ? goalComposerText : promptRef.current;
+      if (isGoalComposerActive) {
+        promptRef.current = promptForSubmission;
+      }
+      if (isGoalComposerActive && routeKind === "server") {
+        event?.preventDefault();
+        const objective = goalComposerText.trim();
+        const validationMessage = getComposerPromptLengthValidationMessage(objective);
+        setComposerSubmissionError(validationMessage);
+        if (validationMessage || objective.length === 0) return;
+        void (async () => {
+          if (!(await onSetThreadGoal(objective))) {
+            setComposerSubmissionError(t("threadGoal.error.failed"));
+            return;
+          }
+          setComposerDraftGoalObjective(composerDraftTarget, null);
+          setComposerDraftPrompt(composerDraftTarget, "");
+          promptRef.current = "";
+          setGoalComposerText("");
+          setIsGoalComposerActive(false);
+          setComposerCursor(0);
+          setComposerTrigger(null);
+          setComposerSubmissionError(null);
+          // 发送目标即开始朝目标运行：以目标文本作为本轮用户输入发起回合。
+          promptRef.current = objective;
+          onSend(undefined, intent, undefined, objective);
+        })();
+        return;
+      }
       const submission = submitComposerDraft({
-        prompt: promptRef.current,
+        prompt: promptForSubmission,
         submissionTarget: activePendingProgress ? "pending-user-input" : "provider-turn",
         event,
         onSend: (sendEvent) => {
@@ -2060,10 +2198,17 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       activeThreadId,
       activePendingProgress,
       blurMobileComposerAfterSend,
+      composerDraftTarget,
+      goalComposerText,
+      isGoalComposerActive,
       isSendDisabled,
       noProviderAvailable,
       onSend,
+      onSetThreadGoal,
       promptRef,
+      routeKind,
+      setComposerDraftGoalObjective,
+      setComposerDraftPrompt,
       shouldBlurMobileComposerOnSubmit,
     ],
   );
@@ -2071,7 +2216,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     if (
       compactDisabled ||
       noProviderAvailable ||
-      composerSendState.hasSendableContent ||
+      hasSendableComposerContent ||
       activePendingApproval !== null ||
       pendingUserInputs.length > 0 ||
       phase === "running" ||
@@ -2109,7 +2254,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     activeThreadId,
     compactDisabled,
     composerDraftTarget,
-    composerSendState.hasSendableContent,
+    hasSendableComposerContent,
     isConnecting,
     isSendBusy,
     noProviderAvailable,
@@ -2685,7 +2830,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     for (const file of files) {
       const isHeicImage = isHeicImageFile(file);
       if (!file.type.startsWith("image/") && !isHeicImage) {
-        error = `Unsupported file type for '${file.name}'. Please attach image files only.`;
+        error = t("composer.unsupportedFileType", { name: file.name });
         continue;
       }
       if (!isHeicImage && !isProviderSendTurnSupportedImageMimeType(file.type)) {
@@ -2693,7 +2838,9 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
         continue;
       }
       if (reservedCount >= PROVIDER_SEND_TURN_MAX_ATTACHMENTS) {
-        error = `You can attach up to ${PROVIDER_SEND_TURN_MAX_ATTACHMENTS} images per message.`;
+        error = t("composer.maxAttachmentsPerMessage", {
+          countValue: PROVIDER_SEND_TURN_MAX_ATTACHMENTS,
+        });
         break;
       }
       acceptedFiles.push(file);
@@ -2716,8 +2863,8 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
         if (!compressed.ok) {
           compressionError =
             compressed.reason === "unreadable"
-              ? `'${file.name}' could not be read as an image.`
-              : `'${file.name}' is too large to attach, even after compression.`;
+              ? t("composer.imageNotReadable", { name: file.name })
+              : t("composer.imageTooLarge", { name: file.name });
           continue;
         }
         const attachmentFile = compressed.file;
@@ -2833,7 +2980,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     return () => window.removeEventListener("dragend", onWindowDragEnd);
   }, [isDragOverComposer]);
   const handleInterruptPrimaryAction = useCallback(() => {
-    void onInterrupt();
+    return onInterrupt();
   }, [onInterrupt]);
   const handleImplementPlanInNewThreadPrimaryAction = useCallback(() => {
     void onImplementPlanInNewThread();
@@ -3170,6 +3317,21 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
           ) : null}
         </div>
       ) : null}
+      {threadGoalState.goal !== null ? (
+        <div className="chat-composer-top-drawer" data-chat-composer-goal-drawer="true">
+          <ThreadGoalStatusBar
+            goal={threadGoalState.goal}
+            isPending={threadGoalState.isPending}
+            errorMessage={threadGoalErrorMessage}
+            presentation="top-drawer"
+            onSetGoal={onSetThreadGoal}
+            onPause={onPauseThreadGoal}
+            onResume={onResumeThreadGoal}
+            onClear={onClearThreadGoal}
+            onEditInComposer={editGoalInComposer}
+          />
+        </div>
+      ) : null}
       {isTasksDrawerOpen &&
       !hasBlockingComposerTopDrawer &&
       visibleTasksProgress &&
@@ -3225,7 +3387,13 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                   type="button"
                   className={cn(
                     "min-w-0 flex-1 truncate bg-transparent p-0 text-left text-[14px] focus:outline-none",
-                    (activePendingProgress ? activePendingProgress.customAnswer : prompt.trim())
+                    (
+                      activePendingProgress
+                        ? activePendingProgress.customAnswer
+                        : isGoalComposerActive
+                          ? goalComposerText.trim()
+                          : prompt.trim()
+                    )
                       ? "text-foreground"
                       : "text-placeholder",
                   )}
@@ -3236,7 +3404,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                   {activePendingProgress
                     ? activePendingProgress.customAnswer ||
                       t("typeYourOwnAnswerOrLeaveThisBlankToUseTheSelectedOption")
-                    : prompt.trim() ||
+                    : (isGoalComposerActive ? goalComposerText.trim() : prompt.trim()) ||
                       (noProviderAvailable ? t("enableAProviderInSettings") : t("askAnything"))}
                 </button>
                 {inlineTasksBadge}
@@ -3477,11 +3645,15 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                       ? ""
                       : activePendingProgress
                         ? activePendingProgress.customAnswer
-                        : prompt
+                        : isGoalComposerActive
+                          ? goalComposerText
+                          : prompt
                   }
                   cursor={composerCursor}
                   terminalContexts={
-                    !isComposerApprovalState && pendingUserInputs.length === 0
+                    !isComposerApprovalState &&
+                    pendingUserInputs.length === 0 &&
+                    !isGoalComposerActive
                       ? composerTerminalContexts
                       : []
                   }
@@ -3496,15 +3668,17 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                       ? (activePendingApproval?.detail ?? t("resolveThisApprovalRequestToContinue"))
                       : activePendingProgress
                         ? t("typeYourOwnAnswerOrLeaveThisBlankToUseTheSelectedOption")
-                        : showPlanFollowUpPrompt && activeProposedPlan
-                          ? t("addFeedbackToRefineThePlanOrLeaveThisBlankToImplementIt")
-                          : projectSelectionRequired
-                            ? t("chooseAProjectAboveToStartAThread")
-                            : noProviderAvailable
-                              ? t("enableAProviderInSettingsToSendAMessage")
-                              : phase === "disconnected"
-                                ? DISCONNECTED_COMPOSER_PLACEHOLDER()
-                                : t("askAnythingTagFilesFoldersUseSkillsOrForCommands")
+                        : isGoalComposerActive
+                          ? t("threadGoal.objectivePlaceholder")
+                          : showPlanFollowUpPrompt && activeProposedPlan
+                            ? t("addFeedbackToRefineThePlanOrLeaveThisBlankToImplementIt")
+                            : projectSelectionRequired
+                              ? t("chooseAProjectAboveToStartAThread")
+                              : noProviderAvailable
+                                ? t("enableAProviderInSettingsToSendAMessage")
+                                : phase === "disconnected"
+                                  ? DISCONNECTED_COMPOSER_PLACEHOLDER()
+                                  : t("askAnythingTagFilesFoldersUseSkillsOrForCommands")
                   }
                   disabled={isConnecting || isComposerApprovalState || projectSelectionRequired}
                 />
@@ -3567,8 +3741,9 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                     }
                     interactionMode={interactionMode}
                     planModeEnabled={planModeUiEnabled}
-                    canEditGoal={routeKind === "server" && activeThreadId !== null}
+                    canEditGoal={routeKind === "server" || routeKind === "draft"}
                     goal={threadGoalState.goal}
+                    draftObjective={routeKind === "draft" ? draftGoalObjective : null}
                     goalIsPending={threadGoalState.isPending}
                     goalErrorMessage={threadGoalErrorMessage}
                     pluginItems={composerPluginAttachmentItems}
@@ -3579,10 +3754,12 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                       insertComposerTextAtEnd("$", { ensureLeadingBoundary: true })
                     }
                     onTogglePlanMode={toggleInteractionMode}
+                    onSelectGoal={selectGoalComposer}
                     onSetGoal={onSetThreadGoal}
                     onPauseGoal={onPauseThreadGoal}
                     onResumeGoal={onResumeThreadGoal}
                     onClearGoal={onClearThreadGoal}
+                    onEditGoalInComposer={editGoalInComposer}
                   />
                   {noProviderAvailable ? (
                     <Button
@@ -3644,16 +3821,31 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                         </>
                       ) : null}
                       <ComposerFooterModeControls
-                        showInteractionModeToggle={
-                          composerProviderControls.showInteractionModeToggle
-                        }
-                        interactionMode={interactionMode}
                         runtimeMode={runtimeMode}
-                        onToggleInteractionMode={toggleInteractionMode}
                         onRuntimeModeChange={handleRuntimeModeChange}
                       />
                     </>
                   )}
+                  {isGoalComposerActive ||
+                  (routeKind === "draft" && draftGoalObjective !== null) ? (
+                    <ComposerGoalControl
+                      goal={threadGoalState.goal}
+                      draftObjective={
+                        isGoalComposerActive
+                          ? goalComposerText
+                          : routeKind === "draft"
+                            ? draftGoalObjective
+                            : null
+                      }
+                      goalIsPending={threadGoalState.isPending}
+                      goalErrorMessage={threadGoalErrorMessage}
+                      onSetGoal={onSetThreadGoal}
+                      onPauseGoal={onPauseThreadGoal}
+                      onResumeGoal={onResumeThreadGoal}
+                      onClearGoal={onClearThreadGoal}
+                      onEditGoalInComposer={editGoalInComposer}
+                    />
+                  ) : null}
                 </div>
 
                 {/* Right side: send / stop button */}
@@ -3685,7 +3877,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                       projectSelectionRequired
                     }
                     isPreparingWorktree={isPreparingWorktree}
-                    hasSendableContent={composerSendState.hasSendableContent}
+                    hasSendableContent={hasSendableComposerContent}
                     preserveComposerFocusOnPointerDown={isMobileViewport}
                     showSendWhileRunning={isMobileViewport}
                     onPreviousPendingQuestion={onPreviousActivePendingUserInputQuestion}

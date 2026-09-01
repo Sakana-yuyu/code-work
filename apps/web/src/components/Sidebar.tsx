@@ -119,6 +119,7 @@ import {
   resolveActiveThreadRouteRef,
   resolveThreadRouteTarget,
 } from "../threadRoutes";
+import { useThreadSplitStore } from "../threadSplitStore";
 import { formatRelativeTimeLabel, parseTimestampDate } from "../timestampFormat";
 import type { SidebarThreadSummary } from "../types";
 import { cn } from "~/lib/utils";
@@ -133,6 +134,7 @@ import {
   isTrailingDoubleClick,
   orderItemsByPreferredIds,
   planPinnedReorder,
+  projectLabelVisibilityByThreadKey,
   resolveAdjacentThreadId,
   resolveSettledTimestamp,
   resolveSidebarThreadStatus,
@@ -201,6 +203,11 @@ const LEGACY_SETTLED_SHELF_EXPANDED_KEY = "codework:sidebar-v2:settled-expanded"
 const LEGACY_SNOOZED_SHELF_EXPANDED_KEY = "codework:sidebar-v2:snoozed-expanded";
 const SETTLED_SHELF_EXPANDED_KEY = canonicalStorageKey(LEGACY_SETTLED_SHELF_EXPANDED_KEY);
 const SNOOZED_SHELF_EXPANDED_KEY = canonicalStorageKey(LEGACY_SNOOZED_SHELF_EXPANDED_KEY);
+// Per-project-group collapse for the two-level thread list. A missing entry
+// means expanded: a fresh project section starts open, like the shelves.
+const COLLAPSED_PROJECT_SECTIONS_KEY = canonicalStorageKey(
+  "codework:sidebar:collapsed-project-sections",
+);
 
 function compactSidebarTimeLabel(label: string): string {
   if (label === "just now") return "now";
@@ -431,7 +438,7 @@ function SnoozePopoverButton(props: {
             }}
             className="flex w-full cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-left text-xs text-foreground/90 hover:bg-accent hover:text-foreground"
           >
-            <span className="flex-1">{preset.label}</span>
+            <span className="flex-1">{t(preset.labelKey)}</span>
             <span className="font-mono text-[10px] text-muted-foreground/60 tabular-nums">
               {preset.whenLabel}
             </span>
@@ -730,6 +737,16 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
   projectCwd: string | null;
   projectFaviconPath: string | null;
   projectTitle: string | null;
+  // False when the row above in the same section shows the same project: the
+  // label dedupes so a single-project list does not repeat it on every row.
+  showProjectLabel: boolean;
+  // False when the row sits under a project section header (grouped active
+  // threads, or a scoped sidebar): the header carries the project, so the
+  // row drops its project favicon and shows its driver glyph inline instead.
+  showProjectContext: boolean;
+  // True for threads nested under a project section header: extra start
+  // padding aligns the title with the header text above it.
+  indent: boolean;
   providerEntryByInstanceId: ReadonlyMap<string, ProviderInstanceEntry>;
   timestampFormat: TimestampFormat;
   onThreadClick: (event: ReactMouseEvent, threadRef: ScopedThreadRef) => void;
@@ -1233,6 +1250,34 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
     )
   ) : null;
 
+  // The driver/server glyphs render on both row shapes: cards put them on the
+  // detail line, slim rows carry them inline. Single-project scope hides the
+  // project identity instead, so the glyph is what tells rows apart there.
+  const driverGlyphs = (
+    <>
+      {isRemote ? (
+        <span className="inline-flex shrink-0 items-center text-sidebar-muted-foreground/70">
+          <ServerIcon aria-hidden className="size-3.5" />
+        </span>
+      ) : null}
+      {driverKind ? (
+        <span className="inline-flex shrink-0 items-center">
+          <ProviderInstanceIcon
+            driverKind={driverKind}
+            displayName={
+              providerEntry?.displayName ?? thread.session?.providerName ?? modelInstanceId
+            }
+            accentColor={providerEntry?.accentColor}
+            showBadge={showInstanceBadge}
+            // Glyph dims, badge stays saturated; offset matches the composer trigger.
+            iconClassName="size-3.5 opacity-60"
+            badgeClassName="right-[-0.1875rem] bottom-[-0.1875rem] h-3 min-w-3 px-0.5 text-[7px]"
+          />
+        </span>
+      ) : null}
+    </>
+  );
+
   if (variant === "slim") {
     return (
       <li
@@ -1247,7 +1292,11 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
                 tabIndex={0}
                 data-testid="sidebar-row-slim"
                 aria-busy={isRegeneratingTitle || undefined}
-                className={cn(rowSurfaceClassName, "flex h-9 items-center gap-2.5 px-2.5")}
+                className={cn(
+                  rowSurfaceClassName,
+                  "flex h-9 items-center gap-2.5 px-2.5",
+                  props.indent && "ps-9",
+                )}
                 onClick={handleClick}
                 onDoubleClick={handleDoubleClick}
                 onKeyDown={handleKeyDown}
@@ -1256,28 +1305,37 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
             }
           >
             {/* Settled history recedes: dimmed favicon at rest, restored on
-              hover so the tail stays scannable when you're hunting. */}
-            <span
-              className={cn(
-                "shrink-0 transition-opacity",
-                !props.isActive &&
-                  "opacity-40 grayscale group-hover/sidebar-row:opacity-100 group-hover/sidebar-row:grayscale-0",
-              )}
-            >
-              <ProjectFavicon
-                environmentId={thread.environmentId}
-                cwd={props.projectCwd ?? ""}
-                faviconPath={props.projectFaviconPath}
-                className="size-4"
-                fallbackIcon={MessageSquareIcon}
-              />
-            </span>
+              hover so the tail stays scannable when you're hunting. Single-
+              project scope drops it: the filter header above the list already
+              carries the project, so repeating it per row is noise. */}
+            {props.showProjectContext ? (
+              <span
+                className={cn(
+                  "shrink-0 transition-opacity",
+                  !props.isActive &&
+                    "opacity-40 grayscale group-hover/sidebar-row:opacity-100 group-hover/sidebar-row:grayscale-0",
+                )}
+              >
+                <ProjectFavicon
+                  environmentId={thread.environmentId}
+                  cwd={props.projectCwd ?? ""}
+                  faviconPath={props.projectFaviconPath}
+                  className="size-4"
+                  fallbackIcon={MessageSquareIcon}
+                />
+              </span>
+            ) : null}
             {title}
             {pinIndicator}
             {terminalStatusIcon}
             {isRegeneratingTitle ? (
               <span role="status" className="sr-only">
                 {t("regeneratingTitle")}
+              </span>
+            ) : null}
+            {!props.showProjectContext ? (
+              <span aria-hidden className="inline-flex shrink-0 items-center gap-1">
+                {driverGlyphs}
               </span>
             ) : null}
             {/* The PR badge stays outside the hover-fading slot: it must
@@ -1316,6 +1374,29 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
                     />
                     <TooltipPopup side="top">{t("dismissWokeNotification")}</TooltipPopup>
                   </Tooltip>
+                ) : variantAction === "settle" && topStatus !== null ? (
+                  // Active threads rendered as single-project slim rows keep
+                  // their status pill: working/approval/failed is the one
+                  // thing the compact row must not drop.
+                  <span
+                    role="status"
+                    className={cn(
+                      "inline-flex items-center gap-1 text-xs font-medium",
+                      topStatus.className,
+                    )}
+                  >
+                    {topStatus.icon === "working" ? (
+                      <CircleDashedIcon aria-hidden className="size-3.5 shrink-0" />
+                    ) : topStatus.icon === "done" ? (
+                      <CircleCheckIcon aria-hidden className="size-3.5 shrink-0" />
+                    ) : null}
+                    {topStatus.label}
+                    {status === "working" ? (
+                      <span aria-hidden>
+                        <WorkingDuration startedAt={resolveWorkingStartedAt(thread)} />
+                      </span>
+                    ) : null}
+                  </span>
                 ) : (
                   <span className="text-xs">
                     {variantAction === "unsettle"
@@ -1381,6 +1462,13 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
 
   const diff = latestTurnDiff(thread);
 
+  // The detail line earns its keep only with content on it. A row with no
+  // branch, terminal, PR, or diff would render a third line holding nothing
+  // but the driver glyph, so compact rows fold that glyph into the title
+  // line and give the reclaimed height back.
+  const hasDetailLine =
+    thread.branch !== null || terminalStatusIcon !== null || prBadge !== null || diff !== null;
+
   const sortable = props.sortable;
   return (
     <li
@@ -1396,7 +1484,8 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
       }
       {...(sortable?.listeners ?? {})}
       className={cn(
-        "list-none py-0.5 [content-visibility:auto] [contain-intrinsic-size:auto_96px]",
+        "list-none py-0.5 [content-visibility:auto]",
+        hasDetailLine ? "[contain-intrinsic-size:auto_96px]" : "[contain-intrinsic-size:auto_80px]",
         sortable?.isDragging && "z-20 opacity-80",
       )}
     >
@@ -1416,7 +1505,12 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
             />
           }
         >
-          <div className="relative z-10 h-[4.875rem] px-[var(--sidebar-row-content-inset)] py-[var(--sidebar-content-inset)]">
+          <div
+            className={cn(
+              "relative z-10 px-[var(--sidebar-row-content-inset)] py-[var(--sidebar-content-inset)]",
+              hasDetailLine ? "h-[4.875rem]" : "h-[3.75rem]",
+            )}
+          >
             <div className="flex h-5 min-w-0 items-center gap-1.5">
               <ProjectFavicon
                 environmentId={thread.environmentId}
@@ -1424,7 +1518,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
                 faviconPath={props.projectFaviconPath}
                 className="size-4 shrink-0"
               />
-              {props.projectTitle ? (
+              {props.projectTitle && props.showProjectLabel ? (
                 <span
                   className={cn(
                     "min-w-0 flex-1 truncate text-secondary-label text-xs",
@@ -1544,62 +1638,52 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
                 ) : null}
               </span>
             </div>
-            <div className="mt-1 flex min-w-0">
+            <div className="mt-1 flex min-w-0 items-center gap-1.5">
               {title}
               {isRegeneratingTitle ? (
                 <span role="status" className="sr-only">
                   {t("regeneratingTitle")}
                 </span>
               ) : null}
-            </div>
-            <div className="mt-0.5 flex min-w-0 items-center gap-1.5 text-secondary-label text-xs">
-              {/* Always the branch. The plan step used to take this slot while
-                  working, but it truncated to a half-sentence and dropped the
-                  branch, so the row lost its most stable identifier. */}
-              {thread.branch ? (
-                <>
-                  <ThreadWorktreeIndicator thread={thread} />
-                  <span className="min-w-0 flex-1 truncate whitespace-nowrap">{thread.branch}</span>
-                </>
-              ) : (
-                <span className="flex-1" />
-              )}
-              {terminalStatusIcon}
-              {prBadge}
-              {diff ? (
-                <span className="shrink-0 font-mono">
-                  <span className="text-emerald-600 dark:text-emerald-400">+{diff.insertions}</span>{" "}
-                  <span className="text-red-600 dark:text-red-400">−{diff.deletions}</span>
+              {!hasDetailLine ? (
+                <span aria-hidden className="inline-flex shrink-0 items-center gap-1">
+                  {driverGlyphs}
                 </span>
               ) : null}
-              <span
-                aria-hidden
-                className="pointer-events-none ml-auto inline-flex shrink-0 items-center gap-1"
-              >
-                {isRemote ? (
-                  <span className="inline-flex shrink-0 items-center text-sidebar-muted-foreground/70">
-                    <ServerIcon aria-hidden className="size-3.5" />
-                  </span>
-                ) : null}
-                {driverKind ? (
-                  <span className="inline-flex shrink-0 items-center">
-                    <ProviderInstanceIcon
-                      driverKind={driverKind}
-                      displayName={
-                        providerEntry?.displayName ??
-                        thread.session?.providerName ??
-                        modelInstanceId
-                      }
-                      accentColor={providerEntry?.accentColor}
-                      showBadge={showInstanceBadge}
-                      // Glyph dims, badge stays saturated; offset matches the composer trigger.
-                      iconClassName="size-3.5 opacity-60"
-                      badgeClassName="right-[-0.1875rem] bottom-[-0.1875rem] h-3 min-w-3 px-0.5 text-[7px]"
-                    />
-                  </span>
-                ) : null}
-              </span>
             </div>
+            {hasDetailLine ? (
+              <div className="mt-0.5 flex min-w-0 items-center gap-1.5 text-secondary-label text-xs">
+                {/* Always the branch. The plan step used to take this slot while
+                    working, but it truncated to a half-sentence and dropped the
+                    branch, so the row lost its most stable identifier. */}
+                {thread.branch ? (
+                  <>
+                    <ThreadWorktreeIndicator thread={thread} />
+                    <span className="min-w-0 flex-1 truncate whitespace-nowrap">
+                      {thread.branch}
+                    </span>
+                  </>
+                ) : (
+                  <span className="flex-1" />
+                )}
+                {terminalStatusIcon}
+                {prBadge}
+                {diff ? (
+                  <span className="shrink-0 font-mono">
+                    <span className="text-emerald-600 dark:text-emerald-400">
+                      +{diff.insertions}
+                    </span>{" "}
+                    <span className="text-red-600 dark:text-red-400">−{diff.deletions}</span>
+                  </span>
+                ) : null}
+                <span
+                  aria-hidden
+                  className="pointer-events-none ml-auto inline-flex shrink-0 items-center gap-1"
+                >
+                  {driverGlyphs}
+                </span>
+              </div>
+            ) : null}
           </div>
           {props.jumpLabel ? <JumpHintBadge label={props.jumpLabel} /> : null}
         </TooltipTrigger>
@@ -2231,6 +2315,17 @@ export default function Sidebar() {
   const toggleSnoozedShelf = useCallback(
     () => setSnoozedShelfExpanded((value) => !value),
     [setSnoozedShelfExpanded],
+  );
+  const [collapsedProjectSections, setCollapsedProjectSections] = useLocalStorage(
+    COLLAPSED_PROJECT_SECTIONS_KEY,
+    {},
+    // 使用字面量联合避免开发环境的 Schema.Boolean 预构建导出不一致。
+    Schema.Record(Schema.String, Schema.Literals([true, false])),
+  );
+  const toggleProjectSection = useCallback(
+    (projectKey: string) =>
+      setCollapsedProjectSections((value) => ({ ...value, [projectKey]: !value[projectKey] })),
+    [setCollapsedProjectSections],
   );
   const visibleSnoozedThreads = useMemo(() => {
     if (snoozedShelfExpanded) return snoozedThreads;
@@ -2879,7 +2974,7 @@ export default function Sidebar() {
                     label: t("snooze", { count: count }),
                     children: snoozePresets.map((preset) => ({
                       id: `snooze:${preset.id}`,
-                      label: `${preset.label} (${preset.whenLabel})`,
+                      label: `${t(preset.labelKey)} (${preset.whenLabel})`,
                     })),
                   },
                 ]
@@ -3014,8 +3109,8 @@ export default function Sidebar() {
         const confirmed = await settlePromise(() =>
           api.dialogs.confirm(
             [
-              `Delete ${count} thread${count === 1 ? "" : "s"}?`,
-              "This permanently clears conversation history for these threads.",
+              t("deleteSelectedThreadsConfirm", { count, countValue: count }),
+              t("deleteSelectedThreadsConfirmDescription"),
             ].join("\n"),
             { variant: "destructive" },
           ),
@@ -3135,6 +3230,10 @@ export default function Sidebar() {
           return;
         }
         switch (clicked.value) {
+          case "open-in-split": {
+            useThreadSplitStore.getState().openSecondaryThread(threadRef);
+            return;
+          }
           case "new-thread-on-branch": {
             // Explicit branch carry-over: reuse the thread's worktree when it
             // has one, otherwise its branch on the local checkout.
@@ -3254,8 +3353,8 @@ export default function Sidebar() {
               const confirmed = await settlePromise(() =>
                 api.dialogs.confirm(
                   [
-                    `Delete thread "${thread.title}"?`,
-                    "This permanently clears conversation history for this thread.",
+                    t("deleteThreadConfirm", { threadTitle: thread.title }),
+                    t("deleteThreadConfirmDescription"),
                   ].join("\n"),
                   { variant: "destructive" },
                 ),
@@ -3695,6 +3794,22 @@ export default function Sidebar() {
             >
               <ul ref={attachListAutoAnimateRef} role="list" className="flex flex-col gap-px">
                 {(() => {
+                  // Per-section chains: a section divider or shelf header
+                  // re-anchors the project, so its first row always shows the
+                  // label even when the section above ended on the same one.
+                  const showProjectLabelByKey = projectLabelVisibilityByThreadKey([
+                    orderedPinnedThreads,
+                    activeThreads,
+                    visibleSnoozedThreads,
+                    renderedSettledThreads,
+                  ]);
+                  // Scoped to one project (or a group that is a single
+                  // project), the filter header already names it — rows drop
+                  // project identity and active threads collapse to the slim
+                  // single-line shape. Multi-member groups keep the labels:
+                  // their rows can still belong to different projects.
+                  const showProjectContext =
+                    scopedProjectKeys === null || scopedProjectKeys.size > 1;
                   const renderThreadRow = (
                     thread: EnvironmentThreadShell,
                     section: "pinned" | "active" | "snoozed" | "settled",
@@ -3703,11 +3818,11 @@ export default function Sidebar() {
                     const threadKey = scopedThreadKey(
                       scopeThreadRef(thread.environmentId, thread.id),
                     );
-                    // Settled and snoozed are the ONLY things that collapse a
-                    // row: every other thread is a full card. Density comes
-                    // from users (or the auto rules) actually parking work,
-                    // not from the sidebar second-guessing what still matters.
-                    const isCard = section === "active" || section === "pinned";
+                    // Pinned threads keep the full card (and their drag
+                    // handle). Everything else is a single slim line: active
+                    // threads nest under their project section header, so a
+                    // conversation is one row — title, status, time.
+                    const isCard = section === "pinned";
                     const rowVariant = isCard ? "card" : "slim";
                     return (
                       <SidebarThreadRow
@@ -3777,6 +3892,20 @@ export default function Sidebar() {
                             `${thread.environmentId}:${thread.projectId}`,
                           ) ?? null
                         }
+                        showProjectLabel={
+                          showProjectContext &&
+                          section === "pinned" &&
+                          (showProjectLabelByKey.get(threadKey) ?? true)
+                        }
+                        // Grouped active rows and scoped shelves sit under a
+                        // header that already names the project; global
+                        // shelves in the all-projects view keep the favicon.
+                        showProjectContext={
+                          section === "snoozed" || section === "settled"
+                            ? showProjectContext
+                            : false
+                        }
+                        indent={section === "active"}
                         providerEntryByInstanceId={
                           providerEntriesByEnvironment.get(thread.environmentId) ??
                           EMPTY_PROVIDER_ENTRIES
@@ -3869,7 +3998,124 @@ export default function Sidebar() {
                       />,
                     );
                   }
-                  for (const thread of activeThreads) {
+                  // Two-level list: a collapsible section per project, its
+                  // conversations nested beneath. The header carries the
+                  // project identity (chevron, favicon, name) and the "+"
+                  // starts a new conversation in that project, so the rows
+                  // themselves stay projectless single lines. Sections in
+                  // the sidebar's project order; empty projects stay hidden.
+                  // Scoped single-project views skip the headers entirely —
+                  // a filtered project already names itself in the filter
+                  // button, so one flat conversation column is enough.
+                  const showProjectSections = projectScopeKey === null;
+                  const activeThreadGroups = projectGroups.map((group) => ({
+                    group,
+                    threads: activeThreads.filter((thread) =>
+                      group.memberProjectRefs.some(
+                        (ref) =>
+                          ref.environmentId === thread.environmentId &&
+                          ref.projectId === thread.projectId,
+                      ),
+                    ),
+                  }));
+                  const groupedThreadKeys = new Set(
+                    activeThreadGroups.flatMap(({ threads }) =>
+                      threads.map((thread) =>
+                        scopedThreadKey(scopeThreadRef(thread.environmentId, thread.id)),
+                      ),
+                    ),
+                  );
+                  const ungroupedActiveThreads = activeThreads.filter(
+                    (thread) =>
+                      !groupedThreadKeys.has(
+                        scopedThreadKey(scopeThreadRef(thread.environmentId, thread.id)),
+                      ),
+                  );
+                  for (const { group, threads: groupThreads } of activeThreadGroups) {
+                    if (groupThreads.length === 0) continue;
+                    if (!showProjectSections) {
+                      for (const thread of groupThreads) {
+                        items.push(renderThreadRow(thread, "active"));
+                      }
+                      continue;
+                    }
+                    const isCollapsed = collapsedProjectSections[group.projectKey] === true;
+                    // A collapsed section must not swallow the open thread:
+                    // like the snoozed shelf, the route-active row survives
+                    // the fold so a deep link never loses its sidebar anchor.
+                    const visibleGroupThreads = isCollapsed
+                      ? groupThreads.filter(
+                          (thread) =>
+                            scopedThreadKey(scopeThreadRef(thread.environmentId, thread.id)) ===
+                            routeThreadKey,
+                        )
+                      : groupThreads;
+                    items.push(
+                      <li
+                        key={`project-section-${group.projectKey}`}
+                        data-thread-selection-safe
+                        className="list-none"
+                      >
+                        <div className="flex h-8 items-center gap-1 ps-1 pe-0.5">
+                          <button
+                            type="button"
+                            onClick={() => toggleProjectSection(group.projectKey)}
+                            aria-expanded={!isCollapsed}
+                            className="flex min-w-0 flex-1 cursor-pointer items-center gap-2 rounded-md px-1.5 py-1 text-left text-sm font-medium text-sidebar-foreground outline-none hover:bg-sidebar-row-hover focus-visible:ring-2 focus-visible:ring-ring"
+                          >
+                            <ChevronDownIcon
+                              aria-hidden
+                              className={cn(
+                                "size-3 shrink-0 text-muted-foreground transition-transform",
+                                isCollapsed && "-rotate-90",
+                              )}
+                            />
+                            <ProjectFavicon
+                              environmentId={group.environmentId}
+                              cwd={group.workspaceRoot}
+                              faviconPath={
+                                projectFaviconPathByKey.get(`${group.environmentId}:${group.id}`) ??
+                                null
+                              }
+                              className="size-4 shrink-0"
+                            />
+                            <span className="min-w-0 flex-1 truncate">{group.displayName}</span>
+                          </button>
+                          <Tooltip>
+                            <TooltipTrigger
+                              render={
+                                <button
+                                  type="button"
+                                  aria-label={t("newThreadInProject", {
+                                    project: group.displayName,
+                                  })}
+                                  onClick={() => {
+                                    if (isMobile) setOpenMobile(false);
+                                    void newThreadContext.handleNewThread({
+                                      environmentId: group.environmentId,
+                                      projectId: group.id,
+                                    });
+                                  }}
+                                  className="inline-flex size-6 shrink-0 cursor-pointer items-center justify-center rounded-md text-muted-foreground/80 outline-none hover:bg-sidebar-row-hover hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
+                                />
+                              }
+                            >
+                              <PlusIcon aria-hidden className="size-4" />
+                            </TooltipTrigger>
+                            <TooltipPopup side="top">
+                              {t("newThreadInProject", { project: group.displayName })}
+                            </TooltipPopup>
+                          </Tooltip>
+                        </div>
+                      </li>,
+                    );
+                    for (const thread of visibleGroupThreads) {
+                      items.push(renderThreadRow(thread, "active"));
+                    }
+                  }
+                  // Threads whose project dropped out of the groups (deleted
+                  // mid-session) keep a home instead of vanishing.
+                  for (const thread of ungroupedActiveThreads) {
                     items.push(renderThreadRow(thread, "active"));
                   }
                   // Snoozed shelf: between the inbox and Settled — out of the

@@ -1,3 +1,7 @@
+import { setCurrentLanguage } from "~/i18n/runtime";
+
+setCurrentLanguage("en");
+
 import { managedRelaySessionAtom, setManagedRelaySession } from "@codework/client-runtime/relay";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 
@@ -12,7 +16,8 @@ vi.mock("@clerk/react", () => ({
   useAuth: vi.fn(),
 }));
 
-vi.mock("../lib/runtime", () => ({
+vi.mock("../lib/runtime", async (importOriginal) => ({
+  ...(await importOriginal<object>()),
   runtime: {
     runPromiseExit: vi.fn(),
   },

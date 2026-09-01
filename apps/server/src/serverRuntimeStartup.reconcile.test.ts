@@ -17,6 +17,7 @@ import * as ProjectionSnapshotQuery from "./orchestration/Services/ProjectionSna
 import { ProviderSessionDirectoryPersistenceError } from "./provider/Errors.ts";
 import * as ProviderService from "./provider/Services/ProviderService.ts";
 import * as ProviderSessionDirectory from "./provider/Services/ProviderSessionDirectory.ts";
+import * as ThreadGoalStore from "./persistence/Services/ThreadGoalStore.ts";
 import * as ServerRuntimeStartup from "./serverRuntimeStartup.ts";
 
 const providerInstanceId = ProviderInstanceId.make("codex");
@@ -72,9 +73,10 @@ const runReconciliation = (input: {
   readonly threads: ReadonlyArray<ReturnType<typeof makeThread>>;
   readonly liveThreadIds?: ReadonlyArray<ThreadId>;
   readonly directory: ProviderSessionDirectory.ProviderSessionDirectory["Service"];
+  readonly goalStore?: ThreadGoalStore.ThreadGoalStore["Service"];
   readonly dispatch: OrchestrationEngine.OrchestrationEngineService["Service"]["dispatch"];
-}) =>
-  ServerRuntimeStartup.reconcileProviderSessions.pipe(
+}) => {
+  const effect = ServerRuntimeStartup.reconcileProviderSessions.pipe(
     Effect.provideService(
       ProjectionSnapshotQuery.ProjectionSnapshotQuery,
       queryWithThreads(input.threads),
@@ -92,6 +94,10 @@ const runReconciliation = (input: {
     }),
     Effect.provide(NodeServices.layer),
   );
+  return input.goalStore
+    ? effect.pipe(Effect.provideService(ThreadGoalStore.ThreadGoalStore, input.goalStore))
+    : effect;
+};
 
 it.effect("reconciles multiple active and archived orphans but skips live sessions", () => {
   const starting = makeThread("thread-starting", "starting");
@@ -213,6 +219,44 @@ it.effect("目录绑定读取或写入失败时保留 orphan 投影并返回未�
           dispatched.map((command) => command.type === "thread.session.set" && command.threadId),
           [absent.id],
         );
+      }),
+    ),
+  );
+});
+
+it.effect("没有 live provider 时暂停仍为 active 的 Goal，即使投影 session 已 stopped", () => {
+  const thread = makeThread("thread-stopped-active-goal", "stopped");
+  const paused: ThreadId[] = [];
+  const goalStore = {
+    get: () => Effect.succeed(Option.some({ status: "active" } as never)),
+    pause: (threadId: ThreadId) =>
+      Effect.sync(() => {
+        paused.push(threadId);
+        return {} as never;
+      }),
+    set: () => Effect.die("unused") as never,
+    resume: () => Effect.die("unused") as never,
+    setStatus: () => Effect.die("unused") as never,
+    clear: () => Effect.die("unused") as never,
+    subscribe: () => Effect.succeed(Stream.empty),
+  } as unknown as ThreadGoalStore.ThreadGoalStore["Service"];
+
+  return runReconciliation({
+    threads: [thread],
+    directory: {
+      getBinding: () => Effect.die("session directory should not be read") as never,
+      upsert: () => Effect.die("session directory should not be written") as never,
+      getProvider: () => Effect.die("unused"),
+      listThreadIds: () => Effect.die("unused"),
+      listBindings: () => Effect.die("unused"),
+    },
+    goalStore,
+    dispatch: () => Effect.die("session projection should not be written") as never,
+  }).pipe(
+    Effect.tap((reconciled) =>
+      Effect.sync(() => {
+        assert.isTrue(reconciled);
+        assert.deepStrictEqual(paused, [thread.id]);
       }),
     ),
   );

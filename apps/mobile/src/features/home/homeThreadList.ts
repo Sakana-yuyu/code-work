@@ -25,6 +25,7 @@ import * as Option from "effect/Option";
 import * as Order from "effect/Order";
 
 import { scopedProjectKey } from "../../lib/scopedEntities";
+import { t } from "../../i18n/runtime";
 import type { PendingNewTask } from "../../state/use-pending-new-tasks";
 
 export type HomeProjectSortOrder = Exclude<SidebarProjectSortOrder, "manual">;
@@ -256,7 +257,7 @@ export function buildHomeThreadGroups(input: {
           {
             environmentId: pendingTask.message.environmentId,
             id: pendingTask.creation.projectId,
-            title: pendingTask.creation.projectTitle ?? "Unknown project",
+            title: pendingTask.creation.projectTitle ?? t("projects.unknownProject"),
             workspaceRoot:
               pendingTask.creation.projectCwd ?? String(pendingTask.creation.projectId),
             repositoryIdentity: null,

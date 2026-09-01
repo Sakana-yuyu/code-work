@@ -78,25 +78,29 @@ export function getArm64IntelBuildWarningDescription(state: DesktopUpdateState):
 
 export function getDesktopUpdateButtonTooltip(state: DesktopUpdateState): string {
   if (state.status === "available") {
-    return `Update ${state.availableVersion ?? "available"} ready to download`;
+    return state.availableVersion
+      ? t("desktopUpdate.readyToDownload", { version: state.availableVersion })
+      : t("desktopUpdate.readyToDownloadNoVersion");
   }
   if (state.status === "downloading") {
-    const progress =
-      typeof state.downloadPercent === "number" ? ` (${Math.floor(state.downloadPercent)}%)` : "";
-    return `Downloading update${progress}`;
+    return typeof state.downloadPercent === "number"
+      ? t("desktopUpdate.downloadingWithProgress", { percent: Math.floor(state.downloadPercent) })
+      : t("desktopUpdate.downloading");
   }
   if (state.status === "downloaded") {
-    return `Update ${state.downloadedVersion ?? state.availableVersion ?? "ready"} downloaded. Click to restart and install.`;
+    return t("desktopUpdate.downloadedRestart", {
+      version: state.downloadedVersion ?? state.availableVersion ?? t("desktopUpdate.versionReady"),
+    });
   }
   if (state.status === "error") {
     if (state.errorContext === "download" && state.availableVersion) {
-      return `Download failed for ${state.availableVersion}. Click to retry.`;
+      return t("desktopUpdate.downloadFailed", { version: state.availableVersion });
     }
     if (state.errorContext === "install" && state.downloadedVersion) {
-      return `Install failed for ${state.downloadedVersion}. Click to retry.`;
+      return t("desktopUpdate.installFailed", { version: state.downloadedVersion });
     }
     if (state.downloadedVersion) {
-      return `Update ${state.downloadedVersion} downloaded. Click to restart and install.`;
+      return t("desktopUpdate.downloadedRestart", { version: state.downloadedVersion });
     }
     return state.message ?? t("updateFailed");
   }

@@ -365,7 +365,7 @@ export function PreviewView({
                   actionProps: revealAction,
                   data: {
                     secondaryActionProps: {
-                      children: pathCopied ? "Copied!" : "Copy path",
+                      children: pathCopied ? t("copied") : t("copyPath2"),
                       disabled: pathCopied,
                       onClick: copyPath,
                     },
@@ -382,7 +382,7 @@ export function PreviewView({
                 actionProps: revealAction,
                 data: {
                   secondaryActionProps: {
-                    children: "Copy path",
+                    children: t("copyPath2"),
                     onClick: copyPath,
                   },
                   secondaryActionVariant: "outline",
@@ -424,7 +424,7 @@ export function PreviewView({
 
           const updateScreenshotToast = (
             type: "success" | "error" = "success",
-            title = "Screenshot saved",
+            title = t("screenshotSaved"),
             description?: string,
           ) => {
             toastManager.update(
@@ -434,7 +434,7 @@ export function PreviewView({
                 title,
                 description,
                 actionProps: {
-                  children: imageCopied ? "Copied!" : "Copy image",
+                  children: imageCopied ? t("copied") : t("preview.copyImage"),
                   disabled: imageCopied,
                   onClick: copyImage,
                 },
@@ -443,7 +443,7 @@ export function PreviewView({
                     {
                       id: "copy-path",
                       props: {
-                        children: pathCopied ? "Copied!" : "Copy path",
+                        children: pathCopied ? t("copied") : t("copyPath2"),
                         disabled: pathCopied,
                         onClick: copyPath,
                       },
@@ -462,8 +462,8 @@ export function PreviewView({
             if (!navigator.clipboard?.writeText) {
               updateScreenshotToast(
                 "error",
-                "Unable to copy screenshot path",
-                "Clipboard API unavailable.",
+                t("preview.unableToCopyScreenshotPath"),
+                t("clipboardApiUnavailable"),
               );
               return;
             }
@@ -480,8 +480,8 @@ export function PreviewView({
               (error) => {
                 updateScreenshotToast(
                   "error",
-                  "Unable to copy screenshot path",
-                  error instanceof Error ? error.message : "An error occurred.",
+                  t("preview.unableToCopyScreenshotPath"),
+                  error instanceof Error ? error.message : t("commandPalette.anErrorOccurred"),
                 );
               },
             );
@@ -500,8 +500,8 @@ export function PreviewView({
               (error) => {
                 updateScreenshotToast(
                   "error",
-                  "Unable to copy screenshot",
-                  error instanceof Error ? error.message : "An error occurred.",
+                  t("preview.unableToCopyScreenshot"),
+                  error instanceof Error ? error.message : t("commandPalette.anErrorOccurred"),
                 );
               },
             );
@@ -512,7 +512,7 @@ export function PreviewView({
               type: "success",
               title: t("screenshotSaved"),
               actionProps: {
-                children: "Copy image",
+                children: t("preview.copyImage"),
                 onClick: copyImage,
               },
               data: {
@@ -520,7 +520,7 @@ export function PreviewView({
                   {
                     id: "copy-path",
                     props: {
-                      children: "Copy path",
+                      children: t("copyPath2"),
                       onClick: copyPath,
                     },
                   },
@@ -687,9 +687,7 @@ export function PreviewView({
         // failed to load (a React overlay covers the webview, so the
         // user wouldn't be able to actually click anything underneath).
         pickDisabled={!tabId || isUnreachable}
-        pickDisabledReason={
-          isUnreachable ? "Page didn't load — pick unavailable until the page renders" : undefined
-        }
+        pickDisabledReason={isUnreachable ? t("preview.pickUnavailablePageDidntLoad") : undefined}
         trailingActions={
           previewBridge ? (
             <PreviewMoreMenu

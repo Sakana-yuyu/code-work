@@ -269,7 +269,7 @@ async function performAppUpdateCheck(
   setState("checking");
   const check = await settlePromise(() => client.checkForUpdateAsync());
   if (check._tag === "Failure") {
-    reportUpdateFailure(check, "Could not check for updates.", options.onFailure);
+    reportUpdateFailure(check, t("updates.checkFailed"), options.onFailure);
     setState("idle");
     return;
   }
@@ -283,7 +283,7 @@ async function performAppUpdateCheck(
   setState("downloading");
   const fetched = await settlePromise(() => client.fetchUpdateAsync());
   if (fetched._tag === "Failure") {
-    reportUpdateFailure(fetched, "Could not download the update.", options.onFailure);
+    reportUpdateFailure(fetched, t("updates.downloadFailed"), options.onFailure);
     setState("idle");
     return;
   }
@@ -341,7 +341,7 @@ async function installAppUpdate(
   setState("restarting");
   const flushed = await settlePromise(() => environment.flushPendingWrites());
   if (flushed._tag === "Failure") {
-    reportUpdateFailure(flushed, "Could not save pending state.", undefined);
+    reportUpdateFailure(flushed, t("updates.flushFailed"), undefined);
     if (!userRequested) {
       deferral.installInProgress = false;
       return "flush-failed";
@@ -349,7 +349,7 @@ async function installAppUpdate(
   }
   const reloaded = await settlePromise(() => client.reloadAsync());
   if (reloaded._tag === "Failure") {
-    reportUpdateFailure(reloaded, "Downloaded, but could not restart the app.", options.onFailure);
+    reportUpdateFailure(reloaded, t("updates.restartFailed"), options.onFailure);
     setState("idle");
     deferral.installInProgress = false;
     return "restart-failed";
@@ -428,7 +428,7 @@ async function applyDeferredAppUpdateInstall(
     if (flushed._tag === "Failure") {
       // Nothing is lost yet: keep the state-bearing runtime alive and retry
       // the flush at the next backgrounding instead of restarting over it.
-      reportUpdateFailure(flushed, "Could not save pending state.", undefined);
+      reportUpdateFailure(flushed, t("updates.flushFailed"), undefined);
     }
     deferral.installInProgress = false;
     // This attempt already ran in the current background session; retrying
@@ -438,7 +438,7 @@ async function applyDeferredAppUpdateInstall(
   }
   const reloaded = await settlePromise(() => client.reloadAsync());
   if (reloaded._tag === "Failure") {
-    reportUpdateFailure(reloaded, "Downloaded, but could not restart the app.", undefined);
+    reportUpdateFailure(reloaded, t("updates.restartFailed"), undefined);
     deferral.installInProgress = false;
     // Let later checks re-arm the install; the downloaded update still
     // applies at the next cold start regardless.

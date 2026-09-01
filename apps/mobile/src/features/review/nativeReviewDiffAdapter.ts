@@ -14,6 +14,7 @@ import {
   type MobileThemeId,
 } from "../../lib/mobileTheme";
 import { getMobileTerminalTheme, type TerminalAppearanceScheme } from "../terminal/terminalTheme";
+import { t } from "../../i18n/runtime";
 import { computeWordAltDiffRanges } from "./reviewWordDiffs";
 import {
   getReviewFilePreviewState,
@@ -246,13 +247,11 @@ function noticeRowsForFile(file: ReviewRenderableFile): ReadonlyArray<NativeRevi
 
   const previewState = getReviewFilePreviewState(file);
   if (previewState.kind === "suppressed" && previewState.reason === "non-text") {
-    return [
-      createNoticeRow(file.id, "non-text", "Unsupported format. Diff contents are not available."),
-    ];
+    return [createNoticeRow(file.id, "non-text", t("review.unsupportedFormatNotice"))];
   }
 
   if (file.changeType === "rename-pure") {
-    return [createNoticeRow(file.id, "rename", "This file was renamed without modifications.")];
+    return [createNoticeRow(file.id, "rename", t("review.renamedWithoutModifications"))];
   }
 
   return [];

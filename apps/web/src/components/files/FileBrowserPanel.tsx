@@ -369,7 +369,7 @@ export default function FileBrowserPanel({
         <RefreshFilesButton isPending={entriesQuery.isPending} onRefresh={handleRefresh} />
         <FileSearchField
           name="project-files-search"
-          ariaLabel={`Search ${projectName} files`}
+          ariaLabel={t("files.searchProjectFiles", { project: projectName })}
           value={search.value}
           onValueChange={handleSearchValueChange}
           onClose={search.close}

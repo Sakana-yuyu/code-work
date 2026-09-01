@@ -946,6 +946,32 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
     --chat-composer-attached-tint: color-mix(in srgb, var(--warning) 8%, transparent);
   }
 
+  /* 目标条沿用上下文条的中性玻璃边框，状态通过文字和操作按钮表达。 */
+  .chat-composer-top-drawer[data-variant] {
+    --chat-composer-attached-outline: var(--chat-composer-outline);
+    --chat-composer-attached-tint: transparent;
+
+    @variant dark {
+      &::before {
+        border-color: rgb(255 255 255 / 7%);
+        background:
+          linear-gradient(
+            to top,
+            transparent 0 var(--chat-composer-attachment-overlap),
+            rgb(0 0 0 / 18%) var(--chat-composer-attachment-overlap),
+            transparent calc(var(--chat-composer-attachment-overlap) + 10px)
+          ),
+          linear-gradient(rgb(255 255 255 / 2%), rgb(255 255 255 / 2%)),
+          color-mix(
+            in srgb,
+            var(--chat-composer-attached-surface) var(--glass-opacity),
+            transparent
+          );
+        box-shadow: 0 14px 32px -18px rgb(0 0 0 / 75%);
+      }
+    }
+  }
+
   .chat-composer-glass-shell {
     --chat-composer-attachment-overlap: calc(1rem + 1px);
     --chat-composer-glass-surface: var(--card);

@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vite-plus/test";
 
+import { setCurrentLanguage } from "~/i18n/runtime";
+
 import { resolveSnoozePresets, snoozeWakeDescription } from "./Sidebar.snooze";
+
+setCurrentLanguage("en");
 
 // Local-time constructor so preset math is timezone-stable in tests.
 function localDate(year: number, month: number, day: number, hour: number, minute = 0): Date {
@@ -78,12 +82,12 @@ describe("resolveSnoozePresets", () => {
 describe("snoozeWakeDescription", () => {
   const now = localDate(2026, 4, 8, 10);
 
-  it("uses bare time today, 'tomorrow' next day, weekday within the week", () => {
+  it("uses bare time today, localized day word next day, weekday within the week", () => {
     expect(
       snoozeWakeDescription(localDate(2026, 4, 8, 18).toISOString(), now, "locale"),
-    ).not.toContain("tomorrow");
+    ).not.toContain("Tomorrow");
     expect(snoozeWakeDescription(localDate(2026, 4, 9, 9).toISOString(), now, "locale")).toContain(
-      "tomorrow",
+      "Tomorrow",
     );
     expect(snoozeWakeDescription(localDate(2026, 4, 13, 9).toISOString(), now, "locale")).toContain(
       new Date(2026, 3, 13, 9).toLocaleDateString(undefined, { weekday: "short" }),

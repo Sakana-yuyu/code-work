@@ -13,6 +13,7 @@ import { appAtomRegistry } from "~/rpc/atomRegistry";
 import { projectEnvironment } from "~/state/projects";
 import { useProjectPathSearch } from "~/state/queries";
 import { executeAtomQuery } from "@codework/client-runtime/state/runtime";
+import { t } from "~/i18n";
 
 const EMPTY_PROJECT_FILE_PATH = "";
 const EMPTY_PROJECT_FILE_QUERY_ATOM = Atom.make(
@@ -118,7 +119,7 @@ export function clearProjectFileQueryData(
 function errorMessage<A>(result: AsyncResult.AsyncResult<A, unknown>): string | null {
   if (result._tag !== "Failure") return null;
   const cause = Cause.squash(result.cause);
-  return cause instanceof Error ? cause.message : "Workspace query failed.";
+  return cause instanceof Error ? cause.message : t("projectFiles.queryFailed");
 }
 
 export function useProjectEntriesQuery(

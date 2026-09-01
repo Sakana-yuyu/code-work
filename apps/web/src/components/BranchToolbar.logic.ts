@@ -38,7 +38,7 @@ export function resolveEnvironmentOptionLabel(input: {
       if (!label) return false;
       return !GENERIC_LOCAL_ENVIRONMENT_LABELS.has(label.toLowerCase());
     });
-    return preferredLocalLabel ?? "This device";
+    return preferredLocalLabel ?? t("commandPalette.thisDevice");
   }
 
   return runtimeLabel ?? savedLabel ?? input.environmentId;
@@ -182,14 +182,14 @@ export function resolveBranchTriggerLabel(input: {
     startFromOrigin,
   } = input;
   if (!resolvedActiveBranch) {
-    return "Select ref";
+    return t("branchToolbar.selectRef");
   }
   if (effectiveEnvMode === "worktree" && !activeWorktreePath) {
     const baseRef =
       startFromOrigin && resolvedActiveBranchIsRemote === false
         ? `origin/${resolvedActiveBranch}`
         : resolvedActiveBranch;
-    return `From ${baseRef}`;
+    return t("branchToolbar.fromRef", { ref: baseRef });
   }
   return resolvedActiveBranch;
 }

@@ -161,6 +161,9 @@ describe("buildThreadTitlePrompt", () => {
       "Title the subject and outcome. Discard incidental instructions.",
     );
     expect(result.prompt).toContain(
+      "Write the title in the language of the user's messages; when the messages are mixed or their language is unclear, use Simplified Chinese.",
+    );
+    expect(result.prompt).toContain(
       "Name the product change, not the mock, plan, report, branch, or PR used to produce it.",
     );
     expect(result.prompt).not.toContain(
@@ -200,6 +203,9 @@ describe("buildThreadTitlePrompt", () => {
     expect(result.prompt).toContain('The previous title was "Investigate reconnect regressions".');
     expect(result.prompt).toContain(
       "Read the USER messages first. Identify the latest explicit durable goal.",
+    );
+    expect(result.prompt).toContain(
+      "Write the title in the language of the user's messages; when the messages are mixed or their language is unclear, use Simplified Chinese.",
     );
     expect(result.prompt).toContain(
       "Do not promote one assistant finding into the thread subject unless the user adopts it as a new goal.",

@@ -9,8 +9,6 @@ import { t } from "../../i18n/runtime";
 export type ReviewSectionKind = "turn" | "working-tree" | "branch-range";
 
 const DIRTY_WORKTREE_SECTION_ID = "git:working-tree";
-const DIRTY_WORKTREE_TITLE = "Dirty worktree";
-const DIRTY_WORKTREE_SUBTITLE = "Tracked, staged, and untracked worktree changes";
 
 export interface ReviewSectionItem {
   readonly id: string;
@@ -158,12 +156,12 @@ const readyCheckpointOrder = Order.make<OrchestrationCheckpointSummary>(
 
 function gitSubtitle(section: ReviewDiffPreviewSource): string | null {
   if (section.kind === "working-tree") {
-    return DIRTY_WORKTREE_SUBTITLE;
+    return t("review.dirtyWorktreeSubtitle");
   }
   if (section.baseRef) {
     return `${section.baseRef} ... ${section.headRef ?? "HEAD"}`;
   }
-  return "Base branch unavailable";
+  return t("review.baseBranchUnavailable");
 }
 
 function stripGitPrefix(pathValue: string | undefined): string | null {
@@ -562,8 +560,8 @@ export function buildReviewSectionItems(input: {
           {
             id: DIRTY_WORKTREE_SECTION_ID,
             kind: "working-tree",
-            title: DIRTY_WORKTREE_TITLE,
-            subtitle: DIRTY_WORKTREE_SUBTITLE,
+            title: t("review.dirtyWorktree"),
+            subtitle: t("review.dirtyWorktreeSubtitle"),
             diff: null,
             isLoading: true,
           } satisfies ReviewSectionItem,
@@ -594,9 +592,7 @@ export function buildReviewParsedDiff(
     return { kind: "empty" };
   }
 
-  const notice = truncated
-    ? "Diff output hit the server size cap. Showing the available excerpt."
-    : null;
+  const notice = truncated ? t("review.serverSizeCapNotice") : null;
 
   try {
     const parsedPatches = runDiffParserSilently(() =>
@@ -612,9 +608,7 @@ export function buildReviewParsedDiff(
       return {
         kind: "raw",
         text,
-        reason: truncated
-          ? "Diff was truncated before it could be parsed completely. Showing the raw excerpt."
-          : "Unsupported diff format. Showing raw patch.",
+        reason: truncated ? t("review.truncatedRawExcerpt") : t("review.unsupportedRawPatch"),
         notice,
       };
     }
@@ -631,9 +625,7 @@ export function buildReviewParsedDiff(
     return {
       kind: "raw",
       text,
-      reason: truncated
-        ? "Diff was truncated before it could be parsed completely. Showing the raw excerpt."
-        : "Failed to parse patch. Showing raw patch.",
+      reason: truncated ? t("review.truncatedRawExcerpt") : t("review.parseFailedRawPatch"),
       notice,
     };
   }

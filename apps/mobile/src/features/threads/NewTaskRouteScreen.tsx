@@ -58,9 +58,7 @@ function deriveProjectEmptyState(catalogState: WorkspaceState): {
   ) {
     return {
       title: t("commandPalette.environmentUnavailable"),
-      detail:
-        catalogState.connectionError ??
-        "The saved environment is offline. Check the URL or start the environment, then retry.",
+      detail: catalogState.connectionError ?? t("connection.savedEnvironmentOffline"),
       loading: false,
     };
   }

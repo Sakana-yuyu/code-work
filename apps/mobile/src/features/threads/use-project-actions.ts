@@ -20,6 +20,7 @@ import { buildProjectThreadStartTurnInput } from "../../lib/projectThreadStartTu
 import { randomHex } from "../../lib/uuid";
 import { useAtomCommand } from "../../state/use-atom-command";
 import { setPendingConnectionError } from "../../state/use-remote-environment-registry";
+import { t } from "../../i18n/runtime";
 import { validateProjectThreadCreation } from "./projectThreadCreationValidation";
 
 export function useCreateProjectThread() {
@@ -80,7 +81,7 @@ export function useCreateProjectThread() {
       if (AsyncResult.isFailure(result)) {
         const error = Cause.squash(result.cause);
         setPendingConnectionError(
-          error instanceof Error ? error.message : "The task could not be started.",
+          error instanceof Error ? error.message : t("theTaskCouldNotBeStarted"),
         );
         return AsyncResult.failure(result.cause);
       }

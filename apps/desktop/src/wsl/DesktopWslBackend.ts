@@ -73,7 +73,7 @@ const isWslInstanceId = (id: DesktopBackendPool.BackendInstanceId): boolean =>
   id.startsWith(WSL_INSTANCE_ID_PREFIX);
 
 const buildLabel = (distro: string | null): string =>
-  distro === null ? "WSL (default distro)" : `WSL (${distro})`;
+  distro === null ? t("wsl.defaultDistroLabel") : `WSL (${distro})`;
 
 // Loopback-only port scan starting one above the primary's port. The
 // WSL backend is reachable via 127.0.0.1 from Windows (wslhost

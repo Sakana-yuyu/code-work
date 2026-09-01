@@ -72,7 +72,6 @@ import { useDesktopUpdateState } from "../../state/desktopUpdate";
 import {
   getCustomModelOptionsByInstance,
   resolveAppModelSelectionState,
-  withoutPlanAgentSelection,
 } from "../../modelSelection";
 import {
   applyProviderInstanceSettings,
@@ -358,8 +357,7 @@ function AboutVersionSection() {
             stackedThreadToast({
               type: "error",
               title: t("couldNotCheckForUpdates"),
-              description:
-                result.state.message ?? "Automatic updates are not available in this build.",
+              description: result.state.message ?? t("desktopUpdate.autoUpdatesUnavailable"),
             }),
           );
         }
@@ -1280,8 +1278,8 @@ function useFontDefaultFamilies() {
   // hardcoded.
   const defaults = useMemo(
     () => ({
-      sans: resolveDefaultFamilyLabel(DEFAULT_SANS_FONT_STACK) ?? "System default",
-      code: resolveDefaultFamilyLabel(DEFAULT_CODE_FONT_STACK) ?? "System monospace",
+      sans: resolveDefaultFamilyLabel(DEFAULT_SANS_FONT_STACK) ?? t("timestampFormatSystemDefault"),
+      code: resolveDefaultFamilyLabel(DEFAULT_CODE_FONT_STACK) ?? t("settings.systemMonospace"),
     }),
     [],
   );
@@ -1357,7 +1355,7 @@ function PromptFontRow() {
 
 function CodeFontRow({
   title,
-  description = "Code blocks, diffs, and file previews.",
+  description = t("settings.codeFontDescription"),
   preview,
 }: {
   title?: string;
@@ -1839,7 +1837,6 @@ function AutoSettleDaysInput({
 // The legacy rows sit behind the fold, so a settings-search jump has to
 // expand the section before its target can mount and scroll.
 const LEGACY_FEATURE_TARGET_IDS: ReadonlySet<string> = new Set([
-  "legacy-plan-mode",
   "legacy-token-streaming",
   "legacy-sidebar",
 ]);
@@ -1881,41 +1878,6 @@ function LegacyFeaturesSection() {
         </CollapsibleTrigger>
         <CollapsiblePanel>
           <div className="relative space-y-1 overflow-visible pt-3 text-foreground">
-            <SettingsRow
-              {...searchableSetting("legacy-plan-mode")}
-              description={t("bringsBackTheBuildPlanToggleInTheComposerAlongWithThePlanAnd")}
-              control={
-                <Switch
-                  checked={settings.planModeEnabled}
-                  onCheckedChange={(checked) => {
-                    const planModeEnabled = Boolean(checked);
-                    const textGenerationModelSelection = withoutPlanAgentSelection(
-                      settings.textGenerationModelSelection,
-                    );
-                    const sourceControlWriterModelSelection = withoutPlanAgentSelection(
-                      settings.sourceControlWriterModelSelection,
-                    );
-                    updateSettings({
-                      planModeEnabled,
-                      ...(planModeEnabled
-                        ? {}
-                        : {
-                            ...(textGenerationModelSelection &&
-                            textGenerationModelSelection !== settings.textGenerationModelSelection
-                              ? { textGenerationModelSelection }
-                              : {}),
-                            ...(sourceControlWriterModelSelection &&
-                            sourceControlWriterModelSelection !==
-                              settings.sourceControlWriterModelSelection
-                              ? { sourceControlWriterModelSelection }
-                              : {}),
-                          }),
-                    });
-                  }}
-                  aria-label={t("settings.planModeLegacy")}
-                />
-              }
-            />
             <SettingsRow
               {...searchableSetting("legacy-token-streaming")}
               description={t("paintsAssistantOutputTokenByTokenInsteadOfInCompleteChunksNo")}
@@ -2591,7 +2553,7 @@ export function GeneralSettingsPanel() {
                 onPromptChange={() => {}}
                 modelOptions={textGenModelOptions}
                 allowPromptInjectedEffort={false}
-                planModeEnabled={settings.planModeEnabled}
+                planModeEnabled={true}
                 triggerVariant="outline"
                 triggerClassName="min-w-0 max-w-none shrink-0 text-foreground/90 hover:text-foreground"
                 onModelOptionsChange={(nextOptions) => {

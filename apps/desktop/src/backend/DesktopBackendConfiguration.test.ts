@@ -18,6 +18,7 @@ import * as DesktopServerExposure from "./DesktopServerExposure.ts";
 import * as DesktopAppSettings from "../settings/DesktopAppSettings.ts";
 import * as DesktopWslEnvironment from "../wsl/DesktopWslEnvironment.ts";
 import * as DesktopWslServerTree from "../wsl/DesktopWslServerTree.ts";
+import { t } from "../i18n.js";
 
 const PersistedServerObservabilitySettingsDocument = Schema.Struct({
   observability: Schema.Struct({
@@ -915,7 +916,7 @@ describe("DesktopBackendConfiguration", () => {
       Effect.gen(function* () {
         const configuration = yield* DesktopBackendConfiguration.DesktopBackendConfiguration;
         const label = yield* configuration.resolvePrimaryLabel;
-        assert.equal(label, "Local environment");
+        assert.equal(label, t("backend.localEnvironment"));
       }),
     ),
   );

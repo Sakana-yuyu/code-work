@@ -28,7 +28,7 @@ export const PanelLayoutControls = memo(function PanelLayoutControls({
   rightPanelAvailable,
   rightPanelOpen,
   rightPanelShortcutLabel,
-  rightPanelUnavailableLabel = "Right panel is unavailable",
+  rightPanelUnavailableLabel = t("panelLayout.rightPanelUnavailable"),
   liveAgentCount,
   onToggleTerminal,
   onToggleRightPanel,

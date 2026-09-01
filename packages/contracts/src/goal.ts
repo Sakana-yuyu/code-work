@@ -15,7 +15,7 @@ export type ThreadGoalStatus = typeof ThreadGoalStatus.Type;
 export const ThreadGoalId = TrimmedNonEmptyString.pipe(Schema.brand("ThreadGoalId"));
 export type ThreadGoalId = typeof ThreadGoalId.Type;
 
-const ThreadGoalObjective = TrimmedNonEmptyString.check(
+export const ThreadGoalObjective = TrimmedNonEmptyString.check(
   Schema.isMaxLength(4_000),
   Schema.makeFilter((value) => {
     for (const character of value) {

@@ -714,6 +714,56 @@ describe("MessagesTimeline", () => {
     expect(markup).toContain("rounded-2xl bg-message p-3");
   });
 
+  it("renders a goal message as a full-width Codex-style card", () => {
+    const entry = buildUserTimelineEntry("完成目标");
+    const markup = renderToStaticMarkup(
+      <MessagesTimeline
+        {...buildProps()}
+        timelineEntries={[
+          {
+            ...entry,
+            message: {
+              ...entry.message,
+              text: "",
+              localPresentation: { kind: "goal", summary: "完成目标" },
+            },
+          },
+        ]}
+      />,
+    );
+
+    expect(markup).toContain('data-timeline-message-card="goal"');
+    expect(markup).toContain("Thread goal");
+    expect(markup).toContain("Active");
+    expect(markup).toContain("完成目标");
+    expect(markup).not.toContain("rounded-2xl bg-message p-3");
+  });
+
+  it("renders a queued message with a distinct neutral accent", () => {
+    const entry = buildUserTimelineEntry("排队中的普通消息");
+    const markup = renderToStaticMarkup(
+      <MessagesTimeline
+        {...buildProps()}
+        timelineEntries={[
+          {
+            ...entry,
+            message: {
+              ...entry.message,
+              localPresentation: { kind: "queue", summary: "排队中的普通消息" },
+            },
+          },
+        ]}
+      />,
+    );
+
+    expect(markup).toContain('data-timeline-message-card="queue"');
+    expect(markup).toContain("Queued");
+    expect(markup).toContain("排队中的普通消息");
+    expect(markup).toContain("border-sky-400/35");
+    expect(markup).toContain("border-dashed");
+    expect(markup).not.toContain('data-timeline-message-card="goal"');
+  });
+
   it("preserves arbitrary XML-like tags and comparisons in rendered user messages", async () => {
     const { MessagesTimeline } = await import("./MessagesTimeline");
     const markup = renderToStaticMarkup(

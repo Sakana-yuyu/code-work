@@ -4,6 +4,13 @@ import type {
 } from "@codework/client-runtime/state/shell";
 import type { EnvironmentThreadSearchMatch } from "@codework/client-runtime/state/thread-search";
 import { canSnooze, resolveSnoozePresets } from "@codework/client-runtime/state/thread-settled";
+import { serverSessionErrorTranslation } from "@codework/client-runtime/errors";
+
+/** 服务端 lastError 为英文原句；已知句子展示前翻译，未知原样透传。 */
+function sessionErrorMessage(message: string): string {
+  const known = serverSessionErrorTranslation(message);
+  return known === null ? message : t(known.key, known.params);
+}
 import type { MenuAction } from "@react-native-menu/menu";
 import { memo, useCallback, useEffect, useMemo, useState, type ComponentProps } from "react";
 import { Alert, Platform, Pressable, useWindowDimensions, View } from "react-native";
@@ -468,7 +475,7 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
     () =>
       snoozePresets.map((preset) => ({
         id: `snooze:${preset.id}`,
-        title: preset.label,
+        title: t(preset.labelKey),
         subtitle: preset.whenLabel,
       })),
     [snoozePresets],
@@ -738,7 +745,7 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
             )}
             numberOfLines={1}
           >
-            {thread.session.lastError}
+            {sessionErrorMessage(thread.session.lastError)}
           </Text>
         ) : thread.branch || props.environmentLabel ? (
           /* "branch · machine" share one truncating line. The machine sits

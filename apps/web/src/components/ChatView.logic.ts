@@ -315,10 +315,10 @@ export function readFileAsDataUrl(file: File): Promise<string> {
         resolve(reader.result);
         return;
       }
-      reject(new Error("Could not read image data."));
+      reject(new Error(t("composer.couldNotReadImageData")));
     });
     reader.addEventListener("error", () => {
-      reject(reader.error ?? new Error("Failed to read image."));
+      reject(reader.error ?? new Error(t("composer.failedToReadImage")));
     });
     reader.readAsDataURL(file);
   });
@@ -403,7 +403,7 @@ export function buildExpiredTerminalContextToastCopy(
   variant: "omitted" | "empty",
 ): { title: string; description: string } {
   const count = Math.max(1, Math.floor(expiredTerminalContextCount));
-  const noun = count === 1 ? "Expired terminal context" : "Expired terminal contexts";
+  const noun = t("terminal.expiredContextNoun", { count });
   if (variant === "empty") {
     return {
       title: t("wonTBeSent", { noun: noun }),

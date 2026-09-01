@@ -56,6 +56,7 @@ export function MulticaRuntimeCapabilityFields({
     <>
       <section className="grid gap-4 border-t border-border/60 pt-4">
         <h4 className="text-sm font-medium text-foreground">{text("capabilitiesSection")}</h4>
+        <p className="text-xs leading-5 text-muted-foreground">{text("capabilitiesDescription")}</p>
         <div className="grid gap-2">
           <div className="flex min-h-7 items-center justify-between gap-3">
             <h5 className="text-xs font-medium text-foreground">{text("capabilityList")}</h5>
@@ -145,6 +146,7 @@ export function MulticaRuntimeCapabilityFields({
 
       <section className="grid gap-3 border-t border-border/60 pt-4">
         <h4 className="text-sm font-medium text-foreground">{text("executionSection")}</h4>
+        <p className="text-xs leading-5 text-muted-foreground">{text("executionDescription")}</p>
         <div className="grid gap-3 sm:grid-cols-2">
           <label className="grid min-w-0 gap-1.5 text-xs font-medium text-foreground">
             {text("extensionCommand")}

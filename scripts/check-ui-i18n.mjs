@@ -105,7 +105,7 @@ const BAD_TRANSLATION_PATTERNS = [
 ];
 
 const EXCLUDED_FILE =
-  /(?:^|[\\/])(?:i18n|__fixtures__|fixtures)(?:[\\/])|\.(?:test|spec|stories)\.[cm]?[jt]sx?$/;
+  /(?:^|[\\/])(?:i18n|__fixtures__|fixtures)(?:[\\/])|(?:^|[\\/])i18n\.messages\.ts$|\.(?:test|spec|stories)\.[cm]?[jt]sx?$/;
 
 function makeTypescript(repo) {
   const requireFromMobile = createRequire(pathToFileURL(join(repo, "apps/mobile/package.json")));

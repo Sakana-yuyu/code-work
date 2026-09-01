@@ -100,6 +100,7 @@ import * as DesktopAppSettings from "../settings/DesktopAppSettings.ts";
 import * as DesktopTelemetryPublisher from "../telemetry/DesktopTelemetryPublisher.ts";
 import * as DesktopWindow from "../window/DesktopWindow.ts";
 import * as ElectronDialog from "../electron/ElectronDialog.ts";
+import { t } from "../i18n.js";
 
 const { logWarning: logBackendPoolWarning } =
   DesktopObservability.makeComponentLogger("desktop-backend-pool");
@@ -240,8 +241,8 @@ export const layer = Layer.effect(
             { reason },
           );
           yield* electronDialog.showErrorBox(
-            "WSL backend is still unavailable",
-            `${reason}\n\nCodexWork will use the Windows backend for this launch and retry WSL the next time the app starts.`,
+            t("wsl.backendStillUnavailable"),
+            t("wsl.stillUnavailableBody", { reason }),
           );
           yield* appSettings.applyWslWindowsFallbackInMemory;
           return true;
@@ -251,8 +252,8 @@ export const layer = Layer.effect(
           reason,
         });
         yield* electronDialog.showErrorBox(
-          "WSL backend couldn't start",
-          `${reason}\n\nFalling back to the Windows backend so Code Work can open. Re-enable the WSL backend from Settings > Connections once the WSL distro is fixed.`,
+          t("wsl.backendCouldNotStart"),
+          t("wsl.couldNotStartBody", { reason }),
         );
         // Fully disable the WSL backend — both flags, matching the "Switch to
         // Windows" recovery path — so the manager's next restart re-resolves the

@@ -123,6 +123,7 @@ import {
   resolveActiveThreadRouteRef,
   resolveThreadRouteTarget,
 } from "../threadRoutes";
+import { useThreadSplitStore } from "../threadSplitStore";
 import { stackedThreadToast, toastManager } from "./ui/toast";
 import { formatRelativeTimeLabel } from "../timestampFormat";
 import { Kbd } from "./ui/kbd";
@@ -209,14 +210,16 @@ import {
   type SidebarProjectSnapshot,
 } from "../sidebarProjectGrouping";
 import { t } from "~/i18n";
+// Values are i18n message keys; resolve through t() at render time so label
+// text follows the active language.
 const SIDEBAR_SORT_LABELS: Record<SidebarProjectSortOrder, string> = {
-  updated_at: "Last user message",
-  created_at: "Created at",
-  manual: "Manual",
+  updated_at: "sidebar.sortLastUserMessage",
+  created_at: "sidebar.sortCreatedAt",
+  manual: "sidebar.sortManual",
 };
 const SIDEBAR_THREAD_SORT_LABELS: Record<SidebarThreadSortOrder, string> = {
-  updated_at: "Last user message",
-  created_at: "Created at",
+  updated_at: "sidebar.sortLastUserMessage",
+  created_at: "sidebar.sortCreatedAt",
 };
 const SIDEBAR_LIST_ANIMATION_OPTIONS = {
   duration: 180,
@@ -224,9 +227,9 @@ const SIDEBAR_LIST_ANIMATION_OPTIONS = {
 } as const;
 const EMPTY_THREAD_JUMP_LABELS = new Map<string, string>();
 const PROJECT_GROUPING_MODE_LABELS: Record<SidebarProjectGroupingMode, string> = {
-  repository: "Group by repository",
-  repository_path: "Group by repository path",
-  separate: "Keep separate",
+  repository: "sidebar.groupByRepository",
+  repository_path: "sidebar.groupByRepositoryPath",
+  separate: "sidebar.keepSeparate",
 };
 const SIDEBAR_ICON_ACTION_BUTTON_CLASS =
   "inline-flex h-6 min-w-6 cursor-pointer items-center justify-center rounded-md px-[calc(--spacing(1)-1px)] text-icon-muted hover:text-foreground focus-visible:outline-hidden focus-visible:ring-1 focus-visible:ring-ring";
@@ -267,11 +270,11 @@ function projectExpansionPreferenceKeys(project: SidebarProjectSnapshot): string
 function projectGroupingModeDescription(mode: SidebarProjectGroupingMode): string {
   switch (mode) {
     case "repository":
-      return "Projects from the same repository share one sidebar row.";
+      return t("sidebar.groupByRepositoryDescription");
     case "repository_path":
-      return "Projects group only when both the repository and repo-relative path match.";
+      return t("sidebar.groupByRepositoryPathDescription");
     case "separate":
-      return "Every project path gets its own sidebar row.";
+      return t("sidebar.keepSeparateDescription");
   }
 }
 
@@ -1522,24 +1525,34 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
                   const confirmed = await api.dialogs.confirm(
                     latestProjectThreads.length > 0
                       ? [
-                          `Remove project "${member.title}" and delete its ${latestProjectThreads.length} thread${
-                            latestProjectThreads.length === 1 ? "" : "s"
-                          }?`,
-                          `Path: ${member.workspaceRoot}`,
+                          t("removeProjectWithThreadsConfirm", {
+                            count: latestProjectThreads.length,
+                            countValue: latestProjectThreads.length,
+                            projectTitle: member.title,
+                          }),
+                          t("removeProjectPathLine", { path: member.workspaceRoot }),
                           ...(member.environmentLabel
-                            ? [`Environment: ${member.environmentLabel}`]
+                            ? [
+                                t("removeProjectEnvironmentLine", {
+                                  environment: member.environmentLabel,
+                                }),
+                              ]
                             : []),
-                          "This permanently clears conversation history for those threads.",
-                          "This removes only this project entry.",
-                          "This action cannot be undone.",
+                          t("removeProjectClearsThreadsLine"),
+                          t("removeProjectSingleEntryOnlyLine"),
+                          t("actionCannotBeUndone"),
                         ].join("\n")
                       : [
-                          `Remove project "${member.title}"?`,
-                          `Path: ${member.workspaceRoot}`,
+                          t("removeProjectConfirm", { projectTitle: member.title }),
+                          t("removeProjectPathLine", { path: member.workspaceRoot }),
                           ...(member.environmentLabel
-                            ? [`Environment: ${member.environmentLabel}`]
+                            ? [
+                                t("removeProjectEnvironmentLine", {
+                                  environment: member.environmentLabel,
+                                }),
+                              ]
                             : []),
-                          "This removes only this project entry.",
+                          t("removeProjectSingleEntryOnlyLine"),
                         ].join("\n"),
                     { variant: "destructive" },
                   );
@@ -1583,10 +1596,12 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
       }
 
       const message = [
-        `Remove project "${member.title}"?`,
-        `Path: ${member.workspaceRoot}`,
-        ...(member.environmentLabel ? [`Environment: ${member.environmentLabel}`] : []),
-        "This removes only this project entry.",
+        t("sidebar.removeProjectConfirmTitle", { title: member.title }),
+        t("sidebar.removeProjectPathLine", { path: member.workspaceRoot }),
+        ...(member.environmentLabel
+          ? [t("sidebar.removeProjectEnvironmentLine", { environment: member.environmentLabel })]
+          : []),
+        t("sidebar.removeProjectOnlyEntry"),
       ].join("\n");
       const confirmed = await api.dialogs.confirm(message, { variant: "destructive" });
       if (!confirmed) {
@@ -1871,8 +1886,8 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
       if (appSettingsConfirmThreadDelete) {
         const confirmed = await api.dialogs.confirm(
           [
-            `Delete ${count} thread${count === 1 ? "" : "s"}?`,
-            "This permanently clears conversation history for these threads.",
+            t("deleteSelectedThreadsConfirm", { count, countValue: count }),
+            t("deleteSelectedThreadsConfirmDescription"),
           ].join("\n"),
           { variant: "destructive" },
         );
@@ -2160,6 +2175,11 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
         thread.worktreePath ?? threadProject?.workspaceRoot ?? project.workspaceRoot ?? null;
       const clicked = await api.contextMenu.show(
         [
+          {
+            id: "open-in-split",
+            label: t("openThreadBeside"),
+            icon: "message-square-plus",
+          },
           ...(thread.branch
             ? [{ id: "new-thread-on-branch", label: t("newThreadOn", { branch: thread.branch }) }]
             : []),
@@ -2171,6 +2191,11 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
         ],
         position,
       );
+
+      if (clicked === "open-in-split") {
+        useThreadSplitStore.getState().openSecondaryThread(threadRef);
+        return;
+      }
 
       if (clicked === "new-thread-on-branch") {
         // Explicit branch carry-over: reuse the thread's worktree when it
@@ -2228,8 +2253,8 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
       if (appSettingsConfirmThreadDelete) {
         const confirmed = await api.dialogs.confirm(
           [
-            `Delete thread "${thread.title}"?`,
-            "This permanently clears conversation history for this thread.",
+            t("deleteThreadConfirm", { threadTitle: thread.title }),
+            t("deleteThreadConfirmDescription"),
           ].join("\n"),
           { variant: "destructive" },
         );
@@ -2500,12 +2525,13 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
                   <SelectValue>
                     {projectGroupingSelection === "inherit"
                       ? t("useGlobalDefault", {
-                          value1:
+                          value1: t(
                             PROJECT_GROUPING_MODE_LABELS[
                               projectGroupingSettings.sidebarProjectGroupingMode
                             ],
+                          ),
                         })
-                      : PROJECT_GROUPING_MODE_LABELS[projectGroupingSelection]}
+                      : t(PROJECT_GROUPING_MODE_LABELS[projectGroupingSelection])}
                   </SelectValue>
                 </SelectTrigger>
                 <SelectPopup align="end" alignItemWithTrigger={false}>
@@ -2513,13 +2539,13 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
                     {t("useGlobalDefault2")}
                   </SelectItem>
                   <SelectItem hideIndicator value="repository">
-                    {PROJECT_GROUPING_MODE_LABELS.repository}
+                    {t(PROJECT_GROUPING_MODE_LABELS.repository)}
                   </SelectItem>
                   <SelectItem hideIndicator value="repository_path">
-                    {PROJECT_GROUPING_MODE_LABELS.repository_path}
+                    {t(PROJECT_GROUPING_MODE_LABELS.repository_path)}
                   </SelectItem>
                   <SelectItem hideIndicator value="separate">
-                    {PROJECT_GROUPING_MODE_LABELS.separate}
+                    {t(PROJECT_GROUPING_MODE_LABELS.separate)}
                   </SelectItem>
                 </SelectPopup>
               </Select>
@@ -2687,7 +2713,7 @@ function ProjectSortMenu({
             {(Object.entries(SIDEBAR_SORT_LABELS) as Array<[SidebarProjectSortOrder, string]>).map(
               ([value, label]) => (
                 <MenuRadioItem key={value} value={value} className="min-h-7 py-1 sm:text-xs">
-                  {label}
+                  {t(label)}
                 </MenuRadioItem>
               ),
             )}
@@ -2707,7 +2733,7 @@ function ProjectSortMenu({
               Object.entries(SIDEBAR_THREAD_SORT_LABELS) as Array<[SidebarThreadSortOrder, string]>
             ).map(([value, label]) => (
               <MenuRadioItem key={value} value={value} className="min-h-7 py-1 sm:text-xs">
-                {label}
+                {t(label)}
               </MenuRadioItem>
             ))}
           </MenuRadioGroup>

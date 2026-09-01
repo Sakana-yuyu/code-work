@@ -537,9 +537,9 @@ export function ReviewSheet(props: ReviewSheetProps) {
       attributes: section ? undefined : { disabled: true },
     });
     const actions: MenuAction[] = [
-      sectionAction(sectionMenu.workingTree, "Working tree"),
-      sectionAction(sectionMenu.branchChanges, "Branch changes"),
-      sectionAction(sectionMenu.latestTurn, "Latest turn"),
+      sectionAction(sectionMenu.workingTree, t("workingTree")),
+      sectionAction(sectionMenu.branchChanges, t("branchChanges")),
+      sectionAction(sectionMenu.latestTurn, t("latestTurn")),
     ];
 
     if (sectionMenu.turns.length > 0) {
@@ -639,7 +639,7 @@ export function ReviewSheet(props: ReviewSheetProps) {
   ]
     .filter(Boolean)
     .join(" · ");
-  const headerTitleText = selectedSection?.title ?? "Review changes";
+  const headerTitleText = selectedSection?.title ?? t("reviewChanges");
 
   return (
     <>

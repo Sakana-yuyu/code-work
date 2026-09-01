@@ -3,6 +3,8 @@ import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
 import { Atom } from "effect/unstable/reactivity";
 
+import { t } from "~/i18n/runtime";
+
 type DesktopSshDiscoveryBridge = Pick<DesktopBridge, "discoverSshHosts">;
 
 class DesktopSshDiscoveryUnavailableError extends Schema.TaggedErrorClass<DesktopSshDiscoveryUnavailableError>()(
@@ -10,7 +12,7 @@ class DesktopSshDiscoveryUnavailableError extends Schema.TaggedErrorClass<Deskto
   {},
 ) {
   override get message(): string {
-    return "Desktop SSH host discovery is unavailable.";
+    return t("desktop.sshDiscoveryUnavailable");
   }
 }
 
@@ -19,7 +21,7 @@ class DesktopSshDiscoveryError extends Schema.TaggedErrorClass<DesktopSshDiscove
   { cause: Schema.Defect() },
 ) {
   override get message(): string {
-    return "Failed to discover SSH hosts.";
+    return t("desktop.sshDiscoveryFailed");
   }
 }
 

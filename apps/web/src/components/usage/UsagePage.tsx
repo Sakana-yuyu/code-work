@@ -112,7 +112,7 @@ export function UsagePage() {
       : `${formatDayShort(window.sinceDay)} to ${formatDayShort(window.untilDay)}`;
   const topbarContent = (
     <div className="flex w-full min-w-0 items-center gap-3">
-      <WorkspaceBreadcrumb ariaLabel="Usage breadcrumb" className="min-w-0">
+      <WorkspaceBreadcrumb ariaLabel={t("usageBreadcrumb")} className="min-w-0">
         <WorkspaceBreadcrumbItem current>
           <h1>{t("usage")}</h1>
         </WorkspaceBreadcrumbItem>

@@ -170,12 +170,12 @@ export function SettingsLegalDocumentRouteScreen({
         }}
         onError={(event) => {
           setLoadProgress(0);
-          setLoadError(event.nativeEvent.description || "The page could not be loaded.");
+          setLoadError(event.nativeEvent.description || t("legal.pageLoadFailed"));
         }}
         onHttpError={(event) => {
           if (!isLegalDocumentUrl(event.nativeEvent.url)) return;
           setLoadProgress(0);
-          setLoadError(`The server returned status ${event.nativeEvent.statusCode}.`);
+          setLoadError(t("legal.serverStatus", { statusCode: event.nativeEvent.statusCode }));
         }}
         renderLoading={() => (
           <View className="absolute inset-0 items-center justify-center bg-sheet">

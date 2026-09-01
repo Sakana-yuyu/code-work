@@ -1,5 +1,7 @@
 import type { RelayClientDeviceRecord } from "@codework/contracts/relay";
 
+import { t } from "~/i18n";
+
 const mobileClientUpdatedAtFormatter = new Intl.DateTimeFormat(undefined, {
   dateStyle: "medium",
   timeStyle: "short",
@@ -20,20 +22,20 @@ export function mobileClientPlatformLabel(device: RelayClientDeviceRecord): stri
 
 export function mobileClientNotificationDetail(device: RelayClientDeviceRecord): string {
   if (!device.notifications.enabled) {
-    return "Push notifications are disabled on this device.";
+    return t("clerk.pushDisabledDevice");
   }
 
   const enabledPreferences = NOTIFICATION_PREFERENCES.flatMap(([preference, label]) =>
     device.notifications[preference] ? [label] : [],
   );
   return enabledPreferences.length > 0
-    ? `Alerts enabled for ${enabledPreferences.join(", ")}.`
-    : "Push notifications are enabled, but no alert types are selected.";
+    ? t("clerk.alertsEnabledFor", { alerts: enabledPreferences.join(", ") })
+    : t("clerk.pushEnabledNoAlerts");
 }
 
 export function mobileClientUpdatedAtLabel(updatedAt: string): string {
   const date = new Date(updatedAt);
   return Number.isNaN(date.getTime())
-    ? "Update time unavailable"
+    ? t("clerk.updateTimeUnavailable")
     : `Updated ${mobileClientUpdatedAtFormatter.format(date)}`;
 }

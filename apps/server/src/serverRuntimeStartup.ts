@@ -47,6 +47,7 @@ import * as CompositionRuntimeAdapterRegistry from "./composition/CompositionRun
 import * as ProviderService from "./provider/Services/ProviderService.ts";
 import * as ProviderSessionDirectory from "./provider/Services/ProviderSessionDirectory.ts";
 import * as ProviderSessionReaper from "./provider/Services/ProviderSessionReaper.ts";
+import { ThreadGoalStore } from "./persistence/Services/ThreadGoalStore.ts";
 import { forkParked } from "./serverActivation.ts";
 import * as ServiceLauncherClient from "./cloud/serviceLauncherClient.ts";
 import {
@@ -509,79 +510,125 @@ export const reconcileProviderSessions = Effect.gen(function* () {
   const directory = yield* ProviderSessionDirectory.ProviderSessionDirectory;
   const orchestrationEngine = yield* OrchestrationEngine.OrchestrationEngineService;
   const providerService = yield* ProviderService.ProviderService;
+  const threadGoalStore = yield* Effect.serviceOption(ThreadGoalStore);
   const query = yield* ProjectionSnapshotQuery.ProjectionSnapshotQuery;
 
   const liveThreadIds = new Set(
     (yield* providerService.listSessions()).map((session) => session.threadId),
   );
   const { threads } = yield* query.getCommandReadModel();
-  const orphanedThreads = threads.filter(
-    (thread) =>
-      thread.session !== null &&
-      (thread.session.status === "starting" ||
-        thread.session.status === "running" ||
-        thread.session.activeTurnId !== null) &&
-      !liveThreadIds.has(thread.id),
-  );
   let reconciled = true;
 
-  for (const thread of orphanedThreads) {
+  for (const thread of threads) {
+    if (liveThreadIds.has(thread.id)) continue;
+
     const session = thread.session;
-    if (session === null) {
-      continue;
-    }
-    const directoryExit = yield* Effect.exit(
-      Effect.gen(function* () {
-        const binding = yield* directory.getBinding(thread.id);
-        if (Option.isSome(binding)) {
-          yield* directory.upsert({
-            ...binding.value,
-            status: "stopped",
-            runtimePayload: { activeTurnId: null },
-          });
+    const shouldReconcileSession =
+      session !== null &&
+      (session.status === "starting" ||
+        session.status === "running" ||
+        session.activeTurnId !== null);
+    let shouldPauseGoal = false;
+
+    if (Option.isSome(threadGoalStore)) {
+      const goalExit = yield* Effect.exit(threadGoalStore.value.get(thread.id));
+      if (Exit.isFailure(goalExit)) {
+        if (Cause.hasInterrupts(goalExit.cause)) {
+          return yield* Effect.failCause(goalExit.cause);
         }
-      }),
-    );
-    if (Exit.isFailure(directoryExit)) {
-      if (Cause.hasInterrupts(directoryExit.cause)) {
-        return yield* Effect.failCause(directoryExit.cause);
+        reconciled = false;
+        yield* Effect.logWarning(
+          "failed to read thread Goal during provider session reconciliation",
+          {
+            threadId: thread.id,
+            cause: goalExit.cause,
+          },
+        );
+      } else if (Option.isSome(goalExit.value) && goalExit.value.value.status === "active") {
+        shouldPauseGoal = true;
       }
-      reconciled = false;
-      yield* Effect.logWarning("failed to reconcile orphaned provider session directory binding", {
-        threadId: thread.id,
-        cause: directoryExit.cause,
-      });
-      // 保留投影中的 orphan 状态，确保下一轮仍会重试目录修复。
+    }
+
+    if (!shouldReconcileSession && !shouldPauseGoal) {
       continue;
     }
 
-    const projectionExit = yield* Effect.exit(
-      Effect.gen(function* () {
-        const reconciledAt = DateTime.formatIso(yield* DateTime.now);
-        yield* orchestrationEngine.dispatch({
-          type: "thread.session.set",
-          commandId: CommandId.make(yield* crypto.randomUUIDv4),
-          threadId: thread.id,
-          session: {
-            ...session,
-            status: "error",
-            activeTurnId: null,
-            lastError: ORPHANED_PROVIDER_SESSION_ERROR,
-            updatedAt: reconciledAt,
+    let sessionReconciled = true;
+    if (shouldReconcileSession) {
+      const directoryExit = yield* Effect.exit(
+        Effect.gen(function* () {
+          const binding = yield* directory.getBinding(thread.id);
+          if (Option.isSome(binding)) {
+            yield* directory.upsert({
+              ...binding.value,
+              status: "stopped",
+              runtimePayload: { activeTurnId: null },
+            });
+          }
+        }),
+      );
+      if (Exit.isFailure(directoryExit)) {
+        if (Cause.hasInterrupts(directoryExit.cause)) {
+          return yield* Effect.failCause(directoryExit.cause);
+        }
+        reconciled = false;
+        sessionReconciled = false;
+        yield* Effect.logWarning(
+          "failed to reconcile orphaned provider session directory binding",
+          {
+            threadId: thread.id,
+            cause: directoryExit.cause,
           },
-          createdAt: reconciledAt,
-        });
-      }).pipe(Effect.retry({ times: 1 })),
-    );
-    if (Exit.isFailure(projectionExit)) {
-      if (Cause.hasInterrupts(projectionExit.cause)) {
-        return yield* Effect.failCause(projectionExit.cause);
+        );
       }
-      reconciled = false;
-      yield* Effect.logWarning("failed to settle orphaned provider session projection", {
-        threadId: thread.id,
-        cause: projectionExit.cause,
-      });
+
+      if (sessionReconciled) {
+        const projectionExit = yield* Effect.exit(
+          Effect.gen(function* () {
+            const reconciledAt = DateTime.formatIso(yield* DateTime.now);
+            yield* orchestrationEngine.dispatch({
+              type: "thread.session.set",
+              commandId: CommandId.make(yield* crypto.randomUUIDv4),
+              threadId: thread.id,
+              session: {
+                ...session,
+                status: "error",
+                activeTurnId: null,
+                lastError: ORPHANED_PROVIDER_SESSION_ERROR,
+                updatedAt: reconciledAt,
+              },
+              createdAt: reconciledAt,
+            });
+          }).pipe(Effect.retry({ times: 1 })),
+        );
+        if (Exit.isFailure(projectionExit)) {
+          if (Cause.hasInterrupts(projectionExit.cause)) {
+            return yield* Effect.failCause(projectionExit.cause);
+          }
+          reconciled = false;
+          yield* Effect.logWarning("failed to settle orphaned provider session projection", {
+            threadId: thread.id,
+            cause: projectionExit.cause,
+          });
+        }
+      }
+    }
+
+    if (shouldPauseGoal && Option.isSome(threadGoalStore)) {
+      const goalExit = yield* Effect.exit(threadGoalStore.value.pause(thread.id));
+      if (Exit.isFailure(goalExit)) {
+        if (Cause.hasInterrupts(goalExit.cause)) {
+          return yield* Effect.failCause(goalExit.cause);
+        }
+        reconciled = false;
+        yield* Effect.logWarning(
+          "failed to pause active thread Goal during provider session reconciliation",
+          {
+            threadId: thread.id,
+            cause: goalExit.cause,
+          },
+        );
+      }
     }
   }
   return reconciled;
@@ -707,16 +754,10 @@ export const make = (options?: StartupOptions) =>
         { concurrency: "unbounded" },
       );
 
-      yield* runStartupPhase("mcp-runtime.start", mcpRuntime.start);
-
-      yield* Effect.logDebug("startup phase: parking orchestration roots at activation");
-      yield* runStartupPhase(
-        "reactors.start",
-        Effect.gen(function* () {
-          yield* orchestrationReactor.start().pipe(Scope.provide(reactorScope));
-          yield* providerSessionReaper.start().pipe(Scope.provide(reactorScope));
-        }),
-      );
+      // 注意：orchestrationReactor/providerSessionReaper/mcpRuntime 已在上面
+      // 的并行根里启动。这里的 start() 每调用一次就 fork 一份新的事件订阅
+      // （ingestion/命令/checkpoint 反应器都会把每条 runtime 事件处理两次，
+      // 表现为助手消息逐词重复），因此绝不能重复调用。
 
       const runStartRecoveryReceipt = yield* runCompositionRunStartStartupSequence({
         reconcileProviderSessions: runStartupPhase(

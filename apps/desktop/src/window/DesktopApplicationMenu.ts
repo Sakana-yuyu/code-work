@@ -77,7 +77,7 @@ const checkForUpdatesFromMenu = Effect.gen(function* () {
       type: "warning",
       title: t("updateCheckFailed"),
       message: t("couldNotCheckForUpdates"),
-      detail: updateState.message ?? "An unknown error occurred. Please try again later.",
+      detail: updateState.message ?? t("updates.unknownErrorDetail"),
       buttons: ["OK"],
     });
   }

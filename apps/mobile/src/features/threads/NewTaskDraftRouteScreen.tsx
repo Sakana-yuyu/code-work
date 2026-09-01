@@ -3,6 +3,7 @@ import { useMemo } from "react";
 import { NativeStackScreenOptions } from "../../native/StackHeader";
 
 import { NewTaskDraftScreen } from "./NewTaskDraftScreen";
+import { t } from "../../i18n";
 
 type NewTaskDraftRouteParams = {
   readonly environmentId?: string | string[];
@@ -32,7 +33,7 @@ export function NewTaskDraftRouteScreen({ route }: StaticScreenProps<NewTaskDraf
     <>
       <NativeStackScreenOptions
         options={{
-          title: Array.isArray(params.title) ? params.title[0] : (params.title ?? "New task"),
+          title: Array.isArray(params.title) ? params.title[0] : (params.title ?? t("newTask")),
         }}
       />
       <NewTaskDraftScreen

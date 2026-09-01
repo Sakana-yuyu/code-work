@@ -8,6 +8,7 @@ import * as Schema from "effect/Schema";
 import { Atom } from "effect/unstable/reactivity";
 
 import { previewBridge } from "~/components/preview/previewBridge";
+import { t } from "~/i18n/runtime";
 import { appAtomRegistry } from "~/rpc/atomRegistry";
 import { useBrowserSurfaceStore } from "./browserSurfaceStore";
 
@@ -18,7 +19,7 @@ export class BrowserRecordingUnavailableError extends Schema.TaggedErrorClass<Br
   },
 ) {
   override get message(): string {
-    return `Browser recording is unavailable for tab ${this.tabId}.`;
+    return t("browser.recordingUnavailableTab", { tabId: this.tabId });
   }
 }
 
@@ -30,7 +31,10 @@ export class BrowserRecordingConflictError extends Schema.TaggedErrorClass<Brows
   },
 ) {
   override get message(): string {
-    return `Cannot record tab ${this.requestedTabId} while tab ${this.activeTabId} is already being recorded.`;
+    return t("browser.recordingConflictTab", {
+      requestedTabId: this.requestedTabId,
+      activeTabId: this.activeTabId,
+    });
   }
 }
 
@@ -43,7 +47,11 @@ export class BrowserRecordingCanvasUnavailableError extends Schema.TaggedErrorCl
   },
 ) {
   override get message(): string {
-    return `Browser recording canvas ${this.width}x${this.height} is unavailable for tab ${this.tabId}.`;
+    return t("browser.recordingCanvasUnavailableTab", {
+      width: this.width,
+      height: this.height,
+      tabId: this.tabId,
+    });
   }
 }
 
@@ -67,7 +75,10 @@ export class BrowserRecordingOperationError extends Schema.TaggedErrorClass<Brow
   },
 ) {
   override get message(): string {
-    return `Browser recording operation ${this.operation} failed for tab ${this.tabId}.`;
+    return t("browser.recordingOperationFailedTab", {
+      operation: this.operation,
+      tabId: this.tabId,
+    });
   }
 }
 

@@ -45,7 +45,10 @@ function formatByteSize(bytes: number): string {
 /** Returns the error to show for a file too large to be a theme, else null. */
 export function describeOversizedThemeFile(bytes: number): string | null {
   if (bytes <= MAX_THEME_FILE_BYTES) return null;
-  return `That file is ${formatByteSize(bytes)}. Theme files are only a few KB, so this one was not read (limit ${formatByteSize(MAX_THEME_FILE_BYTES)}).`;
+  return t("themeImport.fileTooLarge", {
+    size: formatByteSize(bytes),
+    limit: formatByteSize(MAX_THEME_FILE_BYTES),
+  });
 }
 
 function escapeJsonHtml(value: string): string {
@@ -197,7 +200,7 @@ export function ThemeImportDialog({
       setError(null);
     } catch {
       if (requestId !== importRequestRef.current) return;
-      setError("Could not read that file. Paste the JSON below instead.");
+      setError(t("themeImport.couldNotReadFile"));
     } finally {
       if (requestId === importRequestRef.current) setIsReading(false);
     }
@@ -339,7 +342,7 @@ export function ThemeImportDialog({
       if (getCustomThemes().some((existing) => existing.id === candidate.id)) continue;
       return candidate;
     }
-    throw new Error(`Too many copies of "${theme.label}".`);
+    throw new Error(t("themeImport.tooManyCopies", { name: theme.label }));
   };
 
   const resolveConflicts = useCallback(
@@ -405,12 +408,12 @@ export function ThemeImportDialog({
         } catch {
           // Storage is failing wholesale; the error below covers it.
         }
-        setError("Theme added, but it could not be selected. Try again.");
+        setError(t("themeImport.addedButNotSelected"));
         return;
       }
       onOpenChange(false);
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "That theme file is invalid.");
+      setError(cause instanceof Error ? cause.message : t("themeImport.invalidThemeFile"));
     }
   }, [json, onImported, onOpenChange]);
 
@@ -470,7 +473,7 @@ export function ThemeImportDialog({
                 type="file"
               />
             );
-            const chooseButton = (label = "Choose files") => (
+            const chooseButton = (label = t("themeImport.chooseFiles")) => (
               <Button disabled={isReading} size="sm" variant="outline" onClick={openFilePicker}>
                 <DownloadIcon />
                 {isReading ? t("reading") : label}

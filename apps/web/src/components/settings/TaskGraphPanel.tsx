@@ -27,6 +27,7 @@ import {
   type AtomCommandResult,
 } from "@codework/client-runtime/state/runtime";
 import { usePrimaryEnvironment } from "~/state/environments";
+import { useProjects } from "~/state/entities";
 import { useEnvironmentQuery } from "~/state/query";
 import { serverEnvironment } from "~/state/server";
 import { randomUUID } from "~/lib/utils";
@@ -40,7 +41,6 @@ import { Textarea } from "../ui/textarea";
 import { Input } from "../ui/input";
 import { SettingsRow, SettingsSection } from "./settingsLayout";
 
-const TASK_GRAPH_PROJECT_ID = "codework-settings-task-graph";
 const TERMINAL_STATUSES: ReadonlySet<CompositionTaskStatus> = new Set([
   "completed",
   "failed",
@@ -58,18 +58,18 @@ type ChildDraft = {
 };
 
 const STATUS_KEYS: Readonly<Record<CompositionTaskStatus, string>> = {
-  queued: "Queued",
-  dispatched: "Dispatched",
-  resuming: "Resuming",
-  running: "Running",
-  waiting_approval: "Waiting for approval",
-  waiting_input: "Waiting for input",
-  blocked: "Blocked",
-  in_review: "In review",
-  completed: "Completed",
-  failed: "Failed",
-  cancelled: "Cancelled",
-  timed_out: "Timed out",
+  queued: "squadRun.status.queued",
+  dispatched: "squadRun.status.dispatched",
+  resuming: "squadRun.status.resuming",
+  running: "squadRun.status.running",
+  waiting_approval: "squadRun.status.waiting_approval",
+  waiting_input: "squadRun.status.waiting_input",
+  blocked: "squadRun.status.blocked",
+  in_review: "squadRun.status.in_review",
+  completed: "squadRun.status.completed",
+  failed: "squadRun.status.failed",
+  cancelled: "squadRun.status.cancelled",
+  timed_out: "squadRun.status.timed_out",
 };
 
 const statusVariant = (
@@ -216,6 +216,15 @@ function TaskEvents({ events }: { readonly events: ReadonlyArray<CompositionTask
 export function TaskGraphPanel() {
   const primaryEnvironment = usePrimaryEnvironment();
   const environmentId = primaryEnvironment?.environmentId ?? null;
+  const allProjects = useProjects();
+  const projects = useMemo(
+    () =>
+      environmentId === null
+        ? []
+        : allProjects.filter((project) => project.environmentId === environmentId),
+    [allProjects, environmentId],
+  );
+  const firstProject = projects[0] ?? null;
   const driverQuery = useEnvironmentQuery(
     environmentId === null
       ? null
@@ -223,11 +232,12 @@ export function TaskGraphPanel() {
   );
   const profiles = driverQuery.data ?? [];
   const availableProfiles = useMemo(
-    () => profiles.filter((profile) => profile.status !== "unavailable"),
+    () =>
+      profiles.filter((profile) => profile.status !== "unavailable" && profile.supportsTaskGraph),
     [profiles],
   );
   const [leaderDriverId, setLeaderDriverId] = useState("");
-  const [projectId, setProjectId] = useState(TASK_GRAPH_PROJECT_ID);
+  const [projectId, setProjectId] = useState("");
   const [workspaceRoot, setWorkspaceRoot] = useState("");
   const [leaderPrompt, setLeaderPrompt] = useState("");
   const [schedule, setSchedule] = useState<GraphSchedule>("parallel");
@@ -253,7 +263,10 @@ export function TaskGraphPanel() {
   const tasksQuery = useEnvironmentQuery(
     environmentId === null
       ? null
-      : serverEnvironment.listCompositionTasks({ environmentId, input: { projectId } }),
+      : serverEnvironment.listCompositionTasks({
+          environmentId,
+          input: projectId.trim().length === 0 ? {} : { projectId },
+        }),
   );
   const snapshots = useMemo(
     () =>
@@ -317,6 +330,12 @@ export function TaskGraphPanel() {
           ),
     );
   }, [availableProfiles]);
+
+  useEffect(() => {
+    if (firstProject === null || projectId.trim().length > 0) return;
+    setProjectId(firstProject.id);
+    setWorkspaceRoot(firstProject.workspaceRoot);
+  }, [firstProject, projectId]);
 
   useEffect(() => {
     if (selectedTaskId !== null && snapshots.some(({ task }) => task.taskId === selectedTaskId)) {
@@ -490,155 +509,184 @@ export function TaskGraphPanel() {
 
       <div className="grid gap-4 px-3 pb-3 sm:px-4 lg:grid-cols-[minmax(0,1.25fr)_minmax(18rem,0.75fr)]">
         <div className="min-w-0 space-y-3">
-          <div className="rounded-xl border border-border/60 px-3 py-3 sm:px-4">
-            <div className="grid gap-3 sm:grid-cols-2">
-              <label className="min-w-0 space-y-1 text-xs">
-                <span className="text-muted-foreground">{t("taskGraph.projectId")}</span>
-                <Input value={projectId} onValueChange={setProjectId} size="sm" />
-              </label>
-              <label className="min-w-0 space-y-1 text-xs">
-                <span className="text-muted-foreground">{t("taskGraph.workspaceRoot")}</span>
-                <Input value={workspaceRoot} onValueChange={setWorkspaceRoot} size="sm" />
-              </label>
-            </div>
-            <div className="mt-3 grid gap-3 sm:grid-cols-2">
-              <label className="min-w-0 space-y-1 text-xs">
-                <span className="text-muted-foreground">{t("taskGraph.leaderDriver")}</span>
-                {availableProfiles.length === 0 ? (
-                  <p className="rounded-lg border border-border/60 px-3 py-2 text-muted-foreground">
-                    {t("taskGraph.noAvailableDriver")}
-                  </p>
-                ) : (
-                  <ProfileSelect
-                    value={effectiveLeaderDriverId}
-                    profiles={availableProfiles}
-                    onChange={setLeaderDriverId}
-                    label={t("taskGraph.leaderDriver")}
-                  />
-                )}
-              </label>
-              <label className="min-w-0 space-y-1 text-xs">
-                <span className="text-muted-foreground">{t("taskGraph.childSchedule")}</span>
-                <Select
-                  value={schedule}
-                  onValueChange={(value) => value && setSchedule(value as GraphSchedule)}
-                >
-                  <SelectTrigger className="w-full" aria-label={t("taskGraph.childSchedule")}>
-                    <SelectValue>
-                      {schedule === "parallel" ? t("taskGraph.parallel") : t("taskGraph.serial")}
-                    </SelectValue>
-                  </SelectTrigger>
-                  <SelectPopup align="start" alignItemWithTrigger={false}>
-                    <SelectItem value="parallel">{t("taskGraph.parallel")}</SelectItem>
-                    <SelectItem value="serial">{t("taskGraph.serial")}</SelectItem>
-                  </SelectPopup>
-                </Select>
-              </label>
-            </div>
-            {leaderProfile ? (
-              <div className="mt-3">
-                <DriverBoundaryNotice profile={leaderProfile} />
-              </div>
-            ) : null}
-            <label className="mt-3 block space-y-1 text-xs">
-              <span className="text-muted-foreground">{t("taskGraph.leaderPrompt")}</span>
-              <Textarea
-                value={leaderPrompt}
-                onChange={(event) => setLeaderPrompt(event.target.value)}
-                placeholder={t("taskGraph.leaderPromptPlaceholder")}
-                size="sm"
-              />
-            </label>
-          </div>
-
-          <div className="rounded-xl border border-border/60 px-3 py-3 sm:px-4">
-            <div className="flex items-center justify-between gap-3">
-              <div>
-                <h3 className="text-sm font-medium">{t("taskGraph.childTasks")}</h3>
-                <p className="mt-1 text-xs text-muted-foreground">
-                  {t("taskGraph.childTasksDescription")}
-                </p>
-              </div>
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() =>
-                  setChildren((current) => {
-                    const currentChildren = current.length > 0 ? current : defaultChildren;
-                    return [
-                      ...currentChildren,
-                      makeChildDraft(currentChildren.length, availableProfiles[0]?.agentId ?? ""),
-                    ];
-                  })
-                }
-                disabled={availableProfiles.length === 0 || effectiveChildren.length >= 4}
-              >
-                <PlusIcon />
-                {t("taskGraph.addChild")}
-              </Button>
-            </div>
-            <div className="mt-3 space-y-3">
-              {effectiveChildren.map((child, index) => (
-                <div key={child.nodeId} className="rounded-lg border border-border/60 p-3">
-                  <div className="flex items-center justify-between gap-3">
-                    <span className="font-mono text-xs text-muted-foreground">{child.nodeId}</span>
-                    <Button
-                      size="icon-sm"
-                      variant="ghost-muted"
-                      aria-label={t("taskGraph.removeChild")}
-                      onClick={() =>
-                        setChildren((current) =>
-                          (current.length > 0 ? current : defaultChildren).filter(
-                            (item) => item.nodeId !== child.nodeId,
-                          ),
-                        )
-                      }
-                      disabled={effectiveChildren.length <= 1}
-                    >
-                      <Trash2Icon />
-                    </Button>
-                  </div>
-                  <div className="mt-2 grid gap-3 sm:grid-cols-[minmax(0,1fr)_minmax(10rem,0.7fr)]">
-                    <label className="min-w-0 space-y-1 text-xs">
-                      <span className="text-muted-foreground">{t("taskGraph.childDriver")}</span>
+          {availableProfiles.length === 0 && !driverQuery.isPending ? (
+            <SettingsRow
+              title={t("taskGraph.notReadyTitle")}
+              description={t("taskGraph.notReadyDescription")}
+              status={
+                environmentId === null || projects.length === 0
+                  ? t("taskGraph.noProjectContext")
+                  : undefined
+              }
+            />
+          ) : null}
+          {availableProfiles.length > 0 ? (
+            <>
+              <p className="px-1 text-xs leading-5 text-muted-foreground">
+                {t("taskGraph.formDescription")}
+              </p>
+              <div className="rounded-xl border border-border/60 px-3 py-3 sm:px-4">
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <label className="min-w-0 space-y-1 text-xs">
+                    <span className="text-muted-foreground">{t("taskGraph.projectId")}</span>
+                    <Input value={projectId} onValueChange={setProjectId} size="sm" />
+                  </label>
+                  <label className="min-w-0 space-y-1 text-xs">
+                    <span className="text-muted-foreground">{t("taskGraph.workspaceRoot")}</span>
+                    <Input value={workspaceRoot} onValueChange={setWorkspaceRoot} size="sm" />
+                  </label>
+                </div>
+                <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                  <label className="min-w-0 space-y-1 text-xs">
+                    <span className="text-muted-foreground">{t("taskGraph.leaderDriver")}</span>
+                    {availableProfiles.length === 0 ? (
+                      <p className="rounded-lg border border-border/60 px-3 py-2 text-muted-foreground">
+                        {t("taskGraph.noAvailableDriver")}
+                      </p>
+                    ) : (
                       <ProfileSelect
-                        value={child.driverId}
+                        value={effectiveLeaderDriverId}
                         profiles={availableProfiles}
-                        onChange={(value) => updateChild(child.nodeId, { driverId: value })}
-                        label={t("taskGraph.childDriver")}
+                        onChange={setLeaderDriverId}
+                        label={t("taskGraph.leaderDriver")}
                       />
-                    </label>
-                    <label className="flex items-end gap-2 pb-1 text-xs text-muted-foreground">
-                      <input
-                        type="checkbox"
-                        checked={child.dependsOnPrevious}
-                        disabled={index === 0}
-                        onChange={(event) =>
-                          updateChild(child.nodeId, { dependsOnPrevious: event.target.checked })
-                        }
-                      />
-                      {t("taskGraph.dependsOnPrevious")}
-                    </label>
+                    )}
+                  </label>
+                  <label className="min-w-0 space-y-1 text-xs">
+                    <span className="text-muted-foreground">{t("taskGraph.childSchedule")}</span>
+                    <Select
+                      value={schedule}
+                      onValueChange={(value) => value && setSchedule(value as GraphSchedule)}
+                    >
+                      <SelectTrigger className="w-full" aria-label={t("taskGraph.childSchedule")}>
+                        <SelectValue>
+                          {schedule === "parallel"
+                            ? t("taskGraph.parallel")
+                            : t("taskGraph.serial")}
+                        </SelectValue>
+                      </SelectTrigger>
+                      <SelectPopup align="start" alignItemWithTrigger={false}>
+                        <SelectItem value="parallel">{t("taskGraph.parallel")}</SelectItem>
+                        <SelectItem value="serial">{t("taskGraph.serial")}</SelectItem>
+                      </SelectPopup>
+                    </Select>
+                  </label>
+                </div>
+                {leaderProfile ? (
+                  <div className="mt-3">
+                    <DriverBoundaryNotice profile={leaderProfile} />
                   </div>
+                ) : null}
+                <label className="mt-3 block space-y-1 text-xs">
+                  <span className="text-muted-foreground">{t("taskGraph.leaderPrompt")}</span>
                   <Textarea
-                    className="mt-3"
-                    value={child.prompt}
-                    onChange={(event) => updateChild(child.nodeId, { prompt: event.target.value })}
-                    placeholder={t("taskGraph.childPromptPlaceholder")}
+                    value={leaderPrompt}
+                    onChange={(event) => setLeaderPrompt(event.target.value)}
+                    placeholder={t("taskGraph.leaderPromptPlaceholder")}
                     size="sm"
                   />
+                </label>
+              </div>
+
+              <div className="rounded-xl border border-border/60 px-3 py-3 sm:px-4">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <h3 className="text-sm font-medium">{t("taskGraph.childTasks")}</h3>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      {t("taskGraph.childTasksDescription")}
+                    </p>
+                  </div>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() =>
+                      setChildren((current) => {
+                        const currentChildren = current.length > 0 ? current : defaultChildren;
+                        return [
+                          ...currentChildren,
+                          makeChildDraft(
+                            currentChildren.length,
+                            availableProfiles[0]?.agentId ?? "",
+                          ),
+                        ];
+                      })
+                    }
+                    disabled={availableProfiles.length === 0 || effectiveChildren.length >= 4}
+                  >
+                    <PlusIcon />
+                    {t("taskGraph.addChild")}
+                  </Button>
                 </div>
-              ))}
-            </div>
-            <Button
-              className="mt-3 w-full sm:w-auto"
-              onClick={() => void submitGraph()}
-              disabled={pendingAction !== null || availableProfiles.length === 0}
-            >
-              <PlayIcon />
-              {pendingAction === "execute" ? t("taskGraph.starting") : t("taskGraph.run")}
-            </Button>
-          </div>
+                <div className="mt-3 space-y-3">
+                  {effectiveChildren.map((child, index) => (
+                    <div key={child.nodeId} className="rounded-lg border border-border/60 p-3">
+                      <div className="flex items-center justify-between gap-3">
+                        <span className="font-mono text-xs text-muted-foreground">
+                          {child.nodeId}
+                        </span>
+                        <Button
+                          size="icon-sm"
+                          variant="ghost-muted"
+                          aria-label={t("taskGraph.removeChild")}
+                          onClick={() =>
+                            setChildren((current) =>
+                              (current.length > 0 ? current : defaultChildren).filter(
+                                (item) => item.nodeId !== child.nodeId,
+                              ),
+                            )
+                          }
+                          disabled={effectiveChildren.length <= 1}
+                        >
+                          <Trash2Icon />
+                        </Button>
+                      </div>
+                      <div className="mt-2 grid gap-3 sm:grid-cols-[minmax(0,1fr)_minmax(10rem,0.7fr)]">
+                        <label className="min-w-0 space-y-1 text-xs">
+                          <span className="text-muted-foreground">
+                            {t("taskGraph.childDriver")}
+                          </span>
+                          <ProfileSelect
+                            value={child.driverId}
+                            profiles={availableProfiles}
+                            onChange={(value) => updateChild(child.nodeId, { driverId: value })}
+                            label={t("taskGraph.childDriver")}
+                          />
+                        </label>
+                        <label className="flex items-end gap-2 pb-1 text-xs text-muted-foreground">
+                          <input
+                            type="checkbox"
+                            checked={child.dependsOnPrevious}
+                            disabled={index === 0}
+                            onChange={(event) =>
+                              updateChild(child.nodeId, { dependsOnPrevious: event.target.checked })
+                            }
+                          />
+                          {t("taskGraph.dependsOnPrevious")}
+                        </label>
+                      </div>
+                      <Textarea
+                        className="mt-3"
+                        value={child.prompt}
+                        onChange={(event) =>
+                          updateChild(child.nodeId, { prompt: event.target.value })
+                        }
+                        placeholder={t("taskGraph.childPromptPlaceholder")}
+                        size="sm"
+                      />
+                    </div>
+                  ))}
+                </div>
+                <Button
+                  className="mt-3 w-full sm:w-auto"
+                  onClick={() => void submitGraph()}
+                  disabled={pendingAction !== null || availableProfiles.length === 0}
+                >
+                  <PlayIcon />
+                  {pendingAction === "execute" ? t("taskGraph.starting") : t("taskGraph.run")}
+                </Button>
+              </div>
+            </>
+          ) : null}
         </div>
 
         <div className="min-w-0 space-y-3">

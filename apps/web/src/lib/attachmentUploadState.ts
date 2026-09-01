@@ -1,5 +1,7 @@
 import type { EnvironmentId } from "@codework/contracts";
 
+import { t } from "~/i18n/runtime";
+
 export type ReadyAttachmentUpload = {
   readonly status: "ready";
   readonly environmentId: EnvironmentId;
@@ -40,10 +42,10 @@ export function attachmentUploadBlockReason(input: {
   }
 
   if (failed > 0) {
-    return failed === 1 ? "Retry or remove the failed image" : "Retry or remove the failed images";
+    return t("upload.retryOrRemoveFailedImage", { count: failed, countValue: failed });
   }
   if (pending > 0) {
-    return pending === 1 ? "Image still uploading" : "Images still uploading";
+    return t("upload.imageStillUploading", { count: pending, countValue: pending });
   }
   return null;
 }

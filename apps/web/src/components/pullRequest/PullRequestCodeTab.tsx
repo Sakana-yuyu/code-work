@@ -187,7 +187,7 @@ export function PullRequestCodeTab({
   selectedCommitOid,
   onSelectedCommitChange,
   pendingFinding,
-  fixFindingLabel = "Fix in a thread",
+  fixFindingLabel = t("pullRequests.fixInAThread"),
   onFixFinding,
   onAddToAgentSelection,
   onRefresh,
@@ -818,7 +818,7 @@ export function PullRequestCodeTab({
           return result.value;
         }}
         onReply={(body) =>
-          runThreadCommand("Reply could not be posted", () =>
+          runThreadCommand(t("pullRequests.replyCouldNotBePosted"), () =>
             replyToThread({
               environmentId,
               input: { ...reference, threadId: thread.id, body },
@@ -830,7 +830,7 @@ export function PullRequestCodeTab({
           canEditPullRequestComment(detail, { author: comment.author, kind: "review-comment" })
         }
         onEditComment={(commentId, body) =>
-          runThreadCommand("The comment could not be saved", () =>
+          runThreadCommand(t("pullRequests.commentCouldNotBeSaved"), () =>
             updateComment({
               environmentId,
               input: { ...reference, commentId, kind: "review-comment", body },
@@ -838,7 +838,7 @@ export function PullRequestCodeTab({
           )
         }
         onToggleResolved={() =>
-          void runThreadCommand("The conversation could not be updated", () =>
+          void runThreadCommand(t("pullRequests.conversationCouldNotBeUpdated"), () =>
             setThreadResolution({
               environmentId,
               input: { ...reference, threadId: thread.id, resolved: !thread.isResolved },
@@ -883,7 +883,7 @@ export function PullRequestCodeTab({
             kind="draft"
             rangeLabel={`${draft.path}:${getReviewPositionAnchor(draft.position).line}`}
             text=""
-            submitLabel="Add to review"
+            submitLabel={t("pullRequests.addToReview")}
             {...(onAddToAgentSelection
               ? {
                   secondaryAction: {

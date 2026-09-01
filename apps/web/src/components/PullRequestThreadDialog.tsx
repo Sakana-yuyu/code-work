@@ -11,6 +11,7 @@ import {
 import { cn } from "~/lib/utils";
 import { parsePullRequestReference } from "~/pullRequestReference";
 import { getSourceControlPresentation } from "~/sourceControlPresentation";
+import { localizedPrLong } from "./GitActionsControl.logic";
 import { useEnvironmentQuery } from "~/state/query";
 import { vcsEnvironment } from "~/state/vcs";
 import { Button } from "./ui/button";
@@ -187,7 +188,7 @@ export function PullRequestThreadDialog({
       : preparePullRequestThreadAction.error instanceof Error
         ? preparePullRequestThreadAction.error.message
         : preparePullRequestThreadAction.error
-          ? `Failed to prepare ${terminology.singular} thread.`
+          ? t("pullRequests.failedToPrepareThread", { pr: localizedPrLong(terminology) })
           : null);
 
   return (

@@ -40,26 +40,26 @@ function compactMenuBranchLabel(branch: string): string {
 
 function compactMenuStatus(gitStatus: VcsStatusResult | null): string {
   if (!gitStatus) {
-    return "Checking status";
+    return t("git.checkingStatus");
   }
   if (!gitStatus.isRepo) {
-    return "Not a repo";
+    return t("git.notRepo");
   }
 
   const parts: string[] = [];
   if (gitStatus.hasWorkingTreeChanges) {
-    parts.push(`${gitStatus.workingTree.files.length} changed`);
+    parts.push(t("git.changedCount", { count: gitStatus.workingTree.files.length }));
   } else if (gitStatus.aheadCount === 0 && gitStatus.behindCount === 0) {
-    parts.push("Clean");
+    parts.push(t("git.clean"));
   }
   if (gitStatus.aheadCount > 0) {
-    parts.push(`${gitStatus.aheadCount} ahead`);
+    parts.push(t("git.aheadCount", { count: gitStatus.aheadCount }));
   }
   if (gitStatus.behindCount > 0) {
-    parts.push(`${gitStatus.behindCount} behind`);
+    parts.push(t("git.behindCount", { count: gitStatus.behindCount }));
   }
   if (gitStatus.pr?.state === "open") {
-    parts.push(`PR #${gitStatus.pr.number}`);
+    parts.push(t("git.prNumber", { number: gitStatus.pr.number }));
   }
 
   return parts.join(" · ");
@@ -133,7 +133,7 @@ function useThreadGitControlModel(props: ThreadGitMenuProps) {
   );
 
   const quickActionHint = quickAction.disabled
-    ? (quickAction.hint ?? "This action is unavailable.")
+    ? (quickAction.hint ?? t("git.actionUnavailable"))
     : null;
 
   const quickActionIcon: QuickActionIcon = (() => {

@@ -21,8 +21,10 @@ import { t } from "~/i18n";
 
 function emptyMessage(query: string, error: string | null, isPending: boolean): string {
   if (error) return error;
-  if (isPending) return query.trim() ? "Searching project files…" : "Indexing project files…";
-  return query.trim() ? "No matching image files." : "No image files found.";
+  if (isPending) {
+    return query.trim() ? t("projectFavicon.searching") : t("projectFavicon.indexing");
+  }
+  return query.trim() ? t("projectFavicon.noMatches") : t("projectFavicon.noImages");
 }
 export function canPickExternalProjectFavicon(cwd: string, platform: string): boolean {
   return !isWindowsPlatform(platform) || isWindowsAbsolutePath(cwd);
@@ -79,7 +81,7 @@ export function ProjectFaviconPickerDialog(props: {
             aria-label={t("chooseProjectIcon")}
             autoHighlight="always"
             escapeLabel="Close"
-            footerActionLabel="Select icon"
+            footerActionLabel={t("projectFavicon.selectIcon")}
             footerTrailing={
               pickExternal ? (
                 <CommandFooterAction

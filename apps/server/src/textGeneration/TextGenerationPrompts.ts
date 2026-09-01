@@ -228,6 +228,7 @@ Title the subject and outcome. Discard incidental instructions.
 
 Editorial rules:
 - 3-8 words, fewer than 40 characters.
+- Write the title in the language of the user's messages; when the messages are mixed or their language is unclear, use Simplified Chinese.
 - Use a compact noun phrase or clear action phrase.
 - Capture the umbrella goal when the request lists several symptoms or steps.
 - Name the product change, not the mock, plan, report, branch, or PR used to produce it.
@@ -253,6 +254,7 @@ Determine the title in this order:
 
 Editorial rules:
 - 3-8 words, fewer than 40 characters.
+- Write the title in the language of the user's messages; when the messages are mixed or their language is unclear, use Simplified Chinese.
 - Use a compact noun phrase or clear action phrase.
 - Preserve the umbrella subject when later messages focus on one finding, provider, platform, or implementation detail.
 - A thread progressing through research, planning, implementation, review, CI, merge, and monitoring has usually not changed subjects.

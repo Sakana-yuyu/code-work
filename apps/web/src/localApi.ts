@@ -4,6 +4,7 @@ import { requestConfirmDialog } from "./confirmDialog";
 import { dismissContextMenu, showContextMenuFallback } from "./contextMenuFallback";
 import { readBrowserClientSettings, writeBrowserClientSettings } from "./clientPersistenceStorage";
 import { resetRequestLatencyStateForTests } from "./rpc/requestLatencyState";
+import { t } from "~/i18n/runtime";
 
 let cachedApi: LocalApi | undefined;
 
@@ -23,7 +24,7 @@ function createBrowserLocalApi(): LocalApi {
         if (window.desktopBridge) {
           const opened = await window.desktopBridge.openExternal(url);
           if (!opened) {
-            throw new Error("Unable to open link.");
+            throw new Error(t("shell.unableToOpenLink"));
           }
           return;
         }

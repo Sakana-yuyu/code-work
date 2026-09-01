@@ -26,6 +26,7 @@ import * as Deferred from "effect/Deferred";
 import * as Exit from "effect/Exit";
 import * as Layer from "effect/Layer";
 import * as ManagedRuntime from "effect/ManagedRuntime";
+import * as Option from "effect/Option";
 import * as PubSub from "effect/PubSub";
 import * as Scope from "effect/Scope";
 import * as Stream from "effect/Stream";
@@ -152,6 +153,10 @@ describe("ProviderCommandReactor", () => {
     readonly requiresNewThreadForModelChange?: boolean;
     readonly titleRegenerationCompletionDispatchFailures?: number;
     readonly titleRegenerationBeforeStart?: "one" | "two";
+    readonly sendTurnEffect?: () => Effect.Effect<
+      { readonly threadId: ThreadId; readonly turnId: TurnId },
+      ProviderAdapterRequestError
+    >;
     readonly interruptTurnEffect?: () => Effect.Effect<void, ProviderAdapterRequestError>;
     readonly stopSessionEffect?: () => Effect.Effect<void, ProviderAdapterRequestError>;
     readonly startSessionEffect?: (
@@ -233,11 +238,13 @@ describe("ProviderCommandReactor", () => {
         ),
       );
     });
-    const sendTurn = vi.fn((_: unknown) =>
-      Effect.succeed({
-        threadId: ThreadId.make("thread-1"),
-        turnId: asTurnId("turn-1"),
-      }),
+    const sendTurn = vi.fn(
+      (_: unknown) =>
+        input?.sendTurnEffect?.() ??
+        Effect.succeed({
+          threadId: ThreadId.make("thread-1"),
+          turnId: asTurnId("turn-1"),
+        }),
     );
     const interruptTurn = vi.fn((_: unknown) => input?.interruptTurnEffect?.() ?? Effect.void);
     const respondToRequest = vi.fn<ProviderServiceShape["respondToRequest"]>(() => Effect.void);
@@ -627,6 +634,63 @@ describe("ProviderCommandReactor", () => {
     expect(
       thread?.messages.some((message) => message.text.includes("Keep the migration reversible")),
     ).toBe(false);
+  });
+
+  it("pauses a Goal when provider turn start fails after Goal activation", async () => {
+    const harness = await createHarness({
+      sendTurnEffect: () =>
+        Effect.fail(
+          new ProviderAdapterRequestError({
+            provider: "codex",
+            method: "thread.turn.start",
+            detail: "provider process unavailable",
+          }),
+        ),
+    });
+    const now = "2026-01-01T00:00:00.000Z";
+    const threadId = ThreadId.make("thread-1");
+
+    await harness.runEffect(
+      harness.goalStore.set({
+        threadId,
+        objective: "Keep the migration reversible",
+        tokenBudget: null,
+      }),
+    );
+    await Effect.runPromise(
+      harness.engine.dispatch({
+        type: "thread.turn.start",
+        commandId: CommandId.make("cmd-turn-start-goal-failure"),
+        threadId,
+        message: {
+          messageId: asMessageId("user-message-goal-failure"),
+          role: "user",
+          text: "continue the migration",
+          attachments: [],
+        },
+        interactionMode: DEFAULT_PROVIDER_INTERACTION_MODE,
+        runtimeMode: "approval-required",
+        createdAt: now,
+      }),
+    );
+
+    await waitFor(async () => {
+      const goal = await harness.runEffect(harness.goalStore.get(threadId));
+      return Option.isSome(goal) && goal.value.status === "paused";
+    });
+    expect(harness.sendTurn).toHaveBeenCalledTimes(1);
+    await waitFor(async () => {
+      const readModel = await harness.readModel();
+      const thread = readModel.threads.find((entry) => entry.id === threadId);
+      return (
+        thread?.activities.some((activity) => activity.kind === "provider.turn.start.failed") ??
+        false
+      );
+    });
+    const thread = (await harness.readModel()).threads.find((entry) => entry.id === threadId);
+    expect(
+      thread?.activities.find((activity) => activity.kind === "provider.turn.start.failed"),
+    ).toMatchObject({ payload: { detail: "provider process unavailable" } });
   });
 
   effectIt.effect("projects starting before a slow provider session finishes", () =>
@@ -2604,6 +2668,59 @@ describe("ProviderCommandReactor", () => {
     await waitFor(() => harness.interruptTurn.mock.calls.length === 1);
     expect(harness.interruptTurn.mock.calls[0]?.[0]).toEqual({
       threadId: "thread-1",
+    });
+  });
+
+  it("keeps a paused Goal paused until a turn starts, then pauses it on interrupt", async () => {
+    const harness = await createHarness();
+    const now = "2026-01-01T00:00:00.000Z";
+    const threadId = ThreadId.make("thread-1");
+
+    await harness.runEffect(
+      harness.goalStore.set({
+        threadId,
+        objective: "Keep the migration reversible",
+        tokenBudget: null,
+      }),
+    );
+    await harness.runEffect(harness.goalStore.pause(threadId));
+    const pausedGoal = await harness.runEffect(harness.goalStore.get(threadId));
+    expect(Option.isSome(pausedGoal) ? pausedGoal.value.status : undefined).toBe("paused");
+
+    await Effect.runPromise(
+      harness.engine.dispatch({
+        type: "thread.turn.start",
+        commandId: CommandId.make("cmd-turn-start-resume-goal"),
+        threadId,
+        message: {
+          messageId: asMessageId("user-message-resume-goal"),
+          role: "user",
+          text: "continue the migration",
+          attachments: [],
+        },
+        interactionMode: DEFAULT_PROVIDER_INTERACTION_MODE,
+        runtimeMode: "approval-required",
+        createdAt: now,
+      }),
+    );
+    await waitFor(() => harness.sendTurn.mock.calls.length === 1);
+    const activeGoal = await harness.runEffect(harness.goalStore.get(threadId));
+    expect(Option.isSome(activeGoal) ? activeGoal.value.status : undefined).toBe("active");
+
+    await Effect.runPromise(
+      harness.engine.dispatch({
+        type: "thread.turn.interrupt",
+        commandId: CommandId.make("cmd-turn-interrupt-pause-goal"),
+        threadId,
+        createdAt: now,
+      }),
+    );
+    await waitFor(() => harness.interruptTurn.mock.calls.length === 1);
+    await waitFor(async () => {
+      const pausedGoalAfterInterrupt = await harness.runEffect(harness.goalStore.get(threadId));
+      return Option.isSome(pausedGoalAfterInterrupt)
+        ? pausedGoalAfterInterrupt.value.status === "paused"
+        : false;
     });
   });
 

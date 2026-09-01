@@ -83,7 +83,7 @@ interface BranchToolbarBranchSelectorProps {
 }
 
 function toBranchActionErrorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : "An error occurred.";
+  return error instanceof Error ? error.message : t("anErrorOccurred");
 }
 
 export function BranchToolbarBranchSelector({

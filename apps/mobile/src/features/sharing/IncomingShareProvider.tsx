@@ -200,7 +200,7 @@ export function IncomingShareProvider(props: React.PropsWithChildren) {
           if (persisted) {
             setDrafts(persisted);
           }
-          setError(cause instanceof Error ? cause : new Error("Could not import shared content."));
+          setError(cause instanceof Error ? cause : new Error(t("couldNotImportSharedContent")));
         }
       }
     })().finally(() => {

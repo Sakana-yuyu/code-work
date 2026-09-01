@@ -479,7 +479,7 @@ export function PullRequestMetaLine({
 }
 
 export function summarizePullRequestChecks(checks: ReadonlyArray<PullRequestCheck>): string {
-  if (checks.length === 0) return "No checks reported";
+  if (checks.length === 0) return t("noChecksReported");
   const failed = checks.filter(
     (check) => check.status === "failure" || check.status === "cancelled",
   ).length;
@@ -487,5 +487,7 @@ export function summarizePullRequestChecks(checks: ReadonlyArray<PullRequestChec
   const passed = checks.filter((check) => check.status === "success").length;
   if (failed > 0) return `${failed} of ${checks.length} failing`;
   if (pending > 0) return `${pending} of ${checks.length} running`;
-  return passed === checks.length ? "All checks passed" : `${passed} of ${checks.length} passing`;
+  return passed === checks.length
+    ? t("pullRequests.allChecksPassed")
+    : `${passed} of ${checks.length} passing`;
 }

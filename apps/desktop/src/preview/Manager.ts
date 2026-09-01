@@ -158,7 +158,7 @@ export const buildPreviewPictureInPictureDataUrl = (): string => {
     </style>
   </head>
   <body>
-    <img id="preview-frame" alt="Live browser preview">
+    <img id="preview-frame" alt="${t("browserPreview")}">
     <script>
       const frame = document.getElementById("preview-frame");
       window.previewPictureInPicture.onFrame((next) => {

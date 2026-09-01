@@ -74,14 +74,14 @@ export function isThreadOwnPullRequest(
 export function pullRequestHandoffLabels(inThisThread: boolean) {
   return inThisThread
     ? {
-        fixFinding: "Fix in this thread",
-        fixCheck: "Fix in this thread",
-        fixFindings: "Fix findings in this thread",
+        fixFinding: t("pullRequests.fixInThisThread"),
+        fixCheck: t("pullRequests.fixInThisThread"),
+        fixFindings: t("pullRequests.fixFindingsInThisThread"),
       }
     : {
-        fixFinding: "Fix in a thread",
+        fixFinding: t("pullRequests.fixInAThread"),
         fixCheck: "Fix",
-        fixFindings: "Fix findings in a thread",
+        fixFindings: t("pullRequests.fixFindingsInAThread"),
       };
 }
 
@@ -119,7 +119,7 @@ export function isStackedPullRequestBase(
 export function describePullRequestState(state: PullRequestState, isDraft: boolean): string {
   if (state === "merged") return "Merged";
   if (state === "closed") return "Closed";
-  return isDraft ? "Draft" : "Ready for review";
+  return isDraft ? "Draft" : t("readyForReview");
 }
 
 /** Chronological ascending, oldest to newest — reversed for the "newest" reading order. */

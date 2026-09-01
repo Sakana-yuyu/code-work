@@ -480,6 +480,43 @@ const anthropicMessage = (message: ByokChatMessage): Record<string, unknown> => 
 const openaiUrl = (baseURL: string): string => `${trimBaseURL(baseURL)}/chat/completions`;
 const anthropicUrl = (baseURL: string): string => `${trimBaseURL(baseURL)}/v1/messages`;
 /**
+ * OpenAI 兼容网关对 `function.name` 的约束并不统一：DeepSeek 等要求
+ * `^[a-zA-Z0-9_-]+$`（≤64 字符），点号会直接 400。工具名在请求与历史回放
+ * 两侧做确定性净化（非法字符 → `_`），回程再按本轮 tools 表还原为规范名；
+ * 响应还原优先精确匹配规范名，避免 `a.b`/`a_b` 净化冲突时误判。
+ */
+const OPENAI_TOOL_NAME_MAX_LENGTH = 64;
+
+const sanitizeOpenAiToolName = (name: string): string => {
+  const cleaned = name.replace(/[^a-zA-Z0-9_-]/g, "_");
+  return cleaned.length > OPENAI_TOOL_NAME_MAX_LENGTH
+    ? cleaned.slice(0, OPENAI_TOOL_NAME_MAX_LENGTH)
+    : cleaned;
+};
+
+const openAiToolNameMap = (
+  tools: ReadonlyArray<{ readonly canonicalToolName: string }> | undefined,
+): ReadonlyMap<string, string> => {
+  const map = new Map<string, string>();
+  for (const tool of tools ?? []) {
+    const safe = sanitizeOpenAiToolName(tool.canonicalToolName);
+    if (!map.has(safe)) {
+      map.set(safe, tool.canonicalToolName);
+    }
+  }
+  return map;
+};
+
+const restoreOpenAiToolName = (
+  safeName: string,
+  toolNames: ReadonlyMap<string, string>,
+): string => {
+  const canonical = toolNames.get(safeName);
+  if (canonical !== undefined) return canonical;
+  // 模型可能回显未经净化的原名（网关不校验时），保持原样即可。
+  return safeName;
+};
+/**
  * Gemini streaming URL. A version segment (`/v1beta`, `/v1`, `/v1alpha`) is
  * appended only when the configured base URL does not already end in one.
  */
@@ -529,7 +566,7 @@ const openaiMessage = (message: ByokChatMessage): Record<string, unknown> => {
         id: toolCall.toolCallId,
         type: "function",
         function: {
-          name: toolCall.canonicalToolName,
+          name: sanitizeOpenAiToolName(toolCall.canonicalToolName),
           arguments: encodeUnknownJson(toolCall.arguments),
         },
       })),
@@ -598,6 +635,7 @@ type AnthropicStreamEvent = ByokChatEvent | AnthropicToolCallJsonEvent | ByokStr
 type OpenAiStreamState = {
   readonly toolCalls: OpenAiToolCallAccumulator;
   readonly terminalSeen: boolean;
+  readonly toolNames: ReadonlyMap<string, string>;
 };
 
 type AnthropicStreamState = {
@@ -935,7 +973,7 @@ export const streamChat = (
                   tools: input.tools.map((tool) => ({
                     type: "function",
                     function: {
-                      name: tool.canonicalToolName,
+                      name: sanitizeOpenAiToolName(tool.canonicalToolName),
                       description: tool.description,
                       parameters: tool.parameters,
                     },
@@ -1164,6 +1202,7 @@ export const streamChat = (
     (): OpenAiStreamState => ({
       toolCalls: new Map<number, OpenAiToolCallState>(),
       terminalSeen: false,
+      toolNames: openAiToolNameMap(input.tools),
     }),
     (state, item): readonly [OpenAiStreamState, ReadonlyArray<OpenAiStreamEvent>] => {
       if (state.terminalSeen) return [state, []];
@@ -1174,16 +1213,20 @@ export const streamChat = (
       const toolCalls = new Map(state.toolCalls);
       for (const fragment of openaiToolCallFragments(item.payload)) {
         const previous = toolCalls.get(fragment.index);
+        const nextName =
+          fragment.name === undefined
+            ? previous?.canonicalToolName
+            : restoreOpenAiToolName(fragment.name, state.toolNames);
         toolCalls.set(fragment.index, {
           toolCallId: fragment.id ?? previous?.toolCallId,
-          canonicalToolName: fragment.name ?? previous?.canonicalToolName,
+          canonicalToolName: nextName,
           argumentsText: `${previous?.argumentsText ?? ""}${fragment.arguments ?? ""}`,
         });
       }
       const events = eventsFromSsePayload("openai", item.payload);
       const finishReason = openAiFinishReason(item.payload);
       if (finishReason === undefined) {
-        return [{ toolCalls, terminalSeen: false }, events];
+        return [{ toolCalls, terminalSeen: false, toolNames: state.toolNames }, events];
       }
 
       const normalizedFinishReason =
@@ -1192,7 +1235,7 @@ export const streamChat = (
           : finishReason;
       const terminalEvent = terminalEventForFinishReason("openai", normalizedFinishReason);
       return [
-        { toolCalls: new Map(), terminalSeen: true },
+        { toolCalls: new Map(), terminalSeen: true, toolNames: state.toolNames },
         [
           ...events,
           ...(terminalEvent.type === "completed" ? openaiToolCallJsonEvents(toolCalls) : []),

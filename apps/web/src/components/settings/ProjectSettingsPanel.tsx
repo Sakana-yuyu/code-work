@@ -117,9 +117,15 @@ import { t } from "~/i18n";
 import { projectGroupTitleNeedsUpdate } from "./ProjectSettingsPanel.logic";
 
 export const PROJECT_GROUPING_MODE_LABELS: Record<SidebarProjectGroupingMode, string> = {
-  repository: "Group by repository",
-  repository_path: "Group by repository path",
-  separate: "Keep separate",
+  get repository() {
+    return t("settings.groupByRepository");
+  },
+  get repository_path() {
+    return t("settings.groupByRepositoryPath");
+  },
+  get separate() {
+    return t("settings.keepSeparate");
+  },
 };
 
 /** Logical project groups for the settings page, sorted by display name. */
@@ -216,7 +222,7 @@ function ProjectSettingsBreadcrumb({ projectKey }: { projectKey: string }) {
   };
 
   return (
-    <WorkspaceBreadcrumb ariaLabel="Project settings breadcrumb">
+    <WorkspaceBreadcrumb ariaLabel={t("projectSettings.breadcrumb")}>
       <WorkspaceBreadcrumbItem>{t("projects")}</WorkspaceBreadcrumbItem>
       <WorkspaceBreadcrumbSeparator />
       <WorkspaceBreadcrumbItem current>
@@ -382,7 +388,11 @@ function ProjectDetail({ group }: { group: SidebarProjectSnapshot }) {
           // write. Name the environment so the user knows where it stopped.
           reportFailure(
             group.memberProjects.length > 1
-              ? `${failureTitle} on ${member.environmentLabel ?? "the current environment"}`
+              ? t("projectSettings.failureOnEnvironment", {
+                  message: failureTitle,
+                  environment:
+                    member.environmentLabel ?? t("projectSettings.theCurrentEnvironment"),
+                })
               : failureTitle,
             result,
           );
@@ -410,7 +420,7 @@ function ProjectDetail({ group }: { group: SidebarProjectSnapshot }) {
       ) {
         return;
       }
-      await updateAllMembers({ title }, "Failed to rename project");
+      await updateAllMembers({ title }, t("failedToRenameProject"));
     },
     [group.memberProjects, updateAllMembers],
   );
@@ -434,7 +444,10 @@ function ProjectDetail({ group }: { group: SidebarProjectSnapshot }) {
   );
   const setDefaultModel = useCallback(
     (selection: ModelSelection | null) =>
-      void updateAllMembers({ defaultModelSelection: selection }, "Failed to update default model"),
+      void updateAllMembers(
+        { defaultModelSelection: selection },
+        t("projectSettings.failedUpdateDefaultModel"),
+      ),
     [updateAllMembers],
   );
 
@@ -444,7 +457,7 @@ function ProjectDetail({ group }: { group: SidebarProjectSnapshot }) {
     (mode: ThreadEnvMode | null) =>
       void updateAllMembers(
         { defaultThreadEnvMode: mode },
-        "Failed to update new-thread workspace",
+        t("projectSettings.failedUpdateNewThreadWorkspace"),
       ),
     [updateAllMembers],
   );
@@ -459,7 +472,7 @@ function ProjectDetail({ group }: { group: SidebarProjectSnapshot }) {
       savingFaviconRef.current = true;
       setIsSavingFavicon(true);
       try {
-        await updateAllMembers({ faviconPath }, "Failed to update project icon");
+        await updateAllMembers({ faviconPath }, t("projectSettings.failedUpdateProjectIcon"));
       } finally {
         savingFaviconRef.current = false;
         setIsSavingFavicon(false);
@@ -513,7 +526,7 @@ function ProjectDetail({ group }: { group: SidebarProjectSnapshot }) {
     ): Promise<AtomCommandResult<void, unknown>> => {
       if (savingScriptsRef.current) {
         return AsyncResult.failure(
-          Cause.fail(new Error("Another script change is still saving. Try again.")),
+          Cause.fail(new Error(t("projectSettings.scriptSaveInProgress"))),
         );
       }
       savingScriptsRef.current = true;
@@ -530,7 +543,7 @@ function ProjectDetail({ group }: { group: SidebarProjectSnapshot }) {
           () => undefined,
         );
         if (updateResult._tag === "Failure") {
-          reportFailure("Failed to save scripts", updateResult);
+          reportFailure(t("projectSettings.failedSaveScripts"), updateResult);
           return updateResult;
         }
 
@@ -559,7 +572,7 @@ function ProjectDetail({ group }: { group: SidebarProjectSnapshot }) {
               () => undefined,
             );
             if (result._tag === "Failure") {
-              reportFailure("Failed to save keybinding", result);
+              reportFailure(t("projectSettings.failedSaveKeybinding"), result);
               return result;
             }
           }
@@ -570,7 +583,7 @@ function ProjectDetail({ group }: { group: SidebarProjectSnapshot }) {
               () => undefined,
             );
             if (result._tag === "Failure") {
-              reportFailure("Failed to remove keybinding", result);
+              reportFailure(t("projectSettings.failedRemoveKeybinding"), result);
               return result;
             }
           }
@@ -652,7 +665,7 @@ function ProjectDetail({ group }: { group: SidebarProjectSnapshot }) {
         setEditorRequest({
           scriptId: null,
           initial: payload,
-          error: error instanceof Error ? error.message : "Failed to import action.",
+          error: error instanceof Error ? error.message : t("failedToImportAction"),
         });
       }
     },
@@ -690,23 +703,34 @@ function ProjectDetail({ group }: { group: SidebarProjectSnapshot }) {
         api.dialogs.confirm(
           [
             projectThreads.length > 0
-              ? `Remove project "${targetLabel}" and delete its ${projectThreads.length} thread${projectThreads.length === 1 ? "" : "s"}?`
-              : `Remove project "${targetLabel}"?`,
+              ? t("removeProjectWithThreadsConfirm", {
+                  count: projectThreads.length,
+                  countValue: projectThreads.length,
+                  projectTitle: targetLabel,
+                })
+              : t("removeProjectConfirm", { projectTitle: targetLabel }),
             ...(singleMember
               ? [
-                  `Path: ${singleMember.workspaceRoot}`,
+                  t("removeProjectPathLine", { path: singleMember.workspaceRoot }),
                   ...(singleMember.environmentLabel
-                    ? [`Environment: ${singleMember.environmentLabel}`]
+                    ? [
+                        t("removeProjectEnvironmentLine", {
+                          environment: singleMember.environmentLabel,
+                        }),
+                      ]
                     : []),
                 ]
-              : [`This removes ${members.length} grouped project entries.`]),
-            ...(projectThreads.length > 0
-              ? ["This permanently clears conversation history for those threads."]
-              : []),
+              : [
+                  t("removeProjectGroupedEntriesLine", {
+                    count: members.length,
+                    countValue: members.length,
+                  }),
+                ]),
+            ...(projectThreads.length > 0 ? [t("removeProjectClearsThreadsLine")] : []),
             isWholeGroup
-              ? "This removes only the project entries, not the files on disk."
-              : "Other entries in this grouped project are unaffected.",
-            "This action cannot be undone.",
+              ? t("removeProjectEntriesOnlyLine")
+              : t("removeProjectOtherEntriesUnaffectedLine"),
+            t("actionCannotBeUndone"),
           ].join("\n"),
           { variant: "destructive" },
         ),
@@ -730,7 +754,7 @@ function ProjectDetail({ group }: { group: SidebarProjectSnapshot }) {
           () => undefined,
         );
         if (result._tag === "Failure") {
-          reportFailure(`Failed to remove "${member.title}"`, result);
+          reportFailure(t("failedToRemove", { title: member.title }), result);
           return;
         }
         const projectRef = scopeProjectRef(member.environmentId, member.id);
@@ -763,7 +787,7 @@ function ProjectDetail({ group }: { group: SidebarProjectSnapshot }) {
     projectGroupingSettings.sidebarProjectGroupingOverrides?.[
       deriveProjectGroupingOverrideKey(selectedCheckout)
     ] ?? "inherit";
-  const selectedCheckoutLabel = selectedCheckout.environmentLabel ?? "This machine";
+  const selectedCheckoutLabel = selectedCheckout.environmentLabel ?? t("thisMachine");
 
   return (
     <>
@@ -864,7 +888,7 @@ function ProjectDetail({ group }: { group: SidebarProjectSnapshot }) {
                     onPromptChange={() => {}}
                     modelOptions={resolvedSelection.options ?? []}
                     allowPromptInjectedEffort={false}
-                    planModeEnabled={settings.planModeEnabled}
+                    planModeEnabled={true}
                     triggerVariant="outline"
                     triggerClassName="min-w-0 max-w-none shrink-0 text-foreground/90 hover:text-foreground"
                     onModelOptionsChange={(nextOptions) => {

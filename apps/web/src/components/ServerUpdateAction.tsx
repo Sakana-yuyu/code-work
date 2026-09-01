@@ -17,19 +17,21 @@ import { Tooltip, TooltipPopup, TooltipTrigger } from "./ui/tooltip";
 // The wire "installing" stage is a sub-second launcher handoff, so the UI
 // folds it into the download phase; everything after the handoff is the
 // restart the user is actually waiting through.
+// Values are i18n message keys; resolve through t() at render time so label
+// text follows the active language.
 const UPDATE_STAGE_LABELS: Record<ServerUpdateStage, string> = {
-  downloading: "Downloading…",
-  installing: "Downloading…",
-  resuming: "Restarting…",
+  downloading: "serverUpdate.downloading",
+  installing: "serverUpdate.downloading",
+  resuming: "serverUpdate.restarting",
 };
 const pendingUpdateEnvironmentIds = new Set<EnvironmentId>();
 
 export function serverUpdateStageLabel(stage: ServerUpdateStage): string {
-  return UPDATE_STAGE_LABELS[stage];
+  return t(UPDATE_STAGE_LABELS[stage]);
 }
 
 function updateFailureMessage(error: unknown): string {
-  return error instanceof Error ? error.message : "Server update failed.";
+  return error instanceof Error ? error.message : t("serverUpdate.updateFailed");
 }
 
 /**

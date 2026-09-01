@@ -819,7 +819,7 @@ export function ThemeEditorPanel({
 
   const handleSubmit = () => {
     if (!name.trim()) {
-      setError("Name your theme first.");
+      setError(t("themeEditor.nameRequired"));
       return;
     }
 
@@ -959,7 +959,7 @@ export function ThemeEditorPanel({
             // Storage is failing wholesale; the error below covers it.
           }
         }
-        setError("Theme saved, but it could not be made active. Try again.");
+        setError(t("themeEditor.savedButNotActive"));
         return;
       }
       onOpenChange(false);
@@ -968,8 +968,8 @@ export function ThemeEditorPanel({
         cause instanceof Error
           ? cause.message
           : isEditing
-            ? "Could not save the theme."
-            : "Could not create the theme.",
+            ? t("themeEditor.saveFailed")
+            : t("themeEditor.createFailed"),
       );
     }
   };

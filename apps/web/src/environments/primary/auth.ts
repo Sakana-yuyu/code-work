@@ -63,7 +63,10 @@ export class PrimaryEnvironmentRequestError extends Schema.TaggedErrorClass<Prim
   }
 
   override get message(): string {
-    return `Primary environment request failed during ${this.operation} (HTTP ${this.status}).`;
+    return t("pairing.primaryEnvironmentRequestFailed", {
+      operation: this.operation,
+      status: this.status,
+    });
   }
 }
 
@@ -77,7 +80,7 @@ export class PrimaryEnvironmentPairingCredentialRejectedError extends Schema.Tag
   },
 ) {
   override get message(): string {
-    return "Invalid pairing token. Check the token and try again.";
+    return t("pairing.invalidToken");
   }
 }
 
@@ -93,7 +96,7 @@ export class PrimaryEnvironmentAuthSessionTimeoutError extends Schema.TaggedErro
   },
 ) {
   override get message(): string {
-    return "Timed out waiting for authenticated session after bootstrap.";
+    return t("pairing.authSessionTimedOut");
   }
 }
 
@@ -108,7 +111,7 @@ export class PrimaryEnvironmentPairingCredentialRequiredError extends Schema.Tag
   },
 ) {
   override get message(): string {
-    return "Enter a pairing token to continue.";
+    return t("pairing.enterTokenToContinue");
   }
 }
 

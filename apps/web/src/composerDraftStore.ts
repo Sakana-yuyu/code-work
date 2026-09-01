@@ -145,6 +145,7 @@ type PersistedElementContextDraft = typeof PersistedElementContextDraft.Type;
 
 const PersistedComposerThreadDraftState = Schema.Struct({
   prompt: Schema.String,
+  goalObjective: Schema.optionalKey(Schema.String),
   attachments: Schema.Array(PersistedComposerImageAttachment),
   terminalContexts: Schema.optionalKey(Schema.Array(PersistedTerminalContextDraft)),
   elementContexts: Schema.optionalKey(Schema.Array(PersistedElementContextDraft)),
@@ -267,6 +268,7 @@ const PersistedComposerDraftStoreStorage = Schema.Struct({
  */
 export interface ComposerThreadDraftState {
   prompt: string;
+  goalObjective: string | null;
   images: ComposerImageAttachment[];
   nonPersistedImageIds: string[];
   persistedAttachments: PersistedComposerImageAttachment[];
@@ -311,6 +313,7 @@ export function composerDraftHasUserContent(
   }
   return (
     draft.prompt.trim().length > 0 ||
+    (draft.goalObjective !== null && draft.goalObjective.trim().length > 0) ||
     draft.images.length > 0 ||
     draft.persistedAttachments.length > 0 ||
     draft.terminalContexts.length > 0 ||
@@ -446,6 +449,7 @@ interface ComposerDraftStoreState {
   clearDraftThread: (threadRef: ComposerThreadTarget) => void;
   setStickyModelSelection: (modelSelection: ModelSelection | null | undefined) => void;
   setPrompt: (threadRef: ComposerThreadTarget, prompt: string) => void;
+  setGoalObjective: (threadRef: ComposerThreadTarget, objective: string | null) => void;
   setTerminalContexts: (threadRef: ComposerThreadTarget, contexts: TerminalContextDraft[]) => void;
   setModelSelection: (
     threadRef: ComposerThreadTarget,
@@ -642,6 +646,7 @@ const EMPTY_COMPOSER_DRAFT_MODEL_STATE = Object.freeze<ComposerDraftModelState>(
 
 const EMPTY_THREAD_DRAFT = Object.freeze<ComposerThreadDraftState>({
   prompt: "",
+  goalObjective: null,
   images: EMPTY_IMAGES,
   nonPersistedImageIds: EMPTY_IDS,
   persistedAttachments: EMPTY_PERSISTED_ATTACHMENTS,
@@ -664,6 +669,7 @@ const EMPTY_THREAD_DRAFT = Object.freeze<ComposerThreadDraftState>({
 export function createEmptyThreadDraft(): ComposerThreadDraftState {
   return {
     prompt: "",
+    goalObjective: null,
     images: [],
     nonPersistedImageIds: [],
     persistedAttachments: [],
@@ -738,6 +744,7 @@ function normalizeTerminalContextsForThread(
 function shouldRemoveDraft(draft: ComposerThreadDraftState): boolean {
   return (
     draft.prompt.length === 0 &&
+    (draft.goalObjective === null || draft.goalObjective.length === 0) &&
     draft.images.length === 0 &&
     draft.persistedAttachments.length === 0 &&
     draft.terminalContexts.length === 0 &&
@@ -1705,6 +1712,8 @@ function normalizePersistedDraftsByThreadId(
     }
     const draftCandidate = draftValue as PersistedComposerThreadDraftState;
     const promptCandidate = typeof draftCandidate.prompt === "string" ? draftCandidate.prompt : "";
+    const goalObjectiveCandidate =
+      typeof draftCandidate.goalObjective === "string" ? draftCandidate.goalObjective.trim() : "";
     const attachments = Array.isArray(draftCandidate.attachments)
       ? draftCandidate.attachments.flatMap((entry) => {
           const normalized = normalizePersistedAttachment(entry);
@@ -1787,6 +1796,7 @@ function normalizePersistedDraftsByThreadId(
       Object.keys(modelSelectionByProvider).length > 0 || activeProvider !== null;
     if (
       promptCandidate.length === 0 &&
+      goalObjectiveCandidate.length === 0 &&
       attachments.length === 0 &&
       terminalContexts.length === 0 &&
       elementContexts.length === 0 &&
@@ -1811,6 +1821,7 @@ function normalizePersistedDraftsByThreadId(
             })();
     nextDraftsByThreadKey[normalizedThreadKey] = {
       prompt,
+      ...(goalObjectiveCandidate.length > 0 ? { goalObjective: goalObjectiveCandidate } : {}),
       attachments,
       ...(terminalContexts.length > 0 ? { terminalContexts } : {}),
       ...(elementContexts.length > 0 ? { elementContexts } : {}),
@@ -1918,6 +1929,7 @@ function partializeComposerDraftStoreState(
       Object.keys(draft.modelSelectionByProvider).length > 0 || draft.activeProvider !== null;
     if (
       draft.prompt.length === 0 &&
+      (draft.goalObjective === null || draft.goalObjective.length === 0) &&
       draft.persistedAttachments.length === 0 &&
       draft.terminalContexts.length === 0 &&
       draft.elementContexts.length === 0 &&
@@ -1931,6 +1943,7 @@ function partializeComposerDraftStoreState(
     }
     const persistedDraft: DeepMutable<PersistedComposerThreadDraftState> = {
       prompt: draft.prompt,
+      ...(draft.goalObjective ? { goalObjective: draft.goalObjective } : {}),
       attachments: draft.persistedAttachments,
       ...(draft.terminalContexts.length > 0
         ? {
@@ -2211,6 +2224,7 @@ function toHydratedThreadDraft(
 
   return {
     prompt: persistedDraft.prompt,
+    goalObjective: persistedDraft.goalObjective?.trim() || null,
     images: hydrateImagesFromPersisted(persistedDraft.attachments),
     nonPersistedImageIds: [],
     persistedAttachments: [...persistedDraft.attachments],
@@ -2694,6 +2708,34 @@ const composerDraftStore = create<ComposerDraftStoreState>()(
             const nextDraft: ComposerThreadDraftState = {
               ...existing,
               prompt,
+            };
+            const nextDraftsByThreadKey = { ...state.draftsByThreadKey };
+            if (shouldRemoveDraft(nextDraft)) {
+              delete nextDraftsByThreadKey[threadKey];
+            } else {
+              nextDraftsByThreadKey[threadKey] = nextDraft;
+            }
+            return { draftsByThreadKey: nextDraftsByThreadKey };
+          });
+        },
+        setGoalObjective: (threadRef, objective) => {
+          const threadKey = resolveComposerDraftKey(get(), threadRef) ?? "";
+          if (threadKey.length === 0) {
+            return;
+          }
+          const nextObjective = objective?.trim() || null;
+          set((state) => {
+            const existing = state.draftsByThreadKey[threadKey];
+            if (!existing && nextObjective === null) {
+              return state;
+            }
+            const base = existing ?? createEmptyThreadDraft();
+            if (base.goalObjective === nextObjective) {
+              return state;
+            }
+            const nextDraft: ComposerThreadDraftState = {
+              ...base,
+              goalObjective: nextObjective,
             };
             const nextDraftsByThreadKey = { ...state.draftsByThreadKey };
             if (shouldRemoveDraft(nextDraft)) {
@@ -3524,6 +3566,7 @@ const composerDraftStore = create<ComposerDraftStoreState>()(
             );
             const nextDestination: ComposerThreadDraftState = {
               ...destination,
+              goalObjective: destination.goalObjective ?? source.goalObjective,
               prompt: movedPrompt,
               images: [...destination.images, ...source.images],
               nonPersistedImageIds: [
@@ -3540,6 +3583,7 @@ const composerDraftStore = create<ComposerDraftStoreState>()(
             // are still referenced from the destination.
             const nextSource: ComposerThreadDraftState = {
               ...source,
+              goalObjective: null,
               prompt: ensureInlineTerminalContextPlaceholders("", source.terminalContexts.length),
               images: [],
               nonPersistedImageIds: [],

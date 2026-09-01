@@ -10,6 +10,7 @@ import {
 import { projectScriptCwd, projectScriptRuntimeEnv } from "@codework/shared/projectScripts";
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
+import * as Schema from "effect/Schema";
 
 import type {
   StoredWorkspaceScriptRun,
@@ -104,7 +105,7 @@ const workspaceScriptTerminalOwner = (run: WorkspaceScriptRun) =>
 const isTerminalOwnershipFailure = (cause: unknown): boolean => {
   let current: unknown = cause;
   for (let depth = 0; depth < 8 && current !== null && current !== undefined; depth += 1) {
-    if (current instanceof TerminalSessionOwnershipError) return true;
+    if (Schema.is(TerminalSessionOwnershipError)(current)) return true;
     current =
       typeof current === "object" && "cause" in current
         ? (current as { readonly cause?: unknown }).cause

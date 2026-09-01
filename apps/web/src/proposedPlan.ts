@@ -1,3 +1,5 @@
+import { t } from "~/i18n/runtime";
+
 export function proposedPlanTitle(planMarkdown: string): string | null {
   const heading = planMarkdown.match(/^\s{0,3}#{1,6}\s+(.+)$/m)?.[1]?.trim();
   return heading && heading.length > 0 ? heading : null;
@@ -51,7 +53,7 @@ export function buildCollapsedProposedPlanPreviewMarkdown(
   }
 
   if (previewLines.length === 0) {
-    return proposedPlanTitle(planMarkdown) ?? "Plan preview unavailable.";
+    return proposedPlanTitle(planMarkdown) ?? t("plan.previewUnavailable");
   }
 
   if (hasMoreContent) {
@@ -95,7 +97,7 @@ export function resolvePlanFollowUpSubmission(input: { draftText: string; planMa
 export function buildPlanImplementationThreadTitle(planMarkdown: string): string {
   const title = proposedPlanTitle(planMarkdown);
   if (!title) {
-    return "Implement plan";
+    return t("plan.implementPlan");
   }
   return `Implement ${title}`;
 }

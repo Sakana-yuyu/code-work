@@ -1,6 +1,8 @@
 import * as React from "react";
 import * as Schema from "effect/Schema";
 
+import { t } from "~/i18n/runtime";
+
 export class ClipboardApiUnavailableError extends Schema.TaggedErrorClass<ClipboardApiUnavailableError>()(
   "ClipboardApiUnavailableError",
   {
@@ -8,7 +10,7 @@ export class ClipboardApiUnavailableError extends Schema.TaggedErrorClass<Clipbo
   },
 ) {
   override get message(): string {
-    return `Clipboard API is unavailable while copying ${this.target}.`;
+    return t("clipboard.copyUnavailable", { target: this.target });
   }
 }
 
@@ -20,7 +22,7 @@ export class ClipboardWriteError extends Schema.TaggedErrorClass<ClipboardWriteE
   },
 ) {
   override get message(): string {
-    return `Failed to copy ${this.target} to the clipboard.`;
+    return t("clipboard.copyFailed", { target: this.target });
   }
 }
 
@@ -31,7 +33,7 @@ export class ClipboardReadUnavailableError extends Schema.TaggedErrorClass<Clipb
   },
 ) {
   override get message(): string {
-    return `Clipboard API is unavailable while reading ${this.target}.`;
+    return t("clipboard.readUnavailable", { target: this.target });
   }
 }
 
@@ -43,7 +45,7 @@ export class ClipboardReadError extends Schema.TaggedErrorClass<ClipboardReadErr
   },
 ) {
   override get message(): string {
-    return `Failed to read ${this.target} from the clipboard.`;
+    return t("clipboard.readFailed", { target: this.target });
   }
 }
 

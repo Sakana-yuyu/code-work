@@ -7,6 +7,7 @@ import * as Schema from "effect/Schema";
 import type { ResolvedSharePayload, SharePayload } from "expo-sharing";
 
 import { DraftComposerImageAttachmentSchema } from "../../lib/composer-image-schema";
+import { t } from "../../i18n/runtime";
 import type { DraftComposerImageAttachment } from "../../lib/composerImages";
 import { estimateBase64ByteSize } from "../../lib/base64";
 
@@ -149,7 +150,7 @@ export async function buildIncomingShareDraft(input: {
     if (attachments.length >= PROVIDER_SEND_TURN_MAX_ATTACHMENTS) {
       if (!warnedAttachmentLimit) {
         warnings.push(
-          `Only the first ${PROVIDER_SEND_TURN_MAX_ATTACHMENTS} shared images were attached.`,
+          t("share.onlyFirstImagesAttached", { count: PROVIDER_SEND_TURN_MAX_ATTACHMENTS }),
         );
         warnedAttachmentLimit = true;
       }
@@ -159,13 +160,15 @@ export async function buildIncomingShareDraft(input: {
 
     const mimeType = (resolved?.contentMimeType ?? payload.mimeType ?? "image/png").toLowerCase();
     if (!uri || !mimeType.startsWith("image/")) {
-      warnings.push("One shared item was not a supported image.");
+      warnings.push(t("share.unsupportedImage"));
       await releaseOwnedFiles(input.fileReader, [uri, payload.value]);
       continue;
     }
     if (!isProviderSendTurnSupportedImageMimeType(mimeType)) {
       warnings.push(
-        `'${resolved?.originalName ?? fallbackName(uri, index, mimeType)}' is not a supported image type.`,
+        t("share.unsupportedImageType", {
+          name: resolved?.originalName ?? fallbackName(uri, index, mimeType),
+        }),
       );
       await releaseOwnedFiles(input.fileReader, [uri, payload.value]);
       continue;
@@ -176,7 +179,9 @@ export async function buildIncomingShareDraft(input: {
       resolved.contentSize > PROVIDER_SEND_TURN_MAX_IMAGE_BYTES
     ) {
       warnings.push(
-        `'${resolved.originalName ?? fallbackName(uri, index, mimeType)}' exceeds the 10 MB attachment limit.`,
+        t("share.imageExceedsLimit", {
+          name: resolved.originalName ?? fallbackName(uri, index, mimeType),
+        }),
       );
       await releaseOwnedFiles(input.fileReader, [uri, payload.value]);
       continue;
@@ -187,7 +192,9 @@ export async function buildIncomingShareDraft(input: {
       const sizeBytes = resolved?.contentSize ?? estimateBase64ByteSize(base64);
       if (sizeBytes <= 0 || sizeBytes > PROVIDER_SEND_TURN_MAX_IMAGE_BYTES) {
         warnings.push(
-          `'${resolved?.originalName ?? fallbackName(uri, index, mimeType)}' exceeds the 10 MB attachment limit.`,
+          t("share.imageExceedsLimit", {
+            name: resolved?.originalName ?? fallbackName(uri, index, mimeType),
+          }),
         );
         continue;
       }
@@ -204,7 +211,7 @@ export async function buildIncomingShareDraft(input: {
         previewUri: dataUrl,
       });
     } catch {
-      warnings.push(`Could not read '${fallbackName(uri, index, mimeType)}'.`);
+      warnings.push(t("share.couldNotReadFile", { name: fallbackName(uri, index, mimeType) }));
     } finally {
       await releaseOwnedFiles(input.fileReader, [uri, payload.value]);
     }

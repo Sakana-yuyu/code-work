@@ -1,6 +1,8 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { scopeThreadRef } from "@codework/client-runtime/environment";
 import { useEffect } from "react";
 import ChatView from "../components/ChatView";
+import { ThreadSplitLayout } from "../components/ThreadSplitLayout";
 import {
   resolveDraftPromotionNavigationTarget,
   threadHasStarted,
@@ -81,13 +83,17 @@ function DraftChatThreadRouteView() {
 
   return (
     <SidebarInset className="h-svh min-h-0 overflow-hidden overscroll-y-none bg-background text-foreground md:h-dvh">
-      <ChatView
-        draftId={draftId}
-        environmentId={draftSession.environmentId}
-        threadId={draftSession.threadId}
-        routeKind="draft"
-        forceExpandedMobileComposer
-      />
+      <ThreadSplitLayout
+        primaryThreadRef={scopeThreadRef(draftSession.environmentId, draftSession.threadId)}
+      >
+        <ChatView
+          draftId={draftId}
+          environmentId={draftSession.environmentId}
+          threadId={draftSession.threadId}
+          routeKind="draft"
+          forceExpandedMobileComposer
+        />
+      </ThreadSplitLayout>
     </SidebarInset>
   );
 }

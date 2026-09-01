@@ -1,5 +1,6 @@
 import type { SharePayload } from "expo-sharing";
 
+import { t } from "../../i18n/runtime";
 import { SerializedAsyncQueue } from "../../lib/serialized-async-queue";
 import {
   hasIncomingShareContent,
@@ -108,9 +109,7 @@ export class IncomingShareInbox {
         // would otherwise reopen the project picker on every foreground.
         await this.cleanup(built.cleanup);
         this.clearNativePayloads();
-        throw new Error(
-          draft.warnings[0] ?? "The shared content is not supported by the composer.",
-        );
+        throw new Error(draft.warnings[0] ?? t("share.notSupportedByComposer"));
       }
 
       // The durable inbox write is the transaction boundary. Never clear the
@@ -141,14 +140,14 @@ export class IncomingShareInbox {
       const persisted = await this.dependencies.loadDrafts();
       const target = persisted.find((draft) => draft.id === shareId);
       if (!target) {
-        throw new Error("The shared content is no longer available.");
+        throw new Error(t("share.noLongerAvailable"));
       }
       if (target.destination) {
         if (
           target.destination.environmentId !== destination.environmentId ||
           target.destination.projectId !== destination.projectId
         ) {
-          throw new Error("The shared content is already reserved for another project draft.");
+          throw new Error(t("share.alreadyReserved"));
         }
         return sortAndDedupeIncomingShares(persisted);
       }
@@ -180,7 +179,7 @@ export class IncomingShareInbox {
         target.destination.environmentId !== expectedDestination.environmentId ||
         target.destination.projectId !== expectedDestination.projectId
       ) {
-        throw new Error("The shared content reservation changed before it could be released.");
+        throw new Error(t("share.reservationChanged"));
       }
 
       const { destination: _destination, ...unreserved } = target;

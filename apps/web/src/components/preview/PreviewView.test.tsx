@@ -1,3 +1,7 @@
+import { setCurrentLanguage } from "~/i18n/runtime";
+
+setCurrentLanguage("en");
+
 import {
   DEFAULT_PREVIEW_APPEARANCE,
   DEFAULT_PREVIEW_ZOOM_FACTOR,
@@ -45,7 +49,8 @@ vi.mock("~/browserHistoryStore", () => ({
   useThreadRecentHistory: () => EMPTY_HISTORY,
 }));
 
-vi.mock("~/state/session", () => ({
+vi.mock("~/state/session", async (importOriginal) => ({
+  ...(await importOriginal<object>()),
   readPreparedConnection: mocks.readPreparedConnection,
 }));
 

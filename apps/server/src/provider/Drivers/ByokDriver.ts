@@ -22,6 +22,7 @@ import { ServerSettingsService } from "../../serverSettings.ts";
 import { makeByokTextGeneration } from "../../textGeneration/ByokTextGeneration.ts";
 import { makeByokModelDriver } from "../../composition/OpenAiByokModelDriver.ts";
 import { CompositionAgentServiceError } from "../../composition/CompositionAgentService.ts";
+import * as ToolBroker from "../../composition/ToolBroker.ts";
 import {
   byokCompositionAdapterForModel,
   listByokCompositionModelDescriptors,
@@ -97,6 +98,7 @@ export const ByokDriver: ProviderDriver<ByokSettings, ByokDriverEnv> = {
     Effect.gen(function* () {
       const httpClient = yield* HttpClient.HttpClient;
       const serverSettings = yield* ServerSettingsService;
+      const toolBroker = yield* Effect.serviceOption(ToolBroker.ToolBroker);
       const processEnv = mergeProviderInstanceEnvironment(environment);
       const continuationIdentity = defaultProviderContinuationIdentity({
         driverKind: DRIVER_KIND,
@@ -113,7 +115,10 @@ export const ByokDriver: ProviderDriver<ByokSettings, ByokDriverEnv> = {
         env: processEnv,
       });
 
-      const adapter = yield* makeByokAdapter(effectiveConfig, { instanceId });
+      const adapter = yield* makeByokAdapter(effectiveConfig, {
+        instanceId,
+        ...(toolBroker._tag === "Some" ? { toolBroker: toolBroker.value } : {}),
+      });
       const textGeneration = yield* makeByokTextGeneration(effectiveConfig);
 
       const checkProvider = checkByokProviderStatus(effectiveConfig).pipe(

@@ -27,6 +27,7 @@ import * as ElectronUpdater from "../electron/ElectronUpdater.ts";
 import * as ElectronWindow from "../electron/ElectronWindow.ts";
 import * as IpcChannels from "../ipc/channels.ts";
 import * as DesktopAppSettings from "../settings/DesktopAppSettings.ts";
+import { t } from "../i18n.js";
 import { normalizeDesktopUpdateReleaseNotes } from "./releaseNotes.ts";
 import { resolveDefaultDesktopUpdateChannel } from "./updateChannels.ts";
 import {
@@ -228,16 +229,16 @@ function getAutoUpdateDisabledReason(args: {
   hasUpdateFeedConfig: boolean;
 }): string | null {
   if (!args.hasUpdateFeedConfig) {
-    return "Automatic updates are not available because no update feed is configured.";
+    return t("updates.disabledReason.noFeed");
   }
   if (args.isDevelopment || !args.isPackaged) {
-    return "Automatic updates are only available in packaged production builds.";
+    return t("updates.disabledReason.notPackaged");
   }
   if (args.disabledByEnv) {
-    return "Automatic updates are disabled by the CODEWORK_DISABLE_AUTO_UPDATE setting.";
+    return t("updates.disabledReason.disabledBySetting");
   }
   if (args.platform === "linux" && !args.appImage) {
-    return "Automatic updates on Linux require running the AppImage build.";
+    return t("updates.disabledReason.linuxAppImage");
   }
   return null;
 }

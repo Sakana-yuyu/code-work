@@ -1,6 +1,8 @@
 import { readHostedPairingRequest } from "@codework/shared/remote";
 import * as Schema from "effect/Schema";
 
+import { t } from "../../i18n/runtime";
+
 const MOBILE_PAIRING_URL_PARAM = "pairingUrl";
 
 function isIpLiteral(host: string): boolean {
@@ -23,7 +25,7 @@ export class PairingQrPayloadEmptyError extends Schema.TaggedErrorClass<PairingQ
   {},
 ) {
   override get message(): string {
-    return "Scanned QR code did not contain a pairing URL.";
+    return t("pairing.emptyQrPayload");
   }
 }
 

@@ -193,7 +193,7 @@ export function SourceControlWritingSettingsSection() {
                 modelOptionsByInstance={modelOptionsByInstance}
                 triggerVariant="outline"
                 triggerClassName="min-w-0 max-w-none shrink-0 text-foreground/90 hover:text-foreground"
-                triggerAriaLabel="Source control writer model"
+                triggerAriaLabel={t("sourceControlWriterModel")}
                 onInstanceModelChange={(instanceId, model) => {
                   updateSettings({
                     sourceControlWriterModelSelection: createModelSelection(instanceId, model),

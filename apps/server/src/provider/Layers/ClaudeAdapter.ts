@@ -4625,7 +4625,7 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
       // interrupt() can acknowledge while resumed background tasks keep the
       // CLI alive. Stop is a hard session boundary for Claude, so close the
       // query and let the SDK escalate to SIGKILL when graceful exit fails.
-      yield* stopSessionInternal(context);
+      yield* stopSessionInternal(context, { emitExitEvent: true });
     },
   );
 

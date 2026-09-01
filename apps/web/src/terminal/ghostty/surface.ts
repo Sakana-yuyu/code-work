@@ -687,7 +687,7 @@ export class GhosttyTerminalSurface {
     mount.replaceChildren(canvas, input, scrollbar);
 
     const context = canvas.getContext("2d", { alpha: false });
-    if (!context) throw new Error("Canvas 2D is unavailable");
+    if (!context) throw new Error(t("terminal.canvas2dUnavailable"));
     // An opaque canvas backing store initializes to solid black, and the font
     // and WASM loads below leave it on screen for the whole setup window; paint
     // the theme background first so the mount never flashes a black box.

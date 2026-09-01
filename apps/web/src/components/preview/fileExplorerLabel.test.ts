@@ -1,3 +1,5 @@
+import { setCurrentLanguage } from "~/i18n/runtime";
+
 import { describe, expect, it } from "vite-plus/test";
 
 import {
@@ -5,6 +7,8 @@ import {
   revealInFileExplorerLabelForKind,
   revealInFileExplorerLabelForOs,
 } from "./fileExplorerLabel";
+
+setCurrentLanguage("en");
 
 describe("revealInFileExplorerLabel", () => {
   it.each([

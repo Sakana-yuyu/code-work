@@ -8,20 +8,20 @@ import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { t } from "~/i18n";
 export function getThemeRoleLabel(role: ThemeColorRole): string {
   const labels: Partial<Record<ThemeColorRole, string>> = {
-    canvas: "Background",
-    toolbar: "Toolbar background",
-    toolbarForeground: "Toolbar text",
-    toolbarBorder: "Toolbar border",
-    toolbarControl: "Toolbar control",
-    toolbarControlForeground: "Toolbar control text",
-    toolbarControlHover: "Toolbar control hover",
-    accent: "Accent color",
-    errorForeground: "Error text",
-    errorSurface: "Error background",
-    warningForeground: "Warning text",
-    warningSurface: "Warning background",
-    updateForeground: "Update text",
-    updateSurface: "Update background",
+    canvas: t("background"),
+    toolbar: t("themeColor.role.toolbarBackground"),
+    toolbarForeground: t("themeColor.role.toolbarForeground"),
+    toolbarBorder: t("themeColor.role.toolbarBorder"),
+    toolbarControl: t("themeColor.role.toolbarControl"),
+    toolbarControlForeground: t("themeColor.role.toolbarControlForeground"),
+    toolbarControlHover: t("themeColor.role.toolbarControlHover"),
+    accent: t("accentColor"),
+    errorForeground: t("themeColor.role.errorForeground"),
+    errorSurface: t("themeColor.role.errorSurface"),
+    warningForeground: t("themeColor.role.warningForeground"),
+    warningSurface: t("themeColor.role.warningSurface"),
+    updateForeground: t("themeColor.role.updateForeground"),
+    updateSurface: t("themeColor.role.updateSurface"),
   };
   const label = labels[role];
   if (label) return label;

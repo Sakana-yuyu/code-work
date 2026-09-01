@@ -1,6 +1,8 @@
 import ghosttyWasmUrl from "./vendor/ghostty-vt.wasm?url";
 import ghosttyWritePtyWasmUrl from "./vendor/ghostty-write-pty.wasm?url&no-inline";
 
+import { t } from "~/i18n/runtime";
+
 type WasmFunction = (...args: Array<number | bigint>) => number;
 
 interface TypeField {
@@ -44,7 +46,7 @@ export class GhosttyRuntime {
   static async load(): Promise<GhosttyRuntime> {
     const response = await fetch(ghosttyWasmUrl);
     if (!response.ok) {
-      throw new Error(`Unable to load libghostty-vt (${response.status})`);
+      throw new Error(t("terminal.ghosttyLoadFailed", { status: response.status }));
     }
     let instance: WebAssembly.Instance | undefined;
     const imports = {
@@ -155,7 +157,7 @@ export class GhosttyRuntime {
         view.setBigUint64(0, BigInt(value), true);
         return;
       default:
-        throw new Error(`Unsupported libghostty-vt field type: ${field.type}`);
+        throw new Error(t("terminal.ghosttyUnsupportedFieldType", { fieldType: field.type }));
     }
   }
 
@@ -177,14 +179,14 @@ export class GhosttyRuntime {
       case "u64":
         return Number(view.getBigUint64(0, true));
       default:
-        throw new Error(`Unsupported libghostty-vt field type: ${field.type}`);
+        throw new Error(t("terminal.ghosttyUnsupportedFieldType", { fieldType: field.type }));
     }
   }
 
   private async installWritePtyTrampoline(): Promise<void> {
     const response = await fetch(ghosttyWritePtyWasmUrl);
     if (!response.ok) {
-      throw new Error(`Unable to load the libghostty-vt PTY trampoline (${response.status})`);
+      throw new Error(t("terminal.ghosttyTrampolineLoadFailed", { status: response.status }));
     }
     const result = await WebAssembly.instantiate(await response.arrayBuffer(), {
       env: {

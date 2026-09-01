@@ -4,6 +4,7 @@ import {
   PROVIDER_SEND_TURN_MAX_IMAGE_BYTES,
   type UploadChatImageAttachment,
 } from "@codework/contracts";
+import { t } from "../i18n/runtime";
 import { estimateBase64ByteSize } from "./base64";
 import { beginForegroundHandoff } from "./foreground-handoff";
 import { uuidv4 } from "./uuid";
@@ -32,7 +33,7 @@ async function loadImagePicker() {
   try {
     return await import("expo-image-picker");
   } catch (error) {
-    throw new Error("Image attachments are unavailable right now.", { cause: error });
+    throw new Error(t("composer.imagesUnavailable"), { cause: error });
   }
 }
 
@@ -40,7 +41,7 @@ async function loadClipboard() {
   try {
     return await import("expo-clipboard");
   } catch (error) {
-    throw new Error("Clipboard paste is unavailable right now.", { cause: error });
+    throw new Error(t("composer.pasteUnavailable"), { cause: error });
   }
 }
 
@@ -52,7 +53,7 @@ export async function pickComposerImages(input: { readonly existingCount: number
   if (remainingSlots <= 0) {
     return {
       images: [],
-      error: `You can attach up to ${PROVIDER_SEND_TURN_MAX_ATTACHMENTS} images per message.`,
+      error: t("composer.attachmentLimit", { count: PROVIDER_SEND_TURN_MAX_ATTACHMENTS }),
     };
   }
 
@@ -62,8 +63,7 @@ export async function pickComposerImages(input: { readonly existingCount: number
   } catch (error) {
     return {
       images: [],
-      error:
-        error instanceof Error ? error.message : "Image attachments are unavailable right now.",
+      error: error instanceof Error ? error.message : t("composer.imagesUnavailable"),
     };
   }
 
@@ -95,24 +95,25 @@ export async function pickComposerImages(input: { readonly existingCount: number
 
   for (const asset of result.assets) {
     const mimeType = asset.mimeType?.toLowerCase();
+    const fileName = asset.fileName ?? "image";
     if (!mimeType?.startsWith("image/")) {
-      error = `Unsupported file type for '${asset.fileName ?? "image"}'.`;
+      error = t("composer.unsupportedFileType", { name: fileName });
       continue;
     }
     if (!isProviderSendTurnSupportedImageMimeType(mimeType)) {
-      error = `'${asset.fileName ?? "image"}' is not a supported image type. Attach GIF, JPEG, PNG, or WebP images.`;
+      error = t("composer.unsupportedImageType", { name: fileName });
       continue;
     }
 
     const base64 = asset.base64;
     if (!base64) {
-      error = `Failed to read '${asset.fileName ?? "image"}'.`;
+      error = t("composer.failedToReadFile", { name: fileName });
       continue;
     }
 
     const sizeBytes = asset.fileSize ?? estimateBase64ByteSize(base64);
     if (sizeBytes <= 0 || sizeBytes > PROVIDER_SEND_TURN_MAX_IMAGE_BYTES) {
-      error = `'${asset.fileName ?? "image"}' exceeds the 10 MB attachment limit.`;
+      error = t("composer.fileExceedsLimit", { name: fileName });
       continue;
     }
 
@@ -145,7 +146,7 @@ export async function pasteComposerClipboard(input: { readonly existingCount: nu
     return {
       images: [],
       text: null,
-      error: error instanceof Error ? error.message : "Clipboard paste is unavailable right now.",
+      error: error instanceof Error ? error.message : t("composer.pasteUnavailable"),
     };
   }
 
@@ -156,7 +157,7 @@ export async function pasteComposerClipboard(input: { readonly existingCount: nu
       return {
         images: [],
         text: null,
-        error: `You can attach up to ${PROVIDER_SEND_TURN_MAX_ATTACHMENTS} images per message.`,
+        error: t("composer.attachmentLimit", { count: PROVIDER_SEND_TURN_MAX_ATTACHMENTS }),
       };
     }
     const image = await clipboard.getImageAsync({ format: "png" });
@@ -164,7 +165,7 @@ export async function pasteComposerClipboard(input: { readonly existingCount: nu
       return {
         images: [],
         text: null,
-        error: "Clipboard image is unavailable.",
+        error: t("composer.clipboardImageUnavailable"),
       };
     }
 
@@ -174,7 +175,7 @@ export async function pasteComposerClipboard(input: { readonly existingCount: nu
       return {
         images: [],
         text: null,
-        error: "Clipboard image exceeds the 10 MB attachment limit.",
+        error: t("composer.clipboardImageTooLarge"),
       };
     }
 
@@ -200,14 +201,14 @@ export async function pasteComposerClipboard(input: { readonly existingCount: nu
     return {
       images: [],
       text: text.length > 0 ? text : null,
-      error: text.length > 0 ? null : "Clipboard is empty.",
+      error: text.length > 0 ? null : t("composer.clipboardEmpty"),
     };
   }
 
   return {
     images: [],
     text: null,
-    error: "Clipboard does not contain pasteable text or image content.",
+    error: t("composer.clipboardNoContent"),
   };
 }
 

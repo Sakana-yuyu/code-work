@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vite-plus/test";
 
+import { setCurrentLanguage } from "~/i18n/runtime";
+
 import { buildThreadActionMenuItems, type ThreadActionMenuState } from "./threadActionMenu.logic";
+
+setCurrentLanguage("en");
 
 const baseState: ThreadActionMenuState = {
   branch: null,
@@ -12,7 +16,12 @@ const baseState: ThreadActionMenuState = {
   isRunning: false,
   supports: { settlement: true, snooze: true, pinning: true, titleRegeneration: true },
   snoozePresets: [
-    { id: "hour", label: "In 1 hour", whenLabel: "3:00 PM", snoozedUntil: "2026-08-07T15:00:00Z" },
+    {
+      id: "hour",
+      labelKey: "snoozePreset.hour",
+      whenLabel: "3:00 PM",
+      snoozedUntil: "2026-08-07T15:00:00Z",
+    },
   ],
 };
 
@@ -33,7 +42,7 @@ describe("buildThreadActionMenuItems", () => {
         ...baseState,
         supports: { settlement: false, snooze: false, pinning: false, titleRegeneration: false },
       }),
-    ).toEqual(["rename", "mark-unread", "copy", "archive", "delete"]);
+    ).toEqual(["open-in-split", "rename", "mark-unread", "copy", "archive", "delete"]);
   });
 
   it("includes branch items only for threads with a branch", () => {
@@ -42,6 +51,11 @@ describe("buildThreadActionMenuItems", () => {
     expect(withBranch).toContain("copy-branch");
     expect(allIds(baseState)).not.toContain("new-thread-on-branch");
     expect(allIds(baseState)).not.toContain("copy-branch");
+  });
+
+  it("offers opening the existing thread in a separate window", () => {
+    expect(ids(baseState).at(0)).toBe("open-in-split");
+    expect(allIds(baseState)).toContain("open-in-split");
   });
 
   it("flips lifecycle labels with thread state", () => {

@@ -37,8 +37,14 @@ export interface ChatImageAttachment extends ContractChatImageAttachment {
 
 export type ChatAttachment = ChatImageAttachment;
 
+/** 仅用于本地时间线展示，不会写入服务端消息协议。 */
+export type ChatMessagePresentation =
+  | { readonly kind: "goal"; readonly summary: string }
+  | { readonly kind: "queue"; readonly summary: string };
+
 export interface ChatMessage extends Omit<OrchestrationMessage, "attachments"> {
   readonly attachments?: ReadonlyArray<ChatAttachment> | undefined;
+  readonly localPresentation?: ChatMessagePresentation | undefined;
 }
 
 export type ProposedPlan = OrchestrationProposedPlan;

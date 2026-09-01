@@ -28,6 +28,11 @@ import { ByokFeaturesSection } from "./ByokFeaturesSection";
 import { ByokModelAdaptersSection, readByokModelAdapters } from "./ByokModelAdaptersSection";
 import { CompositionControlCenterPanel } from "./CompositionControlCenterPanel";
 import { FacilitiesPageHeader } from "./FacilitiesPageHeader";
+import {
+  FacilitiesQuickGuide,
+  type FacilitiesGuideConcept,
+  type FacilitiesGuideStep,
+} from "./FacilitiesQuickGuide";
 import { IdeSessionsSettings } from "./IdeSessionsSettings";
 import { Collapsible, CollapsiblePanel, CollapsibleTrigger } from "../ui/collapsible";
 import { SettingsPageContainer, SettingsRow, SettingsSection } from "./settingsLayout";
@@ -52,6 +57,117 @@ const nextByokConfig = (config: unknown, key: string, value: unknown): Record<st
   ...(config !== null && typeof config === "object" ? (config as Record<string, unknown>) : {}),
   [key]: value,
 });
+
+const BYOK_GUIDE_STEPS: ReadonlyArray<FacilitiesGuideStep> = [
+  {
+    titleKey: "facilitiesGuide.byok.step1Title",
+    descriptionKey: "facilitiesGuide.byok.step1Description",
+    linkTo: "/settings/providers",
+    linkLabelKey: "facilitiesGuide.byok.step1Link",
+  },
+  {
+    titleKey: "facilitiesGuide.byok.step2Title",
+    descriptionKey: "facilitiesGuide.byok.step2Description",
+  },
+  {
+    titleKey: "facilitiesGuide.byok.step3Title",
+    descriptionKey: "facilitiesGuide.byok.step3Description",
+  },
+  {
+    titleKey: "facilitiesGuide.byok.step4Title",
+    descriptionKey: "facilitiesGuide.byok.step4Description",
+  },
+  {
+    titleKey: "facilitiesGuide.byok.step5Title",
+    descriptionKey: "facilitiesGuide.byok.step5Description",
+  },
+  {
+    titleKey: "facilitiesGuide.byok.step6Title",
+    descriptionKey: "facilitiesGuide.byok.step6Description",
+  },
+];
+
+const BYOK_GUIDE_CONCEPTS: ReadonlyArray<FacilitiesGuideConcept> = [
+  {
+    termKey: "facilitiesGuide.byok.termChannel",
+    descriptionKey: "facilitiesGuide.byok.termChannelDescription",
+  },
+  {
+    termKey: "facilitiesGuide.byok.termSecrets",
+    descriptionKey: "facilitiesGuide.byok.termSecretsDescription",
+  },
+  {
+    termKey: "facilitiesGuide.byok.termContext",
+    descriptionKey: "facilitiesGuide.byok.termContextDescription",
+  },
+  {
+    termKey: "facilitiesGuide.byok.termBalance",
+    descriptionKey: "facilitiesGuide.byok.termBalanceDescription",
+  },
+];
+
+const DELEGATION_GUIDE_STEPS: ReadonlyArray<FacilitiesGuideStep> = [
+  {
+    titleKey: "facilitiesGuide.delegation.step1Title",
+    descriptionKey: "facilitiesGuide.delegation.step1Description",
+    targetSelector: '[data-facilities-guide-target="delegation-workspace"]',
+    targetActionKey: "facilitiesGuide.delegation.step1Action",
+  },
+  {
+    titleKey: "facilitiesGuide.delegation.step2Title",
+    descriptionKey: "facilitiesGuide.delegation.step2Description",
+    targetSelector: '[data-facilities-guide-target="delegation-config"]',
+    targetActionKey: "facilitiesGuide.delegation.step2Action",
+  },
+  {
+    titleKey: "facilitiesGuide.delegation.step3Title",
+    descriptionKey: "facilitiesGuide.delegation.step3Description",
+    targetSelector: '[data-facilities-guide-target="delegation-executor"]',
+    targetActionKey: "facilitiesGuide.delegation.step3Action",
+  },
+  {
+    titleKey: "facilitiesGuide.delegation.step4Title",
+    descriptionKey: "facilitiesGuide.delegation.step4Description",
+    targetSelector: '[data-facilities-guide-target="delegation-advanced"]',
+    targetActionKey: "facilitiesGuide.delegation.step4Action",
+  },
+  {
+    titleKey: "facilitiesGuide.delegation.step5Title",
+    descriptionKey: "facilitiesGuide.delegation.step5Description",
+    targetSelector: '[data-facilities-guide-target="delegation-task-input"]',
+    targetActionKey: "facilitiesGuide.delegation.step5Action",
+  },
+  {
+    titleKey: "facilitiesGuide.delegation.step6Title",
+    descriptionKey: "facilitiesGuide.delegation.step6Description",
+    targetSelector: '[data-facilities-guide-target="delegation-runs"]',
+    targetActionKey: "facilitiesGuide.delegation.step6Action",
+    advanceOn: "manual",
+  },
+];
+
+const DELEGATION_GUIDE_CONCEPTS: ReadonlyArray<FacilitiesGuideConcept> = [
+  {
+    termKey: "facilitiesGuide.delegation.termExecutor",
+    descriptionKey: "facilitiesGuide.delegation.termExecutorDescription",
+  },
+  {
+    termKey: "facilitiesGuide.delegation.termEnv",
+    descriptionKey: "facilitiesGuide.delegation.termEnvDescription",
+  },
+  {
+    termKey: "facilitiesGuide.delegation.termTimeouts",
+    descriptionKey: "facilitiesGuide.delegation.termTimeoutsDescription",
+  },
+  {
+    termKey: "facilitiesGuide.delegation.termSupervision",
+    descriptionKey: "facilitiesGuide.delegation.termSupervisionDescription",
+  },
+  {
+    termKey: "facilitiesGuide.delegation.termExecutionMode",
+    descriptionKey: "facilitiesGuide.delegation.termExecutionModeDescription",
+  },
+];
 
 function ByokConfigurationWorkspace() {
   const settings = usePrimarySettings();
@@ -154,7 +270,9 @@ export function RuntimeFacilitiesSettingsPanel() {
         icon={<ServerCogIcon className="size-4" />}
         title={t("settings.runtime")}
         description={t("runtimeGuide.pageDescription")}
-      />
+      >
+        <FacilitiesQuickGuide guideId="runtime" />
+      </FacilitiesPageHeader>
       <AgentDriversSettings />
       <IdeSessionsSettings />
     </SettingsPageContainer>
@@ -210,22 +328,34 @@ export function DelegationFacilitiesSettingsPanel() {
         icon={<NetworkIcon className="size-4" />}
         title={t("settings.delegation")}
         description={t("delegationSettings.pageDescription")}
-      />
-      <ByokDelegationWorkspacePanel />
-      <FacilitiesCollapsibleSection
-        title={t("delegationSettings.taskGraphTitle")}
-        description={t("delegationSettings.taskGraphDescription")}
-        icon={<NetworkIcon className="size-3.5" />}
       >
-        <TaskGraphPanel />
-      </FacilitiesCollapsibleSection>
-      <FacilitiesCollapsibleSection
-        title={t("delegationSettings.runtimeTitle")}
-        description={t("delegationSettings.runtimeDescription")}
-        icon={<ListTodoIcon className="size-3.5" />}
-      >
-        <CompositionControlCenterPanel scope="byok-delegation" />
-      </FacilitiesCollapsibleSection>
+        <FacilitiesQuickGuide
+          guideId="delegation"
+          steps={DELEGATION_GUIDE_STEPS}
+          concepts={DELEGATION_GUIDE_CONCEPTS}
+        />
+      </FacilitiesPageHeader>
+      <div data-facilities-guide-target="delegation-workspace">
+        <ByokDelegationWorkspacePanel />
+      </div>
+      <div>
+        <FacilitiesCollapsibleSection
+          title={t("delegationSettings.taskGraphTitle")}
+          description={t("delegationSettings.taskGraphDescription")}
+          icon={<NetworkIcon className="size-3.5" />}
+        >
+          <TaskGraphPanel />
+        </FacilitiesCollapsibleSection>
+      </div>
+      <div>
+        <FacilitiesCollapsibleSection
+          title={t("delegationSettings.runtimeTitle")}
+          description={t("delegationSettings.runtimeDescription")}
+          icon={<ListTodoIcon className="size-3.5" />}
+        >
+          <CompositionControlCenterPanel scope="byok-delegation" />
+        </FacilitiesCollapsibleSection>
+      </div>
     </SettingsPageContainer>
   );
 }
@@ -237,7 +367,13 @@ export function ByokFacilitiesSettingsPanel() {
         icon={<BotIcon className="size-4" />}
         title={t("settings.byok")}
         description={t("byokAdapters.description")}
-      />
+      >
+        <FacilitiesQuickGuide
+          guideId="byok"
+          steps={BYOK_GUIDE_STEPS}
+          concepts={BYOK_GUIDE_CONCEPTS}
+        />
+      </FacilitiesPageHeader>
       <ByokConfigurationWorkspace />
       <ByokBalanceDashboardPanel />
       <SupplierRegistryPanel />

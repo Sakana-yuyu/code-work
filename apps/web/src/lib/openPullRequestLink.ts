@@ -38,8 +38,8 @@ export class PullRequestLinkOpenError extends Schema.TaggedErrorClass<PullReques
 
   override get message(): string {
     return this.targetOrigin === null
-      ? "Unable to open pull request link."
-      : `Unable to open pull request link at ${this.targetOrigin}.`;
+      ? t("pullRequest.openLinkFailed")
+      : t("pullRequest.openLinkFailedAtOrigin", { targetOrigin: this.targetOrigin });
   }
 }
 

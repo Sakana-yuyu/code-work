@@ -333,6 +333,7 @@ it.effect("accepts bootstrap metadata in thread.turn.start", () =>
           interactionMode: "default",
           branch: null,
           worktreePath: null,
+          goalObjective: "完成目标草稿绑定",
           createdAt: "2026-01-01T00:00:00.000Z",
         },
         prepareWorktree: {
@@ -346,6 +347,7 @@ it.effect("accepts bootstrap metadata in thread.turn.start", () =>
       createdAt: "2026-01-01T00:00:00.000Z",
     });
     assert.strictEqual(parsed.bootstrap?.createThread?.projectId, "project-1");
+    assert.strictEqual(parsed.bootstrap?.createThread?.goalObjective, "完成目标草稿绑定");
     assert.strictEqual(parsed.bootstrap?.prepareWorktree?.baseBranch, "main");
     assert.strictEqual(parsed.bootstrap?.prepareWorktree?.startFromOrigin, true);
     assert.strictEqual(parsed.bootstrap?.runSetupScript, true);

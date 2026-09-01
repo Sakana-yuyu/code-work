@@ -105,7 +105,11 @@ export function displayDriverName(profile: CompositionAgentDriverProfile): strin
   }
 }
 
-function RuntimeStartGuide({ profiles }: { readonly profiles: ReadonlyArray<CompositionAgentDriverProfile> }) {
+function RuntimeStartGuide({
+  profiles,
+}: {
+  readonly profiles: ReadonlyArray<CompositionAgentDriverProfile>;
+}) {
   const availableProfiles = profiles.filter((profile) => profile.status === "available");
   const hasAvailableByok = availableProfiles.some((profile) => profile.providerKind === "byok");
   const title =
@@ -133,7 +137,11 @@ function RuntimeStartGuide({ profiles }: { readonly profiles: ReadonlyArray<Comp
       control={
         <div className="flex flex-wrap gap-2">
           {availableProfiles.length > 0 ? (
-            <Button render={<Link to="/settings/delegation" />} size="xs">
+            <Button
+              data-facilities-guide-target="runtime-delegation"
+              render={<Link to="/settings/delegation" />}
+              size="xs"
+            >
               {t("runtimeGuide.openDelegation")}
               <ArrowRightIcon />
             </Button>
@@ -156,13 +164,16 @@ function DriverProfileRow({ profile }: { readonly profile: CompositionAgentDrive
   const isByok = profile.providerKind === "byok";
 
   return (
-    <article className="rounded-lg border border-border/60 bg-muted/10 px-3 py-3 sm:px-4">
+    <article
+      className="rounded-lg border border-border/60 bg-muted/10 px-3 py-3 sm:px-4"
+      data-facilities-guide-target="runtime-capabilities"
+    >
       <div className="flex flex-col gap-2">
         <div className="flex flex-wrap items-center gap-2">
-          <h3 className="text-sm font-medium text-foreground">
-            {displayDriverName(profile)}
-          </h3>
-          <span className={`inline-flex items-center gap-1 text-xs ${statusClassName(profile.status)}`}>
+          <h3 className="text-sm font-medium text-foreground">{displayDriverName(profile)}</h3>
+          <span
+            className={`inline-flex items-center gap-1 text-xs ${statusClassName(profile.status)}`}
+          >
             {statusIcon(profile.status)}
             {statusLabel(profile.status)}
           </span>
@@ -233,6 +244,7 @@ export function AgentDriversSettings() {
   return (
     <SettingsSection
       id="agent-drivers"
+      data-facilities-guide-target="runtime-drivers"
       title={t("agentDrivers.title")}
       icon={<BotIcon className="size-4 text-muted-foreground" />}
       headerAction={

@@ -31,6 +31,7 @@ import {
   MonitorIcon,
   PlusIcon,
   RefreshCwIcon,
+  ServerCogIcon,
   TerminalIcon,
 } from "lucide-react";
 import { useCallback, useMemo, useRef, useState, type ReactNode } from "react";
@@ -75,6 +76,8 @@ import { ScrollArea } from "../ui/scroll-area";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { stackedThreadToast, toastManager } from "../ui/toast";
 import { AddProviderInstanceDialog } from "./AddProviderInstanceDialog";
+import { FacilitiesPageHeader } from "./FacilitiesPageHeader";
+import { FacilitiesQuickGuide } from "./FacilitiesQuickGuide";
 import { ProviderInstanceCard } from "./ProviderInstanceCard";
 import {
   MulticaRuntimeSettingsPanel,
@@ -274,6 +277,13 @@ export function ProviderSettingsPanel() {
 
   return (
     <SettingsPageContainer width="expanded" className="gap-8">
+      <FacilitiesPageHeader
+        icon={<ServerCogIcon className="size-4" />}
+        title={t("settings.providers")}
+        description={t("facilitiesGuide.providers.pageDescription")}
+      >
+        <FacilitiesQuickGuide guideId="providers" />
+      </FacilitiesPageHeader>
       {options.length === 0 ? (
         <SettingsSection title={t("providers2")}>
           <SettingsRow
@@ -870,6 +880,9 @@ export function EnvironmentProviderSettings({
         mode={mode}
         selected={mode === "list" && selectedRow?.instanceId === row.instanceId}
         onSelect={mode === "list" ? () => setSelectedInstanceId(row.instanceId) : undefined}
+        guideTarget={
+          mode === "list" && String(row.driver) === "byok" ? "providers-byok-instance" : undefined
+        }
         readOnly={readOnly}
         onUpdate={(next) => {
           const wasEnabled = resolveProviderInstanceEnabled(row.instance);
@@ -971,6 +984,7 @@ export function EnvironmentProviderSettings({
                         <Button
                           size="icon-micro"
                           variant="ghost-muted"
+                          data-facilities-guide-target="providers-refresh"
                           disabled={isRefreshingProviders}
                           onClick={() => void refreshProviders()}
                           aria-label={t("refreshProviderStatus")}

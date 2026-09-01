@@ -4,6 +4,8 @@ export type DesktopLanguage = "zh-CN" | "en";
 export type TranslateParams = Readonly<Record<string, string | number | undefined>>;
 
 function resolveLanguage(): DesktopLanguage {
+  const override = process.env.CODEWORK_DESKTOP_LANGUAGE;
+  if (override === "en" || override === "zh-CN") return override;
   const locale = Intl.DateTimeFormat().resolvedOptions().locale;
   return locale.toLowerCase().startsWith("zh") ? "zh-CN" : "en";
 }

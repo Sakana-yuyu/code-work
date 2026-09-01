@@ -60,6 +60,9 @@ export function MulticaRuntimeSettingsEditor({
           ) : null}
         </div>
       </div>
+      <p className="max-w-2xl text-xs leading-5 text-muted-foreground">
+        {text("setupDescription")}
+      </p>
 
       <MulticaRuntimeConnectionFields
         text={text}

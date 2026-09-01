@@ -72,7 +72,26 @@ function toNonEmptyProviderInput(value: string | undefined): string | undefined 
 }
 
 function formatThreadGoalProviderInput(objective: string, userInput: string | undefined): string {
-  return ["[Thread Goal]", objective, "", "[User Request]", userInput ?? ""].join("\n");
+  // Codex update_plan 式收尾机制：是否达成由模型在回合末自报显式标记，
+  // 服务端在回合终帧扫描标记并自动收敛 Goal 状态（见 ProviderRuntimeIngestion）。
+  // “发送目标”会以目标文本本身发起首轮回合，此时不再重复 [User Request] 段。
+  const lines = [
+    "[Thread Goal]",
+    objective,
+    "",
+    "Keep working toward this goal across turns without pausing to ask whether to continue.",
+    "- If this reply fully achieves the goal, end the reply with [[GOAL_COMPLETE: one-line reason]].",
+    "- If the goal has become impossible or no longer relevant, end the reply with [[GOAL_CANCELLED: one-line reason]].",
+    "- Never emit either marker while the goal is still unfinished.",
+  ];
+  if (
+    userInput !== undefined &&
+    userInput.trim().length > 0 &&
+    userInput.trim() !== objective.trim()
+  ) {
+    lines.push("", "[User Request]", userInput);
+  }
+  return lines.join("\n");
 }
 
 function mapProviderSessionStatusToOrchestrationStatus(
@@ -336,6 +355,26 @@ const make = Effect.gen(function* () {
     );
 
   const threadModelSelections = new Map<string, ModelSelection>();
+
+  const syncThreadGoalStatus = (threadId: ThreadId, status: "active" | "paused") => {
+    if (Option.isNone(threadGoalStore)) return Effect.void;
+    return Effect.gen(function* () {
+      const current = yield* threadGoalStore.value.get(threadId);
+      if (Option.isNone(current) || current.value.status === status) return;
+      yield* status === "active"
+        ? threadGoalStore.value.resume(threadId)
+        : threadGoalStore.value.pause(threadId);
+    }).pipe(
+      Effect.catchCause((cause) => {
+        if (Cause.hasInterruptsOnly(cause)) return Effect.failCause(cause);
+        return Effect.logWarning("provider command reactor failed to sync thread Goal status", {
+          threadId,
+          status,
+          cause: Cause.pretty(cause),
+        });
+      }),
+    );
+  };
 
   const appendProviderFailureActivity = (input: {
     readonly threadId: ThreadId;
@@ -1202,6 +1241,11 @@ const make = Effect.gen(function* () {
         detail,
         createdAt: event.payload.createdAt,
       }).pipe(
+        Effect.ensuring(
+          syncThreadGoalStatus(event.payload.threadId, "paused").pipe(
+            Effect.catchCause(() => Effect.void),
+          ),
+        ),
         Effect.flatMap(() =>
           appendProviderFailureActivity({
             threadId: event.payload.threadId,
@@ -1246,6 +1290,7 @@ const make = Effect.gen(function* () {
       return;
     }
 
+    yield* syncThreadGoalStatus(event.payload.threadId, "active");
     yield* providerService
       .sendTurn(sendTurnRequest.value)
       .pipe(Effect.catchCause(recoverTurnStartFailure), Effect.forkScoped);
@@ -1343,7 +1388,14 @@ const make = Effect.gen(function* () {
     // Orchestration turn ids are not provider turn ids, so interrupt by session.
     yield* providerService
       .interruptTurn({ threadId: event.payload.threadId })
-      .pipe(Effect.catchCause(recoverInterruptFailure));
+      .pipe(
+        Effect.catchCause(recoverInterruptFailure),
+        Effect.ensuring(
+          syncThreadGoalStatus(event.payload.threadId, "paused").pipe(
+            Effect.catchCause(() => Effect.void),
+          ),
+        ),
+      );
   });
 
   const processApprovalResponseRequested = Effect.fn("processApprovalResponseRequested")(function* (
@@ -1463,6 +1515,7 @@ const make = Effect.gen(function* () {
       },
       createdAt: now,
     });
+    yield* syncThreadGoalStatus(thread.id, "paused");
   });
 
   const processDomainEvent = Effect.fn("processDomainEvent")(function* (

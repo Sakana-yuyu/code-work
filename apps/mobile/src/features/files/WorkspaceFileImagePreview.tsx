@@ -39,7 +39,7 @@ function ResolvedWorkspaceFileImagePreview(props: {
           resizeMode="contain"
           onLoadStart={() => setLoadError(null)}
           onError={(event) => {
-            setLoadError(event.nativeEvent.error || "The image could not be rendered.");
+            setLoadError(event.nativeEvent.error || t("files.imageRenderFailed"));
           }}
         />
       </Pressable>

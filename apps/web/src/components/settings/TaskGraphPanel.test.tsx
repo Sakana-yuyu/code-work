@@ -170,12 +170,12 @@ describe("TaskGraphPanel", () => {
     const html = renderPanel();
 
     expect(html).toContain(t("taskGraph.title"));
-    expect(html).toContain(t("taskGraph.noAvailableDriver"));
+    expect(html).toContain(t("taskGraph.notReadyTitle"));
   });
 
   it("shows the authorization downgrade when the Driver has no verified handshake", () => {
     mocks.environment = { environmentId: EnvironmentId.make("env-test") };
-    mocks.driverQuery.data = [profile()];
+    mocks.driverQuery.data = [profile({ supportsTaskGraph: true })];
     mocks.taskQuery.data = { tasks: [] };
 
     const html = renderPanel();

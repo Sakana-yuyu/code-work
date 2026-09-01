@@ -20,6 +20,7 @@ import * as DesktopServerExposure from "./DesktopServerExposure.ts";
 import * as DesktopAppSettings from "../settings/DesktopAppSettings.ts";
 import * as DesktopWslEnvironment from "../wsl/DesktopWslEnvironment.ts";
 import * as DesktopWslServerTree from "../wsl/DesktopWslServerTree.ts";
+import { t } from "../i18n.js";
 
 export class DesktopBackendObservabilitySettingsReadError extends Schema.TaggedErrorClass<DesktopBackendObservabilitySettingsReadError>()(
   "DesktopBackendObservabilitySettingsReadError",
@@ -254,7 +255,7 @@ const runWslPreflight = Effect.fn("desktop.backendConfiguration.wslPreflight")(f
   if (!wslAvailable) {
     return {
       _tag: "Failed",
-      reason: "WSL is not available on this system",
+      reason: t("wsl.preflight.unavailable"),
       fatal: false,
     } as const;
   }
@@ -266,7 +267,7 @@ const runWslPreflight = Effect.fn("desktop.backendConfiguration.wslPreflight")(f
   if (distroProbe._tag === "Failure") {
     return {
       _tag: "Failed",
-      reason: `Unable to list WSL distributions: ${distroProbe.error.message}`,
+      reason: t("wsl.preflight.listFailed", { message: distroProbe.error.message }),
       fatal: false,
     } as const;
   }
@@ -281,10 +282,10 @@ const runWslPreflight = Effect.fn("desktop.backendConfiguration.wslPreflight")(f
     return {
       _tag: "Failed",
       reason: input.distro
-        ? `WSL distro is not installed: ${input.distro}`
+        ? t("wsl.preflight.distroNotInstalled", { distro: input.distro })
         : installedDistros.length === 0
-          ? "WSL has no installed distributions"
-          : "WSL has no default distribution",
+          ? t("wsl.preflight.noDistros")
+          : t("wsl.preflight.noDefaultDistro"),
       fatal: true,
     } as const;
   }
@@ -316,7 +317,7 @@ const runWslPreflight = Effect.fn("desktop.backendConfiguration.wslPreflight")(f
   if (!nodePtyResult.ok) {
     return {
       _tag: "Failed",
-      reason: `WSL node-pty unavailable: ${nodePtyResult.reason}`,
+      reason: t("wsl.preflight.nodePtyUnavailable", { reason: nodePtyResult.reason }),
       fatal: nodePtyResult.fatal,
       ...(nodePtyResult.retryLimit === undefined ? {} : { retryLimit: nodePtyResult.retryLimit }),
     } as const;
@@ -722,7 +723,7 @@ export const make = Effect.gen(function* () {
     resolvePrimaryLabel: Effect.gen(function* () {
       const { useWsl, distro } = yield* describePrimary;
       if (!useWsl) {
-        return environment.platform === "win32" ? "Windows" : "Local environment";
+        return environment.platform === "win32" ? "Windows" : t("backend.localEnvironment");
       }
       return distro ? `WSL (${distro})` : "WSL";
     }).pipe(Effect.withSpan("desktop.backendConfiguration.resolvePrimaryLabel")),

@@ -122,7 +122,7 @@ export function CloudEnvironmentConnectRows({
       data: traceId
         ? {
             secondaryActionProps: {
-              children: "Copy trace ID",
+              children: t("diagnostics.copyTraceId"),
               onClick: () => void navigator.clipboard?.writeText(traceId),
             },
           }
@@ -151,7 +151,7 @@ export function CloudEnvironmentConnectRows({
     // A failed or offline discovery is not "no environments" — misreporting it
     // as empty would read as the user's devices having disappeared.
     const discoveryProblem = environmentsState.offline
-      ? "You appear to be offline."
+      ? t("cloud.appearOffline")
       : (Option.getOrNull(environmentsState.error)?.message ?? null);
     if (discoveryProblem !== null && !environmentsState.refreshing) {
       return (
@@ -202,7 +202,7 @@ export function CloudEnvironmentConnectRows({
           ? t("interface.available-relay-offline")
           : availability === "checking"
             ? t("interface.available-checking-relay-status")
-            : (Option.getOrNull(error)?.message ?? "Available · Relay status unavailable");
+            : (Option.getOrNull(error)?.message ?? t("cloud.availableRelayStatusUnavailable"));
     return (
       <div key={environment.environmentId} className={ITEM_ROW_CLASSNAME}>
         <div className={ITEM_ROW_INNER_CLASSNAME}>
@@ -220,12 +220,12 @@ export function CloudEnvironmentConnectRows({
                   savedConnection
                     ? savedConnection.statusText
                     : availability === "online"
-                      ? "Relay online"
+                      ? t("cloud.relayOnline")
                       : availability === "offline"
-                        ? "Relay offline"
+                        ? t("cloud.relayOffline")
                         : availability === "checking"
-                          ? "Checking relay status"
-                          : (Option.getOrNull(error)?.message ?? "Relay status unavailable")
+                          ? t("cloud.checkingRelayStatus")
+                          : (Option.getOrNull(error)?.message ?? t("cloud.relayStatusUnavailable"))
                 }
               />
               <p className="truncate text-sm font-medium">{environment.label}</p>

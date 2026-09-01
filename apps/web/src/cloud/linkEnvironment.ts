@@ -71,7 +71,7 @@ function ensureRelayClientAvailable(
     const registry = yield* EnvironmentRegistry;
     const status = yield* registry
       .run(environmentId, request(WS_METHODS.cloudGetRelayClientStatus, {}))
-      .pipe(Effect.mapError(relayClientRpcError("Could not check relay client availability.")));
+      .pipe(Effect.mapError(relayClientRpcError(t("cloud.relayClientAvailabilityCheckFailed"))));
     if (status.status === "available") return;
     if (status.status === "unsupported") {
       return yield* new CloudEnvironmentLinkError({
@@ -84,7 +84,7 @@ function ensureRelayClientAvailable(
 
     const confirmed = yield* Effect.tryPromise({
       try: () => requestRelayClientInstallConfirmation(status.version),
-      catch: relayClientRpcError("Could not confirm relay client installation."),
+      catch: relayClientRpcError(t("cloud.relayClientInstallConfirmationFailed")),
     });
     if (!confirmed) {
       return yield* new CloudEnvironmentLinkError({
@@ -101,7 +101,7 @@ function ensureRelayClientAvailable(
       )
       .pipe(
         Stream.runLast,
-        Effect.mapError(relayClientRpcError("Could not install the relay client.")),
+        Effect.mapError(relayClientRpcError(t("cloud.relayClientInstallFailed"))),
         Effect.ensuring(Effect.sync(finishRelayClientInstall)),
       );
     if (Option.isNone(installed) || installed.value.type !== "complete") {
@@ -141,41 +141,41 @@ function relayProtectedErrorMessage(error: RelayProtectedErrorType): string {
       switch (error.reason) {
         case "missing_bearer":
         case "invalid_bearer":
-          return "Relay rejected the cloud session token.";
+          return t("cloud.relayRejectedSessionToken");
         case "invalid_dpop":
-          return "Relay rejected the DPoP proof.";
+          return t("cloud.relayRejectedDpopProof");
         case "not_authorized":
-          return "Relay rejected the authenticated request.";
+          return t("cloud.relayRejectedAuthenticatedRequest");
       }
     case "RelayEnvironmentLinkProofExpiredError":
-      return "Relay rejected an expired environment link proof.";
+      return t("cloud.relayRejectedExpiredLinkProof");
     case "RelayEnvironmentLinkProofInvalidError":
-      return `Relay rejected the environment link proof (${error.reason}).`;
+      return t("cloud.relayRejectedLinkProof", { reason: error.reason });
     case "RelayEnvironmentConnectNotAuthorizedError":
       // "Not authorized" covers non-auth causes too; surface the reason so a
       // missing link doesn't read as a credential problem.
       if (error.reason === "environment_link_not_found") {
-        return "Relay has no active link for this environment. The environment server may not have re-established its link yet.";
+        return t("cloud.relayNoActiveLinkForEnvironment");
       }
       return error.reason
-        ? `Relay rejected the environment connection request (${error.reason}).`
-        : "Relay rejected the environment connection request.";
+        ? t("cloud.relayRejectedConnectionRequestReason", { reason: error.reason })
+        : t("cloud.relayRejectedConnectionRequest");
     case "RelayEnvironmentEndpointUnavailableError":
-      return `Relay could not reach the environment endpoint (${error.reason}).`;
+      return t("cloud.relayEndpointUnreachable", { reason: error.reason });
     case "RelayEnvironmentEndpointTimedOutError":
-      return "Relay timed out while contacting the environment endpoint.";
+      return t("cloud.relayEndpointTimedOut");
     case "RelayEnvironmentLinkFailedError":
-      return `Relay could not link the environment (${error.reason}).`;
+      return t("cloud.relayLinkFailed", { reason: error.reason });
     case "RelayEnvironmentLinkUnavailableError":
-      return `Relay cannot provision the managed endpoint (${error.reason}).`;
+      return t("cloud.relayCannotProvisionManagedEndpoint", { reason: error.reason });
     case "RelayEnvironmentLinkLimitExceededError":
-      return `Relay refused the link: this account already has its maximum of ${error.maxTunnels} managed tunnels. Unlink an environment to free one up.`;
+      return t("cloud.relayLinkRefusedMaxTunnels", { maxTunnels: error.maxTunnels });
     case "RelayAgentActivityPublishProofExpiredError":
-      return "Relay rejected an expired agent activity publish proof.";
+      return t("cloud.relayRejectedExpiredPublishProof");
     case "RelayAgentActivityPublishProofInvalidError":
-      return `Relay rejected the agent activity publish proof (${error.reason}).`;
+      return t("cloud.relayRejectedPublishProof", { reason: error.reason });
     case "RelayInternalError":
-      return `Relay encountered an internal error (${error.reason}).`;
+      return t("cloud.relayInternalError", { reason: error.reason });
   }
 }
 
@@ -345,7 +345,7 @@ export function readPrimaryCloudLinkState(input: {
     const client = yield* makeEnvironmentHttpApiClient(input.target.httpBaseUrl);
     return yield* client.connect
       .linkState({ headers: {} })
-      .pipe(Effect.mapError(environmentApiError("Could not read environment cloud link state.")));
+      .pipe(Effect.mapError(environmentApiError(t("cloud.readEnvironmentLinkStateFailed"))));
   }).pipe(Effect.provide(primaryEnvironmentHttpLayer));
 }
 
@@ -361,7 +361,7 @@ export function updatePrimaryCloudPreferences(input: {
         payload: input,
       })
       .pipe(
-        Effect.mapError(environmentApiError("Could not update environment cloud preferences.")),
+        Effect.mapError(environmentApiError(t("cloud.updateEnvironmentCloudPreferencesFailed"))),
       );
   }).pipe(Effect.provide(primaryEnvironmentHttpLayer));
 }
@@ -378,7 +378,7 @@ export function unlinkPrimaryEnvironmentFromCloud(input: {
     const client = yield* makeEnvironmentHttpApiClient(input.target.httpBaseUrl);
     yield* client.connect
       .unlink({ headers: {} })
-      .pipe(Effect.mapError(environmentApiError("Could not unlink the environment from cloud.")));
+      .pipe(Effect.mapError(environmentApiError(t("cloud.unlinkEnvironmentFromCloudFailed"))));
 
     const configuredRelayUrl = relayUrl();
     if (configuredRelayUrl && input.clerkToken) {
@@ -462,7 +462,7 @@ export function linkPrimaryEnvironmentToCloud(input: {
           origin: endpointOrigin(input.target.httpBaseUrl),
         },
       })
-      .pipe(Effect.mapError(environmentApiError("Could not obtain environment link proof.")));
+      .pipe(Effect.mapError(environmentApiError(t("cloud.obtainEnvironmentLinkProofFailed"))));
     const link = yield* relayClient
       .linkEnvironment({
         clerkToken: input.clerkToken,
@@ -496,6 +496,6 @@ export function linkPrimaryEnvironmentToCloud(input: {
           endpointRuntime: link.endpointRuntime,
         },
       })
-      .pipe(Effect.mapError(environmentApiError("Could not configure environment relay access.")));
+      .pipe(Effect.mapError(environmentApiError(t("cloud.configureEnvironmentRelayAccessFailed"))));
   }).pipe(Effect.provide(primaryEnvironmentHttpLayer));
 }

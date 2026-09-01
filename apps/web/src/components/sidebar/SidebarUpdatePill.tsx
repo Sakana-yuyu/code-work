@@ -282,8 +282,7 @@ function SidebarUpdateControl() {
           stackedThreadToast({
             type: "error",
             title: t("couldNotCheckForUpdates"),
-            description:
-              result.state.message ?? "Automatic updates are not available in this build.",
+            description: result.state.message ?? t("desktopUpdate.autoUpdatesUnavailable"),
           }),
         );
       })

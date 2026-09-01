@@ -1,3 +1,7 @@
+import { setCurrentLanguage } from "../../i18n/runtime";
+
+setCurrentLanguage("en");
+
 import { describe, expect, it } from "@effect/vitest";
 
 import { projectThreadContentPresentation } from "./threadContentPresentation";

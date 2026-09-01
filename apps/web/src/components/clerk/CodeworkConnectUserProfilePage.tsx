@@ -29,14 +29,14 @@ const linkedAtFormatter = new Intl.DateTimeFormat(undefined, { dateStyle: "mediu
 function linkedAtLabel(value: string): string {
   const linkedAt = new Date(value);
   return Number.isNaN(linkedAt.getTime())
-    ? "Link date unavailable"
+    ? t("clerk.linkDateUnavailable")
     : `Linked ${linkedAtFormatter.format(linkedAt)}`;
 }
 
 function endpointLabel(environment: RelayClientEnvironmentRecord): string {
   return environment.endpoint.providerKind === "cloudflare_tunnel"
-    ? "Managed tunnel"
-    : "Activity publishing only";
+    ? t("clerk.managedTunnel")
+    : t("clerk.activityPublishingOnly");
 }
 
 export function CodeworkConnectEnvironmentRow(props: {
@@ -181,7 +181,7 @@ export function CodeworkConnectUserProfilePage() {
       data: traceId
         ? {
             secondaryActionProps: {
-              children: "Copy trace ID",
+              children: t("diagnostics.copyTraceId"),
               onClick: () => void navigator.clipboard?.writeText(traceId),
             },
           }

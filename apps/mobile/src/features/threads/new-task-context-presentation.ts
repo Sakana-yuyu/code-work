@@ -1,13 +1,15 @@
+import { t } from "../../i18n/runtime";
+
 type WorkspaceMode = "local" | "worktree";
 
 export function resolveNewTaskWorkspaceLabel(input: {
   readonly workspaceMode: WorkspaceMode;
   readonly worktreePath: string | null;
-}): "Current checkout" | "Current worktree" | "New worktree" {
+}): string {
   if (input.workspaceMode === "worktree") {
-    return "New worktree";
+    return t("threadModeNewWorktree");
   }
-  return input.worktreePath ? "Current worktree" : "Current checkout";
+  return input.worktreePath ? t("newTask.currentWorktree") : t("newTask.currentCheckout");
 }
 
 export function resolveNewTaskBranchWorktreePath(input: {
@@ -63,7 +65,7 @@ export function resolveNewTaskBranchLabel(input: {
   readonly workspaceMode: WorkspaceMode;
 }): string {
   if (!input.branchName) {
-    return "Choose branch";
+    return t("newTask.chooseBranch");
   }
 
   if (input.workspaceMode === "local") {
@@ -71,7 +73,7 @@ export function resolveNewTaskBranchLabel(input: {
   }
 
   const baseRef = input.startFromOrigin ? `origin/${input.branchName}` : input.branchName;
-  return `From ${baseRef}`;
+  return t("newTask.fromRef", { ref: baseRef });
 }
 
 export function shouldCheckoutNewTaskBranch(input: {

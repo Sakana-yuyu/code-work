@@ -7,6 +7,7 @@ import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
 import { Atom } from "effect/unstable/reactivity";
 
+import { t } from "~/i18n/runtime";
 import { appAtomRegistry } from "~/rpc/atomRegistry";
 
 const DESKTOP_NETWORK_ACCESS_STALE_TIME_MS = 30_000;
@@ -26,7 +27,7 @@ class DesktopNetworkAccessUnavailableError extends Schema.TaggedErrorClass<Deskt
   {},
 ) {
   override get message(): string {
-    return "Desktop network access is unavailable.";
+    return t("desktop.networkAccessUnavailable");
   }
 }
 
@@ -35,7 +36,7 @@ class DesktopServerExposureStateLoadError extends Schema.TaggedErrorClass<Deskto
   { cause: Schema.Defect() },
 ) {
   override get message(): string {
-    return "Failed to load desktop server exposure state.";
+    return t("desktop.serverExposureLoadFailed");
   }
 }
 
@@ -44,7 +45,7 @@ class DesktopAdvertisedEndpointsLoadError extends Schema.TaggedErrorClass<Deskto
   { cause: Schema.Defect() },
 ) {
   override get message(): string {
-    return "Failed to load advertised desktop endpoints.";
+    return t("desktop.advertisedEndpointsLoadFailed");
   }
 }
 

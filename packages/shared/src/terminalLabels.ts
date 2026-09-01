@@ -10,6 +10,21 @@ export function getTerminalLabel(terminalId: string): string {
   return terminalId;
 }
 
+export interface TerminalLabelTranslation {
+  readonly key: "terminal.defaultTabLabel";
+  readonly params: Readonly<{ index: string }>;
+}
+
+/**
+ * 服务端 wire label 与本地兜底都生成英文默认名 "Terminal N"（shared 拿不到
+ * UI 语言）；各端展示前用它换算成稳定 i18n key + 序号参数，非默认名原样。
+ */
+export function terminalLabelTranslation(label: string): TerminalLabelTranslation | null {
+  const match = /^Terminal (\d+)$/.exec(label.trim());
+  if (!match) return null;
+  return { key: "terminal.defaultTabLabel", params: { index: match[1]! } };
+}
+
 /** Prefer server summary label when present; otherwise fall back to `getTerminalLabel`. */
 export function resolveTerminalSessionLabel(
   terminalId: string,

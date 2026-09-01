@@ -11,7 +11,11 @@ function describeSlowRequests(requests: ReadonlyArray<SlowRpcAckRequest>): strin
     Math.min(...requests.map((request) => request.thresholdMs)) / 1000,
   );
 
-  return `${count} request${count === 1 ? "" : "s"} waiting longer than ${thresholdSeconds}s.`;
+  return t("slowRpc.requestsWaiting", {
+    count,
+    countValue: count,
+    threshold: thresholdSeconds,
+  });
 }
 
 function SlowRequestDetails({ requests }: { requests: ReadonlyArray<SlowRpcAckRequest> }) {
@@ -49,7 +53,10 @@ export function SlowRpcRequestToastCoordinator() {
       data: {
         expandableContent: <SlowRequestDetails requests={slowRequests} />,
         expandableDescriptionTrigger: true,
-        expandableLabels: { collapse: "Hide requests", expand: "Show requests" },
+        expandableLabels: {
+          collapse: t("slowRpc.hideRequests"),
+          expand: t("slowRpc.showRequests"),
+        },
       },
       description: describeSlowRequests(slowRequests),
       timeout: 0,

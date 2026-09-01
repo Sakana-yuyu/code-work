@@ -1,3 +1,7 @@
+import { setCurrentLanguage } from "~/i18n/runtime";
+
+setCurrentLanguage("en");
+
 import { describe, expect, it } from "vite-plus/test";
 
 import { openOnHostLabel, pullRequestLinkContextMenuItems } from "./pullRequestLinkContextMenu";

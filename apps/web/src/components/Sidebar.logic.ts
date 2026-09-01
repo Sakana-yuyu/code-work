@@ -1,5 +1,7 @@
 import * as React from "react";
 import { defaultAnimateLayoutChanges, type AnimateLayoutChanges } from "@dnd-kit/sortable";
+import { scopedThreadKey, scopeThreadRef } from "@codework/client-runtime/environment";
+import type { EnvironmentThreadShell } from "@codework/client-runtime/state/models";
 import type { ContextMenuItem } from "@codework/contracts";
 import type { SidebarProjectSortOrder, SidebarThreadSortOrder } from "@codework/contracts/settings";
 import {
@@ -25,6 +27,31 @@ export const THREAD_JUMP_HINT_SHOW_DELAY_MS = 200;
 // so this limit is a direct renderer-heap and server-load multiplier — keep
 // it small; cold opens still render instantly from the cached snapshot.
 export const SIDEBAR_THREAD_PREWARM_LIMIT = 3;
+
+// Card rows lead with the project label, but one project usually dominates
+// the list, so repeating it on every row is noise. A row shows the label only
+// when the row above it in the same visual section has a different project;
+// each section starts a fresh chain, so the first row after a divider or
+// shelf header always re-anchors the project.
+export function projectLabelVisibilityByThreadKey(
+  sections: ReadonlyArray<
+    ReadonlyArray<Pick<EnvironmentThreadShell, "environmentId" | "projectId" | "id">>
+  >,
+): Map<string, boolean> {
+  const showLabelByKey = new Map<string, boolean>();
+  for (const threads of sections) {
+    let previousProjectKey: string | null = null;
+    for (const thread of threads) {
+      const projectKey = `${thread.environmentId}:${thread.projectId}`;
+      showLabelByKey.set(
+        scopedThreadKey(scopeThreadRef(thread.environmentId, thread.id)),
+        projectKey !== previousProjectKey,
+      );
+      previousProjectKey = projectKey;
+    }
+  }
+  return showLabelByKey;
+}
 
 // The list already reaches its destination through sortable transforms while
 // the pointer is down. dnd-kit's default also animates the committed DOM order

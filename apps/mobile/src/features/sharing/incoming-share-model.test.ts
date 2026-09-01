@@ -5,6 +5,10 @@ import {
 } from "@codework/contracts";
 import type { ResolvedSharePayload, SharePayload } from "expo-sharing";
 
+import { setCurrentLanguage } from "../../i18n/runtime";
+
+setCurrentLanguage("en");
+
 import { buildIncomingShareDraft, hasIncomingShareContent } from "./incoming-share-model";
 
 describe("incoming native shares", () => {

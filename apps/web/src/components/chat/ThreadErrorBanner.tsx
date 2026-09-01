@@ -1,4 +1,5 @@
 import { memo } from "react";
+import { serverSessionErrorTranslation } from "@codework/client-runtime/errors";
 import { t } from "~/i18n";
 import { Alert, AlertAction, AlertDescription } from "../ui/alert";
 import { Button } from "../ui/button";
@@ -42,15 +43,18 @@ export const ThreadErrorBanner = memo(function ThreadErrorBanner({
   onDismiss?: () => void;
 }) {
   if (!error) return null;
+  // 服务端写入 lastError 的是英文原句；已知句子在展示前翻译，未知原样透传。
+  const known = serverSessionErrorTranslation(error);
+  const message = known === null ? error : t(known.key, known.params);
   return (
     <div className="mx-auto w-fit max-w-[min(48rem,calc(100%-2rem))] pt-3">
       <Alert variant="error" controlAlignment="first-line">
         <CircleAlertIcon />
         <AlertDescription>
           <Tooltip>
-            <TooltipTrigger render={<div className="line-clamp-3" />}>{error}</TooltipTrigger>
+            <TooltipTrigger render={<div className="line-clamp-3" />}>{message}</TooltipTrigger>
             <TooltipPopup side="top" className="max-w-96 whitespace-pre-wrap">
-              {error}
+              {message}
             </TooltipPopup>
           </Tooltip>
         </AlertDescription>

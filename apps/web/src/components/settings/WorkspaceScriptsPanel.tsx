@@ -225,7 +225,10 @@ export function WorkspaceScriptsPanel() {
           </p>
         ) : (
           <>
-            <div className="grid gap-3 md:grid-cols-2">
+            <div
+              className="grid gap-3 md:grid-cols-2"
+              data-facilities-guide-target="workspace-project"
+            >
               <label className="flex min-w-0 flex-col gap-1.5 text-xs font-medium text-foreground">
                 <span>{t("workspaceScripts.project")}</span>
                 <Select
@@ -289,61 +292,69 @@ export function WorkspaceScriptsPanel() {
               </label>
             </div>
 
-            <div className="space-y-2 border-t border-border/60 pt-4">
-              <div className="flex items-center gap-2 text-xs font-semibold text-foreground">
-                <PlayIcon className="size-3.5 text-muted-foreground" />
-                {t("workspaceScripts.declaredScripts")}
-              </div>
-              {selectedProject === null || selectedProject.scripts.length === 0 ? (
-                <p className="rounded-md border border-dashed border-border px-4 py-6 text-center text-sm text-muted-foreground">
-                  {t("workspaceScripts.noScripts")}
-                </p>
-              ) : (
-                <div className="overflow-hidden rounded-md border border-border/70">
-                  {selectedProject.scripts.map((script) => {
-                    const action = `start:${script.id}`;
-                    return (
-                      <div
-                        key={script.id}
-                        className="flex flex-col gap-3 border-b border-border/60 px-3 py-3 last:border-b-0 sm:flex-row sm:items-center sm:justify-between"
-                      >
-                        <div className="min-w-0">
-                          <div className="flex min-w-0 flex-wrap items-center gap-2">
-                            <span className="truncate text-sm font-medium text-foreground">
-                              {script.name}
-                            </span>
-                            <Badge variant="outline" size="sm">
-                              {script.id}
-                            </Badge>
-                            {script.runOnWorktreeCreate ? (
-                              <Badge variant="secondary" size="sm">
-                                {t("workspaceScripts.runOnWorktreeCreate")}
-                              </Badge>
-                            ) : null}
-                          </div>
-                          <code className="mt-1 block overflow-hidden text-ellipsis text-xs text-muted-foreground">
-                            {script.command}
-                          </code>
-                        </div>
-                        <Button
-                          data-testid={`workspace-script-start-${script.id}`}
-                          size="xs"
-                          disabled={selectedThread === null || isBusy}
-                          onClick={() => void startScript(script.id)}
-                        >
-                          <PlayIcon />
-                          {pendingAction === action
-                            ? t("workspaceScripts.starting")
-                            : t("workspaceScripts.start")}
-                        </Button>
-                      </div>
-                    );
-                  })}
+            <div
+              className="space-y-2 border-t border-border/60 pt-4"
+              data-facilities-guide-target="workspace-declared"
+            >
+              <div data-facilities-guide-target="workspace-start">
+                <div className="flex items-center gap-2 text-xs font-semibold text-foreground">
+                  <PlayIcon className="size-3.5 text-muted-foreground" />
+                  {t("workspaceScripts.declaredScripts")}
                 </div>
-              )}
+                {selectedProject === null || selectedProject.scripts.length === 0 ? (
+                  <p className="rounded-md border border-dashed border-border px-4 py-6 text-center text-sm text-muted-foreground">
+                    {t("workspaceScripts.noScripts")}
+                  </p>
+                ) : (
+                  <div className="overflow-hidden rounded-md border border-border/70">
+                    {selectedProject.scripts.map((script) => {
+                      const action = `start:${script.id}`;
+                      return (
+                        <div
+                          key={script.id}
+                          className="flex flex-col gap-3 border-b border-border/60 px-3 py-3 last:border-b-0 sm:flex-row sm:items-center sm:justify-between"
+                        >
+                          <div className="min-w-0">
+                            <div className="flex min-w-0 flex-wrap items-center gap-2">
+                              <span className="truncate text-sm font-medium text-foreground">
+                                {script.name}
+                              </span>
+                              <Badge variant="outline" size="sm">
+                                {script.id}
+                              </Badge>
+                              {script.runOnWorktreeCreate ? (
+                                <Badge variant="secondary" size="sm">
+                                  {t("workspaceScripts.runOnWorktreeCreate")}
+                                </Badge>
+                              ) : null}
+                            </div>
+                            <code className="mt-1 block overflow-hidden text-ellipsis text-xs text-muted-foreground">
+                              {script.command}
+                            </code>
+                          </div>
+                          <Button
+                            data-testid={`workspace-script-start-${script.id}`}
+                            size="xs"
+                            disabled={selectedThread === null || isBusy}
+                            onClick={() => void startScript(script.id)}
+                          >
+                            <PlayIcon />
+                            {pendingAction === action
+                              ? t("workspaceScripts.starting")
+                              : t("workspaceScripts.start")}
+                          </Button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
             </div>
 
-            <div className="space-y-2 border-t border-border/60 pt-4">
+            <div
+              className="space-y-2 border-t border-border/60 pt-4"
+              data-facilities-guide-target="workspace-runs"
+            >
               <div className="flex items-center justify-between gap-3">
                 <div className="flex items-center gap-2 text-xs font-semibold text-foreground">
                   <ActivityIcon className="size-3.5 text-muted-foreground" />

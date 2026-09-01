@@ -1,34 +1,35 @@
 import type { ThreadGoal, ThreadGoalStatus } from "@codework/contracts";
 import {
   CheckIcon,
-  ChevronDownIcon,
-  ChevronUpIcon,
   CircleAlertIcon,
-  FlagIcon,
+  GoalIcon,
+  Maximize2Icon,
   PauseIcon,
-  PencilIcon,
   PlayIcon,
   SaveIcon,
+  Trash2Icon,
   XIcon,
 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { t } from "~/i18n";
 import { cn } from "~/lib/utils";
 import { ComposerControl, ComposerControlIcon } from "./ComposerControl";
-import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 
 export interface ThreadGoalStatusBarProps {
   readonly goal: ThreadGoal | null;
+  readonly draftObjective?: string | null | undefined;
   readonly isPending: boolean;
   readonly errorMessage: string | null;
   readonly initialEditing?: boolean;
-  readonly presentation?: "bar" | "menu";
+  readonly presentation?: "bar" | "menu" | "top-drawer";
   readonly className?: string;
   readonly onEmptyEditorClose?: () => void;
+  /** 将编辑交给外层主题框，避免在目标状态栏内再创建输入框。 */
+  readonly onEditInComposer?: () => void;
   readonly onSetGoal: (objective: string) => Promise<boolean>;
   readonly onPause: () => Promise<boolean>;
   readonly onResume: () => Promise<boolean>;
@@ -55,25 +56,13 @@ export function ThreadGoalComposerControl({
           />
         }
       >
-        <ComposerControlIcon icon={FlagIcon} />
+        <ComposerControlIcon icon={GoalIcon} />
         <span className="sr-only sm:not-sr-only">{t("threadGoal.set")}</span>
       </TooltipTrigger>
       <TooltipPopup side="top">{t("threadGoal.set")}</TooltipPopup>
     </Tooltip>
   );
 }
-
-const statusVariant: Record<
-  ThreadGoalStatus,
-  "default" | "info" | "success" | "warning" | "error"
-> = {
-  active: "success",
-  paused: "warning",
-  blocked: "error",
-  usageLimited: "warning",
-  budgetLimited: "warning",
-  complete: "info",
-};
 
 const statusLabelKey: Record<ThreadGoalStatus, string> = {
   active: "threadGoal.status.active",
@@ -93,31 +82,79 @@ export function formatThreadGoalDuration(totalSeconds: number): string {
   return `${minutes}m ${String(remainder).padStart(2, "0")}s`;
 }
 
+export function displayedThreadGoalSeconds(
+  goal: Pick<ThreadGoal, "status" | "timeUsedSeconds">,
+  now: number,
+  snapshotAt: number,
+): number {
+  return (
+    goal.timeUsedSeconds +
+    (goal.status === "active" ? Math.floor(Math.max(0, now - snapshotAt) / 1_000) : 0)
+  );
+}
+
 export function ThreadGoalStatusBar({
   goal,
+  draftObjective = null,
   isPending,
   errorMessage,
   initialEditing = false,
   presentation = "bar",
   className,
   onEmptyEditorClose,
+  onEditInComposer,
   onSetGoal,
   onPause,
   onResume,
   onClear,
 }: ThreadGoalStatusBarProps) {
   const [editing, setEditing] = useState(initialEditing);
-  const [objective, setObjective] = useState(goal?.objective ?? "");
+  const normalizedDraftObjective = draftObjective?.trim() || null;
+  const hasDraftObjective = goal === null && normalizedDraftObjective !== null;
+  const [objective, setObjective] = useState(goal?.objective ?? normalizedDraftObjective ?? "");
   const [isSaving, setIsSaving] = useState(false);
   const [localError, setLocalError] = useState<string | null>(null);
   const [detailsOpen, setDetailsOpen] = useState(false);
+  const [clockNow, setClockNow] = useState(() => Date.now());
+  const goalSnapshotKey = goal
+    ? `${goal.goalId}:${goal.status}:${goal.updatedAt}:${goal.timeUsedSeconds}`
+    : "empty";
+  const goalSnapshotAnchorRef = useRef<{ key: string; receivedAt: number }>({
+    key: goalSnapshotKey,
+    receivedAt: Date.now(),
+  });
+  if (goalSnapshotAnchorRef.current.key !== goalSnapshotKey) {
+    goalSnapshotAnchorRef.current = { key: goalSnapshotKey, receivedAt: Date.now() };
+  }
   const disabled = isPending || isSaving;
 
   useEffect(() => {
-    if (!editing) {
-      setObjective(goal?.objective ?? "");
+    if (goal?.status !== "active") return;
+    const tick = () => setClockNow(Date.now());
+    tick();
+    const interval = window.setInterval(tick, 1_000);
+    return () => window.clearInterval(interval);
+  }, [goal?.status, goalSnapshotKey]);
+
+  const displayedTimeUsedSeconds = goal
+    ? displayedThreadGoalSeconds(goal, clockNow, goalSnapshotAnchorRef.current.receivedAt)
+    : 0;
+  const canEditObjective = goal === null || goal.status !== "complete";
+
+  const beginEditing = () => {
+    if (onEditInComposer) {
+      onEditInComposer();
+      return;
     }
-  }, [editing, goal?.objective]);
+    setLocalError(null);
+    setEditing(true);
+  };
+
+  useEffect(() => {
+    if (!editing) {
+      setObjective(goal?.objective ?? normalizedDraftObjective ?? "");
+    }
+  }, [editing, goal?.objective, normalizedDraftObjective]);
 
   const saveGoal = async () => {
     const nextObjective = objective.trim();
@@ -153,14 +190,25 @@ export function ThreadGoalStatusBar({
     <div
       className={cn(
         presentation === "menu"
-          ? "flex min-w-0 flex-wrap items-center gap-2 rounded-xl border border-border/55 bg-background/45 px-2.5 py-2 text-xs"
-          : "mb-2 flex min-w-0 flex-wrap items-center gap-2 rounded-[var(--control-radius)] border border-border/70 bg-background/92 px-3 py-2 text-xs shadow-sm backdrop-blur-sm sm:px-3.5",
+          ? cn(
+              "flex min-w-0 items-center gap-1.5 rounded-xl border border-border/55 bg-background/45 px-2 py-1.5 text-xs",
+              detailsOpen ? "flex-wrap" : "flex-nowrap",
+            )
+          : presentation === "top-drawer"
+            ? cn(
+                "flex min-w-0 items-center gap-1.5 rounded-none border-0 bg-transparent px-3 py-1.5 text-xs shadow-none backdrop-blur-none",
+                detailsOpen ? "flex-wrap" : "flex-nowrap",
+              )
+            : cn(
+                "relative flex min-h-10 min-w-0 items-center gap-1.5 overflow-hidden rounded-[16px] border border-border/65 bg-background/95 px-2.5 py-1.5 text-xs shadow-sm backdrop-blur-sm",
+                detailsOpen ? "flex-wrap" : "flex-nowrap",
+              ),
         className,
       )}
       data-thread-goal-bar="true"
       data-thread-goal-status={goal?.status ?? "empty"}
     >
-      <FlagIcon className="size-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
+      <GoalIcon className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
       {editing ? (
         <div
           className="flex min-w-0 flex-1 items-center gap-2"
@@ -208,43 +256,56 @@ export function ThreadGoalStatusBar({
         </div>
       ) : (
         <>
-          <div className="min-w-0 flex-1">
-            <div className="flex min-w-0 items-center gap-2">
-              <span className="shrink-0 font-medium text-muted-foreground">
-                {t("threadGoal.title")}
-              </span>
-              {goal ? (
-                <Badge variant={statusVariant[goal.status]} size="sm">
-                  {t(statusLabelKey[goal.status])}
-                </Badge>
-              ) : null}
-            </div>
-            {goal ? (
+          <div className="flex min-w-0 flex-1 items-center gap-1.5 overflow-hidden">
+            <span className="shrink-0 font-medium text-foreground">
+              {goal ? t(statusLabelKey[goal.status]) : t("threadGoal.title")}
+            </span>
+            {goal || hasDraftObjective ? (
               <Tooltip>
                 <TooltipTrigger
-                  render={<div className="truncate text-foreground">{goal.objective}</div>}
+                  render={
+                    canEditObjective ? (
+                      <button
+                        type="button"
+                        className="min-w-0 truncate bg-transparent p-0 text-left text-muted-foreground outline-none hover:text-foreground focus-visible:text-foreground"
+                        aria-label={t("threadGoal.edit")}
+                        onClick={beginEditing}
+                      >
+                        {goal?.objective ?? normalizedDraftObjective}
+                      </button>
+                    ) : (
+                      <span className="min-w-0 truncate text-muted-foreground">
+                        {goal?.objective ?? normalizedDraftObjective}
+                      </span>
+                    )
+                  }
                 />
-                <TooltipPopup>{goal.objective}</TooltipPopup>
+                <TooltipPopup>{goal?.objective ?? normalizedDraftObjective}</TooltipPopup>
               </Tooltip>
             ) : (
-              <div className="text-muted-foreground">{t("threadGoal.empty")}</div>
+              <span className="text-muted-foreground">{t("threadGoal.empty")}</span>
             )}
+            {goal ? (
+              <>
+                <span className="shrink-0 text-muted-foreground/70" aria-hidden="true">
+                  •
+                </span>
+                <span className="shrink-0 tabular-nums text-muted-foreground/80">
+                  {formatThreadGoalDuration(displayedTimeUsedSeconds)}
+                </span>
+              </>
+            ) : null}
           </div>
-          {goal ? (
-            <span className="shrink-0 tabular-nums text-muted-foreground">
-              {formatThreadGoalDuration(goal.timeUsedSeconds)}
-            </span>
-          ) : null}
-          {goal ? (
+          {goal !== null ? (
             <Button
               type="button"
               size="icon-xs"
               variant="ghost"
-              aria-label={t("threadGoal.details")}
+              aria-label={t("threadGoal.clear")}
               disabled={disabled}
-              onClick={() => setDetailsOpen((open) => !open)}
+              onClick={() => void runAction(onClear)}
             >
-              {detailsOpen ? <ChevronUpIcon /> : <ChevronDownIcon />}
+              <Trash2Icon />
             </Button>
           ) : null}
           {goal?.status === "active" ? (
@@ -271,34 +332,30 @@ export function ThreadGoalStatusBar({
               <PlayIcon />
             </Button>
           ) : null}
-          {goal !== null && goal.status !== "complete" ? (
+          {goal ? (
             <Button
               type="button"
               size="icon-xs"
               variant="ghost"
-              aria-label={t("threadGoal.edit")}
+              aria-label={t("threadGoal.details")}
               disabled={disabled}
-              onClick={() => {
-                setLocalError(null);
-                setEditing(true);
-              }}
+              onClick={() => setDetailsOpen((open) => !open)}
             >
-              <PencilIcon />
+              <Maximize2Icon />
             </Button>
-          ) : goal === null ? (
+          ) : goal === null && !hasDraftObjective ? (
             <Button
               type="button"
               size="sm"
               variant="outline"
               aria-label={t("threadGoal.set")}
               disabled={disabled}
-              onClick={() => setEditing(true)}
+              onClick={beginEditing}
             >
               <CheckIcon />
               {t("threadGoal.set")}
             </Button>
-          ) : null}
-          {goal !== null ? (
+          ) : goal === null ? (
             <Button
               type="button"
               size="icon-xs"
@@ -315,7 +372,7 @@ export function ThreadGoalStatusBar({
       {goal && detailsOpen ? (
         <div className="basis-full border-t border-border/55 pt-2 text-[11px] text-muted-foreground">
           <span>
-            {t("threadGoal.duration")}: {formatThreadGoalDuration(goal.timeUsedSeconds)}
+            {t("threadGoal.duration")}: {formatThreadGoalDuration(displayedTimeUsedSeconds)}
           </span>
           <span className="ms-3">
             {t("threadGoal.usage")}: {goal.tokensUsed}

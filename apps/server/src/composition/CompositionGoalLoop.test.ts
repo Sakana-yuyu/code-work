@@ -9,6 +9,7 @@ import {
   type CompositionGoalLoopDecision,
   parseGoalCompletion,
   runCompositionGoalLoop,
+  scanGoalMarkers,
 } from "./CompositionGoalLoop.ts";
 
 class TestAttemptFailure extends Data.TaggedError("TestAttemptFailure")<{
@@ -46,6 +47,41 @@ describe("parseGoalCompletion", () => {
 
     const missing = parseGoalCompletion(undefined);
     expect(missing.complete).toBe(false);
+  });
+});
+
+describe("scanGoalMarkers", () => {
+  it("无标记时原样透传", () => {
+    const text = "尚未完成，还需要一轮 [[ 未闭合也不算标记";
+    expect(scanGoalMarkers(text)).toEqual({ text, complete: false, cancelled: false });
+  });
+
+  it("剥离尾部无原因与带原因的完成标记", () => {
+    const plain = scanGoalMarkers("任务完成 [[GOAL_COMPLETE]]");
+    expect(plain).toEqual({ text: "任务完成", complete: true, cancelled: false });
+
+    const withReason = scanGoalMarkers("任务完成 [[GOAL_COMPLETE: 全部测试通过]]");
+    expect(withReason).toEqual({ text: "任务完成", complete: true, cancelled: false });
+  });
+
+  it("剥离任意位置的标记并清理尾随空白", () => {
+    const mid = scanGoalMarkers("结论：完成 [[GOAL_COMPLETE: 达成]] \n\n");
+    expect(mid).toEqual({ text: "结论：完成", complete: true, cancelled: false });
+
+    const multiple = scanGoalMarkers("A [[GOAL_COMPLETE]] 中段 [[GOAL_COMPLETE: 再次声明]]");
+    expect(multiple.complete).toBe(true);
+    expect(multiple.text).toBe("A  中段");
+    expect(multiple.text).not.toContain("[[GOAL_COMPLETE");
+  });
+
+  it("剥离取消标记；与完成标记同时出现时两项均上报，优先级由调用方决定", () => {
+    const cancelled = scanGoalMarkers("需求已失效 [[GOAL_CANCELLED: 用户叫停]]");
+    expect(cancelled).toEqual({ text: "需求已失效", complete: false, cancelled: true });
+
+    const both = scanGoalMarkers("完成 [[GOAL_COMPLETE]] 取消 [[GOAL_CANCELLED]]");
+    expect(both.complete).toBe(true);
+    expect(both.cancelled).toBe(true);
+    expect(both.text).toBe("完成  取消");
   });
 });
 

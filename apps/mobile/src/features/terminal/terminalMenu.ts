@@ -1,8 +1,12 @@
 import { type KnownTerminalSession } from "@codework/client-runtime/state/terminal";
 import { DEFAULT_TERMINAL_ID, type ProjectScript } from "@codework/contracts";
 import { nextTerminalId, resolveTerminalSessionLabel } from "@codework/shared/terminalLabels";
+
+import { terminalDisplayLabel } from "./terminalDisplayLabel";
 import * as Arr from "effect/Array";
 import * as Order from "effect/Order";
+
+import { t } from "../../i18n/runtime";
 
 export {
   getTerminalLabel,
@@ -47,19 +51,21 @@ export function getTerminalStatusLabel(input: {
   readonly hasRunningSubprocess?: boolean;
 }): string {
   if (input.status === "running") {
-    return input.hasRunningSubprocess ? "Task running" : "Ready";
+    return input.hasRunningSubprocess
+      ? t("terminal.status.taskRunning")
+      : t("terminal.status.ready");
   }
   if (input.status === "starting") {
-    return "Starting";
+    return t("terminal.status.starting");
   }
   if (input.status === "exited") {
-    return "Exited";
+    return t("terminal.status.exited");
   }
   if (input.status === "error") {
-    return "Error";
+    return t("terminal.status.error");
   }
 
-  return "Not started";
+  return t("terminal.status.notStarted");
 }
 
 /**
@@ -102,7 +108,9 @@ export function buildTerminalMenuSessions(input: {
       cwd: session.state.summary?.cwd ?? input.workspaceRoot,
       status: session.state.status,
       hasRunningSubprocess: session.state.hasRunningSubprocess,
-      displayLabel: resolveTerminalSessionLabel(session.target.terminalId, session.state.summary),
+      displayLabel: terminalDisplayLabel(
+        resolveTerminalSessionLabel(session.target.terminalId, session.state.summary),
+      ),
       updatedAt: session.state.updatedAt,
     });
   }

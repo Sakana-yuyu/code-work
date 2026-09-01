@@ -66,7 +66,7 @@ export function useCloudLinkController() {
       data: traceId
         ? {
             secondaryActionProps: {
-              children: "Copy trace ID",
+              children: t("diagnostics.copyTraceId"),
               onClick: () => void navigator.clipboard?.writeText(traceId),
             },
           }
@@ -85,7 +85,7 @@ export function useCloudLinkController() {
     setOperationError(null);
     const target = primaryCloudLinkState.target;
     if (!target) {
-      reportUpdateFailure(new Error("Local environment is not ready yet."));
+      reportUpdateFailure(new Error(t("cloud.localEnvironmentNotReady")));
       return false;
     }
     const tokenResult = await settlePromise(() => getToken(resolveRelayClerkTokenOptions()));
@@ -116,7 +116,7 @@ export function useCloudLinkController() {
       }
       const clerkToken = tokenResult.value;
       if (!clerkToken) {
-        reportUpdateFailure(new Error("Sign in to Code Work Connect before enabling this."));
+        reportUpdateFailure(new Error(t("cloud.signInBeforeEnablingConnect")));
         return false;
       }
       if (!linked || managedTunnelActive !== desired.managedTunnel) {

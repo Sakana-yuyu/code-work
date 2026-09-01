@@ -26,6 +26,7 @@ import * as Arr from "effect/Array";
 import { pipe } from "effect/Function";
 
 import { useEnvironmentServerConfig, useProjects, useThreadShells } from "../../state/entities";
+import { t } from "../../i18n/runtime";
 import type { TurnCommandMetadata } from "../../lib/commandMetadata";
 import type { DraftComposerImageAttachment } from "../../lib/composerImages";
 import type { ModelOption, ProviderGroup } from "../../lib/modelOptions";
@@ -266,7 +267,7 @@ export function NewTaskFlowProvider(props: React.PropsWithChildren) {
     return {
       environmentId: editingPendingTask.environmentId,
       id: creation.projectId,
-      title: creation.projectTitle ?? "Unknown project",
+      title: creation.projectTitle ?? t("projects.unknownProject"),
       // Deliberately empty when the snapshot has no cwd — downstream consumers
       // (branch queries, worktree bootstrap) must skip it, not receive a
       // fabricated path.

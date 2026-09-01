@@ -5,6 +5,8 @@ import {
   type SnoozePreset,
 } from "@codework/client-runtime/state/thread-settled";
 
+import { t } from "~/i18n";
+
 import { formatShortTimestamp, parseTimestampDate } from "../timestampFormat";
 
 export { snoozeWakeLabel, type SnoozePreset };
@@ -34,8 +36,8 @@ export function resolveSnoozePresets(
 }
 
 /**
- * Human wake time for menus and toasts: "tomorrow 9:00", "Mon 9:00",
- * "17:30" (today).
+ * Human wake time for menus and toasts, in the UI language: "Tomorrow 9:00",
+ * "Mon 9:00", "17:30" (today).
  */
 export function snoozeWakeDescription(
   snoozedUntil: string,
@@ -49,7 +51,7 @@ export function snoozeWakeDescription(
   startOfToday.setHours(0, 0, 0, 0);
   const dayDelta = Math.floor((wake.getTime() - startOfToday.getTime()) / DAY_MS);
   if (dayDelta === 0) return time;
-  if (dayDelta === 1) return `tomorrow ${time}`;
+  if (dayDelta === 1) return `${t("snoozePreset.tomorrow")} ${time}`;
   const weekday = wake.toLocaleDateString(undefined, { weekday: "short" });
   if (dayDelta < 7) return `${weekday} ${time}`;
   const date = wake.toLocaleDateString(undefined, { month: "short", day: "numeric" });

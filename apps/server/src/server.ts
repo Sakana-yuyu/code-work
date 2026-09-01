@@ -456,12 +456,16 @@ const CompositionToolBrokerLayerLive = CompositionToolBroker.persistentLayer.pip
   Layer.provideMerge(CompositionCapabilityGrantLayerLive),
   Layer.provideMerge(CompositionCapabilityRegistryLayerLive),
   Layer.provideMerge(WorkspaceFileSystemLayerLive),
+  Layer.provideMerge(GitVcsDriver.layer),
   // 启用 delegate_task 工具处理器：BYOK Agent Loop 内模型可自发委派子任务。
   Layer.provideMerge(ByokDelegationServiceLayerLive),
 );
 
+const ProviderInstanceRegistryHydrationWithToolBrokerLive =
+  ProviderInstanceRegistryHydrationLive.pipe(Layer.provideMerge(CompositionToolBrokerLayerLive));
+
 const ProviderLayerForCompositionAgentDriversLive = ProviderLayerLive.pipe(
-  Layer.provideMerge(ProviderInstanceRegistryHydrationLive),
+  Layer.provideMerge(ProviderInstanceRegistryHydrationWithToolBrokerLive),
 );
 
 const CompositionAgentServiceLayerLive = CompositionAgentService.layer.pipe(
@@ -678,7 +682,7 @@ const RuntimeCoreDependenciesWithoutWorkspaceScriptLive = ReactorLayerLive.pipe(
   // through this layer. Built-in drivers come from `BUILT_IN_DRIVERS`;
   // `providerInstances` hydration merges `settings.providers.<kind>`
   // with explicit `providerInstances` entries on boot.
-  Layer.provideMerge(ProviderInstanceRegistryHydrationLive),
+  Layer.provideMerge(ProviderInstanceRegistryHydrationWithToolBrokerLive),
   // Composition runtime 统一提供 Orchestrator 与 Runtime 事件投影。
   Layer.provideMerge(
     Layer.mergeAll(

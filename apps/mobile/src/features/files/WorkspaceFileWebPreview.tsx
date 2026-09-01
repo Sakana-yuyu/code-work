@@ -47,7 +47,7 @@ export function WorkspaceFileWebPreview(props: { readonly uri: string | null }) 
         }}
         onError={(event) => {
           setLoadProgress(0);
-          setLoadError(event.nativeEvent.description || "The file could not be rendered.");
+          setLoadError(event.nativeEvent.description || t("files.fileRenderFailed"));
         }}
         renderLoading={() => (
           <View className="absolute inset-0 items-center justify-center bg-card">

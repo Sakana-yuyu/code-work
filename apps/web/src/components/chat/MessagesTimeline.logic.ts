@@ -336,17 +336,17 @@ function toolGroupActionCount(
 function toolGroupActionLabel(action: ToolGroupAction, count: number): string {
   switch (action) {
     case "read":
-      return `Read ${count} ${count === 1 ? "file" : "files"}`;
+      return t("timeline.readFiles", { count, countValue: count });
     case "edit":
-      return `Changed ${count} ${count === 1 ? "file" : "files"}`;
+      return t("timeline.changedFiles", { count, countValue: count });
     case "command":
-      return `Ran ${count} ${count === 1 ? "command" : "commands"}`;
+      return t("timeline.ranCommands", { count, countValue: count });
     case "search":
-      return `Searched the web ${count} ${count === 1 ? "time" : "times"}`;
+      return t("timeline.searchedWeb", { count, countValue: count });
     case "code-search":
-      return `Searched code ${count} ${count === 1 ? "time" : "times"}`;
+      return t("timeline.searchedCode", { count, countValue: count });
     case "other":
-      return `Used ${count} ${count === 1 ? "tool" : "tools"}`;
+      return t("timeline.usedTools", { count, countValue: count });
   }
 }
 

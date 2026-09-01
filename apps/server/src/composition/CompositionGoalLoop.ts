@@ -137,6 +137,35 @@ export const parseGoalCompletion = (
 
 const invalid = (detail: string) => new CompositionGoalLoopInvalidError({ detail });
 
+const GOAL_MARKER_COMPLETE_RE = /\[\[GOAL_COMPLETE(?::[^\]\n]*)?\]\]/g;
+const GOAL_MARKER_CANCELLED_RE = /\[\[GOAL_CANCELLED(?::[^\]\n]*)?\]\]/g;
+
+/**
+ * 扫描完整输出：剥离全部显式完成/取消标记并报告声明结果，声明标记可带 `: 原因`。
+ * 与 parseGoalCompletion 的差异：处理多次出现与取消标记，供回合终帧在文本落库前
+ * 清洗（聊天界面不应露出内部标记）。无标记时原样返回，保证零开销透传。
+ */
+export const scanGoalMarkers = (
+  outputText: string,
+): {
+  readonly text: string;
+  readonly complete: boolean;
+  readonly cancelled: boolean;
+} => {
+  let complete = false;
+  let cancelled = false;
+  let text = outputText.replace(GOAL_MARKER_COMPLETE_RE, () => {
+    complete = true;
+    return "";
+  });
+  text = text.replace(GOAL_MARKER_CANCELLED_RE, () => {
+    cancelled = true;
+    return "";
+  });
+  if (!complete && !cancelled) return { text: outputText, complete, cancelled };
+  return { text: text.replace(/\s+$/, ""), complete, cancelled };
+};
+
 const normalizeProgressText = (outputText: string | undefined): string =>
   (outputText ?? "").replace(/\s+/g, " ").trim();
 

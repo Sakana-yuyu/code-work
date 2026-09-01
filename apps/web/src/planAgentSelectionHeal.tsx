@@ -15,7 +15,6 @@ import { resolvePlanAgentHealPatch } from "./modelSelection";
  * whenever the settings load.
  */
 export function PlanAgentSelectionHeal() {
-  const planModeEnabled = usePrimarySettings((settings) => settings.planModeEnabled);
   const textGenerationModelSelection = usePrimarySettings(
     (settings) => settings.textGenerationModelSelection,
   );
@@ -33,7 +32,7 @@ export function PlanAgentSelectionHeal() {
       return;
     }
     const patch = resolvePlanAgentHealPatch({
-      planModeEnabled,
+      planModeEnabled: true,
       textGenerationModelSelection,
       sourceControlWriterModelSelection,
     });
@@ -41,7 +40,6 @@ export function PlanAgentSelectionHeal() {
       updateSettings(patch);
     }
   }, [
-    planModeEnabled,
     settingsHydrated,
     textGenerationModelSelection,
     sourceControlWriterModelSelection,

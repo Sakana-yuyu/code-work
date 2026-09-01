@@ -14,6 +14,7 @@ import { satisfiesSemverRange } from "@codework/shared/semver";
 
 import * as DesktopEnvironment from "../app/DesktopEnvironment.ts";
 import { parseWslDistroList, type WslDistro } from "./wslPathParsing.ts";
+import { t } from "../i18n.js";
 
 const PROCESS_TERMINATE_GRACE = Duration.seconds(1);
 const LIST_TIMEOUT = Duration.seconds(8);
@@ -123,11 +124,11 @@ export const formatWslShellTransportFailureReason = (
 ): string | null => {
   switch (failure) {
     case "timeout":
-      return "WSL backend preflight timed out while probing for Node.js. WSL may be slow to start; retry, or check that the distro is healthy.";
+      return t("wsl.preflight.probeTimeout");
     case "spawn":
-      return "WSL backend preflight could not start wsl.exe to probe for Node.js. Check that WSL is installed and the distro is accessible.";
+      return t("wsl.preflight.probeSpawnFailed");
     case "process":
-      return "WSL backend preflight lost communication with wsl.exe while probing for Node.js. Retry, or check that the distro is healthy.";
+      return t("wsl.preflight.probeLostContact");
     case null:
       return null;
   }
@@ -219,9 +220,7 @@ const shellQuote = (value: string): string => `'${value.replaceAll("'", "'\\''")
 const NODE_PTY_PREBUILD_MISSING_EXIT_CODE = 4;
 
 export const formatNodePtyProbeFailureReason = (exitCode: number): string | null =>
-  exitCode === NODE_PTY_PREBUILD_MISSING_EXIT_CODE
-    ? "WSL support is missing from this Code Work build: the packaged Linux node-pty binary was not included. Rebuild the Windows artifact with `--wsl-prebuild <path-to-linux-pty.node>` or install a build that includes WSL support."
-    : null;
+  exitCode === NODE_PTY_PREBUILD_MISSING_EXIT_CODE ? t("wsl.preflight.prebuildMissing") : null;
 
 const NODE_PTY_PROBE_SCRIPT = (
   linuxServerDir: string,
@@ -369,23 +368,27 @@ export const formatMissingToolsReason = (
   if (nodeMissing) {
     issues.push("node");
     remediations.push(
-      `Node.js${requiredRange ? ` satisfying \`${requiredRange}\`` : " 18+"} (e.g. via nvm)`,
+      requiredRange
+        ? t("wsl.preflight.remediationNodeVersion", { range: requiredRange })
+        : t("wsl.preflight.remediationNodeDefault"),
     );
   } else if (nodeOutOfRange) {
-    issues.push(`node ${report.nodeVersion} (requires ${requiredRange})`);
-    remediations.push(
-      `a newer Node.js satisfying \`${requiredRange}\` (e.g. \`nvm install 24 && nvm alias default 24\`)`,
-    );
+    // nodeOutOfRange implies both requiredRange and report.nodeVersion are set.
+    const range = requiredRange ?? "";
+    const version = report.nodeVersion ?? "";
+    issues.push(t("wsl.preflight.issueNodeRange", { version, range }));
+    remediations.push(t("wsl.preflight.remediationNewerNode", { range }));
   }
 
   if (buildToolsMissing.length > 0) {
     issues.push(...buildToolsMissing);
-    remediations.push(
-      "the build toolchain (e.g. `sudo apt install -y build-essential python3` on Ubuntu/Debian)",
-    );
+    remediations.push(t("wsl.preflight.remediationBuildTools"));
   }
 
-  return `WSL distro is missing required tools: ${issues.join(", ")}. Install ${remediations.join(" and ")}, then retry.`;
+  return t("wsl.preflight.missingTools", {
+    issues: issues.join(", "),
+    remediations: remediations.join(" and "),
+  });
 };
 
 const ensureNodePtyImpl = (
@@ -453,14 +456,14 @@ const ensureNodePtyImpl = (
       const report = parseToolchainReport(toolchainCheck.stdout);
       const reason =
         formatMissingToolsReason(report, options.nodeEngineRange?.trim() || null) ??
-        "Node.js was not found in the WSL distro. Install it (e.g. via nvm) and restart the desktop app.";
+        t("wsl.preflight.nodeNotFound");
       return { ok: false, reason, fatal: true } as const;
     }
 
     if (resolvedPath === null) {
       return {
         ok: false,
-        reason: "WSL login-shell PATH could not be resolved during backend preflight.",
+        reason: t("wsl.preflight.loginShellPathFailed"),
         fatal: true,
       } as const;
     }
@@ -474,8 +477,7 @@ const ensureNodePtyImpl = (
     if (probe.exitCode === 3) {
       return {
         ok: false,
-        reason:
-          'WSL server dependencies could not be loaded (for example "node-pty"). The native packages the server needs are not unpacked where the WSL distro\'s Node can read them — this is a packaging problem with this build. Please report it.',
+        reason: t("wsl.preflight.dependenciesNotLoaded"),
         fatal: true,
       } as const;
     }
@@ -490,7 +492,7 @@ const ensureNodePtyImpl = (
         const range = options.nodeEngineRange.trim();
         return {
           ok: false,
-          reason: `WSL Node.js ${rawVersion} does not satisfy the server's required engine range (${range}). Install a compatible version, and restart the desktop app.`,
+          reason: t("wsl.preflight.nodeVersionRange", { version: rawVersion, range }),
           fatal: true,
         } as const;
       }
@@ -544,9 +546,7 @@ const ensureNodePtyImpl = (
       );
       return {
         ok: false,
-        reason:
-          nodeOnlyReason ??
-          "The bundled WSL backend binary (node-pty) could not be loaded in this distro. This usually means an unsupported CPU architecture or incompatible system libraries (glibc). Use a glibc-based x64/arm64 WSL distro such as Ubuntu; if you already are, please report this with your distro and the output of `uname -m`.",
+        reason: nodeOnlyReason ?? t("wsl.preflight.bundledBinaryNotLoaded"),
         fatal: true,
       } as const;
     }

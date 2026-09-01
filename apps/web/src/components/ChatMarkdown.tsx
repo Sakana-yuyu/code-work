@@ -1502,11 +1502,11 @@ const MarkdownFileLink = memo(function MarkdownFileLink({
           return;
         }
         if (clicked === "copy-relative") {
-          handleCopy(displayPath, "Relative path");
+          handleCopy(displayPath, t("chatMarkdown.relativePath"));
           return;
         }
         if (clicked === "copy-full") {
-          handleCopy(targetPath, "Full path");
+          handleCopy(targetPath, t("chatMarkdown.fullPath"));
         }
       } catch (cause) {
         reportMarkdownActionFailure(
@@ -1798,7 +1798,7 @@ function ChatMarkdown({
       if (threadRef === undefined) return;
       const linkedPullRequest = linked ? resolveThreadPullRequest(href) : null;
       if (linked && linkedPullRequest === null) {
-        throw new Error("The pull request is not available in this environment.");
+        throw new Error(t("chatMarkdown.pullRequestNotAvailableInEnvironment"));
       }
       if (!linked) {
         const currentPullRequest = readThreadShell(threadRef)?.linkedPullRequest;

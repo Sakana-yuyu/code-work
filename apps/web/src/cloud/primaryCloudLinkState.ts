@@ -13,6 +13,7 @@ import { usePrimaryEnvironment } from "../state/environments";
 import { runtime } from "../lib/runtime";
 import { appAtomRegistry } from "../rpc/atomRegistry";
 import { readPrimaryCloudLinkState, type CloudLinkTarget } from "./linkEnvironment";
+import { t } from "~/i18n/runtime";
 
 const primaryCloudLinkAtomRuntime = Atom.runtime(
   Layer.effect(
@@ -72,7 +73,7 @@ export function usePrimaryCloudLinkState() {
   let error: string | null = null;
   if (result._tag === "Failure") {
     const cause = Cause.squash(result.cause);
-    error = cause instanceof Error ? cause.message : "Could not read Code Work Connect link state.";
+    error = cause instanceof Error ? cause.message : t("cloud.readCodeWorkConnectLinkStateFailed");
   }
 
   return {

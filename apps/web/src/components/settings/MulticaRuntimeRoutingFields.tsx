@@ -60,6 +60,7 @@ export function MulticaRuntimeRoutingFields({
           {text("addRoute")}
         </Button>
       </div>
+      <p className="text-xs leading-5 text-muted-foreground">{text("routingDescription")}</p>
       {draft.assigneeRoutes.length === 0 ? (
         <p className="text-xs text-muted-foreground">{text("emptyRoutes")}</p>
       ) : (
