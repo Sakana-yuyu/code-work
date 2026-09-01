@@ -50,6 +50,6 @@ pnpm test         # 全仓测试
 
 <!-- contributors-start -->
 <table><tr>
-<td><a href="https://github.com/Sakana-yuyu/code-work"><img src="https://secure.gravatar.com/avatar/e91e20e8d5f83234900a3878086e1fe7?d=identicon&s=80" width="48" height="48" alt="呆呆可达鸭鸭" title="呆呆可达鸭鸭 (1 次提交)"/></a></td>
+<td><a href="https://github.com/Sakana-yuyu/code-work"><img src="https://secure.gravatar.com/avatar/e91e20e8d5f83234900a3878086e1fe7?d=identicon&s=80" width="48" height="48" alt="呆呆可达鸭鸭" title="呆呆可达鸭鸭 (3384 次提交)"/></a></td>
 </tr></table>
 <!-- contributors-end -->
