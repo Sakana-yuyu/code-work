@@ -1,22 +1,16 @@
 <svg width="432" height="432" viewBox="0 0 432 432" fill="none" xmlns="http://www.w3.org/2000/svg">
   <path
-    d="M306 126C279 98 244 84 204 84C133 84 80 139 80 214C80 289 133 344 204 344C240 344 274 331 300 306"
-    stroke="#F4F1E9"
+    d="M191 126C168 108 144 99 115 99C78 99 55 132 55 188C55 244 78 277 115 277C144 277 168 268 191 250"
+    stroke="#FFFFFF"
     stroke-width="26"
-    stroke-linecap="round"
+    stroke-linecap="butt"
   />
   <path
-    d="M126 186L166 316L216 218L266 316L306 186"
-    stroke="#F4F1E9"
-    stroke-width="22"
-    stroke-linecap="round"
-    stroke-linejoin="round"
+    d="M151 164L219 287L266 177L309 276L375 102"
+    stroke="#FFFFFF"
+    stroke-width="30"
+    stroke-linecap="butt"
+    stroke-linejoin="miter"
   />
-  <path
-    d="M92 330C144 292 196 347 247 344C296 342 329 312 350 270"
-    stroke="#14C9F4"
-    stroke-width="12"
-    stroke-linecap="round"
-  />
-  <circle cx="352" cy="252" r="13" fill="#A36AF7" />
+  <path d="M183 116H220L246 160H209L183 116Z" fill="#1E6BFF" />
 </svg>

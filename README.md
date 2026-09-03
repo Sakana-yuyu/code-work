@@ -1,48 +1,62 @@
 <div align="center">
 
-<img src="docs/assets/logo.png" width="128" alt="CodexWork" />
+<img src="assets/source/sakana-yuyu-agent-icon-256.png" width="128" alt="Code Work 应用图标" />
 
-# CodexWork
+# Code Work
 
-一个独立的桌面 AI 开发工作台：现代工作台界面壳 + 可自持密钥（BYOK）的多模型运行时。
+一个跨平台的 AI 编程工作台：把编码代理、终端、代码变更和远程环境放进同一个可审查的工作流。
 
 </div>
 
 ## 项目定位
 
-CodexWork 面向需要长时间使用编码代理的开发者，提供统一的 Web、桌面和移动端工作台。它连接你本机已有的 Codex、Claude、Cursor、Grok Build 与 OpenCode 订阅，让代码、终端、任务委派和远程控制保持在同一个工作流中。
+Code Work 面向需要长时间使用编码代理的开发者，提供统一的 Web、桌面和移动端工作台。它连接你本机已经安装并完成登录的 Codex、Claude、Cursor、Grok Build 与 OpenCode，让项目、线程、权限、终端、代码变更和远程控制保持在同一个工作流中。
+
+Code Work 不捆绑这些 Provider，也不代替它们管理订阅或账号；它负责把不同 Provider 的能力组织成一致的项目工作流。你可以在本机运行，也可以通过配对链接从另一台电脑或手机连接到运行服务的机器。
 
 ## 项目结构
 
 这是一个 TypeScript / Effect-TS monorepo：
 
-| 目录           | 说明                                                        |
-| -------------- | ----------------------------------------------------------- |
-| `apps/server`  | WebSocket 服务、任务编排、Provider 适配器、持久化与远程连接 |
-| `apps/web`     | 浏览器工作台与设置界面                                      |
-| `apps/desktop` | Electron 桌面端及本地服务启动器                             |
-| `apps/mobile`  | iOS 与 Android 移动端                                       |
-| `packages/`    | 契约、客户端运行时、共享工具、SSH 和连接能力                |
-| `docs/`        | 用户文档、内部架构说明和运维记录                            |
+| 目录                      | 说明                                                        |
+| ------------------------- | ----------------------------------------------------------- |
+| `apps/server`             | WebSocket 服务、任务编排、Provider 适配器、持久化与远程连接 |
+| `apps/web`                | 浏览器工作台与设置界面                                      |
+| `apps/desktop`            | Electron 桌面端及本地服务启动器                             |
+| `apps/mobile`             | iOS 与 Android 移动端                                       |
+| `packages/contracts`      | WebSocket 契约与跨端数据模型                                |
+| `packages/client-runtime` | Web 与移动端共享的客户端运行时                              |
+| `packages/shared`         | 跨应用共享工具与产品标识                                    |
+| `docs/`                   | 用户文档、内部架构说明和运维记录                            |
 
 ## 核心能力
 
-- **BYOK 多供应商**：自带密钥接入 OpenAI、Anthropic、Gemini 及兼容中转，支持模型目录发现、上下文窗口匹配、余额查询与仪表盘。
-- **任务委派**：内置执行器注册表、可用性探测、优先级与故障转移，支持审查、重试、改派、预算升级、视觉委派和子代理角色片段。
-- **组合运行时**：任务图编排、工具代理（ToolBroker）、能力授予审批，以及跨重启委派收口与台账投影。
-- **多端协同**：Web、桌面和移动端共享同一套契约与运行时，可从另一台机器或手机远程控制开发环境。
+- **多 Provider 工作台**：统一查看 Provider 状态、登录状态、可执行文件路径和启用配置；不同 Provider 仍使用各自的官方 CLI 与账号。
+- **项目与线程**：按项目组织会话，支持工作区、worktree、文件搜索、终端、源码控制、回合历史、变更查看与检查点恢复。
+- **任务委派与长任务**：提供执行器注册、可用性探测、优先级与故障转移，并支持审查、重试、改派、预算升级、视觉委派和子代理角色。
+- **权限与运行时控制**：按线程选择权限模式；组合运行时负责任务图、工具代理、能力授予审批，以及跨重启委派收口。
+- **BYOK 与自定义模型**：接入 OpenAI、Anthropic、Gemini 及兼容中转，支持模型发现、上下文窗口匹配、余额查询和使用量仪表盘。
+- **远程与多端协同**：Web、桌面和移动端共享契约与客户端运行时，可通过配对链接、局域网、Tailscale 或托管 Web 端远程控制开发环境。
 
 ## 快速开始
+
+终端用户可以直接运行：
+
+```bash
+npx t3@latest
+```
+
+从源码开发需要 Node.js `24.13+`、pnpm 和 Vite+：
 
 ```bash
 pnpm install
 pnpm dev          # 并行启动 contracts / server / web
 pnpm dev:desktop  # 启动桌面端开发环境
-pnpm tc           # 全仓类型检查
-pnpm test         # 全仓测试
+vp i              # 维护者安装 Vite+ 工作区依赖
+vp run dev        # 维护者启动本地开发环境
 ```
 
-要求 Node.js 24+。BYOK 与委派配置说明见 [`docs/user/`](./docs/user/)，内部设计文档见 [`docs/internals/`](./docs/internals/)。
+至少安装并登录一个 Provider CLI；服务端在哪台机器运行，就在哪台机器完成 Provider 登录。类型检查和测试请按改动范围运行，不要把全仓检查当作日常开发的唯一验证方式。
 
 ## 文档
 
@@ -50,12 +64,41 @@ pnpm test         # 全仓测试
 - [权限模式](./docs/user/permission-modes.md)
 - [键盘快捷键](./docs/user/keybindings.md)
 - [项目图标设置](./docs/user/project-settings.md)
+- [消息编辑器、斜杠命令与技能](./docs/user/composer.md)
+- [Codex Provider 与 CLI 登录](./docs/user/providers-codex.md)
+- [BYOK 与自定义模型服务](./docs/user/byok.md)
+- [BYOK Gateway 支持范围](./docs/user/byok-gateway.md)
 - [从手机或另一台机器远程访问](./docs/user/remote-access.md)
 - [应用与服务端同步](./docs/user/updating.md)
 - [源码控制集成](./docs/user/source-control.md)
-- [Codex Provider](./docs/user/providers-codex.md)
 - [Claude Provider](./docs/user/providers-claude.md)
+- [使用量与计划](./docs/user/usage.md)
+- [Agent CLI](./docs/user/agent-cli.md)
 - [Linux 后台服务](./docs/user/background-service.md)
+
+## 平台支持
+
+| 端      | 适用场景               | 说明                                |
+| ------- | ---------------------- | ----------------------------------- |
+| Web     | 浏览器工作台、远程访问 | 可连接本机或远程 Code Work 服务     |
+| Desktop | 日常主力使用           | Electron 外壳，内置本地服务启动能力 |
+| Mobile  | 手机端远程控制         | iOS 与 Android 客户端，连接已有服务 |
+
+## 推荐使用路径
+
+1. 安装并登录一个或多个 Provider CLI。
+2. 启动 Code Work，创建或选择一个项目。
+3. 在项目线程中发送任务，并按需要选择权限模式。
+4. 通过终端、源码控制和变更查看检查代理输出。
+5. 需要更长任务时使用委派、审查、重试或改派。
+6. 需要离开电脑时，在设置中创建配对链接，用手机或另一台机器继续操作。
+
+## 重要边界
+
+- Provider CLI、模型订阅和账号由用户自行安装、登录和管理；Code Work 不会替你购买或托管这些服务。
+- BYOK Gateway 按 Provider 支持的协议工作；不同协议之间不会自动转换。
+- 远程访问链接和登录凭据属于敏感信息，只应发送给可信设备，并在不再需要时撤销。
+- 仓库中的 `t3.json`、`t3.codes`、`npx t3`、`.t3` 和部分移动原生模块标识属于兼容契约，不代表产品名称。
 
 ## 贡献
 
