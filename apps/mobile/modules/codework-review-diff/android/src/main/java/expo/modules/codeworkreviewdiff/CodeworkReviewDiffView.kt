@@ -25,7 +25,7 @@ import kotlin.math.min
 
 class CodeworkReviewDiffView(
   context: Context,
-  appContext: AppContext,
+  appContext: AppContext
 ) : ExpoView(context, appContext) {
   private val canvasView = DiffCanvasView(context)
   private val onDebug by EventDispatcher()

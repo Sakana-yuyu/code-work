@@ -19,7 +19,7 @@ import kotlin.math.max
 
 class CodeworkTerminalView(
   context: Context,
-  appContext: AppContext,
+  appContext: AppContext
 ) : ExpoView(context, appContext) {
   private val container = FrameLayout(context)
   private val terminalCanvas = TerminalCanvasView(context)
