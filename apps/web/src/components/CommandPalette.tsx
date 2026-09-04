@@ -1275,6 +1275,14 @@ function OpenCommandPaletteDialog(props: {
     void navigate({ to: "/settings/source-control" });
   }, [navigate, setOpen]);
 
+  async function openLocalFolderPicker(environmentId: EnvironmentId): Promise<void> {
+    if (canOpenProjectFromFileManager) {
+      await handleOpenProjectFromFileManager();
+      return;
+    }
+    await startAddProjectBrowse(environmentId);
+  }
+
   const buildAddProjectSourceGroups = useCallback(
     (
       environmentId: EnvironmentId,
@@ -1290,7 +1298,7 @@ function OpenCommandPaletteDialog(props: {
           icon: <FolderPlusIcon className={ITEM_ICON_CLASS} />,
           keepOpen: true,
           run: async () => {
-            await startAddProjectBrowse(environmentId);
+            await openLocalFolderPicker(environmentId);
           },
         },
       ];
@@ -1378,7 +1386,7 @@ function OpenCommandPaletteDialog(props: {
         },
       ];
     },
-    [openSourceControlSettings, startAddProjectBrowse, startAddProjectClone],
+    [openLocalFolderPicker, openSourceControlSettings, startAddProjectClone],
   );
 
   const startAddProjectSourceSelection = useCallback(
@@ -2172,7 +2180,7 @@ function OpenCommandPaletteDialog(props: {
     !isRemoteProjectPending;
   const fileManagerName = getLocalFileManagerName(navigator.platform);
   const canOpenProjectFromFileManager =
-    isBrowsing &&
+    (isBrowsing || addProjectEnvironmentId !== null) &&
     browseEnvironmentId !== null &&
     // For a desktop-local (WSL) env, only offer the picker once we have resolved
     // its desktop pool instance id. Without it pickFolder can't be routed to the
