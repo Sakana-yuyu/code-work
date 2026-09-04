@@ -63,6 +63,7 @@ import {
   WINDOWS_SERVER_ASAR_RESOURCE,
   WINDOWS_SERVER_ASAR_UNPACK_GLOB,
   WINDOWS_SERVER_RESOURCE_SOURCE_DIR,
+  WINDOWS_APP_EXECUTABLE_NAME,
 } from "./build-desktop-artifact.ts";
 import { BRAND_ASSET_PATHS } from "./lib/brand-assets.ts";
 import { HostProcessArchitecture, HostProcessPlatform } from "@codework/shared/hostProcess";
@@ -139,7 +140,7 @@ const makeWindowsPayloadFixture = Effect.fn("test.makeWindowsPayloadFixture")(fu
     path.join(resourcesDir, "resource-monitor/codework-resource-monitor.exe"),
     "monitor",
   );
-  const appExecutableName = "codework.exe";
+  const appExecutableName = `${WINDOWS_APP_EXECUTABLE_NAME}.exe`;
   yield* fs.writeFileString(path.join(packagedAppDir, appExecutableName), "electron");
   yield* fs.writeFileString(path.join(packagedAppDir, "chrome_crashpad_handler.exe"), "crashpad");
 
@@ -159,7 +160,7 @@ it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
   });
 
   it("switches desktop packaging product names to nightly for nightly builds", () => {
-    assert.equal(resolveDesktopProductName("0.0.17"), "Code Work (Alpha)");
+    assert.equal(resolveDesktopProductName("0.0.17"), "Code Work");
     assert.equal(resolveDesktopProductName("0.0.17-nightly.20260413.42"), "Code Work (Nightly)");
   });
 
@@ -221,6 +222,27 @@ it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
         channel: "nightly",
       });
     }),
+  );
+
+  it.effect("defaults the update feed to the fork repository when env is unset", () =>
+    Effect.gen(function* () {
+      const latestConfig = yield* resolveGitHubPublishConfig("latest");
+      const nightlyConfig = yield* resolveGitHubPublishConfig("nightly");
+
+      assert.deepStrictEqual(latestConfig, {
+        provider: "github",
+        owner: "Sakana-yuyu",
+        repo: "code-work",
+        releaseType: "release",
+      });
+      assert.deepStrictEqual(nightlyConfig, {
+        provider: "github",
+        owner: "Sakana-yuyu",
+        repo: "code-work",
+        releaseType: "prerelease",
+        channel: "nightly",
+      });
+    }).pipe(Effect.provide(ConfigProvider.layer(ConfigProvider.fromEnv({ env: {} })))),
   );
 
   it.effect("omits update feeds for pull request preview builds", () =>
@@ -494,7 +516,12 @@ it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
         },
         ...WINDOWS_SERVER_EXTRA_RESOURCES,
       ]);
-      assert.deepStrictEqual(win.nsis, { differentialPackage: true });
+      assert.deepStrictEqual(win.nsis, {
+        oneClick: false,
+        allowToChangeInstallationDirectory: true,
+        differentialPackage: true,
+      });
+      assert.equal((win.win as Record<string, unknown>).executableName, "CodeWork");
       // Native binaries and helper executables cannot load from inside an
       // asar; everything else stays packed. The Claude SDK platform packages
       // and .bin shims never ship.
@@ -509,7 +536,7 @@ it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
         "**/node_modules/.bin/**",
       ]);
       assert.deepStrictEqual(mac.dmg, {
-        title: "Code Work (Alpha) 1.2.3 Installer",
+        title: "Code Work 1.2.3 Installer",
         background: "dmg/dmg-background-latest.png",
         window: { width: 540, height: 412 },
         contents: [

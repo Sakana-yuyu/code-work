@@ -42,6 +42,29 @@ export const PROVIDER_PRESENTATION = {
 /** Stable provider reading order across charts, summaries, tables, and hover rows. */
 export const PROVIDER_ORDER = Object.keys(PROVIDER_PRESENTATION) as UsageProviderKind[];
 
+/**
+ * Categorical palette for per-model series, indexed by token-volume rank so a
+ * model keeps its color across the trend chart and the donut.
+ */
+const MODEL_COLOR_PALETTE = [
+  "#3b82f6",
+  "#22c55e",
+  "#a855f7",
+  "#ef4444",
+  "#f97316",
+  "#14b8a6",
+  "#eab308",
+  "#ec4899",
+] as const;
+
+/** The collapsed tail of the model donut, kept visually quiet. */
+export const OTHER_MODELS_COLOR =
+  "color-mix(in oklab, var(--contrast-foreground) 40%, var(--background))";
+
+export function modelColor(rank: number): string {
+  return MODEL_COLOR_PALETTE[rank % MODEL_COLOR_PALETTE.length] ?? OTHER_MODELS_COLOR;
+}
+
 /** Providers with real activity, independent of the metric currently displayed. */
 export function providersWithUsage(
   totals: readonly {

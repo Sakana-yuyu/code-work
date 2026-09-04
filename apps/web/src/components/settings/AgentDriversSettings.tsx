@@ -260,6 +260,9 @@ export function AgentDriversSettings() {
         </Button>
       }
     >
+      <p className="text-xs leading-[1.5] text-muted-foreground">
+        {t("agentDrivers.sectionDescription")}
+      </p>
       <RuntimeStartGuide profiles={profiles} />
       <SettingsRow
         title={t("runtimeGuide.driverStatusTitle")}

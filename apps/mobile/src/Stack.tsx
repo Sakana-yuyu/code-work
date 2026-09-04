@@ -21,6 +21,7 @@ import { useAgentNotificationNavigation } from "./features/agent-awareness/notif
 import { ConnectOnboardingRouteScreen } from "./features/cloud/ConnectOnboardingRouteScreen";
 import { useConnectOnboardingNavigation } from "./features/cloud/connectOnboardingNavigation";
 import { ThreadFilesTreeScreen, ThreadFileScreen } from "./features/files/ThreadFilesRouteScreen";
+import { ProjectContentSearchRouteScreen } from "./features/files/ProjectContentSearchRouteScreen";
 import { AdaptiveWorkspaceLayout } from "./features/layout/AdaptiveWorkspaceLayout";
 import { HardwareKeyboardCommandProvider } from "./features/keyboard/HardwareKeyboardCommandProvider";
 import { ReviewCommentComposerSheet } from "./features/review/ReviewCommentComposerSheet";
@@ -31,6 +32,12 @@ import { GitCommitSheet } from "./features/threads/git/GitCommitSheet";
 import { GitConfirmSheet } from "./features/threads/git/GitConfirmSheet";
 import { GitOverviewSheet } from "./features/threads/git/GitOverviewSheet";
 import { ThreadRouteScreen } from "./features/threads/ThreadRouteScreen";
+import { ThreadGoalRouteScreen } from "./features/threads/ThreadGoalRouteScreen";
+import { ThreadPreviewRouteScreen } from "./features/preview/ThreadPreviewRouteScreen";
+import {
+  PullRequestDetailRouteScreen,
+  PullRequestsRouteScreen,
+} from "./features/pullRequests/PullRequestsRouteScreen";
 import { ConnectionsRouteScreen } from "./features/connection/ConnectionsRouteScreen";
 import { ConnectionsNewRouteScreen } from "./features/connection/ConnectionsNewRouteScreen";
 import { HomeRouteScreen } from "./features/home/HomeRouteScreen";
@@ -51,16 +58,30 @@ import {
 import { NewTaskFlowProvider } from "./features/threads/new-task-flow-provider";
 import { NewTaskRouteScreen } from "./features/threads/NewTaskRouteScreen";
 import { SettingsAppearanceRouteScreen } from "./features/settings/SettingsAppearanceRouteScreen";
+import { SettingsByokRouteScreen } from "./features/settings/SettingsByokRouteScreen";
+import { SettingsProvidersRouteScreen } from "./features/settings/SettingsProvidersRouteScreen";
+import { SettingsServerRouteScreen } from "./features/settings/SettingsServerRouteScreen";
+import { SettingsIdeSessionsRouteScreen } from "./features/settings/SettingsIdeSessionsRouteScreen";
+import { SettingsRuntimeDriversRouteScreen } from "./features/settings/SettingsRuntimeDriversRouteScreen";
+import { SettingsKeybindingsRouteScreen } from "./features/settings/SettingsKeybindingsRouteScreen";
+import { SettingsSourceControlRouteScreen } from "./features/settings/SettingsSourceControlRouteScreen";
 import { SettingsClientStorageRouteScreen } from "./features/settings/SettingsClientStorageRouteScreen";
 import { SettingsAuthRouteScreen } from "./features/settings/SettingsAuthRouteScreen";
 import { SettingsControlCenterRouteScreen } from "./features/settings/SettingsControlCenterRouteScreen";
 import { SettingsEnvironmentsRouteScreen } from "./features/settings/SettingsEnvironmentsRouteScreen";
 import { SettingsSquadExecutionHistoryRouteScreen } from "./features/settings/SettingsSquadExecutionHistoryRouteScreen";
 import { SettingsSquadBuilderRouteScreen } from "./features/settings/SettingsSquadBuilderRouteScreen";
+import { SettingsTaskGraphRouteScreen } from "./features/settings/SettingsTaskGraphRouteScreen";
+import { SettingsTeamRuntimeRouteScreen } from "./features/settings/SettingsTeamRuntimeRouteScreen";
 import { SettingsSupplierRegistryRouteScreen } from "./features/settings/SettingsSupplierRegistryRouteScreen";
 import { SettingsLegalRouteScreen } from "./features/settings/SettingsLegalRouteScreen";
+import { SettingsMcpRouteScreen } from "./features/settings/SettingsMcpRouteScreen";
 import { SettingsProjectGroupingRouteScreen } from "./features/settings/SettingsProjectGroupingRouteScreen";
+import { SettingsWorkspaceScriptsRouteScreen } from "./features/settings/SettingsWorkspaceScriptsRouteScreen";
+import { SettingsAutomationsRouteScreen } from "./features/settings/SettingsAutomationsRouteScreen";
+import { SettingsDiagnosticsRouteScreen } from "./features/settings/SettingsDiagnosticsRouteScreen";
 import { UsageRouteScreen } from "./features/usage/UsageRouteScreen";
+import { ProjectSettingsRouteScreen } from "./features/projects/ProjectSettingsRouteScreen";
 import { SettingsRouteScreen } from "./features/settings/SettingsRouteScreen";
 import { ShowcaseCaptureCoordinator } from "./features/showcase/ShowcaseCaptureCoordinator";
 import {
@@ -203,6 +224,83 @@ const SettingsContentStack = createNativeStackNavigator({
         title: t("usage"),
       }),
     }),
+    SettingsByok: createNativeStackScreen({
+      screen: SettingsByokRouteScreen,
+      linking: "byok",
+      options: () => ({
+        title: t("settings.byok"),
+      }),
+    }),
+    SettingsProviders: createNativeStackScreen({
+      screen: SettingsProvidersRouteScreen,
+      linking: "providers",
+      options: () => ({
+        title: t("providersMobile.title"),
+      }),
+    }),
+    SettingsServer: createNativeStackScreen({
+      screen: SettingsServerRouteScreen,
+      linking: "server",
+      options: () => ({
+        title: t("serverSettingsMobile.title"),
+      }),
+    }),
+    SettingsIdeSessions: createNativeStackScreen({
+      screen: SettingsIdeSessionsRouteScreen,
+      linking: "ide-sessions",
+      options: () => ({
+        title: t("ideSessionsMobile.title"),
+      }),
+    }),
+    SettingsRuntimeDrivers: createNativeStackScreen({
+      screen: SettingsRuntimeDriversRouteScreen,
+      linking: "runtime-drivers",
+      options: () => ({
+        title: t("runtimeDriversMobile.title"),
+      }),
+    }),
+    SettingsKeybindings: createNativeStackScreen({
+      screen: SettingsKeybindingsRouteScreen,
+      linking: "keybindings",
+      options: () => ({
+        title: t("keybindingsMobile.title"),
+      }),
+    }),
+    SettingsSourceControl: createNativeStackScreen({
+      screen: SettingsSourceControlRouteScreen,
+      linking: "source-control",
+      options: () => ({
+        title: t("sourceControlMobile.title"),
+      }),
+    }),
+    SettingsMcp: createNativeStackScreen({
+      screen: SettingsMcpRouteScreen,
+      linking: "mcp",
+      options: () => ({
+        title: t("mcpMobile.title"),
+      }),
+    }),
+    SettingsWorkspaceScripts: createNativeStackScreen({
+      screen: SettingsWorkspaceScriptsRouteScreen,
+      linking: "workspace-scripts",
+      options: () => ({
+        title: t("workspaceScriptsMobile.title"),
+      }),
+    }),
+    SettingsAutomations: createNativeStackScreen({
+      screen: SettingsAutomationsRouteScreen,
+      linking: "automations",
+      options: () => ({
+        title: t("automationMobile.title"),
+      }),
+    }),
+    SettingsDiagnostics: createNativeStackScreen({
+      screen: SettingsDiagnosticsRouteScreen,
+      linking: "diagnostics",
+      options: () => ({
+        title: t("diagnosticsMobile.title"),
+      }),
+    }),
     SettingsControlCenter: createNativeStackScreen({
       screen: SettingsControlCenterRouteScreen,
       linking: "control-center",
@@ -222,6 +320,20 @@ const SettingsContentStack = createNativeStackNavigator({
       linking: "squad-builder",
       options: () => ({
         title: t("squadBuilder.title"),
+      }),
+    }),
+    SettingsTaskGraph: createNativeStackScreen({
+      screen: SettingsTaskGraphRouteScreen,
+      linking: "task-graph",
+      options: () => ({
+        title: t("taskGraphMobile.title"),
+      }),
+    }),
+    SettingsTeamRuntime: createNativeStackScreen({
+      screen: SettingsTeamRuntimeRouteScreen,
+      linking: "team",
+      options: () => ({
+        title: t("teamRuntimeMobile.title"),
       }),
     }),
     SettingsSupplierRegistry: createNativeStackScreen({
@@ -495,10 +607,35 @@ export const RootStack = createNativeStackNavigator({
         ...getCompactBrandHeaderOptions(),
       },
     }),
+    PullRequests: createNativeStackScreen({
+      screen: PullRequestsRouteScreen,
+      linking: "pull-requests",
+      options: SOLID_HEADER_OPTIONS,
+    }),
+    PullRequestDetail: createNativeStackScreen({
+      screen: PullRequestDetailRouteScreen,
+      linking: "pull-requests/:environmentId/:projectId/:repository/:number",
+      options: SOLID_HEADER_OPTIONS,
+    }),
+    ProjectSettings: createNativeStackScreen({
+      screen: ProjectSettingsRouteScreen,
+      linking: "project-settings/:environmentId/:projectId",
+      options: SOLID_HEADER_OPTIONS,
+    }),
     Thread: createNativeStackScreen({
       screen: ThreadRouteScreen,
       linking: THREAD_LINKING_PREFIX,
       options: GLASS_HEADER_OPTIONS,
+    }),
+    ThreadGoal: createNativeStackScreen({
+      screen: ThreadGoalRouteScreen,
+      linking: `${THREAD_LINKING_PREFIX}/goal`,
+      options: SOLID_HEADER_OPTIONS,
+    }),
+    ThreadPreview: createNativeStackScreen({
+      screen: ThreadPreviewRouteScreen,
+      linking: `${THREAD_LINKING_PREFIX}/preview`,
+      options: SOLID_HEADER_OPTIONS,
     }),
     ThreadTerminal: createNativeStackScreen({
       screen: ThreadTerminalRouteScreen,
@@ -530,6 +667,11 @@ export const RootStack = createNativeStackNavigator({
         ...GLASS_HEADER_OPTIONS,
         title: t("surface.files"),
       }),
+    }),
+    ThreadFileSearch: createNativeStackScreen({
+      screen: ProjectContentSearchRouteScreen,
+      linking: `${THREAD_LINKING_PREFIX}/files/search`,
+      options: SOLID_HEADER_OPTIONS,
     }),
     ThreadFile: createNativeStackScreen({
       screen: ThreadFileScreen,

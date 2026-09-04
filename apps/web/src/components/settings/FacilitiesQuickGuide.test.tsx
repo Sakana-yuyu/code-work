@@ -60,4 +60,13 @@ describe("FacilitiesQuickGuide", () => {
     );
     expect(html).not.toContain(t("facilitiesGuide.byok.step1Title"));
   });
+
+  it("promotes the entry with an empty-state hint while the page has nothing configured", () => {
+    const html = renderToStaticMarkup(<FacilitiesQuickGuide guideId="byok" steps={steps} empty />);
+    expect(html).toContain(t("facilitiesGuide.emptyHint"));
+    expect(html).toContain(t("facilitiesGuide.open"));
+
+    const plain = renderToStaticMarkup(<FacilitiesQuickGuide guideId="byok" steps={steps} />);
+    expect(plain).not.toContain(t("facilitiesGuide.emptyHint"));
+  });
 });

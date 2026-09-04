@@ -29,11 +29,12 @@ import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Stream from "effect/Stream";
 import { makeDrainableWorker } from "@codework/shared/DrainableWorker";
+import * as NodeCrypto from "node:crypto";
 
 import { ProviderService } from "../../provider/Services/ProviderService.ts";
 import { ProjectionTurnRepository } from "../../persistence/Services/ProjectionTurns.ts";
 import { ProjectionTurnRepositoryLive } from "../../persistence/Layers/ProjectionTurns.ts";
-import { scanGoalMarkers } from "../../composition/CompositionGoalLoop.ts";
+import { parseGoalCompletion, scanGoalMarkers } from "../../composition/CompositionGoalLoop.ts";
 import { isGitRepository } from "../../git/Utils.ts";
 import { OrchestrationEngineService } from "../Services/OrchestrationEngine.ts";
 import { ThreadBackgroundLivenessService } from "../ThreadBackgroundLiveness.ts";
@@ -48,9 +49,24 @@ import { forkParked } from "../../serverActivation.ts";
 import { ServerSettingsService } from "../../serverSettings.ts";
 import { canReplaceThreadTitle } from "../threadTitles.ts";
 import { ThreadGoalStore } from "../../persistence/Services/ThreadGoalStore.ts";
+import { SpecWorkflowCapabilityStore } from "../../persistence/Services/SpecWorkflowCapabilityStore.ts";
+import { SpecWorkflowService } from "../../specWorkflow/SpecWorkflowService.ts";
+import { parseSpecWorkflowIntent } from "../../specWorkflow/SpecWorkflowAgentProtocol.ts";
+import { CompositionAgentDriverRegistryService } from "../../composition/CompositionAgentDriverRegistry.ts";
+import { compositionProviderAgentId } from "../../composition/CompositionProviderAgentDriverRegistry.ts";
 
 const providerTurnKey = (threadId: ThreadId, turnId: TurnId) => `${threadId}:${turnId}`;
 const providerTaskKey = (threadId: ThreadId, taskId: string) => `${threadId}:${taskId}`;
+
+const latestUserPrompt = (messages: ReadonlyArray<OrchestrationMessage>): string | undefined => {
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const message = messages[index];
+    if (message?.role === "user" && message.text.trim().length > 0) {
+      return message.text;
+    }
+  }
+  return undefined;
+};
 
 // Fallback when the in-memory description cache no longer has the task name
 // (server restart, session-exit sweep, TTL/capacity eviction): earlier
@@ -901,6 +917,11 @@ const make = Effect.gen(function* () {
   const projectionTurnRepository = yield* ProjectionTurnRepository;
   const serverSettingsService = yield* ServerSettingsService;
   const threadGoalStore = yield* Effect.serviceOption(ThreadGoalStore);
+  const specWorkflowCapabilityStore = yield* Effect.serviceOption(SpecWorkflowCapabilityStore);
+  const specWorkflowService = yield* Effect.serviceOption(SpecWorkflowService);
+  const specWorkflowAgentRegistry = yield* Effect.serviceOption(
+    CompositionAgentDriverRegistryService,
+  );
   const providerCommandId = (event: ProviderRuntimeEvent, tag: string) =>
     crypto.randomUUIDv4.pipe(
       Effect.map((uuid) => CommandId.make(`provider:${event.eventId}:${tag}:${uuid}`)),
@@ -939,6 +960,12 @@ const make = Effect.gen(function* () {
     capacity: TASK_DESCRIPTION_BY_TASK_CACHE_CAPACITY,
     timeToLive: TASK_DESCRIPTION_BY_TASK_TTL,
     lookup: () => Effect.succeed(""),
+  });
+
+  const handledSpecWorkflowIntentKeys = yield* Cache.make<string, true>({
+    capacity: 10_000,
+    timeToLive: Duration.minutes(30),
+    lookup: () => Effect.succeed(true),
   });
 
   const rememberTaskDescription = (threadId: ThreadId, taskId: string, description: string) =>
@@ -1151,7 +1178,14 @@ const make = Effect.gen(function* () {
   type AssistantGoalTermination = {
     readonly cleanText: string;
     readonly status: "complete" | "paused";
+    readonly summary: string;
   };
+
+  const summarizeGoalCompletion = (text: string, reason?: string): string => {
+    const candidate = (reason ?? text).replace(/\s+/g, " ").trim();
+    return truncateDetail(candidate.split(/[。！？.!?]/u, 1)[0]?.trim() || "目标已完成", 120);
+  };
+
   const resolveAssistantGoalTermination = (
     threadId: ThreadId,
     text: string,
@@ -1170,17 +1204,16 @@ const make = Effect.gen(function* () {
         Option.match({
           onNone: () => Effect.succeed(Option.none<AssistantGoalTermination>()),
           onSome: (goal) => {
-            if (goal.status === "complete") {
-              return Effect.succeed(Option.none<AssistantGoalTermination>());
-            }
             const scan = scanGoalMarkers(text);
             if (!scan.complete && !scan.cancelled) {
               return Effect.succeed(Option.none<AssistantGoalTermination>());
             }
+            const completion = scan.complete ? parseGoalCompletion(text) : undefined;
             return Effect.succeed(
               Option.some({
                 cleanText: scan.text,
                 status: scan.complete ? ("complete" as const) : ("paused" as const),
+                summary: summarizeGoalCompletion(scan.text, completion?.reason),
               }),
             );
           },
@@ -1191,6 +1224,7 @@ const make = Effect.gen(function* () {
 
   const applyAssistantGoalTermination = (
     threadId: ThreadId,
+    event: ProviderRuntimeEvent,
     termination: AssistantGoalTermination,
   ) => {
     if (Option.isNone(threadGoalStore)) return Effect.void;
@@ -1199,14 +1233,48 @@ const make = Effect.gen(function* () {
         Option.match({
           onNone: () => Effect.void,
           onSome: (goal) =>
-            goal.status === termination.status
-              ? Effect.void
-              : threadGoalStore.value
-                  .setStatus({
-                    threadId,
-                    status: termination.status,
-                  })
-                  .pipe(Effect.asVoid),
+            Effect.gen(function* () {
+              if (termination.status !== "complete") {
+                if (goal.status !== termination.status) {
+                  yield* threadGoalStore.value
+                    .setStatus({ threadId, status: termination.status })
+                    .pipe(Effect.asVoid);
+                }
+                return;
+              }
+
+              const completedGoal =
+                goal.status === "complete"
+                  ? goal
+                  : yield* threadGoalStore.value.setStatus({
+                      threadId,
+                      status: "complete",
+                    });
+              // 稳定 command/activity id 让 item.completed 与 turn.completed 的重复扫描幂等。
+              yield* orchestrationEngine.dispatch({
+                type: "thread.activity.append",
+                commandId: CommandId.make(
+                  `provider:goal-completed:${threadId}:${completedGoal.goalId}`,
+                ),
+                threadId,
+                activity: {
+                  id: EventId.make(`goal-completed:${threadId}:${completedGoal.goalId}`),
+                  tone: "info",
+                  kind: "goal.completed",
+                  summary: `${termination.summary}目标已完成`,
+                  payload: {
+                    goalId: completedGoal.goalId,
+                    summary: termination.summary,
+                    timeUsedSeconds: completedGoal.timeUsedSeconds,
+                    tokensUsed: completedGoal.tokensUsed,
+                  },
+                  turnId: toTurnId(event.turnId) ?? null,
+                  createdAt: event.createdAt,
+                },
+                createdAt: event.createdAt,
+              });
+              yield* threadGoalStore.value.clear(threadId);
+            }),
         }),
       ),
       Effect.catchCause((cause) => {
@@ -1219,6 +1287,176 @@ const make = Effect.gen(function* () {
       }),
     );
   };
+
+  const resolveSpecWorkflowDirective = (
+    threadId: ThreadId,
+    text: string,
+  ): Effect.Effect<ReturnType<typeof parseSpecWorkflowIntent>> => {
+    const preserve = {
+      intent: undefined,
+      cleanText: text,
+    } satisfies ReturnType<typeof parseSpecWorkflowIntent>;
+    if (Option.isNone(specWorkflowCapabilityStore)) {
+      return Effect.succeed(preserve);
+    }
+    return specWorkflowCapabilityStore.value.get(threadId).pipe(
+      Effect.map((capability) => (capability.enabled ? parseSpecWorkflowIntent(text) : preserve)),
+      Effect.catchCause((cause) =>
+        Effect.logWarning("provider runtime ingestion failed to read Spec Workflow capability", {
+          threadId,
+          cause: Cause.pretty(cause),
+        }).pipe(Effect.as(preserve)),
+      ),
+    );
+  };
+
+  const dispatchSpecWorkflowAgentIntent = (input: {
+    readonly event: ProviderRuntimeEvent;
+    readonly threadId: ThreadId;
+    readonly messageId: MessageId;
+    readonly userPrompt?: string;
+    readonly directive: ReturnType<typeof parseSpecWorkflowIntent>;
+  }) =>
+    Effect.gen(function* () {
+      const intent = input.directive.intent;
+      if (
+        intent === undefined ||
+        intent === "workflow" ||
+        intent === "chat" ||
+        intent === "verify"
+      ) {
+        return;
+      }
+      if (Option.isNone(specWorkflowCapabilityStore) || Option.isNone(specWorkflowService)) {
+        return;
+      }
+      const capability = yield* specWorkflowCapabilityStore.value.get(input.threadId).pipe(
+        Effect.catchCause((cause) =>
+          Effect.logWarning("provider runtime ingestion failed to read Spec Workflow capability", {
+            threadId: input.threadId,
+            cause: Cause.pretty(cause),
+          }).pipe(Effect.as(undefined)),
+        ),
+      );
+      if (capability?.enabled !== true) {
+        return;
+      }
+      const state = yield* specWorkflowService.value.getState(input.threadId).pipe(
+        Effect.catchCause((cause) =>
+          Effect.logWarning("provider runtime ingestion failed to read Spec Workflow state", {
+            threadId: input.threadId,
+            cause: Cause.pretty(cause),
+          }).pipe(Effect.as(Option.none())),
+        ),
+      );
+      if (Option.isNone(state)) {
+        return;
+      }
+      const intentKey = `${input.threadId}:${input.messageId}:${intent}`;
+      const alreadyHandled = yield* Cache.getOption(handledSpecWorkflowIntentKeys, intentKey);
+      if (Option.isSome(alreadyHandled)) {
+        return;
+      }
+
+      const thread = yield* resolveThreadDetail(input.threadId);
+      if (!thread) {
+        return;
+      }
+      const project = yield* projectionSnapshotQuery
+        .getProjectShellById(state.value.projectId)
+        .pipe(
+          Effect.map(Option.getOrUndefined),
+          Effect.catchCause((cause) =>
+            Effect.logWarning(
+              "provider runtime ingestion failed to resolve Spec Workflow project",
+              {
+                threadId: input.threadId,
+                cause: Cause.pretty(cause),
+              },
+            ).pipe(Effect.as(undefined)),
+          ),
+        );
+      const workspaceRoot = thread.worktreePath ?? project?.workspaceRoot;
+      if (workspaceRoot === undefined) {
+        return;
+      }
+
+      const currentAgentId = compositionProviderAgentId(
+        input.event.providerInstanceId ?? String(input.event.provider),
+      );
+      const verifierId =
+        intent === "apply" || intent === "fix"
+          ? yield* Option.isSome(specWorkflowAgentRegistry)
+              ? specWorkflowAgentRegistry.value.listProfiles.pipe(
+                  Effect.map(
+                    (profiles) =>
+                      profiles.find(
+                        (profile) =>
+                          profile.status === "available" && profile.agentId !== currentAgentId,
+                      )?.agentId,
+                  ),
+                  Effect.catchCause(() => Effect.succeed(undefined)),
+                )
+              : Effect.succeed(undefined)
+          : undefined;
+      const userPrompt = input.userPrompt?.trim() || "未提供用户原始请求";
+      const decision = input.directive.cleanText.slice(0, 12_000).trim();
+      const prompt = `[User Request]\n${userPrompt}\n\n[Provider Decision]\n${decision}`;
+      const promptDigest = `sha256:${NodeCrypto.createHash("sha256").update(prompt, "utf8").digest("hex")}`;
+      const result = yield* specWorkflowService.value
+        .dispatch({
+          workflowId: state.value.workflowId,
+          projectId: state.value.projectId,
+          threadId: state.value.threadId,
+          changeName: state.value.changeName,
+          mode: state.value.mode,
+          intent,
+          workspaceRoot,
+          assigneeId: currentAgentId,
+          prompt,
+          promptDigest,
+          ...(intent === "apply" || intent === "fix"
+            ? {
+                implementationAssigneeId: currentAgentId,
+                ...(verifierId === undefined ? {} : { independentVerifierId: verifierId }),
+              }
+            : {}),
+        })
+        .pipe(
+          Effect.catchCause((cause) =>
+            Effect.logWarning(
+              "provider runtime ingestion failed to dispatch Spec Workflow intent",
+              {
+                threadId: input.threadId,
+                intent,
+                cause: Cause.pretty(cause),
+              },
+            ).pipe(Effect.as(undefined)),
+          ),
+        );
+      yield* Cache.set(handledSpecWorkflowIntentKeys, intentKey, true);
+      if (result?.route.corrected === true) {
+        yield* orchestrationEngine.dispatch({
+          type: "thread.activity.append",
+          commandId: CommandId.make(`spec-workflow:route-corrected:${intentKey}`),
+          threadId: input.threadId,
+          activity: {
+            id: EventId.make(`spec-workflow:route-corrected:${intentKey}`),
+            tone: "info",
+            kind: "spec-workflow.route-corrected",
+            summary: `Spec Workflow 已自动纠偏：${result.route.reason}`,
+            payload: {
+              requestedIntent: intent,
+              targetStage: result.route.targetStage,
+              reason: result.route.reason,
+            },
+            turnId: toTurnId(input.event.turnId) ?? null,
+            createdAt: input.event.createdAt,
+          },
+          createdAt: input.event.createdAt,
+        });
+      }
+    });
 
   // 回合正常结束时 goal 若仍为 active（本轮未声明完成/取消）则转为 paused，
   // 使目标条与 agent 实际运行状态一致；下一回合开始时由 reactor 自动恢复。
@@ -1318,6 +1556,7 @@ const make = Effect.gen(function* () {
     finalDeltaCommandTag: string;
     fallbackText?: string;
     hasProjectedMessage?: boolean;
+    userPrompt?: string;
   }) =>
     Effect.gen(function* () {
       const bufferedText = yield* takeBufferedAssistantText(input.messageId);
@@ -1327,8 +1566,14 @@ const make = Effect.gen(function* () {
           : (input.fallbackText?.trim().length ?? 0) > 0
             ? input.fallbackText!
             : "";
-      const goalTermination = yield* resolveAssistantGoalTermination(input.threadId, finalText);
-      const text = Option.isSome(goalTermination) ? goalTermination.value.cleanText : finalText;
+      const directive = yield* resolveSpecWorkflowDirective(input.threadId, finalText);
+      const goalTermination = yield* resolveAssistantGoalTermination(
+        input.threadId,
+        directive.cleanText,
+      );
+      const text = Option.isSome(goalTermination)
+        ? goalTermination.value.cleanText
+        : directive.cleanText;
       const hasRenderableText = hasRenderableAssistantText(text);
 
       if (hasRenderableText) {
@@ -1355,8 +1600,15 @@ const make = Effect.gen(function* () {
       }
       yield* clearAssistantMessageState(input.messageId);
       if (Option.isSome(goalTermination)) {
-        yield* applyAssistantGoalTermination(input.threadId, goalTermination.value);
+        yield* applyAssistantGoalTermination(input.threadId, input.event, goalTermination.value);
       }
+      yield* dispatchSpecWorkflowAgentIntent({
+        event: input.event,
+        threadId: input.threadId,
+        messageId: input.messageId,
+        ...(input.userPrompt === undefined ? {} : { userPrompt: input.userPrompt }),
+        directive,
+      });
     });
 
   const finalizeActiveAssistantSegmentForTurn = (input: {
@@ -1910,6 +2162,7 @@ const make = Effect.gen(function* () {
           : Option.none<MessageId>();
         const hasAssistantMessagesForTurn =
           turnId !== undefined ? hasAssistantMessageForTurn(messages, turnId) : false;
+        const currentUserPrompt = latestUserPrompt(messages);
         const assistantMessageId = Option.getOrElse(
           activeAssistantMessageId,
           () => assistantCompletion.messageId,
@@ -1941,6 +2194,7 @@ const make = Effect.gen(function* () {
             ...(assistantCompletion.fallbackText !== undefined && shouldApplyFallbackCompletionText
               ? { fallbackText: assistantCompletion.fallbackText }
               : {}),
+            ...(currentUserPrompt === undefined ? {} : { userPrompt: currentUserPrompt }),
           });
 
           if (existingAssistantMessage?.text) {
@@ -1949,7 +2203,7 @@ const make = Effect.gen(function* () {
               existingAssistantMessage.text,
             );
             if (Option.isSome(goalTermination)) {
-              yield* applyAssistantGoalTermination(thread.id, goalTermination.value);
+              yield* applyAssistantGoalTermination(thread.id, event, goalTermination.value);
             }
           }
 
@@ -1988,6 +2242,7 @@ const make = Effect.gen(function* () {
             (assistantMessageId) =>
               Effect.gen(function* () {
                 const existingAssistantMessage = findMessageById(messages, assistantMessageId);
+                const currentUserPrompt = latestUserPrompt(messages);
                 yield* finalizeAssistantMessage({
                   event,
                   threadId: thread.id,
@@ -1997,6 +2252,7 @@ const make = Effect.gen(function* () {
                   commandTag: "assistant-complete-finalize",
                   finalDeltaCommandTag: "assistant-delta-finalize-fallback",
                   hasProjectedMessage: existingAssistantMessage !== undefined,
+                  ...(currentUserPrompt === undefined ? {} : { userPrompt: currentUserPrompt }),
                 });
                 // 流式模式下最终文本已经投影，不再重复发送 delta，但仍扫描已投影文本，
                 // 让 Goal 不依赖 provider 是否额外提供 item.completed.detail。
@@ -2006,7 +2262,7 @@ const make = Effect.gen(function* () {
                     existingAssistantMessage.text,
                   );
                   if (Option.isSome(goalTermination)) {
-                    yield* applyAssistantGoalTermination(thread.id, goalTermination.value);
+                    yield* applyAssistantGoalTermination(thread.id, event, goalTermination.value);
                   }
                 }
               }),

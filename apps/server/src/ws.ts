@@ -40,6 +40,7 @@ import {
   type ProjectEntriesFailure,
   type ProjectFileFailure,
   type ProjectFileOperation,
+  ProjectListCanvasesError,
   ProjectListEntriesError,
   ProjectReadFileError,
   ProjectSearchContentsError,
@@ -60,6 +61,8 @@ import {
   CompositionMcpRuntimeRpcError,
   CompositionTaskRpcError,
   SupplierAdminRpcError,
+  type SpecWorkflowErrorCode,
+  SpecWorkflowRpcError,
   ThreadGoalRpcError,
   ThreadId,
   type TerminalAttachStreamEvent,
@@ -122,12 +125,14 @@ import * as CompositionSupplierRegistryProjection from "./composition/Compositio
 import { CompositionTaskInputStore } from "./persistence/Services/CompositionTaskInputStore.ts";
 import { CompositionTaskStore } from "./persistence/Services/CompositionTaskStore.ts";
 import { ThreadGoalStore } from "./persistence/Services/ThreadGoalStore.ts";
+import { SpecWorkflowCapabilityStore } from "./persistence/Services/SpecWorkflowCapabilityStore.ts";
 import { CompositionGoalLoopRetryStore } from "./persistence/Services/CompositionGoalLoopRetryStore.ts";
 import * as CompositionTaskGraphExecutor from "./composition/CompositionTaskGraphExecutor.ts";
 import * as CompositionToolBroker from "./composition/ToolBroker.ts";
 import * as CompositionRuntimeToolBridge from "./composition/CompositionRuntimeToolBridge.ts";
 import * as CompositionCapabilityGrantRegistry from "./composition/CapabilityGrantRegistry.ts";
 import * as CompositionMcpRuntimeService from "./composition/CompositionMcpRuntimeService.ts";
+import * as SpecWorkflowService from "./specWorkflow/SpecWorkflowService.ts";
 import * as ProviderMaintenanceRunner from "./provider/providerMaintenanceRunner.ts";
 import * as ServerSelfUpdate from "./cloud/selfUpdate.ts";
 import * as ServerLifecycleEvents from "./serverLifecycleEvents.ts";
@@ -138,6 +143,7 @@ import * as PreviewAutomationBroker from "./mcp/PreviewAutomationBroker.ts";
 import * as PreviewManager from "./preview/Manager.ts";
 import { issueAssetUrl } from "./assets/AssetAccess.ts";
 import { deletePendingAttachment, issueAttachmentUploadUrl } from "./assets/AttachmentUpload.ts";
+import { listCanvasArtifacts } from "./canvas/CanvasArtifact.ts";
 import * as PortScanner from "./preview/PortScanner.ts";
 import * as WorkspaceEntries from "./workspace/WorkspaceEntries.ts";
 import * as WorkspaceFileSystem from "./workspace/WorkspaceFileSystem.ts";
@@ -180,6 +186,7 @@ const isOrchestrationDispatchCommandError = Schema.is(OrchestrationDispatchComma
 const isCompositionTaskRpcError = Schema.is(CompositionTaskRpcError);
 const isCompositionMcpRuntimeRpcError = Schema.is(CompositionMcpRuntimeRpcError);
 const isThreadGoalRpcError = Schema.is(ThreadGoalRpcError);
+const isSpecWorkflowRpcError = Schema.is(SpecWorkflowRpcError);
 
 const nowIso = Effect.map(DateTime.now, DateTime.formatIso);
 const CONFIG_DISCOVERY_TIMEOUT = Duration.seconds(5);
@@ -571,6 +578,10 @@ const makeWsRpcLayer = (
         WorkspaceScriptService.WorkspaceScriptService,
       );
       const threadGoalStore = yield* Effect.serviceOption(ThreadGoalStore);
+      const specWorkflowStore = yield* Effect.serviceOption(SpecWorkflowCapabilityStore);
+      const specWorkflowService = yield* Effect.serviceOption(
+        SpecWorkflowService.SpecWorkflowService,
+      );
       const compositionAgentDrivers = yield* Effect.serviceOption(
         CompositionAgentDriverRegistry.CompositionAgentDriverRegistryService,
       );
@@ -679,6 +690,95 @@ const makeWsRpcLayer = (
             }),
           ),
         );
+      const specWorkflowUnavailable = () =>
+        new SpecWorkflowRpcError({
+          code: "persistence-failed",
+          message: "当前运行时未提供 Spec Workflow 能力。",
+        });
+      const specWorkflowServiceUnavailable = () =>
+        new SpecWorkflowRpcError({
+          code: "composition-unavailable",
+          message: "当前运行时未提供 Spec Workflow 执行服务。",
+        });
+      const specWorkflowError = (error: unknown) => {
+        if (isSpecWorkflowRpcError(error)) return error;
+        const code =
+          typeof error === "object" && error !== null && "code" in error
+            ? (error as { readonly code?: unknown }).code
+            : undefined;
+        const supportedCodes = new Set([
+          "not-enabled",
+          "thread-not-found",
+          "workflow-not-found",
+          "invalid-input",
+          "invalid-transition",
+          "gate-blocked",
+          "persistence-failed",
+          "stale-version",
+          "revision-conflict",
+          "invalid-state",
+          "artifact-not-found",
+          "artifact-path-invalid",
+          "identity-conflict",
+          "stage-not-dispatchable",
+          "independent-verifier-required",
+          "idempotency-conflict",
+          "composition-unavailable",
+        ] as const);
+        const isCompositionUnavailable =
+          typeof code === "string" &&
+          (code.startsWith("agent_driver_") ||
+            code.startsWith("provider_") ||
+            code.startsWith("runtime_agent_") ||
+            code.includes("_unsupported") ||
+            code.includes("_unavailable"));
+        const normalizedCode =
+          typeof code === "string" && supportedCodes.has(code as never)
+            ? (code as SpecWorkflowErrorCode)
+            : isCompositionUnavailable
+              ? "composition-unavailable"
+              : "persistence-failed";
+        const messageByCode = {
+          "not-enabled": "规格驱动开发尚未在当前线程启用。",
+          "thread-not-found": "线程不存在。",
+          "workflow-not-found": "当前线程没有可操作的 Spec Workflow。",
+          "invalid-input": "Spec Workflow 能力输入无效。",
+          "invalid-transition": "Spec Workflow 状态迁移无效。",
+          "gate-blocked": "当前阶段门禁未满足，不能继续推进。",
+          "stale-version": "Spec Workflow 能力已被其他操作更新，请刷新后重试。",
+          "revision-conflict": "Spec Workflow 状态已被其他操作更新，请刷新后重试。",
+          "invalid-state": "Spec Workflow 当前状态无效。",
+          "artifact-not-found": "Spec Workflow 产物不存在。",
+          "artifact-path-invalid": "Spec Workflow 产物路径无效。",
+          "identity-conflict": "请求身份与当前 Spec Workflow 不一致。",
+          "stage-not-dispatchable": "当前阶段没有可执行的 Composition Task。",
+          "independent-verifier-required": "独立验证必须使用不同于实施者的执行者。",
+          "idempotency-conflict": "重复请求的任务身份与历史任务不一致。",
+          "composition-unavailable":
+            "当前 Agent/Provider 驱动不可用或不支持该工作流，已停在当前阶段。",
+          "persistence-failed": "Spec Workflow 能力持久化失败。",
+        } as const;
+        return new SpecWorkflowRpcError({
+          code: normalizedCode,
+          message: messageByCode[normalizedCode],
+        });
+      };
+      const ensureSpecWorkflowThread = (threadId: ThreadId) =>
+        projectionSnapshotQuery.getThreadShellById(threadId).pipe(
+          Effect.mapError(specWorkflowError),
+          Effect.flatMap(
+            Option.match({
+              onNone: () =>
+                Effect.fail(
+                  new SpecWorkflowRpcError({
+                    code: "thread-not-found",
+                    message: "线程不存在。",
+                  }),
+                ),
+              onSome: () => Effect.succeed(undefined),
+            }),
+          ),
+        );
       const compositionTaskError = (error: unknown) => {
         if (isCompositionTaskRpcError(error)) return error;
         if (typeof error === "object" && error !== null) {
@@ -768,6 +868,7 @@ const makeWsRpcLayer = (
       const serverSettings = yield* ServerSettings.ServerSettingsService;
       const startup = yield* ServerRuntimeStartup.ServerRuntimeStartup;
       const workspaceEntries = yield* WorkspaceEntries.WorkspaceEntries;
+      const workspacePaths = yield* WorkspacePaths.WorkspacePaths;
       const workspaceFileSystem = yield* WorkspaceFileSystem.WorkspaceFileSystem;
       const projectSetupScriptRunner = yield* ProjectSetupScriptRunner.ProjectSetupScriptRunner;
       const serverEnvironment = yield* ServerEnvironment.ServerEnvironment;
@@ -1953,6 +2054,117 @@ const makeWsRpcLayer = (
                 ),
             { "rpc.aggregate": "orchestration" },
           ),
+        [ORCHESTRATION_WS_METHODS.getSpecWorkflow]: (input) =>
+          observeRpcEffect(
+            ORCHESTRATION_WS_METHODS.getSpecWorkflow,
+            Option.isNone(specWorkflowStore)
+              ? Effect.fail(specWorkflowUnavailable())
+              : ensureSpecWorkflowThread(input.threadId).pipe(
+                  Effect.andThen(specWorkflowStore.value.get(input.threadId)),
+                  Effect.mapError(specWorkflowError),
+                ),
+            { "rpc.aggregate": "orchestration" },
+          ),
+        [ORCHESTRATION_WS_METHODS.setSpecWorkflow]: (input) =>
+          observeRpcEffect(
+            ORCHESTRATION_WS_METHODS.setSpecWorkflow,
+            Option.isNone(specWorkflowStore)
+              ? Effect.fail(specWorkflowUnavailable())
+              : ensureSpecWorkflowThread(input.threadId).pipe(
+                  Effect.andThen(specWorkflowStore.value.set(input)),
+                  Effect.mapError(specWorkflowError),
+                ),
+            { "rpc.aggregate": "orchestration" },
+          ),
+        [ORCHESTRATION_WS_METHODS.subscribeSpecWorkflow]: (input) =>
+          observeRpcStreamEffect(
+            ORCHESTRATION_WS_METHODS.subscribeSpecWorkflow,
+            Option.isNone(specWorkflowStore)
+              ? Effect.fail(specWorkflowUnavailable())
+              : ensureSpecWorkflowThread(input.threadId).pipe(
+                  Effect.andThen(specWorkflowStore.value.subscribe(input.threadId)),
+                  Effect.mapError(specWorkflowError),
+                ),
+            { "rpc.aggregate": "orchestration" },
+          ),
+        [ORCHESTRATION_WS_METHODS.getSpecWorkflowState]: (input) =>
+          observeRpcEffect(
+            ORCHESTRATION_WS_METHODS.getSpecWorkflowState,
+            Option.isNone(specWorkflowService)
+              ? Effect.fail(specWorkflowServiceUnavailable())
+              : ensureSpecWorkflowThread(input.threadId).pipe(
+                  Effect.andThen(specWorkflowService.value.getState(input.threadId)),
+                  Effect.map(Option.getOrNull),
+                  Effect.mapError(specWorkflowError),
+                ),
+            { "rpc.aggregate": "orchestration" },
+          ),
+        [ORCHESTRATION_WS_METHODS.dispatchSpecWorkflow]: (input) =>
+          observeRpcEffect(
+            ORCHESTRATION_WS_METHODS.dispatchSpecWorkflow,
+            Option.isNone(specWorkflowService)
+              ? Effect.fail(specWorkflowServiceUnavailable())
+              : ensureSpecWorkflowThread(input.threadId).pipe(
+                  Effect.andThen(specWorkflowService.value.dispatch(input)),
+                  Effect.mapError(specWorkflowError),
+                ),
+            { "rpc.aggregate": "orchestration" },
+          ),
+        [ORCHESTRATION_WS_METHODS.reviewSpecWorkflowProposal]: (input) =>
+          observeRpcEffect(
+            ORCHESTRATION_WS_METHODS.reviewSpecWorkflowProposal,
+            Option.isNone(specWorkflowService)
+              ? Effect.fail(specWorkflowServiceUnavailable())
+              : ensureSpecWorkflowThread(input.threadId).pipe(
+                  Effect.andThen(specWorkflowService.value.reviewProposal(input)),
+                  Effect.mapError(specWorkflowError),
+                ),
+            { "rpc.aggregate": "orchestration" },
+          ),
+        [ORCHESTRATION_WS_METHODS.completeSpecWorkflowAcceptance]: (input) =>
+          observeRpcEffect(
+            ORCHESTRATION_WS_METHODS.completeSpecWorkflowAcceptance,
+            Option.isNone(specWorkflowService)
+              ? Effect.fail(specWorkflowServiceUnavailable())
+              : ensureSpecWorkflowThread(input.threadId).pipe(
+                  Effect.andThen(specWorkflowService.value.completeAcceptance(input)),
+                  Effect.mapError(specWorkflowError),
+                ),
+            { "rpc.aggregate": "orchestration" },
+          ),
+        [ORCHESTRATION_WS_METHODS.pauseSpecWorkflow]: (input) =>
+          observeRpcEffect(
+            ORCHESTRATION_WS_METHODS.pauseSpecWorkflow,
+            Option.isNone(specWorkflowService)
+              ? Effect.fail(specWorkflowServiceUnavailable())
+              : ensureSpecWorkflowThread(input.threadId).pipe(
+                  Effect.andThen(specWorkflowService.value.pause(input)),
+                  Effect.mapError(specWorkflowError),
+                ),
+            { "rpc.aggregate": "orchestration" },
+          ),
+        [ORCHESTRATION_WS_METHODS.resumeSpecWorkflow]: (input) =>
+          observeRpcEffect(
+            ORCHESTRATION_WS_METHODS.resumeSpecWorkflow,
+            Option.isNone(specWorkflowService)
+              ? Effect.fail(specWorkflowServiceUnavailable())
+              : ensureSpecWorkflowThread(input.threadId).pipe(
+                  Effect.andThen(specWorkflowService.value.resume(input)),
+                  Effect.mapError(specWorkflowError),
+                ),
+            { "rpc.aggregate": "orchestration" },
+          ),
+        [ORCHESTRATION_WS_METHODS.subscribeSpecWorkflowState]: (input) =>
+          observeRpcStreamEffect(
+            ORCHESTRATION_WS_METHODS.subscribeSpecWorkflowState,
+            Option.isNone(specWorkflowService)
+              ? Effect.fail(specWorkflowServiceUnavailable())
+              : ensureSpecWorkflowThread(input.threadId).pipe(
+                  Effect.andThen(specWorkflowService.value.subscribe(input.threadId)),
+                  Effect.mapError(specWorkflowError),
+                ),
+            { "rpc.aggregate": "orchestration" },
+          ),
         [WS_METHODS.serverProbe]: (_input) =>
           observeRpcEffect(WS_METHODS.serverProbe, Effect.succeed({}), {
             "rpc.aggregate": "server",
@@ -1988,6 +2200,14 @@ const makeWsRpcLayer = (
           observeRpcEffect(
             WS_METHODS.serverUpdateProvider,
             providerMaintenanceRunner.updateProvider(input),
+            {
+              "rpc.aggregate": "server",
+            },
+          ),
+        [WS_METHODS.serverInstallProvider]: (input) =>
+          observeRpcEffect(
+            WS_METHODS.serverInstallProvider,
+            providerMaintenanceRunner.installProvider(input),
             {
               "rpc.aggregate": "server",
             },
@@ -3259,6 +3479,14 @@ const makeWsRpcLayer = (
             ),
             { "rpc.aggregate": "workspace" },
           ),
+        [WS_METHODS.projectsListCanvases]: (input) =>
+          observeRpcEffect(
+            WS_METHODS.projectsListCanvases,
+            listCanvasArtifacts({ workspacePaths, cwd: input.cwd }).pipe(
+              Effect.map((canvases) => ({ canvases })),
+            ),
+            { "rpc.aggregate": "workspace" },
+          ),
         [WS_METHODS.projectsReadFile]: (input) =>
           observeRpcEffect(
             WS_METHODS.projectsReadFile,
@@ -3577,6 +3805,10 @@ const makeWsRpcLayer = (
           observeRpcEffect(WS_METHODS.previewRefresh, previewManager.refresh(input), {
             "rpc.aggregate": "preview",
           }),
+        [WS_METHODS.previewControl]: (input) =>
+          observeRpcEffect(WS_METHODS.previewControl, previewManager.control(input), {
+            "rpc.aggregate": "preview",
+          }),
         [WS_METHODS.previewClose]: (input) =>
           observeRpcEffect(WS_METHODS.previewClose, previewManager.close(input), {
             "rpc.aggregate": "preview",
@@ -3589,6 +3821,28 @@ const makeWsRpcLayer = (
           observeRpcEffect(WS_METHODS.previewReportStatus, previewManager.reportStatus(input), {
             "rpc.aggregate": "preview",
           }),
+        [WS_METHODS.previewReportRecording]: (input) =>
+          observeRpcEffect(
+            WS_METHODS.previewReportRecording,
+            previewManager.reportRecording(input),
+            {
+              "rpc.aggregate": "preview",
+            },
+          ),
+        [WS_METHODS.previewReportAnnotation]: (input) =>
+          observeRpcEffect(
+            WS_METHODS.previewReportAnnotation,
+            previewManager.reportAnnotation(input),
+            {
+              "rpc.aggregate": "preview",
+            },
+          ),
+        [WS_METHODS.previewReportScreenshot]: (input) =>
+          observeRpcEffect(
+            WS_METHODS.previewReportScreenshot,
+            previewManager.reportScreenshot(input),
+            { "rpc.aggregate": "preview" },
+          ),
         [WS_METHODS.previewAutomationConnect]: (input) =>
           observeRpcStreamEffect(
             WS_METHODS.previewAutomationConnect,

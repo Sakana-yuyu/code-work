@@ -4,6 +4,7 @@ import * as Schema from "effect/Schema";
 import { isBackgroundTaskActivity } from "@codework/client-runtime/state/subagentRuntime";
 import {
   ApprovalRequestId,
+  type CanvasReference,
   isToolLifecycleItemType,
   type OrchestrationLatestTurn,
   type OrchestrationThreadActivity,
@@ -26,6 +27,7 @@ import type {
   TurnDiffSummary,
 } from "./types";
 import { t } from "~/i18n/runtime";
+import { parseCanvasReference } from "./canvas";
 
 export type ProviderPickerKind = ProviderDriverKind;
 
@@ -97,6 +99,14 @@ export interface WorkLogEntry {
   tone: "thinking" | "tool" | "info" | "error";
   toolTitle?: string;
   toolData?: unknown;
+  /** Agent 生成的可持久化代码分析 Canvas 引用。 */
+  canvas?: CanvasReference;
+  /**
+   * Absolute save location reported by the provider's built-in image
+   * generation (e.g. Codex image_gen). Rendered inline via a workspace asset
+   * URL when the file sits inside the thread's workspace.
+   */
+  imagePath?: string;
   itemType?: ToolLifecycleItemType;
   requestKind?: PendingApproval["requestKind"];
   /** From runtime item / task payload `status` when present (e.g. tool.updated). */
@@ -508,12 +518,11 @@ function parseUserInputQuestions(
       if (
         typeof question.id !== "string" ||
         typeof question.header !== "string" ||
-        typeof question.question !== "string" ||
-        !Array.isArray(question.options)
+        typeof question.question !== "string"
       ) {
         return null;
       }
-      const options = question.options
+      const options = (Array.isArray(question.options) ? question.options : [])
         .map<UserInputQuestion["options"][number] | null>((option) => {
           if (!option || typeof option !== "object") return null;
           const optionRecord = option as Record<string, unknown>;
@@ -529,9 +538,6 @@ function parseUserInputQuestions(
           };
         })
         .filter((option): option is UserInputQuestion["options"][number] => option !== null);
-      if (options.length === 0) {
-        return null;
-      }
       return {
         id: question.id,
         header: question.header,
@@ -999,6 +1005,14 @@ function toDerivedWorkLogEntry(activity: OrchestrationThreadActivity): DerivedWo
     if (data?.item !== undefined) {
       entry.toolData = data.item;
     }
+    const canvas = parseCanvasReference(data?.canvas ?? data?.result ?? data?.item);
+    if (canvas) {
+      entry.canvas = canvas;
+    }
+  }
+  const imagePath = extractImagePath(payload);
+  if (imagePath) {
+    entry.imagePath = imagePath;
   }
   if (itemType) {
     entry.itemType = itemType;
@@ -1220,6 +1234,7 @@ function mergeDerivedWorkLogEntries(
   const toolCallId = next.toolCallId ?? previous.toolCallId;
   const toolLifecycleStatus = next.toolLifecycleStatus ?? previous.toolLifecycleStatus;
   const toolData = next.toolData ?? previous.toolData;
+  const canvas = next.canvas ?? previous.canvas;
   return {
     ...previous,
     ...next,
@@ -1234,6 +1249,7 @@ function mergeDerivedWorkLogEntries(
     ...(toolCallId ? { toolCallId } : {}),
     ...(toolLifecycleStatus !== undefined ? { toolLifecycleStatus } : {}),
     ...(toolData !== undefined ? { toolData } : {}),
+    ...(canvas !== undefined ? { canvas } : {}),
   };
 }
 
@@ -1710,6 +1726,37 @@ function stripTrailingExitCode(value: string): {
     output: normalizedOutput.length > 0 ? normalizedOutput : null,
     ...(Number.isInteger(exitCode) ? { exitCode } : {}),
   };
+}
+
+/**
+ * Locate an inline-generated image path on a tool payload. Codex lifts
+ * `imagePath` straight onto the item lifecycle payload, while MCP tool calls
+ * (the shared image_generate tool) nest it under `data`, so walk the same
+ * envelope keys the canvas reference parser accepts.
+ */
+function extractImagePath(value: unknown, depth = 0): string | undefined {
+  if (depth > 4) {
+    return undefined;
+  }
+  const record = asRecord(value);
+  if (!record) {
+    if (Array.isArray(value)) {
+      for (const entry of value) {
+        const found = extractImagePath(entry, depth + 1);
+        if (found) return found;
+      }
+    }
+    return undefined;
+  }
+  const direct = asTrimmedString(record.imagePath);
+  if (direct) {
+    return direct;
+  }
+  for (const key of ["data", "result", "structuredContent", "content", "item"]) {
+    const found = extractImagePath(record[key], depth + 1);
+    if (found) return found;
+  }
+  return undefined;
 }
 
 function extractWorkLogItemType(

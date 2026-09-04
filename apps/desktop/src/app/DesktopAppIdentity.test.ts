@@ -132,7 +132,7 @@ const withIdentity = <A, E, R>(
                 : Effect.succeed(
                     (input.canonicalPathExists === true && path.includes("code-work")) ||
                       (input.legacyPathExists === true &&
-                        (path.includes("codework") || path.includes("Code Work (Alpha)"))),
+                        (path.includes("t3code") || path.includes("Code Work (Alpha)"))),
                   ),
             readFileString: () =>
               Effect.succeed(input.packageJson ?? '{"codeworkCommitHash":"abcdef1234567890"}'),
@@ -155,7 +155,7 @@ describe("DesktopAppIdentity", () => {
 
         assert.equal(
           userDataPath.replaceAll("\\", "/"),
-          "/Users/alice/Library/Application Support/codework",
+          "/Users/alice/Library/Application Support/t3code",
         );
       }),
       { legacyPathExists: true },
@@ -216,8 +216,8 @@ describe("DesktopAppIdentity", () => {
         const identity = yield* DesktopAppIdentity.DesktopAppIdentity;
         yield* identity.configure;
 
-        assert.deepEqual(calls.setName, ["Code Work (Alpha)"]);
-        assert.equal(calls.setAboutPanelOptions[0]?.applicationName, "Code Work (Alpha)");
+        assert.deepEqual(calls.setName, ["Code Work"]);
+        assert.equal(calls.setAboutPanelOptions[0]?.applicationName, "Code Work");
         assert.equal(calls.setAboutPanelOptions[0]?.applicationVersion, "1.2.3");
         assert.equal(calls.setAboutPanelOptions[0]?.version, "0123456789ab");
         // Packaged: the bundle's own icon stands, so a custom one the user

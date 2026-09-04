@@ -1,26 +1,21 @@
 "use client";
 
-import { AsyncResult } from "effect/unstable/reactivity";
+import { Link } from "@tanstack/react-router";
 import {
-  BotIcon,
+  ArrowRightIcon,
   ChevronDownIcon,
   ChevronUpIcon,
   EyeIcon,
-  ListRestartIcon,
   PlusIcon,
-  RotateCcwIcon,
-  SendIcon,
   ShieldCheckIcon,
   Trash2Icon,
   UserRoundCogIcon,
   WorkflowIcon,
-  WrenchIcon,
 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
+import { useCallback, useMemo, useState, type ReactNode } from "react";
 import type {
   ByokDelegationConfig,
   ByokDelegationExecutor,
-  ByokDelegationExecutorProbe,
   ByokDelegationSnapshot,
   ByokModelAdapter,
   ProviderInstanceConfig,
@@ -30,22 +25,11 @@ import type {
 import { usePrimarySettings, useUpdatePrimarySettings } from "~/hooks/useSettings";
 import { t } from "~/i18n";
 import { usePrimaryEnvironment } from "~/state/environments";
-import { byokEnvironment } from "~/state/server";
-import { useAtomCommand } from "~/state/use-atom-command";
 
 import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
 import { Checkbox } from "../ui/checkbox";
 import { Collapsible, CollapsiblePanel, CollapsibleTrigger } from "../ui/collapsible";
-import {
-  Dialog,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogPanel,
-  DialogPopup,
-  DialogTitle,
-} from "../ui/dialog";
 import { Input } from "../ui/input";
 import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from "../ui/select";
 import { Switch } from "../ui/switch";
@@ -163,10 +147,11 @@ const normalizeSubagentProfiles = (value: unknown): ByokDelegationConfig["subage
   return value
     .map((profile) => {
       if (!isRecord(profile)) return null;
-      const subagentType = String(profile["subagentType"] ?? "").trim();
-      if (subagentType.length === 0) return null;
+      // Blank-type rows are drafts the Add button just appended; dropping them
+      // here would erase the row on the next settings read. Injection ignores
+      // them (an empty type never matches a delegation's subagent type).
       return {
-        subagentType,
+        subagentType: String(profile["subagentType"] ?? "").trim(),
         promptFragment: String(profile["promptFragment"] ?? ""),
       };
     })
@@ -290,9 +275,6 @@ const statusLabel = (status: ByokDelegationSnapshot["status"]): string => {
   }
 };
 
-const isActive = (snapshot: ByokDelegationSnapshot): boolean =>
-  snapshot.status === "queued" || snapshot.status === "running";
-
 const adapterLabel = (adapter: ByokModelAdapter): string =>
   adapter.displayName || adapter.modelId || adapter.id;
 
@@ -402,222 +384,6 @@ function CollapsibleSettingsBlock({
         </CollapsiblePanel>
       </section>
     </Collapsible>
-  );
-}
-
-function CapabilityStatusCard({
-  icon,
-  title,
-  description,
-  status,
-}: {
-  readonly icon: ReactNode;
-  readonly title: string;
-  readonly description: string;
-  readonly status: string;
-}) {
-  return (
-    <div className="rounded-lg border border-border/60 bg-muted/15 px-3 py-3">
-      <div className="flex items-start gap-2.5">
-        <span className="mt-0.5 text-muted-foreground">{icon}</span>
-        <div className="min-w-0 flex-1">
-          <div className="flex flex-wrap items-center gap-2">
-            <h3 className="text-sm font-medium text-foreground">{title}</h3>
-            <Badge variant="outline" size="sm">
-              {status}
-            </Badge>
-          </div>
-          <p className="mt-1 text-xs leading-relaxed text-muted-foreground">{description}</p>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function ExecutorConfigurationDialog({
-  open,
-  delegation,
-  onOpenChange,
-  onSave,
-}: {
-  readonly open: boolean;
-  readonly delegation: ByokDelegationConfig;
-  readonly onOpenChange: (open: boolean) => void;
-  readonly onSave: (next: ByokDelegationConfig) => void;
-}) {
-  const [command, setCommand] = useState("");
-  const [queueTimeoutSeconds, setQueueTimeoutSeconds] = useState("30");
-  const [executionTimeoutSeconds, setExecutionTimeoutSeconds] = useState("120");
-  const [envVars, setEnvVars] = useState<ReadonlyArray<string>>([]);
-  const [envInput, setEnvInput] = useState("");
-
-  useEffect(() => {
-    if (!open) return;
-    setCommand(delegation.executorCommand);
-    setQueueTimeoutSeconds(millisecondsToSecondsText(delegation.queueTimeoutMs));
-    setExecutionTimeoutSeconds(millisecondsToSecondsText(delegation.executionTimeoutMs));
-    setEnvVars(delegation.executorEnvironmentVariables);
-    setEnvInput("");
-  }, [
-    delegation.executionTimeoutMs,
-    delegation.executorCommand,
-    delegation.executorEnvironmentVariables,
-    delegation.queueTimeoutMs,
-    open,
-  ]);
-
-  const addEnvVar = () => {
-    const name = envInput.trim();
-    if (!ENV_VAR_PATTERN.test(name)) return;
-    setEnvVars((current) => (current.includes(name) ? current : [...current, name]));
-    setEnvInput("");
-  };
-
-  const saveExecutor = () => {
-    onSave({
-      ...delegation,
-      executorCommand: command.trim(),
-      queueTimeoutMs: secondsTextToMilliseconds(queueTimeoutSeconds, delegation.queueTimeoutMs),
-      executionTimeoutMs: secondsTextToMilliseconds(
-        executionTimeoutSeconds,
-        delegation.executionTimeoutMs,
-      ),
-      executorEnvironmentVariables: envVars.filter((name) => ENV_VAR_PATTERN.test(name)),
-    });
-    onOpenChange(false);
-  };
-
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogPopup className="max-w-2xl overflow-hidden">
-        <DialogHeader>
-          <DialogTitle>{t("delegationSettings.executorDialogTitle")}</DialogTitle>
-          <DialogDescription>{t("delegationSettings.executorDialogDescription")}</DialogDescription>
-        </DialogHeader>
-        <DialogPanel className="space-y-5">
-          <label className="block space-y-1.5 text-xs">
-            <span className="text-muted-foreground">{t("delegationSettings.executorCommand")}</span>
-            <Input
-              value={command}
-              placeholder={t("delegationSettings.executorCommandPlaceholder")}
-              onValueChange={setCommand}
-              aria-label={t("delegationSettings.executorCommand")}
-            />
-            <span className="block text-[11px] leading-relaxed text-muted-foreground/80">
-              {t("delegationSettings.executorCommandDescription")}
-            </span>
-          </label>
-
-          <div className="grid gap-3 sm:grid-cols-2">
-            <label className="block space-y-1.5 text-xs">
-              <span className="text-muted-foreground">
-                {t("delegationSettings.queueTimeoutSeconds")}
-              </span>
-              <Input
-                type="number"
-                min={1}
-                max={24 * 60 * 60}
-                value={queueTimeoutSeconds}
-                onValueChange={setQueueTimeoutSeconds}
-                aria-label={t("delegationSettings.queueTimeoutSeconds")}
-              />
-              <span className="block text-[11px] leading-relaxed text-muted-foreground/80">
-                {t("delegationSettings.queueTimeoutSecondsDescription")}
-              </span>
-            </label>
-            <label className="block space-y-1.5 text-xs">
-              <span className="text-muted-foreground">
-                {t("delegationSettings.executionTimeoutSeconds")}
-              </span>
-              <Input
-                type="number"
-                min={1}
-                max={24 * 60 * 60}
-                value={executionTimeoutSeconds}
-                onValueChange={setExecutionTimeoutSeconds}
-                aria-label={t("delegationSettings.executionTimeoutSeconds")}
-              />
-              <span className="block text-[11px] leading-relaxed text-muted-foreground/80">
-                {t("delegationSettings.executionTimeoutSecondsDescription")}
-              </span>
-            </label>
-          </div>
-
-          <div className="space-y-2 rounded-lg border border-border/60 bg-muted/15 px-3 py-3">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <div>
-                <h3 className="text-sm font-medium text-foreground">
-                  {t("delegationSettings.envVars")}
-                </h3>
-                <p className="mt-1 text-[13px] leading-[1.45] text-muted-foreground/80">
-                  {t("delegationSettings.envVarsDescription")}
-                </p>
-              </div>
-              <Badge variant="outline" size="sm">
-                {t("delegationSettings.envVarsCount", { count: envVars.length })}
-              </Badge>
-            </div>
-            <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto]">
-              <Input
-                value={envInput}
-                placeholder="ANTHROPIC_API_KEY"
-                onValueChange={setEnvInput}
-                onKeyDown={(event) => {
-                  if (event.key === "Enter") {
-                    event.preventDefault();
-                    addEnvVar();
-                  }
-                }}
-                aria-label={t("delegationSettings.envVarInput")}
-              />
-              <Button
-                size="compact"
-                variant="outline"
-                disabled={!ENV_VAR_PATTERN.test(envInput.trim())}
-                onClick={addEnvVar}
-              >
-                <PlusIcon />
-                {t("delegationSettings.addEnvVar")}
-              </Button>
-            </div>
-            {envVars.length === 0 ? (
-              <p className="text-xs text-muted-foreground">{t("delegationSettings.noEnvVars")}</p>
-            ) : (
-              <div className="flex flex-wrap gap-1.5">
-                {envVars.map((name) => (
-                  <span
-                    key={name}
-                    className="inline-flex items-center gap-1 rounded-md bg-muted px-1.5 py-1 font-mono text-[11px] text-muted-foreground"
-                  >
-                    {name}
-                    <Button
-                      type="button"
-                      size="icon-micro"
-                      variant="ghost-muted"
-                      className="size-4 rounded-sm"
-                      aria-label={`${t("delegationSettings.removeEnvVar")}: ${name}`}
-                      onClick={() =>
-                        setEnvVars((current) => current.filter((candidate) => candidate !== name))
-                      }
-                    >
-                      <Trash2Icon className="size-2.5" />
-                    </Button>
-                  </span>
-                ))}
-              </div>
-            )}
-          </div>
-        </DialogPanel>
-        <DialogFooter>
-          <Button size="sm" variant="outline" onClick={() => onOpenChange(false)}>
-            {t("cancel")}
-          </Button>
-          <Button size="sm" onClick={saveExecutor}>
-            {t("delegationSettings.saveExecutor")}
-          </Button>
-        </DialogFooter>
-      </DialogPopup>
-    </Dialog>
   );
 }
 
@@ -923,7 +689,17 @@ function SupervisionCard({
   );
 }
 
-const BUILTIN_SUBAGENT_TYPES = ["explore", "generalPurpose", "browserUse"] as const;
+/**
+ * Mirrors BUILTIN_SUBAGENT_PROFILES in apps/server provider/byok/DelegationSupervision.ts:
+ * a configured row overrides the builtin fragment, and an empty fragment on a
+ * configured row disables injection for that type. Keep the texts in sync.
+ */
+const BUILTIN_SUBAGENT_FRAGMENTS: Readonly<Record<string, string>> = {
+  explore: "以只读方式探索代码库：定位相关文件与实现，汇总入口、依赖与调用关系；不要修改任何文件。",
+  generalPurpose: "完成给定的编码任务，遵循仓库现有约定，完成后给出变更摘要与验证方式。",
+  browserUse: "使用浏览器自动化完成页面操作或验证，逐步记录观察结果，最后给出结论。",
+};
+const BUILTIN_SUBAGENT_TYPES = Object.keys(BUILTIN_SUBAGENT_FRAGMENTS);
 
 function SubagentProfilesEditor({
   profiles,
@@ -945,51 +721,63 @@ function SubagentProfilesEditor({
       {profiles.length === 0 ? (
         <p className="text-xs text-muted-foreground">{t("delegationSettings.subagentsEmpty")}</p>
       ) : (
-        profiles.map((profile, index) => (
-          <div
-            key={`${profile.subagentType}-${index}`}
-            className="rounded-lg border border-border/60 bg-muted/10 px-3 py-3"
-          >
-            <div className="flex flex-wrap items-end gap-2">
-              <label className="block w-48 space-y-1 text-xs">
+        profiles.map((profile, index) => {
+          const builtinFragment = BUILTIN_SUBAGENT_FRAGMENTS[profile.subagentType.trim()];
+          return (
+            <div
+              key={`${profile.subagentType}-${index}`}
+              className="rounded-lg border border-border/60 bg-muted/10 px-3 py-3"
+            >
+              <div className="flex flex-wrap items-end gap-2">
+                <label className="block w-48 space-y-1 text-xs">
+                  <span className="text-muted-foreground">
+                    {t("delegationSettings.subagentType")}
+                  </span>
+                  <Input
+                    value={profile.subagentType}
+                    placeholder={t("delegationSettings.subagentTypePlaceholder")}
+                    list="byok-delegation-subagent-types"
+                    onChange={(event) => updateProfile(index, { subagentType: event.target.value })}
+                    aria-label={t("delegationSettings.subagentType")}
+                  />
+                </label>
+                {builtinFragment !== undefined ? (
+                  <Badge variant="outline" size="sm" className="mb-1.5 shrink-0">
+                    {t("delegationSettings.subagentBuiltinBadge")}
+                  </Badge>
+                ) : null}
+                <Button
+                  size="sm"
+                  variant="outline"
+                  aria-label={`${t("delegationSettings.subagentRemove")}: ${profile.subagentType}`}
+                  onClick={() => onChange(profiles.filter((_, current) => current !== index))}
+                >
+                  <Trash2Icon />
+                  {t("delegationSettings.subagentRemove")}
+                </Button>
+              </div>
+              <label className="mt-2 block space-y-1 text-xs">
                 <span className="text-muted-foreground">
-                  {t("delegationSettings.subagentType")}
+                  {t("delegationSettings.subagentFragment")}
                 </span>
-                <Input
-                  value={profile.subagentType}
-                  placeholder={t("delegationSettings.subagentTypePlaceholder")}
-                  list="byok-delegation-subagent-types"
-                  onChange={(event) => updateProfile(index, { subagentType: event.target.value })}
-                  aria-label={t("delegationSettings.subagentType")}
+                <Textarea
+                  className="min-h-20"
+                  value={profile.promptFragment}
+                  placeholder={
+                    builtinFragment ?? t("delegationSettings.subagentFragmentPlaceholder")
+                  }
+                  onChange={(event) => updateProfile(index, { promptFragment: event.target.value })}
+                  aria-label={t("delegationSettings.subagentFragment")}
                 />
+                <span className="block text-[11px] leading-relaxed text-muted-foreground/80">
+                  {builtinFragment !== undefined
+                    ? t("delegationSettings.subagentBuiltinHint")
+                    : t("delegationSettings.subagentFragmentDescription")}
+                </span>
               </label>
-              <Button
-                size="sm"
-                variant="outline"
-                aria-label={`${t("delegationSettings.subagentRemove")}: ${profile.subagentType}`}
-                onClick={() => onChange(profiles.filter((_, current) => current !== index))}
-              >
-                <Trash2Icon />
-                {t("delegationSettings.subagentRemove")}
-              </Button>
             </div>
-            <label className="mt-2 block space-y-1 text-xs">
-              <span className="text-muted-foreground">
-                {t("delegationSettings.subagentFragment")}
-              </span>
-              <Textarea
-                className="min-h-20"
-                value={profile.promptFragment}
-                placeholder={t("delegationSettings.subagentFragmentPlaceholder")}
-                onChange={(event) => updateProfile(index, { promptFragment: event.target.value })}
-                aria-label={t("delegationSettings.subagentFragment")}
-              />
-              <span className="block text-[11px] leading-relaxed text-muted-foreground/80">
-                {t("delegationSettings.subagentFragmentDescription")}
-              </span>
-            </label>
-          </div>
-        ))
+          );
+        })
       )}
       <datalist id="byok-delegation-subagent-types">
         {BUILTIN_SUBAGENT_TYPES.map((type) => (
@@ -1009,250 +797,20 @@ function SubagentProfilesEditor({
 }
 
 /** Probe-state badge for one executor row (read-only view of the RPC result). */
-const probeStateBadge = (probe: ByokDelegationExecutorProbe | undefined): ReactNode => {
-  if (probe === undefined) {
-    return (
-      <Badge variant="outline" size="sm">
-        {t("delegationSettings.probeStateUnknown")}
-      </Badge>
-    );
-  }
-  const label =
-    probe.state === "ready"
-      ? t("delegationSettings.probeStateReady")
-      : probe.state === "not_installed"
-        ? t("delegationSettings.probeStateNotInstalled")
-        : probe.state === "unhealthy"
-          ? t("delegationSettings.probeStateUnhealthy")
-          : t("delegationSettings.probeStateUnknown");
-  return (
-    <Badge variant={probe.state === "ready" ? "secondary" : "outline"} size="sm">
-      {label}
-    </Badge>
-  );
-};
-
-function ExecutorsEditor({
-  executors,
-  failoverLimit,
-  probeResults,
-  probingIds,
-  onExecutorsChange,
-  onFailoverLimitChange,
-  onProbe,
+function EmptyDelegationState({
+  message,
+  action,
 }: {
-  readonly executors: ByokDelegationConfig["executors"];
-  readonly failoverLimit: number;
-  readonly probeResults: ReadonlyMap<string, ByokDelegationExecutorProbe>;
-  readonly probingIds: ReadonlySet<string>;
-  readonly onExecutorsChange: (next: ByokDelegationConfig["executors"]) => void;
-  readonly onFailoverLimitChange: (next: number) => void;
-  readonly onProbe: (executorId: string) => void;
+  readonly message: string;
+  readonly action?: ReactNode;
 }) {
-  const updateExecutor = (
-    index: number,
-    patch: Partial<ByokDelegationConfig["executors"][number]>,
-  ) =>
-    onExecutorsChange(
-      executors.map((executor, current) =>
-        current === index ? { ...executor, ...patch } : executor,
-      ),
-    );
-
-  return (
-    <div className="space-y-3">
-      <SettingsRow
-        title={t("delegationSettings.executorsListTitle")}
-        description={t("delegationSettings.executorsListDescription")}
-      />
-      {executors.length === 0 ? (
-        <p className="text-xs text-muted-foreground">{t("delegationSettings.executorsEmpty")}</p>
-      ) : (
-        executors.map((executor, index) => (
-          <div
-            key={executor.id}
-            className="rounded-lg border border-border/60 bg-muted/10 px-3 py-3"
-          >
-            <div className="flex flex-wrap items-end gap-2">
-              <label className="block w-40 space-y-1 text-xs">
-                <span className="text-muted-foreground">{t("delegationSettings.executorId")}</span>
-                <Input
-                  value={executor.id}
-                  placeholder={t("delegationSettings.executorIdPlaceholder")}
-                  aria-label={t("delegationSettings.executorId")}
-                  onChange={(event) => updateExecutor(index, { id: event.target.value })}
-                />
-              </label>
-              <label className="block w-40 space-y-1 text-xs">
-                <span className="text-muted-foreground">
-                  {t("delegationSettings.executorName")}
-                </span>
-                <Input
-                  value={executor.name}
-                  aria-label={t("delegationSettings.executorName")}
-                  onChange={(event) => updateExecutor(index, { name: event.target.value })}
-                />
-              </label>
-              <label className="block w-24 space-y-1 text-xs">
-                <span className="text-muted-foreground">
-                  {t("delegationSettings.executorPriority")}
-                </span>
-                <Input
-                  type="number"
-                  min={0}
-                  value={executor.priority}
-                  aria-label={t("delegationSettings.executorPriority")}
-                  onChange={(event) =>
-                    updateExecutor(index, {
-                      priority: boundedInteger(event.target.value, 100, 0, 10_000),
-                    })
-                  }
-                />
-              </label>
-              <label className="flex items-center gap-2 pb-1 text-xs">
-                <Switch
-                  checked={executor.enabled}
-                  aria-label={t("delegationSettings.executorEnabled")}
-                  onCheckedChange={(checked) => updateExecutor(index, { enabled: checked })}
-                />
-                <span className="text-muted-foreground">
-                  {t("delegationSettings.executorEnabled")}
-                </span>
-              </label>
-              <div className="ms-auto flex items-center gap-2">
-                {probeStateBadge(probeResults.get(executor.id))}
-                <Button
-                  size="sm"
-                  variant="outline"
-                  disabled={probingIds.has(executor.id)}
-                  aria-label={`${t("delegationSettings.executorProbe")}: ${executor.id}`}
-                  onClick={() => onProbe(executor.id)}
-                >
-                  <ShieldCheckIcon />
-                  {probingIds.has(executor.id)
-                    ? t("delegationSettings.executorProbing")
-                    : t("delegationSettings.executorProbe")}
-                </Button>
-                <Button
-                  size="icon-sm"
-                  variant="ghost-muted"
-                  aria-label={`${t("delegationSettings.executorRemove")}: ${executor.id}`}
-                  onClick={() =>
-                    onExecutorsChange(executors.filter((_, current) => current !== index))
-                  }
-                >
-                  <Trash2Icon />
-                </Button>
-              </div>
-            </div>
-            {probeResults.get(executor.id)?.diagnosticPreview ? (
-              <p className="mt-2 break-words font-mono text-[11px] text-muted-foreground">
-                {probeResults.get(executor.id)?.diagnosticPreview}
-              </p>
-            ) : null}
-            <label className="mt-2 block space-y-1 text-xs">
-              <span className="text-muted-foreground">
-                {t("delegationSettings.executorCommand")}
-              </span>
-              <Input
-                className="font-mono"
-                value={executor.command}
-                placeholder={t("delegationSettings.executorCommandPlaceholder")}
-                aria-label={t("delegationSettings.executorCommand")}
-                onChange={(event) => updateExecutor(index, { command: event.target.value })}
-              />
-            </label>
-            <div className="mt-2 flex flex-wrap gap-2">
-              <label className="block w-64 space-y-1 text-xs">
-                <span className="text-muted-foreground">
-                  {t("delegationSettings.executorProbeArguments")}
-                </span>
-                <Input
-                  className="font-mono"
-                  value={executor.probeArguments}
-                  placeholder="--version"
-                  aria-label={t("delegationSettings.executorProbeArguments")}
-                  onChange={(event) =>
-                    updateExecutor(index, { probeArguments: event.target.value })
-                  }
-                />
-              </label>
-              <label className="block min-w-64 flex-1 space-y-1 text-xs">
-                <span className="text-muted-foreground">
-                  {t("delegationSettings.executorEnvNames")}
-                </span>
-                <Input
-                  value={executor.environmentVariables.join(", ")}
-                  placeholder={t("delegationSettings.executorEnvNamesPlaceholder")}
-                  aria-label={t("delegationSettings.executorEnvNames")}
-                  onChange={(event) =>
-                    updateExecutor(index, {
-                      environmentVariables: event.target.value
-                        .split(",")
-                        .map((name) => name.trim())
-                        .filter((name) => name.length > 0),
-                    })
-                  }
-                />
-              </label>
-            </div>
-            <p className="mt-1 text-[11px] leading-relaxed text-muted-foreground/80">
-              {t("delegationSettings.executorProbeArgumentsDescription")}
-            </p>
-          </div>
-        ))
-      )}
-      <div className="flex flex-wrap items-end gap-3">
-        <Button
-          size="sm"
-          variant="outline"
-          onClick={() =>
-            onExecutorsChange([
-              ...executors,
-              {
-                id: `executor-${executors.length + 1}`,
-                name: "",
-                enabled: true,
-                priority: 100,
-                command: "",
-                environmentVariables: [],
-                probeArguments: "",
-              },
-            ])
-          }
-        >
-          <PlusIcon />
-          {t("delegationSettings.executorAdd")}
-        </Button>
-        <label className="block w-40 space-y-1 text-xs">
-          <span className="text-muted-foreground">
-            {t("delegationSettings.executorFailoverLimit")}
-          </span>
-          <Input
-            type="number"
-            min={1}
-            max={5}
-            value={failoverLimit}
-            aria-label={t("delegationSettings.executorFailoverLimit")}
-            onChange={(event) => onFailoverLimitChange(boundedInteger(event.target.value, 3, 1, 5))}
-          />
-        </label>
-        <span className="pb-1 text-[11px] text-muted-foreground/80">
-          {t("delegationSettings.executorFailoverLimitDescription")}
-        </span>
-      </div>
-    </div>
-  );
-}
-
-function EmptyDelegationState({ message }: { readonly message: string }) {
   return (
     <SettingsSection
       id="byok-delegation-settings"
       title={t("delegationSettings.globalTitle")}
       icon={<WorkflowIcon className="size-4 text-muted-foreground" />}
     >
-      <SettingsRow title={message} />
+      <SettingsRow title={message} control={action} />
     </SettingsSection>
   );
 }
@@ -1284,35 +842,6 @@ export function ByokDelegationWorkspacePanel() {
     selectedModelId;
   const executorConfigured = delegation.executorCommand.trim().length > 0;
   const isConfigured = selectedInstance !== null && delegation.enabled && executorConfigured;
-  const subagentTypeOptions = [
-    ...BUILTIN_SUBAGENT_TYPES,
-    ...delegation.subagentProfiles.map((profile) => profile.subagentType),
-  ];
-
-  const submitDelegation = useAtomCommand(byokEnvironment.submitDelegation, {
-    reportFailure: false,
-  });
-  const listDelegations = useAtomCommand(byokEnvironment.listDelegations, {
-    reportFailure: false,
-  });
-  const cancelDelegationCommand = useAtomCommand(byokEnvironment.cancelDelegation, {
-    reportFailure: false,
-  });
-  const probeDelegationExecutorCommand = useAtomCommand(byokEnvironment.probeDelegationExecutor, {
-    reportFailure: false,
-  });
-  const [task, setTask] = useState("");
-  const [subagentType, setSubagentType] = useState("");
-  const [delegations, setDelegations] = useState<ReadonlyArray<ByokDelegationSnapshot>>([]);
-  const [refreshing, setRefreshing] = useState(false);
-  const [submittingCount, setSubmittingCount] = useState(0);
-  const [cancellingIds, setCancellingIds] = useState<ReadonlySet<string>>(() => new Set());
-  const [actionError, setActionError] = useState<string | null>(null);
-  const [executorDialogOpen, setExecutorDialogOpen] = useState(false);
-  const [probeResults, setProbeResults] = useState<
-    ReadonlyMap<string, ByokDelegationExecutorProbe>
-  >(() => new Map());
-  const [probingIds, setProbingIds] = useState<ReadonlySet<string>>(() => new Set());
   const [expandedGroupIds, setExpandedGroupIds] = useState<ReadonlySet<string>>(() => new Set());
 
   const updateSelectedDelegation = useCallback(
@@ -1338,128 +867,6 @@ export function ByokDelegationWorkspacePanel() {
 
   const patchDelegation = (patch: Partial<ByokDelegationConfig>) =>
     updateSelectedDelegation({ ...delegation, ...patch });
-
-  const refreshDelegations = useCallback(async () => {
-    if (environmentId === null || selectedInstance === null) {
-      setDelegations([]);
-      return;
-    }
-    setRefreshing(true);
-    try {
-      const result = await listDelegations({
-        environmentId,
-        input: { instanceId: selectedInstance.instanceId },
-      });
-      if (AsyncResult.isSuccess(result)) {
-        setDelegations(result.value.delegations);
-        setActionError(null);
-      } else {
-        setActionError(t("delegationWorkspace.refreshError"));
-      }
-    } finally {
-      setRefreshing(false);
-    }
-  }, [environmentId, listDelegations, selectedInstance]);
-
-  useEffect(() => {
-    void refreshDelegations();
-  }, [refreshDelegations]);
-
-  const hasActiveDelegations =
-    submittingCount > 0 || delegations.some((delegationSnapshot) => isActive(delegationSnapshot));
-  useEffect(() => {
-    if (!hasActiveDelegations) return;
-    const timer = window.setInterval(() => void refreshDelegations(), 2_000);
-    return () => window.clearInterval(timer);
-  }, [hasActiveDelegations, refreshDelegations]);
-
-  const createDelegation = () => {
-    const taskText = task.trim();
-    if (environmentId === null || selectedInstance === null || !isConfigured || taskText === "") {
-      return;
-    }
-    const selectedType = subagentType.trim();
-    setTask("");
-    setActionError(null);
-    setSubmittingCount((count) => count + 1);
-    void submitDelegation({
-      environmentId,
-      input: {
-        instanceId: selectedInstance.instanceId,
-        task: taskText,
-        ...(selectedType.length > 0 ? { subagentType: selectedType } : {}),
-      },
-    })
-      .then((result) => {
-        if (AsyncResult.isSuccess(result)) {
-          setDelegations((current) => {
-            const withoutSameId = current.filter(
-              (delegationSnapshot) => delegationSnapshot.id !== result.value.id,
-            );
-            return [result.value, ...withoutSameId];
-          });
-          return;
-        }
-        setActionError(t("delegationWorkspace.submitError"));
-      })
-      .finally(() => {
-        setSubmittingCount((count) => Math.max(0, count - 1));
-        void refreshDelegations();
-      });
-  };
-
-  const cancelDelegationRun = async (delegationId: string) => {
-    if (environmentId === null || selectedInstance === null) return;
-    if (cancellingIds.has(delegationId)) return;
-    setCancellingIds((current) => new Set(current).add(delegationId));
-    setActionError(null);
-    try {
-      const result = await cancelDelegationCommand({
-        environmentId,
-        input: { instanceId: selectedInstance.instanceId, delegationId },
-      });
-      if (AsyncResult.isSuccess(result) && result.value.snapshot !== null) {
-        const snapshot = result.value.snapshot;
-        setDelegations((current) => [
-          snapshot,
-          ...current.filter((candidate) => candidate.id !== snapshot.id),
-        ]);
-      } else {
-        setActionError(t("delegationWorkspace.cancelError"));
-      }
-    } finally {
-      setCancellingIds((current) => {
-        const next = new Set(current);
-        next.delete(delegationId);
-        return next;
-      });
-      void refreshDelegations();
-    }
-  };
-
-  const probeExecutor = async (executorId: string) => {
-    if (environmentId === null || selectedInstance === null) return;
-    if (probingIds.has(executorId)) return;
-    setProbingIds((current) => new Set(current).add(executorId));
-    try {
-      const result = await probeDelegationExecutorCommand({
-        environmentId,
-        input: { instanceId: selectedInstance.instanceId, executorId },
-      });
-      if (AsyncResult.isSuccess(result) && result.value.probe !== null) {
-        const probe = result.value.probe;
-        setProbeResults((current) => new Map(current).set(probe.executorId, probe));
-      } else {
-        setActionError(t("delegationWorkspace.probeError"));
-      }
-    } finally {
-      setProbingIds((current) => {
-        const next = new Set(current);
-        next.delete(executorId);
-        return next;
-      });
-    }
-  };
 
   const addModelGroup = () => {
     const group = createModelGroup(delegation.modelGroups, selectedInstance?.adapters ?? []);
@@ -1509,10 +916,30 @@ export function ByokDelegationWorkspacePanel() {
   };
 
   if (environmentId === null) {
-    return <EmptyDelegationState message={t("delegationWorkspace.noEnvironment")} />;
+    return (
+      <EmptyDelegationState
+        message={t("delegationWorkspace.noEnvironment")}
+        action={
+          <Button size="sm" variant="outline" render={<Link to="/settings/connections" />}>
+            {t("delegationWorkspace.openConnections")}
+            <ArrowRightIcon />
+          </Button>
+        }
+      />
+    );
   }
   if (delegationInstances.length === 0 || selectedInstance === null) {
-    return <EmptyDelegationState message={t("delegationWorkspace.noByokInstance")} />;
+    return (
+      <EmptyDelegationState
+        message={t("delegationWorkspace.noByokInstance")}
+        action={
+          <Button size="sm" variant="outline" render={<Link to="/settings/byok" />}>
+            {t("delegationWorkspace.openByokSettings")}
+            <ArrowRightIcon />
+          </Button>
+        }
+      />
+    );
   }
 
   return (
@@ -1603,278 +1030,6 @@ export function ByokDelegationWorkspacePanel() {
             />
           }
         />
-      </SettingsSection>
-
-      <SettingsSection
-        id="byok-delegation-executors"
-        data-facilities-guide-target="delegation-executor"
-        title={t("delegationSettings.executorsTitle")}
-        icon={<WrenchIcon className="size-4 text-muted-foreground" />}
-      >
-        <div className="overflow-hidden rounded-lg border border-border/60 bg-muted/10">
-          <div className="flex items-center justify-between gap-3 border-b border-border/60 px-3 py-2">
-            <div className="text-xs text-muted-foreground">
-              {t("delegationSettings.executorCount", {
-                count: 1 + delegation.executors.filter((executor) => executor.enabled).length,
-              })}
-            </div>
-            <Badge variant="outline" size="sm">
-              {t("delegationSettings.customExecutor")}
-            </Badge>
-          </div>
-          <div className="flex min-w-0 flex-wrap items-center gap-3 px-3 py-3">
-            <div className="min-w-0 flex-1">
-              <div className="flex min-w-0 items-center gap-2">
-                <span className="truncate text-sm font-medium text-foreground">
-                  {t("delegationSettings.customExecutor")}
-                </span>
-                <Badge variant={executorConfigured ? "secondary" : "outline"} size="sm">
-                  {executorConfigured
-                    ? t("delegationSettings.executorConfigured")
-                    : t("delegationSettings.executorNotConfigured")}
-                </Badge>
-              </div>
-              <div className="mt-1 flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-muted-foreground">
-                <span className="max-w-full truncate font-mono">
-                  {executorConfigured
-                    ? delegation.executorCommand
-                    : t("delegationSettings.executorCommandEmpty")}
-                </span>
-                <span>
-                  {t("delegationSettings.queueTimeoutSummary", {
-                    seconds: millisecondsToSecondsText(delegation.queueTimeoutMs),
-                  })}
-                </span>
-                <span>
-                  {t("delegationSettings.executionTimeoutSummary", {
-                    seconds: millisecondsToSecondsText(delegation.executionTimeoutMs),
-                  })}
-                </span>
-                <span>
-                  {t("delegationSettings.executorEnvSummary", {
-                    count: delegation.executorEnvironmentVariables.length,
-                  })}
-                </span>
-              </div>
-            </div>
-            <Button
-              size="icon-sm"
-              variant="ghost-muted"
-              aria-label={t("delegationSettings.configureExecutor")}
-              onClick={() => setExecutorDialogOpen(true)}
-            >
-              <WrenchIcon />
-            </Button>
-          </div>
-        </div>
-        <div className="px-3 pb-3 pt-1 sm:px-4">
-          <ExecutorsEditor
-            executors={delegation.executors}
-            failoverLimit={delegation.executorFailoverLimit}
-            probeResults={probeResults}
-            probingIds={probingIds}
-            onExecutorsChange={(next) => patchDelegation({ executors: next })}
-            onFailoverLimitChange={(next) => patchDelegation({ executorFailoverLimit: next })}
-            onProbe={(executorId) => void probeExecutor(executorId)}
-          />
-        </div>
-      </SettingsSection>
-      <ExecutorConfigurationDialog
-        open={executorDialogOpen}
-        delegation={delegation}
-        onOpenChange={setExecutorDialogOpen}
-        onSave={updateSelectedDelegation}
-      />
-
-      <SettingsSection
-        id="byok-delegation-task"
-        title={t("delegationSettings.taskTitle")}
-        icon={<SendIcon className="size-4 text-muted-foreground" />}
-      >
-        <SettingsRow
-          title={t("delegationSettings.taskEntry")}
-          description={t("delegationSettings.taskDescription")}
-          status={actionError === null ? undefined : actionError}
-        />
-        <div className="grid gap-5 px-3 pb-3 sm:px-4 lg:grid-cols-[minmax(0,1fr)_18rem]">
-          <div className="min-w-0 space-y-3">
-            <label className="block text-xs" htmlFor="byok-delegation-task-input">
-              <span className="mb-1 block text-muted-foreground">
-                {t("delegationWorkspace.task")}
-              </span>
-              <Textarea
-                id="byok-delegation-task-input"
-                data-facilities-guide-target="delegation-task-input"
-                className="min-h-32"
-                value={task}
-                placeholder={t("delegationWorkspace.taskPlaceholder")}
-                disabled={!isConfigured}
-                onChange={(event) => setTask(event.target.value)}
-              />
-            </label>
-            <div className="flex flex-wrap items-end gap-3">
-              <label className="block w-56 space-y-1 text-xs">
-                <span className="text-muted-foreground">
-                  {t("delegationWorkspace.subagentType")}
-                </span>
-                <Select
-                  value={subagentType || "__none"}
-                  onValueChange={(value) =>
-                    setSubagentType(value === "__none" ? "" : (value ?? ""))
-                  }
-                >
-                  <SelectTrigger className="w-full" size="sm">
-                    <SelectValue>
-                      {subagentType || t("delegationWorkspace.subagentTypeNone")}
-                    </SelectValue>
-                  </SelectTrigger>
-                  <SelectPopup align="start" alignItemWithTrigger={false}>
-                    <SelectItem hideIndicator value="__none">
-                      {t("delegationWorkspace.subagentTypeNone")}
-                    </SelectItem>
-                    {[...new Set([...subagentTypeOptions, subagentType].filter(Boolean))].map(
-                      (type) => (
-                        <SelectItem hideIndicator key={type} value={type}>
-                          {type}
-                        </SelectItem>
-                      ),
-                    )}
-                  </SelectPopup>
-                </Select>
-              </label>
-              <div className="flex flex-wrap items-center gap-2 pb-0.5">
-                <Button
-                  size="sm"
-                  disabled={!isConfigured || task.trim().length === 0}
-                  onClick={createDelegation}
-                >
-                  <SendIcon />
-                  {t("delegationWorkspace.submit")}
-                </Button>
-                {submittingCount > 0 ? (
-                  <span className="text-xs text-muted-foreground">
-                    {t("delegationWorkspace.submitting", { count: submittingCount })}
-                  </span>
-                ) : null}
-              </div>
-            </div>
-          </div>
-          <aside className="min-w-0 rounded-lg border border-border/60 bg-muted/15 px-3 py-3">
-            <div className="flex items-center gap-2 text-xs text-muted-foreground">
-              <BotIcon className="size-3.5" />
-              <span className="truncate">{selectedInstance.displayName}</span>
-            </div>
-            <div className="mt-3 flex flex-wrap gap-1.5">
-              <Badge variant={isConfigured ? "secondary" : "outline"}>
-                {isConfigured
-                  ? t("delegationWorkspace.ready")
-                  : t("delegationWorkspace.notConfigured")}
-              </Badge>
-              <Badge variant="outline">
-                {t("delegationWorkspace.concurrency", {
-                  count: delegation.maxConcurrency,
-                })}
-              </Badge>
-              {selectedModelName ? <Badge variant="outline">{selectedModelName}</Badge> : null}
-            </div>
-          </aside>
-        </div>
-        <div
-          className="border-t border-border/60 px-3 pt-5 pb-3 sm:px-4"
-          data-facilities-guide-target="delegation-runs"
-        >
-          <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-            <div className="flex items-center gap-2">
-              <ListRestartIcon className="size-4 text-muted-foreground" />
-              <h3 className="text-sm font-medium text-foreground">
-                {t("delegationWorkspace.runs")}
-              </h3>
-            </div>
-            <Button
-              size="sm"
-              variant="outline"
-              disabled={refreshing}
-              onClick={() => void refreshDelegations()}
-            >
-              <ListRestartIcon />
-              {t("delegationWorkspace.refresh")}
-            </Button>
-          </div>
-          {delegations.length === 0 ? (
-            <p className="text-xs text-muted-foreground">{t("delegationWorkspace.noRuns")}</p>
-          ) : (
-            <ul className="divide-y divide-border/60 border-y border-border/60">
-              {delegations.map((delegationSnapshot) => (
-                <li
-                  key={`${delegationSnapshot.id}-${delegationSnapshot.submittedAt}`}
-                  className="py-3 first:pt-0 last:pb-0"
-                >
-                  <div className="flex min-w-0 flex-wrap items-center gap-2">
-                    <Badge variant="outline">{statusLabel(delegationSnapshot.status)}</Badge>
-                    <span className="min-w-0 flex-1 truncate text-sm text-foreground">
-                      {delegationSnapshot.taskPreview}
-                    </span>
-                    <code className="text-[11px] text-muted-foreground">
-                      {delegationSnapshot.id}
-                    </code>
-                    {delegationSnapshot.supervision !== undefined ? (
-                      <Badge variant="outline" size="sm">
-                        {t("delegationWorkspace.supervisionBadge", {
-                          round: delegationSnapshot.supervision.round,
-                          corrections: delegationSnapshot.supervision.corrections,
-                          retries: delegationSnapshot.supervision.retries,
-                          reassigns: delegationSnapshot.supervision.reassigns,
-                          escalates: delegationSnapshot.supervision.escalates,
-                        })}
-                      </Badge>
-                    ) : null}
-                    {(delegationSnapshot.executorAttempts?.length ?? 0) > 1 ? (
-                      <Badge variant="outline" size="sm">
-                        {t("delegationWorkspace.attemptsBadge", {
-                          chain: (delegationSnapshot.executorAttempts ?? [])
-                            .map(
-                              (attempt) =>
-                                `${attempt.executorId}:${
-                                  attempt.status === "completed"
-                                    ? t("delegationWorkspace.attemptCompleted")
-                                    : attempt.status === "failed"
-                                      ? t("delegationWorkspace.attemptFailed")
-                                      : t("delegationWorkspace.attemptSkipped")
-                                }`,
-                            )
-                            .join(" → "),
-                        })}
-                      </Badge>
-                    ) : null}
-                    {isActive(delegationSnapshot) ? (
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        disabled={cancellingIds.has(delegationSnapshot.id)}
-                        aria-label={`${t("delegationWorkspace.cancel")}: ${delegationSnapshot.taskPreview}`}
-                        onClick={() => void cancelDelegationRun(delegationSnapshot.id)}
-                      >
-                        {cancellingIds.has(delegationSnapshot.id)
-                          ? t("delegationWorkspace.cancelling")
-                          : t("delegationWorkspace.cancel")}
-                      </Button>
-                    ) : null}
-                  </div>
-                  {delegationSnapshot.resultPreview ? (
-                    <p className="mt-2 whitespace-pre-wrap break-words text-xs leading-relaxed text-muted-foreground">
-                      {delegationSnapshot.resultPreview}
-                    </p>
-                  ) : null}
-                  {delegationSnapshot.errorMessage ? (
-                    <p className="mt-2 whitespace-pre-wrap break-words text-xs text-destructive">
-                      {delegationSnapshot.errorMessage}
-                    </p>
-                  ) : null}
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
       </SettingsSection>
 
       <div data-facilities-guide-target="delegation-advanced">
@@ -2173,12 +1328,7 @@ export function ByokDelegationWorkspacePanel() {
         />
       </SettingsSection>
 
-      <div className="flex justify-end px-3 sm:px-4">
-        <Button size="sm" variant="outline" onClick={() => void refreshDelegations()}>
-          <RotateCcwIcon />
-          {t("delegationSettings.refreshDelegationState")}
-        </Button>
-      </div>
+      <div className="flex justify-end px-3 sm:px-4"></div>
     </div>
   );
 }

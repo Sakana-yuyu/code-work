@@ -1,13 +1,15 @@
 import {
   defaultInstanceIdForDriver,
   ProviderDriverKind,
+  ServerProviderInstallError,
   ServerProviderUpdateError,
   type ProviderInstanceId,
   type ServerProvider,
   type ServerProviderUpdatedPayload,
   type ServerProviderUpdateState,
 } from "@codework/contracts";
-import { resolveSpawnCommand } from "@codework/shared/shell";
+import { clearCommandResolutionCache, resolveSpawnCommand } from "@codework/shared/shell";
+import { HostProcessPlatform } from "@codework/shared/hostProcess";
 import * as Cause from "effect/Cause";
 import * as Context from "effect/Context";
 import * as Data from "effect/Data";
@@ -49,6 +51,15 @@ export interface ProviderMaintenanceRunnerShape {
           readonly instanceId?: ProviderInstanceId | undefined;
         },
   ) => Effect.Effect<ServerProviderUpdatedPayload, ServerProviderUpdateError>;
+
+  readonly installProvider: (
+    target:
+      | ProviderDriverKind
+      | {
+          readonly provider: ProviderDriverKind;
+          readonly instanceId?: ProviderInstanceId | undefined;
+        },
+  ) => Effect.Effect<ServerProviderUpdatedPayload, ServerProviderInstallError>;
 }
 
 export class ProviderMaintenanceRunner extends Context.Service<
@@ -175,6 +186,26 @@ function failureMessage(result: ProviderMaintenanceCommandResult): string {
     return `Update command exited with code ${result.exitCode}.`;
   }
   return "Update command failed.";
+}
+
+function installFailureMessage(result: ProviderMaintenanceCommandResult): string {
+  if (result.timedOut) {
+    return "Install timed out.";
+  }
+  // Windows reports a missing command as exit code 9009 with a "not
+  // recognized" stderr; POSIX spawn failures surface as ENOENT text.
+  const packageManagerMissing =
+    result.exitCode === 9009 ||
+    /not recognized|is not recognized|ENOENT|command not found/i.test(
+      [result.stderr, result.stdout].join("\n"),
+    );
+  if (packageManagerMissing) {
+    return "The package manager could not be started; install Node.js (npm) first, then retry.";
+  }
+  if (result.exitCode !== null && result.exitCode !== 0) {
+    return `Install command exited with code ${result.exitCode}.`;
+  }
+  return "Install command failed.";
 }
 
 function isOutdatedProvider(provider: ServerProvider | undefined): boolean {
@@ -417,8 +448,177 @@ export const make = Effect.fn("ProviderMaintenanceRunner.make")(function* () {
       );
   });
 
+  const installProvider: ProviderMaintenanceRunnerShape["installProvider"] = Effect.fn(
+    "ProviderMaintenanceRunner.installProvider",
+  )(function* (target) {
+    const provider = typeof target === "string" ? target : target.provider;
+    const instanceId =
+      typeof target === "string"
+        ? defaultInstanceIdForDriver(provider)
+        : (target.instanceId ?? defaultInstanceIdForDriver(provider));
+    const targetKey = `instance:${instanceId}`;
+    const capabilities = yield* providerRegistry.getProviderMaintenanceCapabilitiesForInstance(
+      instanceId,
+      provider,
+    );
+    // Package-managed providers derive install from their update command;
+    // script-installed CLIs (Cursor, Grok Build) declare the vendor's
+    // official installer explicitly, possibly gated to specific platforms.
+    const installCapabilities = capabilities.install;
+    if (!installCapabilities) {
+      return yield* new ServerProviderInstallError({
+        provider,
+        reason: "This provider does not support one-click CLI installation.",
+      });
+    }
+    const platform = yield* HostProcessPlatform;
+    const install = platform === "win32" ? installCapabilities.win32 : installCapabilities.posix;
+    if (!install) {
+      return yield* new ServerProviderInstallError({
+        provider,
+        reason: `The ${provider} CLI installer is not available on this platform.`,
+      });
+    }
+
+    const currentSnapshot = (yield* providerRegistry.getProviders).find(
+      (candidate) => candidate.instanceId === instanceId,
+    );
+    if (currentSnapshot?.installed) {
+      return yield* new ServerProviderInstallError({
+        provider,
+        reason: "This provider CLI is already installed; use update instead.",
+      });
+    }
+
+    const setInstallState = (state: ServerProviderUpdateState | null) =>
+      providerRegistry.setProviderMaintenanceActionState({
+        instanceId,
+        action: "install",
+        state,
+      });
+    const setQueuedState = setInstallState(
+      makeUpdateState({
+        status: "queued",
+        startedAt: null,
+        finishedAt: null,
+        message: "Waiting for another provider update or install to finish.",
+      }),
+    ).pipe(Effect.asVoid);
+
+    const runProviderInstall = Effect.fn("ProviderMaintenanceRunner.runProviderInstall")(
+      function* () {
+        const finish = (state: ServerProviderUpdateState) =>
+          setInstallState(state).pipe(Effect.map((providers) => ({ providers })));
+        const startedAtRef = yield* Ref.make<string | null>(null);
+
+        const runCommandAndVerify = Effect.fn("ProviderMaintenanceRunner.runInstallAndVerify")(
+          function* () {
+            const startedAt = yield* nowIso;
+            yield* Ref.set(startedAtRef, startedAt);
+            yield* setInstallState(
+              makeUpdateState({
+                status: "running",
+                startedAt,
+                finishedAt: null,
+                message:
+                  capabilities.packageName !== null
+                    ? `Installing ${capabilities.packageName}@latest.`
+                    : "Running the provider CLI installer.",
+              }),
+            );
+
+            const result = yield* runMaintenanceCommand(install.executable, install.args);
+            const finishedAt = yield* nowIso;
+            if (result.timedOut || result.exitCode !== 0) {
+              return yield* finish(
+                makeUpdateState({
+                  status: "failed",
+                  startedAt,
+                  finishedAt,
+                  message: installFailureMessage(result),
+                  output: commandOutput(result),
+                }),
+              );
+            }
+
+            // A freshly installed CLI must be visible to availability probes
+            // immediately; drop memoized command resolutions before re-detecting.
+            yield* clearCommandResolutionCache();
+            const { verifiedProviders } = yield* verifyRefreshedProvider(
+              provider,
+              capabilities,
+              instanceId,
+            );
+            const couldNotVerify = verifiedProviders.length === 0;
+            const stillMissing =
+              couldNotVerify || verifiedProviders.some((verified) => !verified.installed);
+            return yield* finish(
+              makeUpdateState({
+                status: stillMissing ? "failed" : "succeeded",
+                startedAt,
+                finishedAt,
+                message: couldNotVerify
+                  ? "Install command completed, but Code Work could not verify the provider installation."
+                  : stillMissing
+                    ? "Install command completed, but Code Work still cannot find the provider CLI on PATH."
+                    : "Provider CLI installed.",
+                output: commandOutput(result),
+              }),
+            );
+          },
+        );
+
+        const recordFailedInstall = Effect.fn("ProviderMaintenanceRunner.recordFailedInstall")(
+          function* (cause: Cause.Cause<unknown>) {
+            const failure = Cause.squash(cause);
+            const startedAt = yield* Ref.get(startedAtRef);
+            // A spawn-level failure (e.g. `spawn npm ENOENT`) means the package
+            // manager itself is missing — surface the Node.js hint instead of
+            // the raw spawn error.
+            const message =
+              failure instanceof ProviderMaintenanceCommandError
+                ? `The install command could not be started; install Node.js (npm) first. ${failure.message}`
+                : failure instanceof Error
+                  ? failure.message
+                  : "Install command failed.";
+            return yield* finish(
+              makeUpdateState({
+                status: "failed",
+                startedAt,
+                finishedAt: yield* nowIso,
+                message,
+                output: null,
+              }),
+            );
+          },
+        );
+
+        return yield* runCommandAndVerify().pipe(Effect.catchCause(recordFailedInstall));
+      },
+    );
+
+    return yield* commandCoordinator
+      .withCommandLock({
+        targetKey,
+        lockKey: installCapabilities.lockKey,
+        onQueued: setQueuedState,
+        run: runProviderInstall(),
+      })
+      .pipe(
+        Effect.mapError((error) =>
+          isServerProviderUpdateError(error)
+            ? new ServerProviderInstallError({
+                provider,
+                reason: error.reason,
+              })
+            : error,
+        ),
+      );
+  });
+
   return ProviderMaintenanceRunner.of({
     updateProvider,
+    installProvider,
   });
 });
 

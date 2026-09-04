@@ -11,6 +11,8 @@ import type {
 export interface ByokBalanceDashboardAdapterInput {
   readonly adapterId: string;
   readonly displayName?: string | undefined;
+  /** Relay endpoint; display/grouping only, never used to authenticate. */
+  readonly baseURL?: string | undefined;
   readonly balance: ByokBalanceResult;
 }
 
@@ -74,6 +76,7 @@ export const projectByokBalanceDashboard = (input: {
     const adapters: ByokBalanceDashboardAdapter[] = instance.adapters.map((adapter) => ({
       adapterId: adapter.adapterId,
       ...(adapter.displayName === undefined ? {} : { displayName: adapter.displayName }),
+      ...(adapter.baseURL === undefined ? {} : { baseURL: adapter.baseURL }),
       health: classifyByokAdapterBalanceHealth(adapter.balance),
       balance: adapter.balance,
     }));

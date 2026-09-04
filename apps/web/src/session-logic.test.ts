@@ -379,6 +379,33 @@ describe("derivePendingUserInputs", () => {
 
     expect(derivePendingUserInputs(activities)).toEqual([]);
   });
+
+  it("保留没有选项、只能输入自定义答案的开放式问题", () => {
+    const pending = derivePendingUserInputs([
+      makeActivity({
+        kind: "user-input.requested",
+        summary: "User input requested",
+        tone: "info",
+        payload: {
+          requestId: "req-open-ended",
+          questions: [
+            {
+              id: "details",
+              header: "Details",
+              question: "请补充必要信息",
+              options: [],
+            },
+          ],
+        },
+      }),
+    ]);
+
+    expect(pending[0]?.questions[0]).toMatchObject({
+      id: "details",
+      question: "请补充必要信息",
+      options: [],
+    });
+  });
 });
 
 describe("deriveActivePlanState", () => {
@@ -915,6 +942,44 @@ describe("workEntryIndicatesToolFailure", () => {
 });
 
 describe("deriveWorkLogEntries", () => {
+  it("把已完成 Goal 的摘要保留为时间线提示", () => {
+    const [entry] = deriveWorkLogEntries([
+      makeActivity({
+        kind: "goal.completed",
+        summary: "全部测试通过目标已完成",
+        tone: "info",
+        payload: { summary: "全部测试通过" },
+      }),
+    ]);
+
+    expect(entry).toMatchObject({
+      label: "全部测试通过目标已完成",
+      sourceActivityKind: "goal.completed",
+    });
+  });
+
+  it("提取内置生图条目的保存路径供时间线内嵌渲染", () => {
+    const [entry] = deriveWorkLogEntries([
+      makeActivity({
+        kind: "tool.completed",
+        summary: "Image generation",
+        payload: {
+          itemType: "image_generation",
+          title: "Image generation",
+          detail: "a serene lake at dusk",
+          imagePath: "C:/repo/assets/lake.png",
+        },
+      }),
+    ]);
+
+    expect(entry).toMatchObject({
+      itemType: "image_generation",
+      toolTitle: "Image generation",
+      detail: "a serene lake at dusk",
+      imagePath: "C:/repo/assets/lake.png",
+    });
+  });
+
   it("omits tool started entries and keeps completed entries", () => {
     const activities: OrchestrationThreadActivity[] = [
       makeActivity({
@@ -1218,6 +1283,38 @@ describe("deriveWorkLogEntries", () => {
     const [entry] = deriveWorkLogEntries(activities);
     expect(entry?.toolData).toEqual(item);
     expect(entry?.toolCallId).toBe("call-1");
+  });
+
+  it("keeps the Canvas reference when its MCP lifecycle completes", () => {
+    const canvas = {
+      canvasId: "project-analysis",
+      title: "Project analysis",
+      relativePath: ".codework/canvases/thread-one/Project-analysis.canvas.json",
+    };
+    const activities: OrchestrationThreadActivity[] = [
+      makeActivity({
+        id: "canvas-progress",
+        kind: "tool.updated",
+        summary: "code-work · canvas_create",
+        payload: {
+          itemType: "mcp_tool_call",
+          toolCallId: "canvas-call-1",
+          data: { canvas },
+        },
+      }),
+      makeActivity({
+        id: "canvas-complete",
+        kind: "tool.completed",
+        summary: "code-work · canvas_create",
+        payload: {
+          itemType: "mcp_tool_call",
+          toolCallId: "canvas-call-1",
+        },
+      }),
+    ];
+
+    const [entry] = deriveWorkLogEntries(activities);
+    expect(entry?.canvas).toEqual(canvas);
   });
 
   it("collapses interleaved lifecycle updates by tool call id", () => {

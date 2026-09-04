@@ -11,6 +11,7 @@
  */
 import {
   type PreviewCloseInput,
+  type PreviewControlInput,
   type PreviewEvent,
   type PreviewError,
   PreviewInvalidUrlError,
@@ -20,6 +21,9 @@ import {
   type PreviewOpenInput,
   type PreviewRefreshInput,
   type PreviewReportStatusInput,
+  type PreviewReportRecordingInput,
+  type PreviewReportAnnotationInput,
+  type PreviewReportScreenshotInput,
   type PreviewResizeInput,
   FILL_PREVIEW_VIEWPORT,
   PreviewSessionLookupError,
@@ -49,10 +53,20 @@ export class PreviewManager extends Context.Service<
       input: PreviewNavigateInput,
     ) => Effect.Effect<PreviewSessionSnapshot, PreviewError>;
     readonly reportStatus: (input: PreviewReportStatusInput) => Effect.Effect<void, PreviewError>;
+    readonly reportRecording: (
+      input: PreviewReportRecordingInput,
+    ) => Effect.Effect<void, PreviewError>;
+    readonly reportAnnotation: (
+      input: PreviewReportAnnotationInput,
+    ) => Effect.Effect<void, PreviewError>;
+    readonly reportScreenshot: (
+      input: PreviewReportScreenshotInput,
+    ) => Effect.Effect<void, PreviewError>;
     readonly resize: (
       input: PreviewResizeInput,
     ) => Effect.Effect<PreviewSessionSnapshot, PreviewError>;
     readonly refresh: (input: PreviewRefreshInput) => Effect.Effect<void, PreviewError>;
+    readonly control: (input: PreviewControlInput) => Effect.Effect<void, PreviewError>;
     readonly close: (input: PreviewCloseInput) => Effect.Effect<void, PreviewError>;
     readonly list: (input: PreviewListInput) => Effect.Effect<PreviewListResult>;
     readonly events: Stream.Stream<PreviewEvent>;
@@ -269,6 +283,7 @@ export const make = Effect.gen(function* PreviewManagerMake() {
             session.snapshot.navStatus._tag === "Idle" ? "" : session.snapshot.navStatus.title;
           const resolvedTitle = input.resolvedTitle ?? previousTitle;
           const snapshot: PreviewSessionSnapshot = {
+            ...session.snapshot,
             threadId: session.threadId,
             tabId: session.tabId,
             navStatus: { _tag: "Success", url, title: resolvedTitle },
@@ -302,12 +317,20 @@ export const make = Effect.gen(function* PreviewManagerMake() {
       Effect.fn("PreviewManager.reportSessionStatus")(function* (session) {
         const updatedAt = yield* currentIsoTimestamp;
         const snapshot: PreviewSessionSnapshot = {
+          ...session.snapshot,
           threadId: session.threadId,
           tabId: session.tabId,
           navStatus: input.navStatus,
           canGoBack: input.canGoBack,
           canGoForward: input.canGoForward,
           viewport: session.snapshot.viewport ?? FILL_PREVIEW_VIEWPORT,
+          zoomFactor: input.zoomFactor ?? session.snapshot.zoomFactor,
+          pictureInPicture: input.pictureInPicture ?? session.snapshot.pictureInPicture,
+          colorScheme: input.colorScheme ?? session.snapshot.colorScheme,
+          audioMuted: input.audioMuted ?? session.snapshot.audioMuted,
+          audible: input.audible ?? session.snapshot.audible,
+          recording: input.recording ?? session.snapshot.recording,
+          recordingStartedAt: input.recordingStartedAt ?? session.snapshot.recordingStartedAt,
           updatedAt,
         };
         const emit: PreviewEventDraft =
@@ -366,12 +389,130 @@ export const make = Effect.gen(function* PreviewManagerMake() {
     },
   );
 
+  const reportRecording: PreviewManager["Service"]["reportRecording"] = Effect.fn(
+    "PreviewManager.reportRecording",
+  )(function* (input) {
+    yield* mutateExistingSession(input.threadId, input.tabId, (session) =>
+      Effect.gen(function* () {
+        const updatedAt = yield* currentIsoTimestamp;
+        const snapshot: PreviewSessionSnapshot = {
+          ...session.snapshot,
+          recording: input.recording,
+          ...(input.recording
+            ? input.recordingStartedAt === undefined
+              ? {}
+              : { recordingStartedAt: input.recordingStartedAt }
+            : { recordingStartedAt: undefined }),
+          updatedAt,
+        };
+        return {
+          next: { ...session, snapshot },
+          emit: {
+            type: "recording",
+            threadId: session.threadId,
+            tabId: session.tabId,
+            createdAt: updatedAt,
+            snapshot,
+          },
+          result: undefined as void,
+        };
+      }),
+    );
+  });
+
+  const reportAnnotation: PreviewManager["Service"]["reportAnnotation"] = Effect.fn(
+    "PreviewManager.reportAnnotation",
+  )(function* (input) {
+    yield* mutateExistingSession(input.threadId, input.tabId, (session) =>
+      Effect.gen(function* () {
+        const createdAt = yield* currentIsoTimestamp;
+        return {
+          next: session,
+          emit: {
+            type: "annotation",
+            threadId: session.threadId,
+            tabId: session.tabId,
+            createdAt,
+            annotation: input.annotation,
+          },
+          result: undefined as void,
+        };
+      }),
+    );
+  });
+
+  const reportScreenshot: PreviewManager["Service"]["reportScreenshot"] = Effect.fn(
+    "PreviewManager.reportScreenshot",
+  )(function* (input) {
+    yield* mutateExistingSession(input.threadId, input.tabId, (session) =>
+      Effect.gen(function* () {
+        const createdAt = yield* currentIsoTimestamp;
+        return {
+          next: session,
+          emit: {
+            type: "screenshot",
+            threadId: session.threadId,
+            tabId: session.tabId,
+            createdAt,
+            artifactId: input.artifactId,
+            dataUrl: input.dataUrl,
+            ...(input.width === undefined ? {} : { width: input.width }),
+            ...(input.height === undefined ? {} : { height: input.height }),
+          },
+          result: undefined as void,
+        };
+      }),
+    );
+  });
+
   const refresh: PreviewManager["Service"]["refresh"] = Effect.fn("PreviewManager.refresh")(
     function* (input) {
-      // Verify the session exists; the desktop bridge handles the actual reload
-      // and will report progress back via `reportStatus`. No event emitted.
+      // 桌面桥接负责实际 reload；这里广播命令，远程桌面客户端才能执行同一个标签页刷新。
       yield* mutateExistingSession(input.threadId, input.tabId, (session) =>
-        Effect.succeed({ next: session, emit: null, result: undefined as void }),
+        Effect.gen(function* () {
+          const createdAt = yield* currentIsoTimestamp;
+          return {
+            next: session,
+            emit: {
+              type: "refreshed",
+              threadId: session.threadId,
+              tabId: session.tabId,
+              createdAt,
+            },
+            result: undefined as void,
+          };
+        }),
+      );
+    },
+  );
+
+  const control: PreviewManager["Service"]["control"] = Effect.fn("PreviewManager.control")(
+    function* (input) {
+      // 桌面桥接负责实际执行；服务端只广播已校验的同标签页命令。
+      yield* mutateExistingSession(input.threadId, input.tabId, (session) =>
+        Effect.gen(function* () {
+          const createdAt = yield* currentIsoTimestamp;
+          return {
+            next: session,
+            emit: {
+              type: "controlled",
+              threadId: session.threadId,
+              tabId: session.tabId,
+              createdAt,
+              control: input.control,
+              ...(input.url === undefined ? {} : { url: input.url }),
+              ...(input.x === undefined ? {} : { x: input.x }),
+              ...(input.y === undefined ? {} : { y: input.y }),
+              ...(input.text === undefined ? {} : { text: input.text }),
+              ...(input.key === undefined ? {} : { key: input.key }),
+              ...(input.deltaX === undefined ? {} : { deltaX: input.deltaX }),
+              ...(input.deltaY === undefined ? {} : { deltaY: input.deltaY }),
+              ...(input.colorScheme === undefined ? {} : { colorScheme: input.colorScheme }),
+              ...(input.audioMuted === undefined ? {} : { audioMuted: input.audioMuted }),
+            },
+            result: undefined as void,
+          };
+        }),
       );
     },
   );
@@ -433,8 +574,12 @@ export const make = Effect.gen(function* PreviewManagerMake() {
     open,
     navigate,
     reportStatus,
+    reportRecording,
+    reportAnnotation,
+    reportScreenshot,
     resize,
     refresh,
+    control,
     close,
     list,
     events,

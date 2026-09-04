@@ -51,4 +51,14 @@ describe("ByokDelegation contracts", () => {
     );
     expect(() => decodeImport({ instanceId: "instance-1", yaml: "" })).toThrow();
   });
+
+  it("decodes a task at the 50_000 character limit", () => {
+    expect(decodeSubmit({ instanceId: "instance-1", task: "x".repeat(50_000) }).task.length).toBe(
+      50_000,
+    );
+  });
+
+  it("rejects a task over the 50_000 character limit", () => {
+    expect(() => decodeSubmit({ instanceId: "instance-1", task: "x".repeat(50_001) })).toThrow();
+  });
 });

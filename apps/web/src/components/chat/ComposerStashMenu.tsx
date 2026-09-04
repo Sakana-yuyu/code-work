@@ -155,13 +155,11 @@ export const ComposerStashMenu = memo(function ComposerStashMenu(props: {
                   </span>
                   {entry.pendingImageCount ? (
                     <span className="shrink-0 text-[10px] text-secondary-label">
-                      {t("saving2")} {entry.pendingImageCount} {t("image")}
-                      {entry.pendingImageCount === 1 ? "" : "s"}…
+                      {t("stash.savingImages", { count: entry.pendingImageCount })}
                     </span>
                   ) : missingImageCount(entry) > 0 ? (
                     <span className="shrink-0 text-[10px] text-warning-foreground">
-                      {missingImageCount(entry)} {t("image")}
-                      {missingImageCount(entry) === 1 ? "" : "s"} {t("dropped")}
+                      {t("stash.droppedImages", { count: missingImageCount(entry) })}
                     </span>
                   ) : null}
                   {entry.attachments.length > 0 ? (

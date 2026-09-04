@@ -28,6 +28,7 @@ import {
   ProviderDriverKind,
   ProviderInstanceId,
   ResolvedKeybindingRule,
+  type ServerSettings as ServerSettingsData,
   ThreadId,
   type WorkspaceScriptRun,
   WS_METHODS,
@@ -128,6 +129,7 @@ import { makeManualOnlyProviderMaintenanceCapabilities } from "./provider/provid
 import * as ServerLifecycleEvents from "./serverLifecycleEvents.ts";
 import * as ServerRuntimeStartup from "./serverRuntimeStartup.ts";
 import * as ServiceLauncherClient from "./cloud/serviceLauncherClient.ts";
+import * as ModelGateway from "./provider/byok/modelGateway.ts";
 import * as ServerSettings from "./serverSettings.ts";
 import * as TerminalManager from "./terminal/Manager.ts";
 import * as PreviewManager from "./preview/Manager.ts";
@@ -1472,6 +1474,155 @@ const NodeHttpServerTestWithWsDeflate = HttpServer.layerTestClient.pipe(
 );
 
 it.layer(NodeServices.layer)("server router seam", (it) => {
+  const settingsWithGatewayAdapter = (supplierURL: string): ServerSettingsData => ({
+    ...DEFAULT_SERVER_SETTINGS,
+    providerInstances: {
+      ...DEFAULT_SERVER_SETTINGS.providerInstances,
+      [ProviderInstanceId.make("byok-gateway-test")]: {
+        driver: ProviderDriverKind.make("byok"),
+        displayName: "BYOK Gateway Test",
+        enabled: true,
+        environment: [],
+        config: {
+          enabled: true,
+          adapters: [
+            {
+              id: "gw-adapter-anthropic",
+              displayName: "Gateway Anthropic",
+              protocol: "anthropic",
+              baseURL: supplierURL,
+              apiKey: "sk-supplier-key",
+              apiKeyRedacted: false,
+              modelId: "relay-model",
+              contextWindowTokens: 128000,
+            },
+          ],
+        },
+      },
+    },
+  });
+
+  it.effect("BYOK gateway forwards anthropic requests to the adapter with substituted auth", () =>
+    Effect.gen(function* () {
+      const received: {
+        readonly path: unknown;
+        readonly apiKey: unknown;
+        readonly model: unknown;
+        readonly anthropicVersion: unknown;
+      }[] = [];
+      const supplier = yield* Effect.acquireRelease(
+        Effect.promise(async () => {
+          const NodeHttp = await import("node:http");
+          let close: () => Promise<void> = async () => {};
+          const port = await new Promise<number>((resolve, reject) => {
+            const server = NodeHttp.createServer((request, response) => {
+              let raw = "";
+              request.on("data", (chunk: Buffer) => {
+                raw += chunk.toString();
+              });
+              request.on("end", () => {
+                let model: unknown = null;
+                try {
+                  // @effect-diagnostics-next-line preferSchemaOverJson:off
+                  model = (JSON.parse(raw) as { model?: string }).model ?? null;
+                } catch {
+                  model = null;
+                }
+                received.push({
+                  path: request.url,
+                  apiKey: request.headers["x-api-key"] ?? null,
+                  model,
+                  anthropicVersion: request.headers["anthropic-version"] ?? null,
+                });
+                response.writeHead(200, { "content-type": "text/event-stream" });
+                response.write("event: message_start\n");
+                response.write('data: {"type":"message_start"}\n\n');
+                response.end('event: message_stop\ndata: {"type":"message_stop"}\n\n');
+              });
+            });
+            server.listen(0, "127.0.0.1", () => {
+              close = () =>
+                new Promise<void>((resolveClose, rejectClose) => {
+                  server.closeAllConnections();
+                  server.close((error) => (error ? rejectClose(error) : resolveClose()));
+                });
+              resolve((server.address() as { port: number }).port);
+            });
+            server.on("error", reject);
+          });
+          return { port, close };
+        }),
+        ({ close }) => Effect.promise(close),
+      );
+
+      const fileSystem = yield* FileSystem.FileSystem;
+      const secretsDir = yield* fileSystem.makeTempDirectoryScoped({
+        prefix: "codework-gw-secrets-",
+      });
+      // The gateway token is whatever hex string the secret file holds, so
+      // pre-seeding it keeps the test honest without rebuilding the app's
+      // secret store.
+      const token = "ab".repeat(32);
+      yield* fileSystem.writeFile(
+        `${secretsDir}/byok-gateway-token.bin`,
+        Buffer.from(token, "hex"),
+      );
+      yield* buildAppUnderTest({
+        config: { secretsDir },
+        layers: {
+          serverSettings: {
+            getSettings: Effect.succeed(
+              settingsWithGatewayAdapter(`http://127.0.0.1:${supplier.port}`),
+            ),
+          },
+        },
+      });
+
+      const response = yield* HttpClient.post("/byok-gw/anthropic/v1/messages", {
+        headers: {
+          "x-api-key": token,
+          "anthropic-version": "2023-06-01",
+          "content-type": "application/json",
+        },
+        // @effect-diagnostics-next-line preferSchemaOverJson:off
+        body: HttpBody.text(JSON.stringify({ model: "gw-adapter-anthropic", max_tokens: 16 })),
+      });
+      const responseText = yield* response.text;
+      assert.equal(response.status, 200, responseText);
+      assert.include(responseText, "message_stop");
+      assert.equal(received.length, 1);
+      const upstream = received[0];
+      assert.equal(upstream?.path, "/v1/messages");
+      assert.equal(upstream?.apiKey, "sk-supplier-key");
+      assert.equal(upstream?.model, "gw-adapter-anthropic");
+
+      const unauthorized = yield* HttpClient.post("/byok-gw/anthropic/v1/messages", {
+        headers: { "x-api-key": "wrong-token", "content-type": "application/json" },
+        // @effect-diagnostics-next-line preferSchemaOverJson:off
+        body: HttpBody.text(JSON.stringify({ model: "gw-adapter-anthropic" })),
+      });
+      assert.equal(unauthorized.status, 401);
+      assert.include(yield* unauthorized.text, "authentication_error");
+
+      const unknownModel = yield* HttpClient.post("/byok-gw/anthropic/v1/messages", {
+        headers: { "x-api-key": token, "content-type": "application/json" },
+        // @effect-diagnostics-next-line preferSchemaOverJson:off
+        body: HttpBody.text(JSON.stringify({ model: "no-such-adapter" })),
+      });
+      assert.equal(unknownModel.status, 404);
+
+      // The only adapter is anthropic; an openai-routed client must not
+      // silently reach it.
+      const crossProtocol = yield* HttpClient.post("/byok-gw/openai/v1/chat/completions", {
+        headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
+        // @effect-diagnostics-next-line preferSchemaOverJson:off
+        body: HttpBody.text(JSON.stringify({ model: "gw-adapter-anthropic" })),
+      });
+      assert.equal(crossProtocol.status, 404);
+      assert.equal(received.length, 1);
+    }).pipe(Effect.provide(NodeHttpServer.layerTest)),
+  );
+
   it.effect("parks HTTP ingress until command readiness", () =>
     Effect.gen(function* () {
       const fileSystem = yield* FileSystem.FileSystem;

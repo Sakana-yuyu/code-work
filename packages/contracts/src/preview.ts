@@ -12,9 +12,14 @@ import { Schema } from "effect";
 import { NonNegativeInt, PositiveInt, ThreadId, TrimmedNonEmptyString } from "./baseSchemas.ts";
 
 export const PREVIEW_URL_MAX_LENGTH = 2_048;
+export const PREVIEW_SCREENSHOT_DATA_URL_MAX_LENGTH = 16 * 1024 * 1024;
 export const CONFIGURED_LOCAL_SERVER_URLS_MAX_ITEMS = 32;
 
 const Url = TrimmedNonEmptyString.check(Schema.isMaxLength(PREVIEW_URL_MAX_LENGTH));
+const ScreenshotDataUrl = Schema.String.check(
+  Schema.isMaxLength(PREVIEW_SCREENSHOT_DATA_URL_MAX_LENGTH),
+  Schema.isPattern(/^data:image\/png;base64,[a-z0-9+/]+={0,2}$/i),
+);
 
 export const ConfiguredLocalServerUrls = Schema.Array(Url).check(
   Schema.isMaxLength(CONFIGURED_LOCAL_SERVER_URLS_MAX_ITEMS),
@@ -169,6 +174,17 @@ export const PreviewSessionSnapshot = Schema.Struct({
   canGoForward: Schema.Boolean,
   /** Missing snapshots from older servers are treated as fill-panel mode. */
   viewport: Schema.optional(PreviewViewportSetting),
+  /** Desktop-only browser state mirrored for remote mobile control surfaces. */
+  zoomFactor: Schema.optional(
+    Schema.Number.check(Schema.isFinite()).check(Schema.isGreaterThan(0)),
+  ),
+  pictureInPicture: Schema.optional(Schema.Boolean),
+  colorScheme: Schema.optional(PreviewAppearancePreference),
+  audioMuted: Schema.optional(Schema.Boolean),
+  audible: Schema.optional(Schema.Boolean),
+  /** Desktop recording state mirrored for remote mobile controls. */
+  recording: Schema.optional(Schema.Boolean),
+  recordingStartedAt: Schema.optional(Schema.String),
   updatedAt: Schema.String,
 });
 export type PreviewSessionSnapshot = typeof PreviewSessionSnapshot.Type;
@@ -201,14 +217,148 @@ export const PreviewReportStatusInput = Schema.Struct({
   navStatus: PreviewNavStatus,
   canGoBack: Schema.Boolean,
   canGoForward: Schema.Boolean,
+  zoomFactor: Schema.optional(
+    Schema.Number.check(Schema.isFinite()).check(Schema.isGreaterThan(0)),
+  ),
+  pictureInPicture: Schema.optional(Schema.Boolean),
+  colorScheme: Schema.optional(PreviewAppearancePreference),
+  audioMuted: Schema.optional(Schema.Boolean),
+  audible: Schema.optional(Schema.Boolean),
+  recording: Schema.optional(Schema.Boolean),
+  recordingStartedAt: Schema.optional(Schema.String),
 });
 export type PreviewReportStatusInput = typeof PreviewReportStatusInput.Type;
+
+export const PreviewReportRecordingInput = Schema.Struct({
+  threadId: ThreadId,
+  tabId: PreviewTabId,
+  recording: Schema.Boolean,
+  recordingStartedAt: Schema.optional(Schema.String),
+});
+export type PreviewReportRecordingInput = typeof PreviewReportRecordingInput.Type;
+
+const PreviewAnnotationText = Schema.String.check(Schema.isMaxLength(4_096));
+const PreviewAnnotationElementSummary = Schema.Struct({
+  id: TrimmedNonEmptyString.check(Schema.isMaxLength(128)),
+  tagName: TrimmedNonEmptyString.check(Schema.isMaxLength(64)),
+  selector: Schema.NullOr(Schema.String.check(Schema.isMaxLength(2_048))),
+  componentName: Schema.NullOr(Schema.String.check(Schema.isMaxLength(256))),
+  htmlPreview: Schema.String.check(Schema.isMaxLength(4_096)),
+});
+const PreviewAnnotationScreenshotPreview = Schema.Struct({
+  dataUrl: ScreenshotDataUrl,
+  width: Schema.Number.check(Schema.isFinite()).check(Schema.isGreaterThan(0)),
+  height: Schema.Number.check(Schema.isFinite()).check(Schema.isGreaterThan(0)),
+});
+
+/** 字段受限的远程拾取结果，避免把桌面端本地文件路径或任意 DOM 数据带上 wire。 */
+export const PreviewAnnotationRemoteResult = Schema.Struct({
+  annotationId: TrimmedNonEmptyString.check(Schema.isMaxLength(256)),
+  pageUrl: Url,
+  pageTitle: Schema.NullOr(Title),
+  comment: PreviewAnnotationText,
+  elements: Schema.Array(PreviewAnnotationElementSummary).check(Schema.isMaxLength(20)),
+  regionCount: NonNegativeInt,
+  strokeCount: NonNegativeInt,
+  screenshot: Schema.NullOr(PreviewAnnotationScreenshotPreview),
+  submission: Schema.Literals(["attach", "send"]),
+});
+export type PreviewAnnotationRemoteResult = typeof PreviewAnnotationRemoteResult.Type;
+
+export const PreviewReportAnnotationInput = Schema.Struct({
+  threadId: ThreadId,
+  tabId: PreviewTabId,
+  annotation: PreviewAnnotationRemoteResult,
+});
+export type PreviewReportAnnotationInput = typeof PreviewReportAnnotationInput.Type;
+
+export const PreviewReportScreenshotInput = Schema.Struct({
+  threadId: ThreadId,
+  tabId: PreviewTabId,
+  artifactId: TrimmedNonEmptyString.check(Schema.isMaxLength(256)),
+  dataUrl: ScreenshotDataUrl,
+  width: Schema.optional(Schema.Int.check(Schema.isGreaterThan(0))),
+  height: Schema.optional(Schema.Int.check(Schema.isGreaterThan(0))),
+});
+export type PreviewReportScreenshotInput = typeof PreviewReportScreenshotInput.Type;
 
 export const PreviewRefreshInput = Schema.Struct({
   threadId: ThreadId,
   tabId: PreviewTabId,
 });
 export type PreviewRefreshInput = typeof PreviewRefreshInput.Type;
+
+export const PreviewControl = Schema.Literals([
+  "back",
+  "forward",
+  "hardReload",
+  "openDevTools",
+  "zoomIn",
+  "zoomOut",
+  "resetZoom",
+  "captureScreenshot",
+  "setColorScheme",
+  "setAudioMuted",
+  "openPictureInPicture",
+  "closePictureInPicture",
+  "clearCookies",
+  "clearCache",
+  "startRecording",
+  "stopRecording",
+  "pickElement",
+  "cancelPickElement",
+  "openInSystemBrowser",
+  "click",
+  "type",
+  "press",
+  "scroll",
+]);
+export type PreviewControl = typeof PreviewControl.Type;
+
+const PreviewControlText = Schema.String.check(Schema.isMaxLength(8_192));
+const PreviewControlKey = TrimmedNonEmptyString.check(Schema.isMaxLength(64));
+const PreviewControlCoordinate = Schema.Number.check(Schema.isFinite());
+const PreviewControlDelta = Schema.Number.check(Schema.isFinite());
+
+export const PreviewControlInput = Schema.Struct({
+  threadId: ThreadId,
+  tabId: PreviewTabId,
+  control: PreviewControl,
+  url: Schema.optional(Url),
+  x: Schema.optional(PreviewControlCoordinate),
+  y: Schema.optional(PreviewControlCoordinate),
+  text: Schema.optional(PreviewControlText),
+  key: Schema.optional(PreviewControlKey),
+  deltaX: Schema.optional(PreviewControlDelta),
+  deltaY: Schema.optional(PreviewControlDelta),
+  colorScheme: Schema.optional(PreviewAppearancePreference),
+  audioMuted: Schema.optional(Schema.Boolean),
+}).check(
+  Schema.makeFilter((input) => {
+    switch (input.control) {
+      case "openInSystemBrowser":
+        return input.url !== undefined || "A URL is required to open the system browser.";
+      case "click":
+        return (
+          (input.x !== undefined && input.y !== undefined) ||
+          "Click control requires both x and y coordinates."
+        );
+      case "type":
+        return input.text !== undefined || "Type control requires text.";
+      case "press":
+        return input.key !== undefined || "Press control requires a key.";
+      case "scroll":
+        return (
+          input.deltaX !== undefined ||
+          input.deltaY !== undefined ||
+          "Scroll control requires deltaX or deltaY."
+        );
+      default:
+        return true;
+    }
+  }),
+);
+export type PreviewControlInput = typeof PreviewControlInput.Type;
 
 export const PreviewResizeInput = Schema.Struct({
   threadId: ThreadId,
@@ -265,6 +415,18 @@ const PreviewResizedEvent = Schema.Struct({
   snapshot: PreviewSessionSnapshot,
 });
 
+const PreviewRecordingEvent = Schema.Struct({
+  ...PreviewEventBaseSchema.fields,
+  type: Schema.Literal("recording"),
+  snapshot: PreviewSessionSnapshot,
+});
+
+const PreviewAnnotationEvent = Schema.Struct({
+  ...PreviewEventBaseSchema.fields,
+  type: Schema.Literal("annotation"),
+  annotation: PreviewAnnotationRemoteResult,
+});
+
 const PreviewFailedEvent = Schema.Struct({
   ...PreviewEventBaseSchema.fields,
   type: Schema.Literal("failed"),
@@ -279,12 +441,46 @@ const PreviewClosedEvent = Schema.Struct({
   type: Schema.Literal("closed"),
 });
 
+const PreviewRefreshedEvent = Schema.Struct({
+  ...PreviewEventBaseSchema.fields,
+  type: Schema.Literal("refreshed"),
+});
+
+const PreviewControlledEvent = Schema.Struct({
+  ...PreviewEventBaseSchema.fields,
+  type: Schema.Literal("controlled"),
+  control: PreviewControl,
+  url: Schema.optional(Url),
+  x: Schema.optional(PreviewControlCoordinate),
+  y: Schema.optional(PreviewControlCoordinate),
+  text: Schema.optional(PreviewControlText),
+  key: Schema.optional(PreviewControlKey),
+  deltaX: Schema.optional(PreviewControlDelta),
+  deltaY: Schema.optional(PreviewControlDelta),
+  colorScheme: Schema.optional(PreviewAppearancePreference),
+  audioMuted: Schema.optional(Schema.Boolean),
+});
+
+const PreviewScreenshotEvent = Schema.Struct({
+  ...PreviewEventBaseSchema.fields,
+  type: Schema.Literal("screenshot"),
+  artifactId: TrimmedNonEmptyString.check(Schema.isMaxLength(256)),
+  dataUrl: ScreenshotDataUrl,
+  width: Schema.optional(Schema.Int.check(Schema.isGreaterThan(0))),
+  height: Schema.optional(Schema.Int.check(Schema.isGreaterThan(0))),
+});
+
 export const PreviewEvent = Schema.Union([
   PreviewOpenedEvent,
   PreviewNavigatedEvent,
   PreviewResizedEvent,
+  PreviewRecordingEvent,
   PreviewFailedEvent,
   PreviewClosedEvent,
+  PreviewRefreshedEvent,
+  PreviewControlledEvent,
+  PreviewScreenshotEvent,
+  PreviewAnnotationEvent,
 ]);
 export type PreviewEvent = typeof PreviewEvent.Type;
 

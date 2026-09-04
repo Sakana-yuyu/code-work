@@ -89,7 +89,7 @@ const withInstanceIdentity =
 export const ByokDriver: ProviderDriver<ByokSettings, ByokDriverEnv> = {
   driverKind: DRIVER_KIND,
   metadata: {
-    displayName: "Cursor BYOK",
+    displayName: "Custom model service",
     supportsMultipleInstances: true,
   },
   configSchema: ByokSettings,

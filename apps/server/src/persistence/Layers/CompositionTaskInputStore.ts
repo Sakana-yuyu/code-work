@@ -22,11 +22,15 @@ const IV_BYTES = 12;
 
 const InputPayloadSchema = Schema.Struct({
   taskId: Schema.String,
+  agentId: Schema.optional(Schema.String),
   prompt: Schema.String,
+  promptDigest: Schema.optional(Schema.String),
   workspaceRoot: Schema.String,
   workspaceRootDigest: Schema.optional(Schema.String),
   model: Schema.optional(Schema.String),
   capabilityIds: Schema.optional(Schema.Array(Schema.String)),
+  implementationAssigneeId: Schema.optional(Schema.String),
+  independentVerifierId: Schema.optional(Schema.String),
 });
 
 const EncryptedPayloadSchema = Schema.Struct({
@@ -87,13 +91,21 @@ const decryptPayload = (
   if (input.taskId !== taskId) throw new Error("加密输入的 taskId 不匹配。");
   return {
     taskId: input.taskId,
+    ...(input.agentId === undefined ? {} : { agentId: input.agentId }),
     prompt: input.prompt,
+    ...(input.promptDigest === undefined ? {} : { promptDigest: input.promptDigest }),
     workspaceRoot: input.workspaceRoot,
     ...(input.workspaceRootDigest === undefined
       ? {}
       : { workspaceRootDigest: input.workspaceRootDigest }),
     ...(input.model === undefined ? {} : { model: input.model }),
     ...(input.capabilityIds === undefined ? {} : { capabilityIds: [...input.capabilityIds] }),
+    ...(input.implementationAssigneeId === undefined
+      ? {}
+      : { implementationAssigneeId: input.implementationAssigneeId }),
+    ...(input.independentVerifierId === undefined
+      ? {}
+      : { independentVerifierId: input.independentVerifierId }),
   };
 };
 

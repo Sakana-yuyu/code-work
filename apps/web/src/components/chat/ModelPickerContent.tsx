@@ -4,6 +4,7 @@ import {
   type ResolvedKeybindingsConfig,
 } from "@codework/contracts";
 import { resolveSelectableModel } from "@codework/shared/model";
+import { Link } from "@tanstack/react-router";
 import { LegendList, type LegendListRef } from "@legendapp/list/react";
 import { memo, useMemo, useState, useCallback, useEffect, useLayoutEffect, useRef } from "react";
 import { ChevronRightIcon, SearchIcon } from "lucide-react";
@@ -57,6 +58,16 @@ type ModelPickerItem = {
 };
 
 const EMPTY_MODEL_JUMP_LABELS = new Map<string, string>();
+
+export function getModelPickerEmptyState(input: {
+  readonly isSearching: boolean;
+  readonly readyModelCount: number;
+}): "search" | "provider-settings" | "filtered" {
+  if (input.isSearching) {
+    return "search";
+  }
+  return input.readyModelCount === 0 ? "provider-settings" : "filtered";
+}
 
 function ModelListSeparator() {
   return <div className="h-0.5" />;
@@ -238,6 +249,10 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
 
   const isLocked = props.lockedProvider !== null;
   const isSearching = searchQuery.trim().length > 0;
+  const emptyState = getModelPickerEmptyState({
+    isSearching,
+    readyModelCount: flatModels.length,
+  });
   const lockedDisabledInstanceIds = useMemo(() => {
     if (!isLocked) {
       return undefined;
@@ -795,7 +810,23 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
               </ComboboxListVirtualized>
             </div>
             <ComboboxEmpty className="not-empty:py-6 empty:h-0 text-xs font-normal leading-snug">
-              {t("noModelsFound")}
+              {emptyState === "provider-settings" ? (
+                <div className="flex flex-col items-center gap-2 px-4 text-center">
+                  <p>{t("modelPicker.noAvailableModels")}</p>
+                  <p className="text-muted-foreground/70">
+                    {t("modelPicker.noAvailableModelsDescription")}
+                  </p>
+                  <Link
+                    to="/settings/providers"
+                    className="text-primary underline underline-offset-2 hover:no-underline"
+                    onClick={() => props.onRequestClose?.()}
+                  >
+                    {t("modelPicker.openProviderSettings")}
+                  </Link>
+                </div>
+              ) : (
+                t("noModelsFound")
+              )}
             </ComboboxEmpty>
           </div>
         </Combobox>

@@ -156,7 +156,10 @@ export default defineConfig(() => {
     assetsInclude: ["**/*.wasm"],
     plugins: [
       devCompressionPlugin(),
-      tanstackRouter(),
+      // Route-level code splitting: settings/PR/usage surfaces (plus their
+      // heavy deps like parse5/jszip via the theme importer) leave the entry
+      // chunk, which previously carried every panel eagerly at ~4.6MB.
+      tanstackRouter({ autoCodeSplitting: true }),
       react(),
       babel({
         // We need to be explicit about the parser options after moving to @vitejs/plugin-react v6.0.0

@@ -23,6 +23,7 @@ import {
   parseLocalPluginWorkspacePanelSurface,
   type LocalPluginWorkspacePanelSurface,
 } from "./localPlugins/adapters/localPluginWorkspacePanelSurface";
+import { canvasReferenceFromArtifactPath } from "./canvas";
 
 function createRightPanelStorage() {
   const storage = resolveStorage(typeof window !== "undefined" ? window.localStorage : undefined);
@@ -49,6 +50,7 @@ export const RIGHT_PANEL_KINDS = [
   "terminal",
   "pull-request",
   "agents",
+  "canvas",
   "plugin",
 ] as const;
 export type RightPanelKind = (typeof RIGHT_PANEL_KINDS)[number];
@@ -91,6 +93,18 @@ export type RightPanelSurface =
       number: number;
     }
   | { id: "agents"; kind: "agents" }
+  | {
+      id: `canvas:${string}`;
+      kind: "canvas";
+      canvasId: string;
+      title: string;
+      summary?: string | undefined;
+      relativePath: string;
+      /** Transient generating placeholder while the agent builds the Canvas; session-only. */
+      pending?: boolean;
+      /** 用户开始首次 Canvas 生成前显示的可持久化引导面板。 */
+      empty?: boolean;
+    }
   | LocalPluginWorkspacePanelSurface;
 
 const LEGACY_RIGHT_PANEL_STORAGE_KEY = "codework:right-panel-state:v2";
@@ -98,8 +112,9 @@ const RIGHT_PANEL_STORAGE_KEY = canonicalStorageKey(LEGACY_RIGHT_PANEL_STORAGE_K
 // v9 removed the "plan" surface kind (plans render inline in the transcript).
 // v10 keys pull-request surfaces by reference instead of a singleton tab.
 // v11 stops persisting the pull-request list's shared panel, so a restart opens the page fresh.
-// v12 adds validated local-plugin workspace panel surfaces.
-const RIGHT_PANEL_STORAGE_VERSION = 12;
+// v12 adds validated local-plugin workspace panel surfaces; v13 adds Canvas references;
+// v14 removes stale Canvas artifacts that were persisted as ordinary file surfaces.
+const RIGHT_PANEL_STORAGE_VERSION = 14;
 
 /**
  * The pull-request list's shared panel (see PULL_REQUESTS_PANEL_ID in the route) is session
@@ -117,7 +132,7 @@ interface RightPanelStoreState {
   byThreadKey: Record<string, ThreadRightPanelState>;
   open: (
     ref: ScopedThreadRef,
-    kind: Exclude<RightPanelKind, "file" | "terminal" | "pull-request" | "plugin">,
+    kind: Exclude<RightPanelKind, "file" | "terminal" | "pull-request" | "plugin" | "canvas">,
   ) => void;
   openBrowser: (ref: ScopedThreadRef, tabId: string | null) => void;
   openFile: (ref: ScopedThreadRef, relativePath: string, line?: number) => void;
@@ -127,6 +142,17 @@ interface RightPanelStoreState {
   ) => void;
   openTerminal: (ref: ScopedThreadRef, terminalId: string) => void;
   openPluginPanel: (ref: ScopedThreadRef, pluginId: string, contributionId: string) => void;
+  openCanvas: (
+    ref: ScopedThreadRef,
+    canvas: {
+      canvasId: string;
+      title: string;
+      summary?: string | undefined;
+      relativePath: string;
+    },
+  ) => void;
+  openCanvasLauncher: (ref: ScopedThreadRef, title: string) => void;
+  openPendingCanvas: (ref: ScopedThreadRef, title: string) => void;
   splitTerminal: (
     ref: ScopedThreadRef,
     surfaceId: string,
@@ -148,7 +174,7 @@ interface RightPanelStoreState {
   toggleVisibility: (ref: ScopedThreadRef) => void;
   toggle: (
     ref: ScopedThreadRef,
-    kind: Exclude<RightPanelKind, "file" | "terminal" | "pull-request" | "plugin">,
+    kind: Exclude<RightPanelKind, "file" | "terminal" | "pull-request" | "plugin" | "canvas">,
   ) => void;
   removeThread: (ref: ScopedThreadRef) => void;
 }
@@ -160,7 +186,10 @@ const EMPTY_THREAD_STATE: ThreadRightPanelState = {
 };
 
 const singletonSurface = (
-  kind: Exclude<RightPanelKind, "file" | "preview" | "terminal" | "pull-request" | "plugin">,
+  kind: Exclude<
+    RightPanelKind,
+    "file" | "preview" | "terminal" | "pull-request" | "plugin" | "canvas"
+  >,
 ): RightPanelSurface => {
   switch (kind) {
     case "diff":
@@ -195,6 +224,17 @@ const terminalSurface = (terminalId: string): RightPanelSurface => ({
   resourceId: terminalId,
   terminalIds: [terminalId],
   activeTerminalId: terminalId,
+});
+
+const canvasSurface = (canvas: {
+  canvasId: string;
+  title: string;
+  summary?: string | undefined;
+  relativePath: string;
+}): RightPanelSurface => ({
+  id: `canvas:${canvas.canvasId}`,
+  kind: "canvas",
+  ...canvas,
 });
 
 export type PullRequestSurface = Extract<RightPanelSurface, { kind: "pull-request" }>;
@@ -300,6 +340,9 @@ export function migratePersistedRightPanelState(persistedState: unknown): {
                     // transcript (v9).
                     if ((surface as { kind?: string }).kind === "plan") return [];
                     if (surface.kind === "file") {
+                      // Canvas JSON 是应用管理的文档，不是源文件。旧版本可能把它保存成文件面板，
+                      // 重启后再次交给系统编辑器，从而弹出文件关联窗口。
+                      if (canvasReferenceFromArtifactPath(surface.relativePath)) return [];
                       const revealLine =
                         typeof surface.revealLine === "number" &&
                         Number.isFinite(surface.revealLine)
@@ -335,6 +378,27 @@ export function migratePersistedRightPanelState(persistedState: unknown): {
                     if (surface.kind === "plugin") {
                       const parsed = parseLocalPluginWorkspacePanelSurface(surface);
                       return parsed === null ? [] : [parsed];
+                    }
+                    if (surface.kind === "canvas") {
+                      if (surface.empty === true) {
+                        return surface.id === "canvas:new" &&
+                          surface.canvasId === "new" &&
+                          surface.relativePath === ""
+                          ? [surface]
+                          : [];
+                      }
+                      if (
+                        surface.pending === true ||
+                        typeof surface.canvasId !== "string" ||
+                        typeof surface.title !== "string" ||
+                        typeof surface.relativePath !== "string" ||
+                        surface.id !== `canvas:${surface.canvasId}` ||
+                        /^(?:[A-Za-z]:[\\/]|[\\/])/.test(surface.relativePath) ||
+                        surface.relativePath.split(/[\\/]/u).some((part) => part === "..")
+                      ) {
+                        return [];
+                      }
+                      return [surface];
                     }
                     if (surface.kind !== "terminal") return [surface];
                     if (
@@ -430,6 +494,10 @@ export const useRightPanelStore = create<RightPanelStoreState>()(
       openFile: (ref, relativePath, line) =>
         set((state) => ({
           byThreadKey: updateThread(state.byThreadKey, scopedThreadKey(ref), (current) => {
+            const canvas = canvasReferenceFromArtifactPath(relativePath);
+            if (canvas) {
+              return upsertSurface(current, canvasSurface(canvas));
+            }
             const withoutStandaloneExplorer = current.surfaces.filter(
               (surface) => surface.kind !== "files",
             );
@@ -465,6 +533,67 @@ export const useRightPanelStore = create<RightPanelStoreState>()(
           byThreadKey: updateThread(state.byThreadKey, scopedThreadKey(ref), (current) =>
             upsertSurface(current, localPluginWorkspacePanelSurface(pluginId, contributionId)),
           ),
+        })),
+      openCanvas: (ref, canvas) =>
+        set((state) => ({
+          byThreadKey: updateThread(state.byThreadKey, scopedThreadKey(ref), (current) =>
+            // Arrival of the real Canvas retires the generating placeholder.
+            upsertSurface(
+              {
+                ...current,
+                surfaces: current.surfaces.filter((surface) => surface.id !== "canvas:pending"),
+              },
+              canvasSurface(canvas),
+            ),
+          ),
+        })),
+      openCanvasLauncher: (ref, title) =>
+        set((state) => ({
+          byThreadKey: updateThread(state.byThreadKey, scopedThreadKey(ref), (current) => {
+            const existingCanvas = [...current.surfaces]
+              .toReversed()
+              .find((surface) => surface.kind === "canvas" && surface.empty !== true);
+            if (existingCanvas) {
+              return { ...current, isOpen: true, activeSurfaceId: existingCanvas.id };
+            }
+            const existingLauncher = current.surfaces.find(
+              (surface) => surface.kind === "canvas" && surface.empty === true,
+            );
+            if (existingLauncher) {
+              return { ...current, isOpen: true, activeSurfaceId: existingLauncher.id };
+            }
+            return upsertSurface(current, {
+              id: "canvas:new",
+              kind: "canvas",
+              canvasId: "new",
+              title,
+              relativePath: "",
+              empty: true,
+            });
+          }),
+        })),
+      openPendingCanvas: (ref, title) =>
+        set((state) => ({
+          byThreadKey: updateThread(state.byThreadKey, scopedThreadKey(ref), (current) => {
+            // Already generating: keep the user's active tab as-is.
+            if (current.surfaces.some((surface) => surface.id === "canvas:pending")) {
+              return current;
+            }
+            return upsertSurface(
+              {
+                ...current,
+                surfaces: current.surfaces.filter((surface) => surface.id !== "canvas:new"),
+              },
+              {
+                id: "canvas:pending",
+                kind: "canvas",
+                canvasId: "pending",
+                title,
+                relativePath: "",
+                pending: true,
+              },
+            );
+          }),
         })),
       splitTerminal: (ref, surfaceId, terminalId, direction = "horizontal") =>
         set((state) => ({
@@ -634,10 +763,15 @@ export const useRightPanelStore = create<RightPanelStoreState>()(
       reconcileFileSurfaces: (ref, workspaceAvailable) =>
         set((state) => ({
           byThreadKey: updateThread(state.byThreadKey, scopedThreadKey(ref), (current) => {
-            if (workspaceAvailable) return current;
-            const surfaces = current.surfaces.filter(
-              (surface) => surface.kind !== "files" && surface.kind !== "file",
-            );
+            const surfaces = current.surfaces.filter((surface) => {
+              if (
+                surface.kind === "file" &&
+                canvasReferenceFromArtifactPath(surface.relativePath)
+              ) {
+                return false;
+              }
+              return workspaceAvailable || (surface.kind !== "files" && surface.kind !== "file");
+            });
             if (surfaces.length === current.surfaces.length) return current;
             const activeStillExists = surfaces.some(
               (surface) => surface.id === current.activeSurfaceId,

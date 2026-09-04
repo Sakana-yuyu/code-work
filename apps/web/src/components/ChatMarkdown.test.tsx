@@ -202,7 +202,7 @@ describe("ChatMarkdown Windows file links", () => {
       />,
     );
 
-    expect(html).toContain('href="C:/Users/shawn/project/src/main.ts"');
+    expect(html).not.toContain('href="C:/Users/shawn/project/src/main.ts"');
     expect(html).toContain("chat-markdown-file-link");
   });
 
@@ -217,7 +217,7 @@ describe("ChatMarkdown Windows file links", () => {
       />,
     );
 
-    expect(html).toContain('href="C:/Users/shawn/project/src/main.ts"');
+    expect(html).not.toContain('href="C:/Users/shawn/project/src/main.ts"');
     expect(html).toContain("chat-markdown-file-link");
   });
 
@@ -269,7 +269,7 @@ describe("ChatMarkdown Windows file links", () => {
       />,
     );
 
-    expect(html).toContain('href="C:/Users/shawn/project/src/main.ts"');
+    expect(html).not.toContain('href="C:/Users/shawn/project/src/main.ts"');
     expect(html).toContain("chat-markdown-file-link");
   });
 

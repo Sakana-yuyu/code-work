@@ -5,7 +5,7 @@ import {
   type ServerProvider,
   type ServerProviderUpdateState,
 } from "@codework/contracts";
-import { ServerProviderUpdateError } from "@codework/contracts";
+import { ServerProviderInstallError, ServerProviderUpdateError } from "@codework/contracts";
 import * as Cause from "effect/Cause";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
@@ -20,20 +20,29 @@ import { ChildProcessSpawner } from "effect/unstable/process";
 import { HostProcessEnvironment, HostProcessPlatform } from "@codework/shared/hostProcess";
 import { SpawnExecutableResolution } from "@codework/shared/shell";
 
-import { ProviderRegistry, type ProviderRegistryShape } from "./Services/ProviderRegistry.ts";
+import {
+  ProviderRegistry,
+  type ProviderMaintenanceActionKind,
+  type ProviderRegistryShape,
+} from "./Services/ProviderRegistry.ts";
 import * as ProviderMaintenanceRunner from "./providerMaintenanceRunner.ts";
 import {
+  makeManualOnlyProviderMaintenanceCapabilities,
   makeProviderMaintenanceCapabilities,
   ProviderVersionCache,
   type ProviderMaintenanceCapabilities,
 } from "./providerMaintenance.ts";
 const isServerProviderUpdateError = Schema.is(ServerProviderUpdateError);
+const isServerProviderInstallError = Schema.is(ServerProviderInstallError);
 
 const CODEX_DRIVER = ProviderDriverKind.make("codex");
 const CURSOR_DRIVER = ProviderDriverKind.make("cursor");
+const GROK_DRIVER = ProviderDriverKind.make("grok");
 const OPENCODE_DRIVER = ProviderDriverKind.make("opencode");
+const UNKNOWN_DRIVER = ProviderDriverKind.make("unknown");
 const CODEX_INSTANCE_ID = ProviderInstanceId.make("codex");
 const CURSOR_INSTANCE_ID = ProviderInstanceId.make("cursor");
+const GROK_INSTANCE_ID = ProviderInstanceId.make("grok");
 const OPENCODE_INSTANCE_ID = ProviderInstanceId.make("opencode");
 const encoder = new TextEncoder();
 
@@ -51,6 +60,43 @@ function lifecycleFor(provider: ProviderDriverKind): ProviderMaintenanceCapabili
       updateExecutable: "cursor-agent",
       updateArgs: ["update"],
       updateLockKey: "cursor-agent",
+      install: {
+        lockKey: "cursor-installer",
+        win32: {
+          executable: "powershell",
+          args: ["-NoProfile", "-Command", "irm 'https://cursor.com/install?win32=true' | iex"],
+        },
+        posix: {
+          executable: "bash",
+          args: ["-c", "curl https://cursor.com/install -fsS | bash"],
+        },
+      },
+    });
+  }
+  if (provider === GROK_DRIVER) {
+    return makeProviderMaintenanceCapabilities({
+      provider,
+      packageName: null,
+      updateExecutable: null,
+      updateArgs: [],
+      updateLockKey: null,
+      install: {
+        lockKey: "grok-installer",
+        win32: {
+          executable: "powershell",
+          args: ["-NoProfile", "-Command", "irm https://x.ai/cli/install.ps1 | iex"],
+        },
+        posix: {
+          executable: "bash",
+          args: ["-c", "curl -fsSL https://x.ai/cli/install.sh | bash"],
+        },
+      },
+    });
+  }
+  if (provider === UNKNOWN_DRIVER) {
+    return makeManualOnlyProviderMaintenanceCapabilities({
+      provider,
+      packageName: null,
     });
   }
   return makeProviderMaintenanceCapabilities({
@@ -89,6 +135,20 @@ const baseOpenCodeProvider: ServerProvider = {
   ...baseProvider,
   instanceId: OPENCODE_INSTANCE_ID,
   driver: OPENCODE_DRIVER,
+};
+
+const baseGrokProvider: ServerProvider = {
+  ...baseProvider,
+  instanceId: GROK_INSTANCE_ID,
+  driver: GROK_DRIVER,
+};
+
+const notInstalledCodexProvider: ServerProvider = {
+  ...baseProvider,
+  installed: false,
+  version: null,
+  status: "error",
+  message: "Codex CLI (`codex`) was not found on PATH.",
 };
 
 const latestVersionHttpClient = (version: string) =>
@@ -150,6 +210,10 @@ function mockSpawnerLayer(
 
 function makeRegistry(
   initialProviders: ServerProvider | ReadonlyArray<ServerProvider> = baseProvider,
+  options: {
+    /** Snapshots returned by refreshInstance — simulates post-action re-detection. */
+    readonly refreshProviders?: ReadonlyArray<ServerProvider>;
+  } = {},
 ) {
   return Effect.gen(function* () {
     const providersRef = yield* Ref.make<ReadonlyArray<ServerProvider>>(
@@ -161,34 +225,42 @@ function makeRegistry(
       "providerMaintenanceRunner.test.setProviderMaintenanceActionState",
     )(function* (input: {
       readonly instanceId: ProviderInstanceId;
-      readonly action: "update";
+      readonly action: ProviderMaintenanceActionKind;
       readonly state: ServerProviderUpdateState | null;
     }) {
-      const updateState = input.state;
-      if (updateState) {
-        yield* Ref.update(updateStatesRef, (states) => [...states, updateState]);
+      const state = input.state;
+      // Action kind → snapshot field: "update"→`updateState`, "install"→`installState`.
+      const stateField = input.action === "install" ? "installState" : "updateState";
+      if (state) {
+        yield* Ref.update(updateStatesRef, (states) => [...states, state]);
       }
       return yield* Ref.updateAndGet(providersRef, (providers) =>
         providers.map((candidate) => {
           if (candidate.instanceId !== input.instanceId) {
             return candidate;
           }
-          if (!updateState) {
-            const { updateState: _updateState, ...providerWithoutUpdateState } = candidate;
-            return providerWithoutUpdateState;
+          if (!state) {
+            const { [stateField]: _strippedState, ...providerWithoutState } = candidate;
+            return providerWithoutState;
           }
           return {
             ...candidate,
-            updateState,
+            [stateField]: state,
           };
         }),
       );
     });
 
+    const refreshedProviders = () =>
+      options.refreshProviders
+        ? // Mirror the real registry: the refreshed snapshot lands in the
+          // provider list, so a follow-up getProviders observes it.
+          Ref.set(providersRef, options.refreshProviders).pipe(Effect.as(options.refreshProviders))
+        : Ref.get(providersRef);
     const registry: ProviderRegistryShape = {
       getProviders: Ref.get(providersRef),
-      refresh: () => Ref.get(providersRef),
-      refreshInstance: () => Ref.get(providersRef),
+      refresh: refreshedProviders,
+      refreshInstance: refreshedProviders,
       getProviderMaintenanceCapabilitiesForInstance: (_instanceId, provider) =>
         Effect.succeed(lifecycleFor(provider)),
       setProviderMaintenanceActionState,
@@ -723,6 +795,238 @@ describe("providerMaintenanceRunner", () => {
               return Effect.succeed(mockHandle({ stdout: "updated" }));
             }),
           ),
+        ),
+      ),
+    );
+  });
+});
+
+describe("providerMaintenanceRunner installProvider", () => {
+  it.effect(
+    "runs the package-managed install command and records success after re-detection",
+    () => {
+      const calls: Array<{ command: string; args: ReadonlyArray<string> }> = [];
+      return Effect.gen(function* () {
+        const { registry, updateStatesRef } = yield* makeRegistry(notInstalledCodexProvider, {
+          refreshProviders: [
+            { ...notInstalledCodexProvider, installed: true, version: "0.153.0", status: "ready" },
+          ],
+        });
+        const runner = yield* makeTestRunner(registry);
+
+        const result = yield* runner.installProvider(CODEX_DRIVER);
+
+        assert.deepStrictEqual(calls, [
+          { command: "npm", args: ["install", "-g", "@openai/codex@latest"] },
+        ]);
+        assert.strictEqual(result.providers[0]?.installState?.status, "succeeded");
+        assert.deepStrictEqual(
+          (yield* Ref.get(updateStatesRef)).map((state) => state.status),
+          ["queued", "running", "succeeded"],
+        );
+      }).pipe(
+        Effect.provide(
+          Layer.mergeAll(
+            NonWindowsPlatform,
+            latestVersionHttpClient("0.0.0"),
+            mockSpawnerLayer((command, args) => {
+              calls.push({ command, args });
+              return { stdout: "added 1 package" };
+            }),
+          ),
+        ),
+      );
+    },
+  );
+
+  it.effect("marks success as failed when the CLI is still missing after re-detection", () =>
+    Effect.gen(function* () {
+      const { registry } = yield* makeRegistry(notInstalledCodexProvider);
+      const runner = yield* makeTestRunner(registry);
+
+      const result = yield* runner.installProvider(CODEX_DRIVER);
+      const installState = result.providers[0]?.installState;
+
+      assert.strictEqual(installState?.status, "failed");
+      assert.strictEqual(
+        installState?.message,
+        "Install command completed, but Code Work still cannot find the provider CLI on PATH.",
+      );
+    }).pipe(
+      Effect.provide(
+        Layer.mergeAll(
+          NonWindowsPlatform,
+          latestVersionHttpClient("0.0.0"),
+          mockSpawnerLayer(() => ({ stdout: "added 1 package" })),
+        ),
+      ),
+    ),
+  );
+
+  it.effect("hints at installing Node.js when the package manager is missing", () =>
+    Effect.gen(function* () {
+      const { registry } = yield* makeRegistry(notInstalledCodexProvider);
+      const runner = yield* makeTestRunner(registry);
+
+      const result = yield* runner.installProvider(CODEX_DRIVER);
+      const installState = result.providers[0]?.installState;
+
+      assert.strictEqual(installState?.status, "failed");
+      assert.include(installState?.message ?? "", "install Node.js (npm) first");
+      assert.include(installState?.output ?? "", "not recognized");
+    }).pipe(
+      Effect.provide(
+        Layer.mergeAll(
+          NonWindowsPlatform,
+          latestVersionHttpClient("0.0.0"),
+          mockSpawnerLayer(() => ({ stderr: "'npm' is not recognized", code: 9009 })),
+        ),
+      ),
+    ),
+  );
+
+  it.effect("runs the vendor installer for script-installed providers on posix hosts", () => {
+    const calls: Array<{ command: string; args: ReadonlyArray<string> }> = [];
+    return Effect.gen(function* () {
+      const { registry, updateStatesRef } = yield* makeRegistry(
+        { ...baseCursorProvider, installed: false, status: "error" },
+        {
+          refreshProviders: [
+            { ...baseCursorProvider, installed: true, version: "1.8.0", status: "ready" },
+          ],
+        },
+      );
+      const runner = yield* makeTestRunner(registry);
+
+      const result = yield* runner.installProvider(CURSOR_DRIVER);
+
+      assert.deepStrictEqual(calls, [
+        { command: "bash", args: ["-c", "curl https://cursor.com/install -fsS | bash"] },
+      ]);
+      assert.strictEqual(result.providers[0]?.installState?.status, "succeeded");
+      assert.deepStrictEqual(
+        (yield* Ref.get(updateStatesRef)).map((state) => state.status),
+        ["queued", "running", "succeeded"],
+      );
+    }).pipe(
+      Effect.provide(
+        Layer.mergeAll(
+          NonWindowsPlatform,
+          latestVersionHttpClient("0.0.0"),
+          mockSpawnerLayer((command, args) => {
+            calls.push({ command, args });
+            return { stdout: "installed" };
+          }),
+        ),
+      ),
+    );
+  });
+
+  it.effect("runs the vendor PowerShell installer for grok on win32 hosts", () => {
+    const calls: Array<{ command: string; args: ReadonlyArray<string> }> = [];
+    return Effect.gen(function* () {
+      const { registry, updateStatesRef } = yield* makeRegistry(
+        { ...baseGrokProvider, installed: false, status: "error" },
+        {
+          refreshProviders: [
+            { ...baseGrokProvider, installed: true, version: "1.0.9", status: "ready" },
+          ],
+        },
+      );
+      const runner = yield* makeTestRunner(registry);
+
+      const result = yield* runner.installProvider(GROK_DRIVER);
+
+      // On a real win32 host resolveSpawnCommand expands powershell to its
+      // absolute path; only the args and the executable identity are stable.
+      assert.strictEqual(calls.length, 1);
+      assert.match(calls[0]?.command ?? "", /powershell.exe$/i);
+      assert.deepStrictEqual(calls[0]?.args, [
+        "-NoProfile",
+        "-Command",
+        "irm https://x.ai/cli/install.ps1 | iex",
+      ]);
+      assert.strictEqual(result.providers[0]?.installState?.status, "succeeded");
+      assert.deepStrictEqual(
+        (yield* Ref.get(updateStatesRef)).map((state) => state.status),
+        ["queued", "running", "succeeded"],
+      );
+    }).pipe(
+      Effect.provide(
+        Layer.mergeAll(
+          Layer.succeed(HostProcessPlatform, "win32"),
+          latestVersionHttpClient("0.0.0"),
+          mockSpawnerLayer((command, args) => {
+            calls.push({ command, args });
+            return { stdout: "installed" };
+          }),
+        ),
+      ),
+    );
+  });
+
+  it.effect("rejects providers without any install channel", () => {
+    const calls: Array<{ command: string; args: ReadonlyArray<string> }> = [];
+    return Effect.gen(function* () {
+      const unknownProvider: ServerProvider = {
+        ...baseProvider,
+        instanceId: ProviderInstanceId.make("unknown"),
+        driver: UNKNOWN_DRIVER,
+      };
+      const { registry } = yield* makeRegistry(unknownProvider);
+      const runner = yield* makeTestRunner(registry);
+
+      const exit = yield* Effect.exit(runner.installProvider(UNKNOWN_DRIVER));
+
+      assert.strictEqual(Exit.isFailure(exit), true);
+      if (Exit.isFailure(exit)) {
+        const error = Cause.squash(exit.cause);
+        assert.strictEqual(isServerProviderInstallError(error), true);
+        if (isServerProviderInstallError(error)) {
+          assert.include(error.reason, "does not support one-click CLI installation");
+        }
+      }
+      assert.deepStrictEqual(calls, []);
+    }).pipe(
+      Effect.provide(
+        Layer.mergeAll(
+          NonWindowsPlatform,
+          latestVersionHttpClient("0.0.0"),
+          mockSpawnerLayer((command, args) => {
+            calls.push({ command, args });
+            return { stdout: "" };
+          }),
+        ),
+      ),
+    );
+  });
+
+  it.effect("rejects an install when the provider CLI is already installed", () => {
+    const calls: Array<{ command: string; args: ReadonlyArray<string> }> = [];
+    return Effect.gen(function* () {
+      const { registry } = yield* makeRegistry(baseProvider);
+      const runner = yield* makeTestRunner(registry);
+
+      const exit = yield* Effect.exit(runner.installProvider(CODEX_DRIVER));
+
+      assert.strictEqual(Exit.isFailure(exit), true);
+      if (Exit.isFailure(exit)) {
+        const error = Cause.squash(exit.cause);
+        assert.strictEqual(isServerProviderInstallError(error), true);
+        if (isServerProviderInstallError(error)) {
+          assert.include(error.reason, "already installed");
+        }
+      }
+      assert.deepStrictEqual(calls, []);
+    }).pipe(
+      Effect.provide(
+        Layer.mergeAll(
+          NonWindowsPlatform,
+          latestVersionHttpClient("0.0.0"),
+          mockSpawnerLayer((command, args) => {
+            calls.push({ command, args });
+            return { stdout: "" };
+          }),
         ),
       ),
     );

@@ -31,10 +31,8 @@ export type ProductStage = keyof typeof PRODUCT_IDENTITY.stages;
 export type ProductEnvironment = Readonly<Record<string, string | undefined>>;
 
 export function resolveProductDisplayName(stage: ProductStage): string {
-  const stageLabel = PRODUCT_IDENTITY.stages[stage];
-  return stage === "production"
-    ? `${PRODUCT_IDENTITY.baseName} (${stageLabel})`
-    : `${PRODUCT_IDENTITY.baseName} (${stageLabel})`;
+  if (stage === "production") return PRODUCT_IDENTITY.baseName;
+  return `${PRODUCT_IDENTITY.baseName} (${PRODUCT_IDENTITY.stages[stage]})`;
 }
 
 export function resolveProductScheme(stage: ProductStage): string {

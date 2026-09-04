@@ -7,6 +7,7 @@ import {
   DiscoveredLocalServer,
   PREVIEW_URL_MAX_LENGTH,
   PreviewEvent,
+  PreviewControlInput,
   PreviewNavStatus,
   PreviewSessionSnapshot,
   PreviewViewportSetting,
@@ -32,6 +33,33 @@ const decodeResizeResult = Schema.decodeUnknownSync(PreviewAutomationResizeResul
 const decodeAutomationHost = Schema.decodeUnknownSync(PreviewAutomationHost);
 const decodeAutomationError = Schema.decodeUnknownSync(PreviewAutomationError);
 const decodeAutomationStatus = Schema.decodeUnknownSync(PreviewAutomationStatus);
+const decodeControlInput = Schema.decodeUnknownSync(PreviewControlInput);
+
+describe("PreviewControlInput", () => {
+  it("validates direct remote page interaction arguments", () => {
+    expect(
+      decodeControlInput({
+        threadId: "t",
+        tabId: "preview-t",
+        control: "click",
+        x: 12,
+        y: 34,
+      }),
+    ).toMatchObject({ control: "click", x: 12, y: 34 });
+    expect(
+      decodeControlInput({ threadId: "t", tabId: "preview-t", control: "type", text: "hello" }),
+    ).toMatchObject({ control: "type", text: "hello" });
+    expect(
+      decodeControlInput({ threadId: "t", tabId: "preview-t", control: "press", key: "Enter" }),
+    ).toMatchObject({ control: "press", key: "Enter" });
+    expect(
+      decodeControlInput({ threadId: "t", tabId: "preview-t", control: "scroll", deltaY: 640 }),
+    ).toMatchObject({ control: "scroll", deltaY: 640 });
+    expect(() =>
+      decodeControlInput({ threadId: "t", tabId: "preview-t", control: "click", x: 12 }),
+    ).toThrow();
+  });
+});
 
 describe("PreviewAutomationOpenInput", () => {
   it("accepts the inline preview visibility flag", () => {
@@ -295,6 +323,115 @@ describe("PreviewEvent", () => {
       revision: 1,
     });
     expect(event.type).toBe("closed");
+  });
+
+  it("decodes a remote refresh command", () => {
+    const event = decodePreviewEvent({
+      type: "refreshed",
+      threadId: "t",
+      tabId: "preview-t",
+      createdAt: "2026-01-01T00:00:00.000Z",
+      serverEpoch: "server-a",
+      revision: 1,
+    });
+    expect(event.type).toBe("refreshed");
+  });
+
+  it("decodes a remote history command", () => {
+    const event = decodePreviewEvent({
+      type: "controlled",
+      control: "forward",
+      threadId: "t",
+      tabId: "preview-t",
+      createdAt: "2026-01-01T00:00:00.000Z",
+      serverEpoch: "server-a",
+      revision: 1,
+    });
+    expect(event.type).toBe("controlled");
+    if (event.type === "controlled") expect(event.control).toBe("forward");
+  });
+
+  it("decodes a remote system-browser command with its URL", () => {
+    const event = decodePreviewEvent({
+      type: "controlled",
+      control: "openInSystemBrowser",
+      url: "http://localhost:5173",
+      threadId: "t",
+      tabId: "preview-t",
+      createdAt: "2026-01-01T00:00:00.000Z",
+      serverEpoch: "server-a",
+      revision: 1,
+    });
+    expect(event.type).toBe("controlled");
+    if (event.type === "controlled") expect(event.url).toBe("http://localhost:5173");
+  });
+
+  it("decodes a remote screenshot result", () => {
+    const event = decodePreviewEvent({
+      type: "screenshot",
+      artifactId: "browser-screenshot-test",
+      dataUrl: "data:image/png;base64,AAAA",
+      threadId: "t",
+      tabId: "preview-t",
+      createdAt: "2026-01-01T00:00:00.000Z",
+      serverEpoch: "server-a",
+      revision: 1,
+    });
+    expect(event.type).toBe("screenshot");
+  });
+
+  it("decodes a remote recording state result", () => {
+    const event = decodePreviewEvent({
+      type: "recording",
+      snapshot: {
+        threadId: "t",
+        tabId: "preview-t",
+        navStatus: { _tag: "Idle" },
+        canGoBack: false,
+        canGoForward: false,
+        updatedAt: "2026-01-01T00:00:00.000Z",
+        recording: true,
+        recordingStartedAt: "2026-01-01T00:00:00.000Z",
+      },
+      threadId: "t",
+      tabId: "preview-t",
+      createdAt: "2026-01-01T00:00:00.000Z",
+      serverEpoch: "server-a",
+      revision: 1,
+    });
+    expect(event.type).toBe("recording");
+    if (event.type === "recording") expect(event.snapshot.recording).toBe(true);
+  });
+
+  it("decodes a remote annotation result", () => {
+    const event = decodePreviewEvent({
+      type: "annotation",
+      annotation: {
+        annotationId: "annotation-test",
+        pageUrl: "http://localhost:5173",
+        pageTitle: "Home",
+        comment: "Check button",
+        elements: [
+          {
+            id: "element-1",
+            tagName: "button",
+            selector: "#submit",
+            componentName: "SubmitButton",
+            htmlPreview: "<button>Send</button>",
+          },
+        ],
+        regionCount: 0,
+        strokeCount: 0,
+        screenshot: null,
+        submission: "attach",
+      },
+      threadId: "t",
+      tabId: "preview-t",
+      createdAt: "2026-01-01T00:00:00.000Z",
+      serverEpoch: "server-a",
+      revision: 1,
+    });
+    expect(event.type).toBe("annotation");
   });
 });
 

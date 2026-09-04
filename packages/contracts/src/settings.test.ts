@@ -4,6 +4,7 @@ import * as Schema from "effect/Schema";
 import { ProviderDriverKind, ProviderInstanceId } from "./providerInstance.ts";
 import { CompositionMcpServerId } from "./compositionRuntime.ts";
 import {
+  ByokDelegationConfig,
   ClientSettingsSchema,
   ClientSettingsPatch,
   ClaudeSettings,
@@ -22,6 +23,7 @@ const decodeServerSettings = Schema.decodeUnknownSync(ServerSettings);
 const decodeServerSettingsPatch = Schema.decodeUnknownSync(ServerSettingsPatch);
 const encodeServerSettings = Schema.encodeSync(ServerSettings);
 const decodeClaudeSettings = Schema.decodeUnknownSync(ClaudeSettings);
+const decodeDelegationConfig = Schema.decodeUnknownSync(ByokDelegationConfig);
 
 describe("ClaudeSettings auto-compaction", () => {
   it("uses Claude's default threshold when no override is configured", () => {
@@ -510,5 +512,87 @@ describe("ServerSettingsPatch string normalization", () => {
     expect(encoded.addProjectBaseDirectory).toBe("~/Development");
     expect(encoded.providers?.codex?.binaryPath).toBe("/opt/homebrew/bin/codex");
     expect(encoded.providers?.codex?.launchArgs).toBe("--strict-config");
+  });
+});
+
+describe("ByokDelegationConfig clamps", () => {
+  it("keeps decoding defaults when the fields are absent", () => {
+    const decoded = decodeDelegationConfig({});
+    expect(decoded.maxConcurrency).toBe(4);
+    expect(decoded.queueTimeoutMs).toBe(30_000);
+    expect(decoded.executionTimeoutMs).toBe(120_000);
+    expect(decoded.supervision.maxRounds).toBe(8);
+    expect(decoded.supervision.maxRetries).toBe(1);
+    expect(decoded.supervision.maxCorrections).toBe(2);
+  });
+
+  it.each([
+    [10000, 16],
+    [-5, 1],
+    [7.9, 7],
+    [0, 1],
+    [16, 16],
+  ] as const)("clamps maxConcurrency %d to %d instead of rejecting", (value, expected) => {
+    expect(decodeDelegationConfig({ maxConcurrency: value }).maxConcurrency).toBe(expected);
+  });
+
+  it.each([
+    [1e6, 50],
+    [0, 1],
+    [12.7, 12],
+  ] as const)("clamps supervision maxRounds %d to %d", (value, expected) => {
+    expect(
+      decodeDelegationConfig({ supervision: { maxRounds: value } }).supervision.maxRounds,
+    ).toBe(expected);
+  });
+
+  it.each([
+    ["maxRetries", 99, 20],
+    ["maxRetries", -3, 0],
+    ["maxCorrections", 1000, 20],
+  ] as const)("clamps supervision %s %d to %d", (field, value, expected) => {
+    const supervision = decodeDelegationConfig({ supervision: { [field]: value } }).supervision;
+    expect(supervision[field]).toBe(expected);
+  });
+
+  it.each([
+    ["queueTimeoutMs", 5, 1000],
+    ["queueTimeoutMs", 42.9, 1000],
+    ["queueTimeoutMs", 45_000, 45_000],
+    ["executionTimeoutMs", 999, 1000],
+    ["executionTimeoutMs", 600_000, 600_000],
+  ] as const)("clamps %s %d to a %d floor without an upper bound", (field, value, expected) => {
+    expect(decodeDelegationConfig({ [field]: value })[field]).toBe(expected);
+  });
+
+  it("keeps executor failover and priority defaults when absent", () => {
+    const decoded = decodeDelegationConfig({});
+    expect(decoded.executorFailoverLimit).toBe(3);
+    const decodedExecutor = decodeDelegationConfig({
+      executors: [{ id: "exec-1", command: "run" }],
+    });
+    expect(decodedExecutor.executors[0]?.priority).toBe(100);
+  });
+
+  it.each([
+    [100, 5],
+    [0, 1],
+    [7.9, 5],
+    [-3, 1],
+  ] as const)("clamps executorFailoverLimit %d to %d instead of rejecting", (value, expected) => {
+    expect(decodeDelegationConfig({ executorFailoverLimit: value }).executorFailoverLimit).toBe(
+      expected,
+    );
+  });
+
+  it.each([
+    [99_999, 10_000],
+    [-5, 0],
+    [12.7, 12],
+  ] as const)("clamps executor priority %d to %d", (value, expected) => {
+    const decoded = decodeDelegationConfig({
+      executors: [{ id: "exec-1", command: "run", priority: value }],
+    });
+    expect(decoded.executors[0]?.priority).toBe(expected);
   });
 });

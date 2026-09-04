@@ -23,6 +23,7 @@ import {
   type ServerProvider,
   type ServerProviderModel,
 } from "@codework/contracts";
+import type { AtomCommandResult } from "@codework/client-runtime/state/runtime";
 
 import { cn } from "../../lib/utils";
 import { useCopyToClipboard } from "../../hooks/useCopyToClipboard";
@@ -69,6 +70,15 @@ type EnvironmentDraftRow = {
   readonly sensitive: boolean;
   readonly valueRedacted?: boolean;
 };
+
+type ProviderSettingsUpdateResult = AtomCommandResult<unknown, unknown> | null;
+type ProviderSettingsUpdate = (
+  nextInstance: ProviderInstanceConfig,
+) => ProviderSettingsUpdateResult | PromiseLike<ProviderSettingsUpdateResult>;
+
+export function isProviderSettingsUpdateSuccessful(result: ProviderSettingsUpdateResult): boolean {
+  return result === null || result._tag === "Success";
+}
 
 export function normalizeProviderEnvironmentDraftRows(
   rows: ReadonlyArray<{
@@ -167,6 +177,37 @@ function nextConfigBlobWithValue(
   return base;
 }
 
+export interface ProviderInstallAffordance {
+  readonly visible: boolean;
+  /** Latest install failure message, shown under the row status until the next attempt. */
+  readonly errorMessage: string | null;
+}
+
+/**
+ * Install button + failure display for a provider row. The server derives
+ * `canInstall` (package-managed channel and not installed), so the client
+ * never duplicates that knowledge.
+ */
+export function resolveProviderInstallAffordance(input: {
+  readonly liveProvider: ServerProvider | undefined;
+  readonly readOnly: boolean | undefined;
+  readonly hasHandler: boolean;
+}): ProviderInstallAffordance {
+  const visible =
+    input.hasHandler &&
+    !input.readOnly &&
+    input.liveProvider !== undefined &&
+    input.liveProvider.installed === false &&
+    input.liveProvider.canInstall === true;
+  return {
+    visible,
+    errorMessage:
+      input.liveProvider?.installState?.status === "failed"
+        ? (input.liveProvider.installState.message ?? null)
+        : null,
+  };
+}
+
 export function deriveProviderModelsForDisplay(input: {
   readonly liveModels: ReadonlyArray<ServerProviderModel> | undefined;
   readonly customModels: ReadonlyArray<string>;
@@ -191,7 +232,9 @@ export function deriveProviderModelsForDisplay(input: {
 
 function ProviderEnvironmentSection(props: {
   readonly environment: ReadonlyArray<ProviderInstanceEnvironmentVariable>;
-  readonly onChange: (environment: ReadonlyArray<ProviderInstanceEnvironmentVariable>) => void;
+  readonly onChange: (
+    environment: ReadonlyArray<ProviderInstanceEnvironmentVariable>,
+  ) => ProviderSettingsUpdateResult | PromiseLike<ProviderSettingsUpdateResult>;
 }) {
   const [rows, setRows] = useState<ReadonlyArray<EnvironmentDraftRow>>(() =>
     props.environment.map(makeEnvironmentDraftRow),
@@ -227,7 +270,9 @@ function ProviderEnvironmentSection(props: {
     setShowValidationErrors(false);
   }, [props.environment]);
 
-  const saveRows = () => {
+  const [isSaving, setIsSaving] = useState(false);
+
+  const saveRows = async () => {
     const published = normalizeProviderEnvironmentDraftRows(rowsRef.current);
     if (published === null) {
       setShowValidationErrors(true);
@@ -235,9 +280,15 @@ function ProviderEnvironmentSection(props: {
     }
 
     lastPublishedEnvironmentRef.current = published;
-    props.onChange(published);
-    setShowValidationErrors(false);
-    toastManager.add({ type: "success", title: t("yourChangesAreSaved") });
+    setIsSaving(true);
+    try {
+      const result = await props.onChange(published);
+      if (!isProviderSettingsUpdateSuccessful(result)) return;
+      setShowValidationErrors(false);
+      toastManager.add({ type: "success", title: t("yourChangesAreSaved") });
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   const updateVariable = (id: string, patch: Partial<Omit<EnvironmentDraftRow, "id">>) => {
@@ -268,10 +319,11 @@ function ProviderEnvironmentSection(props: {
             type="button"
             size="sm"
             className="h-6 gap-1 px-1.5 text-[11px]"
+            disabled={isSaving}
             onClick={saveRows}
           >
-            <SaveIcon className="size-2.5" />
-            {t("save")}
+            <SaveIcon className={cn("size-2.5", isSaving && "animate-pulse")} />
+            {isSaving ? t("saving") : t("save")}
           </Button>
           <Button
             type="button"
@@ -414,7 +466,7 @@ interface ProviderInstanceCardProps {
   readonly onSelect?: (() => void) | undefined;
   readonly guideTarget?: string | undefined;
   readonly readOnly?: boolean | undefined;
-  readonly onUpdate: (nextInstance: ProviderInstanceConfig) => void;
+  readonly onUpdate: ProviderSettingsUpdate;
   /**
    * Pass `undefined` to hide the delete button entirely. Built-in default
    * instance slots use `undefined` — they can't be deleted without losing
@@ -438,6 +490,8 @@ interface ProviderInstanceCardProps {
   readonly onModelOrderChange: (next: ReadonlyArray<string>) => void;
   readonly onRunUpdate?: (() => void) | undefined;
   readonly isUpdating?: boolean | undefined;
+  readonly onRunInstall?: (() => void) | undefined;
+  readonly isInstalling?: boolean | undefined;
 }
 
 /**
@@ -481,6 +535,8 @@ export function ProviderInstanceCard({
   onModelOrderChange,
   onRunUpdate,
   isUpdating = false,
+  onRunInstall,
+  isInstalling = false,
 }: ProviderInstanceCardProps) {
   const [activeTab, setActiveTab] = useState<"models" | "configuration">("configuration");
   const enabled = resolveProviderInstanceEnabled(instance);
@@ -496,6 +552,11 @@ export function ProviderInstanceCard({
   const versionLabel = getProviderVersionLabel(liveProvider?.version);
   const versionAdvisory = getProviderVersionAdvisoryPresentation(liveProvider?.versionAdvisory);
   const updateCommand = versionAdvisory?.updateCommand ?? null;
+  const install = resolveProviderInstallAffordance({
+    liveProvider,
+    readOnly,
+    hasHandler: onRunInstall !== undefined,
+  });
   const FallbackIconComponent = driverOption?.icon;
   const displayName =
     instance.displayName?.trim() || driverOption?.label || String(instance.driver);
@@ -546,7 +607,7 @@ export function ProviderInstanceCard({
   const updateDisplayName = (value: string) => {
     const trimmed = value.trim();
     const { displayName: _omit, ...rest } = instance;
-    onUpdate(
+    return onUpdate(
       trimmed.length > 0
         ? ({ ...rest, displayName: trimmed } as ProviderInstanceConfig)
         : (rest as ProviderInstanceConfig),
@@ -554,13 +615,13 @@ export function ProviderInstanceCard({
   };
 
   const updateEnabled = (value: boolean) => {
-    onUpdate({ ...instance, enabled: value });
+    return onUpdate({ ...instance, enabled: value });
   };
 
   const updateAccentColor = (value: string) => {
     const normalized = normalizeProviderAccentColor(value);
     const { accentColor: _omit, ...rest } = instance;
-    onUpdate(
+    return onUpdate(
       normalized
         ? ({ ...rest, accentColor: normalized } as ProviderInstanceConfig)
         : (rest as ProviderInstanceConfig),
@@ -569,7 +630,7 @@ export function ProviderInstanceCard({
 
   const updateConfig = (nextConfig: Record<string, unknown> | undefined) => {
     const { config: _omit, ...rest } = instance;
-    onUpdate(
+    return onUpdate(
       nextConfig !== undefined
         ? ({ ...rest, config: nextConfig } as ProviderInstanceConfig)
         : (rest as ProviderInstanceConfig),
@@ -579,20 +640,22 @@ export function ProviderInstanceCard({
   const updateCustomModels = (next: ReadonlyArray<string>) => {
     const nextConfig = nextConfigBlobWithValue(instance.config, "customModels", [...next]);
     const { config: _omit, ...rest } = instance;
-    onUpdate({ ...rest, config: nextConfig } as ProviderInstanceConfig);
+    return onUpdate({ ...rest, config: nextConfig } as ProviderInstanceConfig);
   };
 
   const updateByokAdapters = (next: ReadonlyArray<ByokModelAdapter>) => {
-    if (byokAdapters === null) return;
+    if (byokAdapters === null) return Promise.resolve(false);
     const nextConfig = nextConfigBlobWithValue(instance.config, "adapters", [...next]);
     const { config: _omit, ...rest } = instance;
-    onUpdate({ ...rest, config: nextConfig } as ProviderInstanceConfig);
+    return Promise.resolve(
+      onUpdate({ ...rest, config: nextConfig } as ProviderInstanceConfig),
+    ).then(isProviderSettingsUpdateSuccessful);
   };
 
   const updateEnvironment = (environment: ReadonlyArray<ProviderInstanceEnvironmentVariable>) => {
     const cleaned = environment.filter((variable) => variable.name.trim().length > 0);
     const { environment: _omit, ...rest } = instance;
-    onUpdate(
+    return onUpdate(
       cleaned.length > 0
         ? ({ ...rest, environment: cleaned } as ProviderInstanceConfig)
         : (rest as ProviderInstanceConfig),
@@ -704,13 +767,39 @@ export function ProviderInstanceCard({
               <span className={cn("size-1.5 shrink-0 rounded-full", statusStyle.dot)} />
               <span className="truncate">{summary.headline}</span>
             </span>
+            {summary.detail ? (
+              <span className="mt-0.5 block truncate text-[11px] text-muted-foreground/80">
+                {summary.detail}
+              </span>
+            ) : null}
             {String(instanceId) !== String(instance.driver) ? (
               <code className="mt-0.5 block truncate text-[10px] text-muted-foreground/70">
                 {instanceId}
               </code>
             ) : null}
+            {install.errorMessage ? (
+              <span
+                className="mt-0.5 block text-[11px] text-destructive"
+                data-provider-install-error={instanceId}
+              >
+                {install.errorMessage}
+              </span>
+            ) : null}
           </span>
         </button>
+        {install.visible ? (
+          <Button
+            type="button"
+            size="xs"
+            variant="outline"
+            disabled={isInstalling}
+            data-provider-install={instanceId}
+            onClick={onRunInstall}
+          >
+            {isInstalling ? <LoaderIcon className="animate-spin" /> : <DownloadIcon />}
+            {isInstalling ? t("providerInstalling") : t("providerInstallAction")}
+          </Button>
+        ) : null}
         <Switch
           data-facilities-guide-target={driverKind === "byok" ? "providers-enable" : undefined}
           checked={enabled}

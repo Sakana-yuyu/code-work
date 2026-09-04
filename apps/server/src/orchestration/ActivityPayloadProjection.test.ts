@@ -190,6 +190,61 @@ describe("projectActivityPayload", () => {
     expect(JSON.stringify(projected.payload).length).toBeLessThan(500);
   });
 
+  it("keeps a bounded Canvas reference while slimming the MCP result", () => {
+    const projected = projectActivityPayload(
+      activity({
+        itemType: "mcp_tool_call",
+        data: {
+          toolName: "canvas_create",
+          result: {
+            content: [
+              {
+                type: "text",
+                text: JSON.stringify({
+                  canvasId: "canvas-auth",
+                  title: "Auth architecture",
+                  summary: "Request flow and trust boundaries",
+                  relativePath: ".codework/canvases/thread/canvas-auth.json",
+                }),
+              },
+            ],
+          },
+        },
+      }),
+    );
+    const data = (projected.payload as Record<string, unknown>).data as Record<string, unknown>;
+    expect(data.canvas).toEqual({
+      canvasId: "canvas-auth",
+      title: "Auth architecture",
+      summary: "Request flow and trust boundaries",
+      relativePath: ".codework/canvases/thread/canvas-auth.json",
+    });
+  });
+
+  it("extracts a Canvas reference from a provider JSON result string", () => {
+    const projected = projectActivityPayload(
+      activity({
+        itemType: "mcp_tool_call",
+        data: {
+          toolName: "mcp__code-work__canvas_create",
+          result: {
+            content: JSON.stringify({
+              canvasId: "canvas-string",
+              title: "String result",
+              relativePath: ".codework/canvases/thread/canvas-string.json",
+            }),
+          },
+        },
+      }),
+    );
+    const data = (projected.payload as Record<string, unknown>).data as Record<string, unknown>;
+    expect(data.canvas).toEqual({
+      canvasId: "canvas-string",
+      title: "String result",
+      relativePath: ".codework/canvases/thread/canvas-string.json",
+    });
+  });
+
   it("passes task lifecycle payloads (no data field) through untouched", () => {
     const source = activity({
       taskId: "task-9",

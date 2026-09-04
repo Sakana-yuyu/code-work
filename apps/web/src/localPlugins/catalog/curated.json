@@ -1,0 +1,182 @@
+[
+  {
+    "summaryKey": "localPlugins.store.summary.gitCommands",
+    "entry": {
+      "manifestVersion": 1,
+      "apiVersion": { "major": 1, "minor": 0 },
+      "id": "codework.git-commands",
+      "name": "Git 工作流命令",
+      "version": "1.0.0",
+      "permissions": ["composer.prompt.write", "clipboard.write", "workspace.read"],
+      "contributions": {
+        "commands": [
+          {
+            "id": "commit-message",
+            "title": "生成规范化提交信息",
+            "description": "向输入框插入一条提交信息生成提示词。",
+            "action": {
+              "type": "composer.prompt.insert",
+              "text": "请基于当前暂存区的改动写一条规范化提交信息：\n1. 第一行是不超过 50 字符的祈使句摘要（feat/fix/refactor/chore 前缀）；\n2. 空一行后用要点列出关键改动与动机；\n3. 不要在正文里复述 diff 细节。"
+            }
+          },
+          {
+            "id": "branch-name-template",
+            "title": "复制分支命名模板",
+            "description": "把按工作区命名的分支模板复制到剪贴板。",
+            "action": {
+              "type": "clipboard.write",
+              "text": "git checkout -b {{workspace.name}}/change-short-description"
+            }
+          }
+        ]
+      }
+    }
+  },
+  {
+    "summaryKey": "localPlugins.store.summary.standupAssistant",
+    "entry": {
+      "manifestVersion": 1,
+      "apiVersion": { "major": 1, "minor": 0 },
+      "id": "codework.standup-assistant",
+      "name": "站会助手",
+      "version": "1.0.0",
+      "permissions": ["composer.prompt.write", "timeline.write"],
+      "contributions": {
+        "commands": [
+          {
+            "id": "standup-report",
+            "title": "插入站会汇报模板",
+            "description": "向输入框插入昨日/今日/阻塞三段式站会模板。",
+            "action": {
+              "type": "composer.prompt.insert",
+              "text": "请帮我把下面的要点整理成站会汇报（昨日进展 / 今日计划 / 阻塞项，各不超过三行）：\n\n<在这里粘贴要点>"
+            }
+          },
+          {
+            "id": "log-daily-standup",
+            "title": "记录今日站会",
+            "description": "往「每日站会」时间线频道写入一条完成记录。",
+            "action": {
+              "type": "timeline.post",
+              "timelineId": "daily-log",
+              "message": "今日站会已完成。"
+            }
+          }
+        ],
+        "timeline": [{ "id": "daily-log", "title": "每日站会", "tone": "info" }]
+      }
+    }
+  },
+  {
+    "summaryKey": "localPlugins.store.summary.workspaceOverview",
+    "entry": {
+      "manifestVersion": 1,
+      "apiVersion": { "major": 1, "minor": 0 },
+      "id": "codework.workspace-overview",
+      "name": "工作区速览",
+      "version": "1.0.0",
+      "permissions": ["workspace.read"],
+      "contributions": {
+        "workspacePanels": [
+          {
+            "id": "overview",
+            "title": "工作区速览",
+            "description": "当前工作区的基本信息。",
+            "context": ["workspace.name", "workspace.root"],
+            "sections": [
+              { "heading": "名称", "body": "{{workspace.name}}" },
+              { "heading": "根目录", "body": "{{workspace.root}}" }
+            ]
+          }
+        ]
+      }
+    }
+  },
+  {
+    "summaryKey": "localPlugins.store.summary.incidentLog",
+    "entry": {
+      "manifestVersion": 1,
+      "apiVersion": { "major": 1, "minor": 0 },
+      "id": "codework.incident-log",
+      "name": "告警记录",
+      "version": "1.0.0",
+      "permissions": ["timeline.write"],
+      "contributions": {
+        "commands": [
+          {
+            "id": "mark-incident",
+            "title": "标记一次告警",
+            "description": "往告警记录频道写入一条事件标记。",
+            "action": {
+              "type": "timeline.post",
+              "timelineId": "incident-log",
+              "message": "标记一次告警，请补充原因与处理进展。"
+            }
+          }
+        ],
+        "timeline": [{ "id": "incident-log", "title": "告警记录", "tone": "error" }]
+      }
+    }
+  },
+  {
+    "summaryKey": "localPlugins.store.summary.releaseTimeline",
+    "entry": {
+      "manifestVersion": 1,
+      "apiVersion": { "major": 1, "minor": 0 },
+      "id": "codework.release-timeline",
+      "name": "发布时间线",
+      "version": "1.0.0",
+      "permissions": ["timeline.write"],
+      "contributions": {
+        "timeline": [{ "id": "release-log", "title": "发布记录", "tone": "success" }]
+      }
+    }
+  },
+  {
+    "summaryKey": "localPlugins.store.summary.screenshotAttachment",
+    "entry": {
+      "manifestVersion": 1,
+      "apiVersion": { "major": 1, "minor": 0 },
+      "id": "codework.screenshot-attachment",
+      "name": "截图附件",
+      "version": "1.0.0",
+      "permissions": ["composer.attachment.add", "composer.prompt.write"],
+      "contributions": {
+        "attachments": [
+          {
+            "id": "ui-screenshot",
+            "title": "界面截图",
+            "description": "把界面截图作为附件发给他，并附上分析提示词。",
+            "accept": ["image/png", "image/jpeg", "image/webp"],
+            "maxBytes": 8000000,
+            "promptPrefix": "请分析这张界面截图，指出问题与改进建议："
+          }
+        ]
+      }
+    }
+  },
+  {
+    "summaryKey": "localPlugins.store.summary.reviewPrompts",
+    "entry": {
+      "manifestVersion": 1,
+      "apiVersion": { "major": 1, "minor": 0 },
+      "id": "codework.review-prompts",
+      "name": "代码评审提示包",
+      "version": "1.0.0",
+      "permissions": ["composer.prompt.write"],
+      "contributions": {
+        "commands": [
+          {
+            "id": "review-checklist",
+            "title": "插入评审清单",
+            "description": "向输入框插入一份逐项评审清单。",
+            "action": {
+              "type": "composer.prompt.insert",
+              "text": "请按以下清单评审当前改动，并逐项给出结论：\n1. 正确性：边界条件、错误处理、并发；\n2. 可读性：命名、结构是否符合仓库惯例；\n3. 性能：是否有明显的热路径退化；\n4. 测试：关键行为是否被覆盖。"
+            }
+          }
+        ]
+      }
+    }
+  }
+]

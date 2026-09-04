@@ -13,6 +13,8 @@ import type { ByokDelegationConfig, ByokDelegationExecutor } from "@codework/con
 export const DEFAULT_EXECUTOR_ID = "default";
 export const DEFAULT_EXECUTOR_FAILOVER_LIMIT = 3;
 export const MAX_EXECUTOR_FAILOVER_LIMIT = 5;
+/** Priority is ordering-only metadata; bound it to the web panel's 0..10_000. */
+export const MAX_EXECUTOR_PRIORITY = 10_000;
 export const EXECUTOR_PROBE_CACHE_TTL_MS = 30_000;
 export const EXECUTOR_FAILURE_COOLDOWN_MS = 30_000;
 export const EXECUTOR_PROBE_TIMEOUT_MS = 5_000;
@@ -30,7 +32,7 @@ export const clampFailoverLimit = (value: number | undefined): number =>
     : Math.max(1, Math.min(MAX_EXECUTOR_FAILOVER_LIMIT, Math.trunc(value)));
 
 const normalizePriority = (value: number): number =>
-  Number.isFinite(value) ? Math.max(0, Math.trunc(value)) : 0;
+  Number.isFinite(value) ? Math.max(0, Math.min(MAX_EXECUTOR_PRIORITY, Math.trunc(value))) : 0;
 
 /**
  * Drop rows with invalid/reserved ids or empty commands, clamp priorities and
@@ -231,11 +233,7 @@ export class ExecutorProbeRegistry {
       entry = { fingerprint, expiresAt: 0 };
       this.entries.set(executor.id, entry);
     }
-    if (
-      options.force !== true &&
-      entry.outcome !== undefined &&
-      at < entry.expiresAt
-    ) {
+    if (options.force !== true && entry.outcome !== undefined && at < entry.expiresAt) {
       return { ...entry.outcome, probedAt: entry.probedAt ?? at };
     }
     if (entry.inFlight !== undefined) {

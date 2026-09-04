@@ -780,8 +780,7 @@ export function PullRequestSummaryTab({
           <>
             {detail.commentsTruncated ? (
               <p className="mb-2 rounded-md border border-amber-500/30 bg-amber-500/5 px-2 py-1.5 text-xs">
-                {t("thisConversationIsLongerThanThisPageReadsInOneGoTheMostRecent")}{" "}
-                {detail.comments.length} {t("areHereOpenItOnTheHostToReadTheRest")}
+                {t("pr.recentCommentsTruncated", { count: detail.comments.length })}
               </p>
             ) : null}
             {detail.comments.length === 0 ? (

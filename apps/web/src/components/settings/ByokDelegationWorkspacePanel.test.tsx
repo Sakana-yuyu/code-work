@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
@@ -7,6 +8,12 @@ const mocks = vi.hoisted(() => ({
   updateSettings: vi.fn(),
   submitCommand: Symbol("submit-delegation"),
   listCommand: Symbol("list-delegations"),
+}));
+
+vi.mock("@tanstack/react-router", () => ({
+  Link: ({ children, to }: { readonly children: ReactNode; readonly to: string }) => (
+    <a href={to}>{children}</a>
+  ),
 }));
 
 vi.mock("~/hooks/useSettings", () => ({
@@ -41,10 +48,22 @@ describe("ByokDelegationWorkspacePanel", () => {
     mocks.updateSettings.mockReset();
   });
 
-  it("没有 BYOK 驱动时显示明确的空状态", () => {
+  it("没有 BYOK 驱动时显示明确的空状态，并带去 BYOK 设置的直达按钮", () => {
     const html = renderPanel();
 
     expect(html).toContain(t("delegationWorkspace.noByokInstance"));
+    expect(html).toContain(t("delegationWorkspace.openByokSettings"));
+    expect(html).toContain('href="/settings/byok"');
+    expect(html).not.toContain("undefined");
+  });
+
+  it("未连接环境时空状态带去连接设置的直达按钮", () => {
+    mocks.environment = null;
+    const html = renderPanel();
+
+    expect(html).toContain(t("delegationWorkspace.noEnvironment"));
+    expect(html).toContain(t("delegationWorkspace.openConnections"));
+    expect(html).toContain('href="/settings/connections"');
     expect(html).not.toContain("undefined");
   });
 
@@ -88,19 +107,12 @@ describe("ByokDelegationWorkspacePanel", () => {
 
     const html = renderPanel();
 
-    expect(html).toContain("Sakana Delegation");
     expect(html).toContain("Sakana Model");
     expect(html).toContain(t("delegationWorkspace.ready"));
     expect(html).toContain(t("delegationSettings.globalTitle"));
-    expect(html).toContain(t("delegationSettings.executorsTitle"));
-    expect(html).toContain(t("delegationSettings.customExecutor"));
-    expect(html).toContain(t("delegationSettings.configureExecutor"));
-    expect(html).toContain(t("delegationSettings.taskTitle"));
     expect(html).toContain(t("delegationSettings.advancedTitle"));
     expect(html).toContain(t("delegationSettings.modelGroupsTitle"));
     expect(html).toContain(t("delegationSettings.subagentsTitle"));
-    expect(html).toContain(`placeholder="${t("delegationWorkspace.taskPlaceholder")}"`);
-    expect(html).toContain(t("delegationWorkspace.submit"));
   });
 
   it("只将 BYOK 实例纳入可委派驱动", () => {
@@ -195,7 +207,52 @@ describe("ByokDelegationWorkspacePanel", () => {
     expect(config.supervision.allowEscalate).toBe(true);
     expect(config.subagentProfiles).toEqual([
       { subagentType: "explore", promptFragment: "只读探索" },
+      { subagentType: "", promptFragment: "忽略" },
     ]);
+  });
+
+  it("子代理角色空白草稿行在设置往返后仍渲染为可编辑行", () => {
+    mocks.settings = {
+      providerInstances: {
+        "byok-primary": {
+          driver: "byok",
+          displayName: "Draft Host",
+          config: {
+            delegation: {
+              subagentProfiles: [{ subagentType: "", promptFragment: "" }],
+            },
+          },
+        },
+      },
+    };
+
+    const html = renderPanel();
+
+    expect(html).toContain(`aria-label="${t("delegationSettings.subagentType")}"`);
+    expect(html).toContain(`aria-label="${t("delegationSettings.subagentFragment")}"`);
+    expect(html).not.toContain(t("delegationSettings.subagentsEmpty"));
+  });
+
+  it("内置角色类型展示内置片段占位与内置标记", () => {
+    mocks.settings = {
+      providerInstances: {
+        "byok-primary": {
+          driver: "byok",
+          displayName: "Builtin Host",
+          config: {
+            delegation: {
+              subagentProfiles: [{ subagentType: "explore", promptFragment: "" }],
+            },
+          },
+        },
+      },
+    };
+
+    const html = renderPanel();
+
+    expect(html).toContain("以只读方式探索代码库");
+    expect(html).toContain(t("delegationSettings.subagentBuiltinBadge"));
+    expect(html).toContain(t("delegationSettings.subagentBuiltinHint"));
   });
 
   it("切换模型时会保留有效默认模型并在必要时清空默认模型", () => {

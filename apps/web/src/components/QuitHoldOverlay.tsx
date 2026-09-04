@@ -41,7 +41,7 @@ export function QuitHoldOverlay() {
       className="pointer-events-none fixed inset-x-0 top-[22%] z-100 flex justify-center"
     >
       <div className="rounded-full bg-neutral-700/95 px-8 py-4 text-2xl font-bold text-white shadow-xl">
-        {t("hold")} {shortcut} {t("toQuit")}
+        {t("quitHold.holdToQuit", { shortcut })}
       </div>
     </div>
   );

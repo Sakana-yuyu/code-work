@@ -17,9 +17,7 @@ import {
   CompositionTaskStore,
   type CompositionTaskStoreShape,
 } from "../persistence/Services/CompositionTaskStore.ts";
-import {
-  CompositionAgentDriverRegistryService,
-} from "./CompositionAgentDriverRegistry.ts";
+import { CompositionAgentDriverRegistryService } from "./CompositionAgentDriverRegistry.ts";
 import {
   classifyCompositionFailure,
   toCompositionFailureInput,
@@ -82,6 +80,8 @@ export type CompositionGoalLoopAutomationRunInput = {
   readonly maxCostUnits?: number;
   readonly stalePivotRounds?: number;
   readonly deadlineDurationMs?: number;
+  /** 外部控制面取消当前 Loop；每轮开始前由底层 Goal Loop 检查。 */
+  readonly isCancelled?: () => boolean;
   readonly startedAtUnixMs: number;
 };
 
@@ -131,7 +131,7 @@ export interface CompositionGoalLoopAutomationRunnerOptions {
   readonly orchestrator: Pick<CompositionOrchestrator, "dispatchTask">;
   readonly runtime: Pick<CompositionTaskRuntimeProjectionServiceShape, "awaitTaskCompletion">;
   readonly store: GoalLoopStore;
-  readonly threadGoalStore?: Pick<ThreadGoalStoreShape, "setStatus">;
+  readonly threadGoalStore?: Pick<ThreadGoalStoreShape, "get" | "setStatus" | "clear">;
   readonly now?: () => number;
 }
 
@@ -251,9 +251,32 @@ const syncThreadGoalStatus = (
 ): Effect.Effect<void, CompositionGoalLoopAutomationRunnerError> =>
   input.threadId === undefined || store === undefined
     ? Effect.void
-    : store.setStatus({ threadId: input.threadId, status: threadGoalStatusFor(status) }).pipe(
-        Effect.asVoid,
-        Effect.mapError((cause) => persistenceError("同步线程 Goal 终态", cause)),
+    : store.get(input.threadId).pipe(
+        Effect.mapError((cause) => persistenceError("读取线程 Goal 终态", cause)),
+        Effect.flatMap((current) => {
+          if (Option.isNone(current)) return Effect.void;
+          if (status === "completed") {
+            const markComplete =
+              current.value.status === "complete"
+                ? Effect.succeed(current.value)
+                : store.setStatus({ threadId: input.threadId!, status: "complete" });
+            return markComplete.pipe(
+              Effect.mapError((cause) => persistenceError("同步线程 Goal 完成态", cause)),
+              Effect.flatMap(() =>
+                store.clear(input.threadId!).pipe(
+                  Effect.asVoid,
+                  Effect.mapError((cause) => persistenceError("清除已完成线程 Goal", cause)),
+                ),
+              ),
+            );
+          }
+          return store
+            .setStatus({ threadId: input.threadId!, status: threadGoalStatusFor(status) })
+            .pipe(
+              Effect.asVoid,
+              Effect.mapError((cause) => persistenceError("同步线程 Goal 终态", cause)),
+            );
+        }),
       );
 
 const sameIds = (left: ReadonlyArray<string>, right: ReadonlyArray<string>): boolean =>
@@ -707,6 +730,7 @@ export const makeCompositionGoalLoopAutomationRunner = (
           ? {}
           : { deadlineUnixMs: input.startedAtUnixMs + input.deadlineDurationMs }),
         now,
+        ...(input.isCancelled === undefined ? {} : { isCancelled: input.isCancelled }),
         attempt: (round) =>
           runChild({
             parent: input,

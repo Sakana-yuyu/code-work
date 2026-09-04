@@ -307,25 +307,25 @@ const GUIDE_PRESETS: Readonly<Record<string, FacilitiesGuidePreset>> = {
       {
         titleKey: "facilitiesGuide.team.step1Title",
         descriptionKey: "facilitiesGuide.team.step1Description",
-        targetSelector: '[data-facilities-guide-target="team-runtime"]',
+        targetSelector: '[data-facilities-guide-target="team-builder"]',
         targetActionKey: "facilitiesGuide.team.step1Action",
       },
       {
         titleKey: "facilitiesGuide.team.step2Title",
         descriptionKey: "facilitiesGuide.team.step2Description",
-        targetSelector: '[data-facilities-guide-target="team-builder"]',
+        targetSelector: '[data-facilities-guide-target="team-run"]',
         targetActionKey: "facilitiesGuide.team.step2Action",
       },
       {
         titleKey: "facilitiesGuide.team.step3Title",
         descriptionKey: "facilitiesGuide.team.step3Description",
-        targetSelector: '[data-facilities-guide-target="team-run"]',
+        targetSelector: '[data-facilities-guide-target="team-control"]',
         targetActionKey: "facilitiesGuide.team.step3Action",
       },
       {
         titleKey: "facilitiesGuide.team.step4Title",
         descriptionKey: "facilitiesGuide.team.step4Description",
-        targetSelector: '[data-facilities-guide-target="team-control"]',
+        targetSelector: '[data-facilities-guide-target="team-runtime"]',
         targetActionKey: "facilitiesGuide.team.step4Action",
         advanceOn: "manual",
       },
@@ -395,10 +395,13 @@ export function FacilitiesQuickGuide({
   guideId,
   steps,
   concepts = EMPTY_CONCEPTS,
+  empty = false,
 }: {
   readonly guideId: string;
   readonly steps?: ReadonlyArray<FacilitiesGuideStep>;
   readonly concepts?: ReadonlyArray<FacilitiesGuideConcept>;
+  /** True while the page has nothing configured: the entry is promoted so beginners notice it. */
+  readonly empty?: boolean;
 }) {
   const preset = GUIDE_PRESETS[guideId];
   const resolvedSteps = useMemo(() => steps ?? preset?.steps ?? [], [preset?.steps, steps]);
@@ -652,10 +655,15 @@ export function FacilitiesQuickGuide({
 
   return (
     <>
+      {empty ? (
+        <p className="hidden max-w-44 text-end text-[11px] leading-snug text-muted-foreground sm:block">
+          {t("facilitiesGuide.emptyHint")}
+        </p>
+      ) : null}
       <Button
         data-slot="dialog-trigger"
         size="xs"
-        variant="outline"
+        variant={empty ? "default" : "outline"}
         aria-label={t("facilitiesGuide.open")}
         aria-expanded={open}
         onClick={() => handleOpenChange(true)}

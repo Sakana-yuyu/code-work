@@ -53,6 +53,7 @@ import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process";
 
 const LINUX_ICON_SIZES = [16, 22, 24, 32, 48, 64, 128, 256, 512] as const;
 const DESKTOP_APP_ID = "com.codework.desktop";
+export const WINDOWS_APP_EXECUTABLE_NAME = "CodeWork";
 const DESKTOP_PROTOCOLS = [
   {
     name: PRODUCT_IDENTITY.baseName,
@@ -2001,6 +2002,8 @@ export function resolveDesktopRuntimeDependencies(
   return resolveCatalogDependencies(runtimeDependencies, catalog, "apps/desktop");
 }
 
+export const DEFAULT_DESKTOP_UPDATE_REPOSITORY = "Sakana-yuyu/code-work";
+
 export const resolveGitHubPublishConfig = Effect.fn("resolveGitHubPublishConfig")(function* (
   updateChannel: "latest" | "nightly",
 ) {
@@ -2008,10 +2011,12 @@ export const resolveGitHubPublishConfig = Effect.fn("resolveGitHubPublishConfig"
     updateRepository: Config.string("CODEWORK_DESKTOP_UPDATE_REPOSITORY").pipe(Config.option),
     githubRepository: Config.string("GITHUB_REPOSITORY").pipe(Config.option),
   });
+  // Release builds always get an update feed: the fork's GitHub Releases are
+  // the default, and either env var can point it elsewhere (CI overrides).
   const rawRepo = (
     Option.getOrUndefined(env.updateRepository)?.trim() ||
     Option.getOrUndefined(env.githubRepository)?.trim() ||
-    ""
+    DEFAULT_DESKTOP_UPDATE_REPOSITORY
   ).trim();
   if (!rawRepo) return undefined;
 
@@ -2112,7 +2117,11 @@ export const createBuildConfig = Effect.fn("createBuildConfig")(function* (
   };
   const updateChannel = resolveDesktopUpdateChannel(version);
   if (!isDesktopPreviewVersion(version)) {
-    const publishConfig = yield* resolveGitHubPublishConfig(updateChannel);
+    // Mock builds keep the local generic feed; mockUpdates overrides the
+    // updater feed at runtime anyway, so never bake a real repo into them.
+    const publishConfig = mockUpdates
+      ? undefined
+      : yield* resolveGitHubPublishConfig(updateChannel);
     if (publishConfig) {
       buildConfig.publish = [publishConfig];
     } else if (mockUpdates) {
@@ -2186,13 +2195,17 @@ export const createBuildConfig = Effect.fn("createBuildConfig")(function* (
 
   if (platform === "win") {
     buildConfig.npmRebuild = false;
-    // Keep blockmap-based differential downloads enabled while changing the
-    // installed file topology. The optimization is in the payload shape, not
-    // in trading update bandwidth for install speed.
-    buildConfig.nsis = { differentialPackage: true };
+    // 使用标准安装向导，让用户确认并选择安装目录；同时保留差分更新。
+    buildConfig.nsis = {
+      oneClick: false,
+      allowToChangeInstallationDirectory: true,
+      differentialPackage: true,
+    };
     const winConfig: Record<string, unknown> = {
       target: [target],
       icon: "icon.ico",
+      // 展示名称保留可读空格，NSIS 安装子目录固定为无空格的 <选择路径>\\CodeWork。
+      executableName: WINDOWS_APP_EXECUTABLE_NAME,
       // Resource editing applies the product metadata and icon independently
       // of code signing. Disabling it for local unsigned builds leaves the
       // packaged executable with Electron's stock icon.
@@ -3136,7 +3149,7 @@ const buildDesktopArtifact = Effect.fn("buildDesktopArtifact")(function* (
   if (options.platform === "win") {
     yield* validateWindowsPackagedPayload({
       stageDistDir,
-      appExecutableName: `${resolveDesktopProductName(appVersion)}.exe`,
+      appExecutableName: `${WINDOWS_APP_EXECUTABLE_NAME}.exe`,
       targetArch: options.arch,
       verbose: options.verbose,
     });

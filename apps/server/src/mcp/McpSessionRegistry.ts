@@ -14,6 +14,8 @@ import * as McpProviderSession from "./McpProviderSession.ts";
 export interface McpCredentialRequest {
   readonly threadId: ThreadId;
   readonly providerInstanceId: ProviderInstanceId;
+  /** 由 ProviderService 按设置授予能力；缺省保持完整 MCP 能力。 */
+  readonly capabilities?: ReadonlyArray<McpInvocationContext.McpCapability>;
 }
 
 export interface McpIssuedCredential {
@@ -129,7 +131,7 @@ const makeWithOptions = Effect.fn("McpSessionRegistry.make")(function* (
         sessionId: providerSessionId,
         providerSessionId,
         providerInstanceId: ProviderInstanceId.make(request.providerInstanceId),
-        capabilities: new Set(["preview"]),
+        capabilities: new Set(request.capabilities ?? ["preview", "canvas"]),
         issuedAt,
       };
       yield* SynchronizedRef.update(state, ({ records }) => {

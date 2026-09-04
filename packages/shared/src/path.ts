@@ -21,6 +21,18 @@ export function isExplicitRelativePath(value: string): boolean {
   );
 }
 
+/** Code Work 管理的 Canvas 产物目录，不应出现在项目文件选择或代码变更中。 */
+export const CODEWORK_CANVAS_ARTIFACT_DIRECTORY = ".codework/canvases";
+export const CODEWORK_CANVAS_ARTIFACT_PREFIX = `${CODEWORK_CANVAS_ARTIFACT_DIRECTORY}/`;
+
+export function isCodeworkCanvasArtifactPath(input: string): boolean {
+  const normalized = input.replaceAll("\\", "/").replace(/\/+$/u, "");
+  return (
+    normalized === CODEWORK_CANVAS_ARTIFACT_DIRECTORY ||
+    normalized.startsWith(CODEWORK_CANVAS_ARTIFACT_PREFIX)
+  );
+}
+
 function isRootPath(value: string): boolean {
   // The drive separator is required: a bare `C:` is not the drive root (it
   // means "current directory on C:"), and treating it as already-canonical

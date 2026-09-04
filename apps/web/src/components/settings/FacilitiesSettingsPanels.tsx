@@ -2,31 +2,26 @@
 
 import type {
   ByokDelegationConfig,
-  ByokModelAdapter,
   ByokPromptTemplateConfig,
   ProviderInstanceConfig,
   ServerSettings,
 } from "@codework/contracts";
-import {
-  BotIcon,
-  ChevronDownIcon,
-  ChevronUpIcon,
-  ListTodoIcon,
-  NetworkIcon,
-  ServerCogIcon,
-} from "lucide-react";
-import { useMemo, useState, type ReactNode } from "react";
+import { Link } from "@tanstack/react-router";
+import { BotIcon, NetworkIcon, ServerCogIcon } from "lucide-react";
+import { useMemo } from "react";
 
 import { usePrimarySettings, useUpdatePrimarySettings } from "~/hooks/useSettings";
 import { t } from "~/i18n";
 import { usePrimaryEnvironment } from "~/state/environments";
+import { useEnvironmentQuery } from "~/state/query";
+import { serverEnvironment } from "~/state/server";
 
 import { AgentDriversSettings } from "./AgentDriversSettings";
-import { ByokBalanceDashboardPanel } from "./ByokBalanceDashboardPanel";
-import { ByokDelegationWorkspacePanel } from "./ByokDelegationWorkspacePanel";
+import {
+  delegationInstancesFrom,
+  ByokDelegationWorkspacePanel,
+} from "./ByokDelegationWorkspacePanel";
 import { ByokFeaturesSection } from "./ByokFeaturesSection";
-import { ByokModelAdaptersSection, readByokModelAdapters } from "./ByokModelAdaptersSection";
-import { CompositionControlCenterPanel } from "./CompositionControlCenterPanel";
 import { FacilitiesPageHeader } from "./FacilitiesPageHeader";
 import {
   FacilitiesQuickGuide,
@@ -34,10 +29,8 @@ import {
   type FacilitiesGuideStep,
 } from "./FacilitiesQuickGuide";
 import { IdeSessionsSettings } from "./IdeSessionsSettings";
-import { Collapsible, CollapsiblePanel, CollapsibleTrigger } from "../ui/collapsible";
 import { SettingsPageContainer, SettingsRow, SettingsSection } from "./settingsLayout";
-import { SupplierRegistryPanel } from "./SupplierRegistryPanel";
-import { TaskGraphPanel } from "./TaskGraphPanel";
+import { Button } from "../ui/button";
 
 type ByokFeatureConfigKey = "promptTemplate" | "delegation";
 
@@ -120,45 +113,14 @@ const DELEGATION_GUIDE_STEPS: ReadonlyArray<FacilitiesGuideStep> = [
     targetActionKey: "facilitiesGuide.delegation.step2Action",
   },
   {
-    titleKey: "facilitiesGuide.delegation.step3Title",
-    descriptionKey: "facilitiesGuide.delegation.step3Description",
-    targetSelector: '[data-facilities-guide-target="delegation-executor"]',
-    targetActionKey: "facilitiesGuide.delegation.step3Action",
-  },
-  {
     titleKey: "facilitiesGuide.delegation.step4Title",
     descriptionKey: "facilitiesGuide.delegation.step4Description",
     targetSelector: '[data-facilities-guide-target="delegation-advanced"]',
     targetActionKey: "facilitiesGuide.delegation.step4Action",
   },
-  {
-    titleKey: "facilitiesGuide.delegation.step5Title",
-    descriptionKey: "facilitiesGuide.delegation.step5Description",
-    targetSelector: '[data-facilities-guide-target="delegation-task-input"]',
-    targetActionKey: "facilitiesGuide.delegation.step5Action",
-  },
-  {
-    titleKey: "facilitiesGuide.delegation.step6Title",
-    descriptionKey: "facilitiesGuide.delegation.step6Description",
-    targetSelector: '[data-facilities-guide-target="delegation-runs"]',
-    targetActionKey: "facilitiesGuide.delegation.step6Action",
-    advanceOn: "manual",
-  },
 ];
 
 const DELEGATION_GUIDE_CONCEPTS: ReadonlyArray<FacilitiesGuideConcept> = [
-  {
-    termKey: "facilitiesGuide.delegation.termExecutor",
-    descriptionKey: "facilitiesGuide.delegation.termExecutorDescription",
-  },
-  {
-    termKey: "facilitiesGuide.delegation.termEnv",
-    descriptionKey: "facilitiesGuide.delegation.termEnvDescription",
-  },
-  {
-    termKey: "facilitiesGuide.delegation.termTimeouts",
-    descriptionKey: "facilitiesGuide.delegation.termTimeoutsDescription",
-  },
   {
     termKey: "facilitiesGuide.delegation.termSupervision",
     descriptionKey: "facilitiesGuide.delegation.termSupervisionDescription",
@@ -200,17 +162,23 @@ function ByokConfigurationWorkspace() {
   return (
     <SettingsSection
       id="byok-configuration"
-      title={t("byokAdapters.title")}
+      title={t("byokFeatures.title")}
       icon={<BotIcon className="size-4 text-muted-foreground" />}
     >
-      <SettingsRow title={t("settings.byok")} description={t("byokAdapters.description")} />
+      <SettingsRow title={t("settings.byok")} description={t("byokFeatures.facilitiesHint")} />
       {environmentId === null ? (
-        <SettingsRow title={t("supplierRegistry.noEnvironment")} />
+        <SettingsRow title={t("delegationWorkspace.noEnvironment")} />
       ) : byokInstances.length === 0 ? (
-        <SettingsRow title={t("byokAdapters.empty")} />
+        <SettingsRow
+          title={t("byokFeatures.noInstance")}
+          control={
+            <Button size="sm" variant="outline" render={<Link to="/settings/providers" />}>
+              {t("gettingStarted.addProvider")}
+            </Button>
+          }
+        />
       ) : (
         byokInstances.map(([instanceId, instance]) => {
-          const adapters = readByokModelAdapters(instance.config);
           return (
             <section
               key={instanceId}
@@ -226,18 +194,9 @@ function ByokConfigurationWorkspace() {
                 </code>
               </div>
               <div className="space-y-7">
-                <ByokModelAdaptersSection
-                  environmentId={String(environmentId)}
-                  instanceId={instanceId}
-                  adapters={adapters}
-                  onChange={(next: ReadonlyArray<ByokModelAdapter>) =>
-                    updateInstanceConfig(instanceId, "adapters", [...next])
-                  }
-                />
                 <ByokFeaturesSection
                   environmentId={String(environmentId)}
                   instanceId={instanceId}
-                  adapters={adapters}
                   promptTemplate={
                     readByokFeatureConfig(
                       instance.config,
@@ -264,6 +223,19 @@ function ByokConfigurationWorkspace() {
 }
 
 export function RuntimeFacilitiesSettingsPanel() {
+  const primaryEnvironment = usePrimaryEnvironment();
+  const environmentId = primaryEnvironment?.environmentId ?? null;
+  // Shares the agent-drivers atom family with AgentDriversSettings below, so
+  // this adds no extra request.
+  const driversQuery = useEnvironmentQuery(
+    environmentId === null
+      ? null
+      : serverEnvironment.compositionAgentDrivers({ environmentId, input: {} }),
+  );
+  const runtimeEmpty =
+    !driversQuery.isPending &&
+    driversQuery.error === null &&
+    (driversQuery.data ?? []).length === 0;
   return (
     <SettingsPageContainer width="wide" className="gap-9">
       <FacilitiesPageHeader
@@ -271,7 +243,7 @@ export function RuntimeFacilitiesSettingsPanel() {
         title={t("settings.runtime")}
         description={t("runtimeGuide.pageDescription")}
       >
-        <FacilitiesQuickGuide guideId="runtime" />
+        <FacilitiesQuickGuide guideId="runtime" empty={runtimeEmpty} />
       </FacilitiesPageHeader>
       <AgentDriversSettings />
       <IdeSessionsSettings />
@@ -279,49 +251,12 @@ export function RuntimeFacilitiesSettingsPanel() {
   );
 }
 
-function FacilitiesCollapsibleSection({
-  title,
-  description,
-  icon,
-  children,
-}: {
-  readonly title: string;
-  readonly description: string;
-  readonly icon: ReactNode;
-  readonly children: ReactNode;
-}) {
-  const [open, setOpen] = useState(false);
-
-  return (
-    <Collapsible open={open} onOpenChange={setOpen}>
-      <section className="space-y-3">
-        <div className="flex items-start gap-2 px-3 sm:px-4">
-          <span className="mt-0.5 inline-flex size-7 shrink-0 items-center justify-center rounded-md border border-border/60 bg-muted/25 text-muted-foreground">
-            {icon}
-          </span>
-          <CollapsibleTrigger className="min-w-0 flex-1 text-left">
-            <span className="flex items-center gap-1.5 text-lg font-semibold text-foreground">
-              {title}
-              {open ? (
-                <ChevronUpIcon className="size-4 text-muted-foreground" />
-              ) : (
-                <ChevronDownIcon className="size-4 text-muted-foreground" />
-              )}
-            </span>
-            <span className="mt-1 block max-w-2xl text-[13px] leading-[1.45] text-muted-foreground/80">
-              {description}
-            </span>
-          </CollapsibleTrigger>
-        </div>
-        <CollapsiblePanel>
-          <div className="space-y-4">{children}</div>
-        </CollapsiblePanel>
-      </section>
-    </Collapsible>
-  );
-}
-
 export function DelegationFacilitiesSettingsPanel() {
+  const settings = usePrimarySettings();
+  const delegationEmpty =
+    delegationInstancesFrom(
+      (settings.providerInstances ?? {}) as Readonly<Record<string, ProviderInstanceConfig>>,
+    ).length === 0;
   return (
     <SettingsPageContainer width="wide" className="gap-9">
       <FacilitiesPageHeader
@@ -333,34 +268,24 @@ export function DelegationFacilitiesSettingsPanel() {
           guideId="delegation"
           steps={DELEGATION_GUIDE_STEPS}
           concepts={DELEGATION_GUIDE_CONCEPTS}
+          empty={delegationEmpty}
         />
       </FacilitiesPageHeader>
       <div data-facilities-guide-target="delegation-workspace">
         <ByokDelegationWorkspacePanel />
-      </div>
-      <div>
-        <FacilitiesCollapsibleSection
-          title={t("delegationSettings.taskGraphTitle")}
-          description={t("delegationSettings.taskGraphDescription")}
-          icon={<NetworkIcon className="size-3.5" />}
-        >
-          <TaskGraphPanel />
-        </FacilitiesCollapsibleSection>
-      </div>
-      <div>
-        <FacilitiesCollapsibleSection
-          title={t("delegationSettings.runtimeTitle")}
-          description={t("delegationSettings.runtimeDescription")}
-          icon={<ListTodoIcon className="size-3.5" />}
-        >
-          <CompositionControlCenterPanel scope="byok-delegation" />
-        </FacilitiesCollapsibleSection>
       </div>
     </SettingsPageContainer>
   );
 }
 
 export function ByokFacilitiesSettingsPanel() {
+  const settings = usePrimarySettings();
+  const instances = (settings.providerInstances ?? {}) as Readonly<
+    Record<string, ProviderInstanceConfig>
+  >;
+  const byokEmpty = !Object.entries(instances).some(
+    ([, instance]) => String(instance.driver) === "byok",
+  );
   return (
     <SettingsPageContainer width="wide" className="gap-9">
       <FacilitiesPageHeader
@@ -372,11 +297,10 @@ export function ByokFacilitiesSettingsPanel() {
           guideId="byok"
           steps={BYOK_GUIDE_STEPS}
           concepts={BYOK_GUIDE_CONCEPTS}
+          empty={byokEmpty}
         />
       </FacilitiesPageHeader>
       <ByokConfigurationWorkspace />
-      <ByokBalanceDashboardPanel />
-      <SupplierRegistryPanel />
     </SettingsPageContainer>
   );
 }

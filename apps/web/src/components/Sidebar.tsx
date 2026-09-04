@@ -123,7 +123,7 @@ import { useThreadSplitStore } from "../threadSplitStore";
 import { formatRelativeTimeLabel, parseTimestampDate } from "../timestampFormat";
 import type { SidebarThreadSummary } from "../types";
 import { cn } from "~/lib/utils";
-import { buildThreadActionMenuItems } from "./threadActionMenu.logic";
+import { buildThreadActionMenuItems, canOpenThreadBeside } from "./threadActionMenu.logic";
 import {
   animatePinnedLayoutChanges,
   buildBulkTitleRegenerationContextMenuItem,
@@ -3208,6 +3208,11 @@ export default function Sidebar() {
               isSnoozed,
               canSnoozeNow: canSnooze(thread, { now: new Date().toISOString() }),
               isRegeneratingTitle,
+              canOpenBeside: canOpenThreadBeside(
+                threadKey,
+                useThreadSplitStore.getState().primaryThreadRef,
+                useThreadSplitStore.getState().secondaryThreadRef,
+              ),
               isRunning:
                 thread.session?.status === "running" && thread.session.activeTurnId != null,
               supports: {

@@ -4,22 +4,28 @@ import * as NodeCrypto from "node:crypto";
 import * as NodeFs from "node:fs";
 import * as NodePath from "node:path";
 
-import type {
-  ByokDelegationCancelRequest,
-  ByokDelegationConfig,
-  ByokDelegationExecutor,
-  ByokDelegationExecutorAttempt,
-  ByokDelegationExecutorProbe,
-  ByokDelegationSnapshot,
-  ByokDelegationSubmitRequest,
-  ByokSettings,
-  CompositionTaskCancelRequest,
-  CompositionTaskCancelResult,
-  ServerSettings as ServerSettingsContract,
+import {
+  type ByokDelegationCancelRequest,
+  type ByokDelegationConfig,
+  type ByokDelegationExecutor,
+  type ByokDelegationExecutorAttempt,
+  type ByokDelegationExecutorProbe,
+  type ByokDelegationSnapshot,
+  type ByokDelegationSubmitRequest,
+  type ByokSettings,
+  type CompositionTaskCancelRequest,
+  type CompositionTaskCancelResult,
+  CommandId,
+  EventId,
+  type OrchestrationThreadActivity,
+  type ServerSettings as ServerSettingsContract,
+  ThreadId,
+  TurnId,
 } from "@codework/contracts";
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
 import * as Data from "effect/Data";
+import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
@@ -43,12 +49,14 @@ import {
   type CompositionTaskStoreError,
 } from "../../persistence/Services/CompositionTaskStore.ts";
 import {
+  DelegationQueueFullError,
   DelegationScheduler,
   type DelegationExecutionContext,
   type DelegationRequest,
   type DelegationSnapshot,
   type DelegationStatus,
 } from "../../orchestration/byokDelegation/DelegationScheduler.ts";
+import { OrchestrationEngineService } from "../../orchestration/Services/OrchestrationEngine.ts";
 import {
   byokAdapterForModel,
   collectChatText,
@@ -126,7 +134,9 @@ const rememberAttemptChain = (delegationId: string, attemptKey: string): void =>
   }
 };
 
-const attemptsForDelegation = (delegationId: string): ByokDelegationExecutorAttempt[] | undefined => {
+const attemptsForDelegation = (
+  delegationId: string,
+): ByokDelegationExecutorAttempt[] | undefined => {
   const key = attemptKeysByDelegationId.get(delegationId);
   return key === undefined ? undefined : executorAttemptsByKey.get(key);
 };
@@ -140,6 +150,59 @@ const probeRegistryFor = (instanceId: string): ExecutorProbeRegistry => {
   const registry = new ExecutorProbeRegistry(probeExecutorCandidate);
   probeRegistries.set(instanceId, registry);
   return registry;
+};
+
+/**
+ * Retired schedulers: a config change or instance removal swaps a scheduler
+ * out, but its running work must still settle. Queued work is cancelled (it
+ * would otherwise execute invisibly under a stale config); the entry drops
+ * itself once nothing is in flight. Retired schedulers keep counting toward
+ * the global delegation caps until they drain, so the swap can never double
+ * effective capacity beyond the caps.
+ */
+const retiredSchedulers: Array<DelegationScheduler<string, string>> = [];
+
+const schedulerInFlightCount = (scheduler: DelegationScheduler<string, string>): number => {
+  let inFlight = 0;
+  for (const snapshot of scheduler.list()) {
+    if (snapshot.status === "queued" || snapshot.status === "running") inFlight += 1;
+  }
+  return inFlight;
+};
+
+const retireScheduler = (scheduler: DelegationScheduler<string, string>): void => {
+  for (const snapshot of scheduler.list()) {
+    if (snapshot.status === "queued") scheduler.cancel(snapshot.id);
+  }
+  if (schedulerInFlightCount(scheduler) === 0) return;
+  retiredSchedulers.push(scheduler);
+  const unsubscribe = scheduler.subscribe(() => {
+    if (schedulerInFlightCount(scheduler) > 0) return;
+    unsubscribe();
+    const index = retiredSchedulers.indexOf(scheduler);
+    if (index >= 0) retiredSchedulers.splice(index, 1);
+  });
+};
+
+/**
+ * Drop scheduler and probe state for instances that no longer exist in
+ * settings. Runs on every settings read (configOf) — the maps are small and
+ * instances without in-flight work retire for free.
+ */
+const pruneSchedulerState = (settings: ServerSettingsContract): void => {
+  const liveInstanceIds = new Set(
+    Object.entries(settings.providerInstances)
+      .filter(([, instance]) => instance?.driver === "byok")
+      .map(([instanceId]) => instanceId),
+  );
+  for (const [instanceId, entry] of schedulers) {
+    if (liveInstanceIds.has(instanceId)) continue;
+    schedulers.delete(instanceId);
+    retireScheduler(entry.scheduler);
+  }
+  for (const instanceId of probeRegistries.keys()) {
+    if (!liveInstanceIds.has(instanceId)) probeRegistries.delete(instanceId);
+  }
 };
 
 /**
@@ -158,7 +221,9 @@ const probeExecutorCandidate = async (
   if (probeArguments.length === 0) {
     const resolved = resolveExecutablePath(tokens[0]!, {
       platform: process.platform,
-      paths: (process.env["PATH"] ?? "").split(NodePath.delimiter).filter((part) => part.length > 0),
+      paths: (process.env["PATH"] ?? "")
+        .split(NodePath.delimiter)
+        .filter((part) => part.length > 0),
       pathExt: (process.env["PATHEXT"] ?? "")
         .split(NodePath.delimiter)
         .filter((part) => part.length > 0),
@@ -238,7 +303,104 @@ const DEFAULT_DELEGATION_CONFIG: ByokDelegationConfig = {
   subagentProfiles: [],
 };
 
+/**
+ * Server-side hard caps for delegation spawning. The contract schema
+ * (ByokDelegationConfig in @codework/contracts) is the source of truth for
+ * these bounds; the literals below are a defense-in-depth runtime mirror so a
+ * persisted config that bypassed schema decoding (hand-edited settings, older
+ * rows) can never drive the scheduler past them. The web panel clamps are
+ * advisory only.
+ */
+export const MAX_DELEGATION_CONCURRENCY = 16;
+export const MAX_DELEGATION_SUPERVISION_ROUNDS = 50;
+/** Global running cap across every instance scheduler on this server. */
+export const MAX_GLOBAL_RUNNING_DELEGATIONS = 32;
+/** Global in-flight (queued + running) cap across every instance scheduler. */
+export const MAX_GLOBAL_IN_FLIGHT_DELEGATIONS = 64;
+
+const clampedInteger = (
+  value: number | undefined,
+  fallback: number,
+  min: number,
+  max: number,
+): number =>
+  value === undefined || !Number.isFinite(value)
+    ? fallback
+    : Math.max(min, Math.min(max, Math.trunc(value)));
+
+const clampedTimeoutMs = (value: number | undefined, fallback: number): number =>
+  value === undefined || !Number.isFinite(value) ? fallback : Math.max(1_000, Math.trunc(value));
+
+/** Clamp persisted delegation runtime numbers to the hard caps (pure). */
+export function clampDelegationRuntimeConfig(config: ByokDelegationConfig): ByokDelegationConfig {
+  const supervision = config.supervision;
+  return {
+    ...config,
+    maxConcurrency: clampedInteger(
+      config.maxConcurrency,
+      DEFAULT_DELEGATION_CONFIG.maxConcurrency,
+      1,
+      MAX_DELEGATION_CONCURRENCY,
+    ),
+    queueTimeoutMs: clampedTimeoutMs(
+      config.queueTimeoutMs,
+      DEFAULT_DELEGATION_CONFIG.queueTimeoutMs,
+    ),
+    executionTimeoutMs: clampedTimeoutMs(
+      config.executionTimeoutMs,
+      DEFAULT_DELEGATION_CONFIG.executionTimeoutMs,
+    ),
+    ...(supervision === undefined
+      ? {}
+      : {
+          supervision: {
+            ...supervision,
+            maxCorrections: clampedInteger(
+              supervision.maxCorrections,
+              DEFAULT_DELEGATION_CONFIG.supervision.maxCorrections,
+              0,
+              20,
+            ),
+            maxRetries: clampedInteger(
+              supervision.maxRetries,
+              DEFAULT_DELEGATION_CONFIG.supervision.maxRetries,
+              0,
+              20,
+            ),
+            maxRounds: clampedInteger(
+              supervision.maxRounds,
+              DEFAULT_DELEGATION_CONFIG.supervision.maxRounds,
+              1,
+              MAX_DELEGATION_SUPERVISION_ROUNDS,
+            ),
+          },
+        }),
+  };
+}
+
+/** Minimal structural view of a scheduler so pressure math stays unit-testable. */
+export interface DelegationPressureSource {
+  list(): ReadonlyArray<{ readonly status: DelegationStatus }>;
+}
+
+/** Count running and in-flight (queued + running) delegations across schedulers (pure). */
+export function globalDelegationPressure(sources: Iterable<DelegationPressureSource>): {
+  readonly running: number;
+  readonly inFlight: number;
+} {
+  let running = 0;
+  let inFlight = 0;
+  for (const source of sources) {
+    for (const snapshot of source.list()) {
+      if (snapshot.status === "running") running += 1;
+      if (snapshot.status === "queued" || snapshot.status === "running") inFlight += 1;
+    }
+  }
+  return { running, inFlight };
+}
+
 const configOf = (settings: ServerSettingsContract, instanceId: string): ByokDelegationConfig => {
+  pruneSchedulerState(settings);
   const instance =
     settings.providerInstances[instanceId as keyof typeof settings.providerInstances];
   if (instance?.driver !== "byok") return DEFAULT_DELEGATION_CONFIG;
@@ -250,7 +412,12 @@ const configOf = (settings: ServerSettingsContract, instanceId: string): ByokDel
   if (delegation === null || typeof delegation !== "object" || Array.isArray(delegation)) {
     return DEFAULT_DELEGATION_CONFIG;
   }
-  return { ...DEFAULT_DELEGATION_CONFIG, ...(delegation as ByokDelegationConfig) };
+  // Every reader (scheduler resolve, executor list, supervision) sees clamped
+  // values; the web panel's 1..16 input clamp is advisory only.
+  return clampDelegationRuntimeConfig({
+    ...DEFAULT_DELEGATION_CONFIG,
+    ...(delegation as ByokDelegationConfig),
+  });
 };
 
 /**
@@ -524,9 +691,7 @@ const attemptsToSnapshot = (
   delegationId: string,
 ): { readonly executorAttempts: readonly ByokDelegationExecutorAttempt[] } | {} => {
   const attempts = attemptsForDelegation(delegationId);
-  return attempts === undefined || attempts.length === 0
-    ? {}
-    : { executorAttempts: [...attempts] };
+  return attempts === undefined || attempts.length === 0 ? {} : { executorAttempts: [...attempts] };
 };
 
 const delegationTransitionOf = (
@@ -584,8 +749,155 @@ const cancelRuntimeDelegation = (input: {
   return { status: "not_found" };
 };
 
+/** Server-internal origin context for delegations launched from a chat
+ * thread's agent loop; absent for RPC/manual submissions. */
+export interface ByokDelegationSubmitOrigin {
+  readonly threadId: string;
+  readonly turnId?: string;
+}
+
+/** submit 入参在 RPC 契约（ByokDelegationSubmitRequest）之上附加可选 origin；
+ * RPC 调用方不传 origin，类型仍然兼容。 */
+export type ByokDelegationSubmitInput = ByokDelegationSubmitRequest & {
+  readonly origin?: ByokDelegationSubmitOrigin;
+};
+
+/** Fold statuses the client subagent roster understands (subagentRuntime). */
+type DelegationFoldTerminalStatus = "completed" | "failed" | "cancelled";
+
+/**
+ * Map a terminal delegation status onto the roster fold vocabulary. Timeouts
+ * and anything unrecognized settle as failed with the raw status kept in
+ * `detail` (the projection's mapDelegationStatus vocabulary, mirrored).
+ */
+const foldTerminalStatus = (
+  status: string,
+): { readonly status: DelegationFoldTerminalStatus; readonly detail?: string } => {
+  switch (status) {
+    case "succeeded":
+      return { status: "completed" };
+    case "failed":
+      return { status: "failed" };
+    case "cancelled":
+      return { status: "cancelled" };
+    default:
+      return { status: "failed", detail: status };
+  }
+};
+
+/** Title previews keep roster rows to a single bounded line; the ellipsis
+ * counts toward the bound. */
+const ORIGIN_TITLE_MAX_CHARS = 80;
+const ORIGIN_ERROR_MAX_CHARS = 200;
+
+const bounded = (text: string, max: number): string =>
+  text.length <= max ? text : `${text.slice(0, max - 1)}…`;
+
+const originTitlePreview = (taskText: string): string => {
+  const firstLine =
+    taskText
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .find((line) => line.length > 0) ?? "";
+  return bounded(firstLine, ORIGIN_TITLE_MAX_CHARS);
+};
+
+/**
+ * Build the origin thread's activity rows that surface a chat-launched
+ * delegation in the Agents panel roster, mirroring how CLI subagents emit
+ * `task.*` rows (client fold: packages/client-runtime subagentRuntime). The
+ * roster taskId MUST be the projection scope's taskId so ledger and roster
+ * share one identity; `timelineBypass` keeps the rows out of the chat
+ * timeline while folding into the "spawned subagents" CTA. Pure — returns no
+ * rows when inputs are unusable (blank ids, terminal without a status).
+ */
+export function delegationOriginActivities(input: {
+  readonly origin: ByokDelegationSubmitOrigin;
+  readonly rosterTaskId: string;
+  readonly taskText: string;
+  readonly subagentType?: string;
+  readonly phase: "started" | "running" | "terminal";
+  readonly status?: string;
+  readonly errorMessage?: string;
+}): ReadonlyArray<OrchestrationThreadActivity> {
+  const threadId = input.origin.threadId.trim();
+  const rosterTaskId = input.rosterTaskId.trim();
+  if (threadId.length === 0 || rosterTaskId.length === 0) return [];
+  const createdAt = DateTime.formatIso(DateTime.nowUnsafe());
+  const turnId =
+    input.origin.turnId !== undefined && input.origin.turnId.trim().length > 0
+      ? TurnId.make(input.origin.turnId.trim())
+      : null;
+  if (input.phase === "started") {
+    const title = originTitlePreview(input.taskText);
+    return [
+      {
+        id: EventId.make(`task-started:${threadId}:${rosterTaskId}`),
+        tone: "info",
+        kind: "task.started",
+        summary: title.length > 0 ? `Delegation started: ${title}` : "Delegation started",
+        payload: {
+          taskId: rosterTaskId,
+          agentKind: "agent",
+          title,
+          role: input.subagentType ?? "delegation",
+          timelineBypass: true,
+        },
+        turnId,
+        createdAt,
+      },
+    ];
+  }
+  if (input.phase === "running") {
+    return [
+      {
+        // Stable id = upsert semantics: replays never duplicate the row.
+        id: EventId.make(`task-progress:${threadId}:${rosterTaskId}`),
+        tone: "info",
+        kind: "task.progress",
+        summary: "Delegation running",
+        payload: {
+          taskId: rosterTaskId,
+          status: "running",
+          summary: "Delegation running",
+          timelineBypass: true,
+        },
+        turnId,
+        createdAt,
+      },
+    ];
+  }
+  const status = input.status?.trim() ?? "";
+  if (status.length === 0) return [];
+  const mapped = foldTerminalStatus(status);
+  return [
+    {
+      // Unique suffix so terminal retries (supervision rounds, replays)
+      // never collide on the event id.
+      id: EventId.make(
+        `task-updated:${threadId}:${rosterTaskId}:${mapped.status}:${NodeCrypto.randomUUID()}`,
+      ),
+      tone: "info",
+      kind: "task.updated",
+      summary: `Delegation ${mapped.status}`,
+      payload: {
+        taskId: rosterTaskId,
+        status: mapped.status,
+        endedAt: createdAt,
+        ...(input.errorMessage === undefined || input.errorMessage.length === 0
+          ? {}
+          : { error: bounded(input.errorMessage, ORIGIN_ERROR_MAX_CHARS) }),
+        ...(mapped.detail === undefined ? {} : { detail: mapped.detail }),
+        timelineBypass: true,
+      },
+      turnId,
+      createdAt,
+    },
+  ];
+}
+
 export interface ByokDelegationService {
-  readonly submit: (input: ByokDelegationSubmitRequest) => Effect.Effect<ByokDelegationSnapshot>;
+  readonly submit: (input: ByokDelegationSubmitInput) => Effect.Effect<ByokDelegationSnapshot>;
   readonly list: (instanceId: string) => Effect.Effect<ReadonlyArray<ByokDelegationSnapshot>>;
   readonly cancel: (
     input: ByokDelegationCancelRequest,
@@ -622,7 +934,20 @@ export class DelegationDisabledError extends Data.TaggedError("DelegationDisable
 
 export class DelegationExecutorError extends Data.TaggedError("DelegationExecutorError")<{
   readonly message: string;
+  /** Distinguishes backpressure (queue full / global cap) from generic failures. */
+  readonly code?: string;
 }> {}
+
+/**
+ * Map a submit-path failure onto the errorCode surfaced to the model via the
+ * delegate_task tool result: backpressure keeps its distinct code so the
+ * model can stop retrying a saturated scheduler.
+ */
+export function delegationSubmitErrorCode(failure: { readonly code?: string }): string {
+  return failure.code === "DELEGATION_QUEUE_FULL"
+    ? "DELEGATION_QUEUE_FULL"
+    : "DELEGATION_SUBMIT_FAILED";
+}
 
 /** Live per-instance scheduler registry, rebuilt when the config changes. */
 export function resolveScheduler(
@@ -633,6 +958,12 @@ export function resolveScheduler(
   const existing = schedulers.get(instanceId);
   if (existing !== undefined && existing.fingerprint === fingerprint) {
     return existing.scheduler;
+  }
+  if (existing !== undefined) {
+    // Fingerprint churn swaps the scheduler. Retire the old one instead of
+    // orphaning it: its queued work settles as cancelled and its running work
+    // keeps counting toward the global caps until it drains.
+    retireScheduler(existing.scheduler);
   }
   let terminalRetained = 0;
   const scheduler = new DelegationScheduler<string, string>(
@@ -710,6 +1041,9 @@ export const make = Effect.gen(function* () {
   // Composition 台账为可选依赖：注入后每次委派状态迁移都会投影成幂等事件行，
   // 使 Composition Task/Run 成为委派状态的可查询单一状态源。
   const taskStore = yield* Effect.serviceOption(CompositionTaskStore);
+  // 编排引擎同为可选依赖：注入后，chat 发起的委派会以 task.* 活动行回写
+  // origin 线程，使其进入 Agents 面板的子代理名册（与 CLI 子代理同构）。
+  const orchestrationEngine = yield* Effect.serviceOption(OrchestrationEngineService);
 
   if (Option.isSome(taskStore) && !interruptSweepStarted) {
     interruptSweepStarted = true;
@@ -752,6 +1086,43 @@ export const make = Effect.gen(function* () {
           Effect.catch(() => Effect.void),
         );
 
+  /**
+   * Append origin-thread activity rows (Agents 面板名册) through the internal
+   * orchestration command. 与台账投影同一吞错契约：活动写入失败绝不影响
+   * 委派本身的结果；引擎未注入（Option.none）时静默跳过。
+   */
+  const emitOriginActivities = (input: {
+    readonly origin: ByokDelegationSubmitOrigin;
+    readonly rosterTaskId: string;
+    readonly taskText: string;
+    readonly subagentType?: string;
+    readonly phase: "started" | "running" | "terminal";
+    readonly status?: string;
+    readonly errorMessage?: string;
+  }): Effect.Effect<void> =>
+    Option.isNone(orchestrationEngine)
+      ? Effect.void
+      : Effect.gen(function* () {
+          const activities = delegationOriginActivities(input);
+          if (activities.length === 0) return;
+          const threadId = ThreadId.make(input.origin.threadId.trim());
+          for (const activity of activities) {
+            // 单行活动的派发失败即被吞掉：活动行只是委派的可视化投影，
+            // 任何失败都不允许影响委派本身的结果。
+            yield* orchestrationEngine.value
+              .dispatch({
+                type: "thread.activity.append",
+                commandId: CommandId.make(
+                  `server:byok-delegation-activity:${NodeCrypto.randomUUID()}`,
+                ),
+                threadId,
+                activity,
+                createdAt: activity.createdAt,
+              })
+              .pipe(Effect.catch(() => Effect.void));
+          }
+        });
+
   /** 入队前拒绝也创建唯一台账身份，避免固定错误快照互相覆盖。 */
   const rejectBeforeEnqueue = (
     input: ByokDelegationSubmitRequest,
@@ -780,13 +1151,32 @@ export const make = Effect.gen(function* () {
    * threads a supervision reassign round's model through the executor env.
    */
   const runDelegationToTerminal = (
-    input: ByokDelegationSubmitRequest,
+    input: ByokDelegationSubmitInput,
     config: ByokDelegationConfig,
     taskText: string,
     modelOverride: string | undefined,
   ) =>
     Effect.gen(function* () {
       const scheduler = resolveScheduler(config, input.instanceId);
+      // 全局硬上限在本地 submit 之前检查：实例级队列上限与全局上限叠加生效。
+      // 满载时按与队列满相同的路径拒绝（DELEGATION_QUEUE_FULL），模型可据此停手。
+      // 退役中的调度器（配置刚换/实例刚删）仍在跑真实工作，必须计入压力。
+      const pressure = globalDelegationPressure([
+        ...[...schedulers.values()].map((entry) => entry.scheduler),
+        ...retiredSchedulers,
+      ]);
+      if (
+        pressure.running >= MAX_GLOBAL_RUNNING_DELEGATIONS ||
+        pressure.inFlight >= MAX_GLOBAL_IN_FLIGHT_DELEGATIONS
+      ) {
+        return yield* new DelegationExecutorError({
+          message:
+            `Global delegation capacity reached: ${pressure.running} running ` +
+            `(limit ${MAX_GLOBAL_RUNNING_DELEGATIONS}), ${pressure.inFlight} in flight ` +
+            `(limit ${MAX_GLOBAL_IN_FLIGHT_DELEGATIONS}). Retry later.`,
+          code: "DELEGATION_QUEUE_FULL",
+        });
+      }
       // 提交与订阅必须发生在同一同步 tick：一旦让出执行权，中间发布的事件
       // 既不在返回快照里也不在订阅缓冲里，终态等待就会悬挂。
       const { submitted, feed } = yield* Effect.try({
@@ -809,6 +1199,8 @@ export const make = Effect.gen(function* () {
         catch: (cause) =>
           new DelegationExecutorError({
             message: cause instanceof Error ? cause.message : String(cause),
+            // 队列满是背压而非执行失败：保留原始错误码，让模型停止盲目重试。
+            ...(cause instanceof DelegationQueueFullError ? { code: cause.code } : {}),
           }),
       });
       const scope = makeByokDelegationProjectionScope({
@@ -818,21 +1210,43 @@ export const make = Effect.gen(function* () {
         taskText,
       });
       const unregisterLive = registerLiveProjectedDelegation(scope, scheduler);
+      // Origin 线程名册行：与台账投影共用 scope.taskId 身份（ledger 与 Agents
+      // 面板同 id）。无 origin 的提交（RPC/手动）完全跳过。
+      const emitOrigin = (
+        phase: "started" | "running" | "terminal",
+        status?: string,
+        errorMessage?: string,
+      ): Effect.Effect<void> =>
+        input.origin === undefined
+          ? Effect.void
+          : emitOriginActivities({
+              origin: input.origin,
+              rosterTaskId: scope.taskId,
+              taskText,
+              ...(input.subagentType === undefined ? {} : { subagentType: input.subagentType }),
+              phase,
+              ...(status === undefined ? {} : { status }),
+              ...(errorMessage === undefined ? {} : { errorMessage }),
+            });
       return yield* Effect.gen(function* () {
         // 每个委派都真实经过 queued；submit 内部的同步 drain 可能让返回快照已是 running。
         yield* projectTransition(scope, { status: "queued" });
+        yield* emitOrigin("started");
         let last = submitted;
         if (last.status !== "queued") {
           yield* projectTransition(scope, delegationTransitionOf(last));
+          if (last.status === "running") yield* emitOrigin("running");
         }
         while (!isTerminalStatus(last.status)) {
           const next = yield* Effect.promise(() => feed.next());
           if (next.sequence <= last.sequence) continue;
           if (next.status !== last.status) {
             yield* projectTransition(scope, delegationTransitionOf(next));
+            if (next.status === "running") yield* emitOrigin("running");
           }
           last = next;
         }
+        yield* emitOrigin("terminal", last.status, last.error?.message);
         return last;
       }).pipe(
         Effect.ensuring(
@@ -865,7 +1279,7 @@ export const make = Effect.gen(function* () {
   ): ByokDelegationSnapshot =>
     counters === undefined ? snapshot : { ...snapshot, supervision: counters };
 
-  const submit = (input: ByokDelegationSubmitRequest) =>
+  const submit = (input: ByokDelegationSubmitInput) =>
     Effect.gen(function* () {
       const settings = yield* serverSettings.getSettings;
       const config = configOf(settings, input.instanceId);
@@ -897,7 +1311,7 @@ export const make = Effect.gen(function* () {
         if (outcome._tag === "Failure") {
           return yield* rejectBeforeEnqueue(
             input,
-            "DELEGATION_SUBMIT_FAILED",
+            delegationSubmitErrorCode(outcome.failure),
             outcome.failure.message,
           );
         }
@@ -931,7 +1345,7 @@ export const make = Effect.gen(function* () {
         if (outcome._tag === "Failure") {
           return yield* rejectBeforeEnqueue(
             input,
-            "DELEGATION_SUBMIT_FAILED",
+            delegationSubmitErrorCode(outcome.failure),
             outcome.failure.message,
           );
         }
@@ -1077,6 +1491,10 @@ export const __testables = {
   rememberAttemptChain,
   executorAttemptsByKey,
   attemptKeysByDelegationId,
+  schedulers,
+  retiredSchedulers,
+  probeRegistries,
+  pruneSchedulerState,
 };
 
 /**

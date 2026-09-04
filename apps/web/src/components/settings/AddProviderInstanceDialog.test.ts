@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { resolveWizardNavigation } from "./AddProviderInstanceDialog.logic";
+import {
+  resolveProviderInstanceDisplayLabel,
+  resolveWizardNavigation,
+} from "./AddProviderInstanceDialog.logic";
 
 describe("resolveWizardNavigation", () => {
   const invalidId = { instanceIdError: "Instance ID is required." };
@@ -40,5 +43,15 @@ describe("resolveWizardNavigation", () => {
   it("clamps requested steps to the wizard bounds", () => {
     expect(resolveWizardNavigation(2, 8, 3, validId)).toEqual({ kind: "navigate", step: 2 });
     expect(resolveWizardNavigation(0, -1, 3, invalidId)).toEqual({ kind: "navigate", step: 0 });
+  });
+});
+
+describe("resolveProviderInstanceDisplayLabel", () => {
+  it("keeps a custom display name", () => {
+    expect(resolveProviderInstanceDisplayLabel("Codex", "  Work  ")).toBe("Work");
+  });
+
+  it("generates a usable default when the optional display name is empty", () => {
+    expect(resolveProviderInstanceDisplayLabel("Codex", "   ")).toBe("Codex Workspace");
   });
 });

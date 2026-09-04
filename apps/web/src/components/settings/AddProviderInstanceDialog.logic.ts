@@ -4,7 +4,17 @@ export type WizardNavigation =
 
 const IDENTITY_STEP = 1;
 
-export const ADD_PROVIDER_WIZARD_STEPS = ["Driver", "Identity", "Config"] as const;
+export const ADD_PROVIDER_WIZARD_STEPS = [
+  "providerWizard.stepService",
+  "providerWizard.stepName",
+  "providerWizard.stepConnection",
+] as const;
+
+/** 显示名称留空时使用稳定的默认名称，避免用户被迫填写内部标识。 */
+export function resolveProviderInstanceDisplayLabel(driverLabel: string, label: string): string {
+  const trimmed = label.trim();
+  return trimmed.length > 0 ? trimmed : `${driverLabel} Workspace`;
+}
 
 /**
  * Resolve navigation within the add-provider wizard.

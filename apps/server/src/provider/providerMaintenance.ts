@@ -41,6 +41,24 @@ export interface ProviderMaintenanceCapabilities {
   readonly provider: ProviderDriverKind;
   readonly packageName: string | null;
   readonly update: ProviderMaintenanceCommandAction | null;
+  /**
+   * Fresh-install channel. Package-managed providers derive it from their
+   * update command; self-updating or script-installed CLIs declare the
+   * vendor's official installer explicitly per platform (`null` variant =
+   * that platform has no official install path).
+   */
+  readonly install: ProviderMaintenanceInstallCapabilities | null;
+}
+
+export interface ProviderMaintenanceInstallVariant {
+  readonly executable: string;
+  readonly args: ReadonlyArray<string>;
+}
+
+export interface ProviderMaintenanceInstallCapabilities {
+  readonly lockKey: string;
+  readonly win32: ProviderMaintenanceInstallVariant | null;
+  readonly posix: ProviderMaintenanceInstallVariant | null;
 }
 
 export interface ProviderMaintenanceCommandAction {
@@ -100,6 +118,7 @@ export function makeProviderMaintenanceCapabilities(input: {
   readonly updateExecutable: string | null;
   readonly updateArgs: ReadonlyArray<string>;
   readonly updateLockKey: string | null;
+  readonly install?: ProviderMaintenanceInstallCapabilities | null;
 }): ProviderMaintenanceCapabilities {
   const update =
     input.updateExecutable === null || input.updateLockKey === null
@@ -110,10 +129,23 @@ export function makeProviderMaintenanceCapabilities(input: {
           args: input.updateArgs,
           lockKey: input.updateLockKey,
         };
+  // Package-managed providers install with their update command; drivers with
+  // a script installer pass `install` explicitly (possibly platform-gated).
+  const install: ProviderMaintenanceInstallCapabilities | null =
+    input.install !== undefined
+      ? input.install
+      : input.packageName !== null && update !== null
+        ? {
+            lockKey: update.lockKey,
+            win32: { executable: update.executable, args: update.args },
+            posix: { executable: update.executable, args: update.args },
+          }
+        : null;
   return {
     provider: input.provider,
     packageName: input.packageName,
     update,
+    install,
   };
 }
 

@@ -21,7 +21,9 @@ export type ByokDelegationStatus = typeof ByokDelegationStatus.Type;
  */
 export const ByokDelegationSubmitRequest = Schema.Struct({
   instanceId: TrimmedString,
-  task: TrimmedNonEmptyString,
+  // New requests (not persisted state) reject oversized task bodies outright:
+  // 50k chars is far beyond any sane delegated task and bounds executor spawn.
+  task: TrimmedNonEmptyString.check(Schema.isMaxLength(50_000)),
   subagentType: Schema.optional(TrimmedString),
 });
 export type ByokDelegationSubmitRequest = typeof ByokDelegationSubmitRequest.Type;

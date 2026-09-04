@@ -75,9 +75,16 @@ export function isProviderInstancePickerReady(entry: ProviderInstanceEntry): boo
   return entry.enabled && entry.isAvailable && entry.status === "ready";
 }
 
+/**
+ * Driver kinds never shown in the model picker. Multica's model provisioning
+ * merged into the BYOK suppliers, so its instance offers nothing selectable
+ * here even while the daemon (and its settings surface) stays alive.
+ */
+const MODEL_PICKER_HIDDEN_DRIVER_KINDS: ReadonlySet<string> = new Set(["multica"]);
+
 /** Picker rails contain configured, enabled instances only. */
 export function isProviderInstancePickerVisible(entry: ProviderInstanceEntry): boolean {
-  return entry.enabled;
+  return entry.enabled && !MODEL_PICKER_HIDDEN_DRIVER_KINDS.has(entry.driverKind);
 }
 
 /**

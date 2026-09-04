@@ -1,4 +1,5 @@
 import { Connection } from "@codework/client-runtime/connection";
+import { pullRequestDiffLoaderLayer } from "@codework/client-runtime/state/pull-requests";
 import { shellSnapshotLoaderLayer } from "@codework/client-runtime/state/shell";
 import { threadSnapshotLoaderLayer } from "@codework/client-runtime/state/threads";
 import * as Layer from "effect/Layer";
@@ -23,7 +24,8 @@ type ConnectionLayerSource =
   | typeof runtimeContextLayer
   | typeof connectionPlatformLayer
   | typeof mobileBackgroundActivityObserverLayer
-  | typeof mobileBackgroundActivityReporterLayer;
+  | typeof mobileBackgroundActivityReporterLayer
+  | typeof pullRequestDiffLoaderLayer;
 
 const providedClientConnectionLayer = Layer.merge(Connection.layer, snapshotLoaderLayer).pipe(
   Layer.provideMerge(
@@ -35,9 +37,10 @@ const providedClientConnectionLayer = Layer.merge(Connection.layer, snapshotLoad
   ),
 );
 
-const connectionLayer = mobileBackgroundActivityReporterLayer.pipe(
-  Layer.provideMerge(providedClientConnectionLayer),
-);
+const connectionLayer = Layer.merge(
+  mobileBackgroundActivityReporterLayer,
+  pullRequestDiffLoaderLayer,
+).pipe(Layer.provideMerge(providedClientConnectionLayer));
 
 export const connectionAtomRuntime: Atom.AtomRuntime<
   Layer.Success<ConnectionLayerSource>,

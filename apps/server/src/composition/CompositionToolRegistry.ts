@@ -193,6 +193,16 @@ const descriptors = [
     source: "t3",
   },
   {
+    // Canvas 只写入 Code Work 自己管理的结构化分析文档，不直接执行模型生成的代码。
+    capabilityId: "t3.canvas.create",
+    kind: "tool",
+    version: "1",
+    status: "available",
+    grants: { read: false, execute: false, mutate: true },
+    approval: "never",
+    source: "t3",
+  },
+  {
     // Model-invoked delegation (original cursor-byok Task-tool parity). The
     // handler only exists when the BYOK delegation service is layered in; the
     // delegated worker is an external CLI with no access to this ToolBroker,
@@ -213,6 +223,29 @@ const agentToolSignatures: ReadonlyMap<
   string,
   { readonly description: string; readonly parameters: Record<string, unknown> }
 > = new Map([
+  [
+    "canvas.create",
+    {
+      description:
+        "仅当用户需要独立的分析交付物时创建可保存、信息密度高且易扫读的结构化 Canvas（架构评审、审计、代码地图、数据分析、对比、流程和风险）；定向实现、调试或其他明确交付物不要使用。优先提供简洁摘要、在有证据时提供 2-4 个关键统计、关系/流程与风险章节、带行号的文件定位，以及用于有效对比的紧凑表格。按信息层级组织区块；每个区块都必须来自已检查的项目证据，省略空内容和推测内容；没有真实内容时不要调用工具。表格必须使用具体且自描述的列名，并在适用时标明单位、来源或时间范围；只接受非空 section、stat、file、table，不要自行创建文件或生成可执行 UI 代码。",
+      parameters: {
+        type: "object",
+        properties: {
+          cwd: { type: "string", description: "当前工作区根目录的绝对路径。" },
+          canvasId: { type: "string", description: "可选的稳定 ID；相同 ID 会更新同一个 Canvas。" },
+          title: { type: "string", description: "Canvas 标题。" },
+          summary: { type: "string", description: "可选的分析摘要。" },
+          blocks: {
+            type: "array",
+            description:
+              "按信息层级组织的非空内容块：优先关键 stat，再放关系/流程/风险 section，使用带行号的 file 定位和必要的 table 对比；表格列名要具体、自描述，并在适用时标明单位、来源或时间范围；不要填充空区块或未经证实的内容。支持 section、stat、file、table。",
+            items: { type: "object" },
+          },
+        },
+        required: ["cwd", "title", "blocks"],
+      },
+    },
+  ],
   [
     "workspace.read_file",
     {

@@ -13,6 +13,10 @@ import packageJson from "../../package.json" with { type: "json" };
 import * as McpInvocationContext from "./McpInvocationContext.ts";
 import * as McpSessionRegistry from "./McpSessionRegistry.ts";
 import * as PreviewAutomationBroker from "./PreviewAutomationBroker.ts";
+import { CanvasToolkit } from "./toolkits/canvas/tools.ts";
+import { CanvasToolkitHandlersLive } from "./toolkits/canvas/handlers.ts";
+import { ImagegenToolkit } from "./toolkits/imagegen/tools.ts";
+import { ImagegenToolkitHandlersLive } from "./toolkits/imagegen/handlers.ts";
 import {
   PreviewSnapshotToolkitHandlersLive,
   PreviewStandardToolkitHandlersLive,
@@ -216,6 +220,14 @@ export const PreviewToolkitRegistrationLive = Layer.mergeAll(
   PreviewSnapshotRegistrationLive,
 );
 
+export const CanvasToolkitRegistrationLive = McpServer.toolkit(CanvasToolkit).pipe(
+  Layer.provide(CanvasToolkitHandlersLive),
+);
+
+export const ImagegenToolkitRegistrationLive = McpServer.toolkit(ImagegenToolkit).pipe(
+  Layer.provide(ImagegenToolkitHandlersLive),
+);
+
 const McpTransportLive = McpServer.layerHttp({
   name: "Code Work",
   version: packageJson.version,
@@ -223,4 +235,8 @@ const McpTransportLive = McpServer.layerHttp({
   protocols: [McpProtocol.v2025_06_18],
 }).pipe(Layer.provide(McpAuthMiddlewareLive));
 
-export const layer = PreviewToolkitRegistrationLive.pipe(Layer.provideMerge(McpTransportLive));
+export const layer = Layer.mergeAll(
+  PreviewToolkitRegistrationLive,
+  CanvasToolkitRegistrationLive,
+  ImagegenToolkitRegistrationLive,
+).pipe(Layer.provideMerge(McpTransportLive));

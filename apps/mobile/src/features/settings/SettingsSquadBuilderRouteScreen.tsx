@@ -14,11 +14,12 @@ import type {
   CompositionSquad,
   CompositionSquadMember,
   CompositionSquadResult,
+  EnvironmentId,
   ProviderInstanceConfig,
   ProviderInstanceId,
   ServerSettings,
 } from "@codework/contracts";
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Platform, Pressable, RefreshControl, ScrollView, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Atom } from "effect/unstable/reactivity";
@@ -33,6 +34,7 @@ import { useEnvironmentQuery } from "../../state/query";
 import { serverEnvironment } from "../../state/server";
 import { useAtomCommand } from "../../state/use-atom-command";
 import { SettingsSquadBuilderForm } from "./SettingsSquadBuilderForm";
+import { SettingsEnvironmentPicker } from "./components/SettingsEnvironmentPicker";
 import { SettingsSquadModelBindingSummary } from "./SettingsSquadModelBindingSummary";
 import {
   buildSquadBuilderDuplicateRequest,
@@ -55,7 +57,10 @@ export function SettingsSquadBuilderRouteScreen() {
   const navigation = useNavigation();
   const insets = useSafeAreaInsets();
   const { environments } = useEnvironments();
-  const environmentId = environments[0]?.environmentId ?? null;
+  const [selectedEnvironmentId, setSelectedEnvironmentId] = useState<EnvironmentId | null>(
+    () => environments[0]?.environmentId ?? null,
+  );
+  const environmentId = selectedEnvironmentId;
   const settings = useAtomValue(
     environmentId === null
       ? EMPTY_SERVER_SETTINGS_ATOM
@@ -103,6 +108,18 @@ export function SettingsSquadBuilderRouteScreen() {
     [draft, editingSquad?.revision],
   );
   const activeBuildResult = editorMode === "edit" ? updateBuildResult : createBuildResult;
+
+  useEffect(() => {
+    if (
+      selectedEnvironmentId !== null &&
+      environments.some((item) => item.environmentId === selectedEnvironmentId)
+    ) {
+      return;
+    }
+    setSelectedEnvironmentId(environments[0]?.environmentId ?? null);
+    setEditorMode(null);
+    setEditingSquadId(null);
+  }, [environments, selectedEnvironmentId]);
 
   const startCreate = (): void => {
     setDraft(createEmptyCompositionSquadDraft());
@@ -227,6 +244,17 @@ export function SettingsSquadBuilderRouteScreen() {
           />
         }
       >
+        <SettingsEnvironmentPicker
+          environments={environments}
+          selectedEnvironmentId={environmentId}
+          disabled={actionPending || editorMode !== null}
+          onSelect={(next) => {
+            setSelectedEnvironmentId(next);
+            setEditorMode(null);
+            setEditingSquadId(null);
+            setActionError(null);
+          }}
+        />
         {environmentId === null ? null : (
           <View className="flex-row justify-end">
             <ActionButton

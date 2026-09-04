@@ -17,7 +17,7 @@ describe("SETTINGS_NAV_ITEMS", () => {
       label: "settings.squads",
       to: "/settings/squads",
     });
-    expect(t("settings.squads")).toBe("团队");
+    expect(t("settings.squads")).toBe("AI 团队");
     expect(t(SETTINGS_SECTION_LABELS["/settings/squads"])).toBe(t("settings.squads"));
   });
 

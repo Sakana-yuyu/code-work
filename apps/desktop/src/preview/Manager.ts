@@ -2466,6 +2466,7 @@ const makeNativeOperations = Effect.fn("PreviewManager.makeOperations")(function
     const id = `browser-screenshot-${artifactSiteSlug(wc.getURL())}-${millis.toString(36)}`;
     const artifactPath = path.join(resolvedArtifactDirectory, `${id}.png`);
     const data = image.toPNG();
+    const imageSize = image.getSize();
     yield* fileSystem.makeDirectory(resolvedArtifactDirectory, { recursive: true }).pipe(
       Effect.mapError(
         (cause) =>
@@ -2496,6 +2497,9 @@ const makeNativeOperations = Effect.fn("PreviewManager.makeOperations")(function
       path: artifactPath,
       mimeType: "image/png" as const,
       sizeBytes: data.byteLength,
+      dataUrl: `data:image/png;base64,${Buffer.from(data).toString("base64")}`,
+      width: imageSize.width,
+      height: imageSize.height,
       createdAt,
     };
   });

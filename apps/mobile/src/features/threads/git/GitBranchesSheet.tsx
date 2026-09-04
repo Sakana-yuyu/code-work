@@ -1,6 +1,8 @@
 import { sanitizeFeatureBranchName } from "@codework/shared/git";
+import type { GitResolvedPullRequest } from "@codework/contracts";
+import { parsePullRequestReference } from "@codework/shared/pullRequestReference";
 import { useNavigation, type StaticScreenProps } from "@react-navigation/native";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { Platform, Pressable, ScrollView, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -13,6 +15,7 @@ import { useSelectedThreadGitActions } from "../../../state/use-selected-thread-
 import { useSelectedThreadGitState } from "../../../state/use-selected-thread-git-state";
 import { useSelectedThreadWorktree } from "../../../state/use-selected-thread-worktree";
 import { vcsEnvironment } from "../../../state/vcs";
+import { gitEnvironment } from "../../../state/git";
 import { SheetActionButton } from "./gitSheetComponents";
 import { t } from "../../../i18n";
 
@@ -24,7 +27,7 @@ type GitBranchesSheetProps = StaticScreenProps<{
 export function GitBranchesSheet(_props: GitBranchesSheetProps) {
   const navigation = useNavigation();
   const insets = useSafeAreaInsets();
-  const { selectedThread } = useThreadSelection();
+  const { selectedThread, selectedThreadProject } = useThreadSelection();
   const { selectedThreadCwd, selectedThreadWorktreePath } = useSelectedThreadWorktree();
   const gitState = useSelectedThreadGitState();
   const gitActions = useSelectedThreadGitActions();
@@ -45,6 +48,10 @@ export function GitBranchesSheet(_props: GitBranchesSheetProps) {
   const busy = gitState.gitOperationLabel !== null;
 
   const [newBranchName, setNewBranchName] = useState("");
+  const [pullRequestReferenceInput, setPullRequestReferenceInput] = useState("");
+  const [preparingPullRequestMode, setPreparingPullRequestMode] = useState<
+    "local" | "worktree" | null
+  >(null);
   const [worktreeBaseBranch, setWorktreeBaseBranch] = useState(
     currentBranchLabel === "Detached HEAD" ? "main" : currentBranchLabel,
   );
@@ -57,6 +64,43 @@ export function GitBranchesSheet(_props: GitBranchesSheetProps) {
     }
   }
   const disabledExistingBranches = new Set(disabledExistingBranchNames);
+  const pullRequestReference = useMemo(
+    () => parsePullRequestReference(pullRequestReferenceInput),
+    [pullRequestReferenceInput],
+  );
+  const pullRequestResolution = useEnvironmentQuery(
+    selectedThread !== null &&
+      selectedThreadProject !== null &&
+      selectedThreadProject.workspaceRoot.length > 0 &&
+      pullRequestReference !== null
+      ? gitEnvironment.pullRequestResolution({
+          environmentId: selectedThread.environmentId,
+          input: {
+            cwd: selectedThreadProject.workspaceRoot,
+            reference: pullRequestReference,
+          },
+        })
+      : null,
+  );
+  const resolvedPullRequest: GitResolvedPullRequest | null =
+    pullRequestResolution.data?.pullRequest ?? null;
+  const pullRequestInputInvalid =
+    pullRequestReferenceInput.trim().length > 0 && pullRequestReference === null;
+  const preparePullRequest = async (mode: "local" | "worktree") => {
+    if (pullRequestReference === null || resolvedPullRequest === null || preparingPullRequestMode) {
+      return;
+    }
+    setPreparingPullRequestMode(mode);
+    const result = await gitActions.onCheckoutSelectedThreadPullRequest({
+      reference: pullRequestReference,
+      mode,
+    });
+    setPreparingPullRequestMode(null);
+    if (result !== null) {
+      setPullRequestReferenceInput("");
+      navigation.goBack();
+    }
+  };
 
   return (
     <View collapsable={false} className="flex-1 bg-sheet">
@@ -69,6 +113,79 @@ export function GitBranchesSheet(_props: GitBranchesSheetProps) {
         contentInset={{ bottom: Math.max(insets.bottom, 18) + 18 }}
         contentContainerClassName="gap-4 px-5 pt-2"
       >
+        <View className="gap-2 rounded-[18px] border border-border bg-card px-4 py-4">
+          <Text className="text-foreground-secondary text-2xs font-codework-bold tracking-[1px] uppercase">
+            {t("git.checkoutPullRequest")}
+          </Text>
+          <Text className="text-foreground-muted text-xs leading-snug">
+            {t("git.checkoutPullRequestDescription")}
+          </Text>
+          <TextInput
+            autoCapitalize="none"
+            autoCorrect={false}
+            value={pullRequestReferenceInput}
+            onChangeText={setPullRequestReferenceInput}
+            placeholder={t("git.pullRequestReferencePlaceholder")}
+            className="rounded-[18px]"
+          />
+          {pullRequestInputInvalid ? (
+            <Text className="text-danger-foreground text-xs">
+              {t("git.pullRequestReferenceInvalid")}
+            </Text>
+          ) : null}
+          {pullRequestResolution.isPending && pullRequestReference !== null ? (
+            <Text className="text-foreground-muted text-xs">
+              {t("git.preparingPullRequestThread")}
+            </Text>
+          ) : null}
+          {resolvedPullRequest ? (
+            <View className="gap-0.5 rounded-xl border border-border-subtle bg-subtle px-3 py-2">
+              <Text className="text-foreground text-sm font-codework-bold" numberOfLines={1}>
+                {resolvedPullRequest.title}
+              </Text>
+              <Text className="text-foreground-muted text-xs" numberOfLines={1}>
+                #{resolvedPullRequest.number} · {resolvedPullRequest.headBranch} →{" "}
+                {resolvedPullRequest.baseBranch}
+              </Text>
+            </View>
+          ) : null}
+          {pullRequestResolution.error ? (
+            <Text className="text-danger-foreground text-xs">{pullRequestResolution.error}</Text>
+          ) : null}
+          <View className="flex-row gap-2">
+            <SheetActionButton
+              icon="arrow.triangle.branch"
+              label={
+                preparingPullRequestMode === "local"
+                  ? t("git.preparingPullRequestThread")
+                  : t("git.pullRequestCheckoutLocal")
+              }
+              disabled={
+                busy ||
+                pullRequestInputInvalid ||
+                resolvedPullRequest === null ||
+                pullRequestResolution.isPending
+              }
+              onPress={() => void preparePullRequest("local")}
+            />
+            <SheetActionButton
+              icon="square.split.2x1"
+              label={
+                preparingPullRequestMode === "worktree"
+                  ? t("git.preparingPullRequestThread")
+                  : t("git.pullRequestCheckoutWorktree")
+              }
+              disabled={
+                busy ||
+                pullRequestInputInvalid ||
+                resolvedPullRequest === null ||
+                pullRequestResolution.isPending
+              }
+              onPress={() => void preparePullRequest("worktree")}
+            />
+          </View>
+        </View>
+
         <View className="gap-2 rounded-[18px] border border-border bg-card px-4 py-4">
           <Text className="text-foreground-secondary text-2xs font-codework-bold tracking-[1px] uppercase">
             {t("newBranch")}

@@ -147,9 +147,9 @@ ssh -L 34338:127.0.0.1:34338 <host>
 
 In **Clerk Dashboard > JWT templates**, create a template with:
 
-| Setting | Value                        |
-| ------- | ---------------------------- |
-| Name    | `t3-relay`                   |
+| Setting | Value                          |
+| ------- | ------------------------------ |
+| Name    | `t3-relay`                     |
 | Claims  | `{ "aud": "code-work-relay" }` |
 
 Set `CODEWORK_CLERK_JWT_TEMPLATE=t3-relay` in the repository-root `.env`, and set
@@ -229,7 +229,7 @@ binary from another:
 ```sh
 VITE_DEV_SERVER_URL=http://127.0.0.1:5733 \
 CODEWORK_PORT=13773 \
-  "/Applications/Code Work (Alpha).app/Contents/MacOS/Code Work (Alpha)"
+  "/Applications/Code Work.app/Contents/MacOS/Code Work"
 ```
 
 After changing Associated Domains, bump the build version before rebuilding; macOS may otherwise
@@ -238,8 +238,8 @@ reuse stale Shared Web Credentials metadata for the same app/version pair.
 Verify the installed bundle before testing:
 
 ```sh
-codesign --verify --deep --strict "/Applications/Code Work (Alpha).app"
-codesign -d --entitlements :- "/Applications/Code Work (Alpha).app"
+codesign --verify --deep --strict "/Applications/Code Work.app"
+codesign -d --entitlements :- "/Applications/Code Work.app"
 ```
 
 The current mobile UI uses Clerk's native authentication view. If a future mobile browser OAuth

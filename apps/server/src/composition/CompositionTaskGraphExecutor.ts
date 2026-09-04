@@ -218,6 +218,29 @@ const errorCode = (error: unknown): string => {
 const isTaskAlreadyExistsError = Schema.is(CompositionTaskAlreadyExistsError);
 const isTaskRetryInvalidError = Schema.is(CompositionTaskRetryInvalidError);
 
+/** Runtime mirror of the contract clamp capping children arrays at 64. */
+export const TASK_GRAPH_MAX_BATCH_CONCURRENCY = 64;
+/** Bounded default when a raw RPC graph omits maxConcurrency. */
+export const TASK_GRAPH_DEFAULT_BATCH_CONCURRENCY = 8;
+
+/**
+ * How many ready children one dispatch wave may start (pure). Serial always
+ * runs one child at a time; parallel defaults to 8 concurrent children when
+ * maxConcurrency is omitted (the raw RPC exposure — the squad path always
+ * passes one) and caps an explicit maxConcurrency at 64.
+ */
+export function taskGraphBatchLimit(
+  schedule: "serial" | "parallel",
+  maxConcurrency: number | undefined,
+  readyCount: number,
+): number {
+  if (schedule === "serial") return 1;
+  if (maxConcurrency === undefined) {
+    return Math.max(1, Math.min(readyCount, TASK_GRAPH_DEFAULT_BATCH_CONCURRENCY));
+  }
+  return Math.min(Math.max(1, Math.trunc(maxConcurrency)), TASK_GRAPH_MAX_BATCH_CONCURRENCY);
+}
+
 const sameTaskIds = (left: ReadonlyArray<string>, right: ReadonlyArray<string>): boolean =>
   left.length === right.length && left.every((value, index) => value === right[index]);
 
@@ -1157,7 +1180,7 @@ const make = (options: GraphExecutorOptions): CompositionTaskGraphExecutorShape 
         }
 
         const schedule = input.schedule ?? "parallel";
-        const batchLimit = schedule === "serial" ? 1 : (input.maxConcurrency ?? ready.length);
+        const batchLimit = taskGraphBatchLimit(schedule, input.maxConcurrency, ready.length);
         const scheduled = ready.slice(0, batchLimit);
         const runReady = (node: CompositionTaskGraphNodeInput) =>
           startNode(

@@ -5,6 +5,7 @@ import {
   ProviderRequestKind,
 } from "@codework/contracts";
 import type {
+  CanvasReference,
   OrchestrationLatestTurn,
   OrchestrationThread,
   OrchestrationThreadActivity,
@@ -12,6 +13,7 @@ import type {
   TurnId,
   UserInputQuestion,
 } from "@codework/contracts";
+import { parseCanvasReference } from "@codework/shared/canvas";
 import { formatDuration } from "@codework/shared/orchestrationTiming";
 
 import * as Arr from "effect/Array";
@@ -49,6 +51,8 @@ export interface ThreadFeedActivity {
   readonly summary: string;
   readonly detail: string | null;
   readonly canExpand: boolean;
+  /** MCP Canvas 结果；点击工作日志可直接打开结构化产物。 */
+  readonly canvas?: CanvasReference;
   readonly getFullDetail: () => string | null;
   readonly getCopyText: () => string;
   readonly icon:
@@ -87,6 +91,7 @@ interface WorkLogEntry {
   requestKind?: PendingApproval["requestKind"];
   toolLifecycleStatus?: WorkLogToolLifecycleStatus;
   toolData?: unknown;
+  canvas?: CanvasReference;
 }
 
 interface DerivedWorkLogEntry extends WorkLogEntry {
@@ -433,6 +438,10 @@ function toDerivedWorkLogEntry(activity: OrchestrationThreadActivity): DerivedWo
     if (data?.item !== undefined) {
       entry.toolData = data.item;
     }
+    const canvas = parseCanvasReference(data?.canvas ?? data?.result ?? data?.item);
+    if (canvas) {
+      entry.canvas = canvas;
+    }
   }
   if (itemType) {
     entry.itemType = itemType;
@@ -517,6 +526,7 @@ function mergeDerivedWorkLogEntries(
   const collapseKey = next.collapseKey ?? previous.collapseKey;
   const toolLifecycleStatus = next.toolLifecycleStatus ?? previous.toolLifecycleStatus;
   const toolData = next.toolData ?? previous.toolData;
+  const canvas = next.canvas ?? previous.canvas;
   return {
     ...previous,
     ...next,
@@ -530,6 +540,7 @@ function mergeDerivedWorkLogEntries(
     ...(collapseKey ? { collapseKey } : {}),
     ...(toolLifecycleStatus ? { toolLifecycleStatus } : {}),
     ...(toolData !== undefined ? { toolData } : {}),
+    ...(canvas !== undefined ? { canvas } : {}),
   };
 }
 
@@ -1593,6 +1604,7 @@ export function buildThreadFeed(
               summary,
               detail,
               canExpand: workEntryHasExpandedBody(entry),
+              ...(entry.canvas ? { canvas: entry.canvas } : {}),
               getFullDetail,
               getCopyText,
               icon: workEntryIcon(entry),

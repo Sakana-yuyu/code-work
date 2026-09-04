@@ -39,6 +39,9 @@ import { CompositionToolInvocationStoreLive } from "./persistence/Layers/Composi
 import { CompositionGoalLoopRetryStoreLive } from "./persistence/Layers/CompositionGoalLoopRetryStore.ts";
 import { WorkspaceScriptStoreLive } from "./persistence/Layers/WorkspaceScriptStore.ts";
 import { ThreadGoalStoreLive } from "./persistence/Layers/ThreadGoalStore.ts";
+import { SpecWorkflowCapabilityStoreLive } from "./persistence/Layers/SpecWorkflowCapabilityStore.ts";
+import { SpecWorkflowStateStoreLive } from "./persistence/Layers/SpecWorkflowStateStore.ts";
+import { SpecWorkflowArtifactStoreLive } from "./specWorkflow/SpecWorkflowArtifactStore.ts";
 import * as ServerLifecycleEvents from "./serverLifecycleEvents.ts";
 import * as AnalyticsService from "./telemetry/AnalyticsService.ts";
 import { ProviderSessionDirectoryLive } from "./provider/Layers/ProviderSessionDirectory.ts";
@@ -56,6 +59,7 @@ import * as BitbucketApi from "./sourceControl/BitbucketApi.ts";
 import * as GitHubCli from "./sourceControl/GitHubCli.ts";
 import * as GitLabCli from "./sourceControl/GitLabCli.ts";
 import * as TextGeneration from "./textGeneration/TextGeneration.ts";
+import { byokGatewayRouteLayer } from "./provider/byok/modelGateway.ts";
 import { ProviderInstanceRegistryHydrationLive } from "./provider/Layers/ProviderInstanceRegistryHydration.ts";
 import * as TerminalManager from "./terminal/Manager.ts";
 import * as McpHttpServer from "./mcp/McpHttpServer.ts";
@@ -85,6 +89,7 @@ import * as CompositionRuntimeAdapterRegistry from "./composition/CompositionRun
 import * as CompositionRuntimeAgentDriverProjection from "./composition/CompositionRuntimeAgentDriverProjection.ts";
 import * as CompositionRuntimeSettings from "./composition/CompositionRuntimeSettings.ts";
 import * as CompositionOrchestratorService from "./composition/CompositionOrchestratorService.ts";
+import * as SpecWorkflowService from "./specWorkflow/SpecWorkflowService.ts";
 import * as CompositionGoalLoopAutomationRunner from "./composition/CompositionGoalLoopAutomationRunner.ts";
 import * as CompositionSquadModelBindingResolver from "./composition/CompositionSquadModelBindingResolver.ts";
 import * as CompositionSquadPlanner from "./composition/CompositionSquadPlanner.ts";
@@ -324,6 +329,15 @@ const ProviderLayerLive = ProviderServiceLive.pipe(
 const PersistenceLayerLive = Layer.empty.pipe(Layer.provideMerge(SqlitePersistenceLayerLive));
 
 const ThreadGoalStoreLayerLive = ThreadGoalStoreLive.pipe(Layer.provideMerge(PersistenceLayerLive));
+const SpecWorkflowCapabilityStoreLayerLive = SpecWorkflowCapabilityStoreLive.pipe(
+  Layer.provideMerge(PersistenceLayerLive),
+);
+const SpecWorkflowStateStoreLayerLive = SpecWorkflowStateStoreLive.pipe(
+  Layer.provideMerge(PersistenceLayerLive),
+);
+const SpecWorkflowArtifactStoreLayerLive = SpecWorkflowArtifactStoreLive.pipe(
+  Layer.provide(WorkspacePaths.layer),
+);
 
 const VcsDriverRegistryLayerLive = VcsDriverRegistry.layer.pipe(
   Layer.provide(VcsProjectConfig.layer),
@@ -442,9 +456,17 @@ const CompositionToolInvocationCoordinatorLayerLive =
     Layer.provide(CompositionToolInvocationStoreLayerLive),
   );
 
+const CompositionTaskStoreLayerLive = CompositionTaskStoreLive.pipe(
+  Layer.provideMerge(PersistenceLayerLive),
+);
+
 const ByokDelegationServiceLayerLive = ByokDelegationService.layer.pipe(
   Layer.provideMerge(ServerSettingsLayerLive),
   Layer.provideMerge(FetchHttpClient.layer),
+  // 线程内发起的委派把 task.* 生命周期活动写回该线程（Agents 面板桥接）；
+  // 同时补齐台账投影的 CompositionTaskStore（此前 live 装配同样缺席）。
+  Layer.provideMerge(OrchestrationLayerLive),
+  Layer.provideMerge(CompositionTaskStoreLayerLive),
 );
 
 const CompositionToolBrokerLayerLive = CompositionToolBroker.persistentLayer.pipe(
@@ -475,9 +497,6 @@ const CompositionAgentServiceLayerLive = CompositionAgentService.layer.pipe(
 
 const CompositionRuntimeMcpSessionRegistryLayerLive = CompositionRuntimeMcpSessionRegistry.layer;
 
-const CompositionTaskStoreLayerLive = CompositionTaskStoreLive.pipe(
-  Layer.provideMerge(PersistenceLayerLive),
-);
 const CompositionGoalLoopRetryStoreLayerLive = CompositionGoalLoopRetryStoreLive.pipe(
   Layer.provideMerge(PersistenceLayerLive),
 );
@@ -552,6 +571,19 @@ const CompositionRuntimeLayerLive = CompositionTaskRuntimeProjectionService.laye
   Layer.provideMerge(CompositionRuntimeDependenciesLive),
 );
 
+const CompositionGoalLoopAutomationRunnerLayerLive = CompositionGoalLoopAutomationRunner.layer.pipe(
+  Layer.provide(CompositionRuntimeLayerLive),
+);
+
+const SpecWorkflowServiceLayerLive = SpecWorkflowService.layer.pipe(
+  Layer.provide(CompositionOrchestratorLayerLive),
+  Layer.provide(CompositionRuntimeLayerLive),
+  Layer.provide(CompositionGoalLoopAutomationRunnerLayerLive),
+  Layer.provideMerge(SpecWorkflowCapabilityStoreLayerLive),
+  Layer.provideMerge(SpecWorkflowStateStoreLayerLive),
+  Layer.provideMerge(SpecWorkflowArtifactStoreLayerLive),
+);
+
 const CompositionTaskGraphExecutorLayerLive = CompositionTaskGraphExecutor.layer.pipe(
   Layer.provideMerge(CompositionRuntimeLayerLive),
 );
@@ -580,10 +612,6 @@ const CompositionSquadRunnerLayerLive = CompositionSquadRunner.layer.pipe(
   Layer.provide(CompositionTaskGraphExecutorLayerLive),
   Layer.provide(CompositionSquadExecutionStoreLayerLive),
   Layer.provideMerge(CompositionSquadModelBindingResolverLayerLive),
-);
-
-const CompositionGoalLoopAutomationRunnerLayerLive = CompositionGoalLoopAutomationRunner.layer.pipe(
-  Layer.provide(CompositionRuntimeLayerLive),
 );
 
 const CompositionAutomationStoreLayerLive = CompositionAutomationStoreLive.pipe(
@@ -674,7 +702,14 @@ const RuntimeCoreDependenciesWithoutWorkspaceScriptLive = ReactorLayerLive.pipe(
   Layer.provideMerge(Layer.mergeAll(TerminalLayerLive, PreviewLayerLive)),
   Layer.provideMerge(PreviewAutomationBrokerLayerLive),
   Layer.provideMerge(CompositionMcpRuntimeServiceLayerLive),
-  Layer.provideMerge(Layer.mergeAll(PersistenceLayerLive, ThreadGoalStoreLayerLive)),
+  Layer.provideMerge(
+    Layer.mergeAll(
+      PersistenceLayerLive,
+      ThreadGoalStoreLayerLive,
+      SpecWorkflowCapabilityStoreLayerLive,
+      SpecWorkflowStateStoreLayerLive,
+    ),
+  ),
   Layer.provideMerge(Keybindings.layer),
   Layer.provideMerge(ProviderRegistryLive),
   // The instance registry is the new routing keystone — text generation,
@@ -687,6 +722,7 @@ const RuntimeCoreDependenciesWithoutWorkspaceScriptLive = ReactorLayerLive.pipe(
   Layer.provideMerge(
     Layer.mergeAll(
       CompositionRuntimeLayerLive,
+      SpecWorkflowServiceLayerLive,
       CompositionGoalLoopRetryStartupRecoveryLayerLive,
       CompositionRunStartStartupRecoveryLayerLive,
       CompositionRuntimeToolBridgeLayerLive,
@@ -800,6 +836,7 @@ export const makeRoutesLayer = Layer.mergeAll(
       Layer.provide(environmentAuthenticatedAuthLayer),
     ),
     otlpTracesProxyRouteLayer,
+    byokGatewayRouteLayer,
     healthzRouteLayer,
     assetRouteLayer,
     attachmentUploadRouteLayer,
@@ -809,7 +846,13 @@ export const makeRoutesLayer = Layer.mergeAll(
     staticAndDevRouteLayer,
     websocketRpcRouteLayer,
   ),
-  McpHttpServer.layer.pipe(Layer.provide(McpSessionRegistry.layer)),
+  McpHttpServer.layer.pipe(
+    Layer.provide(McpSessionRegistry.layer),
+    Layer.provide(WorkspaceFileSystemLayerLive),
+    Layer.provide(ServerSettings.layer),
+    Layer.provide(WorkspacePaths.layer),
+    Layer.provideMerge(FetchHttpClient.layer),
+  ),
   CompositionRuntimeMcpServer.layer.pipe(
     Layer.provide(CompositionRuntimeMcpSessionRegistryLayerLive),
     Layer.provide(CompositionRuntimeToolBridgeLayerLive),

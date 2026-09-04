@@ -18,6 +18,7 @@ export interface CompositionSquadMemberDraft {
   agentId: string;
   role: CompositionSquadMemberRole;
   required: boolean;
+  personaPromptText: string;
   model: string;
   modelBinding: CompositionSquadMemberModelBinding | null;
   workspaceRoot: string;
@@ -60,6 +61,7 @@ const emptyMemberDraft = (): CompositionSquadMemberDraft => ({
   agentId: "",
   role: "leader",
   required: true,
+  personaPromptText: "",
   model: "",
   modelBinding: { kind: "team_default" },
   workspaceRoot: "",
@@ -141,6 +143,9 @@ export function buildCompositionSquadCreateRequest(
       ...(optionalTrimmed(member.model) === undefined
         ? {}
         : { model: optionalTrimmed(member.model) }),
+      ...(optionalTrimmed(member.personaPromptText) === undefined
+        ? {}
+        : { personaPrompt: optionalTrimmed(member.personaPromptText) }),
       ...(optionalTrimmed(member.workspaceRoot) === undefined
         ? {}
         : { workspaceRoot: optionalTrimmed(member.workspaceRoot) }),
@@ -191,6 +196,7 @@ export function draftFromCompositionSquad(squad: CompositionSquad): CompositionS
       order,
       required: true,
       capabilityIds: [],
+      personaPrompt: undefined,
       maxConcurrentTasks: 1,
     }));
 
@@ -216,6 +222,7 @@ export function draftFromCompositionSquad(squad: CompositionSquad): CompositionS
               agentId: member.agentId,
               role: member.role,
               required: member.required,
+              personaPromptText: member.personaPrompt ?? "",
               model: member.model ?? "",
               modelBinding: member.modelBinding === undefined ? null : { ...member.modelBinding },
               workspaceRoot: member.workspaceRoot ?? "",

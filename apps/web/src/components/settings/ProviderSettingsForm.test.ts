@@ -19,6 +19,7 @@ describe("ProviderSettingsForm helpers", () => {
       "homePath",
       "shadowHomePath",
       "launchArgs",
+      "routeThroughByok",
     ]);
   });
 
@@ -46,6 +47,7 @@ describe("ProviderSettingsForm helpers", () => {
       "homePath",
       "autoCompactWindow",
       "launchArgs",
+      "routeThroughByok",
     ]);
   });
 

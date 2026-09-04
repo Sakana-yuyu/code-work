@@ -437,7 +437,9 @@ export type CompositionSquadPartialSuccessPolicy = typeof CompositionSquadPartia
 
 export const CompositionTaskGraphExecutionRequest = Schema.Struct({
   leader: CompositionTaskGraphLeaderRequest,
-  children: Schema.Array(CompositionTaskGraphNodeRequest),
+  // Mirrors the squad plan's 1..64 node cap: one graph may not fan out wider
+  // than a squad can, bounding unbounded child spawning server-side.
+  children: Schema.Array(CompositionTaskGraphNodeRequest).check(Schema.isMaxLength(64)),
   schedule: Schema.optional(Schema.Literals(["serial", "parallel"])),
   maxConcurrency: Schema.optional(PositiveInt),
   failurePolicy: Schema.optional(CompositionSquadFailurePolicy),
@@ -900,6 +902,8 @@ export const CompositionSquadMember = Schema.Struct({
   role: CompositionSquadMemberRole,
   order: NonNegativeInt,
   required: Schema.Boolean,
+  /** 成员人设：这个角色负责什么、按什么风格工作；注入到该成员的任务提示词。 */
+  personaPrompt: Schema.optional(TrimmedNonEmptyString.check(Schema.isMaxLength(2_000))),
   modelBinding: Schema.optional(CompositionSquadMemberModelBinding),
   /** 旧版自由文本模型字段，仅用于兼容既有持久化配置。 */
   model: Schema.optional(TrimmedNonEmptyString),

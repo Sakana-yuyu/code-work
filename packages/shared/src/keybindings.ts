@@ -58,6 +58,17 @@ export const DEFAULT_KEYBINDINGS: ReadonlyArray<KeybindingRule> = [
   })),
 ];
 
+export function shortcutToKeybindingInput(shortcut: KeybindingShortcut): string {
+  const parts: string[] = [];
+  if (shortcut.modKey) parts.push("mod");
+  if (shortcut.metaKey) parts.push("meta");
+  if (shortcut.ctrlKey) parts.push("ctrl");
+  if (shortcut.altKey) parts.push("alt");
+  if (shortcut.shiftKey) parts.push("shift");
+  parts.push(shortcut.key === " " ? "space" : shortcut.key === "escape" ? "esc" : shortcut.key);
+  return parts.join("+");
+}
+
 function normalizeKeyToken(token: string): string {
   if (token === "space") return " ";
   if (token === "esc") return "escape";

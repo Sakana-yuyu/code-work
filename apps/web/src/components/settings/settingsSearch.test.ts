@@ -19,6 +19,7 @@ const ITEMS: ReadonlyArray<SettingsSearchItem> = [
     id: "network-access",
     title: "Network access",
     to: "/settings/connections",
+    keywords: ["connections"],
   },
   {
     id: "providers",
@@ -38,10 +39,10 @@ const ITEMS: ReadonlyArray<SettingsSearchItem> = [
 ];
 
 describe("searchSettings", () => {
-  it("matches only setting titles", () => {
+  it("matches setting titles and beginner-friendly keywords", () => {
     expect(searchSettings("word", ITEMS).map((item) => item.id)).toEqual(["word-wrap"]);
     expect(searchSettings("network", ITEMS).map((item) => item.id)).toEqual(["network-access"]);
-    expect(searchSettings("connections", ITEMS)).toEqual([]);
+    expect(searchSettings("connections", ITEMS).map((item) => item.id)).toEqual(["network-access"]);
     expect(searchSettings("claude", ITEMS)).toEqual([]);
   });
 
@@ -115,21 +116,31 @@ describe("searchSettings", () => {
     });
   });
 
+  it("用萌新常用说法搜索到 AI 服务、密钥和远程连接", () => {
+    expect(searchSettings("模型").map((item) => item.id)).toContain("providers");
+    expect(searchSettings("API key").map((item) => item.id)).toContain("facility-byok");
+    expect(searchSettings("远程").map((item) => item.id)).toContain("remote-environments");
+  });
+
   it("indexes the Automation Center route", () => {
-    expect(SETTINGS_SEARCH_ITEMS).toContainEqual({
-      id: "composition-automations",
-      title: "automationCenter.title",
-      to: "/settings/automations",
-    });
+    expect(SETTINGS_SEARCH_ITEMS).toContainEqual(
+      expect.objectContaining({
+        id: "composition-automations",
+        title: "automationCenter.title",
+        to: "/settings/automations",
+      }),
+    );
   });
 
   it("indexes the standalone local plugins route", () => {
     expect(SETTINGS_SECTION_LABELS["/settings/local-plugins"]).toBe("localPlugins.title");
-    expect(SETTINGS_SEARCH_ITEMS).toContainEqual({
-      id: "local-plugins",
-      title: "localPlugins.title",
-      to: "/settings/local-plugins",
-    });
+    expect(SETTINGS_SEARCH_ITEMS).toContainEqual(
+      expect.objectContaining({
+        id: "local-plugins",
+        title: "localPlugins.title",
+        to: "/settings/local-plugins",
+      }),
+    );
     expect(searchSettings("local plugins")[0]).toMatchObject({
       id: "local-plugins",
       to: "/settings/local-plugins",

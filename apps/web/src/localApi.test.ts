@@ -113,6 +113,21 @@ describe("LocalApi", () => {
     await expect(createLocalApi().dialogs.confirm("Delete this thread?")).resolves.toBe(false);
   });
 
+  it("does not send local file targets to the browser or desktop shell", async () => {
+    const open = vi.fn().mockReturnValue(null);
+    Object.defineProperty(testWindow(), "open", { configurable: true, value: open });
+    const { createLocalApi } = await import("./localApi");
+
+    for (const target of [
+      "C:\\Users\\Administrator\\AppData\\Local\\Temp\\canvas.json",
+      "\\\\server\\share\\canvas.json",
+      "file:///C:/Users/Administrator/canvas.json",
+    ]) {
+      await expect(createLocalApi().shell.openExternal(target)).rejects.toThrow();
+    }
+    expect(open).not.toHaveBeenCalled();
+  });
+
   it("delegates host capabilities and persistence to the desktop bridge", async () => {
     const showContextMenu = vi.fn().mockResolvedValue("delete");
     const pickFolder = vi.fn().mockResolvedValue("/tmp/project");

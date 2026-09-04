@@ -1,5 +1,6 @@
-import type { ContextMenuItem } from "@codework/contracts";
+import type { ContextMenuItem, ScopedThreadRef } from "@codework/contracts";
 import type { SnoozePreset } from "@codework/client-runtime/state/thread-settled";
+import { scopedThreadKey } from "@codework/client-runtime/environment";
 import { t } from "~/i18n/runtime";
 
 /**
@@ -27,6 +28,21 @@ export type ThreadActionMenuId =
   | "archive"
   | "delete";
 
+/**
+ * "Open beside" only means something for a thread that is not already on
+ * screen: the main-view thread and the split-pane thread are both excluded,
+ * otherwise the action would silently do nothing.
+ */
+export function canOpenThreadBeside(
+  threadKey: string,
+  primaryThreadRef: ScopedThreadRef | null,
+  secondaryThreadRef: ScopedThreadRef | null,
+): boolean {
+  if (primaryThreadRef && scopedThreadKey(primaryThreadRef) === threadKey) return false;
+  if (secondaryThreadRef && scopedThreadKey(secondaryThreadRef) === threadKey) return false;
+  return true;
+}
+
 export interface ThreadActionMenuState {
   readonly branch: string | null;
   readonly isPinned: boolean;
@@ -36,6 +52,12 @@ export interface ThreadActionMenuState {
   readonly isRegeneratingTitle: boolean;
   /** Archive rejects a thread with an active turn, so disable it here rather than let the action fail. */
   readonly isRunning: boolean;
+  /**
+   * False when the thread is already on screen (the main view or the split
+   * pane): opening it beside would be a silent no-op, so the item stays
+   * visible but disabled instead.
+   */
+  readonly canOpenBeside: boolean;
   readonly supports: {
     readonly settlement: boolean;
     readonly snooze: boolean;
@@ -58,6 +80,7 @@ export function buildThreadActionMenuItems(
       id: "open-in-split",
       label: t("openThreadBeside"),
       icon: "message-square-plus",
+      disabled: !state.canOpenBeside,
     },
     ...(state.branch
       ? [

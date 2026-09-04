@@ -55,7 +55,9 @@ export function subscribeToHardwareKeyboardCommandRegistrations(listener: () => 
 export function dispatchHardwareKeyboardCommand(command: HardwareKeyboardCommand): boolean {
   const commandHandlers = handlers.get(command);
   if (!commandHandlers) return false;
-  for (const handler of [...commandHandlers].toReversed()) {
+  // Spread then reverse in place: Hermes doesn't ship the ES2023
+  // change-by-copy array methods.
+  for (const handler of [...commandHandlers].reverse()) {
     if (handler() !== false) return true;
   }
   return false;

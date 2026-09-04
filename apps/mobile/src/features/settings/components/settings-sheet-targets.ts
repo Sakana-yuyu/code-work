@@ -5,9 +5,22 @@ export type SettingsSheetTarget =
   | "SettingsProjectGrouping"
   | "SettingsClientStorage"
   | "SettingsUsage"
+  | "SettingsByok"
+  | "SettingsProviders"
+  | "SettingsServer"
+  | "SettingsIdeSessions"
+  | "SettingsRuntimeDrivers"
+  | "SettingsKeybindings"
+  | "SettingsSourceControl"
+  | "SettingsMcp"
+  | "SettingsWorkspaceScripts"
+  | "SettingsAutomations"
+  | "SettingsDiagnostics"
   | "SettingsControlCenter"
   | "SettingsSquadExecutionHistory"
   | "SettingsSquadBuilder"
+  | "SettingsTaskGraph"
+  | "SettingsTeamRuntime"
   | "SettingsSupplierRegistry";
 
 export type SettingsLegalDocumentTarget = "SettingsLegal";

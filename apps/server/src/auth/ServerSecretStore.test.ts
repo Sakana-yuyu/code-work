@@ -6,6 +6,7 @@ import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
+import * as Path from "effect/Path";
 import * as Ref from "effect/Ref";
 import * as PlatformError from "effect/PlatformError";
 
@@ -166,6 +167,80 @@ it.layer(NodeServices.layer)("ServerSecretStore.layer", (it) => {
       assert.deepEqual(Array.from(second), Array.from(first));
     }).pipe(Effect.provide(makeServerSecretStoreLayer())),
   );
+
+  it.effect("serves repeated reads from the in-memory cache and invalidates on writes", () => {
+    const readCounts = new Map<string, number>();
+    const countingFileSystemLayer = Layer.effect(
+      FileSystem.FileSystem,
+      Effect.gen(function* () {
+        const fileSystem = yield* FileSystem.FileSystem;
+
+        return {
+          ...fileSystem,
+          readFile: (path) =>
+            Effect.sync(() => {
+              const key = String(path);
+              readCounts.set(key, (readCounts.get(key) ?? 0) + 1);
+            }).pipe(Effect.flatMap(() => fileSystem.readFile(path))),
+        } satisfies FileSystem.FileSystem;
+      }),
+    ).pipe(Layer.provide(NodeServices.layer));
+    const readsOfCachedSecret = () => {
+      for (const [path, count] of readCounts) {
+        if (path.endsWith("cached-secret.bin")) return count;
+      }
+      return 0;
+    };
+
+    return Effect.gen(function* () {
+      const secretStore = yield* ServerSecretStore.ServerSecretStore;
+
+      yield* secretStore.set("cached-secret", new Uint8Array([1, 2, 3]));
+      const first = Option.getOrThrow(yield* secretStore.get("cached-secret"));
+      const second = Option.getOrThrow(yield* secretStore.get("cached-secret"));
+
+      assert.deepEqual(Array.from(second), Array.from(first));
+      assert.equal(readsOfCachedSecret(), 1);
+
+      yield* secretStore.set("cached-secret", new Uint8Array([9]));
+      const updated = Option.getOrThrow(yield* secretStore.get("cached-secret"));
+
+      assert.deepEqual(Array.from(updated), [9]);
+      assert.equal(readsOfCachedSecret(), 2);
+    }).pipe(
+      Effect.provide(
+        ServerSecretStore.layer.pipe(
+          Layer.provide(makeServerConfigLayer()),
+          Layer.provideMerge(countingFileSystemLayer),
+        ),
+      ),
+    );
+  });
+
+  it.effect("does not cache missing secrets, so externally created files stay visible", () => {
+    // One shared config layer instance feeds both the store and the test
+    // body, so the external write lands in the same secrets directory.
+    const configLayer = makeServerConfigLayer();
+    return Effect.gen(function* () {
+      const secretStore = yield* ServerSecretStore.ServerSecretStore;
+      const config = yield* ServerConfig.ServerConfig;
+      const fileSystem = yield* FileSystem.FileSystem;
+      const path = yield* Path.Path;
+
+      assert.isTrue(Option.isNone(yield* secretStore.get("external-secret")));
+      yield* fileSystem.writeFile(
+        path.join(config.secretsDir, "external-secret.bin"),
+        new Uint8Array([7]),
+      );
+
+      const afterCreate = yield* secretStore.get("external-secret");
+      assert.deepEqual(Array.from(Option.getOrThrow(afterCreate)), [7]);
+    }).pipe(
+      Effect.provide(
+        Layer.mergeAll(ServerSecretStore.layer.pipe(Layer.provide(configLayer)), configLayer),
+      ),
+    );
+  });
 
   it.effect("returns the persisted secret when concurrent creators race", () =>
     Effect.gen(function* () {

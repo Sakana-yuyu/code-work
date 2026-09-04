@@ -10,7 +10,7 @@ import {
   formatUsd,
 } from "@codework/shared/usageFormat";
 import { PROVIDER_ORDER, PROVIDER_PRESENTATION } from "./usageProviders";
-import { t } from "../../i18n";
+import { t, useResolvedLanguage } from "../../i18n";
 
 const VIEW_WIDTH = 960;
 const VIEW_HEIGHT = 260;
@@ -118,7 +118,7 @@ interface CurveSegment {
   readonly to: Point;
 }
 
-function smoothCurve(points: readonly Point[]): readonly CurveSegment[] {
+export function smoothCurve(points: readonly Point[]): readonly CurveSegment[] {
   if (points.length < 2) return [];
   const tangents = monotoneTangents(points);
   const segments: CurveSegment[] = [];
@@ -138,7 +138,7 @@ function smoothCurve(points: readonly Point[]): readonly CurveSegment[] {
   return segments;
 }
 
-function curvePath(segments: readonly CurveSegment[]): string {
+export function curvePath(segments: readonly CurveSegment[]): string {
   const first = segments[0];
   if (first === undefined) return "";
   let path = `M${first.from.x.toFixed(2)},${first.from.y.toFixed(2)}`;
@@ -199,6 +199,7 @@ export function UsageProviderChart({
   resolution,
   timeZone,
 }: UsageProviderChartProps) {
+  const language = useResolvedLanguage();
   const periods = resolution === "hour" ? hours : days;
   const byPeriod = useMemo(
     () =>
@@ -327,10 +328,21 @@ export function UsageProviderChart({
   const hoveredPeriod = hoverIndex === null ? undefined : periods[hoverIndex];
   const hoveredColumn = hoverIndex === null ? undefined : series[hoverIndex];
   const formatPeriod = (period: string) =>
-    resolution === "hour" ? formatHourShort(period, timeZone) : formatDayShort(period);
+    resolution === "hour"
+      ? formatHourShort(period, timeZone, language)
+      : formatDayShort(period, language);
   const formatTooltipPeriod = (period: string) =>
     resolution === "hour" && referenceTime !== undefined
-      ? formatRelativeHourShort(period, referenceTime, timeZone)
+      ? formatRelativeHourShort(
+          period,
+          referenceTime,
+          timeZone,
+          {
+            today: t("usage.relativeToday"),
+            yesterday: t("usage.relativeYesterday"),
+          },
+          language,
+        )
       : formatPeriod(period);
 
   return (
@@ -351,7 +363,7 @@ export function UsageProviderChart({
 
         <div
           ref={plotRef}
-          className="relative h-56 flex-1"
+          className="usage-chart-plot relative h-56 flex-1"
           onMouseMove={handleMove}
           onMouseLeave={() => {
             hoverPositionRef.current = null;

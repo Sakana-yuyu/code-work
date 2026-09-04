@@ -74,6 +74,15 @@ describe("normalizeExecutors", () => {
     expect(rows[0]?.enabled).toBe(true);
     expect(rows[0]?.environmentVariables).toEqual(["OPENAI_API_KEY", "CODEWORK_HOME"]);
   });
+
+  it("clamps oversized priority to MAX_EXECUTOR_PRIORITY (contract mirror)", () => {
+    const rows = normalizeExecutors([
+      executor({ id: "huge", priority: 20_000 }),
+      executor({ id: "edge", priority: 10_000 }),
+    ]);
+    expect(rows[0]?.priority).toBe(10_000);
+    expect(rows[1]?.priority).toBe(10_000);
+  });
 });
 
 describe("effectiveExecutorList", () => {

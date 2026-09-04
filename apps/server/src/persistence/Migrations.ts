@@ -85,6 +85,8 @@ import Migration0072 from "./Migrations/072_CompositionRunStartAcceptedOwnership
 import Migration0073 from "./Migrations/073_CompositionRunStartCancellationBarrier.ts";
 import Migration0074 from "./Migrations/074_WorkspaceScriptStopClaimFencing.ts";
 import Migration0069 from "./Migrations/069_ThreadGoals.ts";
+import Migration0075 from "./Migrations/075_SpecWorkflowCapabilities.ts";
+import Migration0076 from "./Migrations/076_SpecWorkflowEvents.ts";
 
 /**
  * Migration loader with all migrations defined inline.
@@ -172,6 +174,8 @@ export const migrationEntries = [
   [73, "CompositionRunStartCancellationBarrier", Migration0073],
   [74, "WorkspaceScriptStopClaimFencing", Migration0074],
   [69, "ThreadGoals", Migration0069],
+  [75, "SpecWorkflowCapabilities", Migration0075],
+  [76, "SpecWorkflowEvents", Migration0076],
 ] as const;
 
 export const migrationManifest = migrationEntries.map(([id, name]) => [id, name] as const);

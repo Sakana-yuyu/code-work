@@ -25,6 +25,11 @@ import {
   type UnifiedSettings,
 } from "@codework/contracts/settings";
 import { safeErrorLogAttributes } from "@codework/client-runtime/errors";
+import {
+  type AtomCommandResult,
+  isAtomCommandInterrupted,
+  squashAtomCommandFailure,
+} from "@codework/client-runtime/state/runtime";
 import { ensureLocalApi } from "~/localApi";
 import {
   getThemeDefinition,
@@ -311,21 +316,30 @@ export function usePrimarySettings<T = UnifiedSettings>(
  * Server keys are optimistically patched in atom-backed server state, then
  * persisted via RPC. Client keys go through client persistence.
  */
-function useUpdateSettingsTarget(environmentId: EnvironmentId | null) {
-  const persistServerSettings = useAtomCommand(
-    serverEnvironment.updateSettings,
-    "server settings update",
-  );
+type SettingsUpdateFailureHandler = (error: unknown) => void;
+type SettingsUpdateResult = AtomCommandResult<unknown, unknown> | null;
+
+function useUpdateSettingsTarget(
+  environmentId: EnvironmentId | null,
+  onServerUpdateFailure?: SettingsUpdateFailureHandler,
+) {
+  const persistServerSettings = useAtomCommand(serverEnvironment.updateSettings, {
+    reportFailure: onServerUpdateFailure === undefined,
+  });
   const updateSettings = useCallback(
-    (patch: UnifiedSettingsPatch) => {
+    async (patch: UnifiedSettingsPatch): Promise<SettingsUpdateResult> => {
       const { serverPatch, clientPatch } = splitPatch(patch);
+      let serverResult: SettingsUpdateResult = null;
 
       if (Object.keys(serverPatch).length > 0) {
         if (environmentId) {
-          void persistServerSettings({
+          serverResult = await persistServerSettings({
             environmentId,
             input: { patch: serverPatch },
           });
+          if (serverResult._tag === "Failure" && !isAtomCommandInterrupted(serverResult)) {
+            onServerUpdateFailure?.(squashAtomCommandFailure(serverResult));
+          }
         }
       }
       if (Object.keys(clientPatch).length > 0) {
@@ -334,19 +348,26 @@ function useUpdateSettingsTarget(environmentId: EnvironmentId | null) {
           ...clientPatch,
         });
       }
+      return serverResult;
     },
-    [environmentId, persistServerSettings],
+    [environmentId, onServerUpdateFailure, persistServerSettings],
   );
 
   return updateSettings;
 }
 
-export function useUpdateEnvironmentSettings(environmentId: EnvironmentId) {
-  return useUpdateSettingsTarget(environmentId);
+export function useUpdateEnvironmentSettings(
+  environmentId: EnvironmentId,
+  onServerUpdateFailure?: SettingsUpdateFailureHandler,
+) {
+  return useUpdateSettingsTarget(environmentId, onServerUpdateFailure);
 }
 
-export function useUpdatePrimarySettings() {
-  return useUpdateSettingsTarget(usePrimaryEnvironment()?.environmentId ?? null);
+export function useUpdatePrimarySettings(onServerUpdateFailure?: SettingsUpdateFailureHandler) {
+  return useUpdateSettingsTarget(
+    usePrimaryEnvironment()?.environmentId ?? null,
+    onServerUpdateFailure,
+  );
 }
 
 export function useUpdateClientSettings() {

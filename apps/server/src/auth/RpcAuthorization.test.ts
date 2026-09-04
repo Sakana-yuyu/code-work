@@ -112,6 +112,25 @@ describe("RPC authorization scopes", () => {
     }
   });
 
+  it("keeps Spec Workflow state reads separate from lifecycle mutations", () => {
+    for (const method of [
+      "thread/spec-workflow/get",
+      "thread/spec-workflow/subscribe",
+      "thread/spec-workflow/state/get",
+      "thread/spec-workflow/state/subscribe",
+    ]) {
+      expect(requiredScopeForRpcMethod(method)).toBe(AuthOrchestrationReadScope);
+    }
+    for (const method of [
+      "thread/spec-workflow/set",
+      "thread/spec-workflow/dispatch",
+      "thread/spec-workflow/pause",
+      "thread/spec-workflow/resume",
+    ]) {
+      expect(requiredScopeForRpcMethod(method)).toBe(AuthOrchestrationOperateScope);
+    }
+  });
+
   it("reads the reviewer menu under the same scope as the pull request it belongs to", () => {
     // The candidate list is a read like the detail beside it, and asking somebody for a review is
     // a write like every other pull request operation.

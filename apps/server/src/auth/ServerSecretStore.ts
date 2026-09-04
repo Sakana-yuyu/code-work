@@ -1,3 +1,4 @@
+import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
 import * as Crypto from "effect/Crypto";
 import * as Effect from "effect/Effect";
@@ -168,21 +169,49 @@ export const make = Effect.gen(function* () {
 
   const resolveSecretPath = (name: string) => path.join(serverConfig.secretsDir, `${name}.bin`);
 
+  // Hot paths read the same secrets on every RPC and poller tick (pairing
+  // auth, session signing, provider tokens); on hosts where opening a file
+  // costs milliseconds (antivirus filter drivers) an uncached read taxes each
+  // call. Positive-only memoization: found values are cached briefly, misses
+  // are never cached so a secret created by another process (e.g. the pair
+  // CLI) is visible on the next read, and every write through this store
+  // drops the entry immediately. Expiry uses the monotonic clock so a
+  // backward wall-clock adjustment cannot keep an entry alive.
+  const SECRET_READ_CACHE_TTL_NANOS = 60_000_000_000n;
+  const readCache = new Map<string, { value: Uint8Array; expiresAtNanos: bigint }>();
+
   const get: ServerSecretStore["Service"]["get"] = (name) =>
-    fileSystem.readFile(resolveSecretPath(name)).pipe(
-      Effect.map((bytes) => Option.some(Uint8Array.from(bytes))),
-      Effect.catch((cause) =>
-        cause.reason._tag === "NotFound"
-          ? Effect.succeed(Option.none())
-          : Effect.fail(
-              new SecretStoreReadError({
-                resource: `secret ${name}`,
-                cause,
-              }),
-            ),
-      ),
-      Effect.withSpan("ServerSecretStore.get"),
-    );
+    Effect.gen(function* () {
+      const cached = readCache.get(name);
+      if (cached !== undefined) {
+        const nowNanos = yield* Clock.currentTimeNanos;
+        if (cached.expiresAtNanos > nowNanos) {
+          return Option.some(Uint8Array.from(cached.value));
+        }
+        readCache.delete(name);
+      }
+      const read = yield* fileSystem.readFile(resolveSecretPath(name)).pipe(
+        Effect.map((bytes) => Option.some(Uint8Array.from(bytes))),
+        Effect.catch((cause) =>
+          cause.reason._tag === "NotFound"
+            ? Effect.succeed(Option.none())
+            : Effect.fail(
+                new SecretStoreReadError({
+                  resource: `secret ${name}`,
+                  cause,
+                }),
+              ),
+        ),
+      );
+      if (Option.isSome(read)) {
+        const nowNanos = yield* Clock.currentTimeNanos;
+        readCache.set(name, {
+          value: Uint8Array.from(read.value),
+          expiresAtNanos: nowNanos + SECRET_READ_CACHE_TTL_NANOS,
+        });
+      }
+      return read;
+    }).pipe(Effect.withSpan("ServerSecretStore.get"));
 
   const set: ServerSecretStore["Service"]["set"] = (name, value) => {
     const secretPath = resolveSecretPath(name);
@@ -201,6 +230,7 @@ export const make = Effect.gen(function* () {
           yield* fileSystem.chmod(tempPath, 0o600);
           yield* fileSystem.rename(tempPath, secretPath);
           yield* fileSystem.chmod(secretPath, 0o600);
+          readCache.delete(name);
         }).pipe(
           Effect.catch((cause) =>
             fileSystem.remove(tempPath).pipe(
@@ -232,6 +262,7 @@ export const make = Effect.gen(function* () {
         yield* file.writeAll(value);
         yield* file.sync;
         yield* fileSystem.chmod(secretPath, 0o600);
+        readCache.delete(name);
       }),
     ).pipe(
       Effect.mapError(
@@ -288,6 +319,10 @@ export const make = Effect.gen(function* () {
 
   const remove: ServerSecretStore["Service"]["remove"] = (name) =>
     fileSystem.remove(resolveSecretPath(name)).pipe(
+      Effect.flatMap(() => {
+        readCache.delete(name);
+        return Effect.void;
+      }),
       Effect.catch((cause) =>
         cause.reason._tag === "NotFound"
           ? Effect.void

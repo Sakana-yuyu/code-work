@@ -812,11 +812,15 @@ inputStoreLayer("CompositionTaskInputStore", (it) => {
       const store = yield* CompositionTaskInputStore;
       const input = {
         taskId: "task-input-1",
+        agentId: "agent-loop-executor",
         prompt: "读取私有配置并完成任务",
+        promptDigest: "sha256:workflow-handoff",
         workspaceRoot: "C:/workspace/project",
         workspaceRootDigest: "sha256:workspace",
         model: "provider/model",
         capabilityIds: ["t3.workspace.read_file", "t3.workspace.write_file"],
+        implementationAssigneeId: "agent-loop-executor",
+        independentVerifierId: "agent-independent-verifier",
       };
 
       yield* store.save(input);

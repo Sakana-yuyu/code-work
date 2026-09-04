@@ -49,6 +49,9 @@ import {
 import { VcsStatusBroadcaster } from "../../vcs/VcsStatusBroadcaster.ts";
 import { GitWorkflowService } from "../../git/GitWorkflowService.ts";
 import { ThreadGoalStore } from "../../persistence/Services/ThreadGoalStore.ts";
+import { SpecWorkflowCapabilityStore } from "../../persistence/Services/SpecWorkflowCapabilityStore.ts";
+import { SpecWorkflowService } from "../../specWorkflow/SpecWorkflowService.ts";
+import { formatSpecWorkflowAgentInput } from "../../specWorkflow/SpecWorkflowAgentProtocol.ts";
 const isProviderAdapterRequestError = Schema.is(ProviderAdapterRequestError);
 const isProviderDriverKind = Schema.is(ProviderDriverKind);
 
@@ -71,13 +74,19 @@ function toNonEmptyProviderInput(value: string | undefined): string | undefined 
   return normalized && normalized.length > 0 ? normalized : undefined;
 }
 
-function formatThreadGoalProviderInput(objective: string, userInput: string | undefined): string {
+function formatThreadGoalProviderInput(
+  goal: Pick<ThreadGoal, "objective" | "status" | "timeUsedSeconds" | "tokensUsed" | "tokenBudget">,
+  userInput: string | undefined,
+): string {
   // Codex update_plan 式收尾机制：是否达成由模型在回合末自报显式标记，
   // 服务端在回合终帧扫描标记并自动收敛 Goal 状态（见 ProviderRuntimeIngestion）。
   // “发送目标”会以目标文本本身发起首轮回合，此时不再重复 [User Request] 段。
   const lines = [
     "[Thread Goal]",
-    objective,
+    `目标：${goal.objective}`,
+    `状态：${goal.status === "active" ? "执行中" : goal.status === "paused" ? "已暂停" : goal.status}`,
+    `累计用时：${goal.timeUsedSeconds} 秒`,
+    `token 用量：${goal.tokensUsed}${goal.tokenBudget === null ? "" : ` / ${goal.tokenBudget}`}`,
     "",
     "Keep working toward this goal across turns without pausing to ask whether to continue.",
     "- If this reply fully achieves the goal, end the reply with [[GOAL_COMPLETE: one-line reason]].",
@@ -87,7 +96,7 @@ function formatThreadGoalProviderInput(objective: string, userInput: string | un
   if (
     userInput !== undefined &&
     userInput.trim().length > 0 &&
-    userInput.trim() !== objective.trim()
+    userInput.trim() !== goal.objective.trim()
   ) {
     lines.push("", "[User Request]", userInput);
   }
@@ -340,6 +349,8 @@ const make = Effect.gen(function* () {
   const serverSettingsService = yield* ServerSettingsService;
   const serverCommandId = (tag: string) =>
     crypto.randomUUIDv4.pipe(Effect.map((uuid) => CommandId.make(`server:${tag}:${uuid}`)));
+  const specWorkflowCapabilityStore = yield* Effect.serviceOption(SpecWorkflowCapabilityStore);
+  const specWorkflowService = yield* Effect.serviceOption(SpecWorkflowService);
   const serverEventId = () => crypto.randomUUIDv4.pipe(Effect.map(EventId.make));
   const handledTurnStartKeys = yield* Cache.make<string, true>({
     capacity: HANDLED_TURN_START_KEY_MAX,
@@ -528,6 +539,55 @@ const make = Effect.gen(function* () {
     return yield* projectionSnapshotQuery
       .getThreadDetailById(threadId)
       .pipe(Effect.map(Option.getOrUndefined));
+  });
+
+  const ensureSpecWorkflowStateForThread = Effect.fnUntraced(function* (input: {
+    readonly threadId: ThreadId;
+    readonly projectId: ProjectId;
+  }) {
+    if (Option.isNone(specWorkflowCapabilityStore) || Option.isNone(specWorkflowService)) {
+      return Option.none();
+    }
+    const capability = yield* specWorkflowCapabilityStore.value.get(input.threadId).pipe(
+      Effect.catchCause((cause) =>
+        Effect.logWarning("provider command reactor failed to read Spec Workflow capability", {
+          threadId: input.threadId,
+          cause: Cause.pretty(cause),
+        }).pipe(Effect.as(undefined)),
+      ),
+    );
+    if (capability?.enabled !== true) {
+      return Option.none();
+    }
+    const existing = yield* specWorkflowService.value.getState(input.threadId).pipe(
+      Effect.catchCause((cause) =>
+        Effect.logWarning("provider command reactor failed to read Spec Workflow state", {
+          threadId: input.threadId,
+          cause: Cause.pretty(cause),
+        }).pipe(Effect.as(Option.none())),
+      ),
+    );
+    if (Option.isSome(existing)) {
+      return existing;
+    }
+    return yield* specWorkflowService.value
+      .start({
+        workflowId: `thread:${input.threadId}`,
+        projectId: input.projectId,
+        threadId: input.threadId,
+        changeName: `thread-${input.threadId}`,
+        mode: "full",
+        updatedAt: 0,
+      })
+      .pipe(
+        Effect.map(Option.some),
+        Effect.catchCause((cause) =>
+          Effect.logWarning("provider command reactor failed to initialize Spec Workflow", {
+            threadId: input.threadId,
+            cause: Cause.pretty(cause),
+          }).pipe(Effect.as(Option.none())),
+        ),
+      );
   });
 
   const rejectStartedThreadModelChangeIfRequired = Effect.fnUntraced(function* (input: {
@@ -855,10 +915,21 @@ const make = Effect.gen(function* () {
               onSome: (goal) =>
                 goal.status === "complete"
                   ? normalizedInput
-                  : formatThreadGoalProviderInput(goal.objective, normalizedInput),
+                  : formatThreadGoalProviderInput(goal, normalizedInput),
             }),
           ),
         );
+    const specWorkflowState = yield* ensureSpecWorkflowStateForThread({
+      threadId: input.threadId,
+      projectId: thread.projectId,
+    });
+    const providerInputWithWorkflow = Option.match(specWorkflowState, {
+      onNone: () => providerInput,
+      onSome: (state) =>
+        state.status === "completed"
+          ? providerInput
+          : formatSpecWorkflowAgentInput(state, providerInput),
+    });
     const activeSession = yield* providerService
       .listSessions()
       .pipe(
@@ -889,7 +960,7 @@ const make = Effect.gen(function* () {
 
     return {
       threadId: input.threadId,
-      ...(providerInput ? { input: providerInput } : {}),
+      ...(providerInputWithWorkflow ? { input: providerInputWithWorkflow } : {}),
       ...(normalizedAttachments.length > 0 ? { attachments: normalizedAttachments } : {}),
       ...(modelForTurn !== undefined ? { modelSelection: modelForTurn } : {}),
       ...(input.interactionMode !== undefined ? { interactionMode: input.interactionMode } : {}),
@@ -1272,6 +1343,9 @@ const make = Effect.gen(function* () {
         ),
       );
 
+    // 先把暂停中的 Goal 恢复为本轮执行态，再读取上下文，避免模型看到过期的 paused 状态。
+    yield* syncThreadGoalStatus(event.payload.threadId, "active");
+
     const sendTurnRequest = yield* buildSendTurnRequestForThread({
       threadId: event.payload.threadId,
       messageText: message.text,
@@ -1290,7 +1364,6 @@ const make = Effect.gen(function* () {
       return;
     }
 
-    yield* syncThreadGoalStatus(event.payload.threadId, "active");
     yield* providerService
       .sendTurn(sendTurnRequest.value)
       .pipe(Effect.catchCause(recoverTurnStartFailure), Effect.forkScoped);

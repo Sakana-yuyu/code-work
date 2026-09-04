@@ -149,17 +149,29 @@ const input = {
 } as const;
 
 describe("CompositionGoalLoopAutomationRunner", () => {
-  it.effect("Goal Loop 成功后把同线程 Goal 持久化为 complete", () =>
+  it.effect("Goal Loop 成功后清除同线程 Goal", () =>
     Effect.gen(function* () {
       const harness = makeHarness(() => "修复完成 [[GOAL_COMPLETE: 已验证]]");
       const updates: Array<{ readonly threadId: string; readonly status: ThreadGoalStatus }> = [];
+      let clearCount = 0;
       const runner = makeCompositionGoalLoopAutomationRunner({
         ...harness.options,
         threadGoalStore: {
+          get: () => Effect.succeed(Option.some({ status: "active" } as ThreadGoal)),
           setStatus: (update: { readonly threadId: string; readonly status: ThreadGoalStatus }) =>
             Effect.sync(() => {
               updates.push(update);
               return {} as ThreadGoal;
+            }),
+          clear: () =>
+            Effect.sync(() => {
+              clearCount += 1;
+              return {
+                type: "cleared" as const,
+                threadId: input.threadId,
+                goalId: "goal-1",
+                clearedAt: 2_000,
+              };
             }),
         },
       } as unknown as CompositionGoalLoopAutomationRunnerOptions);
@@ -168,6 +180,7 @@ describe("CompositionGoalLoopAutomationRunner", () => {
       yield* runner.run(inputWithoutReviewer);
 
       assert.deepEqual(updates, [{ threadId: input.threadId, status: "complete" }]);
+      assert.equal(clearCount, 1);
     }),
   );
 

@@ -9,6 +9,7 @@ import * as ToolBroker from "./ToolBroker.ts";
 import {
   ByokAgentModelError,
   ByokAgentLoopMaxRoundsError,
+  byokAgentLoopMaxRounds,
   runByokAgentLoop,
   type ByokAgentModelDriver,
 } from "./ByokAgentLoop.ts";
@@ -44,6 +45,16 @@ const baseInput = {
     },
   ],
 };
+
+describe("byokAgentLoopMaxRounds (轮次预算归一化)", () => {
+  it("clamps the unclamped PositiveInt the RPC path accepts", () => {
+    expect(byokAgentLoopMaxRounds(undefined)).toBe(8);
+    expect(byokAgentLoopMaxRounds(10_000_000)).toBe(128);
+    expect(byokAgentLoopMaxRounds(0)).toBe(1);
+    expect(byokAgentLoopMaxRounds(3.9)).toBe(3);
+    expect(byokAgentLoopMaxRounds(Number.NaN)).toBe(8);
+  });
+});
 
 describe("ByokAgentLoop", () => {
   it("executes one tool call, deduplicates its terminal replay, reinjects the result, and continues", async () => {

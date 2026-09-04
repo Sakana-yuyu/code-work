@@ -128,6 +128,7 @@ export function ThreadWorkLog(props: {
   readonly iconSubtleColor: import("react-native").ColorValue;
   readonly onCopyRow: (rowId: string, value: string) => void;
   readonly onToggleRow: (rowId: string) => void;
+  readonly onOpenCanvas?: (canvas: import("@codework/contracts").CanvasReference) => void;
 }) {
   const pressedBackground = useThemeColor("--color-subtle");
   const rows = visibleWorkLogActivities(props.activities).map((activity) => ({
@@ -153,6 +154,7 @@ export function ThreadWorkLog(props: {
         {rows.map((row) => {
           const expanded = props.expandedRows[row.id] ?? false;
           const canExpand = row.canExpand;
+          const canOpenCanvas = row.canvas !== undefined && props.onOpenCanvas !== undefined;
           const fullDetail = expanded ? row.getFullDetail() : null;
           const displayText = row.detail ? `${row.summary} ${row.detail}` : row.summary;
           const iconIsDestructive = row.icon === "alert" || row.icon === "warning";
@@ -163,14 +165,23 @@ export function ThreadWorkLog(props: {
               {...(isFreshRow(row.createdAt) ? { entering: FadeIn.duration(200) } : {})}
             >
               <Pressable
-                accessibilityRole={canExpand ? "button" : undefined}
+                accessibilityRole={canExpand || canOpenCanvas ? "button" : undefined}
                 accessibilityLabel={displayText}
                 accessibilityHint={
-                  canExpand ? t("doubleTapToShowFullDetailsLongPressToCopy") : t("longPressToCopy")
+                  canOpenCanvas
+                    ? t("openCanvas")
+                    : canExpand
+                      ? t("doubleTapToShowFullDetailsLongPressToCopy")
+                      : t("longPressToCopy")
                 }
-                accessibilityState={canExpand ? { expanded } : undefined}
+                accessibilityState={canExpand && !canOpenCanvas ? { expanded } : undefined}
                 hitSlop={4}
                 onPress={() => {
+                  if (canOpenCanvas) {
+                    triggerDisclosureFeedback();
+                    props.onOpenCanvas?.(row.canvas!);
+                    return;
+                  }
                   if (canExpand) {
                     triggerDisclosureFeedback();
                     props.onToggleRow(row.id);
@@ -214,7 +225,14 @@ export function ThreadWorkLog(props: {
                       </Text>
                     ) : null}
                     <View className="h-4 w-4 items-center justify-center">
-                      {canExpand ? (
+                      {canOpenCanvas ? (
+                        <SymbolView
+                          name={{ ios: "square.grid.2x2", android: "apps" }}
+                          size={11}
+                          tintColor={props.iconSubtleColor}
+                          type="monochrome"
+                        />
+                      ) : canExpand ? (
                         <SymbolView
                           name={
                             expanded

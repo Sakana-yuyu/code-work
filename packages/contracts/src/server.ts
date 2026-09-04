@@ -194,6 +194,12 @@ export const ServerProvider = Schema.Struct({
   skills: Schema.Array(ServerProviderSkill).pipe(Schema.withDecodingDefault(Effect.succeed([]))),
   versionAdvisory: Schema.optionalKey(ServerProviderVersionAdvisory),
   updateState: Schema.optionalKey(ServerProviderUpdateState),
+  // Server-derived install affordance: true only when the driver has a
+  // package-managed channel (npm global) and this snapshot is not installed.
+  // Optional for back-compat with older servers; absent means "no button".
+  canInstall: Schema.optionalKey(Schema.Boolean),
+  // Live state of a one-click CLI install, same shape as `updateState`.
+  installState: Schema.optionalKey(ServerProviderUpdateState),
 });
 export type ServerProvider = typeof ServerProvider.Type;
 
@@ -602,6 +608,19 @@ export const ServerProviderUpdateInput = Schema.Struct({
   instanceId: Schema.optionalKey(ProviderInstanceId),
 });
 export type ServerProviderUpdateInput = typeof ServerProviderUpdateInput.Type;
+
+export class ServerProviderInstallError extends Schema.TaggedErrorClass<ServerProviderInstallError>()(
+  "ServerProviderInstallError",
+  {
+    provider: ProviderDriverKind,
+    reason: TrimmedNonEmptyString,
+    cause: Schema.optional(Schema.Defect()),
+  },
+) {
+  override get message(): string {
+    return `Provider install failed for ${this.provider}: ${this.reason}`;
+  }
+}
 
 export class ServerProviderUpdateError extends Schema.TaggedErrorClass<ServerProviderUpdateError>()(
   "ServerProviderUpdateError",

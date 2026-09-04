@@ -2082,7 +2082,7 @@ describe("ProviderRuntimeIngestion", () => {
     ).toBe("paused");
   });
 
-  it("completes the Goal and strips the marker when the final text declares completion", async () => {
+  it("completes, records, and clears the Goal when final text declares completion", async () => {
     const harness = await createHarness();
     const now = "2026-01-01T00:00:00.000Z";
     await Effect.runPromise(
@@ -2145,11 +2145,18 @@ describe("ProviderRuntimeIngestion", () => {
     );
     expect(message?.text).toBe("迁移完成");
 
-    const goal = await waitForGoalStatus(
-      () => Effect.runPromise(harness.goalStore.get(asThreadId("thread-1"))),
-      "complete",
+    const completedThread = await waitForThread(harness.readModel, (entry) =>
+      entry.activities.some((activity) => activity.kind === "goal.completed"),
     );
-    expect(goal.status).toBe("complete");
+    expect(
+      completedThread.activities.find((activity) => activity.kind === "goal.completed"),
+    ).toMatchObject({
+      summary: "全部测试通过目标已完成",
+      payload: { summary: "全部测试通过" },
+    });
+    expect(
+      Option.isNone(await Effect.runPromise(harness.goalStore.get(asThreadId("thread-1")))),
+    ).toBe(true);
   });
 
   it("pauses an active Goal when the provider requests approval or user input", async () => {
@@ -2285,11 +2292,12 @@ describe("ProviderRuntimeIngestion", () => {
       payload: { state: "completed" },
     });
 
-    const goal = await waitForGoalStatus(
-      () => Effect.runPromise(harness.goalStore.get(asThreadId("thread-1"))),
-      "complete",
+    await waitForThread(harness.readModel, (entry) =>
+      entry.activities.some((activity) => activity.kind === "goal.completed"),
     );
-    expect(goal.status).toBe("complete");
+    expect(
+      Option.isNone(await Effect.runPromise(harness.goalStore.get(asThreadId("thread-1")))),
+    ).toBe(true);
   });
 
   it("flushes and completes buffered assistant text when an approval request opens", async () => {

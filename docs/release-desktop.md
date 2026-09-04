@@ -24,6 +24,12 @@ git push origin desktop-v0.0.39
 - `latest.yml` — Electron 自动更新元数据（更新探测入口，必须随 Release 发布）
 - `SHA256SUMS.txt` — 全部附件校验和
 
+### Windows 安装器行为
+
+Windows 安装包使用标准 NSIS 安装向导。双击 `.exe` 后会先显示安装界面，
+用户可以确认安装并选择目标目录；选择 `D:\` 等目标位置后，安装器会自动创建
+`CodeWork` 子目录并将程序安装到该目录，不会直接静默安装到固定位置。
+
 ## tag 命名空间（重要）
 
 - `desktop-v*` → codework 桌面端（本工作流，根目录 release-desktop.yml）
@@ -45,7 +51,9 @@ git push origin desktop-v0.0.39
   需要时按上游 `codework/.github/workflows/release.yml` 扩展（签名密钥需配 GitHub secrets）。
 - 未捆绑 WSL node-pty 预编译产物（--wsl-prebuild 未传），WSL 后端首次启动需自行编译；
   与本地构建产物一致。
-- 桌面端应用内更新走 generic provider，指向 GitHub Release 下载地址即可被 electron-updater 探测。
+- 桌面端应用内更新走 GitHub Releases：构建默认把更新仓库指向 `Sakana-yuyu/code-work`，
+  可用 `CODEWORK_DESKTOP_UPDATE_REPOSITORY`（或 CI 的 `GITHUB_REPOSITORY`）覆盖；
+  mock 构建始终走本地 mock feed，不写入真实仓库。
 
 ## 本地构建（备用）
 

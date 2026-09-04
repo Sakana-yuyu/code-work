@@ -237,6 +237,49 @@ function makeThread(
 }
 
 describe("buildThreadFeed", () => {
+  it("exposes MCP Canvas results as an actionable work-log reference", () => {
+    const thread = makeThread({
+      id: ThreadId.make("thread-canvas"),
+      projectId: ProjectId.make("project-1"),
+      title: "Canvas result",
+      activities: [
+        makeActivity({
+          id: EventId.make("canvas-created"),
+          kind: "tool.completed",
+          tone: "tool",
+          summary: "Canvas created",
+          createdAt: "2026-04-01T00:00:01.000Z",
+          payload: {
+            itemType: "mcp_tool_call",
+            data: {
+              canvas: {
+                canvasId: "project-map",
+                title: "Project map",
+                relativePath: ".codework/canvases/thread/project-map.canvas.json",
+              },
+            },
+          },
+        }),
+      ],
+    });
+
+    expect(buildThreadFeed(thread)).toMatchObject([
+      {
+        type: "activity-group",
+        activities: [
+          {
+            id: "canvas-created",
+            canvas: {
+              canvasId: "project-map",
+              title: "Project map",
+              relativePath: ".codework/canvases/thread/project-map.canvas.json",
+            },
+          },
+        ],
+      },
+    ]);
+  });
+
   it("keeps older local feedback before newer messages returned by the server", () => {
     const submission = {
       id: MessageId.make("feedback-command-ordering"),

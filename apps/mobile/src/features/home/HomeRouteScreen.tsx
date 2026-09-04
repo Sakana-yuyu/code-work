@@ -1,6 +1,6 @@
 import * as Arr from "effect/Array";
 import * as Order from "effect/Order";
-import { useNavigation } from "@react-navigation/native";
+import { StackActions, useNavigation } from "@react-navigation/native";
 import { useEffect, useMemo, useState } from "react";
 import { Platform } from "react-native";
 
@@ -116,11 +116,18 @@ export function HomeRouteScreen() {
         />
         <WorkspaceSidebarToolbar
           afterSidebarButton={
-            <NativeHeaderToolbar.Button
-              accessibilityLabel={t("newTask")}
-              icon="square.and.pencil"
-              onPress={() => navigation.navigate("NewTaskSheet", { screen: "NewTask" })}
-            />
+            <>
+              <NativeHeaderToolbar.Button
+                accessibilityLabel={t("pullRequestsMobile.title")}
+                icon="arrow.triangle.pull"
+                onPress={() => navigation.navigate("PullRequests")}
+              />
+              <NativeHeaderToolbar.Button
+                accessibilityLabel={t("newTask")}
+                icon="square.and.pencil"
+                onPress={() => navigation.navigate("NewTaskSheet", { screen: "NewTask" })}
+              />
+            </>
           }
         />
         <WorkspaceEmptyDetail
@@ -166,6 +173,7 @@ export function HomeRouteScreen() {
               params: { screen: "SettingsEnvironments" },
             })
           }
+          onOpenPullRequests={() => navigation.navigate("PullRequests")}
           onOpenSettings={() =>
             navigation.navigate("SettingsSheet", {
               screen: "SettingsContent",
@@ -187,6 +195,7 @@ export function HomeRouteScreen() {
               params: { screen: "SettingsEnvironmentNew" },
             })
           }
+          onAddProject={() => navigation.dispatch(StackActions.push("AddProject"))}
           onArchiveThread={archiveThread}
           onDeleteThread={confirmDeleteThread}
           onSettleThread={settleThread}
@@ -227,6 +236,12 @@ export function HomeRouteScreen() {
               },
             });
           }}
+          onOpenProjectSettings={(project) =>
+            navigation.navigate("ProjectSettings", {
+              environmentId: String(project.environmentId),
+              projectId: String(project.id),
+            })
+          }
           onStartNewTask={() => navigation.navigate("NewTaskSheet", { screen: "NewTask" })}
           onThreadSortOrderChange={setThreadSortOrder}
           pendingTasks={pendingTasks}

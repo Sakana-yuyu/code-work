@@ -32,6 +32,7 @@ import { ChildProcessSpawner } from "effect/unstable/process";
 
 import { makeCodexTextGeneration } from "../../textGeneration/CodexTextGeneration.ts";
 import * as BackgroundPolicy from "../../background/BackgroundPolicy.ts";
+import { ServerSecretStore } from "../../auth/ServerSecretStore.ts";
 import { ServerConfig } from "../../config.ts";
 import { ServerSettingsService } from "../../serverSettings.ts";
 import { ProviderDriverError } from "../Errors.ts";
@@ -43,6 +44,13 @@ import * as ModelManifest from "../ModelManifest.ts";
 import type { ProviderDriver, ProviderInstance } from "../ProviderDriver.ts";
 import type { ServerProviderDraft } from "../providerSnapshot.ts";
 import { mergeProviderInstanceEnvironment } from "../ProviderInstanceEnvironment.ts";
+import {
+  BYOK_GATEWAY_TOKEN_ENV,
+  ensureGatewayToken,
+  gatewayCodexConfigArgs,
+  gatewayOrigin,
+  routedServerProviderModels,
+} from "../byok/modelGateway.ts";
 import {
   enrichProviderSnapshotWithVersionAdvisory,
   makePackageManagedProviderMaintenanceResolver,
@@ -83,6 +91,7 @@ export type CodexDriverEnv =
   | Path.Path
   | ProviderEventLoggers
   | ServerConfig
+  | ServerSecretStore
   | ServerSettingsService;
 
 /**
@@ -119,10 +128,26 @@ export const CodexDriver: ProviderDriver<CodexSettings, CodexDriverEnv> = {
     Effect.gen(function* () {
       const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
       const httpClient = yield* HttpClient.HttpClient;
+      const serverConfig = yield* ServerConfig;
       const serverSettings = yield* ServerSettingsService;
+      const secretStore = yield* ServerSecretStore;
       const eventLoggers = yield* ProviderEventLoggers;
       const modelManifest = yield* ModelManifest.ModelManifest;
-      const processEnv = mergeProviderInstanceEnvironment(environment);
+      const baseProcessEnv = mergeProviderInstanceEnvironment(environment);
+      // Gateway routing: the token travels through the environment (Codex's
+      // `env_key` mechanism reads it at request time); the `-c` overrides are
+      // passed as argv via `gatewayAppServerArgs` below.
+      const processEnv =
+        config.routeThroughByok === true
+          ? {
+              ...baseProcessEnv,
+              [BYOK_GATEWAY_TOKEN_ENV]: yield* ensureGatewayToken(secretStore),
+            }
+          : baseProcessEnv;
+      const gatewayAppServerArgs =
+        config.routeThroughByok === true
+          ? gatewayCodexConfigArgs(gatewayOrigin(serverConfig.port))
+          : undefined;
       const homeLayout = yield* resolveCodexHomeLayout(config);
       const continuationIdentity = codexContinuationIdentity(homeLayout);
       const stampIdentity = withInstanceIdentity({
@@ -161,6 +186,7 @@ export const CodexDriver: ProviderDriver<CodexSettings, CodexDriverEnv> = {
       const adapter = yield* makeCodexAdapter(effectiveConfig, {
         instanceId,
         environment: processEnv,
+        ...(gatewayAppServerArgs !== undefined ? { gatewayAppServerArgs } : {}),
         ...(eventLoggers.native ? { nativeEventLogger: eventLoggers.native } : {}),
       });
       const textGeneration = yield* makeCodexTextGeneration(effectiveConfig, processEnv);
@@ -203,7 +229,29 @@ export const CodexDriver: ProviderDriver<CodexSettings, CodexDriverEnv> = {
             enableProviderUpdateChecks: settings.enableProviderUpdateChecks,
           }).pipe(
             Effect.provideService(HttpClient.HttpClient, httpClient),
-            Effect.flatMap((enrichedSnapshot) => publishSnapshot(enrichedSnapshot)),
+            Effect.flatMap((enrichedSnapshot) => {
+              if (config.routeThroughByok !== true) {
+                return publishSnapshot(enrichedSnapshot);
+              }
+              // Routed models come from the live BYOK adapters, not the
+              // harness's own catalog, so resolve them per snapshot.
+              return serverSettings.getSettings.pipe(
+                Effect.orElseSucceed(() => undefined),
+                Effect.flatMap((currentSettings) =>
+                  publishSnapshot({
+                    ...enrichedSnapshot,
+                    ...(currentSettings === undefined
+                      ? {}
+                      : { models: routedServerProviderModels(currentSettings, "openai") }),
+                    auth: {
+                      status: "authenticated" as const,
+                      type: "byok",
+                      label: "BYOK Gateway",
+                    },
+                  }),
+                ),
+              );
+            }),
           ),
       }).pipe(
         Effect.mapError(

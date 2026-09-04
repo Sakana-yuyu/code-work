@@ -49,6 +49,19 @@ describe("openDiffFilePrimaryAction", () => {
     );
   });
 
+  it("does not send Canvas artifacts to the system editor without thread context", () => {
+    const openInEditor = vi.fn();
+
+    openDiffFilePrimaryAction({
+      threadRef: null,
+      filePath: ".codework/canvases/thread-1/Project-analysis.canvas.json",
+      activeCwd: "/repo/project",
+      openInEditor,
+    });
+
+    expect(openInEditor).not.toHaveBeenCalled();
+  });
+
   it("opens repository-relative diff files from a nested project", () => {
     const openInEditor = vi.fn();
 

@@ -4,6 +4,7 @@ import {
   type CSSProperties,
   type PointerEvent as ReactPointerEvent,
   type ReactNode,
+  useEffect,
   useCallback,
 } from "react";
 
@@ -22,6 +23,16 @@ export function ThreadSplitLayout(props: {
   const dividerRatio = useThreadSplitStore((state) => state.dividerRatio);
   const closeSecondaryThread = useThreadSplitStore((state) => state.closeSecondaryThread);
   const setDividerRatio = useThreadSplitStore((state) => state.setDividerRatio);
+  // Publish the main-view thread so menu builders can tell which threads are
+  // already on screen ("open beside" is a no-op for both panes).
+  useEffect(() => {
+    const state = useThreadSplitStore.getState();
+    const currentKey = state.primaryThreadRef ? scopedThreadKey(state.primaryThreadRef) : null;
+    const nextKey = primaryThreadRef ? scopedThreadKey(primaryThreadRef) : null;
+    if (currentKey !== nextKey) {
+      state.setPrimaryThreadRef(primaryThreadRef);
+    }
+  }, [primaryThreadRef]);
   const secondaryIsDistinct =
     secondaryThreadRef !== null &&
     scopedThreadKey(secondaryThreadRef) !==

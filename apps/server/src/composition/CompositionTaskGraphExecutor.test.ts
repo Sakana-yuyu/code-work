@@ -28,6 +28,7 @@ import { makeCompositionByokAgentDriver } from "./CompositionByokAgentDriver.ts"
 import { makeCompositionAgentDriverRegistry } from "./CompositionAgentDriverRegistry.ts";
 import {
   makeCompositionTaskGraphExecutor,
+  taskGraphBatchLimit,
   type CompositionTaskGraphCancellationReport,
   type CompositionTaskGraphCancellationReceipt,
   type CompositionTaskGraphExecutionInput,
@@ -311,6 +312,19 @@ const partialSuccessChildren = [
   },
 ];
 
+describe("taskGraphBatchLimit (并行批次硬上限)", () => {
+  it("bounds parallel wave size without changing serial semantics", () => {
+    // Raw RPC path omits maxConcurrency: default 8, capped by ready count.
+    expect(taskGraphBatchLimit("parallel", undefined, 20)).toBe(8);
+    expect(taskGraphBatchLimit("parallel", undefined, 5)).toBe(5);
+    // An explicit maxConcurrency is capped at the runtime mirror of the contract clamp.
+    expect(taskGraphBatchLimit("parallel", 100, 20)).toBe(64);
+    expect(taskGraphBatchLimit("parallel", 3, 20)).toBe(3);
+    expect(taskGraphBatchLimit("serial", 100, 20)).toBe(1);
+    expect(taskGraphBatchLimit("serial", undefined, 20)).toBe(1);
+  });
+});
+
 describe("CompositionTaskGraphExecutor", () => {
   it.effect("重复执行相同任务图时复用稳定 Task/Run 且不重复派发", () =>
     Effect.gen(function* () {
@@ -535,6 +549,36 @@ describe("CompositionTaskGraphExecutor", () => {
         "dispatch:task-b",
         "settle:task-b",
       ]);
+    }),
+  );
+
+  it.effect("parallel 调度未提供 maxConcurrency 时单波派发不超过 8 个子任务", () =>
+    Effect.gen(function* () {
+      const events: string[] = [];
+      const executor = makeSchedulingExecutor(events);
+      const children = Array.from({ length: 20 }, (_, index) => ({
+        nodeId: `node-${index}`,
+        taskId: `task-${index}`,
+        runId: `run-${index}`,
+        projectId: "project-graph",
+        assigneeKind: "agent" as const,
+        assigneeId: `agent-${index}`,
+        mode: "parallel" as const,
+        promptDigest: `sha256:${index}`,
+        prompt: `任务 ${index}`,
+        workspaceRoot: "C:/workspace",
+      }));
+
+      yield* executor.execute({ leader: baseLeader, children, schedule: "parallel" });
+
+      // 第一波只派发 8 个子任务即开始收口（8/8/4 三波），而非 20 个全量并发。
+      const firstSettleIndex = events.findIndex((event) => event.startsWith("settle:"));
+      const dispatchesBeforeFirstSettle = events
+        .slice(0, firstSettleIndex)
+        .filter((event) => event.startsWith("dispatch:")).length;
+      expect(dispatchesBeforeFirstSettle).toBe(8);
+      // 有界分批不影响完成度：20 个子任务与 Leader 全部派发。
+      expect(events.filter((event) => event.startsWith("dispatch:")).length).toBe(21);
     }),
   );
 

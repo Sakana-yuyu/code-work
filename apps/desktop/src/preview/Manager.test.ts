@@ -1724,7 +1724,10 @@ describe("PreviewManager", () => {
     withManager((manager) =>
       Effect.gen(function* () {
         const png = Buffer.from("preview-png");
-        const capturePage = vi.fn(async () => ({ toPNG: () => png }));
+        const capturePage = vi.fn(async () => ({
+          toPNG: () => png,
+          getSize: () => ({ width: 1280, height: 720 }),
+        }));
         const listeners = new Map<string, (...args: never[]) => void>();
         fromId.mockReturnValue({
           id: 42,
@@ -1775,6 +1778,9 @@ describe("PreviewManager", () => {
           tabId: "tab_1",
           mimeType: "image/png",
           sizeBytes: png.byteLength,
+          dataUrl: `data:image/png;base64,${png.toString("base64")}`,
+          width: 1280,
+          height: 720,
         });
         expect(artifact.path).toMatch(
           /\/browser-artifacts\/browser-screenshot-example-com-[^.]+\.png$/,

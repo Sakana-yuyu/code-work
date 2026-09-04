@@ -41,6 +41,7 @@ import { CompositionRunStartStartupReconciliation } from "./composition/Composit
 import type { CompositionRunStartRecoveryReconciliation } from "./composition/CompositionRunStartRecoveryPolicy.ts";
 import * as AnalyticsService from "./telemetry/AnalyticsService.ts";
 import * as ServerRuntimeStartup from "./serverRuntimeStartup.ts";
+import * as SpecWorkflowService from "./specWorkflow/SpecWorkflowService.ts";
 
 it("uses the canonical Codex default for auto-bootstrapped model selection", () => {
   assert.deepStrictEqual(ServerRuntimeStartup.getAutoBootstrapDefaultModelSelection(), {
@@ -148,6 +149,34 @@ it.effect("Run Start recovery gate waits for the shared startup recovery", () =>
     const gate = yield* ServerRuntimeStartup.awaitRunStartRecovery.pipe(
       Effect.ensuring(Deferred.succeed(completed, undefined).pipe(Effect.asVoid)),
       Effect.provideService(CompositionRunStartStartupRecovery, recovery),
+      Effect.forkChild,
+    );
+
+    yield* Deferred.await(entered);
+    assert.isFalse(yield* Deferred.isDone(completed));
+
+    yield* Deferred.succeed(release, undefined);
+    yield* Fiber.join(gate);
+    assert.isTrue(yield* Deferred.isDone(completed));
+  }),
+);
+
+it.effect("Spec Workflow recovery gate waits for the persisted association scan", () =>
+  Effect.gen(function* () {
+    const entered = yield* Deferred.make<void>();
+    const release = yield* Deferred.make<void>();
+    const completed = yield* Deferred.make<void>();
+    const service = {
+      recover: () =>
+        Deferred.succeed(entered, undefined).pipe(
+          Effect.andThen(Deferred.await(release)),
+          Effect.as({ scanned: 1, rebound: 1, settled: 0, skipped: 0 }),
+        ),
+    } as unknown as typeof SpecWorkflowService.SpecWorkflowService.Service;
+
+    const gate = yield* ServerRuntimeStartup.awaitSpecWorkflowRecovery.pipe(
+      Effect.ensuring(Deferred.succeed(completed, undefined).pipe(Effect.asVoid)),
+      Effect.provideService(SpecWorkflowService.SpecWorkflowService, service),
       Effect.forkChild,
     );
 

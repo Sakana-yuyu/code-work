@@ -62,6 +62,7 @@ import type {
   PreviewResizeInput,
   PreviewSessionSnapshot,
 } from "./preview.ts";
+import { PREVIEW_SCREENSHOT_DATA_URL_MAX_LENGTH } from "./preview.ts";
 import {
   PreviewAutomationClickInput,
   PreviewAutomationEvaluateInput,
@@ -753,18 +754,30 @@ export interface DesktopPreviewScreenshotArtifact {
   path: string;
   mimeType: "image/png";
   sizeBytes: number;
+  /** 可选的内存副本，用于手机端发起的远程截图回传。 */
+  dataUrl?: string;
+  /** 截图像素尺寸，用于把手机点击映射回电脑页面坐标。 */
+  width?: number;
+  height?: number;
   createdAt: string;
 }
 
-export const DesktopPreviewScreenshotArtifactSchema: Schema.Codec<DesktopPreviewScreenshotArtifact> =
-  Schema.Struct({
-    id: Schema.String,
-    tabId: DesktopPreviewTabIdSchema,
-    path: Schema.String,
-    mimeType: Schema.Literal("image/png"),
-    sizeBytes: Schema.Int,
-    createdAt: Schema.String,
-  });
+export const DesktopPreviewScreenshotArtifactSchema = Schema.Struct({
+  id: Schema.String,
+  tabId: DesktopPreviewTabIdSchema,
+  path: Schema.String,
+  mimeType: Schema.Literal("image/png"),
+  sizeBytes: Schema.Int,
+  dataUrl: Schema.optional(
+    Schema.String.check(
+      Schema.isMaxLength(PREVIEW_SCREENSHOT_DATA_URL_MAX_LENGTH),
+      Schema.isPattern(/^data:image\/png;base64,[a-z0-9+/]+={0,2}$/i),
+    ),
+  ),
+  width: Schema.optional(Schema.Int.check(Schema.isGreaterThan(0))),
+  height: Schema.optional(Schema.Int.check(Schema.isGreaterThan(0))),
+  createdAt: Schema.String,
+});
 
 /**
  * Single stack frame captured by react-grab's `getElementContext`. We surface

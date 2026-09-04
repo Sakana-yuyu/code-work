@@ -251,6 +251,36 @@ describe("ByokBalanceService", () => {
     expect(result.error?.code).toBe("unsupported_profile");
   });
 
+  it("overrides a stored none profile when the host has an official balance endpoint", async () => {
+    // Adapters created before DeepSeek gained a verified balance
+    // implementation carry a stamped `balanceProfile: "none"`; the official
+    // host detection must override that legacy stamp.
+    const result = await runBalance(
+      makeSettings("instance-deepseek-none", [
+        adapter({
+          baseURL: "https://api.deepseek.com/v1",
+          modelId: "deepseek-chat",
+          apiKey: "deepseek-test-key",
+          balanceProfile: "none",
+        }),
+      ]),
+      asFetch(async () =>
+        jsonResponse({
+          is_available: true,
+          balance_infos: [{ currency: "CNY", total_balance: "18.25" }],
+        }),
+      ),
+      { instanceId: "instance-deepseek-none", adapterId: "adapter-balance" },
+    );
+
+    expect(result).toMatchObject({
+      supported: true,
+      source: "deepseek",
+      currency: "CNY",
+      remaining: 18.25,
+    });
+  });
+
   it("dashboard 聚合全部 BYOK 实例并区分 ok/unsupported/error，不泄漏密钥", async () => {
     const settings = {
       ...DEFAULT_SERVER_SETTINGS,

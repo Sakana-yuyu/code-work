@@ -433,17 +433,9 @@ const defaultMemberPrompt = (
   [
     `目标：${goal}`,
     `你是 Squad「${squad.name}」中的 ${member.role}，负责完成与该角色匹配的独立工作。`,
+    member.personaPrompt === undefined ? undefined : `人设：${member.personaPrompt}`,
     squad.instructions === undefined ? undefined : `协同说明：${squad.instructions}`,
     "输出可验证的结果摘要，供 Leader 最终汇总。",
-  ]
-    .filter((line): line is string => line !== undefined)
-    .join("\n\n");
-
-const leaderPrompt = (squad: CompositionSquad, goal: string): string =>
-  [
-    `目标：${goal}`,
-    `你是 Squad「${squad.name}」的 Leader。请核对所有子 Agent 结果，处理冲突并形成最终结论。`,
-    squad.instructions === undefined ? undefined : `协同说明：${squad.instructions}`,
   ]
     .filter((line): line is string => line !== undefined)
     .join("\n\n");
@@ -650,7 +642,14 @@ export const compileCompositionSquadGraph = ({
         ...(failoverCandidates.length === 0 ? {} : { failoverCandidates }),
       };
     });
-    const finalPrompt = leaderPrompt(squad, input.goal);
+    const finalPrompt = [
+      `目标：${input.goal}`,
+      `你是 Squad「${squad.name}」的 Leader。请核对所有子 Agent 结果，处理冲突并形成最终结论。`,
+      leader.personaPrompt === undefined ? undefined : `人设：${leader.personaPrompt}`,
+      squad.instructions === undefined ? undefined : `协同说明：${squad.instructions}`,
+    ]
+      .filter((line): line is string => line !== undefined)
+      .join("\n\n");
     const leaderModel = resolvedModels.get(leader.agentId)!;
     return {
       leader: {

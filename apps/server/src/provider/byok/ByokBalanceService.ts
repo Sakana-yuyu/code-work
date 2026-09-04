@@ -305,16 +305,27 @@ export const make = Effect.gen(function* () {
           return { ...cached.result, cached: true };
         }
       }
-      if (profile !== "general" && profile !== "newapi" && profile !== "auto") {
+      // A stored "none" used to be stamped onto adapters whose supplier has
+      // since gained a verified balance implementation (e.g. DeepSeek), so a
+      // known-official host or supplier overrides the legacy opt-out; the
+      // query is user-initiated anyway. Everything else stays hard-opted-out.
+      const supportedProfile =
+        profile === "general" || profile === "newapi" || profile === "auto"
+          ? profile
+          : profile === "none" &&
+              (usesOfficialDeepSeekEndpoint(adapter.baseURL) || template.usage.status === "fixed")
+            ? ("auto" as const)
+            : null;
+      if (supportedProfile === null) {
         return failure(input, "manual", "unsupported_profile");
       }
       // Native Gemini has no public balance endpoint; auto mode would only
       // burn two doomed requests against the Google origin.
-      if (adapter.protocol === "gemini" && profile === "auto") {
+      if (adapter.protocol === "gemini" && supportedProfile === "auto") {
         return failure(input, "manual", "unsupported_profile");
       }
       const profiles: readonly ("general" | "newapi")[] =
-        profile === "auto" ? ["general", "newapi"] : [profile];
+        supportedProfile === "auto" ? ["general", "newapi"] : [supportedProfile];
       const attempts = usesOfficialDeepSeekEndpoint(adapter.baseURL)
         ? deepSeekAttempts(adapter)
         : profiles.flatMap((candidateProfile) => attemptsFor(adapter, candidateProfile));
@@ -397,6 +408,9 @@ export const make = Effect.gen(function* () {
                       ...(typeof adapter.displayName === "string" &&
                       adapter.displayName.trim() !== ""
                         ? { displayName: adapter.displayName }
+                        : {}),
+                      ...(typeof adapter.baseURL === "string" && adapter.baseURL.trim() !== ""
+                        ? { baseURL: adapter.baseURL }
                         : {}),
                       balance: result,
                     }),

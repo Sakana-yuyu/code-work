@@ -1,6 +1,7 @@
 import { useNavigation } from "@react-navigation/native";
 import type { CompositionSupplierRegistryResult } from "@codework/contracts";
 import { Platform, RefreshControl, ScrollView, View } from "react-native";
+import { useEffect, useState } from "react";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { AndroidScreenHeader } from "../../components/AndroidScreenHeader";
@@ -9,6 +10,7 @@ import { NativeStackScreenOptions } from "../../native/StackHeader";
 import { useEnvironments } from "../../state/environments";
 import { useEnvironmentQuery } from "../../state/query";
 import { serverEnvironment } from "../../state/server";
+import { SettingsEnvironmentPicker } from "./components/SettingsEnvironmentPicker";
 import { t } from "../../i18n";
 import {
   formatOrphanProfilesWarning,
@@ -22,12 +24,25 @@ export function SettingsSupplierRegistryRouteScreen() {
   const navigation = useNavigation();
   const insets = useSafeAreaInsets();
   const { environments } = useEnvironments();
-  const environmentId = environments[0]?.environmentId ?? null;
+  const [selectedEnvironmentId, setSelectedEnvironmentId] = useState(
+    () => environments[0]?.environmentId ?? null,
+  );
+  const environmentId = selectedEnvironmentId;
   const registryQuery = useEnvironmentQuery(
     environmentId === null
       ? null
       : serverEnvironment.supplierRegistry({ environmentId, input: {} }),
   );
+
+  useEffect(() => {
+    if (
+      selectedEnvironmentId !== null &&
+      environments.some((item) => item.environmentId === selectedEnvironmentId)
+    ) {
+      return;
+    }
+    setSelectedEnvironmentId(environments[0]?.environmentId ?? null);
+  }, [environments, selectedEnvironmentId]);
 
   const registry: CompositionSupplierRegistryResult | null = registryQuery.data;
   const orphanWarning =
@@ -63,6 +78,11 @@ export function SettingsSupplierRegistryRouteScreen() {
           />
         }
       >
+        <SettingsEnvironmentPicker
+          environments={environments}
+          selectedEnvironmentId={environmentId}
+          onSelect={setSelectedEnvironmentId}
+        />
         {environmentId === null ? (
           <StatusMessage text={t("supplierRegistry.noEnvironment")} />
         ) : registry === null && registryQuery.isPending ? (

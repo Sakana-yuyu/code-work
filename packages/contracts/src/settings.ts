@@ -374,13 +374,22 @@ export const CodexSettings = makeProviderSettingsSchema(
         description: "Additional CLI arguments passed to codex app-server on session start.",
       }),
     ),
+    routeThroughByok: Schema.Boolean.pipe(
+      Schema.withDecodingDefault(Effect.succeed(false)),
+      Schema.annotateKey({
+        title: "Route through BYOK gateway",
+        description:
+          "Serve this instance's models from the BYOK adapters instead of its own login. Official login stays untouched while off.",
+        providerSettingsForm: { control: "switch" },
+      }),
+    ),
     customModels: Schema.Array(Schema.String).pipe(
       Schema.withDecodingDefault(Effect.succeed([])),
       Schema.annotateKey({ providerSettingsForm: { hidden: true } }),
     ),
   },
   {
-    order: ["binaryPath", "homePath", "shadowHomePath", "launchArgs"],
+    order: ["binaryPath", "homePath", "shadowHomePath", "launchArgs", "routeThroughByok"],
   },
 );
 export type CodexSettings = typeof CodexSettings.Type;
@@ -441,9 +450,18 @@ export const ClaudeSettings = makeProviderSettingsSchema(
         },
       }),
     ),
+    routeThroughByok: Schema.Boolean.pipe(
+      Schema.withDecodingDefault(Effect.succeed(false)),
+      Schema.annotateKey({
+        title: "Route through BYOK gateway",
+        description:
+          "Serve this instance's models from the BYOK adapters instead of its own login. Official login stays untouched while off.",
+        providerSettingsForm: { control: "switch" },
+      }),
+    ),
   },
   {
-    order: ["binaryPath", "homePath", "autoCompactWindow", "launchArgs"],
+    order: ["binaryPath", "homePath", "autoCompactWindow", "launchArgs", "routeThroughByok"],
   },
 );
 export type ClaudeSettings = typeof ClaudeSettings.Type;
@@ -499,13 +517,22 @@ export const GrokSettings = makeProviderSettingsSchema(
         providerSettingsForm: { placeholder: "grok", clearWhenEmpty: "omit" },
       }),
     ),
+    routeThroughByok: Schema.Boolean.pipe(
+      Schema.withDecodingDefault(Effect.succeed(false)),
+      Schema.annotateKey({
+        title: "Route through BYOK gateway",
+        description:
+          "Serve this instance's models from the BYOK adapters by managing a marked block in the Grok CLI's config.toml.",
+        providerSettingsForm: { control: "switch" },
+      }),
+    ),
     customModels: Schema.Array(Schema.String).pipe(
       Schema.withDecodingDefault(Effect.succeed([])),
       Schema.annotateKey({ providerSettingsForm: { hidden: true } }),
     ),
   },
   {
-    order: ["binaryPath"],
+    order: ["binaryPath", "routeThroughByok"],
   },
 );
 export type GrokSettings = typeof GrokSettings.Type;
@@ -551,13 +578,22 @@ export const OpenCodeSettings = makeProviderSettingsSchema(
         },
       }),
     ),
+    routeThroughByok: Schema.Boolean.pipe(
+      Schema.withDecodingDefault(Effect.succeed(false)),
+      Schema.annotateKey({
+        title: "Route through BYOK gateway",
+        description:
+          "Serve this instance's models from the BYOK adapters instead of OpenCode's own provider config.",
+        providerSettingsForm: { control: "switch" },
+      }),
+    ),
     customModels: Schema.Array(Schema.String).pipe(
       Schema.withDecodingDefault(Effect.succeed([])),
       Schema.annotateKey({ providerSettingsForm: { hidden: true } }),
     ),
   },
   {
-    order: ["binaryPath", "serverUrl", "serverPassword"],
+    order: ["binaryPath", "serverUrl", "serverPassword", "routeThroughByok"],
   },
 );
 export type OpenCodeSettings = typeof OpenCodeSettings.Type;
@@ -653,6 +689,24 @@ export const ByokVisionDelegationConfig = Schema.Struct({
 export type ByokVisionDelegationConfig = typeof ByokVisionDelegationConfig.Type;
 
 /**
+ * Number setting clamped into a server-trusted range on decode: truncates to
+ * an integer, then coerces into [min, max]. Used for persisted delegation
+ * knobs so a weird settings file (hand-edited, older install) still decodes
+ * instead of bricking — the same bounds the web panel enforces client-side.
+ * Encode is the identity; the clamp is decoding-side only.
+ */
+const ClampedInt = (min: number, max: number) =>
+  Schema.Number.pipe(
+    Schema.decodeTo(
+      Schema.Number,
+      SchemaTransformation.transform<number, number>({
+        decode: (value) => Math.min(max, Math.max(min, Math.trunc(value))),
+        encode: (value) => value,
+      }),
+    ),
+  );
+
+/**
  * Supervision policy for delegated tasks (original cursor-byok parity): a
  * stronger "supervisor" model reviews each finished delegation result and
  * decides accept / retry / reassign / escalate within bounded budgets.
@@ -663,9 +717,9 @@ export const ByokDelegationSupervisionConfig = Schema.Struct({
   supervisorModelId: TrimmedString.pipe(Schema.withDecodingDefault(Effect.succeed(""))),
   // Optional second-pass reviewer; defaults to the supervisor adapter.
   reviewerModelId: TrimmedString.pipe(Schema.withDecodingDefault(Effect.succeed(""))),
-  maxCorrections: Schema.Number.pipe(Schema.withDecodingDefault(Effect.succeed(2))),
-  maxRetries: Schema.Number.pipe(Schema.withDecodingDefault(Effect.succeed(1))),
-  maxRounds: Schema.Number.pipe(Schema.withDecodingDefault(Effect.succeed(8))),
+  maxCorrections: ClampedInt(0, 20).pipe(Schema.withDecodingDefault(Effect.succeed(2))),
+  maxRetries: ClampedInt(0, 20).pipe(Schema.withDecodingDefault(Effect.succeed(1))),
+  maxRounds: ClampedInt(1, 50).pipe(Schema.withDecodingDefault(Effect.succeed(8))),
   allowReassign: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
   allowEscalate: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
   // When the supervisor is unavailable: fail the task instead of accepting it unreviewed.
@@ -697,7 +751,7 @@ export const ByokDelegationExecutor = Schema.Struct({
   id: TrimmedString,
   name: TrimmedString.pipe(Schema.withDecodingDefault(Effect.succeed(""))),
   enabled: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
-  priority: Schema.Number.pipe(Schema.withDecodingDefault(Effect.succeed(100))),
+  priority: ClampedInt(0, 10_000).pipe(Schema.withDecodingDefault(Effect.succeed(100))),
   command: TrimmedString.pipe(Schema.withDecodingDefault(Effect.succeed(""))),
   environmentVariables: Schema.Array(ByokDelegationEnvVarName).pipe(
     Schema.withDecodingDefault(Effect.succeed([])),
@@ -708,9 +762,13 @@ export type ByokDelegationExecutor = typeof ByokDelegationExecutor.Type;
 
 export const ByokDelegationConfig = Schema.Struct({
   enabled: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
-  maxConcurrency: Schema.Number.pipe(Schema.withDecodingDefault(Effect.succeed(4))),
-  queueTimeoutMs: Schema.Number.pipe(Schema.withDecodingDefault(Effect.succeed(30_000))),
-  executionTimeoutMs: Schema.Number.pipe(Schema.withDecodingDefault(Effect.succeed(120_000))),
+  maxConcurrency: ClampedInt(1, 16).pipe(Schema.withDecodingDefault(Effect.succeed(4))),
+  queueTimeoutMs: ClampedInt(1_000, Number.POSITIVE_INFINITY).pipe(
+    Schema.withDecodingDefault(Effect.succeed(30_000)),
+  ),
+  executionTimeoutMs: ClampedInt(1_000, Number.POSITIVE_INFINITY).pipe(
+    Schema.withDecodingDefault(Effect.succeed(120_000)),
+  ),
   modelGroups: Schema.Array(ByokDelegationModelGroup).pipe(
     Schema.withDecodingDefault(Effect.succeed([])),
   ),
@@ -722,13 +780,9 @@ export const ByokDelegationConfig = Schema.Struct({
     Schema.withDecodingDefault(Effect.succeed([])),
   ),
   // How many executor candidates one delegation may try before failing.
-  executorFailoverLimit: Schema.Number.pipe(Schema.withDecodingDefault(Effect.succeed(3))),
-  visionDelegation: ByokVisionDelegationConfig.pipe(
-    Schema.withDecodingDefault(Effect.succeed({})),
-  ),
-  supervision: ByokDelegationSupervisionConfig.pipe(
-    Schema.withDecodingDefault(Effect.succeed({})),
-  ),
+  executorFailoverLimit: ClampedInt(1, 5).pipe(Schema.withDecodingDefault(Effect.succeed(3))),
+  visionDelegation: ByokVisionDelegationConfig.pipe(Schema.withDecodingDefault(Effect.succeed({}))),
+  supervision: ByokDelegationSupervisionConfig.pipe(Schema.withDecodingDefault(Effect.succeed({}))),
   subagentProfiles: Schema.Array(ByokDelegationSubagentProfile).pipe(
     Schema.withDecodingDefault(Effect.succeed([])),
   ),
@@ -1036,6 +1090,7 @@ const CodexSettingsPatch = Schema.Struct({
   shadowHomePath: Schema.optionalKey(TrimmedString),
   launchArgs: Schema.optionalKey(TrimmedString),
   customModels: Schema.optionalKey(Schema.Array(Schema.String)),
+  routeThroughByok: Schema.optionalKey(Schema.Boolean),
 });
 
 const ClaudeSettingsPatch = Schema.Struct({
@@ -1049,6 +1104,7 @@ const ClaudeSettingsPatch = Schema.Struct({
   autoCompactWindow: Schema.optionalKey(
     TrimmedString.check(Schema.isPattern(CLAUDE_AUTO_COMPACT_WINDOW_PATTERN)),
   ),
+  routeThroughByok: Schema.optionalKey(Schema.Boolean),
 });
 
 const CursorSettingsPatch = Schema.Struct({
@@ -1062,6 +1118,7 @@ const GrokSettingsPatch = Schema.Struct({
   enabled: Schema.optionalKey(Schema.Boolean),
   binaryPath: Schema.optionalKey(TrimmedString),
   customModels: Schema.optionalKey(Schema.Array(Schema.String)),
+  routeThroughByok: Schema.optionalKey(Schema.Boolean),
 });
 
 const OpenCodeSettingsPatch = Schema.Struct({
@@ -1070,6 +1127,7 @@ const OpenCodeSettingsPatch = Schema.Struct({
   serverUrl: Schema.optionalKey(TrimmedString),
   serverPassword: Schema.optionalKey(TrimmedString),
   customModels: Schema.optionalKey(Schema.Array(Schema.String)),
+  routeThroughByok: Schema.optionalKey(Schema.Boolean),
 });
 
 const ByokSettingsPatch = Schema.Struct({

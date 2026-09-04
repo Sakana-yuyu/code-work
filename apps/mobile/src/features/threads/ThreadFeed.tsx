@@ -1,7 +1,13 @@
 import * as Haptics from "expo-haptics";
 import { KeyboardAwareLegendList } from "@legendapp/list/keyboard";
 import { type LegendListRef } from "@legendapp/list/react-native";
-import type { EnvironmentId, MessageId, ThreadId, TurnId } from "@codework/contracts";
+import type {
+  CanvasReference,
+  EnvironmentId,
+  MessageId,
+  ThreadId,
+  TurnId,
+} from "@codework/contracts";
 import { classifyMarkdownImageSource } from "@codework/client-runtime/markdown-images";
 import {
   CHAT_LIST_ANCHOR_OFFSET,
@@ -64,7 +70,7 @@ import {
   type SelectableMarkdownSkill,
 } from "../../native/SelectableMarkdownText";
 
-import { AppText as Text } from "../../components/AppText";
+import { AppText as Text, AppTextInput as TextInput } from "../../components/AppText";
 import { CopyTextButton } from "../../components/CopyTextButton";
 import {
   parseReviewCommentMessageSegments,
@@ -172,6 +178,11 @@ export interface ThreadFeedProps {
   readonly usesAutomaticContentInsets?: boolean;
   readonly onHeaderMaterialVisibilityChange?: (visible: boolean) => void;
   readonly onEndFollowEnabledChange?: (enabled: boolean) => void;
+  readonly onOpenCanvas?: (canvas: CanvasReference) => void;
+  readonly revertTurnCountByUserMessageId?: ReadonlyMap<MessageId, number | null>;
+  readonly onRevertToTurnCount?: (turnCount: number) => void;
+  readonly isRevertingCheckpoint?: boolean;
+  readonly onEditUserMessage?: (messageId: MessageId, text: string) => void;
   readonly skills?: ReadonlyArray<SelectableMarkdownSkill>;
   /** Non-null when older turns exist beyond the loaded window. */
   readonly loadEarlier?: {
@@ -976,9 +987,139 @@ function useMarkdownStyles(
   ]);
 }
 
+function UserMessageActions(props: {
+  readonly messageId: MessageId;
+  readonly text: string;
+  readonly timestampLabel: string;
+  readonly iconSubtleColor: string | import("react-native").ColorValue;
+  readonly revertTurnCount: number | undefined;
+  readonly canEdit: boolean;
+  readonly isRevertingCheckpoint: boolean;
+  readonly onRevertToTurnCount?: (turnCount: number) => void;
+  readonly onEditUserMessage?: (messageId: MessageId, text: string) => void;
+}) {
+  const [isEditing, setIsEditing] = useState(false);
+  const [draft, setDraft] = useState(props.text);
+  const canEdit = props.canEdit;
+
+  const startEditing = useCallback(() => {
+    setDraft(props.text);
+    setIsEditing(true);
+  }, [props.text]);
+  const cancelEditing = useCallback(() => {
+    setDraft(props.text);
+    setIsEditing(false);
+  }, [props.text]);
+  const submitEditing = useCallback(() => {
+    const trimmed = draft.trim();
+    if (!canEdit || trimmed.length === 0 || props.isRevertingCheckpoint) {
+      return;
+    }
+    setIsEditing(false);
+    props.onEditUserMessage?.(props.messageId, trimmed);
+  }, [canEdit, draft, props]);
+
+  if (isEditing) {
+    return (
+      <View className="mt-1 w-full items-end gap-1">
+        <TextInput
+          accessibilityLabel={t("editUserMessage.action")}
+          autoFocus
+          multiline
+          onChangeText={setDraft}
+          textAlignVertical="top"
+          value={draft}
+          className="max-h-48 min-h-20 w-[85%]"
+        />
+        <View className="w-[85%] flex-row justify-end gap-2 pr-0.5">
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={t("editUserMessage.cancel")}
+            hitSlop={6}
+            onPress={cancelEditing}
+            className="rounded-md px-2 py-1"
+          >
+            <Text className="text-xs text-foreground-muted">{t("editUserMessage.cancel")}</Text>
+          </Pressable>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={t("editUserMessage.send")}
+            disabled={draft.trim().length === 0 || props.isRevertingCheckpoint}
+            hitSlop={6}
+            onPress={submitEditing}
+            className="rounded-md px-2 py-1"
+          >
+            <Text className="text-xs text-foreground-muted">{t("editUserMessage.send")}</Text>
+          </Pressable>
+        </View>
+      </View>
+    );
+  }
+
+  return (
+    <View className="mt-1 flex-row items-center justify-end gap-1 pr-0.5">
+      <Text className="font-codework-medium text-xs tabular-nums text-neutral-600 dark:text-neutral-400">
+        {props.timestampLabel}
+      </Text>
+      {props.text.trim().length > 0 ? (
+        <CopyTextButton
+          accessibilityLabel={t("copyMessage")}
+          text={props.text}
+          tintColor={props.iconSubtleColor}
+          buttonSize={28}
+          iconSize={13}
+        />
+      ) : null}
+      {canEdit ? (
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={t("editUserMessage.action")}
+          disabled={props.isRevertingCheckpoint}
+          hitSlop={6}
+          onPress={startEditing}
+          className="rounded-md px-1 py-1"
+        >
+          <SymbolView
+            name="square.and.pencil"
+            size={14}
+            tintColor={props.iconSubtleColor}
+            type="monochrome"
+          />
+        </Pressable>
+      ) : null}
+      {props.revertTurnCount !== undefined && props.onRevertToTurnCount ? (
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={t("revertToThisMessage")}
+          disabled={props.isRevertingCheckpoint}
+          hitSlop={6}
+          onPress={() => props.onRevertToTurnCount?.(props.revertTurnCount as number)}
+          className="rounded-md px-1 py-1"
+        >
+          <SymbolView
+            name="arrow.uturn.backward"
+            size={14}
+            tintColor={props.iconSubtleColor}
+            type="monochrome"
+          />
+        </Pressable>
+      ) : null}
+    </View>
+  );
+}
+
 function renderFeedEntry(
   info: { item: ThreadFeedEntry; index: number },
-  props: Pick<ThreadFeedProps, "environmentId" | "skills"> & {
+  props: Pick<
+    ThreadFeedProps,
+    | "environmentId"
+    | "skills"
+    | "onOpenCanvas"
+    | "revertTurnCountByUserMessageId"
+    | "onRevertToTurnCount"
+    | "isRevertingCheckpoint"
+    | "onEditUserMessage"
+  > & {
     readonly copiedRowId: string | null;
     readonly expandedWorkRows: Record<string, boolean>;
     readonly terminalAssistantMessageIds: ReadonlySet<string>;
@@ -1042,6 +1183,8 @@ function renderFeedEntry(
   if (entry.type === "message") {
     const { message } = entry;
     const isUser = message.role === "user";
+    const editTarget = isUser ? props.revertTurnCountByUserMessageId?.get(message.id) : undefined;
+    const revertTurnCount = typeof editTarget === "number" ? editTarget : undefined;
     const styles = isUser ? markdownStyles.user : markdownStyles.assistant;
     const timestampLabel = formatMessageTime(isUser ? message.createdAt : message.updatedAt);
     const attachments = message.attachments ?? [];
@@ -1103,20 +1246,18 @@ function renderFeedEntry(
               );
             })}
           </View>
-          <View className="mt-1 flex-row items-center justify-end gap-1 pr-0.5">
-            <Text className="font-codework-medium text-xs tabular-nums text-neutral-600 dark:text-neutral-400">
-              {timestampLabel}
-            </Text>
-            {message.text.trim().length > 0 ? (
-              <CopyTextButton
-                accessibilityLabel={t("copyMessage")}
-                text={message.text}
-                tintColor={iconSubtleColor}
-                buttonSize={28}
-                iconSize={13}
-              />
-            ) : null}
-          </View>
+          <UserMessageActions
+            key={message.id}
+            messageId={message.id}
+            text={message.text}
+            timestampLabel={timestampLabel}
+            iconSubtleColor={iconSubtleColor}
+            revertTurnCount={revertTurnCount}
+            canEdit={editTarget !== undefined && message.text.trim().length > 0}
+            isRevertingCheckpoint={props.isRevertingCheckpoint === true}
+            onRevertToTurnCount={props.onRevertToTurnCount}
+            onEditUserMessage={props.onEditUserMessage}
+          />
         </Animated.View>
       );
     }
@@ -1190,6 +1331,7 @@ function renderFeedEntry(
       iconSubtleColor={iconSubtleColor}
       onCopyRow={props.onCopyWorkRow}
       onToggleRow={props.onToggleWorkRow}
+      onOpenCanvas={props.onOpenCanvas}
     />
   );
 }
@@ -2027,6 +2169,11 @@ export const ThreadFeed = memo(function ThreadFeed(props: ThreadFeedProps) {
         onCopyWorkRow,
         onToggleWorkGroup,
         onToggleWorkRow,
+        onOpenCanvas: props.onOpenCanvas,
+        revertTurnCountByUserMessageId: props.revertTurnCountByUserMessageId,
+        onRevertToTurnCount: props.onRevertToTurnCount,
+        isRevertingCheckpoint: props.isRevertingCheckpoint,
+        onEditUserMessage: props.onEditUserMessage,
         onToggleTurnFold,
         onPressImage,
         onMarkdownLinkPress,
@@ -2056,6 +2203,11 @@ export const ThreadFeed = memo(function ThreadFeed(props: ThreadFeedProps) {
       onToggleTurnFold,
       onToggleWorkGroup,
       onToggleWorkRow,
+      props.onOpenCanvas,
+      props.onRevertToTurnCount,
+      props.revertTurnCountByUserMessageId,
+      props.isRevertingCheckpoint,
+      props.onEditUserMessage,
       props.environmentId,
       props.skills,
       renderMarkdownImage,

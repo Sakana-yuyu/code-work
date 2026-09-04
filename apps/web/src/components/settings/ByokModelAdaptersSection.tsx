@@ -276,7 +276,10 @@ function SupplierTemplateIcon({
       <span
         className={cn(
           "inline-flex size-9 shrink-0 items-center justify-center rounded-md border",
-          template.iconLight ? "border-border bg-foreground" : "border-border/70 bg-background",
+          // iconLight marks monochrome currentColor marks, which render black
+          // inside <img>. They need a fixed light chip — bg-foreground flips to
+          // near-black in light mode and hides them.
+          template.iconLight ? "border-border bg-white" : "border-border/70 bg-background",
         )}
       >
         <img
@@ -361,7 +364,7 @@ interface ByokModelAdaptersSectionProps {
    * `providerInstances[id].config.adapters` via the same instance-update
    * path used by the custom-models editor.
    */
-  readonly onChange: (next: ReadonlyArray<ByokModelAdapter>) => void;
+  readonly onChange: (next: ReadonlyArray<ByokModelAdapter>) => boolean | PromiseLike<boolean>;
 }
 
 /**
@@ -382,6 +385,7 @@ export function ByokModelAdaptersSection({
   const [editing, setEditing] = useState<string | null>(null);
   const [form, setForm] = useState<AdapterFormState>(emptyFormState);
   const [error, setError] = useState<string | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
   const [pendingDelete, setPendingDelete] = useState<ByokModelAdapter | null>(null);
   const [relayDetailsTarget, setRelayDetailsTarget] = useState<ByokRelayDetailsTarget | null>(null);
   const catalogResult = useAtomValue(
@@ -389,24 +393,29 @@ export function ByokModelAdaptersSection({
   );
   const supplierTemplates = useMemo<ReadonlyArray<ByokSupplierTemplate>>(() => {
     const catalog = AsyncResult.isSuccess(catalogResult) ? catalogResult.value : [];
+    // The server catalog ships its own synthetic `custom` placeholder; the
+    // web-local entry above is the canonical one (i18n label). Dedupe by id
+    // so the picker shows one custom card and selection stays single-choice.
     return [
       CUSTOM_SUPPLIER_TEMPLATE,
-      ...catalog.map((entry: ByokSupplierCatalogEntry) => {
-        return {
-          id: entry.id,
-          label: entry.label,
-          protocol: entry.protocol,
-          baseURL: entry.defaultBaseURL,
-          ...(entry.iconURL ? { iconURL: entry.iconURL } : {}),
-          iconLight: entry.iconLight,
-          supplierID: entry.id,
-          ...(entry.modelCatalogURLs.length > 0
-            ? { modelCatalogURLs: entry.modelCatalogURLs }
-            : {}),
-          modelCatalogStatus: entry.modelCatalogStatus,
-          appendModelCatalogCandidates: entry.appendGeneratedCandidates,
-        };
-      }),
+      ...catalog
+        .filter((entry: ByokSupplierCatalogEntry) => entry.id !== CUSTOM_SUPPLIER_TEMPLATE.id)
+        .map((entry: ByokSupplierCatalogEntry) => {
+          return {
+            id: entry.id,
+            label: entry.label,
+            protocol: entry.protocol,
+            baseURL: entry.defaultBaseURL,
+            ...(entry.iconURL ? { iconURL: entry.iconURL } : {}),
+            iconLight: entry.iconLight,
+            supplierID: entry.id,
+            ...(entry.modelCatalogURLs.length > 0
+              ? { modelCatalogURLs: entry.modelCatalogURLs }
+              : {}),
+            modelCatalogStatus: entry.modelCatalogStatus,
+            appendModelCatalogCandidates: entry.appendGeneratedCandidates,
+          };
+        }),
     ];
   }, [catalogResult]);
   const [supplierTemplateSearch, setSupplierTemplateSearch] = useState("");
@@ -415,6 +424,7 @@ export function ByokModelAdaptersSection({
     [supplierTemplates, supplierTemplateSearch],
   );
   const [discovery, setDiscovery] = useState<Record<string, ByokModelDiscoveryResult>>({});
+  const [discoveryErrors, setDiscoveryErrors] = useState<Record<string, string>>({});
   const [selectedModels, setSelectedModels] = useState<Record<string, ReadonlyArray<string>>>({});
   const [contextMatches, setContextMatches] = useState<
     Record<string, ByokContextWindowMatchResult>
@@ -429,7 +439,9 @@ export function ByokModelAdaptersSection({
   const [discoveringAdapterId, setDiscoveringAdapterId] = useState<string | null>(null);
   const [matchingContextAdapterId, setMatchingContextAdapterId] = useState<string | null>(null);
   const [draftDiscovery, setDraftDiscovery] = useState<ByokDraftModelDiscoveryResult | null>(null);
-  const [selectedDraftModelId, setSelectedDraftModelId] = useState("");
+  const [selectedDraftModelIds, setSelectedDraftModelIds] = useState<ReadonlySet<string>>(
+    () => new Set<string>(),
+  );
   const [discoveringDraft, setDiscoveringDraft] = useState(false);
   const [draftModelPickerOpen, setDraftModelPickerOpen] = useState(false);
   const [draftModelPickerSearch, setDraftModelPickerSearch] = useState("");
@@ -458,7 +470,7 @@ export function ByokModelAdaptersSection({
     setForm(emptyFormState());
     setError(null);
     setDraftDiscovery(null);
-    setSelectedDraftModelId("");
+    setSelectedDraftModelIds(new Set());
     setDraftModelPickerOpen(false);
     setDraftModelPickerSearch("");
     setManualModelDialogOpen(false);
@@ -471,7 +483,7 @@ export function ByokModelAdaptersSection({
     setForm(formStateFromAdapter(adapter));
     setError(null);
     setDraftDiscovery(null);
-    setSelectedDraftModelId("");
+    setSelectedDraftModelIds(new Set());
     setDraftModelPickerOpen(false);
     setDraftModelPickerSearch("");
     setManualModelDialogOpen(false);
@@ -483,7 +495,7 @@ export function ByokModelAdaptersSection({
     setEditing(null);
     setError(null);
     setDraftDiscovery(null);
-    setSelectedDraftModelId("");
+    setSelectedDraftModelIds(new Set());
     setDraftModelPickerOpen(false);
     setDraftModelPickerSearch("");
     setManualModelDialogOpen(false);
@@ -500,7 +512,7 @@ export function ByokModelAdaptersSection({
       patch.apiKey !== undefined
     ) {
       setDraftDiscovery(null);
-      setSelectedDraftModelId("");
+      setSelectedDraftModelIds(new Set());
       setDraftModelPickerOpen(false);
       setDraftModelPickerSearch("");
     }
@@ -535,7 +547,7 @@ export function ByokModelAdaptersSection({
     setManualModelDialogOpen(false);
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
     const baseURL = form.baseURL.trim();
     if (!baseURL) {
       setError(t("byokAdapters.baseURLRequired"));
@@ -603,22 +615,50 @@ export function ByokModelAdaptersSection({
           }
         : {}),
     };
-    if (editing === "new" || editing === null) {
-      onChange([...adapters, next]);
-    } else {
-      onChange(adapters.map((adapter) => (adapter.id === editing ? next : adapter)));
+    const nextAdapters =
+      editing === "new" || editing === null
+        ? [...adapters, next]
+        : adapters.map((adapter) => (adapter.id === editing ? next : adapter));
+
+    setIsSaving(true);
+    try {
+      const saved = await onChange(nextAdapters);
+      if (!saved) {
+        setError(t("settingsSaveTryAgain"));
+        return;
+      }
+      closeForm();
+    } catch {
+      setError(t("settingsSaveTryAgain"));
+    } finally {
+      setIsSaving(false);
     }
-    closeForm();
   };
 
   const discoverModels = async (adapter: ByokModelAdapter) => {
     setDiscoveringAdapterId(adapter.id);
+    setDiscovery((current) => {
+      const next = { ...current };
+      delete next[adapter.id];
+      return next;
+    });
+    setDiscoveryErrors((current) => {
+      const next = { ...current };
+      delete next[adapter.id];
+      return next;
+    });
     try {
       const result = await discoverCommand({
         environmentId: environmentId as never,
         input: { instanceId, adapterId: adapter.id, forceRefresh: true },
       });
-      if (!AsyncResult.isSuccess(result)) return;
+      if (!AsyncResult.isSuccess(result)) {
+        setDiscoveryErrors((current) => ({
+          ...current,
+          [adapter.id]: t("byokAdapters.discoveryRequestFailed"),
+        }));
+        return;
+      }
       setDiscovery((current) => ({ ...current, [adapter.id]: result.value }));
       setSelectedModels((current) => ({ ...current, [adapter.id]: [] }));
     } finally {
@@ -681,8 +721,10 @@ export function ByokModelAdaptersSection({
         return;
       }
       setDraftDiscovery(result.value);
-      setSelectedDraftModelId("");
-      setDraftModelPickerOpen(false);
+      setSelectedDraftModelIds(new Set());
+      // Surface the picker immediately — discovery is only useful once a model
+      // is chosen, so don't make the user find the second button below.
+      setDraftModelPickerOpen(true);
       setDraftModelPickerSearch("");
     } finally {
       setDiscoveringDraft(false);
@@ -690,11 +732,83 @@ export function ByokModelAdaptersSection({
   };
 
   const applySelectedDraftModel = () => {
-    const model = draftDiscovery?.models.find((entry) => entry.id === selectedDraftModelId);
+    if (selectedDraftModelIds.size !== 1) return;
+    const [onlyId] = selectedDraftModelIds;
+    const model = draftDiscovery?.models.find((entry) => entry.id === onlyId);
     if (!model) return;
     patchForm(draftModelSelectionPatch(model));
     setDraftModelPickerOpen(false);
     setDraftModelPickerSearch("");
+  };
+
+  // Batch path for the draft discovery picker: one adapter per checked model,
+  // mirroring handleSave's field mapping so batch-added channels are identical
+  // to single-saved ones. Per-adapter balance secrets are never copied.
+  const addSelectedDraftModels = async () => {
+    const models = (draftDiscovery?.models ?? []).filter((model) =>
+      selectedDraftModelIds.has(model.id),
+    );
+    if (models.length === 0) return;
+    const baseURL = form.baseURL.trim();
+    if (!baseURL) {
+      setError(t("byokAdapters.baseURLRequired"));
+      return;
+    }
+    const apiKey = form.apiKey.trim();
+    if (!apiKey) {
+      setError(t("byokAdapters.apiKeyRequired"));
+      return;
+    }
+    const groupName = form.groupName.trim();
+    const template = supplierTemplates.find((entry) => entry.id === form.supplier);
+    const existingKeys = new Set(adapters.map((entry) => `${entry.baseURL}\u0000${entry.modelId}`));
+    const additions: ByokModelAdapter[] = [];
+    for (const model of models) {
+      const key = `${baseURL}\u0000${model.id}`;
+      if (existingKeys.has(key)) continue;
+      existingKeys.add(key);
+      additions.push({
+        id: randomUUID(),
+        displayName: model.id,
+        ...(groupName ? { groupName } : {}),
+        protocol: form.protocol,
+        baseURL,
+        apiKey,
+        ...(form.balanceProfile !== "auto" ? { balanceProfile: form.balanceProfile } : {}),
+        balanceAccessToken: "",
+        ...(form.balanceUserID ? { balanceUserID: form.balanceUserID } : {}),
+        modelId: model.id,
+        contextWindowTokens: model.contextWindowTokens ?? DEFAULT_CONTEXT_WINDOW_TOKENS,
+        ...(form.supplier !== "custom" ? { supplierID: form.supplier } : {}),
+        ...(template?.modelCatalogURLs ? { modelCatalogURLs: template.modelCatalogURLs } : {}),
+        ...(template?.modelCatalogStatus
+          ? { modelCatalogStatus: template.modelCatalogStatus }
+          : {}),
+        ...(template?.appendModelCatalogCandidates !== undefined
+          ? { appendModelCatalogCandidates: template.appendModelCatalogCandidates }
+          : {}),
+      });
+    }
+    if (additions.length === 0) {
+      setDraftModelPickerOpen(false);
+      return;
+    }
+    setIsSaving(true);
+    try {
+      const saved = await onChange([...adapters, ...additions]);
+      if (!saved) {
+        setError(t("settingsSaveTryAgain"));
+        return;
+      }
+      setSelectedDraftModelIds(new Set());
+      setDraftModelPickerOpen(false);
+      setDraftModelPickerSearch("");
+      closeForm();
+    } catch {
+      setError(t("settingsSaveTryAgain"));
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   const addDiscoveredModels = (adapter: ByokModelAdapter) => {
@@ -863,6 +977,9 @@ export function ByokModelAdaptersSection({
               </SelectItem>
             </SelectPopup>
           </Select>
+          <span className="mt-1 block text-xs text-muted-foreground">
+            {t("byokAdapters.protocolDescription")}
+          </span>
         </label>
         <label htmlFor={`${formId}-base-url`} className="block sm:col-span-2">
           <span className="text-xs font-medium text-foreground">{t("byokAdapters.baseURL")}</span>
@@ -940,77 +1057,84 @@ export function ByokModelAdaptersSection({
             {t("byokAdapters.requestModelDescription")}
           </span>
         </div>
-        <label htmlFor={`${formId}-balance-profile`} className="block">
-          <span className="text-xs font-medium text-foreground">
-            {t("byokAdapters.balanceProfile")}
-          </span>
-          <Select
-            value={form.balanceProfile}
-            onValueChange={(value) => {
-              if (
-                value === "auto" ||
-                value === "general" ||
-                value === "newapi" ||
-                value === "none"
-              ) {
-                patchForm({ balanceProfile: value });
-              }
-            }}
-          >
-            <SelectTrigger id={`${formId}-balance-profile`} className="mt-1 w-full" size="sm">
-              <SelectValue>{t(BALANCE_PROFILE_LABEL_KEYS[form.balanceProfile])}</SelectValue>
-            </SelectTrigger>
-            <SelectPopup align="start" alignItemWithTrigger={false}>
-              {(["auto", "general", "newapi", "none"] as const).map((profile) => (
-                <SelectItem key={profile} hideIndicator value={profile}>
-                  {t(BALANCE_PROFILE_LABEL_KEYS[profile])}
-                </SelectItem>
-              ))}
-            </SelectPopup>
-          </Select>
-          <span className="mt-1 block text-xs text-muted-foreground">
-            {t("byokAdapters.balanceProfileDescription")}
-          </span>
-        </label>
-        <label htmlFor={`${formId}-balance-token`} className="block">
-          <span className="text-xs font-medium text-foreground">
-            {t("byokAdapters.balanceAccessToken")}
-          </span>
-          <Input
-            id={`${formId}-balance-token`}
-            className="mt-1"
-            type="password"
-            autoComplete="off"
-            value={form.balanceAccessToken}
-            onChange={(event) => patchForm({ balanceAccessToken: event.target.value })}
-            placeholder={
-              isEdit &&
-              adapters.find((adapter) => adapter.id === editing)?.balanceAccessTokenRedacted
-                ? t("byokAdapters.apiKeyReplacementPlaceholder")
-                : undefined
-            }
-            spellCheck={false}
-          />
-          {isEdit &&
-          adapters.find((adapter) => adapter.id === editing)?.balanceAccessTokenRedacted ? (
-            <span className="mt-1 block text-xs text-muted-foreground">
-              {t("byokAdapters.balanceTokenStored")}
-            </span>
-          ) : null}
-        </label>
-        <label htmlFor={`${formId}-balance-user-id`} className="block">
-          <span className="text-xs font-medium text-foreground">
-            {t("byokAdapters.balanceUserID")}
-          </span>
-          <Input
-            id={`${formId}-balance-user-id`}
-            className="mt-1"
-            value={form.balanceUserID}
-            onChange={(event) => patchForm({ balanceUserID: event.target.value })}
-            placeholder="1"
-            spellCheck={false}
-          />
-        </label>
+        <details className="sm:col-span-2 rounded-md border border-border/60 bg-muted/10 px-3 py-2">
+          <summary className="cursor-pointer text-xs font-medium text-foreground outline-none">
+            {t("byokAdapters.balanceAdvancedSummary")}
+          </summary>
+          <div className="mt-3 grid gap-3 sm:grid-cols-2">
+            <label htmlFor={`${formId}-balance-profile`} className="block">
+              <span className="text-xs font-medium text-foreground">
+                {t("byokAdapters.balanceProfile")}
+              </span>
+              <Select
+                value={form.balanceProfile}
+                onValueChange={(value) => {
+                  if (
+                    value === "auto" ||
+                    value === "general" ||
+                    value === "newapi" ||
+                    value === "none"
+                  ) {
+                    patchForm({ balanceProfile: value });
+                  }
+                }}
+              >
+                <SelectTrigger id={`${formId}-balance-profile`} className="mt-1 w-full" size="sm">
+                  <SelectValue>{t(BALANCE_PROFILE_LABEL_KEYS[form.balanceProfile])}</SelectValue>
+                </SelectTrigger>
+                <SelectPopup align="start" alignItemWithTrigger={false}>
+                  {(["auto", "general", "newapi", "none"] as const).map((profile) => (
+                    <SelectItem key={profile} hideIndicator value={profile}>
+                      {t(BALANCE_PROFILE_LABEL_KEYS[profile])}
+                    </SelectItem>
+                  ))}
+                </SelectPopup>
+              </Select>
+              <span className="mt-1 block text-xs text-muted-foreground">
+                {t("byokAdapters.balanceProfileDescription")}
+              </span>
+            </label>
+            <label htmlFor={`${formId}-balance-token`} className="block">
+              <span className="text-xs font-medium text-foreground">
+                {t("byokAdapters.balanceAccessToken")}
+              </span>
+              <Input
+                id={`${formId}-balance-token`}
+                className="mt-1"
+                type="password"
+                autoComplete="off"
+                value={form.balanceAccessToken}
+                onChange={(event) => patchForm({ balanceAccessToken: event.target.value })}
+                placeholder={
+                  isEdit &&
+                  adapters.find((adapter) => adapter.id === editing)?.balanceAccessTokenRedacted
+                    ? t("byokAdapters.apiKeyReplacementPlaceholder")
+                    : undefined
+                }
+                spellCheck={false}
+              />
+              {isEdit &&
+              adapters.find((adapter) => adapter.id === editing)?.balanceAccessTokenRedacted ? (
+                <span className="mt-1 block text-xs text-muted-foreground">
+                  {t("byokAdapters.balanceTokenStored")}
+                </span>
+              ) : null}
+            </label>
+            <label htmlFor={`${formId}-balance-user-id`} className="block">
+              <span className="text-xs font-medium text-foreground">
+                {t("byokAdapters.balanceUserID")}
+              </span>
+              <Input
+                id={`${formId}-balance-user-id`}
+                className="mt-1"
+                value={form.balanceUserID}
+                onChange={(event) => patchForm({ balanceUserID: event.target.value })}
+                placeholder="1"
+                spellCheck={false}
+              />
+            </label>
+          </div>
+        </details>
         {!isEdit && draftDiscovery ? (
           <div className="sm:col-span-2">
             <span className="text-xs font-medium text-foreground">
@@ -1039,14 +1163,20 @@ export function ByokModelAdaptersSection({
                     setDraftModelPickerOpen(true);
                   }}
                 >
-                  {selectedDraftModelId
+                  {selectedDraftModelIds.size > 0
                     ? t("byokAdapters.changeDiscoveredModel")
                     : t("byokAdapters.chooseDiscoveredModel")}
                 </Button>
                 <p className="mt-1 text-xs text-muted-foreground">
-                  {selectedDraftModelId
-                    ? t("byokAdapters.selectedDiscoveredModel", { modelId: selectedDraftModelId })
-                    : t("byokAdapters.selectOneModelHint")}
+                  {selectedDraftModelIds.size > 1
+                    ? t("byokAdapters.selectedModelsCount", {
+                        count: selectedDraftModelIds.size,
+                      })
+                    : selectedDraftModelIds.size === 1
+                      ? t("byokAdapters.selectedDiscoveredModel", {
+                          modelId: [...selectedDraftModelIds][0] ?? "",
+                        })
+                      : t("byokAdapters.selectOneModelHint")}
                 </p>
                 <Dialog
                   open={draftModelPickerOpen}
@@ -1073,7 +1203,7 @@ export function ByokModelAdaptersSection({
                       {filteredDraftModels.length ? (
                         <div className="mt-3 max-h-[min(50vh,26rem)] space-y-1 overflow-y-auto pr-1">
                           {filteredDraftModels.map((model) => {
-                            const selected = selectedDraftModelId === model.id;
+                            const selected = selectedDraftModelIds.has(model.id);
                             const checkboxId = `${formId}-discovered-model-${model.id}`;
                             return (
                               <label
@@ -1089,9 +1219,17 @@ export function ByokModelAdaptersSection({
                                 <Checkbox
                                   id={checkboxId}
                                   checked={selected}
-                                  onCheckedChange={(checked) =>
-                                    setSelectedDraftModelId(checked ? model.id : "")
-                                  }
+                                  onCheckedChange={(checked) => {
+                                    setSelectedDraftModelIds((current) => {
+                                      const next = new Set(current);
+                                      if (checked) {
+                                        next.add(model.id);
+                                      } else {
+                                        next.delete(model.id);
+                                      }
+                                      return next;
+                                    });
+                                  }}
                                 />
                                 <span className="min-w-0">
                                   <span className="block break-all text-foreground">
@@ -1131,14 +1269,27 @@ export function ByokModelAdaptersSection({
                       >
                         {t("cancel")}
                       </Button>
-                      <Button
-                        type="button"
-                        size="sm"
-                        onClick={applySelectedDraftModel}
-                        disabled={!selectedDraftModelId}
-                      >
-                        {t("byokAdapters.useSelectedModel")}
-                      </Button>
+                      {selectedDraftModelIds.size > 1 ? (
+                        <Button
+                          type="button"
+                          size="sm"
+                          onClick={addSelectedDraftModels}
+                          disabled={isSaving}
+                        >
+                          {t("byokAdapters.addSelectedModels", {
+                            count: selectedDraftModelIds.size,
+                          })}
+                        </Button>
+                      ) : (
+                        <Button
+                          type="button"
+                          size="sm"
+                          onClick={applySelectedDraftModel}
+                          disabled={selectedDraftModelIds.size !== 1}
+                        >
+                          {t("byokAdapters.useSelectedModel")}
+                        </Button>
+                      )}
                     </DialogFooter>
                   </DialogPopup>
                 </Dialog>
@@ -1161,7 +1312,14 @@ export function ByokModelAdaptersSection({
 
   const renderDiscoveredModels = (adapter: ByokModelAdapter) => {
     const result = discovery[adapter.id];
-    if (!result) return null;
+    const requestError = discoveryErrors[adapter.id];
+    if (!result) {
+      return requestError ? (
+        <div className="rounded-md border border-border/60 bg-muted/10 p-2.5">
+          <p className="text-[10px] text-destructive">{requestError}</p>
+        </div>
+      ) : null;
+    }
     const selected = selectedModels[adapter.id] ?? [];
 
     return (
@@ -1178,7 +1336,7 @@ export function ByokModelAdaptersSection({
               className="h-6 px-1.5 text-[10px]"
               onClick={() => addDiscoveredModels(adapter)}
             >
-              {t("byokAdapters.addSelectedModels")}
+              {t("byokAdapters.addSelectedModels", { count: selected.length })}
             </Button>
           ) : null}
         </div>
@@ -1293,86 +1451,63 @@ export function ByokModelAdaptersSection({
       </div>
       <p className="mt-1 text-xs text-muted-foreground">{t("byokAdapters.description")}</p>
 
-      <div className="mt-2 space-y-2">
+      <div className="mt-2 grid gap-2 sm:grid-cols-2">
         {adapters.length === 0 && editing === null ? (
           <p className="text-xs text-muted-foreground">{t("byokAdapters.empty")}</p>
         ) : null}
-        {adapterGroups.map((group) => (
-          <details
-            key={group.groupName || "__default__"}
-            className="group border-t border-border/60 pt-3 first:border-t-0 first:pt-0"
-          >
-            <summary className="flex cursor-pointer list-none flex-wrap items-center gap-x-1.5 gap-y-1 text-sm font-medium text-foreground outline-none [&::-webkit-details-marker]:hidden">
-              <ChevronRightIcon className="size-3.5 shrink-0 text-muted-foreground transition-transform group-open:rotate-90" />
-              <span className="shrink-0">{group.groupName || t("byokAdapters.defaultGroup")}</span>
-              <span className="flex min-w-0 flex-wrap items-center gap-1.5 text-[10px] font-normal text-muted-foreground">
-                {[...new Set(group.relays.map((relay) => relay.baseURL))]
-                  .slice(0, 2)
-                  .map((baseURL) => (
-                    <code key={baseURL} className="max-w-52 truncate" title={baseURL}>
-                      {baseURL}
-                    </code>
+        {adapterGroups.flatMap((group) =>
+          group.relays.map((relay) => {
+            const connectionAdapter = relay.adapters[0];
+            if (!connectionAdapter) return null;
+            return (
+              <button
+                type="button"
+                key={`${group.groupName || "__default__"}\u0000${relay.protocol}\u0000${relay.baseURL}`}
+                className="group/relay w-full rounded-lg border border-border/70 px-3 py-3 text-left transition-colors hover:border-primary/40 hover:bg-muted/45 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                onClick={() =>
+                  setRelayDetailsTarget({
+                    groupName: group.groupName,
+                    protocol: relay.protocol,
+                    baseURL: relay.baseURL,
+                  })
+                }
+              >
+                <div className="flex min-w-0 items-center gap-2 text-xs">
+                  <span className="shrink-0 font-medium text-foreground">
+                    {group.groupName || t("byokAdapters.defaultGroup")}
+                  </span>
+                  <code className="min-w-0 truncate text-foreground/80" title={relay.baseURL}>
+                    {relay.baseURL}
+                  </code>
+                  <ChevronRightIcon className="ml-auto size-3.5 shrink-0 text-muted-foreground transition-transform group-hover/relay:translate-x-0.5" />
+                </div>
+                <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-[10px] text-muted-foreground">
+                  <Badge variant="outline" size="sm" className="shrink-0">
+                    {t(PROTOCOL_LABEL_KEYS[relay.protocol])}
+                  </Badge>
+                  <span>
+                    {connectionAdapter.apiKeyRedacted
+                      ? t("byokAdapters.apiKeyStoredShort")
+                      : maskApiKey(connectionAdapter.apiKey)}
+                  </span>
+                  <span>
+                    {t("byokAdapters.connectionModelCount", {
+                      count: relay.adapters.length,
+                    })}
+                  </span>
+                </div>
+                <div className="mt-3 flex min-w-0 items-center gap-1.5 text-[10px] text-muted-foreground">
+                  {relay.adapters.slice(0, 2).map((adapter) => (
+                    <span key={adapter.id} className="max-w-32 truncate">
+                      {adapter.displayName || adapter.modelId}
+                    </span>
                   ))}
-                {new Set(group.relays.map((relay) => relay.baseURL)).size > 2 ? (
-                  <span>+{new Set(group.relays.map((relay) => relay.baseURL)).size - 2}</span>
-                ) : null}
-              </span>
-            </summary>
-            <div className="mt-3 grid gap-2 sm:grid-cols-2">
-              {group.relays.map((relay) => {
-                const connectionAdapter = relay.adapters[0];
-                if (!connectionAdapter) return null;
-                return (
-                  <button
-                    type="button"
-                    key={`${relay.protocol}\u0000${relay.baseURL}`}
-                    className="group/relay w-full rounded-lg border border-border/70 px-3 py-3 text-left transition-colors hover:border-primary/40 hover:bg-muted/45 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                    onClick={() =>
-                      setRelayDetailsTarget({
-                        groupName: group.groupName,
-                        protocol: relay.protocol,
-                        baseURL: relay.baseURL,
-                      })
-                    }
-                  >
-                    <div className="flex min-w-0 items-center gap-2 text-xs">
-                      <span className="shrink-0 font-medium text-muted-foreground">
-                        {t("byokAdapters.relay")}
-                      </span>
-                      <code className="min-w-0 truncate text-foreground/80" title={relay.baseURL}>
-                        {relay.baseURL}
-                      </code>
-                      <ChevronRightIcon className="ml-auto size-3.5 shrink-0 text-muted-foreground transition-transform group-hover/relay:translate-x-0.5" />
-                    </div>
-                    <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-[10px] text-muted-foreground">
-                      <Badge variant="outline" size="sm" className="shrink-0">
-                        {t(PROTOCOL_LABEL_KEYS[relay.protocol])}
-                      </Badge>
-                      <span>
-                        {connectionAdapter.apiKeyRedacted
-                          ? t("byokAdapters.apiKeyStoredShort")
-                          : maskApiKey(connectionAdapter.apiKey)}
-                      </span>
-                      <span>
-                        {t("byokAdapters.connectionModelCount", {
-                          count: relay.adapters.length,
-                        })}
-                      </span>
-                    </div>
-                    <div className="mt-3 flex min-w-0 items-center gap-1.5 text-[10px] text-muted-foreground">
-                      {relay.adapters.slice(0, 2).map((adapter) => (
-                        <span key={adapter.id} className="max-w-32 truncate">
-                          {adapter.displayName || adapter.modelId}
-                        </span>
-                      ))}
-                      {relay.adapters.length > 2 ? <span>+{relay.adapters.length - 2}</span> : null}
-                    </div>
-                  </button>
-                );
-              })}
-            </div>
-          </details>
-        ))}
+                  {relay.adapters.length > 2 ? <span>+{relay.adapters.length - 2}</span> : null}
+                </div>
+              </button>
+            );
+          }),
+        )}
       </div>
 
       <Dialog
@@ -1531,6 +1666,7 @@ export function ByokModelAdaptersSection({
             <DialogTitle>
               {editing === "new" ? t("byokAdapters.addAdapter") : t("byokAdapters.editAdapter")}
             </DialogTitle>
+            <DialogDescription>{t("byokAdapters.formDescription")}</DialogDescription>
           </DialogHeader>
           <div className="max-h-[min(68dvh,42rem)] overflow-y-auto px-6 pb-4">
             {editing === "new"
@@ -1547,9 +1683,14 @@ export function ByokModelAdaptersSection({
               type="button"
               size="sm"
               data-facilities-guide-target="providers-save-channel"
+              disabled={isSaving}
               onClick={handleSave}
             >
-              {editing === "new" ? t("byokAdapters.addAdapter") : t("save")}
+              {isSaving
+                ? t("saving")
+                : editing === "new"
+                  ? t("byokAdapters.addAdapter")
+                  : t("save")}
             </Button>
           </DialogFooter>
         </DialogPopup>

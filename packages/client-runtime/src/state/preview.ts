@@ -77,6 +77,12 @@ export function createPreviewEnvironmentAtoms<R, E>(
       scheduler: lifecycleScheduler,
       concurrency: lifecycleConcurrency,
     }),
+    control: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:preview:control",
+      tag: WS_METHODS.previewControl,
+      scheduler: lifecycleScheduler,
+      concurrency: lifecycleConcurrency,
+    }),
     close: createEnvironmentRpcCommand(runtime, {
       label: "environment-data:preview:close",
       tag: WS_METHODS.previewClose,
@@ -86,6 +92,36 @@ export function createPreviewEnvironmentAtoms<R, E>(
     reportStatus: createEnvironmentRpcCommand(runtime, {
       label: "environment-data:preview:report-status",
       tag: WS_METHODS.previewReportStatus,
+      scheduler: statusScheduler,
+      concurrency: {
+        mode: "latest",
+        key: ({ environmentId, input }) =>
+          JSON.stringify([environmentId, input.threadId, input.tabId]),
+      },
+    }),
+    reportRecording: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:preview:report-recording",
+      tag: WS_METHODS.previewReportRecording,
+      scheduler: statusScheduler,
+      concurrency: {
+        mode: "latest",
+        key: ({ environmentId, input }) =>
+          JSON.stringify([environmentId, input.threadId, input.tabId]),
+      },
+    }),
+    reportAnnotation: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:preview:report-annotation",
+      tag: WS_METHODS.previewReportAnnotation,
+      scheduler: statusScheduler,
+      concurrency: {
+        mode: "latest",
+        key: ({ environmentId, input }) =>
+          JSON.stringify([environmentId, input.threadId, input.tabId]),
+      },
+    }),
+    reportScreenshot: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:preview:report-screenshot",
+      tag: WS_METHODS.previewReportScreenshot,
       scheduler: statusScheduler,
       concurrency: {
         mode: "latest",

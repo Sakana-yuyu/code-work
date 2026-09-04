@@ -1,8 +1,10 @@
+import { CanvasReference } from "@codework/contracts";
 import type {
   OrchestrationEvent,
   OrchestrationThreadActivity,
   OrchestrationThreadDetailSnapshot,
 } from "@codework/contracts";
+import * as Schema from "effect/Schema";
 
 function asRecord(value: unknown): Record<string, unknown> | null {
   return value !== null && typeof value === "object" && !Array.isArray(value)
@@ -217,6 +219,46 @@ function summarizeMcpResult(result: unknown): Record<string, unknown> | undefine
   return summary ? { content: summary } : undefined;
 }
 
+function findCanvasReference(value: unknown, depth = 0): Record<string, unknown> | undefined {
+  if (depth > 4) return undefined;
+  if (typeof value === "string") {
+    try {
+      return findCanvasReference(JSON.parse(value), depth + 1);
+    } catch {
+      return undefined;
+    }
+  }
+  if (Array.isArray(value)) {
+    for (const entry of value) {
+      const found = findCanvasReference(entry, depth + 1);
+      if (found) return found;
+    }
+    return undefined;
+  }
+  const record = asRecord(value);
+  if (!record) return undefined;
+  if (typeof record.text === "string") {
+    try {
+      return findCanvasReference(JSON.parse(record.text), depth + 1);
+    } catch {
+      return undefined;
+    }
+  }
+  if (Schema.is(CanvasReference)(record)) {
+    return {
+      canvasId: record.canvasId,
+      title: record.title,
+      ...(record.summary === undefined ? {} : { summary: record.summary }),
+      relativePath: record.relativePath,
+    };
+  }
+  for (const key of ["canvas", "result", "structuredContent", "content", "data", "item"]) {
+    const found = findCanvasReference(record[key], depth + 1);
+    if (found) return found;
+  }
+  return undefined;
+}
+
 /**
  * MCP tool calls carry full tool results (`data.item.result` on Codex,
  * `data.result` on Claude/OpenCode) that used to bypass slimming entirely to
@@ -225,6 +267,8 @@ function summarizeMcpResult(result: unknown): Record<string, unknown> | undefine
  */
 function projectMcpToolCallData(data: Record<string, unknown>): Record<string, unknown> {
   const projectedData: Record<string, unknown> = {};
+  const canvas = findCanvasReference(data);
+  if (canvas) projectedData.canvas = canvas;
 
   const item = asRecord(data.item);
   if (item) {

@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from "vite-plus/test";
 
 import {
   enumerateHourStarts,
+  formatDayShort,
   formatDateTimeShort,
   formatHourShort,
   formatRelativeHourShort,
@@ -69,5 +70,41 @@ describe("hourly usage formatting", () => {
     } finally {
       resolvedOptions.mockRestore();
     }
+  });
+});
+
+describe("locale-aware usage formatting", () => {
+  it("keeps English abbreviations by default and localizes with an explicit locale", () => {
+    expect(formatDayShort("2026-08-04")).toBe("Aug 4");
+    expect(formatDayShort("2026-08-04", "en-US")).toBe("Aug 4");
+    expect(formatDayShort("2026-08-04", "zh-CN")).toBe("8月4日");
+    expect(formatDayShort("not-a-day", "zh-CN")).toBe("not-a-day");
+  });
+
+  it("formats hour and datetime labels for the requested locale", () => {
+    expect(formatDateTimeShort("2026-08-11T17:37:00.000Z", "UTC")).toBe("Aug 11, 5 PM");
+    expect(formatDateTimeShort("2026-08-11T17:37:00.000Z", "UTC", "zh-CN")).toContain("8月11日");
+    expect(formatHourShort("2026-08-11T00:37:00.000Z", "UTC", "zh-CN")).toContain("0时");
+  });
+
+  it("localizes relative hour labels", () => {
+    expect(
+      formatRelativeHourShort(
+        "2026-08-10T17:37:00.000Z",
+        "2026-08-11T14:37:00.000Z",
+        "UTC",
+        { today: "今天", yesterday: "昨天" },
+        "zh-CN",
+      ),
+    ).toContain("昨天");
+    expect(
+      formatRelativeHourShort(
+        "2026-08-11T14:37:00.000Z",
+        "2026-08-11T14:37:00.000Z",
+        "UTC",
+        { today: "今天", yesterday: "昨天" },
+        "zh-CN",
+      ),
+    ).toContain("今天");
   });
 });

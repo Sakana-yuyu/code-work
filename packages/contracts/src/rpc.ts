@@ -85,6 +85,20 @@ import {
   ThreadGoalSetInput,
 } from "./goal.ts";
 import {
+  SpecWorkflowCapability,
+  SpecWorkflowControlInput,
+  SpecWorkflowDispatchInput,
+  SpecWorkflowDispatchResult,
+  SpecWorkflowEvent,
+  SpecWorkflowGetInput,
+  SpecWorkflowProposalReviewInput,
+  SpecWorkflowRpcError,
+  SpecWorkflowSetInput,
+  SpecWorkflowState,
+  SpecWorkflowStateEvent,
+  SpecWorkflowStateGetInput,
+} from "./specWorkflow.ts";
+import {
   ProviderUploadFeedbackError,
   ProviderUploadFeedbackInput,
   ProviderUploadFeedbackResult,
@@ -122,6 +136,9 @@ import {
   RelayClientStatusSchema,
 } from "./relayClient.ts";
 import {
+  ProjectListCanvasesError,
+  ProjectListCanvasesInput,
+  ProjectListCanvasesResult,
   ProjectListEntriesError,
   ProjectListEntriesInput,
   ProjectListEntriesResult,
@@ -156,6 +173,7 @@ import {
   DiscoveredLocalServerList,
   ConfiguredLocalServerUrls,
   PreviewCloseInput,
+  PreviewControlInput,
   PreviewError,
   PreviewEvent,
   PreviewListInput,
@@ -163,7 +181,10 @@ import {
   PreviewNavigateInput,
   PreviewOpenInput,
   PreviewRefreshInput,
+  PreviewReportAnnotationInput,
+  PreviewReportRecordingInput,
   PreviewReportStatusInput,
+  PreviewReportScreenshotInput,
   PreviewResizeInput,
   PreviewSessionSnapshot,
 } from "./preview.ts";
@@ -177,6 +198,7 @@ import {
 import {
   ServerConfigStreamEvent,
   ServerConfig,
+  ServerProviderInstallError,
   ServerProviderUpdateError,
   ServerProviderUpdateInput,
   ServerLifecycleStreamEvent,
@@ -344,6 +366,7 @@ export const WS_METHODS = {
   projectsAdd: "projects.add",
   projectsRemove: "projects.remove",
   projectsListEntries: "projects.listEntries",
+  projectsListCanvases: "projects.listCanvases",
   projectsReadFile: "projects.readFile",
   projectsSearchContents: "projects.searchContents",
   projectsSearchEntries: "projects.searchEntries",
@@ -394,9 +417,13 @@ export const WS_METHODS = {
   previewNavigate: "preview.navigate",
   previewResize: "preview.resize",
   previewRefresh: "preview.refresh",
+  previewControl: "preview.control",
+  previewReportRecording: "preview.reportRecording",
+  previewReportAnnotation: "preview.reportAnnotation",
   previewClose: "preview.close",
   previewList: "preview.list",
   previewReportStatus: "preview.reportStatus",
+  previewReportScreenshot: "preview.reportScreenshot",
   previewAutomationConnect: "previewAutomation.connect",
   previewAutomationRespond: "previewAutomation.respond",
   previewAutomationFocusHost: "previewAutomation.focusHost",
@@ -406,6 +433,7 @@ export const WS_METHODS = {
   serverGetConfig: "server.getConfig",
   serverRefreshProviders: "server.refreshProviders",
   serverUpdateProvider: "server.updateProvider",
+  serverInstallProvider: "server.installProvider",
   serverUpdateServer: "server.updateServer",
   serverUpdateServerWithProgress: "server.updateServerWithProgress",
   serverUpsertKeybinding: "server.upsertKeybinding",
@@ -568,6 +596,12 @@ export const WsServerUpdateProviderRpc = Rpc.make(WS_METHODS.serverUpdateProvide
   payload: ServerProviderUpdateInput,
   success: ServerProviderUpdatedPayload,
   error: Schema.Union([ServerProviderUpdateError, EnvironmentAuthorizationError]),
+});
+
+export const WsServerInstallProviderRpc = Rpc.make(WS_METHODS.serverInstallProvider, {
+  payload: ServerProviderUpdateInput,
+  success: ServerProviderUpdatedPayload,
+  error: Schema.Union([ServerProviderInstallError, EnvironmentAuthorizationError]),
 });
 
 export const WsServerUpdateServerRpc = Rpc.make(WS_METHODS.serverUpdateServer, {
@@ -1336,6 +1370,12 @@ export const WsProjectsListEntriesRpc = Rpc.make(WS_METHODS.projectsListEntries,
   error: Schema.Union([ProjectListEntriesError, EnvironmentAuthorizationError]),
 });
 
+export const WsProjectsListCanvasesRpc = Rpc.make(WS_METHODS.projectsListCanvases, {
+  payload: ProjectListCanvasesInput,
+  success: ProjectListCanvasesResult,
+  error: Schema.Union([ProjectListCanvasesError, EnvironmentAuthorizationError]),
+});
+
 export const WsProjectsReadFileRpc = Rpc.make(WS_METHODS.projectsReadFile, {
   payload: ProjectReadFileInput,
   success: ProjectReadFileResult,
@@ -1533,6 +1573,11 @@ export const WsPreviewRefreshRpc = Rpc.make(WS_METHODS.previewRefresh, {
   error: Schema.Union([PreviewError, EnvironmentAuthorizationError]),
 });
 
+export const WsPreviewControlRpc = Rpc.make(WS_METHODS.previewControl, {
+  payload: PreviewControlInput,
+  error: Schema.Union([PreviewError, EnvironmentAuthorizationError]),
+});
+
 export const WsPreviewCloseRpc = Rpc.make(WS_METHODS.previewClose, {
   payload: PreviewCloseInput,
   error: Schema.Union([PreviewError, EnvironmentAuthorizationError]),
@@ -1546,6 +1591,21 @@ export const WsPreviewListRpc = Rpc.make(WS_METHODS.previewList, {
 
 export const WsPreviewReportStatusRpc = Rpc.make(WS_METHODS.previewReportStatus, {
   payload: PreviewReportStatusInput,
+  error: Schema.Union([PreviewError, EnvironmentAuthorizationError]),
+});
+
+export const WsPreviewReportRecordingRpc = Rpc.make(WS_METHODS.previewReportRecording, {
+  payload: PreviewReportRecordingInput,
+  error: Schema.Union([PreviewError, EnvironmentAuthorizationError]),
+});
+
+export const WsPreviewReportAnnotationRpc = Rpc.make(WS_METHODS.previewReportAnnotation, {
+  payload: PreviewReportAnnotationInput,
+  error: Schema.Union([PreviewError, EnvironmentAuthorizationError]),
+});
+
+export const WsPreviewReportScreenshotRpc = Rpc.make(WS_METHODS.previewReportScreenshot, {
+  payload: PreviewReportScreenshotInput,
   error: Schema.Union([PreviewError, EnvironmentAuthorizationError]),
 });
 
@@ -1687,6 +1747,77 @@ export const WsThreadGoalSubscribeRpc = Rpc.make(ORCHESTRATION_WS_METHODS.subscr
   stream: true,
 });
 
+export const WsSpecWorkflowGetRpc = Rpc.make(ORCHESTRATION_WS_METHODS.getSpecWorkflow, {
+  payload: SpecWorkflowGetInput,
+  success: SpecWorkflowCapability,
+  error: Schema.Union([SpecWorkflowRpcError, EnvironmentAuthorizationError]),
+});
+
+export const WsSpecWorkflowSetRpc = Rpc.make(ORCHESTRATION_WS_METHODS.setSpecWorkflow, {
+  payload: SpecWorkflowSetInput,
+  success: SpecWorkflowCapability,
+  error: Schema.Union([SpecWorkflowRpcError, EnvironmentAuthorizationError]),
+});
+
+export const WsSpecWorkflowSubscribeRpc = Rpc.make(ORCHESTRATION_WS_METHODS.subscribeSpecWorkflow, {
+  payload: SpecWorkflowGetInput,
+  success: SpecWorkflowEvent,
+  error: Schema.Union([SpecWorkflowRpcError, EnvironmentAuthorizationError]),
+  stream: true,
+});
+
+export const WsSpecWorkflowStateGetRpc = Rpc.make(ORCHESTRATION_WS_METHODS.getSpecWorkflowState, {
+  payload: SpecWorkflowStateGetInput,
+  success: Schema.NullOr(SpecWorkflowState),
+  error: Schema.Union([SpecWorkflowRpcError, EnvironmentAuthorizationError]),
+});
+
+export const WsSpecWorkflowDispatchRpc = Rpc.make(ORCHESTRATION_WS_METHODS.dispatchSpecWorkflow, {
+  payload: SpecWorkflowDispatchInput,
+  success: SpecWorkflowDispatchResult,
+  error: Schema.Union([SpecWorkflowRpcError, EnvironmentAuthorizationError]),
+});
+
+export const WsSpecWorkflowProposalReviewRpc = Rpc.make(
+  ORCHESTRATION_WS_METHODS.reviewSpecWorkflowProposal,
+  {
+    payload: SpecWorkflowProposalReviewInput,
+    success: SpecWorkflowState,
+    error: Schema.Union([SpecWorkflowRpcError, EnvironmentAuthorizationError]),
+  },
+);
+
+export const WsSpecWorkflowAcceptanceCompleteRpc = Rpc.make(
+  ORCHESTRATION_WS_METHODS.completeSpecWorkflowAcceptance,
+  {
+    payload: SpecWorkflowControlInput,
+    success: SpecWorkflowState,
+    error: Schema.Union([SpecWorkflowRpcError, EnvironmentAuthorizationError]),
+  },
+);
+
+export const WsSpecWorkflowPauseRpc = Rpc.make(ORCHESTRATION_WS_METHODS.pauseSpecWorkflow, {
+  payload: SpecWorkflowControlInput,
+  success: SpecWorkflowState,
+  error: Schema.Union([SpecWorkflowRpcError, EnvironmentAuthorizationError]),
+});
+
+export const WsSpecWorkflowResumeRpc = Rpc.make(ORCHESTRATION_WS_METHODS.resumeSpecWorkflow, {
+  payload: SpecWorkflowControlInput,
+  success: SpecWorkflowState,
+  error: Schema.Union([SpecWorkflowRpcError, EnvironmentAuthorizationError]),
+});
+
+export const WsSpecWorkflowStateSubscribeRpc = Rpc.make(
+  ORCHESTRATION_WS_METHODS.subscribeSpecWorkflowState,
+  {
+    payload: SpecWorkflowStateGetInput,
+    success: SpecWorkflowStateEvent,
+    error: Schema.Union([SpecWorkflowRpcError, EnvironmentAuthorizationError]),
+    stream: true,
+  },
+);
+
 export const WsSubscribeTerminalEventsRpc = Rpc.make(WS_METHODS.subscribeTerminalEvents, {
   payload: Schema.Struct({}),
   success: TerminalEvent,
@@ -1741,6 +1872,7 @@ export const WsRpcGroup = RpcGroup.make(
   WsServerGetConfigRpc,
   WsServerRefreshProvidersRpc,
   WsServerUpdateProviderRpc,
+  WsServerInstallProviderRpc,
   WsServerUpdateServerRpc,
   WsServerUpdateServerWithProgressRpc,
   WsServerUpsertKeybindingRpc,
@@ -1841,6 +1973,7 @@ export const WsRpcGroup = RpcGroup.make(
   WsSourceControlCloneRepositoryRpc,
   WsSourceControlPublishRepositoryRpc,
   WsProjectsListEntriesRpc,
+  WsProjectsListCanvasesRpc,
   WsProjectsReadFileRpc,
   WsProjectsSearchContentsRpc,
   WsProjectsSearchEntriesRpc,
@@ -1878,9 +2011,13 @@ export const WsRpcGroup = RpcGroup.make(
   WsPreviewNavigateRpc,
   WsPreviewResizeRpc,
   WsPreviewRefreshRpc,
+  WsPreviewControlRpc,
   WsPreviewCloseRpc,
   WsPreviewListRpc,
   WsPreviewReportStatusRpc,
+  WsPreviewReportRecordingRpc,
+  WsPreviewReportAnnotationRpc,
+  WsPreviewReportScreenshotRpc,
   WsPreviewAutomationConnectRpc,
   WsPreviewAutomationRespondRpc,
   WsPreviewAutomationFocusHostRpc,
@@ -1905,4 +2042,14 @@ export const WsRpcGroup = RpcGroup.make(
   WsThreadGoalResumeRpc,
   WsThreadGoalClearRpc,
   WsThreadGoalSubscribeRpc,
+  WsSpecWorkflowGetRpc,
+  WsSpecWorkflowSetRpc,
+  WsSpecWorkflowSubscribeRpc,
+  WsSpecWorkflowStateGetRpc,
+  WsSpecWorkflowDispatchRpc,
+  WsSpecWorkflowProposalReviewRpc,
+  WsSpecWorkflowAcceptanceCompleteRpc,
+  WsSpecWorkflowPauseRpc,
+  WsSpecWorkflowResumeRpc,
+  WsSpecWorkflowStateSubscribeRpc,
 ).add(WsServerInvokeCompositionRuntimeToolRpc);

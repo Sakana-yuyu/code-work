@@ -27,7 +27,26 @@ function localizeProviderMessage(message: string | null | undefined): string | n
   if (message.includes("Cursor CLI command `cursor-agent` was not found")) {
     return t("providerCursorCliMissing");
   }
-  const adapterMatch = message.match(/^(\\d+) model adapter(s?) configured\\.?$/);
+  const loginCommandMatch = message.match(/is not authenticated\. Run `([^`]+)` and try again\.$/);
+  if (loginCommandMatch) {
+    return t("providerStatusLoginCommand", { command: loginCommandMatch[1] });
+  }
+  if (message === "No model adapters are configured yet. Add one in Settings.") {
+    return t("providerStatusNoAdapters");
+  }
+  // Server (ByokProvider) composes these messages in English; match the exact
+  // templates and re-render through the catalog. Failures keep the raw
+  // per-model upstream error text as the technical tail.
+  const adaptersKeyCheckMatch = message.match(
+    /^(\d+) model adapters? configured\. Key check failed for: (.+)$/,
+  );
+  if (adaptersKeyCheckMatch) {
+    return t("providerAdaptersKeyCheckFailed", {
+      count: Number(adaptersKeyCheckMatch[1]),
+      failures: adaptersKeyCheckMatch[2],
+    });
+  }
+  const adapterMatch = message.match(/^(\d+) model adapters? configured\.?$/);
   if (adapterMatch) {
     return t("providerAdaptersConfigured", { count: Number(adapterMatch[1]) });
   }
@@ -60,6 +79,18 @@ export function getProviderSummary(provider: ServerProvider | undefined) {
       detail: localizeProviderMessage(provider.message) ?? t("providerStatusCliNotFound"),
     };
   }
+  if (provider.status === "warning") {
+    return {
+      headline: t("providerStatusNeedsAttention"),
+      detail: localizeProviderMessage(provider.message) ?? t("providerStatusNeedsAttentionDetail"),
+    };
+  }
+  if (provider.status === "error" && provider.auth.status === "authenticated") {
+    return {
+      headline: t("providerStatusUnavailable"),
+      detail: localizeProviderMessage(provider.message) ?? t("providerStatusStartupFailed"),
+    };
+  }
   if (provider.auth.status === "authenticated") {
     const authLabel = provider.auth.label ?? provider.auth.type;
     return {
@@ -72,13 +103,8 @@ export function getProviderSummary(provider: ServerProvider | undefined) {
   if (provider.auth.status === "unauthenticated") {
     return {
       headline: t("providerStatusNotAuthenticated"),
-      detail: localizeProviderMessage(provider.message),
-    };
-  }
-  if (provider.status === "warning") {
-    return {
-      headline: t("providerStatusNeedsAttention"),
-      detail: localizeProviderMessage(provider.message) ?? t("providerStatusNeedsAttentionDetail"),
+      detail:
+        localizeProviderMessage(provider.message) ?? t("providerStatusNotAuthenticatedDetail"),
     };
   }
   if (provider.status === "error") {

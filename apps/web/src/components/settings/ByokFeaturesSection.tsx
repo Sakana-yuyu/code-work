@@ -1,18 +1,10 @@
 "use client";
 
 import { useState } from "react";
-import {
-  ArrowRightIcon,
-  CircleDollarSignIcon,
-  FileInputIcon,
-  MessageSquareTextIcon,
-  WorkflowIcon,
-} from "lucide-react";
+import { ArrowRightIcon, FileInputIcon, MessageSquareTextIcon, WorkflowIcon } from "lucide-react";
 import type {
   ByokAdaptersImportResult,
-  ByokBalanceResult,
   ByokDelegationConfig,
-  ByokModelAdapter,
   ByokPromptTemplateConfig,
 } from "@codework/contracts";
 
@@ -27,7 +19,6 @@ import { Switch } from "../ui/switch";
 interface ByokFeaturesSectionProps {
   readonly environmentId: string;
   readonly instanceId: string;
-  readonly adapters: ReadonlyArray<ByokModelAdapter>;
   readonly promptTemplate: ByokPromptTemplateConfig;
   readonly delegation: ByokDelegationConfig;
   readonly onPromptTemplateChange: (next: ByokPromptTemplateConfig) => void;
@@ -69,25 +60,6 @@ const DEFAULT_DELEGATION: ByokDelegationConfig = {
   subagentProfiles: [],
 };
 
-const formatMoney = (value: number | undefined, currency: string): string =>
-  value === undefined ? "—" : `${currency === "USD" ? "$" : `${currency} `}${value.toFixed(2)}`;
-
-function balanceSummary(result: ByokBalanceResult | undefined): string {
-  if (result === undefined) return "";
-  if (!result.supported) return result.error?.message ?? result.message;
-  if (result.unlimited) return t("byokFeatures.balanceUnlimited");
-  const parts: string[] = [];
-  if (result.remaining !== undefined) {
-    parts.push(
-      `${t("byokFeatures.balanceRemaining")} ${formatMoney(result.remaining, result.currency)}`,
-    );
-  }
-  if (result.used !== undefined && result.total !== undefined) {
-    parts.push(`${t("byokFeatures.balanceUsed")} ${formatMoney(result.used, result.currency)}`);
-  }
-  return parts.join(" · ") || result.message;
-}
-
 function ByokFeatureSection({
   icon,
   title,
@@ -128,9 +100,6 @@ export function ByokFeaturesSection(props: ByokFeaturesSectionProps) {
   // before any field access.
   const promptTemplate = { ...DEFAULT_PROMPT_TEMPLATE, ...props.promptTemplate };
   const delegation = { ...DEFAULT_DELEGATION, ...props.delegation };
-  const balanceCommand = useAtomCommand(byokEnvironment.balance, { reportFailure: false });
-  const [balance, setBalance] = useState<Record<string, ByokBalanceResult | undefined>>({});
-  const [queryingAdapterId, setQueryingAdapterId] = useState<string | null>(null);
 
   const importCommand = useAtomCommand(byokEnvironment.importAdapters, { reportFailure: false });
   const [importYaml, setImportYaml] = useState("");
@@ -155,68 +124,11 @@ export function ByokFeaturesSection(props: ByokFeaturesSectionProps) {
     }
   };
 
-  const queryBalance = async (adapter: ByokModelAdapter) => {
-    setQueryingAdapterId(adapter.id);
-    try {
-      const result = await balanceCommand({
-        environmentId: props.environmentId as never,
-        input: { instanceId: props.instanceId, adapterId: adapter.id, forceRefresh: true },
-      });
-      setBalance((current) => ({
-        ...current,
-        [adapter.id]: AsyncResult.isSuccess(result) ? result.value : undefined,
-      }));
-    } finally {
-      setQueryingAdapterId(null);
-    }
-  };
-
   const patchPromptTemplate = (patch: Partial<ByokPromptTemplateConfig>) =>
     props.onPromptTemplateChange({ ...promptTemplate, ...patch });
 
   return (
     <div className="space-y-7">
-      <ByokFeatureSection
-        icon={<CircleDollarSignIcon className="size-3.5" />}
-        title={t("byokFeatures.balanceTitle")}
-      >
-        {props.adapters.length === 0 ? (
-          <p className="text-muted-foreground text-xs">{t("byokFeatures.balanceNoAdapters")}</p>
-        ) : (
-          <ul className="space-y-2">
-            {props.adapters.map((adapter) => {
-              const result = balance[adapter.id];
-              return (
-                <li
-                  key={adapter.id}
-                  className="flex items-center gap-2 rounded-md border border-border/70 px-3 py-2"
-                >
-                  <span className="min-w-0 flex-1 truncate text-xs">
-                    <span className="font-medium">{adapter.displayName}</span>
-                    {result !== undefined ? (
-                      <span className="text-muted-foreground"> — {balanceSummary(result)}</span>
-                    ) : null}
-                  </span>
-                  {result !== undefined && result.planName ? (
-                    <Badge variant="outline">{result.planName}</Badge>
-                  ) : null}
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    disabled={queryingAdapterId !== null || adapter.apiKeyRedacted !== true}
-                    onClick={() => void queryBalance(adapter)}
-                  >
-                    {queryingAdapterId === adapter.id
-                      ? t("byokFeatures.balanceQuerying")
-                      : t("byokFeatures.balanceQuery")}
-                  </Button>
-                </li>
-              );
-            })}
-          </ul>
-        )}
-      </ByokFeatureSection>
-
       <ByokFeatureSection
         icon={<MessageSquareTextIcon className="size-3.5" />}
         title={t("byokFeatures.promptTemplateTitle")}

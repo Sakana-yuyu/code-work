@@ -14,6 +14,15 @@ export const zhCN: Record<string, string> = {
   "Choose the language used across the interface. System follows your browser locale.":
     "选择界面使用的语言。“跟随系统”会遵循浏览器语言设置。",
 
+  // ── Provider 实例设置：BYOK 网关路由 ──────────────────────
+  "Route through BYOK gateway": "走 BYOK 网关路由",
+  "Serve this instance's models from the BYOK adapters instead of its own login. Official login stays untouched while off.":
+    "用 BYOK 适配器代替该实例自身登录来提供模型。关闭时官方登录完全不受影响。",
+  "Serve this instance's models from the BYOK adapters instead of OpenCode's own provider config.":
+    "用 BYOK 适配器代替 OpenCode 自身的供应商配置来提供模型。",
+  "Serve this instance's models from the BYOK adapters by managing a marked block in the Grok CLI's config.toml.":
+    "通过在 Grok CLI 的 config.toml 中维护受管区块，改由 BYOK 适配器提供本实例的模型。",
+
   // ── MCP Runtime 设置 ───────────────────────────────────────
   "MCP servers": "MCP 服务器",
   "MCP runtime": "MCP 运行时",

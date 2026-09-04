@@ -45,6 +45,11 @@ export interface DailyTotals {
   readonly costUsd: number;
   readonly totalTokens: number;
   readonly byProvider: ReadonlyMap<UsageProviderKind, { costUsd: number; totalTokens: number }>;
+  /**
+   * Tokens per model, keyed by the `provider model` composite the model totals
+   * use, so a model name shared by two providers stays unambiguous.
+   */
+  readonly byModel: ReadonlyMap<string, number>;
 }
 
 export interface HourlyTotals {
@@ -255,6 +260,7 @@ export function mergeUsage(
       costUsd: number;
       totalTokens: number;
       byProvider: Map<UsageProviderKind, { costUsd: number; totalTokens: number }>;
+      byModel: Map<string, number>;
     }
   >();
   const hourlyAccumulator = new Map<
@@ -327,9 +333,11 @@ export function mergeUsage(
         costUsd: 0,
         totalTokens: 0,
         byProvider: new Map<UsageProviderKind, { costUsd: number; totalTokens: number }>(),
+        byModel: new Map<string, number>(),
       };
       day.costUsd += bucket.costUsd;
       day.totalTokens += tokens;
+      day.byModel.set(modelKey, (day.byModel.get(modelKey) ?? 0) + tokens);
       const dayProvider = day.byProvider.get(bucket.provider) ?? { costUsd: 0, totalTokens: 0 };
       dayProvider.costUsd += bucket.costUsd;
       dayProvider.totalTokens += tokens;
@@ -389,6 +397,7 @@ export function mergeUsage(
       costUsd: totals.costUsd,
       totalTokens: totals.totalTokens,
       byProvider: totals.byProvider,
+      byModel: totals.byModel,
     }))
     .sort((a, b) => a.day.localeCompare(b.day));
 

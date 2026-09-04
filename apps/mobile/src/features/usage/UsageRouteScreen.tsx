@@ -1,9 +1,11 @@
 import { useNavigation } from "@react-navigation/native";
+import type { ByokBalanceResult, ByokBalanceWindow } from "@codework/contracts";
 import type { DailyTotals, MergedUsage } from "@codework/shared/usageMerge";
 import {
   enumerateDays,
   enumerateHourStarts,
   formatCount,
+  formatDateTimeShort,
   formatDayShort,
   formatHourShort,
   formatPercent,
@@ -18,12 +20,18 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { AndroidScreenHeader } from "../../components/AndroidScreenHeader";
 import { AppText as Text } from "../../components/AppText";
 import { NativeStackScreenOptions } from "../../native/StackHeader";
+import {
+  useByokBalanceDashboards,
+  type EnvironmentByokBalanceStatus,
+  type ByokBalanceQueryTarget,
+} from "../../state/byokBalance";
+import type { MergedByokAdapter, MergedByokPlans } from "@codework/shared/byokBalanceMerge";
 import { useUsage, type EnvironmentUsageStatus } from "../../state/usage";
 import { SettingsSection } from "../settings/components/SettingsSection";
 import { UsageDailyChart } from "./UsageDailyChart";
 import type { UsageChartMetric } from "./usageChartData";
 import { PROVIDER_LABEL, useProviderColors } from "./usageProviders";
-import { t } from "../../i18n";
+import { t, useResolvedLanguage } from "../../i18n";
 
 const WINDOW_OPTIONS = [
   { days: 1, labelKey: "usage.past24h" },
@@ -45,6 +53,7 @@ export function UsageRouteScreen() {
   const { days: windowDays, window } = windowSelection;
   const isPast24Hours = windowDays === 1;
   const { merged, environments, isPending, isPartial, refresh } = useUsage(window);
+  const byok = useByokBalanceDashboards();
 
   const days = useMemo(
     () => enumerateDays(window.sinceDay, window.untilDay),
@@ -65,6 +74,7 @@ export function UsageRouteScreen() {
             costUsd: hour.costUsd,
             totalTokens: hour.totalTokens,
             byProvider: hour.byProvider,
+            byModel: new Map(),
           }))
         : merged.daily,
     [isPast24Hours, merged.daily, merged.hourly],
@@ -108,7 +118,15 @@ export function UsageRouteScreen() {
         className="flex-1"
         contentContainerClassName="gap-6 px-5 pt-4"
         contentContainerStyle={{ paddingBottom: Math.max(insets.bottom, 18) + 18 }}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refreshWindow} />}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={() => {
+              refreshWindow();
+              byok.refresh();
+            }}
+          />
+        }
       >
         <SegmentedControl
           options={WINDOW_OPTIONS.map((option) => ({
@@ -147,9 +165,192 @@ export function UsageRouteScreen() {
             <ModelsSection merged={merged} />
           </>
         )}
+        <ByokBalanceSection
+          environments={byok.environments}
+          adapters={byok.merged.adapters}
+          totals={byok.merged}
+          isPending={byok.isPending}
+          onQueryBalance={byok.queryBalance}
+        />
       </ScrollView>
     </View>
   );
+}
+
+function ByokBalanceSection(props: {
+  readonly environments: readonly EnvironmentByokBalanceStatus[];
+  readonly adapters: readonly MergedByokAdapter[];
+  readonly totals: MergedByokPlans;
+  readonly isPending: boolean;
+  readonly onQueryBalance: (target: ByokBalanceQueryTarget) => Promise<unknown>;
+}) {
+  const [queryingKeys, setQueryingKeys] = useState<ReadonlySet<string>>(() => new Set());
+  const failed = props.environments.filter((environment) => environment.error !== null);
+  const instanceIds = [...new Set(props.adapters.map((adapter) => adapter.instanceId))];
+
+  const query = (target: ByokBalanceQueryTarget, key: string): void => {
+    setQueryingKeys((current) => new Set(current).add(key));
+    void props.onQueryBalance(target).finally(() => {
+      setQueryingKeys((current) => {
+        const next = new Set(current);
+        next.delete(key);
+        return next;
+      });
+    });
+  };
+
+  return (
+    <SettingsSection title={t("byokBalanceMobile.title")} card>
+      {props.environments.length === 0 ? (
+        <Text className="p-4 text-sm text-foreground-muted">
+          {t("byokBalanceMobile.noEnvironment")}
+        </Text>
+      ) : props.isPending ? (
+        <Text className="p-4 text-sm text-foreground-muted">{t("byokBalanceMobile.pending")}</Text>
+      ) : (
+        <View className="gap-3 p-4">
+          {props.adapters.length === 0 ? (
+            <Text className="text-sm text-foreground-muted">{t("byokBalanceMobile.noData")}</Text>
+          ) : null}
+          <Text className="text-xs text-foreground-muted">
+            {t("byokBalanceMobile.summary", {
+              instances: instanceIds.length,
+              adapters: props.totals.adapters.length,
+              healthy: props.totals.okCount,
+            })}
+          </Text>
+          {failed.map((environment) => (
+            <Text key={environment.environmentId} className="text-xs text-foreground-muted">
+              {environment.label} {t("byokBalanceMobile.environmentError")}
+            </Text>
+          ))}
+          {instanceIds.map((instanceId) => {
+            const adapters = props.adapters.filter((adapter) => adapter.instanceId === instanceId);
+            return (
+              <View key={instanceId} className="gap-2 rounded-[16px] bg-subtle p-3">
+                <Text className="text-sm font-codework-medium text-foreground">
+                  {adapters[0]?.instanceLabel ?? instanceId}
+                </Text>
+                {adapters.map((adapter) => {
+                  const key = `${adapter.instanceId}:${adapter.adapterId}`;
+                  const querying = queryingKeys.has(key);
+                  return (
+                    <ByokBalanceRow
+                      key={key}
+                      adapter={adapter}
+                      querying={querying}
+                      onQuery={() =>
+                        query(
+                          {
+                            environmentId: adapter.environmentId,
+                            instanceId: adapter.instanceId,
+                            adapterId: adapter.adapterId,
+                          },
+                          key,
+                        )
+                      }
+                    />
+                  );
+                })}
+              </View>
+            );
+          })}
+        </View>
+      )}
+    </SettingsSection>
+  );
+}
+
+function ByokBalanceRow(props: {
+  readonly adapter: MergedByokAdapter;
+  readonly querying: boolean;
+  readonly onQuery: () => void;
+}) {
+  const balance = props.adapter.balance;
+  const healthLabel = t(`byokBalanceMobile.health.${props.adapter.health}`);
+  return (
+    <View className="gap-2 border-t border-border-subtle pt-2 first:border-t-0 first:pt-0">
+      <View className="flex-row items-center gap-2">
+        <Text className="min-w-0 flex-1 text-xs text-foreground" numberOfLines={1}>
+          {props.adapter.adapterLabel}
+        </Text>
+        <Text className="text-xs text-foreground-muted">{healthLabel}</Text>
+        <Pressable
+          accessibilityLabel={
+            props.querying ? t("byokBalanceMobile.querying") : t("byokBalanceMobile.query")
+          }
+          accessibilityRole="button"
+          disabled={props.querying || props.adapter.health === "empty"}
+          onPress={props.onQuery}
+          className="rounded-full bg-subtle px-3 py-1.5"
+        >
+          <Text className="text-xs font-codework-medium text-foreground">
+            {props.querying ? t("byokBalanceMobile.querying") : t("byokBalanceMobile.query")}
+          </Text>
+        </Pressable>
+      </View>
+      {balance.unlimited ? (
+        <Text className="text-xs text-foreground-muted">{t("byokBalanceMobile.unlimited")}</Text>
+      ) : null}
+      {balance.planName === undefined ? null : (
+        <Text className="text-xs text-foreground-muted">
+          {t("byokBalanceMobile.plan")}: {balance.planName}
+        </Text>
+      )}
+      {props.adapter.health === "error" ? (
+        <Text className="text-xs text-danger-foreground">{t("byokBalanceMobile.queryError")}</Text>
+      ) : balance.windows.length > 0 ? (
+        <View className="gap-1">
+          {balance.windows.map((window) => (
+            <ByokBalanceWindowRow key={window.id} window={window} />
+          ))}
+        </View>
+      ) : (
+        <Text className="text-xs text-foreground-muted">{balanceSummary(balance)}</Text>
+      )}
+    </View>
+  );
+}
+
+function ByokBalanceWindowRow(props: { readonly window: ByokBalanceWindow }) {
+  const language = useResolvedLanguage();
+  const window = props.window;
+  const value =
+    window.used !== undefined && window.limit !== undefined
+      ? `${window.used.toFixed(2)} / ${window.limit.toFixed(2)} ${window.unit}`
+      : window.remaining !== undefined
+        ? `${window.remaining.toFixed(2)} ${window.unit}`
+        : window.unit;
+  return (
+    <View className="gap-0.5">
+      <View className="flex-row items-center justify-between gap-3">
+        <Text className="min-w-0 flex-1 text-xs text-foreground-muted" numberOfLines={1}>
+          {window.label}
+        </Text>
+        <Text className="text-xs tabular-nums text-foreground-muted">{value}</Text>
+      </View>
+      {window.resetsAt === undefined ? null : (
+        <Text className="text-[10px] text-foreground-tertiary">
+          {t("byokBalanceMobile.resets")}:{" "}
+          {formatDateTimeShort(window.resetsAt, undefined, language)}
+        </Text>
+      )}
+    </View>
+  );
+}
+
+function balanceSummary(balance: ByokBalanceResult) {
+  const parts: string[] = [];
+  if (balance.remaining !== undefined) {
+    parts.push(
+      `${t("byokBalanceMobile.remaining")}: ${balance.remaining.toFixed(2)} ${balance.currency}`,
+    );
+  }
+  if (balance.used !== undefined)
+    parts.push(`${t("byokBalanceMobile.used")}: ${balance.used.toFixed(2)}`);
+  if (balance.total !== undefined)
+    parts.push(`${t("byokBalanceMobile.total")}: ${balance.total.toFixed(2)}`);
+  return parts.length > 0 ? parts.join(" · ") : balance.message;
 }
 
 function SegmentedControl<Value extends number | string>(props: {

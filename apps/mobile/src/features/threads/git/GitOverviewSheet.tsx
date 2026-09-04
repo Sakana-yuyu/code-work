@@ -101,6 +101,15 @@ export function GitOverviewSheet(props: GitOverviewSheetProps) {
   }, [gitActions]);
 
   const openExistingPr = useCallback(async () => {
+    if (selectedThread?.linkedPullRequest) {
+      navigation.navigate("PullRequestDetail", {
+        environmentId: String(environmentId),
+        projectId: String(selectedThread.linkedPullRequest.projectId),
+        repository: selectedThread.linkedPullRequest.repository,
+        number: selectedThread.linkedPullRequest.number,
+      });
+      return;
+    }
     const prUrl = gitStatus.data?.pr?.state === "open" ? gitStatus.data.pr.url : null;
     if (!prUrl) {
       Alert.alert(t("noOpenPr"), t("thisBranchDoesNotHaveAnOpenPullRequest"));
@@ -109,7 +118,7 @@ export function GitOverviewSheet(props: GitOverviewSheetProps) {
     if (!(await tryOpenExternalUrl(prUrl, "pull-request"))) {
       Alert.alert(t("unableToOpenPr"), t("thePullRequestCouldNotBeOpened"));
     }
-  }, [gitStatus.data]);
+  }, [environmentId, gitStatus.data, navigation, selectedThread]);
 
   const runActionWithPrompt = useCallback(
     async (input: GitActionRequestInput) => {

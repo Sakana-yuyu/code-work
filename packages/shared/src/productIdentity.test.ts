@@ -15,7 +15,7 @@ describe("product identity", () => {
     assert.equal(resolveProductDisplayName("development"), "Code Work (Dev)");
     assert.equal(resolveProductDisplayName("nightly"), "Code Work (Nightly)");
     assert.equal(resolveProductDisplayName("preview"), "Code Work (Preview)");
-    assert.equal(resolveProductDisplayName("production"), "Code Work (Alpha)");
+    assert.equal(resolveProductDisplayName("production"), "Code Work");
   });
 
   it("returns canonical schemes before their legacy aliases", () => {

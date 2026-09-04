@@ -144,6 +144,18 @@ The patch difference between two checkpoints. Query logic lives in [CheckpointDi
 
 The file patch and changed-file summary for one turn. It is usually computed in [CheckpointDiffQuery.ts][20], represented in [the contracts][1], and recorded into thread state by [projector.ts][4].
 
+### BYOK model gateway
+
+The local endpoint that routes any agent harness's model requests to BYOK adapters, making BYOK the replaceable core: suppliers are configured once and every harness can serve turns through them. Routing rules, injection points, and limits live in [byok-gateway.md](./byok-gateway.md); user-facing behavior is documented in [../user/byok-gateway.md](../user/byok-gateway.md).
+
+#### BYOK adapter
+
+One model credential (protocol, base URL, stored key, model id) under a BYOK instance. Its id is the gateway model slug.
+
+#### Gateway token
+
+The bearer token the gateway expects from harnesses, generated into the server secret store and delivered only through child-process environment variables.
+
 ## Practical Shortcuts
 
 - If you see `requested`, think "intent recorded".

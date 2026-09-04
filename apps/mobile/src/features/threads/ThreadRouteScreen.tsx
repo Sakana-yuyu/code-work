@@ -7,13 +7,24 @@ import {
 } from "@react-navigation/native";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import * as Option from "effect/Option";
-import { EnvironmentId, ThreadId, type ProjectScript } from "@codework/contracts";
+import {
+  isAtomCommandInterrupted,
+  squashAtomCommandFailure,
+} from "@codework/client-runtime/state/runtime";
+import {
+  CommandId,
+  EnvironmentId,
+  MessageId,
+  ThreadId,
+  type CanvasReference,
+  type ProjectScript,
+} from "@codework/contracts";
 import {
   requestOlderThreadTurns,
   threadHasOlderTurns,
 } from "@codework/client-runtime/state/threads";
 import { projectScriptCwd, projectScriptRuntimeEnv } from "@codework/shared/projectScripts";
-import { Platform, ScrollView, View } from "react-native";
+import { Alert, Platform, ScrollView, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useWorkspaceState } from "../../state/workspace";
 import { useEnvironmentQuery } from "../../state/query";
@@ -49,7 +60,9 @@ import {
   stagePendingTerminalLaunch,
 } from "../terminal/terminalLaunchContext";
 import { terminalDebugLog } from "../terminal/terminalDebugLog";
+import { makeTurnCommandMetadata } from "../../lib/commandMetadata";
 import { ThreadDetailScreen } from "./ThreadDetailScreen";
+import { SpecWorkflowMobileControls } from "./SpecWorkflowMobileControls";
 import {
   ThreadGitControls,
   useThreadGitCenterHeaderItems,
@@ -76,6 +89,8 @@ import {
   type ThreadInspectorMode,
 } from "./thread-inspector-content-stack";
 import { t } from "../../i18n";
+import { deriveRevertTurnCountByUserMessageId } from "./threadMessageActions";
+import { waitForThreadRewound } from "./waitForThreadRewound";
 
 interface ThreadInspectorSelection {
   readonly routeThreadIdentity: string | null;
@@ -195,6 +210,13 @@ function ThreadRouteContent(
     useThreadSelection();
   const selectedThreadDetailState = props.selectedThreadDetailState;
   const selectedThreadDetail = Option.getOrNull(selectedThreadDetailState.data);
+  const revertTurnCountByUserMessageId = useMemo(
+    () =>
+      selectedThreadDetail === null
+        ? new Map()
+        : deriveRevertTurnCountByUserMessageId(selectedThreadDetail),
+    [selectedThreadDetail],
+  );
   // "Load earlier turns" header state for windowed (paginated) thread loads.
   const loadEarlierTurns = useMemo(() => {
     if (selectedThread === null || !threadHasOlderTurns(selectedThreadDetailState)) {
@@ -215,6 +237,11 @@ function ThreadRouteContent(
   const gitActions = useSelectedThreadGitActions();
   const requests = useSelectedThreadRequests();
   const interruptThreadTurn = useAtomCommand(threadEnvironment.interruptTurn, "thread interrupt");
+  const revertThreadCheckpoint = useAtomCommand(threadEnvironment.revertCheckpoint, {
+    reportFailure: false,
+  });
+  const startThreadTurn = useAtomCommand(threadEnvironment.startTurn, { reportFailure: false });
+  const [isRevertingCheckpoint, setIsRevertingCheckpoint] = useState(false);
   const navigation = useNavigation();
   const params = props.route.params;
   const environmentIdRaw = firstRouteParam(params.environmentId);
@@ -383,6 +410,19 @@ function ThreadRouteContent(
     selectedThreadCwd,
     showAuxiliaryPane,
   ]);
+  const handleOpenCanvas = useCallback(
+    (canvas: CanvasReference) => {
+      if (selectedThread === null) {
+        return;
+      }
+      navigation.navigate("ThreadFile", {
+        environmentId: String(selectedThread.environmentId),
+        threadId: String(selectedThread.id),
+        path: canvas.relativePath.replaceAll("\\", "/").split("/").filter(Boolean),
+      });
+    },
+    [navigation, selectedThread],
+  );
   const inspectorToggleActionRef = useRef({
     inspectorMode,
     openFilesInspector: handleOpenFilesInspector,
@@ -479,6 +519,201 @@ function ThreadRouteContent(
   const handleOpenConnectionEditor = useCallback(() => {
     void navigation.navigate("Connections");
   }, [navigation]);
+  const handleOpenPreview = useCallback(() => {
+    if (selectedThread === null) return;
+    void navigation.navigate("ThreadPreview", {
+      environmentId: String(selectedThread.environmentId),
+      threadId: String(selectedThread.id),
+    });
+  }, [navigation, selectedThread]);
+  const performRevertToTurnCount = useCallback(
+    async (turnCount: number) => {
+      if (selectedThread === null || isRevertingCheckpoint) {
+        return;
+      }
+
+      setIsRevertingCheckpoint(true);
+      const result = await revertThreadCheckpoint({
+        environmentId: selectedThread.environmentId,
+        input: {
+          threadId: selectedThread.id,
+          turnCount,
+        },
+      });
+      setIsRevertingCheckpoint(false);
+
+      if (result._tag === "Failure" && !isAtomCommandInterrupted(result)) {
+        const failure = squashAtomCommandFailure(result);
+        Alert.alert(
+          t("couldNotRevertCheckpoint"),
+          failure instanceof Error ? failure.message : t("couldNotRevertCheckpoint"),
+        );
+      }
+    },
+    [isRevertingCheckpoint, revertThreadCheckpoint, selectedThread],
+  );
+  const handleRevertToTurnCount = useCallback(
+    (turnCount: number) => {
+      if (selectedThread === null || isRevertingCheckpoint) {
+        return;
+      }
+      if (routeConnectionState !== "available" && routeConnectionState !== "connected") {
+        Alert.alert(t("checkpointRevert.reconnectFirst"));
+        return;
+      }
+      if (
+        selectedThread.session?.status === "running" ||
+        selectedThread.session?.status === "starting" ||
+        selectedThread.latestTurn?.state === "running"
+      ) {
+        Alert.alert(t("checkpointRevert.interruptFirst"));
+        return;
+      }
+
+      Alert.alert(
+        t("checkpointRevert.title", { count: turnCount }),
+        [t("checkpointRevert.description"), t("checkpointRevert.warning")].join("\n"),
+        [
+          { text: t("cancel"), style: "cancel" },
+          {
+            text: t("revert"),
+            style: "destructive",
+            onPress: () => {
+              void performRevertToTurnCount(turnCount);
+            },
+          },
+        ],
+      );
+    },
+    [isRevertingCheckpoint, performRevertToTurnCount, routeConnectionState, selectedThread],
+  );
+  const performEditUserMessage = useCallback(
+    async (text: string, turnCount: number | null) => {
+      if (selectedThread === null || isRevertingCheckpoint) {
+        return;
+      }
+
+      setIsRevertingCheckpoint(true);
+      try {
+        if (turnCount !== null) {
+          const startedAt = new Date().toISOString();
+          const revertResult = await revertThreadCheckpoint({
+            environmentId: selectedThread.environmentId,
+            input: {
+              threadId: selectedThread.id,
+              turnCount,
+            },
+          });
+          if (revertResult._tag === "Failure") {
+            if (!isAtomCommandInterrupted(revertResult)) {
+              const failure = squashAtomCommandFailure(revertResult);
+              Alert.alert(
+                t("couldNotRevertCheckpoint"),
+                failure instanceof Error ? failure.message : t("editUserMessage.rewindFailed"),
+              );
+            }
+            return;
+          }
+
+          const rewindOutcome = await waitForThreadRewound({
+            environmentId: selectedThread.environmentId,
+            threadId: selectedThread.id,
+            targetTurnCount: turnCount,
+            startedAt,
+          });
+          if (rewindOutcome !== "rewound") {
+            Alert.alert(
+              t("editUserMessage.sendFailed"),
+              t(
+                rewindOutcome === "failed"
+                  ? "editUserMessage.rewindFailed"
+                  : "editUserMessage.rewindTimeout",
+              ),
+            );
+            return;
+          }
+        }
+
+        const metadata = makeTurnCommandMetadata();
+        const startResult = await startThreadTurn({
+          environmentId: selectedThread.environmentId,
+          input: {
+            commandId: CommandId.make(metadata.commandId),
+            threadId: selectedThread.id,
+            message: {
+              messageId: MessageId.make(metadata.messageId),
+              role: "user",
+              text,
+              attachments: [],
+            },
+            runtimeMode: selectedThread.runtimeMode,
+            interactionMode: selectedThread.interactionMode,
+            createdAt: metadata.createdAt,
+          },
+        });
+        if (startResult._tag === "Failure" && !isAtomCommandInterrupted(startResult)) {
+          const failure = squashAtomCommandFailure(startResult);
+          Alert.alert(
+            t("editUserMessage.sendFailed"),
+            failure instanceof Error ? failure.message : t("editUserMessage.sendFailed"),
+          );
+        }
+      } finally {
+        setIsRevertingCheckpoint(false);
+      }
+    },
+    [isRevertingCheckpoint, revertThreadCheckpoint, selectedThread, startThreadTurn],
+  );
+  const handleEditUserMessage = useCallback(
+    (messageId: MessageId, text: string) => {
+      if (selectedThread === null || isRevertingCheckpoint) {
+        return;
+      }
+      const turnCount = revertTurnCountByUserMessageId.get(messageId);
+      if (turnCount === undefined) {
+        return;
+      }
+      if (routeConnectionState !== "available" && routeConnectionState !== "connected") {
+        Alert.alert(t("checkpointRevert.reconnectFirst"));
+        return;
+      }
+      if (
+        selectedThread.session?.status === "running" ||
+        selectedThread.session?.status === "starting" ||
+        selectedThread.latestTurn?.state === "running"
+      ) {
+        Alert.alert(t("checkpointRevert.interruptFirst"));
+        return;
+      }
+
+      if (turnCount === null) {
+        void performEditUserMessage(text.trim(), null);
+        return;
+      }
+
+      Alert.alert(
+        t("editUserMessage.rewindTitle"),
+        [t("editUserMessage.rewindDescription"), t("checkpointRevert.warning")].join("\n"),
+        [
+          { text: t("editUserMessage.cancel"), style: "cancel" },
+          {
+            text: t("editUserMessage.send"),
+            style: "destructive",
+            onPress: () => {
+              void performEditUserMessage(text, turnCount);
+            },
+          },
+        ],
+      );
+    },
+    [
+      isRevertingCheckpoint,
+      performEditUserMessage,
+      revertTurnCountByUserMessageId,
+      routeConnectionState,
+      selectedThread,
+    ],
+  );
   const handleStopThread = useCallback(() => {
     if (
       !selectedThread ||
@@ -622,6 +857,7 @@ function ThreadRouteContent(
     onOpenFilesInspector:
       fileInspector.supported && selectedThreadCwd !== null ? handleOpenFilesInspector : undefined,
     onOpenGitInspector: fileInspector.supported ? handleOpenGitInspector : undefined,
+    pullRequestReference: selectedThread?.linkedPullRequest ?? undefined,
     currentBranch: selectedThread?.branch ?? null,
     gitStatus: gitStatus.data,
     gitOperationLabel: gitState.gitOperationLabel,
@@ -638,6 +874,13 @@ function ThreadRouteContent(
   };
   const threadCenterHeaderItems = useThreadGitCenterHeaderItems(threadGitControlProps);
   const compactRightHeaderItems = useThreadGitRightHeaderItems(threadGitControlProps);
+  const previewHeaderItem = withNativeGlassHeaderItem({
+    accessibilityLabel: t("threadPreviewMobile.openAction"),
+    icon: { name: "safari", type: "sfSymbol" as const },
+    identifier: "thread-preview",
+    onPress: handleOpenPreview,
+    type: "button" as const,
+  });
   const splitLeftHeaderItems = useMemo<NativeHeaderItems>(
     () => [
       {
@@ -705,6 +948,11 @@ function ThreadRouteContent(
       });
     }
     actions.push({
+      accessibilityLabel: t("threadPreviewMobile.openAction"),
+      icon: "safari",
+      onPress: handleOpenPreview,
+    });
+    actions.push({
       accessibilityLabel: t("openGitControls"),
       icon: "point.topleft.down.curvedto.point.bottomright.up",
       onPress: handleOpenGitInspector,
@@ -726,6 +974,7 @@ function ThreadRouteContent(
     props.onReturnToThread,
     selectedThreadCwd,
     selectedThreadProject?.workspaceRoot,
+    handleOpenPreview,
   ]);
 
   // Deep links / cold starts land with Thread as the ONLY route, where the
@@ -767,6 +1016,11 @@ function ThreadRouteContent(
       <GitActionProgressOverlay progress={gitActionProgress} onDismiss={dismissGitActionResult} />
 
       <View className="flex-1 bg-screen">
+        <SpecWorkflowMobileControls
+          environmentId={selectedThread.environmentId}
+          threadId={selectedThread.id}
+          connectionState={routeConnectionState}
+        />
         <ThreadDetailScreen
           selectedThread={selectedThreadWithDraftSettings ?? selectedThread}
           contentPresentation={contentPresentation}
@@ -793,6 +1047,11 @@ function ThreadRouteContent(
           layoutVariant={layout.variant}
           usesAutomaticContentInsets={usesNativeHeaderGlass}
           onOpenConnectionEditor={handleOpenConnectionEditor}
+          onOpenCanvas={handleOpenCanvas}
+          revertTurnCountByUserMessageId={revertTurnCountByUserMessageId}
+          onRevertToTurnCount={handleRevertToTurnCount}
+          isRevertingCheckpoint={isRevertingCheckpoint}
+          onEditUserMessage={handleEditUserMessage}
           onChangeDraftMessage={composer.onChangeDraftMessage}
           onPickDraftImages={composer.onPickDraftImages}
           onNativePasteImages={composer.onNativePasteImages}
@@ -846,7 +1105,10 @@ function ThreadRouteContent(
           // reserved for future breadcrumbs/status).
           unstable_headerRightItems:
             Platform.OS === "ios"
-              ? () => (layout.usesSplitView ? threadCenterHeaderItems : compactRightHeaderItems)
+              ? () =>
+                  layout.usesSplitView
+                    ? [...threadCenterHeaderItems, previewHeaderItem]
+                    : [...compactRightHeaderItems, previewHeaderItem]
               : undefined,
           unstable_headerSubtitle: usesNativeHeaderGlass ? headerSubtitle : undefined,
         }}

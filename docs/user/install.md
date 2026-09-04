@@ -75,6 +75,25 @@ and CLI version.
 Run the login command on the machine running the Code Work server, not on the device you browse
 from.
 
+### One-Click CLI Install
+
+When a provider row in **Settings** shows **not found**, providers with an install channel offer
+an **Install CLI** button next to the row. Code Work runs the provider's official install command
+on the server machine and re-checks the CLI when the install finishes:
+
+- Codex, Claude, and OpenCode install through `npm install -g` with the provider's own npm
+  package.
+- Cursor installs through the official installer script from cursor.com (PowerShell on native
+  Windows, bash elsewhere).
+- Grok Build installs through the official installer scripts from x.ai (PowerShell on native
+  Windows, bash on macOS/Linux).
+
+The button is hidden when the server has no usable install channel for that platform (for
+example, `npm` missing). Install failures show the underlying output on the provider row.
+
+Installing the CLI is not the same as authenticating it: after the install completes, run the
+provider's login command from the table above.
+
 ### Binary Discovery
 
 Each provider CLI must be on the server's `PATH`, or have an explicit binary path set in

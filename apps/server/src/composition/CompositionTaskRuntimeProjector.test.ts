@@ -22,6 +22,9 @@ import { makeCompositionByokAgentDriver } from "./CompositionByokAgentDriver.ts"
 import { makeCapabilityGrantRegistry } from "./CapabilityGrantRegistry.ts";
 import { makeCompositionCapabilityRegistry } from "./CapabilityRegistry.ts";
 import { makeCompositionProviderAgentDriver } from "./CompositionProviderAgentDriver.ts";
+import { makeCompositionRuntimeAgentDriver } from "./CompositionRuntimeAgentDriver.ts";
+import { makeInMemoryCompositionRuntimeAdapter } from "./CompositionRuntimeAdapter.ts";
+import { makeCompositionOrchestrator } from "./CompositionOrchestrator.ts";
 import { projectCompositionRuntimeEvent } from "./CompositionTaskRuntimeProjector.ts";
 import { CompositionTaskStore } from "../persistence/Services/CompositionTaskStore.ts";
 import { CompositionTaskStoreLive } from "../persistence/Layers/CompositionTaskStore.ts";
@@ -107,6 +110,66 @@ const multicaCompletionEvent = (
 });
 
 layer("CompositionTaskRuntimeProjector", (it) => {
+  it.effect("真实 Runtime Adapter 到 Composition Task 终态投影链路可闭合", () =>
+    Effect.gen(function* () {
+      const store = yield* CompositionTaskStore;
+      const registry = makeCompositionAgentDriverRegistry();
+      const adapter = makeInMemoryCompositionRuntimeAdapter({
+        runtimeId: "runtime-spec-workflow-integration",
+      });
+      const driver = makeCompositionRuntimeAgentDriver({
+        adapter,
+        agentId: "runtime-spec-workflow-integration:agent",
+      });
+      yield* registry.register(driver);
+      const orchestrator = makeCompositionOrchestrator(store, registry);
+      const dispatched = yield* orchestrator.dispatchTask({
+        taskId: "spec-workflow-runtime-task",
+        runId: "spec-workflow-runtime-run",
+        projectId: "project-spec-workflow",
+        threadId: "thread-spec-workflow",
+        assigneeKind: "agent",
+        assigneeId: driver.agentId,
+        mode: "serial",
+        promptDigest: "sha256:spec-workflow-runtime",
+        prompt: "执行 Spec Workflow 集成测试任务。",
+        workspaceRoot: "C:/workspace/spec-workflow",
+        dependsOnTaskIds: [],
+      });
+      assert.equal(dispatched.task.status, "running");
+      assert.equal(dispatched.run.status, "running");
+      assert.isTrue(dispatched.run.runtimeTaskId !== undefined);
+
+      const completion: ProviderRuntimeEvent = {
+        eventId: EventId.make("spec-workflow-runtime-completed"),
+        provider: ProviderDriverKind.make("multica"),
+        threadId: ThreadId.make("thread-spec-workflow"),
+        createdAt: "2026-08-28T00:00:00.000Z",
+        type: "task.completed",
+        payload: {
+          taskId: RuntimeTaskId.make(dispatched.run.runtimeTaskId!),
+          status: "completed",
+          summary: "集成测试 Runtime Task 已完成",
+        },
+      };
+      yield* projectCompositionRuntimeEvent(store, registry, completion);
+      const completedTask = yield* store.getTask(dispatched.task.taskId);
+      const completedRun = yield* store.getRun(dispatched.run.runId);
+      assert.equal(Option.getOrThrow(completedTask).status, "completed");
+      assert.equal(Option.getOrThrow(completedRun).status, "completed");
+
+      const eventCountBeforeReplay = (yield* store.listEvents(
+        dispatched.task.taskId,
+        dispatched.run.runId,
+      )).length;
+      yield* projectCompositionRuntimeEvent(store, registry, completion);
+      assert.equal(
+        (yield* store.listEvents(dispatched.task.taskId, dispatched.run.runId)).length,
+        eventCountBeforeReplay,
+      );
+    }),
+  );
+
   it.effect("被接受的 Runtime 活动续租，终态事件释放 Run 绑定的租约", () =>
     Effect.gen(function* () {
       const store = yield* CompositionTaskStore;

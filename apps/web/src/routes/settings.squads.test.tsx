@@ -30,16 +30,14 @@ vi.mock("../components/settings/settingsLayout", () => ({
 import { SettingsSquadsPage } from "./settings.squads";
 
 describe("SettingsSquadsPage", () => {
-  it("按团队运行时、编队配置、协同运行、人工待办顺序挂载完整控制面", () => {
+  it("按编队配置、协同运行、人工待办顺序挂载控制面；团队运行时收纳在末尾的高级折叠区", () => {
     const html = renderToStaticMarkup(<SettingsSquadsPage />);
 
-    const runtimeIndex = html.indexOf('data-testid="team-runtime"');
     const builderIndex = html.indexOf('data-testid="squad-builder"');
     const runBoardIndex = html.indexOf('data-testid="squad-run-board"');
     const inboxIndex = html.indexOf('data-testid="squad-human-inbox"');
 
-    expect(runtimeIndex).toBeGreaterThanOrEqual(0);
-    expect(builderIndex).toBeGreaterThan(runtimeIndex);
+    expect(builderIndex).toBeGreaterThanOrEqual(0);
     expect(runBoardIndex).toBeGreaterThan(builderIndex);
     expect(inboxIndex).toBeGreaterThan(runBoardIndex);
   });

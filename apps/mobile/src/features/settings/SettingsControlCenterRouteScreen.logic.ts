@@ -66,7 +66,9 @@ export const sortControlCenterSquads = (
 ): ReadonlyArray<CompositionSquad> =>
   squads
     .filter((squad) => squad.archivedAtUnixMs === undefined)
-    .toSorted(
+    // .sort() on the filtered copy, not .toSorted(): Hermes doesn't ship the
+    // ES2023 change-by-copy array methods.
+    .sort(
       (left, right) =>
         (right.updatedAtUnixMs ?? 0) - (left.updatedAtUnixMs ?? 0) ||
         left.name.localeCompare(right.name),

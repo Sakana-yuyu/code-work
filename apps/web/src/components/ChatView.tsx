@@ -1,5 +1,6 @@
 import {
   type ApprovalRequestId,
+  type CanvasReference,
   DEFAULT_MODEL,
   defaultInstanceIdForDriver,
   type EnvironmentId,
@@ -167,6 +168,9 @@ import { PullRequestsUnavailableState } from "./pullRequest/PullRequestsUnavaila
 import { RightPanelTabs, type PullRequestTabStatus } from "./RightPanelTabs";
 import { AgentsPanel } from "./AgentsPanel";
 import { LocalPluginWorkspacePanel } from "./localPlugins/LocalPluginWorkspacePanel";
+import { CanvasPanel } from "./canvas/CanvasPanel";
+import { mergeRecentCanvasSurfaces } from "../canvas";
+import { useProjectCanvasesQuery } from "./files/projectFilesQueryState";
 import { useEnabledLocalPluginWorkspacePanels } from "../localPlugins/useLocalPluginWorkspacePanels";
 import {
   deriveAgentPanelModel,
@@ -365,6 +369,7 @@ import {
   shouldWriteThreadErrorToCurrentServerThread,
   startNewThreadForProject,
   waitForStartedServerThread,
+  waitForThreadRewound,
 } from "./ChatView.logic";
 import type { ThreadSyncPhase } from "../threadSync";
 import { useLocalStorage } from "~/hooks/useLocalStorage";
@@ -1508,6 +1513,11 @@ function ChatViewContent(props: ChatViewProps) {
   const sendInFlightRef = useRef(false);
   const feedbackUploadsInFlightRef = useRef(new Set<string>());
   const terminalUiOpenByThreadRef = useRef<Record<string, boolean>>({});
+  const pendingCanvasOpenRef = useRef<{
+    threadKey: string;
+    threadRef: ScopedThreadRef | null;
+    previousTurnId: TurnId | null;
+  } | null>(null);
 
   useLayoutEffect(() => {
     if (!composerOverlayElement) return;
@@ -1710,6 +1720,14 @@ function ChatViewContent(props: ChatViewProps) {
   const diffOpen = activeRightPanelKind === "diff";
   const rightPanelState = useRightPanelStore((state) =>
     selectThreadRightPanelState(state.byThreadKey, activeThreadRef),
+  );
+  const recentCanvasSurfaces = useMemo(
+    () =>
+      rightPanelState.surfaces.filter(
+        (surface): surface is Extract<RightPanelSurface, { kind: "canvas" }> =>
+          surface.kind === "canvas" && surface.pending !== true && surface.empty !== true,
+      ),
+    [rightPanelState.surfaces],
   );
   const activeRightPanelSurface = useRightPanelStore((state) =>
     selectActiveRightPanelSurface(state.byThreadKey, activeThreadRef),
@@ -2755,7 +2773,7 @@ function ChatViewContent(props: ChatViewProps) {
     return byMessageId;
   }, [turnDiffSummaries]);
   const revertTurnCountByUserMessageId = useMemo(() => {
-    const byUserMessageId = new Map<MessageId, number>();
+    const byUserMessageId = new Map<MessageId, number | null>();
     for (let index = 0; index < timelineEntries.length; index += 1) {
       const entry = timelineEntries[index];
       if (!entry || entry.kind !== "message" || entry.message.role !== "user") {
@@ -2784,8 +2802,28 @@ function ChatViewContent(props: ChatViewProps) {
       }
     }
 
+    const latestUserEntry = timelineEntries.findLast(
+      (entry) => entry.kind === "message" && entry.message.role === "user",
+    );
+    if (
+      threadError !== null &&
+      (activeThread?.session?.status === "error" || !isServerThread) &&
+      latestUserEntry?.kind === "message" &&
+      latestUserEntry.message.role === "user" &&
+      !byUserMessageId.has(latestUserEntry.message.id)
+    ) {
+      byUserMessageId.set(latestUserEntry.message.id, null);
+    }
+
     return byUserMessageId;
-  }, [inferredCheckpointTurnCountByTurnId, timelineEntries, turnDiffSummaryByAssistantMessageId]);
+  }, [
+    activeThread?.session?.status,
+    inferredCheckpointTurnCountByTurnId,
+    isServerThread,
+    threadError,
+    timelineEntries,
+    turnDiffSummaryByAssistantMessageId,
+  ]);
 
   const gitCwd = activeProject
     ? projectScriptCwd({
@@ -2887,6 +2925,18 @@ function ChatViewContent(props: ChatViewProps) {
   const activeProjectCwd = activeProject?.workspaceRoot ?? null;
   const activeThreadWorktreePath = activeThread?.worktreePath ?? null;
   const activeWorkspaceRoot = activeThreadWorktreePath ?? activeProjectCwd ?? undefined;
+  // Canvases live as project files under `.codework/canvases/`, but the
+  // in-memory surfaces are per-thread and die with the page. Merge the
+  // project-wide on-disk listing in so the recent sidebar matches canvases
+  // generated in any thread of this project, surviving reloads.
+  const projectCanvases = useProjectCanvasesQuery(
+    activeThreadRef?.environmentId ?? null,
+    activeWorkspaceRoot,
+  );
+  const mergedRecentCanvasSurfaces = useMemo(
+    () => mergeRecentCanvasSurfaces(recentCanvasSurfaces, projectCanvases),
+    [projectCanvases, recentCanvasSurfaces],
+  );
   const activeTerminalLaunchContext =
     terminalUiLaunchContext?.threadId === activeThreadId ? terminalUiLaunchContext : null;
   // Default true while loading to avoid toolbar flicker.
@@ -3507,11 +3557,38 @@ function ChatViewContent(props: ChatViewProps) {
     useRightPanelStore.getState().open(activeThreadRef, "agents");
   }, [activeThreadRef]);
   const openFileSurface = useCallback(
-    (relativePath: string) => {
+    (relativePath: string, line?: number) => {
       if (!activeThreadRef || !activeProject) return;
-      useRightPanelStore.getState().openFile(activeThreadRef, relativePath);
+      useRightPanelStore.getState().openFile(activeThreadRef, relativePath, line);
     },
     [activeProject, activeThreadRef],
+  );
+  const onOpenCanvas = useCallback(
+    (canvas: CanvasReference) => {
+      if (!activeThreadRef || !activeProject) return;
+      useRightPanelStore.getState().openCanvas(activeThreadRef, canvas);
+    },
+    [activeProject, activeThreadRef],
+  );
+  const openCanvasPanel = useCallback(() => {
+    if (!activeThreadRef || !activeProject) return;
+    useRightPanelStore.getState().openCanvasLauncher(activeThreadRef, t("surface.canvas"));
+  }, [activeProject, activeThreadRef]);
+  const onSelectCanvas = useCallback(
+    (canvasId: string) => {
+      if (!activeThreadRef) return;
+      // Recent-list entries may exist only on disk (generated in another
+      // thread or before this page load); openCanvas upserts those, and for
+      // already-open canvases it just activates the existing surface.
+      const canvas = mergedRecentCanvasSurfaces.find((entry) => entry.canvasId === canvasId);
+      if (!canvas) return;
+      useRightPanelStore.getState().openCanvas(activeThreadRef, {
+        canvasId: canvas.canvasId,
+        title: canvas.title,
+        relativePath: canvas.relativePath,
+      });
+    },
+    [activeThreadRef, mergedRecentCanvasSurfaces],
   );
   // The thread's own change request, placed against the project it belongs to. Without a
   // project there is nothing to resolve it against, so the caller falls back to the browser.
@@ -4776,7 +4853,7 @@ function ChatViewContent(props: ChatViewProps) {
       ),
       title: working
         ? liveCount > 0
-          ? t("working4", { liveCount: liveCount, value2: liveCount === 1 ? "agent" : "agents" })
+          ? t("working4", { count: liveCount })
           : t("backgroundWork")
         : t("monitoring"),
       actions: (
@@ -4830,7 +4907,7 @@ function ChatViewContent(props: ChatViewProps) {
       id: `thread-${isSnoozed ? "snoozed" : "settled"}:${activeThread?.id ?? "unknown"}`,
       variant: "info",
       icon: isSnoozed ? <AlarmClockIcon /> : <CheckCircle2Icon />,
-      title: t("thisThreadIs", { value1: isSnoozed ? "snoozed" : "settled" }),
+      title: isSnoozed ? t("threadBanner.snoozed") : t("threadBanner.settled"),
       description: isSnoozed
         ? t("sendingAMessageWakesItAndMovesItBackToActiveInTheSidebar")
         : t("sendingAMessageMovesItBackToActiveInTheSidebar"),
@@ -4972,88 +5049,6 @@ function ChatViewContent(props: ChatViewProps) {
     }
     void handleSwitchCheckoutToThread();
   }, [gitStatusQuery.data?.hasWorkingTreeChanges, handleSwitchCheckoutToThread]);
-  const composerBannerItems = useMemo<ComposerBannerStackItem[]>(() => {
-    const isUrgentSystemItem = (item: ComposerBannerStackItem) =>
-      item.urgent === true || item.variant === "error" || item.variant === "warning";
-    const urgentSystemItems = systemComposerBannerItems.filter(isUrgentSystemItem);
-    const calmSystemItems = systemComposerBannerItems.filter((item) => !isUrgentSystemItem(item));
-    const backgroundLivenessItems =
-      backgroundLivenessBannerItem === null ? [] : [backgroundLivenessBannerItem];
-    const resumeCompactionItems =
-      resumeCompactionBannerItem === null ? [] : [resumeCompactionBannerItem];
-    const wokeThreadItems = wokeThreadBannerItem === null ? [] : [wokeThreadBannerItem];
-    const parkedThreadItems = parkedThreadBannerItem === null ? [] : [parkedThreadBannerItem];
-    if (!localCheckoutBranchMismatch || !showBranchMismatchBanner || !activeBranchMismatchKey) {
-      return [
-        ...urgentSystemItems,
-        ...backgroundLivenessItems,
-        ...calmSystemItems,
-        ...resumeCompactionItems,
-        ...wokeThreadItems,
-        ...parkedThreadItems,
-      ];
-    }
-    return [
-      ...urgentSystemItems,
-      ...backgroundLivenessItems,
-      ...calmSystemItems,
-      ...resumeCompactionItems,
-      ...wokeThreadItems,
-      {
-        id: `branch-mismatch:${activeBranchMismatchKey}`,
-        variant: "info",
-        icon: <GitBranchIcon />,
-        title: (
-          <span className="flex min-w-0 items-baseline gap-1.5">
-            <span className="shrink-0 font-normal text-muted-foreground">
-              {t("branchChangedWas")}
-            </span>
-            <Tooltip>
-              <TooltipTrigger
-                render={
-                  <code className="min-w-0 truncate font-medium text-foreground">
-                    {localCheckoutBranchMismatch.threadBranch}
-                  </code>
-                }
-              />
-              <TooltipPopup side="top" className="max-w-80">
-                {t("thisThreadLastRanOn")} {localCheckoutBranchMismatch.threadBranch}
-                {t("sendingWillContinueOn")} {localCheckoutBranchMismatch.currentBranch}.
-              </TooltipPopup>
-            </Tooltip>
-          </span>
-        ),
-        className: "dark:shadow-none",
-        actions: (
-          <Button
-            size="xs"
-            variant="ghost"
-            disabled={isRestoringThreadBranch}
-            onClick={handleRestoreThreadBranch}
-          >
-            {isRestoringThreadBranch ? t("restoring") : t("restoreBranch")}
-          </Button>
-        ),
-        dismissLabel: t("interface.dismiss-branch-change-notice"),
-        onDismiss: () => {
-          dismissBranchMismatchForSession(activeBranchMismatchKey);
-          setBranchMismatchDismissTick((tick) => tick + 1);
-        },
-      },
-      ...parkedThreadItems,
-    ];
-  }, [
-    activeBranchMismatchKey,
-    backgroundLivenessBannerItem,
-    handleRestoreThreadBranch,
-    isRestoringThreadBranch,
-    localCheckoutBranchMismatch,
-    parkedThreadBannerItem,
-    resumeCompactionBannerItem,
-    showBranchMismatchBanner,
-    systemComposerBannerItems,
-    wokeThreadBannerItem,
-  ]);
   useEffect(() => {
     setPendingServerThreadEnvMode(null);
     setPendingServerThreadBranch(undefined);
@@ -5382,6 +5377,117 @@ function ChatViewContent(props: ChatViewProps) {
       phase,
       revertThreadCheckpoint,
       setThreadError,
+    ],
+  );
+
+  const onEditUserMessage = useCallback(
+    async (messageId: MessageId, text: string) => {
+      const localApi = readLocalApi();
+      if (!localApi || !activeThread || isRevertingCheckpoint) return;
+      const targetTurnCount = revertTurnCountRef.current.get(messageId);
+      if (targetTurnCount === undefined) return;
+      const shouldRewind = typeof targetTurnCount === "number";
+      const trimmed = text.trim();
+      if (!trimmed) return;
+
+      if (activeEnvironmentUnavailable && activeEnvironmentUnavailableLabel) {
+        setThreadError(
+          activeThread.id,
+          t("checkpointRevert.reconnectFirst", { label: activeEnvironmentUnavailableLabel }),
+        );
+        return;
+      }
+      if (phase === "running" || isSendBusy || isConnecting) {
+        setThreadError(activeThread.id, t("checkpointRevert.interruptFirst"));
+        return;
+      }
+      if (shouldRewind) {
+        const confirmed = await localApi.dialogs.confirm(
+          [
+            t("editUserMessage.rewindTitle"),
+            t("editUserMessage.rewindDescription"),
+            t("checkpointRevert.warning"),
+          ].join("\n"),
+          { variant: "destructive" },
+        );
+        if (!confirmed) {
+          return;
+        }
+      }
+
+      setIsRevertingCheckpoint(true);
+      setThreadError(activeThread.id, null);
+      if (shouldRewind) {
+        const startedAt = new Date().toISOString();
+        const revertResult = await revertThreadCheckpoint({
+          environmentId,
+          input: {
+            threadId: activeThread.id,
+            turnCount: targetTurnCount,
+          },
+        });
+        if (revertResult._tag === "Failure" && !isAtomCommandInterrupted(revertResult)) {
+          const error = squashAtomCommandFailure(revertResult);
+          setThreadError(
+            activeThread.id,
+            error instanceof Error ? error.message : t("checkpoint.failedToRevert"),
+          );
+          setIsRevertingCheckpoint(false);
+          return;
+        }
+        const outcome = await waitForThreadRewound(
+          scopeThreadRef(activeThread.environmentId, activeThread.id),
+          targetTurnCount,
+          startedAt,
+        );
+        if (outcome !== "rewound") {
+          setThreadError(
+            activeThread.id,
+            t(
+              outcome === "failed"
+                ? "editUserMessage.rewindFailed"
+                : "editUserMessage.rewindTimeout",
+            ),
+          );
+          setIsRevertingCheckpoint(false);
+          return;
+        }
+      }
+      const startResult = await startThreadTurn({
+        environmentId,
+        input: {
+          threadId: activeThread.id,
+          message: {
+            messageId: shouldRewind ? newMessageId() : messageId,
+            role: "user",
+            text: trimmed,
+            attachments: [],
+          },
+          runtimeMode: activeThread.runtimeMode,
+          interactionMode: activeThread.interactionMode,
+          createdAt: new Date().toISOString(),
+        },
+      });
+      setIsRevertingCheckpoint(false);
+      if (startResult._tag === "Failure" && !isAtomCommandInterrupted(startResult)) {
+        setThreadError(
+          activeThread.id,
+          chatActionErrorMessage(squashAtomCommandFailure(startResult)),
+        );
+      }
+    },
+    [
+      activeThread,
+      activeEnvironmentUnavailable,
+      activeEnvironmentUnavailableLabel,
+      environmentId,
+      isConnecting,
+      isRevertingCheckpoint,
+      isSendBusy,
+      phase,
+      revertThreadCheckpoint,
+      setThreadError,
+      startThreadTurn,
     ],
   );
 
@@ -5718,8 +5824,7 @@ function ChatViewContent(props: ChatViewProps) {
       }
     }
 
-    const resolvedSubmissionIntent =
-      submissionIntent === "background" && isLocalDraftThread ? "background" : "foreground";
+    const resolvedSubmissionIntent = submissionIntent;
     if (
       shouldDockDraftHeroForSubmission({
         isDraftHeroState,
@@ -5929,7 +6034,7 @@ function ChatViewContent(props: ChatViewProps) {
           : undefined;
       beginLocalDispatch({ preparingWorktree: false });
       const backgroundThreadRef =
-        resolvedSubmissionIntent === "background"
+        resolvedSubmissionIntent === "background" && isLocalDraftThread
           ? scopeThreadRef(activeThread.environmentId, threadIdForSend)
           : null;
       if (backgroundThreadRef) {
@@ -6086,6 +6191,182 @@ function ChatViewContent(props: ChatViewProps) {
       resetLocalDispatch();
     }
   };
+
+  const canCreateCanvas =
+    activeThread !== null &&
+    activeLatestTurn !== null &&
+    activeProject !== null &&
+    Boolean(activeWorkspaceRoot) &&
+    !workLogEntries.some(
+      (entry) => entry.turnId === activeLatestTurn.turnId && entry.canvas !== undefined,
+    ) &&
+    !isWorking &&
+    !activeEnvironmentUnavailable &&
+    !threadDetailLoading &&
+    !isPreparingWorktree &&
+    pendingApprovals.length === 0 &&
+    pendingUserInputs.length === 0 &&
+    !composerHasUnsentContent &&
+    !activeThreadSnoozed &&
+    !activeThreadSettled;
+
+  const addCanvasSurface = useCallback(() => {
+    if (!canCreateCanvas || !activeProject || !activeWorkspaceRoot || !activeThreadKey) return;
+    pendingCanvasOpenRef.current = {
+      threadKey: activeThreadKey,
+      threadRef: activeThreadRef,
+      previousTurnId: activeLatestTurn?.turnId ?? null,
+    };
+    void onSend(undefined, "background", undefined, t("canvas.generatePrompt"));
+  }, [
+    activeLatestTurn?.turnId,
+    activeProject,
+    activeThreadKey,
+    activeThreadRef,
+    activeWorkspaceRoot,
+    canCreateCanvas,
+    onSend,
+  ]);
+
+  useEffect(() => {
+    const pending = pendingCanvasOpenRef.current;
+    if (!pending) return;
+    if (pending.threadKey !== activeThreadKey) {
+      // The user moved to another thread: retire the placeholder there so no
+      // orphaned spinner tab survives the generation turn.
+      if (pending.threadRef) {
+        useRightPanelStore.getState().closeSurface(pending.threadRef, "canvas:pending");
+      }
+      pendingCanvasOpenRef.current = null;
+      return;
+    }
+
+    const currentTurnId = activeRunningTurnId ?? activeLatestTurn?.turnId ?? null;
+    if (!currentTurnId || currentTurnId === pending.previousTurnId) return;
+
+    // The generation turn is live: show the generating placeholder so the
+    // background wait is visible instead of silent. Idempotent, and it never
+    // steals the active tab back once the user switches away. openCanvas
+    // retires the placeholder when the Canvas arrives; a turn that ends
+    // without one closes it below.
+    if (pending.threadRef) {
+      useRightPanelStore
+        .getState()
+        .openPendingCanvas(pending.threadRef, t("canvas.generatingTitle"));
+    }
+    // Reverse scan without copying: this effect reruns on every projected
+    // activity while a turn streams, so an O(n) array copy per event is
+    // measurable churn on long-running threads.
+    let canvas: (typeof workLogEntries)[number]["canvas"];
+    for (let index = workLogEntries.length - 1; index >= 0; index -= 1) {
+      const entry = workLogEntries[index];
+      if (entry !== undefined && entry.turnId === currentTurnId && entry.canvas !== undefined) {
+        canvas = entry.canvas;
+        break;
+      }
+    }
+    if (!canvas) {
+      if (activeLatestTurn?.turnId === currentTurnId && activeLatestTurn.state !== "running") {
+        pendingCanvasOpenRef.current = null;
+        if (pending.threadRef) {
+          useRightPanelStore.getState().closeSurface(pending.threadRef, "canvas:pending");
+        }
+      }
+      return;
+    }
+
+    pendingCanvasOpenRef.current = null;
+    onOpenCanvas(canvas);
+  }, [
+    activeLatestTurn?.turnId,
+    activeRunningTurnId,
+    activeThreadKey,
+    onOpenCanvas,
+    workLogEntries,
+  ]);
+
+  const composerBannerItems = useMemo<ComposerBannerStackItem[]>(() => {
+    const isUrgentSystemItem = (item: ComposerBannerStackItem) =>
+      item.urgent === true || item.variant === "error" || item.variant === "warning";
+    const urgentSystemItems = systemComposerBannerItems.filter(isUrgentSystemItem);
+    const calmSystemItems = systemComposerBannerItems.filter((item) => !isUrgentSystemItem(item));
+    const backgroundLivenessItems =
+      backgroundLivenessBannerItem === null ? [] : [backgroundLivenessBannerItem];
+    const resumeCompactionItems =
+      resumeCompactionBannerItem === null ? [] : [resumeCompactionBannerItem];
+    const wokeThreadItems = wokeThreadBannerItem === null ? [] : [wokeThreadBannerItem];
+    const parkedThreadItems = parkedThreadBannerItem === null ? [] : [parkedThreadBannerItem];
+    if (!localCheckoutBranchMismatch || !showBranchMismatchBanner || !activeBranchMismatchKey) {
+      return [
+        ...urgentSystemItems,
+        ...backgroundLivenessItems,
+        ...calmSystemItems,
+        ...resumeCompactionItems,
+        ...wokeThreadItems,
+        ...parkedThreadItems,
+      ];
+    }
+    return [
+      ...urgentSystemItems,
+      ...backgroundLivenessItems,
+      ...calmSystemItems,
+      ...resumeCompactionItems,
+      ...wokeThreadItems,
+      {
+        id: `branch-mismatch:${activeBranchMismatchKey}`,
+        variant: "info",
+        icon: <GitBranchIcon />,
+        title: (
+          <span className="flex min-w-0 items-baseline gap-1.5">
+            <span className="shrink-0 font-normal text-muted-foreground">
+              {t("branchChangedWas")}
+            </span>
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <code className="min-w-0 truncate font-medium text-foreground">
+                    {localCheckoutBranchMismatch.threadBranch}
+                  </code>
+                }
+              />
+              <TooltipPopup side="top" className="max-w-80">
+                {t("thisThreadLastRanOn")} {localCheckoutBranchMismatch.threadBranch}
+                {t("sendingWillContinueOn")} {localCheckoutBranchMismatch.currentBranch}.
+              </TooltipPopup>
+            </Tooltip>
+          </span>
+        ),
+        className: "dark:shadow-none",
+        actions: (
+          <Button
+            size="xs"
+            variant="ghost"
+            disabled={isRestoringThreadBranch}
+            onClick={handleRestoreThreadBranch}
+          >
+            {isRestoringThreadBranch ? t("restoring") : t("restoreBranch")}
+          </Button>
+        ),
+        dismissLabel: t("interface.dismiss-branch-change-notice"),
+        onDismiss: () => {
+          dismissBranchMismatchForSession(activeBranchMismatchKey);
+          setBranchMismatchDismissTick((tick) => tick + 1);
+        },
+      },
+      ...parkedThreadItems,
+    ];
+  }, [
+    activeBranchMismatchKey,
+    backgroundLivenessBannerItem,
+    handleRestoreThreadBranch,
+    isRestoringThreadBranch,
+    localCheckoutBranchMismatch,
+    parkedThreadBannerItem,
+    resumeCompactionBannerItem,
+    showBranchMismatchBanner,
+    systemComposerBannerItems,
+    wokeThreadBannerItem,
+  ]);
 
   const onInterrupt = useCallback(async (): Promise<boolean> => {
     if (!activeThread) return false;
@@ -6790,7 +7071,18 @@ function ChatViewContent(props: ChatViewProps) {
     </div>
   );
   const rightPanelContent = activeThreadRef ? (
-    activeRightPanelSurface?.kind === "plugin" ? (
+    activeRightPanelSurface?.kind === "canvas" && activeWorkspaceRoot ? (
+      <CanvasPanel
+        cwd={activeWorkspaceRoot}
+        environmentId={activeThreadRef.environmentId}
+        onOpenFile={openFileSurface}
+        onCreateCanvas={addCanvasSurface}
+        onSelectCanvas={onSelectCanvas}
+        canCreateCanvas={canCreateCanvas}
+        recentCanvases={mergedRecentCanvasSurfaces}
+        surface={activeRightPanelSurface}
+      />
+    ) : activeRightPanelSurface?.kind === "plugin" ? (
       <LocalPluginWorkspacePanel
         surface={activeRightPanelSurface}
         workspace={
@@ -7024,8 +7316,10 @@ function ChatViewContent(props: ChatViewProps) {
                 activeThreadEnvironmentId={activeThread.environmentId}
                 routeThreadKey={routeThreadKey}
                 onOpenTurnDiff={onOpenTurnDiff}
+                onOpenCanvas={onOpenCanvas}
                 revertTurnCountByUserMessageId={revertTurnCountByUserMessageId}
                 onRevertUserMessage={onRevertUserMessage}
+                onEditUserMessage={onEditUserMessage}
                 isRevertingCheckpoint={isRevertingCheckpoint}
                 onImageExpand={onExpandTimelineImage}
                 markdownCwd={gitCwd ?? undefined}
@@ -7120,93 +7414,99 @@ function ChatViewContent(props: ChatViewProps) {
                       )}
                     >
                       <div className="chat-composer-glass-host relative z-10 w-full rounded-[22px]">
-                        <div ref={attachDraftHeroComposerAnchorRef} className="relative z-10">
-                          <ChatComposer
-                            composerRef={composerRef}
-                            composerDraftTarget={composerDraftTarget}
-                            environmentId={environmentId}
-                            attachmentUploadsCapabilityKnown={attachmentUploadsCapabilityKnown}
-                            supportsAttachmentUploads={supportsAttachmentUploads}
-                            routeKind={routeKind}
-                            routeThreadRef={routeThreadRef}
-                            draftId={draftId}
-                            activeThreadId={activeThreadId}
-                            activeThreadEnvironmentId={activeThread?.environmentId}
-                            activeThread={activeThread}
-                            isServerThread={isServerThread}
-                            isLocalDraftThread={isLocalDraftThread}
-                            forceExpandedOnMobile={forceExpandedMobileComposer && isDraftHeroState}
-                            projectSelectionRequired={isLocalDraftThread && activeProject === null}
-                            phase={phase}
-                            isConnecting={isConnecting}
-                            isSendBusy={isSendBusy}
-                            sendDisabledReason={
-                              feedbackUploading
-                                ? t("composer.sendingFeedback")
-                                : threadDetailLoading
-                                  ? t("composer.messagesLoading")
-                                  : null
-                            }
-                            isPreparingWorktree={isPreparingWorktree}
-                            externalDrawerAttached={externalComposerDrawerAttached}
-                            environmentUnavailable={activeEnvironmentUnavailableState}
-                            activePendingApproval={activePendingApproval}
-                            pendingApprovals={pendingApprovals}
-                            pendingUserInputs={pendingUserInputs}
-                            activePendingProgress={activePendingProgress}
-                            activePendingResolvedAnswers={activePendingResolvedAnswers}
-                            activePendingIsResponding={activePendingIsResponding}
-                            activePendingDraftAnswers={activePendingDraftAnswers}
-                            activePendingQuestionIndex={activePendingQuestionIndex}
-                            respondingRequestIds={respondingRequestIds}
-                            showPlanFollowUpPrompt={showPlanFollowUpPrompt}
-                            activeProposedPlan={activeProposedPlan}
-                            activeTasksProgress={activeComposerTasksProgress}
-                            activeTaskSteps={activeComposerTaskSteps}
-                            runtimeMode={runtimeMode}
-                            interactionMode={interactionMode}
-                            lockedProvider={lockedProvider}
-                            providerStatuses={providerStatuses as ServerProvider[]}
-                            activeProjectDefaultModelSelection={
-                              activeProject?.defaultModelSelection
-                            }
-                            activeThreadModelSelection={activeThread?.modelSelection}
-                            activeContextWindow={activeContextWindow}
-                            compactDisabled={compactDisabled}
-                            compactDisabledReason={compactDisabledReason}
-                            resolvedTheme={resolvedTheme}
-                            settings={settings}
-                            keybindings={keybindings}
-                            terminalOpen={Boolean(terminalUiState.terminalOpen)}
-                            gitCwd={gitCwd}
-                            promptRef={promptRef}
-                            composerImagesRef={composerImagesRef}
-                            composerTerminalContextsRef={composerTerminalContextsRef}
-                            composerElementContextsRef={composerElementContextsRef}
-                            onSend={onSend}
-                            onInterrupt={onInterrupt}
-                            onImplementPlanInNewThread={onImplementPlanInNewThread}
-                            onRespondToApproval={onRespondToApproval}
-                            onSelectActivePendingUserInputOption={
-                              onSelectActivePendingUserInputOption
-                            }
-                            onAdvanceActivePendingUserInput={onAdvanceActivePendingUserInput}
-                            onPreviousActivePendingUserInputQuestion={
-                              onPreviousActivePendingUserInputQuestion
-                            }
-                            onChangeActivePendingUserInputCustomAnswer={
-                              onChangeActivePendingUserInputCustomAnswer
-                            }
-                            onProviderModelSelect={onProviderModelSelect}
-                            getModelDisabledReason={getModelDisabledReason}
-                            toggleInteractionMode={toggleInteractionMode}
-                            handleRuntimeModeChange={handleRuntimeModeChange}
-                            handleInteractionModeChange={handleInteractionModeChange}
-                            focusComposer={focusComposer}
-                            scheduleComposerFocus={scheduleComposerFocus}
-                            setThreadError={setThreadError}
-                            onExpandImage={onExpandTimelineImage}
-                          />
+                        <div className="relative">
+                          <div ref={attachDraftHeroComposerAnchorRef} className="relative z-10">
+                            <ChatComposer
+                              composerRef={composerRef}
+                              composerDraftTarget={composerDraftTarget}
+                              environmentId={environmentId}
+                              attachmentUploadsCapabilityKnown={attachmentUploadsCapabilityKnown}
+                              supportsAttachmentUploads={supportsAttachmentUploads}
+                              routeKind={routeKind}
+                              routeThreadRef={routeThreadRef}
+                              draftId={draftId}
+                              activeThreadId={activeThreadId}
+                              activeThreadEnvironmentId={activeThread?.environmentId}
+                              activeThread={activeThread}
+                              isServerThread={isServerThread}
+                              isLocalDraftThread={isLocalDraftThread}
+                              forceExpandedOnMobile={
+                                forceExpandedMobileComposer && isDraftHeroState
+                              }
+                              projectSelectionRequired={
+                                isLocalDraftThread && activeProject === null
+                              }
+                              phase={phase}
+                              isConnecting={isConnecting}
+                              isSendBusy={isSendBusy}
+                              sendDisabledReason={
+                                feedbackUploading
+                                  ? t("composer.sendingFeedback")
+                                  : threadDetailLoading
+                                    ? t("composer.messagesLoading")
+                                    : null
+                              }
+                              isPreparingWorktree={isPreparingWorktree}
+                              externalDrawerAttached={externalComposerDrawerAttached}
+                              environmentUnavailable={activeEnvironmentUnavailableState}
+                              activePendingApproval={activePendingApproval}
+                              pendingApprovals={pendingApprovals}
+                              pendingUserInputs={pendingUserInputs}
+                              activePendingProgress={activePendingProgress}
+                              activePendingResolvedAnswers={activePendingResolvedAnswers}
+                              activePendingIsResponding={activePendingIsResponding}
+                              activePendingDraftAnswers={activePendingDraftAnswers}
+                              activePendingQuestionIndex={activePendingQuestionIndex}
+                              respondingRequestIds={respondingRequestIds}
+                              showPlanFollowUpPrompt={showPlanFollowUpPrompt}
+                              activeProposedPlan={activeProposedPlan}
+                              activeTasksProgress={activeComposerTasksProgress}
+                              activeTaskSteps={activeComposerTaskSteps}
+                              runtimeMode={runtimeMode}
+                              interactionMode={interactionMode}
+                              lockedProvider={lockedProvider}
+                              providerStatuses={providerStatuses as ServerProvider[]}
+                              activeProjectDefaultModelSelection={
+                                activeProject?.defaultModelSelection
+                              }
+                              activeThreadModelSelection={activeThread?.modelSelection}
+                              activeContextWindow={activeContextWindow}
+                              compactDisabled={compactDisabled}
+                              compactDisabledReason={compactDisabledReason}
+                              resolvedTheme={resolvedTheme}
+                              settings={settings}
+                              keybindings={keybindings}
+                              terminalOpen={Boolean(terminalUiState.terminalOpen)}
+                              gitCwd={gitCwd}
+                              promptRef={promptRef}
+                              composerImagesRef={composerImagesRef}
+                              composerTerminalContextsRef={composerTerminalContextsRef}
+                              composerElementContextsRef={composerElementContextsRef}
+                              onSend={onSend}
+                              onInterrupt={onInterrupt}
+                              onImplementPlanInNewThread={onImplementPlanInNewThread}
+                              onRespondToApproval={onRespondToApproval}
+                              onSelectActivePendingUserInputOption={
+                                onSelectActivePendingUserInputOption
+                              }
+                              onAdvanceActivePendingUserInput={onAdvanceActivePendingUserInput}
+                              onPreviousActivePendingUserInputQuestion={
+                                onPreviousActivePendingUserInputQuestion
+                              }
+                              onChangeActivePendingUserInputCustomAnswer={
+                                onChangeActivePendingUserInputCustomAnswer
+                              }
+                              onProviderModelSelect={onProviderModelSelect}
+                              getModelDisabledReason={getModelDisabledReason}
+                              toggleInteractionMode={toggleInteractionMode}
+                              handleRuntimeModeChange={handleRuntimeModeChange}
+                              handleInteractionModeChange={handleInteractionModeChange}
+                              focusComposer={focusComposer}
+                              scheduleComposerFocus={scheduleComposerFocus}
+                              setThreadError={setThreadError}
+                              onExpandImage={onExpandTimelineImage}
+                            />
+                          </div>
                         </div>
                       </div>
                       <div className="min-h-0">
@@ -7361,12 +7661,14 @@ function ChatViewContent(props: ChatViewProps) {
           onAddFiles={addFilesSurface}
           onAddPullRequest={addPullRequestSurface}
           onAddAgents={addAgentsSurface}
+          onAddCanvas={openCanvasPanel}
           browserAvailable={isPreviewSupportedInRuntime()}
           terminalAvailable={activeProject !== null}
           diffAvailable={isServerThread && isGitRepo}
           filesAvailable={activeProject !== null}
           pullRequestAvailable={pullRequestSurfaceAvailable}
           agentsAvailable
+          canvasAvailable={Boolean(activeProject && activeWorkspaceRoot)}
           pullRequestStatuses={pullRequestTabStatuses}
           liveAgentCount={agentPanelModel.liveCount}
         >
@@ -7402,12 +7704,14 @@ function ChatViewContent(props: ChatViewProps) {
             onAddFiles={addFilesSurface}
             onAddPullRequest={addPullRequestSurface}
             onAddAgents={addAgentsSurface}
+            onAddCanvas={openCanvasPanel}
             browserAvailable={isPreviewSupportedInRuntime()}
             terminalAvailable={activeProject !== null}
             diffAvailable={isServerThread && isGitRepo}
             filesAvailable={activeProject !== null}
             pullRequestAvailable={pullRequestSurfaceAvailable}
             agentsAvailable
+            canvasAvailable={Boolean(activeProject && activeWorkspaceRoot)}
             pullRequestStatuses={pullRequestTabStatuses}
             liveAgentCount={agentPanelModel.liveCount}
           >

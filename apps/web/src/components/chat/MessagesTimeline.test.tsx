@@ -190,6 +190,7 @@ function buildProps() {
     onOpenTurnDiff: () => {},
     revertTurnCountByUserMessageId: new Map(),
     onRevertUserMessage: () => {},
+    onEditUserMessage: () => {},
     isRevertingCheckpoint: false,
     onImageExpand: () => {},
     activeThreadEnvironmentId: ACTIVE_THREAD_ENVIRONMENT_ID,
@@ -293,6 +294,20 @@ describe("MessagesTimeline", () => {
 
     expect(markup).toContain("/feedback The agent stopped early.");
     expect(markup).toContain("Sending feedback to OpenAI...");
+  });
+
+  it("shows edit controls for a failed user message without a checkpoint", () => {
+    const userEntry = buildUserTimelineEntry("Retry this request");
+    const markup = renderToStaticMarkup(
+      <MessagesTimeline
+        {...buildProps()}
+        timelineEntries={[userEntry]}
+        revertTurnCountByUserMessageId={new Map([[userEntry.message.id, null]])}
+      />,
+    );
+
+    expect(markup).toContain(`aria-label="${t("editUserMessage.action")}"`);
+    expect(markup).not.toContain(`aria-label="${t("revertToThisMessage")}"`);
   });
 
   it("renders the returned Codex thread ID in the feedback response", () => {
@@ -431,6 +446,77 @@ describe("MessagesTimeline", () => {
     expect(markup).toContain("size-3");
     expect(markup).toContain(`aria-label="${t("collapseAllFolders")}"`);
     expect(markup).toContain(`aria-label="${t("openDiff")}"`);
+    expect(markup).toContain(`1 ${t("changedFile")}`);
+  });
+
+  it("only shows an ignored Canvas in the changed-files entry", () => {
+    const assistantMessageId = MessageId.make("message-assistant-with-canvas");
+    const turnId = TurnId.make("turn-with-canvas");
+    const canvas = {
+      canvasId: "project-analysis",
+      title: "Project analysis",
+      relativePath: ".codework/canvases/turn-with-canvas/Project-analysis.canvas.json",
+    };
+    const markup = renderToStaticMarkup(
+      <MessagesTimeline
+        {...buildProps()}
+        latestTurn={{
+          turnId,
+          state: "completed",
+          startedAt: MESSAGE_CREATED_AT,
+          completedAt: MESSAGE_CREATED_AT,
+        }}
+        timelineEntries={[
+          {
+            id: "entry-canvas",
+            kind: "work",
+            createdAt: MESSAGE_CREATED_AT,
+            entry: {
+              id: "work-canvas",
+              createdAt: MESSAGE_CREATED_AT,
+              turnId,
+              label: "Canvas created",
+              tone: "tool",
+              canvas,
+            },
+          },
+          {
+            id: "entry-assistant-with-canvas",
+            kind: "message",
+            createdAt: MESSAGE_CREATED_AT,
+            message: {
+              id: assistantMessageId,
+              role: "assistant",
+              text: "Created a Canvas.",
+              turnId,
+              createdAt: MESSAGE_CREATED_AT,
+              updatedAt: MESSAGE_CREATED_AT,
+              streaming: false,
+            },
+          },
+        ]}
+        turnDiffSummaryByAssistantMessageId={
+          new Map([
+            [
+              assistantMessageId,
+              {
+                turnId,
+                checkpointTurnCount: 1,
+                checkpointRef: CheckpointRef.make("checkpoint-with-canvas"),
+                status: "ready",
+                files: [],
+                assistantMessageId,
+                completedAt: MESSAGE_CREATED_AT,
+              },
+            ],
+          ])
+        }
+      />,
+    );
+
+    expect(markup).toContain(t("canvas.open"));
+    expect(markup).toContain("Project analysis");
+    expect(markup.split("Project analysis").length - 1).toBe(1);
     expect(markup).toContain(`1 ${t("changedFile")}`);
   });
 

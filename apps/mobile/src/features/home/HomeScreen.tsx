@@ -27,6 +27,7 @@ import { useThemeColor } from "../../lib/useThemeColor";
 
 import { AppText as Text } from "../../components/AppText";
 import { EmptyState } from "../../components/EmptyState";
+import { deriveEmptyState } from "./homeEmptyState";
 import type { WorkspaceEnvironment, WorkspaceState } from "../../state/workspaceModel";
 import type { SavedRemoteConnection } from "../../lib/connection";
 import { scopedProjectKey } from "../../lib/scopedEntities";
@@ -99,6 +100,7 @@ interface HomeScreenProps {
   readonly onProjectSortOrderChange: (sortOrder: HomeProjectSortOrder) => void;
   readonly onThreadSortOrderChange: (sortOrder: SidebarThreadSortOrder) => void;
   readonly onAddConnection: () => void;
+  readonly onAddProject: () => void;
   readonly onOpenSettings: () => void;
   readonly onStartNewTask: () => void;
   readonly onSelectThread: (thread: EnvironmentThreadShell) => void;
@@ -122,6 +124,7 @@ interface HomeScreenProps {
   readonly onSelectPendingTask: (pendingTask: PendingNewTask) => void;
   readonly onDeletePendingTask: (pendingTask: PendingNewTask) => void;
   readonly onNewThreadInProject: (project: EnvironmentProject) => void;
+  readonly onOpenProjectSettings: (project: EnvironmentProject) => void;
 }
 
 /* ─── Layout constants ───────────────────────────────────────────────── */
@@ -134,67 +137,6 @@ const PRE_LIQUID_GLASS_BOTTOM_TOOLBAR_HEIGHT = 44;
  * already consumes the top safe-area inset, so the list only needs breathing
  * room here.
  */
-
-function deriveEmptyState(props: {
-  readonly catalogState: WorkspaceState;
-  readonly projectCount: number;
-}): { readonly title: string; readonly detail: string; readonly loading: boolean } {
-  const { catalogState } = props;
-  if (catalogState.isLoadingConnections) {
-    return {
-      title: t("loadingEnvironments"),
-      detail: t("checkingSavedEnvironmentsOnThisDevice"),
-      loading: true,
-    };
-  }
-
-  if (!catalogState.hasConnections) {
-    return {
-      title: t("noEnvironmentsConnected"),
-      detail: t("addAnEnvironmentToLoadProjectsAndStartCodingSessions"),
-      loading: false,
-    };
-  }
-
-  if (
-    (catalogState.connectionState === "available" ||
-      catalogState.connectionState === "offline" ||
-      catalogState.connectionState === "error") &&
-    !catalogState.hasLoadedShellSnapshot
-  ) {
-    return {
-      title: t("commandPalette.environmentUnavailable"),
-      detail: catalogState.connectionError ?? t("connection.savedEnvironmentOffline"),
-      loading: false,
-    };
-  }
-
-  if (
-    catalogState.hasConnectingEnvironment &&
-    !catalogState.hasLoadedShellSnapshot &&
-    catalogState.connectionError === null
-  ) {
-    return {
-      title: t("connectingToEnvironment"),
-      detail: t("loadingProjectsAndThreadsFromTheSavedEnvironment"),
-      loading: true,
-    };
-  }
-
-  if (props.projectCount === 0 && catalogState.hasLoadedShellSnapshot) {
-    return {
-      title: t("noProjectsFound"),
-      detail: t("theConnectedEnvironmentDidNotReportAnyProjects"),
-      loading: false,
-    };
-  }
-
-  return {
-    title: t("noThreadsYet"),
-    detail: t("createATaskToStartANewCodingSessionInOneOfYourConnectedProjects"),
-    loading: false,
-  };
-}
 
 function HomeTopContentSpacer() {
   return <View className="h-4" />;
@@ -964,6 +906,8 @@ export function HomeScreen(props: HomeScreenProps) {
               // so the quick new-thread button is single-real-project only.
               newThreadTarget={item.group.newThreadTarget}
               onNewThread={props.onNewThreadInProject}
+              onOpenProjectSettings={props.onOpenProjectSettings}
+              projects={item.group.projects}
               project={item.group.representative}
               threadCount={item.group.threads.length + item.group.pendingTasks.length}
               title={item.group.title}
@@ -1081,8 +1025,20 @@ export function HomeScreen(props: HomeScreenProps) {
           <EmptyState
             title={emptyState.title}
             detail={emptyState.detail}
-            actionLabel={!props.catalogState.hasReadyEnvironment ? t("addEnvironment") : undefined}
-            onAction={!props.catalogState.hasReadyEnvironment ? props.onAddConnection : undefined}
+            actionLabel={
+              !props.catalogState.hasReadyEnvironment
+                ? t("addEnvironment")
+                : emptyState.action === "addProject"
+                  ? t("addProject")
+                  : undefined
+            }
+            onAction={
+              !props.catalogState.hasReadyEnvironment
+                ? props.onAddConnection
+                : emptyState.action === "addProject"
+                  ? props.onAddProject
+                  : undefined
+            }
             variant="plain"
           />
           {emptyState.loading ? (

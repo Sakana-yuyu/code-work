@@ -877,3 +877,100 @@ describe("nested agents vs subagent shells", () => {
     expect(agents.map((agent) => agent.id)).toEqual(["nested-1"]);
   });
 });
+
+describe("BYOK 委派桥接条目", () => {
+  it("委派生命周期进入花名册：结算为 subagent 直接条目，不进 workflow", () => {
+    const model = deriveAgentPanelModel({
+      agents: fold([
+        activity("task.started", {
+          taskId: "byok-delegation-k1",
+          agentKind: "agent",
+          title: "调研 X 库的用法",
+          role: "explore",
+          timelineBypass: true,
+        }),
+        activity("task.progress", {
+          taskId: "byok-delegation-k1",
+          status: "running",
+          summary: "Delegation running",
+          timelineBypass: true,
+        }),
+        activity("task.updated", {
+          taskId: "byok-delegation-k1",
+          status: "completed",
+          endedAt: "2026-09-03T12:00:00.000Z",
+          timelineBypass: true,
+        }),
+      ]),
+    });
+    expect(model.workflows).toHaveLength(0);
+    expect(model.directAgents).toHaveLength(1);
+    const agent = model.directAgents[0]!;
+    expect(agent.kind).toBe("subagent");
+    expect(agent.title).toBe("调研 X 库的用法");
+    expect(agent.role).toBe("explore");
+    expect(agent.status).toBe("completed");
+    expect(agent.completedAt).toBe("2026-09-03T12:00:00.000Z");
+    expect(model.settledCount).toBe(1);
+    expect(model.runningCount).toBe(0);
+  });
+
+  it("失败终态把 error 带到条目上", () => {
+    const agents = fold([
+      activity("task.started", {
+        taskId: "byok-delegation-k2",
+        agentKind: "agent",
+        title: "调研 Y 库的用法",
+        role: "explore",
+        timelineBypass: true,
+      }),
+      activity("task.updated", {
+        taskId: "byok-delegation-k2",
+        status: "failed",
+        error: "上游密钥无效",
+        endedAt: "2026-09-03T12:01:00.000Z",
+        timelineBypass: true,
+      }),
+    ]);
+    expect(agents).toHaveLength(1);
+    const agent = agents[0]!;
+    expect(agent.status).toBe("failed");
+    expect(agent.error).toBe("上游密钥无效");
+  });
+
+  it("缺省 role 的行同样入册：fold 不臆造默认 role", () => {
+    const agents = fold([
+      activity("task.started", {
+        taskId: "byok-delegation-k3",
+        agentKind: "agent",
+        title: "调研 Z 库的用法",
+        timelineBypass: true,
+      }),
+    ]);
+    expect(agents).toHaveLength(1);
+    expect(agents[0]!.role).toBeNull();
+  });
+
+  it("timelineBypass 不影响面板：行照常入册且被时间线谓词识别", () => {
+    const rows = [
+      activity("task.started", {
+        taskId: "byok-delegation-k4",
+        agentKind: "agent",
+        title: "调研 W 库的用法",
+        role: "explore",
+        timelineBypass: true,
+      }),
+      activity("task.progress", {
+        taskId: "byok-delegation-k4",
+        status: "running",
+        summary: "Delegation running",
+        timelineBypass: true,
+      }),
+    ];
+    const model = deriveAgentPanelModel({ agents: fold(rows) });
+    expect(model.directAgents.map((agent) => agent.id)).toEqual(["byok-delegation-k4"]);
+    for (const row of rows) {
+      expect(isTimelineBypassActivity(row)).toBe(true);
+    }
+  });
+});

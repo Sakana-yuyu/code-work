@@ -15,7 +15,7 @@ const repoRoot = NodePath.resolve(desktopDir, "..", "..");
 const devBundleIdSuffix = NodePath.basename(repoRoot)
   .toLowerCase()
   .replaceAll(/[^a-z0-9]+/g, "");
-export const APP_DISPLAY_NAME = isDevelopment ? "Code Work (Dev)" : "Code Work (Alpha)";
+export const APP_DISPLAY_NAME = isDevelopment ? "Code Work (Dev)" : "Code Work";
 export const APP_BUNDLE_ID = isDevelopment
   ? `com.codework.desktop.dev.${devBundleIdSuffix || "local"}`
   : "com.codework.desktop";

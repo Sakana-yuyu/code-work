@@ -1,19 +1,28 @@
-import type { ThreadGoal, ProviderInteractionMode } from "@codework/contracts";
+import type {
+  ProviderInteractionMode,
+  SpecWorkflowStage,
+  SpecWorkflowState,
+  SpecWorkflowStatus,
+  ThreadGoal,
+} from "@codework/contracts";
 import {
   CheckIcon,
+  CircleAlertIcon,
   FileTextIcon,
   GoalIcon,
   LightbulbIcon,
+  PauseIcon,
   PaperclipIcon,
+  PlayIcon,
   PlusIcon,
   SparklesIcon,
+  WorkflowIcon,
   XIcon,
 } from "lucide-react";
 import { useState, type ReactNode } from "react";
 
 import type { CommandPaletteActionItem } from "../CommandPalette.logic";
 import { t } from "~/i18n";
-import { cn } from "~/lib/utils";
 import { Button } from "../ui/button";
 import { Popover, PopoverPopup, PopoverTrigger } from "../ui/popover";
 import { ThreadGoalStatusBar } from "./ThreadGoalStatusBar";
@@ -22,6 +31,22 @@ type ComposerAddMenuPluginItem = Pick<
   CommandPaletteActionItem,
   "value" | "title" | "description" | "icon" | "run"
 >;
+
+export interface ComposerSpecWorkflowControl {
+  readonly available: boolean;
+  readonly enabled: boolean;
+  readonly isPending: boolean;
+  readonly hasError: boolean;
+  readonly workflowState: SpecWorkflowState | null;
+  readonly workflowStateIsPending: boolean;
+  readonly workflowStateHasError: boolean;
+  readonly onToggle: () => Promise<boolean>;
+  readonly onApproveProposal: () => Promise<boolean>;
+  readonly onRejectProposal: () => Promise<boolean>;
+  readonly onCompleteAcceptance: () => Promise<boolean>;
+  readonly onPause: () => Promise<boolean>;
+  readonly onResume: () => Promise<boolean>;
+}
 
 export interface ComposerAddMenuProps {
   readonly disabled: boolean;
@@ -42,6 +67,7 @@ export interface ComposerAddMenuProps {
   readonly onResumeGoal: () => Promise<boolean>;
   readonly onClearGoal: () => Promise<boolean>;
   readonly onEditGoalInComposer?: () => void;
+  readonly specWorkflow: ComposerSpecWorkflowControl;
 }
 
 export interface ComposerGoalControlProps {
@@ -63,12 +89,14 @@ function ComposerAddMenuItem(props: {
   readonly onClick: () => void;
   readonly trailing?: ReactNode;
   readonly disabled?: boolean;
+  readonly ariaPressed?: boolean;
 }) {
   return (
     <button
       type="button"
       className="group flex min-h-12 w-full items-center gap-3 rounded-lg px-2.5 py-2 text-left outline-none transition-colors hover:bg-accent focus-visible:bg-accent disabled:pointer-events-none disabled:opacity-50"
       disabled={props.disabled}
+      aria-pressed={props.ariaPressed}
       onClick={props.onClick}
     >
       <span className="flex size-7 shrink-0 items-center justify-center rounded-md bg-muted/65 text-muted-foreground transition-colors group-hover:text-foreground">
@@ -82,6 +110,151 @@ function ComposerAddMenuItem(props: {
         <span className="shrink-0 text-muted-foreground">{props.trailing}</span>
       ) : null}
     </button>
+  );
+}
+
+const specWorkflowStageLabelKey: Record<SpecWorkflowStage, string> = {
+  idle: "composer.specWorkflowStage.idle",
+  research: "composer.specWorkflowStage.research",
+  ask: "composer.specWorkflowStage.ask",
+  design: "composer.specWorkflowStage.design",
+  propose: "composer.specWorkflowStage.propose",
+  awaitingApproval: "composer.specWorkflowStage.awaitingApproval",
+  revise: "composer.specWorkflowStage.revise",
+  apply: "composer.specWorkflowStage.apply",
+  verify: "composer.specWorkflowStage.verify",
+  acceptance: "composer.specWorkflowStage.acceptance",
+  archive: "composer.specWorkflowStage.archive",
+};
+
+const specWorkflowStatusLabelKey: Record<SpecWorkflowStatus, string> = {
+  active: "composer.specWorkflowStatus.active",
+  paused: "composer.specWorkflowStatus.paused",
+  blocked: "composer.specWorkflowStatus.blocked",
+  completed: "composer.specWorkflowStatus.completed",
+};
+
+function SpecWorkflowMenuStatus(props: {
+  readonly control: ComposerSpecWorkflowControl;
+  readonly onActionSucceeded: () => void;
+}) {
+  if (!props.control.enabled) return null;
+
+  const state = props.control.workflowState;
+  const actionDisabled =
+    props.control.isPending ||
+    props.control.workflowStateIsPending ||
+    props.control.workflowStateHasError ||
+    state === null;
+  const runAction = (action: () => Promise<boolean>) => {
+    void action()
+      .then((changed) => {
+        if (changed) props.onActionSucceeded();
+      })
+      .catch(() => undefined);
+  };
+
+  return (
+    <div
+      className="mx-2 mb-2 rounded-lg border border-border/60 bg-muted/30 px-2.5 py-2 text-xs"
+      data-composer-spec-workflow-status="true"
+      aria-live="polite"
+    >
+      <div className="flex min-w-0 items-center gap-2">
+        <WorkflowIcon className="size-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
+        <span className="min-w-0 flex-1 truncate font-medium text-foreground">
+          {props.control.workflowStateIsPending
+            ? t("composer.specWorkflowStateLoading")
+            : props.control.workflowStateHasError
+              ? t("composer.specWorkflowStateLoadFailed")
+              : state === null
+                ? t("composer.specWorkflowNotStarted")
+                : `${t(specWorkflowStageLabelKey[state.stage])} · ${t(specWorkflowStatusLabelKey[state.status])}`}
+        </span>
+      </div>
+      {state !== null &&
+      !props.control.workflowStateIsPending &&
+      !props.control.workflowStateHasError ? (
+        <div className="mt-1.5 grid grid-cols-[auto_minmax(0,1fr)] gap-x-2 gap-y-0.5 text-muted-foreground">
+          <span>{t("composer.specWorkflowChange")}</span>
+          <span className="truncate text-foreground">{state.changeName}</span>
+          <span>{t("composer.specWorkflowStage")}</span>
+          <span>{t(specWorkflowStageLabelKey[state.stage])}</span>
+          <span>{t("composer.specWorkflowStatus")}</span>
+          <span>{t(specWorkflowStatusLabelKey[state.status])}</span>
+        </div>
+      ) : null}
+      {state?.lastError ? (
+        <div className="mt-1.5 flex items-start gap-1 text-destructive" role="alert">
+          <CircleAlertIcon className="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />
+          <span className="min-w-0 break-words">{state.lastError}</span>
+        </div>
+      ) : null}
+      {state?.stage === "awaitingApproval" && state.proposalStatus === "pending" ? (
+        <div className="mt-2 flex flex-wrap gap-1.5">
+          <Button
+            type="button"
+            size="sm"
+            variant="default"
+            className="h-7 px-2 text-xs"
+            disabled={actionDisabled}
+            onClick={() => runAction(props.control.onApproveProposal)}
+          >
+            <CheckIcon />
+            {t("composer.specWorkflowApprove")}
+          </Button>
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            className="h-7 px-2 text-xs"
+            disabled={actionDisabled}
+            onClick={() => runAction(props.control.onRejectProposal)}
+          >
+            <XIcon />
+            {t("composer.specWorkflowReject")}
+          </Button>
+        </div>
+      ) : null}
+      {state?.stage === "acceptance" && state.acceptanceStatus === "pending" ? (
+        <Button
+          type="button"
+          size="sm"
+          variant="default"
+          className="mt-2 h-7 px-2 text-xs"
+          disabled={actionDisabled || state.status !== "active"}
+          onClick={() => runAction(props.control.onCompleteAcceptance)}
+        >
+          <CheckIcon />
+          {t("composer.specWorkflowCompleteAcceptance")}
+        </Button>
+      ) : null}
+      {state?.status === "active" ? (
+        <Button
+          type="button"
+          size="sm"
+          variant="ghost"
+          className="mt-2 h-7 px-2 text-xs"
+          disabled={actionDisabled}
+          onClick={() => runAction(props.control.onPause)}
+        >
+          <PauseIcon />
+          {t("composer.specWorkflowPause")}
+        </Button>
+      ) : state?.status === "paused" ? (
+        <Button
+          type="button"
+          size="sm"
+          variant="ghost"
+          className="mt-2 h-7 px-2 text-xs"
+          disabled={actionDisabled}
+          onClick={() => runAction(props.control.onResume)}
+        >
+          <PlayIcon />
+          {t("composer.specWorkflowResume")}
+        </Button>
+      ) : null}
+    </div>
   );
 }
 
@@ -194,6 +367,15 @@ export function ComposerAddMenu(props: ComposerAddMenuProps) {
     props.interactionMode === "plan"
       ? t("switchThisThreadBackToNormalBuildMode")
       : t("switchThisThreadIntoPlanMode");
+  const specWorkflowDescription = !props.specWorkflow.available
+    ? t("composer.specWorkflowRequiresThread")
+    : props.specWorkflow.isPending
+      ? t("composer.specWorkflowLoading")
+      : props.specWorkflow.hasError
+        ? t("composer.specWorkflowLoadFailed")
+        : props.specWorkflow.enabled
+          ? t("composer.specWorkflowEnabledDescription")
+          : t("composer.specWorkflowDisabledDescription");
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
@@ -267,6 +449,40 @@ export function ComposerAddMenu(props: ComposerAddMenuProps) {
             trailing={
               props.interactionMode === "plan" ? <CheckIcon className="size-4" /> : undefined
             }
+          />
+          <div className="mt-1 border-t border-border/60 px-2 pb-1 pt-3 text-xs font-medium text-muted-foreground">
+            {t("composer.specWorkflowSection")}
+          </div>
+          <ComposerAddMenuItem
+            icon={<WorkflowIcon className="size-4" />}
+            title={t("composer.specWorkflow")}
+            description={specWorkflowDescription}
+            disabled={
+              props.disabled ||
+              !props.specWorkflow.available ||
+              props.specWorkflow.isPending ||
+              props.specWorkflow.hasError
+            }
+            ariaPressed={props.specWorkflow.enabled}
+            onClick={() => {
+              void props.specWorkflow
+                .onToggle()
+                .then((changed) => {
+                  if (changed) setOpen(false);
+                })
+                .catch(() => undefined);
+            }}
+            trailing={
+              props.specWorkflow.enabled ? (
+                <CheckIcon className="size-4" />
+              ) : (
+                <span className="size-1.5 rounded-full bg-muted-foreground/50" />
+              )
+            }
+          />
+          <SpecWorkflowMenuStatus
+            control={props.specWorkflow}
+            onActionSucceeded={() => setOpen(false)}
           />
           <div className="mt-1 border-t border-border/60 px-2 pb-1 pt-3 text-xs font-medium text-muted-foreground">
             {t("localPlugins.title")}

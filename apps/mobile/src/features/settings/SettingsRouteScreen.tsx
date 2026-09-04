@@ -128,7 +128,29 @@ function LocalSettingsRouteScreen() {
 
         <GeneralSettingsSection />
 
-        <MulticaRuntimeMobileBoundarySection />
+        <KeybindingsSettingsSection />
+
+        <SourceControlSettingsSection />
+
+        <TeamRuntimeSettingsSection />
+
+        <ByokSettingsSection />
+
+        <ProvidersSettingsSection />
+
+        <RuntimeDriversSettingsSection />
+
+        <ServerSettingsSection />
+
+        <IdeSessionsSettingsSection />
+
+        <McpSettingsSection />
+
+        <WorkspaceScriptsSettingsSection />
+
+        <AutomationsSettingsSection />
+
+        <DiagnosticsSettingsSection />
 
         <CompositionSettingsSection />
 
@@ -521,7 +543,29 @@ function ConfiguredSettingsRouteScreen() {
 
         <GeneralSettingsSection />
 
-        <MulticaRuntimeMobileBoundarySection />
+        <KeybindingsSettingsSection />
+
+        <SourceControlSettingsSection />
+
+        <TeamRuntimeSettingsSection />
+
+        <ByokSettingsSection />
+
+        <ProvidersSettingsSection />
+
+        <RuntimeDriversSettingsSection />
+
+        <ServerSettingsSection />
+
+        <IdeSessionsSettingsSection />
+
+        <McpSettingsSection />
+
+        <WorkspaceScriptsSettingsSection />
+
+        <AutomationsSettingsSection />
+
+        <DiagnosticsSettingsSection />
 
         <CompositionSettingsSection />
 
@@ -559,6 +603,12 @@ function CompositionSettingsSection() {
         target="SettingsSquadBuilder"
       />
       <SettingsRow
+        icon="arrow.triangle.branch"
+        label={t("taskGraphMobile.title")}
+        value={t("taskGraphMobile.settingsHint")}
+        target="SettingsTaskGraph"
+      />
+      <SettingsRow
         icon="server.rack"
         label={t("supplierRegistry.title")}
         target="SettingsSupplierRegistry"
@@ -567,19 +617,157 @@ function CompositionSettingsSection() {
   );
 }
 
-/**
- * Multica runtime credentials are server-owned secrets. Mobile intentionally
- * exposes no editor until it can wait for the server settings receipt and
- * preserve the same conflict and redaction guarantees as Web.
- */
-function MulticaRuntimeMobileBoundarySection() {
+function TeamRuntimeSettingsSection() {
   return (
-    <SettingsSection title={t("multicaRuntime.title")}>
+    <SettingsSection title={t("teamRuntimeMobile.title")}>
       <SettingsRow
-        disabled
+        icon="person.3"
+        label={t("teamRuntimeMobile.title")}
+        value={t("teamRuntimeMobile.settingsHint")}
+        target="SettingsTeamRuntime"
+      />
+    </SettingsSection>
+  );
+}
+
+function ByokSettingsSection() {
+  return (
+    <SettingsSection title={t("settings.byok")}>
+      <SettingsRow
+        icon="key.fill"
+        label={t("settings.byok")}
+        value={t("byokMobile.settingsHint")}
+        target="SettingsByok"
+      />
+    </SettingsSection>
+  );
+}
+
+function KeybindingsSettingsSection() {
+  return (
+    <SettingsSection title={t("keybindingsMobile.title")}>
+      <SettingsRow
+        icon="keyboard"
+        label={t("keybindingsMobile.title")}
+        value={t("keybindingsMobile.settingsHint")}
+        target="SettingsKeybindings"
+      />
+    </SettingsSection>
+  );
+}
+
+function SourceControlSettingsSection() {
+  return (
+    <SettingsSection title={t("sourceControlMobile.title")}>
+      <SettingsRow
+        icon="arrow.triangle.branch"
+        label={t("sourceControlMobile.title")}
+        value={t("sourceControlMobile.settingsHint")}
+        target="SettingsSourceControl"
+      />
+    </SettingsSection>
+  );
+}
+
+function ProvidersSettingsSection() {
+  return (
+    <SettingsSection title={t("providersMobile.title")}>
+      <SettingsRow
+        icon="cpu"
+        label={t("providersMobile.title")}
+        value={t("providersMobile.settingsHint")}
+        target="SettingsProviders"
+      />
+    </SettingsSection>
+  );
+}
+
+function RuntimeDriversSettingsSection() {
+  return (
+    <SettingsSection title={t("runtimeDriversMobile.title")}>
+      <SettingsRow
         icon="server.rack"
-        label={t("multicaRuntime.mobileReadOnly")}
-        value={t("multicaRuntime.mobileReadOnlyValue")}
+        label={t("runtimeDriversMobile.title")}
+        value={t("runtimeDriversMobile.settingsHint")}
+        target="SettingsRuntimeDrivers"
+      />
+    </SettingsSection>
+  );
+}
+
+function ServerSettingsSection() {
+  return (
+    <SettingsSection title={t("serverSettingsMobile.title")}>
+      <SettingsRow
+        icon="gearshape"
+        label={t("serverSettingsMobile.title")}
+        value={t("serverSettingsMobile.settingsHint")}
+        target="SettingsServer"
+      />
+    </SettingsSection>
+  );
+}
+
+function IdeSessionsSettingsSection() {
+  return (
+    <SettingsSection title={t("ideSessionsMobile.title")}>
+      <SettingsRow
+        icon="laptopcomputer"
+        label={t("ideSessionsMobile.title")}
+        value={t("ideSessionsMobile.settingsHint")}
+        target="SettingsIdeSessions"
+      />
+    </SettingsSection>
+  );
+}
+
+function McpSettingsSection() {
+  return (
+    <SettingsSection title={t("mcpMobile.title")}>
+      <SettingsRow
+        icon="link"
+        label={t("mcpMobile.title")}
+        value={t("mcpMobile.settingsHint")}
+        target="SettingsMcp"
+      />
+    </SettingsSection>
+  );
+}
+
+function WorkspaceScriptsSettingsSection() {
+  return (
+    <SettingsSection title={t("workspaceScriptsMobile.title")}>
+      <SettingsRow
+        icon="terminal"
+        label={t("workspaceScriptsMobile.title")}
+        value={t("workspaceScriptsMobile.settingsHint")}
+        target="SettingsWorkspaceScripts"
+      />
+    </SettingsSection>
+  );
+}
+
+function AutomationsSettingsSection() {
+  return (
+    <SettingsSection title={t("automationMobile.title")}>
+      <SettingsRow
+        icon="calendar"
+        label={t("automationMobile.title")}
+        value={t("automationMobile.settingsHint")}
+        target="SettingsAutomations"
+      />
+    </SettingsSection>
+  );
+}
+
+function DiagnosticsSettingsSection() {
+  return (
+    <SettingsSection title={t("diagnosticsMobile.title")}>
+      <SettingsRow
+        icon="waveform.path.ecg"
+        label={t("diagnosticsMobile.title")}
+        value={t("diagnosticsMobile.settingsHint")}
+        target="SettingsDiagnostics"
       />
     </SettingsSection>
   );

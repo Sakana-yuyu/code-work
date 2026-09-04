@@ -50,6 +50,7 @@ export function HomeHeader(props: {
   readonly onProjectSortOrderChange: (sortOrder: HomeProjectSortOrder) => void;
   readonly onThreadSortOrderChange: (sortOrder: SidebarThreadSortOrder) => void;
   readonly onOpenEnvironments: () => void;
+  readonly onOpenPullRequests: () => void;
   readonly onOpenSettings: () => void;
   readonly onStartNewTask: () => void;
 }) {
@@ -265,6 +266,19 @@ function AndroidHomeHeader(props: HomeHeaderProps) {
             >
               <SymbolView name="gearshape" size={18} tintColor={iconColor} type="monochrome" />
             </Pressable>
+            <Pressable
+              accessibilityLabel={t("pullRequestsMobile.title")}
+              accessibilityRole="button"
+              onPress={props.onOpenPullRequests}
+              className="size-11 items-center justify-center rounded-full bg-subtle"
+            >
+              <SymbolView
+                name="arrow.triangle.pull"
+                size={18}
+                tintColor={iconColor}
+                type="monochrome"
+              />
+            </Pressable>
           </View>
 
           <View className="min-h-12 flex-row items-center gap-2.5 rounded-2xl border border-input-border bg-input px-3.5">
@@ -330,6 +344,14 @@ function IosHomeHeader(props: HomeHeaderProps) {
           unstable_headerRightItems:
             Platform.OS === "ios"
               ? () => [
+                  withNativeGlassHeaderItem({
+                    accessibilityLabel: t("pullRequestsMobile.title"),
+                    icon: { name: "arrow.triangle.pull", type: "sfSymbol" } as const,
+                    identifier: "home-pull-requests",
+                    label: "",
+                    onPress: props.onOpenPullRequests,
+                    type: "button",
+                  }),
                   withNativeGlassHeaderItem({
                     accessibilityLabel: t("commandPalette.openSettings"),
                     icon: { name: "ellipsis", type: "sfSymbol" } as const,
@@ -465,6 +487,12 @@ function IosHomeHeader(props: HomeHeaderProps) {
             )}
           </NativeHeaderToolbar.Menu>
           <NativeHeaderToolbar.Spacer flexible />
+          <NativeHeaderToolbar.Button
+            accessibilityLabel={t("pullRequestsMobile.title")}
+            icon="arrow.triangle.pull"
+            onPress={props.onOpenPullRequests}
+            separateBackground
+          />
           <NativeHeaderToolbar.Button
             accessibilityLabel={t("newTask")}
             icon="square.and.pencil"

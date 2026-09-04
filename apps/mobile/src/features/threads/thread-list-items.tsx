@@ -7,7 +7,7 @@ import type { EnvironmentThreadSearchMatch } from "@codework/client-runtime/stat
 import type { MenuAction } from "@react-native-menu/menu";
 import { SymbolView } from "../../components/AppSymbol";
 import { memo, useCallback, useMemo, type ComponentProps } from "react";
-import { Pressable, useWindowDimensions, View } from "react-native";
+import { Alert, Pressable, useWindowDimensions, View } from "react-native";
 import type { SwipeableMethods } from "react-native-gesture-handler/ReanimatedSwipeable";
 import { useAppearancePreferences } from "../settings/appearance/AppearancePreferencesProvider";
 import Svg, { Circle, Path } from "react-native-svg";
@@ -78,6 +78,7 @@ function PullRequestIcon(props: { readonly size: number; readonly color: string 
 export const ThreadListGroupHeader = memo(function ThreadListGroupHeader(props: {
   readonly variant: ThreadListVariant;
   readonly project: EnvironmentProject;
+  readonly projects?: ReadonlyArray<EnvironmentProject>;
   readonly title: string;
   readonly threadCount: number;
   readonly collapsed: boolean;
@@ -87,6 +88,8 @@ export const ThreadListGroupHeader = memo(function ThreadListGroupHeader(props: 
   /** Project a quick new thread should target; null hides the button. */
   readonly newThreadTarget?: EnvironmentProject | null;
   readonly onNewThread?: (project: EnvironmentProject) => void;
+  /** Open settings for a selected physical project in this group. */
+  readonly onOpenProjectSettings?: (project: EnvironmentProject) => void;
 }) {
   const iconMutedColor = useThemeColor("--color-icon-muted");
   const { groupKey, onGroupAction, onNewThread } = props;
@@ -101,7 +104,24 @@ export const ThreadListGroupHeader = memo(function ThreadListGroupHeader(props: 
       onNewThread?.(newThreadTarget);
     }
   }, [newThreadTarget, onNewThread]);
+  const handleOpenProjectSettings = useCallback(() => {
+    if (!props.onOpenProjectSettings) return;
+    const projects = props.projects ?? [props.project];
+    if (projects.length === 1) {
+      props.onOpenProjectSettings(projects[0]!);
+      return;
+    }
+    Alert.alert(t("projectSettingsMobile.selectProject"), undefined, [
+      { text: t("cancel"), style: "cancel" },
+      ...projects.map((project) => ({
+        text: `${project.title} · ${project.workspaceRoot}`,
+        onPress: () => props.onOpenProjectSettings?.(project),
+      })),
+    ]);
+  }, [props.onOpenProjectSettings, props.project, props.projects]);
   const showNewThreadButton = onNewThread !== undefined && newThreadTarget !== null;
+  const showProjectSettingsButton =
+    props.onOpenProjectSettings !== undefined && newThreadTarget !== null;
 
   // The new-thread button is a SIBLING of the collapse toggle, not a child:
   // nested touchables are unreachable to VoiceOver/TalkBack (the parent
@@ -172,6 +192,23 @@ export const ThreadListGroupHeader = memo(function ThreadListGroupHeader(props: 
           <SymbolView
             name="plus"
             size={compact ? 20 : 16}
+            tintColor={iconMutedColor}
+            type="monochrome"
+            weight="medium"
+          />
+        </Pressable>
+      ) : null}
+      {showProjectSettingsButton ? (
+        <Pressable
+          accessibilityLabel={t("projectSettingsMobile.openFor", { title: props.title })}
+          accessibilityRole="button"
+          hitSlop={{ ...verticalHitSlop, left: 10, right: 14 }}
+          onPress={handleOpenProjectSettings}
+          style={({ pressed }) => ({ opacity: pressed ? 0.5 : 1, paddingLeft: 12 })}
+        >
+          <SymbolView
+            name="gearshape"
+            size={compact ? 19 : 16}
             tintColor={iconMutedColor}
             type="monochrome"
             weight="medium"

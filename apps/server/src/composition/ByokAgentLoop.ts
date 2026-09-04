@@ -122,6 +122,11 @@ export type ByokAgentLoopInput = {
   readonly onTextCheckpoint?: (
     checkpoint: ByokAgentTextCheckpoint,
   ) => Effect.Effect<void, ByokAgentLoopCheckpointError>;
+  /** 将内部 ToolBroker 调用回写成统一的 Provider Runtime 活动。 */
+  readonly onToolCompleted?: (
+    toolCall: ByokAgentToolCall,
+    result: ToolBroker.ToolBrokerResult,
+  ) => Effect.Effect<void, ByokAgentLoopCheckpointError>;
 };
 
 export type ByokAgentLoopResult = {
@@ -135,12 +140,23 @@ const encodeUnknownJson = Schema.encodeUnknownSync(Schema.fromJsonString(Schema.
 
 const DEFAULT_MAX_CONTEXT_MESSAGES = 17;
 const DEFAULT_MAX_TOOL_RESULT_CHARS = 12_000;
+const DEFAULT_MAX_ROUNDS = 8;
+/** Hard ceiling for one agent-loop run's model round budget. */
+export const MAX_BYOK_AGENT_LOOP_ROUNDS = 128;
 const utf8Encoder = new TextEncoder();
 
 const boundedInteger = (value: number | undefined, fallback: number, min: number, max: number) =>
   value === undefined || !Number.isFinite(value)
     ? fallback
     : Math.max(min, Math.min(max, Math.trunc(value)));
+
+/**
+ * Normalize the caller-supplied round budget. The RPC path (maxRounds as
+ * PositiveInt) accepts unclamped values, so bound it here like the sibling
+ * context/message budgets.
+ */
+export const byokAgentLoopMaxRounds = (value: number | undefined): number =>
+  boundedInteger(value ?? DEFAULT_MAX_ROUNDS, DEFAULT_MAX_ROUNDS, 1, MAX_BYOK_AGENT_LOOP_ROUNDS);
 
 const completeToolRound = (
   assistant: ByokAgentMessage | undefined,
@@ -246,7 +262,7 @@ export const runByokAgentLoop = (
   | ByokAgentModelError
 > =>
   Effect.gen(function* () {
-    const maxRounds = input.maxRounds ?? 8;
+    const maxRounds = byokAgentLoopMaxRounds(input.maxRounds);
     const maxContextMessages = boundedInteger(
       input.maxContextMessages,
       DEFAULT_MAX_CONTEXT_MESSAGES,
@@ -388,6 +404,9 @@ export const runByokAgentLoop = (
           capabilityGrantIds: input.capabilityGrantIds,
           workspaceRoot: input.workspaceRoot,
         });
+        if (input.onToolCompleted !== undefined) {
+          yield* input.onToolCompleted(event, result);
+        }
         messages.push({
           role: "tool",
           toolCallId: event.toolCallId,

@@ -4,6 +4,7 @@ import {
   type AuthSessionState,
   type EnvironmentId,
   type ProviderInstanceConfig,
+  type ServerSettings,
 } from "@codework/contracts";
 
 export interface ProviderEnvironmentOptionLike {
@@ -14,6 +15,12 @@ export interface ProviderEnvironmentOptionLike {
 export const isProviderInstanceVisible = (
   instance: Pick<ProviderInstanceConfig, "driver">,
 ): boolean => instance.driver !== "multica";
+
+export function hasConfiguredProviderInstances(
+  settings: Pick<ServerSettings, "providerInstances"> | null | undefined,
+): boolean {
+  return Object.keys(settings?.providerInstances ?? {}).length > 0;
+}
 
 export function buildProviderEnvironmentOptions<T extends ProviderEnvironmentOptionLike>(
   environments: ReadonlyArray<T>,

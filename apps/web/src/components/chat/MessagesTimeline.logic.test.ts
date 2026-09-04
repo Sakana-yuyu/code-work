@@ -516,6 +516,38 @@ describe("deriveMessagesTimelineRows", () => {
     expect(assistantRow?.assistantTurnDiffSummary).toBe(assistantTurnDiffSummary);
   });
 
+  it("preserves a null revert count for a failed message that can be retried", () => {
+    const rows = deriveMessagesTimelineRows({
+      timelineEntries: [
+        {
+          id: "user-entry",
+          kind: "message",
+          createdAt: "2026-01-01T00:00:00Z",
+          message: {
+            id: "user-failed" as never,
+            role: "user",
+            text: "Retry this request",
+            turnId: null,
+            createdAt: "2026-01-01T00:00:00Z",
+            updatedAt: "2026-01-01T00:00:00Z",
+            streaming: false,
+          },
+        },
+      ],
+      isWorking: false,
+      activeTurnStartedAt: null,
+      turnDiffSummaryByAssistantMessageId: new Map(),
+      revertTurnCountByUserMessageId: new Map([["user-failed" as never, null]]),
+    });
+
+    const userRow = rows.find(
+      (row): row is Extract<(typeof rows)[number], { kind: "message" }> =>
+        row.kind === "message" && row.message.role === "user",
+    );
+
+    expect(userRow?.revertTurnCount).toBeNull();
+  });
+
   it("keeps the first and terminal assistant messages visible around settled work", () => {
     const timelineEntries = [
       {
@@ -616,6 +648,53 @@ describe("deriveMessagesTimelineRows", () => {
     expect(
       expandedRows.find((row) => row.kind === "turn-fold" && row.expanded === true),
     ).toBeDefined();
+  });
+
+  it("keeps Goal completion summaries visible instead of hiding them in a turn fold", () => {
+    const rows = deriveMessagesTimelineRows({
+      timelineEntries: [
+        {
+          id: "user-entry",
+          kind: "message" as const,
+          createdAt: "2026-01-01T00:00:00Z",
+          message: {
+            id: "user-1" as never,
+            role: "user" as const,
+            text: "完成目标",
+            turnId: null,
+            createdAt: "2026-01-01T00:00:00Z",
+            updatedAt: "2026-01-01T00:00:00Z",
+            streaming: false,
+          },
+        },
+        {
+          id: "goal-completed-entry",
+          kind: "work" as const,
+          createdAt: "2026-01-01T00:00:17Z",
+          entry: {
+            id: "goal-completed-entry",
+            createdAt: "2026-01-01T00:00:17Z",
+            turnId: "turn-1" as never,
+            label: "全部测试通过目标已完成",
+            tone: "info" as const,
+            sourceActivityKind: "goal.completed",
+          },
+        },
+      ],
+      isWorking: false,
+      activeTurnStartedAt: null,
+      turnDiffSummaryByAssistantMessageId: new Map(),
+      revertTurnCountByUserMessageId: new Map(),
+    });
+
+    expect(rows.some((row) => row.kind === "turn-fold")).toBe(false);
+    expect(rows).toContainEqual(
+      expect.objectContaining({
+        id: "goal-completed-entry",
+        kind: "work",
+        groupedEntries: [expect.objectContaining({ label: "全部测试通过目标已完成" })],
+      }),
+    );
   });
 
   it("folds assistant messages between the first and terminal messages", () => {

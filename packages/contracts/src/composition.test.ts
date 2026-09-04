@@ -1324,6 +1324,38 @@ describe("composition contracts", () => {
     expect(decodedResult.failures?.[0]?.failureCode).toBe("worker_failed");
   });
 
+  it("限制 Task Graph children 数量与 Squad 计划节点数同上限（64）", () => {
+    const makeChild = (index: number) => ({
+      nodeId: `child-${index}`,
+      taskId: `child-task-${index}`,
+      runId: `child-run-${index}`,
+      projectId: "project-1",
+      assigneeKind: "agent",
+      assigneeId: `agent-${index}`,
+      mode: "parallel",
+      promptDigest: `sha256:${index}`,
+      prompt: "执行子任务",
+      workspaceRoot: "C:/workspace",
+      dependsOnNodeIds: [],
+    });
+    const makeRequest = (count: number) => ({
+      leader: {
+        taskId: "leader-task",
+        runId: "leader-run",
+        projectId: "project-1",
+        assigneeKind: "agent",
+        assigneeId: "leader-agent",
+        promptDigest: "sha256:leader",
+        prompt: "汇总结果",
+        workspaceRoot: "C:/workspace",
+      },
+      children: Array.from({ length: count }, (_, index) => makeChild(index)),
+    });
+
+    expect(decodeTaskGraph(makeRequest(64)).children).toHaveLength(64);
+    expect(() => decodeTaskGraph(makeRequest(65))).toThrow();
+  });
+
   it("定义显式的 review approve/reject 合同", () => {
     const approved = decodeTaskReview({
       taskId: "task-review",

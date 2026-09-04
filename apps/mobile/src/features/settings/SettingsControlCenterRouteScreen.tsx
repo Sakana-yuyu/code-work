@@ -2,6 +2,7 @@ import { useNavigation } from "@react-navigation/native";
 import type {
   CompositionControlCenterResult,
   CompositionControlCenterTask,
+  CompositionSquadRevision,
   CompositionSquadExecutionResult,
   CompositionTaskEvent,
   EnvironmentId,
@@ -10,7 +11,7 @@ import {
   squashAtomCommandFailure,
   type AtomCommandResult,
 } from "@codework/client-runtime/state/runtime";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Platform, Pressable, RefreshControl, ScrollView, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -23,6 +24,7 @@ import { useProjects } from "../../state/entities";
 import { useEnvironmentQuery } from "../../state/query";
 import { serverEnvironment } from "../../state/server";
 import { useAtomCommand } from "../../state/use-atom-command";
+import { SettingsEnvironmentPicker } from "./components/SettingsEnvironmentPicker";
 import { t } from "../../i18n";
 import {
   buildByokResumeRedispatchInput,
@@ -57,7 +59,10 @@ export function SettingsControlCenterRouteScreen() {
   const insets = useSafeAreaInsets();
   const { environments } = useEnvironments();
   const projects = useProjects();
-  const environmentId = environments[0]?.environmentId ?? null;
+  const [selectedEnvironmentId, setSelectedEnvironmentId] = useState<EnvironmentId | null>(
+    () => environments[0]?.environmentId ?? null,
+  );
+  const environmentId = selectedEnvironmentId;
   const projectionQuery = useEnvironmentQuery(
     environmentId === null
       ? null
@@ -103,11 +108,32 @@ export function SettingsControlCenterRouteScreen() {
     null,
   );
 
+  useEffect(() => {
+    if (
+      selectedEnvironmentId !== null &&
+      environments.some((item) => item.environmentId === selectedEnvironmentId)
+    ) {
+      return;
+    }
+    setSelectedEnvironmentId(environments[0]?.environmentId ?? null);
+    setSelectedEventTaskId(null);
+    setSelectedSquadId(null);
+    setSelectedProjectId(null);
+  }, [environments, selectedEnvironmentId]);
+
   const projection: CompositionControlCenterResult | null = projectionQuery.data;
   const squads = sortControlCenterSquads(squadsQuery.data?.squads ?? []);
   const environmentProjects = projects.filter((project) => project.environmentId === environmentId);
   const selectedSquad =
     squads.find((squad) => squad.squadId === selectedSquadId) ?? squads[0] ?? null;
+  const revisionsQuery = useEnvironmentQuery(
+    environmentId === null || selectedSquad === null
+      ? null
+      : serverEnvironment.compositionSquadRevisions({
+          environmentId,
+          input: { squadId: selectedSquad.squadId },
+        }),
+  );
   const selectedProject =
     environmentProjects.find((project) => project.id === selectedProjectId) ??
     environmentProjects[0] ??
@@ -322,10 +348,23 @@ export function SettingsControlCenterRouteScreen() {
               projectionQuery.refresh();
               eventsQuery.refresh();
               squadsQuery.refresh();
+              revisionsQuery.refresh();
             }}
           />
         }
       >
+        <SettingsEnvironmentPicker
+          environments={environments}
+          selectedEnvironmentId={environmentId}
+          disabled={pendingTaskId !== null || squadRunPending}
+          onSelect={(next) => {
+            setSelectedEnvironmentId(next);
+            setSelectedEventTaskId(null);
+            setSelectedSquadId(null);
+            setSelectedProjectId(null);
+            setActionError(null);
+          }}
+        />
         <View className="gap-3">
           <Text className="px-2 text-sm font-codework-medium text-foreground-muted">
             {t("controlCenter.tasks")}
@@ -415,6 +454,11 @@ export function SettingsControlCenterRouteScreen() {
                 })}
               </View>
             )}
+            <SquadRevisionHistory
+              revisions={revisionsQuery.data?.revisions ?? []}
+              isPending={revisionsQuery.isPending}
+              hasError={revisionsQuery.error !== null}
+            />
             <View className="gap-3 rounded-[24px] border-continuous bg-card p-4">
               <Text className="text-base font-codework-medium text-foreground">
                 {t("controlCenter.runSquad")}
@@ -586,6 +630,50 @@ export function SettingsControlCenterRouteScreen() {
           </View>
         )}
       </ScrollView>
+    </View>
+  );
+}
+
+function SquadRevisionHistory(props: {
+  readonly revisions: ReadonlyArray<CompositionSquadRevision>;
+  readonly isPending: boolean;
+  readonly hasError: boolean;
+}) {
+  if (props.isPending && props.revisions.length === 0) {
+    return <StatusMessage text={t("controlCenter.revisionsPending")} />;
+  }
+  if (props.hasError && props.revisions.length === 0) {
+    return <StatusMessage text={t("controlCenter.revisionsError")} tone="danger" />;
+  }
+  return (
+    <View className="gap-2 rounded-[24px] border-continuous bg-card p-4">
+      <Text className="text-sm font-codework-medium text-foreground">
+        {t("controlCenter.revisions")}
+      </Text>
+      {props.revisions.length === 0 ? (
+        <Text className="text-sm text-foreground-muted">{t("controlCenter.revisionsEmpty")}</Text>
+      ) : (
+        props.revisions.map((revision) => (
+          <View
+            key={revision.revision}
+            className="gap-1 border-t border-border-subtle pt-2 first:border-t-0 first:pt-0"
+          >
+            <View className="flex-row items-center justify-between gap-2">
+              <Text className="text-sm text-foreground">
+                {t("controlCenter.revision", { revision: revision.revision })}
+              </Text>
+              <Text className="text-xs text-foreground-muted">
+                {revision.configuration === null
+                  ? t("controlCenter.legacySnapshot")
+                  : t("controlCenter.snapshotAvailable")}
+              </Text>
+            </View>
+            <Text className="text-xs text-foreground-muted">
+              {new Date(revision.createdAtUnixMs).toLocaleString()}
+            </Text>
+          </View>
+        ))
+      )}
     </View>
   );
 }

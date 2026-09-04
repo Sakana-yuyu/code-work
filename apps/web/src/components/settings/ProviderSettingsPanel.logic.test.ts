@@ -1,9 +1,15 @@
-import { AuthOrchestrationOperateScope, EnvironmentId, ProviderDriverKind } from "@codework/contracts";
+import {
+  AuthOrchestrationOperateScope,
+  EnvironmentId,
+  ProviderDriverKind,
+  ProviderInstanceId,
+} from "@codework/contracts";
 import { describe, expect, it } from "vite-plus/test";
 
 import {
   buildProviderEnvironmentOptions,
   classifyProviderEnvironmentAccess,
+  hasConfiguredProviderInstances,
   isProviderInstanceVisible,
   resolvePrimaryOperateAccess,
   resolveRemoteOperateAccess,
@@ -48,9 +54,23 @@ describe("provider environment selection", () => {
 });
 
 describe("provider instance presentation", () => {
+  it("判断当前环境是否已经有显式的 AI 服务连接", () => {
+    expect(hasConfiguredProviderInstances({ providerInstances: {} })).toBe(false);
+    expect(
+      hasConfiguredProviderInstances({
+        providerInstances: {
+          [ProviderInstanceId.make("codex")]: { driver: ProviderDriverKind.make("codex") },
+        },
+      }),
+    ).toBe(true);
+    expect(hasConfiguredProviderInstances(null)).toBe(false);
+  });
+
   it("hides team runtime instances while retaining ordinary and unknown drivers", () => {
     expect(isProviderInstanceVisible({ driver: ProviderDriverKind.make("codex") })).toBe(true);
-    expect(isProviderInstanceVisible({ driver: ProviderDriverKind.make("fork_driver") })).toBe(true);
+    expect(isProviderInstanceVisible({ driver: ProviderDriverKind.make("fork_driver") })).toBe(
+      true,
+    );
     expect(isProviderInstanceVisible({ driver: ProviderDriverKind.make("multica") })).toBe(false);
   });
 });

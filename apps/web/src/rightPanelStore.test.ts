@@ -105,6 +105,34 @@ describe("rightPanelStore", () => {
     });
   });
 
+  it("drops Canvas artifacts that were persisted as ordinary file surfaces", () => {
+    expect(
+      migratePersistedRightPanelState({
+        byThreadKey: {
+          "env-1:thread-A": {
+            isOpen: true,
+            activeSurfaceId: "file:.codework/canvases/thread-A/Project-analysis.canvas.json",
+            surfaces: [
+              {
+                id: "file:.codework/canvases/thread-A/Project-analysis.canvas.json",
+                kind: "file",
+                relativePath: ".codework/canvases/thread-A/Project-analysis.canvas.json",
+              },
+            ],
+          },
+        },
+      }),
+    ).toEqual({
+      byThreadKey: {
+        "env-1:thread-A": {
+          isOpen: false,
+          activeSurfaceId: null,
+          surfaces: [],
+        },
+      },
+    });
+  });
+
   it("upgrades the legacy singleton pull request surface to a reference-keyed tab", () => {
     const id = pullRequestSurfaceId({
       projectId: "project-a",
@@ -216,6 +244,26 @@ describe("rightPanelStore", () => {
     useRightPanelStore.getState().open(refA, "preview");
     expect(selectActiveRightPanel(useRightPanelStore.getState().byThreadKey, refA)).toBe("preview");
     expect(selectActiveRightPanel(useRightPanelStore.getState().byThreadKey, refB)).toBeNull();
+  });
+
+  it("routes Canvas artifact paths to the in-app Canvas surface", () => {
+    useRightPanelStore
+      .getState()
+      .openFile(refA, ".codework\\canvases\\thread-A\\Project-analysis.canvas.json");
+
+    expect(selectThreadRightPanelState(useRightPanelStore.getState().byThreadKey, refA)).toEqual({
+      isOpen: true,
+      activeSurfaceId: "canvas:Project-analysis",
+      surfaces: [
+        {
+          id: "canvas:Project-analysis",
+          kind: "canvas",
+          canvasId: "Project-analysis",
+          title: "Project analysis",
+          relativePath: ".codework/canvases/thread-A/Project-analysis.canvas.json",
+        },
+      ],
+    });
   });
 
   it("按插件与 contribution 打开独立面板，并清理已禁用或删除的 surface", () => {
@@ -781,5 +829,137 @@ describe("rightPanelStore", () => {
         (surface) => surface.id,
       ),
     ).toEqual(["terminal:term-1", "browser:tab-b", "browser:tab-c"]);
+  });
+
+  it("opens the generating placeholder, then retires it when the Canvas arrives", () => {
+    useRightPanelStore.getState().openPendingCanvas(refA, "Generating Canvas…");
+
+    const pendingState = selectThreadRightPanelState(
+      useRightPanelStore.getState().byThreadKey,
+      refA,
+    );
+    expect(pendingState.isOpen).toBe(true);
+    expect(pendingState.activeSurfaceId).toBe("canvas:pending");
+    expect(pendingState.surfaces).toEqual([
+      {
+        id: "canvas:pending",
+        kind: "canvas",
+        canvasId: "pending",
+        title: "Generating Canvas…",
+        relativePath: "",
+        pending: true,
+      },
+    ]);
+
+    useRightPanelStore.getState().openCanvas(refA, {
+      canvasId: "code-analysis",
+      title: "Code analysis",
+      relativePath: ".codework/canvases/thread/code-analysis.canvas.json",
+    });
+
+    const state = selectThreadRightPanelState(useRightPanelStore.getState().byThreadKey, refA);
+    expect(state.surfaces.map((surface) => surface.id)).toEqual(["canvas:code-analysis"]);
+    expect(state.activeSurfaceId).toBe("canvas:code-analysis");
+  });
+
+  it("opens the Canvas launcher without starting generation and keeps it persistent", () => {
+    useRightPanelStore.getState().openCanvasLauncher(refA, "Canvas");
+
+    expect(selectThreadRightPanelState(useRightPanelStore.getState().byThreadKey, refA)).toEqual({
+      isOpen: true,
+      activeSurfaceId: "canvas:new",
+      surfaces: [
+        {
+          id: "canvas:new",
+          kind: "canvas",
+          canvasId: "new",
+          title: "Canvas",
+          relativePath: "",
+          empty: true,
+        },
+      ],
+    });
+
+    useRightPanelStore.getState().openPendingCanvas(refA, "Generating Canvas…");
+    const pendingState = selectThreadRightPanelState(
+      useRightPanelStore.getState().byThreadKey,
+      refA,
+    );
+    expect(pendingState.surfaces.map((surface) => surface.id)).toEqual(["canvas:pending"]);
+
+    expect(
+      migratePersistedRightPanelState({
+        byThreadKey: {
+          "env-1:thread-A": {
+            isOpen: true,
+            activeSurfaceId: "canvas:new",
+            surfaces: [
+              {
+                id: "canvas:new",
+                kind: "canvas",
+                canvasId: "new",
+                title: "Canvas",
+                relativePath: "",
+                empty: true,
+              },
+            ],
+          },
+        },
+      }),
+    ).toEqual({
+      byThreadKey: {
+        "env-1:thread-A": {
+          isOpen: true,
+          activeSurfaceId: "canvas:new",
+          surfaces: [
+            {
+              id: "canvas:new",
+              kind: "canvas",
+              canvasId: "new",
+              title: "Canvas",
+              relativePath: "",
+              empty: true,
+            },
+          ],
+        },
+      },
+    });
+  });
+
+  it("does not steal the active tab while the generating placeholder is already up", () => {
+    useRightPanelStore.getState().openPendingCanvas(refA, "Generating Canvas…");
+    useRightPanelStore.getState().openFile(refA, "src/index.ts");
+    useRightPanelStore.getState().openPendingCanvas(refA, "Generating Canvas…");
+
+    const state = selectThreadRightPanelState(useRightPanelStore.getState().byThreadKey, refA);
+    expect(state.activeSurfaceId).toBe("file:src/index.ts");
+    expect(state.surfaces.filter((surface) => surface.id === "canvas:pending")).toHaveLength(1);
+  });
+
+  it("drops persisted generating placeholders during migration", () => {
+    expect(
+      migratePersistedRightPanelState({
+        byThreadKey: {
+          "env-1:thread-A": {
+            isOpen: true,
+            activeSurfaceId: "canvas:pending",
+            surfaces: [
+              {
+                id: "canvas:pending",
+                kind: "canvas",
+                canvasId: "pending",
+                title: "Generating Canvas…",
+                relativePath: "",
+                pending: true,
+              },
+            ],
+          },
+        },
+      }),
+    ).toEqual({
+      byThreadKey: {
+        "env-1:thread-A": { isOpen: false, activeSurfaceId: null, surfaces: [] },
+      },
+    });
   });
 });

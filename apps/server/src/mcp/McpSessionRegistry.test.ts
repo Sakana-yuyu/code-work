@@ -46,11 +46,27 @@ it.effect("stores only a token hash, resolves the bearer token, and revokes by t
 
     const resolved = yield* registry.resolve(token);
     expect(resolved?.threadId).toBe(threadId);
+    expect([...resolved!.capabilities]).toEqual(["preview", "canvas"]);
 
     yield* registry.revokeThread(threadId);
     expect(yield* registry.resolve(token)).toBeUndefined();
 
     timestamp += 2_000;
+  }),
+);
+
+it.effect("按 Provider 会话请求限制 MCP 能力", () =>
+  Effect.gen(function* () {
+    let timestamp = 1_000;
+    const registry = yield* makeRegistry(() => timestamp);
+    const issued = yield* registry.issue({
+      threadId: ThreadId.make("thread-canvas-only"),
+      providerInstanceId: ProviderInstanceId.make("claude"),
+      capabilities: ["canvas"],
+    });
+    const token = issued.config.authorizationHeader.replace(/^Bearer\s+/, "");
+
+    expect([...((yield* registry.resolve(token))?.capabilities ?? [])]).toEqual(["canvas"]);
   }),
 );
 

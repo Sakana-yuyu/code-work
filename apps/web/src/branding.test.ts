@@ -76,7 +76,7 @@ describe("branding logic", () => {
     expect(
       resolveServerBackedAppStageLabel({
         primaryServerVersion: "0.0.28-nightly.20260616.12",
-        fallbackStageLabel: "Alpha",
+        fallbackStageLabel: "Latest",
       }),
     ).toBe("Nightly");
   });
@@ -85,8 +85,8 @@ describe("branding logic", () => {
     expect(
       resolveServerBackedAppDisplayName({
         baseName: "Code Work",
-        fallbackDisplayName: "Code Work (Alpha)",
-        fallbackStageLabel: "Alpha",
+        fallbackDisplayName: "Code Work",
+        fallbackStageLabel: "Latest",
         primaryServerVersion: "0.0.28-nightly.20260616.12",
       }),
     ).toBe("Code Work (Nightly)");
@@ -96,21 +96,21 @@ describe("branding logic", () => {
     expect(
       resolveServerBackedAppDisplayName({
         baseName: "Code Work",
-        fallbackDisplayName: "Code Work (Alpha)",
-        fallbackStageLabel: "Alpha",
+        fallbackDisplayName: "Code Work",
+        fallbackStageLabel: "Latest",
         primaryServerVersion: "0.0.27",
       }),
-    ).toBe("Code Work (Alpha)");
+    ).toBe("Code Work");
   });
 
   it("keeps the fallback display name for malformed nightly primary server versions", () => {
     expect(
       resolveServerBackedAppDisplayName({
         baseName: "Code Work",
-        fallbackDisplayName: "Code Work (Alpha)",
-        fallbackStageLabel: "Alpha",
+        fallbackDisplayName: "Code Work",
+        fallbackStageLabel: "Latest",
         primaryServerVersion: "0.0.28-nightly.20260616",
       }),
-    ).toBe("Code Work (Alpha)");
+    ).toBe("Code Work");
   });
 });

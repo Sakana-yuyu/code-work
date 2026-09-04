@@ -28,6 +28,7 @@ import {
 } from "@codework/contracts";
 import { dedupeRemoteBranchesWithLocalMatches, normalizeGitRemoteUrl } from "@codework/shared/git";
 import { compactTraceAttributes } from "@codework/shared/observability";
+import { isCodeworkCanvasArtifactPath } from "@codework/shared/path";
 import { decodeJsonResult } from "@codework/shared/schemaJson";
 import { gitCommandDuration, gitCommandsTotal, withMetrics } from "../observability/Metrics.ts";
 import * as GitVcsDriver from "./GitVcsDriver.ts";
@@ -172,6 +173,7 @@ function parseNumstatEntries(
     const rawPath =
       pathParts.length > 1 ? (pathParts.at(-1) ?? "").trim() : pathParts.join("\t").trim();
     if (rawPath.length === 0) continue;
+    if (isCodeworkCanvasArtifactPath(rawPath)) continue;
     const added = Number.parseInt(addedRaw ?? "0", 10);
     const deleted = Number.parseInt(deletedRaw ?? "0", 10);
     const renameArrowIndex = rawPath.indexOf(" => ");
@@ -1712,9 +1714,11 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
         continue;
       }
       if (line.trim().length > 0 && !line.startsWith("#")) {
-        hasWorkingTreeChanges = true;
         const pathValue = parsePorcelainPath(line);
-        if (pathValue) changedFilesWithoutNumstat.add(pathValue);
+        if (pathValue && !isCodeworkCanvasArtifactPath(pathValue)) {
+          hasWorkingTreeChanges = true;
+          changedFilesWithoutNumstat.add(pathValue);
+        }
       }
     }
 

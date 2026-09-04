@@ -29,7 +29,8 @@ it("为统一 Runtime Tool Plane 暴露稳定且无重复的 canonical capabilit
       "t3.preview_evaluate",
       "t3.preview_wait_for",
       "t3.ide.invoke",
-    "t3.delegate_task",
+      "t3.canvas.create",
+      "t3.delegate_task",
     ],
   );
   assert.equal(

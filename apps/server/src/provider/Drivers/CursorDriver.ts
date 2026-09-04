@@ -61,6 +61,19 @@ const UPDATE: ProviderMaintenanceCapabilitiesResolver = {
       updateExecutable: options?.binaryPath?.trim() || "cursor-agent",
       updateArgs: ["update"],
       updateLockKey: "cursor-agent",
+      // No npm channel: the vendor ships an installer script instead. These
+      // are the official one-liners from cursor.com, verbatim per platform.
+      install: {
+        lockKey: "cursor-installer",
+        win32: {
+          executable: "powershell",
+          args: ["-NoProfile", "-Command", "irm 'https://cursor.com/install?win32=true' | iex"],
+        },
+        posix: {
+          executable: "bash",
+          args: ["-c", "curl https://cursor.com/install -fsS | bash"],
+        },
+      },
     }),
 };
 

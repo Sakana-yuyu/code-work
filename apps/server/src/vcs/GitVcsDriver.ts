@@ -30,6 +30,10 @@ import {
   type VcsStatusInput,
   type VcsStatusResult,
 } from "@codework/contracts";
+import {
+  CODEWORK_CANVAS_ARTIFACT_DIRECTORY,
+  isCodeworkCanvasArtifactPath,
+} from "@codework/shared/path";
 import { makeGitVcsDriverCore } from "./GitVcsDriverCore.ts";
 import * as VcsDriver from "./VcsDriver.ts";
 import * as VcsProcess from "./VcsProcess.ts";
@@ -337,6 +341,8 @@ const WORKSPACE_GIT_HARDENED_CONFIG_ARGS = [
   "-c",
   "core.untrackedCache=false",
 ] as const;
+const CODEWORK_CANVAS_EXCLUDE_PATHSPEC = `:(exclude)${CODEWORK_CANVAS_ARTIFACT_DIRECTORY}`;
+const CODEWORK_INTERNAL_EXCLUDE_PATHSPEC = ":(exclude).codework/**";
 
 const nowFreshness = Effect.fn("GitVcsDriver.nowFreshness")(function* () {
   const now = yield* DateTime.now;
@@ -541,7 +547,9 @@ export const makeVcsDriverShape = Effect.fn("makeGitVcsDriverShape")(function* (
           ? Effect.gen(function* () {
               const freshness = yield* nowFreshness();
               return {
-                paths: splitNullSeparatedPaths(result.stdout, result.stdoutTruncated),
+                paths: splitNullSeparatedPaths(result.stdout, result.stdoutTruncated).filter(
+                  (pathValue) => !isCodeworkCanvasArtifactPath(pathValue),
+                ),
                 truncated: result.stdoutTruncated,
                 freshness,
               };
@@ -743,7 +751,7 @@ export const makeVcsDriverShape = Effect.fn("makeGitVcsDriverShape")(function* (
         yield* execute({
           operation,
           cwd: input.cwd,
-          args: ["add", "-A", "--", "."],
+          args: ["add", "-A", "--", ".", CODEWORK_CANVAS_EXCLUDE_PATHSPEC],
           env: commitEnv,
         });
 
@@ -811,12 +819,21 @@ export const makeVcsDriverShape = Effect.fn("makeGitVcsDriverShape")(function* (
       yield* execute({
         operation,
         cwd: input.cwd,
-        args: ["restore", "--source", commitOid, "--worktree", "--staged", "--", "."],
+        args: [
+          "restore",
+          "--source",
+          commitOid,
+          "--worktree",
+          "--staged",
+          "--",
+          ".",
+          CODEWORK_CANVAS_EXCLUDE_PATHSPEC,
+        ],
       });
       yield* execute({
         operation,
         cwd: input.cwd,
-        args: ["clean", "-fd", "--", "."],
+        args: ["clean", "-fd", "--", ".", CODEWORK_INTERNAL_EXCLUDE_PATHSPEC],
       });
 
       const headExists = yield* hasHeadCommit(input.cwd);
@@ -824,7 +841,7 @@ export const makeVcsDriverShape = Effect.fn("makeGitVcsDriverShape")(function* (
         yield* execute({
           operation,
           cwd: input.cwd,
-          args: ["reset", "--quiet", "--", "."],
+          args: ["reset", "--quiet", "--", ".", CODEWORK_CANVAS_EXCLUDE_PATHSPEC],
         });
       }
 

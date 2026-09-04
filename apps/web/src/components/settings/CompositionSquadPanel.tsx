@@ -165,10 +165,18 @@ function SquadMemberEditor({
   return (
     <div className="space-y-3 rounded-md border border-border/70 bg-background/40 p-3">
       <div className="flex items-center justify-between gap-3">
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <span className="text-xs font-medium text-foreground">
             {t("squadBuilder.member", { index: index + 1 })}
           </span>
+          <EnumSelect
+            value={member.role}
+            values={MEMBER_ROLES}
+            label={t("squadBuilder.role")}
+            disabled={disabled}
+            renderLabel={roleLabel}
+            onChange={(role) => onChange({ role })}
+          />
           {member.role === "leader" ? (
             <Badge variant="info" size="sm">
               {t("squadBuilder.leader")}
@@ -185,78 +193,81 @@ function SquadMemberEditor({
           <Trash2Icon />
         </Button>
       </div>
-      <div className="grid gap-3 sm:grid-cols-2">
-        <FormField label={t("squadBuilder.agentId")}>
-          <Input
-            size="compact"
-            value={member.agentId}
-            disabled={disabled}
-            onChange={(event) => onChange({ agentId: event.currentTarget.value })}
-          />
-        </FormField>
-        <FormField label={t("squadBuilder.role")}>
-          <EnumSelect
-            value={member.role}
-            values={MEMBER_ROLES}
-            label={t("squadBuilder.role")}
-            disabled={disabled}
-            renderLabel={roleLabel}
-            onChange={(role) => onChange({ role })}
-          />
-        </FormField>
-        <CompositionSquadModelBindingPicker
-          scope="member"
-          idPrefix={`squad-member-${member.clientId}`}
-          className="sm:col-span-2"
-          providerInstances={providerInstances}
-          value={member.modelBinding}
-          legacyModel={member.model}
+      <FormField label={t("squadBuilder.personaPrompt")}>
+        <Textarea
+          size="sm"
+          value={member.personaPromptText}
           disabled={disabled}
-          onChange={(modelBinding) => onChange({ modelBinding })}
-          onLegacyModelChange={(model) => onChange({ model })}
+          placeholder={t("squadBuilder.personaPromptPlaceholder")}
+          onChange={(event) => onChange({ personaPromptText: event.currentTarget.value })}
         />
-        <FormField label={t("squadBuilder.workspaceRoot")}>
-          <Input
-            size="compact"
-            value={member.workspaceRoot}
+      </FormField>
+      <CompositionSquadModelBindingPicker
+        scope="member"
+        idPrefix={`squad-member-${member.clientId}`}
+        providerInstances={providerInstances}
+        value={member.modelBinding}
+        legacyModel={member.model}
+        disabled={disabled}
+        onChange={(modelBinding) => onChange({ modelBinding })}
+        onLegacyModelChange={(model) => onChange({ model })}
+      />
+      <details className="min-w-0 text-xs text-muted-foreground">
+        <summary className="cursor-pointer select-none text-foreground hover:text-muted-foreground">
+          {t("squadBuilder.memberAdvanced")}
+        </summary>
+        <div className="mt-2 grid gap-3 sm:grid-cols-2">
+          <FormField label={t("squadBuilder.agentId")}>
+            <Input
+              size="compact"
+              value={member.agentId}
+              disabled={disabled}
+              onChange={(event) => onChange({ agentId: event.currentTarget.value })}
+            />
+          </FormField>
+          <FormField label={t("squadBuilder.workspaceRoot")}>
+            <Input
+              size="compact"
+              value={member.workspaceRoot}
+              disabled={disabled}
+              placeholder={t("squadBuilder.optional")}
+              onChange={(event) => onChange({ workspaceRoot: event.currentTarget.value })}
+            />
+          </FormField>
+          <FormField
+            label={t("squadBuilder.capabilityIds")}
+            description={t("squadBuilder.capabilityIdsDescription")}
+          >
+            <Input
+              size="compact"
+              value={member.capabilityIdsText}
+              disabled={disabled}
+              placeholder={t("squadBuilder.capabilityIdsPlaceholder")}
+              onChange={(event) => onChange({ capabilityIdsText: event.currentTarget.value })}
+            />
+          </FormField>
+          <FormField label={t("squadBuilder.memberConcurrency")}>
+            <Input
+              nativeInput
+              size="compact"
+              type="number"
+              min={1}
+              step={1}
+              value={member.maxConcurrentTasksText}
+              disabled={disabled}
+              onChange={(event) => onChange({ maxConcurrentTasksText: event.currentTarget.value })}
+            />
+          </FormField>
+        </div>
+        <label className="mt-2 flex items-center gap-2 text-xs text-muted-foreground">
+          <Checkbox
+            checked={member.required}
             disabled={disabled}
-            placeholder={t("squadBuilder.optional")}
-            onChange={(event) => onChange({ workspaceRoot: event.currentTarget.value })}
+            onCheckedChange={(checked) => onChange({ required: checked === true })}
           />
-        </FormField>
-        <FormField
-          label={t("squadBuilder.capabilityIds")}
-          description={t("squadBuilder.capabilityIdsDescription")}
-        >
-          <Input
-            size="compact"
-            value={member.capabilityIdsText}
-            disabled={disabled}
-            placeholder={t("squadBuilder.capabilityIdsPlaceholder")}
-            onChange={(event) => onChange({ capabilityIdsText: event.currentTarget.value })}
-          />
-        </FormField>
-        <FormField label={t("squadBuilder.memberConcurrency")}>
-          <Input
-            nativeInput
-            size="compact"
-            type="number"
-            min={1}
-            step={1}
-            value={member.maxConcurrentTasksText}
-            disabled={disabled}
-            onChange={(event) => onChange({ maxConcurrentTasksText: event.currentTarget.value })}
-          />
-        </FormField>
-      </div>
-      <label className="flex items-center gap-2 text-xs text-muted-foreground">
-        <Checkbox
-          checked={member.required}
-          disabled={disabled}
-          onCheckedChange={(checked) => onChange({ required: checked === true })}
-        />
-        {t("squadBuilder.requiredMember")}
-      </label>
+          {t("squadBuilder.requiredMember")}
+        </label>
+      </details>
     </div>
   );
 }
@@ -423,6 +434,7 @@ export function CompositionSquadPanel() {
           agentId: "",
           role: "worker",
           required: true,
+          personaPromptText: "",
           model: "",
           modelBinding: { kind: "team_default" },
           workspaceRoot: "",
@@ -572,102 +584,17 @@ export function CompositionSquadPanel() {
               </div>
             </div>
 
-            <div className="grid gap-3 sm:grid-cols-2">
-              <FormField label={t("squadBuilder.squadId")}>
-                <Input
-                  size="compact"
-                  value={draft.squadId}
-                  disabled={isArchived || !isCreating}
-                  onChange={(event) => {
-                    const value = event.currentTarget.value;
-                    setDraft((current) => ({ ...current, squadId: value }));
-                  }}
-                />
-              </FormField>
-              <FormField label={t("squadBuilder.name")}>
-                <Input
-                  size="compact"
-                  value={draft.name}
-                  disabled={isArchived}
-                  onChange={(event) => {
-                    const value = event.currentTarget.value;
-                    setDraft((current) => ({ ...current, name: value }));
-                  }}
-                />
-              </FormField>
-              <FormField label={t("squadBuilder.mode")}>
-                <EnumSelect
-                  value={draft.collaborationMode}
-                  values={COLLABORATION_MODES}
-                  label={t("squadBuilder.mode")}
-                  disabled={isArchived}
-                  renderLabel={modeLabel}
-                  onChange={(collaborationMode) =>
-                    setDraft((current) => ({ ...current, collaborationMode }))
-                  }
-                />
-              </FormField>
-              <FormField label={t("squadBuilder.maxConcurrency")}>
-                <Input
-                  nativeInput
-                  size="compact"
-                  type="number"
-                  min={1}
-                  step={1}
-                  value={draft.maxConcurrencyText}
-                  disabled={isArchived}
-                  onChange={(event) => {
-                    const value = event.currentTarget.value;
-                    setDraft((current) => ({
-                      ...current,
-                      maxConcurrencyText: value,
-                    }));
-                  }}
-                />
-              </FormField>
-              <FormField label={t("squadBuilder.maxRetries")}>
-                <Input
-                  nativeInput
-                  size="compact"
-                  type="number"
-                  min={0}
-                  step={1}
-                  value={draft.maxRetriesText}
-                  disabled={isArchived}
-                  onChange={(event) => {
-                    const value = event.currentTarget.value;
-                    setDraft((current) => ({
-                      ...current,
-                      maxRetriesText: value,
-                    }));
-                  }}
-                />
-              </FormField>
-              <FormField label={t("squadBuilder.failurePolicy")}>
-                <EnumSelect
-                  value={draft.failurePolicy}
-                  values={FAILURE_POLICIES}
-                  label={t("squadBuilder.failurePolicy")}
-                  disabled={isArchived}
-                  renderLabel={failurePolicyLabel}
-                  onChange={(failurePolicy) =>
-                    setDraft((current) => ({ ...current, failurePolicy }))
-                  }
-                />
-              </FormField>
-              <FormField label={t("squadBuilder.partialSuccessPolicy")}>
-                <EnumSelect
-                  value={draft.partialSuccessPolicy}
-                  values={PARTIAL_SUCCESS_POLICIES}
-                  label={t("squadBuilder.partialSuccessPolicy")}
-                  disabled={isArchived}
-                  renderLabel={partialSuccessPolicyLabel}
-                  onChange={(partialSuccessPolicy) =>
-                    setDraft((current) => ({ ...current, partialSuccessPolicy }))
-                  }
-                />
-              </FormField>
-            </div>
+            <FormField label={t("squadBuilder.name")}>
+              <Input
+                size="compact"
+                value={draft.name}
+                disabled={isArchived}
+                onChange={(event) => {
+                  const value = event.currentTarget.value;
+                  setDraft((current) => ({ ...current, name: value }));
+                }}
+              />
+            </FormField>
 
             <FormField label={t("squadBuilder.instructions")}>
               <Textarea
@@ -754,6 +681,97 @@ export function CompositionSquadPanel() {
                 ))}
               </div>
             </div>
+
+            <details className="min-w-0 text-xs text-muted-foreground">
+              <summary className="cursor-pointer select-none text-foreground hover:text-muted-foreground">
+                {t("squadBuilder.advancedRules")}
+              </summary>
+              <div className="mt-2 grid gap-3 sm:grid-cols-2 border-l border-border/70 pl-3">
+                <FormField label={t("squadBuilder.squadId")}>
+                  <Input
+                    size="compact"
+                    value={draft.squadId}
+                    disabled={isArchived || !isCreating}
+                    onChange={(event) => {
+                      const value = event.currentTarget.value;
+                      setDraft((current) => ({ ...current, squadId: value }));
+                    }}
+                  />
+                </FormField>
+                <FormField label={t("squadBuilder.mode")}>
+                  <EnumSelect
+                    value={draft.collaborationMode}
+                    values={COLLABORATION_MODES}
+                    label={t("squadBuilder.mode")}
+                    disabled={isArchived}
+                    renderLabel={modeLabel}
+                    onChange={(collaborationMode) =>
+                      setDraft((current) => ({ ...current, collaborationMode }))
+                    }
+                  />
+                </FormField>
+                <FormField label={t("squadBuilder.maxConcurrency")}>
+                  <Input
+                    nativeInput
+                    size="compact"
+                    type="number"
+                    min={1}
+                    step={1}
+                    value={draft.maxConcurrencyText}
+                    disabled={isArchived}
+                    onChange={(event) => {
+                      const value = event.currentTarget.value;
+                      setDraft((current) => ({
+                        ...current,
+                        maxConcurrencyText: value,
+                      }));
+                    }}
+                  />
+                </FormField>
+                <FormField label={t("squadBuilder.maxRetries")}>
+                  <Input
+                    nativeInput
+                    size="compact"
+                    type="number"
+                    min={0}
+                    step={1}
+                    value={draft.maxRetriesText}
+                    disabled={isArchived}
+                    onChange={(event) => {
+                      const value = event.currentTarget.value;
+                      setDraft((current) => ({
+                        ...current,
+                        maxRetriesText: value,
+                      }));
+                    }}
+                  />
+                </FormField>
+                <FormField label={t("squadBuilder.failurePolicy")}>
+                  <EnumSelect
+                    value={draft.failurePolicy}
+                    values={FAILURE_POLICIES}
+                    label={t("squadBuilder.failurePolicy")}
+                    disabled={isArchived}
+                    renderLabel={failurePolicyLabel}
+                    onChange={(failurePolicy) =>
+                      setDraft((current) => ({ ...current, failurePolicy }))
+                    }
+                  />
+                </FormField>
+                <FormField label={t("squadBuilder.partialSuccessPolicy")}>
+                  <EnumSelect
+                    value={draft.partialSuccessPolicy}
+                    values={PARTIAL_SUCCESS_POLICIES}
+                    label={t("squadBuilder.partialSuccessPolicy")}
+                    disabled={isArchived}
+                    renderLabel={partialSuccessPolicyLabel}
+                    onChange={(partialSuccessPolicy) =>
+                      setDraft((current) => ({ ...current, partialSuccessPolicy }))
+                    }
+                  />
+                </FormField>
+              </div>
+            </details>
 
             {buildResult.issues.length > 0 ? (
               <div className="space-y-1 rounded-md border border-warning/35 bg-warning/5 px-3 py-2">

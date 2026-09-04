@@ -7,7 +7,10 @@ import {
   type VcsActionOperation,
   type VcsRef,
 } from "@codework/client-runtime/state/vcs";
-import type { GitRunStackedActionResult } from "@codework/contracts";
+import type {
+  GitPreparePullRequestThreadResult,
+  GitRunStackedActionResult,
+} from "@codework/contracts";
 import {
   dedupeRemoteBranchesWithLocalMatches,
   sanitizeFeatureBranchName,
@@ -17,6 +20,7 @@ import { AsyncResult } from "effect/unstable/reactivity";
 
 import { useBranches } from "../state/queries";
 import { threadEnvironment } from "../state/threads";
+import { gitEnvironment } from "../state/git";
 import { vcsActionManager, vcsEnvironment } from "../state/vcs";
 import { uuidv4 } from "../lib/uuid";
 import { appAtomRegistry } from "./atom-registry";
@@ -36,6 +40,9 @@ export function useSelectedThreadGitActions() {
   const createRef = useAtomCommand(vcsEnvironment.createRef, { reportFailure: false });
   const createWorktree = useAtomCommand(vcsEnvironment.createWorktree, { reportFailure: false });
   const pull = useAtomCommand(vcsEnvironment.pull, { reportFailure: false });
+  const preparePullRequestThread = useAtomCommand(gitEnvironment.preparePullRequestThread, {
+    reportFailure: false,
+  });
   const { selectedThread, selectedThreadProject } = useThreadSelection();
   const { selectedThreadCwd, selectedThreadWorktreePath } = useSelectedThreadWorktree();
   const runStackedAction = useAtomCommand(
@@ -133,22 +140,23 @@ export function useSelectedThreadGitActions() {
         readonly project: EnvironmentProject;
         readonly cwd: string;
       }) => Promise<AtomCommandResult<T, E>>,
-      options?: { readonly managedExternally?: boolean },
+      options?: { readonly cwd?: string | null; readonly managedExternally?: boolean },
     ): Promise<T | null> => {
-      if (!selectedThread || !selectedThreadProject || !selectedThreadCwd) {
+      const operationCwd = options?.cwd ?? selectedThreadCwd;
+      if (!selectedThread || !selectedThreadProject || !operationCwd) {
         return null;
       }
 
       const target = {
         environmentId: selectedThread.environmentId,
-        cwd: selectedThreadCwd,
+        cwd: operationCwd,
       };
       setPendingConnectionError(null);
       const run = () =>
         execute({
           thread: selectedThread,
           project: selectedThreadProject,
-          cwd: selectedThreadCwd,
+          cwd: operationCwd,
         });
       const result =
         options?.managedExternally === true
@@ -294,6 +302,49 @@ export function useSelectedThreadGitActions() {
     [createWorktree, runSelectedThreadGitMutation, syncSelectedThreadBranchState],
   );
 
+  const onCheckoutSelectedThreadPullRequest = useCallback(
+    async (input: {
+      readonly reference: string;
+      readonly mode: "local" | "worktree";
+    }): Promise<GitPreparePullRequestThreadResult | null> => {
+      return await runSelectedThreadGitMutation(
+        "prepare_pull_request_thread",
+        t("git.preparingPullRequestThread"),
+        async ({ thread, project }) => {
+          const result = await preparePullRequestThread({
+            environmentId: thread.environmentId,
+            input: {
+              cwd: project.workspaceRoot,
+              reference: input.reference,
+              mode: input.mode,
+              ...(input.mode === "worktree" ? { threadId: thread.id } : {}),
+            },
+          });
+          if (AsyncResult.isFailure(result)) {
+            return result;
+          }
+
+          const syncResult = await syncSelectedThreadBranchState({
+            thread,
+            cwd: result.value.worktreePath ?? project.workspaceRoot,
+            nextThreadState: {
+              branch: result.value.branch,
+              worktreePath: result.value.worktreePath,
+            },
+          });
+          return AsyncResult.isFailure(syncResult) ? AsyncResult.failure(syncResult.cause) : result;
+        },
+        { cwd: selectedThreadProject?.workspaceRoot },
+      );
+    },
+    [
+      preparePullRequestThread,
+      runSelectedThreadGitMutation,
+      selectedThreadProject,
+      syncSelectedThreadBranchState,
+    ],
+  );
+
   const onPullSelectedThreadBranch = useCallback(async () => {
     await runSelectedThreadGitMutation("pull", t("git.pullingLatest"), async ({ thread, cwd }) => {
       const result = await pull({
@@ -374,6 +425,7 @@ export function useSelectedThreadGitActions() {
     refreshSelectedThreadGitStatus,
     refreshSelectedThreadBranches,
     onCheckoutSelectedThreadBranch,
+    onCheckoutSelectedThreadPullRequest,
     onCreateSelectedThreadBranch,
     onCreateSelectedThreadWorktree,
     onPullSelectedThreadBranch,

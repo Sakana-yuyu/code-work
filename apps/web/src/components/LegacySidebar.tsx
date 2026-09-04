@@ -124,6 +124,7 @@ import {
   resolveThreadRouteTarget,
 } from "../threadRoutes";
 import { useThreadSplitStore } from "../threadSplitStore";
+import { canOpenThreadBeside } from "./threadActionMenu.logic";
 import { stackedThreadToast, toastManager } from "./ui/toast";
 import { formatRelativeTimeLabel } from "../timestampFormat";
 import { Kbd } from "./ui/kbd";
@@ -2179,6 +2180,11 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
             id: "open-in-split",
             label: t("openThreadBeside"),
             icon: "message-square-plus",
+            disabled: !canOpenThreadBeside(
+              threadKey,
+              useThreadSplitStore.getState().primaryThreadRef,
+              useThreadSplitStore.getState().secondaryThreadRef,
+            ),
           },
           ...(thread.branch
             ? [{ id: "new-thread-on-branch", label: t("newThreadOn", { branch: thread.branch }) }]
@@ -3080,8 +3086,15 @@ const SidebarProjectsContent = memo(function SidebarProjectsContent(
         )}
 
         {projectsLength === 0 && (
-          <div className="px-2 pt-4 text-center text-secondary-label text-xs">
-            {t("noProjectsYet")}
+          <div className="flex flex-col items-center gap-2 px-2 pt-4 text-center text-secondary-label text-xs">
+            <span>{t("noProjectsYet")}</span>
+            <button
+              type="button"
+              onClick={() => openCommandPalette({ open: "add-project" })}
+              className="inline-flex cursor-pointer items-center rounded-md border border-border/80 px-2.5 py-1 text-[11px] font-medium text-secondary-label transition-colors hover:bg-sidebar-row-hover hover:text-foreground"
+            >
+              {t("addProject")}
+            </button>
           </div>
         )}
       </SidebarGroup>

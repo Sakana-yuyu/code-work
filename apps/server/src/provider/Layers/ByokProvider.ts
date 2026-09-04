@@ -29,7 +29,7 @@ import { decodeModelCatalog } from "../byok/ModelCatalog.ts";
 import { buildServerProvider, type ServerProviderDraft } from "../providerSnapshot.ts";
 
 const BYOK_PRESENTATION = {
-  displayName: "Cursor BYOK",
+  displayName: "Custom model service",
   showInteractionModeToggle: false,
 } as const;
 
@@ -54,13 +54,20 @@ export function byokModelsFromSettings(
   byokSettings: ByokSettings,
   discoveredModels: ReadonlyArray<ServerProviderModel> = [],
 ): ReadonlyArray<ServerProviderModel> {
-  const adapterModels = byokSettings.adapters.map((adapter) => ({
-    slug: adapter.id,
-    name: adapter.displayName.trim().length > 0 ? adapter.displayName : adapter.modelId,
-    ...(adapter.modelId.trim().length > 0 ? { subProvider: adapter.modelId.trim() } : {}),
-    isCustom: false,
-    capabilities: EMPTY_BYOK_MODEL_CAPABILITIES,
-  }));
+  const adapterModels = byokSettings.adapters.map((adapter) => {
+    // The picker labels a model `instance · subProvider`. Prefer the
+    // adapter's group (the vendor/relay it points at) so same-named models
+    // from different vendors stay distinguishable; fall back to the raw
+    // model id as before.
+    const subProvider = adapter.groupName?.trim() || adapter.modelId.trim();
+    return {
+      slug: adapter.id,
+      name: adapter.displayName.trim().length > 0 ? adapter.displayName : adapter.modelId,
+      ...(subProvider.length > 0 ? { subProvider } : {}),
+      isCustom: false,
+      capabilities: EMPTY_BYOK_MODEL_CAPABILITIES,
+    };
+  });
   return [...adapterModels, ...discoveredModels];
 }
 
@@ -82,7 +89,7 @@ export function buildInitialByokProviderSnapshot(
           version: null,
           status: "warning",
           auth: { status: "unknown" },
-          message: "Cursor BYOK is disabled in Code Work settings.",
+          message: "Custom model service is disabled in Code Work settings.",
         },
       });
     }
@@ -210,7 +217,8 @@ export const checkByokProviderStatus = Effect.fn("checkByokProviderStatus")(func
         discoveredModels.push({
           slug: `${adapter.id}/${normalizedModelId}`,
           name: normalizedModelId,
-          subProvider: adapter.displayName,
+          // Group first (vendor/relay), adapter display name as fallback.
+          subProvider: adapter.groupName?.trim() || adapter.displayName,
           isCustom: false,
           capabilities: EMPTY_BYOK_MODEL_CAPABILITIES,
         });
@@ -219,6 +227,7 @@ export const checkByokProviderStatus = Effect.fn("checkByokProviderStatus")(func
   }
 
   const models = byokModelsFromSettings(byokSettings, discoveredModels);
+  const keyCheckFailed = failures.length > 0;
   return buildServerProvider({
     presentation: BYOK_PRESENTATION,
     enabled: true,
@@ -227,16 +236,17 @@ export const checkByokProviderStatus = Effect.fn("checkByokProviderStatus")(func
     probe: {
       installed: true,
       version: null,
-      status: "ready",
-      auth: { status: "authenticated", type: "byok" },
-      message:
-        failures.length > 0
-          ? `${byokSettings.adapters.length} model adapter${
-              byokSettings.adapters.length === 1 ? "" : "s"
-            } configured. Key check failed for: ${failures.join("; ")}`
-          : `${byokSettings.adapters.length} model adapter${
-              byokSettings.adapters.length === 1 ? "" : "s"
-            } configured.`,
+      status: keyCheckFailed ? "warning" : "ready",
+      auth: keyCheckFailed
+        ? { status: "unknown", type: "byok" }
+        : { status: "authenticated", type: "byok" },
+      message: keyCheckFailed
+        ? `${byokSettings.adapters.length} model adapter${
+            byokSettings.adapters.length === 1 ? "" : "s"
+          } configured. Key check failed for: ${failures.join("; ")}`
+        : `${byokSettings.adapters.length} model adapter${
+            byokSettings.adapters.length === 1 ? "" : "s"
+          } configured.`,
     },
   });
 });

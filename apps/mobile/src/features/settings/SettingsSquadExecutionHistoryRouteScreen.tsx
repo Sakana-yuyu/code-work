@@ -4,9 +4,9 @@ import {
   type CompositionSquadReviewAction,
   type CompositionSquadRunBoardNode,
 } from "@codework/client-runtime/composition/squad-run-board";
-import type { CompositionSquad, CompositionTaskEvent } from "@codework/contracts";
+import type { CompositionSquad, CompositionTaskEvent, EnvironmentId } from "@codework/contracts";
 import { useNavigation } from "@react-navigation/native";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Platform, RefreshControl, ScrollView, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -18,6 +18,7 @@ import { useEnvironments } from "../../state/environments";
 import { useProjects } from "../../state/entities";
 import { useEnvironmentQuery } from "../../state/query";
 import { serverEnvironment } from "../../state/server";
+import { SettingsEnvironmentPicker } from "./components/SettingsEnvironmentPicker";
 import {
   projectSquadRunBoardHistory,
   type SquadRunBoardHistoryItem,
@@ -31,7 +32,10 @@ export function SettingsSquadExecutionHistoryRouteScreen() {
   const insets = useSafeAreaInsets();
   const { environments } = useEnvironments();
   const projects = useProjects();
-  const environmentId = environments[0]?.environmentId ?? null;
+  const [selectedEnvironmentId, setSelectedEnvironmentId] = useState<EnvironmentId | null>(
+    () => environments[0]?.environmentId ?? null,
+  );
+  const environmentId = selectedEnvironmentId;
   const executionsQuery = useEnvironmentQuery(
     environmentId === null
       ? null
@@ -54,6 +58,16 @@ export function SettingsSquadExecutionHistoryRouteScreen() {
         }),
   );
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
+  useEffect(() => {
+    if (
+      selectedEnvironmentId !== null &&
+      environments.some((item) => item.environmentId === selectedEnvironmentId)
+    ) {
+      return;
+    }
+    setSelectedEnvironmentId(environments[0]?.environmentId ?? null);
+    setSelectedTaskId(null);
+  }, [environments, selectedEnvironmentId]);
   const environmentProjects = useMemo(
     () => projects.filter((project) => project.environmentId === environmentId),
     [environmentId, projects],
@@ -135,6 +149,14 @@ export function SettingsSquadExecutionHistoryRouteScreen() {
         contentContainerStyle={{ paddingBottom: Math.max(insets.bottom, 18) + 18 }}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} />}
       >
+        <SettingsEnvironmentPicker
+          environments={environments}
+          selectedEnvironmentId={environmentId}
+          onSelect={(next) => {
+            setSelectedEnvironmentId(next);
+            setSelectedTaskId(null);
+          }}
+        />
         {environmentId === null ? (
           <StatusMessage text={t("squadExecutionHistory.noEnvironment")} />
         ) : initialPending ? (

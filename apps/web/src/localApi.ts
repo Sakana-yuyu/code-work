@@ -21,6 +21,9 @@ function createBrowserLocalApi(): LocalApi {
     },
     shell: {
       openExternal: async (url) => {
+        if (/^(?:[a-z]:[\\/]|\\\\|file:)/i.test(url)) {
+          throw new Error(t("shell.unableToOpenLink"));
+        }
         if (window.desktopBridge) {
           const opened = await window.desktopBridge.openExternal(url);
           if (!opened) {

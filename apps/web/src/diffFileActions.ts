@@ -1,5 +1,9 @@
 import type { ScopedThreadRef } from "@codework/contracts";
-import { isWindowsAbsolutePath, normalizeProjectPathForComparison } from "@codework/shared/path";
+import {
+  isCodeworkCanvasArtifactPath,
+  isWindowsAbsolutePath,
+  normalizeProjectPathForComparison,
+} from "@codework/shared/path";
 
 import { useRightPanelStore } from "./rightPanelStore";
 import { resolvePathLinkTarget } from "./terminal-links";
@@ -95,6 +99,10 @@ export function openDiffFilePrimaryAction({
     useRightPanelStore.getState().openFile(threadRef, workspaceFilePath);
     return;
   }
+
+  // Canvas 产物只能进入应用内 Canvas 面板。无线程引用时没有合法面板可打开，
+  // 也不能回退到系统编辑器，否则会弹出 JSON 文件关联窗口。
+  if (isCodeworkCanvasArtifactPath(workspaceFilePath)) return;
 
   openInEditor(activeCwd ? resolvePathLinkTarget(workspaceFilePath, activeCwd) : workspaceFilePath);
 }

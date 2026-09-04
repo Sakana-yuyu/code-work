@@ -140,6 +140,7 @@ import {
 } from "./composerSubmission";
 import { ComposerPromptLengthValidation } from "./ComposerPromptLengthValidation";
 import { threadGoalEnvironment, useThreadGoal } from "../../state/threadGoal";
+import { useSpecWorkflowController } from "../../state/specWorkflow";
 import { useAtomCommand } from "../../state/use-atom-command";
 import { useLocalPluginAttachmentPaletteItems } from "../../localPlugins/adapters/useLocalPluginAttachmentPaletteItems";
 
@@ -744,6 +745,11 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       ? { environmentId, threadId: activeThreadId }
       : null,
   );
+  const specWorkflowThreadRef =
+    routeKind === "server" && activeThreadId !== null
+      ? { environmentId, threadId: activeThreadId }
+      : null;
+  const specWorkflowState = useSpecWorkflowController(specWorkflowThreadRef);
   const setThreadGoalCommand = useAtomCommand(threadGoalEnvironment.set, {
     reportFailure: false,
   });
@@ -3760,6 +3766,21 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                     onResumeGoal={onResumeThreadGoal}
                     onClearGoal={onClearThreadGoal}
                     onEditGoalInComposer={editGoalInComposer}
+                    specWorkflow={{
+                      available: specWorkflowThreadRef !== null,
+                      enabled: specWorkflowState.enabled,
+                      isPending: specWorkflowState.isPending,
+                      hasError: specWorkflowState.hasError,
+                      workflowState: specWorkflowState.workflowState,
+                      workflowStateIsPending: specWorkflowState.workflowStateIsPending,
+                      workflowStateHasError: specWorkflowState.workflowStateHasError,
+                      onToggle: specWorkflowState.toggle,
+                      onApproveProposal: specWorkflowState.approveProposal,
+                      onRejectProposal: specWorkflowState.rejectProposal,
+                      onCompleteAcceptance: specWorkflowState.completeAcceptance,
+                      onPause: specWorkflowState.pause,
+                      onResume: specWorkflowState.resume,
+                    }}
                   />
                   {noProviderAvailable ? (
                     <Button

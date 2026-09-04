@@ -1,4 +1,6 @@
 import type { VcsRef } from "@codework/client-runtime/state/vcs";
+import type { GitResolvedPullRequest } from "@codework/contracts";
+import { parsePullRequestReference } from "@codework/shared/pullRequestReference";
 import { LegendList } from "@legendapp/list/react-native";
 import {
   isAtomCommandInterrupted,
@@ -27,6 +29,8 @@ import { useFontFamily } from "../../lib/useFontFamily";
 import { useThemeColor } from "../../lib/useThemeColor";
 import { NativeHeaderToolbar, NativeStackScreenOptions } from "../../native/StackHeader";
 import { useAtomCommand } from "../../state/use-atom-command";
+import { gitEnvironment } from "../../state/git";
+import { useEnvironmentQuery } from "../../state/query";
 import { vcsEnvironment } from "../../state/vcs";
 import {
   createNativeMailSearchToolbarItem,
@@ -199,8 +203,16 @@ export function NewTaskBranchPickerRouteScreen() {
   const foregroundColor = useThemeColor("--color-foreground");
   const fontFamily = useFontFamily("regular");
   const switchRef = useAtomCommand(vcsEnvironment.switchRef, { reportFailure: false });
+  const preparePullRequestThread = useAtomCommand(gitEnvironment.preparePullRequestThread, {
+    reportFailure: false,
+  });
   const [switchingBranchName, setSwitchingBranchName] = useState<string | null>(null);
+  const [preparingPullRequestMode, setPreparingPullRequestMode] = useState<
+    "local" | "worktree" | null
+  >(null);
+  const [pullRequestInput, setPullRequestInput] = useState("");
   const selectingBranchNameRef = useRef<string | null>(null);
+  const preparingPullRequestModeRef = useRef<"local" | "worktree" | null>(null);
   const allowSelectionNavigationRef = useRef(false);
   const mountedRef = useRef(true);
   const screenTitle =
@@ -235,11 +247,86 @@ export function NewTaskBranchPickerRouteScreen() {
   useEffect(
     () =>
       navigation.addListener("beforeRemove", (event) => {
-        if (selectingBranchNameRef.current !== null && !allowSelectionNavigationRef.current) {
+        if (
+          (selectingBranchNameRef.current !== null ||
+            preparingPullRequestModeRef.current !== null) &&
+          !allowSelectionNavigationRef.current
+        ) {
           event.preventDefault();
         }
       }),
     [navigation],
+  );
+
+  const pullRequestReference = useMemo(
+    () => parsePullRequestReference(pullRequestInput),
+    [pullRequestInput],
+  );
+  const pullRequestResolution = useEnvironmentQuery(
+    flow.selectedProject !== null &&
+      flow.selectedProject.workspaceRoot.length > 0 &&
+      pullRequestReference !== null
+      ? gitEnvironment.pullRequestResolution({
+          environmentId: flow.selectedProject.environmentId,
+          input: {
+            cwd: flow.selectedProject.workspaceRoot,
+            reference: pullRequestReference,
+          },
+        })
+      : null,
+  );
+  const resolvedPullRequest: GitResolvedPullRequest | null =
+    pullRequestResolution.data?.pullRequest ?? null;
+  const pullRequestInputInvalid =
+    pullRequestInput.trim().length > 0 && pullRequestReference === null;
+  const preparePullRequest = useCallback(
+    async (mode: "local" | "worktree") => {
+      if (
+        pullRequestReference === null ||
+        resolvedPullRequest === null ||
+        flow.selectedProject === null ||
+        preparingPullRequestModeRef.current !== null
+      ) {
+        return;
+      }
+      preparingPullRequestModeRef.current = mode;
+      setPreparingPullRequestMode(mode);
+      const result = await preparePullRequestThread({
+        environmentId: flow.selectedProject.environmentId,
+        input: {
+          cwd: flow.selectedProject.workspaceRoot,
+          reference: pullRequestReference,
+          mode,
+        },
+      });
+      preparingPullRequestModeRef.current = null;
+      setPreparingPullRequestMode(null);
+      if (result._tag === "Failure") {
+        if (!isAtomCommandInterrupted(result) && mountedRef.current && navigation.isFocused()) {
+          const error = squashAtomCommandFailure(result);
+          Alert.alert(
+            t("couldNotCheckoutPullRequest"),
+            error instanceof Error ? error.message : t("thePullRequestCouldNotBeCheckedOut"),
+          );
+        }
+        return;
+      }
+
+      // 服务端负责 checkout/worktree；保存其确切结果，让新线程复用用户刚看到的远程工作区。
+      flow.setPreparedWorkspace({
+        mode,
+        branch: result.value.branch,
+        worktreePath: result.value.worktreePath,
+      });
+      setPullRequestInput("");
+      flow.setBranchQuery("");
+      if (mountedRef.current && navigation.isFocused()) {
+        allowSelectionNavigationRef.current = true;
+        navigation.goBack();
+      }
+      allowSelectionNavigationRef.current = false;
+    },
+    [flow, navigation, preparePullRequestThread, pullRequestReference, resolvedPullRequest],
   );
 
   const selectBranch = useCallback(
@@ -333,16 +420,97 @@ export function NewTaskBranchPickerRouteScreen() {
     ],
   );
 
-  const branchListHeader =
-    flow.workspaceMode === "worktree" ? (
-      <View className="mb-3 overflow-hidden rounded-2xl">
-        <ToggleRow
-          onValueChange={flow.setStartFromOrigin}
-          title={t("settings.startFromOrigin")}
-          value={flow.startFromOrigin}
-        />
+  const branchListHeader = (
+    <View className="gap-3">
+      <View className="overflow-hidden rounded-2xl bg-card">
+        <View className="gap-2 px-4 py-4">
+          <Text className="text-foreground-secondary text-2xs font-codework-bold tracking-[1px] uppercase">
+            {t("git.checkoutPullRequest")}
+          </Text>
+          <Text className="text-xs leading-snug text-foreground-muted">
+            {t("git.checkoutPullRequestDescription")}
+          </Text>
+          <TextInput
+            autoCapitalize="none"
+            autoCorrect={false}
+            className="h-11 rounded-xl bg-subtle px-4 text-base text-foreground"
+            onChangeText={setPullRequestInput}
+            placeholder={t("git.pullRequestReferencePlaceholder")}
+            placeholderTextColor={placeholderColor}
+            style={{ color: foregroundColor, fontFamily }}
+            value={pullRequestInput}
+          />
+          {pullRequestInputInvalid ? (
+            <Text className="text-xs text-danger-foreground">
+              {t("git.pullRequestReferenceInvalid")}
+            </Text>
+          ) : null}
+          {pullRequestResolution.isPending && pullRequestReference !== null ? (
+            <Text className="text-xs text-foreground-muted">
+              {t("git.preparingPullRequestThread")}
+            </Text>
+          ) : null}
+          {resolvedPullRequest ? (
+            <View className="gap-0.5 rounded-xl border border-border-subtle bg-subtle px-3 py-2">
+              <Text className="text-sm font-codework-bold text-foreground" numberOfLines={1}>
+                {resolvedPullRequest.title}
+              </Text>
+              <Text className="text-xs text-foreground-muted" numberOfLines={1}>
+                #{resolvedPullRequest.number} · {resolvedPullRequest.headBranch} →{" "}
+                {resolvedPullRequest.baseBranch}
+              </Text>
+            </View>
+          ) : null}
+          {pullRequestResolution.error ? (
+            <Text className="text-xs text-danger-foreground">{pullRequestResolution.error}</Text>
+          ) : null}
+          <View className="flex-row gap-2">
+            <Pressable
+              accessibilityRole="button"
+              className="flex-1 rounded-full bg-subtle px-3 py-2 active:opacity-70"
+              disabled={
+                preparingPullRequestMode !== null ||
+                resolvedPullRequest === null ||
+                pullRequestResolution.isPending
+              }
+              onPress={() => void preparePullRequest("local")}
+            >
+              <Text className="text-center text-sm font-codework-medium text-foreground">
+                {preparingPullRequestMode === "local"
+                  ? t("git.preparingPullRequestThread")
+                  : t("git.pullRequestCheckoutLocal")}
+              </Text>
+            </Pressable>
+            <Pressable
+              accessibilityRole="button"
+              className="flex-1 rounded-full bg-accent px-3 py-2 active:opacity-70"
+              disabled={
+                preparingPullRequestMode !== null ||
+                resolvedPullRequest === null ||
+                pullRequestResolution.isPending
+              }
+              onPress={() => void preparePullRequest("worktree")}
+            >
+              <Text className="text-center text-sm font-codework-medium text-white">
+                {preparingPullRequestMode === "worktree"
+                  ? t("git.preparingPullRequestThread")
+                  : t("git.pullRequestCheckoutWorktree")}
+              </Text>
+            </Pressable>
+          </View>
+        </View>
       </View>
-    ) : null;
+      {flow.workspaceMode === "worktree" ? (
+        <View className="overflow-hidden rounded-2xl">
+          <ToggleRow
+            onValueChange={flow.setStartFromOrigin}
+            title={t("settings.startFromOrigin")}
+            value={flow.startFromOrigin}
+          />
+        </View>
+      ) : null}
+    </View>
+  );
 
   const branchContent =
     flow.filteredBranches.length === 0 ? (

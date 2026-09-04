@@ -10,6 +10,7 @@ const PROJECT_SEARCH_ENTRIES_MAX_LIMIT = 200;
 const PROJECT_SEARCH_CONTENTS_MAX_LIMIT = 500;
 const PROJECT_WRITE_FILE_PATH_MAX_LENGTH = 512;
 const PROJECT_READ_FILE_PATH_MAX_LENGTH = 512;
+const PROJECT_LIST_CANVASES_MAX_RESULTS = 200;
 
 export const ProjectEntryKind = Schema.Literals(["file", "directory"]);
 export type ProjectEntryKind = typeof ProjectEntryKind.Type;
@@ -295,6 +296,48 @@ export class ProjectWriteFileError extends Schema.TaggedErrorClass<ProjectWriteF
       message:
         decodedProjectErrorMessage(props) ??
         `Failed to write workspace file '${props.relativePath}' in '${props.cwd}'.`,
+    } as any);
+  }
+}
+
+/**
+ * Canvas artifacts live under the managed `.codework/canvases/` directory and
+ * are deliberately excluded from workspace path listings (file tree, picker),
+ * so clients need a dedicated listing to show project-wide recent canvases.
+ */
+export const ProjectCanvasSummary = Schema.Struct({
+  canvasId: TrimmedNonEmptyString,
+  title: TrimmedString,
+  relativePath: TrimmedNonEmptyString,
+  updatedAt: NonNegativeInt,
+});
+export type ProjectCanvasSummary = typeof ProjectCanvasSummary.Type;
+
+export const ProjectListCanvasesInput = Schema.Struct({
+  cwd: TrimmedNonEmptyString,
+});
+export type ProjectListCanvasesInput = typeof ProjectListCanvasesInput.Type;
+
+export const ProjectListCanvasesResult = Schema.Struct({
+  canvases: Schema.Array(ProjectCanvasSummary).check(
+    Schema.isMaxLength(PROJECT_LIST_CANVASES_MAX_RESULTS),
+  ),
+});
+export type ProjectListCanvasesResult = typeof ProjectListCanvasesResult.Type;
+
+export class ProjectListCanvasesError extends Schema.TaggedErrorClass<ProjectListCanvasesError>()(
+  "ProjectListCanvasesError",
+  {
+    cwd: Schema.optional(TrimmedNonEmptyString),
+    message: TrimmedNonEmptyString,
+    cause: Schema.optional(Schema.Defect()),
+  },
+) {
+  // @effect-diagnostics-next-line overriddenSchemaConstructor:off
+  constructor(props: { readonly cwd: string; readonly cause?: unknown }) {
+    super({
+      ...props,
+      message: `Failed to list canvas artifacts in '${props.cwd}'.`,
     } as any);
   }
 }

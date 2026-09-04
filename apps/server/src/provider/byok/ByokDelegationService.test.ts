@@ -2,16 +2,22 @@ import {
   ProviderDriverKind,
   ProviderInstanceId,
   type ByokDelegationConfig,
+  type OrchestrationCommand,
 } from "@codework/contracts";
 import { assert, it as effectIt } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
+import * as Stream from "effect/Stream";
 import { FetchHttpClient } from "effect/unstable/http";
 import { describe, expect, it } from "vite-plus/test";
 
 import {
   __testables,
+  clampDelegationRuntimeConfig,
+  delegationOriginActivities,
+  delegationSubmitErrorCode,
+  globalDelegationPressure,
   make,
   resolveDelegationModel,
   resolveScheduler,
@@ -20,6 +26,14 @@ import * as ServerSettings from "../../serverSettings.ts";
 import { CompositionTaskStore } from "../../persistence/Services/CompositionTaskStore.ts";
 import { CompositionTaskStoreLive } from "../../persistence/Layers/CompositionTaskStore.ts";
 import { SqlitePersistenceMemory } from "../../persistence/Layers/Sqlite.ts";
+import {
+  OrchestrationEngineService,
+  type OrchestrationEngineShape,
+} from "../../orchestration/Services/OrchestrationEngine.ts";
+import {
+  DelegationQueueFullError,
+  type DelegationStatus,
+} from "../../orchestration/byokDelegation/DelegationScheduler.ts";
 import {
   makeByokDelegationProjectionScope,
   projectByokDelegationTransition,
@@ -119,6 +133,243 @@ describe("ByokDelegationService helpers", () => {
       ),
     ).toBe("m-only");
     expect(resolveDelegationModel(config())).toBeUndefined();
+  });
+});
+
+describe("delegation runtime hard caps (服务端硬上限)", () => {
+  it("clamps persisted runtime numbers to the hard caps with trunc semantics", () => {
+    const clamped = clampDelegationRuntimeConfig(
+      config({
+        maxConcurrency: 10_000,
+        queueTimeoutMs: 5,
+        executionTimeoutMs: 500,
+        supervision: {
+          enabled: false,
+          supervisorModelId: "",
+          reviewerModelId: "",
+          maxCorrections: 999,
+          maxRetries: 500,
+          maxRounds: 1e6,
+          allowReassign: true,
+          allowEscalate: true,
+          strictUnavailable: false,
+        },
+      }),
+    );
+
+    expect(clamped.maxConcurrency).toBe(16);
+    expect(clamped.queueTimeoutMs).toBe(1_000);
+    expect(clamped.executionTimeoutMs).toBe(1_000);
+    expect(clamped.supervision.maxCorrections).toBe(20);
+    expect(clamped.supervision.maxRetries).toBe(20);
+    expect(clamped.supervision.maxRounds).toBe(50);
+  });
+
+  it("truncates fractional concurrency toward zero before clamping", () => {
+    expect(clampDelegationRuntimeConfig(config({ maxConcurrency: 0.9 })).maxConcurrency).toBe(1);
+    expect(clampDelegationRuntimeConfig(config({ maxConcurrency: 7.9 })).maxConcurrency).toBe(7);
+  });
+
+  it("keeps in-bounds values untouched and falls back to defaults for unusable ones", () => {
+    const inBounds = clampDelegationRuntimeConfig(config());
+    expect(inBounds.maxConcurrency).toBe(2);
+    expect(inBounds.queueTimeoutMs).toBe(5_000);
+    expect(inBounds.supervision.maxRounds).toBe(8);
+
+    const unusable = clampDelegationRuntimeConfig({
+      ...config(),
+      maxConcurrency: Number.NaN,
+      queueTimeoutMs: undefined,
+    } as unknown as ByokDelegationConfig);
+    expect(unusable.maxConcurrency).toBe(4);
+    expect(unusable.queueTimeoutMs).toBe(30_000);
+  });
+
+  it("sums running and in-flight delegations across scheduler snapshots", () => {
+    const source = (statuses: DelegationStatus[]) => ({
+      list: () => statuses.map((status) => ({ status })),
+    });
+
+    expect(globalDelegationPressure([])).toEqual({ running: 0, inFlight: 0 });
+    expect(
+      globalDelegationPressure([
+        source(["running", "queued", "succeeded"]),
+        source(["queued", "cancelled", "execution_timed_out"]),
+      ]),
+    ).toEqual({ running: 1, inFlight: 3 });
+  });
+
+  it("maps queue-full backpressure onto a distinct submit error code", () => {
+    expect(delegationSubmitErrorCode({ code: new DelegationQueueFullError(4).code })).toBe(
+      "DELEGATION_QUEUE_FULL",
+    );
+    expect(delegationSubmitErrorCode({})).toBe("DELEGATION_SUBMIT_FAILED");
+    expect(delegationSubmitErrorCode({ code: "other" })).toBe("DELEGATION_SUBMIT_FAILED");
+  });
+});
+
+describe("delegationOriginActivities (origin 线程名册行)", () => {
+  const rosterTaskId = "byok-delegation-key-1";
+
+  it("started row stamps agentKind agent, default role and timelineBypass", () => {
+    const rows = delegationOriginActivities({
+      origin: { threadId: "thread-42" },
+      rosterTaskId,
+      taskText: "Fix the flaky test\nsecond line never reaches the title",
+      phase: "started",
+    });
+    expect(rows).toHaveLength(1);
+    const row = rows[0]!;
+    expect(row.kind).toBe("task.started");
+    expect(row.id).toBe("task-started:thread-42:byok-delegation-key-1");
+    expect(row.tone).toBe("info");
+    expect(row.turnId).toBeNull();
+    expect(row.summary).toBe("Delegation started: Fix the flaky test");
+    expect(row.payload).toEqual({
+      taskId: rosterTaskId,
+      agentKind: "agent",
+      title: "Fix the flaky test",
+      role: "delegation",
+      timelineBypass: true,
+    });
+    expect(Number.isNaN(Date.parse(row.createdAt))).toBe(false);
+  });
+
+  it("carries subagentType as the roster role and brands turnId when present", () => {
+    const [row] = delegationOriginActivities({
+      origin: { threadId: "thread-42", turnId: "turn-7" },
+      rosterTaskId,
+      taskText: "Explore the repo",
+      subagentType: "explore",
+      phase: "started",
+    });
+    expect(row!.turnId).toBe("turn-7");
+    expect(row!.payload).toMatchObject({ role: "explore", agentKind: "agent" });
+  });
+
+  it("running row uses a stable upsert id and explicit running status", () => {
+    const [row] = delegationOriginActivities({
+      origin: { threadId: "thread-42" },
+      rosterTaskId,
+      taskText: "task body",
+      phase: "running",
+    });
+    expect(row!.kind).toBe("task.progress");
+    expect(row!.id).toBe("task-progress:thread-42:byok-delegation-key-1");
+    expect(row!.summary).toBe("Delegation running");
+    expect(row!.payload).toEqual({
+      taskId: rosterTaskId,
+      status: "running",
+      summary: "Delegation running",
+      timelineBypass: true,
+    });
+  });
+
+  it("maps terminal statuses onto the roster fold vocabulary", () => {
+    const terminal = (status: string, errorMessage?: string) =>
+      delegationOriginActivities({
+        origin: { threadId: "thread-42" },
+        rosterTaskId,
+        taskText: "task body",
+        phase: "terminal",
+        status,
+        ...(errorMessage === undefined ? {} : { errorMessage }),
+      })[0]!;
+
+    const succeeded = terminal("succeeded");
+    expect(succeeded.kind).toBe("task.updated");
+    expect(succeeded.summary).toBe("Delegation completed");
+    expect(succeeded.payload).toEqual({
+      taskId: rosterTaskId,
+      status: "completed",
+      endedAt: succeeded.createdAt,
+      timelineBypass: true,
+    });
+
+    expect(terminal("failed", 'Executor "rescue" exited with code 3.').payload).toMatchObject({
+      status: "failed",
+      error: 'Executor "rescue" exited with code 3.',
+    });
+
+    const cancelled = terminal("cancelled");
+    expect(cancelled.payload).toMatchObject({ status: "cancelled" });
+    expect((cancelled.payload as Record<string, unknown>)["error"]).toBeUndefined();
+
+    expect(terminal("execution_timed_out").payload).toMatchObject({
+      status: "failed",
+      detail: "execution_timed_out",
+    });
+    expect(terminal("martian_state").payload).toMatchObject({
+      status: "failed",
+      detail: "martian_state",
+    });
+  });
+
+  it("gives terminal rows a unique id suffix so retries never collide", () => {
+    const build = () =>
+      delegationOriginActivities({
+        origin: { threadId: "thread-42" },
+        rosterTaskId,
+        taskText: "task body",
+        phase: "terminal",
+        status: "failed",
+      })[0]!;
+    const first = build();
+    const second = build();
+    expect(first.id).toMatch(
+      /^task-updated:thread-42:byok-delegation-key-1:failed:[0-9a-f-]{36}$/u,
+    );
+    expect(first.id).not.toBe(second.id);
+  });
+
+  it("bounds the title to one line of at most 80 chars and errors to 200", () => {
+    const [started] = delegationOriginActivities({
+      origin: { threadId: "thread-42" },
+      rosterTaskId,
+      taskText: `${"x".repeat(300)}\nsecond line`,
+      phase: "started",
+    });
+    const title = (started!.payload as Record<string, unknown>)["title"] as string;
+    expect(title).toHaveLength(80);
+    expect(title.endsWith("…")).toBe(true);
+
+    const [failed] = delegationOriginActivities({
+      origin: { threadId: "thread-42" },
+      rosterTaskId,
+      taskText: "task body",
+      phase: "terminal",
+      status: "failed",
+      errorMessage: "e".repeat(500),
+    });
+    expect((failed!.payload as Record<string, unknown>)["error"]).toHaveLength(200);
+  });
+
+  it("returns no rows for unusable inputs", () => {
+    const base = {
+      origin: { threadId: "thread-42" },
+      rosterTaskId,
+      taskText: "task body",
+      phase: "terminal",
+      status: "failed",
+    } as const;
+    expect(delegationOriginActivities({ ...base, origin: { threadId: "   " } })).toEqual([]);
+    expect(delegationOriginActivities({ ...base, rosterTaskId: "" })).toEqual([]);
+    expect(
+      delegationOriginActivities({
+        origin: { threadId: "thread-42" },
+        rosterTaskId,
+        taskText: "task body",
+        phase: "terminal",
+      }),
+    ).toEqual([]);
+    expect(
+      delegationOriginActivities({
+        origin: { threadId: "thread-42" },
+        rosterTaskId,
+        taskText: "task body",
+        phase: "started",
+      }),
+    ).toHaveLength(1);
   });
 });
 
@@ -427,9 +678,7 @@ const failoverSettingsLayer = ServerSettings.layerTest({
   },
 });
 
-const failoverLayer = effectIt.layer(
-  Layer.mergeAll(failoverSettingsLayer, FetchHttpClient.layer),
-);
+const failoverLayer = effectIt.layer(Layer.mergeAll(failoverSettingsLayer, FetchHttpClient.layer));
 
 failoverLayer("delegation executor failover (original registry parity)", (it) => {
   it.effect(
@@ -492,6 +741,272 @@ failoverLayer("delegation executor failover (original registry parity)", (it) =>
           ],
         );
         assert.equal(snapshot.executorAttempts?.[0]?.diagnosticPreview, "not_installed");
+      }),
+    20_000,
+  );
+});
+
+const ORIGIN_ACTIVITY_INSTANCE_ID = "byok-origin-activity";
+const dispatchedCommands: OrchestrationCommand[] = [];
+
+const fakeOrchestrationEngineLayer = Layer.succeed(OrchestrationEngineService, {
+  dispatch: (command) =>
+    Effect.sync(() => {
+      dispatchedCommands.push(command);
+      return { sequence: dispatchedCommands.length };
+    }),
+  readEvents: () => Stream.empty,
+  streamDomainEvents: Stream.empty,
+  latestSequence: Effect.succeed(0),
+} satisfies OrchestrationEngineShape);
+
+const originActivitySettingsLayer = ServerSettings.layerTest({
+  providerInstances: {
+    [ProviderInstanceId.make(ORIGIN_ACTIVITY_INSTANCE_ID)]: {
+      driver: ProviderDriverKind.make("byok"),
+      config: {
+        delegation: {
+          enabled: true,
+          maxConcurrency: 1,
+          queueTimeoutMs: 10_000,
+          executionTimeoutMs: 15_000,
+          executorCommand: `"${process.execPath}" -e process.stdout.write("origin-activity-result")`,
+        },
+      },
+    },
+  },
+});
+
+const originActivityLayer = effectIt.layer(
+  Layer.mergeAll(originActivitySettingsLayer, FetchHttpClient.layer, fakeOrchestrationEngineLayer),
+);
+
+originActivityLayer("delegation origin thread activities (Agents 面板名册)", (it) => {
+  it.effect(
+    "submit 带 origin 时向 origin 线程按序追加 started/running/terminal 活动行",
+    () =>
+      Effect.gen(function* () {
+        dispatchedCommands.length = 0;
+        const service = yield* make;
+        const snapshot = yield* service.submit({
+          instanceId: ORIGIN_ACTIVITY_INSTANCE_ID,
+          task: "origin-thread-task-body",
+          origin: { threadId: "thread-origin-1", turnId: "turn-origin-9" },
+        });
+        assert.equal(snapshot.status, "succeeded");
+
+        const appends = dispatchedCommands.flatMap((command) =>
+          command.type === "thread.activity.append" ? [command] : [],
+        );
+        assert.equal(appends.length, 3);
+        assert.deepEqual(
+          appends.map((command) => command.activity.kind),
+          ["task.started", "task.progress", "task.updated"],
+        );
+        for (const command of appends) {
+          assert.equal(command.threadId, "thread-origin-1");
+          assert.equal(command.activity.turnId, "turn-origin-9");
+        }
+        // 三行共用台账 scope.taskId 身份（ledger 与 Agents 面板同 id）。
+        const rosterTaskIds = new Set(
+          appends.map((command) => (command.activity.payload as Record<string, unknown>)["taskId"]),
+        );
+        assert.equal(rosterTaskIds.size, 1);
+        assert.isTrue(String([...rosterTaskIds][0]).startsWith("byok-delegation-"));
+
+        const startedPayload = appends[0]!.activity.payload as Record<string, unknown>;
+        assert.equal(startedPayload["agentKind"], "agent");
+        assert.equal(startedPayload["timelineBypass"], true);
+        assert.equal(startedPayload["role"], "delegation");
+        assert.equal(startedPayload["title"], "origin-thread-task-body");
+
+        const terminalPayload = appends[2]!.activity.payload as Record<string, unknown>;
+        assert.equal(terminalPayload["status"], "completed");
+        assert.equal(typeof terminalPayload["endedAt"], "string");
+      }),
+    20_000,
+  );
+
+  it.effect(
+    "submit 无 origin 时不派发任何线程活动命令",
+    () =>
+      Effect.gen(function* () {
+        dispatchedCommands.length = 0;
+        const service = yield* make;
+        const snapshot = yield* service.submit({
+          instanceId: ORIGIN_ACTIVITY_INSTANCE_ID,
+          task: "no-origin-task-body",
+        });
+        assert.equal(snapshot.status, "succeeded");
+        assert.equal(dispatchedCommands.length, 0);
+      }),
+    20_000,
+  );
+});
+
+const QUEUE_FULL_INSTANCE_ID = "byok-queue-full";
+// maxConcurrency 1 → queueLimit 4：1 个 running + 4 个 queued 即占满本地队列。
+const queueFullConfig: ByokDelegationConfig = {
+  enabled: true,
+  maxConcurrency: 1,
+  queueTimeoutMs: 10_000,
+  executionTimeoutMs: 60_000,
+  modelGroups: [],
+  executorCommand: `"${process.execPath}" -e setTimeout(()=>{},60000)`,
+  executorEnvironmentVariables: [],
+  executors: [],
+  executorFailoverLimit: 3,
+  visionDelegation: { enabled: false, visionModelId: "", mode: "auto" },
+  supervision: {
+    enabled: false,
+    supervisorModelId: "",
+    reviewerModelId: "",
+    maxCorrections: 2,
+    maxRetries: 1,
+    maxRounds: 8,
+    allowReassign: true,
+    allowEscalate: true,
+    strictUnavailable: false,
+  },
+  subagentProfiles: [],
+};
+
+const queueFullLayer = effectIt.layer(
+  Layer.mergeAll(
+    ServerSettings.layerTest({
+      providerInstances: {
+        [ProviderInstanceId.make(QUEUE_FULL_INSTANCE_ID)]: {
+          driver: ProviderDriverKind.make("byok"),
+          config: { delegation: queueFullConfig },
+        },
+      },
+    }),
+    FetchHttpClient.layer,
+  ),
+);
+
+queueFullLayer("delegation submit backpressure (队列满错误码)", (it) => {
+  it.effect(
+    "队列满时 submit 以 DELEGATION_QUEUE_FULL 失败快照拒绝，而非通用提交失败",
+    () =>
+      Effect.gen(function* () {
+        const scheduler = resolveScheduler(queueFullConfig, QUEUE_FULL_INSTANCE_ID);
+        const inFlight = [
+          // 第 1 个立即 running（maxConcurrency 1），其余 4 个占满队列。
+          scheduler.submit({ input: "blocker" }),
+          ...Array.from({ length: 4 }, (_, index) =>
+            scheduler.submit({ input: `queued-${index}` }),
+          ),
+        ];
+        assert.equal(inFlight.filter((snapshot) => snapshot.status === "running").length, 1);
+        assert.equal(inFlight.filter((snapshot) => snapshot.status === "queued").length, 4);
+
+        const service = yield* make;
+        const snapshot = yield* service.submit({
+          instanceId: QUEUE_FULL_INSTANCE_ID,
+          task: "overflow-task",
+        });
+
+        assert.equal(snapshot.status, "failed");
+        assert.equal(snapshot.errorCode, "DELEGATION_QUEUE_FULL");
+        assert.include(snapshot.errorMessage ?? "", "queue is full");
+        // 背压与通用提交失败可区分：模型据此停止盲目重试。
+        assert.notEqual(snapshot.errorCode, "DELEGATION_SUBMIT_FAILED");
+
+        for (const record of inFlight) scheduler.cancel(record.id);
+      }),
+    20_000,
+  );
+});
+
+const RETIRE_INSTANCE_ID = "byok-retire-check";
+
+describe("delegation scheduler retirement (指纹变更退役)", () => {
+  it("配置指纹变更时：排队任务立即取消，运行中保留并计入全局压力，排空后自动移除", () => {
+    const configA: ByokDelegationConfig = config({
+      maxConcurrency: 1,
+      executorCommand: `"${process.execPath}" -e setTimeout(()=>{},60000)`,
+    });
+    const configB: ByokDelegationConfig = config({
+      maxConcurrency: 1,
+      executorCommand: `"${process.execPath}" -e setTimeout(()=>{},59000)`,
+    });
+    const schedulerA = resolveScheduler(configA, RETIRE_INSTANCE_ID);
+    const running = schedulerA.submit({ input: "retire-running" });
+    const queued = schedulerA.submit({ input: "retire-queued" });
+    assert.equal(running.status, "running");
+    assert.equal(queued.status, "queued");
+
+    const schedulerB = resolveScheduler(configB, RETIRE_INSTANCE_ID);
+    assert.notEqual(schedulerA, schedulerB);
+    // 排队任务立即以 cancelled 结算——不会在旧配置下隐形执行。
+    assert.equal(schedulerA.get(queued.id)?.status, "cancelled");
+    // 运行中的任务继续执行，但进入退役追踪并计入全局压力。
+    assert.equal(schedulerA.get(running.id)?.status, "running");
+    assert.equal(__testables.retiredSchedulers.length, 1);
+    const pressure = globalDelegationPressure([
+      ...[...__testables.schedulers.values()].map((entry) => entry.scheduler),
+      ...__testables.retiredSchedulers,
+    ]);
+    assert.equal(pressure.running, 1);
+    assert.equal(pressure.inFlight, 1);
+    assert.equal(__testables.schedulers.get(RETIRE_INSTANCE_ID)?.scheduler, schedulerB);
+
+    // 运行任务终态后退役条目自动移除，退役表不滞留。
+    schedulerA.cancel(running.id);
+    assert.equal(__testables.retiredSchedulers.length, 0);
+  });
+});
+
+const PRUNE_INSTANCE_ID = "byok-prune-check";
+const pruneExecutorCommand = `"${process.execPath}" -e process.stdout.write("prune-ok")`;
+
+const pruneLayer = effectIt.layer(
+  Layer.mergeAll(
+    ServerSettings.layerTest({
+      providerInstances: {
+        [ProviderInstanceId.make(PRUNE_INSTANCE_ID)]: {
+          driver: ProviderDriverKind.make("byok"),
+          config: {
+            delegation: {
+              enabled: true,
+              maxConcurrency: 1,
+              queueTimeoutMs: 10_000,
+              executionTimeoutMs: 15_000,
+              executorCommand: pruneExecutorCommand,
+            },
+          },
+        },
+      },
+    }),
+    FetchHttpClient.layer,
+  ),
+);
+
+pruneLayer("delegation scheduler state pruning (实例删除清理)", (it) => {
+  it.effect(
+    "实例从设置移除后，调度器条目与探测注册表在下一次设置读取时被清理",
+    () =>
+      Effect.gen(function* () {
+        const configPrune: ByokDelegationConfig = config({
+          executorCommand: pruneExecutorCommand,
+        });
+        resolveScheduler(configPrune, PRUNE_INSTANCE_ID);
+        assert.ok(__testables.schedulers.has(PRUNE_INSTANCE_ID));
+        const retiredBefore = __testables.retiredSchedulers.length;
+
+        const settings = yield* ServerSettings.ServerSettingsService;
+        // providerInstances 是整体替换语义：空映射即删除全部实例。
+        yield* settings.updateSettings({ providerInstances: {} });
+
+        const service = yield* make;
+        const listed = yield* service.list(PRUNE_INSTANCE_ID);
+        assert.deepEqual(listed, []);
+        assert.equal(__testables.schedulers.has(PRUNE_INSTANCE_ID), false);
+        assert.equal(__testables.probeRegistries.has(PRUNE_INSTANCE_ID), false);
+        // 无在途工作的退役即时完成：清理动作本身不向退役表新增条目
+        // （长度与清理前持平；表内既有条目属于其他用例的残留）。
+        assert.equal(__testables.retiredSchedulers.length, retiredBefore);
       }),
     20_000,
   );

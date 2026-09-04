@@ -79,17 +79,6 @@ import { AddProviderInstanceDialog } from "./AddProviderInstanceDialog";
 import { FacilitiesPageHeader } from "./FacilitiesPageHeader";
 import { FacilitiesQuickGuide } from "./FacilitiesQuickGuide";
 import { ProviderInstanceCard } from "./ProviderInstanceCard";
-import {
-  MulticaRuntimeSettingsPanel,
-  type MulticaRuntimeDeleteRequest,
-  type MulticaRuntimeSaveRequest,
-} from "./MulticaRuntimeSettingsPanel";
-import {
-  formFromMulticaRuntimeInstance,
-  multicaRuntimeDraftFingerprint,
-} from "./MulticaRuntimeSettings.logic";
-import { MulticaRuntimeConflictError } from "./MulticaRuntimeSettings.controller";
-import { multicaRuntimeText } from "./MulticaRuntimeSettingsText";
 import { DRIVER_OPTIONS, getDriverOption } from "./providerDriverMeta";
 import { providerSettingsTabClassName } from "./providerSettingsTabs";
 import { searchableSetting } from "./settingsSearch";
@@ -111,6 +100,7 @@ import {
 import {
   buildProviderEnvironmentOptions,
   classifyProviderEnvironmentAccess,
+  hasConfiguredProviderInstances,
   type ProviderEnvironmentAccess,
   type ProviderOperateAccess,
   resolvePrimaryOperateAccess,
@@ -228,6 +218,9 @@ export function ProviderSettingsPanel() {
   );
   const selectedEnvironment =
     options.find((environment) => environment.environmentId === effectiveEnvironmentId) ?? null;
+  const providersEmpty =
+    selectedEnvironment === null ||
+    !hasConfiguredProviderInstances(selectedEnvironment.serverConfig?.settings);
   const onlyPrimaryDevice =
     options.length === 1 && options[0]?.entry.target._tag === "PrimaryConnectionTarget";
   const deviceTabs =
@@ -282,7 +275,7 @@ export function ProviderSettingsPanel() {
         title={t("settings.providers")}
         description={t("facilitiesGuide.providers.pageDescription")}
       >
-        <FacilitiesQuickGuide guideId="providers" />
+        <FacilitiesQuickGuide guideId="providers" empty={providersEmpty} />
       </FacilitiesPageHeader>
       {options.length === 0 ? (
         <SettingsSection title={t("providers2")}>
@@ -432,7 +425,16 @@ export function EnvironmentProviderSettings({
   readonly readOnly?: boolean;
 }) {
   const settings = useEnvironmentSettings(environmentId);
-  const updateSettings = useUpdateEnvironmentSettings(environmentId);
+  const reportSettingsUpdateFailure = useCallback((error: unknown) => {
+    toastManager.add(
+      stackedThreadToast({
+        type: "error",
+        title: t("settingsSaveFailed"),
+        description: error instanceof Error ? error.message : t("settingsSaveTryAgain"),
+      }),
+    );
+  }, []);
+  const updateSettings = useUpdateEnvironmentSettings(environmentId, reportSettingsUpdateFailure);
   const serverProviders =
     useAtomValue(serverEnvironment.providersValueAtom(environmentId)) ?? EMPTY_SERVER_PROVIDERS;
   const refreshServerProviders = useAtomCommand(serverEnvironment.refreshProviders, {
@@ -441,7 +443,7 @@ export function EnvironmentProviderSettings({
   const updateProvider = useAtomCommand(serverEnvironment.updateProvider, {
     reportFailure: false,
   });
-  const persistMulticaSettings = useAtomCommand(serverEnvironment.updateSettings, {
+  const installProvider = useAtomCommand(serverEnvironment.installProvider, {
     reportFailure: false,
   });
   const [isRefreshingProviders, setIsRefreshingProviders] = useState(false);
@@ -454,104 +456,10 @@ export function EnvironmentProviderSettings({
   >(() => new Set());
   const refreshingRef = useRef(false);
   const updatingDriversRef = useRef<Set<ProviderDriverKind>>(new Set());
-
-  const saveMulticaRuntime = useCallback(
-    async (request: MulticaRuntimeSaveRequest) => {
-      const instances: Record<ProviderInstanceId, ProviderInstanceConfig> = {
-        ...settings.providerInstances,
-      };
-      const originalInstanceId =
-        request.originalInstanceId === null
-          ? null
-          : ProviderInstanceId.make(request.originalInstanceId);
-      const existing =
-        originalInstanceId === null ? instances[request.instanceId] : instances[originalInstanceId];
-      const existingDraft =
-        existing === undefined
-          ? null
-          : formFromMulticaRuntimeInstance(originalInstanceId ?? request.instanceId, existing);
-      if (
-        (originalInstanceId === null && existing !== undefined) ||
-        (originalInstanceId !== null &&
-          (existingDraft === null ||
-            multicaRuntimeDraftFingerprint(existingDraft) !== request.expectedFingerprint))
-      ) {
-        throw new MulticaRuntimeConflictError();
-      }
-      const nextInstances: Record<ProviderInstanceId, ProviderInstanceConfig> = {
-        ...instances,
-        [request.instanceId]: {
-          driver: ProviderDriverKind.make("multica"),
-          enabled: request.config.enabled,
-          config: request.config,
-          environment: request.environment,
-        },
-      };
-      if (originalInstanceId !== null && originalInstanceId !== request.instanceId) {
-        delete nextInstances[originalInstanceId];
-      }
-      const multicaProviderInstancePreconditions =
-        originalInstanceId === null
-          ? [{ instanceId: request.instanceId, expectedRevision: null }]
-          : [
-              {
-                instanceId: originalInstanceId,
-                expectedRevision: request.expectedRevision,
-              },
-              ...(originalInstanceId !== request.instanceId
-                ? [{ instanceId: request.instanceId, expectedRevision: null }]
-                : []),
-            ];
-      const result = await persistMulticaSettings({
-        environmentId,
-        input: {
-          patch: {
-            providerInstances: Object.fromEntries(
-              multicaProviderInstancePreconditions.flatMap(({ instanceId }) => {
-                const instance = nextInstances[instanceId];
-                return instance === undefined ? [] : [[instanceId, instance]];
-              }),
-            ),
-            multicaProviderInstancePreconditions,
-          },
-        },
-      });
-      if (result._tag === "Failure") {
-        throw squashAtomCommandFailure(result);
-      }
-    },
-    [environmentId, persistMulticaSettings, settings.providerInstances],
-  );
-  const deleteMulticaRuntime = useCallback(
-    async (request: MulticaRuntimeDeleteRequest) => {
-      const instanceId = ProviderInstanceId.make(request.instanceId);
-      const instances: Record<ProviderInstanceId, ProviderInstanceConfig> = {
-        ...settings.providerInstances,
-      };
-      const instance = instances[instanceId];
-      if (instance === undefined || instance.driver !== "multica") {
-        throw new MulticaRuntimeConflictError();
-      }
-      const result = await persistMulticaSettings({
-        environmentId,
-        input: {
-          patch: {
-            providerInstances: {},
-            multicaProviderInstancePreconditions: [
-              {
-                instanceId,
-                expectedRevision: request.expectedRevision,
-              },
-            ],
-          },
-        },
-      });
-      if (result._tag === "Failure") {
-        throw squashAtomCommandFailure(result);
-      }
-    },
-    [environmentId, persistMulticaSettings, settings.providerInstances],
-  );
+  const [installingProviderInstances, setInstallingProviderInstances] = useState<
+    ReadonlySet<ProviderInstanceId>
+  >(() => new Set());
+  const installingInstancesRef = useRef<Set<ProviderInstanceId>>(new Set());
 
   const providerUpdateCandidates = useMemo(
     () => collectProviderUpdateCandidates(serverProviders),
@@ -651,6 +559,51 @@ export function EnvironmentProviderSettings({
       });
     },
     [environmentId, updateProvider],
+  );
+
+  const runProviderInstall = useCallback(
+    async (candidate: { driver: ProviderDriverKind; instanceId: ProviderInstanceId }) => {
+      // Ref-based re-entry guard, mirroring runProviderUpdate: a state updater
+      // may run after this function returns, so it cannot gate the dispatch.
+      if (installingInstancesRef.current.has(candidate.instanceId)) {
+        return;
+      }
+      installingInstancesRef.current.add(candidate.instanceId);
+      setInstallingProviderInstances((previous) => new Set(previous).add(candidate.instanceId));
+
+      const result = await installProvider({
+        environmentId,
+        input: {
+          provider: candidate.driver,
+          instanceId: candidate.instanceId,
+        },
+      });
+      if (result._tag === "Failure" && !isAtomCommandInterrupted(result)) {
+        const error = squashAtomCommandFailure(result);
+        toastManager.add(
+          stackedThreadToast({
+            type: "error",
+            title: t("couldNotInstall", {
+              driver: PROVIDER_DISPLAY_NAMES[candidate.driver] ?? candidate.driver,
+            }),
+            description:
+              error instanceof Error
+                ? error.message
+                : t("theProviderInstallCommandCouldNotBeStarted"),
+          }),
+        );
+      }
+      installingInstancesRef.current.delete(candidate.instanceId);
+      setInstallingProviderInstances((previous) => {
+        if (!previous.has(candidate.instanceId)) {
+          return previous;
+        }
+        const next = new Set(previous);
+        next.delete(candidate.instanceId);
+        return next;
+      });
+    },
+    [environmentId, installProvider],
   );
 
   interface InstanceRow {
@@ -758,7 +711,7 @@ export function EnvironmentProviderSettings({
       >[0]["textGenerationModelSelection"];
     },
   ) => {
-    updateSettings(
+    return updateSettings(
       buildProviderInstanceUpdatePatch({
         settings,
         instanceId: row.instanceId,
@@ -888,7 +841,7 @@ export function EnvironmentProviderSettings({
           const wasEnabled = resolveProviderInstanceEnabled(row.instance);
           const isDisabling = next.enabled === false && wasEnabled;
           const shouldClearTextGen = isDisabling && textGenInstanceId === row.instanceId;
-          updateProviderInstance(
+          return updateProviderInstance(
             row,
             next,
             shouldClearTextGen
@@ -936,6 +889,25 @@ export function EnvironmentProviderSettings({
             : undefined
         }
         isUpdating={mode === "editor" && showInlineUpdateButton ? isDriverUpdateRunning : undefined}
+        onRunInstall={
+          mode === "list" &&
+          liveProvider !== undefined &&
+          liveProvider.installed === false &&
+          liveProvider.canInstall === true
+            ? () => {
+                void runProviderInstall({ driver: row.driver, instanceId: row.instanceId });
+              }
+            : undefined
+        }
+        isInstalling={
+          mode === "list" &&
+          (installingProviderInstances.has(row.instanceId) ||
+            (liveProvider?.installState !== undefined &&
+              (liveProvider.installState.status === "queued" ||
+                liveProvider.installState.status === "running")))
+            ? true
+            : undefined
+        }
       />
     );
   };
@@ -958,6 +930,9 @@ export function EnvironmentProviderSettings({
         }
       >
         {deviceTabs}
+        <p className="border-b border-border/70 px-3 py-2 text-xs text-muted-foreground sm:px-4">
+          {t("providerSettings.savedTo")} {environmentLabel}
+        </p>
         {readOnly ? (
           <SettingsRow
             title={t("limitedPermissions")}
@@ -1112,14 +1087,6 @@ export function EnvironmentProviderSettings({
           onOpenChange={setIsAddInstanceDialogOpen}
         />
       ) : null}
-      <MulticaRuntimeSettingsPanel
-        scopeKey={readOnly ? null : String(environmentId)}
-        text={multicaRuntimeText}
-        state={{ status: "ready", instances: settings.providerInstances ?? {} }}
-        onRetryLoad={() => undefined}
-        onSave={saveMulticaRuntime}
-        onDelete={deleteMulticaRuntime}
-      />
     </>
   );
 }

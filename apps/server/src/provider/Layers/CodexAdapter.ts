@@ -77,6 +77,11 @@ const PROVIDER = ProviderDriverKind.make("codex");
 export interface CodexAdapterLiveOptions {
   readonly instanceId?: ProviderInstanceId;
   readonly environment?: NodeJS.ProcessEnv;
+  /**
+   * Extra `codex app-server` argv (e.g. BYOK gateway `-c` overrides) appended
+   * after the user's launch args on every session spawn.
+   */
+  readonly gatewayAppServerArgs?: ReadonlyArray<string>;
   readonly makeRuntime?: (
     options: CodexSessionRuntimeOptions,
   ) => Effect.Effect<
@@ -231,6 +236,10 @@ function toCanonicalItemType(raw: string | undefined | null): CanonicalItemType 
   if (type.includes("dynamic tool")) return "dynamic_tool_call";
   if (type.includes("collab")) return "collab_agent_tool_call";
   if (type.includes("web search")) return "web_search";
+  // The built-in image_gen tool emits imageGeneration items; imageView is the
+  // agent viewing an input image. Both contain "image", so generation must be
+  // matched first.
+  if (type.includes("image generation")) return "image_generation";
   if (type.includes("image")) return "image_view";
   if (type.includes("review entered")) return "review_entered";
   if (type.includes("review exited")) return "review_exited";
@@ -264,6 +273,8 @@ function itemTitle(itemType: CanonicalItemType, item?: CodexLifecycleItem): stri
       return "Web search";
     case "image_view":
       return "Image view";
+    case "image_generation":
+      return "Image generation";
     case "error":
       return "Error";
     default:
@@ -279,6 +290,9 @@ function itemDetail(itemType: CanonicalItemType, item: CodexLifecycleItem): stri
     ...(itemType === "web_search"
       ? [itemRecord.query, action?.query, ...actionQueries, action?.pattern, action?.url]
       : []),
+    // The image_gen tool rewrites the prompt server-side; the revision is the
+    // most useful one-line description of what was actually drawn.
+    ...(itemType === "image_generation" ? [itemRecord.revisedPrompt] : []),
     "command" in item ? item.command : undefined,
     "title" in item ? item.title : undefined,
     "summary" in item ? item.summary : undefined,
@@ -489,6 +503,11 @@ function mapItemLifecycle(
           ? item.status
           : "completed"
         : undefined;
+  // Generated images land outside the payload union's literal fields; lift the
+  // save location so clients can render the bitmap via a workspace asset URL.
+  const savedPath =
+    itemType === "image_generation" ? (item as { savedPath?: unknown }).savedPath : undefined;
+  const imagePath = typeof savedPath === "string" ? savedPath : undefined;
 
   return {
     ...runtimeEventBase(event, canonicalThreadId),
@@ -498,6 +517,7 @@ function mapItemLifecycle(
       ...(status ? { status } : {}),
       ...(itemTitle(itemType, item) ? { title: itemTitle(itemType, item) } : {}),
       ...(detail ? { detail } : {}),
+      ...(imagePath ? { imagePath } : {}),
       ...(event.payload !== undefined ? { data: event.payload } : {}),
     },
   };
@@ -1686,6 +1706,9 @@ export const makeCodexAdapter = Effect.fn("makeCodexAdapter")(function* (
           launchArgs: resolveCodexLaunchArgs(codexConfig.launchArgs, options?.environment),
           ...(options?.environment ? { environment: options.environment } : {}),
           ...(codexConfig.homePath ? { homePath: codexConfig.homePath } : {}),
+          ...(options?.gatewayAppServerArgs !== undefined && options.gatewayAppServerArgs.length > 0
+            ? { gatewayAppServerArgs: options.gatewayAppServerArgs }
+            : {}),
           ...(isCodexResumeCursorSchema(input.resumeCursor)
             ? { resumeCursor: input.resumeCursor }
             : {}),
@@ -1698,9 +1721,13 @@ export const makeCodexAdapter = Effect.fn("makeCodexAdapter")(function* (
             ? {
                 environment: {
                   ...(options?.environment ?? process.env),
-                  CODEWORK_MCP_BEARER_TOKEN: mcpSession.authorizationHeader.replace(/^Bearer\s+/, ""),
+                  CODEWORK_MCP_BEARER_TOKEN: mcpSession.authorizationHeader.replace(
+                    /^Bearer\s+/,
+                    "",
+                  ),
                 },
                 appServerArgs: [
+                  ...(options?.gatewayAppServerArgs ?? []),
                   "-c",
                   `mcp_servers.code-work.url=${mcpSession.endpoint}`,
                   "-c",

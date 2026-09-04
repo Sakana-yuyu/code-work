@@ -46,25 +46,19 @@ export function formatPercent(share: number, digits = 1): string {
   return `${(share * 100).toFixed(digits)}%`;
 }
 
-/** `2026-08-07` to `Aug 7`. */
-export function formatDayShort(day: string): string {
+/** `2026-08-07` to `Aug 7` (en) / `8月7日` (zh), rendered in the given locale. */
+export function formatDayShort(day: string, locale = "en-US"): string {
   const [year, month, dayOfMonth] = day.split("-").map((part) => Number(part));
   if (year === undefined || month === undefined || dayOfMonth === undefined) return day;
-  const MONTHS = [
-    "Jan",
-    "Feb",
-    "Mar",
-    "Apr",
-    "May",
-    "Jun",
-    "Jul",
-    "Aug",
-    "Sep",
-    "Oct",
-    "Nov",
-    "Dec",
-  ];
-  return `${MONTHS[month - 1] ?? ""} ${dayOfMonth}`;
+  if (month < 1 || month > 12) return day;
+  // UTC noon keeps the calendar day stable regardless of the viewer's zone.
+  const date = new Date(Date.UTC(year, month - 1, dayOfMonth, 12));
+  if (Number.isNaN(date.getTime())) return day;
+  return new Intl.DateTimeFormat(locale, {
+    month: "short",
+    day: "numeric",
+    timeZone: "UTC",
+  }).format(date);
 }
 
 /** Inclusive day list between two `YYYY-MM-DD` bounds. */
@@ -101,14 +95,11 @@ export function enumerateHourStarts(sinceTime: string, untilTime: string): reado
  * Repeated wall-clock hours during a fall-back transition include their short
  * zone name so the two distinct buckets remain distinguishable.
  */
-export function formatHourShort(hourStart: string, timeZone?: string): string {
+export function formatHourShort(hourStart: string, timeZone?: string, locale = "en-US"): string {
   const instant = new Date(hourStart);
   if (Number.isNaN(instant.getTime())) return hourStart;
   const options = timeZone === undefined ? {} : { timeZone };
-  const hourFormat = new Intl.DateTimeFormat("en-US", {
-    ...options,
-    hour: "numeric",
-  });
+  // en-CA here is arithmetic (YYYY-MM-DD wall-hour extraction), not display.
   const wallHourFormat = new Intl.DateTimeFormat("en-CA", {
     ...options,
     year: "numeric",
@@ -122,19 +113,20 @@ export function formatHourShort(hourStart: string, timeZone?: string): string {
     (offset) => wallHourFormat.format(new Date(instant.getTime() + offset)) === wallHour,
   );
 
-  if (!isRepeatedHour) return hourFormat.format(instant);
-  return new Intl.DateTimeFormat("en-US", {
+  if (!isRepeatedHour)
+    return new Intl.DateTimeFormat(locale, { ...options, hour: "numeric" }).format(instant);
+  return new Intl.DateTimeFormat(locale, {
     ...(timeZone === undefined ? {} : { timeZone }),
     hour: "numeric",
     timeZoneName: "short",
   }).format(instant);
 }
 
-/** `2026-08-11T14:37:00Z` to `Aug 11, 2 PM` in the requested zone. */
-export function formatDateTimeShort(instant: string, timeZone?: string): string {
+/** `2026-08-11T14:37:00Z` to `Aug 11, 2 PM` (en) in the requested zone. */
+export function formatDateTimeShort(instant: string, timeZone?: string, locale = "en-US"): string {
   const date = new Date(instant);
   if (Number.isNaN(date.getTime())) return instant;
-  return new Intl.DateTimeFormat("en-US", {
+  return new Intl.DateTimeFormat(locale, {
     ...(timeZone === undefined ? {} : { timeZone }),
     month: "short",
     day: "numeric",
@@ -142,16 +134,24 @@ export function formatDateTimeShort(instant: string, timeZone?: string): string 
   }).format(date);
 }
 
+/** Relative-day words the caller localizes; defaults keep English output. */
+export interface RelativeHourLabels {
+  readonly today: string;
+  readonly yesterday: string;
+}
+
 /** An hourly tooltip label relative to the rolling window's end date. */
 export function formatRelativeHourShort(
   hourStart: string,
   relativeTo: string,
   timeZone?: string,
+  labels: RelativeHourLabels = { today: "today", yesterday: "yesterday" },
+  locale = "en-US",
 ): string {
   const instant = new Date(hourStart);
   const reference = new Date(relativeTo);
   if (Number.isNaN(instant.getTime()) || Number.isNaN(reference.getTime())) {
-    return formatDateTimeShort(hourStart, timeZone);
+    return formatDateTimeShort(hourStart, timeZone, locale);
   }
 
   const dayFormat = new Intl.DateTimeFormat("en-CA", {
@@ -163,11 +163,11 @@ export function formatRelativeHourShort(
   const instantDay = Date.parse(`${dayFormat.format(instant)}T00:00:00Z`);
   const referenceDay = Date.parse(`${dayFormat.format(reference)}T00:00:00Z`);
   const calendarDaysAgo = Math.round((referenceDay - instantDay) / (24 * HOUR_MS));
-  const hour = formatHourShort(hourStart, timeZone);
+  const hour = formatHourShort(hourStart, timeZone, locale);
 
-  if (calendarDaysAgo === 0) return `${hour} today`;
-  if (calendarDaysAgo === 1) return `${hour} yesterday`;
-  return formatDateTimeShort(hourStart, timeZone);
+  if (calendarDaysAgo === 0) return `${hour} ${labels.today}`;
+  if (calendarDaysAgo === 1) return `${hour} ${labels.yesterday}`;
+  return formatDateTimeShort(hourStart, timeZone, locale);
 }
 
 /**

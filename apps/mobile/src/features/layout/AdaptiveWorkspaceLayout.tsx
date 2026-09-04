@@ -463,6 +463,16 @@ function AdaptiveWorkspaceLayoutContent(
     [navigation],
   );
 
+  const handleOpenProjectSettings = useCallback(
+    (project: EnvironmentProject) => {
+      navigation.navigate("ProjectSettings", {
+        environmentId: String(project.environmentId),
+        projectId: String(project.id),
+      });
+    },
+    [navigation],
+  );
+
   const renderedSidebarWidth = useSharedValue(
     panes.primarySidebarVisible ? (layout.listPaneWidth ?? 0) : 0,
   );
@@ -543,6 +553,7 @@ function AdaptiveWorkspaceLayoutContent(
                     onOpenSettings={handleOpenSettings}
                     onOpenEnvironmentSettings={handleOpenEnvironmentSettings}
                     onNewThreadInProject={handleNewThreadInProject}
+                    onOpenProjectSettings={handleOpenProjectSettings}
                     onSelectThread={handleSelectThread}
                     onSearchQueryChange={setPrimarySidebarSearchQuery}
                     searchQuery={primarySidebarSearchQuery}

@@ -681,6 +681,13 @@ export const ThreadComposer = memo(function ThreadComposer(props: ThreadComposer
     settingsSheetPresentation.open();
   }, [settingsRoutePresentation.present, settingsRouteSession, settingsSheetPresentation.open]);
 
+  const openThreadGoal = useCallback(() => {
+    void navigation.navigate("ThreadGoal", {
+      environmentId: String(props.environmentId),
+      threadId: String(props.selectedThread.id),
+    });
+  }, [navigation, props.environmentId, props.selectedThread.id]);
+
   useEffect(() => {
     if (settingsSheetPresentation.isActive) {
       settingsRoutePresentation.present(settingsRouteSession);
@@ -894,6 +901,13 @@ export const ThreadComposer = memo(function ThreadComposer(props: ThreadComposer
                   label={currentModelOption?.label ?? currentModelSelection.model}
                   maxWidth={152}
                   onPress={openSettings}
+                />
+                <ComposerToolbarButton
+                  accessibilityLabel={t("threadGoal.title")}
+                  icon="checkmark.circle"
+                  label={t("threadGoal.title")}
+                  onPress={openThreadGoal}
+                  showChevron={false}
                 />
                 {showStopAction ? (
                   <ComposerToolbarButton

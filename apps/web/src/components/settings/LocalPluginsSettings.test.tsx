@@ -19,7 +19,12 @@ import {
   type LocalPluginStorageCompareAndSwapResult,
 } from "~/localPlugins/localPluginStorage";
 import { setCurrentLanguage } from "~/i18n/runtime";
-import { LocalPluginsSettings, installLocalPluginJson } from "./LocalPluginsSettings";
+import { LOCAL_PLUGIN_CATALOG } from "~/localPlugins/localPluginCatalog";
+import {
+  LocalPluginsSettings,
+  installLocalPluginJson,
+  resolveLocalPluginStoreButtonState,
+} from "./LocalPluginsSettings";
 
 class MemoryStorage implements LocalPluginStorage {
   compareAndSwapError: Error | null = null;
@@ -308,3 +313,98 @@ describe("LocalPluginsSettings", () => {
     });
   });
 });
+
+describe("LocalPluginsSettings 插件商店", () => {
+  beforeEach(() => setCurrentLanguage("en", false));
+
+  const gitCommands = LOCAL_PLUGIN_CATALOG.find(
+    (item) => item.entry.id === "codework.git-commands",
+  );
+  if (!gitCommands) throw new Error("目录缺少 codework.git-commands");
+
+  it("渲染商店区块、全部目录卡片与三态按钮（未装→安装）", () => {
+    const html = renderToStaticMarkup(<LocalPluginsSettings runtime={createRuntime()} />);
+
+    expect(html).toContain("Plugin store");
+    for (const item of LOCAL_PLUGIN_CATALOG) {
+      expect(html).toContain(`data-local-plugin-store-card="${item.entry.id}"`);
+      expect(html).toContain(`data-local-plugin-store-state="install"`);
+      expect(html).toContain(item.entry.name);
+      expect(html).toContain(`v${item.entry.version}`);
+    }
+    expect(html).toContain("Command palette helpers for standardized commit messages");
+  });
+
+  it("三态解析：同版本→已安装禁用，本地更旧→更新", () => {
+    expect(resolveLocalPluginStoreButtonState(undefined, "1.0.0")).toBe("install");
+    expect(resolveLocalPluginStoreButtonState("1.0.0", "1.0.0")).toBe("installed");
+    expect(resolveLocalPluginStoreButtonState("0.9.0", "1.0.0")).toBe("update");
+    expect(resolveLocalPluginStoreButtonState("1.1.0", "1.0.0")).toBe("installed");
+  });
+
+  it("已装同版本显示禁用按钮，已装旧版本显示更新", async () => {
+    const runtime = createRuntime();
+    await runtime.lifecycle.install(gitCommands.entry);
+    const sameVersionHtml = renderToStaticMarkup(<LocalPluginsSettings runtime={runtime} />);
+    const sameVersionMatch = sameVersionHtml.match(actionPatternFor("codework.git-commands"));
+    expect(sameVersionMatch?.[1]).toBe("installed");
+    // 禁用态：按钮标签带 disabled 属性（同一段标签内）。
+    const installedButtonTag = sameVersionHtml.match(
+      /<button[^>]*data-local-plugin-store-action="codework\.git-commands"[^>]*>/,
+    )?.[0];
+    expect(installedButtonTag).toContain("disabled");
+
+    const olderRuntime = createRuntime();
+    await olderRuntime.lifecycle.install({ ...gitCommands.entry, version: "0.9.0" });
+    const olderHtml = renderToStaticMarkup(<LocalPluginsSettings runtime={olderRuntime} />);
+    expect(olderHtml.match(actionPatternFor("codework.git-commands"))?.[1]).toBe("update");
+  });
+
+  it("从商店安装后 registry 出现该插件（与导入共用 install 管线）", async () => {
+    const runtime = createRuntime();
+    expect(await runtime.lifecycle.install(gitCommands.entry)).toEqual({ ok: true });
+
+    const html = renderToStaticMarkup(<LocalPluginsSettings runtime={runtime} />);
+    expect(html).toContain('data-local-plugin-id="codework.git-commands"');
+    expect(html.match(actionPatternFor("codework.git-commands"))?.[1]).toBe("installed");
+  });
+
+  it("安装失败的目录插件在商店区块展示类型化失败并可清理", async () => {
+    const runtime = createRuntime();
+    // 版本号非法 → install 被策略拒绝并记入 journal，插件不会出现在已装列表。
+    expect(
+      await runtime.lifecycle.install({ ...gitCommands.entry, version: "not-a-version" }),
+    ).toMatchObject({ ok: false, error: { code: "schema-invalid" } });
+
+    const html = renderToStaticMarkup(<LocalPluginsSettings runtime={runtime} />);
+    expect(html).toContain('data-local-plugin-store-failure="failure-1"');
+    expect(html).not.toContain('data-local-plugin-id="codework.git-commands"');
+
+    runtime.failures.clear();
+    const clearedHtml = renderToStaticMarkup(<LocalPluginsSettings runtime={runtime} />);
+    expect(clearedHtml).not.toContain("data-local-plugin-store-failure");
+  });
+
+  it("已装插件的失败只出现在已安装区块，不在商店区块重复", async () => {
+    const runtime = createRuntime();
+    await runtime.lifecycle.install(gitCommands.entry);
+    runtime.failures.record({
+      pluginId: "codework.git-commands",
+      phase: "invoke",
+      code: "contribution-invoke-failed",
+      contributionKind: "commands",
+      contributionId: "commit-message",
+      error: new Error("执行失败"),
+    });
+
+    const html = renderToStaticMarkup(<LocalPluginsSettings runtime={runtime} />);
+    expect(html).not.toContain("data-local-plugin-store-failure");
+    expect(html).toContain('data-local-plugin-failure="failure-1"');
+  });
+});
+
+function actionPatternFor(id: string): RegExp {
+  return new RegExp(
+    `<button[^>]*data-local-plugin-store-action="${id}"[^>]*data-local-plugin-store-state="([a-z]+)"`,
+  );
+}

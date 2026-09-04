@@ -103,6 +103,7 @@ import { useAssetUrlState } from "../assets/assetUrls";
 import { cn } from "../lib/utils";
 import { useRemoteOpenResolution, type RemoteOpenMode } from "../remoteOpen";
 import { useRightPanelStore } from "../rightPanelStore";
+import { canvasReferenceFromArtifactPath } from "../canvas";
 import { readThreadShell, useProjects } from "../state/entities";
 import { serverEnvironment } from "../state/server";
 import { shellEnvironment } from "../state/shell";
@@ -1286,7 +1287,6 @@ function MarkdownExternalLinkContent({
 }
 
 const MarkdownFileLink = memo(function MarkdownFileLink({
-  href,
   targetPath,
   iconPath,
   displayPath,
@@ -1345,12 +1345,9 @@ const MarkdownFileLink = memo(function MarkdownFileLink({
   }, [onOpen, targetPath]);
 
   const handleOpenInFilePreview = useCallback(() => {
-    if (!threadRef || !workspaceRelativePath) {
-      handleOpenInEditor();
-      return;
-    }
+    if (!threadRef || !workspaceRelativePath) return;
     onOpenInPanel(workspaceRelativePath, line);
-  }, [handleOpenInEditor, line, onOpenInPanel, threadRef, workspaceRelativePath]);
+  }, [line, onOpenInPanel, threadRef, workspaceRelativePath]);
 
   const handleOpenInBrowser = useCallback(() => {
     if (!onOpenInBrowser) {
@@ -1566,8 +1563,8 @@ const MarkdownFileLink = memo(function MarkdownFileLink({
       <TooltipTrigger
         render={
           hasPrimaryAction ? (
-            <a
-              href={href}
+            <button
+              type="button"
               className={cn(
                 CHAT_FILE_TAG_CHIP_CLASS_NAME,
                 MARKDOWN_FILE_LINK_CLASS_NAME,
@@ -1590,7 +1587,7 @@ const MarkdownFileLink = memo(function MarkdownFileLink({
               onContextMenu={handleContextMenu}
             >
               <FileTagChipContent path={iconPath} label={label} theme={theme} selectable />
-            </a>
+            </button>
           ) : (
             <button
               type="button"
@@ -1921,6 +1918,10 @@ function ChatMarkdown({
       copyMarkdown: string,
       className?: string,
     ) => {
+      const isCanvasArtifact =
+        canvasReferenceFromArtifactPath(
+          fileLinkMeta.workspaceRelativePath ?? fileLinkMeta.filePath,
+        ) !== null;
       const parentSuffix = fileLinkParentSuffixByPath.get(
         fileLinkMeta.filePath.replaceAll("\\", "/"),
       );
@@ -1946,16 +1947,17 @@ function ChatMarkdown({
           copyMarkdown={copyMarkdown}
           theme={resolvedTheme}
           threadRef={threadRef}
-          {...(canUseShellActions ? { onOpen: openInPreferredEditor } : {})}
+          {...(!isCanvasArtifact && canUseShellActions ? { onOpen: openInPreferredEditor } : {})}
           onOpenInPanel={openFileInPanel}
           openInEditorMenuLabel={preferredEditorMenuLabel}
           onReveal={
-            canUseShellActions && revealInFileManagerLabel !== undefined
+            !isCanvasArtifact && canUseShellActions && revealInFileManagerLabel !== undefined
               ? () => revealMarkdownFileInFileManager(fileLinkMeta)
               : undefined
           }
           revealLabel={revealInFileManagerLabel}
           onOpenInBrowser={
+            !isCanvasArtifact &&
             threadRef &&
             isPreviewSupportedInRuntime() &&
             isBrowserPreviewFile(fileLinkMeta.filePath)
@@ -2046,6 +2048,9 @@ function ChatMarkdown({
             resolveMarkdownFileLinkMeta(normalizedHref, cwd))
           : null;
         if (!fileLinkMeta) {
+          if (/^(?:[a-z]:[\\/]|\\\\|file:)/i.test(href ?? "")) {
+            return <span className={props.className}>{children}</span>;
+          }
           const faviconHost = resolveExternalWebLinkHost(href);
           const isSameDocumentLink = href?.startsWith("#") ?? false;
           const onClick = props.onClick;

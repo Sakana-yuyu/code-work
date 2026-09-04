@@ -1,4 +1,5 @@
 import {
+  CanvasCreateInput,
   CompositionToolResult,
   TrimmedNonEmptyString,
   PreviewAutomationClickInput,
@@ -44,6 +45,7 @@ import * as CompositionMcpToolRegistry from "./CompositionMcpToolRegistry.ts";
 import { PROVIDER_AGENT_PREFIX } from "./CompositionProviderAgentDriverRegistry.ts";
 import * as CompositionToolInvocationCoordinator from "./CompositionToolInvocationCoordinator.ts";
 import * as CompositionToolInvocationStartupRecovery from "./CompositionToolInvocationStartupRecovery.ts";
+import { writeCanvasArtifact } from "../canvas/CanvasArtifact.ts";
 import type {
   CompositionToolInvocation,
   CompositionToolInvocationClaimResult,
@@ -265,6 +267,27 @@ const make = Effect.gen(function* () {
             if (args.cwd !== input.workspaceRoot)
               return yield* new ToolArgumentsInvalidError(input);
             return yield* workspaceFileSystem.writeFile(args);
+          }),
+      },
+    ],
+    [
+      "canvas.create",
+      {
+        operation: "mutate",
+        execute: (input) =>
+          Effect.gen(function* () {
+            const request = yield* Schema.decodeUnknownEffect(CanvasCreateInput)(
+              input.arguments,
+            ).pipe(Effect.mapError(() => new ToolArgumentsInvalidError(input)));
+            if (request.cwd !== input.workspaceRoot) {
+              return yield* new ToolArgumentsInvalidError(input);
+            }
+            return yield* writeCanvasArtifact({
+              fileSystem: workspaceFileSystem,
+              request,
+              threadId: input.threadId ?? input.taskId,
+              fallbackCanvasId: input.toolCallId,
+            });
           }),
       },
     ],
@@ -679,6 +702,16 @@ const make = Effect.gen(function* () {
             instanceId,
             task: args.task,
             ...(args.subagentType === undefined ? {} : { subagentType: args.subagentType }),
+            // Chat-thread origins let the delegation surface in that thread's
+            // Agents panel roster; absent for non-thread callers.
+            ...(input.threadId === undefined
+              ? {}
+              : {
+                  origin: {
+                    threadId: input.threadId,
+                    ...(input.runId ? { turnId: input.runId } : {}),
+                  },
+                }),
           });
           // Always a succeeded tool result: a failed delegation is still a
           // successful tool observation, and the bounded previews keep the

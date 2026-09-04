@@ -103,6 +103,60 @@ describe("ChangedFilesCard", () => {
     expect(markup).not.toContain("Show all");
     expect(markup).not.toContain("App.tsx");
   });
+
+  it("opens a generated Canvas from the changed-file card", () => {
+    const markup = renderToStaticMarkup(
+      <ChangedFilesCard
+        turnId={TurnId.make("turn-1")}
+        files={[
+          {
+            path: ".codework/canvases/thread-one/Project-analysis.canvas.json",
+            kind: "added",
+            additions: 1,
+            deletions: 0,
+          },
+        ]}
+        expanded={false}
+        showCompactPreview
+        allDirectoriesExpanded={false}
+        resolvedTheme="light"
+        onExpandedChange={() => {}}
+        onToggleAllDirectories={() => {}}
+        onOpenTurnDiff={() => {}}
+        onOpenCanvas={() => {}}
+      />,
+    );
+
+    expect(markup).toContain(`aria-label="${t("canvas.open")}"`);
+    expect(markup).toContain(t("canvas.open"));
+    expect(markup).toContain("Project analysis");
+    expect(markup).not.toContain(`aria-label="${t("openDiff")}"`);
+  });
+
+  it("opens a known Canvas even when its ignored artifact is absent from the file list", () => {
+    const markup = renderToStaticMarkup(
+      <ChangedFilesCard
+        turnId={TurnId.make("turn-with-known-canvas")}
+        files={[{ path: "src/server.ts", kind: "modified", additions: 2, deletions: 0 }]}
+        expanded={false}
+        showCompactPreview={false}
+        allDirectoriesExpanded={false}
+        resolvedTheme="light"
+        onExpandedChange={() => {}}
+        onToggleAllDirectories={() => {}}
+        onOpenTurnDiff={() => {}}
+        canvas={{
+          canvasId: "project-analysis",
+          title: "Project analysis",
+          relativePath: ".codework/canvases/turn-one/Project-analysis.canvas.json",
+        }}
+        onOpenCanvas={() => {}}
+      />,
+    );
+
+    expect(markup).toContain(`aria-label="${t("canvas.open")}"`);
+    expect(markup).not.toContain(`aria-label="${t("openDiff")}"`);
+  });
 });
 
 describe("ChangedFilesTree", () => {

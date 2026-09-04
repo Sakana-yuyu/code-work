@@ -49,6 +49,8 @@ export interface ProjectThreadStartTurnSpec {
 export function buildProjectThreadStartTurnInput(spec: ProjectThreadStartTurnSpec) {
   const title = deriveThreadTitleFromPrompt(spec.text);
   const isWorktree = spec.workspaceMode === "worktree";
+  // PR 入口已经在服务端准备好 worktree 时，直接复用它，避免二次创建。
+  const hasPreparedWorktree = isWorktree && spec.worktreePath !== null;
   return {
     commandId: CommandId.make(spec.commandId),
     threadId: ThreadId.make(spec.threadId),
@@ -70,10 +72,14 @@ export function buildProjectThreadStartTurnInput(spec: ProjectThreadStartTurnSpe
         runtimeMode: spec.runtimeMode,
         interactionMode: spec.interactionMode,
         branch: spec.branch,
-        worktreePath: isWorktree ? null : spec.worktreePath,
+        worktreePath: isWorktree
+          ? hasPreparedWorktree
+            ? spec.worktreePath
+            : null
+          : spec.worktreePath,
         createdAt: spec.createdAt,
       },
-      ...(isWorktree
+      ...(isWorktree && !hasPreparedWorktree
         ? {
             prepareWorktree: {
               projectCwd: spec.projectCwd,

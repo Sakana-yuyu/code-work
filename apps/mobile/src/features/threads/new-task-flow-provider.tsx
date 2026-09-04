@@ -165,6 +165,11 @@ type NewTaskFlowContextValue = {
     options?: ReadonlyArray<ProviderOptionSelection>,
   ) => void;
   readonly setWorkspaceMode: (mode: WorkspaceMode) => void;
+  readonly setPreparedWorkspace: (input: {
+    readonly mode: WorkspaceMode;
+    readonly branch: string;
+    readonly worktreePath: string | null;
+  }) => void;
   readonly selectBranch: (branch: VcsRef) => void;
   readonly setStartFromOrigin: (value: boolean) => void;
   readonly beginEditingPendingTask: (messageId: string) => boolean;
@@ -724,6 +729,28 @@ export function NewTaskFlowProvider(props: React.PropsWithChildren) {
     [draftStartFromOrigin, selectedProject, selectedProjectDraftKey, workspaceMode],
   );
 
+  const setPreparedWorkspace = useCallback(
+    (input: {
+      readonly mode: WorkspaceMode;
+      readonly branch: string;
+      readonly worktreePath: string | null;
+    }) => {
+      if (!selectedProjectDraftKey) {
+        return;
+      }
+      pendingLocalBranchSyncDraftKeysRef.current.delete(selectedProjectDraftKey);
+      updateComposerDraftSettings(selectedProjectDraftKey, {
+        workspaceSelection: {
+          mode: input.mode,
+          branch: input.branch,
+          worktreePath: input.worktreePath,
+          ...(draftStartFromOrigin !== undefined ? { startFromOrigin: draftStartFromOrigin } : {}),
+        },
+      });
+    },
+    [draftStartFromOrigin, selectedProjectDraftKey],
+  );
+
   const setStartFromOrigin = useCallback(
     (value: boolean) => {
       if (!selectedProjectDraftKey) {
@@ -1037,6 +1064,7 @@ export function NewTaskFlowProvider(props: React.PropsWithChildren) {
       selectEnvironment,
       setSelectedModelKey,
       setWorkspaceMode,
+      setPreparedWorkspace,
       selectBranch,
       setStartFromOrigin,
       beginEditingPendingTask,
@@ -1103,6 +1131,7 @@ export function NewTaskFlowProvider(props: React.PropsWithChildren) {
       setPrompt,
       setRuntimeMode,
       setSelectedModelKey,
+      setPreparedWorkspace,
       setStartFromOrigin,
       setWorkspaceMode,
       startFromOrigin,

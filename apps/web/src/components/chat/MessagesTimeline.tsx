@@ -1,8 +1,10 @@
 import {
+  type CanvasReference,
   type EnvironmentId,
   type MessageId,
   type ScopedThreadRef,
   type ServerProviderSkill,
+  type ThreadId,
   type TurnId,
 } from "@codework/contracts";
 import { parseScopedThreadKey } from "@codework/client-runtime/environment";
@@ -14,7 +16,9 @@ import {
 
 const EMPTY_AGENT_PANEL_MODEL = emptyAgentPanelModel();
 const NOOP_OPEN_AGENTS = () => {};
+const NOOP_OPEN_CANVAS = (_canvas: CanvasReference) => {};
 import { resolveChatListAnchoredEndSpace } from "@codework/shared/chatList";
+import { useAssetUrlState } from "~/assets/assetUrls";
 import {
   createContext,
   Fragment,
@@ -72,6 +76,7 @@ import type { EnabledLocalPluginTimelineEntry } from "~/localPlugins/adapters/lo
 import { buildExpandedImagePreview, ExpandedImagePreview } from "./ExpandedImagePreview";
 import { ProposedPlanCard } from "./ProposedPlanCard";
 import { ChangedFilesCard } from "./ChangedFilesTree";
+import { resolveCanvasReferenceForFiles } from "~/canvas";
 import { shouldAutoExpandChangedFiles } from "./changedFilesPresentation";
 import { keepTimelineEndVisibleAfterOverlayGrowth } from "./timelineScrollAnchoring";
 import { MessageCopyButton } from "./MessageCopyButton";
@@ -146,12 +151,16 @@ interface TimelineRowSharedState {
   skills: ReadonlyArray<Pick<ServerProviderSkill, "name" | "displayName">>;
   activeThreadEnvironmentId: EnvironmentId;
   onRevertUserMessage: (messageId: MessageId) => void;
+  onEditUserMessage: (messageId: MessageId, text: string) => void;
   onImageExpand: (preview: ExpandedImagePreview) => void;
   onOpenTurnDiff: (turnId: TurnId, filePath?: string) => void;
   onToggleTurnFold: (turnId: TurnId) => void;
   onToggleWorkGroup: (groupId: string, anchorKey: string) => void;
   agentPanelModel: AgentPanelModel;
   onOpenAgents: () => void;
+  onOpenCanvas: (canvas: CanvasReference) => void;
+  canvasReferences: ReadonlyArray<CanvasReference>;
+  canvasReferencesByTurnId: ReadonlyMap<TurnId, CanvasReference>;
 }
 
 interface TimelineRowActivityState {
@@ -211,6 +220,7 @@ const TIMELINE_MAINTAIN_SCROLL_AT_END = {
 interface MessagesTimelineProps {
   agentPanelModel?: AgentPanelModel;
   onOpenAgents?: () => void;
+  onOpenCanvas?: (canvas: CanvasReference) => void;
   isWorking: boolean;
   workingStepLabel?: string | null;
   activeTurnStartedAt: string | null;
@@ -222,8 +232,9 @@ interface MessagesTimelineProps {
   turnDiffSummaryByAssistantMessageId: Map<MessageId, TurnDiffSummary>;
   routeThreadKey: string;
   onOpenTurnDiff: (turnId: TurnId, filePath?: string) => void;
-  revertTurnCountByUserMessageId: Map<MessageId, number>;
+  revertTurnCountByUserMessageId: Map<MessageId, number | null>;
   onRevertUserMessage: (messageId: MessageId) => void;
+  onEditUserMessage: (messageId: MessageId, text: string) => void;
   isRevertingCheckpoint: boolean;
   onImageExpand: (preview: ExpandedImagePreview) => void;
   activeThreadEnvironmentId: EnvironmentId;
@@ -260,6 +271,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   activeTurnStartedAt,
   agentPanelModel = EMPTY_AGENT_PANEL_MODEL,
   onOpenAgents = NOOP_OPEN_AGENTS,
+  onOpenCanvas = NOOP_OPEN_CANVAS,
   listRef,
   timelineEntries,
   localPluginTimelineEntries = [],
@@ -270,6 +282,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   onOpenTurnDiff,
   revertTurnCountByUserMessageId,
   onRevertUserMessage,
+  onEditUserMessage,
   isRevertingCheckpoint,
   onImageExpand,
   activeThreadEnvironmentId,
@@ -439,6 +452,21 @@ export const MessagesTimeline = memo(function MessagesTimeline({
     ],
   );
   const rows = useStableRows(rawRows);
+  const { canvasReferences, canvasReferencesByTurnId } = useMemo(() => {
+    const references = new Map<string, CanvasReference>();
+    const referencesByTurnId = new Map<TurnId, CanvasReference>();
+    for (const timelineEntry of timelineEntries) {
+      if (timelineEntry.kind !== "work" || timelineEntry.entry.canvas === undefined) continue;
+      references.set(timelineEntry.entry.canvas.relativePath, timelineEntry.entry.canvas);
+      if (timelineEntry.entry.turnId !== undefined && timelineEntry.entry.turnId !== null) {
+        referencesByTurnId.set(timelineEntry.entry.turnId, timelineEntry.entry.canvas);
+      }
+    }
+    return {
+      canvasReferences: [...references.values()],
+      canvasReferencesByTurnId: referencesByTurnId,
+    };
+  }, [timelineEntries]);
   const minimapItems = useMemo(() => deriveTimelineMinimapItems(rows), [rows]);
   const [timelineViewportElement, setTimelineViewportElement] = useState<HTMLDivElement | null>(
     null,
@@ -531,12 +559,16 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       skills,
       activeThreadEnvironmentId,
       onRevertUserMessage,
+      onEditUserMessage,
       onImageExpand,
       onOpenTurnDiff,
       onToggleTurnFold,
       onToggleWorkGroup,
       agentPanelModel,
       onOpenAgents,
+      onOpenCanvas,
+      canvasReferences,
+      canvasReferencesByTurnId,
     }),
     [
       timestampFormat,
@@ -547,12 +579,16 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       skills,
       activeThreadEnvironmentId,
       onRevertUserMessage,
+      onEditUserMessage,
       onImageExpand,
       onOpenTurnDiff,
       onToggleTurnFold,
       onToggleWorkGroup,
       agentPanelModel,
       onOpenAgents,
+      onOpenCanvas,
+      canvasReferences,
+      canvasReferencesByTurnId,
     ],
   );
   const activityState = useMemo<TimelineRowActivityState>(
@@ -997,6 +1033,9 @@ const TimelineRowContent = memo(function TimelineRowContent({ row }: { row: Time
 
 function UserTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "message" }> }) {
   const ctx = use(TimelineRowCtx);
+  const activity = use(TimelineRowActivityCtx);
+  const [isEditing, setIsEditing] = useState(false);
+  const [editDraft, setEditDraft] = useState("");
   const userImages = row.message.attachments ?? [];
   const presentation = row.message.localPresentation;
   const displayedUserMessage = deriveDisplayedUserMessageState(
@@ -1018,6 +1057,7 @@ function UserTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "message" 
   ];
   const previewImages = userImages.filter((image) => image.name.startsWith("preview-annotation-"));
   const regularImages = userImages.filter((image) => !image.name.startsWith("preview-annotation-"));
+  const canEditUserMessage = row.revertTurnCount !== undefined;
   const canRevertAgentWork = typeof row.revertTurnCount === "number";
   const messageContent = (
     <>
@@ -1093,6 +1133,61 @@ function UserTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "message" 
     );
   }
 
+  if (isEditing) {
+    const submitEdit = () => {
+      const trimmed = editDraft.trim();
+      if (!trimmed) return;
+      setIsEditing(false);
+      ctx.onEditUserMessage(row.message.id, trimmed);
+    };
+    return (
+      <div className="flex w-full flex-col items-end gap-1" data-user-message-editing="true">
+        <textarea
+          autoFocus
+          value={editDraft}
+          onChange={(event) => setEditDraft(event.target.value)}
+          onKeyDown={(event: KeyboardEvent<HTMLTextAreaElement>) => {
+            if (event.key === "Escape") {
+              event.preventDefault();
+              setIsEditing(false);
+              return;
+            }
+            if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
+              event.preventDefault();
+              submitEdit();
+            }
+          }}
+          rows={Math.min(12, Math.max(2, editDraft.split("\n").length + 1))}
+          className="w-[80%] resize-y rounded-2xl border border-border bg-message p-3 text-sm leading-relaxed text-message-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring/70"
+          aria-label={t("editUserMessage.action")}
+        />
+        <div className="flex w-[80%] items-center justify-end gap-2 pe-1">
+          <Button
+            type="button"
+            size="xs"
+            variant="ghost"
+            onClick={() => {
+              setIsEditing(false);
+              setEditDraft("");
+            }}
+          >
+            {t("editUserMessage.cancel")}
+          </Button>
+          <Button
+            type="button"
+            size="xs"
+            disabled={
+              editDraft.trim().length === 0 || activity.isWorking || activity.isRevertingCheckpoint
+            }
+            onClick={submitEdit}
+          >
+            {t("editUserMessage.send")}
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="group flex flex-col items-end gap-1">
       <div className="relative max-w-[80%] rounded-2xl bg-message p-3 text-message-foreground">
@@ -1109,6 +1204,16 @@ function UserTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "message" 
             </TooltipPopup>
           </Tooltip>
           <div className="flex items-center gap-0.5">
+            {canEditUserMessage && (
+              <EditUserMessageButton
+                currentText={elementContextState.promptText}
+                disabled={activity.isWorking || activity.isRevertingCheckpoint}
+                onStart={(text) => {
+                  setEditDraft(text);
+                  setIsEditing(true);
+                }}
+              />
+            )}
             {canRevertAgentWork && <RevertUserMessageButton messageId={row.message.id} />}
             {displayedUserMessage.copyText && (
               <MessageCopyButton text={displayedUserMessage.copyText} variant="ghost" />
@@ -1117,6 +1222,36 @@ function UserTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "message" 
         </div>
       </div>
     </div>
+  );
+}
+
+function EditUserMessageButton({
+  currentText,
+  disabled,
+  onStart,
+}: {
+  readonly currentText: string;
+  readonly disabled: boolean;
+  readonly onStart: (text: string) => void;
+}) {
+  return (
+    <Tooltip>
+      <TooltipTrigger
+        render={
+          <Button
+            type="button"
+            size="xs"
+            variant="ghost"
+            disabled={disabled}
+            onClick={() => onStart(currentText)}
+            aria-label={t("editUserMessage.action")}
+          />
+        }
+      >
+        <SquarePenIcon className="size-3" />
+      </TooltipTrigger>
+      <TooltipPopup side="top">{t("editUserMessage.action")}</TooltipPopup>
+    </Tooltip>
   );
 }
 
@@ -1654,13 +1789,6 @@ function WorkGroupToggleTimelineRow({
       </button>
     );
   }
-  const labelNoun = row.onlyToolEntries
-    ? row.hiddenCount === 1
-      ? "tool call"
-      : "tool calls"
-    : row.hiddenCount === 1
-      ? "log entry"
-      : "log entries";
   const showHiddenFailure = row.hasFailure && !row.expanded;
 
   return (
@@ -1691,11 +1819,15 @@ function WorkGroupToggleTimelineRow({
       </span>
       {row.expanded ? (
         <span className="font-medium text-foreground">
-          {t("showFewer")} {row.onlyToolEntries ? t("toolCalls") : t("logEntries")}
+          {row.onlyToolEntries
+            ? t("timeline.showFewerToolCalls")
+            : t("timeline.showFewerLogEntries")}
         </span>
       ) : (
         <span className="font-medium text-foreground">
-          +{row.hiddenCount} {t("previous2")} {labelNoun}
+          {t(row.onlyToolEntries ? "timeline.earlierToolCalls" : "timeline.earlierLogEntries", {
+            count: row.hiddenCount,
+          })}
         </span>
       )}
     </button>
@@ -1715,17 +1847,34 @@ const AssistantChangedFilesSection = memo(function AssistantChangedFilesSection(
   resolvedTheme: "light" | "dark";
   onOpenTurnDiff: (turnId: TurnId, filePath?: string) => void;
 }) {
+  const ctx = use(TimelineRowCtx);
   if (!turnSummary) return null;
   const checkpointFiles = turnSummary.files;
-  if (checkpointFiles.length === 0) return null;
+  const canvas =
+    ctx.canvasReferencesByTurnId.get(turnSummary.turnId) ??
+    resolveCanvasReferenceForFiles(checkpointFiles, ctx.canvasReferences) ??
+    null;
+  const files =
+    canvas &&
+    !checkpointFiles.some(
+      (file) => file.path.replaceAll("\\", "/") === canvas.relativePath.replaceAll("\\", "/"),
+    )
+      ? [
+          ...checkpointFiles,
+          { path: canvas.relativePath, kind: "added", additions: 1, deletions: 0 },
+        ]
+      : checkpointFiles;
+  if (files.length === 0) return null;
 
   return (
     <AssistantChangedFilesSectionInner
       turnSummary={turnSummary}
-      checkpointFiles={checkpointFiles}
+      checkpointFiles={files}
       routeThreadKey={routeThreadKey}
       resolvedTheme={resolvedTheme}
       onOpenTurnDiff={onOpenTurnDiff}
+      canvas={canvas}
+      onOpenCanvas={ctx.onOpenCanvas}
     />
   );
 });
@@ -1738,12 +1887,16 @@ function AssistantChangedFilesSectionInner({
   routeThreadKey,
   resolvedTheme,
   onOpenTurnDiff,
+  canvas,
+  onOpenCanvas,
 }: {
   turnSummary: TurnDiffSummary;
   checkpointFiles: TurnDiffSummary["files"];
   routeThreadKey: string;
   resolvedTheme: "light" | "dark";
   onOpenTurnDiff: (turnId: TurnId, filePath?: string) => void;
+  canvas: CanvasReference | null;
+  onOpenCanvas: (canvas: CanvasReference) => void;
 }) {
   const activity = use(TimelineRowActivityCtx);
   const isLatestTurn = activity.latestTurnId === turnSummary.turnId;
@@ -1770,6 +1923,8 @@ function AssistantChangedFilesSectionInner({
       }
       onToggleAllDirectories={() => setAllDirectoriesExpanded((current) => !current)}
       onOpenTurnDiff={onOpenTurnDiff}
+      {...(canvas ? { canvas } : {})}
+      onOpenCanvas={onOpenCanvas}
     />
   );
 }
@@ -2507,6 +2662,21 @@ function liveWorkEntryLabel(
   return workEntryPreview(workEntry, workspaceRoot) ?? toolWorkEntryHeading(workEntry);
 }
 
+/**
+ * Cheap non-empty check for the expand affordance. Must stay in sync with
+ * buildToolCallExpandedBody: computing the body itself pretty-prints MCP
+ * toolData, so rows only pay that cost while expanded.
+ */
+function toolCallHasExpandedBody(workEntry: TimelineWorkEntry): boolean {
+  if (workEntry.itemType === "mcp_tool_call" && workEntry.toolData !== undefined) {
+    return true;
+  }
+  if (workEntryRawCommand(workEntry)?.trim()) return true;
+  if (workEntry.command?.trim()) return true;
+  if (workEntry.detail?.trim()) return true;
+  return (workEntry.changedFiles ?? []).length > 0;
+}
+
 function buildToolCallExpandedBody(
   workEntry: TimelineWorkEntry,
   workspaceRoot: string | undefined,
@@ -2705,14 +2875,17 @@ const PlainWorkEntryRow = memo(function PlainWorkEntryRow(props: {
 }) {
   const { workEntry, workspaceRoot, isExpandedToolGroupEntry } = props;
   const [expanded, setExpanded] = useState(false);
+  const generatedImageName = workEntry.imagePath
+    ? (workEntry.imagePath.split(/[\\/]/).pop() ?? workEntry.imagePath)
+    : null;
   const iconConfig = workToneIcon(workEntry.tone);
   const showWarningIndicator = workEntry.sourceActivityKind === "runtime.warning";
   const showFailedIndicator = workEntryDisplayIndicatesToolFailure(workEntry);
   const entryIconName =
     showWarningIndicator || showFailedIndicator ? "x" : workEntryIconName(workEntry);
   const displayText = workEntryPreview(workEntry, workspaceRoot) ?? toolWorkEntryHeading(workEntry);
-  const expandedBody = buildToolCallExpandedBody(workEntry, workspaceRoot);
-  const canExpand = expandedBody !== null;
+  const canExpand = toolCallHasExpandedBody(workEntry);
+  const expandedBody = expanded ? buildToolCallExpandedBody(workEntry, workspaceRoot) : null;
   const showDestructiveRowStyle =
     showFailedIndicator &&
     (workEntry.sourceActivityKind === "runtime.error" || !workLogEntryIsToolLike(workEntry));
@@ -2806,6 +2979,49 @@ const PlainWorkEntryRow = memo(function PlainWorkEntryRow(props: {
           <pre className={toolCallExpandedBodyClassName}>{expandedBody}</pre>
         </div>
       ) : null}
+      {workEntry.imagePath && generatedImageName ? (
+        <WorkEntryGeneratedImage imagePath={workEntry.imagePath} name={generatedImageName} />
+      ) : null}
     </div>
   );
 });
+
+/**
+ * Inline bitmap for the provider's built-in image generation (Codex image_gen):
+ * the adapter reports the absolute save path and the workspace asset layer
+ * serves it when the file sits inside the thread's workspace — the skill's
+ * default flow moves final assets there. Preview-only saves outside the
+ * workspace render no bitmap; the row text still carries the prompt.
+ */
+function WorkEntryGeneratedImage({
+  imagePath,
+  name,
+}: {
+  readonly imagePath: string;
+  readonly name: string;
+}) {
+  const ctx = use(TimelineRowCtx);
+  const state = useAssetUrlState(ctx.activeThreadEnvironmentId, {
+    _tag: "workspace-file",
+    threadId: (ctx.threadRef?.threadId ?? "") as ThreadId,
+    path: imagePath,
+  });
+  if (state._tag !== "Success") return null;
+  return (
+    <div className="mt-1.5 ms-7" onClick={stopRowToggle} onPointerDown={stopRowToggle}>
+      <button
+        type="button"
+        aria-label={t("preview", { name })}
+        className="block w-fit cursor-zoom-in overflow-hidden rounded-md border border-border/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/70"
+        onClick={() => ctx.onImageExpand({ images: [{ src: state.url, name }], index: 0 })}
+      >
+        <img
+          src={state.url}
+          alt={name}
+          className="block max-h-64 w-auto max-w-full"
+          loading="lazy"
+        />
+      </button>
+    </div>
+  );
+}

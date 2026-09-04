@@ -2,6 +2,7 @@ import {
   EnvironmentId,
   type GitRunStackedActionResult,
   type ProjectScript,
+  type PullRequestRef,
   ThreadId,
   type VcsStatusResult,
 } from "@codework/contracts";
@@ -87,6 +88,7 @@ export type ThreadGitMenuProps = {
   readonly gitOperationLabel: string | null;
   readonly onOpenFilesInspector?: () => void;
   readonly onOpenGitInspector?: () => void;
+  readonly pullRequestReference?: PullRequestRef;
   readonly onPull: () => Promise<void>;
   readonly onRunAction: (input: GitActionRequestInput) => Promise<GitRunStackedActionResult | null>;
 };
@@ -148,6 +150,15 @@ function useThreadGitControlModel(props: ThreadGitMenuProps) {
   })();
 
   const openExistingPr = useCallback(async () => {
+    if (props.pullRequestReference) {
+      navigation.navigate("PullRequestDetail", {
+        environmentId: String(environmentId),
+        projectId: String(props.pullRequestReference.projectId),
+        repository: props.pullRequestReference.repository,
+        number: props.pullRequestReference.number,
+      });
+      return;
+    }
     const prUrl = gitStatus?.pr?.state === "open" ? gitStatus.pr.url : null;
     if (!prUrl) {
       Alert.alert(t("noOpenPr"), t("thisBranchDoesNotHaveAnOpenPullRequest"));
@@ -156,7 +167,7 @@ function useThreadGitControlModel(props: ThreadGitMenuProps) {
     if (!(await tryOpenExternalUrl(prUrl, "pull-request"))) {
       Alert.alert(t("unableToOpenPr"), t("thePullRequestCouldNotBeOpened"));
     }
-  }, [gitStatus]);
+  }, [environmentId, gitStatus, navigation, props.pullRequestReference]);
 
   const runActionWithPrompt = useCallback(
     async (input: GitActionRequestInput) => {

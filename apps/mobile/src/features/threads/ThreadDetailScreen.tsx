@@ -5,6 +5,7 @@ import type { LegendListRef } from "@legendapp/list/react-native";
 import { HeaderHeightContext } from "@react-navigation/elements";
 import type {
   ApprovalRequestId,
+  CanvasReference,
   EnvironmentId,
   MessageId,
   ModelSelection,
@@ -111,6 +112,11 @@ export interface ThreadDetailScreenProps {
   readonly layoutVariant?: LayoutVariant;
   readonly usesAutomaticContentInsets?: boolean;
   readonly onHeaderMaterialVisibilityChange?: (visible: boolean) => void;
+  readonly onOpenCanvas?: (canvas: CanvasReference) => void;
+  readonly revertTurnCountByUserMessageId?: ReadonlyMap<MessageId, number | null>;
+  readonly onRevertToTurnCount?: (turnCount: number) => void;
+  readonly isRevertingCheckpoint?: boolean;
+  readonly onEditUserMessage?: (messageId: MessageId, text: string) => void;
   readonly onOpenConnectionEditor: () => void;
   readonly onChangeDraftMessage: (value: string) => void;
   readonly onPickDraftImages: () => Promise<void>;
@@ -631,6 +637,11 @@ export const ThreadDetailScreen = memo(function ThreadDetailScreen(props: Thread
             usesAutomaticContentInsets={props.usesAutomaticContentInsets}
             onHeaderMaterialVisibilityChange={props.onHeaderMaterialVisibilityChange}
             onEndFollowEnabledChange={setEndFollowEnabled}
+            onOpenCanvas={props.onOpenCanvas}
+            revertTurnCountByUserMessageId={props.revertTurnCountByUserMessageId}
+            onRevertToTurnCount={props.onRevertToTurnCount}
+            isRevertingCheckpoint={props.isRevertingCheckpoint}
+            onEditUserMessage={props.onEditUserMessage}
             skills={selectedProviderSkills}
             loadEarlier={props.loadEarlier ?? null}
           />

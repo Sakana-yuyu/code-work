@@ -184,6 +184,104 @@ describe("previewStateStore (single-tab)", () => {
     expect(state.snapshot?.navStatus._tag).toBe("LoadFailed");
   });
 
+  it("records a remote refresh command without changing the server snapshot", () => {
+    const snapshot = makeSnapshot();
+    applyPreviewServerSnapshot(ref, snapshot);
+    applyPreviewServerEvent(ref, {
+      type: "refreshed",
+      threadId: "thread-1",
+      tabId: snapshot.tabId,
+      createdAt: "2026-01-01T00:00:01.000Z",
+    });
+    const state = readThreadPreviewState(ref);
+    expect(state.sessions[snapshot.tabId]).toEqual(snapshot);
+    expect(state.refreshRevisionByTabId[snapshot.tabId]).toBe(1);
+  });
+
+  it("records a remote history command without changing the server snapshot", () => {
+    const snapshot = makeSnapshot();
+    applyPreviewServerSnapshot(ref, snapshot);
+    applyPreviewServerEvent(ref, {
+      type: "controlled",
+      threadId: "thread-1",
+      tabId: snapshot.tabId,
+      createdAt: "2026-01-01T00:00:01.000Z",
+      control: "back",
+    });
+    const state = readThreadPreviewState(ref);
+    expect(state.sessions[snapshot.tabId]).toEqual(snapshot);
+    expect(state.controlByTabId[snapshot.tabId]).toEqual({ control: "back", revision: 1 });
+  });
+
+  it("keeps the URL attached to a remote system-browser command", () => {
+    const snapshot = makeSnapshot({
+      navStatus: { _tag: "Success", url: "http://localhost:5173", title: "Home" },
+    });
+    applyPreviewServerSnapshot(ref, snapshot);
+    applyPreviewServerEvent(ref, {
+      type: "controlled",
+      threadId: "thread-1",
+      tabId: snapshot.tabId,
+      createdAt: "2026-01-01T00:00:01.000Z",
+      control: "openInSystemBrowser",
+      url: "http://localhost:5173",
+    });
+    expect(readThreadPreviewState(ref).controlByTabId[snapshot.tabId]).toMatchObject({
+      control: "openInSystemBrowser",
+      url: "http://localhost:5173",
+    });
+  });
+
+  it("keeps direct page interaction arguments for the desktop bridge", () => {
+    const snapshot = makeSnapshot();
+    applyPreviewServerSnapshot(ref, snapshot);
+    applyPreviewServerEvent(ref, {
+      type: "controlled",
+      threadId: "thread-1",
+      tabId: snapshot.tabId,
+      createdAt: "2026-01-01T00:00:01.000Z",
+      control: "click",
+      x: 12,
+      y: 34,
+    });
+    expect(readThreadPreviewState(ref).controlByTabId[snapshot.tabId]).toMatchObject({
+      control: "click",
+      x: 12,
+      y: 34,
+    });
+  });
+
+  it("keeps a remote screenshot result scoped to its tab", () => {
+    const snapshot = makeSnapshot();
+    applyPreviewServerSnapshot(ref, snapshot);
+    applyPreviewServerEvent(ref, {
+      type: "screenshot",
+      threadId: "thread-1",
+      tabId: snapshot.tabId,
+      createdAt: "2026-01-01T00:00:01.000Z",
+      artifactId: "browser-screenshot-test",
+      dataUrl: "data:image/png;base64,AAAA",
+    });
+    expect(readThreadPreviewState(ref).screenshotByTabId[snapshot.tabId]).toEqual({
+      artifactId: "browser-screenshot-test",
+      dataUrl: "data:image/png;base64,AAAA",
+      revision: 1,
+    });
+  });
+
+  it("merges the desktop recording state into the tab snapshot", () => {
+    const snapshot = makeSnapshot({ recording: false });
+    applyPreviewServerSnapshot(ref, snapshot);
+    applyPreviewServerEvent(ref, {
+      type: "recording",
+      threadId: "thread-1",
+      tabId: snapshot.tabId,
+      createdAt: "2026-01-01T00:00:01.000Z",
+      snapshot: { ...snapshot, recording: true },
+    });
+    expect(readThreadPreviewState(ref).sessions[snapshot.tabId]?.recording).toBe(true);
+  });
+
   it("failed event for a non-active tab is ignored", () => {
     const snapshot = makeSnapshot({ tabId: "tab_a" });
     applyPreviewServerEvent(ref, {

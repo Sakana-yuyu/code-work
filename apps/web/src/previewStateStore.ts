@@ -10,6 +10,8 @@ import { scopedThreadKey } from "@codework/client-runtime/environment";
 import {
   type DesktopPreviewColorScheme,
   type DesktopPreviewFavicon,
+  type PreviewAppearancePreference,
+  type PreviewControl,
   type PreviewEvent,
   type PreviewListResult,
   type PreviewSessionSnapshot,
@@ -47,6 +49,36 @@ export interface ThreadPreviewState {
   serverEpoch: string | null;
   /** Latest ordered server revision applied from a list response or event. */
   serverRevision: number;
+  /** Latest remote refresh command received for each server tab. */
+  refreshRevisionByTabId: Record<string, number>;
+  /** Latest remote desktop control command received for each server tab. */
+  controlByTabId: Record<
+    string,
+    {
+      readonly control: PreviewControl;
+      readonly revision: number;
+      readonly url?: string;
+      readonly x?: number;
+      readonly y?: number;
+      readonly text?: string;
+      readonly key?: string;
+      readonly deltaX?: number;
+      readonly deltaY?: number;
+      readonly colorScheme?: PreviewAppearancePreference;
+      readonly audioMuted?: boolean;
+    }
+  >;
+  /** Latest screenshot returned by a desktop preview tab. */
+  screenshotByTabId: Record<
+    string,
+    {
+      readonly artifactId: string;
+      readonly dataUrl: string;
+      readonly width?: number;
+      readonly height?: number;
+      readonly revision: number;
+    }
+  >;
 }
 
 const EMPTY_THREAD_PREVIEW_STATE: ThreadPreviewState = Object.freeze({
@@ -59,6 +91,9 @@ const EMPTY_THREAD_PREVIEW_STATE: ThreadPreviewState = Object.freeze({
   recentlySeenUrls: [] as string[],
   serverEpoch: null,
   serverRevision: 0,
+  refreshRevisionByTabId: {},
+  controlByTabId: {},
+  screenshotByTabId: {},
 });
 
 const emptyPreviewStateAtom = Atom.make<ThreadPreviewState>(EMPTY_THREAD_PREVIEW_STATE).pipe(
@@ -146,6 +181,9 @@ const removeSession = (current: ThreadPreviewState, tabId: string): ThreadPrevie
   if (!current.sessions[tabId]) return current;
   const { [tabId]: _closed, ...sessions } = current.sessions;
   const { [tabId]: _desktop, ...desktopByTabId } = current.desktopByTabId;
+  const { [tabId]: _refreshed, ...refreshRevisionByTabId } = current.refreshRevisionByTabId;
+  const { [tabId]: _controlled, ...controlByTabId } = current.controlByTabId;
+  const { [tabId]: _screenshot, ...screenshotByTabId } = current.screenshotByTabId;
   const nextSnapshot = latestSnapshot(sessions);
   const activeTabId =
     current.activeTabId === tabId ? (nextSnapshot?.tabId ?? null) : current.activeTabId;
@@ -157,6 +195,9 @@ const removeSession = (current: ThreadPreviewState, tabId: string): ThreadPrevie
     activeTabId: snapshot?.tabId ?? null,
     snapshot,
     desktopOverlay: snapshot ? (desktopByTabId[snapshot.tabId] ?? null) : null,
+    refreshRevisionByTabId,
+    controlByTabId,
+    screenshotByTabId,
   };
 };
 
@@ -194,7 +235,8 @@ export function applyPreviewServerEvent(ref: ScopedThreadRef, event: PreviewEven
       switch (event.type) {
         case "opened":
         case "navigated":
-        case "resized": {
+        case "resized":
+        case "recording": {
           const snapshot = event.snapshot;
           if (current.suppressedTabIds.has(snapshot.tabId)) return current;
           const recentlySeenUrls =
@@ -241,6 +283,50 @@ export function applyPreviewServerEvent(ref: ScopedThreadRef, event: PreviewEven
           suppressedTabIds.delete(event.tabId);
           return { ...closed, suppressedTabIds };
         }
+        case "refreshed":
+          return {
+            ...current,
+            refreshRevisionByTabId: {
+              ...current.refreshRevisionByTabId,
+              [event.tabId]: event.revision,
+            },
+          };
+        case "controlled":
+          return {
+            ...current,
+            controlByTabId: {
+              ...current.controlByTabId,
+              [event.tabId]: {
+                control: event.control,
+                revision: event.revision,
+                ...(event.url === undefined ? {} : { url: event.url }),
+                ...(event.x === undefined ? {} : { x: event.x }),
+                ...(event.y === undefined ? {} : { y: event.y }),
+                ...(event.text === undefined ? {} : { text: event.text }),
+                ...(event.key === undefined ? {} : { key: event.key }),
+                ...(event.deltaX === undefined ? {} : { deltaX: event.deltaX }),
+                ...(event.deltaY === undefined ? {} : { deltaY: event.deltaY }),
+                ...(event.colorScheme === undefined ? {} : { colorScheme: event.colorScheme }),
+                ...(event.audioMuted === undefined ? {} : { audioMuted: event.audioMuted }),
+              },
+            },
+          };
+        case "screenshot":
+          return {
+            ...current,
+            screenshotByTabId: {
+              ...current.screenshotByTabId,
+              [event.tabId]: {
+                artifactId: event.artifactId,
+                dataUrl: event.dataUrl,
+                ...(event.width === undefined ? {} : { width: event.width }),
+                ...(event.height === undefined ? {} : { height: event.height }),
+                revision: event.revision,
+              },
+            },
+          };
+        case "annotation":
+          return current;
       }
     })();
     return next.serverRevision === event.revision && next.serverEpoch === event.serverEpoch
@@ -267,6 +353,9 @@ export function applyPreviewServerSnapshot(
         activeTabId: null,
         desktopOverlay: null,
         desktopByTabId: {},
+        refreshRevisionByTabId: {},
+        controlByTabId: {},
+        screenshotByTabId: {},
       };
     }
     if (current.suppressedTabIds.has(snapshot.tabId)) return current;
@@ -348,6 +437,25 @@ export function reconcilePreviewServerSessions(
           Object.entries(current.desktopByTabId).filter(([tabId]) => sessions[tabId] !== undefined),
         )
       : {};
+    const refreshRevisionByTabId = sameServer
+      ? Object.fromEntries(
+          Object.entries(current.refreshRevisionByTabId).filter(
+            ([tabId]) => sessions[tabId] !== undefined,
+          ),
+        )
+      : {};
+    const controlByTabId = sameServer
+      ? Object.fromEntries(
+          Object.entries(current.controlByTabId).filter(([tabId]) => sessions[tabId] !== undefined),
+        )
+      : {};
+    const screenshotByTabId = sameServer
+      ? Object.fromEntries(
+          Object.entries(current.screenshotByTabId).filter(
+            ([tabId]) => sessions[tabId] !== undefined,
+          ),
+        )
+      : {};
     const suppressedTabIds = new Set(
       [...currentSuppressedTabIds].filter((tabId) =>
         snapshots.some((snapshot) => snapshot.tabId === tabId),
@@ -361,6 +469,9 @@ export function reconcilePreviewServerSessions(
       snapshot,
       desktopByTabId,
       desktopOverlay: activeTabId ? (desktopByTabId[activeTabId] ?? null) : null,
+      refreshRevisionByTabId,
+      controlByTabId,
+      screenshotByTabId,
       recentlySeenUrls,
       serverEpoch: result.serverEpoch,
       serverRevision: result.revision,

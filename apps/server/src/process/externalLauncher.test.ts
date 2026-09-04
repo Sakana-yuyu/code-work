@@ -795,6 +795,37 @@ it.effect("discovers editors through the service API", () =>
   }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
 );
 
+// Discovery probes run concurrently; completion order must never leak into
+// the advertised list, which the settings UI renders in EDITORS catalog order.
+it.effect("lists discovered editors in the EDITORS catalog order", () =>
+  Effect.gen(function* () {
+    const fileSystem = yield* FileSystem.FileSystem;
+    const path = yield* Path.Path;
+    const binDir = yield* fileSystem.makeTempDirectoryScoped({ prefix: "codework-editors-" });
+    // Created in the reverse of catalog order on purpose.
+    yield* fileSystem.writeFileString(path.join(binDir, "zed.EXE"), "#!/bin/sh\n");
+    yield* fileSystem.writeFileString(path.join(binDir, "code.CMD"), "@echo off\r\n");
+    yield* fileSystem.writeFileString(path.join(binDir, "cursor.CMD"), "@echo off\r\n");
+
+    const editors = yield* Effect.gen(function* () {
+      const launcher = yield* ExternalLauncher.ExternalLauncher;
+      return yield* launcher.resolveAvailableEditors();
+    }).pipe(
+      Effect.provide(
+        testLayer({
+          platform: "win32",
+          env: { PATH: binDir, PATHEXT: ".COM;.EXE;.BAT;.CMD" },
+        }),
+      ),
+    );
+
+    assert.deepEqual(
+      editors.filter((editor) => ["cursor", "vscode", "zed"].includes(editor)),
+      ["cursor", "vscode", "zed"],
+    );
+  }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
+);
+
 it.effect("memoizes editor discovery and refreshes after the cache window", () => {
   let statCalls = 0;
   const fileInfo = { type: "File" } as FileSystem.File.Info;
@@ -825,15 +856,15 @@ it.effect("memoizes editor discovery and refreshes after the cache window", () =
     const statCallsAfterFirstScan = statCalls;
     assert.isAbove(statCallsAfterFirstScan, 0);
 
-    // Past the shared command-resolution cache TTL (30s) but within the
+    // Past the shared command-resolution cache TTL (300s) but within the
     // discovery cache window: the memoized set is reused without any scan.
-    yield* TestClock.adjust("31 seconds");
+    yield* TestClock.adjust("301 seconds");
     const second = yield* launcher.resolveAvailableEditors();
     assert.deepEqual([...second], [...first]);
     assert.equal(statCalls, statCallsAfterFirstScan);
 
-    // Past the discovery cache window the next call rescans.
-    yield* TestClock.adjust("30 seconds");
+    // Past the discovery cache window (600s) the next call rescans.
+    yield* TestClock.adjust("300 seconds");
     yield* launcher.resolveAvailableEditors();
     assert.isAbove(statCalls, statCallsAfterFirstScan);
   }).pipe(

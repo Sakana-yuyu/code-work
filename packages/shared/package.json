@@ -91,6 +91,14 @@
       "types": "./src/backgroundActivitySettings.ts",
       "import": "./src/backgroundActivitySettings.ts"
     },
+    "./ideSessionSettings": {
+      "types": "./src/ideSessionSettings.ts",
+      "import": "./src/ideSessionSettings.ts"
+    },
+    "./multicaRuntimeSettings": {
+      "types": "./src/multicaRuntimeSettings.ts",
+      "import": "./src/multicaRuntimeSettings.ts"
+    },
     "./String": {
       "types": "./src/String.ts",
       "import": "./src/String.ts"
@@ -98,6 +106,10 @@
     "./projectScripts": {
       "types": "./src/projectScripts.ts",
       "import": "./src/projectScripts.ts"
+    },
+    "./pullRequestReference": {
+      "types": "./src/pullRequestReference.ts",
+      "import": "./src/pullRequestReference.ts"
     },
     "./threadEnvMode": {
       "types": "./src/threadEnvMode.ts",
@@ -162,6 +174,10 @@
     "./path": {
       "types": "./src/path.ts",
       "import": "./src/path.ts"
+    },
+    "./canvas": {
+      "types": "./src/canvas.ts",
+      "import": "./src/canvas.ts"
     },
     "./keybindings": {
       "types": "./src/keybindings.ts",
@@ -231,6 +247,14 @@
       "types": "./src/usageFormat.ts",
       "import": "./src/usageFormat.ts"
     },
+    "./usageStats": {
+      "types": "./src/usageStats.ts",
+      "import": "./src/usageStats.ts"
+    },
+    "./byokBalanceMerge": {
+      "types": "./src/byokBalanceMerge.ts",
+      "import": "./src/byokBalanceMerge.ts"
+    },
     "./claudeCompaction": {
       "types": "./src/claudeCompaction.ts",
       "import": "./src/claudeCompaction.ts"
@@ -241,9 +265,9 @@
     "test": "vp test run"
   },
   "dependencies": {
+    "@codework/contracts": "workspace:*",
     "@noble/curves": "catalog:",
     "@noble/hashes": "catalog:",
-    "@codework/contracts": "workspace:*",
     "effect": "catalog:",
     "jose": "catalog:",
     "yaml": "catalog:"

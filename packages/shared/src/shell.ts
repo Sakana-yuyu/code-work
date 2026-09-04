@@ -484,10 +484,12 @@ function resolveCommandCandidates(
     );
   }
 
+  // NTFS lookups are case-insensitive, so probing both the PATHEXT-declared
+  // and the lowercased extension doubles the per-directory stat count without
+  // surfacing any additional match.
   const candidates: string[] = [];
   for (const candidateExtension of windowsPathExtensions) {
     candidates.push(`${command}${candidateExtension}`);
-    candidates.push(`${command}${candidateExtension.toLowerCase()}`);
   }
   return Array.from(new Set(candidates));
 }
@@ -495,15 +497,20 @@ function resolveCommandCandidates(
 // Session bootstrap resolves the same commands over and over, each PATH scan
 // costing hundreds of 'shell.isExecutableFile' filesystem probes (tens of
 // thousands per connect). Memoize the scan outcome per
-// (platform, PATH, PATHEXT, command) for a short window: repeat scans hit the
-// cache while any change to the search environment invalidates immediately.
+// (platform, PATH, PATHEXT, command): repeat scans hit the cache while any
+// change to the search environment invalidates immediately.
 // Explicit-path resolution is never cached - callers probe paths they have
 // just written (e.g. managed binary installs). A "not-found" outcome is also
-// cached for the TTL, so a just-installed binary can stay invisible for up to
-// 30s unless resolved by explicit path.
+// cached, so a binary installed outside Code Work (the installer flows call
+// clearCommandResolutionCache) can stay invisible for the TTL unless resolved
+// by explicit path.
+// The TTL is minutes, not seconds: installed CLIs do not vanish, and with a
+// short TTL connect-time traffic re-walked PATH at every expiry boundary —
+// on hosts where a stat costs milliseconds (antivirus filter drivers) that
+// alone produced thousands of probes per minute.
 // TTL expiry uses the monotonic clock (Clock.currentTimeNanos) so backward
 // wall-clock adjustments cannot keep expired entries alive.
-const COMMAND_RESOLUTION_CACHE_TTL_NANOS = 30_000_000_000n;
+const COMMAND_RESOLUTION_CACHE_TTL_NANOS = 300_000_000_000n;
 const COMMAND_RESOLUTION_CACHE_MAX_ENTRIES = 512;
 const COMMAND_RESOLUTION_CACHE_KEY_SEPARATOR = String.fromCharCode(0);
 
@@ -563,6 +570,7 @@ const resolveCommandPathForPlatform = Effect.fn("shell.resolveCommandPathForPlat
   command: string,
   options: CommandAvailabilityOptions & { readonly platform: NodeJS.Platform },
 ): Effect.fn.Return<string, CommandResolutionError, FileSystem.FileSystem | Path.Path> {
+  const fileSystem = yield* FileSystem.FileSystem;
   const path = yield* Path.Path;
   const platform = options.platform;
   const env = options.env ?? process.env;
@@ -602,20 +610,56 @@ const resolveCommandPathForPlatform = Effect.fn("shell.resolveCommandPathForPlat
   }
 
   const pathEntries: string[] = [];
+  const seenPathEntries = new Set<string>();
   for (const entry of pathValue.split(pathDelimiterForPlatform(platform))) {
     const pathEntry = stripWrappingQuotes(entry.trim());
-    if (pathEntry.length > 0) {
-      pathEntries.push(pathEntry);
-    }
+    if (pathEntry.length === 0) continue;
+    // Windows directory names are case-insensitive and duplicate PATH entries
+    // are common; each repeat multiplies the probe count for no new matches.
+    const dedupeKey = platform === "win32" ? pathEntry.toLowerCase() : pathEntry;
+    if (seenPathEntries.has(dedupeKey)) continue;
+    seenPathEntries.add(dedupeKey);
+    pathEntries.push(pathEntry);
   }
 
-  for (const pathEntry of pathEntries) {
-    for (const candidate of commandCandidates) {
-      const candidatePath = path.join(pathEntry, candidate);
-      if (yield* isExecutableFile(candidatePath, platform, windowsPathExtensions)) {
-        cacheCommandResolution(cache, cacheKey, candidatePath, nowNanos);
-        return candidatePath;
-      }
+  // A missing directory cannot contain the command: one stat per absent entry
+  // prunes every candidate probe beneath it. Only absence prunes — file
+  // systems and FS fakes disagree on the type reported for directories, so a
+  // successful stat is always kept and probed (a non-directory path just
+  // fails its candidate probes, which is cheap).
+  const directoryExists = yield* Effect.forEach(
+    pathEntries,
+    (pathEntry) =>
+      Effect.map(
+        fileSystem.stat(pathEntry).pipe(Effect.orElseSucceed(() => null)),
+        (stat) => stat !== null,
+      ),
+    { concurrency: "unbounded" },
+  );
+  const existingPathEntries = pathEntries.filter(
+    (_pathEntry, index) => directoryExists[index] === true,
+  );
+
+  // The PATH walk dominates cold resolution: hundreds of stat probes that
+  // cost milliseconds each on real machines (antivirus filter drivers), and
+  // session bootstrap resolves the same commands on every connect. Probe all
+  // (directory, candidate) pairs concurrently and take the hit with the
+  // smallest (PATH order, candidate order) — the same result as the
+  // sequential first-match walk without the serial round-trips.
+  const candidatePaths = existingPathEntries.flatMap((pathEntry) =>
+    commandCandidates.map((candidate) => path.join(pathEntry, candidate)),
+  );
+  const probeHits = yield* Effect.forEach(
+    candidatePaths,
+    (candidatePath) => isExecutableFile(candidatePath, platform, windowsPathExtensions),
+    { concurrency: "unbounded" },
+  );
+  const firstHitIndex = probeHits.indexOf(true);
+  if (firstHitIndex >= 0) {
+    const resolvedPath = candidatePaths[firstHitIndex];
+    if (resolvedPath !== undefined) {
+      cacheCommandResolution(cache, cacheKey, resolvedPath, nowNanos);
+      return resolvedPath;
     }
   }
   cacheCommandResolution(cache, cacheKey, null, nowNanos);
@@ -672,6 +716,15 @@ export const isCommandAvailable = Effect.fn("shell.isCommandAvailable")(function
     Effect.catchTag("CommandResolutionError", () => Effect.succeed(false)),
   );
 });
+
+/** Drops every memoized command resolution. Call after installing a new CLI
+    so availability probes observe it instead of a cached "not-found". */
+export const clearCommandResolutionCache = Effect.fn("shell.clearCommandResolutionCache")(
+  function* () {
+    const cache = yield* CommandResolutionCache;
+    cache.clear();
+  },
+);
 
 export function resolveKnownWindowsCliDirs(env: NodeJS.ProcessEnv): ReadonlyArray<string> {
   const appData = env.APPDATA?.trim();

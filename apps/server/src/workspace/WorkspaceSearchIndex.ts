@@ -24,6 +24,7 @@ import type {
   ProjectSearchEntriesResult,
 } from "@codework/contracts";
 import { isWorkspaceImagePreviewPath } from "@codework/shared/filePreview";
+import { isCodeworkCanvasArtifactPath } from "@codework/shared/path";
 
 const WORKSPACE_INDEX_MAX_ENTRIES = 25_000;
 const WORKSPACE_INDEX_PAGE_SIZE = WORKSPACE_INDEX_MAX_ENTRIES + 2;
@@ -139,7 +140,7 @@ function parentPathOf(input: string): string | undefined {
 
 function toProjectEntry(item: MixedItem): ProjectEntry | null {
   const normalizedPath = trimDirectorySeparator(toPosixPath(item.item.relativePath));
-  if (!normalizedPath) {
+  if (!normalizedPath || isCodeworkCanvasArtifactPath(normalizedPath)) {
     return null;
   }
 
@@ -151,12 +152,16 @@ function toProjectEntry(item: MixedItem): ProjectEntry | null {
 
 function toFileEntry(item: FileItem): ProjectEntry | null {
   const normalizedPath = trimDirectorySeparator(toPosixPath(item.relativePath));
-  return normalizedPath ? { path: normalizedPath, kind: "file" } : null;
+  return normalizedPath && !isCodeworkCanvasArtifactPath(normalizedPath)
+    ? { path: normalizedPath, kind: "file" }
+    : null;
 }
 
 function toDirectoryEntry(item: DirItem): ProjectEntry | null {
   const normalizedPath = trimDirectorySeparator(toPosixPath(item.relativePath));
-  return normalizedPath ? { path: normalizedPath, kind: "directory" } : null;
+  return normalizedPath && !isCodeworkCanvasArtifactPath(normalizedPath)
+    ? { path: normalizedPath, kind: "directory" }
+    : null;
 }
 
 function mapFileSearchResult(
@@ -499,6 +504,7 @@ export const make = Effect.fn("WorkspaceSearchIndex.make")(function* (
       );
 
       for (const match of result.items) {
+        if (isCodeworkCanvasArtifactPath(match.relativePath)) continue;
         const matchRanges = mapContentMatchRanges(match.lineContent, match.matchRanges).filter(
           (range) => !input.wholeWord || isWholeWordRange(match.lineContent, range),
         );

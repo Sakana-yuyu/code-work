@@ -49,6 +49,6 @@ describe("AddProviderInstanceDialog environment routing", () => {
     });
 
     expect(settingsHooks.read).toHaveBeenCalledWith(remoteEnvironmentId);
-    expect(settingsHooks.update).toHaveBeenCalledWith(remoteEnvironmentId);
+    expect(settingsHooks.update).toHaveBeenCalledWith(remoteEnvironmentId, expect.any(Function));
   });
 });

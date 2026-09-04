@@ -1,4 +1,4 @@
-import { type TurnId } from "@codework/contracts";
+import { type CanvasReference, type TurnId } from "@codework/contracts";
 import { memo, useCallback, useMemo, useState } from "react";
 import { type TurnDiffFileChange } from "../../types";
 import {
@@ -13,6 +13,7 @@ import {
   FileDiffIcon,
   FolderIcon,
   FolderClosedIcon,
+  LayoutDashboardIcon,
 } from "lucide-react";
 import { cn } from "~/lib/utils";
 import { DiffStatLabel, hasNonZeroStat } from "./DiffStatLabel";
@@ -20,6 +21,7 @@ import { PierreEntryIcon } from "./PierreEntryIcon";
 import { Button } from "../ui/button";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { t } from "~/i18n";
+import { canvasReferenceFromArtifactPath } from "~/canvas";
 import {
   changedFileName,
   selectChangedFilePreview,
@@ -38,6 +40,8 @@ export const ChangedFilesCard = memo(function ChangedFilesCard(props: {
   onExpandedChange: (expanded: boolean) => void;
   onToggleAllDirectories: () => void;
   onOpenTurnDiff: (turnId: TurnId, filePath?: string) => void;
+  canvas?: CanvasReference;
+  onOpenCanvas?: (canvas: CanvasReference) => void;
 }) {
   const {
     turnId,
@@ -49,11 +53,31 @@ export const ChangedFilesCard = memo(function ChangedFilesCard(props: {
     onExpandedChange,
     onToggleAllDirectories,
     onOpenTurnDiff,
+    canvas,
+    onOpenCanvas,
   } = props;
+  const detectedCanvas = useMemo(() => {
+    for (const file of files) {
+      const reference = canvasReferenceFromArtifactPath(file.path);
+      if (reference) return reference;
+    }
+    return null;
+  }, [files]);
+  const resolvedCanvas = canvas ?? detectedCanvas;
   const summaryStat = useMemo(() => summarizeTurnDiffStats(files), [files]);
   const scopeSummary = useMemo(() => summarizeChangedFileScopes(files), [files]);
   const previewFiles = useMemo(() => selectChangedFilePreview(files), [files]);
   const compactPreviewVisible = showCompactPreview && !expanded;
+  const canvasPath = resolvedCanvas ? normalizeFilePath(resolvedCanvas.relativePath) : null;
+  const isCanvasFile = (path: string) => canvasPath === normalizeFilePath(path);
+  const openFile = (path: string) => {
+    if (resolvedCanvas && onOpenCanvas && isCanvasFile(path)) {
+      onOpenCanvas(resolvedCanvas);
+      return;
+    }
+    onOpenTurnDiff(turnId, path);
+  };
+  const openCanvas = resolvedCanvas && onOpenCanvas ? () => onOpenCanvas(resolvedCanvas) : null;
 
   return (
     <div
@@ -139,15 +163,25 @@ export const ChangedFilesCard = memo(function ChangedFilesCard(props: {
                   type="button"
                   size="xs"
                   variant="outline"
-                  aria-label={t("openDiff")}
-                  onClick={() => onOpenTurnDiff(turnId, files[0]?.path)}
+                  aria-label={openCanvas ? t("canvas.open") : t("openDiff")}
+                  onClick={() =>
+                    openCanvas ? openCanvas() : onOpenTurnDiff(turnId, files[0]?.path)
+                  }
                 />
               }
             >
-              <FileDiffIcon className="size-3" />
-              <span className="hidden @[24rem]/changed-files:inline">{t("openDiff")}</span>
+              {openCanvas ? (
+                <LayoutDashboardIcon className="size-3" />
+              ) : (
+                <FileDiffIcon className="size-3" />
+              )}
+              <span className="hidden @[24rem]/changed-files:inline">
+                {openCanvas ? t("canvas.open") : t("openDiff")}
+              </span>
             </TooltipTrigger>
-            <TooltipPopup side="top">{t("openTheFullDiff")}</TooltipPopup>
+            <TooltipPopup side="top">
+              {openCanvas ? (resolvedCanvas?.title ?? t("canvas.open")) : t("openTheFullDiff")}
+            </TooltipPopup>
           </Tooltip>
         </div>
       </div>
@@ -159,6 +193,8 @@ export const ChangedFilesCard = memo(function ChangedFilesCard(props: {
           allDirectoriesExpanded={allDirectoriesExpanded}
           resolvedTheme={resolvedTheme}
           onOpenTurnDiff={onOpenTurnDiff}
+          {...(resolvedCanvas ? { canvas: resolvedCanvas } : {})}
+          {...(onOpenCanvas ? { onOpenCanvas } : {})}
         />
       ) : compactPreviewVisible ? (
         <div className="px-2 pb-1.5 pt-1">
@@ -182,17 +218,25 @@ export const ChangedFilesCard = memo(function ChangedFilesCard(props: {
                     <button
                       type="button"
                       className="inline-flex max-w-48 items-center gap-1 rounded-md border border-border/70 bg-background/45 px-1.5 py-1 font-mono text-[10px] text-muted-foreground transition-colors hover:bg-accent/60 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                      onClick={() => onOpenTurnDiff(turnId, file.path)}
+                      onClick={() => openFile(file.path)}
                     />
                   }
                 >
-                  <PierreEntryIcon
-                    pathValue={file.path}
-                    kind="file"
-                    theme={resolvedTheme}
-                    className="size-3 shrink-0 text-muted-foreground/70"
-                  />
-                  <span className="truncate">{changedFileName(file.path)}</span>
+                  {isCanvasFile(file.path) ? (
+                    <LayoutDashboardIcon className="size-3 shrink-0 text-info-foreground" />
+                  ) : (
+                    <PierreEntryIcon
+                      pathValue={file.path}
+                      kind="file"
+                      theme={resolvedTheme}
+                      className="size-3 shrink-0 text-muted-foreground/70"
+                    />
+                  )}
+                  <span className="truncate">
+                    {isCanvasFile(file.path) && resolvedCanvas
+                      ? resolvedCanvas.title
+                      : changedFileName(file.path)}
+                  </span>
                 </TooltipTrigger>
                 <TooltipPopup side="top">{file.path}</TooltipPopup>
               </Tooltip>
@@ -217,8 +261,34 @@ export const ChangedFilesTree = memo(function ChangedFilesTree(props: {
   allDirectoriesExpanded: boolean;
   resolvedTheme: "light" | "dark";
   onOpenTurnDiff: (turnId: TurnId, filePath?: string) => void;
+  canvas?: CanvasReference;
+  onOpenCanvas?: (canvas: CanvasReference) => void;
 }) {
-  const { files, allDirectoriesExpanded, onOpenTurnDiff, resolvedTheme, turnId } = props;
+  const {
+    files,
+    allDirectoriesExpanded,
+    onOpenTurnDiff,
+    resolvedTheme,
+    turnId,
+    canvas,
+    onOpenCanvas,
+  } = props;
+  const detectedCanvas = useMemo(() => {
+    for (const file of files) {
+      const reference = canvasReferenceFromArtifactPath(file.path);
+      if (reference) return reference;
+    }
+    return null;
+  }, [files]);
+  const resolvedCanvas = canvas ?? detectedCanvas;
+  const canvasPath = resolvedCanvas ? normalizeFilePath(resolvedCanvas.relativePath) : null;
+  const openFile = (path: string) => {
+    if (resolvedCanvas && onOpenCanvas && canvasPath === normalizeFilePath(path)) {
+      onOpenCanvas(resolvedCanvas);
+      return;
+    }
+    onOpenTurnDiff(turnId, path);
+  };
   const treeNodes = useMemo(() => buildTurnDiffTree(files), [files]);
   const directoryPathsKey = useMemo(
     () => collectDirectoryPaths(treeNodes).join("\u0000"),
@@ -303,19 +373,25 @@ export const ChangedFilesTree = memo(function ChangedFilesTree(props: {
         type="button"
         className="group flex w-full items-center gap-1.5 rounded-xl py-1 pr-3 text-left transition-colors hover:bg-accent/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background"
         style={{ paddingLeft: `${leftPadding}px` }}
-        onClick={() => onOpenTurnDiff(turnId, node.path)}
+        onClick={() => openFile(node.path)}
       >
         {hasDirectoryNodes || depth > 0 ? (
           <span aria-hidden="true" className="size-3.5 shrink-0" />
         ) : null}
-        <PierreEntryIcon
-          pathValue={node.path}
-          kind="file"
-          theme={resolvedTheme}
-          className="size-3.5 text-muted-foreground/70"
-        />
+        {canvasPath === normalizeFilePath(node.path) ? (
+          <LayoutDashboardIcon className="size-3.5 text-info-foreground" />
+        ) : (
+          <PierreEntryIcon
+            pathValue={node.path}
+            kind="file"
+            theme={resolvedTheme}
+            className="size-3.5 text-muted-foreground/70"
+          />
+        )}
         <span className="truncate font-mono text-[11px] text-muted-foreground/80 group-hover:text-foreground/90">
-          {node.name}
+          {canvasPath === normalizeFilePath(node.path) && resolvedCanvas
+            ? resolvedCanvas.title
+            : node.name}
         </span>
         {node.stat && (
           <span className="ml-auto shrink-0 font-mono text-[10px] tabular-nums">
@@ -337,4 +413,8 @@ function collectDirectoryPaths(nodes: ReadonlyArray<TurnDiffTreeNode>): string[]
     paths.push(...collectDirectoryPaths(node.children));
   }
   return paths;
+}
+
+function normalizeFilePath(path: string): string {
+  return path.replaceAll("\\", "/");
 }

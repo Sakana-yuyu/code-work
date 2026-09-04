@@ -23,6 +23,7 @@ import { ChildProcessSpawner } from "effect/unstable/process";
 
 import { makeOpenCodeTextGeneration } from "../../textGeneration/OpenCodeTextGeneration.ts";
 import * as BackgroundPolicy from "../../background/BackgroundPolicy.ts";
+import { ServerSecretStore } from "../../auth/ServerSecretStore.ts";
 import { ServerConfig } from "../../config.ts";
 import { ServerSettingsService } from "../../serverSettings.ts";
 import { ProviderDriverError } from "../Errors.ts";
@@ -41,6 +42,12 @@ import {
 } from "../ProviderDriver.ts";
 import type { ServerProviderDraft } from "../providerSnapshot.ts";
 import { mergeProviderInstanceEnvironment } from "../ProviderInstanceEnvironment.ts";
+import {
+  ensureGatewayToken,
+  gatewayAdapterRoutes,
+  openCodeGatewayConfigContent,
+  gatewayOrigin,
+} from "../byok/modelGateway.ts";
 import {
   enrichProviderSnapshotWithVersionAdvisory,
   makePackageManagedProviderMaintenanceResolver,
@@ -86,6 +93,7 @@ export type OpenCodeDriverEnv =
   | Path.Path
   | ProviderEventLoggers
   | ServerConfig
+  | ServerSecretStore
   | ServerSettingsService;
 
 const withInstanceIdentity =
@@ -118,8 +126,24 @@ export const OpenCodeDriver: ProviderDriver<OpenCodeSettings, OpenCodeDriverEnv>
       const serverConfig = yield* ServerConfig;
       const httpClient = yield* HttpClient.HttpClient;
       const serverSettings = yield* ServerSettingsService;
+      const secretStore = yield* ServerSecretStore;
       const eventLoggers = yield* ProviderEventLoggers;
-      const processEnv = mergeProviderInstanceEnvironment(environment);
+      const baseProcessEnv = mergeProviderInstanceEnvironment(environment);
+      // Gateway routing injects a `byok_gateway` provider into OpenCode's
+      // config content; opencode discovers its models through its own
+      // inventory, so no model-list override is needed on the snapshot.
+      const processEnv =
+        config.routeThroughByok === true
+          ? {
+              ...baseProcessEnv,
+              OPENCODE_CONFIG_CONTENT: openCodeGatewayConfigContent({
+                existingContent: baseProcessEnv.OPENCODE_CONFIG_CONTENT,
+                origin: gatewayOrigin(serverConfig.port),
+                token: yield* ensureGatewayToken(secretStore),
+                routes: gatewayAdapterRoutes(yield* serverSettings.getSettings.pipe(Effect.orDie)),
+              }),
+            }
+          : baseProcessEnv;
       const continuationIdentity = defaultProviderContinuationIdentity({
         driverKind: DRIVER_KIND,
         instanceId,

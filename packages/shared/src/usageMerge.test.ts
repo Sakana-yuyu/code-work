@@ -338,4 +338,31 @@ describe("mergeUsage", () => {
     expect(merged.daily).toHaveLength(1);
     expect(merged.daily[0]?.costUsd).toBe(10);
   });
+
+  it("keeps a per-model token series alongside the daily rollup", () => {
+    const merged = mergeUsage(
+      [
+        environment(
+          "env-a",
+          summary(
+            [
+              bucket({ model: "claude-fable-5" }),
+              bucket({ model: "claude-fable-5", costUsd: 4 }),
+              bucket({ provider: "codex", model: "codex-max", costUsd: 1 }),
+            ],
+            [
+              { provider: "claude", hostId: "mac", homePath: "/a/.claude" },
+              { provider: "codex", hostId: "mac", homePath: "/b/.codex" },
+            ],
+          ),
+        ),
+      ],
+      USAGE_CONTRACT_VERSION,
+    );
+
+    const day = merged.daily[0];
+    expect(day?.byModel.get("claude claude-fable-5")).toBe(2320);
+    expect(day?.byModel.get("codex codex-max")).toBe(1160);
+    expect(day?.byModel.size).toBe(2);
+  });
 });

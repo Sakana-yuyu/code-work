@@ -28,6 +28,7 @@ import {
   type ByokSettings,
   ProviderDriverKind,
   ProviderInstanceId,
+  RuntimeItemId,
   type ProviderRuntimeEvent,
   type ProviderSession,
   ThreadId,
@@ -43,8 +44,11 @@ import * as FileSystem from "effect/FileSystem";
 import * as Option from "effect/Option";
 import * as Queue from "effect/Queue";
 import * as Scope from "effect/Scope";
+import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
 import { HttpClient } from "effect/unstable/http";
+
+const encodeUnknownJson = Schema.encodeUnknownSync(Schema.fromJsonString(Schema.Unknown));
 
 import { ServerConfig } from "../../config.ts";
 import { resolveAttachmentPath } from "../../attachmentStore.ts";
@@ -125,6 +129,7 @@ const BYOK_PROJECT_TOOL_NAMES: ReadonlySet<string> = new Set([
   "workspace.read_file",
   "git.status",
   "git.diff",
+  "canvas.create",
 ]);
 
 const renderAgentConversation = (messages: ReadonlyArray<ByokChatMessage>): string =>
@@ -523,6 +528,36 @@ export function makeByokAdapter(byokSettings: ByokSettings, options?: ByokAdapte
                   threadId: ctx.session.threadId,
                   turnId,
                   payload: { streamKind: "assistant_text", delta: checkpoint.delta },
+                });
+              }).pipe(Effect.orDie),
+            onToolCompleted: (toolCall, result) =>
+              Effect.gen(function* () {
+                yield* emit({
+                  ...(yield* makeEventStamp()),
+                  type: "item.completed",
+                  provider: PROVIDER,
+                  threadId: ctx.session.threadId,
+                  turnId,
+                  itemId: RuntimeItemId.make(toolCall.toolCallId),
+                  payload: {
+                    itemType: "mcp_tool_call",
+                    status: result.status === "succeeded" ? "completed" : "failed",
+                    title: toolCall.canonicalToolName,
+                    data: {
+                      toolName: toolCall.canonicalToolName,
+                      input: toolCall.arguments,
+                      ...(result.status === "succeeded" && result.result !== undefined
+                        ? { canvas: result.result }
+                        : {}),
+                      result: {
+                        content: encodeUnknownJson(
+                          result.status === "succeeded"
+                            ? result.result
+                            : { errorCode: result.errorCode ?? "tool_failed" },
+                        ),
+                      },
+                    },
+                  },
                 });
               }).pipe(Effect.orDie),
           },

@@ -32,6 +32,7 @@ import { ProviderSettingsForm, deriveProviderSettingsFields } from "./ProviderSe
 import { AnimatedHeight } from "../AnimatedHeight";
 import {
   ADD_PROVIDER_WIZARD_STEPS,
+  resolveProviderInstanceDisplayLabel,
   resolveWizardNavigation,
   type WizardNavigation,
 } from "./AddProviderInstanceDialog.logic";
@@ -138,7 +139,14 @@ export function AddProviderInstanceDialog({
   onOpenChange,
 }: AddProviderInstanceDialogProps) {
   const settings = useEnvironmentSettings(environmentId);
-  const updateSettings = useUpdateEnvironmentSettings(environmentId);
+  const reportSettingsUpdateFailure = (error: unknown) => {
+    toastManager.add({
+      type: "error",
+      title: t("settingsSaveFailed"),
+      description: error instanceof Error ? error.message : t("settingsSaveTryAgain"),
+    });
+  };
+  const updateSettings = useUpdateEnvironmentSettings(environmentId, reportSettingsUpdateFailure);
 
   const [wizardStep, setWizardStep] = useState(0);
   const [driver, setDriver] = useState<ProviderDriverKind>(DEFAULT_DRIVER_KIND);
@@ -151,6 +159,7 @@ export function AddProviderInstanceDialog({
   // Errors are suppressed until the user has tried to submit once. After that
   // they update live so fixing the problem clears the message in place.
   const [hasAttemptedSubmit, setHasAttemptedSubmit] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
 
   const existingIds = useMemo(
     () => new Set(Object.keys(settings.providerInstances ?? {})),
@@ -158,14 +167,14 @@ export function AddProviderInstanceDialog({
   );
 
   const driverOption = DRIVER_OPTION_BY_VALUE[driver] ?? DEFAULT_DRIVER_OPTION;
-  const instanceId = instanceIdOverride ?? deriveInstanceId(driver, label);
+  const previewLabel = resolveProviderInstanceDisplayLabel(driverOption.label, label);
+  const instanceId = instanceIdOverride ?? deriveInstanceId(driver, previewLabel);
   const driverSettingsFields = useMemo(
     () => deriveProviderSettingsFields(driverOption),
     [driverOption],
   );
   const instanceIdError = validateInstanceId(instanceId, existingIds);
   const showInstanceIdError = hasAttemptedSubmit && instanceIdError !== null;
-  const previewLabel = label.trim() || `${driverOption.label} Workspace`;
   const wizardStepSummaries = [driverOption.label, previewLabel, null] as const;
 
   const configDraft = configByDriver[driver] ?? EMPTY_CONFIG_DRAFT;
@@ -196,7 +205,8 @@ export function AddProviderInstanceDialog({
     );
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
+    if (isSaving) return;
     setHasAttemptedSubmit(true);
     if (instanceIdError !== null) return;
 
@@ -220,8 +230,10 @@ export function AddProviderInstanceDialog({
       ...settings.providerInstances,
       [brandedId]: nextInstance,
     };
+    setIsSaving(true);
     try {
-      updateSettings({ providerInstances: nextMap });
+      const result = await updateSettings({ providerInstances: nextMap });
+      if (result?._tag === "Failure") return;
       toastManager.add({
         type: "success",
         title: t("providerInstanceAdded"),
@@ -234,6 +246,8 @@ export function AddProviderInstanceDialog({
         title: t("couldNotAddProviderInstance"),
         description: error instanceof Error ? error.message : t("updateFailed3"),
       });
+    } finally {
+      setIsSaving(false);
     }
   };
 
@@ -261,7 +275,7 @@ export function AddProviderInstanceDialog({
             <AnimatedHeight>
               <div className={cn("grid gap-2", wizardStep !== 0 && "hidden")}>
                 <div id="add-instance-driver-label" className="text-sm font-medium text-foreground">
-                  {t("driver")}
+                  {t("providerWizard.serviceLabel")}
                 </div>
                 <RadioGroup
                   value={driver}
@@ -323,7 +337,7 @@ export function AddProviderInstanceDialog({
               </div>
 
               <label className={cn("grid gap-2", wizardStep !== 1 && "hidden")}>
-                <span className="text-xs font-medium text-foreground">{t("label")}</span>
+                <span className="text-xs font-medium text-foreground">{t("displayName")}</span>
                 <Input
                   className="bg-background"
                   placeholder={t("eGWork")}
@@ -331,15 +345,17 @@ export function AddProviderInstanceDialog({
                   onChange={(event) => setLabel(event.target.value)}
                 />
                 <span className="text-[11px] text-muted-foreground">
-                  {t("shownInTheProviderListOptional")}
+                  {t("providerDisplayNameDescription")}
                 </span>
               </label>
 
               <label className={cn("grid gap-2", wizardStep !== 1 && "hidden")}>
-                <span className="text-xs font-medium text-foreground">{t("instanceId")}</span>
+                <span className="text-xs font-medium text-foreground">
+                  {t("providerInstanceId")}
+                </span>
                 <Input
                   className="bg-background"
-                  placeholder={t("work", { driver: driver })}
+                  placeholder={t("providerInstanceIdPlaceholder", { driver: String(driver) })}
                   value={instanceId}
                   onChange={(event) => {
                     setInstanceIdOverride(event.target.value);
@@ -350,7 +366,7 @@ export function AddProviderInstanceDialog({
                   <span className="text-[11px] text-destructive">{instanceIdError}</span>
                 ) : (
                   <span className="text-[11px] text-muted-foreground">
-                    {t("routingKeyUsedByThreadsAndSessionsLettersDigitsOr")}
+                    {t("providerInstanceIdDescription")}
                   </span>
                 )}
               </label>
@@ -426,6 +442,7 @@ export function AddProviderInstanceDialog({
             <Button
               variant="outline"
               size="sm"
+              disabled={isSaving}
               onClick={() => {
                 if (wizardStep === 0) {
                   onOpenChange(false);
@@ -441,8 +458,8 @@ export function AddProviderInstanceDialog({
                 {t("next")}
               </Button>
             ) : (
-              <Button size="sm" onClick={handleSave}>
-                {t("addInstance")}
+              <Button size="sm" disabled={isSaving} onClick={handleSave}>
+                {isSaving ? t("saving") : t("addInstance")}
               </Button>
             )}
           </DialogFooter>

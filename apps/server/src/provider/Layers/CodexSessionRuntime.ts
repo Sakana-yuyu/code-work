@@ -160,6 +160,12 @@ export interface CodexSessionRuntimeOptions {
   readonly serviceTier?: CodexServiceTier | undefined;
   readonly resumeCursor?: CodexResumeCursor;
   readonly appServerArgs?: ReadonlyArray<string>;
+  /**
+   * Extra argv appended after every spawn (e.g. BYOK gateway `-c` overrides).
+   * Kept apart from `launchArgs` so shell-style tokenizing cannot strip the
+   * TOML quoting these overrides rely on.
+   */
+  readonly gatewayAppServerArgs?: ReadonlyArray<string>;
 }
 
 export interface CodexSessionRuntimeSendTurnInput {
@@ -1140,7 +1146,12 @@ export const makeCodexSessionRuntime = (
       ...(resolvedHomePath ? { CODEX_HOME: resolvedHomePath } : {}),
     };
     const extendEnv = options.environment === undefined;
-    const appServerArgs = codexSessionAppServerArgs(options.appServerArgs, options.launchArgs);
+    // Gateway overrides come last: `-c` assignments resolve in order, so the
+    // routed provider must win over anything in the user's launch args.
+    const appServerArgs = [
+      ...codexSessionAppServerArgs(options.appServerArgs, options.launchArgs),
+      ...(options.gatewayAppServerArgs ?? []),
+    ];
     const spawnCommand = yield* resolveSpawnCommand(options.binaryPath, appServerArgs, {
       env,
       extendEnv,

@@ -746,6 +746,9 @@ function classifyToolItemType(toolName: string): CanonicalItemType {
   ) {
     return "collab_agent_tool_call";
   }
+  if (normalized.includes("mcp")) {
+    return "mcp_tool_call";
+  }
   if (
     normalized.includes("bash") ||
     normalized.includes("command") ||
@@ -764,9 +767,6 @@ function classifyToolItemType(toolName: string): CanonicalItemType {
     normalized.includes("delete")
   ) {
     return "file_change";
-  }
-  if (normalized.includes("mcp")) {
-    return "mcp_tool_call";
   }
   if (normalized.includes("websearch") || normalized.includes("web search")) {
     return "web_search";

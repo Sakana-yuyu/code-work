@@ -177,6 +177,183 @@ it.layer(PreviewManager.layer)("PreviewManager", (it) => {
     }),
   );
 
+  it.effect("refresh verifies the tab and emits a remote refresh command", () =>
+    Effect.gen(function* () {
+      const threadId = freshThreadId();
+      const manager = yield* PreviewManager.PreviewManager;
+      const collector = yield* collectEvents;
+      const opened = yield* manager.open({ threadId, url: "http://localhost:5173" });
+
+      yield* manager.refresh({ threadId, tabId: opened.tabId });
+
+      const events = yield* collector.drain;
+      expect(events.map((event) => event.type)).toEqual(["opened", "refreshed"]);
+      expect(events[1]).toMatchObject({ threadId, tabId: opened.tabId });
+    }),
+  );
+
+  it.effect("control verifies the tab and emits a remote history command", () =>
+    Effect.gen(function* () {
+      const threadId = freshThreadId();
+      const manager = yield* PreviewManager.PreviewManager;
+      const collector = yield* collectEvents;
+      const opened = yield* manager.open({ threadId, url: "http://localhost:5173" });
+
+      yield* manager.control({ threadId, tabId: opened.tabId, control: "back" });
+
+      const events = yield* collector.drain;
+      expect(events.map((event) => event.type)).toEqual(["opened", "controlled"]);
+      expect(events[1]).toMatchObject({
+        threadId,
+        tabId: opened.tabId,
+        control: "back",
+      });
+    }),
+  );
+
+  it.effect("carries the current URL for a remote system-browser command", () =>
+    Effect.gen(function* () {
+      const threadId = freshThreadId();
+      const manager = yield* PreviewManager.PreviewManager;
+      const collector = yield* collectEvents;
+      const opened = yield* manager.open({ threadId, url: "http://localhost:5173" });
+
+      yield* manager.control({
+        threadId,
+        tabId: opened.tabId,
+        control: "openInSystemBrowser",
+        url: "http://localhost:5173",
+      });
+
+      const events = yield* collector.drain;
+      expect(events[1]).toMatchObject({
+        type: "controlled",
+        control: "openInSystemBrowser",
+        url: "http://localhost:5173",
+      });
+    }),
+  );
+
+  it.effect("carries direct page interaction arguments to the desktop client", () =>
+    Effect.gen(function* () {
+      const threadId = freshThreadId();
+      const manager = yield* PreviewManager.PreviewManager;
+      const collector = yield* collectEvents;
+      const opened = yield* manager.open({ threadId, url: "http://localhost:5173" });
+
+      yield* manager.control({ threadId, tabId: opened.tabId, control: "click", x: 12, y: 34 });
+      yield* manager.control({ threadId, tabId: opened.tabId, control: "type", text: "hello" });
+      yield* manager.control({ threadId, tabId: opened.tabId, control: "press", key: "Enter" });
+      yield* manager.control({ threadId, tabId: opened.tabId, control: "scroll", deltaY: 640 });
+
+      const events = yield* collector.drain;
+      expect(events.slice(1)).toMatchObject([
+        { type: "controlled", control: "click", x: 12, y: 34 },
+        { type: "controlled", control: "type", text: "hello" },
+        { type: "controlled", control: "press", key: "Enter" },
+        { type: "controlled", control: "scroll", deltaY: 640 },
+      ]);
+    }),
+  );
+
+  it.effect("reports a desktop screenshot to remote clients without exposing its local path", () =>
+    Effect.gen(function* () {
+      const threadId = freshThreadId();
+      const manager = yield* PreviewManager.PreviewManager;
+      const collector = yield* collectEvents;
+      const opened = yield* manager.open({ threadId, url: "http://localhost:5173" });
+
+      yield* manager.reportScreenshot({
+        threadId,
+        tabId: opened.tabId,
+        artifactId: "browser-screenshot-test",
+        dataUrl: "data:image/png;base64,AAAA",
+      });
+
+      const events = yield* collector.drain;
+      expect(events.map((event) => event.type)).toEqual(["opened", "screenshot"]);
+      expect(events[1]).toMatchObject({
+        threadId,
+        tabId: opened.tabId,
+        artifactId: "browser-screenshot-test",
+        dataUrl: "data:image/png;base64,AAAA",
+      });
+      expect(events[1]).not.toHaveProperty("path");
+    }),
+  );
+
+  it.effect("reports the desktop recording state on the same preview session", () =>
+    Effect.gen(function* () {
+      const threadId = freshThreadId();
+      const manager = yield* PreviewManager.PreviewManager;
+      const collector = yield* collectEvents;
+      const opened = yield* manager.open({ threadId, url: "http://localhost:5173" });
+
+      yield* manager.reportRecording({
+        threadId,
+        tabId: opened.tabId,
+        recording: true,
+        recordingStartedAt: "2026-01-01T00:00:01.000Z",
+      });
+
+      const listed = yield* manager.list({ threadId });
+      expect(listed.sessions[0]).toMatchObject({
+        tabId: opened.tabId,
+        recording: true,
+        recordingStartedAt: "2026-01-01T00:00:01.000Z",
+      });
+      const events = yield* collector.drain;
+      expect(events.map((event) => event.type)).toEqual(["opened", "recording"]);
+      expect(events[1]).toMatchObject({
+        threadId,
+        tabId: opened.tabId,
+        type: "recording",
+        snapshot: { recording: true },
+      });
+    }),
+  );
+
+  it.effect("reports a constrained remote annotation result", () =>
+    Effect.gen(function* () {
+      const threadId = freshThreadId();
+      const manager = yield* PreviewManager.PreviewManager;
+      const collector = yield* collectEvents;
+      const opened = yield* manager.open({ threadId, url: "http://localhost:5173" });
+
+      yield* manager.reportAnnotation({
+        threadId,
+        tabId: opened.tabId,
+        annotation: {
+          annotationId: "annotation-test",
+          pageUrl: "http://localhost:5173",
+          pageTitle: "Home",
+          comment: "Check button",
+          elements: [
+            {
+              id: "element-1",
+              tagName: "button",
+              selector: "#submit",
+              componentName: "SubmitButton",
+              htmlPreview: "<button>Send</button>",
+            },
+          ],
+          regionCount: 0,
+          strokeCount: 0,
+          screenshot: null,
+          submission: "attach",
+        },
+      });
+
+      const events = yield* collector.drain;
+      expect(events.map((event) => event.type)).toEqual(["opened", "annotation"]);
+      expect(events[1]).toMatchObject({
+        type: "annotation",
+        annotation: { annotationId: "annotation-test", elements: [{ selector: "#submit" }] },
+      });
+      expect(events[1]).not.toHaveProperty("path");
+    }),
+  );
+
   it.effect("resizes a tab and preserves its viewport across navigation reports", () =>
     Effect.gen(function* () {
       const threadId = freshThreadId();

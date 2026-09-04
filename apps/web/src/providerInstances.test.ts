@@ -85,6 +85,14 @@ describe("isProviderInstancePickerVisible", () => {
     expect(enabledEntry && isProviderInstancePickerVisible(enabledEntry)).toBe(true);
     expect(disabledEntry && isProviderInstancePickerVisible(disabledEntry)).toBe(false);
   });
+
+  it("never shows multica instances — its models merged into BYOK", () => {
+    const [multicaEntry] = deriveProviderInstanceEntries([
+      provider({ provider: ProviderDriverKind.make("multica"), instanceId: "multica" }),
+    ]);
+
+    expect(multicaEntry && isProviderInstancePickerVisible(multicaEntry)).toBe(false);
+  });
 });
 
 describe("applyProviderInstanceSettings", () => {

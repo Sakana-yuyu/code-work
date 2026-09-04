@@ -580,6 +580,69 @@ export async function waitForStartedServerThread(
   });
 }
 
+/**
+ * Resolves once a checkpoint rewind to `targetTurnCount` has landed in the
+ * thread read model (the `thread.reverted` projection), or reports why it did
+ * not. `startedAt` anchors revert-failure detection: the reactor appends a
+ * `checkpoint.revert.failed` activity instead of throwing, so any such
+ * activity newer than the dispatch is the failure signal.
+ */
+export async function waitForThreadRewound(
+  threadRef: ScopedThreadRef,
+  targetTurnCount: number,
+  startedAt: string,
+  timeoutMs = 30_000,
+): Promise<"rewound" | "failed" | "timeout"> {
+  const threadAtom = environmentThreadDetails.detailAtom(threadRef);
+  const hasRewound = (thread: Thread | null): boolean =>
+    (thread?.checkpoints ?? []).reduce(
+      (max, checkpoint) => Math.max(max, checkpoint.checkpointTurnCount),
+      0,
+    ) <= targetTurnCount;
+  const hasFailure = (thread: Thread | null): boolean =>
+    (thread?.activities ?? []).some(
+      (activity) => activity.kind === "checkpoint.revert.failed" && activity.createdAt >= startedAt,
+    );
+
+  const thread = appAtomRegistry.get(threadAtom);
+  if (hasFailure(thread)) {
+    return "failed";
+  }
+  if (hasRewound(thread)) {
+    return "rewound";
+  }
+
+  return await new Promise<"rewound" | "failed" | "timeout">((resolve) => {
+    let settled = false;
+    let timeoutId: ReturnType<typeof globalThis.setTimeout> | null = null;
+    const finish = (result: "rewound" | "failed" | "timeout") => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      if (timeoutId !== null) {
+        globalThis.clearTimeout(timeoutId);
+      }
+      unsubscribe();
+      resolve(result);
+    };
+
+    const unsubscribe = appAtomRegistry.subscribe(threadAtom, (thread) => {
+      if (hasFailure(thread)) {
+        finish("failed");
+        return;
+      }
+      if (hasRewound(thread)) {
+        finish("rewound");
+      }
+    });
+
+    timeoutId = globalThis.setTimeout(() => {
+      finish("timeout");
+    }, timeoutMs);
+  });
+}
+
 export interface LocalDispatchSnapshot {
   startedAt: string;
   preparingWorktree: boolean;

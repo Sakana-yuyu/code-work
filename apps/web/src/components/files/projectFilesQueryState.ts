@@ -1,6 +1,8 @@
 import { useAtomRefresh, useAtomValue } from "@effect/atom-react";
 import type {
   EnvironmentId,
+  ProjectCanvasSummary,
+  ProjectListCanvasesResult,
   ProjectListEntriesResult,
   ProjectReadFileResult,
 } from "@codework/contracts";
@@ -19,6 +21,9 @@ const EMPTY_PROJECT_FILE_PATH = "";
 const EMPTY_PROJECT_FILE_QUERY_ATOM = Atom.make(
   AsyncResult.initial<ProjectReadFileResult, never>(false),
 ).pipe(Atom.withLabel("project-file-query:empty"));
+const EMPTY_PROJECT_CANVASES_QUERY_ATOM = Atom.make(
+  AsyncResult.initial<ProjectListCanvasesResult, never>(false),
+).pipe(Atom.withLabel("project-canvases-query:empty"));
 function optimisticFileAtom(environmentId: EnvironmentId, cwd: string, relativePath: string) {
   return projectEnvironment.optimisticFile({ environmentId, cwd, relativePath });
 }
@@ -136,6 +141,23 @@ export function useProjectEntriesQuery(
     isPending: result.waiting,
     refresh,
   };
+}
+
+/**
+ * Project-wide canvas artifacts (`.codework/canvases/**`). Canvases are
+ * excluded from the workspace path index, so this dedicated listing is the
+ * only way clients can enumerate them across threads.
+ */
+export function useProjectCanvasesQuery(
+  environmentId: EnvironmentId | null,
+  cwd: string | null | undefined,
+): ReadonlyArray<ProjectCanvasSummary> {
+  const atom =
+    environmentId !== null && cwd
+      ? projectEnvironment.listCanvases({ environmentId, input: { cwd } })
+      : EMPTY_PROJECT_CANVASES_QUERY_ATOM;
+  const result = useAtomValue(atom);
+  return Option.getOrNull(AsyncResult.value(result))?.canvases ?? [];
 }
 
 /**

@@ -90,6 +90,8 @@ export type ByokBalanceAdapterHealth = typeof ByokBalanceAdapterHealth.Type;
 export const ByokBalanceDashboardAdapter = Schema.Struct({
   adapterId: TrimmedString,
   displayName: Schema.optional(TrimmedString),
+  // Relay endpoint the adapter points at; absent in older server payloads.
+  baseURL: Schema.optionalKey(TrimmedString),
   health: ByokBalanceAdapterHealth,
   /** Full normalized balance result, including the error when health is `error`. */
   balance: ByokBalanceResult,

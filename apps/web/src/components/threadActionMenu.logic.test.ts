@@ -14,6 +14,7 @@ const baseState: ThreadActionMenuState = {
   canSnoozeNow: true,
   isRegeneratingTitle: false,
   isRunning: false,
+  canOpenBeside: true,
   supports: { settlement: true, snooze: true, pinning: true, titleRegeneration: true },
   snoozePresets: [
     {
@@ -56,6 +57,13 @@ describe("buildThreadActionMenuItems", () => {
   it("offers opening the existing thread in a separate window", () => {
     expect(ids(baseState).at(0)).toBe("open-in-split");
     expect(allIds(baseState)).toContain("open-in-split");
+  });
+
+  it("keeps open-beside visible but disabled when the thread is already on screen", () => {
+    const item = buildThreadActionMenuItems({ ...baseState, canOpenBeside: false }).find(
+      (candidate) => candidate.id === "open-in-split",
+    );
+    expect(item).toMatchObject({ label: "Open conversation beside", disabled: true });
   });
 
   it("flips lifecycle labels with thread state", () => {

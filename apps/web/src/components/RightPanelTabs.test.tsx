@@ -112,6 +112,7 @@ function renderTabs(
       onAddDiff={() => undefined}
       onAddFiles={() => undefined}
       onAddAgents={() => undefined}
+      onAddCanvas={() => undefined}
       liveAgentCount={0}
       browserAvailable
       terminalAvailable={false}
@@ -119,6 +120,7 @@ function renderTabs(
       filesAvailable={false}
       pullRequestAvailable={false}
       agentsAvailable={false}
+      canvasAvailable
     >
       <div>content</div>
     </RightPanelTabs>,

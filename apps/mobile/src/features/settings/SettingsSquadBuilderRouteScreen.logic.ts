@@ -56,6 +56,7 @@ export const addSquadBuilderMember = (
       required: true,
       model: "",
       modelBinding: { kind: "team_default" },
+      personaPromptText: "",
       workspaceRoot: "",
       capabilityIdsText: "",
       maxConcurrentTasksText: "1",
@@ -137,10 +138,12 @@ export const buildSquadBuilderRevisionMutationRequest = (
 });
 
 /** Builder 同时展示活动与归档配置，活动项优先，各分组内按最近更新时间排序。 */
+// 两处都用 .sort() on a copy，不用 .toSorted()：Hermes 未实现 ES2023
+// change-by-copy 数组方法。
 export const sortSquadBuilderSquads = (
   squads: ReadonlyArray<CompositionSquad>,
 ): ReadonlyArray<CompositionSquad> =>
-  squads.toSorted(
+  [...squads].sort(
     (left, right) =>
       Number(left.archivedAtUnixMs !== undefined) - Number(right.archivedAtUnixMs !== undefined) ||
       (right.updatedAtUnixMs ?? right.createdAtUnixMs ?? 0) -
@@ -161,7 +164,7 @@ export const resolveSquadBuilderMembers = (
         capabilityIds: [],
         maxConcurrentTasks: 1,
       }))
-    : squad.members.toSorted(
+    : [...squad.members].sort(
         (left, right) => left.order - right.order || left.agentId.localeCompare(right.agentId),
       );
 

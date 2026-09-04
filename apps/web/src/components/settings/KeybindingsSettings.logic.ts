@@ -1,7 +1,6 @@
 import {
   STATIC_KEYBINDING_COMMANDS,
   type KeybindingCommand,
-  type KeybindingShortcut,
   type KeybindingWhenNode,
   type ResolvedKeybindingRule,
   type ResolvedKeybindingsConfig,
@@ -9,6 +8,7 @@ import {
 import {
   DEFAULT_RESOLVED_KEYBINDINGS,
   parseKeybindingWhenExpression,
+  shortcutToKeybindingInput,
 } from "@codework/shared/keybindings";
 
 import { isMacPlatform } from "../../lib/utils";
@@ -44,16 +44,7 @@ export const DEFAULT_WHEN_VARIABLE =
   ) ?? "terminalFocus";
 const KNOWN_WHEN_VARIABLES = new Set(DEFAULT_WHEN_VARIABLES);
 
-export function shortcutToKeybindingInput(shortcut: KeybindingShortcut): string {
-  const parts: string[] = [];
-  if (shortcut.modKey) parts.push("mod");
-  if (shortcut.metaKey) parts.push("meta");
-  if (shortcut.ctrlKey) parts.push("ctrl");
-  if (shortcut.altKey) parts.push("alt");
-  if (shortcut.shiftKey) parts.push("shift");
-  parts.push(shortcut.key === " " ? "space" : shortcut.key === "escape" ? "esc" : shortcut.key);
-  return parts.join("+");
-}
+export { shortcutToKeybindingInput } from "@codework/shared/keybindings";
 
 export function whenAstToExpression(node: KeybindingWhenNode | undefined): string {
   if (!node) return "";

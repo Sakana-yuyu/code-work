@@ -6,8 +6,23 @@ import { FacilitiesPageHeader } from "../components/settings/FacilitiesPageHeade
 import { FacilitiesQuickGuide } from "../components/settings/FacilitiesQuickGuide";
 import { SettingsPageContainer } from "../components/settings/settingsLayout";
 import { t } from "~/i18n";
+import { usePrimaryEnvironment } from "~/state/environments";
+import { useEnvironmentQuery } from "~/state/query";
+import { serverEnvironment } from "~/state/server";
 
 function SettingsAutomationsRoute() {
+  const primaryEnvironment = usePrimaryEnvironment();
+  const environmentId = primaryEnvironment?.environmentId ?? null;
+  // Same atom family and input as CompositionAutomationPanel below — shared cache.
+  const automationsQuery = useEnvironmentQuery(
+    environmentId === null
+      ? null
+      : serverEnvironment.compositionAutomations({ environmentId, input: {} }),
+  );
+  const automationsEmpty =
+    !automationsQuery.isPending &&
+    automationsQuery.error === null &&
+    (automationsQuery.data?.automations ?? []).length === 0;
   return (
     <SettingsPageContainer width="wide" className="gap-9">
       <FacilitiesPageHeader
@@ -15,7 +30,7 @@ function SettingsAutomationsRoute() {
         title={t("settings.automations")}
         description={t("automationCenter.description")}
       >
-        <FacilitiesQuickGuide guideId="automations" />
+        <FacilitiesQuickGuide guideId="automations" empty={automationsEmpty} />
       </FacilitiesPageHeader>
       <CompositionAutomationPanel />
     </SettingsPageContainer>

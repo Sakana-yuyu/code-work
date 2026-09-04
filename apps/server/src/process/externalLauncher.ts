@@ -426,23 +426,31 @@ const buildAvailableEditors = Effect.fn("externalLauncher.buildAvailableEditors"
   never,
   FileSystem.FileSystem | Path.Path | ChildProcessSpawner.ChildProcessSpawner
 > {
-  const available: EditorId[] = [];
+  // Availability probes are independent PATH walks; run them concurrently
+  // because server.getConfig blocks on this scan for every client connect and
+  // the sequential walk summed to seconds on Windows hosts. EDITORS order is
+  // restored from the per-editor results. The callback's return type is
+  // annotated because the beta infers the ternary branches as unknown.
+  const available = yield* Effect.forEach(
+    EDITORS,
+    (
+      editor,
+    ): Effect.Effect<
+      Option.Option<EditorId>,
+      never,
+      FileSystem.FileSystem | Path.Path | ChildProcessSpawner.ChildProcessSpawner
+    > =>
+      editor.commands === null
+        ? Effect.map(resolveUsableFileManagerCommand(platform, env), (command) =>
+            command === undefined ? Option.none() : Option.some(editor.id),
+          )
+        : Effect.map(resolveAvailableCommand(editor.commands, env), (command) =>
+            Option.isSome(command) ? Option.some(editor.id) : Option.none(),
+          ),
+    { concurrency: "unbounded" },
+  );
 
-  for (const editor of EDITORS) {
-    if (editor.commands === null) {
-      if ((yield* resolveUsableFileManagerCommand(platform, env)) !== undefined) {
-        available.push(editor.id);
-      }
-      continue;
-    }
-
-    const command = yield* resolveAvailableCommand(editor.commands, env);
-    if (Option.isSome(command)) {
-      available.push(editor.id);
-    }
-  }
-
-  return available;
+  return available.filter(Option.isSome).map((entry) => entry.value);
 });
 
 const resolveBrowserLaunch = Effect.fn("externalLauncher.resolveBrowserLaunch")(function* (
@@ -482,7 +490,14 @@ const resolveFileManagerRevealKind = Effect.fn("externalLauncher.resolveFileMana
 // Expiry uses the monotonic clock (Clock.currentTimeNanos), matching the
 // command-resolution cache in @codework/shared/shell, so a backward wall-clock
 // adjustment cannot keep an expired entry alive.
-const EDITOR_DISCOVERY_CACHE_TTL_NANOS = 60_000_000_000n;
+//
+// The installed-editor set changes only when the user installs software, so
+// the window is minutes, not seconds: with a short TTL, connect-time getConfig
+// traffic re-walked PATH every expiry boundary — hundreds of stat probes per
+// minute on hosts whose filesystem stats cost milliseconds (antivirus filter
+// drivers). The window is deliberately longer than the command-resolution
+// TTL so a discovery miss always sees a cold per-command walk.
+const EDITOR_DISCOVERY_CACHE_TTL_NANOS = 600_000_000_000n;
 
 interface EditorDiscoveryCacheEntry {
   readonly editors: ReadonlyArray<EditorId>;

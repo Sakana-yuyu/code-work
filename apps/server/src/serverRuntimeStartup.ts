@@ -40,6 +40,7 @@ import * as CompositionMcpRuntimeService from "./composition/CompositionMcpRunti
 import * as CompositionGoalLoopRetryStartupRecovery from "./composition/CompositionGoalLoopRetryStartupRecovery.ts";
 import * as CompositionToolInvocationStartupRecovery from "./composition/CompositionToolInvocationStartupRecovery.ts";
 import * as CompositionRunStartStartupRecovery from "./composition/CompositionRunStartStartupRecovery.ts";
+import * as SpecWorkflowService from "./specWorkflow/SpecWorkflowService.ts";
 import { runCompositionRunStartRecoveryScheduler } from "./composition/CompositionRunStartRecoveryScheduler.ts";
 import * as CompositionAgentDriverRegistry from "./composition/CompositionAgentDriverRegistry.ts";
 import * as CompositionIdeSessionRegistry from "./composition/CompositionIdeSessionRegistry.ts";
@@ -426,6 +427,24 @@ export const awaitRunStartRecovery = Effect.gen(function* () {
   return outcome.success;
 });
 
+export const awaitSpecWorkflowRecovery = Effect.gen(function* () {
+  const service = yield* Effect.serviceOption(SpecWorkflowService.SpecWorkflowService);
+  if (Option.isNone(service)) return;
+  const outcome = yield* Effect.result(
+    runStartupPhase("spec-workflow.recover", service.value.recover()),
+  );
+  if (outcome._tag === "Failure") {
+    // 关联缺失会被单项跳过并保留告警；基础持久化失败也不应阻塞启动，下一次启动继续扫描。
+    yield* Effect.logWarning("Spec Workflow 启动恢复失败，已跳过且不阻塞启动。", {
+      cause: outcome.failure,
+    });
+    return;
+  }
+  if (outcome.success.scanned > 0) {
+    yield* Effect.logInfo("Spec Workflow 启动恢复扫描完成", outcome.success);
+  }
+});
+
 export const runCompositionRunStartStartupSequence = <
   A,
   EProvider,
@@ -772,6 +791,7 @@ export const make = (options?: StartupOptions) =>
         recover: awaitRunStartRecovery,
       });
       yield* watchRunStartRecoveryTargets(runStartRecoveryReceipt, reconcileProviderSessions);
+      yield* awaitSpecWorkflowRecovery;
 
       const welcomeBase = yield* resolveWelcomeBase;
       const environment = yield* serverEnvironment.getDescriptor;

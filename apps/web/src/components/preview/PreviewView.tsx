@@ -51,6 +51,7 @@ import { shouldShowPreviewEmptyState } from "./previewEmptyStateLogic";
 import { BrowserSurfaceSlot } from "~/browser/BrowserSurfaceSlot";
 import { useBrowserSurfaceStore } from "~/browser/browserSurfaceStore";
 import { usePreviewSession } from "./usePreviewSession";
+import { toRemoteAnnotation } from "./usePreviewBridge";
 import { ZoomIndicator } from "./ZoomIndicator";
 import { AgentBrowserCursor } from "./AgentBrowserCursor";
 import {
@@ -111,6 +112,14 @@ export function PreviewView({
     : null;
   const open = useAtomCommand(previewEnvironment.open);
   const resize = useAtomCommand(previewEnvironment.resize, "preview viewport resize");
+  const reportScreenshot = useAtomCommand(
+    previewEnvironment.reportScreenshot,
+    "preview screenshot report",
+  );
+  const reportAnnotation = useAtomCommand(
+    previewEnvironment.reportAnnotation,
+    "preview annotation report",
+  );
 
   usePreviewSession(threadRef);
 
@@ -414,6 +423,19 @@ export function PreviewView({
       }
       void bridge.captureScreenshot(runtimeTabId).then(
         (artifact) => {
+          if (artifact.dataUrl !== undefined) {
+            void reportScreenshot({
+              environmentId: threadRef.environmentId,
+              input: {
+                threadId: threadRef.threadId,
+                tabId,
+                artifactId: artifact.id,
+                dataUrl: artifact.dataUrl,
+                ...(artifact.width === undefined ? {} : { width: artifact.width }),
+                ...(artifact.height === undefined ? {} : { height: artifact.height }),
+              },
+            });
+          }
           const revealAction = {
             children: revealInFileExplorerLabel(navigator.platform),
             onClick: () => void bridge.revealArtifact(artifact.path),
@@ -543,11 +565,11 @@ export function PreviewView({
         },
       );
     },
-    [recordingRuntimeTabId, runtimeTabId, tabId, threadRef],
+    [recordingRuntimeTabId, reportScreenshot, runtimeTabId, tabId, threadRef],
   );
 
   const handlePickElement = useCallback(() => {
-    if (!previewBridge || !runtimeTabId) return;
+    if (!previewBridge || !runtimeTabId || !tabId) return;
     if (pickActiveRef.current) {
       void previewBridge.cancelPickElement(runtimeTabId).catch(() => undefined);
       return;
@@ -566,6 +588,14 @@ export function PreviewView({
         const result = await previewBridge.pickElement(runtimeTabId);
         if (!result) return;
         const { annotation, submission } = result;
+        void reportAnnotation({
+          environmentId: threadRef.environmentId,
+          input: {
+            threadId: threadRef.threadId,
+            tabId,
+            annotation: toRemoteAnnotation(result),
+          },
+        });
         addPreviewAnnotation(threadRef, annotation);
         let screenshotFile: File | null = null;
         try {
@@ -615,7 +645,15 @@ export function PreviewView({
         }
       }
     })();
-  }, [addImage, addPreviewAnnotation, onSendAnnotation, runtimeTabId, threadRef]);
+  }, [
+    addImage,
+    addPreviewAnnotation,
+    onSendAnnotation,
+    reportAnnotation,
+    runtimeTabId,
+    tabId,
+    threadRef,
+  ]);
 
   // If the active tab changes mid-pick (close, thread switch, hot restart),
   // tell main to tear down the in-flight session AND reset our local toggle

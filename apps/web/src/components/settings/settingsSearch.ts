@@ -23,6 +23,8 @@ export interface SettingsSearchItem {
   readonly title: string;
   readonly to: SettingsPath;
   readonly targetId?: string;
+  /** 用户可能使用的普通说法，补足标题中的技术术语。 */
+  readonly keywords?: ReadonlyArray<string>;
   // Its row only renders in the desktop app, so a browser result would land on
   // an anchor that isn't there.
   readonly desktopOnly?: boolean;
@@ -61,16 +63,19 @@ export const SETTINGS_SEARCH_ITEMS = [
     id: "composition-squads",
     title: "squadBuilder.title",
     to: "/settings/squads",
+    keywords: ["team", "teams", "agent team", "团队", "AI 团队", "协作"],
   },
   {
     id: "composition-automations",
     title: "automationCenter.title",
     to: "/settings/automations",
+    keywords: ["automation", "scheduled", "schedule", "自动化", "定时", "任务"],
   },
   {
     id: "workspace-scripts",
     title: "workspaceScripts.title",
     to: "/settings/workspace-scripts",
+    keywords: ["script", "scripts", "project script", "脚本", "项目脚本"],
   },
   {
     id: "color-scheme",
@@ -232,31 +237,63 @@ export const SETTINGS_SEARCH_ITEMS = [
     id: "keybindings",
     title: "settings.keybindings",
     to: "/settings/keybindings",
+    keywords: ["shortcut", "hotkey", "快捷键", "快捷方式", "按键"],
   },
   {
     id: "providers",
     title: "settings.providers",
     to: "/settings/providers",
+    keywords: [
+      "AI",
+      "AI service",
+      "model",
+      "models",
+      "provider",
+      "模型",
+      "模型来源",
+      "AI 服务",
+      "供应商",
+    ],
   },
   {
     id: "facility-runtime",
     title: "settings.runtime",
     to: "/settings/runtime",
+    keywords: ["agent runtime", "run agent", "runtime", "运行 Agent", "运行方式"],
   },
   {
     id: "facility-delegation",
     title: "settings.delegation",
     to: "/settings/delegation",
+    keywords: ["background task", "delegate", "multitask", "后台任务", "并行任务", "委派"],
   },
   {
     id: "facility-byok",
     title: "settings.byok",
     to: "/settings/byok",
+    keywords: [
+      "API key",
+      "api keys",
+      "own key",
+      "BYOK",
+      "自定义模型服务",
+      "模型服务",
+      "自带密钥",
+      "API 密钥",
+      "模型接口",
+    ],
   },
   {
     id: "local-plugins",
     title: "localPlugins.title",
     to: "/settings/local-plugins",
+    keywords: ["plugin", "plugins", "插件"],
+  },
+  {
+    id: "local-plugin-store",
+    title: "localPlugins.store.title",
+    to: "/settings/local-plugins",
+    targetId: "local-plugin-store",
   },
   {
     id: "agent-browser-access",
@@ -292,11 +329,25 @@ export const SETTINGS_SEARCH_ITEMS = [
     id: "source-control",
     title: "settings.sourceControlSetting",
     to: "/settings/source-control",
+    keywords: ["git", "repository", "repo", "代码仓库", "版本控制", "提交"],
   },
   {
     id: "remote-environments",
     title: "settings.remoteEnvironments",
     to: "/settings/connections",
+    keywords: [
+      "remote",
+      "device",
+      "server",
+      "network",
+      "connection",
+      "connections",
+      "远程",
+      "设备",
+      "服务器",
+      "网络",
+      "连接",
+    ],
   },
   {
     id: "archive",
@@ -344,10 +395,13 @@ export function searchSettings(
     .filter(
       (item) =>
         (isElectron || item.desktopOnly !== true) &&
-        // Match the English source as well as the translated title, so an
-        // English query still finds a setting under a translated locale.
-        (normalizeSearchText(CATALOGS.en[item.title] ?? item.title).includes(normalizedQuery) ||
-          normalizeSearchText(t(item.title)).includes(normalizedQuery)),
+        [
+          // Match the English source as well as the translated title, so an
+          // English query still finds a setting under a translated locale.
+          CATALOGS.en[item.title] ?? item.title,
+          t(item.title),
+          ...(item.keywords ?? []),
+        ].some((value) => normalizeSearchText(value).includes(normalizedQuery)),
     )
-    .map((item) => ({ ...item, title: t(item.title) }));
+    .map(({ keywords: _keywords, ...item }) => ({ ...item, title: t(item.title) }));
 }

@@ -843,6 +843,7 @@ const delegationSubmits: Array<{
   instanceId: string;
   task: string;
   subagentType?: string | undefined;
+  origin?: { readonly threadId: string; readonly turnId?: string } | undefined;
 }> = [];
 let nextDelegationSnapshot: ByokDelegationSnapshot = {
   id: "delegation-tool-1",
@@ -910,6 +911,48 @@ it.layer(DelegateTestLayer, { excludeTestServices: true })("delegate_task tool",
       expect(delegationSubmits).toEqual([
         { instanceId: "instance-1", task: "子任务文本", subagentType: "explore" },
       ]);
+    }),
+  );
+
+  it.effect("forwards the chat thread origin to the delegation service", () =>
+    Effect.gen(function* () {
+      delegationSubmits.length = 0;
+      const broker = yield* ToolBroker.ToolBroker;
+      const result = yield* broker.invoke({
+        ...baseInput("C:/trusted/workspace"),
+        agentId: "provider:instance-1",
+        threadId: "thread-delegate-1",
+        canonicalToolName: "delegate_task",
+        arguments: { task: "origin linked task" },
+        idempotencyKey: "delegate-origin-1",
+        capabilityGrantIds: ["t3.delegate_task"],
+      });
+
+      expect(result.status).toBe("succeeded");
+      expect(delegationSubmits).toHaveLength(1);
+      expect(delegationSubmits[0]).toMatchObject({
+        instanceId: "instance-1",
+        task: "origin linked task",
+        origin: { threadId: "thread-delegate-1", turnId: "run-1" },
+      });
+    }),
+  );
+
+  it.effect("omits origin when the invoking thread is unknown", () =>
+    Effect.gen(function* () {
+      delegationSubmits.length = 0;
+      const broker = yield* ToolBroker.ToolBroker;
+      yield* broker.invoke({
+        ...baseInput("C:/trusted/workspace"),
+        agentId: "provider:instance-1",
+        canonicalToolName: "delegate_task",
+        arguments: { task: "anonymous task" },
+        idempotencyKey: "delegate-no-origin-1",
+        capabilityGrantIds: ["t3.delegate_task"],
+      });
+
+      expect(delegationSubmits).toHaveLength(1);
+      expect(delegationSubmits[0]).not.toHaveProperty("origin");
     }),
   );
 

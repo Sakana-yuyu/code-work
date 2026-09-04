@@ -54,6 +54,10 @@ describe("buildDayColumns", () => {
           ["codex" as const, { costUsd: 10, totalTokens: 100 }],
           ["claude" as const, { costUsd: 20, totalTokens: 200 }],
         ]),
+        byModel: new Map([
+          ["codex codex-max", 100],
+          ["claude claude-fable-5", 200],
+        ]),
       },
     ],
     // 2026-08-02 is deliberately absent: a day with no activity.
@@ -64,6 +68,7 @@ describe("buildDayColumns", () => {
         costUsd: 5,
         totalTokens: 50,
         byProvider: new Map([["claude" as const, { costUsd: 5, totalTokens: 50 }]]),
+        byModel: new Map([["claude claude-fable-5", 50]]),
       },
     ],
   ]);
@@ -120,6 +125,7 @@ describe("hourly chart columns", () => {
           costUsd: 4,
           totalTokens: 40,
           byProvider: new Map([["codex" as const, { costUsd: 4, totalTokens: 40 }]]),
+          byModel: new Map([["codex codex-max", 40]]),
         },
       ],
     ]);

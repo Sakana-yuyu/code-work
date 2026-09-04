@@ -191,6 +191,9 @@ export function ProviderModelsSection({
       <div className="mt-1 text-xs text-muted-foreground">
         {t("providerModelsAvailable", { count: models.length })}
       </div>
+      <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+        {t("providerModels.description")}
+      </p>
       <div ref={listRef} className="mt-2 max-h-40 overflow-y-auto pb-1">
         {orderedModels.map((model, index) => {
           const caps = model.capabilities;
@@ -387,26 +390,40 @@ export function ProviderModelsSection({
         })}
       </div>
 
-      <div className="mt-3 flex flex-col gap-2 sm:flex-row">
-        <Input
-          id={`provider-instance-${instanceId}-custom-model`}
-          value={input}
-          onChange={(event) => {
-            setInput(event.target.value);
-            if (error) setError(null);
-          }}
-          onKeyDown={(event) => {
-            if (event.key !== "Enter") return;
-            event.preventDefault();
-            handleAdd();
-          }}
-          placeholder={driverKind ? CUSTOM_MODEL_PLACEHOLDER_BY_KIND[driverKind] : t("modelSlug")}
-          spellCheck={false}
-        />
-        <Button className="shrink-0" variant="outline" onClick={handleAdd}>
-          <PlusIcon className="size-3.5" />
-          {t("add")}
-        </Button>
+      <div className="mt-3 grid gap-1.5">
+        <div>
+          <label
+            htmlFor={`provider-instance-${instanceId}-custom-model`}
+            className="text-xs font-medium text-foreground"
+          >
+            {t("providerModels.addCustomTitle")}
+          </label>
+          <p className="mt-0.5 text-xs text-muted-foreground">
+            {t("providerModels.addCustomDescription")}
+          </p>
+        </div>
+        <div className="flex flex-col gap-2 sm:flex-row">
+          <Input
+            id={`provider-instance-${instanceId}-custom-model`}
+            aria-label={t("providerModels.addCustomTitle")}
+            value={input}
+            onChange={(event) => {
+              setInput(event.target.value);
+              if (error) setError(null);
+            }}
+            onKeyDown={(event) => {
+              if (event.key !== "Enter") return;
+              event.preventDefault();
+              handleAdd();
+            }}
+            placeholder={driverKind ? CUSTOM_MODEL_PLACEHOLDER_BY_KIND[driverKind] : t("modelSlug")}
+            spellCheck={false}
+          />
+          <Button className="shrink-0" variant="outline" onClick={handleAdd}>
+            <PlusIcon className="size-3.5" />
+            {t("add")}
+          </Button>
+        </div>
       </div>
 
       {error ? <p className="mt-2 text-xs text-destructive">{error}</p> : null}

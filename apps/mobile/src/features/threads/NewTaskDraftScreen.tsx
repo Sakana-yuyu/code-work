@@ -734,7 +734,9 @@ export function NewTaskDraftScreen(props: {
       modelSelection,
       envMode: workspaceMode,
       branch: creationBranch,
-      worktreePath: workspaceMode === "worktree" ? null : selectedWorktreePath,
+      // PR 检出可能已经准备好了独立 worktree。保留路径，让服务端把新线程
+      // 绑定到这个工作区，而不是再次创建临时 worktree。
+      worktreePath: selectedWorktreePath,
       startFromOrigin,
       runtimeMode,
       interactionMode,

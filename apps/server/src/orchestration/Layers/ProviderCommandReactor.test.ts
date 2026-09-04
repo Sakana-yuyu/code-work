@@ -628,6 +628,9 @@ describe("ProviderCommandReactor", () => {
         ? providerRequest.input
         : undefined;
     expect(providerInput).toContain("Keep the migration reversible");
+    expect(providerInput).toContain("状态：执行中");
+    expect(providerInput).toContain("累计用时：");
+    expect(providerInput).toContain("token 用量：0");
     expect(providerInput).toContain("show the next safe step");
 
     const thread = (await harness.readModel()).threads.find((entry) => entry.id === threadId);

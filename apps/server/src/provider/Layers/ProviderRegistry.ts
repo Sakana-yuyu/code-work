@@ -29,6 +29,7 @@ import {
   type ServerProvider,
   type ServerProviderUpdateState,
 } from "@codework/contracts";
+import { HostProcessPlatform } from "@codework/shared/hostProcess";
 import * as Cause from "effect/Cause";
 import * as Effect from "effect/Effect";
 import * as Equal from "effect/Equal";
@@ -42,7 +43,11 @@ import * as Semaphore from "effect/Semaphore";
 
 import { ServerConfig } from "../../config.ts";
 import { ProviderInstanceRegistry } from "../Services/ProviderInstanceRegistry.ts";
-import { ProviderRegistry, type ProviderRegistryShape } from "../Services/ProviderRegistry.ts";
+import {
+  ProviderRegistry,
+  type ProviderMaintenanceActionKind,
+  type ProviderRegistryShape,
+} from "../Services/ProviderRegistry.ts";
 import {
   hydrateCachedProvider,
   isCachedProviderCorrelated,
@@ -289,8 +294,15 @@ export const ProviderRegistryLive = Layer.effect(
       ),
     );
     const providersRef = yield* Ref.make<ReadonlyArray<ServerProvider>>(cachedProviders);
+    const hostPlatform = yield* HostProcessPlatform;
     const maintenanceActionStatesRef = yield* Ref.make<
-      ReadonlyMap<ProviderInstanceId, { readonly update?: ServerProviderUpdateState | undefined }>
+      ReadonlyMap<
+        ProviderInstanceId,
+        {
+          readonly update?: ServerProviderUpdateState | undefined;
+          readonly install?: ServerProviderUpdateState | undefined;
+        }
+      >
     >(new Map());
 
     // Live-source registry — the dynamic counterpart to the boot-time
@@ -333,14 +345,39 @@ export const ProviderRegistryLive = Layer.effect(
       provider: ServerProvider,
     ) {
       const maintenanceActionStates = yield* Ref.get(maintenanceActionStatesRef);
-      const updateState = maintenanceActionStates.get(provider.instanceId)?.update;
-      if (!updateState) {
-        const { updateState: _updateState, ...providerWithoutUpdateState } = provider;
-        return providerWithoutUpdateState;
+      const actions = maintenanceActionStates.get(provider.instanceId);
+      // Install affordances are server-derived on every merge: incoming
+      // snapshots never carry them, so stale persisted values never surface.
+      const {
+        updateState: _updateState,
+        installState: _installState,
+        canInstall: _canInstall,
+        ...baseProvider
+      } = provider;
+      const capabilities = yield* getProviderMaintenanceCapabilitiesForInstance(
+        provider.instanceId,
+        provider.driver,
+      );
+      // The install channel is platform-gated (e.g. Grok Build's bash-only
+      // installer), so the affordance only appears where it can actually run.
+      const installVariant =
+        capabilities.install === null
+          ? null
+          : hostPlatform === "win32"
+            ? capabilities.install.win32
+            : capabilities.install.posix;
+      const canInstall = !baseProvider.installed && installVariant !== null;
+      const withInstallAffordances = {
+        ...baseProvider,
+        ...(actions?.install ? { installState: actions.install } : {}),
+        ...(canInstall ? { canInstall } : {}),
+      };
+      if (!actions?.update) {
+        return withInstallAffordances;
       }
       return {
-        ...provider,
-        updateState,
+        ...withInstallAffordances,
+        updateState: actions.update,
       };
     });
 
@@ -413,7 +450,7 @@ export const ProviderRegistryLive = Layer.effect(
     const setProviderMaintenanceActionState = Effect.fn("setProviderMaintenanceActionState")(
       function* (input: {
         readonly instanceId: ProviderInstanceId;
-        readonly action: "update";
+        readonly action: ProviderMaintenanceActionKind;
         readonly state: ServerProviderUpdateState | null;
       }) {
         yield* Ref.update(maintenanceActionStatesRef, (previous) => {

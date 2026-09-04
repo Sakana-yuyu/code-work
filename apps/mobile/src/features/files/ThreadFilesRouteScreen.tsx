@@ -1,15 +1,25 @@
 import { NativeHeaderToolbar, NativeStackScreenOptions } from "../../native/StackHeader";
-import { StackActions, useNavigation, type StaticScreenProps } from "@react-navigation/native";
+import {
+  StackActions,
+  useNavigation,
+  usePreventRemove,
+  type StaticScreenProps,
+} from "@react-navigation/native";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ActivityIndicator, Platform, View } from "react-native";
+import { ActivityIndicator, Alert, Platform, Pressable, ScrollView, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Svg, { Defs, LinearGradient, Rect, Stop } from "react-native-svg";
+import {
+  isAtomCommandInterrupted,
+  squashAtomCommandFailure,
+} from "@codework/client-runtime/state/runtime";
 import {
   EnvironmentId,
   type ProjectListEntriesResult,
   type ProjectReadFileResult,
   ThreadId,
 } from "@codework/contracts";
+import { isCodeworkCanvasArtifactPath, parseCanvasDocument } from "@codework/shared/canvas";
 
 import { AndroidScreenHeader } from "../../components/AndroidScreenHeader";
 import { SymbolView } from "../../components/AppSymbol";
@@ -24,6 +34,7 @@ import { useThreadSelection } from "../../state/use-thread-selection";
 import { useSelectedThreadWorktree } from "../../state/use-selected-thread-worktree";
 import { useEnvironmentQuery } from "../../state/query";
 import { projectEnvironment } from "../../state/projects";
+import { useAtomCommand } from "../../state/use-atom-command";
 import {
   useAdaptiveWorkspaceLayout,
   useAdaptiveWorkspacePaneRole,
@@ -44,6 +55,7 @@ import { SourceFileSurface } from "./SourceFileSurface";
 import { ThreadFileNavigatorPane } from "./thread-file-navigator-pane";
 import { WorkspaceFileImagePreview } from "./WorkspaceFileImagePreview";
 import { WorkspaceFileWebPreview } from "./WorkspaceFileWebPreview";
+import { canEditWorkspaceFile, type FileViewMode } from "./fileEditing";
 import {
   basename,
   isBrowserPreviewFile,
@@ -53,8 +65,6 @@ import {
 } from "./filePath";
 import { useWorkspaceFileAssetUrl } from "./workspaceFileAssetUrl";
 import { t } from "../../i18n";
-
-type FileViewMode = "preview" | "source";
 
 function firstRouteParam(value: string | string[] | undefined): string | null {
   if (Array.isArray(value)) {
@@ -156,6 +166,174 @@ function FileContent(props: {
         />
       )}
     </View>
+  );
+}
+
+function CanvasFileContent(props: {
+  readonly fileContents: string | null;
+  readonly fileError: string | null;
+  readonly relativePath: string;
+  readonly truncated: boolean;
+  readonly onRefresh: () => Promise<void> | void;
+  readonly onOpenFile: (path: string, line?: number) => void;
+}) {
+  const document = props.fileContents ? parseCanvasDocument(props.fileContents) : null;
+
+  if (props.fileError && props.fileContents === null) {
+    return (
+      <View className="flex-1 items-center justify-center bg-sheet px-6">
+        <EmptyState title={t("fileUnavailable")} detail={props.fileError} />
+      </View>
+    );
+  }
+
+  if (props.fileContents === null) {
+    return (
+      <View className="flex-1 items-center justify-center gap-3 bg-sheet px-6">
+        <ActivityIndicator />
+        <Text className="text-center text-sm text-foreground-muted">{t("loadingFile")}</Text>
+      </View>
+    );
+  }
+
+  if (document === null) {
+    return (
+      <View className="flex-1 items-center justify-center bg-sheet px-6">
+        <EmptyState title={t("canvas.invalid")} detail={props.relativePath} />
+      </View>
+    );
+  }
+
+  return (
+    <ScrollView className="flex-1 bg-sheet" contentContainerClassName="gap-3 px-4 pb-8 pt-4">
+      {props.truncated ? (
+        <View className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 dark:border-amber-900/60 dark:bg-amber-950/40">
+          <Text className="text-xs font-codework-bold text-amber-700 dark:text-amber-300">
+            {t("partialFile")}
+          </Text>
+        </View>
+      ) : null}
+      <View className="gap-2 border-b border-border pb-4">
+        <Text className="text-2xs font-codework-bold uppercase text-foreground-muted">
+          {t("canvas.agentGenerated")}
+        </Text>
+        <Text className="text-2xl font-codework-bold text-foreground">{document.title}</Text>
+        {document.summary ? (
+          <Text selectable className="text-sm leading-relaxed text-foreground-secondary">
+            {document.summary}
+          </Text>
+        ) : null}
+      </View>
+
+      {document.blocks.length === 0 ? (
+        <Text className="text-sm text-foreground-muted">{t("canvas.noContent")}</Text>
+      ) : (
+        document.blocks.map((block) => {
+          switch (block.type) {
+            case "stat":
+              return (
+                <View
+                  key={JSON.stringify(block)}
+                  className="gap-1 rounded-2xl border border-border bg-card px-4 py-3"
+                >
+                  <Text className="text-xs text-foreground-muted">{block.label}</Text>
+                  <Text
+                    selectable
+                    className="text-2xl font-codework-bold tabular-nums text-foreground"
+                  >
+                    {block.value}
+                  </Text>
+                </View>
+              );
+            case "section":
+              return (
+                <View
+                  key={JSON.stringify(block)}
+                  className="gap-1.5 rounded-2xl border border-border bg-card/60 p-4"
+                >
+                  <Text className="text-sm font-codework-bold text-foreground">
+                    {block.heading}
+                  </Text>
+                  <Text selectable className="text-sm leading-relaxed text-foreground-secondary">
+                    {block.body}
+                  </Text>
+                </View>
+              );
+            case "file":
+              return (
+                <View
+                  key={JSON.stringify(block)}
+                  className="gap-1 rounded-2xl border border-border bg-card/60 p-4"
+                >
+                  <Pressable
+                    accessibilityRole="link"
+                    accessibilityLabel={`${block.path}${block.line ? `:${block.line}` : ""}`}
+                    onPress={() => props.onOpenFile(block.path, block.line)}
+                  >
+                    <Text className="text-sm font-codework-medium text-info-foreground underline">
+                      {block.path}
+                      {block.line ? `:${block.line}` : ""}
+                    </Text>
+                  </Pressable>
+                  {block.note ? (
+                    <Text selectable className="text-xs leading-relaxed text-foreground-muted">
+                      {block.note}
+                    </Text>
+                  ) : null}
+                </View>
+              );
+            case "table":
+              return (
+                <ScrollView
+                  key={JSON.stringify(block)}
+                  horizontal
+                  nestedScrollEnabled
+                  className="rounded-2xl border border-border bg-card/60"
+                >
+                  <View>
+                    <View className="flex-row border-b border-border">
+                      {block.columns.map((column) => (
+                        <Text
+                          key={column}
+                          className="w-36 px-3 py-2 text-xs font-codework-bold text-foreground-muted"
+                        >
+                          {column}
+                        </Text>
+                      ))}
+                    </View>
+                    {block.rows.map((row) => (
+                      <View
+                        key={JSON.stringify(row)}
+                        className="flex-row border-b border-border last:border-b-0"
+                      >
+                        {block.columns.map((column, columnIndex) => (
+                          <Text
+                            key={column}
+                            selectable
+                            className="w-36 px-3 py-2 text-xs text-foreground-secondary"
+                          >
+                            {row[columnIndex] ?? ""}
+                          </Text>
+                        ))}
+                      </View>
+                    ))}
+                  </View>
+                </ScrollView>
+              );
+          }
+        })
+      )}
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={t("refresh")}
+        className="self-start rounded-xl border border-border px-3 py-2 active:bg-subtle"
+        onPress={() => void props.onRefresh()}
+      >
+        <Text className="text-xs font-codework-medium text-foreground-secondary">
+          {t("refresh")}
+        </Text>
+      </Pressable>
+    </ScrollView>
   );
 }
 
@@ -407,6 +585,17 @@ export function ThreadFilesTreeScreen(props: ThreadFilesRouteScreenProps) {
             onBack={handleReturnToThread}
             actions={[
               {
+                accessibilityLabel: t("searchProjectContents"),
+                icon: "magnifyingglass",
+                onPress: () => {
+                  if (environmentId === null || threadId === null) return;
+                  navigation.navigate("ThreadFileSearch", {
+                    environmentId: String(environmentId),
+                    threadId: String(threadId),
+                  });
+                },
+              },
+              {
                 accessibilityLabel: t("refreshFiles"),
                 icon: "arrow.clockwise",
                 onPress: entriesQuery.refresh,
@@ -444,6 +633,19 @@ export function ThreadFilesTreeScreen(props: ThreadFilesRouteScreenProps) {
               />
             </NativeHeaderToolbar>
           ) : null}
+          <NativeHeaderToolbar placement="right">
+            <NativeHeaderToolbar.Button
+              accessibilityLabel={t("searchProjectContents")}
+              icon="magnifyingglass"
+              onPress={() => {
+                if (environmentId === null || threadId === null) return;
+                navigation.navigate("ThreadFileSearch", {
+                  environmentId: String(environmentId),
+                  threadId: String(threadId),
+                });
+              }}
+            />
+          </NativeHeaderToolbar>
           {usesCompactMailToolbar ? null : (
             <NativeHeaderToolbar placement="bottom">
               <NativeHeaderToolbar.SearchBarSlot />
@@ -514,13 +716,111 @@ export function ThreadFileScreen(props: ThreadFileRouteScreenProps) {
       : null,
   );
   const fileData = fileQuery.data as ProjectReadFileResult | null;
+  const isCanvasFile = relativePath !== null && isCodeworkCanvasArtifactPath(relativePath);
+  const writeFile = useAtomCommand(projectEnvironment.writeFile, { reportFailure: false });
+  const [isEditing, setIsEditing] = useState(false);
+  const [editContents, setEditContents] = useState("");
+  const [isSavingFile, setIsSavingFile] = useState(false);
+  const [fileEditError, setFileEditError] = useState<string | null>(null);
+  const canEditFile = canEditWorkspaceFile({
+    relativePath,
+    fileLoaded: fileData !== null,
+    truncated: fileData?.truncated ?? false,
+    isCanvas: isCanvasFile,
+    viewMode: resolvedActiveMode,
+  });
+  const hasUnsavedFileChanges =
+    isEditing && fileData !== null && editContents !== fileData.contents;
+
+  useEffect(() => {
+    if (!isEditing && fileData !== null) {
+      setEditContents(fileData.contents);
+    }
+  }, [fileData, isEditing]);
+
+  usePreventRemove(hasUnsavedFileChanges, ({ data }) => {
+    Alert.alert(t("fileUnsavedChanges"), t("fileUnsavedChangesDescription"), [
+      { text: t("keepEditing"), style: "cancel" },
+      {
+        text: t("discardChanges"),
+        style: "destructive",
+        onPress: () => {
+          setIsEditing(false);
+          navigation.dispatch(data.action);
+        },
+      },
+    ]);
+  });
+
+  const startEditing = useCallback(() => {
+    if (!canEditFile || fileData === null) return;
+    setFileEditError(null);
+    setEditContents(fileData.contents);
+    setIsEditing(true);
+  }, [canEditFile, fileData]);
+
+  const cancelEditing = useCallback(() => {
+    if (!hasUnsavedFileChanges) {
+      setIsEditing(false);
+      return;
+    }
+    Alert.alert(t("fileUnsavedChanges"), t("fileUnsavedChangesDescription"), [
+      { text: t("keepEditing"), style: "cancel" },
+      {
+        text: t("discardChanges"),
+        style: "destructive",
+        onPress: () => {
+          setIsEditing(false);
+          setFileEditError(null);
+        },
+      },
+    ]);
+  }, [hasUnsavedFileChanges]);
+
+  const saveFile = useCallback(async () => {
+    if (
+      !hasUnsavedFileChanges ||
+      environmentId === null ||
+      cwd === null ||
+      relativePath === null ||
+      isSavingFile
+    ) {
+      return;
+    }
+    setIsSavingFile(true);
+    setFileEditError(null);
+    const result = await writeFile({
+      environmentId,
+      input: { cwd, relativePath, contents: editContents },
+    });
+    setIsSavingFile(false);
+    if (result._tag === "Failure") {
+      if (!isAtomCommandInterrupted(result)) {
+        const failure = squashAtomCommandFailure(result);
+        setFileEditError(failure instanceof Error ? failure.message : t("fileSaveFailed"));
+      }
+      return;
+    }
+    setIsEditing(false);
+    fileQuery.refresh();
+  }, [
+    cwd,
+    editContents,
+    environmentId,
+    fileQuery,
+    hasUnsavedFileChanges,
+    isSavingFile,
+    relativePath,
+    writeFile,
+  ]);
 
   const handleSelectFile = useCallback(
-    (path: string) => {
+    (path: string, line?: number) => {
       navigation.navigate("ThreadFile", {
         environmentId: String(environmentId),
         threadId: String(threadId),
         path: path.split("/").filter(Boolean),
+        ...(line === undefined ? {} : { line: String(line) }),
       });
     },
     [environmentId, navigation, threadId],
@@ -615,6 +915,29 @@ export function ThreadFileScreen(props: ThreadFileRouteScreenProps) {
             />
           ) : null}
           <NativeHeaderToolbar.Menu accessibilityLabel={t("fileActions")} icon="ellipsis">
+            {isEditing ? (
+              <>
+                <NativeHeaderToolbar.MenuAction
+                  disabled={isSavingFile || !hasUnsavedFileChanges}
+                  icon="checkmark"
+                  onPress={() => void saveFile()}
+                >
+                  {isSavingFile ? t("fileSaving") : t("save")}
+                </NativeHeaderToolbar.MenuAction>
+                <NativeHeaderToolbar.MenuAction
+                  destructive
+                  disabled={isSavingFile}
+                  icon="xmark"
+                  onPress={cancelEditing}
+                >
+                  {t("cancel")}
+                </NativeHeaderToolbar.MenuAction>
+              </>
+            ) : canEditFile ? (
+              <NativeHeaderToolbar.MenuAction icon="pencil" onPress={startEditing}>
+                {t("edit")}
+              </NativeHeaderToolbar.MenuAction>
+            ) : null}
             {canPreview && !isImageFile ? (
               <NativeHeaderToolbar.Menu inline>
                 <NativeHeaderToolbar.MenuAction
@@ -661,16 +984,46 @@ export function ThreadFileScreen(props: ThreadFileRouteScreenProps) {
             ) : null}
           </NativeHeaderToolbar.Menu>
         </NativeHeaderToolbar>
-        <FileContent
-          activeMode={resolvedActiveMode}
-          previewUri={previewUri}
-          fileContents={fileData?.contents ?? null}
-          fileError={fileQuery.error}
-          initialLine={targetLine}
-          relativePath={relativePath}
-          truncated={fileData?.truncated ?? false}
-          onRefresh={() => fileQuery.refresh()}
-        />
+        {isEditing ? (
+          <View className="flex-1 bg-sheet">
+            {fileEditError ? (
+              <Text className="border-b border-danger-border bg-danger-surface px-4 py-2 text-xs text-danger-foreground">
+                {fileEditError}
+              </Text>
+            ) : null}
+            <TextInput
+              autoCapitalize="none"
+              autoCorrect={false}
+              editable={!isSavingFile}
+              multiline
+              onChangeText={setEditContents}
+              scrollEnabled
+              style={{ textAlignVertical: "top" }}
+              value={editContents}
+              className="flex-1 rounded-none border-0 bg-transparent px-4 py-3 font-mono text-sm leading-5"
+            />
+          </View>
+        ) : isCanvasFile ? (
+          <CanvasFileContent
+            fileContents={fileData?.contents ?? null}
+            fileError={fileQuery.error}
+            relativePath={relativePath}
+            truncated={fileData?.truncated ?? false}
+            onOpenFile={handleSelectFile}
+            onRefresh={() => fileQuery.refresh()}
+          />
+        ) : (
+          <FileContent
+            activeMode={resolvedActiveMode}
+            previewUri={previewUri}
+            fileContents={fileData?.contents ?? null}
+            fileError={fileQuery.error}
+            initialLine={targetLine}
+            relativePath={relativePath}
+            truncated={fileData?.truncated ?? false}
+            onRefresh={() => fileQuery.refresh()}
+          />
+        )}
       </View>
     </ReviewHighlighterProvider>
   );

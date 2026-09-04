@@ -40,6 +40,16 @@ export const ORCHESTRATION_WS_METHODS = {
   resumeThreadGoal: "thread/goal/resume",
   clearThreadGoal: "thread/goal/clear",
   subscribeThreadGoal: "thread/goal/subscribe",
+  getSpecWorkflow: "thread/spec-workflow/get",
+  setSpecWorkflow: "thread/spec-workflow/set",
+  subscribeSpecWorkflow: "thread/spec-workflow/subscribe",
+  getSpecWorkflowState: "thread/spec-workflow/state/get",
+  dispatchSpecWorkflow: "thread/spec-workflow/dispatch",
+  reviewSpecWorkflowProposal: "thread/spec-workflow/proposal/review",
+  completeSpecWorkflowAcceptance: "thread/spec-workflow/acceptance/complete",
+  pauseSpecWorkflow: "thread/spec-workflow/pause",
+  resumeSpecWorkflow: "thread/spec-workflow/resume",
+  subscribeSpecWorkflowState: "thread/spec-workflow/state/subscribe",
 } as const;
 
 export const ProviderApprovalPolicy = Schema.Literals([

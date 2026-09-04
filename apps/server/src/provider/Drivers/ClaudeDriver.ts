@@ -25,6 +25,7 @@ import { ChildProcessSpawner } from "effect/unstable/process";
 
 import { makeClaudeTextGeneration } from "../../textGeneration/ClaudeTextGeneration.ts";
 import * as BackgroundPolicy from "../../background/BackgroundPolicy.ts";
+import { ServerSecretStore } from "../../auth/ServerSecretStore.ts";
 import { ServerConfig } from "../../config.ts";
 import { ServerSettingsService } from "../../serverSettings.ts";
 import { ProviderDriverError } from "../Errors.ts";
@@ -44,6 +45,12 @@ import {
 } from "../ProviderDriver.ts";
 import type { ServerProviderDraft } from "../providerSnapshot.ts";
 import { mergeProviderInstanceEnvironment } from "../ProviderInstanceEnvironment.ts";
+import {
+  anthropicGatewayEnv,
+  ensureGatewayToken,
+  gatewayOrigin,
+  routedServerProviderModels,
+} from "../byok/modelGateway.ts";
 import {
   enrichProviderSnapshotWithVersionAdvisory,
   makePackageManagedProviderMaintenanceResolver,
@@ -92,6 +99,7 @@ export type ClaudeDriverEnv =
   | Path.Path
   | ProviderEventLoggers
   | ServerConfig
+  | ServerSecretStore
   | ServerSettingsService;
 
 const withInstanceIdentity =
@@ -123,12 +131,26 @@ export const ClaudeDriver: ProviderDriver<ClaudeSettings, ClaudeDriverEnv> = {
       const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
       const fileSystem = yield* FileSystem.FileSystem;
       const path = yield* Path.Path;
-      const { cwd } = yield* ServerConfig;
+      const serverConfig = yield* ServerConfig;
+      const { cwd } = serverConfig;
       const httpClient = yield* HttpClient.HttpClient;
       const serverSettings = yield* ServerSettingsService;
+      const secretStore = yield* ServerSecretStore;
       const eventLoggers = yield* ProviderEventLoggers;
       const modelManifest = yield* ModelManifest.ModelManifest;
-      const processEnv = mergeProviderInstanceEnvironment(environment);
+      const baseProcessEnv = mergeProviderInstanceEnvironment(environment);
+      // BYOK gateway routing replaces the provider's own endpoint entirely:
+      // when enabled, injected variables win over any same-named instance env.
+      const processEnv =
+        config.routeThroughByok === true
+          ? {
+              ...baseProcessEnv,
+              ...anthropicGatewayEnv(
+                gatewayOrigin(serverConfig.port),
+                yield* ensureGatewayToken(secretStore),
+              ),
+            }
+          : baseProcessEnv;
       const fallbackContinuationIdentity = defaultProviderContinuationIdentity({
         driverKind: DRIVER_KIND,
         instanceId,
@@ -208,7 +230,29 @@ export const ClaudeDriver: ProviderDriver<ClaudeSettings, ClaudeDriverEnv> = {
             enableProviderUpdateChecks: settings.enableProviderUpdateChecks,
           }).pipe(
             Effect.provideService(HttpClient.HttpClient, httpClient),
-            Effect.flatMap((enrichedSnapshot) => publishSnapshot(enrichedSnapshot)),
+            Effect.flatMap((enrichedSnapshot) => {
+              if (config.routeThroughByok !== true) {
+                return publishSnapshot(enrichedSnapshot);
+              }
+              // Routed models come from the live BYOK adapters, not the
+              // harness's own catalog, so resolve them per snapshot.
+              return serverSettings.getSettings.pipe(
+                Effect.orElseSucceed(() => undefined),
+                Effect.flatMap((currentSettings) =>
+                  publishSnapshot({
+                    ...enrichedSnapshot,
+                    ...(currentSettings === undefined
+                      ? {}
+                      : { models: routedServerProviderModels(currentSettings, "anthropic") }),
+                    auth: {
+                      status: "authenticated" as const,
+                      type: "byok",
+                      label: "BYOK Gateway",
+                    },
+                  }),
+                ),
+              );
+            }),
           ),
       }).pipe(
         Effect.mapError(
