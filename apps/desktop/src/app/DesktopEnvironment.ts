@@ -241,7 +241,7 @@ const make = Effect.fn("desktop.environment.make")(function* (
       isDevelopment ? "com.codework.desktop.dev" : "com.codework.desktop",
     ),
     linuxDesktopEntryName: isDevelopment ? "code-work-dev.desktop" : "code-work.desktop",
-    linuxWmClass: isDevelopment ? "code-work-dev" : "code-work",
+    linuxWmClass: isDevelopment ? "codework-dev" : "codework",
     linuxApplicationsDir,
     appImagePath: config.appImagePath,
     userDataDirName,

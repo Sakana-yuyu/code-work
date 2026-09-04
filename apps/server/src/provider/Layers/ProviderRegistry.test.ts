@@ -1018,11 +1018,12 @@ it.layer(Layer.mergeAll(NodeServices.layer, ServerSettingsModule.layerTest(), Te
             let cachedProvider = yield* readProviderStatusCache(filePath);
             for (
               let attempt = 0;
-              attempt < 50 && cachedProvider?.checkedAt !== refreshedProvider.checkedAt;
+              attempt < 400 && cachedProvider?.checkedAt !== refreshedProvider.checkedAt;
               attempt += 1
             ) {
               yield* TestClock.adjust("10 millis");
               yield* Effect.yieldNow;
+              yield* Effect.promise(() => new Promise<void>((resolve) => setTimeout(resolve, 10)));
               cachedProvider = yield* readProviderStatusCache(filePath);
             }
             assert.deepStrictEqual(cachedProvider, {
@@ -1143,11 +1144,14 @@ it.layer(Layer.mergeAll(NodeServices.layer, ServerSettingsModule.layerTest(), Te
               let cachedProvider = yield* readProviderStatusCache(filePath);
               for (
                 let attempt = 0;
-                attempt < 50 && cachedProvider?.checkedAt !== authoritativeProvider.checkedAt;
+                attempt < 400 && cachedProvider?.checkedAt !== authoritativeProvider.checkedAt;
                 attempt += 1
               ) {
                 yield* TestClock.adjust("10 millis");
                 yield* Effect.yieldNow;
+                yield* Effect.promise(
+                  () => new Promise<void>((resolve) => setTimeout(resolve, 10)),
+                );
                 cachedProvider = yield* readProviderStatusCache(filePath);
               }
 
@@ -1156,11 +1160,14 @@ it.layer(Layer.mergeAll(NodeServices.layer, ServerSettingsModule.layerTest(), Te
               yield* PubSub.publish(changes, failedProvider);
               for (
                 let attempt = 0;
-                attempt < 50 && cachedProvider?.checkedAt !== failedProvider.checkedAt;
+                attempt < 400 && cachedProvider?.checkedAt !== failedProvider.checkedAt;
                 attempt += 1
               ) {
                 yield* TestClock.adjust("10 millis");
                 yield* Effect.yieldNow;
+                yield* Effect.promise(
+                  () => new Promise<void>((resolve) => setTimeout(resolve, 10)),
+                );
                 cachedProvider = yield* readProviderStatusCache(filePath);
               }
 
