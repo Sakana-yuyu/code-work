@@ -1,15 +1,14 @@
-# AUR packaging
+# AUR packaging (optional)
 
 This directory maintains the [`code-work-bin`](https://aur.archlinux.org/packages/code-work-bin) and
 [`code-work-nightly-bin`](https://aur.archlinux.org/packages/code-work-nightly-bin) packages. Both
 repackage the official x86_64 AppImage from GitHub Releases.
 
-## Publishing
+## Current release policy
 
-The release workflow calls `.github/workflows/publish-aur.yml` after publishing a GitHub release;
-the workflow can also be run manually for a specific tag. It selects the stable or nightly
-package, then updates its version and checksums, builds it, regenerates `.SRCINFO`, and pushes it
-to the AUR.
+The normal desktop release workflow does not publish to AUR. The former GitHub Actions workflow
+was removed because this repository only needs GitHub Releases for desktop artifacts. This directory
+is retained only for maintainers who explicitly want to validate or publish an Arch package by hand.
 
 To validate a release on Arch Linux:
 
