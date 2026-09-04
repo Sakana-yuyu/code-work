@@ -1,4 +1,6 @@
-import { describe, expect, it, vi } from "vite-plus/test";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
+
+import { setCurrentLanguage } from "../i18n/runtime";
 
 vi.mock("@expo/ui/swift-ui", () => ({
   HStack: "HStack",
@@ -64,6 +66,14 @@ const lightEnvironment = {
 } as const;
 
 describe("AgentActivity widget layout", () => {
+  beforeEach(() => {
+    setCurrentLanguage("en");
+  });
+
+  afterEach(() => {
+    setCurrentLanguage("zh-CN");
+  });
+
   it("tints each row by its own phase using the web sidebar's dark palette", () => {
     const layout = AgentActivity(
       {

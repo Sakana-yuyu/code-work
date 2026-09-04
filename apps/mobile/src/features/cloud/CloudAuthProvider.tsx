@@ -20,7 +20,7 @@ import {
 } from "../agent-awareness/remoteRegistration";
 import { clearConnectOnboardingRequest, requestConnectOnboarding } from "./connectOnboarding";
 import { resolveCloudPublicConfig, resolveRelayClerkTokenOptions } from "./publicConfig";
-import { t } from "../../i18n";
+import { t } from "../../i18n/runtime";
 
 function resetManagedRelayTokenCache() {
   return settleAsyncResult(() =>

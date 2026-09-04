@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from "vite-plus/test";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { EnvironmentId } from "@codework/contracts";
 
 import {
@@ -7,6 +7,7 @@ import {
   toStableSavedRemoteConnection,
 } from "./connection";
 import { authClientMetadata } from "./authClientMetadata";
+import { setCurrentLanguage } from "../i18n/runtime";
 
 const mobilePlatform = vi.hoisted(() => ({ OS: "ios" as "ios" | "android" }));
 const mobileDevice = vi.hoisted(() => ({
@@ -27,7 +28,12 @@ vi.mock("react-native", () => ({
 vi.mock("expo-device", () => mobileDevice);
 
 describe("mobile remote connection records", () => {
+  beforeEach(() => {
+    setCurrentLanguage("en");
+  });
+
   afterEach(() => {
+    setCurrentLanguage("zh-CN");
     mobilePlatform.OS = "ios";
     mobileDevice.osVersion = "18.4.1";
     mobileDevice.modelName = "iPhone 15 Pro";

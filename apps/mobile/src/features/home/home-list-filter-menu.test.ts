@@ -1,8 +1,17 @@
-import { describe, expect, it, vi } from "vite-plus/test";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
 import { buildHomeListFilterMenu } from "./home-list-filter-menu";
+import { setCurrentLanguage } from "../../i18n/runtime";
 
 describe("buildHomeListFilterMenu", () => {
+  beforeEach(() => {
+    setCurrentLanguage("en");
+  });
+
+  afterEach(() => {
+    setCurrentLanguage("zh-CN");
+  });
+
   it("adds a project scope submenu that selects and clears the same scope as the chips", () => {
     const onProjectChange = vi.fn();
     const menu = buildHomeListFilterMenu({
