@@ -1,4 +1,5 @@
-import { describe, expect, it } from "vite-plus/test";
+import { describe, expect } from "vite-plus/test";
+import { it as effectIt } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import { ProjectId, ThreadId } from "@codework/contracts";
 
@@ -78,182 +79,172 @@ const makeOrchestrator = (options?: {
   }) as unknown as CompositionOrchestratorServiceShape;
 
 describe("Spec Workflow Composition bridge", () => {
-  it("批准后派发真实 apply Task，并返回可持久化的状态事件", async () => {
-    await Effect.runPromise(
-      Effect.gen(function* () {
-        const result = yield* dispatchSpecWorkflowStage(makeOrchestrator(), {
+  effectIt.effect("批准后派发真实 apply Task，并返回可持久化的状态事件", () =>
+    Effect.gen(function* () {
+      const result = yield* dispatchSpecWorkflowStage(makeOrchestrator(), {
+        capability,
+        state: baseState,
+        intent: "apply",
+        now: 10,
+        projectId: "project-spec",
+        threadId: "thread-spec",
+        workspaceRoot: "C:/workspace/spec",
+        assigneeId: "implementer",
+        prompt: "执行 proposal.md 中的任务。",
+        promptDigest: "sha256:apply",
+      });
+
+      expect(result.route.targetStage).toBe("apply");
+      expect(result.stateEvent.state.stage).toBe("apply");
+      expect(result.task.taskId).toBe("spec-workflow:workflow-spec:apply:5");
+      expect(result.run.runId).toBe("spec-workflow:workflow-spec:apply:5:run");
+    }),
+  );
+
+  effectIt.effect("verify 强制独立执行者，并将独立验证要求写入派发 prompt", () =>
+    Effect.gen(function* () {
+      const dispatches: string[] = [];
+      const result = yield* dispatchSpecWorkflowStage(
+        makeOrchestrator({
+          dispatch: (input) => {
+            dispatches.push(input.prompt ?? "");
+            return Effect.succeed(makeResult(input));
+          },
+        }),
+        {
           capability,
-          state: baseState,
-          intent: "apply",
+          state: { ...baseState, stage: "apply", implementationCompleted: true },
+          intent: "verify",
           now: 10,
           projectId: "project-spec",
           threadId: "thread-spec",
           workspaceRoot: "C:/workspace/spec",
-          assigneeId: "implementer",
-          prompt: "执行 proposal.md 中的任务。",
-          promptDigest: "sha256:apply",
-        });
+          assigneeId: "verifier",
+          implementationAssigneeId: "implementer",
+          independentVerifierId: "verifier",
+          prompt: "检查实现与测试。",
+          promptDigest: "sha256:verify",
+        },
+      );
 
-        expect(result.route.targetStage).toBe("apply");
-        expect(result.stateEvent.state.stage).toBe("apply");
-        expect(result.task.taskId).toBe("spec-workflow:workflow-spec:apply:5");
-        expect(result.run.runId).toBe("spec-workflow:workflow-spec:apply:5:run");
-      }),
-    );
-  });
+      expect(result.stateEvent.state.stage).toBe("verify");
+      expect(dispatches[0]).toContain("【独立验证】");
+      expect(result.run.agentId).toBe("verifier");
+    }),
+  );
 
-  it("verify 强制独立执行者，并将独立验证要求写入派发 prompt", async () => {
-    await Effect.runPromise(
-      Effect.gen(function* () {
-        const dispatches: string[] = [];
-        const result = yield* dispatchSpecWorkflowStage(
+  effectIt.effect("重复派发在 Composition 已存在时按稳定身份复用，不产生第二个任务", () =>
+    Effect.gen(function* () {
+      let dispatchCount = 0;
+      const orchestrator = makeOrchestrator({
+        dispatch: (input) => {
+          dispatchCount += 1;
+          return Effect.fail(new CompositionTaskAlreadyExistsError({ taskId: input.taskId }));
+        },
+        snapshots: () =>
+          Effect.succeed([
+            {
+              task: makeResult({
+                taskId: "spec-workflow:workflow-spec:apply:5",
+                runId: "spec-workflow:workflow-spec:apply:5:run",
+                projectId: "project-spec",
+                threadId: "thread-spec",
+                assigneeId: "implementer",
+                promptDigest: "sha256:apply",
+              }).task,
+              latestRun: makeResult({
+                taskId: "spec-workflow:workflow-spec:apply:5",
+                runId: "spec-workflow:workflow-spec:apply:5:run",
+                projectId: "project-spec",
+                threadId: "thread-spec",
+                assigneeId: "implementer",
+                promptDigest: "sha256:apply",
+              }).run,
+            },
+          ]),
+      });
+
+      const result = yield* dispatchSpecWorkflowStage(orchestrator, {
+        capability,
+        state: baseState,
+        intent: "apply",
+        now: 10,
+        projectId: "project-spec",
+        threadId: "thread-spec",
+        workspaceRoot: "C:/workspace/spec",
+        assigneeId: "implementer",
+        prompt: "执行 proposal.md 中的任务。",
+        promptDigest: "sha256:apply",
+      });
+
+      expect(dispatchCount).toBe(1);
+      expect(result.task.taskId).toBe("spec-workflow:workflow-spec:apply:5");
+    }),
+  );
+
+  effectIt.effect("未启用时不调用 Composition，暂停/恢复保持 Decider 门禁", () =>
+    Effect.gen(function* () {
+      let dispatchCount = 0;
+      const disabled = yield* Effect.exit(
+        dispatchSpecWorkflowStage(
           makeOrchestrator({
-            dispatch: (input) => {
-              dispatches.push(input.prompt ?? "");
-              return Effect.succeed(makeResult(input));
+            dispatch: () => {
+              dispatchCount += 1;
+              return Effect.die("disabled workflow must not dispatch");
             },
           }),
           {
-            capability,
-            state: { ...baseState, stage: "apply", implementationCompleted: true },
-            intent: "verify",
+            capability: { ...capability, enabled: false },
+            state: baseState,
+            intent: "apply",
             now: 10,
             projectId: "project-spec",
             threadId: "thread-spec",
             workspaceRoot: "C:/workspace/spec",
-            assigneeId: "verifier",
-            implementationAssigneeId: "implementer",
-            independentVerifierId: "verifier",
-            prompt: "检查实现与测试。",
-            promptDigest: "sha256:verify",
+            assigneeId: "implementer",
+            prompt: "不应执行。",
+            promptDigest: "sha256:disabled",
           },
-        );
+        ),
+      );
+      expect(disabled._tag).toBe("Failure");
+      expect(dispatchCount).toBe(0);
 
-        expect(result.stateEvent.state.stage).toBe("verify");
-        expect(dispatches[0]).toContain("【独立验证】");
-        expect(result.run.agentId).toBe("verifier");
-      }),
-    );
-  });
+      const paused = yield* transitionSpecWorkflowControl({
+        capability,
+        state: baseState,
+        command: { type: "pause", expectedRevision: 4 },
+        now: 11,
+      });
+      expect(paused.event.state.status).toBe("paused");
 
-  it("重复派发在 Composition 已存在时按稳定身份复用，不产生第二个任务", async () => {
-    await Effect.runPromise(
-      Effect.gen(function* () {
-        let dispatchCount = 0;
-        const orchestrator = makeOrchestrator({
-          dispatch: (input) => {
-            dispatchCount += 1;
-            return Effect.fail(new CompositionTaskAlreadyExistsError({ taskId: input.taskId }));
-          },
-          snapshots: () =>
-            Effect.succeed([
-              {
-                task: makeResult({
-                  taskId: "spec-workflow:workflow-spec:apply:5",
-                  runId: "spec-workflow:workflow-spec:apply:5:run",
-                  projectId: "project-spec",
-                  threadId: "thread-spec",
-                  assigneeId: "implementer",
-                  promptDigest: "sha256:apply",
-                }).task,
-                latestRun: makeResult({
-                  taskId: "spec-workflow:workflow-spec:apply:5",
-                  runId: "spec-workflow:workflow-spec:apply:5:run",
-                  projectId: "project-spec",
-                  threadId: "thread-spec",
-                  assigneeId: "implementer",
-                  promptDigest: "sha256:apply",
-                }).run,
-              },
-            ]),
-        });
+      const resumed = yield* transitionSpecWorkflowControl({
+        capability,
+        state: paused.event.state,
+        command: { type: "resume", expectedRevision: 5 },
+        now: 12,
+      });
+      expect(resumed.event.state.status).toBe("active");
+    }),
+  );
 
-        const result = yield* dispatchSpecWorkflowStage(orchestrator, {
-          capability,
-          state: baseState,
-          intent: "apply",
-          now: 10,
-          projectId: "project-spec",
-          threadId: "thread-spec",
-          workspaceRoot: "C:/workspace/spec",
-          assigneeId: "implementer",
-          prompt: "执行 proposal.md 中的任务。",
-          promptDigest: "sha256:apply",
-        });
+  effectIt.effect("Loop 只准备稳定身份和状态事件，实际执行交给现有 Runner", () =>
+    Effect.gen(function* () {
+      const result = yield* prepareSpecWorkflowLoop({
+        capability,
+        state: baseState,
+        intent: "loop",
+        loopConfig: { maxAttempts: 3 },
+        now: 10,
+        projectId: "project-spec",
+        threadId: "thread-spec",
+      });
 
-        expect(dispatchCount).toBe(1);
-        expect(result.task.taskId).toBe("spec-workflow:workflow-spec:apply:5");
-      }),
-    );
-  });
-
-  it("未启用时不调用 Composition，暂停/恢复保持 Decider 门禁", async () => {
-    await Effect.runPromise(
-      Effect.gen(function* () {
-        let dispatchCount = 0;
-        const disabled = yield* Effect.exit(
-          dispatchSpecWorkflowStage(
-            makeOrchestrator({
-              dispatch: () => {
-                dispatchCount += 1;
-                return Effect.die("disabled workflow must not dispatch");
-              },
-            }),
-            {
-              capability: { ...capability, enabled: false },
-              state: baseState,
-              intent: "apply",
-              now: 10,
-              projectId: "project-spec",
-              threadId: "thread-spec",
-              workspaceRoot: "C:/workspace/spec",
-              assigneeId: "implementer",
-              prompt: "不应执行。",
-              promptDigest: "sha256:disabled",
-            },
-          ),
-        );
-        expect(disabled._tag).toBe("Failure");
-        expect(dispatchCount).toBe(0);
-
-        const paused = yield* transitionSpecWorkflowControl({
-          capability,
-          state: baseState,
-          command: { type: "pause", expectedRevision: 4 },
-          now: 11,
-        });
-        expect(paused.event.state.status).toBe("paused");
-
-        const resumed = yield* transitionSpecWorkflowControl({
-          capability,
-          state: paused.event.state,
-          command: { type: "resume", expectedRevision: 5 },
-          now: 12,
-        });
-        expect(resumed.event.state.status).toBe("active");
-      }),
-    );
-  });
-
-  it("Loop 只准备稳定身份和状态事件，实际执行交给现有 Runner", async () => {
-    await Effect.runPromise(
-      Effect.gen(function* () {
-        const result = yield* prepareSpecWorkflowLoop({
-          capability,
-          state: baseState,
-          intent: "loop",
-          loopConfig: { maxAttempts: 3 },
-          now: 10,
-          projectId: "project-spec",
-          threadId: "thread-spec",
-        });
-
-        expect(result.route.targetStage).toBe("apply");
-        expect(result.taskId).toBe("spec-workflow:workflow-spec:loop:5");
-        expect(result.runId).toBe("spec-workflow:workflow-spec:loop:5:run");
-        expect(result.stateEvent.state.activeTaskId).toBe(result.taskId);
-        expect(result.stateEvent.state.loopConfig).toEqual({ maxAttempts: 3 });
-      }),
-    );
-  });
+      expect(result.route.targetStage).toBe("apply");
+      expect(result.taskId).toBe("spec-workflow:workflow-spec:loop:5");
+      expect(result.runId).toBe("spec-workflow:workflow-spec:loop:5:run");
+      expect(result.stateEvent.state.activeTaskId).toBe(result.taskId);
+      expect(result.stateEvent.state.loopConfig).toEqual({ maxAttempts: 3 });
+    }),
+  );
 });

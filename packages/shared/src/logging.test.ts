@@ -73,6 +73,7 @@ describe("RotatingFileSink", () => {
     const directory = makeTempDirectory();
     const filePath = NodePath.join(directory, "a".repeat(300));
 
+    // oxlint-disable-next-line codework/no-global-process-runtime -- this test checks the real filesystem error reported by the host OS.
     if (process.platform === "win32") {
       // libuv reports over-long paths as ENOENT on Windows, which the sink
       // legitimately treats as an absent (empty) log file instead of failing.

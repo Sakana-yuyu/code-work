@@ -49,6 +49,17 @@ const maintenanceCapabilities = {
 
     lockKey: "npm-global",
   },
+  install: {
+    lockKey: "npm-global",
+    win32: {
+      executable: "npm",
+      args: ["install", "-g", "@openai/codex@latest"],
+    },
+    posix: {
+      executable: "npm",
+      args: ["install", "-g", "@openai/codex@latest"],
+    },
+  },
 } as const;
 
 const initialSnapshot: ServerProvider = {

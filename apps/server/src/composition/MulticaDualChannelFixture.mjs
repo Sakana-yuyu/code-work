@@ -1,4 +1,4 @@
-import { createServer } from "node:http";
+import * as NodeHttp from "node:http";
 
 import { NodeWS } from "@effect/platform-node/NodeSocket";
 
@@ -7,7 +7,7 @@ const runtimeId = "runtime-1";
 const workspaceId = "workspace-1";
 const taskId = "remote-task-1";
 
-const httpServer = createServer((_request, response) => {
+const httpServer = NodeHttp.createServer((_request, response) => {
   response.statusCode = 404;
   response.end();
 });

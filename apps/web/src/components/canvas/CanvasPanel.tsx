@@ -5,6 +5,7 @@ import type { ReactNode } from "react";
 import { parseCanvasDocument } from "~/canvas";
 import { Button } from "~/components/ui/button";
 import { ScrollArea } from "~/components/ui/scroll-area";
+import { Tooltip, TooltipPopup, TooltipTrigger } from "~/components/ui/tooltip";
 import { useProjectFileQuery } from "~/components/files/projectFilesQueryState";
 import type { RightPanelSurface } from "~/rightPanelStore";
 import { cn } from "~/lib/utils";
@@ -357,9 +358,12 @@ function CanvasRecentSidebar({
             onClick={() => onSelectCanvas(canvas.canvasId)}
           >
             <LayoutDashboard className="size-3.5 shrink-0" aria-hidden="true" />
-            <span className="min-w-0 truncate" title={canvas.title}>
-              {canvas.title}
-            </span>
+            <Tooltip>
+              <TooltipTrigger render={<span className="min-w-0 truncate">{canvas.title}</span>} />
+              <TooltipPopup side="top" className="max-w-60 whitespace-nowrap">
+                {canvas.title}
+              </TooltipPopup>
+            </Tooltip>
           </button>
         ))}
         <button

@@ -439,41 +439,23 @@ it.effect("goal loop retry recovery gate waits for the shared startup recovery",
   }),
 );
 
-it.effect("goal loop retry recovery failure fails command readiness and aborts startup", () =>
-  Effect.scoped(
-    Effect.gen(function* () {
-      const commandGate = yield* ServerRuntimeStartup.makeCommandGate;
-      const abortError = yield* Deferred.make<ServerRuntimeStartup.ServerRuntimeStartupError>();
-      const recoveryFailure = new CompositionGoalLoopRetryStartupRecoveryError({
-        cause: new Error("goal loop retry recovery unavailable"),
-      });
-      const startupExit = yield* ServerRuntimeStartup.awaitGoalLoopRetryRecovery.pipe(
-        Effect.provideService(
-          CompositionGoalLoopRetryStartupRecovery,
-          CompositionGoalLoopRetryStartupRecovery.of({
-            awaitRecovered: Effect.fail(recoveryFailure),
-          }),
-        ),
-        Effect.exit,
-      );
-      if (Exit.isSuccess(startupExit)) {
-        return assert.fail("expected goal loop retry recovery to fail");
-      }
+it.effect("goal loop retry recovery failure is best effort and does not block startup", () =>
+  Effect.gen(function* () {
+    const recoveryFailure = new CompositionGoalLoopRetryStartupRecoveryError({
+      cause: new Error("goal loop retry recovery unavailable"),
+    });
+    const startupExit = yield* ServerRuntimeStartup.awaitGoalLoopRetryRecovery.pipe(
+      Effect.provideService(
+        CompositionGoalLoopRetryStartupRecovery,
+        CompositionGoalLoopRetryStartupRecovery.of({
+          awaitRecovered: Effect.fail(recoveryFailure),
+        }),
+      ),
+      Effect.exit,
+    );
 
-      yield* ServerRuntimeStartup.settleStartupExit(startupExit, {
-        mode: "web",
-        host: "127.0.0.1",
-        port: 3773,
-        failCommandReady: commandGate.failCommandReady,
-        abort: (error) => Deferred.succeed(abortError, error).pipe(Effect.asVoid),
-      });
-
-      const readinessError = yield* commandGate.awaitCommandReady.pipe(Effect.flip);
-      const abortedWith = yield* Deferred.await(abortError);
-      assert.strictEqual(readinessError, abortedWith);
-      assert.equal(readinessError.cause, startupExit.cause);
-    }),
-  ),
+    assert.isTrue(Exit.isSuccess(startupExit));
+  }),
 );
 
 it.effect("launchStartupHeartbeat does not block the caller while counts are loading", () =>

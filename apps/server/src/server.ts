@@ -851,7 +851,7 @@ export const makeRoutesLayer = Layer.mergeAll(
     Layer.provide(WorkspaceFileSystemLayerLive),
     Layer.provide(ServerSettings.layer),
     Layer.provide(WorkspacePaths.layer),
-    Layer.provideMerge(FetchHttpClient.layer),
+    Layer.provide(FetchHttpClient.layer),
   ),
   CompositionRuntimeMcpServer.layer.pipe(
     Layer.provide(CompositionRuntimeMcpSessionRegistryLayerLive),

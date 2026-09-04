@@ -3,7 +3,7 @@
 
 import * as NodeChildProcess from "node:child_process";
 import * as NodeReadline from "node:readline";
-import { fileURLToPath } from "node:url";
+import * as NodeURL from "node:url";
 
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { describe, expect, it } from "vite-plus/test";
@@ -20,7 +20,9 @@ import * as WorkspaceEntries from "../workspace/WorkspaceEntries.ts";
 import * as WorkspaceFileSystem from "../workspace/WorkspaceFileSystem.ts";
 import * as WorkspacePaths from "../workspace/WorkspacePaths.ts";
 
-const fixturePath = fileURLToPath(new URL("./CompositionIdeJsonRpcFixture.mjs", import.meta.url));
+const fixturePath = NodeURL.fileURLToPath(
+  new URL("./CompositionIdeJsonRpcFixture.mjs", import.meta.url),
+);
 
 type FixtureProcess = {
   readonly child: NodeChildProcess.ChildProcessWithoutNullStreams;
@@ -29,7 +31,7 @@ type FixtureProcess = {
 
 const startFixture = async (): Promise<FixtureProcess> => {
   const child = NodeChildProcess.spawn(process.execPath, [fixturePath], {
-    cwd: fileURLToPath(new URL("../", import.meta.url)),
+    cwd: NodeURL.fileURLToPath(new URL("../", import.meta.url)),
     stdio: ["pipe", "pipe", "pipe"],
   });
   child.stderr.resume();

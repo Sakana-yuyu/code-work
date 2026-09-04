@@ -61,6 +61,7 @@ async function makeMockAgentWrapper(
   options?: { initialDelaySeconds?: number },
 ) {
   const dir = await NodeFSP.mkdtemp(NodePath.join(NodeOS.tmpdir(), "cursor-acp-mock-"));
+  // oxlint-disable-next-line codework/no-global-process-runtime -- wrapper generation must follow the real host shell.
   const isWindows = process.platform === "win32";
   const wrapperPath = NodePath.join(dir, isWindows ? "fake-agent.cmd" : "fake-agent.sh");
   const script = isWindows
@@ -90,6 +91,7 @@ async function makeProbeWrapper(
   extraEnv?: Record<string, string>,
 ) {
   const dir = await NodeFSP.mkdtemp(NodePath.join(NodeOS.tmpdir(), "cursor-acp-probe-"));
+  // oxlint-disable-next-line codework/no-global-process-runtime -- wrapper generation must follow the real host shell.
   const isWindows = process.platform === "win32";
   const wrapperPath = NodePath.join(dir, isWindows ? "fake-agent.cmd" : "fake-agent.sh");
   const script = isWindows
@@ -954,6 +956,7 @@ cursorAdapterTestLayer("CursorAdapterLive", (it) => {
 
       yield* adapter.stopSession(threadId);
       assert.isFalse(yield* adapter.hasSession(threadId));
+      // oxlint-disable-next-line codework/no-global-process-runtime -- the assertion waits for a signal only on POSIX hosts.
       if (process.platform !== "win32") {
         const exitLog = yield* Effect.promise(() => waitForFileContent(exitLogPath));
         assert.include(exitLog, "SIGTERM");
@@ -1012,6 +1015,7 @@ cursorAdapterTestLayer("CursorAdapterLive", (it) => {
 
         yield* adapter.stopSession(threadId);
         assert.isFalse(yield* adapter.hasSession(threadId));
+        // oxlint-disable-next-line codework/no-global-process-runtime -- the assertion waits for a signal only on POSIX hosts.
         if (process.platform !== "win32") {
           const exitLog = yield* Effect.promise(() => waitForFileContent(exitLogPath));
           assert.equal(exitLog.match(/SIGTERM/g)?.length ?? 0, 2);

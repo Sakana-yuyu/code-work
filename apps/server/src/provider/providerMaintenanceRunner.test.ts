@@ -940,7 +940,7 @@ describe("providerMaintenanceRunner installProvider", () => {
       // On a real win32 host resolveSpawnCommand expands powershell to its
       // absolute path; only the args and the executable identity are stable.
       assert.strictEqual(calls.length, 1);
-      assert.match(calls[0]?.command ?? "", /powershell.exe$/i);
+      assert.match(calls[0]?.command ?? "", /powershell(?:\.exe)?$/i);
       assert.deepStrictEqual(calls[0]?.args, [
         "-NoProfile",
         "-Command",

@@ -269,7 +269,6 @@ export function ComposerGoalControl(props: ComposerGoalControlProps) {
           type="button"
           className="flex min-w-0 items-center gap-1.5 rounded-lg px-2 py-1.5 text-muted-foreground outline-none transition-colors hover:bg-accent hover:text-foreground focus-visible:bg-accent focus-visible:text-foreground"
           aria-label={t("composer.addGoal")}
-          title={objective}
           disabled={disabled}
           onClick={props.onEditGoalInComposer}
         >
@@ -300,7 +299,6 @@ export function ComposerGoalControl(props: ComposerGoalControlProps) {
               type="button"
               className="flex min-w-0 items-center gap-1.5 rounded-lg px-2 py-1.5 text-muted-foreground outline-none transition-colors hover:bg-accent hover:text-foreground focus-visible:bg-accent focus-visible:text-foreground"
               aria-label={t("composer.addGoal")}
-              title={objective}
               disabled={disabled}
             />
           }

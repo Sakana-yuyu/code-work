@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vite-plus/test";
+import { describe, expect } from "vite-plus/test";
 import { it as effectIt } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as Stream from "effect/Stream";
@@ -50,99 +50,108 @@ const input = {
 };
 
 describe("CompositionAgentService", () => {
-  it("runs the explicit agent loop through the resolved model driver", async () => {
-    let capturedRuntimeId: string | undefined;
-    const broker: ToolBroker.ToolBroker["Service"] = {
-      invoke: (brokerInput) => {
-        capturedRuntimeId = brokerInput.runtimeId;
-        return Effect.succeed({
-          invocationId: "invocation-1",
-          taskId: brokerInput.taskId,
-          runId: brokerInput.runId,
-          toolCallId: brokerInput.toolCallId,
-          canonicalToolName: brokerInput.canonicalToolName,
-          status: "succeeded" as const,
-          result: { contents: "ok" },
+  effectIt.effect("runs the explicit agent loop through the resolved model driver", () =>
+    Effect.gen(function* () {
+      let capturedRuntimeId: string | undefined;
+      const broker: ToolBroker.ToolBroker["Service"] = {
+        invoke: (brokerInput) => {
+          capturedRuntimeId = brokerInput.runtimeId;
+          return Effect.succeed({
+            invocationId: "invocation-1",
+            taskId: brokerInput.taskId,
+            runId: brokerInput.runId,
+            toolCallId: brokerInput.toolCallId,
+            canonicalToolName: brokerInput.canonicalToolName,
+            status: "succeeded" as const,
+            result: { contents: "ok" },
+          });
+        },
+        cancel: () => Effect.void,
+      };
+      let turn = 0;
+      const loopModel: ByokAgentModelDriver = {
+        complete: () => {
+          turn += 1;
+          return turn === 1
+            ? Stream.succeed({
+                type: "tool_call" as const,
+                toolCallId: "call-runtime-context",
+                canonicalToolName: "workspace.read_file",
+                arguments: { cwd: "C:/workspace", relativePath: "README.md" },
+              }).pipe(Stream.concat(Stream.succeed({ type: "model_completed" as const })))
+            : modelDriver.complete({ messages: [], tools: [], turn });
+        },
+      };
+      const service = makeCompositionAgentService({
+        broker,
+        resolveModelDriver: () => Effect.succeed(loopModel),
+      });
+
+      const result = yield* service.run(input);
+      expect(result).toMatchObject({
+        text: "完成",
+        rounds: 2,
+      });
+      expect(capturedRuntimeId).toBe(input.providerInstanceId);
+    }),
+  );
+
+  effectIt.effect("把模型文本 checkpoint 逐段传给调用方", () =>
+    Effect.gen(function* () {
+      const checkpoints: string[] = [];
+      const service = makeCompositionAgentService({
+        broker: makeBroker(),
+        resolveModelDriver: () => Effect.succeed(modelDriver),
+      });
+
+      const result = yield* service.run({
+        ...input,
+        onTextCheckpoint: (checkpoint) =>
+          Effect.sync(() => {
+            checkpoints.push(checkpoint.delta);
+          }),
+      });
+      expect(result).toMatchObject({ text: "完成" });
+      expect(checkpoints).toEqual(["完成"]);
+    }),
+  );
+
+  effectIt.effect("把取消 signal 传递给 Provider Model Driver", () =>
+    Effect.gen(function* () {
+      const controller = new AbortController();
+      let receivedSignal: AbortSignal | undefined;
+      const service = makeCompositionAgentService({
+        broker: makeBroker(),
+        resolveModelDriver: (input) => {
+          receivedSignal = input.signal;
+          return Effect.succeed(modelDriver);
+        },
+      });
+
+      yield* service.run({ ...input, signal: controller.signal });
+      expect(receivedSignal).toBe(controller.signal);
+    }),
+  );
+
+  effectIt.effect(
+    "preserves a resolver error instead of silently falling back to legacy text",
+    () =>
+      Effect.gen(function* () {
+        const error = new CompositionAgentServiceError({
+          code: "agent_loop_unsupported",
+          detail: "protocol anthropic is not supported",
         });
-      },
-      cancel: () => Effect.void,
-    };
-    let turn = 0;
-    const loopModel: ByokAgentModelDriver = {
-      complete: () => {
-        turn += 1;
-        return turn === 1
-          ? Stream.succeed({
-              type: "tool_call" as const,
-              toolCallId: "call-runtime-context",
-              canonicalToolName: "workspace.read_file",
-              arguments: { cwd: "C:/workspace", relativePath: "README.md" },
-            }).pipe(Stream.concat(Stream.succeed({ type: "model_completed" as const })))
-          : modelDriver.complete({ messages: [], tools: [], turn });
-      },
-    };
-    const service = makeCompositionAgentService({
-      broker,
-      resolveModelDriver: () => Effect.succeed(loopModel),
-    });
+        const service = makeCompositionAgentService({
+          broker: makeBroker(),
+          resolveModelDriver: () => Effect.fail(error),
+        });
 
-    await expect(Effect.runPromise(service.run(input))).resolves.toMatchObject({
-      text: "完成",
-      rounds: 2,
-    });
-    expect(capturedRuntimeId).toBe(input.providerInstanceId);
-  });
-
-  it("把模型文本 checkpoint 逐段传给调用方", async () => {
-    const checkpoints: string[] = [];
-    const service = makeCompositionAgentService({
-      broker: makeBroker(),
-      resolveModelDriver: () => Effect.succeed(modelDriver),
-    });
-
-    await expect(
-      Effect.runPromise(
-        service.run({
-          ...input,
-          onTextCheckpoint: (checkpoint) =>
-            Effect.sync(() => {
-              checkpoints.push(checkpoint.delta);
-            }),
-        }),
-      ),
-    ).resolves.toMatchObject({ text: "完成" });
-    expect(checkpoints).toEqual(["完成"]);
-  });
-
-  it("把取消 signal 传递给 Provider Model Driver", async () => {
-    const controller = new AbortController();
-    let receivedSignal: AbortSignal | undefined;
-    const service = makeCompositionAgentService({
-      broker: makeBroker(),
-      resolveModelDriver: (input) => {
-        receivedSignal = input.signal;
-        return Effect.succeed(modelDriver);
-      },
-    });
-
-    await Effect.runPromise(service.run({ ...input, signal: controller.signal }));
-    expect(receivedSignal).toBe(controller.signal);
-  });
-
-  it("preserves a resolver error instead of silently falling back to legacy text", async () => {
-    const error = new CompositionAgentServiceError({
-      code: "agent_loop_unsupported",
-      detail: "protocol anthropic is not supported",
-    });
-    const service = makeCompositionAgentService({
-      broker: makeBroker(),
-      resolveModelDriver: () => Effect.fail(error),
-    });
-
-    await expect(Effect.runPromise(service.run(input))).rejects.toMatchObject({
-      code: "agent_loop_unsupported",
-    });
-  });
+        const received = yield* Effect.flip(service.run(input));
+        expect(received).toMatchObject({
+          code: "agent_loop_unsupported",
+        });
+      }),
+  );
 
   effectIt.effect("保留模型驱动返回的稳定失败码", () =>
     Effect.gen(function* () {
@@ -165,79 +174,87 @@ describe("CompositionAgentService", () => {
     }),
   );
 
-  it("returns a stable error when the selected provider has no composition driver", async () => {
-    const registry = {
-      getInstance: () => Effect.succeed(void 0),
-      listInstances: Effect.succeed([]),
-      listUnavailable: Effect.succeed([]),
-      streamChanges: Stream.empty,
-      subscribeChanges: Effect.die("not used in this test"),
-    } satisfies ProviderInstanceRegistry.ProviderInstanceRegistry["Service"];
-    const service = makeCompositionAgentServiceFromRegistry(registry, makeBroker());
+  effectIt.effect(
+    "returns a stable error when the selected provider has no composition driver",
+    () =>
+      Effect.gen(function* () {
+        const registry = {
+          getInstance: () => Effect.succeed(void 0),
+          listInstances: Effect.succeed([]),
+          listUnavailable: Effect.succeed([]),
+          streamChanges: Stream.empty,
+          subscribeChanges: Effect.die("not used in this test"),
+        } satisfies ProviderInstanceRegistry.ProviderInstanceRegistry["Service"];
+        const service = makeCompositionAgentServiceFromRegistry(registry, makeBroker());
 
-    await expect(Effect.runPromise(service.run(input))).rejects.toMatchObject({
-      code: "provider_composition_unavailable",
-    });
-  });
-
-  it("启动 Agent Loop 时把 capability ID 签发为 task-scoped grant", async () => {
-    const capturedGrantIds: string[][] = [];
-    const revokedGrantIds: string[] = [];
-    let turn = 0;
-    const loopModel: ByokAgentModelDriver = {
-      complete: () => {
-        turn += 1;
-        return turn === 1
-          ? Stream.succeed({
-              type: "tool_call" as const,
-              toolCallId: "call-1",
-              canonicalToolName: "workspace.read_file",
-              arguments: { cwd: "C:/workspace", relativePath: "README.md" },
-            }).pipe(Stream.concat(Stream.succeed({ type: "model_completed" as const })))
-          : Stream.succeed({ type: "text_delta" as const, text: "完成" }).pipe(
-              Stream.concat(Stream.succeed({ type: "model_completed" as const })),
-            );
-      },
-    };
-    const broker: ToolBroker.ToolBroker["Service"] = {
-      invoke: (brokerInput) => {
-        capturedGrantIds.push([...brokerInput.capabilityGrantIds]);
-        return Effect.succeed({
-          invocationId: "invocation-1",
-          taskId: brokerInput.taskId,
-          runId: brokerInput.runId,
-          toolCallId: brokerInput.toolCallId,
-          canonicalToolName: brokerInput.canonicalToolName,
-          status: "succeeded" as const,
-          result: { contents: "ok" },
+        const error = yield* Effect.flip(service.run(input));
+        expect(error).toMatchObject({
+          code: "provider_composition_unavailable",
         });
-      },
-      cancel: () => Effect.void,
-    };
-    const capabilityRegistry = makeCompositionCapabilityRegistry();
-    const baseGrantRegistry = makeCapabilityGrantRegistry({ capabilityRegistry, now: () => 1000 });
-    const grantRegistry = {
-      ...baseGrantRegistry,
-      revoke: (revokeInput: { readonly grantId: string }) =>
-        baseGrantRegistry
-          .revoke(revokeInput)
-          .pipe(Effect.tap(() => Effect.sync(() => revokedGrantIds.push(revokeInput.grantId)))),
-    };
-    const service = makeCompositionAgentService({
-      broker,
-      grantRegistry,
-      resolveModelDriver: () => Effect.succeed(loopModel),
-    });
+      }),
+  );
 
-    await Effect.runPromise(
-      service.run({
+  effectIt.effect("启动 Agent Loop 时把 capability ID 签发为 task-scoped grant", () =>
+    Effect.gen(function* () {
+      const capturedGrantIds: string[][] = [];
+      const revokedGrantIds: string[] = [];
+      let turn = 0;
+      const loopModel: ByokAgentModelDriver = {
+        complete: () => {
+          turn += 1;
+          return turn === 1
+            ? Stream.succeed({
+                type: "tool_call" as const,
+                toolCallId: "call-1",
+                canonicalToolName: "workspace.read_file",
+                arguments: { cwd: "C:/workspace", relativePath: "README.md" },
+              }).pipe(Stream.concat(Stream.succeed({ type: "model_completed" as const })))
+            : Stream.succeed({ type: "text_delta" as const, text: "完成" }).pipe(
+                Stream.concat(Stream.succeed({ type: "model_completed" as const })),
+              );
+        },
+      };
+      const broker: ToolBroker.ToolBroker["Service"] = {
+        invoke: (brokerInput) => {
+          capturedGrantIds.push([...brokerInput.capabilityGrantIds]);
+          return Effect.succeed({
+            invocationId: "invocation-1",
+            taskId: brokerInput.taskId,
+            runId: brokerInput.runId,
+            toolCallId: brokerInput.toolCallId,
+            canonicalToolName: brokerInput.canonicalToolName,
+            status: "succeeded" as const,
+            result: { contents: "ok" },
+          });
+        },
+        cancel: () => Effect.void,
+      };
+      const capabilityRegistry = makeCompositionCapabilityRegistry();
+      const baseGrantRegistry = makeCapabilityGrantRegistry({
+        capabilityRegistry,
+        now: () => 1000,
+      });
+      const grantRegistry = {
+        ...baseGrantRegistry,
+        revoke: (revokeInput: { readonly grantId: string }) =>
+          baseGrantRegistry
+            .revoke(revokeInput)
+            .pipe(Effect.tap(() => Effect.sync(() => revokedGrantIds.push(revokeInput.grantId)))),
+      };
+      const service = makeCompositionAgentService({
+        broker,
+        grantRegistry,
+        resolveModelDriver: () => Effect.succeed(loopModel),
+      });
+
+      yield* service.run({
         ...input,
         capabilityGrantIds: ["t3.workspace.read_file"],
-      }),
-    );
-    expect(capturedGrantIds[0]?.[0]).toMatch(/^grant-/);
-    expect(revokedGrantIds).toEqual(capturedGrantIds[0]);
-  });
+      });
+      expect(capturedGrantIds[0]?.[0]).toMatch(/^grant-/);
+      expect(revokedGrantIds).toEqual(capturedGrantIds[0]);
+    }),
+  );
 
   effectIt.effect("把上下文与工具结果预算传递给 BYOK Loop", () =>
     Effect.gen(function* () {

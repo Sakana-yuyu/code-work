@@ -1,4 +1,4 @@
-import { randomBytes } from "node:crypto";
+import * as NodeCrypto from "node:crypto";
 
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
@@ -64,7 +64,7 @@ const nonEmpty = (value: string, field: string): string => {
   return trimmed;
 };
 
-const makeToken = (): string => `t3mcp_${randomBytes(32).toString("base64url")}`;
+const makeToken = (): string => `t3mcp_${NodeCrypto.randomBytes(32).toString("base64url")}`;
 
 const normalizeEndpoint = (value: string): string => {
   const endpoint = nonEmpty(value, "endpoint").replace(/\/$/, "");

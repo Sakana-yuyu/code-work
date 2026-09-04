@@ -3,7 +3,7 @@
 // @effect-diagnostics nodeBuiltinImport:off - 本 e2e 直接驱动真实子进程，需要 node 模块。
 import * as NodeChildProcess from "node:child_process";
 import * as NodeReadline from "node:readline";
-import { fileURLToPath } from "node:url";
+import * as NodeURL from "node:url";
 
 import { describe, expect, it } from "vite-plus/test";
 import * as Effect from "effect/Effect";
@@ -19,7 +19,9 @@ import { makeMulticaDaemonRuntimeAdapter } from "./MulticaDaemonRuntimeAdapter.t
 import { makeMulticaTaskEventWebSocketStream } from "./MulticaTaskEventWebSocketTransport.ts";
 import type { MulticaDaemonProtocol } from "./MulticaDaemonProtocol.ts";
 
-const fixturePath = fileURLToPath(new URL("./MulticaDualChannelFixture.mjs", import.meta.url));
+const fixturePath = NodeURL.fileURLToPath(
+  new URL("./MulticaDualChannelFixture.mjs", import.meta.url),
+);
 const fixtureToken = "fixture-token";
 
 type FixtureProcess = {
@@ -29,7 +31,7 @@ type FixtureProcess = {
 
 const startFixture = async (): Promise<FixtureProcess> => {
   const child = NodeChildProcess.spawn(process.execPath, [fixturePath], {
-    cwd: fileURLToPath(new URL("../", import.meta.url)),
+    cwd: NodeURL.fileURLToPath(new URL("../", import.meta.url)),
     stdio: ["pipe", "pipe", "pipe"],
   });
   child.stderr.resume();

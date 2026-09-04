@@ -1,5 +1,5 @@
 import { it as effectIt } from "@effect/vitest";
-import { describe, expect, it } from "vite-plus/test";
+import { describe, expect } from "vite-plus/test";
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
@@ -30,23 +30,23 @@ const makeClient = (sseText: string) => {
 };
 
 describe("OpenAiByokModelDriver", () => {
-  it("maps BYOK events and replays agent messages and tools", async () => {
-    const { client, captured } = makeClient(
-      [
-        'data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call-1","function":{"name":"workspace.read_file","arguments":"{\\"cwd\\":\\"C:/workspace\\"}"}}]},"finish_reason":"tool_calls"}]}',
-        "",
-        "data: [DONE]",
-        "",
-      ].join("\n"),
-    );
-    const driver = makeOpenAiByokModelDriver(client, {
-      baseURL: "https://api.openai.com/v1",
-      apiKey: "k",
-      modelId: "gpt",
-    });
+  effectIt.effect("maps BYOK events and replays agent messages and tools", () =>
+    Effect.gen(function* () {
+      const { client, captured } = makeClient(
+        [
+          'data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call-1","function":{"name":"workspace.read_file","arguments":"{\\"cwd\\":\\"C:/workspace\\"}"}}]},"finish_reason":"tool_calls"}]}',
+          "",
+          "data: [DONE]",
+          "",
+        ].join("\n"),
+      );
+      const driver = makeOpenAiByokModelDriver(client, {
+        baseURL: "https://api.openai.com/v1",
+        apiKey: "k",
+        modelId: "gpt",
+      });
 
-    const events = await Effect.runPromise(
-      Stream.runCollect(
+      const events = yield* Stream.runCollect(
         driver.complete({
           turn: 2,
           messages: [
@@ -77,69 +77,72 @@ describe("OpenAiByokModelDriver", () => {
             },
           ],
         }),
-      ),
-    );
+      );
 
-    expect(Array.from(events)).toEqual([
-      {
-        type: "tool_call",
-        toolCallId: "call-1",
-        canonicalToolName: "workspace.read_file",
-        arguments: { cwd: "C:/workspace" },
-      },
-      { type: "model_completed" },
-    ]);
-    expect(captured[0]).toMatchObject({
-      model: "gpt",
-      tools: [
+      expect(Array.from(events)).toEqual([
         {
-          type: "function",
-          function: { name: "workspace.read_file", description: "Read a text file" },
+          type: "tool_call",
+          toolCallId: "call-1",
+          canonicalToolName: "workspace.read_file",
+          arguments: { cwd: "C:/workspace" },
         },
-      ],
-      messages: [
-        { role: "user", content: "read README" },
-        {
-          role: "assistant",
-          tool_calls: [
-            {
-              id: "call-0",
-              function: {
-                name: "workspace.read_file",
-                arguments: '{"cwd":"C:/workspace","relativePath":"package.json"}',
+        { type: "model_completed" },
+      ]);
+      expect(captured[0]).toMatchObject({
+        model: "gpt",
+        tools: [
+          {
+            type: "function",
+            function: { name: "workspace_read_file", description: "Read a text file" },
+          },
+        ],
+        messages: [
+          { role: "user", content: "read README" },
+          {
+            role: "assistant",
+            tool_calls: [
+              {
+                id: "call-0",
+                function: {
+                  name: "workspace_read_file",
+                  arguments: '{"cwd":"C:/workspace","relativePath":"package.json"}',
+                },
               },
-            },
-          ],
-        },
-        { role: "tool", tool_call_id: "call-0", content: '{"status":"succeeded"}' },
-      ],
-    });
-  });
+            ],
+          },
+          { role: "tool", tool_call_id: "call-0", content: '{"status":"succeeded"}' },
+        ],
+      });
+    }),
+  );
 
-  it("preserves retry metadata on BYOK provider failures", async () => {
-    const client = HttpClient.make((request) =>
-      Effect.succeed(
-        HttpClientResponse.fromWeb(
-          request,
-          new Response("no", { status: 503, headers: { "retry-after": "2" } }),
+  effectIt.effect("preserves retry metadata on BYOK provider failures", () =>
+    Effect.gen(function* () {
+      const client = HttpClient.make((request) =>
+        Effect.succeed(
+          HttpClientResponse.fromWeb(
+            request,
+            new Response("no", { status: 503, headers: { "retry-after": "2" } }),
+          ),
         ),
-      ),
-    );
-    const driver = makeOpenAiByokModelDriver(client, {
-      baseURL: "https://api.openai.com/v1",
-      apiKey: "k",
-      modelId: "gpt",
-    });
+      );
+      const driver = makeOpenAiByokModelDriver(client, {
+        baseURL: "https://api.openai.com/v1",
+        apiKey: "k",
+        modelId: "gpt",
+      });
 
-    await expect(
-      Effect.runPromise(Stream.runCollect(driver.complete({ messages: [], tools: [], turn: 1 }))),
-    ).rejects.toMatchObject({
-      code: "byok_engine_error",
-      reason: "unavailable",
-      retryable: true,
-      retryAfterMs: 2_000,
-    });
-  });
+      const error = yield* Effect.flip(
+        Stream.runCollect(driver.complete({ messages: [], tools: [], turn: 1 })),
+      );
+      expect(error).toMatchObject({
+        code: "byok_engine_error",
+        reason: "unavailable",
+        retryable: true,
+        retryAfterMs: 2_000,
+      });
+    }),
+  );
 
   effectIt.effect("maps provider context overflow to a dedicated agent model error", () =>
     Effect.gen(function* () {
@@ -205,71 +208,79 @@ describe("OpenAiByokModelDriver", () => {
     }),
   );
 
-  it("does not synthesize completion when the provider stream has no terminal event", async () => {
-    const { client } = makeClient('data: {"choices":[{"delta":{"content":"partial"}}]}\n\n');
-    const driver = makeOpenAiByokModelDriver(client, {
-      baseURL: "https://api.openai.com/v1",
-      apiKey: "k",
-      modelId: "gpt",
-    });
+  effectIt.effect(
+    "does not synthesize completion when the provider stream has no terminal event",
+    () =>
+      Effect.gen(function* () {
+        const { client } = makeClient('data: {"choices":[{"delta":{"content":"partial"}}]}\n\n');
+        const driver = makeOpenAiByokModelDriver(client, {
+          baseURL: "https://api.openai.com/v1",
+          apiKey: "k",
+          modelId: "gpt",
+        });
 
-    await expect(
-      Effect.runPromise(Stream.runCollect(driver.complete({ messages: [], tools: [], turn: 1 }))),
-    ).rejects.toMatchObject({
-      code: "byok_engine_error",
-      reason: "terminal_event_missing",
-      retryable: false,
-    });
-  });
+        const error = yield* Effect.flip(
+          Stream.runCollect(driver.complete({ messages: [], tools: [], turn: 1 })),
+        );
+        expect(error).toMatchObject({
+          code: "byok_engine_error",
+          reason: "terminal_event_missing",
+          retryable: false,
+        });
+      }),
+  );
 
-  it("preserves output truncation as a non-retryable model error", async () => {
-    const { client } = makeClient(
-      [
-        'data: {"choices":[{"delta":{"content":"partial"},"finish_reason":"length"}]}',
-        "",
-        "data: [DONE]",
-        "",
-      ].join("\n"),
-    );
-    const driver = makeOpenAiByokModelDriver(client, {
-      baseURL: "https://api.openai.com/v1",
-      apiKey: "k",
-      modelId: "gpt",
-    });
+  effectIt.effect("preserves output truncation as a non-retryable model error", () =>
+    Effect.gen(function* () {
+      const { client } = makeClient(
+        [
+          'data: {"choices":[{"delta":{"content":"partial"},"finish_reason":"length"}]}',
+          "",
+          "data: [DONE]",
+          "",
+        ].join("\n"),
+      );
+      const driver = makeOpenAiByokModelDriver(client, {
+        baseURL: "https://api.openai.com/v1",
+        apiKey: "k",
+        modelId: "gpt",
+      });
 
-    await expect(
-      Effect.runPromise(Stream.runCollect(driver.complete({ messages: [], tools: [], turn: 1 }))),
-    ).rejects.toMatchObject({
-      code: "byok_engine_error",
-      reason: "output_truncated",
-      retryable: false,
-    });
-  });
+      const error = yield* Effect.flip(
+        Stream.runCollect(driver.complete({ messages: [], tools: [], turn: 1 })),
+      );
+      expect(error).toMatchObject({
+        code: "byok_engine_error",
+        reason: "output_truncated",
+        retryable: false,
+      });
+    }),
+  );
 });
 
 describe("ByokModelDriver", () => {
-  it("maps Anthropic tool calls and sends canonical tool results", async () => {
-    const { client, captured } = makeClient(
-      [
-        'data: {"type":"content_block_start","index":0,"content_block":{"type":"tool_use","id":"call-anthropic","name":"workspace.read_file"}}',
-        "",
-        'data: {"type":"content_block_delta","index":0,"delta":{"type":"input_json_delta","partial_json":"{\\"cwd\\":\\"C:/workspace\\"}"}}',
-        "",
-        'data: {"type":"message_delta","delta":{"stop_reason":"tool_use"}}',
-        "",
-        'data: {"type":"message_stop"}',
-        "",
-      ].join("\n"),
-    );
-    const driver = makeByokModelDriver(client, {
-      protocol: "anthropic",
-      baseURL: "https://api.anthropic.com",
-      apiKey: "k",
-      modelId: "claude",
-    });
+  effectIt.effect("maps Anthropic tool calls and sends canonical tool results", () =>
+    Effect.gen(function* () {
+      const { client, captured } = makeClient(
+        [
+          'data: {"type":"content_block_start","index":0,"content_block":{"type":"tool_use","id":"call-anthropic","name":"workspace.read_file"}}',
+          "",
+          'data: {"type":"content_block_delta","index":0,"delta":{"type":"input_json_delta","partial_json":"{\\"cwd\\":\\"C:/workspace\\"}"}}',
+          "",
+          'data: {"type":"message_delta","delta":{"stop_reason":"tool_use"}}',
+          "",
+          'data: {"type":"message_stop"}',
+          "",
+        ].join("\n"),
+      );
+      const driver = makeByokModelDriver(client, {
+        protocol: "anthropic",
+        baseURL: "https://api.anthropic.com",
+        apiKey: "k",
+        modelId: "claude",
+      });
 
-    const events = await Effect.runPromise(
-      Stream.runCollect(
+      const events = yield* Stream.runCollect(
         driver.complete({
           turn: 2,
           messages: [
@@ -294,62 +305,62 @@ describe("ByokModelDriver", () => {
           ],
           tools: [],
         }),
-      ),
-    );
+      );
 
-    expect(Array.from(events)).toEqual([
-      {
-        type: "tool_call",
-        toolCallId: "call-anthropic",
-        canonicalToolName: "workspace.read_file",
-        arguments: { cwd: "C:/workspace" },
-      },
-      { type: "model_completed" },
-    ]);
-    expect(captured[0]).toMatchObject({
-      messages: [
-        { role: "user", content: "read README" },
+      expect(Array.from(events)).toEqual([
         {
-          role: "assistant",
-          content: [
-            {
-              type: "tool_use",
-              id: "call-0",
-              name: "workspace.read_file",
-              input: { cwd: "C:/workspace" },
-            },
-          ],
+          type: "tool_call",
+          toolCallId: "call-anthropic",
+          canonicalToolName: "workspace.read_file",
+          arguments: { cwd: "C:/workspace" },
         },
-        {
-          role: "user",
-          content: [
-            {
-              type: "tool_result",
-              tool_use_id: "call-0",
-              content: '{"status":"succeeded"}',
-            },
-          ],
-        },
-      ],
-    });
-  });
+        { type: "model_completed" },
+      ]);
+      expect(captured[0]).toMatchObject({
+        messages: [
+          { role: "user", content: "read README" },
+          {
+            role: "assistant",
+            content: [
+              {
+                type: "tool_use",
+                id: "call-0",
+                name: "workspace.read_file",
+                input: { cwd: "C:/workspace" },
+              },
+            ],
+          },
+          {
+            role: "user",
+            content: [
+              {
+                type: "tool_result",
+                tool_use_id: "call-0",
+                content: '{"status":"succeeded"}',
+              },
+            ],
+          },
+        ],
+      });
+    }),
+  );
 
-  it("maps Gemini function calls and replays tool messages", async () => {
-    const { client, captured } = makeClient(
-      [
-        'data: {"candidates":[{"content":{"parts":[{"functionCall":{"name":"workspace.read_file","args":{"cwd":"C:/workspace"}}}]},"finishReason":"STOP"}]}',
-        "",
-      ].join("\n"),
-    );
-    const driver = makeByokModelDriver(client, {
-      protocol: "gemini",
-      baseURL: "https://generativelanguage.googleapis.com",
-      apiKey: "k",
-      modelId: "gemini-2.5-pro",
-    });
+  effectIt.effect("maps Gemini function calls and replays tool messages", () =>
+    Effect.gen(function* () {
+      const { client, captured } = makeClient(
+        [
+          'data: {"candidates":[{"content":{"parts":[{"functionCall":{"name":"workspace.read_file","args":{"cwd":"C:/workspace"}}}]},"finishReason":"STOP"}]}',
+          "",
+        ].join("\n"),
+      );
+      const driver = makeByokModelDriver(client, {
+        protocol: "gemini",
+        baseURL: "https://generativelanguage.googleapis.com",
+        apiKey: "k",
+        modelId: "gemini-2.5-pro",
+      });
 
-    const events = await Effect.runPromise(
-      Stream.runCollect(
+      const events = yield* Stream.runCollect(
         driver.complete({
           turn: 1,
           messages: [
@@ -369,38 +380,40 @@ describe("ByokModelDriver", () => {
             },
           ],
         }),
-      ),
-    );
+      );
 
-    expect(Array.from(events)).toEqual([
-      {
-        type: "tool_call",
-        toolCallId: "gemini-tool-workspace.read_file",
-        canonicalToolName: "workspace.read_file",
-        arguments: { cwd: "C:/workspace" },
-      },
-      { type: "model_completed" },
-    ]);
-    expect(captured[0]).toMatchObject({
-      tools: [
+      expect(Array.from(events)).toEqual([
         {
-          functionDeclarations: [{ name: "workspace.read_file", description: "Read a text file" }],
+          type: "tool_call",
+          toolCallId: "gemini-tool-workspace.read_file",
+          canonicalToolName: "workspace.read_file",
+          arguments: { cwd: "C:/workspace" },
         },
-      ],
-      contents: [
-        { role: "user" },
-        {
-          role: "user",
-          parts: [
-            {
-              functionResponse: {
-                name: "workspace.read_file",
-                response: { result: '{"status":"succeeded"}' },
+        { type: "model_completed" },
+      ]);
+      expect(captured[0]).toMatchObject({
+        tools: [
+          {
+            functionDeclarations: [
+              { name: "workspace.read_file", description: "Read a text file" },
+            ],
+          },
+        ],
+        contents: [
+          { role: "user" },
+          {
+            role: "user",
+            parts: [
+              {
+                functionResponse: {
+                  name: "workspace.read_file",
+                  response: { result: '{"status":"succeeded"}' },
+                },
               },
-            },
-          ],
-        },
-      ],
-    });
-  });
+            ],
+          },
+        ],
+      });
+    }),
+  );
 });

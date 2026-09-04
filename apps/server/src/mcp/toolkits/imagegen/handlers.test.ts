@@ -6,10 +6,11 @@ import {
   parseImageGenerationResponse,
   pickImageAdapter,
   planImageRequest,
-  type ImagegenAdapterRoute,
 } from "./handlers.ts";
 
-const route = (id: string, protocol: string, apiKey = "sk-test"): ImagegenAdapterRoute => ({
+type ImagegenRouteCandidate = Parameters<typeof pickImageAdapter>[0][number];
+
+const route = (id: string, protocol: string, apiKey = "sk-test"): ImagegenRouteCandidate => ({
   id,
   protocol,
   baseURL: `https://${id}.example.com/v1`,

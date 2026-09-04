@@ -11,14 +11,14 @@
  * Dynamic first arguments (template literals, concatenations, identifiers)
  * are reported and left untouched.
  */
-import { readdirSync, readFileSync, writeFileSync, statSync } from "node:fs";
-import { join, relative } from "node:path";
+import * as NodeFS from "node:fs";
+import * as NodePath from "node:path";
 
-const ROOT = join(import.meta.dirname, "..", "apps", "web", "src");
-const LEGACY_ZH = join(ROOT, "i18n", "zh-CN.ts");
-const MESSAGES = join(ROOT, "i18n", "messages.ts");
+const ROOT = NodePath.join(import.meta.dirname, "..", "apps", "web", "src");
+const LEGACY_ZH = NodePath.join(ROOT, "i18n", "zh-CN.ts");
+const MESSAGES = NodePath.join(ROOT, "i18n", "messages.ts");
 
-const legacyZhSource = readFileSync(LEGACY_ZH, "utf8");
+const legacyZhSource = NodeFS.readFileSync(LEGACY_ZH, "utf8");
 const legacyZh = {};
 {
   const re = /^\s*"((?:[^"\\]|\\.)*)":\s*"((?:[^"\\]|\\.)*)",?\s*$/gm;
@@ -44,9 +44,9 @@ function slugify(source) {
 
 function listFiles(dir) {
   const out = [];
-  for (const entry of readdirSync(dir)) {
-    const p = join(dir, entry);
-    if (statSync(p).isDirectory()) {
+  for (const entry of NodeFS.readdirSync(dir)) {
+    const p = NodePath.join(dir, entry);
+    if (NodeFS.statSync(p).isDirectory()) {
       if (entry === "i18n") continue; // skip the i18n module itself
       out.push(...listFiles(p));
     } else if (/\.(tsx?|mts?)$/.test(entry)) {
@@ -66,7 +66,7 @@ const dynamicHits = [];
 const changedFiles = [];
 
 for (const file of listFiles(ROOT)) {
-  const source = readFileSync(file, "utf8");
+  const source = NodeFS.readFileSync(file, "utf8");
   if (!/\bt\(/.test(source)) continue;
   let changed = false;
   let flagged = false;
@@ -78,7 +78,7 @@ for (const file of listFiles(ROOT)) {
     const rest = source.slice(dm.index);
     if (!CALL_RE.test(rest.slice(0, rest.indexOf(")") + 1 || undefined))) {
       dynamicHits.push(
-        `${relative(process.cwd(), file)}: ${source.slice(dm.index, dm.index + 60).split("\n")[0]}`,
+        `${NodePath.relative(process.cwd(), file)}: ${source.slice(dm.index, dm.index + 60).split("\n")[0]}`,
       );
       flagged = true;
     }
@@ -100,7 +100,7 @@ for (const file of listFiles(ROOT)) {
   });
   if (changed) {
     writeFileSync(file, rewritten);
-    changedFiles.push(relative(process.cwd(), file));
+    changedFiles.push(NodePath.relative(process.cwd(), file));
   }
 }
 
@@ -125,7 +125,7 @@ for (const [key, english] of [...entries].sort(([a], [b]) => a.localeCompare(b))
 }
 lines.push("};");
 lines.push("");
-writeFileSync(MESSAGES, lines.join("\n"));
+NodeFS.writeFileSync(MESSAGES, lines.join("\n"));
 
 console.log(`files changed: ${changedFiles.length}`);
 console.log(

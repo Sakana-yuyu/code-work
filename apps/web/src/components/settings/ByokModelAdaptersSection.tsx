@@ -923,10 +923,7 @@ export function ByokModelAdaptersSection({
                             {t("byokAdapters.supplierTemplateModelDiscovery")}
                           </span>
                         </span>
-                        <code
-                          className="mt-1.5 block min-w-0 truncate text-[10px] text-muted-foreground"
-                          title={baseURL}
-                        >
+                        <code className="mt-1.5 block min-w-0 truncate text-[10px] text-muted-foreground">
                           {baseURL || t("byokAdapters.supplierTemplateManualBaseURL")}
                         </code>
                       </span>
@@ -1021,7 +1018,7 @@ export function ByokModelAdaptersSection({
             {t("byokAdapters.requestModel")}
           </span>
           <div className="mt-1 flex min-w-0 flex-wrap items-center gap-2 rounded-md border border-border/70 bg-muted/15 px-3 py-2">
-            <code className="min-w-0 flex-1 truncate text-xs text-foreground" title={form.modelId}>
+            <code className="min-w-0 flex-1 truncate text-xs text-foreground">
               {form.modelId || t("byokAdapters.modelNotSelected")}
             </code>
             <div className="flex shrink-0 flex-wrap items-center gap-1.5">
@@ -1408,9 +1405,7 @@ export function ByokModelAdaptersSection({
           <ul className="mt-1.5 space-y-1">
             {changes.slice(0, 6).map((detail) => (
               <li key={detail.adapterId} className="flex min-w-0 gap-1.5 text-foreground">
-                <code className="min-w-0 truncate" title={detail.modelId}>
-                  {detail.modelId}
-                </code>
+                <code className="min-w-0 truncate">{detail.modelId}</code>
                 <span className="shrink-0 text-muted-foreground">
                   {t("byokAdapters.contextMatchChange", {
                     before: detail.before,
@@ -1476,9 +1471,7 @@ export function ByokModelAdaptersSection({
                   <span className="shrink-0 font-medium text-foreground">
                     {group.groupName || t("byokAdapters.defaultGroup")}
                   </span>
-                  <code className="min-w-0 truncate text-foreground/80" title={relay.baseURL}>
-                    {relay.baseURL}
-                  </code>
+                  <code className="min-w-0 truncate text-foreground/80">{relay.baseURL}</code>
                   <ChevronRightIcon className="ml-auto size-3.5 shrink-0 text-muted-foreground transition-transform group-hover/relay:translate-x-0.5" />
                 </div>
                 <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-[10px] text-muted-foreground">
@@ -1521,9 +1514,7 @@ export function ByokModelAdaptersSection({
             <DialogHeader>
               <DialogTitle>{t("byokAdapters.relay")}</DialogTitle>
               <DialogDescription>
-                <code className="block truncate" title={selectedRelay.baseURL}>
-                  {selectedRelay.baseURL}
-                </code>
+                <code className="block truncate">{selectedRelay.baseURL}</code>
               </DialogDescription>
             </DialogHeader>
             <div className="max-h-[min(68dvh,42rem)] space-y-4 overflow-y-auto px-6 pb-4">

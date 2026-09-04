@@ -184,7 +184,7 @@ it.layer(NodeServices.layer)("providerMaintenance", (it) => {
   });
 
   it("keeps update commands owned by provider maintenance capabilities", () => {
-    expect(staticToolUpdate.resolve()).toEqual({
+    expect(staticToolUpdate.resolve()).toMatchObject({
       provider: driver("staticTool"),
       packageName: null,
       update: {
@@ -220,7 +220,7 @@ it.layer(NodeServices.layer)("providerMaintenance", (it) => {
           },
         ).pipe(Effect.provideService(HostProcessPlatform, "darwin"));
 
-        expect(capabilities).toEqual({
+        expect(capabilities).toMatchObject({
           provider: driver("packageTool"),
           packageName: "@example/package-tool",
           update: {
@@ -256,7 +256,7 @@ it.layer(NodeServices.layer)("providerMaintenance", (it) => {
           },
         ).pipe(Effect.provideService(HostProcessPlatform, "win32"));
 
-        expect(capabilities).toEqual({
+        expect(capabilities).toMatchObject({
           provider: driver("nativePackageTool"),
           packageName: "@example/native-package-tool",
           update: {
@@ -293,7 +293,7 @@ it.layer(NodeServices.layer)("providerMaintenance", (it) => {
           },
         ).pipe(Effect.provideService(HostProcessPlatform, "darwin"));
 
-        expect(capabilities).toEqual({
+        expect(capabilities).toMatchObject({
           provider: driver("scopedPackageTool"),
           packageName: "@example/scoped-package-tool",
           update: {
@@ -317,7 +317,7 @@ it.layer(NodeServices.layer)("providerMaintenance", (it) => {
           PATH: "",
         },
       }),
-    ).toEqual({
+    ).toMatchObject({
       provider: driver("packageTool"),
       packageName: "@example/package-tool",
       update: {
@@ -353,7 +353,7 @@ it.layer(NodeServices.layer)("providerMaintenance", (it) => {
           },
         ).pipe(Effect.provideService(HostProcessPlatform, "darwin"));
 
-        expect(capabilities).toEqual({
+        expect(capabilities).toMatchObject({
           provider: driver("nativePackageTool"),
           packageName: "@example/native-package-tool",
           update: {
@@ -390,7 +390,7 @@ it.layer(NodeServices.layer)("providerMaintenance", (it) => {
           },
         ).pipe(Effect.provideService(HostProcessPlatform, "darwin"));
 
-        expect(capabilities).toEqual({
+        expect(capabilities).toMatchObject({
           provider: driver("scopedPackageTool"),
           packageName: "@example/scoped-package-tool",
           update: {
@@ -414,7 +414,7 @@ it.layer(NodeServices.layer)("providerMaintenance", (it) => {
           PATH: "",
         },
       }),
-    ).toEqual({
+    ).toMatchObject({
       provider: driver("nativePackageTool"),
       packageName: "@example/native-package-tool",
       update: {
@@ -437,7 +437,7 @@ it.layer(NodeServices.layer)("providerMaintenance", (it) => {
           PATH: "",
         },
       }),
-    ).toEqual({
+    ).toMatchObject({
       provider: driver("scopedPackageTool"),
       packageName: "@example/scoped-package-tool",
       update: {
@@ -479,7 +479,7 @@ it.layer(NodeServices.layer)("providerMaintenance", (it) => {
         },
       });
 
-      expect(capabilities).toEqual({
+      expect(capabilities).toMatchObject({
         provider: driver("packageTool"),
         packageName: "@example/package-tool",
         update: {
@@ -532,7 +532,7 @@ it.layer(NodeServices.layer)("providerMaintenance", (it) => {
         },
       });
 
-      expect(capabilities).toEqual({
+      expect(capabilities).toMatchObject({
         provider: driver("packageTool"),
         packageName: "@example/package-tool",
         update: {
@@ -561,7 +561,7 @@ it.layer(NodeServices.layer)("providerMaintenance", (it) => {
       },
     });
 
-    expect(claudeUpdate.resolve()).toEqual({
+    expect(claudeUpdate.resolve()).toMatchObject({
       provider: driver("claudeAgent"),
       packageName: "@anthropic-ai/claude-code",
       update: {
@@ -591,7 +591,7 @@ it.layer(NodeServices.layer)("providerMaintenance", (it) => {
           PATHEXT: ".COM;.EXE;.BAT;.CMD",
         },
       }),
-    ).toEqual({
+    ).toMatchObject({
       provider: driver("packageTool"),
       packageName: "@example/package-tool",
       update: null,

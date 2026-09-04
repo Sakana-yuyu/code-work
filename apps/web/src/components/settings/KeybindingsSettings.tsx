@@ -877,9 +877,7 @@ function KeybindingTableRow({
               command: localizedCommandLabel(row.command),
             })}
           >
-            <span className="truncate" title={whenDraftExpression || undefined}>
-              {whenDraftLabel}
-            </span>
+            <span className="truncate">{whenDraftLabel}</span>
             <ChevronDownIcon className="size-3.5 shrink-0 opacity-60" />
           </PopoverTrigger>
           <PopoverContent align="start" sideOffset={6}>
@@ -1040,9 +1038,7 @@ function NewKeybindingTableRow({
             )}
             aria-label={t("keybindings.editWhenFor", { command: commandLabelText })}
           >
-            <span className="truncate" title={whenDraftExpression || undefined}>
-              {whenDraftLabel}
-            </span>
+            <span className="truncate">{whenDraftLabel}</span>
             <ChevronDownIcon className="size-3.5 shrink-0 opacity-60" />
           </PopoverTrigger>
           <PopoverContent align="start" sideOffset={6}>

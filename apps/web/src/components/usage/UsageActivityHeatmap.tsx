@@ -166,7 +166,6 @@ export function UsageActivityHeatmap({
                 style={gridStyle}
               >
                 {cells.map((cell) => {
-                  const tooltipText = cellTooltipText(cell);
                   return (
                     <Tooltip key={cell.key}>
                       <TooltipTrigger
@@ -174,7 +173,6 @@ export function UsageActivityHeatmap({
                           <button
                             aria-label={`${cell.label} · ${formatTokens(cell.usage.totalTokens)} ${t("tokens")}`}
                             className={`block size-full min-h-[10px] rounded-[2px] border-0 p-0 ring-1 ring-inset ring-border/40 transition-[filter,transform] hover:brightness-110 hover:scale-110 focus-visible:ring-2 focus-visible:ring-ring motion-reduce:transition-none motion-reduce:hover:scale-100 ${LEVEL_CLASSES[cell.level]}`}
-                            title={tooltipText}
                             type="button"
                           />
                         }
@@ -280,18 +278,4 @@ function formatHeatmapDay(day: string, language: string): string {
     day: "numeric",
     timeZone: "UTC",
   }).format(date);
-}
-
-function cellTooltipText(cell: HeatmapCell): string {
-  const lines = [
-    cell.label,
-    `${t("tokens")}: ${formatTokens(cell.usage.totalTokens)}`,
-    `${t("cost")}: ${formatUsd(cell.usage.costUsd)}`,
-    `${t("providers")}: ${cell.usage.providerCount}`,
-    `${t("models")}: ${cell.usage.modelCount}`,
-  ];
-  if (cell.usage.cumulativeTokens !== undefined) {
-    lines.push(`${t("usage.viewCumulative")}: ${formatTokens(cell.usage.cumulativeTokens)}`);
-  }
-  return lines.join("\n");
 }

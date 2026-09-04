@@ -41,6 +41,7 @@ const decodeCursorSettings = Schema.decodeSync(CursorSettings);
 
 async function makeMockAgentWrapper(extraEnv: Record<string, string>) {
   const dir = await NodeFSP.mkdtemp(NodePath.join(NodeOS.tmpdir(), "cursor-toolbroker-e2e-"));
+  // oxlint-disable-next-line codework/no-global-process-runtime -- wrapper generation must follow the real host shell.
   const isWindows = process.platform === "win32";
   const wrapperPath = NodePath.join(dir, isWindows ? "fake-agent.cmd" : "fake-agent.sh");
   const script = isWindows

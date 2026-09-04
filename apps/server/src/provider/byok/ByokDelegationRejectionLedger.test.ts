@@ -152,7 +152,7 @@ layer("BYOK 委派入队前拒绝台账", (it) => {
             task: "queue-full-secret-prompt",
           });
           assert.equal(rejected.status, "failed");
-          assert.equal(rejected.errorCode, "DELEGATION_SUBMIT_FAILED");
+          assert.equal(rejected.errorCode, "DELEGATION_QUEUE_FULL");
           assert.match(rejected.id, /^delegation-rejected-/);
 
           const store = yield* CompositionTaskStore;
@@ -165,7 +165,7 @@ layer("BYOK 委派入队前拒绝台账", (it) => {
           const events = yield* store.listEvents(task!.taskId, run.runId);
           assert.equal(task!.status, "failed");
           assert.equal(run.status, "failed");
-          assert.equal(run.failureCode, "DELEGATION_SUBMIT_FAILED");
+          assert.equal(run.failureCode, "DELEGATION_QUEUE_FULL");
           assert.equal(events.length, 1);
           assert.isFalse(
             // @effect-diagnostics-next-line preferSchemaOverJson:off - 整体序列化验证敏感正文未进入台账。

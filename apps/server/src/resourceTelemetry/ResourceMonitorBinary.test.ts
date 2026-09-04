@@ -1,4 +1,5 @@
 import * as NodeServices from "@effect/platform-node/NodeServices";
+import * as NodeOS from "node:os";
 import {
   HostProcessArchitecture,
   HostProcessEnvironment,
@@ -27,6 +28,8 @@ describe("ResourceMonitorBinary", () => {
       });
       const binaryPath = `${baseDir}/codework-resource-monitor.exe`;
       yield* fileSystem.writeFileString(binaryPath, "binary");
+      yield* fileSystem.chmod(binaryPath, 0o755);
+      yield* fileSystem.chmod(binaryPath, 0o755);
 
       const service = yield* ResourceMonitorBinary.make().pipe(
         Effect.provide(ServerConfig.layerTest(process.cwd(), baseDir)),
@@ -108,6 +111,7 @@ describe("ResourceMonitorBinary", () => {
           CODEWORK_RESOURCE_MONITOR_PATH: binaryPath,
         }),
       );
+      // oxlint-disable-next-line codework/no-global-process-runtime -- this assertion distinguishes the real host kernel from the simulated Effect platform.
       if (process.platform === "win32") {
         // Exec-bit enforcement belongs to the host kernel, not the injected
         // platform identity: NTFS neither reports nor enforces POSIX bits, so

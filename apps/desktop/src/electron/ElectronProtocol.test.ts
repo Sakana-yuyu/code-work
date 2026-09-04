@@ -65,18 +65,18 @@ describe("ElectronProtocol", () => {
           );
           assert.include(
             response.headers.get("content-security-policy") ?? "",
-            "img-src 'self' codework-dev: codework-dev: blob: data: http: https:",
+            "img-src 'self' codework-dev: t3code-dev: blob: data: http: https:",
           );
           assert.include(
             response.headers.get("content-security-policy") ?? "",
-            "font-src 'self' codework-dev: codework-dev: data:",
+            "font-src 'self' codework-dev: t3code-dev: data:",
           );
         }),
       );
 
       assert.deepEqual(
         handleMock.mock.calls.map((call) => call[0]),
-        ["codework-dev", "codework-dev"],
+        ["codework-dev", "t3code-dev"],
       );
       assert.equal(netFetchMock.mock.calls[0]?.[0], "http://127.0.0.1:3773/api/health?verbose=1");
       const forwardedHeaders = new Headers(netFetchMock.mock.calls[0]?.[1]?.headers);
@@ -84,7 +84,7 @@ describe("ElectronProtocol", () => {
       assert.isNull(forwardedHeaders.get("origin"));
       assert.isNull(forwardedHeaders.get("referer"));
       assert.isNull(forwardedHeaders.get("sec-fetch-site"));
-      assert.deepEqual(unhandleMock.mock.calls, [["codework-dev"], ["codework-dev"]]);
+      assert.deepEqual(unhandleMock.mock.calls, [["codework-dev"], ["t3code-dev"]]);
     }).pipe(Effect.provide(ElectronProtocol.layer)),
   );
 
@@ -220,12 +220,12 @@ describe("ElectronProtocol", () => {
     assert.deepEqual(directives["img-src"], [
       "'self'",
       "codework:",
-      "codework:",
+      "t3code:",
       "blob:",
       "data:",
       "http:",
       "https:",
     ]);
-    assert.deepEqual(directives["font-src"], ["'self'", "codework:", "codework:", "data:"]);
+    assert.deepEqual(directives["font-src"], ["'self'", "codework:", "t3code:", "data:"]);
   });
 });

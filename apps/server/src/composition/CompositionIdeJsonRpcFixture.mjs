@@ -1,10 +1,10 @@
-import { createServer } from "node:http";
+import * as NodeHttp from "node:http";
 
 import { NodeWS } from "@effect/platform-node/NodeSocket";
 
 const token = "fixture-ide-token";
 const sessionId = "vscode-session-fixture";
-const server = createServer((_request, response) => {
+const server = NodeHttp.createServer((_request, response) => {
   response.statusCode = 404;
   response.end();
 });

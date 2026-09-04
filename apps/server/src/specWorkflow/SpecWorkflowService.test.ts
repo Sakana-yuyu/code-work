@@ -158,19 +158,20 @@ const makeLayer = (
   return { layer, getDispatchCount: () => dispatchCount };
 };
 
-const makeCompletionRuntime = () => {
-  const completionRequests = Effect.runSync(PubSub.unbounded<string>());
-  const waiters = new Map<string, Deferred.Deferred<CompositionTaskRun>>();
-  const awaitTaskCompletion: CompositionTaskRuntimeProjectionServiceShape["awaitTaskCompletion"] =
-    ({ runId }) =>
-      Effect.gen(function* () {
-        const waiter = yield* Deferred.make<CompositionTaskRun>();
-        waiters.set(runId, waiter);
-        yield* PubSub.publish(completionRequests, runId);
-        return yield* Deferred.await(waiter);
-      });
-  return { completionRequests, waiters, awaitTaskCompletion };
-};
+const makeCompletionRuntime = () =>
+  Effect.gen(function* () {
+    const completionRequests = yield* PubSub.unbounded<string>();
+    const waiters = new Map<string, Deferred.Deferred<CompositionTaskRun>>();
+    const awaitTaskCompletion: CompositionTaskRuntimeProjectionServiceShape["awaitTaskCompletion"] =
+      ({ runId }) =>
+        Effect.gen(function* () {
+          const waiter = yield* Deferred.make<CompositionTaskRun>();
+          waiters.set(runId, waiter);
+          yield* PubSub.publish(completionRequests, runId);
+          return yield* Deferred.await(waiter);
+        });
+    return { completionRequests, waiters, awaitTaskCompletion };
+  });
 
 const makeFixArtifactStore = (contents: string): SpecWorkflowArtifactStoreShape => ({
   read: (input) => Effect.succeed({ ...input, contents }),
@@ -178,50 +179,52 @@ const makeFixArtifactStore = (contents: string): SpecWorkflowArtifactStoreShape 
   list: () => Effect.succeed(["fix.md"]),
 });
 
-const makeObservedStateStore = () => {
-  const rows = new Map<
-    string,
-    { state: ReturnType<typeof startSpecWorkflow>["state"]; events: SpecWorkflowStateEvent[] }
-  >();
-  const changes = Effect.runSync(
-    PubSub.unbounded<{ readonly threadId: string; readonly event: SpecWorkflowStateEvent }>(),
-  );
-  const store = {
-    listStates: () => Effect.sync(() => [...rows.values()].map((row) => row.state)),
-    get: (threadId: string) =>
-      Effect.sync(() => {
-        const row = rows.get(threadId);
-        return row === undefined ? Option.none() : Option.some(row.state);
-      }),
-    append: (input: Parameters<SpecWorkflowStateStoreShape["append"]>[0]) =>
-      Effect.gen(function* () {
-        const previous = rows.get(input.threadId);
-        if (
-          input.event.state.threadId !== input.threadId ||
-          input.expectedRevision !== (previous?.state.revision ?? 0) ||
-          input.event.state.revision !== input.expectedRevision + 1
-        ) {
-          throw new Error("test state store revision conflict");
-        }
-        const next = {
-          state: input.event.state,
-          events: [...(previous?.events ?? []), input.event],
-        };
-        rows.set(input.threadId, next);
-        yield* PubSub.publish(changes, { threadId: input.threadId, event: input.event });
-        return next.state;
-      }),
-    listEvents: (threadId: string) => Effect.sync(() => rows.get(threadId)?.events ?? []),
-    subscribe: (threadId: string) =>
-      Effect.succeed(
-        Stream.fromPubSub(changes).pipe(
-          Stream.filter((change) => change.threadId === threadId),
-          Stream.map((change) => change.event),
+const makeObservedStateStore = () =>
+  Effect.gen(function* () {
+    const rows = new Map<
+      string,
+      { state: ReturnType<typeof startSpecWorkflow>["state"]; events: SpecWorkflowStateEvent[] }
+    >();
+    const changes = yield* PubSub.unbounded<{
+      readonly threadId: string;
+      readonly event: SpecWorkflowStateEvent;
+    }>();
+    const store = {
+      listStates: () => Effect.sync(() => [...rows.values()].map((row) => row.state)),
+      get: (threadId: string) =>
+        Effect.sync(() => {
+          const row = rows.get(threadId);
+          return row === undefined ? Option.none() : Option.some(row.state);
+        }),
+      append: (input: Parameters<SpecWorkflowStateStoreShape["append"]>[0]) =>
+        Effect.gen(function* () {
+          const previous = rows.get(input.threadId);
+          if (
+            input.event.state.threadId !== input.threadId ||
+            input.expectedRevision !== (previous?.state.revision ?? 0) ||
+            input.event.state.revision !== input.expectedRevision + 1
+          ) {
+            throw new Error("test state store revision conflict");
+          }
+          const next = {
+            state: input.event.state,
+            events: [...(previous?.events ?? []), input.event],
+          };
+          rows.set(input.threadId, next);
+          yield* PubSub.publish(changes, { threadId: input.threadId, event: input.event });
+          return next.state;
+        }),
+      listEvents: (threadId: string) => Effect.sync(() => rows.get(threadId)?.events ?? []),
+      subscribe: (threadId: string) =>
+        Effect.succeed(
+          Stream.fromPubSub(changes).pipe(
+            Stream.filter((change) => change.threadId === threadId),
+            Stream.map((change) => change.event),
+          ),
         ),
-      ),
-  } as unknown as SpecWorkflowStateStoreShape;
-  return { store, changes };
-};
+    } as unknown as SpecWorkflowStateStoreShape;
+    return { store, changes };
+  });
 
 const seedActiveWorkflow = (input: {
   readonly store: SpecWorkflowStateStoreShape;
@@ -278,216 +281,220 @@ const seedActiveWorkflow = (input: {
     });
   });
 
-it.effect("Loop 使用持久化输入和预算启动，并在暂停后以取消终态回写", () => {
-  const runStarted = Effect.runSync(Deferred.make<void>());
-  const release = Effect.runSync(Deferred.make<"completed" | "cancelled">());
-  let loopInput: Parameters<CompositionGoalLoopAutomationRunnerShape["run"]>[0] | undefined;
-  const runner: CompositionGoalLoopAutomationRunnerShape = {
-    run: (input) =>
-      Effect.gen(function* () {
-        loopInput = input;
-        yield* Deferred.succeed(runStarted, undefined);
-        const status = yield* Deferred.await(release);
-        return {
-          goalStatus: status === "completed" ? "completed" : "cancelled",
-          automationStatus: status === "completed" ? "succeeded" : "cancelled",
-          summary: status === "completed" ? "Loop 完成。" : "Loop 已取消。",
-        };
-      }),
-  };
-  const savedInputs = new Map<string, CompositionTaskRecoveryInput>();
-  const taskInputs: CompositionTaskInputStoreShape = {
-    save: (input) => Effect.sync(() => void savedInputs.set(input.taskId, input)),
-    get: (taskId) => {
-      const input = savedInputs.get(taskId);
-      return Effect.succeed(input === undefined ? Option.none() : Option.some(input));
-    },
-    remove: (taskId) => Effect.sync(() => void savedInputs.delete(taskId)),
-  };
-  const observedState = makeObservedStateStore();
-  const runtime = makeLayer(
-    () => {},
-    undefined,
-    observedState.store,
-    undefined,
-    enabledCapability,
-    { loopRunner: runner, taskInputs },
-  );
-
-  return Effect.gen(function* () {
-    const service = yield* SpecWorkflowService;
-    const states = yield* SpecWorkflowStateStore;
-    const baseInput = {
-      workflowId: "workflow-service-loop",
-      projectId,
-      threadId,
-      changeName: "service-loop-change",
-      mode: "loop" as const,
-      intent: "workflow" as const,
-      workspaceRoot: "C:/workspace/service-loop",
-      assigneeId: "implementer",
-      prompt: "持续执行并按预算检查目标。",
-      promptDigest: "sha256:service-loop",
+it.effect("Loop 使用持久化输入和预算启动，并在暂停后以取消终态回写", () =>
+  Effect.gen(function* () {
+    const runStarted = yield* Deferred.make<void>();
+    const release = yield* Deferred.make<"completed" | "cancelled">();
+    let loopInput: Parameters<CompositionGoalLoopAutomationRunnerShape["run"]>[0] | undefined;
+    const runner: CompositionGoalLoopAutomationRunnerShape = {
+      run: (input) =>
+        Effect.gen(function* () {
+          loopInput = input;
+          yield* Deferred.succeed(runStarted, undefined);
+          const status = yield* Deferred.await(release);
+          return {
+            goalStatus: status === "completed" ? "completed" : "cancelled",
+            automationStatus: status === "completed" ? "succeeded" : "cancelled",
+            summary: status === "completed" ? "Loop 完成。" : "Loop 已取消。",
+          };
+        }),
     };
-    let state = (yield* service.dispatch(baseInput).pipe(Effect.orDie)).state;
-    for (const to of ["design", "propose", "awaitingApproval"] as const) {
-      state = yield* states.append({
-        threadId,
-        event: transitionSpecWorkflowState(
-          state,
-          { type: "advance", to, expectedRevision: state.revision },
-          state.revision + 1,
-        ),
-        expectedRevision: state.revision,
-      });
-    }
-    state = yield* service.reviewProposal({
-      threadId,
-      decision: "approve",
-      expectedRevision: state.revision,
-    });
-    const stateChanges = yield* PubSub.subscribe(observedState.changes);
-
-    const applied = yield* service.dispatch({
-      ...baseInput,
-      intent: "loop",
-      loopConfig: { maxAttempts: 2, reviewerAgentId: "reviewer" },
-      independentVerifierId: "reviewer",
-    });
-    const dispatchEvent = yield* PubSub.take(stateChanges);
-    assert.equal(dispatchEvent.event.type, "state-changed");
-    assert.equal(applied.state.stage, "apply");
-    assert.equal(applied.state.activeTaskId, "spec-workflow:workflow-service-loop:loop:6");
-    assert.equal(loopInput, undefined);
-    yield* Deferred.await(runStarted);
-    assert.equal(loopInput?.maxAttempts, 2);
-    assert.equal(loopInput?.reviewerAgentId, "reviewer");
-    assert.equal(savedInputs.has(applied.state.activeTaskId!), true);
-
-    const paused = yield* service.pause({ threadId, expectedRevision: applied.state.revision });
-    const pauseEvent = yield* PubSub.take(stateChanges);
-    assert.equal(pauseEvent.event.state.status, "paused");
-    yield* Deferred.succeed(release, "cancelled");
-    const cancelledEvent = yield* PubSub.take(stateChanges);
-    assert.equal(cancelledEvent.event.state.status, "paused");
-    assert.isNull(cancelledEvent.event.state.activeTaskId);
-    assert.equal(cancelledEvent.event.state.lastError, "Loop 已取消。");
-
-    const resumed = yield* service.resume({
-      threadId,
-      expectedRevision: cancelledEvent.event.state.revision,
-    });
-    assert.equal(resumed.status, "active");
-    assert.equal(paused.status, "paused");
-  }).pipe(Effect.provide(runtime.layer));
-});
-
-it.effect("Loop 在父 Task 尚未落库时可按加密输入重启恢复", () => {
-  const observedState = makeObservedStateStore();
-  const taskId = "spec-workflow:workflow-recovery-loop:loop:6";
-  let recoveredInput: Parameters<CompositionGoalLoopAutomationRunnerShape["run"]>[0] | undefined;
-  const runner: CompositionGoalLoopAutomationRunnerShape = {
-    run: (input) =>
-      Effect.sync(() => {
-        recoveredInput = input;
-        return {
-          goalStatus: "completed" as const,
-          automationStatus: "succeeded" as const,
-          summary: "Loop 重启恢复完成。",
-        };
-      }),
-  };
-  const inputs = new Map<string, CompositionTaskRecoveryInput>([
-    [
-      taskId,
-      {
-        taskId,
-        agentId: "implementer",
-        prompt: "恢复未落库的 Loop。",
-        workspaceRoot: "C:/workspace/recovery-loop",
-        capabilityIds: [],
+    const savedInputs = new Map<string, CompositionTaskRecoveryInput>();
+    const taskInputs: CompositionTaskInputStoreShape = {
+      save: (input) => Effect.sync(() => void savedInputs.set(input.taskId, input)),
+      get: (taskId) => {
+        const input = savedInputs.get(taskId);
+        return Effect.succeed(input === undefined ? Option.none() : Option.some(input));
       },
-    ],
-  ]);
-  const taskInputs: CompositionTaskInputStoreShape = {
-    save: (input) => Effect.sync(() => void inputs.set(input.taskId, input)),
-    get: (id) => {
-      const input = inputs.get(id);
-      return Effect.succeed(input === undefined ? Option.none() : Option.some(input));
-    },
-    remove: (id) => Effect.sync(() => void inputs.delete(id)),
-  };
-  const runtime = makeLayer(
-    () => {},
-    undefined,
-    observedState.store,
-    () => Effect.succeed([]),
-    enabledCapability,
-    { loopRunner: runner, taskInputs },
-  );
+      remove: (taskId) => Effect.sync(() => void savedInputs.delete(taskId)),
+    };
+    const observedState = yield* makeObservedStateStore();
+    const runtime = makeLayer(
+      () => {},
+      undefined,
+      observedState.store,
+      undefined,
+      enabledCapability,
+      { loopRunner: runner, taskInputs },
+    );
 
-  return Effect.gen(function* () {
-    const service = yield* SpecWorkflowService;
-    const states = yield* SpecWorkflowStateStore;
-    let state = yield* states.append({
-      threadId,
-      event: startSpecWorkflow({
-        workflowId: "workflow-recovery-loop",
+    return yield* Effect.gen(function* () {
+      const service = yield* SpecWorkflowService;
+      const states = yield* SpecWorkflowStateStore;
+      const baseInput = {
+        workflowId: "workflow-service-loop",
         projectId,
         threadId,
-        changeName: "workflow-recovery-loop-change",
-        mode: "loop",
-        updatedAt: 1,
-      }),
-      expectedRevision: 0,
-    });
-    for (const to of ["design", "propose", "awaitingApproval"] as const) {
+        changeName: "service-loop-change",
+        mode: "loop" as const,
+        intent: "workflow" as const,
+        workspaceRoot: "C:/workspace/service-loop",
+        assigneeId: "implementer",
+        prompt: "持续执行并按预算检查目标。",
+        promptDigest: "sha256:service-loop",
+      };
+      let state = (yield* service.dispatch(baseInput).pipe(Effect.orDie)).state;
+      for (const to of ["design", "propose", "awaitingApproval"] as const) {
+        state = yield* states.append({
+          threadId,
+          event: transitionSpecWorkflowState(
+            state,
+            { type: "advance", to, expectedRevision: state.revision },
+            state.revision + 1,
+          ),
+          expectedRevision: state.revision,
+        });
+      }
+      state = yield* service.reviewProposal({
+        threadId,
+        decision: "approve",
+        expectedRevision: state.revision,
+      });
+      const stateChanges = yield* PubSub.subscribe(observedState.changes);
+
+      const applied = yield* service.dispatch({
+        ...baseInput,
+        intent: "loop",
+        loopConfig: { maxAttempts: 2, reviewerAgentId: "reviewer" },
+        independentVerifierId: "reviewer",
+      });
+      const dispatchEvent = yield* PubSub.take(stateChanges);
+      assert.equal(dispatchEvent.event.type, "state-changed");
+      assert.equal(applied.state.stage, "apply");
+      assert.equal(applied.state.activeTaskId, "spec-workflow:workflow-service-loop:loop:6");
+      assert.equal(loopInput, undefined);
+      yield* Deferred.await(runStarted);
+      assert.equal(loopInput?.maxAttempts, 2);
+      assert.equal(loopInput?.reviewerAgentId, "reviewer");
+      assert.equal(savedInputs.has(applied.state.activeTaskId!), true);
+
+      const paused = yield* service.pause({ threadId, expectedRevision: applied.state.revision });
+      const pauseEvent = yield* PubSub.take(stateChanges);
+      assert.equal(pauseEvent.event.state.status, "paused");
+      yield* Deferred.succeed(release, "cancelled");
+      const cancelledEvent = yield* PubSub.take(stateChanges);
+      assert.equal(cancelledEvent.event.state.status, "paused");
+      assert.isNull(cancelledEvent.event.state.activeTaskId);
+      assert.equal(cancelledEvent.event.state.lastError, "Loop 已取消。");
+
+      const resumed = yield* service.resume({
+        threadId,
+        expectedRevision: cancelledEvent.event.state.revision,
+      });
+      assert.equal(resumed.status, "active");
+      assert.equal(paused.status, "paused");
+    }).pipe(Effect.provide(runtime.layer));
+  }),
+);
+
+it.effect("Loop 在父 Task 尚未落库时可按加密输入重启恢复", () =>
+  Effect.gen(function* () {
+    const observedState = yield* makeObservedStateStore();
+    const taskId = "spec-workflow:workflow-recovery-loop:loop:6";
+    let recoveredInput: Parameters<CompositionGoalLoopAutomationRunnerShape["run"]>[0] | undefined;
+    const runner: CompositionGoalLoopAutomationRunnerShape = {
+      run: (input) =>
+        Effect.sync(() => {
+          recoveredInput = input;
+          return {
+            goalStatus: "completed" as const,
+            automationStatus: "succeeded" as const,
+            summary: "Loop 重启恢复完成。",
+          };
+        }),
+    };
+    const inputs = new Map<string, CompositionTaskRecoveryInput>([
+      [
+        taskId,
+        {
+          taskId,
+          agentId: "implementer",
+          prompt: "恢复未落库的 Loop。",
+          workspaceRoot: "C:/workspace/recovery-loop",
+          capabilityIds: [],
+        },
+      ],
+    ]);
+    const taskInputs: CompositionTaskInputStoreShape = {
+      save: (input) => Effect.sync(() => void inputs.set(input.taskId, input)),
+      get: (id) => {
+        const input = inputs.get(id);
+        return Effect.succeed(input === undefined ? Option.none() : Option.some(input));
+      },
+      remove: (id) => Effect.sync(() => void inputs.delete(id)),
+    };
+    const runtime = makeLayer(
+      () => {},
+      undefined,
+      observedState.store,
+      () => Effect.succeed([]),
+      enabledCapability,
+      { loopRunner: runner, taskInputs },
+    );
+
+    return yield* Effect.gen(function* () {
+      const service = yield* SpecWorkflowService;
+      const states = yield* SpecWorkflowStateStore;
+      let state = yield* states.append({
+        threadId,
+        event: startSpecWorkflow({
+          workflowId: "workflow-recovery-loop",
+          projectId,
+          threadId,
+          changeName: "workflow-recovery-loop-change",
+          mode: "loop",
+          updatedAt: 1,
+        }),
+        expectedRevision: 0,
+      });
+      for (const to of ["design", "propose", "awaitingApproval"] as const) {
+        state = yield* states.append({
+          threadId,
+          event: transitionSpecWorkflowState(
+            state,
+            { type: "advance", to, expectedRevision: state.revision },
+            state.revision + 1,
+          ),
+          expectedRevision: state.revision,
+        });
+      }
       state = yield* states.append({
         threadId,
         event: transitionSpecWorkflowState(
           state,
-          { type: "advance", to, expectedRevision: state.revision },
+          { type: "approve-proposal", expectedRevision: state.revision },
           state.revision + 1,
         ),
         expectedRevision: state.revision,
       });
-    }
-    state = yield* states.append({
-      threadId,
-      event: transitionSpecWorkflowState(
-        state,
-        { type: "approve-proposal", expectedRevision: state.revision },
-        state.revision + 1,
-      ),
-      expectedRevision: state.revision,
-    });
-    state = yield* states.append({
-      threadId,
-      event: transitionSpecWorkflowState(
-        state,
-        {
-          type: "advance",
-          to: "apply",
-          activeTaskId: taskId,
-          loopConfig: { maxAttempts: 1 },
-          expectedRevision: state.revision,
-        },
-        state.revision + 1,
-      ),
-      expectedRevision: state.revision,
-    });
-    const stateChanges = yield* PubSub.subscribe(observedState.changes);
+      state = yield* states.append({
+        threadId,
+        event: transitionSpecWorkflowState(
+          state,
+          {
+            type: "advance",
+            to: "apply",
+            activeTaskId: taskId,
+            loopConfig: { maxAttempts: 1 },
+            expectedRevision: state.revision,
+          },
+          state.revision + 1,
+        ),
+        expectedRevision: state.revision,
+      });
+      const stateChanges = yield* PubSub.subscribe(observedState.changes);
 
-    const receipt = yield* service.recover();
-    assert.deepEqual(receipt, { scanned: 1, rebound: 1, settled: 0, skipped: 0 });
-    const completion = yield* PubSub.take(stateChanges);
-    assert.equal(completion.event.state.implementationCompleted, true);
-    assert.isNull(completion.event.state.activeTaskId);
-    assert.equal(recoveredInput?.taskId, taskId);
-    assert.equal(recoveredInput?.runId, `${taskId}:run`);
-    assert.equal(recoveredInput?.agentId, "implementer");
-  }).pipe(Effect.provide(runtime.layer));
-});
+      const receipt = yield* service.recover();
+      assert.deepEqual(receipt, { scanned: 1, rebound: 1, settled: 0, skipped: 0 });
+      const completion = yield* PubSub.take(stateChanges);
+      assert.equal(completion.event.state.implementationCompleted, true);
+      assert.isNull(completion.event.state.activeTaskId);
+      assert.equal(recoveredInput?.taskId, taskId);
+      assert.equal(recoveredInput?.runId, `${taskId}:run`);
+      assert.equal(recoveredInput?.agentId, "implementer");
+    }).pipe(Effect.provide(runtime.layer));
+  }),
+);
 
 it.effect("Server service 持久化状态、调用 Composition，并阻止重复派发", () => {
   let lastDispatch: Parameters<CompositionOrchestratorServiceShape["dispatchTask"]>[0] | undefined;
@@ -824,342 +831,355 @@ it.effect("fix/ship 在批次产物为空时由 Server 拒绝，不调用独立�
   }).pipe(Effect.provide(runtime.layer));
 });
 
-it.effect("Composition Task 终态单向回写 workflow，并收口失败与取消", () => {
-  const completionRuntime = makeCompletionRuntime();
-  const observedState = makeObservedStateStore();
-  const runtime = makeLayer(() => {}, completionRuntime.awaitTaskCompletion, observedState.store);
+it.effect("Composition Task 终态单向回写 workflow，并收口失败与取消", () =>
+  Effect.gen(function* () {
+    const completionRuntime = yield* makeCompletionRuntime();
+    const observedState = yield* makeObservedStateStore();
+    const runtime = makeLayer(() => {}, completionRuntime.awaitTaskCompletion, observedState.store);
 
-  return Effect.gen(function* () {
-    const service = yield* SpecWorkflowService;
-    const states = yield* SpecWorkflowStateStore;
-    const completionRequests = yield* PubSub.subscribe(completionRuntime.completionRequests);
-    const baseInput = {
-      workflowId: "workflow-runtime-service",
-      projectId,
-      threadId,
-      changeName: "runtime-service-change",
-      mode: "full" as const,
-      intent: "workflow" as const,
-      workspaceRoot: "C:/workspace/runtime-service",
-      assigneeId: "implementer",
-      prompt: "执行批准后的方案。",
-      promptDigest: "sha256:runtime-service",
-    };
-    let state = (yield* service.dispatch(baseInput).pipe(Effect.orDie)).state;
-    for (const to of ["design", "propose", "awaitingApproval"] as const) {
+    return yield* Effect.gen(function* () {
+      const service = yield* SpecWorkflowService;
+      const states = yield* SpecWorkflowStateStore;
+      const completionRequests = yield* PubSub.subscribe(completionRuntime.completionRequests);
+      const baseInput = {
+        workflowId: "workflow-runtime-service",
+        projectId,
+        threadId,
+        changeName: "runtime-service-change",
+        mode: "full" as const,
+        intent: "workflow" as const,
+        workspaceRoot: "C:/workspace/runtime-service",
+        assigneeId: "implementer",
+        prompt: "执行批准后的方案。",
+        promptDigest: "sha256:runtime-service",
+      };
+      let state = (yield* service.dispatch(baseInput).pipe(Effect.orDie)).state;
+      for (const to of ["design", "propose", "awaitingApproval"] as const) {
+        state = yield* states.append({
+          threadId,
+          event: transitionSpecWorkflowState(
+            state,
+            { type: "advance", to, expectedRevision: state.revision },
+            state.revision + 1,
+          ),
+          expectedRevision: state.revision,
+        });
+      }
       state = yield* states.append({
         threadId,
         event: transitionSpecWorkflowState(
           state,
-          { type: "advance", to, expectedRevision: state.revision },
+          { type: "approve-proposal", expectedRevision: state.revision },
           state.revision + 1,
         ),
         expectedRevision: state.revision,
       });
-    }
-    state = yield* states.append({
-      threadId,
-      event: transitionSpecWorkflowState(
-        state,
-        { type: "approve-proposal", expectedRevision: state.revision },
-        state.revision + 1,
-      ),
-      expectedRevision: state.revision,
-    });
-    const stateChanges = yield* PubSub.subscribe(observedState.changes);
+      const stateChanges = yield* PubSub.subscribe(observedState.changes);
 
-    const applied = yield* service.dispatch({ ...baseInput, intent: "apply" }).pipe(Effect.orDie);
-    assert.isNotNull(applied.task);
-    assert.equal(applied.state.activeTaskId, applied.task!.task.taskId);
-    assert.equal((yield* PubSub.take(stateChanges)).event.type, "state-changed");
-    const applyRunId = yield* PubSub.take(completionRequests);
-    const applyWaiter = completionRuntime.waiters.get(applyRunId);
-    assert.isTrue(applyWaiter !== undefined);
-    const completedApplyRun: CompositionTaskRun = {
-      ...applied.task!.run,
-      status: "completed",
-    };
-    yield* Deferred.succeed(applyWaiter!, completedApplyRun);
-    state = (yield* PubSub.take(stateChanges)).event.state;
-    assert.equal(state.implementationCompleted, true);
-    assert.isNull(state.activeTaskId);
-    assert.isNull(state.lastError);
+      const applied = yield* service.dispatch({ ...baseInput, intent: "apply" }).pipe(Effect.orDie);
+      assert.isNotNull(applied.task);
+      assert.equal(applied.state.activeTaskId, applied.task!.task.taskId);
+      assert.equal((yield* PubSub.take(stateChanges)).event.type, "state-changed");
+      const applyRunId = yield* PubSub.take(completionRequests);
+      const applyWaiter = completionRuntime.waiters.get(applyRunId);
+      assert.isTrue(applyWaiter !== undefined);
+      const completedApplyRun: CompositionTaskRun = {
+        ...applied.task!.run,
+        status: "completed",
+      };
+      yield* Deferred.succeed(applyWaiter!, completedApplyRun);
+      state = (yield* PubSub.take(stateChanges)).event.state;
+      assert.equal(state.implementationCompleted, true);
+      assert.isNull(state.activeTaskId);
+      assert.isNull(state.lastError);
 
-    const verified = yield* service.dispatch({
-      ...baseInput,
-      intent: "verify",
-      assigneeId: "verifier",
-      implementationAssigneeId: "implementer",
-      independentVerifierId: "verifier",
-    });
-    assert.isNotNull(verified.task);
-    assert.equal((yield* PubSub.take(stateChanges)).event.type, "state-changed");
-    const verifyRunId = yield* PubSub.take(completionRequests);
-    const verifyWaiter = completionRuntime.waiters.get(verifyRunId);
-    assert.isTrue(verifyWaiter !== undefined);
-    const failedVerifyRun: CompositionTaskRun = {
-      ...verified.task!.run,
-      status: "failed",
-      failureCode: "verification_failed",
-    };
-    yield* Deferred.succeed(verifyWaiter!, failedVerifyRun);
-    state = (yield* PubSub.take(stateChanges)).event.state;
-    assert.equal(state.verificationStatus, "failed");
-    assert.isNull(state.activeTaskId);
-    assert.equal(state.lastError, "Composition Task 执行失败：verification_failed");
+      const verified = yield* service.dispatch({
+        ...baseInput,
+        intent: "verify",
+        assigneeId: "verifier",
+        implementationAssigneeId: "implementer",
+        independentVerifierId: "verifier",
+      });
+      assert.isNotNull(verified.task);
+      assert.equal((yield* PubSub.take(stateChanges)).event.type, "state-changed");
+      const verifyRunId = yield* PubSub.take(completionRequests);
+      const verifyWaiter = completionRuntime.waiters.get(verifyRunId);
+      assert.isTrue(verifyWaiter !== undefined);
+      const failedVerifyRun: CompositionTaskRun = {
+        ...verified.task!.run,
+        status: "failed",
+        failureCode: "verification_failed",
+      };
+      yield* Deferred.succeed(verifyWaiter!, failedVerifyRun);
+      state = (yield* PubSub.take(stateChanges)).event.state;
+      assert.equal(state.verificationStatus, "failed");
+      assert.isNull(state.activeTaskId);
+      assert.equal(state.lastError, "Composition Task 执行失败：verification_failed");
 
-    const retry = yield* service.dispatch({ ...baseInput, intent: "apply" });
-    assert.isNotNull(retry.task);
-    assert.equal((yield* PubSub.take(stateChanges)).event.type, "state-changed");
-    const retryRunId = yield* PubSub.take(completionRequests);
-    const retryWaiter = completionRuntime.waiters.get(retryRunId);
-    assert.isTrue(retryWaiter !== undefined);
-    const cancelledRetryRun: CompositionTaskRun = {
-      ...retry.task!.run,
-      status: "cancelled",
-    };
-    yield* Deferred.succeed(retryWaiter!, cancelledRetryRun);
-    state = (yield* PubSub.take(stateChanges)).event.state;
-    assert.equal(state.stage, "apply");
-    assert.equal(state.implementationCompleted, false);
-    assert.isNull(state.activeTaskId);
-    assert.equal(state.lastError, "Composition Task 已取消。");
-  }).pipe(Effect.provide(runtime.layer));
-});
+      const retry = yield* service.dispatch({ ...baseInput, intent: "apply" });
+      assert.isNotNull(retry.task);
+      assert.equal((yield* PubSub.take(stateChanges)).event.type, "state-changed");
+      const retryRunId = yield* PubSub.take(completionRequests);
+      const retryWaiter = completionRuntime.waiters.get(retryRunId);
+      assert.isTrue(retryWaiter !== undefined);
+      const cancelledRetryRun: CompositionTaskRun = {
+        ...retry.task!.run,
+        status: "cancelled",
+      };
+      yield* Deferred.succeed(retryWaiter!, cancelledRetryRun);
+      state = (yield* PubSub.take(stateChanges)).event.state;
+      assert.equal(state.stage, "apply");
+      assert.equal(state.implementationCompleted, false);
+      assert.isNull(state.activeTaskId);
+      assert.equal(state.lastError, "Composition Task 已取消。");
+    }).pipe(Effect.provide(runtime.layer));
+  }),
+);
 
-it.effect("任务终态 Reactor 自动唤醒 verify，并把成功验证推进到人工 acceptance", () => {
-  const completionRuntime = makeCompletionRuntime();
-  const observedState = makeObservedStateStore();
-  const runtime = makeLayer(() => {}, completionRuntime.awaitTaskCompletion, observedState.store);
+it.effect("任务终态 Reactor 自动唤醒 verify，并把成功验证推进到人工 acceptance", () =>
+  Effect.gen(function* () {
+    const completionRuntime = yield* makeCompletionRuntime();
+    const observedState = yield* makeObservedStateStore();
+    const runtime = makeLayer(() => {}, completionRuntime.awaitTaskCompletion, observedState.store);
 
-  return Effect.gen(function* () {
-    const service = yield* SpecWorkflowService;
-    const states = yield* SpecWorkflowStateStore;
-    const completionRequests = yield* PubSub.subscribe(completionRuntime.completionRequests);
-    const baseInput = {
-      workflowId: "workflow-reactor-service",
+    return yield* Effect.gen(function* () {
+      const service = yield* SpecWorkflowService;
+      const states = yield* SpecWorkflowStateStore;
+      const completionRequests = yield* PubSub.subscribe(completionRuntime.completionRequests);
+      const baseInput = {
+        workflowId: "workflow-reactor-service",
+        projectId,
+        threadId,
+        changeName: "reactor-service-change",
+        mode: "full" as const,
+        intent: "workflow" as const,
+        workspaceRoot: "C:/workspace/reactor-service",
+        assigneeId: "implementer",
+        prompt: "执行并自动唤醒独立验证。",
+        promptDigest: "sha256:reactor-service",
+        implementationAssigneeId: "implementer",
+        independentVerifierId: "verifier",
+      };
+      let state = (yield* service.dispatch(baseInput).pipe(Effect.orDie)).state;
+      for (const to of ["design", "propose", "awaitingApproval"] as const) {
+        state = yield* states.append({
+          threadId,
+          event: transitionSpecWorkflowState(
+            state,
+            { type: "advance", to, expectedRevision: state.revision },
+            state.revision + 1,
+          ),
+          expectedRevision: state.revision,
+        });
+      }
+      state = yield* service.reviewProposal({
+        threadId,
+        decision: "approve",
+        expectedRevision: state.revision,
+      });
+
+      const stateChanges = yield* PubSub.subscribe(observedState.changes);
+      const applied = yield* service.dispatch({ ...baseInput, intent: "apply" });
+      assert.isNotNull(applied.task);
+      yield* PubSub.take(stateChanges);
+      const applyRunId = yield* PubSub.take(completionRequests);
+      const applyWaiter = completionRuntime.waiters.get(applyRunId);
+      assert.isTrue(applyWaiter !== undefined);
+      const completedApplyRun: CompositionTaskRun = {
+        ...applied.task!.run,
+        status: "completed",
+      };
+      yield* Deferred.succeed(applyWaiter!, completedApplyRun);
+
+      const applySettled = (yield* PubSub.take(stateChanges)).event.state;
+      assert.equal(applySettled.stage, "apply");
+      assert.equal(applySettled.implementationCompleted, true);
+      const verifyDispatched = (yield* PubSub.take(stateChanges)).event.state;
+      assert.equal(verifyDispatched.stage, "verify");
+      assert.equal(
+        verifyDispatched.activeTaskId,
+        "spec-workflow:workflow-reactor-service:verify:8",
+      );
+      const verifyRunId = yield* PubSub.take(completionRequests);
+      const verifyWaiter = completionRuntime.waiters.get(verifyRunId);
+      assert.isTrue(verifyWaiter !== undefined);
+      const verifyTaskId = verifyDispatched.activeTaskId;
+      assert.isTrue(verifyTaskId !== null);
+      yield* Deferred.succeed(verifyWaiter!, {
+        runId: verifyRunId,
+        taskId: verifyTaskId!,
+        agentId: "verifier",
+        runtimeId: "runtime-service",
+        status: "completed",
+        attempt: 0,
+        capabilityGrantIds: [],
+      });
+
+      const verificationSettled = (yield* PubSub.take(stateChanges)).event.state;
+      assert.equal(verificationSettled.stage, "verify");
+      assert.equal(verificationSettled.verificationStatus, "passed");
+      const acceptance = (yield* PubSub.take(stateChanges)).event.state;
+      assert.equal(acceptance.stage, "acceptance");
+      assert.equal(acceptance.acceptanceStatus, "pending");
+      assert.isNull(acceptance.activeTaskId);
+    }).pipe(Effect.provide(runtime.layer));
+  }),
+);
+
+it.effect("服务重启扫描持久化 active Task，终态回写幂等且不重复落账", () =>
+  Effect.gen(function* () {
+    const observedState = yield* makeObservedStateStore();
+    const task: CompositionTask = {
+      taskId: "spec-workflow:workflow-recovery-terminal:apply:6",
       projectId,
       threadId,
-      changeName: "reactor-service-change",
-      mode: "full" as const,
-      intent: "workflow" as const,
-      workspaceRoot: "C:/workspace/reactor-service",
+      assigneeKind: "agent",
       assigneeId: "implementer",
-      prompt: "执行并自动唤醒独立验证。",
-      promptDigest: "sha256:reactor-service",
-      implementationAssigneeId: "implementer",
-      independentVerifierId: "verifier",
-    };
-    let state = (yield* service.dispatch(baseInput).pipe(Effect.orDie)).state;
-    for (const to of ["design", "propose", "awaitingApproval"] as const) {
-      state = yield* states.append({
-        threadId,
-        event: transitionSpecWorkflowState(
-          state,
-          { type: "advance", to, expectedRevision: state.revision },
-          state.revision + 1,
-        ),
-        expectedRevision: state.revision,
-      });
-    }
-    state = yield* service.reviewProposal({
-      threadId,
-      decision: "approve",
-      expectedRevision: state.revision,
-    });
-
-    const stateChanges = yield* PubSub.subscribe(observedState.changes);
-    const applied = yield* service.dispatch({ ...baseInput, intent: "apply" });
-    assert.isNotNull(applied.task);
-    yield* PubSub.take(stateChanges);
-    const applyRunId = yield* PubSub.take(completionRequests);
-    const applyWaiter = completionRuntime.waiters.get(applyRunId);
-    assert.isTrue(applyWaiter !== undefined);
-    const completedApplyRun: CompositionTaskRun = {
-      ...applied.task!.run,
+      mode: "serial",
       status: "completed",
+      promptDigest: "sha256:recovery-terminal",
+      dependsOnTaskIds: [],
+      createdAtUnixMs: 10,
+      updatedAtUnixMs: 20,
+      finishedAtUnixMs: 20,
     };
-    yield* Deferred.succeed(applyWaiter!, completedApplyRun);
-
-    const applySettled = (yield* PubSub.take(stateChanges)).event.state;
-    assert.equal(applySettled.stage, "apply");
-    assert.equal(applySettled.implementationCompleted, true);
-    const verifyDispatched = (yield* PubSub.take(stateChanges)).event.state;
-    assert.equal(verifyDispatched.stage, "verify");
-    assert.equal(verifyDispatched.activeTaskId, "spec-workflow:workflow-reactor-service:verify:8");
-    const verifyRunId = yield* PubSub.take(completionRequests);
-    const verifyWaiter = completionRuntime.waiters.get(verifyRunId);
-    assert.isTrue(verifyWaiter !== undefined);
-    const verifyTaskId = verifyDispatched.activeTaskId;
-    assert.isTrue(verifyTaskId !== null);
-    yield* Deferred.succeed(verifyWaiter!, {
-      runId: verifyRunId,
-      taskId: verifyTaskId!,
-      agentId: "verifier",
+    const run: CompositionTaskRun = {
+      taskId: task.taskId,
+      runId: "run-spec-workflow-recovery-terminal",
+      agentId: task.assigneeId,
       runtimeId: "runtime-service",
       status: "completed",
       attempt: 0,
       capabilityGrantIds: [],
-    });
-
-    const verificationSettled = (yield* PubSub.take(stateChanges)).event.state;
-    assert.equal(verificationSettled.stage, "verify");
-    assert.equal(verificationSettled.verificationStatus, "passed");
-    const acceptance = (yield* PubSub.take(stateChanges)).event.state;
-    assert.equal(acceptance.stage, "acceptance");
-    assert.equal(acceptance.acceptanceStatus, "pending");
-    assert.isNull(acceptance.activeTaskId);
-  }).pipe(Effect.provide(runtime.layer));
-});
-
-it.effect("服务重启扫描持久化 active Task，终态回写幂等且不重复落账", () => {
-  const observedState = makeObservedStateStore();
-  const task: CompositionTask = {
-    taskId: "spec-workflow:workflow-recovery-terminal:apply:6",
-    projectId,
-    threadId,
-    assigneeKind: "agent",
-    assigneeId: "implementer",
-    mode: "serial",
-    status: "completed",
-    promptDigest: "sha256:recovery-terminal",
-    dependsOnTaskIds: [],
-    createdAtUnixMs: 10,
-    updatedAtUnixMs: 20,
-    finishedAtUnixMs: 20,
-  };
-  const run: CompositionTaskRun = {
-    taskId: task.taskId,
-    runId: "run-spec-workflow-recovery-terminal",
-    agentId: task.assigneeId,
-    runtimeId: "runtime-service",
-    status: "completed",
-    attempt: 0,
-    capabilityGrantIds: [],
-  };
-  const runtime = makeLayer(
-    () => {},
-    () => Effect.succeed(run),
-    observedState.store,
-    () =>
-      Effect.succeed([{ task, latestRun: run }] satisfies ReadonlyArray<CompositionTaskSnapshot>),
-  );
-
-  return Effect.gen(function* () {
-    yield* seedActiveWorkflow({
-      store: observedState.store,
-      workflowId: "workflow-recovery-terminal",
-      task,
-    });
-    const service = yield* SpecWorkflowService;
-    const first = yield* service.recover();
-    const afterFirst = yield* observedState.store.get(threadId);
-    const eventCount = (yield* observedState.store.listEvents(threadId)).length;
-
-    assert.deepEqual(first, { scanned: 1, rebound: 0, settled: 1, skipped: 0 });
-    assert.equal(Option.isSome(afterFirst) ? afterFirst.value.activeTaskId : "missing", null);
-    assert.equal(
-      Option.isSome(afterFirst) ? afterFirst.value.implementationCompleted : false,
-      true,
+    };
+    const runtime = makeLayer(
+      () => {},
+      () => Effect.succeed(run),
+      observedState.store,
+      () =>
+        Effect.succeed([{ task, latestRun: run }] satisfies ReadonlyArray<CompositionTaskSnapshot>),
     );
 
-    const second = yield* service.recover();
-    assert.deepEqual(second, { scanned: 0, rebound: 0, settled: 0, skipped: 0 });
-    assert.equal((yield* observedState.store.listEvents(threadId)).length, eventCount);
-  }).pipe(Effect.provide(runtime.layer));
-});
+    return yield* Effect.gen(function* () {
+      yield* seedActiveWorkflow({
+        store: observedState.store,
+        workflowId: "workflow-recovery-terminal",
+        task,
+      });
+      const service = yield* SpecWorkflowService;
+      const first = yield* service.recover();
+      const afterFirst = yield* observedState.store.get(threadId);
+      const eventCount = (yield* observedState.store.listEvents(threadId)).length;
 
-it.effect("服务重启扫描运行中的 active Task，并重新挂回终态等待器", () => {
-  const completionRuntime = makeCompletionRuntime();
-  const observedState = makeObservedStateStore();
-  const task: CompositionTask = {
-    taskId: "spec-workflow:workflow-recovery-running:apply:6",
-    projectId,
-    threadId,
-    assigneeKind: "agent",
-    assigneeId: "implementer",
-    mode: "serial",
-    status: "running",
-    promptDigest: "sha256:recovery-running",
-    dependsOnTaskIds: [],
-    createdAtUnixMs: 10,
-    updatedAtUnixMs: 20,
-  };
-  const run: CompositionTaskRun = {
-    taskId: task.taskId,
-    runId: "run-spec-workflow-recovery-running",
-    agentId: task.assigneeId,
-    runtimeId: "runtime-service",
-    status: "running",
-    attempt: 0,
-    capabilityGrantIds: [],
-  };
-  const runtime = makeLayer(
-    () => {},
-    completionRuntime.awaitTaskCompletion,
-    observedState.store,
-    () =>
-      Effect.succeed([{ task, latestRun: run }] satisfies ReadonlyArray<CompositionTaskSnapshot>),
-  );
+      assert.deepEqual(first, { scanned: 1, rebound: 0, settled: 1, skipped: 0 });
+      assert.equal(Option.isSome(afterFirst) ? afterFirst.value.activeTaskId : "missing", null);
+      assert.equal(
+        Option.isSome(afterFirst) ? afterFirst.value.implementationCompleted : false,
+        true,
+      );
 
-  return Effect.gen(function* () {
-    yield* seedActiveWorkflow({
-      store: observedState.store,
-      workflowId: "workflow-recovery-running",
-      task,
-    });
-    const service = yield* SpecWorkflowService;
-    const stateChanges = yield* PubSub.subscribe(observedState.changes);
-    const completionRequests = yield* PubSub.subscribe(completionRuntime.completionRequests);
-    const receipt = yield* service.recover();
-    const runId = yield* PubSub.take(completionRequests);
-    const waiter = completionRuntime.waiters.get(runId);
+      const second = yield* service.recover();
+      assert.deepEqual(second, { scanned: 0, rebound: 0, settled: 0, skipped: 0 });
+      assert.equal((yield* observedState.store.listEvents(threadId)).length, eventCount);
+    }).pipe(Effect.provide(runtime.layer));
+  }),
+);
 
-    assert.deepEqual(receipt, { scanned: 1, rebound: 1, settled: 0, skipped: 0 });
-    assert.equal(runId, run.runId);
-    assert.isTrue(waiter !== undefined);
-    const completedRun: CompositionTaskRun = { ...run, status: "completed" };
-    yield* Deferred.succeed(waiter!, completedRun);
-    const event = (yield* PubSub.take(stateChanges)).event;
-    assert.equal(event.state.activeTaskId, null);
-    assert.equal(event.state.implementationCompleted, true);
-  }).pipe(Effect.provide(runtime.layer));
-});
+it.effect("服务重启扫描运行中的 active Task，并重新挂回终态等待器", () =>
+  Effect.gen(function* () {
+    const completionRuntime = yield* makeCompletionRuntime();
+    const observedState = yield* makeObservedStateStore();
+    const task: CompositionTask = {
+      taskId: "spec-workflow:workflow-recovery-running:apply:6",
+      projectId,
+      threadId,
+      assigneeKind: "agent",
+      assigneeId: "implementer",
+      mode: "serial",
+      status: "running",
+      promptDigest: "sha256:recovery-running",
+      dependsOnTaskIds: [],
+      createdAtUnixMs: 10,
+      updatedAtUnixMs: 20,
+    };
+    const run: CompositionTaskRun = {
+      taskId: task.taskId,
+      runId: "run-spec-workflow-recovery-running",
+      agentId: task.assigneeId,
+      runtimeId: "runtime-service",
+      status: "running",
+      attempt: 0,
+      capabilityGrantIds: [],
+    };
+    const runtime = makeLayer(
+      () => {},
+      completionRuntime.awaitTaskCompletion,
+      observedState.store,
+      () =>
+        Effect.succeed([{ task, latestRun: run }] satisfies ReadonlyArray<CompositionTaskSnapshot>),
+    );
 
-it.effect("能力关闭后启动恢复不重新绑定 active Task", () => {
-  const observedState = makeObservedStateStore();
-  const task: CompositionTask = {
-    taskId: "spec-workflow:workflow-recovery-disabled:apply:6",
-    projectId,
-    threadId,
-    assigneeKind: "agent",
-    assigneeId: "implementer",
-    mode: "serial",
-    status: "running",
-    promptDigest: "sha256:recovery-disabled",
-    dependsOnTaskIds: [],
-    createdAtUnixMs: 10,
-    updatedAtUnixMs: 20,
-  };
-  const runtime = makeLayer(
-    () => {},
-    () => Effect.die("disabled recovery must not wait for a runtime task"),
-    observedState.store,
-    () => Effect.die("disabled recovery must not read Composition snapshots"),
-    { ...enabledCapability, enabled: false },
-  );
+    return yield* Effect.gen(function* () {
+      yield* seedActiveWorkflow({
+        store: observedState.store,
+        workflowId: "workflow-recovery-running",
+        task,
+      });
+      const service = yield* SpecWorkflowService;
+      const stateChanges = yield* PubSub.subscribe(observedState.changes);
+      const completionRequests = yield* PubSub.subscribe(completionRuntime.completionRequests);
+      const receipt = yield* service.recover();
+      const runId = yield* PubSub.take(completionRequests);
+      const waiter = completionRuntime.waiters.get(runId);
 
-  return Effect.gen(function* () {
-    yield* seedActiveWorkflow({
-      store: observedState.store,
-      workflowId: "workflow-recovery-disabled",
-      task,
-    });
-    const service = yield* SpecWorkflowService;
-    const receipt = yield* service.recover();
-    const state = yield* observedState.store.get(threadId);
+      assert.deepEqual(receipt, { scanned: 1, rebound: 1, settled: 0, skipped: 0 });
+      assert.equal(runId, run.runId);
+      assert.isTrue(waiter !== undefined);
+      const completedRun: CompositionTaskRun = { ...run, status: "completed" };
+      yield* Deferred.succeed(waiter!, completedRun);
+      const event = (yield* PubSub.take(stateChanges)).event;
+      assert.equal(event.state.activeTaskId, null);
+      assert.equal(event.state.implementationCompleted, true);
+    }).pipe(Effect.provide(runtime.layer));
+  }),
+);
 
-    assert.deepEqual(receipt, { scanned: 1, rebound: 0, settled: 0, skipped: 1 });
-    assert.equal(Option.isSome(state) ? state.value.activeTaskId : "missing", task.taskId);
-  }).pipe(Effect.provide(runtime.layer));
-});
+it.effect("能力关闭后启动恢复不重新绑定 active Task", () =>
+  Effect.gen(function* () {
+    const observedState = yield* makeObservedStateStore();
+    const task: CompositionTask = {
+      taskId: "spec-workflow:workflow-recovery-disabled:apply:6",
+      projectId,
+      threadId,
+      assigneeKind: "agent",
+      assigneeId: "implementer",
+      mode: "serial",
+      status: "running",
+      promptDigest: "sha256:recovery-disabled",
+      dependsOnTaskIds: [],
+      createdAtUnixMs: 10,
+      updatedAtUnixMs: 20,
+    };
+    const runtime = makeLayer(
+      () => {},
+      () => Effect.die("disabled recovery must not wait for a runtime task"),
+      observedState.store,
+      () => Effect.die("disabled recovery must not read Composition snapshots"),
+      { ...enabledCapability, enabled: false },
+    );
+
+    return yield* Effect.gen(function* () {
+      yield* seedActiveWorkflow({
+        store: observedState.store,
+        workflowId: "workflow-recovery-disabled",
+        task,
+      });
+      const service = yield* SpecWorkflowService;
+      const receipt = yield* service.recover();
+      const state = yield* observedState.store.get(threadId);
+
+      assert.deepEqual(receipt, { scanned: 1, rebound: 0, settled: 0, skipped: 1 });
+      assert.equal(Option.isSome(state) ? state.value.activeTaskId : "missing", task.taskId);
+    }).pipe(Effect.provide(runtime.layer));
+  }),
+);

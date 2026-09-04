@@ -144,6 +144,7 @@ export const make = Effect.fn("resourceTelemetry.resourceMonitorBinary.make")(fu
   const environment = yield* HostProcessEnvironment;
   // Exec-bit enforcement is a property of the real host kernel, not of the
   // injected platform identity (tests may simulate Linux on an NTFS host).
+  // oxlint-disable-next-line codework/no-global-process-runtime -- exec-bit behavior belongs to the real host kernel, not the injected test identity.
   const hostEnforcesExecBits = process.platform !== "win32";
   const linuxLibc = platform === "linux" ? yield* ResourceMonitorHostLinuxLibc : undefined;
   const executableName = binaryName(platform);

@@ -384,6 +384,7 @@ it.layer(NodeServices.layer)("server settings", (it) => {
         homePath: "/Users/julius/.codex",
         shadowHomePath: "",
         launchArgs: "",
+        routeThroughByok: false,
         customModels: [],
       });
       assert.deepEqual(next.providers.claudeAgent, {
@@ -393,6 +394,7 @@ it.layer(NodeServices.layer)("server settings", (it) => {
         customModels: ["claude-custom"],
         launchArgs: "",
         autoCompactWindow: "",
+        routeThroughByok: false,
       });
       assert.deepEqual(
         next.textGenerationModelSelection,
@@ -1021,6 +1023,7 @@ it.layer(NodeServices.layer)("server settings", (it) => {
         homePath: "",
         shadowHomePath: "",
         launchArgs: "",
+        routeThroughByok: false,
         customModels: [],
       });
       assert.deepEqual(next.providers.claudeAgent, {
@@ -1030,6 +1033,7 @@ it.layer(NodeServices.layer)("server settings", (it) => {
         customModels: [],
         launchArgs: "",
         autoCompactWindow: "",
+        routeThroughByok: false,
       });
       assert.deepEqual(next.providers.opencode, {
         // OpenCode is disabled by default; this update only touches paths.
@@ -1038,6 +1042,7 @@ it.layer(NodeServices.layer)("server settings", (it) => {
         serverUrl: "http://127.0.0.1:4096",
         serverPassword: "secret-password",
         customModels: [],
+        routeThroughByok: false,
       });
     }).pipe(Effect.provide(makeServerSettingsLayer())),
   );

@@ -276,6 +276,12 @@ function listCursorKey(host: string, repository: string): string {
   return `${host} ${repository.toLowerCase()}`;
 }
 
+function normalizeListCursorKey(raw: string): string {
+  const separator = raw.indexOf(" ");
+  if (separator <= 0) return raw;
+  return `${raw.slice(0, separator).toLowerCase()} ${raw.slice(separator + 1).toLowerCase()}`;
+}
+
 /**
  * Where a repository carries on, worked out from the slice just handed over. The boundary is the
  * instant of the oldest row in it: the next read asks for that instant and everything before it,
@@ -674,7 +680,7 @@ export const make = Effect.gen(function* () {
           }),
         );
       }
-      decoded.set(key, cursor);
+      decoded.set(normalizeListCursorKey(key), cursor);
     }
     return Effect.succeed(decoded);
   };
@@ -749,8 +755,8 @@ export const make = Effect.gen(function* () {
     viewer: string,
   ): boolean => {
     if (filters === undefined) return true;
-    const labels = item.labels.map((label) => label.name.trim().toLowerCase());
-    const holds = (label: string) => labels.includes(label.trim().toLowerCase());
+    const labels = new Set(item.labels.map((label) => label.name.trim().toLowerCase()));
+    const holds = (label: string) => labels.has(label.trim().toLowerCase());
     return (
       (filters.draft === undefined || item.isDraft === (filters.draft === "only")) &&
       // Judged on the provider row rather than the entry, because the two absences mean

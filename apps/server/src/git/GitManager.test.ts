@@ -3829,7 +3829,7 @@ it.layer(GitManagerTestLayer)("GitManager", (it) => {
             headRepositoryOwnerLogin: "binbandit",
           },
           repositoryCloneUrls: {
-            "binbandit/codework": {
+            "binbandit/code-work": {
               url: forkDir,
               sshUrl: forkDir,
             },

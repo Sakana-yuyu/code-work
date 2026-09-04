@@ -189,6 +189,7 @@ export const makeCloudflaredRelayClient = Effect.fn("cloudflared.make")(function
   // Real-OS semantics vs simulated identity: PATH entries and exec bits come
   // from the host filesystem/env and must follow process.platform, while the
   // managed install layout follows the injected platform/arch identity.
+  // oxlint-disable-next-line codework/no-global-process-runtime -- filesystem executable semantics follow the real host, while the injected identity can be simulated.
   const hostIsWindows = process.platform === "win32";
   const platform = yield* HostProcessPlatform;
   const arch = yield* HostProcessArchitecture;

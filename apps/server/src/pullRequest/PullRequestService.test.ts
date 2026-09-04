@@ -399,7 +399,7 @@ it.effect("says where each repository carries on, and from nothing it has run ou
     // The instant of the oldest row, how many rows have gone, and the row already sent at that
     // instant. The repository that had nothing more is simply not in it.
     assert.deepStrictEqual(result.nextCursors, {
-      "github.com Sakana-yuyu/code-work": "2026-07-02T00:00:00Z|1|1",
+      "github.com sakana-yuyu/code-work": "2026-07-02T00:00:00Z|1|1",
     });
   }),
 );
@@ -549,7 +549,7 @@ it.effect("keeps a row already sent at the boundary instant from arriving twice"
       [8, 9],
     );
     assert.deepStrictEqual(result.nextCursors, {
-      "github.com Sakana-yuyu/code-work": "2026-07-01T00:00:00Z|3|9",
+      "github.com sakana-yuyu/code-work": "2026-07-01T00:00:00Z|3|9",
     });
   }),
 );
@@ -592,7 +592,7 @@ it.effect("keeps the earlier exclusions when a slice ends on the instant it bega
       [7, 8],
     );
     assert.deepStrictEqual(result.nextCursors, {
-      "github.com Sakana-yuyu/code-work": "2026-07-02T00:00:00Z|3|6,7,8",
+      "github.com sakana-yuyu/code-work": "2026-07-02T00:00:00Z|3|6,7,8",
     });
   }),
 );
@@ -930,7 +930,7 @@ it.effect("reads a repository once when several worktrees share it", () =>
           id: "p2",
           title: "codework worktree",
           workspaceRoot: "/b",
-          repository: "PingDotGG/CodeworkCode",
+          repository: "Sakana-yuyu/code-work",
         }),
       ],
       providers: [
@@ -2697,7 +2697,7 @@ it.effect("carries every repository of a slice on from the oldest row in it", ()
     // read on its own, and that read is what says whether it has anything at all.
     assert.isTrue(result.truncated);
     assert.deepStrictEqual(result.nextCursors, {
-      "github.com Sakana-yuyu/code-work": "2026-07-02T00:00:00Z|1|2",
+      "github.com sakana-yuyu/code-work": "2026-07-02T00:00:00Z|1|2",
       "github.com acme/web": "2026-07-02T00:00:00Z|2|3",
     });
   }),

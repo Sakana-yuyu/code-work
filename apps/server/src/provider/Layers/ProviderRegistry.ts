@@ -203,13 +203,19 @@ const snapshotInstanceKey = (provider: ServerProvider): ProviderInstanceId => {
 // after `ProviderInstanceRegistry` rebuilds an instance (e.g. because
 // its settings changed), a fresh source rides the new PubSub instead
 // of a closed one.
-const buildSnapshotSource = (instance: ProviderInstance): ProviderSnapshotSource => ({
-  instanceId: instance.instanceId,
-  driverKind: instance.driverKind,
-  getSnapshot: instance.snapshot.getSnapshot,
-  refresh: instance.snapshot.refresh,
-  streamChanges: instance.snapshot.streamChanges,
-});
+const buildSnapshotSource = (instance: ProviderInstance): ProviderSnapshotSource => {
+  const snapshot = instance.snapshot;
+  return {
+    instanceId: instance.instanceId,
+    driverKind: instance.driverKind,
+    getSnapshot: snapshot.getSnapshot,
+    refresh: snapshot.refresh,
+    streamChanges: snapshot.streamChanges,
+    ...(snapshot.subscribeChanges !== undefined
+      ? { subscribeChanges: snapshot.subscribeChanges }
+      : {}),
+  };
+};
 
 export const ProviderRegistryLive = Layer.effect(
   ProviderRegistry,
@@ -606,7 +612,10 @@ export const ProviderRegistryLive = Layer.effect(
         // the current read or the active subscriber observes the result.
         for (const [, instance] of newlyAdded) {
           const source = buildSnapshotSource(instance);
-          yield* Stream.runForEach(source.streamChanges, (provider) =>
+          const changes = source.subscribeChanges
+            ? Stream.fromSubscription(yield* source.subscribeChanges)
+            : source.streamChanges;
+          yield* Stream.runForEach(changes, (provider) =>
             correlateSnapshotWithSource(source, provider).pipe(Effect.flatMap(syncProvider)),
           ).pipe(Effect.forkScoped);
         }

@@ -1,6 +1,6 @@
 // @effect-diagnostics globalTimers:off - Standalone scheduler owns cancellable native timers.
-import { performance } from "node:perf_hooks";
-import { clearTimeout, setTimeout } from "node:timers";
+import * as NodePerfHooks from "node:perf_hooks";
+import * as NodeTimers from "node:timers";
 
 export type DelegationStatus =
   | "queued"
@@ -109,7 +109,7 @@ export class DelegationScheduler<TInput, TResult> {
     validateTimeout(options.defaultQueueTimeoutMs, "defaultQueueTimeoutMs");
     validateTimeout(options.defaultExecutionTimeoutMs, "defaultExecutionTimeoutMs");
     this.queueLimit = options.maxConcurrency * 4;
-    this.now = options.now ?? (() => performance.now());
+    this.now = options.now ?? (() => NodePerfHooks.performance.now());
   }
 
   submit(request: DelegationRequest<TInput>): DelegationSnapshot<TInput, TResult> {
@@ -133,7 +133,7 @@ export class DelegationScheduler<TInput, TResult> {
 
     const queueTimeoutMs = request.queueTimeoutMs ?? this.options.defaultQueueTimeoutMs;
     if (queueTimeoutMs !== undefined) {
-      record.queueTimer = setTimeout(() => {
+      record.queueTimer = NodeTimers.setTimeout(() => {
         if (record.status !== "queued") return;
         this.removeFromQueue(record);
         this.finish(record, "queue_timed_out", {
@@ -185,7 +185,7 @@ export class DelegationScheduler<TInput, TResult> {
   }
 
   private start(record: MutableRecord<TInput, TResult>): void {
-    if (record.queueTimer !== undefined) clearTimeout(record.queueTimer);
+    if (record.queueTimer !== undefined) NodeTimers.clearTimeout(record.queueTimer);
     delete record.queueTimer;
     record.status = "running";
     record.startedAt = this.now();
@@ -195,7 +195,7 @@ export class DelegationScheduler<TInput, TResult> {
     const executionTimeoutMs =
       record.request.executionTimeoutMs ?? this.options.defaultExecutionTimeoutMs;
     if (executionTimeoutMs !== undefined) {
-      record.executionTimer = setTimeout(() => {
+      record.executionTimer = NodeTimers.setTimeout(() => {
         if (record.status !== "running") return;
         record.controller.abort();
         this.finish(record, "execution_timed_out", {
@@ -231,8 +231,8 @@ export class DelegationScheduler<TInput, TResult> {
     outcome: { readonly result?: TResult; readonly error?: DelegationError } = {},
   ): void {
     const wasRunning = record.status === "running";
-    if (record.queueTimer !== undefined) clearTimeout(record.queueTimer);
-    if (record.executionTimer !== undefined) clearTimeout(record.executionTimer);
+    if (record.queueTimer !== undefined) NodeTimers.clearTimeout(record.queueTimer);
+    if (record.executionTimer !== undefined) NodeTimers.clearTimeout(record.executionTimer);
     delete record.queueTimer;
     delete record.executionTimer;
     record.status = status;
@@ -290,8 +290,8 @@ interface MutableRecord<TInput, TResult> {
   result?: TResult;
   error?: DelegationError;
   readonly controller: AbortController;
-  queueTimer?: ReturnType<typeof setTimeout>;
-  executionTimer?: ReturnType<typeof setTimeout>;
+  queueTimer?: ReturnType<typeof NodeTimers.setTimeout>;
+  executionTimer?: ReturnType<typeof NodeTimers.setTimeout>;
 }
 
 function validateTimeout(value: number | undefined, name: string): void {

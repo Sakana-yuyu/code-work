@@ -1,4 +1,4 @@
-import { createHash } from "node:crypto";
+import * as NodeCrypto from "node:crypto";
 
 import type { CompositionMcpServerId, ServerSettings } from "@codework/contracts";
 import * as Context from "effect/Context";
@@ -92,7 +92,7 @@ const toRuntimeConfig = (
 });
 
 const fingerprintFor = (config: CompositionMcpRuntimeServerConfig): string =>
-  createHash("sha256").update(JSON.stringify(config)).digest("hex");
+  NodeCrypto.createHash("sha256").update(JSON.stringify(config)).digest("hex");
 
 export const makeCompositionMcpRuntimeService = (
   options: CompositionMcpRuntimeServiceOptions,

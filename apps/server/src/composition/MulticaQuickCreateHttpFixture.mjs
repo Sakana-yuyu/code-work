@@ -1,5 +1,5 @@
 // 独立进程运行的本地 Multica daemon fixture：真实 HTTP 快建语义，用于进程级集成验证。
-import { createServer } from "node:http";
+import * as NodeHttp from "node:http";
 
 const state = {
   issues: new Map(), // idempotencyKey -> { taskId, prompt }
@@ -12,7 +12,7 @@ const respondJson = (response, status, body) => {
   response.end(JSON.stringify(body));
 };
 
-const server = createServer((request, response) => {
+const server = NodeHttp.createServer((request, response) => {
   const url = new URL(request.url, "http://127.0.0.1");
   if (request.method === "GET" && url.pathname === "/__ready") {
     respondJson(response, 200, { ready: true });

@@ -24,6 +24,7 @@
  */
 import { describe, expect, it } from "@effect/vitest";
 import * as NodeServices from "@effect/platform-node/NodeServices";
+import * as NodeCryptoLayer from "@effect/platform-node/NodeCrypto";
 import {
   type ClaudeSettings,
   type CodexSettings,
@@ -43,6 +44,7 @@ import { HttpClient, HttpClientResponse } from "effect/unstable/http";
 import * as BackgroundPolicy from "../../background/BackgroundPolicy.ts";
 import type { BuiltInDriversEnv } from "../builtInDrivers.ts";
 import { ServerConfig } from "../../config.ts";
+import * as ServerSecretStore from "../../auth/ServerSecretStore.ts";
 import { ServerSettingsService } from "../../serverSettings.ts";
 import { ClaudeDriver } from "../Drivers/ClaudeDriver.ts";
 import { CodexDriver } from "../Drivers/CodexDriver.ts";
@@ -100,6 +102,7 @@ const makeCodexConfig = (overrides: Partial<CodexSettings>): CodexSettings => ({
   launchArgs: "",
   customModels: [],
   ...overrides,
+  routeThroughByok: overrides.routeThroughByok ?? false,
 });
 
 const makeClaudeConfig = (overrides: Partial<ClaudeSettings>): ClaudeSettings => ({
@@ -110,6 +113,7 @@ const makeClaudeConfig = (overrides: Partial<ClaudeSettings>): ClaudeSettings =>
   launchArgs: "",
   autoCompactWindow: "",
   ...overrides,
+  routeThroughByok: overrides.routeThroughByok ?? false,
 });
 
 const makeCursorConfig = (overrides: Partial<CursorSettings>): CursorSettings => ({
@@ -125,6 +129,7 @@ const makeGrokConfig = (overrides: Partial<GrokSettings>): GrokSettings => ({
   binaryPath: "grok",
   customModels: [],
   ...overrides,
+  routeThroughByok: overrides.routeThroughByok ?? false,
 });
 
 const makeOpenCodeConfig = (overrides: Partial<OpenCodeSettings>): OpenCodeSettings => ({
@@ -134,6 +139,7 @@ const makeOpenCodeConfig = (overrides: Partial<OpenCodeSettings>): OpenCodeSetti
   serverPassword: "",
   customModels: [],
   ...overrides,
+  routeThroughByok: overrides.routeThroughByok ?? false,
 });
 
 describe("ProviderInstanceRegistryLive — multi-instance codex slice", () => {
@@ -142,10 +148,14 @@ describe("ProviderInstanceRegistryLive — multi-instance codex slice", () => {
   // `NodeServices.layer` through `Layer.provideMerge` to satisfy that
   // dependency while still surfacing NodeServices to the test body (the
   // codex driver's `create` yields `ChildProcessSpawner` directly).
-  const testLayer = ServerConfig.layerTest(process.cwd(), {
+  const testConfigLayer = ServerConfig.layerTest(process.cwd(), {
     prefix: "provider-instance-registry-test",
-  }).pipe(
-    Layer.provideMerge(NodeServices.layer),
+  }).pipe(Layer.provideMerge(NodeServices.layer));
+  const testLayer = Layer.mergeAll(
+    testConfigLayer,
+    ServerSecretStore.layer.pipe(Layer.provide(testConfigLayer)),
+  ).pipe(
+    Layer.provideMerge(NodeCryptoLayer.layer),
     Layer.provideMerge(BackgroundPolicyAlwaysRunLayer),
     Layer.provideMerge(ServerSettingsService.layerTest()),
     Layer.provideMerge(TestHttpClientLive),
@@ -308,10 +318,15 @@ describe("ProviderInstanceRegistryLive — all drivers slice", () => {
   // surfaced; that merged layer then provides `ServerConfig.layerTest`'s
   // `FileSystem` dep while keeping everything else surfaced to the test.
   const infraLayer = OpenCodeRuntimeLive.pipe(Layer.provideMerge(NodeServices.layer));
-  const testLayer = ServerConfig.layerTest(process.cwd(), {
+  const testConfigLayer = ServerConfig.layerTest(process.cwd(), {
     prefix: "provider-instance-registry-all-drivers-test",
-  }).pipe(
+  }).pipe(Layer.provideMerge(NodeServices.layer));
+  const testLayer = Layer.mergeAll(
+    testConfigLayer,
+    ServerSecretStore.layer.pipe(Layer.provide(testConfigLayer)),
+  ).pipe(
     Layer.provideMerge(infraLayer),
+    Layer.provideMerge(NodeCryptoLayer.layer),
     Layer.provideMerge(BackgroundPolicyAlwaysRunLayer),
     Layer.provideMerge(ServerSettingsService.layerTest()),
     Layer.provideMerge(TestHttpClientLive),

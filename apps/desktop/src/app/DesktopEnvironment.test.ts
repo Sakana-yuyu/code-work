@@ -68,7 +68,7 @@ describe("DesktopEnvironment", () => {
       assert.equal(environment.serverRoot, "/repo");
       assert.equal(environment.backendEntryPath, "/repo/apps/server/dist/bin.mjs");
       assert.equal(environment.backendCwd, "/repo");
-      assert.equal(environment.appUserModelId, "com.t3tools.codework.dev");
+      assert.equal(environment.appUserModelId, "com.codework.desktop.dev");
       assert.equal(environment.linuxWmClass, "codework-dev");
       assert.deepEqual(
         Option.map(environment.devServerUrl, (url) => url.href),

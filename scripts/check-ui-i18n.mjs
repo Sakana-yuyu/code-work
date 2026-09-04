@@ -1,10 +1,10 @@
-import { createRequire } from "node:module";
-import { readFileSync, readdirSync, statSync } from "node:fs";
-import { dirname, join, relative, resolve } from "node:path";
-import { fileURLToPath, pathToFileURL } from "node:url";
+import * as NodeModule from "node:module";
+import * as NodeFS from "node:fs";
+import * as NodePath from "node:path";
+import * as NodeURL from "node:url";
 
-const SCRIPT_DIR = dirname(fileURLToPath(import.meta.url));
-const DEFAULT_REPO = resolve(SCRIPT_DIR, "..");
+const SCRIPT_DIR = NodePath.dirname(NodeURL.fileURLToPath(import.meta.url));
+const DEFAULT_REPO = NodePath.resolve(SCRIPT_DIR, "..");
 
 const SURFACES = {
   web: {
@@ -108,7 +108,9 @@ const EXCLUDED_FILE =
   /(?:^|[\\/])(?:i18n|__fixtures__|fixtures)(?:[\\/])|(?:^|[\\/])i18n\.messages\.ts$|\.(?:test|spec|stories)\.[cm]?[jt]sx?$/;
 
 function makeTypescript(repo) {
-  const requireFromMobile = createRequire(pathToFileURL(join(repo, "apps/mobile/package.json")));
+  const requireFromMobile = NodeModule.createRequire(
+    NodeURL.pathToFileURL(NodePath.join(repo, "apps/mobile/package.json")),
+  );
   return requireFromMobile("typescript");
 }
 
@@ -120,7 +122,7 @@ function propertyName(ts, node) {
 }
 
 function readCatalog(ts, file) {
-  const sourceText = readFileSync(file, "utf8");
+  const sourceText = NodeFS.readFileSync(file, "utf8");
   const source = ts.createSourceFile(
     file,
     sourceText,
@@ -158,9 +160,9 @@ function readCatalog(ts, file) {
 
 function listSourceFiles(directory) {
   const files = [];
-  for (const entry of readdirSync(directory)) {
-    const path = join(directory, entry);
-    const stat = statSync(path);
+  for (const entry of NodeFS.readdirSync(directory)) {
+    const path = NodePath.join(directory, entry);
+    const stat = NodeFS.statSync(path);
     if (stat.isDirectory()) files.push(...listSourceFiles(path));
     else if (/\.[cm]?[jt]sx?$/.test(entry) && !EXCLUDED_FILE.test(path)) files.push(path);
   }
@@ -172,7 +174,9 @@ function normalized(value) {
 }
 
 function isTechnicalExample(file) {
-  return file.includes(join("features", "showcase")) || file.endsWith("AppearancePreviews.tsx");
+  return (
+    file.includes(NodePath.join("features", "showcase")) || file.endsWith("AppearancePreviews.tsx")
+  );
 }
 
 function isCandidate(file, text, catalogKeys) {
@@ -361,7 +365,7 @@ export function collectI18nErrors(repo = DEFAULT_REPO) {
   const errors = [];
 
   for (const [surface, config] of Object.entries(SURFACES)) {
-    const catalogPath = join(repo, config.catalog);
+    const catalogPath = NodePath.join(repo, config.catalog);
     const catalog = readCatalog(ts, catalogPath);
     const enKeys = new Set(catalog.en.keys());
     const zhKeys = new Set(catalog.zhCN.keys());
@@ -397,8 +401,8 @@ export function collectI18nErrors(repo = DEFAULT_REPO) {
       }
     }
 
-    for (const file of listSourceFiles(join(repo, config.root))) {
-      const sourceText = readFileSync(file, "utf8");
+    for (const file of listSourceFiles(NodePath.join(repo, config.root))) {
+      const sourceText = NodeFS.readFileSync(file, "utf8");
       const source = ts.createSourceFile(
         file,
         sourceText,
@@ -406,7 +410,7 @@ export function collectI18nErrors(repo = DEFAULT_REPO) {
         true,
         file.endsWith("x") ? ts.ScriptKind.TSX : ts.ScriptKind.TS,
       );
-      const relativeFile = relative(repo, file).replaceAll("\\", "/");
+      const relativeFile = NodePath.relative(repo, file).replaceAll("\\", "/");
       const report = (node, message) => {
         const position = source.getLineAndCharacterOfPosition(node.getStart(source));
         errors.push(`${relativeFile}:${position.line + 1}:${position.character + 1}: ${message}`);
@@ -550,6 +554,6 @@ export function runI18nCheck(repo = DEFAULT_REPO) {
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
-  if (!runI18nCheck(process.argv[2] ? resolve(process.argv[2]) : DEFAULT_REPO))
+  if (!runI18nCheck(process.argv[2] ? NodePath.resolve(process.argv[2]) : DEFAULT_REPO))
     process.exitCode = 1;
 }

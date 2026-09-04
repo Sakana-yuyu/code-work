@@ -46,6 +46,7 @@ const decodeCursorSettings = Schema.decodeSync(CursorSettings);
 
 const makeMockAgentWrapper = async (extraEnv: Record<string, string>): Promise<string> => {
   const dir = await NodeFSP.mkdtemp(NodePath.join(NodeOS.tmpdir(), "composition-provider-e2e-"));
+  // oxlint-disable-next-line codework/no-global-process-runtime -- wrapper generation must follow the real host shell.
   const isWindows = process.platform === "win32";
   const wrapperPath = NodePath.join(dir, isWindows ? "mock-agent.cmd" : "mock-agent.sh");
   const script = isWindows

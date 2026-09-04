@@ -16,8 +16,11 @@ import * as NodePtyAdapter from "./NodePtyAdapter.ts";
 
 const HostLayer = Layer.mergeAll(
   NodeServices.layer,
-  Layer.succeed(HostProcessPlatform, process.platform),
-  Layer.succeed(HostProcessArchitecture, process.arch),
+  // 真实 PTY E2E 必须使用当前机器的平台和架构，不模拟另一种主机。
+  // oxlint-disable-next-line codework/no-global-process-runtime -- standalone E2E host identity.
+  Layer.succeed(HostProcessPlatform, NodeOS.platform()),
+  // oxlint-disable-next-line codework/no-global-process-runtime -- standalone E2E host identity.
+  Layer.succeed(HostProcessArchitecture, NodeOS.arch()),
 );
 
 const TestLayer = Layer.mergeAll(HostLayer, ProcessRunner.layer.pipe(Layer.provide(HostLayer)));

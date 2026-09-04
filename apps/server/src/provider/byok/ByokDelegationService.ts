@@ -1,7 +1,7 @@
 // @effect-diagnostics nodeBuiltinImport:off - The scheduler owns cancellable child processes directly.
 import * as NodeChildProcess from "node:child_process";
 import * as NodeCrypto from "node:crypto";
-import * as NodeFs from "node:fs";
+import * as NodeFS from "node:fs";
 import * as NodePath from "node:path";
 
 import {
@@ -220,6 +220,7 @@ const probeExecutorCandidate = async (
   const probeArguments = parseExecutorCommand(executor.probeArguments);
   if (probeArguments.length === 0) {
     const resolved = resolveExecutablePath(tokens[0]!, {
+      // oxlint-disable-next-line codework/no-global-process-runtime -- this standalone probe resolves commands against the real host environment.
       platform: process.platform,
       paths: (process.env["PATH"] ?? "")
         .split(NodePath.delimiter)
@@ -229,7 +230,7 @@ const probeExecutorCandidate = async (
         .filter((part) => part.length > 0),
       exists: (path) => {
         try {
-          return NodeFs.statSync(path).isFile();
+          return NodeFS.statSync(path).isFile();
         } catch {
           return false;
         }
