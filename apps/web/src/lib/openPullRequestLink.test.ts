@@ -102,7 +102,7 @@ describe("parseChangeRequestUrl", () => {
     expect(parseChangeRequestUrl("https://github.com/CodeworkTools/CodeworkCode/pull/123")).toEqual(
       {
         host: "github.com",
-        repository: "codeworktools/codework",
+        repository: "codeworktools/codeworkcode",
         number: 123,
       },
     );

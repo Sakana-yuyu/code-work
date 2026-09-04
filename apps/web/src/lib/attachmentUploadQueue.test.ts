@@ -1,3 +1,7 @@
+import { setCurrentLanguage } from "~/i18n/runtime";
+
+setCurrentLanguage("en");
+
 import { EnvironmentId } from "@codework/contracts";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 

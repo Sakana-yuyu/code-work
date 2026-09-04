@@ -8,7 +8,7 @@ import {
 } from "./hooks/useLocalStorage";
 import { canonicalStorageKey, readAndMigrateStorageValue } from "./persistenceStorage";
 
-export const LEGACY_CLIENT_SETTINGS_STORAGE_KEY = "codework:client-settings:v1";
+export const LEGACY_CLIENT_SETTINGS_STORAGE_KEY = "t3code:client-settings:v1";
 export const CLIENT_SETTINGS_STORAGE_KEY = canonicalStorageKey(LEGACY_CLIENT_SETTINGS_STORAGE_KEY);
 
 const decodeClientSettings = (raw: string): ClientSettings =>

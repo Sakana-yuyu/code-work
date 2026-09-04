@@ -1,3 +1,7 @@
+import { setCurrentLanguage } from "~/i18n/runtime";
+
+setCurrentLanguage("en");
+
 import { describe, expect, it, vi } from "vite-plus/test";
 import { BUILT_IN_THEMES } from "@codework/shared/themePalettes";
 

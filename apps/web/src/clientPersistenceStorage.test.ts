@@ -56,7 +56,7 @@ describe("clientPersistenceStorage", () => {
   it("migrates valid legacy settings to the canonical key", async () => {
     const testWindow = getTestWindow();
     testWindow.localStorage.setItem(
-      "codework:client-settings:v1",
+      "t3code:client-settings:v1",
       JSON.stringify({ ...DEFAULT_CLIENT_SETTINGS, timestampFormat: "24-hour" }),
     );
     const { CLIENT_SETTINGS_STORAGE_KEY, readBrowserClientSettings } =
@@ -66,12 +66,12 @@ describe("clientPersistenceStorage", () => {
       expect.objectContaining({ timestampFormat: "24-hour" }),
     );
     expect(testWindow.localStorage.getItem(CLIENT_SETTINGS_STORAGE_KEY)).toBeTruthy();
-    expect(testWindow.localStorage.getItem("codework:client-settings:v1")).toBeNull();
+    expect(testWindow.localStorage.getItem("t3code:client-settings:v1")).toBeNull();
   });
 
   it("reports structured decode failures while preserving the fallback", async () => {
     const testWindow = getTestWindow();
-    testWindow.localStorage.setItem("codework:client-settings:v1", "not-json");
+    testWindow.localStorage.setItem("t3code:client-settings:v1", "not-json");
     const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
     const { readBrowserClientSettings } = await import("./clientPersistenceStorage");
 
@@ -81,7 +81,7 @@ describe("clientPersistenceStorage", () => {
       expect.objectContaining({
         _tag: "LocalStorageOperationError",
         operation: "decode",
-        storageKey: "codework:client-settings:v1",
+        storageKey: "t3code:client-settings:v1",
         cause: expect.anything(),
       }),
     );
@@ -90,7 +90,7 @@ describe("clientPersistenceStorage", () => {
   it("defaults word wrap on and discards obsolete wrapping preferences", async () => {
     const testWindow = getTestWindow();
     testWindow.localStorage.setItem(
-      "codework:client-settings:v1",
+      "t3code:client-settings:v1",
       JSON.stringify({
         chatWordWrap: false,
         diffWordWrap: false,

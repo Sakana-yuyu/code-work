@@ -1,3 +1,7 @@
+import { setCurrentLanguage } from "~/i18n/runtime";
+
+setCurrentLanguage("en");
+
 import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
 const { confirmMock, readLocalApiMock } = vi.hoisted(() => {
@@ -63,7 +67,7 @@ describe("terminal close confirmation", () => {
     expect(confirmMock).toHaveBeenCalledWith(
       [
         "Close 2 terminals?",
-        'This stops their running processes and clears their histories: "Terminal 1", "Development server".',
+        'This stops the running processes and clears their history: "Terminal 1", "Development server".',
       ].join("\n"),
       { variant: "destructive" },
     );

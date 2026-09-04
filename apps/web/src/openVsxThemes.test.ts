@@ -1,3 +1,7 @@
+import { setCurrentLanguage } from "~/i18n/runtime";
+
+setCurrentLanguage("en");
+
 import { sha256 } from "@noble/hashes/sha2";
 import JSZip from "jszip";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
