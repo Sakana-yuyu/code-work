@@ -2002,6 +2002,16 @@ export function resolveDesktopRuntimeDependencies(
   return resolveCatalogDependencies(runtimeDependencies, catalog, "apps/desktop");
 }
 
+export function omitWorkspaceDependencies(
+  dependencies: Record<string, string>,
+): Record<string, string> {
+  return Object.fromEntries(
+    Object.entries(dependencies).filter(
+      ([, dependencySpec]) => !dependencySpec.startsWith("workspace:"),
+    ),
+  );
+}
+
 export const DEFAULT_DESKTOP_UPDATE_REPOSITORY = "Sakana-yuyu/code-work";
 
 export const resolveGitHubPublishConfig = Effect.fn("resolveGitHubPublishConfig")(function* (
@@ -2947,8 +2957,9 @@ const buildDesktopArtifact = Effect.fn("buildDesktopArtifact")(function* (
   // Windows splits dependencies per process: app.asar carries only the
   // desktop main-process runtime deps, while the server bundle's deps live in
   // the server.asar sidecar (see stageWindowsServerSidecar). macOS adds only
-  // server packages that remain external to its merged app.asar. Linux retains
-  // its existing full dependency tree.
+  // server packages that remain external to its merged app.asar. Linux keeps
+  // all published server dependencies, but workspace links are already bundled
+  // and cannot be installed from the isolated staging directory.
   const stageDependencies =
     options.platform === "win"
       ? { ...resolvedDesktopRuntimeDependencies }
@@ -2960,7 +2971,7 @@ const buildDesktopArtifact = Effect.fn("buildDesktopArtifact")(function* (
             fffNodeVersion: serverPackageJson.dependencies["@ff-labs/fff-node"],
           })
         : {
-            ...resolvedServerDependencies,
+            ...omitWorkspaceDependencies(resolvedServerDependencies),
             ...resolvedDesktopRuntimeDependencies,
             ...resolveFffNativeDependencies(
               options.platform,

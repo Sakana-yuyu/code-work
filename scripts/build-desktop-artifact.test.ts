@@ -34,6 +34,7 @@ import {
   resolveClerkPasskeyNativeArtifacts,
   resolveMacPasskeySigningConfiguration,
   resolveDesktopRuntimeDependencies,
+  omitWorkspaceDependencies,
   resolveMacStageDependencies,
   resolveFffNativeDependencies,
   resolveBuildOptions,
@@ -305,6 +306,17 @@ it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
         "@effect/platform-node": "4.0.0-beta.59",
         effect: "4.0.0-beta.59",
       },
+    );
+  });
+
+  it("omits workspace links from Linux staging dependencies", () => {
+    assert.deepStrictEqual(
+      omitWorkspaceDependencies({
+        "@codework/client-runtime": "workspace:*",
+        "@codework/contracts": "workspace:^",
+        effect: "4.0.0-beta.103",
+      }),
+      { effect: "4.0.0-beta.103" },
     );
   });
 
