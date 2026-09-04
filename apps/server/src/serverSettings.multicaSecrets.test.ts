@@ -48,9 +48,7 @@ it.layer(NodeServices.layer)("Multica 凭据持久化", (it) => {
             instanceId,
             {
               driver: ProviderDriverKind.make("multica"),
-              environment: [
-                { name: "MULTICA_TOKEN", value: "fixture-secret", sensitive: false },
-              ],
+              environment: [{ name: "MULTICA_TOKEN", value: "fixture-secret", sensitive: false }],
               config: {
                 runtimeId: `multica:daemon-${index}:runtime-${index}`,
                 daemonId: `daemon-${index}`,

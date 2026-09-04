@@ -435,7 +435,10 @@ it.effect("creates repositories through the Bitbucket REST API", () => {
     });
 
     const request = execute.mock.calls[0]?.[0];
-    assert.strictEqual(request?.url, "https://api.test.local/2.0/repositories/Sakana-yuyu/code-work");
+    assert.strictEqual(
+      request?.url,
+      "https://api.test.local/2.0/repositories/Sakana-yuyu/code-work",
+    );
     assert.strictEqual(request?.method, "POST");
     assert.ok(request);
     const rawBody = (request.body as { readonly body?: Uint8Array }).body;

@@ -299,7 +299,8 @@ const MULTICA_SECRET_NAME_EXACT = new Set([
   "subscriptionkey",
   "accesskeyid",
 ]);
-const MULTICA_SECRET_NAME_COMPACT = /^(?:(?:access|api|auth|bearer|client|id|private|proxy|refresh|secret|session|subscription|x))*?(?:accesskeyid|apikey|authorizationcode|credential|key|password|passwd|secret|sig|signature|subscriptionkey|token)$/iu;
+const MULTICA_SECRET_NAME_COMPACT =
+  /^(?:(?:access|api|auth|bearer|client|id|private|proxy|refresh|secret|session|subscription|x))*?(?:accesskeyid|apikey|authorizationcode|credential|key|password|passwd|secret|sig|signature|subscriptionkey|token)$/iu;
 const MULTICA_CUSTOM_SECRET_HEADER = /^x[-_].*(?:auth[-_]?token|[-_](?:key|token))$/iu;
 
 export const isMulticaSecretName = (value: string): boolean => {

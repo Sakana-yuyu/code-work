@@ -6,7 +6,8 @@ import { canonicalStorageKey } from "../persistenceStorage";
  * ("Don't show this again"). The wizard otherwise shows on every sign-in,
  * since sign-out clears the connected environments.
  */
-export const LEGACY_CONNECT_ONBOARDING_OPT_OUT_STORAGE_KEY = "codework:connect-onboarding-opt-out:v1";
+export const LEGACY_CONNECT_ONBOARDING_OPT_OUT_STORAGE_KEY =
+  "codework:connect-onboarding-opt-out:v1";
 export const CONNECT_ONBOARDING_OPT_OUT_STORAGE_KEY = canonicalStorageKey(
   LEGACY_CONNECT_ONBOARDING_OPT_OUT_STORAGE_KEY,
 );

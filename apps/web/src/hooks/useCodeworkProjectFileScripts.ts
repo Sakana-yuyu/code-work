@@ -33,7 +33,12 @@ export function useCodeworkProjectFileState(
   environmentId: EnvironmentId,
   cwd: string | null,
 ): CodeworkProjectFileState {
-  const query = useProjectFileQuery(environmentId, cwd ?? "", CODEWORK_PROJECT_FILE_NAME, cwd !== null);
+  const query = useProjectFileQuery(
+    environmentId,
+    cwd ?? "",
+    CODEWORK_PROJECT_FILE_NAME,
+    cwd !== null,
+  );
   const contents = query.data && !query.data.truncated ? query.data.contents : null;
   const isPending = query.isPending;
   return useMemo(() => {

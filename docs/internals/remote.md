@@ -54,7 +54,7 @@ control plane or a copy of session state.
 | ------------------------- | ------------------------------------------------------------------------ |
 | `PrimaryConnectionTarget` | The platform-managed local server (desktop backend, CLI-served web app). |
 | `BearerConnectionTarget`  | Any manually paired endpoint reached over direct HTTP/WebSocket.         |
-| `RelayConnectionTarget`   | Managed Code Work Connect relay tunnels.                                        |
+| `RelayConnectionTarget`   | Managed Code Work Connect relay tunnels.                                 |
 | `SshConnectionTarget`     | Desktop-managed SSH environments.                                        |
 
 Bearer, relay, and SSH are persisted; primary is platform-managed. Note that Tailscale is not a

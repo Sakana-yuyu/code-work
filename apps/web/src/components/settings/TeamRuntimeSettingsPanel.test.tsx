@@ -51,9 +51,7 @@ describe("TeamRuntimeSettingsPanel", () => {
           driver: ProviderDriverKind.make("multica"),
           displayName: "运维小队",
           enabled: false,
-          environment: [
-            { name: "MULTICA_TOKEN", value: "", sensitive: true, valueRedacted: true },
-          ],
+          environment: [{ name: "MULTICA_TOKEN", value: "", sensitive: true, valueRedacted: true }],
           config: {
             runtimeId: "multica:daemon-1:runtime-1",
             daemonId: "daemon-1",

@@ -78,7 +78,11 @@ const decodeResponse = (operation: string, body: unknown): CompositionToolResult
   try {
     return decodeToolResult(body);
   } catch {
-    throw makeFailure(operation, "invalid_response", "Code Work Tool Bridge 返回了无效的工具结果。");
+    throw makeFailure(
+      operation,
+      "invalid_response",
+      "Code Work Tool Bridge 返回了无效的工具结果。",
+    );
   }
 };
 

@@ -57,7 +57,9 @@ describe("parseGitHubRepositoryNameWithOwnerFromRemoteUrl", () => {
       parseGitHubRepositoryNameWithOwnerFromRemoteUrl("git@github.com:CodeworkTools/Codework.git"),
     ).toBe("CodeworkTools/Codework");
     expect(
-      parseGitHubRepositoryNameWithOwnerFromRemoteUrl("https://github.com/CodeworkTools/Codework.git"),
+      parseGitHubRepositoryNameWithOwnerFromRemoteUrl(
+        "https://github.com/CodeworkTools/Codework.git",
+      ),
     ).toBe("CodeworkTools/Codework");
   });
 });

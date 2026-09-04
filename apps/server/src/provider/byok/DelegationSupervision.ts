@@ -75,13 +75,7 @@ export interface SupervisionDecisionResult {
   readonly correctedTask: string | undefined;
 }
 
-const DECISIONS: ReadonlySet<string> = new Set([
-  "accept",
-  "retry",
-  "reassign",
-  "escalate",
-  "fail",
-]);
+const DECISIONS: ReadonlySet<string> = new Set(["accept", "retry", "reassign", "escalate", "fail"]);
 
 /** Extract the first JSON object with a known decision from model output. */
 export function parseSupervisionDecision(text: string): SupervisionDecisionResult | undefined {
@@ -197,8 +191,7 @@ export function nextSupervisionAction(input: {
 
 /** Built-in role fragments (original builtins; config overrides win). */
 export const BUILTIN_SUBAGENT_PROFILES: Readonly<Record<string, string>> = {
-  explore:
-    "以只读方式探索代码库：定位相关文件与实现，汇总入口、依赖与调用关系；不要修改任何文件。",
+  explore: "以只读方式探索代码库：定位相关文件与实现，汇总入口、依赖与调用关系；不要修改任何文件。",
   generalPurpose: "完成给定的编码任务，遵循仓库现有约定，完成后给出变更摘要与验证方式。",
   browserUse: "使用浏览器自动化完成页面操作或验证，逐步记录观察结果，最后给出结论。",
 };

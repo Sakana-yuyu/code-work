@@ -1,7 +1,10 @@
 import { describe, expect, it } from "vite-plus/test";
 
 import { ProjectId, ProviderInstanceId, ThreadId } from "@codework/contracts";
-import type { OrchestrationShellSnapshot, OrchestrationShellStreamEvent } from "@codework/contracts";
+import type {
+  OrchestrationShellSnapshot,
+  OrchestrationShellStreamEvent,
+} from "@codework/contracts";
 
 import { applyShellStreamEvent } from "./shellReducer.ts";
 

@@ -126,9 +126,7 @@ const makeFixture = () => {
   let projectAvailable = true;
   let nowUnixMs = 1_000;
   let stopClaimSequence = 0;
-  let waitForStopClaimExpiryOverride:
-    | ((retryAtUnixMs: number) => Effect.Effect<void>)
-    | undefined;
+  let waitForStopClaimExpiryOverride: ((retryAtUnixMs: number) => Effect.Effect<void>) | undefined;
 
   const emit = (event: TerminalEvent) =>
     Effect.forEach([...listeners], (listener) => listener(event), { discard: true });
@@ -526,13 +524,8 @@ describe("WorkspaceScriptService", () => {
 
   it.effect("PTY 已创建但启动后 Store 读取失败时，重建服务按原 owner 恢复 running", () =>
     Effect.gen(function* () {
-      const {
-        service,
-        restartService,
-        starts,
-        inspectionRequests,
-        activeRunFailures,
-      } = yield* makeFixture();
+      const { service, restartService, starts, inspectionRequests, activeRunFailures } =
+        yield* makeFixture();
       const operationId = "operation-start-post-spawn-store-failure";
       const workspaceScriptRunId = `workspace-script-run:${operationId}`;
       activeRunFailures.push(

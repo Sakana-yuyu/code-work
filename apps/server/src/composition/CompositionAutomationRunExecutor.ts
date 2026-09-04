@@ -465,113 +465,111 @@ export const makeCompositionAutomationRunExecutor = (
     },
   );
 
-  const ensureGoalLoopStarted = Effect.fn(
-    "CompositionAutomationRunExecutor.ensureGoalLoopStarted",
-  )(function* (input: CompositionAutomationRunExecutionInput) {
-    const target = input.automation.target;
-    if (target.type !== "goal_loop") {
-      return yield* executorError(
-        "automation_target_unsupported",
-        `当前执行适配器尚不支持 ${target.type} target。`,
-        false,
-      );
-    }
-    const taskId = input.run.compositionTaskId;
-    const runId = input.run.compositionRunId;
-    const startedAtUnixMs = input.run.startedAtUnixMs;
-    if (taskId === null || runId === null) {
-      return yield* executorError(
-        "automation_composition_identity_missing",
-        "Automation Run 尚未绑定稳定 Composition Task/Run ID。",
-        false,
-      );
-    }
-    if (startedAtUnixMs === null) {
-      return yield* executorError(
-        "automation_run_start_missing",
-        "Goal Loop Automation Run 缺少 startedAtUnixMs。",
-        false,
-      );
-    }
-    const runtime = options.goalLoop;
-    if (runtime === undefined) {
-      return yield* executorError(
-        "automation_goal_loop_runtime_unavailable",
-        "Goal Loop Automation 后台执行服务尚未就绪。",
-        true,
-      );
-    }
-    const context = yield* options.contexts
-      .resolve({
-        projectId: input.automation.projectId,
-        executionContext: target.executionContext,
-      })
-      .pipe(Effect.mapError((cause) => executorError(cause.code, cause.detail, cause.retryable)));
-    const work = Effect.gen(function* () {
-      const outcome = yield* Effect.result(
-        runtime.runner.run({
-          taskId,
-          runId,
+  const ensureGoalLoopStarted = Effect.fn("CompositionAutomationRunExecutor.ensureGoalLoopStarted")(
+    function* (input: CompositionAutomationRunExecutionInput) {
+      const target = input.automation.target;
+      if (target.type !== "goal_loop") {
+        return yield* executorError(
+          "automation_target_unsupported",
+          `当前执行适配器尚不支持 ${target.type} target。`,
+          false,
+        );
+      }
+      const taskId = input.run.compositionTaskId;
+      const runId = input.run.compositionRunId;
+      const startedAtUnixMs = input.run.startedAtUnixMs;
+      if (taskId === null || runId === null) {
+        return yield* executorError(
+          "automation_composition_identity_missing",
+          "Automation Run 尚未绑定稳定 Composition Task/Run ID。",
+          false,
+        );
+      }
+      if (startedAtUnixMs === null) {
+        return yield* executorError(
+          "automation_run_start_missing",
+          "Goal Loop Automation Run 缺少 startedAtUnixMs。",
+          false,
+        );
+      }
+      const runtime = options.goalLoop;
+      if (runtime === undefined) {
+        return yield* executorError(
+          "automation_goal_loop_runtime_unavailable",
+          "Goal Loop Automation 后台执行服务尚未就绪。",
+          true,
+        );
+      }
+      const context = yield* options.contexts
+        .resolve({
           projectId: input.automation.projectId,
-          ...(context.threadId === undefined ? {} : { threadId: context.threadId }),
-          agentId: target.agentId,
-          ...(target.reviewerAgentId === undefined
-            ? {}
-            : { reviewerAgentId: target.reviewerAgentId }),
-          ...(target.model === undefined ? {} : { model: target.model }),
-          capabilityIds: [...target.capabilityIds],
-          workspaceRoot: context.workspaceRoot,
-          goal: input.automation.prompt,
-          maxAttempts: target.maxAttempts,
-          ...(target.maxCostUnits === undefined ? {} : { maxCostUnits: target.maxCostUnits }),
-          ...(target.stalePivotRounds === undefined
-            ? {}
-            : { stalePivotRounds: target.stalePivotRounds }),
-          ...(target.deadlineDurationMs === undefined
-            ? {}
-            : { deadlineDurationMs: target.deadlineDurationMs }),
-          startedAtUnixMs,
-        }),
-      );
-      const finishedAtUnixMs = yield* runtime.now === undefined
-        ? Clock.currentTimeMillis
-        : Effect.sync(runtime.now);
-      const run =
-        outcome._tag === "Failure"
-          ? {
-              ...input.run,
-              status: "failed" as const,
-              finishedAtUnixMs,
-              outputSummary: null,
-              errorCode: outcome.failure.code,
-              errorDetail: outcome.failure.detail,
-            }
-          : {
-              ...input.run,
-              status: outcome.success.automationStatus,
-              finishedAtUnixMs,
-              outputSummary: outcome.success.summary,
-              errorCode:
-                outcome.success.automationStatus === "succeeded"
-                  ? null
-                  : (outcome.success.errorCode ?? "goal_loop_execution_failed"),
-              errorDetail:
-                outcome.success.automationStatus === "succeeded"
-                  ? null
-                  : outcome.success.summary,
-            };
-      yield* runtime.runs.saveRunTransition({ run, expectedStatus: "running" }).pipe(
-        Effect.catchCause((cause) =>
-          Effect.logError("Automation Goal Loop 终态回写失败", {
-            automationId: input.automation.automationId,
-            automationRunId: input.run.automationRunId,
-            cause,
+          executionContext: target.executionContext,
+        })
+        .pipe(Effect.mapError((cause) => executorError(cause.code, cause.detail, cause.retryable)));
+      const work = Effect.gen(function* () {
+        const outcome = yield* Effect.result(
+          runtime.runner.run({
+            taskId,
+            runId,
+            projectId: input.automation.projectId,
+            ...(context.threadId === undefined ? {} : { threadId: context.threadId }),
+            agentId: target.agentId,
+            ...(target.reviewerAgentId === undefined
+              ? {}
+              : { reviewerAgentId: target.reviewerAgentId }),
+            ...(target.model === undefined ? {} : { model: target.model }),
+            capabilityIds: [...target.capabilityIds],
+            workspaceRoot: context.workspaceRoot,
+            goal: input.automation.prompt,
+            maxAttempts: target.maxAttempts,
+            ...(target.maxCostUnits === undefined ? {} : { maxCostUnits: target.maxCostUnits }),
+            ...(target.stalePivotRounds === undefined
+              ? {}
+              : { stalePivotRounds: target.stalePivotRounds }),
+            ...(target.deadlineDurationMs === undefined
+              ? {}
+              : { deadlineDurationMs: target.deadlineDurationMs }),
+            startedAtUnixMs,
           }),
-        ),
-      );
-    });
-    yield* runtime.background.ensure(input.run.automationRunId, work);
-  });
+        );
+        const finishedAtUnixMs = yield* runtime.now === undefined
+          ? Clock.currentTimeMillis
+          : Effect.sync(runtime.now);
+        const run =
+          outcome._tag === "Failure"
+            ? {
+                ...input.run,
+                status: "failed" as const,
+                finishedAtUnixMs,
+                outputSummary: null,
+                errorCode: outcome.failure.code,
+                errorDetail: outcome.failure.detail,
+              }
+            : {
+                ...input.run,
+                status: outcome.success.automationStatus,
+                finishedAtUnixMs,
+                outputSummary: outcome.success.summary,
+                errorCode:
+                  outcome.success.automationStatus === "succeeded"
+                    ? null
+                    : (outcome.success.errorCode ?? "goal_loop_execution_failed"),
+                errorDetail:
+                  outcome.success.automationStatus === "succeeded" ? null : outcome.success.summary,
+              };
+        yield* runtime.runs.saveRunTransition({ run, expectedStatus: "running" }).pipe(
+          Effect.catchCause((cause) =>
+            Effect.logError("Automation Goal Loop 终态回写失败", {
+              automationId: input.automation.automationId,
+              automationRunId: input.run.automationRunId,
+              cause,
+            }),
+          ),
+        );
+      });
+      yield* runtime.background.ensure(input.run.automationRunId, work);
+    },
+  );
 
   const ensureStarted: CompositionAutomationRunExecutorShape["ensureStarted"] = (input) => {
     switch (input.automation.target.type) {

@@ -1,11 +1,6 @@
 "use client";
 
-import {
-  PlusIcon,
-  SaveIcon,
-  ServerCogIcon,
-  UsersIcon,
-} from "lucide-react";
+import { PlusIcon, SaveIcon, ServerCogIcon, UsersIcon } from "lucide-react";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 
 import { usePrimarySettings, useUpdatePrimarySettings } from "../../hooks/useSettings";
@@ -41,7 +36,9 @@ function Field({
     <label className="flex min-w-0 flex-col gap-1.5 text-xs font-medium text-foreground">
       <span>{label}</span>
       {children}
-      {description ? <span className="font-normal text-muted-foreground">{description}</span> : null}
+      {description ? (
+        <span className="font-normal text-muted-foreground">{description}</span>
+      ) : null}
     </label>
   );
 }
@@ -51,7 +48,11 @@ function safeTeamLabel(value: string | undefined, fallback: string): string {
   return (trimmed && trimmed.length > 0 ? trimmed : fallback).replace(/multica/giu, "团队");
 }
 
-function patchEnvironmentValue(draft: MulticaRuntimeDraft, index: number, value: string): MulticaRuntimeDraft {
+function patchEnvironmentValue(
+  draft: MulticaRuntimeDraft,
+  index: number,
+  value: string,
+): MulticaRuntimeDraft {
   return {
     ...draft,
     environment: draft.environment.map((entry, entryIndex) => {
@@ -89,7 +90,11 @@ export function TeamRuntimeSettingsPanel() {
       return;
     }
     setEditingId(nextId);
-    setDraft(selected ? formFromMulticaRuntimeInstance(String(selected.instanceId), selected.instance) : null);
+    setDraft(
+      selected
+        ? formFromMulticaRuntimeInstance(String(selected.instanceId), selected.instance)
+        : null,
+    );
   }, [instances, isCreating, selectedId]);
 
   const validation = draft ? validateMulticaRuntimeDraft(draft) : null;
@@ -169,9 +174,15 @@ export function TeamRuntimeSettingsPanel() {
                     onClick={() => selectInstance(instanceId)}
                   >
                     <span className="min-w-0 truncate">
-                      {safeTeamLabel(entry.instance.displayName, t("teamRuntime.instance", { index: index + 1 }))}
+                      {safeTeamLabel(
+                        entry.instance.displayName,
+                        t("teamRuntime.instance", { index: index + 1 }),
+                      )}
                     </span>
-                    <Badge variant={entry.instance.enabled === false ? "outline" : "success"} size="sm">
+                    <Badge
+                      variant={entry.instance.enabled === false ? "outline" : "success"}
+                      size="sm"
+                    >
                       {entry.instance.enabled === false ? t("disabled") : t("enabledColumn")}
                     </Badge>
                   </button>
@@ -199,8 +210,12 @@ export function TeamRuntimeSettingsPanel() {
               <div className="space-y-5">
                 <div className="flex items-center justify-between gap-3">
                   <div>
-                    <h3 className="text-sm font-semibold text-foreground">{t("teamRuntime.editorTitle")}</h3>
-                    <p className="text-xs text-muted-foreground">{t("teamRuntime.editorDescription")}</p>
+                    <h3 className="text-sm font-semibold text-foreground">
+                      {t("teamRuntime.editorTitle")}
+                    </h3>
+                    <p className="text-xs text-muted-foreground">
+                      {t("teamRuntime.editorDescription")}
+                    </p>
                   </div>
                   <Button
                     size="sm"
@@ -218,14 +233,18 @@ export function TeamRuntimeSettingsPanel() {
                     <Input
                       size="compact"
                       value={draft.runtimeId}
-                      onChange={(event) => setDraft({ ...draft, runtimeId: event.currentTarget.value })}
+                      onChange={(event) =>
+                        setDraft({ ...draft, runtimeId: event.currentTarget.value })
+                      }
                     />
                   </Field>
                   <Field label={t("teamRuntime.daemonId")}>
                     <Input
                       size="compact"
                       value={draft.daemonId}
-                      onChange={(event) => setDraft({ ...draft, daemonId: event.currentTarget.value })}
+                      onChange={(event) =>
+                        setDraft({ ...draft, daemonId: event.currentTarget.value })
+                      }
                     />
                   </Field>
                   <Field label={t("teamRuntime.daemonRuntimeId")}>
@@ -241,7 +260,9 @@ export function TeamRuntimeSettingsPanel() {
                     <Input
                       size="compact"
                       value={draft.baseUrl}
-                      onChange={(event) => setDraft({ ...draft, baseUrl: event.currentTarget.value })}
+                      onChange={(event) =>
+                        setDraft({ ...draft, baseUrl: event.currentTarget.value })
+                      }
                     />
                   </Field>
                   <Field label={t("teamRuntime.version")}>
@@ -249,7 +270,9 @@ export function TeamRuntimeSettingsPanel() {
                       size="compact"
                       value={draft.version}
                       placeholder={t("teamRuntime.optional")}
-                      onChange={(event) => setDraft({ ...draft, version: event.currentTarget.value })}
+                      onChange={(event) =>
+                        setDraft({ ...draft, version: event.currentTarget.value })
+                      }
                     />
                   </Field>
                   <Field
@@ -270,14 +293,16 @@ export function TeamRuntimeSettingsPanel() {
                 </div>
 
                 <div className="grid gap-2 sm:grid-cols-2">
-                  {([
-                    ["enabled", "teamRuntime.enabled"],
-                    ["supportsResume", "teamRuntime.supportsResume"],
-                    ["supportsMcp", "teamRuntime.supportsMcp"],
-                    ["supportsSquad", "teamRuntime.supportsSquad"],
-                    ["supportsLeader", "teamRuntime.supportsLeader"],
-                    ["supportsTaskGraph", "teamRuntime.supportsTaskGraph"],
-                  ] as const).map(([field, labelKey]) => (
+                  {(
+                    [
+                      ["enabled", "teamRuntime.enabled"],
+                      ["supportsResume", "teamRuntime.supportsResume"],
+                      ["supportsMcp", "teamRuntime.supportsMcp"],
+                      ["supportsSquad", "teamRuntime.supportsSquad"],
+                      ["supportsLeader", "teamRuntime.supportsLeader"],
+                      ["supportsTaskGraph", "teamRuntime.supportsTaskGraph"],
+                    ] as const
+                  ).map(([field, labelKey]) => (
                     <label
                       key={field}
                       className="flex items-center gap-2 rounded-md border border-border/60 px-2.5 py-2 text-xs text-muted-foreground"
@@ -294,12 +319,19 @@ export function TeamRuntimeSettingsPanel() {
                 </div>
 
                 <div className="space-y-2">
-                  <h4 className="text-xs font-semibold text-foreground">{t("teamRuntime.environment")}</h4>
+                  <h4 className="text-xs font-semibold text-foreground">
+                    {t("teamRuntime.environment")}
+                  </h4>
                   {draft.environment.length === 0 ? (
-                    <p className="text-xs text-muted-foreground">{t("teamRuntime.noEnvironmentVariables")}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {t("teamRuntime.noEnvironmentVariables")}
+                    </p>
                   ) : (
                     draft.environment.map((entry, index) => (
-                      <div key={`${entry.name}-${index}`} className="grid gap-2 sm:grid-cols-[minmax(8rem,0.4fr)_minmax(0,1fr)]">
+                      <div
+                        key={`${entry.name}-${index}`}
+                        className="grid gap-2 sm:grid-cols-[minmax(8rem,0.4fr)_minmax(0,1fr)]"
+                      >
                         <code className="flex min-h-8 items-center rounded-md bg-muted/40 px-2 text-[11px] text-muted-foreground">
                           {entry.name}
                         </code>
@@ -307,7 +339,9 @@ export function TeamRuntimeSettingsPanel() {
                           size="compact"
                           type={entry.sensitive ? "password" : "text"}
                           value={entry.value}
-                          placeholder={entry.valueRedacted === true ? t("teamRuntime.savedSecret") : undefined}
+                          placeholder={
+                            entry.valueRedacted === true ? t("teamRuntime.savedSecret") : undefined
+                          }
                           onChange={(event) =>
                             setDraft(patchEnvironmentValue(draft, index, event.currentTarget.value))
                           }
@@ -319,15 +353,21 @@ export function TeamRuntimeSettingsPanel() {
 
                 <div className="grid gap-3 sm:grid-cols-2">
                   <div className="space-y-1">
-                    <h4 className="text-xs font-semibold text-foreground">{t("teamRuntime.headers")}</h4>
+                    <h4 className="text-xs font-semibold text-foreground">
+                      {t("teamRuntime.headers")}
+                    </h4>
                     <p className="text-xs text-muted-foreground">
                       {draft.headers.length > 0
-                        ? draft.headers.map((header) => `${header.headerName} ← ${header.environmentVariable}`).join(" · ")
+                        ? draft.headers
+                            .map((header) => `${header.headerName} ← ${header.environmentVariable}`)
+                            .join(" · ")
                         : t("teamRuntime.none")}
                     </p>
                   </div>
                   <div className="space-y-1">
-                    <h4 className="text-xs font-semibold text-foreground">{t("teamRuntime.routes")}</h4>
+                    <h4 className="text-xs font-semibold text-foreground">
+                      {t("teamRuntime.routes")}
+                    </h4>
                     <p className="text-xs text-muted-foreground">
                       {draft.assigneeRoutes.length > 0
                         ? t("teamRuntime.routeCount", { count: draft.assigneeRoutes.length })
@@ -341,7 +381,11 @@ export function TeamRuntimeSettingsPanel() {
                     {t("teamRuntime.validationFailed", { path: validation.issue.path })}
                   </p>
                 ) : null}
-                {actionError ? <p role="alert" className="text-xs text-destructive-foreground">{actionError}</p> : null}
+                {actionError ? (
+                  <p role="alert" className="text-xs text-destructive-foreground">
+                    {actionError}
+                  </p>
+                ) : null}
               </div>
             )}
           </div>

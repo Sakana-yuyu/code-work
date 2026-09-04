@@ -80,7 +80,13 @@ export const composeByokResumeRedispatchPrompt = (input: {
 
 export type CompositionByokResumeRedispatchStorePort = Pick<
   CompositionTaskStoreShape,
-  "listEvents" | "appendEventIfNew" | "getTask" | "getRun" | "getLatestRun" | "upsertRun" | "upsertTask"
+  | "listEvents"
+  | "appendEventIfNew"
+  | "getTask"
+  | "getRun"
+  | "getLatestRun"
+  | "upsertRun"
+  | "upsertTask"
 >;
 
 export type CompositionByokResumeRedispatchOptions<E> = {

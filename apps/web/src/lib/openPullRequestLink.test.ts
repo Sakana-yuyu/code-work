@@ -99,11 +99,13 @@ describe("shouldOpenPullRequestExternally", () => {
 
 describe("parseChangeRequestUrl", () => {
   it("reads a GitHub pull request", () => {
-    expect(parseChangeRequestUrl("https://github.com/CodeworkTools/CodeworkCode/pull/123")).toEqual({
-      host: "github.com",
-      repository: "codeworktools/codework",
-      number: 123,
-    });
+    expect(parseChangeRequestUrl("https://github.com/CodeworkTools/CodeworkCode/pull/123")).toEqual(
+      {
+        host: "github.com",
+        repository: "codeworktools/codework",
+        number: 123,
+      },
+    );
   });
 
   it("reads a pull request on a GitHub Enterprise host", () => {
@@ -116,7 +118,9 @@ describe("parseChangeRequestUrl", () => {
 
   it("reads a GitLab merge request, nested groups and all", () => {
     expect(
-      parseChangeRequestUrl("https://gitlab.com/codeworktools/platform/codework/-/merge_requests/42"),
+      parseChangeRequestUrl(
+        "https://gitlab.com/codeworktools/platform/codework/-/merge_requests/42",
+      ),
     ).toEqual({
       host: "gitlab.com",
       repository: "codeworktools/platform/codework",
@@ -160,7 +164,9 @@ describe("parseChangeRequestUrl", () => {
   });
 
   it("survives trailing segments, a trailing slash and a query string", () => {
-    expect(parseChangeRequestUrl("https://github.com/codeworktools/codework/pull/123/files?w=1")).toEqual({
+    expect(
+      parseChangeRequestUrl("https://github.com/codeworktools/codework/pull/123/files?w=1"),
+    ).toEqual({
       host: "github.com",
       repository: "codeworktools/codework",
       number: 123,

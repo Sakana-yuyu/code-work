@@ -52,9 +52,9 @@ const baseSettings = {
 
 describe("team runtime settings projection", () => {
   it("only lists team runtime instances in stable id order", () => {
-    expect(teamRuntimeInstancesFromSettings(baseSettings).map((entry) => entry.instanceId)).toEqual([
-      "team-b",
-    ]);
+    expect(teamRuntimeInstancesFromSettings(baseSettings).map((entry) => entry.instanceId)).toEqual(
+      ["team-b"],
+    );
   });
 
   it("renames and saves one team runtime without touching other instances or redacted secrets", () => {

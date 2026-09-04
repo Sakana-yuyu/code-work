@@ -11,10 +11,7 @@
  */
 import * as Schema from "effect/Schema";
 import { TrimmedNonEmptyString } from "./baseSchemas.ts";
-import {
-  ProviderInstanceEnvironmentVariableName,
-  ProviderInstanceId,
-} from "./providerInstance.ts";
+import { ProviderInstanceEnvironmentVariableName, ProviderInstanceId } from "./providerInstance.ts";
 
 /** 启用/禁用一个 Provider 实例（Supplier 条目）。 */
 export const SupplierInstanceEnabledRequest = Schema.Struct({

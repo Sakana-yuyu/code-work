@@ -105,11 +105,7 @@ describe("projectByokBalanceDashboard", () => {
     const main = result.instances[0];
     expect(main?.health).toBe("degraded");
     expect(main?.displayName).toBe("主账号");
-    expect(main?.adapters.map((adapter) => adapter.health)).toEqual([
-      "ok",
-      "error",
-      "unsupported",
-    ]);
+    expect(main?.adapters.map((adapter) => adapter.health)).toEqual(["ok", "error", "unsupported"]);
     // 查询失败的错误细节保留在 balance.error 上，不被投影吞掉。
     expect(main?.adapters[1]?.balance.error?.code).toBe("upstream_http");
     const bare = result.instances[1];

@@ -255,11 +255,11 @@
         <div class="eyebrow">Implemented architecture</div>
         <h1>Code Work Connect Control Plane and Managed Endpoint Flow</h1>
         <p class="lede">
-          Code Work Connect links a locally authorized Code Work environment to a signed-in cloud user, provisions
-          a managed HTTPS/WSS endpoint for that environment, and brokers proof-bound remote
-          connections. The local environment remains the authority that issues environment access
-          credentials. The hosted relay stores links, reconciles managed endpoint resources,
-          validates signed proofs, and delivers agent-activity notifications.
+          Code Work Connect links a locally authorized Code Work environment to a signed-in cloud
+          user, provisions a managed HTTPS/WSS endpoint for that environment, and brokers
+          proof-bound remote connections. The local environment remains the authority that issues
+          environment access credentials. The hosted relay stores links, reconciles managed endpoint
+          resources, validates signed proofs, and delivers agent-activity notifications.
         </p>
         <div class="badge-row">
           <span class="badge user">Client -> Relay: Clerk bearer or relay DPoP</span>
@@ -1047,9 +1047,10 @@ sequenceDiagram
             <tr>
               <td>Source-built desktop/server cloud features</td>
               <td>
-                Optional <code>CODEWORK_RELAY_URL</code>, <code>CODEWORK_CLERK_PUBLISHABLE_KEY</code>,
-                and <code>CODEWORK_CLERK_CLI_OAUTH_CLIENT_ID</code>. Release builds inject public
-                values at build time.
+                Optional <code>CODEWORK_RELAY_URL</code>,
+                <code>CODEWORK_CLERK_PUBLISHABLE_KEY</code>, and
+                <code>CODEWORK_CLERK_CLI_OAUTH_CLIENT_ID</code>. Release builds inject public values
+                at build time.
               </td>
             </tr>
             <tr>

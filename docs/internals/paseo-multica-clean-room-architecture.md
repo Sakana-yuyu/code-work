@@ -8,13 +8,13 @@
 
 ## 证据基线
 
-| 对象 | 核验结果 |
-| --- | --- |
-| Code Work | `E:\MyProject\code-work`，分支 `tcode`，HEAD 与 `origin/tcode` 均为 `55893618416a7c855834da5b0fe88b144b7b3e84` |
-| GitHub 默认分支 | `origin/HEAD` 与远端 `HEAD` 均指向 `refs/heads/tcode` |
-| 本地保护分支 | `sync/tcode-upstream` 指向 `5cd00f997cadeb63ff4369b3e8b83d67feb827af`，本迁移不删除、不改写 |
-| Paseo | `E:\MyProject\paseo`，提交 `ed628ff82e1777f6a46f5f8963db6b4ac3ee2ce3`，工作树干净 |
-| Multica | `E:\MyProject\multica`，提交 `64ec7f54163d918d5d7fd4dcae857f241b7842d0`，工作树干净 |
+| 对象            | 核验结果                                                                                                       |
+| --------------- | -------------------------------------------------------------------------------------------------------------- |
+| Code Work       | `E:\MyProject\code-work`，分支 `tcode`，HEAD 与 `origin/tcode` 均为 `55893618416a7c855834da5b0fe88b144b7b3e84` |
+| GitHub 默认分支 | `origin/HEAD` 与远端 `HEAD` 均指向 `refs/heads/tcode`                                                          |
+| 本地保护分支    | `sync/tcode-upstream` 指向 `5cd00f997cadeb63ff4369b3e8b83d67feb827af`，本迁移不删除、不改写                    |
+| Paseo           | `E:\MyProject\paseo`，提交 `ed628ff82e1777f6a46f5f8963db6b4ac3ee2ce3`，工作树干净                              |
+| Multica         | `E:\MyProject\multica`，提交 `64ec7f54163d918d5d7fd4dcae857f241b7842d0`，工作树干净                            |
 
 核验时 Code Work 存在大量未提交的 BYOK、Delegation、迁移重编号、设置页、图标和文档改动。这些改动是并行工作，不属于本文所证明的稳定交付；后续提交必须精确暂存自己的文件。
 
@@ -52,17 +52,17 @@ Multica 的 LICENSE 由 Apache License 2.0 与附加条件共同构成，附加�
 
 ## 参考能力与自主设计
 
-| 参考问题 | 观察到的有效约束 | Code Work 自主设计方向 |
-| --- | --- | --- |
-| Paseo 持久化 Schedule | every/cron/timezone、暂停恢复、立即运行、次数/过期限制、运行历史、重启恢复 | 在 Composition 之上建立 Automation 聚合；每次触发生成稳定 Run，幂等键为 `automationId + scheduledFor` |
-| Paseo Workspace Scripts | 声明、终端生命周期、端口代理、健康投影 | 复用 Code Work Terminal/Preview/Workspace，脚本进程只由 Workspace Script 服务持有和停止 |
-| Paseo 插件贡献点 | 面板、命令、Timeline、附件、Theme 的明确宿主边界 | 仅开放 schema 化、版本化、可禁用的贡献点；插件不直接访问内部 Store |
-| Multica Runtime claim | 在线、心跳新鲜、作用域匹配、原子竞争后才能领取 | 在 Driver 派发前执行统一 eligibility 判定；数据库状态迁移使用事务和比较条件，不依赖内存猜测 |
-| Multica prepare lease | claim 响应可能丢失；启动准备阶段需要短租约和安全重领 | 将 Lease 与 Run 绑定，区分 `claimed/preparing/running`，支持续租、过期收回和 claim generation |
-| Multica failure taxonomy | 只有明确的瞬态白名单能自动重试 | 失败码结构化为类别、可重试性和恢复建议；未知错误默认不可自动重试 |
-| Multica reconnect/orphan | Runtime 离线与任务失败分开；长任务不能只按墙钟误杀 | Runtime 状态先转离线，任务进入 reconnect grace；结合 Runtime 心跳、任务活动和取消确认决定收口 |
-| Multica Squad/Leader | Leader、成员、依赖、动态分派、结果聚合、人工责任 | 以 Composition Task Graph 为唯一执行事实，Squad 只负责模板、成员策略和默认权限 |
-| Multica Autopilot | cron/webhook、Agent/Squad 目标、运行历史、责任和权限 | Automation 目标支持 Agent、Squad、Goal Loop；触发秘密与执行权限分开管理 |
+| 参考问题                 | 观察到的有效约束                                                           | Code Work 自主设计方向                                                                                |
+| ------------------------ | -------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------- |
+| Paseo 持久化 Schedule    | every/cron/timezone、暂停恢复、立即运行、次数/过期限制、运行历史、重启恢复 | 在 Composition 之上建立 Automation 聚合；每次触发生成稳定 Run，幂等键为 `automationId + scheduledFor` |
+| Paseo Workspace Scripts  | 声明、终端生命周期、端口代理、健康投影                                     | 复用 Code Work Terminal/Preview/Workspace，脚本进程只由 Workspace Script 服务持有和停止               |
+| Paseo 插件贡献点         | 面板、命令、Timeline、附件、Theme 的明确宿主边界                           | 仅开放 schema 化、版本化、可禁用的贡献点；插件不直接访问内部 Store                                    |
+| Multica Runtime claim    | 在线、心跳新鲜、作用域匹配、原子竞争后才能领取                             | 在 Driver 派发前执行统一 eligibility 判定；数据库状态迁移使用事务和比较条件，不依赖内存猜测           |
+| Multica prepare lease    | claim 响应可能丢失；启动准备阶段需要短租约和安全重领                       | 将 Lease 与 Run 绑定，区分 `claimed/preparing/running`，支持续租、过期收回和 claim generation         |
+| Multica failure taxonomy | 只有明确的瞬态白名单能自动重试                                             | 失败码结构化为类别、可重试性和恢复建议；未知错误默认不可自动重试                                      |
+| Multica reconnect/orphan | Runtime 离线与任务失败分开；长任务不能只按墙钟误杀                         | Runtime 状态先转离线，任务进入 reconnect grace；结合 Runtime 心跳、任务活动和取消确认决定收口         |
+| Multica Squad/Leader     | Leader、成员、依赖、动态分派、结果聚合、人工责任                           | 以 Composition Task Graph 为唯一执行事实，Squad 只负责模板、成员策略和默认权限                        |
+| Multica Autopilot        | cron/webhook、Agent/Squad 目标、运行历史、责任和权限                       | Automation 目标支持 Agent、Squad、Goal Loop；触发秘密与执行权限分开管理                               |
 
 ## 目标架构
 
@@ -230,13 +230,13 @@ Web/Desktop 复用现有 Settings、Control Center 和 Task Graph 视觉语言�
 
 每项能力按以下等级分别报告：
 
-| 等级 | 证据 |
-| --- | --- |
-| L1 | 合同、实现和迁移已进入分支 |
-| L2 | 聚焦单元、集成、并发和幂等测试通过 |
-| L3 | 本地跨进程、数据库重启或真实客户端集成通过 |
-| L4 | 真实 Provider/IDE/Runtime 和 Web/Desktop/Mobile 关键路径通过 |
-| L5 | 权限审计、故障演练、升级兼容、回滚和发布验证通过 |
+| 等级 | 证据                                                         |
+| ---- | ------------------------------------------------------------ |
+| L1   | 合同、实现和迁移已进入分支                                   |
+| L2   | 聚焦单元、集成、并发和幂等测试通过                           |
+| L3   | 本地跨进程、数据库重启或真实客户端集成通过                   |
+| L4   | 真实 Provider/IDE/Runtime 和 Web/Desktop/Mobile 关键路径通过 |
+| L5   | 权限审计、故障演练、升级兼容、回滚和发布验证通过             |
 
 类型检查、静态 i18n、mock transport 和 Node fixture 最多只能证明对应的局部等级，不能替代真实产品 E2E。
 

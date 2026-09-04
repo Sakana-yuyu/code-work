@@ -31,9 +31,9 @@ describe("isTransportConnectionErrorMessage", () => {
   });
 
   it("returns true for the Code Work server WebSocket message", () => {
-    expect(isTransportConnectionErrorMessage("Unable to connect to the Code Work server WebSocket.")).toBe(
-      true,
-    );
+    expect(
+      isTransportConnectionErrorMessage("Unable to connect to the Code Work server WebSocket."),
+    ).toBe(true);
   });
 
   it("returns true for ping timeout", () => {

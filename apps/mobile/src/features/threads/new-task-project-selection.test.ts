@@ -43,7 +43,11 @@ describe("getOnlySelectableProject", () => {
   });
 
   it("selects the representative when one logical project has multiple workspaces", () => {
-    const projects = [makeProject("codework"), makeProject("codework-2"), makeProject("codework-3")];
+    const projects = [
+      makeProject("codework"),
+      makeProject("codework-2"),
+      makeProject("codework-3"),
+    ];
     expect(getOnlySelectableProject([makeScope(projects)])).toBe(projects[0]);
   });
 });
@@ -81,7 +85,11 @@ describe("resolveDraftProjectSelection", () => {
   });
 
   it("selects one logical project even when it has multiple physical workspaces", () => {
-    const projects = [makeProject("codework"), makeProject("codework-2"), makeProject("codework-3")];
+    const projects = [
+      makeProject("codework"),
+      makeProject("codework-2"),
+      makeProject("codework-3"),
+    ];
     expect(resolveDraftProjectSelection(null, projects, [makeScope(projects)])).toEqual({
       kind: "select",
       project: projects[0],

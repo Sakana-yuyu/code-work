@@ -13,8 +13,8 @@
     "test": "vp test run"
   },
   "dependencies": {
-    "@effect/platform-node": "catalog:",
     "@codework/shared": "workspace:*",
+    "@effect/platform-node": "catalog:",
     "effect": "catalog:"
   },
   "devDependencies": {

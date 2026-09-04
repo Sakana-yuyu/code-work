@@ -1,64 +1,83 @@
-# Code Work 桌面端发布（云端打包）
+# Code Work 桌面端发布
 
-CodexWork 桌面端发布已迁移到 GitHub Actions 云端打包，
-工作流位于仓库根目录 `.github/workflows/release-desktop.yml`。本地上传 138 MB 安装包的流程不再需要。
+普通稳定版桌面发布由 GitHub Actions 云端构建并自动创建 GitHub Release。
 
 ## 触发方式
 
-| 方式     | 操作                                                              | 结果                                                      |
-| -------- | ----------------------------------------------------------------- | --------------------------------------------------------- |
-| 正式发布 | 推送 tag `desktop-v<版本>`（如 `desktop-v0.0.39`）                | 构建 Windows x64 安装包并自动创建 GitHub Release          |
-| 演练     | Actions 页手动触发 `Code Work Desktop Release`，publish 不勾选    | 只构建，产物保存在 workflow artifact 里供下载验证，不发布 |
-| 手动发布 | 手动触发并勾选 `publish`，填版本号（留空取 desktop package.json） | 等价于推 tag                                              |
+只推送三段式稳定版本 tag：
 
 ```bash
-# 正式发布示例
-git tag desktop-v0.0.39
-git push origin desktop-v0.0.39
+git tag v0.0.39
+git push origin v0.0.39
 ```
 
-## 产物（Release 附件）
+符合 `vX.Y.Z` 的 tag 会触发 `.github/workflows/release.yml`。工作流不提供
+nightly、手动 dry-run 或其他 tag 发布通道；`v*-nightly.*` 会被排除。
 
-- `Code-Work-<版本>-x64.exe` — NSIS 安装包（约 138 MB，未签名）
-- `Code-Work-<版本>-x64.exe.blockmap` — 差量更新块映射
-- `latest.yml` — Electron 自动更新元数据（更新探测入口，必须随 Release 发布）
-- `SHA256SUMS.txt` — 全部附件校验和
+## 发布产物
 
-### Windows 安装器行为
+一次稳定版 Release 包含以下 GitHub-hosted 构建产物：
 
-Windows 安装包使用标准 NSIS 安装向导。双击 `.exe` 后会先显示安装界面，
-用户可以确认安装并选择目标目录；选择 `D:\` 等目标位置后，安装器会自动创建
-`CodeWork` 子目录并将程序安装到该目录，不会直接静默安装到固定位置。
+- macOS arm64 DMG；
+- macOS x64 DMG；
+- Linux x64 AppImage；
+- Windows x64 NSIS 安装包；
+- Electron 自动更新所需的版本清单和 blockmap；
+- 各平台资源监视器以及 Windows WSL 使用的 Linux x64 `node-pty` 辅助文件；
+- `SHA256SUMS.txt` 校验和文件。
 
-## tag 命名空间（重要）
+构建矩阵使用 `macos-15`、`macos-15-intel`、`ubuntu-24.04` 和
+`windows-latest`。构建机器、依赖缓存和临时附件均由 GitHub Actions 托管。
 
-- `desktop-v*` → codework 桌面端（本工作流，根目录 release-desktop.yml）
-- `v*` → 根目录 Wails"Cursor助手"线（根目录 build.yml）
+## 发布边界
 
-两套 glob 互不匹配。**发布 codework 桌面端绝不推 `v*` tag**，否则两条产品线同时发包
-（2026-08-31 发错线事故的根源）。
+普通桌面 Release 只负责构建桌面安装包和发布 GitHub Release，不执行：
 
-## 构建环境（云端自动处理）
+- npm CLI 发布；
+- Web/Vercel 部署；
+- AUR 发布；
+- Discord 通知；
+- Finalize 回写；
+- Relay、Cloudflare 或 Axiom 基础设施部署。
 
-- 标准 `windows-latest` runner（仓库为 public，免费）
-- Vite+ 工具链（`voidzero-dev/setup-vp`，Node 版本取 `codework/package.json` engines）
-- Rust stable（仅资源监视器，二进制有缓存，命中则跳过）
-- 依赖/包缓存：vp 包缓存按 `pnpm-lock.yaml` 键控，Electron 运行时缓存
+桌面构建不依赖 Relay/Axiom/Cloudflare 凭据。未配置平台签名密钥时，仍会生成未签名
+安装包；不能将未签名安装包描述为已签名版本。Relay 代码仍保留，若需要部署可在 Actions
+中手动运行 `Deploy Code Work Connect relay`。
 
-## 当前边界
+## 发布前检查
 
-- 仅 Windows x64；macOS/Linux 与 Azure Trusted Signing 未启用。
-  需要时按上游 `codework/.github/workflows/release.yml` 扩展（签名密钥需配 GitHub secrets）。
-- 未捆绑 WSL node-pty 预编译产物（--wsl-prebuild 未传），WSL 后端首次启动需自行编译；
-  与本地构建产物一致。
-- 桌面端应用内更新走 GitHub Releases：构建默认把更新仓库指向 `Sakana-yuyu/code-work`，
-  可用 `CODEWORK_DESKTOP_UPDATE_REPOSITORY`（或 CI 的 `GITHUB_REPOSITORY`）覆盖；
-  mock 构建始终走本地 mock feed，不写入真实仓库。
+Release 会先通过格式检查、类型检查和测试，再并行构建四个平台。任一质量门禁或平台构建
+失败，都不会创建正式 GitHub Release。
+
+查看运行状态：
+
+```bash
+gh run list --workflow release.yml --limit 5
+gh run view <run-id> --log-failed
+gh release view v0.0.39
+```
+
+只有 `gh release view` 能看到 Release 不是草稿，并且四类平台附件、更新清单、blockmap
+和校验和均存在时，才算发布完成。
 
 ## 本地构建（备用）
 
 ```bash
-cd codework
-pnpm run dist:desktop:artifact -- --platform win --target nsis --arch x64 --build-version <版本>
-# 产物输出到 codework/release/
+pnpm install
+pnpm run dist:desktop:artifact -- --platform win --target nsis --arch x64 --build-version 0.0.39
 ```
+
+本地构建产物写入 `release/`，该目录、`node_modules/`、`dist/`、`build/`、`.t3/`、
+`.codework/`、`release-local/`、日志和 `.env` 文件都不应提交。
+
+## 回滚
+
+尚未触发工作流的本地 tag 可以删除：
+
+```bash
+git tag -d v0.0.39
+git push origin :refs/tags/v0.0.39
+```
+
+已公开的 Release 不复用同一个版本号；应删除错误 Release 后使用修复后的新版本号重新
+发布。

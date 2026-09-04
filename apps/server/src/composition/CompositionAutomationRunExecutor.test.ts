@@ -374,9 +374,7 @@ describe("CompositionAutomationRunExecutor", () => {
       let backgroundWork: Effect.Effect<void, never> | undefined;
       let goalLoopInput:
         | Parameters<
-            NonNullable<
-              CompositionAutomationRunExecutorOptions["goalLoop"]
-            >["runner"]["run"]
+            NonNullable<CompositionAutomationRunExecutorOptions["goalLoop"]>["runner"]["run"]
           >[0]
         | undefined;
       let transition:

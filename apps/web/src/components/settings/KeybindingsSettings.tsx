@@ -332,11 +332,7 @@ function WhenVariableSelect({
         className="max-h-72 w-fit min-w-44"
       >
         {options.map((option) => (
-          <SelectItem
-            key={option}
-            value={option}
-            className="min-h-7 w-full py-1 text-[12px]"
-          >
+          <SelectItem key={option} value={option} className="min-h-7 w-full py-1 text-[12px]">
             <span className="flex min-w-0 items-baseline gap-2">
               <span className="truncate">{localizedWhenVariableLabel(option)}</span>
               <span className="shrink-0 font-mono text-[11px] text-muted-foreground">{option}</span>
@@ -606,9 +602,7 @@ function WhenExpressionBuilder({
   const parseResult = useMemo(() => parseWhenExpressionDraft(expressionDraft), [expressionDraft]);
   const parseError = parseResult.ok ? null : parseResult.message;
   const unknownIdentifiers = parseResult.ok ? unknownWhenVariables(parseResult.value) : [];
-  const readableExpression = parseResult.ok
-    ? localizedWhenExpression(parseResult.value)
-    : null;
+  const readableExpression = parseResult.ok ? localizedWhenExpression(parseResult.value) : null;
 
   const updateExpressionDraft = (nextExpression: string) => {
     setExpressionDraft(nextExpression);

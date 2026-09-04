@@ -51,9 +51,7 @@ export function resolveSessionCookieName(input: SessionCookieScope): string {
  * The same scoping applied to every retired prefix, so a pre-rename cookie is
  * matched under the exact name that build would have written.
  */
-export function resolveLegacySessionCookieNames(
-  input: SessionCookieScope,
-): ReadonlyArray<string> {
+export function resolveLegacySessionCookieNames(input: SessionCookieScope): ReadonlyArray<string> {
   return LEGACY_SESSION_COOKIE_NAMES.map((prefix) => scopeSessionCookieName(prefix, input));
 }
 

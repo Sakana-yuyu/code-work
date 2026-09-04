@@ -32,7 +32,10 @@ describe("tryOpenExternalUrl", () => {
     const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
 
     await expect(
-      tryOpenExternalUrl("https://github.com/Sakana-yuyu/code-work/pull/1?token=secret", "pull-request"),
+      tryOpenExternalUrl(
+        "https://github.com/Sakana-yuyu/code-work/pull/1?token=secret",
+        "pull-request",
+      ),
     ).resolves.toBe(false);
 
     expect(consoleError).toHaveBeenCalledTimes(1);

@@ -45,7 +45,9 @@ export interface CompositionRuntimeAdapterRegistryServiceShape extends Compositi
 export class CompositionRuntimeAdapterRegistryService extends Context.Service<
   CompositionRuntimeAdapterRegistryService,
   CompositionRuntimeAdapterRegistryServiceShape
->()("codework/composition/CompositionRuntimeAdapterRegistry/CompositionRuntimeAdapterRegistryService") {}
+>()(
+  "codework/composition/CompositionRuntimeAdapterRegistry/CompositionRuntimeAdapterRegistryService",
+) {}
 
 export const makeCompositionRuntimeAdapterRegistry = (): CompositionRuntimeAdapterRegistry => {
   const adapters = new Map<string, CompositionRuntimeAdapter>();

@@ -1,5 +1,8 @@
 import { useAtomValue } from "@effect/atom-react";
-import { createAssetEnvironmentAtoms, resolveAssetUrl } from "@codework/client-runtime/state/assets";
+import {
+  createAssetEnvironmentAtoms,
+  resolveAssetUrl,
+} from "@codework/client-runtime/state/assets";
 import type { AssetResource, EnvironmentId } from "@codework/contracts";
 import { AsyncResult, Atom } from "effect/unstable/reactivity";
 

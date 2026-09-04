@@ -41,7 +41,10 @@ describe("formatOrphanProfilesWarning", () => {
 
   it("lists orphaned profile agent ids after the label", () => {
     expect(
-      formatOrphanProfilesWarning("Orphaned agent profiles", ["provider:gone-1", "provider:gone-2"]),
+      formatOrphanProfilesWarning("Orphaned agent profiles", [
+        "provider:gone-1",
+        "provider:gone-2",
+      ]),
     ).toBe("Orphaned agent profiles: provider:gone-1, provider:gone-2");
   });
 });

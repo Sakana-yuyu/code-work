@@ -27,9 +27,9 @@ describe("MulticaRuntimeSettings URL", () => {
     expect(isSafeMulticaTaskMcpEndpoint("https://codework.test/mcp?clientSecret=secret")).toBe(
       false,
     );
-    expect(
-      isSafeMulticaTaskMcpEndpoint("https://codework.test/mcp?authorizationCode=secret"),
-    ).toBe(false);
+    expect(isSafeMulticaTaskMcpEndpoint("https://codework.test/mcp?authorizationCode=secret")).toBe(
+      false,
+    );
     expect(isSafeMulticaTaskMcpEndpoint("https://codework.test/mcp?subscriptionKey=secret")).toBe(
       false,
     );

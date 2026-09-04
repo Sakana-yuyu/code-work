@@ -30,15 +30,17 @@ Release 不执行以下操作：
 - 不执行 Finalize 回写或自动修改 `main`。
 
 构建机器使用 GitHub-hosted runner。macOS 使用 `macos-15` 和 `macos-15-intel`，Linux 使用
-`ubuntu-24.04`，Windows 使用 `windows-latest`。CI 和 Relay 工作流也使用 GitHub-hosted runner。
+`ubuntu-24.04`，Windows 使用 `windows-latest`。Relay 部署工作流仅保留手动触发，不属于普通
+代码推送或桌面 Release。
 
 ## 发布前检查
 
 Release 会先执行质量门禁，再开始桌面矩阵构建。质量门禁包括格式检查、类型检查和测试；任何一项
 失败都不会创建 GitHub Release。
 
-Relay 公共配置只用于把 Code Work Connect 的客户端配置注入桌面包。Relay 自身由
-`.github/workflows/deploy-relay.yml` 在 `main` 推送时单独部署，不属于桌面 Release 的上传步骤。
+桌面 Release 不读取 Relay 部署状态，也不需要 Axiom、Cloudflare 或 Relay 凭据；因此它可以
+独立完成普通本地/远程桌面包构建。需要更新 Relay 基础设施时，再手动运行
+`.github/workflows/deploy-relay.yml`。
 
 正式发布前确认：
 

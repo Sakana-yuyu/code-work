@@ -20,7 +20,9 @@ describe("editorLabelForPlatform", () => {
 
 describe("openInEditorMenuLabel", () => {
   it("names the preferred editor", () => {
-    expect(openInEditorMenuLabel("zed")).toBe(t("commandPalette.openInManager", { manager: "Zed" }));
+    expect(openInEditorMenuLabel("zed")).toBe(
+      t("commandPalette.openInManager", { manager: "Zed" }),
+    );
   });
 
   it("keeps the generic label for the default file handler and missing preferences", () => {

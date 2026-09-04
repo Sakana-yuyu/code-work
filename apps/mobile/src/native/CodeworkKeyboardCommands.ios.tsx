@@ -11,7 +11,9 @@ interface NativeKeyboardCommandsProps extends ViewProps, PropsWithChildren {
   ) => void;
 }
 
-const NativeKeyboardCommands = requireNativeView<NativeKeyboardCommandsProps>("CodeworkKeyboardCommands");
+const NativeKeyboardCommands = requireNativeView<NativeKeyboardCommandsProps>(
+  "CodeworkKeyboardCommands",
+);
 
 export function CodeworkKeyboardCommands(
   props: PropsWithChildren<{

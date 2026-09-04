@@ -103,7 +103,10 @@ export const DesktopConfig = Config.all({
     10_000,
   ),
   appImagePath: trimmedString("APPIMAGE"),
-  disableAutoUpdate: preferredBoolean("CODEWORK_DISABLE_AUTO_UPDATE", "CODEWORK_DISABLE_AUTO_UPDATE"),
+  disableAutoUpdate: preferredBoolean(
+    "CODEWORK_DISABLE_AUTO_UPDATE",
+    "CODEWORK_DISABLE_AUTO_UPDATE",
+  ),
   mockUpdates: preferredBoolean("CODEWORK_DESKTOP_MOCK_UPDATES", "CODEWORK_DESKTOP_MOCK_UPDATES"),
   mockUpdateServerPort: preferredPort(
     "CODEWORK_DESKTOP_MOCK_UPDATE_SERVER_PORT",

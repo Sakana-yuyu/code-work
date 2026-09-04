@@ -22,9 +22,9 @@ The update does not remove saved threads, settings, or project files.
 
 ## Choose the Action You See
 
-| Action                     | What to do                                                                                                                                                                  |
-| -------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Update server**          | Available for the Code Work Linux background service. Select the button and leave Code Work open while it prepares, tests, restarts, and reconnects.                            |
+| Action                     | What to do                                                                                                                                                                    |
+| -------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Update server**          | Available for the Code Work Linux background service. Select the button and leave Code Work open while it prepares, tests, restarts, and reconnects.                          |
 | **Update the desktop app** | Open the Code Work desktop app on the machine that runs the server and install the app update there. Reopen it if needed.                                                     |
 | **Copy update command**    | Copy the command, open a terminal on the server machine, stop the current Code Work server, and relaunch it with the copied command and any startup options you normally use. |
 

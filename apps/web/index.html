@@ -19,7 +19,8 @@
         const LEGACY_THEME_APPEARANCE_MODE_STORAGE_KEY = "codework:theme-appearance-mode";
         const LEGACY_THEME_HALVES_STORAGE_KEY = "codework:theme-halves:v1";
         const LEGACY_THEME_STORAGE_KEY = "codework:theme";
-        const canonicalStorageKey = (legacyKey) => `codework:${legacyKey.slice("codework:".length)}`;
+        const canonicalStorageKey = (legacyKey) =>
+          `codework:${legacyKey.slice("codework:".length)}`;
         const CUSTOM_THEMES_STORAGE_KEY = canonicalStorageKey(LEGACY_CUSTOM_THEMES_STORAGE_KEY);
         const THEME_FOLLOW_SYSTEM_STORAGE_KEY = canonicalStorageKey(
           LEGACY_THEME_FOLLOW_SYSTEM_STORAGE_KEY,
