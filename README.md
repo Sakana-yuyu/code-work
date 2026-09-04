@@ -88,7 +88,7 @@ vp run dev        # 维护者启动本地开发环境
 
 普通稳定版桌面 Release 使用 GitHub Actions 的官方托管构建机器，工作流位于
 [`.github/workflows/release.yml`](./.github/workflows/release.yml)。推送形如 `v1.2.3`
-的稳定版本 tag，或在 Actions 中手动填写版本号，即可构建并创建 GitHub Release。
+的稳定版本 tag 后，工作流会自动构建并创建 GitHub Release；当前不提供手动发布入口。
 
 当前桌面 Release 包含以下产物：
 

@@ -5,12 +5,6 @@ on:
     tags:
       - "v*.*.*"
       - "!v*-nightly.*"
-  workflow_dispatch:
-    inputs:
-      version:
-        description: "Release version (for example 1.2.3 or v1.2.3)"
-        required: true
-        type: string
 
 # 普通稳定版发布只保留一个串行槽位，避免重复上传同一个 Release。
 concurrency:
@@ -55,19 +49,8 @@ jobs:
       - id: release_meta
         name: Resolve release version
         shell: bash
-        env:
-          DISPATCH_VERSION: ${{ github.event.inputs.version }}
         run: |
-          if [[ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" ]]; then
-            raw="${DISPATCH_VERSION}"
-            if [[ -z "$raw" ]]; then
-              echo "workflow_dispatch stable releases require the version input." >&2
-              exit 1
-            fi
-          else
-            raw="${GITHUB_REF_NAME}"
-          fi
-
+          raw="${GITHUB_REF_NAME}"
           version="${raw#v}"
           if [[ ! "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
             echo "Invalid stable release version: $raw" >&2
