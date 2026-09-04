@@ -40,11 +40,7 @@ Code Work 不捆绑这些 Provider，也不代替它们管理订阅或账号；�
 
 ## 快速开始
 
-终端用户可以直接运行：
-
-```bash
-npx t3@latest
-```
+普通用户可以从 [GitHub Releases](https://github.com/Sakana-yuyu/code-work/releases) 下载对应平台的桌面安装包。
 
 从源码开发需要 Node.js `24.13+`、pnpm 和 Vite+：
 
@@ -115,7 +111,6 @@ npm 账户；只有将包上传到 npm Registry 时才需要 npm 账户和对应
 - Provider CLI、模型订阅和账号由用户自行安装、登录和管理；Code Work 不会替你购买或托管这些服务。
 - BYOK Gateway 按 Provider 支持的协议工作；不同协议之间不会自动转换。
 - 远程访问链接和登录凭据属于敏感信息，只应发送给可信设备，并在不再需要时撤销。
-- 仓库中的 `t3.json`、`t3.codes`、`npx t3`、`.t3` 和部分移动原生模块标识属于兼容契约，不代表产品名称。
 
 ## 贡献
 
@@ -126,10 +121,6 @@ vp i
 ```
 
 功能建议请提交 [Ideas 讨论](https://github.com/Sakana-yuyu/code-work/discussions/categories/ideas)，问题反馈请提交 Issue。
-
-## 兼容性说明
-
-仓库中的 `t3.json`、`t3.codes`、`npx t3`、`.t3` 和部分移动原生模块标识属于既有配置、发布或运行时兼容契约，不是产品名称；修改这些值会破坏已有项目配置、构建脚本或已发布客户端，因此保留在兼容边界内。
 
 ## License
 
