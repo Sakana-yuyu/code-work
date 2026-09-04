@@ -43,7 +43,9 @@ jobs:
         run: vp run --filter @codework/desktop ensure:electron
 
       - name: Check
-        run: vp check
+        run: |
+          vp fmt --check
+          vp lint --quiet
 
       - name: Typecheck
         run: vpr typecheck

@@ -145,7 +145,7 @@ async function waitForFileContent(filePath: string, attempts = 40) {
         return raw;
       }
     } catch {}
-    await Effect.runPromise(Effect.yieldNow);
+    await Effect.runPromise(Effect.sleep("10 millis"));
   }
   throw new Error(`Timed out waiting for file content at ${filePath}`);
 }
@@ -748,7 +748,7 @@ cursorAdapterTestLayer("CursorAdapterLive", (it) => {
       const sendFiber = yield* adapter
         .sendTurn({ threadId, input: "启动长命令", attachments: [] })
         .pipe(Effect.forkChild);
-      yield* Effect.promise(() => waitForFileContent(resultLogPath));
+      yield* Effect.promise(() => waitForFileContent(resultLogPath, 400));
       yield* adapter.clearToolBroker!(threadId);
       assert.deepEqual(
         invocations.map((invocation) => invocation.canonicalToolName),

@@ -243,7 +243,8 @@ it.layer(NodeServices.layer)("providerMaintenance", (it) => {
         const tempDir = yield* makeTempDir("codework-bun-capabilities");
         const bunBinDir = NodePath.join(tempDir, ".bun", "bin");
         NodeFS.mkdirSync(bunBinDir, { recursive: true });
-        NodeFS.writeFileSync(NodePath.join(bunBinDir, "native-package-tool.exe"), "MZ");
+        // 使用大写扩展名，使 Windows 模拟在大小写敏感的 Linux CI 文件系统上也稳定。
+        NodeFS.writeFileSync(NodePath.join(bunBinDir, "native-package-tool.EXE"), "MZ");
 
         const capabilities = yield* resolveProviderMaintenanceCapabilitiesEffect(
           nativePackageToolUpdate,

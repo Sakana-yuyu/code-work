@@ -246,6 +246,23 @@ function failingSpawnerLayer(description: string) {
   );
 }
 
+function recordingFailingSpawnerLayer(commands: Array<string>) {
+  return Layer.succeed(
+    ChildProcessSpawner.ChildProcessSpawner,
+    ChildProcessSpawner.make((command) => {
+      commands.push((command as { readonly command: string }).command);
+      return Effect.fail(
+        PlatformError.systemError({
+          _tag: "NotFound",
+          module: "ChildProcess",
+          method: "spawn",
+          description: "recorded missing provider command",
+        }),
+      );
+    }),
+  );
+}
+
 function hangingScopedSpawnerLayer(killCalls: Ref.Ref<number>) {
   return Layer.succeed(
     ChildProcessSpawner.ChildProcessSpawner,
@@ -1509,7 +1526,11 @@ it.layer(Layer.mergeAll(NodeServices.layer, ServerSettingsModule.layerTest(), Te
             prefix: "codework-provider-registry-",
           }).pipe(Layer.provideMerge(NodeServices.layer));
           const providerRegistryLayer = ProviderRegistryLive.pipe(
-            Layer.provideMerge(ProviderInstanceRegistryHydrationLive),
+            Layer.provideMerge(
+              ProviderInstanceRegistryHydrationLive.pipe(
+                Layer.provide(recordingFailingSpawnerLayer(spawnedCommands)),
+              ),
+            ),
             Layer.provideMerge(
               Layer.succeed(ServerSettingsModule.ServerSettingsService, serverSettings),
             ),
@@ -1524,12 +1545,6 @@ it.layer(Layer.mergeAll(NodeServices.layer, ServerSettingsModule.layerTest(), Te
             ),
             Layer.provideMerge(ModelManifest.layerTest),
             Layer.provideMerge(OpenCodeRuntime.OpenCodeRuntimeLive),
-            Layer.updateService(ChildProcessSpawner.ChildProcessSpawner, (spawner) =>
-              ChildProcessSpawner.make((command) => {
-                spawnedCommands.push((command as { readonly command: string }).command);
-                return spawner.spawn(command);
-              }),
-            ),
             Layer.provideMerge(NodeServices.layer),
             Layer.provideMerge(BackgroundPolicyAlwaysRunLayer),
             Layer.provideMerge(NodeCryptoLayer.layer),
@@ -1563,7 +1578,8 @@ it.layer(Layer.mergeAll(NodeServices.layer, ServerSettingsModule.layerTest(), Te
             assert.deepStrictEqual(spawnedCommands, [firstMissing]);
 
             // Drive a settings change. The Hydration layer's
-            // `SettingsWatcherLive` consumes this via `streamChanges`,
+            // `SettingsWatcherLive` consumes this via its pre-acquired
+            // settings-change subscription,
             // calls `reconcile`, which rebuilds the codex instance (the
             // envelope changed because `binaryPath` differs → `entryEqual`
             // is false). The registry's `Stream.runForEach(
@@ -1580,7 +1596,7 @@ it.layer(Layer.mergeAll(NodeServices.layer, ServerSettingsModule.layerTest(), Te
             // executable. This verifies the public settings-to-probe behavior
             // without depending on timestamps assigned by TestClock.
             const refreshed = yield* Effect.gen(function* () {
-              for (let attempts = 0; attempts < 60; attempts += 1) {
+              for (let attempts = 0; attempts < 400; attempts += 1) {
                 const providers = yield* registry.getProviders;
                 const codex = providers.find((provider) => provider.instanceId === "codex");
                 if (
@@ -1592,6 +1608,7 @@ it.layer(Layer.mergeAll(NodeServices.layer, ServerSettingsModule.layerTest(), Te
                 }
                 yield* TestClock.adjust("50 millis");
                 yield* Effect.yieldNow;
+                yield* Effect.promise(() => Effect.runPromise(Effect.sleep("10 millis")));
               }
               return yield* registry.getProviders;
             });

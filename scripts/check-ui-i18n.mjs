@@ -553,7 +553,10 @@ export function runI18nCheck(repo = DEFAULT_REPO) {
   return true;
 }
 
-if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+if (
+  process.argv[1] &&
+  NodePath.resolve(process.argv[1]) === NodeURL.fileURLToPath(import.meta.url)
+) {
   if (!runI18nCheck(process.argv[2] ? NodePath.resolve(process.argv[2]) : DEFAULT_REPO))
     process.exitCode = 1;
 }
