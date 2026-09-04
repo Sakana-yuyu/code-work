@@ -1,5 +1,6 @@
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import * as NodeCryptoLayer from "@effect/platform-node/NodeCrypto";
+// @effect-diagnostics globalTimers:off - 测试等待真实异步 provider 调度。
 import { describe, it, assert } from "@effect/vitest";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
@@ -1608,7 +1609,9 @@ it.layer(Layer.mergeAll(NodeServices.layer, ServerSettingsModule.layerTest(), Te
                 }
                 yield* TestClock.adjust("50 millis");
                 yield* Effect.yieldNow;
-                yield* Effect.promise(() => Effect.runPromise(Effect.sleep("10 millis")));
+                yield* Effect.promise(
+                  () => new Promise<void>((resolve) => setTimeout(resolve, 10)),
+                );
               }
               return yield* registry.getProviders;
             });

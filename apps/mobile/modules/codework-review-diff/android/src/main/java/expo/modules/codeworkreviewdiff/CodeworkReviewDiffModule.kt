@@ -24,8 +24,9 @@ class CodeworkReviewDiffModule : Module() {
         view.setSelectedRowIdsJson(selectedRowIdsJson)
       }
       Prop("collapsedCommentIdsJson") {
-        view: CodeworkReviewDiffView,
-        collapsedCommentIdsJson: String ->
+          view: CodeworkReviewDiffView,
+          collapsedCommentIdsJson: String
+        ->
         view.setCollapsedCommentIdsJson(collapsedCommentIdsJson)
       }
       Prop("appearanceScheme") { view: CodeworkReviewDiffView, appearanceScheme: String ->
@@ -57,9 +58,10 @@ class CodeworkReviewDiffModule : Module() {
       )
 
       AsyncFunction("scrollToFile") {
-        view: CodeworkReviewDiffView,
-        fileId: String,
-        animated: Boolean ->
+          view: CodeworkReviewDiffView,
+          fileId: String,
+          animated: Boolean
+        ->
         view.scrollToFile(fileId, animated)
       }
       AsyncFunction("scrollToTop") { view: CodeworkReviewDiffView, animated: Boolean ->

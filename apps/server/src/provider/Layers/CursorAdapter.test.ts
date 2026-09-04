@@ -1,4 +1,4 @@
-// @effect-diagnostics nodeBuiltinImport:off
+// @effect-diagnostics nodeBuiltinImport:off globalTimers:off - 测试等待真实 ACP 子进程调度。
 import * as NodePath from "node:path";
 import * as NodeOS from "node:os";
 import * as NodeFSP from "node:fs/promises";
@@ -145,7 +145,7 @@ async function waitForFileContent(filePath: string, attempts = 40) {
         return raw;
       }
     } catch {}
-    await Effect.runPromise(Effect.sleep("10 millis"));
+    await new Promise<void>((resolve) => setTimeout(resolve, 10));
   }
   throw new Error(`Timed out waiting for file content at ${filePath}`);
 }

@@ -27,8 +27,9 @@ class CodeworkComposerEditorModule : Module() {
         view.setLineHeight(lineHeight.toFloat())
       }
       Prop("contentInsetVertical") {
-        view: CodeworkComposerEditorView,
-        contentInsetVertical: Double ->
+          view: CodeworkComposerEditorView,
+          contentInsetVertical: Double
+        ->
         view.setContentInsetVertical(contentInsetVertical.toInt())
       }
 
