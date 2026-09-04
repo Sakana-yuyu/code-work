@@ -35,6 +35,11 @@ artifacts/app-store/screenshots/
 native/**/target/
 node_modules/
 .alchemy/
+# 本地工具状态、浏览器快照和桌面构建产物，不属于源码或发布附件。
+.codework/
+.playwright-cli/
+.zcode/
+release-local/
 *.log
 .env*
 !.env.example

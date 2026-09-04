@@ -84,6 +84,23 @@ vp run dev        # 维护者启动本地开发环境
 | Desktop | 日常主力使用           | Electron 外壳，内置本地服务启动能力 |
 | Mobile  | 手机端远程控制         | iOS 与 Android 客户端，连接已有服务 |
 
+## 桌面端构建与发布
+
+普通稳定版桌面 Release 使用 GitHub Actions 的官方托管构建机器，工作流位于
+[`.github/workflows/release.yml`](./.github/workflows/release.yml)。推送形如 `v1.2.3`
+的稳定版本 tag，或在 Actions 中手动填写版本号，即可构建并创建 GitHub Release。
+
+当前桌面 Release 包含以下产物：
+
+- Windows x64：NSIS 安装包
+- macOS：arm64 与 x64 安装包
+- Linux：x64 AppImage
+
+WSL 所需的 Linux `node-pty` 只作为 Windows 安装包的构建辅助文件，不会单独发布 Linux
+版本。这个 Release 工作流只负责桌面产物和 GitHub Release，不执行 Web 部署、AUR 发布或
+Discord 通知，也暂不发布 npm 包。构建桌面包、生成 npm 压缩包或运行 `npx` 构建命令不需要
+npm 账户；只有将包上传到 npm Registry 时才需要 npm 账户和对应的发布权限。
+
 ## 推荐使用路径
 
 1. 安装并登录一个或多个 Provider CLI。
