@@ -116,6 +116,7 @@ export function useRelativeTimeTick(intervalMs = 1_000) {
 
 export function SettingsSection({
   title,
+  hideTitle = false,
   icon,
   headerAction,
   children,
@@ -123,6 +124,8 @@ export function SettingsSection({
   ...sectionProps
 }: ComponentPropsWithoutRef<"section"> & {
   title: string;
+  /** 页面已有主标题时，仅保留操作栏和可访问名称，避免重复标题。 */
+  hideTitle?: boolean;
   icon?: ReactNode;
   headerAction?: ReactNode;
   children: ReactNode;
@@ -131,18 +134,30 @@ export function SettingsSection({
 
   return (
     <section
+      aria-label={hideTitle ? title : undefined}
       {...sectionProps}
       ref={targetRef}
       tabIndex={sectionProps.id ? -1 : sectionProps.tabIndex}
       className={cn("space-y-3", className)}
     >
-      <div className="flex min-h-8 items-center justify-between gap-4 px-3 sm:px-4">
-        <h2 className="flex items-center gap-2 text-lg font-semibold tracking-[-0.025em] text-foreground">
-          {icon}
-          {title}
-        </h2>
-        <div className="flex min-h-7 min-w-7 items-center justify-end">{headerAction}</div>
-      </div>
+      {!hideTitle || headerAction ? (
+        <div
+          className={cn(
+            "flex min-w-0 min-h-8 items-center justify-between gap-4 px-3 sm:px-4",
+            hideTitle && "justify-end",
+          )}
+        >
+          {!hideTitle && (
+            <h2 className="flex min-w-0 items-center gap-2 text-lg font-semibold tracking-[-0.025em] text-foreground">
+              {icon}
+              {title}
+            </h2>
+          )}
+          <div className="flex min-h-7 min-w-7 shrink-0 items-center justify-end">
+            {headerAction}
+          </div>
+        </div>
+      ) : null}
       <div className="relative space-y-1 overflow-visible text-foreground">{children}</div>
     </section>
   );
@@ -176,8 +191,10 @@ export function SettingsRow({
     >
       <div className="flex flex-col gap-3 sm:grid sm:grid-cols-[minmax(0,1fr)_minmax(10rem,auto)] sm:items-center sm:gap-8">
         <div className="min-w-0 flex-1 space-y-1">
-          <div className="flex min-h-5 items-center gap-1.5">
-            <h3 className="text-sm font-medium tracking-[-0.005em] text-foreground">{title}</h3>
+          <div className="flex min-w-0 min-h-5 items-center gap-1.5">
+            <h3 className="min-w-0 flex-1 text-sm font-medium tracking-[-0.005em] text-foreground">
+              {title}
+            </h3>
             <span className="inline-flex h-5 w-5 shrink-0 items-center justify-center">
               {resetAction}
             </span>

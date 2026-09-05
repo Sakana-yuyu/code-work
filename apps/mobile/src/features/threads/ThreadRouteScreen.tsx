@@ -113,7 +113,7 @@ function firstRouteParam(value: string | string[] | undefined): string | null {
 }
 
 function OpeningThreadLoadingScreen() {
-  return <LoadingScreen message="Opening thread…" messagePlacement="above-spinner" />;
+  return <LoadingScreen message={t("threads.openingThread")} messagePlacement="above-spinner" />;
 }
 
 type ThreadRouteScreenRouteProps = StaticScreenProps<{
@@ -481,7 +481,7 @@ function ThreadRouteContent(
           cwd={selectedThreadCwd}
           environmentId={selectedThread.environmentId}
           headerInset={inspectorHeaderInset}
-          projectName={selectedThreadProject?.title ?? "Files"}
+          projectName={selectedThreadProject?.title ?? t("files.fallbackProjectTitle")}
           selectedPath={null}
           onSelectFile={handleSelectInspectorFile}
         />

@@ -20,6 +20,8 @@ export interface MobileProviderField {
     | "providersMobile.serverUrl"
     | "providersMobile.serverPassword"
     | "providersMobile.autoCompactWindow"
+    | "providersMobile.fallbackModel"
+    | "providersMobile.maxTurns"
     | "providersMobile.routeThroughByok";
   readonly kind: MobileProviderFieldKind;
   readonly placeholderKey:
@@ -31,6 +33,8 @@ export interface MobileProviderField {
     | "providersMobile.serverUrlPlaceholder"
     | "providersMobile.serverPasswordPlaceholder"
     | "providersMobile.autoCompactWindowPlaceholder"
+    | "providersMobile.fallbackModelPlaceholder"
+    | "providersMobile.maxTurnsPlaceholder"
     | null;
 }
 
@@ -72,6 +76,12 @@ const PROVIDER_FIELDS: Readonly<Record<MobileProviderDriver, ReadonlyArray<Mobil
         "providersMobile.autoCompactWindow",
         "providersMobile.autoCompactWindowPlaceholder",
       ),
+      FIELD(
+        "fallbackModel",
+        "providersMobile.fallbackModel",
+        "providersMobile.fallbackModelPlaceholder",
+      ),
+      FIELD("maxTurns", "providersMobile.maxTurns", "providersMobile.maxTurnsPlaceholder"),
       FIELD("launchArgs", "providersMobile.launchArgs", "providersMobile.launchArgsPlaceholder"),
       FIELD("routeThroughByok", "providersMobile.routeThroughByok", null, "switch"),
     ],

@@ -239,12 +239,13 @@ export const anthropicGatewayEnv = (
 ): Readonly<Record<string, string>> => ({
   ANTHROPIC_BASE_URL: anthropicGatewayBase(origin),
   ANTHROPIC_AUTH_TOKEN: token,
+  ANTHROPIC_API_KEY: "",
+  CLAUDE_CODE_OAUTH_TOKEN: "",
 });
 
 /**
- * Codex `-c` overrides: register the gateway as a chat-wire provider and make
- * it the active one. The key itself travels via {@link BYOK_GATEWAY_TOKEN_ENV}
- * (`env_key`), never the argv.
+ * 将网关注册为 Codex 的 Responses 供应商；令牌通过
+ * {@link BYOK_GATEWAY_TOKEN_ENV} 读取，不写入启动参数。
  */
 export const gatewayCodexConfigArgs = (origin: string): readonly string[] => [
   "-c",
@@ -256,7 +257,7 @@ export const gatewayCodexConfigArgs = (origin: string): readonly string[] => [
   "-c",
   `model_providers.${BYOK_GATEWAY_PROVIDER_ID}.env_key="${BYOK_GATEWAY_TOKEN_ENV}"`,
   "-c",
-  `model_providers.${BYOK_GATEWAY_PROVIDER_ID}.wire_api="chat"`,
+  `model_providers.${BYOK_GATEWAY_PROVIDER_ID}.wire_api="responses"`,
 ];
 
 /** Pulls (or lazily creates) the gateway bearer token as a hex string. */
@@ -281,6 +282,18 @@ const readProvidedToken = (headers: Record<string, string>): string | null => {
   }
   const apiKey = headers["x-api-key"] ?? headers["X-Api-Key"];
   return apiKey !== undefined && apiKey.trim().length > 0 ? apiKey.trim() : null;
+};
+
+export const rewriteGatewayModel = (bodyText: string, modelId: string): string => {
+  try {
+    const body: unknown = JSON.parse(bodyText);
+    if (body !== null && typeof body === "object" && !Array.isArray(body) && "model" in body) {
+      return JSON.stringify({ ...body, model: modelId });
+    }
+  } catch {
+    // 不改写无模型字段或非 JSON 的辅助请求。
+  }
+  return bodyText;
 };
 
 const extractGatewayModel = (bodyText: string): string | undefined => {
@@ -451,7 +464,12 @@ const gatewayHandler = (
       .execute(
         HttpClientRequest.make(method)(target).pipe(
           HttpClientRequest.setHeaders(forwardHeaders),
-          bodyText === undefined ? identity : HttpClientRequest.bodyText(bodyText),
+          bodyText === undefined
+            ? identity
+            : HttpClientRequest.bodyText(
+                rewriteGatewayModel(bodyText, adapter.modelId),
+                request.headers["content-type"] ?? "application/json",
+              ),
         ),
       )
       .pipe(

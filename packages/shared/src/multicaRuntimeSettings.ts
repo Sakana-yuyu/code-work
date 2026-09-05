@@ -6,6 +6,8 @@ import {
   ProviderDriverKind,
   type ProviderInstanceConfig,
   type ProviderInstanceEnvironmentVariable,
+  type ServerSettings,
+  type ServerSettingsPatch,
   type UnifiedSettings,
 } from "@codework/contracts";
 import * as Schema from "effect/Schema";
@@ -666,4 +668,27 @@ export function buildTeamRuntimeSettingsPatch(
     environment: save.environment,
   };
   return { providerInstances };
+}
+
+/** 仅提交本次团队修改，并携带打开编辑器时的版本，避免覆盖其它设备的配置。 */
+export function buildTeamRuntimeSavePatch(
+  settings: Pick<ServerSettings, "providerInstances">,
+  originalInstanceId: string | null,
+  expectedRevision: string | null,
+  save: MulticaRuntimeSave,
+): ServerSettingsPatch {
+  const nextInstance = buildTeamRuntimeSettingsPatch(settings, originalInstanceId, save)
+    .providerInstances[save.instanceId];
+  if (nextInstance === undefined) throw new Error("未生成团队运行时实例。");
+  return {
+    providerInstances: { [save.instanceId]: nextInstance } as ServerSettings["providerInstances"],
+    multicaProviderInstancePreconditions: [
+      ...(originalInstanceId === null
+        ? []
+        : [{ instanceId: ProviderInstanceId.make(originalInstanceId), expectedRevision }]),
+      ...(originalInstanceId === save.instanceId
+        ? []
+        : [{ instanceId: save.instanceId, expectedRevision: null }]),
+    ],
+  };
 }

@@ -36,7 +36,7 @@ function TeamRuntimeAdvancedSection() {
             </span>
           </CollapsibleTrigger>
         </div>
-        <CollapsiblePanel>
+        <CollapsiblePanel keepMounted>
           <div data-facilities-guide-target="team-runtime">
             <TeamRuntimeSettingsPanel />
           </div>

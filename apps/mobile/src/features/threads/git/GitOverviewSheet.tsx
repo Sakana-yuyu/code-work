@@ -30,6 +30,7 @@ import { useSelectedThreadGitState } from "../../../state/use-selected-thread-gi
 import { useSelectedThreadWorktree } from "../../../state/use-selected-thread-worktree";
 import { vcsEnvironment } from "../../../state/vcs";
 import { resolveGitOverviewReviewNavigationAction } from "./git-overview-navigation";
+import { localizedMenuItemLabel, localizedGitActionString } from "./gitActionStrings";
 import { MetaCard, SheetListRow, menuItemIconName, statusSummary } from "./gitSheetComponents";
 import { t } from "../../../i18n";
 
@@ -68,7 +69,8 @@ export function GitOverviewSheet(props: GitOverviewSheetProps) {
       : null,
   );
 
-  const currentBranchLabel = gitStatus.data?.refName ?? selectedThread?.branch ?? "Detached HEAD";
+  const currentBranchLabel =
+    gitStatus.data?.refName ?? selectedThread?.branch ?? t("git.detachedHead");
   const currentStatusSummary = statusSummary(gitStatus.data);
   const currentWorktreePath = selectedThreadWorktreePath;
   const gitOperationLabel = gitState.gitOperationLabel;
@@ -191,14 +193,25 @@ export function GitOverviewSheet(props: GitOverviewSheetProps) {
       }
       if (item.dialogAction === "commit" && status.hasWorkingTreeChanges) {
         const fileCount = status.workingTree?.files.length ?? 0;
-        return `${fileCount} file${fileCount === 1 ? "" : "s"} changed`;
+        return fileCount === 1
+          ? t("git.filesChanged", { count: fileCount, countValue: fileCount })
+          : t("git.filesChanged_plural", { count: fileCount, countValue: fileCount });
       }
       if (item.dialogAction === "push" && (status.aheadCount ?? 0) > 0) {
         const ahead = status.aheadCount ?? 0;
-        return `${ahead} commit${ahead === 1 ? "" : "s"} ahead`;
+        return ahead === 1
+          ? t("git.commitsAhead", { count: ahead, countValue: ahead })
+          : t("git.commitsAhead_plural", { count: ahead, countValue: ahead });
       }
       if (item.kind === "open_pr" && status.pr?.number != null) {
-        return `PR #${status.pr.number} ${status.pr.state ?? "open"}`;
+        const prState = status.pr.state ?? "open";
+        const prStateLabel =
+          prState === "open"
+            ? t("git.prStateOpen")
+            : prState === "merged"
+              ? t("git.prStateMerged")
+              : t("git.prStateClosed");
+        return `${t("git.prNumber", { number: status.pr.number })} ${prStateLabel}`;
       }
       return undefined;
     },
@@ -247,8 +260,12 @@ export function GitOverviewSheet(props: GitOverviewSheetProps) {
             {index > 0 ? <View className="ml-12 h-px bg-border" /> : null}
             <SheetListRow
               icon={menuItemIconName(item.icon)}
-              title={item.label}
-              subtitle={disabledReason ?? rowStatusDetail(item)}
+              title={localizedMenuItemLabel(item)}
+              subtitle={
+                disabledReason !== null
+                  ? localizedGitActionString(disabledReason)
+                  : rowStatusDetail(item)
+              }
               disabled={item.disabled}
               onPress={() => void onPressMenuItem(item)}
             />

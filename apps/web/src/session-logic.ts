@@ -3,6 +3,10 @@ import * as Arr from "effect/Array";
 import * as Schema from "effect/Schema";
 import { isBackgroundTaskActivity } from "@codework/client-runtime/state/subagentRuntime";
 import {
+  activityFailureTranslation,
+  serverSessionErrorTranslation,
+} from "@codework/client-runtime/errors";
+import {
   ApprovalRequestId,
   type CanvasReference,
   isToolLifecycleItemType,
@@ -933,6 +937,18 @@ function extractWorkLogToolLifecycleStatus(
   return undefined;
 }
 
+/** 失败活动摘要是服务端英文原句；已知 kind 展示前翻译，未知原样透传。 */
+function activityFailureLabel(activity: OrchestrationThreadActivity): string {
+  const known = activityFailureTranslation(activity);
+  return known === null ? activity.summary : t(known.key, known.params);
+}
+
+/** 活动详情可能携带服务端英文原句（如检查点失败原因）；已知句子展示前翻译，未知原样透传。 */
+function serverSessionDetail(detail: string): string {
+  const known = serverSessionErrorTranslation(detail);
+  return known === null ? detail : t(known.key, known.params);
+}
+
 function toDerivedWorkLogEntry(activity: OrchestrationThreadActivity): DerivedWorkLogEntry {
   const cachedEntry = derivedWorkLogEntryByActivity.get(activity);
   if (cachedEntry) {
@@ -974,7 +990,7 @@ function toDerivedWorkLogEntry(activity: OrchestrationThreadActivity): DerivedWo
     id: activity.id,
     createdAt: activity.createdAt,
     turnId: activity.turnId,
-    label: taskLabel || activity.summary,
+    label: taskLabel || activityFailureLabel(activity),
     tone:
       activity.kind === "task.progress"
         ? "thinking"
@@ -986,7 +1002,7 @@ function toDerivedWorkLogEntry(activity: OrchestrationThreadActivity): DerivedWo
   const itemType = extractWorkLogItemType(payload);
   const requestKind = extractWorkLogRequestKind(payload);
   if (detail) {
-    entry.detail = detail;
+    entry.detail = serverSessionDetail(detail);
   }
   if (commandPreview.command) {
     entry.command = commandPreview.command;

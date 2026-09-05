@@ -6,6 +6,7 @@ import { Button } from "../ui/button";
 import { formatProviderDriverKindLabel } from "../../providerModels";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { t } from "~/i18n";
+import { localizeProviderMessage } from "../settings/providerStatus";
 
 export function getProviderStatusBannerKey(status: ServerProvider | null): string | null {
   return !status || status.status === "ready" || status.status === "disabled"
@@ -39,7 +40,8 @@ export const ProviderStatusBanner = memo(function ProviderStatusBanner({
     : t("interface.value-provider-status", { value1: providerName });
   const message = isUnauthenticated
     ? t("interface.sign-in-via-the-cli-to-authenticate-again")
-    : (status.message ??
+    : (localizeProviderMessage(status.message) ??
+      status.message ??
       (status.status === "error"
         ? `${providerName} provider is unavailable.`
         : `${providerName} provider has limited availability.`));

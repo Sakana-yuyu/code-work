@@ -10,10 +10,12 @@ const SURFACES = {
   web: {
     root: "apps/web/src",
     catalog: "apps/web/src/i18n/messages.ts",
+    jaCatalog: "apps/web/src/i18n/ja.ts",
   },
   mobile: {
     root: "apps/mobile/src",
     catalog: "apps/mobile/src/i18n/messages.ts",
+    jaCatalog: "apps/mobile/src/i18n/ja.ts",
   },
   desktop: {
     root: "apps/desktop/src",
@@ -86,6 +88,96 @@ const SAME_VALUE_EXEMPTIONS = new Set([
   "codework",
   "ide_local",
   "root",
+  "日本語",
+  "ghost",
+  "Aa",
+  "Alt",
+  "Ctrl",
+  "Enter",
+  "DeepSeek Chat",
+  "Antigravity",
+  "Aqua",
+  "Azure DevOps",
+  "CLion",
+  "DataGrip",
+  "DataSpell",
+  "GoLand",
+  "Kiro",
+  "Rider",
+  "RubyMine",
+  "RustRover",
+  "Trae",
+  "Zed",
+  "WebStorm",
+  "VS Code Insiders",
+  "web:cloud:link-primary-environment",
+  "web:cloud:unlink-primary-environment",
+  "web:cloud:update-primary-environment-preferences",
+  "web:connection:connect-pairing",
+  "web:connection:connect-ssh",
+  "web:managed-relay:deregister-environment",
+  "Claude Code",
+  "origin",
+  "tok",
+  "{{driver}}_work",
+  "main",
+  "vpr dev",
+  "&quot;",
+  "(detached HEAD)",
+  "0 9 * * 1-5",
+  "A+ {{value1}} pt",
+  "A- {{value1}} pt",
+  "Asia/Shanghai",
+  "Backspace",
+  "Browser MCP",
+  "Code Work Desktop",
+  "Code Work Mobile",
+  "Code Work Web",
+  "Conventional Commits",
+  "Cron",
+  "Cursor IDE",
+  "Detached HEAD",
+  "DevTools",
+  "Esc",
+  "Finder",
+  "Foundation",
+  "Github Copilot",
+  "Lint",
+  "Moonshot AI",
+  "Nightly",
+  "PID {{pid}} · {{status}} · {{elapsed}}",
+  "Plan Mode",
+  "PyCharm",
+  "SiliconFlow",
+  '[{"nodeId":"implement","agentId":"agent-worker","prompt":"Implement the change","dependsOnNodeIds":[]}]',
+  "build-review",
+  "bun test",
+  "claude-code",
+  "cmd",
+  "codex",
+  "daily-review",
+  "deepseek-chat",
+  "environment-command:attachments:create-upload-url",
+  "environment-command:attachments:delete",
+  "environment-data:projects:search-contents",
+  "esc",
+  "fs.read, git.diff",
+  "local-tools",
+  "mod+shift+p",
+  "model-slug",
+  "modelAdapters: - displayName: Example type: openai baseURL: https://api.example.com/v1 apiKey: sk-... modelID: example-model",
+  "node",
+  "npx",
+  "preview:automation-host:{{environmentId}}:{{automationClientId}}",
+  "px",
+  "r{{revision}}",
+  "tab",
+  "terminal, files",
+  "{{progress}}%",
+  "{{submitModifierLabel}} Enter",
+  "~/.codex",
+  "~/.codex-t3/personal",
+  "~/projects/my-app",
 ]);
 const SAME_VALUE_EXEMPTION =
   /^(?:[A-Z0-9_ .:/@#$%+(){}\[\],~'"\\|-]+|Claude|Codex|Cursor|Grok|OpenCode|OpenAI|Anthropic|Gemini|DeepSeek|OpenRouter|Git|GitHub|GitLab|Bitbucket|macOS|Windows|Linux|Android|iOS|Tailscale|WSL|SSH|CPU|GPU|PID|URL|ID|PR|MCP|BYOK|ACP|Code Work(?: Connect)?|Sidecar|Span|Trace|Base URL|Tailnet|MagicDNS|PhpStorm|VSCodium|English)$/;
@@ -130,13 +222,13 @@ function readCatalog(ts, file) {
     true,
     ts.ScriptKind.TS,
   );
-  const result = { en: new Map(), zhCN: new Map(), duplicateKeys: [] };
+  const result = { en: new Map(), zhCN: new Map(), ja: new Map(), duplicateKeys: [] };
 
   function visit(node) {
     if (
       ts.isVariableDeclaration(node) &&
       ts.isIdentifier(node.name) &&
-      (node.name.text === "en" || node.name.text === "zhCN") &&
+      (node.name.text === "en" || node.name.text === "zhCN" || node.name.text === "ja") &&
       node.initializer &&
       ts.isObjectLiteralExpression(node.initializer)
     ) {
@@ -356,6 +448,25 @@ function placeholders(value) {
   return [...value.matchAll(/\{\{(\w+)\}\}/g)].map((match) => match[1]).sort();
 }
 
+// CJK locales may drop en plural-suffix placeholders ("thread{{value2}}" → "スレッド"):
+// they are attached directly to the preceding word in the en value, and the extra
+// interpolation (usually the English plural "s") has no CJK equivalent.
+function suffixAdjacentPlaceholder(enValue, name) {
+  return new RegExp(`[A-Za-z0-9)]\\{\\{${name}\\}\\}`).test(enValue);
+}
+
+function placeholdersMatch(enValue, value) {
+  const expected = placeholders(enValue);
+  const actual = placeholders(value);
+  if (sameItems(expected, actual)) return true;
+  const dropped = expected.filter((name) => !actual.includes(name));
+  return (
+    dropped.length > 0 &&
+    dropped.every((name) => suffixAdjacentPlaceholder(enValue, name)) &&
+    actual.every((name) => expected.includes(name))
+  );
+}
+
 function sameItems(left, right) {
   return left.length === right.length && left.every((value, index) => value === right[index]);
 }
@@ -367,36 +478,60 @@ export function collectI18nErrors(repo = DEFAULT_REPO) {
   for (const [surface, config] of Object.entries(SURFACES)) {
     const catalogPath = NodePath.join(repo, config.catalog);
     const catalog = readCatalog(ts, catalogPath);
+    if (config.jaCatalog) {
+      const jaCatalog = readCatalog(ts, NodePath.join(repo, config.jaCatalog));
+      catalog.ja = new Map([...catalog.ja, ...jaCatalog.ja]);
+    }
     const enKeys = new Set(catalog.en.keys());
     const zhKeys = new Set(catalog.zhCN.keys());
+    const jaKeys = new Set(catalog.ja.keys());
 
     for (const duplicate of catalog.duplicateKeys) {
       errors.push(`${config.catalog}: duplicate catalog key ${duplicate}`);
     }
     for (const key of enKeys) {
       if (!zhKeys.has(key)) errors.push(`${config.catalog}: zh-CN is missing key ${key}`);
+      if (!jaKeys.has(key)) errors.push(`${config.catalog}: ja is missing key ${key}`);
     }
     for (const key of zhKeys) {
       if (!enKeys.has(key)) errors.push(`${config.catalog}: zh-CN has extra key ${key}`);
     }
+    for (const key of jaKeys) {
+      if (!enKeys.has(key)) errors.push(`${config.catalog}: ja has extra key ${key}`);
+    }
     for (const [key, english] of catalog.en) {
       const chinese = catalog.zhCN.get(key);
-      if (chinese === undefined || chinese.trim().length === 0) continue;
-      if (!sameItems(placeholders(english), placeholders(chinese))) {
-        errors.push(`${config.catalog}: placeholder mismatch for ${key}`);
+      if (chinese !== undefined && chinese.trim().length > 0) {
+        if (!placeholdersMatch(english, chinese)) {
+          errors.push(`${config.catalog}: placeholder mismatch for ${key}`);
+        }
+        if (
+          english === chinese &&
+          !SAME_VALUE_EXEMPTIONS.has(english) &&
+          !SAME_VALUE_EXEMPTION.test(english) &&
+          !TECHNICAL_LITERAL.test(english)
+        ) {
+          errors.push(`${config.catalog}: untranslated zh-CN value for ${key}: ${english}`);
+        }
+        for (const pattern of BAD_TRANSLATION_PATTERNS) {
+          if (pattern.test(chinese)) {
+            errors.push(`${config.catalog}: suspicious zh-CN value for ${key}: ${chinese}`);
+            break;
+          }
+        }
       }
-      if (
-        english === chinese &&
-        !SAME_VALUE_EXEMPTIONS.has(english) &&
-        !SAME_VALUE_EXEMPTION.test(english) &&
-        !TECHNICAL_LITERAL.test(english)
-      ) {
-        errors.push(`${config.catalog}: untranslated zh-CN value for ${key}: ${english}`);
-      }
-      for (const pattern of BAD_TRANSLATION_PATTERNS) {
-        if (pattern.test(chinese)) {
-          errors.push(`${config.catalog}: suspicious zh-CN value for ${key}: ${chinese}`);
-          break;
+      const japanese = catalog.ja.get(key);
+      if (japanese !== undefined && japanese.trim().length > 0) {
+        if (!placeholdersMatch(english, japanese)) {
+          errors.push(`${config.catalog}: placeholder mismatch for ja ${key}`);
+        }
+        if (
+          english === japanese &&
+          !SAME_VALUE_EXEMPTIONS.has(english) &&
+          !SAME_VALUE_EXEMPTION.test(english) &&
+          !TECHNICAL_LITERAL.test(english)
+        ) {
+          errors.push(`${config.catalog}: untranslated ja value for ${key}: ${english}`);
         }
       }
     }

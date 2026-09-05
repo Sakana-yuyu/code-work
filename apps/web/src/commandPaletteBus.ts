@@ -3,7 +3,7 @@
 const COMMAND_PALETTE_OPEN_EVENT = "codework:open-command-palette";
 
 export interface CommandPaletteOpenDetail {
-  readonly open?: "add-project" | "new-thread-in";
+  readonly open?: "add-project" | "new-thread-in" | "files" | "content";
 }
 
 export function openCommandPalette(detail?: CommandPaletteOpenDetail): void {

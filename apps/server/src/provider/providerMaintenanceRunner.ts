@@ -31,6 +31,7 @@ import { collectUint8StreamText } from "../stream/collectUint8StreamText.ts";
 const isServerProviderUpdateError = Schema.is(ServerProviderUpdateError);
 
 const UPDATE_TIMEOUT_MS = 5 * 60_000;
+const INSTALL_TIMEOUT_MS = 15 * 60_000;
 const UPDATE_OUTPUT_MAX_BYTES = 10_000;
 
 export interface ProviderMaintenanceCommandResult {
@@ -84,6 +85,7 @@ const runProviderMaintenanceCommandWithSpawner = Effect.fn("ProviderMaintenanceR
     readonly spawner: ChildProcessSpawner.ChildProcessSpawner["Service"];
     readonly command: string;
     readonly args: ReadonlyArray<string>;
+    readonly timeoutMs: number;
   }) {
     const collectCommandResult = Effect.fn("ProviderMaintenanceRunner.collectCommandResult")(
       function* () {
@@ -142,7 +144,7 @@ const runProviderMaintenanceCommandWithSpawner = Effect.fn("ProviderMaintenanceR
 
     return yield* collectCommandResult().pipe(
       Effect.scoped,
-      Effect.timeoutOption(Duration.millis(UPDATE_TIMEOUT_MS)),
+      Effect.timeoutOption(Duration.millis(input.timeoutMs)),
       Effect.map((result) =>
         Option.match(result, {
           onSome: (value) => value,
@@ -237,6 +239,7 @@ export const make = Effect.fn("ProviderMaintenanceRunner.make")(function* () {
       spawner,
       command,
       args,
+      timeoutMs: UPDATE_TIMEOUT_MS,
     });
   const commandCoordinator = yield* makeProviderMaintenanceCommandCoordinator({
     makeAlreadyRunningError: () =>
@@ -527,7 +530,12 @@ export const make = Effect.fn("ProviderMaintenanceRunner.make")(function* () {
               }),
             );
 
-            const result = yield* runMaintenanceCommand(install.executable, install.args);
+            const result = yield* runProviderMaintenanceCommandWithSpawner({
+              spawner,
+              command: install.executable,
+              args: install.args,
+              timeoutMs: INSTALL_TIMEOUT_MS,
+            });
             const finishedAt = yield* nowIso;
             if (result.timedOut || result.exitCode !== 0) {
               return yield* finish(

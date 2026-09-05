@@ -507,7 +507,7 @@ export function TaskGraphPanel() {
         }
       />
 
-      <div className="grid gap-4 px-3 pb-3 sm:px-4 lg:grid-cols-[minmax(0,1.25fr)_minmax(18rem,0.75fr)]">
+      <div className="grid gap-4 px-3 pb-3 sm:px-4 xl:grid-cols-[minmax(0,1.25fr)_minmax(18rem,0.75fr)]">
         <div className="min-w-0 space-y-3">
           {availableProfiles.length === 0 && !driverQuery.isPending ? (
             <SettingsRow

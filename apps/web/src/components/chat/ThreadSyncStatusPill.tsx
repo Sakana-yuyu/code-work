@@ -1,9 +1,11 @@
 import { LoaderCircleIcon } from "lucide-react";
 
-import { threadSyncLabel, type ThreadSyncPhase } from "../../threadSync";
+import { t } from "~/i18n";
+
+import { threadSyncLabelKey, type ThreadSyncPhase } from "../../threadSync";
 
 export function ThreadSyncStatusPill({ phase }: { readonly phase: ThreadSyncPhase }) {
-  const label = threadSyncLabel(phase);
+  const label = t(threadSyncLabelKey(phase));
 
   return (
     <div

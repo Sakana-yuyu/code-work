@@ -5,8 +5,13 @@ import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
 import { afterEach, vi } from "vite-plus/test";
 
+import { setCurrentLanguage } from "~/i18n/runtime";
+
 import { createMemoryIndexedDbMigrationDatabase } from "../persistenceIndexedDb";
 import { migrateConnectionRuntimeDatabase, makeCatalogBackend, makeCatalogStore } from "./storage";
+
+// 断言英文目录文案，固定语言避免本机 locale 影响。
+setCurrentLanguage("en");
 
 const emptyCatalog = {
   schemaVersion: 1,

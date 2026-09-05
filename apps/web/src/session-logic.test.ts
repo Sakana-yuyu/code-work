@@ -8,6 +8,8 @@ import {
 } from "@codework/contracts";
 import { describe, expect, it } from "vite-plus/test";
 
+import { setCurrentLanguage } from "./i18n/runtime";
+
 import {
   deriveActiveWorkStartedAt,
   deriveActivePlanState,
@@ -2394,5 +2396,92 @@ describe("session activity performance", () => {
     const startedAt = performance.now();
     expect(deriveWorkLogEntries(updatedActivities)).toHaveLength(20_001);
     expect(performance.now() - startedAt).toBeLessThan(100);
+  });
+});
+
+describe("deriveWorkLogEntries server copy translation", () => {
+  it("translates known failure summaries by activity kind, with tool name params", () => {
+    setCurrentLanguage("zh-CN");
+    try {
+      const entries = deriveWorkLogEntries([
+        makeActivity({
+          id: "turn-start-failed",
+          createdAt: "2026-02-23T00:00:01.000Z",
+          kind: "provider.turn.start.failed",
+          summary: "Provider turn start failed",
+          tone: "error",
+        }),
+        makeActivity({
+          id: "tool-denied",
+          createdAt: "2026-02-23T00:00:02.000Z",
+          kind: "tool.denied",
+          summary: "Tool denied: Bash",
+          tone: "error",
+          payload: { toolName: "Bash" },
+        }),
+        makeActivity({
+          id: "unknown-failure",
+          createdAt: "2026-02-23T00:00:03.000Z",
+          kind: "some.future.failure",
+          summary: "Some future failure",
+          tone: "error",
+        }),
+      ]);
+
+      expect(entries.map((entry) => entry.label)).toEqual([
+        "供应商回合启动失败",
+        "工具被拒绝：Bash",
+        "Some future failure",
+      ]);
+    } finally {
+      setCurrentLanguage("en");
+    }
+  });
+
+  it("translates known server detail sentences and passes unknown details through", () => {
+    setCurrentLanguage("zh-CN");
+    try {
+      const entries = deriveWorkLogEntries([
+        makeActivity({
+          id: "checkpoint-revert-failed",
+          createdAt: "2026-02-23T00:00:01.000Z",
+          kind: "checkpoint.revert.failed",
+          summary: "Checkpoint revert failed",
+          tone: "error",
+          payload: {
+            turnCount: 5,
+            detail: "Checkpoint turn count 5 exceeds current turn count 3.",
+          },
+        }),
+        makeActivity({
+          id: "stale-approval",
+          createdAt: "2026-02-23T00:00:02.000Z",
+          kind: "provider.approval.respond.failed",
+          summary: "Provider approval response failed",
+          tone: "error",
+          payload: {
+            requestId: "req-1",
+            detail:
+              "Stale pending approval request: req-1. Provider callback state does not survive app restarts or recovered sessions. Restart the turn to continue.",
+          },
+        }),
+        makeActivity({
+          id: "unknown-detail",
+          createdAt: "2026-02-23T00:00:03.000Z",
+          kind: "checkpoint.revert.failed",
+          summary: "Checkpoint revert failed",
+          tone: "error",
+          payload: { detail: "Some future checkpoint failure." },
+        }),
+      ]);
+
+      expect(entries.map((entry) => entry.detail)).toEqual([
+        "检查点回合数 5 超过当前回合数 3。",
+        "过期的 approval 请求：req-1。供应商回调状态不会在应用重启或会话恢复后保留。请重启该回合以继续。",
+        "Some future checkpoint failure.",
+      ]);
+    } finally {
+      setCurrentLanguage("en");
+    }
   });
 });

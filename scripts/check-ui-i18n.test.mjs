@@ -26,6 +26,15 @@ export const en = {
 export const zhCN = {
   "fixture.valid": "合法测试",
 };
+export const ja = {
+  "fixture.valid": "正当なフィクスチャ",
+};
+`;
+
+const jaCatalogSource = `
+export const ja: Record<string, string> = {
+  "fixture.valid": "正当なフィクスチャ",
+};
 `;
 
 afterEach(() => {
@@ -46,7 +55,9 @@ function makeScannerFixture(files) {
 
   writeFixtureFile(repo, "apps/mobile/package.json", "{}\n");
   writeFixtureFile(repo, "apps/web/src/i18n/messages.ts", catalogSource);
+  writeFixtureFile(repo, "apps/web/src/i18n/ja.ts", jaCatalogSource);
   writeFixtureFile(repo, "apps/mobile/src/i18n/messages.ts", catalogSource);
+  writeFixtureFile(repo, "apps/mobile/src/i18n/ja.ts", jaCatalogSource);
   writeFixtureFile(repo, "apps/desktop/src/i18n.messages.ts", catalogSource);
   for (const [relativePath, contents] of Object.entries(files)) {
     writeFixtureFile(repo, relativePath, contents);

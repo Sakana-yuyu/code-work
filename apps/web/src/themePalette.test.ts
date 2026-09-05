@@ -7,6 +7,7 @@ import { BUILT_IN_THEMES } from "@codework/shared/themePalettes";
 
 import {
   applyThemeColorPreview,
+  themeSurfaceContrastRatio,
   applyThemePalette,
   getThemeColorsForMode,
   getThemeDefinition,
@@ -825,6 +826,38 @@ describe("theme files", () => {
     invalidateCustomThemes();
   });
 
+  it("主题存储键相同时保存不会误删，重新读取仍包含背景", () => {
+    const stored = new Map<string, string>();
+    vi.stubGlobal("window", {
+      localStorage: {
+        getItem: (key: string) => stored.get(key) ?? null,
+        setItem: (key: string, value: string) => stored.set(key, value),
+        removeItem: (key: string) => stored.delete(key),
+      },
+    });
+    try {
+      invalidateCustomThemes();
+      const theme = installCustomTheme(
+        parseThemeFile({
+          version: 1,
+          id: "wallpaper-test",
+          name: "背景测试",
+          appearance: "light",
+          colors: { canvas: "#ffffff" },
+          decorations: { light: { global: { color: "#112233", dim: 45 } } },
+        }),
+      );
+      expect(stored.has(CUSTOM_THEMES_STORAGE_KEY)).toBe(true);
+      invalidateCustomThemes();
+      expect(getCustomThemes().find((item) => item.id === theme.id)?.decorations).toEqual({
+        light: { global: { color: "#112233", dim: 45 } },
+      });
+    } finally {
+      vi.unstubAllGlobals();
+      invalidateCustomThemes();
+    }
+  });
+
   it("writes from the cached raw snapshot without risking a destructive reread", () => {
     const legacyTheme = {
       id: "legacy",
@@ -1075,4 +1108,14 @@ describe("stored theme preferences", () => {
     vi.unstubAllGlobals();
     invalidateCustomThemes();
   });
+});
+
+it("区域对比度覆盖同色文字、透明叠加和渐变中间区域", () => {
+  expect(themeSurfaceContrastRatio("#ffffff", "#ffffff", "#000000", 100)).toBeCloseTo(1);
+  expect(themeSurfaceContrastRatio("#ffffff", "#000000", "#000000", 100)).toBeCloseTo(21);
+  expect(themeSurfaceContrastRatio("#ffffff", "#ffffff", "#000000", 0)).toBeCloseTo(21);
+  expect(themeSurfaceContrastRatio("#808080", "#000000", "#ffffff", 100, "#ffffff")).toBeLessThan(
+    1.1,
+  );
+  expect(themeSurfaceContrastRatio("invalid", "#fff", "#000", 100)).toBeNull();
 });

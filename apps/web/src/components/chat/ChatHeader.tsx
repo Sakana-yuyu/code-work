@@ -11,7 +11,21 @@ import {
   squashAtomCommandFailure,
 } from "@codework/client-runtime/state/runtime";
 import type { ChangeRequestSettleSource } from "@codework/client-runtime/state/thread-settled";
-import { ChevronDownIcon } from "lucide-react";
+import {
+  ChevronDownIcon,
+  FolderTreeIcon,
+  SearchIcon,
+  TerminalIcon,
+  GitCompareIcon,
+  PanelsTopLeftIcon,
+  FileSearchIcon,
+} from "lucide-react";
+import { Button } from "../ui/button";
+import { Menu, MenuItem, MenuPopup, MenuTrigger, MenuShortcut, MenuSeparator } from "../ui/menu";
+import { openCommandPalette } from "../../commandPaletteBus";
+import { useRightPanelStore } from "../../rightPanelStore";
+import { useTerminalUiStateStore } from "../../terminalUiStateStore";
+import { shortcutLabelForCommand } from "../../keybindings";
 import {
   memo,
   useCallback,
@@ -384,6 +398,59 @@ export const ChatHeader = memo(function ChatHeader({
           rightPanelOpen ? "pr-0" : "pr-16",
         )}
       >
+        {activeProjectCwd && (
+          <Menu>
+            <MenuTrigger
+              render={<Button size="sm" variant="outline" aria-label={t("workspace.tools")} />}
+            >
+              <PanelsTopLeftIcon className="size-3.5" />
+              <span className="hidden @2xl/header-actions:inline">{t("workspace.tools")}</span>
+              <ChevronDownIcon className="size-3" />
+            </MenuTrigger>
+            <MenuPopup align="end" className="min-w-56">
+              <MenuItem
+                onClick={() => useRightPanelStore.getState().open(activeThreadRef, "files")}
+              >
+                <FolderTreeIcon />
+                {t("workspace.files")}
+              </MenuItem>
+              <MenuItem onClick={() => openCommandPalette({ open: "files" })}>
+                <FileSearchIcon />
+                {t("workspace.quickOpen")}
+                <MenuShortcut>
+                  {shortcutLabelForCommand(keybindings, "filePicker.toggle")}
+                </MenuShortcut>
+              </MenuItem>
+              <MenuItem onClick={() => openCommandPalette({ open: "content" })}>
+                <SearchIcon />
+                {t("workspace.search")}
+                <MenuShortcut>
+                  {shortcutLabelForCommand(keybindings, "projectSearch.toggle")}
+                </MenuShortcut>
+              </MenuItem>
+              <MenuSeparator />
+              <MenuItem
+                onClick={() =>
+                  useTerminalUiStateStore.getState().setTerminalOpen(activeThreadRef, true)
+                }
+              >
+                <TerminalIcon />
+                {t("workspace.terminal")}
+                <MenuShortcut>
+                  {shortcutLabelForCommand(keybindings, "terminal.toggle")}
+                </MenuShortcut>
+              </MenuItem>
+              <MenuItem
+                disabled={!isServerThread || !gitCwd}
+                onClick={() => useRightPanelStore.getState().open(activeThreadRef, "diff")}
+              >
+                <GitCompareIcon />
+                {t("workspace.changes")}
+                <MenuShortcut>{shortcutLabelForCommand(keybindings, "diff.toggle")}</MenuShortcut>
+              </MenuItem>
+            </MenuPopup>
+          </Menu>
+        )}
         {activeProjectScripts && (
           <ProjectScriptsControl
             scripts={activeProjectScripts}

@@ -126,6 +126,7 @@ import { cn } from "~/lib/utils";
 import { buildThreadActionMenuItems, canOpenThreadBeside } from "./threadActionMenu.logic";
 import {
   animatePinnedLayoutChanges,
+  groupActiveSidebarThreads,
   buildBulkTitleRegenerationContextMenuItem,
   formatWorkingDurationLabel,
   firstValidTimestampMs,
@@ -166,6 +167,7 @@ import {
   resolveSnoozePresets,
   snoozeWakeDescription,
   snoozeWakeLabel,
+  snoozeWakeDisplayLabel,
   type SnoozePreset,
 } from "./Sidebar.snooze";
 import { ProjectFavicon } from "./ProjectFavicon";
@@ -264,7 +266,7 @@ function WorkingDuration(props: { startedAt: string | null }) {
 const EMPTY_PROVIDER_ENTRIES: ReadonlyMap<string, ProviderInstanceEntry> = new Map();
 
 function terminalProcessLabel(count: number): string {
-  return `${count} terminal ${count === 1 ? "process" : "processes"} running`;
+  return t("sidebar.terminalProcessRunning", { count, countValue: count });
 }
 
 function SidebarThreadTooltip({
@@ -1353,7 +1355,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
                   // Snoozed rows show when they come BACK, not when they were
                   // last touched — the return ticket is the row's whole story.
                   <span className="text-xs text-blue-600 tabular-nums dark:text-blue-400">
-                    {props.snoozeWakeLabelText}
+                    {snoozeWakeDisplayLabel(props.snoozeWakeLabelText)}
                   </span>
                 ) : isWoke ? (
                   // A wake can land straight in the settled tail (e.g. PR
@@ -2341,6 +2343,10 @@ export default function Sidebar() {
     return routeThread === undefined ? [] : [routeThread];
   }, [routeThreadKey, snoozedShelfExpanded, snoozedThreads]);
 
+  const { activeThreadGroups, ungroupedActiveThreads } = useMemo(
+    () => groupActiveSidebarThreads(projectGroups, activeThreads),
+    [projectGroups, activeThreads],
+  );
   const orderedThreads = useMemo(
     () => [...pinnedThreads, ...activeThreads, ...visibleSnoozedThreads, ...renderedSettledThreads],
     [pinnedThreads, activeThreads, visibleSnoozedThreads, renderedSettledThreads],
@@ -4013,29 +4019,6 @@ export default function Sidebar() {
                   // a filtered project already names itself in the filter
                   // button, so one flat conversation column is enough.
                   const showProjectSections = projectScopeKey === null;
-                  const activeThreadGroups = projectGroups.map((group) => ({
-                    group,
-                    threads: activeThreads.filter((thread) =>
-                      group.memberProjectRefs.some(
-                        (ref) =>
-                          ref.environmentId === thread.environmentId &&
-                          ref.projectId === thread.projectId,
-                      ),
-                    ),
-                  }));
-                  const groupedThreadKeys = new Set(
-                    activeThreadGroups.flatMap(({ threads }) =>
-                      threads.map((thread) =>
-                        scopedThreadKey(scopeThreadRef(thread.environmentId, thread.id)),
-                      ),
-                    ),
-                  );
-                  const ungroupedActiveThreads = activeThreads.filter(
-                    (thread) =>
-                      !groupedThreadKeys.has(
-                        scopedThreadKey(scopeThreadRef(thread.environmentId, thread.id)),
-                      ),
-                  );
                   for (const { group, threads: groupThreads } of activeThreadGroups) {
                     if (groupThreads.length === 0) continue;
                     if (!showProjectSections) {

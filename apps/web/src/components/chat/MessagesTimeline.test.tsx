@@ -1046,7 +1046,8 @@ describe("MessagesTimeline", () => {
       />,
     );
 
-    expect(markup).toContain(`aria-label="${t("copyLink")}"`);
+    expect(markup).toContain(`aria-label="${t("copyToClipboard")}"`);
+    expect(markup).toContain("pointer-coarse:opacity-100");
     expect(markup).toContain('data-user-message-collapsed="true"');
     expect(markup).toContain('data-user-message-footer="true"');
   });

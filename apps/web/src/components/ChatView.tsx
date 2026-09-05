@@ -2290,7 +2290,9 @@ function ChatViewContent(props: ChatViewProps) {
           ),
         title:
           updateInProgress || updateFailed ? (
-            `${updateFailed ? "Could not update" : "Updating"} ${versionMismatchServerLabel}`
+            t(updateFailed ? "serverUpdate.couldNotUpdateServer" : "serverUpdate.updatingServer", {
+              server: versionMismatchServerLabel,
+            })
           ) : versionMismatch ? (
             <Tooltip>
               <TooltipTrigger
@@ -3481,7 +3483,7 @@ function ChatViewContent(props: ChatViewProps) {
       if (result._tag === "Success") {
         toastManager.add({
           type: "success",
-          title: t("deletedAction", { value1: deletedName ?? "Unknown" }),
+          title: t("deletedAction", { value1: deletedName ?? t("common.unknown") }),
         });
       } else if (!isAtomCommandInterrupted(result)) {
         const error = squashAtomCommandFailure(result);
@@ -7210,7 +7212,7 @@ function ChatViewContent(props: ChatViewProps) {
     composerBannerItems.length > 0 || Boolean(threadSyncPhase && !activeEnvironmentUnavailable);
 
   return (
-    <div className="relative flex min-h-0 min-w-0 flex-1 overflow-hidden bg-background">
+    <div className="theme-content-shell relative flex min-h-0 min-w-0 flex-1 overflow-hidden bg-background">
       {rightPanelOpen && !shouldUseRightPanelSheet ? panelLayoutControls : null}
       <div
         className={cn(

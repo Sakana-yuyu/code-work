@@ -22,7 +22,9 @@ vi.mock("../lib/runtime", async () => {
   };
 });
 
-import type { Preferences } from "../persistence/mobile-preferences";
+import { make as makePreferencesStore, type Preferences } from "../persistence/mobile-preferences";
+import { MobileDatabase, type StoredPreferencesJson } from "../persistence/mobile-database";
+import { MobileSecureStorage } from "../persistence/mobile-secure-storage";
 import {
   createMobilePreferencesState,
   MobilePreferencesLoadError,
@@ -62,6 +64,44 @@ function makePreferencesState(
 }
 
 describe("mobile preferences state", () => {
+  it.effect("重开偏好存储后保留独立的强度语言和界面语言", () =>
+    Effect.gen(function* () {
+      let stored = Option.none<StoredPreferencesJson>();
+      const unused = Effect.die("此检查不应访问会话缓存");
+      const database = MobileDatabase.of({
+        loadCache: () => unused,
+        saveCache: () => unused,
+        removeCache: () => unused,
+        clearCacheKind: () => unused,
+        clearEnvironmentCache: () => unused,
+        clearAllCaches: unused,
+        inspectCaches: unused,
+        loadPreferencesJson: Effect.sync(() => stored),
+        savePreferencesJson: (payload, updatedAt) =>
+          Effect.sync(() => {
+            stored = Option.some({ payload, updatedAt });
+          }),
+      });
+      const openStore = makePreferencesStore().pipe(
+        Effect.provideService(MobileDatabase, database),
+        Effect.provideService(
+          MobileSecureStorage,
+          MobileSecureStorage.of({
+            getItem: () => Effect.succeed(null),
+            setItem: () => unused,
+            removeItem: () => Effect.void,
+          }),
+        ),
+      );
+      const first = yield* openStore;
+      yield* first.savePatch({ language: "ja", effortLabelLanguage: "zh-CN" });
+      const reopened = yield* openStore;
+      expect(yield* reopened.load).toEqual({ language: "ja", effortLabelLanguage: "zh-CN" });
+      yield* reopened.savePatch({ effortLabelLanguage: "en" });
+      expect(yield* (yield* openStore).load).toEqual({ language: "ja", effortLabelLanguage: "en" });
+    }),
+  );
+
   it.effect("shares one preference load across consumers", () =>
     Effect.gen(function* () {
       const load = vi.fn(() => Promise.resolve<Preferences>({ baseFontSize: 17 }));

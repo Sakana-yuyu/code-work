@@ -2,6 +2,7 @@ import {
   NonNegativeInt,
   SpecWorkflowCapability,
   SpecWorkflowEvent,
+  SpecWorkflowIntentName,
   type SpecWorkflowSetInput,
 } from "@codework/contracts";
 import * as Clock from "effect/Clock";
@@ -25,6 +26,7 @@ import {
 const SpecWorkflowRowSchema = Schema.Struct({
   threadId: Schema.String,
   enabled: Schema.Number,
+  selectedIntent: SpecWorkflowIntentName,
   revision: Schema.Number,
   updatedAtUnixMs: Schema.Number,
 });
@@ -45,6 +47,7 @@ const makeDomainError = (
 const toCapability = (row: SpecWorkflowRow): SpecWorkflowCapability => ({
   threadId: row.threadId as SpecWorkflowCapability["threadId"],
   enabled: row.enabled === 1,
+  selectedIntent: row.selectedIntent,
   revision: row.revision,
   updatedAt: row.updatedAtUnixMs,
 });
@@ -72,6 +75,7 @@ export const SpecWorkflowCapabilityStoreLive = Layer.effect(
         SELECT
           thread_id AS "threadId",
           enabled,
+          selected_intent AS "selectedIntent",
           revision,
           updated_at_unix_ms AS "updatedAtUnixMs"
         FROM thread_spec_workflow_capabilities
@@ -83,12 +87,13 @@ export const SpecWorkflowCapabilityStoreLive = Layer.effect(
       Request: SpecWorkflowWriteRequest,
       execute: (row) => sql`
         INSERT INTO thread_spec_workflow_capabilities (
-          thread_id, enabled, revision, updated_at_unix_ms
+          thread_id, enabled, selected_intent, revision, updated_at_unix_ms
         ) VALUES (
-          ${row.threadId}, ${row.enabled}, ${row.revision}, ${row.updatedAtUnixMs}
+          ${row.threadId}, ${row.enabled}, ${row.selectedIntent}, ${row.revision}, ${row.updatedAtUnixMs}
         )
         ON CONFLICT (thread_id) DO UPDATE SET
           enabled = excluded.enabled,
+          selected_intent = excluded.selected_intent,
           revision = excluded.revision,
           updated_at_unix_ms = excluded.updated_at_unix_ms
       `,
@@ -120,7 +125,9 @@ export const SpecWorkflowCapabilityStoreLive = Layer.effect(
           const expectedRevision = input.expectedRevision;
           if (
             (expectedRevision !== undefined && !isNonNegativeInteger(expectedRevision)) ||
-            typeof input.enabled !== "boolean"
+            typeof input.enabled !== "boolean" ||
+            (input.selectedIntent !== undefined &&
+              !Schema.is(SpecWorkflowIntentName)(input.selectedIntent))
           ) {
             return yield* makeDomainError(
               "invalid-input",
@@ -141,7 +148,12 @@ export const SpecWorkflowCapabilityStoreLive = Layer.effect(
               "Spec Workflow 能力已被其他操作更新，请刷新后重试。",
             );
           }
-          if (current !== undefined && current.enabled === (input.enabled ? 1 : 0)) {
+          const selectedIntent = input.selectedIntent ?? current?.selectedIntent ?? "workflow";
+          if (
+            current !== undefined &&
+            current.enabled === (input.enabled ? 1 : 0) &&
+            current.selectedIntent === selectedIntent
+          ) {
             return toCapability(current);
           }
 
@@ -149,6 +161,7 @@ export const SpecWorkflowCapabilityStoreLive = Layer.effect(
           const next: SpecWorkflowRow = {
             threadId: input.threadId,
             enabled: input.enabled ? 1 : 0,
+            selectedIntent,
             revision: currentRevision + 1,
             updatedAtUnixMs: now,
           };

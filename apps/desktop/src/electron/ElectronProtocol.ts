@@ -121,6 +121,8 @@ export function makeDesktopContentSecurityPolicy(input: DesktopProtocolRegistrat
       .map((scheme) => `${scheme}:`)
       .join(" ")} data:`,
     "worker-src 'self' blob:",
+    // 背景视频仅使用本地导入的 Blob，不开放远程视频或脚本来源。
+    "media-src 'self' blob:",
     "frame-src 'self' https://challenges.cloudflare.com",
     "form-action 'self'",
   ].join("; ");

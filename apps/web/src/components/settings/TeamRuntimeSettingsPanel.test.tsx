@@ -12,6 +12,8 @@ vi.mock("~/state/environments", () => ({
   usePrimaryEnvironment: () => mocks.environment,
 }));
 
+vi.mock("@tanstack/react-router", () => ({ useBlocker: vi.fn() }));
+
 vi.mock("~/hooks/useSettings", () => ({
   usePrimarySettings: () => mocks.settings,
   useUpdatePrimarySettings: () => mocks.updateSettings,

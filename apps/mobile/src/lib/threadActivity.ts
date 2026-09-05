@@ -15,6 +15,10 @@ import type {
 } from "@codework/contracts";
 import { parseCanvasReference } from "@codework/shared/canvas";
 import { formatDuration } from "@codework/shared/orchestrationTiming";
+import {
+  activityFailureTranslation,
+  serverSessionErrorTranslation,
+} from "@codework/client-runtime/errors";
 
 import * as Arr from "effect/Array";
 import * as Order from "effect/Order";
@@ -363,6 +367,18 @@ function isPlanBoundaryToolActivity(activity: OrchestrationThreadActivity): bool
   return typeof payload?.detail === "string" && payload.detail.startsWith("ExitPlanMode:");
 }
 
+/** 失败活动摘要是服务端英文原句；已知 kind 展示前翻译，未知原样透传。 */
+function activityFailureLabel(activity: OrchestrationThreadActivity): string {
+  const known = activityFailureTranslation(activity);
+  return known === null ? activity.summary : t(known.key, known.params);
+}
+
+/** 活动详情可能携带服务端英文原句（如检查点失败原因）；已知句子展示前翻译，未知原样透传。 */
+function serverSessionDetail(detail: string): string {
+  const known = serverSessionErrorTranslation(detail);
+  return known === null ? detail : t(known.key, known.params);
+}
+
 function toDerivedWorkLogEntry(activity: OrchestrationThreadActivity): DerivedWorkLogEntry {
   const payload =
     activity.payload && typeof activity.payload === "object"
@@ -399,7 +415,7 @@ function toDerivedWorkLogEntry(activity: OrchestrationThreadActivity): DerivedWo
     createdAt: activity.createdAt,
     turnId: activity.turnId,
     ...(taskId ? { taskId } : {}),
-    label: taskLabel || activity.summary,
+    label: taskLabel || activityFailureLabel(activity),
     tone:
       activity.kind === "task.progress"
         ? "thinking"
@@ -418,7 +434,7 @@ function toDerivedWorkLogEntry(activity: OrchestrationThreadActivity): DerivedWo
   ) {
     const detail = stripTrailingExitCode(payload.detail).output;
     if (detail) {
-      entry.detail = detail;
+      entry.detail = serverSessionDetail(detail);
     }
   }
   if (commandPreview.command) {
@@ -681,7 +697,9 @@ function buildWorkEntryExpandedBody(entry: WorkLogEntry): string | null {
   };
 
   if (entry.itemType === "mcp_tool_call" && entry.toolData !== undefined) {
-    appendUniqueBlock(`MCP call\n${JSON.stringify(entry.toolData, null, 2)}`);
+    appendUniqueBlock(
+      t("threads.worklog.mcpCall", { payload: JSON.stringify(entry.toolData, null, 2) }),
+    );
   }
   appendUniqueBlock(entry.rawCommand ?? entry.command);
   appendUniqueBlock(entry.detail);
@@ -721,9 +739,14 @@ function workEntryPreview(
   if ((workEntry.changedFiles?.length ?? 0) === 0) return null;
   const [firstPath] = workEntry.changedFiles ?? [];
   if (!firstPath) return null;
-  return workEntry.changedFiles!.length === 1
+  const moreCount = workEntry.changedFiles!.length - 1;
+  return moreCount === 0
     ? firstPath
-    : `${firstPath} +${workEntry.changedFiles!.length - 1} more`;
+    : t("threads.worklog.moreFiles", {
+        path: firstPath,
+        count: moreCount,
+        countValue: moreCount,
+      });
 }
 
 function capitalizePhrase(value: string): string {

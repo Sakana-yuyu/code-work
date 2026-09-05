@@ -19,6 +19,17 @@ import {
 
 const decodeClientSettings = Schema.decodeUnknownSync(ClientSettingsSchema);
 const decodeClientSettingsPatch = Schema.decodeUnknownSync(ClientSettingsPatch);
+
+it("强度标签语言默认英文，支持独立保存中英文选择并拒绝无效值", () => {
+  expect(decodeClientSettings({}).effortLabelLanguage).toBe("en");
+  for (const effortLabelLanguage of ["en", "zh-CN"]) {
+    expect(decodeClientSettings({ effortLabelLanguage }).effortLabelLanguage).toBe(
+      effortLabelLanguage,
+    );
+    expect(decodeClientSettingsPatch({ effortLabelLanguage })).toEqual({ effortLabelLanguage });
+  }
+  expect(() => decodeClientSettingsPatch({ effortLabelLanguage: "invalid" })).toThrow();
+});
 const decodeServerSettings = Schema.decodeUnknownSync(ServerSettings);
 const decodeServerSettingsPatch = Schema.decodeUnknownSync(ServerSettingsPatch);
 const encodeServerSettings = Schema.encodeSync(ServerSettings);
@@ -26,6 +37,23 @@ const decodeClaudeSettings = Schema.decodeUnknownSync(ClaudeSettings);
 const decodeDelegationConfig = Schema.decodeUnknownSync(ByokDelegationConfig);
 
 describe("ClaudeSettings auto-compaction", () => {
+  it("校验备用模型与执行轮次，并支持清空恢复默认", () => {
+    expect(decodeClaudeSettings({})).toMatchObject({ fallbackModel: "", maxTurns: "" });
+    for (const maxTurns of ["", "1", "20", "1000"]) {
+      const config = { fallbackModel: " sonnet ", maxTurns };
+      expect(decodeClaudeSettings(config)).toMatchObject({ fallbackModel: "sonnet", maxTurns });
+      expect(
+        decodeServerSettingsPatch({ providers: { claudeAgent: config } }).providers?.claudeAgent,
+      ).toMatchObject({ fallbackModel: "sonnet", maxTurns });
+    }
+    for (const maxTurns of ["0", "-1", "1.5", "1e3", "1001", "Infinity", "abc"]) {
+      expect(() => decodeClaudeSettings({ maxTurns })).toThrow();
+      expect(() =>
+        decodeServerSettingsPatch({ providers: { claudeAgent: { maxTurns } } }),
+      ).toThrow();
+    }
+  });
+
   it("uses Claude's default threshold when no override is configured", () => {
     expect(decodeClaudeSettings({}).autoCompactWindow).toBe("");
   });

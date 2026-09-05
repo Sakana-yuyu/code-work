@@ -19,6 +19,7 @@ import {
   THEME_FILE_VERSION,
   createVividThemeColors,
   getCustomThemes,
+  getCustomThemeLibrarySnapshot,
   getStandardThemeColors,
   getThemeColorsForMode,
   getThemeModes,
@@ -51,6 +52,9 @@ import {
   type ThemeElementInspection,
 } from "./themeInspector";
 import { t } from "~/i18n";
+import { ThemeSurfaceEditor } from "./ThemeSurfaceEditor";
+import { themeAssetIds, type ThemeDecorations } from "../../themeDecoration";
+import { removeThemeAsset } from "../../themeMedia";
 
 const THEME_EDITOR_SIMPLE_ROLES: ReadonlyArray<ThemeColorRole> = ["canvas", "accent"];
 
@@ -361,6 +365,23 @@ export function ThemeEditorPanel({
   const [name, setName] = useState("");
   const [activeAppearance, setActiveAppearance] = useState<ThemeAppearance>(initialAppearance);
   const [isAdvanced, setIsAdvanced] = useState(false);
+  const [decorations, setDecorations] = useState<ThemeDecorations>({});
+  const [mediaBusy, setMediaBusy] = useState(false);
+  const createdAssets = useRef(new Set<string>());
+  useEffect(() => {
+    const assets = createdAssets.current;
+    return () => {
+      if (getCustomThemeLibrarySnapshot().status !== "ready") return;
+      const retained = new Set(
+        getCustomThemes().flatMap((theme) => themeAssetIds(theme.decorations)),
+      );
+      for (const id of assets)
+        if (!retained.has(id))
+          void removeThemeAsset(id).catch(() => {
+            // 清理失败只留下未引用资源，不影响已保存主题；不删除任何用户原文件。
+          });
+    };
+  }, []);
   const [colorsByAppearance, setColorsByAppearance] = useState<ThemeEditorColorsByAppearance>(() =>
     getThemeEditorColorsByAppearance(),
   );
@@ -437,6 +458,7 @@ export function ThemeEditorPanel({
       // that is currently in use, so tuning what you already run is an edit
       // away instead of a rebuild from the defaults.
       const sourceTheme = editingTheme ?? seedTheme ?? null;
+      for (const id of themeAssetIds(sourceTheme?.decorations)) createdAssets.current.add(id);
       const nextColors = getThemeEditorColorsByAppearance();
       const nextAppearance = sourceTheme
         ? getThemeColorsForMode(sourceTheme, initialAppearance)
@@ -461,6 +483,7 @@ export function ThemeEditorPanel({
       setIsAdvanced(sourceTheme !== null && sourceTheme.managed !== true);
       setSimpleColorsDirtyByAppearance({ light: false, dark: false });
       setColorsByAppearance(nextColors);
+      setDecorations(sourceTheme?.decorations ?? {});
       setSelectedRole(null);
       setUsageCount(null);
       setIsInspecting(false);
@@ -524,8 +547,12 @@ export function ThemeEditorPanel({
   // comes back when the editor closes, including on cancel.
   useEffect(() => {
     if (!open || !isDraftSeeded) return;
-    applyThemeColorPreview(colorsByAppearance[activeAppearance], activeAppearance);
-  }, [activeAppearance, colorsByAppearance, isDraftSeeded, open]);
+    applyThemeColorPreview(
+      colorsByAppearance[activeAppearance],
+      activeAppearance,
+      decorations[activeAppearance],
+    );
+  }, [activeAppearance, colorsByAppearance, decorations, isDraftSeeded, open]);
 
   useEffect(() => {
     if (!open) return;
@@ -859,6 +886,7 @@ export function ThemeEditorPanel({
             name: mergeTarget.label,
             appearance: mergeTarget.appearance,
             colors: mergeTarget.colors,
+            decorations: { ...mergeTarget.decorations, ...decorations },
             variants: {
               ...mergeTarget.variants,
               ...Object.fromEntries(editedModes.map((mode) => [mode, colorsForSave[mode]])),
@@ -891,6 +919,7 @@ export function ThemeEditorPanel({
             name,
             appearance: baseAppearance,
             colors: colorsForSave[baseAppearance],
+            decorations,
             ...(getThemeModes(editingTheme).length > 1
               ? { variants: { [variantAppearance]: colorsForSave[variantAppearance] } }
               : {}),
@@ -917,6 +946,10 @@ export function ThemeEditorPanel({
             name: mergeTarget.label,
             appearance: mergeTarget.appearance,
             colors: mergeTarget.colors,
+            decorations: {
+              ...mergeTarget.decorations,
+              [activeAppearance]: decorations[activeAppearance] ?? {},
+            },
             variants: {
               ...mergeTarget.variants,
               [activeAppearance]: colorsForSave[activeAppearance],
@@ -932,6 +965,7 @@ export function ThemeEditorPanel({
             name,
             appearance: activeAppearance,
             colors: colorsForSave[activeAppearance],
+            decorations,
             ...(isAdvanced ? {} : { managed: true }),
           }),
         );
@@ -1233,7 +1267,7 @@ export function ThemeEditorPanel({
               {isInspecting
                 ? t("selectAnElementEscToCancel")
                 : selectedRole
-                  ? `${isAdvanced ? (getThemeEditorColorFamily(selectedRole)?.label ?? getThemeRoleLabel(selectedRole)) : getThemeRoleLabel(selectedRole)} · ${usageCount ?? 0} ${usageCount === 1 ? "use" : "uses"}`
+                  ? `${isAdvanced ? (getThemeEditorColorFamily(selectedRole)?.label ?? getThemeRoleLabel(selectedRole)) : getThemeRoleLabel(selectedRole)} · ${t("themeEditor.roleUsageCount", { count: usageCount ?? 0, countValue: usageCount ?? 0 })}`
                   : t("selectAColorBelow")}
             </p>
           )}
@@ -1293,6 +1327,18 @@ export function ThemeEditorPanel({
               </p>
             ) : null}
             {renderAppearanceButtons()}
+            <ThemeSurfaceEditor
+              key={activeAppearance}
+              value={decorations[activeAppearance] ?? {}}
+              onBusyChange={setMediaBusy}
+              onAssetCreated={(id) => createdAssets.current.add(id)}
+              onChange={(update) =>
+                setDecorations((current) => ({
+                  ...current,
+                  [activeAppearance]: update(current[activeAppearance] ?? {}),
+                }))
+              }
+            />
             <div className="space-y-3">
               {renderColorsHeader()}
               {renderColorFields()}
@@ -1302,7 +1348,7 @@ export function ThemeEditorPanel({
             <Button size="sm" variant="ghost" onClick={() => onOpenChange(false)}>
               {t("cancel")}
             </Button>
-            <Button disabled={!name.trim()} size="sm" onClick={handleSubmit}>
+            <Button disabled={!name.trim() || mediaBusy} size="sm" onClick={handleSubmit}>
               {isEditing ? (
                 mergeTarget ? (
                   t("mergeInto", { label: mergeTarget.label })

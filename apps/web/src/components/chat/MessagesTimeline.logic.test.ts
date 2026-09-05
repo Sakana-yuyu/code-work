@@ -5,6 +5,7 @@ import { setCurrentLanguage } from "~/i18n/runtime";
 setCurrentLanguage("en");
 import {
   computeStableMessagesTimelineRows,
+  deriveStableCanvasReferences,
   computeMessageDurationStart,
   deriveMessagesTimelineRows,
   normalizeCompactToolLabel,
@@ -1820,4 +1821,34 @@ describe("computeStableMessagesTimelineRows", () => {
     expect(reordered).not.toBe(initial);
     expect(reordered.result).toEqual([initial.result[1], initial.result[0]]);
   });
+});
+
+it("消息或工作日志更新不重建相同的 Canvas 索引，真实增删改仍更新", () => {
+  const empty = { canvasReferences: [], canvasReferencesByTurnId: new Map() };
+  const row = {
+    id: "work",
+    kind: "work" as const,
+    createdAt: "2026-09-05",
+    entry: { id: "work", createdAt: "2026-09-05", label: "工作", tone: "tool" as const },
+  };
+  expect(deriveStableCanvasReferences([row], empty)).toBe(empty);
+  const canvas = {
+    canvasId: "canvas",
+    title: "画布",
+    relativePath: ".codework/canvases/a.canvas.json",
+  };
+  const first = deriveStableCanvasReferences([{ ...row, entry: { ...row.entry, canvas } }], empty);
+  expect(
+    deriveStableCanvasReferences(
+      [{ ...row, entry: { ...row.entry, label: "已更新日志", canvas: { ...canvas } } }],
+      first,
+    ),
+  ).toBe(first);
+  const changed = deriveStableCanvasReferences(
+    [{ ...row, entry: { ...row.entry, canvas: { ...canvas, title: "新标题" } } }],
+    first,
+  );
+  expect(changed).not.toBe(first);
+  expect(changed.canvasReferences[0]!.title).toBe("新标题");
+  expect(deriveStableCanvasReferences([], changed).canvasReferences).toEqual([]);
 });

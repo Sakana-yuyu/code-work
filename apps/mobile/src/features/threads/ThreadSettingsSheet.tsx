@@ -8,7 +8,6 @@ import type { LegendListRenderItemProps } from "@legendapp/list/react-native";
 import { AnimatedLegendList } from "@legendapp/list/reanimated";
 import { HeaderHeightContext } from "@react-navigation/elements";
 import {
-  getProviderOptionCurrentLabel,
   getProviderOptionCurrentValue,
   getProviderOptionDescriptors,
 } from "@codework/shared/model";
@@ -18,6 +17,8 @@ import {
   type NativeStackNavigationProp,
 } from "@react-navigation/native-stack";
 import * as Haptics from "expo-haptics";
+import { useAtomValue } from "@effect/atom-react";
+import { AsyncResult } from "effect/unstable/reactivity";
 import {
   createContext,
   use,
@@ -53,7 +54,12 @@ import {
   NATIVE_MAIL_SEARCH_TOOLBAR_CONTENT_INSET,
   NATIVE_MAIL_SEARCH_TOOLBAR_SUPPORTED,
 } from "../layout/native-mail-search-toolbar";
-import { runtimeModeChoices, selectableChoices } from "./thread-settings-options";
+import {
+  providerOptionDisplayLabel,
+  runtimeModeChoices,
+  selectableChoices,
+} from "./thread-settings-options";
+import { mobilePreferencesAtom } from "../../state/preferences";
 import {
   modelMatchesCatalogQuery,
   pendingModelAfterPress,
@@ -661,6 +667,10 @@ function ThreadSettingsOptionsItem(props: {
 }) {
   const insets = useSafeAreaInsets();
   const session = useThreadSettingsSession();
+  const preferences = useAtomValue(mobilePreferencesAtom);
+  const effortLabelLanguage = AsyncResult.isSuccess(preferences)
+    ? preferences.value.effortLabelLanguage
+    : undefined;
   const bottomToolbarInset =
     Platform.OS === "ios" && NATIVE_MAIL_SEARCH_TOOLBAR_SUPPORTED
       ? NATIVE_MAIL_SEARCH_TOOLBAR_CONTENT_INSET
@@ -688,7 +698,7 @@ function ThreadSettingsOptionsItem(props: {
               >
                 <DisclosureRow
                   label={descriptor.label}
-                  value={getProviderOptionCurrentLabel(descriptor)}
+                  value={providerOptionDisplayLabel(descriptor, effortLabelLanguage)}
                   onPress={() => props.onOpenSubmenu({ kind: "descriptor", id: descriptor.id })}
                 />
               </Animated.View>
@@ -854,6 +864,10 @@ function ThreadSettingsChoiceContent(props: {
 }) {
   const insets = useSafeAreaInsets();
   const session = useThreadSettingsSession();
+  const preferences = useAtomValue(mobilePreferencesAtom);
+  const effortLabelLanguage = AsyncResult.isSuccess(preferences)
+    ? preferences.value.effortLabelLanguage
+    : undefined;
   const descriptorId = props.submenu.kind === "descriptor" ? props.submenu.id : null;
 
   const activeDescriptor =
@@ -882,7 +896,9 @@ function ThreadSettingsChoiceContent(props: {
         ? {
             rows: selectableChoices(activeDescriptor).map((choice) => ({
               id: choice.id,
-              label: choice.label,
+              label:
+                providerOptionDisplayLabel(activeDescriptor, effortLabelLanguage, choice.id) ??
+                choice.label,
               description: undefined,
               selected: choice.id === getProviderOptionCurrentValue(activeDescriptor),
               onPress: () => {
@@ -1054,7 +1070,7 @@ function ThreadSettingsModelsScreen() {
               ? t("runtime")
               : (session.displayedDescriptors.find(
                   (descriptor) => descriptor.type === "select" && descriptor.id === submenu.id,
-                )?.label ?? "Option");
+                )?.label ?? t("threads.fallbackOption"));
           navigation.navigate("ThreadSettingsChoice", { ...submenu, title });
         }}
       />

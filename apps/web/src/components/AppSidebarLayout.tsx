@@ -10,6 +10,7 @@ import {
 import { useLocation, useNavigate } from "@tanstack/react-router";
 
 import { isElectron } from "../env";
+import { openCommandPalette } from "../commandPaletteBus";
 import { t } from "../i18n";
 import { getLocalStorageItem, removeLocalStorageItem } from "../hooks/useLocalStorage";
 import { resolveShortcutCommand, shortcutLabelForCommand } from "../keybindings";
@@ -19,6 +20,7 @@ import { useEnvironmentIdentificationMode, useLegacySidebarEnabled } from "../ho
 import LegacyThreadSidebar from "./LegacySidebar";
 import ThreadSidebar from "./Sidebar";
 import { SettingsSidebarNav } from "./settings/SettingsSidebarNav";
+import { ThemeBackdrop, ThemeDecorationSync, ThemeVideoControls } from "./settings/ThemeBackground";
 import { SidebarChromeHeader } from "./sidebar/SidebarChrome";
 import {
   resolveSidebarStageFocusRingOffsetClass,
@@ -202,6 +204,29 @@ export function AppSidebarLayout({ children }: { children: ReactNode }) {
         if (!isSettingsRoute) {
           void navigate({ to: "/settings" });
         }
+        return;
+      }
+
+      if (action === "new-thread") {
+        openCommandPalette({ open: "new-thread-in" });
+        return;
+      }
+
+      const recentThreadAction = /^open-thread:([^:]+):([^:]+)$/.exec(action);
+      if (recentThreadAction) {
+        const [, encodedEnvironmentId, encodedThreadId] = recentThreadAction;
+        if (!encodedEnvironmentId || !encodedThreadId) return;
+        try {
+          void navigate({
+            to: "/$environmentId/$threadId",
+            params: {
+              environmentId: decodeURIComponent(encodedEnvironmentId),
+              threadId: decodeURIComponent(encodedThreadId),
+            },
+          });
+        } catch {
+          // 托盘菜单数据来自本地渲染状态，单条旧数据失效时不影响主界面。
+        }
       }
     });
 
@@ -211,7 +236,13 @@ export function AppSidebarLayout({ children }: { children: ReactNode }) {
   }, [navigate, pathname]);
 
   return (
-    <SidebarProvider className="h-dvh! min-h-0!" defaultOpen style={sidebarProviderStyle}>
+    <SidebarProvider
+      className="relative isolate h-dvh! min-h-0!"
+      defaultOpen
+      style={sidebarProviderStyle}
+    >
+      <ThemeDecorationSync />
+      <ThemeBackdrop region="global" />
       <ProjectProjectionRetention />
       <Sidebar
         side="left"
@@ -228,16 +259,20 @@ export function AppSidebarLayout({ children }: { children: ReactNode }) {
           onResize: setSidebarWidth,
         }}
       >
-        {isOnSettings ? (
-          <>
-            <SidebarChromeHeader isElectron={isElectron} />
-            <SettingsSidebarNav pathname={pathname} />
-          </>
-        ) : legacySidebarEnabled ? (
-          <LegacyThreadSidebar />
-        ) : (
-          <ThreadSidebar />
-        )}
+        <div className="theme-sidebar-surface relative isolate flex min-h-0 flex-1 flex-col">
+          <ThemeBackdrop region="sidebar" />
+          {isOnSettings ? (
+            <>
+              <SidebarChromeHeader isElectron={isElectron} />
+              <SettingsSidebarNav pathname={pathname} />
+            </>
+          ) : legacySidebarEnabled ? (
+            <LegacyThreadSidebar />
+          ) : (
+            <ThreadSidebar />
+          )}
+          <ThemeVideoControls />
+        </div>
         <SidebarRail onDoubleClick={resetSidebarWidth} />
       </Sidebar>
       {children}

@@ -187,7 +187,7 @@ export function UsageActivityHeatmap({
                             {t("cost")}: {formatUsd(cell.usage.costUsd)}
                           </span>
                           <span>
-                            {t("providers")}: {cell.usage.providerCount}
+                            {t("providers2")}: {cell.usage.providerCount}
                           </span>
                           <span>
                             {t("models")}: {cell.usage.modelCount}

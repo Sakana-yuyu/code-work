@@ -1,6 +1,6 @@
 # Brand icons
 
-The pinned sakana-yuyu PNG is the canonical source for Code Work application icons:
+The pinned high-resolution sakana-yuyu PNG is the canonical source for Code Work application icons:
 
 - `source/sakana-yuyu-agent-icon-256.png`
 

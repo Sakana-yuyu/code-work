@@ -7,6 +7,7 @@ import * as Schema from "effect/Schema";
 import * as Semaphore from "effect/Semaphore";
 
 import * as DesktopEnvironment from "../app/DesktopEnvironment.ts";
+import { t } from "../i18n.js";
 
 // Packaged Windows builds ship the server tree inside resources/server.asar
 // (see scripts/build-desktop-artifact.ts). The Windows primary reads it in
@@ -190,9 +191,10 @@ export const make = Effect.gen(function* () {
           Effect.catch((error) =>
             Effect.succeed({
               ok: false,
-              reason: `WSL server files could not be extracted to ${versionDir}: ${
-                error.cause instanceof Error ? error.cause.message : String(error.cause)
-              }`,
+              reason: t("wsl.preflight.reason.extractFailed", {
+                versionDir,
+                detail: error.cause instanceof Error ? error.cause.message : String(error.cause),
+              }),
               fatal: false,
             } as const),
           ),

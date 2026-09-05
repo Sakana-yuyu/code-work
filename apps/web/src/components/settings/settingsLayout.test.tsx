@@ -4,11 +4,57 @@ import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import {
   scrollToSettingsTarget,
   SettingsRow,
+  SettingsSection,
   SettingsSearchTargetProvider,
 } from "./settingsLayout";
+import { FacilitiesPageHeader } from "./FacilitiesPageHeader";
 
 afterEach(() => {
   vi.unstubAllGlobals();
+});
+
+describe("设置页标题层级", () => {
+  it("只显示一个主标题，同时保留说明、引导、操作按钮及分组标题", () => {
+    const markup = renderToStaticMarkup(
+      <>
+        <FacilitiesPageHeader icon={null} title="供应商" description="连接模型服务">
+          <button>查看引导</button>
+        </FacilitiesPageHeader>
+        <SettingsSection
+          id="providers"
+          title="供应商"
+          hideTitle
+          headerAction={<button>添加供应商</button>}
+        >
+          <p>供应商列表</p>
+        </SettingsSection>
+        <SettingsSection title="执行历史">
+          <p>历史记录</p>
+        </SettingsSection>
+      </>,
+    );
+
+    expect(markup.match(/<h1\b/g)).toHaveLength(1);
+    expect(markup.match(/<h2\b/g)).toHaveLength(1);
+    expect(markup).toContain('aria-label="供应商" id="providers" tabindex="-1"');
+    expect(markup).toContain("连接模型服务");
+    expect(markup).toContain("查看引导");
+    expect(markup).toContain("添加供应商");
+    expect(markup).toContain("执行历史");
+    expect(markup).toContain("justify-end");
+  });
+
+  it("只读或空状态没有操作按钮时不留下空标题栏", () => {
+    const markup = renderToStaticMarkup(
+      <SettingsSection id="providers" title="供应商" hideTitle>
+        <p>请连接设备</p>
+      </SettingsSection>,
+    );
+    expect(markup).not.toContain("<h2");
+    expect(markup).not.toContain("min-h-8");
+    expect(markup).toContain('aria-label="供应商"');
+    expect(markup).toContain("请连接设备");
+  });
 });
 
 describe("settings search targets", () => {

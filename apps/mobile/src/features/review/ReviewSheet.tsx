@@ -634,7 +634,10 @@ export function ReviewSheet(props: ReviewSheetProps) {
     headerDiffSummary.additions,
     headerDiffSummary.deletions,
     pendingReviewCommentCount > 0
-      ? `${pendingReviewCommentCount} comment${pendingReviewCommentCount === 1 ? "" : "s"}`
+      ? t("review.commentCount", {
+          count: pendingReviewCommentCount,
+          countValue: pendingReviewCommentCount,
+        })
       : null,
   ]
     .filter(Boolean)
@@ -774,7 +777,9 @@ export function ReviewSheet(props: ReviewSheetProps) {
         {showConnectionNotice ? (
           <View className="flex-1" style={{ paddingTop: topContentInset }}>
             <EnvironmentConnectionNotice
-              environmentLabel={environment.presentation?.entry.target.label ?? "Environment"}
+              environmentLabel={
+                environment.presentation?.entry.target.label ?? t("common.fallbackEnvironment")
+              }
               connection={
                 environment.presentation?.connection ?? {
                   phase: "available",

@@ -332,7 +332,7 @@ const probeCodexAppServerProvider = Effect.fn("probeCodexAppServerProvider")(fun
   // Expand here for parity with `CodexTextGeneration`/`CodexSessionRuntime`.
   const resolvedHomePath = input.homePath ? expandHomePath(input.homePath) : undefined;
   const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
-  const environment = {
+  const environment: NodeJS.ProcessEnv = {
     ...input.environment,
     ...(resolvedHomePath ? { CODEX_HOME: resolvedHomePath } : {}),
   };
@@ -344,6 +344,12 @@ const probeCodexAppServerProvider = Effect.fn("probeCodexAppServerProvider")(fun
       extendEnv: true,
     },
   );
+  yield* Effect.annotateCurrentSpan({
+    "codex.binary_path": input.binaryPath,
+    "codex.spawn_command": spawnCommand.command,
+    "codex.spawn_shell": spawnCommand.shell,
+    "codex.path_present": Boolean(environment.PATH ?? environment.Path ?? environment.path),
+  });
   const child = yield* spawner
     .spawn(
       ChildProcess.make(spawnCommand.command, spawnCommand.args, {
@@ -556,6 +562,11 @@ export const checkCodexProviderStatus = Effect.fn("checkCodexProviderStatus")(fu
   if (Result.isFailure(probeResult)) {
     const error = probeResult.failure;
     const installed = !isCodexAppServerSpawnError(error);
+    yield* Effect.logWarning("Codex app-server health check failed.", {
+      errorTag: error._tag,
+      binaryPath: codexSettings.binaryPath,
+      reason: installed ? "execution-failed" : "command-not-found",
+    });
     return buildServerProvider({
       presentation: CODEX_PRESENTATION,
       enabled: codexSettings.enabled,
@@ -569,7 +580,7 @@ export const checkCodexProviderStatus = Effect.fn("checkCodexProviderStatus")(fu
         auth: { status: "unknown" },
         message: installed
           ? `Codex app-server provider probe failed: ${error.message}.`
-          : "Codex CLI (`codex`) was not found on PATH.",
+          : "Codex CLI (`codex`) was not found in Code Work's server environment. Check the configured binary path or restart Code Work after updating PATH.",
       },
     });
   }
@@ -601,6 +612,11 @@ export const checkCodexProviderStatus = Effect.fn("checkCodexProviderStatus")(fu
     models: snapshot.models,
     skills: snapshot.skills,
     slashCommands: [
+      {
+        name: "review",
+        description: "Review changes with Codex",
+        input: { hint: "Review instructions (optional; defaults to uncommitted changes)" },
+      },
       {
         name: "feedback",
         description: "Send this thread and Codex logs to OpenAI",

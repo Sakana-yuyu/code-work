@@ -225,7 +225,9 @@ export function ProjectScriptEditorDialog({
         autoOpenPreview: trimmedPreviewUrl.length > 0 ? autoOpenPreview : false,
       } satisfies NewProjectScriptInput;
     } catch (error) {
-      setValidationError(error instanceof Error ? error.message : t("projectScript.failedToSave"));
+      setValidationError(
+        error instanceof Error ? t(error.message) : t("projectScript.failedToSave"),
+      );
       return;
     }
 

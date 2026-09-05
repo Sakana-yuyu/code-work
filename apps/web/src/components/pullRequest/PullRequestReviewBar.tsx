@@ -129,9 +129,9 @@ export function PullRequestReviewBar({
         <span>
           {comments.length === 0
             ? t("noLineCommentsYet")
-            : t("pending2", {
-                value1: comments.length,
-                value2: comments.length === 1 ? "comment" : "comments",
+            : t("pullRequest.pendingLineComments", {
+                count: comments.length,
+                countValue: comments.length,
               })}
         </span>
         {comments.length > 0 ? (

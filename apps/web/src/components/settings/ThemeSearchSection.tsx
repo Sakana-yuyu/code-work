@@ -364,9 +364,9 @@ export function ThemeSearchSection({
         {isSearching
           ? t("searchingThemes")
           : results
-            ? t("supportedFound", {
-                value1: results.length,
-                value2: results.length === 1 ? "theme" : "themes",
+            ? t("themes.searchResultsFound", {
+                count: results.length,
+                countValue: results.length,
               })
             : ""}
       </div>

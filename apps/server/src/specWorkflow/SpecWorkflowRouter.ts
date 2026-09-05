@@ -8,6 +8,8 @@ import type {
 } from "@codework/contracts";
 
 import { isSpecWorkflowStageAllowed } from "./SpecWorkflowDecider.ts";
+import { SpecWorkflowDocumentNode } from "@codework/contracts";
+import * as Schema from "effect/Schema";
 
 const intentStages: Partial<Record<SpecWorkflowIntentName, SpecWorkflowStage>> = {
   research: "research",
@@ -49,6 +51,13 @@ export const routeSpecWorkflowIntent = (input: {
   if (!capability.enabled) {
     return route(intent, "pass-through", null, false, "not-enabled");
   }
+  if (
+    capability.selectedIntent !== undefined &&
+    capability.selectedIntent !== "workflow" &&
+    capability.selectedIntent !== intent
+  ) {
+    return route(intent, "show-status", state?.stage ?? null, true, "node-not-selected");
+  }
 
   if (intent === "status") {
     return route(
@@ -58,6 +67,17 @@ export const routeSpecWorkflowIntent = (input: {
       false,
       state ? "already-at-target" : "workflow-not-started",
     );
+  }
+  if (
+    state !== undefined &&
+    capability.selectedIntent === intent &&
+    Schema.is(SpecWorkflowDocumentNode)(intent)
+  ) {
+    if (state.status !== "active" || state.activeTaskId !== null)
+      return route(intent, "show-status", state.stage, true, "invalid-current-stage");
+    if ((intent === "design" || intent === "propose" || intent === "revise") && state.tbdCount > 0)
+      return route(intent, "show-status", "ask", true, "tbd-remaining");
+    return route(intent, "advance", intent, false, "requested-stage-allowed");
   }
   if (state === undefined) {
     return route(

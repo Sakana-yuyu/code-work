@@ -1,5 +1,7 @@
 import type { PullRequestReaction, PullRequestReactionContent } from "@codework/contracts";
 
+import { t } from "~/i18n";
+
 /** The picker's order, which is GitHub's: the two verdicts first, then the rest as it lists them. */
 export const PULL_REQUEST_REACTION_ORDER: ReadonlyArray<PullRequestReactionContent> = [
   "thumbs-up",
@@ -46,16 +48,17 @@ export function pullRequestReactionName(content: PullRequestReactionContent): st
 /** Past three names the sentence stops being readable and starts being a list. */
 const NAMED_ACTOR_LIMIT = 3;
 
-function joinNames(parts: ReadonlyArray<string>): string {
+function joinNames(parts: ReadonlyArray<string>, andLabel: string): string {
   if (parts.length <= 1) return parts[0] ?? "";
-  if (parts.length === 2) return `${parts[0]} and ${parts[1]}`;
-  return `${parts.slice(0, -1).join(", ")}, and ${parts.at(-1)}`;
+  if (parts.length === 2) return `${parts[0]} ${andLabel} ${parts[1]}`;
+  return `${parts.slice(0, -1).join(", ")}, ${andLabel} ${parts.at(-1)}`;
 }
 
 /** "others" only alongside somebody named; on its own a count is people, not other people. */
 function countRemainder(count: number, named: boolean): string {
-  if (named) return `${count} ${count === 1 ? "other" : "others"}`;
-  return `${count} ${count === 1 ? "person" : "people"}`;
+  return named
+    ? t("pullRequest.reactionOtherCount", { count, countValue: count })
+    : t("pullRequest.reactionPersonCount", { count, countValue: count });
 }
 
 /**
@@ -73,11 +76,16 @@ function countRemainder(count: number, named: boolean): string {
 export function pullRequestReactionTooltip(reaction: PullRequestReaction): string {
   const viewerHasRoom = reaction.actors.length < reaction.count;
   const names =
-    reaction.viewerHasReacted && viewerHasRoom ? ["You", ...reaction.actors] : [...reaction.actors];
+    reaction.viewerHasReacted && viewerHasRoom
+      ? [t("pullRequest.you"), ...reaction.actors]
+      : [...reaction.actors];
   const shown = names.slice(0, Math.min(NAMED_ACTOR_LIMIT, reaction.count));
   const others = Math.max(0, reaction.count - shown.length);
   const parts = [...shown, ...(others > 0 ? [countRemainder(others, shown.length > 0)] : [])];
-  return `${joinNames(parts)} reacted with ${pullRequestReactionName(reaction.content)} emoji`;
+  return t("pullRequest.reactedWithEmoji", {
+    actors: joinNames(parts, t("pullRequest.and")),
+    emoji: pullRequestReactionName(reaction.content),
+  });
 }
 
 /**

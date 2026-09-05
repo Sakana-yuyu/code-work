@@ -3,6 +3,7 @@ import type {
   ScopedThreadRef,
   SpecWorkflowCapability,
   SpecWorkflowEvent,
+  SpecWorkflowIntentName,
   SpecWorkflowState,
   SpecWorkflowStateEvent,
 } from "@codework/contracts";
@@ -33,7 +34,9 @@ function resolveCapabilitySnapshot(
   queryCapability: SpecWorkflowCapability | null,
   eventCapability: SpecWorkflowCapability | null,
 ): SpecWorkflowCapability | null {
-  return eventCapability ?? queryCapability;
+  return eventCapability !== null && eventCapability.revision >= (queryCapability?.revision ?? 0)
+    ? eventCapability
+    : queryCapability;
 }
 
 function resolveStateSnapshot(
@@ -109,6 +112,7 @@ function useSpecWorkflowState(threadRef: ScopedThreadRef | null): SpecWorkflowSt
 export interface SpecWorkflowMobileController extends SpecWorkflowCapabilityView {
   readonly enabled: boolean;
   readonly toggle: () => Promise<boolean>;
+  readonly selectIntent: (intent: SpecWorkflowIntentName) => Promise<boolean>;
   readonly workflowState: SpecWorkflowState | null;
   readonly workflowStateIsPending: boolean;
   readonly workflowStateHasError: boolean;
@@ -139,32 +143,45 @@ export function useSpecWorkflowController(
   const environmentId = threadRef?.environmentId ?? null;
   const currentState = workflow.state;
 
-  const toggle = useCallback(async () => {
-    if (
-      threadId === null ||
-      environmentId === null ||
-      capability.capability === null ||
-      isMutating
-    ) {
-      return false;
-    }
-    setIsMutating(true);
-    try {
-      const result = await setCommand({
-        environmentId,
-        input: {
-          threadId,
-          enabled: !capability.capability.enabled,
-          expectedRevision: capability.capability.revision,
-        },
-      });
-      if (result._tag !== "Success") return false;
-      capability.refresh();
-      return true;
-    } finally {
-      setIsMutating(false);
-    }
-  }, [capability, environmentId, isMutating, setCommand, threadId]);
+  const updateCapability = useCallback(
+    async (enabled: boolean, selectedIntent?: SpecWorkflowIntentName) => {
+      if (
+        threadId === null ||
+        environmentId === null ||
+        capability.capability === null ||
+        isMutating
+      ) {
+        return false;
+      }
+      setIsMutating(true);
+      try {
+        const result = await setCommand({
+          environmentId,
+          input: {
+            threadId,
+            enabled,
+            ...(selectedIntent === undefined ? {} : { selectedIntent }),
+            expectedRevision: capability.capability.revision,
+          },
+        });
+        if (result._tag !== "Success") return false;
+        capability.refresh();
+        return true;
+      } finally {
+        setIsMutating(false);
+      }
+    },
+    [capability, environmentId, isMutating, setCommand, threadId],
+  );
+
+  const toggle = useCallback(
+    () => updateCapability(!(capability.capability?.enabled ?? false)),
+    [capability.capability?.enabled, updateCapability],
+  );
+  const selectIntent = useCallback(
+    (intent: SpecWorkflowIntentName) => updateCapability(true, intent),
+    [updateCapability],
+  );
 
   const runCommand = useCallback(
     async (action: "approve" | "reject" | "completeAcceptance" | "pause" | "resume") => {
@@ -237,6 +254,7 @@ export function useSpecWorkflowController(
     enabled: capability.capability?.enabled ?? false,
     isPending: capability.isPending || isMutating,
     toggle,
+    selectIntent,
     workflowState: workflow.state,
     workflowStateIsPending: workflow.isPending,
     workflowStateHasError: workflow.hasError,

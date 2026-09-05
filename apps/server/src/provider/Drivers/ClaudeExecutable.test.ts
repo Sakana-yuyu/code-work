@@ -3,12 +3,34 @@ import { HostProcessPlatform } from "@codework/shared/hostProcess";
 import { SpawnExecutableResolution } from "@codework/shared/shell";
 import * as Effect from "effect/Effect";
 
-import { ClaudeExecutableFileCheck, resolveClaudeSdkExecutablePath } from "./ClaudeExecutable.ts";
+import {
+  ClaudeExecutableFileCheck,
+  findClaudeNpmPackageEntry,
+  isClaudeNpmPackageEntryDamaged,
+  resolveClaudeSdkExecutablePath,
+} from "./ClaudeExecutable.ts";
 
 const NPM_DIR = "C:\\Users\\dev\\AppData\\Roaming\\npm";
 const NPM_SHIM = `${NPM_DIR}\\claude.cmd`;
 const NPM_PACKAGE_EXE = `${NPM_DIR}\\node_modules\\@anthropic-ai\\claude-code\\bin\\claude.exe`;
 const NPM_PACKAGE_CLI = `${NPM_DIR}\\node_modules\\@anthropic-ai\\claude-code\\cli.js`;
+
+describe("Claude npm installation checks", () => {
+  it("finds an incomplete package next to the npm PATH entry", () => {
+    const entry = findClaudeNpmPackageEntry(
+      { PATH: `C:\\Windows\\System32;${NPM_DIR}` },
+      "win32",
+      (filePath) => filePath === NPM_PACKAGE_EXE,
+    );
+    expect(entry).toBe(NPM_PACKAGE_EXE);
+  });
+
+  it("recognizes npm's small placeholder native executable", () => {
+    expect(isClaudeNpmPackageEntryDamaged(NPM_PACKAGE_EXE, () => 500)).toBe(true);
+    expect(isClaudeNpmPackageEntryDamaged(NPM_PACKAGE_EXE, () => 217_000_000)).toBe(false);
+    expect(isClaudeNpmPackageEntryDamaged(NPM_PACKAGE_CLI, () => 500)).toBe(false);
+  });
+});
 
 function withWindowsResolution(input: {
   readonly resolvedCommand: string | undefined;

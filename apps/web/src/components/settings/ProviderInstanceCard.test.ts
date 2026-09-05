@@ -112,7 +112,23 @@ describe("resolveProviderInstallAffordance", () => {
       hasHandler: true,
     });
     expect(affordance.visible).toBe(true);
+    expect(affordance.isRepair).toBe(false);
     expect(affordance.errorMessage).toBeNull();
+  });
+
+  it("labels a detected damaged Claude installation as repairable", () => {
+    const affordance = resolveProviderInstallAffordance({
+      liveProvider: {
+        ...notInstalledProvider,
+        driver: "claudeAgent" as ServerProvider["driver"],
+        message:
+          "Claude Agent CLI installation appears incomplete or damaged. Repair it from Provider settings, then refresh status.",
+      },
+      readOnly: false,
+      hasHandler: true,
+    });
+    expect(affordance.visible).toBe(true);
+    expect(affordance.isRepair).toBe(true);
   });
 
   it("hides the button when installed, when the server lacks the channel, in readOnly, or without a handler", () => {

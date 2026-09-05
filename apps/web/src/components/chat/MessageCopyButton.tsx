@@ -62,7 +62,7 @@ export const MessageCopyButton = memo(function MessageCopyButton({
       <TooltipTrigger
         render={
           <Button
-            aria-label={t("copyLink")}
+            aria-label={t("copyToClipboard")}
             disabled={isCopied}
             onClick={() => copyToClipboard(text)}
             ref={ref}

@@ -67,4 +67,28 @@ describe("ProviderStatusBanner", () => {
 
     expect(markup).toContain('aria-label="Dismiss Codex provider error"');
   });
+
+  it("localizes server-reported missing Claude CLI diagnostics", () => {
+    const status = {
+      ...warningProvider(),
+      driver: ProviderDriverKind.make("claudeAgent"),
+      displayName: "Claude",
+      status: "error" as const,
+      message:
+        "Claude Agent CLI (`claude`) was not found in Code Work's server environment. Check the configured binary path or restart Code Work after updating PATH.",
+    };
+
+    const englishMarkup = renderToStaticMarkup(
+      <ProviderStatusBanner status={status} onDismiss={() => {}} />,
+    );
+    expect(englishMarkup).toContain("could not find the Claude Agent CLI");
+    expect(englishMarkup).not.toContain("was not found in Code Work's server environment");
+
+    setCurrentLanguage("zh-CN");
+    const chineseMarkup = renderToStaticMarkup(
+      <ProviderStatusBanner status={status} onDismiss={() => {}} />,
+    );
+    setCurrentLanguage("en");
+    expect(chineseMarkup).toContain("Code Work 运行环境未找到 Claude Agent CLI");
+  });
 });

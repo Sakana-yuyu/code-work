@@ -11,6 +11,8 @@ import {
   type ProviderSession,
   type RuntimeMode,
   type ThreadGoal,
+  type SpecWorkflowCapability,
+  type SpecWorkflowState,
   type TurnId,
 } from "@codework/contracts";
 import { isTemporaryWorktreeBranch, WORKTREE_BRANCH_PREFIX } from "@codework/shared/git";
@@ -51,7 +53,7 @@ import { GitWorkflowService } from "../../git/GitWorkflowService.ts";
 import { ThreadGoalStore } from "../../persistence/Services/ThreadGoalStore.ts";
 import { SpecWorkflowCapabilityStore } from "../../persistence/Services/SpecWorkflowCapabilityStore.ts";
 import { SpecWorkflowService } from "../../specWorkflow/SpecWorkflowService.ts";
-import { formatSpecWorkflowAgentInput } from "../../specWorkflow/SpecWorkflowAgentProtocol.ts";
+import { formatSpecWorkflowSelectedInput } from "../../specWorkflow/SpecWorkflowAgentProtocol.ts";
 const isProviderAdapterRequestError = Schema.is(ProviderAdapterRequestError);
 const isProviderDriverKind = Schema.is(ProviderDriverKind);
 
@@ -546,7 +548,7 @@ const make = Effect.gen(function* () {
     readonly projectId: ProjectId;
   }) {
     if (Option.isNone(specWorkflowCapabilityStore) || Option.isNone(specWorkflowService)) {
-      return Option.none();
+      return Option.none<{ capability: SpecWorkflowCapability; state: SpecWorkflowState | null }>();
     }
     const capability = yield* specWorkflowCapabilityStore.value.get(input.threadId).pipe(
       Effect.catchCause((cause) =>
@@ -557,7 +559,7 @@ const make = Effect.gen(function* () {
       ),
     );
     if (capability?.enabled !== true) {
-      return Option.none();
+      return Option.none<{ capability: SpecWorkflowCapability; state: SpecWorkflowState | null }>();
     }
     const existing = yield* specWorkflowService.value.getState(input.threadId).pipe(
       Effect.catchCause((cause) =>
@@ -568,7 +570,10 @@ const make = Effect.gen(function* () {
       ),
     );
     if (Option.isSome(existing)) {
-      return existing;
+      return Option.some({ capability, state: existing.value });
+    }
+    if (["chat", "status", "stash", "resume"].includes(capability.selectedIntent ?? "workflow")) {
+      return Option.some({ capability, state: null });
     }
     return yield* specWorkflowService.value
       .start({
@@ -576,11 +581,11 @@ const make = Effect.gen(function* () {
         projectId: input.projectId,
         threadId: input.threadId,
         changeName: `thread-${input.threadId}`,
-        mode: "full",
+        mode: capability.selectedIntent === "fix" ? "fix" : "full",
         updatedAt: 0,
       })
       .pipe(
-        Effect.map(Option.some),
+        Effect.map((state) => Option.some({ capability, state })),
         Effect.catchCause((cause) =>
           Effect.logWarning("provider command reactor failed to initialize Spec Workflow", {
             threadId: input.threadId,
@@ -925,10 +930,8 @@ const make = Effect.gen(function* () {
     });
     const providerInputWithWorkflow = Option.match(specWorkflowState, {
       onNone: () => providerInput,
-      onSome: (state) =>
-        state.status === "completed"
-          ? providerInput
-          : formatSpecWorkflowAgentInput(state, providerInput),
+      onSome: ({ capability, state }) =>
+        formatSpecWorkflowSelectedInput(capability, state, providerInput),
     });
     const activeSession = yield* providerService
       .listSessions()
@@ -948,6 +951,12 @@ const make = Effect.gen(function* () {
               .sessionModelSwitch;
     const requestedModelSelection =
       input.modelSelection ?? threadModelSelections.get(input.threadId) ?? thread.modelSelection;
+    // 原生控制命令不能被 Goal / 工作流说明包裹，否则 CLI 会将其当成普通提示词。
+    const nativeCommand =
+      (activeSession?.provider === "codex" && /^\/review(?:\s|$)/i.test(normalizedInput ?? "")) ||
+      (activeSession?.provider === "claudeAgent" &&
+        /^\/compact(?:\s|$)/i.test(normalizedInput ?? ""));
+    const turnInput = nativeCommand ? normalizedInput : providerInputWithWorkflow;
     const modelForTurn =
       sessionModelSwitch === "unsupported" && input.modelSelection === undefined
         ? activeSession?.model !== undefined
@@ -960,7 +969,7 @@ const make = Effect.gen(function* () {
 
     return {
       threadId: input.threadId,
-      ...(providerInputWithWorkflow ? { input: providerInputWithWorkflow } : {}),
+      ...(turnInput ? { input: turnInput } : {}),
       ...(normalizedAttachments.length > 0 ? { attachments: normalizedAttachments } : {}),
       ...(modelForTurn !== undefined ? { modelSelection: modelForTurn } : {}),
       ...(input.interactionMode !== undefined ? { interactionMode: input.interactionMode } : {}),

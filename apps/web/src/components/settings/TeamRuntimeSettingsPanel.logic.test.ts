@@ -5,6 +5,7 @@ import {
   type UnifiedSettings,
 } from "@codework/contracts";
 import { describe, expect, it } from "vite-plus/test";
+import { buildTeamRuntimeSavePatch } from "@codework/shared/multicaRuntimeSettings";
 
 import {
   buildTeamRuntimeSettingsPatch,
@@ -51,6 +52,21 @@ const baseSettings = {
 } as unknown as UnifiedSettings;
 
 describe("team runtime settings projection", () => {
+  it("Web 和移动端共用局部更新，创建及重命名都带有版本前置条件", () => {
+    const nextId = ProviderInstanceId.make("team-new");
+    const save = { instanceId: nextId, config: teamConfig, environment: [] };
+    const created = buildTeamRuntimeSavePatch(baseSettings, null, null, save);
+    expect(Object.keys(created.providerInstances!)).toEqual([nextId]);
+    expect(created.multicaProviderInstancePreconditions).toEqual([
+      { instanceId: nextId, expectedRevision: null },
+    ]);
+    const renamed = buildTeamRuntimeSavePatch(baseSettings, "team-b", "revision-at-open", save);
+    expect(Object.keys(renamed.providerInstances!)).toEqual([nextId]);
+    expect(renamed.multicaProviderInstancePreconditions).toEqual([
+      { instanceId: "team-b", expectedRevision: "revision-at-open" },
+      { instanceId: nextId, expectedRevision: null },
+    ]);
+  });
   it("only lists team runtime instances in stable id order", () => {
     expect(teamRuntimeInstancesFromSettings(baseSettings).map((entry) => entry.instanceId)).toEqual(
       ["team-b"],

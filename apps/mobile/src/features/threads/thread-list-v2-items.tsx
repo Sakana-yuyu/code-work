@@ -3,13 +3,23 @@ import type {
   EnvironmentThreadShell,
 } from "@codework/client-runtime/state/shell";
 import type { EnvironmentThreadSearchMatch } from "@codework/client-runtime/state/thread-search";
-import { canSnooze, resolveSnoozePresets } from "@codework/client-runtime/state/thread-settled";
+import {
+  canSnooze,
+  resolveSnoozePresets,
+  snoozeWakeLabelKey,
+} from "@codework/client-runtime/state/thread-settled";
 import { serverSessionErrorTranslation } from "@codework/client-runtime/errors";
 
 /** 服务端 lastError 为英文原句；已知句子展示前翻译，未知原样透传。 */
 function sessionErrorMessage(message: string): string {
   const known = serverSessionErrorTranslation(message);
   return known === null ? message : t(known.key, known.params);
+}
+
+/** 时长标签（"2h"）与语言无关原样透传；"now" 是共享英文文案，翻译渲染。 */
+function snoozeWakeDisplayLabel(label: string): string {
+  const key = snoozeWakeLabelKey(label);
+  return key === null ? label : t(key);
 }
 import type { MenuAction } from "@react-native-menu/menu";
 import { memo, useCallback, useEffect, useMemo, useState, type ComponentProps } from "react";
@@ -915,7 +925,7 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
             style={{ fontFamily: MONO_FONT }}
           >
             {snoozedRow && props.snoozeWakeLabelText !== undefined
-              ? props.snoozeWakeLabelText
+              ? snoozeWakeDisplayLabel(props.snoozeWakeLabelText)
               : relativeTime(thread.latestUserMessageAt ?? thread.updatedAt ?? thread.createdAt)}
           </Text>
         </View>

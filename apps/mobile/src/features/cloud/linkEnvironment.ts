@@ -436,7 +436,7 @@ export function cloudEnvironmentsPendingStatus(
   return environments.map((environment) => ({
     environment,
     status: null,
-    statusError: "Checking status...",
+    statusError: t("cloud.checkingStatus"),
   }));
 }
 

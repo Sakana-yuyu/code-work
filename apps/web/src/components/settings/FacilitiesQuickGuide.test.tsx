@@ -12,6 +12,8 @@ import { t } from "~/i18n";
 
 import {
   FacilitiesQuickGuide,
+  closeGuideOnEscape,
+  guideStepAdvancesOnClick,
   type FacilitiesGuideConcept,
   type FacilitiesGuideStep,
 } from "./FacilitiesQuickGuide";
@@ -37,6 +39,26 @@ const concepts: ReadonlyArray<FacilitiesGuideConcept> = [
 ];
 
 describe("FacilitiesQuickGuide", () => {
+  it("Esc 只关闭引导，输入步骤不会因点击预填值自动推进", () => {
+    const event = {
+      key: "Escape",
+      defaultPrevented: false,
+      preventDefault: vi.fn(),
+      stopPropagation: vi.fn(),
+    };
+    const close = vi.fn();
+    closeGuideOnEscape(event as unknown as KeyboardEvent, close);
+    expect(close).toHaveBeenCalledOnce();
+    expect(event.preventDefault).toHaveBeenCalledOnce();
+    expect(event.stopPropagation).toHaveBeenCalledOnce();
+    closeGuideOnEscape({ ...event, defaultPrevented: true } as unknown as KeyboardEvent, close);
+    expect(close).toHaveBeenCalledOnce();
+    closeGuideOnEscape({ ...event, isComposing: true } as unknown as KeyboardEvent, close);
+    expect(close).toHaveBeenCalledOnce();
+    expect(guideStepAdvancesOnClick({ ...steps[0]!, advanceOn: "input" })).toBe(false);
+    expect(guideStepAdvancesOnClick({ ...steps[0]!, advanceOn: "manual" })).toBe(false);
+    expect(guideStepAdvancesOnClick(steps[0]!)).toBe(true);
+  });
   afterEach(() => {
     vi.unstubAllGlobals();
   });

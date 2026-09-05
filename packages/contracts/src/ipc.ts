@@ -185,6 +185,28 @@ export const DesktopAppBrandingSchema = Schema.Struct({
   displayName: Schema.String,
 });
 
+export interface DesktopTrayRecentItem {
+  environmentId: string;
+  projectId: string;
+  threadId: string;
+  projectTitle: string;
+  threadTitle: string;
+  updatedAt: string;
+  isRunning: boolean;
+  isPinned: boolean;
+}
+
+export const DesktopTrayRecentItemSchema = Schema.Struct({
+  environmentId: Schema.String,
+  projectId: Schema.String,
+  threadId: Schema.String,
+  projectTitle: Schema.String,
+  threadTitle: Schema.String,
+  updatedAt: Schema.String,
+  isRunning: Schema.Boolean,
+  isPinned: Schema.Boolean,
+});
+
 export interface DesktopRuntimeInfo {
   hostArch: DesktopRuntimeArch;
   appArch: DesktopRuntimeArch;
@@ -1143,6 +1165,8 @@ export interface DesktopBridge {
    * builds lack it; callers fall back to VS Code only.
    */
   probeRemoteEditors?: () => Promise<readonly EditorId[]>;
+  /** Optional while older desktop shells can host a newer web client. */
+  updateTrayRecents?: (items: readonly DesktopTrayRecentItem[]) => Promise<void>;
   onMenuAction: (listener: (action: string) => void) => () => void;
   /**
    * Hold-to-quit hint pushes: "down" when the quit shortcut is first pressed,

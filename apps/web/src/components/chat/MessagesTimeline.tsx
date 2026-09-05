@@ -1,4 +1,8 @@
 import {
+  deriveStableCanvasReferences,
+  type TimelineCanvasReferences,
+} from "./MessagesTimeline.logic";
+import {
   type CanvasReference,
   type EnvironmentId,
   type MessageId,
@@ -73,6 +77,8 @@ import {
 import { Button } from "../ui/button";
 import { LocalPluginTimelineRow } from "../localPlugins/LocalPluginTimelineRow";
 import type { EnabledLocalPluginTimelineEntry } from "~/localPlugins/adapters/localPluginTimelineAdapter";
+
+const EMPTY_LOCAL_PLUGIN_TIMELINE_ENTRIES: ReadonlyArray<EnabledLocalPluginTimelineEntry> = [];
 import { buildExpandedImagePreview, ExpandedImagePreview } from "./ExpandedImagePreview";
 import { ProposedPlanCard } from "./ProposedPlanCard";
 import { ChangedFilesCard } from "./ChangedFilesTree";
@@ -274,7 +280,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   onOpenCanvas = NOOP_OPEN_CANVAS,
   listRef,
   timelineEntries,
-  localPluginTimelineEntries = [],
+  localPluginTimelineEntries = EMPTY_LOCAL_PLUGIN_TIMELINE_ENTRIES,
   latestTurn,
   runningTurnId,
   turnDiffSummaryByAssistantMessageId,
@@ -452,20 +458,13 @@ export const MessagesTimeline = memo(function MessagesTimeline({
     ],
   );
   const rows = useStableRows(rawRows);
+  const canvasState = useRef<TimelineCanvasReferences>({
+    canvasReferences: [],
+    canvasReferencesByTurnId: new Map(),
+  });
   const { canvasReferences, canvasReferencesByTurnId } = useMemo(() => {
-    const references = new Map<string, CanvasReference>();
-    const referencesByTurnId = new Map<TurnId, CanvasReference>();
-    for (const timelineEntry of timelineEntries) {
-      if (timelineEntry.kind !== "work" || timelineEntry.entry.canvas === undefined) continue;
-      references.set(timelineEntry.entry.canvas.relativePath, timelineEntry.entry.canvas);
-      if (timelineEntry.entry.turnId !== undefined && timelineEntry.entry.turnId !== null) {
-        referencesByTurnId.set(timelineEntry.entry.turnId, timelineEntry.entry.canvas);
-      }
-    }
-    return {
-      canvasReferences: [...references.values()],
-      canvasReferencesByTurnId: referencesByTurnId,
-    };
+    canvasState.current = deriveStableCanvasReferences(timelineEntries, canvasState.current);
+    return canvasState.current;
   }, [timelineEntries]);
   const minimapItems = useMemo(() => deriveTimelineMinimapItems(rows), [rows]);
   const [timelineViewportElement, setTimelineViewportElement] = useState<HTMLDivElement | null>(
@@ -1193,7 +1192,7 @@ function UserTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "message" 
       <div className="relative max-w-[80%] rounded-2xl bg-message p-3 text-message-foreground">
         {messageContent}
       </div>
-      <div className="flex w-full max-w-[80%] items-center justify-end pe-1 text-xs tabular-nums opacity-0 transition-opacity duration-200 focus-within:opacity-100 group-hover:opacity-100">
+      <div className="flex w-full max-w-[80%] items-center justify-end pe-1 text-xs tabular-nums opacity-0 pointer-coarse:opacity-100 transition-opacity duration-200 focus-within:opacity-100 group-hover:opacity-100">
         <div className="flex shrink-0 items-center gap-2">
           <Tooltip>
             <TooltipTrigger render={<p className="text-muted-foreground text-xs tabular-nums" />}>
@@ -1372,7 +1371,7 @@ function AssistantTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "mess
           onOpenTurnDiff={ctx.onOpenTurnDiff}
         />
         {row.showAssistantMeta ? (
-          <div className="mt-1.5 flex items-center gap-2 text-xs tabular-nums opacity-0 transition-opacity duration-200 focus-within:opacity-100 group-hover/assistant:opacity-100">
+          <div className="mt-1.5 flex items-center gap-2 text-xs tabular-nums opacity-0 pointer-coarse:opacity-100 transition-opacity duration-200 focus-within:opacity-100 group-hover/assistant:opacity-100">
             <AssistantCopyButton row={row} />
             {!row.message.streaming && (
               <Tooltip>

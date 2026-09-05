@@ -141,6 +141,36 @@ export const transitionSpecWorkflowState = (
   }
 
   switch (command.type) {
+    case "complete-node":
+      if (state.status !== "active" || state.activeTaskId !== null) {
+        return reject(
+          "gate-blocked",
+          "当前工作流不可修改文档节点，请等待任务结束或恢复工作流。",
+          state.stage,
+        );
+      }
+      if (
+        (command.node === "propose" || command.node === "design" || command.node === "revise") &&
+        state.tbdCount > 0
+      ) {
+        return reject("gate-blocked", "尚有未决需求，请先澄清再完成方案或设计。", state.stage);
+      }
+      return withRevision(
+        state,
+        now,
+        {
+          stage:
+            command.node === "propose" || command.node === "revise"
+              ? "awaitingApproval"
+              : command.node,
+          proposalStatus: "pending",
+          implementationCompleted: false,
+          verificationStatus: "pending",
+          acceptanceStatus: "pending",
+          lastError: null,
+        },
+        "complete-node",
+      );
     case "advance":
       if (!isSpecWorkflowStageAllowed(state, command.to)) {
         return reject(

@@ -241,7 +241,10 @@ function AccessScopeSummary({
   readonly scopes: ReadonlyArray<AuthEnvironmentScope>;
   readonly label: string;
 }) {
-  const scopeCountLabel = `${scopes.length} ${scopes.length === 1 ? "scope" : "scopes"}`;
+  const scopeCountLabel = t("connections.scopeCount", {
+    count: scopes.length,
+    countValue: scopes.length,
+  });
 
   return (
     <Popover>
@@ -3113,7 +3116,7 @@ export function ConnectionsSettings() {
                   primaryServerUpdateState.status !== "running" ? (
                     <ServerUpdateAction
                       environmentId={primaryEnvironmentId}
-                      serverLabel={primaryEnvironment?.label ?? "this server"}
+                      serverLabel={primaryEnvironment?.label ?? t("environment.thisServer")}
                       selfUpdate={resolveServerSelfUpdateCapability(primaryServerConfig)}
                       targetVersion={primaryVersionMismatch.clientVersion}
                       label={

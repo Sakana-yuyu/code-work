@@ -95,7 +95,7 @@ export function useThreadActionMenu(input: {
     onError: (error) => failureToast(t("failedToCopyPath"), error),
   });
   const { copyToClipboard: copyBranchToClipboard } = useCopyToClipboard<{ branch: string }>({
-    target: "branch name",
+    target: t("clipboard.targetBranchName"),
     onCopy: ({ branch }) => {
       toastManager.add({ type: "success", title: t("branchCopied"), description: branch });
     },

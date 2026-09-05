@@ -12,6 +12,10 @@ Common reasons:
 
 ## I Only Use One Codex Account
 
+也可以在 **设置 → 供应商 → Codex → 配置 → 连接与登录** 中选择“原生账号”，点击“通过 CLI 登录”。远程服务器可使用“Codex 设备码登录”，在自己的浏览器完成官方授权；账号或组织可能需要先允许设备码登录。
+
+登录使用此实例配置的可执行文件和认证目录。配置了 Shadow home 时，凭据写入该独立认证目录，不覆盖共享账号。关闭登录窗口会取消这次进程并清理终端记录；断线后的登录进程最多保留 10 分钟，不会自动注销已登录的账号。
+
 Use the default provider.
 
 In Settings, your Codex provider can stay like this:
@@ -106,6 +110,12 @@ Use display names and accent colors to make accounts easy to tell apart in the m
 
 ## I Need A Different API Key Or Endpoint
 
+在“连接与登录”中选择 **URL / API Key**，填写基础地址和密钥后保存。地址必须支持 **OpenAI Responses API**；只有 Chat Completions 的渠道不能直接供 Codex 使用。密钥通过服务器密钥存储和子进程环境传递，不写入启动参数或全局 Codex 配置。已保存的密钥留空即可保留。
+
+若要与其他 CLI 复用渠道，选择 **共享模型渠道**：可直接在当前页面编辑共享模型服务的 URL、密钥和模型。共享渠道的编辑会影响其他使用者；不同供应商的 OAuth 账号不会互相转换。
+
+修改连接会重建供应商实例，请先等待运行中的任务结束。保存成功不等于上游额度、模型权限或协议已经验证；刷新状态检查本地 CLI，再通过一次实际对话确认上游可用。需要其他环境变量时，原来的配置入口仍然保留。
+
 Use the provider's Environment variables section in Settings.
 
 This is useful when a Codex-compatible setup needs account-specific variables. Add the variables to
@@ -154,3 +164,16 @@ Use a totally separate `CODEX_HOME path` only when you want a separate Codex wor
 
 That means separate sessions and less account switching inside old threads. Most dual-account users
 should use the shared-home plus shadow-home setup instead.
+
+## 原生代码审查
+
+在 Codex 对话中输入 `/`，选择 **review · 使用 Codex 审查代码变更**，然后发送：
+
+- `/review`：审查当前项目未提交的变更。
+- `/review 检查权限校验与并发处理`：按指定要求审查；也可以在要求中注明分支或提交。
+
+这会调用 Codex 的原生审查模式，不是把命令作为普通聊天提示发送。审查在当前对话中运行，结论保留在对话里，可以使用原来的停止按钮中断。开启 Goal 或工作流时，审查命令仍会原样传递；审查本身不会宣告目标完成。
+
+审查使用 Codex 当前会话的原生配置（包括可选的 `review_model`），不会用本次发送的思考强度或快速模式覆盖审查器。此入口不接受附件，请先移除附件；要讨论图片，请发普通消息。不支持原生审查的旧版 CLI 会返回错误，需要在供应商设置中更新 CLI。
+
+审查会调用模型并消耗当前供应商额度；没有自动提交、推送或修复代码的附加操作。Web、桌面和移动端共享同一个命令入口与结果。

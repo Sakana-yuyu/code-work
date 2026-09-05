@@ -1,9 +1,12 @@
 export const en: Record<string, string> = {
   "app.failedToStart": "Code Work failed to start",
+  "app.startupFailureBody": "Stage: {{stage}}\n{{message}}{{detail}}",
   "updates.unknownErrorDetail": "An unknown error occurred. Please try again later.",
   "wsl.connecting": "Connecting to WSL…",
   "wsl.defaultDistroLabel": "WSL (default distro)",
   "backend.localEnvironment": "Local environment",
+  "backend.localEnvNotConfigured": "Local backend is not configured.",
+  "backend.localEnvSessionFailed": "Failed to create the local desktop bearer session.",
   "wsl.backendStillUnavailable": "WSL backend is still unavailable",
   "wsl.stillUnavailableBody":
     "{{reason}}\n\nCode Work will use the Windows backend for this launch and retry WSL the next time the app starts.",
@@ -43,6 +46,15 @@ export const en: Record<string, string> = {
     'WSL server dependencies could not be loaded (for example "node-pty"). The native packages the server needs are not unpacked where the WSL distro\'s Node can read them — this is a packaging problem with this build. Please report it.',
   "wsl.preflight.bundledBinaryNotLoaded":
     "The bundled WSL backend binary (node-pty) could not be loaded in this distro. This usually means an unsupported CPU architecture or incompatible system libraries (glibc). Use a glibc-based x64/arm64 WSL distro such as Ubuntu; if you already are, please report this with your distro and the output of `uname -m`.",
+  "wsl.preflight.reason.wslpathFailed": "wslpath conversion failed for {{path}}",
+  "wsl.preflight.reason.missingServerEntry": "missing server entry at {{path}}",
+  "wsl.preflight.reason.ptyBuildFailed":
+    "node-pty Linux build failed (exit {{exitCode}}): {{tail}}",
+  "wsl.preflight.reason.noStderr": "no stderr captured",
+  "wsl.preflight.reason.distroListFailed": "wsl.exe --list --verbose exited with code {{exitCode}}",
+  "wsl.preflight.reason.distroListError": "Failed to run wsl.exe --list --verbose: {{message}}",
+  "wsl.preflight.reason.extractFailed":
+    "WSL server files could not be extracted to {{versionDir}}: {{detail}}",
   "updates.disabledReason.noFeed":
     "Automatic updates are not available because no update feed is configured.",
   "updates.disabledReason.notPackaged":
@@ -51,6 +63,17 @@ export const en: Record<string, string> = {
     "Automatic updates are disabled by the CODEWORK_DISABLE_AUTO_UPDATE setting.",
   "updates.disabledReason.linuxAppImage":
     "Automatic updates on Linux require running the AppImage build.",
+  "updates.checkFailedReason":
+    "Electron updater failed to check for updates on channel {{channel}}.",
+  "updates.downloadFailedReason":
+    "Electron updater failed to download the update on channel {{channel}}.",
+  "updates.installFailedReason":
+    "Electron updater failed to quit and install the update on channel {{channel}} (silent: {{isSilent}}, force run after: {{isForceRunAfter}}).",
+  "updates.channelChangeInProgress":
+    "Cannot change the desktop update channel to {{requestedChannel}} while an update {{action}} action is in progress.",
+  "updates.channelPersistFailed": "Failed to persist the {{channel}} desktop update channel.",
+  "updates.updaterReportedError": "Desktop updater {{operation}} operation reported an error.",
+  "updates.unexpectedActionFailure": "Desktop update {{action}} action failed unexpectedly.",
   "pick.expandEditor": "Expand annotation editor",
   "pick.collapseEditor": "Collapse annotation editor",
   "pick.describeChange": "Describe the change…",
@@ -129,14 +152,41 @@ export const en: Record<string, string> = {
   zoomIn: "Zoom In",
   zoomOut: "Zoom Out",
   "interface.ssh-authentication-cancelled": "SSH authentication cancelled.",
+  "ssh.remoteApiRequestFailed":
+    "SSH remote API request failed during {{operation}} (HTTP {{status}}).",
+  "ssh.secureRandomnessUnavailable": "Secure randomness is unavailable.",
+  "ssh.windowUnavailableForAuth": "Code Work window is not available for SSH authentication.",
+  "ssh.authTimedOut": "SSH authentication timed out for {{destination}}.",
+  "ssh.authCancelled": "SSH authentication cancelled for {{destination}}.",
+  "ssh.authWindowClosed": "SSH authentication was cancelled because the app window closed.",
+  "ssh.promptServiceStopped": "SSH password prompt service stopped.",
+  "linux.secretStorage.gnomeKeyringUnavailable":
+    "Code Work could not access GNOME Keyring to save this environment credential. Install and start GNOME Keyring, then restart Code Work.",
+  "linux.secretStorage.kwalletUnavailable":
+    "Code Work could not access KWallet to save this environment credential. Enable the KDE wallet subsystem in System Settings, then restart Code Work.",
+  "tray.openCodeWork": "Open Code Work",
+  "tray.newChat": "New Chat",
+  "tray.sendFeedback": "Send Feedback",
+  "tray.more": "More",
+  "tray.running": "Running",
+  "tray.pinned": "Pinned",
+  "tray.recentConversations": "Recent Conversations",
+  "tray.moreRecentConversations": "More Recent Conversations",
+  "tray.noRecentConversations": "No recent conversations",
+  "tray.quit": "Quit Code Work",
+  "tray.project": "Project",
+  "tray.conversation": "Conversation",
 };
 
 export const zhCN: Record<string, string> = {
   "app.failedToStart": "Code Work 启动失败",
+  "app.startupFailureBody": "阶段：{{stage}}\n{{message}}{{detail}}",
   "updates.unknownErrorDetail": "发生未知错误，请稍后重试。",
   "wsl.connecting": "正在连接 WSL…",
   "wsl.defaultDistroLabel": "WSL（默认发行版）",
   "backend.localEnvironment": "本地环境",
+  "backend.localEnvNotConfigured": "本地后端未配置。",
+  "backend.localEnvSessionFailed": "创建本地桌面 Bearer 会话失败。",
   "wsl.backendStillUnavailable": "WSL 后端仍不可用",
   "wsl.stillUnavailableBody":
     "{{reason}}\n\n本次启动将使用 Windows 后端，并在下次启动应用时重试 WSL。",
@@ -175,11 +225,27 @@ export const zhCN: Record<string, string> = {
     '无法加载 WSL 服务器依赖（例如 "node-pty"）。服务器所需的原生包未解包到 WSL 发行版中 Node 可读取的位置——这是此构建的打包问题，请反馈该问题。',
   "wsl.preflight.bundledBinaryNotLoaded":
     "此发行版无法加载内置的 WSL 后端二进制文件（node-pty）。这通常意味着 CPU 架构不受支持或系统库（glibc）不兼容。请使用基于 glibc 的 x64/arm64 WSL 发行版（如 Ubuntu）；如果当前已是，请连同发行版名称和 `uname -m` 的输出一起反馈该问题。",
+  "wsl.preflight.reason.wslpathFailed": "{{path}} 的 wslpath 转换失败",
+  "wsl.preflight.reason.missingServerEntry": "在 {{path}} 缺少服务器条目",
+  "wsl.preflight.reason.ptyBuildFailed": "node-pty Linux 构建失败（退出码 {{exitCode}}）：{{tail}}",
+  "wsl.preflight.reason.noStderr": "未捕获到 stderr",
+  "wsl.preflight.reason.distroListFailed": "wsl.exe --list --verbose 退出码 {{exitCode}}",
+  "wsl.preflight.reason.distroListError": "运行 wsl.exe --list --verbose 失败：{{message}}",
+  "wsl.preflight.reason.extractFailed": "WSL 服务器文件无法解压到 {{versionDir}}：{{detail}}",
   "updates.disabledReason.noFeed": "自动更新不可用：尚未配置更新源。",
   "updates.disabledReason.notPackaged": "自动更新仅在打包的正式构建中可用。",
   "updates.disabledReason.disabledBySetting":
     "自动更新已被 CODEWORK_DISABLE_AUTO_UPDATE 设置禁用。",
   "updates.disabledReason.linuxAppImage": "在 Linux 上，自动更新需要以 AppImage 构建运行。",
+  "updates.checkFailedReason": "Electron 更新程序在 {{channel}} 频道检查更新失败。",
+  "updates.downloadFailedReason": "Electron 更新程序在 {{channel}} 频道下载更新失败。",
+  "updates.installFailedReason":
+    "Electron 更新程序在 {{channel}} 频道退出并安装更新失败（silent：{{isSilent}}，force run after：{{isForceRunAfter}}）。",
+  "updates.channelChangeInProgress":
+    "更新 {{action}} 操作进行期间，无法将桌面更新频道切换为 {{requestedChannel}}。",
+  "updates.channelPersistFailed": "保存 {{channel}} 桌面更新频道失败。",
+  "updates.updaterReportedError": "桌面更新程序 {{operation}} 操作报告了错误。",
+  "updates.unexpectedActionFailure": "桌面更新 {{action}} 操作意外失败。",
   "pick.expandEditor": "展开标注编辑器",
   "pick.collapseEditor": "收起标注编辑器",
   "pick.describeChange": "描述要做的修改…",
@@ -257,4 +323,216 @@ export const zhCN: Record<string, string> = {
   zoomIn: "放大",
   zoomOut: "缩小",
   "interface.ssh-authentication-cancelled": "SSH 认证已取消。",
+  "ssh.remoteApiRequestFailed": "SSH 远程 API 请求在 {{operation}} 期间失败（HTTP {{status}}）。",
+  "ssh.secureRandomnessUnavailable": "安全随机数不可用。",
+  "ssh.windowUnavailableForAuth": "Code Work 窗口不可用，无法进行 SSH 认证。",
+  "ssh.authTimedOut": "到 {{destination}} 的 SSH 认证已超时。",
+  "ssh.authCancelled": "到 {{destination}} 的 SSH 认证已取消。",
+  "ssh.authWindowClosed": "应用窗口已关闭，SSH 认证已取消。",
+  "ssh.promptServiceStopped": "SSH 密码提示服务已停止。",
+  "linux.secretStorage.gnomeKeyringUnavailable":
+    "Code Work 无法访问 GNOME Keyring 来保存此环境凭据。请安装并启动 GNOME Keyring，然后重启 Code Work。",
+  "linux.secretStorage.kwalletUnavailable":
+    "Code Work 无法访问 KWallet 来保存此环境凭据。请在系统设置中启用 KDE 钱包子系统，然后重启 Code Work。",
+  "tray.openCodeWork": "打开 Code Work",
+  "tray.newChat": "新建聊天",
+  "tray.sendFeedback": "发送反馈",
+  "tray.more": "更多",
+  "tray.running": "运行中",
+  "tray.pinned": "已置顶",
+  "tray.recentConversations": "最近对话",
+  "tray.moreRecentConversations": "更多最近对话",
+  "tray.noRecentConversations": "暂无最近对话",
+  "tray.quit": "退出 Code Work",
+  "tray.project": "项目",
+  "tray.conversation": "对话",
+};
+
+/** Japanese catalog. Keys missing here fall back to English at runtime. */
+export const ja: Record<string, string> = {
+  "app.failedToStart": "Code Work を起動できませんでした",
+  "app.startupFailureBody": "ステージ: {{stage}}\n{{message}}{{detail}}",
+  "updates.unknownErrorDetail":
+    "不明なエラーが発生しました。しばらくしてからもう一度お試しください。",
+  "wsl.connecting": "WSL に接続しています…",
+  "wsl.defaultDistroLabel": "WSL(既定のディストリビューション)",
+  "backend.localEnvironment": "ローカル環境",
+  "backend.localEnvNotConfigured": "ローカルバックエンドが設定されていません。",
+  "backend.localEnvSessionFailed": "ローカルデスクトップベアラーセッションの作成に失敗しました。",
+  "wsl.backendStillUnavailable": "WSL バックエンドはまだ利用できません",
+  "wsl.stillUnavailableBody":
+    "{{reason}}\n\n今回の起動では Windows バックエンドを使用し、次回のアプリ起動時に WSL を再試行します。",
+  "wsl.backendCouldNotStart": "WSL バックエンドを起動できませんでした",
+  "wsl.couldNotStartBody":
+    "{{reason}}\n\nCode Work を開けるよう、Windows バックエンドへフォールバックします。WSL ディストリビューションを修復した後、設定 > 接続 から WSL バックエンドを再度有効にしてください。",
+  "wsl.preflight.unavailable": "このシステムでは WSL を利用できません",
+  "wsl.preflight.listFailed": "WSL ディストリビューションの一覧を取得できません: {{message}}",
+  "wsl.preflight.distroNotInstalled":
+    "WSL ディストリビューションがインストールされていません: {{distro}}",
+  "wsl.preflight.noDistros": "WSL にインストール済みのディストリビューションがありません",
+  "wsl.preflight.noDefaultDistro": "WSL に既定のディストリビューションがありません",
+  "wsl.preflight.nodePtyUnavailable": "WSL の node-pty を利用できません: {{reason}}",
+  "wsl.preflight.probeTimeout":
+    "WSL バックエンドのプリフライトが Node.js の検出中にタイムアウトしました。WSL の起動に時間がかかっている可能性があります。再試行するか、ディストリビューションが正常であることを確認してください。",
+  "wsl.preflight.probeSpawnFailed":
+    "WSL バックエンドのプリフライトで、Node.js を検出するための wsl.exe を起動できませんでした。WSL がインストール済みで、ディストリビューションにアクセスできるか確認してください。",
+  "wsl.preflight.probeLostContact":
+    "WSL バックエンドのプリフライトが、Node.js の検出中に wsl.exe との通信を失いました。再試行するか、ディストリビューションが正常であることを確認してください。",
+  "wsl.preflight.missingTools":
+    "WSL ディストリビューションに必要なツールがありません: {{issues}}。{{remediations}} をインストールしてから、再試行してください。",
+  "wsl.preflight.issueNodeRange": "node {{version}}({{range}} が必要)",
+  "wsl.preflight.remediationNodeVersion": "`{{range}}` を満たす Node.js(nvm 経由など)",
+  "wsl.preflight.remediationNodeDefault": "Node.js 18 以降(nvm 経由など)",
+  "wsl.preflight.remediationNewerNode":
+    "`{{range}}` を満たすより新しい Node.js(例: `nvm install 24 && nvm alias default 24`)",
+  "wsl.preflight.remediationBuildTools":
+    "ビルドツールチェーン(Ubuntu/Debian の場合は `sudo apt install -y build-essential python3` など)",
+  "wsl.preflight.nodeNotFound":
+    "WSL ディストリビューション内に Node.js が見つかりませんでした。Node.js をインストールし(nvm 経由など)、デスクトップアプリを再起動してください。",
+  "wsl.preflight.loginShellPathFailed":
+    "バックエンドのプリフライト中に、WSL ログインシェルの PATH を解決できませんでした。",
+  "wsl.preflight.nodeVersionRange":
+    "WSL の Node.js {{version}} は、サーバーが要求するエンジン範囲({{range}})を満たしていません。互換性のあるバージョンをインストールし、デスクトップアプリを再起動してください。",
+  "wsl.preflight.prebuildMissing":
+    "この Code Work ビルドには WSL サポートが含まれていません: パッケージ済みの Linux 用 node-pty バイナリが同梱されていません。`--wsl-prebuild <path-to-linux-pty.node>` を指定して Windows アーティファクトを再ビルドするか、WSL サポートを含むビルドをインストールしてください。",
+  "wsl.preflight.dependenciesNotLoaded":
+    'WSL サーバーの依存関係を読み込めませんでした(例: "node-pty")。サーバーが必要とするネイティブパッケージが、WSL ディストリビューションの Node が読み取れる場所に展開されていません。これはこのビルドのパッケージング上の問題です。この問題を報告してください。',
+  "wsl.preflight.bundledBinaryNotLoaded":
+    "同梱の WSL バックエンドバイナリ(node-pty)をこのディストリビューションで読み込めませんでした。通常は、サポート対象外の CPU アーキテクチャか、互換性のないシステムライブラリ(glibc)が原因です。Ubuntu など glibc ベースの x64/arm64 WSL ディストリビューションを使用してください。すでに使用している場合は、使用中のディストリビューションと `uname -m` の出力を添えて報告してください。",
+  "wsl.preflight.reason.wslpathFailed": "{{path}} の wslpath 変換に失敗しました",
+  "wsl.preflight.reason.missingServerEntry": "{{path}} にサーバーエントリがありません",
+  "wsl.preflight.reason.ptyBuildFailed":
+    "node-pty Linux ビルドに失敗しました(終了コード {{exitCode}}): {{tail}}",
+  "wsl.preflight.reason.noStderr": "stderr を取得できませんでした",
+  "wsl.preflight.reason.distroListFailed":
+    "wsl.exe --list --verbose が終了コード {{exitCode}} で終了しました",
+  "wsl.preflight.reason.distroListError":
+    "wsl.exe --list --verbose の実行に失敗しました: {{message}}",
+  "wsl.preflight.reason.extractFailed":
+    "WSL サーバーファイルを {{versionDir}} に展開できませんでした: {{detail}}",
+  "updates.disabledReason.noFeed":
+    "アップデートフィードが設定されていないため、自動アップデートは利用できません。",
+  "updates.disabledReason.notPackaged":
+    "自動アップデートは、パッケージ化された本番ビルドでのみ利用できます。",
+  "updates.disabledReason.disabledBySetting":
+    "CODEWORK_DISABLE_AUTO_UPDATE の設定により、自動アップデートは無効になっています。",
+  "updates.disabledReason.linuxAppImage":
+    "Linux で自動アップデートを行うには、AppImage ビルドの実行が必要です。",
+  "updates.checkFailedReason":
+    "Electron アップデーターがチャンネル {{channel}} のアップデート確認に失敗しました。",
+  "updates.downloadFailedReason":
+    "Electron アップデーターがチャンネル {{channel}} のアップデートのダウンロードに失敗しました。",
+  "updates.installFailedReason":
+    "Electron アップデーターがチャンネル {{channel}} で終了してアップデートをインストールする際に失敗しました(silent: {{isSilent}}, force run after: {{isForceRunAfter}})。",
+  "updates.channelChangeInProgress":
+    "アップデートの {{action}} アクションが進行中の間は、デスクトップのアップデートチャンネルを {{requestedChannel}} に変更できません。",
+  "updates.channelPersistFailed":
+    "{{channel}} デスクトップアップデートチャンネルを保存できませんでした。",
+  "updates.updaterReportedError":
+    "デスクトップアップデーターの {{operation}} 操作がエラーを報告しました。",
+  "updates.unexpectedActionFailure":
+    "デスクトップアップデートの {{action}} アクションが予期せず失敗しました。",
+  "pick.expandEditor": "注釈エディターを展開",
+  "pick.collapseEditor": "注釈エディターを折りたたむ",
+  "pick.describeChange": "変更内容を入力…",
+  "pick.dragEditor": "注釈エディターをドラッグ",
+  "pick.attach": "添付",
+  "pick.attachTooltip": "注釈とスクリーンショットを添付(Enter)",
+  "pick.capturing": "キャプチャ中…",
+  "pick.styleValue": "スタイル値",
+  "pick.colorValueAria": "{{label}} の値",
+  "pick.font": "フォント",
+  "pick.fontSize": "フォントサイズ",
+  "pick.fontWeight": "フォントの太さ",
+  "pick.lineHeight": "行間",
+  "pick.textColor": "テキストの色",
+  "pick.background": "背景",
+  "pick.opacity": "不透明度",
+  "pick.radius": "角丸",
+  "pick.borderColor": "枠線の色",
+  "pick.borderWidth": "枠線の幅",
+  "pick.width": "幅",
+  "pick.height": "高さ",
+  "pick.lockAspectRatio": "縦横比を固定",
+  "pick.padding": "パディング",
+  "pick.margin": "マージン",
+  "pick.gap": "ギャップ",
+  "pick.tool.select": "選択",
+  "pick.tool.selectTooltip": "要素を選択(V)",
+  "pick.tool.region": "領域",
+  "pick.tool.regionTooltip": "領域を描画、または要素を範囲選択(R)",
+  "pick.tool.draw": "描画",
+  "pick.tool.drawTooltip": "フリーハンドで描画(D)",
+  "pick.tool.erase": "消去",
+  "pick.tool.eraseTooltip": "注釈対象を削除(E)",
+  actualSize: "実際のサイズ",
+  automaticUpdatesAreNotAvailableRightNow: "現在、自動アップデートは利用できません。",
+  backendChildProcessFailureOutputEnd: "バックエンド子プロセスの失敗出力の終了",
+  backendChildProcessFailureOutputStart: "バックエンド子プロセスの失敗出力の開始",
+  backendChildProcessOutput: "バックエンド子プロセスの出力",
+  browserPreview: "ブラウザープレビュー",
+  "byokAdapters.supplierCustom": "カスタムエンドポイント",
+  checkForUpdates: "アップデートを確認...",
+  codeWorkDesktop: "Code Work Desktop",
+  codeWorkIsCurrentlyTheNewestVersionAvailable:
+    "Code Work {{currentVersion}} が現在利用できる最新バージョンです。",
+  copyImage: "画像をコピー",
+  copyLink: "リンクをコピー",
+  couldNotCheckForUpdates: "アップデートを確認できませんでした。",
+  customHttps: "カスタム HTTPS",
+  desktop: "デスクトップ",
+  file: "ファイル",
+  httpsEndpointServedByTailscaleServe: "Tailscale Serve が提供する HTTPS エンドポイントです。",
+  localNetwork: "ローカルネットワーク",
+  loopbackEndpointForThisDesktopApp: "このデスクトップアプリのループバックエンドポイントです。",
+  magicdnsHostnameConfigureTailscaleServeForHttpsAccess:
+    "MagicDNS ホスト名です。HTTPS アクセスには Tailscale Serve を設定してください。",
+  manual: "手動",
+  noLoopbackPortAvailableForWslBackendBetweenAnd:
+    "{{startPort}} から {{MAX_TCP_PORT}} の範囲に、WSL バックエンド用のループバックポートがありません。",
+  noSuggestions: "候補がありません",
+  preview: "プレビュー · {{title}}",
+  reachableFromDevicesOnTheSameNetwork: "同じネットワーク上のデバイスからアクセスできます。",
+  reachableFromDevicesOnTheSameTailnet: "同じ Tailnet 上のデバイスからアクセスできます。",
+  settings: "設定...",
+  tailscale: "Tailscale",
+  tailscaleHttps: "Tailscale HTTPS",
+  tailscaleIp: "Tailscale IP",
+  thisMachine: "このマシン",
+  updateCheckFailed: "アップデートの確認に失敗しました",
+  updatesUnavailable: "アップデートを利用できません",
+  userConfiguredEndpointForThisDesktopBackend:
+    "このデスクトップバックエンド用にユーザーが設定したエンドポイントです。",
+  userConfiguredHttpsEndpointForThisDesktopBackend:
+    "このデスクトップバックエンド用にユーザーが設定した HTTPS エンドポイントです。",
+  view: "表示",
+  wsl: "WSL({{runningDistro}})",
+  youReUpToDate: "最新の状態です!",
+  zoomIn: "拡大",
+  zoomOut: "縮小",
+  "interface.ssh-authentication-cancelled": "SSH 認証がキャンセルされました。",
+  "ssh.remoteApiRequestFailed":
+    "SSH リモート API リクエストが {{operation}} 中に失敗しました（HTTP {{status}}）。",
+  "ssh.secureRandomnessUnavailable": "セキュアな乱数を利用できません。",
+  "ssh.windowUnavailableForAuth": "SSH 認証に Code Work のウィンドウを利用できません。",
+  "ssh.authTimedOut": "{{destination}} の SSH 認証がタイムアウトしました。",
+  "ssh.authCancelled": "{{destination}} の SSH 認証がキャンセルされました。",
+  "ssh.authWindowClosed": "アプリのウィンドウが閉じられたため、SSH 認証がキャンセルされました。",
+  "ssh.promptServiceStopped": "SSH パスワードプロンプトサービスが停止しました。",
+  "linux.secretStorage.gnomeKeyringUnavailable":
+    "Code Work がこの環境の認証情報を保存する際に GNOME Keyring にアクセスできませんでした。GNOME Keyring をインストールして起動し、Code Work を再起動してください。",
+  "linux.secretStorage.kwalletUnavailable":
+    "Code Work がこの環境の認証情報を保存する際に KWallet にアクセスできませんでした。システム設定で KDE ウォレットサブシステムを有効にし、Code Work を再起動してください。",
+  "tray.openCodeWork": "Code Work を開く",
+  "tray.newChat": "新規チャット",
+  "tray.sendFeedback": "フィードバックを送信",
+  "tray.more": "その他",
+  "tray.running": "実行中",
+  "tray.pinned": "ピン留め",
+  "tray.recentConversations": "最近の会話",
+  "tray.moreRecentConversations": "その他の最近の会話",
+  "tray.noRecentConversations": "最近の会話はありません",
+  "tray.quit": "Code Work を終了",
+  "tray.project": "プロジェクト",
+  "tray.conversation": "会話",
 };

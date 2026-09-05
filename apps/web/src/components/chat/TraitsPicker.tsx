@@ -33,6 +33,10 @@ import { cn } from "~/lib/utils";
 import { Badge } from "../ui/badge";
 import { ComposerControl, ComposerControlChevron, ComposerControlIcon } from "./ComposerControl";
 import { t } from "~/i18n";
+import { Popover, PopoverPopup, PopoverTrigger } from "../ui/popover";
+import { EffortSlider, effortOptionLabel } from "./EffortSlider";
+import { useClientSettings, useUpdateClientSettings } from "~/hooks/useSettings";
+import type { ClientSettings } from "@codework/contracts/settings";
 
 type ProviderOptions = ReadonlyArray<ProviderOptionSelection>;
 
@@ -186,6 +190,9 @@ function getTraitsSectionVisibility(input: {
   const showFastMode = selected.fastModeDescriptor !== null;
   const showContextWindow = selected.contextWindowDescriptor !== null;
   const showAgent = selected.agentDescriptor !== null;
+  const effortDescriptor = selected.selectDescriptors.find(
+    (descriptor) => descriptor.id === "reasoningEffort" || descriptor.id === "effort",
+  );
 
   return {
     ...selected,
@@ -194,6 +201,7 @@ function getTraitsSectionVisibility(input: {
     showFastMode,
     showContextWindow,
     showAgent,
+    effortDescriptor,
     hasAnyControls: showEffort || showThinking || showFastMode || showContextWindow || showAgent,
   };
 }
@@ -234,8 +242,11 @@ export const TraitsMenuContent = memo(function TraitsMenuContentImpl({
   modelOptions,
   allowPromptInjectedEffort = true,
   planModeEnabled,
+  compactEffort = false,
   ...persistence
-}: TraitsMenuContentProps & TraitsPersistence) {
+}: TraitsMenuContentProps & TraitsPersistence & { compactEffort?: boolean }) {
+  const labelLanguage = useClientSettings((settings) => settings.effortLabelLanguage);
+  const updateClientSettings = useUpdateClientSettings();
   const setProviderModelOptions = useComposerDraftStore((store) => store.setProviderModelOptions);
   const updateModelOptions = useCallback(
     (nextOptions: ProviderOptions | undefined) => {
@@ -263,6 +274,7 @@ export const TraitsMenuContent = memo(function TraitsMenuContentImpl({
     ultrathinkPromptControlled,
     ultrathinkInBodyText,
     hasAnyControls,
+    effortDescriptor,
   } = getTraitsSectionVisibility({
     provider,
     models,
@@ -301,7 +313,7 @@ export const TraitsMenuContent = memo(function TraitsMenuContentImpl({
     return null;
   }
 
-  return (
+  const optionsMenu = (
     <>
       {selectDescriptors.map((descriptor, index) => {
         const selectedValue =
@@ -314,7 +326,9 @@ export const TraitsMenuContent = memo(function TraitsMenuContentImpl({
             {index > 0 ? <MenuDivider /> : null}
             <MenuGroup>
               <div className="px-2 pt-1.5 pb-1 font-medium text-muted-foreground text-xs">
-                {descriptor.label}
+                {descriptor.id === effortDescriptor?.id
+                  ? t("effortPicker.label")
+                  : descriptor.label}
               </div>
               {ultrathinkInBodyText && descriptor.id === primarySelectDescriptor?.id ? (
                 <div className="px-2 pb-1.5 text-muted-foreground/80 text-xs">
@@ -337,8 +351,18 @@ export const TraitsMenuContent = memo(function TraitsMenuContentImpl({
                   >
                     <span className="flex w-full min-w-0 flex-col">
                       <span className="flex w-full min-w-0 items-center justify-between gap-3">
-                        <span className="min-w-0 truncate">
-                          {option.label}
+                        <span
+                          className={cn(
+                            "min-w-0 truncate",
+                            descriptor.id === effortDescriptor?.id &&
+                              option.id === selectedValue &&
+                              "effort-tone",
+                          )}
+                          data-effort={option.id}
+                        >
+                          {descriptor.id === effortDescriptor?.id
+                            ? effortOptionLabel(option, labelLanguage)
+                            : option.label}
                           {option.isDefault ? (
                             <>
                               {" "}
@@ -390,7 +414,77 @@ export const TraitsMenuContent = memo(function TraitsMenuContentImpl({
           </div>
         );
       })}
+      {effortDescriptor ? (
+        <>
+          <MenuDivider />
+          <MenuGroup>
+            <div className="px-2 py-1.5 text-xs font-medium text-muted-foreground">
+              {t("effortPicker.labelLanguage")}
+            </div>
+            <MenuRadioGroup
+              aria-label={t("effortPicker.labelLanguage")}
+              value={labelLanguage}
+              onValueChange={(value) => {
+                if (value === "en" || value === "zh-CN") {
+                  void updateClientSettings({ effortLabelLanguage: value });
+                }
+              }}
+            >
+              <MenuRadioItem value="zh-CN">中文</MenuRadioItem>
+              <MenuRadioItem value="en">English</MenuRadioItem>
+            </MenuRadioGroup>
+          </MenuGroup>
+        </>
+      ) : null}
     </>
+  );
+
+  if (!compactEffort || !effortDescriptor || effortDescriptor.options.length < 2) {
+    return optionsMenu;
+  }
+  const fastMode = booleanDescriptors.find((descriptor) => descriptor.id === "fastMode");
+  const serviceTier =
+    provider === "codex"
+      ? selectDescriptors.find((descriptor) => descriptor.id === "serviceTier")
+      : undefined;
+  const fastTier = serviceTier?.options.find((option) => option.label === "Fast");
+  const standardTier = serviceTier?.options.find((option) => option.id === "default");
+  const fastModeEnabled = fastMode
+    ? fastMode.currentValue === true
+    : fastTier !== undefined && getDescriptorStringValue(serviceTier ?? null) === fastTier.id;
+  const promptControlsEffort = effortDescriptor.id === primarySelectDescriptor?.id;
+
+  return (
+    <EffortSlider
+      descriptor={effortDescriptor}
+      labelLanguage={labelLanguage}
+      selectedValue={
+        ultrathinkPromptControlled && promptControlsEffort
+          ? "ultrathink"
+          : getDescriptorStringValue(effortDescriptor)
+      }
+      modelLabel={models.find((entry) => entry.slug === model)?.name ?? model ?? ""}
+      disabled={ultrathinkInBodyText && promptControlsEffort}
+      disabledReason={
+        ultrathinkInBodyText && promptControlsEffort
+          ? t("yourPromptContainsQuotUltrathinkQuotInTheTextRemoveItToChangeThisOption")
+          : undefined
+      }
+      fastModeEnabled={fastModeEnabled}
+      onFastModeChange={
+        fastMode
+          ? () =>
+              updateDescriptors(
+                replaceDescriptorCurrentValue(descriptors, fastMode.id, !fastModeEnabled),
+              )
+          : serviceTier && fastTier && standardTier
+            ? () => handleSelectChange(serviceTier, fastModeEnabled ? standardTier.id : fastTier.id)
+            : undefined
+      }
+      onValueChange={(value) => handleSelectChange(effortDescriptor, value)}
+    >
+      {optionsMenu}
+    </EffortSlider>
   );
 });
 
@@ -403,6 +497,7 @@ export const TraitsMenuContent = memo(function TraitsMenuContentImpl({
  * the trigger unreadable.
  */
 export function buildTraitsTriggerDisplay(input: {
+  labelLanguage?: ClientSettings["effortLabelLanguage"];
   provider: ProviderDriverKind;
   descriptors: ReadonlyArray<ProviderOptionDescriptor>;
   primarySelectDescriptorId: string | null;
@@ -432,12 +527,21 @@ export function buildTraitsTriggerDisplay(input: {
         continue;
       }
     }
+    const effortOption =
+      descriptor.type === "select" &&
+      (descriptor.id === "effort" || descriptor.id === "reasoningEffort")
+        ? descriptor.options.find(
+            (option) => option.id === getProviderOptionCurrentValue(descriptor),
+          )
+        : undefined;
     const label =
       input.ultrathinkPromptControlled && descriptor.id === input.primarySelectDescriptorId
         ? "Ultrathink"
         : descriptor.type === "boolean"
           ? `${descriptor.label} ${descriptor.currentValue === true ? "On" : "Off"}`
-          : getProviderOptionCurrentLabel(descriptor);
+          : effortOption
+            ? effortOptionLabel(effortOption, input.labelLanguage)
+            : getProviderOptionCurrentLabel(descriptor);
     if (typeof label === "string" && label.length > 0) {
       labels.push(label);
     }
@@ -467,7 +571,8 @@ export const TraitsPicker = memo(function TraitsPicker({
   ...persistence
 }: TraitsMenuContentProps & TraitsPersistence) {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
-  const { descriptors, primarySelectDescriptor, ultrathinkPromptControlled } =
+  const labelLanguage = useClientSettings((settings) => settings.effortLabelLanguage);
+  const { descriptors, primarySelectDescriptor, ultrathinkPromptControlled, effortDescriptor } =
     getTraitsSectionVisibility({
       provider,
       models,
@@ -492,6 +597,7 @@ export const TraitsPicker = memo(function TraitsPicker({
   }
 
   const { label: triggerLabel, showFastModeIcon } = buildTraitsTriggerDisplay({
+    labelLanguage,
     provider,
     descriptors,
     primarySelectDescriptorId: primarySelectDescriptor?.id ?? null,
@@ -511,15 +617,38 @@ export const TraitsPicker = memo(function TraitsPicker({
   ) : null;
 
   const isCodexStyle = provider === "codex";
+  const useSlider = effortDescriptor !== undefined && effortDescriptor.options.length > 1;
+  const effortValue =
+    ultrathinkPromptControlled && effortDescriptor?.id === primarySelectDescriptor?.id
+      ? "ultrathink"
+      : getDescriptorStringValue(effortDescriptor ?? null);
+  const labelClassName = cn("min-w-0 truncate", useSlider && "effort-tone min-w-[5.5ch]");
+  const Trigger = useSlider ? PopoverTrigger : MenuTrigger;
+  const Picker = useSlider ? Popover : Menu;
+  const content = (
+    <TraitsMenuContent
+      provider={provider}
+      {...(instanceId ? { instanceId } : {})}
+      models={models}
+      model={model}
+      prompt={prompt}
+      onPromptChange={onPromptChange}
+      modelOptions={modelOptions}
+      allowPromptInjectedEffort={allowPromptInjectedEffort}
+      planModeEnabled={planModeEnabled}
+      compactEffort={useSlider}
+      {...persistence}
+    />
+  );
 
   return (
-    <Menu
+    <Picker
       open={isMenuOpen}
       onOpenChange={(open) => {
         setIsMenuOpen(open);
       }}
     >
-      <MenuTrigger
+      <Trigger
         render={
           <ComposerControl
             variant={triggerVariant ?? "ghost"}
@@ -535,31 +664,35 @@ export const TraitsPicker = memo(function TraitsPicker({
         {isCodexStyle ? (
           <span className="flex min-w-0 w-full items-center gap-1.5 overflow-hidden">
             {fastModeIcon}
-            <span className="min-w-0 truncate">{triggerLabel}</span>
+            <span className={labelClassName} data-effort={effortValue}>
+              {triggerLabel}
+            </span>
             <ComposerControlChevron />
           </span>
         ) : (
           <>
             {fastModeIcon}
-            <span>{triggerLabel}</span>
+            <span className={labelClassName} data-effort={effortValue}>
+              {triggerLabel}
+            </span>
             <ComposerControlChevron />
           </>
         )}
-      </MenuTrigger>
-      <MenuPopup align="start">
-        <TraitsMenuContent
-          provider={provider}
-          {...(instanceId ? { instanceId } : {})}
-          models={models}
-          model={model}
-          prompt={prompt}
-          onPromptChange={onPromptChange}
-          modelOptions={modelOptions}
-          allowPromptInjectedEffort={allowPromptInjectedEffort}
-          planModeEnabled={planModeEnabled}
-          {...persistence}
-        />
-      </MenuPopup>
-    </Menu>
+      </Trigger>
+      {useSlider ? (
+        <PopoverPopup
+          side="top"
+          align="start"
+          sideOffset={8}
+          aria-label={t("effortPicker.label")}
+          className="effort-picker-popup rounded-2xl"
+          viewportClassName="p-3"
+        >
+          {content}
+        </PopoverPopup>
+      ) : (
+        <MenuPopup align="start">{content}</MenuPopup>
+      )}
+    </Picker>
   );
 });

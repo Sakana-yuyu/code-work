@@ -1,3 +1,5 @@
+import { t } from "./i18n.js";
+
 export type LinuxPasswordStorePreference =
   | "auto"
   | "gnome-libsecret"
@@ -112,11 +114,11 @@ export function resolveLinuxSecretStorageUnavailableMessage(input: {
 }
 
 function getGnomeKeyringRemediationMessage(): string {
-  return "Code Work could not access GNOME Keyring to save this environment credential. Install and start GNOME Keyring, then restart Code Work.";
+  return t("linux.secretStorage.gnomeKeyringUnavailable");
 }
 
 function getKWalletRemediationMessage(): string {
-  return "Code Work could not access KWallet to save this environment credential. Enable the KDE wallet subsystem in System Settings, then restart Code Work.";
+  return t("linux.secretStorage.kwalletUnavailable");
 }
 
 // Advisory only: this picks between the GNOME Keyring and KWallet wording in the failure notice. It

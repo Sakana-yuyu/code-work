@@ -41,6 +41,7 @@ import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import type { DriverOption } from "./providerDriverMeta";
 import { providerSettingsTabClassName } from "./providerSettingsTabs";
 import { ProviderSettingsForm } from "./ProviderSettingsForm";
+import { ProviderConnectionSection } from "./ProviderConnectionSection";
 import { ProviderModelsSection } from "./ProviderModelsSection";
 import {
   ByokModelAdaptersSection,
@@ -54,6 +55,7 @@ import {
   PROVIDER_STATUS_STYLES,
   getProviderSummary,
   getProviderVersionLabel,
+  isProviderInstallationDamaged,
   type ProviderStatusKey,
 } from "./providerStatus";
 import { t } from "~/i18n";
@@ -179,6 +181,7 @@ function nextConfigBlobWithValue(
 
 export interface ProviderInstallAffordance {
   readonly visible: boolean;
+  readonly isRepair: boolean;
   /** Latest install failure message, shown under the row status until the next attempt. */
   readonly errorMessage: string | null;
 }
@@ -201,6 +204,7 @@ export function resolveProviderInstallAffordance(input: {
     input.liveProvider.canInstall === true;
   return {
     visible,
+    isRepair: isProviderInstallationDamaged(input.liveProvider),
     errorMessage:
       input.liveProvider?.installState?.status === "failed"
         ? (input.liveProvider.installState.message ?? null)
@@ -467,6 +471,8 @@ interface ProviderInstanceCardProps {
   readonly guideTarget?: string | undefined;
   readonly readOnly?: boolean | undefined;
   readonly onUpdate: ProviderSettingsUpdate;
+  readonly onManageChannels?: (() => void) | undefined;
+  readonly sharedChannels?: ReactNode;
   /**
    * Pass `undefined` to hide the delete button entirely. Built-in default
    * instance slots use `undefined` — they can't be deleted without losing
@@ -525,6 +531,8 @@ export function ProviderInstanceCard({
   guideTarget,
   readOnly = false,
   onUpdate,
+  onManageChannels,
+  sharedChannels,
   onDelete,
   headerAction,
   hiddenModels,
@@ -588,6 +596,9 @@ export function ProviderInstanceCard({
     ? instance.driver
     : null;
   const visibleTab = driverOption === undefined ? "configuration" : activeTab;
+  const hasConnectionSection = ["codex", "claudeAgent", "grok", "opencode"].includes(
+    instance.driver,
+  );
 
   const customModels = readConfigStringArray(instance.config, "customModels");
   // Server-returned models may lag behind settings writes. Treat probe
@@ -743,7 +754,7 @@ export function ProviderInstanceCard({
       <div
         data-facilities-guide-target={guideTarget}
         className={cn(
-          "group relative flex min-h-16 items-center gap-3 border-b border-border/60 px-3 py-2.5 transition-colors last:border-b-0",
+          "group relative flex min-h-16 items-center gap-3 border-b border-border/60 px-3 py-2.5 transition-colors last:border-b-0 @max-xs/provider-list:flex-wrap",
           selected ? "bg-muted/50" : "hover:bg-muted/25",
         )}
       >
@@ -751,7 +762,7 @@ export function ProviderInstanceCard({
         <button
           type="button"
           className={cn(
-            "flex min-w-0 flex-1 cursor-pointer items-center gap-3 rounded-sm text-left outline-none transition-opacity focus-visible:ring-2 focus-visible:ring-ring",
+            "flex min-w-0 flex-1 cursor-pointer items-center gap-3 rounded-sm text-left outline-none transition-opacity focus-visible:ring-2 focus-visible:ring-ring @max-xs/provider-list:basis-[calc(100%-3rem)]",
             !enabled && !selected && "opacity-60 group-hover:opacity-100",
           )}
           onClick={onSelect}
@@ -761,7 +772,7 @@ export function ProviderInstanceCard({
           <span className="min-w-0 flex-1">
             <span className="flex min-w-0 items-center gap-2">
               <span className="truncate text-sm font-medium text-foreground">{displayName}</span>
-              {versionCodeNode}
+              <span className="@max-xs/provider-list:hidden">{versionCodeNode}</span>
             </span>
             <span className="mt-0.5 flex items-center gap-1.5 text-[11px] text-muted-foreground">
               <span className={cn("size-1.5 shrink-0 rounded-full", statusStyle.dot)} />
@@ -794,10 +805,17 @@ export function ProviderInstanceCard({
             variant="outline"
             disabled={isInstalling}
             data-provider-install={instanceId}
+            className="@max-xs/provider-list:order-3 @max-xs/provider-list:ml-8"
             onClick={onRunInstall}
           >
             {isInstalling ? <LoaderIcon className="animate-spin" /> : <DownloadIcon />}
-            {isInstalling ? t("providerInstalling") : t("providerInstallAction")}
+            {isInstalling
+              ? install.isRepair
+                ? t("providerRepairing")
+                : t("providerInstalling")
+              : install.isRepair
+                ? t("providerRepairAction")
+                : t("providerInstallAction")}
           </Button>
         ) : null}
         <Switch
@@ -964,6 +982,16 @@ export function ProviderInstanceCard({
         className={cn("px-4 py-5", readOnly && "opacity-50 select-none")}
       >
         <div className="space-y-5" hidden={visibleTab !== "configuration"}>
+          {hasConnectionSection && (
+            <ProviderConnectionSection
+              environmentId={environmentId}
+              instanceId={instanceId}
+              instance={instance}
+              onUpdate={onUpdate}
+              onManageChannels={onManageChannels}
+              sharedChannels={sharedChannels}
+            />
+          )}
           <div>
             <label htmlFor={`provider-instance-${instanceId}-display-name`} className="block">
               <span className="text-xs font-medium text-foreground">{t("displayName")}</span>
@@ -1011,6 +1039,7 @@ export function ProviderInstanceCard({
           {driverOption ? (
             <ProviderSettingsForm
               definition={driverOption}
+              hiddenFields={hasConnectionSection ? ["routeThroughByok"] : undefined}
               value={instance.config}
               idPrefix={`provider-instance-${instanceId}`}
               variant="card"

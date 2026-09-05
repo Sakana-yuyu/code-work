@@ -296,7 +296,7 @@ const runWslPreflight = Effect.fn("desktop.backendConfiguration.wslPreflight")(f
   if (!entryExists) {
     return {
       _tag: "Failed",
-      reason: `missing server entry at ${input.windowsEntryPath}`,
+      reason: t("wsl.preflight.reason.missingServerEntry", { path: input.windowsEntryPath }),
       fatal: true,
     } as const;
   }
@@ -305,7 +305,7 @@ const runWslPreflight = Effect.fn("desktop.backendConfiguration.wslPreflight")(f
   if (Option.isNone(linuxEntry)) {
     return {
       _tag: "Failed",
-      reason: `wslpath conversion failed for ${input.windowsEntryPath}`,
+      reason: t("wsl.preflight.reason.wslpathFailed", { path: input.windowsEntryPath }),
       fatal: false,
     } as const;
   }

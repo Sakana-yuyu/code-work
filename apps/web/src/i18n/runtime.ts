@@ -3,6 +3,7 @@ import type { LanguagePreference } from "@codework/contracts/settings";
 import { readBrowserClientSettings } from "../clientPersistenceStorage";
 import { zhCN as legacyZhCN } from "./zh-CN";
 import { en as enCatalog, zhCN as zhCNCatalog } from "./messages";
+import { ja as jaCatalog } from "./ja";
 
 export type AppLanguage = Exclude<LanguagePreference, "system">;
 export type TranslateParams = {
@@ -12,11 +13,13 @@ export type TranslateParams = {
 export const CATALOGS: Record<AppLanguage, Record<string, string>> = {
   "zh-CN": zhCNCatalog,
   en: enCatalog,
+  ja: jaCatalog,
 };
 
 export const LEGACY_DICTIONARIES: Record<AppLanguage, Record<string, string>> = {
   "zh-CN": legacyZhCN,
   en: {},
+  ja: {},
 };
 
 export const RESOLVED_LANGUAGE_FALLBACK: AppLanguage = "zh-CN";
@@ -24,7 +27,10 @@ export const RESOLVED_LANGUAGE_FALLBACK: AppLanguage = "zh-CN";
 export function resolveLanguage(preference: LanguagePreference): AppLanguage {
   if (preference !== "system") return preference;
   if (typeof navigator !== "undefined" && navigator.language) {
-    return navigator.language.toLowerCase().startsWith("zh") ? "zh-CN" : "en";
+    const locale = navigator.language.toLowerCase();
+    if (locale.startsWith("zh")) return "zh-CN";
+    if (locale.startsWith("ja")) return "ja";
+    return "en";
   }
   return RESOLVED_LANGUAGE_FALLBACK;
 }

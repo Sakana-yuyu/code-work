@@ -5,7 +5,22 @@ export const CODEWORK_CODEX_LAUNCH_ARGS_ENV = "CODEWORK_CODEX_LAUNCH_ARGS";
 export const resolveCodexLaunchArgs = (
   launchArgs?: string,
   environment: NodeJS.ProcessEnv = process.env,
-) => environment[CODEWORK_CODEX_LAUNCH_ARGS_ENV]?.trim() || launchArgs?.trim() || "";
+) => {
+  const existing = environment[CODEWORK_CODEX_LAUNCH_ARGS_ENV]?.trim() || launchArgs?.trim() || "";
+  if (!environment.CODEWORK_CODEX_API_KEY?.trim()) return existing;
+  // 只影响当前供应商进程；密钥通过环境读取，不写入参数或用户的全局 config.toml。
+  const overrides = [
+    'model_provider="codework_api"',
+    'model_providers.codework_api.name="Code Work API"',
+    `model_providers.codework_api.base_url=${JSON.stringify(environment.CODEWORK_CODEX_BASE_URL?.trim() || "https://api.openai.com/v1")}`,
+    'model_providers.codework_api.env_key="CODEWORK_CODEX_API_KEY"',
+    'model_providers.codework_api.wire_api="responses"',
+    "model_providers.codework_api.requires_openai_auth=false",
+  ];
+  return [existing, ...overrides.map((value) => `-c ${JSON.stringify(value)}`)]
+    .filter(Boolean)
+    .join(" ");
+};
 
 export const codexLaunchArgv = (launchArgs?: string): ReadonlyArray<string> =>
   tokenizeCliArgs(launchArgs);

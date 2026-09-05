@@ -1,5 +1,13 @@
 # Keybindings
 
+## 日常开发入口
+
+在网页与桌面端，聊天顶部的 **工作区** 菜单集中提供文件树与编辑器、快速打开文件、项目内容搜索、终端和 Git 变更。菜单显示当前配置的快捷键，修改快捷键后会同步更新；窄窗口保留图标入口。文件可在右侧面板打开编辑，终端仍支持原有分屏和多标签。Git 变更需已有 Git 项目中的正式对话；草稿阶段可使用顶部 Git 操作。
+
+这些入口复用现有项目、环境和权限，不创建第二套工作区状态。移动端继续使用原有文件、终端与审查页面，本次没有增加断点调试或语言服务。
+
+文件面板较窄时，编辑器与文件树上下排列，避免代码区被挤成很窄的一列；最大化面板后恢复左右排列。文件树仍可使用原有按钮隐藏或重新打开。
+
 Edit keybindings from **Settings** → **Keybindings**. That page lists every command, its current
 shortcut, whether it is a default or your own, and warns about conflicts.
 

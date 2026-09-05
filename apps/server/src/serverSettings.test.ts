@@ -394,6 +394,8 @@ it.layer(NodeServices.layer)("server settings", (it) => {
         customModels: ["claude-custom"],
         launchArgs: "",
         autoCompactWindow: "",
+        fallbackModel: "",
+        maxTurns: "",
         routeThroughByok: false,
       });
       assert.deepEqual(
@@ -1033,6 +1035,8 @@ it.layer(NodeServices.layer)("server settings", (it) => {
         customModels: [],
         launchArgs: "",
         autoCompactWindow: "",
+        fallbackModel: "",
+        maxTurns: "",
         routeThroughByok: false,
       });
       assert.deepEqual(next.providers.opencode, {

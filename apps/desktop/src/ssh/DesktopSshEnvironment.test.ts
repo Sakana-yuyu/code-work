@@ -1,3 +1,5 @@
+process.env.CODEWORK_DESKTOP_LANGUAGE = "en";
+
 import * as NodeHttpClient from "@effect/platform-node/NodeHttpClient";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, describe, it } from "@effect/vitest";

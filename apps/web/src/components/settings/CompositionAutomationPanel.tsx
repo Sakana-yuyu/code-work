@@ -26,7 +26,6 @@ import * as DateTime from "effect/DateTime";
 import {
   AlarmClockIcon,
   BotIcon,
-  CalendarClockIcon,
   Clock3Icon,
   HistoryIcon,
   PauseIcon,
@@ -482,7 +481,7 @@ export function CompositionAutomationPanel() {
       <SettingsSection
         id="composition-automations"
         title={t("automationCenter.title")}
-        icon={<CalendarClockIcon className="size-4 text-muted-foreground" />}
+        hideTitle
         headerAction={
           <div className="flex items-center gap-1.5">
             <Button
@@ -514,9 +513,9 @@ export function CompositionAutomationPanel() {
             {t("automationCenter.loadFailed", { message: String(automationsQuery.error) })}
           </p>
         ) : (
-          <div className="grid border-y border-border/60 lg:grid-cols-[minmax(14rem,0.32fr)_minmax(0,1fr)]">
-            <aside className="border-b border-border/60 lg:border-r lg:border-b-0">
-              <div className="max-h-80 overflow-y-auto p-2 lg:max-h-none">
+          <div className="grid border-y border-border/60 xl:grid-cols-[minmax(14rem,0.32fr)_minmax(0,1fr)]">
+            <aside className="border-b border-border/60 xl:border-r xl:border-b-0">
+              <div className="max-h-80 overflow-y-auto p-2 xl:max-h-none">
                 {automations.length === 0 ? (
                   <p className="px-2 py-5 text-xs text-muted-foreground">
                     {t("automationCenter.empty")}

@@ -10,6 +10,17 @@ import {
 } from "./ProviderSettingsForm";
 
 describe("ProviderSettingsForm helpers", () => {
+  it("连接区域接管网关开关时只隐藏重复字段，添加供应商表单仍可配置", () => {
+    for (const driver of ["codex", "claudeAgent", "grok", "opencode"]) {
+      const definition = DRIVER_OPTION_BY_VALUE[ProviderDriverKind.make(driver)]!;
+      const fields = deriveProviderSettingsFields(definition);
+      expect(fields.map((field) => field.key)).toContain("routeThroughByok");
+      expect(deriveProviderSettingsFields(definition, ["routeThroughByok"])).toEqual(
+        fields.filter((field) => field.key !== "routeThroughByok"),
+      );
+    }
+  });
+
   it("derives visible provider config fields from the client definition schema", () => {
     const codex = DRIVER_OPTION_BY_VALUE[ProviderDriverKind.make("codex")];
 
@@ -46,6 +57,8 @@ describe("ProviderSettingsForm helpers", () => {
       "binaryPath",
       "homePath",
       "autoCompactWindow",
+      "fallbackModel",
+      "maxTurns",
       "launchArgs",
       "routeThroughByok",
     ]);

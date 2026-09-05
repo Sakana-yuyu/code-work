@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { cn } from "../../lib/utils";
 import {
   getCustomThemes,
+  getCustomThemeLibrarySnapshot,
   installCustomTheme,
   parseThemeFile,
   removeCustomTheme,
@@ -23,6 +24,9 @@ import { Button } from "../ui/button";
 import { Dialog, DialogHeader, DialogPanel, DialogPopup, DialogTitle } from "../ui/dialog";
 import { ThemeSearchSection } from "./ThemeSearchSection";
 import { t } from "~/i18n";
+import { importThemeMediaPackage } from "../../themeMediaArchive";
+import { themeAssetIds } from "../../themeDecoration";
+import { removeThemeAsset } from "../../themeMedia";
 
 /**
  * A full theme export is a few KB, so anything past this is not a theme file.
@@ -167,6 +171,19 @@ export function ThemeImportDialog({
   // decision instead of failing.
   const [conflicts, setConflicts] = useState<ReadonlyArray<ThemeDefinition> | null>(null);
   const importRequestRef = useRef(0);
+  const importedAssets = useRef(new Set<string>());
+  useEffect(() => {
+    const assets = importedAssets.current;
+    return () => {
+      if (getCustomThemeLibrarySnapshot().status !== "ready") return;
+      const retained = new Set(
+        getCustomThemes().flatMap((theme) => themeAssetIds(theme.decorations)),
+      );
+      for (const id of assets)
+        if (!retained.has(id)) void removeThemeAsset(id).catch(() => undefined);
+      assets.clear();
+    };
+  }, [open]);
 
   useEffect(() => {
     importRequestRef.current += 1;
@@ -182,6 +199,32 @@ export function ThemeImportDialog({
   }, [open]);
 
   const readThemeFile = useCallback(async (file: ImportableThemeFile) => {
+    if (/\.zip$/i.test(file.name)) {
+      if (!(file instanceof File)) {
+        setError(t("themeMedia.packageInvalid"));
+        return;
+      }
+      const requestId = ++importRequestRef.current;
+      setIsReading(true);
+      setError(null);
+      try {
+        const theme = await importThemeMediaPackage(file);
+        const ids = themeAssetIds(theme.decorations);
+        if (requestId !== importRequestRef.current) {
+          await Promise.all(ids.map((id) => removeThemeAsset(id).catch(() => undefined)));
+          return;
+        }
+        for (const id of ids) importedAssets.current.add(id);
+        setJson(JSON.stringify({ version: THEME_FILE_VERSION, name: theme.label, ...theme }));
+        setFileName(file.name);
+      } catch (cause) {
+        if (requestId === importRequestRef.current)
+          setError(cause instanceof Error ? cause.message : t("themeMedia.packageInvalid"));
+      } finally {
+        if (requestId === importRequestRef.current) setIsReading(false);
+      }
+      return;
+    }
     // Check the size first: reading a large file is what locks the UI, so it
     // never gets read at all.
     const oversized = describeOversizedThemeFile(file.size);
@@ -219,7 +262,7 @@ export function ThemeImportDialog({
         for (const file of files) {
           const oversized = describeOversizedThemeFile(file.size);
           if (oversized) {
-            failures.push(`${file.name}: too large`);
+            failures.push(t("themes.importFileTooLarge", { file: file.name }));
             continue;
           }
           try {
@@ -230,7 +273,9 @@ export function ThemeImportDialog({
             });
           } catch (cause) {
             failures.push(
-              `${file.name}: ${cause instanceof Error ? cause.message : "not a theme file"}`,
+              cause instanceof Error
+                ? `${file.name}: ${cause.message}`
+                : t("themes.importNotAThemeFile", { file: file.name }),
             );
           }
         }
@@ -246,7 +291,9 @@ export function ThemeImportDialog({
             installed.push(installCustomTheme(theme));
           } catch (cause) {
             failures.push(
-              `${theme.label}: ${cause instanceof Error ? cause.message : "could not install"}`,
+              cause instanceof Error
+                ? `${theme.label}: ${cause.message}`
+                : t("themes.importCouldNotInstall", { file: theme.label }),
             );
           }
         }
@@ -268,6 +315,10 @@ export function ThemeImportDialog({
   const readThemeFiles = useCallback(
     (files: ReadonlyArray<ImportableThemeFile>) => {
       if (files.length === 0) return;
+      if (files.some((file) => /\.zip$/i.test(file.name)) && files.length > 1) {
+        setError(t("themeMedia.packageSingle"));
+        return;
+      }
       if (files.length === 1) void readThemeFile(files[0]!);
       else void readThemeBatch(files);
     },
@@ -325,6 +376,7 @@ export function ThemeImportDialog({
         name: preferredName.slice(0, 48),
         appearance: theme.appearance,
         colors: theme.colors,
+        ...(theme.decorations ? { decorations: theme.decorations } : {}),
         ...(theme.variants ? { variants: theme.variants } : {}),
         ...(theme.managed ? { managed: true } : {}),
       });
@@ -336,6 +388,7 @@ export function ThemeImportDialog({
         name: `${theme.label.slice(0, 48 - ` (${copy})`.length)} (${copy})`,
         appearance: theme.appearance,
         colors: theme.colors,
+        ...(theme.decorations ? { decorations: theme.decorations } : {}),
         ...(theme.variants ? { variants: theme.variants } : {}),
         ...(theme.managed ? { managed: true } : {}),
       });
@@ -466,7 +519,7 @@ export function ThemeImportDialog({
             const fileInput = (
               <input
                 ref={fileInputRef}
-                accept=".json,application/json"
+                accept=".json,.zip,application/json,application/zip"
                 className="sr-only"
                 onChange={handleFileChange}
                 multiple
@@ -530,7 +583,17 @@ export function ThemeImportDialog({
                       {fileName ?? t("dropCodeWorkOrVsCodeJsonFiles")}
                     </p>
                   </div>
-                  {chooseButton()}
+                  <div className="flex flex-wrap gap-2">
+                    {chooseButton()}
+                    <Button
+                      disabled={isReading}
+                      size="sm"
+                      variant="outline"
+                      onClick={() => fileInputRef.current?.click()}
+                    >
+                      {t("themeMedia.importPackage")}
+                    </Button>
+                  </div>
                   {fileInput}
                 </div>
                 {editorSection()}

@@ -12,6 +12,12 @@ Common reasons:
 
 ## I Only Use One Claude Account
 
+在 **设置 → 供应商 → Claude → 配置 → 连接与登录** 中，可选择“原生账号”并点击“通过 CLI 登录”，在嵌入式终端中完成官方授权。登录使用该实例的 `CLAUDE_CONFIG_DIR`。关闭窗口取消本次登录进程并清理终端记录，不会注销已有账号；断线后最多保留 10 分钟。
+
+自定义服务可选择 **URL / API Key**，直接填写兼容 Anthropic Messages 的基础地址和密钥；支持 `x-api-key` 和 `Authorization: Bearer` 两种鉴权。例如使用要求 Bearer Token 的网关时，选择对应请求头，不必再手动拼环境变量。保存会屏蔽冲突的另一种鉴权和显式 OAuth Token，避免混用凭据；密钥留空保留已保存值。
+
+选择 **共享模型渠道** 可在此处编辑共享的 URL、密钥和模型，并通过网关复用 Anthropic 协议渠道。保存连接会重建该供应商实例，请等待运行中的任务完成后再修改。保存不等于上游模型权限已经验证，需通过实际对话确认。
+
 Use the default provider.
 
 Log in with Claude Code normally:
@@ -227,3 +233,14 @@ If the preset needs different Claude files, give it a different `CLAUDE_CONFIG_D
 different API keys, base URLs, or router settings, use Environment variables.
 
 Do not put environment variable assignments in `Launch arguments`.
+
+## 备用模型与自动执行上限
+
+在 **设置 → 供应商 → Claude → 配置** 中可以设置：
+
+- **备用模型**：主模型不可用时由 Claude 原生机制切换，例如 `sonnet`。备用模型仍使用此 Claude 实例的 URL 和凭据，必须有对应访问权限；它不会切换到另一个供应商的账号。
+- **最大自动执行轮次**：填写 1–1000 的整数，限制一次请求中的工具调用往返轮次。例如 `20` 可避免任务无限尝试。它不是聊天历史条数、Token 上限或费用上限，不能保证固定费用。
+
+保存前请等待正在运行的任务结束，配置将用于重新建立的 Claude 运行会话。达到上限时，本轮会显示未完成／失败及 CLI 原因，已完成的对话和文件操作不会回滚；可以发送后续消息继续。推荐使用 Claude Code 2.1.217 或更新版本，以获得完整的流式输入轮次限制行为。
+
+这两个字段留空并保存，即恢复不额外覆盖的状态；原有 CLI 配置和启动参数仍然有效。桌面和 Web 在同一表单中设置，移动端供应商设置也提供相同字段。

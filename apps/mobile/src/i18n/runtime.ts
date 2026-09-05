@@ -1,6 +1,7 @@
 import type { LanguagePreference } from "@codework/contracts";
 
 import { en, zhCN } from "./messages";
+import { ja } from "./ja";
 
 export type AppLanguage = Exclude<LanguagePreference, "system">;
 export type TranslateParams = Readonly<Record<string, string | number | undefined>>;
@@ -8,6 +9,7 @@ export type TranslateParams = Readonly<Record<string, string | number | undefine
 const catalogs: Record<AppLanguage, Record<string, string>> = {
   en,
   "zh-CN": zhCN,
+  ja,
 };
 
 export const fallbackLanguage: AppLanguage = "zh-CN";
@@ -18,7 +20,9 @@ const listeners = new Set<() => void>();
 export function resolveLanguage(preference: LanguagePreference): AppLanguage {
   if (preference !== "system") return preference;
   const locale = Intl.DateTimeFormat().resolvedOptions().locale;
-  return locale.toLowerCase().startsWith("zh") ? "zh-CN" : "en";
+  if (locale.toLowerCase().startsWith("zh")) return "zh-CN";
+  if (locale.toLowerCase().startsWith("ja")) return "ja";
+  return "en";
 }
 
 export function subscribeLanguage(listener: () => void): () => void {
@@ -44,6 +48,10 @@ function interpolate(template: string, params: TranslateParams): string {
 }
 
 export function t(key: string, params?: TranslateParams): string {
-  const template = catalogs[currentLanguage][key] ?? en[key] ?? key;
+  const catalog = catalogs[currentLanguage];
+  const template =
+    params && typeof params.count === "number" && params.count !== 1
+      ? (catalog[`${key}_plural`] ?? en[`${key}_plural`] ?? catalog[key] ?? en[key] ?? key)
+      : (catalog[key] ?? en[key] ?? key);
   return params ? interpolate(template, params) : template;
 }

@@ -117,7 +117,7 @@ import { ComposerPendingApprovalPanel } from "./ComposerPendingApprovalPanel";
 import { ComposerPendingUserInputPanel } from "./ComposerPendingUserInputPanel";
 import { ComposerPlanFollowUpBanner } from "./ComposerPlanFollowUpBanner";
 import { ComposerControlIcon, ComposerSelectControl } from "./ComposerControl";
-import { ComposerAddMenu, ComposerGoalControl } from "./ComposerAddMenu";
+import { ComposerAddMenu, ComposerGoalControl, ComposerSpecWorkflowPill } from "./ComposerAddMenu";
 import { ThreadGoalStatusBar } from "./ThreadGoalStatusBar";
 import { resolveComposerMenuActiveItemId } from "./composerMenuHighlight";
 import { searchSlashCommandItems } from "./composerSlashCommandSearch";
@@ -750,6 +750,23 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       ? { environmentId, threadId: activeThreadId }
       : null;
   const specWorkflowState = useSpecWorkflowController(specWorkflowThreadRef);
+  const specWorkflowControl = {
+    available: specWorkflowThreadRef !== null,
+    enabled: specWorkflowState.enabled,
+    selectedIntent: specWorkflowState.capability?.selectedIntent ?? "workflow",
+    isPending: specWorkflowState.isPending,
+    hasError: specWorkflowState.hasError,
+    workflowState: specWorkflowState.workflowState,
+    workflowStateIsPending: specWorkflowState.workflowStateIsPending,
+    workflowStateHasError: specWorkflowState.workflowStateHasError,
+    onToggle: specWorkflowState.toggle,
+    onSelectIntent: specWorkflowState.selectIntent,
+    onApproveProposal: specWorkflowState.approveProposal,
+    onRejectProposal: specWorkflowState.rejectProposal,
+    onCompleteAcceptance: specWorkflowState.completeAcceptance,
+    onPause: specWorkflowState.pause,
+    onResume: specWorkflowState.resume,
+  };
   const setThreadGoalCommand = useAtomCommand(threadGoalEnvironment.set, {
     reportFailure: false,
   });
@@ -1323,7 +1340,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
         provider: selectedProvider,
         command,
         label: `/${command.name}`,
-        description: command.description ?? command.input?.hint ?? t("composer.runProviderCommand"),
+        description: t(command.description ?? command.input?.hint ?? "composer.runProviderCommand"),
       }));
       const query = composerTrigger.query.trim().toLowerCase();
       const skillItems = slashMenuSkills.map((skill) => ({
@@ -3323,19 +3340,26 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
           ) : null}
         </div>
       ) : null}
-      {threadGoalState.goal !== null ? (
-        <div className="chat-composer-top-drawer" data-chat-composer-goal-drawer="true">
-          <ThreadGoalStatusBar
-            goal={threadGoalState.goal}
-            isPending={threadGoalState.isPending}
-            errorMessage={threadGoalErrorMessage}
-            presentation="top-drawer"
-            onSetGoal={onSetThreadGoal}
-            onPause={onPauseThreadGoal}
-            onResume={onResumeThreadGoal}
-            onClear={onClearThreadGoal}
-            onEditInComposer={editGoalInComposer}
-          />
+      {threadGoalState.goal !== null || specWorkflowControl.enabled ? (
+        <div
+          className="chat-composer-top-drawer"
+          data-chat-composer-goal-drawer={threadGoalState.goal !== null ? "true" : undefined}
+          data-chat-composer-spec-workflow-drawer={specWorkflowControl.enabled ? "true" : undefined}
+        >
+          {threadGoalState.goal !== null ? (
+            <ThreadGoalStatusBar
+              goal={threadGoalState.goal}
+              isPending={threadGoalState.isPending}
+              errorMessage={threadGoalErrorMessage}
+              presentation="top-drawer"
+              onSetGoal={onSetThreadGoal}
+              onPause={onPauseThreadGoal}
+              onResume={onResumeThreadGoal}
+              onClear={onClearThreadGoal}
+              onEditInComposer={editGoalInComposer}
+            />
+          ) : null}
+          <ComposerSpecWorkflowPill control={specWorkflowControl} />
         </div>
       ) : null}
       {isTasksDrawerOpen &&
@@ -3766,21 +3790,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                     onResumeGoal={onResumeThreadGoal}
                     onClearGoal={onClearThreadGoal}
                     onEditGoalInComposer={editGoalInComposer}
-                    specWorkflow={{
-                      available: specWorkflowThreadRef !== null,
-                      enabled: specWorkflowState.enabled,
-                      isPending: specWorkflowState.isPending,
-                      hasError: specWorkflowState.hasError,
-                      workflowState: specWorkflowState.workflowState,
-                      workflowStateIsPending: specWorkflowState.workflowStateIsPending,
-                      workflowStateHasError: specWorkflowState.workflowStateHasError,
-                      onToggle: specWorkflowState.toggle,
-                      onApproveProposal: specWorkflowState.approveProposal,
-                      onRejectProposal: specWorkflowState.rejectProposal,
-                      onCompleteAcceptance: specWorkflowState.completeAcceptance,
-                      onPause: specWorkflowState.pause,
-                      onResume: specWorkflowState.resume,
-                    }}
+                    specWorkflow={specWorkflowControl}
                   />
                   {noProviderAvailable ? (
                     <Button

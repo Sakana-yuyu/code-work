@@ -405,7 +405,7 @@ const ensureNodePtyImpl = (
     if (Option.isNone(linuxRepoRootOption)) {
       return {
         ok: false,
-        reason: `wslpath conversion failed for ${windowsRepoRoot}`,
+        reason: t("wsl.preflight.reason.wslpathFailed", { path: windowsRepoRoot }),
         fatal: false,
       } as const;
     }
@@ -579,7 +579,10 @@ const ensureNodePtyImpl = (
     const trimmedTail = `${build.stdout}${build.stderr}`.trim().slice(-500);
     return {
       ok: false,
-      reason: `node-pty Linux build failed (exit ${build.exitCode}): ${trimmedTail || "no stderr captured"}`,
+      reason: t("wsl.preflight.reason.ptyBuildFailed", {
+        exitCode: String(build.exitCode),
+        tail: trimmedTail || t("wsl.preflight.reason.noStderr"),
+      }),
       fatal: true,
     } as const;
   });
@@ -603,7 +606,7 @@ export const probeWslDistros: Effect.Effect<
     const exitCode = yield* handle.exitCode;
     if ((exitCode as unknown as number) !== 0) {
       return yield* new DesktopWslDistroListError({
-        reason: `wsl.exe --list --verbose exited with code ${String(exitCode)}`,
+        reason: t("wsl.preflight.reason.distroListFailed", { exitCode: String(exitCode) }),
       });
     }
     return parseWslDistroList(Buffer.from(concatChunks(stdoutBytes)));
@@ -613,7 +616,7 @@ export const probeWslDistros: Effect.Effect<
     isDesktopWslDistroListError(error)
       ? error
       : new DesktopWslDistroListError({
-          reason: `Failed to run wsl.exe --list --verbose: ${error.message}`,
+          reason: t("wsl.preflight.reason.distroListError", { message: error.message }),
         }),
   ),
   Effect.timeoutOption(LIST_TIMEOUT),

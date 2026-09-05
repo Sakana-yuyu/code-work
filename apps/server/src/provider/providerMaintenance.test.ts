@@ -213,7 +213,7 @@ it.layer(NodeServices.layer)("providerMaintenance", (it) => {
         const capabilities = yield* resolveProviderMaintenanceCapabilitiesEffect(
           packageToolUpdate,
           {
-            binaryPath: "package-tool",
+            binaryPath: packageToolPath,
             env: {
               PATH: vitePlusBinDir,
             },
@@ -287,7 +287,7 @@ it.layer(NodeServices.layer)("providerMaintenance", (it) => {
         const capabilities = yield* resolveProviderMaintenanceCapabilitiesEffect(
           scopedPackageToolUpdate,
           {
-            binaryPath: "scoped-package-tool",
+            binaryPath: scopedPackageToolPath,
             env: {
               PATH: pnpmHomeDir,
             },
@@ -347,7 +347,7 @@ it.layer(NodeServices.layer)("providerMaintenance", (it) => {
         const capabilities = yield* resolveProviderMaintenanceCapabilitiesEffect(
           nativePackageToolUpdate,
           {
-            binaryPath: "native-package-tool",
+            binaryPath: nativePackageToolPath,
             env: {
               PATH: nativeBinDir,
             },
@@ -384,7 +384,7 @@ it.layer(NodeServices.layer)("providerMaintenance", (it) => {
         const capabilities = yield* resolveProviderMaintenanceCapabilitiesEffect(
           scopedPackageToolUpdate,
           {
-            binaryPath: "scoped-package-tool",
+            binaryPath: scopedPackageToolPath,
             env: {
               PATH: nativeBinDir,
             },
@@ -553,6 +553,7 @@ it.layer(NodeServices.layer)("providerMaintenance", (it) => {
     const claudeUpdate = makePackageManagedProviderMaintenanceResolver({
       provider: driver("claudeAgent"),
       npmPackageName: "@anthropic-ai/claude-code",
+      npmInstallFlags: ["--force", "--prefer-online"],
       homebrewFormula: "claude-code",
       nativeUpdate: {
         executable: "claude",
@@ -567,13 +568,15 @@ it.layer(NodeServices.layer)("providerMaintenance", (it) => {
       packageName: "@anthropic-ai/claude-code",
       update: {
         command:
-          "npm install -g --allow-scripts=@anthropic-ai/claude-code @anthropic-ai/claude-code@latest",
+          "npm install -g --force --prefer-online --allow-scripts=@anthropic-ai/claude-code @anthropic-ai/claude-code@latest",
 
         executable: "npm",
 
         args: [
           "install",
           "-g",
+          "--force",
+          "--prefer-online",
           "--allow-scripts=@anthropic-ai/claude-code",
           "@anthropic-ai/claude-code@latest",
         ],

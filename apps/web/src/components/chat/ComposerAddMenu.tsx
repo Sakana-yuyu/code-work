@@ -5,8 +5,10 @@ import type {
   SpecWorkflowStatus,
   ThreadGoal,
 } from "@codework/contracts";
+import { SpecWorkflowIntentName } from "@codework/contracts";
 import {
   CheckIcon,
+  ChevronRightIcon,
   CircleAlertIcon,
   FileTextIcon,
   GoalIcon,
@@ -35,12 +37,14 @@ type ComposerAddMenuPluginItem = Pick<
 export interface ComposerSpecWorkflowControl {
   readonly available: boolean;
   readonly enabled: boolean;
+  readonly selectedIntent: SpecWorkflowIntentName;
   readonly isPending: boolean;
   readonly hasError: boolean;
   readonly workflowState: SpecWorkflowState | null;
   readonly workflowStateIsPending: boolean;
   readonly workflowStateHasError: boolean;
   readonly onToggle: () => Promise<boolean>;
+  readonly onSelectIntent: (intent: SpecWorkflowIntentName) => Promise<boolean>;
   readonly onApproveProposal: () => Promise<boolean>;
   readonly onRejectProposal: () => Promise<boolean>;
   readonly onCompleteAcceptance: () => Promise<boolean>;
@@ -348,8 +352,122 @@ export function ComposerGoalControl(props: ComposerGoalControlProps) {
   );
 }
 
+export function SpecWorkflowNodePicker(props: {
+  readonly control: ComposerSpecWorkflowControl;
+  readonly onSelected: () => void;
+}) {
+  const [error, setError] = useState(false);
+  return (
+    <div>
+      <p className="px-2 py-2 text-xs text-muted-foreground">
+        {t("specWorkflow.chooseDescription")}
+      </p>
+      <div
+        className="max-h-[min(22rem,50vh)] overflow-y-auto"
+        aria-label={t("specWorkflow.choose")}
+      >
+        {SpecWorkflowIntentName.literals.map((intent) => (
+          <ComposerAddMenuItem
+            key={intent}
+            icon={<WorkflowIcon className="size-4" />}
+            title={t(`specWorkflow.node.${intent}`)}
+            description={t(`specWorkflow.description.${intent}`)}
+            disabled={!props.control.available || props.control.isPending || props.control.hasError}
+            ariaPressed={props.control.enabled && props.control.selectedIntent === intent}
+            trailing={
+              props.control.enabled && props.control.selectedIntent === intent ? (
+                <CheckIcon className="size-4" />
+              ) : undefined
+            }
+            onClick={() => {
+              setError(false);
+              void props.control
+                .onSelectIntent(intent)
+                .then((ok) => {
+                  if (ok) props.onSelected();
+                  else setError(true);
+                })
+                .catch(() => setError(true));
+            }}
+          />
+        ))}
+      </div>
+      {error ? (
+        <p role="alert" className="px-2 py-2 text-xs text-destructive">
+          {t("specWorkflow.saveFailed")}
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
+export function ComposerSpecWorkflowPill({
+  control,
+}: {
+  readonly control: ComposerSpecWorkflowControl;
+}) {
+  const [open, setOpen] = useState(false);
+  const [error, setError] = useState(false);
+  if (!control.enabled) return null;
+  return (
+    <div data-spec-workflow-pill="true">
+      <Popover open={open} onOpenChange={setOpen}>
+        <div className="flex min-w-0 items-center gap-1.5 bg-transparent px-3 py-1.5 text-xs">
+          <WorkflowIcon className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+          <PopoverTrigger
+            render={
+              <button
+                type="button"
+                className="flex min-w-0 flex-1 items-center gap-1.5 rounded-sm text-left outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
+                aria-label={t("specWorkflow.changeNode")}
+              />
+            }
+          >
+            <span className="shrink-0 font-medium text-foreground">
+              {t("composer.specWorkflow")}
+            </span>
+            <span className="min-w-0 truncate text-muted-foreground">
+              {t(`specWorkflow.node.${control.selectedIntent}`)}
+            </span>
+          </PopoverTrigger>
+          <Button
+            type="button"
+            size="icon-xs"
+            variant="ghost"
+            aria-label={t("specWorkflow.remove")}
+            disabled={control.isPending}
+            onClick={() => {
+              setError(false);
+              void control
+                .onToggle()
+                .then((ok) => setError(!ok))
+                .catch(() => setError(true));
+            }}
+          >
+            <XIcon />
+          </Button>
+        </div>
+        <PopoverPopup
+          side="top"
+          align="start"
+          className="w-[min(25rem,calc(100vw-1.5rem))] rounded-2xl"
+        >
+          <SpecWorkflowNodePicker control={control} onSelected={() => setOpen(false)} />
+          <SpecWorkflowMenuStatus control={control} onActionSucceeded={() => setOpen(false)} />
+        </PopoverPopup>
+      </Popover>
+      {error ? (
+        <p role="alert" className="px-3 pb-1.5 text-xs text-destructive">
+          {t("specWorkflow.saveFailed")}
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
 export function ComposerAddMenu(props: ComposerAddMenuProps) {
   const [open, setOpen] = useState(false);
+  const [showWorkflowNodes, setShowWorkflowNodes] = useState(false);
 
   const runPlugin = (item: ComposerAddMenuPluginItem) => {
     void item
@@ -461,23 +579,17 @@ export function ComposerAddMenu(props: ComposerAddMenuProps) {
               props.specWorkflow.isPending ||
               props.specWorkflow.hasError
             }
-            ariaPressed={props.specWorkflow.enabled}
             onClick={() => {
-              void props.specWorkflow
-                .onToggle()
-                .then((changed) => {
-                  if (changed) setOpen(false);
-                })
-                .catch(() => undefined);
+              setShowWorkflowNodes((value) => !value);
             }}
-            trailing={
-              props.specWorkflow.enabled ? (
-                <CheckIcon className="size-4" />
-              ) : (
-                <span className="size-1.5 rounded-full bg-muted-foreground/50" />
-              )
-            }
+            trailing={<ChevronRightIcon className="size-4" />}
           />
+          {showWorkflowNodes ? (
+            <SpecWorkflowNodePicker
+              control={props.specWorkflow}
+              onSelected={() => setOpen(false)}
+            />
+          ) : null}
           <SpecWorkflowMenuStatus
             control={props.specWorkflow}
             onActionSucceeded={() => setOpen(false)}

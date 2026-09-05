@@ -27,12 +27,59 @@ const NPM_PACKAGE_ENTRY_CANDIDATES = [
 
 export type ExecutableFileCheck = (filePath: string) => boolean;
 
+export type ExecutableFileSizeCheck = (filePath: string) => number | undefined;
+
 function isExistingFile(filePath: string): boolean {
   try {
     return NodeFS.statSync(filePath).isFile();
   } catch {
     return false;
   }
+}
+
+function readExecutableFileSize(filePath: string): number | undefined {
+  try {
+    return NodeFS.statSync(filePath).size;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * 查找 Windows npm 全局目录中的 Claude 包入口。
+ * npm 解包中断时可能没有恢复 claude shim，但包目录仍会留在 PATH 旁边。
+ */
+export function findClaudeNpmPackageEntry(
+  environment: NodeJS.ProcessEnv,
+  platform: NodeJS.Platform,
+  isFile: ExecutableFileCheck = isExistingFile,
+): string | null {
+  if (platform !== "win32") return null;
+
+  const pathValue = environment.PATH ?? environment.Path ?? environment.path ?? "";
+  for (const rawPathEntry of pathValue.split(";")) {
+    const pathEntry = rawPathEntry.trim().replace(/^"|"$/g, "");
+    if (!pathEntry) continue;
+    for (const entrySegments of NPM_PACKAGE_ENTRY_CANDIDATES) {
+      const candidate = NodePath.win32.join(pathEntry, ...entrySegments);
+      if (isFile(candidate)) return candidate;
+    }
+  }
+  return null;
+}
+
+/**
+ * npm 依赖安装脚本未完成时，Claude 会留下几百字节的占位 exe。
+ * 只对原生 exe 做尺寸判断，避免误判旧版 cli.js。
+ */
+export function isClaudeNpmPackageEntryDamaged(
+  filePath: string,
+  getSize: ExecutableFileSizeCheck = readExecutableFileSize,
+): boolean {
+  return (
+    NodePath.win32.basename(filePath).toLowerCase() === "claude.exe" &&
+    (getSize(filePath) ?? Number.POSITIVE_INFINITY) < 4096
+  );
 }
 
 /** Injectable file-existence check so tests can run against a fake filesystem. */

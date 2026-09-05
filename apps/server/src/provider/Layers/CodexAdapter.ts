@@ -225,6 +225,9 @@ function normalizeItemType(raw: string | undefined | null): string {
 
 function toCanonicalItemType(raw: string | undefined | null): CanonicalItemType {
   const type = normalizeItemType(raw);
+  // 原生审查结束项只有 review 字段，必须走助手消息落库链路才能在所有客户端显示结论。
+  if (type === "exited review mode") return "assistant_message";
+  if (type === "entered review mode") return "review_entered";
   if (type.includes("user")) return "user_message";
   if (type.includes("agent message") || type.includes("assistant")) return "assistant_message";
   if (type.includes("reasoning") || type.includes("thought")) return "reasoning";
@@ -297,6 +300,7 @@ function itemDetail(itemType: CanonicalItemType, item: CodexLifecycleItem): stri
     "title" in item ? item.title : undefined,
     "summary" in item ? item.summary : undefined,
     "text" in item ? item.text : undefined,
+    "review" in item ? item.review : undefined,
     "path" in item ? item.path : undefined,
     "prompt" in item ? item.prompt : undefined,
   ];
@@ -1843,6 +1847,20 @@ export const makeCodexAdapter = Effect.fn("makeCodexAdapter")(function* (
   });
 
   const sendTurn: CodexAdapterShape["sendTurn"] = Effect.fn("sendTurn")(function* (input) {
+    const reviewCommand = input.input?.trim().match(/^\/review(?:\s+([\s\S]*))?$/i);
+    if (reviewCommand && (input.attachments?.length ?? 0) > 0) {
+      return yield* new ProviderAdapterValidationError({
+        provider: PROVIDER,
+        operation: "sendTurn",
+        issue: "Codex review does not accept attachments. Remove attachments and try again.",
+      });
+    }
+    const instructions = reviewCommand?.[1]?.trim();
+    const reviewTarget: EffectCodexSchema.V2ReviewStartParams["target"] | undefined = reviewCommand
+      ? instructions
+        ? { type: "custom", instructions }
+        : { type: "uncommittedChanges" }
+      : undefined;
     const codexAttachments = yield* Effect.forEach(
       input.attachments ?? [],
       (attachment) => resolveAttachment(input, attachment),
@@ -1861,6 +1879,7 @@ export const makeCodexAdapter = Effect.fn("makeCodexAdapter")(function* (
     return yield* session.runtime
       .sendTurn({
         ...(input.input !== undefined ? { input: input.input } : {}),
+        ...(reviewTarget ? { reviewTarget } : {}),
         ...(input.modelSelection?.instanceId === boundInstanceId
           ? { model: input.modelSelection.model }
           : {}),
@@ -1873,7 +1892,11 @@ export const makeCodexAdapter = Effect.fn("makeCodexAdapter")(function* (
         ...(input.interactionMode !== undefined ? { interactionMode: input.interactionMode } : {}),
         ...(codexAttachments.length > 0 ? { attachments: codexAttachments } : {}),
       })
-      .pipe(Effect.mapError((cause) => mapCodexRuntimeError(input.threadId, "turn/start", cause)));
+      .pipe(
+        Effect.mapError((cause) =>
+          mapCodexRuntimeError(input.threadId, reviewTarget ? "review/start" : "turn/start", cause),
+        ),
+      );
   });
 
   const requireSession = Effect.fn("requireSession")(function* (threadId: ThreadId) {

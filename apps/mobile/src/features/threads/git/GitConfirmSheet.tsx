@@ -1,4 +1,3 @@
-import { resolveDefaultBranchActionDialogCopy } from "@codework/client-runtime/state/vcs";
 import { resolveAutoFeatureBranchName } from "@codework/shared/git";
 import * as Arr from "effect/Array";
 import * as Result from "effect/Result";
@@ -12,6 +11,7 @@ import { AndroidSheetHeader } from "../../../components/AndroidScreenHeader";
 import { AppText as Text } from "../../../components/AppText";
 import { useSelectedThreadGitActions } from "../../../state/use-selected-thread-git-actions";
 import { useSelectedThreadGitState } from "../../../state/use-selected-thread-git-state";
+import { localizedDefaultBranchActionDialogCopy } from "./gitActionStrings";
 import { SheetActionButton } from "./gitSheetComponents";
 import { t } from "../../../i18n";
 
@@ -47,7 +47,7 @@ export function GitConfirmSheet(props: GitConfirmSheetProps) {
   const copy = useMemo(
     () =>
       confirmAction
-        ? resolveDefaultBranchActionDialogCopy({
+        ? localizedDefaultBranchActionDialogCopy({
             action: confirmAction,
             branchName,
             includesCommit,

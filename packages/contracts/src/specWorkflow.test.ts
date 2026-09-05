@@ -29,6 +29,7 @@ describe("Spec Workflow capability contracts", () => {
     expect(Object.keys(SpecWorkflowSetInput.fields)).toEqual([
       "threadId",
       "enabled",
+      "selectedIntent",
       "expectedRevision",
     ]);
     expect(() => decodeCapability({ ...capability, revision: -1 })).toThrow();

@@ -975,7 +975,8 @@ export function ThreadTerminalRouteScreen(props: ThreadTerminalRouteScreenProps)
         title: t("openNewTerminal"),
         image: "plus",
         subtitle: t("startAnotherShellIn", {
-          value1: basename(selectedThreadProject?.workspaceRoot ?? null) ?? "this workspace",
+          value1:
+            basename(selectedThreadProject?.workspaceRoot ?? null) ?? t("terminal.thisWorkspace"),
         }),
       },
     ],
@@ -1065,7 +1066,7 @@ export function ThreadTerminalRouteScreen(props: ThreadTerminalRouteScreenProps)
 
   if (!selectedThread) {
     if (workspaceState.isLoadingConnections) {
-      return <LoadingScreen message="Opening terminal…" />;
+      return <LoadingScreen message={t("terminal.opening")} />;
     }
 
     return (
@@ -1090,7 +1091,7 @@ export function ThreadTerminalRouteScreen(props: ThreadTerminalRouteScreenProps)
   }
 
   if (!environment.isReady && environment.presentation === null) {
-    return <LoadingScreen message="Opening terminal…" />;
+    return <LoadingScreen message={t("terminal.opening")} />;
   }
 
   return (
@@ -1224,7 +1225,8 @@ export function ThreadTerminalRouteScreen(props: ThreadTerminalRouteScreenProps)
               icon="plus"
               onPress={handleOpenNewTerminal}
               subtitle={t("startAnotherShellIn", {
-                value1: basename(selectedThreadProject.workspaceRoot) ?? "this workspace",
+                value1:
+                  basename(selectedThreadProject.workspaceRoot) ?? t("terminal.thisWorkspace"),
               })}
             >
               <NativeHeaderToolbar.Label>{t("openNewTerminal")}</NativeHeaderToolbar.Label>

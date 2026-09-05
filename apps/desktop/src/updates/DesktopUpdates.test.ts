@@ -1,3 +1,5 @@
+process.env.CODEWORK_DESKTOP_LANGUAGE = "en";
+
 import { assert, describe, it } from "@effect/vitest";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import type { DesktopUpdateState } from "@codework/contracts";

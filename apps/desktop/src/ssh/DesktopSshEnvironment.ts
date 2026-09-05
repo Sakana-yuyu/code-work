@@ -25,6 +25,7 @@ import * as HttpClient from "effect/unstable/http/HttpClient";
 import * as ChildProcessSpawner from "effect/unstable/process/ChildProcessSpawner";
 
 import * as DesktopSshPasswordPrompts from "./DesktopSshPasswordPrompts.ts";
+import { t } from "../i18n.js";
 
 export type DesktopSshEnvironmentRuntimeServices =
   | ChildProcessSpawner.ChildProcessSpawner
@@ -92,23 +93,23 @@ export function toSshPasswordPromptError(
   let message: string;
   switch (cause._tag) {
     case "DesktopSshPromptRequestIdGenerationError":
-      message = "Secure randomness is unavailable.";
+      message = t("ssh.secureRandomnessUnavailable");
       break;
     case "DesktopSshPromptWindowUnavailableError":
     case "DesktopSshPromptPresentationError":
-      message = "Code Work window is not available for SSH authentication.";
+      message = t("ssh.windowUnavailableForAuth");
       break;
     case "DesktopSshPromptTimedOutError":
-      message = `SSH authentication timed out for ${cause.destination}.`;
+      message = t("ssh.authTimedOut", { destination: cause.destination });
       break;
     case "DesktopSshPromptCancelledError":
-      message = `SSH authentication cancelled for ${cause.destination}.`;
+      message = t("ssh.authCancelled", { destination: cause.destination });
       break;
     case "DesktopSshPromptWindowClosedError":
-      message = "SSH authentication was cancelled because the app window closed.";
+      message = t("ssh.authWindowClosed");
       break;
     case "DesktopSshPromptServiceStoppedError":
-      message = "SSH password prompt service stopped.";
+      message = t("ssh.promptServiceStopped");
       break;
     default:
       return unexpectedPasswordPromptError(cause);

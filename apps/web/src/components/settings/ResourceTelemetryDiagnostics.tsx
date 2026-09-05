@@ -1091,7 +1091,7 @@ export function ResourceTelemetryDiagnostics() {
               })}
             </div>
           </div>
-          <div className="grid grid-cols-2 divide-x divide-y divide-border/55 md:grid-cols-3">
+          <div className="grid grid-cols-1 divide-y divide-border/55 min-[400px]:grid-cols-2 min-[400px]:divide-x md:grid-cols-3">
             <IconStat
               icon={<CpuIcon className="size-3.5" />}
               label={t("currentCpu")}

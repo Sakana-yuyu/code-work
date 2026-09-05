@@ -12,6 +12,7 @@ import {
   squashAtomCommandFailure,
   type AtomCommandResult,
 } from "@codework/client-runtime/state/runtime";
+import { providerUpdateMessageTranslation } from "@codework/client-runtime/state/provider-update-messages";
 
 export type ProviderUpdateCandidate = ServerProvider & {
   readonly versionAdvisory: NonNullable<ServerProvider["versionAdvisory"]> & {
@@ -253,8 +254,14 @@ export function getProviderUpdateRejectedToastView(
     phase: "failed",
     type: "error",
     title: providerCount === 1 ? t("providerUpdateFailed2") : t("providerUpdatesFailed"),
-    description: message,
+    description: translateProviderUpdateMessage(message),
   };
+}
+
+// Server maintenance sentences are English; known ones translate, unknown pass through.
+function translateProviderUpdateMessage(message: string): string {
+  const translated = providerUpdateMessageTranslation(message);
+  return translated ? t(translated.key, translated.params) : message;
 }
 
 export function getProviderUpdateProgressToastView(input: {
@@ -487,9 +494,9 @@ export function getProviderUpdateSidebarPillView(
         unchangedProviders.length === 1
           ? `${unchangedProviderName} ${t("stillNeedsAnUpdate")}`
           : t("providersStillNeedUpdates2", { value1: unchangedProviders.length }),
-      description: t("outdatedReviewProviderSettingsForDetails", {
-        value1: formatProviderList(unchangedProviders),
-        value2: unchangedProviders.length === 1 ? "still appears" : "still appear",
+      description: t("providers.updateStillNeededDetails", {
+        count: unchangedProviders.length,
+        providers: formatProviderList(unchangedProviders),
       }),
       dismissible: true,
     });
@@ -556,7 +563,7 @@ function getFailedProviderUpdateDescription(providers: ReadonlyArray<ServerProvi
   if (providers.length === 1) {
     const provider = providers[0]!;
     if (provider.updateState?.message) {
-      return provider.updateState.message;
+      return translateProviderUpdateMessage(provider.updateState.message);
     }
   }
   return `${formatProviderList(providers)} ${t("failedToUpdateCheckProviderSettingsForDetails")}`;

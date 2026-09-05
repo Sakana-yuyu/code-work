@@ -20,6 +20,30 @@ import { t } from "~/i18n/runtime";
 
 export const THREAD_SELECTION_SAFE_SELECTOR = "[data-thread-item], [data-thread-selection-safe]";
 export const THREAD_JUMP_HINT_SHOW_DELAY_MS = 200;
+
+/** 项目成员只索引一次，并保持每组内原有任务顺序。 */
+export function groupActiveSidebarThreads<
+  T extends Pick<EnvironmentThreadShell, "environmentId" | "projectId">,
+  G extends { memberProjectRefs: ReadonlyArray<{ environmentId: string; projectId: string }> },
+>(groups: ReadonlyArray<G>, threads: ReadonlyArray<T>) {
+  const owners = new Map<string, Set<number>>();
+  const activeThreadGroups = groups.map((group, index) => {
+    for (const ref of group.memberProjectRefs) {
+      const key = JSON.stringify([ref.environmentId, ref.projectId]);
+      const indices = owners.get(key) ?? new Set<number>();
+      indices.add(index);
+      owners.set(key, indices);
+    }
+    return { group, threads: [] as T[] };
+  });
+  const ungroupedActiveThreads: T[] = [];
+  for (const thread of threads) {
+    const indices = owners.get(JSON.stringify([thread.environmentId, thread.projectId]));
+    if (!indices) ungroupedActiveThreads.push(thread);
+    else for (const index of indices) activeThreadGroups[index]!.threads.push(thread);
+  }
+  return { activeThreadGroups, ungroupedActiveThreads };
+}
 // Visible sidebar rows are prewarmed into the thread-detail cache so opening a
 // nearby thread usually reuses an already-hot subscription. Each prewarmed
 // thread holds a live, fully hydrated detail subscription (all messages and

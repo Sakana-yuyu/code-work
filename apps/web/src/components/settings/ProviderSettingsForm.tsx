@@ -72,6 +72,7 @@ function readFieldBooleanDefault(
 
 export function deriveProviderSettingsFields(
   definition: ProviderClientDefinition,
+  hiddenFields: readonly string[] = [],
 ): ReadonlyArray<ProviderSettingsFieldModel> {
   const schemaAnnotation = readProviderSettingsFormSchemaAnnotation(definition);
   const orderedKeys = new Map(
@@ -90,7 +91,7 @@ export function deriveProviderSettingsFields(
     .flatMap(({ key }) => {
       const fieldSchema = definition.settingsSchema.fields[key]!;
       const formAnnotation = readProviderSettingsFormAnnotation(fieldSchema);
-      if (formAnnotation.hidden) return [];
+      if (formAnnotation.hidden || hiddenFields.includes(key)) return [];
 
       const annotatedTitle = readFieldAnnotationString(fieldSchema, "title");
       const annotatedDescription = readFieldAnnotationString(fieldSchema, "description");
@@ -157,6 +158,7 @@ export function nextProviderConfigWithFieldValue(
 
 interface ProviderSettingsFormProps {
   readonly definition: ProviderClientDefinition;
+  readonly hiddenFields?: readonly string[] | undefined;
   readonly value: unknown;
   readonly idPrefix: string;
   readonly variant: "card" | "dialog";
@@ -277,12 +279,16 @@ function ProviderSettingsFieldRow({
 
 export function ProviderSettingsForm({
   definition,
+  hiddenFields,
   value,
   idPrefix,
   variant,
   onChange,
 }: ProviderSettingsFormProps) {
-  const fields = useMemo(() => deriveProviderSettingsFields(definition), [definition]);
+  const fields = useMemo(
+    () => deriveProviderSettingsFields(definition, hiddenFields),
+    [definition, hiddenFields],
+  );
 
   if (fields.length === 0) {
     return null;

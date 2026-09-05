@@ -79,6 +79,7 @@ import { AddProviderInstanceDialog } from "./AddProviderInstanceDialog";
 import { FacilitiesPageHeader } from "./FacilitiesPageHeader";
 import { FacilitiesQuickGuide } from "./FacilitiesQuickGuide";
 import { ProviderInstanceCard } from "./ProviderInstanceCard";
+import { ByokModelAdaptersSection, readByokModelAdapters } from "./ByokModelAdaptersSection";
 import { DRIVER_OPTIONS, getDriverOption } from "./providerDriverMeta";
 import { providerSettingsTabClassName } from "./providerSettingsTabs";
 import { searchableSetting } from "./settingsSearch";
@@ -168,6 +169,25 @@ function providerEnvironmentDetail(environment: EnvironmentPresentation): string
   return environment.displayUrl ?? t("remoteDevice");
 }
 
+function ProviderSettingsPageHeader({
+  providersEmpty,
+  children,
+}: {
+  readonly providersEmpty: boolean;
+  readonly children?: ReactNode;
+}) {
+  return (
+    <FacilitiesPageHeader
+      icon={<ServerCogIcon className="size-4" />}
+      title={t("settings.providers")}
+      description={t("facilitiesGuide.providers.pageDescription")}
+    >
+      {children}
+      <FacilitiesQuickGuide guideId="providers" empty={providersEmpty} />
+    </FacilitiesPageHeader>
+  );
+}
+
 function EnvironmentUnavailableRow({
   environment,
   access,
@@ -191,10 +211,15 @@ function EnvironmentUnavailableRow({
   // No spinner: this state can persist indefinitely for a wedged device, and a
   // continuously repainting animation would run the whole time.
   return (
-    <SettingsSection title={t("providers2")}>
-      {deviceTabs}
-      <SettingsRow title={title} description={description} />
-    </SettingsSection>
+    <>
+      <ProviderSettingsPageHeader
+        providersEmpty={!hasConfiguredProviderInstances(environment.serverConfig?.settings)}
+      />
+      <SettingsSection title={t("providers2")} hideTitle>
+        {deviceTabs}
+        <SettingsRow title={title} description={description} />
+      </SettingsSection>
+    </>
   );
 }
 
@@ -218,9 +243,6 @@ export function ProviderSettingsPanel() {
   );
   const selectedEnvironment =
     options.find((environment) => environment.environmentId === effectiveEnvironmentId) ?? null;
-  const providersEmpty =
-    selectedEnvironment === null ||
-    !hasConfiguredProviderInstances(selectedEnvironment.serverConfig?.settings);
   const onlyPrimaryDevice =
     options.length === 1 && options[0]?.entry.target._tag === "PrimaryConnectionTarget";
   const deviceTabs =
@@ -270,24 +292,20 @@ export function ProviderSettingsPanel() {
 
   return (
     <SettingsPageContainer width="expanded" className="gap-8">
-      <FacilitiesPageHeader
-        icon={<ServerCogIcon className="size-4" />}
-        title={t("settings.providers")}
-        description={t("facilitiesGuide.providers.pageDescription")}
-      >
-        <FacilitiesQuickGuide guideId="providers" empty={providersEmpty} />
-      </FacilitiesPageHeader>
       {options.length === 0 ? (
-        <SettingsSection title={t("providers2")}>
-          <SettingsRow
-            title={isReady ? t("noConnectedDevices") : t("loadingDevices")}
-            description={
-              isReady
-                ? t("connectAnExecutionEnvironmentBeforeConfiguringProviders")
-                : t("readingConnectedExecutionEnvironments")
-            }
-          />
-        </SettingsSection>
+        <>
+          <ProviderSettingsPageHeader providersEmpty />
+          <SettingsSection title={t("providers2")} hideTitle>
+            <SettingsRow
+              title={isReady ? t("noConnectedDevices") : t("loadingDevices")}
+              description={
+                isReady
+                  ? t("connectAnExecutionEnvironmentBeforeConfiguringProviders")
+                  : t("readingConnectedExecutionEnvironments")
+              }
+            />
+          </SettingsSection>
+        </>
       ) : null}
 
       {selectedEnvironment ? (
@@ -821,6 +839,7 @@ export function EnvironmentProviderSettings({
       favorite.provider === row.instanceId ? Result.succeed(favorite.model) : Result.failVoid,
     );
     const resetLabel = driverOption?.label ?? String(row.driver);
+    const sharedChannelRow = rows.find((candidate) => candidate.driver === "byok");
 
     return (
       <ProviderInstanceCard
@@ -831,8 +850,37 @@ export function EnvironmentProviderSettings({
         driverOption={driverOption}
         liveProvider={liveProvider}
         mode={mode}
+        sharedChannels={
+          mode === "editor" && sharedChannelRow ? (
+            <div className="min-w-0 rounded-lg border border-border/60 bg-background p-3">
+              <p className="mb-3 text-xs leading-relaxed text-muted-foreground">
+                {t("providerConnection.sharedEditHint", {
+                  name: sharedChannelRow.instance.displayName || t("settings.byok"),
+                })}
+              </p>
+              <ByokModelAdaptersSection
+                environmentId={String(environmentId)}
+                instanceId={String(sharedChannelRow.instanceId)}
+                adapters={readByokModelAdapters(sharedChannelRow.instance.config)}
+                presentation="provider"
+                onChange={async (adapters) => {
+                  const result = await updateProviderInstance(sharedChannelRow, {
+                    ...sharedChannelRow.instance,
+                    config: { ...(sharedChannelRow.instance.config as object), adapters },
+                  });
+                  return result === null || result._tag === "Success";
+                }}
+              />
+            </div>
+          ) : undefined
+        }
         selected={mode === "list" && selectedRow?.instanceId === row.instanceId}
         onSelect={mode === "list" ? () => setSelectedInstanceId(row.instanceId) : undefined}
+        onManageChannels={() => {
+          const byokRow = rows.find((candidate) => candidate.driver === "byok");
+          if (byokRow) setSelectedInstanceId(byokRow.instanceId);
+          else setIsAddInstanceDialogOpen(true);
+        }}
         guideTarget={
           mode === "list" && String(row.driver) === "byok" ? "providers-byok-instance" : undefined
         }
@@ -914,21 +962,15 @@ export function EnvironmentProviderSettings({
 
   return (
     <>
-      <SettingsSection
-        {...searchableSetting("providers")}
-        headerAction={
-          !readOnly ? (
-            <Button
-              size="compact"
-              variant="outline"
-              onClick={() => setIsAddInstanceDialogOpen(true)}
-            >
-              <PlusIcon className="size-3.5" />
-              {t("addProviderInstance")}
-            </Button>
-          ) : null
-        }
-      >
+      <ProviderSettingsPageHeader providersEmpty={!hasConfiguredProviderInstances(settings)}>
+        {!readOnly ? (
+          <Button size="compact" variant="outline" onClick={() => setIsAddInstanceDialogOpen(true)}>
+            <PlusIcon className="size-3.5" />
+            {t("addProviderInstance")}
+          </Button>
+        ) : null}
+      </ProviderSettingsPageHeader>
+      <SettingsSection {...searchableSetting("providers")} hideTitle>
         {deviceTabs}
         <p className="border-b border-border/70 px-3 py-2 text-xs text-muted-foreground sm:px-4">
           {t("providerSettings.savedTo")} {environmentLabel}
@@ -942,9 +984,9 @@ export function EnvironmentProviderSettings({
             )}
           />
         ) : null}
-        <div className="space-y-1">
-          <div className="overflow-hidden rounded-lg border border-border/70 lg:grid lg:grid-cols-[20rem_minmax(0,1fr)]">
-            <div className="border-b border-border/70 lg:border-r lg:border-b-0">
+        <div className="@container/providers space-y-1">
+          <div className="overflow-hidden rounded-xl border border-border/70 @xl/providers:grid @xl/providers:grid-cols-[14rem_minmax(0,1fr)] @4xl/providers:grid-cols-[18rem_minmax(0,1fr)]">
+            <div className="@container/provider-list border-b border-border/70 bg-muted/10 @xl/providers:border-r @xl/providers:border-b-0">
               <div className="flex min-h-9 items-center justify-between border-b border-border/70 px-3 text-[11px] font-medium text-muted-foreground">
                 <span>{t("providerColumn")}</span>
                 <span>{t("enabledColumn")}</span>

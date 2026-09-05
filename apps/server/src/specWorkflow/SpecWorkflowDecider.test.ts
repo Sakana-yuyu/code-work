@@ -30,6 +30,35 @@ const applyEvent = (
 ) => replaySpecWorkflowEvents([{ type: "started", state }, event]);
 
 describe("Spec Workflow state machine and projector", () => {
+  it("单独重写方案后重新等待批准，不能沿用旧验收结果", () => {
+    const state = {
+      ...start.state,
+      stage: "verify" as const,
+      proposalStatus: "approved" as const,
+      implementationCompleted: true,
+      verificationStatus: "passed" as const,
+      acceptanceStatus: "passed" as const,
+    };
+    const event = transitionSpecWorkflowState(
+      state,
+      { type: "complete-node", node: "propose", expectedRevision: state.revision },
+      2,
+    );
+    expect(event.state).toMatchObject({
+      stage: "awaitingApproval",
+      proposalStatus: "pending",
+      implementationCompleted: false,
+      verificationStatus: "pending",
+      acceptanceStatus: "pending",
+    });
+    expect(() =>
+      transitionSpecWorkflowState(
+        { ...state, activeTaskId: "busy-task" },
+        { type: "complete-node", node: "research", expectedRevision: state.revision },
+        2,
+      ),
+    ).toThrow(SpecWorkflowTransitionError);
+  });
   it("按 TBD、方案确认、实施、验证和验收门禁推进到归档", () => {
     let state = start.state;
     const events = [start];

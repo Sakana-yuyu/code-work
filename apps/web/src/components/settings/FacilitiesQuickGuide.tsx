@@ -41,6 +41,16 @@ export interface FacilitiesGuideConcept {
   readonly descriptionKey: string;
 }
 
+export function closeGuideOnEscape(event: KeyboardEvent, close: () => void) {
+  if (event.defaultPrevented || event.isComposing || event.key !== "Escape") return;
+  event.preventDefault();
+  event.stopPropagation();
+  close();
+}
+
+export const guideStepAdvancesOnClick = (step: FacilitiesGuideStep) =>
+  step.advanceOn === undefined || step.advanceOn === "click";
+
 type FacilitiesGuidePreset = {
   readonly steps: ReadonlyArray<FacilitiesGuideStep>;
 };
@@ -410,15 +420,19 @@ export function FacilitiesQuickGuide({
   const currentStep = resolvedSteps[Math.min(stepIndex, Math.max(0, resolvedSteps.length - 1))];
   const isLastStep = stepIndex >= resolvedSteps.length - 1;
   const [targetRect, setTargetRect] = useState<DOMRect | null>(null);
+  const [dialogContainer, setDialogContainer] = useState<HTMLElement | null>(null);
   const [calloutSize, setCalloutSize] = useState<GuideCalloutSize | null>(null);
   const calloutRef = useRef<HTMLElement | null>(null);
 
   const refreshTarget = useCallback(() => {
     if (!open || !currentStep?.targetSelector) {
       setTargetRect((previous) => (previous === null ? previous : null));
+      setDialogContainer(null);
       return;
     }
     const element = findGuideTarget(currentStep.targetSelector);
+    // 引导参与当前弹窗的焦点范围，避免按钮被弹窗标记为不可访问。
+    setDialogContainer(element?.closest<HTMLElement>('[data-slot="dialog-popup"]') ?? null);
     const nextRect = element ? guideTargetRect(element) : null;
     setTargetRect((previous) => (sameRect(previous, nextRect) ? previous : nextRect));
   }, [currentStep?.targetSelector, open]);
@@ -478,26 +492,42 @@ export function FacilitiesQuickGuide({
 
   useEffect(() => {
     if (!open) return;
+    const previousFocus = document.activeElement;
+    calloutRef.current?.focus({ preventScroll: true });
+    return () => {
+      if (previousFocus instanceof HTMLElement && previousFocus.isConnected) {
+        previousFocus.focus({ preventScroll: true });
+      }
+    };
+  }, [open]);
+
+  useEffect(() => {
+    if (open) calloutRef.current?.focus({ preventScroll: true });
+  }, [open, stepIndex, dialogContainer]);
+
+  useEffect(() => {
+    if (!open) return;
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setOpen(false);
+      closeGuideOnEscape(event, () => setOpen(false));
     };
     refreshTarget();
     const onViewportChange = () => refreshTarget();
     window.addEventListener("resize", onViewportChange);
-    document.addEventListener("keydown", onKeyDown);
+    window.addEventListener("keydown", onKeyDown, true);
     document.addEventListener("scroll", onViewportChange, true);
     const observer = new MutationObserver(onViewportChange);
     observer.observe(document.body, { childList: true, subtree: true });
     return () => {
       window.removeEventListener("resize", onViewportChange);
-      document.removeEventListener("keydown", onKeyDown);
+      window.removeEventListener("keydown", onKeyDown, true);
       document.removeEventListener("scroll", onViewportChange, true);
       observer.disconnect();
     };
   }, [open, refreshTarget]);
 
   useEffect(() => {
-    if (!open || !currentStep?.targetSelector || currentStep.advanceOn === "manual") return;
+    // 输入由用户确认完成，避免首个字符或点击预填值就跳到下一步。
+    if (!open || !currentStep?.targetSelector || !guideStepAdvancesOnClick(currentStep)) return;
     const onTargetAction = (event: Event) => {
       const target = findGuideTarget(currentStep.targetSelector!);
       if (
@@ -507,17 +537,11 @@ export function FacilitiesQuickGuide({
       ) {
         return;
       }
-      if (currentStep.advanceOn === "input") {
-        const input = event.target as HTMLInputElement | HTMLTextAreaElement;
-        if (input.value.trim().length === 0) return;
-      }
       setStepIndex((index) => Math.min(index + 1, resolvedSteps.length - 1));
     };
     document.addEventListener("click", onTargetAction, true);
-    document.addEventListener("input", onTargetAction, true);
     return () => {
       document.removeEventListener("click", onTargetAction, true);
-      document.removeEventListener("input", onTargetAction, true);
     };
   }, [currentStep, open, resolvedSteps.length]);
 
@@ -529,9 +553,15 @@ export function FacilitiesQuickGuide({
   };
 
   const guidePosition = targetRect ? calculateGuidePosition(targetRect, calloutSize) : null;
-  const calloutStyle: CSSProperties | undefined = guidePosition
-    ? { left: guidePosition.left, top: guidePosition.top }
-    : undefined;
+  const containerRect = dialogContainer?.getBoundingClientRect();
+  const localPosition = (left: number, top: number): CSSProperties =>
+    containerRect?.width && containerRect.height && dialogContainer
+      ? {
+          position: "absolute",
+          left: (left - containerRect.left) / (containerRect.width / dialogContainer.offsetWidth),
+          top: (top - containerRect.top) / (containerRect.height / dialogContainer.offsetHeight),
+        }
+      : { left, top };
 
   const guideOverlay = open ? (
     <>
@@ -540,8 +570,7 @@ export function FacilitiesQuickGuide({
         <div
           className="pointer-events-none fixed z-[1001] rounded-lg ring-2 ring-primary ring-offset-2 ring-offset-background shadow-[0_0_0_9999px_rgba(0,0,0,0.42)]"
           style={{
-            left: targetRect.left - 6,
-            top: targetRect.top - 6,
+            ...localPosition(targetRect.left - 6, targetRect.top - 6),
             width: targetRect.width + 12,
             height: targetRect.height + 12,
           }}
@@ -551,10 +580,14 @@ export function FacilitiesQuickGuide({
       <aside
         ref={calloutRef}
         role="dialog"
-        aria-modal="true"
+        tabIndex={-1}
         aria-label={currentStep ? t(currentStep.titleKey) : t("facilitiesGuide.title")}
         className="fixed z-[1002] max-h-[min(70vh,32rem)] w-[min(20rem,calc(100vw-2rem))] overflow-y-auto rounded-xl border border-border bg-popover p-4 text-popover-foreground shadow-2xl"
-        style={calloutStyle ?? { left: "50%", top: "50%", transform: "translate(-50%, -50%)" }}
+        style={
+          guidePosition
+            ? localPosition(guidePosition.left, guidePosition.top)
+            : { left: "50%", top: "50%", transform: "translate(-50%, -50%)" }
+        }
         data-facilities-guide-callout={guideId}
       >
         <div className="flex items-start gap-3">
@@ -583,7 +616,7 @@ export function FacilitiesQuickGuide({
                 )
               ) : null}
             </div>
-            <h3 className="text-sm font-semibold text-foreground">
+            <h3 aria-live="polite" className="text-sm font-semibold text-foreground">
               {currentStep ? t(currentStep.titleKey) : t("facilitiesGuide.title")}
             </h3>
             <p className="text-sm leading-relaxed text-muted-foreground">
@@ -672,7 +705,7 @@ export function FacilitiesQuickGuide({
         {t("facilitiesGuide.open")}
       </Button>
       {guideOverlay && typeof document !== "undefined"
-        ? createPortal(guideOverlay, document.body)
+        ? createPortal(guideOverlay, dialogContainer ?? document.body)
         : null}
     </>
   );

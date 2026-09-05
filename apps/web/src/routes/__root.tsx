@@ -414,7 +414,7 @@ function EventRouter() {
         description: decision.message,
         actionVariant: "outline",
         actionProps: {
-          children: "Open keybindings.json",
+          children: t("keybindings.openConfigFile"),
           onClick: () => {
             if (!serverConfig || !primaryEnvironment) {
               return;

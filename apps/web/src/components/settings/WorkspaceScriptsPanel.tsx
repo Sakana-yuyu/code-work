@@ -10,14 +10,7 @@ import {
   squashAtomCommandFailure,
   type AtomCommandResult,
 } from "@codework/client-runtime/state/runtime";
-import {
-  ActivityIcon,
-  ExternalLinkIcon,
-  PlayIcon,
-  RefreshCwIcon,
-  SquareIcon,
-  TerminalIcon,
-} from "lucide-react";
+import { ActivityIcon, ExternalLinkIcon, PlayIcon, RefreshCwIcon, SquareIcon } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
 import { t } from "~/i18n";
@@ -201,7 +194,7 @@ export function WorkspaceScriptsPanel() {
     <SettingsSection
       id="workspace-scripts"
       title={t("workspaceScripts.title")}
-      icon={<TerminalIcon className="size-4 text-muted-foreground" />}
+      hideTitle
       headerAction={
         <Button
           size="icon-xs"
@@ -215,10 +208,6 @@ export function WorkspaceScriptsPanel() {
       }
     >
       <div className="space-y-5 rounded-md border border-border/70 bg-background/40 p-3 sm:p-4">
-        <p className="max-w-3xl text-xs leading-relaxed text-muted-foreground">
-          {t("workspaceScripts.description")}
-        </p>
-
         {environmentId === null ? (
           <p className="rounded-md border border-dashed border-border px-4 py-8 text-center text-sm text-muted-foreground">
             {t("workspaceScripts.noEnvironment")}

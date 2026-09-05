@@ -13,6 +13,7 @@ import { useCallback, useEffect, useState, type ReactElement } from "react";
 import { cn } from "../../lib/utils";
 import {
   getThemeDefinition,
+  getCustomThemes,
   getThemeModes,
   removeCustomThemes,
   serializeThemeFile,
@@ -50,6 +51,10 @@ import {
 } from "./ThemePreviewCircles";
 import { ThemeWireframe } from "./ThemeWireframe";
 import { t } from "~/i18n";
+import { Dialog, DialogHeader, DialogPanel, DialogPopup, DialogTitle } from "../ui/dialog";
+import { exportThemeMediaPackage, mapThemeMedia } from "../../themeMediaArchive";
+import { themeAssetIds } from "../../themeDecoration";
+import { removeThemeAsset } from "../../themeMedia";
 
 const MAINTAINER_THEMES: ReadonlyArray<ThemeDefinition> = [
   CODEWORK_CHAT_THEME,
@@ -74,8 +79,10 @@ function collectionVariantLabels(themes: ReadonlyArray<ThemeDefinition>): Readon
   });
 }
 
-function downloadThemeFile(filename: string, contents: string): void {
-  const url = URL.createObjectURL(new Blob([contents], { type: "application/json" }));
+function downloadThemeFile(filename: string, contents: string | Blob): void {
+  const url = URL.createObjectURL(
+    typeof contents === "string" ? new Blob([contents], { type: "application/json" }) : contents,
+  );
   const anchor = document.createElement("a");
   anchor.href = url;
   anchor.download = filename;
@@ -543,6 +550,25 @@ export function ThemeLibrary({
   setThemeHalf: (appearance: ThemeAppearance, themeId: string | null) => boolean;
 }) {
   const openThemeEditor = useThemeEditorStore((store) => store.openThemeEditor);
+  const [exportTheme, setExportTheme] = useState<ThemeDefinition | null>(null);
+  const [exportBusy, setExportBusy] = useState(false);
+  const [exportError, setExportError] = useState<string | null>(null);
+  const exportWithMedia = async () => {
+    if (!exportTheme || exportBusy) return;
+    setExportBusy(true);
+    setExportError(null);
+    try {
+      downloadThemeFile(
+        `${exportTheme.id}.codework-theme.zip`,
+        await exportThemeMediaPackage(exportTheme),
+      );
+      setExportTheme(null);
+    } catch (cause) {
+      setExportError(cause instanceof Error ? cause.message : t("themeMedia.packageInvalid"));
+    } finally {
+      setExportBusy(false);
+    }
+  };
   const [themeRemovalTarget, setThemeRemovalTarget] = useState<{
     theme: ThemeDefinition;
     collectionThemes: ReadonlyArray<ThemeDefinition>;
@@ -618,7 +644,16 @@ export function ThemeLibrary({
       }
     }
     try {
+      const assets = getCustomThemes()
+        .filter((item) => removedIds.has(item.id))
+        .flatMap((item) => themeAssetIds(item.decorations));
       removeCustomThemes([...removedIds]);
+      const retained = new Set(
+        getCustomThemes().flatMap((item) => themeAssetIds(item.decorations)),
+      );
+      for (const id of new Set(assets)) {
+        if (!retained.has(id)) void removeThemeAsset(id).catch(() => undefined);
+      }
     } catch {
       notifyThemeRemovalFailure();
       return;
@@ -731,7 +766,7 @@ export function ThemeLibrary({
   const renderModeTiles = () => (
     <div
       aria-label={t("appearanceMode")}
-      className="mx-auto grid w-full max-w-[56rem] grid-cols-3 gap-3 px-3 sm:px-4"
+      className="mx-auto grid w-full max-w-[56rem] grid-cols-1 gap-3 px-3 min-[480px]:grid-cols-3 sm:px-4"
       role="group"
     >
       {(["system", "light", "dark"] as const).map((mode) => {
@@ -839,9 +874,10 @@ export function ThemeLibrary({
           <CustomThemeCollectionCard
             activeModesFor={pickedModesFor}
             key={collectionId}
-            onDownload={(customTheme) =>
-              downloadThemeFile(`${customTheme.id}.json`, serializeThemeFile(customTheme))
-            }
+            onDownload={(customTheme) => {
+              setExportError(null);
+              setExportTheme(customTheme);
+            }}
             onDuplicate={(customTheme) =>
               openThemeEditor({
                 editingThemeId: null,
@@ -874,6 +910,49 @@ export function ThemeLibrary({
 
   return (
     <div className="space-y-3">
+      <Dialog
+        open={exportTheme !== null}
+        onOpenChange={(open) => {
+          if (!open && !exportBusy) setExportTheme(null);
+        }}
+      >
+        <DialogPopup>
+          <DialogHeader>
+            <DialogTitle>{t("themeMedia.exportTitle")}</DialogTitle>
+          </DialogHeader>
+          <DialogPanel className="space-y-4">
+            <p className="text-sm text-muted-foreground">{t("themeMedia.exportHint")}</p>
+            <div className="flex flex-wrap gap-2">
+              <Button
+                disabled={exportBusy}
+                variant="outline"
+                onClick={() => {
+                  if (!exportTheme) return;
+                  downloadThemeFile(
+                    `${exportTheme.id}.json`,
+                    serializeThemeFile(
+                      mapThemeMedia(exportTheme, (media) =>
+                        media.source === "url" ? media : undefined,
+                      ),
+                    ),
+                  );
+                  setExportTheme(null);
+                }}
+              >
+                {t("themeMedia.exportSettings")}
+              </Button>
+              <Button disabled={exportBusy} onClick={() => void exportWithMedia()}>
+                {t(exportBusy ? "themeMedia.exportBusy" : "themeMedia.exportMedia")}
+              </Button>
+            </div>
+            {exportError ? (
+              <p role="alert" className="text-sm text-destructive">
+                {exportError}
+              </p>
+            ) : null}
+          </DialogPanel>
+        </DialogPopup>
+      </Dialog>
       <p className="px-3 text-[13px] leading-[1.45] text-muted-foreground/80 sm:px-4">
         {t("themeAppearanceDescription")}
       </p>
@@ -962,9 +1041,13 @@ export function ThemeLibrary({
                 : t("remove2", { label: removeDialogTheme?.label })}
             </AlertDialogTitle>
             <AlertDialogDescription>
-              {canRemoveCollection
-                ? t("selectTheVariantsYouWantToRemoveYouCanRestoreThemByImportingTheExtension")
-                : t("youCanBringItBackAnytimeByImportingItsJsonFile")}
+              {[removeDialogTheme, ...removeDialogCollectionThemes].some(
+                (item) => item && themeAssetIds(item.decorations).length > 0,
+              )
+                ? t("themeMedia.removeWarning")
+                : canRemoveCollection
+                  ? t("selectTheVariantsYouWantToRemoveYouCanRestoreThemByImportingTheExtension")
+                  : t("youCanBringItBackAnytimeByImportingItsJsonFile")}
             </AlertDialogDescription>
           </AlertDialogHeader>
           {canRemoveCollection ? (

@@ -18,6 +18,7 @@ import type { ReactNode } from "react";
 import { memo, useCallback, useEffect, useMemo, useRef, useState, type RefObject } from "react";
 import {
   ActivityIndicator,
+  Alert,
   Image,
   Platform,
   Pressable,
@@ -77,6 +78,8 @@ import {
   type NavigationWithFinishTransitioning,
 } from "./use-thread-settings-sheet-presentation";
 import { t } from "../../i18n";
+import { useSpecWorkflowController } from "../../state/specWorkflow";
+import { SpecWorkflowMobilePicker } from "./SpecWorkflowMobileControls";
 
 /**
  * Height of the collapsed composer (pill + vertical padding, excluding safe-area inset).
@@ -196,7 +199,7 @@ function composerConnectionStatus(input: {
   readonly environmentLabel: string | null;
   readonly threadSyncPhase?: "loading" | "syncing" | null;
 }): ComposerStatusPillState | null {
-  const environmentLabel = input.environmentLabel ?? "Environment";
+  const environmentLabel = input.environmentLabel ?? t("threads.fallbackEnvironment");
 
   switch (input.connectionState) {
     case "connecting":
@@ -278,6 +281,15 @@ const ComposerConnectionStatusPill = memo(function ComposerConnectionStatusPill(
 });
 
 export const ThreadComposer = memo(function ThreadComposer(props: ThreadComposerProps) {
+  const specWorkflow = useSpecWorkflowController({
+    environmentId: props.environmentId,
+    threadId: props.selectedThread.id,
+  });
+  const workflowDisabled =
+    props.connectionState !== "connected" ||
+    specWorkflow.isPending ||
+    specWorkflow.hasError ||
+    specWorkflow.capability === null;
   const navigation = useNavigation();
   const { themeAppearance } = useAppearancePreferences();
   const isDarkMode = themeAppearance === "dark";
@@ -300,7 +312,7 @@ export const ThreadComposer = memo(function ThreadComposer(props: ThreadComposer
   const hasContent = props.draftMessage.trim().length > 0 || props.draftAttachments.length > 0;
   // Opening and presentation count as active so the composer stays expanded
   // while focus moves between its native editor and the settings picker.
-  const isExpanded = isFocused || settingsSheetPresentation.isActive;
+  const isExpanded = isFocused || settingsSheetPresentation.isActive || specWorkflow.enabled;
   const canSend = hasContent;
 
   // Notify the parent from the derived value, not focus events: the parent
@@ -436,7 +448,7 @@ export const ThreadComposer = memo(function ThreadComposer(props: ThreadComposer
           type: "provider-slash-command" as const,
           command: cmd,
           label: `/${cmd.name}`,
-          description: cmd.description ?? "",
+          description: t(cmd.description ?? ""),
         });
       }
 
@@ -794,6 +806,31 @@ export const ThreadComposer = memo(function ThreadComposer(props: ThreadComposer
           }
         >
           {/* Attachment strip — inside the card, above the text input */}
+          {specWorkflow.enabled ? (
+            <View className="mb-2 flex-row items-center gap-1" testID="spec-workflow-pill">
+              <SpecWorkflowMobilePicker controller={specWorkflow} disabled={workflowDisabled}>
+                <ControlPill
+                  variant="pill"
+                  label={`${t("specWorkflowMobile.title")} · ${t(`specWorkflow.node.${specWorkflow.capability?.selectedIntent ?? "workflow"}`)}`}
+                  accessibilityLabel={t("specWorkflow.changeNode")}
+                  disabled={workflowDisabled}
+                />
+              </SpecWorkflowMobilePicker>
+              <ControlPill
+                icon="xmark"
+                accessibilityLabel={t("specWorkflow.remove")}
+                disabled={workflowDisabled}
+                onPress={() => {
+                  void specWorkflow
+                    .toggle()
+                    .then((ok) => {
+                      if (!ok) Alert.alert(t("specWorkflow.saveFailed"));
+                    })
+                    .catch(() => Alert.alert(t("specWorkflow.saveFailed")));
+                }}
+              />
+            </View>
+          ) : null}
           {isExpanded ? (
             <Animated.View
               className={props.draftAttachments.length > 0 ? "pb-2.5" : undefined}
@@ -886,12 +923,17 @@ export const ThreadComposer = memo(function ThreadComposer(props: ThreadComposer
                 fadeTransparent={toolbarFadeTransparent}
                 contentPaddingRight={8}
               >
-                <ComposerToolbarButton
-                  accessibilityLabel={t("addAttachment")}
-                  icon="plus"
-                  onPress={() => void props.onPickDraftImages()}
-                  showChevron={false}
-                />
+                <SpecWorkflowMobilePicker
+                  controller={specWorkflow}
+                  disabled={workflowDisabled}
+                  includeAttachments={() => void props.onPickDraftImages()}
+                >
+                  <ComposerToolbarButton
+                    accessibilityLabel={t("addAttachment")}
+                    icon="plus"
+                    showChevron={false}
+                  />
+                </SpecWorkflowMobilePicker>
                 <ComposerInlineControl
                   accessibilityLabel={t("modelAndReasoningSettings")}
                   emphasized

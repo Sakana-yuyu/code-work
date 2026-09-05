@@ -75,7 +75,9 @@ export function ConnectionsNewRouteScreen({
   }, [pairingConnectionError]);
 
   const handleHostChange = useCallback((value: string) => {
-    setHostInput(value);
+    const { host, code } = parsePairingUrl(value);
+    setHostInput(code ? host : value);
+    if (code) setCodeInput(code);
   }, []);
 
   const handleCodeChange = useCallback((value: string) => {
@@ -223,6 +225,7 @@ export function ConnectionsNewRouteScreen({
       )}
 
       <ScrollView
+        keyboardShouldPersistTaps="handled"
         contentInsetAdjustmentBehavior="automatic"
         showsVerticalScrollIndicator={false}
         className="flex-1"
@@ -230,9 +233,13 @@ export function ConnectionsNewRouteScreen({
         contentContainerStyle={{
           paddingHorizontal: 20,
           paddingTop: 16,
+          paddingBottom: Math.max(insets.bottom, 18) + 18,
         }}
       >
         <View collapsable={false} className="gap-5">
+          <Text className="text-sm leading-normal text-foreground-muted">
+            {t("pairing.computerInstructions")}
+          </Text>
           {showScanner ? (
             cameraPermission?.granted ? (
               <View className="overflow-hidden rounded-[24px] border-continuous">
@@ -265,10 +272,11 @@ export function ConnectionsNewRouteScreen({
                   {t("host")}
                 </Text>
                 <TextInput
+                  accessibilityLabel={t("host")}
                   autoCapitalize="none"
                   autoCorrect={false}
                   keyboardType="url"
-                  placeholder="192.168.1.100:8080"
+                  placeholder="http://192.168.1.100:3773"
                   value={hostInput}
                   onChangeText={handleHostChange}
                   className="rounded-[14px] border border-input-border bg-input px-4 py-3.5 text-base text-foreground"
@@ -280,6 +288,7 @@ export function ConnectionsNewRouteScreen({
                   {t("pairingCode")}
                 </Text>
                 <TextInput
+                  accessibilityLabel={t("pairingCode")}
                   autoCapitalize="none"
                   autoCorrect={false}
                   placeholder="abc-123-xyz"
@@ -289,7 +298,14 @@ export function ConnectionsNewRouteScreen({
                 />
               </View>
 
-              {pairingConnectionError ? <ErrorBanner message={pairingConnectionError} /> : null}
+              {pairingConnectionError ? (
+                <View className="gap-2">
+                  <ErrorBanner message={pairingConnectionError} />
+                  <Text className="text-sm leading-normal text-foreground-muted">
+                    {t("pairing.retryInstructions")}
+                  </Text>
+                </View>
+              ) : null}
 
               <ConnectionSheetButton
                 icon="plus"

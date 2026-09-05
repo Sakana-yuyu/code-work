@@ -23,7 +23,6 @@ import {
   RefreshCwIcon,
   SaveIcon,
   Trash2Icon,
-  UsersIcon,
 } from "lucide-react";
 import { useMemo, useState, type ReactNode } from "react";
 
@@ -460,7 +459,7 @@ export function CompositionSquadPanel() {
     <SettingsSection
       id="composition-squads"
       title={t("squadBuilder.title")}
-      icon={<UsersIcon className="size-4 text-muted-foreground" />}
+      hideTitle
       headerAction={
         <div className="flex items-center gap-1.5">
           <Button
@@ -491,9 +490,9 @@ export function CompositionSquadPanel() {
           {t("squadBuilder.loadFailed", { message: squadsQuery.error })}
         </p>
       ) : (
-        <div className="grid border-y border-border/60 lg:grid-cols-[minmax(13rem,0.32fr)_minmax(0,1fr)]">
-          <aside className="border-b border-border/60 lg:border-r lg:border-b-0">
-            <div className="max-h-72 overflow-y-auto p-2 lg:max-h-none">
+        <div className="grid border-y border-border/60 xl:grid-cols-[minmax(13rem,0.32fr)_minmax(0,1fr)]">
+          <aside className="border-b border-border/60 xl:border-r xl:border-b-0">
+            <div className="max-h-72 overflow-y-auto p-2 xl:max-h-none">
               {squads.length === 0 ? (
                 <p className="px-2 py-5 text-xs text-muted-foreground">{t("squadBuilder.empty")}</p>
               ) : (

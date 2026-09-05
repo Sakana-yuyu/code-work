@@ -299,11 +299,12 @@ describe("EnvironmentProviderSettings routing", () => {
     );
     expect(notice).not.toBeNull();
 
-    const providersSection = visitElements(
-      panel,
-      (element) => element.props.id === "providers" && "headerAction" in element.props,
-    );
-    expect(providersSection?.props.headerAction).toBeNull();
+    const providersSection = visitElements(panel, (element) => element.props.id === "providers");
+    expect(providersSection?.props.headerAction).toBeUndefined();
+    expect(providersSection?.props.hideTitle).toBe(true);
+    const pageHeader = visitElements(panel, (element) => "providersEmpty" in element.props);
+    expect(pageHeader).not.toBeNull();
+    expect(visitElements(pageHeader, (element) => "onClick" in element.props)).toBeNull();
     expect(
       visitElements(panel, (element) => element.props["aria-label"] === t("refreshProviderStatus")),
     ).toBeNull();
@@ -316,11 +317,26 @@ describe("EnvironmentProviderSettings routing", () => {
     expect(
       visitElements(panel, (element) => element.props.title === "Limited permissions"),
     ).toBeNull();
-    const providersSection = visitElements(
-      panel,
-      (element) => element.props.id === "providers" && "headerAction" in element.props,
-    );
-    expect(providersSection?.props.headerAction).not.toBeNull();
+    const providersSection = visitElements(panel, (element) => element.props.id === "providers");
+    expect(providersSection?.props.headerAction).toBeUndefined();
+    expect(providersSection?.props.hideTitle).toBe(true);
+  });
+
+  it("标题区的添加按钮打开当前设备的对话框，关闭后不修改配置", () => {
+    let panel = renderPanel();
+    const pageHeader = visitElements(panel, (element) => "providersEmpty" in element.props);
+    expect(pageHeader).not.toBeNull();
+    const addButton = visitElements(pageHeader, (element) => "onClick" in element.props);
+    expect(addButton).not.toBeNull();
+    (addButton!.props.onClick as () => void)();
+
+    panel = renderPanel();
+    const dialog = visitElements(panel, (element) => element.props.open === true);
+    expect(dialog?.props.environmentId).toBe(environmentId);
+    expect(dialog?.props.environmentLabel).toBe("Remote device");
+    (dialog!.props.onOpenChange as (open: boolean) => void)(false);
+    expect(visitElements(renderPanel(), (element) => element.props.open === true)).toBeNull();
+    expect(settingsState.updateSettings).not.toHaveBeenCalled();
   });
 
   it("显示当前 Provider 设置的保存范围", () => {

@@ -60,6 +60,19 @@ If the copied link points directly at `http://192.168.x.y:3773`, open it from a 
 
 In the mobile app's **Add Environment** form, a numeric IP address without a scheme uses HTTP. Include `https://` explicitly when the backend is served over HTTPS.
 
+### Android 和 iPhone 连接电脑
+
+1. 保持电脑端 Code Work 运行，按照上面的步骤开启网络访问。手机和电脑连接同一 Wi-Fi，配对地址选择电脑的局域网地址。
+2. 在手机首页点击「添加环境」，或进入「设置 → 环境」添加连接。允许相机权限后扫描电脑端二维码；也可以把完整配对链接粘贴到「主机」，应用会自动填入地址和配对码。
+3. 检查显示的电脑地址，再点击「添加环境」。iPhone 首次访问时如果询问本地网络权限，请允许。
+4. 连接成功后返回首页，打开电脑上的项目和会话，即可发送任务、查看回复和执行进度。模型及工作目录由连接的电脑提供。
+
+配对链接一次有效，每台手机都需要单独创建新链接。配对成功后连接会保存到本机，正常重开应用不需要重新扫码。
+
+如果无法连接，请检查电脑端是否仍在运行、手机是否在同一网络，以及系统防火墙和本地网络权限。`localhost`、`127.0.0.1` 指向手机自身，不能用于连接电脑。配对码过期或已经使用时，在电脑端创建新链接并重新扫描或粘贴；新链接会替换表单中的旧配对码。
+
+不同网络下可使用已有的 Tailscale 或 Code Work Connect 连接方式。切换网络后，应使用手机当前能够访问的电脑地址。
+
 ### Tailscale Endpoints
 
 When the desktop app can detect Tailscale, it adds Tailnet endpoints to the reachable endpoint list.

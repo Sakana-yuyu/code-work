@@ -161,6 +161,7 @@ const LANGUAGE_PREFERENCE_LABELS: Record<LanguagePreference, string> = {
   system: "System",
   "zh-CN": "简体中文",
   en: "English",
+  ja: "日本語",
 };
 
 const TIMESTAMP_FORMAT_LABELS = {
@@ -1242,7 +1243,7 @@ export function AppearanceSettingsPanel() {
             <Select
               value={settings.language}
               onValueChange={(value) => {
-                if (value === "system" || value === "zh-CN" || value === "en") {
+                if (value === "system" || value === "zh-CN" || value === "en" || value === "ja") {
                   updateSettings({ language: value });
                 }
               }}
@@ -2742,7 +2743,10 @@ export function ArchivedThreadsPanel() {
             description={
               isLoadingArchive
                 ? t("checkingConnectedEnvironments")
-                : (archiveError ?? t("archivedThreadsEmptyDescription"))
+                : archiveError
+                  ? // 共享包写入的加载失败原句；展示前翻译。
+                    t("archive.loadFailedDescription")
+                  : t("archivedThreadsEmptyDescription")
             }
           />
         </SettingsSection>

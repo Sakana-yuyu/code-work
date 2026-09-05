@@ -84,6 +84,7 @@ export type SpecWorkflowStartInput = typeof SpecWorkflowStartInput.Type;
 
 export const SpecWorkflowTransitionAction = Schema.Literals([
   "advance",
+  "complete-node",
   "set-tbd-count",
   "approve-proposal",
   "reject-proposal",
@@ -117,6 +118,15 @@ export const SpecWorkflowIntentName = Schema.Literals([
 ]);
 export type SpecWorkflowIntentName = typeof SpecWorkflowIntentName.Type;
 
+/** 可以独立重做的文档节点；完成方案后必须重新由用户批准。 */
+export const SpecWorkflowDocumentNode = Schema.Literals([
+  "research",
+  "ask",
+  "design",
+  "propose",
+  "revise",
+]);
+
 export const SpecWorkflowRouteAction = Schema.Literals([
   "pass-through",
   "start",
@@ -130,6 +140,7 @@ export type SpecWorkflowRouteAction = typeof SpecWorkflowRouteAction.Type;
 export const SpecWorkflowRouteReason = Schema.Literals([
   "not-enabled",
   "workflow-not-started",
+  "node-not-selected",
   "requested-stage-allowed",
   "already-at-target",
   "tbd-remaining",
@@ -200,6 +211,11 @@ export const SpecWorkflowPauseResumeInput = Schema.Struct({
 });
 
 export const SpecWorkflowCommand = Schema.Union([
+  Schema.Struct({
+    type: Schema.Literal("complete-node"),
+    node: SpecWorkflowDocumentNode,
+    ...SpecWorkflowExpectedRevision,
+  }),
   SpecWorkflowAdvanceInput,
   SpecWorkflowSetTbdCountInput,
   SpecWorkflowProposalDecisionInput,
@@ -321,6 +337,8 @@ export type SpecWorkflowArtifactListInput = typeof SpecWorkflowArtifactListInput
 export const SpecWorkflowCapability = Schema.Struct({
   threadId: ThreadId,
   enabled: Schema.Boolean,
+  /** 缺省兼容旧客户端的完整流程；单节点选择只授权这一部分。 */
+  selectedIntent: Schema.optionalKey(SpecWorkflowIntentName),
   revision: NonNegativeInt,
   updatedAt: NonNegativeInt,
 });
@@ -334,6 +352,7 @@ export type SpecWorkflowGetInput = typeof SpecWorkflowGetInput.Type;
 export const SpecWorkflowSetInput = Schema.Struct({
   threadId: ThreadId,
   enabled: Schema.Boolean,
+  selectedIntent: Schema.optionalKey(SpecWorkflowIntentName),
   expectedRevision: Schema.optionalKey(NonNegativeInt),
 });
 export type SpecWorkflowSetInput = typeof SpecWorkflowSetInput.Type;

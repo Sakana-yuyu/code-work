@@ -468,3 +468,12 @@ export function snoozeWakeLabel(snoozedUntil: string, options: { readonly now: s
   if (remainingMs < DAY_MS) return `${Math.ceil(remainingMs / HOUR_MS)}h`;
   return `${Math.ceil(remainingMs / DAY_MS)}d`;
 }
+
+/**
+ * "now" 是共享英文文案，时长标签（"2h"）则与语言无关。与
+ * serverSessionErrorTranslation 同一模式：共享原句进，稳定 i18n key 出，
+ * null 表示原样透传时长标签，由调用方用 t() 渲染。
+ */
+export function snoozeWakeLabelKey(label: string): "snooze.wakeNow" | null {
+  return label === "now" ? "snooze.wakeNow" : null;
+}

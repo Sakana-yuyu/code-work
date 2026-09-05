@@ -6,13 +6,18 @@ import type {
   SpecWorkflowStatus,
   ThreadId,
 } from "@codework/contracts";
-import { View } from "react-native";
+import { Alert, View } from "react-native";
+import { SpecWorkflowIntentName } from "@codework/contracts";
+import type { ReactNode } from "react";
 
-import { ControlPill } from "../../components/ControlPill";
+import { ControlPill, ControlPillMenu } from "../../components/ControlPill";
 import { AppText as Text } from "../../components/AppText";
 import { t } from "../../i18n";
 import { useEnvironmentPresentation } from "../../state/presentation";
-import { useSpecWorkflowController } from "../../state/specWorkflow";
+import {
+  useSpecWorkflowController,
+  type SpecWorkflowMobileController,
+} from "../../state/specWorkflow";
 import {
   specWorkflowMobileConnectionReady,
   specWorkflowMobileTransport,
@@ -24,6 +29,60 @@ function stageLabel(stage: SpecWorkflowStage): string {
 
 function statusLabel(status: SpecWorkflowStatus): string {
   return t(`specWorkflowMobile.status.${status}`);
+}
+
+export function SpecWorkflowMobilePicker(props: {
+  readonly controller: SpecWorkflowMobileController;
+  readonly disabled: boolean;
+  readonly children?: ReactNode;
+  readonly includeAttachments?: () => void;
+}) {
+  const { controller } = props;
+  const actions = SpecWorkflowIntentName.literals.map((intent) => ({
+    id: intent,
+    title: t(`specWorkflow.node.${intent}`),
+    subtitle: t(`specWorkflow.description.${intent}`),
+    state:
+      controller.enabled && (controller.capability?.selectedIntent ?? "workflow") === intent
+        ? ("on" as const)
+        : ("off" as const),
+    attributes: { disabled: props.disabled },
+  }));
+  return (
+    <ControlPillMenu
+      title={t("specWorkflow.choose")}
+      actions={
+        props.includeAttachments
+          ? [
+              { id: "attachments", title: t("addAttachment") },
+              { id: "workflow-steps", title: t("specWorkflowMobile.title"), subactions: actions },
+            ]
+          : actions
+      }
+      onPressAction={({ nativeEvent }) => {
+        if (nativeEvent.event === "attachments") {
+          props.includeAttachments?.();
+          return;
+        }
+        const intent = SpecWorkflowIntentName.literals.find((value) => value === nativeEvent.event);
+        if (intent === undefined || props.disabled) return;
+        void controller
+          .selectIntent(intent)
+          .then((ok) => {
+            if (!ok) Alert.alert(t("specWorkflow.saveFailed"));
+          })
+          .catch(() => Alert.alert(t("specWorkflow.saveFailed")));
+      }}
+    >
+      {props.children ?? (
+        <ControlPill
+          label={t("specWorkflow.choose")}
+          accessibilityLabel={t("specWorkflow.choose")}
+          disabled={props.disabled}
+        />
+      )}
+    </ControlPillMenu>
+  );
 }
 
 export function SpecWorkflowMobileControls(props: {
@@ -42,6 +101,7 @@ export function SpecWorkflowMobileControls(props: {
     specWorkflowMobileConnectionReady(props.connectionState) && !controller.isPending;
   const transportKind = specWorkflowMobileTransport(presentation?.entry.target._tag);
   const transport = transportKind ? t(`specWorkflowMobile.transport.${transportKind}`) : null;
+  if (!controller.enabled) return null;
 
   return (
     <View className="border-b border-subtle bg-subtle px-4 py-3">
@@ -77,16 +137,9 @@ export function SpecWorkflowMobileControls(props: {
             <Text className="mt-1 text-xs text-danger">{state.lastError}</Text>
           ) : null}
         </View>
-        <ControlPill
-          label={
-            controller.enabled ? t("specWorkflowMobile.disable") : t("specWorkflowMobile.enable")
-          }
-          accessibilityLabel={
-            controller.enabled ? t("specWorkflowMobile.disable") : t("specWorkflowMobile.enable")
-          }
-          variant={controller.enabled ? "pill" : "primary"}
+        <SpecWorkflowMobilePicker
+          controller={controller}
           disabled={controller.capability === null || controller.hasError || !canMutate}
-          onPress={() => void controller.toggle()}
         />
       </View>
 

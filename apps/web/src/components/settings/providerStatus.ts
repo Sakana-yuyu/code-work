@@ -22,8 +22,19 @@ export const PROVIDER_STATUS_STYLES = {
 
 export type ProviderStatusKey = keyof typeof PROVIDER_STATUS_STYLES;
 
-function localizeProviderMessage(message: string | null | undefined): string | null {
+export function localizeProviderMessage(message: string | null | undefined): string | null {
   if (!message) return null;
+  if (message.includes("Claude Agent CLI installation appears incomplete or damaged")) {
+    return t("providerStatusCliDamaged");
+  }
+  if (
+    message.includes("Claude Agent CLI (`claude`) was not found in Code Work's server environment")
+  ) {
+    return t("providerStatusClaudeCliMissing");
+  }
+  if (message.includes("Codex CLI (`codex`) was not found in Code Work's server environment")) {
+    return t("providerStatusCodexCliMissing");
+  }
   if (message.includes("Cursor CLI command `cursor-agent` was not found")) {
     return t("providerCursorCliMissing");
   }
@@ -53,6 +64,13 @@ function localizeProviderMessage(message: string | null | undefined): string | n
   return message;
 }
 
+export function isProviderInstallationDamaged(provider: ServerProvider | undefined): boolean {
+  return (
+    provider?.message?.includes("Claude Agent CLI installation appears incomplete or damaged") ??
+    false
+  );
+}
+
 /**
  * Derive the headline + detail copy shown under a provider's name in the
  * settings page. Prefers `provider.message` for server-supplied detail and
@@ -75,7 +93,9 @@ export function getProviderSummary(provider: ServerProvider | undefined) {
   }
   if (!provider.installed) {
     return {
-      headline: t("providerStatusNotFound"),
+      headline: isProviderInstallationDamaged(provider)
+        ? t("providerStatusDamaged")
+        : t("providerStatusNotFound"),
       detail: localizeProviderMessage(provider.message) ?? t("providerStatusCliNotFound"),
     };
   }

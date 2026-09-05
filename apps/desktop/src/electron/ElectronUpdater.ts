@@ -6,6 +6,8 @@ import * as Scope from "effect/Scope";
 
 import { autoUpdater } from "electron-updater";
 
+import { t } from "../i18n.js";
+
 type AutoUpdater = typeof autoUpdater;
 
 export type ElectronUpdaterFeedUrl = Parameters<AutoUpdater["setFeedURL"]>[0];
@@ -18,7 +20,7 @@ export class ElectronUpdaterCheckForUpdatesError extends Schema.TaggedErrorClass
   },
 ) {
   override get message(): string {
-    return `Electron updater failed to check for updates on channel ${this.channel ?? "default"}.`;
+    return t("updates.checkFailedReason", { channel: this.channel ?? "default" });
   }
 }
 
@@ -30,7 +32,7 @@ export class ElectronUpdaterDownloadUpdateError extends Schema.TaggedErrorClass<
   },
 ) {
   override get message(): string {
-    return `Electron updater failed to download the update on channel ${this.channel ?? "default"}.`;
+    return t("updates.downloadFailedReason", { channel: this.channel ?? "default" });
   }
 }
 
@@ -44,7 +46,11 @@ export class ElectronUpdaterQuitAndInstallError extends Schema.TaggedErrorClass<
   },
 ) {
   override get message(): string {
-    return `Electron updater failed to quit and install the update on channel ${this.channel ?? "default"} (silent: ${this.isSilent}, force run after: ${this.isForceRunAfter}).`;
+    return t("updates.installFailedReason", {
+      channel: this.channel ?? "default",
+      isSilent: String(this.isSilent),
+      isForceRunAfter: String(this.isForceRunAfter),
+    });
   }
 }
 

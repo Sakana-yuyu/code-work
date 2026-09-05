@@ -1,7 +1,15 @@
 "use client";
 
 import { PlusIcon, SaveIcon, ServerCogIcon, UsersIcon } from "lucide-react";
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useBlocker } from "@tanstack/react-router";
+import { multicaProviderInstanceRevision } from "@codework/contracts";
+import { squashAtomCommandFailure } from "@codework/client-runtime/state/runtime";
+import {
+  buildTeamRuntimeSavePatch,
+  nextMulticaRuntimeInstanceId,
+} from "@codework/shared/multicaRuntimeSettings";
+import { ensureLocalApi } from "~/localApi";
 
 import { usePrimarySettings, useUpdatePrimarySettings } from "../../hooks/useSettings";
 import { usePrimaryEnvironment } from "../../state/environments";
@@ -10,13 +18,11 @@ import { Button } from "../ui/button";
 import { Checkbox } from "../ui/checkbox";
 import { Input } from "../ui/input";
 import { Textarea } from "../ui/textarea";
-import {
-  buildTeamRuntimeSettingsPatch,
-  teamRuntimeInstancesFromSettings,
-} from "./TeamRuntimeSettingsPanel.logic";
+import { teamRuntimeInstancesFromSettings } from "./TeamRuntimeSettingsPanel.logic";
 import {
   emptyMulticaRuntimeDraft,
   formFromMulticaRuntimeInstance,
+  multicaRuntimeDraftEquals,
   type MulticaRuntimeDraft,
 } from "./MulticaRuntimeSettings.logic";
 import { validateMulticaRuntimeDraft } from "./MulticaRuntimeSettings.validation";
@@ -45,7 +51,10 @@ function Field({
 
 function safeTeamLabel(value: string | undefined, fallback: string): string {
   const trimmed = value?.trim();
-  return (trimmed && trimmed.length > 0 ? trimmed : fallback).replace(/multica/giu, "团队");
+  return (trimmed && trimmed.length > 0 ? trimmed : fallback).replace(
+    /multica/giu,
+    t("teamRuntime.multicaAlias"),
+  );
 }
 
 function patchEnvironmentValue(
@@ -77,61 +86,114 @@ export function TeamRuntimeSettingsPanel() {
   const [draft, setDraft] = useState<MulticaRuntimeDraft | null>(null);
   const [isCreating, setIsCreating] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [baseline, setBaseline] = useState<MulticaRuntimeDraft | null>(null);
+  const [expectedRevision, setExpectedRevision] = useState<string | null>(null);
+  const [pending, setPending] = useState(false);
+  const savingRef = useRef(false);
+  const [saved, setSaved] = useState(false);
+  const dirty =
+    isCreating ||
+    (draft === null || baseline === null
+      ? draft !== baseline
+      : !multicaRuntimeDraftEquals(draft, baseline));
+  const confirmDiscard = async () =>
+    !savingRef.current &&
+    (!dirty || (await ensureLocalApi().dialogs.confirm(t("teamRuntime.discardChanges"))));
+  useBlocker({
+    shouldBlockFn: async () => !(await confirmDiscard()),
+    enableBeforeUnload: dirty || pending,
+    disabled: !dirty && !pending,
+  });
 
   useEffect(() => {
-    if (isCreating) return;
+    // 外部配置刷新不能覆盖编辑内容；保存时由服务端检查打开编辑器时的版本。
+    if (isCreating || dirty || pending) return;
     const selected =
-      (selectedId === null
-        ? undefined
-        : instances.find((entry) => String(entry.instanceId) === selectedId)) ?? instances[0];
+      selectedId === null
+        ? instances[0]
+        : instances.find((entry) => String(entry.instanceId) === selectedId);
+    if (!selected) return;
     const nextId = selected ? String(selected.instanceId) : null;
-    if (nextId !== selectedId) {
-      setSelectedId(nextId);
-      return;
-    }
+    setSelectedId(nextId);
     setEditingId(nextId);
-    setDraft(
-      selected
-        ? formFromMulticaRuntimeInstance(String(selected.instanceId), selected.instance)
-        : null,
+    const nextDraft = formFromMulticaRuntimeInstance(
+      String(selected.instanceId),
+      selected.instance,
     );
-  }, [instances, isCreating, selectedId]);
+    setDraft(nextDraft);
+    setBaseline(nextDraft);
+    setExpectedRevision(
+      multicaProviderInstanceRevision(String(selected.instanceId), selected.instance),
+    );
+  }, [instances, isCreating, selectedId, dirty, pending]);
 
   const validation = draft ? validateMulticaRuntimeDraft(draft) : null;
   const selectedInstance = instances.find((entry) => String(entry.instanceId) === selectedId);
 
-  const startCreate = (): void => {
-    const used = new Set(instances.map((entry) => String(entry.instanceId)));
-    let index = 1;
-    let instanceId = "team_local";
-    while (used.has(instanceId)) {
-      index += 1;
-      instanceId = `team_local_${index}`;
-    }
+  const startCreate = async () => {
+    if (!(await confirmDiscard())) return;
+    const instanceId = nextMulticaRuntimeInstanceId(settings.providerInstances);
     setIsCreating(true);
     setSelectedId(null);
     setEditingId(null);
     setDraft(emptyMulticaRuntimeDraft(instanceId));
+    setBaseline(null);
+    setExpectedRevision(null);
+    setSaved(false);
     setActionError(null);
   };
 
-  const selectInstance = (instanceId: string): void => {
+  const selectInstance = async (instanceId: string) => {
+    if (!(await confirmDiscard())) return;
+    const selected = instances.find((entry) => String(entry.instanceId) === instanceId);
+    if (!selected) return;
+    const nextDraft = formFromMulticaRuntimeInstance(instanceId, selected.instance);
     setIsCreating(false);
     setSelectedId(instanceId);
+    setEditingId(instanceId);
+    setDraft(nextDraft);
+    setBaseline(nextDraft);
+    setExpectedRevision(multicaProviderInstanceRevision(instanceId, selected.instance));
+    setSaved(false);
     setActionError(null);
   };
 
-  const save = (): void => {
+  const save = async () => {
+    if (savingRef.current || environment === null) return;
     if (draft === null || validation === null || !validation.ok) {
       setActionError(t("teamRuntime.invalidConfiguration"));
       return;
     }
     const originalInstanceId = isCreating ? null : editingId;
-    updateSettings(buildTeamRuntimeSettingsPatch(settings, originalInstanceId, validation.value));
-    setIsCreating(false);
-    setSelectedId(String(validation.value.instanceId));
-    setEditingId(String(validation.value.instanceId));
+    savingRef.current = true;
+    setPending(true);
+    setSaved(false);
     setActionError(null);
+    try {
+      const result = await updateSettings(
+        buildTeamRuntimeSavePatch(settings, originalInstanceId, expectedRevision, validation.value),
+      );
+      if (result === null) throw new Error(t("settingsSaveTryAgain"));
+      if (result._tag === "Failure") throw squashAtomCommandFailure(result);
+      setIsCreating(false);
+      setSelectedId(String(validation.value.instanceId));
+      setEditingId(String(validation.value.instanceId));
+      setDraft(null);
+      setBaseline(null);
+      setSaved(true);
+    } catch (error) {
+      setActionError(
+        typeof error === "object" &&
+          error !== null &&
+          "_tag" in error &&
+          error._tag === "ServerSettingsConflictError"
+          ? t("teamRuntime.conflict")
+          : t("settingsSaveTryAgain"),
+      );
+    } finally {
+      savingRef.current = false;
+      setPending(false);
+    }
   };
 
   return (
@@ -140,20 +202,30 @@ export function TeamRuntimeSettingsPanel() {
       title={t("teamRuntime.title")}
       icon={<UsersIcon className="size-4 text-muted-foreground" />}
       headerAction={
-        <Button size="sm" variant="outline" onClick={startCreate}>
+        <Button
+          size="sm"
+          variant="outline"
+          disabled={pending || environment === null}
+          onClick={startCreate}
+        >
           <PlusIcon />
           {t("teamRuntime.new")}
         </Button>
       }
     >
       <p className="px-3 text-sm text-muted-foreground sm:px-4">{t("teamRuntime.description")}</p>
+      {saved && !dirty ? (
+        <p role="status" className="px-3 text-sm sm:px-4">
+          {t("saved", { label: t("teamRuntime.title") })}
+        </p>
+      ) : null}
       {environment === null ? (
         <p className="px-3 py-6 text-sm text-muted-foreground sm:px-4">
           {t("teamRuntime.noEnvironment")}
         </p>
       ) : (
-        <div className="grid border-y border-border/60 lg:grid-cols-[minmax(13rem,0.32fr)_minmax(0,1fr)]">
-          <aside className="border-b border-border/60 lg:border-r lg:border-b-0">
+        <div className="grid border-y border-border/60 xl:grid-cols-[minmax(13rem,0.32fr)_minmax(0,1fr)]">
+          <aside className="border-b border-border/60 xl:border-r xl:border-b-0">
             <div className="flex min-h-9 items-center justify-between border-b border-border/60 px-3 text-[11px] font-medium text-muted-foreground">
               <span>{t("teamRuntime.instances")}</span>
               <ServerCogIcon className="size-3.5" />
@@ -170,6 +242,7 @@ export function TeamRuntimeSettingsPanel() {
                     type="button"
                     data-team-runtime-id={instanceId}
                     aria-pressed={selectedId === instanceId}
+                    disabled={pending}
                     className="flex w-full items-center justify-between gap-2 rounded-md px-2.5 py-2 text-left text-xs hover:bg-muted/50"
                     onClick={() => selectInstance(instanceId)}
                   >
@@ -207,7 +280,7 @@ export function TeamRuntimeSettingsPanel() {
                 </p>
               </div>
             ) : (
-              <div className="space-y-5">
+              <fieldset disabled={pending} className="min-w-0 space-y-5">
                 <div className="flex items-center justify-between gap-3">
                   <div>
                     <h3 className="text-sm font-semibold text-foreground">
@@ -220,11 +293,11 @@ export function TeamRuntimeSettingsPanel() {
                   <Button
                     size="sm"
                     variant="outline"
-                    disabled={validation?.ok !== true}
+                    disabled={pending || !dirty || validation?.ok !== true}
                     onClick={save}
                   >
                     <SaveIcon />
-                    {t("teamRuntime.save")}
+                    {t(pending ? "saving" : "teamRuntime.save")}
                   </Button>
                 </div>
 
@@ -382,11 +455,18 @@ export function TeamRuntimeSettingsPanel() {
                   </p>
                 ) : null}
                 {actionError ? (
-                  <p role="alert" className="text-xs text-destructive-foreground">
-                    {actionError}
-                  </p>
+                  <div className="space-y-2">
+                    <p role="alert" className="text-xs text-destructive-foreground">
+                      {actionError}
+                    </p>
+                    {editingId !== null ? (
+                      <Button size="sm" variant="outline" onClick={() => selectInstance(editingId)}>
+                        {t("teamRuntime.reload")}
+                      </Button>
+                    ) : null}
+                  </div>
                 ) : null}
-              </div>
+              </fieldset>
             )}
           </div>
         </div>

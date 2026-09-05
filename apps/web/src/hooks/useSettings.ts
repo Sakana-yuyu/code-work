@@ -14,8 +14,8 @@ import { useAtomValue } from "@effect/atom-react";
 import {
   DEFAULT_SERVER_SETTINGS,
   type EnvironmentId,
-  ServerSettings,
-  type ServerSettingsPatch,
+  type ServerSettings,
+  ServerSettingsPatch,
 } from "@codework/contracts";
 import {
   type ClientSettingsPatch,
@@ -43,6 +43,7 @@ import { primaryServerSettingsAtom, serverEnvironment } from "~/state/server";
 import { usePrimaryEnvironment } from "~/state/environments";
 import { useAtomCommand } from "~/state/use-atom-command";
 import { useTheme } from "./useTheme";
+import { t } from "~/i18n/runtime";
 
 const CLIENT_SETTINGS_PERSISTENCE_ERROR_SCOPE = "[CLIENT_SETTINGS]";
 
@@ -144,23 +145,60 @@ async function hydrateClientSettings(): Promise<void> {
   return clientSettingsHydrationPromise;
 }
 
-function persistClientSettings(settings: ClientSettings): void {
+let clientSettingsWriteQueue: Promise<boolean> = Promise.resolve(true);
+let clientSettingsWriteGeneration = 0;
+let clientSettingsFailureToast: string | undefined;
+
+/** 内存立即应用；磁盘顺序写入，失败保留当前修改并允许重试最新快照。 */
+export function persistClientSettings(settings: ClientSettings): Promise<boolean> {
+  const generation = ++clientSettingsWriteGeneration;
   replaceClientSettingsSnapshot(settings);
-  void ensureLocalApi()
-    .persistence.setClientSettings(settings)
+  clientSettingsWriteQueue = clientSettingsWriteQueue
+    .then(async () => {
+      try {
+        await ensureLocalApi().persistence.setClientSettings(settings);
+        if (generation === clientSettingsWriteGeneration && clientSettingsFailureToast) {
+          const { toastManager } = await import("~/components/ui/toast");
+          toastManager.close(clientSettingsFailureToast);
+          clientSettingsFailureToast = undefined;
+        }
+        return true;
+      } catch (error) {
+        console.error(`${CLIENT_SETTINGS_PERSISTENCE_ERROR_SCOPE} persist failed`, {
+          operation: "persist",
+          ...safeErrorLogAttributes(error),
+        });
+        const { toastManager } = await import("~/components/ui/toast");
+        if (generation !== clientSettingsWriteGeneration) return false;
+        if (clientSettingsFailureToast) toastManager.close(clientSettingsFailureToast);
+        clientSettingsFailureToast = toastManager.add({
+          type: "error",
+          title: t("settingsSaveFailed"),
+          description: t("settings.localSaveFailed"),
+          timeout: 0,
+          actionProps: {
+            children: t("retry"),
+            onClick: () => persistClientSettings(getClientSettingsSnapshot()),
+          },
+        });
+        return false;
+      }
+    })
     .catch((error) => {
-      console.error(`${CLIENT_SETTINGS_PERSISTENCE_ERROR_SCOPE} persist failed`, {
-        operation: "persist",
-        ...safeErrorLogAttributes(error),
-      });
+      console.error(
+        `${CLIENT_SETTINGS_PERSISTENCE_ERROR_SCOPE} feedback failed`,
+        safeErrorLogAttributes(error),
+      );
+      return false;
     });
+  return clientSettingsWriteQueue;
 }
 
 // ── Key sets for routing patches ─────────────────────────────────────
 
-const SERVER_SETTINGS_KEYS = new Set<string>(Struct.keys(ServerSettings.fields));
+const SERVER_SETTINGS_KEYS = new Set<string>(Struct.keys(ServerSettingsPatch.fields));
 
-function splitPatch(patch: UnifiedSettingsPatch): {
+export function splitPatch(patch: UnifiedSettingsPatch): {
   serverPatch: ServerSettingsPatch;
   clientPatch: ClientSettingsPatch;
 } {
@@ -343,7 +381,7 @@ function useUpdateSettingsTarget(
         }
       }
       if (Object.keys(clientPatch).length > 0) {
-        persistClientSettings({
+        await persistClientSettings({
           ...getClientSettingsSnapshot(),
           ...clientPatch,
         });
@@ -372,7 +410,7 @@ export function useUpdatePrimarySettings(onServerUpdateFailure?: SettingsUpdateF
 
 export function useUpdateClientSettings() {
   return useCallback((patch: ClientSettingsPatch) => {
-    persistClientSettings({
+    return persistClientSettings({
       ...getClientSettingsSnapshot(),
       ...patch,
     });
@@ -380,6 +418,9 @@ export function useUpdateClientSettings() {
 }
 
 export function __resetClientSettingsPersistenceForTests(): void {
+  clientSettingsWriteQueue = Promise.resolve(true);
+  clientSettingsWriteGeneration += 1;
+  clientSettingsFailureToast = undefined;
   clientSettingsHydrationGeneration += 1;
   clientSettingsSnapshot = DEFAULT_CLIENT_SETTINGS;
   clientSettingsHydrated = false;

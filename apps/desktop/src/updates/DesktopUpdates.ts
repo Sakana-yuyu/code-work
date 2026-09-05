@@ -76,7 +76,10 @@ export class DesktopUpdateActionInProgressError extends Schema.TaggedErrorClass<
   },
 ) {
   override get message(): string {
-    return `Cannot change the desktop update channel to ${this.requestedChannel} while an update ${this.action} action is in progress.`;
+    return t("updates.channelChangeInProgress", {
+      requestedChannel: this.requestedChannel,
+      action: this.action,
+    });
   }
 }
 
@@ -88,7 +91,7 @@ export class DesktopUpdateChannelPersistenceError extends Schema.TaggedErrorClas
   },
 ) {
   override get message(): string {
-    return `Failed to persist the ${this.channel} desktop update channel.`;
+    return t("updates.channelPersistFailed", { channel: this.channel });
   }
 }
 
@@ -124,7 +127,7 @@ export class DesktopUpdaterReportedError extends Schema.TaggedErrorClass<Desktop
   },
 ) {
   override get message(): string {
-    return `Desktop updater ${this.operation} operation reported an error.`;
+    return t("updates.updaterReportedError", { operation: this.operation });
   }
 }
 
@@ -136,7 +139,7 @@ export class DesktopUpdateUnexpectedActionError extends Schema.TaggedErrorClass<
   },
 ) {
   override get message(): string {
-    return `Desktop update ${this.action} action failed unexpectedly.`;
+    return t("updates.unexpectedActionFailure", { action: this.action });
   }
 }
 

@@ -1,4 +1,5 @@
-import type { ProviderOptionDescriptor, RuntimeMode } from "@codework/contracts";
+import type { ClientSettings, ProviderOptionDescriptor, RuntimeMode } from "@codework/contracts";
+import { getProviderOptionCurrentValue } from "@codework/shared/model";
 import { t } from "../../i18n/runtime";
 
 /**
@@ -9,6 +10,30 @@ import { t } from "../../i18n/runtime";
  * offered.
  */
 const HIDDEN_EFFORT_OPTION_IDS: ReadonlySet<string> = new Set(["ultracode"]);
+
+const EFFORT_LABELS_ZH: Readonly<Record<string, string>> = {
+  none: "关闭",
+  minimal: "最低",
+  low: "轻度",
+  medium: "中",
+  high: "高",
+  xhigh: "极高",
+  max: "最高",
+};
+
+/** 只改变强度选项的显示文字；传给电脑端的选项 ID 保持原值。 */
+export function providerOptionDisplayLabel(
+  descriptor: Extract<ProviderOptionDescriptor, { type: "select" }>,
+  language: ClientSettings["effortLabelLanguage"] = "en",
+  value = getProviderOptionCurrentValue(descriptor),
+) {
+  const label = descriptor.options.find((option) => option.id === value)?.label;
+  return language === "zh-CN" &&
+    (descriptor.id === "reasoningEffort" || descriptor.id === "effort") &&
+    typeof value === "string"
+    ? (EFFORT_LABELS_ZH[value] ?? label)
+    : label;
+}
 
 export function runtimeModeChoices(): ReadonlyArray<{
   readonly mode: RuntimeMode;

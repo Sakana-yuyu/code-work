@@ -49,7 +49,7 @@ export class ClipboardReadError extends Schema.TaggedErrorClass<ClipboardReadErr
   }
 }
 
-export async function writeTextToClipboard(value: string, target = "text") {
+export async function writeTextToClipboard(value: string, target = t("clipboard.targetText")) {
   if (
     typeof window === "undefined" ||
     typeof navigator === "undefined" ||
@@ -73,7 +73,7 @@ export async function writeTextToClipboard(value: string, target = "text") {
   }
 }
 
-export async function readTextFromClipboard(target = "text"): Promise<string> {
+export async function readTextFromClipboard(target = t("clipboard.targetText")): Promise<string> {
   if (
     typeof window === "undefined" ||
     typeof navigator === "undefined" ||

@@ -22,6 +22,6 @@ export function resolveThreadSyncPhase(input: {
   }
 }
 
-export function threadSyncLabel(phase: ThreadSyncPhase): string {
-  return phase === "loading" ? "Loading messages..." : "Syncing messages...";
+export function threadSyncLabelKey(phase: ThreadSyncPhase): string {
+  return phase === "loading" ? "threadSync.loadingMessages" : "threadSync.syncingMessages";
 }

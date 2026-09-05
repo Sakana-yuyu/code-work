@@ -16,6 +16,7 @@ import { NativeHeaderToolbar } from "../../native/StackHeader";
 import { useCallback, useMemo } from "react";
 import { Alert } from "react-native";
 import { tryOpenExternalUrl } from "../../lib/openExternalUrl";
+import { localizedGitActionString } from "./git/gitActionStrings";
 import {
   basename,
   getTerminalStatusLabel,
@@ -115,7 +116,7 @@ function useThreadGitControlModel(props: ThreadGitMenuProps) {
   const threadId = props.threadId;
   const { gitStatus, gitOperationLabel, onPull, onRunAction } = props;
 
-  const currentBranchLabel = gitStatus?.refName ?? props.currentBranch ?? "Detached HEAD";
+  const currentBranchLabel = gitStatus?.refName ?? props.currentBranch ?? t("git.detachedHead");
   const busy = gitOperationLabel !== null;
   const isRepo = gitStatus?.isRepo ?? true;
   const hasPrimaryRemote = gitStatus?.hasPrimaryRemote ?? false;
@@ -134,8 +135,13 @@ function useThreadGitControlModel(props: ThreadGitMenuProps) {
     [busy, gitStatus, hasPrimaryRemote, isDefaultRef, isRepo],
   );
 
+  // The shared quick action builder emits English strings; translate the label
+  // and disabled hint at this boundary (unmapped strings pass through raw).
+  const quickActionLabel = localizedGitActionString(quickAction.label);
   const quickActionHint = quickAction.disabled
-    ? (quickAction.hint ?? t("git.actionUnavailable"))
+    ? quickAction.hint !== undefined
+      ? localizedGitActionString(quickAction.hint)
+      : t("git.actionUnavailable")
     : null;
 
   const quickActionIcon: QuickActionIcon = (() => {
@@ -254,6 +260,7 @@ function useThreadGitControlModel(props: ThreadGitMenuProps) {
     quickAction,
     quickActionHint,
     quickActionIcon,
+    quickActionLabel,
     runQuickAction,
   };
 }
@@ -352,7 +359,7 @@ function useThreadGitHeaderActionItems(props: ThreadGitControlsProps): ThreadGit
               description: model.quickActionHint ?? undefined,
               disabled: model.quickAction.disabled,
               icon: { name: model.quickActionIcon, type: "sfSymbol" },
-              label: model.quickAction.label,
+              label: model.quickActionLabel,
               onPress: (): void => void model.runQuickAction(),
               type: "action",
             },
@@ -386,7 +393,7 @@ function useThreadGitHeaderActionItems(props: ThreadGitControlsProps): ThreadGit
       model.openGitInspector,
       model.openReview,
       model.quickAction.disabled,
-      model.quickAction.label,
+      model.quickActionLabel,
       model.quickActionHint,
       model.quickActionIcon,
       model.runQuickAction,
@@ -532,7 +539,7 @@ export function ThreadGitMenu(props: ThreadGitMenuProps) {
         onPress={() => void model.runQuickAction()}
         subtitle={model.quickActionHint ?? undefined}
       >
-        <NativeHeaderToolbar.Label>{model.quickAction.label}</NativeHeaderToolbar.Label>
+        <NativeHeaderToolbar.Label>{model.quickActionLabel}</NativeHeaderToolbar.Label>
       </NativeHeaderToolbar.MenuAction>
       <NativeHeaderToolbar.MenuAction
         icon="text.bubble"

@@ -66,6 +66,8 @@ export function ConnectionEnvironmentRow(props: {
   return (
     <Animated.View layout={LinearTransition.duration(250)} className="bg-card">
       <Pressable
+        accessibilityRole="button"
+        accessibilityState={{ expanded: props.expanded }}
         className="flex-row items-center gap-3 px-4 py-3.5 active:opacity-70"
         onPress={props.onToggle}
       >
@@ -146,6 +148,7 @@ export function ConnectionEnvironmentRow(props: {
                   {t("label")}
                 </Text>
                 <TextInput
+                  accessibilityLabel={t("label")}
                   autoCapitalize="words"
                   autoCorrect={false}
                   placeholder={t("myMacbook")}
@@ -160,10 +163,11 @@ export function ConnectionEnvironmentRow(props: {
                   URL
                 </Text>
                 <TextInput
+                  accessibilityLabel={t("host")}
                   autoCapitalize="none"
                   autoCorrect={false}
                   keyboardType="url"
-                  placeholder="192.168.1.100:8080"
+                  placeholder="http://192.168.1.100:3773"
                   value={url}
                   onChangeText={setUrl}
                   className="rounded-[14px] border border-input-border bg-input px-4 py-3 text-base text-foreground"
@@ -175,7 +179,9 @@ export function ConnectionEnvironmentRow(props: {
           <View className="flex-row justify-end gap-2">
             {props.environment.isRelayManaged ? null : (
               <Pressable
-                className="min-h-[42px] flex-1 flex-row items-center justify-center gap-1.5 rounded-[14px] bg-primary px-3.5 py-2.5 active:opacity-70"
+                accessibilityRole="button"
+                accessibilityLabel={t("save")}
+                className="min-h-11 flex-1 flex-row items-center justify-center gap-1.5 rounded-[14px] bg-primary px-3.5 py-2.5 active:opacity-70"
                 onPress={handleSave}
               >
                 <SymbolView name="checkmark" size={13} tintColor={primaryFg} type="monochrome" />
@@ -186,7 +192,11 @@ export function ConnectionEnvironmentRow(props: {
             )}
 
             <Pressable
-              className="h-[42px] w-[42px] items-center justify-center rounded-[14px] border border-input-border bg-input active:opacity-70"
+              accessibilityRole="button"
+              accessibilityLabel={t("pairing.reconnect")}
+              accessibilityState={{ disabled: isRetrying }}
+              disabled={isRetrying}
+              className="h-11 w-11 items-center justify-center rounded-[14px] border border-input-border bg-input active:opacity-70"
               onPress={() => props.onReconnect(props.environment.environmentId)}
             >
               <SymbolView
@@ -198,7 +208,9 @@ export function ConnectionEnvironmentRow(props: {
             </Pressable>
 
             <Pressable
-              className="h-[42px] w-[42px] items-center justify-center rounded-[14px] border border-danger-border bg-danger active:opacity-70"
+              accessibilityRole="button"
+              accessibilityLabel={t("pairing.remove")}
+              className="h-11 w-11 items-center justify-center rounded-[14px] border border-danger-border bg-danger active:opacity-70"
               onPress={() => props.onRemove(props.environment.environmentId)}
             >
               <SymbolView name="trash" size={14} tintColor={dangerFg} type="monochrome" />

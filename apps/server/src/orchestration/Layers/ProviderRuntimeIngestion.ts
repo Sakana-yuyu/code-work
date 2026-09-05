@@ -1319,12 +1319,7 @@ const make = Effect.gen(function* () {
   }) =>
     Effect.gen(function* () {
       const intent = input.directive.intent;
-      if (
-        intent === undefined ||
-        intent === "workflow" ||
-        intent === "chat" ||
-        intent === "verify"
-      ) {
+      if (intent === undefined || intent === "workflow" || intent === "chat") {
         return;
       }
       if (Option.isNone(specWorkflowCapabilityStore) || Option.isNone(specWorkflowService)) {
@@ -1341,6 +1336,14 @@ const make = Effect.gen(function* () {
       if (capability?.enabled !== true) {
         return;
       }
+      if (
+        capability.selectedIntent !== undefined &&
+        capability.selectedIntent !== "workflow" &&
+        capability.selectedIntent !== intent
+      )
+        return;
+      // 独立验证仅接受用户显式选择，保留完整流程中不能自证通过的边界。
+      if (intent === "verify" && capability.selectedIntent !== "verify") return;
       const state = yield* specWorkflowService.value.getState(input.threadId).pipe(
         Effect.catchCause((cause) =>
           Effect.logWarning("provider runtime ingestion failed to read Spec Workflow state", {
@@ -1385,7 +1388,7 @@ const make = Effect.gen(function* () {
         input.event.providerInstanceId ?? String(input.event.provider),
       );
       const verifierId =
-        intent === "apply" || intent === "fix"
+        intent === "apply" || intent === "fix" || intent === "verify" || intent === "ship"
           ? yield* Option.isSome(specWorkflowAgentRegistry)
               ? specWorkflowAgentRegistry.value.listProfiles.pipe(
                   Effect.map(
@@ -1415,7 +1418,10 @@ const make = Effect.gen(function* () {
           assigneeId: currentAgentId,
           prompt,
           promptDigest,
-          ...(intent === "apply" || intent === "fix"
+          ...(intent === "loop" && capability.selectedIntent === "loop"
+            ? { loopConfig: { maxAttempts: 3 } }
+            : {}),
+          ...(intent === "apply" || intent === "fix" || intent === "verify" || intent === "ship"
             ? {
                 implementationAssigneeId: currentAgentId,
                 ...(verifierId === undefined ? {} : { independentVerifierId: verifierId }),

@@ -641,7 +641,13 @@ export function ArchivedThreadsScreen(props: {
           keyExtractor={(item) => item.key}
           ListEmptyComponent={listEmptyComponent}
           ListHeaderComponent={
-            props.error ? <ArchiveError message={props.error} onRetry={props.onRefresh} /> : null
+            props.error ? (
+              // 共享包写入的加载失败原句；展示前翻译。
+              <ArchiveError
+                message={t("archive.loadFailedDescription")}
+                onRetry={props.onRefresh}
+              />
+            ) : null
           }
           onScrollBeginDrag={() => openSwipeableRef.current?.close()}
           refreshControl={

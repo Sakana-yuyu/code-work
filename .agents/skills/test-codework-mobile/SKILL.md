@@ -29,7 +29,7 @@ Do not treat unavailable iOS tooling as a blocker when Android is a valid repres
 The development identity on both platforms is:
 
 - App: `Code Work Dev`
-- Bundle/package identifier: `com.t3tools.codework.dev`
+- Bundle/package identifier: `com.codework.mobile.dev`
 - URL scheme: `codework-dev`
 
 Bundle or package presence proves the correct variant, not native compatibility. Reuse it only when the current changes did not alter its Expo SDK, native dependencies, config plugins, entitlements, generated project, or native source.
@@ -97,12 +97,12 @@ Use `ios-debugger-agent` to select one UDID and set these XcodeBuildMCP session 
 - Scheme: `CodeworkCodeDev`
 - Configuration: `Debug`
 - Simulator ID: the selected UDID
-- Bundle ID: `com.t3tools.codework.dev`
+- Bundle ID: `com.codework.mobile.dev`
 
 Check the installed client with:
 
 ```bash
-xcrun simctl get_app_container <simulator-udid> com.t3tools.codework.dev app
+xcrun simctl get_app_container <simulator-udid> com.codework.mobile.dev app
 xcrun simctl openurl <simulator-udid> <printed-dev-client-url>
 ```
 
@@ -113,12 +113,12 @@ Accept the iOS confirmation prompt and dismiss the developer menu when it obscur
 Select one running emulator serial from `adb devices` and check the installed client:
 
 ```bash
-adb -s <emulator-serial> shell pm path com.t3tools.codework.dev
+adb -s <emulator-serial> shell pm path com.codework.mobile.dev
 adb -s <emulator-serial> reverse tcp:<metro-port> tcp:<metro-port>
 adb -s <emulator-serial> shell am start -W \
   -a android.intent.action.VIEW \
   -d '<printed-dev-client-url>' \
-  com.t3tools.codework.dev
+  com.codework.mobile.dev
 ```
 
 Do not start, stop, erase, or reconfigure an emulator owned by another task. Track and later stop only processes owned by this test.
@@ -178,6 +178,8 @@ Keep local verification focused. Do not turn this workflow into a full repositor
 
 ## Troubleshoot predictable failures
 
+- **Windows 首次原生构建失败：** 先检查实际 NDK、CMake 和 Ninja 版本；出现 `Filename longer than 260 characters` 时，使用支持长路径的 Ninja，并通过本次 Gradle 参数指定较短、按项目隔离的 CMake 构建目录。不要修改依赖源码或其他任务的全局构建配置。
+- **开发客户端停在空白页：** 先用相同 `expo-platform` 请求检查 Metro 的 manifest；若外网请求阻塞本机开发，可用 `EXPO_OFFLINE=1` 重启本次 Metro。若 Windows 热更新出现 `EMFILE`，在代码集成后用 `CI=1` 关闭监听完成验证；需要加载后续改动时重新启动 Metro。
 - **Old UI or an old error appears:** verify Metro's worktree, variant, URL, and port before diagnosing the app.
 - **The environment remains empty:** verify the platform-specific HTTP origin, use a fresh token, and confirm project seeding used the identical base directory.
 - **A second client cannot pair:** pairing tokens are single-use; issue another token.

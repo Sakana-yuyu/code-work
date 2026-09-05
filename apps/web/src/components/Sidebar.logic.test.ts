@@ -4,6 +4,7 @@ import { scopedThreadKey, scopeThreadRef } from "@codework/client-runtime/enviro
 import { t } from "~/i18n/runtime";
 import {
   animatePinnedLayoutChanges,
+  groupActiveSidebarThreads,
   archiveSelectedThreadEntries,
   buildBulkTitleRegenerationContextMenuItem,
   buildMultiSelectThreadContextMenuItems,
@@ -1755,4 +1756,29 @@ describe("projectLabelVisibilityByThreadKey", () => {
     expect(visibility.get(keyOf("env", "p1", "t1"))).toBe(true);
     expect(visibility.get(keyOf("env", "p1", "t2"))).toBe(true);
   });
+});
+
+it("项目分组保持顺序、环境隔离和未分组任务，重复成员不重复任务", () => {
+  const local = EnvironmentId.make("local");
+  const remote = EnvironmentId.make("remote");
+  const projectId = ProjectId.make("same-project");
+  const groups = [
+    {
+      memberProjectRefs: [
+        { environmentId: local, projectId },
+        { environmentId: local, projectId },
+      ],
+    },
+    { memberProjectRefs: [{ environmentId: remote, projectId }] },
+  ];
+  const threads = [
+    { environmentId: local, projectId },
+    { environmentId: remote, projectId },
+    { environmentId: local, projectId },
+    { environmentId: local, projectId: ProjectId.make("other") },
+  ];
+  const result = groupActiveSidebarThreads(groups, threads);
+  expect(result.activeThreadGroups[0]!.threads).toEqual([threads[0], threads[2]]);
+  expect(result.activeThreadGroups[1]!.threads).toEqual([threads[1]]);
+  expect(result.ungroupedActiveThreads).toEqual([threads[3]]);
 });

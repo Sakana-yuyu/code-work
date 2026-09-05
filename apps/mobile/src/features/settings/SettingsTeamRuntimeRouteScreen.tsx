@@ -875,5 +875,8 @@ function StatusMessage(props: { readonly text: string }) {
 
 function safeTeamLabel(value: string | undefined, fallback: string): string {
   const trimmed = value?.trim();
-  return (trimmed && trimmed.length > 0 ? trimmed : fallback).replace(/multica/giu, "团队");
+  return (trimmed && trimmed.length > 0 ? trimmed : fallback).replace(
+    /multica/giu,
+    t("teamRuntimeMobile.multicaAlias"),
+  );
 }

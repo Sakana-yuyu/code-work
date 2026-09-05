@@ -10,12 +10,14 @@ import type {
   SpecWorkflowState,
   SpecWorkflowStateEvent,
 } from "@codework/contracts";
+import { SpecWorkflowDocumentNode } from "@codework/contracts";
+import * as Schema from "effect/Schema";
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
-import type * as Stream from "effect/Stream";
+import * as Stream from "effect/Stream";
 
 import {
   SpecWorkflowCapabilityStore,
@@ -250,7 +252,12 @@ export const layer = Layer.effect(
           });
           return;
         }
-        const reaction = reactSpecWorkflowTaskCompletion(input);
+        const reaction = reactSpecWorkflowTaskCompletion({
+          ...input,
+          ...(capability.selectedIntent === undefined
+            ? {}
+            : { selectedIntent: capability.selectedIntent }),
+        });
         switch (reaction.type) {
           case "none":
             if (reaction.reason === "independent-verifier-required") {
@@ -390,6 +397,21 @@ export const layer = Layer.effect(
         activeLoops.set(input.taskId, cancellation);
         yield* Effect.forkDetach(
           Effect.gen(function* () {
+            const stopIfUnselected = (capability: SpecWorkflowCapability) => {
+              if (
+                !capability.enabled ||
+                (capability.selectedIntent !== undefined &&
+                  capability.selectedIntent !== "workflow" &&
+                  capability.selectedIntent !== "loop")
+              )
+                cancellation.cancelled = true;
+            };
+            const changes = yield* capabilities.subscribe(input.state.threadId);
+            yield* changes.pipe(
+              Stream.runForEach((event) => Effect.sync(() => stopIfUnselected(event.capability))),
+              Effect.forkChild,
+            );
+            stopIfUnselected(yield* capabilities.get(input.state.threadId));
             const outcome = yield* Effect.result(
               loopRunner.value.run({
                 taskId: input.taskId,
@@ -725,6 +747,17 @@ export const layer = Layer.effect(
         const capability = yield* capabilities.get(input.threadId);
         yield* requireEnabled(capability, input.workflowId);
         const current = yield* states.get(input.threadId);
+        if (
+          capability.selectedIntent !== undefined &&
+          capability.selectedIntent !== "workflow" &&
+          capability.selectedIntent !== input.intent
+        ) {
+          return yield* new SpecWorkflowCompositionBridgeError({
+            code: "stage-not-dispatchable",
+            detail: "该节点未被用户选择，请先更换工作流胶囊。",
+            workflowId: input.workflowId,
+          });
+        }
         if (Option.isNone(current)) {
           const state = yield* start({
             workflowId: input.workflowId,
@@ -766,6 +799,22 @@ export const layer = Layer.effect(
 
         if (route.action === "show-status") {
           return { route, state, stateEvent: null, task: null };
+        }
+        if (
+          capability.selectedIntent === input.intent &&
+          Schema.is(SpecWorkflowDocumentNode)(input.intent)
+        ) {
+          const event = transitionSpecWorkflowState(
+            state,
+            { type: "complete-node", node: input.intent, expectedRevision: state.revision },
+            now,
+          );
+          const saved = yield* states.append({
+            threadId: input.threadId,
+            event,
+            expectedRevision: state.revision,
+          });
+          return { route, state: saved, stateEvent: event, task: null };
         }
         if (input.intent === "loop") {
           if (input.loopConfig === undefined) {

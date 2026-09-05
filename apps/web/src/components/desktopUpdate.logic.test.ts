@@ -3,8 +3,10 @@ import { setCurrentLanguage } from "~/i18n/runtime";
 setCurrentLanguage("en");
 
 import { t } from "~/i18n/runtime";
-import { describe, expect, it } from "vite-plus/test";
+import { afterEach, describe, expect, it } from "vite-plus/test";
 import type { DesktopUpdateActionResult, DesktopUpdateState } from "@codework/contracts";
+
+afterEach(() => setCurrentLanguage("en"));
 
 import {
   canCheckForUpdate,
@@ -285,6 +287,19 @@ describe("desktop update UI helpers", () => {
       }),
     ).toBe(
       "Install update 1.1.0 and restart Code Work?\n\nAny running tasks will be interrupted. Make sure you're ready before continuing.",
+    );
+  });
+
+  it("localizes the install confirmation title and description", () => {
+    setCurrentLanguage("zh-CN");
+
+    expect(
+      getDesktopUpdateInstallConfirmationMessage({
+        availableVersion: "0.0.41",
+        downloadedVersion: "0.0.41",
+      }),
+    ).toBe(
+      "安装更新 0.0.41 并重启 Code Work？\n\n所有正在运行的任务将被中断。请确认你已准备好后再继续。",
     );
   });
 });

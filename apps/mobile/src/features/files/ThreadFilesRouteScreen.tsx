@@ -370,7 +370,7 @@ function useThreadFilesWorkspace(params: {
   return {
     cwd: selectedThreadCwd ?? project?.workspaceRoot ?? null,
     environmentId,
-    projectName: project?.title ?? "Files",
+    projectName: project?.title ?? t("files.fallbackProjectTitle"),
     selectedThread,
     threadId,
   };
@@ -520,7 +520,7 @@ export function ThreadFilesTreeScreen(props: ThreadFilesRouteScreenProps) {
         />
       );
     }
-    return <LoadingScreen message="Opening files..." messagePlacement="above-spinner" />;
+    return <LoadingScreen message={t("files.openingFiles")} messagePlacement="above-spinner" />;
   }
 
   if (cwd === null) {
@@ -853,7 +853,7 @@ export function ThreadFileScreen(props: ThreadFileRouteScreenProps) {
   useRegisterWorkspaceInspector(fileInspector.supported ? renderWorkspaceInspector : undefined);
 
   if (selectedThread === null || environmentId === null || threadId === null) {
-    return <LoadingScreen message="Opening file..." messagePlacement="above-spinner" />;
+    return <LoadingScreen message={t("files.openingFile")} messagePlacement="above-spinner" />;
   }
 
   if (cwd === null) {

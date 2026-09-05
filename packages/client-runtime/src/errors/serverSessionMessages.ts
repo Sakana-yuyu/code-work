@@ -14,6 +14,11 @@ const EXACT_KEYS: ReadonlyArray<{
   readonly key: string;
 }> = [
   {
+    message:
+      "Claude reached the maximum agent turns. Send another message to continue, or adjust the limit in provider settings.",
+    key: "session.claudeMaxTurnsReached",
+  },
+  {
     message: "Provider session did not survive a server restart. Send a new message to continue.",
     key: "session.providerSessionLostAfterRestart",
   },
@@ -28,6 +33,22 @@ const EXACT_KEYS: ReadonlyArray<{
   {
     message: "No active provider session is bound to this thread.",
     key: "session.noActiveProviderSession",
+  },
+  {
+    message: "Thread was not found in read model.",
+    key: "checkpoint.threadNotFound",
+  },
+  {
+    message: "No active provider session with workspace cwd is bound to this thread.",
+    key: "checkpoint.noSessionWithCwd",
+  },
+  {
+    message: "Checkpoints are unavailable because this project is not a git repository.",
+    key: "checkpoint.notGitRepo",
+  },
+  {
+    message: "Project was not found for setup script execution.",
+    key: "setupScript.projectNotFound",
   },
 ];
 
@@ -89,6 +110,32 @@ const TEMPLATE_KEYS: ReadonlyArray<{
     pattern: /^User message '([^']+)' was not found for turn start request\.$/,
     key: "session.userMessageNotFoundForTurnStart",
     params: (m) => ({ messageId: m[1]! }),
+  },
+  {
+    pattern:
+      /^Stale pending (approval|user-input) request: (.+)\. Provider callback state does not survive app restarts or recovered sessions\. Restart the turn to continue\.$/,
+    key: "session.stalePendingRequest",
+    params: (m) => ({ requestKind: m[1]!, requestId: m[2]! }),
+  },
+  {
+    pattern: /^Checkpoint turn count (\d+) exceeds current turn count (\d+)\.$/,
+    key: "checkpoint.turnCountExceeds",
+    params: (m) => ({ count: m[1]!, current: m[2]! }),
+  },
+  {
+    pattern: /^Checkpoint ref for turn (\d+) is unavailable in read model\.$/,
+    key: "checkpoint.refUnavailable",
+    params: (m) => ({ count: m[1]! }),
+  },
+  {
+    pattern: /^Filesystem checkpoint is unavailable for turn (\d+)\.$/,
+    key: "checkpoint.filesystemUnavailable",
+    params: (m) => ({ count: m[1]! }),
+  },
+  {
+    pattern: /^Checkpoint captured, but turn diff summary is unavailable: (.+)$/,
+    key: "checkpoint.diffSummaryUnavailable",
+    params: (m) => ({ message: m[1]! }),
   },
 ];
 

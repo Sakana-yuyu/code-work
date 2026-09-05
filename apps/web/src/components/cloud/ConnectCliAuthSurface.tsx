@@ -140,7 +140,9 @@ export function ConnectCliCallbackSurface() {
   const [result] = useState(readConnectCliCallbackResult);
   const [expectedState] = useState(readConnectCliAuthState);
   const { user } = useUser();
-  const { copyToClipboard, isCopied } = useCopyToClipboard({ target: "authentication code" });
+  const { copyToClipboard, isCopied } = useCopyToClipboard({
+    target: t("clipboard.targetAuthenticationCode"),
+  });
 
   if (!result) {
     return (

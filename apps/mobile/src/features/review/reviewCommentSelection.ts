@@ -1,6 +1,7 @@
 import { useSyncExternalStore } from "react";
 
 import type { ReviewRenderableLineRow } from "./reviewModel";
+import { t } from "../../i18n/runtime";
 
 export interface ReviewCommentTarget {
   readonly sectionId: string;
@@ -123,7 +124,7 @@ export function formatReviewSelectedRangeLabel(target: ReviewCommentTarget): str
   const lastNumber = getReviewUnifiedLineNumber(lastLine);
 
   if (firstNumber === null || lastNumber === null) {
-    return lines.length === 1 ? "line" : `${lines.length} lines`;
+    return t("review.rangeLine", { count: lines.length, countValue: lines.length });
   }
 
   const firstMarker = getReviewChangeMarker(firstLine.change).trim();
@@ -136,7 +137,10 @@ export function formatReviewSelectedRangeLabel(target: ReviewCommentTarget): str
     return `${consistentMarker}${firstNumber}`;
   }
 
-  return `${consistentMarker}${firstNumber} to ${consistentMarker}${lastNumber}`;
+  return t("review.rangeTo", {
+    from: `${consistentMarker}${firstNumber}`,
+    to: `${consistentMarker}${lastNumber}`,
+  });
 }
 
 function getDiffHunkRange(

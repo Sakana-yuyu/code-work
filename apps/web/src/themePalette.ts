@@ -1,6 +1,12 @@
 import * as Schema from "effect/Schema";
 import { t } from "~/i18n/runtime";
 import { canonicalStorageKey, createCanonicalFirstStorage } from "./persistenceStorage";
+import {
+  applyThemeDecoration,
+  parseThemeDecorations,
+  type ThemeDecorations,
+  type ThemeDecoration,
+} from "./themeDecoration";
 import "culori/css";
 import { converter, parse } from "culori/fn";
 import {
@@ -71,6 +77,7 @@ export type ThemeFile = Readonly<{
   variants?: ThemeVariantOverrides;
   collection?: ThemeCollection;
   managed?: boolean;
+  decorations?: ThemeDecorations;
 }>;
 
 const RESERVED_THEME_IDS = new Set([
@@ -193,6 +200,12 @@ function parseStoredTheme(value: unknown): ThemeDefinition | null {
   const variants = parseStoredThemeVariants(value.variants, value.appearance);
   if (value.variants !== undefined && variants === null) return null;
   const collection = parseThemeCollection(value.collection);
+  let decorations: ThemeDecorations | undefined;
+  try {
+    decorations = parseThemeDecorations(value.decorations);
+  } catch {
+    // 损坏的背景配置不应让仍然有效的配色丢失。
+  }
 
   return {
     id: value.id,
@@ -202,6 +215,7 @@ function parseStoredTheme(value: unknown): ThemeDefinition | null {
     ...(variants ? { variants } : {}),
     ...(collection ? { collection } : {}),
     ...(value.managed === true ? { managed: true } : {}),
+    ...(decorations ? { decorations } : {}),
   };
 }
 
@@ -252,7 +266,7 @@ function readCustomThemeLibrarySnapshot(): CustomThemeLibrarySnapshot {
   return { status: "ready", storedThemes: parsed, themes: parseStoredThemes(parsed) };
 }
 
-function getCustomThemeLibrarySnapshot(): CustomThemeLibrarySnapshot {
+export function getCustomThemeLibrarySnapshot(): CustomThemeLibrarySnapshot {
   if (customThemeLibrarySnapshot === null) {
     customThemeLibrarySnapshot = readCustomThemeLibrarySnapshot();
   }
@@ -589,6 +603,7 @@ function decodeThemeColors(colors: ThemeColors): ThemeColors {
 function canonicalizeThemeDefinition(theme: ThemeDefinition): ThemeDefinition {
   return {
     ...theme,
+    ...(theme.decorations ? { decorations: parseThemeDecorations(theme.decorations)! } : {}),
     colors: decodeThemeColors(theme.colors),
     ...(theme.variants
       ? {
@@ -987,6 +1002,26 @@ function themeContrastRatio(first: ThemeRgbColor, second: ThemeRgbColor): number
   const lighter = Math.max(firstLuminance, secondLuminance);
   const darker = Math.min(firstLuminance, secondLuminance);
   return (lighter + 0.05) / (darker + 0.05);
+}
+
+/** 复用主题颜色解析，检查区域底色及渐变混合后的最低文字对比度。 */
+export function themeSurfaceContrastRatio(
+  foreground: string,
+  background: string,
+  underlay: string,
+  opacity: number,
+  gradient = background,
+): number | null {
+  const colors = [foreground, background, underlay, gradient].map(parseThemeColor);
+  if (colors.some((color) => color === null)) return null;
+  const [text, start, base, end] = colors.map((color) => themeOklchToRgb(color!.color));
+  let minimum = Infinity;
+  for (let step = 0; step <= 10; step++) {
+    const fill = mixThemeRgbColors(start!, end!, step / 10);
+    const composed = mixThemeRgbColors(base!, fill, Math.max(0, Math.min(100, opacity)) / 100);
+    minimum = Math.min(minimum, themeContrastRatio(text!, composed));
+  }
+  return minimum;
 }
 
 function readableThemeForeground(background: ThemeRgbColor): ThemeRgbColor {
@@ -1520,7 +1555,9 @@ function saveCustomThemes(
   try {
     window.localStorage.setItem(CUSTOM_THEMES_STORAGE_KEY, JSON.stringify(storedThemes));
     try {
-      window.localStorage.removeItem(LEGACY_CUSTOM_THEMES_STORAGE_KEY);
+      if (LEGACY_CUSTOM_THEMES_STORAGE_KEY !== CUSTOM_THEMES_STORAGE_KEY) {
+        window.localStorage.removeItem(LEGACY_CUSTOM_THEMES_STORAGE_KEY);
+      }
     } catch {
       // Legacy cleanup is best-effort after the canonical write succeeds.
     }
@@ -1750,6 +1787,7 @@ export function parseThemeFile(value: unknown): ThemeDefinition {
   }
 
   const fallback = getDefaultThemeColors(appearance);
+  const decorations = parseThemeDecorations(value.decorations);
   const variants: Partial<Record<ThemeAppearance, ThemeColors>> = {};
   if (value.variants !== undefined) {
     if (!isRecord(value.variants)) throw new Error(t("themes.variantsMustBeObject"));
@@ -1773,6 +1811,7 @@ export function parseThemeFile(value: unknown): ThemeDefinition {
     label: name.trim(),
     appearance,
     colors: { ...fallback, ...overrides },
+    ...(decorations ? { decorations } : {}),
     ...(Object.keys(variants).length > 0 ? { variants } : {}),
     ...(collection ? { collection } : {}),
     ...(value.managed === true ? { managed: true } : {}),
@@ -1787,6 +1826,7 @@ export function serializeThemeFile(theme: ThemeDefinition): string {
     name: canonicalTheme.label,
     appearance: canonicalTheme.appearance,
     colors: canonicalTheme.colors,
+    ...(canonicalTheme.decorations ? { decorations: canonicalTheme.decorations } : {}),
     ...(canonicalTheme.variants ? { variants: canonicalTheme.variants } : {}),
     ...(canonicalTheme.collection ? { collection: canonicalTheme.collection } : {}),
     ...(canonicalTheme.managed ? { managed: true } : {}),
@@ -1866,7 +1906,12 @@ export const THEME_PREVIEW_ID = "__preview";
  * can be judged against the real interface instead of a miniature. Callers
  * restore the stored theme (refreshTheme) when the draft goes away.
  */
-export function applyThemeColorPreview(colors: ThemeColors, appearance: ThemeAppearance): void {
+export function applyThemeColorPreview(
+  colors: ThemeColors,
+  appearance: ThemeAppearance,
+  decoration?: ThemeDecoration,
+): void {
+  applyThemeDecoration(decoration);
   if (typeof document === "undefined") return;
   const root = document.documentElement;
   if (!root?.style) return;
@@ -1895,6 +1940,7 @@ export function applyThemePalette(theme: ThemePreference, appearance?: ThemeAppe
     root.dataset.themeId = palette.id;
     const mode = appearance ?? legacyThemeMode(theme) ?? palette.appearance;
     const colors = getThemeColorsForMode(palette, mode) ?? palette.colors;
+    applyThemeDecoration(palette.decorations?.[mode] ?? palette.decorations?.[palette.appearance]);
     for (const [role, value] of Object.entries(colors) as Array<[ThemeColorRole, string]>) {
       root.style.setProperty(APP_THEME_VARIABLES[role], value);
     }
@@ -1902,6 +1948,7 @@ export function applyThemePalette(theme: ThemePreference, appearance?: ThemeAppe
   }
 
   delete root.dataset.themeId;
+  applyThemeDecoration(undefined);
   for (const variable of Object.values(APP_THEME_VARIABLES)) {
     root.style.removeProperty(variable);
   }

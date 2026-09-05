@@ -169,6 +169,7 @@ export interface CodexSessionRuntimeOptions {
 }
 
 export interface CodexSessionRuntimeSendTurnInput {
+  readonly reviewTarget?: EffectCodexSchema.V2ReviewStartParams["target"];
   readonly input?: string;
   readonly attachments?: ReadonlyArray<{
     readonly type: "image";
@@ -2130,13 +2131,20 @@ export const makeCodexSessionRuntime = (
             // has even if the setting changed after the session started.
             browserToolsAvailable: hasConfiguredMcpServer(options.appServerArgs),
           });
-          const rawResponse = yield* client.raw.request("turn/start", params);
+          const method = input.reviewTarget ? "review/start" : "turn/start";
+          const rawResponse = input.reviewTarget
+            ? yield* client.request("review/start", {
+                threadId: providerThreadId,
+                delivery: "inline",
+                target: input.reviewTarget,
+              })
+            : yield* client.raw.request("turn/start", params);
           const response = yield* decodeV2TurnStartResponse(rawResponse).pipe(
             Effect.mapError((error) =>
               CodexErrors.CodexAppServerProtocolParseError.fromSchemaError(
                 "decode-response-payload",
                 error,
-                { method: "turn/start" },
+                { method },
               ),
             ),
           );
@@ -2147,7 +2155,7 @@ export const makeCodexSessionRuntime = (
             // running. The response contains the queued turn id, but
             // turn/interrupt only accepts the id that is active now.
             activeTurnId: session.activeTurnId ?? turnId,
-            ...(normalizedModel ? { model: normalizedModel } : {}),
+            ...(!input.reviewTarget && normalizedModel ? { model: normalizedModel } : {}),
           }));
           const resumedProviderThreadId = currentProviderThreadId(yield* Ref.get(sessionRef));
           return {

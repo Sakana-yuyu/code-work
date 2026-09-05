@@ -96,7 +96,7 @@ export function ServerUpdateAction({
       toastManager.add({
         type: "success",
         title: t("updateCommandCopied"),
-        description: `${t("run")} \`${command}\` ${t("on")} ${serverLabel} ${t("toUpdateIt")}`,
+        description: t("runOnServerToUpdate", { command, serverLabel }),
       });
     },
     onError: (error) => {

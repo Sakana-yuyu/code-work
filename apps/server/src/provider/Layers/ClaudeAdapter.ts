@@ -421,6 +421,9 @@ function resultErrorsText(result: SDKResultMessage): string {
  * so they must never become the error banner.
  */
 function resultUserFacingError(result: SDKResultMessage): string | undefined {
+  if (result.subtype === "error_max_turns") {
+    return "Claude reached the maximum agent turns. Send another message to continue, or adjust the limit in provider settings.";
+  }
   if (result.subtype === "success" || !Array.isArray(result.errors)) {
     return undefined;
   }
@@ -4310,6 +4313,8 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
         pathToClaudeCodeExecutable: claudeBinaryPath,
         systemPrompt: { type: "preset", preset: "claude_code" },
         settingSources: [...CLAUDE_SETTING_SOURCES],
+        ...(claudeSettings.fallbackModel ? { fallbackModel: claudeSettings.fallbackModel } : {}),
+        ...(claudeSettings.maxTurns ? { maxTurns: Number(claudeSettings.maxTurns) } : {}),
         // `ultracode` is a Claude Code setting, not an API effort level. It is
         // normalized to `xhigh` above and paired with `settings.ultracode`.
         ...(effectiveEffort

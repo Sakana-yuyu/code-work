@@ -639,6 +639,32 @@ describe("ProviderCommandReactor", () => {
     ).toBe(false);
   });
 
+  it("有活动 Goal 时仍将 Codex review 原样发送", async () => {
+    const harness = await createHarness();
+    const threadId = ThreadId.make("thread-1");
+    await harness.runEffect(
+      harness.goalStore.set({ threadId, objective: "完成开发", tokenBudget: null }),
+    );
+    await harness.runEffect(
+      harness.engine.dispatch({
+        type: "thread.turn.start",
+        commandId: CommandId.make("cmd-review-goal"),
+        threadId,
+        message: {
+          messageId: asMessageId("message-review-goal"),
+          role: "user",
+          text: "/review",
+          attachments: [],
+        },
+        interactionMode: DEFAULT_PROVIDER_INTERACTION_MODE,
+        runtimeMode: "approval-required",
+        createdAt: "2026-01-01T00:00:00.000Z",
+      }),
+    );
+    await harness.drain();
+    expect(harness.sendTurn.mock.calls[0]?.[0]).toMatchObject({ input: "/review" });
+  });
+
   it("pauses a Goal when provider turn start fails after Goal activation", async () => {
     const harness = await createHarness({
       sendTurnEffect: () =>

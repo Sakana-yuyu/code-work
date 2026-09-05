@@ -7,6 +7,7 @@ import {
 } from "@codework/contracts";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
+import { HostProcessPlatform } from "@codework/shared/hostProcess";
 import * as FileSystem from "effect/FileSystem";
 import * as Option from "effect/Option";
 import * as Path from "effect/Path";
@@ -39,7 +40,11 @@ import {
   spawnAndCollect,
   type ServerProviderDraft,
 } from "../providerSnapshot.ts";
-import { resolveClaudeSdkExecutablePath } from "../Drivers/ClaudeExecutable.ts";
+import {
+  findClaudeNpmPackageEntry,
+  isClaudeNpmPackageEntryDamaged,
+  resolveClaudeSdkExecutablePath,
+} from "../Drivers/ClaudeExecutable.ts";
 import { makeClaudeEnvironment } from "../Drivers/ClaudeHome.ts";
 import { discoverClaudeSkills } from "../Drivers/ClaudeSkills.ts";
 
@@ -791,6 +796,14 @@ const runClaudeCommand = Effect.fn("runClaudeCommand")(function* (
   const spawnCommand = yield* resolveSpawnCommand(claudeSettings.binaryPath, args, {
     env: claudeEnvironment,
   });
+  yield* Effect.annotateCurrentSpan({
+    "claude.binary_path": claudeSettings.binaryPath,
+    "claude.spawn_command": spawnCommand.command,
+    "claude.spawn_shell": spawnCommand.shell,
+    "claude.path_present": Boolean(
+      claudeEnvironment.PATH ?? claudeEnvironment.Path ?? claudeEnvironment.path,
+    ),
+  });
   const command = ChildProcess.make(spawnCommand.command, spawnCommand.args, {
     env: claudeEnvironment,
     shell: spawnCommand.shell,
@@ -834,6 +847,31 @@ export const checkClaudeProviderStatus = Effect.fn("checkClaudeProviderStatus")(
     });
   }
 
+  const claudeNpmPackageEntry = findClaudeNpmPackageEntry(
+    resolvedEnvironment,
+    yield* HostProcessPlatform,
+  );
+  if (claudeNpmPackageEntry && isClaudeNpmPackageEntryDamaged(claudeNpmPackageEntry)) {
+    yield* Effect.logWarning("Claude Agent CLI installation appears damaged.", {
+      binaryPath: claudeSettings.binaryPath,
+      packageEntry: claudeNpmPackageEntry,
+    });
+    return buildServerProvider({
+      presentation: CLAUDE_PRESENTATION,
+      enabled: claudeSettings.enabled,
+      checkedAt,
+      models: allModels,
+      probe: {
+        installed: false,
+        version: null,
+        status: "error",
+        auth: { status: "unknown" },
+        message:
+          "Claude Agent CLI installation appears incomplete or damaged. Repair it from Provider settings, then refresh status.",
+      },
+    });
+  }
+
   const versionProbe = yield* runClaudeCommand(
     claudeSettings,
     ["--version"],
@@ -844,6 +882,8 @@ export const checkClaudeProviderStatus = Effect.fn("checkClaudeProviderStatus")(
     const error = versionProbe.failure;
     yield* Effect.logWarning("Claude Agent CLI health check failed.", {
       errorTag: error._tag,
+      binaryPath: claudeSettings.binaryPath,
+      reason: isCommandMissingCause(error) ? "command-not-found" : "execution-failed",
     });
     return buildServerProvider({
       presentation: CLAUDE_PRESENTATION,
@@ -856,7 +896,7 @@ export const checkClaudeProviderStatus = Effect.fn("checkClaudeProviderStatus")(
         status: "error",
         auth: { status: "unknown" },
         message: isCommandMissingCause(error)
-          ? "Claude Agent CLI (`claude`) was not found on PATH."
+          ? "Claude Agent CLI (`claude`) was not found in Code Work's server environment. Check the configured binary path or restart Code Work after updating PATH."
           : "Failed to execute Claude Agent CLI health check.",
       },
     });

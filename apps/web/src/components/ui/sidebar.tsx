@@ -22,6 +22,7 @@ import { useIsMobile } from "~/hooks/useMediaQuery";
 import { getLocalStorageItem, setLocalStorageItem } from "~/hooks/useLocalStorage";
 import { resolveSidebarState, type ResponsiveSidebarState } from "./sidebarState";
 import * as Schema from "effect/Schema";
+import { ThemeBackdrop } from "../settings/ThemeBackground";
 
 const SIDEBAR_COOKIE_NAME = "sidebar_state";
 const SIDEBAR_COOKIE_MAX_AGE = 60 * 60 * 24 * 7;
@@ -629,7 +630,7 @@ function SidebarRail({
   );
 }
 
-function SidebarInset({ className, ...props }: React.ComponentProps<"main">) {
+function SidebarInset({ className, children, ...props }: React.ComponentProps<"main">) {
   return (
     <main
       className={cn(
@@ -639,7 +640,10 @@ function SidebarInset({ className, ...props }: React.ComponentProps<"main">) {
       )}
       data-slot="sidebar-inset"
       {...props}
-    />
+    >
+      <ThemeBackdrop region="content" />
+      {children}
+    </main>
   );
 }
 

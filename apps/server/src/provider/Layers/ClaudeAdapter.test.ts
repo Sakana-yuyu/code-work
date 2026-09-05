@@ -347,6 +347,8 @@ describe("ClaudeAdapterLive", () => {
 
       const createInput = harness.getLastCreateQueryInput();
       assert.deepEqual(createInput?.options.settingSources, ["user", "project", "local"]);
+      assert.equal(createInput?.options.fallbackModel, undefined);
+      assert.equal(createInput?.options.maxTurns, undefined);
       assert.equal(createInput?.options.permissionMode, "bypassPermissions");
       assert.equal(createInput?.options.allowDangerouslySkipPermissions, true);
     }).pipe(
@@ -413,8 +415,10 @@ describe("ClaudeAdapterLive", () => {
     );
   });
 
-  it.effect("passes the configured auto-compaction window to Claude", () => {
-    const harness = makeHarness({ claudeConfig: { autoCompactWindow: "300000" } });
+  it.effect("将压缩阈值、备用模型和执行轮次转发给 Claude SDK", () => {
+    const harness = makeHarness({
+      claudeConfig: { autoCompactWindow: "300000", fallbackModel: "sonnet", maxTurns: "20" },
+    });
     return Effect.gen(function* () {
       const adapter = yield* ClaudeAdapter;
       yield* adapter.startSession({
@@ -425,6 +429,8 @@ describe("ClaudeAdapterLive", () => {
 
       const options = harness.getLastCreateQueryInput()?.options;
       assert.deepEqual(options?.settings, { autoCompactWindow: 300000 });
+      assert.equal(options?.fallbackModel, "sonnet");
+      assert.equal(options?.maxTurns, 20);
       assert.deepEqual(options?.supportedDialogKinds, ["resume_return"]);
     }).pipe(
       Effect.provideService(Random.Random, makeDeterministicRandomService()),
@@ -1620,6 +1626,43 @@ describe("ClaudeAdapterLive", () => {
         assert.equal(turnCompleted.payload.state, "interrupted");
         assert.equal(turnCompleted.payload.errorMessage, undefined);
       }
+    }).pipe(
+      Effect.provideService(Random.Random, makeDeterministicRandomService()),
+      Effect.provide(harness.layer),
+    );
+  });
+
+  it.effect("达到执行上限时显示恢复指引并保留会话继续能力", () => {
+    const harness = makeHarness({ claudeConfig: { maxTurns: "1" } });
+    return Effect.gen(function* () {
+      const adapter = yield* ClaudeAdapter;
+      yield* adapter.startSession({
+        threadId: THREAD_ID,
+        provider: ProviderDriverKind.make("claudeAgent"),
+        runtimeMode: "approval-required",
+      });
+      const completed = yield* adapter.streamEvents.pipe(
+        Stream.filter((event) => event.type === "turn.completed"),
+        Stream.runHead,
+        Effect.forkChild,
+      );
+      yield* adapter.sendTurn({ threadId: THREAD_ID, input: "检查项目" });
+      harness.query.emit({
+        type: "result",
+        subtype: "error_max_turns",
+        is_error: true,
+        errors: [],
+        session_id: "sdk-session-limit",
+        uuid: "result-limit",
+      } as unknown as SDKMessage);
+      const event = yield* Fiber.join(completed);
+      assert.equal(event._tag, "Some");
+      if (event._tag === "Some" && event.value.type === "turn.completed") {
+        assert.equal(event.value.payload.state, "failed");
+        assert.match(event.value.payload.errorMessage ?? "", /maximum agent turns/);
+      }
+      const nextTurn = yield* adapter.sendTurn({ threadId: THREAD_ID, input: "继续" });
+      assert.ok(nextTurn.turnId);
     }).pipe(
       Effect.provideService(Random.Random, makeDeterministicRandomService()),
       Effect.provide(harness.layer),

@@ -153,7 +153,7 @@ export function UsagePage() {
       <ActivitySkeleton />
     ) : (
       <div className={cn(USAGE_CARD_CLASS, "flex flex-col gap-4")}>
-        <section className="grid grid-cols-2 gap-x-6 gap-y-4 py-1 md:grid-cols-5">
+        <section className="grid grid-cols-1 gap-x-6 gap-y-4 py-1 min-[400px]:grid-cols-2 md:grid-cols-5">
           <Metric
             labelKey="usage.cumulativeTokens"
             value={formatTokens(activity.merged.totalTokens)}
@@ -199,6 +199,7 @@ export function UsagePage() {
   };
   const viewTabs = (
     <ToggleGroup
+      className="shrink-0"
       aria-label={t("usage.view")}
       variant="segmented"
       value={[view]}
@@ -223,14 +224,14 @@ export function UsagePage() {
           end: formatDayShort(window.untilDay, language),
         });
   const topbarContent = (
-    <div className="flex w-full min-w-0 items-center gap-3">
-      <WorkspaceBreadcrumb ariaLabel={t("usageBreadcrumb")} className="min-w-0">
-        <WorkspaceBreadcrumbItem current>
-          <h1>{t("usage")}</h1>
+    <div className="flex w-full min-w-0 items-center gap-3 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+      <WorkspaceBreadcrumb ariaLabel={t("usageBreadcrumb")} className="shrink-0">
+        <WorkspaceBreadcrumbItem className="shrink-0" current>
+          <h1 className="whitespace-nowrap">{t("usage")}</h1>
         </WorkspaceBreadcrumbItem>
       </WorkspaceBreadcrumb>
       {viewTabs}
-      <div className="ms-auto hidden min-w-0 items-center justify-end gap-2 lg:flex">
+      <div className="ms-auto hidden shrink-0 items-center justify-end gap-2 xl:flex">
         {view === "app" ? (
           <>
             <ToggleGroup
@@ -274,7 +275,7 @@ export function UsagePage() {
           <RefreshCwIcon className="size-3.5" />
         </Button>
       </div>
-      <div className="ms-auto flex min-w-0 items-center justify-end gap-1 lg:hidden">
+      <div className="ms-auto flex shrink-0 items-center justify-end gap-1 xl:hidden">
         {view === "app" ? (
           <>
             <Select
@@ -410,9 +411,10 @@ export function UsagePage() {
                               ? (totals?.costShare ?? 0)
                               : (totals?.tokenShare ?? 0);
                           const providerSessions = totals?.sessions ?? 0;
-                          const sessionLabel = `${formatCount(providerSessions)} ${
-                            providerSessions === 1 ? "session" : "sessions"
-                          }`;
+                          const sessionLabel = t("usage.sessionCount", {
+                            count: providerSessions,
+                            countValue: formatCount(providerSessions),
+                          });
                           return (
                             <div key={provider} className="flex flex-col gap-1">
                               <div className="flex items-baseline justify-between gap-4">
@@ -499,7 +501,7 @@ export function UsagePage() {
 
                     <section className={cn(USAGE_CARD_CLASS, "flex flex-col gap-2")}>
                       <h2 className="text-sm font-medium text-foreground">{t("totals")}</h2>
-                      <div className="grid grid-cols-2 gap-x-6 gap-y-4 py-1 md:grid-cols-5">
+                      <div className="grid grid-cols-1 gap-x-6 gap-y-4 py-1 min-[400px]:grid-cols-2 md:grid-cols-5">
                         <Metric
                           labelKey="processedTokens2"
                           value={formatTokens(merged.totalTokens)}
@@ -807,7 +809,7 @@ function UsageDeviceStrip({
 function ActivitySkeleton() {
   return (
     <div className={cn(USAGE_CARD_CLASS, "flex flex-col gap-4")}>
-      <section className="grid grid-cols-2 gap-x-6 gap-y-4 py-1 md:grid-cols-5">
+      <section className="grid grid-cols-1 gap-x-6 gap-y-4 py-1 min-[400px]:grid-cols-2 md:grid-cols-5">
         {[
           "usage.cumulativeTokens",
           "usage.peakTokens",
@@ -874,7 +876,7 @@ function UsageSkeleton() {
 
       <section className={cn(USAGE_CARD_CLASS, "flex flex-col gap-2")}>
         <h2 className="text-sm font-medium text-foreground">{t("totals")}</h2>
-        <div className="grid grid-cols-2 gap-x-6 gap-y-4 py-1 md:grid-cols-5">
+        <div className="grid grid-cols-1 gap-x-6 gap-y-4 py-1 min-[400px]:grid-cols-2 md:grid-cols-5">
           {["processedTokens2", "cachedInput", "uncachedInput", "output", "cacheSavings"].map(
             (labelKey) => (
               <div key={labelKey} className="flex flex-col gap-0.5">

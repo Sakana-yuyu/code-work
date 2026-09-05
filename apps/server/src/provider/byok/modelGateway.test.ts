@@ -14,6 +14,7 @@ import {
   openCodeGatewayConfigContent,
   pickGatewayAdapter,
   routedServerProviderModels,
+  rewriteGatewayModel,
 } from "./modelGateway.ts";
 
 const settingsWithInstances = (
@@ -43,6 +44,19 @@ const adapter = (overrides: Record<string, unknown> = {}): Record<string, unknow
 });
 
 describe("gatewayAdapterRoutes", () => {
+  it("用上游模型名替换内部渠道 ID，保留流式请求和其他字段", () => {
+    const body = {
+      model: "adapter-id[1m]",
+      stream: true,
+      input: [{ role: "user", content: "test" }],
+    };
+    expect(JSON.parse(rewriteGatewayModel(JSON.stringify(body), "actual-model"))).toEqual({
+      ...body,
+      model: "actual-model",
+    });
+    expect(rewriteGatewayModel('{"input":"test"}', "actual-model")).toBe('{"input":"test"}');
+    expect(rewriteGatewayModel("invalid json", "actual-model")).toBe("invalid json");
+  });
   it("collects routable adapters from enabled byok instances", () => {
     const routes = gatewayAdapterRoutes(
       settingsWithInstances({
@@ -152,6 +166,8 @@ describe("injection builders", () => {
     expect(anthropicGatewayEnv(gatewayOrigin(3773), "tok")).toEqual({
       ANTHROPIC_BASE_URL: "http://127.0.0.1:3773/byok-gw/anthropic",
       ANTHROPIC_AUTH_TOKEN: "tok",
+      ANTHROPIC_API_KEY: "",
+      CLAUDE_CODE_OAUTH_TOKEN: "",
     });
   });
 
@@ -161,7 +177,7 @@ describe("injection builders", () => {
     expect(args).toContain(
       'model_providers.byok_gateway.base_url="http://127.0.0.1:3773/byok-gw/openai/v1"',
     );
-    expect(args).toContain('model_providers.byok_gateway.wire_api="chat"');
+    expect(args).toContain('model_providers.byok_gateway.wire_api="responses"');
   });
 
   it("merges the gateway provider into opencode config content", () => {

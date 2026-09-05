@@ -8,6 +8,7 @@ import {
   effectiveSnoozed,
   resolveSnoozePresets,
   snoozeWakeLabel,
+  snoozeWakeLabelKey,
   threadRaisedHandWhileSnoozed,
   threadWokeAt,
   type ThreadSnoozeShell,
@@ -257,6 +258,19 @@ describe("snoozeWakeLabel", () => {
     expect(snoozeWakeLabel("2026-06-01T23:59:59.000Z", { now })).toBe("now");
     expect(snoozeWakeLabel("not-a-date", { now })).toBe("now");
     expect(snoozeWakeLabel("2026-06-02T09:00:00.000Z", { now: "bad" })).toBe("now");
+  });
+});
+
+describe("snoozeWakeLabelKey", () => {
+  it('maps the shared "now" label to its i18n key', () => {
+    expect(snoozeWakeLabelKey("now")).toBe("snooze.wakeNow");
+  });
+
+  it("passes locale-neutral duration labels through as null", () => {
+    expect(snoozeWakeLabelKey("1m")).toBeNull();
+    expect(snoozeWakeLabelKey("30m")).toBeNull();
+    expect(snoozeWakeLabelKey("2h")).toBeNull();
+    expect(snoozeWakeLabelKey("3d")).toBeNull();
   });
 });
 

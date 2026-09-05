@@ -128,8 +128,8 @@ export function statusSummary(
     const fileCount = gitStatus.workingTree?.files.length ?? 0;
     parts.push(
       fileCount === 1
-        ? t("git.fileChanged", { count: fileCount })
-        : t("git.filesChanged", { count: fileCount }),
+        ? t("git.filesChanged", { count: fileCount, countValue: fileCount })
+        : t("git.filesChanged_plural", { count: fileCount, countValue: fileCount }),
     );
   } else {
     parts.push(t("git.clean"));

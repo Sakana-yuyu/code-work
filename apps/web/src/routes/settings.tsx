@@ -73,10 +73,10 @@ function SettingsContentLayout() {
     <SidebarInset className="h-dvh min-h-0 overflow-hidden overscroll-y-none bg-background text-foreground isolate">
       <div className="flex min-h-0 min-w-0 flex-1 flex-col bg-background text-foreground">
         <WorkspacePageHeader electron={isElectron}>
-          <div className="flex w-full items-center gap-3">
+          <div className="flex min-w-0 w-full items-center gap-3 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
             <SettingsBreadcrumb pathname={location.pathname} />
             {showRestoreDefaults ? (
-              <div className="ms-auto flex items-center gap-2">
+              <div className="ms-auto flex shrink-0 items-center gap-2">
                 <RestoreDefaultsButton onRestored={handleRestored} />
               </div>
             ) : null}

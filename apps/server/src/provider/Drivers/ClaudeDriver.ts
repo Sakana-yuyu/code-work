@@ -80,6 +80,8 @@ function isClaudeNativeCommandPath(commandPath: string): boolean {
 const UPDATE = makePackageManagedProviderMaintenanceResolver({
   provider: DRIVER_KIND,
   npmPackageName: "@anthropic-ai/claude-code",
+  // Claude 的原生包可能在上次 npm 解包中断后留下占位 exe，修复时必须强制重装并重新检查线上版本。
+  npmInstallFlags: ["--force", "--prefer-online"],
   homebrewFormula: "claude-code",
   nativeUpdate: {
     executable: "claude",

@@ -36,6 +36,7 @@ import * as IpcChannels from "../channels.ts";
 import * as DesktopIpc from "../DesktopIpc.ts";
 import * as DesktopSshEnvironment from "../../ssh/DesktopSshEnvironment.ts";
 import * as DesktopSshPasswordPrompts from "../../ssh/DesktopSshPasswordPrompts.ts";
+import { t } from "../../i18n.js";
 
 type DesktopSshEnvironmentRequestOperation =
   | "fetch-environment-descriptor"
@@ -84,8 +85,12 @@ export class DesktopSshEnvironmentRequestError extends Data.TaggedError(
   readonly sshHttpStatus: number | null;
 }> {
   override get message() {
-    const prefix = this.sshHttpStatus === null ? "" : `[ssh_http:${this.sshHttpStatus}] `;
-    return `${prefix}SSH remote API request failed during ${this.operation}.`;
+    // sshHttpStatus stays on the error for technical consumers; the message is
+    // user-visible, so the [ssh_http:N] log prefix is not repeated here.
+    return t("ssh.remoteApiRequestFailed", {
+      operation: this.operation,
+      status: this.sshHttpStatus ?? "unknown",
+    });
   }
 }
 

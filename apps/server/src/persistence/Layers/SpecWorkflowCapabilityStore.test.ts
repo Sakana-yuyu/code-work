@@ -39,6 +39,41 @@ const transitionThreadId = ThreadId.make("spec-workflow-transition-test");
 const isDomainError = Schema.is(SpecWorkflowCapabilityStoreDomainError);
 
 memoryLayer("SpecWorkflowCapabilityStore", (it) => {
+  it.effect("切换节点保持启用并递增版本，禁用和旧客户端更新保留选择", () =>
+    Effect.gen(function* () {
+      const store = yield* SpecWorkflowCapabilityStore;
+      const threadId = ThreadId.make("selected-node");
+      const research = yield* store.set({
+        threadId,
+        enabled: true,
+        selectedIntent: "research",
+        expectedRevision: 0,
+      });
+      const design = yield* store.set({
+        threadId,
+        enabled: true,
+        selectedIntent: "design",
+        expectedRevision: research.revision,
+      });
+      assert.equal(design.selectedIntent, "design");
+      assert.equal(design.revision, research.revision + 1);
+      const replay = yield* store.set({
+        threadId,
+        enabled: true,
+        selectedIntent: "design",
+        expectedRevision: design.revision,
+      });
+      assert.deepEqual(replay, design);
+      const disabled = yield* store.set({
+        threadId,
+        enabled: false,
+        expectedRevision: design.revision,
+      });
+      assert.equal(disabled.selectedIntent, "design");
+      assert.equal(disabled.enabled, false);
+      assert.deepEqual(yield* store.get(threadId), disabled);
+    }),
+  );
   it.effect("未设置时默认关闭且不写入能力记录，显式设置后相同输入幂等", () =>
     Effect.gen(function* () {
       const store = yield* SpecWorkflowCapabilityStore;
@@ -110,6 +145,7 @@ it.effect("使用同一 SQLite 文件重建 Store 后仍可恢复开关状态", 
       return yield* store.set({
         threadId: ThreadId.make("thread-restart"),
         enabled: true,
+        selectedIntent: "verify",
         expectedRevision: 0,
       });
     }).pipe(Effect.provide(makeFileStoreLayer(dbPath)));

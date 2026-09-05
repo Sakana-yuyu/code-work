@@ -4,6 +4,7 @@ import { useId } from "react";
 import { APP_STAGE_LABEL } from "../branding";
 import { resolveServerBackedAppStageLabel } from "../branding.logic";
 import { primaryServerConfigAtom } from "../state/server";
+import { useThemeDecoration } from "./settings/ThemeBackground";
 
 export type SidebarStageBackdropVariant = "nightly" | "dev";
 export type EnvironmentIdentificationPillLabel = "Dev" | "Nightly";
@@ -51,7 +52,11 @@ export function useEnvironmentStageLabel(): string {
 }
 
 export function useSidebarStageBackdropVariant(enabled = true): SidebarStageBackdropVariant | null {
-  return resolveSidebarStageBackdropVariant(useEnvironmentStageLabel(), enabled);
+  const decoration = useThemeDecoration();
+  return resolveSidebarStageBackdropVariant(
+    useEnvironmentStageLabel(),
+    enabled && !decoration.global && !decoration.sidebar,
+  );
 }
 
 /** Stage-channel header art; palettes mirror the per-channel app icons in `assets/`. */

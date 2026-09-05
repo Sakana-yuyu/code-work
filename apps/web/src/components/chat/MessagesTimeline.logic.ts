@@ -9,13 +9,54 @@ import {
   type WorkLogEntry,
 } from "../../session-logic";
 import { type ChatMessage, type ProposedPlan, type TurnDiffSummary } from "../../types";
-import { type MessageId, type OrchestrationLatestTurn, type TurnId } from "@codework/contracts";
+import {
+  type CanvasReference,
+  type MessageId,
+  type OrchestrationLatestTurn,
+  type TurnId,
+} from "@codework/contracts";
 import { t } from "~/i18n/runtime";
 import type { EnabledLocalPluginTimelineEntry } from "~/localPlugins/adapters/localPluginTimelineAdapter";
 
 export const MAX_VISIBLE_WORK_LOG_ENTRIES = 1;
 export const TIMELINE_MINIMAP_ITEM_SPACING = 8;
 export const TIMELINE_MINIMAP_MIN_ITEMS = 2;
+
+export type TimelineCanvasReferences = {
+  canvasReferences: ReadonlyArray<CanvasReference>;
+  canvasReferencesByTurnId: ReadonlyMap<TurnId, CanvasReference>;
+};
+
+/** 消息正文更新不改变 Canvas 索引，保持共享 Context 的引用稳定。 */
+export function deriveStableCanvasReferences(
+  entries: ReadonlyArray<TimelineEntry>,
+  previous: TimelineCanvasReferences,
+): TimelineCanvasReferences {
+  const byPath = new Map<string, CanvasReference>();
+  const byTurn = new Map<TurnId, CanvasReference>();
+  for (const row of entries) {
+    if (row.kind !== "work" || !row.entry.canvas) continue;
+    byPath.set(row.entry.canvas.relativePath, row.entry.canvas);
+    if (row.entry.turnId != null) byTurn.set(row.entry.turnId, row.entry.canvas);
+  }
+  const references = [...byPath.values()];
+  const same = (a: CanvasReference, b: CanvasReference | undefined) =>
+    b !== undefined &&
+    a.canvasId === b.canvasId &&
+    a.title === b.title &&
+    a.summary === b.summary &&
+    a.relativePath === b.relativePath;
+  if (
+    references.length === previous.canvasReferences.length &&
+    references.every((canvas, index) => same(canvas, previous.canvasReferences[index])) &&
+    byTurn.size === previous.canvasReferencesByTurnId.size &&
+    [...byTurn].every(([turnId, canvas]) =>
+      same(canvas, previous.canvasReferencesByTurnId.get(turnId)),
+    )
+  )
+    return previous;
+  return { canvasReferences: references, canvasReferencesByTurnId: byTurn };
+}
 export const TIMELINE_MINIMAP_MAX_HEIGHT_CSS = "calc(100vh - 18rem)";
 export const TIMELINE_CONTENT_MAX_WIDTH = 768;
 export const TIMELINE_MINIMAP_PERSISTENT_GUTTER = 48;

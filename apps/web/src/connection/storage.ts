@@ -131,9 +131,7 @@ function persistenceError(
 const openNamedDatabase = (databaseName: string) =>
   Effect.callback<IDBDatabase, ConnectionTransientError>((resume) => {
     if (typeof indexedDB === "undefined") {
-      resume(
-        Effect.fail(catalogError("open", "IndexedDB is unavailable in this browser context.")),
-      );
+      resume(Effect.fail(catalogError("open", t("connection.idbUnavailable"))));
       return;
     }
     const request = indexedDB.open(databaseName, DATABASE_VERSION);
@@ -155,7 +153,7 @@ const openNamedDatabase = (databaseName: string) =>
       }
     });
     request.addEventListener("error", () => {
-      resume(Effect.fail(catalogError("open", request.error ?? "Unknown IndexedDB error")));
+      resume(Effect.fail(catalogError("open", request.error ?? t("connection.idbUnknownError"))));
     });
     request.addEventListener("success", () => {
       resume(Effect.succeed(request.result));
@@ -264,7 +262,9 @@ function readDatabaseValue(database: IDBDatabase, storeName: string, key: IDBVal
   return Effect.callback<unknown, ConnectionTransientError>((resume) => {
     const request = database.transaction(storeName, "readonly").objectStore(storeName).get(key);
     request.addEventListener("error", () => {
-      resume(Effect.fail(catalogError("read", request.error ?? "Unknown IndexedDB read error")));
+      resume(
+        Effect.fail(catalogError("read", request.error ?? t("connection.idbUnknownReadError"))),
+      );
     });
     request.addEventListener("success", () => {
       resume(Effect.succeed(request.result));
@@ -282,7 +282,9 @@ function writeDatabaseValue(
     const transaction = database.transaction(storeName, "readwrite");
     transaction.addEventListener("error", () => {
       resume(
-        Effect.fail(catalogError("write", transaction.error ?? "Unknown IndexedDB write error")),
+        Effect.fail(
+          catalogError("write", transaction.error ?? t("connection.idbUnknownWriteError")),
+        ),
       );
     });
     transaction.addEventListener("complete", () => {
@@ -297,7 +299,9 @@ function removeDatabaseValue(database: IDBDatabase, storeName: string, key: IDBV
     const transaction = database.transaction(storeName, "readwrite");
     transaction.addEventListener("error", () => {
       resume(
-        Effect.fail(catalogError("remove", transaction.error ?? "Unknown IndexedDB remove error")),
+        Effect.fail(
+          catalogError("remove", transaction.error ?? t("connection.idbUnknownRemoveError")),
+        ),
       );
     });
     transaction.addEventListener("complete", () => {
@@ -312,7 +316,9 @@ function removeDatabaseValuesInRange(database: IDBDatabase, storeName: string, r
     const transaction = database.transaction(storeName, "readwrite");
     transaction.addEventListener("error", () => {
       resume(
-        Effect.fail(catalogError("remove", transaction.error ?? "Unknown IndexedDB cursor error")),
+        Effect.fail(
+          catalogError("remove", transaction.error ?? t("connection.idbUnknownCursorError")),
+        ),
       );
     });
     transaction.addEventListener("complete", () => {
@@ -321,7 +327,7 @@ function removeDatabaseValuesInRange(database: IDBDatabase, storeName: string, r
     const request = transaction.objectStore(storeName).openCursor(range);
     request.addEventListener("error", () => {
       resume(
-        Effect.fail(catalogError("remove", request.error ?? "Unknown IndexedDB cursor error")),
+        Effect.fail(catalogError("remove", request.error ?? t("connection.idbUnknownCursorError"))),
       );
     });
     request.addEventListener("success", () => {
@@ -379,12 +385,7 @@ export function makeCatalogBackend(database: IDBDatabase): CatalogBackend {
           Effect.flatMap((stored) =>
             stored
               ? Effect.void
-              : Effect.fail(
-                  catalogError(
-                    "save",
-                    "Desktop secure storage is unavailable in this system context.",
-                  ),
-                ),
+              : Effect.fail(catalogError("save", t("connection.secureStorageUnavailable"))),
           ),
         ),
     };

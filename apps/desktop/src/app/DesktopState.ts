@@ -8,12 +8,14 @@ export class DesktopState extends Context.Service<
   {
     readonly backendReady: Ref.Ref<boolean>;
     readonly quitting: Ref.Ref<boolean>;
+    readonly trayReady: Ref.Ref<boolean>;
   }
 >()("@codework/desktop/app/DesktopState") {}
 
 const make = Effect.all({
   backendReady: Ref.make(false),
   quitting: Ref.make(false),
+  trayReady: Ref.make(false),
 });
 
 export const layer = Layer.effect(DesktopState, make);

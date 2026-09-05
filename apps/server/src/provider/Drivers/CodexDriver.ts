@@ -134,20 +134,24 @@ export const CodexDriver: ProviderDriver<CodexSettings, CodexDriverEnv> = {
       const eventLoggers = yield* ProviderEventLoggers;
       const modelManifest = yield* ModelManifest.ModelManifest;
       const baseProcessEnv = mergeProviderInstanceEnvironment(environment);
-      // Gateway routing: the token travels through the environment (Codex's
-      // `env_key` mechanism reads it at request time); the `-c` overrides are
-      // passed as argv via `gatewayAppServerArgs` below.
+      // 网关令牌仅通过环境传递；所有 Codex 启动路径共享相同的配置覆盖。
       const processEnv =
         config.routeThroughByok === true
           ? {
               ...baseProcessEnv,
               [BYOK_GATEWAY_TOKEN_ENV]: yield* ensureGatewayToken(secretStore),
+              CODEWORK_CODEX_API_KEY: "",
+              // 会话、健康检查和标题生成必须使用同一网关覆盖。
+              CODEWORK_CODEX_LAUNCH_ARGS: [
+                baseProcessEnv.CODEWORK_CODEX_LAUNCH_ARGS?.trim() || config.launchArgs,
+                ...gatewayCodexConfigArgs(gatewayOrigin(serverConfig.port)).map((arg) =>
+                  JSON.stringify(arg),
+                ),
+              ]
+                .filter(Boolean)
+                .join(" "),
             }
           : baseProcessEnv;
-      const gatewayAppServerArgs =
-        config.routeThroughByok === true
-          ? gatewayCodexConfigArgs(gatewayOrigin(serverConfig.port))
-          : undefined;
       const homeLayout = yield* resolveCodexHomeLayout(config);
       const continuationIdentity = codexContinuationIdentity(homeLayout);
       const stampIdentity = withInstanceIdentity({
@@ -186,7 +190,6 @@ export const CodexDriver: ProviderDriver<CodexSettings, CodexDriverEnv> = {
       const adapter = yield* makeCodexAdapter(effectiveConfig, {
         instanceId,
         environment: processEnv,
-        ...(gatewayAppServerArgs !== undefined ? { gatewayAppServerArgs } : {}),
         ...(eventLoggers.native ? { nativeEventLogger: eventLoggers.native } : {}),
       });
       const textGeneration = yield* makeCodexTextGeneration(effectiveConfig, processEnv);

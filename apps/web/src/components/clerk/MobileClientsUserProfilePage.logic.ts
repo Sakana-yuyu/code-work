@@ -8,10 +8,10 @@ const mobileClientUpdatedAtFormatter = new Intl.DateTimeFormat(undefined, {
 });
 
 const NOTIFICATION_PREFERENCES = [
-  ["notifyOnApproval", "approvals"],
-  ["notifyOnInput", "input requests"],
-  ["notifyOnCompletion", "completions"],
-  ["notifyOnFailure", "failures"],
+  ["notifyOnApproval", "clerk.notificationApprovals"],
+  ["notifyOnInput", "clerk.notificationInputRequests"],
+  ["notifyOnCompletion", "clerk.notificationCompletions"],
+  ["notifyOnFailure", "clerk.notificationFailures"],
 ] as const satisfies ReadonlyArray<
   readonly [keyof RelayClientDeviceRecord["notifications"], string]
 >;
@@ -26,7 +26,7 @@ export function mobileClientNotificationDetail(device: RelayClientDeviceRecord):
   }
 
   const enabledPreferences = NOTIFICATION_PREFERENCES.flatMap(([preference, label]) =>
-    device.notifications[preference] ? [label] : [],
+    device.notifications[preference] ? [t(label)] : [],
   );
   return enabledPreferences.length > 0
     ? t("clerk.alertsEnabledFor", { alerts: enabledPreferences.join(", ") })
@@ -37,5 +37,5 @@ export function mobileClientUpdatedAtLabel(updatedAt: string): string {
   const date = new Date(updatedAt);
   return Number.isNaN(date.getTime())
     ? t("clerk.updateTimeUnavailable")
-    : `Updated ${mobileClientUpdatedAtFormatter.format(date)}`;
+    : t("clerk.updatedAtLabel", { datetime: mobileClientUpdatedAtFormatter.format(date) });
 }

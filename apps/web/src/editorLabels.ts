@@ -17,11 +17,13 @@ export function editorLabelForPlatform(editorId: EditorId, platform: string): st
     return localizedFileManagerName(platform);
   }
 
-  return editorLabels.get(editorId) ?? "Editor";
+  return editorLabels.get(editorId) ?? t("editor.fallbackLabel");
 }
 
 export function openInEditorMenuLabel(editorId: EditorId | null): string {
   return editorId === null || editorId === "file-manager"
     ? t("openInEditor")
-    : t("commandPalette.openInManager", { manager: editorLabels.get(editorId) ?? "Editor" });
+    : t("commandPalette.openInManager", {
+        manager: editorLabels.get(editorId) ?? t("editor.fallbackLabel"),
+      });
 }

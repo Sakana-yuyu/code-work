@@ -61,14 +61,27 @@ rl.on("line", (line) => {
     write({ id, result: fixture.responses.threadStart });
     return;
   }
-  if (method === "turn/start") {
+  if (method === "turn/start" || method === "review/start") {
+    if (script.recordTurnRequests) {
+      NodeFS.appendFileSync(
+        `${process.env.CODEWORK_CODEX_COLLAB_SCRIPT}.requests`,
+        `${JSON.stringify({ method, params: message.params })}\n`,
+      );
+    }
     const turnId = script.turnIds?.[turnStartCount];
     const turn = turnId
       ? { ...fixture.responses.turnStart.turn, id: turnId }
       : fixture.responses.turnStart.turn;
     activeTurn = turn;
     turnStartCount += 1;
-    write({ id, result: { ...fixture.responses.turnStart, turn } });
+    write({
+      id,
+      result: {
+        ...fixture.responses.turnStart,
+        turn,
+        ...(method === "review/start" ? { reviewThreadId: script.rootThreadId } : {}),
+      },
+    });
     const rootThreadId = script.rootThreadId;
     if (script.onlyFirstTurnStarts !== true || turnStartCount === 1) {
       write({

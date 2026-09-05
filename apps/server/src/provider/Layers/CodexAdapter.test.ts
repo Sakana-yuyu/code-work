@@ -557,6 +557,76 @@ function startLifecycleRuntime() {
 }
 
 lifecycleLayer("CodexAdapterLive lifecycle", (it) => {
+  it.effect("只将独立 review 命令转成原生审查目标", () =>
+    Effect.gen(function* () {
+      const { adapter, runtime } = yield* startLifecycleRuntime();
+      for (const input of [" /review ", "/review 检查并发错误", "/review-status", "解释 /review"]) {
+        yield* adapter.sendTurn({ threadId: asThreadId("thread-1"), input });
+      }
+      NodeAssert.deepStrictEqual(
+        runtime.sendTurnImpl.mock.calls.map(([input]) => input.reviewTarget),
+        [
+          { type: "uncommittedChanges" },
+          { type: "custom", instructions: "检查并发错误" },
+          undefined,
+          undefined,
+        ],
+      );
+      const result = yield* adapter
+        .sendTurn({
+          threadId: asThreadId("thread-1"),
+          input: "/review",
+          attachments: [
+            {
+              type: "image",
+              id: "review-image",
+              name: "image.png",
+              mimeType: "image/png",
+              sizeBytes: 1,
+            },
+          ],
+        })
+        .pipe(Effect.result);
+      NodeAssert.equal(result._tag, "Failure");
+      if (result._tag === "Failure")
+        NodeAssert.equal(result.failure._tag, "ProviderAdapterValidationError");
+      NodeAssert.equal(runtime.sendTurnImpl.mock.calls.length, 4);
+    }),
+  );
+
+  it.effect("原生审查结论进入助手消息链路而非被丢弃", () =>
+    Effect.gen(function* () {
+      const { adapter, runtime } = yield* startLifecycleRuntime();
+      const eventFiber = yield* Stream.runHead(adapter.streamEvents).pipe(Effect.forkChild);
+      yield* runtime.emit({
+        id: asEventId("evt-review-complete"),
+        kind: "notification",
+        provider: ProviderDriverKind.make("codex"),
+        createdAt: "2026-01-01T00:00:00.000Z",
+        method: "item/completed",
+        threadId: asThreadId("thread-1"),
+        turnId: asTurnId("turn-1"),
+        itemId: asItemId("review-1"),
+        payload: {
+          completedAtMs: 1_778_000_000_000,
+          threadId: "thread-1",
+          turnId: "turn-1",
+          item: { type: "exitedReviewMode", id: "review-1", review: "未发现阻塞问题。" },
+        },
+      });
+      const result = yield* Fiber.join(eventFiber);
+      NodeAssert.ok(Option.isSome(result));
+      NodeAssert.equal(result.value.type, "item.completed");
+      NodeAssert.deepStrictEqual(result.value.payload, {
+        itemType: "assistant_message",
+        status: "completed",
+        title: "Assistant message",
+        detail: "未发现阻塞问题。",
+        data: result.value.raw?.payload,
+      });
+    }),
+  );
+
   it.effect("does not reactivate an idle child after a parent interaction", () =>
     Effect.gen(function* () {
       const { adapter, runtime } = yield* startLifecycleRuntime();

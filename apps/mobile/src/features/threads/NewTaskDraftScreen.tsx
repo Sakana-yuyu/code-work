@@ -472,8 +472,14 @@ export function NewTaskDraftScreen(props: {
       }
       const warnings = [...incomingShare.warnings];
       if (skippedAttachmentCount > 0) {
+        const skippedCount = skippedAttachmentCount;
         warnings.push(
-          `${skippedAttachmentCount} shared image${skippedAttachmentCount === 1 ? " was" : "s were"} skipped because this draft reached the attachment limit.`,
+          skippedCount === 1
+            ? t("threads.sharedImagesSkipped", { count: skippedCount, countValue: skippedCount })
+            : t("threads.sharedImagesSkipped_plural", {
+                count: skippedCount,
+                countValue: skippedCount,
+              }),
         );
       }
       if (warnings.length > 0) {
@@ -587,7 +593,7 @@ export function NewTaskDraftScreen(props: {
   const selectedEnvironmentLabel =
     flow.environments.find(
       (environment) => environment.environmentId === flow.selectedEnvironmentId,
-    )?.environmentLabel ?? "Environment";
+    )?.environmentLabel ?? t("threads.fallbackEnvironment");
   const availableCurrentBranchName =
     flow.availableBranches.find((branch) => branch.current)?.name ??
     flow.availableBranches.find((branch) => branch.isDefault)?.name ??

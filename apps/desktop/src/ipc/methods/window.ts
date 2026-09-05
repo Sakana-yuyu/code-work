@@ -2,6 +2,7 @@ import {
   ContextMenuItemSchema,
   DesktopAppBrandingSchema,
   DesktopEnvironmentBootstrapSchema,
+  DesktopTrayRecentItemSchema,
   DesktopThemeSchema,
   EDITORS,
   EditorId,
@@ -32,6 +33,7 @@ import * as ElectronDialog from "../../electron/ElectronDialog.ts";
 import * as ElectronMenu from "../../electron/ElectronMenu.ts";
 import * as ElectronShell from "../../electron/ElectronShell.ts";
 import * as ElectronTheme from "../../electron/ElectronTheme.ts";
+import * as ElectronTray from "../../electron/ElectronTray.ts";
 import * as ElectronWindow from "../../electron/ElectronWindow.ts";
 import * as IpcChannels from "../channels.ts";
 import * as DesktopIpc from "../DesktopIpc.ts";
@@ -323,6 +325,16 @@ export const probeRemoteEditors = DesktopIpc.makeIpcMethod({
       }
     }
     return available;
+  }),
+});
+
+export const updateTrayRecents = DesktopIpc.makeIpcMethod({
+  channel: IpcChannels.UPDATE_TRAY_RECENTS_CHANNEL,
+  payload: Schema.Array(DesktopTrayRecentItemSchema),
+  result: Schema.Void,
+  handler: Effect.fn("desktop.ipc.window.updateTrayRecents")(function* (items) {
+    const tray = yield* ElectronTray.ElectronTray;
+    yield* tray.updateRecentItems(items);
   }),
 });
 

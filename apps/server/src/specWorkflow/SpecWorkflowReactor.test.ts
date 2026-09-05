@@ -66,6 +66,20 @@ it("apply 完成且有独立验证者时只产生 verify 派发动作", () => {
   }
 });
 
+it("单独实施或验证完成后停止，不自动触发下一节点", () => {
+  for (const stage of ["apply", "verify"] as const) {
+    assert.deepEqual(
+      reactSpecWorkflowTaskCompletion({
+        selectedIntent: stage,
+        state: state({ stage, verificationStatus: "passed" }),
+        completedStage: stage,
+        run,
+      }),
+      { type: "none", reason: "selected-node-completed" },
+    );
+  }
+});
+
 it("verify 完成只推进到人工 acceptance，暂停或缺验证者不自动调用", () => {
   const acceptance = reactSpecWorkflowTaskCompletion({
     state: state({

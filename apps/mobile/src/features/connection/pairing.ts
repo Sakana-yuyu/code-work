@@ -1,9 +1,14 @@
 import { readHostedPairingRequest } from "@codework/shared/remote";
+import { PRODUCT_IDENTITY } from "@codework/shared/productIdentity";
 import * as Schema from "effect/Schema";
 
 import { t } from "../../i18n/runtime";
 
 const MOBILE_PAIRING_URL_PARAM = "pairingUrl";
+export const MOBILE_LINK_PREFIXES = [
+  ...Object.values(PRODUCT_IDENTITY.schemes),
+  ...Object.values(PRODUCT_IDENTITY.legacySchemes),
+].map((scheme) => `${scheme}://`);
 
 function isIpLiteral(host: string): boolean {
   try {
@@ -30,8 +35,10 @@ export class PairingQrPayloadEmptyError extends Schema.TaggedErrorClass<PairingQ
 }
 
 export function buildPairingUrl(host: string, code: string): string {
-  const h = host.trim();
-  const c = code.trim();
+  const parsed = parsePairingUrl(host);
+  const h = parsed.host;
+  // 完整链接自带配对码时，以新链接为准，避免沿用表单中上一次的码。
+  const c = parsed.code || code.trim();
   if (!h) return "";
   if (!c) return h;
 
@@ -49,7 +56,7 @@ export function parsePairingUrl(url: string): { host: string; code: string } {
   if (!trimmed) return { host: "", code: "" };
 
   try {
-    const parsed = new URL(trimmed);
+    const parsed = new URL(extractPairingUrlFromQrPayload(trimmed));
     const hostedPairingRequest = readHostedPairingRequest(parsed);
     if (hostedPairingRequest) {
       return {
@@ -80,7 +87,7 @@ export function extractPairingUrlFromQrPayload(payload: string): string {
 
   try {
     const url = new URL(trimmed);
-    if (url.protocol === "codework:" || url.protocol === "codework:") {
+    if (MOBILE_LINK_PREFIXES.includes(`${url.protocol}//`)) {
       const pairingUrl = url.searchParams.get(MOBILE_PAIRING_URL_PARAM)?.trim() ?? "";
       if (pairingUrl.length > 0) {
         return pairingUrl;

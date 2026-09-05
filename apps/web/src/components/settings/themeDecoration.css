@@ -1,0 +1,132 @@
+/* 媒体独立于内容层；不对父容器设置 opacity，文字和命中区域保持完整。 */
+.theme-backdrop {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  overflow: hidden;
+  pointer-events: none;
+  border-radius: inherit;
+}
+.theme-backdrop-global {
+  position: fixed;
+}
+.theme-media-error {
+  position: absolute;
+  inset-inline: 1rem;
+  top: 4rem;
+  margin: 0;
+  padding: 0.5rem;
+  border-radius: 0.5rem;
+  background: var(--background);
+  color: var(--destructive);
+  font-size: 0.75rem;
+}
+[data-theme-backdrop] [data-slot="sidebar-wrapper"],
+[data-theme-custom-sidebar] [data-app-sidebar],
+[data-theme-custom-sidebar] [data-app-sidebar] > [data-slot="sidebar-inner"] {
+  background: transparent !important;
+}
+:is([data-theme-backdrop], [data-theme-regions~="content"]) [data-slot="sidebar-inset"] {
+  isolation: isolate;
+  background: var(--theme-content-background);
+}
+:is([data-theme-backdrop], [data-theme-regions~="content"])
+  [data-slot="sidebar-inset"]
+  > .bg-background,
+:is([data-theme-backdrop], [data-theme-regions~="content"]) .theme-content-shell {
+  background: transparent;
+}
+[data-theme-custom-sidebar] .theme-sidebar-surface {
+  background: var(--theme-sidebar-background);
+  border: 1px solid var(--theme-sidebar-border);
+  border-radius: var(--theme-sidebar-radius);
+  box-shadow: var(--theme-sidebar-shadow);
+  backdrop-filter: blur(var(--theme-sidebar-blur));
+}
+[data-theme-regions~="content"] [data-slot="sidebar-inset"] {
+  border: 1px solid var(--theme-content-border);
+  border-radius: var(--theme-content-radius);
+  box-shadow: var(--theme-content-shadow);
+  backdrop-filter: blur(var(--theme-content-blur));
+}
+:is([data-theme-backdrop], [data-theme-regions~="userMessage"])
+  [data-message-role="user"]
+  .bg-message {
+  background: var(--theme-userMessage-background);
+  border: 1px solid var(--theme-userMessage-border);
+  border-radius: var(--theme-userMessage-radius);
+  box-shadow: var(--theme-userMessage-shadow);
+  backdrop-filter: blur(var(--theme-userMessage-blur));
+}
+[data-theme-regions~="assistantMessage"] [data-message-role="assistant"] {
+  background: var(--theme-assistantMessage-background);
+  border: 1px solid var(--theme-assistantMessage-border);
+  border-radius: var(--theme-assistantMessage-radius);
+  box-shadow: var(--theme-assistantMessage-shadow);
+  padding: 0.75rem;
+  backdrop-filter: blur(var(--theme-assistantMessage-blur));
+}
+:is([data-theme-backdrop], [data-theme-regions~="composer"]) .chat-composer-glass-shell::before,
+:is([data-theme-backdrop], [data-theme-regions~="composer"]) .chat-composer-glass-host::before {
+  background: var(--theme-composer-background) !important;
+  border-color: var(--theme-composer-border);
+  border-radius: var(--theme-composer-radius);
+  box-shadow: var(--theme-composer-shadow);
+  backdrop-filter: blur(var(--theme-composer-blur));
+}
+:is([data-theme-backdrop], [data-theme-regions~="composer"]) .chat-composer-glass-host {
+  border-radius: var(--theme-composer-radius);
+  box-shadow: var(--theme-composer-shadow);
+  --chat-composer-outline: var(--theme-composer-border);
+}
+:is([data-theme-backdrop], [data-theme-regions~="overlay"])
+  :is(
+    [data-slot="dialog-popup"],
+    [data-slot="popover-popup"],
+    [data-slot="menu-popup"],
+    [data-slot="select-popup"]
+  ):not([data-theme-editor-panel]) {
+  background: var(--theme-overlay-background) !important;
+  border-color: var(--theme-overlay-border);
+  border-radius: var(--theme-overlay-radius);
+  box-shadow: var(--theme-overlay-shadow);
+  backdrop-filter: blur(var(--theme-overlay-blur));
+}
+:is([data-theme-backdrop], [data-theme-regions~="overlay"])
+  :is([data-chat-header], [data-workspace-header]) {
+  background: var(--theme-overlay-background);
+  border-color: var(--theme-overlay-border);
+}
+[data-theme-regions~="code"] pre {
+  background: var(--theme-code-background) !important;
+  border: 1px solid var(--theme-code-border);
+  border-radius: var(--theme-code-radius);
+  box-shadow: var(--theme-code-shadow);
+  backdrop-filter: blur(var(--theme-code-blur));
+}
+/* 编辑控件始终保留可读底色，过低的不透明度不能把恢复入口也藏起来。 */
+[data-theme-editor-panel] {
+  background: var(--popover) !important;
+  backdrop-filter: none !important;
+}
+.theme-video-controls {
+  flex-shrink: 0;
+  margin: 0.4rem;
+}
+/* 附件/上下文连接态单独绘制输入框表面，不能只覆盖外壳伪元素。 */
+:is([data-theme-backdrop], [data-theme-regions~="composer"])
+  [data-chat-composer-main-surface="true"] {
+  background: var(--theme-composer-background) !important;
+  border-radius: var(--theme-composer-radius);
+  box-shadow: var(--theme-composer-shadow);
+  backdrop-filter: blur(var(--theme-composer-blur));
+}
+@supports not (backdrop-filter: blur(1px)) {
+  [data-theme-custom-sidebar] .theme-sidebar-surface {
+    background: var(--sidebar);
+  }
+  :is([data-theme-backdrop], [data-theme-regions~="overlay"])
+    :is([data-slot="dialog-popup"], [data-slot="popover-popup"], [data-slot="menu-popup"]) {
+    background: var(--popover) !important;
+  }
+}

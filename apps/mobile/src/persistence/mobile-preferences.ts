@@ -5,7 +5,11 @@ import * as Option from "effect/Option";
 import * as Ref from "effect/Ref";
 import * as Schema from "effect/Schema";
 import * as Semaphore from "effect/Semaphore";
-import type { LanguagePreference, SidebarProjectGroupingMode } from "@codework/contracts";
+import type {
+  ClientSettings,
+  LanguagePreference,
+  SidebarProjectGroupingMode,
+} from "@codework/contracts";
 import { MOBILE_THEME_IDS, type MobileThemeId, type MobileThemeMode } from "../lib/mobileTheme";
 
 import * as MobileDatabase from "./mobile-database";
@@ -17,6 +21,7 @@ const PREFERENCES_FALLBACK_KEY = "codework.preferences.fallback";
 
 export interface Preferences {
   readonly language?: LanguagePreference;
+  readonly effortLabelLanguage?: ClientSettings["effortLabelLanguage"];
   readonly liveActivitiesEnabled?: boolean;
   readonly themeId?: MobileThemeId;
   readonly lightThemeId?: MobileThemeId;
@@ -89,6 +94,7 @@ export class MobilePreferencesStore extends Context.Service<
 function sanitizePreferences(parsed: Preferences): Preferences {
   const preferences: {
     language?: LanguagePreference;
+    effortLabelLanguage?: ClientSettings["effortLabelLanguage"];
     liveActivitiesEnabled?: boolean;
     themeId?: MobileThemeId;
     lightThemeId?: MobileThemeId;
@@ -110,8 +116,16 @@ function sanitizePreferences(parsed: Preferences): Preferences {
     threadListV2SnoozedShelfExpanded?: boolean;
   } = {};
 
-  if (parsed.language === "system" || parsed.language === "zh-CN" || parsed.language === "en") {
+  if (
+    parsed.language === "system" ||
+    parsed.language === "zh-CN" ||
+    parsed.language === "en" ||
+    parsed.language === "ja"
+  ) {
     preferences.language = parsed.language;
+  }
+  if (parsed.effortLabelLanguage === "en" || parsed.effortLabelLanguage === "zh-CN") {
+    preferences.effortLabelLanguage = parsed.effortLabelLanguage;
   }
   if (typeof parsed.liveActivitiesEnabled === "boolean") {
     preferences.liveActivitiesEnabled = parsed.liveActivitiesEnabled;

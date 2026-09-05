@@ -13,6 +13,16 @@ import {
 } from "./SettingsProvidersRouteScreen.logic";
 
 describe("移动端 Provider 设置逻辑", () => {
+  it("展示并保存 Claude 备用模型和执行轮次，清空可恢复默认", () => {
+    for (const key of ["fallbackModel", "maxTurns"]) {
+      const field = providerFields("claudeAgent").find((entry) => entry.key === key);
+      expect(field).toBeDefined();
+      const value = key === "fallbackModel" ? "sonnet" : "20";
+      expect(updateProviderConfig({}, field!, value)).toEqual({ [key]: value });
+      expect(updateProviderConfig({ [key]: value }, field!, "")).toBeUndefined();
+    }
+  });
+
   it("把旧版 providers 配置 materialize 成实例且不把 enabled 塞进 opaque config", () => {
     const settings = {
       ...DEFAULT_SERVER_SETTINGS,

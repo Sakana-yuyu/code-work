@@ -125,9 +125,10 @@ export const TerminalFontSize = Schema.Int.check(
 export type TerminalFontSize = typeof TerminalFontSize.Type;
 export const DEFAULT_TERMINAL_FONT_SIZE: TerminalFontSize = 12;
 
-export const LanguagePreference = Schema.Literals(["system", "zh-CN", "en"]);
+export const LanguagePreference = Schema.Literals(["system", "zh-CN", "en", "ja"]);
 export type LanguagePreference = typeof LanguagePreference.Type;
 export const DEFAULT_LANGUAGE_PREFERENCE: LanguagePreference = "zh-CN";
+export const EffortLabelLanguage = Schema.Literals(["en", "zh-CN"]);
 
 export const EnvironmentIdentificationMode = Schema.Literals(["artwork", "pill", "none"]);
 export type EnvironmentIdentificationMode = typeof EnvironmentIdentificationMode.Type;
@@ -185,6 +186,9 @@ export const ClientSettingsSchema = Schema.Struct({
   ),
   language: LanguagePreference.pipe(
     Schema.withDecodingDefault(Effect.succeed(DEFAULT_LANGUAGE_PREFERENCE)),
+  ),
+  effortLabelLanguage: EffortLabelLanguage.pipe(
+    Schema.withDecodingDefault(Effect.succeed("en" as const)),
   ),
   glassOpacity: GlassOpacity.pipe(
     Schema.withDecodingDefault(Effect.succeed(DEFAULT_GLASS_OPACITY)),
@@ -398,6 +402,7 @@ export type CodexSettings = typeof CodexSettings.Type;
 // Claude settings schema and its patch so an out-of-range value fails at
 // the update that introduced it.
 const CLAUDE_AUTO_COMPACT_WINDOW_PATTERN = /^(?:|[1-9]\d{5}|1000000)$/;
+const CLAUDE_MAX_TURNS_PATTERN = /^(?:|[1-9]\d{0,2}|1000)$/;
 
 export const ClaudeSettings = makeProviderSettingsSchema(
   {
@@ -450,6 +455,24 @@ export const ClaudeSettings = makeProviderSettingsSchema(
         },
       }),
     ),
+    fallbackModel: TrimmedString.pipe(
+      Schema.withDecodingDefault(Effect.succeed("")),
+      Schema.annotateKey({
+        title: "Fallback model",
+        description:
+          "Model to use when the primary model is unavailable. It must be accessible with this provider's credentials. Leave empty to use Claude's default.",
+        providerSettingsForm: { placeholder: "sonnet", clearWhenEmpty: "omit" },
+      }),
+    ),
+    maxTurns: TrimmedString.check(Schema.isPattern(CLAUDE_MAX_TURNS_PATTERN)).pipe(
+      Schema.withDecodingDefault(Effect.succeed("")),
+      Schema.annotateKey({
+        title: "Maximum agent turns",
+        description:
+          "Limit each request to 1–1000 tool-use rounds. Leave empty for no additional limit. This is not a token or spending limit.",
+        providerSettingsForm: { placeholder: "20", clearWhenEmpty: "omit" },
+      }),
+    ),
     routeThroughByok: Schema.Boolean.pipe(
       Schema.withDecodingDefault(Effect.succeed(false)),
       Schema.annotateKey({
@@ -461,7 +484,15 @@ export const ClaudeSettings = makeProviderSettingsSchema(
     ),
   },
   {
-    order: ["binaryPath", "homePath", "autoCompactWindow", "launchArgs", "routeThroughByok"],
+    order: [
+      "binaryPath",
+      "homePath",
+      "autoCompactWindow",
+      "fallbackModel",
+      "maxTurns",
+      "launchArgs",
+      "routeThroughByok",
+    ],
   },
 );
 export type ClaudeSettings = typeof ClaudeSettings.Type;
@@ -1063,7 +1094,7 @@ export class ServerSettingsConflictError extends Schema.TaggedErrorClass<ServerS
   },
 ) {
   override get message(): string {
-    return `Multica Provider 实例 ${this.providerInstanceId} 已在服务端变更。`;
+    return `Multica provider instance ${this.providerInstanceId} changed on the server.`;
   }
 }
 
@@ -1099,6 +1130,8 @@ const ClaudeSettingsPatch = Schema.Struct({
   homePath: Schema.optionalKey(TrimmedString),
   customModels: Schema.optionalKey(Schema.Array(Schema.String)),
   launchArgs: Schema.optionalKey(TrimmedString),
+  fallbackModel: Schema.optionalKey(TrimmedString),
+  maxTurns: Schema.optionalKey(TrimmedString.check(Schema.isPattern(CLAUDE_MAX_TURNS_PATTERN))),
   // Validated at the patch boundary so a typo fails the one update with a
   // schema error instead of a generic whole-settings failure.
   autoCompactWindow: Schema.optionalKey(
@@ -1300,6 +1333,7 @@ export const ClientSettingsPatch = Schema.Struct({
   diffIgnoreWhitespace: Schema.optionalKey(Schema.Boolean),
   environmentIdentificationMode: Schema.optionalKey(EnvironmentIdentificationMode),
   language: Schema.optionalKey(LanguagePreference),
+  effortLabelLanguage: Schema.optionalKey(EffortLabelLanguage),
   glassOpacity: Schema.optionalKey(GlassOpacity),
   fontSizeInterface: Schema.optionalKey(InterfaceFontSize),
   fontSizePrompt: Schema.optionalKey(PromptFontSize),

@@ -1,6 +1,11 @@
-import { describe, expect, it } from "vite-plus/test";
+import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
 import { ProviderDriverKind, type ProviderOptionDescriptor } from "@codework/contracts";
 import { buildTraitsTriggerDisplay } from "./TraitsPicker";
+import { getCurrentLanguage, setCurrentLanguage } from "~/i18n/runtime";
+
+const originalLanguage = getCurrentLanguage();
+beforeEach(() => setCurrentLanguage("en"));
+afterEach(() => setCurrentLanguage(originalLanguage));
 
 function selectDescriptor(
   id: string,

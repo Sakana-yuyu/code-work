@@ -9,6 +9,23 @@ import {
 } from "./codexLaunchArgs.ts";
 
 describe("resolveCodexLaunchArgs", () => {
+  it("把 API 配置同时传给探测、会话和辅助生成，不把密钥放入参数", () => {
+    const args = resolveCodexLaunchArgs("--enable foo", {
+      CODEWORK_CODEX_API_KEY: "fixture-secret",
+      CODEWORK_CODEX_BASE_URL: "https://api.example/v1",
+    });
+    const app = codexAppServerArgs(args);
+    const exec = codexExecLaunchArgs(args);
+    NodeAssert.deepEqual(app.slice(1), exec);
+    NodeAssert.ok(exec.includes('model_providers.codework_api.base_url="https://api.example/v1"'));
+    NodeAssert.ok(exec.includes('model_providers.codework_api.env_key="CODEWORK_CODEX_API_KEY"'));
+    NodeAssert.ok(exec.includes('model_providers.codework_api.wire_api="responses"'));
+    NodeAssert.ok(!args.includes("fixture-secret"));
+    NodeAssert.equal(
+      resolveCodexLaunchArgs("--enable foo", { CODEWORK_CODEX_BASE_URL: "https://api.example/v1" }),
+      "--enable foo",
+    );
+  });
   it("uses CODEWORK_CODEX_LAUNCH_ARGS before configured settings", () => {
     NodeAssert.equal(
       resolveCodexLaunchArgs(" --strict-config ", { CODEWORK_CODEX_LAUNCH_ARGS: "--enable foo" }),

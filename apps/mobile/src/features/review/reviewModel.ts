@@ -127,16 +127,25 @@ export type ReviewParsedDiff =
       readonly notice: string | null;
     };
 
+// Checkpoint statuses other than "ready" render verbatim in the section
+// subtitle ("Diff <status>"), so they get their own catalog keys.
+const CHECKPOINT_STATUS_LABEL_KEYS = {
+  missing: "review.checkpointStatusMissing",
+  error: "review.checkpointStatusError",
+} as const;
+
 function checkpointTitle(checkpoint: OrchestrationCheckpointSummary): string {
-  return `Turn ${checkpoint.checkpointTurnCount}`;
+  return t("review.checkpointTurn", { countValue: checkpoint.checkpointTurnCount });
 }
 
 function checkpointSubtitle(checkpoint: OrchestrationCheckpointSummary): string {
   const fileCount = checkpoint.files.length;
   if (checkpoint.status !== "ready") {
-    return `Diff ${checkpoint.status}`;
+    return t("review.checkpointDiffStatus", {
+      status: t(CHECKPOINT_STATUS_LABEL_KEYS[checkpoint.status]),
+    });
   }
-  return `${fileCount} file${fileCount === 1 ? "" : "s"} changed`;
+  return t("review.filesChanged", { count: fileCount, countValue: fileCount });
 }
 
 function compareCheckpointTurnCountDescending(

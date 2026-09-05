@@ -2,6 +2,7 @@ import type { TimestampFormat } from "@codework/contracts/settings";
 import {
   resolveSnoozePresets as resolveSharedSnoozePresets,
   snoozeWakeLabel,
+  snoozeWakeLabelKey,
   type SnoozePreset,
 } from "@codework/client-runtime/state/thread-settled";
 
@@ -9,7 +10,17 @@ import { t } from "~/i18n";
 
 import { formatShortTimestamp, parseTimestampDate } from "../timestampFormat";
 
-export { snoozeWakeLabel, type SnoozePreset };
+export { snoozeWakeLabel, snoozeWakeLabelKey, type SnoozePreset };
+
+/**
+ * Compact row label for a snoozed thread. Durations ("2h") are
+ * locale-neutral and pass through; "now" is shared English copy and
+ * renders translated.
+ */
+export function snoozeWakeDisplayLabel(label: string): string {
+  const key = snoozeWakeLabelKey(label);
+  return key === null ? label : t(key);
+}
 
 const DAY_MS = 24 * 60 * 60 * 1_000;
 

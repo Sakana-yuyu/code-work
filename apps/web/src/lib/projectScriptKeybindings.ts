@@ -6,7 +6,7 @@ import {
 } from "@codework/contracts";
 import * as Schema from "effect/Schema";
 
-export const PROJECT_SCRIPT_KEYBINDING_INVALID_MESSAGE = "Invalid keybinding.";
+export const PROJECT_SCRIPT_KEYBINDING_INVALID_MESSAGE = "projectScript.invalidKeybinding";
 
 const decodeKeybindingRule = Schema.decodeUnknownOption(KeybindingRuleSchema);
 

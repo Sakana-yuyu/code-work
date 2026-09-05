@@ -25,7 +25,11 @@ export const reactSpecWorkflowTaskCompletion = (input: {
   readonly completedStage: "apply" | "verify";
   readonly run: CompositionTaskRun;
   readonly handoff?: SpecWorkflowStageHandoff;
+  readonly selectedIntent?: SpecWorkflowIntentName;
 }): SpecWorkflowReactorAction => {
+  if (input.selectedIntent !== undefined && input.selectedIntent !== "workflow") {
+    return { type: "none", reason: "selected-node-completed" };
+  }
   if (input.run.status !== "completed") return { type: "none", reason: "task-not-completed" };
   if (input.state.status !== "active") return { type: "none", reason: "workflow-not-active" };
 

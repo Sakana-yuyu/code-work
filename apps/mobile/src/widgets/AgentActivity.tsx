@@ -140,11 +140,15 @@ export function AgentActivity(
   // Header copy: "5 active agents" + (", 1 needs attention"). The banner renders
   // the two parts in-line so the attention half can carry the accent color;
   // `summary` is the short form for tight spots (expanded center, watch card).
-  const agentWord = props.activeCount === 1 ? "agent" : "agents";
-  const agentsLabel = allDone ? outcomeLabel : `${props.activeCount} active ${agentWord}`;
+  const agentsLabel = allDone
+    ? outcomeLabel
+    : t("agentactivity.activeAgents", { count: props.activeCount, countValue: props.activeCount });
   const attentionSuffix =
     attentionRows.length > 0
-      ? `${attentionRows.length} need${attentionRows.length === 1 ? "s" : ""} attention`
+      ? t("agentactivity.needsAttention", {
+          count: attentionRows.length,
+          countValue: attentionRows.length,
+        })
       : "";
   const activeLabel = allDone
     ? doneLabel

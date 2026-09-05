@@ -434,6 +434,7 @@ export const WS_METHODS = {
   serverRefreshProviders: "server.refreshProviders",
   serverUpdateProvider: "server.updateProvider",
   serverInstallProvider: "server.installProvider",
+  serverStartProviderLogin: "server.startProviderLogin",
   serverUpdateServer: "server.updateServer",
   serverUpdateServerWithProgress: "server.updateServerWithProgress",
   serverUpsertKeybinding: "server.upsertKeybinding",
@@ -602,6 +603,16 @@ export const WsServerInstallProviderRpc = Rpc.make(WS_METHODS.serverInstallProvi
   payload: ServerProviderUpdateInput,
   success: ServerProviderUpdatedPayload,
   error: Schema.Union([ServerProviderInstallError, EnvironmentAuthorizationError]),
+});
+
+export const WsServerStartProviderLoginRpc = Rpc.make(WS_METHODS.serverStartProviderLogin, {
+  payload: Schema.Struct({
+    instanceId: ProviderInstanceId,
+    terminalId: Schema.String.check(Schema.isPattern(/^[a-zA-Z0-9-]{1,80}$/)),
+    deviceCode: Schema.Boolean,
+  }),
+  success: TerminalSessionSnapshot,
+  error: Schema.Union([TerminalError, ServerSettingsError, EnvironmentAuthorizationError]),
 });
 
 export const WsServerUpdateServerRpc = Rpc.make(WS_METHODS.serverUpdateServer, {
@@ -1873,6 +1884,7 @@ export const WsRpcGroup = RpcGroup.make(
   WsServerRefreshProvidersRpc,
   WsServerUpdateProviderRpc,
   WsServerInstallProviderRpc,
+  WsServerStartProviderLoginRpc,
   WsServerUpdateServerRpc,
   WsServerUpdateServerWithProgressRpc,
   WsServerUpsertKeybindingRpc,

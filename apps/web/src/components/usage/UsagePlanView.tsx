@@ -153,7 +153,7 @@ export function UsagePlanView({
                       {t("sessions", { value1: formatCount(entry.sessions) })}
                     </span>
                   </div>
-                  <div className="mt-3 grid grid-cols-2 gap-x-4 gap-y-3">
+                  <div className="mt-3 grid grid-cols-1 gap-x-4 gap-y-3 min-[400px]:grid-cols-2">
                     <Stat
                       label={t("usage.cumulativeTokens")}
                       value={formatTokens(entry.totalTokens)}

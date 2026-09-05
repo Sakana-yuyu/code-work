@@ -111,6 +111,10 @@
       "types": "./src/state/pullRequests.ts",
       "default": "./src/state/pullRequests.ts"
     },
+    "./state/provider-update-messages": {
+      "types": "./src/state/providerUpdateMessages.ts",
+      "default": "./src/state/providerUpdateMessages.ts"
+    },
     "./state/project-grouping": {
       "types": "./src/state/projectGrouping.ts",
       "default": "./src/state/projectGrouping.ts"

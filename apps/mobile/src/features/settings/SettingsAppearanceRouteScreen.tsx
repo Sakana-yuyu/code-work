@@ -11,6 +11,7 @@ import { t } from "../../i18n";
 import { NativeStackScreenOptions } from "../../native/StackHeader";
 import { mobilePreferencesAtom, updateMobilePreferencesAtom } from "../../state/preferences";
 import { SettingsSection } from "./components/SettingsSection";
+import { ErrorBanner } from "../../components/ErrorBanner";
 import { CodeAppearanceSection } from "./appearance/sections/CodeAppearanceSection";
 import { TerminalAppearanceSection } from "./appearance/sections/TerminalAppearanceSection";
 import { TextAppearanceSection } from "./appearance/sections/TextAppearanceSection";
@@ -38,6 +39,7 @@ export function SettingsAppearanceRouteScreen() {
         }}
       >
         <LanguageSettingsSection />
+        <LanguageSettingsSection effortLabels />
         <ThemeAppearanceSection />
         <TextAppearanceSection />
         <TerminalAppearanceSection />
@@ -54,19 +56,25 @@ const languageOptions: ReadonlyArray<{
   { value: "system", labelKey: "language.system" },
   { value: "zh-CN", labelKey: "language.zhCN" },
   { value: "en", labelKey: "language.en" },
+  { value: "ja", labelKey: "language.ja" },
 ];
 
-function LanguageSettingsSection() {
+function LanguageSettingsSection({ effortLabels = false }: { readonly effortLabels?: boolean }) {
   const preferences = useAtomValue(mobilePreferencesAtom);
   const updatePreferences = useAtomSet(updateMobilePreferencesAtom);
-  const selected = AsyncResult.isSuccess(preferences)
-    ? (preferences.value.language ?? DEFAULT_LANGUAGE_PREFERENCE)
-    : DEFAULT_LANGUAGE_PREFERENCE;
+  const updateResult = useAtomValue(updateMobilePreferencesAtom);
+  const values = AsyncResult.isSuccess(preferences) ? preferences.value : {};
+  const selected = effortLabels
+    ? (values.effortLabelLanguage ?? "en")
+    : (values.language ?? DEFAULT_LANGUAGE_PREFERENCE);
+  const options = effortLabels
+    ? languageOptions.filter((option) => option.value === "en" || option.value === "zh-CN")
+    : languageOptions;
 
   return (
-    <SettingsSection title={t("language")} card>
+    <SettingsSection title={t(effortLabels ? "effortLabelLanguage" : "language")} card>
       <View className="flex-row p-1.5">
-        {languageOptions.map((option) => {
+        {options.map((option) => {
           const checked = selected === option.value;
           return (
             <Pressable
@@ -79,7 +87,15 @@ function LanguageSettingsSection() {
                   ? "min-h-11 flex-1 items-center justify-center rounded-[18px] bg-accent"
                   : "min-h-11 flex-1 items-center justify-center rounded-[18px]"
               }
-              onPress={() => updatePreferences({ language: option.value })}
+              onPress={() => {
+                if (effortLabels) {
+                  if (option.value === "en" || option.value === "zh-CN") {
+                    updatePreferences({ effortLabelLanguage: option.value });
+                  }
+                } else {
+                  updatePreferences({ language: option.value });
+                }
+              }}
             >
               <Text
                 className={
@@ -94,6 +110,16 @@ function LanguageSettingsSection() {
           );
         })}
       </View>
+      {effortLabels ? (
+        <View className="px-4 pb-4">
+          <Text className="text-sm leading-normal text-foreground-muted">
+            {t("effortLabelLanguageDescription")}
+          </Text>
+          {AsyncResult.isFailure(updateResult) ? (
+            <ErrorBanner message={t("preferencesSaveFailed")} />
+          ) : null}
+        </View>
+      ) : null}
     </SettingsSection>
   );
 }

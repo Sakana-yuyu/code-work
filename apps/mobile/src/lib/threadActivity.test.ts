@@ -889,3 +889,102 @@ describe("quiet timeline: nested agents", () => {
     expect(ids).not.toContain("shell-done");
   });
 });
+
+describe("buildThreadFeed server copy translation", () => {
+  it("translates known failure summaries by activity kind, with tool name params", () => {
+    setCurrentLanguage("zh-CN");
+    try {
+      const thread = makeThread({
+        id: ThreadId.make("thread-failure-summary"),
+        projectId: ProjectId.make("project-1"),
+        title: "Failure summaries",
+        activities: [
+          makeActivity({
+            id: EventId.make("turn-start-failed"),
+            kind: "provider.turn.start.failed",
+            summary: "Provider turn start failed",
+            tone: "error",
+            createdAt: "2026-04-01T00:00:01.000Z",
+          }),
+          makeActivity({
+            id: EventId.make("tool-denied"),
+            kind: "tool.denied",
+            summary: "Tool denied: Bash",
+            tone: "error",
+            createdAt: "2026-04-01T00:00:02.000Z",
+            payload: { toolName: "Bash" },
+          }),
+          makeActivity({
+            id: EventId.make("unknown-failure"),
+            kind: "some.future.failure",
+            summary: "Some future failure",
+            tone: "error",
+            createdAt: "2026-04-01T00:00:03.000Z",
+          }),
+        ],
+      });
+
+      const summaries = buildThreadFeed(thread).flatMap((entry) =>
+        entry.type === "activity-group" ? entry.activities.map((row) => row.summary) : [],
+      );
+      expect(summaries).toEqual(["供应商回合启动失败", "工具被拒绝：Bash", "Some future failure"]);
+    } finally {
+      setCurrentLanguage("en");
+    }
+  });
+
+  it("translates known server detail sentences and passes unknown details through", () => {
+    setCurrentLanguage("zh-CN");
+    try {
+      const thread = makeThread({
+        id: ThreadId.make("thread-failure-detail"),
+        projectId: ProjectId.make("project-1"),
+        title: "Failure details",
+        activities: [
+          makeActivity({
+            id: EventId.make("checkpoint-revert-failed"),
+            kind: "checkpoint.revert.failed",
+            summary: "Checkpoint revert failed",
+            tone: "error",
+            createdAt: "2026-04-01T00:00:01.000Z",
+            payload: {
+              turnCount: 5,
+              detail: "Checkpoint turn count 5 exceeds current turn count 3.",
+            },
+          }),
+          makeActivity({
+            id: EventId.make("stale-approval"),
+            kind: "provider.approval.respond.failed",
+            summary: "Provider approval response failed",
+            tone: "error",
+            createdAt: "2026-04-01T00:00:02.000Z",
+            payload: {
+              requestId: "req-1",
+              detail:
+                "Stale pending approval request: req-1. Provider callback state does not survive app restarts or recovered sessions. Restart the turn to continue.",
+            },
+          }),
+          makeActivity({
+            id: EventId.make("unknown-detail"),
+            kind: "checkpoint.revert.failed",
+            summary: "Checkpoint revert failed",
+            tone: "error",
+            createdAt: "2026-04-01T00:00:03.000Z",
+            payload: { detail: "Some future checkpoint failure." },
+          }),
+        ],
+      });
+
+      const details = buildThreadFeed(thread).flatMap((entry) =>
+        entry.type === "activity-group" ? entry.activities.map((row) => row.detail) : [],
+      );
+      expect(details).toEqual([
+        "检查点回合数 5 超过当前回合数 3。",
+        "过期的 approval 请求：req-1。供应商回调状态不会在应用重启或会话恢复后保留。请重启该回合以继续。",
+        "Some future checkpoint failure.",
+      ]);
+    } finally {
+      setCurrentLanguage("en");
+    }
+  });
+});

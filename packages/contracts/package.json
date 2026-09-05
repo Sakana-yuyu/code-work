@@ -1,6 +1,6 @@
 {
   "name": "@codework/contracts",
-  "version": "0.0.34",
+  "version": "0.0.42",
   "private": true,
   "files": [
     "dist"

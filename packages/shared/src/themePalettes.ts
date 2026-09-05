@@ -78,6 +78,40 @@ export const THEME_COLOR_ROLES = [
 export type ThemeColorRole = (typeof THEME_COLOR_ROLES)[number];
 export type ThemeColors = Readonly<Record<ThemeColorRole, string>>;
 export type ThemeVariants = Readonly<Partial<Record<ThemeAppearance, ThemeColors>>>;
+/** 媒体保存在客户端；主题只携带可校验的资源引用，不携带本机路径或凭据。 */
+export type ThemeMedia = Readonly<{
+  kind: "image" | "video";
+  source: "url" | "asset";
+  value: string;
+  name?: string;
+}>;
+export const THEME_REGIONS = [
+  "global",
+  "sidebar",
+  "content",
+  "userMessage",
+  "assistantMessage",
+  "composer",
+  "overlay",
+  "code",
+] as const;
+export type ThemeRegion = (typeof THEME_REGIONS)[number];
+export type ThemeSurface = Readonly<{
+  color?: string;
+  gradient?: string;
+  opacity?: number;
+  blur?: number;
+  radius?: number;
+  shadow?: "none" | "soft" | "medium";
+  border?: string;
+  media?: ThemeMedia;
+  fit?: "cover" | "contain";
+  x?: number;
+  y?: number;
+  dim?: number;
+}>;
+export type ThemeDecoration = Readonly<Partial<Record<ThemeRegion, ThemeSurface>>>;
+export type ThemeDecorations = Readonly<Partial<Record<ThemeAppearance, ThemeDecoration>>>;
 export type ThemeDefinition = Readonly<{
   id: string;
   label: string;
@@ -90,6 +124,7 @@ export type ThemeDefinition = Readonly<{
   sidebarArtwork?: boolean;
   /** Generated from the guided editor's canvas and accent roles. */
   managed?: boolean;
+  decorations?: ThemeDecorations;
 }>;
 
 export const CODEWORK_CHAT_THEME: ThemeDefinition = {

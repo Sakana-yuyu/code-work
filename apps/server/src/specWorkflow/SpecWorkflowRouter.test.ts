@@ -43,6 +43,25 @@ const state = (
 });
 
 describe("Spec Workflow typed intent router", () => {
+  it("单节点选择拒绝其他意图，允许从后续阶段单独重做调研", () => {
+    const capability = { ...enabled, selectedIntent: "research" as const };
+    expect(
+      routeSpecWorkflowIntent({ capability, intent: "apply", state: state({ stage: "apply" }) }),
+    ).toMatchObject({ action: "show-status", reason: "node-not-selected" });
+    expect(
+      routeSpecWorkflowIntent({
+        capability,
+        intent: "research",
+        state: state({ stage: "verify" }),
+      }),
+    ).toMatchObject({ action: "advance", targetStage: "research", corrected: false });
+    expect(
+      routeSpecWorkflowIntent({
+        capability: { ...capability, enabled: false },
+        intent: "research",
+      }),
+    ).toMatchObject({ action: "pass-through" });
+  });
   it("能力未启用时完全 pass-through", () => {
     expect(routeSpecWorkflowIntent({ capability: disabled, intent: "apply" })).toEqual({
       requestedIntent: "apply",

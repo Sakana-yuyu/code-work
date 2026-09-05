@@ -299,17 +299,21 @@ export function ThreadWorkGroupToggle(props: {
   readonly onToggle: () => void;
 }) {
   const pressedBackground = useThemeColor("--color-subtle");
-  const noun = props.onlyToolActivities
-    ? props.hiddenCount === 1
-      ? "tool call"
-      : "tool calls"
-    : props.hiddenCount === 1
-      ? "log entry"
-      : "log entries";
-  const collapsedLabel = t("interface.show-value-previous-value", {
-    value1: props.hiddenCount,
-    value2: noun,
-  });
+  const count = props.hiddenCount;
+  const collapsedLabel = props.onlyToolActivities
+    ? count === 1
+      ? t("threads.worklog.showPreviousToolCalls", { count, countValue: count })
+      : t("threads.worklog.showPreviousToolCalls_plural", { count, countValue: count })
+    : count === 1
+      ? t("threads.worklog.showPrevious", { count, countValue: count })
+      : t("threads.worklog.showPrevious_plural", { count, countValue: count });
+  const collapsedCountLabel = props.onlyToolActivities
+    ? count === 1
+      ? t("threads.worklog.previousToolCalls", { count, countValue: count })
+      : t("threads.worklog.previousToolCalls_plural", { count, countValue: count })
+    : count === 1
+      ? t("threads.worklog.previousEntries", { count, countValue: count })
+      : t("threads.worklog.previousEntries_plural", { count, countValue: count });
   const expandedLabel = props.onlyToolActivities
     ? t("interface.show-fewer-tool-calls")
     : t("interface.show-fewer-log-entries");
@@ -343,9 +347,7 @@ export function ThreadWorkGroupToggle(props: {
           />
         </View>
         <Text className="font-codework-medium text-xs text-foreground opacity-80">
-          {props.expanded
-            ? expandedLabel
-            : t("previous", { hiddenCount: props.hiddenCount, noun: noun })}
+          {props.expanded ? expandedLabel : collapsedCountLabel}
         </Text>
       </Pressable>
     </View>

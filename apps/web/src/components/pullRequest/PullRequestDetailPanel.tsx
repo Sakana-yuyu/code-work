@@ -365,14 +365,22 @@ function PullRequestBaseFreshnessWarning({
 }) {
   const behind =
     freshness.behindBy === null
-      ? ""
-      : ` by ${freshness.behindBy.toLocaleString()} ${
-          freshness.behindBy === 1 ? "commit" : "commits"
-        }`;
-  const summary = t("interface.this-branch-is-out-of-date-with-value-value", {
-    value1: baseBranch,
-    value2: behind,
-  });
+      ? null
+      : {
+          count: freshness.behindBy,
+          countValue: freshness.behindBy.toLocaleString(),
+        };
+  const summary =
+    behind === null
+      ? t("interface.this-branch-is-out-of-date-with-value-value", {
+          value1: baseBranch,
+          value2: "",
+        })
+      : t("pullRequest.branchBehindBy", {
+          branch: baseBranch,
+          count: behind.count,
+          countValue: behind.countValue,
+        });
   return (
     <Popover>
       <PopoverTrigger
@@ -523,7 +531,7 @@ export function PullRequestDetailPanel({
   // alone. One at a time whatever the key: they all check the same pull request out.
   const [handoff, setHandoff] = useState<string | null>(null);
   const { copyToClipboard: copyBranchToClipboard, isCopied: isBranchCopied } = useCopyToClipboard({
-    target: "branch name",
+    target: t("clipboard.targetBranchName"),
     timeout: 1600,
   });
   // The chunk is fetched as soon as the panel exists rather than waiting for the Code tab to be
@@ -1638,7 +1646,7 @@ export function PullRequestDetailPanel({
                       className="inline-flex items-center gap-1 tabular-nums"
                       aria-label={t("changed", {
                         value1: detail.changedFiles.toLocaleString(),
-                        value2: detail.changedFiles === 1 ? "file" : "files",
+                        value2: detail.changedFiles === 1 ? t("file") : t("files"),
                       })}
                     >
                       <FileDiffIcon aria-hidden className="size-3" />
@@ -1811,7 +1819,9 @@ export function PullRequestDetailPanel({
                         </span>
                       </TooltipTrigger>
                       <TooltipPopup side="top">
-                        {`${isBranchCopied ? "Copied" : "Copy pull request branch"}: ${detail.headBranch}`}
+                        {t(isBranchCopied ? "pullRequest.branchCopied" : "pullRequest.copyBranch", {
+                          branch: detail.headBranch,
+                        })}
                       </TooltipPopup>
                     </Tooltip>
                   </span>
@@ -1880,9 +1890,10 @@ export function PullRequestDetailPanel({
                     aria-label={
                       activityError
                         ? t("commentsUnavailable")
-                        : `${detail.commentCount.toLocaleString()} ${
-                            detail.commentCount === 1 ? "comment" : "comments"
-                          }`
+                        : t("pullRequest.commentCount", {
+                            count: detail.commentCount,
+                            countValue: detail.commentCount.toLocaleString(),
+                          })
                     }
                   >
                     <MessageSquareIcon aria-hidden className="size-3" />
@@ -1897,9 +1908,10 @@ export function PullRequestDetailPanel({
                     aria-label={
                       activityError
                         ? t("commitsUnavailable")
-                        : `${detail.commits.length.toLocaleString()} ${
-                            detail.commits.length === 1 ? "commit" : "commits"
-                          }`
+                        : t("pullRequest.commitCount", {
+                            count: detail.commits.length,
+                            countValue: detail.commits.length.toLocaleString(),
+                          })
                     }
                   >
                     <GitCommitHorizontalIcon aria-hidden className="size-3" />
