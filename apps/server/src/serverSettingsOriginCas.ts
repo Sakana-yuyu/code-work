@@ -190,8 +190,19 @@ const publishPreparedLock = Effect.fn("ServerSettingsOriginCas.publishPreparedLo
     const fileSystem = yield* FileSystem.FileSystem;
     return yield* fileSystem.rename(input.candidatePath, input.lockPath).pipe(
       Effect.as(true),
-      Effect.catch((cause) =>
-        fileSystem.exists(input.lockPath).pipe(
+      Effect.catch((cause) => {
+        // 竞争者可能在 rename 失败后立即释放锁，不能靠随后 exists 的结果判断是否发生竞争。
+        const systemCause = cause.cause;
+        if (
+          isFileSystemReason(cause, "AlreadyExists") ||
+          (systemCause !== null &&
+            typeof systemCause === "object" &&
+            "code" in systemCause &&
+            systemCause.code === "ENOTEMPTY")
+        ) {
+          return Effect.succeed(false);
+        }
+        return fileSystem.exists(input.lockPath).pipe(
           Effect.mapError((inspectCause) =>
             originError(input.settingsPath, "inspect-lock", inspectCause),
           ),
@@ -200,8 +211,8 @@ const publishPreparedLock = Effect.fn("ServerSettingsOriginCas.publishPreparedLo
               ? Effect.succeed(false)
               : Effect.fail(originError(input.settingsPath, "acquire-lock", cause)),
           ),
-        ),
-      ),
+        );
+      }),
     );
   },
 );

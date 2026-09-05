@@ -1,6 +1,8 @@
 import * as NodeRuntime from "@effect/platform-node/NodeRuntime";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import * as Effect from "effect/Effect";
+import * as Cause from "effect/Cause";
+import * as Logger from "effect/Logger";
 
 import {
   commitServerSettingsOriginCas,
@@ -46,4 +48,11 @@ const program = Effect.gen(function* () {
   );
 }).pipe(Effect.provide(NodeServices.layer));
 
-NodeRuntime.runMain(program);
+// stdout 专用于协议，诊断信息写入 stderr，保留真正的锁错误供父进程报告。
+NodeRuntime.runMain(
+  program.pipe(
+    Effect.onError((cause) => Effect.sync(() => process.stderr.write(`${Cause.pretty(cause)}\n`))),
+    Effect.provideService(Logger.LogToStderr, true),
+  ),
+  { disableErrorReporting: true },
+);

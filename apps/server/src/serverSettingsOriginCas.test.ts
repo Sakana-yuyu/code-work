@@ -11,6 +11,7 @@ import { assert, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Path from "effect/Path";
+import * as PlatformError from "effect/PlatformError";
 
 import {
   commitServerSettingsOriginCas,
@@ -193,6 +194,43 @@ it.effect("检测到死亡 owner 时 fail-closed 且不改写磁盘", () =>
       ),
       [],
     );
+  }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
+);
+
+it.live("竞争锁在 rename 失败后已释放时仍可重新获取", () =>
+  Effect.gen(function* () {
+    const fileSystem = yield* FileSystem.FileSystem;
+    const path = yield* Path.Path;
+    const tempDir = yield* fileSystem.makeTempDirectoryScoped({
+      prefix: "codework-settings-lock-race-",
+    });
+    const settingsPath = path.join(tempDir, "settings.json");
+    let contended = false;
+    const result = yield* withServerSettingsOriginLock(
+      settingsPath,
+      Effect.succeed("acquired"),
+    ).pipe(
+      Effect.provideService(FileSystem.FileSystem, {
+        ...fileSystem,
+        rename: (from, to) => {
+          if (!contended && to === `${settingsPath}.lock`) {
+            contended = true;
+            return Effect.fail(
+              PlatformError.systemError({
+                _tag: "Unknown",
+                module: "FileSystem",
+                method: "rename",
+                cause: Object.assign(new Error("锁在竞争后已释放"), { code: "ENOTEMPTY" }),
+              }),
+            );
+          }
+          return fileSystem.rename(from, to);
+        },
+      }),
+    );
+    assert.equal(result, "acquired");
+    assert.isTrue(contended);
+    assert.isFalse(yield* fileSystem.exists(`${settingsPath}.lock`));
   }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
 );
 
