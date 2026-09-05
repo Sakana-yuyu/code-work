@@ -570,7 +570,7 @@ describe("provider update launch notification logic", () => {
       key: "failed:claudeAgent:2026-04-23T10:00:00.000Z:Update command exited with code 1.",
       tone: "error",
       title: `Claude v1.1.0 ${t("updateFailed2")}`,
-      description: "Update command exited with code 1.",
+      description: "更新命令以退出码 1 结束。",
       dismissible: true,
     });
   });

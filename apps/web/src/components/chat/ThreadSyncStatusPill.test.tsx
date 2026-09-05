@@ -1,9 +1,12 @@
 import { renderToStaticMarkup } from "react-dom/server";
-import { describe, expect, it } from "vite-plus/test";
+import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
+import { setCurrentLanguage } from "../../i18n/runtime";
 
 import { ThreadSyncStatusPill } from "./ThreadSyncStatusPill";
 
 describe("ThreadSyncStatusPill", () => {
+  beforeEach(() => setCurrentLanguage("en"));
+  afterEach(() => setCurrentLanguage("zh-CN"));
   it.each([
     ["loading", "Loading messages..."],
     ["syncing", "Syncing messages..."],

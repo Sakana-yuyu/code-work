@@ -13,7 +13,7 @@ vi.mock("../../i18n", () => ({
       noActivityInThisWindow: "No activity",
       tokens: "Tokens",
       cost: "Cost",
-      providers: "Providers",
+      providers2: "Providers",
       models: "Models",
     })[key] ?? key,
   useResolvedLanguage: () => "en-US",

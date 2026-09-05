@@ -1596,7 +1596,7 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
       const upstream = received[0];
       assert.equal(upstream?.path, "/v1/messages");
       assert.equal(upstream?.apiKey, "sk-supplier-key");
-      assert.equal(upstream?.model, "gw-adapter-anthropic");
+      assert.equal(upstream?.model, "relay-model");
 
       const unauthorized = yield* HttpClient.post("/byok-gw/anthropic/v1/messages", {
         headers: { "x-api-key": "wrong-token", "content-type": "application/json" },

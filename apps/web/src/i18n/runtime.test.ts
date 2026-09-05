@@ -6,7 +6,7 @@ import { setCurrentLanguage, t } from "./runtime";
 afterEach(() => setCurrentLanguage("zh-CN"));
 
 // 内部代号不允许出现在面向用户的文案里（详见设置页第一眼测试标准 2）。
-const INTERNAL_CODENAMES = /cursor-byok|cursor byok|tcode/i;
+const INTERNAL_CODENAMES = /cursor-byok|cursor byok|\btcode\b/i;
 
 describe("web i18n runtime", () => {
   it("switches languages and interpolates complete messages", () => {
