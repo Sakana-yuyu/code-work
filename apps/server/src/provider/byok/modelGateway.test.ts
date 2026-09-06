@@ -729,6 +729,7 @@ describe("extractGatewayUsageLine", () => {
       ),
       new TextEncoder().encode('ens":7}}\n\ndata: [DONE]\n\n'),
     ];
+    // eslint-disable-next-line codework/no-manual-effect-runtime-in-tests
     const passthrough = await Effect.runPromise(
       Stream.runCollect(
         tapGatewayUsageStream(Stream.fromIterable(chunks), "anthropic", (totals) =>

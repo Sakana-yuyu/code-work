@@ -96,6 +96,7 @@ describe("内置 CLIProxyAPI 核心", () => {
   });
 
   it("导入凭据只返回脱敏摘要，并将本地账号绑定到内置 BYOK 实例", async () =>
+    // eslint-disable-next-line codework/no-manual-effect-runtime-in-tests
     Effect.runPromise(
       runWithServices(
         {
@@ -156,6 +157,7 @@ describe("内置 CLIProxyAPI 核心", () => {
     ));
 
   it("连接本地账号池会自动接管有匹配账号的 CLI 实例", async () =>
+    // eslint-disable-next-line codework/no-manual-effect-runtime-in-tests
     Effect.runPromise(
       runWithServices(
         {
@@ -235,6 +237,7 @@ describe("内置 CLIProxyAPI 核心", () => {
     ));
 
   it("Cursor 账号池绑定走 ACP 会话，不伪造 BYOK 网关配置", async () =>
+    // eslint-disable-next-line codework/no-manual-effect-runtime-in-tests
     Effect.runPromise(
       runWithServices(
         {
@@ -276,6 +279,7 @@ describe("内置 CLIProxyAPI 核心", () => {
     ));
 
   it("允许没有模型声明的官方 auth 文件进入本地账号池", async () =>
+    // eslint-disable-next-line codework/no-manual-effect-runtime-in-tests
     Effect.runPromise(
       runWithServices(
         {
@@ -310,6 +314,7 @@ describe("内置 CLIProxyAPI 核心", () => {
     ));
 
   it("绑定账号池后导入同平台账号会自动加入现有绑定", async () =>
+    // eslint-disable-next-line codework/no-manual-effect-runtime-in-tests
     Effect.runPromise(
       runWithServices(
         {
@@ -352,6 +357,7 @@ describe("内置 CLIProxyAPI 核心", () => {
     ));
 
   it("账号池变化后自动刷新 BYOK 池实例的适配器目录", async () =>
+    // eslint-disable-next-line codework/no-manual-effect-runtime-in-tests
     Effect.runPromise(
       runWithServices(
         {
@@ -418,6 +424,7 @@ describe("内置 CLIProxyAPI 核心", () => {
     ));
 
   it("status 返回仍在册账号的用量统计，过滤已删除账号", async () =>
+    // eslint-disable-next-line codework/no-manual-effect-runtime-in-tests
     Effect.runPromise(
       runWithServices(
         {
@@ -447,6 +454,7 @@ describe("内置 CLIProxyAPI 核心", () => {
     ));
 
   it("重新导入同一账号 ID 换平台时清理旧平台绑定", async () =>
+    // eslint-disable-next-line codework/no-manual-effect-runtime-in-tests
     Effect.runPromise(
       runWithServices(
         {
@@ -491,6 +499,7 @@ describe("内置 CLIProxyAPI 核心", () => {
     ));
 
   it("凭据文件缺失时仍可删除本地账号元数据", async () =>
+    // eslint-disable-next-line codework/no-manual-effect-runtime-in-tests
     Effect.runPromise(
       runWithServices(
         {
@@ -519,6 +528,7 @@ describe("内置 CLIProxyAPI 核心", () => {
     ));
 
   it("配置策略和账号启停通过同一服务持久化", async () =>
+    // eslint-disable-next-line codework/no-manual-effect-runtime-in-tests
     Effect.runPromise(
       runWithServices(
         {
@@ -553,6 +563,7 @@ describe("内置 CLIProxyAPI 核心", () => {
     ));
 
   it("策略持久化失败时不提前改变运行时配置", async () =>
+    // eslint-disable-next-line codework/no-manual-effect-runtime-in-tests
     Effect.runPromise(
       runWithServices(
         {
@@ -588,6 +599,7 @@ describe("内置 CLIProxyAPI 核心", () => {
     ));
 
   it("批量启停账号只写入一次账号池状态", async () =>
+    // eslint-disable-next-line codework/no-manual-effect-runtime-in-tests
     Effect.runPromise(
       runWithServices(
         {

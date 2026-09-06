@@ -42,6 +42,7 @@ const runDiscover = async (
   fetchImplementation: typeof globalThis.fetch,
   input: { instanceId: string; adapterId: string; forceRefresh?: boolean },
 ) =>
+  // eslint-disable-next-line codework/no-manual-effect-runtime-in-tests
   Effect.runPromise(
     Effect.gen(function* () {
       const service = yield* make;
@@ -133,6 +134,7 @@ const runDraftDiscover = async (
   let getSettingsCalls = 0;
   let updateSettingsCalls = 0;
   const settings = DEFAULT_SERVER_SETTINGS;
+  // eslint-disable-next-line codework/no-manual-effect-runtime-in-tests
   const result = await Effect.runPromise(
     Effect.gen(function* () {
       const service = yield* make;
